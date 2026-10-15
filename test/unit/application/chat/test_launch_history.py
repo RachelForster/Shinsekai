@@ -4,13 +4,13 @@ import re
 from pathlib import Path
 from types import SimpleNamespace
 
-from application.chat.launch_history import (
+from application.chat.host.launch_history import (
     _new_history_instance_id,
     persist_confirmed_history_path,
     plan_chat_history_launch,
     resolve_chat_history_path,
 )
-from application.chat.session_store import (
+from application.chat.history.session_store import (
     load_template_session,
     save_template_session,
 )
@@ -56,7 +56,7 @@ def test_quick_restart_preserves_explicit_history_and_uses_new_managed_path(
     marker.write_text("previous", encoding="utf-8")
     instance_id = "20260831T120000000000Z-a1b2c3d4"
     monkeypatch.setattr(
-        "application.chat.launch_history._new_history_instance_id",
+        "application.chat.host.launch_history._new_history_instance_id",
         lambda: instance_id,
     )
 

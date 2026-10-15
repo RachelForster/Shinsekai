@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from unittest.mock import Mock
 
-from application.chat.history_state import revert_chat_history
-from application.chat.presentation import StreamingHistoryPresenter
+from application.chat.history.state import revert_chat_history
+from application.chat.presentation.assets import StreamingHistoryPresenter
 
 
 def test_revert_replays_previous_dialog_instead_of_adjacent_options() -> None:

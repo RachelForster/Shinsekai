@@ -6,8 +6,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from application.chat.events import LifecycleDispatchError, LifecycleEvents
-from application.chat.session_lifecycle import ChatSessionLifecycle, SessionEffects
+from application.chat.host.events import LifecycleDispatchError, LifecycleEvents
+from application.chat.host.session_lifecycle import ChatSessionLifecycle, SessionEffects
 from sdk.chat_process import ChatProcessContext, ChatProcessEvent
 from sdk.chat_session import ChatSessionContext, ChatSessionEvent
 

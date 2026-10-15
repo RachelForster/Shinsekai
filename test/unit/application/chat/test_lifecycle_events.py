@@ -5,7 +5,7 @@ from threading import Lock
 
 import pytest
 
-from application.chat.events import LifecycleDispatchError, LifecycleEvents
+from application.chat.host.events import LifecycleDispatchError, LifecycleEvents
 from sdk.chat_process import ChatProcessContext, ChatProcessEvent
 
 

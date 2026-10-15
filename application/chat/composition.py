@@ -13,9 +13,9 @@ from core.paths import app_root as runtime_app_root
 from core.paths import project_root as runtime_project_root
 from core.paths import source_root as runtime_source_root
 
-from application.chat.history_paths import resolve_history_path_for_project
+from application.chat.history.paths import resolve_history_path_for_project
 from application.chat.build_effect_context import SelectedEffectContext
-from application.chat.mobile_access import (
+from application.chat.host.mobile_access import (
     get_mobile_access_info,
 )
 from application.runtime.dependencies import runtime_dependency_error_from_text
@@ -28,29 +28,28 @@ from application.story.coordinator import (
     story_snapshot_patch,
 )
 
-from application.chat import (
-    runtime_projection as projection,
-    runtime_history as history,
-    runtime_story as story,
-)
-from application.chat.runtime_ports import (
+from application.chat.host import projection, history, story
+from application.chat.host.ports import (
     ProcessSystem,
     StoryCoordinatorAccess,
 )
-from application.chat.process_supervisor import (
+from application.chat.host.process_supervisor import (
     ChatProcessSupervisor,
     ProcessTermination,
     tail_text,
 )
-from application.chat.launch_preparation import ChatLaunchPreparation
-from application.chat.events import LifecycleEvents
-from application.chat.lifecycle_diagnostics import LifecycleDiagnostics
-from application.chat.session_lifecycle import ChatSessionLifecycle, SessionEffects
-from application.chat.mobile_access import configure_mobile_access, stop_mobile_access
-from application.chat.launch_history import persist_confirmed_history_path
+from application.chat.host.launch_preparation import ChatLaunchPreparation
+from application.chat.host.events import LifecycleEvents
+from application.chat.host.diagnostics import LifecycleDiagnostics
+from application.chat.host.session_lifecycle import ChatSessionLifecycle, SessionEffects
+from application.chat.host.mobile_access import (
+    configure_mobile_access,
+    stop_mobile_access,
+)
+from application.chat.host.launch_history import persist_confirmed_history_path
 from sdk.chat_process import ChatProcessContext
 from sdk.chat_session import ChatSessionContext
-from application.chat.runtime_commands import (
+from application.chat.host.commands import (
     ChatCommandRouter,
     dismiss_plugin_page,
     input_batch,

@@ -16,7 +16,7 @@ from application.story.prompt_runtime import (
 )
 from frontend_bridge_core.routes.router import ApiRequest
 from frontend_bridge_core.routes.story_routes import STORY_ROUTES
-from application.chat.session_store import save_template_session
+from application.chat.history.session_store import save_template_session
 from sdk.hooks import BeforeChatContext, MessageAddedContext, PluginHookDispatcher
 from test.unit.application.story.test_library import selected_story
 
@@ -184,7 +184,7 @@ def test_normal_chat_without_binding_is_untouched(tmp_path):
 def test_branch_selection_uses_full_ui_history_after_model_compaction(
     tmp_path, command
 ):
-    from application.chat.runtime_process import _story_branches
+    from application.chat.composition import _story_branches
 
     state, initial, adapter, hooks = running_story(tmp_path)
     original_generation = initial.active_branch.generation

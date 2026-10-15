@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from application.chat.history_paths import resolve_history_path_for_project
+from application.chat.history.paths import resolve_history_path_for_project
 from core.chat_history.storage import (
     ACTIVE_HISTORY_FILENAME,
     STORY_SESSION_FILENAME,
@@ -20,7 +20,11 @@ from core.chat_history.storage import (
     remove_chat_history_storage,
 )
 from core.chat_history.text import chat_history_to_turns
-from core.messaging.dialog_tokens import NARR_ALIASES, SYSTEM_UI_SKIP, normalize_character_name
+from core.messaging.dialog_tokens import (
+    NARR_ALIASES,
+    SYSTEM_UI_SKIP,
+    normalize_character_name,
+)
 
 
 # All bridge windows and HTTP worker threads share this metadata transaction lock.
@@ -305,7 +309,7 @@ def update_conversation_character(state: Any, old_name: str, new_name: str | Non
 
 
 def delete_conversation(state: Any, conversation_id: str) -> None:
-    from application.chat.runtime_process import _chat_runtime_status
+    from application.chat.composition import _chat_runtime_status
     from application.chat.start_chat import _chat_init_lock
 
     with _chat_init_lock(state), _metadata_lock:

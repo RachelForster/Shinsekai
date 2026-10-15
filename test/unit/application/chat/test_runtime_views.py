@@ -15,7 +15,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from application.chat import runtime_process as chat
+from application.chat import composition as chat
 from test.unit.application.chat.runtime_process_fakes import make_state, write_messages
 
 

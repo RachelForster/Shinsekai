@@ -435,7 +435,7 @@ def test_bad_state_does_not_change_bank(harness):
 
 def test_producer_transport_urls_read_imported_model_and_state(harness, monkeypatch):
     from urllib.parse import parse_qs, urlsplit
-    from application.chat.ui_updates import StreamingUIUpdateManager
+    from application.chat.presentation.updates import StreamingUIUpdateManager
     from frontend_bridge_core.transport.chat_session import ChatSessionTransport
     from frontend_bridge_core.transport.ws_client import WSClientSink
 
@@ -446,7 +446,7 @@ def test_producer_transport_urls_read_imported_model_and_state(harness, monkeypa
                     sprite_index=-1, path="", state={"parameters": {}, "expressions": [], "motion": ""}, tags="neutral")
     sink = WSClientSink("ws://127.0.0.1:8788/ws?token=regression-test")
     monkeypatch.setattr(sink, "_ensure_worker", lambda: None)
-    monkeypatch.setattr("application.chat.ui_updates.get_character_by_name", state.config_manager.get_character_by_name)
+    monkeypatch.setattr("application.chat.presentation.updates.get_character_by_name", state.config_manager.get_character_by_name)
     transport = ChatSessionTransport(stream_sink=sink)
     StreamingUIUpdateManager(transport, resource_urls=transport.resource_urls).update_sprite("Haru", 0)
     event = sink._peek_event()
@@ -602,12 +602,12 @@ def test_failed_import_rolls_back_active_type_and_bank(harness, monkeypatch):
 
 def test_new_format_reuses_import_startup_events_and_snapshot(harness, monkeypatch):
     """An opaque, non-Cubism format must need no changes to the shared pipeline."""
-    from application.chat.initial_sprite import (
+    from application.chat.presentation.initial_sprite import (
         display_initial_sprite,
         initial_sprite_path_for_characters,
     )
-    from application.chat.runtime_projection import _chat_session_media
-    from application.chat.ui_updates import StreamingUIUpdateManager
+    from application.chat.host.projection import _chat_session_media
+    from application.chat.presentation.updates import StreamingUIUpdateManager
     from application.runtime.event_sink import (
         fold_event_into_snapshot,
         make_empty_chat_snapshot,
@@ -647,7 +647,7 @@ def test_new_format_reuses_import_startup_events_and_snapshot(harness, monkeypat
     events = []
     urls = BridgeResourceUrls("http://127.0.0.1:8787", "test-token")
     presenter = StreamingUIUpdateManager(SimpleNamespace(emit=events.append), resource_urls=urls)
-    monkeypatch.setattr("application.chat.ui_updates.get_character_by_name", state.config_manager.get_character_by_name)
+    monkeypatch.setattr("application.chat.presentation.updates.get_character_by_name", state.config_manager.get_character_by_name)
     assert display_initial_sprite(saved_path, config=state.config_manager, ui_updates=presenter)
     assert events[0]["avatarType"] == "demo"
     restored = fold_event_into_snapshot(make_empty_chat_snapshot(), events[0])["sprites"][0]

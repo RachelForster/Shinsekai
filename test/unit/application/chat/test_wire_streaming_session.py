@@ -3,7 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-from application.chat import wire_streaming_session as wiring
+from application.chat.runtime import stream_wiring as wiring
 
 
 def _create_wiring(**overrides):

@@ -1,4 +1,4 @@
-"""Keep extracted chat policy independent from its compatibility composition root."""
+"""Keep extracted chat policy independent from its composition root."""
 
 import ast
 from pathlib import Path
@@ -12,16 +12,16 @@ ROOT = Path(__file__).resolve().parents[3]
 @pytest.mark.parametrize(
     "module",
     [
-        "runtime_ports",
-        "process_supervisor",
-        "launch_preparation",
-        "runtime_history",
-        "runtime_projection",
-        "runtime_story",
-        "runtime_commands",
-        "events",
-        "session_lifecycle",
-        "lifecycle_diagnostics",
+        "host/ports",
+        "host/process_supervisor",
+        "host/launch_preparation",
+        "host/history",
+        "host/projection",
+        "host/story",
+        "host/commands",
+        "host/events",
+        "host/session_lifecycle",
+        "host/diagnostics",
     ],
 )
 def test_chat_services_do_not_import_facade_transport_or_plugin_host(module):
@@ -35,7 +35,7 @@ def test_chat_services_do_not_import_facade_transport_or_plugin_host(module):
             imports.append(node.module or "")
             imports.extend(f"{node.module}.{alias.name}" for alias in node.names)
     forbidden = (
-        "application.chat.runtime_process",
+        "application.chat.composition",
         "frontend_bridge_core",
         "plugin_system",
         "ui",

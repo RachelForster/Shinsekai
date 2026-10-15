@@ -9,8 +9,8 @@ from pathlib import Path
 from typing import Any
 import uuid
 
-from application.chat.events import LifecycleDispatchError, LifecycleEvents
-from application.chat.lifecycle import chat_lifecycle_lock
+from application.chat.host.events import LifecycleDispatchError, LifecycleEvents
+from application.chat.host.lifecycle import chat_lifecycle_lock
 from sdk.chat_process import ChatProcessContext, ChatProcessEvent
 from sdk.chat_session import ChatSessionContext, ChatSessionEvent
 

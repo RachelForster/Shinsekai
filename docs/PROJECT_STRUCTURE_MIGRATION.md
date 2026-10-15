@@ -18,7 +18,7 @@ O6 锁定 `core/` 与 `application/` 的语义边界，O7 按该边界迁移现�
 | `core/messaging/` | 已落地 | 10 个 Python 文件 | 保持并清理应用层耦合 |
 | `core/model_assets/` | 已落地 | 3 个 Python 文件 | 保持 |
 | `application/runtime/` | O3/O5 已落地 | 通用 runtime 与标准线程 worker | 保持应用编排边界 |
-| `application/chat/handlers/` | O5 已落地 | TTS 与 presentation 处理链 | 保持框架无关 |
+| `application/chat/presentation/handlers/` | O5 已落地 | TTS 与 presentation 处理链 | 保持框架无关 |
 | `core/runtime/`、`core/handlers/` | O5 已删除 | 0 | 禁止重新引入 |
 | `core/plugins/` | O5 已删除 | 0 | 禁止重新引入 |
 | `plugin_system/` | O2 已落地 | host/install/publisher/registry/requirements/update | 保持宿主插件平台边界 |
@@ -177,8 +177,8 @@ PR 范围：
 PR 范围：
 
 - 将 chat turn service 的 config、queue、LLM/UI manager 装配从
-  `core/messaging/chat_turn_wiring.py` 迁到 `application/chat/turn_wiring.py`；
-- 将初始立绘的配置选择和 UI 更新迁到 `application/chat/initial_sprite.py`，
+  `core/messaging/chat_turn_wiring.py` 迁到 `application/chat/runtime/turn_wiring.py`；
+- 将初始立绘的配置选择和 UI 更新迁到 `application/chat/presentation/initial_sprite.py`，
   `core/sprite/selection.py` 只保留值输入的路径匹配；
 - 将特效方案选择、运行期 keyword map 和 LLM prompt catalog 迁到
   `application/chat/build_effect_context.py`；
@@ -247,19 +247,19 @@ Backgrounds 和 Characters。
 第一阶段 PR 范围：
 
 - 将分支创建、切换、重命名、树投影和持久化迁到
-  `application/chat/manage_branches.py`；
+  `application/chat/history/branches.py`；
 - `main.py` 只装配消息、UI、持久化和提交回调，不再持有 branch state；
 - 增加分支操作直接单测和入口架构守卫。
 
 后续阶段：
 
-- 实时命令分发迁到 `application/chat/commands.py`，WebSocket envelope 与 ack
+- 实时命令分发迁到 `application/chat/runtime/commands.py`，WebSocket envelope 与 ack
   保留在 `frontend_bridge_core/transport/chat_commands.py`；
 - provider、插件、模板、历史和 memory hooks 启动装配迁到
-  `application/chat/startup.py`，统一返回 `ChatStartupContext`；
-- streaming/headless 生命周期迁到 `application/chat/session_runtime.py`，初始场景
-  恢复迁到 `application/chat/presentation.py`，实时适配接线迁到
-  `application/chat/wire_streaming_session.py`；
+  `application/chat/runtime/startup.py`，统一返回 `ChatStartupContext`；
+- streaming/headless 生命周期迁到 `application/chat/runtime/session.py`，初始场景
+  恢复迁到 `application/chat/presentation/assets.py`，实时适配接线迁到
+  `application/chat/runtime/stream_wiring.py`；
 - 完成后 `main.py` 只保留进程环境、transport 装配、模式选择和顶层异常处理。
 
 ### O10：整理 Application 公开用例
@@ -304,25 +304,25 @@ Backgrounds 和 Characters。
 | `core/plugins/github_bundle_update.py` | `core/app_update/` + `plugin_system/update/` | O2 | 主程序和插件更新必须拆开 |
 | `core/runtime/app_runtime.py` 等 | `application/runtime/` | O3/O5 | runtime 已迁；worker 已改为标准线程 |
 | `core/runtime/requirements.py` | `core/runtime_env/requirements.py` | O3 | 环境检测 |
-| `core/handlers/*` | `application/chat/handlers/` | O5 | 已迁移框架无关处理链，Qt 控件实现已删除 |
+| `core/handlers/*` | `application/chat/presentation/handlers/` | O5 | 已迁移框架无关处理链，Qt 控件实现已删除 |
 | `frontend_bridge_core/chat.py` | routes + `application/chat/` | O3 | bridge 只保留协议 |
 | `frontend_bridge_core/plugin_*.py` | routes + `application/plugins/` | O2/O3 | O2 迁实现并保留兼容调用；O3 将 catalog/updates 收口到 application 门面 |
 | `frontend_bridge_core/model_assets.py`、`tts.py` | `application/model_assets/` | O3 | bridge 只创建 task 并转发结果 |
 | `frontend_bridge_core/logs.py` | `application/diagnostics/` | O3 | 诊断归档不在传输层实现 |
 | `core/media/auto_annotation.py` | `application/media/` | O3/O6 | AI 能力由 application 编排；O6 删除残留兼容入口并归位单测 |
-| `core/messaging/chat_turn_wiring.py` | `application/chat/turn_wiring.py` | O7 | manager、queue 与消息 port 装配属于 application |
-| `core/sprite/initial_sprite.py` | `core/sprite/selection.py` + `application/chat/initial_sprite.py` | O7 | core 只做路径匹配，配置选择和 UI 呈现由 application 负责 |
-| `core/sprite/sprite_cli.py` | `application/chat/launch_args.py` | O9/阶段 5 | 聊天入口参数和 bridge 启动配置属于 application chat，而非立绘领域 |
+| `core/messaging/chat_turn_wiring.py` | `application/chat/runtime/turn_wiring.py` | O7 | manager、queue 与消息 port 装配属于 application |
+| `core/sprite/initial_sprite.py` | `core/sprite/selection.py` + `application/chat/presentation/initial_sprite.py` | O7 | core 只做路径匹配，配置选择和 UI 呈现由 application 负责 |
+| `core/sprite/sprite_cli.py` | `application/chat/runtime/launch_args.py` | O9/阶段 5 | 聊天入口参数和 bridge 启动配置属于 application chat，而非立绘领域 |
 | `core/sprite/chat_history_text.py` | `core/chat_history/text.py` | O9/阶段 5 | 无框架依赖的聊天历史归一化独立归入 chat_history 领域 |
 | `core/sprite/chat_branch_storage.py` | `core/chat_history/storage.py` | O9/阶段 5 | 分支状态与会话文件存储独立归入 chat_history 领域 |
 | main/bridge 特效标签解析 | `core/media/effect_audio.py` + `application/chat/build_effect_context.py` | O7 | 单一解析能力，application 负责方案选择与 prompt/runtime 投影 |
 | `frontend_bridge_core/effects.py` 主体实现 | `application/effects/management.py` | O8/阶段 1 | bridge 只保留 HTTP adapter，配置与资源操作统一经过 EffectUseCase |
 | `frontend_bridge_core/backgrounds.py` 资源变更 | `application/backgrounds/management.py` | O8 PR 2 | bridge 仅保留协议、翻译和简单标签写入 |
 | `frontend_bridge_core/characters.py` 资源变更 | `application/characters/management.py` | O8 PR 2 | 保存校验、文件操作和多步骤更新由 application 编排 |
-| `main.py` 对话分支闭包 | `application/chat/manage_branches.py` | O9/阶段 1 | 分支状态、操作和持久化归 application，入口只装配窄回调 |
-| `main.py` 实时命令分支 | `application/chat/commands.py` + `frontend_bridge_core/transport/chat_commands.py` | O9/阶段 2 | application 执行命令行为，transport 只解析 payload 并发送 ack |
-| `main.py` provider 与启动装配 | `application/chat/startup.py` | O9/阶段 3 | provider、模板、历史、memory hooks 和降级策略归 application，入口只消费 ChatStartupContext |
-| `main.py` 会话生命周期 | `application/chat/session_runtime.py` + `application/chat/presentation.py` + `application/chat/wire_streaming_session.py` | O9/阶段 4 | Streaming/Headless session 持有 workflow、queues、AppRuntime、初始展示与关闭持久化；实时适配独立接线；main 只保留四步装配 |
+| `main.py` 对话分支闭包 | `application/chat/history/branches.py` | O9/阶段 1 | 分支状态、操作和持久化归 application，入口只装配窄回调 |
+| `main.py` 实时命令分支 | `application/chat/runtime/commands.py` + `frontend_bridge_core/transport/chat_commands.py` | O9/阶段 2 | application 执行命令行为，transport 只解析 payload 并发送 ack |
+| `main.py` provider 与启动装配 | `application/chat/runtime/startup.py` | O9/阶段 3 | provider、模板、历史、memory hooks 和降级策略归 application，入口只消费 ChatStartupContext |
+| `main.py` 会话生命周期 | `application/chat/runtime/session.py` + `application/chat/presentation/assets.py` + `application/chat/runtime/stream_wiring.py` | O9/阶段 4 | Streaming/Headless session 持有 workflow、queues、AppRuntime、初始展示与关闭持久化；实时适配独立接线；main 只保留四步装配 |
 
 ## 5. 通用退出条件
 

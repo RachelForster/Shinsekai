@@ -6,18 +6,18 @@ from dataclasses import dataclass
 import logging
 from typing import Any
 
-from application.chat.commands import (
+from application.chat.runtime.commands import (
     ChatCommandBindings,
     ChatCommandDispatcher,
     ChatCommandUiBindings,
 )
-from application.chat.history_state import chat_history, replay_history_entry
-from application.chat.manage_branches import (
+from application.chat.history.state import chat_history, replay_history_entry
+from application.chat.history.branches import (
     ConversationBranchBindings,
     ConversationBranchManager,
 )
-from application.chat.presentation import StreamingHistoryPresenter
-from application.chat.startup import chat_history_is_present
+from application.chat.presentation.assets import StreamingHistoryPresenter
+from application.chat.runtime.startup import chat_history_is_present
 from application.runtime.context import resolve_pending_tool_confirmation
 from application.chat.dialog_media.replay import enqueue_latest_media_replay
 from core.media.chat_attachments import resolve_chat_attachments

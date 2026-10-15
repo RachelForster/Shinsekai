@@ -109,7 +109,7 @@ def _shutdown_bridge_runtime(reason: str) -> None:
             f"bridge runtime plugin transport unbind failed reason={reason} error={exc}"
         )
     try:
-        from application.chat.runtime_process import shutdown_active_chat_process
+        from application.chat.composition import shutdown_active_chat_process
 
         shutdown_active_chat_process(wait_timeout=1.5)
     except Exception as exc:
@@ -122,7 +122,7 @@ def _shutdown_bridge_runtime(reason: str) -> None:
         if presenter is not None:
             presenter.close()
         try:
-            from application.chat.runtime_process import _session_lifecycle
+            from application.chat.composition import _session_lifecycle
 
             lifecycle = _session_lifecycle(state)
             try:

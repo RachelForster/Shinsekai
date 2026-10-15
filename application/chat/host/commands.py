@@ -16,8 +16,8 @@ from core.media.chat_attachments import (
 )
 from core.story import SelectChoice
 from sdk.path_utils import reject_control_chars
-from application.chat.runtime_ports import HistoryPort, StorySelectionPort
-from application.chat.runtime_history import (
+from application.chat.host.ports import HistoryPort, StorySelectionPort
+from application.chat.host.history import (
     _plain_history_text,
     _plain_history_text_from_entries,
 )

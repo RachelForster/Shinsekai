@@ -7,7 +7,7 @@ from collections.abc import Callable
 import json
 from ai.tools.chat_ui_tools import sanitize_user_display_name
 from config.character_assets import get_character_assets
-from application.chat.character_visual import resolve_character_visual
+from application.chat.presentation.character_visual import resolve_character_visual
 
 TRANSPARENT_BACKGROUND_NAME = "透明场景"
 _TRANSPARENT_BACKGROUND_ALIAS = "透明背景"

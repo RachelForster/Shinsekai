@@ -7,7 +7,7 @@ from collections.abc import Callable
 import json
 import os
 import sys
-from application.chat.runtime_ports import LaunchPlan, LaunchRejected
+from application.chat.host.ports import LaunchPlan, LaunchRejected
 from application.chat.build_effect_context import SelectedEffectContext
 from application.chat.templates import (
     TEMP_SPLIT_META,
@@ -16,8 +16,8 @@ from application.chat.templates import (
     _history_id_from_scenario,
     _template_dir,
 )
-from application.chat.history_paths import is_unc_history_path
-from application.chat.launch_args import CHAT_LAUNCH_CONFIG_ENV
+from application.chat.history.paths import is_unc_history_path
+from application.chat.runtime.launch_args import CHAT_LAUNCH_CONFIG_ENV
 from core.chat_history.storage import chat_history_session_dir
 from core.media.chat_attachments import CHAT_ATTACHMENTS_ROOT_ENV
 

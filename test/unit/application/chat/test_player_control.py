@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 from application.chat.player_control import resolve_player
 from application.media.resource_urls import UnconfiguredResourceUrls
-from application.chat.ui_updates import StreamingUIUpdateManager
+from application.chat.presentation.updates import StreamingUIUpdateManager
 from application.runtime.event_sink import (
     fold_event_into_snapshot,
     make_empty_chat_snapshot,
@@ -146,7 +146,7 @@ class PlayerControlTests(unittest.TestCase):
             resolve_player(config, ["阳明"], "神羽")
 
     def test_saved_history_keeps_normal_player_dialog(self):
-        from application.chat.runtime_history import _serialize_history_entries_from_messages
+        from application.chat.host.history import _serialize_history_entries_from_messages
 
         messages = [
             {"role": "user", "content": "我才不要（摊开手）"},
@@ -179,7 +179,7 @@ class PlayerControlTests(unittest.TestCase):
         sink.media_url.side_effect = lambda path: path
         ui = StreamingUIUpdateManager(sink, chat_history=[], resource_urls=UnconfiguredResourceUrls())
         ui.set_player_character("神羽")
-        with patch("application.chat.ui_updates.get_character_by_name", return_value=character):
+        with patch("application.chat.presentation.updates.get_character_by_name", return_value=character):
             ui.update_player_portrait("神羽", 0)
 
         event = sink.emit.call_args.args[0]
@@ -215,7 +215,7 @@ class PlayerControlTests(unittest.TestCase):
             update.assert_called_once_with("神羽", 4)
 
     def test_presentation_queues_portrait_without_dialogue_or_playback(self):
-        from application.chat.handlers.presentation import CharacterDialogUiHandler
+        from application.chat.presentation.handlers.presentation import CharacterDialogUiHandler
 
         ui = MagicMock()
         playback = MagicMock()
@@ -230,7 +230,7 @@ class PlayerControlTests(unittest.TestCase):
             ),
         )
         with patch(
-            "application.chat.handlers.presentation.get_app_runtime",
+            "application.chat.presentation.handlers.presentation.get_app_runtime",
             return_value=runtime,
         ):
             CharacterDialogUiHandler().handle(
@@ -249,7 +249,7 @@ class PlayerControlTests(unittest.TestCase):
         playback.play_and_wait.assert_not_called()
 
     def test_presentation_plays_enabled_player_speech_without_showing_dialog(self):
-        from application.chat.handlers.presentation import CharacterDialogUiHandler
+        from application.chat.presentation.handlers.presentation import CharacterDialogUiHandler
 
         ui = MagicMock()
         playback = MagicMock()
@@ -266,11 +266,11 @@ class PlayerControlTests(unittest.TestCase):
         )
         with (
             patch(
-                "application.chat.handlers.presentation.get_app_runtime",
+                "application.chat.presentation.handlers.presentation.get_app_runtime",
                 return_value=runtime,
             ),
-            patch("application.chat.handlers.presentation.get_character_by_name", return_value=None),
-            patch("application.chat.handlers.presentation.Path.exists", return_value=True),
+            patch("application.chat.presentation.handlers.presentation.get_character_by_name", return_value=None),
+            patch("application.chat.presentation.handlers.presentation.Path.exists", return_value=True),
         ):
             CharacterDialogUiHandler().handle(
                 PresentationMessage(
@@ -286,7 +286,7 @@ class PlayerControlTests(unittest.TestCase):
         playback.play_and_wait.assert_called_once()
 
     def test_ai_player_dialogue_is_visible_independently_of_voice(self):
-        from application.chat.handlers.presentation import CharacterDialogUiHandler
+        from application.chat.presentation.handlers.presentation import CharacterDialogUiHandler
 
         for read_speech in (True, False):
             for sprite_id in (None, "2"):
@@ -300,9 +300,9 @@ class PlayerControlTests(unittest.TestCase):
                         ui_playback=SimpleNamespace(playback_controller=playback, task_done_requested=None),
                     )
                     with (
-                        patch("application.chat.handlers.presentation.get_app_runtime", return_value=runtime),
-                        patch("application.chat.handlers.presentation.get_character_by_name", return_value=None),
-                        patch("application.chat.handlers.presentation.Path.exists", return_value=True),
+                        patch("application.chat.presentation.handlers.presentation.get_app_runtime", return_value=runtime),
+                        patch("application.chat.presentation.handlers.presentation.get_character_by_name", return_value=None),
+                        patch("application.chat.presentation.handlers.presentation.Path.exists", return_value=True),
                     ):
                         CharacterDialogUiHandler().handle(PresentationMessage(
                             name="神羽", text="我们一起走吧", audio_path="generated.wav",
@@ -320,7 +320,7 @@ class PlayerControlTests(unittest.TestCase):
                         playback.play_and_wait.assert_not_called()
 
     def test_ai_player_audio_continuation_does_not_replace_dialogue_or_portrait(self):
-        from application.chat.handlers.presentation import CharacterDialogUiHandler
+        from application.chat.presentation.handlers.presentation import CharacterDialogUiHandler
 
         ui = MagicMock()
         playback = MagicMock()
@@ -331,9 +331,9 @@ class PlayerControlTests(unittest.TestCase):
             ui_playback=SimpleNamespace(playback_controller=playback, task_done_requested=None),
         )
         with (
-            patch("application.chat.handlers.presentation.get_app_runtime", return_value=runtime),
-            patch("application.chat.handlers.presentation.get_character_by_name", return_value=None),
-            patch("application.chat.handlers.presentation.Path.exists", return_value=True),
+            patch("application.chat.presentation.handlers.presentation.get_app_runtime", return_value=runtime),
+            patch("application.chat.presentation.handlers.presentation.get_character_by_name", return_value=None),
+            patch("application.chat.presentation.handlers.presentation.Path.exists", return_value=True),
         ):
             CharacterDialogUiHandler().handle(PresentationMessage(
                 name="神羽", text="", audio_path="chunk2.wav", asset_id="2", timeout=0,

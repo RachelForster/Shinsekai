@@ -14,7 +14,7 @@ import uuid
 from collections.abc import Callable
 from typing import TextIO
 
-from application.chat.runtime_ports import (
+from application.chat.host.ports import (
     ChildProcess,
     LaunchPlan,
     LaunchRejected,

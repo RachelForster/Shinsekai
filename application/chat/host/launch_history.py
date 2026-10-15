@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from application.chat.history_paths import (
+from application.chat.history.paths import (
     is_unc_history_path,
     resolve_history_path_for_project,
 )
@@ -96,7 +96,7 @@ def plan_chat_history_launch(
 def persist_confirmed_history_path(state: Any, history_path: str | Path) -> bool:
     """Persist the backend-selected path so resume-last uses the launched history."""
 
-    from application.chat.session_store import (
+    from application.chat.history.session_store import (
         load_template_session,
         save_template_session,
     )

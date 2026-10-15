@@ -4,8 +4,8 @@ from unittest.mock import patch
 
 import pytest
 
-from application.chat.ui_updates import StreamingUIUpdateManager
-from application.chat.runtime_projection import _chat_session_media
+from application.chat.presentation.updates import StreamingUIUpdateManager
+from application.chat.host.projection import _chat_session_media
 from frontend_bridge_core.chat_stream import ChatStreamService
 from frontend_bridge_core.transport.ws_client import WSClientSink
 
@@ -45,7 +45,7 @@ def test_stage_model_event_from_real_producer_never_uses_image_media_route(tmp_p
     )
     sink = WSClientSink("ws://127.0.0.1:8788/ws?token=test-token")
     monkeypatch.setattr(sink, "_ensure_worker", lambda: None)
-    with patch("application.chat.ui_updates.get_character_by_name", return_value=character):
+    with patch("application.chat.presentation.updates.get_character_by_name", return_value=character):
         StreamingUIUpdateManager(sink, resource_urls=sink.resource_urls).update_sprite("Haru", 0)
     event = sink._peek_event()
     assert event["type"] == "sprite.show"
@@ -87,7 +87,7 @@ def test_initial_stage_snapshot_respects_selected_avatar_bank(tmp_path, avatar_t
     assert sprites[0]["scale"] == 1.2
     assert sprites[0]["identityKey"] == "character:haru"
     sink = SimpleNamespace(events=[], emit=lambda event: sink.events.append(event))
-    with patch("application.chat.ui_updates.get_character_by_name", return_value=character):
+    with patch("application.chat.presentation.updates.get_character_by_name", return_value=character):
         StreamingUIUpdateManager(sink, resource_urls=state.resource_urls).update_sprite("haru", 0)
     assert sink.events[0]["characterName"] == "Haru"
     assert sink.events[0]["identityKey"] == sprites[0]["identityKey"]

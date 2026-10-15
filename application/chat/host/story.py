@@ -20,8 +20,8 @@ from core.messaging.dialog_tokens import (
     STAT_ALIASES,
     normalize_character_name,
 )
-from application.chat.history_paths import is_unc_history_path
-from application.chat.runtime_ports import HistoryPort, StoryCoordinatorPort
+from application.chat.history.paths import is_unc_history_path
+from application.chat.host.ports import HistoryPort, StoryCoordinatorPort
 
 _SYSTEM_HISTORY_NAMES = (
     COT_ALIASES | NARR_ALIASES | STAT_ALIASES | SCENE_ALIASES | BGM_ALIASES | CG_ALIASES

@@ -5,10 +5,10 @@ from __future__ import annotations
 from typing import Any, Protocol
 import uuid
 
-from application.chat import runtime_process
-from application.chat.runtime_projection import _set_chat_runtime_closing
-from application.chat.lifecycle import chat_lifecycle_lock
-from application.chat.mobile_access import stop_mobile_access
+from application.chat import composition as runtime_process
+from application.chat.host.projection import _set_chat_runtime_closing
+from application.chat.host.lifecycle import chat_lifecycle_lock
+from application.chat.host.mobile_access import stop_mobile_access
 from application.story.coordinator import clear_story_session
 
 

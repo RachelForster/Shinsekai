@@ -1,9 +1,19 @@
 # Chat runtime responsibilities
 
-The public compatibility entry point is `runtime_process.py`. Its previous
-implementation combined process ownership, launch preparation, transport
-snapshots, history download capabilities, story persistence and command routing.
-Characterization tests exercise the original entry points before extraction.
+`composition.py` wires the default host services and exposes the bridge's
+application entry points. `start_chat.py`, `stop_chat.py`, conversation-library
+and edit/restart use cases remain at the package root.
+
+| Directory | Boundary |
+| --- | --- |
+| `host/` | Parent-process supervision, launch preparation, session lifecycle and bridge commands/projections |
+| `runtime/` | Child-process bootstrap, initialization, command execution and turn/stream wiring |
+| `history/` | Shared history paths, state, branches and template-to-history session records |
+| `presentation/` | Initial assets, restoration, presentation updates and output handlers |
+| `dialog_media/` | Existing media resolution, lookup, generation and replay |
+
+Import helpers from their defining module. Package initializers contain no
+compatibility forwarding or eager service construction.
 
 ## Application lifecycle delivery
 
@@ -25,8 +35,8 @@ cannot recursively start or stop a process transition.
 `ChatSessionLifecycle` directly executes ordered session effects, scoped to the
 session and launch ID, before publishing session observations. The application
 bus delivers process exit events to the session owner; session methods do not
-route their own work or snapshot return values through the bus. SDK session observation hooks are
-registered through `register_chat_session_hook`:
+route their own work or snapshot return values through the bus. SDK session
+observation hooks are registered through `register_chat_session_hook`:
 
 - `CONNECTED`: the transport producer is attached. Legacy synchronous/headless
   entry points retain their existing confirmation boundary at this milestone.
@@ -53,14 +63,14 @@ plugin observers.
 
 | Module | Responsibility | Dependencies |
 | --- | --- | --- |
-| `runtime_process.py` | Compatibility entry points and default service wiring | Existing bridge state and host adapters |
-| `process_supervisor.py` | Child/log ownership, serialized lifecycle, bounded termination | Process primitives, resource slots, observer callback |
-| `launch_preparation.py` | Templates, configuration and trusted launch plan | Root/entrypoint callbacks and existing config helpers |
-| `runtime_projection.py` | Snapshot composition, identity and media defaults | History callback, runtime status and story/mobile projections |
-| `runtime_history.py` | History projection and expiring download capabilities | Path/read/name callbacks, clock and token factory |
-| `runtime_story.py` | Story history persistence and branch coordination | History and story ports |
-| `runtime_commands.py` | Registered command handlers and transport delivery policy | Ports and callbacks required by each handler group |
-| `runtime_ports.py` | Consumed structural contracts and story callbacks | Standard library and SDK lifecycle types |
+| `composition.py` | Application entry points and default service wiring | Existing bridge state and host adapters |
+| `host/process_supervisor.py` | Child/log ownership, serialized lifecycle, bounded termination | Process primitives, resource slots, observer callback |
+| `host/launch_preparation.py` | Templates, configuration and trusted launch plan | Root/entrypoint callbacks and existing config helpers |
+| `host/projection.py` | Snapshot composition, identity and media defaults | History callback, runtime status and story/mobile projections |
+| `host/history.py` | History projection and expiring download capabilities | Path/read/name callbacks, clock and token factory |
+| `host/story.py` | Story history persistence and branch coordination | History and story ports |
+| `host/commands.py` | Registered command handlers and transport delivery policy | Ports and callbacks required by each handler group |
+| `host/ports.py` | Consumed structural contracts and story callbacks | Standard library and SDK lifecycle types |
 
 Handlers extend `ChatCommandRouter` through `register`; the router and shared
 delivery policy do not need new command branches. Local handlers must explicitly

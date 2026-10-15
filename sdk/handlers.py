@@ -1,8 +1,8 @@
 """
 抽象消息处理器基类 — 对话媒体层消费 LLMDialogMessage，UI 消费 PresentationMessage。
 
-具体实现见 :mod:`application.chat.handlers.dialog_media` /
-:mod:`application.chat.handlers.presentation`。
+具体实现见 :mod:`application.chat.presentation.handlers.dialog_media` /
+:mod:`application.chat.presentation.handlers.presentation`。
 """
 
 from __future__ import annotations

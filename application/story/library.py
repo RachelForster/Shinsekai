@@ -6,9 +6,9 @@ import json
 from pathlib import Path
 from typing import Any
 
-from application.chat.history_paths import resolve_history_path_for_project
+from application.chat.history.paths import resolve_history_path_for_project
 from application.chat.conversation_library import saved_conversation_launch
-from application.chat.runtime_projection import TRANSPARENT_BACKGROUND_NAME
+from application.chat.host.projection import TRANSPARENT_BACKGROUND_NAME
 from application.story.persistence import JsonStorySessionRepository
 from application.story.project_loader import load_story_project
 from application.story.selection import normal_template_options

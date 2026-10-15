@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from application.chat import runtime_process as chat
+from application.chat import composition as chat
 from application.chat.stop_chat import stop_chat
 from frontend_bridge_core import chat_session
 from sdk.chat_process import ChatProcessContext, ChatProcessEvent

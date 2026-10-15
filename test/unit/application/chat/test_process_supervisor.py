@@ -10,9 +10,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from application.chat import runtime_process as chat
-from application.chat.process_supervisor import ChatProcessSupervisor
-from application.chat.runtime_ports import (
+from application.chat import composition as chat
+from application.chat.host.process_supervisor import ChatProcessSupervisor
+from application.chat.host.ports import (
     LaunchPlan,
     LaunchRejected,
     MemoryProcessResources,

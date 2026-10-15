@@ -17,9 +17,12 @@ from core.media.effect_bindings import effect_modes
 from core.messaging.stat_payload import parse_stat_payload
 from core.paths import resource_path
 from config.config_manager import character_name_key
-from application.chat.character_visual import image_visual_identity, resolve_character_visual
+from application.chat.presentation.character_visual import (
+    image_visual_identity,
+    resolve_character_visual,
+)
 from application.media.resource_urls import ResourceUrls
-from application.chat.history_state import serialize_chat_history_entries
+from application.chat.history.state import serialize_chat_history_entries
 
 SOUND_EFFECTS_PATH = {
     "DISAPPOINTED": "./assets/system/sound/disappointed.wav",

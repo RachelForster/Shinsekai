@@ -6,8 +6,8 @@ import pytest
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from application.chat.launch_args import CHAT_LAUNCH_CONFIG_ENV
-from application.chat import runtime_process as chat
+from application.chat.runtime.launch_args import CHAT_LAUNCH_CONFIG_ENV
+from application.chat import composition as chat
 from application.chat.templates import TEMP_SPLIT_META
 from application.chat.stop_chat import stop_chat
 from application.runtime.dependencies import runtime_dependency_error_from_text

@@ -13,8 +13,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from application.chat import runtime_process as chat
-from application.chat.launch_args import CHAT_LAUNCH_CONFIG_ENV
+from application.chat import composition as chat
+from application.chat.runtime.launch_args import CHAT_LAUNCH_CONFIG_ENV
 from application.chat.templates import TEMP_SPLIT_META
 from test.unit.application.chat.runtime_process_fakes import (
     FakeChild,

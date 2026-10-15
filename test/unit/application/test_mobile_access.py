@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from application.chat.mobile_access import (
+from application.chat.host.mobile_access import (
     MobileAccessInfo,
     configure_mobile_access,
     get_mobile_access_info,

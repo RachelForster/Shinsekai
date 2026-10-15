@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from application.chat.runtime_commands import ChatCommandRouter
+from application.chat.host.commands import ChatCommandRouter
 from test.unit.application.chat.runtime_process_fakes import RecordingStream
 
 

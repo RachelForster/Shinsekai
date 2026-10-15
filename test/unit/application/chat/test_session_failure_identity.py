@@ -2,8 +2,8 @@
 
 from types import SimpleNamespace
 
-from application.chat.events import LifecycleEvents
-from application.chat.session_lifecycle import ChatSessionLifecycle, SessionEffects
+from application.chat.host.events import LifecycleEvents
+from application.chat.host.session_lifecycle import ChatSessionLifecycle, SessionEffects
 from sdk.chat_session import ChatSessionEvent
 
 

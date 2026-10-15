@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from application.chat.manage_branches import (
+from application.chat.history.branches import (
     ConversationBranchBindings,
     ConversationBranchManager,
 )

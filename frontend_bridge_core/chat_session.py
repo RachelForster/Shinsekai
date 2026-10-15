@@ -7,22 +7,24 @@ from application.chat.conversation_library import (
     remember_conversation,
     saved_conversation_launch,
 )
-from application.chat.initial_sprite import initial_sprite_path_for_characters
-from application.chat.lifecycle import chat_lifecycle_lock
-from application.chat.launch_history import (
+from application.chat.presentation.initial_sprite import (
+    initial_sprite_path_for_characters,
+)
+from application.chat.host.lifecycle import chat_lifecycle_lock
+from application.chat.host.launch_history import (
     persist_confirmed_history_path,
     plan_chat_history_launch,
     resolve_chat_history_path,
 )
-from application.chat.mobile_access import configure_mobile_access
-from application.chat.runtime_projection import (
+from application.chat.host.mobile_access import configure_mobile_access
+from application.chat.host.projection import (
     TRANSPARENT_BACKGROUND_NAME,
     _chat_runtime_closing,
     _chat_runtime_mode,
     _chat_stream_initial_snapshot,
     _sanitize_user_display_name,
 )
-from application.chat.runtime_process import (
+from application.chat.composition import (
     _chat_process_running,
     _chat_snapshot,
     _launch_chat as _launch_runtime_chat,

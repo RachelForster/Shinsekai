@@ -13,7 +13,7 @@ import time
 from typing import Any, Protocol
 
 from core.media.effect_image import ImageEffectAsset
-from application.chat.startup import (
+from application.chat.runtime.startup import (
     ChatStartupContext,
     MissingLlmProviderError,
     create_chat_startup_context,
@@ -181,7 +181,7 @@ _active_initialization: _ChatInitialization | None = None
 def peek_launch_endpoints() -> ChatBootstrapEndpoints:
     """Read early producer endpoints without consuming bridge launch config."""
 
-    from application.chat.launch_args import peek_chat_launch_endpoints
+    from application.chat.runtime.launch_args import peek_chat_launch_endpoints
 
     launch_config = peek_chat_launch_endpoints()
     return ChatBootstrapEndpoints(
@@ -218,7 +218,10 @@ def parse_launch_options(transport: ChatSessionTransport) -> ChatLaunchOptions:
             create_default_asr_adapter,
             system_config_to_asr_lang,
         )
-        from application.chat.launch_args import load_chat_launch_config, parse_chat_args
+        from application.chat.runtime.launch_args import (
+            load_chat_launch_config,
+            parse_chat_args,
+        )
 
     with initialization.phase("i18n.init"):
         init_i18n(config.config.system_config.ui_language)
@@ -352,7 +355,7 @@ class _BaseChatSession:
     def _build_runtime(self) -> _RuntimeComponents:
         from ai.llm.text_processor import TextProcessor, name_map
         from application.chat.build_effect_context import build_effect_context
-        from application.chat.presentation import load_presentation_assets
+        from application.chat.presentation.assets import load_presentation_assets
         from application.chat.dialog_media import (
             build_session_asset_catalogs,
             create_asset_lookup_strategy,
@@ -425,7 +428,7 @@ class _BaseChatSession:
         *,
         on_state_change: Callable[[Any], None] | None = None,
     ) -> Any:
-        from application.chat.turn_wiring import create_chat_turn_service
+        from application.chat.runtime.turn_wiring import create_chat_turn_service
 
         runtime = self._require_runtime()
         self.chat_turn_service = create_chat_turn_service(
@@ -511,8 +514,8 @@ class StreamingChatSession(_BaseChatSession):
     mode = "stream"
 
     def run(self) -> None:
-        from application.chat.history_state import chat_history
-        from application.chat.ui_updates import StreamingUIUpdateManager
+        from application.chat.history.state import chat_history
+        from application.chat.presentation.updates import StreamingUIUpdateManager
 
         runtime = self._build_runtime()
         with self.initialization.phase("stream.runtime.setup"):
@@ -541,7 +544,7 @@ class StreamingChatSession(_BaseChatSession):
             self._shutdown()
 
     def _configure_stream_runtime(self) -> None:
-        from application.chat.wire_streaming_session import wire_streaming_session
+        from application.chat.runtime.stream_wiring import wire_streaming_session
 
         runtime = self._require_runtime()
 
@@ -587,7 +590,7 @@ class StreamingChatSession(_BaseChatSession):
 
     def _present_initial_ui(self) -> None:
         from application.chat.dialog_media.replay import enqueue_latest_media_replay
-        from application.chat.presentation import prepare_initial_presentation
+        from application.chat.presentation.assets import prepare_initial_presentation
 
         if self.options.asr_language(self.config.config.system_config) == "zh":
             welcome_html = self.options.translate_bundle(
@@ -653,7 +656,7 @@ class StreamingChatSession(_BaseChatSession):
         )
 
     def _shutdown(self) -> None:
-        from application.chat.history_state import save_bg
+        from application.chat.history.state import save_bg
         from application.runtime.shutdown import shutdown_chat_runtime
 
         runtime = self._require_runtime()
@@ -682,8 +685,8 @@ class HeadlessChatSession(_BaseChatSession):
     mode = "headless"
 
     def run(self) -> None:
-        from application.chat.history_state import chat_history
-        from application.chat.ui_updates import HeadlessUIUpdateManager
+        from application.chat.history.state import chat_history
+        from application.chat.presentation.updates import HeadlessUIUpdateManager
 
         self._build_runtime()
         self.ui_updates = HeadlessUIUpdateManager(chat_history=chat_history)
@@ -729,7 +732,7 @@ def save_chat_history_and_delete_tmp(
     if not history_argument:
         return True
     from ai.llm.history_manager import HistoryManager
-    from application.chat.history_state import save_chat_history
+    from application.chat.history.state import save_chat_history
     from core.chat_history.storage import chat_history_active_path
 
     history_file = str(chat_history_active_path(history_argument))

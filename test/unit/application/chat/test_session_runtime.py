@@ -9,7 +9,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from application.chat import session_runtime
+from application.chat.runtime import session as session_runtime
 
 
 def test_chat_child_registers_reminders_before_templates_are_loaded(tmp_path, monkeypatch):
@@ -20,7 +20,7 @@ def test_chat_child_registers_reminders_before_templates_are_loaded(tmp_path, mo
 import json
 import sys
 from types import SimpleNamespace
-from application.chat.session_runtime import _import_builtin_tools
+from application.chat.runtime.session import _import_builtin_tools
 from ai.tools.tool_manager import ToolManager
 from sdk.tool_registry import apply_registered_tools
 
@@ -202,7 +202,7 @@ def test_early_launch_endpoints_prefer_cli_without_consuming_config(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(
-        "application.chat.launch_args.peek_chat_launch_endpoints",
+        "application.chat.runtime.launch_args.peek_chat_launch_endpoints",
         lambda: {
             "init_stream_endpoint": "ws://config-init",
             "stream_endpoint": "ws://config-runtime",
@@ -244,11 +244,11 @@ def test_argument_error_is_reported_through_preparsed_transport(monkeypatch) -> 
     monkeypatch.setattr(session_runtime, "load_chat_config", lambda: config)
     monkeypatch.setattr("i18n.init_i18n", lambda _language: None)
     monkeypatch.setattr(
-        "application.chat.launch_args.load_chat_launch_config",
+        "application.chat.runtime.launch_args.load_chat_launch_config",
         lambda: {},
     )
     monkeypatch.setattr(
-        "application.chat.launch_args.parse_chat_args",
+        "application.chat.runtime.launch_args.parse_chat_args",
         Mock(side_effect=ValueError("invalid launch argument")),
     )
 
@@ -280,11 +280,11 @@ def test_argparse_system_exit_is_reported_as_failure(monkeypatch) -> None:
     monkeypatch.setattr(session_runtime, "load_chat_config", lambda: config)
     monkeypatch.setattr("i18n.init_i18n", lambda _language: None)
     monkeypatch.setattr(
-        "application.chat.launch_args.load_chat_launch_config",
+        "application.chat.runtime.launch_args.load_chat_launch_config",
         lambda: {},
     )
     monkeypatch.setattr(
-        "application.chat.launch_args.parse_chat_args",
+        "application.chat.runtime.launch_args.parse_chat_args",
         Mock(side_effect=SystemExit(2)),
     )
 
@@ -358,7 +358,7 @@ def test_headless_session_owns_workflow_and_queue_assembly(monkeypatch) -> None:
         lambda _workflow: handles,
     )
     monkeypatch.setattr(
-        "application.chat.presentation.load_presentation_assets",
+        "application.chat.presentation.assets.load_presentation_assets",
         lambda *_args: SimpleNamespace(bgm_paths=[], background_sprites=[]),
     )
     monkeypatch.setattr(
@@ -425,7 +425,7 @@ def test_semantic_mode_injects_lookup_strategy_before_workflow_start(
         lambda _workflow: handles,
     )
     monkeypatch.setattr(
-        "application.chat.presentation.load_presentation_assets",
+        "application.chat.presentation.assets.load_presentation_assets",
         lambda *_args: SimpleNamespace(
             bgm_paths=["quiet.mp3"],
             background_sprites=background.sprites,
@@ -573,7 +573,7 @@ def test_headless_run_orders_runtime_start_wait_and_shutdown(monkeypatch) -> Non
         return runtime
 
     monkeypatch.setattr(
-        "application.chat.ui_updates.HeadlessUIUpdateManager",
+        "application.chat.presentation.updates.HeadlessUIUpdateManager",
         lambda **_kwargs: "headless-ui",
     )
     monkeypatch.setattr(session, "_build_runtime", build_runtime)
@@ -649,7 +649,7 @@ def test_streaming_shutdown_supplies_all_lifecycle_callbacks(monkeypatch) -> Non
         lambda **kwargs: captured.update(kwargs),
     )
     monkeypatch.setattr(
-        "application.chat.history_state.save_bg",
+        "application.chat.history.state.save_bg",
         lambda **kwargs: saved_background.append(kwargs),
     )
 

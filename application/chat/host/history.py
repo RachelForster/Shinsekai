@@ -25,8 +25,8 @@ from core.chat_history.text import (
     history_payload_to_plain_text,
     parse_assistant_dialog_content,
 )
-from application.chat.history_paths import is_unc_history_path
-from application.chat.runtime_projection import _sanitize_user_display_name
+from application.chat.history.paths import is_unc_history_path
+from application.chat.host.projection import _sanitize_user_display_name
 from sdk.path_utils import reject_control_chars
 
 _DEFAULT_USER_DISPLAY_NAME = "你"

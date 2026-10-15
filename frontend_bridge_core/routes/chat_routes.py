@@ -10,13 +10,13 @@ from application.chat.conversation_library import (
     rename_conversation,
 )
 
-from application.chat.runtime_process import (
+from application.chat.composition import (
     _chat_history,
     _chat_runtime_status,
     _chat_snapshot,
     _handle_chat_command,
 )
-from application.chat.runtime_projection import _chat_theme_payload
+from application.chat.host.projection import _chat_theme_payload
 from application.chat.stop_chat import ChatSessionChanged, stop_chat
 from frontend_bridge_core.chat_session import (
     launch_chat,

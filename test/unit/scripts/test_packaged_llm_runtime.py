@@ -72,8 +72,8 @@ def test_packaged_runtime_accepts_matching_llm_and_sdk_sources(packaged_app):
     [
         "sdk/llm_response.py",
         "ai/llm/chat_loop.py",
-        "application/chat/process_supervisor.py",
-        "application/chat/runtime_commands.py",
+        "application/chat/host/process_supervisor.py",
+        "application/chat/host/commands.py",
     ],
 )
 def test_packaged_runtime_rejects_missing_llm_modules(packaged_app, missing_module):

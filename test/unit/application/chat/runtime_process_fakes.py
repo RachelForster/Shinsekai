@@ -11,7 +11,7 @@ import threading
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from application.chat import runtime_process as chat
+from application.chat import composition as chat
 from config.schema import ApiConfig, SystemConfig
 
 

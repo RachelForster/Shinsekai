@@ -3,7 +3,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from application.chat.launch_args import (
+from application.chat.runtime.launch_args import (
     CHAT_LAUNCH_CONFIG_ENV,
     build_chat_arg_parser,
     load_chat_launch_config,

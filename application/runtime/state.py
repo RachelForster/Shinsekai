@@ -12,7 +12,7 @@ from application.media.resource_urls import ResourceUrls, UnconfiguredResourceUr
 from application.runtime.services import ApplicationServices
 
 if TYPE_CHECKING:
-    from application.chat.mobile_access import MobileAccessPort
+    from application.chat.host.mobile_access import MobileAccessPort
 
 
 def _default_project_root_dir() -> str:

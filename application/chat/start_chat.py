@@ -5,18 +5,18 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from application.chat.runtime_process import (
+from application.chat.composition import (
     _chat_process_running,
     _chat_snapshot,
     _session_lifecycle,
 )
-from application.chat.runtime_projection import (
+from application.chat.host.projection import (
     _chat_runtime_closing,
     _chat_runtime_mode,
     _chat_stream_initial_snapshot,
 )
-from application.chat.launch_history import persist_confirmed_history_path
-from application.chat.lifecycle import chat_lifecycle_lock
+from application.chat.host.launch_history import persist_confirmed_history_path
+from application.chat.host.lifecycle import chat_lifecycle_lock
 from application.chat.stop_chat import ChatSessionChanged, stop_chat
 from application.runtime.state import BridgeState
 from application.runtime.tasks import (

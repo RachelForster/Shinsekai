@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from application.chat.runtime_projection import TRANSPARENT_BACKGROUND_NAME
+from application.chat.host.projection import TRANSPARENT_BACKGROUND_NAME
 
 
 TEMPLATE_OPTION_KEYS = (
@@ -29,7 +29,7 @@ def normal_template_options(state: Any) -> dict:
     directory = getattr(state, "template_dir_path", "")
     if not directory:
         return {}
-    from application.chat.session_store import load_template_session
+    from application.chat.history.session_store import load_template_session
     from application.chat.templates import _template_session_to_frontend
 
     saved = _template_session_to_frontend(load_template_session(directory)) or {}

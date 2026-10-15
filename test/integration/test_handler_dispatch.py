@@ -10,20 +10,20 @@ import pytest
 from unittest.mock import MagicMock
 
 from sdk.messages import LLMDialogMessage, PresentationMessage
-from application.chat.handlers.registry import (
+from application.chat.presentation.handlers.registry import (
     DialogMediaDispatcher,
     UiOutputMessageDispatcher,
     default_presentation_handler_chain,
     default_dialog_media_handler_chain,
 )
-from application.chat.handlers.dialog_media import (
+from application.chat.presentation.handlers.dialog_media import (
     ChainOfThoughtMediaHandler,
     SystemDialogMediaHandler,
     BgmMediaHandler,
     CgMediaHandler,
     CharacterMediaHandler,
 )
-from application.chat.handlers.presentation import (
+from application.chat.presentation.handlers.presentation import (
     OptionsUiHandler,
     NumericUiHandler,
     SceneUiHandler,
@@ -67,7 +67,7 @@ class TestDialogMediaHandlerChainAssembly:
         builtin_types = [
             t
             for t in types
-            if t.__module__.startswith("application.chat.handlers.dialog_media")
+            if t.__module__.startswith("application.chat.presentation.handlers.dialog_media")
         ]
         assert builtin_types[-1] == CharacterMediaHandler
 
@@ -124,7 +124,7 @@ class TestUIHandlerChainAssembly:
             t
             for t in types
             if t.__module__.startswith(
-                "application.chat.handlers.presentation"
+                "application.chat.presentation.handlers.presentation"
             )
         ]
         assert builtin_types[-1] == CharacterDialogUiHandler
