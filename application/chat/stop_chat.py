@@ -6,6 +6,7 @@ from typing import Any, Protocol
 import uuid
 
 from application.chat import runtime_process
+from application.chat.runtime_projection import _set_chat_runtime_closing
 from application.chat.lifecycle import chat_lifecycle_lock
 from application.chat.mobile_access import stop_mobile_access
 from application.story.coordinator import clear_story_session
@@ -50,18 +51,18 @@ def _stop_chat(
     chat_stream = getattr(state, "chat_stream", None)
     lifecycle = runtime_process._session_lifecycle(
         state,
-        stop_mobile=lambda state: stop_mobile_access(state),
-        clear_story=lambda state: clear_story_session(state),
+        stop_mobile=stop_mobile_access,
+        clear_story=clear_story_session,
     )
     lifecycle.prepare_close()
     owned_launch_id = lifecycle.plan.launch_id
-    runtime_process._set_chat_runtime_closing(state, True)
+    _set_chat_runtime_closing(state, True)
     process_shutdown_completed = False
     closing_flag_released = False
 
     def capture_closed_snapshot():
         nonlocal closing_flag_released
-        runtime_process._set_chat_runtime_closing(state, False)
+        _set_chat_runtime_closing(state, False)
         closing_flag_released = True
         return runtime_process._chat_snapshot(state, "idle", "")
 
@@ -99,7 +100,7 @@ def _stop_chat(
             raise
         finally:
             if not closing_flag_released:
-                runtime_process._set_chat_runtime_closing(state, False)
+                _set_chat_runtime_closing(state, False)
     if closed_snapshot is None:
         closed_snapshot = runtime_process._chat_snapshot(state, "idle", "")
     lifecycle.ended(reason, expected_launch_id=owned_launch_id)

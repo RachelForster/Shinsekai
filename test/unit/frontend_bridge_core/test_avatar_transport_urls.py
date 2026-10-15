@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pytest
 
 from application.chat.ui_updates import StreamingUIUpdateManager
-from application.chat.runtime_process import _chat_session_media
+from application.chat.runtime_projection import _chat_session_media
 from frontend_bridge_core.chat_stream import ChatStreamService
 from frontend_bridge_core.transport.ws_client import WSClientSink
 

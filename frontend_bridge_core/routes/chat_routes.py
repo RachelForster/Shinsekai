@@ -14,9 +14,9 @@ from application.chat.runtime_process import (
     _chat_history,
     _chat_runtime_status,
     _chat_snapshot,
-    _chat_theme_payload,
     _handle_chat_command,
 )
+from application.chat.runtime_projection import _chat_theme_payload
 from application.chat.stop_chat import ChatSessionChanged, stop_chat
 from frontend_bridge_core.chat_session import (
     launch_chat,

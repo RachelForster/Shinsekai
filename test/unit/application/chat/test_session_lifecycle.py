@@ -240,6 +240,19 @@ def test_core_cleanup_failure_is_visible_to_observers(session):
     assert isinstance(observed[-1].error, LifecycleDispatchError)
 
 
+def test_closing_attempts_snapshot_before_reporting_cleanup_failure(session):
+    observed = []
+    session.events.subscribe(observed.append)
+    session.owner.effects.stop_mobile = Mock(side_effect=OSError("mobile failed"))
+    with pytest.raises(LifecycleDispatchError, match="mobile failed"):
+        session.owner.closing(
+            "ended", capture_snapshot=lambda: session.calls.append("snapshot") or {}
+        )
+    assert session.calls == [("closed", "session-A"), "snapshot"]
+    assert observed[-1].event is ChatSessionEvent.CLOSING
+    assert isinstance(observed[-1].error, LifecycleDispatchError)
+
+
 def test_initialization_stream_release_is_idempotent_and_cannot_clear_another_session(
     session,
 ):

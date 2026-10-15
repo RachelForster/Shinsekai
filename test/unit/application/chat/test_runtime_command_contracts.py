@@ -311,9 +311,9 @@ def test_story_choice_is_executed_with_revision_and_published_ack(state, monkeyp
         chat_snapshot=lambda: {"options": [{"id": "choice", "label": "Continue"}]},
         execute=MagicMock(return_value=ack),
     )
-    monkeypatch.setattr(chat, "bound_story_session", lambda _: story)
+    monkeypatch.setattr(chat._story_access, "session", lambda _: story)
     publish = MagicMock()
-    monkeypatch.setattr(chat, "publish_story_transition", publish)
+    monkeypatch.setattr(chat._story_access, "publish", publish)
     result = chat._handle_chat_command(
         state,
         {
@@ -357,7 +357,7 @@ def test_story_choice_is_executed_with_revision_and_published_ack(state, monkeyp
 )
 def test_story_choice_validation_precedes_mutation(state, monkeypatch, payload):
     story = SimpleNamespace(execute=MagicMock())
-    monkeypatch.setattr(chat, "bound_story_session", lambda _: story)
+    monkeypatch.setattr(chat._story_access, "session", lambda _: story)
     with pytest.raises(ValueError):
         chat._handle_chat_command(state, {"type": "submit-option", "payload": payload})
     story.execute.assert_not_called()

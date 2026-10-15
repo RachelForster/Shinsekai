@@ -22,8 +22,10 @@ idempotent and occurs after the process gate and log are released; a stale exit
 cannot release a replacement child's resources. Ordinary observer reentrancy
 cannot recursively start or stop a process transition.
 
-`ChatSessionLifecycle` owns session side effects through required application
-handlers, scoped to the session and launch ID. SDK session observation hooks are
+`ChatSessionLifecycle` directly executes ordered session effects, scoped to the
+session and launch ID, before publishing session observations. The application
+bus delivers process exit events to the session owner; session methods do not
+route their own work or snapshot return values through the bus. SDK session observation hooks are
 registered through `register_chat_session_hook`:
 
 - `CONNECTED`: the transport producer is attached. Legacy synchronous/headless
@@ -58,19 +60,20 @@ plugin observers.
 | `runtime_history.py` | History projection and expiring download capabilities | Path/read/name callbacks, clock and token factory |
 | `runtime_story.py` | Story history persistence and branch coordination | History and story ports |
 | `runtime_commands.py` | Registered command handlers and transport delivery policy | Ports and callbacks required by each handler group |
-| `runtime_ports.py` | Structural contracts and callable adapters | Standard library and SDK lifecycle types |
+| `runtime_ports.py` | Consumed structural contracts and story callbacks | Standard library and SDK lifecycle types |
 
 Handlers extend `ChatCommandRouter` through `register`; the router and shared
 delivery policy do not need new command branches. Local handlers must explicitly
 opt out of child transport. History, story, snapshot and process tests can supply
 small substitutes without constructing the plugin host or frontend transport.
 
-The process-global slots remain at the compatibility boundary because existing
-watchdog and bridge callers share one active child. Services do not import that
-facade. A supervisor can also own independent in-memory resources for testing or
-another host composition. Observers run outside the resource mutex; recursive
-start/stop calls during a lifecycle notification are ignored, while concurrent
-requests serialize. Duplicate starts do not prepare configuration or emit hooks.
+The supervisor owns its child and log directly. The composition root exposes
+only the application entry points used by the bridge; stateless helpers are
+imported from their defining modules. Tests replace service dependencies rather
+than historical facade globals. Observers run outside the process resource
+mutex. Recursive start/stop requests during notification are ignored, while
+concurrent requests serialize. Duplicate starts do not prepare configuration or
+emit hooks.
 
 ## Lifecycle assessment
 

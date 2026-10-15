@@ -76,17 +76,6 @@ class SnapshotSource(Protocol):
     def get_snapshot(self, session_id: str, **kwargs: Any) -> dict[str, Any] | None: ...
 
 
-class CommandTransport(SnapshotSource, Protocol):
-    def send_command(self, session_id: str, command: dict[str, Any]) -> bool: ...
-    def update_session_snapshot(
-        self, session_id: str, patch: dict[str, Any]
-    ) -> None: ...
-
-
-class EventPublisher(Protocol):
-    def publish_event(self, session_id: str, event: dict[str, Any]) -> bool: ...
-
-
 class SessionState(Protocol):
     chat_session: dict[str, Any]
     chat_stream: SnapshotSource | None
@@ -96,13 +85,6 @@ class HistoryPort(Protocol):
     def entries(self, state: SessionState) -> list[dict[str, Any]]: ...
     def resolve(self, state: SessionState, path: str | Path) -> Path: ...
     def read(self, path: Path) -> Any: ...
-
-
-@dataclass(frozen=True)
-class HistoryAccess:
-    entries: Callable[[Any], list[dict[str, Any]]]
-    resolve: Callable[[Any, str | Path], Path]
-    read: Callable[[Path], Any]
 
 
 class StorySelectionPort(Protocol):
@@ -116,7 +98,7 @@ class StoryCoordinatorPort(StorySelectionPort, Protocol):
     def discard(self, path: Path) -> None: ...
 
 
-@dataclass(frozen=True)
+@dataclass
 class StoryCoordinatorAccess:
     session: Callable[[Any], Any]
     patch: Callable[[Any], dict[str, Any]]

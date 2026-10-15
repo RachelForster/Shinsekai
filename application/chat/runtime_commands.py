@@ -198,43 +198,37 @@ class HistoryCommands:
         )
 
 
-class PluginPresentationCommands:
-    def __init__(self) -> None:
-        pass
-
-    def dismiss(self, ctx: CommandContext) -> dict[str, Any]:
-        state = ctx.state
-        body = ctx.body
-        session_id = ctx.session_id
-        chat_stream = ctx.chat_stream
-        payload = body.get("payload")
-        if not isinstance(payload, dict):
-            raise ValueError("Plugin page dismissal must be an object.")
-        plugin_id = reject_control_chars(
-            str(payload.get("pluginId") or "").strip(), field="pluginId"
-        )
-        presentation_id = reject_control_chars(
-            str(payload.get("presentationId") or "").strip(), field="presentationId"
-        )
-        if not plugin_id or not presentation_id:
-            raise ValueError(
-                "Plugin page dismissal requires pluginId and presentationId."
-            )
-        if len(plugin_id) > 128 or len(presentation_id) > 128:
-            raise ValueError("Plugin page dismissal identifiers are too long.")
-        body["payload"] = {"pluginId": plugin_id, "presentationId": presentation_id}
-        if not session_id or chat_stream is None:
-            raise RuntimeError("当前聊天会话未连接到实时流。")
-        if not chat_stream.publish_event(
-            session_id,
-            {
-                "type": "plugin.page.dismiss",
-                "pluginId": plugin_id,
-                "presentationId": presentation_id,
-            },
-        ):
-            raise RuntimeError("无法关闭插件页面展示。")
-        return ctx.snapshot(state, ctx.current_status())
+def dismiss_plugin_page(ctx: CommandContext) -> dict[str, Any]:
+    state = ctx.state
+    body = ctx.body
+    session_id = ctx.session_id
+    chat_stream = ctx.chat_stream
+    payload = body.get("payload")
+    if not isinstance(payload, dict):
+        raise ValueError("Plugin page dismissal must be an object.")
+    plugin_id = reject_control_chars(
+        str(payload.get("pluginId") or "").strip(), field="pluginId"
+    )
+    presentation_id = reject_control_chars(
+        str(payload.get("presentationId") or "").strip(), field="presentationId"
+    )
+    if not plugin_id or not presentation_id:
+        raise ValueError("Plugin page dismissal requires pluginId and presentationId.")
+    if len(plugin_id) > 128 or len(presentation_id) > 128:
+        raise ValueError("Plugin page dismissal identifiers are too long.")
+    body["payload"] = {"pluginId": plugin_id, "presentationId": presentation_id}
+    if not session_id or chat_stream is None:
+        raise RuntimeError("当前聊天会话未连接到实时流。")
+    if not chat_stream.publish_event(
+        session_id,
+        {
+            "type": "plugin.page.dismiss",
+            "pluginId": plugin_id,
+            "presentationId": presentation_id,
+        },
+    ):
+        raise RuntimeError("无法关闭插件页面展示。")
+    return ctx.snapshot(state, ctx.current_status())
 
 
 class TurnOptionsCommands:
@@ -410,67 +404,71 @@ class SelectionCommands:
         return ctx.forward(ctx.current_status())
 
 
-class RuntimeControlCommands:
-    def __init__(self) -> None:
-        pass
+def input_batch(ctx: CommandContext) -> dict[str, Any]:
+    return ctx.forward(ctx.current_status())
 
-    def input_batch(self, ctx: CommandContext) -> dict[str, Any]:
-        return ctx.forward(ctx.current_status())
 
-    def audio_playback(self, ctx: CommandContext) -> dict[str, Any]:
-        body = ctx.body
-        payload = body.get("payload")
-        if not isinstance(payload, dict):
-            raise ValueError("Audio playback signal must be an object.")
-        playback_id = reject_control_chars(
-            str(payload.get("playbackId") or "").strip(), field="playbackId"
-        )
-        renderer_id = reject_control_chars(
-            str(payload.get("rendererId") or "").strip(), field="rendererId"
-        )
-        playback_state = str(payload.get("state") or "").strip()
-        if (
-            not playback_id
-            or not renderer_id
-            or playback_state not in {"started", "finished", "interrupted", "failed"}
-        ):
-            raise ValueError("Audio playback signal is invalid.")
-        body["payload"] = {
-            "playbackId": playback_id,
-            "rendererId": renderer_id[:128],
-            "state": playback_state,
-            "error": str(payload.get("error") or "")[:500],
-        }
-        return ctx.forward(ctx.current_status())
+def audio_playback(ctx: CommandContext) -> dict[str, Any]:
+    body = ctx.body
+    payload = body.get("payload")
+    if not isinstance(payload, dict):
+        raise ValueError("Audio playback signal must be an object.")
+    playback_id = reject_control_chars(
+        str(payload.get("playbackId") or "").strip(), field="playbackId"
+    )
+    renderer_id = reject_control_chars(
+        str(payload.get("rendererId") or "").strip(), field="rendererId"
+    )
+    playback_state = str(payload.get("state") or "").strip()
+    if (
+        not playback_id
+        or not renderer_id
+        or playback_state not in {"started", "finished", "interrupted", "failed"}
+    ):
+        raise ValueError("Audio playback signal is invalid.")
+    body["payload"] = {
+        "playbackId": playback_id,
+        "rendererId": renderer_id[:128],
+        "state": playback_state,
+        "error": str(payload.get("error") or "")[:500],
+    }
+    return ctx.forward(ctx.current_status())
 
-    def skip_speech(self, ctx: CommandContext) -> dict[str, Any]:
-        return ctx.forward("idle", "已跳过当前语音。")
 
-    def advance(self, ctx: CommandContext) -> dict[str, Any]:
-        return ctx.forward("idle")
+def skip_speech(ctx: CommandContext) -> dict[str, Any]:
+    return ctx.forward("idle", "已跳过当前语音。")
 
-    def voice_language(self, ctx: CommandContext) -> dict[str, Any]:
-        body = ctx.body
-        voice_language = str(body.get("payload") or "").strip().lower()
-        if not voice_language:
-            raise ValueError("语音语言不能为空。")
-        return ctx.forward(
-            "idle",
-            session_patch={"voiceLanguage": voice_language},
-            snapshot_patch={"voiceLanguage": voice_language},
-        )
 
-    def pause_asr(self, ctx: CommandContext) -> dict[str, Any]:
-        return ctx.forward("paused", "语音识别已暂停。")
+def advance(ctx: CommandContext) -> dict[str, Any]:
+    return ctx.forward("idle")
 
-    def resume_asr(self, ctx: CommandContext) -> dict[str, Any]:
-        return ctx.forward("listening", "语音识别已恢复。")
 
-    def asr_hold(self, ctx: CommandContext) -> dict[str, Any]:
-        return ctx.forward(ctx.current_status())
+def voice_language(ctx: CommandContext) -> dict[str, Any]:
+    body = ctx.body
+    voice_language = str(body.get("payload") or "").strip().lower()
+    if not voice_language:
+        raise ValueError("语音语言不能为空。")
+    return ctx.forward(
+        "idle",
+        session_patch={"voiceLanguage": voice_language},
+        snapshot_patch={"voiceLanguage": voice_language},
+    )
 
-    def reroll(self, ctx: CommandContext) -> dict[str, Any]:
-        return ctx.forward("generating", "正在请求重新生成。")
+
+def pause_asr(ctx: CommandContext) -> dict[str, Any]:
+    return ctx.forward("paused", "语音识别已暂停。")
+
+
+def resume_asr(ctx: CommandContext) -> dict[str, Any]:
+    return ctx.forward("listening", "语音识别已恢复。")
+
+
+def asr_hold(ctx: CommandContext) -> dict[str, Any]:
+    return ctx.forward(ctx.current_status())
+
+
+def reroll(ctx: CommandContext) -> dict[str, Any]:
+    return ctx.forward("generating", "正在请求重新生成。")
 
 
 class BranchCommands:

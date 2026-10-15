@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from core.chat_history.storage import chat_history_active_path
+
 import json
 from pathlib import Path
 import subprocess
@@ -108,10 +110,11 @@ def make_state(tmp_path, monkeypatch):
         mobile_access_service=None,
         auth_token="fixture-memory-token",
     )
-    monkeypatch.setattr(chat, "_main_chat_process", None)
-    monkeypatch.setattr(chat, "_main_chat_log_file", None)
-    monkeypatch.setattr(chat, "_project_root", lambda: tmp_path)
-    monkeypatch.setattr(chat, "_source_root", lambda: tmp_path)
+    monkeypatch.setattr(chat._supervisor.resources, "process", None)
+    monkeypatch.setattr(chat._supervisor.resources, "log", None)
+    monkeypatch.setattr(chat, "runtime_project_root", lambda: tmp_path)
+    monkeypatch.setattr(chat._launch_preparation, "project_root", lambda: tmp_path)
+    monkeypatch.setattr(chat, "runtime_source_root", lambda: tmp_path)
     # Even on POSIX no characterization test may signal an actual process group.
     monkeypatch.setattr(chat.os, "killpg", MagicMock(), raising=False)
     return state
@@ -132,7 +135,7 @@ def launch_arguments(**overrides):
 
 
 def write_messages(state, messages):
-    path = chat.chat_history_active_path(Path(state.chat_session["historyPath"]))
+    path = chat_history_active_path(Path(state.chat_session["historyPath"]))
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(messages, ensure_ascii=False), encoding="utf-8")
     return path

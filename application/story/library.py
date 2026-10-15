@@ -8,13 +8,22 @@ from typing import Any
 
 from application.chat.history_paths import resolve_history_path_for_project
 from application.chat.conversation_library import saved_conversation_launch
-from application.chat.runtime_process import TRANSPARENT_BACKGROUND_NAME
+from application.chat.runtime_projection import TRANSPARENT_BACKGROUND_NAME
 from application.story.persistence import JsonStorySessionRepository
 from application.story.project_loader import load_story_project
 from application.story.selection import normal_template_options
 from config.feature_flags import FeatureFlag
-from core.chat_history.storage import STORY_SESSION_FILENAME, chat_history_active_path, chat_history_session_dir
-from core.story import CharacterSourceType, StoryCompiler, StoryNode, StoryValidationError
+from core.chat_history.storage import (
+    STORY_SESSION_FILENAME,
+    chat_history_active_path,
+    chat_history_session_dir,
+)
+from core.story import (
+    CharacterSourceType,
+    StoryCompiler,
+    StoryNode,
+    StoryValidationError,
+)
 from sdk.path_utils import safe_existing_path
 
 

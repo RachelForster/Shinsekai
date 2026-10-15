@@ -4,7 +4,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from application.characters.management import CharacterOperation, CharacterRequest, CharacterUseCase
+from application.characters.management import (
+    CharacterOperation,
+    CharacterRequest,
+    CharacterUseCase,
+)
 from application.characters.model_files import model_file
 from config.character_manager import CharacterManager
 from config.schema import Character
@@ -598,10 +602,16 @@ def test_failed_import_rolls_back_active_type_and_bank(harness, monkeypatch):
 
 def test_new_format_reuses_import_startup_events_and_snapshot(harness, monkeypatch):
     """An opaque, non-Cubism format must need no changes to the shared pipeline."""
-    from application.chat.initial_sprite import display_initial_sprite, initial_sprite_path_for_characters
-    from application.chat.runtime_process import _chat_session_media
+    from application.chat.initial_sprite import (
+        display_initial_sprite,
+        initial_sprite_path_for_characters,
+    )
+    from application.chat.runtime_projection import _chat_session_media
     from application.chat.ui_updates import StreamingUIUpdateManager
-    from application.runtime.event_sink import fold_event_into_snapshot, make_empty_chat_snapshot
+    from application.runtime.event_sink import (
+        fold_event_into_snapshot,
+        make_empty_chat_snapshot,
+    )
     from core.media.avatar import registry
     from frontend_bridge_core.resource_urls import BridgeResourceUrls
     from sdk.adapters.avatar import ModelAssetAdapter, ModelFiles

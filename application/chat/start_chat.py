@@ -7,11 +7,13 @@ from typing import Any
 
 from application.chat.runtime_process import (
     _chat_process_running,
+    _chat_snapshot,
+    _session_lifecycle,
+)
+from application.chat.runtime_projection import (
     _chat_runtime_closing,
     _chat_runtime_mode,
-    _chat_snapshot,
     _chat_stream_initial_snapshot,
-    _session_lifecycle,
 )
 from application.chat.launch_history import persist_confirmed_history_path
 from application.chat.lifecycle import chat_lifecycle_lock
@@ -244,7 +246,7 @@ def _run_chat_init(
                             )
                         _session_lifecycle(
                             state,
-                            remember_history=lambda state, path: persist_confirmed_history_path(state, path),
+                            remember_history=persist_confirmed_history_path,
                         ).ready(pending_history_path)
                         if not keep_session:
                             _session_lifecycle(state).release_stream(session_id)

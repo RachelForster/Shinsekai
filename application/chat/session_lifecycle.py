@@ -1,4 +1,4 @@
-"""Own session side effects through required application lifecycle handlers."""
+"""Own ordered session effects and publish their lifecycle observations."""
 
 from __future__ import annotations
 
@@ -52,9 +52,6 @@ class ChatSessionLifecycle:
         self._connected = self._ready = self._closing = self._ended = False
         self._mobile_applied = self._history_remembered = False
         self._explicit_close = False
-        self._notify_close = True
-        self._capture_snapshots: dict[str, Callable[[], dict]] = {}
-        self._snapshots: dict[str, dict] = {}
         self._released_sessions: set[str] = set()
         self._remove = events.subscribe(self._handle, required=True, weak=True)
 
@@ -111,22 +108,40 @@ class ChatSessionLifecycle:
             in {self.plan.session_id, ""}
         )
 
-    def _emit(
+    def _complete(
         self,
         phase: ChatSessionEvent,
-        *,
+        *actions: Callable[[], Any],
         reason: str = "",
         error: BaseException | None = None,
-    ) -> None:
-        plan = self.adopt_current()
-        self.events.emit(
-            ChatSessionContext(phase, plan.session_id, plan.launch_id, reason, error)
-        )
+    ) -> Any:
+        failure = None
+        result = None
+        with chat_lifecycle_lock(self.state):
+            plan = self.adopt_current()
+            context = ChatSessionContext(
+                phase, plan.session_id, plan.launch_id, reason, error
+            )
+            try:
+                result = self._steps(*actions)
+            except LifecycleDispatchError as cleanup_error:
+                failure = cleanup_error
+                context = replace(context, error=error or failure)
+        self.events.emit(context)
+        if failure is not None:
+            raise failure
+        return result
 
     def connected(self) -> None:
         if not self._connected:
             self._connected = True
-            self._emit(ChatSessionEvent.CONNECTED)
+            self._complete(
+                ChatSessionEvent.CONNECTED,
+                lambda: self._ready_effects(
+                    mobile=self.plan.mobile_on_connected,
+                    history=self.plan.remember_on_connected,
+                ),
+            )
 
     def launch(self, start: Callable[[], str]) -> str:
         try:
@@ -141,7 +156,7 @@ class ChatSessionLifecycle:
             self.plan = replace(plan, history_path=history_path)
         if not self._ready:
             self._ready = True
-            self._emit(ChatSessionEvent.READY)
+            self._complete(ChatSessionEvent.READY, self._ready_effects)
 
     def prepare_close(self) -> None:
         self.adopt_current()
@@ -158,19 +173,17 @@ class ChatSessionLifecycle:
             return None
         plan = self.adopt_current()
         if not self._closing:
-            self._notify_close = notify_transport
-            if capture_snapshot is not None:
-                self._capture_snapshots[plan.launch_id] = capture_snapshot
-            try:
-                self._emit(ChatSessionEvent.CLOSING, reason=reason)
-            except BaseException:
-                self._snapshots.pop(plan.launch_id, None)
-                raise
-            finally:
-                self._capture_snapshots.pop(plan.launch_id, None)
+            snapshot = self._complete(
+                ChatSessionEvent.CLOSING,
+                lambda: self._close_transport(reason, notify=notify_transport),
+                lambda: self.effects.stop_mobile(self.state),
+                capture_snapshot or (lambda: None),
+                reason=reason,
+            )
             if self.plan.launch_id == plan.launch_id:
                 self._closing = notify_transport
-        return self._snapshots.pop(plan.launch_id, None)
+            return snapshot
+        return None
 
     def ended(self, reason: str, *, expected_launch_id: str | None = None) -> None:
         if expected_launch_id is not None and (
@@ -179,14 +192,27 @@ class ChatSessionLifecycle:
             return
         if not self._ended:
             plan = self.adopt_current()
-            self._emit(ChatSessionEvent.ENDED, reason=reason)
+            self._complete(
+                ChatSessionEvent.ENDED,
+                self._end_transport,
+                lambda: self.effects.clear_story(self.state),
+                reason=reason,
+            )
             if self.plan.launch_id == plan.launch_id:
                 self._ended = True
 
     def failed(self, reason: str, error: BaseException | None = None) -> None:
         if not self._ended:
             plan = self.adopt_current()
-            self._emit(ChatSessionEvent.FAILED, reason=reason, error=error)
+            self._complete(
+                ChatSessionEvent.FAILED,
+                lambda: self._close_transport(reason),
+                lambda: self.effects.stop_mobile(self.state),
+                self._end_transport,
+                lambda: self.effects.clear_story(self.state),
+                reason=reason,
+                error=error,
+            )
             if self.plan.launch_id == plan.launch_id:
                 self._ended = True
 
@@ -208,26 +234,31 @@ class ChatSessionLifecycle:
             and self.plan.session_id == session_id
         ):
             launch_id = self.plan.launch_id
-        self.events.emit(
-            ChatSessionContext(
-                ChatSessionEvent.FAILED, session_id, launch_id, reason, error
-            )
+        context = ChatSessionContext(
+            ChatSessionEvent.FAILED, session_id, launch_id, reason, error
         )
+        with chat_lifecycle_lock(self.state):
+            if self._owns(context) and not self._ended:
+                self.failed(reason, error)
+            else:
+                self.events.emit(context)
 
-    def _steps(self, *actions: Callable[[], None]) -> None:
+    def _steps(self, *actions: Callable[[], Any]) -> Any:
         errors = []
+        result = None
         for action in actions:
             try:
-                action()
+                result = action()
             except Exception as error:
                 errors.append(error)
         if errors:
             self.state.chat_lifecycle_error = str(errors[0])
             raise LifecycleDispatchError(tuple(errors))
+        return result
 
-    def _close_transport(self, reason: str) -> None:
+    def _close_transport(self, reason: str, *, notify: bool = True) -> None:
         plan = self.plan
-        if self._notify_close and plan.session_id and self._stream is not None:
+        if notify and plan.session_id and self._stream is not None:
             get_snapshot = getattr(self._stream, "get_snapshot", None)
             snapshot = get_snapshot(plan.session_id) if callable(get_snapshot) else None
             if (
@@ -272,11 +303,6 @@ class ChatSessionLifecycle:
                         "sessionId": "",
                     }
 
-    def _capture_snapshot(self, context: ChatSessionContext) -> None:
-        capture = self._capture_snapshots.get(context.launch_id)
-        if capture is not None:
-            self._snapshots[context.launch_id] = capture()
-
     def _ready_effects(self, *, mobile: bool = True, history: bool = True) -> None:
         plan = self.plan
         if mobile and plan.mobile_enabled is not None and not self._mobile_applied:
@@ -291,11 +317,9 @@ class ChatSessionLifecycle:
             self._history_remembered = True
 
     def _handle(self, context: Any) -> None:
-        if not isinstance(
-            context, (ChatProcessContext, ChatSessionContext)
-        ) or not self._owns(context):
+        if not isinstance(context, ChatProcessContext) or not self._owns(context):
             return
-        if isinstance(context, ChatProcessContext) and context.event not in {
+        if context.event not in {
             ChatProcessEvent.STOPPED,
             ChatProcessEvent.FAILED,
         }:
@@ -303,41 +327,15 @@ class ChatSessionLifecycle:
         with chat_lifecycle_lock(self.state):
             if not self._owns(context) or self._ended:
                 return
-            if isinstance(context, ChatProcessContext):
-                if self._explicit_close:
-                    return
-                if context.reason == "shutdown" and context.exit_code is None:
-                    self.state.chat_lifecycle_error = str(
-                        context.error or "Chat process did not exit"
-                    )
-                    return
-                if context.event is ChatProcessEvent.FAILED:
-                    self.failed(context.reason or "Chat process failed", context.error)
-                else:
-                    self.closing("聊天会话已结束。")
-                    self.ended("聊天会话已结束。")
+            if self._explicit_close:
                 return
-            if context.event is ChatSessionEvent.CONNECTED:
-                self._ready_effects(
-                    mobile=self.plan.mobile_on_connected,
-                    history=self.plan.remember_on_connected,
+            if context.reason == "shutdown" and context.exit_code is None:
+                self.state.chat_lifecycle_error = str(
+                    context.error or "Chat process did not exit"
                 )
-            elif context.event is ChatSessionEvent.READY:
-                self._ready_effects()
-            elif context.event is ChatSessionEvent.CLOSING:
-                self._steps(
-                    lambda: self._close_transport(context.reason),
-                    lambda: self.effects.stop_mobile(self.state),
-                    lambda: self._capture_snapshot(context),
-                )
-            elif context.event is ChatSessionEvent.ENDED:
-                self._steps(
-                    self._end_transport, lambda: self.effects.clear_story(self.state)
-                )
-            elif context.event is ChatSessionEvent.FAILED:
-                self._steps(
-                    lambda: self._close_transport(context.reason),
-                    lambda: self.effects.stop_mobile(self.state),
-                    self._end_transport,
-                    lambda: self.effects.clear_story(self.state),
-                )
+                return
+            if context.event is ChatProcessEvent.FAILED:
+                self.failed(context.reason or "Chat process failed", context.error)
+            else:
+                self.closing("聊天会话已结束。")
+                self.ended("聊天会话已结束。", expected_launch_id=context.launch_id)

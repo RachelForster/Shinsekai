@@ -3,7 +3,10 @@ from __future__ import annotations
 from typing import Any
 
 from application.chat.build_effect_context import build_effect_context
-from application.chat.conversation_library import remember_conversation, saved_conversation_launch
+from application.chat.conversation_library import (
+    remember_conversation,
+    saved_conversation_launch,
+)
 from application.chat.initial_sprite import initial_sprite_path_for_characters
 from application.chat.lifecycle import chat_lifecycle_lock
 from application.chat.launch_history import (
@@ -12,16 +15,18 @@ from application.chat.launch_history import (
     resolve_chat_history_path,
 )
 from application.chat.mobile_access import configure_mobile_access
-from application.chat.runtime_process import (
+from application.chat.runtime_projection import (
     TRANSPARENT_BACKGROUND_NAME,
-    _chat_process_running,
     _chat_runtime_closing,
     _chat_runtime_mode,
-    _chat_snapshot,
     _chat_stream_initial_snapshot,
+    _sanitize_user_display_name,
+)
+from application.chat.runtime_process import (
+    _chat_process_running,
+    _chat_snapshot,
     _launch_chat as _launch_runtime_chat,
     _session_lifecycle,
-    _sanitize_user_display_name,
 )
 from application.chat.start_chat import start_chat
 from application.chat.stop_chat import stop_chat
@@ -291,8 +296,8 @@ def _launch_chat_locked(
     effect_names_str = ",".join(effect_context.selected_names)
     lifecycle = _session_lifecycle(
         state,
-        configure_mobile=lambda state, **options: configure_mobile_access(state, **options),
-        remember_history=lambda state, path: persist_confirmed_history_path(state, path),
+        configure_mobile=configure_mobile_access,
+        remember_history=persist_confirmed_history_path,
     )
     launch_id = lifecycle.begin(
         str(stream_info.get("sessionId") or ""),
@@ -523,7 +528,7 @@ def _resume_last_chat_locked(
     )
     lifecycle = _session_lifecycle(
         state,
-        configure_mobile=lambda state, **options: configure_mobile_access(state, **options),
+        configure_mobile=configure_mobile_access,
     )
     launch_id = lifecycle.begin(
         str(stream_info.get("sessionId") or ""),

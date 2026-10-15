@@ -91,40 +91,31 @@ class StoryHistoryRecorder:
         self.history, self.user_name = history, user_name
 
     def persist_choice(self, state: Any, label: str, user_name: str) -> None:
-        history_raw = str(state.chat_session.get("historyPath") or "").strip()
-        if not history_raw or is_unc_history_path(history_raw):
-            return
-        history_path = self.history.resolve(state, history_raw)
-        if is_unc_history_path(history_path):
-            return
-        active = chat_history_active_path(history_path)
-        messages: list[Any] = []
-        if active.is_file():
-            loaded = self.history.read(active)
-            if isinstance(loaded, list):
-                messages = loaded
-        messages.append({"role": "user", "content": label})
-        active.parent.mkdir(parents=True, exist_ok=True)
-        with active.open("w", encoding="utf-8") as file:
-            json.dump(messages, file, ensure_ascii=False, indent=4)
-        branch_state = load_branch_state(history_path)
-        if branch_state is None:
-            return
-        branches = branch_state.get("branches")
-        if not isinstance(branches, dict):
-            return
-        active_id = str(branch_state.get("active") or "main")
-        branch = branches.get(active_id)
-        if not isinstance(branch, dict):
-            return
-        history = list(branch.get("history") or [])
-        history.append(f"<b>{user_name}</b>：{label}")
-        branch["messages"] = list(messages)
-        branch["history"] = history
-        save_branch_state(history_path, branch_state)
+        self._append_history(
+            state,
+            [{"role": "user", "content": label}],
+            [f"<b>{user_name}</b>：{label}"],
+        )
 
     def persist_scene(
         self, state: Any, user_text: str, user_name: str, dialogue: Sequence[Any]
+    ) -> None:
+        self._append_history(
+            state,
+            [{"role": "user", "content": user_text}]
+            + [
+                {"role": "assistant", "name": item.character_id, "content": item.text}
+                for item in dialogue
+            ],
+            [f"<b>{html.escape(user_name)}</b>：{html.escape(user_text)}"]
+            + [
+                f"<b>{html.escape(item.character_id)}</b>：{html.escape(item.text)}"
+                for item in dialogue
+            ],
+        )
+
+    def _append_history(
+        self, state: Any, new_messages: list[dict], new_history: list[str]
     ) -> None:
         history_raw = str(state.chat_session.get("historyPath") or "").strip()
         if not history_raw or is_unc_history_path(history_raw):
@@ -138,11 +129,7 @@ class StoryHistoryRecorder:
             loaded = self.history.read(active)
             if isinstance(loaded, list):
                 messages = loaded
-        messages.append({"role": "user", "content": user_text})
-        for item in dialogue:
-            messages.append(
-                {"role": "assistant", "name": item.character_id, "content": item.text}
-            )
+        messages.extend(new_messages)
         active.parent.mkdir(parents=True, exist_ok=True)
         with active.open("w", encoding="utf-8") as file:
             json.dump(messages, file, ensure_ascii=False, indent=4)
@@ -157,11 +144,7 @@ class StoryHistoryRecorder:
         if not isinstance(branch, dict):
             return
         history = list(branch.get("history") or [])
-        history.append(f"<b>{html.escape(user_name)}</b>：{html.escape(user_text)}")
-        for item in dialogue:
-            history.append(
-                f"<b>{html.escape(item.character_id)}</b>：{html.escape(item.text)}"
-            )
+        history.extend(new_history)
         branch["messages"] = list(messages)
         branch["history"] = history
         save_branch_state(history_path, branch_state)

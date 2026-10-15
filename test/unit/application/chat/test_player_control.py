@@ -8,7 +8,10 @@ from unittest.mock import MagicMock, patch
 from application.chat.player_control import resolve_player
 from application.media.resource_urls import UnconfiguredResourceUrls
 from application.chat.ui_updates import StreamingUIUpdateManager
-from application.runtime.event_sink import fold_event_into_snapshot, make_empty_chat_snapshot
+from application.runtime.event_sink import (
+    fold_event_into_snapshot,
+    make_empty_chat_snapshot,
+)
 from config.schema import Character, PortraitCrop, Sprite
 from sdk.messages import PresentationMessage
 
@@ -143,7 +146,7 @@ class PlayerControlTests(unittest.TestCase):
             resolve_player(config, ["阳明"], "神羽")
 
     def test_saved_history_keeps_normal_player_dialog(self):
-        from application.chat.runtime_process import _serialize_history_entries_from_messages
+        from application.chat.runtime_history import _serialize_history_entries_from_messages
 
         messages = [
             {"role": "user", "content": "我才不要（摊开手）"},

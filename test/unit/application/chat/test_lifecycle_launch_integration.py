@@ -165,4 +165,4 @@ def test_real_close_response_releases_closing_flag_before_final_snapshot(
         assert state.chat_stream.deleted == ["actual-session"]
     finally:
         state.chat_session_lifecycle.dispose()
-        chat._close_chat_log_if_needed()
+        chat._supervisor.close_log()

@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+from core.chat_history.storage import (
+    chat_history_active_path,
+    load_branch_state,
+    save_branch_state,
+)
+
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -34,7 +40,7 @@ def state(tmp_path, monkeypatch):
     ],
 )
 def test_history_timestamp_formats(value, expected):
-    assert chat._message_created_at_ms(value) == expected
+    assert chat.history._message_created_at_ms(value) == expected
 
 
 @pytest.mark.parametrize(
@@ -47,7 +53,7 @@ def test_history_timestamp_formats(value, expected):
     ],
 )
 def test_history_role_aliases(text, role):
-    assert chat._history_entry_role_from_text(text) == role
+    assert chat.history._history_entry_role_from_text(text) == role
 
 
 def test_history_projection_skips_transport_messages_and_keeps_user_indexes():
@@ -75,7 +81,9 @@ def test_history_projection_skips_transport_messages_and_keeps_user_indexes():
         },
         {"role": "user", "content": "second"},
     ]
-    entries = chat._serialize_history_entries_from_messages(messages, "<b>Player</b>")
+    entries = chat.history._serialize_history_entries_from_messages(
+        messages, "<b>Player</b>"
+    )
     assert entries == [
         {
             "id": "history-0",
@@ -92,9 +100,9 @@ def test_history_projection_skips_transport_messages_and_keeps_user_indexes():
             "text": "Player: second",
         },
     ]
-    assert chat._serialize_history_entries_from_messages({}) == []
-    assert chat._history_entries_from_snapshot(None) == []
-    assert chat._history_entries_from_snapshot(
+    assert chat.history._serialize_history_entries_from_messages({}) == []
+    assert chat.history._history_entries_from_snapshot(None) == []
+    assert chat.history._history_entries_from_snapshot(
         {"historyEntries": [None, {"text": "valid"}]}
     ) == [{"text": "valid"}]
 
@@ -106,17 +114,17 @@ def test_history_falls_back_to_disk_only_when_stream_has_no_history(state):
     assert chat._chat_history(state)[0]["text"] == "你: disk"
     state.chat_stream = None
     state.chat_session["historyPath"] = ""
-    assert chat._chat_history_entries(state) == []
+    assert chat._history_projection.entries(state) == []
 
 
 def test_unc_history_is_not_accessed(state, monkeypatch):
     state.chat_stream = None
     state.chat_session["historyPath"] = r"\\server\share\history.json"
     reader = MagicMock(side_effect=AssertionError("must not access network history"))
-    monkeypatch.setattr(chat, "_resolve_history_file", reader)
-    assert chat._chat_history_entries(state) == []
-    chat._persist_story_choice_messages(state, "choice", "Player")
-    chat._persist_scene_turn_messages(state, "message", "Player", [])
+    monkeypatch.setattr(chat._history_projection, "resolve", reader)
+    assert chat._history_projection.entries(state) == []
+    chat._story_history.persist_choice(state, "choice", "Player")
+    chat._story_history.persist_scene(state, "message", "Player", [])
     reader.assert_not_called()
 
 
@@ -129,11 +137,13 @@ def test_stream_snapshot_precedence_renderer_and_mobile_transport(state, monkeyp
         userDisplayName="<b>Hero</b>",
     )
     monkeypatch.setattr(
-        chat, "story_snapshot_patch", lambda _: {"status": "story", "storyRevision": 8}
+        chat._snapshot_projection,
+        "story_patch",
+        lambda _: {"status": "story", "storyRevision": 8},
     )
     monkeypatch.setattr(
-        chat,
-        "get_mobile_access_info",
+        chat._snapshot_projection,
+        "mobile_info",
         lambda _: SimpleNamespace(
             to_payload=lambda: {"enabled": True},
             websocket_url="ws://mobile/chat",
@@ -160,33 +170,35 @@ def test_fallback_snapshot_keeps_extra_override_and_initial_snapshot_clears_spri
 ):
     state.chat_stream = None
     state.chat_session.update(voiceLanguage=" EN ", userDisplayName="Player")
-    monkeypatch.setattr(chat, "story_snapshot_patch", lambda _: {"status": "story"})
+    monkeypatch.setattr(
+        chat._snapshot_projection, "story_patch", lambda _: {"status": "story"}
+    )
     result = chat._chat_snapshot(
         state, extra={"status": "extra", "sprites": [{"id": "previous"}]}
     )
     assert result["status"] == "extra"
     assert result["voiceLanguage"] == "en"
     assert result["numericInfo"] is None
-    initial = chat._chat_stream_initial_snapshot(result)
+    initial = chat.projection._chat_stream_initial_snapshot(result)
     assert initial["sprites"] == []
     assert result["sprites"] == [{"id": "previous"}]
 
 
 def test_runtime_option_defaults_and_empty_voice_language(state):
     state.config_manager.config.system_config.voice_language = ""
-    assert chat._chat_voice_language(state) == "ja"
-    assert chat._chat_runtime_mode(state) == "react"
-    assert chat._chat_turn_options(SimpleNamespace()) == {
+    assert chat.projection._chat_voice_language(state) == "ja"
+    assert chat.projection._chat_runtime_mode(state) == "react"
+    assert chat.projection._chat_turn_options(SimpleNamespace()) == {
         "interruptEnabled": True,
         "batchEnabled": False,
         "batchIdleSeconds": 5.0,
     }
-    assert chat._chat_experimental_features(SimpleNamespace()) == {
+    assert chat.projection._chat_experimental_features(SimpleNamespace()) == {
         "conversationTree": False,
         "forkHistory": False,
     }
     state.chat_stream.snapshot = None
-    assert chat._chat_user_display_name_from_snapshot(state) == "你"
+    assert chat.projection._chat_user_display_name_from_snapshot(state) == "你"
 
 
 def test_history_download_capability_replaces_previous_and_expires_monotonically(
@@ -194,9 +206,9 @@ def test_history_download_capability_replaces_previous_and_expires_monotonically
 ):
     path = write_messages(state, [])
     now = [5.0]
-    monkeypatch.setattr(chat, "time", SimpleNamespace(monotonic=lambda: now[0]))
-    first = chat._issue_chat_history_download_capability(state, path)
-    second = chat._issue_chat_history_download_capability(state, path)
+    monkeypatch.setattr(chat._history_downloads, "clock", lambda: now[0])
+    first = chat._history_downloads.issue(state, path)
+    second = chat._history_downloads.issue(state, path)
     with pytest.raises(PermissionError, match="invalid"):
         chat._chat_history_download_file(state, first)
     now[0] = 65.0
@@ -217,21 +229,21 @@ def test_history_download_rejects_absent_or_control_character_capabilities(
 
 def test_history_download_checks_file_after_capability_was_issued(state):
     path = write_messages(state, [])
-    assert chat._current_chat_history_download_file(state) == path
-    token = chat._issue_chat_history_download_capability(state, path)
+    assert chat._history_downloads.current_file(state) == path
+    token = chat._history_downloads.issue(state, path)
     path.unlink()
     with pytest.raises(FileNotFoundError):
         chat._chat_history_download_file(state, token)
     with pytest.raises(FileNotFoundError):
-        chat._current_chat_history_download_file(state)
+        chat._history_downloads.current_file(state)
     state.chat_session["historyPath"] = ""
     with pytest.raises(FileNotFoundError):
-        chat._current_chat_history_download_file(state)
+        chat._history_downloads.current_file(state)
 
 
 def _with_branch(state):
     write_messages(state, [])
-    chat.save_branch_state(
+    save_branch_state(
         Path(state.chat_session["historyPath"]),
         {
             "active": "main",
@@ -250,13 +262,15 @@ def _with_branch(state):
 
 def test_story_choice_updates_messages_and_active_branch(state):
     _with_branch(state)
-    entries = chat._record_story_choice_history(state, "continue")
+    entries = chat._story_history.record_choice(state, "continue")
     assert entries[-1]["text"] == "Player: continue"
-    active = chat.chat_history_active_path(Path(state.chat_session["historyPath"]))
-    assert chat._read_history_file(active) == [{"role": "user", "content": "continue"}]
-    branch = chat.load_branch_state(Path(state.chat_session["historyPath"]))[
-        "branches"
-    ]["main"]
+    active = chat_history_active_path(Path(state.chat_session["historyPath"]))
+    assert chat.history._read_history_file(active) == [
+        {"role": "user", "content": "continue"}
+    ]
+    branch = load_branch_state(Path(state.chat_session["historyPath"]))["branches"][
+        "main"
+    ]
     assert branch["history"] == ["<b>Player</b>：continue"]
     assert branch["messages"] == [{"role": "user", "content": "continue"}]
 
@@ -267,17 +281,17 @@ def test_scene_turn_records_once_and_escapes_persisted_html(state):
         SimpleNamespace(character_id="narr", text="<scene>"),
         SimpleNamespace(character_id="Alice", text="reply"),
     ]
-    entries = chat._record_scene_turn_history(state, "<request>", dialogue)
+    entries = chat._story_history.record_scene(state, "<request>", dialogue)
     assert [entry["role"] for entry in entries] == ["user", "system", "assistant"]
     state.chat_stream.snapshot["historyEntries"] = entries
-    assert chat._record_scene_turn_history(state, "<request>", dialogue) == entries
-    branch = chat.load_branch_state(Path(state.chat_session["historyPath"]))[
-        "branches"
-    ]["main"]
+    assert chat._story_history.record_scene(state, "<request>", dialogue) == entries
+    branch = load_branch_state(Path(state.chat_session["historyPath"]))["branches"][
+        "main"
+    ]
     assert len(branch["messages"]) == 3
     assert "&lt;request&gt;" in branch["history"][0]
     assert "&lt;scene&gt;" in branch["history"][1]
-    events = chat._scene_dialog_events(dialogue)
+    events = chat.story._scene_dialog_events(dialogue)
     assert events[0]["isSystem"] is True
     assert events[1]["isSystem"] is False
     assert events[0]["fullHtml"] == "<p>&lt;scene&gt;</p>"
@@ -305,7 +319,7 @@ def test_scene_turn_records_once_and_escapes_persisted_html(state):
     ],
 )
 def test_scene_history_deduplication(entries, text, dialogue, expected):
-    assert chat._scene_turn_already_recorded(entries, text, dialogue) is expected
+    assert chat.story._scene_turn_already_recorded(entries, text, dialogue) is expected
 
 
 def test_story_branch_alignment_and_command_translation(state, monkeypatch):
@@ -317,17 +331,15 @@ def test_story_branch_alignment_and_command_translation(state, monkeypatch):
         switch_branch=MagicMock(),
         restore_generation=MagicMock(),
     )
-    monkeypatch.setattr(chat, "bound_story_session", lambda _: story)
+    monkeypatch.setattr(chat._story_access, "session", lambda _: story)
     body = {"payload": 2}
-    chat._sync_story_session_branch_command(state, "fork-history", body)
+    chat._story_branches.sync(state, "fork-history", body)
     assert body["payload"] == {"userIndex": 2, "branchId": "branch-13"}
     story.fork.assert_called_once_with("branch-13", generation=7)
-    chat._sync_story_session_branch_command(state, "switch-branch", {"payload": "main"})
-    chat._sync_story_session_branch_command(
-        state, "switch-branch", {"payload": "absent"}
-    )
+    chat._story_branches.sync(state, "switch-branch", {"payload": "main"})
+    chat._story_branches.sync(state, "switch-branch", {"payload": "absent"})
     story.switch_branch.assert_called_once_with("main")
-    chat._sync_story_session_branch_command(state, "revert-history", {"payload": 1})
+    chat._story_branches.sync(state, "revert-history", {"payload": 1})
     story.restore_generation.assert_called_once_with(7)
 
 
@@ -337,8 +349,8 @@ def test_story_choice_labels_skip_bad_options_and_fall_back_to_id():
             "options": [None, {"id": "other"}, {"id": "choice", "label": " Continue "}]
         }
     )
-    assert chat._story_choice_label(story, "choice") == "Continue"
-    assert chat._story_choice_label(story, "missing") == "missing"
+    assert chat.story._story_choice_label(story, "choice") == "Continue"
+    assert chat.story._story_choice_label(story, "missing") == "missing"
 
 
 def test_theme_payload_reads_dict_and_ignores_other_json_values(
@@ -348,21 +360,21 @@ def test_theme_payload_reads_dict_and_ignores_other_json_values(
     path = tmp_path / "theme.json"
     state.config_manager.config.system_config.chat_ui_theme_path = "theme.json"
     state.config_manager.config.system_config.theme_color = "#112233"
-    assert chat._chat_theme_payload(state)["path"] == ""
+    assert chat.projection._chat_theme_payload(state)["path"] == ""
     path.write_text('{"frame":"custom"}', encoding="utf-8")
-    assert chat._chat_theme_payload(state) == {
+    assert chat.projection._chat_theme_payload(state) == {
         "path": path.as_posix(),
         "raw": {"frame": "custom"},
         "themeColor": "#112233",
     }
     path.write_text("[]", encoding="utf-8")
-    assert chat._chat_theme_payload(state)["raw"] == {}
+    assert chat.projection._chat_theme_payload(state)["raw"] == {}
 
 
 def test_plain_history_and_missing_files(state, tmp_path):
     raw = [{"role": "user", "content": "hello"}]
-    assert "hello" in chat._plain_history_text(raw)
-    assert "hello" in chat._plain_history_text_from_entries(
+    assert "hello" in chat.history._plain_history_text(raw)
+    assert "hello" in chat.history._plain_history_text_from_entries(
         [{"role": "user", "text": "Player: hello"}]
     )
-    assert chat._read_history_file(tmp_path / "absent.json") == []
+    assert chat.history._read_history_file(tmp_path / "absent.json") == []
