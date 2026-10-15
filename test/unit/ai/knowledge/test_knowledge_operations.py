@@ -1,13 +1,8 @@
 from concurrent.futures import ThreadPoolExecutor
-from io import BytesIO
 from types import SimpleNamespace
-import json
-import urllib.error
-import urllib.request
 
 import pytest
 
-from ai.knowledge import service
 
 from ai.knowledge import operations as ops
 
@@ -38,42 +33,6 @@ def test_local_failures_are_error_results(monkeypatch, operation):
         raise RuntimeError("store unavailable")
     store = SimpleNamespace(search=fail, add=fail, get_all=fail)
     assert operation(store)["error"] == "store unavailable"
-
-
-@pytest.mark.parametrize("error", [
-    urllib.error.HTTPError("http://test", 503, "unavailable", {}, BytesIO(b"unavailable")),
-    urllib.error.URLError("offline"),
-])
-def test_http_failures_are_error_results(monkeypatch, error):
-    monkeypatch.setenv("SHINSEKAI_KNOWLEDGE_SERVICE_URL", "http://knowledge")
-    def fail(*a, **k):
-        raise error
-    monkeypatch.setattr(urllib.request, "urlopen", fail)
-    assert "error" in service.knowledge_service_status()
-
-
-def test_remote_status_and_owner_guard(monkeypatch):
-    monkeypatch.setenv("SHINSEKAI_KNOWLEDGE_SERVICE_URL", "http://knowledge")
-    calls = []
-    def request(req, **kwargs):
-        calls.append((req.full_url, json.loads(req.data), kwargs))
-        return BytesIO(b'{"status":"loading"}')
-    monkeypatch.setattr(urllib.request, "urlopen", request)
-    assert service.knowledge_service_status(start_loading=True, retry=True) == {"status": "loading"}
-    assert calls[0][0] == "http://knowledge/status"
-    assert calls[0][1] == {"startLoading": True, "retry": True}
-    monkeypatch.setenv("SHINSEKAI_KNOWLEDGE_SERVICE_OWNER", "1")
-    assert service.knowledge_service_status() is None
-    assert len(calls) == 1
-    monkeypatch.setenv("SHINSEKAI_KNOWLEDGE_SERVICE_OWNER", "0")
-    assert service.knowledge_service_status()["status"] == "loading"
-
-
-@pytest.mark.parametrize("payload", [b"not json", b"[]"])
-def test_invalid_service_response(monkeypatch, payload):
-    monkeypatch.setenv("SHINSEKAI_KNOWLEDGE_SERVICE_URL", "http://knowledge")
-    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: BytesIO(payload))
-    assert "error" in service.knowledge_service_status()
 
 
 def test_concurrent_remember_deduplicates_under_lock(monkeypatch):

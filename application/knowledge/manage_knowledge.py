@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any, Callable, Sequence
 
 from application.knowledge.runtime import get_mem0
-from core.knowledge.bindings import list_knowledge_ids_for_characters
 
 
 def check_knowledge_status(*, start_loading: bool = True, retry: bool = False) -> dict[str, Any]:
@@ -20,26 +19,6 @@ def _with_store(operation: Callable[..., dict[str, Any]], *args: Any, **kwargs: 
     """Acquire the instance at the application boundary and preserve error results."""
     try:
         return operation(get_mem0(), *args, **kwargs)
-    except Exception as exc:
-        return {"error": str(exc)}
-
-
-def search_knowledge(query: str, *, character_names: list[str], limit: int = 5) -> dict[str, Any]:
-    from ai.knowledge.operations import search_knowledge as search_store
-    from ai.knowledge.service import request_knowledge_service
-
-    try:
-        text = str(query or "").strip()
-        names = [name for value in character_names if (name := str(value or "").strip())]
-        if not text:
-            return {"error": "query is required"}
-        remote = request_knowledge_service("search", {"query": text, "characterNames": names, "limit": limit})
-        if remote is not None:
-            return remote
-        knowledge_ids = list_knowledge_ids_for_characters(names)
-        if not knowledge_ids:
-            return {"query": text, "knowledge_ids": [], "count": 0, "memories": []}
-        return _with_store(search_store, text, knowledge_ids=knowledge_ids, limit=limit)
     except Exception as exc:
         return {"error": str(exc)}
 

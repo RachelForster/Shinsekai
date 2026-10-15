@@ -69,8 +69,9 @@ def test_knowledge_search_dispatch_uses_local_store_when_bridge_owns_service(mon
         calls.append((query, filters, limit))
         return [{"memory": "The harbor is foggy.", "score": 0.9}]
 
-    monkeypatch.setattr(manage_knowledge, "list_knowledge_ids_for_characters", bindings)
-    monkeypatch.setattr(manage_knowledge, "get_mem0", lambda: SimpleNamespace(search=search))
+    from application.knowledge import search_knowledge as local_search
+    monkeypatch.setattr(local_search, "list_knowledge_ids_for_characters", bindings)
+    monkeypatch.setattr(local_search, "get_mem0", lambda: SimpleNamespace(search=search))
 
     result = knowledge._knowledge_search("harbor", character_names=["A"], limit=3)
     assert result == {

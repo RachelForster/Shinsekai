@@ -60,7 +60,7 @@ def test_local_entry_search_does_not_call_knowledge_service(knowledge_store, mon
     knowledge_store.search = search
     monkeypatch.setenv("SHINSEKAI_KNOWLEDGE_SERVICE_URL", "http://127.0.0.1:8787/api/knowledge")
     monkeypatch.delenv("SHINSEKAI_KNOWLEDGE_SERVICE_OWNER", raising=False)
-    monkeypatch.setattr("ai.knowledge.service.request_knowledge_service", forbidden_request)
+    monkeypatch.setattr("urllib.request.urlopen", forbidden_request)
 
     result = browsing.search_local_knowledge_entries(knowledge_store, "alpha", "test")
 

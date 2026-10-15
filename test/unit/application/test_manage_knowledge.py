@@ -55,15 +55,6 @@ def test_runtime_failure_is_an_error_result(monkeypatch, operation):
     assert operation() == {"error": "store unavailable"}
 
 
-def test_unbound_search_does_not_acquire_store(monkeypatch):
-    monkeypatch.setattr("ai.knowledge.service.request_knowledge_service", lambda *args: None)
-    monkeypatch.setattr(manage_knowledge, "list_knowledge_ids_for_characters", lambda names: [])
-    monkeypatch.setattr(manage_knowledge, "get_mem0", lambda: pytest.fail("unbound search loaded store"))
-    assert manage_knowledge.search_knowledge("fact", character_names=["A"]) == {
-        "query": "fact", "knowledge_ids": [], "count": 0, "memories": [],
-    }
-
-
 @pytest.mark.parametrize("write_result", [{"ok": True}, {"error": "failed"}])
 def test_remember_and_list_reuses_store_and_only_lists_after_success(monkeypatch, write_result):
     from ai.knowledge import operations
@@ -79,9 +70,9 @@ def test_remember_and_list_reuses_store_and_only_lists_after_success(monkeypatch
     assert result == (listed if write_result.get("ok") else write_result)
 
 
-def test_chat_hook_uses_application_search(monkeypatch):
+def test_chat_hook_uses_injected_search(monkeypatch):
     from application.knowledge.hooks import install_knowledge_hooks
     from sdk.hooks import PluginHookDispatcher
-    monkeypatch.setenv("SHINSEKAI_KNOWLEDGE_ENABLED", "1")
-    hooks = install_knowledge_hooks(PluginHookDispatcher(), character_names=["A"])
-    assert hooks.search_func is manage_knowledge.search_knowledge
+    search = lambda *args, **kwargs: {"memories": []}
+    hooks = install_knowledge_hooks(PluginHookDispatcher(), character_names=["A"], search_func=search, status_func=lambda **kw: {"status": "ready"})
+    assert hooks.search_func is search

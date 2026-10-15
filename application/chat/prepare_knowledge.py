@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import time
 
-from ai.knowledge.service import knowledge_service_status
 from sdk.chat_init import InitChatCancelled, InitChatContext
 
 logger = logging.getLogger(__name__)
@@ -14,7 +13,7 @@ logger = logging.getLogger(__name__)
 def prepare_knowledge(
     context: InitChatContext,
     *,
-    knowledge_status_func=knowledge_service_status,
+    knowledge_status_func,
     timeout: float = 600.0,
     poll_interval: float = 0.45,
     sleep_func=time.sleep,

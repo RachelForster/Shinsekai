@@ -48,6 +48,8 @@ _CHAT_INIT_PHASES: dict[str, tuple[float, float, str]] = {
 
 class ChatSessionTransport(Protocol):
     stream_sink: Any | None
+    knowledge_search: Callable[..., dict[str, Any]] | None
+    knowledge_status: Callable[..., dict[str, Any] | None] | None
 
     @property
     def resource_urls(self) -> ResourceUrls: ...
@@ -256,6 +258,13 @@ def create_chat_session(
             if plugin_manager is not None and transport.streaming
             else None
         )
+        search = getattr(transport, "knowledge_search", None)
+        status = getattr(transport, "knowledge_status", None)
+        if plugin_manager is not None and search is not None and status is not None:
+            from application.knowledge.hooks import install_knowledge_hooks
+            install_knowledge_hooks(
+                plugin_manager.hook_dispatcher, search_func=search, status_func=status,
+            )
 
     try:
         startup = create_chat_startup_context(

@@ -264,6 +264,7 @@ class InitChatContext:
     tts_provider: str = ""
     voice_language: str = ""
     memory_enabled: bool = False
+    knowledge_enabled: bool = False
     runtime_mode: str = ""
     headless: bool = False
     host: PluginHostContext | None = None

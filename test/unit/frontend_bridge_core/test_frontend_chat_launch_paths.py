@@ -468,7 +468,6 @@ def test_launch_chat_passes_knowledge_settings(tmp_path, monkeypatch):
         media_selection_mode="semantic",
     )
 
-    assert captured["env"]["SHINSEKAI_KNOWLEDGE_ENABLED"] == "0"
     assert captured["env"]["SHINSEKAI_KNOWLEDGE_SEARCH_LIMIT"] == "7"
     assert "12345" in message
     assert captured["env"]["SHINSEKAI_KNOWLEDGE_SERVICE_URL"] == "http://127.0.0.1:8787/api/knowledge"

@@ -1,9 +1,5 @@
 from __future__ import annotations
 
-import json
-import logging
-import urllib.error
-import urllib.request
 from typing import Any
 
 from frontend_bridge_core.routes.router import ApiRequest, BodyKind, JsonResponse, Route
@@ -14,45 +10,6 @@ from frontend_bridge_core.knowledge import (
     _knowledge_operation,
     _knowledge_search,
 )
-
-
-logger = logging.getLogger(__name__)
-
-
-class BridgeKnowledgeHttp:
-    """Outbound knowledge HTTP adapter; connection settings come from its caller."""
-
-    def __init__(self, base_url: str, *, token: str = "", timeout: float = 60.0) -> None:
-        self.base_url = base_url.rstrip("/")
-        self.token = token
-        self.timeout = timeout
-
-    def request(self, endpoint: str, payload: dict[str, Any]) -> dict[str, Any]:
-        headers = {"Accept": "application/json", "Content-Type": "application/json"}
-        if self.token:
-            headers["X-Shinsekai-Bridge-Token"] = self.token
-        try:
-            request = urllib.request.Request(
-                f"{self.base_url}/{endpoint}",
-                data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-                headers=headers, method="POST",
-            )
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                result = json.loads(response.read(1024 * 1024).decode("utf-8"))
-            if not isinstance(result, dict):
-                raise ValueError("knowledge service returned a non-object JSON response")
-            return result
-        except urllib.error.HTTPError as exc:
-            logger.exception("Knowledge service request %s failed", endpoint)
-            try:
-                detail = exc.read(4096).decode("utf-8", errors="replace")
-            except Exception:
-                detail = str(exc)
-            message = f"knowledge service HTTP {exc.code}: {detail or exc.reason}"
-            return {"error": message}
-        except Exception as exc:
-            logger.exception("Knowledge service request %s failed", endpoint)
-            return {"error": str(exc)}
 
 
 def _bindings(request: ApiRequest) -> JsonResponse:

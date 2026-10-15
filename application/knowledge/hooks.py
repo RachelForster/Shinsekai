@@ -5,8 +5,8 @@ from __future__ import annotations
 import logging
 import os
 
-from application.knowledge.manage_knowledge import search_knowledge
 from sdk.hooks import BeforeChatContext, PluginHookDispatcher
+from sdk.chat_init import InitChatContext
 
 logger = logging.getLogger(__name__)
 
@@ -26,19 +26,13 @@ def _env_int(name: str, default: int, *, minimum: int = 1) -> int:
     return max(minimum, value)
 
 
-def _env_enabled(name: str, default: bool = True) -> bool:
-    raw = str(os.environ.get(name) or "").strip().lower()
-    if not raw:
-        return default
-    return raw not in {"0", "false", "no", "off"}
-
-
 class KnowledgeHooks:
     def __init__(
         self,
         character_names: list[str] | None = None,
         *,
-        search_func=search_knowledge,
+        search_func=None,
+        status_func=None,
         search_limit: int = DEFAULT_SEARCH_LIMIT,
     ) -> None:
         self.character_names = [
@@ -47,14 +41,28 @@ class KnowledgeHooks:
             if str(name or "").strip()
         ]
         self.search_func = search_func
+        self.status_func = status_func
         self.search_limit = max(1, int(search_limit))
-        self.enabled = True
+        self.enabled = False
 
     def register(self, dispatcher: PluginHookDispatcher) -> None:
+        dispatcher.register_init_chat(
+            self.init_chat,
+            label="knowledge_init_chat",
+        )
         dispatcher.register_before_chat(
             self.before_chat,
             label="knowledge_before_chat",
         )
+
+    def init_chat(self, context: InitChatContext) -> None:
+        self.enabled = False
+        if not context.knowledge_enabled or self.status_func is None:
+            return
+        from application.chat.prepare_knowledge import prepare_knowledge
+
+        self.character_names = list(context.character_names)
+        self.enabled = prepare_knowledge(context, knowledge_status_func=self.status_func)
 
     def before_chat(self, context: BeforeChatContext) -> None:
         if not self.enabled:
@@ -107,13 +115,15 @@ def install_knowledge_hooks(
     dispatcher: PluginHookDispatcher | None,
     *,
     character_names: list[str] | None = None,
-    search_func=search_knowledge,
+    search_func=None,
+    status_func=None,
 ) -> KnowledgeHooks | None:
-    if dispatcher is None or not _env_enabled("SHINSEKAI_KNOWLEDGE_ENABLED", False):
+    if dispatcher is None or search_func is None or status_func is None:
         return None
     hooks = KnowledgeHooks(
         character_names=character_names,
         search_func=search_func,
+        status_func=status_func,
         search_limit=min(20, _env_int("SHINSEKAI_KNOWLEDGE_SEARCH_LIMIT", DEFAULT_SEARCH_LIMIT)),
     )
     hooks.register(dispatcher)

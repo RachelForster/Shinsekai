@@ -13,7 +13,6 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Protocol
 
 from core.chat_history.storage import chat_history_active_path
-from application.chat.prepare_knowledge import prepare_knowledge
 
 if TYPE_CHECKING:
     from ai.llm.llm_manager import LLMManager
@@ -128,7 +127,6 @@ def create_chat_startup_context(
         raise MissingLlmProviderError("No language model provider is configured.")
 
     character_names = _memory_character_names(args, config)
-    knowledge_hooks = None
     with startup_phase("llm.init"):
         llm_adapter = runtime.LLMAdapterFactory.create_adapter(
             **config.merged_llm_factory_kwargs(
@@ -178,10 +176,6 @@ def create_chat_startup_context(
                 llm_adapter=llm_adapter,
                 character_names=character_names,
             )
-            knowledge_hooks = runtime.install_knowledge_hooks(
-                plugin_manager.hook_dispatcher,
-                character_names=character_names,
-            )
 
     from application.story.prompt_runtime import install_story_prompt_hooks
 
@@ -202,6 +196,7 @@ def create_chat_startup_context(
                 tts_provider=tts_provider,
                 voice_language=str(config.config.system_config.voice_language or "ja"),
                 memory_enabled=_memory_auto_enabled(),
+                knowledge_enabled=bool(config.config.api_config.knowledge_enabled),
                 runtime_mode=(
                     "react"
                     if args.stream_endpoint
@@ -210,9 +205,6 @@ def create_chat_startup_context(
                 headless=bool(args.headless),
                 metadata={"workflowPath": str(args.workflow or "")},
             ).scaled(0.68, 0.82)
-            if knowledge_hooks is not None:
-                knowledge_hooks.enabled = prepare_knowledge(init_context.scaled(0.0, 0.25))
-                init_context = init_context.scaled(0.25, 1.0)
             plugin_manager.hook_dispatcher.dispatch_init_chat(init_context)
 
     if messages:
@@ -233,7 +225,6 @@ def _import_provider_runtime() -> SimpleNamespace:
     from ai.asr.asr_manager import ASRAdapterFactory
     from ai.llm.llm_manager import LLMAdapterFactory, LLMManager
     from ai.memory.hooks import install_memory_hooks
-    from application.knowledge.hooks import install_knowledge_hooks
     from ai.t2i.t2i_manager import T2IAdapterFactory, T2IManager
     from ai.tools.tool_manager import ToolManager
     from ai.tts.tts_manager import TTSAdapterFactory, TTSManager
@@ -258,7 +249,6 @@ def _import_provider_runtime() -> SimpleNamespace:
         configure_registered_formats=configure_registered_formats,
         ensure_plugins_loaded=ensure_plugins_loaded,
         install_memory_hooks=install_memory_hooks,
-        install_knowledge_hooks=install_knowledge_hooks,
     )
 
 

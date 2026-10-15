@@ -663,3 +663,28 @@ def test_streaming_shutdown_supplies_all_lifecycle_callbacks(monkeypatch) -> Non
     assert captured["close_stream_sink"] == transport.close
     assert saved_background == [{"bg_path": "bg.png", "bgm_path": "bgm.mp3"}]
     assert transport.events[-1]["type"] == "session.closed"
+
+
+@pytest.mark.parametrize("available", [False, True])
+def test_session_registers_communication_callbacks_after_plugin_loading(monkeypatch, available):
+    transport = _Transport(streaming=False)
+    transport.knowledge_search = Mock() if available else None
+    transport.knowledge_status = Mock() if available else None
+    dispatcher = Mock()
+    register = Mock()
+    monkeypatch.setattr("application.knowledge.hooks.install_knowledge_hooks", register)
+    def build(*args, config, on_plugins_loaded, **kwargs):
+        register.assert_not_called()
+        assert "knowledge_client" not in kwargs
+        on_plugins_loaded(SimpleNamespace(hook_dispatcher=dispatcher))
+        return _startup(config)
+    monkeypatch.setattr(session_runtime, "create_chat_startup_context", build)
+    session_runtime.create_chat_session(_options(stream_endpoint="", headless=True), transport)
+    if available:
+        register.assert_called_once_with(
+            dispatcher, search_func=transport.knowledge_search, status_func=transport.knowledge_status,
+        )
+        transport.knowledge_search.assert_not_called()
+        transport.knowledge_status.assert_not_called()
+    else:
+        register.assert_not_called()

@@ -68,6 +68,7 @@ class _Config:
         self.llm_provider = llm_provider
         self.config = SimpleNamespace(
             api_config=SimpleNamespace(
+                knowledge_enabled=False,
                 max_context_tokens=8192,
                 compact_threshold=0.8,
                 compact_target_ratio=0.5,
@@ -136,7 +137,8 @@ def _runtime(calls, memory_hooks):
     )
 
 
-def test_create_context_assembles_providers_messages_and_hooks(monkeypatch) -> None:
+@pytest.mark.parametrize("knowledge_enabled", [False, True])
+def test_create_context_assembles_providers_messages_and_hooks(monkeypatch, knowledge_enabled) -> None:
     calls = []
     memory_hooks = []
     runtime = _runtime(calls, memory_hooks)
@@ -145,6 +147,7 @@ def test_create_context_assembles_providers_messages_and_hooks(monkeypatch) -> N
     phases = []
     bound = []
     config = _Config()
+    config.config.api_config.knowledge_enabled = knowledge_enabled
     messages = [{"role": "user", "content": "hello"}]
     _InitChatContext.created.clear()
 
@@ -185,12 +188,11 @@ def test_create_context_assembles_providers_messages_and_hooks(monkeypatch) -> N
     assert context.plugin_manager is plugin_manager
     assert bound == [plugin_manager]
     assert [kind for kind, _kwargs in calls] == ["t2i", "tts", "llm"]
-    runtime.install_knowledge_hooks.assert_called_once_with(
-        dispatcher, character_names=["Mika"],
-    )
+    runtime.install_knowledge_hooks.assert_not_called()
     assert memory_hooks[0][0] is dispatcher
     assert memory_hooks[0][1]["character_names"] == ["Mika"]
     dispatcher.dispatch_init_chat.assert_called_once_with(_InitChatContext.created[0])
+    assert _InitChatContext.created[0].kwargs["knowledge_enabled"] is knowledge_enabled
     assert _InitChatContext.created[0].scale == (0.68, 0.82)
     assert phases == [
         "plugins.import",

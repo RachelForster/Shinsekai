@@ -89,10 +89,11 @@ def _knowledge_search(query: str, character_names: list[str], limit: int = 5) ->
 
 
 def _knowledge_operation(operation: str, **kwargs: Any) -> dict[str, Any]:
-    from application.knowledge import manage_knowledge, delete_knowledge
+    from application.knowledge import manage_knowledge, delete_knowledge,search_knowledge
+
 
     operations = {
-        "search": manage_knowledge.search_knowledge,
+        "search": search_knowledge.search_knowledge,
         "list": manage_knowledge.list_entries,
         "remember": manage_knowledge.remember_knowledge,
         "forget": manage_knowledge.forget_knowledge,
