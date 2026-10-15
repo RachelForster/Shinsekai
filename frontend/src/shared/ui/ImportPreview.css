@@ -1,3 +1,8 @@
+.knowledge-import-picker {
+  display: grid;
+  gap: var(--space-4);
+}
+
 .memory-import-file-picker {
   position: relative;
   width: 100%;

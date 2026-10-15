@@ -99,7 +99,7 @@ export const enMessages: Record<MessageKey, string> = {
   "knowledge.importPreviewTitle": "Material import preview",
   "knowledge.importTaskTitle": "Import material",
   "knowledge.selectFiles": "Select TXT files",
-  "knowledge.knowledgeIdPlaceholder": "For example: World setting",
+  "knowledge.knowledgeIdPlaceholder": "Enter material name",
   "knowledge.saveBindings": "Save bindings",
   "knowledge.noAvailableCharacters":
     "Create a character to add a binding. Materials can still be managed independently.",

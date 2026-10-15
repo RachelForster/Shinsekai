@@ -46,6 +46,7 @@ export function KnowledgeImportPicker({
       </AsyncButton>
 
       <Dialog
+        bodyClassName="knowledge-import-picker"
         closeLabel={t("common.close")}
         dismissible={!importPending}
         footer={

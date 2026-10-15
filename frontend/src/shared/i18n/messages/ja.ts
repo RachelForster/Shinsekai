@@ -99,7 +99,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "knowledge.importPreviewTitle": "資料の読み込みプレビュー",
   "knowledge.importTaskTitle": "資料を読み込む",
   "knowledge.selectFiles": "TXT ファイルを選択",
-  "knowledge.knowledgeIdPlaceholder": "例: 世界観設定",
+  "knowledge.knowledgeIdPlaceholder": "資料名を入力",
   "knowledge.saveBindings": "関連付けを保存",
   "knowledge.noAvailableCharacters": "キャラクターを作成すると関連付けを追加できます。資料は独立して管理できます。",
   "knowledge.addEntry": "項目を追加",

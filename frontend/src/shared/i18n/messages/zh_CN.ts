@@ -96,7 +96,7 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "knowledge.importPreviewTitle": "资料导入预览",
   "knowledge.importTaskTitle": "导入资料",
   "knowledge.selectFiles": "选择 TXT 文件",
-  "knowledge.knowledgeIdPlaceholder": "例如：世界观设定",
+  "knowledge.knowledgeIdPlaceholder": "输入资料名称",
   "knowledge.saveBindings": "保存绑定",
   "knowledge.noAvailableCharacters": "创建角色后即可添加绑定，资料仍可独立管理。",
   "knowledge.addEntry": "添加条目",
