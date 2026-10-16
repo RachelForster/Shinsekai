@@ -11,8 +11,12 @@ import threading
 from typing import Any
 
 from sdk.chat_init import InitChatCancelled, InitChatContext
-from sdk.chat_process import ChatProcessContext, ChatProcessEvent
-from sdk.chat_session import ChatSessionContext, ChatSessionEvent
+from sdk.chat_lifecycle import (
+    ChatProcessContext,
+    ChatProcessEvent,
+    ChatSessionContext,
+    ChatSessionEvent,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -22,21 +26,23 @@ class PluginHookEvent(str, Enum):
     BEFORE_COMPACT = "before_compact"
     MESSAGE_ADDED = "message_added"
     BEFORE_CHAT = "before_chat"
-    CHAT_PROCESS_STARTING = ChatProcessEvent.STARTING.value
-    CHAT_PROCESS_STARTED = ChatProcessEvent.STARTED.value
-    CHAT_PROCESS_STOPPING = ChatProcessEvent.STOPPING.value
-    CHAT_PROCESS_STOPPED = ChatProcessEvent.STOPPED.value
-    CHAT_PROCESS_FAILED = ChatProcessEvent.FAILED.value
-    CHAT_SESSION_CONNECTED = ChatSessionEvent.CONNECTED.value
-    CHAT_SESSION_READY = ChatSessionEvent.READY.value
-    CHAT_SESSION_CLOSING = ChatSessionEvent.CLOSING.value
-    CHAT_SESSION_ENDED = ChatSessionEvent.ENDED.value
-    CHAT_SESSION_FAILED = ChatSessionEvent.FAILED.value
+
+
+HookEvent = PluginHookEvent | ChatProcessEvent | ChatSessionEvent
+_LIFECYCLE_CONTEXTS = {
+    ChatProcessEvent: ChatProcessContext,
+    ChatSessionEvent: ChatSessionContext,
+}
+_HOOK_EVENTS = {
+    event.value: event
+    for event_type in (PluginHookEvent, *_LIFECYCLE_CONTEXTS)
+    for event in event_type
+}
 
 
 @dataclass(frozen=True)
 class HookRegistration:
-    event: PluginHookEvent
+    event: HookEvent
     hook: Callable[[Any], None]
     label: str
     order: int
@@ -167,8 +173,8 @@ class PluginHookDispatcher:
     """Owns registered plugin lifecycle hooks and dispatches them safely."""
 
     def __init__(self) -> None:
-        self._hooks: dict[PluginHookEvent, list[HookRegistration]] = {
-            event: [] for event in PluginHookEvent
+        self._hooks: dict[HookEvent, list[HookRegistration]] = {
+            event: [] for event in _HOOK_EVENTS.values()
         }
         self._next_order = 0
 
@@ -179,7 +185,7 @@ class PluginHookDispatcher:
 
     def register(
         self,
-        event: PluginHookEvent | str,
+        event: HookEvent | str,
         hook: Callable[[Any], None],
         *,
         label: str = "",
@@ -188,6 +194,8 @@ class PluginHookDispatcher:
         critical: bool = False,
     ) -> None:
         event_key = self._normalize_event(event)
+        if not callable(hook):
+            raise TypeError("Plugin hook must be callable")
         registration = HookRegistration(
             event=event_key,
             hook=hook,
@@ -249,7 +257,7 @@ class PluginHookDispatcher:
             critical=critical,
         )
 
-    def has_hooks(self, event: PluginHookEvent | str) -> bool:
+    def has_hooks(self, event: HookEvent | str) -> bool:
         return bool(self._hooks[self._normalize_event(event)])
 
     def register_chat_process(
@@ -260,38 +268,16 @@ class PluginHookDispatcher:
         label: str = "",
     ) -> None:
         """Register a non-vetoing process observer in registration order."""
-        event_key = self._normalize_event(
-            event.value if isinstance(event, ChatProcessEvent) else event
-        )
-        if event_key.value not in {item.value for item in ChatProcessEvent}:
-            raise ValueError("A chat-process lifecycle event is required")
-        if not callable(hook):
-            raise TypeError("Chat process hook must be callable")
-        self.register(event_key, hook, label=label)
-
-    def dispatch_chat_process(self, context: ChatProcessContext) -> None:
-        if not isinstance(context, ChatProcessContext):
-            raise TypeError("Chat process dispatch requires ChatProcessContext")
-        self.dispatch(context.event.value, context)
+        self.register(ChatProcessEvent(self._normalize_event(event)), hook, label=label)
 
     def register_chat_session(
         self,
         event: ChatSessionEvent | str,
         hook: Callable[[ChatSessionContext], None],
         *,
-        label: str = ""
+        label: str = "",
     ) -> None:
-        event_key = self._normalize_event(event.value if isinstance(event, ChatSessionEvent) else event)
-        if event_key.value not in {item.value for item in ChatSessionEvent}:
-            raise ValueError("A chat-session lifecycle event is required")
-        if not callable(hook):
-            raise TypeError("Chat session hook must be callable")
-        self.register(event_key, hook, label=label)
-
-    def dispatch_chat_session(self, context: ChatSessionContext) -> None:
-        if not isinstance(context, ChatSessionContext):
-            raise TypeError("Chat session dispatch requires ChatSessionContext")
-        self.dispatch(context.event.value, context)
+        self.register(ChatSessionEvent(self._normalize_event(event)), hook, label=label)
 
     @property
     def legacy_compact_hooks(self) -> list[Callable[[list[dict[str, Any]]], None]]:
@@ -303,7 +289,7 @@ class PluginHookDispatcher:
 
     def dispatch(
         self,
-        event: PluginHookEvent | str,
+        event: HookEvent | str,
         context: Any,
     ) -> None:
         event_key = self._normalize_event(event)
@@ -312,18 +298,12 @@ class PluginHookDispatcher:
                 raise TypeError("init_chat dispatch requires InitChatContext")
             self.dispatch_init_chat(context)
             return
-        if event_key.value in {item.value for item in ChatProcessEvent}:
-            if not isinstance(context, ChatProcessContext):
-                raise TypeError("Chat process dispatch requires ChatProcessContext")
-            if context.event.value != event_key.value:
-                raise ValueError(
-                    "Chat process context does not match the dispatched event"
-                )
-        if event_key.value in {item.value for item in ChatSessionEvent}:
-            if not isinstance(context, ChatSessionContext):
-                raise TypeError("Chat session dispatch requires ChatSessionContext")
-            if context.event.value != event_key.value:
-                raise ValueError("Chat session context does not match the dispatched event")
+        context_type = _LIFECYCLE_CONTEXTS.get(type(event_key))
+        if context_type is not None:
+            if not isinstance(context, context_type):
+                raise TypeError(f"{event_key.value} dispatch requires {context_type.__name__}")
+            if context.event != event_key:
+                raise ValueError("Lifecycle context does not match the dispatched event")
         for registration in list(self._hooks[event_key]):
             try:
                 registration.hook(context)
@@ -403,10 +383,11 @@ class PluginHookDispatcher:
             )
         return tuple(failures)
 
-    def _normalize_event(self, event: PluginHookEvent | str) -> PluginHookEvent:
-        if isinstance(event, PluginHookEvent):
-            return event
-        value = str(event).strip()
+    def _normalize_event(self, event: HookEvent | str) -> HookEvent:
+        value = str(event.value if isinstance(event, Enum) else event).strip()
         if value.startswith("on_"):
             value = value[3:]
-        return PluginHookEvent(value)
+        try:
+            return _HOOK_EVENTS[value]
+        except KeyError:
+            raise ValueError(f"Unknown plugin hook event: {value!r}") from None

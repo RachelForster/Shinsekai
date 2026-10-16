@@ -47,8 +47,7 @@ from application.chat.host.mobile_access import (
     stop_mobile_access,
 )
 from application.chat.host.launch_history import persist_confirmed_history_path
-from sdk.chat_process import ChatProcessContext
-from sdk.chat_session import ChatSessionContext
+from sdk.chat_lifecycle import ChatProcessContext, ChatSessionContext
 from application.chat.host.commands import (
     ChatCommandRouter,
     dismiss_plugin_page,
@@ -190,15 +189,12 @@ def _launch_chat(
     )
 
 
-def _publish_process_lifecycle(context):
+def _publish_lifecycle(context: ChatProcessContext | ChatSessionContext) -> None:
     from plugin_system.host.service import get_plugin_hook_dispatcher
 
     dispatcher = get_plugin_hook_dispatcher()
     if dispatcher is not None:
-        if isinstance(context, ChatProcessContext):
-            dispatcher.dispatch_chat_process(context)
-        elif isinstance(context, ChatSessionContext):
-            dispatcher.dispatch_chat_session(context)
+        dispatcher.dispatch(context.event, context)
 
 
 def _session_lifecycle(state, **effects) -> ChatSessionLifecycle:
@@ -222,7 +218,7 @@ def _session_lifecycle(state, **effects) -> ChatSessionLifecycle:
 
 _application_events = LifecycleEvents()
 _application_events.subscribe(LifecycleDiagnostics())
-_application_events.subscribe(_publish_process_lifecycle)
+_application_events.subscribe(_publish_lifecycle)
 
 
 _process_system = ProcessSystem(

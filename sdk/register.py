@@ -24,8 +24,12 @@ from sdk.adapters import (
     VisionFallbackContribution,
 )
 from sdk.chat_init import InitChatContext
-from sdk.chat_process import ChatProcessContext, ChatProcessEvent
-from sdk.chat_session import ChatSessionContext, ChatSessionEvent
+from sdk.chat_lifecycle import (
+    ChatProcessContext,
+    ChatProcessEvent,
+    ChatSessionContext,
+    ChatSessionEvent,
+)
 from sdk.frontend_user_input import (
     FrontendUserInputController,
     _controller_for_plugin as _frontend_user_input_controller_for_plugin,

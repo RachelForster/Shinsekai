@@ -8,7 +8,7 @@ from pathlib import Path
 import threading
 from typing import Any, Protocol, TextIO
 
-from sdk.chat_process import ChatProcessContext
+from sdk.chat_lifecycle import ChatProcessContext
 
 
 class ChildProcess(Protocol):

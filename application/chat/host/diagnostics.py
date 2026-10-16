@@ -7,8 +7,11 @@ import logging
 import threading
 import time
 
-from sdk.chat_process import ChatProcessContext, ChatProcessEvent
-from sdk.chat_session import ChatSessionContext
+from sdk.chat_lifecycle import (
+    ChatProcessContext,
+    ChatProcessEvent,
+    ChatSessionContext,
+)
 
 logger = logging.getLogger(__name__)
 

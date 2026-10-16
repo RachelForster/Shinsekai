@@ -1,4 +1,4 @@
-"""Read-only notifications for the bridge-owned chat child process."""
+"""Immutable observations of child-process transitions and session milestones."""
 
 from __future__ import annotations
 
@@ -12,6 +12,14 @@ class ChatProcessEvent(str, Enum):
     STOPPING = "chat_process_stopping"
     STOPPED = "chat_process_stopped"
     FAILED = "chat_process_failed"
+
+
+class ChatSessionEvent(str, Enum):
+    CONNECTED = "chat_session_connected"
+    READY = "chat_session_ready"
+    CLOSING = "chat_session_closing"
+    ENDED = "chat_session_ended"
+    FAILED = "chat_session_failed"
 
 
 @dataclass(frozen=True)
@@ -33,3 +41,17 @@ class ChatProcessContext:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "event", ChatProcessEvent(self.event))
+
+
+@dataclass(frozen=True)
+class ChatSessionContext:
+    """Session milestones; READY is distinct from a child process being STARTED."""
+
+    event: ChatSessionEvent
+    session_id: str = ""
+    launch_id: str = ""
+    reason: str = ""
+    error: BaseException | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "event", ChatSessionEvent(self.event))

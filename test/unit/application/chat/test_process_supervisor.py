@@ -17,7 +17,7 @@ from application.chat.host.ports import (
     LaunchRejected,
     MemoryProcessResources,
 )
-from sdk.chat_process import ChatProcessEvent as Phase
+from sdk.chat_lifecycle import ChatProcessEvent as Phase
 from sdk.hooks import PluginHookDispatcher
 from test.unit.application.chat.runtime_process_fakes import (
     FakeChild,

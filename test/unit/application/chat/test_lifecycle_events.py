@@ -6,7 +6,7 @@ from threading import Lock
 import pytest
 
 from application.chat.host.events import LifecycleDispatchError, LifecycleEvents
-from sdk.chat_process import ChatProcessContext, ChatProcessEvent
+from sdk.chat_lifecycle import ChatProcessContext, ChatProcessEvent
 
 
 def test_application_handlers_run_before_observers_and_outside_dispatch_lock():

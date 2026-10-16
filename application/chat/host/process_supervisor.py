@@ -24,7 +24,7 @@ from application.chat.host.ports import (
     ProcessResources,
     TerminationSystem,
 )
-from sdk.chat_process import ChatProcessContext, ChatProcessEvent
+from sdk.chat_lifecycle import ChatProcessContext, ChatProcessEvent
 
 logger = logging.getLogger(__name__)
 

@@ -8,8 +8,13 @@ import pytest
 from application.chat import composition as chat
 from application.chat.stop_chat import stop_chat
 from frontend_bridge_core import chat_session
-from sdk.chat_process import ChatProcessContext, ChatProcessEvent
-from sdk.chat_session import ChatSessionContext, ChatSessionEvent
+from sdk.chat_lifecycle import (
+    ChatProcessContext,
+    ChatProcessEvent,
+    ChatSessionContext,
+    ChatSessionEvent,
+)
+from sdk.hooks import PluginHookDispatcher
 from test.unit.application.chat.runtime_process_fakes import (
     FakeChild,
     RecordingStream,
@@ -38,6 +43,26 @@ class OwnedStream(RecordingStream):
     def delete_session(self, session_id):
         self.deleted.append(session_id)
         self.snapshot = None
+
+
+@pytest.mark.parametrize(
+    "context",
+    [
+        ChatProcessContext(ChatProcessEvent.STARTED, session_id="session", launch_id="launch"),
+        ChatSessionContext(ChatSessionEvent.READY, session_id="session", launch_id="launch"),
+    ],
+    ids=["process-started", "session-ready"],
+)
+def test_application_events_reach_plugin_observers_with_original_identity(monkeypatch, context):
+    dispatcher = PluginHookDispatcher()
+    called = []
+    dispatcher.register(context.event, called.append)
+    monkeypatch.setattr(
+        "plugin_system.host.service.get_plugin_hook_dispatcher", lambda: dispatcher
+    )
+    chat._application_events.emit(context)
+    assert called == [context]
+    assert called[0] is context
 
 
 @pytest.mark.parametrize("mode", ["launch", "resume"])

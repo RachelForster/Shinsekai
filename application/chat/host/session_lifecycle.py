@@ -11,8 +11,12 @@ import uuid
 
 from application.chat.host.events import LifecycleDispatchError, LifecycleEvents
 from application.chat.host.lifecycle import chat_lifecycle_lock
-from sdk.chat_process import ChatProcessContext, ChatProcessEvent
-from sdk.chat_session import ChatSessionContext, ChatSessionEvent
+from sdk.chat_lifecycle import (
+    ChatProcessContext,
+    ChatProcessEvent,
+    ChatSessionContext,
+    ChatSessionEvent,
+)
 
 logger = logging.getLogger(__name__)
 

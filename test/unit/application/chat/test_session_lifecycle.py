@@ -8,8 +8,12 @@ import pytest
 
 from application.chat.host.events import LifecycleDispatchError, LifecycleEvents
 from application.chat.host.session_lifecycle import ChatSessionLifecycle, SessionEffects
-from sdk.chat_process import ChatProcessContext, ChatProcessEvent
-from sdk.chat_session import ChatSessionContext, ChatSessionEvent
+from sdk.chat_lifecycle import (
+    ChatProcessContext,
+    ChatProcessEvent,
+    ChatSessionContext,
+    ChatSessionEvent,
+)
 
 
 @pytest.fixture

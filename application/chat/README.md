@@ -24,6 +24,11 @@ Optional observers, including the SDK plugin dispatcher, run afterward with
 exception isolation. Observers see a required-handler error in their immutable
 context when the originating context did not already contain an error.
 
+Process and session contracts live together in `sdk/chat_lifecycle.py`. Each
+event is defined once in its own enum; the SDK dispatcher accepts either enum,
+its string value or the existing `on_` prefix through the same `register`,
+`has_hooks` and `dispatch(event, context)` methods.
+
 `ChatProcessContext` now carries a unique `launch_id` alongside `session_id`.
 Launch and resume pass the newly created stream identity explicitly, before the
 bridge binds it as its active session. The supervisor monitors owned children
