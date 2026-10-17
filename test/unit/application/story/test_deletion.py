@@ -1,6 +1,9 @@
+import asyncio
 import json
 import shutil
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
@@ -9,6 +12,7 @@ from application.story import deletion
 from application.story.editor import read_story_document, save_story_document
 from application.story.library import _read_project, list_story_library
 from application.story.persistence import JsonStorySessionRepository
+from application.story.prompt_turns import PromptTurnJournal
 from core.chat_history.storage import STORY_SESSION_FILENAME
 from frontend_bridge_core.routes.router import ApiRequest
 from frontend_bridge_core.routes.story_routes import STORY_ROUTES
@@ -169,6 +173,122 @@ def test_explicit_other_source_wins_over_identical_story_identity(story):
     assert (saved / "active.json").exists()
 
 
+@pytest.mark.parametrize("has_history", [False, True])
+def test_ambiguous_identity_preserves_unregistered_source_less_save(story, has_history):
+    state, path = story
+    duplicate = path.with_name("edited-copy.json")
+    duplicate.write_bytes(path.read_bytes())
+    _, _, program = _read_project(state, path)
+    legacy = state.history_dir / "legacy-copy"
+    repository = JsonStorySessionRepository(legacy)
+    repository.save({
+        "storyId": program.story_id, "storyVersion": program.story_version,
+        "programSourceHash": program.source_hash,
+    })
+    if has_history:
+        (legacy / "active.json").write_text('[{"role":"user","content":"keep"}]', encoding="utf-8")
+        PromptTurnJournal(str(legacy)).save({"message": {"content": "keep pending reply"}})
+    originals = {file: file.read_bytes() for file in legacy.iterdir()}
+    explicit = chat(state, "explicit-original", path)
+
+    result = deletion.delete_story_version(state, str(path))
+
+    assert result["deletedConversations"] == 1
+    assert not explicit.exists()
+    assert duplicate.exists()
+    assert {file: file.read_bytes() for file in legacy.iterdir()} == originals
+
+
+def test_story_deletion_removes_pending_prompt_turn(story):
+    state, path = story
+    saved = chat(state, "interrupted", path)
+    journal = PromptTurnJournal(str(saved))
+    journal.save({"message": {"content": "private reply"}, "history": ["private history"]})
+
+    deletion.delete_story_version(state, str(path))
+
+    assert not journal.path.exists()
+    assert not saved.exists()
+
+
+@pytest.mark.parametrize("failure", ["later-history", "source"])
+def test_failed_bulk_deletion_restores_every_file_and_keeps_session(story, monkeypatch, failure):
+    state, path = story
+    first = chat(state, "first", path)
+    second = chat(state, "second", path)
+    for saved in (first, second):
+        PromptTurnJournal(str(saved)).save({"message": {"content": saved.name}})
+        Path(str(saved) + ".json").write_text("legacy", encoding="utf-8")
+        (saved / "active.json.tmp").write_text("pending", encoding="utf-8")
+        (saved / f"{STORY_SESSION_FILENAME}.lock").touch()
+    closer = Mock()
+    state.story_session = SimpleNamespace(close=closer)
+    state.chat_session = {"historyPath": str(first)}
+    originals = {
+        file: file.read_bytes()
+        for file in state.project_root_dir.rglob("*") if file.is_file()
+    }
+    if failure == "later-history":
+        remove = conversations._delete_conversation_files
+        calls = []
+
+        def fail_later(state, history):
+            calls.append(history)
+            if len(calls) == 2:
+                raise PermissionError("later history is locked")
+            remove(state, history)
+
+        monkeypatch.setattr(conversations, "_delete_conversation_files", fail_later)
+    else:
+        unlink = Path.unlink
+
+        def fail_source(target, *args, **kwargs):
+            if target == path:
+                raise PermissionError("source is locked")
+            return unlink(target, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "unlink", fail_source)
+
+    with pytest.raises(PermissionError, match="locked"):
+        deletion.delete_story_version(state, str(path))
+
+    assert {file: file.read_bytes() for file in originals} == originals
+    assert len(conversations.list_conversations(state)) == 2
+    closer.assert_not_called()
+
+
+def test_idle_disconnected_stream_cannot_rehydrate_deleted_story(story):
+    from application.chat.host.projection import SnapshotProjection
+    from application.story.coordinator import story_snapshot_patch
+    from frontend_bridge_core.chat_stream import ChatStreamService
+
+    state, path = story
+    saved = chat(state, "disconnected", path)
+    state.chat_stream = stream = ChatStreamService(host="127.0.0.1", bridge_port=0)
+    session = stream.create_session({"story": {"title": "deleted story"}})
+    session_id = session["sessionId"]
+    producer = SimpleNamespace(role="producer", session_id=session_id)
+    stream._sessions[session_id].producer = producer
+    asyncio.run(stream._detach(producer))
+    assert stream.get_snapshot(session_id)["story"]["title"] == "deleted story"
+    unrelated = stream.create_session({"story": {"title": "other story"}})["sessionId"]
+    state.chat_session = {"historyPath": str(saved), "storyPath": str(path), **session}
+    state.story_session = SimpleNamespace(close=Mock())
+
+    deletion.delete_story_version(state, str(path))
+
+    assert stream.get_snapshot(session_id) is None
+    assert stream.get_snapshot(session_id, renderer_id="reconnected") is None
+    assert state.chat_session["sessionId"] == ""
+    assert state.story_session is None
+    projection = SnapshotProjection(
+        history=lambda _: [], running=lambda: False,
+        story_patch=story_snapshot_patch, mobile_info=lambda _: None,
+    )
+    assert not projection.build(state).get("story")
+    assert stream.get_snapshot(unrelated)["story"]["title"] == "other story"
+
+
 def test_registered_external_history_preserves_unrelated_files(story):
     state, path = story
     external = state.project_root_dir / "external-history"
@@ -183,9 +303,6 @@ def test_registered_external_history_preserves_unrelated_files(story):
 
 
 def test_closed_current_story_releases_runtime_state(story):
-    from types import SimpleNamespace
-    from unittest.mock import Mock
-
     state, path = story
     saved = chat(state, "closed", path)
     closer = Mock()

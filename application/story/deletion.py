@@ -4,10 +4,10 @@ from pathlib import Path
 from typing import Any
 
 from application.chat import conversation_library as conversations
+from application.chat.composition import _chat_runtime_status, _session_lifecycle
 from application.chat.history.paths import resolve_history_path_for_project
-from application.chat.composition import _chat_runtime_status
 from application.chat.start_chat import _chat_init_lock
-from application.story.coordinator import clear_story_session
+from application.story.deletion_transaction import recoverable_deletion
 from application.story.library import _matches, _read_project, list_story_library
 from core.chat_history.storage import STORY_SESSION_FILENAME, chat_history_session_dir
 from sdk.path_utils import safe_existing_file_path
@@ -18,7 +18,9 @@ def _story_file(root: Path, value: str) -> Path:
     return path / "manifest.yaml" if path.is_dir() else path
 
 
-def _associated_histories(state: Any, story: Path, program: Any) -> list[Path]:
+def _associated_histories(
+    state: Any, story: Path, program: Any, *, unique_identity: bool
+) -> list[Path]:
     root = Path(state.project_root_dir).resolve()
     records = conversations._records(state)
     # Include registered conversations whose active history is missing, and old
@@ -52,7 +54,7 @@ def _associated_histories(state: Any, story: Path, program: Any) -> list[Path]:
             matches = _story_file(root, source) == story
         else:
             saved = conversations._read(directory / STORY_SESSION_FILENAME)
-            matches = isinstance(saved, dict) and _matches(saved, program)
+            matches = unique_identity and isinstance(saved, dict) and _matches(saved, program)
         if matches:
             # Orphan sidecars are already bounded by the managed history root.
             if (
@@ -79,10 +81,18 @@ def delete_story_version(state: Any, story_path: str) -> dict:
     with _chat_init_lock(state), conversations._metadata_lock:
         if getattr(state, "chat_init_task_id", ""):
             raise RuntimeError("请等待聊天初始化完成后再删除剧本。")
-        if not any(Path(item["storyPath"]) == story for item in list_story_library(state)):
+        sources = {_story_file(root, item["storyPath"]) for item in list_story_library(state)}
+        if story not in sources:
             raise ValueError("该剧本版本不在已有剧本中，请刷新后重试。")
         _, _, program = _read_project(state, story)
-        histories = _associated_histories(state, story, program)
+        identity = {
+            "storyId": program.story_id, "storyVersion": program.story_version,
+            "programSourceHash": program.source_hash,
+        }
+        unique_identity = not any(
+            _matches(identity, _read_project(state, source)[2]) for source in sources - {story}
+        )
+        histories = _associated_histories(state, story, program, unique_identity=unique_identity)
         active = getattr(state, "chat_session", {})
         active_history = active.get("historyPath")
         active_selected = bool(active_history) and conversations._id(root / active_history) in {
@@ -94,13 +104,17 @@ def delete_story_version(state: Any, story_path: str) -> dict:
         )
         if active_selected and _chat_runtime_status(state)["state"] != "idle":
             raise RuntimeError("请先关闭该剧本版本的聊天，再删除剧本及关联对话。")
-        if active_selected:
-            clear_story_session(state)
-        # Preflight every association before changing any files. Keep the source
-        # until history cleanup succeeds so a failed deletion can be retried.
+        files = [story]
         for path in histories:
-            conversations._delete_conversation_files(state, path)
-        story.unlink()
+            files.extend(conversations._conversation_storage_files(state, path))
+        with recoverable_deletion(files, conversations._directory(state).parent / "story-deletions"):
+            for path in histories:
+                conversations._delete_conversation_files(state, path)
+            story.unlink()
+            if active_selected:
+                lifecycle = _session_lifecycle(state)
+                lifecycle.closing("剧本版本已删除。")
+                lifecycle.ended("剧本版本已删除。")
         # Referenced cast/assets and sibling versions may be shared. Deleting a
         # version never recursively removes its containing directory.
         return {"ok": True, "deletedConversations": len(histories)}
