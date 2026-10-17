@@ -39,6 +39,68 @@ function createHarness() {
 }
 
 describe("SoundPlayer", () => {
+  it.each(["", "http://127.0.0.1:8787"])(
+    "loads newly generated speech after the 100-file cache wraps (%s)",
+    async (base) => {
+      const files = new Map<string, string>();
+      const browserCache = new Map<string, string>();
+      const heard: string[] = [];
+      const audio: FakeAudio[] = [];
+      const player = new SoundPlayer((url) => {
+        const request = new URL(url, window.location.href);
+        expect(request.searchParams.get("shinsekai_bridge_token")).toBe("test+token");
+        expect(request.hash).toBe("#voice");
+        // Model the browser reusing an already fetched URL after a disk overwrite.
+        if (!browserCache.has(url)) {
+          browserCache.set(url, files.get(request.searchParams.get("path")!)!);
+        }
+        heard.push(browserCache.get(url)!);
+        const item = new FakeAudio(url);
+        audio.push(item);
+        return item as unknown as HTMLAudioElement;
+      });
+
+      for (let index = 0; index <= 100; index += 1) {
+        const path = `cache/audio/${index % 100}.wav`;
+        files.set(path, `Speech ${index}`);
+        player.playVoice(
+          `playback-${index}`,
+          `${base}/api/media?path=${encodeURIComponent(path)}&shinsekai_bridge_token=test%2Btoken#voice`,
+        );
+        await Promise.resolve();
+        audio[index].finish();
+      }
+
+      expect(heard).toEqual(Array.from({ length: 101 }, (_, index) => `Speech ${index}`));
+      player.dispose();
+    },
+  );
+
+  it("uses separate requests for queued plays of the same bridge media path", async () => {
+    const { audio, player } = createHarness();
+    const url = "http://127.0.0.1:8787/api/media?path=cache%2Faudio%2F0.wav";
+    player.playVoice("first", url);
+    player.playVoice("second", url);
+    await Promise.resolve();
+    audio[0].finish();
+    await Promise.resolve();
+    expect(audio).toHaveLength(2);
+    expect(audio[0].src).not.toBe(audio[1].src);
+    player.dispose();
+  });
+
+  it.each([
+    "https://cdn.example.com/speech.wav?signature=keep-this",
+    "blob:http://localhost/audio-id",
+    "data:audio/wav;base64,UklGRg==",
+    "/assets/preset.wav",
+  ])("preserves non-bridge voice URLs (%s)", (url) => {
+    const { audio, player } = createHarness();
+    player.playVoice("voice", url);
+    expect(audio[0].src).toBe(url);
+    player.dispose();
+  });
+
   it("emits avatar boundaries for actual queued speakers and does not treat interruption as a sentence ending", async () => {
     const audio: FakeAudio[] = [];
     const boundary = vi.fn();

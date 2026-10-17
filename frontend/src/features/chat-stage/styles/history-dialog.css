@@ -2,6 +2,10 @@
   z-index: 80;
 }
 
+.chat-stage:has(.chat-history-backdrop) .chat-stage__notification {
+  z-index: 81;
+}
+
 .chat-history-dialog {
   --history-accent: var(--logs-event-color, var(--chat-name-runtime-color, var(--stage-accent, #cfc7ff)));
   --history-assistant-accent: var(--chat-name-runtime-color, var(--history-accent));
@@ -57,6 +61,19 @@
   font-size: 13px;
   font-weight: 750;
   white-space: nowrap;
+}
+
+.chat-history__voice-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--history-text);
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.chat-history__voice-toggle label {
+  cursor: pointer;
 }
 
 .chat-history-dialog .button,
@@ -313,7 +330,8 @@
 }
 
 .chat-history__fork,
-.chat-history__revert {
+.chat-history__revert,
+.chat-history__voice-button {
   min-width: 0;
   min-height: 32px;
   border-radius: 8px;
@@ -322,7 +340,8 @@
 }
 
 .chat-history__fork:hover,
-.chat-history__revert:hover {
+.chat-history__revert:hover,
+.chat-history__voice-button:hover {
   color: var(--history-text);
   background: color-mix(in oklch, var(--history-entry-accent) 24%, rgba(255, 255, 255, 0.08));
 }

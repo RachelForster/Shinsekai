@@ -20,6 +20,7 @@ from ai.llm.ports import ChatHost, HistoryCompactor, MessageJournal, ToolCatalog
 from ai.llm.request_runner import RequestRunner
 from ai.llm.runtime_defaults import tool_executor, tool_manager
 from ai.llm.tool_session import FIRST_USER_TURN_TOOL_CALL_LIMIT, ToolSession
+from core.chat_history.identity import CHAT_TURN_ID
 from sdk.adapters.llm import LLMAdapter
 from sdk.hooks import PluginHookDispatcher
 from sdk.llm_runtime import get_llm_host_runtime
@@ -235,6 +236,7 @@ class LLMManager:
             include_local_time = bool(kwargs.pop("include_local_time", True))
             display_text = str(kwargs.pop("user_display_text", "") or "").strip()
             input_text = kwargs.pop("user_input_text", None)
+            history_turn_id = kwargs.pop("history_turn_id", "")
             attachments = kwargs.pop("user_attachments", None)
             groups = kwargs.pop("tool_groups", ())
             if isinstance(groups, str):
@@ -245,6 +247,8 @@ class LLMManager:
                 if include_local_time:
                     user_input = _prefix_user_text_with_local_time(user_input)
                 metadata = {}
+                if history_turn_id:
+                    metadata[CHAT_TURN_ID] = str(history_turn_id)
                 if display_text:
                     metadata["display_content"] = display_text
                 if input_text is not None:

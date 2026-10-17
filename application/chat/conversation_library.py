@@ -19,6 +19,7 @@ from core.chat_history.storage import (
     chat_history_active_path,
     chat_history_session_dir,
     chat_history_storage_files,
+    prune_chat_history_storage,
 )
 from core.chat_history.text import chat_history_to_turns
 from core.messaging.dialog_tokens import (
@@ -343,7 +344,4 @@ def _delete_conversation_files(state: Any, path: Path) -> None:
     """Remove validated storage while the caller holds initialization/metadata locks."""
     for file in _conversation_storage_files(state, path):
         file.unlink(missing_ok=True)
-    try:
-        chat_history_session_dir(path).rmdir()
-    except OSError:
-        pass
+    prune_chat_history_storage(path)

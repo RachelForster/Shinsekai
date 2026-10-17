@@ -25,6 +25,7 @@ const mocks = {
   closeChat: vi.fn(),
   getAppConfig: vi.fn(),
   getChatHistory: vi.fn(),
+  getChatHistoryVoice: vi.fn(),
   getChatSnapshot: vi.fn(),
   getChatTheme: vi.fn(),
   sendChatCommand: vi.fn(),
@@ -48,6 +49,7 @@ const pluginSlotMocks = vi.hoisted(() => ({
 vi.mock("../../../entities/chat/repository", () => ({
   closeChat: () => mocks.closeChat(),
   getChatHistory: () => mocks.getChatHistory(),
+  getChatHistoryVoice: (voiceId: string) => mocks.getChatHistoryVoice(voiceId),
   getChatSnapshot: () => mocks.getChatSnapshot(),
   getChatTheme: () => mocks.getChatTheme(),
   sendChatCommand: (command: ChatCommand) => mocks.sendChatCommand(command),
@@ -243,6 +245,7 @@ describe("ChatStagePage", () => {
     mocks.getChatTheme.mockResolvedValue({});
     mocks.getChatSnapshot.mockResolvedValue(snapshot());
     mocks.getChatHistory.mockResolvedValue(snapshot().historyEntries as ChatHistoryEntry[]);
+    mocks.getChatHistoryVoice.mockResolvedValue([]);
     desktopApiMocks.isTauriDesktop.mockReturnValue(false);
     desktopApiMocks.getDesktopWindowCursorPosition.mockResolvedValue({ x: 0, y: 0 });
     desktopApiMocks.minimizeDesktopWindow.mockResolvedValue(undefined);
@@ -2434,6 +2437,37 @@ describe("ChatStagePage", () => {
       expect(mocks.sendChatCommand).toHaveBeenCalledWith({
         payload: 0,
         type: "revert-history",
+      }),
+    );
+  });
+
+  it("shows voice controls and sends archive and save commands", async () => {
+    const voiceId = "a".repeat(32);
+    mocks.getChatHistory.mockResolvedValueOnce([
+      { id: "history-voice", role: "assistant", text: "Mio: Hello", voiceId },
+    ] satisfies ChatHistoryEntry[]);
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open history" }));
+    const dialog = await screen.findByRole("dialog", { name: "Conversation history" });
+    const header = dialog.querySelector(".chat-stage-modal__header") as HTMLElement;
+    const archiveToggle = within(header).getByRole("checkbox", { name: "Archive voices" });
+    expect(archiveToggle).not.toBeChecked();
+    expect(header.querySelector(".chat-history__voice-toggle")?.nextElementSibling).toHaveTextContent(/copy/i);
+    expect(within(dialog).getByRole("button", { name: "Replay" })).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save voice" }));
+    await waitFor(() =>
+      expect(mocks.sendChatCommand).toHaveBeenCalledWith({
+        payload: voiceId,
+        type: "save-history-voice",
+      }),
+    );
+
+    fireEvent.click(archiveToggle);
+    await waitFor(() =>
+      expect(mocks.sendChatCommand).toHaveBeenCalledWith({
+        payload: true,
+        type: "set-voice-archive",
       }),
     );
   });

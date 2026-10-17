@@ -307,6 +307,7 @@ class _StreamingSessionWiring:
             history_argument=self.args.history,
             history_presenter=StreamingHistoryPresenter(self.ui_updates),
             tts_manager=self.startup.tts_manager,
+            voice_archive=getattr(self.ui_updates, "voice_archive", None),
         )
 
     def _sync_stream_history(self) -> None:

@@ -6,6 +6,7 @@ import copy
 from collections.abc import Mapping
 from typing import Any
 
+from core.chat_history.identity import CHAT_TURN_ID
 from core.media.chat_attachments import ResolvedChatAttachment, resolve_chat_attachments
 
 
@@ -93,6 +94,7 @@ def normalize_openai_messages(
         message.pop("input_text", None)
         message.pop("attachments", None)
         message.pop("_storyTurnId", None)
+        message.pop(CHAT_TURN_ID, None)
         content = message.get("content")
         if not isinstance(content, list):
             continue

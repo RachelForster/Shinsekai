@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from pathlib import Path
+from unittest.mock import Mock
+
 import pytest
 
 from frontend_bridge_core.routes.file_transport import (
@@ -47,3 +50,20 @@ def test_unknown_api_path_is_not_served_by_spa_fallback() -> None:
         )
         is False
     )
+
+
+def test_history_voice_file_is_served_by_file_transport(monkeypatch) -> None:
+    handler = Mock()
+    monkeypatch.setattr(
+        "frontend_bridge_core.routes.file_transport._chat_voice_source",
+        lambda _state, _voice_id, _index: Path("voice.wav"),
+    )
+
+    assert dispatch_file_request(
+        handler,
+        "/api/chat/history-voice-file",
+        "voiceId=abc&segment=0",
+        send_body=True,
+    )
+    handler._require_authorized_media_read.assert_called_once_with()
+    handler._send_local_file.assert_called_once_with(Path("voice.wav"), send_body=True)

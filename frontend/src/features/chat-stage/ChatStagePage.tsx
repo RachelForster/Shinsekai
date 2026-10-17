@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import { isTauriDesktop, setDesktopWindowAlwaysOnTop } from "../../shared/desktop/desktopApi";
 import { closeChatSurface } from "../../shared/desktop/chatWindow";
-import { sendChatCommand, uploadChatAttachments } from "../../entities/chat/repository";
+import { getChatHistoryVoice, sendChatCommand, uploadChatAttachments } from "../../entities/chat/repository";
 import { useI18n } from "../../shared/i18n";
 import type { PluginPageTarget } from "../../shared/plugin/PluginSlot";
 import type { ChatAttachmentInput, ChatOption, ChatSendPayload, ChatTurnOptions } from "../../shared/platform/types";
@@ -136,6 +136,8 @@ export function ChatStagePage() {
   const [confirmRevertUserIndex, setConfirmRevertUserIndex] = useState<number | null>(null);
   const [branchDialogOpen, setBranchDialogOpen] = useState(false);
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const historyReplayRef = useRef<{ stop: () => void } | null>(null);
+  const historyReplayGenerationRef = useRef(0);
   const [conversationEditorOpen, setConversationEditorOpen] = useState(false);
   const [dialogControlsLocked, setDialogControlsLocked] = useState(false);
   const [runtimeConfig, setRuntimeConfig] = useState(readChatStageRuntimeConfig);
@@ -151,6 +153,54 @@ export function ChatStagePage() {
   const locallyDismissedPresentationRef = useRef<string | null>(null);
   const { showToast } = useToast();
   const { t } = useI18n();
+  const stopHistoryReplay = useCallback(() => {
+    historyReplayGenerationRef.current += 1;
+    historyReplayRef.current?.stop();
+    historyReplayRef.current = null;
+  }, []);
+
+  useEffect(() => () => stopHistoryReplay(), [stopHistoryReplay]);
+
+  const replayHistoryVoice = useCallback(
+    async (voiceId: string) => {
+      stopHistoryReplay();
+      const generation = historyReplayGenerationRef.current;
+      try {
+        const urls = await getChatHistoryVoice(voiceId);
+        if (!urls.length) throw new Error("voice has no segments");
+        for (const url of urls) {
+          if (generation !== historyReplayGenerationRef.current) return;
+          await new Promise<void>((resolve, reject) => {
+            const audio = new Audio(url);
+            let finished = false;
+            const finish = (error?: unknown) => {
+              if (finished) return;
+              finished = true;
+              audio.onended = null;
+              audio.onerror = null;
+              historyReplayRef.current = null;
+              if (error) reject(error);
+              else resolve();
+            };
+            audio.onended = () => finish();
+            audio.onerror = () => finish(new Error("voice playback failed"));
+            historyReplayRef.current = {
+              stop: () => {
+                audio.pause();
+                finish();
+              },
+            };
+            void audio.play().catch(finish);
+          });
+        }
+      } catch {
+        if (generation === historyReplayGenerationRef.current) {
+          showToast({ kind: "error", title: t("chat.history.voiceExpired") });
+        }
+      }
+    },
+    [showToast, stopHistoryReplay, t],
+  );
   const theme = useOptionalChatTheme();
   const themeStyle = theme?.style ?? {};
   const stageStyle = useMemo(
@@ -851,7 +901,10 @@ export function ChatStagePage() {
           forkEnabled={forkHistoryEnabled}
           loading={historyLoading}
           onClear={() => void sendCommand({ type: "clear-history" })}
-          onClose={() => setHistoryDialogOpen(false)}
+          onClose={() => {
+            stopHistoryReplay();
+            setHistoryDialogOpen(false);
+          }}
           onCopy={() => void sendCommand({ type: "copy-history" })}
           onFork={(userIndex) => {
             setHistoryDialogOpen(false);
@@ -860,9 +913,13 @@ export function ChatStagePage() {
           onRefresh={() => {
             void refreshHistory();
           }}
+          onReplayVoice={(voiceId) => void replayHistoryVoice(voiceId)}
           onRevert={(userIndex) => setConfirmRevertUserIndex(userIndex)}
+          onSaveVoice={(voiceId) => void sendCommand({ payload: voiceId, type: "save-history-voice" })}
+          onToggleVoiceArchive={(enabled) => void sendCommand({ payload: enabled, type: "set-voice-archive" })}
           open={historyDialogOpen}
           userDisplayName={viewModel.userDisplayName}
+          voiceArchiveEnabled={state.voiceArchiveEnabled === true}
         />
         {conversationTreeEnabled ? (
           <ConversationTreeDialog

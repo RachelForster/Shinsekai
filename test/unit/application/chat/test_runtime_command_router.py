@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from application.chat.host.commands import ChatCommandRouter
+from application.chat.host.commands import ChatCommandRouter, voice_archive_command
 from test.unit.application.chat.runtime_process_fakes import RecordingStream
 
 
@@ -57,3 +57,19 @@ def test_duplicate_registration_cannot_silently_replace_a_command(state):
     assert router.handle(state, {"type": "first"}) == {"original": True}
     with pytest.raises(ValueError, match="未知聊天命令"):
         router.handle(state, {"type": "unknown"})
+
+
+@pytest.mark.parametrize(
+    "command,payload,invalid",
+    [
+        ("set-voice-archive", True, "yes"),
+        ("save-history-voice", "a" * 32, 1),
+    ],
+)
+def test_voice_archive_commands_validate_before_forwarding(state, command, payload, invalid):
+    router = ChatCommandRouter(lambda _state, status, *_args, **_kwargs: {"status": status})
+    router.register(command, voice_archive_command)
+
+    assert router.handle(state, {"type": command, "payload": payload}) == {"status": "idle"}
+    with pytest.raises(ValueError):
+        router.handle(state, {"type": command, "payload": invalid})

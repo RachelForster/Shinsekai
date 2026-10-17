@@ -2,9 +2,11 @@
 
 import re
 from queue import Queue
+from uuid import uuid4
 
 from ai.vision.service import ChatVisionService
 from application.chat.runtime.background_prompt import current_background_context
+from core.chat_history.identity import DialogIdentities
 from core.media.chat_attachments import resolve_chat_attachments
 from core.messaging.dialog_reconciliation import reconcile_dialog_repair
 from core.messaging.stream_events import (
@@ -128,11 +130,14 @@ class LLMWorker(ThreadDagNode):
                     )
                     self.ui_update_manager.chat_history.append(formatted_user_message)
 
+                history_turn_id = uuid4().hex
+                dialog_identities = DialogIdentities(history_turn_id)
                 is_streaming = get_app_runtime().config.config.api_config.is_streaming
                 with tracker.track("LLM chat total"):
                     chat_kwargs = {
                         "stream": is_streaming,
                         "dialog_output_required": True,
+                        "history_turn_id": history_turn_id,
                         "user_input_text": message.text,
                         "user_attachments": [
                             attachment.to_payload() for attachment in attachments
@@ -194,7 +199,10 @@ class LLMWorker(ThreadDagNode):
                                 appended_messages += 1
                                 delivered_dialogs.append(llm_dialog)
                                 self.dialog_queue.put(
-                                    llm_dialog.model_copy(update={"turn_id": turn.id})
+                                    llm_dialog.model_copy(update={
+                                        "turn_id": turn.id,
+                                        "dialog_id": dialog_identities.next(llm_dialog.model_dump(by_alias=True)),
+                                    })
                                 )
                             logger.info(
                                 "Reconciled repaired dialogue with streamed messages",
@@ -219,7 +227,10 @@ class LLMWorker(ThreadDagNode):
                             message_count += 1
                             delivered_dialogs.append(llm_dialog)
                             self.dialog_queue.put(
-                                llm_dialog.model_copy(update={"turn_id": turn.id})
+                                llm_dialog.model_copy(update={
+                                    "turn_id": turn.id,
+                                    "dialog_id": dialog_identities.next(llm_dialog.model_dump(by_alias=True)),
+                                })
                             )
 
                 # --- Interrupted: write committed context, discard the rest ---
