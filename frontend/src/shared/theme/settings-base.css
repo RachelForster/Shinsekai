@@ -494,7 +494,7 @@ details > .field-row + .field-row {
   background: var(--color-bg-input);
 }
 
-.asset-inspector__preview img {
+.asset-inspector__preview :is(img, video) {
   display: block;
   width: 100%;
   max-height: 320px;

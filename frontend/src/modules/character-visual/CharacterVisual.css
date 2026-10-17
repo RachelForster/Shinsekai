@@ -27,7 +27,7 @@
   -webkit-user-drag: none;
 }
 
-.character-visual__static-frame:has(img[data-load-state="error"]) {
+.character-visual__static-frame:has([data-load-state="error"]) {
   display: none;
 }
 
