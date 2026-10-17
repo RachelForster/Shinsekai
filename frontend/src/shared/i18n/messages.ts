@@ -1,6 +1,8 @@
 export type FrontendLanguage = "zh_CN" | "en" | "ja";
 
 export type MessageKey =
+  | "story.library.delete"
+  | "story.library.deleteConfirm"
   | "visualMedia.videoError"
   | "nav.assistant"
   | "agent.subtitle"

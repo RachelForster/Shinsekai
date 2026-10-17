@@ -129,6 +129,7 @@ function renderPage(props: Parameters<typeof TemplateEditorPage>[0] = {}, onComm
 }
 
 async function clickButton(button: HTMLElement) {
+  await waitFor(() => expect(button).toBeEnabled());
   await act(async () => {
     fireEvent.click(button);
   });
@@ -280,7 +281,7 @@ describe("TemplateEditorPage", () => {
       );
       renderPage({}, undefined, true);
       await screen.findByDisplayValue("Opening");
-      fireEvent.click(screen.getByRole("button", { name: "Create and start" }));
+      await clickButton(screen.getByRole("button", { name: "Create and start" }));
 
       await waitFor(() => expect(mockLaunchChat).toHaveBeenCalledTimes(1));
       expect(screen.getByRole("heading", { name: "Chats" })).toBeVisible();
@@ -690,7 +691,7 @@ describe("TemplateEditorPage", () => {
 
     expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Select all characters" }));
-    fireEvent.click(screen.getByRole("button", { name: "Launch chat" }));
+    await clickButton(screen.getByRole("button", { name: "Launch chat" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Choose primary characters" });
     expect(mockLaunchChat).not.toHaveBeenCalled();
@@ -938,13 +939,15 @@ describe("TemplateEditorPage", () => {
     renderPage();
     await waitFor(() => expect(screen.getByLabelText("Template name")).toHaveValue("Session Draft"));
     expect(screen.queryByLabelText("Connect phone")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Launch chat" }));
+    await clickButton(screen.getByRole("button", { name: "Launch chat" }));
     await waitFor(() =>
       expect(mockLaunchChat).toHaveBeenCalledWith(expect.objectContaining({ enableMobileAccess: false })),
     );
   });
 
   it("shows a QR code after launching with mobile access enabled", async () => {
+    let restoreSession!: (session: null) => void;
+    mockGetTemplateSession.mockReturnValueOnce(new Promise<null>((resolve) => (restoreSession = resolve)));
     setMobileAccessPreference(true);
     mockLaunchChat.mockResolvedValueOnce({
       dialogText: "launched",
@@ -962,7 +965,11 @@ describe("TemplateEditorPage", () => {
 
     expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
     expect(screen.queryByLabelText("Connect phone")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Launch chat" }));
+    const launch = screen.getByRole("button", { name: "Launch chat" });
+    expect(launch).toBeDisabled();
+    expect(mockLaunchChat).not.toHaveBeenCalled();
+    await act(async () => restoreSession(null));
+    await clickButton(launch);
 
     const dialog = await screen.findByRole("dialog", { name: "Mobile access is ready" });
     expect(within(dialog).getByRole("img", { name: "QR code for mobile chat access" })).toHaveAttribute(
@@ -993,7 +1000,7 @@ describe("TemplateEditorPage", () => {
     renderPage();
 
     expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Launch chat" }));
+    await clickButton(screen.getByRole("button", { name: "Launch chat" }));
 
     expect(await screen.findByRole("dialog", { name: "Preparing chat" })).toHaveTextContent("runtime closing");
     expect(mockRefreshRuntimeStatus).toHaveBeenCalledTimes(1);
@@ -1065,7 +1072,7 @@ describe("TemplateEditorPage", () => {
     fireEvent.change(screen.getByLabelText("Max dialog items"), { target: { value: "6" } });
     fireEvent.change(screen.getByLabelText("Initial sprite"), { target: { value: "D:/sprites/init.png" } });
     fireEvent.change(screen.getByLabelText("History file"), { target: { value: "D:/history/log.json" } });
-    fireEvent.click(screen.getByRole("button", { name: "Launch chat" }));
+    await clickButton(screen.getByRole("button", { name: "Launch chat" }));
 
     await waitFor(() => expect(mockLaunchChat).toHaveBeenCalledTimes(1));
     expect(mockSaveTemplateSession).toHaveBeenCalledWith(

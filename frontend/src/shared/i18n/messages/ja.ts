@@ -1,6 +1,9 @@
 import type { MessageKey } from "../messages";
 
 export const jaMessages: Record<MessageKey, string> = {
+  "story.library.delete": "シナリオのバージョンを削除",
+  "story.library.deleteConfirm":
+    "「{title}」のバージョン {version} と関連するすべての会話・セーブデータを削除しますか？他のバージョンは保持されます。この操作は取り消せません。",
   "visualMedia.videoError": "動画を再生できません。ファイルを確認するか、H.264 の MP4 動画を使用してください。",
   "nav.assistant": "アシスタント",
   "agent.subtitle": "根拠と不確かな点を明確にして、一緒に考えます。",
