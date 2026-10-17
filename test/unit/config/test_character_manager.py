@@ -28,6 +28,27 @@ def sprite_field(sprite, key):
     return getattr(sprite, key, None) if hasattr(sprite, key) else sprite.get(key)
 
 
+def test_upload_mixed_image_and_mp4_sprites_preserves_bytes_and_tag_order(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    monkeypatch.setattr("config.character_manager.UPLOAD_DIR", str(tmp_path / "uploaded"))
+    sources = []
+    for name in ("idle.png", "smile.gif", "wave.mp4"):
+        source = tmp_path / name
+        source.write_bytes(name.encode())
+        sources.append(SimpleNamespace(name=str(source)))
+    character = Character(name="Mika", color="#fff", sprite_prefix="mika")
+    manager = build_manager([character])
+
+    _message, paths, tags = manager.upload_sprites("Mika", sources, "")
+
+    assert [Path(path).name for path in paths] == ["idle.png", "smile.gif", "wave.mp4"]
+    assert [Path(path).read_bytes() for path in paths] == [b"idle.png", b"smile.gif", b"wave.mp4"]
+    assert tags == "立绘 1：\n立绘 2：\n立绘 3：\n"
+    assert character.model_dump(mode="json")["sprites"][2]["path"] == paths[2]
+    assert manager._config_manager.save_count == 1
+
+
 @pytest.mark.parametrize("prefix", ["", ".", "../outside"])
 def test_delete_all_sprites_rejects_shared_or_escaping_root(tmp_path, monkeypatch, prefix):
     sprite_root = tmp_path / "sprite"

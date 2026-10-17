@@ -1,6 +1,7 @@
 export type FrontendLanguage = "zh_CN" | "en" | "ja";
 
 export type MessageKey =
+  | "visualMedia.videoError"
   | "nav.assistant"
   | "agent.subtitle"
   | "agent.newSession"

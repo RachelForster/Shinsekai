@@ -121,7 +121,7 @@
   min-height: 260px;
 }
 
-.asset-inspector__preview--background img {
+.asset-inspector__preview--background :is(img, video) {
   width: 100%;
   height: 100%;
   max-height: none;

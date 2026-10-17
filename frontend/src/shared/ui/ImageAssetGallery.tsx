@@ -2,12 +2,14 @@ import "./ImageAssetGallery.css";
 import { useEffect, useState } from "react";
 import type { UIEvent } from "react";
 import { Image as ImageIcon } from "lucide-react";
+import { VisualMedia } from "./VisualMedia";
 
 export interface ImageAssetGalleryItem {
   badge?: string;
   badgeTone?: "default" | "muted";
   id: string;
   imageSrc?: string;
+  videoSrc?: string;
   meta?: string;
   title: string;
 }
@@ -68,6 +70,27 @@ function ImageAssetThumb({ decoding, loading, src }: ImageAssetThumbProps) {
   );
 }
 
+function VideoAssetThumb({ src }: { src: string }) {
+  const [state, setState] = useState("loading");
+  return (
+    <span className="image-asset-card__media" data-state={state}>
+      <VisualMedia
+        alt=""
+        autoPlay={false}
+        loading="lazy"
+        onError={() => setState("error")}
+        onLoad={() => setState("loaded")}
+        src={src}
+      />
+      {state !== "loaded" ? (
+        <span aria-hidden className="image-asset-card__placeholder">
+          <ImageIcon className="image-asset-card__fallback" />
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 export function ImageAssetGallery({
   imageDecoding = "async",
   imageLoading = "lazy",
@@ -98,7 +121,11 @@ export function ImageAssetGallery({
           title={item.title}
           type="button"
         >
-          <ImageAssetThumb decoding={imageDecoding} loading={imageLoading} src={item.imageSrc} />
+          {item.videoSrc ? (
+            <VideoAssetThumb key={item.videoSrc} src={item.videoSrc} />
+          ) : (
+            <ImageAssetThumb decoding={imageDecoding} loading={imageLoading} src={item.imageSrc} />
+          )}
           <span className="image-asset-card__body">
             <span className="image-asset-card__title">
               <span>{index + 1}</span>
