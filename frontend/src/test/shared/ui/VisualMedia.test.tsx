@@ -6,11 +6,13 @@ import { isMp4Media } from "../../../shared/assets/visualMedia";
 import { VisualMedia } from "../../../shared/ui/VisualMedia";
 import { ImageAssetGallery } from "../../../shared/ui/ImageAssetGallery";
 import { CharacterVisual } from "../../../modules/character-visual/CharacterVisual";
-import { BackgroundLayer, SpriteLayer } from "../../../features/chat-stage/components/StageLayers";
+import { BackgroundLayer, DialogLayer, SpriteLayer } from "../../../features/chat-stage/components/StageLayers";
+import { Portrait } from "../../../shared/components/Portrait";
 
 vi.mock("../../../entities/files/repository", () => ({
   fileUrl: (path: string) => `/api/media?path=${encodeURIComponent(path)}&token=test`,
 }));
+vi.mock("../../../shared/plugin/PluginSlot", () => ({ PluginSlot: () => null }));
 
 beforeEach(() => {
   vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
@@ -26,6 +28,73 @@ afterEach(() => {
 });
 
 describe("file-based visual media", () => {
+  it("plays MP4 portraits and crops using video metadata", () => {
+    const onImageSize = vi.fn();
+    const view = render(
+      <Portrait path="player.MP4" name="Player" crop={{ x: 0.5, y: 0.5, zoom: 2 }} onImageSize={onImageSize} />,
+    );
+    const video = view.container.querySelector("video");
+    expect(video).not.toBeNull();
+    if (!video) throw new Error("Expected an MP4 portrait");
+    expect(video).toHaveAttribute("src", "/api/media?path=player.MP4&token=test");
+    expect(video.muted && video.loop && video.playsInline).toBe(true);
+    expect(video.controls).toBe(false);
+    Object.defineProperties(video, { videoWidth: { value: 200 }, videoHeight: { value: 400 } });
+    fireEvent.loadedMetadata(video);
+    expect(onImageSize).toHaveBeenCalledWith(200, 400);
+    expect(video).toHaveStyle({ width: "200%", height: "400%", left: "-50%", top: "-150%", visibility: "visible" });
+  });
+
+  it.each(["player.gif", "player.png"])("preserves native image playback and cropping for %s", (path) => {
+    const view = render(<Portrait path={path} name="Player" crop={{ x: 0.5, y: 0.5, zoom: 2 }} />);
+    const image = screen.getByAltText("Player");
+    expect(image).toHaveAttribute("src", `/api/media?path=${path}&token=test`);
+    Object.defineProperties(image, { naturalWidth: { value: 200 }, naturalHeight: { value: 400 } });
+    fireEvent.load(image);
+    expect(image).toHaveStyle({ width: "200%", height: "400%", left: "-50%", top: "-150%", visibility: "visible" });
+    expect(view.container.querySelector("canvas, video")).toBeNull();
+  });
+
+  it("releases a video portrait when the player expression switches to GIF", () => {
+    const view = render(<Portrait path="player.mp4" name="Player" />);
+    const video = view.container.querySelector("video");
+    expect(video).not.toBeNull();
+    view.rerender(<Portrait path="smile.gif" name="Player" />);
+    expect(video).not.toHaveAttribute("src");
+    expect(HTMLMediaElement.prototype.pause).toHaveBeenCalled();
+    const image = screen.getByAltText("Player");
+    expect(image).toHaveStyle({ visibility: "hidden" });
+    Object.defineProperties(image, { naturalWidth: { value: 100 }, naturalHeight: { value: 100 } });
+    fireEvent.load(image);
+    expect(image).toHaveStyle({ width: "100%", height: "100%", visibility: "visible" });
+  });
+
+  it("pauses hidden dialogue portraits and keeps dialogue usable after playback failure", () => {
+    const advance = vi.fn();
+    const dialogue = (hidden: boolean) => (
+      <DialogLayer
+        hidden={hidden}
+        playerPortrait={{ characterName: "Player", url: "player.mp4", crop: { x: 0.5, y: 0.2, zoom: 1 } }}
+        text="Player speech"
+        canAdvance
+        onAdvance={advance}
+        typing={false}
+      />
+    );
+    const view = render(dialogue(false));
+    const video = view.container.querySelector("video");
+    expect(video).toHaveProperty("autoplay", true);
+    view.rerender(dialogue(true));
+    expect(video).toHaveProperty("autoplay", false);
+    view.rerender(dialogue(false));
+    expect(video).toHaveProperty("autoplay", true);
+    if (!video) throw new Error("Expected an MP4 portrait");
+    fireEvent.error(video);
+    expect(screen.getByRole("status")).toHaveTextContent("Unable to play this video");
+    fireEvent.click(screen.getByText("Player speech"));
+    expect(advance).toHaveBeenCalledOnce();
+  });
+
   it.each([
     "C:\\sprites\\happy.MP4",
     "/clip.mp4?cache=2",

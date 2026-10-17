@@ -3,9 +3,11 @@ import { createRoot } from "react-dom/client";
 import { BackgroundLayer, SpriteLayer } from "../../src/features/chat-stage/components/StageLayers";
 import { I18nProvider } from "../../src/shared/i18n/I18nProvider";
 import { ImageAssetGallery, VisualMedia } from "../../src/shared/ui";
+import { Portrait } from "../../src/shared/components/Portrait";
 import "../../src/features/chat-stage/styles/media-layers.css";
 
 const video = `${location.origin}/api/media?path=happy.MP4&token=test`;
+const gif = `${location.origin}/api/media?path=portrait.gif&token=test`;
 const image =
   "data:image/svg+xml," +
   encodeURIComponent(
@@ -16,12 +18,16 @@ function Fixture() {
   const [hidden, setHidden] = useState(false);
   const [showVideo, setShowVideo] = useState(true);
   const [broken, setBroken] = useState(false);
+  const [showGifPortrait, setShowGifPortrait] = useState(false);
   const source = showVideo ? video : image;
   return (
     <>
       <button onClick={() => setHidden(!hidden)}>{hidden ? "Show layers" : "Hide layers"}</button>
       <button onClick={() => setShowVideo(!showVideo)}>{showVideo ? "Use image" : "Use MP4"}</button>
       <button onClick={() => setBroken(!broken)}>{broken ? "Restore preview" : "Break preview"}</button>
+      <button onClick={() => setShowGifPortrait(!showGifPortrait)}>
+        {showGifPortrait ? "Use media portrait" : "Use GIF portrait"}
+      </button>
       <main>
         <div id="background" className="panel">
           <BackgroundLayer path={source} hidden={hidden} transparent={false} />
@@ -52,6 +58,15 @@ function Fixture() {
           />
         </div>
       </main>
+      <div id="portrait" hidden={hidden} style={{ width: 120, marginTop: 24 }}>
+        <Portrait
+          path={showGifPortrait ? gif : source}
+          name="Player portrait"
+          size={120}
+          crop={{ x: 0.5, y: 0.5, zoom: 2 }}
+          active={!hidden}
+        />
+      </div>
     </>
   );
 }

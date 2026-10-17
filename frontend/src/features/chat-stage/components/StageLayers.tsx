@@ -245,7 +245,12 @@ export function DialogLayer({
         <ThemeFrame prefix="chat-dialog" />
         {playerPortrait?.url ? (
           <div className="dialog-layer__player-portrait">
-            <Portrait path={playerPortrait.url} crop={playerPortrait.crop} name={playerPortrait.characterName} />
+            <Portrait
+              path={playerPortrait.url}
+              crop={playerPortrait.crop}
+              name={playerPortrait.characterName}
+              active={!hidden}
+            />
           </div>
         ) : null}
         {characterName ? (

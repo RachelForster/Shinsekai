@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MouseEventHandler, type SyntheticEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type MouseEventHandler, type SyntheticEvent } from "react";
 
 import { isMp4Media } from "../assets/visualMedia";
 
@@ -14,6 +14,7 @@ interface VisualMediaProps {
   errorMessage?: string;
   hitbox?: boolean;
   loading?: "eager" | "lazy";
+  style?: CSSProperties;
   onDimensions?: (width: number, height: number) => void;
   onError?: (event: SyntheticEvent<VisualMediaElement>) => void;
   onLoad?: (event: SyntheticEvent<VisualMediaElement>) => void;
@@ -30,6 +31,7 @@ export function VisualMedia(props: VisualMediaProps) {
     decoding = "async",
     hitbox,
     loading,
+    style,
     onDimensions,
     onError,
     onLoad,
@@ -41,6 +43,7 @@ export function VisualMedia(props: VisualMediaProps) {
       className={className}
       data-chat-stage-hitbox={hitbox ? "true" : undefined}
       decoding={decoding}
+      draggable={false}
       loading={loading}
       onError={onError}
       onLoad={(event) => {
@@ -49,6 +52,7 @@ export function VisualMedia(props: VisualMediaProps) {
       }}
       onMouseDown={onMouseDown}
       src={src}
+      style={style}
     />
   );
 }
@@ -62,6 +66,7 @@ function VideoVisual({
   errorMessage = "Unable to play this video.",
   hitbox,
   loading,
+  style,
   onDimensions,
   onError,
   onLoad,
@@ -160,6 +165,7 @@ function VideoVisual({
       onMouseDown={onMouseDown}
       playsInline
       preload="metadata"
+      style={style}
     />
   );
 }
