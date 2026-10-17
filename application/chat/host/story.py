@@ -12,21 +12,11 @@ from core.chat_history.storage import (
     save_branch_state,
 )
 from core.messaging.dialog_tokens import (
-    BGM_ALIASES,
-    CG_ALIASES,
-    COT_ALIASES,
-    NARR_ALIASES,
-    SCENE_ALIASES,
-    STAT_ALIASES,
+    SYSTEM_HISTORY_NAMES,
     normalize_character_name,
 )
 from application.chat.history.paths import is_unc_history_path
 from application.chat.host.ports import HistoryPort, StoryCoordinatorPort
-
-_SYSTEM_HISTORY_NAMES = (
-    COT_ALIASES | NARR_ALIASES | STAT_ALIASES | SCENE_ALIASES | BGM_ALIASES | CG_ALIASES
-)
-
 
 def _story_choice_label(session: Any, choice_id: str) -> str:
     snapshot = session.chat_snapshot()
@@ -43,7 +33,7 @@ def _story_choice_label(session: Any, choice_id: str) -> str:
 
 def _scene_history_role(character_id: str) -> str:
     speaker = normalize_character_name(character_id)
-    if speaker in _SYSTEM_HISTORY_NAMES or speaker == "narr":
+    if speaker in SYSTEM_HISTORY_NAMES:
         return "system"
     return "assistant"
 

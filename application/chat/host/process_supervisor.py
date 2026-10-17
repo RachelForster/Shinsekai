@@ -119,7 +119,6 @@ class ChatProcessSupervisor:
         monotonic: Callable[[], float],
         failed_launch: Callable[[int, Path], str],
         resources: ProcessResources | None = None,
-        publish: LifecyclePublisher | None = None,
         spawn: Callable[..., tuple[ChildProcess, Path]] | None = None,
         handle_event: LifecyclePublisher | None = None,
         watch_exits: bool = False,
@@ -135,7 +134,6 @@ class ChatProcessSupervisor:
         self.resources = (
             resources if resources is not None else MemoryProcessResources()
         )
-        self.publish = publish or (lambda _context: None)
         self.handle_event = handle_event or (lambda _context: None)
         self.watch_exits, self.watch_interval = watch_exits, watch_interval
         self.spawn_child = spawn or self.spawn
@@ -176,25 +174,12 @@ class ChatProcessSupervisor:
         self._deliver(context)
 
     def _deliver(self, context: ChatProcessContext) -> None:
-        # Application handlers report failures to the owner. The legacy publish
-        # callback remains an observation boundary for optional extensions.
         previous = getattr(self._delivery, "active", False)
         self._delivery.active = True
         try:
-            try:
-                self.handle_event(context)
-            finally:
-                self._observe(context)
+            self.handle_event(context)
         finally:
             self._delivery.active = previous
-
-    def _observe(self, context: ChatProcessContext) -> None:
-        try:
-            self.publish(context)
-        except Exception:
-            logger.warning(
-                "Chat process observer failed in %s", context.event.value, exc_info=True
-            )
 
     def running(self) -> bool:
         with self.resources.lock:

@@ -127,6 +127,54 @@ def test_production_entrypoints_publish_real_session_identity_before_state_bindi
         remove()
 
 
+@pytest.mark.parametrize("mode", ["launch", "resume"])
+@pytest.mark.parametrize("missing_dependency", [False, True])
+def test_both_launch_paths_release_failed_sessions_once(
+    tmp_path, monkeypatch, mode, missing_dependency
+):
+    state = make_state(tmp_path, monkeypatch)
+    state.chat_session = {}
+    state.chat_stream = OwnedStream()
+    state.config_manager.config.effect_list = []
+    state.config_manager.config.background_list = []
+    payload = {
+        "scenario": "scene",
+        "system": "system",
+        "historyPath": str(tmp_path / "resume"),
+        "selectedCharacters": [],
+    }
+    monkeypatch.setattr(chat_session, "_load_template_session_payload", lambda _: payload)
+    monkeypatch.setattr(
+        chat_session, "_resume_template_parts", lambda _: ("scene", "system", "resume")
+    )
+    monkeypatch.setattr(
+        chat_session,
+        "_repair_template_parts_from_session_if_needed",
+        lambda _state, scene, system: (scene, system),
+    )
+    message = "启动失败: " + (
+        "No module named 'opencc'" if missing_dependency else "child exited"
+    )
+    monkeypatch.setattr(chat_session, "_launch_runtime_chat", lambda *_a, **_k: message)
+    launch = (
+        lambda: chat_session.launch_chat(state, payload)
+        if mode == "launch"
+        else chat_session.resume_last_chat(state)
+    )
+    try:
+        if missing_dependency:
+            result = launch()
+            assert result["status"] == "error"
+            assert result["runtimeDependencyError"]["moduleName"] == "opencc"
+        else:
+            with pytest.raises(RuntimeError, match="child exited"):
+                launch()
+        assert state.chat_session["sessionId"] == ""
+        assert state.chat_stream.deleted == ["actual-session"]
+    finally:
+        state.chat_session_lifecycle.dispose()
+
+
 def test_async_react_mobile_access_waits_for_ready_not_just_connected(
     tmp_path, monkeypatch
 ):

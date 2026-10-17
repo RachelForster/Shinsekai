@@ -14,7 +14,6 @@ from core.paths import project_root as runtime_project_root
 from core.paths import source_root as runtime_source_root
 
 from application.chat.history.paths import resolve_history_path_for_project
-from application.chat.build_effect_context import SelectedEffectContext
 from application.chat.host.mobile_access import (
     get_mobile_access_info,
 )
@@ -51,14 +50,13 @@ from sdk.chat_lifecycle import ChatProcessContext, ChatSessionContext
 from application.chat.host.commands import (
     ChatCommandRouter,
     dismiss_plugin_page,
-    input_batch,
+    forward_current,
     audio_playback,
     skip_speech,
     advance,
     voice_language,
     pause_asr,
     resume_asr,
-    asr_hold,
     reroll,
     HistoryCommands,
     TurnOptionsCommands,
@@ -139,45 +137,13 @@ def _main_py_path() -> Path:
 def _launch_chat(
     state: BridgeState,
     *,
-    character_names: list[str] | None = None,
-    effect_names: str = "",
-    effect_context: SelectedEffectContext | None = None,
-    history_file: str,
-    init_sprite_path: str,
-    show_initial_sprite: bool = True,
-    room_id: str,
-    selected_bg: str,
-    system_template: str,
-    use_cg: bool,
-    user_scenario: str,
-    stream_endpoint: str = "",
-    init_stream_endpoint: str = "",
-    workflow_path: str = "",
-    media_selection_mode: str = "indexed",
-    use_current_template_for_history: bool = False,
     session_id: str | None = None,
     launch_id: str = "",
+    **launch_options: Any,
 ) -> str:
+    """Supervise a launch using the options defined by ChatLaunchPreparation.prepare."""
     return _supervisor.launch(
-        lambda: _launch_preparation.prepare(
-            state,
-            character_names=character_names,
-            effect_names=effect_names,
-            effect_context=effect_context,
-            history_file=history_file,
-            init_sprite_path=init_sprite_path,
-            show_initial_sprite=show_initial_sprite,
-            room_id=room_id,
-            selected_bg=selected_bg,
-            system_template=system_template,
-            use_cg=use_cg,
-            user_scenario=user_scenario,
-            stream_endpoint=stream_endpoint,
-            init_stream_endpoint=init_stream_endpoint,
-            workflow_path=workflow_path,
-            media_selection_mode=media_selection_mode,
-            use_current_template_for_history=use_current_template_for_history,
-        ),
+        lambda: _launch_preparation.prepare(state, **launch_options),
         session_id=(
             str(session_id).strip()
             if session_id is not None
@@ -310,18 +276,18 @@ for command, handler in {
     "update-turn-options": _turn_commands.update,
     "send-message": _input_commands.message,
     "submit-option": _selection_commands.submit,
-    "chat-input-state": input_batch,
-    "flush-input-batch": input_batch,
-    "cancel-input-batch": input_batch,
+    "chat-input-state": forward_current,
+    "flush-input-batch": forward_current,
+    "cancel-input-batch": forward_current,
     "audio-playback-signal": audio_playback,
     "skip-speech": skip_speech,
     "dialog-advance": advance,
     "change-voice-language": voice_language,
     "pause-asr": pause_asr,
     "resume-asr": resume_asr,
-    "begin-asr-hold": asr_hold,
-    "finish-asr-hold": asr_hold,
-    "cancel-asr-hold": asr_hold,
+    "begin-asr-hold": forward_current,
+    "finish-asr-hold": forward_current,
+    "cancel-asr-hold": forward_current,
     "reroll": reroll,
     "revert-history": _branch_commands.revert,
     "fork-history": _branch_commands.fork,

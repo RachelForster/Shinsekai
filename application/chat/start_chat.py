@@ -93,13 +93,6 @@ def _terminal_error(task: dict[str, Any], fallback: str) -> str:
     return fallback
 
 
-def _clear_chat_session_id(state: BridgeState, session_id: str) -> None:
-    with chat_lifecycle_lock(state):
-        if str(state.chat_session.get("sessionId") or "") != session_id:
-            return
-        state.chat_session = {**state.chat_session, "sessionId": ""}
-
-
 def _cleanup_chat_init(
     state: BridgeState,
     session_id: str,

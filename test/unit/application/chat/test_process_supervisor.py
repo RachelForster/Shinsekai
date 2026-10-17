@@ -11,6 +11,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from application.chat import composition as chat
+from application.chat.host.events import LifecycleDispatchError, LifecycleEvents
 from application.chat.host.process_supervisor import ChatProcessSupervisor
 from application.chat.host.ports import (
     LaunchPlan,
@@ -31,6 +32,14 @@ def supervisor(tmp_path):
     child = FakeChild(["timeout", 0])
     resources = MemoryProcessResources(lock=Lock())
     events = []
+    lifecycle_events = LifecycleEvents()
+    unsubscribe = lifecycle_events.subscribe(events.append)
+
+    def observe(callback):
+        nonlocal unsubscribe
+        unsubscribe()
+        unsubscribe = lifecycle_events.subscribe(callback)
+
     popen = MagicMock(return_value=child)
 
     def stop(process, **_kwargs):
@@ -45,10 +54,12 @@ def supervisor(tmp_path):
         monotonic=lambda: 10,
         failed_launch=lambda code, _path: f"exit {code}",
         resources=resources,
-        publish=events.append,
+        handle_event=lifecycle_events.emit,
     )
     value.fixture_child = child
     value.fixture_events = events
+    value.fixture_bus = lifecycle_events
+    value.fixture_observe = observe
     value.fixture_popen = popen
     value.fixture_plan = LaunchPlan(
         ["python", "main.py"], tmp_path, {"secret": "private"}
@@ -71,7 +82,7 @@ def test_successful_lifecycle_notifies_after_owned_resources_are_released(superv
         supervisor.resources.lock.release()
         observed.append((context, supervisor.running(), supervisor.resources.log))
 
-    supervisor.publish = observe
+    supervisor.fixture_observe(observe)
     assert "已启动" in launch(supervisor)
     handle = supervisor.resources.log
     supervisor.shutdown()
@@ -182,9 +193,28 @@ def test_required_terminal_handler_runs_after_process_gate_is_released(superviso
             finally:
                 thread.join(2)
 
-    supervisor.handle_event = handler
+    supervisor.fixture_bus.subscribe(handler, required=True)
     supervisor.shutdown()
     assert len(calls) == 1
+
+
+def test_required_cleanup_failure_propagates_after_observers_see_released_resources(supervisor):
+    error = OSError("application cleanup failed")
+
+    def cleanup(context):
+        if context.event is Phase.STOPPED:
+            assert supervisor.resources.process is None
+            assert supervisor.resources.log is None
+            raise error
+
+    supervisor.fixture_bus.subscribe(cleanup, required=True)
+    launch(supervisor)
+    handle = supervisor.resources.log
+    with pytest.raises(LifecycleDispatchError) as caught:
+        supervisor.shutdown()
+    assert caught.value.errors == (error,)
+    assert supervisor.fixture_events[-1].event is Phase.STOPPED
+    assert handle.closed
 
 
 def test_background_monitor_detects_exit_without_status_requests(supervisor):
@@ -197,7 +227,7 @@ def test_background_monitor_detects_exit_without_status_requests(supervisor):
         if context.event is Phase.FAILED:
             seen.set()
 
-    supervisor.publish = observer
+    supervisor.fixture_observe(observer)
     launch(supervisor)
     supervisor.fixture_child.poll = lambda: 9
     assert seen.wait(2)
@@ -283,7 +313,7 @@ def test_observer_exceptions_do_not_prevent_launch_or_shutdown(supervisor):
         supervisor.fixture_events.append(context)
         raise RuntimeError("observer failed")
 
-    supervisor.publish = broken
+    supervisor.fixture_observe(broken)
     launch(supervisor)
     handle = supervisor.resources.log
     supervisor.shutdown()
@@ -305,7 +335,7 @@ def test_reentrant_observer_cannot_recursively_start_or_stop_transition(supervis
         nested.append(launch(supervisor))
         supervisor.shutdown()
 
-    supervisor.publish = observe
+    supervisor.fixture_observe(observe)
     launch(supervisor)
     assert supervisor.running()
     supervisor.shutdown()
@@ -415,7 +445,7 @@ def test_facade_publishes_sdk_hooks_for_requestless_shutdown(tmp_path, monkeypat
 
 def test_supervisor_default_resources_and_no_observers_are_usable(supervisor):
     supervisor.resources = MemoryProcessResources()
-    supervisor.publish = lambda _context: None
+    supervisor.handle_event = lambda _context: None
     launch(supervisor)
     supervisor.shutdown()
     supervisor.shutdown()

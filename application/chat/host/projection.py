@@ -5,13 +5,13 @@ from typing import Any
 from pathlib import Path
 from collections.abc import Callable
 import json
-from ai.tools.chat_ui_tools import sanitize_user_display_name
+from application.chat.presentation.user_display import sanitize_user_display_name
+from core.chat_history.text import DEFAULT_USER_DISPLAY_NAME
 from config.character_assets import get_character_assets
 from application.chat.presentation.character_visual import resolve_character_visual
 
 TRANSPARENT_BACKGROUND_NAME = "透明场景"
 _TRANSPARENT_BACKGROUND_ALIAS = "透明背景"
-_DEFAULT_USER_DISPLAY_NAME = "你"
 
 
 def _is_transparent_background_name(name: str | None) -> bool:
@@ -124,14 +124,10 @@ def _chat_voice_language(state: Any) -> str:
     return configured_language or "ja"
 
 
-def _sanitize_user_display_name(value: Any) -> str:
-    return sanitize_user_display_name(value)
-
-
 def _chat_user_display_name(state: Any) -> str:
     return (
-        _sanitize_user_display_name(state.chat_session.get("userDisplayName"))
-        or _DEFAULT_USER_DISPLAY_NAME
+        sanitize_user_display_name(state.chat_session.get("userDisplayName"))
+        or DEFAULT_USER_DISPLAY_NAME
     )
 
 
@@ -145,7 +141,7 @@ def _chat_user_display_name_from_snapshot(
             candidate = chat_stream.get_snapshot(session_id)
             if isinstance(candidate, dict):
                 snapshot = candidate
-    stream_name = _sanitize_user_display_name((snapshot or {}).get("userDisplayName"))
+    stream_name = sanitize_user_display_name((snapshot or {}).get("userDisplayName"))
     if stream_name:
         state.chat_session = {**state.chat_session, "userDisplayName": stream_name}
         return stream_name

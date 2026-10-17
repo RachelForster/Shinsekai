@@ -31,10 +31,6 @@ class ChatHistoryLaunchTarget:
     starts_fresh: bool
 
 
-def _resolve_history_file(state: Any, raw_path: str | Path) -> Path:
-    return resolve_history_path_for_project(state, raw_path)
-
-
 def resolve_chat_history_path(
     state: Any,
     payload: dict[str, Any],
@@ -44,15 +40,15 @@ def resolve_chat_history_path(
 
     raw = str(payload.get("historyPath") or "").strip()
     if raw:
-        path = _resolve_history_file(state, raw)
+        path = resolve_history_path_for_project(state, raw)
         if path.name in {ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME}:
-            return _resolve_history_file(state, path.parent)
+            return resolve_history_path_for_project(state, path.parent)
         if (
             path.suffix.lower() == ".json"
             and not is_unc_history_path(path)
             and not path.is_file()
         ):
-            return _resolve_history_file(state, path.with_suffix(""))
+            return resolve_history_path_for_project(state, path.with_suffix(""))
         return path
 
     characters = payload.get("characters")
@@ -60,7 +56,7 @@ def resolve_chat_history_path(
         characters = template.get("selectedCharacters")
     scenario = _scenario_from_template_like(template)
     template_hash = _history_id_from_scenario(scenario, characters)
-    return _resolve_history_file(state, Path(state.history_dir) / template_hash)
+    return resolve_history_path_for_project(state, Path(state.history_dir) / template_hash)
 
 
 def _new_history_instance_id() -> str:
@@ -87,7 +83,7 @@ def plan_chat_history_launch(
 
     history_path = Path(state.history_dir) / f"chat-{_new_history_instance_id()}"
     return ChatHistoryLaunchTarget(
-        history_path=_resolve_history_file(state, history_path),
+        history_path=resolve_history_path_for_project(state, history_path),
         previous_history_path=previous_path,
         starts_fresh=True,
     )

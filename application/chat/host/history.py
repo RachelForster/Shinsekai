@@ -7,13 +7,9 @@ from collections.abc import Callable
 import json
 import threading
 from datetime import datetime
+from application.chat.presentation.user_display import sanitize_user_display_name
 from core.messaging.dialog_tokens import (
-    BGM_ALIASES,
-    CG_ALIASES,
-    COT_ALIASES,
-    NARR_ALIASES,
-    SCENE_ALIASES,
-    STAT_ALIASES,
+    SYSTEM_HISTORY_NAMES,
     is_option_history_name,
     normalize_character_name,
 )
@@ -22,17 +18,11 @@ from core.chat_history.storage import (
     chat_history_download_path,
 )
 from core.chat_history.text import (
-    history_payload_to_plain_text,
+    DEFAULT_USER_DISPLAY_NAME,
     parse_assistant_dialog_content,
 )
 from application.chat.history.paths import is_unc_history_path
-from application.chat.host.projection import _sanitize_user_display_name
 from sdk.path_utils import reject_control_chars
-
-_DEFAULT_USER_DISPLAY_NAME = "你"
-_SYSTEM_HISTORY_NAMES = (
-    COT_ALIASES | NARR_ALIASES | STAT_ALIASES | SCENE_ALIASES | BGM_ALIASES | CG_ALIASES
-)
 
 
 def _history_entry_role_from_text(text: str) -> str:
@@ -42,7 +32,7 @@ def _history_entry_role_from_text(text: str) -> str:
     if is_option_history_name(raw.split("：", 1)[0].split(":", 1)[0].strip()):
         return "options"
     speaker = normalize_character_name(raw.split("：", 1)[0].split(":", 1)[0].strip())
-    if speaker in _SYSTEM_HISTORY_NAMES:
+    if speaker in SYSTEM_HISTORY_NAMES:
         return "system"
     return "assistant"
 
@@ -72,7 +62,7 @@ def _message_created_at_ms(message: dict[str, Any]) -> int | None:
 
 
 def _serialize_history_entries_from_messages(
-    messages: Any, user_display_name: str = _DEFAULT_USER_DISPLAY_NAME
+    messages: Any, user_display_name: str = DEFAULT_USER_DISPLAY_NAME
 ) -> list[dict[str, Any]]:
     if not isinstance(messages, list):
         return []
@@ -80,7 +70,7 @@ def _serialize_history_entries_from_messages(
     user_index = 0
     row_index = 0
     user_name = (
-        _sanitize_user_display_name(user_display_name) or _DEFAULT_USER_DISPLAY_NAME
+        sanitize_user_display_name(user_display_name) or DEFAULT_USER_DISPLAY_NAME
     )
     for message in messages:
         if not isinstance(message, dict):
@@ -136,14 +126,6 @@ def _history_entries_from_snapshot(
         for item in snapshot.get("historyEntries") or []
         if isinstance(item, dict)
     ]
-
-
-def _plain_history_text(raw: Any) -> str:
-    return history_payload_to_plain_text(raw)
-
-
-def _plain_history_text_from_entries(entries: list[dict[str, Any]]) -> str:
-    return history_payload_to_plain_text(entries)
 
 
 def _read_history_file(path: Path) -> Any:

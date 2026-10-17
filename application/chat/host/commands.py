@@ -10,6 +10,7 @@ from core.chat_history.storage import (
     chat_history_active_path,
     remove_chat_history_storage,
 )
+from core.chat_history.text import history_payload_to_plain_text
 from core.media.chat_attachments import (
     resolve_chat_attachments,
     chat_attachment_display_text,
@@ -17,10 +18,6 @@ from core.media.chat_attachments import (
 from core.story import SelectChoice
 from sdk.path_utils import reject_control_chars
 from application.chat.host.ports import HistoryPort, StorySelectionPort
-from application.chat.host.history import (
-    _plain_history_text,
-    _plain_history_text_from_entries,
-)
 
 
 class CommandContext:
@@ -142,7 +139,7 @@ class HistoryCommands:
         state = ctx.state
         history_raw = ctx.history_raw
         entries = self.history.entries(state)
-        text = _plain_history_text_from_entries(entries)
+        text = history_payload_to_plain_text(entries)
         opened_path = history_raw
         if not text:
             if not history_raw:
@@ -151,7 +148,7 @@ class HistoryCommands:
             history_file = chat_history_active_path(history_path)
             if not history_file.exists():
                 raise FileNotFoundError(history_file.as_posix())
-            text = _plain_history_text(self.history.read(history_file))
+            text = history_payload_to_plain_text(self.history.read(history_file))
             opened_path = history_file.as_posix()
         return ctx.snapshot(
             state,
@@ -404,7 +401,7 @@ class SelectionCommands:
         return ctx.forward(ctx.current_status())
 
 
-def input_batch(ctx: CommandContext) -> dict[str, Any]:
+def forward_current(ctx: CommandContext) -> dict[str, Any]:
     return ctx.forward(ctx.current_status())
 
 
@@ -461,10 +458,6 @@ def pause_asr(ctx: CommandContext) -> dict[str, Any]:
 
 def resume_asr(ctx: CommandContext) -> dict[str, Any]:
     return ctx.forward("listening", "语音识别已恢复。")
-
-
-def asr_hold(ctx: CommandContext) -> dict[str, Any]:
-    return ctx.forward(ctx.current_status())
 
 
 def reroll(ctx: CommandContext) -> dict[str, Any]:

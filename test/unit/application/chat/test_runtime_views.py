@@ -395,10 +395,5 @@ def test_theme_payload_reads_dict_and_ignores_other_json_values(
     assert chat.projection._chat_theme_payload(state)["raw"] == {}
 
 
-def test_plain_history_and_missing_files(state, tmp_path):
-    raw = [{"role": "user", "content": "hello"}]
-    assert "hello" in chat.history._plain_history_text(raw)
-    assert "hello" in chat.history._plain_history_text_from_entries(
-        [{"role": "user", "text": "Player: hello"}]
-    )
+def test_missing_history_file_is_empty(tmp_path):
     assert chat.history._read_history_file(tmp_path / "absent.json") == []

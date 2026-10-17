@@ -15,6 +15,15 @@ and edit/restart use cases remain at the package root.
 Import helpers from their defining module. Package initializers contain no
 compatibility forwarding or eager service construction.
 
+Launch and resume share session binding, dependency-error handling and transport
+confirmation in `frontend_bridge_core/chat_session.py`. Launch options and their
+defaults are defined by `ChatLaunchPreparation.prepare`; composition forwards
+them without declaring a second copy. Process events have one
+delivery callback into the application bus; optional observers subscribe there.
+User-name validation lives in `presentation/user_display.py`. History text uses
+`core.chat_history.text`, including its default user name, while system-history
+speaker aliases are defined once in `core.messaging.dialog_tokens`.
+
 ## Application lifecycle delivery
 
 The application owns `LifecycleEvents` even when no plugins are installed or
