@@ -4,6 +4,7 @@ export interface ReminderNotice {
   title: string;
   message: string;
   due_at: string;
+  delivery_count?: number;
   audio_path?: string | null;
   audio_volume?: number;
 }

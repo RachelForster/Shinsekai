@@ -7,8 +7,11 @@ import pytest
 from types import SimpleNamespace
 from core.media.effect_image import ImageEffectAsset
 
-from application.runtime.event_sink import fold_event_into_snapshot, make_empty_chat_snapshot
-from application.chat.ui_updates import (
+from application.runtime.event_sink import (
+    fold_event_into_snapshot,
+    make_empty_chat_snapshot,
+)
+from application.chat.presentation.updates import (
     HeadlessUIUpdateManager,
     StreamingUIUpdateManager,
     _format_dialog_html,
@@ -24,8 +27,12 @@ class _Sink:
     def emit(self, payload: dict) -> None:
         self.events.append(dict(payload))
 
+class _Urls:
     def media_url(self, raw_path: str) -> str:
         return f"media://{raw_path}"
+
+    def avatar_url(self, model_path: str, path: str) -> str:
+        return f"avatar://{model_path}/{path}"
 
 
 def test_presentation_html_escapes_untrusted_content() -> None:
@@ -56,7 +63,7 @@ def test_context_token_estimate_is_compact() -> None:
 
 def test_streaming_presenter_emits_media_and_control_events() -> None:
     sink = _Sink()
-    presenter = StreamingUIUpdateManager(sink)
+    presenter = StreamingUIUpdateManager(sink, resource_urls=_Urls())
 
     presenter.post_background("room.png")
     presenter.switch_bgm("room.mp3")
@@ -92,7 +99,7 @@ def test_streaming_presenter_emits_media_and_control_events() -> None:
 
 def test_streaming_presenter_emits_frontend_effect_audio_events(tmp_path) -> None:
     sink = _Sink()
-    presenter = StreamingUIUpdateManager(sink)
+    presenter = StreamingUIUpdateManager(sink, resource_urls=_Urls())
     one_shot = tmp_path / "impact.wav"
     loop = tmp_path / "rain.wav"
     one_shot.write_bytes(b"wav")
@@ -119,7 +126,7 @@ def test_streaming_presenter_emits_frontend_effect_audio_events(tmp_path) -> Non
 
 def test_streaming_presenter_keeps_relative_effect_audio_paths_for_the_bridge() -> None:
     sink = _Sink()
-    presenter = StreamingUIUpdateManager(sink)
+    presenter = StreamingUIUpdateManager(sink, resource_urls=_Urls())
     presenter.play_sound_effect("data/effects/custom/typing.wav")
     presenter.start_loop_effect("typing", "data/effects/custom/typing.wav")
 
@@ -129,7 +136,7 @@ def test_streaming_presenter_keeps_relative_effect_audio_paths_for_the_bridge() 
 
 def test_streaming_presenter_does_not_guess_effects_from_dialogue(tmp_path) -> None:
     sink = _Sink()
-    presenter = StreamingUIUpdateManager(sink)
+    presenter = StreamingUIUpdateManager(sink, resource_urls=_Urls())
     keyboard = tmp_path / "keyboard.wav"
     keyboard.write_bytes(b"wav")
 
@@ -144,7 +151,7 @@ def test_streaming_presenter_does_not_guess_effects_from_dialogue(tmp_path) -> N
 
 def test_streaming_presenter_does_not_match_nearby_effect_wording(tmp_path) -> None:
     sink = _Sink()
-    presenter = StreamingUIUpdateManager(sink)
+    presenter = StreamingUIUpdateManager(sink, resource_urls=_Urls())
     rain = tmp_path / "rain.wav"
     keyboard = tmp_path / "keyboard.wav"
     bell = tmp_path / "bell.wav"
@@ -174,7 +181,7 @@ def test_streaming_presenter_does_not_match_nearby_effect_wording(tmp_path) -> N
 
 def test_streaming_presenter_resolves_explicit_configured_effects(tmp_path) -> None:
     sink = _Sink()
-    presenter = StreamingUIUpdateManager(sink)
+    presenter = StreamingUIUpdateManager(sink, resource_urls=_Urls())
     rain = tmp_path / "rain.wav"
     typing = tmp_path / "typing.wav"
     rain.write_bytes(b"wav")
@@ -197,7 +204,7 @@ def test_streaming_presenter_resolves_explicit_configured_effects(tmp_path) -> N
 
 def test_streaming_presenter_resolves_image_and_audio_for_the_same_keyword(tmp_path) -> None:
     sink = _Sink()
-    presenter = StreamingUIUpdateManager(sink)
+    presenter = StreamingUIUpdateManager(sink, resource_urls=_Urls())
     audio = tmp_path / "item.wav"
     image = tmp_path / "item.png"
     bound_audio = tmp_path / "bound-item.wav"
@@ -224,7 +231,7 @@ def test_streaming_presenter_resolves_image_and_audio_for_the_same_keyword(tmp_p
 
 def test_exact_audio_label_is_not_replaced_by_a_substring_image():
     sink = _Sink()
-    presenter = StreamingUIUpdateManager(sink)
+    presenter = StreamingUIUpdateManager(sink, resource_urls=_Urls())
     runtime = SimpleNamespace(
         effect_keyword_map={"keyboard": "typing.wav"},
         effect_image_keyword_map={"key": ImageEffectAsset("key.png", "pickup.wav")},
@@ -238,7 +245,7 @@ def test_exact_audio_label_is_not_replaced_by_a_substring_image():
 @pytest.mark.parametrize("timing", ["before", "after"])
 def test_image_and_bound_audio_follow_explicit_timing_once(timing):
     sink = _Sink()
-    presenter = StreamingUIUpdateManager(sink)
+    presenter = StreamingUIUpdateManager(sink, resource_urls=_Urls())
     runtime = SimpleNamespace(effect_image_keyword_map={
         "key": ImageEffectAsset("key.png", "pickup.wav"),
     })
@@ -253,27 +260,97 @@ def test_image_and_bound_audio_follow_explicit_timing_once(timing):
 
 def test_streaming_presenter_keeps_character_slot_across_expression_changes() -> None:
     sink = _Sink()
-    presenter = StreamingUIUpdateManager(sink)
+    presenter = StreamingUIUpdateManager(sink, resource_urls=_Urls())
 
     class _Character:
+        name = "Mio"
         sprite_scale = 1.25
         sprites = [{"path": "neutral.png"}, {"path": "happy.png"}]
 
     with patch(
-        "application.chat.ui_updates.get_character_by_name",
+        "application.chat.presentation.updates.get_character_by_name",
         return_value=_Character(),
     ):
         presenter.update_sprite("Mio", 0)
-        presenter.update_sprite("Mio", 1)
+        presenter.update_sprite("mio", 1)
 
     assert [event["slot"] for event in sink.events] == [0, 0]
+    assert [event["characterName"] for event in sink.events] == ["Mio", "Mio"]
+    assert [event["identityKey"] for event in sink.events] == ["character:mio", "character:mio"]
     assert sink.events[-1]["url"] == "media://happy.png"
+    assert sink.events[-1]["avatarType"] == "static"
+    assert sink.events[-1]["modelUrl"] == ""
+    presenter.remove_character_sprite("mio")
+    assert not presenter._sprite_lru
+    assert sink.events[-1] == {"type": "sprite.remove", "characterName": "Mio"}
+
+
+def test_unowned_initial_images_have_path_identities_before_transport(tmp_path, monkeypatch) -> None:
+    from application.chat.presentation.initial_sprite import display_initial_sprite
+    from application.chat.presentation.character_visual import image_visual_identity
+
+    monkeypatch.chdir(tmp_path)
+    sink = _Sink()
+    presenter = StreamingUIUpdateManager(sink, resource_urls=_Urls())
+    config = SimpleNamespace(config=SimpleNamespace(characters=[]))
+    for path in ("a/portrait.png", "b/portrait.png", str(tmp_path / "a/portrait.png")):
+        assert display_initial_sprite(path, config=config, ui_updates=presenter)
+    first, second, repeated = sink.events
+    assert first["characterName"] == second["characterName"] == "portrait"
+    assert first["identityKey"] != second["identityKey"]
+    assert first["identityKey"] == repeated["identityKey"]
+    assert image_visual_identity("a\\portrait.png") == first["identityKey"]
+    snapshot = fold_event_into_snapshot(make_empty_chat_snapshot(), first)
+    assert snapshot["sprites"][0]["identityKey"] == first["identityKey"]
+
+
+def test_model_presentation_uses_its_own_bank_and_preserves_metadata_in_snapshot():
+    from config.schema import Character
+
+    character = Character(
+        name="Mio", color="#fff", sprite_prefix="mio", avatar_type=" VRM ",
+        sprites=[{"path": "static.png"}],
+        avatars={" VRM ": {"model_path": "mio.vrm", "sprites": [{"path": "smile.json"}]}},
+    )
+    sink = _Sink()
+    with patch("application.chat.presentation.updates.get_character_by_name", return_value=character):
+        StreamingUIUpdateManager(sink, resource_urls=_Urls()).update_sprite("Mio", 0)
+    event = sink.events[-1]
+    assert event["url"] == "avatar://mio.vrm/smile.json"
+    assert event["avatarType"] == "vrm"
+    assert event["modelUrl"] == "avatar://mio.vrm/mio.vrm"
+    sprite = fold_event_into_snapshot(make_empty_chat_snapshot(), event)["sprites"][0]
+    assert sprite["avatarType"] == "vrm"
+    assert sprite["modelUrl"] == "avatar://mio.vrm/mio.vrm"
+    assert sprite["path"] == "avatar://mio.vrm/smile.json"
+    assert sprite["identityKey"] == "character:mio"
+
+
+@pytest.mark.parametrize("portrait_path", ["portrait.png", "portrait.gif", "portrait.mp4"])
+def test_model_stage_and_file_player_portrait_keep_separate_resource_routes(portrait_path):
+    character = SimpleNamespace(
+        avatar_type="l2d", sprite_scale=1.25,
+        avatars={"l2d": {"model_path": "mio.model3.json", "sprites": [{"path": "smile.json"}]}},
+        sprites=[{"path": portrait_path, "portrait_crop": {"x": 0.2, "y": 0.3, "zoom": 2}}],
+    )
+    sink = _Sink()
+    presenter = StreamingUIUpdateManager(sink, resource_urls=_Urls())
+    with patch("application.chat.presentation.updates.get_character_by_name", return_value=character):
+        presenter.update_sprite("Mio", 0)
+        presenter.update_player_portrait("Mio", 0)
+    assert sink.events[0]["url"] == "avatar://mio.model3.json/smile.json"
+    assert sink.events[0]["modelUrl"] == "avatar://mio.model3.json/mio.model3.json"
+    assert sink.events[1] == {
+        "type": "player.portrait.show", "characterName": "Mio", "url": f"media://{portrait_path}",
+        "crop": {"x": 0.2, "y": 0.3, "zoom": 2},
+    }
+    assert list(presenter._sprite_lru) == ["Mio"]
 
 
 @pytest.mark.parametrize("next_background", ["street.png", ""])
 def test_background_switch_clears_reconnect_sprites_and_reassigns_slots(next_background) -> None:
     sink = _Sink()
-    presenter = StreamingUIUpdateManager(sink)
+    presenter = StreamingUIUpdateManager(sink, resource_urls=_Urls())
     presenter.post_background("room.png")
     presenter.update_sprite_from_path("mio.png", character_name="Mio")
     presenter.update_sprite_from_path("ren.png", character_name="Ren")

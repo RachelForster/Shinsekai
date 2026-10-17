@@ -64,7 +64,7 @@ logger = _configure_process_logging()
 
 
 def main() -> None:
-    from application.chat.session_runtime import (
+    from application.chat.runtime.session import (
         create_chat_session,
         parse_launch_options,
         peek_launch_endpoints,
@@ -82,11 +82,11 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    from application.chat.session_runtime import (
+    from application.chat.runtime.session import (
         cancel_chat_initialization,
         fail_chat_initialization,
     )
-    from application.chat.startup import MissingLlmProviderError
+    from application.chat.runtime.startup import MissingLlmProviderError
     from sdk.chat_init import InitChatCancelled
 
     try:

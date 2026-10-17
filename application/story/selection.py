@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from application.chat.runtime_process import TRANSPARENT_BACKGROUND_NAME
+from application.chat.host.projection import TRANSPARENT_BACKGROUND_NAME
 
 
 TEMPLATE_OPTION_KEYS = (
@@ -29,7 +29,7 @@ def normal_template_options(state: Any) -> dict:
     directory = getattr(state, "template_dir_path", "")
     if not directory:
         return {}
-    from application.chat.session_store import load_template_session
+    from application.chat.history.session_store import load_template_session
     from application.chat.templates import _template_session_to_frontend
 
     saved = _template_session_to_frontend(load_template_session(directory)) or {}
@@ -43,6 +43,9 @@ def generation_selection(state: Any, options: dict) -> tuple[dict, dict]:
     if any(not isinstance(name, str) or not name.strip() for name in names):
         raise ValueError("人物名称无效。")
     names = list(dict.fromkeys(names))
+    player_character = str(options.get("playerCharacter") or "").strip()
+    if player_character and player_character not in names:
+        raise ValueError("主控人物必须是已选择的有效角色。")
     mode = options.get("characterPromptMode", "full")
     if mode not in {"full", "compact"}:
         raise ValueError("请先设置主次人物。")
@@ -86,6 +89,9 @@ def generation_selection(state: Any, options: dict) -> tuple[dict, dict]:
         "characterPromptMode": mode,
         "primaryCharacters": list(dict.fromkeys(primary)),
         "backgroundName": background,
+        "playerCharacter": player_character,
+        "readPlayerSpeech": bool(options.get("readPlayerSpeech")) if player_character else False,
+        "allowPlayerDialogue": bool(options.get("allowPlayerDialogue", True)),
     }
     resolved.pop("templateId", None)
     return resolved, {

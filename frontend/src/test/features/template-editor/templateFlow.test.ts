@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { synchronizeTemplateLaunchSessionWithSnapshot } from "../../../features/template-editor/templateFlow";
+import {
+  synchronizeTemplateLaunchSessionWithSnapshot,
+  templateGenerationKey,
+} from "../../../features/template-editor/templateFlow";
 import type { ChatSnapshot, TemplateLaunchSession } from "../../../shared/platform/types";
 
 const session: TemplateLaunchSession = {
@@ -25,6 +28,48 @@ const session: TemplateLaunchSession = {
   useTranslation: false,
   voiceLanguage: "ja",
 };
+
+describe("template generation key", () => {
+  const input: Parameters<typeof templateGenerationKey>[0] = {
+    characters: ["Player", "NPC"],
+    characterPromptMode: "compact",
+    primaryCharacters: ["NPC"],
+    mediaSelectionMode: "semantic",
+    playerCharacter: "Player",
+    readPlayerSpeech: true,
+    allowPlayerDialogue: false,
+  };
+
+  it("retains the existing fingerprint format used when restoring a session", () => {
+    expect(templateGenerationKey(input)).toBe("Player\nNPC\n--compact\nNPC\n--semantic\n--Player\n--true\n--false");
+  });
+
+  it("gives legacy and explicitly defaulted settings the same key", () => {
+    expect(templateGenerationKey({ characters: ["NPC"] })).toBe(
+      templateGenerationKey({
+        characters: ["NPC"],
+        primaryCharacters: [],
+        mediaSelectionMode: "indexed",
+        playerCharacter: "",
+        readPlayerSpeech: false,
+        allowPlayerDialogue: true,
+      }),
+    );
+  });
+
+  const changes: Partial<typeof input>[] = [
+    { characters: ["NPC", "Player"] },
+    { characterPromptMode: "full" },
+    { primaryCharacters: ["Player"] },
+    { mediaSelectionMode: "indexed" },
+    { playerCharacter: "NPC" },
+    { readPlayerSpeech: false },
+    { allowPlayerDialogue: true },
+  ];
+  it.each(changes)("regenerates when a generation-relevant setting changes: %j", (change) => {
+    expect(templateGenerationKey({ ...input, ...change })).not.toBe(templateGenerationKey(input));
+  });
+});
 
 function snapshot(historyPath: string): ChatSnapshot {
   return {

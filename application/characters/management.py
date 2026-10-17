@@ -2,18 +2,26 @@
 
 from __future__ import annotations
 
+import logging
+import sqlite3
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Iterable
+from threading import RLock
 from urllib.parse import urlparse
 
 from application.media.resource_paths import MediaResourcePaths
 from application.runtime.state import _jsonify
 
+logger = logging.getLogger(__name__)
+
 
 class CharacterOperation(str, Enum):
+    IMPORT_MODEL = "import-model"
+    IMPORT_MODEL_STATES = "import-model-states"
+    SAVE_MODEL_STATE = "save-model-state"
     SAVE = "save"
     DELETE = "delete"
     UPLOAD_SPRITES = "upload-sprites"
@@ -94,6 +102,7 @@ def validate_character_payload(body: dict[str, Any], *, allow_remote_voice_paths
 
 class CharacterUseCase:
     """Single application entry point for character resource mutations."""
+    _mutation_lock = RLock()
 
     def __init__(self, state: Any, *, file_access_roots: Iterable[Path] = ()):
         self._state = state
@@ -104,7 +113,11 @@ class CharacterUseCase:
         )
 
     def execute(self, request: CharacterRequest) -> Any:
+        from application.characters.model_assets import import_model, import_model_states, save_model_state
         handlers = {
+            CharacterOperation.IMPORT_MODEL: lambda body: import_model(self, body),
+            CharacterOperation.IMPORT_MODEL_STATES: lambda body: import_model_states(self, body),
+            CharacterOperation.SAVE_MODEL_STATE: lambda body: save_model_state(self, body),
             CharacterOperation.SAVE: self._save,
             CharacterOperation.DELETE: self._delete,
             CharacterOperation.UPLOAD_SPRITES: self._upload_sprites,
@@ -117,7 +130,11 @@ class CharacterUseCase:
             CharacterOperation.IMPORT: self._import_packages,
             CharacterOperation.EXPORT: self._export_package,
         }
-        return handlers[request.operation](request.payload)
+        # Import prepares outside the lock, then checks the original config at commit.
+        if request.operation in (CharacterOperation.IMPORT_MODEL, CharacterOperation.IMPORT_MODEL_STATES):
+            return handlers[request.operation](request.payload)
+        with self._mutation_lock:
+            return handlers[request.operation](request.payload)
 
     def _character(self, name: str) -> Any:
         character = self._state.config_manager.get_character_by_name(name)
@@ -191,7 +208,7 @@ class CharacterUseCase:
             raise ValueError(error)
 
     def _save(self, payload: dict[str, Any]) -> dict[str, Any]:
-        from config.schema import Character
+        from config.schema import Character, PortraitCrop
 
         body = payload.get("character", payload)
         if not isinstance(body, dict):
@@ -216,14 +233,31 @@ class CharacterUseCase:
             edit_as_name=original_name,
             emotion_tags=str(character.emotion_tags or ""),
             character_brief=str(character.character_brief or "").strip(),
+            portrait_crop=character.portrait_crop if "portrait_crop" in body else None,
+            sprite_portrait_crops={
+                index: (item.get("portrait_crop") and PortraitCrop.model_validate(item["portrait_crop"]))
+                for index, item in enumerate(body.get("sprites", []))
+                if isinstance(item, dict) and "portrait_crop" in item
+            },
+            # Preserve stored banks when older clients omit the new fields.
+            avatar_type=character.avatar_type if "avatar_type" in body else None,
+            avatars=character.avatars if "avatars" in body else None,
         )
         if message.startswith("名称不能为空") or "已与其他角色重复" in message or message.startswith("保存失败"):
             raise RuntimeError(message)
         self._state.config_manager.reload()
         if original_name and original_name != saved_name:
+            from application.knowledge.manage_knowledge import rename_character_bindings
             from application.chat.templates import _rename_template_session_character
             from application.chat.conversation_library import update_conversation_character
 
+            try:
+                rename_character_bindings(original_name, saved_name)
+            except sqlite3.Error:
+                logger.exception(
+                    "Character rename succeeded but knowledge bindings could not be migrated: %s -> %s",
+                    original_name, saved_name,
+                )
             try:
                 _rename_template_session_character(self._state, original_name, saved_name)
             except OSError:
@@ -239,6 +273,14 @@ class CharacterUseCase:
         existed = self._state.config_manager.get_character_by_name(name) is not None
         message, names = self._state.character_manager.delete_character(name)
         if existed and self._state.config_manager.get_character_by_name(name) is None:
+            from application.knowledge.manage_knowledge import clear_character_bindings
+
+            try:
+                clear_character_bindings(name)
+            except sqlite3.Error:
+                logger.exception(
+                    "Character deletion succeeded but knowledge bindings could not be cleared: %s", name,
+                )
             update_conversation_character(self._state, name)
         return {"message": message, "names": names}
 

@@ -8,9 +8,11 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from application.media.resource_urls import ResourceUrls, UnconfiguredResourceUrls
+from application.runtime.services import ApplicationServices
 
 if TYPE_CHECKING:
-    from application.chat.mobile_access import MobileAccessPort
+    from application.chat.host.mobile_access import MobileAccessPort
 
 
 def _default_project_root_dir() -> str:
@@ -42,7 +44,11 @@ class BridgeState:
     chat_stream: Any = None
     mobile_access_service: MobileAccessPort | None = None
     chat_runtime_lock: threading.Lock = field(default_factory=threading.Lock)
+    chat_lifecycle_lock: Any = field(default_factory=threading.RLock, kw_only=True)
     chat_runtime_closing: bool = False
+    chat_session_lifecycle: Any = field(default=None, kw_only=True)
+    chat_session_launch_id: str = field(default="", kw_only=True)
+    chat_lifecycle_error: str = field(default="", kw_only=True)
     history_download_lock: threading.Lock = field(default_factory=threading.Lock)
     history_download_capabilities: dict[str, tuple[str, float]] = field(default_factory=dict)
     chat_init_lock: threading.Lock = field(default_factory=threading.Lock)
@@ -58,6 +64,8 @@ class BridgeState:
     story_scene_service: Any = field(default=None, kw_only=True)
     story_generation_service: Any = field(default=None, kw_only=True)
     reminder_presenter: Any = field(default=None, kw_only=True)
+    resource_urls: ResourceUrls = field(default_factory=UnconfiguredResourceUrls, kw_only=True)
+    services: ApplicationServices = field(default_factory=ApplicationServices, kw_only=True)
     # Keep this field last so positional construction by older integrations remains compatible.
     project_root_dir: str = field(default_factory=_default_project_root_dir)
 

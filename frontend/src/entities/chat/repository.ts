@@ -1,9 +1,12 @@
 import { getPlatform } from "../../shared/platform/platform";
+import { normalizePlayerOptions } from "../../shared/playerCharacterOptions";
 import type {
   ChatCommand,
+  ChatCloseOptions,
   ChatCommandResult,
   ChatHistoryEntry,
   ChatLaunchPayload,
+  ChatResumeOverrides,
   ChatRuntimeProcessState,
   ChatSnapshot,
   RuntimeDependencyInstallInput,
@@ -16,6 +19,7 @@ import type { ChatThemeManifest, ChatThemeSummary, SaveChatThemeInput } from "..
 import type { ChatStageEvent } from "../../shared/platform/types";
 
 export const chatQueryKey = ["chat"] as const;
+export const chatObserverQueryKey = ["chat", "observer-snapshot"] as const;
 export const conversationsQueryKey = ["chat", "conversations"] as const;
 
 export const listConversations = () => getPlatform().chat.listConversations();
@@ -44,12 +48,14 @@ export async function getConversationSession(id: string): Promise<TemplateLaunch
     voiceLanguage: options.voiceLanguage || "ja",
     characterPromptMode: options.characterPromptMode,
     primaryCharacters: options.primaryCharacters,
+    ...normalizePlayerOptions(options),
     enableMobileAccess: options.enableMobileAccess,
     background: payload.backgroundName,
     effectNames: payload.effectNames ?? [],
     filenameStub: payload.templateName ?? "",
     historyPath: payload.historyPath,
     initSpritePath: payload.initSpritePath ?? "",
+    showInitialSprite: payload.showInitialSprite ?? true,
     mediaSelectionMode: payload.mediaSelectionMode ?? "indexed",
     roomId: payload.roomId ?? "",
     scenario: payload.scenario ?? "",
@@ -68,12 +74,16 @@ export function getChatSnapshot(): Promise<ChatSnapshot> {
   return getPlatform().chat.getSnapshot();
 }
 
+export function getChatObserverSnapshot(): Promise<ChatSnapshot> {
+  return getPlatform().chat.getSnapshot({ claimRenderer: false });
+}
+
 export function getChatRuntimeStatus(): Promise<ChatRuntimeProcessState> {
   return getPlatform().chat.getRuntimeStatus();
 }
 
-export function closeChat(): Promise<ChatSnapshot> {
-  return getPlatform().chat.close();
+export function closeChat(options?: ChatCloseOptions): Promise<ChatSnapshot> {
+  return getPlatform().chat.close(options);
 }
 
 export function getChatTheme(): Promise<ChatThemePayload> {
@@ -94,8 +104,11 @@ export function installMissingRuntimeDependency(
   return getPlatform().runtime.installMissingDependency(input, options);
 }
 
-export function resumeLastChat(options?: TaskProgressOptions<ChatSnapshot>): Promise<ChatSnapshot> {
-  return getPlatform().chat.resumeLast(options);
+export function resumeLastChat(
+  options?: TaskProgressOptions<ChatSnapshot>,
+  overrides?: ChatResumeOverrides,
+): Promise<ChatSnapshot> {
+  return getPlatform().chat.resumeLast(options, overrides);
 }
 
 export function sendChatCommand(command: ChatCommand): Promise<ChatCommandResult> {

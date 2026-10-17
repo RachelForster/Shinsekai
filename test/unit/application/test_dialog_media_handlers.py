@@ -5,8 +5,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from sdk.messages import LLMDialogMessage
-from application.chat.handlers.registry import DialogMediaDispatcher
-from application.chat.handlers.dialog_media import (
+from application.chat.presentation.handlers.registry import DialogMediaDispatcher
+from application.chat.presentation.handlers.dialog_media import (
     CharacterMediaHandler,
     BgmMediaHandler,
     CgMediaHandler,

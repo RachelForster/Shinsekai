@@ -4,8 +4,8 @@ from pathlib import Path
 from typing import Any
 
 from application.chat import conversation_library as conversations
-from application.chat.history_paths import resolve_history_path_for_project
-from application.chat.runtime_process import _chat_runtime_status
+from application.chat.history.paths import resolve_history_path_for_project
+from application.chat.composition import _chat_runtime_status
 from application.chat.start_chat import _chat_init_lock
 from application.story.coordinator import clear_story_session
 from application.story.library import _matches, _read_project, list_story_library

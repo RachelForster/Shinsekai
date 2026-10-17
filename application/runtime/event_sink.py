@@ -197,6 +197,14 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
             next_snapshot["userDisplayName"] = name
         return next_snapshot
 
+    if event_type == "player.portrait.show":
+        next_snapshot["playerPortrait"] = {
+            "characterName": str(event.get("characterName") or ""),
+            "url": str(event.get("url") or ""),
+            "crop": dict(event.get("crop") or {}),
+        }
+        return next_snapshot
+
     if event_type == "sprite.show":
         _clear_transient_notification_state(next_snapshot)
         character_name = str(event.get("characterName") or "")
@@ -218,10 +226,14 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
             "characterName": character_name,
             "scale": event.get("scale"),
             "slot": slot,
+            "avatarType": str(event.get("avatarType") or "static"),
+            "modelUrl": str(event.get("modelUrl") or ""),
         }
         for axis in ("x", "y"):
             if event.get(axis) is not None:
                 next_sprite[axis] = event.get(axis)
+        if event.get("identityKey"):
+            next_sprite["identityKey"] = str(event["identityKey"])
         current.append(next_sprite)
         next_snapshot["sprites"] = current
         return next_snapshot
@@ -555,7 +567,13 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
     if event_type == "asr.final":
         _clear_transient_notification_state(next_snapshot)
         # The final transcript has already entered the chat turn pipeline.
-        # Persist its consumed presentation state for reconnect hydration.
+        # Persist that accepted user turn so polling and reconnect hydration
+        # expose the same presentation as the live event stream.
+        next_snapshot["characterName"] = (
+            str(next_snapshot.get("userDisplayName") or "").strip() or "你"
+        )
+        next_snapshot["dialogHtml"] = None
+        next_snapshot["dialogText"] = str(event.get("text") or "").strip()
         next_snapshot["inputDraft"] = ""
         next_snapshot["options"] = []
         return next_snapshot
@@ -626,6 +644,9 @@ def build_event(seq: int, payload: Dict[str, Any]) -> Dict[str, Any]:
         "ts": int(time.time() * 1000),
     }
     event.update(payload)
+    if event.get("type") == "sprite.show":
+        event["avatarType"] = str(event.get("avatarType") or "static")
+        event["modelUrl"] = str(event.get("modelUrl") or "")
     return event
 
 

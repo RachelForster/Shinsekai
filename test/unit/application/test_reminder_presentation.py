@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 import threading
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -11,6 +12,7 @@ import pytest
 
 from ai.tts.model_session import tts_model_session
 from application.reminders.presentation import ReminderPresenter
+from application.reminders.workflow import REMINDER_EXPRESSION_STYLES
 from test.mocks import MockLLMAdapter
 
 
@@ -95,7 +97,11 @@ def test_reuses_dialog_contract_personality_translation_and_single_item_limit(
     assert result["dialog"]["translate"] == dialog()["translate"]
     assert "speech_language" not in result
     system, user = presenter.workflow.complete.call_args.args
-    assert json.loads(user) == reminder()
+    data = json.loads(user)
+    assert {key: data[key] for key in reminder()} == reminder()
+    assert data["previous_reminder_count"] == 0
+    assert data["reminder_number"] == 1
+    assert data["expression_style"] in REMINDER_EXPRESSION_STYLES
     assert "嘴硬但关心用户" in system
     assert '"dialog"' in system and '"translate"' in system
     assert "exactly one dialog item" in system
@@ -103,6 +109,36 @@ def test_reuses_dialog_contract_personality_translation_and_single_item_limit(
     from i18n import tr_in_bundle
 
     assert tr_in_bundle("template_gen.r_dialog_max_items", "zh_CN", n=1) in system
+
+
+def test_prompt_uses_current_local_date_prior_count_and_varied_expression(presenter, monkeypatch):
+    now = datetime(2026, 9, 20, 0, 5).astimezone()
+    clock = Mock()
+    clock.now.return_value = now
+    monkeypatch.setattr("application.reminders.workflow.datetime", clock)
+    choose = Mock(side_effect=REMINDER_EXPRESSION_STYLES[:2])
+    monkeypatch.setattr("application.reminders.workflow.random.choice", choose)
+    presenter.workflow.complete = Mock(return_value=output())
+    payload = reminder(delivery_count=3, current_date="wrong date", previous_reminder_count=999)
+    for style in REMINDER_EXPRESSION_STYLES[:2]:
+        presenter.render(payload)
+        system, user = presenter.workflow.complete.call_args.args
+        data = json.loads(user)
+        assert data["current_date"] == "2026-09-20"
+        assert data["current_time"] == now.isoformat(timespec="seconds")
+        assert data["due_at"] == payload["due_at"]
+        assert data["previous_reminder_count"] == 3
+        assert data["reminder_number"] == 4
+        assert data["expression_style"] == style
+        assert "do not mean the user ignored" in system
+    assert payload["delivery_count"] == 3
+    assert choose.call_count == 2
+
+
+@pytest.mark.parametrize("count", [-1, True, "3", 1.5, None])
+def test_invalid_delivery_count_is_rejected(presenter, count):
+    with pytest.raises(ValueError, match="delivery_count"):
+        presenter.render(reminder(delivery_count=count))
 
 
 def test_same_language_uses_normal_contract_without_translate_field(presenter):

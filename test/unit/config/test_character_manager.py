@@ -1,7 +1,9 @@
 from types import SimpleNamespace
 
+import pytest
+
 from config.character_manager import CharacterManager
-from config.schema import Character
+from config.schema import Character, ModelSprites
 
 
 class FakeConfigManager:
@@ -24,6 +26,113 @@ def build_manager(characters):
 
 def sprite_field(sprite, key):
     return getattr(sprite, key, None) if hasattr(sprite, key) else sprite.get(key)
+
+
+def test_upload_mixed_image_and_mp4_sprites_preserves_bytes_and_tag_order(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    monkeypatch.setattr("config.character_manager.UPLOAD_DIR", str(tmp_path / "uploaded"))
+    sources = []
+    for name in ("idle.png", "smile.gif", "wave.mp4"):
+        source = tmp_path / name
+        source.write_bytes(name.encode())
+        sources.append(SimpleNamespace(name=str(source)))
+    character = Character(name="Mika", color="#fff", sprite_prefix="mika")
+    manager = build_manager([character])
+
+    _message, paths, tags = manager.upload_sprites("Mika", sources, "")
+
+    assert [Path(path).name for path in paths] == ["idle.png", "smile.gif", "wave.mp4"]
+    assert [Path(path).read_bytes() for path in paths] == [b"idle.png", b"smile.gif", b"wave.mp4"]
+    assert tags == "立绘 1：\n立绘 2：\n立绘 3：\n"
+    assert character.model_dump(mode="json")["sprites"][2]["path"] == paths[2]
+    assert manager._config_manager.save_count == 1
+
+
+@pytest.mark.parametrize("prefix", ["", ".", "../outside"])
+def test_delete_all_sprites_rejects_shared_or_escaping_root(tmp_path, monkeypatch, prefix):
+    sprite_root = tmp_path / "sprite"
+    sprite_root.mkdir()
+    sentinel = sprite_root / "other-character.png"
+    sentinel.touch()
+    monkeypatch.setattr("config.character_manager.UPLOAD_DIR", str(sprite_root))
+    monkeypatch.setattr("config.character_manager.VOICE_DIR", str(tmp_path / "speech"))
+    character = Character(name="Mika", color="#fff", sprite_prefix=prefix)
+    manager = build_manager([character])
+    with pytest.raises((ValueError, PermissionError)):
+        manager.delete_all_sprites("Mika")
+    assert sentinel.is_file()
+    assert manager._config_manager.save_count == 0
+
+
+@pytest.mark.parametrize("operation", ["create", "update", "rename", "update_by_name"])
+def test_add_character_persists_avatar_banks(operation):
+    character = Character(
+        name="Mika", color="#66ccff", sprite_prefix="old",
+        avatar_type="vrm", avatars={"vrm": {"model_path": "old.vrm"}},
+    )
+    manager = build_manager([] if operation == "create" else [character])
+    name = "Renamed" if operation == "rename" else "Mika"
+    edit_as_name = "Mika" if operation in {"update", "rename"} else None
+    assets = ModelSprites(
+        model_path="new.model3.json",
+        sprites=[{"path": "happy.motion3.json", "voice_type": "preset"}],
+        emotion_tags="1: happy",
+    )
+
+    manager.add_character(
+        name, "#ffffff", "new", "", "", "", "", "", "Updated setting",
+        edit_as_name=edit_as_name, avatar_type=" L2D ", avatars={" L2D ": assets},
+    )
+
+    saved = manager._config_manager.get_character_by_name(name)
+    assert saved.avatar_type == "l2d"
+    assert saved.avatars == {"l2d": assets}
+    assert saved.model_dump(mode="json")["avatars"]["l2d"]["sprites"][0]["voice_type"] == "preset"
+    assert manager._config_manager.save_count == 1
+
+
+@pytest.mark.parametrize("edit_as_name", [None, "Mika"])
+def test_legacy_update_preserves_avatar_banks(edit_as_name):
+    character = Character(
+        name="Mika", color="#66ccff", sprite_prefix="old",
+        avatar_type="vrm", avatars={"vrm": {"model_path": "existing.vrm"}},
+    )
+    original = character.model_dump(mode="json")
+    manager = build_manager([character])
+    manager.add_character(
+        "Mika", "#ffffff", "new", "", "", "", "", "", "Updated setting",
+        edit_as_name=edit_as_name,
+    )
+    assert character.avatar_type == original["avatar_type"]
+    assert character.model_dump(mode="json")["avatars"] == original["avatars"]
+
+
+def test_avatar_banks_can_be_explicitly_cleared():
+    character = Character(
+        name="Mika", color="#66ccff", sprite_prefix="old",
+        avatar_type="vrm", avatars={"vrm": {"model_path": "existing.vrm"}},
+    )
+    manager = build_manager([character])
+    manager.add_character(
+        "Mika", "#ffffff", "new", "", "", "", "", "", "Updated setting",
+        edit_as_name="Mika", avatar_type="static", avatars={},
+    )
+    assert character.avatar_type == "static"
+    assert character.avatars == {}
+
+
+def test_invalid_avatar_banks_do_not_mutate_existing_character():
+    character = Character(name="Mika", color="#66ccff", sprite_prefix="old")
+    original = character.model_dump(mode="json")
+    manager = build_manager([character])
+    with pytest.raises(ValueError, match="invalid or duplicate avatar format"):
+        manager.add_character(
+            "Mika", "#ffffff", "new", "", "", "", "", "", "Updated setting",
+            edit_as_name="Mika", avatar_type="l2d", avatars={"static": {}},
+        )
+    assert character.model_dump(mode="json") == original
+    assert manager._config_manager.save_count == 0
 
 
 def test_add_character_updates_existing_emotion_tags():

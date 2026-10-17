@@ -8,6 +8,9 @@ import { TextInput } from "../../shared/ui/FormControls";
 import { ConversationLibrary } from "./ConversationLibrary";
 import { ConversationTypeBadge } from "./ConversationTypeBadge";
 import { resolveConversationTitle } from "../../entities/chat/conversationTitle";
+import { useChatInitialization } from "../chat-startup/useChatInitialization";
+import { ChatInitializationDialog } from "../chat-startup/ChatInitializationDialog";
+import { useMobileAccessLaunch } from "../mobile-access/useMobileAccessLaunch";
 import "./ChatWorkspacePage.css";
 
 const NormalMode = lazy(() =>
@@ -25,6 +28,8 @@ const StorySettings = lazy(() =>
 export function ChatWorkspacePage() {
   const { t } = useI18n();
   const [params, setParams] = useSearchParams();
+  const initialization = useChatInitialization();
+  const mobileAccess = useMobileAccessLaunch();
   const conversationId = params.get("conversation") || undefined;
   const configuring =
     params.get("tab") === "new" || Boolean(conversationId) || (!params.has("tab") && params.has("mode"));
@@ -69,6 +74,9 @@ export function ChatWorkspacePage() {
                 createOnly={!conversationId}
                 conversationId={conversationId}
                 conversationTitle={title}
+                initializationService={conversationId ? undefined : initialization}
+                onLaunchStarted={conversationId ? undefined : back}
+                onApplied={conversationId ? undefined : mobileAccess.openChat}
               />
             ) : (
               <StoryMode key={draftKey} conversationTitle={title} />
@@ -87,6 +95,14 @@ export function ChatWorkspacePage() {
           }
         />
       )}
+      <ChatInitializationDialog
+        error={initialization.initializationError}
+        onClose={initialization.closeInitialization}
+        open={initialization.initializationOpen}
+        pending={initialization.initializationPending}
+        task={initialization.initializationTask}
+      />
+      {mobileAccess.dialog}
       <Dialog
         open={creating}
         title={t("conversation.new")}

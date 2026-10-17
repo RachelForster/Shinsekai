@@ -21,6 +21,9 @@ pub struct Notice {
     pub title: String,
     pub message: String,
     pub due_at: String,
+    // Snapshot before acknowledging this occurrence; excludes the current notice.
+    #[serde(default)]
+    pub delivery_count: u64,
     #[serde(default)]
     pub audio_path: Option<String>,
     #[serde(default = "default_audio_volume")]
@@ -254,6 +257,14 @@ fn update_notice(app: &AppHandle, notice: &Notice) -> Result<(), String> {
     Ok(())
 }
 
+fn presentation_payload(notice: &Notice) -> Value {
+    json!({
+        "character_name": notice.character_name, "title": notice.title,
+        "message": notice.message, "due_at": notice.due_at,
+        "delivery_count": notice.delivery_count,
+    })
+}
+
 fn enrich_notice(app: &AppHandle, mut notice: Notice) -> Result<(), String> {
     if !is_pending(app, &notice) {
         return Ok(());
@@ -261,10 +272,7 @@ fn enrich_notice(app: &AppHandle, mut notice: Notice) -> Result<(), String> {
     let result = bridge_with_timeout(
         app,
         "/presentation",
-        Some(json!({
-            "character_name": notice.character_name, "title": notice.title,
-            "message": notice.message, "due_at": notice.due_at,
-        })),
+        Some(presentation_payload(&notice)),
         35,
     )?;
     if let Some(message) = result["message"].as_str() {
@@ -546,5 +554,28 @@ mod tests {
         assert!(notice.audio_path.is_none());
         assert_eq!(notice.audio_volume, 1.0);
         assert_eq!(notice.message, "该睡觉了");
+        assert_eq!(notice.delivery_count, 0);
+        assert_eq!(presentation_payload(&notice)["delivery_count"], 0);
+    }
+
+    #[test]
+    fn prior_delivery_count_reaches_presentation_without_including_current_ack() {
+        let mut claim = claimed("recurring");
+        claim["delivery_count"] = json!(3);
+        poll_with(
+            |route, _| match route {
+                "/claim" => Ok(json!([claim.clone()])),
+                "/ack" => Ok(json!({"ok": true})),
+                _ => panic!("Unexpected route: {route}"),
+            },
+            |notice| {
+                let payload = presentation_payload(&notice);
+                assert_eq!(payload["delivery_count"], 3);
+                assert_eq!(payload["due_at"], claim["due_at"]);
+                assert_eq!(serde_json::to_value(&notice).unwrap()["delivery_count"], 3);
+                Ok(())
+            },
+        )
+        .unwrap();
     }
 }

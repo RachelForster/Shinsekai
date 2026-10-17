@@ -2,6 +2,7 @@ import unittest
 
 from application.runtime.shutdown import shutdown_chat_runtime
 from sdk.hooks import clear_shutdown_hooks, register_shutdown_hook
+from types import SimpleNamespace
 
 
 class _WorkflowStub:
@@ -13,13 +14,30 @@ class _WorkflowStub:
 
 
 class RuntimeShutdownTests(unittest.TestCase):
+    def test_owned_services_close_even_when_later_shutdown_steps_fail(self):
+        calls = []
+
+        def broken():
+            calls.append("plugin")
+            raise RuntimeError("failure")
+
+        errors = shutdown_chat_runtime(
+            services=SimpleNamespace(close=lambda: calls.append("agent")),
+            plugin_shutdown=broken,
+            close_stream_sink=lambda: calls.append("stream"),
+        )
+        self.assertEqual(calls, ["agent", "plugin", "stream"])
+        self.assertEqual(errors[0][0], "plugin_shutdown")
+
     def tearDown(self):
         clear_shutdown_hooks()
 
     def test_shutdown_runs_steps_in_expected_order(self):
         calls = []
         workflow = _WorkflowStub(calls)
-        register_shutdown_hook(lambda: calls.append("memory_shutdown"), label="memory_shutdown")
+        register_shutdown_hook(
+            lambda: calls.append("memory_shutdown"), label="memory_shutdown"
+        )
 
         shutdown_chat_runtime(
             workflow=workflow,
@@ -51,7 +69,9 @@ class RuntimeShutdownTests(unittest.TestCase):
         calls = []
         errors = []
         workflow = _WorkflowStub(calls)
-        register_shutdown_hook(lambda: calls.append("memory_shutdown"), label="memory_shutdown")
+        register_shutdown_hook(
+            lambda: calls.append("memory_shutdown"), label="memory_shutdown"
+        )
 
         def broken_plugin_shutdown():
             calls.append("plugin_shutdown")
@@ -88,7 +108,9 @@ class RuntimeShutdownTests(unittest.TestCase):
         self.assertEqual(result[0][0], "plugin_shutdown")
         self.assertEqual(str(result[0][1]), "boom")
 
-    def test_registered_shutdown_hook_failure_is_reported_and_does_not_stop_later_steps(self):
+    def test_registered_shutdown_hook_failure_is_reported_and_does_not_stop_later_steps(
+        self,
+    ):
         calls = []
         errors = []
 
@@ -124,7 +146,9 @@ class RuntimeShutdownTests(unittest.TestCase):
 
     def test_shutdown_hook_unregister_removes_step(self):
         calls = []
-        unregister = register_shutdown_hook(lambda: calls.append("removed"), label="removed")
+        unregister = register_shutdown_hook(
+            lambda: calls.append("removed"), label="removed"
+        )
         register_shutdown_hook(lambda: calls.append("kept"), label="kept")
 
         unregister()

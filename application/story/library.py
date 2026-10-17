@@ -6,15 +6,24 @@ import json
 from pathlib import Path
 from typing import Any
 
-from application.chat.history_paths import resolve_history_path_for_project
+from application.chat.history.paths import resolve_history_path_for_project
 from application.chat.conversation_library import saved_conversation_launch
-from application.chat.runtime_process import TRANSPARENT_BACKGROUND_NAME
+from application.chat.host.projection import TRANSPARENT_BACKGROUND_NAME
 from application.story.persistence import JsonStorySessionRepository
 from application.story.project_loader import load_story_project
 from application.story.selection import normal_template_options
 from config.feature_flags import FeatureFlag
-from core.chat_history.storage import STORY_SESSION_FILENAME, chat_history_active_path, chat_history_session_dir
-from core.story import CharacterSourceType, StoryCompiler, StoryNode, StoryValidationError
+from core.chat_history.storage import (
+    STORY_SESSION_FILENAME,
+    chat_history_active_path,
+    chat_history_session_dir,
+)
+from core.story import (
+    CharacterSourceType,
+    StoryCompiler,
+    StoryNode,
+    StoryValidationError,
+)
 from sdk.path_utils import safe_existing_path
 
 
@@ -162,6 +171,9 @@ def prepare_story_launch(state: Any, story_path: str, history_path: str = "") ->
         for name in names
         if state.config_manager.get_character_by_name(name) is not None
     ]
+    player_character = str(bindings.get("playerCharacter") or "")
+    if player_character not in names:
+        player_character = ""
     background = bindings.get("openingBackground") or TRANSPARENT_BACKGROUND_NAME
     payload = {
         **dict(bindings.get("templateOptions") or {}),
@@ -173,6 +185,9 @@ def prepare_story_launch(state: Any, story_path: str, history_path: str = "") ->
         "backgroundName": background,
         "characterPromptMode": bindings.get("characterPromptMode", "full"),
         "primaryCharacters": list(bindings.get("primaryCharacters", names)),
+        "playerCharacter": player_character,
+        "readPlayerSpeech": bool(bindings.get("readPlayerSpeech")) if player_character else False,
+        "allowPlayerDialogue": bool(bindings.get("allowPlayerDialogue", True)),
         "historyPath": history_path,
         "resetHistory": not bool(history_path),
         "scenario": f"正在游玩互动剧本《{project.title}》。根据当前节点的剧情要求和已发生的对话推进故事。",

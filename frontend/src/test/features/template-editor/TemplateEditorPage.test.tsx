@@ -1,9 +1,12 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Profiler } from "react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TemplateEditorPage } from "../../../features/template-editor/TemplateEditorPage";
+import { ChatWorkspacePage } from "../../../features/chat-workspace/ChatWorkspacePage";
+import { setMobileAccessPreference } from "../../../features/mobile-access/useMobileAccessPreference";
 import { buildDefaultTemplateScenario } from "../../../features/template-editor/templateFlow";
 import { I18nProvider, translateMessage } from "../../../shared/i18n/I18nProvider";
 import { PlatformRequestError } from "../../../shared/platform/errors";
@@ -83,6 +86,10 @@ vi.mock("../../../shared/desktop/chatWindow", () => ({
   showChatSurface: (...args: unknown[]) => mockShowChatSurface(...args),
 }));
 
+vi.mock("../../../features/chat-workspace/ConversationLibrary", () => ({
+  ConversationLibrary: () => <h1>Chats</h1>,
+}));
+
 const template = {
   content: "Morning scene\n\nSystem rules",
   id: "opening",
@@ -95,7 +102,7 @@ const template = {
 
 const queryClients = new Set<QueryClient>();
 
-function renderPage(props: Parameters<typeof TemplateEditorPage>[0] = {}, onCommit = () => {}) {
+function renderPage(props: Parameters<typeof TemplateEditorPage>[0] = {}, onCommit = () => {}, workspace = false) {
   const client = new QueryClient({
     defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
   });
@@ -106,7 +113,13 @@ function renderPage(props: Parameters<typeof TemplateEditorPage>[0] = {}, onComm
       <ToastProvider>
         <I18nProvider language="en">
           <Profiler id="template-editor" onRender={onCommit}>
-            <TemplateEditorPage {...props} />
+            {workspace ? (
+              <MemoryRouter initialEntries={["/settings/templates?tab=new&mode=normal"]}>
+                <ChatWorkspacePage />
+              </MemoryRouter>
+            ) : (
+              <TemplateEditorPage {...props} />
+            )}
           </Profiler>
         </I18nProvider>
       </ToastProvider>
@@ -140,6 +153,7 @@ describe("TemplateEditorPage", () => {
   };
   beforeEach(() => {
     vi.resetAllMocks();
+    localStorage.clear();
     mockUseChatLaunchGuard.mockReturnValue({
       refreshRuntimeStatus: mockRefreshRuntimeStatus,
       runtimeLaunchDisabled: false,
@@ -186,6 +200,42 @@ describe("TemplateEditorPage", () => {
     });
   });
 
+  it("defaults initial sprites to visible and saves a disabled switch when launching", async () => {
+    mockGetTemplateSession.mockResolvedValue({ ...savedChat, initSpritePath: "D:/sprites/custom.png" });
+    renderPage();
+    await waitFor(() => expect(screen.getByLabelText("Initial sprite")).toHaveValue("D:/sprites/custom.png"));
+    const toggle = screen.getByRole("checkbox", { name: "Show initial sprite" });
+    expect(toggle).toBeChecked();
+    await clickButton(toggle);
+    expect(screen.getByLabelText("Initial sprite")).toBeDisabled();
+    expect(screen.getByLabelText("Initial sprite")).toHaveValue("D:/sprites/custom.png");
+    await clickButton(screen.getByRole("button", { name: "Quick restart" }));
+    const dialog = screen.getByRole("dialog", { name: "Quick restart" });
+    await clickButton(within(dialog).getByRole("button", { name: "Quick restart" }));
+    await waitFor(() =>
+      expect(mockLaunchChat).toHaveBeenCalledWith(
+        expect.objectContaining({ showInitialSprite: false, initSpritePath: "D:/sprites/custom.png" }),
+      ),
+    );
+    expect(mockSaveTemplateSession).toHaveBeenCalledWith(expect.objectContaining({ showInitialSprite: false }));
+  });
+
+  it("restores a disabled initial sprite and preserves its path when enabled again", async () => {
+    mockGetTemplateSession.mockResolvedValue({
+      ...savedChat,
+      initSpritePath: "D:/sprites/custom.png",
+      showInitialSprite: false,
+    });
+    renderPage();
+    await waitFor(() => expect(screen.getByLabelText("Initial sprite")).toHaveValue("D:/sprites/custom.png"));
+    const toggle = screen.getByRole("checkbox", { name: "Show initial sprite" });
+    expect(toggle).not.toBeChecked();
+    expect(screen.getByLabelText("Initial sprite")).toBeDisabled();
+    await clickButton(toggle);
+    expect(screen.getByLabelText("Initial sprite")).toBeEnabled();
+    expect(screen.getByLabelText("Initial sprite")).toHaveValue("D:/sprites/custom.png");
+  });
+
   it("new chat always creates independent history even with a remembered path", async () => {
     mockGetTemplateSession.mockResolvedValue(savedChat);
     mockGenerateTemplate.mockImplementation(async (input) => ({
@@ -216,6 +266,68 @@ describe("TemplateEditorPage", () => {
     );
     expect(mockGenerateTemplate).toHaveBeenCalledWith(expect.objectContaining({ mediaSelectionMode: "indexed" }));
   });
+
+  it.each(["success", "failure", "mobile"])(
+    "returns to Chats while creation is pending and handles %s after the editor unmounts",
+    async (outcome) => {
+      let finish!: (snapshot: unknown) => void;
+      let fail!: (error: Error) => void;
+      mockLaunchChat.mockReturnValueOnce(
+        new Promise((resolve, reject) => {
+          finish = resolve;
+          fail = reject;
+        }),
+      );
+      renderPage({}, undefined, true);
+      await screen.findByDisplayValue("Opening");
+      fireEvent.click(screen.getByRole("button", { name: "Create and start" }));
+
+      await waitFor(() => expect(mockLaunchChat).toHaveBeenCalledTimes(1));
+      expect(screen.getByRole("heading", { name: "Chats" })).toBeVisible();
+      expect(screen.queryByLabelText("Template name")).not.toBeInTheDocument();
+      expect(screen.getByRole("dialog")).toBeVisible();
+      expect(mockShowChatSurface).not.toHaveBeenCalled();
+
+      await act(async () => {
+        if (outcome === "failure") {
+          fail(new Error("Launch failed"));
+        } else {
+          finish({
+            dialogText: "launched",
+            ...(outcome === "mobile"
+              ? {
+                  mobileAccess: {
+                    enabled: true,
+                    host: "192.168.1.20",
+                    httpPort: 8789,
+                    websocketPort: 8790,
+                    qrCodeDataUrl: "data:image/png;base64,dGVzdA==",
+                    url: "http://192.168.1.20:8789/",
+                    websocketUrl: "ws://192.168.1.20:8790/ws",
+                  },
+                }
+              : {}),
+          });
+        }
+      });
+      if (outcome === "failure") {
+        expect(within(screen.getByRole("dialog")).getByRole("alert")).toHaveTextContent("Launch failed");
+        expect(mockShowChatSurface).not.toHaveBeenCalled();
+      } else if (outcome === "mobile") {
+        expect(await screen.findByRole("dialog", { name: "Mobile access is ready" })).toBeVisible();
+        expect(mockShowChatSurface).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole("button", { name: "Open local chat" }));
+        expect(mockShowChatSurface).toHaveBeenCalledWith(
+          expect.objectContaining({
+            snapshot: expect.objectContaining({ wsUrl: "ws://192.168.1.20:8790/ws" }),
+          }),
+        );
+      } else {
+        await waitFor(() => expect(mockShowChatSurface).toHaveBeenCalledTimes(1));
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      }
+    },
+  );
 
   it.each(["semantic", "indexed"] as const)(
     "launches the restored form before passive effects flush (%s)",
@@ -414,6 +526,107 @@ describe("TemplateEditorPage", () => {
     await waitFor(() => expect(window.confirm).toHaveBeenCalled());
     await waitFor(() => expect(toggle).not.toBeChecked());
   });
+
+  it.each([4, 5])(
+    "keeps NPC role controls available after selecting a player in a %i-character cast",
+    async (count) => {
+      const cast = Array.from({ length: count }, (_, index) => ({
+        character_brief: "Existing brief",
+        color: "#66ccff",
+        name: `Character ${index + 1}`,
+        sprites: [],
+      }));
+      mockListCharacters.mockResolvedValue(cast);
+      renderPage();
+      await screen.findByDisplayValue("Opening");
+      fireEvent.click(screen.getByRole("button", { name: "Select all characters" }));
+      fireEvent.click(screen.getByRole("button", { name: "Player character" }));
+      const playerDialog = screen.getByRole("dialog", { name: "Player character" });
+      const playerSelect = within(playerDialog).getByRole("combobox", { name: "Player character" });
+      fireEvent.keyDown(playerSelect, { key: "ArrowDown" });
+      fireEvent.keyDown(playerSelect, { key: "ArrowDown" });
+      fireEvent.keyDown(playerSelect, { key: "Enter" });
+      await waitFor(() => expect(playerSelect).toHaveTextContent("Character 1"));
+      const aiDialogue = within(playerDialog).getByRole("checkbox", { name: "Allow AI to write player dialogue" });
+      expect(aiDialogue).toBeChecked();
+      fireEvent.click(aiDialogue);
+      fireEvent.click(within(playerDialog).getByRole("checkbox", { name: "Read player dialogue aloud" }));
+      fireEvent.click(within(playerDialog).getByRole("button", { name: "Confirm" }));
+      expect(screen.queryByRole("dialog", { name: "Player character" })).not.toBeInTheDocument();
+      const playerControls = screen.getByRole("button", { name: "Player character" }).parentElement!;
+      expect(within(playerControls).getByText("Character 1")).toBeInTheDocument();
+
+      const roleStatus = screen.getByText(
+        count === 5 ? "4 selected · roles need to be set" : "3 selected · all are primary",
+      );
+      fireEvent.click(
+        within(roleStatus.parentElement!).getByRole("button", {
+          name: count === 5 ? "Choose primary characters" : "Change",
+        }),
+      );
+      const rolesDialog = screen.getByRole("dialog", { name: "Choose primary characters" });
+      expect(within(rolesDialog).queryByRole("button", { name: /Character 1/ })).not.toBeInTheDocument();
+      for (const character of cast.slice(2)) {
+        const button = within(rolesDialog).getByRole("button", { name: new RegExp(character.name) });
+        if (button.getAttribute("aria-pressed") === "true") fireEvent.click(button);
+      }
+      fireEvent.click(within(rolesDialog).getByRole("button", { name: "Apply roles" }));
+      await waitFor(() =>
+        expect(mockEnsureCharacterBriefs).toHaveBeenCalledWith(cast.slice(2).map(({ name }) => name)),
+      );
+      expect(await screen.findByText(`1 primary · ${count - 2} supporting`)).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: "Player character" }));
+      const restoredPlayerDialog = screen.getByRole("dialog", { name: "Player character" });
+      expect(within(restoredPlayerDialog).getByRole("combobox")).toHaveTextContent("Character 1");
+      expect(
+        within(restoredPlayerDialog).getByRole("checkbox", { name: "Allow AI to write player dialogue" }),
+      ).not.toBeChecked();
+      expect(within(restoredPlayerDialog).getByRole("checkbox", { name: "Read player dialogue aloud" })).toBeChecked();
+    },
+  );
+
+  it.each([undefined, false])(
+    "restores player AI mode %s and forwards changes to generation and launch",
+    async (savedMode) => {
+      mockGetTemplateSession.mockResolvedValue({
+        ...savedChat,
+        playerCharacter: "Nanami",
+        readPlayerSpeech: false,
+        allowPlayerDialogue: savedMode,
+      });
+      mockListCharacters.mockResolvedValue([{ name: "Nanami", color: "#66ccff", sprites: [] }]);
+      renderPage();
+      await waitFor(() => expect(screen.getByLabelText("Template name")).toHaveValue("My saved chat"));
+      await clickButton(screen.getByRole("button", { name: "Player character" }));
+      const dialog = screen.getByRole("dialog", { name: "Player character" });
+      const toggle = within(dialog).getByRole("checkbox", { name: "Allow AI to write player dialogue" });
+      const expectedInitial = savedMode ?? true;
+      if (expectedInitial) expect(toggle).toBeChecked();
+      else expect(toggle).not.toBeChecked();
+      await clickButton(toggle);
+      await clickButton(within(dialog).getByRole("button", { name: "Confirm" }));
+      await waitFor(() =>
+        expect(mockGenerateTemplate).toHaveBeenCalledWith(
+          expect.objectContaining({ playerCharacter: "Nanami", allowPlayerDialogue: !expectedInitial }),
+        ),
+      );
+      await waitFor(() => expect(screen.getByRole("button", { name: "Launch chat" })).toBeEnabled());
+      await clickButton(screen.getByRole("button", { name: "Launch chat" }));
+      await waitFor(() =>
+        expect(mockLaunchChat).toHaveBeenCalledWith(
+          expect.objectContaining({
+            playerCharacter: "Nanami",
+            allowPlayerDialogue: !expectedInitial,
+            readPlayerSpeech: false,
+          }),
+        ),
+      );
+      expect(mockSaveTemplateSession).toHaveBeenCalledWith(
+        expect.objectContaining({ playerCharacter: "Nanami", allowPlayerDialogue: !expectedInitial }),
+      );
+    },
+  );
 
   it("asks for primary characters above the threshold and generates missing supporting briefs", async () => {
     const largeCast = Array.from({ length: 6 }, (_, index) => ({
@@ -716,7 +929,23 @@ describe("TemplateEditorPage", () => {
     expect(mockSaveTemplateSession).toHaveBeenCalledTimes(1);
   });
 
+  it("does not let restored template settings override the management toolbar's disabled mobile preference", async () => {
+    mockGetTemplateSession.mockResolvedValueOnce({
+      ...savedChat,
+      filenameStub: "Session Draft",
+      enableMobileAccess: true,
+    });
+    renderPage();
+    await waitFor(() => expect(screen.getByLabelText("Template name")).toHaveValue("Session Draft"));
+    expect(screen.queryByLabelText("Connect phone")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Launch chat" }));
+    await waitFor(() =>
+      expect(mockLaunchChat).toHaveBeenCalledWith(expect.objectContaining({ enableMobileAccess: false })),
+    );
+  });
+
   it("shows a QR code after launching with mobile access enabled", async () => {
+    setMobileAccessPreference(true);
     mockLaunchChat.mockResolvedValueOnce({
       dialogText: "launched",
       mobileAccess: {
@@ -732,9 +961,7 @@ describe("TemplateEditorPage", () => {
     renderPage();
 
     expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
-    const mobileAccessSwitch = screen.getByLabelText("Allow mobile access");
-    expect(mobileAccessSwitch.closest(".template-character-picker")).not.toBeNull();
-    fireEvent.click(mobileAccessSwitch);
+    expect(screen.queryByLabelText("Connect phone")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Launch chat" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Mobile access is ready" });

@@ -1,4 +1,5 @@
 import { CharacterPicker } from "./CharacterPicker";
+import { PlayerCharacterSettings } from "./PlayerCharacterSettings";
 import { resolveConversationTitle } from "../../entities/chat/conversationTitle";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { updateCharacterRoles } from "./characterRoles";
@@ -18,7 +19,8 @@ import {
 } from "../../entities/chat/repository";
 import { ChatInitializationDialog } from "../chat-startup/ChatInitializationDialog";
 import { MobileAccessDialog } from "../mobile-access/MobileAccessDialog";
-import { useChatInitialization } from "../chat-startup/useChatInitialization";
+import { useMobileAccessPreference } from "../mobile-access/useMobileAccessPreference";
+import { useChatInitialization, type ChatInitializationService } from "../chat-startup/useChatInitialization";
 import { compatibleInitialSpritePath } from "../chat-startup/initialSpriteSelection";
 import { useChatLaunchGuard } from "../chat-startup/useChatLaunchGuard";
 import { configQueryKey, getAppConfig, saveSystemConfig } from "../../entities/config/repository";
@@ -32,6 +34,7 @@ import {
   type TemplateSummary,
 } from "../../entities/template/repository";
 import { TRANSPARENT_BACKGROUND_NAME } from "../../shared/constants";
+import { DEFAULT_PLAYER_OPTIONS, normalizePlayerOptions } from "../../shared/playerCharacterOptions";
 import { showChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";
 import { platformErrorCode } from "../../shared/platform/errors";
@@ -67,6 +70,7 @@ import {
   normalizeTemplateSummary,
   synchronizeChatLaunchPayloadWithSession,
   synchronizeTemplateLaunchSessionWithSnapshot,
+  templateGenerationKey,
   templateVoiceLanguages,
 } from "./templateFlow";
 import { CharacterRoleStatus } from "./CharacterRoleStatus";
@@ -82,12 +86,16 @@ export function TemplateEditorPage({
   conversationTitle,
   onApplied,
   onPendingChange,
+  initializationService,
+  onLaunchStarted,
 }: {
   createOnly?: boolean;
   conversationId?: string;
   conversationTitle?: string;
   onApplied?: (snapshot: ChatSnapshot) => void;
   onPendingChange?: (pending: boolean) => void;
+  initializationService?: ChatInitializationService;
+  onLaunchStarted?: () => void;
 }) {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -105,6 +113,7 @@ export function TemplateEditorPage({
   const effectsQuery = useQuery({ queryFn: listEffects, queryKey: effectsQueryKey });
   const { refreshRuntimeStatus, runtimeLaunchDisabled, runtimeClosing, updateRuntimeStatusFromSnapshot } =
     useChatLaunchGuard();
+  const localInitialization = useChatInitialization();
   const {
     closeInitialization,
     initializationError,
@@ -112,7 +121,7 @@ export function TemplateEditorPage({
     initializationPending,
     initializationTask,
     runChatInitialization,
-  } = useChatInitialization();
+  } = initializationService ?? localInitialization;
   useEffect(() => onPendingChange?.(initializationPending), [initializationPending, onPendingChange]);
   const templates = templatesQuery.data ?? [];
   const isLoading = templatesQuery.isLoading;
@@ -131,8 +140,18 @@ export function TemplateEditorPage({
   const [selectedCharacters, setSelectedCharacters] = useState<string[]>([]);
   const [characterPromptMode, setCharacterPromptMode] = useState<CharacterPromptMode>();
   const [primaryCharacters, setPrimaryCharacters] = useState<string[]>([]);
+  const [playerCharacter, setPlayerCharacter] = useState(DEFAULT_PLAYER_OPTIONS.playerCharacter);
+  const [readPlayerSpeech, setReadPlayerSpeech] = useState(DEFAULT_PLAYER_OPTIONS.readPlayerSpeech);
+  const [allowPlayerDialogue, setAllowPlayerDialogue] = useState(DEFAULT_PLAYER_OPTIONS.allowPlayerDialogue);
+  const effectivePlayerCharacter = selectedCharacters.includes(playerCharacter) ? playerCharacter : "";
+  const playerOptions = { playerCharacter: effectivePlayerCharacter, readPlayerSpeech, allowPlayerDialogue };
+  const templatePlayerOptions = {
+    ...playerOptions,
+    readPlayerSpeech: Boolean(effectivePlayerCharacter && readPlayerSpeech),
+  };
   const [mediaSelectionMode, setMediaSelectionMode] = useState<MediaSelectionMode>("indexed");
   const [primaryCharacterDialogOpen, setPrimaryCharacterDialogOpen] = useState(false);
+  const [playerCharacterDialogOpen, setPlayerCharacterDialogOpen] = useState(false);
   const [launchReadyAfterRoleGeneration, setLaunchReadyAfterRoleGeneration] = useState<boolean | null>(null);
   const [selectedBackground, setSelectedBackground] = useState(TRANSPARENT_BACKGROUND_NAME);
   const [selectedEffects, setSelectedEffects] = useState<string[]>([]);
@@ -144,11 +163,12 @@ export function TemplateEditorPage({
   const [useChoice, setUseChoice] = useState(true);
   const [useNarration, setUseNarration] = useState(true);
   const [useStat, setUseStat] = useState(true);
-  const [mobileAccessEnabled, setMobileAccessEnabled] = useState(false);
+  const [mobileAccessEnabled] = useMobileAccessPreference();
   const [mobileAccessInfo, setMobileAccessInfo] = useState<MobileAccessInfo | null>(null);
   const [maxSpeechChars, setMaxSpeechChars] = useState(0);
   const [maxDialogItems, setMaxDialogItems] = useState(0);
   const [initSpritePath, setInitSpritePath] = useState("");
+  const [showInitialSprite, setShowInitialSprite] = useState(true);
   const [historyPath, setHistoryPath] = useState("");
   const [roomId, setRoomId] = useState("");
   const [systemExpanded, setSystemExpanded] = useState(false);
@@ -184,6 +204,10 @@ export function TemplateEditorPage({
       const normalized = normalizeTemplateSummary(structuredClone(selected));
       setDraft(normalized);
       setMediaSelectionMode(createOnly ? "indexed" : (selected.mediaSelectionMode ?? "indexed"));
+      const savedPlayer = normalizePlayerOptions(selected);
+      setPlayerCharacter(savedPlayer.playerCharacter);
+      setReadPlayerSpeech(Boolean(savedPlayer.playerCharacter && savedPlayer.readPlayerSpeech));
+      setAllowPlayerDialogue(savedPlayer.allowPlayerDialogue);
       setNameError("");
     }
   }, [createOnly, selected, sessionDraftActive]);
@@ -208,9 +232,19 @@ export function TemplateEditorPage({
           ? launchSession.primaryCharacters.filter((name) => restoredCharacters.includes(name))
           : [];
     const restoredMediaSelectionMode = createOnly ? "indexed" : (launchSession.mediaSelectionMode ?? "indexed");
-    lastAutoGeneratedCharactersRef.current = `${restoredCharacters.join("\n")}\n--${restoredMode ?? "pending"}\n${restoredPrimaryCharacters.join("\n")}\n--${restoredMediaSelectionMode}`;
+    const restoredPlayer = normalizePlayerOptions(launchSession);
+    lastAutoGeneratedCharactersRef.current = templateGenerationKey({
+      characters: restoredCharacters,
+      characterPromptMode: restoredMode,
+      primaryCharacters: restoredPrimaryCharacters,
+      mediaSelectionMode: restoredMediaSelectionMode,
+      ...restoredPlayer,
+    });
     setSessionDraftActive(true);
     setSelectedCharacters(restoredCharacters);
+    setPlayerCharacter(restoredPlayer.playerCharacter);
+    setReadPlayerSpeech(restoredPlayer.readPlayerSpeech);
+    setAllowPlayerDialogue(restoredPlayer.allowPlayerDialogue);
     setCharacterPromptMode(restoredMode);
     setPrimaryCharacters(restoredPrimaryCharacters);
     setMediaSelectionMode(restoredMediaSelectionMode);
@@ -224,10 +258,10 @@ export function TemplateEditorPage({
     setUseChoice(launchSession.useChoice ?? true);
     setUseNarration(launchSession.useNarration ?? true);
     setUseStat(launchSession.useStat ?? true);
-    setMobileAccessEnabled(launchSession.enableMobileAccess ?? false);
     setMaxSpeechChars(Number(launchSession.maxSpeechChars) || 0);
     setMaxDialogItems(Number(launchSession.maxDialogItems) || 0);
     setInitSpritePath(launchSession.initSpritePath || "");
+    setShowInitialSprite(launchSession.showInitialSprite ?? true);
     setHistoryPath(launchSession.historyPath || "");
     setRoomId(launchSession.roomId || "");
     const matchingTemplate = templates.find((template) => template.id === launchSession.templateFileDropdown);
@@ -239,6 +273,7 @@ export function TemplateEditorPage({
         name: launchSession.filenameStub || matchingTemplate?.name || t("template.defaultName"),
         path: matchingTemplate?.path ?? "",
         mediaSelectionMode: launchSession.mediaSelectionMode ?? "indexed",
+        ...restoredPlayer,
         scenario: launchSession.scenario,
         system: launchSession.system,
         updatedAt: matchingTemplate?.updatedAt ?? "",
@@ -316,14 +351,20 @@ export function TemplateEditorPage({
   const runtimeOptionsState = {
     historyPath,
     initSpritePath,
+    showInitialSprite,
     maxDialogItems,
     maxSpeechChars,
     roomId,
     voiceLanguage,
   };
   const selectedCharactersKey = selectedCharacters.join("\n");
-  const primaryCharactersKey = primaryCharacters.join("\n");
-  const generationCharactersKey = `${selectedCharactersKey}\n--${characterPromptMode ?? "pending"}\n${primaryCharactersKey}\n--${mediaSelectionMode}`;
+  const generationCharactersKey = templateGenerationKey({
+    characters: selectedCharacters,
+    characterPromptMode,
+    primaryCharacters,
+    mediaSelectionMode,
+    ...playerOptions,
+  });
 
   const scenarioForSelectedCharacters = () => {
     const currentScenario = String(draft.scenario ?? "");
@@ -377,7 +418,10 @@ export function TemplateEditorPage({
       if (!validateName()) {
         throw new Error(t("template.validation.nameRequired"));
       }
-      return saveTemplate(buildTemplateSummary(draft));
+      return saveTemplate({
+        ...buildTemplateSummary(draft),
+        ...templatePlayerOptions,
+      });
     },
     onError(error) {
       showToast({
@@ -428,6 +472,7 @@ export function TemplateEditorPage({
       options: templateOptionsState,
       runtime: runtimeOptionsState,
       primaryCharacters: characterPromptMode === "compact" ? primaryCharacters : selectedCharacters,
+      ...playerOptions,
       selectedCharacters,
     });
   const latestGenerationInput = useRef(generationInput);
@@ -466,7 +511,14 @@ export function TemplateEditorPage({
       if (resolvedCharactersKey !== selectedCharactersKey) {
         suppressNextAutoGenerateRef.current = true;
         const resolvedPrimary = primaryCharacters.filter((name) => resolvedCharacters.includes(name));
-        lastAutoGeneratedCharactersRef.current = `${resolvedCharactersKey}\n--${characterPromptMode ?? "full"}\n${resolvedPrimary.join("\n")}\n--${mediaSelectionMode}`;
+        lastAutoGeneratedCharactersRef.current = templateGenerationKey({
+          characters: resolvedCharacters,
+          characterPromptMode: characterPromptMode ?? "full",
+          primaryCharacters: resolvedPrimary,
+          mediaSelectionMode,
+          ...playerOptions,
+          playerCharacter: resolvedCharacters.includes(playerCharacter) ? playerCharacter : "",
+        });
         setPrimaryCharacters(resolvedPrimary);
         updateSelectedCharacters(resolvedCharacters, { preservePromptMode: true });
       }
@@ -548,6 +600,7 @@ export function TemplateEditorPage({
         throw new Error(t("launch.runtimeBusy"));
       }
       return runChatInitialization(async (progressOptions) => {
+        onLaunchStarted?.();
         const savedSession = conversationId ? session : await saveTemplateSession(session);
         if (!conversationId) queryClient.setQueryData([...templatesQueryKey, "session"], savedSession);
         const apply = conversationId
@@ -622,7 +675,10 @@ export function TemplateEditorPage({
   });
 
   const launchCurrentDraft = (resetHistory: boolean) => {
-    const template = buildTemplateSummary(draft);
+    const template = {
+      ...buildTemplateSummary(draft),
+      ...templatePlayerOptions,
+    };
     const session: TemplateLaunchSession = buildTemplateLaunchSession({
       backgroundName: selectedBackground,
       characterPromptMode: characterPromptMode ?? "full",
@@ -632,6 +688,7 @@ export function TemplateEditorPage({
       mediaSelectionMode,
       options: templateOptionsState,
       primaryCharacters: characterPromptMode === "compact" ? primaryCharacters : selectedCharacters,
+      ...playerOptions,
       runtime: createOnly ? { ...runtimeOptionsState, historyPath: "" } : runtimeOptionsState,
       selectedCharacters,
       selectedTemplateId: selectedId,
@@ -673,7 +730,7 @@ export function TemplateEditorPage({
 
   const confirmPrimaryCharacters = async (nextPrimaryCharacters: string[]) => {
     const primary = nextPrimaryCharacters.filter((name) => selectedCharacters.includes(name));
-    const secondary = selectedCharacters.filter((name) => !primary.includes(name));
+    const secondary = selectedCharacters.filter((name) => name !== effectivePlayerCharacter && !primary.includes(name));
     try {
       const result = await ensureBriefsMutation.mutateAsync(secondary);
       if (result.characters.length) {
@@ -850,26 +907,34 @@ export function TemplateEditorPage({
                 characters={characters}
                 selected={selectedCharacters}
                 onChange={updateSelectedCharacters}
+                onConfigurePlayer={() => setPlayerCharacterDialogOpen(true)}
+                playerCharacter={effectivePlayerCharacter}
               />
 
               <CharacterRoleStatus
+                hasPlayerCharacter={Boolean(effectivePlayerCharacter)}
                 mode={characterPromptMode}
                 onConfigure={() => setPrimaryCharacterDialogOpen(true)}
                 onUseAll={useAllCharactersAsPrimary}
-                primaryCount={characterPromptMode === "full" ? selectedCharacters.length : primaryCharacters.length}
-                selectedCount={selectedCharacters.length}
+                primaryCount={
+                  characterPromptMode === "full"
+                    ? selectedCharacters.filter((name) => name !== effectivePlayerCharacter).length
+                    : primaryCharacters.filter((name) => name !== effectivePlayerCharacter).length
+                }
+                selectedCount={selectedCharacters.filter((name) => name !== effectivePlayerCharacter).length}
               />
 
-              <div className="template-mobile-access">
-                <label className="template-toggle-row">
-                  <span>{t("template.field.mobileAccess")}</span>
-                  <Switch
-                    checked={mobileAccessEnabled}
-                    onChange={(event) => setMobileAccessEnabled(event.target.checked)}
-                  />
-                </label>
-                <p>{t("template.mobileAccessHint")}</p>
-              </div>
+              <PlayerCharacterSettings
+                characters={selectedCharacterRecords}
+                selected={effectivePlayerCharacter}
+                onSelect={setPlayerCharacter}
+                readSpeech={readPlayerSpeech}
+                onReadSpeech={setReadPlayerSpeech}
+                allowDialogue={allowPlayerDialogue}
+                onAllowDialogue={setAllowPlayerDialogue}
+                open={playerCharacterDialogOpen}
+                onClose={() => setPlayerCharacterDialogOpen(false)}
+              />
 
               {effects.length > 0 ? (
                 <div className="template-effect-section">
@@ -1023,10 +1088,22 @@ export function TemplateEditorPage({
           </div>
 
           <div className="template-runtime-fields">
-            <label className="template-side-field">
-              <span className="template-side-field__label">{t("template.field.initSprite")}</span>
+            <div className="template-side-field">
+              <div className="template-sprite-heading">
+                <label className="template-side-field__label" htmlFor="template-initial-sprite">
+                  {t("template.field.initSprite")}
+                </label>
+                <Switch
+                  aria-label={t("template.field.showInitialSprite")}
+                  checked={showInitialSprite}
+                  onChange={(event) => setShowInitialSprite(event.target.checked)}
+                  title={t("template.field.showInitialSprite")}
+                />
+              </div>
               <FilePicker
                 acceptedExtensions={[".gif", ".jpeg", ".jpg", ".png", ".webp"]}
+                disabled={!showInitialSprite}
+                id="template-initial-sprite"
                 onChange={(event) => setInitSpritePath(event.target.value)}
                 onPathChange={setInitSpritePath}
                 pickLabel={t("common.chooseFile")}
@@ -1034,7 +1111,7 @@ export function TemplateEditorPage({
                 readOnly={false}
                 value={initSpritePath}
               />
-            </label>
+            </div>
             {!createOnly && !conversationId && (
               <label className="template-side-field">
                 <span className="template-side-field__label">{t("template.field.historyFile")}</span>
@@ -1089,7 +1166,7 @@ export function TemplateEditorPage({
         title={t("template.quickRestart.title")}
       />
       <PrimaryCharacterDialog
-        characters={selectedCharacterRecords}
+        characters={selectedCharacterRecords.filter((character) => character.name !== effectivePlayerCharacter)}
         initialPrimaryCharacters={primaryCharacters}
         onConfirm={(names) => void confirmPrimaryCharacters(names)}
         onUseAll={useAllCharactersAsPrimary}
@@ -1099,7 +1176,7 @@ export function TemplateEditorPage({
       <ChatInitializationDialog
         error={initializationError}
         onClose={closeInitialization}
-        open={initializationOpen}
+        open={!initializationService && initializationOpen}
         pending={initializationPending}
         task={initializationTask}
       />

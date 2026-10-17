@@ -35,6 +35,60 @@ describe("http platform", () => {
       }),
     );
   });
+  it("uses authenticated task transport for runtime preparation and installation", async () => {
+    const status = {
+      version: "5-r.4",
+      installed: false,
+      download_url: "https://www.live2d.com/en/sdk/download/web/",
+      license_urls: [],
+    };
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => mockJsonResponse(status))
+      .mockImplementationOnce(() => mockJsonResponse({ id: "prepare", status: "succeeded", result: { sources: {} } }))
+      .mockImplementationOnce(() =>
+        mockJsonResponse({ id: "install", status: "succeeded", result: { ...status, installed: true } }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const platform = createHttpPlatform("http://127.0.0.1:8787", "secret");
+    const input = { source_path: "sdk.zip", accepted_license: true };
+    expect(await platform.avatarRuntimes.status("l2d")).toEqual(status);
+    expect(await platform.avatarRuntimes.prepare("l2d", input)).toEqual({ sources: {} });
+    expect((await platform.avatarRuntimes.install("l2d", { ...input, compiled: "compiled" })).installed).toBe(true);
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "http://127.0.0.1:8787/api/avatar/runtime/l2d/status",
+      "http://127.0.0.1:8787/api/avatar/runtime/l2d/prepare",
+      "http://127.0.0.1:8787/api/avatar/runtime/l2d/install",
+    ]);
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ ...input, compiled: "compiled" }),
+        headers: expect.objectContaining({ "X-Shinsekai-Bridge-Token": "secret" }),
+      }),
+    );
+  });
+  it("imports an opaque preset batch through the existing task transport", async () => {
+    const input = {
+      name: "Alice",
+      avatar_type: "mmd",
+      model_path: "model.pmx",
+      source_paths: ["pose.vpd", "nod.vmd"],
+      state: { opaque: true },
+    };
+    const character = sampleConfig.characters[0];
+    const fetchMock = vi.fn(() => mockJsonResponse({ id: "preset-import", status: "succeeded", result: character }));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await createHttpPlatform("http://127.0.0.1:8787").characters.importModelStates(input)).toEqual(character);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/characters/model/states/import",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    );
+  });
   it("uses separate read, save and background suggestion endpoints for story editing", async () => {
     const doc = {
       storyPath: "story.json",
@@ -1170,7 +1224,7 @@ describe("http platform", () => {
     );
   });
 
-  it("resumes the last chat through the bridge", async () => {
+  it.each([undefined, false, true])("resumes through the bridge with mobile override %s", async (enabled) => {
     const snapshot = {
       backgroundPath: "",
       characterName: "",
@@ -1200,17 +1254,22 @@ describe("http platform", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const platform = createHttpPlatform("http://127.0.0.1:8787");
-    const result = await platform.chat.resumeLast();
+    const onTaskUpdate = vi.fn();
+    const result = await platform.chat.resumeLast(
+      { onTaskUpdate },
+      enabled === undefined ? undefined : { enableMobileAccess: enabled },
+    );
 
     expect(result.dialogText).toBe("");
     expect(result.statusMessage).toContain("聊天进程已启动");
     expect(fetchMock).toHaveBeenCalledWith(
       "http://127.0.0.1:8787/api/chat/init",
       expect.objectContaining({
-        body: JSON.stringify({ mode: "resume-last" }),
+        body: JSON.stringify({ mode: "resume-last", enableMobileAccess: enabled }),
         method: "POST",
       }),
     );
+    expect(onTaskUpdate).toHaveBeenCalledWith(expect.objectContaining({ status: "succeeded", result: snapshot }));
   });
 
   it("closes the live chat session through the bridge with keepalive enabled", async () => {
@@ -1236,6 +1295,33 @@ describe("http platform", () => {
         body: JSON.stringify({}),
         keepalive: true,
         method: "POST",
+      }),
+    );
+  });
+
+  it("reads observer snapshots without claiming an audio renderer and preserves player registration", async () => {
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse({ status: "idle" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+
+    await platform.chat.getSnapshot({ claimRenderer: false });
+    expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:8787/api/chat/snapshot");
+    await platform.chat.getSnapshot();
+    expect(fetchMock.mock.calls[1][0]).toMatch(/\/api\/chat\/snapshot\?rendererId=.+/);
+  });
+
+  it("sends the confirmed session identity when closing a chat", async () => {
+    const fetchMock = vi.fn(() => mockJsonResponse({ status: "idle" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+
+    await platform.chat.close({ expectedSessionId: "session-A" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/chat/close",
+      expect.objectContaining({
+        method: "POST",
+        keepalive: true,
+        body: JSON.stringify({ expectedSessionId: "session-A" }),
       }),
     );
   });
@@ -2173,11 +2259,11 @@ describe("http platform", () => {
     expect(updates).toHaveBeenLastCalledWith(expect.objectContaining({ phase: "completed" }));
   });
 
-  it("runs Moondream image auto-labeling as a background task", async () => {
+  it("runs configured vision smart-labeling as a background task", async () => {
     const task = {
       createdAt: 1,
       id: "task-label",
-      kind: "moondream-character-auto-label",
+      kind: "vision-character-smart-label",
       logs: [],
       message: "queued",
       phase: "queued",

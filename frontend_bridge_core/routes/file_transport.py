@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote
 
-from application.chat.runtime_process import _chat_history_download_file
+from application.chat.composition import _chat_history_download_file
 from frontend_bridge_core.media import _media_thumbnail, _media_thumbnail_batch
 from frontend_bridge_core.media_paths import (
     is_absolute_local_media_path_text,
@@ -385,6 +385,22 @@ def dispatch_file_request(
             handler._send_media_file(target)
         else:
             handler._send_media_file(target, send_body=False)
+        return True
+    if path == "/api/avatar/runtime/file":
+        from application.media.avatar_runtime import AvatarRuntimeService
+        handler._require_authorized_media_read()
+        query = parse_qs(query_string)
+        service = AvatarRuntimeService(Path(handler.state.project_root_dir))
+        target = service.file((query.get("format") or [""])[0], (query.get("path") or [""])[0])
+        handler._send_local_file(target, send_body=send_body)
+        return True
+    if path == "/api/avatar/file":
+        from application.characters.model_files import model_file
+        handler._require_authorized_media_read()
+        query = parse_qs(query_string)
+        target = model_file(handler.state, (query.get("model_path") or [""])[0],
+                            (query.get("path") or [""])[0])
+        handler._send_local_file(target, send_body=send_body)
         return True
     if path == "/api/media/thumbnail":
         query = parse_qs(query_string)

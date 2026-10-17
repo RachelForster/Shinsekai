@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 
 import type { ChatStageSprite } from "./chatState";
+import { normalizeVisualFraming, type VisualFraming } from "../../modules/character-visual";
 import {
   emitDesktopChatStageRuntimeConfigChange,
   onDesktopChatStageRuntimeConfigChange,
@@ -88,6 +89,7 @@ export interface ChatStageRuntimeConfig {
   immersiveMode: boolean;
   longPressTalk: boolean;
   spriteScales: Record<string, number>;
+  spriteFramings: Record<string, VisualFraming>;
   spriteOffsetX: number;
   spriteOffsetY: number;
   typewriterCps: number | null;
@@ -142,6 +144,7 @@ export const defaultChatStageRuntimeConfig: ChatStageRuntimeConfig = {
     fontSize: 15,
   },
   spriteScales: {},
+  spriteFramings: {},
   spriteOffsetX: 0,
   spriteOffsetY: 0,
   typewriterCps: null,
@@ -369,6 +372,7 @@ export function normalizeChatStageRuntimeConfig(value: unknown): ChatStageRuntim
             clampRuntimeNumber(parsed.typewriterCps, DEFAULT_TYPEWRITER_CPS, runtimeTextSpeedMin, runtimeTextSpeedMax),
           ),
     spriteScales: readRuntimeSpriteScales(parsed, version),
+    spriteFramings: readRuntimeSpriteFramings(parsed.spriteFramings),
     spriteOffsetX: Math.round(
       clampRuntimeNumber(
         parsed.spriteOffsetX,
@@ -534,6 +538,28 @@ export function runtimeSpriteLabel(sprite: ChatStageSprite, index: number) {
 export function runtimeSpriteScale(config: ChatStageRuntimeConfig, sprite: ChatStageSprite, index: number) {
   const key = runtimeSpriteKey(sprite, index);
   return config.spriteScales[key] ?? config.spriteScales[runtimeSpriteDefaultScaleKey] ?? 1;
+}
+
+function readRuntimeSpriteFramings(value: unknown): Record<string, VisualFraming> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key, framing]) => key.trim() && framing && typeof framing === "object" && !Array.isArray(framing))
+      .map(([key, framing]) => [key.trim(), normalizeVisualFraming(framing)]),
+  );
+}
+
+export function runtimeSpriteFramingKey(sprite: ChatStageSprite, index: number) {
+  const identity = sprite.identityKey?.trim();
+  if (identity) return identity;
+  // Older producers cannot distinguish character names from image filename labels.
+  // Keep their assets separate rather than persisting an ambiguous display name.
+  const asset = sprite.modelUrl || sprite.path;
+  return asset ? `asset:${asset}` : `sprite:${sprite.id || `slot-${sprite.slot ?? index}`}`;
+}
+
+export function runtimeSpriteFraming(config: ChatStageRuntimeConfig, sprite: ChatStageSprite, index: number) {
+  return normalizeVisualFraming(config.spriteFramings[runtimeSpriteFramingKey(sprite, index)]);
 }
 
 function runtimeTextColor(value: string, fallback: string, themeVariable: string) {

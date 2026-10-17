@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 import { closeChat } from "../../entities/chat/repository";
-import type { ChatSnapshot } from "../../shared/platform/types";
+import type { ChatCloseOptions, ChatSnapshot } from "../../shared/platform/types";
 
 const listeners = new Set<() => void>();
 let closingCount = 0;
@@ -26,10 +26,10 @@ function beginChatRuntimeClosing(): () => void {
   };
 }
 
-export async function closeChatRuntime(): Promise<ChatSnapshot> {
+export async function closeChatRuntime(options?: ChatCloseOptions): Promise<ChatSnapshot> {
   const releaseClosing = beginChatRuntimeClosing();
   try {
-    return await closeChat();
+    return await closeChat(options);
   } finally {
     releaseClosing();
   }

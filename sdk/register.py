@@ -14,7 +14,9 @@ from typing import TYPE_CHECKING, Type
 from sdk.handlers import MessageHandler, UIOutputMessageHandler
 from sdk.adapters import (
     ASRAdapter,
+    AvatarFormatContribution,
     LLMAdapter,
+    ModelAssetAdapter,
     T2IAdapter,
     TTSAdapter,
     VisionAdapterFactory,
@@ -22,6 +24,12 @@ from sdk.adapters import (
     VisionFallbackContribution,
 )
 from sdk.chat_init import InitChatContext
+from sdk.chat_lifecycle import (
+    ChatProcessContext,
+    ChatProcessEvent,
+    ChatSessionContext,
+    ChatSessionEvent,
+)
 from sdk.frontend_user_input import (
     FrontendUserInputController,
     _controller_for_plugin as _frontend_user_input_controller_for_plugin,
@@ -53,6 +61,7 @@ from sdk.types import (
 )
 
 logger = logging.getLogger(__name__)
+
 
 @dataclass(frozen=True)
 class _ClassEntry:
@@ -149,6 +158,7 @@ class PluginCapabilityRegistry:
         self._asr_adapters: dict[str, Type[ASRAdapter]] = {}
         self._t2i_adapters: dict[str, Type[T2IAdapter]] = {}
         self._vision_fallbacks: dict[str, VisionFallbackContribution] = {}
+        self._avatar_formats: dict[str, AvatarFormatContribution] = {}
         self._llm_tool_registrars: list[Callable[[ToolManager], None]] = []
         self._dialog_media_handlers: list[MessageHandler] = []
         self._ui_handlers: list[UIOutputMessageHandler] = []
@@ -198,6 +208,36 @@ class PluginCapabilityRegistry:
             provider=clean_provider,
             factory=factory,
             available=available,
+            priority=int(priority),
+        )
+
+    def register_avatar_format(
+        self,
+        format_id: str,
+        factory: Callable[[], ModelAssetAdapter],
+        *,
+        label: str = "",
+        priority: int = 100,
+    ) -> None:
+        """Register an optional model avatar format (e.g. a custom live2d/VRM-like loader).
+
+        ``format_id`` becomes a value of ``Character.avatar_type`` and the key under
+        ``Character.avatars``. The host invokes ``factory`` while configuring
+        plugins; expensive model loading belongs in the adapter's operations.
+        """
+        clean_id = str(format_id or "").strip().lower()
+        if not clean_id:
+            raise ValueError("avatar format id cannot be empty")
+        if clean_id == "static":
+            raise ValueError("'static' is a reserved avatar type")
+        if clean_id in self._avatar_formats:
+            raise ValueError(f"duplicate avatar format: {clean_id}")
+        if not callable(factory):
+            raise TypeError("avatar format factory must be callable")
+        self._avatar_formats[clean_id] = AvatarFormatContribution(
+            format_id=clean_id,
+            factory=factory,
+            label=str(label or "").strip(),
             priority=int(priority),
         )
 
@@ -317,11 +357,21 @@ class PluginCapabilityRegistry:
 
     def register_frontend_chat_ui(self, contribution: FrontendChatUIContribution) -> None:
         """Register a JSON-only Chat UI item rendered by the host application."""
-        if contribution.slot not in {"chat-dialog-actions", "chat-output", "chat-toolbar", "chat-top-toolbar"}:
+        if contribution.slot not in {
+            "chat-dialog-actions",
+            "chat-output",
+            "chat-toolbar",
+            "chat-top-toolbar",
+        }:
             raise ValueError(f"Unsupported frontend chat UI slot: {contribution.slot}")
         if not contribution.contribution_id.strip() or not contribution.title.strip():
-            raise ValueError("FrontendChatUIContribution requires a non-empty id and title")
-        if len(contribution.contribution_id.strip()) > MAX_FRONTEND_UI_IDENTIFIER_LENGTH:
+            raise ValueError(
+                "FrontendChatUIContribution requires a non-empty id and title"
+            )
+        if (
+            len(contribution.contribution_id.strip())
+            > MAX_FRONTEND_UI_IDENTIFIER_LENGTH
+        ):
             raise ValueError(
                 "FrontendChatUIContribution contribution_id cannot exceed "
                 f"{MAX_FRONTEND_UI_IDENTIFIER_LENGTH} characters"
@@ -412,6 +462,7 @@ class PluginCapabilityRegistry:
 
     def register_compact_hook(self, hook: Callable[[list], None]) -> None:
         """注册精简前回调。回调接收即将被精简的完整消息列表，在 compact_messages() 执行前调用。"""
+
         def _legacy_context_adapter(context: BeforeCompactContext) -> None:
             hook(context.messages)
 
@@ -461,6 +512,25 @@ class PluginCapabilityRegistry:
             critical=critical,
         )
 
+    def register_chat_session_hook(
+        self,
+        event: ChatSessionEvent | str,
+        hook: Callable[[ChatSessionContext], None],
+        *,
+        label: str = ""
+    ) -> None:
+        self._hook_dispatcher.register_chat_session(event, hook, label=label)
+
+    def register_chat_process_hook(
+        self,
+        event: ChatProcessEvent | str,
+        hook: Callable[[ChatProcessContext], None],
+        *,
+        label: str = "",
+    ) -> None:
+        """Observe bridge-owned process transitions without interfering with cleanup."""
+        self._hook_dispatcher.register_chat_process(event, hook, label=label)
+
     @property
     def llm_adapters(self) -> dict[str, Type[LLMAdapter]]:
         return dict(self._llm_adapters)
@@ -485,7 +555,16 @@ class PluginCapabilityRegistry:
         )
 
     @property
-    def message_handlers(self) -> tuple[list[MessageHandler], list[UIOutputMessageHandler]]:
+    def avatar_formats(self) -> list[AvatarFormatContribution]:
+        return sorted(
+            self._avatar_formats.values(),
+            key=lambda contribution: (contribution.priority, contribution.format_id),
+        )
+
+    @property
+    def message_handlers(
+        self,
+    ) -> tuple[list[MessageHandler], list[UIOutputMessageHandler]]:
         return list(self._dialog_media_handlers), list(self._ui_handlers)
 
     @property

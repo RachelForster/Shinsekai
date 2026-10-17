@@ -155,6 +155,8 @@ def test_template_generator_ends_with_json_format_reminder(monkeypatch) -> None:
             return "Begin the scene.\n"
         if key == "closing_json_reminder":
             return "MUST_USE_REQUIRED_JSON_FORMAT\n"
+        if key == "closing_tool_protocol":
+            return "REQUIRE_REAL_TOOL_RESULTS\n"
         return f"{key}\n"
 
     monkeypatch.setattr("ai.llm.template_generator._T", fake_translation)
@@ -168,7 +170,7 @@ def test_template_generator_ends_with_json_format_reminder(monkeypatch) -> None:
     )
 
     assert warning == ""
-    assert template.endswith("Begin the scene.\nMUST_USE_REQUIRED_JSON_FORMAT\n")
+    assert template.endswith("Begin the scene.\nMUST_USE_REQUIRED_JSON_FORMAT\nREQUIRE_REAL_TOOL_RESULTS\n")
 
 
 def test_template_generator_preserves_effect_toggle_without_duplicate_field_contract(monkeypatch) -> None:

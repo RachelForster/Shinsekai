@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from application.chat.runtime_process import _handle_chat_command
+from application.chat.composition import _handle_chat_command
 from application.story import SceneDialogueItem, SceneTurnResult, StorySession
 from application.story.coordinator import (
     bound_story_session,

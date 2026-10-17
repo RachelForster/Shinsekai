@@ -66,6 +66,19 @@ jobs:
             echo "Invalid prerelease value: ${PRERELEASE}" >&2
             exit 1
           fi
+          if [[ "${TAG}" == *"-rc."* && "${PRERELEASE}" != "true" ]]; then
+            echo "RC tags must remain prereleases, not latest." >&2
+            exit 1
+          fi
+          VERSION="$(head -1 VERSION | tr -d '\r\n')"
+          if [[ "${TAG%%-rc.*}" != "v${VERSION}" ]]; then
+            echo "Release tag (${TAG}) must match VERSION (${VERSION}). Run pnpm sync:version before releasing." >&2
+            exit 1
+          fi
+          if [[ ! -s "docs/releases/${VERSION}.md" ]]; then
+            echo "Missing release notes: docs/releases/${VERSION}.md" >&2
+            exit 1
+          fi
           if [[ "${PRERELEASE}" == "true" ]]; then
             MAKE_LATEST="false"
           else
@@ -317,12 +330,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Resolve release notes
+        id: notes
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ needs.tag.outputs.tag }}
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          VERSION="${VERSION%%-rc.*}"
+          echo "path=docs/releases/${VERSION}.md" >> "$GITHUB_OUTPUT"
+
       - name: Create or update release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.tag.outputs.tag }}
           name: ${{ needs.tag.outputs.tag }}
           target_commitish: ${{ github.sha }}
+          body_path: ${{ steps.notes.outputs.path }}
           generate_release_notes: true
           prerelease: ${{ needs.tag.outputs.prerelease == 'true' }}
           make_latest: ${{ needs.tag.outputs.make_latest }}

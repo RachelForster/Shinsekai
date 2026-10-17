@@ -8,11 +8,15 @@ from __future__ import annotations
 import json
 import secrets
 import threading
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
-from typing import Any, List, Optional
+from typing import Any, Iterator, List, Optional
 
 from core.media.effect_image import ImageEffectAsset
 from core.messaging.chat_turn_service import ChatTurnService
+from application.runtime.services import ApplicationServices
+from sdk.agent import AgentRequester, NullAgentRequester
 from sdk.llm_runtime import set_llm_host_runtime
 
 
@@ -81,6 +85,9 @@ class AppRuntime:
     presentation_queue: Any
     text_processor: Any  # TextProcessor
     opencc: Any  # OpenCC
+    player_character: str = ""
+    read_player_speech: bool = False
+    allow_player_dialogue: bool = True
     background: Any = None
     effect_keyword_map: dict = field(default_factory=dict)  # keyword → audio_path
     effect_image_keyword_map: dict[str, ImageEffectAsset] = field(default_factory=dict)
@@ -89,9 +96,14 @@ class AppRuntime:
     tool_confirmations: ToolConfirmationController = field(
         default_factory=ToolConfirmationController
     )
+    agent_requester: AgentRequester = field(default_factory=NullAgentRequester, kw_only=True)
+    services: ApplicationServices = field(default_factory=ApplicationServices, kw_only=True)
 
 
 _runtime: Optional[AppRuntime] = None
+_scoped_runtime: ContextVar[AppRuntime | None] = ContextVar(
+    "app_runtime", default=None
+)
 
 
 def set_app_runtime(rt: Optional[AppRuntime]) -> None:
@@ -100,13 +112,25 @@ def set_app_runtime(rt: Optional[AppRuntime]) -> None:
 
 
 def get_app_runtime() -> AppRuntime:
-    if _runtime is None:
+    rt = try_get_app_runtime()
+    if rt is None:
         raise RuntimeError("尚未调用 set_app_runtime：请在创建 Worker 之前完成应用上下文注册")
-    return _runtime
+    return rt
 
 
 def try_get_app_runtime() -> Optional[AppRuntime]:
-    return _runtime
+    scoped = _scoped_runtime.get()
+    return scoped if scoped is not None else _runtime
+
+
+@contextmanager
+def app_runtime_scope(rt: AppRuntime) -> Iterator[None]:
+    """Bind a runtime view to this task without changing other workers' state."""
+    token = _scoped_runtime.set(rt)
+    try:
+        yield
+    finally:
+        _scoped_runtime.reset(token)
 
 
 def get_tool_confirmation_controller() -> ToolConfirmationController:
@@ -300,6 +324,11 @@ class _ApplicationLLMHostRuntime:
         from application.reminders import manage_character_reminders
 
         return manage_character_reminders(request)
+
+    def get_agent_requester(self) -> AgentRequester:
+        rt = try_get_app_runtime()
+        requester = getattr(rt, "agent_requester", None) if rt is not None else None
+        return requester if requester is not None else NullAgentRequester()
 
 
 set_llm_host_runtime(_ApplicationLLMHostRuntime())

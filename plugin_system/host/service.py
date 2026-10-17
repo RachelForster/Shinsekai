@@ -60,6 +60,7 @@ class PluginRuntimeBindings:
     t2i_adapters: dict[str, Any]
     create_tool_manager: Callable[[], Any]
     configure_vision_fallbacks: Callable[[list[Any]], None]
+    configure_avatar_formats: Callable[[list[Any]], None]
     register_mcp_tools: Callable[[Any], None] | None = None
 
 
@@ -178,7 +179,7 @@ def ensure_plugins_loaded(
     """
     Load ``data/config/plugins.yaml`` if present, instantiate plugins, merge adapter
     providers and vision fallbacks, register tools on the global ToolManager, and
-    cache message handlers for :mod:`application.chat.handlers.registry`.
+    cache message handlers for :mod:`application.chat.presentation.handlers.registry`.
     """
     global _loaded, _plugin_manager
     global _plugin_dialog_media_handlers, _plugin_ui_handlers
@@ -222,6 +223,10 @@ def ensure_plugins_loaded(
             )
         except Exception:
             logger.exception("collect_vision_fallbacks failed")
+        try:
+            runtime_bindings.configure_avatar_formats(mgr.collect_avatar_formats())
+        except Exception:
+            logger.exception("collect_avatar_formats failed")
         try:
             from sdk.tool_registry import apply_registered_tools
 

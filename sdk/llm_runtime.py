@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from sdk.agent import AgentRequester, NullAgentRequester
+
 
 class LLMHostRuntime(Protocol):
     """Application services that the LLM layer may request through injection."""
@@ -25,9 +27,18 @@ class LLMHostRuntime(Protocol):
 
     def manage_reminders(self, request: dict[str, str]) -> dict[str, object]: ...
 
+    def get_agent_requester(self) -> AgentRequester:
+        """Return a chat-bound delegation port, not the complete task API."""
+        ...
+
 
 class NullLLMHostRuntime:
     """Safe defaults for tests, tools, and non-host LLM consumers."""
+
+    def __init__(self, *, agent_requester: AgentRequester | None = None) -> None:
+        self._agent_requester = (
+            agent_requester if agent_requester is not None else NullAgentRequester()
+        )
 
     def notify_tool_call(self, tool_name: str) -> None:
         del tool_name
@@ -54,6 +65,9 @@ class NullLLMHostRuntime:
     def manage_reminders(self, request: dict[str, str]) -> dict[str, object]:
         del request
         return {"ok": False, "error": "reminder host is not available"}
+
+    def get_agent_requester(self) -> AgentRequester:
+        return self._agent_requester
 
 
 _runtime: LLMHostRuntime = NullLLMHostRuntime()

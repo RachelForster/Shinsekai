@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
+import sqlite3
 
 import pytest
 
@@ -56,14 +57,18 @@ def test_claim_lease_retry_ack_and_restart_deduplication(scheduler):
     item = create(store)
     clock[0] += 600
     first = store.claim()[0]
+    assert first["delivery_count"] == 0
     assert store.claim() == []
     clock[0] += 61
     second = store.claim()[0]
+    assert second["delivery_count"] == 0
     assert second["claim_token"] != first["claim_token"]
     assert not store.acknowledge(item["id"], first["claim_token"])["ok"]
     assert store.acknowledge(item["id"], second["claim_token"])["ok"]
+    assert not store.acknowledge(item["id"], second["claim_token"])["ok"]
     assert store.claim() == []
     assert store.manage("list")["reminders"][0]["status"] == "completed"
+    assert store.manage("list")["reminders"][0]["delivery_count"] == 1
 
 
 def test_concurrent_claims_only_deliver_one_batch(scheduler):
@@ -128,6 +133,7 @@ def test_long_offline_does_not_flood_and_keeps_recurring_schedule(scheduler):
     assert store.claim() == []
     items = store.manage("list")["reminders"]
     assert {item["status"] for item in items} == {"active", "missed"}
+    assert all(item["delivery_count"] == 0 for item in items)
     assert datetime.fromisoformat(next(item for item in items if item["status"] == "active")["due_at"]).timestamp() > clock[0]
 
 
@@ -160,6 +166,47 @@ def test_random_schedule_rejects_an_empty_character_library(scheduler):
     store, _ = scheduler
     with pytest.raises(ValueError, match="at least one"):
         store.manage("create", [], character_name="*", title="休息", message="休息一下", delay_minutes="1")
+
+
+def test_delivery_count_survives_restarts_edits_and_recurring_occurrences(scheduler):
+    store, clock = scheduler
+    item = create(store, recurrence="daily")
+    clock[0] += 600
+    first = store.claim()[0]
+    assert first["delivery_count"] == 0
+    assert store.acknowledge(item["id"], first["claim_token"])["ok"]
+    reopened = ReminderStore(store.path.parent.parent, clock=lambda: clock[0])
+    updated = reopened.manage("update", ["澪"], reminder_id=item["id"], message="休息一下。")["reminder"]
+    assert updated["delivery_count"] == 1
+    clock[0] = datetime.fromisoformat(updated["due_at"]).timestamp()
+    second = reopened.claim()[0]
+    assert second["delivery_count"] == 1
+    with ThreadPoolExecutor(max_workers=2) as workers:
+        results = list(workers.map(lambda _: reopened.acknowledge(item["id"], second["claim_token"]), range(2)))
+    assert sum(result["ok"] for result in results) == 1
+    assert reopened.manage("list")["reminders"][0]["delivery_count"] == 2
+
+
+def test_legacy_database_adds_count_without_guessing_previous_deliveries(tmp_path):
+    store = ReminderStore(tmp_path)
+    store.path.parent.mkdir(parents=True)
+    with sqlite3.connect(store.path) as db:
+        db.execute("""CREATE TABLE reminders (
+            id TEXT PRIMARY KEY, character_name TEXT NOT NULL,
+            title TEXT NOT NULL, message TEXT NOT NULL, due_at REAL NOT NULL,
+            recurrence TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active',
+            claim_token TEXT, claim_until REAL NOT NULL DEFAULT 0,
+            created_at REAL NOT NULL, updated_at REAL NOT NULL)""")
+        db.execute("""INSERT INTO reminders
+            (id, character_name, title, message, due_at, recurrence, status, created_at, updated_at)
+            VALUES ('old', '澪', '休息', '晚安', 1800000000, 'once', 'completed', 1799990000, 1800000000)""")
+    with ThreadPoolExecutor(max_workers=2) as workers:
+        results = list(workers.map(lambda _: ReminderStore(tmp_path).manage("list"), range(2)))
+    for result in results:
+        assert len(result["reminders"]) == 1
+        assert result["reminders"][0]["id"] == "old"
+        assert result["reminders"][0]["status"] == "completed"
+        assert result["reminders"][0]["delivery_count"] == 0
 
 
 def test_legacy_migration_is_idempotent_even_after_deletion(scheduler):

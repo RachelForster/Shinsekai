@@ -1,6 +1,9 @@
 """Unit tests for ASR Manager + Factory + adapter helper functions."""
 
 import pytest
+from threading import Event, Thread
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 from ai.asr.asr_manager import ASRAdapterFactory
 from ai.asr.asr_adapter import (
@@ -39,6 +42,47 @@ def test_vosk_start_raises_when_model_failed_to_load() -> None:
 
     with pytest.raises(RuntimeError, match="Vosk model is unavailable"):
         adapter.start()
+
+
+@pytest.mark.parametrize("finish", [True, False])
+def test_vosk_flushes_decoder_only_on_finish_and_releases_microphone(finish):
+    adapter = object.__new__(VoskAdapter)
+    adapter._is_running = False
+    adapter._pause_event = Event()
+    adapter.model = object()
+    adapter.samplerate, adapter.chunk_size = 16000, 8192
+    entered, release = Event(), Event()
+    transcript = []
+    adapter.callback = lambda text, is_partial: transcript.append((text, is_partial))
+    recognizer = Mock()
+    recognizer.AcceptWaveform.return_value = False
+    recognizer.PartialResult.return_value = '{"partial":"draft"}'
+    recognizer.FinalResult.return_value = '{"text":"final words"}'
+    adapter._KaldiRecognizer = lambda *args: recognizer
+    stream = Mock()
+    def read(*args, **kwargs):
+        entered.set()
+        assert release.wait(1)
+        return b"audio"
+    stream.read.side_effect = read
+    audio = Mock()
+    audio.open.return_value = stream
+    adapter._pyaudio = SimpleNamespace(PyAudio=lambda: audio, paInt16=8)
+    adapter.start()
+    assert entered.wait(1)
+    stopped = Event()
+    def stop():
+        (adapter.finish if finish else adapter.stop)()
+        stopped.set()
+    worker = Thread(target=stop)
+    worker.start()
+    release.set()
+    worker.join(2)
+    assert stopped.is_set()
+    assert transcript == ([('draft', True), ('final words', False)] if finish else [('draft', True)])
+    assert recognizer.FinalResult.call_count == int(finish)
+    stream.close.assert_called_once()
+    audio.terminate.assert_called_once()
 
 
 class TestMockASRAdapter:

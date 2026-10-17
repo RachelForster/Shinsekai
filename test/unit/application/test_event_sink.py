@@ -1,12 +1,18 @@
 import unittest
 
 from application.runtime.event_sink import (
+    build_event,
     fold_event_into_snapshot,
     make_empty_chat_snapshot,
 )
 
 
 class EventSinkSnapshotTests(unittest.TestCase):
+    def test_legacy_sprite_event_gains_required_avatar_fields(self):
+        event = build_event(1, {"type": "sprite.show", "characterName": "Alice", "url": "alice.png"})
+        self.assertEqual(event["avatarType"], "static")
+        self.assertEqual(event["modelUrl"], "")
+
     def test_image_effect_is_folded_with_an_expiry_time(self):
         snapshot = fold_event_into_snapshot(
             make_empty_chat_snapshot(),
@@ -184,6 +190,8 @@ class EventSinkSnapshotTests(unittest.TestCase):
                     "slot": 0,
                     "x": 18,
                     "y": -12,
+                    "avatarType": "static",
+                    "modelUrl": "",
                 }
             ],
         )
@@ -439,8 +447,12 @@ class EventSinkSnapshotTests(unittest.TestCase):
 
     def test_asr_final_snapshot_persists_consumed_transcript_state(self):
         snapshot = make_empty_chat_snapshot()
+        snapshot["characterName"] = "Mio"
+        snapshot["dialogHtml"] = "<p>Previous reply</p>"
+        snapshot["dialogText"] = "Previous reply"
         snapshot["inputDraft"] = "hello wor"
         snapshot["options"] = ["stale option"]
+        snapshot["userDisplayName"] = "Aoi"
 
         next_snapshot = fold_event_into_snapshot(
             snapshot,
@@ -453,6 +465,9 @@ class EventSinkSnapshotTests(unittest.TestCase):
             },
         )
 
+        self.assertEqual(next_snapshot.get("characterName"), "Aoi")
+        self.assertIsNone(next_snapshot.get("dialogHtml"))
+        self.assertEqual(next_snapshot.get("dialogText"), "hello world")
         self.assertEqual(next_snapshot.get("inputDraft"), "")
         self.assertEqual(next_snapshot.get("options"), [])
 

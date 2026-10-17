@@ -9,7 +9,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from application.chat.commands import (
+from application.chat.runtime.commands import (
     ChatCommandBindings,
     ChatCommandDispatcher,
     ChatCommandRequest,
@@ -246,6 +246,19 @@ def test_dispatches_turn_input_asr_and_speech_commands(command_runtime) -> None:
     assert runtime.ui_calls.count(("skip", None)) == 2
 
 
+def test_dispatches_hold_to_talk_commands(command_runtime):
+    runtime = command_runtime
+    runtime.runtime_asr.begin_hold = Mock()
+    runtime.runtime_asr.finish_hold = Mock()
+    assert _execute(runtime, "begin-asr-hold").ok
+    assert _execute(runtime, "finish-asr-hold").ok
+    assert _execute(runtime, "cancel-asr-hold").ok
+    runtime.runtime_asr.begin_hold.assert_called_once_with()
+    assert runtime.runtime_asr.finish_hold.call_count == 2
+    runtime.runtime_asr.finish_hold.assert_any_call()
+    runtime.runtime_asr.finish_hold.assert_any_call(cancel=True)
+
+
 def test_validates_and_dispatches_audio_playback_signal(command_runtime) -> None:
     runtime = command_runtime
 
@@ -319,15 +332,15 @@ def test_clear_history_owns_storage_and_branch_reset(
     calls: list[tuple[str, object]] = []
     runtime.dispatcher.history_argument = "session.json"
     monkeypatch.setattr(
-        "application.chat.commands.chat_history_active_path",
+        "application.chat.runtime.commands.chat_history_active_path",
         lambda value: Path("resolved") / value,
     )
     monkeypatch.setattr(
-        "application.chat.commands.remove_chat_history_storage",
+        "application.chat.runtime.commands.remove_chat_history_storage",
         lambda value: calls.append(("remove", value)),
     )
     monkeypatch.setattr(
-        "application.chat.commands.clear_chat_history",
+        "application.chat.runtime.commands.clear_chat_history",
         lambda path, queue, manager: calls.append(("clear", path)),
     )
 
@@ -365,7 +378,7 @@ def test_changes_voice_language_and_persists_config(command_runtime) -> None:
 def test_reverts_history_inside_application(monkeypatch, command_runtime) -> None:
     runtime = command_runtime
     revert = Mock()
-    monkeypatch.setattr("application.chat.commands.revert_chat_history", revert)
+    monkeypatch.setattr("application.chat.runtime.commands.revert_chat_history", revert)
 
     result = _execute(runtime, "revert-history", "2")
 

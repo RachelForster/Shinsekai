@@ -61,6 +61,7 @@ vi.mock("../../../entities/config/repository", () => ({
 
 vi.mock("../../../entities/files/repository", () => ({
   browseFiles: (options?: { path?: string; showHidden?: boolean }) => mocks.browseFiles(options),
+  fileUrl: (path: string) => path,
 }));
 
 vi.mock("../../../features/chat-stage/theme/ChatThemeProvider", () => ({
@@ -175,7 +176,7 @@ function snapshot(overrides: Partial<ChatSnapshot> = {}): ChatSnapshot {
     inputDraft: "",
     numericInfo: "idle / 2",
     options: [],
-    sprites: [{ id: "mio", label: "Mio", path: "asset://mio.png" }],
+    sprites: [{ avatarType: "static", modelUrl: "", id: "mio", label: "Mio", path: "asset://mio.png" }],
     status: "idle",
     userDisplayName: "Aoi",
     voiceLanguage: "ja",
@@ -491,6 +492,8 @@ describe("ChatStagePage", () => {
     const stackSwitch = within(settings).getByRole("checkbox", { name: "Stack consecutive messages" });
     expect(stackSwitch).not.toBeChecked();
     expect(within(settings).getByRole("checkbox", { name: "Allow new messages to interrupt replies" })).toBeChecked();
+    expect(within(settings).getByRole("checkbox", { name: "Enable F8 hold to talk" })).not.toBeChecked();
+    expect(within(settings).getByRole("slider", { name: "BGM volume" })).toBeInTheDocument();
 
     fireEvent.change(input, { target: { value: "keep this draft" } });
     fireEvent.click(stackSwitch);
@@ -535,6 +538,27 @@ describe("ChatStagePage", () => {
     );
     renderPage();
     expect(await screen.findByRole("textbox")).toBeDisabled();
+  });
+
+  it("renders the player portrait inside the dialogue rather than beside its outer shell", async () => {
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({
+        characterName: "Aoi",
+        playerPortrait: {
+          characterName: "Aoi",
+          url: "asset://aoi-portrait.png",
+          crop: { x: 0.5, y: 0.2, zoom: 1 },
+        },
+      }),
+    );
+    renderPage();
+
+    await screen.findByText("Ready");
+    const dialog = document.querySelector(".dialog-layer")!;
+    const portrait = dialog.querySelector(":scope > .dialog-layer__player-portrait");
+    expect(portrait).toBeInTheDocument();
+    expect(within(portrait as HTMLElement).getByAltText("Aoi")).toBeInTheDocument();
+    expect(document.querySelector(".dialog-layer-shell > .dialog-layer__player-portrait")).toBeNull();
   });
 
   it("anchors decorative frames to the main chat surfaces", async () => {
@@ -583,6 +607,41 @@ describe("ChatStagePage", () => {
       type: "send-message",
     });
   });
+
+  it.each([
+    { inputTag: "TEXTAREA", layout: "default" as const },
+    { inputTag: "INPUT", layout: "pill" as const },
+  ])(
+    "cycles through the three previous user messages with ArrowUp in the $layout input",
+    async ({ inputTag, layout }) => {
+      if (layout === "pill") {
+        themeContextMocks.optional = {
+          resolved: { typewriter: { cps: 40 } },
+          style: { "--chat-input-layout": "pill" } as CSSProperties,
+        };
+      }
+      mocks.getChatSnapshot.mockResolvedValue(
+        snapshot({ turnOptions: { batchEnabled: true, batchIdleSeconds: 5, interruptEnabled: true } }),
+      );
+      renderPage();
+
+      const input = await screen.findByRole("textbox");
+      expect(input.tagName).toBe(inputTag);
+      for (const text of ["1", "2", "3", "4"]) {
+        fireEvent.change(input, { target: { value: text } });
+        fireEvent.keyDown(input, { key: "Enter" });
+        await waitFor(() => expect(input).toHaveValue(""));
+      }
+      for (const expected of ["4", "3", "2", "4"]) {
+        fireEvent.keyDown(input, { key: "ArrowUp" });
+        expect(input).toHaveValue(expected);
+      }
+
+      fireEvent.change(input, { target: { value: "current draft" } });
+      fireEvent.keyDown(input, { key: "ArrowUp" });
+      expect(input).toHaveValue("current draft");
+    },
+  );
 
   it.each([
     { inputTag: "TEXTAREA", layout: "default" as const },
@@ -674,7 +733,9 @@ describe("ChatStagePage", () => {
   it("remounts only the sprite image when an expression changes so the switch animation replays", async () => {
     let listener: ((event: ChatStageEvent) => void) | null = null;
     mocks.getChatSnapshot.mockResolvedValue(
-      snapshot({ sprites: [{ id: "Mio", label: "Mio", path: "asset://mio.png", slot: 0 }] }),
+      snapshot({
+        sprites: [{ avatarType: "static", modelUrl: "", id: "Mio", label: "Mio", path: "asset://mio.png", slot: 0 }],
+      }),
     );
     mocks.subscribeChatEvents.mockImplementation((next) => {
       listener = next;
@@ -688,6 +749,8 @@ describe("ChatStagePage", () => {
 
     act(() => {
       listener?.({
+        avatarType: "static",
+        modelUrl: "",
         characterName: "Mio",
         scale: 1,
         seq: 1,
@@ -1402,7 +1465,7 @@ describe("ChatStagePage", () => {
     const config = await screen.findByRole("dialog", { name: "Chat appearance settings" });
     expect(config).toHaveClass("chat-stage-modal");
     expect(config.querySelector(".chat-stage-modal__header")).not.toBeNull();
-    expect(within(config).queryByLabelText("Long press to talk")).not.toBeInTheDocument();
+    expect(within(config).queryByLabelText("Enable F8 hold to talk")).not.toBeInTheDocument();
     fireEvent.click(within(config).getByRole("button", { name: "Close" }));
 
     const asrButtons = await screen.findAllByRole("button", { name: "Resume ASR" });
@@ -1609,12 +1672,86 @@ describe("ChatStagePage", () => {
     expect(document.querySelector(".dialog-layer__html")).toHaveTextContent("Ready");
   });
 
+  it("remembers per-character framing through presets, expression changes and stage reload", async () => {
+    let listener: ((event: ChatStageEvent) => void) | undefined;
+    mocks.subscribeChatEvents.mockImplementation((next) => {
+      listener = next;
+      return vi.fn();
+    });
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({
+        sprites: [
+          {
+            identityKey: "character:mio",
+            avatarType: "static",
+            modelUrl: "",
+            id: "Mio-0",
+            label: "Mio",
+            path: "asset://mio.png",
+          },
+          {
+            identityKey: "character:ren",
+            avatarType: "static",
+            modelUrl: "",
+            id: "Ren-0",
+            label: "Ren",
+            path: "asset://ren.png",
+          },
+        ],
+      }),
+    );
+    const view = renderPage();
+    await screen.findByText("Ready");
+    fireEvent.click(screen.getByRole("button", { name: "Chat appearance settings" }));
+    const config = await screen.findByRole("dialog", { name: "Chat appearance settings" });
+    const mio = within(config).getByRole("group", { name: "Sprite framing: Mio" });
+    fireEvent.click(within(mio).getByRole("button", { name: "Half view" }));
+    fireEvent.change(within(mio).getByRole("slider", { name: "Vertical framing position: Mio" }), {
+      target: { value: "25" },
+    });
+    await waitFor(() =>
+      expect(screen.getByAltText("Mio").parentElement).toHaveStyle({ transform: "translateY(-25%) scale(2)" }),
+    );
+    expect(screen.getByAltText("Ren")).toHaveClass("sprite-layer__image");
+    await waitFor(() =>
+      expect(JSON.parse(localStorage.getItem("shinsekai-chat-stage-runtime-config")!).config.spriteFramings).toEqual({
+        "character:mio": { heightRatio: 0.5, verticalPosition: 0.25 },
+      }),
+    );
+    act(() =>
+      listener?.({
+        type: "sprite.show",
+        avatarType: "static",
+        modelUrl: "",
+        characterName: "Mio",
+        url: "asset://mio-happy.png",
+        identityKey: "character:mio",
+        slot: 0,
+        scale: 1,
+        seq: 1,
+        ts: 1,
+        v: 1,
+      }),
+    );
+    expect(screen.getByAltText("Mio")).toHaveAttribute("src", "asset://mio-happy.png");
+    expect(screen.getByAltText("Mio").parentElement).toHaveStyle({ transform: "translateY(-25%) scale(2)" });
+    view.unmount();
+    renderPage();
+    await screen.findByText("Ready");
+    expect(screen.getByAltText("Mio").parentElement).toHaveStyle({ transform: "translateY(-25%) scale(2)" });
+    fireEvent.click(screen.getByRole("button", { name: "Chat appearance settings" }));
+    const restored = await screen.findByRole("group", { name: "Sprite framing: Mio" });
+    fireEvent.click(within(restored).getByRole("button", { name: "Full view" }));
+    expect(screen.getByAltText("Mio")).toHaveClass("sprite-layer__image");
+    expect(document.querySelector(".character-visual--framed")).toBeNull();
+  });
+
   it("applies runtime text speed and dialog opacity from chat config", async () => {
     mocks.getChatSnapshot.mockResolvedValue(
       snapshot({
         sprites: [
-          { id: "mio", label: "Mio", path: "asset://mio.png" },
-          { id: "ren", label: "Ren", path: "asset://ren.png" },
+          { avatarType: "static", modelUrl: "", id: "mio", label: "Mio", path: "asset://mio.png" },
+          { avatarType: "static", modelUrl: "", id: "ren", label: "Ren", path: "asset://ren.png" },
         ],
       }),
     );
@@ -1764,6 +1901,7 @@ describe("ChatStagePage", () => {
           Mio: 1.35,
           Ren: 0.8,
         },
+        spriteFramings: {},
         spriteOffsetX: 72,
         spriteOffsetY: -48,
         typewriterCps: 96,
@@ -2004,6 +2142,35 @@ describe("ChatStagePage", () => {
     await waitFor(() => expect(mocks.sendChatCommand).toHaveBeenCalledWith({ type: "pause-asr" }));
   });
 
+  it("persists the hold-to-talk switch and streams text before F8 release", async () => {
+    let listener: ((event: ChatStageEvent) => void) | null = null;
+    mocks.subscribeChatEvents.mockImplementation((next) => {
+      listener = next;
+      return vi.fn();
+    });
+    renderPage();
+    await screen.findByText("Ready");
+    fireEvent.keyDown(window, { code: "F8" });
+    expect(mocks.sendChatCommand).not.toHaveBeenCalledWith({ type: "begin-asr-hold" });
+    fireEvent.click(screen.getByRole("button", { name: "Chat settings" }));
+    const chatSettings = screen.getByRole("dialog", { name: "Chat settings" });
+    expect(within(chatSettings).getByRole("slider", { name: "BGM volume" })).toBeInTheDocument();
+    fireEvent.click(within(chatSettings).getByRole("checkbox", { name: "Enable F8 hold to talk" }));
+    expect(
+      JSON.parse(window.localStorage.getItem("shinsekai-chat-stage-runtime-config") || "{}").config.longPressTalk,
+    ).toBe(true);
+    fireEvent.click(within(chatSettings).getByRole("button", { name: "Close" }));
+    fireEvent.keyDown(window, { code: "F8" });
+    await waitFor(() => expect(mocks.sendChatCommand).toHaveBeenCalledWith({ type: "begin-asr-hold" }));
+    act(() => {
+      listener?.({ type: "asr.partial", text: "Live words", seq: 1, ts: 1, v: 1 });
+    });
+    expect(screen.getByPlaceholderText("Enter dialogue")).toHaveValue("Live words");
+    expect(mocks.sendChatCommand).not.toHaveBeenCalledWith({ type: "finish-asr-hold" });
+    fireEvent.keyUp(window, { code: "F8" });
+    await waitFor(() => expect(mocks.sendChatCommand).toHaveBeenCalledWith({ type: "finish-asr-hold" }));
+  });
+
   it("keeps ASR enabled through automatic submission and resumes after the final reply", async () => {
     let listener: ((event: ChatStageEvent) => void) | null = null;
     mocks.subscribeChatEvents.mockImplementation((next) => {
@@ -2150,8 +2317,8 @@ describe("ChatStagePage", () => {
     mocks.getChatSnapshot.mockResolvedValue(
       snapshot({
         sprites: [
-          { id: "mio", label: "Mio", path: "asset://mio.png" },
-          { id: "ren", label: "Ren", path: "asset://ren.png" },
+          { avatarType: "static", modelUrl: "", id: "mio", label: "Mio", path: "asset://mio.png" },
+          { avatarType: "static", modelUrl: "", id: "ren", label: "Ren", path: "asset://ren.png" },
         ],
       }),
     );

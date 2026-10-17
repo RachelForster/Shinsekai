@@ -1,0 +1,176 @@
+"""Command-line argument parsing for the desktop chat entry (main)."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+from collections.abc import Callable
+from typing import Any
+
+
+CHAT_LAUNCH_CONFIG_ENV = "SHINSEKAI_CHAT_LAUNCH_CONFIG"
+_MAX_LAUNCH_CONFIG_CHARS = 64 * 1024
+
+
+def build_chat_arg_parser(tr_i18n: Callable[..., str]) -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=tr_i18n("main.arg_desc"))
+    parser.add_argument(
+        "--template",
+        "-t",
+        type=str,
+        help=tr_i18n("main.arg_t_help"),
+        default="komaeda_sprite",
+    )
+    parser.add_argument("--init_sprite_path", "-isp", type=str, default="")
+    parser.add_argument("--show-initial-sprite", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--history", "--his", type=str, default="")
+    parser.add_argument("--tts", type=str, default="")
+    parser.add_argument("--llm", type=str, default="deepseek")
+    parser.add_argument("--bg", type=str, default="")
+    parser.add_argument("--use-current-template-for-history", action="store_true")
+    parser.add_argument(
+        "--media-selection-mode",
+        choices=("indexed", "semantic"),
+        default="indexed",
+        help="Select media by explicit ids or semantic vibe matching.",
+    )
+    parser.add_argument("--effect_names", type=str, default="")
+    parser.add_argument(
+        "--characters",
+        type=str,
+        default="",
+        help="JSON array or comma-separated character names selected for this chat.",
+    )
+    parser.add_argument("--player-character", type=str, default="")
+    parser.add_argument("--allow-player-dialogue", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument(
+        "--read-player-speech",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
+    parser.add_argument("--t2i", type=str, default="ComfyUI")
+    parser.add_argument(
+        "--workflow",
+        type=str,
+        default="",
+        help="Path to the workflow YAML to run. Defaults to the built-in desktop workflow.",
+    )
+    parser.add_argument(
+        "--headless",
+        action="store_true",
+        help=(
+            "Run without the desktop window. "
+            "Defaults to assets/system/workflow/headless.yaml "
+            "(LLM→TTS→headless sink; no pygame audio). "
+            "Override with --workflow to supply a custom workflow."
+        ),
+    )
+    parser.add_argument(
+        "--room_id",
+        type=str,
+        default="",
+        help=tr_i18n("main.arg_room_help"),
+    )
+    parser.add_argument(
+        "--stream-endpoint",
+        type=str,
+        default="",
+        help="Connect the chat worker to a bridge WebSocket endpoint instead of opening the desktop chat window.",
+    )
+    parser.add_argument(
+        "--init-stream-endpoint",
+        type=str,
+        default="",
+        help="Report chat initialization progress to a bridge WebSocket while preserving the selected UI runtime.",
+    )
+    parser.add_argument(
+        "--mirror-stream-endpoint",
+        type=str,
+        default="",
+        help="Mirror desktop chat UI updates to a bridge WebSocket endpoint while keeping the native Qt chat window.",
+    )
+    return parser
+
+
+def peek_chat_launch_config() -> dict[str, Any]:
+    """Read bridge-provided defaults without consuming the process environment."""
+
+    return _parse_chat_launch_config(
+        os.environ.get(CHAT_LAUNCH_CONFIG_ENV, ""),
+    )
+
+
+def peek_chat_launch_endpoints() -> dict[str, str]:
+    """Recover producer endpoints even when another launch field is invalid."""
+
+    raw = str(os.environ.get(CHAT_LAUNCH_CONFIG_ENV, "") or "").strip()
+    if not raw or len(raw) > _MAX_LAUNCH_CONFIG_CHARS:
+        return {}
+    try:
+        data = json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {
+        key: str(data.get(key) or "").strip()
+        for key in ("stream_endpoint", "init_stream_endpoint")
+        if isinstance(data.get(key), str) and str(data.get(key) or "").strip()
+    }
+
+
+def load_chat_launch_config() -> dict[str, Any]:
+    """Load and consume bridge-provided argument defaults."""
+
+    return _parse_chat_launch_config(
+        os.environ.pop(CHAT_LAUNCH_CONFIG_ENV, ""),
+    )
+
+
+def _parse_chat_launch_config(raw_value: str) -> dict[str, Any]:
+    """Validate one serialized bridge launch configuration."""
+
+    raw = str(raw_value or "").strip()
+    if not raw:
+        return {}
+    if len(raw) > _MAX_LAUNCH_CONFIG_CHARS:
+        raise ValueError("chat launch config is too large")
+    data = json.loads(raw)
+    if not isinstance(data, dict):
+        raise ValueError("chat launch config must be a JSON object")
+
+    parser = build_chat_arg_parser(lambda key: key)
+    allowed = {action.dest for action in parser._actions if action.dest != "help"}
+    unknown = set(data) - allowed
+    if unknown:
+        raise ValueError(f"unsupported chat launch config keys: {sorted(unknown)!r}")
+
+    normalized: dict[str, Any] = {}
+    for key, value in data.items():
+        if key in {
+            "headless",
+            "read_player_speech",
+            "allow_player_dialogue",
+            "use_current_template_for_history",
+            "show_initial_sprite",
+        }:
+            if not isinstance(value, bool):
+                raise ValueError(f"chat launch config {key} must be boolean")
+            normalized[key] = value
+            continue
+        if not isinstance(value, str):
+            raise ValueError(f"chat launch config {key} must be a string")
+        normalized[key] = value
+    return normalized
+
+
+def parse_chat_args(
+    tr_i18n: Callable[..., str],
+    *,
+    defaults: dict[str, Any] | None = None,
+) -> Any:
+    parser = build_chat_arg_parser(tr_i18n)
+    if defaults:
+        parser.set_defaults(**defaults)
+    return parser.parse_args()

@@ -81,6 +81,7 @@ FORBIDDEN_IMPORTS = {
     ),
     "ai": frozenset(
         {
+            "application",
             "asr",
             "frontend_bridge_core",
             "llm",
@@ -348,6 +349,19 @@ def _dynamic_imported_roots(source: Path) -> set[str]:
     return _literal_dynamic_imported_roots(tree)
 
 
+def _imported_modules(source: Path) -> set[str]:
+    """Collect complete static import paths for retired-module checks."""
+    tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+    modules: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            modules.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            modules.add(node.module)
+            modules.update(f"{node.module}.{alias.name}" for alias in node.names)
+    return modules
+
+
 def _referenced_names(tree: ast.AST) -> set[str]:
     names = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
     names.update(
@@ -472,8 +486,8 @@ def test_core_does_not_receive_application_managers() -> None:
 def test_application_owns_chat_composition_and_presentation() -> None:
     expected_application_modules = (
         REPO_ROOT / "application" / "chat" / "build_effect_context.py",
-        REPO_ROOT / "application" / "chat" / "initial_sprite.py",
-        REPO_ROOT / "application" / "chat" / "turn_wiring.py",
+        REPO_ROOT / 'application' / 'chat' / 'presentation' / 'initial_sprite.py',
+        REPO_ROOT / 'application' / 'chat' / 'runtime' / 'turn_wiring.py',
     )
     retired_core_modules = (
         REPO_ROOT / "core" / "messaging" / "chat_turn_wiring.py",
@@ -485,6 +499,18 @@ def test_application_owns_chat_composition_and_presentation() -> None:
     assert not list((REPO_ROOT / "core").rglob("*wiring.py")), (
         "Composition roots and manager wiring belong to application."
     )
+
+    # Chat-side knowledge code must use remote callbacks, not local storage.
+    forbidden_modules = {
+        "mem0", "application.knowledge.runtime",
+        "ai.memory.runtime", "core.knowledge.bindings",
+    }
+    for relative in (
+        "application/knowledge/hooks.py",
+        "frontend_bridge_core/transport/knowledge_http.py",
+    ):
+        source = REPO_ROOT / relative
+        assert not (_imported_modules(source) & forbidden_modules), relative
 
 
 def test_legacy_ai_namespaces_do_not_depend_on_application() -> None:
@@ -697,9 +723,9 @@ def test_main_delegates_conversation_branch_management() -> None:
     """Keep branch use cases testable outside the process entry point."""
 
     entrypoint = REPO_ROOT / "main.py"
-    use_case = REPO_ROOT / "application" / "chat" / "manage_branches.py"
-    session_runtime = REPO_ROOT / "application" / "chat" / "session_runtime.py"
-    streaming_wiring = REPO_ROOT / "application" / "chat" / "wire_streaming_session.py"
+    use_case = REPO_ROOT / 'application' / 'chat' / 'history' / 'branches.py'
+    session_runtime = REPO_ROOT / 'application' / 'chat' / 'runtime' / 'session.py'
+    streaming_wiring = REPO_ROOT / 'application' / 'chat' / 'runtime' / 'stream_wiring.py'
     source = entrypoint.read_text(encoding="utf-8")
     session_source = session_runtime.read_text(encoding="utf-8")
     wiring_source = streaming_wiring.read_text(encoding="utf-8")
@@ -753,10 +779,10 @@ def test_main_delegates_realtime_chat_commands() -> None:
     """Keep command behavior in application and envelopes in transport."""
 
     entrypoint = REPO_ROOT / "main.py"
-    use_case = REPO_ROOT / "application" / "chat" / "commands.py"
+    use_case = REPO_ROOT / 'application' / 'chat' / 'runtime' / 'commands.py'
     transport = REPO_ROOT / "frontend_bridge_core" / "transport" / "chat_commands.py"
-    session_runtime = REPO_ROOT / "application" / "chat" / "session_runtime.py"
-    streaming_wiring = REPO_ROOT / "application" / "chat" / "wire_streaming_session.py"
+    session_runtime = REPO_ROOT / 'application' / 'chat' / 'runtime' / 'session.py'
+    streaming_wiring = REPO_ROOT / 'application' / 'chat' / 'runtime' / 'stream_wiring.py'
     session_transport = (
         REPO_ROOT / "frontend_bridge_core" / "transport" / "chat_session.py"
     )
@@ -802,8 +828,8 @@ def test_main_delegates_chat_startup_assembly() -> None:
     """Keep providers, templates, hooks, and fallback policy out of main.py."""
 
     entrypoint = REPO_ROOT / "main.py"
-    startup = REPO_ROOT / "application" / "chat" / "startup.py"
-    session_runtime = REPO_ROOT / "application" / "chat" / "session_runtime.py"
+    startup = REPO_ROOT / 'application' / 'chat' / 'runtime' / 'startup.py'
+    session_runtime = REPO_ROOT / 'application' / 'chat' / 'runtime' / 'session.py'
     source = entrypoint.read_text(encoding="utf-8")
     startup_source = startup.read_text(encoding="utf-8")
     session_source = session_runtime.read_text(encoding="utf-8")
@@ -841,8 +867,8 @@ def test_main_delegates_chat_session_lifecycle() -> None:
     """Keep workflow, runtime, presentation, and shutdown outside main.py."""
 
     entrypoint = REPO_ROOT / "main.py"
-    session_runtime = REPO_ROOT / "application" / "chat" / "session_runtime.py"
-    presentation = REPO_ROOT / "application" / "chat" / "presentation.py"
+    session_runtime = REPO_ROOT / 'application' / 'chat' / 'runtime' / 'session.py'
+    presentation = REPO_ROOT / 'application' / 'chat' / 'presentation' / 'assets.py'
     source = entrypoint.read_text(encoding="utf-8")
     session_source = session_runtime.read_text(encoding="utf-8")
     presentation_source = presentation.read_text(encoding="utf-8")
@@ -876,7 +902,7 @@ def test_mobile_access_respects_application_and_transport_boundaries() -> None:
 
     core_implementation = REPO_ROOT / "core" / "mobile_access"
     application_use_case = (
-        REPO_ROOT / "application" / "chat" / "mobile_access.py"
+        REPO_ROOT / 'application' / 'chat' / 'host' / 'mobile_access.py'
     )
     bridge_transport = (
         REPO_ROOT
@@ -957,6 +983,12 @@ def test_bridge_facing_application_use_cases_have_explicit_action_names() -> Non
 
 def test_active_host_code_does_not_import_legacy_ai_namespaces() -> None:
     legacy_roots = {"asr", "llm", "t2i", "tts"}
+    retired_knowledge = {"bindings", "imports", "runtime", "tasks", "hooks", "service", "catalog", "storage"}
+    retired_modules = {f"ai.knowledge.{name}" for name in retired_knowledge}
+    assert not any(
+        (REPO_ROOT / "ai/knowledge" / f"{name}.py").exists()
+        for name in retired_knowledge
+    )
     source_roots = (
         "ai",
         "application",
@@ -976,5 +1008,7 @@ def test_active_host_code_does_not_import_legacy_ai_namespaces() -> None:
             relative = source.relative_to(REPO_ROOT).as_posix()
             for imported_root in _imported_roots(source) & legacy_roots:
                 offenders.append((relative, imported_root))
+            for module in _imported_modules(source) & retired_modules:
+                offenders.append((relative, module))
 
     assert not offenders, f"Active host code must use ai.*: {offenders}"

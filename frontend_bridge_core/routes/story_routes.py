@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from application.chat.runtime_process import _chat_snapshot
+from application.chat.composition import _chat_snapshot
 from application.story.coordinator import (
     publish_story_transition,
     start_or_recover_story_session,

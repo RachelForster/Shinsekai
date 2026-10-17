@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from typing import Any
+from config.character_assets import get_character_assets
 
 from ...core import Section, TextSection
 from ..context import DialogTemplateContext
@@ -70,9 +71,9 @@ class CharacterSection(Section[DialogTemplateContext]):
                         context.translate(
                             "sprites_count",
                             name=name,
-                            n=len(getattr(character, "sprites", None) or []),
+                            n=len(get_character_assets(character, getattr(character, "avatar_type", "static")).sprites),
                         )
-                        + f"{getattr(character, 'emotion_tags', '') or ''}\n\n"
+                        + f"{get_character_assets(character, getattr(character, 'avatar_type', 'static')).emotion_tags}\n\n"
                     ),
                 )
                 for index, (name, character) in enumerate(context.characters)

@@ -1,0 +1,431 @@
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { CharacterVisual, type CharacterVisualProps } from "../../../modules/character-visual/CharacterVisual";
+import type {
+  AvatarCapabilities,
+  AvatarSession,
+  CharacterVisualAsset,
+} from "../../../modules/character-visual/contracts";
+import { clearRegisteredAvatarFormats, registerAvatarFormat } from "../../../modules/character-visual/registry";
+import { SpriteLayer } from "../../../features/chat-stage/components/StageLayers";
+import { chatStageReducer, emptyChatState } from "../../../features/chat-stage/chatState";
+
+const capabilities: AvatarCapabilities = { mouth: false, blink: false, motion: false, sampling: "none" };
+const asset: CharacterVisualAsset = {
+  id: "alice",
+  label: "Alice",
+  avatarType: "demo",
+  modelUrl: "/alice.model",
+  url: "/state-1.json",
+};
+const props: CharacterVisualProps = {
+  asset,
+  className: "sprite-layer__image",
+  onImageError: () => {},
+  onMouseDown: () => {},
+  hitbox: false,
+  mode: "play",
+};
+function session() {
+  return {
+    capabilities,
+    controls: {},
+    apply: vi.fn().mockResolvedValue(undefined),
+    readState: () => ({}),
+    setMouthOpen: vi.fn(),
+    setAttention: vi.fn(),
+    resize: vi.fn(),
+    dispose: vi.fn(),
+  } satisfies AvatarSession<unknown, unknown>;
+}
+function register(create = vi.fn().mockResolvedValue(session())) {
+  registerAvatarFormat({
+    id: "demo",
+    label: "Demo",
+    capabilities,
+    load: async () => ({ create, Editor: () => null }),
+  });
+  return create;
+}
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+afterEach(() => {
+  cleanup();
+  clearRegisteredAvatarFormats();
+  vi.unstubAllGlobals();
+});
+
+describe("CharacterVisual", () => {
+  it("routes transient attention without reloading the model or pose and clears it in edit mode", async () => {
+    const instance = session();
+    const create = register(vi.fn().mockResolvedValue(instance));
+    const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetch);
+    const view = render(<CharacterVisual {...props} attention="thinking" />);
+    await waitFor(() => expect(instance.setAttention).toHaveBeenLastCalledWith("thinking"));
+    await waitFor(() => expect(instance.apply).toHaveBeenCalledOnce());
+    view.rerender(<CharacterVisual {...props} attention="responding" />);
+    expect(instance.setAttention).toHaveBeenLastCalledWith("responding");
+    expect(create).toHaveBeenCalledOnce();
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(instance.apply).toHaveBeenCalledOnce();
+    view.rerender(<CharacterVisual {...props} attention="thinking" mode="edit" />);
+    expect(instance.setAttention).toHaveBeenLastCalledWith("idle");
+    view.unmount();
+    expect(instance.setAttention).toHaveBeenLastCalledWith("idle");
+  });
+
+  it("gives only the addressed sprite a thought, then focuses the actual respondent", async () => {
+    const alice = session(),
+      bob = session();
+    const create = register(vi.fn().mockResolvedValueOnce(alice).mockResolvedValueOnce(bob));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }));
+    const sprites = ["Alice", "Bob"].map((name) => ({
+      id: name,
+      label: name,
+      path: `/${name}.json`,
+      avatarType: "demo",
+      modelUrl: `/${name}.model`,
+    }));
+    const view = render(
+      <SpriteLayer hidden={false} runtimeScaleForSprite={() => 1} thinkingCharacterName="Bob" sprites={sprites} />,
+    );
+    await waitFor(() => expect(bob.setAttention).toHaveBeenLastCalledWith("thinking"));
+    expect(alice.setAttention).toHaveBeenLastCalledWith("idle");
+    view.rerender(
+      <SpriteLayer hidden={false} runtimeScaleForSprite={() => 1} responding speaker="Alice" sprites={sprites} />,
+    );
+    expect(alice.setAttention).toHaveBeenLastCalledWith("responding");
+    expect(bob.setAttention).toHaveBeenLastCalledWith("idle");
+    view.rerender(<SpriteLayer hidden runtimeScaleForSprite={() => 1} thinkingCharacterName="Bob" sprites={sprites} />);
+    expect(bob.setAttention).toHaveBeenLastCalledWith("idle");
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(alice.apply).toHaveBeenCalledOnce();
+    expect(bob.apply).toHaveBeenCalledOnce();
+  });
+  it("crops static images in a host with a natural aspect ratio and keeps its drag hook", () => {
+    const onMouseDown = vi.fn();
+    const onImageError = vi.fn();
+    const view = render(
+      <CharacterVisual
+        {...props}
+        hitbox
+        onMouseDown={onMouseDown}
+        onImageError={onImageError}
+        framing={{ heightRatio: 0.5, verticalPosition: 0 }}
+        asset={{ ...asset, avatarType: "static", modelUrl: "", url: "/alice.png" }}
+      />,
+    );
+    const image = screen.getByRole("img") as HTMLImageElement;
+    Object.defineProperties(image, { naturalWidth: { value: 400 }, naturalHeight: { value: 800 } });
+    fireEvent.load(image);
+    const host = view.container.querySelector<HTMLElement>(".sprite-layer__image")!;
+    expect(host.style.aspectRatio).toBe("0.5");
+    expect(host.dataset.chatStageHitbox).toBe("true");
+    expect(image.parentElement).toHaveStyle({ transform: "translateY(0%) scale(2)" });
+    fireEvent.mouseDown(image);
+    expect(onMouseDown).toHaveBeenCalledOnce();
+    fireEvent.error(image);
+    expect(onImageError).toHaveBeenCalledOnce();
+    view.rerender(
+      <CharacterVisual {...props} asset={{ ...asset, avatarType: "static", modelUrl: "", url: "/alice.png" }} />,
+    );
+    expect(screen.getByRole("img")).toHaveClass("sprite-layer__image");
+    expect(view.container.querySelector(".character-visual--framed")).toBeNull();
+  });
+
+  it.each(["l2d", "mmd", "future-format"])(
+    "frames %s without changes to the adapter or model lifecycle",
+    async (avatarType) => {
+      const instance = session();
+      const create = vi.fn().mockResolvedValue(instance);
+      registerAvatarFormat({
+        id: avatarType,
+        label: avatarType,
+        capabilities,
+        load: async () => ({ create, Editor: () => null }),
+      });
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }));
+      const view = render(
+        <CharacterVisual
+          {...props}
+          asset={{ ...asset, avatarType }}
+          framing={{ heightRatio: 0.5, verticalPosition: 0 }}
+        />,
+      );
+      await waitFor(() => expect(instance.apply).toHaveBeenCalledOnce());
+      const mount = screen.getByTestId("model-container");
+      expect(mount.parentElement).toHaveStyle({ transform: "translateY(0%) scale(2)" });
+      view.rerender(
+        <CharacterVisual
+          {...props}
+          asset={{ ...asset, avatarType }}
+          framing={{ heightRatio: 0.5, verticalPosition: 1 }}
+        />,
+      );
+      expect(mount.parentElement).toHaveStyle({ transform: "translateY(-100%) scale(2)" });
+      view.rerender(<CharacterVisual {...props} asset={{ ...asset, avatarType }} />);
+      expect(mount.parentElement?.style.transform).toBe("");
+      expect(screen.getByTestId("model-container")).toBe(mount);
+      expect(create).toHaveBeenCalledOnce();
+      expect(instance.apply).toHaveBeenCalledOnce();
+      expect(instance.dispose).not.toHaveBeenCalled();
+    },
+  );
+
+  it("renders half-body and close-up framing at the enlarged surface size", async () => {
+    const instance = session();
+    const create = register(vi.fn().mockResolvedValue(instance));
+    let notifyResize!: () => void;
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: () => void) {
+          notifyResize = callback;
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }));
+    const view = render(<CharacterVisual {...props} />);
+    const mount = screen.getByTestId("model-container");
+    let width = 300,
+      height = 600;
+    Object.defineProperties(mount, {
+      clientWidth: { get: () => width },
+      clientHeight: { get: () => height },
+    });
+    await waitFor(() => expect(instance.apply).toHaveBeenCalledOnce());
+    expect(instance.resize).toHaveBeenLastCalledWith(300, 600);
+
+    view.rerender(<CharacterVisual {...props} framing={{ heightRatio: 0.5, verticalPosition: 0 }} />);
+    expect(instance.resize).toHaveBeenLastCalledWith(600, 1200);
+    view.rerender(<CharacterVisual {...props} framing={{ heightRatio: 0.3, verticalPosition: 0 }} />);
+    expect(instance.resize).toHaveBeenLastCalledWith(1000, 2000);
+    width = 240;
+    height = 480;
+    act(notifyResize);
+    expect(instance.resize).toHaveBeenLastCalledWith(800, 1600);
+    view.rerender(<CharacterVisual {...props} />);
+    expect(instance.resize).toHaveBeenLastCalledWith(240, 480);
+    expect(create).toHaveBeenCalledOnce();
+    expect(instance.apply).toHaveBeenCalledOnce();
+    expect(instance.dispose).not.toHaveBeenCalled();
+  });
+
+  it("uses the latest framing when model creation finishes after a framing change", async () => {
+    const late = deferred<AvatarSession<unknown, unknown>>();
+    const instance = session();
+    const create = register(vi.fn().mockReturnValue(late.promise));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }));
+    const view = render(<CharacterVisual {...props} />);
+    const mount = screen.getByTestId("model-container");
+    Object.defineProperties(mount, { clientWidth: { value: 300 }, clientHeight: { value: 600 } });
+    await waitFor(() => expect(create).toHaveBeenCalledOnce());
+    view.rerender(<CharacterVisual {...props} framing={{ heightRatio: 0.3, verticalPosition: 0 }} />);
+    await act(async () => late.resolve(instance));
+    expect(instance.resize).toHaveBeenLastCalledWith(1000, 2000);
+    expect(create).toHaveBeenCalledOnce();
+  });
+
+  it("preserves static image hooks and resets a broken image on resource change", () => {
+    const onImageError = vi.fn();
+    const view = render(
+      <CharacterVisual
+        {...props}
+        onImageError={onImageError}
+        asset={{ ...asset, avatarType: "static", modelUrl: "", url: "/alice.png" }}
+      />,
+    );
+    const img = screen.getByRole("img") as HTMLImageElement;
+    expect(img.className).toBe("sprite-layer__image");
+    fireEvent.error(img);
+    expect(onImageError).toHaveBeenCalledOnce();
+    view.rerender(
+      <CharacterVisual {...props} asset={{ ...asset, avatarType: "static", modelUrl: "", url: "/new.png" }} />,
+    );
+    expect(screen.getByRole("img")).not.toBe(img);
+  });
+
+  it("recovers from an unknown format when selecting a registered model", async () => {
+    const create = register();
+    const view = render(<CharacterVisual {...props} asset={{ ...asset, avatarType: "missing" }} />);
+    expect(screen.getByRole("status")).toHaveTextContent("unknown avatar format");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }));
+    view.rerender(<CharacterVisual {...props} />);
+    await waitFor(() => expect(create).toHaveBeenCalledOnce());
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("applies new states without recreating the model and disposes once", async () => {
+    const instance = session();
+    const create = register(vi.fn().mockResolvedValue(instance));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url) => ({ ok: true, json: async () => ({ url }) })),
+    );
+    const view = render(<CharacterVisual {...props} />);
+    await waitFor(() => expect(instance.apply).toHaveBeenCalledTimes(1));
+    view.rerender(<CharacterVisual {...props} asset={{ ...asset, url: "/state-2.json" }} />);
+    await waitFor(() => expect(instance.apply).toHaveBeenCalledTimes(2));
+    expect(create).toHaveBeenCalledOnce();
+    expect(instance.dispose).not.toHaveBeenCalled();
+    expect(instance.apply.mock.calls[1][0]).toEqual({ url: "/state-2.json" });
+    view.unmount();
+    expect(instance.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("ignores a stale response even when fetch does not honor abort", async () => {
+    const instance = session();
+    register(vi.fn().mockResolvedValue(instance));
+    const old = deferred<object>();
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: () => old.promise })
+      .mockResolvedValue({ ok: true, json: async () => ({ latest: true }) });
+    vi.stubGlobal("fetch", fetch);
+    const view = render(<CharacterVisual {...props} />);
+    await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+    view.rerender(<CharacterVisual {...props} asset={{ ...asset, url: "/state-2.json" }} />);
+    await waitFor(() => expect(instance.apply).toHaveBeenCalledOnce());
+    await act(async () => old.resolve({ latest: false }));
+    expect(instance.apply).toHaveBeenCalledOnce();
+    expect(instance.apply.mock.calls[0][0]).toEqual({ latest: true });
+    expect(fetch.mock.calls[0][1].signal.aborted).toBe(true);
+  });
+
+  it("disposes a late creation after unmount without applying or resizing", async () => {
+    const late = deferred<AvatarSession<unknown, unknown>>();
+    const instance = session();
+    const create = register(vi.fn().mockReturnValue(late.promise));
+    const view = render(<CharacterVisual {...props} />);
+    await waitFor(() => expect(create).toHaveBeenCalledOnce());
+    view.unmount();
+    await act(async () => late.resolve(instance));
+    expect(instance.dispose).toHaveBeenCalledOnce();
+    expect(instance.resize).not.toHaveBeenCalled();
+    expect(instance.apply).not.toHaveBeenCalled();
+  });
+
+  it("recovers when a failed model is replaced", async () => {
+    const instance = session();
+    register(vi.fn().mockRejectedValueOnce(new Error("bad model")).mockResolvedValue(instance));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }));
+    const view = render(<CharacterVisual {...props} />);
+    expect(await screen.findByRole("status")).toHaveTextContent("bad model");
+    expect(screen.getByTestId("model-container")).toBeInTheDocument();
+    view.rerender(<CharacterVisual {...props} asset={{ ...asset, modelUrl: "/good.model" }} />);
+    await waitFor(() => expect(instance.apply).toHaveBeenCalledOnce());
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("rejects HTTP errors and recovers on the next state without a reload", async () => {
+    const instance = session();
+    const create = register(vi.fn().mockResolvedValue(instance));
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce({ ok: false, status: 404 })
+        .mockResolvedValue({ ok: true, json: async () => ({}) }),
+    );
+    const view = render(<CharacterVisual {...props} />);
+    expect(await screen.findByRole("status")).toHaveTextContent("404");
+    expect(instance.apply).not.toHaveBeenCalled();
+    view.rerender(<CharacterVisual {...props} asset={{ ...asset, url: "/good.json" }} mode="restore" />);
+    await waitFor(() => expect(instance.apply).toHaveBeenCalledOnce());
+    expect(instance.apply.mock.calls[0][1]).toBe("restore");
+    expect(create).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("keeps the instance, slot styling and drag hitbox through stage state changes", async () => {
+    const instance = session();
+    const create = register(vi.fn().mockResolvedValue(instance));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }));
+    const onDragStart = vi.fn();
+    const sprite = {
+      id: "alice",
+      label: "Alice",
+      characterName: "Alice",
+      path: "/1.json",
+      avatarType: "demo",
+      modelUrl: "/alice.model",
+      scale: 1.5,
+      slot: 0,
+    };
+    const view = render(
+      <SpriteLayer
+        hidden={false}
+        onDragStart={onDragStart}
+        runtimeScaleForSprite={() => 1}
+        speaker="Alice"
+        sprites={[sprite]}
+      />,
+    );
+    await waitFor(() => expect(instance.apply).toHaveBeenCalledOnce());
+    const visual = screen.getByLabelText("Alice");
+    expect(visual).toHaveClass("sprite-layer__image");
+    expect(visual.dataset.chatStageHitbox).toBe("true");
+    expect(visual.closest("figure")?.style.getPropertyValue("--sprite-scale")).toBe("1.5");
+    fireEvent.mouseDown(visual);
+    expect(onDragStart).toHaveBeenCalledOnce();
+    view.rerender(
+      <SpriteLayer hidden={false} runtimeScaleForSprite={() => 1} sprites={[{ ...sprite, path: "/2.json" }]} />,
+    );
+    await waitFor(() => expect(instance.apply).toHaveBeenCalledTimes(2));
+    expect(create).toHaveBeenCalledOnce();
+  });
+
+  it("keeps a character mounted across snapshot IDs, live events and reconnect", async () => {
+    const instance = session();
+    const create = register(vi.fn().mockResolvedValue(instance));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, json: async () => ({}) })),
+    );
+    const snapshot = {
+      ...emptyChatState,
+      effectImage: null,
+      sprites: [{ id: "Alice-0", label: "Alice", path: "/1.json", avatarType: "demo", modelUrl: "/alice.model" }],
+    };
+    let state = chatStageReducer(emptyChatState, { type: "hydrate", snapshot });
+    const view = render(<SpriteLayer hidden={false} runtimeScaleForSprite={() => 1} sprites={state.sprites} />);
+    await waitFor(() => expect(instance.apply).toHaveBeenCalledOnce());
+    const container = screen.getByTestId("model-container");
+    state = chatStageReducer(state, {
+      type: "event",
+      event: {
+        type: "sprite.show",
+        characterName: "Alice",
+        url: "/2.json",
+        avatarType: "demo",
+        modelUrl: "/alice.model",
+        scale: 1,
+        seq: 1,
+        ts: 1,
+        v: 1,
+      },
+    });
+    expect(state.sprites[0].id).toBe("Alice");
+    view.rerender(<SpriteLayer hidden={false} runtimeScaleForSprite={() => 1} sprites={state.sprites} />);
+    await waitFor(() => expect(instance.apply).toHaveBeenCalledTimes(2));
+    state = chatStageReducer(state, { type: "hydrate", snapshot: { ...snapshot, eventSeq: 2 } });
+    view.rerender(<SpriteLayer hidden={false} runtimeScaleForSprite={() => 1} sprites={state.sprites} />);
+    await waitFor(() => expect(instance.apply).toHaveBeenCalledTimes(3));
+    expect(instance.apply.mock.calls.map((call) => call[1])).toEqual(["restore", "play", "restore"]);
+    expect(create).toHaveBeenCalledOnce();
+    expect(instance.dispose).not.toHaveBeenCalled();
+    expect(screen.getByTestId("model-container")).toBe(container);
+    view.unmount();
+    expect(instance.dispose).toHaveBeenCalledOnce();
+  });
+});

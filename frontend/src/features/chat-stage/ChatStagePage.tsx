@@ -41,10 +41,12 @@ import { isRemoteMobileAccessPage, layerClassName } from "./chatStageUtils";
 import { useChatStageCommands } from "./hooks/useChatStageCommands";
 import { useChatStageEvents } from "./hooks/useChatStageEvents";
 import { useChatStageKeyboardShortcuts } from "./hooks/useChatStageKeyboardShortcuts";
+import { useHoldToTalk } from "./hooks/useHoldToTalk";
 import { useDesktopClickThrough } from "./hooks/useDesktopClickThrough";
 import { useDesktopWindowDrag } from "./hooks/useDesktopWindowDrag";
 import { useDialogTypewriter } from "./hooks/useDialogTypewriter";
 import { useMainThemeColor } from "./hooks/useMainThemeColor";
+import { useRecentUserInputs } from "./hooks/useRecentUserInputs";
 import {
   chatStageRuntimeStyle,
   defaultChatStageRuntimeConfig,
@@ -52,11 +54,14 @@ import {
   readChatStageRuntimeConfig,
   resetChatStageRuntimeThemeAppearance,
   runtimeSpriteScale,
+  runtimeSpriteFraming,
   subscribeChatStageRuntimeConfig,
   writeChatStageRuntimeConfig,
 } from "./runtimeConfig";
 import { useOptionalChatTheme } from "./theme/ChatThemeProvider";
 import { limitChatStageSpritesToSlots } from "./state/sprites";
+import { normalizeVisualFraming, type VisualFraming } from "../../modules/character-visual";
+import { playerPortraitForDialog } from "./state/text";
 import {
   CHAT_ATTACHMENT_LIMIT,
   CHAT_IMAGE_EXTENSIONS,
@@ -173,6 +178,7 @@ export function ChatStagePage() {
     [runtimeConfig.nameText, themeStyle],
   );
   const viewModel = useMemo(() => buildChatStageViewModel(state), [state]);
+  const { recentInputs, rememberInput } = useRecentUserInputs();
   const stageSprites = useMemo(
     () => (isRemoteMobileAccessPage() ? limitChatStageSpritesToSlots(viewModel.sprites, 1) : viewModel.sprites),
     [viewModel.sprites],
@@ -346,6 +352,7 @@ export function ChatStagePage() {
     if (!text && !attachments.length) {
       return;
     }
+    rememberInput(text);
     const displayText = chatAttachmentDisplayText(text, attachments);
     const payload: string | ChatSendPayload = attachments.length ? { attachments, text } : text;
     showDialogImmediately();
@@ -497,6 +504,10 @@ export function ChatStagePage() {
   const updateRuntimeEffectVolume = (effectVolume: number) => {
     setRuntimeConfig((current) => ({ ...current, effectVolume: Math.min(1, Math.max(0, effectVolume)) }));
   };
+  const updateRuntimeLongPressTalk = (longPressTalk: boolean) => {
+    setRuntimeConfig((current) => ({ ...current, longPressTalk }));
+    if (longPressTalk) void sendCommand({ type: "pause-asr" });
+  };
   const updateRuntimeImmersiveMode = (immersiveMode: boolean) => {
     setRuntimeConfig((current) => ({ ...current, immersiveMode }));
   };
@@ -547,6 +558,13 @@ export function ChatStagePage() {
     setRuntimeConfig((current) => ({ ...current, windowScale }));
   };
 
+  const updateRuntimeSpriteFraming = (spriteKey: string, framing: VisualFraming) => {
+    setRuntimeConfig((current) => ({
+      ...current,
+      spriteFramings: { ...current.spriteFramings, [spriteKey]: normalizeVisualFraming(framing) },
+    }));
+  };
+
   const updateRuntimeConfigThemeColor = (configThemeColor: string) => {
     setRuntimeConfig((current) => ({ ...current, configThemeColor: normalizeThemeColor(configThemeColor) }));
   };
@@ -591,6 +609,12 @@ export function ChatStagePage() {
     disabled: modalOpen,
     onAdvance: advanceDialog,
     onToggleAuto: toggleAuto,
+  });
+
+  useHoldToTalk({
+    enabled: runtimeConfig.longPressTalk,
+    disabled: modalOpen || viewModel.inputDisabled || Boolean(state.sessionClosedReason),
+    onCommand: sendCommand,
   });
 
   const openHistoryDialog = () => {
@@ -655,6 +679,7 @@ export function ChatStagePage() {
       configOpen={toolbarConfigOpen}
       hidden={!dialogSurfaceVisible}
       hideCloseButton={standaloneDesktopWindow}
+      longPressTalk={runtimeConfig.longPressTalk}
       locked={dialogControlsLocked}
       onAutoChange={(auto) => setRuntimeConfig((current) => ({ ...current, auto }))}
       onBgmVolumeChange={updateRuntimeBgmVolume}
@@ -664,6 +689,7 @@ export function ChatStagePage() {
       onCommand={sendCommand}
       onConfigOpenChange={setToolbarConfigOpen}
       onFlushBatch={() => void sendCommand({ type: "flush-input-batch" })}
+      onLongPressTalkChange={updateRuntimeLongPressTalk}
       onLockedChange={setDialogControlsLocked}
       onOpenBranches={() => setBranchDialogOpen(true)}
       onOpenHistory={openHistoryDialog}
@@ -728,7 +754,10 @@ export function ChatStagePage() {
           hidden={!viewModel.layers.sprites}
           onDragStart={standaloneDesktopWindow ? handleWindowDrag : undefined}
           runtimeScaleForSprite={(sprite, index) => runtimeSpriteScale(runtimeConfig, sprite, index)}
+          runtimeFramingForSprite={(sprite, index) => runtimeSpriteFraming(runtimeConfig, sprite, index)}
           speaker={viewModel.dialogCharacterName}
+          responding={viewModel.status === "speaking" || viewModel.status === "streaming" || typingDialog}
+          thinkingCharacterName={viewModel.thinkingCharacterName}
           sprites={stageSprites}
         />
         <StatLayer stats={viewModel.stats} />
@@ -758,6 +787,11 @@ export function ChatStagePage() {
             <DialogLayer
               canAdvance={viewModel.layers.dialog && !typingDialog && dialogTotalCharacters > 0}
               characterName={viewModel.dialogCharacterName}
+              playerPortrait={playerPortraitForDialog(
+                state.playerPortrait,
+                viewModel.dialogCharacterName,
+                viewModel.dialogText,
+              )}
               hidden={!viewModel.layers.dialog}
               htmlNodes={displayedDialog.nodes}
               onAdvance={advanceDialog}
@@ -808,6 +842,7 @@ export function ChatStagePage() {
             })
           }
           onSubmit={submit}
+          previousMessages={recentInputs}
           submitDisabled={attachmentUploadPending}
           value={viewModel.inputDraft}
         />
@@ -875,6 +910,7 @@ export function ChatStagePage() {
           onSpriteOffsetXChange={updateRuntimeSpriteOffsetX}
           onSpriteOffsetYChange={updateRuntimeSpriteOffsetY}
           onSpriteScaleChange={updateRuntimeSpriteScale}
+          onSpriteFramingChange={updateRuntimeSpriteFraming}
           onTextSpeedChange={updateRuntimeTextSpeed}
           onTextStyleChange={updateRuntimeTextStyle}
           onTurnOptionsChange={updateTurnOptions}
@@ -883,6 +919,7 @@ export function ChatStagePage() {
           spriteOffsetX={runtimeConfig.spriteOffsetX}
           spriteOffsetY={runtimeConfig.spriteOffsetY}
           spriteScales={runtimeConfig.spriteScales}
+          spriteFramings={runtimeConfig.spriteFramings}
           sprites={stageSprites}
           textSpeed={typewriterCps}
           turnOptions={state.turnOptions}

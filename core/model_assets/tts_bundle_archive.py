@@ -14,6 +14,10 @@ from urllib.parse import unquote, urlparse
 
 import requests
 
+from core.downloads import (
+    DownloadInterrupted as _DownloadInterrupted,
+    download_archive as _download_archive,
+)
 from core.model_assets.tts_bundle_manifest import (
     TtsBundleManifestEntry,
     bundle_manifest_for_key,
@@ -21,7 +25,6 @@ from core.model_assets.tts_bundle_manifest import (
 from core.model_assets.tts_environment import get_default_project_root
 
 _WIN_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-_DOWNLOAD_CHUNK_SIZE = 128 * 1024
 _HASH_CHUNK_SIZE = 4 * 1024 * 1024
 _SEVEN_ZIP_COMMANDS = (
     "7zz.exe",
@@ -31,10 +34,6 @@ _SEVEN_ZIP_COMMANDS = (
     "7za",
     "7z",
 )
-
-
-class _DownloadInterrupted(Exception):
-    pass
 
 
 class _ExtractionInterrupted(Exception):
@@ -271,69 +270,6 @@ def _archive_verification_error(
             f"{manifest.sha256}, got {actual_sha256}"
         )
     return None
-
-
-def _download_archive(
-    url: str,
-    archive: Path,
-    headers: dict[str, str],
-    *,
-    expected_size: int | None = None,
-    expected_sha256: str | None = None,
-    is_interrupted: Any | None = None,
-    on_progress: Any | None = None,
-    timeout: tuple[float, float] = (15, 600),
-) -> None:
-    part = archive.with_name(f"{archive.name}.part")
-    if part.exists():
-        part.unlink()
-    try:
-        hasher = hashlib.sha256() if expected_sha256 is not None else None
-        with requests.get(url, stream=True, timeout=timeout, headers=headers) as r:
-            r.raise_for_status()
-            total = int(r.headers.get("Content-Length", "0") or 0)
-            if total <= 0 and expected_size is not None:
-                total = expected_size
-            n = 0
-            with part.open("wb") as f:
-                for chunk in r.iter_content(_DOWNLOAD_CHUNK_SIZE):
-                    if is_interrupted is not None and is_interrupted():
-                        raise _DownloadInterrupted()
-                    if not chunk:
-                        continue
-                    f.write(chunk)
-                    if hasher is not None:
-                        hasher.update(chunk)
-                    n += len(chunk)
-                    if on_progress is None:
-                        continue
-                    if total > 0:
-                        on_progress(min(70, int(70 * n / total)))
-                    else:
-                        on_progress(min(35, n // (10 * 1024 * 1024)))
-        if expected_size is not None and n != expected_size:
-            raise ValueError(
-                f"verification failed: size mismatch: expected {expected_size}, got {n}"
-            )
-        if hasher is not None:
-            actual_sha256 = hasher.hexdigest()
-            if actual_sha256.lower() != expected_sha256.lower():
-                raise ValueError(
-                    "verification failed: sha256 mismatch: expected "
-                    f"{expected_sha256}, got {actual_sha256}"
-                )
-        archive.parent.mkdir(parents=True, exist_ok=True)
-        part.replace(archive)
-    except requests.exceptions.ReadTimeout:
-        if part.exists():
-            part.unlink()
-        if is_interrupted is not None and is_interrupted():
-            raise _DownloadInterrupted()
-        raise
-    except Exception:
-        if part.exists():
-            part.unlink()
-        raise
 
 
 def _rmtree(p: Path) -> None:

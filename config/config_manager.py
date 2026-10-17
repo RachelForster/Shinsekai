@@ -1,5 +1,7 @@
 import yaml
 import sys
+import os
+import tempfile
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Union
 from pydantic import ValidationError
@@ -20,7 +22,7 @@ from config.tts_provider_config import (
     tts_server_url_or_default,
     uses_shared_tts_server_config,
 )
-from config.llm_defaults import LLM_BASE_URLS
+from config.llm_defaults import resolve_llm_base_url
 from config.feature_flags import FeatureFlagConfigManager
 from config.mirror_env import apply_mirror_environment
 from config.network_proxy import apply_network_proxy_environment
@@ -31,18 +33,6 @@ import traceback
 def character_name_key(name: str) -> str:
     """Return the case-insensitive identity key used for character lookup."""
     return name.lower()
-
-
-def _llm_default_base_url(llm_provider: str) -> str:
-    """Return the built-in base URL for a provider, accepting minor case drift."""
-    provider = (llm_provider or "").strip()
-    if provider in LLM_BASE_URLS:
-        return LLM_BASE_URLS[provider]
-    provider_lower = provider.lower()
-    for name, base_url in LLM_BASE_URLS.items():
-        if name.lower() == provider_lower:
-            return base_url
-    return ""
 
 
 class ConfigManager:
@@ -269,6 +259,7 @@ class ConfigManager:
 
         current_api_config.llm_provider = llm_provider
         current_api_config.llm_base_url = base_url
+        current_api_config.llm_base_urls[llm_provider] = base_url
         current_api_config.is_streaming = (is_streaming == "是")
         current_api_config.tts_provider = normalize_tts_provider(tts_provider)
 
@@ -346,7 +337,7 @@ class ConfigManager:
 
         api_config = self.config.api_config
         
-        base_url = _llm_default_base_url(llm_provider)
+        base_url = resolve_llm_base_url(api_config, llm_provider)
         
         # 从字典中获取对应提供商的模型和 API Key
         llm_model = api_config.llm_model.get(llm_provider, "")
@@ -358,12 +349,11 @@ class ConfigManager:
     def save_characters_config(self) -> None:
         """独立保存角色列表配置到 characters.yaml"""
         if self._config is None:
-            print("警告：配置未加载或加载失败，无法保存角色配置。")
-            return
+            raise RuntimeError("配置未加载或加载失败，无法保存角色配置。")
             
         print("正在保存 characters.yaml...")
-        # 角色列表需要将每个 Character 实体转换为字典
-        characters_data = [char.model_dump(by_alias=True) for char in self.config.characters]
+        # JSON 模式将嵌套的 Path 转为字符串，避免 YAML 写出 safe_load 无法读取的 Python 标签。
+        characters_data = [char.model_dump(mode="json", by_alias=True) for char in self.config.characters]
         self._save_single_config(self._CHARACTERS_CONFIG_PATH, characters_data)
         print("characters.yaml 保存完成。")
     
@@ -388,14 +378,22 @@ class ConfigManager:
         print("effect.yaml 保存完成。")
 
     def _save_single_config(self, file_path: Path, data: Union[Dict, List]) -> None:
-        """保存单个配置到 YAML 文件"""
+        """Atomically save YAML; callers must observe failures to roll back changes."""
         file_path.parent.mkdir(parents=True, exist_ok=True) # 确保目录存在
+        temporary_path = None
         try:
-            with open(file_path, 'w', encoding='utf-8') as f:
-                # 使用 default_flow_style=False 提高 YAML 的可读性
+            with tempfile.NamedTemporaryFile(
+                mode='w', encoding='utf-8', dir=file_path.parent,
+                prefix=f'.{file_path.name}.', suffix='.tmp', delete=False,
+            ) as f:
+                temporary_path = Path(f.name)
                 yaml.dump(data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
-        except Exception as e:
-            print(f"错误：保存配置到 {file_path} 失败: {e}")
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(temporary_path, file_path)
+        finally:
+            if temporary_path is not None:
+                temporary_path.unlink(missing_ok=True)
 
     def get_background_by_name(self, name: str) -> Optional[Background]:
         for char in self.config.background_list:
@@ -426,9 +424,7 @@ class ConfigManager:
         llm_provider = self.config.api_config.llm_provider
         api_key = self.config.api_config.llm_api_key.get(llm_provider,"")
         model = self.config.api_config.llm_model.get(llm_provider,"")
-        base_url = str(self.config.api_config.llm_base_url or "").strip()
-        if not base_url:
-            base_url = _llm_default_base_url(llm_provider)
+        base_url = resolve_llm_base_url(self.config.api_config, llm_provider)
         return llm_provider, model, base_url, api_key
 
     def get_gpt_sovits_config(self):
@@ -453,6 +449,8 @@ class ConfigManager:
             src = ac.asr_extra_configs or {}
         elif kind == "t2i":
             src = ac.t2i_extra_configs or {}
+        elif kind == "vision":
+            src = ac.vision_extra_configs or {}
         else:
             return {}
         return dict(src.get(pk, {}) or {})
@@ -479,6 +477,10 @@ class ConfigManager:
             m = dict(ac.t2i_extra_configs or {})
             m[pk] = dict(data)
             ac.t2i_extra_configs = m
+        elif kind == "vision":
+            m = dict(ac.vision_extra_configs or {})
+            m[pk] = dict(data)
+            ac.vision_extra_configs = m
         else:
             return
         self.config.api_config = ac

@@ -4,7 +4,7 @@ import hashlib
 import re
 from pathlib import Path
 from typing import List, Dict, Any, Tuple, Optional, Union
-from config.schema import Character, Sprite
+from config.schema import Character, ModelSprites, Sprite
 from config.config_manager import ConfigManager
 import yaml
 
@@ -65,6 +65,25 @@ class CharacterManager:
         """保存角色配置的便捷方法"""
         self._config_manager.save_characters_config()
 
+    def save_avatar_bank(self, name: str, avatar_type: str, bank: ModelSprites, *, activate: bool = False) -> None:
+        """Persist one validated bank without replacing other types or static assets."""
+        character = self._config_manager.get_character_by_name(name)
+        if character is None:
+            raise KeyError(name)
+        validated = Character(name=name, color=character.color, sprite_prefix=character.sprite_prefix,
+                              avatars={avatar_type: bank}).avatars
+        previous = character.avatars
+        previous_type = character.avatar_type
+        character.avatars = {**previous, **validated}
+        if activate:
+            character.avatar_type = avatar_type
+        try:
+            self._save_characters_config()
+        except Exception:
+            character.avatars = previous
+            character.avatar_type = previous_type
+            raise
+
     def save_characters_to_file(self) -> str:
         """
         保存所有角色配置到文件。
@@ -87,12 +106,17 @@ class CharacterManager:
                      pronunciation_map: dict = None,
                      edit_as_name: Optional[str] = None,
                      emotion_tags: Optional[str] = None,
-                     character_brief: Optional[str] = None) -> Tuple[str, List[str]]:
+                     character_brief: Optional[str] = None,
+                     avatar_type: Optional[str] = None,
+                     avatars: Optional[Dict[str, Union[ModelSprites, dict]]] = None,
+                     portrait_crop=None,
+                     sprite_portrait_crops: Optional[dict[int, object]] = None) -> Tuple[str, List[str]]:
         """
         添加或更新角色配置。
 
         若 edit_as_name 为当前列表中已存在的名字（如 UI 下拉当前选中项），
         则按该条记录做更新；名称栏改为新名字时视为重命名，不会新建另一条角色。
+        省略 avatar_type / avatars 的旧调用会保留现有形象配置；显式 static / {} 会重置它们。
 
         Returns:
             Tuple[str, List[str]]: (操作结果消息, 当前所有角色名称列表)
@@ -123,6 +147,11 @@ class CharacterManager:
                         current_names,
                     )
 
+        avatar_fields = Character(
+            name=name, color=color, sprite_prefix=sprite_prefix,
+            avatar_type=avatar_type, avatars=avatars,
+        )
+
         if edit_as_name and str(edit_as_name).strip():
             target = self._config_manager.get_character_by_name(str(edit_as_name).strip())
             if target is not None:
@@ -146,6 +175,19 @@ class CharacterManager:
                     target.pronunciation_map = pronunciation_map
                 if emotion_tags is not None:
                     target.emotion_tags = emotion_tags
+                if portrait_crop is not None:
+                    target.portrait_crop = portrait_crop
+                for index, crop in (sprite_portrait_crops or {}).items():
+                    if 0 <= index < len(target.sprites):
+                        sprite = target.sprites[index]
+                        if isinstance(sprite, dict):
+                            sprite["portrait_crop"] = crop.model_dump() if crop else None
+                        else:
+                            sprite.portrait_crop = crop
+                if avatar_type is not None:
+                    target.avatar_type = avatar_fields.avatar_type
+                if avatars is not None:
+                    target.avatars = avatar_fields.avatars
                 self._save_characters_config()
                 return "人物已更新！", [c.name for c in characters]
 
@@ -170,6 +212,9 @@ class CharacterManager:
                 speech_speed=speech_speed,
                 speech_volume=speech_volume,
                 pronunciation_map=pronunciation_map or {},
+                portrait_crop=portrait_crop,
+                avatar_type=avatar_fields.avatar_type,
+                avatars=avatar_fields.avatars,
             )
             characters.append(new_character)
             self._save_characters_config()
@@ -193,6 +238,19 @@ class CharacterManager:
                 existing_character.pronunciation_map = pronunciation_map
             if emotion_tags is not None:
                 existing_character.emotion_tags = emotion_tags
+            if portrait_crop is not None:
+                existing_character.portrait_crop = portrait_crop
+            for index, crop in (sprite_portrait_crops or {}).items():
+                if 0 <= index < len(existing_character.sprites):
+                    sprite = existing_character.sprites[index]
+                    if isinstance(sprite, dict):
+                        sprite["portrait_crop"] = crop.model_dump() if crop else None
+                    else:
+                        sprite.portrait_crop = crop
+            if avatar_type is not None:
+                existing_character.avatar_type = avatar_fields.avatar_type
+            if avatars is not None:
+                existing_character.avatars = avatar_fields.avatars
 
             self._save_characters_config()
             return "人物已更新！", [c.name for c in characters]
@@ -312,13 +370,26 @@ class CharacterManager:
         if not character:
             return f"找不到角色: {character_name}", [], ""
         
-        # 删除立绘目录
-        char_dir = os.path.join(UPLOAD_DIR, character.sprite_prefix)
-        if os.path.exists(char_dir):
-            shutil.rmtree(char_dir)
+        # Static assets share this root with independently managed model banks.
+        # Validate the root before removing children; preserve model/package voices.
+        from sdk.path_utils import safe_child_path
+        char_dir = safe_child_path(Path(UPLOAD_DIR), character.sprite_prefix)
+        char_voice_dir = safe_child_path(Path(VOICE_DIR), character.sprite_prefix)
+        if char_dir == Path(UPLOAD_DIR).resolve() or char_voice_dir == Path(VOICE_DIR).resolve():
+            raise PermissionError("Character asset directory must not be the shared root")
+        if char_dir.is_dir():
+            for child in char_dir.iterdir():
+                if child.name.lower() in {"avatars", "avatar-voices"}:
+                    continue
+                if child.is_dir() and not child.is_symlink():
+                    checked = safe_child_path(char_dir, child.name)
+                    shutil.rmtree(checked)
+                else:
+                    child.unlink()
+            if not any(char_dir.iterdir()):
+                char_dir.rmdir()
 
         # 删除语音目录
-        char_voice_dir = os.path.join(VOICE_DIR, character.sprite_prefix)
         if os.path.exists(char_voice_dir):
             shutil.rmtree(char_voice_dir)
         

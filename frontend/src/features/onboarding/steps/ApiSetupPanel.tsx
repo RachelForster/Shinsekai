@@ -14,7 +14,11 @@ import {
 } from "../../../entities/config/repository";
 import type { ApiConfig } from "../../../entities/config/types";
 import type { TaskSnapshot, TtsBundleDownloadResult, TtsBundleKind } from "../../../shared/platform/types";
-import { applyDownloadedTtsBundle } from "../../api-settings/apiSettingsUtils";
+import {
+  applyDownloadedTtsBundle,
+  llmDefaultBaseUrls,
+  normalizeProviderBaseUrls,
+} from "../../api-settings/apiSettingsUtils";
 import {
   AsyncButton,
   Button,
@@ -41,10 +45,6 @@ function updateProviderValue(record: Record<string, string> | undefined, provide
   return { ...(record ?? {}), [provider]: value };
 }
 
-function withApiDraftValue<K extends keyof ApiConfig>(draft: ApiConfig | null, key: K, value: ApiConfig[K]) {
-  return draft ? { ...draft, [key]: value } : draft;
-}
-
 export function ApiSetupPanel({ copy, onSaved }: ApiSetupPanelProps) {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -59,7 +59,7 @@ export function ApiSetupPanel({ copy, onSaved }: ApiSetupPanelProps) {
 
   useEffect(() => {
     if (configQuery.data?.api_config) {
-      setDraft(configQuery.data.api_config);
+      setDraft(normalizeProviderBaseUrls(configQuery.data.api_config));
     }
   }, [configQuery.data?.api_config]);
 
@@ -169,11 +169,20 @@ export function ApiSetupPanel({ copy, onSaved }: ApiSetupPanelProps) {
         <div className="onboarding-form-grid">
           <FieldBlock label={copy.api.provider}>
             <Select
-              onChange={(event) =>
-                setDraft(
-                  (current) => withApiDraftValue(current, "llm_provider", event.target.value) as ApiConfig | null,
-                )
-              }
+              onChange={(event) => {
+                const nextProvider = event.target.value;
+                setDraft((current) => {
+                  if (!current) return current;
+                  const nextBaseUrl =
+                    activeProviderValue(current.llm_base_urls, nextProvider) || llmDefaultBaseUrls[nextProvider] || "";
+                  return {
+                    ...current,
+                    llm_base_url: nextBaseUrl,
+                    llm_base_urls: updateProviderValue(current.llm_base_urls, nextProvider, nextBaseUrl),
+                    llm_provider: nextProvider,
+                  };
+                });
+              }}
               value={provider}
             >
               {providerChoices.map((option) => (
@@ -185,11 +194,18 @@ export function ApiSetupPanel({ copy, onSaved }: ApiSetupPanelProps) {
           </FieldBlock>
           <FieldBlock label={copy.api.baseUrl}>
             <TextInput
-              onChange={(event) =>
-                setDraft(
-                  (current) => withApiDraftValue(current, "llm_base_url", event.target.value) as ApiConfig | null,
-                )
-              }
+              onChange={(event) => {
+                const nextBaseUrl = event.target.value;
+                setDraft((current) =>
+                  current
+                    ? {
+                        ...current,
+                        llm_base_url: nextBaseUrl,
+                        llm_base_urls: updateProviderValue(current.llm_base_urls, provider, nextBaseUrl),
+                      }
+                    : current,
+                );
+              }}
               placeholder="https://api.openai.com/v1"
               value={baseUrl}
             />

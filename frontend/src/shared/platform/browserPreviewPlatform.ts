@@ -1,4 +1,6 @@
 import { createStoryPreviewPlatform } from "./storyPreviewPlatform";
+import { createAgentPreviewPlatform } from "./agentPreviewPlatform";
+import { PlatformRequestError } from "./errors";
 import {
   sampleChatSnapshot,
   sampleConfig,
@@ -12,6 +14,7 @@ import {
   sampleTemplates,
 } from "./sampleData";
 import { DEFAULT_CHARACTER_COLOR } from "../constants";
+import { DEFAULT_PLAYER_OPTIONS } from "../playerCharacterOptions";
 import { numberedTags, tagContents } from "../assets/assetText";
 import { runtimeStatusFromSnapshot } from "./chatRuntimeStatus";
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
@@ -23,6 +26,8 @@ import type {
   CharacterMemoryImportPreview,
   CharacterMemoryImportResult,
   CharacterMemoryList,
+  KnowledgeImportPreview,
+  KnowledgeImportResult,
   ChatConversationBranch,
   ChatHistoryEntry,
   ChatLaunchPayload,
@@ -452,6 +457,37 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
   let templateSession: TemplateLaunchSession | null = null;
   const cachedModelAssets = new Set<string>();
   const characterMemories = new Map<string, CharacterMemoryList>();
+  const knowledgeData = new Map<
+    string,
+    { memories: Array<{ id: string; memory: string }>; characters: Array<{ name: string; createdAt: string }> }
+  >();
+  knowledgeData.set("preview-knowledge", {
+    memories: Array.from({ length: 18 }, (_, index) => ({
+      id: `knowledge-preview-${index + 1}`,
+      memory: `雾港世界设定 ${index + 1}：居民依靠钟声辨认进港的船只。`,
+    })),
+    characters: config.characters.map((character) => ({ name: character.name, createdAt: "2026-09-14 00:00:00" })),
+  });
+  function requiredKnowledgeValue(value: string, field: string) {
+    const text = value.trim();
+    if (!text) throw new Error(`${field} is required`);
+    return text;
+  }
+  function removePreviewBinding(name: string, knowledgeId: string) {
+    const data = knowledgeData.get(knowledgeId);
+    if (!data) return false;
+    const before = data.characters.length;
+    data.characters = data.characters.filter((character) => character.name !== name);
+    if (!data.characters.length && !data.memories.length) knowledgeData.delete(knowledgeId);
+    return before !== data.characters.length;
+  }
+  function addPreviewBinding(name: string, knowledgeId: string) {
+    const data = knowledgeData.get(knowledgeId) ?? { memories: [], characters: [] };
+    if (!data.characters.some((character) => character.name === name)) {
+      data.characters.push({ name, createdAt: new Date().toISOString() });
+    }
+    knowledgeData.set(knowledgeId, data);
+  }
   const chatListeners = new Set<(snapshot: ChatSnapshot) => void>();
   const chatEventListeners = new Set<(event: ChatStageEvent) => void>();
   let previewChatEventSeq = 0;
@@ -569,6 +605,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
     });
 
   return {
+    agent: createAgentPreviewPlatform(),
     backgrounds: {
       async autoLabelImages(name) {
         const background = config.background_list.find((item) => item.name === name);
@@ -886,7 +923,10 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         }
         conversations.delete(id);
       },
-      async close() {
+      async close(options) {
+        if (options?.expectedSessionId !== undefined && options.expectedSessionId !== (chat.sessionId ?? "")) {
+          throw new PlatformRequestError("The current chat has changed.", 409, "chat_session_changed");
+        }
         clearScheduledChatUpdates();
         chat = {
           ...chat,
@@ -1077,7 +1117,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           chat = { ...chat, status: "idle", numericInfo: "idle" };
           emitChat();
         }
-        if (command.type === "pause-asr") {
+        if (["pause-asr", "finish-asr-hold", "cancel-asr-hold"].includes(command.type)) {
           clearScheduledChatUpdates();
           chat = {
             ...chat,
@@ -1089,7 +1129,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           };
           emitChat();
         }
-        if (command.type === "resume-asr") {
+        if (command.type === "resume-asr" || command.type === "begin-asr-hold") {
           clearScheduledChatUpdates();
           chat = {
             ...chat,
@@ -1321,7 +1361,12 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           options,
         );
         await delay(null, 80);
-        const character = config.characters.find((item) => payload.characters.includes(item.name));
+        const player = config.characters.find(
+          (item) => item.name === payload.playerCharacter && payload.characters.includes(item.name),
+        );
+        const character = config.characters.find(
+          (item) => payload.characters.includes(item.name) && item.name !== player?.name,
+        );
         const background = config.background_list.find((item) => item.name === payload.backgroundName);
         const requestedHistoryPath = payload.historyPath || chat.historyPath || "./data/chat_history/preview";
         const historyBase = requestedHistoryPath.toLowerCase().endsWith(".json")
@@ -1333,14 +1378,32 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         chat = {
           ...chat,
           backgroundPath: background?.sprites[0]?.path,
+          userDisplayName: player?.name || "你",
+          playerPortrait: player?.sprites[0]
+            ? {
+                characterName: player.name,
+                url: player.sprites[0].path,
+                crop: player.sprites[0].portrait_crop ?? player.portrait_crop ?? { x: 0.5, y: 0.2, zoom: 1 },
+              }
+            : null,
           characterName: character?.name,
           chatProcessRunning: true,
           chatRuntimeClosing: false,
           dialogText: "",
           historyPath,
-          sprites: character?.sprites[0]
-            ? [{ id: `${character.name}-0`, label: character.name, path: character.sprites[0].path }]
-            : [],
+          sprites:
+            payload.showInitialSprite !== false && character?.sprites[0]
+              ? [
+                  {
+                    avatarType: "static",
+                    modelUrl: "",
+                    id: `${character.name}-0`,
+                    identityKey: `character:${character.name.toLowerCase()}`,
+                    label: character.name,
+                    path: character.sprites[0].path,
+                  },
+                ]
+              : [],
           sessionClosedReason: "",
           status: "idle",
           statusMessage: `${payload.templateId || payload.templateName || "预览聊天"} 已启动：${historyPath}`,
@@ -1410,20 +1473,48 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           options,
         );
         await delay(null, 80);
-        const character = config.characters.find((item) => templateSession?.selectedCharacters?.includes(item.name));
+        const player = config.characters.find(
+          (item) =>
+            item.name === templateSession?.playerCharacter && templateSession?.selectedCharacters?.includes(item.name),
+        );
+        const character = config.characters.find(
+          (item) => templateSession?.selectedCharacters?.includes(item.name) && item.name !== player?.name,
+        );
         const background = config.background_list.find((item) => item.name === templateSession?.background);
         const historyPath = templateSession?.historyPath || chat.historyPath || "./data/chat_history/preview";
         chat = {
           ...chat,
           backgroundPath: background?.sprites[0]?.path ?? chat.backgroundPath,
+          userDisplayName: player?.name || "你",
+          playerPortrait: player?.sprites[0]
+            ? chat.playerPortrait?.characterName === player.name
+              ? chat.playerPortrait
+              : {
+                  characterName: player.name,
+                  url: player.sprites[0].path,
+                  crop: player.sprites[0].portrait_crop ?? player.portrait_crop ?? { x: 0.5, y: 0.2, zoom: 1 },
+                }
+            : null,
           characterName: character?.name ?? chat.characterName,
           chatProcessRunning: true,
           chatRuntimeClosing: false,
           dialogText: "",
           historyPath,
-          sprites: character?.sprites[0]
-            ? [{ id: `${character.name}-0`, label: character.name, path: character.sprites[0].path }]
-            : chat.sprites,
+          sprites:
+            templateSession?.showInitialSprite === false
+              ? []
+              : character?.sprites[0]
+                ? [
+                    {
+                      avatarType: "static",
+                      modelUrl: "",
+                      id: `${character.name}-0`,
+                      identityKey: `character:${character.name.toLowerCase()}`,
+                      label: character.name,
+                      path: character.sprites[0].path,
+                    },
+                  ]
+                : chat.sprites,
           sessionClosedReason: "",
           status: "idle",
           statusMessage: `已恢复上次启动：${historyPath}`,
@@ -1557,7 +1648,178 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         };
       },
     },
+    knowledge: {
+      getKnowledgeStatus: () => delay({ status: "ready" as const }),
+      async importKnowledge(knowledgeId, items, options) {
+        const preview = await previewMemoryImport(items);
+        const taskId = `knowledge-import-${Date.now()}`;
+        previewTask<KnowledgeImportResult>(
+          taskId,
+          {
+            kind: "knowledge-import",
+            message: "Importing material",
+            phase: "extracting",
+            progress: 0.5,
+            status: "running",
+            title: "Import material",
+          },
+          options,
+        );
+        await delay(undefined, 120);
+        const result: KnowledgeImportResult = {
+          chunkCount: preview.chunkCount,
+          duplicateCount: 0,
+          estimatedTotalTokens: preview.estimatedTotalTokens,
+          extractedCount: items.length,
+          fileCount: preview.fileCount,
+          memories: items.map((item) => `Knowledge imported from ${item.name}`),
+          savedCount: items.length,
+          knowledge_id: knowledgeId,
+        };
+        const currentKnowledge = knowledgeData.get(knowledgeId) ?? { memories: [], characters: [] };
+        currentKnowledge.memories.push(
+          ...(result.memories ?? []).map((memory, index) => ({ id: `${taskId}-${index}`, memory })),
+        );
+        knowledgeData.set(knowledgeId, currentKnowledge);
+        previewTask(
+          taskId,
+          {
+            kind: "knowledge-import",
+            message: "Material import complete",
+            phase: "completed",
+            progress: 1,
+            result,
+            status: "succeeded",
+            title: "Import material",
+          },
+          options,
+        );
+        return clone(result);
+      },
+      async listKnowledgeInstances({ query, page }) {
+        const term = query.trim().toLowerCase();
+        const knowledge = [...knowledgeData]
+          .filter(([id]) => id.toLowerCase().includes(term))
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([knowledgeId, data]) => ({
+            knowledge_id: knowledgeId,
+            entryCount: data.memories.length,
+            characterCount: data.characters.length,
+          }));
+        return delay({
+          count: knowledge.length,
+          page,
+          pageSize: 20,
+          knowledge: knowledge.slice((page - 1) * 20, page * 20),
+        });
+      },
+      async listKnowledgeBindings(characterName, page = 1) {
+        const name = requiredKnowledgeValue(characterName, "character name");
+        page = Math.max(1, Math.trunc(page));
+        const bindings = [...knowledgeData]
+          .flatMap(([knowledgeId, data]) =>
+            data.characters
+              .filter((character) => character.name === name)
+              .map((character) => ({ knowledge_id: knowledgeId, createdAt: character.createdAt })),
+          )
+          .sort((a, b) => (a.knowledge_id < b.knowledge_id ? -1 : a.knowledge_id > b.knowledge_id ? 1 : 0));
+        return delay({
+          characterName: name,
+          count: bindings.length,
+          page,
+          pageSize: 20,
+          bindings: bindings.slice((page - 1) * 20, page * 20),
+        });
+      },
+      async addKnowledgeBinding(characterName, knowledgeId) {
+        const name = requiredKnowledgeValue(characterName, "character name");
+        const wid = requiredKnowledgeValue(knowledgeId, "knowledge id");
+        addPreviewBinding(name, wid);
+        return delay({ ok: true as const, characterName: name, knowledge_id: wid });
+      },
+      async listKnowledgeBindingNames(knowledgeId) {
+        const wid = requiredKnowledgeValue(knowledgeId, "knowledge id");
+        return delay({
+          knowledge_id: wid,
+          characterNames: (knowledgeData.get(wid)?.characters ?? []).map((c) => c.name).sort(),
+        });
+      },
+      async batchKnowledgeBindings(knowledgeId, add, remove) {
+        const wid = requiredKnowledgeValue(knowledgeId, "knowledge id");
+        const added = [...new Set(add.map((name) => requiredKnowledgeValue(name, "character name")))];
+        const removed = [...new Set(remove.map((name) => requiredKnowledgeValue(name, "character name")))];
+        if (added.some((name) => removed.includes(name)))
+          throw new Error("a character cannot be added and removed in the same request");
+        removed.forEach((name) => removePreviewBinding(name, wid));
+        added.forEach((name) => addPreviewBinding(name, wid));
+        return delay({
+          ok: true as const,
+          knowledge_id: wid,
+          characterNames: (knowledgeData.get(wid)?.characters ?? []).map((c) => c.name).sort(),
+        });
+      },
+      async removeKnowledgeBinding(characterName, knowledgeId) {
+        const name = requiredKnowledgeValue(characterName, "character name");
+        const wid = requiredKnowledgeValue(knowledgeId, "knowledge id");
+        const deleted = removePreviewBinding(name, wid);
+        return delay({ ok: true as const, characterName: name, knowledge_id: wid, deleted });
+      },
+      async addKnowledgeEntry(knowledgeId, content) {
+        const wid = requiredKnowledgeValue(knowledgeId, "knowledge id");
+        const text = requiredKnowledgeValue(content, "content");
+        const data = knowledgeData.get(wid) ?? { memories: [], characters: [] };
+        if (!data.memories.some((entry) => entry.memory === text)) {
+          data.memories.push({ id: crypto.randomUUID(), memory: text });
+        }
+        knowledgeData.set(wid, data);
+        const memories = data.memories.slice(0, 200);
+        return delay({ knowledge_id: wid, count: memories.length, memories });
+      },
+      async deleteKnowledgeEntry(knowledgeId, memoryId) {
+        const wid = requiredKnowledgeValue(knowledgeId, "knowledge id");
+        const id = requiredKnowledgeValue(memoryId, "memory id");
+        const data = knowledgeData.get(wid);
+        if (data) {
+          data.memories = data.memories.filter((entry) => entry.id !== id);
+          if (!data.memories.length && !data.characters.length) knowledgeData.delete(wid);
+        }
+        const memories = (data?.memories ?? []).slice(0, 200);
+        return delay({ knowledge_id: wid, count: memories.length, memories });
+      },
+      async deleteKnowledge(knowledgeId) {
+        const wid = requiredKnowledgeValue(knowledgeId, "knowledge id");
+        const data = knowledgeData.get(wid);
+        const result = {
+          ok: true,
+          knowledge_id: wid,
+          deletedEntryCount: data?.memories.length ?? 0,
+          deletedBindingCount: data?.characters.length ?? 0,
+        };
+        knowledgeData.delete(wid);
+        return delay(result);
+      },
+      async listKnowledgeEntries(knowledgeId) {
+        const memories = (knowledgeData.get(knowledgeId)?.memories ?? []).slice(0, 200);
+        return delay({ knowledge_id: knowledgeId, count: memories.length, memories });
+      },
+      async searchKnowledgeEntries(knowledgeId, query) {
+        const memories = (knowledgeData.get(knowledgeId)?.memories ?? [])
+          .filter((row) => row.memory.toLowerCase().includes(query.trim().toLowerCase()))
+          .slice(0, 200);
+        return delay({ knowledge_id: knowledgeId, query, count: memories.length, memories });
+      },
+      previewKnowledgeImport: (_knowledgeId, items): Promise<KnowledgeImportPreview> => previewMemoryImport(items),
+    },
     characters: {
+      importModelStates: async () => {
+        throw new Error("Preset import requires the local bridge");
+      },
+      importModel: async () => {
+        throw new Error("Model import requires the local bridge");
+      },
+      saveModelState: async () => {
+        throw new Error("Model state saving requires the local bridge");
+      },
       async autoLabelSprites(name) {
         const character = config.characters.find((item) => item.name === name);
         if (!character) {
@@ -1585,6 +1847,10 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       },
       async delete(name) {
         config.characters = config.characters.filter((character) => character.name !== name);
+        for (const [knowledgeId, data] of knowledgeData) {
+          data.characters = data.characters.filter((character) => character.name !== name);
+          if (!data.memories.length && !data.characters.length) knowledgeData.delete(knowledgeId);
+        }
         if (templateSession) {
           templateSession = {
             ...templateSession,
@@ -1666,6 +1932,8 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         const imported = items.map<Character>((item, index) => {
           const label = item instanceof File ? item.name : item.split("/").pop() || `character-${index + 1}`;
           return {
+            avatar_type: "static",
+            avatars: {},
             character_brief: "",
             character_setting: "导入预览角色",
             color: DEFAULT_CHARACTER_COLOR,
@@ -1795,13 +2063,35 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           sovits_model_path: character.sovits_model_path?.trim() || "",
           sprite_prefix: character.sprite_prefix.trim() || "temp",
           sprite_scale: index >= 0 ? config.characters[index].sprite_scale : 1,
-          sprites: index >= 0 ? config.characters[index].sprites : [],
+          sprites:
+            index >= 0
+              ? config.characters[index].sprites.map((sprite, spriteIndex) => ({
+                  ...sprite,
+                  portrait_crop:
+                    character.sprites[spriteIndex]?.portrait_crop === null
+                      ? null
+                      : (character.sprites[spriteIndex]?.portrait_crop ?? sprite.portrait_crop),
+                }))
+              : [],
           character_setting: character.character_setting.trim(),
         };
         if (index >= 0) {
           config.characters[index] = savedCharacter;
         } else {
           config.characters.push(savedCharacter);
+        }
+        if (originalName && originalName !== savedCharacter.name) {
+          for (const data of knowledgeData.values()) {
+            const oldBinding = data.characters.find((item) => item.name === originalName);
+            if (!oldBinding) continue;
+            const targetBinding = data.characters.find((item) => item.name === savedCharacter.name);
+            if (targetBinding) {
+              targetBinding.createdAt = [targetBinding.createdAt, oldBinding.createdAt].sort()[0];
+              data.characters = data.characters.filter((item) => item.name !== originalName);
+            } else {
+              oldBinding.name = savedCharacter.name;
+            }
+          }
         }
         if (templateSession && originalName && originalName !== savedCharacter.name) {
           templateSession = {
@@ -1971,18 +2261,35 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         return delay(config.system_config);
       },
     },
+    avatarRuntimes: {
+      async status() {
+        throw new Error("SDK installation requires a running Shinsekai bridge");
+      },
+      async prepare() {
+        throw new Error("SDK installation requires a running Shinsekai bridge");
+      },
+      async install() {
+        throw new Error("SDK installation requires a running Shinsekai bridge");
+      },
+    },
     modelAssets: {
       async download(input, options) {
         const memoryEmbedding = input.assetId === "memory.embedding";
+        const moondreamVision = input.assetId === "vision.moondream";
         const variant = memoryEmbedding
           ? "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-          : String((input.configured ? config.system_config.asr_whisper_model_size : input.variant) || "small");
-        const local = Boolean(!memoryEmbedding && input.configured && looksLikeLocalModelReference(variant));
-        const repoId = memoryEmbedding
-          ? variant
-          : variant.includes("/")
+          : moondreamVision
+            ? "vikhyatk/moondream2"
+            : String((input.configured ? config.system_config.asr_whisper_model_size : input.variant) || "small");
+        const local = Boolean(
+          !memoryEmbedding && !moondreamVision && input.configured && looksLikeLocalModelReference(variant),
+        );
+        const repoId =
+          memoryEmbedding || moondreamVision
             ? variant
-            : `Systran/faster-whisper-${variant}`;
+            : variant.includes("/")
+              ? variant
+              : `Systran/faster-whisper-${variant}`;
         const key = `${input.assetId}:${variant}`;
         const taskId = `preview-model-${Date.now()}`;
         previewTask(
@@ -2006,7 +2313,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           path: local ? variant : `preview-cache/${variant}`,
           ...(local ? {} : { repoId }),
           source: local ? ("local" as const) : ("huggingface" as const),
-          title: memoryEmbedding ? "Long-term memory embedding" : "Whisper ASR",
+          title: memoryEmbedding ? "Long-term memory embedding" : moondreamVision ? "Moondream vision" : "Whisper ASR",
           variant,
         };
         if (!local) {
@@ -2029,27 +2336,36 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       },
       status(input) {
         const memoryEmbedding = input.assetId === "memory.embedding";
+        const moondreamVision = input.assetId === "vision.moondream";
         const variant = memoryEmbedding
           ? "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-          : String((input.configured ? config.system_config.asr_whisper_model_size : input.variant) || "small");
-        const local = Boolean(!memoryEmbedding && input.configured && looksLikeLocalModelReference(variant));
-        const repoId = memoryEmbedding
-          ? variant
-          : variant.includes("/")
+          : moondreamVision
+            ? "vikhyatk/moondream2"
+            : String((input.configured ? config.system_config.asr_whisper_model_size : input.variant) || "small");
+        const local = Boolean(
+          !memoryEmbedding && !moondreamVision && input.configured && looksLikeLocalModelReference(variant),
+        );
+        const repoId =
+          memoryEmbedding || moondreamVision
             ? variant
-            : `Systran/faster-whisper-${variant}`;
+            : variant.includes("/")
+              ? variant
+              : `Systran/faster-whisper-${variant}`;
         return delay({
           assetId: input.assetId,
           cached: local || cachedModelAssets.has(`${input.assetId}:${variant}`),
           downloadable: !local,
           ...(local ? { path: variant } : { repoId }),
           source: local ? ("local" as const) : ("huggingface" as const),
-          title: memoryEmbedding ? "Long-term memory embedding" : "Whisper ASR",
+          title: memoryEmbedding ? "Long-term memory embedding" : moondreamVision ? "Moondream vision" : "Whisper ASR",
           variant,
         });
       },
     },
     files: {
+      modelUrl: () => {
+        throw new Error("Models require the local bridge");
+      },
       browse(options) {
         return delay(previewFileBrowser(options?.path));
       },
@@ -2327,6 +2643,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
               ]
             : [],
         ),
+      status: () => delay({ status: "ready" as const }),
       repoTags: () => delay(["v1.0.0", "v0.9.0"]),
       runSlotContribution: (pluginId, contributionId) =>
         delay({
@@ -2548,6 +2865,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           name: input.name || "新模板",
           path: "",
           resolvedCharacters: [...input.characters],
+          allowPlayerDialogue: input.allowPlayerDialogue ?? DEFAULT_PLAYER_OPTIONS.allowPlayerDialogue,
           scenario,
           system,
           updatedAt: "",

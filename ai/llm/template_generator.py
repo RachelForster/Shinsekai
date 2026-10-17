@@ -56,8 +56,11 @@ def resolve_chat_template_characters(
 
 
 def json_format_reminder() -> str:
-    """Localized reminder that must close every runtime system prompt."""
-    return _T("closing_json_reminder").strip()
+    """Close system prompts with the output format and tool protocol rules."""
+    return "\n".join(
+        _T(key).strip()
+        for key in ("closing_json_reminder", "closing_tool_protocol")
+    )
 
 
 def _format_llm_tools_block() -> str:
@@ -110,11 +113,20 @@ class TemplateGenerator:
         max_dialog_items: int = 0,
         primary_characters: Any = None,
         media_selection_mode: str = "indexed",
+        player_character: str = "",
+        read_player_speech: bool = False,
+        allow_player_dialogue: bool = True,
     ):
         if not selected_characters:
             raise NoValidCharactersError()
         characters = self.resolve_chat_template_characters(selected_characters)
-        if not characters:
+        player = next(
+            (character for name, character in characters if name == player_character),
+            None,
+        )
+        if player is not None and not allow_player_dialogue:
+            characters = [(name, character) for name, character in characters if name != player_character]
+        if not characters and player is None:
             raise NoValidCharactersError()
         has_background = bool(bg_name) and not is_transparent_background(bg_name)
         context = DialogTemplateContext(
@@ -122,6 +134,10 @@ class TemplateGenerator:
             translate=_T,
             target_voice_name=_target_voice_display_name(),
             json_reminder=json_format_reminder(),
+            player_name=player_character if player is not None else "",
+            player_character=player,
+            read_player_speech=bool(read_player_speech and player is not None),
+            allow_player_dialogue=allow_player_dialogue,
             primary_character_names=(
                 None
                 if primary_characters is None

@@ -259,9 +259,26 @@ def test_running_model_asset_task_is_reused_by_task_key():
     assert find_running_model_download(state, "asset-key") is None
 
 
+def test_resolve_moondream_model_asset_uses_canonical_spec():
+    from ai.vision.moondream_adapter import MOONDREAM_MODEL_ASSET
+
+    spec = _resolve_model_asset(_state(), {"assetId": "vision.moondream"})
+
+    assert spec is MOONDREAM_MODEL_ASSET
+
+
+@pytest.mark.parametrize("extra", [{"configured": True}, {"variant": "other/model"}])
+def test_moondream_model_asset_rejects_client_selected_variants(extra):
+    with pytest.raises(ValueError, match="do not accept a variant"):
+        _resolve_model_asset(
+            _state(),
+            {"assetId": "vision.moondream", **extra},
+        )
+
+
 def test_unknown_model_asset_is_rejected():
     with pytest.raises(ValueError, match="Unsupported model asset"):
-        _resolve_model_asset(_state(), {"assetId": "vision.moondream"})
+        _resolve_model_asset(_state(), {"assetId": "vision.unknown"})
 
 
 def test_unknown_short_whisper_alias_is_rejected():

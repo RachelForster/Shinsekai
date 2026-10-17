@@ -24,6 +24,10 @@ const mockTranslateBackgroundFields = vi.fn();
 const mockUploadBackgroundBgm = vi.fn();
 const mockUploadBackgroundImages = vi.fn();
 
+vi.mock("../../../features/knowledge-manager/KnowledgeManagerPage", () => ({
+  KnowledgeManagerPage: () => <h2>Knowledge management</h2>,
+}));
+
 vi.mock("../../../shared/ui", async () => {
   const actual = await vi.importActual<typeof import("../../../shared/ui")>("../../../shared/ui");
   return {
@@ -321,9 +325,9 @@ describe("BackgroundManagerPage", () => {
     await waitFor(() => expect(screen.getByLabelText("Name")).toHaveValue("Imported 2"));
 
     pickerState.paths = ["D:/backgrounds/school/hall.png"];
-    fireEvent.click(screen.getByRole("button", { name: "Upload images" }));
+    fireEvent.click(screen.getByRole("button", { name: "Upload images / videos" }));
     fireEvent.click(
-      within(screen.getByRole("dialog", { name: "Select image files" })).getByText("Choose mocked paths"),
+      within(screen.getByRole("dialog", { name: "Select images or MP4 videos" })).getByText("Choose mocked paths"),
     );
     await waitFor(() =>
       expect(mockUploadBackgroundImages).toHaveBeenCalledWith({

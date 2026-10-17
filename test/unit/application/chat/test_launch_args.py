@@ -3,7 +3,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from application.chat.launch_args import (
+from application.chat.runtime.launch_args import (
     CHAT_LAUNCH_CONFIG_ENV,
     build_chat_arg_parser,
     load_chat_launch_config,
@@ -17,6 +17,23 @@ def _tr(key, **_kwargs):
 
 
 class ChatLaunchArgsTests(unittest.TestCase):
+    def test_ai_player_dialogue_defaults_on_and_explicit_false_survives_config(self):
+        parser = build_chat_arg_parser(_tr)
+        self.assertTrue(parser.parse_args([]).allow_player_dialogue)
+        self.assertFalse(parser.parse_args(["--no-allow-player-dialogue"]).allow_player_dialogue)
+        with patch.dict(os.environ, {CHAT_LAUNCH_CONFIG_ENV: json.dumps({"allow_player_dialogue": False})}):
+            parser.set_defaults(**load_chat_launch_config())
+        self.assertFalse(parser.parse_args([]).allow_player_dialogue)
+
+    def test_initial_sprite_defaults_to_visible_and_can_be_disabled(self):
+        parser = build_chat_arg_parser(_tr)
+        self.assertTrue(parser.parse_args([]).show_initial_sprite)
+        self.assertFalse(parser.parse_args(["--no-show-initial-sprite"]).show_initial_sprite)
+        with patch.dict(os.environ, {CHAT_LAUNCH_CONFIG_ENV: json.dumps({"show_initial_sprite": False})}):
+            config = load_chat_launch_config()
+        parser.set_defaults(**config)
+        self.assertFalse(parser.parse_args([]).show_initial_sprite)
+
     def test_explicit_conversation_edit_flag_round_trips_through_launch_config(self):
         with patch.dict(os.environ, {CHAT_LAUNCH_CONFIG_ENV: json.dumps({"use_current_template_for_history": True})}):
             config = load_chat_launch_config()
