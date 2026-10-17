@@ -40,8 +40,9 @@ import {
 import { BackgroundMusicSection } from "./BackgroundMusicSection";
 import { BackgroundSpriteGallery } from "./BackgroundSpriteGallery";
 import { BackgroundTagsDialog } from "./BackgroundTagsDialog";
+import { KnowledgeManagerPage } from "../knowledge-manager/KnowledgeManagerPage";
 import { MediaAutoLabelProgressDialog } from "../media-auto-label/MediaAutoLabelProgressDialog";
-import { useMoondreamAvailability } from "../media-auto-label/useMoondreamAvailability";
+import { useVisionAvailability } from "../media-auto-label/useVisionAvailability";
 import {
   backgroundDeleteDialogCopy,
   createBackground,
@@ -57,7 +58,7 @@ export function BackgroundManagerPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const { t } = useI18n();
-  const moondreamAvailable = useMoondreamAvailability();
+  const visionAvailable = useVisionAvailability();
   const backgroundsQuery = useQuery({ queryFn: listBackgrounds, queryKey: backgroundsQueryKey });
   const data = backgroundsQuery.data ?? [];
   const isLoading = backgroundsQuery.isLoading;
@@ -654,6 +655,7 @@ export function BackgroundManagerPage() {
     { id: "background-info", label: t("background.section.info") },
     { id: "background-images", label: t("background.section.images") },
     { id: "background-bgm", label: t("background.section.bgm") },
+    { id: "background-knowledge", label: t("knowledge.title") },
   ];
 
   return (
@@ -846,7 +848,7 @@ export function BackgroundManagerPage() {
 
         {/* Sprite gallery */}
         <BackgroundSpriteGallery
-          autoLabelAvailable={moondreamAvailable}
+          autoLabelAvailable={visionAvailable}
           autoLabelDisabled={
             !isSavedBackground || !currentDraft.sprites.length || !imageRowTags.some((tag) => !tag.trim())
           }
@@ -930,6 +932,9 @@ export function BackgroundManagerPage() {
           sortedBgmItems={sortedBgmItems}
           uploadPending={bgmUploadMutation.isPending}
         />
+        <section aria-label={t("knowledge.title")} className="section page-section-anchor" id="background-knowledge">
+          <KnowledgeManagerPage embedded />
+        </section>
       </section>
 
       <BackgroundTagsDialog

@@ -59,6 +59,7 @@ describe("entity repositories", () => {
         saveSystem: vi.fn().mockResolvedValue(systemConfig),
       },
       files: {
+        modelUrl: vi.fn(() => "/api/avatar/file"),
         browse: vi.fn().mockResolvedValue({ cwd: "/tmp", entries: [], roots: [] }),
         fileUrl: vi.fn((path: string) => `file://${path}`),
         thumbnailBatch: vi.fn((paths: string[], options?: { size?: number }) =>
@@ -94,6 +95,10 @@ describe("entity repositories", () => {
     await config.saveSystemConfig(systemConfig);
     await files.browseFiles({ path: "/tmp", showHidden: true });
     expect(files.fileUrl("/tmp/a.png")).toBe("file:///tmp/a.png");
+    expect(files.modelFileUrl("C:\\models\\alice.model3.json")).toBe("/api/avatar/file");
+    expect(platform.files.modelUrl).toHaveBeenCalledWith("C:\\models\\alice.model3.json", "alice.model3.json");
+    files.modelFileUrl("/tmp/alice.model3.json", "states/smile.json");
+    expect(platform.files.modelUrl).toHaveBeenCalledWith("/tmp/alice.model3.json", "states/smile.json");
     expect(files.fileThumbnailUrl("/tmp/a.png", 160)).toBe("thumb://160//tmp/a.png");
     await expect(files.fileThumbnailBatch(["/tmp/a.png", "/tmp/a.png"], 160)).resolves.toEqual({
       "/tmp/a.png": "batch://160//tmp/a.png",
@@ -186,6 +191,7 @@ describe("entity repositories", () => {
     const paths = Array.from({ length: 130 }, (_, index) => `/tmp/background-${index}.png`);
     const platform = {
       files: {
+        modelUrl: vi.fn(() => "/api/avatar/file"),
         browse: vi.fn().mockResolvedValue({ cwd: "/tmp", entries: [], roots: [] }),
         fileUrl: vi.fn((path: string) => `file://${path}`),
         thumbnailBatch: vi.fn((batch: string[], options?: { size?: number }) =>
@@ -210,6 +216,7 @@ describe("entity repositories", () => {
     const paths = ["/tmp/background-a.png", "/tmp/background-b.png"];
     const platform = {
       files: {
+        modelUrl: vi.fn(() => "/api/avatar/file"),
         browse: vi.fn().mockResolvedValue({ cwd: "/tmp", entries: [], roots: [] }),
         fileUrl: vi.fn((path: string) => `file://${path}`),
         thumbnailBatch: vi.fn((batch: string[], options?: { delivery?: "data" | "url"; size?: number }) =>
@@ -245,6 +252,7 @@ describe("entity repositories", () => {
     const paths = Array.from({ length: 130 }, (_, index) => `/tmp/background-${index}.png`);
     const platform = {
       files: {
+        modelUrl: vi.fn(() => "/api/avatar/file"),
         browse: vi.fn().mockResolvedValue({ cwd: "/tmp", entries: [], roots: [] }),
         fileUrl: vi.fn((path: string) => `file://${path}`),
         thumbnailBatch: vi.fn((batch: string[], options?: { size?: number }) => {
@@ -290,6 +298,9 @@ describe("entity repositories", () => {
         uploadImages: vi.fn().mockResolvedValue(background),
       },
       characters: {
+        importModel: vi.fn().mockResolvedValue(character),
+        importModelStates: vi.fn().mockResolvedValue(character),
+        saveModelState: vi.fn().mockResolvedValue(character),
         autoLabelSprites: vi.fn().mockResolvedValue({}),
         delete: vi.fn().mockResolvedValue(undefined),
         deleteAllSprites: vi.fn().mockResolvedValue(character),
@@ -354,6 +365,18 @@ describe("entity repositories", () => {
     await backgrounds.uploadBackgroundBgm({ bgmTags: "music", name: "Room", paths: ["/tmp/a.mp3"] });
     await backgrounds.autoLabelBackgroundImages("Room");
     await characters.saveCharacter(character, "Old Nanami");
+    const modelImport = { name: "Nanami", avatar_type: "l2d", source_path: "/tmp/alice.model3.json" };
+    await expect(characters.importCharacterModel(modelImport)).resolves.toBe(character);
+    const modelState = {
+      name: "Nanami",
+      avatar_type: "l2d",
+      model_path: "/tmp/alice.model3.json",
+      sprite_index: -1,
+      path: "",
+      state: { parameters: {}, expressions: [], motion: "" },
+      tags: "happy",
+    };
+    await expect(characters.saveCharacterModelState(modelState)).resolves.toBe(character);
     await characters.generateCharacterSetting({ name: "Nanami", setting: "kind" });
     await characters.translateCharacterFields({ characterSetting: "kind", emotionTags: "happy", name: "Nanami" });
     await characters.listCharacterMemories("Nanami");
@@ -382,6 +405,8 @@ describe("entity repositories", () => {
       paths: ["/tmp/a.png"],
     });
     expect(platform.characters.save).toHaveBeenCalledWith(character, "Old Nanami");
+    expect(platform.characters.importModel).toHaveBeenCalledWith(modelImport);
+    expect(platform.characters.saveModelState).toHaveBeenCalledWith(modelState);
     expect(platform.characters.autoLabelSprites).toHaveBeenCalledWith("Nanami", undefined);
     expect(platform.characters.remember).toHaveBeenCalledWith("Nanami", "likes tea");
     expect(platform.characters.previewMemoryImport).toHaveBeenCalledWith("Nanami", [historyFile]);
@@ -470,6 +495,7 @@ describe("entity repositories", () => {
         install: vi.fn().mockResolvedValue({ id: "core-tools" }),
         list: vi.fn().mockResolvedValue([]),
         listSlotContributions: vi.fn().mockResolvedValue([]),
+        status: vi.fn().mockResolvedValue({ status: "ready" }),
         repoTags: vi.fn().mockResolvedValue(["v0.1.0"]),
         scanLocal: vi.fn().mockResolvedValue({
           author: "Shinsekai Contributors",
@@ -550,12 +576,19 @@ describe("entity repositories", () => {
     const themeArchive = new File(["theme"], "theme.zip", { type: "application/zip" });
 
     await chat.getChatSnapshot();
+    expect(platform.chat.getSnapshot).toHaveBeenLastCalledWith();
+    await chat.getChatObserverSnapshot();
+    expect(platform.chat.getSnapshot).toHaveBeenLastCalledWith({ claimRenderer: false });
     await chat.getChatRuntimeStatus();
     await chat.closeChat();
+    await chat.closeChat({ expectedSessionId: "A" });
+    expect(platform.chat.close).toHaveBeenLastCalledWith({ expectedSessionId: "A" });
     await chat.getChatTheme();
     await chat.launchChat(sampleLastLaunch, taskOptions);
     await chat.installMissingRuntimeDependency({ moduleName: "mem0" }, taskOptions);
     await chat.resumeLastChat(taskOptions);
+    await chat.resumeLastChat(taskOptions, { enableMobileAccess: true });
+    await chat.resumeLastChat(taskOptions, { enableMobileAccess: false });
     await chat.sendChatCommand({ payload: "hi", type: "send-message" });
     await chat.getChatHistory();
     expect(chat.subscribeChat(listener)).toBe(unsubscribe);
@@ -589,6 +622,7 @@ describe("entity repositories", () => {
     await plugin.savePluginUiConfig("core-tools", "settings", { enabled: true });
     await plugin.runPluginUiAction("core-tools", "settings", "reload", { enabled: true });
     await plugin.listPluginCatalog();
+    await plugin.getPluginLoadStatus();
     await plugin.listRepoTags("myouo/Shinsekai");
     await plugin.scanLocalPlugin("/tmp/plugin-example");
     await plugin.validatePluginSubmission({
@@ -641,9 +675,11 @@ describe("entity repositories", () => {
     await musicCover.searchMusicCover({ query: "song", source: "youtube" });
     await musicCover.runMusicCover({ pickIndex: 0, query: "song", skipRvc: false, source: "youtube" }, taskOptions);
 
-    expect(platform.chat.close).toHaveBeenCalledTimes(1);
+    expect(platform.chat.close).toHaveBeenCalledTimes(2);
     expect(platform.chat.launch).toHaveBeenCalledWith(sampleLastLaunch, taskOptions);
-    expect(platform.chat.resumeLast).toHaveBeenCalledWith(taskOptions);
+    expect(platform.chat.resumeLast).toHaveBeenNthCalledWith(1, taskOptions, undefined);
+    expect(platform.chat.resumeLast).toHaveBeenNthCalledWith(2, taskOptions, { enableMobileAccess: true });
+    expect(platform.chat.resumeLast).toHaveBeenNthCalledWith(3, taskOptions, { enableMobileAccess: false });
     expect(platform.runtime.installMissingDependency).toHaveBeenCalledWith({ moduleName: "mem0" }, taskOptions);
     expect(platform.chat.uploadTheme).toHaveBeenCalledWith(themeArchive);
     expect(platform.effects.uploadAudio).toHaveBeenCalledWith({
@@ -653,6 +689,7 @@ describe("entity repositories", () => {
     });
     expect(platform.logs.import).toHaveBeenCalledWith(["/tmp/shinsekai.log"]);
     expect(platform.logs.import).toHaveBeenCalledTimes(2);
+    expect(platform.plugins.status).toHaveBeenCalledTimes(1);
     expect(platform.plugins.appUpdateRun).toHaveBeenCalledWith({ refKind: "tag", tagName: "v0.1.0" }, taskOptions);
     expect(platform.plugins.install).toHaveBeenCalledWith({ source: "repo", tagName: "v0.1.0" }, taskOptions);
     expect(platform.mcp.previewTools).toHaveBeenCalledWith(sampleMcpConfig, taskOptions);

@@ -118,9 +118,9 @@ def _auto_label_background_images(request: ApiRequest) -> TaskResponse:
     if not name:
         raise ValueError("背景名称不能为空")
     return TaskResponse(
-        kind="moondream-background-auto-label",
-        title=f"标注 {name} 的背景图片",
-        message="Moondream 图片标注任务已排队。",
+        kind="vision-background-smart-label",
+        title=f"智能标注 {name} 的背景图片",
+        message="图片智能标注任务已排队。",
         worker=lambda task_id: run_background_image_auto_label(
             request.state,
             task_id,

@@ -1,10 +1,12 @@
 import type { CSSProperties } from "react";
 
 import { DEFAULT_CHARACTER_COLOR } from "../../shared/constants";
+import { normalizePlayerOptions } from "../../shared/playerCharacterOptions";
 import type {
   ChatLaunchPayload,
   ChatSnapshot,
   MediaSelectionMode,
+  PlayerCharacterOptions,
   TemplateGenerateInput,
   TemplateLaunchSession,
   TemplateSummary,
@@ -97,7 +99,18 @@ export function buildTemplateSummary(draft: TemplateSummary): TemplateSummary {
   };
 }
 
-export function buildTemplateGenerateInput(input: {
+export function templateGenerationKey(
+  input: Pick<
+    TemplateGenerateInput,
+    "characters" | "characterPromptMode" | "primaryCharacters" | "mediaSelectionMode"
+  > &
+    PlayerCharacterOptions,
+): string {
+  const player = normalizePlayerOptions(input);
+  return `${input.characters.join("\n")}\n--${input.characterPromptMode ?? "pending"}\n${(input.primaryCharacters ?? []).join("\n")}\n--${input.mediaSelectionMode ?? "indexed"}\n--${player.playerCharacter}\n--${player.readPlayerSpeech}\n--${player.allowPlayerDialogue}`;
+}
+
+type TemplateGenerationOptions = PlayerCharacterOptions & {
   backgroundName: string;
   backgroundNames?: string[];
   draft: TemplateSummary;
@@ -108,7 +121,9 @@ export function buildTemplateGenerateInput(input: {
   characterPromptMode?: "compact" | "full";
   primaryCharacters?: string[];
   mediaSelectionMode: MediaSelectionMode;
-}): TemplateGenerateInput {
+};
+
+export function buildTemplateGenerateInput(input: TemplateGenerationOptions): TemplateGenerateInput {
   return {
     backgroundName: input.backgroundName,
     backgroundNames: input.backgroundNames?.length ? input.backgroundNames : undefined,
@@ -120,6 +135,8 @@ export function buildTemplateGenerateInput(input: {
     mediaSelectionMode: input.mediaSelectionMode,
     name: input.draft.name.trim(),
     primaryCharacters: input.primaryCharacters,
+    ...normalizePlayerOptions(input),
+    readPlayerSpeech: Boolean(input.playerCharacter && input.readPlayerSpeech),
     scenario: String(input.draft.scenario ?? ""),
     useCg: input.options.useCg,
     useChoice: input.options.useChoice,
@@ -132,7 +149,7 @@ export function buildTemplateGenerateInput(input: {
   };
 }
 
-export function buildTemplateLaunchSession(input: {
+type TemplateSessionOptions = PlayerCharacterOptions & {
   backgroundName: string;
   backgroundNames?: string[];
   draft: TemplateSummary;
@@ -145,7 +162,9 @@ export function buildTemplateLaunchSession(input: {
   primaryCharacters?: string[];
   mediaSelectionMode: MediaSelectionMode;
   selectedTemplateId: string;
-}): TemplateLaunchSession {
+};
+
+export function buildTemplateLaunchSession(input: TemplateSessionOptions): TemplateLaunchSession {
   return {
     background: input.backgroundName,
     backgroundNames: input.backgroundNames?.length ? input.backgroundNames : [input.backgroundName],
@@ -162,6 +181,7 @@ export function buildTemplateLaunchSession(input: {
     roomId: input.runtime.roomId.trim(),
     scenario: String(input.draft.scenario ?? ""),
     primaryCharacters: input.primaryCharacters,
+    ...normalizePlayerOptions(input),
     selectedCharacters: input.selectedCharacters,
     system: String(input.draft.system ?? ""),
     templateFileDropdown: input.selectedTemplateId,
@@ -218,6 +238,7 @@ export function synchronizeChatLaunchPayloadWithSession(
     backgroundName: session.background,
     backgroundNames: session.backgroundNames?.length ? session.backgroundNames : [session.background],
     characters: session.selectedCharacters,
+    ...normalizePlayerOptions(session),
     enableMobileAccess: session.enableMobileAccess,
     effectNames: effectNames.length ? effectNames : undefined,
     historyPath: session.historyPath.trim(),

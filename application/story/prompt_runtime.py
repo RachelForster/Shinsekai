@@ -305,7 +305,7 @@ def install_story_prompt_hooks(
         dispatcher = PluginHookDispatcher()
         llm_manager.hook_dispatcher = dispatcher
     hooks = StoryPromptHooks(history_path, flags, llm_manager.llm_adapter)
-    from application.chat.history_state import (
+    from application.chat.history.state import (
         get_history,
         serialize_chat_history_entries,
     )

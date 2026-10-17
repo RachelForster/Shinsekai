@@ -12,21 +12,10 @@ import threading
 import time
 from collections.abc import Callable
 from typing import Any
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import urlparse
 
 from application.runtime.event_sink import BaseEventSink
-
-
-def _append_query(url: str, params: dict[str, str]) -> str:
-    pairs = [
-        f"{quote(str(key), safe='')}={quote(str(value), safe='')}"
-        for key, value in params.items()
-        if str(value)
-    ]
-    if not pairs:
-        return url
-    separator = "&" if "?" in url else "?"
-    return f"{url}{separator}{'&'.join(pairs)}"
+from frontend_bridge_core.resource_urls import BridgeResourceUrls
 
 
 class WSClientSink(BaseEventSink):
@@ -35,6 +24,7 @@ class WSClientSink(BaseEventSink):
     def __init__(self, endpoint: str) -> None:
         super().__init__()
         self.endpoint = endpoint
+        self.resource_urls = BridgeResourceUrls.from_producer_endpoint(endpoint)
         self._buffer: collections.deque[dict[str, Any]] = collections.deque()
         self._buffer_lock = threading.Lock()
         self._buffer_ready = threading.Event()
@@ -55,27 +45,10 @@ class WSClientSink(BaseEventSink):
         self._ensure_worker()
 
     def media_url(self, raw_path: str) -> str:
-        path = str(raw_path or "").strip()
-        if not path:
-            return ""
-        if path.startswith(("http://", "https://", "blob:", "data:", "/assets/")):
-            return path
-        parsed = urlparse(self.endpoint)
-        host = parsed.hostname or "127.0.0.1"
-        port = parsed.port or 0
-        http_port = port - 1 if port > 0 else port
-        query = parse_qs(parsed.query)
-        auth_token = str(
-            (
-                query.get("shinsekai_bridge_token")
-                or query.get("token")
-                or [""]
-            )[0]
-        ).strip()
-        return _append_query(
-            f"http://{host}:{http_port}/api/media?path={quote(path)}",
-            {"shinsekai_bridge_token": auth_token},
-        )
+        return self.resource_urls.media_url(raw_path)
+
+    def avatar_url(self, model_path: str, raw_path: str) -> str:
+        return self.resource_urls.avatar_url(model_path, raw_path)
 
     def close(self) -> None:
         deadline = time.time() + 1.5

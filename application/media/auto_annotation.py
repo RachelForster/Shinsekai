@@ -7,7 +7,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
-from ai.vision import VisionManager
+from ai.vision import configured_vision_manager
 from core.media.asset_tags import normalize_generated_tags, numbered_tags, tag_contents
 
 
@@ -72,30 +72,30 @@ def annotate_unlabelled_images(
 
     for completed, index in enumerate(missing_indexes):
         if is_cancelled and is_cancelled():
-            raise AnnotationCancelled("图片自动标注已取消")
+            raise AnnotationCancelled("图片智能标注已取消")
         try:
             image_path = _safe_asset_file(_sprite_path(sprites[index]), project_root)
             first_inference = runner is None or completed == 0
             if runner is None:
-                runner = VisionManager("moondream").describe
+                runner = configured_vision_manager().describe
             if on_progress:
                 if first_inference:
                     on_progress(
                         completed,
                         len(missing_indexes),
-                        f"正在加载 Moondream 模型并准备标注第 {completed + 1}/{len(missing_indexes)} 张图片…",
+                        f"正在准备视觉模型并智能标注第 {completed + 1}/{len(missing_indexes)} 张图片…",
                         "loading-model",
                     )
                 else:
                     on_progress(
                         completed,
                         len(missing_indexes),
-                        f"正在标注第 {completed + 1}/{len(missing_indexes)} 张图片…",
+                        f"正在智能标注第 {completed + 1}/{len(missing_indexes)} 张图片…",
                         "annotating",
                     )
             generated = normalize_generated_tags(runner(image_path.read_bytes(), prompt))
             if not generated:
-                raise ValueError("Moondream 未返回标签")
+                raise ValueError("视觉模型未返回标签")
             tags[index] = generated
             annotated += 1
             message = f"已标注 {prefix} {index + 1}"

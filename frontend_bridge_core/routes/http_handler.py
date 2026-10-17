@@ -13,6 +13,7 @@ from urllib.parse import parse_qs, urlparse, urlunparse
 
 from sdk.logging import get_logger, log_context, new_log_id
 from sdk.path_utils import reject_control_chars
+from sdk.agent import AgentRequestError
 
 from application.chat.templates import NoValidCharactersError
 from application.runtime.state import BridgeState, _jsonify
@@ -38,8 +39,27 @@ BRIDGE_AUTH_HEADER = "X-Shinsekai-Bridge-Token"
 BRIDGE_AUTH_QUERY = "shinsekai_bridge_token"
 BRIDGE_AUTH_COOKIE = "shinsekai_bridge_token"
 
+_AGENT_ERROR_HTTP_STATUS = {
+    "BACKEND_UNAVAILABLE": HTTPStatus.SERVICE_UNAVAILABLE,
+    "WORKER_LOST": HTTPStatus.SERVICE_UNAVAILABLE,
+    "AUTH_REQUIRED": HTTPStatus.FORBIDDEN,
+    "TOOL_DENIED": HTTPStatus.FORBIDDEN,
+    "SESSION_BUSY": HTTPStatus.CONFLICT,
+    "SESSION_BACKEND_MISMATCH": HTTPStatus.CONFLICT,
+    "SESSION_RESUME_UNAVAILABLE": HTTPStatus.CONFLICT,
+    "IDEMPOTENCY_CONFLICT": HTTPStatus.CONFLICT,
+    "LIMIT_EXCEEDED": HTTPStatus.TOO_MANY_REQUESTS,
+}
+
 _ALLOWED_CUSTOM_ORIGIN_SCHEMES = {"shinsekai", "tauri"}
-_ALLOWED_LOCAL_ORIGIN_HOSTS = {"127.0.0.1", "::1", "localhost", "tauri.localhost"}
+# WebView2 exposes registered Tauri protocols as http(s)://<scheme>.localhost.
+_ALLOWED_LOCAL_ORIGIN_HOSTS = {
+    "127.0.0.1",
+    "::1",
+    "localhost",
+    "tauri.localhost",
+    "shinsekai.localhost",
+}
 _POLLING_PATHS = {
     "/api/characters/memories/status",
     "/api/health",
@@ -73,10 +93,14 @@ class BridgeHttpHandler(BaseHTTPRequestHandler):
         except (IndexError, TypeError, ValueError):
             status = 0
 
-        is_polling_request = path in _POLLING_PATHS or (
-            method in {"GET", "HEAD", "OPTIONS"}
-            and path.startswith("/api/tasks/")
-            and not path.endswith("/cancel")
+        is_polling_request = (
+            path in _POLLING_PATHS
+            or (method in {"GET", "HEAD", "OPTIONS"} and path.startswith("/api/agent/"))
+            or (
+                method in {"GET", "HEAD", "OPTIONS"}
+                and path.startswith("/api/tasks/")
+                and not path.endswith("/cancel")
+            )
         )
         if is_polling_request and 0 < status < 400:
             return
@@ -106,7 +130,14 @@ class BridgeHttpHandler(BaseHTTPRequestHandler):
         }
         if isinstance(
             exc,
-            (KeyError, FileExistsError, FileNotFoundError, PermissionError, ValueError),
+            (
+                KeyError,
+                FileExistsError,
+                FileNotFoundError,
+                PermissionError,
+                ValueError,
+                AgentRequestError,
+            ),
         ):
             logger.warning("Frontend bridge request failed: %s", exc, extra=extra)
         else:
@@ -224,6 +255,10 @@ class BridgeHttpHandler(BaseHTTPRequestHandler):
             return False
 
     def _require_authorized_read(self, path: str) -> None:
+        plugin_tools = path.startswith("/api/plugins/") and path.endswith("/tools")
+        if path.startswith("/api/agent/") or plugin_tools:
+            if not self._request_origin_allowed() or not self._has_valid_auth_token():
+                raise PermissionError("invalid Agent bridge authorization")
         # Project-backed static roots share the same LAN authorization boundary
         # as APIs. Protecting /assets/ also closes alternate spellings such as
         # /assets/../data/... before path normalization reaches file transport.
@@ -314,7 +349,18 @@ class BridgeHttpHandler(BaseHTTPRequestHandler):
         self._send_json(payload, status)
 
     def _send_exception_json(self, exc: Exception) -> None:
-        if isinstance(exc, NoValidCharactersError):
+        if isinstance(exc, AgentRequestError):
+            code = exc.error.code
+            status = _AGENT_ERROR_HTTP_STATUS.get(code, HTTPStatus.BAD_REQUEST)
+            self._send_json(
+                {
+                    "error": exc.error.message,
+                    "errorCode": code,
+                    "agentError": exc.error.to_wire(),
+                },
+                status,
+            )
+        elif isinstance(exc, NoValidCharactersError):
             self._send_error_json(
                 exc,
                 HTTPStatus.UNPROCESSABLE_ENTITY,

@@ -138,15 +138,16 @@ fn ensure_python_pip_available_bootstraps_with_ensurepip() {
         &fake_python,
         &format!(
             r#"#!/bin/sh
+set -eu
 printf '%s\n' "$*" >> "{log}"
 if [ "$*" = "-m pip --version" ]; then
   if [ -f "{state}" ]; then
     exit 0
   fi
-  touch "{state}"
   exit 7
 fi
 if [ "$*" = "-m ensurepip --upgrade --default-pip" ]; then
+  : > "{state}"
   exit 0
 fi
 exit 9
@@ -159,8 +160,14 @@ exit 9
     ensure_python_pip_available(&fake_python).unwrap();
 
     let log = fs::read_to_string(log).unwrap();
-    assert!(log.contains("-m pip --version"));
-    assert!(log.contains("-m ensurepip --upgrade --default-pip"));
+    assert_eq!(
+        log.lines().collect::<Vec<_>>(),
+        [
+            "-m pip --version",
+            "-m ensurepip --upgrade --default-pip",
+            "-m pip --version",
+        ]
+    );
 
     let _ = fs::remove_dir_all(temp_root);
 }

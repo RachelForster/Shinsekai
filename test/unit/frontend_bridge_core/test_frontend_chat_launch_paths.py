@@ -1,11 +1,14 @@
+
+import sys
 import json
 import signal
 import pytest
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from application.chat.launch_args import CHAT_LAUNCH_CONFIG_ENV
-from application.chat import runtime_process as chat
+from application.chat.runtime.launch_args import CHAT_LAUNCH_CONFIG_ENV
+from application.chat import composition as chat
+from application.chat.templates import TEMP_SPLIT_META
 from application.chat.stop_chat import stop_chat
 from application.runtime.dependencies import runtime_dependency_error_from_text
 from frontend_bridge_core.chat_session import _usable_media_selection_mode
@@ -141,7 +144,8 @@ def test_media_mode_keeps_existing_normalization(monkeypatch, requested, expecte
     assert initialize.call_count == (1 if expected == "semantic" else 0)
 
 
-def test_launch_chat_uses_source_main_py_with_project_root_cwd(tmp_path, monkeypatch):
+@pytest.mark.parametrize("player_mode", [None, True, False])
+def test_launch_chat_uses_source_main_py_with_project_root_cwd(tmp_path, monkeypatch, player_mode):
     project_root = tmp_path / "project"
     app_root = tmp_path / "Shinsekai"
     template_dir = project_root / "data" / "character_templates"
@@ -160,9 +164,9 @@ def test_launch_chat_uses_source_main_py_with_project_root_cwd(tmp_path, monkeyp
 
     monkeypatch.setenv("EASYAI_PROJECT_ROOT", str(project_root))
     monkeypatch.delenv("SHINSEKAI_CHAT_ATTACHMENTS_ROOT", raising=False)
-    monkeypatch.setattr(chat.sys, "frozen", False, raising=False)
+    monkeypatch.setattr(sys, "frozen", False, raising=False)
     monkeypatch.setattr(chat.subprocess, "Popen", fake_popen)
-    monkeypatch.setattr(chat, "_main_chat_process", None)
+    monkeypatch.setattr(chat._supervisor.resources, "process", None)
 
     state = SimpleNamespace(
         app_root_dir=str(app_root),
@@ -170,6 +174,16 @@ def test_launch_chat_uses_source_main_py_with_project_root_cwd(tmp_path, monkeyp
         history_dir=str(history_dir),
         template_dir_path=str(template_dir),
     )
+    if player_mode is not None:
+        from i18n import init_i18n
+        init_i18n("zh_CN")
+        state.chat_session = {
+            "playerCharacter": "Alice", "allowPlayerDialogue": player_mode,
+            "readPlayerSpeech": False,
+        }
+        state.config_manager.get_character_by_name = lambda name: SimpleNamespace(
+            name="Alice", character_setting="player setting",
+        )
 
     message = chat._launch_chat(
         state,
@@ -184,7 +198,7 @@ def test_launch_chat_uses_source_main_py_with_project_root_cwd(tmp_path, monkeyp
     )
 
     assert message == "聊天进程已启动！PID: 12345"
-    assert captured["cmd"][1] == str(chat._source_root() / "main.py")
+    assert captured["cmd"][1] == str(chat.runtime_source_root() / "main.py")
     assert captured["cwd"] == str(project_root)
     assert captured["env"]["SHINSEKAI_PROJECT_ROOT"] == str(project_root)
     assert captured["env"]["EASYAI_PROJECT_ROOT"] == str(project_root)
@@ -198,6 +212,16 @@ def test_launch_chat_uses_source_main_py_with_project_root_cwd(tmp_path, monkeyp
     assert launch_config["template"] == "_temp"
     assert launch_config["show_initial_sprite"] is False
     assert launch_config["media_selection_mode"] == "indexed"
+    if player_mode is not None:
+        from ai.llm.template.dialog.sections.player import player_runtime_prompt
+        assert launch_config["allow_player_dialogue"] is player_mode
+        assert launch_config["player_character"] == "Alice"
+        rules = player_runtime_prompt(
+            state.config_manager, "Alice", allow_dialogue=player_mode,
+            read_speech=False, media_selection_mode="indexed",
+        )
+        assert rules in (template_dir / "_temp.txt").read_text(encoding="utf-8")
+        assert json.loads((template_dir / TEMP_SPLIT_META).read_text(encoding="utf-8"))["system"] == "system"
 
 
 def test_launch_chat_passes_stream_endpoint(tmp_path, monkeypatch):
@@ -218,9 +242,9 @@ def test_launch_chat_passes_stream_endpoint(tmp_path, monkeypatch):
         return _DummyProcess()
 
     monkeypatch.setenv("EASYAI_PROJECT_ROOT", str(project_root))
-    monkeypatch.setattr(chat.sys, "frozen", False, raising=False)
+    monkeypatch.setattr(sys, "frozen", False, raising=False)
     monkeypatch.setattr(chat.subprocess, "Popen", fake_popen)
-    monkeypatch.setattr(chat, "_main_chat_process", None)
+    monkeypatch.setattr(chat._supervisor.resources, "process", None)
 
     state = SimpleNamespace(
         app_root_dir=str(app_root),
@@ -267,9 +291,9 @@ def test_launch_chat_passes_memory_service_env(tmp_path, monkeypatch):
         return _DummyProcess()
 
     monkeypatch.setenv("EASYAI_PROJECT_ROOT", str(project_root))
-    monkeypatch.setattr(chat.sys, "frozen", False, raising=False)
+    monkeypatch.setattr(sys, "frozen", False, raising=False)
     monkeypatch.setattr(chat.subprocess, "Popen", fake_popen)
-    monkeypatch.setattr(chat, "_main_chat_process", None)
+    monkeypatch.setattr(chat._supervisor.resources, "process", None)
 
     state = SimpleNamespace(
         app_root_dir=str(app_root),
@@ -323,9 +347,9 @@ def test_launch_chat_passes_workflow_path(tmp_path, monkeypatch):
         return _DummyProcess()
 
     monkeypatch.setenv("EASYAI_PROJECT_ROOT", str(project_root))
-    monkeypatch.setattr(chat.sys, "frozen", False, raising=False)
+    monkeypatch.setattr(sys, "frozen", False, raising=False)
     monkeypatch.setattr(chat.subprocess, "Popen", fake_popen)
-    monkeypatch.setattr(chat, "_main_chat_process", None)
+    monkeypatch.setattr(chat._supervisor.resources, "process", None)
 
     state = SimpleNamespace(
         app_root_dir=str(app_root),
@@ -368,7 +392,7 @@ def test_close_chat_requests_graceful_runtime_shutdown_and_marks_session_closed(
     chat_stream = _ChatStreamForClose(process)
     mobile_access = MagicMock()
     mobile_access.snapshot.return_value = None
-    monkeypatch.setattr(chat, "_main_chat_process", process)
+    monkeypatch.setattr(chat._supervisor.resources, "process", process)
 
     state = SimpleNamespace(
         chat_session={"sessionId": "session-1", "voiceLanguage": "ja"},
@@ -393,9 +417,61 @@ def test_close_chat_requests_graceful_runtime_shutdown_and_marks_session_closed(
 
 def test_shutdown_active_chat_process_stops_child_without_request_state(monkeypatch):
     process = _DummyClosableProcess()
-    monkeypatch.setattr(chat, "_main_chat_process", process)
+    monkeypatch.setattr(chat._supervisor.resources, "process", process)
 
     chat.shutdown_active_chat_process()
 
     assert process.signals == [signal.SIGINT]
-    assert chat._main_chat_process is None
+    assert chat._supervisor.resources.process is None
+
+
+def test_launch_chat_passes_knowledge_settings(tmp_path, monkeypatch):
+    project_root = tmp_path / "project"
+    app_root = tmp_path / "Shinsekai"
+    template_dir = project_root / "data" / "character_templates"
+    history_dir = project_root / "data" / "chat_history"
+    app_root.mkdir()
+    template_dir.mkdir(parents=True)
+    history_dir.mkdir(parents=True)
+
+    captured = {}
+
+    def fake_popen(cmd, *, cwd, env, **kwargs):
+        captured["cmd"] = cmd
+        captured["cwd"] = cwd
+        captured["env"] = env
+        return _DummyProcess()
+
+    monkeypatch.setenv("EASYAI_PROJECT_ROOT", str(project_root))
+    monkeypatch.setattr(sys, "frozen", False, raising=False)
+    monkeypatch.setattr(chat.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(chat._supervisor.resources, "process", None)
+
+    state = SimpleNamespace(
+        app_root_dir=str(app_root),
+        auth_token="bridge-secret",
+        chat_stream=SimpleNamespace(http_base="http://127.0.0.1:8787"),
+        config_manager=_ConfigManager(),
+        history_dir=str(history_dir),
+        template_dir_path=str(template_dir),
+    )
+
+    state.config_manager.config.api_config.knowledge_enabled = False
+    state.config_manager.config.api_config.knowledge_search_limit = 7
+
+    message = chat._launch_chat(
+        state,
+        history_file="",
+        init_sprite_path="",
+        room_id="",
+        selected_bg="",
+        system_template="system",
+        use_cg=False,
+        user_scenario="scenario",
+        media_selection_mode="semantic",
+    )
+
+    assert captured["env"]["SHINSEKAI_KNOWLEDGE_SEARCH_LIMIT"] == "7"
+    assert "12345" in message
+    assert captured["env"]["SHINSEKAI_KNOWLEDGE_SERVICE_URL"] == "http://127.0.0.1:8787/api/knowledge"
+    assert captured["env"]["SHINSEKAI_KNOWLEDGE_SERVICE_OWNER"] == "0"

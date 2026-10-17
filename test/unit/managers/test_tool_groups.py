@@ -270,13 +270,7 @@ class TestLRUGroupManagement:
             return 1
         tm.register_function(mem_fn, name="mem", group="memory")
 
-        # Simulate the expansion logic
-        kw = "memory"
-        for g in tm.get_groups():
-            if g not in mgr._active_tool_groups and kw in g.lower():
-                mgr._active_tool_groups.insert(0, g)
-                if len(mgr._active_tool_groups) > mgr._max_active_groups:
-                    mgr._active_tool_groups.pop()
+        mgr._activate_tool_group_from_search('{"keyword":"memory"}')
 
         assert "memory" in mgr._active_tool_groups
         assert mgr._active_tool_groups[0] == "memory"  # inserted at front
@@ -296,18 +290,14 @@ class TestLRUGroupManagement:
         for g in ["memory", "character", "default"]:
             tm.register_function(lambda: 1, name=f"fn_{g}", group=g)
 
-        for g in tm.get_groups():
-            if kw in g.lower():
-                if g in mgr._active_tool_groups:
-                    mgr._active_tool_groups.remove(g)
-                mgr._active_tool_groups.insert(0, g)
+        mgr._activate_tool_group_from_search(json.dumps({"keyword": kw}))
 
         assert mgr._active_tool_groups[0] == "character"
         assert "character" in mgr._active_tool_groups
         assert len(mgr._active_tool_groups) == 3  # no duplicate
 
-    def test_lru_evicts_when_full(self):
-        """When max groups exceeded, oldest is evicted (truncate)."""
+    def test_lru_evicts_oldest_non_default_group_when_full(self):
+        """Real group selection keeps default tools within the bounded budget."""
         from ai.llm.llm_manager import LLMManager
         from test.mocks import MockLLMAdapter
 
@@ -321,17 +311,10 @@ class TestLRUGroupManagement:
         for g in ["default", "char", "mem", "new_group"]:
             tm.register_function(lambda: 1, name=f"fn_{g}", group=g)
 
-        # Simulate search for new_group — should evict default (oldest)
-        kw = "new_group"
-        for g in tm.get_groups():
-            if kw in g.lower():
-                if g in mgr._active_tool_groups:
-                    mgr._active_tool_groups.remove(g)
-                mgr._active_tool_groups.insert(0, g)
-                if len(mgr._active_tool_groups) > mgr._max_active_groups:
-                    mgr._active_tool_groups = mgr._active_tool_groups[:mgr._max_active_groups]
+        mgr._activate_tool_group_from_search('{"keyword":"new_group"}')
 
         assert "new_group" in mgr._active_tool_groups
+        assert "default" in mgr._active_tool_groups
         assert len(mgr._active_tool_groups) == 3
 
     def test_lru_keeps_default_group_when_limit_is_two(self):

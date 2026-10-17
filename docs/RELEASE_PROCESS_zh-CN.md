@@ -35,6 +35,8 @@ pnpm sync:version
 
 这个脚本会把版本号同步到前端 package、Tauri Cargo/runtime manifest 等相关文件。不要手动全局替换版本号。
 
+同时更新 `CHANGELOG.md`，并在 `docs/releases/x.y.z.md` 编写本次面向用户的更新说明，包含用户可见变化、默认行为变化、已知限制和升级提示。Release workflow 会把该文件放在 GitHub Release notes 的自动 PR 列表之前；RC 与正式版本复用同一份说明。工作流会在创建 release 前检查 tag 的基础版本与根 `VERSION` 一致，以及更新说明文件非空。
+
 不要手动创建 release tracking issue。第一次运行 Release workflow 时，它会自动创建或复用 `Release tracking: vx.y.z`。
 
 ## 2. RC 构建

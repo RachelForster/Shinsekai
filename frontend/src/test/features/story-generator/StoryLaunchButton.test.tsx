@@ -1,9 +1,11 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { StoryLaunchButton } from "../../../features/story-generator/components/StoryLaunchButton";
 import { I18nProvider, type FrontendLanguage } from "../../../shared/i18n";
+import { ToastProvider } from "../../../shared/ui";
+import { setMobileAccessPreference } from "../../../features/mobile-access/useMobileAccessPreference";
 
 const {
   launchChat,
@@ -49,13 +51,15 @@ function renderButton(
     <QueryClientProvider client={new QueryClient()}>
       <I18nProvider language={language}>
         <MemoryRouter>
-          <StoryLaunchButton
-            storyPath="story/draft.json"
-            historyPath={historyPath}
-            disabled={false}
-            conversationId={conversationId}
-            conversationTitle={conversationTitle}
-          />
+          <ToastProvider>
+            <StoryLaunchButton
+              storyPath="story/draft.json"
+              historyPath={historyPath}
+              disabled={false}
+              conversationId={conversationId}
+              conversationTitle={conversationTitle}
+            />
+          </ToastProvider>
         </MemoryRouter>
       </I18nProvider>
     </QueryClientProvider>,
@@ -63,6 +67,46 @@ function renderButton(
 }
 
 describe("story launch", () => {
+  it.each([false, true])("applies the shared mobile preference %s when resuming a saved story", async (enabled) => {
+    setMobileAccessPreference(enabled);
+    prepareConversation.mockResolvedValue({ historyPath: "saved", enableMobileAccess: !enabled });
+    renderButton("saved", "en", "saved-id");
+    fireEvent.click(screen.getByRole("button", { name: "Play story" }));
+    await waitFor(() =>
+      expect(launchChat).toHaveBeenCalledWith(
+        expect.objectContaining({ enableMobileAccess: enabled, historyPath: "saved" }),
+        expect.anything(),
+      ),
+    );
+  });
+  it("uses the same QR and local-chat handoff for a newly created mobile story", async () => {
+    setMobileAccessPreference(true);
+    launchChat.mockResolvedValueOnce({
+      sessionId: "session-1",
+      mobileAccess: {
+        enabled: true,
+        host: "192.168.1.20",
+        httpPort: 8789,
+        websocketPort: 8790,
+        qrCodeDataUrl: "data:image/png;base64,dGVzdA==",
+        url: "http://192.168.1.20:8789/",
+        websocketUrl: "ws://192.168.1.20:8790/ws",
+      },
+    });
+    renderButton("", "en");
+    fireEvent.click(screen.getByRole("button", { name: "Play story" }));
+    const dialog = await screen.findByRole("dialog", { name: "Mobile access is ready" });
+    expect(launchChat).toHaveBeenCalledWith(expect.objectContaining({ enableMobileAccess: true }), expect.anything());
+    expect(showChatSurface).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Open local chat" }));
+    await waitFor(() =>
+      expect(showChatSurface).toHaveBeenCalledWith(
+        expect.objectContaining({
+          snapshot: { runtimeMode: "react", wsUrl: "ws://192.168.1.20:8790/ws" },
+        }),
+      ),
+    );
+  });
   it("passes the new chat title without changing story preparation", async () => {
     renderButton("", "en", undefined, "Evening adventure");
     fireEvent.click(screen.getByRole("button", { name: "Play story" }));

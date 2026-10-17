@@ -1,12 +1,18 @@
 import unittest
 
 from application.runtime.event_sink import (
+    build_event,
     fold_event_into_snapshot,
     make_empty_chat_snapshot,
 )
 
 
 class EventSinkSnapshotTests(unittest.TestCase):
+    def test_legacy_sprite_event_gains_required_avatar_fields(self):
+        event = build_event(1, {"type": "sprite.show", "characterName": "Alice", "url": "alice.png"})
+        self.assertEqual(event["avatarType"], "static")
+        self.assertEqual(event["modelUrl"], "")
+
     def test_image_effect_is_folded_with_an_expiry_time(self):
         snapshot = fold_event_into_snapshot(
             make_empty_chat_snapshot(),
@@ -184,6 +190,8 @@ class EventSinkSnapshotTests(unittest.TestCase):
                     "slot": 0,
                     "x": 18,
                     "y": -12,
+                    "avatarType": "static",
+                    "modelUrl": "",
                 }
             ],
         )

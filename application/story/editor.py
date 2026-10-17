@@ -24,6 +24,7 @@ from application.story.library import _read_project, supports_graph_editing
 from application.story.project_loader import StoryProjectLoader
 from application.story.selection import generation_selection
 from sdk.path_utils import safe_child_path, safe_existing_file_path
+from sdk.file_io import durable_rename as _durable_rename
 
 
 def _hash(source: dict) -> str:
@@ -110,27 +111,6 @@ def _validate(source: dict) -> dict:
             "剧本校验未通过：\n" + "\n".join(issue.message for issue in report.issues)
         )
     return report.to_payload()
-
-
-def _durable_rename(temporary: Path, destination: Path) -> None:
-    if os.name == "nt":
-        import ctypes
-        from ctypes import wintypes
-
-        move = ctypes.WinDLL("kernel32", use_last_error=True).MoveFileExW
-        move.argtypes = (wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD)
-        move.restype = wintypes.BOOL
-        # MOVEFILE_WRITE_THROUGH: finish persisting the rename before publishing
-        # a manifest that references it. All targets are new, unique siblings.
-        if not move(str(temporary), str(destination), 0x8):
-            raise ctypes.WinError(ctypes.get_last_error())
-    else:
-        os.replace(temporary, destination)
-        directory = os.open(destination.parent, os.O_RDONLY)
-        try:
-            os.fsync(directory)
-        finally:
-            os.close(directory)
 
 
 def _publish_bytes(destination: Path, data: bytes) -> None:

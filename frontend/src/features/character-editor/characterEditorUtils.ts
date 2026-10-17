@@ -17,6 +17,8 @@ export type CharacterResourceDeleteTarget =
 
 export function createCharacter(): Character {
   return {
+    avatar_type: "static",
+    avatars: {},
     character_brief: "",
     character_setting: "",
     color: DEFAULT_CHARACTER_COLOR,

@@ -72,7 +72,15 @@ export function normalizeChatStageSprites(sprites: readonly ChatStageSprite[]) {
       firstFreeSpriteSlot(normalized) ??
       requestedSlot ??
       (normalized[0] ? resolvedChatStageSpriteSlot(normalized[0], 0) : 0);
-    return replaceSpriteInSlot(normalized, sprite, slot);
+    return replaceSpriteInSlot(
+      normalized,
+      {
+        ...sprite,
+        avatarType: sprite.avatarType ?? "static",
+        modelUrl: sprite.modelUrl ?? "",
+      },
+      slot,
+    );
   }, []);
 }
 

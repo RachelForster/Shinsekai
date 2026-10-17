@@ -6,7 +6,9 @@ from typing import Optional
 
 import pygame
 
-from application.chat.handlers.registry import default_presentation_handler_chain
+from application.chat.presentation.handlers.registry import (
+    default_presentation_handler_chain,
+)
 from sdk.graph import Port
 from sdk.logging import get_logger
 from sdk.messages import PresentationMessage

@@ -2,6 +2,7 @@ import type { ChatThemePayload } from "../theme/chatChromeTheme";
 import type { StorySuggestion } from "./storyEditorTypes";
 import type { ChatThemeManifest, ChatThemeSummary } from "../theme/chatTheme";
 import { PlatformRequestError } from "./errors";
+import { createAgentHttpPlatform } from "./agentHttpPlatform";
 import {
   isTauriDesktop,
   isDesktopBridgeRestarting,
@@ -11,6 +12,7 @@ import {
 } from "../desktop/desktopApi";
 import type {
   ApiConfig,
+  AvatarRuntimeStatus,
   AppConfig,
   AppUpdateInfo,
   AppUpdateResult,
@@ -30,6 +32,15 @@ import type {
   CharacterMemory,
   CharacterMemoryImportPreview,
   CharacterMemoryImportResult,
+  KnowledgeInstanceList,
+  KnowledgeBindingList,
+  KnowledgeBindingNames,
+  KnowledgeBindingResult,
+  KnowledgeDeleteResult,
+  KnowledgeEntryPage,
+  KnowledgeEntrySearch,
+  KnowledgeImportPreview,
+  KnowledgeImportResult,
   CharacterMemoryList,
   CharacterSettingResult,
   Mem0Status,
@@ -52,6 +63,7 @@ import type {
   PluginCatalogItem,
   PluginConfigActionResult,
   PluginConfigSaveResult,
+  PluginLoadStatus,
   PluginManifest,
   PluginSlotActionResult,
   PluginSlotContribution,
@@ -385,7 +397,8 @@ function makeChatCommandId() {
   return `cmd-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function chatSnapshotPath() {
+function chatSnapshotPath(claimRenderer = true) {
+  if (!claimRenderer) return "/api/chat/snapshot";
   return `/api/chat/snapshot?rendererId=${encodeURIComponent(currentChatRendererId())}`;
 }
 
@@ -428,6 +441,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
   rememberBridgeAuthToken(apiBase, authToken);
 
   return {
+    agent: createAgentHttpPlatform((path, init) => requestJson(apiBase, path, init)),
     backgrounds: {
       delete: async (name) => {
         await requestJson(apiBase, `/api/backgrounds/${encodePath(name)}`, { method: "DELETE" });
@@ -564,9 +578,9 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         }),
     },
     chat: {
-      close: () =>
+      close: (options) =>
         requestJson<ChatSnapshot>(apiBase, "/api/chat/close", {
-          body: JSON.stringify({}),
+          body: JSON.stringify({ expectedSessionId: options?.expectedSessionId }),
           keepalive: true,
           method: "POST",
         }),
@@ -614,7 +628,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           body: JSON.stringify({ title }),
         }),
       getRuntimeStatus: () => requestJson<ChatRuntimeProcessState>(apiBase, "/api/chat/runtime-status"),
-      getSnapshot: () => requestJson<ChatSnapshot>(apiBase, chatSnapshotPath()),
+      getSnapshot: (options) => requestJson<ChatSnapshot>(apiBase, chatSnapshotPath(options?.claimRenderer)),
       getTheme: () => requestJson<ChatThemePayload>(apiBase, "/api/chat/theme"),
       async launch(payload: ChatLaunchPayload, options) {
         const task = await requestJson<TaskSnapshot<ChatSnapshot>>(apiBase, "/api/chat/init", {
@@ -623,9 +637,9 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         });
         return waitForTask(apiBase, task, options);
       },
-      async resumeLast(options) {
+      async resumeLast(options, overrides) {
         const task = await requestJson<TaskSnapshot<ChatSnapshot>>(apiBase, "/api/chat/init", {
-          body: JSON.stringify({ mode: "resume-last" }),
+          body: JSON.stringify({ mode: "resume-last", enableMobileAccess: overrides?.enableMobileAccess }),
           method: "POST",
         });
         return waitForTask(apiBase, task, options);
@@ -930,7 +944,100 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         return waitForTask(apiBase, task, options);
       },
     },
+    knowledge: {
+      getKnowledgeStatus: (options) =>
+        requestJson<Mem0Status>(apiBase, "/api/knowledge/status", {
+          body: JSON.stringify({ startLoading: options?.startLoading ?? false, retry: options?.retry ?? false }),
+          method: "POST",
+        }),
+      importKnowledge: async (knowledgeId, items, options) => {
+        const task = await uploadFiles<TaskSnapshot<KnowledgeImportResult>>(
+          apiBase,
+          `/api/knowledge/import-upload?knowledge_id=${encodeURIComponent(knowledgeId)}`,
+          items,
+        );
+        return waitForTask(apiBase, task, options);
+      },
+      listKnowledgeInstances: ({ query, page, refresh = false }) =>
+        requestJson<KnowledgeInstanceList | Mem0Status>(
+          apiBase,
+          `/api/knowledge/instances?${new URLSearchParams({ query, page: String(page), refresh: String(refresh) })}`,
+        ),
+      listKnowledgeBindings: (characterName, page = 1) =>
+        requestJson<KnowledgeBindingList>(
+          apiBase,
+          `/api/knowledge/bindings?${new URLSearchParams({ character_name: characterName, page: String(page) })}`,
+        ),
+      addKnowledgeBinding: (characterName, knowledgeId) =>
+        requestJson<KnowledgeBindingResult>(apiBase, "/api/knowledge/bindings/add", {
+          method: "POST",
+          body: JSON.stringify({ character_name: characterName, knowledge_id: knowledgeId }),
+        }),
+      listKnowledgeBindingNames: (knowledgeId) =>
+        requestJson<KnowledgeBindingNames>(
+          apiBase,
+          `/api/knowledge/bindings/knowledge?knowledge_id=${encodeURIComponent(knowledgeId)}`,
+        ),
+      batchKnowledgeBindings: (knowledgeId, add, remove) =>
+        requestJson<KnowledgeBindingNames & { ok: true }>(apiBase, "/api/knowledge/bindings/batch", {
+          method: "POST",
+          body: JSON.stringify({ knowledge_id: knowledgeId, add, remove }),
+        }),
+      removeKnowledgeBinding: (characterName, knowledgeId) =>
+        requestJson<KnowledgeBindingResult>(apiBase, "/api/knowledge/bindings/remove", {
+          method: "POST",
+          body: JSON.stringify({ character_name: characterName, knowledge_id: knowledgeId }),
+        }),
+      addKnowledgeEntry: (knowledgeId, content) =>
+        requestJson<KnowledgeEntryPage | Mem0Status>(apiBase, "/api/knowledge/remember-and-list", {
+          method: "POST",
+          body: JSON.stringify({ knowledge_id: knowledgeId, content }),
+        }),
+      deleteKnowledgeEntry: (knowledgeId, memoryId) =>
+        requestJson<KnowledgeEntryPage | Mem0Status>(apiBase, "/api/knowledge/forget-and-list", {
+          method: "POST",
+          body: JSON.stringify({ knowledge_id: knowledgeId, memory_id: memoryId }),
+        }),
+      deleteKnowledge: (knowledgeId) =>
+        requestJson<KnowledgeDeleteResult | Mem0Status>(apiBase, "/api/knowledge/delete", {
+          method: "POST",
+          body: JSON.stringify({ knowledge_id: knowledgeId }),
+        }),
+      listKnowledgeEntries: (knowledgeId) =>
+        requestJson<KnowledgeEntryPage | Mem0Status>(
+          apiBase,
+          `/api/knowledge/entries?${new URLSearchParams({ knowledge_id: knowledgeId })}`,
+        ),
+      searchKnowledgeEntries: (knowledgeId, query) =>
+        requestJson<KnowledgeEntrySearch | Mem0Status>(apiBase, "/api/knowledge/entries/search", {
+          method: "POST",
+          body: JSON.stringify({ knowledge_id: knowledgeId, query, limit: 200 }),
+        }),
+      previewKnowledgeImport: (knowledgeId, items) => {
+        return uploadFiles<KnowledgeImportPreview>(
+          apiBase,
+          `/api/knowledge/import-preview-upload?knowledge_id=${encodeURIComponent(knowledgeId)}`,
+          items,
+        );
+      },
+    },
     characters: {
+      importModelStates: async (input) => {
+        const task = await requestJson<TaskSnapshot<Character>>(apiBase, "/api/characters/model/states/import", {
+          body: JSON.stringify(input),
+          method: "POST",
+        });
+        return waitForTask(apiBase, task);
+      },
+      importModel: async (input) => {
+        const task = await requestJson<TaskSnapshot<Character>>(apiBase, "/api/characters/model/import", {
+          body: JSON.stringify(input),
+          method: "POST",
+        });
+        return waitForTask(apiBase, task);
+      },
+      saveModelState: (input) =>
+        requestJson<Character>(apiBase, "/api/characters/model/state", { body: JSON.stringify(input), method: "POST" }),
       autoLabelSprites: async (name, options) => {
         const task = await requestJson<TaskSnapshot<ImageAutoLabelResult>>(
           apiBase,
@@ -1112,6 +1219,29 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           method: "POST",
         }),
     },
+    avatarRuntimes: {
+      status: (format) =>
+        requestJson<AvatarRuntimeStatus>(apiBase, `/api/avatar/runtime/${encodeURIComponent(format)}/status`, {
+          method: "POST",
+          body: "{}",
+        }),
+      async prepare(format, input) {
+        const task = await requestJson<TaskSnapshot<unknown>>(
+          apiBase,
+          `/api/avatar/runtime/${encodeURIComponent(format)}/prepare`,
+          { method: "POST", body: JSON.stringify(input) },
+        );
+        return waitForTask(apiBase, task);
+      },
+      async install(format, input) {
+        const task = await requestJson<TaskSnapshot<AvatarRuntimeStatus>>(
+          apiBase,
+          `/api/avatar/runtime/${encodeURIComponent(format)}/install`,
+          { method: "POST", body: JSON.stringify(input) },
+        );
+        return waitForTask(apiBase, task);
+      },
+    },
     modelAssets: {
       async download(input, options) {
         const task = await requestJson<TaskSnapshot<ModelAssetDownloadResult>>(apiBase, "/api/model-assets/download", {
@@ -1141,6 +1271,12 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           return path;
         }
         return bridgeUrl(apiBase, `/api/media?path=${encodeURIComponent(path)}`);
+      },
+      modelUrl(modelPath, path) {
+        return bridgeUrl(
+          apiBase,
+          `/api/avatar/file?model_path=${encodeURIComponent(modelPath)}&path=${encodeURIComponent(path)}`,
+        );
       },
       async thumbnailBatch(paths, options) {
         const localPaths = paths.filter((path) => path && !/^(?:https?:|blob:|data:|\/assets\/)/.test(path));
@@ -1279,6 +1415,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
       getUi: (id) => requestJson<PluginUIDetail>(apiBase, `/api/plugins/${encodePath(id)}/ui`),
       list: () => requestJson<PluginManifest[]>(apiBase, "/api/plugins"),
       listSlotContributions: () => requestJson<PluginSlotContribution[]>(apiBase, "/api/plugins/chat-ui-contributions"),
+      status: () => requestJson<PluginLoadStatus>(apiBase, "/api/plugins/status"),
       async repoTags(repo) {
         const result = await requestJson<{ tags: string[] }>(apiBase, "/api/plugins/repo-tags", {
           body: JSON.stringify({ repo }),

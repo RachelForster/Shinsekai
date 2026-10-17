@@ -96,3 +96,4 @@ node_modules/
 .python-version
 uv.lock
 frontend/pnpm-workspace.yaml
+/.tmp

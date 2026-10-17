@@ -10,7 +10,7 @@ from application.chat.conversation_library import (
     conversation_launch_payload,
     current_conversation,
 )
-from application.chat.runtime_process import _chat_process_running, _chat_snapshot
+from application.chat.composition import _chat_process_running, _chat_snapshot
 from application.chat.stop_chat import stop_chat
 from application.story.coordinator import start_or_recover_story_session
 from application.story.library import prepare_story_launch
@@ -30,6 +30,8 @@ def prepare_conversation_edit(state: Any, conversation_id: str, payload: dict) -
         for name in names
     ):
         raise ValueError("conversation contains an unavailable character")
+    from application.chat.player_control import resolve_player
+    resolve_player(state.config_manager, names, payload.get("playerCharacter"))
     if details["kind"] == "story":
         if not details["storyPath"]:
             raise ValueError("the original story is unavailable")

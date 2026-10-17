@@ -46,6 +46,7 @@ import { useDesktopClickThrough } from "./hooks/useDesktopClickThrough";
 import { useDesktopWindowDrag } from "./hooks/useDesktopWindowDrag";
 import { useDialogTypewriter } from "./hooks/useDialogTypewriter";
 import { useMainThemeColor } from "./hooks/useMainThemeColor";
+import { useRecentUserInputs } from "./hooks/useRecentUserInputs";
 import {
   chatStageRuntimeStyle,
   defaultChatStageRuntimeConfig,
@@ -53,11 +54,14 @@ import {
   readChatStageRuntimeConfig,
   resetChatStageRuntimeThemeAppearance,
   runtimeSpriteScale,
+  runtimeSpriteFraming,
   subscribeChatStageRuntimeConfig,
   writeChatStageRuntimeConfig,
 } from "./runtimeConfig";
 import { useOptionalChatTheme } from "./theme/ChatThemeProvider";
 import { limitChatStageSpritesToSlots } from "./state/sprites";
+import { normalizeVisualFraming, type VisualFraming } from "../../modules/character-visual";
+import { playerPortraitForDialog } from "./state/text";
 import {
   CHAT_ATTACHMENT_LIMIT,
   CHAT_IMAGE_EXTENSIONS,
@@ -174,6 +178,7 @@ export function ChatStagePage() {
     [runtimeConfig.nameText, themeStyle],
   );
   const viewModel = useMemo(() => buildChatStageViewModel(state), [state]);
+  const { recentInputs, rememberInput } = useRecentUserInputs();
   const stageSprites = useMemo(
     () => (isRemoteMobileAccessPage() ? limitChatStageSpritesToSlots(viewModel.sprites, 1) : viewModel.sprites),
     [viewModel.sprites],
@@ -347,6 +352,7 @@ export function ChatStagePage() {
     if (!text && !attachments.length) {
       return;
     }
+    rememberInput(text);
     const displayText = chatAttachmentDisplayText(text, attachments);
     const payload: string | ChatSendPayload = attachments.length ? { attachments, text } : text;
     showDialogImmediately();
@@ -552,6 +558,13 @@ export function ChatStagePage() {
     setRuntimeConfig((current) => ({ ...current, windowScale }));
   };
 
+  const updateRuntimeSpriteFraming = (spriteKey: string, framing: VisualFraming) => {
+    setRuntimeConfig((current) => ({
+      ...current,
+      spriteFramings: { ...current.spriteFramings, [spriteKey]: normalizeVisualFraming(framing) },
+    }));
+  };
+
   const updateRuntimeConfigThemeColor = (configThemeColor: string) => {
     setRuntimeConfig((current) => ({ ...current, configThemeColor: normalizeThemeColor(configThemeColor) }));
   };
@@ -741,7 +754,10 @@ export function ChatStagePage() {
           hidden={!viewModel.layers.sprites}
           onDragStart={standaloneDesktopWindow ? handleWindowDrag : undefined}
           runtimeScaleForSprite={(sprite, index) => runtimeSpriteScale(runtimeConfig, sprite, index)}
+          runtimeFramingForSprite={(sprite, index) => runtimeSpriteFraming(runtimeConfig, sprite, index)}
           speaker={viewModel.dialogCharacterName}
+          responding={viewModel.status === "speaking" || viewModel.status === "streaming" || typingDialog}
+          thinkingCharacterName={viewModel.thinkingCharacterName}
           sprites={stageSprites}
         />
         <StatLayer stats={viewModel.stats} />
@@ -771,6 +787,11 @@ export function ChatStagePage() {
             <DialogLayer
               canAdvance={viewModel.layers.dialog && !typingDialog && dialogTotalCharacters > 0}
               characterName={viewModel.dialogCharacterName}
+              playerPortrait={playerPortraitForDialog(
+                state.playerPortrait,
+                viewModel.dialogCharacterName,
+                viewModel.dialogText,
+              )}
               hidden={!viewModel.layers.dialog}
               htmlNodes={displayedDialog.nodes}
               onAdvance={advanceDialog}
@@ -821,6 +842,7 @@ export function ChatStagePage() {
             })
           }
           onSubmit={submit}
+          previousMessages={recentInputs}
           submitDisabled={attachmentUploadPending}
           value={viewModel.inputDraft}
         />
@@ -888,6 +910,7 @@ export function ChatStagePage() {
           onSpriteOffsetXChange={updateRuntimeSpriteOffsetX}
           onSpriteOffsetYChange={updateRuntimeSpriteOffsetY}
           onSpriteScaleChange={updateRuntimeSpriteScale}
+          onSpriteFramingChange={updateRuntimeSpriteFraming}
           onTextSpeedChange={updateRuntimeTextSpeed}
           onTextStyleChange={updateRuntimeTextStyle}
           onTurnOptionsChange={updateTurnOptions}
@@ -896,6 +919,7 @@ export function ChatStagePage() {
           spriteOffsetX={runtimeConfig.spriteOffsetX}
           spriteOffsetY={runtimeConfig.spriteOffsetY}
           spriteScales={runtimeConfig.spriteScales}
+          spriteFramings={runtimeConfig.spriteFramings}
           sprites={stageSprites}
           textSpeed={typewriterCps}
           turnOptions={state.turnOptions}

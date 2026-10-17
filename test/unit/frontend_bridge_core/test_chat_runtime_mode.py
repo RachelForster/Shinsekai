@@ -5,12 +5,12 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from application.chat.runtime_process import (
+from application.media.resource_urls import UnconfiguredResourceUrls
+from application.chat.host.projection import (
     _chat_runtime_mode,
-    _chat_runtime_status,
-    _chat_snapshot,
     _chat_stream_initial_snapshot,
 )
+from application.chat.composition import _chat_runtime_status, _chat_snapshot
 from frontend_bridge_core.routes.api import (
     BRIDGE_AUTH_HEADER,
     CHAT_RUNTIME_READY_TIMEOUT_SECONDS,
@@ -134,6 +134,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
             "status": "speaking",
         }
         state = SimpleNamespace(
+            resource_urls=UnconfiguredResourceUrls(),
             chat_runtime_closing=False,
             chat_session={"sessionId": "session-1"},
             chat_stream=chat_stream,
@@ -186,7 +187,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
         state = SimpleNamespace(chat_runtime_closing=False)
 
         with patch(
-            "application.chat.runtime_process._chat_process_running", return_value=False
+            "application.chat.composition._supervisor.running", return_value=False
         ):
             status = _chat_runtime_status(state)
 
@@ -203,7 +204,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
         state = SimpleNamespace(chat_runtime_closing=False)
 
         with patch(
-            "application.chat.runtime_process._chat_process_running", return_value=True
+            "application.chat.composition._supervisor.running", return_value=True
         ):
             status = _chat_runtime_status(state)
 
@@ -215,7 +216,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
         state = SimpleNamespace(chat_runtime_closing=True)
 
         with patch(
-            "application.chat.runtime_process._chat_process_running", return_value=True
+            "application.chat.composition._supervisor.running", return_value=True
         ):
             status = _chat_runtime_status(state)
 
@@ -231,7 +232,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
             return False
 
         with patch(
-            "application.chat.runtime_process._chat_process_running",
+            "application.chat.composition._supervisor.running",
             side_effect=process_exits_during_close,
         ):
             status = _chat_runtime_status(state)
@@ -251,7 +252,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
 
         with (
             patch(
-                "application.chat.runtime_process._chat_process_running",
+                "application.chat.composition._supervisor.running",
                 return_value=False,
             ),
             patch(
@@ -276,6 +277,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
 
     def test_chat_snapshot_includes_runtime_mode(self):
         state = SimpleNamespace(
+            resource_urls=UnconfiguredResourceUrls(),
             chat_session={},
             chat_stream=None,
             config_manager=_ConfigManager(),
@@ -289,6 +291,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
 
     def test_chat_snapshot_keeps_transparent_background_empty(self):
         state = SimpleNamespace(
+            resource_urls=UnconfiguredResourceUrls(),
             chat_session={"backgroundName": "透明场景"},
             chat_stream=None,
             config_manager=_ConfigManager(),
@@ -302,6 +305,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
         self,
     ):
         state = SimpleNamespace(
+            resource_urls=UnconfiguredResourceUrls(),
             chat_session={"backgroundName": ""},
             chat_stream=None,
             config_manager=_ConfigManager(),
@@ -313,6 +317,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
 
     def test_chat_snapshot_uses_explicit_real_background(self):
         state = SimpleNamespace(
+            resource_urls=UnconfiguredResourceUrls(),
             chat_session={"backgroundName": "默认房间"},
             chat_stream=None,
             config_manager=_ConfigManager(),
@@ -473,6 +478,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
         config_manager = _ConfigManager()
         config_manager.config.system_config.chat_ui_runtime_mode = "native"
         state = SimpleNamespace(
+            resource_urls=UnconfiguredResourceUrls(),
             chat_session={},
             chat_stream=None,
             config_manager=config_manager,
@@ -535,6 +541,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
                     config_manager=config_manager,
                     history_dir=str(history_dir),
                     template_dir_path=str(template_dir),
+                    resource_urls=UnconfiguredResourceUrls(),
                 )
             )
             body = {
@@ -604,6 +611,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
                     config_manager=config_manager,
                     history_dir=str(history_dir),
                     template_dir_path=str(template_dir),
+                    resource_urls=UnconfiguredResourceUrls(),
                 )
             )
             body = {
@@ -631,7 +639,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
                     side_effect=lambda _state, scenario, system: (scenario, system),
                 ),
                 patch(
-                    "application.chat.launch_history._new_history_instance_id",
+                    "application.chat.host.launch_history._new_history_instance_id",
                     return_value=instance_id,
                 ),
                 patch(
@@ -799,6 +807,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
                     config_manager=config_manager,
                     history_dir=str(history_dir),
                     template_dir_path=str(template_dir),
+                    resource_urls=UnconfiguredResourceUrls(),
                 )
             )
 

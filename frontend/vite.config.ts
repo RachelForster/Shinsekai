@@ -36,6 +36,14 @@ export default defineConfig({
             return undefined;
           }
 
+          // Keep the 3D SDK behind the PMX adapter's lazy import.
+          if (has("/typescript/")) {
+            return "l2d-compiler";
+          }
+          if (has("/@babylonjs/") || has("/babylon-mmd/")) {
+            return "mmd-vendor";
+          }
+
           if (
             has("/react/") ||
             has("/react-dom/") ||
@@ -67,6 +75,11 @@ export default defineConfig({
     port: 5173,
   },
   test: {
+    // MMD ships extensionless ESM imports; resolve them through Vite, not Node.
+    server: { deps: { inline: ["babylon-mmd"] } },
+    // DOM + coverage workers otherwise saturate large Windows hosts and time out healthy tests.
+    maxWorkers: 4,
+    minWorkers: 1,
     environment: "jsdom",
     globals: true,
     include: ["src/test/**/*.{test,spec}.{ts,tsx}"],

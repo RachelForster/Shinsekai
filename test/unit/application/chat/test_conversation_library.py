@@ -19,7 +19,7 @@ from application.chat.conversation_library import (
     saved_conversation_launch,
     update_conversation_character,
 )
-from application.chat.launch_history import plan_chat_history_launch
+from application.chat.host.launch_history import plan_chat_history_launch
 
 
 @pytest.fixture
@@ -194,7 +194,7 @@ def test_delete_rejects_active_sessions(state, monkeypatch, busy):
     state.chat_session = {"historyPath": str(path)}
     if busy == "initializing":
         state.chat_init_task_id = "task"
-    monkeypatch.setattr("application.chat.runtime_process._chat_runtime_status", lambda _state: {"state": busy})
+    monkeypatch.setattr("application.chat.composition._chat_runtime_status", lambda _state: {"state": busy})
     item = list_conversations(state)[0]
     with pytest.raises(RuntimeError):
         delete_conversation(state, item["id"])

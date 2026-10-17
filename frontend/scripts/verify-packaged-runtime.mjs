@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { access, readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { verifyLlmRuntimeSources } from "./verify-llm-runtime.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const frontendDir = path.resolve(scriptDir, "..");
@@ -46,6 +47,7 @@ for (const appRoot of appRoots) {
   }
   await assertExists(path.join(appRoot, "runtime_manifest.json"));
   await assertExists(path.join(appRoot, "requirements-runtime-core.txt"));
+  await verifyLlmRuntimeSources(path.resolve(frontendDir, ".."), appRoot);
   packageSuffixes ??= packageRequiredSuffixes(runtimeMarker);
   verifiedRoots.push(
     `${relative(appRoot)} target=${runtimeMarker.target} triple=${runtimeMarker.triple} python=${runtimeMarker.python}`,

@@ -88,6 +88,14 @@ def _forward_plugin_user_input(state, event: dict) -> None:
 
 def _shutdown_bridge_runtime(reason: str) -> None:
     _restart_debug_log(f"bridge runtime shutdown begin reason={reason}")
+    with _bridge_state_lock:
+        state = _bridge_state
+    services = getattr(state, "services", None)
+    if services is not None:
+        try:
+            services.close()
+        except Exception as exc:
+            _restart_debug_log(f"bridge runtime Agent shutdown failed reason={reason} error={exc}")
     try:
         from plugin_system.host import (
             bind_frontend_ui_runtime,
@@ -101,7 +109,7 @@ def _shutdown_bridge_runtime(reason: str) -> None:
             f"bridge runtime plugin transport unbind failed reason={reason} error={exc}"
         )
     try:
-        from application.chat.runtime_process import shutdown_active_chat_process
+        from application.chat.composition import shutdown_active_chat_process
 
         shutdown_active_chat_process(wait_timeout=1.5)
     except Exception as exc:
@@ -114,12 +122,19 @@ def _shutdown_bridge_runtime(reason: str) -> None:
         if presenter is not None:
             presenter.close()
         try:
-            from application.chat.mobile_access import stop_mobile_access
+            from application.chat.composition import _session_lifecycle
 
-            stop_mobile_access(state)
+            lifecycle = _session_lifecycle(state)
+            try:
+                lifecycle.closing(reason)
+            finally:
+                try:
+                    lifecycle.ended(reason)
+                finally:
+                    lifecycle.dispose()
         except Exception as exc:
             _restart_debug_log(
-                f"bridge runtime mobile access stop failed reason={reason} error={exc}"
+                f"bridge runtime session cleanup failed reason={reason} error={exc}"
             )
     chat_stream = getattr(state, "chat_stream", None) if state is not None else None
     if chat_stream is not None:
@@ -277,6 +292,7 @@ def _start_plugin_loader(state, logger) -> None:
                 PluginRuntimeBindings,
             )
             from ai.vision.fallback_registry import configure_registered_fallbacks
+            from core.media.avatar.registry import configure_registered_formats
             from ai.asr.asr_manager import ASRAdapterFactory
             from ai.llm.llm_manager import LLMAdapterFactory
             from ai.tools.tool_manager import ToolManager
@@ -297,6 +313,7 @@ def _start_plugin_loader(state, logger) -> None:
                     t2i_adapters=T2IAdapterFactory._adapters,
                     create_tool_manager=ToolManager,
                     configure_vision_fallbacks=configure_registered_fallbacks,
+                    configure_avatar_formats=configure_registered_formats,
                     register_mcp_tools=register_mcp_tools,
                 ),
             )
@@ -367,6 +384,7 @@ def run(
     apply_network_proxy_environment_from_system_config()
     apply_mirror_environment_from_system_config()
     os.environ["SHINSEKAI_MEMORY_SERVICE_OWNER"] = "1"
+    os.environ["SHINSEKAI_KNOWLEDGE_SERVICE_OWNER"] = "1"
 
     from config.background_manager import BackgroundManager
     from config.character_manager import CharacterManager
@@ -388,6 +406,8 @@ def run(
         or secrets.token_urlsafe(32)
     )
 
+    from core.media.avatar.registry import configure_builtin_formats
+    configure_builtin_formats()
     state = BridgeState(
         config_manager=config_manager,
         character_manager=CharacterManager(),
@@ -399,7 +419,10 @@ def run(
         auth_token=bridge_auth_token,
     )
     _set_bridge_state(state)
+    from application.characters.import_recovery import recover_model_imports
+    recover_model_imports(state)
     state.chat_stream = ChatStreamService(host=host, bridge_port=port, auth_token=bridge_auth_token)
+    state.resource_urls = state.chat_stream.resource_urls
     state.chat_stream.start()
 
     def create_mobile_http_server(bind_host: str, mobile_port: int) -> ThreadingHTTPServer:
@@ -455,6 +478,17 @@ def run(
         )
     _restart_debug_log("serve_forever enter")
     try:
+        from frontend_bridge_core.transport.agent_http_tools import build_bridge_http_tools
+
+        state.services.start_agent(
+            config_manager,
+            Path(resolved_project_root) / "data" / "agent",
+            tools=build_bridge_http_tools(
+                str(server.server_address[0]),
+                int(server.server_address[1]),
+                bridge_auth_token,
+            ),
+        )
         server.serve_forever()
     finally:
         _restart_debug_log("serve_forever exit")

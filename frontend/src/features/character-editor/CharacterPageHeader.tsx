@@ -67,6 +67,7 @@ export function CharacterPageHeader({
         <label className="character-page__select">
           <span className="visually-hidden">{t("character.row.current")}</span>
           <Select
+            aria-label={t("character.row.current")}
             disabled={isLoading || !characters.length}
             onChange={(event) => onSelectCharacter(event.target.value)}
             value={isCreating ? "" : selectedName || characters[0]?.name || ""}

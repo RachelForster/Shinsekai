@@ -38,6 +38,8 @@ def _response_text(response: Any) -> str:
         return text
 
     content = getattr(response, "content", None)
+    if isinstance(content, str):
+        return content
     if isinstance(content, (list, tuple)):
         return "".join(
             block_text
@@ -95,6 +97,15 @@ def repair_dialog_output(
             if cancelled():
                 return content
             repaired = _response_text(response)
+            decode = getattr(adapter, "decode_response", None)
+            if callable(decode):
+                try:
+                    decoded_content = decode(response).content
+                except (AttributeError, IndexError, KeyError, TypeError):
+                    pass  # Legacy structural adapters may return plain text.
+                else:
+                    if isinstance(decoded_content, str):
+                        repaired = decoded_content
             if not repaired:
                 raise RuntimeError("empty format-repair response")
         except Exception as exc:

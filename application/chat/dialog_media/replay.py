@@ -19,6 +19,7 @@ def latest_media_dialogs(
     messages: list[Any],
     *,
     opencc: Any,
+    player_name: str = "",
 ) -> tuple[LLMDialogMessage, ...]:
     """Return the latest scene, BGM, and character instructions in source order."""
 
@@ -45,6 +46,8 @@ def latest_media_dialogs(
                 continue
             else:
                 kind = "character"
+                if player_name and dialog.name == player_name:
+                    kind = "player"
             latest[kind] = (position, dialog)
 
     return tuple(
@@ -57,10 +60,15 @@ def enqueue_latest_media_replay(
     *,
     dialog_queue: Any,
     opencc: Any,
+    player_name: str = "",
 ) -> bool:
     """Replay raw media inputs with the active strategies, without replaying speech."""
 
-    dialogs = latest_media_dialogs(messages, opencc=opencc)
+    dialogs = latest_media_dialogs(
+        messages,
+        opencc=opencc,
+        player_name=player_name,
+    )
     for dialog in dialogs:
         dialog_queue.put(
             dialog.model_copy(

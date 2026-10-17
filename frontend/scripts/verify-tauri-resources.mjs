@@ -1,11 +1,14 @@
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { verifyLlmRuntimeSources } from "./verify-llm-runtime.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const frontendDir = path.resolve(scriptDir, "..");
 const resourcesDir = path.join(frontendDir, "src-tauri", "resources");
 const runtimeMarkerPath = path.join(resourcesDir, "runtime", ".shinsekai-runtime.json");
+
+await verifyLlmRuntimeSources(path.resolve(frontendDir, ".."), resourcesDir);
 
 const runtimeMarker = await readJson(runtimeMarkerPath);
 
@@ -23,19 +26,19 @@ for (const requiredFile of runtimeMarker.requiredFiles ?? []) {
 await assertExists(path.join(resourcesDir, "runtime_manifest.json"));
 await assertExists(path.join(resourcesDir, "main.py"));
 await assertExists(path.join(resourcesDir, "frontend_bridge.py"));
-await assertExists(path.join(resourcesDir, "application", "chat", "mobile_access.py"));
-await assertExists(path.join(resourcesDir, "application", "chat", "runtime_process.py"));
-await assertExists(path.join(resourcesDir, "application", "chat", "commands.py"));
-await assertExists(path.join(resourcesDir, "application", "chat", "manage_branches.py"));
-await assertExists(path.join(resourcesDir, "application", "chat", "startup.py"));
-await assertExists(path.join(resourcesDir, "application", "chat", "session_runtime.py"));
-await assertExists(path.join(resourcesDir, "application", "chat", "presentation.py"));
-await assertExists(path.join(resourcesDir, "application", "chat", "wire_streaming_session.py"));
+await assertExists(path.join(resourcesDir, "application", "chat", "host", "mobile_access.py"));
+await assertExists(path.join(resourcesDir, "application", "chat", "composition.py"));
+await assertExists(path.join(resourcesDir, "application", "chat", "runtime", "commands.py"));
+await assertExists(path.join(resourcesDir, "application", "chat", "history", "branches.py"));
+await assertExists(path.join(resourcesDir, "application", "chat", "runtime", "startup.py"));
+await assertExists(path.join(resourcesDir, "application", "chat", "runtime", "session.py"));
+await assertExists(path.join(resourcesDir, "application", "chat", "presentation", "assets.py"));
+await assertExists(path.join(resourcesDir, "application", "chat", "runtime", "stream_wiring.py"));
 await assertExists(path.join(resourcesDir, "application", "chat", "build_effect_context.py"));
 await assertExists(path.join(resourcesDir, "application", "chat", "start_chat.py"));
 await assertExists(path.join(resourcesDir, "application", "chat", "stop_chat.py"));
-await assertExists(path.join(resourcesDir, "application", "chat", "initial_sprite.py"));
-await assertExists(path.join(resourcesDir, "application", "chat", "turn_wiring.py"));
+await assertExists(path.join(resourcesDir, "application", "chat", "presentation", "initial_sprite.py"));
+await assertExists(path.join(resourcesDir, "application", "chat", "runtime", "turn_wiring.py"));
 await assertExists(path.join(resourcesDir, "application", "characters", "generate_character.py"));
 await assertExists(path.join(resourcesDir, "application", "memory", "manage_memories.py"));
 await assertExists(path.join(resourcesDir, "application", "model_assets", "download_model.py"));

@@ -1,7 +1,7 @@
 
 import pytest
 
-from application.chat.runtime_process import _chat_snapshot, _handle_chat_command
+from application.chat.composition import _chat_snapshot, _handle_chat_command
 from application.story import (
     JsonGlobalStoryProgressStore,
     JsonStorySessionRepository,

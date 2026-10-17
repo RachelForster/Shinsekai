@@ -118,7 +118,7 @@ def test_start_chat_init_forwards_launch_and_resume_callbacks(monkeypatch):
     )
     monkeypatch.setattr(
         "frontend_bridge_core.chat_session.resume_last_chat",
-        lambda _state, *, init_stream_info=None: resume_chat(
+        lambda _state, *, init_stream_info=None, enable_mobile_access=None: resume_chat(
             init_stream_info=init_stream_info,
         ),
     )
@@ -147,6 +147,39 @@ def test_start_chat_init_forwards_launch_and_resume_callbacks(monkeypatch):
         ("resume-last", None, {"sessionId": "init-session"}),
         ("coordinator", "resume-last", {"status": "idle"}),
     ]
+
+
+@pytest.mark.parametrize("enabled", [None, True, False])
+def test_start_chat_init_forwards_explicit_mobile_preference(monkeypatch, enabled):
+    handler = _handler()
+    captured = {}
+
+    def resume(_state, **kwargs):
+        captured.update(kwargs)
+        return {"status": "idle"}
+
+    monkeypatch.setattr("frontend_bridge_core.chat_session.resume_last_chat", resume)
+    monkeypatch.setattr(
+        "frontend_bridge_core.chat_session.start_chat",
+        lambda _state, *, mode, launch: launch({"sessionId": "init-session"}),
+    )
+
+    body = {"mode": "resume-last"}
+    if enabled is not None:
+        body["enableMobileAccess"] = enabled
+    handler._start_chat_init(body)
+
+    assert captured == {
+        "init_stream_info": {"sessionId": "init-session"},
+        "enable_mobile_access": enabled,
+    }
+
+
+@pytest.mark.parametrize("invalid", [None, "false", 0, 1, {}, []])
+def test_start_chat_init_rejects_non_boolean_mobile_preference(invalid):
+    handler = _handler()
+    with pytest.raises(ValueError, match="enableMobileAccess must be a boolean"):
+        handler._start_chat_init({"mode": "resume-last", "enableMobileAccess": invalid})
 
 
 def test_legacy_chat_routes_keep_synchronous_snapshot_shape(monkeypatch):

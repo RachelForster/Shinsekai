@@ -1,10 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { configQueryKey } from "../../../entities/config/repository";
 import { ApiSettingsPage } from "../../../features/api-settings/ApiSettingsPage";
+import { setMobileAccessPreference } from "../../../features/mobile-access/useMobileAccessPreference";
 import { reloadPluginService } from "../../../features/plugin-manager/pluginReload";
 import { AppStateProvider } from "../../../shared/app-state/AppState";
 import { I18nProvider } from "../../../shared/i18n";
@@ -50,7 +51,7 @@ vi.mock("../../../entities/chat/repository", () => ({
   chatQueryKey: ["chat"],
   getChatSnapshot: () => mocks.getChatSnapshot(),
   installMissingRuntimeDependency: (...args: unknown[]) => mocks.installMissingRuntimeDependency(...args),
-  resumeLastChat: () => mocks.resumeLastChat(),
+  resumeLastChat: (...args: unknown[]) => mocks.resumeLastChat(...args),
 }));
 
 vi.mock("../../../features/chat-startup/useChatLaunchGuard", () => ({
@@ -119,6 +120,7 @@ function validAppConfig() {
 describe("ApiSettingsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    setMobileAccessPreference(false);
     mocks.useChatLaunchGuard.mockReturnValue({
       refreshRuntimeStatus: mocks.refreshRuntimeStatus,
       runtimeLaunchDisabled: false,
@@ -151,6 +153,41 @@ describe("ApiSettingsPage", () => {
     mocks.resumeLastChat.mockResolvedValue({ sessionId: "session-1" });
     mocks.saveApiConfig.mockResolvedValue(sampleConfig.api_config);
     mocks.saveSystemConfig.mockResolvedValue(sampleConfig.system_config);
+  });
+
+  afterEach(() => {
+    cleanup();
+    setMobileAccessPreference(false);
+  });
+
+  it("places vision understanding and long-term memory after TTS in the navigation and page", async () => {
+    mocks.getAppConfig.mockResolvedValue(validAppConfig());
+
+    renderPage();
+
+    await screen.findByRole("heading", { name: "AI 服务设置" });
+    const navigation = screen.getByRole("navigation", { name: "AI 服务设置" });
+    expect(
+      within(navigation)
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual([
+      "界面语言",
+      "LLM API 配置",
+      "TTS 整合包",
+      "视觉理解",
+      "长期记忆",
+      "资料检索",
+      "图像生成（T2I）",
+      "语音输入（ASR）",
+      "资源与说明",
+    ]);
+
+    const ttsSection = document.getElementById("api-tts")!;
+    const visionSection = document.getElementById("api-vision")!;
+    const memorySection = document.getElementById("api-memory")!;
+    expect(ttsSection.compareDocumentPosition(visionSection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(visionSection.compareDocumentPosition(memorySection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("shows a newly loaded ASR adapter and its fields when returning to settings after plugin reload", async () => {
@@ -283,6 +320,10 @@ describe("ApiSettingsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "加载上次聊天并启动" }));
 
     await waitFor(() => expect(mocks.resumeLastChat).toHaveBeenCalledTimes(1));
+    expect(mocks.resumeLastChat).toHaveBeenCalledWith(
+      { onTaskUpdate: expect.any(Function) },
+      { enableMobileAccess: false },
+    );
     await waitFor(() =>
       expect(mocks.showChatSurface).toHaveBeenCalledWith({
         snapshot: expect.objectContaining({ statusMessage: "已恢复" }),
@@ -292,6 +333,24 @@ describe("ApiSettingsPage", () => {
       expect.objectContaining({ statusMessage: "已恢复" }),
     );
     expect(mocks.getChatSnapshot).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])("resumes with the current device mobile preference (%s)", async (enabled) => {
+    mocks.getAppConfig.mockResolvedValue(validAppConfig());
+    setMobileAccessPreference(!enabled);
+    renderPage();
+    await screen.findByRole("heading", { name: "AI 服务设置" });
+
+    // A toolbar change must also reach a settings page that is already mounted.
+    act(() => setMobileAccessPreference(enabled));
+    fireEvent.click(screen.getByRole("button", { name: "加载上次聊天并启动" }));
+
+    await waitFor(() =>
+      expect(mocks.resumeLastChat).toHaveBeenCalledWith(
+        { onTaskUpdate: expect.any(Function) },
+        { enableMobileAccess: enabled },
+      ),
+    );
   });
 
   it("does not open chat when resume reports a missing runtime dependency", async () => {
@@ -491,6 +550,55 @@ describe("ApiSettingsPage", () => {
     );
     expect(await screen.findByRole("dialog", { name: "LLM 连通检测" })).toHaveTextContent("连接成功");
     expect(screen.getByRole("button", { name: "已连通" })).toBeInTheDocument();
+  });
+
+  it("keeps LLM and vision selections independent while sharing provider credentials", async () => {
+    mocks.getAppConfig.mockResolvedValue({
+      ...validAppConfig(),
+      api_config: {
+        ...validAppConfig().api_config,
+        llm_api_key: { ChatGPT: "sk-chat", Deepseek: "sk-deepseek" },
+        llm_base_url: "https://api.openai.com/v1",
+        llm_base_urls: {
+          ChatGPT: "https://api.openai.com/v1",
+          Deepseek: "https://deepseek-proxy.example.com/v1",
+        },
+        llm_model: { ChatGPT: "gpt-4o-mini" },
+        llm_provider: "ChatGPT",
+        vision_model: { deepseek: "deepseek-flash" },
+        vision_provider: "deepseek",
+      },
+    });
+    mocks.saveApiConfig.mockImplementation(async (config) => config);
+    mocks.saveSystemConfig.mockImplementation(async (config) => config);
+
+    renderPage();
+
+    await screen.findByRole("heading", { name: "AI 服务设置" });
+    expect(screen.getByLabelText("LLM API Key")).toHaveValue("sk-chat");
+    expect(screen.getByLabelText("服务商 API Key")).toHaveValue("sk-deepseek");
+    expect(screen.getByDisplayValue("https://deepseek-proxy.example.com/v1")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("服务商 API Key"), { target: { value: "sk-shared-new" } });
+    fireEvent.change(screen.getByDisplayValue("https://deepseek-proxy.example.com/v1"), {
+      target: { value: "https://deepseek-new.example.com/v1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() =>
+      expect(mocks.saveApiConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          llm_api_key: expect.objectContaining({ ChatGPT: "sk-chat", Deepseek: "sk-shared-new" }),
+          llm_base_url: "https://api.openai.com/v1",
+          llm_base_urls: expect.objectContaining({
+            ChatGPT: "https://api.openai.com/v1",
+            Deepseek: "https://deepseek-new.example.com/v1",
+          }),
+          llm_provider: "ChatGPT",
+          vision_provider: "deepseek",
+        }),
+      ),
+    );
   });
 
   it("downloads a TTS bundle and writes the returned provider path into the draft", async () => {

@@ -46,7 +46,7 @@ import { CharacterPersonalitySection } from "./CharacterPersonalitySection";
 import { CharacterSpritesSection } from "./CharacterSpritesSection";
 import { CharacterVoiceSection } from "./CharacterVoiceSection";
 import { MediaAutoLabelProgressDialog } from "../media-auto-label/MediaAutoLabelProgressDialog";
-import { useMoondreamAvailability } from "../media-auto-label/useMoondreamAvailability";
+import { useVisionAvailability } from "../media-auto-label/useVisionAvailability";
 import { SpriteTagsDialog } from "./SpriteTagsDialog";
 import {
   SPRITE_SCALE_STEP,
@@ -59,6 +59,7 @@ import {
 import { useCharacterMemoryController } from "./useCharacterMemoryController";
 import { useCharacterMemoryImportController } from "./useCharacterMemoryImportController";
 import "./CharacterEditorPage.css";
+import { ModelStateEditor } from "./ModelStateEditor";
 
 export function mergeSprites(serverSprites: Sprite[], current: Character) {
   const currentSpritesByPath = new Map(
@@ -79,7 +80,7 @@ export function CharacterEditorPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const { t } = useI18n();
-  const moondreamAvailable = useMoondreamAvailability();
+  const visionAvailable = useVisionAvailability();
   const charactersQuery = useQuery({ queryFn: listCharacters, queryKey: charactersQueryKey });
   const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
   const data = charactersQuery.data ?? [];
@@ -171,6 +172,7 @@ export function CharacterEditorPage() {
       setDraft(structuredClone(character));
       setPronunciationText(pronunciationMapToText(character.pronunciation_map));
       if (variables.originalName && variables.originalName !== character.name) {
+        void queryClient.invalidateQueries({ queryKey: ["knowledge", "binding-names"] });
         queryClient.setQueryData<TemplateLaunchSession | null>([...templatesQueryKey, "session"], (current) =>
           current
             ? {
@@ -193,6 +195,8 @@ export function CharacterEditorPage() {
     mutationFn: deleteCharacter,
     onSuccess(_result, deletedName) {
       queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+      void queryClient.invalidateQueries({ queryKey: ["knowledge", "instances"] });
+      void queryClient.invalidateQueries({ queryKey: ["knowledge", "binding-names"] });
       queryClient.setQueryData<TemplateLaunchSession | null>([...templatesQueryKey, "session"], (current) => {
         if (!current) {
           return current;
@@ -457,6 +461,9 @@ export function CharacterEditorPage() {
       }));
       setPronunciationText(pronunciationMapToText(character.pronunciation_map));
       setPendingSpritePaths([]);
+      if (variables.saveFirst && variables.originalName && variables.originalName !== character.name) {
+        void queryClient.invalidateQueries({ queryKey: ["knowledge", "binding-names"] });
+      }
       showToast({ kind: "success", title: t("character.sprite.uploadImages") });
     },
   });
@@ -1033,49 +1040,62 @@ export function CharacterEditorPage() {
           voiceReferenceReadOnly={voiceReferenceReadOnly}
         />
 
-        <CharacterSpritesSection
-          autoLabelAvailable={moondreamAvailable}
-          autoLabelDisabled={!isSavedCharacter || !draft.sprites.length || !spriteTags.some((tag) => !tag.trim())}
-          autoLabelPending={autoLabelMutation.isPending}
-          draft={draft}
-          emotionTagsPending={emotionTagsMutation.isPending}
-          id="character-sprites"
-          onClearSprites={requestClearSprites}
-          onAutoLabel={() => {
-            setAutoLabelTask(null);
-            setAutoLabelDialogOpen(true);
-            autoLabelMutation.mutate();
+        <ModelStateEditor
+          character={draft}
+          onChange={setDraft}
+          onSaved={(character) => {
+            queryClient.setQueryData<Character[]>(charactersQueryKey, (current = [character]) =>
+              current.map((item) => (item.name === character.name ? character : item)),
+            );
+            setDraft(structuredClone(character));
           }}
-          onOpenBulkTags={openBulkSpriteTagsDialog}
-          onPendingSpritePathsChange={setPendingSpritePaths}
-          onPendingVoicePathChange={updatePendingVoicePath}
-          onSaveScale={saveSpriteScaleValue}
-          onSaveTags={saveSpriteTags}
-          onScaleChange={update}
-          onScaleWheel={handleSpriteScaleWheel}
-          onSelectSprite={setSelectedSpriteIndex}
-          onSpriteDelete={requestSelectedSpriteDelete}
-          onSpriteTagChange={(value) => updateSpriteTag(selectedSpriteIndex, value)}
-          onSpriteUpload={uploadSprites}
-          onSpriteVoiceDelete={requestSelectedSpriteVoiceDelete}
-          onSpriteVoiceTextBlur={saveSelectedSpriteVoiceText}
-          onSpriteVoiceTextChange={(value) => updateSprite(selectedSpriteIndex, { voice_text: value })}
-          onSpriteVoiceUpload={uploadSelectedSpriteVoice}
-          onSpriteVoiceTypeChange={handleSpriteVoiceTypeChange}
-          pendingSpritePaths={pendingSpritePaths}
-          pendingVoicePath={pendingVoicePaths[selectedSpriteIndex] ?? ""}
-          selectedSprite={
-            selectedSprite ? { ...selectedSprite, voice_type: spriteVoiceType(selectedSprite, draft) } : undefined
-          }
-          selectedSpriteIndex={selectedSpriteIndex}
-          selectedSpriteTag={selectedSpriteTag}
-          spriteDeletePending={spriteDeleteMutation.isPending}
-          spriteGalleryItems={spriteGalleryItems}
-          spriteScalePending={spriteScaleMutation.isPending}
-          spriteUploadPending={spriteUploadMutation.isPending}
-          voiceDeletePending={voiceDeleteMutation.isPending}
-          voiceUploadPending={voiceUploadMutation.isPending}
         />
+
+        {draft.avatar_type === "static" && (
+          <CharacterSpritesSection
+            autoLabelAvailable={visionAvailable}
+            autoLabelDisabled={!isSavedCharacter || !draft.sprites.length || !spriteTags.some((tag) => !tag.trim())}
+            autoLabelPending={autoLabelMutation.isPending}
+            draft={draft}
+            emotionTagsPending={emotionTagsMutation.isPending}
+            id="character-sprites"
+            onClearSprites={requestClearSprites}
+            onAutoLabel={() => {
+              setAutoLabelTask(null);
+              setAutoLabelDialogOpen(true);
+              autoLabelMutation.mutate();
+            }}
+            onOpenBulkTags={openBulkSpriteTagsDialog}
+            onPendingSpritePathsChange={setPendingSpritePaths}
+            onPendingVoicePathChange={updatePendingVoicePath}
+            onSaveScale={saveSpriteScaleValue}
+            onSaveTags={saveSpriteTags}
+            onScaleChange={update}
+            onScaleWheel={handleSpriteScaleWheel}
+            onSelectSprite={setSelectedSpriteIndex}
+            onSpriteDelete={requestSelectedSpriteDelete}
+            onSpriteTagChange={(value) => updateSpriteTag(selectedSpriteIndex, value)}
+            onSpriteUpload={uploadSprites}
+            onSpriteVoiceDelete={requestSelectedSpriteVoiceDelete}
+            onSpriteVoiceTextBlur={saveSelectedSpriteVoiceText}
+            onSpriteVoiceTextChange={(value) => updateSprite(selectedSpriteIndex, { voice_text: value })}
+            onSpriteVoiceUpload={uploadSelectedSpriteVoice}
+            onSpriteVoiceTypeChange={handleSpriteVoiceTypeChange}
+            pendingSpritePaths={pendingSpritePaths}
+            pendingVoicePath={pendingVoicePaths[selectedSpriteIndex] ?? ""}
+            selectedSprite={
+              selectedSprite ? { ...selectedSprite, voice_type: spriteVoiceType(selectedSprite, draft) } : undefined
+            }
+            selectedSpriteIndex={selectedSpriteIndex}
+            selectedSpriteTag={selectedSpriteTag}
+            spriteDeletePending={spriteDeleteMutation.isPending}
+            spriteGalleryItems={spriteGalleryItems}
+            spriteScalePending={spriteScaleMutation.isPending}
+            spriteUploadPending={spriteUploadMutation.isPending}
+            voiceDeletePending={voiceDeleteMutation.isPending}
+            voiceUploadPending={voiceUploadMutation.isPending}
+          />
+        )}
 
         <CharacterMemorySection
           addPending={memoryController.addPending}

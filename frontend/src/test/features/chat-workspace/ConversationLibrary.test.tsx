@@ -4,6 +4,9 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ConversationLibrary } from "../../../features/chat-workspace/ConversationLibrary";
 import { I18nProvider } from "../../../shared/i18n";
+import { ToastProvider } from "../../../shared/ui";
+import { setMobileAccessPreference } from "../../../features/mobile-access/useMobileAccessPreference";
+import { PlatformRequestError } from "../../../shared/platform/errors";
 
 const mocks = vi.hoisted(() => ({
   list: vi.fn(),
@@ -13,6 +16,10 @@ const mocks = vi.hoisted(() => ({
   status: vi.fn(),
   show: vi.fn(),
   remove: vi.fn(),
+  snapshot: vi.fn(),
+  rendererSnapshot: vi.fn(),
+  current: vi.fn(),
+  close: vi.fn(),
 }));
 vi.mock("../../../entities/chat/repository", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../entities/chat/repository")>()),
@@ -24,6 +31,10 @@ vi.mock("../../../entities/chat/repository", async (importOriginal) => ({
   deleteConversation: mocks.remove,
   launchChat: mocks.launch,
   getChatRuntimeStatus: mocks.status,
+  getChatSnapshot: mocks.rendererSnapshot,
+  getChatObserverSnapshot: mocks.snapshot,
+  getCurrentConversation: mocks.current,
+  closeChat: mocks.close,
 }));
 vi.mock("../../../entities/character/repository", () => ({
   charactersQueryKey: ["characters"],
@@ -61,6 +72,17 @@ const entry = {
   storyPath: "",
 };
 
+const mobileAccess = {
+  enabled: true,
+  host: "192.168.1.20",
+  httpPort: 8789,
+  websocketPort: 8790,
+  qrCodeDataUrl: "data:image/png;base64,dGVzdA==",
+  url: "http://192.168.1.20:8789/",
+  websocketUrl: "ws://192.168.1.20:8790/ws",
+};
+const runningSnapshot = { sessionId: "runtime-one", runtimeMode: "react", chatProcessRunning: true, mobileAccess };
+
 function page() {
   const onEdit = vi.fn();
   const onCreate = vi.fn();
@@ -69,7 +91,9 @@ function page() {
     <QueryClientProvider client={client}>
       <I18nProvider language="en">
         <MemoryRouter>
-          <ConversationLibrary onEdit={onEdit} onCreate={onCreate} />
+          <ToastProvider>
+            <ConversationLibrary onEdit={onEdit} onCreate={onCreate} />
+          </ToastProvider>
         </MemoryRouter>
       </I18nProvider>
     </QueryClientProvider>,
@@ -80,6 +104,7 @@ function page() {
 describe("conversation library", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     mocks.list.mockResolvedValue([entry]);
     mocks.status.mockResolvedValue({ state: "idle" });
     mocks.prepare.mockResolvedValue({
@@ -90,6 +115,9 @@ describe("conversation library", () => {
     });
     mocks.launch.mockResolvedValue({ sessionId: "runtime-one" });
     mocks.remove.mockResolvedValue(undefined);
+    mocks.snapshot.mockResolvedValue(runningSnapshot);
+    mocks.current.mockResolvedValue(entry);
+    mocks.close.mockResolvedValue({ ...runningSnapshot, chatProcessRunning: false, mobileAccess: undefined });
   });
   it("offers settings and deletion for legacy normal and story chats", async () => {
     mocks.list.mockResolvedValue([
@@ -160,6 +188,69 @@ describe("conversation library", () => {
       expect.anything(),
     );
   });
+  it("places the mobile switch immediately before New chat in the management toolbar", async () => {
+    page();
+    await screen.findByText("Good night");
+    const toggle = screen.getByRole("checkbox", { name: "Connect phone" });
+    const toolbar = toggle.closest(".conversation-library__toolbar") as HTMLElement;
+    const create = within(toolbar).getByRole("button", { name: "New chat" });
+    expect(toggle).not.toBeChecked();
+    expect(toggle.compareDocumentPosition(create) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(toggle).toHaveAccessibleDescription(/Applies when creating or resuming the next chat/);
+    expect(mocks.launch).not.toHaveBeenCalled();
+  });
+  it("keeps the mobile option available when there are no chats yet", async () => {
+    mocks.list.mockResolvedValue([]);
+    page();
+    await screen.findByText(/No chats yet/);
+    const toggle = screen.getByRole("checkbox", { name: "Connect phone" });
+    fireEvent.click(toggle);
+    expect(toggle).toBeChecked();
+    expect(screen.getByRole("button", { name: "New chat" })).toBeEnabled();
+    expect(mocks.launch).not.toHaveBeenCalled();
+  });
+  it.each([false, true])(
+    "uses the toolbar preference %s rather than an old chat's saved mobile flag",
+    async (enabled) => {
+      setMobileAccessPreference(enabled);
+      mocks.prepare.mockResolvedValueOnce({ historyPath: "/saved/one", enableMobileAccess: !enabled });
+      page();
+      fireEvent.click(await screen.findByRole("button", { name: "Continue chat" }));
+      await waitFor(() =>
+        expect(mocks.launch).toHaveBeenCalledWith(
+          expect.objectContaining({ enableMobileAccess: enabled, historyPath: "/saved/one" }),
+          expect.anything(),
+        ),
+      );
+    },
+  );
+  it("shows the existing QR dialog when continuing a chat with mobile access", async () => {
+    mocks.launch.mockResolvedValueOnce({
+      mobileAccess: {
+        enabled: true,
+        host: "192.168.1.20",
+        httpPort: 8789,
+        websocketPort: 8790,
+        qrCodeDataUrl: "data:image/png;base64,dGVzdA==",
+        url: "http://192.168.1.20:8789/",
+        websocketUrl: "ws://192.168.1.20:8790/ws",
+      },
+    });
+    page();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Connect phone" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Continue chat" }));
+    const dialog = await screen.findByRole("dialog", { name: "Mobile access is ready" });
+    expect(within(dialog).getByRole("img", { name: "QR code for mobile chat access" })).toBeVisible();
+    expect(mocks.show).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Open local chat" }));
+    await waitFor(() =>
+      expect(mocks.show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          snapshot: { runtimeMode: "react", wsUrl: "ws://192.168.1.20:8790/ws" },
+        }),
+      ),
+    );
+  });
   it("does not silently launch an older record with unrelated settings", async () => {
     mocks.list.mockResolvedValue([{ ...entry, hasSettings: false }]);
     const { onEdit } = page();
@@ -201,9 +292,152 @@ describe("conversation library", () => {
   it("keeps an active runtime from being confused with the selected record", async () => {
     mocks.status.mockResolvedValue({ state: "running" });
     page();
-    fireEvent.click(await screen.findByRole("button", { name: "Continue chat" }));
-    expect(await screen.findByRole("alert")).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "Currently chatting: Evening" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Continue chat" })).toBeDisabled();
     expect(mocks.prepare).not.toHaveBeenCalled();
+  });
+  it("keeps the active controls after closing the launch QR and can show it again", async () => {
+    mocks.launch.mockImplementationOnce(async () => {
+      mocks.status.mockResolvedValue({ state: "running" });
+      return runningSnapshot;
+    });
+    page();
+    fireEvent.click(await screen.findByRole("button", { name: "Continue chat" }));
+    const qr = await screen.findByRole("dialog", { name: "Mobile access is ready" });
+    fireEvent.click(within(qr).getByRole("button", { name: "Close" }));
+    expect(await screen.findByRole("heading", { name: "Currently chatting: Evening" })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Show QR code" }));
+    const reopened = await screen.findByRole("dialog", { name: "Mobile access is ready" });
+    expect(within(reopened).getByRole("img")).toHaveAttribute("src", mobileAccess.qrCodeDataUrl);
+    fireEvent.click(within(reopened).getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open chat" }));
+    await waitFor(() =>
+      expect(mocks.show).toHaveBeenCalledWith(expect.objectContaining({ snapshot: runningSnapshot })),
+    );
+    expect(mocks.launch).toHaveBeenCalledTimes(1);
+    expect(mocks.close).not.toHaveBeenCalled();
+  });
+  it("allows cancelling an end without interrupting the phone", async () => {
+    mocks.status.mockResolvedValue({ state: "running" });
+    page();
+    await screen.findByRole("heading", { name: "Currently chatting: Evening" });
+    fireEvent.click(screen.getByRole("button", { name: "End chat" }));
+    const confirmation = screen.getByRole("dialog", { name: "End chat" });
+    expect(within(confirmation).getByText(/disconnects your phone.*history is kept/)).toBeVisible();
+    fireEvent.click(within(confirmation).getByRole("button", { name: "Cancel" }));
+    expect(mocks.close).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Show QR code" })).toBeEnabled();
+  });
+  it("waits for ending, prevents duplicate stops, preserves history and permits the next mobile launch", async () => {
+    mocks.status.mockResolvedValue({ state: "running" });
+    let finish!: (value: unknown) => void;
+    mocks.close.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const { onCreate } = page();
+    await screen.findByRole("heading", { name: "Currently chatting: Evening" });
+    fireEvent.click(screen.getByRole("button", { name: "End chat" }));
+    const confirmation = screen.getByRole("dialog", { name: "End chat" });
+    const confirm = within(confirmation).getByRole("button", { name: "End chat" });
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+    await waitFor(() => expect(mocks.close).toHaveBeenCalledTimes(1));
+    expect(mocks.close).toHaveBeenCalledWith({ expectedSessionId: "runtime-one" });
+    expect(within(confirmation).getByRole("button", { name: "Ending…" })).toBeDisabled();
+    expect(within(confirmation).getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "New chat" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Continue chat" })).toBeDisabled();
+    mocks.status.mockResolvedValue({ state: "idle" });
+    await act(async () => finish({ chatProcessRunning: false, chatRuntimeClosing: false }));
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Current chat" })).not.toBeInTheDocument());
+    expect(screen.getByText("Good night")).toBeVisible();
+    expect(mocks.remove).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+    expect(onCreate).toHaveBeenCalledOnce();
+    mocks.launch.mockImplementationOnce(async () => {
+      mocks.status.mockResolvedValue({ state: "running" });
+      mocks.current.mockResolvedValue({ ...entry, title: "Morning" });
+      mocks.snapshot.mockResolvedValue({ ...runningSnapshot, sessionId: "runtime-two" });
+      return { ...runningSnapshot, sessionId: "runtime-two" };
+    });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Connect phone" }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue chat" }));
+    expect(await screen.findByRole("dialog", { name: "Mobile access is ready" })).toBeVisible();
+    expect(await screen.findByRole("heading", { name: "Currently chatting: Morning" })).toBeVisible();
+  });
+  it("keeps the confirmation and offers retry after a failed stop", async () => {
+    mocks.status.mockResolvedValue({ state: "running" });
+    mocks.close.mockRejectedValueOnce(new Error("Could not stop chat"));
+    page();
+    await screen.findByRole("heading", { name: "Currently chatting: Evening" });
+    fireEvent.click(screen.getByRole("button", { name: "End chat" }));
+    const confirmation = screen.getByRole("dialog", { name: "End chat" });
+    fireEvent.click(within(confirmation).getByRole("button", { name: "End chat" }));
+    expect(await within(confirmation).findByRole("alert")).toHaveTextContent("Could not stop chat");
+    expect(screen.getByRole("button", { name: "Continue chat" })).toBeDisabled();
+    mocks.close.mockImplementationOnce(async () => {
+      mocks.status.mockResolvedValue({ state: "idle" });
+      return { chatProcessRunning: false };
+    });
+    fireEvent.click(within(confirmation).getByRole("button", { name: "Retry ending chat" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Continue chat" })).toBeEnabled());
+    expect(mocks.close).toHaveBeenCalledTimes(2);
+  });
+  it("does not end a different session that appeared during confirmation", async () => {
+    mocks.status.mockResolvedValue({ state: "running" });
+    page();
+    await screen.findByRole("heading", { name: "Currently chatting: Evening" });
+    fireEvent.click(screen.getByRole("button", { name: "End chat" }));
+    mocks.snapshot.mockResolvedValue({ ...runningSnapshot, sessionId: "different" });
+    const confirmation = screen.getByRole("dialog", { name: "End chat" });
+    fireEvent.click(within(confirmation).getByRole("button", { name: "End chat" }));
+    expect(await within(confirmation).findByRole("alert")).toHaveTextContent("The current chat has changed");
+    expect(mocks.close).not.toHaveBeenCalled();
+  });
+  it("uses observer snapshots for polling and opening the active chat", async () => {
+    mocks.status.mockResolvedValue({ state: "running" });
+    const { client } = page();
+    await screen.findByRole("heading", { name: "Currently chatting: Evening" });
+    const initialReads = mocks.snapshot.mock.calls.length;
+    await act(async () => {
+      await client.refetchQueries({ queryKey: ["chat", "observer-snapshot"], exact: true });
+    });
+    expect(mocks.snapshot.mock.calls.length).toBeGreaterThan(initialReads);
+    fireEvent.click(screen.getByRole("button", { name: "Open chat" }));
+    await waitFor(() => expect(mocks.show).toHaveBeenCalled());
+    expect(mocks.rendererSnapshot).not.toHaveBeenCalled();
+  });
+  it("reports a server session conflict after the fresh snapshot without updating runtime state", async () => {
+    mocks.status.mockResolvedValue({ state: "running" });
+    mocks.close.mockRejectedValueOnce(new PlatformRequestError("session changed", 409, "chat_session_changed"));
+    page();
+    await screen.findByRole("heading", { name: "Currently chatting: Evening" });
+    fireEvent.click(screen.getByRole("button", { name: "End chat" }));
+    const confirmation = screen.getByRole("dialog", { name: "End chat" });
+    fireEvent.click(within(confirmation).getByRole("button", { name: "End chat" }));
+    expect(await within(confirmation).findByRole("alert")).toHaveTextContent("The current chat has changed");
+    expect(mocks.close).toHaveBeenCalledWith({ expectedSessionId: "runtime-one" });
+    expect(screen.getByRole("button", { name: "Continue chat" })).toBeDisabled();
+    expect(mocks.rendererSnapshot).not.toHaveBeenCalled();
+  });
+  it("hides phone controls for a local chat and removes the banner when ended elsewhere", async () => {
+    mocks.status.mockResolvedValue({ state: "running" });
+    mocks.snapshot.mockResolvedValue({ ...runningSnapshot, mobileAccess: undefined });
+    const { client } = page();
+    await screen.findByRole("heading", { name: "Currently chatting: Evening" });
+    expect(screen.queryByRole("button", { name: "Show QR code" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "End chat" }));
+    expect(screen.getByText("Chat history is kept so you can continue later.")).toBeVisible();
+    mocks.status.mockResolvedValue({ state: "idle" });
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: ["chat", "runtime-status"] });
+    });
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Current chat" })).not.toBeInTheDocument());
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "New chat" })).toBeEnabled();
   });
   it("provides a creation action when history is empty", async () => {
     mocks.list.mockResolvedValue([]);

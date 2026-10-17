@@ -21,13 +21,48 @@ from frontend_bridge_core.routes.router import (
 
 
 def _list_characters(request: ApiRequest) -> JsonResponse:
-    return JsonResponse(request.state.config_manager.config.characters)
+    characters = request.state.config_manager.config.characters
+
+    def name(character):
+        return character.get("name", "") if isinstance(character, dict) else character.name
+
+    if "name" in request.query:
+        selected = (request.query.get("name") or [""])[0]
+        if not selected.strip():
+            raise ValueError("character name is required")
+        for character in characters:
+            if name(character) == selected:
+                return JsonResponse(character)
+        raise KeyError(f"character not found: {selected}")
+    if (request.query.get("view") or [""])[0] == "names":
+        return JsonResponse([name(character) for character in characters])
+    return JsonResponse(characters)
 
 
 def _save_character_route(request: ApiRequest) -> JsonResponse:
     return JsonResponse(
         _execute_character_request(request.state, CharacterOperation.SAVE, request.body)
     )
+
+
+def _import_character_model(request: ApiRequest) -> TaskResponse:
+    body = dict(request.body)
+    return TaskResponse(kind="character-model-import", title="Import character model",
+                        message="Model import queued",
+                        worker=lambda task_id: _execute_character_request(
+                            request.state, CharacterOperation.IMPORT_MODEL, body))
+
+
+def _save_model_state(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(_execute_character_request(request.state, CharacterOperation.SAVE_MODEL_STATE, request.body))
+
+
+def _import_model_states(request: ApiRequest) -> TaskResponse:
+    body = dict(request.body)
+    return TaskResponse(kind="character-preset-import", title="Import character presets",
+                        message="Preset import queued",
+                        worker=lambda task_id: _execute_character_request(
+                            request.state, CharacterOperation.IMPORT_MODEL_STATES, body))
 
 
 def _generate_character_setting_route(request: ApiRequest) -> JsonResponse:
@@ -139,9 +174,9 @@ def _auto_label_character_sprites(request: ApiRequest) -> TaskResponse:
     if not name:
         raise ValueError("角色名称不能为空")
     return TaskResponse(
-        kind="moondream-character-auto-label",
-        title=f"标注 {name} 的角色立绘",
-        message="Moondream 图片标注任务已排队。",
+        kind="vision-character-smart-label",
+        title=f"智能标注 {name} 的角色立绘",
+        message="图片智能标注任务已排队。",
         worker=lambda task_id: run_character_sprite_auto_label(
             request.state,
             task_id,
@@ -151,6 +186,12 @@ def _auto_label_character_sprites(request: ApiRequest) -> TaskResponse:
 
 
 CHARACTER_ROUTES = (
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/model/import",
+          handler=_import_character_model, name="characters.model.import"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/model/state",
+          handler=_save_model_state, name="characters.model.state"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/model/states/import",
+          handler=_import_model_states, name="characters.model.states.import"),
     Route(
         methods=frozenset({"GET"}),
         pattern="/api/characters",

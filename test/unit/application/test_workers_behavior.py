@@ -488,6 +488,121 @@ def test_dialog_media_worker_drops_dispatch_output_after_runtime_cancel() -> Non
     assert get_app_runtime().presentation_queue is presentation_queue
 
 
+@pytest.mark.parametrize("old_finishes_first", [True, False])
+def test_dialog_media_worker_interrupted_dispatch_does_not_swallow_next_reply(
+    old_finishes_first,
+) -> None:
+    presentation_queue = CountingQueue()
+    runtime = _make_app_runtime(presentation_queue=presentation_queue)
+    worker = DialogMediaWorker(CountingQueue(), presentation_queue)
+    started = {text: threading.Event() for text in ("old", "new")}
+    release = {text: threading.Event() for text in ("old", "new")}
+    dispatch_threads = {}
+
+    def dispatch(item):
+        dispatch_threads[item.text] = threading.current_thread()
+        started[item.text].set()
+        assert release[item.text].wait(timeout=5)
+        get_app_runtime().presentation_queue.put(
+            PresentationMessage(name="Alice", text=item.text, audio_path="")
+        )
+
+    worker.dialog_media_dispatcher = SimpleNamespace(dispatch=dispatch)
+    old_turn = runtime.chat_turn_service.begin_turn()
+    old_runner = threading.Thread(
+        target=worker._dispatch_with_cancel,
+        args=(LLMDialogMessage(name="Alice", text="old"), old_turn),
+    )
+    new_runner = None
+    try:
+        old_runner.start()
+        assert started["old"].wait(timeout=2)
+        old_turn.cancelled.set()
+        old_runner.join(timeout=2)
+        assert not old_runner.is_alive()
+
+        new_turn = runtime.chat_turn_service.begin_turn()
+        new_runner = threading.Thread(
+            target=worker._dispatch_with_cancel,
+            args=(LLMDialogMessage(name="Alice", text="new"), new_turn),
+        )
+        new_runner.start()
+        assert started["new"].wait(timeout=2)
+
+        for text in (("old", "new") if old_finishes_first else ("new", "old")):
+            release[text].set()
+            dispatch_threads[text].join(timeout=2)
+            assert not dispatch_threads[text].is_alive()
+        new_runner.join(timeout=2)
+        assert not new_runner.is_alive()
+
+        assert not presentation_queue.empty(), "the current reply was swallowed"
+        assert presentation_queue.get_nowait().text == "new"
+        assert presentation_queue.empty(), "the cancelled reply leaked"
+        assert runtime.presentation_queue is presentation_queue
+    finally:
+        for event in release.values():
+            event.set()
+        old_runner.join(timeout=2)
+        if new_runner is not None:
+            new_runner.join(timeout=2)
+        for thread in dispatch_threads.values():
+            thread.join(timeout=2)
+
+
+@pytest.mark.parametrize("replace_session", [False, True])
+def test_dialog_media_worker_cancel_guard_does_not_drop_other_worker_output(
+    replace_session,
+) -> None:
+    presentation_queue = CountingQueue()
+    runtime = _make_app_runtime(presentation_queue=presentation_queue)
+    worker = DialogMediaWorker(CountingQueue(), presentation_queue)
+    turn = runtime.chat_turn_service.begin_turn()
+    started = threading.Event()
+    release = threading.Event()
+    dispatch_threads = []
+
+    def dispatch(_item):
+        dispatch_threads.append(threading.current_thread())
+        started.set()
+        assert release.wait(timeout=5)
+        get_app_runtime().presentation_queue.put(
+            PresentationMessage(name="Alice", text="cancelled", audio_path="")
+        )
+
+    worker.dialog_media_dispatcher = SimpleNamespace(dispatch=dispatch)
+    runner = threading.Thread(
+        target=worker._dispatch_with_cancel,
+        args=(LLMDialogMessage(name="Alice", text="old"), turn),
+    )
+    try:
+        runner.start()
+        assert started.wait(timeout=2)
+        turn.cancelled.set()
+        runner.join(timeout=2)
+        assert not runner.is_alive()
+
+        if replace_session:
+            # Closing/reopening chat replaces the process-wide runtime while
+            # cancelled media may still be finishing in its daemon thread.
+            presentation_queue = CountingQueue()
+            runtime = _make_app_runtime(presentation_queue=presentation_queue)
+
+        # LLM errors and history replay use the shared runtime directly.
+        get_app_runtime().presentation_queue.put(
+            PresentationMessage(name="system", text="error", audio_path="")
+        )
+        assert not presentation_queue.empty(), "another worker's output was swallowed"
+        assert presentation_queue.get_nowait().text == "error"
+        assert runtime.presentation_queue is presentation_queue
+    finally:
+        release.set()
+        runner.join(timeout=2)
+        for thread in dispatch_threads:
+            thread.join(timeout=2)
+    assert presentation_queue.empty()
+
+
 def test_ui_worker_skip_speech_is_noop_when_no_dialog_or_audio_is_active() -> None:
     presentation_queue = Queue()
     runtime = _make_app_runtime(presentation_queue=presentation_queue)

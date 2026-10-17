@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
+from application.media.resource_urls import ResourceUrls
 
 from frontend_bridge_core.transport.chat_commands import (
     parse_chat_command,
@@ -18,6 +19,14 @@ class ChatSessionTransport:
 
     stream_sink: WSClientSink | None = None
     init_sink: WSClientSink | None = None
+    knowledge_search: Callable[..., dict[str, Any]] | None = None
+    knowledge_status: Callable[..., dict[str, Any] | None] | None = None
+
+    @property
+    def resource_urls(self) -> ResourceUrls:
+        if self.stream_sink is None:
+            raise RuntimeError("Chat presentation requires a configured resource URL resolver")
+        return self.stream_sink.resource_urls
 
     @property
     def streaming(self) -> bool:
@@ -76,6 +85,11 @@ def create_transport(
     stream_endpoint = str(getattr(args, "stream_endpoint", "") or "").strip()
     init_endpoint = str(getattr(args, "init_stream_endpoint", "") or "").strip()
     transport = transport or ChatSessionTransport()
+    from frontend_bridge_core.transport.knowledge_http import (
+        request_knowledge_search, request_knowledge_status,
+    )
+    transport.knowledge_search = request_knowledge_search
+    transport.knowledge_status = request_knowledge_status
     bootstrap_sink = transport.init_sink
 
     if stream_endpoint:

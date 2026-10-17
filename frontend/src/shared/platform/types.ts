@@ -1,7 +1,21 @@
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
+import type { AgentPlatform } from "./agentTypes";
 import type { ChatThemeManifest, ChatThemeSummary, SaveChatThemeInput } from "../theme/chatTheme";
 
+export interface PortraitCrop {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
+export interface PlayerPortrait {
+  characterName: string;
+  url: string;
+  crop: PortraitCrop;
+}
+
 export interface Sprite {
+  portrait_crop?: PortraitCrop | null;
   path: string;
   voice_path?: string;
   voice_text?: string;
@@ -10,7 +24,26 @@ export interface Sprite {
 
 export type SpriteVoiceType = "fallback" | "preset" | "reference";
 
+export interface ModelSprites {
+  model_path: string;
+  sprites: Sprite[];
+  emotion_tags: string;
+}
+
+export interface AvatarRuntimeStatus {
+  version: string;
+  installed: boolean;
+  download_url: string;
+  license_urls: string[];
+}
+
+export interface AvatarRuntimeImport {
+  source_path: string;
+  accepted_license: boolean;
+}
+
 export interface Character {
+  portrait_crop?: PortraitCrop;
   name: string;
   color: string;
   sprite_prefix: string;
@@ -19,6 +52,10 @@ export interface Character {
   character_setting: string;
   sprite_scale: number;
   emotion_tags: string;
+  /** 默认 "static"；模型格式为已注册的格式 id。 */
+  avatar_type: string;
+  /** 格式 id → 该格式的模型与资源；static 不在此映射中。 */
+  avatars: Record<string, ModelSprites>;
   gpt_model_path?: string;
   sovits_model_path?: string;
   refer_audio_path?: string;
@@ -64,9 +101,12 @@ export interface ApiConfig {
   t2i_output_node_id: string;
   llm_api_key: Record<string, string>;
   llm_base_url: string;
+  llm_base_urls: Record<string, string>;
   llm_model: Record<string, string>;
   llm_provider: string;
   is_streaming: boolean;
+  vision_provider: string;
+  vision_model: Record<string, string>;
   interrupt_enabled: boolean;
   is_batch_input_enabled: boolean;
   batch_input_timeout: number;
@@ -81,6 +121,8 @@ export interface ApiConfig {
   history_recent_messages: number;
   max_tool_result_chars: number;
   max_active_tool_groups: number;
+  knowledge_enabled: boolean;
+  knowledge_search_limit: number;
   memory_auto_enabled: boolean;
   memory_extract_interval_turns: number;
   memory_search_limit: number;
@@ -90,6 +132,7 @@ export interface ApiConfig {
   tts_extra_configs: Record<string, Record<string, unknown>>;
   asr_extra_configs: Record<string, Record<string, unknown>>;
   t2i_extra_configs: Record<string, Record<string, unknown>>;
+  vision_extra_configs: Record<string, Record<string, unknown>>;
 }
 
 export interface SystemConfig {
@@ -156,6 +199,7 @@ export interface AppConfig {
   effect_list: Effect[];
   system_config: SystemConfig;
   tts_bundle_installed_paths?: Record<string, string>;
+  vision_available?: boolean;
 }
 
 export interface AdapterExtraFieldSchema {
@@ -180,6 +224,7 @@ export interface AdapterCatalog {
   llm: AdapterOption[];
   t2i: AdapterOption[];
   tts: AdapterOption[];
+  vision?: AdapterOption[];
 }
 
 export type PluginSlotId =
@@ -237,6 +282,11 @@ export interface PluginManifest {
   title: string;
   toolsTabs: string[];
   version: string;
+}
+
+export interface PluginLoadStatus {
+  error?: string;
+  status: "error" | "idle" | "loading" | "ready";
 }
 
 export interface PluginInstallMetadata {
@@ -415,6 +465,7 @@ export interface PluginConfigFieldSchema {
   span?: "full";
   step?: number;
   type: PluginConfigFieldType;
+  visibleWhen?: Record<string, unknown>;
 }
 
 export interface PluginConfigGroupSchema {
@@ -492,7 +543,13 @@ export interface PluginConfigActionResult {
   result: Record<string, unknown>;
 }
 
-export interface TemplateSummary {
+export interface PlayerCharacterOptions {
+  playerCharacter?: string;
+  readPlayerSpeech?: boolean;
+  allowPlayerDialogue?: boolean;
+}
+
+export interface TemplateSummary extends PlayerCharacterOptions {
   content: string;
   generationMessage?: string;
   id: string;
@@ -521,7 +578,7 @@ export interface ConversationSummary {
   requiresCharacterSelection?: boolean;
 }
 
-export interface ChatLaunchPayload {
+export interface ChatLaunchPayload extends PlayerCharacterOptions {
   storyPath?: string;
   characterPromptMode?: CharacterPromptMode;
   primaryCharacters?: string[];
@@ -554,7 +611,7 @@ export interface ChatLaunchPayload {
   useCg?: boolean;
 }
 
-export interface TemplateGenerateInput {
+export interface TemplateGenerateInput extends PlayerCharacterOptions {
   backgroundName: string;
   backgroundNames?: string[];
   characterPromptMode?: CharacterPromptMode;
@@ -576,10 +633,13 @@ export interface TemplateGenerateInput {
   voiceLanguage?: string;
 }
 
+/** Explicit device preferences override persisted values when restoring a chat. */
+export type ChatResumeOverrides = Pick<ChatLaunchPayload, "enableMobileAccess">;
+
 export type CharacterPromptMode = "compact" | "full";
 export type MediaSelectionMode = "indexed" | "semantic";
 
-export interface TemplateLaunchSession {
+export interface TemplateLaunchSession extends PlayerCharacterOptions {
   background: string;
   backgroundNames?: string[];
   characterPromptMode?: CharacterPromptMode;
@@ -773,6 +833,62 @@ export interface CharacterMemoryImportResult {
   savedCount: number;
 }
 
+export interface KnowledgeInstanceList {
+  count: number;
+  page: number;
+  pageSize: number;
+  knowledge: Array<{ knowledge_id: string; entryCount: number; characterCount: number }>;
+}
+
+export interface KnowledgeBindingList {
+  characterName: string;
+  count: number;
+  page: number;
+  pageSize: number;
+  bindings: Array<{ knowledge_id: string; createdAt: string }>;
+}
+
+export interface KnowledgeBindingResult {
+  ok: true;
+  characterName: string;
+  knowledge_id?: string;
+  deleted?: boolean;
+  deletedBindingCount?: number;
+}
+
+export interface KnowledgeBindingNames {
+  knowledge_id: string;
+  characterNames: string[];
+}
+
+export interface KnowledgeDeleteResult {
+  ok: boolean;
+  knowledge_id: string;
+  deletedEntryCount: number;
+  deletedBindingCount: number;
+  error?: string;
+  failedStage?: "validate" | "initialize" | "collect" | "entries" | "bindings";
+}
+
+export interface KnowledgeEntryPage {
+  knowledge_id: string;
+  memories: CharacterMemory[];
+  count: number;
+}
+
+export interface KnowledgeEntrySearch {
+  knowledge_id: string;
+  query: string;
+  count: number;
+  memories: CharacterMemory[];
+}
+
+export type KnowledgeImportPreview = CharacterMemoryImportPreview;
+
+export interface KnowledgeImportResult extends CharacterMemoryImportResult {
+  knowledge_id: string;
+}
+
 export interface CharacterMemorySearchInput {
   limit?: number;
   name: string;
@@ -866,6 +982,8 @@ export interface RuntimeDependencyInstallResult {
 }
 
 export interface ChatSprite {
+  /** Producer-owned identity, independent of display labels, expression URLs and snapshot IDs. */
+  identityKey?: string;
   id: string;
   label: string;
   path: string;
@@ -873,6 +991,8 @@ export interface ChatSprite {
   slot?: number;
   x?: number;
   y?: number;
+  avatarType: string;
+  modelUrl: string;
 }
 
 export type ChatHistoryRole = "assistant" | "options" | "system" | "user";
@@ -982,7 +1102,18 @@ export interface ChatStoryState {
   }>;
 }
 
+export interface ChatSnapshotOptions {
+  /** Only pages with an audio player should claim a polling renderer. Defaults to true. */
+  claimRenderer?: boolean;
+}
+
+export interface ChatCloseOptions {
+  /** Reject the close if the active session has changed. */
+  expectedSessionId?: string;
+}
+
 export interface ChatSnapshot {
+  playerPortrait?: PlayerPortrait | null;
   activePlayback?: {
     characterName: string;
     playbackId: string;
@@ -1133,6 +1264,7 @@ interface ChatEventBase {
 }
 
 export type ChatStageEvent =
+  | (ChatEventBase & PlayerPortrait & { type: "player.portrait.show" })
   | (ChatEventBase & { type: "snapshot"; snapshot: ChatSnapshot })
   | (ChatEventBase & {
       type: "chat.init.progress" | "chat.init.completed" | "chat.init.failed" | "chat.init.cancelled";
@@ -1155,12 +1287,15 @@ export type ChatStageEvent =
   | (ChatEventBase & { type: "plugin.page.dismiss"; pluginId: string; presentationId: string })
   | (ChatEventBase & {
       type: "sprite.show";
+      identityKey?: string;
       characterName: string;
       url: string;
       scale: number;
       slot?: number;
       x?: number;
       y?: number;
+      avatarType: string;
+      modelUrl: string;
     })
   | (ChatEventBase & { type: "sprite.remove"; characterName: string })
   | (ChatEventBase & { type: "background.change"; url: string })
@@ -1380,6 +1515,7 @@ export interface ModelAssetDownloadResult extends ModelAssetStatus {
 }
 
 export interface ShinsekaiPlatform {
+  agent: AgentPlatform;
   backgrounds: {
     autoLabelImages: (
       name: string,
@@ -1426,14 +1562,14 @@ export interface ShinsekaiPlatform {
     prepareConversation: (id: string) => Promise<ChatLaunchPayload>;
     renameConversation: (id: string, title: string) => Promise<ConversationSummary>;
     deleteConversation: (id: string) => Promise<void>;
-    close: () => Promise<ChatSnapshot>;
+    close: (options?: ChatCloseOptions) => Promise<ChatSnapshot>;
     command: (command: ChatCommand) => Promise<ChatCommandResult>;
     getHistory: () => Promise<ChatHistoryEntry[]>;
     getRuntimeStatus: () => Promise<ChatRuntimeProcessState>;
-    getSnapshot: () => Promise<ChatSnapshot>;
+    getSnapshot: (options?: ChatSnapshotOptions) => Promise<ChatSnapshot>;
     getTheme: () => Promise<ChatThemePayload>;
     launch: (payload: ChatLaunchPayload, options?: TaskProgressOptions<ChatSnapshot>) => Promise<ChatSnapshot>;
-    resumeLast: (options?: TaskProgressOptions<ChatSnapshot>) => Promise<ChatSnapshot>;
+    resumeLast: (options?: TaskProgressOptions<ChatSnapshot>, overrides?: ChatResumeOverrides) => Promise<ChatSnapshot>;
     subscribe: (listener: (snapshot: ChatSnapshot) => void) => () => void;
     // --- 主题 mod 系统 ---
     listThemes: () => Promise<ChatThemeSummary[]>;
@@ -1476,7 +1612,52 @@ export interface ShinsekaiPlatform {
       options?: TaskProgressOptions<StoryGenerationTask>,
     ) => Promise<StoryGenerationTask>;
   };
+  knowledge: {
+    getKnowledgeStatus: (options?: { startLoading?: boolean; retry?: boolean }) => Promise<Mem0Status>;
+    importKnowledge: (
+      knowledgeId: string,
+      items: File[],
+      options?: TaskProgressOptions<KnowledgeImportResult>,
+    ) => Promise<KnowledgeImportResult>;
+    listKnowledgeInstances: (input: {
+      query: string;
+      page: number;
+      refresh?: boolean;
+    }) => Promise<KnowledgeInstanceList | Mem0Status>;
+    listKnowledgeBindings: (characterName: string, page?: number) => Promise<KnowledgeBindingList>;
+    listKnowledgeBindingNames: (knowledgeId: string) => Promise<KnowledgeBindingNames>;
+    batchKnowledgeBindings: (
+      knowledgeId: string,
+      add: string[],
+      remove: string[],
+    ) => Promise<KnowledgeBindingNames & { ok: true }>;
+    addKnowledgeBinding: (characterName: string, knowledgeId: string) => Promise<KnowledgeBindingResult>;
+    removeKnowledgeBinding: (characterName: string, knowledgeId: string) => Promise<KnowledgeBindingResult>;
+    addKnowledgeEntry: (knowledgeId: string, content: string) => Promise<KnowledgeEntryPage | Mem0Status>;
+    deleteKnowledgeEntry: (knowledgeId: string, memoryId: string) => Promise<KnowledgeEntryPage | Mem0Status>;
+    deleteKnowledge: (knowledgeId: string) => Promise<KnowledgeDeleteResult | Mem0Status>;
+    listKnowledgeEntries: (knowledgeId: string) => Promise<KnowledgeEntryPage | Mem0Status>;
+    searchKnowledgeEntries: (knowledgeId: string, query: string) => Promise<KnowledgeEntrySearch | Mem0Status>;
+    previewKnowledgeImport: (knowledgeId: string, items: File[]) => Promise<KnowledgeImportPreview>;
+  };
   characters: {
+    importModel: (input: { name: string; avatar_type: string; source_path: string }) => Promise<Character>;
+    importModelStates: (input: {
+      name: string;
+      avatar_type: string;
+      model_path: string;
+      source_paths: string[];
+      state: unknown;
+    }) => Promise<Character>;
+    saveModelState: (input: {
+      name: string;
+      avatar_type: string;
+      model_path: string;
+      sprite_index: number;
+      path: string;
+      state: unknown;
+      tags: string;
+    }) => Promise<Character>;
     autoLabelSprites: (
       name: string,
       options?: TaskProgressOptions<ImageAutoLabelResult>,
@@ -1541,6 +1722,11 @@ export interface ShinsekaiPlatform {
     saveApi: (config: ApiConfig) => Promise<ApiConfig>;
     saveSystem: (config: SystemConfig) => Promise<SystemConfig>;
   };
+  avatarRuntimes: {
+    status: (format: string) => Promise<AvatarRuntimeStatus>;
+    prepare: (format: string, input: AvatarRuntimeImport) => Promise<unknown>;
+    install: (format: string, input: AvatarRuntimeImport & { compiled: string }) => Promise<AvatarRuntimeStatus>;
+  };
   modelAssets: {
     download: (
       input: ModelAssetRef,
@@ -1549,6 +1735,7 @@ export interface ShinsekaiPlatform {
     status: (input: ModelAssetRef) => Promise<ModelAssetStatus>;
   };
   files: {
+    modelUrl: (modelPath: string, path: string) => string;
     browse: (options?: { path?: string; showHidden?: boolean }) => Promise<FileBrowserSnapshot>;
     fileUrl: (path: string) => string;
     thumbnailBatch?: (
@@ -1593,6 +1780,7 @@ export interface ShinsekaiPlatform {
     getUi: (id: string) => Promise<PluginUIDetail>;
     list: () => Promise<PluginManifest[]>;
     listSlotContributions: () => Promise<PluginSlotContribution[]>;
+    status: () => Promise<PluginLoadStatus>;
     repoTags: (repo: string) => Promise<string[]>;
     scanLocal: (input: { path: string }) => Promise<PluginLocalScanResult>;
     validateSubmission: (input: PluginSubmissionInput) => Promise<PluginSubmissionValidationResult>;
