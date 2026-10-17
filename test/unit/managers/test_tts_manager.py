@@ -132,6 +132,38 @@ class TestTTSAdapterFactoryRegistry:
 
 
 class TestTTSManagerWithMock:
+    def test_cache_wrap_overwrites_disk_audio_with_current_speech(self, tmp_path):
+        class TextAdapter(MockTTSAdapter):
+            def generate_speech(self, text, file_path=None, **kwargs):
+                Path(file_path).write_text(text, encoding="utf-8")
+                return file_path
+
+        manager = TTSManager(audio_cache_dir=tmp_path)
+        manager.set_tts_adapter(TextAdapter())
+        manager.cache_num = 2
+        try:
+            first = manager.generate_tts("First line", ref_audio_path="ref.wav")
+            manager.generate_tts("Second line", ref_audio_path="ref.wav")
+            wrapped = manager.generate_tts("Current line", ref_audio_path="ref.wav")
+            assert wrapped == first
+            assert Path(wrapped).read_text(encoding="utf-8") == "Current line"
+            assert sorted(file.name for file in tmp_path.iterdir()) == ["0.wav", "1.wav"]
+        finally:
+            manager.shutdown()
+
+    def test_failed_generation_after_wrap_does_not_return_previous_audio(self, tmp_path, monkeypatch):
+        manager = TTSManager(audio_cache_dir=tmp_path)
+        manager.set_tts_adapter(MockTTSAdapter())
+        manager.cache_num = 1
+        monkeypatch.setattr("ai.tts.tts_manager.time.sleep", lambda _: None)
+        try:
+            old = manager.generate_tts("Old line", ref_audio_path="ref.wav")
+            manager.set_tts_adapter(InvalidAudioTTSAdapter())
+            assert manager.generate_tts("Current line", ref_audio_path="ref.wav") == ""
+            assert Path(old).read_bytes() == b"fake audio data"
+        finally:
+            manager.shutdown()
+
     def test_set_adapter(self, mock_tts_adapter):
         mgr = TTSManager()
         mgr.set_tts_adapter(mock_tts_adapter)

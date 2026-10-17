@@ -17,6 +17,22 @@ function clampVolume(value: number) {
   return Math.min(1, Math.max(0, Number.isFinite(value) ? value : 1));
 }
 
+function voiceRequestUrl(url: string, playbackId: string) {
+  if (playbackId) {
+    try {
+      const request = new URL(url, window.location.href);
+      if (["http:", "https:"].includes(request.protocol) && request.pathname === "/api/media") {
+        // TTS reuses disk slots; each playback must bypass earlier cached bytes.
+        request.searchParams.set("playbackId", playbackId);
+        return request.toString();
+      }
+    } catch {
+      // Leave invalid URLs to the audio element's normal failure handling.
+    }
+  }
+  return url;
+}
+
 function isAutoplayBlock(error: unknown) {
   return error instanceof DOMException
     ? error.name === "NotAllowedError"
@@ -230,7 +246,7 @@ export class SoundPlayer {
   }
 
   private startVoice(voice: QueuedVoice) {
-    const audio = this.createAudio(voice.url);
+    const audio = this.createAudio(voiceRequestUrl(voice.url, voice.playbackId));
     audio.crossOrigin = "anonymous";
     audio.preload = "auto";
     audio.volume = voice.volume;
