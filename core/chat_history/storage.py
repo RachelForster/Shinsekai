@@ -11,6 +11,9 @@ from typing import Any
 ACTIVE_HISTORY_FILENAME = "active.json"
 BRANCH_TREE_FILENAME = "branches.json"
 STORY_SESSION_FILENAME = "story-v2.json"
+VOICE_ARCHIVE_DIRECTORY = "audio"
+VOICE_INDEX_FILENAME = "index.json"
+VOICE_INDEX_TEMP_PREFIX = ".voice-index-"
 BRANCH_TREE_VERSION = 1
 
 
@@ -63,9 +66,38 @@ def chat_history_storage_files(path: str | Path) -> tuple[Path, ...]:
         ACTIVE_HISTORY_FILENAME,
         STORY_SESSION_FILENAME,
     ))
+    for audio_dir in _voice_storage_directories(directory):
+        files += tuple(
+            file for file in audio_dir.iterdir()
+            if (file.is_file() or file.is_symlink()) and (
+                re.fullmatch(r"[0-9a-f]{32}-\d+(?:\.[a-z0-9]+)?", file.name)
+                or (audio_dir.name == VOICE_ARCHIVE_DIRECTORY and (
+                    file.name == VOICE_INDEX_FILENAME
+                    or (file.name.startswith(VOICE_INDEX_TEMP_PREFIX) and file.suffix == ".tmp")
+                ))
+            )
+        )
     if candidate.suffix.lower() == ".json" and not _is_branch_file(candidate):
         files += (candidate, Path(str(candidate) + ".tmp"))
     return files
+
+
+def _voice_storage_directories(directory: Path) -> tuple[Path, ...]:
+    audio = directory / VOICE_ARCHIVE_DIRECTORY
+    return tuple(
+        folder for folder in (audio / "save", audio)
+        if folder.is_dir() and folder.resolve().is_relative_to(directory.resolve())
+    )
+
+
+def prune_chat_history_storage(path: str | Path) -> None:
+    """Remove empty owned directories, preserving unrelated and external files."""
+    directory = chat_history_session_dir(path)
+    for folder in (*_voice_storage_directories(directory), directory):
+        try:
+            folder.rmdir()
+        except OSError:
+            pass
 
 
 def remove_chat_history_storage(path: str | Path) -> None:
@@ -78,10 +110,7 @@ def remove_chat_history_storage(path: str | Path) -> None:
     # failed instead of leaving a partially-cleared session.
     for target in chat_history_storage_files(path):
         target.unlink(missing_ok=True)
-    try:
-        chat_history_session_dir(path).rmdir()
-    except OSError:
-        pass
+    prune_chat_history_storage(path)
 
 
 def sanitize_branch_id(value: str) -> str:

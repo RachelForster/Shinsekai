@@ -218,6 +218,11 @@ def test_failed_bulk_deletion_restores_every_file_and_keeps_session(story, monke
     second = chat(state, "second", path)
     for saved in (first, second):
         PromptTurnJournal(str(saved)).save({"message": {"content": saved.name}})
+        audio = saved / "audio"
+        (audio / "save").mkdir(parents=True)
+        (audio / "index.json").write_text('{"voices":{}}', encoding="utf-8")
+        (audio / f"{'a' * 32}-0.wav").write_bytes(b"archived voice")
+        (audio / "save" / f"{'a' * 32}-0.wav").write_bytes(b"manually saved voice")
         Path(str(saved) + ".json").write_text("legacy", encoding="utf-8")
         (saved / "active.json.tmp").write_text("pending", encoding="utf-8")
         (saved / f"{STORY_SESSION_FILENAME}.lock").touch()

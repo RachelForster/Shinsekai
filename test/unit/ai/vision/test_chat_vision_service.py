@@ -135,6 +135,14 @@ def test_native_image_blocks_are_encoded_only_at_provider_boundary(tmp_path: Pat
     assert anthropic[1]["source"]["data"] == base64.b64encode(b"image-bytes").decode("ascii")
 
 
+def test_chat_turn_identity_is_history_metadata_only():
+    from core.chat_history.identity import CHAT_TURN_ID
+
+    messages = [{"role": "user", "content": "hello", CHAT_TURN_ID: "a" * 32}]
+    assert normalize_openai_messages(messages) == [{"role": "user", "content": "hello"}]
+    assert messages[0][CHAT_TURN_ID] == "a" * 32
+
+
 def test_persisted_image_data_survives_deleted_source_file(tmp_path: Path):
     image = _image_attachment(tmp_path)
     prepared = ChatVisionService().prepare("Inspect", [image], adapter=_NativeAdapter())

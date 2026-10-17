@@ -300,6 +300,7 @@ class CharacterMediaHandler(MessageHandler):
             yield PresentationMessage(
                 audio_path=audio_path or "",
                 voice_id=voice_id,
+                dialog_id=message.dialog_id,
                 name=character_name,
                 text=speech if first else "",
                 asset_id=sprite.asset_id,
@@ -389,13 +390,26 @@ class CharacterMediaHandler(MessageHandler):
             voice_id = uuid.uuid4().hex if archive is not None else ""
 
             def track_audio() -> Iterator[str]:
+                all_recorded = True
                 for path in audio_paths:
                     if archive is not None and path:
                         try:
-                            archive.record(voice_id, path)
+                            all_recorded = archive.record(
+                                voice_id, path, dialog_id=msg.dialog_id,
+                            ) and all_recorded
                         except OSError:
+                            all_recorded = False
                             traceback.print_exc()
+                    elif archive is not None:
+                        all_recorded = False
                     yield path
+                if archive is not None and all_recorded:
+                    try:
+                        archive.complete(voice_id)
+                    except OSError:
+                        traceback.print_exc()
+                    else:
+                        rt.ui_update_manager.sync_history_entries()
 
             for output in self._presentation_messages(
                 character_name=name_s,

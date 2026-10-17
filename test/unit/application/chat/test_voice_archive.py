@@ -17,6 +17,7 @@ def test_cache_voice_expires_after_slot_is_reused(tmp_path, monkeypatch):
     archive = VoiceArchive(tmp_path / "data" / "chat_history" / "session")
 
     archive.record(VOICE_ID, str(clip))
+    archive.complete(VOICE_ID)
     assert archive.source(VOICE_ID, 0) == clip
 
     clip.write_bytes(b"new voice in the same slot")
@@ -35,6 +36,7 @@ def test_toggle_archives_available_voices_and_manual_save_uses_save_folder(tmp_p
     session = tmp_path / "data" / "chat_history" / "session"
     archive = VoiceArchive(session)
     archive.record(VOICE_ID, str(clip))
+    archive.complete(VOICE_ID)
 
     archive.set_enabled(True)
     assert (session / "audio" / f"{VOICE_ID}-0.wav").read_bytes() == b"first voice"
@@ -56,6 +58,7 @@ def test_manual_save_while_off_uses_audio_root(tmp_path, monkeypatch):
     session = tmp_path / "data" / "chat_history" / "session"
     archive = VoiceArchive(session)
     archive.record(VOICE_ID, str(clip))
+    archive.complete(VOICE_ID)
 
     archive.save_voice(VOICE_ID)
     assert (session / "audio" / f"{VOICE_ID}-0.wav").read_bytes() == b"voice"

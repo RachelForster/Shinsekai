@@ -6,6 +6,7 @@ import re
 import threading
 
 from core.chat_history.text import _repair_json_string, parse_assistant_dialog_content
+from core.chat_history.identity import CHAT_TURN_ID, DialogIdentities
 
 # 模块级写锁，保证临时文件写入的线程安全
 _tmp_write_lock = threading.Lock()
@@ -125,8 +126,10 @@ class HistoryManager:
         # 3. 重建 UI 聊天历史
         self.chat_history.clear()
         try:
+            identities = DialogIdentities()
             for message in messages:
                 if message["role"] == 'user':
+                    identities = DialogIdentities(message.get(CHAT_TURN_ID, ""))
                     display_content = message.get("display_content") or message.get("content", "")
                     self.chat_history.append(
                         f"<p style='line-height: 135%; letter-spacing: 2px; color:white;'>"
@@ -140,8 +143,10 @@ class HistoryManager:
                     if not dialog:
                         continue
                     for item in dialog:
+                        dialog_id = identities.next(item)
+                        identity = f" data-dialog-id='{dialog_id}'" if dialog_id else ""
                         self.chat_history.append(
-                            f"<p style='line-height: 135%; letter-spacing: 2px; color:white;'>"
+                            f"<p{identity} style='line-height: 135%; letter-spacing: 2px; color:white;'>"
                             f"<b style='color:white;'>{item['character_name']}</b>: "
                             f"{item['speech']}</p>"
                         )

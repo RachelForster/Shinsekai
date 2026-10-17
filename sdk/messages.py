@@ -47,6 +47,7 @@ class LLMDialogMessage(BaseModel):
         "", description="可选的翻译文本，如果存在则用于 TTS"
     )
     effect: Optional[str] = Field("", description="特效名称")
+    dialog_id: str = Field("", exclude=True, repr=False, description="Durable history dialog identity")
     turn_id: Optional[int] = Field(
         None,
         exclude=True,
@@ -62,6 +63,7 @@ class PresentationMessage(BaseModel):
 
     audio_path: str = Field(..., description="生成的语音 / 资源文件的路径")
     voice_id: str = Field("", description="历史语音的稳定标识")
+    dialog_id: str = Field("", exclude=True, repr=False, description="Durable history dialog identity")
     name: str = Field(..., alias="character_name", description="实体名称")
     text: Optional[str] = Field("", alias="speech", description="文本内容")
     asset_id: Optional[Union[str, int]] = Field(

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, MutableSequence
 from typing import Any
 
 from core.chat_history.text import rendered_history_text as history_entry_plain_text
@@ -138,6 +138,20 @@ def serialize_chat_history_entries(history: list[Any]) -> list[dict[str, Any]]:
             user_index += 1
         result.append(item)
     return result
+
+
+def restore_history_voice_ids(
+    history: MutableSequence[Any], voice_for_dialog: Callable[[str], str],
+) -> None:
+    """Restore only voice metadata; the LLM-derived history remains authoritative."""
+    for index, raw in enumerate(history):
+        text = str(raw or "")
+        if re.search(r"\bdata-voice-id=['\"][0-9a-f]{32}['\"]", text):
+            continue
+        identity = re.search(r"\bdata-dialog-id=['\"]([0-9a-f]{64})['\"]", text)
+        voice_id = voice_for_dialog(identity.group(1)) if identity else ""
+        if re.fullmatch(r"[0-9a-f]{32}", voice_id):
+            history[index] = text.replace("<p ", f"<p data-voice-id='{voice_id}' ", 1)
 
 
 def history_entry_stage_payload(history_entry: Any) -> dict[str, Any]:

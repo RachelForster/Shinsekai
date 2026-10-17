@@ -66,13 +66,21 @@ from application.chat.host.commands import (
     BranchCommands,
 )
 from application.chat.voice_archive import VoiceArchive
+from core.chat_history.storage import chat_history_session_dir
 
 
 def _chat_voice_archive(state: BridgeState) -> VoiceArchive:
     history_raw = str(state.chat_session.get("historyPath") or "").strip()
     if not history_raw:
         raise ValueError("当前没有聊天存档")
-    return VoiceArchive(resolve_history_path_for_project(state, history_raw))
+    history = resolve_history_path_for_project(state, history_raw)
+    archive = getattr(state, "chat_voice_archive_reader", None)
+    if not isinstance(archive, VoiceArchive) or archive.audio_dir.parent.resolve() != chat_history_session_dir(history).resolve():
+        archive = VoiceArchive(history)
+        state.chat_voice_archive_reader = archive
+    else:
+        archive.refresh()
+    return archive
 
 
 def _chat_voice_info(state: BridgeState, voice_id: str) -> dict[str, int]:
