@@ -254,7 +254,7 @@ describe("ModelStateEditor shared controls and repositories", () => {
     expect(screen.queryByRole("button", { name: "Import model" })).not.toBeInTheDocument();
     fireEvent.click(select);
     expect(screen.getByRole("option", { name: "future: Unavailable" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("option", { name: "Static sprites" }));
+    fireEvent.click(screen.getByRole("option", { name: "Image / video sprites" }));
     expect(onChange).toHaveBeenCalledWith({ ...draft, avatar_type: "static" });
   });
 

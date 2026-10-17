@@ -326,11 +326,12 @@ def test_model_presentation_uses_its_own_bank_and_preserves_metadata_in_snapshot
     assert sprite["identityKey"] == "character:mio"
 
 
-def test_model_stage_and_static_player_portrait_keep_separate_resource_routes():
+@pytest.mark.parametrize("portrait_path", ["portrait.png", "portrait.gif", "portrait.mp4"])
+def test_model_stage_and_file_player_portrait_keep_separate_resource_routes(portrait_path):
     character = SimpleNamespace(
         avatar_type="l2d", sprite_scale=1.25,
         avatars={"l2d": {"model_path": "mio.model3.json", "sprites": [{"path": "smile.json"}]}},
-        sprites=[{"path": "portrait.png", "portrait_crop": {"x": 0.2, "y": 0.3, "zoom": 2}}],
+        sprites=[{"path": portrait_path, "portrait_crop": {"x": 0.2, "y": 0.3, "zoom": 2}}],
     )
     sink = _Sink()
     presenter = StreamingUIUpdateManager(sink, resource_urls=_Urls())
@@ -340,7 +341,7 @@ def test_model_stage_and_static_player_portrait_keep_separate_resource_routes():
     assert sink.events[0]["url"] == "avatar://mio.model3.json/smile.json"
     assert sink.events[0]["modelUrl"] == "avatar://mio.model3.json/mio.model3.json"
     assert sink.events[1] == {
-        "type": "player.portrait.show", "characterName": "Mio", "url": "media://portrait.png",
+        "type": "player.portrait.show", "characterName": "Mio", "url": f"media://{portrait_path}",
         "crop": {"x": 0.2, "y": 0.3, "zoom": 2},
     }
     assert list(presenter._sprite_lru) == ["Mio"]

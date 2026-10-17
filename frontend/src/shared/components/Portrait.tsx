@@ -1,6 +1,7 @@
 import { useState, type CSSProperties, type PointerEventHandler } from "react";
 import type { PortraitCrop } from "../platform/types";
 import { stageAssetUrl } from "../../features/chat-stage/chatStageUtils";
+import { VisualMedia } from "../ui/VisualMedia";
 
 export const defaultPortraitCrop: PortraitCrop = { x: 0.5, y: 0.2, zoom: 1 };
 
@@ -16,6 +17,7 @@ export function Portrait({
   crop = defaultPortraitCrop,
   name,
   size = "100%",
+  active = true,
   onPointerDown,
   onPointerMove,
   onImageSize,
@@ -24,6 +26,7 @@ export function Portrait({
   crop?: PortraitCrop;
   name: string;
   size?: CSSProperties["width"];
+  active?: boolean;
   onPointerDown?: PointerEventHandler<HTMLDivElement>;
   onPointerMove?: PointerEventHandler<HTMLDivElement>;
   onImageSize?: (width: number, height: number) => void;
@@ -43,12 +46,11 @@ export function Portrait({
         background: "transparent",
       }}
     >
-      <img
+      <VisualMedia
         src={stageAssetUrl(path)}
         alt={name}
-        draggable={false}
-        onLoad={(event) => {
-          const { naturalWidth: width, naturalHeight: height } = event.currentTarget;
+        active={active}
+        onDimensions={(width, height) => {
           setImage({ path, width, height });
           onImageSize?.(width, height);
         }}

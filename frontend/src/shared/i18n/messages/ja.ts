@@ -1,6 +1,7 @@
 import type { MessageKey } from "../messages";
 
 export const jaMessages: Record<MessageKey, string> = {
+  "visualMedia.videoError": "動画を再生できません。ファイルを確認するか、H.264 の MP4 動画を使用してください。",
   "nav.assistant": "アシスタント",
   "agent.subtitle": "根拠と不確かな点を明確にして、一緒に考えます。",
   "agent.newSession": "新しいセッション",
@@ -734,12 +735,12 @@ export const jaMessages: Record<MessageKey, string> = {
   "background.asset.select": "選択",
   "background.asset.selectAllBgm": "BGM をすべて選択",
   "background.asset.selectBgm": "BGM ファイルを選択",
-  "background.asset.selectImages": "画像ファイルを選択",
+  "background.asset.selectImages": "画像または MP4 動画を選択",
   "background.asset.selectedFiles": "{count} 件を選択中",
   "background.asset.tag": "タグ",
   "background.asset.uploadBgm": "BGM をアップロード",
   "background.asset.uploadError": "リソースのアップロードに失敗しました。",
-  "background.asset.uploadImages": "画像をアップロード",
+  "background.asset.uploadImages": "画像・動画をアップロード",
   "background.section.assets": "リソース",
   "background.section.bgm": "BGM",
   "background.section.images": "背景画像",
@@ -890,7 +891,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "character.section.sprites": "立ち絵",
   "character.avatar.title": "キャラクター表示",
   "character.avatar.format": "表示形式",
-  "character.avatar.static": "静止画",
+  "character.avatar.static": "画像・動画",
   "character.avatar.unavailable": "{format}：利用不可",
   "character.avatar.importHint":
     "先にキャラクターを保存し、モデルの入口ファイルを選択してください。モデル変更後も既存の状態は保持されますが、再検証が必要です。選択は次のチャットから適用されます。",
@@ -966,7 +967,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "character.sprite.path": "立ち絵パス",
   "character.sprite.saveScale": "倍率を保存",
   "character.sprite.saveTags": "タグをアップロード",
-  "character.sprite.selectImages": "画像を選択...",
+  "character.sprite.selectImages": "画像または MP4 動画を選択...",
   "character.sprite.selectedFiles": "{count} 件を選択中",
   "character.sprite.tag": "立ち絵タグ",
   "character.sprite.deleteVoice": "音声を削除",
