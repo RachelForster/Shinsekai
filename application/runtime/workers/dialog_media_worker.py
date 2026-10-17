@@ -10,7 +10,9 @@ from application.chat.dialog_media import (
     SpriteAssetResolver,
     TtsGenerationStrategy,
 )
-from application.chat.handlers.registry import default_dialog_media_handler_chain
+from application.chat.presentation.handlers.registry import (
+    default_dialog_media_handler_chain,
+)
 from sdk.graph import Port
 from sdk.logging import get_logger
 from sdk.logging.timing import tracker

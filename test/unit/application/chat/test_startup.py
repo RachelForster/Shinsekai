@@ -8,7 +8,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from application.chat import startup
+from application.chat.runtime import startup
 
 
 class _AdapterFactory:
@@ -265,7 +265,7 @@ def test_load_chat_inputs_reads_template_and_history(tmp_path, monkeypatch) -> N
         startup, "chat_history_active_path", lambda _value: history_path
     )
     monkeypatch.setattr(
-        "application.chat.history_state.load_chat_history",
+        "application.chat.history.state.load_chat_history",
         lambda value: loaded if value == str(history_path) else [],
     )
 

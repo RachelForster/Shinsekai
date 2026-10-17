@@ -16,15 +16,15 @@ from core.chat_history.storage import (
     remove_chat_history_storage,
 )
 from frontend_bridge import _prepare_project_root
-from application.chat.launch_history import resolve_chat_history_path
-from application.chat.runtime_process import (
+from application.chat.host.launch_history import resolve_chat_history_path
+from application.chat.composition import (
     _chat_history_download_file,
-    _chat_history_entries,
+    _chat_history as _chat_history_entries,
     _handle_chat_command,
-    _issue_chat_history_download_capability,
+    _history_downloads,
 )
 from frontend_bridge_core.routes.api import FrontendBridgeHandler
-from application.chat.history_paths import (
+from application.chat.history.paths import (
     _windows_history_path_kind,
     resolve_history_path_for_project,
 )
@@ -233,10 +233,10 @@ def test_download_capability_is_file_bound(tmp_path: Path) -> None:
         history_download_capabilities={},
     )
 
-    first_capability = _issue_chat_history_download_capability(state, first)
+    first_capability = _history_downloads.issue(state, first)
     assert _chat_history_download_file(state, first_capability) == first
 
-    second_capability = _issue_chat_history_download_capability(state, second)
+    second_capability = _history_downloads.issue(state, second)
     with pytest.raises(PermissionError):
         _chat_history_download_file(state, first_capability)
     assert _chat_history_download_file(state, second_capability) == second
@@ -251,7 +251,7 @@ def test_download_route_uses_capability_not_main_bridge_token(tmp_path: Path) ->
         history_download_lock=threading.Lock(),
         history_download_capabilities={},
     )
-    capability = _issue_chat_history_download_capability(state, history)
+    capability = _history_downloads.issue(state, history)
     handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
     handler.path = f"/api/chat/history-file?cap={capability}"
     handler.headers = {}
@@ -285,7 +285,7 @@ def test_external_history_copy_open_and_clear_commands(tmp_path: Path) -> None:
     )
 
     with patch(
-        "application.chat.runtime_process._chat_snapshot",
+        "application.chat.composition._command_router.snapshot",
         side_effect=lambda _state, _status=None, _message="", *, extra=None: extra or {},
     ):
         copied = _handle_chat_command(state, {"type": "copy-history"})
@@ -298,7 +298,7 @@ def test_external_history_copy_open_and_clear_commands(tmp_path: Path) -> None:
     unrelated = external / "important.txt"
     unrelated.write_text("keep", encoding="utf-8")
     with patch(
-        "application.chat.runtime_process._chat_snapshot",
+        "application.chat.composition._command_router.snapshot",
         side_effect=lambda _state, _status=None, _message="", *, extra=None: extra or {},
     ):
         _handle_chat_command(state, {"type": "clear-history"})
@@ -326,7 +326,7 @@ def test_non_file_runtime_command_does_not_resolve_stale_history_path() -> None:
         chat_stream=Stream(),
     )
 
-    with patch("application.chat.runtime_process._chat_snapshot", return_value={"ok": True}):
+    with patch("application.chat.composition._command_router.snapshot", return_value={"ok": True}):
         assert _handle_chat_command(state, {"type": "pause-asr"}) == {"ok": True}
 
 

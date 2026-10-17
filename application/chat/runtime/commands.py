@@ -7,12 +7,12 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Protocol
 
-from application.chat.history_state import (
+from application.chat.history.state import (
     clear_chat_history,
     pop_last_assistant_turn_payload,
     revert_chat_history,
 )
-from application.chat.manage_branches import (
+from application.chat.history.branches import (
     ConversationBranchManager,
     SubmitRuntimeText,
 )

@@ -17,7 +17,7 @@ from core.messaging.dialog_tokens import (
     is_option_history_name,
     normalize_character_name,
 )
-from application.chat.history_state import extract_valid_dialog_from_messages
+from application.chat.history.state import extract_valid_dialog_from_messages
 from sdk.messages import PresentationMessage
 
 

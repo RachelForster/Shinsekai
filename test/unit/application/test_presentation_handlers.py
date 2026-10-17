@@ -5,7 +5,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 from sdk.messages import PresentationMessage
-from application.chat.handlers.presentation import (
+from application.chat.presentation.handlers.presentation import (
     ChainOfThoughtUiHandler,
     OptionsUiHandler,
     NumericUiHandler,
@@ -173,10 +173,10 @@ class TestCharacterDialogUiHandler:
         )
 
         with patch(
-            "application.chat.handlers.presentation.get_app_runtime",
+            "application.chat.presentation.handlers.presentation.get_app_runtime",
             return_value=runtime,
         ), patch(
-            "application.chat.handlers.presentation.get_character_by_name",
+            "application.chat.presentation.handlers.presentation.get_character_by_name",
             return_value=None,
         ):
             CharacterDialogUiHandler().handle(out)
@@ -226,13 +226,13 @@ class TestCharacterDialogUiHandler:
         )
 
         with patch(
-            "application.chat.handlers.presentation.get_app_runtime",
+            "application.chat.presentation.handlers.presentation.get_app_runtime",
             return_value=runtime,
         ), patch(
-            "application.chat.handlers.presentation.get_character_by_name",
+            "application.chat.presentation.handlers.presentation.get_character_by_name",
             return_value=_Character(),
         ), patch(
-            "application.chat.handlers.presentation.get_asr_log",
+            "application.chat.presentation.handlers.presentation.get_asr_log",
             return_value=MagicMock(),
         ), patch(
             "sdk.logging.timing.tracker.stop_cross", return_value=None
@@ -288,13 +288,13 @@ class TestCharacterDialogUiHandler:
         )
 
         with patch(
-            "application.chat.handlers.presentation.get_app_runtime",
+            "application.chat.presentation.handlers.presentation.get_app_runtime",
             return_value=runtime,
         ), patch(
-            "application.chat.handlers.presentation.get_character_by_name",
+            "application.chat.presentation.handlers.presentation.get_character_by_name",
             return_value=_Character(),
         ), patch(
-            "application.chat.handlers.presentation.get_asr_log",
+            "application.chat.presentation.handlers.presentation.get_asr_log",
             return_value=MagicMock(),
         ), patch("sdk.logging.timing.tracker.stop_cross", return_value=None):
             handler.handle(out)

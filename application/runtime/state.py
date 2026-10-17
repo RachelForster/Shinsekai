@@ -12,7 +12,7 @@ from application.media.resource_urls import ResourceUrls, UnconfiguredResourceUr
 from application.runtime.services import ApplicationServices
 
 if TYPE_CHECKING:
-    from application.chat.mobile_access import MobileAccessPort
+    from application.chat.host.mobile_access import MobileAccessPort
 
 
 def _default_project_root_dir() -> str:
@@ -46,6 +46,9 @@ class BridgeState:
     chat_runtime_lock: threading.Lock = field(default_factory=threading.Lock)
     chat_lifecycle_lock: Any = field(default_factory=threading.RLock, kw_only=True)
     chat_runtime_closing: bool = False
+    chat_session_lifecycle: Any = field(default=None, kw_only=True)
+    chat_session_launch_id: str = field(default="", kw_only=True)
+    chat_lifecycle_error: str = field(default="", kw_only=True)
     history_download_lock: threading.Lock = field(default_factory=threading.Lock)
     history_download_capabilities: dict[str, tuple[str, float]] = field(default_factory=dict)
     chat_init_lock: threading.Lock = field(default_factory=threading.Lock)

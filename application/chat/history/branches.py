@@ -8,7 +8,7 @@ from dataclasses import dataclass
 import time
 from typing import Any, Protocol
 
-from application.chat.history_state import (
+from application.chat.history.state import (
     canonical_user_turn_payload,
     history_entry_plain_text,
     is_user_history_entry,

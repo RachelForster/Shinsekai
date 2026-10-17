@@ -3,7 +3,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from application.chat.commands import ChatCommandResult
+from application.chat.runtime.commands import ChatCommandResult
 from frontend_bridge_core.transport import chat_session
 from frontend_bridge_core.transport.chat_session import ChatSessionTransport
 

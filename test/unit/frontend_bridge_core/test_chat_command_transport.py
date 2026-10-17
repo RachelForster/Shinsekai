@@ -1,4 +1,4 @@
-from application.chat.commands import ChatCommandResult
+from application.chat.runtime.commands import ChatCommandResult
 from frontend_bridge_core.transport.chat_commands import (
     parse_chat_command,
     send_chat_command_ack,

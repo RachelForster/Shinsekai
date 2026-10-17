@@ -6,12 +6,12 @@ from dataclasses import dataclass
 from typing import Any
 
 from ai.llm.template_generator import is_transparent_background
-from application.chat.history_state import (
+from application.chat.history.state import (
     get_history,
     history_entry_stage_payload,
 )
-from application.chat.initial_sprite import display_initial_sprite
-from application.chat.session_restore import restore_session_presentation
+from application.chat.presentation.initial_sprite import display_initial_sprite
+from application.chat.presentation.restore import restore_session_presentation
 from core.paths import resource_path
 
 

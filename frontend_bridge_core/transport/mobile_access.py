@@ -10,7 +10,7 @@ from io import BytesIO
 from typing import Any, Callable
 from urllib.parse import quote
 
-from application.chat.mobile_access import MobileAccessInfo
+from application.chat.host.mobile_access import MobileAccessInfo
 
 
 class MobileAccessError(RuntimeError):

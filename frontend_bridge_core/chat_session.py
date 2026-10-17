@@ -2,25 +2,34 @@ from __future__ import annotations
 
 from typing import Any
 
+from application.chat.presentation.user_display import sanitize_user_display_name
 from application.chat.build_effect_context import build_effect_context
-from application.chat.conversation_library import remember_conversation, saved_conversation_launch
-from application.chat.initial_sprite import initial_sprite_path_for_characters
-from application.chat.lifecycle import chat_lifecycle_lock
-from application.chat.launch_history import (
+from application.chat.conversation_library import (
+    remember_conversation,
+    saved_conversation_launch,
+)
+from application.chat.presentation.initial_sprite import (
+    initial_sprite_path_for_characters,
+)
+from application.chat.host.lifecycle import chat_lifecycle_lock
+from application.chat.host.session_lifecycle import ChatSessionLifecycle
+from application.chat.host.launch_history import (
     persist_confirmed_history_path,
     plan_chat_history_launch,
     resolve_chat_history_path,
 )
-from application.chat.mobile_access import configure_mobile_access
-from application.chat.runtime_process import (
+from application.chat.host.mobile_access import configure_mobile_access
+from application.chat.host.projection import (
     TRANSPARENT_BACKGROUND_NAME,
-    _chat_process_running,
     _chat_runtime_closing,
     _chat_runtime_mode,
-    _chat_snapshot,
     _chat_stream_initial_snapshot,
+)
+from application.chat.composition import (
+    _chat_process_running,
+    _chat_snapshot,
     _launch_chat as _launch_runtime_chat,
-    _sanitize_user_display_name,
+    _session_lifecycle,
 )
 from application.chat.start_chat import start_chat
 from application.chat.stop_chat import stop_chat
@@ -110,12 +119,70 @@ def wait_for_chat_runtime_ready(
         return
     if wait_for_producer(session_id, timeout=timeout):
         return
+    error = RuntimeError("启动失败: 实时聊天会话未就绪，请稍后重试。")
+    lifecycle = _session_lifecycle(state)
+    launch_id = lifecycle.adopt_current().launch_id
     try:
         stop_chat(state, reason="聊天会话启动超时。")
     finally:
-        chat_stream.delete_session(session_id)
-        state.chat_session = {**state.chat_session, "sessionId": ""}
-    raise RuntimeError("启动失败: 实时聊天会话未就绪，请稍后重试。")
+        try:
+            lifecycle.release_stream(session_id)
+        finally:
+            lifecycle.report_failure(error, session_id=session_id, launch_id=launch_id)
+    raise error
+
+
+def _complete_chat_launch(
+    state: BridgeState,
+    *,
+    lifecycle: ChatSessionLifecycle,
+    message: str,
+    session_base: dict[str, Any],
+    stream_info: dict[str, str],
+    use_react_runtime: bool,
+) -> dict[str, Any] | None:
+    """Bind and confirm a launched session, or return its dependency-error result."""
+    dependency_error = runtime_dependency_error_from_text(message)
+    if dependency_error:
+        lifecycle.failed(message)
+        state.chat_session = {**state.chat_session, **session_base}
+        return _chat_snapshot(
+            state,
+            "error",
+            message,
+            extra={"runtimeDependencyError": dependency_error},
+        )
+    if message.startswith("启动失败"):
+        lifecycle.failed(message)
+        raise RuntimeError(message)
+    state.chat_session = {
+        **state.chat_session,
+        **session_base,
+        "sessionId": (
+            str(stream_info.get("sessionId") or "") if use_react_runtime else ""
+        ),
+    }
+    if (
+        use_react_runtime
+        and stream_info.get("sessionId")
+        and state.chat_stream is not None
+    ):
+        state.chat_stream.update_session_snapshot(
+            str(stream_info["sessionId"]),
+            {
+                "backgroundPath": _chat_snapshot(state).get("backgroundPath", ""),
+                "characterName": session_base["characterName"],
+                "dialogText": "",
+                "historyPath": session_base["historyPath"],
+                "status": "idle",
+                "statusMessage": message,
+                "userDisplayName": session_base["userDisplayName"],
+                "voiceLanguage": str(state.chat_session.get("voiceLanguage") or "ja"),
+            },
+        )
+        wait_for_chat_runtime_ready(state, stream_info)
+    lifecycle.connected()
+    return None
 
 
 def start_chat_initialization(
@@ -253,7 +320,7 @@ def _launch_chat_locked(
     )
     if start_fresh_history:
         clear_story_session(state)
-    user_display_name = player_character or _sanitize_user_display_name(body.get("userDisplayName"))
+    user_display_name = player_character or sanitize_user_display_name(body.get("userDisplayName"))
     session_base = {
         "playerCharacter": player_character,
         "readPlayerSpeech": bool(body.get("readPlayerSpeech", False)),
@@ -283,86 +350,59 @@ def _launch_chat_locked(
         body.get("effectNames") if isinstance(body.get("effectNames"), list) else [],
     )
     effect_names_str = ",".join(effect_context.selected_names)
-    message = _launch_runtime_chat(
+    lifecycle = _session_lifecycle(
         state,
-        character_names=characters,
-        effect_names=effect_names_str,
-        effect_context=effect_context,
-        history_file=history_path.as_posix(),
-        init_sprite_path=init_sprite_path,
-        show_initial_sprite=body.get("showInitialSprite", True) is not False,
-        room_id=room_id,
-        selected_bg=str(body.get("backgroundName") or ""),
-        system_template=system_template,
-        use_cg=bool(body.get("useCg")),
-        user_scenario=user_scenario,
-        stream_endpoint=(
-            str(stream_info.get("producerEndpoint") or "") if use_react_runtime else ""
-        ),
-        init_stream_endpoint=(
-            str(stream_info.get("producerEndpoint") or "")
-            if not use_react_runtime
-            else ""
-        ),
-        workflow_path=str(body.get("workflowPath") or ""),
-        media_selection_mode=media_selection_mode,
-        **({"use_current_template_for_history": True} if body.get("useCurrentTemplateForHistory") else {}),
+        configure_mobile=configure_mobile_access,
+        remember_history=persist_confirmed_history_path,
     )
-    dependency_error = runtime_dependency_error_from_text(message)
-    if dependency_error:
-        session_id = str(stream_info.get("sessionId") or "")
-        if session_id and state.chat_stream is not None:
-            state.chat_stream.delete_session(session_id)
-        state.chat_session = {**state.chat_session, **session_base}
-        return _chat_snapshot(
+    launch_id = lifecycle.begin(
+        str(stream_info.get("sessionId") or ""),
+        history_path=history_path if init_stream_info is None else "",
+        mobile_enabled=mobile_access_enabled,
+        mobile_on_connected=init_stream_info is None or not use_react_runtime,
+        remember_on_connected=init_stream_info is None,
+    )
+    message = lifecycle.launch(
+        lambda: _launch_runtime_chat(
             state,
-            "error",
-            message,
-            extra={"runtimeDependencyError": dependency_error},
+            session_id=str(stream_info.get("sessionId") or ""),
+            launch_id=launch_id,
+            character_names=characters,
+            effect_names=effect_names_str,
+            effect_context=effect_context,
+            history_file=history_path.as_posix(),
+            init_sprite_path=init_sprite_path,
+            show_initial_sprite=body.get("showInitialSprite", True) is not False,
+            room_id=room_id,
+            selected_bg=str(body.get("backgroundName") or ""),
+            system_template=system_template,
+            use_cg=bool(body.get("useCg")),
+            user_scenario=user_scenario,
+            stream_endpoint=(
+                str(stream_info.get("producerEndpoint") or "") if use_react_runtime else ""
+            ),
+            init_stream_endpoint=(
+                str(stream_info.get("producerEndpoint") or "") if not use_react_runtime else ""
+            ),
+            workflow_path=str(body.get("workflowPath") or ""),
+            media_selection_mode=media_selection_mode,
+            **(
+                {"use_current_template_for_history": True}
+                if body.get("useCurrentTemplateForHistory")
+                else {}
+            ),
         )
-    if message.startswith("启动失败"):
-        session_id = str(stream_info.get("sessionId") or "")
-        if session_id and state.chat_stream is not None:
-            state.chat_stream.delete_session(session_id)
-        raise RuntimeError(message)
-    state.chat_session = {
-        **state.chat_session,
-        **session_base,
-        "sessionId": (
-            str(stream_info.get("sessionId") or "") if use_react_runtime else ""
-        ),
-    }
-    if (
-        use_react_runtime
-        and stream_info.get("sessionId")
-        and state.chat_stream is not None
-    ):
-        state.chat_stream.update_session_snapshot(
-            str(stream_info["sessionId"]),
-            {
-                "backgroundPath": _chat_snapshot(state).get("backgroundPath", ""),
-                "characterName": first_character,
-                "dialogText": "",
-                "historyPath": history_path.as_posix(),
-                "status": "idle",
-                "statusMessage": message,
-                "userDisplayName": user_display_name,
-                "voiceLanguage": str(state.chat_session.get("voiceLanguage") or "ja"),
-            },
-        )
-        wait_for_chat_runtime_ready(state, stream_info)
-    configure_mobile_access(
-        state,
-        enabled=mobile_access_enabled,
     )
-    if init_stream_info is None and not persist_confirmed_history_path(
+    failure = _complete_chat_launch(
         state,
-        history_path,
-    ):
-        logger.warning(
-            "Chat launched but the selected history path could not be persisted",
-            extra={"history_path": history_path.as_posix()},
-        )
+        lifecycle=lifecycle,
+        message=message,
+        session_base=session_base,
+        stream_info=stream_info,
+        use_react_runtime=use_react_runtime,
+    )
+    if failure is not None:
+        return failure
     try:
         remember_conversation(state, history_path, {
             **body,
@@ -472,7 +512,7 @@ def _resume_last_chat_locked(
         or ""
     )
     selected_bg = str(session.get("background") or TRANSPARENT_BACKGROUND_NAME)
-    user_display_name = player_character or _sanitize_user_display_name(session.get("userDisplayName"))
+    user_display_name = player_character or sanitize_user_display_name(session.get("userDisplayName"))
     session_base = {
         "backgroundName": selected_bg,
         "playerCharacter": player_character,
@@ -511,75 +551,49 @@ def _resume_last_chat_locked(
         if use_react_runtime and state.chat_stream is not None
         else {}
     )
-    message = _launch_runtime_chat(
+    lifecycle = _session_lifecycle(
         state,
-        character_names=selected_characters,
-        history_file=history_path.as_posix(),
-        init_sprite_path=init_sprite_path,
-        show_initial_sprite=session.get("showInitialSprite", True) is not False,
-        room_id=room_id,
-        selected_bg=selected_bg,
-        system_template=system_template,
-        use_cg=bool(session.get("useCg", False)),
-        user_scenario=scenario,
-        stream_endpoint=(
-            str(stream_info.get("producerEndpoint") or "") if use_react_runtime else ""
-        ),
-        init_stream_endpoint=(
-            str(stream_info.get("producerEndpoint") or "")
-            if not use_react_runtime
-            else ""
-        ),
-        workflow_path=str(session.get("workflowPath") or ""),
-        media_selection_mode=media_selection_mode,
+        configure_mobile=configure_mobile_access,
     )
-    dependency_error = runtime_dependency_error_from_text(message)
-    if dependency_error:
-        session_id = str(stream_info.get("sessionId") or "")
-        if session_id and state.chat_stream is not None:
-            state.chat_stream.delete_session(session_id)
-        state.chat_session = {**state.chat_session, **session_base}
-        return _chat_snapshot(
+    launch_id = lifecycle.begin(
+        str(stream_info.get("sessionId") or ""),
+        mobile_enabled=mobile_access_enabled,
+        mobile_on_connected=init_stream_info is None or not use_react_runtime,
+    )
+    message = lifecycle.launch(
+        lambda: _launch_runtime_chat(
             state,
-            "error",
-            message,
-            extra={"runtimeDependencyError": dependency_error},
+            session_id=str(stream_info.get("sessionId") or ""),
+            launch_id=launch_id,
+            character_names=selected_characters,
+            history_file=history_path.as_posix(),
+            init_sprite_path=init_sprite_path,
+            show_initial_sprite=session.get("showInitialSprite", True) is not False,
+            room_id=room_id,
+            selected_bg=selected_bg,
+            system_template=system_template,
+            use_cg=bool(session.get("useCg", False)),
+            user_scenario=scenario,
+            stream_endpoint=(
+                str(stream_info.get("producerEndpoint") or "") if use_react_runtime else ""
+            ),
+            init_stream_endpoint=(
+                str(stream_info.get("producerEndpoint") or "") if not use_react_runtime else ""
+            ),
+            workflow_path=str(session.get("workflowPath") or ""),
+            media_selection_mode=media_selection_mode,
         )
-    if message.startswith("启动失败"):
-        session_id = str(stream_info.get("sessionId") or "")
-        if session_id and state.chat_stream is not None:
-            state.chat_stream.delete_session(session_id)
-        raise RuntimeError(message)
-    state.chat_session = {
-        **state.chat_session,
-        **session_base,
-        "sessionId": (
-            str(stream_info.get("sessionId") or "") if use_react_runtime else ""
-        ),
-    }
-    if (
-        use_react_runtime
-        and stream_info.get("sessionId")
-        and state.chat_stream is not None
-    ):
-        state.chat_stream.update_session_snapshot(
-            str(stream_info["sessionId"]),
-            {
-                "backgroundPath": _chat_snapshot(state).get("backgroundPath", ""),
-                "characterName": first_character,
-                "dialogText": "",
-                "historyPath": history_path.as_posix(),
-                "status": "idle",
-                "statusMessage": message,
-                "userDisplayName": user_display_name,
-                "voiceLanguage": str(state.chat_session.get("voiceLanguage") or "ja"),
-            },
-        )
-        wait_for_chat_runtime_ready(state, stream_info)
-    configure_mobile_access(
-        state,
-        enabled=mobile_access_enabled,
     )
+    failure = _complete_chat_launch(
+        state,
+        lifecycle=lifecycle,
+        message=message,
+        session_base=session_base,
+        stream_info=stream_info,
+        use_react_runtime=use_react_runtime,
+    )
+    if failure is not None:
+        return failure
     return _chat_snapshot(
         state,
         "idle",

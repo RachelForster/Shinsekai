@@ -185,7 +185,7 @@ def create_chat_startup_context(
         story_hooks.recover_pending()
         # Recovery can restore a reply whose append was interrupted. Reload it
         # before branches and the UI consume startup history.
-        from application.chat.history_state import load_chat_history
+        from application.chat.history.state import load_chat_history
         messages = load_chat_history(str(chat_history_active_path(args.history)))
 
     with startup_phase("chat.init_hooks"):
@@ -229,7 +229,10 @@ def _import_provider_runtime() -> SimpleNamespace:
     from ai.tools.tool_manager import ToolManager
     from ai.tts.tts_manager import TTSAdapterFactory, TTSManager
     from ai.vision.fallback_registry import configure_registered_fallbacks
-    from core.media.avatar.registry import configure_registered_formats, configure_builtin_formats
+    from core.media.avatar.registry import (
+        configure_registered_formats,
+        configure_builtin_formats,
+    )
     configure_builtin_formats()
     from plugin_system.host import ensure_plugins_loaded, PluginRuntimeBindings
     from sdk.chat_init import InitChatContext
@@ -371,7 +374,7 @@ def _load_chat_inputs(
     translate: TranslateText,
     output: Callable[[str], None],
 ) -> tuple[list[Any], str]:
-    from application.chat.history_state import load_chat_history
+    from application.chat.history.state import load_chat_history
 
     messages: list[Any] = []
     if args.history:
@@ -396,7 +399,7 @@ def _parse_character_names(raw: str) -> list[str]:
 
 
 def _memory_character_names(args: Any, config: ConfigManager) -> list[str]:
-    from application.chat.initial_sprite import find_character_sprite_by_path
+    from application.chat.presentation.initial_sprite import find_character_sprite_by_path
 
     names = _parse_character_names(getattr(args, "characters", ""))
     if names:
