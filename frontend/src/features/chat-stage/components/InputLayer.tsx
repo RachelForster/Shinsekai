@@ -25,6 +25,7 @@ export function InputLayer({
   onPickAttachments,
   onRemoveAttachment,
   onSubmit,
+  previousMessages,
   submitDisabled = false,
   value,
 }: {
@@ -46,12 +47,14 @@ export function InputLayer({
   onPickAttachments: (kind: ChatAttachmentInput["kind"]) => void;
   onRemoveAttachment: (attachment: ChatAttachmentInput) => void;
   submitDisabled?: boolean;
+  previousMessages: string[];
   value: string;
 }) {
   const { t } = useI18n();
   const [panelOpen, setPanelOpen] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const historyIndexRef = useRef(-1);
   const inputActivityRef = useRef("");
   const pillLayout = inputLayout === "pill";
   const canSubmit = Boolean(value.trim() || attachments.length) && !disabled && !submitDisabled;
@@ -64,6 +67,10 @@ export function InputLayer({
       inputActivityRef.current = "false:false";
     }
   }, [value]);
+
+  useEffect(() => {
+    historyIndexRef.current = -1;
+  }, [previousMessages]);
 
   const reportInputActivity = (nextValue: string, composing: boolean) => {
     if (!batchEnabled) {
@@ -79,8 +86,20 @@ export function InputLayer({
   };
 
   const handleInputChange = (nextValue: string) => {
+    historyIndexRef.current = -1;
     onChange(nextValue);
     reportInputActivity(nextValue, false);
+  };
+
+  const recallPreviousMessage = () => {
+    if (!previousMessages.length || (value && historyIndexRef.current < 0)) {
+      return false;
+    }
+    historyIndexRef.current = (historyIndexRef.current + 1) % previousMessages.length;
+    const previousMessage = previousMessages[historyIndexRef.current]!;
+    onChange(previousMessage);
+    reportInputActivity(previousMessage, false);
+    return true;
   };
 
   const canDropFiles = Boolean(onDropFiles) && !disabled;
@@ -217,6 +236,10 @@ export function InputLayer({
             onCompositionEnd={(event) => reportInputActivity(event.currentTarget.value, false)}
             onCompositionStart={(event) => reportInputActivity(event.currentTarget.value, true)}
             onKeyDown={(event) => {
+              if (event.key === "ArrowUp" && !event.nativeEvent.isComposing && recallPreviousMessage()) {
+                event.preventDefault();
+                return;
+              }
               if (event.key === "Enter" && !event.nativeEvent.isComposing) {
                 event.preventDefault();
                 void submitFromKeyboard(event.ctrlKey);
@@ -233,6 +256,10 @@ export function InputLayer({
             onCompositionEnd={(event) => reportInputActivity(event.currentTarget.value, false)}
             onCompositionStart={(event) => reportInputActivity(event.currentTarget.value, true)}
             onKeyDown={(event) => {
+              if (event.key === "ArrowUp" && !event.nativeEvent.isComposing && recallPreviousMessage()) {
+                event.preventDefault();
+                return;
+              }
               if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                 event.preventDefault();
                 void submitFromKeyboard(event.ctrlKey);
