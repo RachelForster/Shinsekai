@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from core.messaging.chat_turn_service import BatchState, ChatTurnOptions, ChatTurnService
+from core.messaging.chat_turn_service import (
+    BatchState,
+    ChatTurnOptions,
+    ChatTurnService,
+)
 
 
 def create_chat_turn_service(

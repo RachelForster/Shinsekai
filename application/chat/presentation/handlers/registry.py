@@ -2,7 +2,7 @@
 消息处理器调度器 — DialogMediaDispatcher 和 UiOutputMessageDispatcher。
 
 处理器抽象类在 :mod:`sdk.handlers`；具体实现见
-:mod:`application.chat.handlers.dialog_media` / :mod:`application.chat.handlers.presentation`。
+:mod:`application.chat.presentation.handlers.dialog_media` / :mod:`application.chat.presentation.handlers.presentation`。
 """
 
 from __future__ import annotations
@@ -70,7 +70,9 @@ def default_dialog_media_handler_chain(
 ) -> DialogMediaDispatcher:
     """插件 handler 在前，内置链在后（先匹配先处理）。"""
     from plugin_system.host import get_plugin_dialog_media_handlers
-    from application.chat.handlers.dialog_media import get_dialog_media_handlers
+    from application.chat.presentation.handlers.dialog_media import (
+        get_dialog_media_handlers,
+    )
 
     chain = list(get_plugin_dialog_media_handlers()) + list(
         get_dialog_media_handlers(
@@ -84,7 +86,7 @@ def default_dialog_media_handler_chain(
 
 def default_presentation_handler_chain() -> UiOutputMessageDispatcher:
     from plugin_system.host import get_plugin_ui_handlers
-    from application.chat.handlers.presentation import get_ui_output_handlers
+    from application.chat.presentation.handlers.presentation import get_ui_output_handlers
 
     chain = list(get_plugin_ui_handlers()) + list(get_ui_output_handlers())
     return UiOutputMessageDispatcher(chain)

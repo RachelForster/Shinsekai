@@ -66,7 +66,7 @@ node scripts/verify-l2d-import.mjs --sdk-zip <官方5-r.4.zip> --python <shinsek
 - 前端 architecture 测试禁止实体/共享层依赖渲染、渲染反向依赖业务层、公共代码直连具体格式、格式间交叉依赖及描述符提前加载 SDK；移除 L2D 注册后，独立 `demo` 格式仍可使用通用编辑器完成选择、导入、新建及保存不透明状态。
 - 该分层调整已通过 434 项相关前端回归、类型检查和生产构建；新目录下真实 Haru 冒烟测试保持连续中间姿态、采样帧无空白、资源重载 0 次及销毁后 canvas 为 0。不修改后端协议、角色配置结构或状态文件格式。
 - `config.character_assets.get_character_assets(character)` 默认读取当前形象银行；静态图片保留原存储结构。初始资源选择、对话资源解析均复用此入口。识别旧启动路径时可遍历所有银行，但非当前银行的路径只用于判断失效，不能作为当前状态下标使用。
-- `application.chat.character_visual.resolve_character_visual` 是舞台资源投影入口。初始快照与实时事件共用它；事件累计出的重连快照保留同一组形象字段。共享层只处理模型入口和状态引用，不解释具体格式的状态内容。
+- `application.chat.presentation.character_visual.resolve_character_visual` 是舞台资源投影入口。初始快照与实时事件共用它；事件累计出的重连快照保留同一组形象字段。共享层只处理模型入口和状态引用，不解释具体格式的状态内容。
 - `application.media.resource_urls.ResourceUrls` 是独立于事件发送的资源地址接口，通过运行时组装注入展示层。`BridgeResourceUrls` 统一实现鉴权、普通媒体地址及模型目录内的资源地址；HTTP bridge 和 WebSocket producer 复用同一实现。传输类原有 URL 方法仅作兼容委托。
 - `StreamingUIUpdateManager` 明确要求完整的资源地址接口，不再用 `hasattr` 将缺失的模型能力静默降为图片 URL。尚未组装传输的默认地址实现只支持本地静态图片，模型请求会明确报错。
 - 前端 `entities/character/assets.ts` 负责通用银行选择，启动路径检查、模型查看与编辑弹窗共用它；`CharacterVisual` 与通用状态编辑器继续通过 registry 加载格式模块。

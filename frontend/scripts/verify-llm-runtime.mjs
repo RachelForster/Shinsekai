@@ -3,7 +3,7 @@ import path from "node:path";
 
 // Validate copied Python sources without executing a possibly cross-compiled runtime.
 export async function verifyLlmRuntimeSources(sourceRoot, runtimeRoot) {
-  for (const directory of ["ai/llm", "sdk"]) {
+  for (const directory of ["ai/llm", "sdk", "application/chat"]) {
     const files = await pythonFiles(path.join(sourceRoot, directory));
     for (const sourceFile of files) {
       const relativePath = path.relative(sourceRoot, sourceFile);
@@ -17,12 +17,12 @@ export async function verifyLlmRuntimeSources(sourceRoot, runtimeRoot) {
           throw error;
         }
         throw new Error(
-          `Incomplete LLM runtime at ${runtimeRoot}: missing ${displayPath}. Rebuild application resources from the same checkout.`,
+          `Incomplete chat runtime at ${runtimeRoot}: missing ${displayPath}. Rebuild application resources from the same checkout.`,
         );
       }
       if (!source.equals(packaged)) {
         throw new Error(
-          `Stale LLM runtime at ${runtimeRoot}: ${displayPath} differs from the source checkout. Rebuild application resources together to keep SDK and LLM code compatible.`,
+          `Stale chat runtime at ${runtimeRoot}: ${displayPath} differs from the source checkout. Rebuild application resources together to keep SDK, LLM and chat services compatible.`,
         );
       }
     }

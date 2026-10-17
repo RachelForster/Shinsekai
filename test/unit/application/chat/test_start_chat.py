@@ -6,7 +6,7 @@ from typing import Any
 from unittest.mock import Mock
 
 from application.chat.start_chat import start_chat
-from application.chat.lifecycle import chat_lifecycle_lock
+from application.chat.host.lifecycle import chat_lifecycle_lock
 from application.chat.stop_chat import ChatSessionChanged
 from application.runtime.state import BridgeState
 from application.runtime.tasks import _get_task, _request_task_cancel

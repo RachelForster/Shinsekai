@@ -472,8 +472,8 @@ def test_core_does_not_receive_application_managers() -> None:
 def test_application_owns_chat_composition_and_presentation() -> None:
     expected_application_modules = (
         REPO_ROOT / "application" / "chat" / "build_effect_context.py",
-        REPO_ROOT / "application" / "chat" / "initial_sprite.py",
-        REPO_ROOT / "application" / "chat" / "turn_wiring.py",
+        REPO_ROOT / 'application' / 'chat' / 'presentation' / 'initial_sprite.py',
+        REPO_ROOT / 'application' / 'chat' / 'runtime' / 'turn_wiring.py',
     )
     retired_core_modules = (
         REPO_ROOT / "core" / "messaging" / "chat_turn_wiring.py",
@@ -697,9 +697,9 @@ def test_main_delegates_conversation_branch_management() -> None:
     """Keep branch use cases testable outside the process entry point."""
 
     entrypoint = REPO_ROOT / "main.py"
-    use_case = REPO_ROOT / "application" / "chat" / "manage_branches.py"
-    session_runtime = REPO_ROOT / "application" / "chat" / "session_runtime.py"
-    streaming_wiring = REPO_ROOT / "application" / "chat" / "wire_streaming_session.py"
+    use_case = REPO_ROOT / 'application' / 'chat' / 'history' / 'branches.py'
+    session_runtime = REPO_ROOT / 'application' / 'chat' / 'runtime' / 'session.py'
+    streaming_wiring = REPO_ROOT / 'application' / 'chat' / 'runtime' / 'stream_wiring.py'
     source = entrypoint.read_text(encoding="utf-8")
     session_source = session_runtime.read_text(encoding="utf-8")
     wiring_source = streaming_wiring.read_text(encoding="utf-8")
@@ -753,10 +753,10 @@ def test_main_delegates_realtime_chat_commands() -> None:
     """Keep command behavior in application and envelopes in transport."""
 
     entrypoint = REPO_ROOT / "main.py"
-    use_case = REPO_ROOT / "application" / "chat" / "commands.py"
+    use_case = REPO_ROOT / 'application' / 'chat' / 'runtime' / 'commands.py'
     transport = REPO_ROOT / "frontend_bridge_core" / "transport" / "chat_commands.py"
-    session_runtime = REPO_ROOT / "application" / "chat" / "session_runtime.py"
-    streaming_wiring = REPO_ROOT / "application" / "chat" / "wire_streaming_session.py"
+    session_runtime = REPO_ROOT / 'application' / 'chat' / 'runtime' / 'session.py'
+    streaming_wiring = REPO_ROOT / 'application' / 'chat' / 'runtime' / 'stream_wiring.py'
     session_transport = (
         REPO_ROOT / "frontend_bridge_core" / "transport" / "chat_session.py"
     )
@@ -802,8 +802,8 @@ def test_main_delegates_chat_startup_assembly() -> None:
     """Keep providers, templates, hooks, and fallback policy out of main.py."""
 
     entrypoint = REPO_ROOT / "main.py"
-    startup = REPO_ROOT / "application" / "chat" / "startup.py"
-    session_runtime = REPO_ROOT / "application" / "chat" / "session_runtime.py"
+    startup = REPO_ROOT / 'application' / 'chat' / 'runtime' / 'startup.py'
+    session_runtime = REPO_ROOT / 'application' / 'chat' / 'runtime' / 'session.py'
     source = entrypoint.read_text(encoding="utf-8")
     startup_source = startup.read_text(encoding="utf-8")
     session_source = session_runtime.read_text(encoding="utf-8")
@@ -841,8 +841,8 @@ def test_main_delegates_chat_session_lifecycle() -> None:
     """Keep workflow, runtime, presentation, and shutdown outside main.py."""
 
     entrypoint = REPO_ROOT / "main.py"
-    session_runtime = REPO_ROOT / "application" / "chat" / "session_runtime.py"
-    presentation = REPO_ROOT / "application" / "chat" / "presentation.py"
+    session_runtime = REPO_ROOT / 'application' / 'chat' / 'runtime' / 'session.py'
+    presentation = REPO_ROOT / 'application' / 'chat' / 'presentation' / 'assets.py'
     source = entrypoint.read_text(encoding="utf-8")
     session_source = session_runtime.read_text(encoding="utf-8")
     presentation_source = presentation.read_text(encoding="utf-8")
@@ -876,7 +876,7 @@ def test_mobile_access_respects_application_and_transport_boundaries() -> None:
 
     core_implementation = REPO_ROOT / "core" / "mobile_access"
     application_use_case = (
-        REPO_ROOT / "application" / "chat" / "mobile_access.py"
+        REPO_ROOT / 'application' / 'chat' / 'host' / 'mobile_access.py'
     )
     bridge_transport = (
         REPO_ROOT

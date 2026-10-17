@@ -6,7 +6,7 @@ from queue import Queue
 
 import pytest
 
-from application.chat import presentation
+from application.chat.presentation import assets as presentation
 
 
 class _SystemConfig:

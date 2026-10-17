@@ -16,7 +16,7 @@ from application.story.prompt_runtime import (
 )
 from frontend_bridge_core.routes.router import ApiRequest
 from frontend_bridge_core.routes.story_routes import STORY_ROUTES
-from application.chat.session_store import save_template_session
+from application.chat.history.session_store import save_template_session
 from sdk.hooks import BeforeChatContext, MessageAddedContext, PluginHookDispatcher
 from test.unit.application.story.test_library import selected_story
 
@@ -184,7 +184,7 @@ def test_normal_chat_without_binding_is_untouched(tmp_path):
 def test_branch_selection_uses_full_ui_history_after_model_compaction(
     tmp_path, command
 ):
-    from application.chat.runtime_process import _sync_story_session_branch_command
+    from application.chat.composition import _story_branches
 
     state, initial, adapter, hooks = running_story(tmp_path)
     original_generation = initial.active_branch.generation
@@ -205,7 +205,7 @@ def test_branch_selection_uses_full_ui_history_after_model_compaction(
     assert saved.active_branch.state.current_node_id == "school-lobby"
     assert saved.checkpoint_generation_before_user_index(0) == original_generation
     body = {"payload": {"userIndex": 0} if command == "fork-history" else 0}
-    _sync_story_session_branch_command(state, command, body)
+    _story_branches.sync(state, command, body)
     restored = load_prompt_session(hooks.history_path, hooks.flags)
     assert restored.active_branch.state.current_node_id == "school-gate"
     assert restored.active_branch.state.node_turn_count == 0

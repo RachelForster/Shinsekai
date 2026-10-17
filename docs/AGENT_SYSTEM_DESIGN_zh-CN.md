@@ -24,14 +24,14 @@ Shinsekai 提供一个独立的 Agent 助手，负责功能介绍、问题诊断
 
 | 现有位置 | 可复用能力与接入约束 |
 | --- | --- |
-| [聊天进程管理](../application/chat/runtime_process.py) | 聊天已有独立进程；Agent 使用自己的 supervisor，不复用聊天进程句柄或启动参数 |
-| [聊天运行时](../application/chat/session_runtime.py) | 负责角色聊天生命周期；这里只装配 Agent 请求端口 |
+| [聊天进程管理](../application/chat/composition.py) | 聊天已有独立进程；Agent 使用自己的 supervisor，不复用聊天进程句柄或启动参数 |
+| [聊天运行时](../application/chat/runtime/session.py) | 负责角色聊天生命周期；这里只装配 Agent 请求端口 |
 | [LLM 宿主接口](../sdk/llm_runtime.py) 与 [宿主实现](../application/runtime/context.py) | AI 工具通过窄接口访问 application；Agent 委托沿用该依赖方向 |
 | [工具执行器](../ai/tools/tool_executor.py) | 当前角色工具同步等待并有超时；委托工具仅等待短暂的提交回执，不等待整个 Agent 任务 |
 | [角色用例](../application/characters/management.py) | Agent 创建和修改人物的统一业务入口 |
 | [日志诊断](../application/diagnostics/logs.py) 与 [日志脱敏](../sdk/logging/redaction.py) | 复用日志定位及脱敏能力；工具返回前仍需对实际输出脱敏，不能假设历史日志都已经处理 |
 | [插件脚手架](../sdk/cli/scaffold.py) 与 [开发规范](PLUGIN_DEVELOPER_GUIDE.md) | 插件创作的模板与宿主契约 |
-| [聊天分支](../application/chat/manage_branches.py) 与 [回合协调](../core/messaging/chat_turn_service.py) | 回传前校验分支和请求来源，在下一次模型调用前装配结果 |
+| [聊天分支](../application/chat/history/branches.py) 与 [回合协调](../core/messaging/chat_turn_service.py) | 回传前校验分支和请求来源，在下一次模型调用前装配结果 |
 | [bridge 鉴权](../frontend_bridge_core/routes/http_handler.py) | 复用用户界面访问鉴权；角色进程另发限权凭据 |
 
 现有 [后台任务表](../application/runtime/tasks.py) 是进程内字典，适合当前短期后台操作。Agent 需要持久化会话、增量事件与结果回传，因此建立独立任务存储；通用任务面板可以展示其摘要，但不能形成两个状态所有者。

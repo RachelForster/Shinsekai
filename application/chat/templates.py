@@ -7,7 +7,9 @@ from typing import Any
 
 from config.config_manager import character_name_key
 from core.chat_history.storage import ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME
-from application.chat.initial_sprite import initial_sprite_path_for_characters
+from application.chat.presentation.initial_sprite import (
+    initial_sprite_path_for_characters,
+)
 from ai.llm.template.integrations.localization import translate_template
 from ai.llm.template.dialog.context import EffectCatalogContext, EffectCatalogEntry
 from application.chat.build_effect_context import SelectedEffectContext
@@ -251,7 +253,7 @@ def _repair_template_parts_from_session_if_needed(
 ) -> tuple[str, str]:
     if not _has_untranslated_template_keys(scenario, system):
         return scenario, system
-    from application.chat.session_store import load_template_session
+    from application.chat.history.session_store import load_template_session
 
     repaired = _repair_template_session_if_needed(state, load_template_session(state.template_dir_path))
     if not repaired:
@@ -492,7 +494,7 @@ def _template_session_to_frontend(raw: dict[str, Any] | None) -> dict[str, Any] 
 
 
 def _persist_template_session_repair(state: BridgeState, raw: dict[str, Any]) -> None:
-    from application.chat.session_store import save_template_session
+    from application.chat.history.session_store import save_template_session
 
     save_template_session(state.template_dir_path, raw)
 
@@ -561,7 +563,7 @@ def _rename_template_session_character(
     original_key = character_name_key(original_name)
     if not original_key or original_key == character_name_key(saved_name):
         return
-    from application.chat.session_store import load_template_session
+    from application.chat.history.session_store import load_template_session
 
     raw = load_template_session(state.template_dir_path)
     if not raw:
@@ -588,7 +590,7 @@ def _rename_template_session_character(
 
 
 def _load_template_session_payload(state: BridgeState) -> dict[str, Any] | None:
-    from application.chat.session_store import load_template_session
+    from application.chat.history.session_store import load_template_session
 
     raw = load_template_session(state.template_dir_path)
     raw = _reconcile_template_session_characters(state, raw)
@@ -597,7 +599,7 @@ def _load_template_session_payload(state: BridgeState) -> dict[str, Any] | None:
 
 
 def _save_template_session_payload(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
-    from application.chat.session_store import save_template_session
+    from application.chat.history.session_store import save_template_session
 
     selected_characters = _resolve_template_character_names(
         state,
@@ -707,7 +709,7 @@ def _repair_template_session_if_needed(state: BridgeState, raw: dict[str, Any] |
         repaired["scenario_text"] = ""
     repaired["system_template_text"] = content
     try:
-        from application.chat.session_store import save_template_session
+        from application.chat.history.session_store import save_template_session
 
         save_template_session(state.template_dir_path, repaired)
     except Exception:
