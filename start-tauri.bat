@@ -27,9 +27,31 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
+:: Existing terminals may still have an older PATH after installing pnpm.
 where pnpm > nul 2>&1
 if errorlevel 1 (
-    echo Error: pnpm was not found in PATH.
+    if defined PNPM_HOME if exist "%PNPM_HOME%\pnpm.cmd" (
+        set "PATH=%PNPM_HOME%;%PATH%"
+    )
+)
+
+where pnpm > nul 2>&1
+if errorlevel 1 (
+    if exist "%APPDATA%\npm\pnpm.cmd" (
+        set "PATH=%APPDATA%\npm;%PATH%"
+    )
+)
+
+where pnpm > nul 2>&1
+if errorlevel 1 (
+    if exist "%LOCALAPPDATA%\pnpm\pnpm.cmd" (
+        set "PATH=%LOCALAPPDATA%\pnpm;%PATH%"
+    )
+)
+
+where pnpm > nul 2>&1
+if errorlevel 1 (
+    echo Error: pnpm was not found in PATH or the user install directories.
     echo Please install pnpm or enable it with: corepack enable
     pause
     exit /b 1

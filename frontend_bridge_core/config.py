@@ -84,8 +84,15 @@ def _state_project_root(state: BridgeState) -> Path:
         return Path(".")
 
 
-def _app_config_response(state: BridgeState) -> dict[str, Any]:
-    payload = _jsonify(state.config_manager.config)
+def _app_config_response(
+    state: BridgeState, *, settings_only: bool = False
+) -> dict[str, Any]:
+    config = state.config_manager.config
+    payload = _jsonify(
+        {key: getattr(config, key) for key in ("api_config", "system_config")}
+        if settings_only
+        else config
+    )
     if not isinstance(payload, dict):
         return {}
     project_root = _state_project_root(state)
@@ -129,6 +136,8 @@ def _app_config_response(state: BridgeState) -> dict[str, Any]:
             str(api_config.get("gpt_sovits_api_path") or ""),
             project_root,
         )
+    if settings_only:
+        return payload
     if tts_bundle_paths:
         payload["tts_bundle_installed_paths"] = tts_bundle_paths
     payload["adapter_catalog"] = _adapter_catalog()

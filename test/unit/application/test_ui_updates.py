@@ -7,8 +7,11 @@ import pytest
 from types import SimpleNamespace
 from core.media.effect_image import ImageEffectAsset
 
-from application.runtime.event_sink import fold_event_into_snapshot, make_empty_chat_snapshot
-from application.chat.ui_updates import (
+from application.runtime.event_sink import (
+    fold_event_into_snapshot,
+    make_empty_chat_snapshot,
+)
+from application.chat.presentation.updates import (
     HeadlessUIUpdateManager,
     StreamingUIUpdateManager,
     _format_dialog_html,
@@ -265,7 +268,7 @@ def test_streaming_presenter_keeps_character_slot_across_expression_changes() ->
         sprites = [{"path": "neutral.png"}, {"path": "happy.png"}]
 
     with patch(
-        "application.chat.ui_updates.get_character_by_name",
+        "application.chat.presentation.updates.get_character_by_name",
         return_value=_Character(),
     ):
         presenter.update_sprite("Mio", 0)
@@ -283,8 +286,8 @@ def test_streaming_presenter_keeps_character_slot_across_expression_changes() ->
 
 
 def test_unowned_initial_images_have_path_identities_before_transport(tmp_path, monkeypatch) -> None:
-    from application.chat.initial_sprite import display_initial_sprite
-    from application.chat.character_visual import image_visual_identity
+    from application.chat.presentation.initial_sprite import display_initial_sprite
+    from application.chat.presentation.character_visual import image_visual_identity
 
     monkeypatch.chdir(tmp_path)
     sink = _Sink()
@@ -310,7 +313,7 @@ def test_model_presentation_uses_its_own_bank_and_preserves_metadata_in_snapshot
         avatars={" VRM ": {"model_path": "mio.vrm", "sprites": [{"path": "smile.json"}]}},
     )
     sink = _Sink()
-    with patch("application.chat.ui_updates.get_character_by_name", return_value=character):
+    with patch("application.chat.presentation.updates.get_character_by_name", return_value=character):
         StreamingUIUpdateManager(sink, resource_urls=_Urls()).update_sprite("Mio", 0)
     event = sink.events[-1]
     assert event["url"] == "avatar://mio.vrm/smile.json"
@@ -331,7 +334,7 @@ def test_model_stage_and_static_player_portrait_keep_separate_resource_routes():
     )
     sink = _Sink()
     presenter = StreamingUIUpdateManager(sink, resource_urls=_Urls())
-    with patch("application.chat.ui_updates.get_character_by_name", return_value=character):
+    with patch("application.chat.presentation.updates.get_character_by_name", return_value=character):
         presenter.update_sprite("Mio", 0)
         presenter.update_player_portrait("Mio", 0)
     assert sink.events[0]["url"] == "avatar://mio.model3.json/smile.json"

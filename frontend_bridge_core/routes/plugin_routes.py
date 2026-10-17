@@ -3,6 +3,8 @@ from __future__ import annotations
 from http import HTTPStatus
 from urllib.parse import quote
 
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
+
 from application.plugins.catalog import (
     _plugin_registry_rows,
     _plugin_rows,
@@ -43,6 +45,28 @@ from frontend_bridge_core.routes.router import (
 _BRIDGE_AUTH_QUERY = "shinsekai_bridge_token"
 
 
+class _ToolArguments(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    arguments: dict[str, JsonValue] = Field(default_factory=dict)
+
+
+def _list_plugin_tools(request: ApiRequest) -> JsonResponse:
+    service = request.state.services.get_plugin_tools()
+    return JsonResponse(service.list_tools(request.params["plugin_id"]))
+
+
+def _invoke_plugin_tool(request: ApiRequest) -> JsonResponse:
+    arguments = _ToolArguments.model_validate(request.body)
+    service = request.state.services.get_plugin_tools()
+    return JsonResponse(
+        service.invoke(
+            request.params["plugin_id"],
+            request.params["tool_name"],
+            arguments.arguments,
+        )
+    )
+
+
 def inject_bridge_token(state, detail: dict) -> dict:
     token = str(getattr(state, "auth_token", "") or "").strip()
     if not token:
@@ -58,7 +82,17 @@ def inject_bridge_token(state, detail: dict) -> dict:
 
 
 def _list_plugins(request: ApiRequest) -> JsonResponse:
-    return JsonResponse(_plugin_rows(plugin_load_snapshot(request.state)))
+    rows = _plugin_rows(plugin_load_snapshot(request.state))
+    if (request.query.get("view") or [""])[0] == "summary":
+        rows = [
+            {
+                key: row[key]
+                for key in ("id", "title", "enabled", "loaded")
+                if key in row
+            }
+            for row in rows
+        ]
+    return JsonResponse(rows)
 
 
 def _list_chat_ui_contributions(_request: ApiRequest) -> JsonResponse:
@@ -78,8 +112,14 @@ def _get_app_update_info(_request: ApiRequest) -> JsonResponse:
     return JsonResponse(get_application_update_info())
 
 
-def _get_plugin_registry(_request: ApiRequest) -> JsonResponse:
-    return JsonResponse(_plugin_registry_rows())
+def _get_plugin_registry(request: ApiRequest) -> JsonResponse:
+    rows = _plugin_registry_rows()
+    if (request.query.get("view") or [""])[0] == "summary":
+        rows = [
+            {key: row[key] for key in ("id", "displayName", "installed") if key in row}
+            for row in rows
+        ]
+    return JsonResponse(rows)
 
 
 def _install_plugin(request: ApiRequest) -> JsonResponse | TaskResponse:
@@ -198,6 +238,19 @@ def _delete_plugin(request: ApiRequest) -> JsonResponse:
 
 
 PLUGIN_ROUTES = (
+    Route(
+        methods=frozenset({"GET"}),
+        pattern="/api/plugins/{plugin_id}/tools",
+        handler=_list_plugin_tools,
+        body_kind=BodyKind.NONE,
+        name="plugins.tools.list",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/plugins/{plugin_id}/tools/{tool_name}/invoke",
+        handler=_invoke_plugin_tool,
+        name="plugins.tools.invoke",
+    ),
     Route(
         methods=frozenset({"GET"}),
         pattern="/api/plugins",

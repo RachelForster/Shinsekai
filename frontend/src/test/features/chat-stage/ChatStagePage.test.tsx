@@ -611,6 +611,41 @@ describe("ChatStagePage", () => {
   it.each([
     { inputTag: "TEXTAREA", layout: "default" as const },
     { inputTag: "INPUT", layout: "pill" as const },
+  ])(
+    "cycles through the three previous user messages with ArrowUp in the $layout input",
+    async ({ inputTag, layout }) => {
+      if (layout === "pill") {
+        themeContextMocks.optional = {
+          resolved: { typewriter: { cps: 40 } },
+          style: { "--chat-input-layout": "pill" } as CSSProperties,
+        };
+      }
+      mocks.getChatSnapshot.mockResolvedValue(
+        snapshot({ turnOptions: { batchEnabled: true, batchIdleSeconds: 5, interruptEnabled: true } }),
+      );
+      renderPage();
+
+      const input = await screen.findByRole("textbox");
+      expect(input.tagName).toBe(inputTag);
+      for (const text of ["1", "2", "3", "4"]) {
+        fireEvent.change(input, { target: { value: text } });
+        fireEvent.keyDown(input, { key: "Enter" });
+        await waitFor(() => expect(input).toHaveValue(""));
+      }
+      for (const expected of ["4", "3", "2", "4"]) {
+        fireEvent.keyDown(input, { key: "ArrowUp" });
+        expect(input).toHaveValue(expected);
+      }
+
+      fireEvent.change(input, { target: { value: "current draft" } });
+      fireEvent.keyDown(input, { key: "ArrowUp" });
+      expect(input).toHaveValue("current draft");
+    },
+  );
+
+  it.each([
+    { inputTag: "TEXTAREA", layout: "default" as const },
+    { inputTag: "INPUT", layout: "pill" as const },
   ])("submits the current $layout fragment before flushing a batch with Ctrl+Enter", async ({ inputTag, layout }) => {
     if (layout === "pill") {
       themeContextMocks.optional = {

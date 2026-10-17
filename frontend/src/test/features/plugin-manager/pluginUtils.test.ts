@@ -157,4 +157,29 @@ describe("plugin manager utilities", () => {
     });
     expect(pluginConfigInitialValues({ ...page, schema: undefined, values: { mode: "fast" } })).toEqual({});
   });
+
+  it("shows conditional fields only when all draft values match", () => {
+    const [group] = pluginConfigGroupsToFormGroups([
+      {
+        fields: [
+          { key: "adapter", label: "Adapter", type: "select" },
+          {
+            key: "model",
+            label: "Local model",
+            type: "text",
+            visibleWhen: { adapter: "local", enabled: true },
+          },
+        ],
+        id: "backend",
+        title: "Backend",
+      },
+    ]);
+
+    expect(group.fields[0].visibleWhen).toBeUndefined();
+    const visible = group.fields[1].visibleWhen!;
+    expect(visible({ adapter: "remote", enabled: true })).toBe(false);
+    expect(visible({ adapter: "local", enabled: false })).toBe(false);
+    expect(visible({ adapter: "local" })).toBe(false);
+    expect(visible({ adapter: "local", enabled: true })).toBe(true);
+  });
 });

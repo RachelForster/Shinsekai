@@ -1,7 +1,7 @@
 {
   "name": "shinsekai-frontend",
   "private": true,
-  "version": "2.5.0",
+  "version": "2.5.1",
   "license": "SEE LICENSE IN ../LICENSE",
   "type": "module",
   "scripts": {
@@ -43,7 +43,9 @@
     "lucide-react": "^0.468.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.26.2"
+    "react-markdown": "^10.1.0",
+    "react-router-dom": "^6.26.2",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",

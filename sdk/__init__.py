@@ -17,6 +17,7 @@ Quick reference
 - :mod:`sdk.plugin` — 插件入口 (PluginBase)
 - :mod:`sdk.types` — 贡献声明 (SettingsUIContribution, ToolsTabContribution, ChatUIContribution)
 - :mod:`sdk.tool_registry` — LLM 工具注册 (@tool 装饰器)
+- :mod:`sdk.agent` — 通用 Agent 任务、后端与角色委托契约
 - :mod:`sdk.register` — 能力注册表 (PluginCapabilityRegistry)
 - :mod:`sdk.manager` — 插件管理器 (PluginManager)
 - :mod:`sdk.chat_ui_theme` — chat_ui 主题 mod 校验/打包 (validate_manifest, pack_theme; CLI: ``python -m sdk.chat_ui_theme``)
@@ -28,12 +29,36 @@ import importlib
 from typing import Any
 
 __all__ = [
+    "AgentArtifact",
+    "AgentBackend",
+    "AgentBackendCapabilities",
+    "AgentBackendDescriptor",
+    "AgentClient",
+    "AgentDelegationInbox",
+    "AgentDelegationRequest",
+    "AgentError",
+    "AgentEvent",
+    "AgentHostPort",
+    "AgentOrigin",
+    "AgentRequester",
+    "AgentRequestError",
+    "AgentResult",
+    "AgentSession",
+    "AgentTask",
+    "AgentTaskReceipt",
+    "AgentTaskRequest",
+    "AgentTaskStatus",
+    "NullAgentRequester",
     "apply_registered_tools",
     "ASRAdapter",
     "AvatarFormatContribution",
     "BeforeChatContext",
     "BeforeCompactContext",
     "ChatInitService",
+    "ChatProcessContext",
+    "ChatProcessEvent",
+    "ChatSessionContext",
+    "ChatSessionEvent",
     "ChatUIContribution",
     "ChatUIContext",
     "ChatOutputContract",
@@ -124,6 +149,27 @@ __all__ = [
 ]
 
 _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
+    # ── agent contracts ──
+    "AgentArtifact": ("sdk.agent", "AgentArtifact"),
+    "AgentBackend": ("sdk.agent", "AgentBackend"),
+    "AgentBackendCapabilities": ("sdk.agent", "AgentBackendCapabilities"),
+    "AgentBackendDescriptor": ("sdk.agent", "AgentBackendDescriptor"),
+    "AgentClient": ("sdk.agent", "AgentClient"),
+    "AgentDelegationInbox": ("sdk.agent", "AgentDelegationInbox"),
+    "AgentDelegationRequest": ("sdk.agent", "AgentDelegationRequest"),
+    "AgentError": ("sdk.agent", "AgentError"),
+    "AgentEvent": ("sdk.agent", "AgentEvent"),
+    "AgentHostPort": ("sdk.agent", "AgentHostPort"),
+    "AgentOrigin": ("sdk.agent", "AgentOrigin"),
+    "AgentRequester": ("sdk.agent", "AgentRequester"),
+    "AgentRequestError": ("sdk.agent", "AgentRequestError"),
+    "AgentResult": ("sdk.agent", "AgentResult"),
+    "AgentSession": ("sdk.agent", "AgentSession"),
+    "AgentTask": ("sdk.agent", "AgentTask"),
+    "AgentTaskReceipt": ("sdk.agent", "AgentTaskReceipt"),
+    "AgentTaskRequest": ("sdk.agent", "AgentTaskRequest"),
+    "AgentTaskStatus": ("sdk.agent", "AgentTaskStatus"),
+    "NullAgentRequester": ("sdk.agent", "NullAgentRequester"),
     # ── adapters ──
     "ASRAdapter": ("sdk.adapters", "ASRAdapter"),
     "AvatarFormatContribution": ("sdk.adapters", "AvatarFormatContribution"),
@@ -157,6 +203,10 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     "BeforeChatContext": ("sdk.hooks", "BeforeChatContext"),
     "BeforeCompactContext": ("sdk.hooks", "BeforeCompactContext"),
     "ChatInitService": ("sdk.chat_init", "ChatInitService"),
+    "ChatProcessContext": ("sdk.chat_lifecycle", "ChatProcessContext"),
+    "ChatProcessEvent": ("sdk.chat_lifecycle", "ChatProcessEvent"),
+    "ChatSessionContext": ("sdk.chat_lifecycle", "ChatSessionContext"),
+    "ChatSessionEvent": ("sdk.chat_lifecycle", "ChatSessionEvent"),
     "HookRegistration": ("sdk.hooks", "HookRegistration"),
     "InitChatCancellationToken": ("sdk.chat_init", "InitChatCancellationToken"),
     "InitChatCancelled": ("sdk.chat_init", "InitChatCancelled"),
@@ -186,7 +236,10 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     ),
     "FrontendUIController": ("sdk.frontend_ui", "FrontendUIController"),
     "ExceptionInfo": ("sdk.exception.types", "ExceptionInfo"),
-    "HTTP_REASON_UNPAIRED_TOOL_MESSAGES": ("sdk.exception.types", "HTTP_REASON_UNPAIRED_TOOL_MESSAGES"),
+    "HTTP_REASON_UNPAIRED_TOOL_MESSAGES": (
+        "sdk.exception.types",
+        "HTTP_REASON_UNPAIRED_TOOL_MESSAGES",
+    ),
     "OutputContractPatch": ("sdk.types", "OutputContractPatch"),
     "OutputFieldSpec": ("sdk.types", "OutputFieldSpec"),
     "PluginDescriptor": ("sdk.types", "PluginDescriptor"),
@@ -208,21 +261,45 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     # ── logging ──
     "get_logger": ("sdk.logging", "get_logger"),
     "classify_exception": ("sdk.exception.types", "classify_exception"),
-    "format_llm_exception_message": ("sdk.exception.presenter", "format_llm_exception_message"),
+    "format_llm_exception_message": (
+        "sdk.exception.presenter",
+        "format_llm_exception_message",
+    ),
     "handle_main_exception": ("sdk.exception.handler", "handle_main_exception"),
-    "http_client_error_from_exception": ("sdk.exception.types", "http_client_error_from_exception"),
-    "install_main_exception_hook": ("sdk.exception.handler", "install_main_exception_hook"),
-    "is_unpaired_tool_messages_error": ("sdk.exception.types", "is_unpaired_tool_messages_error"),
+    "http_client_error_from_exception": (
+        "sdk.exception.types",
+        "http_client_error_from_exception",
+    ),
+    "install_main_exception_hook": (
+        "sdk.exception.handler",
+        "install_main_exception_hook",
+    ),
+    "is_unpaired_tool_messages_error": (
+        "sdk.exception.types",
+        "is_unpaired_tool_messages_error",
+    ),
     "log_context": ("sdk.logging", "log_context"),
     "llm_http_action_message": ("sdk.exception.presenter", "llm_http_action_message"),
-    "missing_module_from_exception": ("sdk.exception.types", "missing_module_from_exception"),
+    "missing_module_from_exception": (
+        "sdk.exception.types",
+        "missing_module_from_exception",
+    ),
     "missing_module_from_text": ("sdk.exception.types", "missing_module_from_text"),
     "new_log_id": ("sdk.logging", "new_log_id"),
     "package_for_module": ("sdk.exception.types", "package_for_module"),
     "report_main_exception": ("sdk.exception.handler", "report_main_exception"),
-    "runtime_dependency_error_from_exception": ("sdk.exception.types", "runtime_dependency_error_from_exception"),
-    "runtime_dependency_error_from_module": ("sdk.exception.types", "runtime_dependency_error_from_module"),
-    "runtime_dependency_error_from_text": ("sdk.exception.types", "runtime_dependency_error_from_text"),
+    "runtime_dependency_error_from_exception": (
+        "sdk.exception.types",
+        "runtime_dependency_error_from_exception",
+    ),
+    "runtime_dependency_error_from_module": (
+        "sdk.exception.types",
+        "runtime_dependency_error_from_module",
+    ),
+    "runtime_dependency_error_from_text": (
+        "sdk.exception.types",
+        "runtime_dependency_error_from_text",
+    ),
     "show_error_dialog": ("sdk.exception.handler", "show_error_dialog"),
     "stopwatch": ("sdk.logging", "stopwatch"),
     # ── lang ──

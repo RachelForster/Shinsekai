@@ -4,7 +4,7 @@ import re
 from queue import Queue
 
 from ai.vision.service import ChatVisionService
-from application.chat.background_prompt import current_background_context
+from application.chat.runtime.background_prompt import current_background_context
 from core.media.chat_attachments import resolve_chat_attachments
 from core.messaging.dialog_reconciliation import reconcile_dialog_repair
 from core.messaging.stream_events import (

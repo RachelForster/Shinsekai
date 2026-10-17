@@ -173,6 +173,7 @@ export function CharacterEditorPage() {
       setDraft(structuredClone(character));
       setPronunciationText(pronunciationMapToText(character.pronunciation_map));
       if (variables.originalName && variables.originalName !== character.name) {
+        void queryClient.invalidateQueries({ queryKey: ["knowledge", "binding-names"] });
         queryClient.setQueryData<TemplateLaunchSession | null>([...templatesQueryKey, "session"], (current) =>
           current
             ? {
@@ -195,6 +196,8 @@ export function CharacterEditorPage() {
     mutationFn: deleteCharacter,
     onSuccess(_result, deletedName) {
       queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+      void queryClient.invalidateQueries({ queryKey: ["knowledge", "instances"] });
+      void queryClient.invalidateQueries({ queryKey: ["knowledge", "binding-names"] });
       queryClient.setQueryData<TemplateLaunchSession | null>([...templatesQueryKey, "session"], (current) => {
         if (!current) {
           return current;
@@ -459,6 +462,9 @@ export function CharacterEditorPage() {
       }));
       setPronunciationText(pronunciationMapToText(character.pronunciation_map));
       setPendingSpritePaths([]);
+      if (variables.saveFirst && variables.originalName && variables.originalName !== character.name) {
+        void queryClient.invalidateQueries({ queryKey: ["knowledge", "binding-names"] });
+      }
       showToast({ kind: "success", title: t("character.sprite.uploadImages") });
     },
   });

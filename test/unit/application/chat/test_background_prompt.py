@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 from ai.llm.template.prompts import UserPromptContext, build_user_prompt_section
-from application.chat.background_prompt import current_background_context
+from application.chat.runtime.background_prompt import current_background_context
 
 
 def test_resolves_current_image_instead_of_initial_background(tmp_path):

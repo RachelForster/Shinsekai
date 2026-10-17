@@ -24,6 +24,10 @@ const mockTranslateBackgroundFields = vi.fn();
 const mockUploadBackgroundBgm = vi.fn();
 const mockUploadBackgroundImages = vi.fn();
 
+vi.mock("../../../features/knowledge-manager/KnowledgeManagerPage", () => ({
+  KnowledgeManagerPage: () => <h2>Knowledge management</h2>,
+}));
+
 vi.mock("../../../shared/ui", async () => {
   const actual = await vi.importActual<typeof import("../../../shared/ui")>("../../../shared/ui");
   return {

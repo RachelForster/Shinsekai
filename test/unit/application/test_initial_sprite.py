@@ -5,8 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from application.chat import session_restore
-from application.chat.initial_sprite import (
+from application.chat.presentation import restore as session_restore
+from application.chat.presentation.initial_sprite import (
     display_initial_sprite,
     find_character_sprite_by_path,
     initial_sprite_path_for_characters,

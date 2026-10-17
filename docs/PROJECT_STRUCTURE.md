@@ -91,7 +91,12 @@ Shinsekai/
   application/
     bootstrap/
     chat/
-      handlers/
+      host/
+      runtime/
+      history/
+      presentation/
+        handlers/
+      dialog_media/
     diagnostics/
     media/
     model_assets/
@@ -196,7 +201,7 @@ frontend/src-tauri     Tauri 壳、打包配置和 Rust 侧能力
 ```text
 application/bootstrap/       进程启动、组合根、运行模式选择
 application/chat/            聊天启动、停止、恢复和历史用例
-application/chat/handlers/   对话媒体与 UI 展示的应用处理链
+application/chat/presentation/handlers/   对话媒体与 UI 展示的应用处理链
 application/chat/dialog_media/  立绘查找与语音生成策略
 application/diagnostics/     日志快照与诊断包用例
 application/effects/         特效配置与资源管理用例
@@ -205,6 +210,9 @@ application/model_assets/    模型与 TTS 资源下载用例
 application/runtime/         app runtime、workers、workflow、shutdown
 application/reminders/       日程校验、持久化、重复规则与投递状态管理
 application/story/           剧情会话、分支状态仓库、人物 readiness 与演出编排
+
+application/knowledge/       资料导入、删除、检索范围、任务进度、模型加载和重试编排
+
 application/plugins/         插件安装、更新、发布等用例编排
 ```
 
@@ -226,18 +234,18 @@ bridge 面向的公开用例使用动作模块和公开函数，例如
 application 使用值对象、回调或按需定义的窄 `Protocol` 接收可替换依赖。
 不得为了形式给每个动作增加 Repository，也不得保留只转发一次下层调用、没有
 编排或策略价值的空壳 service。
-实时聊天命令统一通过稳定入口 `application/chat/commands.py` 分发；WebSocket
+实时聊天命令统一通过稳定入口 `application/chat/runtime/commands.py` 分发；WebSocket
 payload 解析与 ack 投影保留在 `frontend_bridge_core/transport/`。
 聊天 provider、模板、历史、memory hooks 和可选能力降级统一由稳定组合入口
-`application/chat/startup.py` 创建并返回 `ChatStartupContext`。
-聊天启动时的历史目标选择统一由 `application/chat/launch_history.py` 负责；
+`application/chat/runtime/startup.py` 创建并返回 `ChatStartupContext`。
+聊天启动时的历史目标选择统一由 `application/chat/host/launch_history.py` 负责；
 bridge 不得通过修改场景提示词来生成存储标识。快速重开必须保留原历史，并把
 后端选定的新路径写入运行时快照和上次启动会话。
 聊天 workflow、queues、`AppRuntime`、streaming/headless 模式和关闭持久化统一由
-`application/chat/session_runtime.py` 的 `StreamingChatSession` 与
+`application/chat/runtime/session.py` 的 `StreamingChatSession` 与
 `HeadlessChatSession` 持有；背景、BGM、历史场景和初始立绘恢复集中在
-`application/chat/presentation.py`；实时输入、分支、ASR 和 command dispatcher 的
-适配集中在动词入口 `application/chat/wire_streaming_session.py`。`main.py` 只保留
+`application/chat/presentation/assets.py`；实时输入、分支、ASR 和 command dispatcher 的
+适配集中在动词入口 `application/chat/runtime/stream_wiring.py`。`main.py` 只保留
 进程 bootstrap、launch options、transport 和 session 四步装配。
 application 是 `AppRuntime`、应用级 task、当前会话和 concrete manager 装配的唯一
 所有者；这些对象不能下沉到 `core/`。application 可以把结果投影为稳定的 SDK event
@@ -253,6 +261,11 @@ AI、插件等下层能力需要通知宿主时，必须通过 `sdk/` 契约和 
 `application/story/` 负责把确定性剧情事务与聊天分支、持久化 generation、
 人物档案 readiness、可降级演出资源和实时事件协调起来；文件提交、资源加载状态
 和 global effect outbox 不得下沉到 `core/story/`。
+Knowledge 用例依赖 `core/knowledge/` 的存储能力和 `ai/knowledge/` 的 AI 能力；
+角色重命名、删除后的绑定维护由 application 协调。聊天启动时的资料预热等待、
+取消和降级由 `application/knowledge/hooks.py` 负责；聊天会话只在装配时按配置注册钩子。
+Knowledge HTTP 请求、认证和传输 DTO 留在 `frontend_bridge_core/`，由组合根
+注入搜索和状态回调，application 和 AI 能力不导入具体传输实现。
 
 ### `config/`
 
@@ -272,6 +285,7 @@ AI、插件等下层能力需要通知宿主时，必须通过 `sdk/` 契约和 
 ```text
 ai/llm/       LLM adapter、manager、prompt 和消息处理
 ai/memory/    长期记忆、mem0 runtime、embedding/vector 配置
+ai/knowledge/  资料 LLM 提取、语义去重与检索、Mem0 实例创建及 embedding/vector 配置
 ai/tts/       TTS adapter 和 manager
 ai/asr/       ASR adapter、manager 和 streaming controller
 ai/t2i/       文生图 adapter 和 manager
@@ -291,6 +305,7 @@ ai/tools/     向 LLM 暴露能力的薄 tool wrapper
 ```text
 core/app_update/    主程序版本检查、release 和更新包处理
 core/chat_history/  聊天记录归一化、分支状态和会话文件存储
+core/knowledge/     资料绑定 SQLite schema、CRUD 与绑定维护、文件准备和存储查询
 core/media/         文件、附件、媒体资源、安全格式和标签解析
 core/messaging/     消息模型、流解析、对话协议和框架无关的 turn policy
 core/model_assets/  模型下载、缓存、来源和进度

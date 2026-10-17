@@ -46,6 +46,7 @@ import { useDesktopClickThrough } from "./hooks/useDesktopClickThrough";
 import { useDesktopWindowDrag } from "./hooks/useDesktopWindowDrag";
 import { useDialogTypewriter } from "./hooks/useDialogTypewriter";
 import { useMainThemeColor } from "./hooks/useMainThemeColor";
+import { useRecentUserInputs } from "./hooks/useRecentUserInputs";
 import {
   chatStageRuntimeStyle,
   defaultChatStageRuntimeConfig,
@@ -177,6 +178,7 @@ export function ChatStagePage() {
     [runtimeConfig.nameText, themeStyle],
   );
   const viewModel = useMemo(() => buildChatStageViewModel(state), [state]);
+  const { recentInputs, rememberInput } = useRecentUserInputs();
   const stageSprites = useMemo(
     () => (isRemoteMobileAccessPage() ? limitChatStageSpritesToSlots(viewModel.sprites, 1) : viewModel.sprites),
     [viewModel.sprites],
@@ -350,6 +352,7 @@ export function ChatStagePage() {
     if (!text && !attachments.length) {
       return;
     }
+    rememberInput(text);
     const displayText = chatAttachmentDisplayText(text, attachments);
     const payload: string | ChatSendPayload = attachments.length ? { attachments, text } : text;
     showDialogImmediately();
@@ -839,6 +842,7 @@ export function ChatStagePage() {
             })
           }
           onSubmit={submit}
+          previousMessages={recentInputs}
           submitDisabled={attachmentUploadPending}
           value={viewModel.inputDraft}
         />

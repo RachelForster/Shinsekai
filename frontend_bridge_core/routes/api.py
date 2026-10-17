@@ -13,6 +13,7 @@ from frontend_bridge_core.chat_session import (
     wait_for_chat_runtime_ready,
 )
 from frontend_bridge_core.routes.background_routes import BACKGROUND_ROUTES
+from frontend_bridge_core.routes.agent_routes import AGENT_ROUTES
 from frontend_bridge_core.routes.character_routes import CHARACTER_ROUTES
 from frontend_bridge_core.routes.avatar_runtime_routes import AVATAR_RUNTIME_ROUTES
 from frontend_bridge_core.routes.chat_routes import CHAT_ROUTES
@@ -28,6 +29,7 @@ from frontend_bridge_core.routes.http_handler import (
     BridgeHttpHandler,
 )
 from frontend_bridge_core.routes.memory_routes import MEMORY_ROUTES
+from frontend_bridge_core.routes.knowledge_routes import KNOWLEDGE_ROUTES
 from frontend_bridge_core.routes.reminder_routes import REMINDER_ROUTES
 from frontend_bridge_core.routes.model_asset_routes import MODEL_ASSET_ROUTES
 from frontend_bridge_core.routes.operation_routes import OPERATION_ROUTES
@@ -49,6 +51,7 @@ __all__ = [
 _API_ROUTER = Router(
     [
         *SYSTEM_ROUTES,
+        *AGENT_ROUTES,
         *STORY_ROUTES,
         *CHARACTER_ROUTES,
         *AVATAR_RUNTIME_ROUTES,
@@ -56,6 +59,7 @@ _API_ROUTER = Router(
         *BACKGROUND_ROUTES,
         *EFFECT_ROUTES,
         *MEMORY_ROUTES,
+        *KNOWLEDGE_ROUTES,
         *REMINDER_ROUTES,
         *MODEL_ASSET_ROUTES,
         *TEMPLATE_ROUTES,

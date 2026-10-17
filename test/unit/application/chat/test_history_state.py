@@ -2,8 +2,22 @@ from __future__ import annotations
 
 from unittest.mock import Mock
 
-from application.chat.history_state import revert_chat_history
-from application.chat.presentation import StreamingHistoryPresenter
+import pytest
+
+from application.chat.history.state import revert_chat_history
+from application.chat.history.state import history_entry_plain_text
+from application.chat.presentation.assets import StreamingHistoryPresenter
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ("<p>First</p><p>Second &amp; third<br>line</p>", "First\nSecond & third\nline"),
+        ("<P>First</P><DIV >Second</DIV><LI>Third</LI>", "First\nSecond\nThird"),
+    ],
+)
+def test_history_rows_preserve_line_breaks_for_all_supported_html(value, expected):
+    assert history_entry_plain_text(value) == expected
 
 
 def test_revert_replays_previous_dialog_instead_of_adjacent_options() -> None:
