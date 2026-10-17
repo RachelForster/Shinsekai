@@ -253,7 +253,7 @@ def create_chat_session(
 
     initialization = _initialization_for(transport)
 
-    def bind_plugin_frontend(plugin_manager: Any | None) -> None:
+    def configure_plugin_runtime(plugin_manager: Any | None) -> None:
         from plugin_system.host import bind_frontend_ui_runtime
 
         bind_frontend_ui_runtime(
@@ -281,7 +281,7 @@ def create_chat_session(
             init_service=initialization.service,
             translate=options.translate,
             phase=initialization.phase,
-            on_plugins_loaded=bind_plugin_frontend,
+            on_plugins_loaded=configure_plugin_runtime,
         )
     except MissingLlmProviderError as exc:
         initialization.fail(exc)

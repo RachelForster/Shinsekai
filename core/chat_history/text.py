@@ -27,6 +27,7 @@ __all__ = [
     "parse_assistant_dialog_content",
     "rendered_history_text",
     "sanitize_user_display_name",
+    "strip_local_time_prefix",
     "turns_to_text",
 ]
 
@@ -62,6 +63,11 @@ def sanitize_user_display_name(value: Any) -> str:
     if len(name) > 24 or any(ch in name for ch in "\r\n<>"):
         return ""
     return name
+
+
+def strip_local_time_prefix(text: str) -> str:
+    """Remove the chat clock annotation before using a message as a search query."""
+    return re.sub(r"^\[[^\]\n]*(?:本地时间|Local time)[^\]\n]*\]\s*", "", text).strip()
 
 
 class ChatHistoryTurn(TypedDict):

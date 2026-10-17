@@ -263,7 +263,7 @@ AI、插件等下层能力需要通知宿主时，必须通过 `sdk/` 契约和 
 和 global effect outbox 不得下沉到 `core/story/`。
 Knowledge 用例依赖 `core/knowledge/` 的存储能力和 `ai/knowledge/` 的 AI 能力；
 角色重命名、删除后的绑定维护由 application 协调。聊天启动时的资料预热等待、
-取消和降级由 `application/chat/prepare_knowledge.py` 负责。
+取消和降级由 `application/knowledge/hooks.py` 负责；聊天会话只在装配时按配置注册钩子。
 Knowledge HTTP 请求、认证和传输 DTO 留在 `frontend_bridge_core/`，由组合根
 注入搜索和状态回调，application 和 AI 能力不导入具体传输实现。
 

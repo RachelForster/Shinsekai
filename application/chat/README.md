@@ -25,6 +25,12 @@ delivery callback into the application bus; optional observers subscribe there.
 user name use the same core module, while system-history
 speaker aliases are defined once in `core.messaging.dialog_tokens`.
 
+Optional knowledge retrieval is registered by `runtime/session.py` when enabled
+and transport callbacks are available. Its warm-up and request hooks belong to
+`application/knowledge/hooks.py`, using the shared initialization progress and
+cancellation context. Knowledge and memory retrieval share chat-time prefix
+normalization from `core.chat_history.text`.
+
 ## Application lifecycle delivery
 
 The application owns `LifecycleEvents` even when no plugins are installed or

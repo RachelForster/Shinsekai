@@ -196,7 +196,6 @@ def create_chat_startup_context(
                 tts_provider=tts_provider,
                 voice_language=str(config.config.system_config.voice_language or "ja"),
                 memory_enabled=_memory_auto_enabled(),
-                knowledge_enabled=bool(config.config.api_config.knowledge_enabled),
                 runtime_mode=(
                     "react"
                     if args.stream_endpoint

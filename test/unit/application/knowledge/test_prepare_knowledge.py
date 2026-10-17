@@ -2,8 +2,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from application.chat.prepare_knowledge import prepare_knowledge
-from application.knowledge.hooks import KnowledgeHooks
+from application.knowledge.hooks import KnowledgeHooks, prepare_knowledge
 from sdk.chat_init import InitChatCancelled, InitChatContext, ChatInitService
 from sdk.hooks import BeforeChatContext
 

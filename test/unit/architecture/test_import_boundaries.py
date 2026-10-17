@@ -506,7 +506,6 @@ def test_application_owns_chat_composition_and_presentation() -> None:
         "ai.memory.runtime", "core.knowledge.bindings",
     }
     for relative in (
-        "application/chat/prepare_knowledge.py",
         "application/knowledge/hooks.py",
         "frontend_bridge_core/transport/knowledge_http.py",
     ):
