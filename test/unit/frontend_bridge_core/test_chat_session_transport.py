@@ -1,6 +1,8 @@
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import pytest
+
 from application.chat.runtime.commands import ChatCommandResult
 from frontend_bridge_core.transport import chat_session
 from frontend_bridge_core.transport.chat_session import ChatSessionTransport
@@ -70,6 +72,7 @@ def test_factory_creates_runtime_and_initialization_sinks(monkeypatch) -> None:
 
     monkeypatch.setattr(chat_session, "WSClientSink", create_sink)
     options = SimpleNamespace(
+        config=SimpleNamespace(config=SimpleNamespace(api_config=SimpleNamespace(knowledge_enabled=False))),
         args=SimpleNamespace(
             stream_endpoint="ws://runtime",
             init_stream_endpoint="ws://init",
@@ -117,6 +120,7 @@ def test_runtime_transport_reuses_early_stream_connection(monkeypatch) -> None:
     create_sink = Mock(side_effect=AssertionError("must reuse bootstrap sink"))
     monkeypatch.setattr(chat_session, "WSClientSink", create_sink)
     options = SimpleNamespace(
+        config=SimpleNamespace(config=SimpleNamespace(api_config=SimpleNamespace(knowledge_enabled=False))),
         args=SimpleNamespace(
             stream_endpoint="ws://runtime",
             init_stream_endpoint="",
@@ -130,3 +134,18 @@ def test_runtime_transport_reuses_early_stream_connection(monkeypatch) -> None:
     assert upgraded.init_sink is bootstrap_sink
     assert bootstrap_sink.events == [{"type": "status.change", "status": "idle"}]
     create_sink.assert_not_called()
+
+
+def test_transport_supplies_knowledge_functions_without_product_config(monkeypatch):
+    from frontend_bridge_core.transport.knowledge_http import (
+        request_knowledge_search, request_knowledge_status,
+    )
+    send = Mock()
+    monkeypatch.setattr("urllib.request.urlopen", send)
+    options = SimpleNamespace(
+        args=SimpleNamespace(stream_endpoint="", init_stream_endpoint=""),
+    )
+    transport = chat_session.create_transport(options)
+    assert transport.knowledge_search is request_knowledge_search
+    assert transport.knowledge_status is request_knowledge_status
+    send.assert_not_called()

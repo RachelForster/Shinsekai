@@ -663,3 +663,76 @@ def test_streaming_shutdown_supplies_all_lifecycle_callbacks(monkeypatch) -> Non
     assert captured["close_stream_sink"] == transport.close
     assert saved_background == [{"bg_path": "bg.png", "bgm_path": "bgm.mp3"}]
     assert transport.events[-1]["type"] == "session.closed"
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("available", [False, True])
+def test_session_registers_knowledge_only_when_enabled_and_available(monkeypatch, enabled, available):
+    transport = _Transport(streaming=False)
+    transport.knowledge_search = Mock() if available else None
+    transport.knowledge_status = Mock() if available else None
+    dispatcher = Mock()
+    register = Mock()
+    monkeypatch.setattr("application.knowledge.hooks.install_knowledge_hooks", register)
+    def build(*args, config, on_plugins_loaded, **kwargs):
+        register.assert_not_called()
+        assert "knowledge_client" not in kwargs
+        on_plugins_loaded(SimpleNamespace(hook_dispatcher=dispatcher))
+        return _startup(config)
+    monkeypatch.setattr(session_runtime, "create_chat_startup_context", build)
+    options = _options(stream_endpoint="", headless=True)
+    options.config.config = SimpleNamespace(api_config=SimpleNamespace(knowledge_enabled=enabled))
+    session_runtime.create_chat_session(options, transport)
+    if enabled and available:
+        register.assert_called_once_with(
+            dispatcher, search_func=transport.knowledge_search, status_func=transport.knowledge_status,
+        )
+    else:
+        register.assert_not_called()
+    if available:
+        transport.knowledge_search.assert_not_called()
+        transport.knowledge_status.assert_not_called()
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize("status", ["ready", "error"])
+def test_session_knowledge_follows_configuration_and_shared_init_lifecycle(
+    monkeypatch, enabled, streaming, status,
+):
+    from sdk.chat_init import InitChatContext
+    from sdk.hooks import BeforeChatContext, PluginHookDispatcher
+
+    dispatcher = PluginHookDispatcher()
+    transport = _Transport(streaming=streaming)
+    transport.knowledge_search = Mock(return_value={"memories": [{"memory": "A library fact"}]})
+    transport.knowledge_status = Mock(return_value={"status": status, "message": "service unavailable"})
+
+    def build(*args, config, init_service, on_plugins_loaded, **kwargs):
+        on_plugins_loaded(SimpleNamespace(hook_dispatcher=dispatcher))
+        assert dispatcher.dispatch_init_chat(InitChatContext(
+            service=init_service, character_names=("Mika",),
+        )) == ()
+        return _startup(config)
+
+    monkeypatch.setattr(session_runtime, "create_chat_startup_context", build)
+    options = _options(stream_endpoint="ws://chat" if streaming else "", headless=not streaming)
+    options.config.config = SimpleNamespace(api_config=SimpleNamespace(knowledge_enabled=enabled))
+
+    session_runtime.create_chat_session(options, transport)
+    query = BeforeChatContext(
+        messages=[{"role": "user", "content": "library"}],
+        tools=None, generation_kwargs={}, stream=streaming,
+    )
+    dispatcher.dispatch_before_chat(query)
+
+    if enabled:
+        transport.knowledge_status.assert_called_once_with(start_loading=True)
+    else:
+        transport.knowledge_status.assert_not_called()
+    if enabled and status == "ready":
+        transport.knowledge_search.assert_called_once_with("library", character_names=["Mika"], limit=5)
+        assert "A library fact" in query.messages[-1]["content"]
+    else:
+        transport.knowledge_search.assert_not_called()
+        assert len(query.messages) == 1

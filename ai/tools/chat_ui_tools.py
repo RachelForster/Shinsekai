@@ -3,7 +3,7 @@
 from __future__ import annotations
 from typing import Any
 
-from application.chat.presentation.user_display import sanitize_user_display_name
+from core.chat_history.text import sanitize_user_display_name
 from sdk.llm_runtime import get_llm_host_runtime
 from sdk.tool_registry import tool
 

@@ -81,6 +81,7 @@ FORBIDDEN_IMPORTS = {
     ),
     "ai": frozenset(
         {
+            "application",
             "asr",
             "frontend_bridge_core",
             "llm",
@@ -348,6 +349,19 @@ def _dynamic_imported_roots(source: Path) -> set[str]:
     return _literal_dynamic_imported_roots(tree)
 
 
+def _imported_modules(source: Path) -> set[str]:
+    """Collect complete static import paths for retired-module checks."""
+    tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+    modules: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            modules.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            modules.add(node.module)
+            modules.update(f"{node.module}.{alias.name}" for alias in node.names)
+    return modules
+
+
 def _referenced_names(tree: ast.AST) -> set[str]:
     names = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
     names.update(
@@ -485,6 +499,18 @@ def test_application_owns_chat_composition_and_presentation() -> None:
     assert not list((REPO_ROOT / "core").rglob("*wiring.py")), (
         "Composition roots and manager wiring belong to application."
     )
+
+    # Chat-side knowledge code must use remote callbacks, not local storage.
+    forbidden_modules = {
+        "mem0", "application.knowledge.runtime",
+        "ai.memory.runtime", "core.knowledge.bindings",
+    }
+    for relative in (
+        "application/knowledge/hooks.py",
+        "frontend_bridge_core/transport/knowledge_http.py",
+    ):
+        source = REPO_ROOT / relative
+        assert not (_imported_modules(source) & forbidden_modules), relative
 
 
 def test_legacy_ai_namespaces_do_not_depend_on_application() -> None:
@@ -957,6 +983,12 @@ def test_bridge_facing_application_use_cases_have_explicit_action_names() -> Non
 
 def test_active_host_code_does_not_import_legacy_ai_namespaces() -> None:
     legacy_roots = {"asr", "llm", "t2i", "tts"}
+    retired_knowledge = {"bindings", "imports", "runtime", "tasks", "hooks", "service", "catalog", "storage"}
+    retired_modules = {f"ai.knowledge.{name}" for name in retired_knowledge}
+    assert not any(
+        (REPO_ROOT / "ai/knowledge" / f"{name}.py").exists()
+        for name in retired_knowledge
+    )
     source_roots = (
         "ai",
         "application",
@@ -976,5 +1008,7 @@ def test_active_host_code_does_not_import_legacy_ai_namespaces() -> None:
             relative = source.relative_to(REPO_ROOT).as_posix()
             for imported_root in _imported_roots(source) & legacy_roots:
                 offenders.append((relative, imported_root))
+            for module in _imported_modules(source) & retired_modules:
+                offenders.append((relative, module))
 
     assert not offenders, f"Active host code must use ai.*: {offenders}"

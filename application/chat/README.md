@@ -20,9 +20,16 @@ confirmation in `frontend_bridge_core/chat_session.py`. Launch options and their
 defaults are defined by `ChatLaunchPreparation.prepare`; composition forwards
 them without declaring a second copy. Process events have one
 delivery callback into the application bus; optional observers subscribe there.
-User-name validation lives in `presentation/user_display.py`. History text uses
-`core.chat_history.text`, including its default user name, while system-history
+`presentation/user_display.py` exports shared user-name validation from
+`core.chat_history.text`, also used by AI tools. History text and its default
+user name use the same core module, while system-history
 speaker aliases are defined once in `core.messaging.dialog_tokens`.
+
+Optional knowledge retrieval is registered by `runtime/session.py` when enabled
+and transport callbacks are available. Its warm-up and request hooks belong to
+`application/knowledge/hooks.py`, using the shared initialization progress and
+cancellation context. Knowledge and memory retrieval share chat-time prefix
+normalization from `core.chat_history.text`.
 
 ## Application lifecycle delivery
 

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 import threading
 import time
 from typing import Any
@@ -13,7 +12,11 @@ from ai.memory.chunking import DEFAULT_DIALOGUE_CHUNK_TOKENS
 from ai.memory.extraction import MemoryExtractor
 from ai.memory.operations import memory_search, memory_service_status
 from ai.memory.queue import MemoryWriteQueue
-from core.chat_history.text import history_payload_to_plain_text, parse_assistant_dialog_content
+from core.chat_history.text import (
+    history_payload_to_plain_text,
+    parse_assistant_dialog_content,
+    strip_local_time_prefix,
+)
 from sdk.chat_init import InitChatContext
 from sdk.hooks import BeforeChatContext, MessageAddedContext, PluginHookDispatcher
 
@@ -52,10 +55,6 @@ def _clean_text(value: Any, *, max_chars: int = 4000) -> str:
     if len(text) > max_chars:
         return text[:max_chars].rstrip()
     return text
-
-
-def _strip_local_time_prefix(text: str) -> str:
-    return re.sub(r"^\[[^\]\n]*(?:本地时间|Local time)[^\]\n]*\]\s*", "", text).strip()
 
 
 def _memory_rows(result: dict[str, Any]) -> list[str]:
@@ -227,7 +226,7 @@ class MemoryAutoHooks:
             return
         if any(_INJECTION_MARKER in str(message.get("content") or "") for message in context.messages):
             return
-        query = _strip_local_time_prefix(user_text)
+        query = strip_local_time_prefix(user_text)
         if not query:
             return
         key = query.casefold()

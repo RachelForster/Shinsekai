@@ -210,6 +210,9 @@ application/model_assets/    模型与 TTS 资源下载用例
 application/runtime/         app runtime、workers、workflow、shutdown
 application/reminders/       日程校验、持久化、重复规则与投递状态管理
 application/story/           剧情会话、分支状态仓库、人物 readiness 与演出编排
+
+application/knowledge/       资料导入、删除、检索范围、任务进度、模型加载和重试编排
+
 application/plugins/         插件安装、更新、发布等用例编排
 ```
 
@@ -258,6 +261,11 @@ AI、插件等下层能力需要通知宿主时，必须通过 `sdk/` 契约和 
 `application/story/` 负责把确定性剧情事务与聊天分支、持久化 generation、
 人物档案 readiness、可降级演出资源和实时事件协调起来；文件提交、资源加载状态
 和 global effect outbox 不得下沉到 `core/story/`。
+Knowledge 用例依赖 `core/knowledge/` 的存储能力和 `ai/knowledge/` 的 AI 能力；
+角色重命名、删除后的绑定维护由 application 协调。聊天启动时的资料预热等待、
+取消和降级由 `application/knowledge/hooks.py` 负责；聊天会话只在装配时按配置注册钩子。
+Knowledge HTTP 请求、认证和传输 DTO 留在 `frontend_bridge_core/`，由组合根
+注入搜索和状态回调，application 和 AI 能力不导入具体传输实现。
 
 ### `config/`
 
@@ -277,6 +285,7 @@ AI、插件等下层能力需要通知宿主时，必须通过 `sdk/` 契约和 
 ```text
 ai/llm/       LLM adapter、manager、prompt 和消息处理
 ai/memory/    长期记忆、mem0 runtime、embedding/vector 配置
+ai/knowledge/  资料 LLM 提取、语义去重与检索、Mem0 实例创建及 embedding/vector 配置
 ai/tts/       TTS adapter 和 manager
 ai/asr/       ASR adapter、manager 和 streaming controller
 ai/t2i/       文生图 adapter 和 manager
@@ -296,6 +305,7 @@ ai/tools/     向 LLM 暴露能力的薄 tool wrapper
 ```text
 core/app_update/    主程序版本检查、release 和更新包处理
 core/chat_history/  聊天记录归一化、分支状态和会话文件存储
+core/knowledge/     资料绑定 SQLite schema、CRUD 与绑定维护、文件准备和存储查询
 core/media/         文件、附件、媒体资源、安全格式和标签解析
 core/messaging/     消息模型、流解析、对话协议和框架无关的 turn policy
 core/model_assets/  模型下载、缓存、来源和进度
