@@ -109,7 +109,7 @@ def _shutdown_bridge_runtime(reason: str) -> None:
             f"bridge runtime plugin transport unbind failed reason={reason} error={exc}"
         )
     try:
-        from application.chat.runtime_process import shutdown_active_chat_process
+        from application.chat.composition import shutdown_active_chat_process
 
         shutdown_active_chat_process(wait_timeout=1.5)
     except Exception as exc:
@@ -122,12 +122,19 @@ def _shutdown_bridge_runtime(reason: str) -> None:
         if presenter is not None:
             presenter.close()
         try:
-            from application.chat.mobile_access import stop_mobile_access
+            from application.chat.composition import _session_lifecycle
 
-            stop_mobile_access(state)
+            lifecycle = _session_lifecycle(state)
+            try:
+                lifecycle.closing(reason)
+            finally:
+                try:
+                    lifecycle.ended(reason)
+                finally:
+                    lifecycle.dispose()
         except Exception as exc:
             _restart_debug_log(
-                f"bridge runtime mobile access stop failed reason={reason} error={exc}"
+                f"bridge runtime session cleanup failed reason={reason} error={exc}"
             )
     chat_stream = getattr(state, "chat_stream", None) if state is not None else None
     if chat_stream is not None:
@@ -377,6 +384,7 @@ def run(
     apply_network_proxy_environment_from_system_config()
     apply_mirror_environment_from_system_config()
     os.environ["SHINSEKAI_MEMORY_SERVICE_OWNER"] = "1"
+    os.environ["SHINSEKAI_KNOWLEDGE_SERVICE_OWNER"] = "1"
 
     from config.background_manager import BackgroundManager
     from config.character_manager import CharacterManager

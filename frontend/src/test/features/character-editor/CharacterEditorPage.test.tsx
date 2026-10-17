@@ -336,7 +336,7 @@ describe("CharacterEditorPage", () => {
     await waitFor(() => expect(screen.getByRole("combobox", { name: "Current character" })).toHaveTextContent("Sora"));
   });
 
-  it("updates the cached template selection when a character is renamed", async () => {
+  it("updates the cached template selection and invalidates knowledge binding names when a character is renamed", async () => {
     const client = new QueryClient({
       defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
     });
@@ -365,6 +365,8 @@ describe("CharacterEditorPage", () => {
       voiceLanguage: "ja",
     } satisfies TemplateLaunchSession;
     client.setQueryData(["templates", "session"], session);
+    const bindingKey = ["knowledge", "binding-names", "world"];
+    client.setQueryData(bindingKey, { knowledge_id: "world", characterNames: ["Mika"] });
     renderPage(client);
 
     const nameInput = screen.getByLabelText("Character name");
@@ -380,6 +382,7 @@ describe("CharacterEditorPage", () => {
       ]),
     );
     expect(client.getQueryData<TemplateLaunchSession>(["templates", "session"])?.primaryCharacters).toEqual(["C"]);
+    expect(client.getQueryState(bindingKey)?.isInvalidated).toBe(true);
   });
 
   it("auto-saves a new character before uploading sprites", async () => {
@@ -676,6 +679,10 @@ describe("CharacterEditorPage", () => {
     const client = new QueryClient({
       defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
     });
+    const catalogKey = ["knowledge", "instances", "", 1];
+    const bindingKey = ["knowledge", "binding-names", "world"];
+    client.setQueryData(catalogKey, { count: 1, instances: [] });
+    client.setQueryData(bindingKey, { knowledge_id: "world", characterNames: ["Mika"] });
     client.setQueryData<TemplateLaunchSession>(["templates", "session"], {
       background: "",
       characterPromptMode: "compact",
@@ -714,6 +721,8 @@ describe("CharacterEditorPage", () => {
       expect(session?.primaryCharacters).toEqual([]);
       expect(session?.characterPromptMode).toBeUndefined();
     });
+    expect(client.getQueryState(catalogKey)?.isInvalidated).toBe(true);
+    expect(client.getQueryState(bindingKey)?.isInvalidated).toBe(true);
   });
 
   it("locks cloud voice reference controls when Kaggle GPT-SoVITS is selected", async () => {

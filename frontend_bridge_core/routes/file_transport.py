@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote
 
-from application.chat.runtime_process import _chat_history_download_file, _chat_voice_source
+from application.chat.composition import _chat_history_download_file, _chat_voice_source
 from frontend_bridge_core.media import _media_thumbnail, _media_thumbnail_batch
 from frontend_bridge_core.media_paths import (
     is_absolute_local_media_path_text,

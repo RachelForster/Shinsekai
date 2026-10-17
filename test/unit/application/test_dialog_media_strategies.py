@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import yaml
 import pytest
 
-from application.chat.handlers.dialog_media import (
+from application.chat.presentation.handlers.dialog_media import (
     BgmMediaHandler,
     CharacterMediaHandler,
     SceneMediaHandler,

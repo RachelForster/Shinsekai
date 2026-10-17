@@ -401,6 +401,8 @@ export function normalizeApiConfigForUi(config: ApiConfig, installedTtsBundlePat
       llm_model: normalizedProviders.llm_model ?? {},
       max_active_tool_groups: finiteNumber(normalizedProviders.max_active_tool_groups, 3),
       max_tool_result_chars: finiteNumber(normalizedProviders.max_tool_result_chars, 6000),
+      knowledge_enabled: normalizedProviders.knowledge_enabled ?? false,
+      knowledge_search_limit: clampInt(normalizedProviders.knowledge_search_limit, 5, 1, 20),
       memory_auto_enabled: normalizedProviders.memory_auto_enabled ?? false,
       memory_extract_interval_turns: clampInt(normalizedProviders.memory_extract_interval_turns, 5, 1, 50),
       memory_recent_buffer_messages: clampInt(normalizedProviders.memory_recent_buffer_messages, 16, 2, 64),

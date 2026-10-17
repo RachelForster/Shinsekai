@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import Any
 
-from application.chat.commands import ChatCommandRequest, ChatCommandResult
+from application.chat.runtime.commands import ChatCommandRequest, ChatCommandResult
 
 
 def parse_chat_command(raw_command: Mapping[str, object]) -> ChatCommandRequest:

@@ -1,6 +1,6 @@
 from unittest.mock import Mock
 
-from application.chat.ui_updates import StreamingUIUpdateManager
+from application.chat.presentation.updates import StreamingUIUpdateManager
 from application.media.resource_urls import UnconfiguredResourceUrls
 
 
@@ -15,7 +15,7 @@ def test_saved_voice_notice_expires_without_clearing_newer_notice(monkeypatch) -
         def start(self) -> None:
             pass
 
-    monkeypatch.setattr("application.chat.ui_updates.threading.Timer", FakeTimer)
+    monkeypatch.setattr("application.chat.presentation.updates.threading.Timer", FakeTimer)
     sink = Mock()
     ui = StreamingUIUpdateManager(sink, chat_history=[], resource_urls=UnconfiguredResourceUrls())
 

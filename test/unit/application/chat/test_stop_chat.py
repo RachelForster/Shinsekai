@@ -11,7 +11,7 @@ def test_stop_chat_composes_runtime_cleanup_with_fake_state(monkeypatch) -> None
     calls = []
     state = SimpleNamespace(chat_session={"sessionId": ""}, chat_stream=None)
     monkeypatch.setattr(
-        stop_chat_action.runtime_process,
+        stop_chat_action,
         "_set_chat_runtime_closing",
         lambda _state, closing: calls.append(("closing", closing)),
     )
@@ -68,7 +68,7 @@ class _ObservedLifecycleLock:
 
 def _patch_stop_dependencies(monkeypatch):
     calls = []
-    monkeypatch.setattr(stop_chat_action.runtime_process, "_set_chat_runtime_closing", lambda _state, closing: calls.append(("closing", closing)))
+    monkeypatch.setattr(stop_chat_action, "_set_chat_runtime_closing", lambda _state, closing: calls.append(("closing", closing)))
     monkeypatch.setattr(stop_chat_action.runtime_process, "shutdown_active_chat_process", lambda **_kwargs: calls.append("shutdown"))
     monkeypatch.setattr(stop_chat_action.runtime_process, "_chat_snapshot", lambda *_args: {"status": "idle"})
     monkeypatch.setattr(stop_chat_action, "stop_mobile_access", lambda _state: calls.append("mobile"))

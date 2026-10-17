@@ -22,7 +22,7 @@
 - **100+ 角色包**：提供超过 100 个可直接导入的角色包，快速扩充角色阵容；也支持自行制作、导入和导出 `.char` 包。
 - **插件扩展**：**插件 SDK** 可扩展适配器、设置页与聊天栏控件，并通过插件继续增加 LLM、TTS、ASR、T2I 和工具能力。
 - **数据在本地、可备份**：配置与资源默认落在项目 **`data/`** 下（`api.yaml`、`system_config.yaml`、角色与历史等），便于打包备份与二次开发。  
-- **开源可玩**：源码与 [发行版整合包](https://github.com/RachelForster/Shinsekai/releases) 任选；社区插件索引见 [Shinsekai-Plugin-Registry](https://github.com/RachelForster/Shinsekai-Plugin-Registry)。
+- **公开源码**：源码与 [发行版整合包](https://github.com/RachelForster/Shinsekai/releases) 任选；社区插件索引见 [Shinsekai-Plugin-Registry](https://github.com/RachelForster/Shinsekai-Plugin-Registry)。
 
 ---
 
@@ -227,4 +227,4 @@ pnpm sync:version
 
 ## 许可说明
 
-新世界是源码可见项目，不是开源项目。你可以查看源码、本地构建自用，也可以公开 fork 用于讨论和贡献；未经书面许可，禁止再分发、发布 Release、发布安装包、上架应用商店或商业使用。详见 [LICENSE](LICENSE)。
+新世界是公开源码项目。你可以查看源码、本地构建自用，也可以公开 fork 用于讨论和贡献；未经书面许可，禁止再分发、发布 Release、发布安装包、上架应用商店或商业使用。详见 [LICENSE](LICENSE)。

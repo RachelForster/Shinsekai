@@ -1,0 +1,324 @@
+"""Default service composition and application entry points for chat."""
+
+from __future__ import annotations
+
+import os
+import subprocess
+import time
+import uuid
+from pathlib import Path
+from typing import Any
+
+from core.paths import app_root as runtime_app_root
+from core.paths import project_root as runtime_project_root
+from core.paths import source_root as runtime_source_root
+
+from application.chat.history.paths import resolve_history_path_for_project
+from application.chat.host.mobile_access import (
+    get_mobile_access_info,
+)
+from application.runtime.dependencies import runtime_dependency_error_from_text
+from application.runtime.state import BridgeState
+from application.story.coordinator import (
+    bound_story_session,
+    clear_story_session,
+    discard_story_session_storage,
+    publish_story_transition,
+    story_snapshot_patch,
+)
+
+from application.chat.host import projection, history, story
+from application.chat.host.ports import (
+    ProcessSystem,
+    StoryCoordinatorAccess,
+)
+from application.chat.host.process_supervisor import (
+    ChatProcessSupervisor,
+    ProcessTermination,
+    tail_text,
+)
+from application.chat.host.launch_preparation import ChatLaunchPreparation
+from application.chat.host.events import LifecycleEvents
+from application.chat.host.diagnostics import LifecycleDiagnostics
+from application.chat.host.session_lifecycle import ChatSessionLifecycle, SessionEffects
+from application.chat.host.mobile_access import (
+    configure_mobile_access,
+    stop_mobile_access,
+)
+from application.chat.host.launch_history import persist_confirmed_history_path
+from sdk.chat_lifecycle import ChatProcessContext, ChatSessionContext
+from application.chat.host.commands import (
+    ChatCommandRouter,
+    dismiss_plugin_page,
+    forward_current,
+    voice_archive_command,
+    audio_playback,
+    skip_speech,
+    advance,
+    voice_language,
+    pause_asr,
+    resume_asr,
+    reroll,
+    HistoryCommands,
+    TurnOptionsCommands,
+    InputCommands,
+    SelectionCommands,
+    BranchCommands,
+)
+from application.chat.voice_archive import VoiceArchive
+
+
+def _chat_voice_archive(state: BridgeState) -> VoiceArchive:
+    history_raw = str(state.chat_session.get("historyPath") or "").strip()
+    if not history_raw:
+        raise ValueError("当前没有聊天存档")
+    return VoiceArchive(resolve_history_path_for_project(state, history_raw))
+
+
+def _chat_voice_info(state: BridgeState, voice_id: str) -> dict[str, int]:
+    return {"segmentCount": _chat_voice_archive(state).count(voice_id)}
+
+
+def _chat_voice_source(state: BridgeState, voice_id: str, index: int) -> Path:
+    return _chat_voice_archive(state).source(voice_id, index)
+
+
+def _chat_runtime_status(state: BridgeState) -> dict[str, Any]:
+    running = _supervisor.running()
+    closing = projection._chat_runtime_closing(state)
+    runtime_state = "closing" if closing else "running" if running else "idle"
+    return {
+        "state": runtime_state,
+        "chatProcessRunning": running,
+        "chatRuntimeClosing": closing,
+    }
+
+
+def _chat_log_path() -> Path:
+    log_dir = runtime_project_root() / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    return log_dir / "main.log"
+
+
+def _failed_launch_message(exit_code: int, log_path: Path) -> str:
+    tail = tail_text(log_path).strip()
+    detail = f"\n\n日志尾部:\n{tail}" if tail else ""
+    dependency_error = runtime_dependency_error_from_text(tail, log_path=log_path)
+    dependency_hint = ""
+    if dependency_error:
+        dependency_hint = f"\n缺少 Python 模块: {dependency_error['moduleName']}\n建议安装包: {dependency_error['packageName']}"
+    return f"启动失败: 聊天进程已退出，退出码 {exit_code}。\n日志: {log_path}{dependency_hint}{detail}"
+
+
+def _app_root(state: BridgeState) -> Path:
+    for raw in (
+        str(getattr(state, "app_root_dir", "") or "").strip(),
+        os.environ.get("SHINSEKAI_APP_ROOT", "").strip(),
+    ):
+        if not raw:
+            continue
+        path = Path(raw).expanduser().resolve(strict=False)
+        if path.exists() and path.is_dir():
+            return path
+    return runtime_app_root()
+
+
+def _unique_paths(paths: list[Path]) -> list[Path]:
+    result: list[Path] = []
+    seen: set[str] = set()
+    for path in paths:
+        resolved = path.resolve(strict=False)
+        key = os.path.normcase(str(resolved))
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(resolved)
+    return result
+
+
+def _main_exe_candidates(state: BridgeState) -> list[Path]:
+    roots = _unique_paths([_app_root(state), runtime_source_root()])
+    return _unique_paths(
+        [
+            candidate
+            for root in roots
+            for candidate in (root / "main" / "main.exe", root / "main.exe")
+        ]
+    )
+
+
+def _main_py_path() -> Path:
+    return runtime_source_root() / "main.py"
+
+
+def _launch_chat(
+    state: BridgeState,
+    *,
+    session_id: str | None = None,
+    launch_id: str = "",
+    **launch_options: Any,
+) -> str:
+    """Supervise a launch using the options defined by ChatLaunchPreparation.prepare."""
+    return _supervisor.launch(
+        lambda: _launch_preparation.prepare(state, **launch_options),
+        session_id=(
+            str(session_id).strip()
+            if session_id is not None
+            else str(
+                (getattr(state, "chat_session", {}) or {}).get("sessionId") or ""
+            ).strip()
+        ),
+        launch_id=launch_id,
+    )
+
+
+def _publish_lifecycle(context: ChatProcessContext | ChatSessionContext) -> None:
+    from plugin_system.host.service import get_plugin_hook_dispatcher
+
+    dispatcher = get_plugin_hook_dispatcher()
+    if dispatcher is not None:
+        dispatcher.dispatch(context.event, context)
+
+
+def _session_lifecycle(state, **effects) -> ChatSessionLifecycle:
+    service = getattr(state, "chat_session_lifecycle", None)
+    if service is None:
+        service = ChatSessionLifecycle(
+            state,
+            _application_events,
+            SessionEffects(
+                configure_mobile=configure_mobile_access,
+                stop_mobile=stop_mobile_access,
+                remember_history=persist_confirmed_history_path,
+                clear_story=clear_story_session,
+            ),
+        )
+        state.chat_session_lifecycle = service
+    for name, callback in effects.items():
+        setattr(service.effects, name, callback)
+    return service
+
+
+_application_events = LifecycleEvents()
+_application_events.subscribe(LifecycleDiagnostics())
+_application_events.subscribe(_publish_lifecycle)
+
+
+_process_system = ProcessSystem(
+    platform=lambda: os.name,
+    monotonic=time.monotonic,
+    group_signal=lambda pid, signum: os.killpg(pid, signum),
+    popen=lambda command, **kwargs: subprocess.Popen(command, **kwargs),
+)
+_termination = ProcessTermination(_process_system)
+_supervisor = ChatProcessSupervisor(
+    system=_process_system,
+    log_path=_chat_log_path,
+    hidden_kwargs=_termination.hidden_kwargs,
+    stop_child=_termination.stop,
+    wait_exit=_termination.wait_exit,
+    monotonic=time.monotonic,
+    failed_launch=_failed_launch_message,
+    handle_event=_application_events.emit,
+    watch_exits=True,
+)
+_launch_preparation = ChatLaunchPreparation(
+    project_root=runtime_project_root,
+    app_root=_app_root,
+    exe_candidates=_main_exe_candidates,
+    main_py=_main_py_path,
+)
+_history_projection = history.HistoryProjection(
+    resolve=resolve_history_path_for_project,
+    read=history._read_history_file,
+    user_name=projection._chat_user_display_name,
+)
+_history_downloads = history.HistoryDownloads(
+    resolve=resolve_history_path_for_project,
+    clock=time.monotonic,
+    token=lambda: uuid.uuid4().hex,
+)
+_story_access = StoryCoordinatorAccess(
+    session=bound_story_session,
+    patch=story_snapshot_patch,
+    publish=publish_story_transition,
+    clear=clear_story_session,
+    discard=discard_story_session_storage,
+)
+_story_history = story.StoryHistoryRecorder(
+    _history_projection, projection._chat_user_display_name_from_snapshot
+)
+_story_branches = story.StoryBranchCoordinator(
+    _story_access, resolve_history_path_for_project
+)
+_snapshot_projection = projection.SnapshotProjection(
+    history=_history_projection.entries,
+    running=_supervisor.running,
+    story_patch=story_snapshot_patch,
+    mobile_info=get_mobile_access_info,
+)
+_command_router = ChatCommandRouter(_snapshot_projection.build)
+_history_commands = HistoryCommands(
+    history=_history_projection,
+    download_file=_history_downloads.current_file,
+    issue_download=_history_downloads.issue,
+    discard_story=_story_branches.discard,
+)
+_input_commands = InputCommands(
+    turn_options=projection._chat_turn_options,
+    user_name=projection._chat_user_display_name_from_snapshot,
+)
+_selection_commands = SelectionCommands(
+    story=_story_access,
+    record_choice=_story_history.record_choice,
+    choice_label=story._story_choice_label,
+    text_selection=_input_commands.message,
+)
+_turn_commands = TurnOptionsCommands(projection._chat_turn_options)
+_branch_commands = BranchCommands(
+    features=projection._chat_experimental_features,
+    sync=_story_branches.sync,
+    publish=_story_branches.publish,
+)
+
+for command, handler in {
+    "copy-history": _history_commands.copy_history,
+    "open-history": _history_commands.open_history,
+    "dismiss-plugin-page": dismiss_plugin_page,
+}.items():
+    _command_router.register(command, handler, runtime=False)
+
+for command, handler in {
+    "clear-history": _history_commands.clear_history,
+    "update-turn-options": _turn_commands.update,
+    "send-message": _input_commands.message,
+    "submit-option": _selection_commands.submit,
+    "chat-input-state": forward_current,
+    "flush-input-batch": forward_current,
+    "cancel-input-batch": forward_current,
+    "set-voice-archive": voice_archive_command,
+    "save-history-voice": voice_archive_command,
+    "audio-playback-signal": audio_playback,
+    "skip-speech": skip_speech,
+    "dialog-advance": advance,
+    "change-voice-language": voice_language,
+    "pause-asr": pause_asr,
+    "resume-asr": resume_asr,
+    "begin-asr-hold": forward_current,
+    "finish-asr-hold": forward_current,
+    "cancel-asr-hold": forward_current,
+    "reroll": reroll,
+    "revert-history": _branch_commands.revert,
+    "fork-history": _branch_commands.fork,
+    "switch-branch": _branch_commands.switch,
+    "rename-branch": _branch_commands.rename,
+}.items():
+    _command_router.register(command, handler)
+
+# Application entry points use the owned services directly.
+_chat_process_running = _supervisor.running
+shutdown_active_chat_process = _supervisor.shutdown
+_chat_snapshot = _snapshot_projection.build
+_chat_history = _history_projection.entries
+_chat_history_download_file = _history_downloads.fetch
+_handle_chat_command = _command_router.handle
