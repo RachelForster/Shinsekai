@@ -1,6 +1,9 @@
 import type { MessageKey } from "../messages";
 
 export const zhCNMessages: Record<MessageKey, string> = {
+  "story.library.delete": "删除剧本版本",
+  "story.library.deleteConfirm":
+    "确定删除《{title}》的版本 {version} 及其全部关联对话和存档吗？其他版本会保留。此操作无法撤销。",
   "visualMedia.videoError": "无法播放此视频。请检查文件，或使用 H.264 编码的 MP4 视频。",
   "nav.assistant": "助手",
   "agent.subtitle": "独立思考，清楚说明依据与不确定之处。",

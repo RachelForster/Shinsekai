@@ -12,12 +12,13 @@ from pathlib import Path
 from typing import Any
 
 from application.chat.history.paths import resolve_history_path_for_project
+from application.story.prompt_turns import PROMPT_TURN_FILENAME
 from core.chat_history.storage import (
     ACTIVE_HISTORY_FILENAME,
     STORY_SESSION_FILENAME,
     chat_history_active_path,
     chat_history_session_dir,
-    remove_chat_history_storage,
+    chat_history_storage_files,
 )
 from core.chat_history.text import chat_history_to_turns
 from core.messaging.dialog_tokens import (
@@ -320,14 +321,29 @@ def delete_conversation(state: Any, conversation_id: str) -> None:
         if active and _id(Path(active)) == conversation_id and _chat_runtime_status(state)["state"] != "idle":
             raise RuntimeError("Close this chat before deleting it.")
         path = resolve_history_path_for_project(state, record["historyPath"])
-        directory = chat_history_session_dir(path)
-        legacy = Path(str(directory) + ".json")
-        if legacy.is_file() and (directory / "branches.json").is_file():
-            path = legacy
-        remove_chat_history_storage(path)
-        (directory / "story-prompt-binding.json").unlink(missing_ok=True)
-        try:
-            directory.rmdir()
-        except OSError:
-            pass
-        (_directory(state) / f"{conversation_id}.json").unlink(missing_ok=True)
+        _delete_conversation_files(state, path)
+
+
+def _conversation_storage_files(state: Any, path: Path) -> tuple[Path, ...]:
+    """One ownership list for conversation cleanup and recoverable story deletion."""
+    directory = chat_history_session_dir(path)
+    legacy = Path(str(directory) + ".json")
+    if legacy.is_file() and (directory / "branches.json").is_file():
+        path = legacy
+    return (
+        *chat_history_storage_files(path),
+        directory / "story-prompt-binding.json",
+        directory / f"{STORY_SESSION_FILENAME}.lock",
+        directory / PROMPT_TURN_FILENAME,
+        _directory(state) / f"{_id(path)}.json",
+    )
+
+
+def _delete_conversation_files(state: Any, path: Path) -> None:
+    """Remove validated storage while the caller holds initialization/metadata locks."""
+    for file in _conversation_storage_files(state, path):
+        file.unlink(missing_ok=True)
+    try:
+        chat_history_session_dir(path).rmdir()
+    except OSError:
+        pass

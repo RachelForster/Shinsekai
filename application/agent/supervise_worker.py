@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import os
 import signal
 import subprocess
@@ -209,6 +210,15 @@ class AgentWorkerSupervisor:
             process.kill()
         process.wait(timeout=3)
         for stream in (process.stdin, process.stdout, process.stderr):
-            stream.close()
+            try:
+                stream.close()
+            except OSError as error:
+                # Closing buffered stdin may flush an RPC reply after the child
+                # exits. This is expected during termination, like communicate().
+                if stream is not process.stdin or not (
+                    error.errno == errno.EPIPE
+                    or (os.name == "nt" and error.errno == errno.EINVAL)
+                ):
+                    raise
         self.process, self.peer = None, None
         self.opened_sessions.clear()

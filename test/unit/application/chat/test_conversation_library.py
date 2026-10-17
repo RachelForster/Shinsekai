@@ -170,7 +170,11 @@ def test_chat_title_is_independent_of_template_name_and_keeps_renames(state):
 
 
 def test_delete_removes_history_branches_story_and_legacy_alias_but_keeps_other_files(state):
+    from application.story.prompt_turns import PromptTurnJournal
+
     path = history(state)
+    journal = PromptTurnJournal(str(path))
+    journal.save({"message": {"content": "interrupted turn"}})
     write(path / "branches.json", {})
     write(path / "story-v2.json", {})
     write(path / "story-prompt-binding.json", {"storyPath": "original.json"})
@@ -182,6 +186,7 @@ def test_delete_removes_history_branches_story_and_legacy_alias_but_keeps_other_
     delete_conversation(state, item["id"])
     assert not (path / "active.json").exists()
     assert not path.with_suffix(".json").exists()
+    assert not journal.path.exists()
     assert list(path.iterdir()) == [path / "keep.txt"]
     assert (other / "active.json").is_file()
     assert len(list_conversations(state)) == 1

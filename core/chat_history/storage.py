@@ -53,41 +53,35 @@ def chat_history_download_path(path: str | Path) -> Path:
     return chat_history_active_path(path)
 
 
-def remove_chat_history_storage(path: str | Path) -> None:
+def chat_history_storage_files(path: str | Path) -> tuple[Path, ...]:
+    """Enumerate owned files, keeping migrated legacy aliases last."""
     candidate = Path(path)
+    directory = chat_history_session_dir(candidate)
+    files = tuple(directory / name for name in (
+        BRANCH_TREE_FILENAME,
+        f"{ACTIVE_HISTORY_FILENAME}.tmp",
+        ACTIVE_HISTORY_FILENAME,
+        STORY_SESSION_FILENAME,
+    ))
     if candidate.suffix.lower() == ".json" and not _is_branch_file(candidate):
-        file_targets = [candidate, Path(str(candidate) + ".tmp")]
-        directory_targets = [candidate.with_suffix("")]
-    elif _is_branch_file(candidate):
-        file_targets = []
-        directory_targets = [candidate.parent]
-    else:
-        file_targets = []
-        directory_targets = [chat_history_session_dir(candidate)]
+        files += (candidate, Path(str(candidate) + ".tmp"))
+    return files
 
+
+def remove_chat_history_storage(path: str | Path) -> None:
     # A history directory is not an ownership boundary. Remove only files
     # created by chat and story session storage, then remove the directory
     # if it is empty. Never recursively delete unrelated content from an
     # external directory.
-    for directory in directory_targets:
-        for name in (
-            BRANCH_TREE_FILENAME,
-            f"{ACTIVE_HISTORY_FILENAME}.tmp",
-            ACTIVE_HISTORY_FILENAME,
-            STORY_SESSION_FILENAME,
-        ):
-            target = directory / name
-            target.unlink(missing_ok=True)
-        try:
-            directory.rmdir()
-        except OSError:
-            pass
-
     # Legacy aliases are removed last. If branch metadata is locked, the
     # authoritative active history remains intact and the clear is reported as
     # failed instead of leaving a partially-cleared session.
-    for target in file_targets:
+    for target in chat_history_storage_files(path):
         target.unlink(missing_ok=True)
+    try:
+        chat_history_session_dir(path).rmdir()
+    except OSError:
+        pass
 
 
 def sanitize_branch_id(value: str) -> str:

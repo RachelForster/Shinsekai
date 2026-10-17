@@ -1,6 +1,9 @@
 import type { MessageKey } from "../messages";
 
 export const enMessages: Record<MessageKey, string> = {
+  "story.library.delete": "Delete story version",
+  "story.library.deleteConfirm":
+    "Delete version {version} of “{title}” and all its conversations and saves? Other versions will be kept. This cannot be undone.",
   "visualMedia.videoError": "Unable to play this video. Check the file or use an H.264 MP4 video.",
   "nav.assistant": "Assistant",
   "agent.subtitle": "Think independently and explain the evidence and uncertainty.",

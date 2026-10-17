@@ -63,6 +63,28 @@ function templateSession(overrides: Partial<TemplateLaunchSession> = {}): Templa
 }
 
 describe("browser preview platform chat themes", () => {
+  it("deletes one story version and all its chats while retaining other versions", async () => {
+    vi.useFakeTimers();
+    const platform = createBrowserPreviewPlatform();
+    const generated = await platform.story.startGeneration({ synopsis: "A mystery" });
+    const source = generated.draftPath!;
+    const document = await platform.story.readDocument(source);
+    const other = await platform.story.saveDocument(document);
+    for (let index = 0; index < 2; index++) {
+      await resolvePreview(platform.chat.launch(await platform.story.prepareLaunch(source)));
+      await platform.story.startSession(source);
+      await expect(platform.story.delete(source)).rejects.toThrow("先关闭");
+      await resolvePreview(platform.chat.close());
+    }
+    await resolvePreview(platform.chat.launch(await platform.story.prepareLaunch(other.storyPath)));
+    await platform.story.startSession(other.storyPath);
+    expect(await platform.chat.listConversations()).toHaveLength(3);
+    await platform.story.delete(source);
+    expect((await platform.story.list()).map((item) => item.storyPath)).toEqual([other.storyPath]);
+    expect(await platform.chat.listConversations()).toHaveLength(1);
+    expect(await platform.chat.getCurrentConversation()).toMatchObject({ storyPath: other.storyPath });
+    await expect(platform.story.readDocument(source)).rejects.toThrow();
+  });
   it("keeps an existing story launch classified as story through attachment and reopening", async () => {
     vi.useFakeTimers();
     const platform = createBrowserPreviewPlatform();

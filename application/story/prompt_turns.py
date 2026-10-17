@@ -11,6 +11,8 @@ from typing import Any
 from core.chat_history.storage import chat_history_active_path, chat_history_session_dir
 from .persistence import _atomic_write_json
 
+PROMPT_TURN_FILENAME = "story-prompt-turn.json"
+
 
 def assessment_message(message: Mapping[str, Any]) -> dict[str, Any]:
     """Allowlist text and attachment metadata, never binary provider payloads."""
@@ -48,7 +50,7 @@ def assessment_message(message: Mapping[str, Any]) -> dict[str, Any]:
 class PromptTurnJournal:
     def __init__(self, history_path: str) -> None:
         self.history_path = history_path
-        self.path = chat_history_session_dir(history_path) / "story-prompt-turn.json"
+        self.path = chat_history_session_dir(history_path) / PROMPT_TURN_FILENAME
 
     def load(self) -> dict[str, Any] | None:
         return (

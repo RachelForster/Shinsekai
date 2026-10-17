@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import errno
+import io
 import json
 import os
 import sqlite3
 import sys
 import time
+from unittest.mock import Mock
 
 import pytest
 
@@ -110,6 +113,49 @@ time.sleep(20)
         "WORKER_LOST" if response == "eof" else "PROTOCOL_MISMATCH"
     )
     assert supervisor.process is None
+
+
+def test_supervisor_releases_all_resources_when_stdin_flush_hits_an_exited_worker():
+    reader, writer = os.pipe()
+    stdin = io.open(writer, "wb")
+    stdin.write(b"pending RPC reply\n")
+    os.close(reader)
+    process = Mock(stdin=stdin, stdout=io.BytesIO(), stderr=io.BytesIO())
+    peer, job = Mock(), Mock()
+    supervisor = AgentWorkerSupervisor(
+        AgentBackendConfig(backend_id="mock", backend_version="1"),
+        handler=lambda *args: None,
+        notification=lambda *args: None,
+    )
+    supervisor.process, supervisor.peer, supervisor.job = process, peer, job
+    supervisor.opened_sessions.add("old-session")
+    try:
+        supervisor.stop(force=True)
+        assert all(stream.closed for stream in (stdin, process.stdout, process.stderr))
+        process.wait.assert_called_once_with(timeout=3)
+        peer.close.assert_called_once_with()
+        job.close.assert_called_once_with()
+        assert supervisor.process is supervisor.peer is supervisor.job is None
+        assert not supervisor.opened_sessions
+    finally:
+        for stream in (stdin, process.stdout, process.stderr):
+            try:
+                stream.close()
+            except BrokenPipeError:
+                pass
+
+
+@pytest.mark.parametrize("stream,code", [("stdin", errno.EIO), ("stdout", errno.EPIPE)])
+def test_supervisor_does_not_suppress_other_stream_failures(stream, code):
+    process = Mock()
+    getattr(process, stream).close.side_effect = OSError(code, "unexpected stream failure")
+    supervisor = AgentWorkerSupervisor(
+        AgentBackendConfig(backend_id="mock", backend_version="1"),
+        handler=lambda *args: None, notification=lambda *args: None,
+    )
+    supervisor.process, supervisor.job = process, Mock()
+    with pytest.raises(OSError, match="unexpected stream failure"):
+        supervisor.stop(force=True)
 
 
 def test_supervisor_terminates_worker_descendants(tmp_path):
