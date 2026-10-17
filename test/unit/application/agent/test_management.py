@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import subprocess
@@ -9,6 +10,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from pydantic import BaseModel, ConfigDict
@@ -420,6 +422,59 @@ def test_tool_policy_schema_conflicts_and_budget_do_not_execute_unapproved_work(
         task = terminal(client, submit(client, session, plan={"tools": plan}).task_id)
         assert task.error.code == code
         assert len(calls) == (1 if scenario in ("changed-arguments", "budget") else 0)
+
+
+def test_tool_budget_keeps_its_error_when_termination_closes_a_broken_stdin(tmp_path, monkeypatch):
+    calls = []
+
+    def record(task, call):
+        calls.append(call.arguments)
+        return applied(call)
+
+    with AgentService(
+        tmp_path / "agent.sqlite", tools=(host_tool(record),),
+        profiles=(tools_profile(limits=AgentLimits(max_tool_calls=1)),),
+    ) as owner:
+        supervisor = owner._supervisor
+        stop, notify = supervisor.stop, supervisor.notification
+        injected = False
+
+        def stop_with_pending_reply(*, force=False):
+            nonlocal injected
+            if force and not injected and supervisor.process is not None:
+                injected = True
+                stdin = supervisor.process.stdin
+                pending_reply = True
+
+                def close():
+                    nonlocal pending_reply
+                    pending, pending_reply = pending_reply, False
+                    stdin.close()
+                    if pending:
+                        raise BrokenPipeError(errno.EPIPE, "Worker exited before the RPC reply flushed")
+
+                supervisor.process.stdin = SimpleNamespace(close=close)
+            stop(force=force)
+
+        # Hold back worker completion to force the host's budget-enforcement
+        # shutdown path, regardless of process scheduling or pipe throughput.
+        def host_enforced_completion(method, params):
+            if method != "task.event" or params["event"]["type"] != "task.completed":
+                notify(method, params)
+
+        monkeypatch.setattr(supervisor, "stop", stop_with_pending_reply)
+        monkeypatch.setattr(supervisor, "notification", host_enforced_completion)
+        client, session = client_session(owner)
+        plan = {"tools": [
+            {"callId": name, "name": "test.record", "arguments": {"value": value}}
+            for value, name in enumerate(("one", "two"))
+        ]}
+        task = terminal(client, submit(client, session, plan=plan).task_id)
+        assert task.status == "interrupted"
+        assert task.error.code == "LIMIT_EXCEEDED"
+        assert len(calls) == 1
+        assert task.result.effects[0].state == "applied"
+        wait_for(lambda: supervisor.process is None)
 
 
 def test_cancel_waits_for_inflight_host_write_and_retains_applied_effect(tmp_path):
