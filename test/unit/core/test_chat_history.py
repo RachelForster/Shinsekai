@@ -11,7 +11,11 @@ from ai.llm.history_manager import (
     parse_assistant_dialog_content,
     HistoryManager,
 )
-from application.chat.history_state import canonical_user_turn_payload, pop_last_assistant_turn, pop_last_assistant_turn_payload
+from application.chat.history.state import (
+    canonical_user_turn_payload,
+    pop_last_assistant_turn,
+    pop_last_assistant_turn_payload,
+)
 
 
 def _uh(msg: str) -> str:
@@ -452,7 +456,7 @@ class TestSaveChatHistory:
         assert result is True
 
     def test_application_history_state_returns_manager_result(self, monkeypatch):
-        from application.chat import history_state as chat_history_mod
+        from application.chat.history import state as chat_history_mod
 
         monkeypatch.setattr(
             chat_history_mod,

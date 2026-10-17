@@ -438,7 +438,7 @@ def test_ui_update_manager_import_does_not_require_cv2():
 
         builtins.__import__ = guarded_import
 
-        from application.chat.ui_updates import HeadlessUIUpdateManager, format_context_token_estimate
+        from application.chat.presentation.updates import HeadlessUIUpdateManager, format_context_token_estimate
 
         HeadlessUIUpdateManager()
         assert format_context_token_estimate({}) == "tokens sys 0 | hist 0 | tools 0 | total 0"
