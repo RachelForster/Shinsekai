@@ -84,3 +84,41 @@ def test_output_matches_deduplicated_renderer(monkeypatch, language, mask):
     # Preserve the original digests: only the new final protocol rule may differ.
     text = text[: -len(tool_protocol + "\n")]
     assert hashlib.sha256(text.encode("utf-8")).hexdigest() == expected[str(mask)]
+
+
+def test_multiple_backgrounds_are_flattened_into_one_numbered_catalog():
+    backgrounds = {
+        "A": SimpleNamespace(
+            name="A",
+            sprites=[{"path": "a-1.png"}],
+            bg_tags="场景 1：a-one\n",
+            bgm_list=None,
+            bgm_tags="",
+        ),
+        "B": SimpleNamespace(
+            name="B",
+            sprites=[{"path": "b-1.png"}, {"path": "b-2.png"}],
+            bg_tags="场景 1：b-one\n场景 2：b-two\n",
+            bgm_list=["b.ogg"],
+            bgm_tags="音乐 1：b-music\n",
+        ),
+    }
+    manager = SimpleNamespace(get_background_by_name=backgrounds.get)
+
+    background = legacy.resolve_chat_template_background(
+        ["B", "透明场景", "A", "B"],
+        manager,
+    )
+
+    assert background is not None
+    assert [
+        sprite.get("path") if isinstance(sprite, dict) else sprite.path
+        for sprite in background.sprites
+    ] == [
+        "b-1.png",
+        "b-2.png",
+        "a-1.png",
+    ]
+    assert background.bg_tags == "场景 1：b-one\n场景 2：b-two\n场景 3：a-one\n"
+    assert background.bgm_list == ["b.ogg"]
+    assert background.bgm_tags == "音乐 1：b-music\n"

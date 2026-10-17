@@ -856,8 +856,10 @@ describe("TemplateEditorPage", () => {
   });
 
   it("launches restored sessions only after quick restart confirmation", async () => {
+    mockListBackgrounds.mockResolvedValue([{ name: "默认房间" }, { name: "操场" }]);
     mockGetTemplateSession.mockResolvedValue({
       background: "默认房间",
+      backgroundNames: ["默认房间", "操场"],
       effectNames: [],
       filenameStub: "Session Draft",
       historyPath: " D:/history/session.json ",
@@ -900,6 +902,7 @@ describe("TemplateEditorPage", () => {
     expect(mockSaveTemplateSession).toHaveBeenCalledWith(
       expect.objectContaining({
         background: "默认房间",
+        backgroundNames: ["默认房间", "操场"],
         effectNames: [],
         historyPath: "D:/history/session.json",
         initSpritePath: "D:/sprites/init.png",
@@ -912,6 +915,7 @@ describe("TemplateEditorPage", () => {
     expect(mockLaunchChat).toHaveBeenCalledWith(
       expect.objectContaining({
         backgroundName: "默认房间",
+        backgroundNames: ["默认房间", "操场"],
         characters: ["Nanami", "Mika"],
         resetHistory: true,
         roomId: "room-9",
