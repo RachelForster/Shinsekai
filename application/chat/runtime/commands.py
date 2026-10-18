@@ -85,6 +85,7 @@ class ChatCommandDispatcher:
         history_argument: str = "",
         history_presenter: Any = None,
         tts_manager: Any = None,
+        voice_archive: Any = None,
     ) -> None:
         self.bindings = bindings
         self.config = config
@@ -98,6 +99,7 @@ class ChatCommandDispatcher:
         self.history_argument = str(history_argument or "")
         self.history_presenter = history_presenter
         self.tts_manager = tts_manager
+        self.voice_archive = voice_archive
 
         self._handlers: dict[str, Callable[[object], None]] = {
             "close-session": self._close_session,
@@ -108,6 +110,8 @@ class ChatCommandDispatcher:
             "flush-input-batch": self._flush_input_batch,
             "cancel-input-batch": self._cancel_input_batch,
             "audio-playback-signal": self._handle_playback_signal,
+            "set-voice-archive": self._set_voice_archive,
+            "save-history-voice": self._save_history_voice,
             "skip-speech": self._skip_speech,
             "dialog-advance": self._skip_speech,
             "pause-asr": self._pause_asr,
@@ -140,6 +144,19 @@ class ChatCommandDispatcher:
 
     def _close_session(self, _payload: object) -> None:
         self.bindings.shutdown_session()
+
+    def _set_voice_archive(self, payload: object) -> None:
+        if self.voice_archive is None or not isinstance(payload, bool):
+            raise ValueError("语音存档设置无效")
+        self.voice_archive.set_enabled(payload)
+        self.bindings.ui.sync_history()
+
+    def _save_history_voice(self, payload: object) -> None:
+        if self.voice_archive is None or not isinstance(payload, str):
+            raise ValueError("语音记录无效")
+        self.voice_archive.save_voice(payload)
+        self.bindings.ui.sync_history()
+        self.bindings.ui.notify("语音已保存")
 
     def _send_message(self, payload: object) -> None:
         self.runtime_asr.pause_for_turn()

@@ -405,6 +405,16 @@ def forward_current(ctx: CommandContext) -> dict[str, Any]:
     return ctx.forward(ctx.current_status())
 
 
+def voice_archive_command(ctx: CommandContext) -> dict[str, Any]:
+    payload = ctx.body.get("payload")
+    if ctx.command == "set-voice-archive":
+        if not isinstance(payload, bool):
+            raise ValueError("语音存档设置无效")
+    elif not isinstance(payload, str):
+        raise ValueError("语音记录无效")
+    return ctx.forward(ctx.current_status())
+
+
 def audio_playback(ctx: CommandContext) -> dict[str, Any]:
     body = ctx.body
     payload = body.get("payload")

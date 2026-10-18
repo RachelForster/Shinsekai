@@ -25,6 +25,26 @@ class ToolPairBadRequest(Exception):
 
 
 class TestLLMManagerMessageManagement:
+    def test_chat_turn_identity_is_journaled_before_model_request(self, mock_llm_adapter):
+        from core.chat_history.identity import CHAT_TURN_ID
+        from ai.vision.message_content import normalize_openai_messages
+
+        journal = MagicMock()
+        manager = LLMManager(adapter=mock_llm_adapter, journal=journal)
+        original_chat = mock_llm_adapter.chat
+
+        def inspect(messages, **kwargs):
+            assert journal.append.call_args.args[0][CHAT_TURN_ID] == "a" * 32
+            assert messages[-1][CHAT_TURN_ID] == "a" * 32
+            assert "history_turn_id" not in kwargs
+            return original_chat(messages, **kwargs)
+
+        mock_llm_adapter.chat = inspect
+        manager.chat("Hello", stream=False, history_turn_id="a" * 32)
+        user = next(message for message in manager.messages if message["role"] == "user")
+        assert user[CHAT_TURN_ID] == "a" * 32
+        assert CHAT_TURN_ID not in normalize_openai_messages([user])[0]
+
     @pytest.mark.parametrize("edited", [False, True])
     def test_loaded_history_uses_current_prompt_only_after_explicit_edit(self, mock_llm_adapter, edited):
         mgr = LLMManager(adapter=mock_llm_adapter, user_template="Edited rules", use_current_template_for_history=edited)

@@ -1938,6 +1938,18 @@ describe("http platform", () => {
     );
   });
 
+  it("uses the non-conflicting file endpoint for history voice segments", async () => {
+    const fetchMock = vi.fn(() => mockJsonResponse({ segmentCount: 1 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const urls = await createHttpPlatform("http://127.0.0.1:8787", "bridge-secret").chat.getHistoryVoice("voice123");
+
+    expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:8787/api/chat/history-voice/voice123", expect.any(Object));
+    expect(urls).toEqual([
+      "http://127.0.0.1:8787/api/chat/history-voice-file?voiceId=voice123&segment=0&shinsekai_bridge_token=bridge-secret",
+    ]);
+  });
+
   it("opens chat command download URLs through the bridge", async () => {
     const snapshot = {
       dialogText: "历史文件已打开。",

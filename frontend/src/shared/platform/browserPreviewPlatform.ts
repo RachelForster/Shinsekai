@@ -1309,9 +1309,14 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         if (command.type === "open-history") {
           return { ...clone(chat), openedPath: chat.historyPath ?? "./data/chat_history/preview" };
         }
+        if (command.type === "set-voice-archive" && typeof command.payload === "boolean") {
+          chat = { ...chat, voiceArchiveEnabled: command.payload };
+          emitChat();
+        }
         return clone(chat);
       },
       getHistory: () => delay(cloneHistoryEntries(chat.historyEntries)),
+      getHistoryVoice: () => delay([]),
       getRuntimeStatus: () => delay(runtimeStatusFromSnapshot(chat)),
       getSnapshot: () => delay(chat),
       getTheme: () =>

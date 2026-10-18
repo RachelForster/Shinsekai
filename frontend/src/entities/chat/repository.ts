@@ -119,6 +119,10 @@ export function getChatHistory(): Promise<ChatHistoryEntry[]> {
   return getPlatform().chat.getHistory();
 }
 
+export function getChatHistoryVoice(voiceId: string): Promise<string[]> {
+  return getPlatform().chat.getHistoryVoice(voiceId);
+}
+
 export function subscribeChat(listener: (snapshot: ChatSnapshot) => void): () => void {
   return getPlatform().chat.subscribe(listener);
 }

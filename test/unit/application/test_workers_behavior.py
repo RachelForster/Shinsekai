@@ -6,11 +6,13 @@ import time
 from queue import Queue
 from types import SimpleNamespace
 from unittest.mock import MagicMock
+from uuid import UUID
 
 import pytest
 
 
 from core.media.effect_image import ImageEffectAsset
+from core.chat_history.identity import DialogIdentities
 
 from application.runtime.context import AppRuntime, get_app_runtime, set_app_runtime
 from application.runtime.workers import (
@@ -163,12 +165,16 @@ def test_llm_worker_run_uses_original_queues_and_marks_input_done(
     assert output.turn_id == runtime.chat_turn_service.current_turn().id
     assert user_input_queue.task_done_calls == 2
     assert user_input_queue.unfinished_tasks == 0
+    history_turn_id = runtime.llm_manager.chat.call_args.kwargs["history_turn_id"]
+    assert UUID(history_turn_id).hex == history_turn_id
+    assert output.dialog_id == DialogIdentities(history_turn_id).next(output.model_dump(by_alias=True))
     runtime.llm_manager.chat.assert_called_once_with(
         "hello",
         stream=False,
         dialog_output_required=True,
         user_attachments=[],
         user_input_text="hello",
+        history_turn_id=history_turn_id,
     )
 
 

@@ -51,6 +51,7 @@ from application.chat.host.commands import (
     ChatCommandRouter,
     dismiss_plugin_page,
     forward_current,
+    voice_archive_command,
     audio_playback,
     skip_speech,
     advance,
@@ -64,6 +65,30 @@ from application.chat.host.commands import (
     SelectionCommands,
     BranchCommands,
 )
+from application.chat.voice_archive import VoiceArchive
+from core.chat_history.storage import chat_history_session_dir
+
+
+def _chat_voice_archive(state: BridgeState) -> VoiceArchive:
+    history_raw = str(state.chat_session.get("historyPath") or "").strip()
+    if not history_raw:
+        raise ValueError("当前没有聊天存档")
+    history = resolve_history_path_for_project(state, history_raw)
+    archive = getattr(state, "chat_voice_archive_reader", None)
+    if not isinstance(archive, VoiceArchive) or archive.audio_dir.parent.resolve() != chat_history_session_dir(history).resolve():
+        archive = VoiceArchive(history)
+        state.chat_voice_archive_reader = archive
+    else:
+        archive.refresh()
+    return archive
+
+
+def _chat_voice_info(state: BridgeState, voice_id: str) -> dict[str, int]:
+    return {"segmentCount": _chat_voice_archive(state).count(voice_id)}
+
+
+def _chat_voice_source(state: BridgeState, voice_id: str, index: int) -> Path:
+    return _chat_voice_archive(state).source(voice_id, index)
 
 
 def _chat_runtime_status(state: BridgeState) -> dict[str, Any]:
@@ -279,6 +304,8 @@ for command, handler in {
     "chat-input-state": forward_current,
     "flush-input-batch": forward_current,
     "cancel-input-batch": forward_current,
+    "set-voice-archive": voice_archive_command,
+    "save-history-voice": voice_archive_command,
     "audio-playback-signal": audio_playback,
     "skip-speech": skip_speech,
     "dialog-advance": advance,

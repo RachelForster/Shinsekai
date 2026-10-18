@@ -434,6 +434,7 @@ describe("entity repositories", () => {
         close: vi.fn().mockResolvedValue(sampleChatSnapshot),
         command: vi.fn().mockResolvedValue(sampleChatSnapshot),
         getHistory: vi.fn().mockResolvedValue(sampleChatSnapshot.historyEntries ?? []),
+        getHistoryVoice: vi.fn().mockResolvedValue([]),
         getRuntimeStatus: vi.fn().mockResolvedValue({
           chatProcessRunning: false,
           chatRuntimeClosing: false,
