@@ -98,6 +98,20 @@ export function autoLabelCharacterSprites(name: string, options?: TaskProgressOp
   return getPlatform().characters.autoLabelSprites(name, options);
 }
 
+export function planCharacterSprites(...args: Parameters<ShinsekaiPlatform["characters"]["planSprites"]>) {
+  return getPlatform().characters.planSprites(...args);
+}
+
+export function renderCharacterSprite(...args: Parameters<ShinsekaiPlatform["characters"]["renderSprite"]>) {
+  return getPlatform().characters.renderSprite(...args);
+}
+
+export function importGeneratedCharacterSprites(
+  input: Parameters<ShinsekaiPlatform["characters"]["importGeneratedSprites"]>[0],
+) {
+  return getPlatform().characters.importGeneratedSprites(input);
+}
+
 export function saveCharacterEmotionTags(name: string, emotionTags: string) {
   return getPlatform().characters.saveEmotionTags(name, emotionTags);
 }

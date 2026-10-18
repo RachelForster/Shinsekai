@@ -311,7 +311,7 @@ class CharacterManager:
             return [c.name for c in self._get_characters()]
 
 
-    def upload_sprites(self, character_name: str, sprite_files: List[Any], emotion_tags: str) -> Tuple[str, List[str], str]:
+    def upload_sprites(self, character_name: str, sprite_files: List[Any], emotion_tags: str, *, sprite_tags: Optional[List[str]] = None) -> Tuple[str, List[str], str]:
         """
         上传立绘文件并更新角色的立绘列表和情绪标签。
 
@@ -323,6 +323,9 @@ class CharacterManager:
         
         if not sprite_files:
             return "请选择要上传的图片！", [], ''
+
+        if sprite_tags is not None and len(sprite_tags) != len(sprite_files):
+            raise ValueError("Each sprite requires one tag entry")
         
         character: Optional[Character] = self._config_manager.get_character_by_name(character_name)
         if not character:
@@ -336,6 +339,9 @@ class CharacterManager:
 
         num_existing_sprites = len(character.sprites)
         emotion_tags_to_add = ''
+        original_sprites = character.sprites
+        original_tags = character.emotion_tags
+        new_sprites = []
         
         for i, file in enumerate(sprite_files):
             filename = os.path.basename(file.name)
@@ -343,14 +349,27 @@ class CharacterManager:
             shutil.copyfile(file.name, dest_path)
             
             new_sprite_data = {"path": dest_path}
-            character.sprites.append(new_sprite_data)
+            new_sprites.append(new_sprite_data)
             
-            emotion_tags_to_add += f'立绘 {num_existing_sprites + i + 1}：\n'
+            tag = sprite_tags[i] if sprite_tags is not None else ""
+            emotion_tags_to_add += f'立绘 {num_existing_sprites + i + 1}：{tag}\n'
             
         current_emotion_tags = character.emotion_tags if character.emotion_tags else ""
-        character.emotion_tags = current_emotion_tags + emotion_tags_to_add
+        character.sprites = original_sprites + new_sprites
+        if current_emotion_tags and not current_emotion_tags.endswith("\n"):
+            current_emotion_tags += "\n"
+        if sprite_tags is not None:
+            from sdk.asset_tags import numbered_tags, tag_contents
+            character.emotion_tags = numbered_tags("立绘", tag_contents(current_emotion_tags, num_existing_sprites) + sprite_tags)
+        else:
+            character.emotion_tags = current_emotion_tags + emotion_tags_to_add
 
-        self._config_manager.save_characters_config()
+        try:
+            self._config_manager.save_characters_config()
+        except Exception:
+            character.sprites = original_sprites
+            character.emotion_tags = original_tags
+            raise
 
         all_sprite_paths = [s.path if isinstance(s, Sprite) else s.get('path', '') for s in character.sprites]
         return f"成功为 {character_name} 上传 {len(sprite_files)} 张立绘！", all_sprite_paths, character.emotion_tags

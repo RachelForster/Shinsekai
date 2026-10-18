@@ -12,6 +12,9 @@ import { ToastProvider } from "../../../shared/ui";
 
 const mockGetAppConfig = vi.fn();
 const mockListCharacters = vi.fn();
+const mockPlanCharacterSprites = vi.fn();
+const mockRenderCharacterSprite = vi.fn();
+const mockImportGeneratedCharacterSprites = vi.fn();
 const mockSaveCharacter = vi.fn();
 const mockSaveCharacterEmotionTags = vi.fn();
 const mockUploadCharacterSprites = vi.fn();
@@ -116,6 +119,9 @@ vi.mock("../../../entities/chat/repository", () => ({
 
 vi.mock("../../../entities/character/repository", () => ({
   charactersQueryKey: ["characters"],
+  planCharacterSprites: (...args: unknown[]) => mockPlanCharacterSprites(...args),
+  renderCharacterSprite: (...args: unknown[]) => mockRenderCharacterSprite(...args),
+  importGeneratedCharacterSprites: (...args: unknown[]) => mockImportGeneratedCharacterSprites(...args),
   deleteAllCharacterSprites: (name: string) => mockDeleteAllCharacterSprites(name),
   deleteCharacter: (name: string) => mockDeleteCharacter(name),
   deleteCharacterMemory: (name: string, memoryId: string) => mockDeleteCharacterMemory(name, memoryId),
@@ -200,6 +206,37 @@ describe("mergeSprites", () => {
 });
 
 describe("CharacterEditorPage", () => {
+  it("adds generated sprites with tags without losing unsaved personality edits", async () => {
+    mockPlanCharacterSprites.mockResolvedValue({ items: [{ prompt: "smile pose", tagging: "微笑" }] });
+    mockRenderCharacterSprite.mockResolvedValue({
+      name: "Mika",
+      path: "new.png",
+      taskId: "render-1",
+      prompt: "smile pose",
+      tagging: "微笑",
+    });
+    mockImportGeneratedCharacterSprites.mockResolvedValue({
+      ...structuredClone(character),
+      sprites: [...character.sprites, { path: "new.png" }],
+      emotion_tags: "立绘 1：happy\n立绘 2：微笑\n",
+    });
+    renderPage();
+    await screen.findByDisplayValue("Quiet student.");
+    fireEvent.change(screen.getByLabelText("Character setting"), { target: { value: "My unsaved personality" } });
+    fireEvent.click(screen.getByRole("button", { name: "Generate sprites" }));
+    fireEvent.click(screen.getByRole("button", { name: "Plan prompts and tags" }));
+    await screen.findByDisplayValue("smile pose");
+    expect(mockPlanCharacterSprites).toHaveBeenCalledWith(
+      expect.objectContaining({ setting: "My unsaved personality" }),
+      expect.anything(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Add to collection (1)" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Add to collection (1)" }));
+    await screen.findByText("Sprites added with tags saved");
+    expect(screen.getByLabelText("Character setting")).toHaveValue("My unsaved personality");
+    expect(mockSaveCharacter).not.toHaveBeenCalled();
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     pickerState.paths = [];

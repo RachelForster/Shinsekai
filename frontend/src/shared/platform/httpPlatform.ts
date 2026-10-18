@@ -27,6 +27,8 @@ import type {
   Background,
   BackgroundTranslateResult,
   Character,
+  GeneratedCharacterSprite,
+  SpritePromptPair,
   CharacterBriefBatchResult,
   CharacterBriefResult,
   CharacterMemory,
@@ -1037,6 +1039,27 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
       },
     },
     characters: {
+      async planSprites(input, options) {
+        const task = await requestJson<TaskSnapshot<{ items: SpritePromptPair[] }>>(
+          apiBase,
+          "/api/characters/sprites/plan",
+          { method: "POST", body: JSON.stringify(input) },
+        );
+        return waitForTask(apiBase, task, options);
+      },
+      async renderSprite(input, options) {
+        const task = await requestJson<TaskSnapshot<GeneratedCharacterSprite>>(
+          apiBase,
+          "/api/characters/sprites/render",
+          { method: "POST", body: JSON.stringify(input) },
+        );
+        return waitForTask(apiBase, task, options);
+      },
+      importGeneratedSprites: (input) =>
+        requestJson<Character>(apiBase, "/api/characters/sprites/import-generated", {
+          method: "POST",
+          body: JSON.stringify(input),
+        }),
       importModelStates: async (input) => {
         const task = await requestJson<TaskSnapshot<Character>>(apiBase, "/api/characters/model/states/import", {
           body: JSON.stringify(input),

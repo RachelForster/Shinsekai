@@ -11,6 +11,11 @@ from frontend_bridge_core.characters import (
     _translate_character_fields,
 )
 from frontend_bridge_core.image_annotations import run_character_sprite_auto_label
+from frontend_bridge_core.sprite_generation import (
+    import_generated_sprites,
+    run_sprite_plan,
+    run_sprite_render,
+)
 from frontend_bridge_core.routes.router import (
     ApiRequest,
     BodyKind,
@@ -185,7 +190,37 @@ def _auto_label_character_sprites(request: ApiRequest) -> TaskResponse:
     )
 
 
+def _plan_sprites(request: ApiRequest) -> TaskResponse:
+    body = dict(request.body)
+    return TaskResponse(
+        kind="character-sprite-plan",
+        title="设计立绘提示词",
+        message="正在准备立绘方案。",
+        worker=lambda task_id: run_sprite_plan(request.state, task_id, body),
+    )
+
+
+def _render_sprite(request: ApiRequest) -> TaskResponse:
+    body = dict(request.body)
+    return TaskResponse(
+        kind="character-sprite-render",
+        title="生成角色立绘",
+        message="正在准备图像生成。",
+        worker=lambda task_id: run_sprite_render(request.state, task_id, body),
+    )
+
+
+def _import_generated_sprites(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(import_generated_sprites(request.state, request.body))
+
+
 CHARACTER_ROUTES = (
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/plan",
+          handler=_plan_sprites, name="characters.sprites.plan"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/render",
+          handler=_render_sprite, name="characters.sprites.render"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/import-generated",
+          handler=_import_generated_sprites, name="characters.sprites.import_generated"),
     Route(methods=frozenset({"POST"}), pattern="/api/characters/model/import",
           handler=_import_character_model, name="characters.model.import"),
     Route(methods=frozenset({"POST"}), pattern="/api/characters/model/state",

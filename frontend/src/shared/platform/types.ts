@@ -1403,6 +1403,25 @@ export interface TaskSnapshot<TResult = unknown> {
   updatedAt: number;
 }
 
+export interface SpritePromptPair {
+  prompt: string;
+  tagging: string;
+}
+
+export interface CharacterSpritePlanInput {
+  name: string;
+  setting: string;
+  count: number;
+  requirements: string;
+  referenceImage?: string;
+}
+
+export interface GeneratedCharacterSprite extends SpritePromptPair {
+  name: string;
+  path: string;
+  taskId: string;
+}
+
 export interface TaskProgressOptions<TResult = unknown> {
   onTaskUpdate?: (task: TaskSnapshot<TResult>) => void;
 }
@@ -1665,6 +1684,18 @@ export interface ShinsekaiPlatform {
       name: string,
       options?: TaskProgressOptions<ImageAutoLabelResult>,
     ) => Promise<ImageAutoLabelResult>;
+    planSprites: (
+      input: CharacterSpritePlanInput,
+      options?: TaskProgressOptions<{ items: SpritePromptPair[] }>,
+    ) => Promise<{ items: SpritePromptPair[] }>;
+    renderSprite: (
+      input: SpritePromptPair & { name: string; referenceImage?: string },
+      options?: TaskProgressOptions<GeneratedCharacterSprite>,
+    ) => Promise<GeneratedCharacterSprite>;
+    importGeneratedSprites: (input: {
+      name: string;
+      items: { taskId: string; tagging: string }[];
+    }) => Promise<Character>;
     delete: (name: string) => Promise<void>;
     deleteMemory: (name: string, memoryId: string) => Promise<CharacterMemoryList>;
     deleteSpriteVoice: (name: string, spriteIndex: number) => Promise<Character>;

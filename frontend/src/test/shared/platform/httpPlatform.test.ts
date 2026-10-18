@@ -23,6 +23,44 @@ function mockJsonResponse(body: unknown, ok = true) {
 }
 
 describe("http platform", () => {
+  it("uses authenticated task transport for tagged sprite planning, rendering, and selected import", async () => {
+    const pair = { prompt: "full body, smiling", tagging: "微笑" };
+    const result = { ...pair, name: "Mika", path: "preview.png", taskId: "render" };
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => mockJsonResponse({ id: "plan", status: "succeeded", result: { items: [pair] } }))
+      .mockImplementationOnce(() => mockJsonResponse({ id: "render", status: "succeeded", result }))
+      .mockImplementationOnce(() => mockJsonResponse(sampleConfig.characters[0]));
+    vi.stubGlobal("fetch", fetchMock);
+    const platform = createHttpPlatform("http://127.0.0.1:8787", "token");
+    const onTaskUpdate = vi.fn();
+    await expect(
+      platform.characters.planSprites(
+        { name: "Mika", setting: "shy", count: 1, requirements: "", referenceImage: "ref.png" },
+        { onTaskUpdate },
+      ),
+    ).resolves.toEqual({ items: [pair] });
+    await expect(
+      platform.characters.renderSprite({ ...pair, name: "Mika", referenceImage: "ref.png" }, { onTaskUpdate }),
+    ).resolves.toEqual(result);
+    await platform.characters.importGeneratedSprites({
+      name: "Mika",
+      items: [{ taskId: "render", tagging: pair.tagging }],
+    });
+    expect(onTaskUpdate).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "http://127.0.0.1:8787/api/characters/sprites/plan",
+      "http://127.0.0.1:8787/api/characters/sprites/render",
+      "http://127.0.0.1:8787/api/characters/sprites/import-generated",
+    ]);
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        headers: expect.objectContaining({ "X-Shinsekai-Bridge-Token": "token" }),
+        body: JSON.stringify({ name: "Mika", items: [{ taskId: "render", tagging: "微笑" }] }),
+      }),
+    );
+  });
   it("deletes the selected story version by its full path", async () => {
     const fetchMock = vi.fn(() => mockJsonResponse({ ok: true, deletedConversations: 2 }));
     vi.stubGlobal("fetch", fetchMock);

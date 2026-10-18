@@ -23,6 +23,7 @@ import type {
   BatchToolResult,
   Background,
   Character,
+  GeneratedCharacterSprite,
   CharacterMemoryImportPreview,
   CharacterMemoryImportResult,
   CharacterMemoryList,
@@ -56,6 +57,7 @@ const bundledChatThemeAssets = import.meta.glob<string>(
   { eager: true, import: "default", query: "?url" },
 );
 const bundledChatThemeRoot = "../../../../assets/chat_ui_themes/";
+const previewSpriteUrl = new URL("../../../../assets/present_example.png", import.meta.url).href;
 const builtinChatThemeAssetUrls: Readonly<Record<string, string>> = Object.fromEntries(
   Object.entries(bundledChatThemeAssets).map(([path, url]) => [
     `data/chat_ui_themes/${path.slice(bundledChatThemeRoot.length)}`,
@@ -438,6 +440,7 @@ function previewThemePayloadFromManifest(manifest: ChatThemeManifest): ChatTheme
 
 export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
   const config = clone(sampleConfig);
+  const generatedSprites = new Map<string, GeneratedCharacterSprite & { imported?: boolean }>();
   let templates = clone(sampleTemplates);
   let plugins = clone(samplePlugins);
   let pluginCatalog = clone(samplePluginCatalog);
@@ -1825,6 +1828,40 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       saveModelState: async () => {
         throw new Error("Model state saving requires the local bridge");
       },
+      async planSprites(input) {
+        return delay({
+          items: Array.from({ length: input.count }, (_, i) => ({
+            prompt: `${input.name}, full body character portrait, consistent face and outfit, ${["smiling, relaxed standing pose", "thoughtful, hand on chin", "surprised, open hands", "confident, arms crossed"][i % 4]}, plain background. ${input.requirements}`,
+            tagging: ["微笑，放松，日常对话", "思考，托腮，分析", "惊讶，张开双手，意外", "自信，抱臂，坚定"][i % 4],
+          })),
+        });
+      },
+      async renderSprite(input) {
+        const character = config.characters.find((item) => item.name === input.name);
+        if (!character) throw new Error("Character not found");
+        const result = {
+          ...input,
+          taskId: crypto.randomUUID(),
+          path: input.referenceImage || character.sprites[0]?.path || "data/sprite/mika/normal.png",
+        };
+        generatedSprites.set(result.taskId, result);
+        return delay(result);
+      },
+      async importGeneratedSprites(input) {
+        const character = config.characters.find((item) => item.name === input.name);
+        if (!character) throw new Error("Character not found");
+        const tags = tagContents(character.emotion_tags, character.sprites.length);
+        for (const item of input.items) {
+          const result = generatedSprites.get(item.taskId);
+          if (!result || result.name !== input.name) throw new Error("Invalid generated sprite");
+          if (result.imported) continue;
+          character.sprites.push({ path: result.path });
+          tags.push(item.tagging);
+          result.imported = true;
+        }
+        character.emotion_tags = numberedTags("立绘", tags);
+        return delay(character);
+      },
       async autoLabelSprites(name) {
         const character = config.characters.find((item) => item.name === name);
         if (!character) {
@@ -2375,6 +2412,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         return delay(previewFileBrowser(options?.path));
       },
       fileUrl(path) {
+        if (path === "/assets/present_example.png") return previewSpriteUrl;
         return resolvePreviewThemeAssetUrl(path);
       },
       thumbnailBatch(paths, _options) {
