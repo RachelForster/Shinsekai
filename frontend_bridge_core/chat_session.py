@@ -21,6 +21,7 @@ from application.chat.host.launch_history import (
 from application.chat.host.mobile_access import configure_mobile_access
 from application.chat.host.projection import (
     TRANSPARENT_BACKGROUND_NAME,
+    _is_transparent_background_name,
     _chat_runtime_closing,
     _chat_runtime_mode,
     _chat_stream_initial_snapshot,
@@ -58,6 +59,24 @@ logger = get_logger(__name__)
 CHAT_RUNTIME_READY_TIMEOUT_SECONDS = 20.0
 
 
+def _selected_background_names(source: dict[str, Any]) -> list[str]:
+    raw = source.get("backgroundNames")
+    values = raw if isinstance(raw, list) else []
+    fallback = str(source.get("backgroundName") or source.get("background") or "").strip()
+    if not values and fallback:
+        values = [fallback]
+    names: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        name = str(value or "").strip()
+        key = name.casefold()
+        if name and key not in seen:
+            names.append(name)
+            seen.add(key)
+    opaque = [name for name in names if not _is_transparent_background_name(name)]
+    return opaque or names or [TRANSPARENT_BACKGROUND_NAME]
+
+
 def _usable_media_selection_mode(requested: object) -> str:
     mode = (
         "semantic"
@@ -77,7 +96,7 @@ def _generate_system_template_for_mode(
     state: BridgeState,
     *,
     characters: list[str],
-    background: str,
+    background: Any,
     source: dict[str, Any],
     media_selection_mode: str,
 ) -> str:
@@ -320,12 +339,15 @@ def _launch_chat_locked(
     )
     if start_fresh_history:
         clear_story_session(state)
+    background_names = _selected_background_names(body)
+    selected_bg = background_names[0]
     user_display_name = player_character or sanitize_user_display_name(body.get("userDisplayName"))
     session_base = {
         "playerCharacter": player_character,
         "readPlayerSpeech": bool(body.get("readPlayerSpeech", False)),
         "allowPlayerDialogue": bool(body.get("allowPlayerDialogue", True)),
-        "backgroundName": str(body.get("backgroundName") or ""),
+        "backgroundName": selected_bg,
+        "backgroundNames": background_names,
         "characterName": first_character,
         "historyPath": history_path.as_posix(),
         "sessionId": "",
@@ -374,7 +396,8 @@ def _launch_chat_locked(
             init_sprite_path=init_sprite_path,
             show_initial_sprite=body.get("showInitialSprite", True) is not False,
             room_id=room_id,
-            selected_bg=str(body.get("backgroundName") or ""),
+            selected_bg=selected_bg,
+            selected_backgrounds=background_names,
             system_template=system_template,
             use_cg=bool(body.get("useCg")),
             user_scenario=user_scenario,
@@ -511,13 +534,15 @@ def _resume_last_chat_locked(
         or state.config_manager.config.system_config.live_room_id
         or ""
     )
-    selected_bg = str(session.get("background") or TRANSPARENT_BACKGROUND_NAME)
+    background_names = _selected_background_names(session)
+    selected_bg = background_names[0]
     user_display_name = player_character or sanitize_user_display_name(session.get("userDisplayName"))
     session_base = {
-        "backgroundName": selected_bg,
         "playerCharacter": player_character,
         "readPlayerSpeech": bool(session.get("readPlayerSpeech", False)),
         "allowPlayerDialogue": bool(session.get("allowPlayerDialogue", True)),
+        "backgroundName": selected_bg,
+        "backgroundNames": background_names,
         "characterName": first_character,
         "historyPath": history_path.as_posix(),
         "sessionId": "",
@@ -571,6 +596,7 @@ def _resume_last_chat_locked(
             show_initial_sprite=session.get("showInitialSprite", True) is not False,
             room_id=room_id,
             selected_bg=selected_bg,
+            selected_backgrounds=background_names,
             system_template=system_template,
             use_cg=bool(session.get("useCg", False)),
             user_scenario=scenario,
