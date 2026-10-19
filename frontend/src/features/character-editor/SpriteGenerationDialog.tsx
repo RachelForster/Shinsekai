@@ -21,6 +21,7 @@ import {
   ImageAssetThumb,
 } from "../../shared/ui";
 import { useSpriteGeneration } from "./useSpriteGeneration";
+import { SpriteVideoFramePicker } from "./SpriteVideoFramePicker";
 import "./SpriteGenerationDialog.css";
 
 interface Props {
@@ -35,6 +36,7 @@ export function SpriteGenerationDialog({ character, name, onClose, onImported }:
   const [count, setCount] = useState(4);
   const [requirements, setRequirements] = useState("");
   const [reference, setReference] = useState("");
+  const [removeBackground, setRemoveBackground] = useState(true);
   const [confirmClose, setConfirmClose] = useState(false);
   const [setupOpen, setSetupOpen] = useState(true);
   const generator = useSpriteGeneration(name, character.character_setting, onImported);
@@ -175,6 +177,7 @@ export function SpriteGenerationDialog({ character, name, onClose, onImported }:
                   void generator.render(
                     pending.filter((item) => item.prompt.trim() && item.tagging.trim()),
                     reference,
+                    removeBackground,
                   )
                 }
                 variant="primary"
@@ -183,6 +186,16 @@ export function SpriteGenerationDialog({ character, name, onClose, onImported }:
               </AsyncButton>
             ) : null}
           </div>
+          <label className="sprite-generation__auto-cutout">
+            <input
+              type="checkbox"
+              checked={removeBackground}
+              disabled={Boolean(busy)}
+              onChange={(event) => setRemoveBackground(event.target.checked)}
+            />
+            {t("spriteGeneration.autoRemoveBackground")}
+          </label>
+          <p className="sprite-generation__hint">{t("spriteGeneration.autoRemoveHint")}</p>
           <p className="sprite-generation__hint">
             {t("spriteGeneration.setupHint")}
             {remaining <= 0 ? ` ${t("spriteGeneration.limit")}` : ""}
@@ -267,6 +280,16 @@ export function SpriteGenerationDialog({ character, name, onClose, onImported }:
                         </div>
                       )}
                     </div>
+                    {item.result?.videoPath ? (
+                      <SpriteVideoFramePicker
+                        key={item.result.videoPath}
+                        path={item.result.videoPath}
+                        frameTime={item.result.frameTime ?? 0}
+                        disabled={Boolean(busy) || stale}
+                        title={title}
+                        onCapture={(seconds) => void generator.capture(item, seconds, removeBackground)}
+                      />
+                    ) : null}
                     <label className="field-row field-row--stack">
                       <span className="field-row__label">{t("spriteGeneration.prompt")}</span>
                       <TextArea
@@ -289,16 +312,37 @@ export function SpriteGenerationDialog({ character, name, onClose, onImported }:
                       />
                     </label>
                     {stale ? <p className="sprite-generation__hint">{t("spriteGeneration.stale")}</p> : null}
+                    {item.result?.backgroundRemoved ? (
+                      <p className="sprite-generation__hint">{t("spriteGeneration.backgroundRemoved")}</p>
+                    ) : null}
+                    {item.result?.backgroundRemovalError ? (
+                      <p className="sprite-generation__error" role="alert">
+                        {t("spriteGeneration.backgroundRemovalFailed", { error: item.result.backgroundRemovalError })}
+                      </p>
+                    ) : null}
                     {item.error ? (
                       <p className="sprite-generation__error" role="alert">
                         {item.error}
                       </p>
                     ) : null}
+                    {item.result && !item.result.backgroundRemoved ? (
+                      <AsyncButton
+                        disabled={Boolean(busy) || stale}
+                        loading={busy === "cutout" && activeId === item.id}
+                        onClick={() => void generator.cutout(item)}
+                      >
+                        {t(
+                          item.result.backgroundRemovalError
+                            ? "spriteGeneration.retryCutout"
+                            : "spriteGeneration.cutout",
+                        )}
+                      </AsyncButton>
+                    ) : null}
                     <AsyncButton
                       disabled={Boolean(busy) || !item.prompt.trim() || !item.tagging.trim()}
                       icon={<RefreshCw aria-hidden className="button__icon" />}
-                      loading={activeId === item.id}
-                      onClick={() => void generator.render([item], reference)}
+                      loading={busy === "render" && activeId === item.id}
+                      onClick={() => void generator.render([item], reference, removeBackground)}
                     >
                       {t(item.result ? "spriteGeneration.redraw" : "spriteGeneration.generate")}
                     </AsyncButton>

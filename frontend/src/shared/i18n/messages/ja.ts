@@ -2,6 +2,12 @@ import type { MessageKey } from "../messages";
 
 export const jaMessages: Record<MessageKey, string> = {
   "spriteGeneration.options": "生成の要望と参考画像",
+  "spriteGeneration.autoRemoveBackground": "背景を自動除去",
+  "spriteGeneration.autoRemoveHint": "生成・フレーム選択後に背景を除去します。オフにすると次の結果から適用されません。",
+  "spriteGeneration.backgroundRemoved": "背景除去済み · 透過 PNG",
+  "spriteGeneration.backgroundRemovalFailed": "背景の除去に失敗しました。元画像を保持しています：{error}",
+  "spriteGeneration.cutout": "背景を除去",
+  "spriteGeneration.retryCutout": "背景の除去を再試行",
   "spriteGeneration.action": "立ち絵を自動生成",
   "spriteGeneration.intro":
     "「{name}」の立ち絵案を作成し、プロンプトを確認して生成した画像を既存の立ち絵に追加します。",
@@ -24,6 +30,12 @@ export const jaMessages: Record<MessageKey, string> = {
   "spriteGeneration.selectAll": "生成済みをすべて選択",
   "spriteGeneration.deselectAll": "選択をすべて解除",
   "spriteGeneration.reviewHint": "タグも画像と一緒に保存されます。プレビューをクリックすると原寸で確認できます。",
+  "spriteGeneration.chooseFrame": "生成した動画からフレームを選ぶ",
+  "spriteGeneration.frameHint":
+    "中央のフレームを自動選択しています。動画をシークして別のフレームを選べます。動画の再生成は不要です。",
+  "spriteGeneration.video": "元の動画",
+  "spriteGeneration.captureFrame": "{seconds} 秒のフレームを使う",
+  "spriteGeneration.videoUnavailable": "この環境では動画をプレビューできません。抽出済みの画像は保存できます。",
   "spriteGeneration.sprite": "立ち絵 {n}",
   "spriteGeneration.prompt": "画像プロンプト",
   "spriteGeneration.tagging": "自動タグ",

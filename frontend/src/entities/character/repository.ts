@@ -112,8 +112,20 @@ export function importGeneratedCharacterSprites(
   return getPlatform().characters.importGeneratedSprites(input);
 }
 
+export function captureCharacterSpriteFrame(
+  ...args: Parameters<ShinsekaiPlatform["characters"]["captureSpriteFrame"]>
+) {
+  return getPlatform().characters.captureSpriteFrame(...args);
+}
+
 export function saveCharacterEmotionTags(name: string, emotionTags: string) {
   return getPlatform().characters.saveEmotionTags(name, emotionTags);
+}
+
+export function removeCharacterSpriteBackground(
+  ...args: Parameters<ShinsekaiPlatform["characters"]["removeSpriteBackground"]>
+) {
+  return getPlatform().characters.removeSpriteBackground(...args);
 }
 
 export function deleteCharacterSprite(name: string, spriteIndex: number) {

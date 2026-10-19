@@ -304,6 +304,8 @@ describe("entity repositories", () => {
         autoLabelSprites: vi.fn().mockResolvedValue({}),
         planSprites: vi.fn().mockResolvedValue({ items: [] }),
         renderSprite: vi.fn().mockResolvedValue({}),
+        captureSpriteFrame: vi.fn().mockResolvedValue({}),
+        removeSpriteBackground: vi.fn().mockResolvedValue({}),
         importGeneratedSprites: vi.fn().mockResolvedValue(character),
         delete: vi.fn().mockResolvedValue(undefined),
         deleteAllSprites: vi.fn().mockResolvedValue(character),

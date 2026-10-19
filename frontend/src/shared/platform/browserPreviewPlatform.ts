@@ -1843,7 +1843,22 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           ...input,
           taskId: crypto.randomUUID(),
           path: input.referenceImage || character.sprites[0]?.path || "data/sprite/mika/normal.png",
+          backgroundRemoved: input.removeBackground !== false,
         };
+        generatedSprites.set(result.taskId, result);
+        return delay(result);
+      },
+      async captureSpriteFrame(input) {
+        const source = generatedSprites.get(input.taskId);
+        if (!source || source.name !== input.name || !source.videoPath) throw new Error("Invalid generated video");
+        const result = { ...source, taskId: crypto.randomUUID(), frameTime: input.seconds, imported: false };
+        generatedSprites.set(result.taskId, result);
+        return delay(result);
+      },
+      async removeSpriteBackground(input) {
+        const source = generatedSprites.get(input.taskId);
+        if (!source || source.name !== input.name) throw new Error("Invalid generated sprite");
+        const result = { ...source, taskId: crypto.randomUUID(), backgroundRemoved: true, imported: false };
         generatedSprites.set(result.taskId, result);
         return delay(result);
       },

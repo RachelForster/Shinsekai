@@ -187,6 +187,89 @@ def test_import_appends_only_selected_pairs_and_is_idempotent(sprite_state):
     state.config_manager.save_characters_config.assert_called_once()
 
 
+def test_recapture_uses_trusted_video_and_a_new_result_that_imports_once(
+    sprite_state, monkeypatch
+):
+    state, character = sprite_state
+    source_id = completed_sprite(state)
+    original = state.tasks[source_id]["result"]
+    video = Path(original["path"]).with_suffix(".mp4")
+    video.write_bytes(b"trusted video")
+    original["videoPath"] = str(video)
+    original_path = original["path"]
+
+    def capture(source, video_path, output, seconds):
+        assert video_path == video
+        Image.new("RGB", (8, 8), "blue").save(output)
+        return {**source, "path": output.as_posix(), "frameTime": seconds}
+
+    monkeypatch.setattr(bridge, "capture_sprite_frame", capture)
+    task = _create_task(state, kind="character-sprite-frame", title="frame")
+    result = bridge.run_sprite_frame(
+        state,
+        task["id"],
+        {
+            "name": "Mika",
+            "taskId": source_id,
+            "seconds": 1.25,
+            "removeBackground": False,
+        },
+    )
+    assert result["taskId"] == task["id"]
+    assert result["frameTime"] == 1.25
+    assert result["prompt"] == original["prompt"]
+    assert original["path"] == original_path
+    _update_task(state, task["id"], status="succeeded", result=result)
+    payload = {"name": "Mika", "items": [{"taskId": task["id"], "tagging": "选帧标签"}]}
+    bridge.import_generated_sprites(state, payload)
+    bridge.import_generated_sprites(state, payload)
+    assert len(character.sprites) == 2
+    assert "选帧标签" in character.emotion_tags
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "outside",
+        "wrong-character",
+        "missing-video",
+        "failed",
+        "wrong-kind",
+        "missing-time",
+    ],
+)
+def test_recapture_rejects_untrusted_results_without_running_decoder(
+    sprite_state, monkeypatch, mutation
+):
+    state, _ = sprite_state
+    source_id = completed_sprite(state)
+    source = state.tasks[source_id]
+    video = Path(source["result"]["path"]).with_suffix(".mp4")
+    video.write_bytes(b"video")
+    source["result"]["videoPath"] = str(video)
+    payload = {"name": "Mika", "taskId": source_id, "seconds": 1}
+    if mutation == "outside":
+        outside = Path(state.project_root_dir) / "outside.mp4"
+        outside.write_bytes(b"outside")
+        source["result"]["videoPath"] = str(outside)
+    elif mutation == "wrong-character":
+        source["result"]["name"] = "Other"
+    elif mutation == "missing-video":
+        source["result"].pop("videoPath")
+    elif mutation == "failed":
+        source["status"] = "failed"
+    elif mutation == "wrong-kind":
+        source["kind"] = "unrelated"
+    else:
+        payload.pop("seconds")
+    decoder = Mock()
+    monkeypatch.setattr(bridge, "capture_sprite_frame", decoder)
+    task = _create_task(state, kind="character-sprite-frame", title="frame")
+    with pytest.raises((ValueError, PermissionError)):
+        bridge.run_sprite_frame(state, task["id"], payload)
+    decoder.assert_not_called()
+
+
 def test_import_validates_entire_selection_before_persistence(sprite_state):
     state, character = sprite_state
     first = completed_sprite(state)
@@ -260,7 +343,147 @@ def test_render_bridge_validates_reference_and_keeps_pair(sprite_state, monkeypa
             "referenceImage": str(ref),
             "prompt": "pose",
             "tagging": "微笑",
+            "removeBackground": False,
         },
     )
     assert result["taskId"] == task["id"]
     assert renderer.call_args.args[3] == ref
+
+
+def test_auto_cutout_failure_keeps_render_and_can_retry_without_generating(
+    sprite_state, monkeypatch
+):
+    state, character = sprite_state
+    source_id = completed_sprite(state)
+    source = dict(state.tasks[source_id]["result"])
+    remover = Mock(side_effect=RuntimeError("model unavailable"))
+    monkeypatch.setattr(bridge, "remove_sprite_background", remover)
+    failed = bridge._finish_sprite(state, source_id, source, True)
+    assert failed["path"] == source["path"]
+    assert failed["backgroundRemoved"] is False
+    assert failed["backgroundRemovalError"] == "model unavailable"
+    assert Path(source["path"]).is_file()
+    state.tasks[source_id]["result"] = failed
+
+    def cutout(source, original, output):
+        Image.new("RGBA", (8, 8), (0, 0, 255, 128)).save(output)
+        return {**source, "path": output.as_posix(), "backgroundRemoved": True}
+
+    remover.side_effect = cutout
+    retry = _create_task(state, kind="character-sprite-cutout", title="cutout")
+    result = bridge.run_sprite_cutout(
+        state, retry["id"], {"name": "Mika", "taskId": source_id}
+    )
+    assert result["path"] != source["path"]
+    assert remover.call_args.args[1] == Path(source["path"])
+    _update_task(state, retry["id"], status="succeeded", result=result)
+    bridge.import_generated_sprites(
+        state, {"name": "Mika", "items": [{"taskId": retry["id"]}]}
+    )
+    with Image.open(character.sprites[-1]["path"]) as image:
+        assert image.getchannel("A").getextrema() == (128, 128)
+
+
+def test_cutout_keeps_geometry_tags_and_video_but_not_import_state(
+    tmp_path, monkeypatch
+):
+    from tools import remove_bg
+
+    original = tmp_path / "raw.png"
+    Image.new("RGB", (24, 32), "white").save(original)
+    output = tmp_path / "cutout.png"
+
+    def cutout(source, target):
+        with Image.open(source) as image:
+            image.convert("RGBA").save(target)
+
+    monkeypatch.setattr(remove_bg, "ai_remove_background", cutout)
+    source = {
+        "prompt": "pose",
+        "tagging": "开心，挥手",
+        "name": "Mika",
+        "videoPath": "video.mp4",
+        "frameTime": 1.25,
+        "imported": True,
+        "backgroundRemovalError": "old error",
+    }
+    result = generation.remove_sprite_background(source, original, output)
+    assert result["tagging"] == "开心, 挥手"
+    assert result["originalPath"] == original.as_posix()
+    assert result["videoPath"] == "video.mp4"
+    assert result["frameTime"] == 1.25
+    assert "imported" not in result and "backgroundRemovalError" not in result
+    with Image.open(output) as image:
+        assert image.size == (24, 32)
+
+
+@pytest.mark.parametrize("invalid", ["false", 1, None])
+def test_invalid_cutout_option_is_rejected_before_expensive_generation(
+    sprite_state, monkeypatch, invalid
+):
+    state, _ = sprite_state
+    render = Mock()
+    monkeypatch.setattr(bridge, "render_sprite", render)
+    with pytest.raises(ValueError, match="布尔"):
+        bridge.run_sprite_render(
+            state, "invalid", {"name": "Mika", "removeBackground": invalid}
+        )
+    render.assert_not_called()
+
+
+def test_cutout_disabled_leaves_the_render_untouched(sprite_state, monkeypatch):
+    state, _ = sprite_state
+    task_id = completed_sprite(state)
+    source = dict(state.tasks[task_id]["result"])
+    remover = Mock()
+    monkeypatch.setattr(bridge, "remove_sprite_background", remover)
+    result = bridge._finish_sprite(state, task_id, source, False)
+    assert result["path"] == source["path"]
+    assert result["backgroundRemoved"] is False
+    remover.assert_not_called()
+
+
+def test_generated_images_and_video_are_approved_for_preview_without_exposing_other_files(
+    sprite_state,
+):
+    state, _ = sprite_state
+    task_id = completed_sprite(state)
+    source = dict(state.tasks[task_id]["result"])
+    video = Path(source["path"]).with_suffix(".mp4")
+    video.write_bytes(b"video")
+    source["videoPath"] = video.as_posix()
+    approve = Mock()
+    state.chat_stream = SimpleNamespace(approve_external_media_path=approve)
+    bridge._finish_sprite(state, task_id, source, False)
+    assert {call.args[0] for call in approve.call_args_list} == {
+        Path(source["path"]).as_posix(),
+        video.as_posix(),
+    }
+    unrelated = Path(state.project_root_dir) / "unrelated.png"
+    Image.new("RGB", (8, 8)).save(unrelated)
+    with pytest.raises(PermissionError):
+        bridge._approve_sprite_media(state, {"path": unrelated.as_posix()})
+
+
+@pytest.mark.parametrize(
+    "mutation", ["outside", "wrong-character", "failed", "wrong-kind"]
+)
+def test_cutout_rejects_untrusted_sources(sprite_state, monkeypatch, mutation):
+    state, _ = sprite_state
+    task_id = completed_sprite(state)
+    task = state.tasks[task_id]
+    if mutation == "outside":
+        path = Path(state.project_root_dir) / "outside.png"
+        Image.new("RGB", (8, 8)).save(path)
+        task["result"]["originalPath"] = str(path)
+    elif mutation == "wrong-character":
+        task["result"]["name"] = "Other"
+    elif mutation == "failed":
+        task["status"] = "failed"
+    else:
+        task["kind"] = "unrelated"
+    remover = Mock()
+    monkeypatch.setattr(bridge, "remove_sprite_background", remover)
+    with pytest.raises((ValueError, PermissionError)):
+        bridge.run_sprite_cutout(state, "cutout", {"name": "Mika", "taskId": task_id})
+    remover.assert_not_called()

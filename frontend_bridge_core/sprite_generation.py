@@ -7,6 +7,8 @@ from application.characters.generate_sprites import (
     plan_sprites,
     prompt_pair,
     render_sprite,
+    capture_sprite_frame,
+    remove_sprite_background,
 )
 from application.runtime.state import _jsonify
 from application.runtime.tasks import _update_task
@@ -26,6 +28,7 @@ def run_sprite_plan(state, task_id, payload):
 
 
 def run_sprite_render(state, task_id, payload):
+    remove_background = _auto_remove_background(payload)
     name = str(payload.get("name") or "").strip()
     if not state.config_manager.get_character_by_name(name):
         raise ValueError("请先保存角色再生成立绘")
@@ -53,7 +56,124 @@ def run_sprite_render(state, task_id, payload):
     result = render_sprite(
         state.config_manager, {**payload, "name": name}, output, reference
     )
-    return {**result, "taskId": task_id}
+    return _finish_sprite(state, task_id, result, remove_background)
+
+
+def _auto_remove_background(payload):
+    enabled = payload.get("removeBackground", True)
+    if not isinstance(enabled, bool):
+        raise ValueError("removeBackground 必须为布尔值")
+    return enabled
+
+
+def _finish_sprite(state, task_id, result, remove_background):
+    result = {**result, "taskId": task_id, "backgroundRemoved": False}
+    if not remove_background:
+        return _approve_sprite_media(state, result)
+    _update_task(
+        state,
+        task_id,
+        phase="remove-background",
+        message="正在自动移除立绘背景。",
+        progress=0.8,
+    )
+    original = Path(result["path"])
+    output = original.with_name(f"{task_id}-cutout.png")
+    try:
+        result = {
+            **remove_sprite_background(result, original, output),
+            "taskId": task_id,
+        }
+    except Exception as exc:
+        # A successful, expensive render stays usable even if local matting fails.
+        result = {**result, "backgroundRemovalError": str(exc)}
+    return _approve_sprite_media(state, result)
+
+
+def _approve_sprite_media(state, result):
+    approve = getattr(
+        getattr(state, "chat_stream", None), "approve_external_media_path", None
+    )
+    if callable(approve):
+        for key in ("path", "originalPath", "videoPath"):
+            if result.get(key):
+                path = safe_existing_file_path(
+                    result[key],
+                    roots=(
+                        Path(state.project_root_dir) / "cache" / "sprite_generation",
+                    ),
+                    field="generatedMedia",
+                )
+                approve(path.as_posix())
+    return result
+
+
+def _generated_task(state, task_id, name):
+    task = state.tasks.get(task_id)
+    if (
+        not task
+        or task["kind"]
+        not in {
+            "character-sprite-render",
+            "character-sprite-frame",
+            "character-sprite-cutout",
+        }
+        or task["status"] != "succeeded"
+    ):
+        raise ValueError("立绘结果不可用，请重新生成")
+    if (task.get("result") or {}).get("name") != name:
+        raise ValueError("立绘结果不属于当前角色")
+    return task
+
+
+def run_sprite_frame(state, task_id, payload):
+    remove_background = _auto_remove_background(payload)
+    name = str(payload.get("name") or "").strip()
+    with state.task_lock:
+        source = dict(
+            _generated_task(state, str(payload.get("taskId") or ""), name)["result"]
+        )
+    if not source.get("videoPath"):
+        raise ValueError("这张立绘没有可截帧的视频")
+    video = safe_existing_file_path(
+        source["videoPath"],
+        roots=(Path(state.project_root_dir) / "cache" / "sprite_generation",),
+        field="generatedVideo",
+    )
+    if payload.get("seconds") is None:
+        raise ValueError("请选择截帧时间")
+    output = (
+        Path(state.project_root_dir) / "cache" / "sprite_generation" / f"{task_id}.png"
+    )
+    _update_task(
+        state, task_id, phase="frame", message="正在截取选中的视频画面。", progress=0.3
+    )
+    result = capture_sprite_frame(source, video, output, payload["seconds"])
+    return _finish_sprite(state, task_id, result, remove_background)
+
+
+def run_sprite_cutout(state, task_id, payload):
+    name = str(payload.get("name") or "").strip()
+    with state.task_lock:
+        source = dict(
+            _generated_task(state, str(payload.get("taskId") or ""), name)["result"]
+        )
+    original = safe_existing_file_path(
+        source.get("originalPath") or source["path"],
+        roots=(Path(state.project_root_dir) / "cache" / "sprite_generation",),
+        field="generatedImage",
+    )
+    output = original.parent / f"{task_id}-cutout.png"
+    _update_task(
+        state,
+        task_id,
+        phase="remove-background",
+        message="正在移除立绘背景。",
+        progress=0.3,
+    )
+    return _approve_sprite_media(
+        state, {**remove_sprite_background(source, original, output), "taskId": task_id}
+    )
 
 
 def import_generated_sprites(state, payload):
@@ -74,16 +194,8 @@ def import_generated_sprites(state, payload):
             if task_id in seen:
                 continue
             seen.add(task_id)
-            task = state.tasks.get(task_id)
-            if (
-                not task
-                or task["kind"] != "character-sprite-render"
-                or task["status"] != "succeeded"
-            ):
-                raise ValueError("立绘结果不可用，请重新生成")
+            task = _generated_task(state, task_id, name)
             result = task.get("result") or {}
-            if result.get("name") != name:
-                raise ValueError("立绘结果不属于当前角色")
             if result.get("imported"):
                 continue
             path = safe_existing_file_path(

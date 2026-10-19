@@ -15,6 +15,8 @@ from frontend_bridge_core.sprite_generation import (
     import_generated_sprites,
     run_sprite_plan,
     run_sprite_render,
+    run_sprite_frame,
+    run_sprite_cutout,
 )
 from frontend_bridge_core.routes.router import (
     ApiRequest,
@@ -214,7 +216,31 @@ def _import_generated_sprites(request: ApiRequest) -> JsonResponse:
     return JsonResponse(import_generated_sprites(request.state, request.body))
 
 
+def _capture_sprite_frame(request: ApiRequest) -> TaskResponse:
+    body = dict(request.body)
+    return TaskResponse(
+        kind="character-sprite-frame",
+        title="截取立绘画面",
+        message="正在准备视频截帧。",
+        worker=lambda task_id: run_sprite_frame(request.state, task_id, body),
+    )
+
+
+def _remove_sprite_background(request: ApiRequest) -> TaskResponse:
+    body = dict(request.body)
+    return TaskResponse(
+        kind="character-sprite-cutout",
+        title="立绘抠图",
+        message="正在准备移除背景。",
+        worker=lambda task_id: run_sprite_cutout(request.state, task_id, body),
+    )
+
+
 CHARACTER_ROUTES = (
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/remove-background",
+          handler=_remove_sprite_background, name="characters.sprites.remove_background"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/frame",
+          handler=_capture_sprite_frame, name="characters.sprites.frame"),
     Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/plan",
           handler=_plan_sprites, name="characters.sprites.plan"),
     Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/render",

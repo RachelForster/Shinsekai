@@ -2,6 +2,13 @@ import type { MessageKey } from "../messages";
 
 export const enMessages: Record<MessageKey, string> = {
   "spriteGeneration.options": "Instructions and reference",
+  "spriteGeneration.autoRemoveBackground": "Remove background automatically",
+  "spriteGeneration.autoRemoveHint":
+    "Remove the background after rendering or choosing a frame. Turning this off only affects future results.",
+  "spriteGeneration.backgroundRemoved": "Background removed · transparent PNG",
+  "spriteGeneration.backgroundRemovalFailed": "Background removal failed. Original image kept: {error}",
+  "spriteGeneration.cutout": "Remove background",
+  "spriteGeneration.retryCutout": "Retry background removal",
   "spriteGeneration.action": "Generate sprites",
   "spriteGeneration.intro":
     "Plan sprites for {name}, review the prompts, generate images, then add your favorites to the existing collection.",
@@ -25,6 +32,13 @@ export const enMessages: Record<MessageKey, string> = {
   "spriteGeneration.selectAll": "Select generated images",
   "spriteGeneration.deselectAll": "Deselect all",
   "spriteGeneration.reviewHint": "Tags are saved with each image. Click a preview to view the full image.",
+  "spriteGeneration.chooseFrame": "Choose a frame from the generated video",
+  "spriteGeneration.frameHint":
+    "The middle frame is selected automatically. Seek in the video and capture another frame without generating again.",
+  "spriteGeneration.video": "Source video",
+  "spriteGeneration.captureFrame": "Use frame at {seconds}s",
+  "spriteGeneration.videoUnavailable":
+    "This video cannot be previewed here. The extracted still image can still be saved.",
   "spriteGeneration.sprite": "Sprite {n}",
   "spriteGeneration.prompt": "Image prompt",
   "spriteGeneration.tagging": "Tags",

@@ -1420,6 +1420,11 @@ export interface GeneratedCharacterSprite extends SpritePromptPair {
   name: string;
   path: string;
   taskId: string;
+  videoPath?: string;
+  frameTime?: number;
+  originalPath?: string;
+  backgroundRemoved?: boolean;
+  backgroundRemovalError?: string;
 }
 
 export interface TaskProgressOptions<TResult = unknown> {
@@ -1689,13 +1694,21 @@ export interface ShinsekaiPlatform {
       options?: TaskProgressOptions<{ items: SpritePromptPair[] }>,
     ) => Promise<{ items: SpritePromptPair[] }>;
     renderSprite: (
-      input: SpritePromptPair & { name: string; referenceImage?: string },
+      input: SpritePromptPair & { name: string; referenceImage?: string; removeBackground?: boolean },
       options?: TaskProgressOptions<GeneratedCharacterSprite>,
     ) => Promise<GeneratedCharacterSprite>;
     importGeneratedSprites: (input: {
       name: string;
       items: { taskId: string; tagging: string }[];
     }) => Promise<Character>;
+    captureSpriteFrame: (
+      input: { name: string; taskId: string; seconds: number; removeBackground?: boolean },
+      options?: TaskProgressOptions<GeneratedCharacterSprite>,
+    ) => Promise<GeneratedCharacterSprite>;
+    removeSpriteBackground: (
+      input: { name: string; taskId: string },
+      options?: TaskProgressOptions<GeneratedCharacterSprite>,
+    ) => Promise<GeneratedCharacterSprite>;
     delete: (name: string) => Promise<void>;
     deleteMemory: (name: string, memoryId: string) => Promise<CharacterMemoryList>;
     deleteSpriteVoice: (name: string, spriteIndex: number) => Promise<Character>;

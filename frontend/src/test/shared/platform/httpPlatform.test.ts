@@ -25,11 +25,22 @@ function mockJsonResponse(body: unknown, ok = true) {
 describe("http platform", () => {
   it("uses authenticated task transport for tagged sprite planning, rendering, and selected import", async () => {
     const pair = { prompt: "full body, smiling", tagging: "微笑" };
-    const result = { ...pair, name: "Mika", path: "preview.png", taskId: "render" };
+    const result = {
+      ...pair,
+      name: "Mika",
+      path: "preview.png",
+      videoPath: "source.mp4",
+      frameTime: 2,
+      taskId: "render",
+    };
+    const captured = { ...result, path: "selected.png", frameTime: 1, taskId: "frame" };
+    const cutout = { ...captured, path: "transparent.png", taskId: "cutout", backgroundRemoved: true };
     const fetchMock = vi
       .fn()
       .mockImplementationOnce(() => mockJsonResponse({ id: "plan", status: "succeeded", result: { items: [pair] } }))
       .mockImplementationOnce(() => mockJsonResponse({ id: "render", status: "succeeded", result }))
+      .mockImplementationOnce(() => mockJsonResponse({ id: "frame", status: "succeeded", result: captured }))
+      .mockImplementationOnce(() => mockJsonResponse({ id: "cutout", status: "succeeded", result: cutout }))
       .mockImplementationOnce(() => mockJsonResponse(sampleConfig.characters[0]));
     vi.stubGlobal("fetch", fetchMock);
     const platform = createHttpPlatform("http://127.0.0.1:8787", "token");
@@ -43,14 +54,22 @@ describe("http platform", () => {
     await expect(
       platform.characters.renderSprite({ ...pair, name: "Mika", referenceImage: "ref.png" }, { onTaskUpdate }),
     ).resolves.toEqual(result);
+    await expect(
+      platform.characters.captureSpriteFrame({ name: "Mika", taskId: "render", seconds: 1 }, { onTaskUpdate }),
+    ).resolves.toEqual(captured);
+    await expect(
+      platform.characters.removeSpriteBackground({ name: "Mika", taskId: "frame" }, { onTaskUpdate }),
+    ).resolves.toEqual(cutout);
     await platform.characters.importGeneratedSprites({
       name: "Mika",
       items: [{ taskId: "render", tagging: pair.tagging }],
     });
-    expect(onTaskUpdate).toHaveBeenCalledTimes(2);
+    expect(onTaskUpdate).toHaveBeenCalledTimes(4);
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       "http://127.0.0.1:8787/api/characters/sprites/plan",
       "http://127.0.0.1:8787/api/characters/sprites/render",
+      "http://127.0.0.1:8787/api/characters/sprites/frame",
+      "http://127.0.0.1:8787/api/characters/sprites/remove-background",
       "http://127.0.0.1:8787/api/characters/sprites/import-generated",
     ]);
     expect(fetchMock).toHaveBeenLastCalledWith(

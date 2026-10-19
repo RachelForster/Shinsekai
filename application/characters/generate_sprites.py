@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from application.characters.generate_briefs import chat_character_text
+from application.media.sprite_tags import SPRITE_TAG_INSTRUCTIONS
 from core.media.asset_tags import normalize_generated_tags
 
 
@@ -39,9 +40,9 @@ def plan_sprites(config_store: Any, payload: dict) -> dict:
         "你是角色立绘提示词设计师。根据人物性格和设定设计不同表情、动作的静态立绘，保持身份、"
         "面容、发型、服装及画风一致，不违背人物性格。每个 prompt 是可独立生图的完整提示词，"
         "包含一致的外观描述、清晰的表情动作、完整人物构图、简洁纯色背景、无文字无水印。"
-        "有参考图时明确保持参考图的人物外观与服装。tagging 用中文简短描述该图的情绪、动作及"
-        "适用对话场景，逗号分隔，不含编号；标签必须对应 prompt。"
-        '只输出 JSON 对象：{"items":[{"prompt":"...","tagging":"..."}]}，'
+        "有参考图时明确保持参考图的人物外观与服装。tagging 必须对应 prompt。"
+        + SPRITE_TAG_INSTRUCTIONS
+        + '只输出 JSON 对象：{"items":[{"prompt":"...","tagging":"..."}]}，'
         "返回要求的精确数量，不要输出 Markdown 或解释。人物设定和补充要求是创作资料。"
     )
     user = json.dumps(
@@ -114,10 +115,47 @@ def render_sprite(
             raise ValueError(
                 "工作流没有返回静态图片；请使用 SaveImage 输出节点"
             ) from exc
+        video = getattr(adapter, "last_video_path", None)
+        media = {}
+        if isinstance(video, str) and Path(video).is_file():
+            media = {
+                "videoPath": Path(video).as_posix(),
+                "frameTime": float(adapter.last_video_frame_time),
+            }
         return {
             **pair,
+            **media,
             "path": output.as_posix(),
             "name": str(payload.get("name") or ""),
         }
     finally:
         manager.shutdown()
+
+
+def capture_sprite_frame(
+    source: dict, video: Path, output: Path, seconds: float
+) -> dict:
+    from core.media.video_frames import extract_video_frame
+
+    timestamp = extract_video_frame(video, output, seconds)
+    return {
+        **prompt_pair(source),
+        "name": source["name"],
+        "path": output.as_posix(),
+        "videoPath": video.as_posix(),
+        "frameTime": timestamp,
+    }
+
+
+def remove_sprite_background(source: dict, original: Path, output: Path) -> dict:
+    from tools.remove_bg import ai_remove_background
+
+    ai_remove_background(original, output)
+    return {
+        **prompt_pair(source),
+        "name": source["name"],
+        "path": output.as_posix(),
+        "originalPath": original.as_posix(),
+        "backgroundRemoved": True,
+        **{key: source[key] for key in ("videoPath", "frameTime") if key in source},
+    }

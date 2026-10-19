@@ -2,8 +2,10 @@ import { useRef, useState } from "react";
 
 import {
   importGeneratedCharacterSprites,
+  captureCharacterSpriteFrame,
   planCharacterSprites,
   renderCharacterSprite,
+  removeCharacterSpriteBackground,
 } from "../../entities/character/repository";
 import type { Character, GeneratedCharacterSprite, SpritePromptPair, TaskSnapshot } from "../../shared/platform/types";
 
@@ -16,7 +18,7 @@ export interface SpriteCandidate extends SpritePromptPair {
 
 export function useSpriteGeneration(name: string, setting: string, onImported: (character: Character) => void) {
   const [items, setItems] = useState<SpriteCandidate[]>([]);
-  const [busy, setBusy] = useState<"plan" | "render" | "import" | null>(null);
+  const [busy, setBusy] = useState<"plan" | "render" | "frame" | "cutout" | "import" | null>(null);
   const [activeId, setActiveId] = useState("");
   const [task, setTask] = useState<TaskSnapshot | null>(null);
   const [error, setError] = useState("");
@@ -57,7 +59,7 @@ export function useSpriteGeneration(name: string, setting: string, onImported: (
       ]);
     });
 
-  const render = (candidates: SpriteCandidate[], referenceImage: string) =>
+  const render = (candidates: SpriteCandidate[], referenceImage: string, removeBackground = true) =>
     operate("render", async () => {
       stopRequested.current = false;
       setStopping(false);
@@ -69,7 +71,7 @@ export function useSpriteGeneration(name: string, setting: string, onImported: (
         update(item.id, { error: "" });
         try {
           const result = await renderCharacterSprite(
-            { name, prompt: item.prompt, tagging: item.tagging, referenceImage },
+            { name, prompt: item.prompt, tagging: item.tagging, referenceImage, removeBackground },
             { onTaskUpdate: setTask },
           );
           update(item.id, { result, prompt: result.prompt, tagging: result.tagging, selected: true });
@@ -83,6 +85,36 @@ export function useSpriteGeneration(name: string, setting: string, onImported: (
   const selected = items.filter(
     (item) => item.selected && item.result && item.result.prompt === item.prompt && item.tagging.trim(),
   );
+  const capture = (item: SpriteCandidate, seconds: number, removeBackground = true) =>
+    operate("frame", async () => {
+      if (!item.result || item.result.prompt !== item.prompt) return;
+      setActiveId(item.id);
+      update(item.id, { error: "" });
+      try {
+        const result = await captureCharacterSpriteFrame(
+          { name, taskId: item.result.taskId, seconds, removeBackground },
+          { onTaskUpdate: setTask },
+        );
+        update(item.id, { result, selected: true });
+      } catch (error) {
+        update(item.id, { error: message(error) });
+      }
+    });
+  const cutout = (item: SpriteCandidate) =>
+    operate("cutout", async () => {
+      if (!item.result || item.result.prompt !== item.prompt) return;
+      setActiveId(item.id);
+      update(item.id, { error: "" });
+      try {
+        const result = await removeCharacterSpriteBackground(
+          { name, taskId: item.result.taskId },
+          { onTaskUpdate: setTask },
+        );
+        update(item.id, { result, selected: true });
+      } catch (error) {
+        update(item.id, { error: message(error) });
+      }
+    });
   const save = () =>
     operate("import", async () => {
       if (!selected.length) return;
@@ -105,6 +137,8 @@ export function useSpriteGeneration(name: string, setting: string, onImported: (
     update,
     plan,
     render,
+    capture,
+    cutout,
     save,
     stop: () => {
       stopRequested.current = true;

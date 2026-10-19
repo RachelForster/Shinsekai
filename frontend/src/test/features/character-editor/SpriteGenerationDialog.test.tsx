@@ -9,10 +9,14 @@ import type { GeneratedCharacterSprite } from "../../../shared/platform/types";
 const plan = vi.fn();
 const draw = vi.fn();
 const save = vi.fn();
+const capture = vi.fn();
+const cutout = vi.fn();
 vi.mock("../../../entities/character/repository", () => ({
   planCharacterSprites: (...args: unknown[]) => plan(...args),
   renderCharacterSprite: (...args: unknown[]) => draw(...args),
   importGeneratedCharacterSprites: (...args: unknown[]) => save(...args),
+  captureCharacterSpriteFrame: (...args: unknown[]) => capture(...args),
+  removeCharacterSpriteBackground: (...args: unknown[]) => cutout(...args),
 }));
 vi.mock("../../../entities/files/repository", () => ({ fileUrl: (path: string) => `asset://${path}` }));
 vi.mock("../../../shared/ui", async (original) => ({
@@ -139,6 +143,51 @@ describe("sprite generator", () => {
     expect(screen.getByRole("checkbox", { name: "Sprite 2" })).toBeChecked();
   });
 
+  it("recaptures a video without rerendering, preserves the old preview on failure, and saves the new tagged frame", async () => {
+    mount();
+    draw.mockImplementation(async (input) => ({
+      ...input,
+      path: `${input.prompt}.png`,
+      videoPath: `${input.prompt}.mp4`,
+      frameTime: 2,
+      taskId: `task-${input.prompt}`,
+    }));
+    await makePlan();
+    await drawAll();
+    const video = screen.getByLabelText("Sprite 1 Source video") as HTMLVideoElement;
+    Object.defineProperty(video, "duration", { value: 4 });
+    vi.spyOn(video, "pause").mockImplementation(() => {});
+    fireEvent.loadedMetadata(video);
+    expect(video.currentTime).toBe(2);
+    video.currentTime = 1.25;
+    fireEvent.timeUpdate(video);
+    fireEvent.change(screen.getByLabelText("Sprite 1 Tags"), { target: { value: "edited tags" } });
+    capture.mockRejectedValueOnce(new Error("frame failed"));
+    fireEvent.click(screen.getByRole("button", { name: "Use frame at 1.25s" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("frame failed");
+    expect(screen.getByAltText("Sprite 1")).toHaveAttribute("src", "asset://happy pose.png");
+    capture.mockResolvedValueOnce({
+      ...pairs[0],
+      name: "Mika",
+      path: "selected.png",
+      videoPath: "happy pose.mp4",
+      frameTime: 1.25,
+      taskId: "new-frame",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Use frame at 1.25s" }));
+    await waitFor(() => expect(screen.getByAltText("Sprite 1")).toHaveAttribute("src", "asset://selected.png"));
+    expect(capture).toHaveBeenLastCalledWith(
+      { name: "Mika", taskId: "task-happy pose", seconds: 1.25, removeBackground: true },
+      expect.anything(),
+    );
+    expect(draw).toHaveBeenCalledTimes(2);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Sprite 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add to collection (1)" }));
+    await waitFor(() =>
+      expect(save).toHaveBeenCalledWith({ name: "Mika", items: [{ taskId: "new-frame", tagging: "edited tags" }] }),
+    );
+  });
+
   it("stops a batch after the current render and prevents duplicate requests", async () => {
     mount();
     await makePlan();
@@ -155,6 +204,41 @@ describe("sprite generator", () => {
     await act(async () => resolve({ ...pairs[0], name: "Mika", path: "one.png", taskId: "one" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Add to collection (1)" })).toBeEnabled());
     expect(draw).toHaveBeenCalledOnce();
+  });
+
+  it("defaults to automatic cutout, can opt out, and retries a failed cutout without redrawing", async () => {
+    mount();
+    expect(screen.getByRole("checkbox", { name: "Remove background automatically" })).toBeChecked();
+    await makePlan();
+    draw.mockImplementation(async (input) => ({
+      ...input,
+      taskId: "raw",
+      path: "raw.png",
+      backgroundRemoved: false,
+      backgroundRemovalError: "model unavailable",
+    }));
+    await drawAll();
+    expect(draw).toHaveBeenCalledWith(expect.objectContaining({ removeBackground: true }), expect.anything());
+    expect(screen.getAllByRole("alert")[0]).toHaveTextContent("Original image kept");
+    cutout.mockRejectedValueOnce(new Error("retry failed"));
+    fireEvent.click(screen.getAllByRole("button", { name: "Retry background removal" })[0]);
+    expect(await screen.findByText("retry failed")).toBeInTheDocument();
+    expect(screen.getByAltText("Sprite 1")).toHaveAttribute("src", "asset://raw.png");
+    cutout.mockResolvedValueOnce({
+      ...pairs[0],
+      name: "Mika",
+      taskId: "cutout",
+      path: "cutout.png",
+      backgroundRemoved: true,
+    });
+    fireEvent.click(screen.getAllByRole("button", { name: "Retry background removal" })[0]);
+    await waitFor(() => expect(screen.getByAltText("Sprite 1")).toHaveAttribute("src", "asset://cutout.png"));
+    expect(screen.getByText("Background removed · transparent PNG")).toBeInTheDocument();
+    expect(draw).toHaveBeenCalledTimes(2);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Remove background automatically" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Redraw" })[0]);
+    await waitFor(() => expect(draw).toHaveBeenCalledTimes(3));
+    expect(draw).toHaveBeenLastCalledWith(expect.objectContaining({ removeBackground: false }), expect.anything());
   });
 
   it("retains ideas when planning fails and confirms discarding unsaved previews", async () => {

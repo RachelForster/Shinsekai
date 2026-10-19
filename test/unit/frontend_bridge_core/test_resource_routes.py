@@ -67,6 +67,8 @@ def test_character_route_contracts_remain_stable() -> None:
         ("POST", "/api/characters/sprites/auto-label"),
         ("POST", "/api/characters/sprites/delete"),
         ("POST", "/api/characters/sprites/delete-all"),
+        ("POST", "/api/characters/sprites/frame"),
+        ("POST", "/api/characters/sprites/remove-background"),
         ("POST", "/api/characters/sprites/import-generated"),
         ("POST", "/api/characters/sprites/plan"),
         ("POST", "/api/characters/sprites/render"),
