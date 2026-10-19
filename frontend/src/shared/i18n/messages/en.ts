@@ -599,7 +599,11 @@ export const enMessages: Record<MessageKey, string> = {
   "api.llm.thinkingEnabled": "Thinking mode",
   "api.llm.thinkingUnsupported": "This model does not support thinking mode.",
   "api.vision.apiKey": "Provider API key",
-  "api.vision.auto": "Automatic",
+  "api.vision.auto": "Follow LLM (default)",
+  "api.vision.autoHelp":
+    "Following {provider}, vision model: {model}. Follows LLM adapter changes; you can also select a vision adapter manually.",
+  "api.vision.autoFallback":
+    "The current LLM has no matching vision adapter. An available vision plugin will be used, or you can select an adapter manually.",
   "api.vision.baseUrl": "Provider base URL",
   "api.vision.checkingModel": "Checking the Moondream model...",
   "api.vision.description":

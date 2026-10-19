@@ -543,12 +543,33 @@ export function providerBaseUrl(config: ApiConfig, provider: string) {
   );
 }
 
-export function effectiveVisionApiKey(config: ApiConfig, provider = config.vision_provider) {
+export function resolveVisionProvider(config: ApiConfig) {
+  const selected = String(config.vision_provider || "auto")
+    .trim()
+    .toLowerCase();
+  if (selected !== "auto") return selected;
+  return (
+    Object.entries(visionProviderLlmProviders).find(
+      ([, llmProvider]) => llmProvider.toLowerCase() === config.llm_provider.trim().toLowerCase(),
+    )?.[0] ?? "auto"
+  );
+}
+
+export function effectiveVisionModel(config: ApiConfig, provider = resolveVisionProvider(config)) {
+  return (
+    activeMapValue(config.vision_model, provider).trim() ||
+    activeMapValue(config.llm_model, visionProviderLlmProviders[provider] ?? "").trim() ||
+    visionDefaultModels[provider] ||
+    ""
+  );
+}
+
+export function effectiveVisionApiKey(config: ApiConfig, provider = resolveVisionProvider(config)) {
   const llmProvider = visionProviderLlmProviders[provider];
   return llmProvider ? activeMapValue(config.llm_api_key, llmProvider) : "";
 }
 
-export function effectiveVisionBaseUrl(config: ApiConfig, provider = config.vision_provider) {
+export function effectiveVisionBaseUrl(config: ApiConfig, provider = resolveVisionProvider(config)) {
   const llmProvider = visionProviderLlmProviders[provider];
   return llmProvider ? providerBaseUrl(config, llmProvider) : "";
 }
@@ -558,7 +579,7 @@ export function visionProviderRequiresApiKey(provider: string) {
 }
 
 export function visionModelFetchKey(config: ApiConfig) {
-  const provider = String(config.vision_provider || "").trim();
+  const provider = resolveVisionProvider(config);
   return [
     provider,
     effectiveVisionBaseUrl(config, provider).trim(),

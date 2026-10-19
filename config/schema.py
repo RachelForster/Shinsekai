@@ -157,11 +157,11 @@ class ApiConfig(BaseModel):
 
     vision_provider: DefaultIfNone[str] = Field(
         default="auto",
-        description="视觉理解适配器：auto / remote provider / moondream",
+        description="视觉理解适配器：auto 默认跟随当前 LLM / remote provider / moondream",
     )
     vision_model: DefaultIfNone[Dict[str, str]] = Field(
-        default_factory=lambda: {"deepseek": "deepseek-flash"},
-        description="不同视觉服务商使用的模型名称字典",
+        default_factory=dict,
+        description="不同视觉服务商使用的模型名称字典；未指定时沿用该服务商的 LLM 模型",
     )
     # --- Interrupt & Batch Input ---
     interrupt_enabled: DefaultIfNone[bool] = Field(default=True, description="是否启用打断功能：新消息可中断正在生成的回复")

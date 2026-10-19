@@ -82,7 +82,8 @@ import {
   updateAsrExtraConfig,
   effectiveVisionApiKey,
   effectiveVisionBaseUrl,
-  visionDefaultModels,
+  effectiveVisionModel,
+  resolveVisionProvider,
   visionModelFetchKey,
   visionProviderLlmProviders,
   visionProviderRequiresApiKey,
@@ -375,10 +376,9 @@ export function ApiSettingsPage() {
       }
       setDraft((current) => {
         if (!current || visionModelFetchKey(current) !== input.fetchKey) return current;
-        const model = activeMapValue(current.vision_model, current.vision_provider);
-        return model
-          ? current
-          : { ...current, vision_model: { ...current.vision_model, [current.vision_provider]: options[0].id } };
+        const provider = resolveVisionProvider(current);
+        const model = activeMapValue(current.vision_model, provider);
+        return model ? current : { ...current, vision_model: { ...current.vision_model, [provider]: options[0].id } };
       });
       showToast({
         kind: "success",
@@ -472,7 +472,8 @@ export function ApiSettingsPage() {
   const modelCandidateListId = "llm-model-candidates";
   const activeVisionApiKey = effectiveVisionApiKey(draft);
   const activeVisionBaseUrl = effectiveVisionBaseUrl(draft);
-  const activeVisionModel = activeMapValue(draft.vision_model, draft.vision_provider);
+  const resolvedVisionProvider = resolveVisionProvider(draft);
+  const activeVisionModel = effectiveVisionModel(draft);
   const availableVisionModelOptions = mergeModelOptions(
     visionModelOptions,
     activeVisionModel ? [{ id: activeVisionModel, tags: ["vision"] }] : [],
@@ -567,10 +568,13 @@ export function ApiSettingsPage() {
     setVisionModelOptions([]);
     setDraft({
       ...draft,
-      vision_model: {
-        ...draft.vision_model,
-        [provider]: draft.vision_model?.[provider] ?? visionDefaultModels[provider] ?? "",
-      },
+      vision_model:
+        provider === "auto"
+          ? draft.vision_model
+          : {
+              ...draft.vision_model,
+              [provider]: draft.vision_model?.[provider] ?? effectiveVisionModel(draft, provider),
+            },
       vision_provider: provider,
     });
   };
@@ -606,12 +610,12 @@ export function ApiSettingsPage() {
   const updateVisionModel = (value: string) => {
     setDraft({
       ...draft,
-      vision_model: { ...draft.vision_model, [draft.vision_provider]: value },
+      vision_model: { ...draft.vision_model, [resolvedVisionProvider]: value },
     });
   };
 
   const updateVisionSharedCredential = (key: "llm_api_key" | "llm_base_urls", value: string) => {
-    const provider = visionProviderLlmProviders[draft.vision_provider];
+    const provider = visionProviderLlmProviders[resolvedVisionProvider];
     if (!provider) return;
     activeVisionModelFetchKey.current = null;
     setVisionModelOptions([]);
@@ -661,7 +665,7 @@ export function ApiSettingsPage() {
   const handleFetchVisionModels = () => {
     if (
       !activeVisionBaseUrl.trim() ||
-      (visionProviderRequiresApiKey(draft.vision_provider) && !activeVisionApiKey.trim())
+      (visionProviderRequiresApiKey(resolvedVisionProvider) && !activeVisionApiKey.trim())
     ) {
       showToast({ kind: "error", message: t("api.vision.fetchMissing"), title: t("api.vision.fetchTitle") });
       return;
@@ -670,7 +674,7 @@ export function ApiSettingsPage() {
       apiKey: activeVisionApiKey || "ollama",
       baseUrl: activeVisionBaseUrl,
       fetchKey: visionModelFetchKey(draft),
-      provider: draft.vision_provider,
+      provider: resolvedVisionProvider,
     });
   };
 
@@ -714,7 +718,7 @@ export function ApiSettingsPage() {
   const llmExtraSchema = adapterSchema(adapterCatalog?.llm, draft.llm_provider);
   const ttsExtraSchema = adapterSchema(adapterCatalog?.tts, draft.tts_provider);
   const t2iExtraSchema = adapterSchema(adapterCatalog?.t2i, draft.t2i_provider);
-  const visionExtraSchema = adapterSchema(adapterCatalog?.vision, draft.vision_provider);
+  const visionExtraSchema = adapterSchema(adapterCatalog?.vision, resolvedVisionProvider);
   const visionProviderOptions = withCurrentOption(
     catalogOptions(adapterCatalog?.vision, [
       { label: t("api.vision.auto"), value: "auto" },
@@ -726,7 +730,7 @@ export function ApiSettingsPage() {
       { label: "通义千问视觉", value: "qwen" },
       { label: "Ollama Vision（本地）", value: "ollama" },
       { label: "Moondream", value: "moondream" },
-    ]),
+    ]).map((option) => (option.value === "auto" ? { ...option, label: t("api.vision.auto") } : option)),
     draft.vision_provider,
   );
   const apiSectionNavItems = [
@@ -920,7 +924,7 @@ export function ApiSettingsPage() {
         activeApiKey={activeVisionApiKey}
         activeBaseUrl={activeVisionBaseUrl}
         activeModel={activeVisionModel}
-        apiKeyRequired={visionProviderRequiresApiKey(draft.vision_provider)}
+        apiKeyRequired={visionProviderRequiresApiKey(resolvedVisionProvider)}
         availableModelOptions={availableVisionModelOptions}
         disabled={saveMutation.isPending}
         draft={draft}
@@ -928,14 +932,14 @@ export function ApiSettingsPage() {
         fetchModelsPending={visionModelFetchMutation.isPending}
         id="api-vision"
         onAdapterExtraChange={(key, value) =>
-          updateAdapterExtra("vision_extra_configs", draft.vision_provider, key, value)
+          updateAdapterExtra("vision_extra_configs", resolvedVisionProvider, key, value)
         }
         onFetchModels={handleFetchVisionModels}
         onProviderChange={updateVisionProvider}
         onProviderMapChange={updateVisionModel}
         onSharedCredentialChange={updateVisionSharedCredential}
         providerOptions={visionProviderOptions}
-        sharedLlmProvider={visionProviderLlmProviders[draft.vision_provider]}
+        sharedLlmProvider={visionProviderLlmProviders[resolvedVisionProvider]}
       />
       <MemorySettingsSection
         disabled={saveMutation.isPending}

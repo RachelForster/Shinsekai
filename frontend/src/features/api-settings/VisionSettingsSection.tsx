@@ -8,6 +8,7 @@ import type { LlmModelOption, ModelAssetStatus, TaskSnapshot } from "../../share
 import { AsyncButton, Select, TaskProgress, TextInput, useToast } from "../../shared/ui";
 import { AdapterExtraForm } from "./AdapterExtraForm";
 import { EditableModelSelect } from "./EditableModelSelect";
+import { resolveVisionProvider } from "./apiSettingsUtils";
 
 interface VisionSettingsSectionProps {
   activeApiKey: string;
@@ -58,6 +59,7 @@ export function VisionSettingsSection({
   const [moondreamChecking, setMoondreamChecking] = useState(false);
   const remoteProvider = !["auto", "moondream"].includes(draft.vision_provider.toLowerCase());
   const moondreamProvider = draft.vision_provider.toLowerCase() === "moondream";
+  const automatic = draft.vision_provider.toLowerCase() === "auto";
 
   useEffect(() => {
     if (!moondreamProvider) return;
@@ -121,6 +123,13 @@ export function VisionSettingsSection({
           </Select>
         </span>
       </label>
+      {automatic ? (
+        <p className="section__description" role="status">
+          {sharedLlmProvider
+            ? t("api.vision.autoHelp", { provider: sharedLlmProvider, model: activeModel || "—" })
+            : t("api.vision.autoFallback")}
+        </p>
+      ) : null}
       {remoteProvider && sharedLlmProvider ? (
         <>
           <label className="field-row">
@@ -204,7 +213,7 @@ export function VisionSettingsSection({
         disabled={disabled}
         onChange={onAdapterExtraChange}
         schema={extraSchema}
-        values={draft.vision_extra_configs?.[draft.vision_provider] ?? {}}
+        values={draft.vision_extra_configs?.[resolveVisionProvider(draft)] ?? {}}
       />
     </section>
   );

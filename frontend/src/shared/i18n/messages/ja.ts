@@ -593,7 +593,11 @@ export const jaMessages: Record<MessageKey, string> = {
   "api.llm.thinkingEnabled": "思考モード",
   "api.llm.thinkingUnsupported": "このモデルは思考モードに対応していません。",
   "api.vision.apiKey": "プロバイダー API キー",
-  "api.vision.auto": "自動選択",
+  "api.vision.auto": "LLM に合わせる（既定）",
+  "api.vision.autoHelp":
+    "{provider} に追従中。Vision モデル：{model}。LLM アダプターを変更すると自動で切り替わります。手動選択も可能です。",
+  "api.vision.autoFallback":
+    "現在の LLM に対応する Vision アダプターがないため、利用可能な Vision プラグインを使います。手動選択も可能です。",
   "api.vision.baseUrl": "プロバイダー ベース URL",
   "api.vision.checkingModel": "Moondream モデルを確認中...",
   "api.vision.description":

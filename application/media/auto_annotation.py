@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import os
+import json
+import uuid
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
 from ai.vision import configured_vision_manager
+from application.media.sprite_tags import SPRITE_TAG_INSTRUCTIONS, normalize_sprite_tags
 from core.media.asset_tags import normalize_generated_tags, numbered_tags, tag_contents
 
 
@@ -16,16 +19,15 @@ CancelCallback = Callable[[], bool]
 InferCallback = Callable[[bytes, str], str]
 
 CHARACTER_PROMPT = (
-    "Generate concise English tags for this character sprite. Focus on facial expression, emotion, pose, "
-    "clothing, and visual state. Output only comma-separated tags: no numbering, no full sentences, "
-    "and no guesses about the character's identity."
+    "你在为对话系统标注角色立绘。请根据图片中可见的表情和姿态标注，不要根据角色设定猜测。"
+    + SPRITE_TAG_INSTRUCTIONS
 )
 BACKGROUND_PROMPT = (
     "Generate concise English tags for this background image. Focus on location, time of day, weather, "
     "lighting, atmosphere, and important objects. Output only comma-separated tags: no numbering and "
     "no full sentences."
 )
-_IMAGE_SUFFIXES = {".gif", ".jpeg", ".jpg", ".png", ".webp"}
+_IMAGE_SUFFIXES = {".gif", ".jpeg", ".jpg", ".png", ".webp", ".mp4"}
 
 
 class AnnotationCancelled(RuntimeError):
@@ -53,6 +55,21 @@ def _safe_asset_file(raw_path: str, project_root: Path) -> Path:
     return resolved
 
 
+def _annotation_image_bytes(path: Path, project_root: Path) -> bytes:
+    if path.suffix.lower() != ".mp4":
+        return path.read_bytes()
+    from core.media.video_frames import extract_video_frame
+
+    cache = project_root.resolve() / "cache" / "vision_annotations"
+    cache.mkdir(parents=True, exist_ok=True)
+    output = cache / f"{uuid.uuid4().hex}.png"
+    try:
+        extract_video_frame(path, output)
+        return output.read_bytes()
+    finally:
+        output.unlink(missing_ok=True)
+
+
 def annotate_unlabelled_images(
     sprites: Sequence[object],
     tag_block: str,
@@ -61,6 +78,8 @@ def annotate_unlabelled_images(
     prompt: str,
     project_root: Path,
     infer: InferCallback | None = None,
+    api_config: Any | None = None,
+    normalize: Callable[[str], str] = normalize_generated_tags,
     on_progress: ProgressCallback | None = None,
     is_cancelled: CancelCallback | None = None,
 ) -> dict[str, Any]:
@@ -77,13 +96,13 @@ def annotate_unlabelled_images(
             image_path = _safe_asset_file(_sprite_path(sprites[index]), project_root)
             first_inference = runner is None or completed == 0
             if runner is None:
-                runner = configured_vision_manager().describe
+                runner = configured_vision_manager(api_config=api_config).describe
             if on_progress:
                 if first_inference:
                     on_progress(
                         completed,
                         len(missing_indexes),
-                        f"正在准备视觉模型并智能标注第 {completed + 1}/{len(missing_indexes)} 张图片…",
+                        f"正在连接已配置的视觉服务，并标注第 {completed + 1}/{len(missing_indexes)} 张图片…",
                         "loading-model",
                     )
                 else:
@@ -93,7 +112,19 @@ def annotate_unlabelled_images(
                         f"正在智能标注第 {completed + 1}/{len(missing_indexes)} 张图片…",
                         "annotating",
                     )
-            generated = normalize_generated_tags(runner(image_path.read_bytes(), prompt))
+            image_bytes = _annotation_image_bytes(image_path, project_root)
+            raw = runner(image_bytes, prompt)
+            try:
+                generated = normalize(raw)
+            except ValueError:
+                if is_cancelled and is_cancelled():
+                    raise AnnotationCancelled("图片智能标注已取消")
+                retry = (
+                    prompt
+                    + "\n上次输出不符合格式，请重新看图并严格按要求回答。上次输出："
+                    + json.dumps(raw, ensure_ascii=False)
+                )
+                generated = normalize(runner(image_bytes, retry))
             if not generated:
                 raise ValueError("视觉模型未返回标签")
             tags[index] = generated
@@ -134,6 +165,8 @@ def auto_label_character_sprites(
         prompt=CHARACTER_PROMPT,
         project_root=project_root,
         infer=infer,
+        api_config=getattr(getattr(config_manager, "config", None), "api_config", None),
+        normalize=normalize_sprite_tags,
         on_progress=on_progress,
         is_cancelled=is_cancelled,
     )
@@ -162,6 +195,7 @@ def auto_label_background_images(
         prompt=BACKGROUND_PROMPT,
         project_root=project_root,
         infer=infer,
+        api_config=getattr(getattr(config_manager, "config", None), "api_config", None),
         on_progress=on_progress,
         is_cancelled=is_cancelled,
     )
