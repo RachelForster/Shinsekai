@@ -75,18 +75,18 @@ describe("VisionSettingsSection", () => {
     expect(onSharedCredentialChange).toHaveBeenCalledWith("llm_api_key", "sk-shared");
   });
 
-  it("keeps automatic mode compact", () => {
+  it("shows the inherited provider and model in compact automatic mode", () => {
     render(
       <ToastProvider>
         <I18nProvider language="zh_CN">
           <VisionSettingsSection
             activeApiKey=""
             activeBaseUrl=""
-            activeModel=""
+            activeModel="current-vision-model"
             apiKeyRequired={false}
             availableModelOptions={[]}
             disabled={false}
-            draft={{ ...sampleConfig.api_config, vision_provider: "auto" }}
+            draft={{ ...sampleConfig.api_config, vision_provider: "auto", llm_provider: "ChatGPT" }}
             extraSchema={{}}
             fetchModelsPending={false}
             onAdapterExtraChange={vi.fn()}
@@ -94,14 +94,16 @@ describe("VisionSettingsSection", () => {
             onProviderChange={vi.fn()}
             onProviderMapChange={vi.fn()}
             onSharedCredentialChange={vi.fn()}
-            providerOptions={[{ label: "自动选择", value: "auto" }]}
+            providerOptions={[{ label: "跟随 LLM（默认）", value: "auto" }]}
+            sharedLlmProvider="ChatGPT"
           />
         </I18nProvider>
       </ToastProvider>,
     );
 
     expect(screen.queryByText("视觉服务基础 URL")).not.toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "视觉适配器" })).toHaveTextContent("自动选择");
+    expect(screen.getByRole("combobox", { name: "视觉适配器" })).toHaveTextContent("跟随 LLM（默认）");
+    expect(screen.getByRole("status")).toHaveTextContent("ChatGPT，视觉模型：current-vision-model");
   });
 
   it("offers a Moondream model download when the cache is missing", async () => {

@@ -603,6 +603,34 @@ describe("ApiSettingsPage", () => {
     );
   });
 
+  it("follows LLM changes in automatic vision mode without creating a separate model override", async () => {
+    const config = validAppConfig();
+    mocks.getAppConfig.mockResolvedValue({
+      ...config,
+      api_config: {
+        ...config.api_config,
+        vision_provider: "auto",
+        vision_model: {},
+        llm_api_key: { Deepseek: "deep-key", ChatGPT: "chat-key" },
+        llm_model: { Deepseek: "deep-current", ChatGPT: "chat-current" },
+      },
+    });
+    renderPage();
+    await screen.findByRole("heading", { name: "AI 服务设置" });
+    expect(screen.getByText(/当前跟随 Deepseek，视觉模型：deep-current/)).toBeInTheDocument();
+    fireEvent.change(screen.getByDisplayValue("Deepseek"), { target: { value: "ChatGPT" } });
+    expect(screen.getByText(/当前跟随 ChatGPT，视觉模型：chat-current/)).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "视觉适配器" })).toHaveTextContent("跟随 LLM（默认）");
+    mocks.saveApiConfig.mockImplementation(async (api) => api);
+    mocks.saveSystemConfig.mockImplementation(async (system) => system);
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() =>
+      expect(mocks.saveApiConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ vision_provider: "auto", vision_model: {} }),
+      ),
+    );
+  });
+
   it("downloads a TTS bundle and writes the returned provider path into the draft", async () => {
     mocks.getAppConfig.mockResolvedValue(validAppConfig());
     mocks.getTtsBundleRecommendation.mockResolvedValue({

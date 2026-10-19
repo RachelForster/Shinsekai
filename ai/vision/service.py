@@ -16,6 +16,8 @@ from ai.vision.vision_manager import VisionManager
 from config.vision_defaults import (
     resolve_vision_api_key,
     resolve_vision_base_url,
+    resolve_vision_model,
+    resolve_vision_provider,
     vision_llm_provider,
     vision_provider_requires_api_key,
 )
@@ -78,11 +80,15 @@ FileReader = Callable[[str], Mapping[str, Any]]
 FallbackAvailability = Callable[[], bool]
 
 
-def configured_vision_manager() -> VisionDescriber:
-    """Resolve the configured backend; auto keeps the plugin/Moondream fallback chain."""
-    provider = _configured_vision_provider()
+def configured_vision_manager(api_config: Any | None = None) -> VisionDescriber:
+    """Follow the saved vision choice, inheriting the active LLM in automatic mode."""
+    if api_config is None:
+        from config.config_manager import ConfigManager
+
+        api_config = ConfigManager().config.api_config
+    provider = _configured_vision_provider(api_config)
     if provider != "auto":
-        return VisionManager(provider)
+        return VisionManager(provider, api_config=api_config)
     preferred = active_vision_fallback()
     if preferred is not None:
         return preferred.factory()
@@ -105,7 +111,7 @@ def configured_vision_available(api_config: Any | None = None) -> bool:
             return bool(
                 (api_key_ready or not vision_provider_requires_api_key(provider))
                 and resolve_vision_base_url(config, provider)
-                and str((config.vision_model or {}).get(provider, "") or "").strip()
+                and resolve_vision_model(config, provider)
                 and provider in VisionManager._adapters
             )
         except Exception:
@@ -130,7 +136,7 @@ def _configured_vision_provider(api_config: Any | None = None) -> str:
             from config.config_manager import ConfigManager
 
             config = ConfigManager().config.api_config
-        value = str(config.vision_provider or "auto").strip().lower()
+        value = resolve_vision_provider(config)
     except Exception:
         return "auto"
     return value or "auto"

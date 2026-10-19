@@ -1904,7 +1904,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         let annotatedCount = 0;
         tags.forEach((tag, index) => {
           if (!tag.trim()) {
-            tags[index] = "微笑，正面站姿，角色立绘";
+            tags[index] = "平静，微笑，站立";
             annotatedCount += 1;
           }
         });

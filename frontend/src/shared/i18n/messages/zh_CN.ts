@@ -737,7 +737,10 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "api.llm.thinkingEnabled": "思考模式",
   "api.llm.thinkingUnsupported": "该模型不支持思考模式。",
   "api.vision.apiKey": "服务商 API Key",
-  "api.vision.auto": "自动选择",
+  "api.vision.auto": "跟随 LLM（默认）",
+  "api.vision.autoHelp":
+    "当前跟随 {provider}，视觉模型：{model}。切换 LLM 适配器时自动同步，也可手动选择其他视觉适配器。",
+  "api.vision.autoFallback": "当前 LLM 没有对应的视觉适配器，将使用可用的视觉插件；也可手动选择视觉适配器。",
   "api.vision.baseUrl": "服务商基础 URL",
   "api.vision.checkingModel": "正在检查 Moondream 模型…",
   "api.vision.description":
