@@ -102,7 +102,7 @@ export const sampleConfig: AppConfig = {
     llm_provider: "Deepseek",
     is_streaming: true,
     vision_provider: "auto",
-    vision_model: { deepseek: "deepseek-flash" },
+    vision_model: {},
     interrupt_enabled: true,
     is_batch_input_enabled: false,
     batch_input_timeout: 5,

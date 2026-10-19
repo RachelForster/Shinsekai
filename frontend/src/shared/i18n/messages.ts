@@ -537,6 +537,8 @@ export type MessageKey =
   | "api.llm.thinkingUnsupported"
   | "api.vision.apiKey"
   | "api.vision.auto"
+  | "api.vision.autoHelp"
+  | "api.vision.autoFallback"
   | "api.vision.baseUrl"
   | "api.vision.checkingModel"
   | "api.vision.description"
