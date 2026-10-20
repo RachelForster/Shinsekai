@@ -2,6 +2,8 @@
 
 在角色编辑页点击“立绘智能生成”，设计提示词和标签，再生成立绘。有参考图时运行 H3 图生视频工作流；无参考图时自动使用文生视频工作流。T2I Manager 保持返回静态图片，ComfyUI 适配器会下载视频并自动提取中间帧。
 
+自动设计的提示词只包含动作、表情与必要道具，不描述人物外貌、服装或画风。每张立绘保持站立、双脚着地，主要变化表情、手部与上半身动作，避免坐、跪、蹲、躺、跳跃或行走等姿态。每条提示词都明确描述面部表情，包含眉眼／视线和嘴形的变化，例如眉眼放松地微笑、眯眼抿嘴或扬眉微张嘴；表情也要写入生图 prompt，并与中文标签一致。这里描述的是动态表情，不包含五官固有长相或颜色。每条提示词也都说明左右手的姿势与位置，非主要动作的手要交代，双手相同时可用 both hands。模型根据人物性格设计英文动作，程序统一使用 `make the character stand and <面部表情、动作、双手姿势与位置>, full body, full scene, plain light, sprite`，例如 `make the character stand and smile warmly with relaxed eyebrows, wave the open right hand beside the head and rest the relaxed left hand at the side, full body, full scene, plain light, sprite`。需要道具时可写 `make the character stand and smile gently with relaxed eyes, hold a small sketchbook in the left hand at chest height and point to it with the right index finger, full body, full scene, plain light, sprite`。手动编辑的提示词按原文生成。
+
 生成后展开卡片里的“从生成视频重新选帧”，拖动视频进度条，点击“使用 … 秒的画面”。这一步只读取已经生成的视频，不会重新调用模型。每次截帧都有独立结果，失败会保留上一张预览。勾选需要的立绘后添加到现有立绘集，提示词配对的标签会一起保存。
 
 立绘标签统一以 2–3 个简短中文词语描述情绪、表情和动作，例如“开心，微笑，挥手”或“害羞，低头”。已有立绘的“智能标注”使用当前 Vision Adapter，只补充空白标签；MP4 会取中间帧送入视觉服务。模型输出不合格式时重试一次，仍不合格则保留空白并报告失败。

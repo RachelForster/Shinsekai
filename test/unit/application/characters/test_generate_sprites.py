@@ -16,7 +16,7 @@ from frontend_bridge_core import sprite_generation as bridge
 
 def test_planning_uses_draft_personality_and_returns_prompt_tag_pairs(monkeypatch):
     chat = Mock(
-        return_value='```json\n{"items":[{"prompt":"consistent full body, shy smile","tagging":"立绘 1：害羞\n微笑"}]}\n```'.replace(
+        return_value='```json\n{"items":[{"prompt":"smile shyly with lowered eyes and hold both hands together in front of the chest","tagging":"立绘 1：害羞\n微笑"}]}\n```'.replace(
             "害羞\n微笑", "害羞\\n微笑"
         )
     )
@@ -26,7 +26,7 @@ def test_planning_uses_draft_personality_and_returns_prompt_tag_pairs(monkeypatc
         {
             "name": "Mika",
             "setting": "内向，喜欢绘画",
-            "requirements": "赛璐璐",
+            "requirements": "害羞地微笑，双手在胸前交握",
             "count": 1,
             "referenceImage": "ref.png",
         },
@@ -34,12 +34,43 @@ def test_planning_uses_draft_personality_and_returns_prompt_tag_pairs(monkeypatc
     user = json.loads(chat.call_args.args[2])
     assert user["setting"] == "内向，喜欢绘画"
     assert user["hasReference"] is True
-    assert user["requirements"] == "赛璐璐"
+    assert user["requirements"] == "害羞地微笑，双手在胸前交握"
+    system = chat.call_args.args[1]
+    assert "不要描述人物外貌" in system
+    assert "始终保持站立，双脚着地" in system
+    assert "每条 prompt 必须明确描述面部表情" in system
+    assert "包含眉眼或视线变化，以及嘴形变化" in system
+    assert "不描述五官固有长相或颜色" in system
+    assert "必须同时说明左右手的姿势和位置" in system
+    assert "仅在动作涉及道具时" in system
+    assert "以下规则仅适用于 tagging 字段" in system
     assert result == {
         "items": [
-            {"prompt": "consistent full body, shy smile", "tagging": "害羞, 微笑"}
+            {
+                "prompt": "make the character stand and smile shyly with lowered eyes and hold both hands together in front of the chest, full body, full scene, plain light, sprite",
+                "tagging": "害羞, 微笑",
+            }
         ]
     }
+
+
+def test_planning_keeps_props_and_adds_the_action_template_only_once(monkeypatch):
+    prompt = "make the character stand and smile gently with relaxed eyes, hold a small sketchbook in the left hand at chest height and point to it with the right index finger, full body, full scene, plain light, sprite"
+    monkeypatch.setattr(
+        generation,
+        "chat_character_text",
+        lambda *_: json.dumps({"items": [{"prompt": prompt, "tagging": "思考，指向"}]}),
+    )
+    result = generation.plan_sprites(object(), {"setting": "喜欢绘画", "count": 1})
+    assert result["items"][0]["prompt"] == prompt
+
+
+def test_manually_edited_prompts_are_preserved():
+    prompt = "custom action, custom framing"
+    assert (
+        generation.prompt_pair({"prompt": prompt, "tagging": "挥手"})["prompt"]
+        == prompt
+    )
 
 
 @pytest.mark.parametrize("count", [0, 13, 1.5, True, "2"])

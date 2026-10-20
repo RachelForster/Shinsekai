@@ -1831,7 +1831,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       async planSprites(input) {
         return delay({
           items: Array.from({ length: input.count }, (_, i) => ({
-            prompt: `${input.name}, full body character portrait, consistent face and outfit, ${["smiling, relaxed standing pose", "thoughtful, hand on chin", "surprised, open hands", "confident, arms crossed"][i % 4]}, plain background. ${input.requirements}`,
+            prompt: `make the character stand and ${["smile warmly with relaxed eyebrows, wave the open right hand beside the head, and rest the relaxed left hand at the side", "furrow the eyebrows slightly, press the lips together thoughtfully, rest the right fingertips on the chin, and place the left hand loosely at the waist", "raise the eyebrows, open the mouth slightly in surprise, and hold both open hands at shoulder height with palms facing forward", "give a confident small smile with slightly narrowed eyes and cross both arms at chest height, with the left hand resting on the right upper arm and the right hand resting on the left upper arm"][i % 4]}, full body, full scene, plain light, sprite`,
             tagging: ["微笑，放松，日常对话", "思考，托腮，分析", "惊讶，张开双手，意外", "自信，抱臂，坚定"][i % 4],
           })),
         });

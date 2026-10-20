@@ -12,7 +12,8 @@ export const jaMessages: Record<MessageKey, string> = {
   "spriteGeneration.intro":
     "「{name}」の立ち絵案を作成し、プロンプトを確認して生成した画像を既存の立ち絵に追加します。",
   "spriteGeneration.requirements": "追加の要望（任意）",
-  "spriteGeneration.requirementsPlaceholder": "例：セル画風、衣装を統一し、喜び・照れ・考え中・怒りの表情。",
+  "spriteGeneration.requirementsPlaceholder":
+    "例：立って眉を緩めて微笑む。右手を頭の横で振り、左手は体の横に下ろす。顔の表情・両手の形と位置・必要な小道具を指定してください。",
   "spriteGeneration.reference": "参考画像（任意）",
   "spriteGeneration.chooseReference": "参考画像を選択",
   "spriteGeneration.existingReference": "既存の立ち絵を使用",

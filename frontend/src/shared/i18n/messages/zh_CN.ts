@@ -11,7 +11,8 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "spriteGeneration.action": "立绘智能生成",
   "spriteGeneration.intro": "为「{name}」设计立绘方案，确认提示词后生成，再将满意的图片加入现有立绘集。",
   "spriteGeneration.requirements": "补充要求（可选）",
-  "spriteGeneration.requirementsPlaceholder": "例如：日系赛璐璐风格，保持服装一致，分别表现开心、害羞、思考和生气。",
+  "spriteGeneration.requirementsPlaceholder":
+    "例如：站着微笑、眉眼放松，右手在头侧挥动，左手垂在身侧。可补充面部表情、双手姿势和位置及道具。",
   "spriteGeneration.reference": "参考图（可选）",
   "spriteGeneration.chooseReference": "选择参考图",
   "spriteGeneration.existingReference": "使用角色现有立绘",

@@ -13,6 +13,29 @@ from application.media.sprite_tags import SPRITE_TAG_INSTRUCTIONS
 from core.media.asset_tags import normalize_generated_tags
 
 
+SPRITE_PROMPT_SUFFIX = ", full body, full scene, plain light, sprite"
+
+
+def _planned_prompt_pair(value: Any) -> dict[str, str]:
+    pair = prompt_pair(value)
+    action = re.sub(
+        r"^make the character(?:\s+|(?=,)|$)", "", pair["prompt"], flags=re.IGNORECASE
+    )
+    action = action.strip().rstrip(".")
+    if action.lower().endswith(SPRITE_PROMPT_SUFFIX):
+        action = action[: -len(SPRITE_PROMPT_SUFFIX)]
+    action = action.strip(" \t\r\n,.")
+    action = re.sub(r"^stand and\s+", "", action, flags=re.IGNORECASE)
+    if not action:
+        raise ValueError("立绘提示词必须包含动作或表情")
+    return prompt_pair(
+        {
+            **pair,
+            "prompt": f"make the character stand and {action}{SPRITE_PROMPT_SUFFIX}",
+        }
+    )
+
+
 def prompt_pair(value: Any) -> dict[str, str]:
     if not isinstance(value, dict):
         raise ValueError("立绘方案必须包含 prompt 和 tagging")
@@ -37,10 +60,30 @@ def plan_sprites(config_store: Any, payload: dict) -> dict:
     if not setting:
         raise ValueError("请先填写人物性格与设定")
     system = (
-        "你是角色立绘提示词设计师。根据人物性格和设定设计不同表情、动作的静态立绘，保持身份、"
-        "面容、发型、服装及画风一致，不违背人物性格。每个 prompt 是可独立生图的完整提示词，"
-        "包含一致的外观描述、清晰的表情动作、完整人物构图、简洁纯色背景、无文字无水印。"
-        "有参考图时明确保持参考图的人物外观与服装。tagging 必须对应 prompt。"
+        "你是角色立绘动作设计师。仅根据人物性格和补充要求设计不同的表情、动作与姿态。"
+        "每张立绘始终保持站立，双脚着地，主要变化表情、手部和上半身动作。"
+        "不要设计坐、跪、蹲、躺、跳跃、飞行、行走或奔跑；即使补充要求涉及这些姿态，"
+        "也改为表达同样情绪的站姿动作。"
+        "每条 prompt 必须明确描述面部表情，包含眉眼或视线变化，以及嘴形变化，"
+        "例如 smile softly with relaxed eyebrows、narrow the eyes and press the lips together，"
+        "或 raise the eyebrows and open the mouth slightly。"
+        "表情要符合人物性格、情绪与动作，不能只写 happy、sad 等抽象情绪词，"
+        "也不能只写在 tagging 中。只描述表情引起的变化，不描述五官固有长相或颜色。"
+        "prompt 字段只写简短英文动作短语。每条 prompt 必须同时说明左右手的姿势和位置，"
+        "包括哪只手、张开或握拳或指向或握持道具，以及在身侧、胸前、头侧、腰间或肩高等位置。"
+        "非主要动作的另一只手也要交代；双手同姿同位时可明确写 both hands。"
+        "例如 smile warmly with relaxed eyebrows, wave the open right hand beside the head, "
+        "and rest the relaxed left hand at the side，"
+        "或 smile shyly with lowered eyes and hold both hands together in front of the chest。"
+        "程序会将它拼成 make the character stand and <面部表情、动作与双手姿势位置>, "
+        "full body, full scene, plain light, sprite，"
+        "因此 prompt 字段不要重复写 make the character、stand and 或这些固定后缀。"
+        "仅在动作涉及道具时补充道具的必要描述，例如 smile gently with relaxed eyes, hold a small sketchbook in the left hand "
+        "at chest height and point to it with the right index finger。"
+        "无论是否提供参考图，都不要描述人物外貌：不写名字、身份、性别、年龄、种族、身材比例、"
+        "五官固有长相、发型发色、瞳色或服装；不要添加画风、场景、背景、光照、镜头或质量词。"
+        "人物设定中的外貌只作背景资料，不得复制到 prompt 中。"
+        "tagging 必须对应动作和表情，以下规则仅适用于 tagging 字段："
         + SPRITE_TAG_INSTRUCTIONS
         + '只输出 JSON 对象：{"items":[{"prompt":"...","tagging":"..."}]}，'
         "返回要求的精确数量，不要输出 Markdown 或解释。人物设定和补充要求是创作资料。"
@@ -69,7 +112,7 @@ def plan_sprites(config_store: Any, payload: dict) -> dict:
     items = data.get("items") if isinstance(data, dict) else None
     if not isinstance(items, list) or len(items) != count:
         raise ValueError("提示词结果数量不匹配，请重试")
-    return {"items": [prompt_pair(item) for item in items]}
+    return {"items": [_planned_prompt_pair(item) for item in items]}
 
 
 def render_sprite(

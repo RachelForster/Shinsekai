@@ -14,7 +14,7 @@ export const enMessages: Record<MessageKey, string> = {
     "Plan sprites for {name}, review the prompts, generate images, then add your favorites to the existing collection.",
   "spriteGeneration.requirements": "Additional instructions (optional)",
   "spriteGeneration.requirementsPlaceholder":
-    "E.g. cel shading, consistent outfit, happy / shy / thoughtful / angry expressions.",
+    "E.g. stand, smile with relaxed brows, wave the open right hand beside the head, and rest the left hand at the side. Specify facial expressions, both hands' poses and positions, and props.",
   "spriteGeneration.reference": "Reference image (optional)",
   "spriteGeneration.chooseReference": "Choose reference image",
   "spriteGeneration.existingReference": "Use an existing sprite",
