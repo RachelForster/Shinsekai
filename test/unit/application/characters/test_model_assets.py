@@ -1,4 +1,6 @@
+import base64
 import json
+import struct
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -53,7 +55,7 @@ def test_invalid_legacy_motion_entry_does_not_block_model_or_indexed_states(harn
     bank = state.config_manager.get_character_by_name("Haru").avatars["mmd"]
     bank.sprites.insert(0, {"path": str(bad)})
     assert model_file(state, str(model), model.name) == model
-    saved = Path(result["avatars"]["mmd"]["sprites"][0]["path"])
+    saved = Path(result["avatars"]["mmd"]["sprites"][1]["path"])
     assert model_file(state, str(model), saved.relative_to(model.parent).as_posix()) == saved
     with pytest.raises(PermissionError):
         model_file(state, str(model), "directory.vmd")
@@ -66,7 +68,7 @@ def test_dependency_index_fails_closed_if_resources_change(harness, changed):
     state, use_case, body = _mmd_batch(harness)
     result = execute(use_case, CharacterOperation.IMPORT_MODEL_STATES, **body)
     model = Path(body["model_path"])
-    saved = Path(result["avatars"]["mmd"]["sprites"][0]["path"])
+    saved = Path(result["avatars"]["mmd"]["sprites"][1]["path"])
     value = json.loads(saved.read_text())
     if changed == "state":
         saved.write_text(json.dumps({**value, "morphs": {"smile": 0.5}}))
@@ -109,12 +111,12 @@ def test_crashed_preset_batch_is_recovered_without_losing_committed_data(harness
     if phase == "after-config":
         assert batch.is_dir()
         bank = state.config_manager.get_character_by_name("Haru").avatars["mmd"]
-        assert len(bank.sprites) == 2
-        saved = Path(bank.sprites[0]["path"])
+        assert len(bank.sprites) == 3
+        saved = Path(bank.sprites[1]["path"])
         assert model_file(state, str(model), saved.relative_to(model.parent).as_posix()) == saved
     else:
         assert not batch.exists()
-        assert state.config_manager.get_character_by_name("Haru").avatars["mmd"].sprites == []
+        assert len(state.config_manager.get_character_by_name("Haru").avatars["mmd"].sprites) == 1
     assert not list(model.parent.rglob(PENDING_MARKER))
     assert not list(model.parent.glob("states/.batch-*.lock"))
     assert model.is_file()
@@ -231,10 +233,10 @@ def test_import_mixed_motion_batch_and_serve_managed_copies(harness, metadata):
         Path(body["source_paths"][1]).write_bytes(vmd_exporter_bytes(metadata=metadata))
     result = execute(use_case, CharacterOperation.IMPORT_MODEL_STATES, **body)
     bank = result["avatars"]["mmd"]
-    assert len(bank["sprites"]) == 2
-    assert bank["emotion_tags"] == "立绘 1：wave\n立绘 2：wave\n"
+    assert len(bank["sprites"]) == 3
+    assert bank["emotion_tags"] == "立绘 1：默认待机\n立绘 2：wave\n立绘 3：wave\n"
     model = Path(bank["model_path"])
-    for sprite, source in zip(bank["sprites"], body["source_paths"]):
+    for sprite, source in zip(bank["sprites"][1:], body["source_paths"]):
         file = Path(sprite["path"])
         value = json.loads(file.read_text(encoding="utf-8"))
         assert value["camera"] == body["state"]["camera"]
@@ -244,12 +246,12 @@ def test_import_mixed_motion_batch_and_serve_managed_copies(harness, metadata):
         assert model_file(state, str(model), value["motion"]).is_file()
     # Subsequent batches append, preserving existing tags and voice metadata.
     character = state.config_manager.get_character_by_name("Haru")
-    character.avatars["mmd"].sprites[0]["voice_text"] = "keep me"
+    character.avatars["mmd"].sprites[1]["voice_text"] = "keep me"
     new_pose = model.parent / "again.vpd"
     new_pose.write_bytes(vpd_bytes())
     result = execute(use_case, CharacterOperation.IMPORT_MODEL_STATES, **{**body, "source_paths": [str(new_pose)]})
-    assert len(result["avatars"]["mmd"]["sprites"]) == 3
-    assert result["avatars"]["mmd"]["sprites"][0]["voice_text"] == "keep me"
+    assert len(result["avatars"]["mmd"]["sprites"]) == 4
+    assert result["avatars"]["mmd"]["sprites"][1]["voice_text"] == "keep me"
     with pytest.raises(PermissionError):
         model_file(state, str(model), "again.vpd")
 
@@ -307,7 +309,7 @@ def test_motion_batch_does_not_overwrite_concurrent_character_edit(harness, monk
         execute(use_case, CharacterOperation.IMPORT_MODEL_STATES, **body)
     character = state.config_manager.get_character_by_name("Haru")
     assert character.character_setting == "Edited while importing"
-    assert character.avatars["mmd"].sprites == []
+    assert len(character.avatars["mmd"].sprites) == 1
     assert not list(Path(body["model_path"]).parent.rglob("*.vpd"))
 
 
@@ -377,16 +379,210 @@ def test_pmx_import_state_and_protected_texture_route(harness):
     imported = execute(use_case, CharacterOperation.IMPORT_MODEL, name="Haru", avatar_type="mmd", source_path=str(model_entry))
     model = imported["avatars"]["mmd"]["model_path"]
     assert imported["avatar_type"] == "mmd"
+    idle_path = Path(imported["avatars"]["mmd"]["sprites"][0]["path"])
+    assert idle_path.name == "default-idle.json"
+    assert imported["avatars"]["mmd"]["emotion_tags"] == "立绘 1：默认待机\n"
+    idle_state = json.loads(model_file(state, model, idle_path.relative_to(Path(model).parent).as_posix()).read_text(encoding="utf-8"))
+    assert idle_state["morphs"] == {} and "motion" not in idle_state
+    from application.chat.presentation.initial_sprite import initial_sprite_path_for_characters
+    assert initial_sprite_path_for_characters(state.config_manager, "", ["Haru"]) == str(idle_path)
     assert model_file(state, model, "TEX/face.png").read_bytes() == b"texture"
     with pytest.raises(PermissionError):
         model_file(state, model, "sample.moc3")
     camera = {"yaw": 25, "pitch": -5, "zoom": 1.5, "panX": 0.1, "panY": 0}
     saved = execute(use_case, CharacterOperation.SAVE_MODEL_STATE, name="Haru", avatar_type="mmd", model_path=model,
                     sprite_index=-1, path="", state={"morphs": {"笑顔": 0.5}, "mouthMorph": "あ", "blinkMorph": "まばたき", "camera": camera}, tags="happy")
-    state_path = Path(saved["avatars"]["mmd"]["sprites"][0]["path"])
-    restored = json.loads(model_file(state, model, state_path.relative_to(Path(model).parent).as_posix()).read_text())
+    state_path = Path(saved["avatars"]["mmd"]["sprites"][1]["path"])
+    restored = json.loads(model_file(state, model, state_path.relative_to(Path(model).parent).as_posix()).read_text(encoding="utf-8"))
     assert restored["morphs"] == {"笑顔": 0.5}
     assert restored["camera"] == camera
+
+
+def test_generated_mmd_motion_is_temporary_until_explicit_save(harness, monkeypatch):
+    from application.characters import generate_mmd_motion
+    from core.media.avatar.mmd_generated_motion import MotionPlan
+    from core.media.avatar.mmd_motion import inspect_motion
+
+    state, use_case, entry = harness
+    source = entry.parent / "model.pmx"
+    source.write_bytes(pmx_bytes(rich=True))
+    imported = execute(use_case, CharacterOperation.IMPORT_MODEL, name="Haru", avatar_type="mmd", source_path=str(source))
+    model = Path(imported["avatars"]["mmd"]["model_path"])
+    # This test covers the preview/save boundary for a legacy gesture-only plan.
+    monkeypatch.setattr(generate_mmd_motion, "_local_plan",
+                        lambda prompt, actions, expressions: MotionPlan("nod", .5, 60))
+    preview = execute(use_case, CharacterOperation.PREVIEW_MMD_MOTION,
+                      name="Haru", model_path=str(model), prompt="nod gently")
+    assert preview["plan"] == {"action": "nod", "intensity": .5, "duration_frames": 60}
+    assert len(state.config_manager.get_character_by_name("Haru").avatars["mmd"].sprites) == 1
+    assert not list(model.parent.rglob("*.vmd"))
+
+    base = {"morphs": {}, "mouthMorph": "", "blinkMorph": ""}
+    saved = execute(use_case, CharacterOperation.SAVE_MMD_MOTION,
+                    name="Haru", model_path=str(model), plan=preview["plan"], state=base, tag="greeting")
+    bank = saved["avatars"]["mmd"]
+    assert len(bank["sprites"]) == 2
+    state_file = Path(bank["sprites"][1]["path"])
+    value = json.loads(state_file.read_text(encoding="utf-8"))
+    assert value["motionBase"] == "resting"
+    motion = model.parent / value["motion"]
+    assert motion.is_file()
+    assert inspect_motion(motion).bones == {"head"}
+    assert model_file(state, str(model), value["motion"]) == motion
+
+
+def test_generated_wave_and_smile_previews_and_saves_both_tracks(harness, monkeypatch):
+    from application.characters import generate_mmd_motion
+    from core.media.avatar.mmd_motion import inspect_motion
+
+    state, use_case, entry = harness
+    def label(value):
+        data = value.encode("utf-8")
+        return struct.pack("<i", len(data)) + data
+
+    skeleton = (
+        ("root", (0, 0, 0), -1), ("左腕", (-1, 2, 0), 0),
+        ("左ひじ", (-3, 2, 0), 1), ("右腕", (1, 2, 0), 0),
+        ("右ひじ", (3, 2, 0), 3), ("頭", (0, 3, 0), 0),
+    )
+    sections = pmx_sections()
+    sections["bones"] = struct.pack("<i", len(skeleton)) + b"".join(
+        label(name) + label("") + struct.pack("<3fbiH3f", *position, parent, 0, 2, 0, 1, 0)
+        for name, position, parent in skeleton
+    )
+    sections["morphs"] = (struct.pack("<i", 1) + label("笑い") + label("")
+                           + b"\x04\x01" + struct.pack("<iB3f", 1, 0, 0, 0, 0))
+    source = entry.parent / "wave-smile.pmx"
+    source.write_bytes(b"".join(sections.values()))
+    imported = execute(use_case, CharacterOperation.IMPORT_MODEL,
+                       name="Haru", avatar_type="mmd", source_path=str(source))
+    model = Path(imported["avatars"]["mmd"]["model_path"])
+    monkeypatch.setattr(generate_mmd_motion, "_plan_from_prompt",
+                        lambda *args: pytest.fail("recognized compound prompt must stay local"))
+    preview = execute(use_case, CharacterOperation.PREVIEW_MMD_MOTION,
+                      name="Haru", model_path=str(model), prompt="挥手告别，微笑")
+    assert preview["plan"] == {"action": "wave", "intensity": .8, "duration_frames": 60,
+                               "expression": "smile"}
+    assert not list(model.parent.rglob("*.vmd"))
+    temporary = entry.parent / "preview-wave-smile.vmd"
+    temporary.write_bytes(base64.b64decode(preview["vmd_base64"]))
+    targets = inspect_motion(temporary)
+    assert {"右腕", "右ひじ"} <= targets.bones
+    assert "笑い" in targets.morphs
+
+    character = state.config_manager.get_character_by_name("Haru")
+    character.character_setting = "changed after preview"
+    with pytest.raises(ValueError, match="Character setting changed"):
+        execute(use_case, CharacterOperation.SAVE_MMD_MOTION,
+                name="Haru", model_path=str(model), plan=preview["plan"],
+                setting_digest=preview["setting_digest"],
+                state={"morphs": {}, "mouthMorph": "", "blinkMorph": ""}, tag="挥手告别，微笑")
+    assert not list(model.parent.rglob("*.vmd"))
+    character.character_setting = ""
+    saved = execute(use_case, CharacterOperation.SAVE_MMD_MOTION,
+                    name="Haru", model_path=str(model), plan=preview["plan"],
+                    setting_digest=preview["setting_digest"],
+                    state={"morphs": {}, "mouthMorph": "", "blinkMorph": ""}, tag="挥手告别，微笑")
+    state_file = Path(saved["avatars"]["mmd"]["sprites"][1]["path"])
+    value = json.loads(state_file.read_text(encoding="utf-8"))
+    saved_targets = inspect_motion(model.parent / value["motion"])
+    assert {"右腕", "右ひじ"} <= saved_targets.bones
+    assert "笑い" in saved_targets.morphs
+
+
+def test_prompt_emotion_motion_saves_hand_tracks_and_rejects_stale_setting(harness):
+    from core.media.avatar.mmd_motion import inspect_motion
+
+    state, use_case, entry = harness
+    def label(value):
+        data = value.encode("utf-8")
+        return struct.pack("<i", len(data)) + data
+
+    skeleton = (
+        ("root", (0, 0, 0), -1), ("左腕", (-1, 2, 0), 0),
+        ("左ひじ", (-3, 2, 0), 1), ("左手首", (-4, 2, 0), 2),
+        ("左人指１", (-4.5, 2, 0), 3), ("右腕", (1, 2, 0), 0),
+        ("右ひじ", (3, 2, 0), 5), ("右手首", (4, 2, 0), 6),
+        ("右人指１", (4.5, 2, 0), 7), ("頭", (0, 3, 0), 0),
+    )
+    sections = pmx_sections()
+    sections["bones"] = struct.pack("<i", len(skeleton)) + b"".join(
+        label(name) + label("") + struct.pack("<3fbiH3f", *position, parent, 0, 2, 0, 1, 0)
+        for name, position, parent in skeleton
+    )
+    sections["morphs"] = (struct.pack("<i", 1) + label("mouth_anger") + label("")
+                           + b"\x04\x01" + struct.pack("<iB3f", 1, 0, 0, 0, 0))
+    source = entry.parent / "model.pmx"
+    source.write_bytes(b"".join(sections.values()))
+    imported = execute(use_case, CharacterOperation.IMPORT_MODEL, name="Haru", avatar_type="mmd", source_path=str(source))
+    model = Path(imported["avatars"]["mmd"]["model_path"])
+    character = state.config_manager.get_character_by_name("Haru")
+    character.character_setting = "冷静而克制"
+    preview = execute(use_case, CharacterOperation.PREVIEW_MMD_MOTION,
+                      name="Haru", model_path=str(model), prompt="生气地握拳")
+    assert preview["plan"] == {"action": "anger", "intensity": .8, "duration_frames": 90}
+    assert len(character.avatars["mmd"].sprites) == 1
+    assert not list(model.parent.rglob("*.vmd"))
+
+    base = {"morphs": {}, "mouthMorph": "", "blinkMorph": ""}
+    body = dict(name="Haru", model_path=str(model), plan=preview["plan"],
+                setting_digest=preview["setting_digest"], state=base, tag="生气地握拳")
+    character.character_setting = "改过的人物设定"
+    with pytest.raises(ValueError, match="Character setting changed"):
+        execute(use_case, CharacterOperation.SAVE_MMD_MOTION, **body)
+    assert len(character.avatars["mmd"].sprites) == 1
+    assert not list(model.parent.rglob("*.vmd"))
+
+    character.character_setting = "冷静而克制"
+    saved = execute(use_case, CharacterOperation.SAVE_MMD_MOTION, **body)
+    bank = saved["avatars"]["mmd"]
+    assert len(bank["sprites"]) == 2
+    value = json.loads(Path(bank["sprites"][1]["path"]).read_text(encoding="utf-8"))
+    assert value["motionBase"] == "resting"
+    motion = model.parent / value["motion"]
+    assert motion.is_file()
+    bones = inspect_motion(motion).bones
+    assert {"左腕", "右腕", "左手首", "右手首", "左人指１", "右人指１"} <= bones
+    assert model_file(state, str(model), value["motion"]) == motion
+
+
+@pytest.mark.parametrize("changes", [
+    {"model_path": "stale.pmx"},
+    {"plan": {"action": "dance", "intensity": .5, "duration_frames": 60}},
+    {"state": {"morphs": {}, "mouthMorph": "", "blinkMorph": "", "motion": "other.vmd"}},
+    {"tag": "bad\ntag"},
+])
+def test_invalid_generated_mmd_motion_never_publishes(harness, changes):
+    state, use_case, entry = harness
+    source = entry.parent / "model.pmx"
+    source.write_bytes(pmx_bytes())
+    imported = execute(use_case, CharacterOperation.IMPORT_MODEL, name="Haru", avatar_type="mmd", source_path=str(source))
+    model = Path(imported["avatars"]["mmd"]["model_path"])
+    body = dict(name="Haru", model_path=str(model),
+                plan={"action": "nod", "intensity": .5, "duration_frames": 60},
+                state={"morphs": {}, "mouthMorph": "", "blinkMorph": ""}, tag="nod")
+    with pytest.raises(ValueError):
+        execute(use_case, CharacterOperation.SAVE_MMD_MOTION, **{**body, **changes})
+    assert len(state.config_manager.get_character_by_name("Haru").avatars["mmd"].sprites) == 1
+    assert not list(model.parent.rglob("*.vmd"))
+
+
+def test_generated_mmd_motion_rolls_back_if_config_save_fails(harness, monkeypatch):
+    state, use_case, entry = harness
+    source = entry.parent / "model.pmx"
+    source.write_bytes(pmx_bytes(rich=True))
+    imported = execute(use_case, CharacterOperation.IMPORT_MODEL, name="Haru", avatar_type="mmd", source_path=str(source))
+    model = Path(imported["avatars"]["mmd"]["model_path"])
+    monkeypatch.setattr(state.config_manager, "save_characters_config",
+                        lambda: (_ for _ in ()).throw(OSError("disk full")))
+    with pytest.raises(OSError, match="disk full"):
+        execute(use_case, CharacterOperation.SAVE_MMD_MOTION,
+                name="Haru", model_path=str(model),
+                plan={"action": "nod", "intensity": .5, "duration_frames": 60},
+                state={"morphs": {}, "mouthMorph": "", "blinkMorph": ""}, tag="nod")
+    assert len(state.config_manager.get_character_by_name("Haru").avatars["mmd"].sprites) == 1
+    assert not list(model.parent.rglob("*.vmd"))
+    assert not list(model.parent.rglob(".batch-*"))
 
 
 @pytest.mark.parametrize("staged", [False, True])

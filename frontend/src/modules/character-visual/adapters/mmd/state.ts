@@ -4,6 +4,8 @@ export interface MmdState {
   blinkMorph: string;
   camera: MmdCameraState;
   motion?: string;
+  /** Prompt-generated clips are offsets from the model-derived resting pose. */
+  motionBase?: "resting";
 }
 
 export interface MmdCameraState {
@@ -64,7 +66,7 @@ export function parseState(value: unknown): MmdState {
   const input = value as Record<string, unknown>;
   if (
     Object.keys(input)
-      .filter((key) => key !== "camera" && key !== "motion")
+      .filter((key) => key !== "camera" && key !== "motion" && key !== "motionBase")
       .sort()
       .join() !== "blinkMorph,morphs,mouthMorph"
   )
@@ -103,6 +105,12 @@ export function parseState(value: unknown): MmdState {
     )
       throw new Error("Invalid MMD motion path");
     result.motion = motion;
+    // Presets saved before motionBase existed use this exact managed path.
+    const legacyGenerated = /^states\/\.batch-[0-9a-f]{32}\/motion\.vmd$/i.test(motion);
+    if (input.motionBase !== undefined && input.motionBase !== "resting") throw new Error("Invalid MMD motion base");
+    if (input.motionBase === "resting" || legacyGenerated) result.motionBase = "resting";
+  } else if (input.motionBase !== undefined) {
+    throw new Error("MMD motion base requires a motion");
   }
   return result;
 }

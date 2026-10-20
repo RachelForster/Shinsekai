@@ -19,14 +19,21 @@ const between = (from: Vector3, to: Vector3) =>
 
 /** A geometry-scaled, static default for complete arm pairs; authored motions own their original base. */
 export function createRestingPose(bones: readonly IMmdRuntimeBone[], metadata: readonly { englishName: string }[]) {
-  const find = (names: string[]) =>
-    bones.find((bone, index) =>
-      Boolean(
-        bone.flag & PmxObject.Bone.Flag.IsRotatable &&
-        !(bone.flag & PmxObject.Bone.Flag.HasAxisLimit) &&
-        [bone.name, metadata[index]?.englishName ?? ""].some((name) => names.includes(normalize(name))),
-      ),
-    );
+  const eligible = (bone: IMmdRuntimeBone) =>
+    Boolean(bone.flag & PmxObject.Bone.Flag.IsRotatable && !(bone.flag & PmxObject.Bone.Flag.HasAxisLimit));
+  const find = (names: string[]) => {
+    for (const name of names) {
+      const match = bones.find((bone) => eligible(bone) && normalize(bone.name) === name);
+      if (match) return match;
+    }
+    for (const name of names) {
+      const match = bones.find(
+        (bone, index) => eligible(bone) && normalize(metadata[index]?.englishName ?? "") === name,
+      );
+      if (match) return match;
+    }
+    return undefined;
+  };
   const pairs = [
     {
       side: 1,

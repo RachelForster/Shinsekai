@@ -71,7 +71,7 @@ class MmdAdapter(ModelAssetAdapter):
         return ModelFiles(entry=source, files=(source, *_texture_paths(source)))
 
     def parse_state(self, model: Path, value: object) -> dict:
-        if not isinstance(value, dict) or set(value) - {"camera", "motion"} != {"morphs", "mouthMorph", "blinkMorph"}:
+        if not isinstance(value, dict) or set(value) - {"camera", "motion", "motionBase"} != {"morphs", "mouthMorph", "blinkMorph"}:
             raise ValueError("MMD state requires morphs, mouthMorph, blinkMorph")
         morphs = value["morphs"]
         if not isinstance(morphs, dict) or len(morphs) > 512:
@@ -109,6 +109,11 @@ class MmdAdapter(ModelAssetAdapter):
             source = safe_child_path(model.parent, motion)
             _validate_motion(model, source)
             result["motion"] = motion
+        motion_base = value.get("motionBase")
+        if motion_base is not None:
+            if motion_base != "resting" or not motion:
+                raise ValueError("MMD motionBase requires a motion and must be resting")
+            result["motionBase"] = motion_base
         return result
 
     def state_files(self, model: Path, state: dict) -> tuple[Path, ...]:

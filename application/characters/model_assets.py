@@ -95,6 +95,24 @@ def import_model(use_case, body: dict) -> dict:
             bank = ModelSprites(model_path=str(final / files.entry.name))
             try:
                 shutil.copytree(staged, final)
+                if kind == "mmd":
+                    from core.media.asset_tags import numbered_tags
+                    from core.media.avatar.mmd import _metadata
+
+                    imported_model = final / files.entry.name
+                    metadata = imported_model.stat()
+                    morphs = _metadata(imported_model, metadata.st_mtime_ns, metadata.st_size).morphs
+                    idle = adapter.parse_state(imported_model, {
+                        "morphs": {},
+                        "mouthMorph": next((name for name in ("あ", "口開", "mouth_open", "A") if name in morphs), ""),
+                        "blinkMorph": next((name for name in ("まばたき", "瞬き", "blink") if name in morphs), ""),
+                    })
+                    idle_file = safe_child_path(final, "states/default-idle.json")
+                    idle_file.parent.mkdir(parents=True, exist_ok=True)
+                    idle_file.write_text(json.dumps(idle, ensure_ascii=False, allow_nan=False), encoding="utf-8")
+                    write_state_index(adapter, imported_model, idle_file, idle)
+                    bank.sprites = [Sprite(path=idle_file)]
+                    bank.emotion_tags = numbered_tags("立绘", ["默认待机"])
                 use_case._state.character_manager.save_avatar_bank(name, kind, bank, activate=True)
             except Exception:
                 if final.exists():
