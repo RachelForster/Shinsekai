@@ -26,6 +26,13 @@ export const enMessages: Record<MessageKey, string> = {
   "spriteGeneration.generatePending": "Generate pending ({count})",
   "spriteGeneration.setupHint":
     "Uses the current personality and configured image service. Planning more ideas keeps existing results. The reference applies to subsequent renders.",
+  "spriteGeneration.setupGuide": "First use: connect an image generation service",
+  "spriteGeneration.setupServiceStep":
+    "Check that your image service works on its own. H3 workflows are in ai/t2i/workflows/: drag minimax_h3_i2v.json onto the ComfyUI canvas, upload a reference, and run it. Use minimax_h3_t2v.json for text-to-video.",
+  "spriteGeneration.setupConnectStep":
+    "Connect the same service in API settings. For H3, select minimax_h3_i2v_api.json as the default workflow and minimax_h3_t2v_api.json for the text-only workflow, from the same folder. Node IDs: prompt 131, output 92, reference 114.",
+  "spriteGeneration.setupTrialStep":
+    "Choose a reference sprite and generate one image to check proportions, expression, and hand poses before generating a batch. You can still plan prompts and tags with your LLM before configuring an image service.",
   "spriteGeneration.limit": "Keep up to 12 ideas at a time; add or remove some before planning more.",
   "spriteGeneration.selected": "{count} selected",
   "spriteGeneration.add": "Add to collection ({count})",

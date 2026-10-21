@@ -24,6 +24,13 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "spriteGeneration.generatePending": "生成待处理立绘（{count}）",
   "spriteGeneration.setupHint":
     "提示词使用当前人物设定，图片由已配置的图像生成服务生成。新增方案会保留已有结果，参考图用于后续生成。",
+  "spriteGeneration.setupGuide": "首次使用：如何连接图像生成服务？",
+  "spriteGeneration.setupServiceStep":
+    "先确认图像服务能独立生成。H3 工作流在项目目录 ai/t2i/workflows/：将 minimax_h3_i2v.json 拖入 ComfyUI 画布，上传参考图后试跑；文生视频使用 minimax_h3_t2v.json。",
+  "spriteGeneration.setupConnectStep":
+    "在 API 设定中连接同一个服务。H3 默认工作流选择同目录的 minimax_h3_i2v_api.json，文生视频扩展选择 minimax_h3_t2v_api.json；提示词节点 131、输出节点 92、参考图节点 114。",
+  "spriteGeneration.setupTrialStep":
+    "选择参考立绘，先生成 1 张确认人物比例、表情和手势，再批量生成。尚未配置图像服务时，仍可使用 LLM 生成提示词和标签。",
   "spriteGeneration.limit": "每次最多保留 12 个方案，请先添加或移除部分方案。",
   "spriteGeneration.selected": "已选 {count} 张",
   "spriteGeneration.add": "添加到立绘集（{count}）",

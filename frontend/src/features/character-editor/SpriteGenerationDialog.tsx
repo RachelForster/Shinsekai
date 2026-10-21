@@ -200,6 +200,14 @@ export function SpriteGenerationDialog({ character, name, onClose, onImported }:
             {t("spriteGeneration.setupHint")}
             {remaining <= 0 ? ` ${t("spriteGeneration.limit")}` : ""}
           </p>
+          <details>
+            <summary className="sprite-generation__options">{t("spriteGeneration.setupGuide")}</summary>
+            <ol className="sprite-generation__hint">
+              <li>{t("spriteGeneration.setupServiceStep")}</li>
+              <li>{t("spriteGeneration.setupConnectStep")}</li>
+              <li>{t("spriteGeneration.setupTrialStep")}</li>
+            </ol>
+          </details>
         </div>
         {generator.error ? (
           <p className="sprite-generation__error" role="alert">

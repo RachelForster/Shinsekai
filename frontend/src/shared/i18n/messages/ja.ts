@@ -25,6 +25,13 @@ export const jaMessages: Record<MessageKey, string> = {
   "spriteGeneration.generatePending": "未生成を生成（{count}）",
   "spriteGeneration.setupHint":
     "現在の人物設定と設定済みの画像生成サービスを使用します。案を追加しても既存の結果は保持されます。参考画像は次の生成に適用されます。",
+  "spriteGeneration.setupGuide": "初めて使う：画像生成サービスへの接続",
+  "spriteGeneration.setupServiceStep":
+    "まず画像サービス単体で生成できることを確認してください。H3 用ファイルは ai/t2i/workflows/ にあります。minimax_h3_i2v.json を ComfyUI のキャンバスにドラッグし、参考画像をアップロードして実行します。テキストからの動画生成には minimax_h3_t2v.json を使います。",
+  "spriteGeneration.setupConnectStep":
+    "API 設定で同じサービスに接続します。H3 の既定ワークフローには同じフォルダーの minimax_h3_i2v_api.json、テキスト用には minimax_h3_t2v_api.json を選択します。ノード ID はプロンプト 131、出力 92、参考画像 114 です。",
+  "spriteGeneration.setupTrialStep":
+    "参考の立ち絵を選び、まず1枚生成して体の比率・表情・手の姿を確認してから一括生成してください。画像サービスの設定前でも、LLM でプロンプトとタグを作成できます。",
   "spriteGeneration.limit": "同時に保持できる案は12件までです。先に追加または削除してください。",
   "spriteGeneration.selected": "{count} 枚選択中",
   "spriteGeneration.add": "立ち絵に追加（{count}）",
