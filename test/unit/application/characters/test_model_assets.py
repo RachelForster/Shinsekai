@@ -226,6 +226,22 @@ def _mmd_batch(harness):
     return state, use_case, body
 
 
+def test_external_mmd_preset_does_not_inherit_generated_resting_base(harness):
+    _, use_case, body = _mmd_batch(harness)
+    model = Path(body["model_path"])
+    generated_motion = model.parent / "states" / "generated.vmd"
+    generated_motion.parent.mkdir(parents=True, exist_ok=True)
+    generated_motion.write_bytes(vmd_bytes())
+    body["state"] = {**body["state"], "motion": "states/generated.vmd", "motionBase": "resting"}
+
+    imported = execute(use_case, CharacterOperation.IMPORT_MODEL_STATES, **body)
+    for sprite in imported["avatars"]["mmd"]["sprites"][1:]:
+        value = json.loads(Path(sprite["path"]).read_text(encoding="utf-8"))
+        assert "motionBase" not in value
+        assert value["motion"] != "states/generated.vmd"
+        assert value["camera"] == body["state"]["camera"]
+
+
 @pytest.mark.parametrize("metadata", [None, "model-name", "interpolation-padding"])
 def test_import_mixed_motion_batch_and_serve_managed_copies(harness, metadata):
     state, use_case, body = _mmd_batch(harness)
@@ -396,6 +412,35 @@ def test_pmx_import_state_and_protected_texture_route(harness):
     restored = json.loads(model_file(state, model, state_path.relative_to(Path(model).parent).as_posix()).read_text(encoding="utf-8"))
     assert restored["morphs"] == {"笑顔": 0.5}
     assert restored["camera"] == camera
+
+
+@pytest.mark.parametrize(("controls", "bindings"), [
+    ([("CategoryLip", "", 3), ("MouthAlias", "MOUTH OPEN", 4),
+      ("CategoryEye", "", 2), ("Blink", "", 4)], ("MouthAlias", "Blink")),
+    ([("CustomLip", "", 3), ("CustomEye", "", 2)], ("CustomLip", "CustomEye")),
+    ([("Repeated", "", 4), ("Repeated", "mouth open", 3),
+      ("CustomEye", "", 2)], ("", "CustomEye")),
+    ([("", "MOUTH OPEN", 4), ("CustomLip", "", 3),
+      ("CustomEye", "", 2)], ("", "CustomEye")),
+])
+def test_pmx_default_idle_matches_renderer_morph_bindings(harness, controls, bindings):
+    _, use_case, entry = harness
+    def label(value):
+        data = value.encode("utf-8")
+        return struct.pack("<i", len(data)) + data
+
+    sections = pmx_sections()
+    sections["morphs"] = struct.pack("<i", len(controls)) + b"".join(
+        label(name) + label(english) + bytes((category, 1)) + struct.pack("<i", 0)
+        for name, english, category in controls
+    )
+    source = entry.parent / "bindings.pmx"
+    source.write_bytes(b"".join(sections.values()))
+    imported = execute(use_case, CharacterOperation.IMPORT_MODEL,
+                       name="Haru", avatar_type="mmd", source_path=str(source))
+    idle_path = Path(imported["avatars"]["mmd"]["sprites"][0]["path"])
+    idle = json.loads(idle_path.read_text(encoding="utf-8"))
+    assert (idle["mouthMorph"], idle["blinkMorph"]) == bindings
 
 
 def test_generated_mmd_motion_is_temporary_until_explicit_save(harness, monkeypatch):

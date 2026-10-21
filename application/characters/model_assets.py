@@ -101,11 +101,11 @@ def import_model(use_case, body: dict) -> dict:
 
                     imported_model = final / files.entry.name
                     metadata = imported_model.stat()
-                    morphs = _metadata(imported_model, metadata.st_mtime_ns, metadata.st_size).morphs
+                    inspected = _metadata(imported_model, metadata.st_mtime_ns, metadata.st_size)
                     idle = adapter.parse_state(imported_model, {
                         "morphs": {},
-                        "mouthMorph": next((name for name in ("あ", "口開", "mouth_open", "A") if name in morphs), ""),
-                        "blinkMorph": next((name for name in ("まばたき", "瞬き", "blink") if name in morphs), ""),
+                        "mouthMorph": inspected.default_mouth_morph,
+                        "blinkMorph": inspected.default_blink_morph,
                     })
                     idle_file = safe_child_path(final, "states/default-idle.json")
                     idle_file.parent.mkdir(parents=True, exist_ok=True)

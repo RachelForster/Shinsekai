@@ -122,4 +122,6 @@ class MmdAdapter(ModelAssetAdapter):
     def import_state(self, model: Path, source: Path, relative_path: str, base_state: object) -> dict:
         _validate_motion(model, source)
         base = self.parse_state(model, base_state)
+        # Imported VPD/VMD tracks are authored as absolute poses, unlike generated motions.
+        base.pop("motionBase", None)
         return {**base, "motion": relative_path}
