@@ -57,6 +57,8 @@ def test_character_route_contracts_remain_stable() -> None:
         ("POST", "/api/characters/ensure-briefs"),
         ("POST", "/api/characters/emotion-tags"),
         ("POST", "/api/characters/model/import"),
+        ("POST", "/api/characters/model/mmd-motion/preview"),
+        ("POST", "/api/characters/model/mmd-motion/save"),
         ("POST", "/api/characters/model/state"),
         ("POST", "/api/characters/model/states/import"),
         ("POST", "/api/characters/sprite-scale"),
@@ -87,6 +89,26 @@ def test_batch_presets_route_uses_character_task_and_copies_payload(monkeypatch)
     assert response.worker("task") == "imported"
     assert calls == [(CharacterOperation.IMPORT_MODEL_STATES, body)]
     assert calls[0][1] is not body
+
+
+def test_mmd_motion_preview_is_a_task_and_save_is_explicit(monkeypatch):
+    state = SimpleNamespace()
+    calls = []
+    monkeypatch.setattr("frontend_bridge_core.routes.character_routes._execute_character_request",
+                        lambda state, operation, payload: calls.append((operation, payload)) or "result")
+    router = Router(list(CHARACTER_ROUTES))
+    body = {"name": "Alice", "model_path": "model.pmx", "prompt": "nod"}
+    preview = router.match("POST", "/api/characters/model/mmd-motion/preview").route.handler(
+        _request(router, state, "POST", "/api/characters/model/mmd-motion/preview", body))
+    assert preview.kind == "mmd-motion-preview"
+    assert calls == []
+    assert preview.worker("task") == "result"
+    assert calls == [(CharacterOperation.PREVIEW_MMD_MOTION, body)]
+    assert calls[0][1] is not body
+    saved = router.match("POST", "/api/characters/model/mmd-motion/save").route.handler(
+        _request(router, state, "POST", "/api/characters/model/mmd-motion/save", body))
+    assert isinstance(saved, JsonResponse)
+    assert calls[-1] == (CharacterOperation.SAVE_MMD_MOTION, body)
 
 
 def test_background_route_contracts_remain_stable() -> None:

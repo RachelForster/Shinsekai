@@ -22,6 +22,8 @@ class CharacterOperation(str, Enum):
     IMPORT_MODEL = "import-model"
     IMPORT_MODEL_STATES = "import-model-states"
     SAVE_MODEL_STATE = "save-model-state"
+    PREVIEW_MMD_MOTION = "preview-mmd-motion"
+    SAVE_MMD_MOTION = "save-mmd-motion"
     SAVE = "save"
     DELETE = "delete"
     UPLOAD_SPRITES = "upload-sprites"
@@ -114,10 +116,13 @@ class CharacterUseCase:
 
     def execute(self, request: CharacterRequest) -> Any:
         from application.characters.model_assets import import_model, import_model_states, save_model_state
+        from application.characters.generate_mmd_motion import preview_generated_mmd_motion, save_generated_mmd_motion
         handlers = {
             CharacterOperation.IMPORT_MODEL: lambda body: import_model(self, body),
             CharacterOperation.IMPORT_MODEL_STATES: lambda body: import_model_states(self, body),
             CharacterOperation.SAVE_MODEL_STATE: lambda body: save_model_state(self, body),
+            CharacterOperation.PREVIEW_MMD_MOTION: lambda body: preview_generated_mmd_motion(self, body),
+            CharacterOperation.SAVE_MMD_MOTION: lambda body: save_generated_mmd_motion(self, body),
             CharacterOperation.SAVE: self._save,
             CharacterOperation.DELETE: self._delete,
             CharacterOperation.UPLOAD_SPRITES: self._upload_sprites,
@@ -131,7 +136,8 @@ class CharacterUseCase:
             CharacterOperation.EXPORT: self._export_package,
         }
         # Import prepares outside the lock, then checks the original config at commit.
-        if request.operation in (CharacterOperation.IMPORT_MODEL, CharacterOperation.IMPORT_MODEL_STATES):
+        if request.operation in (CharacterOperation.IMPORT_MODEL, CharacterOperation.IMPORT_MODEL_STATES,
+                                 CharacterOperation.PREVIEW_MMD_MOTION):
             return handlers[request.operation](request.payload)
         with self._mutation_lock:
             return handlers[request.operation](request.payload)

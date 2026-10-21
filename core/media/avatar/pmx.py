@@ -12,6 +12,9 @@ class PmxInspection:
     textures: tuple[str, ...]
     bones: frozenset[str]
     morphs: frozenset[str]
+    bone_positions: tuple[tuple[str, tuple[float, float, float], int], ...] = ()
+    default_mouth_morph: str = ""
+    default_blink_morph: str = ""
 
 
 class _Reader:
@@ -39,10 +42,11 @@ class _Reader:
         length = self.count("text length", 1, 1_000_000)
         return self.read(length).tobytes().decode(encoding)
 
-    def floats(self, count: int) -> None:
+    def floats(self, count: int) -> tuple[float, ...]:
         values = struct.unpack_from(f"<{count}f", self.read(4 * count))
         if not all(math.isfinite(value) for value in values):
             raise ValueError("Non-finite PMX geometry or parameters")
+        return values
 
     def index(self, size: int, count: int | None = None, *, vertex: bool = False) -> int:
         fmt = {1: "<B", 2: "<H", 4: "<i"} if vertex else {1: "<b", 2: "<h", 4: "<i"}
@@ -128,11 +132,14 @@ def inspect_pmx(data: bytes) -> PmxInspection:
     if max_skin_bone >= bone_count:
         raise ValueError("Invalid PMX skin bone index")
     bones: set[str] = set()
+    bone_positions: list[tuple[str, tuple[float, float, float], int]] = []
     for _ in range(bone_count):
-        bones.add(reader.text(encoding))
+        name = reader.text(encoding)
+        bones.add(name)
         reader.text(encoding)
-        reader.floats(3)
-        reader.index(bone_index, bone_count)
+        position = reader.floats(3)
+        parent = reader.index(bone_index, bone_count)
+        bone_positions.append((name, position, parent))
         reader.read(4)  # transform order
         flags = reader.number("<H")
         if flags & 0x0001:
@@ -162,10 +169,30 @@ def inspect_pmx(data: bytes) -> PmxInspection:
     max_morph_rigid = -1
     morph_count = reader.count("morph", 14)
     morphs: set[str] = set()
+    named_mouth: str | None = None
+    named_blink: str | None = None
+    category_mouth: str | None = None
+    category_blink: str | None = None
+    # Keep the preferred aliases and category fallback aligned with the
+    # renderer's detectBindings in frontend/src/.../mmd/state.ts.
+    mouth_names = {"あ", "口開", "mouth open", "a", "aa"}
+    blink_names = {"まばたき", "瞬き", "blink", "eye close"}
     for _ in range(morph_count):
-        morphs.add(reader.text(encoding))
-        reader.text(encoding)
-        reader.enum(4)  # panel
+        name = reader.text(encoding)
+        english_name = reader.text(encoding)
+        category = reader.enum(4)  # panel
+        if name not in morphs:
+            # The renderer deduplicates by PMX name and uses the first entry's metadata.
+            names = (name.lower(), english_name.lower())
+            if named_mouth is None and any(alias in mouth_names for alias in names):
+                named_mouth = name
+            if named_blink is None and any(alias in blink_names for alias in names):
+                named_blink = name
+            if category == 3 and category_mouth is None:
+                category_mouth = name
+            if category == 2 and category_blink is None:
+                category_blink = name
+        morphs.add(name)
         kind = reader.enum(10)
         for _ in range(reader.count("morph offset", 1)):
             if kind in (0, 9):
@@ -236,7 +263,9 @@ def inspect_pmx(data: bytes) -> PmxInspection:
 
     # Like Babylon, tolerate exporter-specific trailing metadata, but never
     # substitute it for a missing required section/count.
-    return PmxInspection(textures, frozenset(bones), frozenset(morphs))
+    return PmxInspection(textures, frozenset(bones), frozenset(morphs), tuple(bone_positions),
+                         named_mouth if named_mouth is not None else category_mouth or "",
+                         named_blink if named_blink is not None else category_blink or "")
 
 
 def texture_references(data: bytes) -> tuple[str, ...]:

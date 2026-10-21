@@ -1644,6 +1644,49 @@ export interface ShinsekaiPlatform {
     previewKnowledgeImport: (knowledgeId: string, items: File[]) => Promise<KnowledgeImportPreview>;
   };
   characters: {
+    previewMmdMotion: (input: { name: string; model_path: string; prompt: string }) => Promise<{
+      plan: {
+        action:
+          | "nod"
+          | "shake_head"
+          | "bow"
+          | "wave"
+          | "smile"
+          | "anger"
+          | "denial"
+          | "confusion"
+          | "helpless"
+          | "sadness";
+        intensity: number;
+        duration_frames: number;
+        expression?: "smile" | "anger" | "denial" | "confusion" | "helpless" | "sadness";
+      };
+      setting_digest: string;
+      vmd_base64: string;
+    }>;
+    saveMmdMotion: (input: {
+      name: string;
+      model_path: string;
+      plan: {
+        action:
+          | "nod"
+          | "shake_head"
+          | "bow"
+          | "wave"
+          | "smile"
+          | "anger"
+          | "denial"
+          | "confusion"
+          | "helpless"
+          | "sadness";
+        intensity: number;
+        duration_frames: number;
+        expression?: "smile" | "anger" | "denial" | "confusion" | "helpless" | "sadness";
+      };
+      setting_digest?: string;
+      state: unknown;
+      tag: string;
+    }) => Promise<Character>;
     importModel: (input: { name: string; avatar_type: string; source_path: string }) => Promise<Character>;
     importModelStates: (input: {
       name: string;

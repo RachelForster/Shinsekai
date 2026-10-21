@@ -1816,6 +1816,12 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       previewKnowledgeImport: (_knowledgeId, items): Promise<KnowledgeImportPreview> => previewMemoryImport(items),
     },
     characters: {
+      previewMmdMotion: async () => {
+        throw new Error("MMD motion generation requires the local bridge");
+      },
+      saveMmdMotion: async () => {
+        throw new Error("MMD motion saving requires the local bridge");
+      },
       importModelStates: async () => {
         throw new Error("Preset import requires the local bridge");
       },

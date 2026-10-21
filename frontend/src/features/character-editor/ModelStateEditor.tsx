@@ -11,6 +11,7 @@ import { useI18n } from "../../shared/i18n";
 import { AsyncButton, Button, EmptyState, FilePicker, ImageAssetGallery, PathDisplay, Select } from "../../shared/ui";
 import { ModelStateDialog } from "./ModelStateDialog";
 import { AvatarRuntimeDialog } from "./AvatarRuntimeDialog";
+import { MmdMotionDialog } from "./MmdMotionDialog";
 import "./ModelStateEditor.css";
 
 export function ModelStateEditor({
@@ -28,6 +29,7 @@ export function ModelStateEditor({
   const format = avatarFormat(kind);
   const [source, setSource] = useState("");
   const [runtimeOpen, setRuntimeOpen] = useState(false);
+  const [motionOpen, setMotionOpen] = useState(false);
   const [runtimeRevision, setRuntimeRevision] = useState(0);
   const [presets, setPresets] = useState<string[]>([]);
   const [previewSequence, setPreviewSequence] = useState(0);
@@ -49,6 +51,7 @@ export function ModelStateEditor({
   useEffect(() => {
     setIndex(0);
     setRuntimeOpen(false);
+    setMotionOpen(false);
     setEditingIndex(null);
     setSource("");
     setPresets([]);
@@ -66,7 +69,9 @@ export function ModelStateEditor({
     setError("");
     try {
       const result = await importCharacterModel({ name, avatar_type: kind, source_path: source });
-      if (request.current === sequence) onSaved(result);
+      if (request.current === sequence) {
+        onSaved(result);
+      }
     } catch (failure) {
       if (request.current === sequence) setError(String(failure));
     } finally {
@@ -103,9 +108,16 @@ export function ModelStateEditor({
       <div className="section__header">
         <h2 className="section__title">{t("character.avatar.title")}</h2>
         {kind !== "static" && format && (
-          <Button disabled={pending || !modelPath} onClick={() => setEditingIndex(-1)}>
-            {t("character.avatar.newState")}
-          </Button>
+          <>
+            {kind === "mmd" && modelPath && (
+              <Button disabled={pending} onClick={() => setMotionOpen(true)}>
+                {t("character.avatar.mmd.generateTitle")}
+              </Button>
+            )}
+            <Button disabled={pending || !modelPath} onClick={() => setEditingIndex(-1)}>
+              {t("character.avatar.newState")}
+            </Button>
+          </>
         )}
       </div>
       <div className="asset-editor">
@@ -286,6 +298,19 @@ export function ModelStateEditor({
           format={format}
           onClose={() => setRuntimeOpen(false)}
           onInstalled={() => setRuntimeRevision((value) => value + 1)}
+        />
+      )}
+      {motionOpen && kind === "mmd" && modelPath && (
+        <MmdMotionDialog
+          key={`${name}:${modelPath}`}
+          character={character}
+          modelPath={modelPath}
+          onClose={() => setMotionOpen(false)}
+          onSaved={(result) => {
+            setIndex(bank?.sprites.length ?? 0);
+            setMotionOpen(false);
+            onSaved(result);
+          }}
         />
       )}
     </section>

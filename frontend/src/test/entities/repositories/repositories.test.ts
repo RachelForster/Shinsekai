@@ -299,6 +299,10 @@ describe("entity repositories", () => {
       },
       characters: {
         importModel: vi.fn().mockResolvedValue(character),
+        previewMmdMotion: vi
+          .fn()
+          .mockResolvedValue({ plan: { action: "nod", intensity: 0.5, duration_frames: 60 }, vmd_base64: "" }),
+        saveMmdMotion: vi.fn().mockResolvedValue(character),
         importModelStates: vi.fn().mockResolvedValue(character),
         saveModelState: vi.fn().mockResolvedValue(character),
         autoLabelSprites: vi.fn().mockResolvedValue({}),
