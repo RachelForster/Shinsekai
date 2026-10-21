@@ -1,6 +1,71 @@
 import type { MessageKey } from "../messages";
 
 export const enMessages: Record<MessageKey, string> = {
+  "spriteGeneration.options": "Instructions and reference",
+  "spriteGeneration.autoRemoveBackground": "Remove background automatically",
+  "spriteGeneration.autoRemoveHint":
+    "Remove the background after rendering or choosing a frame. Turning this off only affects future results.",
+  "spriteGeneration.backgroundRemoved": "Background removed · transparent PNG",
+  "spriteGeneration.backgroundRemovalFailed": "Background removal failed. Original image kept: {error}",
+  "spriteGeneration.cutout": "Remove background",
+  "spriteGeneration.retryCutout": "Retry background removal",
+  "spriteGeneration.action": "Generate sprites",
+  "spriteGeneration.intro":
+    "Plan sprites for {name}, review the prompts, generate images, then add your favorites to the existing collection.",
+  "spriteGeneration.requirements": "Additional instructions (optional)",
+  "spriteGeneration.requirementsPlaceholder":
+    "E.g. stand, smile with relaxed brows, wave the open right hand beside the head, and rest the left hand at the side. Specify facial expressions, both hands' poses and positions, and props.",
+  "spriteGeneration.reference": "Reference image (optional)",
+  "spriteGeneration.chooseReference": "Choose reference image",
+  "spriteGeneration.existingReference": "Use an existing sprite",
+  "spriteGeneration.chooseExisting": "Choose an existing sprite…",
+  "spriteGeneration.clearReference": "Remove reference",
+  "spriteGeneration.optionalReference": "Optional: preserve character appearance",
+  "spriteGeneration.count": "Number of ideas",
+  "spriteGeneration.plan": "Plan prompts and tags",
+  "spriteGeneration.generatePending": "Generate pending ({count})",
+  "spriteGeneration.setupHint":
+    "Uses the current personality and configured image service. Planning more ideas keeps existing results. The reference applies to subsequent renders.",
+  "spriteGeneration.setupGuide": "First use: connect an image generation service",
+  "spriteGeneration.setupServiceStep":
+    "Check that your image service works on its own. H3 workflows are in ai/t2i/workflows/: drag minimax_h3_i2v.json onto the ComfyUI canvas, upload a reference, and run it. Use minimax_h3_t2v.json for text-to-video.",
+  "spriteGeneration.setupConnectStep":
+    "Connect the same service in API settings. For H3, select minimax_h3_i2v_api.json as the default workflow and minimax_h3_t2v_api.json for the text-only workflow, from the same folder. Node IDs: prompt 131, output 92, reference 114.",
+  "spriteGeneration.setupTrialStep":
+    "Choose a reference sprite and generate one image to check proportions, expression, and hand poses before generating a batch. You can still plan prompts and tags with your LLM before configuring an image service.",
+  "spriteGeneration.limit": "Keep up to 12 ideas at a time; add or remove some before planning more.",
+  "spriteGeneration.selected": "{count} selected",
+  "spriteGeneration.add": "Add to collection ({count})",
+  "spriteGeneration.selectAll": "Select generated images",
+  "spriteGeneration.deselectAll": "Deselect all",
+  "spriteGeneration.reviewHint": "Tags are saved with each image. Click a preview to view the full image.",
+  "spriteGeneration.chooseFrame": "Choose a frame from the generated video",
+  "spriteGeneration.frameHint":
+    "The middle frame is selected automatically. Seek in the video and capture another frame without generating again.",
+  "spriteGeneration.video": "Source video",
+  "spriteGeneration.captureFrame": "Use frame at {seconds}s",
+  "spriteGeneration.videoUnavailable":
+    "This video cannot be previewed here. The extracted still image can still be saved.",
+  "spriteGeneration.sprite": "Sprite {n}",
+  "spriteGeneration.prompt": "Image prompt",
+  "spriteGeneration.tagging": "Tags",
+  "spriteGeneration.generate": "Generate",
+  "spriteGeneration.redraw": "Redraw",
+  "spriteGeneration.notGenerated": "Ready to generate",
+  "spriteGeneration.stale": "Prompt changed. Redraw before adding.",
+  "spriteGeneration.remove": "Remove idea {n}",
+  "spriteGeneration.preview": "View sprite {n} full size",
+  "spriteGeneration.empty": "Start by planning prompts and tags. You can edit each idea before rendering.",
+  "spriteGeneration.working": "Working…",
+  "spriteGeneration.stop": "Stop after current image",
+  "spriteGeneration.stopping": "Stopping after current image…",
+  "spriteGeneration.discardTitle": "Close sprite generator?",
+  "spriteGeneration.discardBody":
+    "Unsaved ideas and previews will be cleared from this window. Sprites already added to the character are kept.",
+  "spriteGeneration.discard": "Close and discard unsaved ideas",
+  "spriteGeneration.saveFirst": "Save the character before generating sprites.",
+  "spriteGeneration.settingRequired": "Fill in the character personality and settings first.",
+  "spriteGeneration.saved": "Sprites added with tags saved",
   "story.library.delete": "Delete story version",
   "story.library.deleteConfirm":
     "Delete version {version} of “{title}” and all its conversations and saves? Other versions will be kept. This cannot be undone.",

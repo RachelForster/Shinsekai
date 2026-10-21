@@ -45,6 +45,7 @@ import { CharacterMemorySection } from "./CharacterMemorySection";
 import { CharacterPageHeader } from "./CharacterPageHeader";
 import { CharacterPersonalitySection } from "./CharacterPersonalitySection";
 import { CharacterSpritesSection } from "./CharacterSpritesSection";
+import { SpriteGenerationDialog } from "./SpriteGenerationDialog";
 import { CharacterVoiceSection } from "./CharacterVoiceSection";
 import { MediaAutoLabelProgressDialog } from "../media-auto-label/MediaAutoLabelProgressDialog";
 import { useVisionAvailability } from "../media-auto-label/useVisionAvailability";
@@ -98,6 +99,8 @@ export function CharacterEditorPage() {
   const [bulkSpriteTagsOpen, setBulkSpriteTagsOpen] = useState(false);
   const [bulkSpriteTagsDraft, setBulkSpriteTagsDraft] = useState("");
   const [autoLabelDialogOpen, setAutoLabelDialogOpen] = useState(false);
+  const [spriteGenerationOpen, setSpriteGenerationOpen] = useState(false);
+  const preserveImportedDraftRef = useRef<Character | null>(null);
   const [autoLabelTask, setAutoLabelTask] = useState<TaskSnapshot<ImageAutoLabelResult> | null>(null);
   const [nameError, setNameError] = useState("");
   const [pronunciationText, setPronunciationText] = useState("");
@@ -133,6 +136,10 @@ export function CharacterEditorPage() {
 
   const prevSelectedNameRef = useRef<string>("");
   useEffect(() => {
+    if (selected && selected.name === preserveImportedDraftRef.current?.name) {
+      preserveImportedDraftRef.current = null;
+      return;
+    }
     if (selected && selected.name !== prevSelectedNameRef.current) {
       prevSelectedNameRef.current = selected.name;
       setSelectedName(selected.name);
@@ -1055,6 +1062,15 @@ export function CharacterEditorPage() {
 
         {draft.avatar_type === "static" && (
           <CharacterSpritesSection
+            generateDisabled={!isSavedCharacter || !draft.character_setting.trim()}
+            generateHint={
+              !isSavedCharacter
+                ? t("spriteGeneration.saveFirst")
+                : !draft.character_setting.trim()
+                  ? t("spriteGeneration.settingRequired")
+                  : undefined
+            }
+            onGenerate={() => setSpriteGenerationOpen(true)}
             autoLabelAvailable={visionAvailable}
             autoLabelDisabled={!isSavedCharacter || !draft.sprites.length || !spriteTags.some((tag) => !tag.trim())}
             autoLabelPending={autoLabelMutation.isPending}
@@ -1193,6 +1209,35 @@ export function CharacterEditorPage() {
         result={autoLabelMutation.data ?? null}
         task={autoLabelTask}
       />
+      {spriteGenerationOpen ? (
+        <SpriteGenerationDialog
+          character={draft}
+          name={currentCharacterName}
+          onClose={() => setSpriteGenerationOpen(false)}
+          onImported={(character) => {
+            // Updating the resource collection must not discard unsaved personality or tag edits.
+            preserveImportedDraftRef.current = character;
+            queryClient.setQueryData<Character[]>(charactersQueryKey, (current = []) =>
+              current.map((item) => (item.name === character.name ? character : item)),
+            );
+            setDraft((current) => {
+              const currentSpritesByPath = new Map(current.sprites.map((sprite) => [sprite.path, sprite]));
+              const currentTags = tagContents(current.emotion_tags, current.sprites.length);
+              const tagsByPath = new Map(current.sprites.map((sprite, index) => [sprite.path, currentTags[index]]));
+              const savedTags = tagContents(character.emotion_tags, character.sprites.length);
+              return {
+                ...current,
+                sprites: character.sprites.map((sprite) => currentSpritesByPath.get(sprite.path) ?? sprite),
+                emotion_tags: numberedTags(
+                  "立绘",
+                  character.sprites.map((sprite, index) => tagsByPath.get(sprite.path) ?? savedTags[index]),
+                ),
+              };
+            });
+            showToast({ kind: "success", title: t("spriteGeneration.saved") });
+          }}
+        />
+      ) : null}
     </div>
   );
 }

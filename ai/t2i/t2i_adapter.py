@@ -6,6 +6,9 @@ import base64
 import json
 import time
 import requests
+import shlex
+from pathlib import Path
+from urllib.parse import urlencode, urlsplit
 from typing import Optional, Dict, Any
 
 from sdk.adapters.t2i import T2IAdapter
@@ -16,6 +19,8 @@ class StableDiffusionAdapter(T2IAdapter):
     Adapter for a Stable Diffusion (e.g., AUTOMATIC1111/ComfyUI) API.
     It adapts the T2I API to the standard T2IAdapter interface.
     """
+    supports_reference_images = True
+
     def __init__(self, api_url: str = "http://127.0.0.1:7860/sdapi/v1/txt2img", default_model: Optional[str] = None):
         self.api_url = api_url
         self.current_model = default_model
@@ -44,8 +49,17 @@ class StableDiffusionAdapter(T2IAdapter):
             # but rather the payload includes the override. This varies by API.
             pass
 
+        endpoint = self.api_url
+        reference = kwargs.get("reference_image_path")
+        if reference:
+            with open(reference, "rb") as source:
+                payload["init_images"] = [base64.b64encode(source.read()).decode("ascii")]
+            payload["denoising_strength"] = kwargs.get("denoising_strength", 0.65)
+            if "/txt2img" not in endpoint and "/img2img" not in endpoint:
+                raise ValueError("参考图需要配置 Stable Diffusion 的 /sdapi/v1/txt2img 或 /img2img 地址")
+            endpoint = endpoint.replace("/txt2img", "/img2img")
         try:
-            response = requests.post(self.api_url, json=payload)
+            response = requests.post(endpoint, json=payload, timeout=600)
             response.raise_for_status() # Raise an exception for bad status codes
 
             # The response content is often a JSON object with base64 encoded images
@@ -55,7 +69,6 @@ class StableDiffusionAdapter(T2IAdapter):
                 return None
 
             # Decode the base64 image and save it
-            import base64
             image_data = base64.b64decode(data['images'][0])
 
             if not file_path:
@@ -95,13 +108,29 @@ class ComfyUIT2IAdapter(T2IAdapter):
     HISTORY_ENDPOINT = "/history"
     STARTUP_TIMEOUT_SECONDS = 120
     REQUEST_TIMEOUT_SECONDS = 10
+    supports_reference_images = True
+
+    @classmethod
+    def get_config_schema(cls):
+        return {
+            "reference_node_id": {"type": "str", "default": "", "label": "参考图 LoadImage 节点 ID（单个节点时自动识别）"},
+            "generation_timeout": {"type": "float", "default": 600, "label": "等待图像生成的最长秒数", "min": 1},
+            "text_only_workflow_path": {"type": "str", "default": "", "label": "无参考图时使用的 API 工作流（可选）"},
+            "startup_args": {"type": "str", "default": "--windows-standalone-build", "label": "ComfyUI 启动参数（端口自动匹配 API 地址）"},
+            "match_reference_aspect": {"type": "bool", "default": True, "label": "H3 画布匹配参考图比例（保持像素预算）"},
+        }
 
     def __init__(self,
                  api_url: str = "http://127.0.0.1:8188",
                  work_path: str = "",
                  workflow_path: str = "path/to/default_workflow.json",
                  prompt_node_id: str = "6", # Common ID for the CLIPTextEncode (Prompt) node in SD workflows
-                 output_node_id: str = "17"):# Common ID for the SaveImage node
+                 output_node_id: str = "17",
+                 reference_node_id: str = "",
+                 generation_timeout: float = 600,
+                 text_only_workflow_path: str = "",
+                 startup_args: str = "--windows-standalone-build",
+                 match_reference_aspect: bool = True):
         """
         初始化 ComfyUI Adapter。
 
@@ -116,6 +145,13 @@ class ComfyUIT2IAdapter(T2IAdapter):
         self.prompt_node_id = prompt_node_id
         self.output_node_id = output_node_id
         self.work_path = work_path
+        self.reference_node_id = str(reference_node_id or "")
+        self.generation_timeout = max(1, float(generation_timeout))
+        self.text_only_workflow_path = text_only_workflow_path
+        self.startup_args = startup_args
+        self.match_reference_aspect = match_reference_aspect
+        self.last_video_path = None
+        self.last_video_frame_time = None
         self.workflow_template = self._load_workflow_template()
         self._start_server_process()
 
@@ -136,8 +172,7 @@ class ComfyUIT2IAdapter(T2IAdapter):
 
     def _start_server_process(self):
         """
-        Starts the GPT-SoVITS server process if it's not running.
-        This is now the adapter's responsibility.
+        Start the configured portable ComfyUI installation if it is not running.
         """
         if self._is_server_ready():
             print("ComfyUI server is already running.")
@@ -153,7 +188,12 @@ class ComfyUIT2IAdapter(T2IAdapter):
         api_path = os.path.join(os_path, "ComfyUI","main.py")
 
         # Use subprocess.Popen to start the server in the background
-        subprocess.Popen([embeded_python_path, api_path], cwd=os_path)
+        port = urlsplit(self.api_url).port or 8188
+        subprocess.Popen(
+            [embeded_python_path, "-s", api_path, "--port", str(port), *shlex.split(self.startup_args)],
+            cwd=os_path,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+        )
         print("ComfyUI server starting...")
         if self._wait_for_server_ready():
             print("ComfyUI server is ready.")
@@ -184,13 +224,23 @@ class ComfyUIT2IAdapter(T2IAdapter):
         if not self.workflow_template:
             return None
 
+        self.last_video_path = None
+        self.last_video_frame_time = None
+
         # 1. 深度复制模板以避免修改原始结构
         prompt_workflow = copy.deepcopy(self.workflow_template)
+        if not kwargs.get("reference_image_path") and self.text_only_workflow_path:
+            with open(self.text_only_workflow_path, encoding="utf-8-sig") as source:
+                prompt_workflow = json.load(source)
 
         # 2. 注入主 Prompt
         # 假设 CLIPTextEncode 节点 (ID: self.prompt_node_id) 的输入是 index 1
         if self.prompt_node_id in prompt_workflow:
-            prompt_workflow[self.prompt_node_id]["inputs"]["text"] = prompt
+            inputs = prompt_workflow[self.prompt_node_id]["inputs"]
+            field = "text" if "text" in inputs else "prompt" if "prompt" in inputs else None
+            if field is None:
+                raise ValueError("提示词节点缺少 text 或 prompt 输入，请检查 T2I 节点配置")
+            inputs[field] = prompt
         else:
             raise ValueError(f"Prompt node ID '{self.prompt_node_id}' not found in workflow.")
 
@@ -200,6 +250,8 @@ class ComfyUIT2IAdapter(T2IAdapter):
             prompt_workflow[negative_node_id]["inputs"]["text"] = negative_prompt
         if "seed" in kwargs and kwargs["seed"] is not None:
             self._apply_sampler_seed(prompt_workflow, kwargs["seed"])
+        if kwargs.get("reference_image_path"):
+            self._apply_reference_image(prompt_workflow, kwargs["reference_image_path"])
 
         payload = {
             "prompt": prompt_workflow,
@@ -235,6 +287,80 @@ class ComfyUIT2IAdapter(T2IAdapter):
         except Exception:
             raise
 
+    def _apply_reference_image(self, workflow, path):
+        candidates = [
+            str(key)
+            for key, node in workflow.items()
+            if node.get("class_type") == "LoadImage"
+        ]
+        node_id = self.reference_node_id
+        if not node_id and len(candidates) == 1:
+            node_id = candidates[0]
+        if not node_id or node_id not in candidates:
+            raise ValueError(
+                "参考图需要一个 LoadImage 节点；存在多个时请在 T2I 扩展配置中指定 reference_node_id"
+            )
+        import uuid
+
+        canvases = set()
+        h3_inputs = []
+        for node in workflow.values():
+            if node.get("class_type") != "MiniMaxH3ImageToVideo":
+                continue
+            inputs = node.get("inputs", {})
+            for field in ("first_frame", "last_frame"):
+                linked = inputs.get(field)
+                if (
+                    isinstance(linked, list)
+                    and len(linked) == 2
+                    and str(linked[0]) == node_id
+                    and linked[1] == 0
+                ):
+                    width, height = inputs.get("width"), inputs.get("height")
+                    if not isinstance(width, int) or not isinstance(height, int):
+                        raise ValueError(
+                            "请在 H3 API 工作流中用整数配置 width 和 height，以保持参考图比例"
+                        )
+                    canvases.add((width, height))
+                    h3_inputs.append(inputs)
+        if len(canvases) > 1:
+            raise ValueError("同一张参考图连接的 H3 画布尺寸不同，请将画布尺寸设为一致")
+        if canvases:
+            from ai.t2i.reference_image import (
+                fit_reference_to_canvas,
+                reference_canvas_size,
+            )
+
+            width, height = next(iter(canvases))
+            other_anchor = any(
+                linked and linked != [node_id, 0]
+                for inputs in h3_inputs
+                for linked in (inputs.get("first_frame"), inputs.get("last_frame"))
+            )
+            if self.match_reference_aspect and not other_anchor:
+                width, height = reference_canvas_size(path, width, height)
+                for inputs in h3_inputs:
+                    inputs.update(width=width, height=height)
+            source = fit_reference_to_canvas(path, width, height)
+            suffix = ".png"
+        else:
+            source = open(path, "rb")
+            suffix = os.path.splitext(path)[1]
+        with source:
+            response = requests.post(
+                self.api_url + "/upload/image",
+                files={"image": (f"shinsekai-{uuid.uuid4().hex}{suffix}", source)},
+                data={"type": "input", "overwrite": "false"},
+                timeout=self.REQUEST_TIMEOUT_SECONDS,
+            )
+        response.raise_for_status()
+        uploaded = response.json()
+        if not uploaded.get("name"):
+            raise ValueError("ComfyUI 上传参考图失败")
+        workflow[node_id]["inputs"]["image"] = "/".join(
+            part for part in (uploaded.get("subfolder", ""), uploaded["name"]) if part
+        )
+
     def _find_ksampler_conditioning_node_id(self, workflow: Dict[str, Any], input_name: str) -> str:
         for node in workflow.values():
             if not isinstance(node, dict):
@@ -256,62 +382,71 @@ class ComfyUIT2IAdapter(T2IAdapter):
         for node in workflow.values():
             if not isinstance(node, dict):
                 continue
-            class_type = str(node.get("class_type") or "").lower()
-            if "ksampler" not in class_type and "sampler" not in class_type:
-                continue
             inputs = node.setdefault("inputs", {})
             if not isinstance(inputs, dict):
                 continue
-            if "noise_seed" in inputs:
+            if "noise_seed" in inputs and not isinstance(inputs["noise_seed"], list):
                 inputs["noise_seed"] = seed_value
-            if "seed" in inputs or "ksampler" in class_type:
+            if "seed" in inputs and not isinstance(inputs["seed"], list):
                 inputs["seed"] = seed_value
 
     def _wait_for_and_get_image(self, prompt_id: str, file_path: Optional[str]) -> Optional[str]:
         """轮询历史记录以查找生成的图像文件。"""
-        # 简单轮询，最多等待 60 秒
-        for _ in range(30):
+        deadline = time.monotonic() + self.generation_timeout
+        while time.monotonic() < deadline:
             time.sleep(2)
             try:
-                history_response = requests.get(f"{self.api_url}{self.HISTORY_ENDPOINT}/{prompt_id}")
+                history_response = requests.get(f"{self.api_url}{self.HISTORY_ENDPOINT}/{prompt_id}", timeout=self.REQUEST_TIMEOUT_SECONDS)
                 history_response.raise_for_status()
                 history_data = history_response.json()
 
                 if prompt_id in history_data:
                     # 查找 SaveImage 节点的输出
-                    output = history_data[prompt_id]["outputs"].get(self.output_node_id)
+                    output = history_data[prompt_id].get("outputs", {}).get(self.output_node_id)
+                    status = history_data[prompt_id].get("status", {})
+                    if status.get("status_str") == "error":
+                        raise RuntimeError("ComfyUI 工作流执行失败，请检查模型与节点配置")
+                    media = next((output.get(key) for key in ("images", "videos", "gifs") if output and output.get(key)), None)
+                    if status.get("completed") and not media:
+                        raise ValueError("工作流未输出图片或视频，请检查 SaveImage / SaveVideo 输出节点")
 
-                    if output and "images" in output and output["images"]:
-                        image_info = output["images"][0] # 假设只生成一张图
+                    if media:
+                        image_info = media[0]
                         filename = image_info["filename"]
-                        subfolder = image_info["subfolder"]
+                        subfolder = image_info.get("subfolder", "")
 
                         # 构造图像下载 URL
-                        image_url = (f"{self.api_url}/view?"
-                                     f"filename={filename}&"
-                                     f"subfolder={subfolder}&"
-                                     f"type=output")
+                        image_url = f"{self.api_url}/view?" + urlencode({"filename": filename, "subfolder": subfolder, "type": image_info.get("type", "output")})
 
                         # 下载图像
-                        image_response = requests.get(image_url)
+                        image_response = requests.get(image_url, timeout=self.REQUEST_TIMEOUT_SECONDS)
                         image_response.raise_for_status()
 
                         if not file_path:
                             # 默认保存路径
                             file_path = os.path.join(os.getcwd(), "temp_comfyui.png")
-
-                        with open(file_path, 'wb') as f:
+                        destination = Path(file_path)
+                        destination.parent.mkdir(parents=True, exist_ok=True)
+                        suffix = Path(filename).suffix.lower()
+                        is_video = suffix in {".mp4", ".webm", ".mov", ".mkv", ".avi"}
+                        downloaded = destination.with_suffix(suffix) if is_video else destination
+                        with open(downloaded, 'wb') as f:
                             f.write(image_response.content)
+
+                        if is_video:
+                            from core.media.video_frames import extract_video_frame
+
+                            self.last_video_frame_time = extract_video_frame(downloaded, destination)
+                            self.last_video_path = str(downloaded.resolve())
 
                         print(f"Image successfully generated and saved to: {os.path.abspath(file_path)}")
                         return os.path.abspath(file_path)
 
-            except Exception as e:
+            except requests.exceptions.RequestException as e:
                 print(f"Error checking ComfyUI history/downloading image: {e}")
 
         print("Timeout or failed to retrieve image from ComfyUI history.")
         return None
-
 
     def switch_model(self, model_info: Dict[str, Any]):
         """
