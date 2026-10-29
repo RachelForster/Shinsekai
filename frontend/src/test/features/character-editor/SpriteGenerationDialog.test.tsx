@@ -88,6 +88,31 @@ describe("sprite generator", () => {
   });
   afterEach(cleanup);
 
+  it("guides planning, generation and saving while keeping settings visible", async () => {
+    mount();
+    const steps = screen.getByRole("list", { name: "Sprite generation steps" });
+    expect(steps.querySelector('[aria-current="step"]')).toHaveTextContent("Set up & plan");
+    expect(screen.getByRole("button", { name: "Add to collection (0)" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Models & workflows" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByLabelText("Remove background automatically").closest("label")).toHaveClass("switch");
+    await makePlan();
+    expect(steps.querySelector('[aria-current="step"]')).toHaveTextContent("Generate & review");
+    expect(screen.getByRole("button", { name: "Models & workflows" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: "Open workflow folder" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Choose reference image" })).toBeVisible();
+    expect(screen.getByLabelText("Sprite 1 Tags")).toBeVisible();
+    const prompt = screen.getByLabelText("Sprite 1 Image prompt");
+    expect(prompt.closest("details")).not.toHaveAttribute("open");
+    fireEvent.click(screen.getAllByText("View / edit prompt")[0]);
+    expect(prompt.closest("details")).toHaveAttribute("open");
+    await drawAll();
+    expect(steps.querySelector('[aria-current="step"]')).toHaveTextContent("Save to character");
+    expect(screen.getByText("2 ready · 0 pending")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Models & workflows" }));
+    expect(screen.getByRole("button", { name: "Open workflow folder" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Add to collection (2)" })).toBeEnabled();
+  });
+
   it("opens the active workflow folder and official model and setup pages", async () => {
     mount();
     fireEvent.click(screen.getByRole("button", { name: "Open workflow folder" }));
@@ -285,7 +310,7 @@ describe("sprite generator", () => {
     const { close } = mount();
     await makePlan();
     plan.mockRejectedValueOnce(new Error("LLM unavailable"));
-    fireEvent.click(screen.getByRole("button", { name: "Plan prompts and tags" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add more prompt plans" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("LLM unavailable");
     expect(screen.getByDisplayValue("happy pose")).toBeInTheDocument();
     fireEvent.click(screen.getAllByRole("button", { name: "Close" })[1]);

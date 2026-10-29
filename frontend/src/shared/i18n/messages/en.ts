@@ -1,6 +1,27 @@
 import type { MessageKey } from "../messages";
 
 export const enMessages: Record<MessageKey, string> = {
+  "spriteGeneration.stepsLabel": "Sprite generation steps",
+  "spriteGeneration.stepPlan": "Set up & plan",
+  "spriteGeneration.stepGenerate": "Generate & review",
+  "spriteGeneration.stepSave": "Save to character",
+  "spriteGeneration.referenceHint":
+    "Keep the reference appearance, framing and character scale. Half-body images stay half-body.",
+  "spriteGeneration.noReferenceHint":
+    "Without a reference, generate a standing full-body sprite from the character setting.",
+  "spriteGeneration.referenceChangeHint": "After changing the reference, check that existing prompts still fit.",
+  "spriteGeneration.planHint":
+    "Plan expressions, actions and hand poses from the current character setting, with automatic tags. This step creates prompts only.",
+  "spriteGeneration.workspaceTitle": "Sprite plans & previews",
+  "spriteGeneration.workspaceSummary": "{ready} ready · {pending} pending",
+  "spriteGeneration.emptyTitle": "Start with expressions and poses",
+  "spriteGeneration.resources": "Models & workflows",
+  "spriteGeneration.resourcesHint":
+    "First time? Connect an image generation service. Already configured? Start planning.",
+  "spriteGeneration.editPrompt": "View / edit prompt",
+  "spriteGeneration.ready": "Ready to save",
+  "spriteGeneration.saveHint": "Images and tags are saved together to this character.",
+  "spriteGeneration.morePlans": "Add more prompt plans",
   "spriteGeneration.options": "Instructions and reference",
   "spriteGeneration.autoRemoveBackground": "Remove background automatically",
   "spriteGeneration.autoRemoveHint":
@@ -67,7 +88,8 @@ export const enMessages: Record<MessageKey, string> = {
   "spriteGeneration.stale": "Prompt changed. Redraw before adding.",
   "spriteGeneration.remove": "Remove idea {n}",
   "spriteGeneration.preview": "View sprite {n} full size",
-  "spriteGeneration.empty": "Start by planning prompts and tags. You can edit each idea before rendering.",
+  "spriteGeneration.empty":
+    "Choose an optional reference, add your requirements, then select Plan prompts and tags. Review the plans, generate images, and select your favorites to save.",
   "spriteGeneration.working": "Working…",
   "spriteGeneration.stop": "Stop after current image",
   "spriteGeneration.stopping": "Stopping after current image…",

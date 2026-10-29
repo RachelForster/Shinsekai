@@ -1,6 +1,25 @@
 import type { MessageKey } from "../messages";
 
 export const jaMessages: Record<MessageKey, string> = {
+  "spriteGeneration.stepsLabel": "立ち絵生成の手順",
+  "spriteGeneration.stepPlan": "設定とプラン",
+  "spriteGeneration.stepGenerate": "生成と確認",
+  "spriteGeneration.stepSave": "キャラクターに保存",
+  "spriteGeneration.referenceHint": "参照画像の外見・構図・人物の大きさを維持します。半身画像は半身のまま生成します。",
+  "spriteGeneration.noReferenceHint": "参照画像がない場合、キャラクター設定から全身の立ち姿を生成します。",
+  "spriteGeneration.referenceChangeHint": "参照画像を変更したら、既存プランのプロンプトも確認してください。",
+  "spriteGeneration.planHint":
+    "現在のキャラクター設定から表情・動作・手のポーズとタグを作成します。この段階では画像は生成しません。",
+  "spriteGeneration.workspaceTitle": "立ち絵プランとプレビュー",
+  "spriteGeneration.workspaceSummary": "生成済み {ready} 枚 · 未生成 {pending} 枚",
+  "spriteGeneration.emptyTitle": "表情とポーズから始めましょう",
+  "spriteGeneration.resources": "モデルとワークフロー",
+  "spriteGeneration.resourcesHint":
+    "初めて使う場合は画像生成サービスに接続してください。設定済みならすぐにプランを作成できます。",
+  "spriteGeneration.editPrompt": "プロンプトの確認・編集",
+  "spriteGeneration.ready": "保存可能",
+  "spriteGeneration.saveHint": "画像とタグをこのキャラクターにまとめて保存します。",
+  "spriteGeneration.morePlans": "プロンプトプランを追加",
   "spriteGeneration.options": "生成の要望と参考画像",
   "spriteGeneration.autoRemoveBackground": "背景を自動除去",
   "spriteGeneration.autoRemoveHint": "生成・フレーム選択後に背景を除去します。オフにすると次の結果から適用されません。",
@@ -65,7 +84,8 @@ export const jaMessages: Record<MessageKey, string> = {
   "spriteGeneration.stale": "プロンプトを変更しました。追加前に再生成してください。",
   "spriteGeneration.remove": "案 {n} を削除",
   "spriteGeneration.preview": "立ち絵 {n} を原寸表示",
-  "spriteGeneration.empty": "まずプロンプトとタグを作成します。各案を調整してから画像を生成できます。",
+  "spriteGeneration.empty":
+    "参照画像（任意）と追加の要望を設定し、左側でプロンプトとタグを作成します。プランを確認して画像を生成し、気に入った立ち絵を選んで保存してください。",
   "spriteGeneration.working": "処理中…",
   "spriteGeneration.stop": "現在の画像が完了したら停止",
   "spriteGeneration.stopping": "現在の画像が完了次第停止…",

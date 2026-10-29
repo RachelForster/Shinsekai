@@ -58,12 +58,13 @@ export function SpriteGenerationSetupGuide() {
 
   return (
     <div className="sprite-generation__resources">
+      <h3 className="sprite-generation__section-title">{t("spriteGeneration.resources")}</h3>
+      <p className="sprite-generation__hint">{t("spriteGeneration.resourcesHint")}</p>
       <div className="sprite-generation__toolbar">
         <AsyncButton
           icon={<FolderOpen aria-hidden className="button__icon" />}
           loading={pending}
           onClick={() => void openFolder()}
-          variant="ghost"
         >
           {t("spriteGeneration.workflowFolder")}
         </AsyncButton>
@@ -71,7 +72,6 @@ export function SpriteGenerationSetupGuide() {
           icon={<ExternalLink aria-hidden className="button__icon" />}
           onClick={() => void openResource(H3_MODEL_REPOSITORY_URL)}
           title={H3_MODEL_REPOSITORY_URL}
-          variant="ghost"
         >
           {t("spriteGeneration.modelDownloads")}
         </Button>
@@ -79,7 +79,6 @@ export function SpriteGenerationSetupGuide() {
           icon={<ExternalLink aria-hidden className="button__icon" />}
           onClick={() => void openResource(H3_SETUP_GUIDE_URL)}
           title={H3_SETUP_GUIDE_URL}
-          variant="ghost"
         >
           {t("spriteGeneration.setupTutorial")}
         </Button>
@@ -103,7 +102,6 @@ export function SpriteGenerationSetupGuide() {
         </ol>
         <h3 className="sprite-generation__resource-title">{t("spriteGeneration.modelFiles")}</h3>
         <p className="sprite-generation__hint">{t("spriteGeneration.modelFilesHint")}</p>
-        <p className="sprite-generation__hint">{resourceLink(H3_MODEL_REPOSITORY_URL, H3_MODEL_REPOSITORY_URL)}</p>
         <DataTable
           rows={H3_REQUIRED_MODELS}
           getRowKey={(model) => model.fileName}

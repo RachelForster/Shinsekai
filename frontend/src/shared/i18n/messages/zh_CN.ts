@@ -1,6 +1,23 @@
 import type { MessageKey } from "../messages";
 
 export const zhCNMessages: Record<MessageKey, string> = {
+  "spriteGeneration.stepsLabel": "立绘生成步骤",
+  "spriteGeneration.stepPlan": "设置与规划",
+  "spriteGeneration.stepGenerate": "生成与挑选",
+  "spriteGeneration.stepSave": "保存到角色",
+  "spriteGeneration.referenceHint": "保持参考图的外观、取景和人物比例；半身图仍按半身图生成。",
+  "spriteGeneration.noReferenceHint": "无参考图时，按人物设定生成全身站姿立绘。",
+  "spriteGeneration.referenceChangeHint": "更换参考图后，请检查已有方案的提示词是否仍适用。",
+  "spriteGeneration.planHint": "根据当前人物设定规划表情、动作与双手姿势，并自动生成中文标签。此步骤不生成图片。",
+  "spriteGeneration.workspaceTitle": "立绘方案与预览",
+  "spriteGeneration.workspaceSummary": "已生成 {ready} 张 · 待生成 {pending} 张",
+  "spriteGeneration.emptyTitle": "从一组表情和动作开始",
+  "spriteGeneration.resources": "模型与工作流",
+  "spriteGeneration.resourcesHint": "首次使用？先连接图像生成服务。已配置的用户可直接开始规划。",
+  "spriteGeneration.editPrompt": "查看 / 编辑提示词",
+  "spriteGeneration.ready": "可保存",
+  "spriteGeneration.saveHint": "图片和标签一起保存到当前角色",
+  "spriteGeneration.morePlans": "追加提示词方案",
   "spriteGeneration.options": "生成要求与参考图",
   "spriteGeneration.autoRemoveBackground": "自动抠图",
   "spriteGeneration.autoRemoveHint": "生成或选帧后自动移除背景。关闭仅影响后续结果。",
@@ -62,7 +79,8 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "spriteGeneration.stale": "提示词已修改，请重绘后再添加。",
   "spriteGeneration.remove": "移除立绘方案 {n}",
   "spriteGeneration.preview": "查看立绘 {n} 原图",
-  "spriteGeneration.empty": "先生成提示词与标签。你可以先调整每个方案，再开始生成图片。",
+  "spriteGeneration.empty":
+    "选择参考图（可选），填写补充要求，再点击左侧「生成提示词与标签」。确认方案后生成图片，勾选满意的立绘保存。",
   "spriteGeneration.working": "正在处理，请稍候…",
   "spriteGeneration.stop": "本张完成后停止",
   "spriteGeneration.stopping": "完成当前图片后停止…",

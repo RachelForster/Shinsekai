@@ -1,6 +1,23 @@
 export type FrontendLanguage = "zh_CN" | "en" | "ja";
 
 export type MessageKey =
+  | "spriteGeneration.stepsLabel"
+  | "spriteGeneration.stepPlan"
+  | "spriteGeneration.stepGenerate"
+  | "spriteGeneration.stepSave"
+  | "spriteGeneration.referenceHint"
+  | "spriteGeneration.noReferenceHint"
+  | "spriteGeneration.referenceChangeHint"
+  | "spriteGeneration.planHint"
+  | "spriteGeneration.workspaceTitle"
+  | "spriteGeneration.workspaceSummary"
+  | "spriteGeneration.emptyTitle"
+  | "spriteGeneration.resources"
+  | "spriteGeneration.resourcesHint"
+  | "spriteGeneration.editPrompt"
+  | "spriteGeneration.ready"
+  | "spriteGeneration.saveHint"
+  | "spriteGeneration.morePlans"
   | "spriteGeneration.options"
   | "spriteGeneration.action"
   | "spriteGeneration.intro"
