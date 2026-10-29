@@ -591,6 +591,22 @@ describe("browser preview platform chat themes", () => {
     await expect(platform.effects.saveAudioTags({ audioTags: "", name: "missing" })).rejects.toThrow("特效方案不存在");
   });
 
+  it("keeps reference framing when planning sprites and uses full body only without a reference", async () => {
+    vi.useFakeTimers();
+    const platform = createBrowserPreviewPlatform();
+    const input = { name: "Mika", setting: "Cheerful", count: 1, requirements: "", referenceImage: "half-body.png" };
+    const referencePlan = await resolvePreview(platform.characters.planSprites(input));
+    const referencePrompt = referencePlan.items[0].prompt;
+    expect(referencePrompt).toContain("reference image's exact framing, crop");
+    expect(referencePrompt).toContain("locked-off static camera");
+    expect(referencePrompt).not.toContain("full body");
+    expect(referencePrompt).not.toContain("full scene");
+
+    const textPlan = await resolvePreview(platform.characters.planSprites({ ...input, referenceImage: "" }));
+    expect(textPlan.items[0].prompt).toContain("full body, full scene");
+    expect(textPlan.items[0].prompt).toContain("locked-off static camera");
+  });
+
   it("mutates preview characters, sprite voices, and memories", async () => {
     vi.useFakeTimers();
     const platform = createBrowserPreviewPlatform();
@@ -747,6 +763,7 @@ describe("browser preview platform chat themes", () => {
     ).rejects.toThrow("LLM 连通检测");
 
     const root = await resolvePreview(platform.files.browse({ path: "/" }));
+    await expect(platform.files.openT2iWorkflowFolder()).rejects.toMatchObject({ errorCode: "local_app_required" });
     expect(root.entries.map((entry) => entry.name)).toContain("home");
     const fallback = await resolvePreview(platform.files.browse({ path: "/does/not/exist" }));
     expect(fallback.cwd).toBe("/home/shinsekai/project");

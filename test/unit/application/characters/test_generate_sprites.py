@@ -37,7 +37,10 @@ def test_planning_uses_draft_personality_and_returns_prompt_tag_pairs(monkeypatc
     assert user["requirements"] == "害羞地微笑，双手在胸前交握"
     system = chat.call_args.args[1]
     assert "不要描述人物外貌" in system
-    assert "始终保持站立，双脚着地" in system
+    assert "始终保持站立姿态" in system
+    assert "半身像保持半身" in system
+    assert "不必让双手都入镜" in system
+    assert "双脚着地并可见" not in system
     assert "每条 prompt 必须明确描述面部表情" in system
     assert "包含眉眼或视线变化，以及嘴形变化" in system
     assert "不描述五官固有长相或颜色" in system
@@ -47,7 +50,7 @@ def test_planning_uses_draft_personality_and_returns_prompt_tag_pairs(monkeypatc
     assert result == {
         "items": [
             {
-                "prompt": "make the character stand and smile shyly with lowered eyes and hold both hands together in front of the chest, full body, full scene, plain light, sprite",
+                "prompt": "make the character stand and smile shyly with lowered eyes and hold both hands together in front of the chest, preserve the reference image's exact framing, crop, camera angle, character scale and screen position throughout, keep all pose changes within the original frame, locked-off static camera, fixed viewpoint and focal length throughout, plain light, sprite",
                 "tagging": "害羞, 微笑",
             }
         ]
@@ -55,7 +58,7 @@ def test_planning_uses_draft_personality_and_returns_prompt_tag_pairs(monkeypatc
 
 
 def test_planning_keeps_props_and_adds_the_action_template_only_once(monkeypatch):
-    prompt = "make the character stand and smile gently with relaxed eyes, hold a small sketchbook in the left hand at chest height and point to it with the right index finger, full body, full scene, plain light, sprite"
+    prompt = "make the character stand and smile gently with relaxed eyes, hold a small sketchbook in the left hand at chest height and point to it with the right index finger, full body, full scene, locked-off static camera, fixed viewpoint and focal length throughout, plain light, sprite"
     monkeypatch.setattr(
         generation,
         "chat_character_text",
@@ -63,6 +66,59 @@ def test_planning_keeps_props_and_adds_the_action_template_only_once(monkeypatch
     )
     result = generation.plan_sprites(object(), {"setting": "喜欢绘画", "count": 1})
     assert result["items"][0]["prompt"] == prompt
+
+
+def test_reference_planning_replaces_legacy_full_body_framing(monkeypatch):
+    chat = Mock(
+        return_value=json.dumps(
+            {
+                "items": [
+                    {
+                        "prompt": "make the character stand and smile with relaxed eyebrows and hold both hands together at chest height, full body, full scene, plain light, sprite",
+                        "tagging": "微笑，合手",
+                    }
+                ]
+            }
+        )
+    )
+    monkeypatch.setattr(generation, "chat_character_text", chat)
+    result = generation.plan_sprites(
+        object(), {"setting": "温柔", "count": 1, "referenceImage": "half-body.png"}
+    )
+    prompt = result["items"][0]["prompt"]
+    assert "full body" not in prompt
+    assert "full scene" not in prompt
+    assert "reference image's exact framing, crop" in prompt
+    assert "character scale and screen position throughout" in prompt
+    assert "keep all pose changes within the original frame" in prompt
+    assert "locked-off static camera" in prompt
+    assert prompt.count("make the character stand and") == 1
+
+    monkeypatch.setattr(
+        generation,
+        "chat_character_text",
+        lambda *_: json.dumps(result),
+    )
+    assert (
+        generation.plan_sprites(
+            object(), {"setting": "温柔", "count": 1, "referenceImage": "half-body.png"}
+        )
+        == result
+    )
+
+
+def test_planning_without_reference_keeps_full_body_and_a_fixed_camera(monkeypatch):
+    chat = Mock(
+        return_value='{"items":[{"prompt":"smile warmly with relaxed eyes and rest both hands at the sides","tagging":"微笑，站立"}]}'
+    )
+    monkeypatch.setattr(generation, "chat_character_text", chat)
+    prompt = generation.plan_sprites(object(), {"setting": "开朗", "count": 1})[
+        "items"
+    ][0]["prompt"]
+    assert "full body, full scene" in prompt
+    assert "locked-off static camera" in prompt
+    assert "reference image" not in prompt
+    assert "双脚着地并可见" in chat.call_args.args[1]
 
 
 def test_manually_edited_prompts_are_preserved():

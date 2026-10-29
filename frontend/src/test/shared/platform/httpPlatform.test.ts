@@ -23,6 +23,23 @@ function mockJsonResponse(body: unknown, ok = true) {
 }
 
 describe("http platform", () => {
+  it("opens bundled T2I workflows through an authenticated route without accepting a path", async () => {
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
+      mockJsonResponse({ path: "C:/Shinsekai/ai/t2i/workflows" }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const platform = createHttpPlatform("http://127.0.0.1:8787", "bridge-secret");
+    await expect(platform.files.openT2iWorkflowFolder()).resolves.toEqual({ path: "C:/Shinsekai/ai/t2i/workflows" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/files/t2i-workflows/open",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ "X-Shinsekai-Bridge-Token": "bridge-secret" }),
+      }),
+    );
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBeUndefined();
+  });
+
   it("uses authenticated task transport for tagged sprite planning, rendering, and selected import", async () => {
     const pair = { prompt: "full body, smiling", tagging: "微笑" };
     const result = {

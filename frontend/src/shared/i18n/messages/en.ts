@@ -20,13 +20,25 @@ export const enMessages: Record<MessageKey, string> = {
   "spriteGeneration.existingReference": "Use an existing sprite",
   "spriteGeneration.chooseExisting": "Choose an existing sprite…",
   "spriteGeneration.clearReference": "Remove reference",
-  "spriteGeneration.optionalReference": "Optional: preserve character appearance",
+  "spriteGeneration.optionalReference": "Optional: preserve appearance and framing, including half-body portraits",
   "spriteGeneration.count": "Number of ideas",
   "spriteGeneration.plan": "Plan prompts and tags",
   "spriteGeneration.generatePending": "Generate pending ({count})",
   "spriteGeneration.setupHint":
-    "Uses the current personality and configured image service. Planning more ideas keeps existing results. The reference applies to subsequent renders.",
+    "Reference plans preserve the original framing with a fixed camera; plans without a reference use full body. New plans keep existing results. If you add or remove a reference, replan or edit existing prompts.",
   "spriteGeneration.setupGuide": "First use: connect an image generation service",
+  "spriteGeneration.workflowFolder": "Open workflow folder",
+  "spriteGeneration.modelDownloads": "H3 model downloads",
+  "spriteGeneration.setupTutorial": "H3 setup guide",
+  "spriteGeneration.modelFiles": "Models for the bundled workflows",
+  "spriteGeneration.modelFilesHint":
+    "The bundled silent-video workflows need only these four models, not the whole repository. Click a filename to open its download page and place it under the listed ComfyUI folder.",
+  "spriteGeneration.modelFile": "Model file (download page)",
+  "spriteGeneration.modelDestination": "Destination folder",
+  "spriteGeneration.folderOpened": "Workflow folder: {path}",
+  "spriteGeneration.resourcesFailed": "Unable to open: {error}",
+  "spriteGeneration.localFolderOnly":
+    "Connect to the local Shinsekai app to open bundled workflows. Model downloads and the setup guide remain available.",
   "spriteGeneration.setupServiceStep":
     "Check that your image service works on its own. H3 workflows are in ai/t2i/workflows/: drag minimax_h3_i2v.json onto the ComfyUI canvas, upload a reference, and run it. Use minimax_h3_t2v.json for text-to-video.",
   "spriteGeneration.setupConnectStep":

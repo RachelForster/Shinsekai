@@ -77,6 +77,16 @@
   gap: var(--space-3);
   margin-block: var(--space-3);
 }
+.sprite-generation__resources {
+  overflow-wrap: anywhere;
+}
+.sprite-generation__resource-title {
+  margin-block: var(--space-3) var(--space-2);
+  font-size: 14px;
+}
+.sprite-generation__resources .data-table-wrap {
+  margin-top: var(--space-2);
+}
 .sprite-generation__count {
   display: flex;
   gap: var(--space-2);

@@ -11,6 +11,8 @@
 
 ## 导入与试跑
 
+新世界的“立绘智能生成”窗口提供“打开工作流文件夹”，无需手动查找安装目录；“H3 模型下载页”和“H3 安装教程”也可以直接点击。
+
 1. 启动支持 H3 原生节点的 ComfyUI，打开它的网页。
 2. 将 `minimax_h3_i2v.json` 拖入画布，或通过工作流菜单打开该 JSON。使用文生视频时选择 `minimax_h3_t2v.json`。
 3. 图生视频需先在 **Upload your reference sprite before running** 节点上传自己的图片，替换 `reference.png`。检查模型已安装，画布比例与参考图匹配，然后点击运行。
@@ -18,4 +20,17 @@
 
 工作流可以保存到 `ComfyUI/user/default/workflows/` 方便以后打开。JSON 只包含节点与参数，模型权重需要另行安装。
 
+图生视频默认提示词保留参考图构图、裁切、机位和人物占比，支持半身或局部立绘；文生视频默认要求全身像。两者均使用固定镜头。手动运行时也应让画布比例匹配参考图，保留原有取景。
+
 模型下载与目录说明见上方官方教程。完整的新世界接入指南位于源码仓库的 `docs/CHARACTER_SPRITE_GENERATION_zh-CN.md`，包含连接参数与常见问题。
+
+## 模型下载
+
+配套无声工作流只需以下四个文件，点击名称进入下载页，放置目录相对于 ComfyUI：
+
+| 模型文件 | 放置目录 |
+| --- | --- |
+| [minimax_h3_fl2va_pruned_int8_convrot.safetensors](https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors) | `models/diffusion_models/` |
+| [qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors](https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors) | `models/text_encoders/` |
+| [minimax_h3_video_vae_int8_convrot.safetensors](https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/vae/minimax_h3_video_vae_int8_convrot.safetensors) | `models/vae/` |
+| [minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors](https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors) | `models/loras/` |

@@ -13,25 +13,39 @@ from application.media.sprite_tags import SPRITE_TAG_INSTRUCTIONS
 from core.media.asset_tags import normalize_generated_tags
 
 
-SPRITE_PROMPT_SUFFIX = ", full body, full scene, plain light, sprite"
+SPRITE_CAMERA_SUFFIX = ", locked-off static camera, fixed viewpoint and focal length throughout, plain light, sprite"
+SPRITE_PROMPT_SUFFIX = ", full body, full scene" + SPRITE_CAMERA_SUFFIX
+SPRITE_REFERENCE_PROMPT_SUFFIX = (
+    ", preserve the reference image's exact framing, crop, camera angle, character scale "
+    "and screen position throughout, keep all pose changes within the original frame"
+    + SPRITE_CAMERA_SUFFIX
+)
+LEGACY_SPRITE_PROMPT_SUFFIX = ", full body, full scene, plain light, sprite"
 
 
-def _planned_prompt_pair(value: Any) -> dict[str, str]:
+def _planned_prompt_pair(value: Any, *, has_reference: bool = False) -> dict[str, str]:
     pair = prompt_pair(value)
     action = re.sub(
         r"^make the character(?:\s+|(?=,)|$)", "", pair["prompt"], flags=re.IGNORECASE
     )
     action = action.strip().rstrip(".")
-    if action.lower().endswith(SPRITE_PROMPT_SUFFIX):
-        action = action[: -len(SPRITE_PROMPT_SUFFIX)]
+    for suffix in (
+        SPRITE_REFERENCE_PROMPT_SUFFIX,
+        SPRITE_PROMPT_SUFFIX,
+        LEGACY_SPRITE_PROMPT_SUFFIX,
+    ):
+        if action.lower().endswith(suffix.lower()):
+            action = action[: -len(suffix)]
+            break
     action = action.strip(" \t\r\n,.")
     action = re.sub(r"^stand and\s+", "", action, flags=re.IGNORECASE)
     if not action:
         raise ValueError("立绘提示词必须包含动作或表情")
+    suffix = SPRITE_REFERENCE_PROMPT_SUFFIX if has_reference else SPRITE_PROMPT_SUFFIX
     return prompt_pair(
         {
             **pair,
-            "prompt": f"make the character stand and {action}{SPRITE_PROMPT_SUFFIX}",
+            "prompt": f"make the character stand and {action}{suffix}",
         }
     )
 
@@ -59,9 +73,21 @@ def plan_sprites(config_store: Any, payload: dict) -> dict:
         raise ValueError("立绘数量必须为 1–12 的整数")
     if not setting:
         raise ValueError("请先填写人物性格与设定")
+    has_reference = bool(payload.get("referenceImage"))
+    framing_instructions = (
+        "有参考图时保持原图的构图、裁切范围、机位、人物占比与画面位置，不自行假设参考图是全身像。"
+        "半身像保持半身，局部像保持原裁切，不扩大取景来补全画面外的身体。"
+        "保持站立姿态不等于要求双脚入镜，手部动作在原画幅内表达，不必让双手都入镜。"
+        "prompt 不要加入 full body、full scene、head-to-toe 或补全身体等扩大取景的描述。"
+        if has_reference
+        else "无参考图时设计全身立绘，双脚着地并可见。"
+    )
+    suffix = SPRITE_REFERENCE_PROMPT_SUFFIX if has_reference else SPRITE_PROMPT_SUFFIX
     system = (
         "你是角色立绘动作设计师。仅根据人物性格和补充要求设计不同的表情、动作与姿态。"
-        "每张立绘始终保持站立，双脚着地，主要变化表情、手部和上半身动作。"
+        "每张立绘始终保持站立姿态，主要变化表情、手部和上半身动作。"
+        f"{framing_instructions}"
+        "全程保持固定镜头、固定视点与焦距，动作在既定取景范围内完成。"
         "不要设计坐、跪、蹲、躺、跳跃、飞行、行走或奔跑；即使补充要求涉及这些姿态，"
         "也改为表达同样情绪的站姿动作。"
         "每条 prompt 必须明确描述面部表情，包含眉眼或视线变化，以及嘴形变化，"
@@ -75,8 +101,7 @@ def plan_sprites(config_store: Any, payload: dict) -> dict:
         "例如 smile warmly with relaxed eyebrows, wave the open right hand beside the head, "
         "and rest the relaxed left hand at the side，"
         "或 smile shyly with lowered eyes and hold both hands together in front of the chest。"
-        "程序会将它拼成 make the character stand and <面部表情、动作与双手姿势位置>, "
-        "full body, full scene, plain light, sprite，"
+        f"程序会将它拼成 make the character stand and <面部表情、动作与双手姿势位置>{suffix}，"
         "因此 prompt 字段不要重复写 make the character、stand and 或这些固定后缀。"
         "仅在动作涉及道具时补充道具的必要描述，例如 smile gently with relaxed eyes, hold a small sketchbook in the left hand "
         "at chest height and point to it with the right index finger。"
@@ -94,7 +119,7 @@ def plan_sprites(config_store: Any, payload: dict) -> dict:
             "setting": setting,
             "count": count,
             "requirements": str(payload.get("requirements") or ""),
-            "hasReference": bool(payload.get("referenceImage")),
+            "hasReference": has_reference,
         },
         ensure_ascii=False,
     )
@@ -112,7 +137,11 @@ def plan_sprites(config_store: Any, payload: dict) -> dict:
     items = data.get("items") if isinstance(data, dict) else None
     if not isinstance(items, list) or len(items) != count:
         raise ValueError("提示词结果数量不匹配，请重试")
-    return {"items": [_planned_prompt_pair(item) for item in items]}
+    return {
+        "items": [
+            _planned_prompt_pair(item, has_reference=has_reference) for item in items
+        ]
+    }
 
 
 def render_sprite(

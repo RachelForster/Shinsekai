@@ -8,6 +8,7 @@ from application.diagnostics.logs import (
     _log_file_list,
     _log_snapshot,
 )
+from application.media.open_workflow_folder import open_t2i_workflow_folder
 from frontend_bridge_core.routes.file_transport import (
     media_thumbnail_batch_response,
     resolve_project_path,
@@ -31,6 +32,10 @@ def _list_logs(_request: ApiRequest) -> JsonResponse:
 
 def _browse_files(request: ApiRequest) -> JsonResponse:
     return JsonResponse(_browse_local_files(request.state, request.body))
+
+
+def _open_t2i_workflows(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(open_t2i_workflow_folder(Path(request.state.project_root_dir)))
 
 
 def _media_thumbnails(request: ApiRequest) -> JsonResponse:
@@ -71,6 +76,13 @@ UTILITY_ROUTES = (
         pattern="/api/files/browse",
         handler=_browse_files,
         name="files.browse",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/files/t2i-workflows/open",
+        handler=_open_t2i_workflows,
+        body_kind=BodyKind.NONE,
+        name="files.open_t2i_workflows",
     ),
     Route(
         methods=frozenset({"POST"}),

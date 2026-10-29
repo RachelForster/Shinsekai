@@ -625,13 +625,13 @@
         "Node name for S&R": "MiniMaxH3ImageToVideo"
       },
       "widgets_values": [
-        "Full body character sprite, consistent character design, gentle smile, relaxed standing pose. Simple plain background, full body visible, locked camera, subtle natural movement, no text or watermark.",
+        "make the character stand and smile warmly with relaxed eyebrows and gently curved lips, raise the open right hand beside the face and keep the left hand relaxed at the side, preserve the reference image's exact framing, crop, camera angle, character scale and screen position throughout, keep all pose changes within the original frame, locked-off static camera, fixed viewpoint and focal length throughout, plain light, sprite",
         480,
         832,
         107
       ],
       "widgets_values_named": {
-        "prompt": "Full body character sprite, consistent character design, gentle smile, relaxed standing pose. Simple plain background, full body visible, locked camera, subtle natural movement, no text or watermark.",
+        "prompt": "make the character stand and smile warmly with relaxed eyebrows and gently curved lips, raise the open right hand beside the face and keep the left hand relaxed at the side, preserve the reference image's exact framing, crop, camera angle, character scale and screen position throughout, keep all pose changes within the original frame, locked-off static camera, fixed viewpoint and focal length throughout, plain light, sprite",
         "width": 480,
         "height": 832,
         "length": 107

@@ -11,6 +11,8 @@ const draw = vi.fn();
 const save = vi.fn();
 const capture = vi.fn();
 const cutout = vi.fn();
+const openFolder = vi.fn();
+const openExternal = vi.fn();
 vi.mock("../../../entities/character/repository", () => ({
   planCharacterSprites: (...args: unknown[]) => plan(...args),
   renderCharacterSprite: (...args: unknown[]) => draw(...args),
@@ -18,7 +20,11 @@ vi.mock("../../../entities/character/repository", () => ({
   captureCharacterSpriteFrame: (...args: unknown[]) => capture(...args),
   removeCharacterSpriteBackground: (...args: unknown[]) => cutout(...args),
 }));
-vi.mock("../../../entities/files/repository", () => ({ fileUrl: (path: string) => `asset://${path}` }));
+vi.mock("../../../entities/files/repository", () => ({
+  fileUrl: (path: string) => `asset://${path}`,
+  openT2iWorkflowFolder: () => openFolder(),
+  openExternal: (url: string) => openExternal(url),
+}));
 vi.mock("../../../shared/ui", async (original) => ({
   ...(await original<typeof import("../../../shared/ui")>()),
   FilePicker: ({
@@ -70,6 +76,8 @@ async function drawAll() {
 describe("sprite generator", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    openFolder.mockResolvedValue({ path: "C:/Shinsekai/ai/t2i/workflows" });
+    openExternal.mockResolvedValue(undefined);
     plan.mockResolvedValue({ items: pairs });
     draw.mockImplementation(async (input) => ({
       ...input,
@@ -79,6 +87,38 @@ describe("sprite generator", () => {
     save.mockResolvedValue({ ...character, sprites: [...character.sprites, { path: "new.png" }] });
   });
   afterEach(cleanup);
+
+  it("opens the active workflow folder and official model and setup pages", async () => {
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: "Open workflow folder" }));
+    await screen.findByText("Workflow folder: C:/Shinsekai/ai/t2i/workflows");
+    expect(openFolder).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "H3 model downloads" }));
+    fireEvent.click(screen.getByRole("button", { name: "H3 setup guide" }));
+    expect(openExternal).toHaveBeenCalledWith("https://huggingface.co/Comfy-Org/MiniMax-H3/tree/main");
+    expect(openExternal).toHaveBeenCalledWith("https://docs.comfy.org/tutorials/video/minimax/minimax-h3-native");
+    fireEvent.click(screen.getByText("First use: connect an image generation service"));
+    fireEvent.click(screen.getByRole("link", { name: "minimax_h3_fl2va_pruned_int8_convrot.safetensors" }));
+    expect(openExternal).toHaveBeenCalledWith(
+      "https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+    );
+    expect(screen.getByText("models/diffusion_models/")).toBeInTheDocument();
+    expect(screen.getByText("models/text_encoders/")).toBeInTheDocument();
+    expect(screen.getByText("models/vae/")).toBeInTheDocument();
+    expect(screen.getByText("models/loras/")).toBeInTheDocument();
+    expect(draw).not.toHaveBeenCalled();
+  });
+
+  it("reports folder failures and keeps download links available for retry", async () => {
+    openFolder.mockRejectedValueOnce(new Error("file manager unavailable"));
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: "Open workflow folder" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("file manager unavailable");
+    expect(screen.getByRole("button", { name: "H3 model downloads" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Open workflow folder" }));
+    await screen.findByText("Workflow folder: C:/Shinsekai/ai/t2i/workflows");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
 
   it("plans from the latest personality with a reference, then imports only selected tagged images", async () => {
     const { imported } = mount();

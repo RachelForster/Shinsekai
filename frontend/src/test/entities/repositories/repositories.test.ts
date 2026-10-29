@@ -59,6 +59,7 @@ describe("entity repositories", () => {
         saveSystem: vi.fn().mockResolvedValue(systemConfig),
       },
       files: {
+        openT2iWorkflowFolder: vi.fn().mockResolvedValue({ path: "/app/ai/t2i/workflows" }),
         modelUrl: vi.fn(() => "/api/avatar/file"),
         browse: vi.fn().mockResolvedValue({ cwd: "/tmp", entries: [], roots: [] }),
         fileUrl: vi.fn((path: string) => `file://${path}`),
@@ -94,6 +95,8 @@ describe("entity repositories", () => {
     await config.saveApiConfig(apiConfig);
     await config.saveSystemConfig(systemConfig);
     await files.browseFiles({ path: "/tmp", showHidden: true });
+    await expect(files.openT2iWorkflowFolder()).resolves.toEqual({ path: "/app/ai/t2i/workflows" });
+    expect(platform.files.openT2iWorkflowFolder).toHaveBeenCalledTimes(1);
     expect(files.fileUrl("/tmp/a.png")).toBe("file:///tmp/a.png");
     expect(files.modelFileUrl("C:\\models\\alice.model3.json")).toBe("/api/avatar/file");
     expect(platform.files.modelUrl).toHaveBeenCalledWith("C:\\models\\alice.model3.json", "alice.model3.json");
@@ -191,6 +194,7 @@ describe("entity repositories", () => {
     const paths = Array.from({ length: 130 }, (_, index) => `/tmp/background-${index}.png`);
     const platform = {
       files: {
+        openT2iWorkflowFolder: vi.fn().mockResolvedValue({ path: "/app/ai/t2i/workflows" }),
         modelUrl: vi.fn(() => "/api/avatar/file"),
         browse: vi.fn().mockResolvedValue({ cwd: "/tmp", entries: [], roots: [] }),
         fileUrl: vi.fn((path: string) => `file://${path}`),
@@ -216,6 +220,7 @@ describe("entity repositories", () => {
     const paths = ["/tmp/background-a.png", "/tmp/background-b.png"];
     const platform = {
       files: {
+        openT2iWorkflowFolder: vi.fn().mockResolvedValue({ path: "/app/ai/t2i/workflows" }),
         modelUrl: vi.fn(() => "/api/avatar/file"),
         browse: vi.fn().mockResolvedValue({ cwd: "/tmp", entries: [], roots: [] }),
         fileUrl: vi.fn((path: string) => `file://${path}`),
@@ -252,6 +257,7 @@ describe("entity repositories", () => {
     const paths = Array.from({ length: 130 }, (_, index) => `/tmp/background-${index}.png`);
     const platform = {
       files: {
+        openT2iWorkflowFolder: vi.fn().mockResolvedValue({ path: "/app/ai/t2i/workflows" }),
         modelUrl: vi.fn(() => "/api/avatar/file"),
         browse: vi.fn().mockResolvedValue({ cwd: "/tmp", entries: [], roots: [] }),
         fileUrl: vi.fn((path: string) => `file://${path}`),

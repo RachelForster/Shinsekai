@@ -8,6 +8,8 @@
 
 文件位于新世界项目或运行目录下的 **`ai/t2i/workflows/`**。也可以通过下表链接下载 JSON，保存到自己方便查找的位置。
 
+立绘生成窗口提供 **“打开工作流文件夹”**，会通过系统文件管理器打开当前新世界实际运行目录中的工作流文件夹，并显示完整路径。旁边的 **“H3 模型下载页”** 和 **“H3 安装教程”** 可直接打开官方资源；展开首次使用说明后，还能点击每个模型文件进入对应下载页并查看放置目录。
+
 | 文件 | 应在哪里使用 |
 | --- | --- |
 | [minimax_h3_i2v.json](../ai/t2i/workflows/minimax_h3_i2v.json) | **导入 ComfyUI**，上传参考立绘，试跑图生视频。 |
@@ -25,12 +27,14 @@
 
 本项目附带的 API 工作流使用以下文件；目录相对于 ComfyUI：
 
-| 模型文件 | 放置目录 |
+| 模型文件（点击进入下载页） | 放置目录 |
 | --- | --- |
-| `minimax_h3_fl2va_pruned_int8_convrot.safetensors` | `models/diffusion_models/` |
-| `qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors` | `models/text_encoders/` |
-| `minimax_h3_video_vae_int8_convrot.safetensors` | `models/vae/` |
-| `minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors` | `models/loras/` |
+| [minimax_h3_fl2va_pruned_int8_convrot.safetensors](https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors) | `models/diffusion_models/` |
+| [qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors](https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors) | `models/text_encoders/` |
+| [minimax_h3_video_vae_int8_convrot.safetensors](https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/vae/minimax_h3_video_vae_int8_convrot.safetensors) | `models/vae/` |
+| [minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors](https://huggingface.co/Comfy-Org/MiniMax-H3/blob/main/loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors) | `models/loras/` |
+
+配套无声工作流只需要这四个模型文件，无需下载整个模型仓库。
 
 文件名必须与 API 工作流对应。若使用不同量化版本，请同步修改工作流的模型名称，并先独立验证该组合。官方可视化模板如果保留音频分支，还需按官方教程安装音频 VAE；项目附带的立绘 API 工作流输出无声视频，不使用音频分支。
 
@@ -38,7 +42,7 @@
 
 1. 启动 ComfyUI，打开它实际监听的地址。默认常见地址为 `http://127.0.0.1:8188`；本项目 H3 配置示例使用 `8189`，请按自己的服务填写。
 2. 将上表中的 `minimax_h3_i2v.json` 拖入 ComfyUI 画布。上传一张完整、人物居中的参考立绘，检查已安装的模型。附带工作流已经配置 8 步 Turbo；也可以使用官方教程的可视化模板或模板库中的 **MiniMax H3 I2V**，按模板启用 Turbo。
-3. 先用较低分辨率生成一段短视频。本项目测试参数为 **480×832、107 帧、24 fps、8 步**；调整时保持与所用 H3 模板兼容的尺寸和帧数。手动测试也要让画布比例接近参考图，避免默认画布将人物拉伸。可使用提示词：`make the character stand and smile with relaxed eyebrows, wave the open right hand beside the head and rest the left hand at the side, full body, full scene, plain light, sprite`。
+3. 先用较低分辨率生成一段短视频。本项目测试参数为 **480×832、107 帧、24 fps、8 步**；调整时保持与所用 H3 模板兼容的尺寸和帧数。手动测试也要让画布比例接近参考图，避免默认画布将人物拉伸。半身参考图保持半身取景；可在动作提示词后加上 `preserve the reference image's exact framing and crop, locked-off static camera, fixed viewpoint and focal length throughout`，不要同时要求 `full body, full scene`。
 4. 确认任务成功，并能在 ComfyUI 查看输出视频。需要无参考图生成时，再导入 `minimax_h3_t2v.json` 验证。先解决缺失节点、模型加载、显存不足等报错，然后再连接新世界。
 
 **可视化工作流与 API 工作流不同。** 不带 `_api` 的文件用于导入 ComfyUI；带 `_api` 的文件用于新世界提交任务。配套文件使用相同的节点 ID、模型与生成参数。不要把 API 文件无法正常展示为画布当成模型故障。第二步在新世界选择对应的 API 文件。自行修改模型或画布参数后，需同步修改 API 文件，或从 ComfyUI 重新导出 API 工作流，并确认实际节点 ID。
@@ -76,7 +80,21 @@ API 设定 → 图像生成服务，先选择“本机 ComfyUI”或“自定义
 
 保存角色并填写人物性格与设定后，在角色编辑页点击“立绘智能生成”。先选择一张现有立绘作为参考，将数量设为 1，生成提示词和标签，再点击“生成待处理立绘”。确认人物比例、表情和双手姿势符合预期后，再增加数量批量生成。有参考图时运行 H3 图生视频工作流；配置了 `text_only_workflow_path` 时，无参考图会自动使用文生视频工作流。当前自动提示词只描述动作、表情与道具，建议提供参考图传递人物外貌；没有参考图时无法保证与现有角色外观一致。T2I Manager 保持返回静态图片，ComfyUI 适配器会下载视频并自动提取中间帧。
 
-自动设计的提示词只包含动作、表情与必要道具，不描述人物外貌、服装或画风。每张立绘保持站立、双脚着地，主要变化表情、手部与上半身动作，避免坐、跪、蹲、躺、跳跃或行走等姿态。每条提示词都明确描述面部表情，包含眉眼／视线和嘴形的变化，例如眉眼放松地微笑、眯眼抿嘴或扬眉微张嘴；表情也要写入生图 prompt，并与中文标签一致。这里描述的是动态表情，不包含五官固有长相或颜色。每条提示词也都说明左右手的姿势与位置，非主要动作的手要交代，双手相同时可用 both hands。模型根据人物性格设计英文动作，程序统一使用 `make the character stand and <面部表情、动作、双手姿势与位置>, full body, full scene, plain light, sprite`，例如 `make the character stand and smile warmly with relaxed eyebrows, wave the open right hand beside the head and rest the relaxed left hand at the side, full body, full scene, plain light, sprite`。需要道具时可写 `make the character stand and smile gently with relaxed eyes, hold a small sketchbook in the left hand at chest height and point to it with the right index finger, full body, full scene, plain light, sprite`。手动编辑的提示词按原文生成。
+自动设计的提示词只包含动作、表情与必要道具，不描述人物外貌、服装或画风。每张立绘保持站立姿态，主要变化表情、手部与上半身动作，避免坐、跪、蹲、躺、跳跃或行走等姿态。每条提示词都明确描述眉眼／视线和嘴形的变化，并交代双手姿势与位置。动作在原画幅内完成；手脚被参考图裁切时，不要求为显示它们扩大取景。需要道具时只补充握持或展示动作所需的描述。
+
+### 固定镜头，保留参考图取景
+
+有参考图时，自动提示词保持原图的构图、裁切、机位、人物占比和画面位置：半身像保持半身，局部像保留原裁切。站立姿态不要求双脚可见，也不要求双手都入镜。程序不会追加 `full body, full scene`。无参考图时保留全身立绘要求；两种模式都会追加固定镜头、固定视点与焦距。
+
+例如，有参考图时可以使用：
+
+```text
+make the character stand and smile warmly with relaxed eyebrows and gently curved lips, raise the open right hand beside the face and keep the left hand relaxed at the side, preserve the reference image's exact framing, crop, camera angle, character scale and screen position throughout, keep all pose changes within the original frame, locked-off static camera, fixed viewpoint and focal length throughout, plain light, sprite
+```
+
+这些是“保持原图取景、固定机位”的正向描述。[H3 提示指南](https://docs.comfy.org/tutorials/video/minimax/minimax-h3-prompt-guide)建议使用正向描述，避免在 BasicGuider 工作流里堆叠否定词。画布比例也应匹配参考图；自动适配比例的设置见下文 `match_reference_aspect`。
+
+已有方案不会自动重写。增加或移除参考图后，可以手动修改旧提示词，或删除旧方案后重新规划；半身参考图的旧提示词应移除 `full body, full scene`。手动编辑的提示词始终按原文生成。
 
 生成后展开卡片里的“从生成视频重新选帧”，拖动视频进度条，点击“使用 … 秒的画面”。这一步只读取已经生成的视频，不会重新调用模型。每次截帧都有独立结果，失败会保留上一张预览。勾选需要的立绘后添加到现有立绘集，提示词配对的标签会一起保存。
 

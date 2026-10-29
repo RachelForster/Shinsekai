@@ -19,13 +19,25 @@ export const jaMessages: Record<MessageKey, string> = {
   "spriteGeneration.existingReference": "既存の立ち絵を使用",
   "spriteGeneration.chooseExisting": "既存の立ち絵を選択…",
   "spriteGeneration.clearReference": "参考画像を解除",
-  "spriteGeneration.optionalReference": "任意：外見の一貫性を保持",
+  "spriteGeneration.optionalReference": "任意：外見と元の画角を保持（半身像にも対応）",
   "spriteGeneration.count": "案の数",
   "spriteGeneration.plan": "プロンプトとタグを作成",
   "spriteGeneration.generatePending": "未生成を生成（{count}）",
   "spriteGeneration.setupHint":
-    "現在の人物設定と設定済みの画像生成サービスを使用します。案を追加しても既存の結果は保持されます。参考画像は次の生成に適用されます。",
+    "参考画像がある場合は元の画角と固定カメラを保持し、ない場合は全身像を作成します。追加の案は既存の結果を保持します。参考画像の有無を変更した場合は、案を作り直すか既存のプロンプトを編集してください。",
   "spriteGeneration.setupGuide": "初めて使う：画像生成サービスへの接続",
+  "spriteGeneration.workflowFolder": "ワークフローフォルダーを開く",
+  "spriteGeneration.modelDownloads": "H3 モデルのダウンロード",
+  "spriteGeneration.setupTutorial": "H3 セットアップガイド",
+  "spriteGeneration.modelFiles": "同梱ワークフローに必要なモデル",
+  "spriteGeneration.modelFilesHint":
+    "同梱の無音動画ワークフローに必要なのは以下の4ファイルです。リポジトリ全体のダウンロードは不要です。ファイル名をクリックしてダウンロードページを開き、右のディレクトリに配置してください。",
+  "spriteGeneration.modelFile": "モデルファイル（ダウンロードページ）",
+  "spriteGeneration.modelDestination": "配置ディレクトリ",
+  "spriteGeneration.folderOpened": "ワークフローフォルダー：{path}",
+  "spriteGeneration.resourcesFailed": "開けませんでした：{error}",
+  "spriteGeneration.localFolderOnly":
+    "ローカルの新世界に接続してワークフローフォルダーを開いてください。モデルのダウンロードページとガイドは利用できます。",
   "spriteGeneration.setupServiceStep":
     "まず画像サービス単体で生成できることを確認してください。H3 用ファイルは ai/t2i/workflows/ にあります。minimax_h3_i2v.json を ComfyUI のキャンバスにドラッグし、参考画像をアップロードして実行します。テキストからの動画生成には minimax_h3_t2v.json を使います。",
   "spriteGeneration.setupConnectStep":

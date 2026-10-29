@@ -18,13 +18,24 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "spriteGeneration.existingReference": "使用角色现有立绘",
   "spriteGeneration.chooseExisting": "选择现有立绘…",
   "spriteGeneration.clearReference": "移除参考图",
-  "spriteGeneration.optionalReference": "可选：保持人物外观一致",
+  "spriteGeneration.optionalReference": "可选：保持人物外观与原图取景，支持半身像",
   "spriteGeneration.count": "方案数量",
   "spriteGeneration.plan": "生成提示词与标签",
   "spriteGeneration.generatePending": "生成待处理立绘（{count}）",
   "spriteGeneration.setupHint":
-    "提示词使用当前人物设定，图片由已配置的图像生成服务生成。新增方案会保留已有结果，参考图用于后续生成。",
+    "有参考图时按原图取景设计提示词，保持固定镜头；无参考图时默认全身像。新增方案保留已有结果，改变是否使用参考图后，请重新规划或调整已有提示词。",
   "spriteGeneration.setupGuide": "首次使用：如何连接图像生成服务？",
+  "spriteGeneration.workflowFolder": "打开工作流文件夹",
+  "spriteGeneration.modelDownloads": "H3 模型下载页",
+  "spriteGeneration.setupTutorial": "H3 安装教程",
+  "spriteGeneration.modelFiles": "配套工作流所需模型",
+  "spriteGeneration.modelFilesHint":
+    "配套的无声视频工作流只需要以下四个模型，不必下载整个仓库。点击文件名打开下载页，按右侧目录放到 ComfyUI 下。",
+  "spriteGeneration.modelFile": "模型文件（下载页）",
+  "spriteGeneration.modelDestination": "放置目录",
+  "spriteGeneration.folderOpened": "工作流目录：{path}",
+  "spriteGeneration.resourcesFailed": "无法打开：{error}",
+  "spriteGeneration.localFolderOnly": "请在连接本机新世界后打开工作流文件夹。模型下载页和安装教程仍可使用。",
   "spriteGeneration.setupServiceStep":
     "先确认图像服务能独立生成。H3 工作流在项目目录 ai/t2i/workflows/：将 minimax_h3_i2v.json 拖入 ComfyUI 画布，上传参考图后试跑；文生视频使用 minimax_h3_t2v.json。",
   "spriteGeneration.setupConnectStep":

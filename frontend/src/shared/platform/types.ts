@@ -1782,6 +1782,7 @@ export interface ShinsekaiPlatform {
     status: (input: ModelAssetRef) => Promise<ModelAssetStatus>;
   };
   files: {
+    openT2iWorkflowFolder: () => Promise<{ path: string }>;
     modelUrl: (modelPath: string, path: string) => string;
     browse: (options?: { path?: string; showHidden?: boolean }) => Promise<FileBrowserSnapshot>;
     fileUrl: (path: string) => string;

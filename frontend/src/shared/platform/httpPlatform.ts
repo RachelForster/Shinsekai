@@ -1311,6 +1311,9 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         }),
     },
     files: {
+      openT2iWorkflowFolder() {
+        return requestJson<{ path: string }>(apiBase, "/api/files/t2i-workflows/open", { method: "POST" });
+      },
       browse(options) {
         return requestJson<FileBrowserSnapshot>(apiBase, "/api/files/browse", {
           body: JSON.stringify(options ?? {}),
