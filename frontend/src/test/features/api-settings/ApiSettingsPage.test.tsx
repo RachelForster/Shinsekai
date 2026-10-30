@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => ({
   saveSystemConfig: vi.fn(),
   showChatSurface: vi.fn(),
   testLlmConnection: vi.fn(),
+  testComfyuiConnection: vi.fn(),
   updateRuntimeStatusFromSnapshot: vi.fn(),
   useChatLaunchGuard: vi.fn(),
 }));
@@ -44,6 +45,7 @@ vi.mock("../../../entities/config/repository", () => ({
   saveApiConfig: (...args: unknown[]) => mocks.saveApiConfig(...args),
   saveSystemConfig: (...args: unknown[]) => mocks.saveSystemConfig(...args),
   testLlmConnection: (...args: unknown[]) => mocks.testLlmConnection(...args),
+  testComfyuiConnection: (...args: unknown[]) => mocks.testComfyuiConnection(...args),
   ttsBundleRecommendationQueryKey: ["tts", "bundleRecommendation"],
 }));
 

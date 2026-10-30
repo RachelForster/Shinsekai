@@ -803,21 +803,61 @@ export const jaMessages: Record<MessageKey, string> = {
   "api.resume.title": "チャット起動",
   "api.t2i.advanced": "高度なノード設定",
   "api.t2i.apiUrl": "ComfyUI API URL",
-  "api.t2i.comfyDir": "ComfyUI フォルダ",
+  "api.t2i.testConnection": "接続を確認",
+  "api.t2i.testingConnection": "確認中…",
+  "api.t2i.connectionHint": "保存せずに現在の URL を確認します。サーバーの起動や画像生成は行いません。",
+  "api.t2i.connectionScope": "API 接続のみ確認。保存後に一枚生成し、ワークフローとモデルを確認してください。",
+  "api.t2i.connectionRequestFailed":
+    "確認できませんでした。新世界のローカルサービスが起動していることを確認して再試行してください。",
+  "api.t2i.connection.connected": "ComfyUI API に接続できました",
+  "api.t2i.connection.invalid_url":
+    "URL の形式が正しくありません。認証情報、クエリ、フラグメントを含まない http:// または https:// のサーバールート URL を入力してください。",
+  "api.t2i.connection.timeout":
+    "確認がタイムアウトしました。ComfyUI の起動完了を待ち、URL とポートを確認して再試行してください。",
+  "api.t2i.connection.unreachable":
+    "接続できません。ComfyUI を起動し、実際の URL とポートを確認してください。リモート環境ではネットワークとファイアウォールも確認してください。",
+  "api.t2i.connection.auth_required":
+    "認証が必要、またはアクセスが拒否されました。プロキシとアクセス制限を確認してください。このアダプターでは追加の認証情報が設定されていません。",
+  "api.t2i.connection.http_error":
+    "サーバーは応答しましたが、ComfyUI の状態 API が利用できません。ポート、パス、ComfyUI のログを確認してください。",
+  "api.t2i.connection.not_comfyui":
+    "ComfyUI のシステム状態が返されませんでした。通常の Web ページ、ログインページ、リダイレクトの可能性があります。実際の API ルート URL を入力してください。",
+  "api.t2i.connection.tls_error": "HTTPS 証明書の検証に失敗しました。URL とサーバーの証明書設定を確認してください。",
+  "api.t2i.apiUrlHint": "ComfyUI の URL とポートを入力します。/prompt は付けません。",
+  "api.t2i.autoStart": "新世界から公式 Windows ポータブル版を起動する",
+  "api.t2i.autoStartHint":
+    "python_embeded と ComfyUI を含む公式ポータブル版のみ対応。その他は専用ランチャーを使用してください。",
+  "api.t2i.manualStartHint":
+    "秋葉／绘世や Desktop は専用ランチャーで起動してから接続します。生成中は ComfyUI を起動したままにしてください。",
+  "api.t2i.comfyDir": "公式ポータブル版のルートフォルダ",
   "api.t2i.description": "ComfyUI を使った CG や立ち絵生成が必要な場合だけ画像生成を設定します。",
   "api.t2i.modeCustom": "カスタム",
   "api.t2i.modeCustomHint": "既存のエンドポイントとワークフロー設定を保持します。",
   "api.t2i.modeLocal": "ローカル ComfyUI",
-  "api.t2i.modeLocalHint": "既定のローカル ComfyUI URL とノード ID を使います。",
+  "api.t2i.modeLocalHint": "秋葉などのパッケージを含むローカル環境に接続します。既存のポートとノード設定は保持します。",
   "api.t2i.modeSkip": "未設定にする",
   "api.t2i.modeSkipHint": "画像生成をいったん無効のままにします。",
   "api.t2i.outputNode": "出力ノード ID",
   "api.t2i.promptNode": "プロンプトノード ID",
   "api.t2i.provider": "T2I プロバイダー",
-  "api.t2i.quickDefaults": "ComfyUI 既定値を適用",
+  "api.t2i.quickDefaults": "未設定の既定値を補完",
   "api.t2i.title": "画像生成 (T2I)",
-  "api.t2i.workflow": "ワークフロー JSON",
-  "api.t2i.workflowPick": "ワークフロー JSON を選択",
+  "api.t2i.workflow": "API ワークフロー JSON",
+  "api.t2i.workflowPick": "API ワークフロー JSON を選択",
+  "api.t2i.workflowHint": "API 形式の JSON を使用。同梱 H3：プロンプト 131 / 出力 92 / 参照画像 114。",
+  "comfyGuide.title": "初回接続ガイド（秋葉パッケージ対応）",
+  "comfyGuide.startTitle": "自分の ComfyUI を起動",
+  "comfyGuide.start":
+    "秋葉／绘世は付属ランチャー、その他は従来の方法で起動します。ComfyUI の Web ページが使える状態になるまで待ち、サーバー URL とポートを確認してください。起動済みサーバーに接続する場合、新世界の自動起動をオフにします。",
+  "comfyGuide.workflowTitle": "ComfyUI で先に一度実行",
+  "comfyGuide.workflow":
+    "キャンバス用ワークフローを読み込み、必要なモデルとノードを導入し、参照画像をアップロードして実行します。H3 は「ワークフローフォルダを開く」の minimax_h3_i2v.json を使えます。H3 標準ノードがない場合は ComfyUI 本体の更新が必要です。API が互換でもモデルとノードの導入は別途必要です。",
+  "comfyGuide.exportTitle": "API 形式を用意",
+  "comfyGuide.export":
+    "独自ワークフローは ComfyUI の File → Export (API) で保存します。旧版は開発者モードを有効にして Save (API Format) を使用してください。同梱 H3 には minimax_h3_i2v_api.json があるので変換は不要です。キャンバス版は ComfyUI、API 版は新世界で使います。",
+  "comfyGuide.connectTitle": "新世界に保存して一枚試す",
+  "comfyGuide.connect":
+    "API 設定で comfyui を選び、同じサーバーのルート URL とローカルの API JSON パス、ワークフローのノード ID を指定します。同梱 H3 はプロンプト 131、出力 92、参照画像 114 です。保存後、一枚生成してから一括生成に進んでください。",
   "api.tts.bundleCancel": "ダウンロードを中止",
   "api.tts.bundleCancelFailed": "TTS 統合パッケージのダウンロードを中止できませんでした。",
   "api.tts.bundleCancelUnavailable": "中止できる TTS 統合パッケージのダウンロードがありません。",

@@ -5,7 +5,7 @@ import { openExternal, openT2iWorkflowFolder } from "../../entities/files/reposi
 import { H3_MODEL_REPOSITORY_URL, H3_REQUIRED_MODELS, H3_SETUP_GUIDE_URL } from "../../shared/assets/t2iWorkflows";
 import { useI18n } from "../../shared/i18n";
 import { platformErrorCode } from "../../shared/platform/errors";
-import { AsyncButton, Button, DataTable } from "../../shared/ui";
+import { AsyncButton, Button, ComfyUIConnectionGuide, DataTable } from "../../shared/ui";
 
 export function SpriteGenerationSetupGuide() {
   const { t } = useI18n();
@@ -95,11 +95,7 @@ export function SpriteGenerationSetupGuide() {
       ) : null}
       <details>
         <summary className="sprite-generation__options">{t("spriteGeneration.setupGuide")}</summary>
-        <ol className="sprite-generation__hint">
-          <li>{t("spriteGeneration.setupServiceStep")}</li>
-          <li>{t("spriteGeneration.setupConnectStep")}</li>
-          <li>{t("spriteGeneration.setupTrialStep")}</li>
-        </ol>
+        <ComfyUIConnectionGuide />
         <h3 className="sprite-generation__resource-title">{t("spriteGeneration.modelFiles")}</h3>
         <p className="sprite-generation__hint">{t("spriteGeneration.modelFilesHint")}</p>
         <DataTable

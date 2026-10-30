@@ -1,5 +1,6 @@
 export * from "./AudioPlayer";
 export * from "./Button";
+export * from "./ComfyUIConnectionGuide";
 export * from "./CustomSelect";
 export * from "./DataTable";
 export * from "./Dialog";

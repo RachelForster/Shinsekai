@@ -52,6 +52,7 @@ describe("entity repositories", () => {
         downloadTtsBundle: vi.fn().mockResolvedValue({ path: "/runtime", provider: "genie-tts" }),
         fetchLlmModels: vi.fn().mockResolvedValue([{ id: "deepseek-chat", tags: ["chat"] }]),
         testLlmConnection: vi.fn().mockResolvedValue({ message: "ok" }),
+        testComfyuiConnection: vi.fn().mockResolvedValue({ ok: true, code: "connected" as const }),
         get: vi.fn().mockResolvedValue(sampleConfig),
         getMemoryStatus: vi.fn().mockResolvedValue({ status: "ready" }),
         getTtsBundleRecommendation: vi.fn().mockResolvedValue({ gpus: [], kind: "genie", platform: "linux" }),
@@ -81,6 +82,7 @@ describe("entity repositories", () => {
 
     await expect(config.getAppConfig()).resolves.toBe(sampleConfig);
     await config.fetchLlmModels({ apiKey: "key", baseUrl: "https://api.example.test", provider: "Deepseek" });
+    await config.testComfyuiConnection({ baseUrl: "http://localhost:8189" });
     await config.testLlmConnection({
       apiKey: "key",
       baseUrl: "https://api.example.test",
@@ -151,6 +153,7 @@ describe("entity repositories", () => {
       provider: "Deepseek",
     });
     expect(platform.config.downloadTtsBundle).toHaveBeenCalledWith({ kind: "genie" }, taskOptions);
+    expect(platform.config.testComfyuiConnection).toHaveBeenCalledWith({ baseUrl: "http://localhost:8189" });
     expect(platform.config.cancelTtsBundleDownload).toHaveBeenCalledWith("task-1");
     expect(platform.config.detectNetworkProxy).toHaveBeenCalledWith();
     expect(platform.files.browse).toHaveBeenCalledWith({ path: "/tmp", showHidden: true });

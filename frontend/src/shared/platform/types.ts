@@ -925,6 +925,21 @@ export interface LlmConnectionTestResult {
   message: string;
 }
 
+export interface ComfyUIConnectionTestResult {
+  ok: boolean;
+  code:
+    | "connected"
+    | "invalid_url"
+    | "timeout"
+    | "unreachable"
+    | "auth_required"
+    | "http_error"
+    | "not_comfyui"
+    | "tls_error";
+  httpStatus?: number;
+  serverVersion?: string;
+}
+
 export interface PluginUninstallResult {
   folderNote?: string;
   message: string;
@@ -1785,6 +1800,7 @@ export interface ShinsekaiPlatform {
       model: string;
       provider: string;
     }) => Promise<LlmConnectionTestResult>;
+    testComfyuiConnection: (input: { baseUrl: string }) => Promise<ComfyUIConnectionTestResult>;
     get: () => Promise<AppConfig>;
     detectNetworkProxy: () => Promise<NetworkProxyDetectionResult>;
     getMemoryStatus: (options?: { startLoading?: boolean }) => Promise<Mem0Status>;

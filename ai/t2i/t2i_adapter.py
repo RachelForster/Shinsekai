@@ -4,6 +4,7 @@ import os
 import subprocess
 import base64
 import json
+import ipaddress
 import time
 import requests
 import shlex
@@ -12,6 +13,7 @@ from urllib.parse import urlencode, urlsplit
 from typing import Optional, Dict, Any
 
 from sdk.adapters.t2i import T2IAdapter
+from ai.t2i.comfyui_connection import probe_comfyui_connection
 
 
 class StableDiffusionAdapter(T2IAdapter):
@@ -113,6 +115,7 @@ class ComfyUIT2IAdapter(T2IAdapter):
     @classmethod
     def get_config_schema(cls):
         return {
+            "auto_start": {"type": "bool", "default": False, "label": "由新世界自动启动官方 Windows 便携版"},
             "reference_node_id": {"type": "str", "default": "", "label": "参考图 LoadImage 节点 ID（单个节点时自动识别）"},
             "generation_timeout": {"type": "float", "default": 600, "label": "等待图像生成的最长秒数", "min": 1},
             "text_only_workflow_path": {"type": "str", "default": "", "label": "无参考图时使用的 API 工作流（可选）"},
@@ -130,7 +133,8 @@ class ComfyUIT2IAdapter(T2IAdapter):
                  generation_timeout: float = 600,
                  text_only_workflow_path: str = "",
                  startup_args: str = "--windows-standalone-build",
-                 match_reference_aspect: bool = True):
+                 match_reference_aspect: bool = True,
+                 auto_start: Optional[bool] = None):
         """
         初始化 ComfyUI Adapter。
 
@@ -140,11 +144,13 @@ class ComfyUIT2IAdapter(T2IAdapter):
             prompt_node_id (str): 工作流 JSON 中用于接收文本提示的节点的 ID。
             output_node_id (str): 工作流 JSON 中用于保存或返回图像的节点的 ID (通常是 Save Image 节点)。
         """
-        self.api_url = api_url.rstrip('/')
+        self.api_url = api_url.strip().rstrip('/')
         self.workflow_path = workflow_path
         self.prompt_node_id = prompt_node_id
         self.output_node_id = output_node_id
         self.work_path = work_path
+        # Preserve existing portable installations; new configurations opt in explicitly.
+        self.auto_start = bool(work_path.strip()) if auto_start is None else auto_start
         self.reference_node_id = str(reference_node_id or "")
         self.generation_timeout = max(1, float(generation_timeout))
         self.text_only_workflow_path = text_only_workflow_path
@@ -156,11 +162,9 @@ class ComfyUIT2IAdapter(T2IAdapter):
         self._start_server_process()
 
     def _is_server_ready(self) -> bool:
-        try:
-            response = requests.get(self.api_url, timeout=self.REQUEST_TIMEOUT_SECONDS)
-            return response.status_code < 500
-        except requests.exceptions.RequestException:
-            return False
+        return probe_comfyui_connection(
+            self.api_url, timeout=self.REQUEST_TIMEOUT_SECONDS
+        )["ok"]
 
     def _wait_for_server_ready(self, timeout_seconds: int = STARTUP_TIMEOUT_SECONDS) -> bool:
         deadline = time.time() + timeout_seconds
@@ -178,14 +182,30 @@ class ComfyUIT2IAdapter(T2IAdapter):
             print("ComfyUI server is already running.")
             return
 
-        print("ComfyUI server not found, attempting to start...")
+        if not getattr(self, "auto_start", bool(self.work_path.strip())):
+            raise RuntimeError(
+                "无法连接 ComfyUI API。请先用秋叶／绘世等自带启动器或原有方式启动 ComfyUI，"
+                "等待网页可用，再将相同的服务根地址（含实际端口，不含 /prompt）填入 API 设定。"
+                "整合包无需填写 ComfyUI 目录，也无需开启自动启动。"
+            )
 
-        if self.work_path=="":
-            return
+        host = urlsplit(self.api_url).hostname or ""
+        try:
+            local = host.lower() == "localhost" or ipaddress.ip_address(host).is_loopback
+        except ValueError:
+            local = False
+        if not local:
+            raise ValueError("自动启动仅支持本机 ComfyUI；连接其他电脑时请关闭自动启动并在服务端启动 ComfyUI。")
 
         os_path = self.work_path
         embeded_python_path = os.path.join(os_path, "python_embeded", "python.exe")
         api_path = os.path.join(os_path, "ComfyUI","main.py")
+        if not os.path.isfile(embeded_python_path) or not os.path.isfile(api_path):
+            raise ValueError(
+                "自动启动目录必须是官方 Windows 便携版根目录，包含 python_embeded/python.exe "
+                "和 ComfyUI/main.py。秋叶／绘世、桌面版或其他安装方式请关闭自动启动，"
+                "使用自己的启动器启动后连接。"
+            )
 
         # Use subprocess.Popen to start the server in the background
         port = urlsplit(self.api_url).port or 8188
@@ -198,16 +218,25 @@ class ComfyUIT2IAdapter(T2IAdapter):
         if self._wait_for_server_ready():
             print("ComfyUI server is ready.")
         else:
-            print("ComfyUI server is still not ready after waiting.")
+            raise RuntimeError("ComfyUI 启动后仍无法连接 API，请检查 ComfyUI 启动日志和 API 地址中的端口。")
 
     def _load_workflow_template(self) -> Dict[str, Any]:
         """加载 ComfyUI 工作流 JSON 文件作为模板。"""
-        try:
-            with open(self.workflow_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"Error loading ComfyUI workflow template from {self.workflow_path}: {e}")
-            raise
+        return self._read_api_workflow(self.workflow_path)
+
+    @staticmethod
+    def _read_api_workflow(path: str) -> Dict[str, Any]:
+        with open(path, encoding="utf-8-sig") as source:
+            workflow = json.load(source)
+        if not isinstance(workflow, dict) or not workflow:
+            raise ValueError("ComfyUI API 工作流必须是非空的节点 JSON 对象。")
+        if isinstance(workflow.get("nodes"), list) or isinstance(workflow.get("links"), list):
+            raise ValueError(
+                "选择的是 ComfyUI 画布工作流，不是 API 格式。请在 ComfyUI 中选择"
+                "文件 → 导出(API)；旧版需先启用开发者模式，再使用 Save (API Format)。"
+                "新世界内置 H3 工作流请选择文件名带 _api.json 的版本。"
+            )
+        return workflow
 
     def generate_image(self, prompt: str, file_path: Optional[str] = None, **kwargs) -> Optional[str]:
         """
@@ -230,8 +259,7 @@ class ComfyUIT2IAdapter(T2IAdapter):
         # 1. 深度复制模板以避免修改原始结构
         prompt_workflow = copy.deepcopy(self.workflow_template)
         if not kwargs.get("reference_image_path") and self.text_only_workflow_path:
-            with open(self.text_only_workflow_path, encoding="utf-8-sig") as source:
-                prompt_workflow = json.load(source)
+            prompt_workflow = self._read_api_workflow(self.text_only_workflow_path)
 
         # 2. 注入主 Prompt
         # 假设 CLIPTextEncode 节点 (ID: self.prompt_node_id) 的输入是 index 1

@@ -816,21 +816,62 @@ export const enMessages: Record<MessageKey, string> = {
   "api.resume.title": "Launch chat",
   "api.t2i.advanced": "Advanced node mapping",
   "api.t2i.apiUrl": "ComfyUI API URL",
-  "api.t2i.comfyDir": "ComfyUI folder",
+  "api.t2i.testConnection": "Test connection",
+  "api.t2i.testingConnection": "Testing…",
+  "api.t2i.connectionHint": "Test the current URL without saving, starting the server, or generating images.",
+  "api.t2i.connectionScope": "API connectivity only. Save and generate one sprite to check the workflow and models.",
+  "api.t2i.connectionRequestFailed":
+    "Could not complete the check. Confirm that Shinsekai's local service is running and retry.",
+  "api.t2i.connection.connected": "Connected to the ComfyUI API",
+  "api.t2i.connection.invalid_url":
+    "Invalid URL. Enter an http:// or https:// server root URL without credentials, query parameters, or a fragment.",
+  "api.t2i.connection.timeout":
+    "The check timed out. ComfyUI may still be starting. Wait until its web page works, check the URL and port, and retry.",
+  "api.t2i.connection.unreachable":
+    "Could not connect. Start ComfyUI and check its URL and actual port. For remote servers, also check the network and firewall.",
+  "api.t2i.connection.auth_required":
+    "The server requires authentication or denied access. Check proxy and access restrictions; extra authentication is not configured in this adapter.",
+  "api.t2i.connection.http_error":
+    "The server responded, but the ComfyUI status endpoint is unavailable. Check the port, service path, and ComfyUI logs.",
+  "api.t2i.connection.not_comfyui":
+    "This URL did not return ComfyUI system status. It may be a web page, login page, or redirect. Enter the actual ComfyUI API root URL.",
+  "api.t2i.connection.tls_error":
+    "HTTPS certificate verification failed. Check the server URL and certificate configuration.",
+  "api.t2i.apiUrlHint": "Enter the ComfyUI web URL with its port, without /prompt.",
+  "api.t2i.autoStart": "Let Shinsekai start the official Windows portable build",
+  "api.t2i.autoStartHint":
+    "Requires the official portable build with python_embeded and ComfyUI. Use your own launcher for other builds.",
+  "api.t2i.manualStartHint":
+    "For Aki / HuiShi or Desktop, start with your own launcher, then connect below. Keep ComfyUI running during generation.",
+  "api.t2i.comfyDir": "Official portable root folder",
   "api.t2i.description": "Configure image generation only when you want ComfyUI-driven CG and sprite workflows.",
   "api.t2i.modeCustom": "Custom",
   "api.t2i.modeCustomHint": "Keep your existing endpoint and workflow fields.",
   "api.t2i.modeLocal": "Local ComfyUI",
-  "api.t2i.modeLocalHint": "Use the default local ComfyUI endpoint and node ids.",
+  "api.t2i.modeLocalHint": "Connect to a local server, including Aki bundles. Keep existing port and node settings.",
   "api.t2i.modeSkip": "Skip setup",
   "api.t2i.modeSkipHint": "Leave image generation disabled for now.",
   "api.t2i.outputNode": "Output node id",
   "api.t2i.promptNode": "Prompt node id",
   "api.t2i.provider": "T2I provider",
-  "api.t2i.quickDefaults": "Apply ComfyUI defaults",
+  "api.t2i.quickDefaults": "Fill missing defaults",
   "api.t2i.title": "Image generation (T2I)",
-  "api.t2i.workflow": "Workflow JSON",
-  "api.t2i.workflowPick": "Choose workflow JSON",
+  "api.t2i.workflow": "API workflow JSON",
+  "api.t2i.workflowPick": "Choose API workflow JSON",
+  "api.t2i.workflowHint": "Use API-format JSON. Bundled H3: prompt 131 / output 92 / reference 114.",
+  "comfyGuide.title": "First connection guide (including Aki bundles)",
+  "comfyGuide.startTitle": "Start your own ComfyUI",
+  "comfyGuide.start":
+    "Use the bundle's launcher for Aki / HuiShi, or your usual launch method for other installations. Wait until the ComfyUI web page works and note its server URL and port. Turn off Shinsekai auto-start when connecting to an existing server.",
+  "comfyGuide.workflowTitle": "Run the workflow in ComfyUI first",
+  "comfyGuide.workflow":
+    "Import the canvas workflow, install its models and nodes, upload a reference, and run it. For H3, use minimax_h3_i2v.json from Open workflow folder. Missing native H3 nodes require a ComfyUI core update. API compatibility does not install models or nodes.",
+  "comfyGuide.exportTitle": "Prepare an API workflow",
+  "comfyGuide.export":
+    "For custom workflows, choose File → Export (API) in ComfyUI. Older versions require developer mode and Save (API Format). Bundled H3 already includes minimax_h3_i2v_api.json. Import the canvas version into ComfyUI and select the API version in Shinsekai.",
+  "comfyGuide.connectTitle": "Save settings in Shinsekai and try one sprite",
+  "comfyGuide.connect":
+    "In API settings, select comfyui, enter the same server root URL and a local API JSON path, and set node IDs for your workflow. Bundled H3 uses prompt 131, output 92, and reference 114. Save, generate one sprite, then proceed to batches.",
   "api.tts.bundleCancel": "Cancel download",
   "api.tts.bundleCancelFailed": "Could not cancel the TTS bundle download.",
   "api.tts.bundleCancelUnavailable": "No running TTS bundle download to cancel.",

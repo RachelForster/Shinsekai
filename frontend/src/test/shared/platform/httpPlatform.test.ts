@@ -402,6 +402,20 @@ describe("http platform", () => {
     );
   });
 
+  it("checks ComfyUI connectivity with the current URL through the bridge", async () => {
+    const fetchMock = vi.fn(() => mockJsonResponse({ ok: false, code: "timeout" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    expect(await platform.config.testComfyuiConnection({ baseUrl: "http://localhost:8189" })).toEqual({
+      ok: false,
+      code: "timeout",
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/config/comfyui-connection-test",
+      expect.objectContaining({ body: JSON.stringify({ baseUrl: "http://localhost:8189" }), method: "POST" }),
+    );
+  });
+
   it("starts TTS bundle download tasks through the bridge", async () => {
     const task = {
       createdAt: 1,

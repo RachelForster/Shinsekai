@@ -54,6 +54,7 @@ import type {
   LogSnapshot,
   LlmModelOption,
   LlmConnectionTestResult,
+  ComfyUIConnectionTestResult,
   ImageAutoLabelResult,
   McpConfig,
   McpToolPreview,
@@ -1258,6 +1259,11 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         }),
       testLlmConnection: (input) =>
         requestJson<LlmConnectionTestResult>(apiBase, "/api/config/llm-connection-test", {
+          body: JSON.stringify(input),
+          method: "POST",
+        }),
+      testComfyuiConnection: (input) =>
+        requestJson<ComfyUIConnectionTestResult>(apiBase, "/api/config/comfyui-connection-test", {
           body: JSON.stringify(input),
           method: "POST",
         }),

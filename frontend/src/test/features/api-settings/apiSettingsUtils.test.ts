@@ -192,6 +192,18 @@ describe("API settings utilities", () => {
 
   it("uses credentials from the corresponding provider independently of the active LLM", () => {
     const config = apiConfig({
+  it("preserves a configured local ComfyUI port and workflow node IDs when filling defaults", () => {
+    const configured = apiConfig({
+      t2i_api_url: "http://localhost:8189",
+      t2i_default_workflow_path: "D:/minimax_h3_i2v_api.json",
+      t2i_provider: "comfyui",
+      t2i_prompt_node_id: "131",
+      t2i_output_node_id: "92",
+      t2i_work_path: "",
+    });
+    expect(applyT2iSetupMode(configured, "local")).toEqual(configured);
+  });
+
       llm_api_key: { ChatGPT: "chat-key", Deepseek: "shared-key" },
       llm_base_url: "https://api.openai.com/v1",
       llm_base_urls: {

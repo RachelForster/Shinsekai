@@ -460,9 +460,7 @@ export function applyT2iSetupMode(config: ApiConfig, mode: T2iSetupMode): ApiCon
     return {
       ...config,
       ...baseDefaults,
-      t2i_api_url: DEFAULT_T2I_API_URL,
-      t2i_output_node_id: DEFAULT_T2I_OUTPUT_NODE_ID,
-      t2i_prompt_node_id: DEFAULT_T2I_PROMPT_NODE_ID,
+      t2i_api_url: inferT2iSetupMode(config) === "local" ? config.t2i_api_url : DEFAULT_T2I_API_URL,
       t2i_provider: DEFAULT_T2I_PROVIDER,
     };
   }

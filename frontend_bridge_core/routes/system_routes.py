@@ -93,6 +93,12 @@ def _test_llm_connection_route(request: ApiRequest) -> JsonResponse:
         return _llm_error_response(exc, fallback_message="LLM 连通检测失败。")
 
 
+def _test_comfyui_connection_route(request: ApiRequest) -> JsonResponse:
+    from ai.t2i.comfyui_connection import probe_comfyui_connection
+
+    return JsonResponse(probe_comfyui_connection(str(request.body.get("baseUrl") or "")))
+
+
 def _cancel_task(request: ApiRequest) -> JsonResponse:
     return JsonResponse(_request_task_cancel(request.state, request.params["task_id"]))
 
@@ -156,6 +162,12 @@ SYSTEM_ROUTES = (
         pattern="/api/config/llm-connection-test",
         handler=_test_llm_connection_route,
         name="config.llm_connection_test",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/config/comfyui-connection-test",
+        handler=_test_comfyui_connection_route,
+        name="config.comfyui_connection_test",
     ),
     Route(
         methods=frozenset({"POST"}),

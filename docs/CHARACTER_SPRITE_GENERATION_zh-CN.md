@@ -4,6 +4,8 @@
 
 立绘生成通过当前配置的 T2I 服务工作，也支持其他 ComfyUI 图像工作流和 Stable Diffusion API。H3 是可选方案。尚未配置图像服务时，可以先用已配置的 LLM 生成提示词与标签；生成图片仍需要图像服务。新世界不会自动安装 ComfyUI 或下载 H3 权重。
 
+**秋叶／绘世整合包、ComfyUI Desktop 或其他已有环境**，先用自己的启动器启动，关闭新世界的自动启动，再填入相同的服务地址即可。不要求使用官方便携版。首次配置建议先阅读[ComfyUI 连接指南](COMFYUI_SETUP_zh-CN.md)，其中说明了启动方式、两种 JSON 格式和常见错误。
+
 ## 在生成窗口中操作
 
 1. 在左侧选择参考图（可选），填写表情、动作和双手姿势等要求，设置方案数量与自动抠图。点击设置栏底部的“生成提示词与标签”；规划只使用人物设定生成方案，此时不会生成图片。
@@ -97,12 +99,13 @@
 
 保持已经跑通的 ComfyUI 运行，使用项目附带的 API 工作流时按下表设置。官方模板跑通说明模型环境可用；第三步的首张立绘测试用于确认 API 工作流和新世界之间的配置也正确。
 
-API 设定 → 图像生成服务，先选择“本机 ComfyUI”或“自定义”，再填写下表参数，适配器选 `comfyui`。不要把模型名填成适配器名。配置完成后不要再点“应用 ComfyUI 默认值”，以免将 H3 的端口和节点恢复为通用默认值。下面的节点 ID 仅适用于项目附带的两份 API 工作流：
+API 设定 → 图像生成服务，先选择“本机 ComfyUI”或“自定义”，再填写下表参数，适配器选 `comfyui`。不要把模型名填成适配器名。“补全缺失的默认值”保留已有本机端口和节点 ID，但通用默认节点值不能代替 H3 映射。下面的节点 ID 仅适用于项目附带的两份 API 工作流：
 
 | 设置 | 值 |
 | --- | --- |
 | API 地址 | H3 ComfyUI 地址，例如 `http://127.0.0.1:8189` |
-| 工作目录 | portable 安装目录，包含 `python_embeded/` 和 `ComfyUI/`；已手动启动服务时可留空 |
+| 自动启动 | 秋叶／绘世、Desktop、已自行启动的服务均关闭；官方 Windows 便携版可选 |
+| 官方便携版根目录 | 仅开启自动启动时填写，需包含 `python_embeded/` 和 `ComfyUI/`；其他情况无需填写 |
 | 默认工作流 | 项目内 `ai/t2i/workflows/minimax_h3_i2v_api.json` 的绝对路径 |
 | 提示词节点 ID | `131` |
 | 输出节点 ID | `92` |
@@ -114,13 +117,15 @@ API 设定 → 图像生成服务，先选择“本机 ComfyUI”或“自定义
 | `reference_node_id` | `114` |
 | `text_only_workflow_path` | `ai/t2i/workflows/minimax_h3_t2v_api.json` 的绝对路径 |
 | `generation_timeout` | `2400`，首次加载或内存换页时可适当增加 |
-| `startup_args` | `--windows-standalone-build --reserve-vram 1.5 --disable-all-custom-nodes --disable-partner-nodes` |
+| `startup_args` | 仅用于自动启动官方便携版：`--windows-standalone-build --reserve-vram 1.5 --disable-all-custom-nodes --disable-partner-nodes` |
 
 启动端口自动从 API 地址读取。直接修改 `data/config/api.yaml` 后需要重新启动应用，让配置重新加载。
 
-工作流路径必须是当前电脑上真实存在的 JSON 文件路径，不能照抄他人的 `C:/AI/...`。连接已经运行的本地或远程 ComfyUI 时，工作目录可以留空；只有希望由新世界启动 Windows portable 版时才填写 portable 根目录。使用其他安装方式时先手动启动服务。上面的启动参数适用于本指南的 H3 原生节点配置，自定义工作流需要的节点不应被禁用。
+工作流路径必须是当前电脑上真实存在的 API JSON 文件路径，不能照抄他人的 `C:/AI/...`。连接已经运行的本地或远程 ComfyUI 时关闭自动启动；只有希望由新世界启动官方 Windows portable 版时才开启并填写根目录。秋叶整合包使用自己的启动器，API 格式相同仍需保证已安装 H3 所需的内核节点和模型。上面的启动参数适用于本指南的 H3 原生节点配置，自定义工作流需要的节点不应被禁用。
 
 这里的 API 地址必须与第一步访问的地址一致。本地 H3 不需要 MiniMax 云端 API Key。LLM 用于设计提示词和标签，需要单独在新世界中配置；已有立绘的智能标注还需要可用的 Vision 服务。
+
+地址旁的“检测连接”可在保存前检查当前地址，只读取 ComfyUI 系统状态，不启动服务、不提交生成任务。检测成功仍需按工作流安装 H3 节点与模型，再试生成一张立绘；修改地址后应重新检测。
 
 ## 3. 生成并保存立绘
 

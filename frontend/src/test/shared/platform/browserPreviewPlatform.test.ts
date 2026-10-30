@@ -761,6 +761,9 @@ describe("browser preview platform chat themes", () => {
         provider: "Deepseek",
       }),
     ).rejects.toThrow("LLM 连通检测");
+    await expect(platform.config.testComfyuiConnection({ baseUrl: "http://localhost:8188" })).rejects.toThrow(
+      "ComfyUI 连通检测",
+    );
 
     const root = await resolvePreview(platform.files.browse({ path: "/" }));
     await expect(platform.files.openT2iWorkflowFolder()).rejects.toMatchObject({ errorCode: "local_app_required" });
