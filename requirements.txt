@@ -9,6 +9,7 @@ pandas
 requests
 onnxruntime
 rembg
+av
 google-genai
 tiktoken
 pyaudio; sys_platform == "linux"

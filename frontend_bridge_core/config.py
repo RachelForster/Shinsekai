@@ -27,6 +27,7 @@ from application.model_providers.catalog import (
 from config.vision_defaults import (
     resolve_vision_api_key,
     resolve_vision_base_url,
+    resolve_vision_model,
     vision_llm_provider,
     vision_provider_requires_api_key,
 )
@@ -171,7 +172,7 @@ def _validate_api_config_for_save(config: Any) -> None:
     ):
         vision_api_key = resolve_vision_api_key(config, vision_provider)
         vision_base_url = resolve_vision_base_url(config, vision_provider)
-        vision_model = _provider_map_value(getattr(config, "vision_model", {}), vision_provider)
+        vision_model = resolve_vision_model(config, vision_provider)
         if (
             (vision_provider_requires_api_key(vision_provider) and not vision_api_key)
             or not vision_base_url

@@ -3,6 +3,7 @@ from __future__ import annotations
 from http import HTTPStatus
 
 from application.model_assets.tts_bundle import _tts_bundle_recommendation
+from application.model_providers.connectivity import check_comfyui_connection
 from application.runtime.state import plugin_load_snapshot
 from application.runtime.tasks import _get_task, _request_task_cancel
 from frontend_bridge_core.config import (
@@ -93,6 +94,10 @@ def _test_llm_connection_route(request: ApiRequest) -> JsonResponse:
         return _llm_error_response(exc, fallback_message="LLM 连通检测失败。")
 
 
+def _test_comfyui_connection_route(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(check_comfyui_connection(str(request.body.get("baseUrl") or "")))
+
+
 def _cancel_task(request: ApiRequest) -> JsonResponse:
     return JsonResponse(_request_task_cancel(request.state, request.params["task_id"]))
 
@@ -156,6 +161,12 @@ SYSTEM_ROUTES = (
         pattern="/api/config/llm-connection-test",
         handler=_test_llm_connection_route,
         name="config.llm_connection_test",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/config/comfyui-connection-test",
+        handler=_test_comfyui_connection_route,
+        name="config.comfyui_connection_test",
     ),
     Route(
         methods=frozenset({"POST"}),

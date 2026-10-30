@@ -111,7 +111,7 @@ describe("BackgroundSpriteGallery", () => {
     expect(props.onDeleteImage).toHaveBeenCalledWith(1);
 
     fireEvent.click(screen.getByRole("button", { name: "Upload images / videos" }));
-    expect(screen.getByRole("dialog", { name: "Select images or MP4 videos" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Select images or MP4 / WebM videos" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Batch image tags" }));
     expect(props.onOpenBulkTags).toHaveBeenCalledTimes(1);

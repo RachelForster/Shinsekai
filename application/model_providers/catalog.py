@@ -142,7 +142,7 @@ def adapter_catalog() -> dict[str, list[dict[str, Any]]]:
         "ollama": "Ollama Vision（本地）",
         "qwen": "通义千问视觉",
     }
-    vision: list[dict[str, Any]] = [_adapter_option("auto", "自动选择")]
+    vision: list[dict[str, Any]] = [_adapter_option("auto", "跟随 LLM（默认）")]
     for key in sorted(vision_adapters, key=str.lower):
         vision.append(_adapter_option(key, vision_labels.get(key, key), vision_adapters[key]))
 

@@ -24,7 +24,9 @@ class _FakeManager:
 
 
 @pytest.fixture(autouse=True)
-def _clean_registry():
+def _clean_registry(monkeypatch):
+    # Exercise the plugin chain when the active LLM has no matching vision adapter.
+    monkeypatch.setattr("ai.vision.service._configured_vision_provider", lambda *_: "auto")
     fallback_registry.configure_registered_fallbacks([])
     yield
     fallback_registry.configure_registered_fallbacks([])

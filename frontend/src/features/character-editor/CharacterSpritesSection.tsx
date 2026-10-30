@@ -35,6 +35,9 @@ interface CharacterSpritesSectionProps {
   id?: string;
   onClearSprites: () => void;
   onAutoLabel?: () => void;
+  onGenerate?: () => void;
+  generateDisabled?: boolean;
+  generateHint?: string;
   onOpenBulkTags: () => void;
   onPendingSpritePathsChange: (paths: string[]) => void;
   onPendingVoicePathChange: (path: string) => void;
@@ -68,6 +71,9 @@ export function CharacterSpritesSection({
   autoLabelAvailable = false,
   autoLabelDisabled = true,
   autoLabelPending = false,
+  onGenerate,
+  generateDisabled = false,
+  generateHint,
   draft,
   emotionTagsPending,
   id,
@@ -126,6 +132,15 @@ export function CharacterSpritesSection({
               {t("mediaAutoLabel.action")}
             </AsyncButton>
           ) : null}
+          <Button
+            disabled={generateDisabled}
+            icon={<Sparkles aria-hidden className="button__icon" />}
+            onClick={onGenerate}
+            tooltip={generateHint}
+            variant="ghost"
+          >
+            {t("spriteGeneration.action")}
+          </Button>
           <AsyncButton
             icon={<Upload aria-hidden className="button__icon" />}
             loading={spriteUploadPending}

@@ -4,7 +4,7 @@ import { Image as ImageIcon, Save, Sparkles, Tags, Trash2, Upload } from "lucide
 import type { Background } from "../../entities/config/types";
 import { fileThumbnailBatch, fileThumbnailUrl, fileUrl } from "../../entities/files/repository";
 import { useI18n } from "../../shared/i18n";
-import { isMp4Media, VISUAL_MEDIA_EXTENSIONS } from "../../shared/assets/visualMedia";
+import { isVideoMedia, VISUAL_MEDIA_EXTENSIONS } from "../../shared/assets/visualMedia";
 import type { ImageAssetGalleryItem } from "../../shared/ui";
 import {
   AsyncButton,
@@ -86,12 +86,12 @@ export function BackgroundSpriteGallery({
   const previousSpritePathKey = useRef(spritePathKey);
   const visibleSprites = useMemo(() => sprites.slice(0, visibleImageCount), [sprites, visibleImageCount]);
   const spritePaths = useMemo(
-    () => (spritePathKey ? [...new Set(spritePathKey.split("\0"))].filter((path) => !isMp4Media(path)) : []),
+    () => (spritePathKey ? [...new Set(spritePathKey.split("\0"))].filter((path) => !isVideoMedia(path)) : []),
     [spritePathKey],
   );
   const visibleSpritePathKey = visibleSprites
     .map((sprite) => sprite.path)
-    .filter((path) => path && !isMp4Media(path))
+    .filter((path) => path && !isVideoMedia(path))
     .join("\0");
   const visibleSpritePaths = useMemo(
     () => (visibleSpritePathKey ? [...new Set(visibleSpritePathKey.split("\0"))] : []),
@@ -159,9 +159,9 @@ export function BackgroundSpriteGallery({
 
   const backgroundImageItems: ImageAssetGalleryItem[] = visibleSprites.map((sprite, index) => ({
     id: `${sprite.path}-${index}`,
-    videoSrc: isMp4Media(sprite.path) ? fileUrl(sprite.path) : undefined,
+    videoSrc: isVideoMedia(sprite.path) ? fileUrl(sprite.path) : undefined,
     imageSrc:
-      sprite.path && !isMp4Media(sprite.path)
+      sprite.path && !isVideoMedia(sprite.path)
         ? (thumbnailSources[sprite.path] ?? (thumbnailBatchReady ? fileThumbnailUrl(sprite.path, 160) : ""))
         : "",
     meta: imageRowTags[index] || "",

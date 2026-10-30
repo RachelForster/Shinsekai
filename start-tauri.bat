@@ -78,9 +78,18 @@ if not exist "frontend\package.json" (
     exit /b 1
 )
 
-echo Building Tauri app...
 pushd frontend
-call pnpm tauri build --no-bundle
+call :ensure_frontend_dependencies
+if errorlevel 1 (
+    popd
+    echo.
+    echo Frontend dependency repair failed. See the error above.
+    pause
+    exit /b 1
+)
+
+echo Building Tauri app...
+call pnpm exec tauri build --no-bundle
 if errorlevel 1 (
     popd
     echo.
@@ -114,6 +123,23 @@ if "%SHINSEKAI_SHOW_BACKEND_CONSOLE%"=="1" (
 )
 start "" "%EXE_PATH%"
 endlocal
+exit /b 0
+
+:ensure_frontend_dependencies
+:: Check the actual CLI, including its native binary, instead of trusting node_modules.
+call pnpm --config.verifyDepsBeforeRun=false exec tauri --version > nul 2>&1
+if not errorlevel 1 exit /b 0
+
+echo Tauri CLI is missing or incomplete. Restoring frontend dependencies...
+:: pnpm 11 can otherwise skip repeat installs based on stale workspace metadata.
+call pnpm install --frozen-lockfile --prod=false --force --config.optimisticRepeatInstall=false
+if errorlevel 1 exit /b 1
+
+call pnpm --config.verifyDepsBeforeRun=false exec tauri --version
+if errorlevel 1 (
+    echo Error: the project Tauri CLI is still unavailable after installing dependencies.
+    exit /b 1
+)
 exit /b 0
 
 :usage

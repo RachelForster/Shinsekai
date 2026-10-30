@@ -22,6 +22,7 @@ interface TaskProgressSnapshot {
 }
 
 interface TaskProgressProps {
+  compact?: boolean;
   labels?: {
     message?: string;
     phase?: string;
@@ -111,7 +112,7 @@ function compactSha(value: string | undefined) {
   return sha.length > 16 ? `${sha.slice(0, 12)}...` : sha;
 }
 
-export function TaskProgress({ labels, logLimit = 6, task }: TaskProgressProps) {
+export function TaskProgress({ compact = false, labels, logLimit = 6, task }: TaskProgressProps) {
   if (!task) {
     return null;
   }
@@ -141,7 +142,7 @@ export function TaskProgress({ labels, logLimit = 6, task }: TaskProgressProps) 
   ].filter((item): item is { label: string; value: string } => Boolean(item));
 
   return (
-    <div className="task-progress" role="status" aria-live="polite">
+    <div className={`task-progress${compact ? " task-progress--compact" : ""}`} role="status" aria-live="polite">
       <div className="task-progress__meta">
         {displayPhase ? <strong>{displayPhase}</strong> : null}
         <span>
@@ -155,9 +156,16 @@ export function TaskProgress({ labels, logLimit = 6, task }: TaskProgressProps) 
           <span className="task-progress__fill" style={{ width: `${percent}%` }} />
         </div>
       )}
-      {showMessage ? <div className="task-progress__message">{message}</div> : null}
+      {showMessage ? (
+        <div className="task-progress__message" title={compact ? message : undefined}>
+          {message}
+        </div>
+      ) : null}
       {notice ? (
-        <div className={`task-progress__notice task-progress__notice--${noticeKind}`}>
+        <div
+          className={`task-progress__notice task-progress__notice--${noticeKind}`}
+          title={compact ? notice : undefined}
+        >
           {notice}
           {task.fallbackAllowed && task.status === "failed" ? " 可稍后重试。" : ""}
         </div>

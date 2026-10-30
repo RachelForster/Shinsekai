@@ -1,10 +1,194 @@
 import type { MessageKey } from "../messages";
 
 export const enMessages: Record<MessageKey, string> = {
+  "spriteGeneration.replace": "Replace original sprite",
+  "spriteGeneration.replaceHint":
+    "Replace the chosen sprite and its tags with this result. Keep its position, voice settings and original file.",
+  "spriteGeneration.replaceTarget": "Sprite to replace",
+  "spriteGeneration.chooseReplaceTarget": "Choose a replacement target…",
+  "spriteGeneration.originalSprite": "Original sprite",
+  "spriteGeneration.replacementSprite": "Generated result",
+  "spriteGeneration.confirmReplace": "Confirm replacement",
+  "spriteGeneration.replaced": "Sprite replaced; original file kept",
+  "spriteGeneration.manualSingle": "Write one",
+  "spriteGeneration.manualSourceHint": "Select exactly one source sprite or upload one image before writing a prompt.",
+  "spriteGeneration.manualPromptHint":
+    "Write this sprite's prompt and tags, then generate or redraw it. LLM planning is optional.",
+  "spriteGeneration.manualPromptPlaceholder":
+    "For example: keep the reference framing, stand and smile, wave the right hand beside the face, left hand relaxed.",
+  "spriteAnimation.customPromptHint":
+    "Edits replace motion presets for this sprite with your full prompt. Its reference, matching ends, speed and transparency processing still apply. Include a fixed camera if desired.",
+  "spriteAnimation.prompt": "Motion prompt",
+  "spriteAnimation.manualPromptPlaceholder":
+    "For example: preserve the pose and gestures, let the body and hair sway very gently, fixed camera and reference framing.",
+  "spriteAnimation.chooseSources": "Choose sources",
+  "spriteAnimation.libraryHint":
+    "Choose sources on the right. Presets support batches; select exactly one image to write a single prompt.",
+  "spriteAnimation.sourceMode": "Source sprite selection",
+  "spriteAnimation.library": "Sprite library",
+  "spriteAnimation.uploadSingle": "Upload one image",
+  "spriteAnimation.pickSources": "Choose source sprites",
+  "spriteAnimation.selectSource": "Select {name}",
+  "spriteAnimation.generatedSource": "New sprite {n}",
+  "spriteAnimation.selectAllSources": "Select all sources",
+  "spriteAnimation.selectFirst": "Select first {count}",
+  "spriteAnimation.clearSources": "Clear selection",
+  "spriteAnimation.noSources": "No static sprites yet. Generate one in the static tab, or upload an image.",
+  "spriteAnimation.sourceHint":
+    "Each image keeps its own tags and shares the same motion settings. Videos are excluded.",
+  "spriteAnimation.untaggedSource": "Untagged · use default tags",
+  "spriteAnimation.defaultTagging": "Default tags for untagged sprites",
+  "spriteAnimation.sourcesSelected": "{count} source sprites selected",
+  "spriteAnimation.sourceLimit":
+    "Room for {count} more plans. Select fewer sources, or save or remove existing results first.",
+  "spriteAnimation.generateBatch": "Generate transparent animations ({count})",
+  "spriteAnimation.generatePending": "Continue pending animations ({count})",
+  "spriteAnimation.queueProgress": "Queue: {current} of {total}",
+  "spriteAnimation.needsMatting": "Needs transparency processing",
+  "spriteAnimation.outputHint": "Fixed camera & framing · transparent WebM",
+  "spriteAnimation.mode": "Sprite generation mode",
+  "spriteAnimation.staticTab": "Static sprites",
+  "spriteAnimation.animationTab": "Animated sprites",
+  "spriteAnimation.settings": "Source sprite & idle motion",
+  "spriteAnimation.reference": "Source sprite (required)",
+  "spriteAnimation.breathing": "Gentle body sway",
+  "spriteAnimation.blinking": "Natural blinking",
+  "spriteAnimation.breeze": "Gentle breeze",
+  "spriteAnimation.loop": "Match ends",
+  "spriteAnimation.speed": "Motion speed",
+  "spriteAnimation.speedGentle": "Gentle · 0.75× (recommended)",
+  "spriteAnimation.speedSlower": "Slower · 0.5×",
+  "spriteAnimation.speedOriginal": "Original · 1×",
+  "spriteAnimation.speedHint":
+    "Slows body sway, blinking and hair together, including the saved video. Maximum duration after slowing: 12 seconds.",
+  "spriteAnimation.cameraHint":
+    "Let the body and hair sway very slightly and slowly. Keep shoulders relaxed and preserve neck length, ear-to-shoulder and chin-to-collar spacing. Keep feet planted, gestures, expression and framing. Aim for one leisurely blink; preview the result.",
+  "spriteAnimation.motion": "Additional subtle motion (optional)",
+  "spriteAnimation.motionPlaceholder":
+    "For example: keep the smile while hair tips sway gently. Keep motion small and the camera still.",
+  "spriteAnimation.generate": "Generate transparent animation",
+  "spriteAnimation.alphaHint":
+    "H3 video → CPU matting for every frame → alpha verification → transparent WebM. Matting is required; an opaque MP4 cannot be saved as a transparent result.",
+  "spriteAnimation.intro":
+    "Add subtle idle motion to {name}’s sprite. Review the transparent video, then save it with its tags.",
+  "spriteAnimation.stepSource": "Choose source sprite",
+  "spriteAnimation.stepMotion": "H3 generation & matting",
+  "spriteAnimation.stepSave": "Verify alpha & save",
+  "spriteAnimation.emptyTitle": "Bring a sprite gently to life",
+  "spriteAnimation.empty":
+    "Choose source sprites or upload one image, set body sway, blinking or a breeze, and generate a batch. Images run one at a time; retry failures or continue unstarted items after stopping. Requires a configured H3 image-to-video service.",
+  "spriteAnimation.sprite": "Animation {n}",
+  "spriteAnimation.verified": "Transparent WebM · alpha verified in every frame",
+  "spriteAnimation.failed":
+    "Transparency processing failed. Original video kept; saving is disabled. Retry matting without rerunning H3: {error}",
+  "spriteAnimation.viewPrompt": "View / edit motion prompt",
+  "spriteAnimation.retryMatting": "Retry transparency processing",
+  "spriteAnimation.fromStatic": "Make animated sprite",
+  "spriteGeneration.stepsLabel": "Sprite generation steps",
+  "spriteGeneration.stepPlan": "Set up & plan",
+  "spriteGeneration.stepGenerate": "Generate & review",
+  "spriteGeneration.stepSave": "Save to character",
+  "spriteGeneration.referenceHint":
+    "Keep the reference appearance, framing and character scale. Half-body images stay half-body.",
+  "spriteGeneration.noReferenceHint":
+    "Without a reference, generate a standing full-body sprite from the character setting.",
+  "spriteGeneration.referenceChangeHint": "After changing the reference, check that existing prompts still fit.",
+  "spriteGeneration.planHint":
+    "Plan expressions, actions and hand poses from the current character setting, with automatic tags. This step creates prompts only.",
+  "spriteGeneration.workspaceTitle": "Sprite plans & previews",
+  "spriteGeneration.workspaceSummary": "{ready} ready · {pending} pending",
+  "spriteGeneration.emptyTitle": "Start with expressions and poses",
+  "spriteGeneration.resources": "Models & workflows",
+  "spriteGeneration.resourcesHint":
+    "First time? Connect an image generation service. Already configured? Start planning.",
+  "spriteGeneration.editPrompt": "View / edit prompt",
+  "spriteGeneration.ready": "Ready to save",
+  "spriteGeneration.saveHint": "Sprites and tags are saved together to this character.",
+  "spriteGeneration.morePlans": "Add more prompt plans",
+  "spriteGeneration.options": "Instructions and reference",
+  "spriteGeneration.autoRemoveBackground": "Remove background automatically",
+  "spriteGeneration.autoRemoveHint":
+    "Remove the background after rendering or choosing a frame. Turning this off only affects future results.",
+  "spriteGeneration.backgroundRemoved": "Background removed · transparent PNG",
+  "spriteGeneration.backgroundRemovalFailed": "Background removal failed. Original image kept: {error}",
+  "spriteGeneration.cutout": "Remove background",
+  "spriteGeneration.retryCutout": "Retry background removal",
+  "spriteGeneration.action": "Generate sprites",
+  "spriteGeneration.intro":
+    "Plan sprites for {name}, review the prompts, generate images, then add your favorites to the existing collection.",
+  "spriteGeneration.requirements": "Additional instructions (optional)",
+  "spriteGeneration.requirementsPlaceholder":
+    "E.g. stand, smile with relaxed brows, wave the open right hand beside the head, and rest the left hand at the side. Specify facial expressions, both hands' poses and positions, and props.",
+  "spriteGeneration.reference": "Reference image (optional)",
+  "spriteGeneration.chooseReference": "Choose reference image",
+  "spriteGeneration.existingReference": "Use an existing sprite",
+  "spriteGeneration.chooseExisting": "Choose an existing sprite…",
+  "spriteGeneration.clearReference": "Remove reference",
+  "spriteGeneration.optionalReference": "Optional: preserve appearance and framing, including half-body portraits",
+  "spriteGeneration.count": "Number of ideas",
+  "spriteGeneration.plan": "Plan prompts and tags",
+  "spriteGeneration.generatePending": "Generate pending ({count})",
+  "spriteGeneration.setupHint":
+    "Reference plans preserve the original framing with a fixed camera; plans without a reference use full body. New plans keep existing results. If you add or remove a reference, replan or edit existing prompts.",
+  "spriteGeneration.setupGuide": "First use: connect an image generation service",
+  "spriteGeneration.workflowFolder": "Open workflow folder",
+  "spriteGeneration.modelDownloads": "H3 model downloads",
+  "spriteGeneration.setupTutorial": "H3 setup guide",
+  "spriteGeneration.modelFiles": "Models for the bundled workflows",
+  "spriteGeneration.modelFilesHint":
+    "The bundled silent-video workflows need only these four models, not the whole repository. Click a filename to open its download page and place it under the listed ComfyUI folder.",
+  "spriteGeneration.modelFile": "Model file (download page)",
+  "spriteGeneration.modelDestination": "Destination folder",
+  "spriteGeneration.folderOpened": "Workflow folder: {path}",
+  "spriteGeneration.resourcesFailed": "Unable to open: {error}",
+  "spriteGeneration.localFolderOnly":
+    "Connect to the local Shinsekai app to open bundled workflows. Model downloads and the setup guide remain available.",
+  "spriteGeneration.setupServiceStep":
+    "Check that your image service works on its own. H3 workflows are in ai/t2i/workflows/: drag minimax_h3_i2v.json onto the ComfyUI canvas, upload a reference, and run it. Use minimax_h3_t2v.json for text-to-video.",
+  "spriteGeneration.setupConnectStep":
+    "Connect the same service in API settings. For H3, select minimax_h3_i2v_api.json as the default workflow and minimax_h3_t2v_api.json for the text-only workflow, from the same folder. Node IDs: prompt 131, output 92, reference 114.",
+  "spriteGeneration.setupTrialStep":
+    "Choose a reference sprite and generate one image to check proportions, expression, and hand poses before generating a batch. You can still plan prompts and tags with your LLM before configuring an image service.",
+  "spriteGeneration.limit": "Keep up to 12 ideas at a time; add or remove some before planning more.",
+  "spriteGeneration.selected": "{count} selected",
+  "spriteGeneration.add": "Add to collection ({count})",
+  "spriteGeneration.selectAll": "Select generated images",
+  "spriteGeneration.deselectAll": "Deselect all",
+  "spriteGeneration.reviewHint": "Tags are saved with each image. Click a preview to view the full image.",
+  "spriteGeneration.chooseFrame": "Choose a frame from the generated video",
+  "spriteGeneration.frameHint":
+    "The middle frame is selected automatically. Seek in the video and capture another frame without generating again.",
+  "spriteGeneration.video": "Source video",
+  "spriteGeneration.captureFrame": "Use frame at {seconds}s",
+  "spriteGeneration.videoUnavailable":
+    "This video cannot be previewed here. The extracted still image can still be saved.",
+  "spriteGeneration.sprite": "Sprite {n}",
+  "spriteGeneration.prompt": "Image prompt",
+  "spriteGeneration.tagging": "Tags",
+  "spriteGeneration.generate": "Generate",
+  "spriteGeneration.redraw": "Redraw",
+  "spriteGeneration.notGenerated": "Ready to generate",
+  "spriteGeneration.stale": "Prompt changed. Redraw before adding.",
+  "spriteGeneration.remove": "Remove idea {n}",
+  "spriteGeneration.preview": "View sprite {n} full size",
+  "spriteGeneration.empty":
+    "Plan prompts and tags on the left, or select Write one above to enter a prompt directly. References are optional. Review, generate, and select your favorites to save.",
+  "spriteGeneration.working": "Working…",
+  "spriteGeneration.stop": "Stop after current image",
+  "spriteGeneration.stopping": "Stopping after current image…",
+  "spriteGeneration.discardTitle": "Close sprite generator?",
+  "spriteGeneration.discardBody":
+    "Unsaved ideas and previews will be cleared from this window. Sprites already added to the character are kept.",
+  "spriteGeneration.discard": "Close and discard unsaved ideas",
+  "spriteGeneration.saveFirst": "Save the character before generating sprites.",
+  "spriteGeneration.settingRequired":
+    "LLM planning needs character settings. You can also write a single prompt directly.",
+  "spriteGeneration.saved": "Sprites added with tags saved",
   "story.library.delete": "Delete story version",
   "story.library.deleteConfirm":
     "Delete version {version} of “{title}” and all its conversations and saves? Other versions will be kept. This cannot be undone.",
-  "visualMedia.videoError": "Unable to play this video. Check the file or use an H.264 MP4 video.",
+  "visualMedia.videoError":
+    "Unable to play this video. Check the file and MP4/WebM support in this browser or WebView. Transparent sprites require VP9 alpha support.",
   "nav.assistant": "Assistant",
   "agent.subtitle": "Think independently and explain the evidence and uncertainty.",
   "agent.newSession": "New session",
@@ -599,7 +783,11 @@ export const enMessages: Record<MessageKey, string> = {
   "api.llm.thinkingEnabled": "Thinking mode",
   "api.llm.thinkingUnsupported": "This model does not support thinking mode.",
   "api.vision.apiKey": "Provider API key",
-  "api.vision.auto": "Automatic",
+  "api.vision.auto": "Follow LLM (default)",
+  "api.vision.autoHelp":
+    "Following {provider}, vision model: {model}. Follows LLM adapter changes; you can also select a vision adapter manually.",
+  "api.vision.autoFallback":
+    "The current LLM has no matching vision adapter. An available vision plugin will be used, or you can select an adapter manually.",
   "api.vision.baseUrl": "Provider base URL",
   "api.vision.checkingModel": "Checking the Moondream model...",
   "api.vision.description":
@@ -632,21 +820,62 @@ export const enMessages: Record<MessageKey, string> = {
   "api.resume.title": "Launch chat",
   "api.t2i.advanced": "Advanced node mapping",
   "api.t2i.apiUrl": "ComfyUI API URL",
-  "api.t2i.comfyDir": "ComfyUI folder",
+  "api.t2i.testConnection": "Test connection",
+  "api.t2i.testingConnection": "Testing…",
+  "api.t2i.connectionHint": "Test the current URL without saving, starting the server, or generating images.",
+  "api.t2i.connectionScope": "API connectivity only. Save and generate one sprite to check the workflow and models.",
+  "api.t2i.connectionRequestFailed":
+    "Could not complete the check. Confirm that Shinsekai's local service is running and retry.",
+  "api.t2i.connection.connected": "Connected to the ComfyUI API",
+  "api.t2i.connection.invalid_url":
+    "Invalid URL. Enter an http:// or https:// server root URL without credentials, query parameters, or a fragment.",
+  "api.t2i.connection.timeout":
+    "The check timed out. ComfyUI may still be starting. Wait until its web page works, check the URL and port, and retry.",
+  "api.t2i.connection.unreachable":
+    "Could not connect. Start ComfyUI and check its URL and actual port. For remote servers, also check the network and firewall.",
+  "api.t2i.connection.auth_required":
+    "The server requires authentication or denied access. Check proxy and access restrictions; extra authentication is not configured in this adapter.",
+  "api.t2i.connection.http_error":
+    "The server responded, but the ComfyUI status endpoint is unavailable. Check the port, service path, and ComfyUI logs.",
+  "api.t2i.connection.not_comfyui":
+    "This URL did not return ComfyUI system status. It may be a web page, login page, or redirect. Enter the actual ComfyUI API root URL.",
+  "api.t2i.connection.tls_error":
+    "HTTPS certificate verification failed. Check the server URL and certificate configuration.",
+  "api.t2i.apiUrlHint": "Enter the ComfyUI web URL with its port, without /prompt.",
+  "api.t2i.autoStart": "Let Shinsekai start the official Windows portable build",
+  "api.t2i.autoStartHint":
+    "Requires the official portable build with python_embeded and ComfyUI. Use your own launcher for other builds.",
+  "api.t2i.manualStartHint":
+    "For Aki / HuiShi or Desktop, start with your own launcher, then connect below. Keep ComfyUI running during generation.",
+  "api.t2i.comfyDir": "Official portable root folder",
   "api.t2i.description": "Configure image generation only when you want ComfyUI-driven CG and sprite workflows.",
   "api.t2i.modeCustom": "Custom",
   "api.t2i.modeCustomHint": "Keep your existing endpoint and workflow fields.",
   "api.t2i.modeLocal": "Local ComfyUI",
-  "api.t2i.modeLocalHint": "Use the default local ComfyUI endpoint and node ids.",
+  "api.t2i.modeLocalHint": "Connect to a local server, including Aki bundles. Keep existing port and node settings.",
   "api.t2i.modeSkip": "Skip setup",
   "api.t2i.modeSkipHint": "Leave image generation disabled for now.",
   "api.t2i.outputNode": "Output node id",
   "api.t2i.promptNode": "Prompt node id",
   "api.t2i.provider": "T2I provider",
-  "api.t2i.quickDefaults": "Apply ComfyUI defaults",
+  "api.t2i.quickDefaults": "Fill missing defaults",
   "api.t2i.title": "Image generation (T2I)",
-  "api.t2i.workflow": "Workflow JSON",
-  "api.t2i.workflowPick": "Choose workflow JSON",
+  "api.t2i.workflow": "API workflow JSON",
+  "api.t2i.workflowPick": "Choose API workflow JSON",
+  "api.t2i.workflowHint": "Use API-format JSON. Bundled H3: prompt 131 / output 92 / reference 114.",
+  "comfyGuide.title": "First connection guide (including Aki bundles)",
+  "comfyGuide.startTitle": "Start your own ComfyUI",
+  "comfyGuide.start":
+    "Use the bundle's launcher for Aki / HuiShi, or your usual launch method for other installations. Wait until the ComfyUI web page works and note its server URL and port. Turn off Shinsekai auto-start when connecting to an existing server.",
+  "comfyGuide.workflowTitle": "Run the workflow in ComfyUI first",
+  "comfyGuide.workflow":
+    "Import the canvas workflow, install its models and nodes, upload a reference, and run it. For H3, use minimax_h3_i2v.json from Open workflow folder. Missing native H3 nodes require a ComfyUI core update. API compatibility does not install models or nodes.",
+  "comfyGuide.exportTitle": "Prepare an API workflow",
+  "comfyGuide.export":
+    "For custom workflows, choose File → Export (API) in ComfyUI. Older versions require developer mode and Save (API Format). Bundled H3 already includes minimax_h3_i2v_api.json. Import the canvas version into ComfyUI and select the API version in Shinsekai.",
+  "comfyGuide.connectTitle": "Save settings in Shinsekai and try one sprite",
+  "comfyGuide.connect":
+    "In API settings, select comfyui, enter the same server root URL and a local API JSON path, and set node IDs for your workflow. Bundled H3 uses prompt 131, output 92, and reference 114. Save, generate one sprite, then proceed to batches.",
   "api.tts.bundleCancel": "Cancel download",
   "api.tts.bundleCancelFailed": "Could not cancel the TTS bundle download.",
   "api.tts.bundleCancelUnavailable": "No running TTS bundle download to cancel.",
@@ -744,7 +973,7 @@ export const enMessages: Record<MessageKey, string> = {
   "background.asset.select": "Select",
   "background.asset.selectAllBgm": "Select all BGM",
   "background.asset.selectBgm": "Select BGM files",
-  "background.asset.selectImages": "Select images or MP4 videos",
+  "background.asset.selectImages": "Select images or MP4 / WebM videos",
   "background.asset.selectedFiles": "{count} files selected",
   "background.asset.tag": "Tag",
   "background.asset.uploadBgm": "Upload BGM",
@@ -994,7 +1223,7 @@ export const enMessages: Record<MessageKey, string> = {
   "character.sprite.path": "Sprite path",
   "character.sprite.saveScale": "Save scale",
   "character.sprite.saveTags": "Upload tags",
-  "character.sprite.selectImages": "Choose images or MP4 videos...",
+  "character.sprite.selectImages": "Choose images or MP4 / WebM videos...",
   "character.sprite.selectedFiles": "{count} files selected",
   "character.sprite.tag": "Sprite tag",
   "character.sprite.deleteVoice": "Delete voice",

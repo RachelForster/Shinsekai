@@ -25,6 +25,10 @@ export function testLlmConnection(input: { apiKey: string; baseUrl: string; mode
   return getPlatform().config.testLlmConnection(input);
 }
 
+export function testComfyuiConnection(input: { baseUrl: string }) {
+  return getPlatform().config.testComfyuiConnection(input);
+}
+
 export function downloadTtsBundle(
   input: { kind: TtsBundleKind },
   options?: TaskProgressOptions<TtsBundleDownloadResult>,

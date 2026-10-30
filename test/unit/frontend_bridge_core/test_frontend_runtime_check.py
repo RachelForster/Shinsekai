@@ -487,6 +487,19 @@ def test_runtime_core_requirements_include_bridge_startup_sdks():
     assert "Pillow" in names
 
 
+def test_video_decode_dependency_is_available_to_desktop_and_test_installs():
+    from frontend_bridge import _iter_requirement_names
+
+    repo_root = _repo_root()
+    for requirements_name in (
+        "requirements.txt",
+        "requirements-dev.txt",
+        "requirements-runtime-core.txt",
+    ):
+        names = set(_iter_requirement_names(repo_root / requirements_name))
+        assert "av" in names, f"{requirements_name} must install the video decoder"
+
+
 def test_runtime_core_pins_huggingface_hub_to_the_shared_compatible_version():
     from application.runtime import dependencies as runtime_dependencies
 
