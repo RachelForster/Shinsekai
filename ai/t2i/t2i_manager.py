@@ -67,7 +67,7 @@ class T2IManager:
         """Allows switching the T2I adapter at runtime."""
         self.t2i_adapter = adapter
 
-    def t2i(self, prompt: str, prompt_processor: Optional[Any] = None, **kwargs) -> Optional[str]:
+    def t2i(self, prompt: str, prompt_processor: Optional[Any] = None, *, file_path: Optional[str] = None, **kwargs) -> Optional[str]:
         """
         Generates T2I image using the currently set adapter and returns the file path.
         """
@@ -79,13 +79,14 @@ class T2IManager:
 
 
         # Determine the file path for caching
-        file_path = self.image_cache_dir / f'{self.index % self.cache_num}.png'
+        destination = Path(file_path) if file_path else self.image_cache_dir / f'{self.index % self.cache_num}.png'
+        destination.parent.mkdir(parents=True, exist_ok=True)
         self.index += 1
 
         # The adapter handles the specifics of the image generation
         return self.t2i_adapter.generate_image(
             prompt=prompt,
-            file_path=file_path.as_posix(),
+            file_path=destination.as_posix(),
             **kwargs
         )
 

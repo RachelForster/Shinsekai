@@ -11,6 +11,14 @@ from frontend_bridge_core.characters import (
     _translate_character_fields,
 )
 from frontend_bridge_core.image_annotations import run_character_sprite_auto_label
+from frontend_bridge_core.sprite_generation import (
+    import_generated_sprites,
+    run_sprite_plan,
+    run_sprite_render,
+    run_sprite_frame,
+    run_sprite_cutout,
+    run_sprite_animation,
+)
 from frontend_bridge_core.routes.router import (
     ApiRequest,
     BodyKind,
@@ -185,7 +193,70 @@ def _auto_label_character_sprites(request: ApiRequest) -> TaskResponse:
     )
 
 
+def _plan_sprites(request: ApiRequest) -> TaskResponse:
+    body = dict(request.body)
+    return TaskResponse(
+        kind="character-sprite-plan",
+        title="设计立绘提示词",
+        message="正在准备立绘方案。",
+        worker=lambda task_id: run_sprite_plan(request.state, task_id, body),
+    )
+
+
+def _render_sprite(request: ApiRequest) -> TaskResponse:
+    body = dict(request.body)
+    return TaskResponse(
+        kind="character-sprite-render",
+        title="生成角色立绘",
+        message="正在准备图像生成。",
+        worker=lambda task_id: run_sprite_render(request.state, task_id, body),
+    )
+
+
+def _import_generated_sprites(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(import_generated_sprites(request.state, request.body))
+
+
+def _capture_sprite_frame(request: ApiRequest) -> TaskResponse:
+    body = dict(request.body)
+    return TaskResponse(
+        kind="character-sprite-frame",
+        title="截取立绘画面",
+        message="正在准备视频截帧。",
+        worker=lambda task_id: run_sprite_frame(request.state, task_id, body),
+    )
+
+
+def _remove_sprite_background(request: ApiRequest) -> TaskResponse:
+    body = dict(request.body)
+    return TaskResponse(
+        kind="character-sprite-cutout",
+        title="立绘抠图",
+        message="正在准备移除背景。",
+        worker=lambda task_id: run_sprite_cutout(request.state, task_id, body),
+    )
+
+
+def _animate_sprite(request: ApiRequest) -> TaskResponse:
+    body = dict(request.body)
+    return TaskResponse(kind="character-sprite-animate", title="生成透明动态立绘",
+                        message="正在准备 H3 动态生成与逐帧抠图。",
+                        worker=lambda task_id: run_sprite_animation(request.state, task_id, body))
+
+
 CHARACTER_ROUTES = (
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/animate",
+          handler=_animate_sprite, name="characters.sprites.animate"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/remove-background",
+          handler=_remove_sprite_background, name="characters.sprites.remove_background"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/frame",
+          handler=_capture_sprite_frame, name="characters.sprites.frame"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/plan",
+          handler=_plan_sprites, name="characters.sprites.plan"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/render",
+          handler=_render_sprite, name="characters.sprites.render"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/import-generated",
+          handler=_import_generated_sprites, name="characters.sprites.import_generated"),
     Route(methods=frozenset({"POST"}), pattern="/api/characters/model/import",
           handler=_import_character_model, name="characters.model.import"),
     Route(methods=frozenset({"POST"}), pattern="/api/characters/model/state",

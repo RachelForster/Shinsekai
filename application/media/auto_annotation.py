@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import uuid
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
@@ -25,7 +26,7 @@ BACKGROUND_PROMPT = (
     "lighting, atmosphere, and important objects. Output only comma-separated tags: no numbering and "
     "no full sentences."
 )
-_IMAGE_SUFFIXES = {".gif", ".jpeg", ".jpg", ".png", ".webp"}
+_IMAGE_SUFFIXES = {".gif", ".jpeg", ".jpg", ".png", ".webp", ".mp4", ".webm"}
 
 
 class AnnotationCancelled(RuntimeError):
@@ -51,6 +52,21 @@ def _safe_asset_file(raw_path: str, project_root: Path) -> Path:
     if not resolved.is_file() or resolved.suffix.lower() not in _IMAGE_SUFFIXES:
         raise ValueError("不是受支持的图片文件")
     return resolved
+
+
+def _annotation_image_bytes(path: Path, project_root: Path) -> bytes:
+    if path.suffix.lower() not in {".mp4", ".webm"}:
+        return path.read_bytes()
+    from core.media.video_frames import extract_video_frame
+
+    cache = project_root.resolve() / "cache" / "vision_annotations"
+    cache.mkdir(parents=True, exist_ok=True)
+    output = cache / f"{uuid.uuid4().hex}.png"
+    try:
+        extract_video_frame(path, output)
+        return output.read_bytes()
+    finally:
+        output.unlink(missing_ok=True)
 
 
 def annotate_unlabelled_images(
@@ -93,7 +109,9 @@ def annotate_unlabelled_images(
                         f"正在智能标注第 {completed + 1}/{len(missing_indexes)} 张图片…",
                         "annotating",
                     )
-            generated = normalize_generated_tags(runner(image_path.read_bytes(), prompt))
+            generated = normalize_generated_tags(
+                runner(_annotation_image_bytes(image_path, project_root), prompt)
+            )
             if not generated:
                 raise ValueError("视觉模型未返回标签")
             tags[index] = generated

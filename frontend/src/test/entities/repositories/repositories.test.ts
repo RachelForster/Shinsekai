@@ -52,6 +52,7 @@ describe("entity repositories", () => {
         downloadTtsBundle: vi.fn().mockResolvedValue({ path: "/runtime", provider: "genie-tts" }),
         fetchLlmModels: vi.fn().mockResolvedValue([{ id: "deepseek-chat", tags: ["chat"] }]),
         testLlmConnection: vi.fn().mockResolvedValue({ message: "ok" }),
+        testComfyuiConnection: vi.fn().mockResolvedValue({ ok: true, code: "connected" as const }),
         get: vi.fn().mockResolvedValue(sampleConfig),
         getMemoryStatus: vi.fn().mockResolvedValue({ status: "ready" }),
         getTtsBundleRecommendation: vi.fn().mockResolvedValue({ gpus: [], kind: "genie", platform: "linux" }),
@@ -59,6 +60,7 @@ describe("entity repositories", () => {
         saveSystem: vi.fn().mockResolvedValue(systemConfig),
       },
       files: {
+        openT2iWorkflowFolder: vi.fn().mockResolvedValue({ path: "/app/ai/t2i/workflows" }),
         modelUrl: vi.fn(() => "/api/avatar/file"),
         browse: vi.fn().mockResolvedValue({ cwd: "/tmp", entries: [], roots: [] }),
         fileUrl: vi.fn((path: string) => `file://${path}`),
@@ -80,6 +82,7 @@ describe("entity repositories", () => {
 
     await expect(config.getAppConfig()).resolves.toBe(sampleConfig);
     await config.fetchLlmModels({ apiKey: "key", baseUrl: "https://api.example.test", provider: "Deepseek" });
+    await config.testComfyuiConnection({ baseUrl: "http://localhost:8189" });
     await config.testLlmConnection({
       apiKey: "key",
       baseUrl: "https://api.example.test",
@@ -94,6 +97,8 @@ describe("entity repositories", () => {
     await config.saveApiConfig(apiConfig);
     await config.saveSystemConfig(systemConfig);
     await files.browseFiles({ path: "/tmp", showHidden: true });
+    await expect(files.openT2iWorkflowFolder()).resolves.toEqual({ path: "/app/ai/t2i/workflows" });
+    expect(platform.files.openT2iWorkflowFolder).toHaveBeenCalledTimes(1);
     expect(files.fileUrl("/tmp/a.png")).toBe("file:///tmp/a.png");
     expect(files.modelFileUrl("C:\\models\\alice.model3.json")).toBe("/api/avatar/file");
     expect(platform.files.modelUrl).toHaveBeenCalledWith("C:\\models\\alice.model3.json", "alice.model3.json");
@@ -148,6 +153,7 @@ describe("entity repositories", () => {
       provider: "Deepseek",
     });
     expect(platform.config.downloadTtsBundle).toHaveBeenCalledWith({ kind: "genie" }, taskOptions);
+    expect(platform.config.testComfyuiConnection).toHaveBeenCalledWith({ baseUrl: "http://localhost:8189" });
     expect(platform.config.cancelTtsBundleDownload).toHaveBeenCalledWith("task-1");
     expect(platform.config.detectNetworkProxy).toHaveBeenCalledWith();
     expect(platform.files.browse).toHaveBeenCalledWith({ path: "/tmp", showHidden: true });
@@ -191,6 +197,7 @@ describe("entity repositories", () => {
     const paths = Array.from({ length: 130 }, (_, index) => `/tmp/background-${index}.png`);
     const platform = {
       files: {
+        openT2iWorkflowFolder: vi.fn().mockResolvedValue({ path: "/app/ai/t2i/workflows" }),
         modelUrl: vi.fn(() => "/api/avatar/file"),
         browse: vi.fn().mockResolvedValue({ cwd: "/tmp", entries: [], roots: [] }),
         fileUrl: vi.fn((path: string) => `file://${path}`),
@@ -216,6 +223,7 @@ describe("entity repositories", () => {
     const paths = ["/tmp/background-a.png", "/tmp/background-b.png"];
     const platform = {
       files: {
+        openT2iWorkflowFolder: vi.fn().mockResolvedValue({ path: "/app/ai/t2i/workflows" }),
         modelUrl: vi.fn(() => "/api/avatar/file"),
         browse: vi.fn().mockResolvedValue({ cwd: "/tmp", entries: [], roots: [] }),
         fileUrl: vi.fn((path: string) => `file://${path}`),
@@ -252,6 +260,7 @@ describe("entity repositories", () => {
     const paths = Array.from({ length: 130 }, (_, index) => `/tmp/background-${index}.png`);
     const platform = {
       files: {
+        openT2iWorkflowFolder: vi.fn().mockResolvedValue({ path: "/app/ai/t2i/workflows" }),
         modelUrl: vi.fn(() => "/api/avatar/file"),
         browse: vi.fn().mockResolvedValue({ cwd: "/tmp", entries: [], roots: [] }),
         fileUrl: vi.fn((path: string) => `file://${path}`),
@@ -302,6 +311,12 @@ describe("entity repositories", () => {
         importModelStates: vi.fn().mockResolvedValue(character),
         saveModelState: vi.fn().mockResolvedValue(character),
         autoLabelSprites: vi.fn().mockResolvedValue({}),
+        planSprites: vi.fn().mockResolvedValue({ items: [] }),
+        renderSprite: vi.fn().mockResolvedValue({}),
+        animateSprite: vi.fn().mockResolvedValue({}),
+        captureSpriteFrame: vi.fn().mockResolvedValue({}),
+        removeSpriteBackground: vi.fn().mockResolvedValue({}),
+        importGeneratedSprites: vi.fn().mockResolvedValue(character),
         delete: vi.fn().mockResolvedValue(undefined),
         deleteAllSprites: vi.fn().mockResolvedValue(character),
         deleteMemory: vi.fn().mockResolvedValue({ agentId: "Nanami", count: 0, memories: [] }),

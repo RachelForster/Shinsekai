@@ -27,6 +27,8 @@ import type {
   Background,
   BackgroundTranslateResult,
   Character,
+  GeneratedCharacterSprite,
+  SpritePromptPair,
   CharacterBriefBatchResult,
   CharacterBriefResult,
   CharacterMemory,
@@ -52,6 +54,7 @@ import type {
   LogSnapshot,
   LlmModelOption,
   LlmConnectionTestResult,
+  ComfyUIConnectionTestResult,
   ImageAutoLabelResult,
   McpConfig,
   McpToolPreview,
@@ -1037,6 +1040,51 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
       },
     },
     characters: {
+      async planSprites(input, options) {
+        const task = await requestJson<TaskSnapshot<{ items: SpritePromptPair[] }>>(
+          apiBase,
+          "/api/characters/sprites/plan",
+          { method: "POST", body: JSON.stringify(input) },
+        );
+        return waitForTask(apiBase, task, options);
+      },
+      async renderSprite(input, options) {
+        const task = await requestJson<TaskSnapshot<GeneratedCharacterSprite>>(
+          apiBase,
+          "/api/characters/sprites/render",
+          { method: "POST", body: JSON.stringify(input) },
+        );
+        return waitForTask(apiBase, task, options);
+      },
+      async animateSprite(input, options) {
+        const task = await requestJson<TaskSnapshot<GeneratedCharacterSprite>>(
+          apiBase,
+          "/api/characters/sprites/animate",
+          { method: "POST", body: JSON.stringify(input) },
+        );
+        return waitForTask(apiBase, task, options);
+      },
+      async captureSpriteFrame(input, options) {
+        const task = await requestJson<TaskSnapshot<GeneratedCharacterSprite>>(
+          apiBase,
+          "/api/characters/sprites/frame",
+          { method: "POST", body: JSON.stringify(input) },
+        );
+        return waitForTask(apiBase, task, options);
+      },
+      async removeSpriteBackground(input, options) {
+        const task = await requestJson<TaskSnapshot<GeneratedCharacterSprite>>(
+          apiBase,
+          "/api/characters/sprites/remove-background",
+          { method: "POST", body: JSON.stringify(input) },
+        );
+        return waitForTask(apiBase, task, options);
+      },
+      importGeneratedSprites: (input) =>
+        requestJson<Character>(apiBase, "/api/characters/sprites/import-generated", {
+          method: "POST",
+          body: JSON.stringify(input),
+        }),
       importModelStates: async (input) => {
         const task = await requestJson<TaskSnapshot<Character>>(apiBase, "/api/characters/model/states/import", {
           body: JSON.stringify(input),
@@ -1214,6 +1262,11 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           body: JSON.stringify(input),
           method: "POST",
         }),
+      testComfyuiConnection: (input) =>
+        requestJson<ComfyUIConnectionTestResult>(apiBase, "/api/config/comfyui-connection-test", {
+          body: JSON.stringify(input),
+          method: "POST",
+        }),
       get: () => requestJson<AppConfig>(apiBase, "/api/config"),
       detectNetworkProxy: () => requestJson<NetworkProxyDetectionResult>(apiBase, "/api/config/network-proxy/detect"),
       getMemoryStatus: (options) =>
@@ -1272,6 +1325,9 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         }),
     },
     files: {
+      openT2iWorkflowFolder() {
+        return requestJson<{ path: string }>(apiBase, "/api/files/t2i-workflows/open", { method: "POST" });
+      },
       browse(options) {
         return requestJson<FileBrowserSnapshot>(apiBase, "/api/files/browse", {
           body: JSON.stringify(options ?? {}),

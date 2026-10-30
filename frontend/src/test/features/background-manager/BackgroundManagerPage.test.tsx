@@ -327,7 +327,9 @@ describe("BackgroundManagerPage", () => {
     pickerState.paths = ["D:/backgrounds/school/hall.png"];
     fireEvent.click(screen.getByRole("button", { name: "Upload images / videos" }));
     fireEvent.click(
-      within(screen.getByRole("dialog", { name: "Select images or MP4 videos" })).getByText("Choose mocked paths"),
+      within(screen.getByRole("dialog", { name: "Select images or MP4 / WebM videos" })).getByText(
+        "Choose mocked paths",
+      ),
     );
     await waitFor(() =>
       expect(mockUploadBackgroundImages).toHaveBeenCalledWith({
