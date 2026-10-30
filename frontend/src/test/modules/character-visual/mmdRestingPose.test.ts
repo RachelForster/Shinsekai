@@ -2,9 +2,15 @@ import { afterEach, describe, expect, it } from "vitest";
 import { Bone } from "@babylonjs/core/Bones/bone";
 import { Skeleton } from "@babylonjs/core/Bones/skeleton";
 import { NullEngine } from "@babylonjs/core/Engines/nullEngine";
-import { Matrix } from "@babylonjs/core/Maths/math.vector";
+import { Matrix, Quaternion } from "@babylonjs/core/Maths/math.vector";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { Scene } from "@babylonjs/core/scene";
+import { MmdAnimation } from "babylon-mmd/esm/Loader/Animation/mmdAnimation";
+import {
+  MmdBoneAnimationTrack,
+  MmdCameraAnimationTrack,
+  MmdPropertyAnimationTrack,
+} from "babylon-mmd/esm/Loader/Animation/mmdAnimationTrack";
 import { PmxObject } from "babylon-mmd/esm/Loader/Parser/pmxObject";
 import { MmdRuntime } from "babylon-mmd/esm/Runtime/mmdRuntime";
 import type { MmdSkinnedMesh } from "babylon-mmd/esm/Runtime/mmdMesh";
@@ -64,6 +70,35 @@ function setup(
 afterEach(() => engine?.dispose());
 
 describe("MMD relaxed default arms", () => {
+  it("layers generated bone offsets over rest and returns to relaxed arms at the final frame", () => {
+    const { player, sample, wrist } = setup();
+    sample();
+    const leftIdle = wrist();
+    const rightIdle = wrist(6);
+    const arm = new MmdBoneAnimationTrack("右腕", 3);
+    arm.frameNumbers.set([0, 15, 30]);
+    arm.rotations.set([
+      ...Quaternion.Identity().asArray(),
+      ...Quaternion.RotationYawPitchRoll(0, 0, 0.8).asArray(),
+      ...Quaternion.Identity().asArray(),
+    ]);
+    arm.rotationInterpolations.set(new Uint8Array(12).fill(20));
+    const clip = new MmdAnimation(
+      "wave",
+      [arm],
+      [],
+      [],
+      new MmdPropertyAnimationTrack(0, []),
+      new MmdCameraAnimationTrack(0),
+    );
+    player.set(player.bind(clip), "play", false, true);
+    sample(0.5);
+    expect(wrist()).toEqual(leftIdle);
+    expect(wrist(6)).not.toEqual(rightIdle);
+    sample(0.5);
+    expect(wrist(6)).toEqual(rightIdle);
+  });
+
   it.each([1, 10])("lowers both wrists symmetrically with elbow flex and torso clearance at scale %s", (scale) => {
     const { root, skeleton, pose, sample, wrist } = setup(scale);
     const rest = skeleton.bones.map((bone) => bone.getRestMatrix().asArray());
@@ -115,6 +150,13 @@ describe("MMD relaxed default arms", () => {
     expect(createRestingPose(model.runtimeBones, bones).size).toBe(6);
     bones[6].englishName = "unknown";
     expect(createRestingPose(model.runtimeBones, bones).size).toBe(0);
+  });
+
+  it("prefers actual PMX bone names over earlier duplicate English aliases", () => {
+    const { bones, model } = setup();
+    bones[1].englishName = "LeftElbow";
+    bones[4].englishName = "RightElbow";
+    expect(createRestingPose(model.runtimeBones, bones).size).toBe(6);
   });
 
   it.each([0, flag.IsRotatable | flag.HasAxisLimit])(

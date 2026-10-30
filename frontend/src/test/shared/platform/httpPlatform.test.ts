@@ -199,6 +199,26 @@ describe("http platform", () => {
       }),
     );
   });
+  it("previews MMD motion as a task but saves only through the explicit endpoint", async () => {
+    const character = sampleConfig.characters[0];
+    const plan = { action: "nod" as const, intensity: 0.5, duration_frames: 60 };
+    const preview = { plan, vmd_base64: "AA==" };
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => mockJsonResponse({ id: "motion", status: "succeeded", result: preview }))
+      .mockImplementationOnce(() => mockJsonResponse(character));
+    vi.stubGlobal("fetch", fetchMock);
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    const input = { name: "Alice", model_path: "model.pmx", prompt: "nod gently" };
+    expect(await platform.characters.previewMmdMotion(input)).toEqual(preview);
+    const save = { name: "Alice", model_path: "model.pmx", plan, state: {}, tag: "nod" };
+    expect(await platform.characters.saveMmdMotion(save)).toEqual(character);
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "http://127.0.0.1:8787/api/characters/model/mmd-motion/preview",
+      "http://127.0.0.1:8787/api/characters/model/mmd-motion/save",
+    ]);
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual(save);
+  });
   it("uses separate read, save and background suggestion endpoints for story editing", async () => {
     const doc = {
       storyPath: "story.json",

@@ -1040,6 +1040,38 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
       },
     },
     characters: {
+      previewMmdMotion: async (input) => {
+        const task = await requestJson<
+          TaskSnapshot<{
+            plan: {
+              action:
+                | "nod"
+                | "shake_head"
+                | "bow"
+                | "wave"
+                | "smile"
+                | "anger"
+                | "denial"
+                | "confusion"
+                | "helpless"
+                | "sadness";
+              intensity: number;
+              duration_frames: number;
+            };
+            setting_digest: string;
+            vmd_base64: string;
+          }>
+        >(apiBase, "/api/characters/model/mmd-motion/preview", {
+          body: JSON.stringify(input),
+          method: "POST",
+        });
+        return waitForTask(apiBase, task);
+      },
+      saveMmdMotion: (input) =>
+        requestJson<Character>(apiBase, "/api/characters/model/mmd-motion/save", {
+          body: JSON.stringify(input),
+          method: "POST",
+        }),
       async planSprites(input, options) {
         const task = await requestJson<TaskSnapshot<{ items: SpritePromptPair[] }>>(
           apiBase,

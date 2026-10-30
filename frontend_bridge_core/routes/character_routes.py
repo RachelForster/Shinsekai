@@ -73,6 +73,18 @@ def _import_model_states(request: ApiRequest) -> TaskResponse:
                             request.state, CharacterOperation.IMPORT_MODEL_STATES, body))
 
 
+def _preview_mmd_motion(request: ApiRequest) -> TaskResponse:
+    body = dict(request.body)
+    return TaskResponse(kind="mmd-motion-preview", title="Generate MMD motion",
+                        message="Motion generation queued",
+                        worker=lambda task_id: _execute_character_request(
+                            request.state, CharacterOperation.PREVIEW_MMD_MOTION, body))
+
+
+def _save_mmd_motion(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(_execute_character_request(request.state, CharacterOperation.SAVE_MMD_MOTION, request.body))
+
+
 def _generate_character_setting_route(request: ApiRequest) -> JsonResponse:
     return JsonResponse(_generate_character_setting(request.state, request.body))
 
@@ -245,6 +257,10 @@ def _animate_sprite(request: ApiRequest) -> TaskResponse:
 
 
 CHARACTER_ROUTES = (
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/model/mmd-motion/preview",
+          handler=_preview_mmd_motion, name="characters.model.mmd_motion.preview"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/model/mmd-motion/save",
+          handler=_save_mmd_motion, name="characters.model.mmd_motion.save"),
     Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/animate",
           handler=_animate_sprite, name="characters.sprites.animate"),
     Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/remove-background",
