@@ -1,6 +1,22 @@
 import type { MessageKey } from "../messages";
 
 export const jaMessages: Record<MessageKey, string> = {
+  "character.exchange.title": "キャラクターのインポート",
+  "character.exchange.fromDoki": "Doki からキャラクターを選択",
+  "character.exchange.package": "キャラクターパッケージをインポート",
+  "character.exchange.hint":
+    "設定とリソースを読み込み、保存すると反映されます。チャット、記憶、クラウド設定は変更されません。",
+  "character.exchange.source": "読み込むキャラクター",
+  "character.exchange.target": "保存先",
+  "character.exchange.update": "更新：{name}",
+  "character.exchange.preview": "キャラクター設定のプレビュー",
+  "character.exchange.noPersona": "キャラクター設定はありません",
+  "character.exchange.confirm": "下書きに読み込む",
+  "character.exchange.empty": "インポートできるキャラクターがいません",
+  "character.exchange.unavailable": "この環境では利用できません。キャラクターパッケージをご利用ください。",
+  "character.exchange.choose": "キャラクターを選択してください。",
+  "character.exchange.invalid": "有効なキャラクター設定が返されませんでした。",
+  "character.exchange.serviceHint": "このパソコンで Doki を起動してください。",
   "story.library.delete": "シナリオのバージョンを削除",
   "story.library.deleteConfirm":
     "「{title}」のバージョン {version} と関連するすべての会話・セーブデータを削除しますか？他のバージョンは保持されます。この操作は取り消せません。",

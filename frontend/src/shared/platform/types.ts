@@ -15,6 +15,8 @@ export interface PlayerPortrait {
 }
 
 export interface Sprite {
+  tags?: string[];
+  voice_lang?: string;
   portrait_crop?: PortraitCrop | null;
   path: string;
   voice_path?: string;
@@ -43,6 +45,13 @@ export interface AvatarRuntimeImport {
 }
 
 export interface Character {
+  emotion_resources?: Array<{
+    tag: string;
+    voice_path?: string;
+    voice_text?: string;
+    voice_type?: SpriteVoiceType;
+    voice_lang?: string;
+  }>;
   portrait_crop?: PortraitCrop;
   name: string;
   color: string;
@@ -1644,6 +1653,18 @@ export interface ShinsekaiPlatform {
     previewKnowledgeImport: (knowledgeId: string, items: File[]) => Promise<KnowledgeImportPreview>;
   };
   characters: {
+    listDoki?: () => Promise<{ characters: Array<{ id: string; name: string; persona: string }> }>;
+    prepareExchange?: (input: {
+      dokiId?: string;
+      path?: string;
+      index?: number;
+      targetName?: string;
+      previewOnly?: boolean;
+    }) => Promise<{
+      character?: Character;
+      originalName?: string;
+      characters?: Array<{ index: number; name: string; persona: string }>;
+    }>;
     importModel: (input: { name: string; avatar_type: string; source_path: string }) => Promise<Character>;
     importModelStates: (input: {
       name: string;

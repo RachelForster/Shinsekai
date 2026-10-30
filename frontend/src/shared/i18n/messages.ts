@@ -1,6 +1,21 @@
 export type FrontendLanguage = "zh_CN" | "en" | "ja";
 
 export type MessageKey =
+  | "character.exchange.title"
+  | "character.exchange.fromDoki"
+  | "character.exchange.package"
+  | "character.exchange.hint"
+  | "character.exchange.source"
+  | "character.exchange.target"
+  | "character.exchange.update"
+  | "character.exchange.preview"
+  | "character.exchange.noPersona"
+  | "character.exchange.confirm"
+  | "character.exchange.empty"
+  | "character.exchange.unavailable"
+  | "character.exchange.choose"
+  | "character.exchange.invalid"
+  | "character.exchange.serviceHint"
   | "story.library.delete"
   | "story.library.deleteConfirm"
   | "visualMedia.videoError"

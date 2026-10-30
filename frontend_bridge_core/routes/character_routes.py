@@ -39,6 +39,14 @@ def _list_characters(request: ApiRequest) -> JsonResponse:
     return JsonResponse(characters)
 
 
+def _list_doki_characters(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(_execute_character_request(request.state, CharacterOperation.DOKI_LIST, {}))
+
+
+def _prepare_exchange_character(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(_execute_character_request(request.state, CharacterOperation.EXCHANGE_PREPARE, request.body))
+
+
 def _save_character_route(request: ApiRequest) -> JsonResponse:
     return JsonResponse(
         _execute_character_request(request.state, CharacterOperation.SAVE, request.body)
@@ -186,6 +194,8 @@ def _auto_label_character_sprites(request: ApiRequest) -> TaskResponse:
 
 
 CHARACTER_ROUTES = (
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/exchange/doki-list", handler=_list_doki_characters, name="characters.exchange.doki-list"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/exchange/prepare", handler=_prepare_exchange_character, name="characters.exchange.prepare"),
     Route(methods=frozenset({"POST"}), pattern="/api/characters/model/import",
           handler=_import_character_model, name="characters.model.import"),
     Route(methods=frozenset({"POST"}), pattern="/api/characters/model/state",

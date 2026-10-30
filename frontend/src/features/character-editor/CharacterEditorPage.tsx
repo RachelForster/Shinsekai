@@ -61,6 +61,7 @@ import { useCharacterMemoryController } from "./useCharacterMemoryController";
 import { useCharacterMemoryImportController } from "./useCharacterMemoryImportController";
 import "./CharacterEditorPage.css";
 import { ModelStateEditor } from "./ModelStateEditor";
+import { CharacterExchangePanel } from "./CharacterExchangePanel";
 
 export function mergeSprites(serverSprites: Sprite[], current: Character) {
   const currentSpritesByPath = new Map(
@@ -72,6 +73,8 @@ export function mergeSprites(serverSprites: Sprite[], current: Character) {
       currentSpritesByPath.get(sprite.path) ?? (canFallbackToIndex ? current.sprites[index] : undefined);
     return {
       ...sprite,
+      tags: sprite.tags ?? currentSprite?.tags,
+      voice_lang: sprite.voice_lang ?? currentSprite?.voice_lang,
       voice_type: sprite.voice_type ?? currentSprite?.voice_type,
     };
   });
@@ -132,7 +135,13 @@ export function CharacterEditorPage() {
   }, [data, isCreating, selectedName]);
 
   const prevSelectedNameRef = useRef<string>("");
+  const exchangeDraftRef = useRef<{ character: Character; originalName: string } | null>(null);
   useEffect(() => {
+    if (selected && exchangeDraftRef.current?.originalName === selected.name) {
+      setDraft(exchangeDraftRef.current.character);
+      setPronunciationText(pronunciationMapToText(exchangeDraftRef.current.character.pronunciation_map));
+      return;
+    }
     if (selected && selected.name !== prevSelectedNameRef.current) {
       prevSelectedNameRef.current = selected.name;
       setSelectedName(selected.name);
@@ -163,6 +172,7 @@ export function CharacterEditorPage() {
       });
     },
     onSuccess(character, variables) {
+      exchangeDraftRef.current = null;
       queryClient.setQueryData<Character[]>(charactersQueryKey, (current = []) => {
         const targetNames = new Set([variables.originalName, character.name].filter(Boolean));
         const next = current.filter((item) => !targetNames.has(item.name));
@@ -1007,6 +1017,20 @@ export function CharacterEditorPage() {
         selectedName={selectedName}
       />
 
+      <CharacterExchangePanel
+        characters={data}
+        selectedName={selectedName}
+        onPrepared={(character, originalName) => {
+          exchangeDraftRef.current = { character, originalName };
+          setSelectedName(originalName);
+          setIsCreating(!originalName);
+          setDraft(character);
+          setPronunciationText(pronunciationMapToText(character.pronunciation_map));
+          setPendingSpritePaths([]);
+          setPendingVoicePaths({});
+          setSelectedSpriteIndex(0);
+        }}
+      />
       <div className="settings-grid character-page__content">
         <div className="character-page__top-grid">
           <CharacterBasicSection

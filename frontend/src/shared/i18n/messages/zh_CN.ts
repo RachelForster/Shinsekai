@@ -1,6 +1,21 @@
 import type { MessageKey } from "../messages";
 
 export const zhCNMessages: Record<MessageKey, string> = {
+  "character.exchange.title": "角色导入",
+  "character.exchange.fromDoki": "从 Doki 选择角色导入",
+  "character.exchange.package": "导入角色包",
+  "character.exchange.hint": "导入角色资料与资源，保存后生效。聊天、记忆与云端设置保持不变。",
+  "character.exchange.source": "选择来源角色",
+  "character.exchange.target": "保存方式",
+  "character.exchange.update": "更新：{name}",
+  "character.exchange.preview": "人物设定预览",
+  "character.exchange.noPersona": "未填写人物设定",
+  "character.exchange.confirm": "确认并载入草稿",
+  "character.exchange.empty": "暂无可导入角色",
+  "character.exchange.unavailable": "当前平台不支持此导入方式，请使用角色包文件。",
+  "character.exchange.choose": "请选择角色。",
+  "character.exchange.invalid": "未返回有效角色配置。",
+  "character.exchange.serviceHint": "请确认 Doki 已在本机启动。",
   "story.library.delete": "删除剧本版本",
   "story.library.deleteConfirm":
     "确定删除《{title}》的版本 {version} 及其全部关联对话和存档吗？其他版本会保留。此操作无法撤销。",

@@ -1037,6 +1037,9 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
       },
     },
     characters: {
+      listDoki: () => requestJson(apiBase, "/api/characters/exchange/doki-list", { method: "POST", body: "{}" }),
+      prepareExchange: (input) =>
+        requestJson(apiBase, "/api/characters/exchange/prepare", { method: "POST", body: JSON.stringify(input) }),
       importModelStates: async (input) => {
         const task = await requestJson<TaskSnapshot<Character>>(apiBase, "/api/characters/model/states/import", {
           body: JSON.stringify(input),

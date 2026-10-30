@@ -160,6 +160,7 @@ def export_character(character_configs: list[CharacterConfig], output_path: str,
                 'avatars': deepcopy(getattr(config, 'avatars', None) or {}),
                 'character_brief': getattr(config, 'character_brief', '') or '',
                 'character_setting': config.character_setting,
+                'emotion_resources': deepcopy(getattr(config, 'emotion_resources', None) or []),
                 'speech_speed': getattr(config, 'speech_speed', 1.0),
                 'speech_volume': getattr(config, 'speech_volume', 1.0),
                 'pronunciation_map': getattr(config, 'pronunciation_map', None) or {},
@@ -189,6 +190,18 @@ def export_character(character_configs: list[CharacterConfig], output_path: str,
                     char_data[key] = str(new_relative_path)
                 else:
                     char_data[key] = None
+
+            # Audio-only emotion tags are portable without a corresponding sprite.
+            for emotion in char_data['emotion_resources']:
+                voice_path = emotion.get('voice_path')
+                if voice_path:
+                    source = Path(voice_path)
+                    if not source.is_file():
+                        raise ValueError(f"Emotion audio does not exist: {source.name}")
+                    target = temp_dir / 'speech' / config.sprite_prefix / source.name
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(source, target)
+                    emotion['voice_path'] = source.name
 
             # 处理立绘文件
             if config.sprite_prefix:
@@ -498,6 +511,11 @@ def import_character(input_path: str) -> list[CharacterConfig]:
                     else:
                         s['voice_type'] = 'reference' if str(s.get('voice_text') or '').strip() else 'fallback'
             
+            for emotion in char_data.get('emotion_resources') or []:
+                if emotion.get('voice_path'):
+                    filename = _safe_package_basename_or_legacy_absolute(emotion['voice_path'], 'emotion voice')
+                    emotion['voice_path'] = (dest_speech_dir / filename).as_posix()
+
             # 恢复模型文件并更新路径
             model_paths = {
                 'gpt_model_path': char_data.get('gpt_model_path'),
