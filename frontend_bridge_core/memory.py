@@ -25,6 +25,11 @@ def _check_mem0_before_call() -> dict[str, Any] | None:
 
 def _get_mem0_status(*, start_loading: bool = True) -> dict[str, Any]:
     """Return mem0 availability status for frontend polling."""
+    from application.memory.manage_memories import memory_service_status
+
+    remote = memory_service_status(start_loading=start_loading)
+    if remote is not None:
+        return remote
     dependency_error = _check_mem0_before_call()
     if dependency_error is not None:
         dependency_error["status"] = "missing_dependency"
@@ -33,6 +38,20 @@ def _get_mem0_status(*, start_loading: bool = True) -> dict[str, Any]:
     from application.memory.manage_memories import check_mem0_status
 
     return check_mem0_status(start_loading=start_loading)
+
+
+def _scoped_memory_operation(
+    state: Any,
+    action: str,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    from application.memory.manage_memories import scoped_memory_operation
+    from sdk.tool_registry import ToolNotReady
+
+    try:
+        return scoped_memory_operation(action, payload, state.config_manager)
+    except ToolNotReady as exc:
+        return {"status": "loading", "message": exc.message}
 
 
 def _raise_memory_error(result: dict[str, Any]) -> None:

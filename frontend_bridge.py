@@ -442,6 +442,12 @@ def run(
     )
     server = ThreadingHTTPServer((host, port), FrontendBridgeHandler)
     server.state = state  # type: ignore[attr-defined]
+    from ai.memory.connection import publish_endpoint
+    if not publish_endpoint(f"http://127.0.0.1:{server.server_address[1]}", bridge_auth_token, resolved_project_root):
+        os.environ["SHINSEKAI_MEMORY_SERVICE_OWNER"] = "0"
+    else:
+        from ai.memory.scoped_queue import start_worker
+        start_worker()
     _restart_debug_log(f"server listening host={host} port={port} frontend_dist={resolved_frontend_dist}")
     _start_plugin_loader(state, logger)
     from application.story.generation_recovery import recover_story_generations

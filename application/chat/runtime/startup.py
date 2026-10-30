@@ -70,6 +70,15 @@ def chat_history_is_present(history_argument: str) -> bool:
         return False
 
 
+def _memory_scope_context(config, history, names):
+    from ai.memory.session_scope import session_scopes
+    characters = [c for c in config.config.characters if c.name in names]
+    if not characters or any(not getattr(c, "id", None) for c in characters):
+        return {"memoryScoped": True, "memoryScopes": {}, "memorySession": ""}
+    scopes, session = session_scopes(history, characters)
+    return {"memoryScoped": True, "memoryScopes": scopes, "memorySession": session}
+
+
 def create_chat_startup_context(
     args: Any,
     *,
@@ -202,7 +211,7 @@ def create_chat_startup_context(
                     else "headless" if args.headless else "native"
                 ),
                 headless=bool(args.headless),
-                metadata={"workflowPath": str(args.workflow or "")},
+                metadata={"workflowPath": str(args.workflow or ""), **_memory_scope_context(config, args.history, character_names)},
             ).scaled(0.68, 0.82)
             plugin_manager.hook_dispatcher.dispatch_init_chat(init_context)
 

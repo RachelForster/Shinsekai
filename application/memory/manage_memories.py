@@ -16,6 +16,22 @@ def check_mem0_status(*, start_loading: bool = True) -> dict[str, Any]:
     return _check_mem0_status(start_loading=start_loading)
 
 
+def memory_service_status(*, start_loading: bool = True) -> dict[str, Any] | None:
+    from ai.memory.operations import memory_service_status as _memory_service_status
+
+    return _memory_service_status(start_loading=start_loading)
+
+
+def scoped_memory_operation(
+    action: str,
+    payload: dict[str, Any],
+    config_manager: Any = None,
+) -> dict[str, Any]:
+    from ai.memory.scoped import scoped_call
+
+    return scoped_call(action, payload, config_manager)
+
+
 def wait_for_memory_ready() -> None:
     """Wait for the existing memory runtime before launching semantic media."""
     from ai.memory.runtime import get_mem0

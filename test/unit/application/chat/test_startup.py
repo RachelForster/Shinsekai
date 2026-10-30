@@ -136,6 +136,7 @@ def _runtime(calls, memory_hooks):
 
 
 def test_create_context_assembles_providers_messages_and_hooks(monkeypatch) -> None:
+    monkeypatch.setattr(startup, "_memory_scope_context", lambda *_: {})
     calls = []
     memory_hooks = []
     runtime = _runtime(calls, memory_hooks)
