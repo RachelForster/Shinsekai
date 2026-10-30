@@ -107,6 +107,7 @@ export interface ApiConfig {
   is_streaming: boolean;
   vision_provider: string;
   vision_model: Record<string, string>;
+  vision_config_version?: number;
   interrupt_enabled: boolean;
   is_batch_input_enabled: boolean;
   batch_input_timeout: number;

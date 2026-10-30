@@ -8,6 +8,8 @@ import {
   DEFAULT_T2I_PROMPT_NODE_ID,
   effectiveVisionApiKey,
   effectiveVisionBaseUrl,
+  effectiveVisionModel,
+  resolveVisionProvider,
   inferT2iSetupMode,
   isT2iReadyForSprites,
   isTaskRunning,
@@ -216,5 +218,21 @@ describe("API settings utilities", () => {
 
     expect(effectiveVisionApiKey(config)).toBe("shared-key");
     expect(effectiveVisionBaseUrl(config)).toBe("https://deepseek-proxy.example.com/v1");
+  });
+
+  it("follows the active LLM by default and preserves explicit vision choices", () => {
+    const config = apiConfig({
+      vision_provider: "auto",
+      vision_model: {},
+      llm_provider: "ChatGPT",
+      llm_model: { ChatGPT: "current-vision-model" },
+      llm_api_key: { ChatGPT: "key" },
+    });
+    expect(resolveVisionProvider(config)).toBe("chatgpt");
+    expect(effectiveVisionModel(config)).toBe("current-vision-model");
+    expect(effectiveVisionApiKey(config)).toBe("key");
+    expect(resolveVisionProvider({ ...config, llm_provider: "通义千问" })).toBe("qwen");
+    expect(resolveVisionProvider({ ...config, vision_provider: "moondream" })).toBe("moondream");
+    expect(effectiveVisionModel({ ...config, vision_model: { chatgpt: "explicit-model" } })).toBe("explicit-model");
   });
 });

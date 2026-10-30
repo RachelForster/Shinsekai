@@ -13,6 +13,7 @@ from config.vision_defaults import (
     VISION_DEFAULT_MODELS,
     resolve_vision_api_key,
     resolve_vision_base_url,
+    resolve_vision_model,
     vision_provider_requires_api_key,
 )
 
@@ -24,10 +25,7 @@ def _configured_values(provider: str) -> tuple[str, str, str]:
     provider_key = provider.strip().lower()
     api_key = resolve_vision_api_key(config, provider_key)
     base_url = resolve_vision_base_url(config, provider_key)
-    model = str(
-        (config.vision_model or {}).get(provider_key, "")
-        or VISION_DEFAULT_MODELS.get(provider_key, "")
-    ).strip()
+    model = resolve_vision_model(config, provider_key)
     return api_key, base_url, model
 
 

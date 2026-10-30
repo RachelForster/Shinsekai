@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from ai.vision.message_content import normalize_anthropic_user_content, normalize_openai_messages
-from ai.vision.service import ChatVisionService, configured_vision_available
+from ai.vision.service import ChatVisionService, configured_vision_available, configured_vision_manager
 from ai.vision.vision_manager import VisionManager
 from core.media.chat_attachments import resolve_chat_attachments
 
@@ -52,6 +52,23 @@ def test_registered_plugin_vision_does_not_require_builtin_provider_credentials(
     config = SimpleNamespace(vision_provider="plugin-vision")
 
     assert configured_vision_available(config) is True
+
+
+def test_auto_vision_selects_current_llm_before_local_fallback(monkeypatch):
+    config = SimpleNamespace(vision_provider="auto",llm_provider="ChatGPT",llm_api_key={"ChatGPT":"key"},llm_base_urls={},llm_model={"ChatGPT":"current-model"},vision_model={})
+    calls=[]
+    vision = _FallbackVision()
+    monkeypatch.setattr("ai.vision.service.VisionManager",lambda provider,**kwargs: calls.append((provider,kwargs)) or vision)
+    monkeypatch.setattr("ai.vision.service.active_vision_fallback",lambda: pytest.fail("auto must follow LLM before a plugin"))
+    assert configured_vision_manager(config) is vision
+    assert calls == [("chatgpt",{"api_config":config})]
+
+
+def test_auto_vision_availability_uses_inherited_llm_model():
+    config=SimpleNamespace(vision_provider="auto",llm_provider="ChatGPT",llm_api_key={"ChatGPT":"key"},llm_base_urls={},llm_model={"ChatGPT":"current-model"},vision_model={})
+    assert configured_vision_available(config) is True
+    config.llm_api_key={}
+    assert configured_vision_available(config) is False
 
 
 def _image_attachment(tmp_path: Path):
@@ -223,6 +240,7 @@ def test_unknown_vision_capability_defaults_to_safe_unavailable_fallback(tmp_pat
 
 def test_missing_default_moondream_plugin_returns_recoverable_prompt(tmp_path: Path, monkeypatch):
     image = _image_attachment(tmp_path)
+    monkeypatch.setattr("ai.vision.service._configured_vision_provider", lambda *_: "auto")
     monkeypatch.setattr("ai.vision.service.installed_moondream_directory", lambda: None)
 
     prepared = ChatVisionService().prepare("Inspect", [image], adapter=_TextAdapter())
@@ -233,6 +251,7 @@ def test_missing_default_moondream_plugin_returns_recoverable_prompt(tmp_path: P
 
 def test_installed_moondream_without_torch_returns_recoverable_prompt(tmp_path: Path, monkeypatch):
     image = _image_attachment(tmp_path)
+    monkeypatch.setattr("ai.vision.service._configured_vision_provider", lambda *_: "auto")
     # Moondream plugin directory is present, but its PyTorch runtime dependency is
     # not importable: report it unavailable so the user gets the guidance prompt
     # instead of a raw missing-module crash.
