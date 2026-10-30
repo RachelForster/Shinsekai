@@ -229,26 +229,57 @@ exit 11
 #[cfg(unix)]
 #[test]
 fn install_runtime_requirements_streams_pip_output() {
+    assert_install_runtime_requirements_streams_pip_output(true);
+}
+
+#[cfg(unix)]
+#[test]
+fn install_runtime_requirements_streams_pip_output_after_bootstrap() {
+    assert_install_runtime_requirements_streams_pip_output(false);
+}
+
+#[cfg(unix)]
+fn assert_install_runtime_requirements_streams_pip_output(pip_available: bool) {
     let temp_root = unique_temp_dir("runtime-stream-install");
     fs::create_dir_all(&temp_root).unwrap();
     let fake_python = temp_root.join("python");
     let requirements = temp_root.join("requirements.txt");
+    let state = temp_root.join("pip-ready");
+    let log = temp_root.join("calls.txt");
     fs::write(&requirements, "pydantic\n").unwrap();
+    if pip_available {
+        fs::write(&state, "").unwrap();
+    }
     write_executable(
         &fake_python,
-        r#"#!/bin/sh
+        &format!(
+            r#"#!/bin/sh
+set -eu
+printf '%s\n' "$*" >> "{log}"
 case "$*" in
-  *"-m pip --version"*)
+  "-m pip --version")
+    if [ -f "{state}" ]; then
+      exit 0
+    fi
+    exit 7
+    ;;
+  "-m ensurepip --upgrade --default-pip")
+    : > "{state}"
     exit 0
     ;;
-  *"-m pip install"*)
+  "-m pip install "*)
+    test -f "{state}"
     echo "Collecting pydantic"
     echo "Installing collected packages: pydantic" >&2
     exit 0
     ;;
 esac
+printf 'Unexpected fake Python invocation: %s\n' "$*" >&2
 exit 11
 "#,
+            log = log.display(),
+            state = state.display(),
+        ),
     );
     let mut lines = Vec::new();
 
@@ -261,6 +292,16 @@ exit 11
     assert!(lines
         .iter()
         .any(|line| line == "Installing collected packages: pydantic"));
+    if !pip_available {
+        let calls = fs::read_to_string(log).unwrap();
+        let calls = calls.lines().collect::<Vec<_>>();
+        let bootstrap = calls
+            .iter()
+            .position(|line| *line == "-m ensurepip --upgrade --default-pip")
+            .expect("missing pip must be bootstrapped before installation");
+        assert_eq!(calls[bootstrap + 1], "-m pip --version");
+        assert!(calls[bootstrap + 2].starts_with("-m pip install "));
+    }
 
     let _ = fs::remove_dir_all(temp_root);
 }

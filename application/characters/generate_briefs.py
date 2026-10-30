@@ -24,7 +24,7 @@ def normalize_character_brief(value: Any) -> str:
     return text[:MAX_CHARACTER_BRIEF_LENGTH].rstrip()
 
 
-def _chat(config_store: Any, system: str, user: str) -> str:
+def chat_character_text(config_store: Any, system: str, user: str) -> str:
     provider, model, base_url, api_key = config_store.get_llm_api_config()
     if not provider or not model or not api_key:
         raise ValueError("llm_incomplete")
@@ -49,6 +49,9 @@ def _chat(config_store: Any, system: str, user: str) -> str:
         )
         or ""
     )
+
+
+_chat = chat_character_text
 
 
 def generate_character_brief(config_store: Any, name: str, setting: str) -> str:

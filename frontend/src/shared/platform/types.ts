@@ -117,6 +117,7 @@ export interface ApiConfig {
   is_streaming: boolean;
   vision_provider: string;
   vision_model: Record<string, string>;
+  vision_config_version?: number;
   interrupt_enabled: boolean;
   is_batch_input_enabled: boolean;
   batch_input_timeout: number;
@@ -935,6 +936,21 @@ export interface LlmConnectionTestResult {
   message: string;
 }
 
+export interface ComfyUIConnectionTestResult {
+  ok: boolean;
+  code:
+    | "connected"
+    | "invalid_url"
+    | "timeout"
+    | "unreachable"
+    | "auth_required"
+    | "http_error"
+    | "not_comfyui"
+    | "tls_error";
+  httpStatus?: number;
+  serverVersion?: string;
+}
+
 export interface PluginUninstallResult {
   folderNote?: string;
   message: string;
@@ -1413,6 +1429,48 @@ export interface TaskSnapshot<TResult = unknown> {
   updatedAt: number;
 }
 
+export interface SpritePromptPair {
+  prompt: string;
+  tagging: string;
+}
+
+export interface CharacterSpritePlanInput {
+  name: string;
+  setting: string;
+  count: number;
+  requirements: string;
+  referenceImage?: string;
+}
+
+export interface GeneratedCharacterSprite extends SpritePromptPair {
+  name: string;
+  path: string;
+  taskId: string;
+  videoPath?: string;
+  frameTime?: number;
+  originalPath?: string;
+  backgroundRemoved?: boolean;
+  backgroundRemovalError?: string;
+  animation?: boolean;
+  alphaVerified?: boolean;
+  frameCount?: number;
+  duration?: number;
+  playbackSpeed?: number;
+}
+
+export interface CharacterSpriteAnimationInput {
+  name: string;
+  referenceImage: string;
+  tagging: string;
+  breathing: boolean;
+  blinking: boolean;
+  breeze: boolean;
+  loop: boolean;
+  motion: string;
+  playbackSpeed?: number;
+  customPrompt?: string;
+}
+
 export interface TaskProgressOptions<TResult = unknown> {
   onTaskUpdate?: (task: TaskSnapshot<TResult>) => void;
 }
@@ -1703,6 +1761,31 @@ export interface ShinsekaiPlatform {
       name: string,
       options?: TaskProgressOptions<ImageAutoLabelResult>,
     ) => Promise<ImageAutoLabelResult>;
+    planSprites: (
+      input: CharacterSpritePlanInput,
+      options?: TaskProgressOptions<{ items: SpritePromptPair[] }>,
+    ) => Promise<{ items: SpritePromptPair[] }>;
+    renderSprite: (
+      input: SpritePromptPair & { name: string; referenceImage?: string; removeBackground?: boolean },
+      options?: TaskProgressOptions<GeneratedCharacterSprite>,
+    ) => Promise<GeneratedCharacterSprite>;
+    animateSprite: (
+      input: CharacterSpriteAnimationInput,
+      options?: TaskProgressOptions<GeneratedCharacterSprite>,
+    ) => Promise<GeneratedCharacterSprite>;
+    importGeneratedSprites: (input: {
+      name: string;
+      items: { taskId: string; tagging: string }[];
+      replace?: { index: number; path: string };
+    }) => Promise<Character>;
+    captureSpriteFrame: (
+      input: { name: string; taskId: string; seconds: number; removeBackground?: boolean },
+      options?: TaskProgressOptions<GeneratedCharacterSprite>,
+    ) => Promise<GeneratedCharacterSprite>;
+    removeSpriteBackground: (
+      input: { name: string; taskId: string },
+      options?: TaskProgressOptions<GeneratedCharacterSprite>,
+    ) => Promise<GeneratedCharacterSprite>;
     delete: (name: string) => Promise<void>;
     deleteMemory: (name: string, memoryId: string) => Promise<CharacterMemoryList>;
     deleteSpriteVoice: (name: string, spriteIndex: number) => Promise<Character>;
@@ -1756,6 +1839,7 @@ export interface ShinsekaiPlatform {
       model: string;
       provider: string;
     }) => Promise<LlmConnectionTestResult>;
+    testComfyuiConnection: (input: { baseUrl: string }) => Promise<ComfyUIConnectionTestResult>;
     get: () => Promise<AppConfig>;
     detectNetworkProxy: () => Promise<NetworkProxyDetectionResult>;
     getMemoryStatus: (options?: { startLoading?: boolean }) => Promise<Mem0Status>;
@@ -1776,6 +1860,7 @@ export interface ShinsekaiPlatform {
     status: (input: ModelAssetRef) => Promise<ModelAssetStatus>;
   };
   files: {
+    openT2iWorkflowFolder: () => Promise<{ path: string }>;
     modelUrl: (modelPath: string, path: string) => string;
     browse: (options?: { path?: string; showHidden?: boolean }) => Promise<FileBrowserSnapshot>;
     fileUrl: (path: string) => string;

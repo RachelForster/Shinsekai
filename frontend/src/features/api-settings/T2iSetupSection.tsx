@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react";
-import { CheckCircle2, Monitor, Settings2, Sparkles, Wand2, type LucideIcon } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { CheckCircle2, Monitor, Settings2, Sparkles, Wand2, Wifi, type LucideIcon } from "lucide-react";
 
+import { testComfyuiConnection } from "../../entities/config/repository";
 import type { AdapterExtraFieldSchema, ApiConfig } from "../../entities/config/types";
 import type { SchemaErrorMap } from "../../entities/config/schema";
 import { useI18n } from "../../shared/i18n";
-import { Button, FilePicker, Select, TextInput } from "../../shared/ui";
+import type { ComfyUIConnectionTestResult } from "../../shared/platform/types";
+import { AsyncButton, Button, ComfyUIConnectionGuide, FilePicker, Select, Switch, TextInput } from "../../shared/ui";
 import { AdapterExtraForm } from "./AdapterExtraForm";
 import { applyT2iSetupMode, hasAdapterSchema, inferT2iSetupMode, type T2iSetupMode } from "./apiSettingsUtils";
 
@@ -45,7 +47,44 @@ export function T2iSetupSection({
   const inferredMode = inferT2iSetupMode(draft);
   const [mode, setSelectedMode] = useState<T2iSetupMode>(inferredMode);
   const active = mode !== "skip";
-  const showAdvanced = active || hasAdapterSchema(extraSchema);
+  const isComfy = draft.t2i_provider.trim().toLowerCase() === "comfyui";
+  const [checking, setChecking] = useState(false);
+  const [connection, setConnection] = useState<ComfyUIConnectionTestResult | null>(null);
+  const [connectionError, setConnectionError] = useState(false);
+  const connectionRequest = useRef(0);
+  const autoStart =
+    typeof extraValues.auto_start === "boolean" ? extraValues.auto_start : Boolean(draft.t2i_work_path.trim());
+  const advancedSchema = Object.fromEntries(
+    Object.entries(extraSchema).filter(
+      ([key]) => !isComfy || (key !== "auto_start" && (autoStart || key !== "startup_args")),
+    ),
+  );
+  const showAdvanced = active || hasAdapterSchema(advancedSchema);
+
+  useEffect(() => {
+    connectionRequest.current += 1;
+    setChecking(false);
+    setConnection(null);
+    setConnectionError(false);
+    return () => {
+      connectionRequest.current += 1;
+    };
+  }, [active, isComfy, draft.t2i_api_url]);
+
+  const checkConnection = async () => {
+    const requestId = ++connectionRequest.current;
+    setChecking(true);
+    setConnection(null);
+    setConnectionError(false);
+    try {
+      const result = await testComfyuiConnection({ baseUrl: draft.t2i_api_url.trim() });
+      if (requestId === connectionRequest.current) setConnection(result);
+    } catch {
+      if (requestId === connectionRequest.current) setConnectionError(true);
+    } finally {
+      if (requestId === connectionRequest.current) setChecking(false);
+    }
+  };
 
   useEffect(() => {
     if (inferredMode !== "skip" || mode === "skip") {
@@ -98,11 +137,28 @@ export function T2iSetupSection({
       </div>
       {active ? (
         <>
+          {isComfy ? (
+            <div className="t2i-setup__connection">
+              <Switch
+                checked={autoStart}
+                disabled={disabled}
+                onChange={(event) => onAdapterExtraChange("auto_start", event.target.checked)}
+              >
+                {t("api.t2i.autoStart")}
+              </Switch>
+              <p className="t2i-setup__hint">{t(autoStart ? "api.t2i.autoStartHint" : "api.t2i.manualStartHint")}</p>
+              <details className="t2i-setup__guide">
+                <summary>{t("comfyGuide.title")}</summary>
+                <ComfyUIConnectionGuide />
+              </details>
+            </div>
+          ) : null}
           <div className="form-grid form-grid--two">
             <label className="field-row">
               <span className="field-row__label">{t("api.t2i.provider")}</span>
               <span className="field-row__control">
                 <Select
+                  aria-label={t("api.t2i.provider")}
                   disabled={disabled}
                   onChange={(event) => onChange(patchT2i(draft, { t2i_provider: event.target.value }))}
                   value={draft.t2i_provider}
@@ -118,20 +174,51 @@ export function T2iSetupSection({
             <label className="field-row">
               <span className="field-row__label">{t("api.t2i.apiUrl")}</span>
               <span className="field-row__control">
-                <TextInput
-                  disabled={disabled}
-                  onChange={(event) => onChange(patchT2i(draft, { t2i_api_url: event.target.value }))}
-                  placeholder="http://127.0.0.1:8188"
-                  type="url"
-                  value={draft.t2i_api_url}
-                />
+                <div className="t2i-setup__url-control">
+                  <TextInput
+                    aria-label={t("api.t2i.apiUrl")}
+                    disabled={disabled}
+                    onChange={(event) => onChange(patchT2i(draft, { t2i_api_url: event.target.value }))}
+                    placeholder="http://127.0.0.1:8188"
+                    type="url"
+                    value={draft.t2i_api_url}
+                  />
+                  {isComfy ? (
+                    <AsyncButton
+                      disabled={disabled || !draft.t2i_api_url.trim()}
+                      icon={<Wifi aria-hidden className="button__icon" />}
+                      loading={checking}
+                      onClick={() => void checkConnection()}
+                      tooltip={t("api.t2i.connectionHint")}
+                    >
+                      {t(checking ? "api.t2i.testingConnection" : "api.t2i.testConnection")}
+                    </AsyncButton>
+                  ) : null}
+                </div>
                 {errors.t2i_api_url ? <span className="field-error">{errors.t2i_api_url}</span> : null}
+                {isComfy ? <span className="t2i-setup__hint">{t("api.t2i.apiUrlHint")}</span> : null}
+                {connection && isComfy ? (
+                  <div className="t2i-setup__connection-result" data-ok={connection.ok} role="status">
+                    <p>
+                      {t(`api.t2i.connection.${connection.code}`)}
+                      {connection.httpStatus ? ` (HTTP ${connection.httpStatus})` : ""}
+                      {connection.ok && connection.serverVersion ? ` (ComfyUI ${connection.serverVersion})` : ""}
+                    </p>
+                    {connection.ok ? <p className="t2i-setup__hint">{t("api.t2i.connectionScope")}</p> : null}
+                  </div>
+                ) : null}
+                {connectionError && isComfy ? (
+                  <p className="field-error" role="alert">
+                    {t("api.t2i.connectionRequestFailed")}
+                  </p>
+                ) : null}
               </span>
             </label>
             <label className="field-row">
               <span className="field-row__label">{t("api.t2i.workflow")}</span>
               <span className="field-row__control">
                 <FilePicker
+                  aria-label={t("api.t2i.workflow")}
                   acceptedExtensions={[".json"]}
                   disabled={disabled}
                   onChange={(event) => onChange(patchT2i(draft, { t2i_default_workflow_path: event.target.value }))}
@@ -140,13 +227,15 @@ export function T2iSetupSection({
                   pickerTitle={t("api.t2i.workflowPick")}
                   value={draft.t2i_default_workflow_path}
                 />
+                {isComfy ? <span className="t2i-setup__hint">{t("api.t2i.workflowHint")}</span> : null}
               </span>
             </label>
-            {mode === "local" ? (
+            {isComfy && autoStart ? (
               <label className="field-row">
                 <span className="field-row__label">{t("api.t2i.comfyDir")}</span>
                 <span className="field-row__control">
                   <FilePicker
+                    aria-label={t("api.t2i.comfyDir")}
                     disabled={disabled}
                     onChange={(event) => onChange(patchT2i(draft, { t2i_work_path: event.target.value }))}
                     onPathChange={(path) => onChange(patchT2i(draft, { t2i_work_path: path }))}
@@ -201,11 +290,11 @@ export function T2iSetupSection({
               </label>
             </div>
           ) : null}
-          {hasAdapterSchema(extraSchema) ? (
+          {hasAdapterSchema(advancedSchema) ? (
             <AdapterExtraForm
               disabled={disabled}
               onChange={onAdapterExtraChange}
-              schema={extraSchema}
+              schema={advancedSchema}
               values={extraValues}
             />
           ) : null}

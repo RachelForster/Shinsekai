@@ -28,7 +28,7 @@ import {
 import type { Character, Sprite } from "../../entities/config/types";
 import { fileUrl } from "../../entities/files/repository";
 import { baseName, numberedTags, removeTagRows, tagContents } from "../../shared/assets/assetText";
-import { isMp4Media } from "../../shared/assets/visualMedia";
+import { isVideoMedia } from "../../shared/assets/visualMedia";
 import { DEFAULT_CHARACTER_COLOR } from "../../shared/constants";
 import { useI18n } from "../../shared/i18n";
 import type {
@@ -45,6 +45,7 @@ import { CharacterMemorySection } from "./CharacterMemorySection";
 import { CharacterPageHeader } from "./CharacterPageHeader";
 import { CharacterPersonalitySection } from "./CharacterPersonalitySection";
 import { CharacterSpritesSection } from "./CharacterSpritesSection";
+import { SpriteGenerationDialog } from "./SpriteGenerationDialog";
 import { CharacterVoiceSection } from "./CharacterVoiceSection";
 import { MediaAutoLabelProgressDialog } from "../media-auto-label/MediaAutoLabelProgressDialog";
 import { useVisionAvailability } from "../media-auto-label/useVisionAvailability";
@@ -102,6 +103,8 @@ export function CharacterEditorPage() {
   const [bulkSpriteTagsOpen, setBulkSpriteTagsOpen] = useState(false);
   const [bulkSpriteTagsDraft, setBulkSpriteTagsDraft] = useState("");
   const [autoLabelDialogOpen, setAutoLabelDialogOpen] = useState(false);
+  const [spriteGenerationOpen, setSpriteGenerationOpen] = useState(false);
+  const preserveImportedDraftRef = useRef<Character | null>(null);
   const [autoLabelTask, setAutoLabelTask] = useState<TaskSnapshot<ImageAutoLabelResult> | null>(null);
   const [nameError, setNameError] = useState("");
   const [pronunciationText, setPronunciationText] = useState("");
@@ -138,6 +141,11 @@ export function CharacterEditorPage() {
   const prevSelectedNameRef = useRef<string>("");
   const exchangeDraftRef = useRef<{ character: Character; originalName: string } | null>(null);
   useEffect(() => {
+    if (selected && selected.name === preserveImportedDraftRef.current?.name) {
+      preserveImportedDraftRef.current = null;
+      exchangeDraftRef.current = null;
+      return;
+    }
     if (selected && exchangeDraftRef.current?.originalName === selected.name) {
       setDraft(exchangeDraftRef.current.character);
       setPronunciationText(pronunciationMapToText(exchangeDraftRef.current.character.pronunciation_map));
@@ -713,8 +721,8 @@ export function CharacterEditorPage() {
         badge: sprite.voice_path ? t("character.sprite.hasVoice") : t("character.sprite.noVoice"),
         badgeTone: sprite.voice_path ? ("default" as const) : ("muted" as const),
         id: `${sprite.path}-${index}`,
-        imageSrc: sprite.path && !isMp4Media(sprite.path) ? fileUrl(sprite.path) : "",
-        videoSrc: isMp4Media(sprite.path) ? fileUrl(sprite.path) : undefined,
+        imageSrc: sprite.path && !isVideoMedia(sprite.path) ? fileUrl(sprite.path) : "",
+        videoSrc: isVideoMedia(sprite.path) ? fileUrl(sprite.path) : undefined,
         meta: spriteTags[index] || sprite.voice_text || "",
         title: baseName(sprite.path) || `${index + 1}`,
       })),
@@ -1081,6 +1089,15 @@ export function CharacterEditorPage() {
 
         {draft.avatar_type === "static" && (
           <CharacterSpritesSection
+            generateDisabled={!isSavedCharacter || !draft.character_setting.trim()}
+            generateHint={
+              !isSavedCharacter
+                ? t("spriteGeneration.saveFirst")
+                : !draft.character_setting.trim()
+                  ? t("spriteGeneration.settingRequired")
+                  : undefined
+            }
+            onGenerate={() => setSpriteGenerationOpen(true)}
             autoLabelAvailable={visionAvailable}
             autoLabelDisabled={!isSavedCharacter || !draft.sprites.length || !spriteTags.some((tag) => !tag.trim())}
             autoLabelPending={autoLabelMutation.isPending}
@@ -1219,6 +1236,42 @@ export function CharacterEditorPage() {
         result={autoLabelMutation.data ?? null}
         task={autoLabelTask}
       />
+      {spriteGenerationOpen ? (
+        <SpriteGenerationDialog
+          character={draft}
+          name={currentCharacterName}
+          onClose={() => setSpriteGenerationOpen(false)}
+          onImported={(character, replacedIndex) => {
+            // Updating the resource collection must not discard unsaved personality or tag edits.
+            preserveImportedDraftRef.current = character;
+            queryClient.setQueryData<Character[]>(charactersQueryKey, (current = []) =>
+              current.map((item) => (item.name === character.name ? character : item)),
+            );
+            setDraft((current) => {
+              const currentSpritesByPath = new Map(current.sprites.map((sprite) => [sprite.path, sprite]));
+              if (replacedIndex !== undefined && current.sprites[replacedIndex] && character.sprites[replacedIndex]) {
+                const path = character.sprites[replacedIndex].path;
+                currentSpritesByPath.set(path, { ...current.sprites[replacedIndex], path });
+              }
+              const currentTags = tagContents(current.emotion_tags, current.sprites.length);
+              const tagsByPath = new Map(current.sprites.map((sprite, index) => [sprite.path, currentTags[index]]));
+              const savedTags = tagContents(character.emotion_tags, character.sprites.length);
+              return {
+                ...current,
+                sprites: character.sprites.map((sprite) => currentSpritesByPath.get(sprite.path) ?? sprite),
+                emotion_tags: numberedTags(
+                  "立绘",
+                  character.sprites.map((sprite, index) => tagsByPath.get(sprite.path) ?? savedTags[index]),
+                ),
+              };
+            });
+            showToast({
+              kind: "success",
+              title: t(replacedIndex === undefined ? "spriteGeneration.saved" : "spriteGeneration.replaced"),
+            });
+          }}
+        />
+      ) : null}
     </div>
   );
 }

@@ -23,6 +23,116 @@ function mockJsonResponse(body: unknown, ok = true) {
 }
 
 describe("http platform", () => {
+  it("submits idle motion through the authenticated background task transport", async () => {
+    const input = {
+      name: "Mika",
+      referenceImage: "sprite.png",
+      tagging: "平静，站立",
+      breathing: true,
+      blinking: true,
+      breeze: false,
+      loop: true,
+      motion: "",
+    };
+    const result = {
+      name: "Mika",
+      prompt: "idle",
+      tagging: input.tagging,
+      path: "sprite-alpha.webm",
+      taskId: "animate",
+      animation: true,
+      alphaVerified: true,
+    };
+    const fetchMock = vi.fn(() => mockJsonResponse({ id: "animate", status: "succeeded", result }));
+    vi.stubGlobal("fetch", fetchMock);
+    const progress = vi.fn();
+    const platform = createHttpPlatform("http://127.0.0.1:8787", "token");
+    await expect(platform.characters.animateSprite(input, { onTaskUpdate: progress })).resolves.toEqual(result);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/characters/sprites/animate",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify(input),
+        headers: expect.objectContaining({ "X-Shinsekai-Bridge-Token": "token" }),
+      }),
+    );
+    expect(progress).toHaveBeenCalledOnce();
+  });
+
+  it("opens bundled T2I workflows through an authenticated route without accepting a path", async () => {
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
+      mockJsonResponse({ path: "C:/Shinsekai/ai/t2i/workflows" }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const platform = createHttpPlatform("http://127.0.0.1:8787", "bridge-secret");
+    await expect(platform.files.openT2iWorkflowFolder()).resolves.toEqual({ path: "C:/Shinsekai/ai/t2i/workflows" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/files/t2i-workflows/open",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ "X-Shinsekai-Bridge-Token": "bridge-secret" }),
+      }),
+    );
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBeUndefined();
+  });
+
+  it("uses authenticated task transport for tagged sprite planning, rendering, and selected import", async () => {
+    const pair = { prompt: "full body, smiling", tagging: "微笑" };
+    const result = {
+      ...pair,
+      name: "Mika",
+      path: "preview.png",
+      videoPath: "source.mp4",
+      frameTime: 2,
+      taskId: "render",
+    };
+    const captured = { ...result, path: "selected.png", frameTime: 1, taskId: "frame" };
+    const cutout = { ...captured, path: "transparent.png", taskId: "cutout", backgroundRemoved: true };
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => mockJsonResponse({ id: "plan", status: "succeeded", result: { items: [pair] } }))
+      .mockImplementationOnce(() => mockJsonResponse({ id: "render", status: "succeeded", result }))
+      .mockImplementationOnce(() => mockJsonResponse({ id: "frame", status: "succeeded", result: captured }))
+      .mockImplementationOnce(() => mockJsonResponse({ id: "cutout", status: "succeeded", result: cutout }))
+      .mockImplementationOnce(() => mockJsonResponse(sampleConfig.characters[0]));
+    vi.stubGlobal("fetch", fetchMock);
+    const platform = createHttpPlatform("http://127.0.0.1:8787", "token");
+    const onTaskUpdate = vi.fn();
+    await expect(
+      platform.characters.planSprites(
+        { name: "Mika", setting: "shy", count: 1, requirements: "", referenceImage: "ref.png" },
+        { onTaskUpdate },
+      ),
+    ).resolves.toEqual({ items: [pair] });
+    await expect(
+      platform.characters.renderSprite({ ...pair, name: "Mika", referenceImage: "ref.png" }, { onTaskUpdate }),
+    ).resolves.toEqual(result);
+    await expect(
+      platform.characters.captureSpriteFrame({ name: "Mika", taskId: "render", seconds: 1 }, { onTaskUpdate }),
+    ).resolves.toEqual(captured);
+    await expect(
+      platform.characters.removeSpriteBackground({ name: "Mika", taskId: "frame" }, { onTaskUpdate }),
+    ).resolves.toEqual(cutout);
+    await platform.characters.importGeneratedSprites({
+      name: "Mika",
+      items: [{ taskId: "render", tagging: pair.tagging }],
+    });
+    expect(onTaskUpdate).toHaveBeenCalledTimes(4);
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "http://127.0.0.1:8787/api/characters/sprites/plan",
+      "http://127.0.0.1:8787/api/characters/sprites/render",
+      "http://127.0.0.1:8787/api/characters/sprites/frame",
+      "http://127.0.0.1:8787/api/characters/sprites/remove-background",
+      "http://127.0.0.1:8787/api/characters/sprites/import-generated",
+    ]);
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        headers: expect.objectContaining({ "X-Shinsekai-Bridge-Token": "token" }),
+        body: JSON.stringify({ name: "Mika", items: [{ taskId: "render", tagging: "微笑" }] }),
+      }),
+    );
+  });
   it("deletes the selected story version by its full path", async () => {
     const fetchMock = vi.fn(() => mockJsonResponse({ ok: true, deletedConversations: 2 }));
     vi.stubGlobal("fetch", fetchMock);
@@ -289,6 +399,20 @@ describe("http platform", () => {
         }),
         method: "POST",
       }),
+    );
+  });
+
+  it("checks ComfyUI connectivity with the current URL through the bridge", async () => {
+    const fetchMock = vi.fn(() => mockJsonResponse({ ok: false, code: "timeout" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    expect(await platform.config.testComfyuiConnection({ baseUrl: "http://localhost:8189" })).toEqual({
+      ok: false,
+      code: "timeout",
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/config/comfyui-connection-test",
+      expect.objectContaining({ body: JSON.stringify({ baseUrl: "http://localhost:8189" }), method: "POST" }),
     );
   });
 

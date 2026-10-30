@@ -25,8 +25,9 @@ interface ImageAssetGalleryProps {
 }
 
 interface ImageAssetThumbProps {
-  decoding: "async" | "auto" | "sync";
-  loading: "eager" | "lazy";
+  alt?: string;
+  decoding?: "async" | "auto" | "sync";
+  loading?: "eager" | "lazy";
   src?: string;
 }
 
@@ -37,7 +38,7 @@ function imageThumbStateForSource(src?: string): "empty" | "loaded" | "loading" 
   return src.startsWith("data:image/") ? "loaded" : "loading";
 }
 
-function ImageAssetThumb({ decoding, loading, src }: ImageAssetThumbProps) {
+export function ImageAssetThumb({ alt = "", decoding = "async", loading = "lazy", src }: ImageAssetThumbProps) {
   const [state, setState] = useState<"empty" | "error" | "loaded" | "loading">(() => imageThumbStateForSource(src));
 
   useEffect(() => {
@@ -50,7 +51,7 @@ function ImageAssetThumb({ decoding, loading, src }: ImageAssetThumbProps) {
     <span className="image-asset-card__media" data-state={state}>
       {src ? (
         <img
-          alt=""
+          alt={alt}
           decoding={decoding}
           loading={loading}
           onError={() => setState("error")}

@@ -23,6 +23,7 @@ import type {
   BatchToolResult,
   Background,
   Character,
+  GeneratedCharacterSprite,
   CharacterMemoryImportPreview,
   CharacterMemoryImportResult,
   CharacterMemoryList,
@@ -56,6 +57,7 @@ const bundledChatThemeAssets = import.meta.glob<string>(
   { eager: true, import: "default", query: "?url" },
 );
 const bundledChatThemeRoot = "../../../../assets/chat_ui_themes/";
+const previewSpriteUrl = new URL("../../../../assets/present_example.png", import.meta.url).href;
 const builtinChatThemeAssetUrls: Readonly<Record<string, string>> = Object.fromEntries(
   Object.entries(bundledChatThemeAssets).map(([path, url]) => [
     `data/chat_ui_themes/${path.slice(bundledChatThemeRoot.length)}`,
@@ -438,6 +440,7 @@ function previewThemePayloadFromManifest(manifest: ChatThemeManifest): ChatTheme
 
 export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
   const config = clone(sampleConfig);
+  const generatedSprites = new Map<string, GeneratedCharacterSprite & { imported?: boolean }>();
   let templates = clone(sampleTemplates);
   let plugins = clone(samplePlugins);
   let pluginCatalog = clone(samplePluginCatalog);
@@ -1825,6 +1828,73 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       saveModelState: async () => {
         throw new Error("Model state saving requires the local bridge");
       },
+      async planSprites(input) {
+        const framing = input.referenceImage
+          ? ", preserve the reference image's exact framing, crop, camera angle, character scale and screen position throughout, keep all pose changes within the original frame"
+          : ", full body, full scene";
+        return delay({
+          items: Array.from({ length: input.count }, (_, i) => ({
+            prompt: `make the character stand and ${["smile warmly with relaxed eyebrows, wave the open right hand beside the head, and rest the relaxed left hand at the side", "furrow the eyebrows slightly, press the lips together thoughtfully, rest the right fingertips on the chin, and place the left hand loosely at the waist", "raise the eyebrows, open the mouth slightly in surprise, and hold both open hands at shoulder height with palms facing forward", "give a confident small smile with slightly narrowed eyes and cross both arms at chest height, with the left hand resting on the right upper arm and the right hand resting on the left upper arm"][i % 4]}${framing}, locked-off static camera, fixed viewpoint and focal length throughout, plain light, sprite`,
+            tagging: ["微笑，放松，日常对话", "思考，托腮，分析", "惊讶，张开双手，意外", "自信，抱臂，坚定"][i % 4],
+          })),
+        });
+      },
+      async renderSprite(input) {
+        const character = config.characters.find((item) => item.name === input.name);
+        if (!character) throw new Error("Character not found");
+        const result = {
+          ...input,
+          taskId: crypto.randomUUID(),
+          path: input.referenceImage || character.sprites[0]?.path || "data/sprite/mika/normal.png",
+          backgroundRemoved: input.removeBackground !== false,
+        };
+        generatedSprites.set(result.taskId, result);
+        return delay(result);
+      },
+      async animateSprite() {
+        throw new PlatformRequestError(
+          "动态立绘需要连接本机新世界与 H3 服务；浏览器预览不会生成或伪造透明视频。",
+          501,
+          "local_app_required",
+        );
+      },
+      async captureSpriteFrame(input) {
+        const source = generatedSprites.get(input.taskId);
+        if (!source || source.name !== input.name || !source.videoPath) throw new Error("Invalid generated video");
+        const result = { ...source, taskId: crypto.randomUUID(), frameTime: input.seconds, imported: false };
+        generatedSprites.set(result.taskId, result);
+        return delay(result);
+      },
+      async removeSpriteBackground(input) {
+        const source = generatedSprites.get(input.taskId);
+        if (!source || source.name !== input.name) throw new Error("Invalid generated sprite");
+        const result = { ...source, taskId: crypto.randomUUID(), backgroundRemoved: true, imported: false };
+        generatedSprites.set(result.taskId, result);
+        return delay(result);
+      },
+      async importGeneratedSprites(input) {
+        const character = config.characters.find((item) => item.name === input.name);
+        if (!character) throw new Error("Character not found");
+        const tags = tagContents(character.emotion_tags, character.sprites.length);
+        for (const item of input.items) {
+          const result = generatedSprites.get(item.taskId);
+          if (!result || result.name !== input.name) throw new Error("Invalid generated sprite");
+          if (result.imported) continue;
+          if (input.replace) {
+            const target = character.sprites[input.replace.index];
+            if (input.items.length !== 1 || !target || target.path !== input.replace.path)
+              throw new Error("Original sprite changed");
+            character.sprites[input.replace.index] = { ...target, path: result.path };
+            tags[input.replace.index] = item.tagging;
+          } else {
+            character.sprites.push({ path: result.path });
+            tags.push(item.tagging);
+          }
+          result.imported = true;
+        }
+        character.emotion_tags = numberedTags("立绘", tags);
+        return delay(character);
+      },
       async autoLabelSprites(name) {
         const character = config.characters.find((item) => item.name === name);
         if (!character) {
@@ -1834,7 +1904,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         let annotatedCount = 0;
         tags.forEach((tag, index) => {
           if (!tag.trim()) {
-            tags[index] = "微笑，正面站姿，角色立绘";
+            tags[index] = "平静，微笑，站立";
             annotatedCount += 1;
           }
         });
@@ -2242,6 +2312,9 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           "当前页面未连接 Shinsekai Python bridge，无法进行真实 LLM 连通检测。请使用 start-react 启动，或为 Vite 设置 VITE_SHINSEKAI_API_BASE。",
         );
       },
+      testComfyuiConnection: async () => {
+        throw new Error("当前页面未连接 Shinsekai Python bridge，无法进行真实 ComfyUI 连通检测。");
+      },
       get: () => delay(config),
       detectNetworkProxy: () =>
         delay({
@@ -2368,6 +2441,9 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       },
     },
     files: {
+      async openT2iWorkflowFolder() {
+        throw new PlatformRequestError("Bundled workflows require the local app.", 501, "local_app_required");
+      },
       modelUrl: () => {
         throw new Error("Models require the local bridge");
       },
@@ -2375,6 +2451,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         return delay(previewFileBrowser(options?.path));
       },
       fileUrl(path) {
+        if (path === "/assets/present_example.png") return previewSpriteUrl;
         return resolvePreviewThemeAssetUrl(path);
       },
       thumbnailBatch(paths, _options) {

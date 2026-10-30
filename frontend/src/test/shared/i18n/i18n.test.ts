@@ -23,7 +23,7 @@ describe("translateMessage", () => {
   it("covers T2I setup copy without falling back to raw keys", () => {
     expect(translateMessage("en", "api.t2i.title")).toBe("Image generation (T2I)");
     expect(translateMessage("en", "api.t2i.modeSkip")).toBe("Skip setup");
-    expect(translateMessage("en", "api.t2i.workflowPick")).toBe("Choose workflow JSON");
+    expect(translateMessage("en", "api.t2i.workflowPick")).toBe("Choose API workflow JSON");
   });
 
   it("covers background manager copy", () => {

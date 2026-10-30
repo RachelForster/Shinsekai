@@ -2,6 +2,7 @@ import os
 import shutil
 import hashlib
 import re
+from uuid import uuid4
 from pathlib import Path
 from typing import List, Dict, Any, Tuple, Optional, Union
 from config.schema import Character, ModelSprites, Sprite
@@ -311,7 +312,16 @@ class CharacterManager:
             return [c.name for c in self._get_characters()]
 
 
-    def upload_sprites(self, character_name: str, sprite_files: List[Any], emotion_tags: str) -> Tuple[str, List[str], str]:
+    def upload_sprites(
+        self,
+        character_name: str,
+        sprite_files: List[Any],
+        emotion_tags: str,
+        *,
+        sprite_tags: Optional[List[str]] = None,
+        replace_index: Optional[int] = None,
+        expected_path: Optional[str] = None,
+    ) -> Tuple[str, List[str], str]:
         """
         上传立绘文件并更新角色的立绘列表和情绪标签。
 
@@ -323,6 +333,9 @@ class CharacterManager:
         
         if not sprite_files:
             return "请选择要上传的图片！", [], ''
+
+        if sprite_tags is not None and len(sprite_tags) != len(sprite_files):
+            raise ValueError("Each sprite requires one tag entry")
         
         character: Optional[Character] = self._config_manager.get_character_by_name(character_name)
         if not character:
@@ -335,22 +348,66 @@ class CharacterManager:
             character.sprites = []
 
         num_existing_sprites = len(character.sprites)
+        if replace_index is not None:
+            if (
+                isinstance(replace_index, bool)
+                or not isinstance(replace_index, int)
+                or not 0 <= replace_index < num_existing_sprites
+                or len(sprite_files) != 1
+            ):
+                raise ValueError("请选择一张有效的原立绘进行替换")
+            if expected_path != _sprite_field(character.sprites[replace_index], "path"):
+                raise ValueError("原立绘已改变或尚未保存，请刷新角色后重新选择")
         emotion_tags_to_add = ''
+        original_sprites = character.sprites
+        original_tags = character.emotion_tags
+        new_sprites = []
         
         for i, file in enumerate(sprite_files):
             filename = os.path.basename(file.name)
+            if replace_index is not None:
+                filename = f"{uuid4().hex}{Path(filename).suffix}"
             dest_path = os.path.join(char_dir, filename)
             shutil.copyfile(file.name, dest_path)
             
             new_sprite_data = {"path": dest_path}
-            character.sprites.append(new_sprite_data)
+            if replace_index is not None:
+                original = original_sprites[replace_index]
+                new_sprite_data = (
+                    original.model_copy(update={"path": dest_path})
+                    if isinstance(original, Sprite)
+                    else {**original, "path": dest_path}
+                )
+            new_sprites.append(new_sprite_data)
             
-            emotion_tags_to_add += f'立绘 {num_existing_sprites + i + 1}：\n'
+            tag = sprite_tags[i] if sprite_tags is not None else ""
+            emotion_tags_to_add += f'立绘 {num_existing_sprites + i + 1}：{tag}\n'
             
         current_emotion_tags = character.emotion_tags if character.emotion_tags else ""
-        character.emotion_tags = current_emotion_tags + emotion_tags_to_add
+        character.sprites = original_sprites + new_sprites
+        if replace_index is not None:
+            character.sprites = list(original_sprites)
+            character.sprites[replace_index] = new_sprites[0]
+        if current_emotion_tags and not current_emotion_tags.endswith("\n"):
+            current_emotion_tags += "\n"
+        if replace_index is not None:
+            from sdk.asset_tags import numbered_tags, tag_contents
+            tags = tag_contents(original_tags, num_existing_sprites)
+            if sprite_tags is not None:
+                tags[replace_index] = sprite_tags[0]
+            character.emotion_tags = numbered_tags("立绘", tags)
+        elif sprite_tags is not None:
+            from sdk.asset_tags import numbered_tags, tag_contents
+            character.emotion_tags = numbered_tags("立绘", tag_contents(current_emotion_tags, num_existing_sprites) + sprite_tags)
+        else:
+            character.emotion_tags = current_emotion_tags + emotion_tags_to_add
 
-        self._config_manager.save_characters_config()
+        try:
+            self._config_manager.save_characters_config()
+        except Exception:
+            character.sprites = original_sprites
+            character.emotion_tags = original_tags
+            raise
 
         all_sprite_paths = [s.path if isinstance(s, Sprite) else s.get('path', '') for s in character.sprites]
         return f"成功为 {character_name} 上传 {len(sprite_files)} 张立绘！", all_sprite_paths, character.emotion_tags

@@ -2,7 +2,7 @@ import { StrictMode } from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { isMp4Media } from "../../../shared/assets/visualMedia";
+import { isMp4Media, isVideoMedia } from "../../../shared/assets/visualMedia";
 import { VisualMedia } from "../../../shared/ui/VisualMedia";
 import { ImageAssetGallery } from "../../../shared/ui/ImageAssetGallery";
 import { CharacterVisual } from "../../../modules/character-visual/CharacterVisual";
@@ -28,15 +28,24 @@ afterEach(() => {
 });
 
 describe("file-based visual media", () => {
-  it("plays MP4 portraits and crops using video metadata", () => {
+  it.each([
+    "sprite.WEBM",
+    "/api/media?path=cache%2Fidle-alpha.webm&token=test",
+    "C:\\sprites\\idle.webm",
+    "data:video/webm;base64,demo",
+  ])("recognizes transparent video URLs: %s", (source) => {
+    expect(isVideoMedia(source)).toBe(true);
+  });
+
+  it.each(["player.MP4", "player-alpha.webm"])("plays %s portraits and crops using video metadata", (path) => {
     const onImageSize = vi.fn();
     const view = render(
-      <Portrait path="player.MP4" name="Player" crop={{ x: 0.5, y: 0.5, zoom: 2 }} onImageSize={onImageSize} />,
+      <Portrait path={path} name="Player" crop={{ x: 0.5, y: 0.5, zoom: 2 }} onImageSize={onImageSize} />,
     );
     const video = view.container.querySelector("video");
     expect(video).not.toBeNull();
     if (!video) throw new Error("Expected an MP4 portrait");
-    expect(video).toHaveAttribute("src", "/api/media?path=player.MP4&token=test");
+    expect(video).toHaveAttribute("src", `/api/media?path=${path}&token=test`);
     expect(video.muted && video.loop && video.playsInline).toBe(true);
     expect(video.controls).toBe(false);
     Object.defineProperties(video, { videoWidth: { value: 200 }, videoHeight: { value: 400 } });

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type MouseEventHandler, type SyntheticEvent } from "react";
 
-import { isMp4Media } from "../assets/visualMedia";
+import { isVideoMedia } from "../assets/visualMedia";
 
 export type VisualMediaElement = HTMLImageElement | HTMLVideoElement;
 
@@ -23,7 +23,7 @@ interface VisualMediaProps {
 
 /** File-based visuals share layout and tags, while videos own their playback. */
 export function VisualMedia(props: VisualMediaProps) {
-  if (isMp4Media(props.src)) return <VideoVisual {...props} key={props.src} />;
+  if (isVideoMedia(props.src)) return <VideoVisual {...props} key={props.src} />;
   const {
     src,
     alt,
