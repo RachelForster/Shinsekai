@@ -1055,6 +1055,14 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         );
         return waitForTask(apiBase, task, options);
       },
+      async animateSprite(input, options) {
+        const task = await requestJson<TaskSnapshot<GeneratedCharacterSprite>>(
+          apiBase,
+          "/api/characters/sprites/animate",
+          { method: "POST", body: JSON.stringify(input) },
+        );
+        return waitForTask(apiBase, task, options);
+      },
       async captureSpriteFrame(input, options) {
         const task = await requestJson<TaskSnapshot<GeneratedCharacterSprite>>(
           apiBase,

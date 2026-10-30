@@ -1425,6 +1425,24 @@ export interface GeneratedCharacterSprite extends SpritePromptPair {
   originalPath?: string;
   backgroundRemoved?: boolean;
   backgroundRemovalError?: string;
+  animation?: boolean;
+  alphaVerified?: boolean;
+  frameCount?: number;
+  duration?: number;
+  playbackSpeed?: number;
+}
+
+export interface CharacterSpriteAnimationInput {
+  name: string;
+  referenceImage: string;
+  tagging: string;
+  breathing: boolean;
+  blinking: boolean;
+  breeze: boolean;
+  loop: boolean;
+  motion: string;
+  playbackSpeed?: number;
+  customPrompt?: string;
 }
 
 export interface TaskProgressOptions<TResult = unknown> {
@@ -1697,9 +1715,14 @@ export interface ShinsekaiPlatform {
       input: SpritePromptPair & { name: string; referenceImage?: string; removeBackground?: boolean },
       options?: TaskProgressOptions<GeneratedCharacterSprite>,
     ) => Promise<GeneratedCharacterSprite>;
+    animateSprite: (
+      input: CharacterSpriteAnimationInput,
+      options?: TaskProgressOptions<GeneratedCharacterSprite>,
+    ) => Promise<GeneratedCharacterSprite>;
     importGeneratedSprites: (input: {
       name: string;
       items: { taskId: string; tagging: string }[];
+      replace?: { index: number; path: string };
     }) => Promise<Character>;
     captureSpriteFrame: (
       input: { name: string; taskId: string; seconds: number; removeBackground?: boolean },

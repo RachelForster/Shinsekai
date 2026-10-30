@@ -17,6 +17,7 @@ from frontend_bridge_core.sprite_generation import (
     run_sprite_render,
     run_sprite_frame,
     run_sprite_cutout,
+    run_sprite_animation,
 )
 from frontend_bridge_core.routes.router import (
     ApiRequest,
@@ -236,7 +237,16 @@ def _remove_sprite_background(request: ApiRequest) -> TaskResponse:
     )
 
 
+def _animate_sprite(request: ApiRequest) -> TaskResponse:
+    body = dict(request.body)
+    return TaskResponse(kind="character-sprite-animate", title="生成透明动态立绘",
+                        message="正在准备 H3 动态生成与逐帧抠图。",
+                        worker=lambda task_id: run_sprite_animation(request.state, task_id, body))
+
+
 CHARACTER_ROUTES = (
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/animate",
+          handler=_animate_sprite, name="characters.sprites.animate"),
     Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/remove-background",
           handler=_remove_sprite_background, name="characters.sprites.remove_background"),
     Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/frame",

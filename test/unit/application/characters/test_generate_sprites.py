@@ -274,6 +274,99 @@ def test_import_appends_only_selected_pairs_and_is_idempotent(sprite_state):
     state.config_manager.save_characters_config.assert_called_once()
 
 
+@pytest.mark.parametrize("animation", [False, True])
+def test_generated_replacement_keeps_position_voice_original_file_and_is_idempotent(
+    sprite_state, monkeypatch, animation
+):
+    state, character = sprite_state
+    root = Path(state.project_root_dir)
+    old = root / "sprites" / "mika" / "one.png"
+    old.parent.mkdir(parents=True)
+    old.write_bytes(b"original image must remain")
+    character.sprites = [
+        {
+            "path": str(old),
+            "voice_text": "hello",
+            "voice_path": "voice.wav",
+            "voice_type": "reference",
+        },
+        {"path": "second.png"},
+    ]
+    character.emotion_tags = "立绘 1：旧标签\n立绘 2：保留标签\n"
+    task_id = completed_sprite(state)
+    verifier = Mock(return_value=5)
+    monkeypatch.setattr(bridge, "verify_transparent_animation", verifier)
+    if animation:
+        video = root / "cache" / "sprite_generation" / "one.webm"
+        video.write_bytes(b"verified alpha video")
+        state.tasks[task_id]["result"].update(
+            path=str(video), animation=True, alphaVerified=True
+        )
+    payload = {
+        "name": "Mika",
+        "items": [{"taskId": task_id, "tagging": "微笑，挥手"}],
+        "replace": {"index": 0, "path": str(old)},
+    }
+    result = bridge.import_generated_sprites(state, payload)
+    assert len(result["sprites"]) == 2
+    assert result["sprites"][0]["path"] != str(old)
+    assert Path(result["sprites"][0]["path"]).is_file()
+    assert result["sprites"][0]["voice_text"] == "hello"
+    assert result["sprites"][0]["voice_path"] == "voice.wav"
+    assert result["sprites"][0]["voice_type"] == "reference"
+    assert result["sprites"][1]["path"] == "second.png"
+    assert result["emotion_tags"] == "立绘 1：微笑, 挥手\n立绘 2：保留标签\n"
+    assert old.read_bytes() == b"original image must remain"
+    assert verifier.call_count == int(animation)
+    bridge.import_generated_sprites(state, payload)
+    state.config_manager.save_characters_config.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        {"index": -1, "path": "old.png"},
+        {"index": 10, "path": "old.png"},
+        {"index": True, "path": "old.png"},
+        {"index": 0, "path": "changed.png"},
+    ],
+)
+def test_replacement_rejects_invalid_or_changed_target_without_importing(
+    sprite_state, target
+):
+    state, character = sprite_state
+    task_id = completed_sprite(state)
+    with pytest.raises(ValueError):
+        bridge.import_generated_sprites(
+            state, {"name": "Mika", "items": [{"taskId": task_id}], "replace": target}
+        )
+    assert len(character.sprites) == 1
+    state.config_manager.save_characters_config.assert_not_called()
+    assert not state.tasks[task_id]["result"].get("imported")
+
+
+def test_replacement_save_failure_rolls_back_collection_and_allows_retry(sprite_state):
+    state, character = sprite_state
+    task_id = completed_sprite(state)
+    original = character.sprites
+    tags = character.emotion_tags
+    state.config_manager.save_characters_config.side_effect = RuntimeError(
+        "save failed"
+    )
+    payload = {
+        "name": "Mika",
+        "items": [{"taskId": task_id}],
+        "replace": {"index": 0, "path": "old.png"},
+    }
+    with pytest.raises(RuntimeError, match="save failed"):
+        bridge.import_generated_sprites(state, payload)
+    assert character.sprites is original and character.emotion_tags == tags
+    assert not state.tasks[task_id]["result"].get("imported")
+    state.config_manager.save_characters_config.side_effect = None
+    result = bridge.import_generated_sprites(state, payload)
+    assert len(result["sprites"]) == 1
+
+
 def test_recapture_uses_trusted_video_and_a_new_result_that_imports_once(
     sprite_state, monkeypatch
 ):
@@ -574,3 +667,332 @@ def test_cutout_rejects_untrusted_sources(sprite_state, monkeypatch, mutation):
     with pytest.raises((ValueError, PermissionError)):
         bridge.run_sprite_cutout(state, "cutout", {"name": "Mika", "taskId": task_id})
     remover.assert_not_called()
+
+
+def test_idle_animation_prompt_keeps_framing_pose_and_no_appearance():
+    from application.characters.animate_sprites import animation_prompt
+
+    pair = animation_prompt({"breeze": True, "tagging": "平静，站立"})
+    assert "body and relaxed limbs sway very slightly and slowly" in pair["prompt"]
+    assert "hair sway very gently" in pair["prompt"] and "blink" in pair["prompt"]
+    assert "hair tips" in pair["prompt"]
+    assert "original hand gesture" in pair["prompt"]
+    assert "locked-off static camera" in pair["prompt"]
+    assert "exact framing" in pair["prompt"]
+    assert "full body" not in pair["prompt"]
+    assert pair["tagging"] == "平静, 站立"
+
+
+@pytest.mark.parametrize("loop", [False, True])
+def test_animation_render_rebuilds_body_sway_instead_of_reusing_old_prompt(
+    tmp_path, monkeypatch, loop
+):
+    from application.characters import animate_sprites
+
+    renderer = Mock(return_value={"videoPath": str(tmp_path / "idle.mp4")})
+    monkeypatch.setattr(animate_sprites, "render_sprite", renderer)
+    reference = tmp_path / "half-body.png"
+    output = tmp_path / "poster.png"
+    store = object()
+    result = animate_sprites.render_animation(
+        store,
+        {
+            "prompt": "old shoulder rise and fall, return to the starting pose",
+            "breathing": True,
+            "blinking": True,
+            "breeze": False,
+            "loop": loop,
+            "tagging": "平静，站立",
+        },
+        output,
+        reference,
+    )
+    args, kwargs = renderer.call_args
+    assert args[0] is store and args[2:] == (output, reference)
+    prompt = args[1]["prompt"]
+    assert "body and relaxed limbs sway very slightly and slowly" in prompt
+    assert "head, neck and torso" in prompt
+    for term in ("breath", "respirat", "chest", "abdomen", "inhale", "exhale"):
+        assert term not in prompt.lower()
+    assert "reference shoulder line almost motionless" in prompt
+    assert "original relaxed resting height and slope" in prompt
+    assert "ear-to-shoulder clearance" in prompt
+    assert "original neck length" in prompt and "chin-to-collar" in prompt
+    assert "soft delay" in prompt and "over the whole shot" in prompt
+    assert "fixed height" not in prompt
+    assert "rise and fall" not in prompt
+    assert "pose changes" not in prompt and "return to the starting pose" not in prompt
+    assert ("continuous idle rhythm across the loop seam" in prompt) is loop
+    assert "full body" not in prompt
+    assert kwargs == {
+        "require_h3_video": True,
+        "loop_reference": loop,
+        "stabilize_pose": True,
+    }
+    assert result["path"] == str(tmp_path / "idle.mp4")
+    assert result["playbackSpeed"] == 0.75
+
+
+def test_blinking_only_keeps_pose_stable_without_adding_body_sway():
+    from application.characters.animate_sprites import animation_prompt
+
+    prompt = animation_prompt({"breathing": False, "blinking": True})["prompt"]
+    assert "one smooth eyelid-only blink" in prompt
+    assert "original head tilt" in prompt
+    assert "limbs sway" not in prompt and "hair sway" not in prompt
+    assert "original neck length" in prompt
+    assert "ear-to-shoulder clearance" in prompt
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"breathing": "true"},
+        {"loop": "true"},
+        {"motion": 4},
+        {"playbackSpeed": True},
+        {"playbackSpeed": 0.4},
+        {"playbackSpeed": float("nan")},
+        {"breathing": False, "blinking": False, "breeze": False},
+    ],
+)
+def test_idle_animation_rejects_invalid_controls(payload):
+    from application.characters.animate_sprites import animation_prompt
+
+    with pytest.raises(ValueError):
+        animation_prompt(payload)
+
+
+def test_animation_requires_h3_service_before_requesting_generation(tmp_path):
+    store = SimpleNamespace(
+        config=SimpleNamespace(
+            api_config=SimpleNamespace(t2i_provider="stable diffusion")
+        )
+    )
+    with pytest.raises(ValueError, match="MiniMax H3"):
+        generation.render_sprite(
+            store,
+            {"prompt": "idle", "tagging": "平静"},
+            tmp_path / "unused.png",
+            tmp_path / "ref.png",
+            require_h3_video=True,
+        )
+
+
+def test_animation_matting_failure_can_retry_without_rerender_and_cannot_be_imported(
+    sprite_state, monkeypatch
+):
+    from core.media import alpha_video
+
+    state, character = sprite_state
+    root = Path(state.project_root_dir)
+    ref = root / "ref.png"
+    Image.new("RGB", (8, 8), "white").save(ref)
+    monkeypatch.setattr(bridge, "_local_file_access_roots", lambda _: (root,))
+    video = root / "cache" / "sprite_generation" / "source.mp4"
+    video.parent.mkdir(parents=True, exist_ok=True)
+    video.write_bytes(b"mock video")
+    renderer = Mock(
+        return_value={
+            "name": "Mika",
+            "prompt": "idle",
+            "tagging": "平静",
+            "path": str(video),
+            "videoPath": str(video),
+            "animation": True,
+            "playbackSpeed": 0.5,
+        }
+    )
+    monkeypatch.setattr(bridge, "render_animation", renderer)
+    matting = Mock(side_effect=RuntimeError("matting failed"))
+    monkeypatch.setattr(alpha_video, "remove_video_background", matting)
+    task = _create_task(state, kind="character-sprite-animate", title="animate")
+    result = bridge.run_sprite_animation(
+        state,
+        task["id"],
+        {"name": "Mika", "referenceImage": str(ref), "tagging": "平静"},
+    )
+    assert result["alphaVerified"] is False
+    assert Path(result["path"]) == video
+    assert "matting failed" in result["backgroundRemovalError"]
+    assert matting.call_args.kwargs["playback_speed"] == 0.5
+    _update_task(state, task["id"], status="succeeded", result=result)
+    with pytest.raises(ValueError, match="透明处理"):
+        bridge.import_generated_sprites(
+            state, {"name": "Mika", "items": [{"taskId": task["id"]}]}
+        )
+
+    def finish(source, output, **kwargs):
+        output.write_bytes(b"verified alpha")
+        return {"alphaVerified": True, "frameCount": 5, "duration": 0.5}
+
+    matting.side_effect = finish
+    retry = _create_task(state, kind="character-sprite-cutout", title="retry")
+    done = bridge.run_sprite_cutout(
+        state, retry["id"], {"name": "Mika", "taskId": task["id"]}
+    )
+    assert done["alphaVerified"] and done["backgroundRemoved"]
+    assert done["path"].endswith("-alpha.webm")
+    assert done["videoPath"] == str(video)
+    assert "backgroundRemovalError" not in done
+    assert renderer.call_count == 1
+    assert matting.call_args.kwargs["playback_speed"] == 0.5
+    _update_task(state, retry["id"], status="succeeded", result=done)
+    verified = Mock(return_value=5)
+    monkeypatch.setattr(alpha_video, "verify_alpha_video", verified)
+    saved = bridge.import_generated_sprites(
+        state, {"name": "Mika", "items": [{"taskId": retry["id"]}]}
+    )
+    assert saved["sprites"][-1]["path"].endswith("-alpha.webm")
+    verified.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "custom_prompt", [None, "make the character gently sway one sleeve, fixed camera"]
+)
+def test_h3_animation_anchors_last_frame_to_the_same_reference(
+    tmp_path, monkeypatch, custom_prompt
+):
+    from ai.t2i.t2i_manager import T2IAdapterFactory
+    from application.characters.animate_sprites import render_animation
+
+    node = {
+        "class_type": "MiniMaxH3ImageToVideo",
+        "inputs": {"first_frame": ["114", 0], "vae": ["119", 0], "length": 107},
+    }
+    video = tmp_path / "original.mp4"
+    video.write_bytes(b"source video")
+    adapter = Mock(
+        supports_reference_images=True,
+        workflow_template={
+            "131": node,
+            "126": {
+                "class_type": "BasicGuider",
+                "inputs": {"conditioning": ["131", 0]},
+            },
+        },
+        last_video_path=str(video),
+        last_video_frame_time=1.0,
+    )
+
+    def draw(**kwargs):
+        Image.new("RGB", (8, 8), "blue").save(kwargs["file_path"])
+        return kwargs["file_path"]
+
+    adapter.generate_image.side_effect = draw
+    monkeypatch.setattr(T2IAdapterFactory, "create_adapter", Mock(return_value=adapter))
+    api = SimpleNamespace(
+        t2i_provider="comfyui",
+        t2i_work_path="",
+        t2i_api_url="local",
+        t2i_default_workflow_path="workflow.json",
+        t2i_prompt_node_id="131",
+        t2i_output_node_id="92",
+    )
+    store = SimpleNamespace(
+        config=SimpleNamespace(api_config=api),
+        merged_t2i_factory_kwargs=lambda _, kwargs: kwargs,
+    )
+    result = render_animation(
+        store,
+        {
+            "name": "Mika",
+            "prompt": "idle",
+            "tagging": "平静",
+            **({"customPrompt": custom_prompt} if custom_prompt else {}),
+        },
+        tmp_path / "sprite.png",
+        tmp_path / "ref.png",
+    )
+    assert node["inputs"]["last_frame"] == node["inputs"]["first_frame"]
+    assert Path(result["videoPath"]) == video
+    if custom_prompt:
+        assert adapter.generate_image.call_args.kwargs["prompt"] == custom_prompt
+    guides = [
+        (key, item)
+        for key, item in adapter.workflow_template.items()
+        if item["class_type"] == "MiniMaxH3AddGuide"
+    ]
+    assert len(guides) == 2
+    assert adapter.workflow_template["126"]["inputs"]["conditioning"] == [
+        guides[-1][0],
+        0,
+    ]
+
+
+@pytest.mark.parametrize(
+    "length,frames",
+    [(5, []), (106, [10, 96]), (124, [12, 111])],
+)
+def test_idle_pose_guides_preserve_reference_sampler_graph_and_source_workflow(
+    length, frames
+):
+    from application.characters.h3_idle_workflow import stabilize_idle_workflow
+
+    path = (
+        Path(generation.__file__).resolve().parents[2]
+        / "ai/t2i/workflows/minimax_h3_i2v_api.json"
+    )
+    workflow = json.loads(path.read_text(encoding="utf-8"))
+    workflow["131"]["inputs"]["length"] = length
+    original = json.loads(json.dumps(workflow))
+    prepared = stabilize_idle_workflow(workflow)
+    guides = [
+        (key, value["inputs"]) for key, value in prepared.items() if key not in workflow
+    ]
+    assert [inputs["frame_idx"] for _, inputs in guides] == frames
+    assert not guides or guides[0][1]["positive"] == ["131", 0]
+    for (previous, _), (_, inputs) in zip(guides, guides[1:]):
+        assert inputs["positive"] == [previous, 0]
+    assert prepared["126"]["inputs"]["conditioning"] == (
+        [guides[-1][0], 0] if guides else ["131", 0]
+    )
+    for key, inputs in guides:
+        assert prepared[key]["class_type"] == "MiniMaxH3AddGuide"
+        assert inputs["image"] == workflow["131"]["inputs"]["first_frame"]
+        assert inputs["vae"] == workflow["131"]["inputs"]["vae"]
+        assert inputs["latent"] == ["131", 1]
+    assert workflow == original
+    for key in original.keys() - {"126"}:
+        assert prepared[key] == original[key]
+
+
+@pytest.mark.parametrize("length", [True, 4, ["length-node", 0]])
+def test_idle_pose_guides_reject_unresolved_or_invalid_length(length):
+    from application.characters.h3_idle_workflow import stabilize_idle_workflow
+
+    with pytest.raises(ValueError, match="整数配置 length"):
+        stabilize_idle_workflow(
+            {
+                "h3": {
+                    "class_type": "MiniMaxH3ImageToVideo",
+                    "inputs": {"length": length},
+                }
+            }
+        )
+
+
+def test_manual_animation_prompt_replaces_presets_without_rewriting_the_text():
+    from application.characters.animate_sprites import animation_prompt
+
+    text = "保持原图取景，左手缓慢挥动，头发轻轻晃动，镜头固定。"
+    result = animation_prompt(
+        {
+            "customPrompt": f"  {text}  ",
+            "tagging": "微笑，挥手",
+            "breathing": False,
+            "blinking": False,
+            "breeze": False,
+            "motion": "This preset supplement must not be appended",
+            "loop": False,
+        }
+    )
+    assert result == {"prompt": text, "tagging": "微笑, 挥手"}
+
+
+@pytest.mark.parametrize("custom", [None, "", "   ", 2, "x" * 12001])
+def test_manual_animation_rejects_invalid_prompt_instead_of_falling_back(custom):
+    from application.characters.animate_sprites import animation_prompt
+
+    with pytest.raises(ValueError):
+        animation_prompt({"customPrompt": custom})

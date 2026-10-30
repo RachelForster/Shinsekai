@@ -28,7 +28,7 @@ import {
 import type { Character, Sprite } from "../../entities/config/types";
 import { fileUrl } from "../../entities/files/repository";
 import { baseName, numberedTags, removeTagRows, tagContents } from "../../shared/assets/assetText";
-import { isMp4Media } from "../../shared/assets/visualMedia";
+import { isVideoMedia } from "../../shared/assets/visualMedia";
 import { DEFAULT_CHARACTER_COLOR } from "../../shared/constants";
 import { useI18n } from "../../shared/i18n";
 import type {
@@ -709,8 +709,8 @@ export function CharacterEditorPage() {
         badge: sprite.voice_path ? t("character.sprite.hasVoice") : t("character.sprite.noVoice"),
         badgeTone: sprite.voice_path ? ("default" as const) : ("muted" as const),
         id: `${sprite.path}-${index}`,
-        imageSrc: sprite.path && !isMp4Media(sprite.path) ? fileUrl(sprite.path) : "",
-        videoSrc: isMp4Media(sprite.path) ? fileUrl(sprite.path) : undefined,
+        imageSrc: sprite.path && !isVideoMedia(sprite.path) ? fileUrl(sprite.path) : "",
+        videoSrc: isVideoMedia(sprite.path) ? fileUrl(sprite.path) : undefined,
         meta: spriteTags[index] || sprite.voice_text || "",
         title: baseName(sprite.path) || `${index + 1}`,
       })),
@@ -1214,7 +1214,7 @@ export function CharacterEditorPage() {
           character={draft}
           name={currentCharacterName}
           onClose={() => setSpriteGenerationOpen(false)}
-          onImported={(character) => {
+          onImported={(character, replacedIndex) => {
             // Updating the resource collection must not discard unsaved personality or tag edits.
             preserveImportedDraftRef.current = character;
             queryClient.setQueryData<Character[]>(charactersQueryKey, (current = []) =>
@@ -1222,6 +1222,10 @@ export function CharacterEditorPage() {
             );
             setDraft((current) => {
               const currentSpritesByPath = new Map(current.sprites.map((sprite) => [sprite.path, sprite]));
+              if (replacedIndex !== undefined && current.sprites[replacedIndex] && character.sprites[replacedIndex]) {
+                const path = character.sprites[replacedIndex].path;
+                currentSpritesByPath.set(path, { ...current.sprites[replacedIndex], path });
+              }
               const currentTags = tagContents(current.emotion_tags, current.sprites.length);
               const tagsByPath = new Map(current.sprites.map((sprite, index) => [sprite.path, currentTags[index]]));
               const savedTags = tagContents(character.emotion_tags, character.sprites.length);
@@ -1234,7 +1238,10 @@ export function CharacterEditorPage() {
                 ),
               };
             });
-            showToast({ kind: "success", title: t("spriteGeneration.saved") });
+            showToast({
+              kind: "success",
+              title: t(replacedIndex === undefined ? "spriteGeneration.saved" : "spriteGeneration.replaced"),
+            });
           }}
         />
       ) : null}

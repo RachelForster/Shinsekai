@@ -1851,6 +1851,13 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         generatedSprites.set(result.taskId, result);
         return delay(result);
       },
+      async animateSprite() {
+        throw new PlatformRequestError(
+          "动态立绘需要连接本机新世界与 H3 服务；浏览器预览不会生成或伪造透明视频。",
+          501,
+          "local_app_required",
+        );
+      },
       async captureSpriteFrame(input) {
         const source = generatedSprites.get(input.taskId);
         if (!source || source.name !== input.name || !source.videoPath) throw new Error("Invalid generated video");
@@ -1873,8 +1880,16 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           const result = generatedSprites.get(item.taskId);
           if (!result || result.name !== input.name) throw new Error("Invalid generated sprite");
           if (result.imported) continue;
-          character.sprites.push({ path: result.path });
-          tags.push(item.tagging);
+          if (input.replace) {
+            const target = character.sprites[input.replace.index];
+            if (input.items.length !== 1 || !target || target.path !== input.replace.path)
+              throw new Error("Original sprite changed");
+            character.sprites[input.replace.index] = { ...target, path: result.path };
+            tags[input.replace.index] = item.tagging;
+          } else {
+            character.sprites.push({ path: result.path });
+            tags.push(item.tagging);
+          }
           result.imported = true;
         }
         character.emotion_tags = numberedTags("立绘", tags);

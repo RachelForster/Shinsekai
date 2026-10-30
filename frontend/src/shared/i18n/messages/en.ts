@@ -1,6 +1,89 @@
 import type { MessageKey } from "../messages";
 
 export const enMessages: Record<MessageKey, string> = {
+  "spriteGeneration.replace": "Replace original sprite",
+  "spriteGeneration.replaceHint":
+    "Replace the chosen sprite and its tags with this result. Keep its position, voice settings and original file.",
+  "spriteGeneration.replaceTarget": "Sprite to replace",
+  "spriteGeneration.chooseReplaceTarget": "Choose a replacement target…",
+  "spriteGeneration.originalSprite": "Original sprite",
+  "spriteGeneration.replacementSprite": "Generated result",
+  "spriteGeneration.confirmReplace": "Confirm replacement",
+  "spriteGeneration.replaced": "Sprite replaced; original file kept",
+  "spriteGeneration.manualSingle": "Write one",
+  "spriteGeneration.manualSourceHint": "Select exactly one source sprite or upload one image before writing a prompt.",
+  "spriteGeneration.manualPromptHint":
+    "Write this sprite's prompt and tags, then generate or redraw it. LLM planning is optional.",
+  "spriteGeneration.manualPromptPlaceholder":
+    "For example: keep the reference framing, stand and smile, wave the right hand beside the face, left hand relaxed.",
+  "spriteAnimation.customPromptHint":
+    "Edits replace motion presets for this sprite with your full prompt. Its reference, matching ends, speed and transparency processing still apply. Include a fixed camera if desired.",
+  "spriteAnimation.prompt": "Motion prompt",
+  "spriteAnimation.manualPromptPlaceholder":
+    "For example: preserve the pose and gestures, let the body and hair sway very gently, fixed camera and reference framing.",
+  "spriteAnimation.chooseSources": "Choose sources",
+  "spriteAnimation.libraryHint":
+    "Choose sources on the right. Presets support batches; select exactly one image to write a single prompt.",
+  "spriteAnimation.sourceMode": "Source sprite selection",
+  "spriteAnimation.library": "Sprite library",
+  "spriteAnimation.uploadSingle": "Upload one image",
+  "spriteAnimation.pickSources": "Choose source sprites",
+  "spriteAnimation.selectSource": "Select {name}",
+  "spriteAnimation.generatedSource": "New sprite {n}",
+  "spriteAnimation.selectAllSources": "Select all sources",
+  "spriteAnimation.selectFirst": "Select first {count}",
+  "spriteAnimation.clearSources": "Clear selection",
+  "spriteAnimation.noSources": "No static sprites yet. Generate one in the static tab, or upload an image.",
+  "spriteAnimation.sourceHint":
+    "Each image keeps its own tags and shares the same motion settings. Videos are excluded.",
+  "spriteAnimation.untaggedSource": "Untagged · use default tags",
+  "spriteAnimation.defaultTagging": "Default tags for untagged sprites",
+  "spriteAnimation.sourcesSelected": "{count} source sprites selected",
+  "spriteAnimation.sourceLimit":
+    "Room for {count} more plans. Select fewer sources, or save or remove existing results first.",
+  "spriteAnimation.generateBatch": "Generate transparent animations ({count})",
+  "spriteAnimation.generatePending": "Continue pending animations ({count})",
+  "spriteAnimation.queueProgress": "Queue: {current} of {total}",
+  "spriteAnimation.needsMatting": "Needs transparency processing",
+  "spriteAnimation.outputHint": "Fixed camera & framing · transparent WebM",
+  "spriteAnimation.mode": "Sprite generation mode",
+  "spriteAnimation.staticTab": "Static sprites",
+  "spriteAnimation.animationTab": "Animated sprites",
+  "spriteAnimation.settings": "Source sprite & idle motion",
+  "spriteAnimation.reference": "Source sprite (required)",
+  "spriteAnimation.breathing": "Gentle body sway",
+  "spriteAnimation.blinking": "Natural blinking",
+  "spriteAnimation.breeze": "Gentle breeze",
+  "spriteAnimation.loop": "Match ends",
+  "spriteAnimation.speed": "Motion speed",
+  "spriteAnimation.speedGentle": "Gentle · 0.75× (recommended)",
+  "spriteAnimation.speedSlower": "Slower · 0.5×",
+  "spriteAnimation.speedOriginal": "Original · 1×",
+  "spriteAnimation.speedHint":
+    "Slows body sway, blinking and hair together, including the saved video. Maximum duration after slowing: 12 seconds.",
+  "spriteAnimation.cameraHint":
+    "Let the body and hair sway very slightly and slowly. Keep shoulders relaxed and preserve neck length, ear-to-shoulder and chin-to-collar spacing. Keep feet planted, gestures, expression and framing. Aim for one leisurely blink; preview the result.",
+  "spriteAnimation.motion": "Additional subtle motion (optional)",
+  "spriteAnimation.motionPlaceholder":
+    "For example: keep the smile while hair tips sway gently. Keep motion small and the camera still.",
+  "spriteAnimation.generate": "Generate transparent animation",
+  "spriteAnimation.alphaHint":
+    "H3 video → CPU matting for every frame → alpha verification → transparent WebM. Matting is required; an opaque MP4 cannot be saved as a transparent result.",
+  "spriteAnimation.intro":
+    "Add subtle idle motion to {name}’s sprite. Review the transparent video, then save it with its tags.",
+  "spriteAnimation.stepSource": "Choose source sprite",
+  "spriteAnimation.stepMotion": "H3 generation & matting",
+  "spriteAnimation.stepSave": "Verify alpha & save",
+  "spriteAnimation.emptyTitle": "Bring a sprite gently to life",
+  "spriteAnimation.empty":
+    "Choose source sprites or upload one image, set body sway, blinking or a breeze, and generate a batch. Images run one at a time; retry failures or continue unstarted items after stopping. Requires a configured H3 image-to-video service.",
+  "spriteAnimation.sprite": "Animation {n}",
+  "spriteAnimation.verified": "Transparent WebM · alpha verified in every frame",
+  "spriteAnimation.failed":
+    "Transparency processing failed. Original video kept; saving is disabled. Retry matting without rerunning H3: {error}",
+  "spriteAnimation.viewPrompt": "View / edit motion prompt",
+  "spriteAnimation.retryMatting": "Retry transparency processing",
+  "spriteAnimation.fromStatic": "Make animated sprite",
   "spriteGeneration.stepsLabel": "Sprite generation steps",
   "spriteGeneration.stepPlan": "Set up & plan",
   "spriteGeneration.stepGenerate": "Generate & review",
@@ -20,7 +103,7 @@ export const enMessages: Record<MessageKey, string> = {
     "First time? Connect an image generation service. Already configured? Start planning.",
   "spriteGeneration.editPrompt": "View / edit prompt",
   "spriteGeneration.ready": "Ready to save",
-  "spriteGeneration.saveHint": "Images and tags are saved together to this character.",
+  "spriteGeneration.saveHint": "Sprites and tags are saved together to this character.",
   "spriteGeneration.morePlans": "Add more prompt plans",
   "spriteGeneration.options": "Instructions and reference",
   "spriteGeneration.autoRemoveBackground": "Remove background automatically",
@@ -89,7 +172,7 @@ export const enMessages: Record<MessageKey, string> = {
   "spriteGeneration.remove": "Remove idea {n}",
   "spriteGeneration.preview": "View sprite {n} full size",
   "spriteGeneration.empty":
-    "Choose an optional reference, add your requirements, then select Plan prompts and tags. Review the plans, generate images, and select your favorites to save.",
+    "Plan prompts and tags on the left, or select Write one above to enter a prompt directly. References are optional. Review, generate, and select your favorites to save.",
   "spriteGeneration.working": "Working…",
   "spriteGeneration.stop": "Stop after current image",
   "spriteGeneration.stopping": "Stopping after current image…",
@@ -98,12 +181,14 @@ export const enMessages: Record<MessageKey, string> = {
     "Unsaved ideas and previews will be cleared from this window. Sprites already added to the character are kept.",
   "spriteGeneration.discard": "Close and discard unsaved ideas",
   "spriteGeneration.saveFirst": "Save the character before generating sprites.",
-  "spriteGeneration.settingRequired": "Fill in the character personality and settings first.",
+  "spriteGeneration.settingRequired":
+    "LLM planning needs character settings. You can also write a single prompt directly.",
   "spriteGeneration.saved": "Sprites added with tags saved",
   "story.library.delete": "Delete story version",
   "story.library.deleteConfirm":
     "Delete version {version} of “{title}” and all its conversations and saves? Other versions will be kept. This cannot be undone.",
-  "visualMedia.videoError": "Unable to play this video. Check the file or use an H.264 MP4 video.",
+  "visualMedia.videoError":
+    "Unable to play this video. Check the file and MP4/WebM support in this browser or WebView. Transparent sprites require VP9 alpha support.",
   "nav.assistant": "Assistant",
   "agent.subtitle": "Think independently and explain the evidence and uncertainty.",
   "agent.newSession": "New session",
@@ -843,7 +928,7 @@ export const enMessages: Record<MessageKey, string> = {
   "background.asset.select": "Select",
   "background.asset.selectAllBgm": "Select all BGM",
   "background.asset.selectBgm": "Select BGM files",
-  "background.asset.selectImages": "Select images or MP4 videos",
+  "background.asset.selectImages": "Select images or MP4 / WebM videos",
   "background.asset.selectedFiles": "{count} files selected",
   "background.asset.tag": "Tag",
   "background.asset.uploadBgm": "Upload BGM",
@@ -1073,7 +1158,7 @@ export const enMessages: Record<MessageKey, string> = {
   "character.sprite.path": "Sprite path",
   "character.sprite.saveScale": "Save scale",
   "character.sprite.saveTags": "Upload tags",
-  "character.sprite.selectImages": "Choose images or MP4 videos...",
+  "character.sprite.selectImages": "Choose images or MP4 / WebM videos...",
   "character.sprite.selectedFiles": "{count} files selected",
   "character.sprite.tag": "Sprite tag",
   "character.sprite.deleteVoice": "Delete voice",

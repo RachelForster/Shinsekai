@@ -23,6 +23,42 @@ function mockJsonResponse(body: unknown, ok = true) {
 }
 
 describe("http platform", () => {
+  it("submits idle motion through the authenticated background task transport", async () => {
+    const input = {
+      name: "Mika",
+      referenceImage: "sprite.png",
+      tagging: "平静，站立",
+      breathing: true,
+      blinking: true,
+      breeze: false,
+      loop: true,
+      motion: "",
+    };
+    const result = {
+      name: "Mika",
+      prompt: "idle",
+      tagging: input.tagging,
+      path: "sprite-alpha.webm",
+      taskId: "animate",
+      animation: true,
+      alphaVerified: true,
+    };
+    const fetchMock = vi.fn(() => mockJsonResponse({ id: "animate", status: "succeeded", result }));
+    vi.stubGlobal("fetch", fetchMock);
+    const progress = vi.fn();
+    const platform = createHttpPlatform("http://127.0.0.1:8787", "token");
+    await expect(platform.characters.animateSprite(input, { onTaskUpdate: progress })).resolves.toEqual(result);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/characters/sprites/animate",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify(input),
+        headers: expect.objectContaining({ "X-Shinsekai-Bridge-Token": "token" }),
+      }),
+    );
+    expect(progress).toHaveBeenCalledOnce();
+  });
+
   it("opens bundled T2I workflows through an authenticated route without accepting a path", async () => {
     const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
       mockJsonResponse({ path: "C:/Shinsekai/ai/t2i/workflows" }),

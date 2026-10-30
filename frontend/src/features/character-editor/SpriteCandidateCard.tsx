@@ -1,8 +1,9 @@
+import { useState } from "react";
 import { ImagePlus, RefreshCw, Trash2 } from "lucide-react";
 
 import { fileUrl } from "../../entities/files/repository";
 import { useI18n } from "../../shared/i18n";
-import { AsyncButton, IconButton, ImageAssetThumb, TextArea, TextInput } from "../../shared/ui";
+import { AsyncButton, IconButton, ImageAssetThumb, TextArea, TextInput, VisualMedia } from "../../shared/ui";
 import { SpriteVideoFramePicker } from "./SpriteVideoFramePicker";
 import type { SpriteCandidate, useSpriteGeneration } from "./useSpriteGeneration";
 
@@ -12,14 +13,27 @@ interface Props {
   generator: ReturnType<typeof useSpriteGeneration>;
   reference: string;
   removeBackground: boolean;
+  onAnimate?: (item: SpriteCandidate) => void;
+  onReplace?: (item: SpriteCandidate) => void;
 }
 
-export function SpriteCandidateCard({ item, index, generator, reference, removeBackground }: Props) {
+export function SpriteCandidateCard({
+  item,
+  index,
+  generator,
+  reference,
+  removeBackground,
+  onAnimate,
+  onReplace,
+}: Props) {
   const { t } = useI18n();
   const { busy, activeId } = generator;
+  const [promptOpen, setPromptOpen] = useState(Boolean(item.manual));
+  const animation = Boolean(item.animationInput);
+  const promptLabel = t(animation ? "spriteAnimation.prompt" : "spriteGeneration.prompt");
   const stale = Boolean(item.result && item.result.prompt !== item.prompt);
-  const selectable = Boolean(item.result && !stale && item.tagging.trim());
-  const title = t("spriteGeneration.sprite", { n: index + 1 });
+  const selectable = Boolean(item.result && !stale && item.tagging.trim() && (!animation || item.result.alphaVerified));
+  const title = t(animation ? "spriteAnimation.sprite" : "spriteGeneration.sprite", { n: index + 1 });
   const active = Boolean(busy && activeId === item.id);
 
   return (
@@ -43,7 +57,9 @@ export function SpriteCandidateCard({ item, index, generator, reference, removeB
               ? "spriteGeneration.working"
               : selectable
                 ? "spriteGeneration.ready"
-                : "spriteGeneration.notGenerated",
+                : animation && item.result && !stale && !item.result.alphaVerified
+                  ? "spriteAnimation.needsMatting"
+                  : "spriteGeneration.notGenerated",
           )}
         </span>
         <IconButton
@@ -64,30 +80,40 @@ export function SpriteCandidateCard({ item, index, generator, reference, removeB
           value={item.tagging}
         />
       </label>
-      <div className="sprite-generation__preview">
-        {item.result ? (
-          <a
-            aria-label={t("spriteGeneration.preview", { n: index + 1 })}
-            href={fileUrl(item.result.path)}
-            rel="noreferrer"
-            target="_blank"
-          >
-            <ImageAssetThumb alt={title} src={fileUrl(item.result.path)} />
-          </a>
-        ) : (
-          <div className="sprite-generation__placeholder">
-            <ImagePlus aria-hidden />
-            <span>{t("spriteGeneration.notGenerated")}</span>
-          </div>
-        )}
-      </div>
+      {item.result || !item.manual ? (
+        <div className="sprite-generation__preview">
+          {item.result ? (
+            <a
+              aria-label={t("spriteGeneration.preview", { n: index + 1 })}
+              href={fileUrl(item.result.path)}
+              rel="noreferrer"
+              target="_blank"
+            >
+              {animation ? (
+                <VisualMedia alt={title} src={fileUrl(item.result.path)} />
+              ) : (
+                <ImageAssetThumb alt={title} src={fileUrl(item.result.path)} />
+              )}
+            </a>
+          ) : (
+            <div className="sprite-generation__placeholder">
+              <ImagePlus aria-hidden />
+              <span>{t("spriteGeneration.notGenerated")}</span>
+            </div>
+          )}
+        </div>
+      ) : null}
       {stale ? <p className="sprite-generation__notice">{t("spriteGeneration.stale")}</p> : null}
       {item.result?.backgroundRemoved ? (
-        <p className="sprite-generation__hint">{t("spriteGeneration.backgroundRemoved")}</p>
+        <p className="sprite-generation__hint">
+          {t(animation ? "spriteAnimation.verified" : "spriteGeneration.backgroundRemoved")}
+        </p>
       ) : null}
       {item.result?.backgroundRemovalError ? (
         <p className="sprite-generation__error" role="alert">
-          {t("spriteGeneration.backgroundRemovalFailed", { error: item.result.backgroundRemovalError })}
+          {t(animation ? "spriteAnimation.failed" : "spriteGeneration.backgroundRemovalFailed", {
+            error: item.result.backgroundRemovalError,
+          })}
         </p>
       ) : null}
       {item.error ? (
@@ -95,21 +121,40 @@ export function SpriteCandidateCard({ item, index, generator, reference, removeB
           {item.error}
         </p>
       ) : null}
-      <details className="sprite-generation__prompt-details">
-        <summary>{t("spriteGeneration.editPrompt")}</summary>
+      <details
+        className="sprite-generation__prompt-details"
+        open={promptOpen}
+        onToggle={(event) => setPromptOpen(event.currentTarget.open)}
+      >
+        <summary>{t(animation ? "spriteAnimation.viewPrompt" : "spriteGeneration.editPrompt")}</summary>
+        <p className="sprite-generation__hint">
+          {t(animation ? "spriteAnimation.customPromptHint" : "spriteGeneration.manualPromptHint")}
+        </p>
         <label className="field-row field-row--stack">
-          <span className="field-row__label">{t("spriteGeneration.prompt")}</span>
+          <span className="field-row__label">{promptLabel}</span>
           <TextArea
+            autoFocus={item.manual}
+            placeholder={t(
+              animation ? "spriteAnimation.manualPromptPlaceholder" : "spriteGeneration.manualPromptPlaceholder",
+            )}
             maxLength={12000}
-            aria-label={`${title} ${t("spriteGeneration.prompt")}`}
+            aria-label={`${title} ${promptLabel}`}
             disabled={Boolean(busy)}
-            onChange={(event) => generator.update(item.id, { prompt: event.target.value, selected: false })}
+            onChange={(event) =>
+              generator.update(item.id, {
+                prompt: event.target.value,
+                selected: false,
+                ...(item.animationInput
+                  ? { animationInput: { ...item.animationInput, customPrompt: event.target.value } }
+                  : {}),
+              })
+            }
             rows={4}
             value={item.prompt}
           />
         </label>
       </details>
-      {item.result?.videoPath ? (
+      {item.result?.videoPath && !animation ? (
         <SpriteVideoFramePicker
           key={item.result.videoPath}
           path={item.result.videoPath}
@@ -120,20 +165,44 @@ export function SpriteCandidateCard({ item, index, generator, reference, removeB
         />
       ) : null}
       <div className="sprite-generation__card-actions">
+        {item.result && onReplace ? (
+          <AsyncButton disabled={Boolean(busy) || !selectable} onClick={() => onReplace(item)}>
+            {t("spriteGeneration.replace")}
+          </AsyncButton>
+        ) : null}
+        {!animation && item.result && !stale && onAnimate ? (
+          <AsyncButton disabled={Boolean(busy)} onClick={() => onAnimate(item)}>
+            {t("spriteAnimation.fromStatic")}
+          </AsyncButton>
+        ) : null}
         {item.result && !item.result.backgroundRemoved ? (
           <AsyncButton
             disabled={Boolean(busy) || stale}
             loading={busy === "cutout" && activeId === item.id}
             onClick={() => void generator.cutout(item)}
           >
-            {t(item.result.backgroundRemovalError ? "spriteGeneration.retryCutout" : "spriteGeneration.cutout")}
+            {t(
+              animation
+                ? "spriteAnimation.retryMatting"
+                : item.result.backgroundRemovalError
+                  ? "spriteGeneration.retryCutout"
+                  : "spriteGeneration.cutout",
+            )}
           </AsyncButton>
         ) : null}
         <AsyncButton
-          disabled={Boolean(busy) || !item.prompt.trim() || !item.tagging.trim()}
+          disabled={
+            Boolean(busy) ||
+            ((!animation || item.animationInput?.customPrompt !== undefined) && !item.prompt.trim()) ||
+            !item.tagging.trim()
+          }
           icon={<RefreshCw aria-hidden className="button__icon" />}
-          loading={busy === "render" && activeId === item.id}
-          onClick={() => void generator.render([item], reference, removeBackground)}
+          loading={(busy === "render" || busy === "animate") && activeId === item.id}
+          onClick={() =>
+            void (item.animationInput
+              ? generator.animate(item.animationInput, item)
+              : generator.render([item], reference, removeBackground))
+          }
         >
           {t(item.result ? "spriteGeneration.redraw" : "spriteGeneration.generate")}
         </AsyncButton>

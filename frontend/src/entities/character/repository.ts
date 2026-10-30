@@ -106,6 +106,10 @@ export function renderCharacterSprite(...args: Parameters<ShinsekaiPlatform["cha
   return getPlatform().characters.renderSprite(...args);
 }
 
+export function animateCharacterSprite(...args: Parameters<ShinsekaiPlatform["characters"]["animateSprite"]>) {
+  return getPlatform().characters.animateSprite(...args);
+}
+
 export function importGeneratedCharacterSprites(
   input: Parameters<ShinsekaiPlatform["characters"]["importGeneratedSprites"]>[0],
 ) {

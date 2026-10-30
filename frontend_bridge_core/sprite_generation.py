@@ -12,6 +12,12 @@ from application.characters.generate_sprites import (
 )
 from application.runtime.state import _jsonify
 from application.runtime.tasks import _update_task
+from application.characters.animate_sprites import (
+    animation_prompt,
+    render_animation,
+    make_transparent_animation,
+    verify_transparent_animation,
+)
 from frontend_bridge_core.tools import _local_file_access_roots
 from sdk.path_utils import safe_existing_file_path
 
@@ -25,6 +31,86 @@ def run_sprite_plan(state, task_id, payload):
         progress=0.1,
     )
     return plan_sprites(state.config_manager, payload)
+
+
+def run_sprite_animation(state, task_id, payload):
+    animation_prompt(payload)
+    name = str(payload.get("name") or "").strip()
+    if not state.config_manager.get_character_by_name(name):
+        raise ValueError("请先保存角色再生成动态立绘")
+    if not payload.get("referenceImage"):
+        raise ValueError("请先选择静态参考立绘")
+    from PIL import Image
+
+    reference = safe_existing_file_path(
+        str(payload["referenceImage"]),
+        roots=_local_file_access_roots(state),
+        field="referenceImage",
+    )
+    with Image.open(reference) as image:
+        image.verify()
+    output = (
+        Path(state.project_root_dir) / "cache" / "sprite_generation" / f"{task_id}.png"
+    )
+    _update_task(
+        state,
+        task_id,
+        message="正在用 H3 生成固定镜头的轻微动态。",
+        phase="generate",
+        progress=0.1,
+    )
+    result = render_animation(
+        state.config_manager, {**payload, "name": name}, output, reference
+    )
+    return _finish_animation(state, task_id, result)
+
+
+def _finish_animation(state, task_id, source):
+
+    video = safe_existing_file_path(
+        source["videoPath"],
+        roots=(Path(state.project_root_dir) / "cache" / "sprite_generation",),
+        field="generatedVideo",
+    )
+    output = video.parent / f"{task_id}-alpha.webm"
+    result = {
+        **source,
+        "taskId": task_id,
+        "animation": True,
+        "alphaVerified": False,
+        "path": video.as_posix(),
+        "backgroundRemoved": False,
+    }
+    result.pop("backgroundRemovalError", None)
+
+    def progress(done, total):
+        if done == 1 or done % 4 == 0 or done == total:
+            _update_task(
+                state,
+                task_id,
+                phase="video-matting",
+                progress=0.55 + 0.4 * min(done / total, 1),
+                message=f"正在逐帧抠图并编码透明视频：{done}/{total}",
+            )
+
+    _update_task(
+        state,
+        task_id,
+        phase="video-matting",
+        progress=0.55,
+        message="正在逐帧移除背景，完成后将校验真实 Alpha 通道。",
+    )
+    try:
+        metadata = make_transparent_animation(
+            video,
+            output,
+            progress=progress,
+            playback_speed=source.get("playbackSpeed", 0.75),
+        )
+        result.update(metadata, path=output.as_posix(), backgroundRemoved=True)
+    except Exception as exc:
+        result["backgroundRemovalError"] = str(exc)
+    return _approve_sprite_media(state, result)
 
 
 def run_sprite_render(state, task_id, payload):
@@ -117,6 +203,7 @@ def _generated_task(state, task_id, name):
             "character-sprite-render",
             "character-sprite-frame",
             "character-sprite-cutout",
+            "character-sprite-animate",
         }
         or task["status"] != "succeeded"
     ):
@@ -158,6 +245,8 @@ def run_sprite_cutout(state, task_id, payload):
         source = dict(
             _generated_task(state, str(payload.get("taskId") or ""), name)["result"]
         )
+    if source.get("animation"):
+        return _finish_animation(state, task_id, source)
     original = safe_existing_file_path(
         source.get("originalPath") or source["path"],
         roots=(Path(state.project_root_dir) / "cache" / "sprite_generation",),
@@ -181,6 +270,15 @@ def import_generated_sprites(state, payload):
     items = payload.get("items")
     if not isinstance(items, list) or not 1 <= len(items) <= 12:
         raise ValueError("请选择 1–12 张生成的立绘")
+    replacement = payload.get("replace")
+    if replacement is not None and (
+        not isinstance(replacement, dict)
+        or len(items) != 1
+        or isinstance(replacement.get("index"), bool)
+        or not isinstance(replacement.get("index"), int)
+        or not isinstance(replacement.get("path"), str)
+    ):
+        raise ValueError("替换时请选择一张结果和有效的原立绘")
     # Serialize imports and mark task results together, making repeated submissions idempotent.
     with state.task_lock:
         character = state.config_manager.get_character_by_name(name)
@@ -203,6 +301,10 @@ def import_generated_sprites(state, payload):
                 roots=(Path(state.project_root_dir) / "cache" / "sprite_generation",),
                 field="generatedImage",
             )
+            if result.get("animation"):
+                if not result.get("alphaVerified") or path.suffix.lower() != ".webm":
+                    raise ValueError("动态立绘尚未完成透明处理，请先重试逐帧抠图")
+                verify_transparent_animation(path)
             pair = prompt_pair(
                 {
                     "prompt": result["prompt"],
@@ -214,7 +316,18 @@ def import_generated_sprites(state, payload):
             tags.append(pair["tagging"])
         if files:
             state.character_manager.upload_sprites(
-                name, files, character.emotion_tags, sprite_tags=tags
+                name,
+                files,
+                character.emotion_tags,
+                sprite_tags=tags,
+                **(
+                    {
+                        "replace_index": replacement["index"],
+                        "expected_path": replacement["path"],
+                    }
+                    if replacement is not None
+                    else {}
+                ),
             )
             for task in tasks:
                 task["result"] = {**task["result"], "imported": True}

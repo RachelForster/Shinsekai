@@ -9,15 +9,20 @@ from pathlib import Path
 from typing import Any
 
 from application.characters.generate_briefs import chat_character_text
+from application.characters.h3_idle_workflow import stabilize_idle_workflow
 from application.media.sprite_tags import SPRITE_TAG_INSTRUCTIONS
 from core.media.asset_tags import normalize_generated_tags
 
 
 SPRITE_CAMERA_SUFFIX = ", locked-off static camera, fixed viewpoint and focal length throughout, plain light, sprite"
 SPRITE_PROMPT_SUFFIX = ", full body, full scene" + SPRITE_CAMERA_SUFFIX
-SPRITE_REFERENCE_PROMPT_SUFFIX = (
+SPRITE_REFERENCE_FRAMING_SUFFIX = (
     ", preserve the reference image's exact framing, crop, camera angle, character scale "
-    "and screen position throughout, keep all pose changes within the original frame"
+    "and screen position throughout"
+)
+SPRITE_REFERENCE_PROMPT_SUFFIX = (
+    SPRITE_REFERENCE_FRAMING_SUFFIX
+    + ", keep all pose changes within the original frame"
     + SPRITE_CAMERA_SUFFIX
 )
 LEGACY_SPRITE_PROMPT_SUFFIX = ", full body, full scene, plain light, sprite"
@@ -145,7 +150,14 @@ def plan_sprites(config_store: Any, payload: dict) -> dict:
 
 
 def render_sprite(
-    config_store: Any, payload: dict, output: Path, reference: Path | None = None
+    config_store: Any,
+    payload: dict,
+    output: Path,
+    reference: Path | None = None,
+    *,
+    require_h3_video: bool = False,
+    loop_reference: bool = False,
+    stabilize_pose: bool = False,
 ) -> dict:
     from PIL import Image
 
@@ -156,6 +168,10 @@ def render_sprite(
     provider = str(api.t2i_provider or "").strip()
     if not provider:
         raise ValueError("请先在 API 设置中配置图像生成（T2I）服务")
+    if require_h3_video and provider.lower() != "comfyui":
+        raise ValueError(
+            "动态立绘需要在图像生成设置中连接 ComfyUI 的 MiniMax H3 图生视频工作流"
+        )
     adapter = T2IAdapterFactory.create_adapter(
         provider,
         **config_store.merged_t2i_factory_kwargs(
@@ -173,6 +189,29 @@ def render_sprite(
         raise ValueError("当前 T2I 服务不支持参考图，请切换到支持参考图的适配器")
     manager = T2IManager(adapter, image_cache_dir=str(output.parent))
     try:
+        if require_h3_video:
+            nodes = [
+                node
+                for node in (getattr(adapter, "workflow_template", None) or {}).values()
+                if isinstance(node, dict)
+                and node.get("class_type") == "MiniMaxH3ImageToVideo"
+            ]
+            if (
+                not nodes
+                or not reference
+                or any(not node.get("inputs", {}).get("first_frame") for node in nodes)
+            ):
+                raise ValueError(
+                    "请选择 MiniMax H3 图生视频 API 工作流，并提供静态参考立绘"
+                )
+            if loop_reference:
+                for node in nodes:
+                    if node.get("inputs", {}).get("first_frame"):
+                        node["inputs"]["last_frame"] = node["inputs"]["first_frame"]
+            if stabilize_pose:
+                adapter.workflow_template = stabilize_idle_workflow(
+                    adapter.workflow_template
+                )
         options = {"seed": secrets.randbelow(2**53)}
         if reference:
             options["reference_image_path"] = str(reference)
@@ -194,6 +233,8 @@ def render_sprite(
                 "videoPath": Path(video).as_posix(),
                 "frameTime": float(adapter.last_video_frame_time),
             }
+        if require_h3_video and not media:
+            raise ValueError("H3 工作流没有返回视频，请检查 SaveVideo 输出节点")
         return {
             **pair,
             **media,

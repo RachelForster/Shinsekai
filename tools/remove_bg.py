@@ -17,10 +17,8 @@ def _anime_session():
     return new_session("isnet-anime", providers=["CPUExecutionProvider"])
 
 
-def ai_remove_background(input_path, output_path):
-    """Write a transparent PNG atomically; let callers handle processing failures."""
-    from PIL import Image
-
+def remove_background_image(image):
+    """Reuse the CPU session for images and sequential video frames."""
     try:
         from rembg import remove
     except ModuleNotFoundError as exc:
@@ -28,14 +26,20 @@ def ai_remove_background(input_path, output_path):
             "抠图需要 rembg 和 onnxruntime，请安装本地图像处理依赖"
         ) from exc
 
+    with _inference_lock:
+        return remove(image.convert("RGBA"), session=_anime_session()).convert("RGBA")
+
+
+def ai_remove_background(input_path, output_path):
+    """Write a transparent PNG atomically; let callers handle processing failures."""
+    from PIL import Image
+
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = output.with_name(f".{output.stem}-{uuid4().hex}.png")
     try:
         with Image.open(input_path) as image:
-            with _inference_lock:
-                result = remove(image.convert("RGBA"), session=_anime_session())
-            result.convert("RGBA").save(temporary, "PNG")
+            remove_background_image(image).save(temporary, "PNG")
         temporary.replace(output)
     finally:
         temporary.unlink(missing_ok=True)
