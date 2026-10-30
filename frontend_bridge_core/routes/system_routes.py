@@ -3,6 +3,7 @@ from __future__ import annotations
 from http import HTTPStatus
 
 from application.model_assets.tts_bundle import _tts_bundle_recommendation
+from application.model_providers.connectivity import check_comfyui_connection
 from application.runtime.state import plugin_load_snapshot
 from application.runtime.tasks import _get_task, _request_task_cancel
 from frontend_bridge_core.config import (
@@ -94,9 +95,7 @@ def _test_llm_connection_route(request: ApiRequest) -> JsonResponse:
 
 
 def _test_comfyui_connection_route(request: ApiRequest) -> JsonResponse:
-    from ai.t2i.comfyui_connection import probe_comfyui_connection
-
-    return JsonResponse(probe_comfyui_connection(str(request.body.get("baseUrl") or "")))
+    return JsonResponse(check_comfyui_connection(str(request.body.get("baseUrl") or "")))
 
 
 def _cancel_task(request: ApiRequest) -> JsonResponse:
