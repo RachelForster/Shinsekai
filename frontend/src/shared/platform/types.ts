@@ -45,6 +45,7 @@ export interface AvatarRuntimeImport {
 }
 
 export interface Character {
+  id?: string;
   emotion_resources?: Array<{
     tag: string;
     voice_path?: string;
@@ -1653,6 +1654,22 @@ export interface ShinsekaiPlatform {
     previewKnowledgeImport: (knowledgeId: string, items: File[]) => Promise<KnowledgeImportPreview>;
   };
   characters: {
+    linkDoki?: (input: {
+      action: "state" | "doki-list" | "bind" | "unlink";
+      characterId: string;
+      dokiId?: string;
+      role?: string;
+    }) => Promise<{
+      link?: {
+        id: string;
+        doki_name: string;
+        shinsekai_name: string;
+        role: string;
+        available: boolean;
+        memory_identity: string;
+      } | null;
+      characters?: Array<{ id: string; name: string; role: string; linked: boolean }>;
+    }>;
     listDoki?: () => Promise<{ characters: Array<{ id: string; name: string; persona: string }> }>;
     prepareExchange?: (input: {
       dokiId?: string;

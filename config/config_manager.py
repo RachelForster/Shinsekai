@@ -128,6 +128,11 @@ class ConfigManager:
             # 对于 characters.yaml，它是一个列表，直接传递给 List[Character]
             if not isinstance(characters_data, list):
                 characters_data = [] # 处理文件为空或格式错误的情况
+            from config.character_identity import ensure_character_ids, installation_id
+            if ensure_character_ids(characters_data):
+                self._save_single_config(self._CHARACTERS_CONFIG_PATH, characters_data)
+            if self._CHARACTERS_CONFIG_PATH.parent.name == "config" and self._CHARACTERS_CONFIG_PATH.parent.parent.name == "data":
+                installation_id(self._CHARACTERS_CONFIG_PATH.resolve().parents[2])
                 
             character_list = [Character.model_validate(normalize_sprite_voice_types(item)) for item in characters_data]
             background = [Background.model_validate(item) for item in background_data]
@@ -166,6 +171,9 @@ class ConfigManager:
         background_data = self._load_yaml(self._BACKGOUND_CONFIG_PATH)
         if not isinstance(characters_data, list):
             characters_data = []
+        from config.character_identity import ensure_character_ids
+        if ensure_character_ids(characters_data):
+            self._save_single_config(self._CHARACTERS_CONFIG_PATH, characters_data)
         if not isinstance(background_data, list):
             background_data = []
         characters = [

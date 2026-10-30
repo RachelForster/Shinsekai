@@ -1,6 +1,17 @@
 import type { MessageKey } from "../messages";
 
 export const enMessages: Record<MessageKey, string> = {
+  "character.link.title": "Character link",
+  "character.link.fromDoki": "Link a Doki character",
+  "character.link.unlink": "Unlink",
+  "character.link.hint": "Link identities without copying or replacing settings, resources, chats or memories.",
+  "character.link.linked": "Linked: {name}",
+  "character.link.player": "My profile / player",
+  "character.link.select": "Choose a character (matching names first)",
+  "character.link.sameName": "Matching name",
+  "character.link.alreadyLinked": "Already linked",
+  "character.link.confirm": "Confirm link",
+  "character.link.saveFirst": "Save the character before linking.",
   "character.exchange.title": "Import characters",
   "character.exchange.fromDoki": "Choose a character from Doki",
   "character.exchange.package": "Import character package",

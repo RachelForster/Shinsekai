@@ -35,6 +35,7 @@ class CharacterOperation(str, Enum):
     EXPORT = "export"
     DOKI_LIST = "doki-list"
     EXCHANGE_PREPARE = "exchange-prepare"
+    LINK_DOKI = "link-doki"
 
 
 @dataclass(frozen=True)
@@ -116,6 +117,7 @@ class CharacterUseCase:
 
     def execute(self, request: CharacterRequest) -> Any:
         from application.characters.exchange import list_doki, prepare_character
+        from application.characters.links import link_operation
         from application.characters.model_assets import import_model, import_model_states, save_model_state
         handlers = {
             CharacterOperation.IMPORT_MODEL: lambda body: import_model(self, body),
@@ -134,6 +136,7 @@ class CharacterUseCase:
             CharacterOperation.EXPORT: self._export_package,
             CharacterOperation.DOKI_LIST: lambda _body: list_doki(),
             CharacterOperation.EXCHANGE_PREPARE: lambda body: prepare_character(self, body),
+            CharacterOperation.LINK_DOKI: lambda body: link_operation(self, body),
         }
         # Import prepares outside the lock, then checks the original config at commit.
         if request.operation in (CharacterOperation.IMPORT_MODEL, CharacterOperation.IMPORT_MODEL_STATES):

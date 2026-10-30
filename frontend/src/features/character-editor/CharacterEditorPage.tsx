@@ -62,6 +62,7 @@ import { useCharacterMemoryImportController } from "./useCharacterMemoryImportCo
 import "./CharacterEditorPage.css";
 import { ModelStateEditor } from "./ModelStateEditor";
 import { CharacterExchangePanel } from "./CharacterExchangePanel";
+import { CharacterLinkPanel } from "./CharacterLinkPanel";
 
 export function mergeSprites(serverSprites: Sprite[], current: Character) {
   const currentSpritesByPath = new Map(
@@ -1017,6 +1018,7 @@ export function CharacterEditorPage() {
         selectedName={selectedName}
       />
 
+      <CharacterLinkPanel character={selected} />
       <CharacterExchangePanel
         characters={data}
         selectedName={selectedName}

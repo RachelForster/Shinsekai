@@ -1,6 +1,17 @@
 import type { MessageKey } from "../messages";
 
 export const jaMessages: Record<MessageKey, string> = {
+  "character.link.title": "キャラクターのリンク",
+  "character.link.fromDoki": "Doki のキャラクターとリンク",
+  "character.link.unlink": "リンクを解除",
+  "character.link.hint": "同じ人物として関連付けます。設定、リソース、チャット、記憶はコピー・上書きされません。",
+  "character.link.linked": "リンク済み：{name}",
+  "character.link.player": "自分のプロフィール／プレイヤー",
+  "character.link.select": "対応するキャラクターを選択（同名を優先）",
+  "character.link.sameName": "同名",
+  "character.link.alreadyLinked": "リンク済み",
+  "character.link.confirm": "リンクを確定",
+  "character.link.saveFirst": "リンクする前にキャラクターを保存してください。",
   "character.exchange.title": "キャラクターのインポート",
   "character.exchange.fromDoki": "Doki からキャラクターを選択",
   "character.exchange.package": "キャラクターパッケージをインポート",

@@ -1,6 +1,17 @@
 export type FrontendLanguage = "zh_CN" | "en" | "ja";
 
 export type MessageKey =
+  | "character.link.title"
+  | "character.link.fromDoki"
+  | "character.link.unlink"
+  | "character.link.hint"
+  | "character.link.linked"
+  | "character.link.player"
+  | "character.link.select"
+  | "character.link.sameName"
+  | "character.link.alreadyLinked"
+  | "character.link.confirm"
+  | "character.link.saveFirst"
   | "character.exchange.title"
   | "character.exchange.fromDoki"
   | "character.exchange.package"

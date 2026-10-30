@@ -1,6 +1,17 @@
 import type { MessageKey } from "../messages";
 
 export const zhCNMessages: Record<MessageKey, string> = {
+  "character.link.title": "角色链接",
+  "character.link.fromDoki": "链接 Doki 角色",
+  "character.link.unlink": "解除链接",
+  "character.link.hint": "链接后视为同一身份，不会复制或覆盖资料、资源、聊天和记忆。",
+  "character.link.linked": "已链接：{name}",
+  "character.link.player": "我的资料／玩家角色",
+  "character.link.select": "选择对应角色（同名优先，可手动选择）",
+  "character.link.sameName": "同名",
+  "character.link.alreadyLinked": "已链接",
+  "character.link.confirm": "确认链接",
+  "character.link.saveFirst": "请先保存角色，再进行链接。",
   "character.exchange.title": "角色导入",
   "character.exchange.fromDoki": "从 Doki 选择角色导入",
   "character.exchange.package": "导入角色包",
