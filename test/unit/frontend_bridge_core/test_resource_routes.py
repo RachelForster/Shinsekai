@@ -64,6 +64,7 @@ def test_character_route_contracts_remain_stable() -> None:
         ("POST", "/api/characters/sprite-voice/text"),
         ("POST", "/api/characters/sprite-voice/upload"),
         ("POST", "/api/characters/sprite-voice/voice-type"),
+        ("POST", "/api/characters/sprites/animate"),
         ("POST", "/api/characters/sprites/auto-label"),
         ("POST", "/api/characters/sprites/delete"),
         ("POST", "/api/characters/sprites/delete-all"),
