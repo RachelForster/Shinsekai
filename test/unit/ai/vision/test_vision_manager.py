@@ -50,6 +50,30 @@ def test_builtin_vision_uses_the_supplied_config_snapshot_including_extra_option
     ]
 
 
+def test_legacy_saved_default_reaches_the_adapter_as_the_current_llm_model(monkeypatch):
+    from ai.vision import configured_vision_manager
+    from config.schema import ApiConfig
+
+    models = []
+
+    class ConfiguredAdapter(FakeVisionAdapter):
+        def __init__(self, model, **kwargs):
+            models.append(model)
+
+    monkeypatch.setitem(VisionManager._builtin_adapters, "deepseek", ConfiguredAdapter)
+    monkeypatch.setitem(VisionManager._adapters, "deepseek", ConfiguredAdapter)
+    config = ApiConfig.model_validate(
+        {
+            "vision_provider": "auto",
+            "vision_model": {"deepseek": "deepseek-flash"},
+            "llm_provider": "Deepseek",
+            "llm_model": {"Deepseek": "current-model"},
+        }
+    )
+    configured_vision_manager(api_config=config)
+    assert models == ["current-model"]
+
+
 def test_moondream_adapter_requires_the_optional_plugin(monkeypatch):
     monkeypatch.setattr(
         "ai.vision.moondream_adapter.installed_moondream_directory", lambda: None

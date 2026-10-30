@@ -163,6 +163,11 @@ class ApiConfig(BaseModel):
         default_factory=dict,
         description="不同视觉服务商使用的模型名称字典；未指定时沿用该服务商的 LLM 模型",
     )
+    vision_config_version: DefaultIfNone[int] = Field(
+        default=1,
+        ge=1,
+        description="视觉配置迁移版本，用于区分历史默认值与显式模型选择",
+    )
     # --- Interrupt & Batch Input ---
     interrupt_enabled: DefaultIfNone[bool] = Field(default=True, description="是否启用打断功能：新消息可中断正在生成的回复")
     is_batch_input_enabled: DefaultIfNone[bool] = Field(default=False, description="启用批量消息输入：连续发送多条后合并为一条")
@@ -208,6 +213,30 @@ class ApiConfig(BaseModel):
         default_factory=dict,
         description="视觉适配器扩展参数：provider 名 -> 字段名 -> 值",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_legacy_vision_defaults(cls, value: Any) -> Any:
+        if (
+            not isinstance(value, Mapping)
+            or value.get("vision_config_version") is not None
+        ):
+            return value
+        migrated = dict(value)
+        migrated["vision_config_version"] = 1
+        selected = str(value.get("vision_provider") or "auto").strip().lower() or "auto"
+        models = value.get("vision_model")
+        if (
+            selected == "auto"
+            and isinstance(models, Mapping)
+            and str(models.get("deepseek") or "").strip() == "deepseek-flash"
+        ):
+            # This value was persisted by the old schema even without a user selection.
+            # Mark the migration so choosing the same model afterward remains explicit.
+            migrated["vision_model"] = {
+                key: model for key, model in models.items() if key != "deepseek"
+            }
+        return migrated
 
     @model_validator(mode="after")
     def _clamp_compact_ratios(self):

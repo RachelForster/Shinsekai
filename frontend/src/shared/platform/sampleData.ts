@@ -103,6 +103,7 @@ export const sampleConfig: AppConfig = {
     is_streaming: true,
     vision_provider: "auto",
     vision_model: {},
+    vision_config_version: 1,
     interrupt_enabled: true,
     is_batch_input_enabled: false,
     batch_input_timeout: 5,
