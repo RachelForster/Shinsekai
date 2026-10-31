@@ -62,20 +62,20 @@ export function getMem0Status() {
   return getPlatform().characters.getMem0Status();
 }
 
-export function listCharacterMemories(name: string) {
-  return getPlatform().characters.listMemories(name);
+export function listCharacterMemories(...args: [name: string, timeline?: string]) {
+  return getPlatform().characters.listMemories(...args);
 }
 
-export function searchCharacterMemories(input: { limit?: number; name: string; query: string }) {
+export function searchCharacterMemories(input: { limit?: number; name: string; query: string; timeline?: string }) {
   return getPlatform().characters.searchMemories(input);
 }
 
-export function rememberCharacterMemory(name: string, content: string) {
-  return getPlatform().characters.remember(name, content);
+export function rememberCharacterMemory(...args: [name: string, content: string, timeline?: string]) {
+  return getPlatform().characters.remember(...args);
 }
 
-export function deleteCharacterMemory(name: string, memoryId: string) {
-  return getPlatform().characters.deleteMemory(name, memoryId);
+export function deleteCharacterMemory(...args: [name: string, memoryId: string, timeline?: string]) {
+  return getPlatform().characters.deleteMemory(...args);
 }
 
 export function previewCharacterMemoryImport(name: string, items: File[]) {

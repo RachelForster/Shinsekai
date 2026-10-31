@@ -258,3 +258,115 @@ def test_launch_preserves_existing_history_and_recovery_files(fixture, filename)
     assert saved.read_bytes() == b'["preserve existing history"]'
     if filename != 'active.json':
         assert not (target / 'active.json').exists()
+
+
+def test_daily_settings_snapshot_defaults_and_actor_boundaries(fixture):
+    state, source = fixture
+    state.template_generator.generate_chat_template.return_value = ('native system', '')
+    handoff.save_daily_defaults(state, dict(background='cafe', effectNames=['day'], useCg=False, maxSpeechChars=37, selectedCharacters=['intruder'], playerCharacter='intruder', historyPath='other', daily_context=['private'], api_key='secret'))
+    handoff.prepare(state, source)
+    first = handoff.configuration(state, source['handoff_id'])['session']
+    assert first['background'] == 'cafe' and first['maxSpeechChars'] == 37
+    assert first['selectedCharacters'] == ['A', '神羽'] and first['playerCharacter'] == '神羽'
+    assert first['allowPlayerDialogue'] is False
+    saved_default = json.loads(handoff._default_path(state).read_text())
+    assert not any(k in saved_default for k in ['selectedCharacters', 'playerCharacter', 'historyPath', 'daily_context', 'api_key'])
+    handoff.save_daily_defaults(state, dict(background='new-background'))
+    assert handoff.configuration(state, source['handoff_id'])['session']['background'] == 'cafe'
+
+
+def test_independent_ignores_daily_visual_defaults(fixture):
+    state, source = fixture
+    state.template_generator.generate_chat_template.return_value = ('native system', '')
+    handoff.save_daily_defaults(state, dict(background='daily-only', effectNames=['private-day']))
+    source.update(mode='independent', offline_prompt='', player_persona='', daily_context=[])
+    handoff.prepare(state, source)
+    session = handoff.configuration(state, source['handoff_id'])['session']
+    assert session['background'] == '' and session['effectNames'] == []
+
+
+def test_configured_payload_preserves_native_options_and_locks_actor_identity(fixture):
+    state, source = fixture
+    handoff.prepare(state, source)
+    body = handoff.configured_payload(state, source, dict(background='cafe', effectNames=['effect'], workflowPath='my-workflow.json', initSpritePath='sprite.png', useCg=False, showInitialSprite=False, selectedCharacters=['other'], playerCharacter='other', allowPlayerDialogue=True))
+    assert body['backgroundName'] == 'cafe' and body['effectNames'] == ['effect']
+    assert body['workflowPath'] == 'my-workflow.json' and body['showInitialSprite'] is False
+    assert body['useCg'] is False and body['characters'] == ['A', '神羽']
+    assert body['playerCharacter'] == '神羽' and body['allowPlayerDialogue'] is False
+
+
+def test_native_explicit_end_releases_handoff_and_late_ack_cannot_restore_it(fixture):
+    state, source = fixture
+    handoff.prepare(state, source)
+    target = handoff.directory(state, source['handoff_id'])
+    state.chat_session = dict(sessionId='session', historyPath=str(target))
+    handoff._write_receipt(target, dict(status='entered', sessionId='session', participants={'npc':'present'}))
+    stop = Mock(side_effect=lambda *args, **kwargs: state.chat_session.clear() or {'status':'idle'})
+    result = handoff.end_from_native(state, expected_session_id='session', stopper=stop)
+    assert result['status'] == 'idle'
+    assert handoff.status(state, source['handoff_id'])['status'] == 'ended'
+    assert handoff.status(state, source['handoff_id'])['participants']['npc'] == 'away'
+    assert handoff.acknowledge(state, dict(historyPath=str(target),sessionId='session')) == {'doki':False}
+
+
+def test_failed_or_stale_native_end_does_not_mark_another_session_ended(fixture):
+    from application.chat.stop_chat import ChatSessionChanged
+    state, source = fixture
+    handoff.prepare(state, source)
+    target = handoff.directory(state, source['handoff_id'])
+    state.chat_session = dict(sessionId='current', historyPath=str(target))
+    stop = Mock(side_effect=RuntimeError('not stopped'))
+    with pytest.raises(ChatSessionChanged):
+        handoff.end_from_native(state, expected_session_id='old', stopper=stop)
+    stop.assert_not_called()
+    with pytest.raises(RuntimeError, match='not stopped'):
+        handoff.end_from_native(state, expected_session_id='current', stopper=stop)
+    assert handoff.status(state, source['handoff_id'])['status'] == 'prepared'
+
+
+def test_default_sprite_matches_equivalent_relative_and_windows_separator_paths(fixture, tmp_path):
+    state, source = fixture
+    state.project_root_dir = tmp_path
+    asset = tmp_path / 'data' / 'sprites' / 'actor.png'
+    asset.parent.mkdir(parents=True)
+    asset.write_bytes(b'test resource')
+    state.config_manager.config.characters[0].sprites = [NS(path=asset)]
+    state.template_generator.generate_chat_template.return_value = ('native system', '')
+    handoff.save_daily_defaults(state, dict(initSpritePath='data/sprites/actor.png'))
+    handoff.prepare(state, source)
+    result = handoff.configuration(state, source['handoff_id'])
+    assert result['session']['initSpritePath'] == 'data/sprites/actor.png'
+    assert not result['warnings']
+
+
+def test_ended_handoff_cannot_restart_through_generic_native_launcher(fixture):
+    state, source = fixture
+    handoff.prepare(state, source)
+    target = handoff.directory(state, source['handoff_id'])
+    handoff._write_receipt(target, {'status':'ended'})
+    with pytest.raises(ValueError, match='已明确结束'):
+        handoff.launch_policy(state, {'historyPath':str(target), 'allowPlayerDialogue':True})
+
+
+def test_preexisting_save_without_editor_session_does_not_receive_new_defaults(fixture, tmp_path):
+    state, source = fixture
+    state.template_dir_path = tmp_path / 'templates'
+    state.template_generator.generate_chat_template.return_value = ('native', '')
+    handoff.prepare(state, source)
+    handoff.save_daily_defaults(state, {'background':'new-default','effectNames':['new-effect']})
+    old = {'backgroundName':'original-background','system':'original-rules','scenario':'original-scene','effectNames':['original-effect'],'useCg':False}
+    with patch('application.chat.conversation_library.saved_conversation_launch',return_value=old):
+        settings = handoff.configuration(state, source['handoff_id'])['session']
+    assert settings['background'] == 'original-background'
+    assert settings['effectNames'] == ['original-effect']
+    assert settings['system'] == 'original-rules' and settings['scenario'] == 'original-scene'
+
+
+def test_daily_default_world_is_preserved_without_replacing_the_actual_invitation(fixture):
+    state, source = fixture
+    state.template_generator.generate_chat_template.return_value = ('native', '')
+    handoff.save_daily_defaults(state, {'scenario':'a calm modern city'})
+    handoff.prepare(state, source)
+    first = handoff.configuration(state, source['handoff_id'])['session']
+    assert 'a calm modern city' in first['scenario'] and source['reason'] in first['scenario']
+    assert handoff.configuration(state, source['handoff_id'])['session']['scenario'] == first['scenario']

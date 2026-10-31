@@ -145,6 +145,7 @@ class ChatLaunchPreparation:
         if workflow_path:
             launch_config["workflow"] = workflow_path
         env = os.environ.copy()
+        env["SHINSEKAI_CHAT_VOICE_LANGUAGE"] = str(chat_session.get("voiceLanguage") or "")
         if use_current_template_for_history or player_name:
             launch_config["use_current_template_for_history"] = True
         env[CHAT_LAUNCH_CONFIG_ENV] = json.dumps(launch_config, ensure_ascii=False)

@@ -13,15 +13,17 @@ import { useI18n } from "../../shared/i18n";
 import type { TaskSnapshot } from "../../shared/platform/types";
 import { useToast } from "../../shared/ui";
 
-const memoryQueryKey = (name: string) => ["character-memories", name] as const;
+const memoryQueryKey = (name: string, timeline?: string) =>
+  timeline ? ["character-memories", name, timeline] : (["character-memories", name] as const);
 const MEMORY_PAGE_SIZE = 8;
 const MEMORY_SEARCH_LIMIT = 200;
 
 interface UseCharacterMemoryControllerOptions {
   memoryName: string;
+  timeline?: string;
 }
 
-export function useCharacterMemoryController({ memoryName }: UseCharacterMemoryControllerOptions) {
+export function useCharacterMemoryController({ memoryName, timeline }: UseCharacterMemoryControllerOptions) {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const { t } = useI18n();
@@ -51,9 +53,10 @@ export function useCharacterMemoryController({ memoryName }: UseCharacterMemoryC
   };
 
   const query = useQuery({
-    enabled: false,
-    queryFn: () => listCharacterMemories(memoryName),
-    queryKey: memoryQueryKey(memoryName),
+    enabled: Boolean(memoryName) && timeline === "daily",
+    refetchInterval: timeline === "daily" ? 5000 : false,
+    queryFn: () => listCharacterMemories(memoryName, timeline),
+    queryKey: memoryQueryKey(memoryName, timeline),
   });
 
   const searchMutation = useMutation({
@@ -102,7 +105,7 @@ export function useCharacterMemoryController({ memoryName }: UseCharacterMemoryC
     setActiveSearchQuery("");
     setSearchData(null);
     setMemoryPage(1);
-  }, [memoryName]);
+  }, [memoryName, timeline]);
 
   useEffect(() => {
     setMemoryPage((current) => Math.min(Math.max(current, 1), memoryTotalPages));
@@ -168,7 +171,7 @@ export function useCharacterMemoryController({ memoryName }: UseCharacterMemoryC
       showToast({ kind: "success", title: t("character.memory.depInstalled") });
       setMemoryDepOpen(false);
       setMemoryDepTask(null);
-      queryClient.setQueryData(memoryQueryKey(memoryName), {
+      queryClient.setQueryData(memoryQueryKey(memoryName, timeline), {
         agentId: memoryName || "user",
         count: 0,
         memories: [],
@@ -189,7 +192,7 @@ export function useCharacterMemoryController({ memoryName }: UseCharacterMemoryC
   };
 
   const addMutation = useMutation({
-    mutationFn: () => rememberCharacterMemory(memoryName, memoryInput),
+    mutationFn: () => rememberCharacterMemory(memoryName, memoryInput, timeline),
     onError(error) {
       showToast({
         kind: "error",
@@ -203,13 +206,14 @@ export function useCharacterMemoryController({ memoryName }: UseCharacterMemoryC
       setActiveSearchQuery("");
       setSearchData(null);
       setMemoryPage(1);
-      queryClient.setQueryData(memoryQueryKey(memoryName), result);
+      queryClient.setQueryData(memoryQueryKey(memoryName, timeline), result);
       showToast({ kind: "success", title: t("character.memory.add") });
     },
   });
 
   const deleteMutation = useMutation({
-    mutationFn: ({ memoryId, name }: { memoryId: string; name: string }) => deleteCharacterMemory(name, memoryId),
+    mutationFn: ({ memoryId, name }: { memoryId: string; name: string }) =>
+      deleteCharacterMemory(name, memoryId, timeline),
     onError(error) {
       showToast({
         kind: "error",
@@ -218,7 +222,7 @@ export function useCharacterMemoryController({ memoryName }: UseCharacterMemoryC
       });
     },
     onSuccess(result, variables) {
-      queryClient.setQueryData(memoryQueryKey(variables.name), result);
+      queryClient.setQueryData(memoryQueryKey(variables.name, timeline), result);
       setSearchData((current) => {
         if (!current) {
           return current;
@@ -240,7 +244,7 @@ export function useCharacterMemoryController({ memoryName }: UseCharacterMemoryC
     }
     if (!(await ensureReady())) return;
     try {
-      await searchMutation.mutateAsync({ limit: MEMORY_SEARCH_LIMIT, name: memoryName, query: trimmed });
+      await searchMutation.mutateAsync({ limit: MEMORY_SEARCH_LIMIT, name: memoryName, query: trimmed, timeline });
     } catch {
       // onError surfaces the failure via toast.
     }
@@ -251,7 +255,12 @@ export function useCharacterMemoryController({ memoryName }: UseCharacterMemoryC
     if (!(await ensureReady())) return;
     if (activeSearchQuery) {
       try {
-        await searchMutation.mutateAsync({ limit: MEMORY_SEARCH_LIMIT, name: memoryName, query: activeSearchQuery });
+        await searchMutation.mutateAsync({
+          limit: MEMORY_SEARCH_LIMIT,
+          name: memoryName,
+          query: activeSearchQuery,
+          timeline,
+        });
       } catch {
         // onError surfaces the failure via toast.
       }

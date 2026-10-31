@@ -289,3 +289,11 @@ def test_chat_history_presence_requires_a_json_list(tmp_path, monkeypatch) -> No
 
     history_path.write_text("invalid", encoding="utf-8")
     assert startup.chat_history_is_present("history.json") is False
+
+
+def test_launch_specific_voice_language_does_not_change_global_config(monkeypatch):
+    monkeypatch.setenv('SHINSEKAI_CHAT_VOICE_LANGUAGE', 'en')
+    config = _Config()
+    manager, provider = startup._initialize_tts(_args(), config, Mock(), _runtime([], []), phase=lambda *args, **kwargs: nullcontext())
+    assert manager.language == 'en'
+    assert config.config.system_config.voice_language == 'ja'

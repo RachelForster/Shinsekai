@@ -91,12 +91,13 @@ def _initialize(request: ApiRequest) -> JsonResponse:
 
 
 def _close(request: ApiRequest) -> JsonResponse:
+    from application.chat.doki_handoff import end_from_native
     expected_session_id = request.body.get("expectedSessionId")
     if "expectedSessionId" in request.body and not isinstance(expected_session_id, str):
         raise ValueError("expectedSessionId must be a string")
     try:
         return JsonResponse(
-            stop_chat(request.state, expected_session_id=expected_session_id)
+            end_from_native(request.state, expected_session_id=expected_session_id, stopper=stop_chat)
         )
     except ChatSessionChanged as exc:
         return JsonResponse(

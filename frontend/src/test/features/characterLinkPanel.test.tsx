@@ -6,6 +6,7 @@ const method = vi.hoisted(() => vi.fn());
 vi.mock("../../shared/platform/platform", () => ({ getPlatform: () => ({ characters: { linkDoki: method } }) }));
 vi.mock("../../shared/ui", async () => ({
   ...(await import("../../shared/ui/Button")),
+  Dialog: (await import("../../shared/ui/Dialog")).Dialog,
   Select: (props: React.SelectHTMLAttributes<HTMLSelectElement>) => <select {...props} />,
 }));
 import { CharacterLinkPanel } from "../../features/character-editor/CharacterLinkPanel";
@@ -63,5 +64,22 @@ describe("explicit role linking", () => {
       expect(method).toHaveBeenCalledWith({ action: "unlink", characterId: "oc", dokiId: undefined, role: undefined }),
     );
     expect(character.character_setting).toBe("keep");
+  });
+  it("opens compact link management in a body portal outside a clipped toolbar", async () => {
+    method.mockResolvedValue({ link: null, characters: [] });
+    const { container } = render(
+      <I18nProvider language="zh_CN">
+        <div style={{ overflow: "hidden", height: 40 }}>
+          <CharacterLinkPanel compact character={{ id: "native", name: "A" } as Character} />
+        </div>
+      </I18nProvider>,
+    );
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "链接 Doki 角色" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toBeVisible();
+    expect(container.contains(dialog)).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "关闭" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });

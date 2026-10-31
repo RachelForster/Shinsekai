@@ -5,10 +5,12 @@ import { Download, ExternalLink, Plus, Save, Upload } from "lucide-react";
 import type { Character } from "../../entities/config/types";
 import { openExternal } from "../../entities/files/repository";
 import { useI18n } from "../../shared/i18n";
-import { AsyncButton, Button, PathPickerDialog, Select } from "../../shared/ui";
+import { AsyncButton, Button, Dialog, PathPickerDialog, Select } from "../../shared/ui";
 import { CHARACTER_RESOURCES_URL } from "./characterEditorUtils";
 
 interface CharacterPageHeaderProps {
+  linkAction?: ReactNode;
+  exchangeActions?: ReactNode;
   characters: Character[];
   exportPending: boolean;
   importPending: boolean;
@@ -25,6 +27,8 @@ interface CharacterPageHeaderProps {
 }
 
 export function CharacterPageHeader({
+  linkAction,
+  exchangeActions,
   characters,
   exportPending,
   importPending,
@@ -40,14 +44,13 @@ export function CharacterPageHeader({
   selectedName,
 }: CharacterPageHeaderProps) {
   const { t } = useI18n();
+  const [exchangeOpen, setExchangeOpen] = useState(false);
   const [importPickerOpen, setImportPickerOpen] = useState(false);
 
   return (
     <header className="page__header character-page__header">
       <div className="character-page__heading">
         <h1 className="page__title">{t("character.title")}</h1>
-      </div>
-      <div className="page__actions character-page__toolbar" aria-label={t("character.title")}>
         <div className="character-page__toolbar-group character-page__toolbar-group--links">
           <Button
             icon={<ExternalLink aria-hidden className="button__icon" />}
@@ -64,6 +67,8 @@ export function CharacterPageHeader({
             {t("character.action.uploadContribution")}
           </Button>
         </div>
+      </div>
+      <div className="page__actions character-page__toolbar" aria-label={t("character.title")}>
         <label className="character-page__select">
           <span className="visually-hidden">{t("character.row.current")}</span>
           <Select
@@ -84,13 +89,34 @@ export function CharacterPageHeader({
           <Button icon={<Plus aria-hidden className="button__icon" />} onClick={onCreate}>
             {t("common.new")}
           </Button>
-          <AsyncButton
-            icon={<Upload aria-hidden className="button__icon" />}
-            loading={importPending}
-            onClick={() => setImportPickerOpen(true)}
-          >
-            {t("common.import")}
-          </AsyncButton>
+          {linkAction}
+          {exchangeActions ? (
+            <>
+              <Button icon={<Upload aria-hidden className="button__icon" />} onClick={() => setExchangeOpen(true)}>
+                {t("common.import")}
+              </Button>
+              <Dialog
+                bodyClassName="character-exchange-dialog-body"
+                open={exchangeOpen}
+                title={t("character.exchange.title")}
+                closeLabel={t("common.close")}
+                onClose={() => setExchangeOpen(false)}
+              >
+                <AsyncButton loading={importPending} onClick={() => setImportPickerOpen(true)}>
+                  {t("character.exchange.package")}
+                </AsyncButton>
+                {exchangeActions}
+              </Dialog>
+            </>
+          ) : (
+            <AsyncButton
+              icon={<Upload aria-hidden className="button__icon" />}
+              loading={importPending}
+              onClick={() => setImportPickerOpen(true)}
+            >
+              {t("common.import")}
+            </AsyncButton>
+          )}
           <AsyncButton
             icon={<Download aria-hidden className="button__icon" />}
             loading={exportPending}

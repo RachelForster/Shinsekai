@@ -184,9 +184,9 @@ def launch(state, identity, *, launcher):
         if not any((target / name).exists() for name in ('active.json', 'active.json.tmp', 'branches.json')):
             with (target / 'active.json').open('x', encoding='utf-8') as stream:
                 json.dump([], stream)
-        names, player = _characters(state, source)
-        system, _ = state.template_generator.generate_chat_template(names, '', True, True, False, player_character=player, allow_player_dialogue=False, read_player_speech=False)
-        result = launcher(state, {'characters': names, 'playerCharacter': player, 'allowPlayerDialogue': False, 'readPlayerSpeech': False, 'userDisplayName': source.get('user_name') or '用户', 'scenario': source.get('reason') or '与用户见面。', 'system': system, 'historyPath': str(target), 'resetHistory': False, 'templateName': 'Doki 约会', 'mediaSelectionMode': 'indexed', 'useCg': True})
+        session = configuration(state, identity)['session']
+        payload = configured_payload(state, source, session)
+        result = launcher(state, payload)
         if result.get('runtimeDependencyError') or result.get('status') == 'error':
             raise RuntimeError('新世界会话尚未启动，请在新世界检查运行组件与模型配置。')
         _write_receipt(target, {'status': 'ready', 'sessionId': result.get('sessionId', '')})
@@ -257,12 +257,17 @@ def launch_policy(state, body):
     source = read_manifest(history)
     if source is None:
         return body
+    receipt = json.loads((chat_history_session_dir(history) / 'doki-receipt.json').read_text(encoding='utf-8'))
+    if receipt.get('status') == 'ended':
+        raise ValueError('本次约会已明确结束，不能通过普通聊天入口重新启动。')
     names, player = _characters(state, source)
     return {**body, 'characters': names, 'selectedCharacters': names, 'playerCharacter': player, 'allowPlayerDialogue': False, 'resetHistory': False}
 
 
 def runtime_context(source, config):
-    result = [MARKER, RULES, '本档来源为 Doki；上述玩家控制规则优先于模板中相反的代写要求。']
+    roster = {c.id: c.name for c in config.config.characters}
+    participants = [roster.get(row['native_id'], '角色') for row in source['characters']]
+    result = [MARKER, RULES, '本档来源为 Doki；上述玩家控制规则优先于模板中相反的代写要求。', '本次实际参与角色：' + '、'.join(participants) + '。模板中其他角色名称不是本次参与者，不能替换这份名单。']
     if source['mode'] == 'daily':
         result += ['【线下相处规则】', source.get('offline_prompt', ''), '【玩家公开人设】', source.get('player_persona', '')]
         names = {c.id: c.name for c in config.config.characters}
@@ -353,3 +358,141 @@ def install_runtime(llm_manager, config, args):
         content += '\n【用户确认的当前在场角色】' + '、'.join(present) + '。未在场角色不得作为现场角色继续发言或获得新增亲历；不替用户决定谁加入或离场。'
         context.messages.append({'role': 'system', 'content': content})
     dispatcher.register_before_chat(before_chat, label='doki_player_and_context')
+
+
+def end_from_native(state, *, expected_session_id=None, stopper):
+    """Explicit native End is terminal; ordinary process loss is still resumable."""
+    with _lock:
+        current = dict(getattr(state, 'chat_session', {}) or {})
+        history = current.get('historyPath')
+        source = read_manifest(history)
+        if source is None:
+            return stopper(state, expected_session_id=expected_session_id)
+        session_id = current.get('sessionId', '')
+        if expected_session_id is not None and expected_session_id != session_id:
+            from application.chat.stop_chat import ChatSessionChanged
+            raise ChatSessionChanged('The current chat has changed. Confirm the new chat before ending it.')
+        result = stopper(state, expected_session_id=session_id)
+        target = chat_history_session_dir(history)
+        _write_receipt(target, {'status': 'ended', 'participants': {row['native_id']: 'away' for row in source['characters']}})
+        return result
+
+
+def _default_path(state):
+    root = Path(getattr(state, 'project_root_dir', Path(state.history_dir).parent))
+    return root / 'data/config/doki-daily-default.json'
+
+
+def _safe_settings(session):
+    # Persist only fields supported by the native editor, never Doki memories/history.
+    allowed = {'background', 'effectNames', 'enableMobileAccess', 'filenameStub', 'initSpritePath', 'showInitialSprite', 'maxDialogItems', 'maxSpeechChars', 'roomId', 'system', 'templateFileDropdown', 'workflowPath', 'useCg', 'useChoice', 'useCot', 'useEffect', 'useNarration', 'useStat', 'useTranslation', 'voiceLanguage', 'mediaSelectionMode', 'characterPromptMode', 'primaryCharacters', 'readPlayerSpeech'}
+    if not isinstance(session, dict) or len(canonical(session)) > 150000:
+        raise ValueError('日常线配置无效或过大。')
+    return {key: value for key, value in session.items() if key in allowed}
+
+
+def save_daily_defaults(state, session):
+    value = {**_safe_settings(session), 'scenario': str(session.get('scenario') or '')[:8000]}
+    # Actor-specific sprite paths are checked again for each actual invitation.
+    from application.chat.conversation_library import _write
+    with _lock:
+        _write(_default_path(state), value)
+    return {'session': value}
+
+
+def configuration(state, identity=None):
+    with _lock:
+        default_path = _default_path(state)
+        defaults = json.loads(default_path.read_text(encoding='utf-8')) if default_path.is_file() else {}
+        baseline = {'background': '', 'effectNames': [], 'filenameStub': 'Doki 日常线', 'historyPath': '', 'initSpritePath': '', 'showInitialSprite': True, 'maxDialogItems': 5, 'maxSpeechChars': 20, 'roomId': '', 'scenario': '', 'selectedCharacters': [], 'system': '', 'templateFileDropdown': '', 'workflowPath': '', 'useCg': False, 'useChoice': True, 'useCot': False, 'useEffect': True, 'useNarration': True, 'useStat': True, 'useTranslation': True, 'voiceLanguage': '', 'mediaSelectionMode': 'indexed', 'enableMobileAccess': False, 'playerCharacter': '', 'allowPlayerDialogue': False, 'readPlayerSpeech': False}
+        if not identity:
+            return {'session': {**baseline, **defaults}}
+        target = directory(state, identity)
+        source = read_manifest(target)
+        if source is None:
+            raise ValueError('交接存档不存在。')
+        path = target / 'doki-settings.json'
+        from_defaults = False
+        if path.is_file():
+            settings = json.loads(path.read_text(encoding='utf-8'))
+        else:
+            # An existing native save owns its launch configuration, even after defaults change.
+            from application.chat.conversation_library import saved_conversation_launch
+            saved = saved_conversation_launch(state, target) if hasattr(state, 'template_dir_path') else None
+            if saved:
+                settings = saved.get('editorSession') or {
+                    'background': saved.get('backgroundName', ''), 'effectNames': saved.get('effectNames', []),
+                    'initSpritePath': saved.get('initSpritePath', ''), 'showInitialSprite': saved.get('showInitialSprite', True),
+                    'mediaSelectionMode': saved.get('mediaSelectionMode', 'indexed'), 'useCg': bool(saved.get('useCg')),
+                    'system': saved.get('system', ''), 'scenario': saved.get('scenario', ''),
+                    'templateFileDropdown': saved.get('templateId', ''), 'filenameStub': saved.get('templateName', ''),
+                    'workflowPath': saved.get('workflowPath', ''), 'voiceLanguage': saved.get('voiceLanguage', ''),
+                }
+            elif any((target / name).exists() for name in ('active.json', 'active.json.tmp', 'branches.json')):
+                settings = {}
+            else:
+                settings = defaults if source['mode'] == 'daily' else {}
+                from_defaults = source['mode'] == 'daily'
+        session = {**baseline, **_safe_settings(settings)}
+        names, player = _characters(state, source)
+        if not session['system']:
+            session['system'], _ = state.template_generator.generate_chat_template(
+                names, str(session.get('background') or ''),
+                bool(session.get('useEffect', True)), bool(session.get('useCg', False)),
+                bool(session.get('useTranslation', True)), bool(session.get('useCot', False)),
+                bool(session.get('useChoice', True)), bool(session.get('useNarration', True)),
+                bool(session.get('useStat', True)),
+                max_speech_chars=max(0, int(session.get('maxSpeechChars') or 0)),
+                max_dialog_items=max(0, int(session.get('maxDialogItems') or 0)),
+                primary_characters=session.get('primaryCharacters') if session.get('characterPromptMode') == 'compact' else None,
+                media_selection_mode=session.get('mediaSelectionMode', 'indexed'),
+                player_character=player,
+                read_player_speech=bool(session.get('readPlayerSpeech', False)),
+                allow_player_dialogue=False,
+            )
+        sprite = str(session.get('initSpritePath') or '')
+        warnings = []
+        if sprite:
+            actors = [c for c in state.config_manager.config.characters if c.name in names]
+            root = Path(getattr(state, 'project_root_dir', Path.cwd()))
+            def asset_path(value):
+                candidate = Path(str(value))
+                return (candidate if candidate.is_absolute() else root / candidate).resolve()
+            paths = {asset_path(row.get('path', '') if isinstance(row, dict) else getattr(row, 'path', '')) for actor in actors for row in getattr(actor, 'sprites', [])}
+            if asset_path(sprite) not in paths:
+                session['initSpritePath'] = ''
+                warnings.append('默认初始立绘不属于本次参与角色，请重新选择。')
+        session['primaryCharacters'] = [name for name in session.get('primaryCharacters', names) if name in names] or names
+        scenario = str(settings.get('scenario') or source.get('reason') or '与用户见面。')
+        if from_defaults and settings.get('scenario') and source.get('reason'):
+            scenario += '\n\n【本次邀约】' + source['reason']
+        session.update(selectedCharacters=names, playerCharacter=player, allowPlayerDialogue=False, scenario=scenario, historyPath=str(target))
+        if not path.exists():
+            with path.open('x', encoding='utf-8') as stream:
+                json.dump({**_safe_settings(session), 'scenario': session['scenario']}, stream, ensure_ascii=False)
+        return {'session': session, 'handoff_id': handoff_id(identity), 'mode': source['mode'], 'warnings': warnings, 'ended': json.loads((target / 'doki-receipt.json').read_text(encoding='utf-8')).get('status') == 'ended'}
+
+
+def configured_payload(state, source, session):
+    names, player = _characters(state, source)
+    return {'characters': names, 'playerCharacter': player, 'allowPlayerDialogue': False, 'readPlayerSpeech': bool(session.get('readPlayerSpeech')), 'userDisplayName': source.get('user_name') or '用户', 'scenario': session.get('scenario') or source.get('reason') or '与用户见面。', 'system': session.get('system') or '', 'historyPath': str(directory(state, source['handoff_id'])), 'resetHistory': False, 'templateName': 'Doki 日常线' if source['mode'] == 'daily' else 'Doki 独立剧情', 'mediaSelectionMode': session.get('mediaSelectionMode', 'indexed'), 'useCg': bool(session.get('useCg')), 'backgroundName': session.get('background', ''), 'effectNames': session.get('effectNames', []), 'initSpritePath': session.get('initSpritePath', ''), 'showInitialSprite': session.get('showInitialSprite', True), 'workflowPath': session.get('workflowPath', ''), 'voiceLanguage': session.get('voiceLanguage', ''), 'enableMobileAccess': bool(session.get('enableMobileAccess')), 'editorSession': {**session, 'selectedCharacters': names, 'playerCharacter': player, 'allowPlayerDialogue': False, 'readPlayerSpeech': bool(session.get('readPlayerSpeech'))}}
+
+
+def launch_configured(state, identity, session, *, launcher):
+    with _lock:
+        target = directory(state, identity)
+        source = read_manifest(target)
+        if source is None:
+            raise ValueError('交接存档不存在。')
+        # Validate participants and settings before touching the existing launch snapshot.
+        _characters(state, source)
+        if status(state, identity)['status'] == 'ended':
+            raise ValueError('本次约会已结束，请新建约会。')
+        if status(state, identity)['active']:
+            raise ValueError('本次约会正在进行，请先暂停再调整启动配置。')
+        settings = {**_safe_settings(session), 'scenario': str(session.get('scenario') or source.get('reason') or '')[:8000]}
+        from application.chat.conversation_library import _write
+        _write(target / 'doki-settings.json', settings)
+        result = launch(state, identity, launcher=launcher)
+        from application.chat.composition import _chat_snapshot
+        return {**result, 'snapshot': _chat_snapshot(state)}

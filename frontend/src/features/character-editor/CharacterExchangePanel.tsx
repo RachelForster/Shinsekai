@@ -7,12 +7,13 @@ import { AsyncButton, Button, EmptyState, PathPickerDialog, Select } from "../..
 import "./CharacterExchangePanel.css";
 
 interface Props {
+  compact?: boolean;
   characters: Character[];
   selectedName: string;
   onPrepared: (character: Character, originalName: string) => void;
 }
 
-export function CharacterExchangePanel({ characters, selectedName, onPrepared }: Props) {
+export function CharacterExchangePanel({ characters, selectedName, onPrepared, compact = false }: Props) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [picker, setPicker] = useState(false);
@@ -67,7 +68,7 @@ export function CharacterExchangePanel({ characters, selectedName, onPrepared }:
       setOpen(false);
     });
   return (
-    <section className="section character-exchange" aria-busy={busy}>
+    <section className={`section character-exchange${compact ? " character-exchange--compact" : ""}`} aria-busy={busy}>
       <div className="section__header">
         <h2 className="section__title">{t("character.exchange.title")}</h2>
         <div className="page__actions">
@@ -79,13 +80,15 @@ export function CharacterExchangePanel({ characters, selectedName, onPrepared }:
           >
             {t("character.exchange.fromDoki")}
           </AsyncButton>
-          <Button
-            disabled={busy}
-            icon={<Upload aria-hidden className="button__icon" />}
-            onClick={() => setPicker(true)}
-          >
-            {t("character.exchange.package")}
-          </Button>
+          {!compact && (
+            <Button
+              disabled={busy}
+              icon={<Upload aria-hidden className="button__icon" />}
+              onClick={() => setPicker(true)}
+            >
+              {t("character.exchange.package")}
+            </Button>
+          )}
         </div>
       </div>
       <p className="field-row__hint">{t("character.exchange.hint")}</p>
@@ -101,11 +104,16 @@ export function CharacterExchangePanel({ characters, selectedName, onPrepared }:
         <div className="character-exchange__content">
           {rows.length ? (
             <>
-              <div className="form-grid form-grid--two">
-                <label className="field-row">
+              <div className="form-grid form-grid--one">
+                <label className="field-row field-row--stack">
                   <span className="field-row__label">{t("character.exchange.source")}</span>
                   <span className="field-row__control">
-                    <Select disabled={busy} value={index} onChange={(e) => setIndex(Number(e.target.value))}>
+                    <Select
+                      aria-label={t("character.exchange.source")}
+                      disabled={busy}
+                      value={index}
+                      onChange={(e) => setIndex(Number(e.target.value))}
+                    >
                       {rows.map((r, i) => (
                         <option key={r.id || i} value={i}>
                           {r.name}
@@ -114,10 +122,15 @@ export function CharacterExchangePanel({ characters, selectedName, onPrepared }:
                     </Select>
                   </span>
                 </label>
-                <label className="field-row">
+                <label className="field-row field-row--stack">
                   <span className="field-row__label">{t("character.exchange.target")}</span>
                   <span className="field-row__control">
-                    <Select disabled={busy} value={target} onChange={(e) => setTarget(e.target.value)}>
+                    <Select
+                      aria-label={t("character.exchange.target")}
+                      disabled={busy}
+                      value={target}
+                      onChange={(e) => setTarget(e.target.value)}
+                    >
                       <option value="">{t("common.new")}</option>
                       {characters.map((c) => (
                         <option key={c.name} value={c.name}>

@@ -3,17 +3,26 @@ import type { Character } from "../../entities/config/types";
 import { useI18n } from "../../shared/i18n";
 import { getPlatform } from "../../shared/platform/platform";
 import type { ShinsekaiPlatform } from "../../shared/platform/types";
-import { AsyncButton, Button, Select } from "../../shared/ui";
+import { AsyncButton, Button, Dialog, Select } from "../../shared/ui";
 import "./CharacterExchangePanel.css";
 
 type LinkResponse = Awaited<ReturnType<NonNullable<ShinsekaiPlatform["characters"]["linkDoki"]>>>;
 const nameKey = (name: string) => name.normalize("NFKC").trim().toLocaleLowerCase();
 
-export function CharacterLinkPanel({ character }: { character?: Character }) {
+export function CharacterLinkPanel({
+  character,
+  compact = false,
+  onLinked,
+}: {
+  character?: Character;
+  compact?: boolean;
+  onLinked?: (role: string | null) => void;
+}) {
   const { t } = useI18n();
   const [link, setLink] = useState<LinkResponse["link"]>(null);
   const [rows, setRows] = useState<NonNullable<LinkResponse["characters"]>>([]);
   const [selected, setSelected] = useState("");
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [open, setOpen] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -67,9 +76,10 @@ export function CharacterLinkPanel({ character }: { character?: Character }) {
       if (!target) return;
       const result = await request("bind", target.id, target.role);
       setLink(result.link);
+      onLinked?.(result.link?.role || null);
       setOpen(false);
     });
-  return (
+  const panel = (
     <section className="section character-exchange" aria-busy={busy}>
       <div className="section__header">
         <h2 className="section__title">{t("character.link.title")}</h2>
@@ -81,6 +91,7 @@ export function CharacterLinkPanel({ character }: { character?: Character }) {
                 run(async () => {
                   await request("unlink");
                   setLink(null);
+                  onLinked?.(null);
                   setRows([]);
                 })
               }
@@ -137,5 +148,31 @@ export function CharacterLinkPanel({ character }: { character?: Character }) {
         </div>
       )}
     </section>
+  );
+  return compact ? (
+    <>
+      <Button
+        disabled={busy || !character?.id}
+        onClick={() => {
+          setDialogOpen(true);
+          if (!link) void load();
+        }}
+      >
+        {link ? t("character.link.linked", { name: link.doki_name }) : t("character.link.fromDoki")}
+      </Button>
+      <Dialog
+        bodyClassName="character-exchange-dialog-body"
+        open={dialogOpen}
+        title={t("character.link.title")}
+        onClose={() => {
+          if (!busy) setDialogOpen(false);
+        }}
+        closeLabel={t("common.close")}
+      >
+        {panel}
+      </Dialog>
+    </>
+  ) : (
+    panel
   );
 }

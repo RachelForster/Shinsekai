@@ -1,3 +1,4 @@
+import { getPlatform } from "../../shared/platform/platform";
 import { CharacterPicker } from "./CharacterPicker";
 import { PlayerCharacterSettings } from "./PlayerCharacterSettings";
 import { resolveConversationTitle } from "../../entities/chat/conversationTitle";
@@ -81,6 +82,8 @@ import "./TemplateEditorPage.css";
 const voiceLanguages = templateVoiceLanguages;
 
 export function TemplateEditorPage({
+  dokiId,
+  dokiDefaults = false,
   createOnly = false,
   conversationId,
   conversationTitle,
@@ -89,6 +92,8 @@ export function TemplateEditorPage({
   initializationService,
   onLaunchStarted,
 }: {
+  dokiId?: string;
+  dokiDefaults?: boolean;
   createOnly?: boolean;
   conversationId?: string;
   conversationTitle?: string;
@@ -97,15 +102,29 @@ export function TemplateEditorPage({
   initializationService?: ChatInitializationService;
   onLaunchStarted?: () => void;
 }) {
+  const [dokiEnded, setDokiEnded] = useState(false);
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const { t } = useI18n();
   const templatesQuery = useQuery({ queryFn: listTemplates, queryKey: templatesQueryKey });
   const sessionQuery = useQuery({
-    queryFn: () => (conversationId ? getConversationSession(conversationId) : getTemplateSession()),
-    queryKey: conversationId
-      ? [...conversationsQueryKey, conversationId, "settings"]
-      : [...templatesQueryKey, "session"],
+    queryFn: async () => {
+      if (dokiId || dokiDefaults) {
+        const operation = getPlatform().chat.dokiConfiguration;
+        if (!operation) throw new Error("当前新世界尚不支持 Doki 配置，请更新后重试。");
+        const result = await operation("configuration", { handoff_id: dokiId });
+        setDokiEnded(Boolean(result.ended));
+        for (const message of result.warnings || []) showToast({ kind: "error", title: message });
+        return result.session || null;
+      }
+      return conversationId ? getConversationSession(conversationId) : getTemplateSession();
+    },
+    queryKey:
+      dokiId || dokiDefaults
+        ? [...templatesQueryKey, "doki", dokiId || "defaults"]
+        : conversationId
+          ? [...conversationsQueryKey, conversationId, "settings"]
+          : [...templatesQueryKey, "session"],
   });
   const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
   const charactersQuery = useQuery({ queryFn: listCharacters, queryKey: charactersQueryKey });
@@ -321,6 +340,42 @@ export function TemplateEditorPage({
     setInitSpritePath((current) => compatibleInitialSpritePath({ characters, path: current, selectedCharacters }));
   }, [characters, selectedCharacters, sessionRestored]);
 
+  const saveDaily = useMutation({
+    mutationFn: async () => {
+      const operation = getPlatform().chat.dokiConfiguration;
+      if (!operation) throw new Error("缺少日常线默认配置接口。");
+      const session = buildTemplateLaunchSession({
+        backgroundName: selectedBackground,
+        draft,
+        effectNames: selectedEffects,
+        mobileAccessEnabled,
+        mediaSelectionMode,
+        options: { useCg, useChoice, useCot, useEffect: useEffectPrompt, useNarration, useStat, useTranslation },
+        primaryCharacters,
+        characterPromptMode: characterPromptMode || "full",
+        ...playerOptions,
+        allowPlayerDialogue: false,
+        runtime: {
+          historyPath: "",
+          initSpritePath,
+          showInitialSprite,
+          maxDialogItems,
+          maxSpeechChars,
+          roomId,
+          voiceLanguage,
+        },
+        selectedCharacters,
+        selectedTemplateId: selectedId,
+      });
+      return operation("defaults", { session });
+    },
+    onSuccess: () => showToast({ kind: "success", title: "已保存日常线默认配置，仅用于之后新建的日常约会。" }),
+    onError: (error) => showToast({ kind: "error", title: "保存默认配置失败", message: String(error) }),
+  });
+
+  useEffect(() => {
+    if (dokiId || dokiDefaults) setAllowPlayerDialogue(false);
+  }, [dokiId, dokiDefaults, playerOptions.allowPlayerDialogue]);
   const updateDraft = (patch: Partial<TemplateSummary>) => {
     setDraft((current) => {
       const next = { ...current, ...patch };
@@ -599,6 +654,16 @@ export function TemplateEditorPage({
       if (runtimeClosing || (runtimeLaunchDisabled && !conversationId)) {
         throw new Error(t("launch.runtimeBusy"));
       }
+      if (dokiId) {
+        const operation = getPlatform().chat.dokiConfiguration;
+        if (!operation) throw new Error("缺少 Doki 原生配置接口。");
+        const result = await operation("configured-launch", {
+          handoff_id: dokiId,
+          session: { ...session, allowPlayerDialogue: false },
+        });
+        if (!result.snapshot) throw new Error("新世界没有返回启动结果。");
+        return { snapshot: result.snapshot, template };
+      }
       return runChatInitialization(async (progressOptions) => {
         onLaunchStarted?.();
         const savedSession = conversationId ? session : await saveTemplateSession(session);
@@ -771,7 +836,7 @@ export function TemplateEditorPage({
       return;
     }
     setVoiceLanguage(nextLanguage);
-    voiceLanguageMutation.mutate(nextLanguage);
+    if (!dokiDefaults && !dokiId) voiceLanguageMutation.mutate(nextLanguage);
   };
 
   const handleGenerateTemplate = () => {
@@ -903,39 +968,46 @@ export function TemplateEditorPage({
         <section className="template-workbench__main">
           <section className="template-panel template-panel--characters">
             <div className="template-character-picker">
-              <CharacterPicker
-                characters={characters}
-                selected={selectedCharacters}
-                onChange={updateSelectedCharacters}
-                onConfigurePlayer={() => setPlayerCharacterDialogOpen(true)}
-                playerCharacter={effectivePlayerCharacter}
-              />
+              {dokiId && (
+                <p className="field-row__hint">
+                  本次参与角色与玩家由 Doki 交接确定，用户台词与行动始终由用户本人控制。
+                </p>
+              )}
+              <fieldset className="doki-participant-fields" disabled={Boolean(dokiId)}>
+                <CharacterPicker
+                  characters={characters}
+                  selected={selectedCharacters}
+                  onChange={updateSelectedCharacters}
+                  onConfigurePlayer={() => setPlayerCharacterDialogOpen(true)}
+                  playerCharacter={effectivePlayerCharacter}
+                />
 
-              <CharacterRoleStatus
-                hasPlayerCharacter={Boolean(effectivePlayerCharacter)}
-                mode={characterPromptMode}
-                onConfigure={() => setPrimaryCharacterDialogOpen(true)}
-                onUseAll={useAllCharactersAsPrimary}
-                primaryCount={
-                  characterPromptMode === "full"
-                    ? selectedCharacters.filter((name) => name !== effectivePlayerCharacter).length
-                    : primaryCharacters.filter((name) => name !== effectivePlayerCharacter).length
-                }
-                selectedCount={selectedCharacters.filter((name) => name !== effectivePlayerCharacter).length}
-              />
+                <CharacterRoleStatus
+                  hasPlayerCharacter={Boolean(effectivePlayerCharacter)}
+                  mode={characterPromptMode}
+                  onConfigure={() => setPrimaryCharacterDialogOpen(true)}
+                  onUseAll={useAllCharactersAsPrimary}
+                  primaryCount={
+                    characterPromptMode === "full"
+                      ? selectedCharacters.filter((name) => name !== effectivePlayerCharacter).length
+                      : primaryCharacters.filter((name) => name !== effectivePlayerCharacter).length
+                  }
+                  selectedCount={selectedCharacters.filter((name) => name !== effectivePlayerCharacter).length}
+                />
 
-              <PlayerCharacterSettings
-                characters={selectedCharacterRecords}
-                selected={effectivePlayerCharacter}
-                onSelect={setPlayerCharacter}
-                readSpeech={readPlayerSpeech}
-                onReadSpeech={setReadPlayerSpeech}
-                allowDialogue={allowPlayerDialogue}
-                onAllowDialogue={setAllowPlayerDialogue}
-                open={playerCharacterDialogOpen}
-                onClose={() => setPlayerCharacterDialogOpen(false)}
-              />
-
+                <PlayerCharacterSettings
+                  dialogueLocked={Boolean(dokiId || dokiDefaults)}
+                  characters={selectedCharacterRecords}
+                  selected={effectivePlayerCharacter}
+                  onSelect={setPlayerCharacter}
+                  readSpeech={readPlayerSpeech}
+                  onReadSpeech={setReadPlayerSpeech}
+                  allowDialogue={allowPlayerDialogue}
+                  onAllowDialogue={setAllowPlayerDialogue}
+                  open={playerCharacterDialogOpen}
+                  onClose={() => setPlayerCharacterDialogOpen(false)}
+                />
+              </fieldset>
               {effects.length > 0 ? (
                 <div className="template-effect-section">
                   <span className="template-effect-section__label">{t("template.field.effectName")}</span>
@@ -1016,7 +1088,11 @@ export function TemplateEditorPage({
 
           <label className="template-side-field">
             <span className="template-side-field__label">{t("template.field.background")}</span>
-            <Select onChange={(event) => setSelectedBackground(event.target.value)} value={selectedBackground}>
+            <Select
+              aria-label={t("template.field.background")}
+              onChange={(event) => setSelectedBackground(event.target.value)}
+              value={selectedBackground}
+            >
               {backgroundOptions.map((name) => (
                 <option key={name} value={name}>
                   {name === TRANSPARENT_BACKGROUND_NAME ? t("template.transparentBackground") : name}
@@ -1112,7 +1188,7 @@ export function TemplateEditorPage({
                 value={initSpritePath}
               />
             </div>
-            {!createOnly && !conversationId && (
+            {!createOnly && !conversationId && !dokiId && !dokiDefaults && (
               <label className="template-side-field">
                 <span className="template-side-field__label">{t("template.field.historyFile")}</span>
                 <TextInput onChange={(event) => setHistoryPath(event.target.value)} value={historyPath} />
@@ -1123,32 +1199,50 @@ export function TemplateEditorPage({
       </div>
 
       <footer className="template-page__footer">
-        <AsyncButton
-          disabled={
-            !sessionRestored || runtimeClosing || (!conversationId && runtimeLaunchDisabled) || initializationPending
-          }
-          icon={<Play aria-hidden className="button__icon" />}
-          loading={launchMutation.isPending}
-          onClick={() => handleLaunch(false)}
-          variant="primary"
-        >
-          {t(
-            conversationId
-              ? "conversation.saveAndContinue"
-              : createOnly
-                ? "conversation.createAndStart"
-                : "template.action.launch",
-          )}
-        </AsyncButton>
-        {!createOnly && !conversationId && (
-          <Button
-            disabled={!sessionRestored || runtimeLaunchDisabled || initializationPending}
-            icon={<RotateCw aria-hidden className="button__icon" />}
-            onClick={() => setQuickRestartOpen(true)}
-            variant="ghost"
+        {dokiDefaults ? (
+          <AsyncButton
+            variant="primary"
+            loading={saveDaily.isPending}
+            disabled={!sessionRestored || saveDaily.isPending}
+            onClick={() => saveDaily.mutate()}
           >
-            {t("template.action.quickRestart")}
-          </Button>
+            保存为日常线默认
+          </AsyncButton>
+        ) : (
+          <>
+            <AsyncButton
+              disabled={
+                !sessionRestored ||
+                runtimeClosing ||
+                (!conversationId && runtimeLaunchDisabled) ||
+                initializationPending
+              }
+              icon={<Play aria-hidden className="button__icon" />}
+              loading={launchMutation.isPending}
+              onClick={() => handleLaunch(false)}
+              variant="primary"
+            >
+              {dokiEnded
+                ? "本次约会已结束（存档保留）"
+                : t(
+                    conversationId
+                      ? "conversation.saveAndContinue"
+                      : createOnly
+                        ? "conversation.createAndStart"
+                        : "template.action.launch",
+                  )}
+            </AsyncButton>
+            {!createOnly && !conversationId && !dokiId && !dokiDefaults && (
+              <Button
+                disabled={!sessionRestored || runtimeLaunchDisabled || initializationPending}
+                icon={<RotateCw aria-hidden className="button__icon" />}
+                onClick={() => setQuickRestartOpen(true)}
+                variant="ghost"
+              >
+                {t("template.action.quickRestart")}
+              </Button>
+            )}
+          </>
         )}
       </footer>
 

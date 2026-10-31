@@ -47,7 +47,7 @@ describe("cross-app character import preview", () => {
     fireEvent.click(screen.getByText("从 Doki 选择角色导入"));
     await screen.findByText("public");
     fireEvent.change(screen.getByLabelText("保存方式"), { target: { value: "Existing" } });
-    fireEvent.click(screen.getByText("确认并载入草稿"));
+    fireEvent.click(screen.getByText("载入角色资料"));
     await waitFor(() => expect(prepared).toHaveBeenCalledWith(character, "Existing"));
     expect(methods.prepareExchange).toHaveBeenCalledWith({ dokiId: "a", targetName: "Existing" });
   });

@@ -14,6 +14,10 @@ import { sampleConfig } from "../../../shared/platform/sampleData";
 import type { TemplateLaunchSession } from "../../../shared/platform/types";
 import { ToastProvider } from "../../../shared/ui";
 
+const mockDokiConfiguration = vi.hoisted(() => vi.fn());
+vi.mock("../../../shared/platform/platform", () => ({
+  getPlatform: () => ({ chat: { dokiConfiguration: mockDokiConfiguration } }),
+}));
 const mockListBackgrounds = vi.fn();
 const mockListCharacters = vi.fn();
 const mockEnsureCharacterBriefs = vi.fn();
@@ -732,7 +736,7 @@ describe("TemplateEditorPage", () => {
     expect(screen.getByDisplayValue(defaultScenario)).toBeInTheDocument();
     const callsAfterCharacterChange = mockGenerateTemplate.mock.calls.length;
 
-    fireEvent.change(screen.getByLabelText("Background"), { target: { value: "默认房间" } });
+    fireEvent.change(screen.getByLabelText("Background", { selector: "select" }), { target: { value: "默认房间" } });
     fireEvent.click(screen.getByLabelText("LLM translation"));
     await new Promise((resolve) => window.setTimeout(resolve, 260));
 
@@ -1127,5 +1131,47 @@ describe("TemplateEditorPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Rain" }));
     expect(systemTemplate).toHaveValue(authoredSystem);
+  });
+  it("saves Doki defaults through the native editor without starting chat or replacing the global session", async () => {
+    mockDokiConfiguration.mockImplementation(async (action) => ({
+      session: { ...savedChat, mediaSelectionMode: "indexed", selectedCharacters: [] },
+      ...(action === "configured-launch" ? { snapshot: { status: "idle" } } : {}),
+    }));
+    renderPage({ dokiDefaults: true });
+    const save = await screen.findByRole("button", { name: "保存为日常线默认" });
+    await waitFor(() => expect(save).not.toBeDisabled());
+    await clickButton(save);
+    await waitFor(() =>
+      expect(mockDokiConfiguration).toHaveBeenCalledWith(
+        "defaults",
+        expect.objectContaining({
+          session: expect.objectContaining({ background: savedChat.background, allowPlayerDialogue: false }),
+        }),
+      ),
+    );
+    expect(mockLaunchChat).not.toHaveBeenCalled();
+    expect(mockSaveTemplateSession).not.toHaveBeenCalled();
+  });
+
+  it("launches a Doki handoff through its configured native endpoint with the chosen settings", async () => {
+    mockDokiConfiguration.mockImplementation(async (action) =>
+      action === "configuration"
+        ? { session: { ...savedChat, mediaSelectionMode: "indexed", allowPlayerDialogue: false } }
+        : { snapshot: { status: "idle", historyPath: savedChat.historyPath } },
+    );
+    renderPage({ dokiId: "handoff" });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Launch chat" })).not.toBeDisabled());
+    await clickButton(screen.getByRole("button", { name: "Launch chat" }));
+    await waitFor(() =>
+      expect(mockDokiConfiguration).toHaveBeenCalledWith(
+        "configured-launch",
+        expect.objectContaining({
+          handoff_id: "handoff",
+          session: expect.objectContaining({ allowPlayerDialogue: false, background: savedChat.background }),
+        }),
+      ),
+    );
+    expect(mockLaunchChat).not.toHaveBeenCalled();
+    expect(mockSaveTemplateSession).not.toHaveBeenCalled();
   });
 });

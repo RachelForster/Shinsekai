@@ -185,7 +185,12 @@ def _details(record: dict) -> dict:
     title = record.get("title") or launch.get("templateName") or ""
     if not title:
         title = " · ".join(characters[:3])
+    from application.chat.doki_handoff import read_manifest
+    handoff = read_manifest(path)
     return {
+        "dokiEnded": bool(handoff and (_read(chat_history_session_dir(path) / "doki-receipt.json") or {}).get("status") == "ended"),
+        "dokiTimeline": handoff['mode'] if handoff else None,
+        "dokiHandoffId": handoff['handoff_id'] if handoff else None,
         "id": _id(path),
         "title": title,
         "characters": characters,

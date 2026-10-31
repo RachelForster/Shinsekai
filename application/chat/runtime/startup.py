@@ -210,7 +210,7 @@ def create_chat_startup_context(
                 service=init_service,
                 character_names=tuple(character_names),
                 tts_provider=tts_provider,
-                voice_language=str(config.config.system_config.voice_language or "ja"),
+                voice_language=str(os.environ.get("SHINSEKAI_CHAT_VOICE_LANGUAGE") or config.config.system_config.voice_language or "ja"),
                 memory_enabled=_memory_auto_enabled(),
                 runtime_mode=(
                     "react"
@@ -366,7 +366,7 @@ def _initialize_tts(
             manager = runtime.TTSManager(tts_server_url=gsv_url)
             manager.set_tts_adapter(adapter=adapter)
             voice_language = (
-                str(config.config.system_config.voice_language or "ja").strip() or "ja"
+                str(os.environ.get("SHINSEKAI_CHAT_VOICE_LANGUAGE") or config.config.system_config.voice_language or "ja").strip() or "ja"
             )
             manager.set_language(voice_language)
             return manager, adapter_name

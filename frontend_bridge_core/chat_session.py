@@ -334,7 +334,7 @@ def _launch_chat_locked(
         "templateId": template_id,
         "userDisplayName": user_display_name,
         "voiceLanguage": str(
-            state.config_manager.config.system_config.voice_language or "ja"
+            body.get("voiceLanguage") or state.config_manager.config.system_config.voice_language or "ja"
         ),
         "workflowPath": str(body.get("workflowPath") or ""),
     }

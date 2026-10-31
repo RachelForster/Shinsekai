@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from http import HTTPStatus
+
 from frontend_bridge_core.memory import (
     _add_character_memory,
     _delete_character_memory,
@@ -23,15 +25,51 @@ def _memory_extract(request):
     return _scoped(request, "extract")
 
 
+def _daily_memory(request, action):
+    """Resolve shared identity from the registry; never trust an identity from UI."""
+    from application.characters.links import _request
+    from config.character_identity import installation_id
+    from pathlib import Path
+    from uuid import uuid4
+    from datetime import datetime, timezone
+    name = str(request.body.get("name") or request.body.get("characterName") or "")
+    character = next((c for c in request.state.config_manager.config.characters if c.name == name), None)
+    if character is None:
+        raise ValueError("请先保存并选择角色。")
+    root = Path(request.state.project_root_dir)
+    try:
+        link = _request("state", {"shinsekai_instance": installation_id(root), "shinsekai_id": character.id}).get("link")
+    except OSError as exc:
+        raise ValueError("暂时无法读取日常记忆，请启动 Doki 后重试。") from exc
+    if not link or link.get("role") != "character":
+        raise ValueError("该角色尚未链接 Doki 聊天角色，不能读取日常线记忆。")
+    scope = {"character_id": link["memory_identity"], "timeline": "daily", "timeline_id": ""}
+    payload = {**request.body, "scope": scope}
+    if action == "remember":
+        payload["metadata"] = {"source_app": "shinsekai", "session_id": "character-memory-editor", "event_id": uuid4().hex, "occurred_at": datetime.now(timezone.utc).isoformat(), "record_kind": "curated", "category": "manual", "status": "stable", "edited_by_user": True}
+    result = _scoped_memory_operation(request.state, action, payload)
+    if result.get("status") in {"loading", "not_started", "starting"}:
+        return JsonResponse({"status": result["status"], "errorCode": "doki_memory_preparing", "error": "正在准备长期记忆。首次使用需要下载并加载模型，可能需要几分钟；准备完成后会自动显示记忆，无需反复刷新。"}, HTTPStatus.SERVICE_UNAVAILABLE)
+    if result.get("error") or result.get("status") in {"error", "loading", "missing_dependency", "not_started", "starting", "unknown"}:
+        return JsonResponse({**result, "error": result.get("error") or result.get("message") or "记忆服务正在准备，请稍后刷新。"}, HTTPStatus.SERVICE_UNAVAILABLE)
+    if action in {"remember", "forget"}:
+        result = _scoped_memory_operation(request.state, "list", {"scope": scope})
+    return JsonResponse({**result, "agentId": name})
+
+
 def _character_memory_status(_request: ApiRequest) -> JsonResponse:
     return JsonResponse(_get_mem0_status())
 
 
 def _character_memory_list(request: ApiRequest) -> JsonResponse:
+    if request.body.get("timeline") == "daily":
+        return _daily_memory(request, "list")
     return JsonResponse(_list_character_memories(str(request.body.get("name") or "")))
 
 
 def _character_memory_add(request: ApiRequest) -> JsonResponse:
+    if request.body.get("timeline") == "daily":
+        return _daily_memory(request, "remember")
     return JsonResponse(
         _add_character_memory(
             str(request.body.get("name") or ""),
@@ -41,6 +79,8 @@ def _character_memory_add(request: ApiRequest) -> JsonResponse:
 
 
 def _character_memory_delete(request: ApiRequest) -> JsonResponse:
+    if request.body.get("timeline") == "daily":
+        return _daily_memory(request, "forget")
     return JsonResponse(
         _delete_character_memory(
             str(request.body.get("name") or ""),
@@ -66,6 +106,8 @@ def _memory_list(request: ApiRequest) -> JsonResponse:
 
 
 def _memory_search(request: ApiRequest) -> JsonResponse:
+    if request.body.get("timeline") == "daily":
+        return _daily_memory(request, "search")
     if "scope" in request.body:
         return _scoped(request, "search")
     return JsonResponse(

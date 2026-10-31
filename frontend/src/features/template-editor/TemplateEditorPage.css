@@ -386,3 +386,10 @@
   margin: 0;
   font-family: inherit;
 }
+
+.doki-participant-fields {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}

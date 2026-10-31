@@ -12,6 +12,9 @@ export const enMessages: Record<MessageKey, string> = {
   "character.link.alreadyLinked": "Already linked",
   "character.link.confirm": "Confirm link",
   "character.link.saveFirst": "Save the character before linking.",
+  "character.exchange.memoryPreparing": "Preparing long-term memory",
+  "character.exchange.memoryPreparingHint":
+    "The first use may take a few minutes to download and load the model. Memories will appear automatically when ready; you do not need to keep refreshing.",
   "character.exchange.title": "Import characters",
   "character.exchange.fromDoki": "Choose a character from Doki",
   "character.exchange.package": "Import character package",

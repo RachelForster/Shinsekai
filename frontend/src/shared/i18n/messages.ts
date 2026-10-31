@@ -12,6 +12,8 @@ export type MessageKey =
   | "character.link.alreadyLinked"
   | "character.link.confirm"
   | "character.link.saveFirst"
+  | "character.exchange.memoryPreparing"
+  | "character.exchange.memoryPreparingHint"
   | "character.exchange.title"
   | "character.exchange.fromDoki"
   | "character.exchange.package"

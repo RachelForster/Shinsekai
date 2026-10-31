@@ -12,6 +12,9 @@ export const jaMessages: Record<MessageKey, string> = {
   "character.link.alreadyLinked": "リンク済み",
   "character.link.confirm": "リンクを確定",
   "character.link.saveFirst": "リンクする前にキャラクターを保存してください。",
+  "character.exchange.memoryPreparing": "長期記憶を準備しています",
+  "character.exchange.memoryPreparingHint":
+    "初回はモデルのダウンロードと読み込みに数分かかる場合があります。準備ができると記憶が自動で表示されます。何度も更新する必要はありません。",
   "character.exchange.title": "キャラクターのインポート",
   "character.exchange.fromDoki": "Doki からキャラクターを選択",
   "character.exchange.package": "キャラクターパッケージをインポート",

@@ -554,6 +554,7 @@ describe("CharacterEditorPage", () => {
 
     pickerState.paths = ["D:/packs/mika.char", "D:/packs/sora.cha"];
     fireEvent.click(screen.getByRole("button", { name: "Import" }));
+    fireEvent.click(screen.getByRole("button", { name: "Import character package" }));
     fireEvent.click(within(screen.getByRole("dialog", { name: "Import" })).getByText("Choose mocked paths"));
     await waitFor(() => expect(mockImportCharacters).toHaveBeenCalledWith(pickerState.paths));
 

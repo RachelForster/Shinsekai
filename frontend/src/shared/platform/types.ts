@@ -577,6 +577,9 @@ export interface TemplateGenerationResult extends TemplateSummary {
 }
 
 export interface ConversationSummary {
+  dokiEnded?: boolean;
+  dokiTimeline?: "daily" | "independent" | null;
+  dokiHandoffId?: string;
   id: string;
   title: string;
   characters: string[];
@@ -898,6 +901,7 @@ export interface KnowledgeImportResult extends CharacterMemoryImportResult {
 }
 
 export interface CharacterMemorySearchInput {
+  timeline?: string;
   limit?: number;
   name: string;
   query: string;
@@ -1621,6 +1625,15 @@ export interface ShinsekaiPlatform {
     uploadImageAudio: (input: { index: number; name: string; path: string }) => Promise<Effect>;
   };
   chat: {
+    dokiPosts?: (input: {
+      action: "recipients" | "request";
+      conversation_id?: string;
+      recipient_id?: string;
+    }) => Promise<{ characters?: Array<{ id: string; name: string }>; id?: string }>;
+    dokiConfiguration?: (
+      action: "configuration" | "defaults" | "configured-launch",
+      input: { handoff_id?: string; session?: TemplateLaunchSession },
+    ) => Promise<{ session?: TemplateLaunchSession; snapshot?: ChatSnapshot; ended?: boolean; warnings?: string[] }>;
     ackDokiHandoff?: (input: { historyPath: string; sessionId: string }) => Promise<{ doki: boolean; status?: string }>;
     getCurrentConversation: () => Promise<ConversationSummary | null>;
     reconfigureConversation: (
@@ -1788,7 +1801,7 @@ export interface ShinsekaiPlatform {
       options?: TaskProgressOptions<GeneratedCharacterSprite>,
     ) => Promise<GeneratedCharacterSprite>;
     delete: (name: string) => Promise<void>;
-    deleteMemory: (name: string, memoryId: string) => Promise<CharacterMemoryList>;
+    deleteMemory: (name: string, memoryId: string, timeline?: string) => Promise<CharacterMemoryList>;
     deleteSpriteVoice: (name: string, spriteIndex: number) => Promise<Character>;
     ensureBriefs: (names: string[]) => Promise<CharacterBriefBatchResult>;
     export: (name: string) => Promise<string>;
@@ -1802,9 +1815,9 @@ export interface ShinsekaiPlatform {
       items: File[],
       options?: TaskProgressOptions<CharacterMemoryImportResult>,
     ) => Promise<CharacterMemoryImportResult>;
-    listMemories: (name: string) => Promise<CharacterMemoryList>;
+    listMemories: (name: string, timeline?: string) => Promise<CharacterMemoryList>;
     previewMemoryImport: (name: string, items: File[]) => Promise<CharacterMemoryImportPreview>;
-    remember: (name: string, content: string) => Promise<CharacterMemoryList>;
+    remember: (name: string, content: string, timeline?: string) => Promise<CharacterMemoryList>;
     searchMemories: (input: CharacterMemorySearchInput) => Promise<CharacterMemoryList>;
     save: (character: Character, originalName?: string) => Promise<Character>;
     saveEmotionTags: (name: string, emotionTags: string) => Promise<Character>;

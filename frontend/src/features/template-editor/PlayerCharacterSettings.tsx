@@ -23,6 +23,7 @@ export function applyPortraitCrop(
 }
 
 export function PlayerCharacterSettings({
+  dialogueLocked = false,
   characters,
   selected,
   onSelect,
@@ -33,6 +34,7 @@ export function PlayerCharacterSettings({
   open,
   onClose,
 }: {
+  dialogueLocked?: boolean;
   characters: Character[];
   selected: string;
   onSelect: (name: string) => void;
@@ -110,7 +112,11 @@ export function PlayerCharacterSettings({
               <p>{t("player.hint")}</p>
               <label className="template-toggle-row">
                 <span>{t("player.allowDialogue")}</span>
-                <Switch checked={allowDialogue} onChange={(event) => onAllowDialogue(event.target.checked)} />
+                <Switch
+                  disabled={dialogueLocked}
+                  checked={dialogueLocked ? false : allowDialogue}
+                  onChange={(event) => onAllowDialogue(event.target.checked)}
+                />
               </label>
               <p>{t("player.allowDialogueHint")}</p>
               <label className="template-toggle-row">
