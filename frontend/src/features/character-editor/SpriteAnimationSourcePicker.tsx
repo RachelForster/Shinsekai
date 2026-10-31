@@ -1,6 +1,9 @@
+import { Film, Image as ImageIcon } from "lucide-react";
+
 import { fileUrl } from "../../entities/files/repository";
+import { isVideoMedia } from "../../shared/assets/visualMedia";
 import { useI18n } from "../../shared/i18n";
-import { Button, ImageAssetThumb } from "../../shared/ui";
+import { Button, VisualMedia } from "../../shared/ui";
 import type { SpriteAnimationSource } from "./spriteAnimationSources";
 
 interface Props {
@@ -9,6 +12,10 @@ interface Props {
   onSourceSelectionChange: (ids: string[]) => void;
   busy: boolean;
   remaining: number;
+  title?: string;
+  hint?: string;
+  untaggedLabel?: string;
+  emptyHint?: string;
 }
 
 export function SpriteAnimationSourcePicker({
@@ -17,6 +24,10 @@ export function SpriteAnimationSourcePicker({
   onSourceSelectionChange,
   busy,
   remaining,
+  title,
+  hint,
+  untaggedLabel,
+  emptyHint,
 }: Props) {
   const { t } = useI18n();
   const selected = sources.filter((source) => selectedSources.includes(source.id));
@@ -27,7 +38,7 @@ export function SpriteAnimationSourcePicker({
   return (
     <div className="sprite-generation__source-picker">
       <div className="sprite-generation__source-header">
-        <h4>{t("spriteAnimation.pickSources")}</h4>
+        <h4>{title ?? t("spriteAnimation.pickSources")}</h4>
         <div className="sprite-generation__source-actions">
           <Button
             variant="ghost"
@@ -48,10 +59,15 @@ export function SpriteAnimationSourcePicker({
           </Button>
         </div>
       </div>
-      <div className="sprite-generation__source-grid" role="group" aria-label={t("spriteAnimation.pickSources")}>
+      <div
+        className="sprite-generation__source-grid"
+        role="group"
+        aria-label={title ?? t("spriteAnimation.pickSources")}
+      >
         {sources.map((source) => {
           const checked = selectedSources.includes(source.id);
           const label = sourceName(source);
+          const video = isVideoMedia(source.referenceImage);
           return (
             <label
               key={source.id}
@@ -71,16 +87,22 @@ export function SpriteAnimationSourcePicker({
                 }
               />
               <div className="sprite-generation__source-image">
-                <ImageAssetThumb alt="" src={fileUrl(source.referenceImage)} />
+                <VisualMedia alt="" autoPlay={false} loading="lazy" src={fileUrl(source.referenceImage)} />
+                <span className="sprite-generation__source-type">
+                  {video ? <Film size={12} aria-hidden /> : <ImageIcon size={12} aria-hidden />}
+                  {t(video ? "spriteAnimation.sourceAnimated" : "spriteAnimation.sourceImage")}
+                </span>
               </div>
               <strong>{label}</strong>
-              <span>{source.tagging || t("spriteAnimation.untaggedSource")}</span>
+              <span>{source.tagging || untaggedLabel || t("spriteAnimation.untaggedSource")}</span>
             </label>
           );
         })}
       </div>
-      {!sources.length ? <p className="sprite-generation__hint">{t("spriteAnimation.noSources")}</p> : null}
-      <p className="sprite-generation__hint">{t("spriteAnimation.sourceHint")}</p>
+      {!sources.length ? (
+        <p className="sprite-generation__hint">{emptyHint || t("spriteAnimation.noSources")}</p>
+      ) : null}
+      <p className="sprite-generation__hint">{hint ?? t("spriteAnimation.sourceHint")}</p>
     </div>
   );
 }

@@ -165,7 +165,24 @@ H3 原生节点会直接将首帧拉伸到画布尺寸。适配器默认让 H3 �
 
 原始图片和视频保留在生成缓存内，不修改视频本身。抠图失败时保留原图并显示错误，点击“重新抠图”即可单独重试，不会再次运行 H3。确认满意后，再多选添加到角色立绘集，保存的是当前预览的 PNG 和标签。
 
-首次使用抠图时会下载 `isnet-anime` 模型到 rembg 缓存目录；离线环境需预先下载模型。运行依赖 `rembg[cpu]` 包含 CPU 推理引擎，已有环境可以执行 `python -m pip install -r requirements-runtime-core.txt` 更新。之前已经被拉伸的视频无法仅靠换帧恢复人物比例，需要重新生成。
+透明处理现在默认选择 ToonOut，也可以切回 ISNet Anime。静态、动态和过渡动画共用模型选项；结果会显示实际使用的模型及 GPU／CPU。未安装 ToonOut 或启动失败时会明确显示回退到 ISNet；视频中途失败会保留原视频供重试，不会混用两种模型。
+
+### 安装 ToonOut（可选）
+
+ToonOut 的官方权重来自 [joelseytre/toonout](https://huggingface.co/joelseytre/toonout)，约 885 MB。桌面核心运行环境不强制安装 PyTorch。源码版请在项目根目录、桌面版请在 `shinsekai.exe` 所在目录，用已经安装适合显卡的 PyTorch／torchvision 的独立 Python 环境运行：
+
+```powershell
+python -m pip install -r requirements-toonout.txt
+python -m tools.setup_toonout
+```
+
+安装命令会下载并校验固定版本的模型与架构代码，在 `cache/models/toonout` 保存文件及所用 Python 路径。之后桌面版会自动调用这个环境，无需将 PyTorch 装入桌面自带 Python。没有可用 CUDA 或空闲显存不足时使用 CPU；每次处理结束会关闭独立进程、释放模型显存。
+
+显存被本地 ComfyUI 的闲置模型占用时，可在安装命令后加 `--comfyui-url http://127.0.0.1:8189`（替换为实际地址）。这只会在队列为空时释放该本地服务的缓存；下一次生成需重新加载 H3。远程服务不会被释放。
+
+切换模型后点击“重新抠图”即可复用原图或原视频，无需再次生成 H3。建议先用白底测试；色幕和 Alpha 边缘细化仍为默认关闭的实验选项。ToonOut 预测透明度，不能自动恢复已经染进人物边缘的色幕颜色。
+
+使用 ISNet 时，首次抠图会下载 `isnet-anime` 到 rembg 缓存目录；离线环境需预先下载模型。运行依赖 `rembg[cpu]` 包含 CPU 推理引擎，已有环境可以执行 `python -m pip install -r requirements-runtime-core.txt` 更新。之前已经被拉伸的视频无法仅靠换帧恢复人物比例，需要重新生成。
 
 视频解码使用新增运行依赖 `av`（PyAV，提供 FFmpeg 解码能力），按时间定位并逐帧解码，不将整段视频读入系统内存。执行 `python -m pip install -r requirements-runtime-core.txt` 可安装。普通 SaveImage 工作流保持原有用法；SaveVideo 的 `images`、`videos` 或 `gifs` 历史输出均可识别，下载的源视频保存在立绘生成缓存中。
 

@@ -28,6 +28,7 @@ const files = [
   "requirements.txt",
   "requirements-runtime-core.txt",
   "requirements-runtime-local-ai.txt",
+  "requirements-toonout.txt",
   "requirements-dev.txt",
 ];
 const directories = [

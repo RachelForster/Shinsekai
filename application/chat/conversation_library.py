@@ -21,7 +21,7 @@ from core.chat_history.storage import (
     chat_history_storage_files,
     prune_chat_history_storage,
 )
-from core.chat_history.text import chat_history_to_turns
+from core.chat_history.text import chat_history_to_turns, parse_assistant_dialog_content
 from core.messaging.dialog_tokens import (
     NARR_ALIASES,
     SYSTEM_UI_SKIP,
@@ -147,6 +147,71 @@ def _history_messages(active: Path) -> list:
     if messages and pending and messages[-1] == pending[0]:
         pending = pending[1:]
     return messages + pending
+
+
+def recent_character_dialogs(
+    state: Any, name: str, *, limit: int = 200, max_sessions: int = 10
+) -> list[list[dict]]:
+    """Read recent active branches once, preserving conversation boundaries.
+
+    Only the requested character's raw media instructions leave this reader.
+    Reuse the same legacy migration and live-journal recovery as conversation UI.
+    """
+    from application.chat.history.paths import is_unc_history_path
+
+    candidates = []
+    for record in _records(state).values():
+        try:
+            path = resolve_history_path_for_project(state, record["historyPath"])
+            if is_unc_history_path(path):
+                continue
+            active = chat_history_active_path(path)
+            modified = max(
+                file.stat().st_mtime
+                for file in (active, Path(str(active) + ".tmp"))
+                if file.is_file()
+            )
+            candidates.append((modified, active))
+        except (OSError, ValueError):
+            continue
+    result = []
+    remaining = limit
+    for _, active in sorted(candidates, key=lambda entry: (-entry[0], str(entry[1])))[
+        :100
+    ]:
+        dialogs = []
+        seen = set()
+        for message in _history_messages(active):
+            if not isinstance(message, dict) or message.get("role") != "assistant":
+                continue
+            for item in parse_assistant_dialog_content(message.get("content")):
+                if not isinstance(item, dict):
+                    continue
+                speaker = str(
+                    item.get("character_name", item.get("name", "")) or ""
+                ).strip()
+                if speaker.casefold() != name.strip().casefold():
+                    continue
+                identity = item.get("dialog_id") or item.get("_dialog_id")
+                if isinstance(identity, str) and identity:
+                    if identity in seen:
+                        continue
+                    seen.add(identity)
+                dialogs.append(
+                    {
+                        "text": str(item.get("speech", item.get("text", "")) or "")[
+                            :240
+                        ],
+                        "vibe": str(item.get("vibe") or "")[:160],
+                        "assetId": item.get("sprite", item.get("asset_id")),
+                    }
+                )
+        if dialogs:
+            result.append(dialogs[-remaining:])
+            remaining -= len(result[-1])
+        if remaining <= 0 or len(result) >= max_sessions:
+            break
+    return result
 
 
 def _details(record: dict) -> dict:

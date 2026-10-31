@@ -1,4 +1,5 @@
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
+import type { SpriteTransitionMedia as SpriteTransitionAsset } from "../assets/spriteTransition";
 import type { AgentPlatform } from "./agentTypes";
 import type { ChatThemeManifest, ChatThemeSummary, SaveChatThemeInput } from "../theme/chatTheme";
 
@@ -43,6 +44,7 @@ export interface AvatarRuntimeImport {
 }
 
 export interface Character {
+  sprite_transitions?: SpriteTransition[];
   portrait_crop?: PortraitCrop;
   name: string;
   color: string;
@@ -995,6 +997,7 @@ export interface RuntimeDependencyInstallResult {
 }
 
 export interface ChatSprite {
+  transitions?: SpriteTransitionMedia[];
   /** Producer-owned identity, independent of display labels, expression URLs and snapshot IDs. */
   identityKey?: string;
   id: string;
@@ -1304,6 +1307,7 @@ export type ChatStageEvent =
   | (ChatEventBase & { type: "plugin.page.dismiss"; pluginId: string; presentationId: string })
   | (ChatEventBase & {
       type: "sprite.show";
+      transitions?: SpriteTransitionMedia[];
       identityKey?: string;
       characterName: string;
       url: string;
@@ -1446,9 +1450,27 @@ export interface GeneratedCharacterSprite extends SpritePromptPair {
   frameCount?: number;
   duration?: number;
   playbackSpeed?: number;
+  matting?: SpriteMatting;
 }
 
-export interface CharacterSpriteAnimationInput {
+export interface SpriteMatting {
+  method: "ai" | "chroma";
+  alphaMatting: boolean;
+  model?: "toonout" | "isnet-anime";
+  requestedModel?: "toonout" | "isnet-anime";
+  device?: "cuda" | "cpu";
+  fallbackReason?: string;
+  screenColor?: [number, number, number];
+  reason?: string;
+}
+
+export interface SpriteMattingOptions {
+  mattingModel?: "toonout" | "isnet-anime";
+  autoScreen?: boolean;
+  alphaMatting?: boolean;
+}
+
+export interface CharacterSpriteAnimationInput extends SpriteMattingOptions {
   name: string;
   referenceImage: string;
   tagging: string;
@@ -1463,6 +1485,60 @@ export interface CharacterSpriteAnimationInput {
 
 export interface TaskProgressOptions<TResult = unknown> {
   onTaskUpdate?: (task: TaskSnapshot<TResult>) => void;
+}
+
+export interface SpriteTransition {
+  frame_count?: number;
+  from_path: string;
+  to_path: string;
+  path: string;
+  from_fingerprint: string;
+  to_fingerprint: string;
+}
+
+export type SpriteTransitionMedia = SpriteTransitionAsset;
+
+export interface SpriteTransitionInput extends SpriteMattingOptions {
+  name: string;
+  fromPath: string;
+  toPath: string;
+  regenerate?: boolean;
+  retryTaskId?: string;
+}
+
+export interface SpriteTransitionRecommendation {
+  fromPath: string;
+  toPath: string;
+  count: number;
+  /** Share of all reconstructed changes, used for generation priority. */
+  probability: number;
+  conditionalProbability: number;
+  existing: boolean;
+}
+
+export interface SpriteTransitionAnalysis {
+  name: string;
+  spritePaths: string[];
+  basis: "instructions" | "inferred";
+  dialogCount: number;
+  dialogLimit: number;
+  conversationCount: number;
+  mappedDialogCount: number;
+  inferredDialogCount: number;
+  transitionCount: number;
+  items: SpriteTransitionRecommendation[];
+}
+
+export interface GeneratedSpriteTransition extends SpriteTransitionInput {
+  videoPath?: string;
+  matting?: SpriteMatting;
+  requestedFrames?: number;
+  taskId: string;
+  path: string;
+  alphaVerified: boolean;
+  frameCount?: number;
+  cached?: boolean;
+  backgroundRemovalError?: string;
 }
 
 export type StoryGenerationStage = "foundation" | "characters" | "narrative";
@@ -1728,24 +1804,37 @@ export interface ShinsekaiPlatform {
       options?: TaskProgressOptions<{ items: SpritePromptPair[] }>,
     ) => Promise<{ items: SpritePromptPair[] }>;
     renderSprite: (
-      input: SpritePromptPair & { name: string; referenceImage?: string; removeBackground?: boolean },
+      input: SpritePromptPair & {
+        name: string;
+        referenceImage?: string;
+        removeBackground?: boolean;
+      } & SpriteMattingOptions,
       options?: TaskProgressOptions<GeneratedCharacterSprite>,
     ) => Promise<GeneratedCharacterSprite>;
     animateSprite: (
       input: CharacterSpriteAnimationInput,
       options?: TaskProgressOptions<GeneratedCharacterSprite>,
     ) => Promise<GeneratedCharacterSprite>;
+    analyzeSpriteTransitions: (
+      input: { name: string },
+      options?: TaskProgressOptions<SpriteTransitionAnalysis>,
+    ) => Promise<SpriteTransitionAnalysis>;
+    generateSpriteTransition: (
+      input: SpriteTransitionInput,
+      options?: TaskProgressOptions<GeneratedSpriteTransition>,
+    ) => Promise<GeneratedSpriteTransition>;
+    saveSpriteTransitions: (input: { name: string; items: { taskId: string }[] }) => Promise<Character>;
     importGeneratedSprites: (input: {
       name: string;
-      items: { taskId: string; tagging: string }[];
+      items: { taskId: string; tagging: string; replace?: { index: number; path: string } }[];
       replace?: { index: number; path: string };
     }) => Promise<Character>;
     captureSpriteFrame: (
-      input: { name: string; taskId: string; seconds: number; removeBackground?: boolean },
+      input: { name: string; taskId: string; seconds: number; removeBackground?: boolean } & SpriteMattingOptions,
       options?: TaskProgressOptions<GeneratedCharacterSprite>,
     ) => Promise<GeneratedCharacterSprite>;
     removeSpriteBackground: (
-      input: { name: string; taskId: string },
+      input: { name: string; taskId: string } & SpriteMattingOptions,
       options?: TaskProgressOptions<GeneratedCharacterSprite>,
     ) => Promise<GeneratedCharacterSprite>;
     delete: (name: string) => Promise<void>;

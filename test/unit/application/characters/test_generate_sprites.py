@@ -367,6 +367,129 @@ def test_replacement_save_failure_rolls_back_collection_and_allows_retry(sprite_
     assert len(result["sprites"]) == 1
 
 
+def test_batch_replacement_keeps_each_position_voice_tags_and_original_file(
+    sprite_state, monkeypatch
+):
+    state, character = sprite_state
+    root = Path(state.project_root_dir)
+    originals = [root / "old-first.png", root / "old-third.webm"]
+    for path in originals:
+        path.write_bytes(b"original")
+    character.sprites = [
+        {"path": str(originals[0]), "voice_text": "first", "voice_path": "one.wav"},
+        {"path": "untouched.png"},
+        {"path": str(originals[1]), "voice_text": "third", "voice_type": "preset"},
+    ]
+    character.emotion_tags = "立绘 1：旧一\n立绘 2：保留\n立绘 3：旧三\n"
+    tasks = [completed_sprite(state, name) for name in ("third", "first")]
+    for task_id in tasks:
+        video = root / "cache/sprite_generation" / f"{task_id}.webm"
+        video.write_bytes(b"verified alpha")
+        state.tasks[task_id]["result"].update(
+            path=str(video), animation=True, alphaVerified=True
+        )
+    verifier = Mock(return_value=22)
+    monkeypatch.setattr(bridge, "verify_transparent_animation", verifier)
+    payload = {
+        "name": "Mika",
+        "items": [
+            {
+                "taskId": tasks[0],
+                "tagging": "害羞，交握",
+                "replace": {"index": 2, "path": str(originals[1])},
+            },
+            {
+                "taskId": tasks[1],
+                "tagging": "微笑，挥手",
+                "replace": {"index": 0, "path": str(originals[0])},
+            },
+        ],
+    }
+    result = bridge.import_generated_sprites(state, payload)
+    assert len(result["sprites"]) == 3
+    assert result["sprites"][1]["path"] == "untouched.png"
+    assert result["sprites"][0]["voice_path"] == "one.wav"
+    assert result["sprites"][0]["voice_text"] == "first"
+    assert result["sprites"][2]["voice_type"] == "preset"
+    assert result["sprites"][2]["voice_text"] == "third"
+    assert (
+        result["emotion_tags"]
+        == "立绘 1：微笑, 挥手\n立绘 2：保留\n立绘 3：害羞, 交握\n"
+    )
+    assert all(path.read_bytes() == b"original" for path in originals)
+    assert verifier.call_count == 2
+    for index in (0, 2):
+        assert Path(result["sprites"][index]["path"]).read_bytes() == b"verified alpha"
+    bridge.import_generated_sprites(state, payload)
+    state.config_manager.save_characters_config.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "second_target",
+    [None, {"index": 0, "path": "old.png"}, {"index": 1, "path": "changed.png"}],
+)
+def test_batch_replacement_rejects_missing_duplicate_or_changed_targets_as_a_whole(
+    sprite_state, second_target
+):
+    state, character = sprite_state
+    character.sprites.append({"path": "second.png"})
+    original = character.model_dump(mode="json")
+    first, second = [completed_sprite(state, name) for name in ("first", "second")]
+    item = {"taskId": second}
+    if second_target is not None:
+        item["replace"] = second_target
+    with pytest.raises(ValueError):
+        bridge.import_generated_sprites(
+            state,
+            {
+                "name": "Mika",
+                "items": [
+                    {"taskId": first, "replace": {"index": 0, "path": "old.png"}},
+                    item,
+                ],
+            },
+        )
+    assert character.model_dump(mode="json") == original
+    state.config_manager.save_characters_config.assert_not_called()
+    assert not state.tasks[first]["result"].get("imported")
+    assert not state.tasks[second]["result"].get("imported")
+
+
+def test_batch_replacement_save_failure_rolls_back_all_targets_and_can_retry(
+    sprite_state,
+):
+    state, character = sprite_state
+    character.sprites.append({"path": "second.png"})
+    original = character.sprites
+    tags = character.emotion_tags
+    task_ids = [completed_sprite(state, name) for name in ("first", "second")]
+    payload = {
+        "name": "Mika",
+        "items": [
+            {"taskId": task_id, "replace": {"index": index, "path": path}}
+            for index, (task_id, path) in enumerate(
+                zip(task_ids, ["old.png", "second.png"])
+            )
+        ],
+    }
+    state.config_manager.save_characters_config.side_effect = RuntimeError(
+        "save failed"
+    )
+    with pytest.raises(RuntimeError, match="save failed"):
+        bridge.import_generated_sprites(state, payload)
+    assert character.sprites is original and character.emotion_tags == tags
+    assert not any(
+        state.tasks[task_id]["result"].get("imported") for task_id in task_ids
+    )
+    state.config_manager.save_characters_config.side_effect = None
+    result = bridge.import_generated_sprites(state, payload)
+    assert len(result["sprites"]) == 2
+    assert all(
+        sprite["path"] != path
+        for sprite, path in zip(result["sprites"], ["old.png", "second.png"])
+    )
+
+
 def test_recapture_uses_trusted_video_and_a_new_result_that_imports_once(
     sprite_state, monkeypatch
 ):
@@ -573,7 +696,7 @@ def test_cutout_keeps_geometry_tags_and_video_but_not_import_state(
     Image.new("RGB", (24, 32), "white").save(original)
     output = tmp_path / "cutout.png"
 
-    def cutout(source, target):
+    def cutout(source, target, **kwargs):
         with Image.open(source) as image:
             image.convert("RGBA").save(target)
 
@@ -801,6 +924,11 @@ def test_animation_matting_failure_can_retry_without_rerender_and_cannot_be_impo
             "videoPath": str(video),
             "animation": True,
             "playbackSpeed": 0.5,
+            "matting": {
+                "method": "chroma",
+                "screenColor": [0, 255, 0],
+                "alphaMatting": True,
+            },
         }
     )
     monkeypatch.setattr(bridge, "render_animation", renderer)
@@ -829,7 +957,14 @@ def test_animation_matting_failure_can_retry_without_rerender_and_cannot_be_impo
     matting.side_effect = finish
     retry = _create_task(state, kind="character-sprite-cutout", title="retry")
     done = bridge.run_sprite_cutout(
-        state, retry["id"], {"name": "Mika", "taskId": task["id"]}
+        state,
+        retry["id"],
+        {
+            "name": "Mika",
+            "taskId": task["id"],
+            "autoScreen": False,
+            "alphaMatting": False,
+        },
     )
     assert done["alphaVerified"] and done["backgroundRemoved"]
     assert done["path"].endswith("-alpha.webm")
@@ -837,6 +972,11 @@ def test_animation_matting_failure_can_retry_without_rerender_and_cannot_be_impo
     assert "backgroundRemovalError" not in done
     assert renderer.call_count == 1
     assert matting.call_args.kwargs["playback_speed"] == 0.5
+    assert matting.call_args.kwargs["matte"].alpha_matting is False
+    assert matting.call_args.kwargs["matte"].requested_model == "toonout"
+    assert done["matting"]["method"] == "ai"
+    assert done["matting"]["screenColor"] == [0, 255, 0]
+    assert result["matting"]["method"] == "chroma"
     _update_task(state, retry["id"], status="succeeded", result=done)
     verified = Mock(return_value=5)
     monkeypatch.setattr(alpha_video, "verify_alpha_video", verified)
@@ -855,6 +995,8 @@ def test_h3_animation_anchors_last_frame_to_the_same_reference(
 ):
     from ai.t2i.t2i_manager import T2IAdapterFactory
     from application.characters.animate_sprites import render_animation
+
+    Image.new("RGB", (64, 96), "white").save(tmp_path / "ref.png")
 
     node = {
         "class_type": "MiniMaxH3ImageToVideo",
@@ -970,6 +1112,74 @@ def test_idle_pose_guides_reject_unresolved_or_invalid_length(length):
                 }
             }
         )
+
+
+@pytest.mark.parametrize("refinement", [False, True])
+def test_screen_mode_removes_white_background_artifacts_and_preserves_white_clothing(
+    monkeypatch, refinement
+):
+    from PIL import ImageDraw
+    from application.characters.animate_sprites import _screen_matte
+    from tools import remove_bg
+    from core.media import alpha_matting
+
+    source = Image.new("RGB", (64, 96), (0, 255, 0))
+    draw = ImageDraw.Draw(source)
+    draw.rectangle((16, 12, 48, 84), fill="white")
+    draw.rectangle((2, 2, 8, 8), fill="white")
+    foreground = Image.new("RGBA", source.size)
+    ImageDraw.Draw(foreground).rectangle((16, 12, 48, 84), fill="white")
+    ai = Mock(return_value=foreground)
+    monkeypatch.setattr(remove_bg, "remove_background_image", ai)
+    monkeypatch.setattr(
+        alpha_matting,
+        "refine_alpha_edges",
+        lambda image, mask: Image.merge("RGBA", (*image.convert("RGB").split(), mask)),
+    )
+    output = _screen_matte(
+        source, settings={"screenColor": [0, 255, 0]}, alpha_matting=refinement
+    )
+    assert output.getpixel((4, 4))[3] == 0
+    assert output.getpixel((30, 40)) == (255, 255, 255, 255)
+    assert output.getpixel((0, 0))[3] == 0
+    assert source.getpixel((4, 4)) == (255, 255, 255)
+    assert ai.call_args.kwargs["alpha_matting"] is False
+
+
+def test_matting_retry_can_switch_methods_without_losing_the_original_screen():
+    from application.characters.animate_sprites import retry_animation_matting
+
+    source = {
+        "videoPath": "raw.mp4",
+        "matting": {
+            "method": "chroma",
+            "screenColor": [0, 255, 0],
+            "alphaMatting": True,
+            "model": "toonout",
+        },
+    }
+    plain = retry_animation_matting(
+        source, {"autoScreen": False, "alphaMatting": False}
+    )
+    assert plain["videoPath"] == "raw.mp4"
+    assert plain["matting"]["method"] == "ai"
+    assert plain["matting"]["alphaMatting"] is False
+    restored = retry_animation_matting(
+        plain, {"autoScreen": True, "alphaMatting": True}
+    )
+    assert restored["matting"] == source["matting"]
+    assert source["matting"]["method"] == "chroma"
+    assert retry_animation_matting({"videoPath": "white.mp4"}, {"autoScreen": True})[
+        "matting"
+    ] == {"method": "ai", "alphaMatting": False, "model": "toonout"}
+
+
+@pytest.mark.parametrize("payload", [{"autoScreen": 1}, {"alphaMatting": "false"}])
+def test_matting_retry_rejects_non_boolean_options(payload):
+    from application.characters.animate_sprites import retry_animation_matting
+
+    with pytest.raises(ValueError, match="布尔值"):
+        retry_animation_matting({"videoPath": "raw.mp4"}, payload)
 
 
 def test_manual_animation_prompt_replaces_presets_without_rewriting_the_text():

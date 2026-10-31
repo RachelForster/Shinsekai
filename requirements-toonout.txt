@@ -1,0 +1,10 @@
+# Optional GPU environment only; desktop-core users can continue using ISNet.
+# Install the PyTorch CUDA build matching your GPU before these requirements.
+torch>=2.7,<3
+torchvision>=0.22,<1
+transformers>=4.51.1,<5
+timm==0.9.16
+kornia==0.7.2
+einops>=0.8,<1
+Pillow
+requests

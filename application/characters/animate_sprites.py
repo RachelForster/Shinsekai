@@ -5,6 +5,7 @@ from application.characters.generate_sprites import (
     SPRITE_REFERENCE_FRAMING_SUFFIX,
     prompt_pair,
     render_sprite,
+    matting_options,
 )
 
 
@@ -113,17 +114,80 @@ def render_animation(config_store, payload, output, reference):
     }
 
 
-def make_transparent_animation(video, output, *, progress, playback_speed=0.75):
-    from core.media.alpha_video import remove_video_background
+def retry_animation_matting(source, payload):
+    """Change postprocessing without forgetting the actual screen in the raw video."""
+    settings = dict(source.get("matting") or {"method": "ai", "alphaMatting": False})
+    options = matting_options(
+        payload,
+        auto_screen=settings.get("method") == "chroma",
+        alpha_matting=settings.get("alphaMatting", False),
+        model=settings.get("requestedModel", settings.get("model", "toonout")),
+    )
+    settings["method"] = (
+        "chroma" if options["autoScreen"] and settings.get("screenColor") else "ai"
+    )
+    settings["alphaMatting"] = options["alphaMatting"]
+    settings["model"] = options["mattingModel"]
+    for key in ("requestedModel", "fallbackReason", "device"):
+        settings.pop(key, None)
+    return {**source, "matting": settings}
+
+
+def _screen_matte(image, *, settings, alpha_matting, foreground_matte=None):
+    """A color key alone treats generated white background artifacts as foreground."""
+    from PIL import ImageChops
+
+    from core.media.chroma_key import remove_screen_background
     from tools.remove_bg import remove_background_image
 
-    return remove_video_background(
-        video,
-        output,
-        matte=remove_background_image,
-        progress=progress,
-        playback_speed=playback_speed,
-    )
+    foreground = (
+        foreground_matte(image)
+        if foreground_matte is not None
+        else remove_background_image(image, alpha_matting=False)
+    ).getchannel("A")
+    cutout = remove_screen_background(image, settings, alpha_matting=alpha_matting)
+    cutout.putalpha(ImageChops.darker(cutout.getchannel("A"), foreground))
+    return cutout
+
+
+def make_transparent_animation(
+    video, output, *, progress, playback_speed=0.75, matting=None
+):
+    from functools import partial
+
+    from core.media.alpha_video import remove_video_background
+    from tools.remove_bg import background_remover
+
+    settings = dict(matting or {"method": "ai", "alphaMatting": False})
+    alpha_matting = settings.get("alphaMatting", False)
+    if not isinstance(alpha_matting, bool):
+        raise ValueError("alphaMatting 必须为布尔值")
+    if settings.get("method") not in ("ai", "chroma"):
+        raise ValueError("不支持的抠图方式，请重新生成")
+    chroma = settings.get("method") == "chroma"
+    with background_remover(
+        model=settings.get("model", "toonout"),
+        alpha_matting=False if chroma else alpha_matting,
+    ) as remove:
+        matte = (
+            partial(
+                _screen_matte,
+                settings=settings,
+                alpha_matting=alpha_matting,
+                foreground_matte=remove,
+            )
+            if chroma
+            else remove
+        )
+        result = remove_video_background(
+            video,
+            output,
+            matte=matte,
+            progress=progress,
+            playback_speed=playback_speed,
+        )
+        settings.update(remove.metadata())
+    return {**result, "matting": settings}
 
 
 def verify_transparent_animation(path):

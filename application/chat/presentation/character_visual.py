@@ -8,6 +8,8 @@ from application.media.resource_urls import ResourceUrls
 from config.character_assets import get_character_assets, get_character_avatar_type
 from config.config_manager import character_name_key
 from core.sprite.selection import resolve_runtime_path, sprite_entry_path
+from core.sprite.transitions import field, valid_transitions
+from core.media.transition_presentation import transition_presentation
 
 
 def image_visual_identity(raw_path: str) -> str:
@@ -23,6 +25,7 @@ class CharacterVisual:
     model_url: str
     scale: float
     identity_key: str = ""
+    transitions: tuple[dict[str, Any], ...] = ()
 
     def event_fields(self) -> dict[str, Any]:
         return {
@@ -31,10 +34,12 @@ class CharacterVisual:
             "modelUrl": self.model_url,
             "scale": self.scale,
             "identityKey": self.identity_key,
+            **({"transitions": list(self.transitions)} if self.transitions else {}),
         }
 
     def snapshot_fields(self) -> dict[str, Any]:
         fields = self.event_fields()
+        fields.pop("transitions", None)
         fields["path"] = fields.pop("url")
         return fields
 
@@ -59,6 +64,33 @@ def resolve_character_visual(
         if isinstance(character, dict)
         else getattr(character, "sprite_scale", 1.0)
     )
-    name = character.get("name", "") if isinstance(character, dict) else getattr(character, "name", "")
+    name = (
+        character.get("name", "")
+        if isinstance(character, dict)
+        else getattr(character, "name", "")
+    )
     identity_key = f"character:{character_name_key(name)}" if name else ""
-    return CharacterVisual(url, kind, model_url, float(scale or 1.0), identity_key)
+    transitions = (
+        tuple(
+            {
+                "fromUrl": urls.media_url(field(edge, "from_path")),
+                "url": urls.media_url(field(edge, "path")),
+                **(
+                    {"presentation": presentation}
+                    if (
+                        presentation := transition_presentation(
+                            field(edge, "from_path"), field(edge, "path"), path
+                        )
+                    )
+                    else {}
+                ),
+            }
+            for edge in valid_transitions(character)
+            if kind == "static" and field(edge, "to_path") == path
+        )
+        if kind == "static"
+        else ()
+    )
+    return CharacterVisual(
+        url, kind, model_url, float(scale or 1.0), identity_key, transitions
+    )
