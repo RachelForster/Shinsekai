@@ -110,6 +110,22 @@ export function animateCharacterSprite(...args: Parameters<ShinsekaiPlatform["ch
   return getPlatform().characters.animateSprite(...args);
 }
 
+export function analyzeSpriteTransitions(
+  ...args: Parameters<ShinsekaiPlatform["characters"]["analyzeSpriteTransitions"]>
+) {
+  return getPlatform().characters.analyzeSpriteTransitions(...args);
+}
+
+export function generateSpriteTransition(
+  ...args: Parameters<ShinsekaiPlatform["characters"]["generateSpriteTransition"]>
+) {
+  return getPlatform().characters.generateSpriteTransition(...args);
+}
+
+export function saveSpriteTransitions(...args: Parameters<ShinsekaiPlatform["characters"]["saveSpriteTransitions"]>) {
+  return getPlatform().characters.saveSpriteTransitions(...args);
+}
+
 export function importGeneratedCharacterSprites(
   input: Parameters<ShinsekaiPlatform["characters"]["importGeneratedSprites"]>[0],
 ) {

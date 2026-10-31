@@ -5,7 +5,7 @@ import re
 from uuid import uuid4
 from pathlib import Path
 from typing import List, Dict, Any, Tuple, Optional, Union
-from config.schema import Character, ModelSprites, Sprite
+from config.schema import Character, ModelSprites, Sprite, SpriteTransition
 from config.config_manager import ConfigManager
 import yaml
 
@@ -97,6 +97,37 @@ class CharacterManager:
             return f"人物设定已保存到 {CHARACTER_CONFIG_PATH}！"
         except Exception as e:
             return f"保存失败: {str(e)}"
+
+    def save_sprite_transitions(self, name: str, results: list[dict]) -> None:
+        """Copy approved clips, replace directed edges atomically, and retain originals."""
+        from sdk.path_utils import safe_child_path
+
+        character = self._config_manager.get_character_by_name(name)
+        if character is None:
+            raise KeyError(name)
+        directory = safe_child_path(Path(UPLOAD_DIR), f"{character.sprite_prefix}/transitions")
+        directory.mkdir(parents=True, exist_ok=True)
+        previous = character.sprite_transitions
+        edges = {(edge.from_path, edge.to_path): edge for edge in previous}
+        copied = []
+        try:
+            for result in results:
+                destination = directory / f"{uuid4().hex}.webm"
+                copied.append(destination)
+                shutil.copyfile(result["path"], destination)
+                edge = SpriteTransition(
+                    from_path=result["fromPath"], to_path=result["toPath"], path=destination.as_posix(),
+                    from_fingerprint=result["fromFingerprint"], to_fingerprint=result["toFingerprint"],
+                    frame_count=result["frameCount"],
+                )
+                edges[(edge.from_path, edge.to_path)] = edge
+            character.sprite_transitions = list(edges.values())
+            self._save_characters_config()
+        except Exception:
+            character.sprite_transitions = previous
+            for path in copied:
+                path.unlink(missing_ok=True)
+            raise
 
 
     def add_character(self, name: str, color: str, sprite_prefix: str, gpt_model_path: str,

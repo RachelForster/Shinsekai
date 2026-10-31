@@ -1064,6 +1064,27 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         );
         return waitForTask(apiBase, task, options);
       },
+      async analyzeSpriteTransitions(input, options) {
+        const task = await requestJson<TaskSnapshot<import("./types").SpriteTransitionAnalysis>>(
+          apiBase,
+          "/api/characters/sprites/transitions/analyze",
+          { method: "POST", body: JSON.stringify(input) },
+        );
+        return waitForTask(apiBase, task, options);
+      },
+      async generateSpriteTransition(input, options) {
+        const task = await requestJson<TaskSnapshot<import("./types").GeneratedSpriteTransition>>(
+          apiBase,
+          "/api/characters/sprites/transitions/generate",
+          { method: "POST", body: JSON.stringify(input) },
+        );
+        return waitForTask(apiBase, task, options);
+      },
+      saveSpriteTransitions: (input) =>
+        requestJson<Character>(apiBase, "/api/characters/sprites/transitions/save", {
+          method: "POST",
+          body: JSON.stringify(input),
+        }),
       async captureSpriteFrame(input, options) {
         const task = await requestJson<TaskSnapshot<GeneratedCharacterSprite>>(
           apiBase,

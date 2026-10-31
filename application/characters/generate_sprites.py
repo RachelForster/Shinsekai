@@ -158,6 +158,7 @@ def render_sprite(
     require_h3_video: bool = False,
     loop_reference: bool = False,
     stabilize_pose: bool = False,
+    last_reference: Path | None = None,
 ) -> dict:
     from PIL import Image
 
@@ -208,6 +209,37 @@ def render_sprite(
                 for node in nodes:
                     if node.get("inputs", {}).get("first_frame"):
                         node["inputs"]["last_frame"] = node["inputs"]["first_frame"]
+            if last_reference:
+                from ai.t2i.reference_image import reference_canvas_size
+                from core.sprite.transitions import TRANSITION_FRAME_COUNT
+
+                first = nodes[0]["inputs"]["first_frame"]
+                if any(node["inputs"]["first_frame"] != first for node in nodes):
+                    raise ValueError("过渡工作流须使用同一个首帧输入")
+                adapter.reference_node_id = str(first[0])
+                if (
+                    adapter.workflow_template.get(str(first[0]), {}).get("class_type")
+                    != "LoadImage"
+                ):
+                    raise ValueError("过渡工作流的首帧须直接连接 LoadImage")
+                adapter.workflow_template["shinsekai_last_frame"] = {
+                    "class_type": "LoadImage",
+                    "inputs": {"image": "last.png"},
+                }
+                canvas = nodes[0]["inputs"]
+                width, height = reference_canvas_size(
+                    reference, canvas["width"], canvas["height"]
+                )
+                for node in nodes:
+                    node["inputs"].update(
+                        width=width,
+                        height=height,
+                        length=TRANSITION_FRAME_COUNT,
+                        last_frame=["shinsekai_last_frame", 0],
+                    )
+                for node in adapter.workflow_template.values():
+                    if node.get("class_type") == "CreateVideo":
+                        node["inputs"]["fps"] = 24
             if stabilize_pose:
                 adapter.workflow_template = stabilize_idle_workflow(
                     adapter.workflow_template
@@ -215,6 +247,8 @@ def render_sprite(
         options = {"seed": secrets.randbelow(2**53)}
         if reference:
             options["reference_image_path"] = str(reference)
+        if last_reference:
+            options["last_reference_image_path"] = str(last_reference)
         result = manager.t2i(pair["prompt"], file_path=str(output), **options)
         if not result or not output.is_file():
             raise RuntimeError("T2I 未返回图片，请检查服务与工作流输出节点")

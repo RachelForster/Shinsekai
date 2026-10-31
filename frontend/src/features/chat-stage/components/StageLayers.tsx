@@ -154,6 +154,10 @@ export function SpriteLayer({
                 url: stageAssetUrl(sprite.path),
                 avatarType: sprite.avatarType ?? "static",
                 modelUrl: sprite.modelUrl ? stageAssetUrl(sprite.modelUrl) : "",
+                transitions: sprite.transitions?.map((edge) => ({
+                  fromUrl: stageAssetUrl(edge.fromUrl),
+                  url: stageAssetUrl(edge.url),
+                })),
               }}
               hitbox={Boolean(onDragStart)}
               framing={runtimeFramingForSprite?.(sprite, index)}

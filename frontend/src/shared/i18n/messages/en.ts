@@ -1,6 +1,72 @@
 import type { MessageKey } from "../messages";
 
 export const enMessages: Record<MessageKey, string> = {
+  "spriteTransition.analyze": "Analyze recent chats",
+  "spriteTransition.saveCollection":
+    "The sprite collection has unsaved changes. Save the character before analyzing chats.",
+  "spriteTransition.analyzing": "Analyzing recent chats…",
+  "spriteTransition.analyzeHint":
+    "Uses this character's latest 200 records; the current LLM matches sprite tags when needed.",
+  "spriteTransition.recommendationCount": "Recommended count N (one-way)",
+  "spriteTransition.skipExisting": "Skip available transitions",
+  "spriteTransition.pairMode": "Transition pairing mode",
+  "spriteTransition.recommendations": "Chat recommendations",
+  "spriteTransition.manual": "Manual selection",
+  "spriteTransition.recommendationHint":
+    "Generate only checked directions. Reverse clips are separate. If fewer than N qualify, select all available recommendations.",
+  "spriteTransition.chooseTop": "Select top {count}",
+  "spriteTransition.analysisSummary":
+    "{sessions} recent chats · {mapped}/{dialogs} character records matched · {changes} reconstructed changes",
+  "spriteTransition.inferredBasis":
+    "{count} records inferred by the LLM from emotion and action tags; these are not playback logs.",
+  "spriteTransition.instructionsBasis":
+    "Reconstructed from historical sprite IDs using the current collection, not playback logs.",
+  "spriteTransition.coverage": "{count} selected · {coverage} of sample changes covered",
+  "spriteTransition.directedPair": "One-way pair",
+  "spriteTransition.share": "Sample share",
+  "spriteTransition.conditional": "From this source",
+  "spriteTransition.occurrences": "Count",
+  "spriteTransition.alreadyAvailable": "Already available",
+  "spriteTransition.probabilityHint":
+    "Ranked by share of all changes. The source probability compares destinations from the same source. Recent samples do not guarantee future probabilities.",
+  "spriteTransition.noChanges":
+    "No matching sprite changes in recent chats. Try again after more dialogue or select sprites manually.",
+  "spriteTransition.selectAll": "Select ready transitions",
+  "spriteTransition.deselectAll": "Deselect transitions",
+  "spriteTransition.queue": "Queue: {current} of {total} clips",
+  "spriteTransition.stop": "Stop after this clip",
+  "spriteTransition.render": "Generate transition",
+  "spriteTransition.redraw": "Redraw transition",
+  "spriteTransition.untagged": "Untagged sprite",
+  "spriteTransition.noSources": "Save at least two sprites to the character's library first.",
+  "spriteTransition.tab": "Transitions",
+  "spriteTransition.intro":
+    "Recommend common one-way transitions from recent chats or pair sprites manually. Each transparent clip has 22 frames and plays on sprite changes after saving.",
+  "spriteTransition.stepSource": "Choose pairs",
+  "spriteTransition.stepGenerate": "Generate and preview",
+  "spriteTransition.stepSave": "Save for playback",
+  "spriteTransition.options": "Generate transitions",
+  "spriteTransition.pairCount": "{selected} selected · {count} clips",
+  "spriteTransition.spec": "{frames} frames · normal speed · ~{duration} s · transparent",
+  "spriteTransition.directionHint": "A→B and B→A are separate clips. More sprites require more clips; try two first.",
+  "spriteTransition.generate": "Generate / resume {count} clips",
+  "spriteTransition.reuseHint":
+    "Locked camera and framing, with automatic matting. Reuse saved clips or redraw individual pairs.",
+  "spriteTransition.playbackTitle": "Playback after saving",
+  "spriteTransition.playbackHint":
+    "A matching transition plays once before the target sprite. Animated targets keep looping. Missing clips switch directly.",
+  "spriteTransition.results": "Transition clips",
+  "spriteTransition.ready": "{count} ready · select new results to save",
+  "spriteTransition.pickSources": "Choose sprites (at least two)",
+  "spriteTransition.sourceHint":
+    "Images and videos are supported. Use the outgoing video's last frame and the incoming video's first frame. Save new sprites to the library first.",
+  "spriteTransition.saved": "{frames} frames · saved · plays on sprite change",
+  "spriteTransition.transparent": "{frames}-frame transparent clip · unsaved",
+  "spriteTransition.pending": "Pending generation / processing",
+  "spriteTransition.emptyTitle": "No transitions yet",
+  "spriteTransition.selected": "{count} clips selected",
+  "spriteTransition.saveHint": "Stored on the character, separate from sprite indices and tags.",
+  "spriteTransition.save": "Save {count} transitions",
   "spriteGeneration.replace": "Replace original sprite",
   "spriteGeneration.replaceHint":
     "Replace the chosen sprite and its tags with this result. Keep its position, voice settings and original file.",

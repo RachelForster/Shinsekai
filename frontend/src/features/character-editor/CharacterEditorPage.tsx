@@ -1232,6 +1232,7 @@ export function CharacterEditorPage() {
               return {
                 ...current,
                 sprites: character.sprites.map((sprite) => currentSpritesByPath.get(sprite.path) ?? sprite),
+                sprite_transitions: character.sprite_transitions,
                 emotion_tags: numberedTags(
                   "立绘",
                   character.sprites.map((sprite, index) => tagsByPath.get(sprite.path) ?? savedTags[index]),

@@ -77,6 +77,7 @@ export interface AvatarFormat<S, C> {
 
 /** 舞台 / 预览交给 CharacterVisual 的资源引用，与具体格式无关。 */
 export interface CharacterVisualAsset {
+  transitions?: { fromUrl: string; url: string }[];
   id: string;
   label: string;
   /** static 为图片 URL；模型格式为状态 JSON URL。 */
