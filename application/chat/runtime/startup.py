@@ -76,7 +76,11 @@ def _memory_scope_context(config, history, names):
     if not characters or any(not getattr(c, "id", None) for c in characters):
         return {"memoryScoped": True, "memoryScopes": {}, "memorySession": ""}
     scopes, session = session_scopes(history, characters)
-    return {"memoryScoped": True, "memoryScopes": scopes, "memorySession": session}
+    result = {"memoryScoped": True, "memoryScopes": scopes, "memorySession": session}
+    from application.chat.doki_handoff import present_witnesses
+    if present_witnesses(history) is not None:
+        result["memoryWitnesses"] = lambda: present_witnesses(history)
+    return result
 
 
 def create_chat_startup_context(

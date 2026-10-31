@@ -132,10 +132,20 @@ def prepare(state, source):
 
 def _write_receipt(target, value):
     # The receipt contains status and identity only, never stage dialogue.
-    (target / 'doki-receipt.json').write_text(canonical(value), encoding='utf-8')
+    path = target / 'doki-receipt.json'
+    previous = json.loads(path.read_text(encoding='utf-8')) if path.exists() else {}
+    merged = {**previous, **value}
+    changed = any(previous.get(key) != merged.get(key) for key in ['status', 'sessionId', 'participants'])
+    merged['revision'] = previous.get('revision', 0) + int(changed)
+    path.write_text(canonical(merged), encoding='utf-8')
 
 
 def status(state, identity):
+    with _lock:
+        return _status(state, identity)
+
+
+def _status(state, identity):
     target = directory(state, identity)
     source = read_manifest(target)
     if source is None:
@@ -149,7 +159,7 @@ def status(state, identity):
         phase = 'paused'
     elif phase == 'entered' and time.time() - receipt.get('last_seen', 0) > 20:
         phase = 'unconfirmed'
-    return {'handoff_id': handoff_id(identity), 'status': phase, 'mode': source['mode'], 'sessionId': receipt.get('sessionId', ''), 'active': active}
+    return {'handoff_id': handoff_id(identity), 'status': phase, 'mode': source['mode'], 'sessionId': receipt.get('sessionId', ''), 'active': active, 'revision': receipt.get('revision', 0), 'participants': receipt.get('participants') or {row['native_id']: 'present' if receipt['status'] == 'entered' else 'pending' for row in source['characters']}}
 
 
 def launch(state, identity, *, launcher):
@@ -159,10 +169,15 @@ def launch(state, identity, *, launcher):
         raise ValueError('交接存档不存在。')
     from application.chat.composition import _chat_process_running
     with _lock:
+        receipt = json.loads((target / 'doki-receipt.json').read_text(encoding='utf-8'))
+        if receipt['status'] == 'ended':
+            raise ValueError('本次约会已明确结束，原存档保留；请新建另一场约会。')
         if _chat_process_running():
             current = getattr(state, 'chat_session', {}) or {}
             if not current.get('historyPath') or chat_history_session_dir(current['historyPath']).resolve() != target:
                 raise ValueError('新世界已有另一场会话。请先保存并关闭，再进入这次约会。')
+            if receipt['status'] == 'paused':
+                _write_receipt(target, {'status': 'ready'})
             return status(state, identity)
         names, player = _characters(state, source)
         system, _ = state.template_generator.generate_chat_template(names, '', True, True, False, player_character=player, allow_player_dialogue=False, read_player_speech=False)
@@ -185,8 +200,51 @@ def acknowledge(state, payload):
     if not _chat_process_running():
         return {'doki': True, 'status': 'paused'}
     with _lock:
-        _write_receipt(chat_history_session_dir(history), {'status': 'entered', 'sessionId': payload['sessionId'], 'last_seen': time.time()})
+        target = chat_history_session_dir(history)
+        receipt = json.loads((target / 'doki-receipt.json').read_text(encoding='utf-8'))
+        if receipt['status'] in {'paused', 'ended'}:
+            return {'doki': True, 'status': receipt['status']}
+        participants = {row['native_id']: (receipt.get('participants') or {}).get(row['native_id'], 'present') for row in source['characters']}
+        _write_receipt(target, {'status': 'entered', 'sessionId': payload['sessionId'], 'last_seen': time.time(), 'participants': participants})
     return {'doki': True, 'status': 'entered'}
+
+
+
+def change_presence(state, payload, *, stopper):
+    if set(payload) - {'handoff_id', 'action', 'character_id', 'revision'}:
+        raise ValueError('在场事件包含不支持的字段。')
+    target = directory(state, payload.get('handoff_id'))
+    with _lock:
+        source = read_manifest(target)
+        if source is None:
+            raise ValueError('交接存档不存在。')
+        receipt = json.loads((target / 'doki-receipt.json').read_text(encoding='utf-8'))
+        if receipt['status'] == 'ended':
+            return status(state, source['handoff_id'])
+        if payload.get('revision') != receipt.get('revision', 0):
+            raise ValueError('现场状态已变化，请刷新后重新操作。')
+        action = payload.get('action')
+        current = status(state, source['handoff_id'])
+        participants = dict(current['participants'])
+        if action in {'join', 'leave'}:
+            identity = payload.get('character_id')
+            if identity not in participants:
+                raise ValueError('角色不属于本次约会。')
+            if action == 'join' and (not current['active'] or current['status'] != 'entered'):
+                raise ValueError('请先恢复并连接现场，再确认角色回到现场。')
+            participants[identity] = 'present' if action == 'join' else 'away'
+            _write_receipt(target, {'participants': participants})
+        elif action == 'pause':
+            _write_receipt(target, {'status': 'paused'})
+            if current['active']:
+                stopper(state, expected_session_id=receipt.get('sessionId'))
+        elif action == 'end':
+            _write_receipt(target, {'status': 'ended', 'participants': {identity: 'away' for identity in participants}})
+            if current['active']:
+                stopper(state, expected_session_id=receipt.get('sessionId'))
+        else:
+            raise ValueError('在场操作无效。')
+        return status(state, source['handoff_id'])
 
 
 def launch_policy(state, body):
@@ -209,6 +267,65 @@ def runtime_context(source, config):
     return '\n'.join(result)
 
 
+def preview_records(state, payload):
+    if set(payload) - {'handoff_id', 'offset', 'limit'}:
+        raise ValueError('记录预览参数无效。')
+    target = directory(state, payload.get('handoff_id'))
+    if not target.resolve().is_relative_to(Path(state.history_dir).resolve()):
+        raise ValueError('记录不在约会存档目录内。')
+    source = read_manifest(target)
+    if source is None or source['mode'] != 'independent':
+        raise ValueError('只有独立剧情可以通过此入口预览分享。')
+    offset, limit = payload.get('offset', 0), payload.get('limit', 40)
+    if type(offset) is not int or offset < 0 or type(limit) is not int or not 1 <= limit <= 40:
+        raise ValueError('记录范围无效。')
+    from core.chat_history.storage import chat_history_active_path
+    from core.chat_history.text import chat_history_to_turns, parse_assistant_dialog_content
+    path = chat_history_active_path(target)
+    if not path.is_file():
+        raise ValueError('这份独立剧情尚无已保存记录，请先在新世界保存。')
+    if not path.resolve().is_relative_to(target.resolve()) or path.stat().st_size > 8 * 1024**2:
+        raise ValueError('存档路径或记录大小无效。')
+    # Read committed history only. Do not invoke recovery that merges/deletes .tmp files.
+    raw = json.loads(path.read_text(encoding='utf-8'))
+    turns = []
+    for index, message in enumerate(raw if isinstance(raw, list) else [raw]):
+        if isinstance(message, dict) and (message.get('role') in {'system', 'tool'} or message.get('tool_calls')):
+            continue
+        if isinstance(message, dict) and message.get('role') == 'assistant':
+            content = message.get('content')
+            if (isinstance(content, (dict, list)) or str(content or '').lstrip().startswith(('{', '[', '```'))) and not parse_assistant_dialog_content(content):
+                continue
+        stamp = str(message.get('created_at') or '')[:100] if isinstance(message, dict) else ''
+        for turn in chat_history_to_turns([message], user_display_name=source.get('user_name') or '用户'):
+            if turn['role'] in {'system', 'tool'}:
+                continue
+            text = turn['text']
+            identity = hashlib.sha256(canonical([index, len(turns), text, stamp]).encode()).hexdigest()
+            turns.append({'id': identity, 'text': text, 'at': stamp, 'speaker': turn['speaker'][:100]})
+    rows, budget = [], 6000
+    for turn in turns[offset:offset + limit]:
+        if not budget:
+            break
+        text = turn['text'][:min(6000, budget)]
+        rows.append({**turn, 'text': text, 'truncated': len(text) < len(turn['text'])})
+        budget -= len(text)
+    return {'source': 'shinsekai', 'timeline': 'independent', 'title': source.get('reason', '')[:200] or '独立剧情', 'rows': rows, 'offset': offset, 'total': len(turns), 'next_offset': offset + len(rows) if offset + len(rows) < len(turns) else None}
+
+
+def present_witnesses(history):
+    source = read_manifest(history)
+    if source is None:
+        return None
+    try:
+        receipt = json.loads((chat_history_session_dir(history) / 'doki-receipt.json').read_text(encoding='utf-8'))
+        if receipt['status'] != 'entered':
+            return []
+        return [row['identity'] if source['mode'] == 'daily' else row['native_id'] for row in source['characters'] if (receipt.get('participants') or {}).get(row['native_id'], 'present') == 'present']
+    except (OSError, ValueError, KeyError):
+        return []
+
+
 def install_runtime(llm_manager, config, args):
     source = read_manifest(getattr(args, 'history', ''))
     if source is None:
@@ -224,5 +341,10 @@ def install_runtime(llm_manager, config, args):
         llm_manager.hook_dispatcher = dispatcher
     def before_chat(context):
         context.messages[:] = [m for m in context.messages if not (m.get('role') == 'system' and str(m.get('content') or '').startswith(MARKER))]
-        context.messages.append({'role': 'system', 'content': runtime_context(source, config)})
+        content = runtime_context(source, config)
+        witnesses = present_witnesses(args.history) or []
+        names = {c.id: c.name for c in config.config.characters}
+        present = [names.get(row['native_id'], '角色') for row in source['characters'] if (row['identity'] if source['mode'] == 'daily' else row['native_id']) in witnesses]
+        content += '\n【用户确认的当前在场角色】' + '、'.join(present) + '。未在场角色不得作为现场角色继续发言或获得新增亲历；不替用户决定谁加入或离场。'
+        context.messages.append({'role': 'system', 'content': content})
     dispatcher.register_before_chat(before_chat, label='doki_player_and_context')

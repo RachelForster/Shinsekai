@@ -121,6 +121,7 @@ class MemoryAutoHooks:
         self._monotonic = monotonic_func
         self._lock = threading.RLock()
         self._summary_lock = threading.Lock()
+        self._witnesses = None
         self._buffer: list[dict[str, str]] = []
         self._user_turns = 0
         self._last_extract_turn = 0
@@ -156,6 +157,7 @@ class MemoryAutoHooks:
         available we keep chat usable without silently installing anything.
         """
 
+        self._witnesses = context.metadata.get("memoryWitnesses")
         self._disabled = not context.memory_enabled or (context.metadata.get("memoryScoped") is True and not context.metadata.get("memoryScopes"))
         if self._disabled and context.metadata.get("memoryScoped"):
             from ai.memory.session_scope import configure_scopes
@@ -240,6 +242,13 @@ class MemoryAutoHooks:
     def before_chat(self, context: BeforeChatContext) -> None:
         if self._disabled:
             return
+        if self._scopes and self._witnesses is not None:
+            visible = self._witnesses() or []
+            names = [name for name, scope in self._scopes.items() if scope["character_id"] in visible]
+            if not names:
+                return
+            if self.primary_character_name not in names:
+                self._active_character_name = names[0]
         if self._scopes:
             from ai.memory.session_scope import set_active_character
             set_active_character(self.primary_character_name)
@@ -345,6 +354,9 @@ class MemoryAutoHooks:
         if not content:
             return
         witnesses = message.get("witnesses")
+        if self._witnesses is not None:
+            present = self._witnesses() or []
+            witnesses = present if witnesses is None else [value for value in witnesses if value in present or self._scopes.get(value, {}).get("character_id") in present]
         if witnesses is None:
             witnesses = list(self._scopes) if len(self._scopes) == 1 else []
         witnesses = [scope["character_id"] for name, scope in self._scopes.items() if name in witnesses or scope["character_id"] in witnesses]

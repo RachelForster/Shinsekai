@@ -132,3 +132,111 @@ def test_policy_and_runtime_keep_player_control_after_template_change(fixture):
     assert '改名后的A' in matching[0]['content'] and 'message-1' in matching[0]['content']
     untouched = dict(allowPlayerDialogue=True)
     assert handoff.launch_policy(state, untouched) == untouched
+
+
+def test_presence_events_keep_sequence_and_heartbeat_cannot_undo_leave_pause_end(fixture):
+    state, source = fixture
+    handoff.prepare(state, source)
+    target = handoff.directory(state, source['handoff_id'])
+    state.chat_session = dict(historyPath=str(target), sessionId='session')
+    ack = dict(historyPath=str(target), sessionId='session')
+    stopper = Mock()
+    with patch('application.chat.composition._chat_process_running', return_value=True):
+        handoff.acknowledge(state, ack)
+        current = handoff.status(state, source['handoff_id'])
+        assert handoff.present_witnesses(target) == ['linked-A']
+        def event(action, revision, character_id='npc'):
+            return handoff.change_presence(state, dict(handoff_id=source['handoff_id'], action=action, character_id=character_id, revision=revision), stopper=stopper)
+        left = event('leave', current['revision'])
+        assert left['participants']['npc'] == 'away'
+        handoff.acknowledge(state, ack)
+        assert handoff.present_witnesses(target) == []
+        assert handoff.status(state, source['handoff_id'])['revision'] == left['revision']
+        with pytest.raises(ValueError, match='状态已变化'):
+            event('join', current['revision'])
+        joined = event('join', left['revision'])
+        assert handoff.present_witnesses(target) == ['linked-A']
+        paused = event('pause', joined['revision'])
+        stopper.assert_called_once_with(state, expected_session_id='session')
+        handoff.acknowledge(state, ack)
+        assert handoff.status(state, source['handoff_id'])['status'] == 'paused'
+        assert handoff.present_witnesses(target) == []
+        handoff.launch(state, source['handoff_id'], launcher=Mock())
+        handoff.acknowledge(state, ack)
+        resumed = handoff.status(state, source['handoff_id'])
+        assert resumed['status'] == 'entered'
+        ended = event('end', resumed['revision'])
+        assert ended['status'] == 'ended'
+        handoff.acknowledge(state, ack)
+        assert handoff.status(state, source['handoff_id'])['status'] == 'ended'
+        with pytest.raises(ValueError, match='明确结束'):
+            handoff.launch(state, source['handoff_id'], launcher=Mock())
+
+
+def test_missing_or_closed_renderer_does_not_authorize_join(fixture):
+    state, source = fixture
+    prepared = handoff.prepare(state, source)
+    with patch('application.chat.composition._chat_process_running', return_value=False):
+        with pytest.raises(ValueError, match='先恢复'):
+            handoff.change_presence(state, dict(handoff_id=source['handoff_id'], action='join', character_id='npc', revision=prepared['revision']), stopper=Mock())
+
+
+def test_memory_hook_attributes_only_explicitly_present_characters():
+    from ai.memory.hooks import MemoryAutoHooks
+    from sdk.hooks import MessageAddedContext
+    hooks = MemoryAutoHooks(llm_adapter=Mock(), character_names=['A','B'])
+    hooks._scopes = {'A': dict(character_id='linked-A'), 'B': dict(character_id='linked-B')}
+    hooks._witnesses = lambda: ['linked-B']
+    context = MessageAddedContext(role='user', message=dict(id='live', content='现场发生的事'), messages=[])
+    hooks._scoped_message(context)
+    assert hooks._buffer[-1]['witnesses'] == ['linked-B']
+    context.message = dict(id='private', content='A不在场的事', witnesses=['linked-A'])
+    hooks._scoped_message(context)
+    assert len(hooks._buffer) == 1
+
+
+def independent_fixture(fixture):
+    state, source = fixture
+    source['mode'] = 'independent'
+    for key in ['offline_prompt', 'player_persona', 'daily_context']:
+        source.pop(key)
+    handoff.prepare(state, source)
+    return state, source, handoff.directory(state, source['handoff_id'])
+
+
+def test_record_preview_reads_only_saved_visible_independent_text(fixture):
+    state, source, target = independent_fixture(fixture)
+    raw = [dict(role='system',content='secret-system'),dict(role='system',text='secret-rendered-system'),dict(role='tool',content='secret-tool'),dict(role='assistant',content='secret-tool-call',tool_calls=[{}]),dict(role='user',content='这是故事中的玩家台词',created_at='2026-10-31'),dict(role='assistant',content='{"dialog":[{"character_name":"A","speech":"故事中的回答","asset":"secret-path"}]}')]
+    active = target / 'active.json'
+    active.write_text(json.dumps(raw,ensure_ascii=False),encoding='utf-8')
+    temporary = target / 'active.json.tmp'
+    temporary.write_text('[{"role":"user","content":"未保存的秘密"}]',encoding='utf-8')
+    before = active.read_bytes()
+    result = handoff.preview_records(state,dict(handoff_id=source['handoff_id']))
+    assert result['timeline'] == 'independent'
+    assert len(result['rows']) == 2
+    text = json.dumps(result,ensure_ascii=False)
+    assert '玩家台词' in text and '故事中的回答' in text
+    assert 'secret' not in text and '未保存的秘密' not in text
+    assert result['rows'][0]['at'] == '2026-10-31'
+    assert active.read_bytes() == before and temporary.exists()
+
+
+def test_record_preview_pagination_budget_and_daily_rejection(fixture):
+    state, source, target = independent_fixture(fixture)
+    active=target / 'active.json'
+    active.write_text(json.dumps([dict(role='user',content=f'第{i}条') for i in range(42)]),encoding='utf-8')
+    first=handoff.preview_records(state,dict(handoff_id=source['handoff_id']))
+    second=handoff.preview_records(state,dict(handoff_id=source['handoff_id'],offset=first['next_offset']))
+    assert first['total']==42 and len(first['rows'])==40 and len(second['rows'])==2
+    assert not {row['id'] for row in first['rows']} & {row['id'] for row in second['rows']}
+    active.write_text(json.dumps([dict(role='user',content='长'*9000)]),encoding='utf-8')
+    bounded=handoff.preview_records(state,dict(handoff_id=source['handoff_id']))
+    assert sum(len(row['text']) for row in bounded['rows'])==6000 and bounded['rows'][0]['truncated']
+    with pytest.raises(ValueError):
+        handoff.preview_records(state,dict(handoff_id=source['handoff_id'],offset=-1))
+    manifest=json.loads((target / handoff.MANIFEST).read_text(encoding='utf-8'))
+    manifest['mode']='daily'
+    (target / handoff.MANIFEST).write_text(json.dumps(manifest),encoding='utf-8')
+    with pytest.raises(ValueError,match='独立剧情'):
+        handoff.preview_records(state,dict(handoff_id=source['handoff_id']))
