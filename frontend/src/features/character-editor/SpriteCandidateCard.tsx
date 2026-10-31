@@ -5,6 +5,7 @@ import { fileUrl } from "../../entities/files/repository";
 import { useI18n } from "../../shared/i18n";
 import { AsyncButton, IconButton, ImageAssetThumb, TextArea, TextInput, VisualMedia } from "../../shared/ui";
 import { SpriteVideoFramePicker } from "./SpriteVideoFramePicker";
+import { SpriteMattingStatus } from "./SpriteMattingStatus";
 import type { SpriteCandidate, useSpriteGeneration } from "./useSpriteGeneration";
 
 interface Props {
@@ -109,6 +110,7 @@ export function SpriteCandidateCard({
           {t(animation ? "spriteAnimation.verified" : "spriteGeneration.backgroundRemoved")}
         </p>
       ) : null}
+      {animation ? <SpriteMattingStatus matting={item.result?.matting} /> : null}
       {item.result?.backgroundRemovalError ? (
         <p className="sprite-generation__error" role="alert">
           {t(animation ? "spriteAnimation.failed" : "spriteGeneration.backgroundRemovalFailed", {
@@ -170,20 +172,23 @@ export function SpriteCandidateCard({
             {t("spriteGeneration.replace")}
           </AsyncButton>
         ) : null}
-        {!animation && item.result && !stale && onAnimate ? (
+        {item.result && !stale && onAnimate ? (
           <AsyncButton disabled={Boolean(busy)} onClick={() => onAnimate(item)}>
-            {t("spriteAnimation.fromStatic")}
+            {t(animation ? "spriteAnimation.fromFirstFrame" : "spriteAnimation.fromStatic")}
           </AsyncButton>
         ) : null}
-        {item.result && !item.result.backgroundRemoved ? (
+        {item.result && (!item.result.backgroundRemoved || (animation && item.result.videoPath)) ? (
           <AsyncButton
             disabled={Boolean(busy) || stale}
             loading={busy === "cutout" && activeId === item.id}
+            title={animation ? t("spriteMatting.retryHint") : undefined}
             onClick={() => void generator.cutout(item)}
           >
             {t(
               animation
-                ? "spriteAnimation.retryMatting"
+                ? item.result.alphaVerified
+                  ? "spriteMatting.refineAgain"
+                  : "spriteAnimation.retryMatting"
                 : item.result.backgroundRemovalError
                   ? "spriteGeneration.retryCutout"
                   : "spriteGeneration.cutout",

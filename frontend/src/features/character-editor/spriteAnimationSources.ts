@@ -1,5 +1,4 @@
 import { tagContents } from "../../shared/assets/assetText";
-import { isVideoMedia } from "../../shared/assets/visualMedia";
 import type { Character } from "../../shared/platform/types";
 import type { SpriteCandidate } from "./useSpriteGeneration";
 
@@ -15,7 +14,7 @@ export function spriteAnimationSources(character: Character, candidates: SpriteC
   const tags = tagContents(character.emotion_tags, character.sprites.length);
   return [
     ...candidates.flatMap((item, index) =>
-      !item.animationInput && item.result && item.result.prompt === item.prompt && !isVideoMedia(item.result.path)
+      item.result && item.result.prompt === item.prompt
         ? [
             {
               id: `generated:${item.id}`,
@@ -28,7 +27,7 @@ export function spriteAnimationSources(character: Character, candidates: SpriteC
         : [],
     ),
     ...character.sprites.flatMap((sprite, index) =>
-      sprite.path && !isVideoMedia(sprite.path)
+      sprite.path
         ? [
             {
               id: `existing:${index}:${sprite.path}`,

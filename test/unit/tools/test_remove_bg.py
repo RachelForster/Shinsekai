@@ -34,6 +34,8 @@ def test_cutout_preserves_size_alpha_and_source_and_reuses_cpu_model(tmp_path, r
     rembg.new_session.assert_called_once_with(
         "isnet-anime", providers=["CPUExecutionProvider"]
     )
+    assert rembg.remove.call_args.kwargs["alpha_matting"] is True
+    assert rembg.remove.call_args.kwargs["alpha_matting_erode_size"] == 3
     with Image.open(source) as image:
         assert image.mode == "RGB"
 

@@ -165,6 +165,11 @@ def render_sprite(
     from ai.t2i.t2i_manager import T2IAdapterFactory, T2IManager
 
     pair = prompt_pair(payload)
+    matting = None
+    if require_h3_video:
+        for key in ("autoScreen", "alphaMatting"):
+            if key in payload and not isinstance(payload[key], bool):
+                raise ValueError(f"{key} 必须为布尔值")
     api = config_store.config.api_config
     provider = str(api.t2i_provider or "").strip()
     if not provider:
@@ -244,12 +249,28 @@ def render_sprite(
                 adapter.workflow_template = stabilize_idle_workflow(
                     adapter.workflow_template
                 )
+            from core.media.chroma_key import choose_screen_color
+
+            matting = (
+                choose_screen_color(
+                    [reference, *([last_reference] if last_reference else [])]
+                )
+                if payload.get("autoScreen", True)
+                else {"method": "ai"}
+            )
+            matting["alphaMatting"] = payload.get("alphaMatting", True)
         options = {"seed": secrets.randbelow(2**53)}
         if reference:
             options["reference_image_path"] = str(reference)
         if last_reference:
             options["last_reference_image_path"] = str(last_reference)
-        result = manager.t2i(pair["prompt"], file_path=str(output), **options)
+        render_prompt = pair["prompt"]
+        if matting and matting["method"] == "chroma":
+            from core.media.chroma_key import screen_prompt
+
+            options["reference_background_color"] = tuple(matting["screenColor"])
+            render_prompt += screen_prompt(matting)
+        result = manager.t2i(render_prompt, file_path=str(output), **options)
         if not result or not output.is_file():
             raise RuntimeError("T2I 未返回图片，请检查服务与工作流输出节点")
         try:
@@ -272,11 +293,47 @@ def render_sprite(
         return {
             **pair,
             **media,
+            **({"matting": matting} if matting else {}),
             "path": output.as_posix(),
             "name": str(payload.get("name") or ""),
         }
     finally:
         manager.shutdown()
+
+
+def boundary_frame(source: Path, output: Path, *, last: bool):
+    """Preserve alpha when extracting the final/first frame of file sprites."""
+    from PIL import Image, ImageOps
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    if source.suffix.lower() not in {".mp4", ".webm", ".mov", ".mkv", ".avi", ".m4v"}:
+        with Image.open(source) as image:
+            ImageOps.exif_transpose(image).convert("RGBA").save(output)
+        return output
+    import av
+
+    with av.open(str(source)) as container:
+        stream = next(iter(container.streams.video), None)
+        if stream is None:
+            raise ValueError("立绘视频没有画面")
+        decoder = None
+        if stream.metadata.get("alpha_mode") == "1":
+            decoder = av.CodecContext.create("libvpx-vp9", "r")
+        image = None
+        count = 0
+        for packet in container.demux(stream):
+            for frame in decoder.decode(packet) if decoder else packet.decode():
+                count += 1
+                if count > 720:
+                    raise ValueError("参考动态立绘过长，请使用短循环视频")
+                image = Image.fromarray(frame.to_ndarray(format="rgba"))
+                if not last:
+                    image.save(output)
+                    return output
+        if image is None:
+            raise ValueError("无法读取立绘视频画面")
+        image.save(output)
+    return output
 
 
 def capture_sprite_frame(

@@ -1222,9 +1222,13 @@ export function CharacterEditorPage() {
             );
             setDraft((current) => {
               const currentSpritesByPath = new Map(current.sprites.map((sprite) => [sprite.path, sprite]));
-              if (replacedIndex !== undefined && current.sprites[replacedIndex] && character.sprites[replacedIndex]) {
-                const path = character.sprites[replacedIndex].path;
-                currentSpritesByPath.set(path, { ...current.sprites[replacedIndex], path });
+              const replacedIndices =
+                replacedIndex === undefined ? [] : Array.isArray(replacedIndex) ? replacedIndex : [replacedIndex];
+              for (const index of replacedIndices) {
+                if (current.sprites[index] && character.sprites[index]) {
+                  const path = character.sprites[index].path;
+                  currentSpritesByPath.set(path, { ...current.sprites[index], path });
+                }
               }
               const currentTags = tagContents(current.emotion_tags, current.sprites.length);
               const tagsByPath = new Map(current.sprites.map((sprite, index) => [sprite.path, currentTags[index]]));

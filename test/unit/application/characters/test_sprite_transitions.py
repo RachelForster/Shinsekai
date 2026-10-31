@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from application.characters import transition_sprites as generation
 from application.chat.presentation.character_visual import resolve_character_visual
@@ -14,6 +14,7 @@ from application.runtime.tasks import _create_task, _update_task
 from config.character_manager import CharacterManager
 from config.schema import Character, SpriteTransition
 from core.sprite.transitions import sprite_fingerprint, valid_transitions
+from application.characters.generate_sprites import boundary_frame
 from frontend_bridge_core import sprite_generation, sprite_transitions as bridge
 
 
@@ -86,8 +87,12 @@ def test_render_forces_twenty_two_frames_distinct_anchors_and_coordinated_hair(
         ).read_text()
     )
     first, last = tmp_path / "first.png", tmp_path / "last.png"
-    Image.new("RGBA", (128, 192)).save(first)
-    Image.new("RGBA", (64, 96)).save(last)
+    for path, size, color in ((first, (128, 192), "red"), (last, (64, 96), "blue")):
+        anchor = Image.new("RGBA", size)
+        ImageDraw.Draw(anchor).rectangle(
+            (16, 16, size[0] - 16, size[1] - 16), fill=color
+        )
+        anchor.save(path)
     video = tmp_path / "source.mp4"
     video.write_bytes(b"video")
     adapter = Mock(
@@ -128,6 +133,17 @@ def test_render_forces_twenty_two_frames_distinct_anchors_and_coordinated_hair(
     assert adapter.generate_image.call_args.kwargs["last_reference_image_path"] == str(
         last
     )
+    assert adapter.generate_image.call_args.kwargs["reference_background_color"] == (
+        0,
+        255,
+        0,
+    )
+    assert (
+        "uniform solid green chroma-key background"
+        in adapter.generate_image.call_args.kwargs["prompt"]
+    )
+    assert result["matting"]["screenColor"] == [0, 255, 0]
+    assert result["matting"]["alphaMatting"] is True
     assert not any(
         node["class_type"] == "MiniMaxH3AddGuide" for node in workflow.values()
     )
@@ -342,12 +358,70 @@ def test_video_endpoints_preserve_alpha_and_first_last_direction(tmp_path):
     source = tmp_path / "alpha.webm"
     alpha_clip(source)
     for last, channel in [(False, 0), (True, 2)]:
-        output = generation.boundary_frame(source, tmp_path / f"{last}.png", last=last)
+        output = boundary_frame(source, tmp_path / f"{last}.png", last=last)
         with Image.open(output) as image:
             assert image.mode == "RGBA"
             assert image.getpixel((0, 0))[3] == 0
             assert image.getpixel((16, 16))[3] == 255
             assert image.getpixel((16, 16))[channel] > 200
+
+
+@pytest.mark.parametrize("transparent", [False, True])
+def test_animation_from_saved_video_uses_first_frame_and_preserves_alpha(
+    state, tmp_path, monkeypatch, transparent
+):
+    from core.media.chroma_key import choose_screen_color
+
+    app, character, _ = state
+    source = tmp_path / ("saved-alpha.webm" if transparent else "saved.mp4")
+    if transparent:
+        alpha_clip(source)
+    else:
+        import av
+
+        with av.open(str(source), "w") as container:
+            stream = container.add_stream("mpeg4", rate=24)
+            stream.width = stream.height = 32
+            stream.pix_fmt = "yuv420p"
+            for color in ["red", "green", "blue"]:
+                for packet in stream.encode(
+                    av.VideoFrame.from_image(Image.new("RGB", (32, 32), color))
+                ):
+                    container.mux(packet)
+            for packet in stream.encode():
+                container.mux(packet)
+    character.sprites.append({"path": source.as_posix()})
+    before = source.read_bytes()
+    monkeypatch.setattr(
+        sprite_generation, "_local_file_access_roots", lambda _: (tmp_path,)
+    )
+
+    def render(config, payload, output, reference):
+        assert reference.parent == output.parent
+        assert reference.name.endswith("-reference.png")
+        with Image.open(reference) as image:
+            assert image.mode == "RGBA"
+            red, _, blue, alpha = image.getpixel((16, 16))
+            assert red > 200 and blue < 20 and alpha == 255
+            assert image.getpixel((0, 0))[3] == (0 if transparent else 255)
+        matting = choose_screen_color([reference])
+        assert matting["method"] == ("chroma" if transparent else "ai")
+        return {"name": "Mika", "tagging": payload["tagging"], "matting": matting}
+
+    renderer = Mock(side_effect=render)
+    monkeypatch.setattr(sprite_generation, "render_animation", renderer)
+    monkeypatch.setattr(
+        sprite_generation, "_finish_animation", lambda _, __, result: result
+    )
+    task = _create_task(app, kind="character-sprite-animate", title="regenerate")
+    result = sprite_generation.run_sprite_animation(
+        app,
+        task["id"],
+        {"name": "Mika", "referenceImage": source.as_posix(), "tagging": "微笑，挥手"},
+    )
+    assert result["tagging"] == "微笑，挥手"
+    renderer.assert_called_once()
+    assert source.read_bytes() == before
 
 
 @pytest.mark.parametrize("frames", [5, 22])

@@ -9,6 +9,7 @@ from application.characters.generate_sprites import (
     render_sprite,
     capture_sprite_frame,
     remove_sprite_background,
+    boundary_frame,
 )
 from application.runtime.state import _jsonify
 from application.runtime.tasks import _update_task
@@ -39,18 +40,24 @@ def run_sprite_animation(state, task_id, payload):
     if not state.config_manager.get_character_by_name(name):
         raise ValueError("请先保存角色再生成动态立绘")
     if not payload.get("referenceImage"):
-        raise ValueError("请先选择静态参考立绘")
-    from PIL import Image
-
+        raise ValueError("请先选择参考立绘或视频")
     reference = safe_existing_file_path(
         str(payload["referenceImage"]),
         roots=_local_file_access_roots(state),
         field="referenceImage",
     )
-    with Image.open(reference) as image:
-        image.verify()
     output = (
         Path(state.project_root_dir) / "cache" / "sprite_generation" / f"{task_id}.png"
+    )
+    _update_task(
+        state,
+        task_id,
+        message="正在读取参考立绘；动态立绘将取首帧并保留透明通道。",
+        phase="reference",
+        progress=0.05,
+    )
+    reference = boundary_frame(
+        reference, output.with_name(f"{task_id}-reference.png"), last=False
     )
     _update_task(
         state,
@@ -98,7 +105,7 @@ def _finish_animation(state, task_id, source):
         task_id,
         phase="video-matting",
         progress=0.55,
-        message="正在逐帧移除背景，完成后将校验真实 Alpha 通道。",
+        message="正在逐帧抠图并细化 Alpha 边缘，完成后将校验透明视频。",
     )
     try:
         metadata = make_transparent_animation(
@@ -106,6 +113,7 @@ def _finish_animation(state, task_id, source):
             output,
             progress=progress,
             playback_speed=source.get("playbackSpeed", 0.75),
+            matting=source.get("matting"),
         )
         result.update(metadata, path=output.as_posix(), backgroundRemoved=True)
     except Exception as exc:
@@ -285,11 +293,27 @@ def import_generated_sprites(state, payload):
         if character is None:
             raise ValueError("找不到角色，请先保存角色")
         tasks, tags, files, seen = [], [], [], set()
+        replacements = []
+        replace_items = any(
+            isinstance(item, dict) and "replace" in item for item in items
+        )
+        if replace_items and replacement is not None:
+            raise ValueError("请使用一种替换方式提交结果")
         for item in items:
             if not isinstance(item, dict):
                 raise ValueError("无效的立绘结果")
+            target = item.get("replace") if replace_items else replacement
+            if replace_items and (
+                not isinstance(target, dict)
+                or isinstance(target.get("index"), bool)
+                or not isinstance(target.get("index"), int)
+                or not isinstance(target.get("path"), str)
+            ):
+                raise ValueError("每张生成结果需要一个有效的原立绘")
             task_id = str(item.get("taskId") or "")
             if task_id in seen:
+                if replace_items:
+                    raise ValueError("同一生成结果不能重复替换")
                 continue
             seen.add(task_id)
             task = _generated_task(state, task_id, name)
@@ -314,20 +338,15 @@ def import_generated_sprites(state, payload):
             tasks.append(task)
             files.append(SimpleNamespace(name=str(path)))
             tags.append(pair["tagging"])
+            if target is not None:
+                replacements.append((target["index"], target["path"]))
         if files:
             state.character_manager.upload_sprites(
                 name,
                 files,
                 character.emotion_tags,
                 sprite_tags=tags,
-                **(
-                    {
-                        "replace_index": replacement["index"],
-                        "expected_path": replacement["path"],
-                    }
-                    if replacement is not None
-                    else {}
-                ),
+                **({"replacements": replacements} if replacements else {}),
             )
             for task in tasks:
                 task["result"] = {**task["result"], "imported": True}

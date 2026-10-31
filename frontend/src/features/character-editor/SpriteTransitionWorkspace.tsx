@@ -13,6 +13,7 @@ import { AsyncButton, Button, EmptyState, NumberInput, Switch, TaskProgress, Vis
 import { SpriteAnimationSourcePicker } from "./SpriteAnimationSourcePicker";
 import { SpriteGenerationSetupGuide } from "./SpriteGenerationSetupGuide";
 import { SpriteTransitionRecommendations } from "./SpriteTransitionRecommendations";
+import { SpriteMattingStatus } from "./SpriteMattingStatus";
 import { transitionPairs, type SpriteTransitionController } from "./useSpriteTransitions";
 
 export function SpriteTransitionWorkspace({
@@ -272,15 +273,20 @@ export function SpriteTransitionWorkspace({
                       { frames: item.result?.frameCount ?? 5 },
                     )}
                   </p>
+                  <SpriteMattingStatus matting={item.result?.matting} />
                   {item.error || item.result?.backgroundRemovalError ? (
                     <p role="alert" className="sprite-generation__error">
                       {item.error || item.result?.backgroundRemovalError}
                     </p>
                   ) : null}
                   <div className="sprite-generation__toolbar">
-                    {item.result && !item.result.alphaVerified ? (
-                      <Button disabled={busy} onClick={() => void controller.generate([item], false, true)}>
-                        {t("spriteAnimation.retryMatting")}
+                    {item.result && (!item.result.alphaVerified || (item.result.videoPath && item.result.taskId)) ? (
+                      <Button
+                        disabled={busy}
+                        title={t("spriteMatting.retryHint")}
+                        onClick={() => void controller.generate([item], false, true)}
+                      >
+                        {t(item.result.alphaVerified ? "spriteMatting.refineAgain" : "spriteAnimation.retryMatting")}
                       </Button>
                     ) : null}
                     <Button disabled={busy} onClick={() => void controller.generate([item], true)}>

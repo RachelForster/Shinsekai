@@ -155,6 +155,7 @@ export function useSpriteTransitions(character: Character, name: string, onSaved
     setError("");
     const pending = pairs.filter(
       (pair) =>
+        retryMatting ||
         regenerate ||
         pair.saved ||
         !pair.result?.alphaVerified ||

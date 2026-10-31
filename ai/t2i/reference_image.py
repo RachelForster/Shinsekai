@@ -45,15 +45,17 @@ def reference_canvas_size(path: str | Path, width: int, height: int) -> tuple[in
     return min(candidates, key=lambda size: (error(size), -size[0] * size[1]))
 
 
-def fit_reference_to_canvas(path: str | Path, width: int, height: int) -> BytesIO:
-    """Return a PNG with unchanged proportions and an opaque, neutral background."""
+def fit_reference_to_canvas(
+    path: str | Path, width: int, height: int, *, background="white"
+) -> BytesIO:
+    """Return an opaque PNG, preserving the original proportions and alpha edges."""
     from PIL import Image, ImageOps
 
     _validate_canvas(width, height)
     with Image.open(path) as source:
         oriented = ImageOps.exif_transpose(source).convert("RGBA")
         fitted = ImageOps.contain(oriented, (width, height), Image.Resampling.LANCZOS)
-        canvas = Image.new("RGB", (width, height), "white")
+        canvas = Image.new("RGB", (width, height), background)
         offset = ((width - fitted.width) // 2, (height - fitted.height) // 2)
         canvas.paste(fitted, offset, fitted.getchannel("A"))
     result = BytesIO()

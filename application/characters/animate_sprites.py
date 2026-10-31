@@ -113,17 +113,36 @@ def render_animation(config_store, payload, output, reference):
     }
 
 
-def make_transparent_animation(video, output, *, progress, playback_speed=0.75):
+def make_transparent_animation(
+    video, output, *, progress, playback_speed=0.75, matting=None
+):
+    from functools import partial
+
     from core.media.alpha_video import remove_video_background
     from tools.remove_bg import remove_background_image
 
-    return remove_video_background(
+    settings = matting or {"method": "ai", "alphaMatting": True}
+    alpha_matting = settings.get("alphaMatting", True)
+    if not isinstance(alpha_matting, bool):
+        raise ValueError("alphaMatting 必须为布尔值")
+    if settings.get("method") == "chroma":
+        from core.media.chroma_key import remove_screen_background
+
+        matte = partial(
+            remove_screen_background, settings=settings, alpha_matting=alpha_matting
+        )
+    elif settings.get("method") == "ai":
+        matte = partial(remove_background_image, alpha_matting=alpha_matting)
+    else:
+        raise ValueError("不支持的抠图方式，请重新生成")
+    result = remove_video_background(
         video,
         output,
-        matte=remove_background_image,
+        matte=matte,
         progress=progress,
         playback_speed=playback_speed,
     )
+    return {**result, "matting": settings}
 
 
 def verify_transparent_animation(path):

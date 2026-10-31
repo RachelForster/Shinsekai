@@ -17,7 +17,7 @@ def _anime_session():
     return new_session("isnet-anime", providers=["CPUExecutionProvider"])
 
 
-def remove_background_image(image):
+def remove_background_image(image, *, alpha_matting=True):
     """Reuse the CPU session for images and sequential video frames."""
     try:
         from rembg import remove
@@ -27,7 +27,14 @@ def remove_background_image(image):
         ) from exc
 
     with _inference_lock:
-        return remove(image.convert("RGBA"), session=_anime_session()).convert("RGBA")
+        return remove(
+            image.convert("RGBA"),
+            session=_anime_session(),
+            alpha_matting=alpha_matting,
+            alpha_matting_foreground_threshold=240,
+            alpha_matting_background_threshold=10,
+            alpha_matting_erode_size=3,
+        ).convert("RGBA")
 
 
 def ai_remove_background(input_path, output_path):

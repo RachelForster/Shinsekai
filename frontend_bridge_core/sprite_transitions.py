@@ -3,13 +3,13 @@
 from pathlib import Path
 
 from application.characters.transition_sprites import (
-    boundary_frame,
     render_transition,
     transition_identity,
     saved_transitions,
     TRANSITION_FRAME_COUNT,
 )
 from application.characters.animate_sprites import verify_transparent_animation
+from application.characters.generate_sprites import boundary_frame
 from application.characters.transition_recommendations import (
     analyze_transition_recommendations,
 )

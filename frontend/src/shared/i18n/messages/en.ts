@@ -1,6 +1,13 @@
 import type { MessageKey } from "../messages";
 
 export const enMessages: Record<MessageKey, string> = {
+  "spriteMatting.chroma": "Automatic screen keying",
+  "spriteMatting.ai": "AI background removal",
+  "spriteMatting.alpha": "Refined alpha edges",
+  "spriteMatting.opaque": "Opaque reference: using AI mode",
+  "spriteMatting.palette": "Screen color conflict: using AI mode",
+  "spriteMatting.refineAgain": "Redo matting",
+  "spriteMatting.retryHint": "Reuse the original video to refine edges. Changing the screen color requires a redraw.",
   "spriteTransition.analyze": "Analyze recent chats",
   "spriteTransition.saveCollection":
     "The sprite collection has unsaved changes. Save the character before analyzing chats.",
@@ -51,7 +58,7 @@ export const enMessages: Record<MessageKey, string> = {
   "spriteTransition.directionHint": "A→B and B→A are separate clips. More sprites require more clips; try two first.",
   "spriteTransition.generate": "Generate / resume {count} clips",
   "spriteTransition.reuseHint":
-    "Locked camera and framing, with automatic matting. Reuse saved clips or redraw individual pairs.",
+    "Transparent references use an automatic screen color and refined alpha edges. Reuse, redraw or redo matting.",
   "spriteTransition.playbackTitle": "Playback after saving",
   "spriteTransition.playbackHint":
     "A matching transition plays once before the target sprite. Animated targets keep looping. Missing clips switch directly.",
@@ -68,6 +75,17 @@ export const enMessages: Record<MessageKey, string> = {
   "spriteTransition.saveHint": "Stored on the character, separate from sprite indices and tags.",
   "spriteTransition.save": "Save {count} transitions",
   "spriteGeneration.replace": "Replace original sprite",
+  "spriteGeneration.previewBackground": "Color backdrop",
+  "spriteGeneration.previewColor": "Preview background color",
+  "spriteGeneration.previewBackgroundHint":
+    "Preview only. Click the swatch to change color; generated and saved videos are unaffected.",
+  "spriteGeneration.replaceSelected": "Replace selected originals ({count})",
+  "spriteGeneration.replaceSelectedHint":
+    "Add as new sprites, or replace their sources while keeping positions and voice settings.",
+  "spriteGeneration.replaceMissing":
+    "Some results have no original. Choose their targets individually, or add them to the collection.",
+  "spriteGeneration.replaceChanged": "An original changed. Choose its replacement target individually.",
+  "spriteGeneration.replaceDuplicate": "Select only one result per original to replace.",
   "spriteGeneration.replaceHint":
     "Replace the chosen sprite and its tags with this result. Keep its position, voice settings and original file.",
   "spriteGeneration.replaceTarget": "Sprite to replace",
@@ -92,16 +110,18 @@ export const enMessages: Record<MessageKey, string> = {
     "Choose sources on the right. Presets support batches; select exactly one image to write a single prompt.",
   "spriteAnimation.sourceMode": "Source sprite selection",
   "spriteAnimation.library": "Sprite library",
-  "spriteAnimation.uploadSingle": "Upload one image",
+  "spriteAnimation.uploadSingle": "Choose a file",
   "spriteAnimation.pickSources": "Choose source sprites",
+  "spriteAnimation.sourceImage": "Image",
+  "spriteAnimation.sourceAnimated": "Animated",
   "spriteAnimation.selectSource": "Select {name}",
   "spriteAnimation.generatedSource": "New sprite {n}",
   "spriteAnimation.selectAllSources": "Select all sources",
   "spriteAnimation.selectFirst": "Select first {count}",
   "spriteAnimation.clearSources": "Clear selection",
-  "spriteAnimation.noSources": "No static sprites yet. Generate one in the static tab, or upload an image.",
+  "spriteAnimation.noSources": "No sprites yet. Generate a static sprite, or choose an image or video file.",
   "spriteAnimation.sourceHint":
-    "Each image keeps its own tags and shares the same motion settings. Videos are excluded.",
+    "Animated sprites use their first frame. Each source keeps its tags and shares the motion settings.",
   "spriteAnimation.untaggedSource": "Untagged · use default tags",
   "spriteAnimation.defaultTagging": "Default tags for untagged sprites",
   "spriteAnimation.sourcesSelected": "{count} source sprites selected",
@@ -111,12 +131,13 @@ export const enMessages: Record<MessageKey, string> = {
   "spriteAnimation.generatePending": "Continue pending animations ({count})",
   "spriteAnimation.queueProgress": "Queue: {current} of {total}",
   "spriteAnimation.needsMatting": "Needs transparency processing",
-  "spriteAnimation.outputHint": "Fixed camera & framing · transparent WebM",
+  "spriteAnimation.outputHint":
+    "Automatic screen color for transparent references · refined alpha edges · transparent WebM",
   "spriteAnimation.mode": "Sprite generation mode",
   "spriteAnimation.staticTab": "Static sprites",
   "spriteAnimation.animationTab": "Animated sprites",
   "spriteAnimation.settings": "Source sprite & idle motion",
-  "spriteAnimation.reference": "Source sprite (required)",
+  "spriteAnimation.reference": "Source image or video (required)",
   "spriteAnimation.breathing": "Gentle body sway",
   "spriteAnimation.blinking": "Natural blinking",
   "spriteAnimation.breeze": "Gentle breeze",
@@ -136,7 +157,7 @@ export const enMessages: Record<MessageKey, string> = {
   "spriteAnimation.alphaHint":
     "H3 video → CPU matting for every frame → alpha verification → transparent WebM. Matting is required; an opaque MP4 cannot be saved as a transparent result.",
   "spriteAnimation.intro":
-    "Add subtle idle motion to {name}’s sprite. Review the transparent video, then save it with its tags.",
+    "Add subtle idle motion to {name}’s sprite, or regenerate from an animation’s first frame. Review and save with its tags.",
   "spriteAnimation.stepSource": "Choose source sprite",
   "spriteAnimation.stepMotion": "H3 generation & matting",
   "spriteAnimation.stepSave": "Verify alpha & save",
@@ -150,6 +171,7 @@ export const enMessages: Record<MessageKey, string> = {
   "spriteAnimation.viewPrompt": "View / edit motion prompt",
   "spriteAnimation.retryMatting": "Retry transparency processing",
   "spriteAnimation.fromStatic": "Make animated sprite",
+  "spriteAnimation.fromFirstFrame": "Regenerate from first frame",
   "spriteGeneration.stepsLabel": "Sprite generation steps",
   "spriteGeneration.stepPlan": "Set up & plan",
   "spriteGeneration.stepGenerate": "Generate & review",

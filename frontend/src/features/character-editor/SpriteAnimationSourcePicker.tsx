@@ -1,4 +1,7 @@
+import { Film, Image as ImageIcon } from "lucide-react";
+
 import { fileUrl } from "../../entities/files/repository";
+import { isVideoMedia } from "../../shared/assets/visualMedia";
 import { useI18n } from "../../shared/i18n";
 import { Button, VisualMedia } from "../../shared/ui";
 import type { SpriteAnimationSource } from "./spriteAnimationSources";
@@ -64,6 +67,7 @@ export function SpriteAnimationSourcePicker({
         {sources.map((source) => {
           const checked = selectedSources.includes(source.id);
           const label = sourceName(source);
+          const video = isVideoMedia(source.referenceImage);
           return (
             <label
               key={source.id}
@@ -84,6 +88,10 @@ export function SpriteAnimationSourcePicker({
               />
               <div className="sprite-generation__source-image">
                 <VisualMedia alt="" autoPlay={false} loading="lazy" src={fileUrl(source.referenceImage)} />
+                <span className="sprite-generation__source-type">
+                  {video ? <Film size={12} aria-hidden /> : <ImageIcon size={12} aria-hidden />}
+                  {t(video ? "spriteAnimation.sourceAnimated" : "spriteAnimation.sourceImage")}
+                </span>
               </div>
               <strong>{label}</strong>
               <span>{source.tagging || untaggedLabel || t("spriteAnimation.untaggedSource")}</span>

@@ -1449,6 +1449,14 @@ export interface GeneratedCharacterSprite extends SpritePromptPair {
   frameCount?: number;
   duration?: number;
   playbackSpeed?: number;
+  matting?: SpriteMatting;
+}
+
+export interface SpriteMatting {
+  method: "ai" | "chroma";
+  alphaMatting: boolean;
+  screenColor?: [number, number, number];
+  reason?: string;
 }
 
 export interface CharacterSpriteAnimationInput {
@@ -1514,6 +1522,8 @@ export interface SpriteTransitionAnalysis {
 }
 
 export interface GeneratedSpriteTransition extends SpriteTransitionInput {
+  videoPath?: string;
+  matting?: SpriteMatting;
   requestedFrames?: number;
   taskId: string;
   path: string;
@@ -1804,7 +1814,7 @@ export interface ShinsekaiPlatform {
     saveSpriteTransitions: (input: { name: string; items: { taskId: string }[] }) => Promise<Character>;
     importGeneratedSprites: (input: {
       name: string;
-      items: { taskId: string; tagging: string }[];
+      items: { taskId: string; tagging: string; replace?: { index: number; path: string } }[];
       replace?: { index: number; path: string };
     }) => Promise<Character>;
     captureSpriteFrame: (

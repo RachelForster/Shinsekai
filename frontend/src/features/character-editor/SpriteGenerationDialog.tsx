@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import { Check, ImagePlus, Plus, Sparkles } from "lucide-react";
 
 import { fileUrl } from "../../entities/files/repository";
@@ -10,6 +10,7 @@ import {
   AlertDialog,
   AsyncButton,
   Button,
+  ColorInput,
   Dialog,
   EmptyState,
   FilePicker,
@@ -36,7 +37,7 @@ interface Props {
   character: Character;
   name: string;
   onClose: () => void;
-  onImported: (character: Character, replacedIndex?: number) => void;
+  onImported: (character: Character, replacedIndex?: number | number[]) => void;
 }
 
 export function SpriteGenerationDialog({ character, name, onClose, onImported }: Props) {
@@ -65,8 +66,14 @@ export function SpriteGenerationDialog({ character, name, onClose, onImported }:
   const [replacementCandidate, setReplacementCandidate] = useState<SpriteCandidate | null>(null);
   const [replacementIndex, setReplacementIndex] = useState("");
   const [guideOpen, setGuideOpen] = useState(true);
+  const [coloredPreview, setColoredPreview] = useState(false);
+  const [previewColor, setPreviewColor] = useState("#5577aa");
+  const previewProps = {
+    "data-sprite-preview-background": coloredPreview || undefined,
+    style: { "--sprite-preview-color": previewColor } as CSSProperties,
+  };
   const workspaceBodyRef = useRef<HTMLDivElement>(null);
-  const generator = useSpriteGeneration(name, character.character_setting, onImported);
+  const generator = useSpriteGeneration(name, character.character_setting, onImported, character.sprites);
   const transitions = useSpriteTransitions(character, name, onImported);
   const busy = generator.busy || transitions.busy;
   const animationSources = spriteAnimationSources(character, generator.items);
@@ -83,10 +90,17 @@ export function SpriteGenerationDialog({ character, name, onClose, onImported }:
         ? [animationInput]
         : [];
   const items = generator.items.filter((item) => Boolean(item.animationInput) === (mode === "animation"));
-  const selected =
-    mode === "transition"
-      ? transitions.selected
-      : generator.selected.filter((item) => Boolean(item.animationInput) === (mode === "animation"));
+  const selectedSprites = generator.selected.filter((item) => Boolean(item.animationInput) === (mode === "animation"));
+  const selected = mode === "transition" ? transitions.selected : selectedSprites;
+  const originals = selectedSprites.flatMap((item) => (item.original ? [item.original] : []));
+  const replacementIssue =
+    originals.length !== selectedSprites.length
+      ? "spriteGeneration.replaceMissing"
+      : originals.some((target) => character.sprites[target.index]?.path !== target.path)
+        ? "spriteGeneration.replaceChanged"
+        : new Set(originals.map((target) => target.index)).size !== originals.length
+          ? "spriteGeneration.replaceDuplicate"
+          : undefined;
   const hasItems = items.length > 0;
   useEffect(() => {
     setGuideOpen(!hasItems);
@@ -149,6 +163,20 @@ export function SpriteGenerationDialog({ character, name, onClose, onImported }:
         onClose={close}
         open
         title={t("spriteGeneration.action")}
+        headerActions={
+          <div className="sprite-generation__preview-background" title={t("spriteGeneration.previewBackgroundHint")}>
+            <Switch checked={coloredPreview} onChange={(event) => setColoredPreview(event.target.checked)}>
+              {t("spriteGeneration.previewBackground")}
+            </Switch>
+            {coloredPreview ? (
+              <ColorInput
+                aria-label={t("spriteGeneration.previewColor")}
+                value={previewColor}
+                onChange={(event) => setPreviewColor(event.target.value)}
+              />
+            ) : null}
+          </div>
+        }
         footer={
           <>
             <div className="sprite-generation__selection" role="status">
@@ -157,11 +185,29 @@ export function SpriteGenerationDialog({ character, name, onClose, onImported }:
                   count: selected.length,
                 })}
               </strong>
-              <span>{t(mode === "transition" ? "spriteTransition.saveHint" : "spriteGeneration.saveHint")}</span>
+              <span>
+                {t(
+                  mode === "transition"
+                    ? "spriteTransition.saveHint"
+                    : selected.length
+                      ? (replacementIssue ?? "spriteGeneration.replaceSelectedHint")
+                      : "spriteGeneration.saveHint",
+                )}
+              </span>
             </div>
             <Button disabled={Boolean(busy)} onClick={close}>
               {t("common.close")}
             </Button>
+            {mode !== "transition" ? (
+              <AsyncButton
+                disabled={Boolean(busy) || !selectedSprites.length || Boolean(replacementIssue)}
+                loading={busy === "replace"}
+                title={t(replacementIssue ?? "spriteGeneration.replaceSelectedHint")}
+                onClick={() => void generator.replaceSelected(selectedSprites)}
+              >
+                {t("spriteGeneration.replaceSelected", { count: selectedSprites.length })}
+              </AsyncButton>
+            ) : null}
             <AsyncButton
               disabled={Boolean(busy) || !selected.length}
               loading={busy === "import" || busy === "transition-save"}
@@ -224,6 +270,7 @@ export function SpriteGenerationDialog({ character, name, onClose, onImported }:
             id={`${tabsId}-panel-transition`}
             aria-labelledby={`${tabsId}-transition`}
             className="sprite-transitions__panel"
+            {...previewProps}
           >
             <SpriteTransitionWorkspace character={character} controller={transitions} />
           </div>
@@ -233,6 +280,7 @@ export function SpriteGenerationDialog({ character, name, onClose, onImported }:
             role="tabpanel"
             id={`${tabsId}-panel-${mode}`}
             aria-labelledby={`${tabsId}-${mode}`}
+            {...previewProps}
           >
             <aside className="sprite-generation__settings" aria-label={t("spriteGeneration.options")}>
               {mode === "animation" ? (
@@ -490,8 +538,12 @@ export function SpriteGenerationDialog({ character, name, onClose, onImported }:
                           onReplace={
                             character.sprites.length
                               ? (item) => {
+                                  const original = item.original;
                                   const source = item.animationInput?.referenceImage || reference;
-                                  const index = character.sprites.findIndex((sprite) => sprite.path === source);
+                                  const index =
+                                    original && character.sprites[original.index]?.path === original.path
+                                      ? original.index
+                                      : character.sprites.findIndex((sprite) => sprite.path === source);
                                   setReplacementIndex(index >= 0 ? String(index) : "");
                                   generator.clearError();
                                   setReplacementCandidate(item);
@@ -540,7 +592,7 @@ export function SpriteGenerationDialog({ character, name, onClose, onImported }:
             <AsyncButton
               variant="primary"
               disabled={Boolean(busy) || !replacementTarget}
-              loading={busy === "import"}
+              loading={busy === "replace"}
               onClick={async () => {
                 if (!replacementCandidate || !replacementTarget) return;
                 if (await generator.replace(replacementCandidate, Number(replacementIndex), replacementTarget.path))
@@ -570,7 +622,7 @@ export function SpriteGenerationDialog({ character, name, onClose, onImported }:
             ))}
           </Select>
         </label>
-        <div className="sprite-generation__replace-previews">
+        <div className="sprite-generation__replace-previews" {...previewProps}>
           <div>
             <p>{t("spriteGeneration.originalSprite")}</p>
             <div className="sprite-generation__preview">
