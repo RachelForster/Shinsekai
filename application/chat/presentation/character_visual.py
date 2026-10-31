@@ -9,6 +9,7 @@ from config.character_assets import get_character_assets, get_character_avatar_t
 from config.config_manager import character_name_key
 from core.sprite.selection import resolve_runtime_path, sprite_entry_path
 from core.sprite.transitions import field, valid_transitions
+from core.media.transition_presentation import transition_presentation
 
 
 def image_visual_identity(raw_path: str) -> str:
@@ -24,7 +25,7 @@ class CharacterVisual:
     model_url: str
     scale: float
     identity_key: str = ""
-    transitions: tuple[dict[str, str], ...] = ()
+    transitions: tuple[dict[str, Any], ...] = ()
 
     def event_fields(self) -> dict[str, Any]:
         return {
@@ -74,6 +75,15 @@ def resolve_character_visual(
             {
                 "fromUrl": urls.media_url(field(edge, "from_path")),
                 "url": urls.media_url(field(edge, "path")),
+                **(
+                    {"presentation": presentation}
+                    if (
+                        presentation := transition_presentation(
+                            field(edge, "from_path"), field(edge, "path"), path
+                        )
+                    )
+                    else {}
+                ),
             }
             for edge in valid_transitions(character)
             if kind == "static" and field(edge, "to_path") == path

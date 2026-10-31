@@ -1,4 +1,5 @@
 import type { ComponentType } from "react";
+import type { SpriteTransitionMedia } from "../../shared/assets/spriteTransition";
 
 /** 状态应用模式：play 播放动作、restore 恢复快照、edit 编辑预览。 */
 export type ApplyMode = "play" | "restore" | "edit";
@@ -77,7 +78,7 @@ export interface AvatarFormat<S, C> {
 
 /** 舞台 / 预览交给 CharacterVisual 的资源引用，与具体格式无关。 */
 export interface CharacterVisualAsset {
-  transitions?: { fromUrl: string; url: string }[];
+  transitions?: SpriteTransitionMedia[];
   id: string;
   label: string;
   /** static 为图片 URL；模型格式为状态 JSON URL。 */

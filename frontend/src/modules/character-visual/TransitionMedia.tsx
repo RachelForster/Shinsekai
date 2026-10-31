@@ -5,7 +5,10 @@ import {
   SPRITE_TRANSITION_PLAYBACK_RATE,
   SPRITE_TRANSITION_FRAME_COUNT,
   SPRITE_TRANSITION_FPS,
+  type SpriteTransitionMedia,
+  type SpriteTransitionPresentation,
 } from "../../shared/assets/spriteTransition";
+import { transitionAdjustment } from "./transitionPresentation";
 
 interface Playback {
   id: number;
@@ -13,6 +16,7 @@ interface Playback {
   url: string;
   phase: "loading" | "playing" | "waiting" | "fallback";
   duration: number;
+  presentation?: SpriteTransitionPresentation;
 }
 
 /** Keep each surface mounted through both handoffs; never discard the preloaded target. */
@@ -21,7 +25,7 @@ export function TransitionMedia({
   enabled,
   ...props
 }: VisualMediaProps & {
-  transitions?: { fromUrl: string; url: string }[];
+  transitions?: SpriteTransitionMedia[];
   enabled: boolean;
 }) {
   const [displayed, setDisplayed] = useState(props.src);
@@ -34,12 +38,16 @@ export function TransitionMedia({
   const ready = useRef(new Set<string>());
   const dimensions = useRef(new Map<string, [number, number]>());
   const [aspectRatio, setAspectRatio] = useState(1);
+  const host = useRef<HTMLDivElement>(null);
+  const bridge = useRef<HTMLVideoElement | null>(null);
+  const [viewportAspect, setViewportAspect] = useState(0);
   const [reduced, setReduced] = useState(
     () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false,
   );
   const incoming = useRef(transitions);
   incoming.current = transitions;
   const commit = (src: string) => {
+    bridge.current = null;
     settled.current = src;
     playback.current = null;
     setDisplayed(src);
@@ -96,15 +104,74 @@ export function TransitionMedia({
     if (!changed) return;
     const edge = incoming.current?.find((edge) => edge.fromUrl === settled.current);
     if (edge && settled.current !== props.src) {
+      // Reserve all three canvases before revealing the bridge, even when the
+      // target's metadata arrives later than its first transition frame.
+      if (edge.presentation) {
+        const { from, first, to } = edge.presentation;
+        dimensions.current.set(settled.current, [from.width, from.height]);
+        dimensions.current.set(edge.url, [first.width, first.height]);
+        dimensions.current.set(props.src, [to.width, to.height]);
+        const widest = [from, first, to].reduce((a, b) => (a.width / a.height >= b.width / b.height ? a : b));
+        setAspectRatio(widest.width / widest.height);
+        props.onDimensions?.(widest.width, widest.height);
+      }
       setClip({
         id: ++sequence.current,
         to: props.src,
         url: edge.url,
         phase: "loading",
         duration: SPRITE_TRANSITION_FRAME_COUNT / SPRITE_TRANSITION_FPS,
+        presentation: edge.presentation,
       });
     } else commit(props.src);
   }, [props.src, props.active, enabled, reduced]);
+
+  useEffect(() => {
+    const element = host.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    const resize = () => {
+      if (element.clientWidth > 0 && element.clientHeight > 0)
+        setViewportAspect(element.clientWidth / element.clientHeight);
+    };
+    const observer = new ResizeObserver(resize);
+    observer.observe(element);
+    resize();
+    return () => observer.disconnect();
+  }, []);
+
+  useLayoutEffect(() => {
+    const element = bridge.current;
+    if (!clip?.presentation || !element || (clip.phase !== "playing" && clip.phase !== "waiting")) return;
+    let cancelled = false;
+    let callback: number | undefined;
+    let animation: number | undefined;
+    const update = (mediaTime = element.currentTime) => {
+      if (cancelled) return;
+      const lastFrameTime = Math.max(clip.duration - 1 / SPRITE_TRANSITION_FPS, 0.001);
+      const adjustment = transitionAdjustment(
+        clip.presentation,
+        mediaTime / lastFrameTime,
+        viewportAspect || aspectRatio,
+      );
+      element.style.transform = `translate(${adjustment.x * 100}%, ${adjustment.y * 100}%) scale(${adjustment.scale})`;
+      element.style.filter = `brightness(${adjustment.brightness})`;
+    };
+    const frame = (_time: number, metadata?: VideoFrameCallbackMetadata) => {
+      update(metadata?.mediaTime);
+      if (cancelled || clip.phase !== "playing") return;
+      if (element.requestVideoFrameCallback) callback = element.requestVideoFrameCallback(frame);
+      else animation = window.requestAnimationFrame(frame);
+    };
+    frame(0);
+    const changed = () => update();
+    element.addEventListener("timeupdate", changed);
+    return () => {
+      cancelled = true;
+      element.removeEventListener("timeupdate", changed);
+      if (callback !== undefined) element.cancelVideoFrameCallback(callback);
+      if (animation !== undefined) window.cancelAnimationFrame(animation);
+    };
+  }, [clip, viewportAspect, aspectRatio]);
 
   useEffect(() => {
     const retained = new Set([displayed, props.src, clip?.url]);
@@ -134,6 +201,7 @@ export function TransitionMedia({
   const showClip = clip?.phase === "playing" || clip?.phase === "waiting";
   return (
     <div
+      ref={host}
       className={`${props.className ?? ""} character-visual__transition`}
       style={{ aspectRatio, ...props.style }}
       data-chat-stage-hitbox={props.hitbox ? "true" : undefined}
@@ -192,6 +260,7 @@ export function TransitionMedia({
           onDimensions={(width, height) => rememberDimensions(clip.url, width, height)}
           onFrameReady={(element) => {
             if (!isCurrent(clip) || playback.current?.phase !== "loading") return;
+            bridge.current = element instanceof HTMLVideoElement ? element : null;
             const duration = element instanceof HTMLVideoElement ? element.duration : 0;
             setClip((current) =>
               current?.id === clip.id

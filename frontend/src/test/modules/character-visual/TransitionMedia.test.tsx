@@ -16,6 +16,60 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+it("calibrates the bridge in the existing highlight host and preserves the decoded target", () => {
+  const before = {
+    width: 480,
+    height: 800,
+    bounds: [0.1, 0.02, 0.9, 0.98] as [number, number, number, number],
+    luma: 96,
+  };
+  const targetMetrics = {
+    ...before,
+    height: 768,
+    bounds: [0.1, 0, 0.9, 1] as [number, number, number, number],
+    luma: 100,
+  };
+  const view = render(<TransitionMedia src="a.png" alt="Mika" enabled className="sprite-layer__image" />);
+  const host = view.container.firstElementChild;
+  view.rerender(
+    <TransitionMedia
+      src="b.png"
+      alt="Mika"
+      enabled
+      className="sprite-layer__image"
+      transitions={[
+        {
+          fromUrl: "a.png",
+          url: "a-b.webm",
+          presentation: { from: before, first: before, last: before, to: targetMetrics },
+        },
+      ]}
+    />,
+  );
+  const target = view.container.querySelector('img[src="b.png"]')!;
+  expect(host).toHaveStyle({ aspectRatio: "0.625" });
+  Object.defineProperties(target, { naturalWidth: { value: 480 }, naturalHeight: { value: 768 } });
+  fireEvent.load(target);
+  const clip = view.container.querySelector<HTMLVideoElement>("video")!;
+  Object.defineProperties(clip, {
+    duration: { value: 22 / 24 },
+    videoWidth: { value: 480 },
+    videoHeight: { value: 800 },
+  });
+  fireEvent.loadedMetadata(clip);
+  fireEvent.loadedData(clip);
+  clip.currentTime = 21 / 24;
+  fireEvent.timeUpdate(clip);
+  expect(clip.style.filter).toContain("1.041666");
+  expect(clip.style.transform).toContain("1.041666");
+  expect(view.container.firstElementChild).toBe(host);
+  expect(host).toHaveClass("sprite-layer__image");
+  expect(clip).not.toHaveClass("sprite-layer__image");
+  fireEvent.ended(clip);
+  expect(target).toBeInTheDocument();
+  expect(target).not.toHaveStyle({ filter: clip.style.filter });
+});
+
 it("does not transition on initial display, plays once on change, then loops the target video", () => {
   const edges = [{ fromUrl: "a.png", url: "a-b.webm" }];
   const view = render(<TransitionMedia src="a.png" alt="Mika" enabled transitions={edges} />);

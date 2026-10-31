@@ -195,6 +195,15 @@ def test_saving_is_separate_directed_idempotent_and_invalidated_on_source_change
     visual = resolve_character_visual(character, 0, UnconfiguredResourceUrls())
     assert visual.event_fields()["transitions"][0]["fromUrl"] == str(paths[0])
     assert "transitions" not in visual.snapshot_fields()
+    from application.chat.presentation import character_visual
+
+    calibration = {"from": {"luma": 100}, "first": {"luma": 96}}
+    prepare = Mock(return_value=calibration)
+    monkeypatch.setattr(character_visual, "transition_presentation", prepare)
+    calibrated = resolve_character_visual(character, 0, UnconfiguredResourceUrls())
+    assert calibrated.event_fields()["transitions"][0]["presentation"] == calibration
+    prepare.assert_called_once()
+    assert "transitions" not in calibrated.snapshot_fields()
     Image.new("RGBA", (64, 96), "green").save(paths[0])
     assert not list(valid_transitions(character))
     assert (

@@ -1,4 +1,5 @@
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
+import type { SpriteTransitionMedia as SpriteTransitionAsset } from "../assets/spriteTransition";
 import type { AgentPlatform } from "./agentTypes";
 import type { ChatThemeManifest, ChatThemeSummary, SaveChatThemeInput } from "../theme/chatTheme";
 
@@ -1495,10 +1496,7 @@ export interface SpriteTransition {
   to_fingerprint: string;
 }
 
-export interface SpriteTransitionMedia {
-  fromUrl: string;
-  url: string;
-}
+export type SpriteTransitionMedia = SpriteTransitionAsset;
 
 export interface SpriteTransitionInput extends SpriteMattingOptions {
   name: string;
