@@ -696,7 +696,7 @@ def test_cutout_keeps_geometry_tags_and_video_but_not_import_state(
     Image.new("RGB", (24, 32), "white").save(original)
     output = tmp_path / "cutout.png"
 
-    def cutout(source, target):
+    def cutout(source, target, **kwargs):
         with Image.open(source) as image:
             image.convert("RGBA").save(target)
 
@@ -924,6 +924,11 @@ def test_animation_matting_failure_can_retry_without_rerender_and_cannot_be_impo
             "videoPath": str(video),
             "animation": True,
             "playbackSpeed": 0.5,
+            "matting": {
+                "method": "chroma",
+                "screenColor": [0, 255, 0],
+                "alphaMatting": True,
+            },
         }
     )
     monkeypatch.setattr(bridge, "render_animation", renderer)
@@ -952,7 +957,14 @@ def test_animation_matting_failure_can_retry_without_rerender_and_cannot_be_impo
     matting.side_effect = finish
     retry = _create_task(state, kind="character-sprite-cutout", title="retry")
     done = bridge.run_sprite_cutout(
-        state, retry["id"], {"name": "Mika", "taskId": task["id"]}
+        state,
+        retry["id"],
+        {
+            "name": "Mika",
+            "taskId": task["id"],
+            "autoScreen": False,
+            "alphaMatting": False,
+        },
     )
     assert done["alphaVerified"] and done["backgroundRemoved"]
     assert done["path"].endswith("-alpha.webm")
@@ -960,6 +972,11 @@ def test_animation_matting_failure_can_retry_without_rerender_and_cannot_be_impo
     assert "backgroundRemovalError" not in done
     assert renderer.call_count == 1
     assert matting.call_args.kwargs["playback_speed"] == 0.5
+    assert matting.call_args.kwargs["matte"].alpha_matting is False
+    assert matting.call_args.kwargs["matte"].requested_model == "toonout"
+    assert done["matting"]["method"] == "ai"
+    assert done["matting"]["screenColor"] == [0, 255, 0]
+    assert result["matting"]["method"] == "chroma"
     _update_task(state, retry["id"], status="succeeded", result=done)
     verified = Mock(return_value=5)
     monkeypatch.setattr(alpha_video, "verify_alpha_video", verified)
@@ -1095,6 +1112,74 @@ def test_idle_pose_guides_reject_unresolved_or_invalid_length(length):
                 }
             }
         )
+
+
+@pytest.mark.parametrize("refinement", [False, True])
+def test_screen_mode_removes_white_background_artifacts_and_preserves_white_clothing(
+    monkeypatch, refinement
+):
+    from PIL import ImageDraw
+    from application.characters.animate_sprites import _screen_matte
+    from tools import remove_bg
+    from core.media import alpha_matting
+
+    source = Image.new("RGB", (64, 96), (0, 255, 0))
+    draw = ImageDraw.Draw(source)
+    draw.rectangle((16, 12, 48, 84), fill="white")
+    draw.rectangle((2, 2, 8, 8), fill="white")
+    foreground = Image.new("RGBA", source.size)
+    ImageDraw.Draw(foreground).rectangle((16, 12, 48, 84), fill="white")
+    ai = Mock(return_value=foreground)
+    monkeypatch.setattr(remove_bg, "remove_background_image", ai)
+    monkeypatch.setattr(
+        alpha_matting,
+        "refine_alpha_edges",
+        lambda image, mask: Image.merge("RGBA", (*image.convert("RGB").split(), mask)),
+    )
+    output = _screen_matte(
+        source, settings={"screenColor": [0, 255, 0]}, alpha_matting=refinement
+    )
+    assert output.getpixel((4, 4))[3] == 0
+    assert output.getpixel((30, 40)) == (255, 255, 255, 255)
+    assert output.getpixel((0, 0))[3] == 0
+    assert source.getpixel((4, 4)) == (255, 255, 255)
+    assert ai.call_args.kwargs["alpha_matting"] is False
+
+
+def test_matting_retry_can_switch_methods_without_losing_the_original_screen():
+    from application.characters.animate_sprites import retry_animation_matting
+
+    source = {
+        "videoPath": "raw.mp4",
+        "matting": {
+            "method": "chroma",
+            "screenColor": [0, 255, 0],
+            "alphaMatting": True,
+            "model": "toonout",
+        },
+    }
+    plain = retry_animation_matting(
+        source, {"autoScreen": False, "alphaMatting": False}
+    )
+    assert plain["videoPath"] == "raw.mp4"
+    assert plain["matting"]["method"] == "ai"
+    assert plain["matting"]["alphaMatting"] is False
+    restored = retry_animation_matting(
+        plain, {"autoScreen": True, "alphaMatting": True}
+    )
+    assert restored["matting"] == source["matting"]
+    assert source["matting"]["method"] == "chroma"
+    assert retry_animation_matting({"videoPath": "white.mp4"}, {"autoScreen": True})[
+        "matting"
+    ] == {"method": "ai", "alphaMatting": False, "model": "toonout"}
+
+
+@pytest.mark.parametrize("payload", [{"autoScreen": 1}, {"alphaMatting": "false"}])
+def test_matting_retry_rejects_non_boolean_options(payload):
+    from application.characters.animate_sprites import retry_animation_matting
+
+    with pytest.raises(ValueError, match="布尔值"):
+        retry_animation_matting({"videoPath": "raw.mp4"}, payload)
 
 
 def test_manual_animation_prompt_replaces_presets_without_rewriting_the_text():

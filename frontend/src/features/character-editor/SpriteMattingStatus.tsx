@@ -4,13 +4,17 @@ import type { SpriteMatting } from "../../shared/platform/types";
 export function SpriteMattingStatus({ matting }: { matting?: SpriteMatting }) {
   const { t } = useI18n();
   if (!matting) return null;
-  const color = matting.screenColor ? `rgb(${matting.screenColor.join(",")})` : undefined;
+  const color =
+    matting.method === "chroma" && matting.screenColor ? `rgb(${matting.screenColor.join(",")})` : undefined;
   return (
     <p className="sprite-generation__hint">
       {color ? (
         <span className="sprite-generation__screen-color" style={{ backgroundColor: color }} aria-hidden="true" />
       ) : null}
       {t(matting.method === "chroma" ? "spriteMatting.chroma" : "spriteMatting.ai")}
+      {matting.model ? ` · ${matting.model === "toonout" ? "ToonOut" : "ISNet Anime"}` : ""}
+      {matting.device ? ` · ${matting.device === "cuda" ? "GPU" : "CPU"}` : ""}
+      {matting.fallbackReason ? ` · ${t("spriteMatting.fallback")}` : ""}
       {matting.alphaMatting ? ` · ${t("spriteMatting.alpha")}` : ""}
       {matting.reason === "opaque-reference" ? ` · ${t("spriteMatting.opaque")}` : ""}
       {matting.reason === "foreground-colors" ? ` · ${t("spriteMatting.palette")}` : ""}

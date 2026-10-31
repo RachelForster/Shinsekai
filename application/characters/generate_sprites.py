@@ -149,6 +149,22 @@ def plan_sprites(config_store: Any, payload: dict) -> dict:
     }
 
 
+def matting_options(
+    payload, *, auto_screen=False, alpha_matting=False, model="toonout"
+):
+    from tools.remove_bg import validate_matting_model
+
+    options = {
+        "autoScreen": payload.get("autoScreen", auto_screen),
+        "alphaMatting": payload.get("alphaMatting", alpha_matting),
+    }
+    for key, value in options.items():
+        if not isinstance(value, bool):
+            raise ValueError(f"{key} 必须为布尔值")
+    options["mattingModel"] = validate_matting_model(payload.get("mattingModel", model))
+    return options
+
+
 def render_sprite(
     config_store: Any,
     payload: dict,
@@ -165,11 +181,12 @@ def render_sprite(
     from ai.t2i.t2i_manager import T2IAdapterFactory, T2IManager
 
     pair = prompt_pair(payload)
-    matting = None
-    if require_h3_video:
-        for key in ("autoScreen", "alphaMatting"):
-            if key in payload and not isinstance(payload[key], bool):
-                raise ValueError(f"{key} 必须为布尔值")
+    processing = matting_options(payload)
+    matting = {
+        "method": "ai",
+        "alphaMatting": processing["alphaMatting"],
+        "model": processing["mattingModel"],
+    }
     api = config_store.config.api_config
     provider = str(api.t2i_provider or "").strip()
     if not provider:
@@ -255,10 +272,11 @@ def render_sprite(
                 choose_screen_color(
                     [reference, *([last_reference] if last_reference else [])]
                 )
-                if payload.get("autoScreen", True)
+                if processing["autoScreen"]
                 else {"method": "ai"}
             )
-            matting["alphaMatting"] = payload.get("alphaMatting", True)
+            matting["alphaMatting"] = processing["alphaMatting"]
+            matting["model"] = processing["mattingModel"]
         options = {"seed": secrets.randbelow(2**53)}
         if reference:
             options["reference_image_path"] = str(reference)
@@ -348,18 +366,33 @@ def capture_sprite_frame(
         "path": output.as_posix(),
         "videoPath": video.as_posix(),
         "frameTime": timestamp,
+        **({"matting": source["matting"]} if source.get("matting") else {}),
     }
 
 
 def remove_sprite_background(source: dict, original: Path, output: Path) -> dict:
     from tools.remove_bg import ai_remove_background
 
-    ai_remove_background(original, output)
+    settings = dict(source.get("matting") or {})
+    metadata = {}
+    ai_remove_background(
+        original,
+        output,
+        model=settings.get("model", "toonout"),
+        alpha_matting=settings.get("alphaMatting", False),
+        metadata=metadata,
+    )
     return {
         **prompt_pair(source),
         "name": source["name"],
         "path": output.as_posix(),
         "originalPath": original.as_posix(),
         "backgroundRemoved": True,
+        "matting": {
+            **settings,
+            "method": "ai",
+            "alphaMatting": settings.get("alphaMatting", False),
+            **metadata,
+        },
         **{key: source[key] for key in ("videoPath", "frameTime") if key in source},
     }

@@ -1,13 +1,21 @@
 import type { MessageKey } from "../messages";
 
 export const jaMessages: Record<MessageKey, string> = {
+  "spriteMatting.settings": "透過処理",
+  "spriteMatting.defaultHint": "標準はToonOut、未導入時はISNet。変更後は背景除去を再実行してください。",
+  "spriteMatting.model": "背景除去モデル",
+  "spriteMatting.fallback": "ToonOut未準備のため代替モデルを使用",
+  "spriteMatting.autoScreen": "自動カラー背景（実験）",
+  "spriteMatting.alphaOption": "Alpha境界の調整（実験）",
+  "spriteMatting.optionHint":
+    "新しいカラー背景には再生成が必要です。Alpha調整は細線や半透明部分を変える場合があります。",
   "spriteMatting.chroma": "自動選色のクロマキー",
   "spriteMatting.ai": "AI背景除去",
-  "spriteMatting.alpha": "Alpha境界を精細化",
+  "spriteMatting.alpha": "Alphaマッティング有効",
   "spriteMatting.opaque": "不透明な参考画像：AI方式を使用",
   "spriteMatting.palette": "幕色の干渉を避けAI方式を使用",
   "spriteMatting.refineAgain": "背景を再除去",
-  "spriteMatting.retryHint": "元動画を再利用して境界を処理します。幕色の変更には再生成が必要です。",
+  "spriteMatting.retryHint": "現在の設定で元動画を再処理します。カラー背景の追加・変更には再生成が必要です。",
   "spriteTransition.analyze": "最近の会話を分析",
   "spriteTransition.saveCollection": "立ち絵一覧に未保存の変更があります。キャラを保存してから分析してください。",
   "spriteTransition.analyzing": "最近の会話を分析中…",
@@ -53,7 +61,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "spriteTransition.directionHint": "A→BとB→Aは別々に生成します。まずは2枚でお試しください。",
   "spriteTransition.generate": "{count}本を生成・再開",
   "spriteTransition.reuseHint":
-    "透過参考画像から幕色を自動選択しAlpha境界を精細化。既存の再利用・再生成・背景の再除去に対応。",
+    "標準はアニメ向けAI切り抜きです。既存の再利用・再生成・現在の設定での再切り抜きに対応。",
   "spriteTransition.playbackTitle": "保存後の再生",
   "spriteTransition.playbackHint":
     "対応する切替を一度再生してから次の立ち絵を表示。動画はループを継続し、切替がない場合は直接表示します。",
@@ -123,7 +131,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "spriteAnimation.generatePending": "未処理のアニメーションを生成（{count}）",
   "spriteAnimation.queueProgress": "処理中：{current}/{total}枚",
   "spriteAnimation.needsMatting": "透過処理が必要",
-  "spriteAnimation.outputHint": "透過参考画像の幕色を自動選択 · Alpha境界を精細化 · 透過WebM",
+  "spriteAnimation.outputHint": "標準はアニメ向けAI切り抜き · 透過WebM",
   "spriteAnimation.mode": "立ち絵の生成モード",
   "spriteAnimation.staticTab": "静止立ち絵",
   "spriteAnimation.animationTab": "動く立ち絵",

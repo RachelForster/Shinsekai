@@ -1455,11 +1455,21 @@ export interface GeneratedCharacterSprite extends SpritePromptPair {
 export interface SpriteMatting {
   method: "ai" | "chroma";
   alphaMatting: boolean;
+  model?: "toonout" | "isnet-anime";
+  requestedModel?: "toonout" | "isnet-anime";
+  device?: "cuda" | "cpu";
+  fallbackReason?: string;
   screenColor?: [number, number, number];
   reason?: string;
 }
 
-export interface CharacterSpriteAnimationInput {
+export interface SpriteMattingOptions {
+  mattingModel?: "toonout" | "isnet-anime";
+  autoScreen?: boolean;
+  alphaMatting?: boolean;
+}
+
+export interface CharacterSpriteAnimationInput extends SpriteMattingOptions {
   name: string;
   referenceImage: string;
   tagging: string;
@@ -1490,7 +1500,7 @@ export interface SpriteTransitionMedia {
   url: string;
 }
 
-export interface SpriteTransitionInput {
+export interface SpriteTransitionInput extends SpriteMattingOptions {
   name: string;
   fromPath: string;
   toPath: string;
@@ -1796,7 +1806,11 @@ export interface ShinsekaiPlatform {
       options?: TaskProgressOptions<{ items: SpritePromptPair[] }>,
     ) => Promise<{ items: SpritePromptPair[] }>;
     renderSprite: (
-      input: SpritePromptPair & { name: string; referenceImage?: string; removeBackground?: boolean },
+      input: SpritePromptPair & {
+        name: string;
+        referenceImage?: string;
+        removeBackground?: boolean;
+      } & SpriteMattingOptions,
       options?: TaskProgressOptions<GeneratedCharacterSprite>,
     ) => Promise<GeneratedCharacterSprite>;
     animateSprite: (
@@ -1818,11 +1832,11 @@ export interface ShinsekaiPlatform {
       replace?: { index: number; path: string };
     }) => Promise<Character>;
     captureSpriteFrame: (
-      input: { name: string; taskId: string; seconds: number; removeBackground?: boolean },
+      input: { name: string; taskId: string; seconds: number; removeBackground?: boolean } & SpriteMattingOptions,
       options?: TaskProgressOptions<GeneratedCharacterSprite>,
     ) => Promise<GeneratedCharacterSprite>;
     removeSpriteBackground: (
-      input: { name: string; taskId: string },
+      input: { name: string; taskId: string } & SpriteMattingOptions,
       options?: TaskProgressOptions<GeneratedCharacterSprite>,
     ) => Promise<GeneratedCharacterSprite>;
     delete: (name: string) => Promise<void>;

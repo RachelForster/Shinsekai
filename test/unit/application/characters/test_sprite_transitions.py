@@ -75,8 +75,9 @@ def completed(state, paths, *, kind="character-sprite-transition"):
     return task["id"]
 
 
+@pytest.mark.parametrize("experimental", [False, True])
 def test_render_forces_twenty_two_frames_distinct_anchors_and_coordinated_hair(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, experimental
 ):
     from ai.t2i.t2i_manager import T2IAdapterFactory
 
@@ -121,7 +122,14 @@ def test_render_forces_twenty_two_frames_distinct_anchors_and_coordinated_hair(
         merged_t2i_factory_kwargs=lambda _, kwargs: kwargs,
     )
     result = generation.render_transition(
-        store, {"name": "Mika"}, tmp_path / "out.png", first, last
+        store,
+        {
+            "name": "Mika",
+            **({"autoScreen": True, "alphaMatting": True} if experimental else {}),
+        },
+        tmp_path / "out.png",
+        first,
+        last,
     )
     inputs = workflow["131"]["inputs"]
     assert inputs["length"] == 22
@@ -133,17 +141,26 @@ def test_render_forces_twenty_two_frames_distinct_anchors_and_coordinated_hair(
     assert adapter.generate_image.call_args.kwargs["last_reference_image_path"] == str(
         last
     )
-    assert adapter.generate_image.call_args.kwargs["reference_background_color"] == (
-        0,
-        255,
-        0,
-    )
-    assert (
-        "uniform solid green chroma-key background"
-        in adapter.generate_image.call_args.kwargs["prompt"]
-    )
-    assert result["matting"]["screenColor"] == [0, 255, 0]
-    assert result["matting"]["alphaMatting"] is True
+    if experimental:
+        assert adapter.generate_image.call_args.kwargs[
+            "reference_background_color"
+        ] == (0, 255, 0)
+        assert (
+            "uniform solid green chroma-key background"
+            in adapter.generate_image.call_args.kwargs["prompt"]
+        )
+        assert result["matting"]["screenColor"] == [0, 255, 0]
+        assert result["matting"]["alphaMatting"] is True
+    else:
+        assert (
+            "reference_background_color" not in adapter.generate_image.call_args.kwargs
+        )
+        assert "chroma-key" not in adapter.generate_image.call_args.kwargs["prompt"]
+        assert result["matting"] == {
+            "method": "ai",
+            "alphaMatting": False,
+            "model": "toonout",
+        }
     assert not any(
         node["class_type"] == "MiniMaxH3AddGuide" for node in workflow.values()
     )

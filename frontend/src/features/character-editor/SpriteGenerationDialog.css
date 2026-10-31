@@ -306,6 +306,23 @@
   scrollbar-gutter: stable;
 }
 
+.sprite-generation__matting-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+}
+
+.sprite-generation__matting-settings legend {
+  padding: 0 var(--space-1);
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .sprite-generation__settings > .sprite-generation__plan-action {
   flex-shrink: 0;
   padding: var(--space-4) var(--space-6);

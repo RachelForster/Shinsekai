@@ -14,6 +14,7 @@ import type {
   GeneratedCharacterSprite,
   SpritePromptPair,
   TaskSnapshot,
+  SpriteMattingOptions,
 } from "../../shared/platform/types";
 
 export interface SpriteCandidate extends SpritePromptPair {
@@ -31,6 +32,7 @@ export function useSpriteGeneration(
   setting: string,
   onImported: (character: Character, replacedIndex?: number | number[]) => void,
   sprites: Character["sprites"],
+  mattingOptions: SpriteMattingOptions,
 ) {
   const [items, setItems] = useState<SpriteCandidate[]>([]);
   const [busy, setBusy] = useState<"plan" | "render" | "frame" | "cutout" | "import" | "replace" | "animate" | null>(
@@ -104,7 +106,14 @@ export function useSpriteGeneration(
         update(item.id, { error: "" });
         try {
           const result = await renderCharacterSprite(
-            { name, prompt: item.prompt, tagging: item.tagging, referenceImage, removeBackground },
+            {
+              name,
+              prompt: item.prompt,
+              tagging: item.tagging,
+              referenceImage,
+              removeBackground,
+              mattingModel: mattingOptions.mattingModel,
+            },
             { onTaskUpdate: setTask },
           );
           update(item.id, {
@@ -153,7 +162,7 @@ export function useSpriteGeneration(
       const additions = entries.filter((entry) => !entry.existing).length;
       if (items.length + additions > 12) throw new Error("每次最多保留 12 个方案，请先添加或移除部分方案。");
       const candidates = entries.map(({ input, existing }) => ({
-        input: { ...input, tagging: existing?.tagging ?? input.tagging },
+        input: { ...input, ...mattingOptions, tagging: existing?.tagging ?? input.tagging },
         item: existing ?? {
           id: crypto.randomUUID(),
           prompt: "",
@@ -208,7 +217,7 @@ export function useSpriteGeneration(
       update(item.id, { error: "" });
       try {
         const result = await captureCharacterSpriteFrame(
-          { name, taskId: item.result.taskId, seconds, removeBackground },
+          { name, taskId: item.result.taskId, seconds, removeBackground, mattingModel: mattingOptions.mattingModel },
           { onTaskUpdate: setTask },
         );
         update(item.id, { result, selected: true });
@@ -223,7 +232,11 @@ export function useSpriteGeneration(
       update(item.id, { error: "" });
       try {
         const result = await removeCharacterSpriteBackground(
-          { name, taskId: item.result.taskId },
+          {
+            name,
+            taskId: item.result.taskId,
+            ...(item.animationInput ? mattingOptions : { mattingModel: mattingOptions.mattingModel }),
+          },
           { onTaskUpdate: setTask },
         );
         update(item.id, { result, selected: true });

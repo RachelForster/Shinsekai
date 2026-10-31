@@ -8,8 +8,11 @@ from application.characters.transition_sprites import (
     saved_transitions,
     TRANSITION_FRAME_COUNT,
 )
-from application.characters.animate_sprites import verify_transparent_animation
-from application.characters.generate_sprites import boundary_frame
+from application.characters.animate_sprites import (
+    verify_transparent_animation,
+    retry_animation_matting,
+)
+from application.characters.generate_sprites import boundary_frame, matting_options
 from application.characters.transition_recommendations import (
     analyze_transition_recommendations,
 )
@@ -71,6 +74,7 @@ def _unchanged(result, identity):
 
 
 def run_sprite_transition(state, task_id, payload):
+    matting_options(payload)
     if not isinstance(payload.get("regenerate", False), bool):
         raise ValueError("regenerate 必须为布尔值")
     if payload.get("retryTaskId") is not None and not isinstance(
@@ -86,6 +90,7 @@ def run_sprite_transition(state, task_id, payload):
         _unchanged(source, identity)
         if source.get("requestedFrames") != TRANSITION_FRAME_COUNT:
             raise ValueError("这是旧版过渡，请重绘生成 22 帧版本")
+        source = retry_animation_matting(source, payload)
     else:
         if not payload.get("regenerate", False):
             for edge in saved_transitions(character):
@@ -114,7 +119,11 @@ def run_sprite_transition(state, task_id, payload):
         last = boundary_frame(last, root / f"{task_id}-last.png", last=False)
         source = {
             **render_transition(
-                state.config_manager, identity, root / f"{task_id}.png", first, last
+                state.config_manager,
+                {**payload, **identity},
+                root / f"{task_id}.png",
+                first,
+                last,
             ),
             **identity,
         }

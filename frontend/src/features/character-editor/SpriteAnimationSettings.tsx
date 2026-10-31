@@ -14,6 +14,7 @@ import {
   TextInput,
 } from "../../shared/ui";
 import type { SpriteAnimationSource } from "./spriteAnimationSources";
+import { SpriteMattingSettings } from "./SpriteMattingSettings";
 
 interface Props {
   value: CharacterSpriteAnimationInput;
@@ -99,6 +100,7 @@ export function SpriteAnimationSettings({
           ))}
         </div>
         <p className="sprite-generation__hint">{t("spriteAnimation.cameraHint")}</p>
+        <SpriteMattingSettings value={value} onChange={patch} disabled={busy} />
         <label className="field-row field-row--stack">
           <span className="field-row__label">{t("spriteAnimation.speed")}</span>
           <Select

@@ -1,13 +1,23 @@
 import type { MessageKey } from "../messages";
 
 export const enMessages: Record<MessageKey, string> = {
+  "spriteMatting.settings": "Transparency processing",
+  "spriteMatting.defaultHint":
+    "ToonOut by default; ISNet if unavailable. Change the model, then remove background again.",
+  "spriteMatting.model": "Background removal model",
+  "spriteMatting.fallback": "ToonOut unavailable; using fallback",
+  "spriteMatting.autoScreen": "Automatic color screen (experimental)",
+  "spriteMatting.alphaOption": "Alpha edge refinement (experimental)",
+  "spriteMatting.optionHint":
+    "A new screen needs a redraw. Alpha refinement can change fine lines and translucent edges.",
   "spriteMatting.chroma": "Automatic screen keying",
   "spriteMatting.ai": "AI background removal",
-  "spriteMatting.alpha": "Refined alpha edges",
+  "spriteMatting.alpha": "Alpha matting enabled",
   "spriteMatting.opaque": "Opaque reference: using AI mode",
   "spriteMatting.palette": "Screen color conflict: using AI mode",
   "spriteMatting.refineAgain": "Redo matting",
-  "spriteMatting.retryHint": "Reuse the original video to refine edges. Changing the screen color requires a redraw.",
+  "spriteMatting.retryHint":
+    "Reuse the raw video with the current options. Adding or changing a screen needs a redraw.",
   "spriteTransition.analyze": "Analyze recent chats",
   "spriteTransition.saveCollection":
     "The sprite collection has unsaved changes. Save the character before analyzing chats.",
@@ -57,8 +67,7 @@ export const enMessages: Record<MessageKey, string> = {
   "spriteTransition.spec": "{frames} frames · normal speed · ~{duration} s · transparent",
   "spriteTransition.directionHint": "A→B and B→A are separate clips. More sprites require more clips; try two first.",
   "spriteTransition.generate": "Generate / resume {count} clips",
-  "spriteTransition.reuseHint":
-    "Transparent references use an automatic screen color and refined alpha edges. Reuse, redraw or redo matting.",
+  "spriteTransition.reuseHint": "Anime AI removal by default. Reuse, redraw or redo matting with the current options.",
   "spriteTransition.playbackTitle": "Playback after saving",
   "spriteTransition.playbackHint":
     "A matching transition plays once before the target sprite. Animated targets keep looping. Missing clips switch directly.",
@@ -131,8 +140,7 @@ export const enMessages: Record<MessageKey, string> = {
   "spriteAnimation.generatePending": "Continue pending animations ({count})",
   "spriteAnimation.queueProgress": "Queue: {current} of {total}",
   "spriteAnimation.needsMatting": "Needs transparency processing",
-  "spriteAnimation.outputHint":
-    "Automatic screen color for transparent references · refined alpha edges · transparent WebM",
+  "spriteAnimation.outputHint": "Anime AI removal by default · transparent WebM",
   "spriteAnimation.mode": "Sprite generation mode",
   "spriteAnimation.staticTab": "Static sprites",
   "spriteAnimation.animationTab": "Animated sprites",

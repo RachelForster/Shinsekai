@@ -12,6 +12,7 @@ import type {
   GeneratedSpriteTransition,
   SpriteTransitionAnalysis,
   TaskSnapshot,
+  SpriteMattingOptions,
 } from "../../shared/platform/types";
 
 export interface TransitionCandidate {
@@ -39,7 +40,12 @@ export function transitionPairs(paths: string[]): TransitionCandidate[] {
   );
 }
 
-export function useSpriteTransitions(character: Character, name: string, onSaved: (character: Character) => void) {
+export function useSpriteTransitions(
+  character: Character,
+  name: string,
+  onSaved: (character: Character) => void,
+  mattingOptions: SpriteMattingOptions,
+) {
   const { t } = useI18n();
   const [sourceSelection, setSourceSelection] = useState<string[]>([]);
   const [items, setItems] = useState<TransitionCandidate[]>(() =>
@@ -175,6 +181,7 @@ export function useSpriteTransitions(character: Character, name: string, onSaved
               fromPath: pair.fromPath,
               toPath: pair.toPath,
               regenerate,
+              ...mattingOptions,
               ...((retryMatting || (!regenerate && !pair.result?.alphaVerified)) &&
               pair.result?.taskId &&
               pair.result.requestedFrames === SPRITE_TRANSITION_FRAME_COUNT

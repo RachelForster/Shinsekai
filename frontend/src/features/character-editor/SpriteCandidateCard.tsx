@@ -110,7 +110,7 @@ export function SpriteCandidateCard({
           {t(animation ? "spriteAnimation.verified" : "spriteGeneration.backgroundRemoved")}
         </p>
       ) : null}
-      {animation ? <SpriteMattingStatus matting={item.result?.matting} /> : null}
+      {animation || item.result?.backgroundRemoved ? <SpriteMattingStatus matting={item.result?.matting} /> : null}
       {item.result?.backgroundRemovalError ? (
         <p className="sprite-generation__error" role="alert">
           {t(animation ? "spriteAnimation.failed" : "spriteGeneration.backgroundRemovalFailed", {

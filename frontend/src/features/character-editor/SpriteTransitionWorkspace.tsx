@@ -8,20 +8,25 @@ import {
   SPRITE_TRANSITION_FPS,
 } from "../../shared/assets/spriteTransition";
 import { useI18n } from "../../shared/i18n";
-import type { Character } from "../../shared/platform/types";
+import type { Character, SpriteMattingOptions } from "../../shared/platform/types";
 import { AsyncButton, Button, EmptyState, NumberInput, Switch, TaskProgress, VisualMedia } from "../../shared/ui";
 import { SpriteAnimationSourcePicker } from "./SpriteAnimationSourcePicker";
 import { SpriteGenerationSetupGuide } from "./SpriteGenerationSetupGuide";
 import { SpriteTransitionRecommendations } from "./SpriteTransitionRecommendations";
 import { SpriteMattingStatus } from "./SpriteMattingStatus";
+import { SpriteMattingSettings } from "./SpriteMattingSettings";
 import { transitionPairs, type SpriteTransitionController } from "./useSpriteTransitions";
 
 export function SpriteTransitionWorkspace({
   character,
   controller,
+  mattingOptions,
+  onMattingChange,
 }: {
   character: Character;
   controller: SpriteTransitionController;
+  mattingOptions: SpriteMattingOptions;
+  onMattingChange: (value: SpriteMattingOptions) => void;
 }) {
   const { t } = useI18n();
   const { sourceSelection: selection, setSourceSelection: setSelection } = controller;
@@ -119,6 +124,7 @@ export function SpriteTransitionWorkspace({
             {t(recommended ? "spriteTransition.recommendationHint" : "spriteTransition.directionHint")}
           </p>
           <p className="sprite-generation__hint">{t("spriteTransition.reuseHint")}</p>
+          <SpriteMattingSettings value={mattingOptions} onChange={onMattingChange} disabled={busy} />
           <div className="sprite-transitions__instructions">
             <h4>{t("spriteTransition.playbackTitle")}</h4>
             <p className="sprite-generation__hint">{t("spriteTransition.playbackHint")}</p>

@@ -185,6 +185,43 @@ describe("sprite generator", () => {
     vi.restoreAllMocks();
   });
 
+  it("defaults to ToonOut and shares the selected fallback model across sprite modes", async () => {
+    mount();
+    expect(screen.getByRole("combobox", { name: "Background removal model" })).toHaveTextContent("ToonOut");
+    fireEvent.click(screen.getByRole("combobox", { name: "Background removal model" }));
+    fireEvent.click(screen.getByRole("option", { name: "ISNet Anime" }));
+    await makePlan();
+    await drawAll();
+    expect(draw).toHaveBeenCalledWith(expect.objectContaining({ mattingModel: "isnet-anime" }), expect.anything());
+    fireEvent.click(screen.getByRole("tab", { name: "Animated sprites" }));
+    expect(screen.getByRole("combobox", { name: "Background removal model" })).toHaveTextContent("ISNet Anime");
+    fireEvent.click(screen.getByRole("tab", { name: "Transitions" }));
+    expect(screen.getByRole("combobox", { name: "Background removal model" })).toHaveTextContent("ISNet Anime");
+  });
+
+  it("shows the actual model and a fallback explanation on generated stills", async () => {
+    draw.mockImplementation(async (input) => ({
+      ...input,
+      path: `${input.prompt}.png`,
+      taskId: `task-${input.prompt}`,
+      backgroundRemoved: true,
+      matting: {
+        method: "ai",
+        model: "isnet-anime",
+        requestedModel: "toonout",
+        alphaMatting: false,
+        device: "cpu",
+        fallbackReason: "toonout-unavailable",
+      },
+    }));
+    mount();
+    await makePlan();
+    await drawAll();
+    expect(
+      screen.getAllByText("AI background removal · ISNet Anime · CPU · ToonOut unavailable; using fallback"),
+    ).toHaveLength(2);
+  });
+
   it("analyzes recent chats and generates exactly N selected one-way pairs instead of all source combinations", async () => {
     mount({ ...character, sprites: [...character.sprites, { path: "sad.png" }] });
     fireEvent.click(screen.getByRole("tab", { name: "Transitions" }));
@@ -353,15 +390,35 @@ describe("sprite generator", () => {
       matting: { method: "chroma", alphaMatting: true, screenColor: [0, 255, 0] },
     };
     animate.mockResolvedValueOnce(result);
-    cutout.mockResolvedValueOnce({ ...result, taskId: "refined", path: "refined-alpha.webm" });
+    cutout.mockResolvedValueOnce({
+      ...result,
+      taskId: "refined",
+      path: "refined-alpha.webm",
+      matting: { method: "ai", alphaMatting: false },
+    });
     mount();
     fireEvent.click(screen.getByRole("tab", { name: "Animated sprites" }));
+    const screenOption = screen.getByRole("checkbox", { name: "Automatic color screen (experimental)" });
+    const alphaOption = screen.getByRole("checkbox", { name: "Alpha edge refinement (experimental)" });
+    expect(screenOption).not.toBeChecked();
+    expect(alphaOption).not.toBeChecked();
+    fireEvent.click(screenOption);
+    fireEvent.click(alphaOption);
     fireEvent.click(screen.getByRole("checkbox", { name: "Select Sprite 1" }));
     fireEvent.click(screen.getByRole("button", { name: "Generate transparent animation" }));
-    await screen.findByText("Automatic screen keying · Refined alpha edges");
+    await screen.findByText("Automatic screen keying · Alpha matting enabled");
+    expect(animate).toHaveBeenCalledWith(
+      expect.objectContaining({ autoScreen: true, alphaMatting: true }),
+      expect.anything(),
+    );
+    fireEvent.click(screenOption);
+    fireEvent.click(alphaOption);
     fireEvent.click(screen.getByRole("button", { name: "Redo matting" }));
     await waitFor(() =>
-      expect(cutout).toHaveBeenCalledWith({ name: "Mika", taskId: "animation-result" }, expect.anything()),
+      expect(cutout).toHaveBeenCalledWith(
+        { name: "Mika", taskId: "animation-result", autoScreen: false, alphaMatting: false, mattingModel: "toonout" },
+        expect.anything(),
+      ),
     );
     expect(animate).toHaveBeenCalledOnce();
     await waitFor(() => expect(screen.getByRole("button", { name: "Add to collection (1)" })).toBeEnabled());
@@ -380,13 +437,23 @@ describe("sprite generator", () => {
     }));
     mount();
     fireEvent.click(screen.getByRole("tab", { name: "Transitions" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Automatic color screen (experimental)" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Alpha edge refinement (experimental)" }));
     fireEvent.click(screen.getByRole("button", { name: "Select all sources" }));
     fireEvent.click(screen.getByRole("button", { name: "Generate / resume 2 clips" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Save 2 transitions" })).toBeEnabled());
+    expect(transition.mock.calls[0][0]).toEqual(expect.objectContaining({ autoScreen: true, alphaMatting: true }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Automatic color screen (experimental)" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Alpha edge refinement (experimental)" }));
     fireEvent.click(screen.getAllByRole("button", { name: "Redo matting" })[0]);
     await waitFor(() => expect(transition).toHaveBeenCalledTimes(3));
     expect(transition.mock.calls[2][0]).toEqual(
-      expect.objectContaining({ retryTaskId: "clip-old.png", regenerate: false }),
+      expect.objectContaining({
+        retryTaskId: "clip-old.png",
+        regenerate: false,
+        autoScreen: false,
+        alphaMatting: false,
+      }),
     );
   });
 
@@ -914,7 +981,7 @@ describe("sprite generator", () => {
     fireEvent.click(screen.getByRole("button", { name: "Use frame at 1.25s" }));
     await waitFor(() => expect(screen.getByAltText("Sprite 1")).toHaveAttribute("src", "asset://selected.png"));
     expect(capture).toHaveBeenLastCalledWith(
-      { name: "Mika", taskId: "task-happy pose", seconds: 1.25, removeBackground: true },
+      { name: "Mika", taskId: "task-happy pose", seconds: 1.25, removeBackground: true, mattingModel: "toonout" },
       expect.anything(),
     );
     expect(draw).toHaveBeenCalledTimes(2);

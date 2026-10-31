@@ -24,6 +24,7 @@ import {
   VisualMedia,
 } from "../../shared/ui";
 import { SpriteAnimationSettings } from "./SpriteAnimationSettings";
+import { SpriteMattingSettings } from "./SpriteMattingSettings";
 import { SpriteAnimationSourcePicker } from "./SpriteAnimationSourcePicker";
 import { spriteAnimationSources } from "./spriteAnimationSources";
 import { useSpriteGeneration, type SpriteCandidate } from "./useSpriteGeneration";
@@ -57,6 +58,9 @@ export function SpriteGenerationDialog({ character, name, onClose, onImported }:
     loop: true,
     motion: "",
     playbackSpeed: 0.75,
+    mattingModel: "toonout",
+    autoScreen: false,
+    alphaMatting: false,
   });
   const [count, setCount] = useState(4);
   const [requirements, setRequirements] = useState("");
@@ -73,8 +77,19 @@ export function SpriteGenerationDialog({ character, name, onClose, onImported }:
     style: { "--sprite-preview-color": previewColor } as CSSProperties,
   };
   const workspaceBodyRef = useRef<HTMLDivElement>(null);
-  const generator = useSpriteGeneration(name, character.character_setting, onImported, character.sprites);
-  const transitions = useSpriteTransitions(character, name, onImported);
+  const mattingOptions = {
+    mattingModel: animationInput.mattingModel ?? "toonout",
+    autoScreen: animationInput.autoScreen ?? false,
+    alphaMatting: animationInput.alphaMatting ?? false,
+  };
+  const generator = useSpriteGeneration(
+    name,
+    character.character_setting,
+    onImported,
+    character.sprites,
+    mattingOptions,
+  );
+  const transitions = useSpriteTransitions(character, name, onImported, mattingOptions);
   const busy = generator.busy || transitions.busy;
   const animationSources = spriteAnimationSources(character, generator.items);
   const animationInputs =
@@ -272,7 +287,12 @@ export function SpriteGenerationDialog({ character, name, onClose, onImported }:
             className="sprite-transitions__panel"
             {...previewProps}
           >
-            <SpriteTransitionWorkspace character={character} controller={transitions} />
+            <SpriteTransitionWorkspace
+              character={character}
+              controller={transitions}
+              mattingOptions={mattingOptions}
+              onMattingChange={(value) => setAnimationInput((current) => ({ ...current, ...value }))}
+            />
           </div>
         ) : (
           <div
@@ -383,6 +403,14 @@ export function SpriteGenerationDialog({ character, name, onClose, onImported }:
                         {t("spriteGeneration.autoRemoveBackground")}
                       </Switch>
                       <p className="sprite-generation__hint">{t("spriteGeneration.autoRemoveHint")}</p>
+                      {removeBackground ? (
+                        <SpriteMattingSettings
+                          compact
+                          value={mattingOptions}
+                          disabled={Boolean(busy)}
+                          onChange={(value) => setAnimationInput((current) => ({ ...current, ...value }))}
+                        />
+                      ) : null}
                     </div>
                   </div>
                   <div className="sprite-generation__plan-action">

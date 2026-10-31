@@ -10,6 +10,7 @@ from application.characters.generate_sprites import (
     capture_sprite_frame,
     remove_sprite_background,
     boundary_frame,
+    matting_options,
 )
 from application.runtime.state import _jsonify
 from application.runtime.tasks import _update_task
@@ -18,6 +19,7 @@ from application.characters.animate_sprites import (
     render_animation,
     make_transparent_animation,
     verify_transparent_animation,
+    retry_animation_matting,
 )
 from frontend_bridge_core.tools import _local_file_access_roots
 from sdk.path_utils import safe_existing_file_path
@@ -73,7 +75,6 @@ def run_sprite_animation(state, task_id, payload):
 
 
 def _finish_animation(state, task_id, source):
-
     video = safe_existing_file_path(
         source["videoPath"],
         roots=(Path(state.project_root_dir) / "cache" / "sprite_generation",),
@@ -105,7 +106,7 @@ def _finish_animation(state, task_id, source):
         task_id,
         phase="video-matting",
         progress=0.55,
-        message="正在逐帧抠图并细化 Alpha 边缘，完成后将校验透明视频。",
+        message="正在逐帧抠图并编码，完成后将校验透明视频。",
     )
     try:
         metadata = make_transparent_animation(
@@ -122,6 +123,7 @@ def _finish_animation(state, task_id, source):
 
 
 def run_sprite_render(state, task_id, payload):
+    matting_options(payload)
     remove_background = _auto_remove_background(payload)
     name = str(payload.get("name") or "").strip()
     if not state.config_manager.get_character_by_name(name):
@@ -244,15 +246,18 @@ def run_sprite_frame(state, task_id, payload):
         state, task_id, phase="frame", message="正在截取选中的视频画面。", progress=0.3
     )
     result = capture_sprite_frame(source, video, output, payload["seconds"])
+    result = retry_animation_matting(result, payload)
     return _finish_sprite(state, task_id, result, remove_background)
 
 
 def run_sprite_cutout(state, task_id, payload):
+    matting_options(payload)
     name = str(payload.get("name") or "").strip()
     with state.task_lock:
         source = dict(
             _generated_task(state, str(payload.get("taskId") or ""), name)["result"]
         )
+    source = retry_animation_matting(source, payload)
     if source.get("animation"):
         return _finish_animation(state, task_id, source)
     original = safe_existing_file_path(

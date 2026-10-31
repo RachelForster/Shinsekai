@@ -2,6 +2,13 @@ export type FrontendLanguage = "zh_CN" | "en" | "ja";
 
 export type MessageKey =
   | "spriteMatting.chroma"
+  | "spriteMatting.settings"
+  | "spriteMatting.defaultHint"
+  | "spriteMatting.model"
+  | "spriteMatting.fallback"
+  | "spriteMatting.autoScreen"
+  | "spriteMatting.alphaOption"
+  | "spriteMatting.optionHint"
   | "spriteMatting.ai"
   | "spriteMatting.alpha"
   | "spriteMatting.opaque"
