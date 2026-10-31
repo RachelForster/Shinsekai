@@ -252,6 +252,8 @@ def _launch_chat_locked(
 ) -> dict[str, Any]:
     if _chat_runtime_closing(state):
         raise RuntimeError("聊天会话正在关闭，请稍后再启动。")
+    from application.chat.doki_handoff import launch_policy
+    body = launch_policy(state, body)
     mobile_access_enabled = bool(body.get("enableMobileAccess", False))
     if not mobile_access_enabled:
         configure_mobile_access(state, enabled=False)
@@ -473,6 +475,8 @@ def _resume_last_chat_locked(
     )
     if history_path is None:
         raise FileNotFoundError("未找到聊天记录（*.json）。请先在主窗口进行过对话。")
+    from application.chat.doki_handoff import launch_policy
+    session = launch_policy(state, {**session, "historyPath": str(history_path)})
     saved_launch = saved_conversation_launch(state, history_path)
     if saved_launch is not None:
         if enable_mobile_access is not None:

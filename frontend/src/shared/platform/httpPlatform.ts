@@ -581,6 +581,8 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         }),
     },
     chat: {
+      ackDokiHandoff: (input) =>
+        requestJson(apiBase, "/api/integrations/doki/entered", { method: "POST", body: JSON.stringify(input) }),
       close: (options) =>
         requestJson<ChatSnapshot>(apiBase, "/api/chat/close", {
           body: JSON.stringify({ expectedSessionId: options?.expectedSessionId }),

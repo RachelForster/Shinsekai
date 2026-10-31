@@ -197,6 +197,9 @@ def create_chat_startup_context(
         from application.chat.history.state import load_chat_history
         messages = load_chat_history(str(chat_history_active_path(args.history)))
 
+    from application.chat.doki_handoff import install_runtime as install_doki_runtime
+    install_doki_runtime(llm_manager, config, args)
+
     with startup_phase("chat.init_hooks"):
         if plugin_manager is not None:
             init_context = runtime.InitChatContext(

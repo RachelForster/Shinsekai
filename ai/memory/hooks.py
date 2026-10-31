@@ -354,7 +354,7 @@ class MemoryAutoHooks:
             if context.role == "user":
                 self._last_injected_user = ""
             else:
-                names = _dialog_speaker_names(message.get("content"))
+                names = [name for name in _dialog_speaker_names(message.get("content")) if name in self._scopes]
                 if names:
                     self._active_character_name = names[-1]
             identity = str(message.get("id") or f"{len(context.messages)}:{hashlib.sha256(content.encode()).hexdigest()}")

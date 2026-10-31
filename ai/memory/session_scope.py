@@ -29,6 +29,8 @@ def session_scopes(history, characters, root=None):
     result = {}
     for character in characters:
         identity = str(getattr(character, 'id', '') or '')
+        if identity and identity == value.get('player_id'):
+            continue
         if not identity:
             raise ValueError('角色缺少稳定 ID，请先更新并保存角色配置。')
         if value['timeline'] == 'daily':

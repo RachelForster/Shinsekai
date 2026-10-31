@@ -1621,6 +1621,7 @@ export interface ShinsekaiPlatform {
     uploadImageAudio: (input: { index: number; name: string; path: string }) => Promise<Effect>;
   };
   chat: {
+    ackDokiHandoff?: (input: { historyPath: string; sessionId: string }) => Promise<{ doki: boolean; status?: string }>;
     getCurrentConversation: () => Promise<ConversationSummary | null>;
     reconfigureConversation: (
       id: string,
