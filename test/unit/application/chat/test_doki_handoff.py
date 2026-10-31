@@ -94,10 +94,10 @@ def test_launch_native_template_ready_not_entered_and_retry_same_save(fixture):
         state.chat_session = dict(historyPath=str(target), sessionId='session-1')
         return dict(sessionId='session-1')
     with patch('application.chat.composition._chat_process_running', side_effect=[False, True]), patch('frontend_bridge_core.chat_session.launch_chat', side_effect=start) as launch:
-        assert handoff.launch(state, source['handoff_id'])['status'] == 'ready'
+        assert handoff.launch(state, source['handoff_id'], launcher=launch)['status'] == 'ready'
         launch.assert_called_once()
     with patch('application.chat.composition._chat_process_running', return_value=True), patch('frontend_bridge_core.chat_session.launch_chat') as launch:
-        assert handoff.launch(state, source['handoff_id'])['status'] == 'ready'
+        assert handoff.launch(state, source['handoff_id'], launcher=launch)['status'] == 'ready'
         launch.assert_not_called()
         assert handoff.acknowledge(state, dict(historyPath=str(target), sessionId='wrong')) == {'doki': False}
         assert handoff.acknowledge(state, dict(historyPath=str(target), sessionId='session-1'))['status'] == 'entered'
@@ -106,7 +106,7 @@ def test_launch_native_template_ready_not_entered_and_retry_same_save(fixture):
             assert handoff.status(state, source['handoff_id'])['status'] == 'unconfirmed'
         state.chat_session['historyPath'] = str(target.parent / 'other')
         with pytest.raises(ValueError, match='另一场'):
-            handoff.launch(state, source['handoff_id'])
+            handoff.launch(state, source['handoff_id'], launcher=launch)
     with patch('application.chat.composition._chat_process_running', return_value=False):
         assert handoff.status(state, source['handoff_id'])['status'] == 'paused'
 

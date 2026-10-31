@@ -1,3 +1,4 @@
+from frontend_bridge_core.chat_session import launch_chat
 from application.chat.doki_handoff import prepare, launch, status, acknowledge
 from frontend_bridge_core.routes.router import JsonResponse, Route
 
@@ -7,7 +8,7 @@ def _prepare(request):
 
 
 def _launch(request):
-    return JsonResponse(launch(request.state, request.body['handoff_id']))
+    return JsonResponse(launch(request.state, request.body['handoff_id'], launcher=launch_chat))
 
 
 def _status(request):

@@ -152,13 +152,12 @@ def status(state, identity):
     return {'handoff_id': handoff_id(identity), 'status': phase, 'mode': source['mode'], 'sessionId': receipt.get('sessionId', ''), 'active': active}
 
 
-def launch(state, identity):
+def launch(state, identity, *, launcher):
     target = directory(state, identity)
     source = read_manifest(target)
     if source is None:
         raise ValueError('交接存档不存在。')
     from application.chat.composition import _chat_process_running
-    from frontend_bridge_core.chat_session import launch_chat
     with _lock:
         if _chat_process_running():
             current = getattr(state, 'chat_session', {}) or {}
@@ -167,7 +166,7 @@ def launch(state, identity):
             return status(state, identity)
         names, player = _characters(state, source)
         system, _ = state.template_generator.generate_chat_template(names, '', True, True, False, player_character=player, allow_player_dialogue=False, read_player_speech=False)
-        result = launch_chat(state, {'characters': names, 'playerCharacter': player, 'allowPlayerDialogue': False, 'readPlayerSpeech': False, 'userDisplayName': source.get('user_name') or '用户', 'scenario': source.get('reason') or '与用户见面。', 'system': system, 'historyPath': str(target), 'resetHistory': False, 'templateName': 'Doki 约会', 'mediaSelectionMode': 'indexed', 'useCg': True})
+        result = launcher(state, {'characters': names, 'playerCharacter': player, 'allowPlayerDialogue': False, 'readPlayerSpeech': False, 'userDisplayName': source.get('user_name') or '用户', 'scenario': source.get('reason') or '与用户见面。', 'system': system, 'historyPath': str(target), 'resetHistory': False, 'templateName': 'Doki 约会', 'mediaSelectionMode': 'indexed', 'useCg': True})
         if result.get('runtimeDependencyError') or result.get('status') == 'error':
             raise RuntimeError('新世界会话尚未启动，请在新世界检查运行组件与模型配置。')
         _write_receipt(target, {'status': 'ready', 'sessionId': result.get('sessionId', '')})
