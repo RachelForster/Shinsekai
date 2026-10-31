@@ -88,6 +88,9 @@ def test_launch_native_template_ready_not_entered_and_retry_same_save(fixture):
     target = handoff.directory(state, source['handoff_id'])
     state.template_generator.generate_chat_template.return_value = ('原生模板', '')
     def start(_, body):
+        from application.chat.history.paths import resolve_history_path_for_project
+        assert resolve_history_path_for_project(state, body['historyPath']) == target
+        assert json.loads((target / 'active.json').read_text(encoding='utf-8')) == []
         assert body['historyPath'] == str(target)
         assert body['system'] == '原生模板'
         assert not body['allowPlayerDialogue'] and not body['resetHistory']
@@ -240,3 +243,18 @@ def test_record_preview_pagination_budget_and_daily_rejection(fixture):
     (target / handoff.MANIFEST).write_text(json.dumps(manifest),encoding='utf-8')
     with pytest.raises(ValueError,match='独立剧情'):
         handoff.preview_records(state,dict(handoff_id=source['handoff_id']))
+
+
+@pytest.mark.parametrize('filename', ['active.json', 'active.json.tmp', 'branches.json'])
+def test_launch_preserves_existing_history_and_recovery_files(fixture, filename):
+    state, source = fixture
+    handoff.prepare(state, source)
+    target = handoff.directory(state, source['handoff_id'])
+    saved = target / filename
+    saved.write_bytes(b'["preserve existing history"]')
+    state.template_generator.generate_chat_template.return_value = ('native template', '')
+    with patch('application.chat.composition._chat_process_running', return_value=False):
+        handoff.launch(state, source['handoff_id'], launcher=Mock(return_value={'sessionId': 'test'}))
+    assert saved.read_bytes() == b'["preserve existing history"]'
+    if filename != 'active.json':
+        assert not (target / 'active.json').exists()

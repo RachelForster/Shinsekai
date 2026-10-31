@@ -179,6 +179,11 @@ def launch(state, identity, *, launcher):
             if receipt['status'] == 'paused':
                 _write_receipt(target, {'status': 'ready'})
             return status(state, identity)
+        # A prepared handoff already contains metadata; initialize native storage
+        # before the launcher validates its directory, preserving recovery files.
+        if not any((target / name).exists() for name in ('active.json', 'active.json.tmp', 'branches.json')):
+            with (target / 'active.json').open('x', encoding='utf-8') as stream:
+                json.dump([], stream)
         names, player = _characters(state, source)
         system, _ = state.template_generator.generate_chat_template(names, '', True, True, False, player_character=player, allow_player_dialogue=False, read_player_speech=False)
         result = launcher(state, {'characters': names, 'playerCharacter': player, 'allowPlayerDialogue': False, 'readPlayerSpeech': False, 'userDisplayName': source.get('user_name') or '用户', 'scenario': source.get('reason') or '与用户见面。', 'system': system, 'historyPath': str(target), 'resetHistory': False, 'templateName': 'Doki 约会', 'mediaSelectionMode': 'indexed', 'useCg': True})

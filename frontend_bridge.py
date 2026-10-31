@@ -421,6 +421,9 @@ def run(
     _set_bridge_state(state)
     from application.characters.import_recovery import recover_model_imports
     recover_model_imports(state)
+    server = ThreadingHTTPServer((host, port), FrontendBridgeHandler)
+    server.state = state  # type: ignore[attr-defined]
+    port = int(server.server_address[1])
     state.chat_stream = ChatStreamService(host=host, bridge_port=port, auth_token=bridge_auth_token)
     state.resource_urls = state.chat_stream.resource_urls
     state.chat_stream.start()
@@ -440,8 +443,6 @@ def run(
         start_websocket=state.chat_stream.start_mobile_listener,
         stop_websocket=state.chat_stream.stop_mobile_listener,
     )
-    server = ThreadingHTTPServer((host, port), FrontendBridgeHandler)
-    server.state = state  # type: ignore[attr-defined]
     from ai.memory.connection import publish_endpoint
     if not publish_endpoint(f"http://127.0.0.1:{server.server_address[1]}", bridge_auth_token, resolved_project_root):
         os.environ["SHINSEKAI_MEMORY_SERVICE_OWNER"] = "0"
