@@ -7,11 +7,20 @@ from frontend_bridge_core.memory import (
     _list_character_memories,
     _memory_asset_index,
     _memory_asset_search,
+    _scoped_memory_operation,
     _memory_tool_forget,
     _memory_tool_remember,
     _memory_tool_search,
 )
 from frontend_bridge_core.routes.router import ApiRequest, JsonResponse, Route
+
+
+def _scoped(request, action):
+    return JsonResponse(_scoped_memory_operation(request.state, action, request.body))
+
+
+def _memory_extract(request):
+    return _scoped(request, "extract")
 
 
 def _character_memory_status(_request: ApiRequest) -> JsonResponse:
@@ -47,6 +56,8 @@ def _memory_status(request: ApiRequest) -> JsonResponse:
 
 
 def _memory_list(request: ApiRequest) -> JsonResponse:
+    if "scope" in request.body:
+        return _scoped(request, "list")
     return JsonResponse(
         _list_character_memories(
             str(request.body.get("name") or request.body.get("characterName") or "")
@@ -55,6 +66,8 @@ def _memory_list(request: ApiRequest) -> JsonResponse:
 
 
 def _memory_search(request: ApiRequest) -> JsonResponse:
+    if "scope" in request.body:
+        return _scoped(request, "search")
     return JsonResponse(
         _memory_tool_search(
             str(request.body.get("query") or ""),
@@ -69,6 +82,8 @@ def _memory_search(request: ApiRequest) -> JsonResponse:
 
 
 def _memory_remember(request: ApiRequest) -> JsonResponse:
+    if "scope" in request.body:
+        return _scoped(request, "remember")
     return JsonResponse(
         _memory_tool_remember(
             str(request.body.get("content") or ""),
@@ -82,6 +97,8 @@ def _memory_remember(request: ApiRequest) -> JsonResponse:
 
 
 def _memory_forget(request: ApiRequest) -> JsonResponse:
+    if "scope" in request.body:
+        return _scoped(request, "forget")
     return JsonResponse(
         _memory_tool_forget(
             str(request.body.get("memoryId") or request.body.get("memory_id") or "")
@@ -98,6 +115,12 @@ def _memory_asset_prepare(request: ApiRequest) -> JsonResponse:
 
 
 MEMORY_ROUTES = (
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/memory/extract",
+        handler=_memory_extract,
+        name="memory.extract",
+    ),
     Route(
         methods=frozenset({"POST"}),
         pattern="/api/memory/asset-index",

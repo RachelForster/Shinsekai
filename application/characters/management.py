@@ -33,6 +33,9 @@ class CharacterOperation(str, Enum):
     DELETE_SPRITE_VOICE = "delete-sprite-voice"
     IMPORT = "import"
     EXPORT = "export"
+    DOKI_LIST = "doki-list"
+    EXCHANGE_PREPARE = "exchange-prepare"
+    LINK_DOKI = "link-doki"
 
 
 @dataclass(frozen=True)
@@ -113,6 +116,8 @@ class CharacterUseCase:
         )
 
     def execute(self, request: CharacterRequest) -> Any:
+        from application.characters.exchange import list_doki, prepare_character
+        from application.characters.links import link_operation
         from application.characters.model_assets import import_model, import_model_states, save_model_state
         handlers = {
             CharacterOperation.IMPORT_MODEL: lambda body: import_model(self, body),
@@ -129,6 +134,9 @@ class CharacterUseCase:
             CharacterOperation.DELETE_SPRITE_VOICE: self._delete_sprite_voice,
             CharacterOperation.IMPORT: self._import_packages,
             CharacterOperation.EXPORT: self._export_package,
+            CharacterOperation.DOKI_LIST: lambda _body: list_doki(),
+            CharacterOperation.EXCHANGE_PREPARE: lambda body: prepare_character(self, body),
+            CharacterOperation.LINK_DOKI: lambda body: link_operation(self, body),
         }
         # Import prepares outside the lock, then checks the original config at commit.
         if request.operation in (CharacterOperation.IMPORT_MODEL, CharacterOperation.IMPORT_MODEL_STATES):
@@ -245,6 +253,18 @@ class CharacterUseCase:
         )
         if message.startswith("名称不能为空") or "已与其他角色重复" in message or message.startswith("保存失败"):
             raise RuntimeError(message)
+        if "emotion_resources" in body or "sprites" in body:
+            saved_character = self._state.config_manager.get_character_by_name(saved_name)
+            if character.sprite_prefix.startswith("exchange_") and "sprites" in body:
+                saved_character.sprites = character.sprites
+                saved_character.sprite_scale = character.sprite_scale
+            if "emotion_resources" in body:
+                saved_character.emotion_resources = character.emotion_resources
+            for stored, incoming in zip(saved_character.sprites, character.sprites):
+                if hasattr(stored, "tags") and hasattr(incoming, "tags"):
+                    stored.tags = incoming.tags
+                    stored.voice_lang = incoming.voice_lang
+            self._state.config_manager.save_characters_config()
         self._state.config_manager.reload()
         if original_name and original_name != saved_name:
             from application.knowledge.manage_knowledge import rename_character_bindings

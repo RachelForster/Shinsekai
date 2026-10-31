@@ -1,13 +1,15 @@
 import yaml
+from uuid import uuid4
 
 from config.sprite_voice import normalize_sprite_voice_types
 from config.schema import Character
 
 
 class CharacterConfig:
-    def __init__(self, name, color, sprite_prefix, gpt_model_path=None, sovits_model_path=None, refer_audio_path=None, prompt_text=None, prompt_lang=None, sprites=[], emotion_tags="", sprite_scale=1.0, character_setting="", speech_speed=1.0, speech_volume=1.0, pronunciation_map=None, character_brief="", avatar_type="static", avatars=None, portrait_crop=None):
+    def __init__(self, name, color, sprite_prefix, gpt_model_path=None, sovits_model_path=None, refer_audio_path=None, prompt_text=None, prompt_lang=None, sprites=[], emotion_tags="", sprite_scale=1.0, character_setting="", speech_speed=1.0, speech_volume=1.0, pronunciation_map=None, character_brief="", avatar_type="static", avatars=None, portrait_crop=None, emotion_resources=None, id=None):
         # 角色基本信息
         self.name = name
+        self.id = id or str(uuid4())
         self.color = color
         self.sprite_prefix = sprite_prefix
         self.sprites = sprites
@@ -16,6 +18,7 @@ class CharacterConfig:
         self.sprite_scale = sprite_scale
         self.portrait_crop = portrait_crop
         self.emotion_tags = emotion_tags
+        self.emotion_resources = emotion_resources or []
         self.speech_speed = speech_speed
         self.speech_volume = speech_volume
         self.pronunciation_map = pronunciation_map or {}
@@ -84,5 +87,7 @@ class CharacterConfig:
                 portrait_crop=char_data.get("portrait_crop"),
                 avatar_type=char_data.get("avatar_type", "static"),
                 avatars=char_data.get("avatars"),
+                emotion_resources=char_data.get("emotion_resources"),
+                id=char_data.get("id"),
             )
         return character

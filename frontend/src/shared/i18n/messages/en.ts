@@ -1,6 +1,33 @@
 import type { MessageKey } from "../messages";
 
 export const enMessages: Record<MessageKey, string> = {
+  "character.link.title": "Character link",
+  "character.link.fromDoki": "Link a Doki character",
+  "character.link.unlink": "Unlink",
+  "character.link.hint": "Link identities without copying or replacing settings, resources, chats or memories.",
+  "character.link.linked": "Linked: {name}",
+  "character.link.player": "My profile / player",
+  "character.link.select": "Choose a character (matching names first)",
+  "character.link.sameName": "Matching name",
+  "character.link.alreadyLinked": "Already linked",
+  "character.link.confirm": "Confirm link",
+  "character.link.saveFirst": "Save the character before linking.",
+  "character.exchange.title": "Import characters",
+  "character.exchange.fromDoki": "Choose a character from Doki",
+  "character.exchange.package": "Import character package",
+  "character.exchange.hint":
+    "Import character settings and resources, then save to apply. Chats, memories and cloud settings stay unchanged.",
+  "character.exchange.source": "Source character",
+  "character.exchange.target": "Import destination",
+  "character.exchange.update": "Update: {name}",
+  "character.exchange.preview": "Character setting preview",
+  "character.exchange.noPersona": "No character setting",
+  "character.exchange.confirm": "Load into draft",
+  "character.exchange.empty": "No characters available to import",
+  "character.exchange.unavailable": "This import method is unavailable on this platform. Use a character package file.",
+  "character.exchange.choose": "Choose a character.",
+  "character.exchange.invalid": "No valid character settings were returned.",
+  "character.exchange.serviceHint": "Make sure Doki is running on this computer.",
   "spriteGeneration.replace": "Replace original sprite",
   "spriteGeneration.replaceHint":
     "Replace the chosen sprite and its tags with this result. Keep its position, voice settings and original file.",

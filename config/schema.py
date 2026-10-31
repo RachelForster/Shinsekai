@@ -1,4 +1,5 @@
 from collections.abc import Mapping
+from uuid import uuid4
 
 from pydantic import BaseModel, Field, HttpUrl, FilePath, BeforeValidator, field_validator, model_validator
 from pydantic_core import PydanticUseDefault
@@ -50,6 +51,8 @@ class Sprite(BaseModel):
     voice_path: Optional[FilePath] = Field(None, description="对应的语音文件的路径 (可选)")
     voice_text: Optional[str] = Field(None, description="语音对应的文本内容 (可选, 存在于某些条目中)")
     voice_type: Optional[str] = Field(None, description="语音类型: fallback、preset 或 reference")
+    voice_lang: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
     portrait_crop: Optional[PortraitCrop] = None
 
 class ModelSprites(BaseModel):
@@ -64,6 +67,7 @@ class ModelSprites(BaseModel):
 class Character(BaseModel):
     """单个角色配置的实体模型"""
     # 角色基本信息
+    id: str = Field(default_factory=lambda: str(uuid4()))
     name: str = Field(..., description="角色名称")
     color: str = Field(..., description="角色对话框或名字的颜色")
     sprite_prefix: str = Field(..., description="立绘文件名的通用前缀")
@@ -75,6 +79,7 @@ class Character(BaseModel):
         description="用于次要角色精简提示词的角色简介",
     )
     character_setting: DefaultIfNone[str] = Field(default="", description="角色背景、性格和语言习惯的详细描述")
+    emotion_resources: List[dict[str, Any]] = Field(default_factory=list, description="按标签保存的语音资源，不要求存在立绘")
     sprite_scale: DefaultIfNone[float] = Field(default=1.0, description="立绘的缩放比例 (默认值 1.0)")
     portrait_crop: DefaultIfNone[PortraitCrop] = Field(default_factory=PortraitCrop)
     emotion_tags: DefaultIfNone[str] = Field(default="", description="情绪标签和对应的立绘编号描述")

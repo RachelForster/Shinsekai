@@ -55,6 +55,8 @@ class MemoryQueueItem:
     source: str
     confidence: float
     created_at: float
+    scope: dict | None = None
+    metadata: dict | None = None
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "MemoryQueueItem | None":
@@ -76,6 +78,8 @@ class MemoryQueueItem:
             source=_clean_text(raw.get("source")) or "unknown",
             confidence=max(0.0, min(1.0, confidence)),
             created_at=created_at,
+            scope=raw.get("scope"),
+            metadata=raw.get("metadata"),
         )
 
 
@@ -109,6 +113,8 @@ class MemoryWriteQueue:
         character_name: str | None = None,
         source: str = "auto",
         confidence: float = 1.0,
+        scope: dict | None = None,
+        metadata: dict | None = None,
     ) -> dict[str, Any]:
         text = _clean_text(memory)
         if not text:
@@ -118,10 +124,15 @@ class MemoryWriteQueue:
             clean_confidence = float(confidence)
         except (TypeError, ValueError):
             clean_confidence = 1.0
-        dedupe_key = self._dedupe_key(character, text)
+        if scope is not None:
+            from ai.memory.scope import normalize_scope, event_metadata
+            scope, metadata = normalize_scope(scope), event_metadata(metadata)
+        dedupe_key = self._dedupe_key(character, text, scope, metadata)
         with self._lock:
             for item in self._items:
-                if self._dedupe_key(item.character_name, item.memory) == dedupe_key:
+                if self._dedupe_key(item.character_name, item.memory, item.scope, item.metadata) == dedupe_key:
+                    if scope is not None and (item.memory != text or item.metadata != metadata):
+                        raise ValueError("同一事件不能以不同内容排队。")
                     return {"ok": True, "queued": False, "duplicate": True, "id": item.id}
             item = MemoryQueueItem(
                 id=uuid.uuid4().hex,
@@ -130,6 +141,8 @@ class MemoryWriteQueue:
                 source=_clean_text(source) or "auto",
                 confidence=max(0.0, min(1.0, clean_confidence)),
                 created_at=time.time(),
+                scope=scope,
+                metadata=metadata,
             )
             self._items.append(item)
             self._save_locked()
@@ -147,7 +160,7 @@ class MemoryWriteQueue:
         errors: list[dict[str, str]] = []
         for item in items:
             try:
-                result = self._remember(item.memory, item.character_name)
+                result = self._remember(item.memory, item.character_name, scope=item.scope, metadata=item.metadata) if item.scope is not None else self._remember(item.memory, item.character_name)
             except Exception as exc:
                 logger.exception("memory queue flush failed")
                 errors.append({"id": item.id, "error": str(exc)})
@@ -193,7 +206,7 @@ class MemoryWriteQueue:
                 item = MemoryQueueItem.from_dict(row)
                 if item is None:
                     continue
-                key = self._dedupe_key(item.character_name, item.memory)
+                key = self._dedupe_key(item.character_name, item.memory, item.scope, item.metadata)
                 if key in seen:
                     continue
                 seen.add(key)
@@ -218,5 +231,8 @@ class MemoryWriteQueue:
                 logger.debug("failed to remove memory queue temp file %s", tmp_path, exc_info=True)
 
     @staticmethod
-    def _dedupe_key(character_name: str, memory: str) -> str:
+    def _dedupe_key(character_name: str, memory: str, scope=None, metadata=None) -> str:
+        if scope is not None:
+            from ai.memory.scope import event_key
+            return event_key(scope, metadata)
         return f"{_resolve_character_name(character_name).casefold()}\n{_clean_text(memory).casefold()}"

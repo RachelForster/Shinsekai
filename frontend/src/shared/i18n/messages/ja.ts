@@ -1,6 +1,33 @@
 import type { MessageKey } from "../messages";
 
 export const jaMessages: Record<MessageKey, string> = {
+  "character.link.title": "キャラクターのリンク",
+  "character.link.fromDoki": "Doki のキャラクターとリンク",
+  "character.link.unlink": "リンクを解除",
+  "character.link.hint": "同じ人物として関連付けます。設定、リソース、チャット、記憶はコピー・上書きされません。",
+  "character.link.linked": "リンク済み：{name}",
+  "character.link.player": "自分のプロフィール／プレイヤー",
+  "character.link.select": "対応するキャラクターを選択（同名を優先）",
+  "character.link.sameName": "同名",
+  "character.link.alreadyLinked": "リンク済み",
+  "character.link.confirm": "リンクを確定",
+  "character.link.saveFirst": "リンクする前にキャラクターを保存してください。",
+  "character.exchange.title": "キャラクターのインポート",
+  "character.exchange.fromDoki": "Doki からキャラクターを選択",
+  "character.exchange.package": "キャラクターパッケージをインポート",
+  "character.exchange.hint":
+    "設定とリソースを読み込み、保存すると反映されます。チャット、記憶、クラウド設定は変更されません。",
+  "character.exchange.source": "読み込むキャラクター",
+  "character.exchange.target": "保存先",
+  "character.exchange.update": "更新：{name}",
+  "character.exchange.preview": "キャラクター設定のプレビュー",
+  "character.exchange.noPersona": "キャラクター設定はありません",
+  "character.exchange.confirm": "下書きに読み込む",
+  "character.exchange.empty": "インポートできるキャラクターがいません",
+  "character.exchange.unavailable": "この環境では利用できません。キャラクターパッケージをご利用ください。",
+  "character.exchange.choose": "キャラクターを選択してください。",
+  "character.exchange.invalid": "有効なキャラクター設定が返されませんでした。",
+  "character.exchange.serviceHint": "このパソコンで Doki を起動してください。",
   "spriteGeneration.replace": "元の立ち絵を置き換え",
   "spriteGeneration.replaceHint":
     "選択した立ち絵とタグをこの生成結果に置き換えます。一覧の位置・音声設定・元ファイルは保持します。",

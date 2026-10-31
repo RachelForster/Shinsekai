@@ -28,6 +28,7 @@ from frontend_bridge_core.routes.http_handler import (
     BRIDGE_AUTH_QUERY,
     BridgeHttpHandler,
 )
+from frontend_bridge_core.routes.doki_routes import DOKI_ROUTES
 from frontend_bridge_core.routes.memory_routes import MEMORY_ROUTES
 from frontend_bridge_core.routes.knowledge_routes import KNOWLEDGE_ROUTES
 from frontend_bridge_core.routes.reminder_routes import REMINDER_ROUTES
@@ -59,6 +60,7 @@ _API_ROUTER = Router(
         *BACKGROUND_ROUTES,
         *EFFECT_ROUTES,
         *MEMORY_ROUTES,
+        *DOKI_ROUTES,
         *KNOWLEDGE_ROUTES,
         *REMINDER_ROUTES,
         *MODEL_ASSET_ROUTES,

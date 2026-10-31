@@ -121,12 +121,18 @@ class MemoryAutoHooks:
         self._monotonic = monotonic_func
         self._lock = threading.RLock()
         self._summary_lock = threading.Lock()
+        self._witnesses = None
         self._buffer: list[dict[str, str]] = []
         self._user_turns = 0
         self._last_extract_turn = 0
         self._last_injected_user = ""
         self._workers: list[threading.Thread] = []
         self._extractor = MemoryExtractor(llm_adapter)
+        self._scopes = {}
+        self._disabled = False
+        self._scoped_queue = None
+        self._session_id = ""
+        self._scoped_flush_lock = threading.Lock()
 
     @property
     def primary_character_name(self) -> str:
@@ -151,6 +157,19 @@ class MemoryAutoHooks:
         available we keep chat usable without silently installing anything.
         """
 
+        self._witnesses = context.metadata.get("memoryWitnesses")
+        self._disabled = not context.memory_enabled or (context.metadata.get("memoryScoped") is True and not context.metadata.get("memoryScopes"))
+        if self._disabled and context.metadata.get("memoryScoped"):
+            from ai.memory.session_scope import configure_scopes
+            configure_scopes({}, "")
+        if context.metadata.get("memoryScopes") and not self._disabled:
+            from ai.memory.scoped_queue import ScopedWriteQueue
+            self._scopes = dict(context.metadata["memoryScopes"])
+            from ai.memory.session_scope import configure_scopes
+            configure_scopes(self._scopes, str(context.metadata.get("memorySession") or ""))
+            self._session_id = str(context.metadata.get("memorySession") or "")
+            self._scoped_queue = ScopedWriteQueue()
+            self._retry_scoped()
         if not context.memory_enabled:
             context.report(1.0, "Long-term memory is disabled.", phase="memory")
             return
@@ -221,6 +240,18 @@ class MemoryAutoHooks:
             raise RuntimeError(f"unexpected memory service status: {status or 'unknown'}")
 
     def before_chat(self, context: BeforeChatContext) -> None:
+        if self._disabled:
+            return
+        if self._scopes and self._witnesses is not None:
+            visible = self._witnesses() or []
+            names = [name for name, scope in self._scopes.items() if scope["character_id"] in visible]
+            if not names:
+                return
+            if self.primary_character_name not in names:
+                self._active_character_name = names[0]
+        if self._scopes:
+            from ai.memory.session_scope import set_active_character
+            set_active_character(self.primary_character_name)
         user_text = self._latest_user_text_for_fresh_turn(context.messages)
         if not user_text:
             return
@@ -235,7 +266,8 @@ class MemoryAutoHooks:
                 return
             self._last_injected_user = key
         try:
-            result = self.search_func(query, character_name=self.primary_character_name, limit=self.search_limit)
+            kwargs = {"scope": self._scopes[self.primary_character_name]} if self.primary_character_name in self._scopes else {}
+            result = self.search_func(query, character_name=self.primary_character_name, limit=self.search_limit, **kwargs)
         except Exception:
             logger.exception("automatic memory search failed")
             return
@@ -252,6 +284,11 @@ class MemoryAutoHooks:
         )
 
     def message_added(self, context: MessageAddedContext) -> None:
+        if self._disabled:
+            return
+        if self._scoped_queue is not None:
+            self._scoped_message(context)
+            return
         role = str(context.role or "")
         if role not in {"user", "assistant"}:
             return
@@ -291,6 +328,11 @@ class MemoryAutoHooks:
             self._start_extraction(snapshot, source=f"periodic:{turn}")
 
     def shutdown(self, *, wait_timeout: float = 3.0) -> dict[str, Any]:
+        if self._scoped_queue is not None:
+            self._seal_scoped()
+            self._retry_scoped()
+            self.wait_for_idle(timeout=wait_timeout)
+            return {"pending": True, "durable": True}
         tail_snapshot, tail_turn = self._shutdown_tail_snapshot()
         if tail_snapshot:
             self._extract_enqueue_and_flush(tail_snapshot, source=f"shutdown:{tail_turn}")
@@ -301,6 +343,67 @@ class MemoryAutoHooks:
     def wait_for_idle(self, timeout: float = 3.0) -> None:
         for worker in self._live_workers():
             worker.join(timeout=timeout)
+
+    def _scoped_message(self, context):
+        import hashlib
+        from datetime import datetime, timezone
+        message = context.message or {}
+        if context.role not in {"user", "assistant"} or message.get("tool_calls") or message.get("forwarded_bundle") or message.get("shared_record"):
+            return
+        content = _clean_text(history_payload_to_plain_text([{**message, "role": context.role}], user_display_name="user"), max_chars=20000)
+        if not content:
+            return
+        witnesses = message.get("witnesses")
+        if self._witnesses is not None:
+            present = self._witnesses() or []
+            witnesses = present if witnesses is None else [value for value in witnesses if value in present or self._scopes.get(value, {}).get("character_id") in present]
+        if witnesses is None:
+            witnesses = list(self._scopes) if len(self._scopes) == 1 else []
+        witnesses = [scope["character_id"] for name, scope in self._scopes.items() if name in witnesses or scope["character_id"] in witnesses]
+        if not witnesses:
+            return
+        with self._lock:
+            if context.role == "user":
+                self._last_injected_user = ""
+            else:
+                names = [name for name in _dialog_speaker_names(message.get("content")) if name in self._scopes]
+                if names:
+                    self._active_character_name = names[-1]
+            identity = str(message.get("id") or f"{len(context.messages)}:{hashlib.sha256(content.encode()).hexdigest()}")
+            self._buffer.append({"id": identity, "speaker": context.role, "text": content, "witnesses": witnesses, "occurred_at": str(message.get("created_at") or datetime.now(timezone.utc).isoformat())})
+        if context.role == "assistant":
+            self._seal_scoped()
+            self._retry_scoped()
+
+    def _seal_scoped(self):
+        import hashlib
+        import json
+        with self._lock:
+            messages = list(self._buffer)
+            if not messages:
+                return
+            for name, scope in self._scopes.items():
+                visible = [m for m in messages if scope["character_id"] in m["witnesses"]]
+                if not visible:
+                    continue
+                event = hashlib.sha256(json.dumps(visible, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+                metadata = {"source_app": "shinsekai", "session_id": self._session_id, "event_id": event, "occurred_at": visible[-1]["occurred_at"], "record_kind": "dialogue"}
+                self._scoped_queue.enqueue("extract", {"scope": scope, "messages": visible, "characterName": name, "metadata": metadata})
+            self._buffer = []
+
+    def _retry_scoped(self):
+        if self._scoped_queue is None or not self._scoped_flush_lock.acquire(blocking=False):
+            return
+        def run():
+            try:
+                self._scoped_queue.flush()
+            except Exception:
+                logger.exception("scoped memory requests remain pending")
+            finally:
+                self._scoped_flush_lock.release()
+        worker = threading.Thread(target=run, name="scoped-memory-flush", daemon=True)
+        self._workers.append(worker)
+        worker.start()
 
     def _start_extraction(self, messages: list[dict[str, str]], *, source: str) -> None:
         worker = threading.Thread(

@@ -36,6 +36,7 @@ import {
 import { TopStageTools } from "./components/TopStageTools";
 import { StoryDebugPanel } from "./components/StoryDebugPanel";
 import "./chat-stage.css";
+import { useDokiHandoffReceipt } from "./hooks/useDokiHandoffReceipt";
 import { buildChatStageViewModel, chatStageReducer, emptyChatState } from "./chatState";
 import { isRemoteMobileAccessPage, layerClassName } from "./chatStageUtils";
 import { useChatStageCommands } from "./hooks/useChatStageCommands";
@@ -132,6 +133,11 @@ export function ChatStagePage() {
   const location = useLocation();
   const navigate = useNavigate();
   const [state, dispatch] = useReducer(chatStageReducer, location.state, initialChatStageState);
+  useDokiHandoffReceipt(
+    state.historyPath,
+    state.sessionId,
+    state.transportState === "connected" && !state.sessionClosedReason,
+  );
   const [confirmClearHistory, setConfirmClearHistory] = useState(false);
   const [confirmRevertUserIndex, setConfirmRevertUserIndex] = useState<number | null>(null);
   const [branchDialogOpen, setBranchDialogOpen] = useState(false);

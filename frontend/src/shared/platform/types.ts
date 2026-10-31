@@ -15,6 +15,8 @@ export interface PlayerPortrait {
 }
 
 export interface Sprite {
+  tags?: string[];
+  voice_lang?: string;
   portrait_crop?: PortraitCrop | null;
   path: string;
   voice_path?: string;
@@ -43,6 +45,14 @@ export interface AvatarRuntimeImport {
 }
 
 export interface Character {
+  id?: string;
+  emotion_resources?: Array<{
+    tag: string;
+    voice_path?: string;
+    voice_text?: string;
+    voice_type?: SpriteVoiceType;
+    voice_lang?: string;
+  }>;
   portrait_crop?: PortraitCrop;
   name: string;
   color: string;
@@ -1611,6 +1621,7 @@ export interface ShinsekaiPlatform {
     uploadImageAudio: (input: { index: number; name: string; path: string }) => Promise<Effect>;
   };
   chat: {
+    ackDokiHandoff?: (input: { historyPath: string; sessionId: string }) => Promise<{ doki: boolean; status?: string }>;
     getCurrentConversation: () => Promise<ConversationSummary | null>;
     reconfigureConversation: (
       id: string,
@@ -1702,6 +1713,34 @@ export interface ShinsekaiPlatform {
     previewKnowledgeImport: (knowledgeId: string, items: File[]) => Promise<KnowledgeImportPreview>;
   };
   characters: {
+    linkDoki?: (input: {
+      action: "state" | "doki-list" | "bind" | "unlink";
+      characterId: string;
+      dokiId?: string;
+      role?: string;
+    }) => Promise<{
+      link?: {
+        id: string;
+        doki_name: string;
+        shinsekai_name: string;
+        role: string;
+        available: boolean;
+        memory_identity: string;
+      } | null;
+      characters?: Array<{ id: string; name: string; role: string; linked: boolean }>;
+    }>;
+    listDoki?: () => Promise<{ characters: Array<{ id: string; name: string; persona: string }> }>;
+    prepareExchange?: (input: {
+      dokiId?: string;
+      path?: string;
+      index?: number;
+      targetName?: string;
+      previewOnly?: boolean;
+    }) => Promise<{
+      character?: Character;
+      originalName?: string;
+      characters?: Array<{ index: number; name: string; persona: string }>;
+    }>;
     importModel: (input: { name: string; avatar_type: string; source_path: string }) => Promise<Character>;
     importModelStates: (input: {
       name: string;

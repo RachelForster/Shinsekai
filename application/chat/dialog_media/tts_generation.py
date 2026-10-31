@@ -68,9 +68,11 @@ class DefaultTtsGenerationStrategy(TtsGenerationStrategy):
         speech_text, text_processor = self._speech_input(request)
         ref_audio_path = self._absolute(character.refer_audio_path)
         prompt_text = character.prompt_text
+        prompt_lang = character.prompt_lang
         if self._can_use_sprite_reference(request):
             ref_audio_path = self._absolute(sprite.voice_path)
             prompt_text = sprite.voice_text
+            prompt_lang = sprite.voice_lang or character.prompt_lang
 
         if text_processor:
             speech_text = text_processor.remove_parentheses(speech_text)
@@ -82,7 +84,7 @@ class DefaultTtsGenerationStrategy(TtsGenerationStrategy):
                 text_processor=text_processor,
                 ref_audio_path=ref_audio_path,
                 prompt_text=prompt_text,
-                prompt_lang=character.prompt_lang,
+                prompt_lang=prompt_lang,
                 character_name=request.character_name,
                 speed_factor=character.speech_speed,
             )
@@ -95,7 +97,7 @@ class DefaultTtsGenerationStrategy(TtsGenerationStrategy):
                 text_processor=text_processor,
                 ref_audio_path=ref_audio_path,
                 prompt_text=prompt_text,
-                prompt_lang=character.prompt_lang,
+                prompt_lang=prompt_lang,
                 character_name=request.character_name,
                 speed_factor=character.speech_speed,
             )

@@ -70,6 +70,19 @@ def chat_history_is_present(history_argument: str) -> bool:
         return False
 
 
+def _memory_scope_context(config, history, names):
+    from ai.memory.session_scope import session_scopes
+    characters = [c for c in config.config.characters if c.name in names]
+    if not characters or any(not getattr(c, "id", None) for c in characters):
+        return {"memoryScoped": True, "memoryScopes": {}, "memorySession": ""}
+    scopes, session = session_scopes(history, characters)
+    result = {"memoryScoped": True, "memoryScopes": scopes, "memorySession": session}
+    from application.chat.doki_handoff import present_witnesses
+    if present_witnesses(history) is not None:
+        result["memoryWitnesses"] = lambda: present_witnesses(history)
+    return result
+
+
 def create_chat_startup_context(
     args: Any,
     *,
@@ -188,6 +201,9 @@ def create_chat_startup_context(
         from application.chat.history.state import load_chat_history
         messages = load_chat_history(str(chat_history_active_path(args.history)))
 
+    from application.chat.doki_handoff import install_runtime as install_doki_runtime
+    install_doki_runtime(llm_manager, config, args)
+
     with startup_phase("chat.init_hooks"):
         if plugin_manager is not None:
             init_context = runtime.InitChatContext(
@@ -202,7 +218,7 @@ def create_chat_startup_context(
                     else "headless" if args.headless else "native"
                 ),
                 headless=bool(args.headless),
-                metadata={"workflowPath": str(args.workflow or "")},
+                metadata={"workflowPath": str(args.workflow or ""), **_memory_scope_context(config, args.history, character_names)},
             ).scaled(0.68, 0.82)
             plugin_manager.hook_dispatcher.dispatch_init_chat(init_context)
 

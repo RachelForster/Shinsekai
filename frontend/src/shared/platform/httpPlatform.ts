@@ -581,6 +581,8 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         }),
     },
     chat: {
+      ackDokiHandoff: (input) =>
+        requestJson(apiBase, "/api/integrations/doki/entered", { method: "POST", body: JSON.stringify(input) }),
       close: (options) =>
         requestJson<ChatSnapshot>(apiBase, "/api/chat/close", {
           body: JSON.stringify({ expectedSessionId: options?.expectedSessionId }),
@@ -1040,6 +1042,11 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
       },
     },
     characters: {
+      linkDoki: (input) =>
+        requestJson(apiBase, "/api/characters/links/doki", { method: "POST", body: JSON.stringify(input) }),
+      listDoki: () => requestJson(apiBase, "/api/characters/exchange/doki-list", { method: "POST", body: "{}" }),
+      prepareExchange: (input) =>
+        requestJson(apiBase, "/api/characters/exchange/prepare", { method: "POST", body: JSON.stringify(input) }),
       async planSprites(input, options) {
         const task = await requestJson<TaskSnapshot<{ items: SpritePromptPair[] }>>(
           apiBase,
