@@ -191,12 +191,12 @@ describe("sprite generator", () => {
     setSpriteTransitionPlaybackRate(1);
   });
 
-  it("opens a full workspace with a return action instead of a modal", () => {
+  it("opens a workspace with a close action instead of a modal", () => {
     const { close } = mount();
     expect(screen.getByRole("region", { name: "Generate sprites" })).toHaveClass("sprite-generation");
     expect(screen.queryByRole("dialog", { name: "Generate sprites" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Generate sprites", level: 1 })).toHaveFocus();
-    fireEvent.click(screen.getByRole("button", { name: "Back to character" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(close).toHaveBeenCalledOnce();
   });
 
@@ -244,6 +244,41 @@ describe("sprite generator", () => {
     expect(transition).not.toHaveBeenCalled();
   });
 
+  it("opens a result overlay and returns to the same scroll position and selection", async () => {
+    const { close } = mount();
+    await makePlan();
+    await drawAll();
+    const body = document.querySelector<HTMLElement>(".sprite-generation__workspace-body")!;
+    body.scrollTop = 123;
+    const trigger = screen.getByRole("button", { name: "View sprite 1 full size" });
+    trigger.focus();
+    fireEvent.click(trigger);
+    const dialog = screen.getByRole("dialog", { name: "Sprite 1" });
+    fireEvent.click(within(dialog).getByAltText("Sprite 1"));
+    expect(dialog).toBeInTheDocument();
+    fireEvent.click(dialog.parentElement!);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Sprite 1" })).toBeChecked();
+    expect(body.scrollTop).toBe(123);
+    expect(trigger).toHaveFocus();
+    expect(draw).toHaveBeenCalledTimes(2);
+    expect(close).not.toHaveBeenCalled();
+  });
+
+  it("enlarges a video reference while preserving its paused first-frame mode", () => {
+    mount({ ...character, sprites: [{ path: "/sprites/reference.webm" }] });
+    fireEvent.click(screen.getByRole("combobox", { name: "Use an existing sprite" }));
+    fireEvent.click(screen.getByRole("option", { name: "Sprite 1 · Animated · first frame" }));
+    fireEvent.click(screen.getByRole("button", { name: "Enlarge preview: Reference image or video (optional)" }));
+    const dialog = screen.getByRole("dialog", { name: "Reference image or video (optional)" });
+    const video = within(dialog).getByLabelText("Reference image or video (optional)") as HTMLVideoElement;
+    expect(video.autoplay).toBe(false);
+    expect(video.loop).toBe(false);
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(draw).not.toHaveBeenCalled();
+  });
+
   it("defaults to ToonOut and shares the selected fallback model across sprite modes", async () => {
     mount();
     expect(screen.getByRole("combobox", { name: "Background removal model" })).toHaveTextContent("ToonOut");
@@ -288,7 +323,7 @@ describe("sprite generator", () => {
     fireEvent.click(screen.getByRole("button", { name: "Generate pending (2)" }));
     await waitFor(() => expect(draw).toHaveBeenCalledOnce());
     expect(screen.getByRole("combobox", { name: "H3 generation resolution" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Back to character" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Close" })).toBeDisabled();
     await act(async () => finish({ name: "Mika", ...pairs[0], path: "high.png", taskId: "high" }));
     await waitFor(() => expect(draw).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByRole("combobox", { name: "H3 generation resolution" })).toBeEnabled());
@@ -813,8 +848,8 @@ describe("sprite generator", () => {
     animate.mockRejectedValueOnce(new Error("H3 temporarily unavailable"));
     fireEvent.click(screen.getByRole("button", { name: "Redraw" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("H3 temporarily unavailable");
-    expect(screen.getByRole("article", { name: "Animation 1" }).querySelector("a")).toHaveAttribute(
-      "href",
+    expect(screen.getByRole("article", { name: "Animation 1" }).querySelector("img, video")).toHaveAttribute(
+      "src",
       "asset://idle-alpha.webm",
     );
     expect(screen.getByRole("button", { name: "Add to collection (0)" })).toBeDisabled();
@@ -1267,7 +1302,7 @@ describe("sprite generator", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add more prompt plans" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("LLM unavailable");
     expect(screen.getByDisplayValue("happy pose")).toBeInTheDocument();
-    fireEvent.click(screen.getAllByRole("button", { name: "Close" })[1]);
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(close).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Close and discard unsaved ideas" }));
     expect(close).toHaveBeenCalledOnce();

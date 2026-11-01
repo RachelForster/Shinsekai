@@ -12,6 +12,7 @@ export * from "./FormControls";
 export * from "./GuidedFlow";
 export * from "./IconButton";
 export * from "./ImageAssetGallery";
+export * from "./MediaPreviewDialog";
 export * from "./VisualMedia";
 export * from "./PageSectionNav";
 export * from "./PathDisplay";

@@ -234,8 +234,11 @@ describe("CharacterEditorPage", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Add to collection (1)" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Add to collection (1)" }));
     await screen.findByText("Sprites added with tags saved");
-    await waitFor(() => expect(screen.getByRole("button", { name: "Back to character" })).toBeEnabled());
-    fireEvent.click(screen.getByRole("button", { name: "Back to character" }));
+    const closeGenerator = within(screen.getByRole("region", { name: "Generate sprites" })).getByRole("button", {
+      name: "Close",
+    });
+    await waitFor(() => expect(closeGenerator).toBeEnabled());
+    fireEvent.click(closeGenerator);
     expect(screen.getByLabelText("Character setting")).toHaveValue("My unsaved personality");
     expect(mockSaveCharacter).not.toHaveBeenCalled();
   });

@@ -12,12 +12,14 @@ interface DialogProps {
   children: ReactNode;
   className?: string;
   closeLabel?: string;
+  closeOnBackdrop?: boolean;
   dismissible?: boolean;
   footer?: ReactNode;
   headerActions?: ReactNode;
   onClose: () => void;
   open: boolean;
   title: string;
+  trapFocus?: boolean;
 }
 
 export function Dialog({
@@ -25,12 +27,14 @@ export function Dialog({
   children,
   className = "",
   closeLabel = "Close",
+  closeOnBackdrop = false,
   dismissible = true,
   footer,
   headerActions,
   onClose,
   open,
   title,
+  trapFocus = false,
 }: DialogProps) {
   const titleId = useId();
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -41,21 +45,69 @@ export function Dialog({
       return;
     }
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    window.setTimeout(() => {
+    const timer = window.setTimeout(() => {
       if (dismissible) {
         closeButtonRef.current?.focus();
       } else {
         dialogRef.current?.focus();
       }
     }, 0);
-    return () => previous?.focus();
+    return () => {
+      window.clearTimeout(timer);
+      previous?.focus({ preventScroll: true });
+    };
   }, [dismissible, open]);
+
+  useEffect(() => {
+    if (!open || !trapFocus) return;
+    const focusDialog = () => (closeButtonRef.current ?? dialogRef.current)?.focus({ preventScroll: true });
+    const containFocus = (event: FocusEvent) => {
+      const dialog = dialogRef.current;
+      if (dialog && !dialog.contains(event.target as Node)) focusDialog();
+    };
+    const outsideKey = (event: globalThis.KeyboardEvent) => {
+      const dialog = dialogRef.current;
+      if (!dialog || dialog.contains(event.target as Node)) return;
+      // Clicking a non-focusable image can leave keyboard focus on the body.
+      if (event.key === "Tab") {
+        event.preventDefault();
+        focusDialog();
+      } else if (dismissible && event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+      }
+    };
+    document.addEventListener("focusin", containFocus);
+    document.addEventListener("keydown", outsideKey);
+    return () => {
+      document.removeEventListener("focusin", containFocus);
+      document.removeEventListener("keydown", outsideKey);
+    };
+  }, [dismissible, onClose, open, trapFocus]);
 
   if (!open) {
     return null;
   }
 
   const onKeyDown = (event: KeyboardEvent) => {
+    if (trapFocus && event.key === "Tab") {
+      const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      const first = focusable?.[0];
+      const last = focusable?.[focusable.length - 1];
+      if (!first || !last) {
+        event.preventDefault();
+        dialogRef.current?.focus();
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
     if (dismissible && event.key === "Escape") {
       event.stopPropagation();
       onClose();
@@ -63,7 +115,13 @@ export function Dialog({
   };
 
   return createPortal(
-    <div className="dialog-backdrop" role="presentation">
+    <div
+      className="dialog-backdrop"
+      role="presentation"
+      onClick={(event) => {
+        if (closeOnBackdrop && dismissible && event.target === event.currentTarget) onClose();
+      }}
+    >
       <section
         aria-labelledby={titleId}
         aria-modal="true"

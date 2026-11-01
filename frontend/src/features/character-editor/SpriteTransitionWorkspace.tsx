@@ -22,6 +22,7 @@ import {
   Switch,
   TaskProgress,
   VisualMedia,
+  type MediaPreview,
 } from "../../shared/ui";
 import { SpriteAnimationSourcePicker } from "./SpriteAnimationSourcePicker";
 import { SpriteGenerationSetupGuide } from "./SpriteGenerationSetupGuide";
@@ -35,11 +36,13 @@ export function SpriteTransitionWorkspace({
   controller,
   mattingOptions,
   onMattingChange,
+  onPreview,
 }: {
   character: Character;
   controller: SpriteTransitionController;
   mattingOptions: SpriteMattingOptions;
   onMattingChange: (value: SpriteMattingOptions) => void;
+  onPreview: (media: MediaPreview) => void;
 }) {
   const { t } = useI18n();
   const playbackRate = useSpriteTransitionPlaybackRate();
@@ -283,12 +286,25 @@ export function SpriteTransitionWorkspace({
                   </label>
                   <div className="sprite-transitions__preview">
                     {item.result ? (
-                      <VisualMedia
-                        alt={`${label(item.fromPath)} → ${label(item.toPath)}`}
-                        loading="lazy"
-                        playbackRate={playbackRate}
-                        src={fileUrl(item.result.path)}
-                      />
+                      <button
+                        type="button"
+                        className="sprite-generation__preview-trigger"
+                        aria-label={t("mediaPreview.open", { name: `${label(item.fromPath)} → ${label(item.toPath)}` })}
+                        onClick={() =>
+                          onPreview({
+                            src: fileUrl(item.result!.path),
+                            title: `${label(item.fromPath)} → ${label(item.toPath)}`,
+                            playbackRate,
+                          })
+                        }
+                      >
+                        <VisualMedia
+                          alt={`${label(item.fromPath)} → ${label(item.toPath)}`}
+                          loading="lazy"
+                          playbackRate={playbackRate}
+                          src={fileUrl(item.result.path)}
+                        />
+                      </button>
                     ) : (
                       <div className="sprite-transitions__anchors">
                         <VisualMedia alt={label(item.fromPath)} autoPlay={false} src={fileUrl(item.fromPath)} />
