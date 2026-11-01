@@ -15,6 +15,7 @@ import type {
   SpritePromptPair,
   TaskSnapshot,
   SpriteMattingOptions,
+  H3SpriteResolution,
 } from "../../shared/platform/types";
 
 export interface SpriteCandidate extends SpritePromptPair {
@@ -33,6 +34,7 @@ export function useSpriteGeneration(
   onImported: (character: Character, replacedIndex?: number | number[]) => void,
   sprites: Character["sprites"],
   mattingOptions: SpriteMattingOptions,
+  h3Resolution: H3SpriteResolution = "workflow",
 ) {
   const [items, setItems] = useState<SpriteCandidate[]>([]);
   const [busy, setBusy] = useState<"plan" | "render" | "frame" | "cutout" | "import" | "replace" | "animate" | null>(
@@ -113,6 +115,7 @@ export function useSpriteGeneration(
               referenceImage,
               removeBackground,
               mattingModel: mattingOptions.mattingModel,
+              h3Resolution,
             },
             { onTaskUpdate: setTask },
           );

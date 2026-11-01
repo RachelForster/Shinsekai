@@ -2,8 +2,10 @@ import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { TransitionMedia } from "../../../modules/character-visual/TransitionMedia";
+import { setSpriteTransitionPlaybackRate } from "../../../shared/assets/useSpriteTransitionPlaybackRate";
 
 beforeEach(() => {
+  setSpriteTransitionPlaybackRate(1);
   vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
   vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
   vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
@@ -14,6 +16,32 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.useRealTimers();
+  setSpriteTransitionPlaybackRate(1);
+});
+
+it("changes the bridge speed live without reloading it or changing the target loop", () => {
+  vi.useFakeTimers();
+  const view = render(<TransitionMedia src="a.png" alt="Mika" enabled />);
+  view.rerender(
+    <TransitionMedia src="b.webm" alt="Mika" enabled transitions={[{ fromUrl: "a.png", url: "a-b.webm" }]} />,
+  );
+  const bridge = view.container.querySelector<HTMLVideoElement>('video[src="a-b.webm"]')!;
+  const target = view.container.querySelector<HTMLVideoElement>('video[src="b.webm"]')!;
+  Object.defineProperty(bridge, "duration", { value: 22 / 24 });
+  fireEvent.loadedData(target);
+  fireEvent.loadedData(bridge);
+  bridge.currentTime = 0.2;
+  const loads = vi.mocked(HTMLMediaElement.prototype.load).mock.calls.length;
+  act(() => setSpriteTransitionPlaybackRate(0.5));
+  expect(bridge.playbackRate).toBe(0.5);
+  expect(bridge.defaultPlaybackRate).toBe(0.5);
+  expect(bridge.currentTime).toBe(0.2);
+  expect(HTMLMediaElement.prototype.load).toHaveBeenCalledTimes(loads);
+  act(() => vi.advanceTimersByTime(2100));
+  expect(bridge).toBeInTheDocument();
+  fireEvent.ended(bridge);
+  expect(target).toHaveAttribute("loop");
+  expect(target.playbackRate).toBe(1);
 });
 
 it("calibrates the bridge in the existing highlight host and preserves the decoded target", () => {

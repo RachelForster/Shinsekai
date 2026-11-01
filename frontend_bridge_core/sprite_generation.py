@@ -128,20 +128,23 @@ def run_sprite_render(state, task_id, payload):
     name = str(payload.get("name") or "").strip()
     if not state.config_manager.get_character_by_name(name):
         raise ValueError("请先保存角色再生成立绘")
+    output = (
+        Path(state.project_root_dir) / "cache" / "sprite_generation" / f"{task_id}.png"
+    )
     reference = None
     if payload.get("referenceImage"):
-        from PIL import Image
-
         reference = safe_existing_file_path(
             str(payload["referenceImage"]),
             roots=_local_file_access_roots(state),
             field="referenceImage",
         )
-        with Image.open(reference) as image:
-            image.verify()
-    output = (
-        Path(state.project_root_dir) / "cache" / "sprite_generation" / f"{task_id}.png"
-    )
+        _update_task(
+            state, task_id, phase="reference", progress=0.05,
+            message="正在读取参考立绘；视频将取首帧并保留透明通道。",
+        )
+        reference = boundary_frame(
+            reference, output.with_name(f"{task_id}-reference.png"), last=False
+        )
     _update_task(
         state,
         task_id,

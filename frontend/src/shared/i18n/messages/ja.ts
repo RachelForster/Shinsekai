@@ -57,7 +57,10 @@ export const jaMessages: Record<MessageKey, string> = {
   "spriteTransition.stepSave": "保存して自動再生",
   "spriteTransition.options": "切替を生成",
   "spriteTransition.pairCount": "{selected}枚選択 · {count}本",
-  "spriteTransition.spec": "各{frames}フレーム · 等速 · 約{duration}秒 · 透過",
+  "spriteTransition.spec": "各{frames}フレーム · {speed}倍 · 約{duration}秒 · 透過",
+  "spriteTransition.speed": "切り替えの再生速度",
+  "spriteTransition.speedOriginal": "1× · 元の速度",
+  "spriteTransition.speedHint": "プレビューとチャットに共通。この端末に保存され、既存の動画にもすぐ反映されます。",
   "spriteTransition.directionHint": "A→BとB→Aは別々に生成します。まずは2枚でお試しください。",
   "spriteTransition.generate": "{count}本を生成・再開",
   "spriteTransition.reuseHint":
@@ -148,7 +151,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "spriteAnimation.speedHint":
     "体の揺れ・まばたき・髪の動きをまとめて遅くし、保存動画にも反映します。減速後は最大12秒です。",
   "spriteAnimation.cameraHint":
-    "体の各部と髪をごくわずかにゆっくり揺らします。肩はリラックスさせ、元の首の長さ・耳と肩・顎と襟の間隔を保ちます。接地・手の形・表情・構図を維持し、穏やかなまばたき一度を目指す指定です。生成後に確認してください。",
+    "体と髪をゆっくり微かに揺らし、肩・首・手の形・構図を保ちます。両目が自然に開いている場合のみ穏やかにまばたきし、閉じた目・細めた目・特殊な目の表現は維持します。生成後に確認してください。",
   "spriteAnimation.motion": "追加する小さな動き（任意）",
   "spriteAnimation.motionPlaceholder": "例：微笑みを保ち、毛先を少し揺らす。大きな動きやカメラ移動は避けます。",
   "spriteAnimation.generate": "透過アニメーションを生成",
@@ -202,13 +205,25 @@ export const jaMessages: Record<MessageKey, string> = {
   "spriteGeneration.requirements": "追加の要望（任意）",
   "spriteGeneration.requirementsPlaceholder":
     "例：立って眉を緩めて微笑む。右手を頭の横で振り、左手は体の横に下ろす。顔の表情・両手の形と位置・必要な小道具を指定してください。",
-  "spriteGeneration.reference": "参考画像（任意）",
+  "spriteGeneration.reference": "参考画像・動画（任意）",
   "spriteGeneration.chooseReference": "参考画像を選択",
   "spriteGeneration.existingReference": "既存の立ち絵を使用",
   "spriteGeneration.chooseExisting": "既存の立ち絵を選択…",
   "spriteGeneration.clearReference": "参考画像を解除",
   "spriteGeneration.optionalReference": "任意：外見と元の画角を保持（半身像にも対応）",
   "spriteGeneration.count": "案の数",
+  "spriteGeneration.back": "キャラクターに戻る",
+  "spriteGeneration.previewSize": "プレビューサイズ",
+  "spriteGeneration.previewStandard": "標準プレビュー",
+  "spriteGeneration.previewLarge": "大きいプレビュー",
+  "spriteGeneration.videoReference": "動画 · 先頭フレーム",
+  "spriteGeneration.videoReferenceHint": "動画の先頭フレームを参照に使い、構図と透明度を保ちます。",
+  "spriteGeneration.h3Resolution": "H3生成解像度",
+  "spriteGeneration.resolutionWorkflow": "ワークフローに従う",
+  "spriteGeneration.resolutionHd": "高画質 · 約70万画素",
+  "spriteGeneration.resolutionNative": "最高画質 · 約100万画素",
+  "spriteGeneration.resolutionHint":
+    "H3の静止立ち絵のみ。元の縦横比に合わせます。解像度が高いほどVRAMと時間を使います。",
   "spriteGeneration.plan": "プロンプトとタグを作成",
   "spriteGeneration.generatePending": "未生成を生成（{count}）",
   "spriteGeneration.setupHint":
@@ -240,7 +255,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "spriteGeneration.reviewHint": "タグも画像と一緒に保存されます。プレビューをクリックすると原寸で確認できます。",
   "spriteGeneration.chooseFrame": "生成した動画からフレームを選ぶ",
   "spriteGeneration.frameHint":
-    "中央のフレームを自動選択しています。動画をシークして別のフレームを選べます。動画の再生成は不要です。",
+    "フレームを自動選択しています。動画をシークして別のフレームを選べます。動画の再生成は不要です。",
   "spriteGeneration.video": "元の動画",
   "spriteGeneration.captureFrame": "{seconds} 秒のフレームを使う",
   "spriteGeneration.videoUnavailable": "この環境では動画をプレビューできません。抽出済みの画像は保存できます。",
@@ -258,7 +273,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "spriteGeneration.working": "処理中…",
   "spriteGeneration.stop": "現在の画像が完了したら停止",
   "spriteGeneration.stopping": "現在の画像が完了次第停止…",
-  "spriteGeneration.discardTitle": "生成ウィンドウを閉じますか？",
+  "spriteGeneration.discardTitle": "立ち絵生成を終了しますか？",
   "spriteGeneration.discardBody":
     "未追加の案とプレビューは消去されます。キャラクターに追加済みの立ち絵は保持されます。",
   "spriteGeneration.discard": "未追加の案を破棄して閉じる",

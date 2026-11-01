@@ -1,5 +1,6 @@
 /** Keep previews and stage playback at the same speed, including already saved clips. */
 export const SPRITE_TRANSITION_PLAYBACK_RATE = 1;
+export const SPRITE_TRANSITION_PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
 export const SPRITE_TRANSITION_FRAME_COUNT = 22;
 export const SPRITE_TRANSITION_FPS = 24;
 

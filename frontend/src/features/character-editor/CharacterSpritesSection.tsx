@@ -133,6 +133,7 @@ export function CharacterSpritesSection({
             </AsyncButton>
           ) : null}
           <Button
+            data-sprite-generation-trigger
             disabled={generateDisabled}
             icon={<Sparkles aria-hidden className="button__icon" />}
             onClick={onGenerate}

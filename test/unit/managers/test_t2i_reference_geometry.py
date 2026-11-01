@@ -107,6 +107,55 @@ def test_h3_upload_receives_a_fitted_png_instead_of_a_stretched_reference(
     assert adapter.workflow_template == workflow
 
 
+@pytest.mark.parametrize("resolution,budget", [("hd", 640 * 1088), ("native", 768 * 1344)])
+def test_high_resolution_reference_upload_keeps_proportions_and_template(
+    tmp_path, monkeypatch, resolution, budget
+):
+    reference = tmp_path / "circle.png"
+    image = Image.new("RGBA", (300, 400))
+    ImageDraw.Draw(image).ellipse((100, 150, 200, 250), fill="red")
+    image.save(reference)
+    workflow = {
+        "1": {"class_type": "Text", "inputs": {"prompt": ""}},
+        "2": {"class_type": "LoadImage", "inputs": {"image": "reference.png"}},
+        "4": {
+            "class_type": "MiniMaxH3ImageToVideo",
+            "inputs": {"width": 480, "height": 832, "first_frame": ["2", 0]},
+        },
+    }
+    path = tmp_path / "workflow.json"
+    path.write_text(json.dumps(workflow), encoding="utf-8")
+    monkeypatch.setattr(ComfyUIT2IAdapter, "_start_server_process", lambda _: None)
+    adapter = ComfyUIT2IAdapter(workflow_path=str(path), prompt_node_id="1", output_node_id="3")
+    monkeypatch.setattr(adapter, "_wait_for_server_ready", lambda: True)
+    monkeypatch.setattr(adapter, "_wait_for_and_get_image", lambda *_: "result.png")
+    uploaded = []
+    submitted = []
+
+    def post(url, **kwargs):
+        if url.endswith("/upload/image"):
+            with Image.open(BytesIO(kwargs["files"]["image"][1].read())) as fitted:
+                uploaded.append(fitted.size)
+                red, green, _ = fitted.split()
+                mask = ImageChops.subtract(red, green).point(lambda value: 255 if value > 200 else 0)
+                left, top, right, bottom = mask.getbbox()
+                assert abs((right - left) - (bottom - top)) <= 2
+            return Mock(json=lambda: {"name": "fitted.png"})
+        submitted.append(kwargs["json"]["prompt"])
+        return Mock(json=lambda: {"prompt_id": "job"})
+
+    monkeypatch.setattr("ai.t2i.t2i_adapter.requests.post", post)
+    adapter.generate_image(
+        "wave", reference_image_path=str(reference), h3_static_sprite=True,
+        h3_resolution=resolution,
+    )
+    inputs = submitted[0]["4"]["inputs"]
+    assert uploaded == [(inputs["width"], inputs["height"])]
+    assert 480 * 832 < inputs["width"] * inputs["height"] <= budget
+    assert abs(inputs["width"] / inputs["height"] / 0.75 - 1) <= 0.02
+    assert adapter.workflow_template == workflow
+
+
 def test_both_h3_anchors_upload_the_same_selected_screen_color(tmp_path, monkeypatch):
     monkeypatch.setattr(ComfyUIT2IAdapter, "_start_server_process", lambda _: None)
     workflow = {

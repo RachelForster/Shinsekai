@@ -2,13 +2,13 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { VisualMedia, type VisualMediaProps } from "../../shared/ui/VisualMedia";
 import {
-  SPRITE_TRANSITION_PLAYBACK_RATE,
   SPRITE_TRANSITION_FRAME_COUNT,
   SPRITE_TRANSITION_FPS,
   type SpriteTransitionMedia,
   type SpriteTransitionPresentation,
 } from "../../shared/assets/spriteTransition";
 import { transitionAdjustment } from "./transitionPresentation";
+import { useSpriteTransitionPlaybackRate } from "../../shared/assets/useSpriteTransitionPlaybackRate";
 
 interface Playback {
   id: number;
@@ -28,6 +28,7 @@ export function TransitionMedia({
   transitions?: SpriteTransitionMedia[];
   enabled: boolean;
 }) {
+  const playbackRate = useSpriteTransitionPlaybackRate();
   const [displayed, setDisplayed] = useState(props.src);
   const settled = useRef(props.src);
   const target = useRef(props.src);
@@ -182,7 +183,7 @@ export function TransitionMedia({
   useEffect(() => {
     if (!clip) return;
     const waiting = clip.phase === "waiting" || clip.phase === "fallback";
-    const timeout = clip.phase === "playing" ? (clip.duration / SPRITE_TRANSITION_PLAYBACK_RATE) * 1000 + 1000 : 2000;
+    const timeout = clip.phase === "playing" ? (clip.duration / playbackRate) * 1000 + 1000 : 2000;
     const timer = window.setTimeout(() => {
       if (!isCurrent(clip)) return;
       if (waiting) commit(clip.to);
@@ -196,7 +197,7 @@ export function TransitionMedia({
       window.clearTimeout(timer);
       document.removeEventListener("visibilitychange", hidden);
     };
-  }, [clip]);
+  }, [clip, playbackRate]);
 
   const showClip = clip?.phase === "playing" || clip?.phase === "waiting";
   return (
@@ -253,7 +254,7 @@ export function TransitionMedia({
           alt=""
           loop={false}
           preload="auto"
-          playbackRate={SPRITE_TRANSITION_PLAYBACK_RATE}
+          playbackRate={playbackRate}
           active={props.active !== false && clip.phase !== "fallback"}
           className="character-visual__transition-layer"
           style={{ opacity: showClip ? 1 : 0 }}

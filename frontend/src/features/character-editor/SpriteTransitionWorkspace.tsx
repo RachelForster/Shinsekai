@@ -3,13 +3,26 @@ import { useMemo, useState } from "react";
 import { fileUrl } from "../../entities/files/repository";
 import { tagContents } from "../../shared/assets/assetText";
 import {
-  SPRITE_TRANSITION_PLAYBACK_RATE,
+  SPRITE_TRANSITION_PLAYBACK_RATES,
   SPRITE_TRANSITION_FRAME_COUNT,
   SPRITE_TRANSITION_FPS,
 } from "../../shared/assets/spriteTransition";
+import {
+  setSpriteTransitionPlaybackRate,
+  useSpriteTransitionPlaybackRate,
+} from "../../shared/assets/useSpriteTransitionPlaybackRate";
 import { useI18n } from "../../shared/i18n";
 import type { Character, SpriteMattingOptions } from "../../shared/platform/types";
-import { AsyncButton, Button, EmptyState, NumberInput, Switch, TaskProgress, VisualMedia } from "../../shared/ui";
+import {
+  AsyncButton,
+  Button,
+  EmptyState,
+  NumberInput,
+  Select,
+  Switch,
+  TaskProgress,
+  VisualMedia,
+} from "../../shared/ui";
 import { SpriteAnimationSourcePicker } from "./SpriteAnimationSourcePicker";
 import { SpriteGenerationSetupGuide } from "./SpriteGenerationSetupGuide";
 import { SpriteTransitionRecommendations } from "./SpriteTransitionRecommendations";
@@ -29,6 +42,7 @@ export function SpriteTransitionWorkspace({
   onMattingChange: (value: SpriteMattingOptions) => void;
 }) {
   const { t } = useI18n();
+  const playbackRate = useSpriteTransitionPlaybackRate();
   const { sourceSelection: selection, setSourceSelection: setSelection } = controller;
   const [sourcesOpen, setSourcesOpen] = useState(true);
   const [guideOpen, setGuideOpen] = useState(false);
@@ -125,6 +139,21 @@ export function SpriteTransitionWorkspace({
           </p>
           <p className="sprite-generation__hint">{t("spriteTransition.reuseHint")}</p>
           <SpriteMattingSettings value={mattingOptions} onChange={onMattingChange} disabled={busy} />
+          <label className="field-row field-row--stack">
+            <span className="field-row__label">{t("spriteTransition.speed")}</span>
+            <Select
+              aria-label={t("spriteTransition.speed")}
+              value={String(playbackRate)}
+              onChange={(event) => setSpriteTransitionPlaybackRate(Number(event.target.value))}
+            >
+              {SPRITE_TRANSITION_PLAYBACK_RATES.map((rate) => (
+                <option key={rate} value={String(rate)}>
+                  {rate === 1 ? t("spriteTransition.speedOriginal") : `${rate}×`}
+                </option>
+              ))}
+            </Select>
+            <p className="sprite-generation__hint">{t("spriteTransition.speedHint")}</p>
+          </label>
           <div className="sprite-transitions__instructions">
             <h4>{t("spriteTransition.playbackTitle")}</h4>
             <p className="sprite-generation__hint">{t("spriteTransition.playbackHint")}</p>
@@ -136,9 +165,8 @@ export function SpriteTransitionWorkspace({
             <span>
               {t("spriteTransition.spec", {
                 frames: SPRITE_TRANSITION_FRAME_COUNT,
-                duration: Number(
-                  (SPRITE_TRANSITION_FRAME_COUNT / SPRITE_TRANSITION_FPS / SPRITE_TRANSITION_PLAYBACK_RATE).toFixed(2),
-                ),
+                speed: playbackRate,
+                duration: Number((SPRITE_TRANSITION_FRAME_COUNT / SPRITE_TRANSITION_FPS / playbackRate).toFixed(2)),
               })}
             </span>
           </div>
@@ -258,7 +286,7 @@ export function SpriteTransitionWorkspace({
                       <VisualMedia
                         alt={`${label(item.fromPath)} → ${label(item.toPath)}`}
                         loading="lazy"
-                        playbackRate={SPRITE_TRANSITION_PLAYBACK_RATE}
+                        playbackRate={playbackRate}
                         src={fileUrl(item.result.path)}
                       />
                     ) : (

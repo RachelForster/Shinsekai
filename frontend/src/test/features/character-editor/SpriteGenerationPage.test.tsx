@@ -1,10 +1,14 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { SpriteGenerationDialog } from "../../../features/character-editor/SpriteGenerationDialog";
+import { SpriteGenerationPage } from "../../../features/character-editor/SpriteGenerationPage";
 import { createCharacter } from "../../../features/character-editor/characterEditorUtils";
 import { I18nProvider } from "../../../shared/i18n";
 import type { GeneratedCharacterSprite } from "../../../shared/platform/types";
+import {
+  setSpriteTransitionPlaybackRate,
+  SPRITE_TRANSITION_RATE_STORAGE_KEY,
+} from "../../../shared/assets/useSpriteTransitionPlaybackRate";
 
 const plan = vi.fn();
 const draw = vi.fn();
@@ -65,7 +69,7 @@ function mount(subject = character) {
   const close = vi.fn();
   render(
     <I18nProvider language="en">
-      <SpriteGenerationDialog character={subject} name="Mika" onClose={close} onImported={imported} />
+      <SpriteGenerationPage character={subject} name="Mika" onClose={close} onImported={imported} />
     </I18nProvider>,
   );
   return { imported, close };
@@ -83,6 +87,7 @@ async function drawAll() {
 
 describe("sprite generator", () => {
   beforeEach(() => {
+    setSpriteTransitionPlaybackRate(1);
     vi.clearAllMocks();
     vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
     vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
@@ -183,6 +188,60 @@ describe("sprite generator", () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+    setSpriteTransitionPlaybackRate(1);
+  });
+
+  it("opens a full workspace with a return action instead of a modal", () => {
+    const { close } = mount();
+    expect(screen.getByRole("region", { name: "Generate sprites" })).toHaveClass("sprite-generation");
+    expect(screen.queryByRole("dialog", { name: "Generate sprites" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Generate sprites", level: 1 })).toHaveFocus();
+    fireEvent.click(screen.getByRole("button", { name: "Back to character" }));
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it("uses an animated sprite as a paused first-frame reference for static generation", async () => {
+    mount({ ...character, sprites: [{ path: "/sprites/animated.webm" }] });
+    fireEvent.click(screen.getByRole("combobox", { name: "Use an existing sprite" }));
+    fireEvent.click(screen.getByRole("option", { name: "Sprite 1 · Animated · first frame" }));
+    const preview = document.querySelector<HTMLVideoElement>(".sprite-generation__reference-image video")!;
+    expect(preview).not.toBeNull();
+    expect(preview.autoplay).toBe(false);
+    expect(preview.loop).toBe(false);
+    Object.defineProperty(preview, "duration", { value: 4 });
+    fireEvent.loadedMetadata(preview);
+    expect(preview.currentTime).toBeLessThan(0.01);
+    expect(screen.getByText("Uses the video's first frame as reference, preserving framing and alpha.")).toBeVisible();
+    await makePlan();
+    await drawAll();
+    expect(draw).toHaveBeenCalledWith(
+      expect.objectContaining({ referenceImage: "/sprites/animated.webm" }),
+      expect.anything(),
+    );
+  });
+
+  it("dismisses a dropdown with Escape without leaving the page", () => {
+    const { close } = mount();
+    const select = screen.getByRole("combobox", { name: "Preview size" });
+    fireEvent.click(select);
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+    fireEvent.keyDown(select, { key: "Escape" });
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(close).not.toHaveBeenCalled();
+    expect(screen.getByRole("heading", { name: "Generate sprites", level: 1 })).toBeVisible();
+  });
+
+  it("enlarges previews across tabs without starting another generation", () => {
+    mount();
+    fireEvent.click(screen.getByRole("combobox", { name: "Preview size" }));
+    fireEvent.click(screen.getByRole("option", { name: "Large preview" }));
+    expect(document.querySelector('[data-sprite-preview-size="large"]')).not.toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: "Transitions" }));
+    expect(screen.getByRole("combobox", { name: "Preview size" })).toHaveTextContent("Large preview");
+    expect(document.querySelector('[data-sprite-preview-size="large"]')).not.toBeNull();
+    expect(draw).not.toHaveBeenCalled();
+    expect(animate).not.toHaveBeenCalled();
+    expect(transition).not.toHaveBeenCalled();
   });
 
   it("defaults to ToonOut and shares the selected fallback model across sprite modes", async () => {
@@ -197,6 +256,42 @@ describe("sprite generator", () => {
     expect(screen.getByRole("combobox", { name: "Background removal model" })).toHaveTextContent("ISNet Anime");
     fireEvent.click(screen.getByRole("tab", { name: "Transitions" }));
     expect(screen.getByRole("combobox", { name: "Background removal model" })).toHaveTextContent("ISNet Anime");
+  });
+
+  it("uses the selected H3 resolution for a batch and a redraw while keeping animation settings separate", async () => {
+    mount();
+    expect(screen.getByRole("combobox", { name: "H3 generation resolution" })).toHaveTextContent("Follow workflow");
+    fireEvent.click(screen.getByRole("combobox", { name: "H3 generation resolution" }));
+    fireEvent.click(screen.getByRole("option", { name: "High · ~0.7 MP" }));
+    await makePlan();
+    await drawAll();
+    expect(draw.mock.calls.map(([input]) => input.h3Resolution)).toEqual(["hd", "hd"]);
+    fireEvent.click(screen.getByRole("combobox", { name: "H3 generation resolution" }));
+    fireEvent.click(screen.getByRole("option", { name: "Ultra · ~1 MP" }));
+    expect(draw).toHaveBeenCalledTimes(2);
+    fireEvent.click(screen.getAllByRole("button", { name: "Redraw" })[0]);
+    await waitFor(() => expect(draw).toHaveBeenCalledTimes(3));
+    expect(draw).toHaveBeenLastCalledWith(expect.objectContaining({ h3Resolution: "native" }), expect.anything());
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Redraw" })[0]).toBeEnabled());
+    fireEvent.click(screen.getAllByRole("button", { name: "Make animated sprite" })[0]);
+    expect(screen.queryByRole("combobox", { name: "H3 generation resolution" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Generate transparent animation" }));
+    await waitFor(() => expect(animate).toHaveBeenCalledOnce());
+    expect(animate.mock.calls[0][0]).not.toHaveProperty("h3Resolution");
+  });
+
+  it("locks the H3 resolution while generation is running", async () => {
+    let finish!: (value: GeneratedCharacterSprite) => void;
+    draw.mockImplementationOnce(() => new Promise<GeneratedCharacterSprite>((resolve) => (finish = resolve)));
+    mount();
+    await makePlan();
+    fireEvent.click(screen.getByRole("button", { name: "Generate pending (2)" }));
+    await waitFor(() => expect(draw).toHaveBeenCalledOnce());
+    expect(screen.getByRole("combobox", { name: "H3 generation resolution" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Back to character" })).toBeDisabled();
+    await act(async () => finish({ name: "Mika", ...pairs[0], path: "high.png", taskId: "high" }));
+    await waitFor(() => expect(draw).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "H3 generation resolution" })).toBeEnabled());
   });
 
   it("shows the actual model and a fallback explanation on generated stills", async () => {
@@ -1087,12 +1182,44 @@ describe("sprite generator", () => {
     });
     fireEvent.click(screen.getByRole("tab", { name: "Transitions" }));
     expect(screen.getByText("5 frames · saved · plays on sprite change")).toBeInTheDocument();
-    expect(screen.getByText("22 frames · normal speed · ~0.92 s · transparent")).toBeInTheDocument();
+    expect(screen.getByText("22 frames · 1× · ~0.92 s · transparent")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Select all sources" }));
     fireEvent.click(screen.getByRole("button", { name: "Generate / resume 2 clips" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Save 2 transitions" })).toBeEnabled());
     expect(transition).toHaveBeenCalledTimes(2);
     expect(screen.getAllByText("22-frame transparent clip · unsaved")).toHaveLength(2);
+  });
+
+  it("adjusts saved transition previews immediately and remembers the speed without generating again", () => {
+    const subject = {
+      ...character,
+      sprite_transitions: [
+        {
+          from_path: "old.png",
+          to_path: "animated.mp4",
+          path: "/clips/saved-speed.webm",
+          from_fingerprint: "a",
+          to_fingerprint: "b",
+          frame_count: 22,
+        },
+      ],
+    };
+    mount(subject);
+    fireEvent.click(screen.getByRole("tab", { name: "Transitions" }));
+    const preview = document.querySelector<HTMLVideoElement>(".sprite-transitions__preview video")!;
+    expect(preview.playbackRate).toBe(1);
+    preview.currentTime = 0.2;
+    fireEvent.click(screen.getByRole("combobox", { name: "Transition playback speed" }));
+    fireEvent.click(screen.getByRole("option", { name: "0.5×" }));
+    expect(screen.getByText("22 frames · 0.5× · ~1.83 s · transparent")).toBeInTheDocument();
+    expect(preview.playbackRate).toBe(0.5);
+    expect(preview.currentTime).toBe(0.2);
+    expect(localStorage.getItem(SPRITE_TRANSITION_RATE_STORAGE_KEY)).toBe("0.5");
+    expect(transition).not.toHaveBeenCalled();
+    cleanup();
+    mount(subject);
+    fireEvent.click(screen.getByRole("tab", { name: "Transitions" }));
+    expect(screen.getByRole("combobox", { name: "Transition playback speed" })).toHaveTextContent("0.5×");
   });
 
   it("keeps MP4 and transparent WebM source previews paused on their first frame", () => {

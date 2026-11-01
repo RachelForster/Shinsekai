@@ -204,7 +204,57 @@ def test_render_uses_manager_unique_outputs_references_and_fresh_seeds(
     assert len({call.kwargs["file_path"] for call in calls}) == 12
     assert len({call.kwargs["seed"] for call in calls}) == 12
     assert calls[0].kwargs["reference_image_path"] == str(tmp_path / "ref.png")
+    assert calls[0].kwargs["h3_static_sprite"] is True
+    assert calls[0].kwargs["h3_resolution"] == "workflow"
     assert factory.call_args.kwargs["workflow_path"] == "workflow.json"
+
+
+@pytest.mark.parametrize("resolution", ["hd", "native"])
+def test_static_sprite_passes_selected_resolution_to_the_manager(
+    tmp_path, monkeypatch, resolution
+):
+    from ai.t2i.t2i_manager import T2IAdapterFactory, T2IManager
+
+    monkeypatch.setattr(T2IAdapterFactory, "create_adapter", Mock())
+
+    def draw(_manager, _prompt, *, file_path, **kwargs):
+        assert kwargs["h3_resolution"] == resolution
+        assert kwargs["h3_static_sprite"] is True
+        Image.new("RGB", (8, 8)).save(file_path)
+        return file_path
+
+    monkeypatch.setattr(T2IManager, "t2i", draw)
+    api = SimpleNamespace(
+        t2i_provider="comfyui", t2i_work_path="", t2i_api_url="local",
+        t2i_default_workflow_path="workflow.json", t2i_prompt_node_id="1",
+        t2i_output_node_id="2",
+    )
+    store = SimpleNamespace(
+        config=SimpleNamespace(api_config=api),
+        merged_t2i_factory_kwargs=lambda _, values: values,
+    )
+    generation.render_sprite(
+        store,
+        {"prompt": "smile", "tagging": "微笑", "h3Resolution": resolution},
+        tmp_path / "sprite.png",
+    )
+
+
+@pytest.mark.parametrize("resolution", [None, True, "4k", [], 1])
+def test_invalid_sprite_resolution_is_rejected_before_starting_the_adapter(
+    tmp_path, monkeypatch, resolution
+):
+    from ai.t2i.t2i_manager import T2IAdapterFactory
+
+    factory = Mock()
+    monkeypatch.setattr(T2IAdapterFactory, "create_adapter", factory)
+    with pytest.raises(ValueError, match="H3 分辨率"):
+        generation.render_sprite(
+            object(),
+            {"prompt": "smile", "tagging": "微笑", "h3Resolution": resolution},
+            tmp_path / "sprite.png",
+        )
+    factory.assert_not_called()
 
 
 @pytest.fixture
@@ -650,7 +700,10 @@ def test_render_bridge_validates_reference_and_keeps_pair(sprite_state, monkeypa
         },
     )
     assert result["taskId"] == task["id"]
-    assert renderer.call_args.args[3] == ref
+    prepared = renderer.call_args.args[3]
+    assert prepared != ref and prepared.name == f"{task['id']}-reference.png"
+    with Image.open(prepared) as image:
+        assert image.mode == "RGBA" and image.size == (8, 8)
 
 
 def test_auto_cutout_failure_keeps_render_and_can_retry_without_generating(
@@ -860,11 +913,24 @@ def test_blinking_only_keeps_pose_stable_without_adding_body_sway():
     from application.characters.animate_sprites import animation_prompt
 
     prompt = animation_prompt({"breathing": False, "blinking": True})["prompt"]
+    assert "only if both eyes are naturally open in the reference" in prompt
     assert "one smooth eyelid-only blink" in prompt
+    assert "closed, winking, squinting, stylized or obscured" in prompt
+    assert "without blinking or opening them" in prompt
+    assert "keep the eyes softly open" not in prompt
     assert "original head tilt" in prompt
     assert "limbs sway" not in prompt and "hair sway" not in prompt
     assert "original neck length" in prompt
     assert "ear-to-shoulder clearance" in prompt
+
+
+def test_disabled_blinking_preserves_reference_eyelid_state():
+    from application.characters.animate_sprites import animation_prompt
+
+    prompt = animation_prompt({"blinking": False})["prompt"]
+    assert "preserve the reference eye shape, eyelid position and gaze throughout" in prompt
+    assert "without blinking or opening closed eyes" in prompt
+    assert "eyelid-only blink" not in prompt
 
 
 @pytest.mark.parametrize(
@@ -1048,6 +1114,8 @@ def test_h3_animation_anchors_last_frame_to_the_same_reference(
     )
     assert node["inputs"]["last_frame"] == node["inputs"]["first_frame"]
     assert Path(result["videoPath"]) == video
+    assert adapter.generate_image.call_args.kwargs.get("h3_static_sprite") is None
+    assert adapter.workflow_template["131"]["inputs"]["length"] == 107
     if custom_prompt:
         assert adapter.generate_image.call_args.kwargs["prompt"] == custom_prompt
     guides = [

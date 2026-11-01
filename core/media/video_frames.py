@@ -7,9 +7,9 @@ from pathlib import Path
 
 
 def extract_video_frame(
-    video: Path, output: Path, seconds: float | None = None
+    video: Path, output: Path, seconds: float | None = None, *, fraction: float = 0.5
 ) -> float:
-    """Save the frame at ``seconds`` (the middle by default), returning its timestamp."""
+    """Save a timed frame, or a fraction of the clip (middle by default)."""
     if seconds is not None and (
         isinstance(seconds, bool)
         or not isinstance(seconds, (int, float))
@@ -17,6 +17,13 @@ def extract_video_frame(
         or seconds < 0
     ):
         raise ValueError("截帧时间必须是大于或等于 0 的秒数")
+    if (
+        isinstance(fraction, bool)
+        or not isinstance(fraction, (int, float))
+        or not math.isfinite(fraction)
+        or not 0 <= fraction <= 1
+    ):
+        raise ValueError("截帧位置必须是 0–1 之间的比例")
     try:
         import av
     except ImportError as exc:
@@ -33,7 +40,7 @@ def extract_video_frame(
         )
         if seconds is not None and duration and seconds > duration + 0.05:
             raise ValueError("截帧时间超出了视频长度")
-        target = seconds if seconds is not None else duration / 2
+        target = seconds if seconds is not None else duration * fraction
         start = float((stream.start_time or 0) * stream.time_base)
         # Seek to the preceding keyframe, then decode forward to the selected frame.
         if target > 0:

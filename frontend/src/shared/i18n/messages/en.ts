@@ -64,7 +64,11 @@ export const enMessages: Record<MessageKey, string> = {
   "spriteTransition.stepSave": "Save for playback",
   "spriteTransition.options": "Generate transitions",
   "spriteTransition.pairCount": "{selected} selected · {count} clips",
-  "spriteTransition.spec": "{frames} frames · normal speed · ~{duration} s · transparent",
+  "spriteTransition.spec": "{frames} frames · {speed}× · ~{duration} s · transparent",
+  "spriteTransition.speed": "Transition playback speed",
+  "spriteTransition.speedOriginal": "1× · Original speed",
+  "spriteTransition.speedHint":
+    "Applies to previews and chat transitions. Saved on this device; existing clips update immediately.",
   "spriteTransition.directionHint": "A→B and B→A are separate clips. More sprites require more clips; try two first.",
   "spriteTransition.generate": "Generate / resume {count} clips",
   "spriteTransition.reuseHint": "Anime AI removal by default. Reuse, redraw or redo matting with the current options.",
@@ -157,7 +161,7 @@ export const enMessages: Record<MessageKey, string> = {
   "spriteAnimation.speedHint":
     "Slows body sway, blinking and hair together, including the saved video. Maximum duration after slowing: 12 seconds.",
   "spriteAnimation.cameraHint":
-    "Let the body and hair sway very slightly and slowly. Keep shoulders relaxed and preserve neck length, ear-to-shoulder and chin-to-collar spacing. Keep feet planted, gestures, expression and framing. Aim for one leisurely blink; preview the result.",
+    "Slow, subtle body and hair motion; preserve shoulders, neck, gestures and framing. Blink gently only when both reference eyes are naturally open. Keep closed, squinting or stylized eyes unchanged. Preview the result.",
   "spriteAnimation.motion": "Additional subtle motion (optional)",
   "spriteAnimation.motionPlaceholder":
     "For example: keep the smile while hair tips sway gently. Keep motion small and the camera still.",
@@ -215,13 +219,25 @@ export const enMessages: Record<MessageKey, string> = {
   "spriteGeneration.requirements": "Additional instructions (optional)",
   "spriteGeneration.requirementsPlaceholder":
     "E.g. stand, smile with relaxed brows, wave the open right hand beside the head, and rest the left hand at the side. Specify facial expressions, both hands' poses and positions, and props.",
-  "spriteGeneration.reference": "Reference image (optional)",
+  "spriteGeneration.reference": "Reference image or video (optional)",
   "spriteGeneration.chooseReference": "Choose reference image",
   "spriteGeneration.existingReference": "Use an existing sprite",
   "spriteGeneration.chooseExisting": "Choose an existing sprite…",
   "spriteGeneration.clearReference": "Remove reference",
   "spriteGeneration.optionalReference": "Optional: preserve appearance and framing, including half-body portraits",
   "spriteGeneration.count": "Number of ideas",
+  "spriteGeneration.back": "Back to character",
+  "spriteGeneration.previewSize": "Preview size",
+  "spriteGeneration.previewStandard": "Standard preview",
+  "spriteGeneration.previewLarge": "Large preview",
+  "spriteGeneration.videoReference": "Animated · first frame",
+  "spriteGeneration.videoReferenceHint": "Uses the video's first frame as reference, preserving framing and alpha.",
+  "spriteGeneration.h3Resolution": "H3 generation resolution",
+  "spriteGeneration.resolutionWorkflow": "Follow workflow",
+  "spriteGeneration.resolutionHd": "High · ~0.7 MP",
+  "spriteGeneration.resolutionNative": "Ultra · ~1 MP",
+  "spriteGeneration.resolutionHint":
+    "For H3 still sprites only; dimensions follow the original proportions. Higher resolution uses more VRAM and time.",
   "spriteGeneration.plan": "Plan prompts and tags",
   "spriteGeneration.generatePending": "Generate pending ({count})",
   "spriteGeneration.setupHint":
@@ -253,7 +269,7 @@ export const enMessages: Record<MessageKey, string> = {
   "spriteGeneration.reviewHint": "Tags are saved with each image. Click a preview to view the full image.",
   "spriteGeneration.chooseFrame": "Choose a frame from the generated video",
   "spriteGeneration.frameHint":
-    "The middle frame is selected automatically. Seek in the video and capture another frame without generating again.",
+    "A frame is selected automatically. Seek in the video to capture another without generating again.",
   "spriteGeneration.video": "Source video",
   "spriteGeneration.captureFrame": "Use frame at {seconds}s",
   "spriteGeneration.videoUnavailable":
@@ -272,7 +288,7 @@ export const enMessages: Record<MessageKey, string> = {
   "spriteGeneration.working": "Working…",
   "spriteGeneration.stop": "Stop after current image",
   "spriteGeneration.stopping": "Stopping after current image…",
-  "spriteGeneration.discardTitle": "Close sprite generator?",
+  "spriteGeneration.discardTitle": "Leave sprite generation?",
   "spriteGeneration.discardBody":
     "Unsaved ideas and previews will be cleared from this window. Sprites already added to the character are kept.",
   "spriteGeneration.discard": "Close and discard unsaved ideas",
