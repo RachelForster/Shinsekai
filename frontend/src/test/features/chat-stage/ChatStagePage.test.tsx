@@ -214,6 +214,14 @@ function chooseCustomSelectOption(root: HTMLElement, name: string, option: strin
   fireEvent.click(screen.getByRole("option", { name: option }));
 }
 
+function finishSpriteFade(image: Element) {
+  fireEvent.load(image);
+  const surface = image.closest(".character-visual__transition-content")!;
+  for (let phase = 0; phase < 2; phase++) {
+    fireEvent(surface, Object.assign(new Event("transitionend", { bubbles: true }), { propertyName: "opacity" }));
+  }
+}
+
 describe("ChatStagePage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -768,10 +776,16 @@ describe("ChatStagePage", () => {
 
     const nextFigure = container.querySelector(".sprite-layer__figure");
     const nextHost = container.querySelector(".sprite-layer__image");
-    const nextImage = screen.getByAltText("Mio");
+    const nextImage = nextHost!.querySelector('[src="asset://mio-happy.png"]')!;
     expect(nextFigure).toBe(originalFigure);
     expect(nextFigure).toHaveAttribute("data-slot", "0");
     expect(nextHost).toBe(originalHost);
+    expect(screen.getByAltText("Mio")).toBe(originalImage);
+    expect(nextImage.parentElement).toHaveStyle({ opacity: "0" });
+    finishSpriteFade(nextImage);
+    expect(screen.getByAltText("Mio")).toBe(nextImage);
+    expect(originalImage).not.toBeInTheDocument();
+    expect(container.querySelector(".sprite-layer__image")).toBe(originalHost);
     expect(nextImage).not.toBe(originalImage);
     expect(nextImage).toHaveAttribute("src", "asset://mio-happy.png");
   });
@@ -1741,6 +1755,7 @@ describe("ChatStagePage", () => {
         v: 1,
       }),
     );
+    finishSpriteFade(document.querySelector('[src="asset://mio-happy.png"]')!);
     expect(screen.getByAltText("Mio")).toHaveAttribute("src", "asset://mio-happy.png");
     expect(screen.getByAltText("Mio").closest(".character-visual__framing-surface")).toHaveStyle({
       transform: "translateY(-25%) scale(2)",

@@ -19,6 +19,14 @@ interface Playback {
   presentation?: SpriteTransitionPresentation;
 }
 
+interface Fade {
+  id: number;
+  to: string;
+  phase: "loading" | "out" | "in";
+}
+
+const FADE_DURATION_MS = 160;
+
 /** Keep each surface mounted through both handoffs; never discard the preloaded target. */
 export function TransitionMedia({
   transitions,
@@ -36,7 +44,11 @@ export function TransitionMedia({
   const [clip, setClip] = useState<Playback | null>(null);
   const playback = useRef(clip);
   playback.current = clip;
+  const [fade, setFade] = useState<Fade | null>(null);
+  const fading = useRef(fade);
+  fading.current = fade;
   const ready = useRef(new Set<string>());
+  const failedSource = useRef("");
   const dimensions = useRef(new Map<string, [number, number]>());
   const [aspectRatio, setAspectRatio] = useState(1);
   const host = useRef<HTMLDivElement>(null);
@@ -51,13 +63,26 @@ export function TransitionMedia({
     bridge.current = null;
     settled.current = src;
     playback.current = null;
+    fading.current = null;
     setDisplayed(src);
     setClip(null);
+    setFade(null);
     const size = dimensions.current.get(src);
     if (size) {
       setAspectRatio(size[0] / size[1]);
       props.onDimensions?.(...size);
     }
+  };
+  const advanceFade = (current: Fade) => {
+    if (fading.current?.id !== current.id || fading.current.phase !== current.phase || target.current !== current.to)
+      return;
+    if (current.phase === "out") {
+      // Swap only while fully transparent, retaining the already decoded target.
+      commit(current.to);
+      const incoming: Fade = { ...current, phase: "in" };
+      fading.current = incoming;
+      setFade(incoming);
+    } else if (current.phase === "in") commit(current.to);
   };
   const isCurrent = (edge: Playback) => playback.current?.id === edge.id && target.current === edge.to;
   const finish = (edge: Playback, failed = false) => {
@@ -98,13 +123,21 @@ export function TransitionMedia({
   useLayoutEffect(() => {
     const changed = target.current !== props.src;
     target.current = props.src;
-    if (!enabled || props.active === false || reduced || document.visibilityState === "hidden") {
+    if (
+      !enabled ||
+      props.active === false ||
+      reduced ||
+      document.visibilityState === "hidden" ||
+      failedSource.current === settled.current
+    ) {
       commit(props.src);
       return;
     }
     if (!changed) return;
     const edge = incoming.current?.find((edge) => edge.fromUrl === settled.current);
     if (edge && settled.current !== props.src) {
+      fading.current = null;
+      setFade(null);
       // Reserve all three canvases before revealing the bridge, even when the
       // target's metadata arrives later than its first transition frame.
       if (edge.presentation) {
@@ -124,8 +157,38 @@ export function TransitionMedia({
         duration: SPRITE_TRANSITION_FRAME_COUNT / SPRITE_TRANSITION_FPS,
         presentation: edge.presentation,
       });
+    } else if (settled.current !== props.src || playback.current) {
+      // A playing bridge can itself be the outgoing surface on interruption.
+      // Keep it mounted and paused until the fade reaches zero opacity.
+      if (playback.current?.phase !== "playing" && playback.current?.phase !== "waiting") {
+        playback.current = null;
+        bridge.current = null;
+        setClip(null);
+      }
+      const next: Fade = {
+        id: ++sequence.current,
+        to: props.src,
+        phase: ready.current.has(props.src) ? "out" : "loading",
+      };
+      fading.current = next;
+      setFade(next);
     } else commit(props.src);
   }, [props.src, props.active, enabled, reduced]);
+
+  useEffect(() => {
+    if (!fade) return;
+    // transitionend owns normal playback; bound it for browsers that omit the event.
+    const timer =
+      fade.phase !== "loading" ? window.setTimeout(() => advanceFade(fade), FADE_DURATION_MS + 100) : undefined;
+    const hidden = () => {
+      if (document.visibilityState === "hidden") commit(target.current);
+    };
+    document.addEventListener("visibilitychange", hidden);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", hidden);
+    };
+  }, [fade]);
 
   useEffect(() => {
     const element = host.current;
@@ -208,76 +271,96 @@ export function TransitionMedia({
       data-chat-stage-hitbox={props.hitbox ? "true" : undefined}
       onMouseDown={props.onMouseDown}
     >
-      {[...new Set([displayed, props.src])].map((src) => {
-        const visible = src === displayed && !showClip;
-        return (
-          <div
-            key={src}
-            className="character-visual__transition-layer"
-            style={{ opacity: visible ? 1 : 0 }}
-            aria-hidden={!visible}
-          >
-            <VisualMedia
-              {...props}
-              src={src}
-              alt={src === props.src ? props.alt : ""}
-              className="character-visual__static-image"
-              style={undefined}
-              active={props.active !== false && src === displayed && !clip}
-              autoPlay={src === displayed && !clip ? props.autoPlay : false}
-              preload="auto"
-              hitbox={false}
-              onMouseDown={undefined}
-              onDimensions={(width, height) => {
-                rememberDimensions(src, width, height);
-              }}
-              onFrameReady={(element) => {
-                ready.current.add(src);
-                props.onFrameReady?.(element);
-                const current = playback.current;
-                if (current?.to === src && (current.phase === "waiting" || current.phase === "fallback"))
-                  finish(current);
-              }}
-              onError={(event) => {
-                if (src !== target.current) return;
-                commit(src);
-                props.onError?.(event);
-              }}
-            />
-          </div>
-        );
-      })}
-      {clip ? (
-        <VisualMedia
-          key={clip.id}
-          src={clip.url}
-          alt=""
-          loop={false}
-          preload="auto"
-          playbackRate={playbackRate}
-          active={props.active !== false && clip.phase !== "fallback"}
-          className="character-visual__transition-layer"
-          style={{ opacity: showClip ? 1 : 0 }}
-          onDimensions={(width, height) => rememberDimensions(clip.url, width, height)}
-          onFrameReady={(element) => {
-            if (!isCurrent(clip) || playback.current?.phase !== "loading") return;
-            bridge.current = element instanceof HTMLVideoElement ? element : null;
-            const duration = element instanceof HTMLVideoElement ? element.duration : 0;
-            setClip((current) =>
-              current?.id === clip.id
-                ? {
-                    ...current,
-                    phase: "playing",
-                    duration: Number.isFinite(duration) && duration > 0 ? duration : current.duration,
+      <div
+        className="character-visual__transition-content"
+        data-fade-phase={fade?.phase}
+        style={{
+          opacity: fade?.phase === "out" ? 0 : 1,
+          transition: fade ? `opacity ${FADE_DURATION_MS}ms ease-in-out` : undefined,
+        }}
+        onTransitionEnd={(event) => {
+          if (event.target === event.currentTarget && event.propertyName === "opacity" && fade) advanceFade(fade);
+        }}
+      >
+        {[...new Set([displayed, props.src])].map((src) => {
+          const visible = src === displayed && !showClip;
+          return (
+            <div
+              key={src}
+              className="character-visual__transition-layer"
+              style={{ opacity: visible ? 1 : 0 }}
+              aria-hidden={!visible}
+            >
+              <VisualMedia
+                {...props}
+                src={src}
+                alt={visible ? props.alt : ""}
+                className="character-visual__static-image"
+                style={undefined}
+                active={props.active !== false && src === displayed && !clip}
+                autoPlay={src === displayed && !clip ? props.autoPlay : false}
+                preload="auto"
+                hitbox={false}
+                onMouseDown={undefined}
+                onDimensions={(width, height) => {
+                  rememberDimensions(src, width, height);
+                }}
+                onFrameReady={(element) => {
+                  ready.current.add(src);
+                  if (failedSource.current === src) failedSource.current = "";
+                  props.onFrameReady?.(element);
+                  const current = playback.current;
+                  if (current?.to === src && (current.phase === "waiting" || current.phase === "fallback"))
+                    finish(current);
+                  const pending = fading.current;
+                  if (pending?.to === src && pending.phase === "loading" && target.current === src) {
+                    const outgoing: Fade = { ...pending, phase: "out" };
+                    fading.current = outgoing;
+                    setFade(outgoing);
                   }
-                : current,
-            );
-          }}
-          onEnded={() => finish(clip)}
-          onPlayBlocked={() => finish(clip, true)}
-          onError={() => finish(clip, true)}
-        />
-      ) : null}
+                }}
+                onError={(event) => {
+                  if (src !== target.current) return;
+                  failedSource.current = src;
+                  commit(src);
+                  props.onError?.(event);
+                }}
+              />
+            </div>
+          );
+        })}
+        {clip ? (
+          <VisualMedia
+            key={clip.id}
+            src={clip.url}
+            alt=""
+            loop={false}
+            preload="auto"
+            playbackRate={playbackRate}
+            active={props.active !== false && clip.phase !== "fallback" && !fade}
+            className="character-visual__transition-layer"
+            style={{ opacity: showClip ? 1 : 0 }}
+            onDimensions={(width, height) => rememberDimensions(clip.url, width, height)}
+            onFrameReady={(element) => {
+              if (!isCurrent(clip) || playback.current?.phase !== "loading") return;
+              bridge.current = element instanceof HTMLVideoElement ? element : null;
+              const duration = element instanceof HTMLVideoElement ? element.duration : 0;
+              setClip((current) =>
+                current?.id === clip.id
+                  ? {
+                      ...current,
+                      phase: "playing",
+                      duration: Number.isFinite(duration) && duration > 0 ? duration : current.duration,
+                    }
+                  : current,
+              );
+            }}
+            onEnded={() => finish(clip)}
+            onPlayBlocked={() => finish(clip, true)}
+            onError={() => finish(clip, true)}
+          />
+        ) : null}
+      </div>
     </div>
   );
 }
