@@ -46,10 +46,12 @@ def animation_prompt(payload):
         (
             "blinking",
             True,
-            "keep the eyes softly open with a steady gaze at the original angle for most "
-            "of the shot; make one smooth eyelid-only blink, softly closing then gently "
-            "reopening the eyes, followed by an open-eyed pause, while preserving the "
-            "original head tilt and facial expression",
+            "only if both eyes are naturally open in the reference, make one smooth "
+            "eyelid-only blink, softly closing then gently reopening to the original "
+            "eye shape and gaze, with a long pause between movements; if either eye "
+            "is closed, winking, squinting, stylized or obscured in the reference, "
+            "keep both eyes exactly as depicted for the whole shot without blinking "
+            "or opening them; preserve the original head tilt and facial expression",
         ),
         (
             "breeze",
@@ -79,6 +81,12 @@ def animation_prompt(payload):
             "neck length, visible neck outline, ear-to-shoulder clearance and chin-to-collar "
             "distance in every frame; keep the head, neck and torso comfortably "
             "aligned as one balanced unit, maintaining these distances and the original head tilt; "
+            + (
+                "preserve the reference eye shape, eyelid position and gaze throughout, "
+                "without blinking or opening closed eyes; "
+                if not payload.get("blinking", True)
+                else ""
+            )
             + action
             + "; keep the feet and body center rooted in place with tiny, slow, flowing motion only, "
             "a single continuous shot, steady lighting and a stationary background"

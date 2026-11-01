@@ -255,11 +255,36 @@ class ComfyUIT2IAdapter(T2IAdapter):
 
         self.last_video_path = None
         self.last_video_frame_time = None
+        self._video_frame_fraction = 0.5
 
         # 1. 深度复制模板以避免修改原始结构
         prompt_workflow = copy.deepcopy(self.workflow_template)
         if not kwargs.get("reference_image_path") and self.text_only_workflow_path:
             prompt_workflow = self._read_api_workflow(self.text_only_workflow_path)
+        if kwargs.get("h3_static_sprite"):
+            from ai.t2i.reference_image import apply_h3_sprite_resolution
+
+            apply_h3_sprite_resolution(
+                prompt_workflow, kwargs.get("h3_resolution", "workflow")
+            )
+            h3_nodes = [
+                node for node in prompt_workflow.values()
+                if node.get("class_type") == "MiniMaxH3ImageToVideo"
+            ]
+            # Keep custom guide timelines and linked lengths intact. The bundled
+            # I2V/T2V graphs can use a short 17k+5 clip when only a still is needed.
+            has_guides = any(
+                node.get("class_type") == "MiniMaxH3AddGuide"
+                for node in prompt_workflow.values()
+            )
+            lengths = [node.get("inputs", {}).get("length", 124) for node in h3_nodes]
+            if h3_nodes and not has_guides and all(
+                isinstance(length, int) and not isinstance(length, bool) and length >= 5
+                for length in lengths
+            ):
+                for node, length in zip(h3_nodes, lengths):
+                    node["inputs"]["length"] = min(length, 39)
+                self._video_frame_fraction = 0.8
 
         # 2. 注入主 Prompt
         # 假设 CLIPTextEncode 节点 (ID: self.prompt_node_id) 的输入是 index 1
@@ -466,7 +491,11 @@ class ComfyUIT2IAdapter(T2IAdapter):
                         if is_video:
                             from core.media.video_frames import extract_video_frame
 
-                            self.last_video_frame_time = extract_video_frame(downloaded, destination)
+                            self.last_video_frame_time = extract_video_frame(
+                                downloaded,
+                                destination,
+                                fraction=getattr(self, "_video_frame_fraction", 0.5),
+                            )
                             self.last_video_path = str(downloaded.resolve())
 
                         print(f"Image successfully generated and saved to: {os.path.abspath(file_path)}")

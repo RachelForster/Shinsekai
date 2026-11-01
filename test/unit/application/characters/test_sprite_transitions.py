@@ -360,18 +360,18 @@ def test_legacy_five_frame_transition_still_plays_but_generation_rebuilds_it(
     )  # Replaced only after explicit save.
 
 
-def alpha_clip(path, frames=22):
+def alpha_clip(path, frames=22, size=(32, 32)):
     import av
     import numpy as np
 
     with av.open(str(path), "w", format="webm") as container:
         stream = container.add_stream("libvpx-vp9", rate=24)
-        stream.width = stream.height = 32
+        stream.width, stream.height = size
         stream.pix_fmt = "yuva420p"
         stream.options = {"lossless": "1", "auto-alt-ref": "0"}
         for color in ["red"] + ["green"] * (frames - 2) + ["blue"]:
-            image = Image.new("RGBA", (32, 32), color)
-            image.paste((0, 0, 0, 0), (0, 0, 8, 32))
+            image = Image.new("RGBA", size, color)
+            image.paste((0, 0, 0, 0), (0, 0, 8, size[1]))
             for packet in stream.encode(
                 av.VideoFrame.from_ndarray(np.asarray(image), format="rgba")
             ):
@@ -380,21 +380,24 @@ def alpha_clip(path, frames=22):
             container.mux(packet)
 
 
-def test_video_endpoints_preserve_alpha_and_first_last_direction(tmp_path):
+@pytest.mark.parametrize("size", [(32, 32), (120, 200)])
+def test_video_endpoints_preserve_alpha_and_first_last_direction(tmp_path, size):
     source = tmp_path / "alpha.webm"
-    alpha_clip(source)
+    alpha_clip(source, size=size)
     for last, channel in [(False, 0), (True, 2)]:
         output = boundary_frame(source, tmp_path / f"{last}.png", last=last)
         with Image.open(output) as image:
             assert image.mode == "RGBA"
+            assert image.size == size
             assert image.getpixel((0, 0))[3] == 0
             assert image.getpixel((16, 16))[3] == 255
             assert image.getpixel((16, 16))[channel] > 200
 
 
 @pytest.mark.parametrize("transparent", [False, True])
-def test_animation_from_saved_video_uses_first_frame_and_preserves_alpha(
-    state, tmp_path, monkeypatch, transparent
+@pytest.mark.parametrize("static", [False, True])
+def test_generation_from_saved_video_uses_first_frame_and_preserves_alpha(
+    state, tmp_path, monkeypatch, transparent, static
 ):
     from core.media.chroma_key import choose_screen_color
 
@@ -435,15 +438,20 @@ def test_animation_from_saved_video_uses_first_frame_and_preserves_alpha(
         return {"name": "Mika", "tagging": payload["tagging"], "matting": matting}
 
     renderer = Mock(side_effect=render)
-    monkeypatch.setattr(sprite_generation, "render_animation", renderer)
-    monkeypatch.setattr(
-        sprite_generation, "_finish_animation", lambda _, __, result: result
+    if static:
+        monkeypatch.setattr(sprite_generation, "render_sprite", renderer)
+        monkeypatch.setattr(sprite_generation, "_finish_sprite", lambda _, __, result, ___: result)
+    else:
+        monkeypatch.setattr(sprite_generation, "render_animation", renderer)
+        monkeypatch.setattr(sprite_generation, "_finish_animation", lambda _, __, result: result)
+    task = _create_task(
+        app, kind="character-sprite-render" if static else "character-sprite-animate", title="regenerate"
     )
-    task = _create_task(app, kind="character-sprite-animate", title="regenerate")
-    result = sprite_generation.run_sprite_animation(
+    run = sprite_generation.run_sprite_render if static else sprite_generation.run_sprite_animation
+    result = run(
         app,
         task["id"],
-        {"name": "Mika", "referenceImage": source.as_posix(), "tagging": "微笑，挥手"},
+        {"name": "Mika", "referenceImage": source.as_posix(), "tagging": "微笑，挥手", "prompt": "wave"},
     )
     assert result["tagging"] == "微笑，挥手"
     renderer.assert_called_once()

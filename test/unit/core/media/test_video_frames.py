@@ -51,3 +51,28 @@ def test_rejects_invalid_frame_time_before_reading_video(tmp_path, seconds):
 def test_rejects_time_beyond_clip(short_video, tmp_path):
     with pytest.raises(ValueError, match="超出了"):
         extract_video_frame(short_video, tmp_path / "sprite.png", 100)
+
+
+@pytest.mark.parametrize("fraction", [0.8, 1])
+def test_selects_a_later_frame_without_changing_manual_timestamps(
+    short_video, tmp_path, fraction
+):
+    output = tmp_path / "late.png"
+    timestamp = extract_video_frame(short_video, output, fraction=fraction)
+    assert 1.5 <= timestamp < 2
+    with Image.open(output) as image:
+        red, _, blue = image.getpixel((8, 8))
+        assert blue > red
+    manual = extract_video_frame(short_video, output, 0.2, fraction=fraction)
+    assert manual == pytest.approx(0.2)
+    with Image.open(output) as image:
+        red, _, blue = image.getpixel((8, 8))
+        assert red > blue
+
+
+@pytest.mark.parametrize("fraction", [-0.1, 1.1, True, float("nan")])
+def test_rejects_invalid_fraction_before_opening_video(tmp_path, fraction):
+    with pytest.raises(ValueError, match="比例"):
+        extract_video_frame(
+            Path("not-read.mp4"), tmp_path / "sprite.png", fraction=fraction
+        )

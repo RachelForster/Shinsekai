@@ -179,9 +179,11 @@ def render_sprite(
     from PIL import Image
 
     from ai.t2i.t2i_manager import T2IAdapterFactory, T2IManager
+    from ai.t2i.reference_image import validate_h3_sprite_resolution
 
     pair = prompt_pair(payload)
     processing = matting_options(payload)
+    h3_resolution = validate_h3_sprite_resolution(payload.get("h3Resolution", "workflow"))
     matting = {
         "method": "ai",
         "alphaMatting": processing["alphaMatting"],
@@ -278,6 +280,9 @@ def render_sprite(
             matting["alphaMatting"] = processing["alphaMatting"]
             matting["model"] = processing["mattingModel"]
         options = {"seed": secrets.randbelow(2**53)}
+        if not require_h3_video and provider.lower() == "comfyui":
+            options["h3_static_sprite"] = True
+            options["h3_resolution"] = h3_resolution
         if reference:
             options["reference_image_path"] = str(reference)
         if last_reference:
@@ -344,7 +349,17 @@ def boundary_frame(source: Path, output: Path, *, last: bool):
                 count += 1
                 if count > 720:
                     raise ValueError("参考动态立绘过长，请使用短循环视频")
-                image = Image.fromarray(frame.to_ndarray(format="rgba"))
+                image = Image.fromarray(frame.to_ndarray(format="rgb24")).convert("RGBA")
+                if decoder:
+                    import numpy as np
+
+                    if len(frame.planes) != 4:
+                        raise ValueError("无法读取参考立绘的透明通道")
+                    plane = frame.planes[3]
+                    alpha = np.frombuffer(plane, dtype=np.uint8).reshape(
+                        plane.height, plane.line_size
+                    )[: frame.height, : frame.width]
+                    image.putalpha(Image.fromarray(alpha))
                 if not last:
                     image.save(output)
                     return output

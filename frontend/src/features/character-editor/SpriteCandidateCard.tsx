@@ -3,7 +3,15 @@ import { ImagePlus, RefreshCw, Trash2 } from "lucide-react";
 
 import { fileUrl } from "../../entities/files/repository";
 import { useI18n } from "../../shared/i18n";
-import { AsyncButton, IconButton, ImageAssetThumb, TextArea, TextInput, VisualMedia } from "../../shared/ui";
+import {
+  AsyncButton,
+  IconButton,
+  ImageAssetThumb,
+  TextArea,
+  TextInput,
+  VisualMedia,
+  type MediaPreview,
+} from "../../shared/ui";
 import { SpriteVideoFramePicker } from "./SpriteVideoFramePicker";
 import { SpriteMattingStatus } from "./SpriteMattingStatus";
 import type { SpriteCandidate, useSpriteGeneration } from "./useSpriteGeneration";
@@ -14,6 +22,7 @@ interface Props {
   generator: ReturnType<typeof useSpriteGeneration>;
   reference: string;
   removeBackground: boolean;
+  onPreview: (media: MediaPreview) => void;
   onAnimate?: (item: SpriteCandidate) => void;
   onReplace?: (item: SpriteCandidate) => void;
 }
@@ -24,6 +33,7 @@ export function SpriteCandidateCard({
   generator,
   reference,
   removeBackground,
+  onPreview,
   onAnimate,
   onReplace,
 }: Props) {
@@ -84,18 +94,18 @@ export function SpriteCandidateCard({
       {item.result || !item.manual ? (
         <div className="sprite-generation__preview">
           {item.result ? (
-            <a
+            <button
+              type="button"
+              className="sprite-generation__preview-trigger"
               aria-label={t("spriteGeneration.preview", { n: index + 1 })}
-              href={fileUrl(item.result.path)}
-              rel="noreferrer"
-              target="_blank"
+              onClick={() => onPreview({ src: fileUrl(item.result!.path), title })}
             >
               {animation ? (
                 <VisualMedia alt={title} src={fileUrl(item.result.path)} />
               ) : (
                 <ImageAssetThumb alt={title} src={fileUrl(item.result.path)} />
               )}
-            </a>
+            </button>
           ) : (
             <div className="sprite-generation__placeholder">
               <ImagePlus aria-hidden />

@@ -12,6 +12,7 @@ import {
   Switch,
   TextArea,
   TextInput,
+  type MediaPreview,
 } from "../../shared/ui";
 import type { SpriteAnimationSource } from "./spriteAnimationSources";
 import { SpriteMattingSettings } from "./SpriteMattingSettings";
@@ -24,6 +25,7 @@ interface Props {
   onSourceModeChange: (mode: "library" | "file") => void;
   onChange: (value: CharacterSpriteAnimationInput) => void;
   onGenerate: () => void;
+  onPreview: (media: MediaPreview) => void;
   busy: boolean;
   loading: boolean;
   remaining: number;
@@ -38,6 +40,7 @@ export function SpriteAnimationSettings({
   onSourceModeChange,
   onChange,
   onGenerate,
+  onPreview,
   busy,
   loading,
   remaining,
@@ -73,11 +76,24 @@ export function SpriteAnimationSettings({
           <>
             {value.referenceImage ? (
               <div className="sprite-generation__reference-image">
-                <VisualMedia
-                  alt={t("spriteGeneration.reference")}
-                  autoPlay={false}
-                  src={fileUrl(value.referenceImage)}
-                />
+                <button
+                  type="button"
+                  className="sprite-generation__preview-trigger"
+                  aria-label={t("mediaPreview.open", { name: t("spriteAnimation.reference") })}
+                  onClick={() =>
+                    onPreview({
+                      src: fileUrl(value.referenceImage),
+                      title: t("spriteAnimation.reference"),
+                      autoPlay: false,
+                    })
+                  }
+                >
+                  <VisualMedia
+                    alt={t("spriteGeneration.reference")}
+                    autoPlay={false}
+                    src={fileUrl(value.referenceImage)}
+                  />
+                </button>
               </div>
             ) : null}
             <label className="field-row field-row--stack">

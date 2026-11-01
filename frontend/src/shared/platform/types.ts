@@ -1436,6 +1436,8 @@ export interface CharacterSpritePlanInput {
   referenceImage?: string;
 }
 
+export type H3SpriteResolution = "workflow" | "hd" | "native";
+
 export interface GeneratedCharacterSprite extends SpritePromptPair {
   name: string;
   path: string;
@@ -1808,6 +1810,7 @@ export interface ShinsekaiPlatform {
         name: string;
         referenceImage?: string;
         removeBackground?: boolean;
+        h3Resolution?: H3SpriteResolution;
       } & SpriteMattingOptions,
       options?: TaskProgressOptions<GeneratedCharacterSprite>,
     ) => Promise<GeneratedCharacterSprite>;

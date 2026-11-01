@@ -1,11 +1,11 @@
-import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
-import { Check, ImagePlus, Plus, Sparkles } from "lucide-react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Check, ImagePlus, Plus, Sparkles, X } from "lucide-react";
 
 import { fileUrl } from "../../entities/files/repository";
 import { isVideoMedia } from "../../shared/assets/visualMedia";
 import { tagContents } from "../../shared/assets/assetText";
 import { useI18n } from "../../shared/i18n";
-import type { Character, CharacterSpriteAnimationInput } from "../../shared/platform/types";
+import type { Character, CharacterSpriteAnimationInput, H3SpriteResolution } from "../../shared/platform/types";
 import {
   AlertDialog,
   AsyncButton,
@@ -14,14 +14,16 @@ import {
   Dialog,
   EmptyState,
   FilePicker,
+  IconButton,
+  MediaPreviewDialog,
   NumberInput,
   Select,
   SegmentedTabs,
   Switch,
   TaskProgress,
   TextArea,
-  ImageAssetThumb,
   VisualMedia,
+  type MediaPreview,
 } from "../../shared/ui";
 import { SpriteAnimationSettings } from "./SpriteAnimationSettings";
 import { SpriteMattingSettings } from "./SpriteMattingSettings";
@@ -32,7 +34,7 @@ import { SpriteCandidateCard } from "./SpriteCandidateCard";
 import { SpriteGenerationSetupGuide } from "./SpriteGenerationSetupGuide";
 import { SpriteTransitionWorkspace } from "./SpriteTransitionWorkspace";
 import { useSpriteTransitions } from "./useSpriteTransitions";
-import "./SpriteGenerationDialog.css";
+import "./SpriteGenerationPage.css";
 
 interface Props {
   character: Character;
@@ -41,7 +43,7 @@ interface Props {
   onImported: (character: Character, replacedIndex?: number | number[]) => void;
 }
 
-export function SpriteGenerationDialog({ character, name, onClose, onImported }: Props) {
+export function SpriteGenerationPage({ character, name, onClose, onImported }: Props) {
   const { t } = useI18n();
   const tabsId = useId();
   const [mode, setMode] = useState<"static" | "animation" | "transition">("static");
@@ -66,14 +68,18 @@ export function SpriteGenerationDialog({ character, name, onClose, onImported }:
   const [requirements, setRequirements] = useState("");
   const [reference, setReference] = useState("");
   const [removeBackground, setRemoveBackground] = useState(true);
+  const [h3Resolution, setH3Resolution] = useState<H3SpriteResolution>("workflow");
   const [confirmClose, setConfirmClose] = useState(false);
   const [replacementCandidate, setReplacementCandidate] = useState<SpriteCandidate | null>(null);
   const [replacementIndex, setReplacementIndex] = useState("");
   const [guideOpen, setGuideOpen] = useState(true);
   const [coloredPreview, setColoredPreview] = useState(false);
+  const [previewSize, setPreviewSize] = useState("standard");
   const [previewColor, setPreviewColor] = useState("#5577aa");
+  const [mediaPreview, setMediaPreview] = useState<MediaPreview | null>(null);
   const previewProps = {
     "data-sprite-preview-background": coloredPreview || undefined,
+    "data-sprite-preview-size": previewSize,
     style: { "--sprite-preview-color": previewColor } as CSSProperties,
   };
   const workspaceBodyRef = useRef<HTMLDivElement>(null);
@@ -88,6 +94,7 @@ export function SpriteGenerationDialog({ character, name, onClose, onImported }:
     onImported,
     character.sprites,
     mattingOptions,
+    h3Resolution,
   );
   const transitions = useSpriteTransitions(character, name, onImported, mattingOptions);
   const busy = generator.busy || transitions.busy;
@@ -121,9 +128,9 @@ export function SpriteGenerationDialog({ character, name, onClose, onImported }:
     setGuideOpen(!hasItems);
     setAnimationSourcesOpen(!hasItems);
   }, [hasItems]);
-  const existingImages = character.sprites
+  const existingReferences = character.sprites
     .map((sprite, index) => ({ sprite, index }))
-    .filter(({ sprite }) => sprite.path && !isVideoMedia(sprite.path));
+    .filter(({ sprite }) => sprite.path);
   const pending = items.filter(
     (item) => !item.result || item.result.prompt !== item.prompt || (item.animationInput && !item.result.alphaVerified),
   );
@@ -171,26 +178,34 @@ export function SpriteGenerationDialog({ character, name, onClose, onImported }:
 
   return (
     <>
-      <Dialog
-        className="sprite-generation"
-        closeLabel={t("common.close")}
-        dismissible={!busy}
+      <SpriteGenerationPageFrame
+        busy={Boolean(busy)}
+        characterName={name}
         onClose={close}
-        open
         title={t("spriteGeneration.action")}
         headerActions={
-          <div className="sprite-generation__preview-background" title={t("spriteGeneration.previewBackgroundHint")}>
-            <Switch checked={coloredPreview} onChange={(event) => setColoredPreview(event.target.checked)}>
-              {t("spriteGeneration.previewBackground")}
-            </Switch>
-            {coloredPreview ? (
-              <ColorInput
-                aria-label={t("spriteGeneration.previewColor")}
-                value={previewColor}
-                onChange={(event) => setPreviewColor(event.target.value)}
-              />
-            ) : null}
-          </div>
+          <>
+            <Select
+              aria-label={t("spriteGeneration.previewSize")}
+              value={previewSize}
+              onChange={(event) => setPreviewSize(event.target.value)}
+            >
+              <option value="standard">{t("spriteGeneration.previewStandard")}</option>
+              <option value="large">{t("spriteGeneration.previewLarge")}</option>
+            </Select>
+            <div className="sprite-generation__preview-background" title={t("spriteGeneration.previewBackgroundHint")}>
+              <Switch checked={coloredPreview} onChange={(event) => setColoredPreview(event.target.checked)}>
+                {t("spriteGeneration.previewBackground")}
+              </Switch>
+              {coloredPreview ? (
+                <ColorInput
+                  aria-label={t("spriteGeneration.previewColor")}
+                  value={previewColor}
+                  onChange={(event) => setPreviewColor(event.target.value)}
+                />
+              ) : null}
+            </div>
+          </>
         }
         footer={
           <>
@@ -210,9 +225,6 @@ export function SpriteGenerationDialog({ character, name, onClose, onImported }:
                 )}
               </span>
             </div>
-            <Button disabled={Boolean(busy)} onClick={close}>
-              {t("common.close")}
-            </Button>
             {mode !== "transition" ? (
               <AsyncButton
                 disabled={Boolean(busy) || !selectedSprites.length || Boolean(replacementIssue)}
@@ -292,6 +304,7 @@ export function SpriteGenerationDialog({ character, name, onClose, onImported }:
               controller={transitions}
               mattingOptions={mattingOptions}
               onMattingChange={(value) => setAnimationInput((current) => ({ ...current, ...value }))}
+              onPreview={setMediaPreview}
             />
           </div>
         ) : (
@@ -312,6 +325,7 @@ export function SpriteGenerationDialog({ character, name, onClose, onImported }:
                   onSourceModeChange={setAnimationSourceMode}
                   onChange={setAnimationInput}
                   onGenerate={() => void generator.animateBatch(animationInputs)}
+                  onPreview={setMediaPreview}
                   busy={Boolean(busy)}
                   loading={busy === "animate"}
                   remaining={remaining}
@@ -324,7 +338,24 @@ export function SpriteGenerationDialog({ character, name, onClose, onImported }:
                     <div className="sprite-generation__reference">
                       <div className="sprite-generation__reference-image">
                         {reference ? (
-                          <ImageAssetThumb alt={t("spriteGeneration.reference")} src={fileUrl(reference)} />
+                          <button
+                            type="button"
+                            className="sprite-generation__preview-trigger"
+                            aria-label={t("mediaPreview.open", { name: t("spriteGeneration.reference") })}
+                            onClick={() =>
+                              setMediaPreview({
+                                src: fileUrl(reference),
+                                title: t("spriteGeneration.reference"),
+                                autoPlay: false,
+                              })
+                            }
+                          >
+                            <VisualMedia
+                              alt={t("spriteGeneration.reference")}
+                              autoPlay={false}
+                              src={fileUrl(reference)}
+                            />
+                          </button>
                         ) : (
                           <div className="sprite-generation__reference-empty">
                             <ImagePlus aria-hidden />
@@ -335,26 +366,45 @@ export function SpriteGenerationDialog({ character, name, onClose, onImported }:
                       <label className="field-row field-row--stack">
                         <span className="field-row__label">{t("spriteGeneration.reference")}</span>
                         <FilePicker
-                          acceptedExtensions={[".png", ".jpg", ".jpeg", ".webp", ".bmp"]}
+                          acceptedExtensions={[
+                            ".png",
+                            ".jpg",
+                            ".jpeg",
+                            ".webp",
+                            ".bmp",
+                            ".mp4",
+                            ".webm",
+                            ".mov",
+                            ".mkv",
+                            ".avi",
+                            ".m4v",
+                          ]}
                           disabled={Boolean(busy)}
                           onPathChange={setReference}
                           pickLabel={t("spriteGeneration.chooseReference")}
                           value={reference}
                         />
                       </label>
-                      {existingImages.length > 0 ? (
+                      {existingReferences.length > 0 ? (
                         <label className="field-row field-row--stack">
                           <span className="field-row__label">{t("spriteGeneration.existingReference")}</span>
                           <Select
                             aria-label={t("spriteGeneration.existingReference")}
                             disabled={Boolean(busy)}
                             onChange={(event) => setReference(event.target.value)}
-                            value={existingImages.some(({ sprite }) => sprite.path === reference) ? reference : ""}
+                            value={existingReferences.some(({ sprite }) => sprite.path === reference) ? reference : ""}
                           >
                             <option value="">{t("spriteGeneration.chooseExisting")}</option>
-                            {existingImages.map(({ sprite, index }) => (
+                            {existingReferences.map(({ sprite, index }) => (
                               <option key={`${sprite.path}-${index}`} value={sprite.path}>
                                 {t("spriteGeneration.sprite", { n: index + 1 })}
+                                {" · "}
+                                {t(
+                                  isVideoMedia(sprite.path)
+                                    ? "spriteGeneration.videoReference"
+                                    : "spriteAnimation.sourceImage",
+                                )}
+                                {replacementTags[index] ? ` · ${replacementTags[index]}` : ""}
                               </option>
                             ))}
                           </Select>
@@ -364,6 +414,9 @@ export function SpriteGenerationDialog({ character, name, onClose, onImported }:
                         <Button disabled={Boolean(busy)} onClick={() => setReference("")} variant="ghost">
                           {t("spriteGeneration.clearReference")}
                         </Button>
+                      ) : null}
+                      {reference && isVideoMedia(reference) ? (
+                        <p className="sprite-generation__hint">{t("spriteGeneration.videoReferenceHint")}</p>
                       ) : null}
                       <p className="sprite-generation__hint">
                         {t(reference ? "spriteGeneration.referenceHint" : "spriteGeneration.noReferenceHint")}
@@ -393,6 +446,20 @@ export function SpriteGenerationDialog({ character, name, onClose, onImported }:
                         onChange={(event) => setCount(Number(event.target.value))}
                         value={count}
                       />
+                    </label>
+                    <label className="field-row field-row--stack">
+                      <span className="field-row__label">{t("spriteGeneration.h3Resolution")}</span>
+                      <Select
+                        aria-label={t("spriteGeneration.h3Resolution")}
+                        disabled={Boolean(busy)}
+                        value={h3Resolution}
+                        onChange={(event) => setH3Resolution(event.target.value as H3SpriteResolution)}
+                      >
+                        <option value="workflow">{t("spriteGeneration.resolutionWorkflow")}</option>
+                        <option value="hd">{t("spriteGeneration.resolutionHd")}</option>
+                        <option value="native">{t("spriteGeneration.resolutionNative")}</option>
+                      </Select>
+                      <p className="sprite-generation__hint">{t("spriteGeneration.resolutionHint")}</p>
                     </label>
                     <div className="sprite-generation__auto-cutout">
                       <Switch
@@ -563,6 +630,7 @@ export function SpriteGenerationDialog({ character, name, onClose, onImported }:
                           generator={generator}
                           reference={reference}
                           removeBackground={removeBackground}
+                          onPreview={setMediaPreview}
                           onReplace={
                             character.sprites.length
                               ? (item) => {
@@ -605,7 +673,13 @@ export function SpriteGenerationDialog({ character, name, onClose, onImported }:
             </section>
           </div>
         )}
-      </Dialog>
+      </SpriteGenerationPageFrame>
+      <MediaPreviewDialog
+        media={mediaPreview}
+        closeLabel={t("common.close")}
+        backgroundColor={coloredPreview ? previewColor : undefined}
+        onClose={() => setMediaPreview(null)}
+      />
       <Dialog
         open={Boolean(replacementCandidate)}
         title={t("spriteGeneration.replace")}
@@ -687,5 +761,55 @@ export function SpriteGenerationDialog({ character, name, onClose, onImported }:
         title={t("spriteGeneration.discardTitle")}
       />
     </>
+  );
+}
+
+function SpriteGenerationPageFrame({
+  busy,
+  characterName,
+  children,
+  footer,
+  headerActions,
+  onClose,
+  title,
+}: {
+  busy: boolean;
+  characterName: string;
+  children: ReactNode;
+  footer: ReactNode;
+  headerActions: ReactNode;
+  onClose: () => void;
+  title: string;
+}) {
+  const { t } = useI18n();
+  const titleId = useId();
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    titleRef.current?.focus();
+  }, []);
+
+  return (
+    <div className="sprite-generation-screen">
+      <section className="page sprite-generation" aria-labelledby={titleId}>
+        <header className="sprite-generation__header">
+          <div className="sprite-generation__heading">
+            <div>
+              <h1 id={titleId} ref={titleRef} tabIndex={-1}>
+                {title}
+              </h1>
+              <p>{characterName}</p>
+            </div>
+          </div>
+          <div className="sprite-generation__header-actions">
+            {headerActions}
+            <IconButton disabled={busy} label={t("common.close")} onClick={onClose}>
+              <X aria-hidden className="icon-button__icon" />
+            </IconButton>
+          </div>
+        </header>
+        <div className="sprite-generation__body">{children}</div>
+        <footer className="sprite-generation__footer">{footer}</footer>
+      </section>
+    </div>
   );
 }
