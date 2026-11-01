@@ -11,6 +11,11 @@ from frontend_bridge_core.characters import (
     _translate_character_fields,
 )
 from frontend_bridge_core.image_annotations import run_character_sprite_auto_label
+from frontend_bridge_core.sprite_transitions import (
+    run_sprite_transition,
+    save_sprite_transitions,
+    run_transition_analysis,
+)
 from frontend_bridge_core.sprite_generation import (
     import_generated_sprites,
     run_sprite_plan,
@@ -256,10 +261,37 @@ def _animate_sprite(request: ApiRequest) -> TaskResponse:
                         worker=lambda task_id: run_sprite_animation(request.state, task_id, body))
 
 
+def _generate_sprite_transition(request: ApiRequest) -> TaskResponse:
+    body = dict(request.body)
+    return TaskResponse(
+        kind="character-sprite-transition", title="生成立绘过渡",
+        message="正在准备 22 帧透明过渡。",
+        worker=lambda task_id: run_sprite_transition(request.state, task_id, body),
+    )
+
+
+def _analyze_sprite_transitions(request: ApiRequest) -> TaskResponse:
+    body = dict(request.body)
+    return TaskResponse(
+        kind="character-transition-analysis",
+        title="分析常用立绘过渡",
+        message="正在准备最近聊天分析。",
+        worker=lambda task_id: run_transition_analysis(request.state, task_id, body),
+    )
+
+
 CHARACTER_ROUTES = (
     Route(methods=frozenset({"POST"}), pattern="/api/characters/links/doki", handler=_link_doki_character, name="characters.links.doki"),
     Route(methods=frozenset({"POST"}), pattern="/api/characters/exchange/doki-list", handler=_list_doki_characters, name="characters.exchange.doki-list"),
     Route(methods=frozenset({"POST"}), pattern="/api/characters/exchange/prepare", handler=_prepare_exchange_character, name="characters.exchange.prepare"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/transitions/analyze",
+          handler=_analyze_sprite_transitions, name="characters.sprites.transitions.analyze"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/transitions/generate",
+          handler=_generate_sprite_transition,
+          name="characters.sprites.transitions.generate"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/transitions/save",
+          handler=lambda request: JsonResponse(save_sprite_transitions(request.state, request.body)),
+          name="characters.sprites.transitions.save"),
     Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/animate",
           handler=_animate_sprite, name="characters.sprites.animate"),
     Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/remove-background",

@@ -149,6 +149,22 @@ def plan_sprites(config_store: Any, payload: dict) -> dict:
     }
 
 
+def matting_options(
+    payload, *, auto_screen=False, alpha_matting=False, model="toonout"
+):
+    from tools.remove_bg import validate_matting_model
+
+    options = {
+        "autoScreen": payload.get("autoScreen", auto_screen),
+        "alphaMatting": payload.get("alphaMatting", alpha_matting),
+    }
+    for key, value in options.items():
+        if not isinstance(value, bool):
+            raise ValueError(f"{key} 必须为布尔值")
+    options["mattingModel"] = validate_matting_model(payload.get("mattingModel", model))
+    return options
+
+
 def render_sprite(
     config_store: Any,
     payload: dict,
@@ -158,12 +174,19 @@ def render_sprite(
     require_h3_video: bool = False,
     loop_reference: bool = False,
     stabilize_pose: bool = False,
+    last_reference: Path | None = None,
 ) -> dict:
     from PIL import Image
 
     from ai.t2i.t2i_manager import T2IAdapterFactory, T2IManager
 
     pair = prompt_pair(payload)
+    processing = matting_options(payload)
+    matting = {
+        "method": "ai",
+        "alphaMatting": processing["alphaMatting"],
+        "model": processing["mattingModel"],
+    }
     api = config_store.config.api_config
     provider = str(api.t2i_provider or "").strip()
     if not provider:
@@ -208,14 +231,64 @@ def render_sprite(
                 for node in nodes:
                     if node.get("inputs", {}).get("first_frame"):
                         node["inputs"]["last_frame"] = node["inputs"]["first_frame"]
+            if last_reference:
+                from ai.t2i.reference_image import reference_canvas_size
+                from core.sprite.transitions import TRANSITION_FRAME_COUNT
+
+                first = nodes[0]["inputs"]["first_frame"]
+                if any(node["inputs"]["first_frame"] != first for node in nodes):
+                    raise ValueError("过渡工作流须使用同一个首帧输入")
+                adapter.reference_node_id = str(first[0])
+                if (
+                    adapter.workflow_template.get(str(first[0]), {}).get("class_type")
+                    != "LoadImage"
+                ):
+                    raise ValueError("过渡工作流的首帧须直接连接 LoadImage")
+                adapter.workflow_template["shinsekai_last_frame"] = {
+                    "class_type": "LoadImage",
+                    "inputs": {"image": "last.png"},
+                }
+                canvas = nodes[0]["inputs"]
+                width, height = reference_canvas_size(
+                    reference, canvas["width"], canvas["height"]
+                )
+                for node in nodes:
+                    node["inputs"].update(
+                        width=width,
+                        height=height,
+                        length=TRANSITION_FRAME_COUNT,
+                        last_frame=["shinsekai_last_frame", 0],
+                    )
+                for node in adapter.workflow_template.values():
+                    if node.get("class_type") == "CreateVideo":
+                        node["inputs"]["fps"] = 24
             if stabilize_pose:
                 adapter.workflow_template = stabilize_idle_workflow(
                     adapter.workflow_template
                 )
+            from core.media.chroma_key import choose_screen_color
+
+            matting = (
+                choose_screen_color(
+                    [reference, *([last_reference] if last_reference else [])]
+                )
+                if processing["autoScreen"]
+                else {"method": "ai"}
+            )
+            matting["alphaMatting"] = processing["alphaMatting"]
+            matting["model"] = processing["mattingModel"]
         options = {"seed": secrets.randbelow(2**53)}
         if reference:
             options["reference_image_path"] = str(reference)
-        result = manager.t2i(pair["prompt"], file_path=str(output), **options)
+        if last_reference:
+            options["last_reference_image_path"] = str(last_reference)
+        render_prompt = pair["prompt"]
+        if matting and matting["method"] == "chroma":
+            from core.media.chroma_key import screen_prompt
+
+            options["reference_background_color"] = tuple(matting["screenColor"])
+            render_prompt += screen_prompt(matting)
+        result = manager.t2i(render_prompt, file_path=str(output), **options)
         if not result or not output.is_file():
             raise RuntimeError("T2I 未返回图片，请检查服务与工作流输出节点")
         try:
@@ -238,11 +311,47 @@ def render_sprite(
         return {
             **pair,
             **media,
+            **({"matting": matting} if matting else {}),
             "path": output.as_posix(),
             "name": str(payload.get("name") or ""),
         }
     finally:
         manager.shutdown()
+
+
+def boundary_frame(source: Path, output: Path, *, last: bool):
+    """Preserve alpha when extracting the final/first frame of file sprites."""
+    from PIL import Image, ImageOps
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    if source.suffix.lower() not in {".mp4", ".webm", ".mov", ".mkv", ".avi", ".m4v"}:
+        with Image.open(source) as image:
+            ImageOps.exif_transpose(image).convert("RGBA").save(output)
+        return output
+    import av
+
+    with av.open(str(source)) as container:
+        stream = next(iter(container.streams.video), None)
+        if stream is None:
+            raise ValueError("立绘视频没有画面")
+        decoder = None
+        if stream.metadata.get("alpha_mode") == "1":
+            decoder = av.CodecContext.create("libvpx-vp9", "r")
+        image = None
+        count = 0
+        for packet in container.demux(stream):
+            for frame in decoder.decode(packet) if decoder else packet.decode():
+                count += 1
+                if count > 720:
+                    raise ValueError("参考动态立绘过长，请使用短循环视频")
+                image = Image.fromarray(frame.to_ndarray(format="rgba"))
+                if not last:
+                    image.save(output)
+                    return output
+        if image is None:
+            raise ValueError("无法读取立绘视频画面")
+        image.save(output)
+    return output
 
 
 def capture_sprite_frame(
@@ -257,18 +366,33 @@ def capture_sprite_frame(
         "path": output.as_posix(),
         "videoPath": video.as_posix(),
         "frameTime": timestamp,
+        **({"matting": source["matting"]} if source.get("matting") else {}),
     }
 
 
 def remove_sprite_background(source: dict, original: Path, output: Path) -> dict:
     from tools.remove_bg import ai_remove_background
 
-    ai_remove_background(original, output)
+    settings = dict(source.get("matting") or {})
+    metadata = {}
+    ai_remove_background(
+        original,
+        output,
+        model=settings.get("model", "toonout"),
+        alpha_matting=settings.get("alphaMatting", False),
+        metadata=metadata,
+    )
     return {
         **prompt_pair(source),
         "name": source["name"],
         "path": output.as_posix(),
         "originalPath": original.as_posix(),
         "backgroundRemoved": True,
+        "matting": {
+            **settings,
+            "method": "ai",
+            "alphaMatting": settings.get("alphaMatting", False),
+            **metadata,
+        },
         **{key: source[key] for key in ("videoPath", "frameTime") if key in source},
     }

@@ -129,7 +129,7 @@ describe("CharacterVisual", () => {
     const host = view.container.querySelector<HTMLElement>(".sprite-layer__image")!;
     expect(host.style.aspectRatio).toBe("0.5");
     expect(host.dataset.chatStageHitbox).toBe("true");
-    expect(image.parentElement).toHaveStyle({ transform: "translateY(0%) scale(2)" });
+    expect(image.closest(".character-visual__framing-surface")).toHaveStyle({ transform: "translateY(0%) scale(2)" });
     fireEvent.mouseDown(image);
     expect(onMouseDown).toHaveBeenCalledOnce();
     fireEvent.error(image);
@@ -137,7 +137,7 @@ describe("CharacterVisual", () => {
     view.rerender(
       <CharacterVisual {...props} asset={{ ...asset, avatarType: "static", modelUrl: "", url: "/alice.png" }} />,
     );
-    expect(screen.getByRole("img")).toHaveClass("sprite-layer__image");
+    expect(screen.getByRole("img").closest(".sprite-layer__image")).not.toBeNull();
     expect(view.container.querySelector(".character-visual--framed")).toBeNull();
   });
 
@@ -246,7 +246,7 @@ describe("CharacterVisual", () => {
       />,
     );
     const img = screen.getByRole("img") as HTMLImageElement;
-    expect(img.className).toBe("sprite-layer__image");
+    expect(img.closest(".sprite-layer__image")).not.toBeNull();
     fireEvent.error(img);
     expect(onImageError).toHaveBeenCalledOnce();
     view.rerender(

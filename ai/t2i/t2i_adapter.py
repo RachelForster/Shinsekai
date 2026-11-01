@@ -279,7 +279,9 @@ class ComfyUIT2IAdapter(T2IAdapter):
         if "seed" in kwargs and kwargs["seed"] is not None:
             self._apply_sampler_seed(prompt_workflow, kwargs["seed"])
         if kwargs.get("reference_image_path"):
-            self._apply_reference_image(prompt_workflow, kwargs["reference_image_path"])
+            self._apply_reference_image(prompt_workflow, kwargs["reference_image_path"], background=kwargs.get("reference_background_color", "white"))
+        if kwargs.get("last_reference_image_path"):
+            self._apply_reference_image(prompt_workflow, kwargs["last_reference_image_path"], node_id="shinsekai_last_frame", background=kwargs.get("reference_background_color", "white"))
 
         payload = {
             "prompt": prompt_workflow,
@@ -315,13 +317,13 @@ class ComfyUIT2IAdapter(T2IAdapter):
         except Exception:
             raise
 
-    def _apply_reference_image(self, workflow, path):
+    def _apply_reference_image(self, workflow, path, node_id=None, background="white"):
         candidates = [
             str(key)
             for key, node in workflow.items()
             if node.get("class_type") == "LoadImage"
         ]
-        node_id = self.reference_node_id
+        node_id = node_id or self.reference_node_id
         if not node_id and len(candidates) == 1:
             node_id = candidates[0]
         if not node_id or node_id not in candidates:
@@ -369,7 +371,7 @@ class ComfyUIT2IAdapter(T2IAdapter):
                 width, height = reference_canvas_size(path, width, height)
                 for inputs in h3_inputs:
                     inputs.update(width=width, height=height)
-            source = fit_reference_to_canvas(path, width, height)
+            source = fit_reference_to_canvas(path, width, height, background=background)
             suffix = ".png"
         else:
             source = open(path, "rb")

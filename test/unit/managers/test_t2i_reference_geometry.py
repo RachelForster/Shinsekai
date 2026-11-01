@@ -105,3 +105,62 @@ def test_h3_upload_receives_a_fitted_png_instead_of_a_stretched_reference(
     assert posted[0]["4"]["inputs"]["width"] == (480 if other_anchor else 512)
     assert posted[0]["4"]["inputs"]["height"] == (832 if other_anchor else 672)
     assert adapter.workflow_template == workflow
+
+
+def test_both_h3_anchors_upload_the_same_selected_screen_color(tmp_path, monkeypatch):
+    monkeypatch.setattr(ComfyUIT2IAdapter, "_start_server_process", lambda _: None)
+    workflow = {
+        "1": {"class_type": "Text", "inputs": {"prompt": ""}},
+        "2": {"class_type": "LoadImage", "inputs": {"image": "first.png"}},
+        "shinsekai_last_frame": {
+            "class_type": "LoadImage",
+            "inputs": {"image": "last.png"},
+        },
+        "3": {
+            "class_type": "MiniMaxH3ImageToVideo",
+            "inputs": {
+                "width": 64,
+                "height": 96,
+                "first_frame": ["2", 0],
+                "last_frame": ["shinsekai_last_frame", 0],
+            },
+        },
+    }
+    workflow_path = tmp_path / "workflow.json"
+    workflow_path.write_text(json.dumps(workflow))
+    anchors = []
+    for index, color in enumerate(("red", "blue")):
+        path = tmp_path / f"{index}.png"
+        image = Image.new("RGBA", (64, 96))
+        ImageDraw.Draw(image).rectangle((16, 12, 48, 84), fill=color)
+        image.save(path)
+        anchors.append(path)
+    adapter = ComfyUIT2IAdapter(
+        workflow_path=str(workflow_path),
+        prompt_node_id="1",
+        output_node_id="9",
+        reference_node_id="2",
+        auto_start=False,
+    )
+    monkeypatch.setattr(adapter, "_wait_for_server_ready", lambda: True)
+    monkeypatch.setattr(adapter, "_wait_for_and_get_image", lambda *_: "result.png")
+    uploaded = []
+
+    def post(url, **kwargs):
+        if url.endswith("/upload/image"):
+            with Image.open(BytesIO(kwargs["files"]["image"][1].read())) as image:
+                uploaded.append(image.copy())
+            return Mock(json=lambda: {"name": f"anchor-{len(uploaded)}.png"})
+        return Mock(json=lambda: {"prompt_id": "job"})
+
+    monkeypatch.setattr("ai.t2i.t2i_adapter.requests.post", post)
+    adapter.generate_image(
+        "wave",
+        reference_image_path=str(anchors[0]),
+        last_reference_image_path=str(anchors[1]),
+        reference_background_color=(0, 255, 0),
+    )
+    assert len(uploaded) == 2
+    assert [image.getpixel((0, 0)) for image in uploaded] == [(0, 255, 0)] * 2
+    assert uploaded[0].getpixel((30, 30)) == (255, 0, 0)
+    assert uploaded[1].getpixel((30, 30)) == (0, 0, 255)

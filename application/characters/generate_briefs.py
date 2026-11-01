@@ -24,7 +24,9 @@ def normalize_character_brief(value: Any) -> str:
     return text[:MAX_CHARACTER_BRIEF_LENGTH].rstrip()
 
 
-def chat_character_text(config_store: Any, system: str, user: str) -> str:
+def chat_character_text(
+    config_store: Any, system: str, user: str, *, tools_enabled: bool | None = None
+) -> str:
     provider, model, base_url, api_key = config_store.get_llm_api_config()
     if not provider or not model or not api_key:
         raise ValueError("llm_incomplete")
@@ -39,7 +41,8 @@ def chat_character_text(config_store: Any, system: str, user: str) -> str:
             },
         )
     )
-    manager = LLMManager(adapter=adapter, user_template=system)
+    options = {} if tools_enabled is None else {"tools_enabled": tools_enabled}
+    manager = LLMManager(adapter=adapter, user_template=system, **options)
     return str(
         manager.chat(
             user,
@@ -126,9 +129,9 @@ def ensure_character_briefs(
     )
     rows = _parse_brief_rows(_chat(config_store, system, user))
     generated = {
-        str(row.get("name") or "").strip().casefold(): normalize_character_brief(
-            row.get("brief")
-        )
+        str(row.get("name") or "")
+        .strip()
+        .casefold(): normalize_character_brief(row.get("brief"))
         for row in rows
     }
     resolved_briefs: list[tuple[Any, str]] = []

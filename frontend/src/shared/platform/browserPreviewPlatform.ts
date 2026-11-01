@@ -1858,6 +1858,15 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           "local_app_required",
         );
       },
+      async analyzeSpriteTransitions() {
+        throw new PlatformRequestError("聊天过渡分析需要连接本机新世界。", 501, "local_app_required");
+      },
+      async generateSpriteTransition() {
+        throw new PlatformRequestError("过渡生成需要连接本机新世界与 H3 服务。", 501, "local_app_required");
+      },
+      async saveSpriteTransitions() {
+        throw new PlatformRequestError("请在本机新世界中保存过渡。", 501, "local_app_required");
+      },
       async captureSpriteFrame(input) {
         const source = generatedSprites.get(input.taskId);
         if (!source || source.name !== input.name || !source.videoPath) throw new Error("Invalid generated video");

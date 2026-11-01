@@ -183,8 +183,9 @@ describe("ChatStagePage http platform integration", () => {
         "src",
         `${mediaOrigin}/api/media?path=data%2Fbackgrounds%2Fschool.png`,
       );
-      const sprites = document.querySelectorAll(".sprite-layer__image");
-      expect(sprites).toHaveLength(spriteCount);
+      const hosts = document.querySelectorAll(".sprite-layer__image");
+      expect(hosts).toHaveLength(spriteCount);
+      const sprites = [...hosts].map((host) => host.querySelector("img,video")!);
       for (const sprite of sprites) {
         expect(sprite.getAttribute("src")?.startsWith(`${mediaOrigin}/api/media?`)).toBe(true);
       }

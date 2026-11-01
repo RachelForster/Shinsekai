@@ -6,7 +6,7 @@ import type { CharacterSpriteAnimationInput } from "../../shared/platform/types"
 import {
   AsyncButton,
   FilePicker,
-  ImageAssetThumb,
+  VisualMedia,
   SegmentedTabs,
   Select,
   Switch,
@@ -14,6 +14,7 @@ import {
   TextInput,
 } from "../../shared/ui";
 import type { SpriteAnimationSource } from "./spriteAnimationSources";
+import { SpriteMattingSettings } from "./SpriteMattingSettings";
 
 interface Props {
   value: CharacterSpriteAnimationInput;
@@ -72,13 +73,17 @@ export function SpriteAnimationSettings({
           <>
             {value.referenceImage ? (
               <div className="sprite-generation__reference-image">
-                <ImageAssetThumb alt={t("spriteGeneration.reference")} src={fileUrl(value.referenceImage)} />
+                <VisualMedia
+                  alt={t("spriteGeneration.reference")}
+                  autoPlay={false}
+                  src={fileUrl(value.referenceImage)}
+                />
               </div>
             ) : null}
             <label className="field-row field-row--stack">
               <span className="field-row__label">{t("spriteAnimation.reference")}</span>
               <FilePicker
-                acceptedExtensions={[".png", ".jpg", ".jpeg", ".webp"]}
+                acceptedExtensions={[".png", ".jpg", ".jpeg", ".webp", ".mp4", ".webm"]}
                 disabled={busy}
                 value={value.referenceImage}
                 pickLabel={t("spriteGeneration.chooseReference")}
@@ -95,6 +100,7 @@ export function SpriteAnimationSettings({
           ))}
         </div>
         <p className="sprite-generation__hint">{t("spriteAnimation.cameraHint")}</p>
+        <SpriteMattingSettings value={value} onChange={patch} disabled={busy} />
         <label className="field-row field-row--stack">
           <span className="field-row__label">{t("spriteAnimation.speed")}</span>
           <Select

@@ -12,7 +12,8 @@ import { avatarAssetUrl, avatarRuntimeAssetUrl } from "./assetUrl";
 import { bindAvatarVoice } from "./voiceRoute";
 import { normalizeVisualFraming, visualFramingStyle, type VisualFraming } from "./framing";
 import "./CharacterVisual.css";
-import { VisualMedia, type VisualMediaElement } from "../../shared/ui/VisualMedia";
+import { type VisualMediaElement } from "../../shared/ui/VisualMedia";
+import { TransitionMedia } from "./TransitionMedia";
 
 export interface CharacterVisualProps {
   asset: CharacterVisualAsset;
@@ -36,16 +37,27 @@ export function CharacterVisual(props: CharacterVisualProps) {
   const { asset } = props;
   const avatarType = asset.avatarType.trim().toLowerCase() || STATIC_AVATAR_TYPE;
   if (avatarType === STATIC_AVATAR_TYPE) {
-    return <StaticVisual {...props} key={asset.url} />;
+    return <StaticVisual {...props} />;
   }
   return <ModelVisual {...props} avatarType={avatarType} key={`${avatarType}:${asset.modelUrl}`} />;
 }
 
-function StaticVisual({ asset, className, onImageError, onMouseDown, hitbox, framing, active }: CharacterVisualProps) {
+function StaticVisual({
+  asset,
+  className,
+  onImageError,
+  onMouseDown,
+  hitbox,
+  framing,
+  active,
+  mode,
+}: CharacterVisualProps) {
   const [aspectRatio, setAspectRatio] = useState(1);
   const style = visualFramingStyle(framing);
   const image = (
-    <VisualMedia
+    <TransitionMedia
+      transitions={asset.transitions}
+      enabled={mode === "play"}
       alt={asset.label}
       active={active}
       className={style ? "character-visual__static-image" : className}

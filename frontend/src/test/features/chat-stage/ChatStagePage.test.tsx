@@ -733,7 +733,7 @@ describe("ChatStagePage", () => {
     expect(screen.queryByText("old reply")).not.toBeInTheDocument();
   });
 
-  it("remounts only the sprite image when an expression changes so the switch animation replays", async () => {
+  it("keeps the sprite host mounted on expression changes without replaying its entrance animation", async () => {
     let listener: ((event: ChatStageEvent) => void) | null = null;
     mocks.getChatSnapshot.mockResolvedValue(
       snapshot({
@@ -748,7 +748,8 @@ describe("ChatStagePage", () => {
 
     await screen.findByText("Ready");
     const originalFigure = container.querySelector(".sprite-layer__figure");
-    const originalImage = container.querySelector(".sprite-layer__image");
+    const originalHost = container.querySelector(".sprite-layer__image");
+    const originalImage = screen.getByAltText("Mio");
 
     act(() => {
       listener?.({
@@ -766,9 +767,11 @@ describe("ChatStagePage", () => {
     });
 
     const nextFigure = container.querySelector(".sprite-layer__figure");
-    const nextImage = container.querySelector(".sprite-layer__image");
+    const nextHost = container.querySelector(".sprite-layer__image");
+    const nextImage = screen.getByAltText("Mio");
     expect(nextFigure).toBe(originalFigure);
     expect(nextFigure).toHaveAttribute("data-slot", "0");
+    expect(nextHost).toBe(originalHost);
     expect(nextImage).not.toBe(originalImage);
     expect(nextImage).toHaveAttribute("src", "asset://mio-happy.png");
   });
@@ -1713,9 +1716,11 @@ describe("ChatStagePage", () => {
       target: { value: "25" },
     });
     await waitFor(() =>
-      expect(screen.getByAltText("Mio").parentElement).toHaveStyle({ transform: "translateY(-25%) scale(2)" }),
+      expect(screen.getByAltText("Mio").closest(".character-visual__framing-surface")).toHaveStyle({
+        transform: "translateY(-25%) scale(2)",
+      }),
     );
-    expect(screen.getByAltText("Ren")).toHaveClass("sprite-layer__image");
+    expect(screen.getByAltText("Ren").closest(".sprite-layer__image")).not.toBeNull();
     await waitFor(() =>
       expect(JSON.parse(localStorage.getItem("shinsekai-chat-stage-runtime-config")!).config.spriteFramings).toEqual({
         "character:mio": { heightRatio: 0.5, verticalPosition: 0.25 },
@@ -1737,15 +1742,19 @@ describe("ChatStagePage", () => {
       }),
     );
     expect(screen.getByAltText("Mio")).toHaveAttribute("src", "asset://mio-happy.png");
-    expect(screen.getByAltText("Mio").parentElement).toHaveStyle({ transform: "translateY(-25%) scale(2)" });
+    expect(screen.getByAltText("Mio").closest(".character-visual__framing-surface")).toHaveStyle({
+      transform: "translateY(-25%) scale(2)",
+    });
     view.unmount();
     renderPage();
     await screen.findByText("Ready");
-    expect(screen.getByAltText("Mio").parentElement).toHaveStyle({ transform: "translateY(-25%) scale(2)" });
+    expect(screen.getByAltText("Mio").closest(".character-visual__framing-surface")).toHaveStyle({
+      transform: "translateY(-25%) scale(2)",
+    });
     fireEvent.click(screen.getByRole("button", { name: "Chat appearance settings" }));
     const restored = await screen.findByRole("group", { name: "Sprite framing: Mio" });
     fireEvent.click(within(restored).getByRole("button", { name: "Full view" }));
-    expect(screen.getByAltText("Mio")).toHaveClass("sprite-layer__image");
+    expect(screen.getByAltText("Mio").closest(".sprite-layer__image")).not.toBeNull();
     expect(document.querySelector(".character-visual--framed")).toBeNull();
   });
 

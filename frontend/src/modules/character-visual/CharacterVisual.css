@@ -3,6 +3,21 @@
   aspect-ratio: 1;
 }
 
+:where(.character-visual__transition) {
+  position: relative;
+  display: block;
+}
+
+.character-visual__transition-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: bottom center;
+  pointer-events: none;
+}
+
 .character-visual__viewport,
 .character-visual__framing-surface {
   position: absolute;

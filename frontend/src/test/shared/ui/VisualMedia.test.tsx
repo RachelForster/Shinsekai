@@ -28,6 +28,26 @@ afterEach(() => {
 });
 
 describe("file-based visual media", () => {
+  it("plays a saved directed transition in the real stage layer, then shows the new sprite", () => {
+    const sprite = { id: "alice", label: "Alice", avatarType: "static", modelUrl: "", path: "first.png" };
+    const view = render(<SpriteLayer hidden={false} sprites={[sprite]} runtimeScaleForSprite={() => 1} />);
+    view.rerender(
+      <SpriteLayer
+        hidden={false}
+        sprites={[{ ...sprite, path: "last.png", transitions: [{ fromUrl: "first.png", url: "bridge.webm" }] }]}
+        runtimeScaleForSprite={() => 1}
+      />,
+    );
+    const bridge = view.container.querySelector("video")!;
+    expect(bridge).not.toBeNull();
+    expect(bridge).not.toHaveAttribute("loop");
+    fireEvent.load(view.container.querySelector('img[src="/api/media?path=last.png&token=test"]')!);
+    fireEvent.loadedData(bridge);
+    fireEvent.ended(bridge);
+    expect(view.container.querySelector("video")).toBeNull();
+    expect(screen.getByAltText("Alice")).toHaveAttribute("src", "/api/media?path=last.png&token=test");
+  });
+
   it.each([
     "sprite.WEBM",
     "/api/media?path=cache%2Fidle-alpha.webm&token=test",
@@ -258,7 +278,7 @@ describe("file-based visual media", () => {
     Object.defineProperties(video, { videoWidth: { value: 360 }, videoHeight: { value: 720 } });
     fireEvent.loadedMetadata(video);
     expect(view.container.querySelector<HTMLElement>(".character-visual__static-frame")!.style.aspectRatio).toBe("0.5");
-    expect(video.parentElement).toHaveStyle({ transform: "translateY(0%) scale(2)" });
+    expect(video.closest(".character-visual__framing-surface")).toHaveStyle({ transform: "translateY(0%) scale(2)" });
     fireEvent.mouseDown(video);
     fireEvent.error(video);
     expect(onMouseDown).toHaveBeenCalledOnce();
