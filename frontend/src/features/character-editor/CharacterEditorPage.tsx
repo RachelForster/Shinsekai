@@ -45,7 +45,7 @@ import { CharacterMemorySection } from "./CharacterMemorySection";
 import { CharacterPageHeader } from "./CharacterPageHeader";
 import { CharacterPersonalitySection } from "./CharacterPersonalitySection";
 import { CharacterSpritesSection } from "./CharacterSpritesSection";
-import { SpriteGenerationDialog } from "./SpriteGenerationDialog";
+import { SpriteGenerationPage } from "./SpriteGenerationPage";
 import { CharacterVoiceSection } from "./CharacterVoiceSection";
 import { MediaAutoLabelProgressDialog } from "../media-auto-label/MediaAutoLabelProgressDialog";
 import { useVisionAvailability } from "../media-auto-label/useVisionAvailability";
@@ -100,6 +100,17 @@ export function CharacterEditorPage() {
   const [bulkSpriteTagsDraft, setBulkSpriteTagsDraft] = useState("");
   const [autoLabelDialogOpen, setAutoLabelDialogOpen] = useState(false);
   const [spriteGenerationOpen, setSpriteGenerationOpen] = useState(false);
+  const generationReturnRef = useRef<{ element: HTMLElement | null; scrollTop: number } | null>(null);
+  useEffect(() => {
+    if (spriteGenerationOpen || !generationReturnRef.current) return;
+    const saved = generationReturnRef.current;
+    generationReturnRef.current = null;
+    const frame = requestAnimationFrame(() => {
+      if (saved.element) saved.element.scrollTop = saved.scrollTop;
+      document.querySelector<HTMLElement>("[data-sprite-generation-trigger]")?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [spriteGenerationOpen]);
   const preserveImportedDraftRef = useRef<Character | null>(null);
   const [autoLabelTask, setAutoLabelTask] = useState<TaskSnapshot<ImageAutoLabelResult> | null>(null);
   const [nameError, setNameError] = useState("");
@@ -996,6 +1007,50 @@ export function CharacterEditorPage() {
     }
   };
 
+  if (spriteGenerationOpen) {
+    return (
+      <SpriteGenerationPage
+        character={draft}
+        name={currentCharacterName}
+        onClose={() => setSpriteGenerationOpen(false)}
+        onImported={(character, replacedIndex) => {
+          // Updating the resource collection must not discard unsaved personality or tag edits.
+          preserveImportedDraftRef.current = character;
+          queryClient.setQueryData<Character[]>(charactersQueryKey, (current = []) =>
+            current.map((item) => (item.name === character.name ? character : item)),
+          );
+          setDraft((current) => {
+            const currentSpritesByPath = new Map(current.sprites.map((sprite) => [sprite.path, sprite]));
+            const replacedIndices =
+              replacedIndex === undefined ? [] : Array.isArray(replacedIndex) ? replacedIndex : [replacedIndex];
+            for (const index of replacedIndices) {
+              if (current.sprites[index] && character.sprites[index]) {
+                const path = character.sprites[index].path;
+                currentSpritesByPath.set(path, { ...current.sprites[index], path });
+              }
+            }
+            const currentTags = tagContents(current.emotion_tags, current.sprites.length);
+            const tagsByPath = new Map(current.sprites.map((sprite, index) => [sprite.path, currentTags[index]]));
+            const savedTags = tagContents(character.emotion_tags, character.sprites.length);
+            return {
+              ...current,
+              sprites: character.sprites.map((sprite) => currentSpritesByPath.get(sprite.path) ?? sprite),
+              sprite_transitions: character.sprite_transitions,
+              emotion_tags: numberedTags(
+                "立绘",
+                character.sprites.map((sprite, index) => tagsByPath.get(sprite.path) ?? savedTags[index]),
+              ),
+            };
+          });
+          showToast({
+            kind: "success",
+            title: t(replacedIndex === undefined ? "spriteGeneration.saved" : "spriteGeneration.replaced"),
+          });
+        }}
+      />
+    );
+  }
+
   return (
     <div className="page character-page">
       <CharacterPageHeader
@@ -1070,7 +1125,11 @@ export function CharacterEditorPage() {
                   ? t("spriteGeneration.settingRequired")
                   : undefined
             }
-            onGenerate={() => setSpriteGenerationOpen(true)}
+            onGenerate={() => {
+              const element = document.querySelector<HTMLElement>(".content-outlet");
+              generationReturnRef.current = { element, scrollTop: element?.scrollTop ?? 0 };
+              setSpriteGenerationOpen(true);
+            }}
             autoLabelAvailable={visionAvailable}
             autoLabelDisabled={!isSavedCharacter || !draft.sprites.length || !spriteTags.some((tag) => !tag.trim())}
             autoLabelPending={autoLabelMutation.isPending}
@@ -1209,42 +1268,6 @@ export function CharacterEditorPage() {
         result={autoLabelMutation.data ?? null}
         task={autoLabelTask}
       />
-      {spriteGenerationOpen ? (
-        <SpriteGenerationDialog
-          character={draft}
-          name={currentCharacterName}
-          onClose={() => setSpriteGenerationOpen(false)}
-          onImported={(character, replacedIndex) => {
-            // Updating the resource collection must not discard unsaved personality or tag edits.
-            preserveImportedDraftRef.current = character;
-            queryClient.setQueryData<Character[]>(charactersQueryKey, (current = []) =>
-              current.map((item) => (item.name === character.name ? character : item)),
-            );
-            setDraft((current) => {
-              const currentSpritesByPath = new Map(current.sprites.map((sprite) => [sprite.path, sprite]));
-              if (replacedIndex !== undefined && current.sprites[replacedIndex] && character.sprites[replacedIndex]) {
-                const path = character.sprites[replacedIndex].path;
-                currentSpritesByPath.set(path, { ...current.sprites[replacedIndex], path });
-              }
-              const currentTags = tagContents(current.emotion_tags, current.sprites.length);
-              const tagsByPath = new Map(current.sprites.map((sprite, index) => [sprite.path, currentTags[index]]));
-              const savedTags = tagContents(character.emotion_tags, character.sprites.length);
-              return {
-                ...current,
-                sprites: character.sprites.map((sprite) => currentSpritesByPath.get(sprite.path) ?? sprite),
-                emotion_tags: numberedTags(
-                  "立绘",
-                  character.sprites.map((sprite, index) => tagsByPath.get(sprite.path) ?? savedTags[index]),
-                ),
-              };
-            });
-            showToast({
-              kind: "success",
-              title: t(replacedIndex === undefined ? "spriteGeneration.saved" : "spriteGeneration.replaced"),
-            });
-          }}
-        />
-      ) : null}
     </div>
   );
 }

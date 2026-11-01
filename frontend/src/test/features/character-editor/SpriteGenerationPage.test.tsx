@@ -1,10 +1,14 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { SpriteGenerationDialog } from "../../../features/character-editor/SpriteGenerationDialog";
+import { SpriteGenerationPage } from "../../../features/character-editor/SpriteGenerationPage";
 import { createCharacter } from "../../../features/character-editor/characterEditorUtils";
 import { I18nProvider } from "../../../shared/i18n";
 import type { GeneratedCharacterSprite } from "../../../shared/platform/types";
+import {
+  setSpriteTransitionPlaybackRate,
+  SPRITE_TRANSITION_RATE_STORAGE_KEY,
+} from "../../../shared/assets/useSpriteTransitionPlaybackRate";
 
 const plan = vi.fn();
 const draw = vi.fn();
@@ -12,6 +16,9 @@ const animate = vi.fn();
 const save = vi.fn();
 const capture = vi.fn();
 const cutout = vi.fn();
+const transition = vi.fn();
+const analyzeTransitions = vi.fn();
+const saveTransitions = vi.fn();
 const openFolder = vi.fn();
 const openExternal = vi.fn();
 vi.mock("../../../entities/character/repository", () => ({
@@ -21,6 +28,9 @@ vi.mock("../../../entities/character/repository", () => ({
   importGeneratedCharacterSprites: (...args: unknown[]) => save(...args),
   captureCharacterSpriteFrame: (...args: unknown[]) => capture(...args),
   removeCharacterSpriteBackground: (...args: unknown[]) => cutout(...args),
+  generateSpriteTransition: (...args: unknown[]) => transition(...args),
+  analyzeSpriteTransitions: (...args: unknown[]) => analyzeTransitions(...args),
+  saveSpriteTransitions: (...args: unknown[]) => saveTransitions(...args),
 }));
 vi.mock("../../../entities/files/repository", () => ({
   fileUrl: (path: string) => `asset://${path}`,
@@ -59,7 +69,7 @@ function mount(subject = character) {
   const close = vi.fn();
   render(
     <I18nProvider language="en">
-      <SpriteGenerationDialog character={subject} name="Mika" onClose={close} onImported={imported} />
+      <SpriteGenerationPage character={subject} name="Mika" onClose={close} onImported={imported} />
     </I18nProvider>,
   );
   return { imported, close };
@@ -77,10 +87,85 @@ async function drawAll() {
 
 describe("sprite generator", () => {
   beforeEach(() => {
+    setSpriteTransitionPlaybackRate(1);
     vi.clearAllMocks();
     vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
     vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
     vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
+    analyzeTransitions.mockResolvedValue({
+      name: "Mika",
+      basis: "inferred",
+      spritePaths: ["old.png", "animated.mp4", "sad.png"],
+      dialogCount: 30,
+      dialogLimit: 200,
+      mappedDialogCount: 28,
+      inferredDialogCount: 8,
+      conversationCount: 2,
+      transitionCount: 20,
+      items: [
+        {
+          fromPath: "old.png",
+          toPath: "animated.mp4",
+          count: 8,
+          probability: 0.4,
+          conditionalProbability: 0.57,
+          existing: true,
+        },
+        {
+          fromPath: "old.png",
+          toPath: "sad.png",
+          count: 6,
+          probability: 0.3,
+          conditionalProbability: 0.43,
+          existing: false,
+        },
+        {
+          fromPath: "sad.png",
+          toPath: "animated.mp4",
+          count: 4,
+          probability: 0.2,
+          conditionalProbability: 1,
+          existing: false,
+        },
+        {
+          fromPath: "animated.mp4",
+          toPath: "old.png",
+          count: 2,
+          probability: 0.1,
+          conditionalProbability: 1,
+          existing: false,
+        },
+      ],
+    });
+    transition.mockImplementation(async (input) => ({
+      ...input,
+      taskId: `transition-${input.fromPath}`,
+      path: "transition-alpha.webm",
+      alphaVerified: true,
+      frameCount: 22,
+      requestedFrames: 22,
+    }));
+    saveTransitions.mockResolvedValue({
+      ...character,
+      sprite_transitions: [
+        {
+          from_path: "old.png",
+          to_path: "animated.mp4",
+          path: "saved-alpha.webm",
+          from_fingerprint: "a",
+          to_fingerprint: "b",
+          frame_count: 22,
+        },
+        {
+          from_path: "animated.mp4",
+          to_path: "old.png",
+          path: "saved-reverse.webm",
+          from_fingerprint: "b",
+          to_fingerprint: "a",
+          frame_count: 22,
+        },
+      ],
+    });
     animate.mockImplementation(async (input) => ({
       ...input,
       prompt: input.customPrompt ?? "idle with fixed camera",
@@ -103,6 +188,228 @@ describe("sprite generator", () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+    setSpriteTransitionPlaybackRate(1);
+  });
+
+  it("opens a workspace with a close action instead of a modal", () => {
+    const { close } = mount();
+    expect(screen.getByRole("region", { name: "Generate sprites" })).toHaveClass("sprite-generation");
+    expect(screen.queryByRole("dialog", { name: "Generate sprites" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Generate sprites", level: 1 })).toHaveFocus();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it("uses an animated sprite as a paused first-frame reference for static generation", async () => {
+    mount({ ...character, sprites: [{ path: "/sprites/animated.webm" }] });
+    fireEvent.click(screen.getByRole("combobox", { name: "Use an existing sprite" }));
+    fireEvent.click(screen.getByRole("option", { name: "Sprite 1 · Animated · first frame" }));
+    const preview = document.querySelector<HTMLVideoElement>(".sprite-generation__reference-image video")!;
+    expect(preview).not.toBeNull();
+    expect(preview.autoplay).toBe(false);
+    expect(preview.loop).toBe(false);
+    Object.defineProperty(preview, "duration", { value: 4 });
+    fireEvent.loadedMetadata(preview);
+    expect(preview.currentTime).toBeLessThan(0.01);
+    expect(screen.getByText("Uses the video's first frame as reference, preserving framing and alpha.")).toBeVisible();
+    await makePlan();
+    await drawAll();
+    expect(draw).toHaveBeenCalledWith(
+      expect.objectContaining({ referenceImage: "/sprites/animated.webm" }),
+      expect.anything(),
+    );
+  });
+
+  it("dismisses a dropdown with Escape without leaving the page", () => {
+    const { close } = mount();
+    const select = screen.getByRole("combobox", { name: "Preview size" });
+    fireEvent.click(select);
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+    fireEvent.keyDown(select, { key: "Escape" });
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(close).not.toHaveBeenCalled();
+    expect(screen.getByRole("heading", { name: "Generate sprites", level: 1 })).toBeVisible();
+  });
+
+  it("enlarges previews across tabs without starting another generation", () => {
+    mount();
+    fireEvent.click(screen.getByRole("combobox", { name: "Preview size" }));
+    fireEvent.click(screen.getByRole("option", { name: "Large preview" }));
+    expect(document.querySelector('[data-sprite-preview-size="large"]')).not.toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: "Transitions" }));
+    expect(screen.getByRole("combobox", { name: "Preview size" })).toHaveTextContent("Large preview");
+    expect(document.querySelector('[data-sprite-preview-size="large"]')).not.toBeNull();
+    expect(draw).not.toHaveBeenCalled();
+    expect(animate).not.toHaveBeenCalled();
+    expect(transition).not.toHaveBeenCalled();
+  });
+
+  it("opens a result overlay and returns to the same scroll position and selection", async () => {
+    const { close } = mount();
+    await makePlan();
+    await drawAll();
+    const body = document.querySelector<HTMLElement>(".sprite-generation__workspace-body")!;
+    body.scrollTop = 123;
+    const trigger = screen.getByRole("button", { name: "View sprite 1 full size" });
+    trigger.focus();
+    fireEvent.click(trigger);
+    const dialog = screen.getByRole("dialog", { name: "Sprite 1" });
+    fireEvent.click(within(dialog).getByAltText("Sprite 1"));
+    expect(dialog).toBeInTheDocument();
+    fireEvent.click(dialog.parentElement!);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Sprite 1" })).toBeChecked();
+    expect(body.scrollTop).toBe(123);
+    expect(trigger).toHaveFocus();
+    expect(draw).toHaveBeenCalledTimes(2);
+    expect(close).not.toHaveBeenCalled();
+  });
+
+  it("enlarges a video reference while preserving its paused first-frame mode", () => {
+    mount({ ...character, sprites: [{ path: "/sprites/reference.webm" }] });
+    fireEvent.click(screen.getByRole("combobox", { name: "Use an existing sprite" }));
+    fireEvent.click(screen.getByRole("option", { name: "Sprite 1 · Animated · first frame" }));
+    fireEvent.click(screen.getByRole("button", { name: "Enlarge preview: Reference image or video (optional)" }));
+    const dialog = screen.getByRole("dialog", { name: "Reference image or video (optional)" });
+    const video = within(dialog).getByLabelText("Reference image or video (optional)") as HTMLVideoElement;
+    expect(video.autoplay).toBe(false);
+    expect(video.loop).toBe(false);
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(draw).not.toHaveBeenCalled();
+  });
+
+  it("defaults to ToonOut and shares the selected fallback model across sprite modes", async () => {
+    mount();
+    expect(screen.getByRole("combobox", { name: "Background removal model" })).toHaveTextContent("ToonOut");
+    fireEvent.click(screen.getByRole("combobox", { name: "Background removal model" }));
+    fireEvent.click(screen.getByRole("option", { name: "ISNet Anime" }));
+    await makePlan();
+    await drawAll();
+    expect(draw).toHaveBeenCalledWith(expect.objectContaining({ mattingModel: "isnet-anime" }), expect.anything());
+    fireEvent.click(screen.getByRole("tab", { name: "Animated sprites" }));
+    expect(screen.getByRole("combobox", { name: "Background removal model" })).toHaveTextContent("ISNet Anime");
+    fireEvent.click(screen.getByRole("tab", { name: "Transitions" }));
+    expect(screen.getByRole("combobox", { name: "Background removal model" })).toHaveTextContent("ISNet Anime");
+  });
+
+  it("uses the selected H3 resolution for a batch and a redraw while keeping animation settings separate", async () => {
+    mount();
+    expect(screen.getByRole("combobox", { name: "H3 generation resolution" })).toHaveTextContent("Follow workflow");
+    fireEvent.click(screen.getByRole("combobox", { name: "H3 generation resolution" }));
+    fireEvent.click(screen.getByRole("option", { name: "High · ~0.7 MP" }));
+    await makePlan();
+    await drawAll();
+    expect(draw.mock.calls.map(([input]) => input.h3Resolution)).toEqual(["hd", "hd"]);
+    fireEvent.click(screen.getByRole("combobox", { name: "H3 generation resolution" }));
+    fireEvent.click(screen.getByRole("option", { name: "Ultra · ~1 MP" }));
+    expect(draw).toHaveBeenCalledTimes(2);
+    fireEvent.click(screen.getAllByRole("button", { name: "Redraw" })[0]);
+    await waitFor(() => expect(draw).toHaveBeenCalledTimes(3));
+    expect(draw).toHaveBeenLastCalledWith(expect.objectContaining({ h3Resolution: "native" }), expect.anything());
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Redraw" })[0]).toBeEnabled());
+    fireEvent.click(screen.getAllByRole("button", { name: "Make animated sprite" })[0]);
+    expect(screen.queryByRole("combobox", { name: "H3 generation resolution" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Generate transparent animation" }));
+    await waitFor(() => expect(animate).toHaveBeenCalledOnce());
+    expect(animate.mock.calls[0][0]).not.toHaveProperty("h3Resolution");
+  });
+
+  it("locks the H3 resolution while generation is running", async () => {
+    let finish!: (value: GeneratedCharacterSprite) => void;
+    draw.mockImplementationOnce(() => new Promise<GeneratedCharacterSprite>((resolve) => (finish = resolve)));
+    mount();
+    await makePlan();
+    fireEvent.click(screen.getByRole("button", { name: "Generate pending (2)" }));
+    await waitFor(() => expect(draw).toHaveBeenCalledOnce());
+    expect(screen.getByRole("combobox", { name: "H3 generation resolution" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Close" })).toBeDisabled();
+    await act(async () => finish({ name: "Mika", ...pairs[0], path: "high.png", taskId: "high" }));
+    await waitFor(() => expect(draw).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "H3 generation resolution" })).toBeEnabled());
+  });
+
+  it("shows the actual model and a fallback explanation on generated stills", async () => {
+    draw.mockImplementation(async (input) => ({
+      ...input,
+      path: `${input.prompt}.png`,
+      taskId: `task-${input.prompt}`,
+      backgroundRemoved: true,
+      matting: {
+        method: "ai",
+        model: "isnet-anime",
+        requestedModel: "toonout",
+        alphaMatting: false,
+        device: "cpu",
+        fallbackReason: "toonout-unavailable",
+      },
+    }));
+    mount();
+    await makePlan();
+    await drawAll();
+    expect(
+      screen.getAllByText("AI background removal · ISNet Anime · CPU · ToonOut unavailable; using fallback"),
+    ).toHaveLength(2);
+  });
+
+  it("analyzes recent chats and generates exactly N selected one-way pairs instead of all source combinations", async () => {
+    mount({ ...character, sprites: [...character.sprites, { path: "sad.png" }] });
+    fireEvent.click(screen.getByRole("tab", { name: "Transitions" }));
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Recommended count N (one-way)" }), {
+      target: { value: "2" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Analyze recent chats" }));
+    const recommendations = await screen.findByRole("region", { name: "Chat recommendations" });
+    expect(analyzeTransitions).toHaveBeenCalledWith(
+      { name: "Mika" },
+      expect.objectContaining({ onTaskUpdate: expect.any(Function) }),
+    );
+    expect(within(recommendations).getByText("2 selected · 50.0% of sample changes covered")).toBeInTheDocument();
+    expect(within(recommendations).getByText(/8 records inferred by the LLM/)).toBeInTheDocument();
+    const checkboxes = within(recommendations).getAllByRole("checkbox");
+    expect(checkboxes[0]).toBeDisabled();
+    expect(checkboxes[0]).not.toBeChecked();
+    expect(checkboxes[1]).toBeChecked();
+    expect(checkboxes[2]).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Generate / resume 2 clips" }));
+    await waitFor(() => expect(transition).toHaveBeenCalledTimes(2));
+    expect(transition.mock.calls.map(([input]) => [input.fromPath, input.toPath])).toEqual([
+      ["old.png", "sad.png"],
+      ["sad.png", "animated.mp4"],
+    ]);
+    expect(analyzeTransitions).toHaveBeenCalledOnce();
+    await screen.findByRole("button", { name: "Save 2 transitions" });
+  });
+
+  it("changes N locally, allows pair overrides, and can include existing clips or return to manual pairing", async () => {
+    mount({ ...character, sprites: [...character.sprites, { path: "sad.png" }] });
+    fireEvent.click(screen.getByRole("tab", { name: "Transitions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Analyze recent chats" }));
+    const recommendations = await screen.findByRole("region", { name: "Chat recommendations" });
+    const count = screen.getByRole("spinbutton", { name: "Recommended count N (one-way)" });
+    fireEvent.change(count, { target: { value: "1" } });
+    expect(within(recommendations).getByText("1 selected · 30.0% of sample changes covered")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Skip available transitions" }));
+    expect(within(recommendations).getByText("1 selected · 40.0% of sample changes covered")).toBeInTheDocument();
+    const pairs = within(recommendations).getAllByRole("checkbox");
+    fireEvent.click(pairs[0]);
+    fireEvent.click(pairs[3]);
+    expect(within(recommendations).getByText("1 selected · 10.0% of sample changes covered")).toBeInTheDocument();
+    expect(analyzeTransitions).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "Manual selection" }));
+    expect(screen.queryByRole("region", { name: "Chat recommendations" })).toBeNull();
+    expect(screen.getByText("Choose sprites (at least two)")).toBeInTheDocument();
+  });
+
+  it("keeps analysis errors actionable without starting H3 or hiding manual selection", async () => {
+    analyzeTransitions.mockRejectedValue(new Error("No recent chats for this character"));
+    mount();
+    fireEvent.click(screen.getByRole("tab", { name: "Transitions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Analyze recent chats" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("No recent chats for this character");
+    expect(screen.getByRole("button", { name: "Analyze recent chats" })).toBeEnabled();
+    expect(transition).not.toHaveBeenCalled();
+    expect(screen.getByText("Choose sprites (at least two)")).toBeInTheDocument();
   });
 
   it("guides planning, generation and saving while keeping settings visible", async () => {
@@ -165,7 +472,7 @@ describe("sprite generator", () => {
     mount();
     fireEvent.click(screen.getByRole("tab", { name: "Animated sprites" }));
     expect(screen.getByRole("button", { name: "Generate transparent animation" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("tab", { name: "Upload one image" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Choose a file" }));
     fireEvent.click(screen.getByRole("button", { name: "Choose reference image" }));
     animate.mockResolvedValueOnce({
       name: "Mika",
@@ -199,6 +506,87 @@ describe("sprite generator", () => {
     expect(draw).not.toHaveBeenCalled();
   });
 
+  it("shows automatic screen matting and reprocesses the original animation without rendering H3 again", async () => {
+    const result = {
+      name: "Mika",
+      prompt: "idle",
+      tagging: "平静",
+      taskId: "animation-result",
+      path: "idle-alpha.webm",
+      videoPath: "idle-original.mp4",
+      animation: true,
+      alphaVerified: true,
+      backgroundRemoved: true,
+      matting: { method: "chroma", alphaMatting: true, screenColor: [0, 255, 0] },
+    };
+    animate.mockResolvedValueOnce(result);
+    cutout.mockResolvedValueOnce({
+      ...result,
+      taskId: "refined",
+      path: "refined-alpha.webm",
+      matting: { method: "ai", alphaMatting: false },
+    });
+    mount();
+    fireEvent.click(screen.getByRole("tab", { name: "Animated sprites" }));
+    const screenOption = screen.getByRole("checkbox", { name: "Automatic color screen (experimental)" });
+    const alphaOption = screen.getByRole("checkbox", { name: "Alpha edge refinement (experimental)" });
+    expect(screenOption).not.toBeChecked();
+    expect(alphaOption).not.toBeChecked();
+    fireEvent.click(screenOption);
+    fireEvent.click(alphaOption);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Sprite 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Generate transparent animation" }));
+    await screen.findByText("Automatic screen keying · Alpha matting enabled");
+    expect(animate).toHaveBeenCalledWith(
+      expect.objectContaining({ autoScreen: true, alphaMatting: true }),
+      expect.anything(),
+    );
+    fireEvent.click(screenOption);
+    fireEvent.click(alphaOption);
+    fireEvent.click(screen.getByRole("button", { name: "Redo matting" }));
+    await waitFor(() =>
+      expect(cutout).toHaveBeenCalledWith(
+        { name: "Mika", taskId: "animation-result", autoScreen: false, alphaMatting: false, mattingModel: "toonout" },
+        expect.anything(),
+      ),
+    );
+    expect(animate).toHaveBeenCalledOnce();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Add to collection (1)" })).toBeEnabled());
+  });
+
+  it("can redo matting of a completed transition without requesting a new H3 render", async () => {
+    transition.mockImplementation(async (input) => ({
+      ...input,
+      taskId: input.retryTaskId ? "refined-transition" : `clip-${input.fromPath}`,
+      path: "clip-alpha.webm",
+      videoPath: "original.mp4",
+      alphaVerified: true,
+      frameCount: 22,
+      requestedFrames: 22,
+      matting: { method: "chroma", alphaMatting: true, screenColor: [255, 0, 255] },
+    }));
+    mount();
+    fireEvent.click(screen.getByRole("tab", { name: "Transitions" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Automatic color screen (experimental)" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Alpha edge refinement (experimental)" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select all sources" }));
+    fireEvent.click(screen.getByRole("button", { name: "Generate / resume 2 clips" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save 2 transitions" })).toBeEnabled());
+    expect(transition.mock.calls[0][0]).toEqual(expect.objectContaining({ autoScreen: true, alphaMatting: true }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Automatic color screen (experimental)" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Alpha edge refinement (experimental)" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Redo matting" })[0]);
+    await waitFor(() => expect(transition).toHaveBeenCalledTimes(3));
+    expect(transition.mock.calls[2][0]).toEqual(
+      expect.objectContaining({
+        retryTaskId: "clip-old.png",
+        regenerate: false,
+        autoScreen: false,
+        alphaMatting: false,
+      }),
+    );
+  });
+
   it("runs selected source images sequentially and inherits each image's own tags", async () => {
     mount({
       ...character,
@@ -206,9 +594,10 @@ describe("sprite generator", () => {
       emotion_tags: "立绘 1：开心，挥手\n立绘 2：视频标签\n立绘 3：害羞，交握\n立绘 4：透明视频标签\n",
     });
     fireEvent.click(screen.getByRole("tab", { name: "Animated sprites" }));
-    expect(screen.queryByRole("checkbox", { name: "Select Sprite 2" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("checkbox", { name: "Select Sprite 4" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Select all sources" }));
+    expect(screen.getByRole("checkbox", { name: "Select Sprite 2" })).toBeEnabled();
+    expect(screen.getByRole("checkbox", { name: "Select Sprite 4" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Sprite 1" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Sprite 3" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "Gentle breeze" }));
     expect(screen.getByRole("combobox", { name: "Motion speed" })).toHaveTextContent("Gentle · 0.75×");
     fireEvent.click(screen.getByRole("combobox", { name: "Motion speed" }));
@@ -258,6 +647,46 @@ describe("sprite generator", () => {
         ],
       }),
     );
+  });
+
+  it("batches saved MP4 and transparent WebM sprites as paused first-frame sources with their tags", async () => {
+    mount({
+      ...character,
+      sprites: [{ path: "/clips/opaque.mp4" }, { path: "/clips/transparent.webm" }],
+      emotion_tags: "立绘 1：微笑，挥手\n立绘 2：害羞，交握",
+    });
+    fireEvent.click(screen.getByRole("tab", { name: "Animated sprites" }));
+    const sources = screen.getByRole("group", { name: "Choose source sprites" });
+    const videos = sources.querySelectorAll("video");
+    expect(videos).toHaveLength(2);
+    for (const video of videos) expect(video).not.toHaveAttribute("autoplay");
+    expect(screen.getByText(/Animated sprites use their first frame/)).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Select all sources" }));
+    fireEvent.click(screen.getByRole("button", { name: "Generate transparent animations (2)" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Add to collection (2)" })).toBeEnabled());
+    expect(animate.mock.calls.map(([input]) => [input.referenceImage, input.tagging])).toEqual([
+      ["/clips/opaque.mp4", "微笑，挥手"],
+      ["/clips/transparent.webm", "害羞，交握"],
+    ]);
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it("regenerates a new animation from its transparent result instead of its original reference", async () => {
+    mount();
+    fireEvent.click(screen.getByRole("tab", { name: "Animated sprites" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Sprite 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "Generate transparent animation" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Add to collection (1)" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Regenerate from first frame" }));
+    expect(screen.getByRole("checkbox", { name: "Select New sprite 1" })).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Generate transparent animation" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Add to collection (2)" })).toBeEnabled());
+    expect(animate.mock.calls[0][0].referenceImage).toBe("animated.mp4");
+    expect(animate.mock.calls[1][0]).toEqual(
+      expect.objectContaining({ referenceImage: "idle-alpha.webm", loop: true, playbackSpeed: 0.75 }),
+    );
+    expect(screen.getAllByRole("article")).toHaveLength(2);
+    expect(save).not.toHaveBeenCalled();
   });
 
   it("continues past a failed animation and retries pending entries without duplicating plans", async () => {
@@ -419,8 +848,8 @@ describe("sprite generator", () => {
     animate.mockRejectedValueOnce(new Error("H3 temporarily unavailable"));
     fireEvent.click(screen.getByRole("button", { name: "Redraw" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("H3 temporarily unavailable");
-    expect(screen.getByRole("article", { name: "Animation 1" }).querySelector("a")).toHaveAttribute(
-      "href",
+    expect(screen.getByRole("article", { name: "Animation 1" }).querySelector("img, video")).toHaveAttribute(
+      "src",
       "asset://idle-alpha.webm",
     );
     expect(screen.getByRole("button", { name: "Add to collection (0)" })).toBeDisabled();
@@ -485,6 +914,72 @@ describe("sprite generator", () => {
       replace: { index: 0, path: "old.png" },
     });
     expect(screen.queryByRole("article")).not.toBeInTheDocument();
+  });
+
+  it("replaces all selected animation sources in one request and retains results when saving fails", async () => {
+    const { imported } = mount({
+      ...character,
+      emotion_tags: "立绘 1：微笑，挥手\n立绘 2：害羞，交握",
+    });
+    animate.mockImplementation(async (input) => ({
+      ...input,
+      taskId: `task-${input.referenceImage}`,
+      prompt: "idle",
+      path: `${input.referenceImage}-alpha.webm`,
+      animation: true,
+      alphaVerified: true,
+    }));
+    fireEvent.click(screen.getByRole("tab", { name: "Animated sprites" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select all sources" }));
+    fireEvent.click(screen.getByRole("button", { name: "Generate transparent animations (2)" }));
+    const button = await screen.findByRole("button", { name: "Replace selected originals (2)" });
+    await waitFor(() => expect(button).toBeEnabled());
+    save.mockRejectedValueOnce(new Error("Save failed"));
+    fireEvent.click(button);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Save failed");
+    expect(screen.getAllByRole("article")).toHaveLength(2);
+    expect(imported).not.toHaveBeenCalled();
+    fireEvent.click(button);
+    await waitFor(() => expect(imported).toHaveBeenCalledWith(expect.anything(), [0, 1]));
+    expect(save).toHaveBeenLastCalledWith({
+      name: "Mika",
+      items: [
+        { taskId: "task-old.png", tagging: "微笑，挥手", replace: { index: 0, path: "old.png" } },
+        { taskId: "task-animated.mp4", tagging: "害羞，交握", replace: { index: 1, path: "animated.mp4" } },
+      ],
+    });
+    expect(screen.queryByRole("article")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Replace selected originals (0)" })).toBeDisabled();
+  });
+
+  it("preserves the original through first-frame regeneration and requires one result per original", async () => {
+    mount();
+    fireEvent.click(screen.getByRole("tab", { name: "Animated sprites" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Sprite 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Generate transparent animation" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Replace selected originals (1)" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Regenerate from first frame" }));
+    fireEvent.click(screen.getByRole("button", { name: "Generate transparent animation" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Add to collection (2)" })).toBeEnabled());
+    expect(screen.getByRole("button", { name: "Replace selected originals (2)" })).toBeDisabled();
+    expect(screen.getByText("Select only one result per original to replace.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Animation 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Replace selected originals (1)" }));
+    await waitFor(() => expect(save).toHaveBeenCalledOnce());
+    expect(save).toHaveBeenCalledWith({
+      name: "Mika",
+      items: [{ taskId: "animation-result", tagging: "平静，站立", replace: { index: 0, path: "old.png" } }],
+    });
+    expect(screen.getAllByRole("article")).toHaveLength(1);
+  });
+
+  it("explains when selected new sprites have no originals instead of guessing their targets", async () => {
+    mount();
+    await makePlan();
+    await drawAll();
+    expect(screen.getByRole("button", { name: "Replace selected originals (2)" })).toBeDisabled();
+    expect(screen.getByText(/Some results have no original/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add to collection (2)" })).toBeEnabled();
   });
 
   it("opens the active workflow folder and official model and setup pages", async () => {
@@ -616,7 +1111,7 @@ describe("sprite generator", () => {
     fireEvent.click(screen.getByRole("button", { name: "Use frame at 1.25s" }));
     await waitFor(() => expect(screen.getByAltText("Sprite 1")).toHaveAttribute("src", "asset://selected.png"));
     expect(capture).toHaveBeenLastCalledWith(
-      { name: "Mika", taskId: "task-happy pose", seconds: 1.25, removeBackground: true },
+      { name: "Mika", taskId: "task-happy pose", seconds: 1.25, removeBackground: true, mattingModel: "toonout" },
       expect.anything(),
     );
     expect(draw).toHaveBeenCalledTimes(2);
@@ -680,6 +1175,126 @@ describe("sprite generator", () => {
     expect(draw).toHaveBeenLastCalledWith(expect.objectContaining({ removeBackground: false }), expect.anything());
   });
 
+  it("generates both directed pairs from mixed media and saves transitions separately from sprites", async () => {
+    const { imported } = mount();
+    fireEvent.click(screen.getByRole("tab", { name: "Transitions" }));
+    expect(screen.getByText("0 selected · 0 clips")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Generate / resume 0 clips" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Sprite 1" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Sprite 2" }));
+    expect(screen.getByText("2 selected · 2 clips")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Generate / resume 2 clips" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save 2 transitions" })).toBeEnabled());
+    expect(transition.mock.calls.map(([input]) => [input.fromPath, input.toPath])).toEqual([
+      ["old.png", "animated.mp4"],
+      ["animated.mp4", "old.png"],
+    ]);
+    expect(plan).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Save 2 transitions" }));
+    await waitFor(() =>
+      expect(imported).toHaveBeenCalledWith(expect.objectContaining({ sprite_transitions: expect.any(Array) })),
+    );
+    expect(saveTransitions).toHaveBeenCalledWith({
+      name: "Mika",
+      items: [{ taskId: "transition-old.png" }, { taskId: "transition-animated.mp4" }],
+    });
+    expect(save).not.toHaveBeenCalled();
+    expect(screen.getAllByText("22 frames · saved · plays on sprite change")).toHaveLength(2);
+  });
+
+  it("keeps legacy five-frame previews and upgrades them when generating the new batch", async () => {
+    mount({
+      ...character,
+      sprite_transitions: [
+        {
+          from_path: "old.png",
+          to_path: "animated.mp4",
+          path: "legacy.webm",
+          from_fingerprint: "a",
+          to_fingerprint: "b",
+        },
+      ],
+    });
+    fireEvent.click(screen.getByRole("tab", { name: "Transitions" }));
+    expect(screen.getByText("5 frames · saved · plays on sprite change")).toBeInTheDocument();
+    expect(screen.getByText("22 frames · 1× · ~0.92 s · transparent")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Select all sources" }));
+    fireEvent.click(screen.getByRole("button", { name: "Generate / resume 2 clips" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save 2 transitions" })).toBeEnabled());
+    expect(transition).toHaveBeenCalledTimes(2);
+    expect(screen.getAllByText("22-frame transparent clip · unsaved")).toHaveLength(2);
+  });
+
+  it("adjusts saved transition previews immediately and remembers the speed without generating again", () => {
+    const subject = {
+      ...character,
+      sprite_transitions: [
+        {
+          from_path: "old.png",
+          to_path: "animated.mp4",
+          path: "/clips/saved-speed.webm",
+          from_fingerprint: "a",
+          to_fingerprint: "b",
+          frame_count: 22,
+        },
+      ],
+    };
+    mount(subject);
+    fireEvent.click(screen.getByRole("tab", { name: "Transitions" }));
+    const preview = document.querySelector<HTMLVideoElement>(".sprite-transitions__preview video")!;
+    expect(preview.playbackRate).toBe(1);
+    preview.currentTime = 0.2;
+    fireEvent.click(screen.getByRole("combobox", { name: "Transition playback speed" }));
+    fireEvent.click(screen.getByRole("option", { name: "0.5×" }));
+    expect(screen.getByText("22 frames · 0.5× · ~1.83 s · transparent")).toBeInTheDocument();
+    expect(preview.playbackRate).toBe(0.5);
+    expect(preview.currentTime).toBe(0.2);
+    expect(localStorage.getItem(SPRITE_TRANSITION_RATE_STORAGE_KEY)).toBe("0.5");
+    expect(transition).not.toHaveBeenCalled();
+    cleanup();
+    mount(subject);
+    fireEvent.click(screen.getByRole("tab", { name: "Transitions" }));
+    expect(screen.getByRole("combobox", { name: "Transition playback speed" })).toHaveTextContent("0.5×");
+  });
+
+  it("keeps MP4 and transparent WebM source previews paused on their first frame", () => {
+    mount({ ...character, sprites: [{ path: "/clips/idle.mp4" }, { path: "/clips/idle-alpha.webm" }] });
+    fireEvent.click(screen.getByRole("tab", { name: "Transitions" }));
+    const picker = screen.getByRole("group", { name: "Choose sprites (at least two)" });
+    const videos = [...picker.querySelectorAll("video")];
+    expect(videos).toHaveLength(2);
+    for (const video of videos) {
+      expect(video.autoplay).toBe(false);
+      expect(video.loop).toBe(false);
+      expect(video.controls).toBe(false);
+      Object.defineProperty(video, "duration", { value: 4 });
+      fireEvent.loadedMetadata(video);
+      expect(video.currentTime).toBe(0.001);
+    }
+    expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
+  });
+
+  it("keeps pending directed pairs when stopped and resumes without repeating a completed clip", async () => {
+    let finish!: (result: unknown) => void;
+    transition.mockImplementationOnce(
+      (input) =>
+        new Promise((resolve) => {
+          finish = (result) => resolve({ ...input, ...(result as object) });
+        }),
+    );
+    mount();
+    fireEvent.click(screen.getByRole("tab", { name: "Transitions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select all sources" }));
+    fireEvent.click(screen.getByRole("button", { name: "Generate / resume 2 clips" }));
+    fireEvent.click(screen.getByRole("button", { name: "Stop after this clip" }));
+    await act(async () => finish({ taskId: "one", path: "first-alpha.webm", alphaVerified: true, frameCount: 22 }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save 1 transitions" })).toBeEnabled());
+    expect(transition).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Generate / resume 1 clips" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save 2 transitions" })).toBeEnabled());
+    expect(transition).toHaveBeenCalledTimes(2);
+  });
+
   it("retains ideas when planning fails and confirms discarding unsaved previews", async () => {
     const { close } = mount();
     await makePlan();
@@ -687,7 +1302,7 @@ describe("sprite generator", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add more prompt plans" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("LLM unavailable");
     expect(screen.getByDisplayValue("happy pose")).toBeInTheDocument();
-    fireEvent.click(screen.getAllByRole("button", { name: "Close" })[1]);
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(close).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Close and discard unsaved ideas" }));
     expect(close).toHaveBeenCalledOnce();

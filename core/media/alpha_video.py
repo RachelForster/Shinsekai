@@ -39,6 +39,8 @@ def remove_video_background(
     import av
     import numpy as np
 
+    from core.media.alpha_matting import pad_transparent_rgb
+
     if (
         isinstance(playback_speed, bool)
         or not isinstance(playback_speed, (int, float))
@@ -85,6 +87,7 @@ def remove_video_background(
                     if image.size != (stream.width, stream.height):
                         raise ValueError("抠图改变了视频画面尺寸")
                     _check_alpha(image)
+                    image = pad_transparent_rgb(image)
                     for packet in encoded.encode(
                         av.VideoFrame.from_ndarray(np.asarray(image), format="rgba")
                     ):

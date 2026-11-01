@@ -61,6 +61,15 @@ class ModelSprites(BaseModel):
     sprites: List[Union[Sprite, dict]] = Field(default_factory=list, description="该格式的状态文件列表（复用 Sprite）")
     emotion_tags: DefaultIfNone[str] = Field(default="", description="该格式的情绪标签")
 
+class SpriteTransition(BaseModel):
+    """A directed clip tied to the exact source assets, including legacy five-frame clips."""
+    from_path: str
+    to_path: str
+    path: str
+    from_fingerprint: str
+    to_fingerprint: str
+    frame_count: int = Field(default=5, ge=1)
+
 class Character(BaseModel):
     """单个角色配置的实体模型"""
     # 角色基本信息
@@ -70,6 +79,7 @@ class Character(BaseModel):
     
     # 列表中可能包含 Sprite 模型，也可能只是原始字典
     sprites: List[Union[Sprite, dict]] = Field(default_factory=list, description="角色的立绘和对应语音的列表")
+    sprite_transitions: DefaultIfNone[List[SpriteTransition]] = Field(default_factory=list)
     character_brief: DefaultIfNone[str] = Field(
         default="",
         description="用于次要角色精简提示词的角色简介",

@@ -280,8 +280,9 @@ def test_comfy_downloads_video_and_extracts_a_still(tmp_path, monkeypatch, key):
     )
     monkeypatch.setattr("ai.t2i.t2i_adapter.requests.get", get)
 
-    def capture(video, output):
+    def capture(video, output, *, fraction):
         assert video.read_bytes() == b"video bytes"
+        assert fraction == 0.5
         output.write_bytes(b"png bytes")
         return 1.5
 
@@ -292,6 +293,72 @@ def test_comfy_downloads_video_and_extracts_a_still(tmp_path, monkeypatch, key):
     assert adapter.last_video_path == str(output.with_suffix(".mp4").resolve())
     assert adapter.last_video_frame_time == 1.5
     assert "filename=H3+clip.mp4" in get.call_args.args[0]
+
+
+@pytest.mark.parametrize("text_only", [False, True])
+@pytest.mark.parametrize("length,expected", [(107, 39), (39, 39), (22, 22), (5, 5)])
+def test_static_h3_shortens_the_selected_graph_without_changing_saved_workflows(
+    tmp_path, monkeypatch, text_only, length, expected
+):
+    template = {
+        "1": {"class_type": "Text", "inputs": {"prompt": "old"}},
+        "4": {
+            "class_type": "MiniMaxH3ImageToVideo",
+            "inputs": {"length": length},
+        },
+    }
+    text_path = tmp_path / "text-only.json"
+    text_path.write_text(json.dumps(template), encoding="utf-8")
+    adapter = comfy(
+        tmp_path,
+        monkeypatch,
+        template,
+        text_only_workflow_path=str(text_path) if text_only else "",
+    )
+    post = Mock(return_value=Mock(json=lambda: {"prompt_id": "job"}))
+    monkeypatch.setattr("ai.t2i.t2i_adapter.requests.post", post)
+
+    adapter.generate_image("new pose", h3_static_sprite=True)
+    sent = post.call_args.kwargs["json"]["prompt"]
+    assert sent["4"]["inputs"]["length"] == expected
+    assert sent["1"]["inputs"]["prompt"] == "new pose"
+    assert adapter._video_frame_fraction == 0.8
+    assert adapter.workflow_template == template
+    assert json.loads(text_path.read_text(encoding="utf-8")) == template
+    assert json.loads((tmp_path / "workflow.json").read_text(encoding="utf-8")) == template
+
+    # A subsequent video job on the same adapter must not inherit the still policy.
+    adapter.generate_image("idle animation")
+    assert post.call_args.kwargs["json"]["prompt"]["4"]["inputs"]["length"] == length
+    assert adapter._video_frame_fraction == 0.5
+
+
+@pytest.mark.parametrize("length", [["length-node", 0], True, 0])
+def test_static_h3_preserves_custom_or_invalid_lengths(tmp_path, monkeypatch, length):
+    template = {
+        "1": {"class_type": "Text", "inputs": {"prompt": ""}},
+        "4": {"class_type": "MiniMaxH3ImageToVideo", "inputs": {"length": length}},
+    }
+    adapter = comfy(tmp_path, monkeypatch, template)
+    post = Mock(return_value=Mock(json=lambda: {"prompt_id": "job"}))
+    monkeypatch.setattr("ai.t2i.t2i_adapter.requests.post", post)
+    adapter.generate_image("pose", h3_static_sprite=True)
+    assert post.call_args.kwargs["json"]["prompt"]["4"]["inputs"]["length"] == length
+    assert adapter._video_frame_fraction == 0.5
+
+
+def test_static_h3_does_not_truncate_a_custom_guide_timeline(tmp_path, monkeypatch):
+    template = {
+        "1": {"class_type": "Text", "inputs": {"prompt": ""}},
+        "4": {"class_type": "MiniMaxH3ImageToVideo", "inputs": {"length": 107}},
+        "5": {"class_type": "MiniMaxH3AddGuide", "inputs": {"frame_idx": 96}},
+    }
+    adapter = comfy(tmp_path, monkeypatch, template)
+    post = Mock(return_value=Mock(json=lambda: {"prompt_id": "job"}))
+    monkeypatch.setattr("ai.t2i.t2i_adapter.requests.post", post)
+    adapter.generate_image("pose", h3_static_sprite=True)
+    assert post.call_args.kwargs["json"]["prompt"]["4"]["inputs"]["length"] == 107
+    assert adapter._video_frame_fraction == 0.5
 
 
 def test_comfy_selects_text_only_workflow_when_reference_is_absent(
@@ -311,6 +378,63 @@ def test_comfy_selects_text_only_workflow_when_reference_is_absent(
     adapter.generate_image("new pose")
     assert "2" not in post.call_args.kwargs["json"]["prompt"]
     assert "2" in adapter.workflow_template
+
+
+@pytest.mark.parametrize("resolution,budget", [("hd", 640 * 1088), ("native", 768 * 1344)])
+@pytest.mark.parametrize("landscape", [False, True])
+def test_static_h3_resolution_applies_to_text_only_workflows_and_preserves_orientation(
+    tmp_path, monkeypatch, resolution, budget, landscape
+):
+    width, height = (832, 480) if landscape else (480, 832)
+    template = {"1": {"class_type": "Text", "inputs": {"text": ""}}}
+    text_graph = {
+        **template,
+        "4": {
+            "class_type": "MiniMaxH3ImageToVideo",
+            "inputs": {"width": width, "height": height, "length": 107},
+        },
+    }
+    text_path = tmp_path / "text-only.json"
+    text_path.write_text(json.dumps(text_graph), encoding="utf-8")
+    adapter = comfy(tmp_path, monkeypatch, template, text_only_workflow_path=str(text_path))
+    post = Mock(return_value=Mock(json=lambda: {"prompt_id": "job"}))
+    monkeypatch.setattr("ai.t2i.t2i_adapter.requests.post", post)
+    adapter.generate_image("pose", h3_static_sprite=True, h3_resolution=resolution)
+    sent = post.call_args.kwargs["json"]["prompt"]["4"]["inputs"]
+    assert 480 * 832 < sent["width"] * sent["height"] <= budget
+    assert abs(sent["width"] / sent["height"] / (width / height) - 1) <= 0.02
+    assert sent["width"] % 32 == sent["height"] % 32 == 0
+    assert sent["length"] == 39
+    assert json.loads(text_path.read_text(encoding="utf-8")) == text_graph
+
+
+def test_h3_resolution_leaves_ordinary_image_workflows_unchanged(tmp_path, monkeypatch):
+    template = {"1": {"class_type": "Text", "inputs": {"text": ""}}}
+    adapter = comfy(tmp_path, monkeypatch, template)
+    post = Mock(return_value=Mock(json=lambda: {"prompt_id": "job"}))
+    monkeypatch.setattr("ai.t2i.t2i_adapter.requests.post", post)
+    adapter.generate_image("pose", h3_static_sprite=True, h3_resolution="native")
+    assert post.call_args.kwargs["json"]["prompt"] == {
+        "1": {"class_type": "Text", "inputs": {"text": "pose"}}
+    }
+
+
+def test_h3_resolution_explains_linked_dimensions_before_submission(tmp_path, monkeypatch):
+    template = {
+        "1": {"class_type": "Text", "inputs": {"text": ""}},
+        "4": {
+            "class_type": "MiniMaxH3ImageToVideo",
+            "inputs": {"width": ["resolution", 0], "height": 832},
+        },
+    }
+    adapter = comfy(tmp_path, monkeypatch, template)
+    post = Mock(return_value=Mock(json=lambda: {"prompt_id": "job"}))
+    monkeypatch.setattr("ai.t2i.t2i_adapter.requests.post", post)
+    with pytest.raises(ValueError, match="跟随工作流"):
+        adapter.generate_image("pose", h3_static_sprite=True, h3_resolution="hd")
+    post.assert_not_called()
+    adapter.generate_image("pose", h3_static_sprite=True)
+    assert post.call_args.kwargs["json"]["prompt"]["4"]["inputs"]["width"] == ["resolution", 0]
 
 
 def test_sd_reference_uses_img2img_and_same_output_contract(tmp_path, monkeypatch):

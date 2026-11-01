@@ -23,6 +23,25 @@ function mockJsonResponse(body: unknown, ok = true) {
 }
 
 describe("http platform", () => {
+  it("analyzes directed sprite transitions through the authenticated task transport", async () => {
+    const result = { name: "Mika", items: [], dialogCount: 8, transitionCount: 0, basis: "instructions" };
+    const fetchMock = vi.fn(() => mockJsonResponse({ id: "analysis", status: "succeeded", result }));
+    vi.stubGlobal("fetch", fetchMock);
+    const progress = vi.fn();
+    const platform = createHttpPlatform("http://127.0.0.1:8787", "token");
+    await expect(
+      platform.characters.analyzeSpriteTransitions({ name: "Mika" }, { onTaskUpdate: progress }),
+    ).resolves.toEqual(result);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/characters/sprites/transitions/analyze",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ name: "Mika" }),
+        headers: expect.objectContaining({ "X-Shinsekai-Bridge-Token": "token" }),
+      }),
+    );
+    expect(progress).toHaveBeenCalledOnce();
+  });
   it("submits idle motion through the authenticated background task transport", async () => {
     const input = {
       name: "Mika",

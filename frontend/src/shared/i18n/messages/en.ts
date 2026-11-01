@@ -1,7 +1,104 @@
 import type { MessageKey } from "../messages";
 
 export const enMessages: Record<MessageKey, string> = {
+  "spriteMatting.settings": "Transparency processing",
+  "spriteMatting.defaultHint":
+    "ToonOut by default; ISNet if unavailable. Change the model, then remove background again.",
+  "spriteMatting.model": "Background removal model",
+  "spriteMatting.fallback": "ToonOut unavailable; using fallback",
+  "spriteMatting.autoScreen": "Automatic color screen (experimental)",
+  "spriteMatting.alphaOption": "Alpha edge refinement (experimental)",
+  "spriteMatting.optionHint":
+    "A new screen needs a redraw. Alpha refinement can change fine lines and translucent edges.",
+  "spriteMatting.chroma": "Automatic screen keying",
+  "spriteMatting.ai": "AI background removal",
+  "spriteMatting.alpha": "Alpha matting enabled",
+  "spriteMatting.opaque": "Opaque reference: using AI mode",
+  "spriteMatting.palette": "Screen color conflict: using AI mode",
+  "spriteMatting.refineAgain": "Redo matting",
+  "spriteMatting.retryHint":
+    "Reuse the raw video with the current options. Adding or changing a screen needs a redraw.",
+  "spriteTransition.analyze": "Analyze recent chats",
+  "spriteTransition.saveCollection":
+    "The sprite collection has unsaved changes. Save the character before analyzing chats.",
+  "spriteTransition.analyzing": "Analyzing recent chats…",
+  "spriteTransition.analyzeHint":
+    "Uses this character's latest 200 records; the current LLM matches sprite tags when needed.",
+  "spriteTransition.recommendationCount": "Recommended count N (one-way)",
+  "spriteTransition.skipExisting": "Skip available transitions",
+  "spriteTransition.pairMode": "Transition pairing mode",
+  "spriteTransition.recommendations": "Chat recommendations",
+  "spriteTransition.manual": "Manual selection",
+  "spriteTransition.recommendationHint":
+    "Generate only checked directions. Reverse clips are separate. If fewer than N qualify, select all available recommendations.",
+  "spriteTransition.chooseTop": "Select top {count}",
+  "spriteTransition.analysisSummary":
+    "{sessions} recent chats · {mapped}/{dialogs} character records matched · {changes} reconstructed changes",
+  "spriteTransition.inferredBasis":
+    "{count} records inferred by the LLM from emotion and action tags; these are not playback logs.",
+  "spriteTransition.instructionsBasis":
+    "Reconstructed from historical sprite IDs using the current collection, not playback logs.",
+  "spriteTransition.coverage": "{count} selected · {coverage} of sample changes covered",
+  "spriteTransition.directedPair": "One-way pair",
+  "spriteTransition.share": "Sample share",
+  "spriteTransition.conditional": "From this source",
+  "spriteTransition.occurrences": "Count",
+  "spriteTransition.alreadyAvailable": "Already available",
+  "spriteTransition.probabilityHint":
+    "Ranked by share of all changes. The source probability compares destinations from the same source. Recent samples do not guarantee future probabilities.",
+  "spriteTransition.noChanges":
+    "No matching sprite changes in recent chats. Try again after more dialogue or select sprites manually.",
+  "spriteTransition.selectAll": "Select ready transitions",
+  "spriteTransition.deselectAll": "Deselect transitions",
+  "spriteTransition.queue": "Queue: {current} of {total} clips",
+  "spriteTransition.stop": "Stop after this clip",
+  "spriteTransition.render": "Generate transition",
+  "spriteTransition.redraw": "Redraw transition",
+  "spriteTransition.untagged": "Untagged sprite",
+  "spriteTransition.noSources": "Save at least two sprites to the character's library first.",
+  "spriteTransition.tab": "Transitions",
+  "spriteTransition.intro":
+    "Recommend common one-way transitions from recent chats or pair sprites manually. Each transparent clip has 22 frames and plays on sprite changes after saving.",
+  "spriteTransition.stepSource": "Choose pairs",
+  "spriteTransition.stepGenerate": "Generate and preview",
+  "spriteTransition.stepSave": "Save for playback",
+  "spriteTransition.options": "Generate transitions",
+  "spriteTransition.pairCount": "{selected} selected · {count} clips",
+  "spriteTransition.spec": "{frames} frames · {speed}× · ~{duration} s · transparent",
+  "spriteTransition.speed": "Transition playback speed",
+  "spriteTransition.speedOriginal": "1× · Original speed",
+  "spriteTransition.speedHint":
+    "Applies to previews and chat transitions. Saved on this device; existing clips update immediately.",
+  "spriteTransition.directionHint": "A→B and B→A are separate clips. More sprites require more clips; try two first.",
+  "spriteTransition.generate": "Generate / resume {count} clips",
+  "spriteTransition.reuseHint": "Anime AI removal by default. Reuse, redraw or redo matting with the current options.",
+  "spriteTransition.playbackTitle": "Playback after saving",
+  "spriteTransition.playbackHint":
+    "A matching transition plays once before the target sprite. Animated targets keep looping. Missing clips switch directly.",
+  "spriteTransition.results": "Transition clips",
+  "spriteTransition.ready": "{count} ready · select new results to save",
+  "spriteTransition.pickSources": "Choose sprites (at least two)",
+  "spriteTransition.sourceHint":
+    "Images and videos are supported. Use the outgoing video's last frame and the incoming video's first frame. Save new sprites to the library first.",
+  "spriteTransition.saved": "{frames} frames · saved · plays on sprite change",
+  "spriteTransition.transparent": "{frames}-frame transparent clip · unsaved",
+  "spriteTransition.pending": "Pending generation / processing",
+  "spriteTransition.emptyTitle": "No transitions yet",
+  "spriteTransition.selected": "{count} clips selected",
+  "spriteTransition.saveHint": "Stored on the character, separate from sprite indices and tags.",
+  "spriteTransition.save": "Save {count} transitions",
   "spriteGeneration.replace": "Replace original sprite",
+  "spriteGeneration.previewBackground": "Color backdrop",
+  "spriteGeneration.previewColor": "Preview background color",
+  "spriteGeneration.previewBackgroundHint":
+    "Preview only. Click the swatch to change color; generated and saved videos are unaffected.",
+  "spriteGeneration.replaceSelected": "Replace selected originals ({count})",
+  "spriteGeneration.replaceSelectedHint":
+    "Add as new sprites, or replace their sources while keeping positions and voice settings.",
+  "spriteGeneration.replaceMissing":
+    "Some results have no original. Choose their targets individually, or add them to the collection.",
+  "spriteGeneration.replaceChanged": "An original changed. Choose its replacement target individually.",
+  "spriteGeneration.replaceDuplicate": "Select only one result per original to replace.",
   "spriteGeneration.replaceHint":
     "Replace the chosen sprite and its tags with this result. Keep its position, voice settings and original file.",
   "spriteGeneration.replaceTarget": "Sprite to replace",
@@ -26,16 +123,18 @@ export const enMessages: Record<MessageKey, string> = {
     "Choose sources on the right. Presets support batches; select exactly one image to write a single prompt.",
   "spriteAnimation.sourceMode": "Source sprite selection",
   "spriteAnimation.library": "Sprite library",
-  "spriteAnimation.uploadSingle": "Upload one image",
+  "spriteAnimation.uploadSingle": "Choose a file",
   "spriteAnimation.pickSources": "Choose source sprites",
+  "spriteAnimation.sourceImage": "Image",
+  "spriteAnimation.sourceAnimated": "Animated",
   "spriteAnimation.selectSource": "Select {name}",
   "spriteAnimation.generatedSource": "New sprite {n}",
   "spriteAnimation.selectAllSources": "Select all sources",
   "spriteAnimation.selectFirst": "Select first {count}",
   "spriteAnimation.clearSources": "Clear selection",
-  "spriteAnimation.noSources": "No static sprites yet. Generate one in the static tab, or upload an image.",
+  "spriteAnimation.noSources": "No sprites yet. Generate a static sprite, or choose an image or video file.",
   "spriteAnimation.sourceHint":
-    "Each image keeps its own tags and shares the same motion settings. Videos are excluded.",
+    "Animated sprites use their first frame. Each source keeps its tags and shares the motion settings.",
   "spriteAnimation.untaggedSource": "Untagged · use default tags",
   "spriteAnimation.defaultTagging": "Default tags for untagged sprites",
   "spriteAnimation.sourcesSelected": "{count} source sprites selected",
@@ -45,12 +144,12 @@ export const enMessages: Record<MessageKey, string> = {
   "spriteAnimation.generatePending": "Continue pending animations ({count})",
   "spriteAnimation.queueProgress": "Queue: {current} of {total}",
   "spriteAnimation.needsMatting": "Needs transparency processing",
-  "spriteAnimation.outputHint": "Fixed camera & framing · transparent WebM",
+  "spriteAnimation.outputHint": "Anime AI removal by default · transparent WebM",
   "spriteAnimation.mode": "Sprite generation mode",
   "spriteAnimation.staticTab": "Static sprites",
   "spriteAnimation.animationTab": "Animated sprites",
   "spriteAnimation.settings": "Source sprite & idle motion",
-  "spriteAnimation.reference": "Source sprite (required)",
+  "spriteAnimation.reference": "Source image or video (required)",
   "spriteAnimation.breathing": "Gentle body sway",
   "spriteAnimation.blinking": "Natural blinking",
   "spriteAnimation.breeze": "Gentle breeze",
@@ -62,7 +161,7 @@ export const enMessages: Record<MessageKey, string> = {
   "spriteAnimation.speedHint":
     "Slows body sway, blinking and hair together, including the saved video. Maximum duration after slowing: 12 seconds.",
   "spriteAnimation.cameraHint":
-    "Let the body and hair sway very slightly and slowly. Keep shoulders relaxed and preserve neck length, ear-to-shoulder and chin-to-collar spacing. Keep feet planted, gestures, expression and framing. Aim for one leisurely blink; preview the result.",
+    "Slow, subtle body and hair motion; preserve shoulders, neck, gestures and framing. Blink gently only when both reference eyes are naturally open. Keep closed, squinting or stylized eyes unchanged. Preview the result.",
   "spriteAnimation.motion": "Additional subtle motion (optional)",
   "spriteAnimation.motionPlaceholder":
     "For example: keep the smile while hair tips sway gently. Keep motion small and the camera still.",
@@ -70,7 +169,7 @@ export const enMessages: Record<MessageKey, string> = {
   "spriteAnimation.alphaHint":
     "H3 video → CPU matting for every frame → alpha verification → transparent WebM. Matting is required; an opaque MP4 cannot be saved as a transparent result.",
   "spriteAnimation.intro":
-    "Add subtle idle motion to {name}’s sprite. Review the transparent video, then save it with its tags.",
+    "Add subtle idle motion to {name}’s sprite, or regenerate from an animation’s first frame. Review and save with its tags.",
   "spriteAnimation.stepSource": "Choose source sprite",
   "spriteAnimation.stepMotion": "H3 generation & matting",
   "spriteAnimation.stepSave": "Verify alpha & save",
@@ -84,6 +183,7 @@ export const enMessages: Record<MessageKey, string> = {
   "spriteAnimation.viewPrompt": "View / edit motion prompt",
   "spriteAnimation.retryMatting": "Retry transparency processing",
   "spriteAnimation.fromStatic": "Make animated sprite",
+  "spriteAnimation.fromFirstFrame": "Regenerate from first frame",
   "spriteGeneration.stepsLabel": "Sprite generation steps",
   "spriteGeneration.stepPlan": "Set up & plan",
   "spriteGeneration.stepGenerate": "Generate & review",
@@ -119,13 +219,25 @@ export const enMessages: Record<MessageKey, string> = {
   "spriteGeneration.requirements": "Additional instructions (optional)",
   "spriteGeneration.requirementsPlaceholder":
     "E.g. stand, smile with relaxed brows, wave the open right hand beside the head, and rest the left hand at the side. Specify facial expressions, both hands' poses and positions, and props.",
-  "spriteGeneration.reference": "Reference image (optional)",
+  "spriteGeneration.reference": "Reference image or video (optional)",
   "spriteGeneration.chooseReference": "Choose reference image",
   "spriteGeneration.existingReference": "Use an existing sprite",
   "spriteGeneration.chooseExisting": "Choose an existing sprite…",
   "spriteGeneration.clearReference": "Remove reference",
   "spriteGeneration.optionalReference": "Optional: preserve appearance and framing, including half-body portraits",
   "spriteGeneration.count": "Number of ideas",
+  "spriteGeneration.previewSize": "Preview size",
+  "mediaPreview.open": "Enlarge preview: {name}",
+  "spriteGeneration.previewStandard": "Standard preview",
+  "spriteGeneration.previewLarge": "Large preview",
+  "spriteGeneration.videoReference": "Animated · first frame",
+  "spriteGeneration.videoReferenceHint": "Uses the video's first frame as reference, preserving framing and alpha.",
+  "spriteGeneration.h3Resolution": "H3 generation resolution",
+  "spriteGeneration.resolutionWorkflow": "Follow workflow",
+  "spriteGeneration.resolutionHd": "High · ~0.7 MP",
+  "spriteGeneration.resolutionNative": "Ultra · ~1 MP",
+  "spriteGeneration.resolutionHint":
+    "For H3 still sprites only; dimensions follow the original proportions. Higher resolution uses more VRAM and time.",
   "spriteGeneration.plan": "Plan prompts and tags",
   "spriteGeneration.generatePending": "Generate pending ({count})",
   "spriteGeneration.setupHint":
@@ -157,7 +269,7 @@ export const enMessages: Record<MessageKey, string> = {
   "spriteGeneration.reviewHint": "Tags are saved with each image. Click a preview to view the full image.",
   "spriteGeneration.chooseFrame": "Choose a frame from the generated video",
   "spriteGeneration.frameHint":
-    "The middle frame is selected automatically. Seek in the video and capture another frame without generating again.",
+    "A frame is selected automatically. Seek in the video to capture another without generating again.",
   "spriteGeneration.video": "Source video",
   "spriteGeneration.captureFrame": "Use frame at {seconds}s",
   "spriteGeneration.videoUnavailable":
@@ -176,7 +288,7 @@ export const enMessages: Record<MessageKey, string> = {
   "spriteGeneration.working": "Working…",
   "spriteGeneration.stop": "Stop after current image",
   "spriteGeneration.stopping": "Stopping after current image…",
-  "spriteGeneration.discardTitle": "Close sprite generator?",
+  "spriteGeneration.discardTitle": "Leave sprite generation?",
   "spriteGeneration.discardBody":
     "Unsaved ideas and previews will be cleared from this window. Sprites already added to the character are kept.",
   "spriteGeneration.discard": "Close and discard unsaved ideas",

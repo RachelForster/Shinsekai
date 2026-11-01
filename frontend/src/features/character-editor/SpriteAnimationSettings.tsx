@@ -6,14 +6,16 @@ import type { CharacterSpriteAnimationInput } from "../../shared/platform/types"
 import {
   AsyncButton,
   FilePicker,
-  ImageAssetThumb,
+  VisualMedia,
   SegmentedTabs,
   Select,
   Switch,
   TextArea,
   TextInput,
+  type MediaPreview,
 } from "../../shared/ui";
 import type { SpriteAnimationSource } from "./spriteAnimationSources";
+import { SpriteMattingSettings } from "./SpriteMattingSettings";
 
 interface Props {
   value: CharacterSpriteAnimationInput;
@@ -23,6 +25,7 @@ interface Props {
   onSourceModeChange: (mode: "library" | "file") => void;
   onChange: (value: CharacterSpriteAnimationInput) => void;
   onGenerate: () => void;
+  onPreview: (media: MediaPreview) => void;
   busy: boolean;
   loading: boolean;
   remaining: number;
@@ -37,6 +40,7 @@ export function SpriteAnimationSettings({
   onSourceModeChange,
   onChange,
   onGenerate,
+  onPreview,
   busy,
   loading,
   remaining,
@@ -72,13 +76,30 @@ export function SpriteAnimationSettings({
           <>
             {value.referenceImage ? (
               <div className="sprite-generation__reference-image">
-                <ImageAssetThumb alt={t("spriteGeneration.reference")} src={fileUrl(value.referenceImage)} />
+                <button
+                  type="button"
+                  className="sprite-generation__preview-trigger"
+                  aria-label={t("mediaPreview.open", { name: t("spriteAnimation.reference") })}
+                  onClick={() =>
+                    onPreview({
+                      src: fileUrl(value.referenceImage),
+                      title: t("spriteAnimation.reference"),
+                      autoPlay: false,
+                    })
+                  }
+                >
+                  <VisualMedia
+                    alt={t("spriteGeneration.reference")}
+                    autoPlay={false}
+                    src={fileUrl(value.referenceImage)}
+                  />
+                </button>
               </div>
             ) : null}
             <label className="field-row field-row--stack">
               <span className="field-row__label">{t("spriteAnimation.reference")}</span>
               <FilePicker
-                acceptedExtensions={[".png", ".jpg", ".jpeg", ".webp"]}
+                acceptedExtensions={[".png", ".jpg", ".jpeg", ".webp", ".mp4", ".webm"]}
                 disabled={busy}
                 value={value.referenceImage}
                 pickLabel={t("spriteGeneration.chooseReference")}
@@ -95,6 +116,7 @@ export function SpriteAnimationSettings({
           ))}
         </div>
         <p className="sprite-generation__hint">{t("spriteAnimation.cameraHint")}</p>
+        <SpriteMattingSettings value={value} onChange={patch} disabled={busy} />
         <label className="field-row field-row--stack">
           <span className="field-row__label">{t("spriteAnimation.speed")}</span>
           <Select

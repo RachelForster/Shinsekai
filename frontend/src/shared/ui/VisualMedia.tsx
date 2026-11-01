@@ -4,20 +4,27 @@ import { isVideoMedia } from "../assets/visualMedia";
 
 export type VisualMediaElement = HTMLImageElement | HTMLVideoElement;
 
-interface VisualMediaProps {
+export interface VisualMediaProps {
   src: string;
   alt: string;
   active?: boolean;
   autoPlay?: boolean;
+  loop?: boolean;
+  playbackRate?: number;
+  onEnded?: () => void;
+  onPlayBlocked?: () => void;
   className?: string;
   decoding?: "async" | "auto" | "sync";
   errorMessage?: string;
   hitbox?: boolean;
   loading?: "eager" | "lazy";
+  preload?: "none" | "metadata" | "auto";
   style?: CSSProperties;
   onDimensions?: (width: number, height: number) => void;
   onError?: (event: SyntheticEvent<VisualMediaElement>) => void;
   onLoad?: (event: SyntheticEvent<VisualMediaElement>) => void;
+  /** The first decoded frame is ready to replace another visible surface. */
+  onFrameReady?: (element: VisualMediaElement) => void;
   onMouseDown?: MouseEventHandler<HTMLElement>;
 }
 
@@ -35,6 +42,7 @@ export function VisualMedia(props: VisualMediaProps) {
     onDimensions,
     onError,
     onLoad,
+    onFrameReady,
     onMouseDown,
   } = props;
   return (
@@ -47,8 +55,19 @@ export function VisualMedia(props: VisualMediaProps) {
       loading={loading}
       onError={onError}
       onLoad={(event) => {
-        onDimensions?.(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight);
+        const image = event.currentTarget;
+        onDimensions?.(image.naturalWidth, image.naturalHeight);
         onLoad?.(event);
+        if (onFrameReady) {
+          if (image.decode)
+            void image.decode().then(
+              () => {
+                if (image.isConnected) onFrameReady(image);
+              },
+              () => {},
+            );
+          else onFrameReady(image);
+        }
       }}
       onMouseDown={onMouseDown}
       src={src}
@@ -62,19 +81,29 @@ function VideoVisual({
   alt,
   active = true,
   autoPlay = true,
+  loop = autoPlay,
+  playbackRate = 1,
+  onEnded,
+  onPlayBlocked,
   className,
   errorMessage = "Unable to play this video.",
   hitbox,
   loading,
+  preload = "metadata",
   style,
   onDimensions,
   onError,
   onLoad,
+  onFrameReady,
   onMouseDown,
 }: VisualMediaProps) {
   const [failed, setFailed] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const wantedRef = useRef(false);
+  const blockedRef = useRef(onPlayBlocked);
+  blockedRef.current = onPlayBlocked;
+  const frameReadyRef = useRef(onFrameReady);
+  frameReadyRef.current = onFrameReady;
   const [pageVisible, setPageVisible] = useState(document.visibilityState !== "hidden");
   const [inView, setInView] = useState(loading !== "lazy" || typeof IntersectionObserver === "undefined");
   const shouldPlay = autoPlay && active && pageVisible && inView && !failed;
@@ -102,16 +131,34 @@ function VideoVisual({
   useEffect(() => {
     const video = videoRef.current;
     if (!inView || !video || failed) return;
+    // loadeddata can precede presentation. Keep the old surface until the
+    // compositor has a decoded frame, including paused, preloaded targets.
+    let cancelled = false;
+    const frameCallback =
+      frameReadyRef.current && video.requestVideoFrameCallback
+        ? video.requestVideoFrameCallback(() => {
+            if (!cancelled) frameReadyRef.current?.(video);
+          })
+        : undefined;
     // Restore the source during React StrictMode's setup/cleanup replay too.
     video.setAttribute("src", src);
     video.load();
     return () => {
+      cancelled = true;
+      if (frameCallback !== undefined) video.cancelVideoFrameCallback(frameCallback);
       wantedRef.current = false;
       video.pause();
       video.removeAttribute("src");
       video.load();
     };
   }, [inView, src, failed]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.defaultPlaybackRate = playbackRate;
+    video.playbackRate = playbackRate;
+  }, [playbackRate]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -124,7 +171,9 @@ function VideoVisual({
         () => {
           if (!wantedRef.current) video.pause();
         },
-        () => {},
+        () => {
+          if (wantedRef.current) blockedRef.current?.();
+        },
       );
     } else {
       video.pause();
@@ -146,14 +195,18 @@ function VideoVisual({
       data-chat-stage-hitbox={hitbox ? "true" : undefined}
       disablePictureInPicture
       draggable={false}
-      loop={autoPlay}
+      loop={loop}
       muted
       onError={(event) => {
         event.currentTarget.dataset.loadState = "error";
         setFailed(true);
         onError?.(event);
       }}
-      onLoadedData={onLoad}
+      onLoadedData={(event) => {
+        onLoad?.(event);
+        if (!event.currentTarget.requestVideoFrameCallback) frameReadyRef.current?.(event.currentTarget);
+      }}
+      onEnded={onEnded}
       onLoadedMetadata={(event) => {
         const video = event.currentTarget;
         onDimensions?.(video.videoWidth, video.videoHeight);
@@ -164,7 +217,7 @@ function VideoVisual({
       }}
       onMouseDown={onMouseDown}
       playsInline
-      preload="metadata"
+      preload={preload}
       style={style}
     />
   );

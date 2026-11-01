@@ -158,6 +158,7 @@ def export_character(character_configs: list[CharacterConfig], output_path: str,
                 'emotion_tags': config.emotion_tags,
                 'avatar_type': getattr(config, 'avatar_type', 'static') or 'static',
                 'avatars': deepcopy(getattr(config, 'avatars', None) or {}),
+                'sprite_transitions': [],
                 'character_brief': getattr(config, 'character_brief', '') or '',
                 'character_setting': config.character_setting,
                 'speech_speed': getattr(config, 'speech_speed', 1.0),
@@ -225,6 +226,21 @@ def export_character(character_configs: list[CharacterConfig], output_path: str,
                 normalized_sprites.append(sprite_data)
             if isinstance(sprites, list):
                 char_data['sprites'] = normalized_sprites
+
+            # Transition endpoints use the same portable names as regular sprites.
+            from core.sprite.transitions import field, valid_transitions
+            from sdk.path_utils import safe_existing_file_path
+            for edge in valid_transitions(config):
+                clip = safe_existing_file_path(field(edge, 'path'), roots=[SPRITE_DIR / config.sprite_prefix])
+                relative = Path('transitions') / clip.name
+                destination = temp_dir / 'sprites' / config.sprite_prefix / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(clip, destination)
+                char_data['sprite_transitions'].append({
+                    **dict(edge), 'path': relative.as_posix(),
+                    'from_path': _safe_package_basename_or_legacy_absolute(field(edge, 'from_path'), 'transition source'),
+                    'to_path': _safe_package_basename_or_legacy_absolute(field(edge, 'to_path'), 'transition target'),
+                })
 
             # Preserve package-relative model dependencies and state/voice paths.
             from core.media.avatar.registry import adapter_for, is_registered_format
@@ -384,6 +400,17 @@ def import_character(input_path: str) -> list[CharacterConfig]:
         for char_data in yaml_data:
             prefix = _safe_package_name(char_data.get('sprite_prefix', ''), "sprite_prefix")
             package_root = temp_dir / 'sprites' / prefix
+            for edge in char_data.get('sprite_transitions') or []:
+                relative = _safe_package_relpath(edge['path'], 'transition clip')
+                if relative.parts[0] != 'transitions' or relative.suffix.lower() != '.webm':
+                    raise ValueError('Invalid transition clip path')
+                checked_clip = safe_existing_file_path(relative, roots=[package_root])
+                from core.media.alpha_video import verify_alpha_video
+                expected_frames = edge.get('frame_count', 5)
+                if expected_frames not in {5, 22} or verify_alpha_video(checked_clip) != expected_frames:
+                    raise ValueError('Transition clip frame count does not match its metadata')
+                for key in ('from_path', 'to_path'):
+                    _safe_package_basename(edge[key], 'transition endpoint')
             for kind, bank in (char_data.get('avatars') or {}).items():
                 if not is_registered_format(kind) or not bank.get('model_path'):
                     continue
@@ -516,6 +543,15 @@ def import_character(input_path: str) -> list[CharacterConfig]:
                         char_data[key] = dest_model_path.as_posix()  # 更新为相对路径
                     else:
                         char_data[key] = None
+
+            for edge in char_data.get('sprite_transitions') or []:
+                edge['path'] = (dest_sprite_dir / _safe_package_relpath(edge['path'], 'transition clip')).resolve().as_posix()
+                for key in ('from_path', 'to_path'):
+                    endpoint = dest_sprite_dir / _safe_package_basename(edge[key], 'transition endpoint')
+                    try:
+                        edge[key] = str(endpoint.relative_to(Path.cwd()))
+                    except ValueError:
+                        edge[key] = endpoint.as_posix()
 
             # 将更新后的数据创建为 CharacterConfig 对象
             for kind, bank in char_data.get('avatars', {}).items():
