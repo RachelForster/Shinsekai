@@ -8,6 +8,11 @@
   display: block;
 }
 
+.character-visual__transition-content {
+  position: absolute;
+  inset: 0;
+}
+
 .character-visual__transition-layer {
   position: absolute;
   inset: 0;

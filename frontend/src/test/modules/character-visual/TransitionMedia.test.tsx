@@ -19,6 +19,186 @@ afterEach(() => {
   setSpriteTransitionPlaybackRate(1);
 });
 
+function decoded(element: HTMLImageElement | HTMLVideoElement) {
+  if (element instanceof HTMLVideoElement) fireEvent.loadedData(element);
+  else fireEvent.load(element);
+}
+
+function opacityEnded(element: Element) {
+  fireEvent(element, Object.assign(new Event("transitionend", { bubbles: true }), { propertyName: "opacity" }));
+}
+
+it.each([
+  ["a.png", "b.png"],
+  ["a.png", "b.webm"],
+  ["a.mp4", "b.png"],
+  ["a.webm", "b.mp4"],
+])("fades %s out before fading %s in when no matching clip exists", (from, to) => {
+  const view = render(<TransitionMedia src={from} alt="Mika" enabled className="sprite-layer__image" />);
+  const host = view.container.firstElementChild;
+  const content = view.container.querySelector(".character-visual__transition-content")!;
+  const original = view.container.querySelector<HTMLImageElement | HTMLVideoElement>("img, video")!;
+  decoded(original);
+  expect(content).not.toHaveAttribute("data-fade-phase");
+
+  view.rerender(
+    <TransitionMedia
+      src={to}
+      alt="Mika"
+      enabled
+      className="sprite-layer__image"
+      transitions={[{ fromUrl: "unrelated.png", url: "unrelated-transition.webm" }]}
+    />,
+  );
+  const target = view.container.querySelector<HTMLImageElement | HTMLVideoElement>(`[src="${to}"]`)!;
+  expect(content).toHaveAttribute("data-fade-phase", "loading");
+  expect(content).toHaveStyle({ opacity: "1" });
+  expect(original.parentElement).toHaveStyle({ opacity: "1" });
+  expect(target.parentElement).toHaveStyle({ opacity: "0" });
+  expect(view.container.querySelector('[src="unrelated-transition.webm"]')).toBeNull();
+  expect(target).not.toHaveAttribute("autoplay");
+
+  decoded(target);
+  expect(content).toHaveAttribute("data-fade-phase", "out");
+  expect(content).toHaveStyle({ opacity: "0", transition: "opacity 160ms ease-in-out" });
+  expect(original).toBeInTheDocument();
+  expect(target.parentElement).toHaveStyle({ opacity: "0" });
+  opacityEnded(original);
+  expect(content).toHaveAttribute("data-fade-phase", "out");
+  opacityEnded(content);
+
+  expect(original).not.toBeInTheDocument();
+  expect(view.container.querySelector(`[src="${to}"]`)).toBe(target);
+  expect(target.parentElement).toHaveStyle({ opacity: "1" });
+  expect(content).toHaveAttribute("data-fade-phase", "in");
+  expect(content).toHaveStyle({ opacity: "1" });
+  if (target instanceof HTMLVideoElement) {
+    expect(target).toHaveAttribute("autoplay");
+    expect(target).toHaveAttribute("loop");
+  }
+
+  opacityEnded(content);
+  expect(content).not.toHaveAttribute("data-fade-phase");
+  expect(view.container.firstElementChild).toBe(host);
+});
+
+it("waits for a decoded target, swaps dimensions while transparent, and bounds missing fade events", () => {
+  vi.useFakeTimers();
+  const dimensions = vi.fn();
+  const view = render(<TransitionMedia src="a.png" alt="Mika" enabled onDimensions={dimensions} />);
+  const original = view.container.querySelector("img")!;
+  Object.defineProperties(original, { naturalWidth: { value: 400 }, naturalHeight: { value: 800 } });
+  fireEvent.load(original);
+  view.rerender(<TransitionMedia src="b.png" alt="Mika" enabled onDimensions={dimensions} />);
+  const content = view.container.querySelector(".character-visual__transition-content")!;
+  act(() => vi.advanceTimersByTime(5000));
+  expect(content).toHaveAttribute("data-fade-phase", "loading");
+  expect(original.parentElement).toHaveStyle({ opacity: "1" });
+  const target = view.container.querySelector('img[src="b.png"]')!;
+  Object.defineProperties(target, { naturalWidth: { value: 800 }, naturalHeight: { value: 800 } });
+  fireEvent.load(target);
+  expect(view.container.firstElementChild).toHaveStyle({ aspectRatio: "0.5" });
+  act(() => vi.advanceTimersByTime(300));
+  expect(content).toHaveAttribute("data-fade-phase", "in");
+  expect(view.container.firstElementChild).toHaveStyle({ aspectRatio: "1" });
+  expect(dimensions).toHaveBeenLastCalledWith(800, 800);
+  expect(target).toBeInTheDocument();
+  act(() => vi.advanceTimersByTime(300));
+  expect(content).not.toHaveAttribute("data-fade-phase");
+  expect(content).toHaveStyle({ opacity: "1" });
+});
+
+it("keeps the latest request when a fade is interrupted and ignores the old timers", () => {
+  vi.useFakeTimers();
+  const view = render(<TransitionMedia src="a.png" alt="Mika" enabled />);
+  view.rerender(<TransitionMedia src="b.png" alt="Mika" enabled />);
+  fireEvent.load(view.container.querySelector('img[src="b.png"]')!);
+  const content = view.container.querySelector(".character-visual__transition-content")!;
+  expect(content).toHaveAttribute("data-fade-phase", "out");
+  view.rerender(<TransitionMedia src="c.webm" alt="Mika" enabled />);
+  act(() => vi.advanceTimersByTime(1000));
+  expect(content).toHaveAttribute("data-fade-phase", "loading");
+  expect(view.container.querySelector('img[src="a.png"]')).toBeInTheDocument();
+  expect(view.container.querySelector('img[src="b.png"]')).toBeNull();
+  const target = view.container.querySelector('video[src="c.webm"]')!;
+  fireEvent.loadedData(target);
+  opacityEnded(content);
+  expect(view.container.querySelector("img")).toBeNull();
+  expect(target.parentElement).toHaveStyle({ opacity: "1" });
+  opacityEnded(content);
+  expect(content).not.toHaveAttribute("data-fade-phase");
+});
+
+it("cancels a pending fade when returning to the currently displayed sprite", () => {
+  vi.useFakeTimers();
+  const view = render(<TransitionMedia src="a.webm" alt="Mika" enabled />);
+  const original = view.container.querySelector("video")!;
+  view.rerender(<TransitionMedia src="b.png" alt="Mika" enabled />);
+  fireEvent.load(view.container.querySelector("img")!);
+  view.rerender(<TransitionMedia src="a.webm" alt="Mika" enabled />);
+  act(() => vi.advanceTimersByTime(1000));
+  expect(view.container.querySelector("video")).toBe(original);
+  expect(view.container.querySelector("img")).toBeNull();
+  expect(view.container.querySelector(".character-visual__transition-content")).not.toHaveAttribute("data-fade-phase");
+});
+
+it("fades from the visible bridge when interrupted by a sprite without a matching clip", () => {
+  const view = render(<TransitionMedia src="a.png" alt="Mika" enabled />);
+  view.rerender(
+    <TransitionMedia src="b.png" alt="Mika" enabled transitions={[{ fromUrl: "a.png", url: "a-b.webm" }]} />,
+  );
+  const bridge = view.container.querySelector("video")!;
+  fireEvent.loadedData(bridge);
+  const content = view.container.querySelector(".character-visual__transition-content")!;
+  expect(content).not.toHaveAttribute("data-fade-phase");
+  view.rerender(<TransitionMedia src="c.png" alt="Mika" enabled />);
+  expect(bridge).toBeInTheDocument();
+  expect(bridge).toHaveStyle({ opacity: "1" });
+  expect(bridge).not.toHaveAttribute("autoplay");
+  const target = view.container.querySelector('img[src="c.png"]')!;
+  fireEvent.load(target);
+  fireEvent.ended(bridge);
+  expect(content).toHaveAttribute("data-fade-phase", "out");
+  expect(target.parentElement).toHaveStyle({ opacity: "0" });
+  opacityEnded(content);
+  expect(bridge).not.toBeInTheDocument();
+  expect(target.parentElement).toHaveStyle({ opacity: "1" });
+  opacityEnded(content);
+  expect(content).not.toHaveAttribute("data-fade-phase");
+});
+
+it.each(["restore", "reduced", "inactive", "hidden"])("skips the default fade for %s", (mode) => {
+  vi.useFakeTimers();
+  if (mode === "reduced")
+    vi.stubGlobal("matchMedia", () => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+  const view = render(<TransitionMedia src="a.png" alt="Mika" enabled />);
+  if (mode === "hidden") vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+  view.rerender(<TransitionMedia src="b.webm" alt="Mika" enabled={mode !== "restore"} active={mode !== "inactive"} />);
+  expect(view.container.querySelector("img")).toBeNull();
+  expect(view.container.querySelector(".character-visual__transition-content")).not.toHaveAttribute("data-fade-phase");
+  expect(view.container.querySelector("video")?.parentElement).toHaveStyle({ opacity: "1" });
+});
+
+it.each(["inactive", "hidden", "unmount"])("cleans up an ongoing fade on %s", (mode) => {
+  vi.useFakeTimers();
+  const view = render(<TransitionMedia src="a.png" alt="Mika" enabled />);
+  view.rerender(<TransitionMedia src="b.png" alt="Mika" enabled />);
+  fireEvent.load(view.container.querySelector('img[src="b.png"]')!);
+  if (mode === "inactive") view.rerender(<TransitionMedia src="b.png" alt="Mika" enabled active={false} />);
+  else if (mode === "hidden") {
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    fireEvent(document, new Event("visibilitychange"));
+  } else view.unmount();
+  act(() => vi.advanceTimersByTime(1000));
+  expect(view.container.querySelector('img[src="a.png"]')).toBeNull();
+  if (mode !== "unmount") {
+    expect(view.container.querySelector(".character-visual__transition-content")).not.toHaveAttribute(
+      "data-fade-phase",
+    );
+    expect(view.container.querySelector("img")).toHaveAttribute("src", "b.png");
+  } else expect(view.container).toBeEmptyDOMElement();
+});
+
 it("changes the bridge speed live without reloading it or changing the target loop", () => {
   vi.useFakeTimers();
   const view = render(<TransitionMedia src="a.png" alt="Mika" enabled />);
