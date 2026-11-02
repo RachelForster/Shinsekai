@@ -1055,3 +1055,23 @@ it("deletes image rows in preview without shifting tags across blank lines", asy
     vi.useRealTimers();
   }
 });
+
+it("uploads audio for a new scenario from the same draft as the live bridge", async () => {
+  vi.useFakeTimers();
+  const platform = createBrowserPreviewPlatform();
+  const config = await resolvePreview(platform.config.get());
+  const name = config.characters[0].name;
+  const updated = await resolvePreview(
+    platform.characters.uploadScenarioVoice({
+      name,
+      scenarioIndex: 0,
+      voicePath: "tag.wav",
+      voiceText: "words",
+      voiceType: "preset",
+      scenarios: [{ name: "new-tag" }],
+    }),
+  );
+  expect(updated.scenarios).toEqual([
+    { name: "new-tag", voice_path: "tag.wav", voice_text: "words", voice_type: "preset" },
+  ]);
+});

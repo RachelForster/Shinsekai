@@ -192,6 +192,7 @@ export function uploadScenarioVoice(input: {
   voicePath: string;
   voiceText: string;
   voiceType: string;
+  scenarios?: CharacterScenario[];
 }) {
   return getPlatform().characters.uploadScenarioVoice(input);
 }

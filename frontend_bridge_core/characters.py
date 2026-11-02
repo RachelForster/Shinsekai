@@ -183,8 +183,11 @@ def _upload_scenario_voice(state: BridgeState, payload: dict[str, Any]) -> dict[
         _validate_reference_audio(voice_path)
     elif voice_type != "preset" and voice_text.strip():
         _validate_reference_audio(voice_path)
+    scenarios = payload.get("scenarios")
+    if scenarios is not None and not isinstance(scenarios, list):
+        raise ValueError("scenarios must be a list")
     message, _path = state.character_manager.upload_scenario_voice(
-        name, scenario_index, voice_path, voice_text, voice_type,
+        name, scenario_index, voice_path, voice_text, voice_type, scenarios=scenarios,
     )
     if message.startswith("找不到") or message.startswith("情景不存在") or message.startswith("请先") or message.startswith("请选择"):
         raise RuntimeError(message)
@@ -227,42 +230,14 @@ def _translate_scenario_names(state: BridgeState, payload: dict[str, Any]) -> di
     name = str(payload.get("name") or "").strip()
     if not name:
         raise ValueError("name is required")
-    character = state.character_manager._config_manager.get_character_by_name(name)
-    if not character:
+    from application.localization.scenario_translation import translate_scenario_names
+
+    character = state.config_manager.get_character_by_name(name)
+    if character is None:
         raise KeyError(f"character not found: {name}")
-    scenarios = getattr(character, "scenarios", []) or []
-    if not scenarios:
-        return {"translated": {}}
-    import re
-    needs = []
-    for i, s in enumerate(scenarios):
-        sname = s.name if hasattr(s, "name") else s.get("name", "")
-        if sname and not re.match(r"^[a-zA-Z0-9_]+$", sname):
-            needs.append((i, sname))
-    if not needs:
-        return {"translated": {}}
-    joined = "\n".join([f"{idx+1}. {n}" for idx, n in needs])
-    prompt = "Translate these labels to English (one word each, lowercase). Return ONLY a JSON object with key 'translations' as array of strings.\n\n" + joined
-    try:
-        cm = state.character_manager._config_manager
-        llm_provider, llm_model, llm_base_url, api_key = cm.get_llm_api_config()
-        if not llm_provider or not api_key or not llm_model:
-            return {"translated": {}, "error": "LLM not configured"}
-        from ai.llm.llm_manager import LLMAdapterFactory
-        kwargs = cm.merged_llm_factory_kwargs(
-            llm_provider,
-            {"llm_provider": llm_provider, "api_key": api_key, "base_url": llm_base_url, "model": llm_model},
-        )
-        adapter = LLMAdapterFactory.create_adapter(**kwargs)
-        raw = adapter.chat([{"role": "user", "content": prompt}], max_tokens=100)
-        text = raw.choices[0].message.content if hasattr(raw, "choices") else str(raw)
-        import json as j
-        data = j.loads(text)
-        trans = data.get("translations", [])
-    except Exception:
-        trans = []
-    result = {}
-    for idx, (orig_i, _) in enumerate(needs):
-        if idx < len(trans) and trans[idx]:
-            result[str(orig_i)] = trans[idx].strip().lower()
-    return {"translated": result}
+    names = payload.get("names")
+    if names is None:
+        names = [scenario.name for scenario in character.scenarios]
+    if not isinstance(names, list) or not all(isinstance(item, str) for item in names):
+        raise ValueError("names must be a list of strings")
+    return {"translated": translate_scenario_names(state.config_manager, names)}

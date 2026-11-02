@@ -164,7 +164,7 @@ def export_character(character_configs: list[CharacterConfig], output_path: str,
                 'speech_speed': getattr(config, 'speech_speed', 1.0),
                 'speech_volume': getattr(config, 'speech_volume', 1.0),
                 'pronunciation_map': getattr(config, 'pronunciation_map', None) or {},
-                'scenarios': getattr(config, 'scenarios', []) or [],
+                'scenarios': deepcopy(getattr(config, 'scenarios', []) or []),
             }
 
             # 处理绝对路径的模型和参考音频

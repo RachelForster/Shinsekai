@@ -1276,7 +1276,11 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           body: JSON.stringify(input),
           method: "POST",
         }),
-      translateScenarioNames: (name, names) => requestJson(apiBase, "/api/characters/scenarios/translate-names", { body: JSON.stringify({ name, names }), method: "POST" }),
+      translateScenarioNames: (name, names) =>
+        requestJson(apiBase, "/api/characters/scenarios/translate-names", {
+          body: JSON.stringify({ name, names }),
+          method: "POST",
+        }),
       saveScenarioVoiceType: (input) =>
         requestJson<Character>(apiBase, "/api/characters/scenarios/voice-type", {
           body: JSON.stringify(input),

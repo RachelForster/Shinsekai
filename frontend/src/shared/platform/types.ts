@@ -1894,11 +1894,15 @@ export interface ShinsekaiPlatform {
       voicePath: string;
       voiceText: string;
       voiceType: string;
+      scenarios?: CharacterScenario[];
     }) => Promise<Character>;
     deleteScenarioVoice: (name: string, scenarioIndex: number) => Promise<Character>;
     saveScenarioVoiceText: (input: { name: string; scenarioIndex: number; voiceText: string }) => Promise<Character>;
-    translateScenarioNames: (name: string, names: string[]) => Promise<{ translated: Record<string, string>; error?: string }>;
-      saveScenarioVoiceType: (input: { name: string; scenarioIndex: number; voiceType: string }) => Promise<Character>;
+    translateScenarioNames: (
+      name: string,
+      names: string[],
+    ) => Promise<{ translated: Record<string, string>; error?: string }>;
+    saveScenarioVoiceType: (input: { name: string; scenarioIndex: number; voiceType: string }) => Promise<Character>;
   };
   config: {
     cancelTtsBundleDownload: (taskId: string) => Promise<TaskSnapshot<TtsBundleDownloadResult>>;

@@ -15,7 +15,6 @@ export interface CharacterScenarioSectionProps {
   onAddScenario: () => void;
   onAiTranslate: () => void;
   onDeleteScenario: (index: number) => void;
-  onSaveVoiceText: (index: number, text: string) => void;
   onScenarioNameChange: (index: number, name: string) => void;
   onScenarioVoiceTextChange: (index: number, text: string) => void;
   onScenarioVoiceTypeChange: (index: number, voiceType: string) => void;
@@ -40,7 +39,6 @@ export function CharacterScenarioSection({
   onAddScenario,
   onAiTranslate,
   onDeleteScenario,
-  onSaveVoiceText,
   onScenarioNameChange,
   onScenarioVoiceTextChange,
   onScenarioVoiceTypeChange,
@@ -57,7 +55,7 @@ export function CharacterScenarioSection({
         <h2 className="section__title">{t("character.section.voiceTags")}</h2>
         <div className="page__actions">
           <AsyncButton
-            disabled={hasUnsavedChanges || !isSavedCharacter}
+            disabled={hasUnsavedChanges || !isSavedCharacter || scenarioSavePending}
             icon={<Languages aria-hidden className="button__icon" />}
             loading={translatePending}
             onClick={onAiTranslate}
@@ -65,11 +63,17 @@ export function CharacterScenarioSection({
           >
             {t("character.voiceTag.aiTranslate")}
           </AsyncButton>
-          <Button icon={<Plus aria-hidden className="button__icon" />} onClick={onAddScenario} variant="ghost">
+          <Button
+            disabled={scenarioSavePending}
+            icon={<Plus aria-hidden className="button__icon" />}
+            onClick={onAddScenario}
+            variant="ghost"
+          >
             {t("character.voiceTag.add")}
           </Button>
           <AsyncButton
             icon={<Save aria-hidden className="button__icon" />}
+            disabled={!isSavedCharacter}
             loading={scenarioSavePending}
             onClick={onSaveAllScenarios}
             variant={hasUnsavedChanges ? "primary" : "ghost"}
@@ -82,7 +86,9 @@ export function CharacterScenarioSection({
 
       <p className="section__description">{t("character.voiceTag.description")}</p>
       <p className="section__description">
-        {t("character.voiceTag.voiceTypePreset")}：{t("character.voiceTag.voiceTypePresetHint")} &middot; {t("character.voiceTag.voiceTypeReference")}：{t("character.voiceTag.voiceTypeReferenceHint")} &middot; {t("character.voiceTag.saveBeforeTranslate")}
+        {t("character.voiceTag.voiceTypePreset")}：{t("character.voiceTag.voiceTypePresetHint")} &middot;{" "}
+        {t("character.voiceTag.voiceTypeReference")}：{t("character.voiceTag.voiceTypeReferenceHint")} &middot;{" "}
+        {t("character.voiceTag.saveBeforeTranslate")}
       </p>
 
       {scenarios.length === 0 && <EmptyState title={t("character.voiceTag.empty")} />}
@@ -97,6 +103,7 @@ export function CharacterScenarioSection({
                 <span className="scenario-card__index">{t("character.voiceTag.index", { index: si + 1 })}</span>
                 <TextInput
                   className="scenario-card__name"
+                  disabled={scenarioSavePending}
                   maxLength={15}
                   onChange={(event) => onScenarioNameChange(si, event.target.value)}
                   placeholder={t("character.voiceTag.namePlaceholder")}
@@ -105,16 +112,17 @@ export function CharacterScenarioSection({
                 <span className="scenario-card__hint-group">
                   <Hint text={t("character.voiceTag.nameHint")} />
                   <FilePicker
-                    acceptedExtensions={voiceType === "reference" ? [".wav"] : [".flac", ".m4a", ".mp3", ".ogg", ".wav"]}
+                    disabled={!isSavedCharacter || scenarioSavePending}
+                    acceptedExtensions={
+                      voiceType === "reference" ? [".wav"] : [".flac", ".m4a", ".mp3", ".ogg", ".wav"]
+                    }
                     onPathChange={(path) => onUploadScenarioVoice(si, path)}
                     pickLabel={t("character.voiceTag.uploadVoice")}
                   />
                 </span>
                 {voicePath ? (
                   <>
-                    <span className="scenario-card__filename">
-                      {voicePath.split("/").pop()?.split("\\").pop()}
-                    </span>
+                    <span className="scenario-card__filename">{voicePath.split("/").pop()?.split("\\").pop()}</span>
                     <AudioPlayer
                       className="scenario-card__player"
                       label={voicePath.split("/").pop()?.split("\\").pop() ?? "Audio"}
@@ -127,6 +135,7 @@ export function CharacterScenarioSection({
                 <div className="scenario-card__voice-type">
                   <label className="radio-group__item">
                     <input
+                      disabled={scenarioSavePending}
                       checked={voiceType === "preset"}
                       className="radio-group__input"
                       name={`scenarioVoiceType-${si}`}
@@ -137,6 +146,7 @@ export function CharacterScenarioSection({
                   </label>
                   <label className="radio-group__item">
                     <input
+                      disabled={scenarioSavePending}
                       checked={voiceType === "reference"}
                       className="radio-group__input"
                       name={`scenarioVoiceType-${si}`}
@@ -150,6 +160,7 @@ export function CharacterScenarioSection({
                   )}
                 </div>
                 <TextInput
+                  disabled={scenarioSavePending}
                   className="scenario-card__voice-text"
                   onChange={(event) => onScenarioVoiceTextChange(si, event.target.value)}
                   placeholder={t("character.voiceTag.voiceText")}
@@ -157,6 +168,7 @@ export function CharacterScenarioSection({
                 />
                 <div className="scenario-card__actions">
                   <Button
+                    disabled={scenarioSavePending}
                     icon={<Trash2 aria-hidden className="button__icon" />}
                     onClick={() => setPendingDeleteIndex(si)}
                     variant="ghost"

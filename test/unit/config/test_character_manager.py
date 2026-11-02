@@ -293,3 +293,112 @@ def test_upload_voice_does_not_delete_original_voice_outside_character_voice_dir
     assert uploaded_path.startswith(str(voice_dir / "mika"))
     assert sprite_field(character.sprites[0], "voice_path") == uploaded_path
     assert manager._config_manager.save_count == 1
+
+
+@pytest.fixture
+def scenario_manager(tmp_path, monkeypatch):
+    from config.schema import CharacterScenario
+    monkeypatch.setattr("config.character_manager.VOICE_DIR", str(tmp_path / "speech"))
+    monkeypatch.setattr("config.character_manager.UPLOAD_DIR", str(tmp_path / "sprites"))
+    character = Character(name="Mika", color="#fff", sprite_prefix="mika",
+                          scenarios=[CharacterScenario(name="happy"), CharacterScenario(name="happy")])
+    return build_manager([character]), character
+
+
+def test_scenario_upload_uses_unique_paths_and_survives_sprite_cleanup(tmp_path, scenario_manager):
+    from pathlib import Path
+    manager, character = scenario_manager
+    source = tmp_path / "voice.wav"
+    source.write_bytes(b"first")
+    _, first = manager.upload_scenario_voice("Mika", 0, str(source), "", "preset")
+    source.write_bytes(b"second")
+    _, second = manager.upload_scenario_voice("Mika", 1, str(source), "", "preset")
+    assert first != second
+    assert Path(first).read_bytes() == b"first"
+    manager.delete_all_sprites("Mika")
+    assert len(character.scenarios) == 2
+    assert Path(first).read_bytes() == b"first"
+    assert Path(second).read_bytes() == b"second"
+    assert source.read_bytes() == b"second"
+
+
+@pytest.mark.parametrize("operation", ["upload", "delete", "save", "text", "type"])
+def test_scenario_write_failure_restores_metadata_and_audio(tmp_path, scenario_manager, operation):
+    from pathlib import Path
+    manager, character = scenario_manager
+    source = tmp_path / "voice.wav"
+    source.write_bytes(b"original")
+    _, original_path = manager.upload_scenario_voice("Mika", 0, str(source), "", "preset")
+    original = character.model_dump(mode="json")
+    def fail():
+        raise OSError("disk full")
+    manager._config_manager.save_characters_config = fail
+    with pytest.raises(OSError, match="disk full"):
+        if operation == "upload":
+            source.write_bytes(b"replacement")
+            manager.upload_scenario_voice("Mika", 0, str(source), "new", "preset")
+        elif operation == "delete":
+            manager.delete_scenario_voice("Mika", 0)
+        elif operation == "save":
+            manager.save_character_scenarios("Mika", [])
+        elif operation == "text":
+            manager.save_scenario_voice_text("Mika", 0, "new")
+        else:
+            manager.save_scenario_voice_type("Mika", 0, "PRESET")
+    assert character.model_dump(mode="json") == original
+    assert Path(original_path).read_bytes() == b"original"
+    assert list(Path(original_path).parent.iterdir()) == [Path(original_path)]
+
+
+def test_scenario_delete_never_removes_external_or_shared_audio(tmp_path, scenario_manager):
+    from config.schema import CharacterScenario
+    manager, character = scenario_manager
+    external = tmp_path / "scenario_external.wav"
+    external.write_bytes(b"external")
+    character.scenarios[0].voice_path = str(external)
+    manager.delete_scenario_voice("Mika", 0)
+    assert external.read_bytes() == b"external"
+    _, owned = manager.upload_scenario_voice("Mika", 0, str(external), "", "preset")
+    character.scenarios[1] = CharacterScenario(name="shared", voice_path=owned)
+    manager.delete_scenario_voice("Mika", 0)
+    from pathlib import Path
+    assert Path(owned).exists()
+    manager.save_character_scenarios("Mika", [])
+    assert not Path(owned).exists()
+
+
+@pytest.mark.parametrize("index", [-1, 9])
+def test_scenario_updates_reject_invalid_indices(scenario_manager, index):
+    manager, _ = scenario_manager
+    with pytest.raises(ValueError, match="情景不存在"):
+        manager.save_scenario_voice_text("Mika", index, "wrong")
+    with pytest.raises(ValueError, match="情景不存在"):
+        manager.save_scenario_voice_type("Mika", index, "preset")
+
+
+def test_scenario_reference_and_voice_type_validation(scenario_manager):
+    from config.schema import CharacterScenario
+    manager, character = scenario_manager
+    assert CharacterScenario(name="sad-face", voice_type=" REFERENCE ").voice_type == "reference"
+    with pytest.raises(ValueError):
+        manager.save_scenario_voice_type("Mika", 0, "unknown")
+    character.scenarios[0].voice_path = "voice.mp3"
+    with pytest.raises(ValueError, match="WAV"):
+        manager.save_scenario_voice_type("Mika", 0, "reference")
+    assert character.scenarios[0].voice_type is None
+
+
+
+def test_new_tag_upload_commits_draft_with_audio_atomically(tmp_path, scenario_manager):
+    from pathlib import Path
+    manager, character = scenario_manager
+    character.scenarios = []
+    source = tmp_path / "voice.wav"
+    source.write_bytes(b"audio")
+    _, path = manager.upload_scenario_voice("Mika", 0, str(source), "words", "preset",
+        scenarios=[{"name": "new-tag", "voice_type": "preset"}])
+    assert character.scenarios[0].name == "new-tag"
+    assert character.scenarios[0].voice_text == "words"
+    assert character.scenarios[0].voice_path == path
+    assert Path(path).read_bytes() == b"audio"
+    assert manager._config_manager.save_count == 1

@@ -2271,14 +2271,15 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       async uploadScenarioVoice(input) {
         const character = config.characters.find((item) => item.name === input.name);
         if (!character) throw new Error("找不到角色。");
-        if (!character.scenarios) character.scenarios = [];
-        if (!character.scenarios[input.scenarioIndex]) throw new Error("情景不存在。");
-        character.scenarios[input.scenarioIndex] = {
-          ...character.scenarios[input.scenarioIndex],
+        const scenarios = structuredClone(input.scenarios ?? character.scenarios ?? []);
+        if (!scenarios[input.scenarioIndex]) throw new Error("情景不存在。");
+        scenarios[input.scenarioIndex] = {
+          ...scenarios[input.scenarioIndex],
           voice_path: input.voicePath,
           voice_text: input.voiceText,
           voice_type: input.voiceType as "preset" | "reference",
         };
+        character.scenarios = scenarios;
         return delay(character);
       },
       async deleteScenarioVoice(name, scenarioIndex) {
@@ -2296,7 +2297,9 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         character.scenarios[input.scenarioIndex].voice_text = input.voiceText;
         return delay(character);
       },
-      async translateScenarioNames(_name, _names) { return { translated: {} }; },
+      async translateScenarioNames(_name, _names) {
+        return { translated: {} };
+      },
       async saveScenarioVoiceType(input) {
         const character = config.characters.find((item) => item.name === input.name);
         if (!character || !character.scenarios?.[input.scenarioIndex]) throw new Error("找不到。");

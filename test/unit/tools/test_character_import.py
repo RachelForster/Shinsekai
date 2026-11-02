@@ -770,3 +770,24 @@ class TestRoundTrip:
             assert (file_util.SPEECH_DIR / "alice" / "greet.wav").is_file()
             vp = c.sprites[0].get("voice_path")
             assert vp and Path(vp).is_file()
+
+
+
+def test_scenario_export_roundtrip_preserves_audio_and_original_config(tmp_path):
+    with _mock_dirs(tmp_path):
+        speech = file_util.SPEECH_DIR / "alice"
+        speech.mkdir(parents=True)
+        voice = speech / "scenario_unique.wav"
+        voice.write_bytes(b"scenario audio")
+        config = CharacterConfig.parse_dic({
+            **deepcopy(BASIC_CHAR), "sprites": [],
+            "scenarios": [{"name": "sad-face", "voice_type": "preset", "voice_path": str(voice)}],
+        })
+        original = deepcopy(config.scenarios)
+        output = tmp_path / "tags.char"
+        file_util.export_character([config], str(output), open_folder=False)
+        assert config.scenarios == original
+        imported = file_util.import_character(str(output))[0]
+        assert imported.scenarios[0]["name"] == "sad-face"
+        assert imported.scenarios[0]["voice_type"] == "preset"
+        assert Path(imported.scenarios[0]["voice_path"]).read_bytes() == b"scenario audio"

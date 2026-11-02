@@ -78,6 +78,23 @@ class CharacterScenario(BaseModel):
     voice_type: Optional[str] = Field(None, description="语音类型: preset 或 reference")
     voice_text: Optional[str] = Field(None, description="语音对应文本内容")
 
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        import re
+        value = value.strip()
+        if value and not re.fullmatch(r"[\w-]+", value):
+            raise ValueError("voice tag names may contain letters, numbers, underscores or hyphens")
+        return value
+
+    @field_validator("voice_type", mode="before")
+    @classmethod
+    def normalize_voice_type(cls, value):
+        value = str(value or "").strip().lower() or None
+        if value not in {None, "preset", "reference"}:
+            raise ValueError("voice_type must be preset or reference")
+        return value
+
 
 class Character(BaseModel):
     """单个角色配置的实体模型"""

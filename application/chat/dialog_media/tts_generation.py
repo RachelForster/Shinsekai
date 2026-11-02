@@ -13,6 +13,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from ai.tts.model_session import tts_model_session
+from sdk.voice_tags import VOICE_TAG_PATTERN, strip_voice_tags
 from .models import TtsGenerationRequest
 
 
@@ -82,7 +83,7 @@ class DefaultTtsGenerationStrategy(TtsGenerationStrategy):
 
         speech_text, text_processor = self._speech_input(request)
         if scenario:
-            speech_text = re.sub(r"\s*\[\w+\]\s*", " ", speech_text).strip()
+            speech_text = strip_voice_tags(speech_text)
         ref_audio_path = self._absolute(character.refer_audio_path)
         prompt_text = character.prompt_text
         if self._can_use_sprite_reference(request):
@@ -135,7 +136,7 @@ class DefaultTtsGenerationStrategy(TtsGenerationStrategy):
                     break
         except (OSError, TypeError, ValueError, yaml.YAMLError):
             pass
-        tags = re.findall(r"\[(\w+)\]", request.message.text or "")
+        tags = VOICE_TAG_PATTERN.findall(request.message.text or "")
         for tag in tags:
             for scenario in scenarios:
                 data = scenario if isinstance(scenario, dict) else scenario.model_dump()

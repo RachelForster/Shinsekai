@@ -5,7 +5,7 @@ import re
 from uuid import uuid4
 from pathlib import Path
 from typing import List, Dict, Any, Tuple, Optional, Union
-from config.schema import Character, ModelSprites, Sprite, SpriteTransition
+from config.schema import Character, CharacterScenario, ModelSprites, Sprite, SpriteTransition
 from config.config_manager import ConfigManager
 import yaml
 
@@ -489,18 +489,24 @@ class CharacterManager:
             if not any(char_dir.iterdir()):
                 char_dir.rmdir()
 
-        # 删除语音目录
-        if os.path.exists(char_voice_dir):
-            shutil.rmtree(char_voice_dir)
-        
-        # 清空角色属性
+        # Scenario voices have an independent lifecycle. Preserve legacy files too.
+        protected_voices = {
+            Path(scenario.voice_path).resolve()
+            for scenario in character.scenarios if scenario.voice_path
+        }
+        if char_voice_dir.is_dir():
+            for child in char_voice_dir.iterdir():
+                if any(path == child.resolve() or child.resolve() in path.parents for path in protected_voices):
+                    continue
+                if child.is_dir() and not child.is_symlink():
+                    shutil.rmtree(safe_child_path(char_voice_dir, child.name))
+                else:
+                    child.unlink()
+            if not any(char_voice_dir.iterdir()):
+                char_voice_dir.rmdir()
+
         character.sprites = []
         character.emotion_tags = ""
-        # 场景语音也放在同一个 VOICE_DIR 下，目录已删，YAML 引用必须同步清空
-        if hasattr(character, 'scenarios'):
-            for _sc in (character.scenarios or []):
-                _sc.voice_path = None
-            character.scenarios = []
 
         self._config_manager.save_characters_config()
 
@@ -794,108 +800,133 @@ class CharacterManager:
         return getattr(character, 'scenarios', []) or []
 
 
-    def save_character_scenarios(self, character_name: str, scenarios: List[dict]) -> str:
-        """保存角色的完整情景配置（替换模式）"""
-        if not character_name:
-            return "请先选择角色！"
-        character = self._config_manager.get_character_by_name(character_name)
-        if not character:
-            return f"找不到角色: {character_name}"
-        from config.schema import CharacterScenario
-        validated = [CharacterScenario.model_validate(s) for s in scenarios]
-        character.scenarios = validated
-        self._config_manager.save_characters_config()
-        return "情景配置已保存"
+    def _scenario_character(self, name: str, index: Optional[int] = None) -> Character:
+        character = self._config_manager.get_character_by_name(name)
+        if character is None:
+            raise ValueError(f"找不到角色: {name}")
+        if index is not None and not 0 <= index < len(character.scenarios):
+            raise ValueError("情景不存在！")
+        return character
 
+    def _persist_scenarios(self, character: Character, scenarios: List[CharacterScenario]) -> None:
+        original = character.scenarios
+        character.scenarios = scenarios
+        try:
+            self._config_manager.save_characters_config()
+        except Exception:
+            character.scenarios = original
+            raise
+
+    def _remove_unused_scenario_voice(self, character: Character, voice_path: Optional[str]) -> None:
+        if not voice_path:
+            return
+        path = Path(voice_path).resolve()
+        from sdk.path_utils import safe_child_path
+        directory = safe_child_path(Path(VOICE_DIR), character.sprite_prefix)
+        if directory == Path(VOICE_DIR).resolve() or path.parent != directory or not path.name.startswith("scenario_"):
+            return
+
+        def referenced(value):
+            if isinstance(value, dict):
+                return any(
+                    (key in {"voice_path", "refer_audio_path"} and item and Path(item).resolve() == path)
+                    or (isinstance(item, (dict, list)) and referenced(item))
+                    for key, item in value.items()
+                )
+            return isinstance(value, list) and any(referenced(item) for item in value)
+
+        if any(referenced(item.model_dump(mode="json")) for item in self._get_characters()):
+            return
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    @staticmethod
+    def _validate_scenario_reference(scenario: CharacterScenario) -> None:
+        if scenario.voice_type != "reference" or not scenario.voice_path:
+            return
+        from sdk.ui.validators import audio_duration_between
+        if Path(scenario.voice_path).suffix.lower() != ".wav":
+            raise ValueError("参考语音仅支持 WAV 格式")
+        ok, error = audio_duration_between(scenario.voice_path, 3.0, 10.0, "参考语音")
+        if not ok:
+            raise ValueError(error)
+
+    def save_character_scenarios(self, character_name: str, scenarios: List[dict]) -> str:
+        character = self._scenario_character(character_name)
+        validated = [CharacterScenario.model_validate(item) for item in scenarios]
+        for scenario in validated:
+            self._validate_scenario_reference(scenario)
+        old_paths = [scenario.voice_path for scenario in character.scenarios]
+        self._persist_scenarios(character, validated)
+        for path in old_paths:
+            self._remove_unused_scenario_voice(character, path)
+        return "情景配置已保存"
 
     def upload_scenario_voice(
         self, character_name: str, scenario_index: int,
-        voice_file: str, voice_text: str, voice_type: str = "",
+        voice_file: str, voice_text: str, voice_type: str = "", *, scenarios: Optional[List[dict]] = None,
     ) -> Tuple[str, Optional[str]]:
-        """为指定情景上传语音文件"""
-        if not character_name:
-            return "请先选择角色！", None
-        character = self._config_manager.get_character_by_name(character_name)
-        if not character:
-            return f"找不到角色: {character_name}", None
-        if not character.scenarios or scenario_index < 0 or scenario_index >= len(character.scenarios):
-            return "情景不存在！", None
-        scenario = character.scenarios[scenario_index]
-        if not voice_file:
-            return "请选择语音文件！", None
+        character = self._scenario_character(character_name)
+        snapshot = (list(character.scenarios) if scenarios is None else
+                    [CharacterScenario.model_validate(item) for item in scenarios])
+        if not 0 <= scenario_index < len(snapshot):
+            raise ValueError("情景不存在！")
+        old_paths = [scenario.voice_path for scenario in character.scenarios]
+        from sdk.path_utils import safe_child_path
+        directory = safe_child_path(Path(VOICE_DIR), character.sprite_prefix)
+        if directory == Path(VOICE_DIR).resolve():
+            raise PermissionError("Character voice directory must not be the shared root")
+        suffix = Path(voice_file).suffix.lower()
+        if suffix not in {".wav", ".mp3", ".flac", ".ogg", ".m4a"}:
+            raise ValueError("Unsupported scenario audio format")
+        original = snapshot[scenario_index]
+        updated = CharacterScenario.model_validate({
+            **original.model_dump(), "voice_path": voice_file, "voice_text": voice_text,
+            "voice_type": voice_type or original.voice_type or "preset",
+        })
+        self._validate_scenario_reference(updated)
+        directory.mkdir(parents=True, exist_ok=True)
+        destination = directory / f"scenario_{uuid4().hex}{suffix}"
+        try:
+            shutil.copyfile(voice_file, destination)
+            updated.voice_path = str(destination)
+            snapshot[scenario_index] = updated
+            for scenario in snapshot:
+                self._validate_scenario_reference(scenario)
+            self._persist_scenarios(character, snapshot)
+        except Exception:
+            destination.unlink(missing_ok=True)
+            raise
+        for path in old_paths:
+            self._remove_unused_scenario_voice(character, path)
+        return f"语音已上传到情景 {scenario_index+1}", str(destination)
 
-        voice_dir = os.path.join(VOICE_DIR, character.sprite_prefix)
-        Path(voice_dir).mkdir(parents=True, exist_ok=True)
-        file_ext = Path(voice_file).suffix
-        # 用场景名的 hash 做文件名，避免删标签后索引复用覆盖旧音频
-        import re as _re
-        _safe = _re.sub(r'[^\w]', '_', scenario.name or f"tag{scenario_index}")[:40]
-        voice_filename = f"scenario_{_safe}{file_ext}"
-        voice_path = os.path.join(voice_dir, voice_filename)
-        shutil.copyfile(voice_file, voice_path)
-
-        scenario.voice_path = voice_path
-        scenario.voice_text = voice_text
-        if voice_type:
-            scenario.voice_type = voice_type
-
-        self._config_manager.save_characters_config()
-        return f"语音已上传到情景 {scenario_index+1}", voice_path
-
-
-    def delete_scenario_voice(
-        self, character_name: str, scenario_index: int,
-    ) -> str:
-        """删除指定情景的语音文件和引用"""
-        if not character_name:
-            return "请先选择角色！"
-        character = self._config_manager.get_character_by_name(character_name)
-        if not character:
-            return f"找不到角色: {character_name}"
-        if not character.scenarios or scenario_index < 0 or scenario_index >= len(character.scenarios):
-            return "情景不存在！"
-        scenario = character.scenarios[scenario_index]
-        # 先持久化清空引用，再删文件；防止中途崩溃导致 YAML 残留失效路径
-        old_voice_path = scenario.voice_path
-        scenario.voice_path = None
-        scenario.voice_text = None
-        scenario.voice_type = None
-        self._config_manager.save_characters_config()
-        if old_voice_path:
-            try:
-                os.remove(old_voice_path)
-            except OSError:
-                pass
+    def delete_scenario_voice(self, character_name: str, scenario_index: int) -> str:
+        character = self._scenario_character(character_name, scenario_index)
+        original = character.scenarios[scenario_index]
+        scenarios = list(character.scenarios)
+        scenarios[scenario_index] = CharacterScenario(name=original.name)
+        self._persist_scenarios(character, scenarios)
+        self._remove_unused_scenario_voice(character, original.voice_path)
         return "语音已删除"
 
-
-    def save_scenario_voice_text(
-        self, character_name: str, scenario_index: int, voice_text: str,
-    ) -> str:
-        """单独保存情景的语音文本"""
-        if not character_name:
-            return "请先选择角色！"
-        character = self._config_manager.get_character_by_name(character_name)
-        if not character:
-            return f"找不到角色: {character_name}"
-        scenario = character.scenarios[scenario_index]
-        scenario.voice_text = voice_text
-        self._config_manager.save_characters_config()
+    def save_scenario_voice_text(self, character_name: str, scenario_index: int, voice_text: str) -> str:
+        character = self._scenario_character(character_name, scenario_index)
+        scenarios = list(character.scenarios)
+        scenarios[scenario_index] = scenarios[scenario_index].model_copy(update={"voice_text": voice_text})
+        self._persist_scenarios(character, scenarios)
         return "语音文本已保存"
 
-
-    def save_scenario_voice_type(
-        self, character_name: str, scenario_index: int, voice_type: str,
-    ) -> str:
-        """单独保存情景的语音类型（preset/reference）"""
-        if not character_name:
-            return "请先选择角色！"
-        character = self._config_manager.get_character_by_name(character_name)
-        if not character:
-            return f"找不到角色: {character_name}"
-        scenario = character.scenarios[scenario_index]
-        scenario.voice_type = voice_type if voice_type else None
-        self._config_manager.save_characters_config()
+    def save_scenario_voice_type(self, character_name: str, scenario_index: int, voice_type: str) -> str:
+        character = self._scenario_character(character_name, scenario_index)
+        scenarios = list(character.scenarios)
+        scenarios[scenario_index] = CharacterScenario.model_validate({
+            **scenarios[scenario_index].model_dump(), "voice_type": voice_type,
+        })
+        self._validate_scenario_reference(scenarios[scenario_index])
+        self._persist_scenarios(character, scenarios)
         return "语音类型已保存"
 
 
