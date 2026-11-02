@@ -1,0 +1,230 @@
+import { useEffect, useRef, useState } from "react";
+import { Save } from "lucide-react";
+
+import {
+  getBackgroundPreferences,
+  saveBackgroundPreferences,
+  type BackgroundPreferences,
+} from "../../shared/desktop/backgroundApi";
+import { getAutostart, setAutostart } from "../../shared/desktop/autostartApi";
+import { isTauriDesktop } from "../../shared/desktop/desktopApi";
+import { reminderWindow } from "../../shared/desktop/remindersApi";
+import { useI18n } from "../../shared/i18n";
+import { AsyncButton, Button, Select, Switch } from "../../shared/ui";
+import { closePreferenceChangedEvent } from "../../shared/desktop/windowCloseApi";
+
+export function DesktopBackgroundSection() {
+  return isTauriDesktop() ? <BackgroundSettings /> : null;
+}
+
+function BackgroundSettings() {
+  const { language, t } = useI18n();
+  const [draft, setDraft] = useState<BackgroundPreferences | null>(null);
+  const [autostart, setAutoState] = useState<boolean | null>(null);
+  const [autoError, setAutoError] = useState("");
+  const autoRevision = useRef(0);
+  const autoWriting = useRef(false);
+  const [trayAvailable, setTrayAvailable] = useState(false);
+  const [busy, setBusy] = useState<"save" | "autostart" | null>(null);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [loadAttempt, setLoadAttempt] = useState(0);
+
+  useEffect(() => {
+    let stopped = false;
+    setError("");
+    void getBackgroundPreferences().then(
+      (status) => {
+        if (stopped) return;
+        setDraft(status.preferences);
+        setTrayAvailable(status.trayAvailable);
+      },
+      (error: unknown) => {
+        if (!stopped) setError(error instanceof Error ? error.message : String(error));
+      },
+    );
+    return () => {
+      stopped = true;
+    };
+  }, [loadAttempt]);
+
+  useEffect(() => {
+    let stopped = false;
+    const refresh = () => {
+      if (autoWriting.current) return;
+      const revision = ++autoRevision.current;
+      void getAutostart()
+        .then((enabled) => {
+          if (!stopped && revision === autoRevision.current) {
+            setAutoState(enabled);
+            setAutoError("");
+          }
+        })
+        .catch((reason: unknown) => {
+          if (!stopped && revision === autoRevision.current) {
+            setAutoState(null);
+            setAutoError(String(reason));
+          }
+        });
+    };
+    refresh();
+    window.addEventListener("focus", refresh);
+    return () => {
+      stopped = true;
+      window.removeEventListener("focus", refresh);
+    };
+  }, [loadAttempt]);
+
+  const toggleAutostart = async (enabled: boolean) => {
+    if (busy || autoWriting.current) return;
+    autoWriting.current = true;
+    ++autoRevision.current;
+    setBusy("autostart");
+    setAutoError("");
+    try {
+      setAutoState(await setAutostart(enabled));
+    } catch (reason) {
+      setAutoError(String(reason));
+    } finally {
+      autoWriting.current = false;
+      setBusy(null);
+    }
+  };
+
+  useEffect(() => {
+    let stopped = false;
+    const refreshClosePreference = () => {
+      void getBackgroundPreferences()
+        .then((status) => {
+          if (stopped) return;
+          setDraft((current) =>
+            current
+              ? {
+                  ...current,
+                  closeToTray: status.preferences.closeToTray,
+                  rememberCloseAction: status.preferences.rememberCloseAction,
+                }
+              : current,
+          );
+        })
+        .catch((reason: unknown) => {
+          if (!stopped) setError(String(reason));
+        });
+    };
+    window.addEventListener(closePreferenceChangedEvent, refreshClosePreference);
+    return () => {
+      stopped = true;
+      window.removeEventListener(closePreferenceChangedEvent, refreshClosePreference);
+    };
+  }, []);
+
+  const edit = (update: Partial<BackgroundPreferences>) => {
+    setDraft((current) => (current ? { ...current, ...update } : current));
+    setMessage("");
+    setError("");
+  };
+
+  const save = async () => {
+    if (!draft || busy) return;
+    setMessage("");
+    setError("");
+    setBusy("save");
+    try {
+      const status = await saveBackgroundPreferences({ ...draft, language });
+      setDraft(status.preferences);
+      setTrayAvailable(status.trayAvailable);
+      setMessage(t("desktop.background.saved"));
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <section className="section desktop-background-settings page-section-anchor" id="system-background">
+      <div className="section__header">
+        <h2 className="section__title">{t("desktop.background.title")}</h2>
+        <div className="section__actions">
+          <Button onClick={() => void reminderWindow("manage").catch((reason: unknown) => setError(String(reason)))}>
+            {t("desktop.background.panel")}
+          </Button>
+          <AsyncButton
+            disabled={!draft || busy !== null}
+            loading={busy === "save"}
+            variant="primary"
+            icon={<Save aria-hidden className="button__icon" />}
+            onClick={() => void save()}
+          >
+            {t("desktop.background.save")}
+          </AsyncButton>
+        </div>
+      </div>
+      <Switch
+        checked={autostart ?? false}
+        disabled={autostart === null || busy !== null}
+        onChange={(event) => void toggleAutostart(event.target.checked)}
+      >
+        {t("desktop.background.autostart")}
+      </Switch>
+      <p className="field-row__help">{t("desktop.background.autostartHint")}</p>
+      {autoError && (
+        <div role="alert" className="field-error">
+          {autoError}
+          <Button onClick={() => setLoadAttempt((attempt) => attempt + 1)}>{t("desktop.background.retry")}</Button>
+        </div>
+      )}
+      {draft ? (
+        <>
+          <div className="desktop-background-settings__switches">
+            <div className="field-row">
+              <label className="field-row__label-text" htmlFor="desktop-close-behavior">
+                {t("desktop.windowClose.behavior")}
+              </label>
+              <Select
+                id="desktop-close-behavior"
+                value={!draft.rememberCloseAction ? "ask" : draft.closeToTray ? "tray" : "exit"}
+                disabled={busy !== null}
+                onChange={(event) =>
+                  edit({
+                    rememberCloseAction: event.target.value !== "ask",
+                    closeToTray: event.target.value === "tray",
+                  })
+                }
+              >
+                <option value="ask">{t("desktop.windowClose.ask")}</option>
+                <option value="tray" disabled={!trayAvailable}>
+                  {t("desktop.windowClose.tray")}
+                </option>
+                <option value="exit">{t("desktop.windowClose.exit")}</option>
+              </Select>
+            </div>
+            <Switch
+              checked={draft.minimizeToTray}
+              disabled={busy !== null || !trayAvailable}
+              onChange={(event) => edit({ minimizeToTray: event.target.checked })}
+            >
+              {t("desktop.background.minimize")}
+            </Switch>
+          </div>
+          {!trayAvailable && <p className="field-row__help">{t("desktop.background.unavailable")}</p>}
+        </>
+      ) : !error ? (
+        <p role="status">{t("desktop.background.loading")}</p>
+      ) : null}
+      {error ? (
+        <div role="alert" className="field-error">
+          {error}
+          {!draft ? (
+            <Button onClick={() => setLoadAttempt((attempt) => attempt + 1)}>{t("desktop.background.retry")}</Button>
+          ) : null}
+        </div>
+      ) : null}
+      {message ? (
+        <p role="status" className="field-row__help">
+          {message}
+        </p>
+      ) : null}
+    </section>
+  );
+}

@@ -8,6 +8,14 @@ from config.schema import Background
 from tools import file_util
 
 
+@pytest.fixture(autouse=True)
+def _prevent_export_folder_open(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail_open_folder(output_path):
+        pytest.fail(f"test attempted to open export folder for {output_path}")
+
+    monkeypatch.setattr(file_util, "_open_export_folder", fail_open_folder)
+
+
 def _mock_background_dirs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
     data_dir = tmp_path / "data"
     background_dir = data_dir / "backgrounds"
@@ -43,7 +51,7 @@ def test_export_background_writes_package_filenames(tmp_path, monkeypatch):
     )
     output = tmp_path / "room.bg"
 
-    file_util.export_background([background], str(output))
+    file_util.export_background([background], str(output), open_folder=False)
 
     with zipfile.ZipFile(output, "r") as zf:
         data = yaml.safe_load(zf.read("background.yaml"))

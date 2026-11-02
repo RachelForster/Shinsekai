@@ -1,0 +1,218 @@
+from __future__ import annotations
+
+from types import SimpleNamespace
+from unittest.mock import ANY, Mock
+from queue import Queue
+
+import pytest
+
+from application.chat.presentation import assets as presentation
+
+
+class _SystemConfig:
+    background_path = "old-bg"
+    bgm_path = "old-bgm"
+
+    def model_copy(self, *, deep: bool):
+        assert deep is True
+        clone = _SystemConfig()
+        clone.background_path = self.background_path
+        clone.bgm_path = self.bgm_path
+        return clone
+
+
+class _Config:
+    def __init__(self) -> None:
+        self.config = SimpleNamespace(system_config=_SystemConfig())
+        self.saved = 0
+
+    def save_system_config(self) -> None:
+        self.saved += 1
+
+
+def test_load_presentation_assets_handles_transparent_and_selected_background() -> None:
+    config = SimpleNamespace(
+        get_background_by_name=lambda _name: SimpleNamespace(
+            sprites=[{"path": "bg.png"}],
+            bgm_list=["bgm.mp3"],
+        )
+    )
+
+    selected = presentation.load_presentation_assets(config, "room")
+    transparent = presentation.load_presentation_assets(config, "")
+
+    assert selected.background_sprites == [{"path": "bg.png"}]
+    assert selected.bgm_paths == ["bgm.mp3"]
+    assert selected.transparent is False
+    assert transparent.background_sprites == []
+    assert transparent.bgm_paths == []
+    assert transparent.transparent is True
+
+
+def test_prepare_initial_presentation_restores_media_and_falls_back_to_sprite(
+    monkeypatch,
+) -> None:
+    config = _Config()
+    ui = SimpleNamespace(
+        post_background=Mock(),
+        switch_bgm=Mock(),
+        post_dialog_html=Mock(),
+        post_options=Mock(),
+        post_notification=Mock(),
+    )
+    publish_tree = Mock()
+    display_sprite = Mock()
+    monkeypatch.setattr(
+        presentation,
+        "restore_session_presentation",
+        lambda *_args, **_kwargs: False,
+    )
+    monkeypatch.setattr(presentation, "display_initial_sprite", display_sprite)
+    monkeypatch.setattr(presentation, "get_history", lambda: [])
+    assets = presentation.ChatPresentationAssets(
+        background_sprites=[{"path": "bg.png"}],
+        bgm_paths=["bgm.mp3"],
+        transparent=False,
+    )
+
+    presentation.prepare_initial_presentation(
+        messages=[],
+        config=config,
+        ui_updates=ui,
+        presentation_queue=object(),
+        assets=assets,
+        initial_sprite_path="sprite.png",
+        welcome_html="welcome",
+        initial_option="start",
+        ready_notification="ready",
+        publish_branch_tree=publish_tree,
+        translate=lambda key, **_kwargs: key,
+    )
+
+    assert config.config.system_config.background_path == "bg.png"
+    assert config.config.system_config.bgm_path == "bgm.mp3"
+    assert config.saved == 1
+    ui.post_background.assert_called_once_with("bg.png")
+    ui.switch_bgm.assert_called_once_with("bgm.mp3")
+    ui.post_dialog_html.assert_called_once_with(
+        "welcome",
+        is_system=True,
+        color="#84C2D5",
+    )
+    ui.post_options.assert_called_once_with(["start"])
+    ui.post_notification.assert_called_once_with("ready")
+    publish_tree.assert_called_once_with()
+    display_sprite.assert_called_once_with(
+        "sprite.png",
+        config=config,
+        ui_updates=ui,
+    )
+
+
+@pytest.mark.parametrize("restored_sprite", [False, True])
+def test_enabled_initial_sprite_only_falls_back_when_history_restored_no_sprite(
+    monkeypatch, restored_sprite,
+) -> None:
+    """The replay result, not worker scheduling, decides whether to show a fallback."""
+    ui = SimpleNamespace(
+        post_background=Mock(),
+        switch_bgm=Mock(),
+        post_dialog_html=Mock(),
+        post_options=Mock(),
+        post_notification=Mock(),
+    )
+    restore = Mock(return_value=restored_sprite)
+    display = Mock()
+    monkeypatch.setattr(presentation, "restore_session_presentation", restore)
+    monkeypatch.setattr(presentation, "display_initial_sprite", display)
+    monkeypatch.setattr(presentation, "get_history", lambda: [])
+    presentation.prepare_initial_presentation(
+        messages=[{"role": "assistant", "content": "previous dialog"}],
+        config=_Config(),
+        ui_updates=ui,
+        presentation_queue=object(),
+        assets=presentation.ChatPresentationAssets([], [], False),
+        initial_sprite_path="avatar-state.json",
+        show_initial_sprite=True,
+        welcome_html="welcome",
+        initial_option="start",
+        ready_notification="ready",
+        publish_branch_tree=Mock(),
+        translate=lambda key, **_kwargs: key,
+    )
+    restore.assert_called_once()
+    if restored_sprite:
+        display.assert_not_called()
+    else:
+        display.assert_called_once_with("avatar-state.json", config=ANY, ui_updates=ui)
+
+
+@pytest.mark.parametrize("immediate", [False, True])
+@pytest.mark.parametrize("initial_path", ["initial.png", "initial-state.json"])
+def test_replayed_history_sprite_wins_with_fast_or_slow_worker(monkeypatch, immediate, initial_path):
+    from application.chat.dialog_media.replay import enqueue_latest_media_replay
+
+    events = []
+    pending = []
+    ui = Mock()
+    ui.update_sprite.side_effect = lambda name, index: events.append((name, index))
+    monkeypatch.setattr(presentation, "display_initial_sprite",
+                        lambda *_args, **_kwargs: ui.update_sprite("Haru", 0))
+    messages = [{"role": "assistant", "content": {"dialog": [
+        {"character_name": "Haru", "speech": "hello", "sprite": "2", "vibe": "happy"},
+    ]}}]
+
+    class ReplayQueue:
+        def put(self, dialog):
+            if immediate:
+                ui.update_sprite(dialog.name, 2)
+            else:
+                pending.append(dialog)
+
+    presentation.prepare_initial_presentation(
+        messages=messages,
+        config=_Config(),
+        ui_updates=ui,
+        presentation_queue=Queue(),
+        assets=presentation.ChatPresentationAssets([], [], False),
+        initial_sprite_path=initial_path,
+        welcome_html="welcome",
+        initial_option="start",
+        ready_notification="ready",
+        publish_branch_tree=Mock(),
+        translate=lambda key, **_kwargs: key,
+        replay_media=lambda source: enqueue_latest_media_replay(
+            source, dialog_queue=ReplayQueue(), opencc=SimpleNamespace(convert=lambda value: value)),
+    )
+    for dialog in pending:
+        ui.update_sprite(dialog.name, 2)
+    assert events == [("Haru", 2)]
+
+
+@pytest.mark.parametrize("initial_sprite_path", ["sprite.png", ""])
+@pytest.mark.parametrize("restored_sprite", [False, True])
+def test_disabled_initial_sprite_skips_custom_and_system_fallback_but_restores_history(
+    monkeypatch, initial_sprite_path, restored_sprite,
+) -> None:
+    ui = Mock()
+    restore = Mock(return_value=restored_sprite)
+    display = Mock()
+    monkeypatch.setattr(presentation, "restore_session_presentation", restore)
+    monkeypatch.setattr(presentation, "display_initial_sprite", display)
+    presentation.prepare_initial_presentation(
+        messages=[{"role": "assistant", "content": "previous dialog"}],
+        config=_Config(),
+        ui_updates=ui,
+        presentation_queue=object(),
+        assets=presentation.ChatPresentationAssets([], [], False),
+        initial_sprite_path=initial_sprite_path,
+        show_initial_sprite=False,
+        welcome_html="welcome",
+        initial_option="start",
+        ready_notification="ready",
+        publish_branch_tree=Mock(),
+        translate=lambda key, **_kwargs: key,
+    )
+    restore.assert_called_once()
+    display.assert_not_called()
+    ui.post_notification.assert_called_once_with("ready")

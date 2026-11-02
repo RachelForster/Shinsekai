@@ -38,6 +38,34 @@ describe("TaskProgress", () => {
     expect(screen.queryByText(/%/)).not.toBeInTheDocument();
   });
 
+  it("accepts localized task presentation labels", () => {
+    render(
+      <TaskProgress
+        labels={{ message: "正在初始化长期记忆…", phase: "初始化", status: "进行中" }}
+        task={{ message: "Initializing long-term memory.", phase: "initialize", status: "running" }}
+      />,
+    );
+
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("初始化");
+    expect(status).toHaveTextContent("进行中");
+    expect(status).toHaveTextContent("正在初始化长期记忆…");
+    expect(status).not.toHaveTextContent("initialize");
+    expect(status).not.toHaveTextContent("running");
+  });
+
+  it("does not repeat a localized message that is identical to the phase", () => {
+    const { container } = render(
+      <TaskProgress
+        labels={{ message: "正在下载 embedding 模型…", phase: "正在下载 embedding 模型…", status: "进行中" }}
+        task={{ message: "Downloading model.", phase: "download", status: "running" }}
+      />,
+    );
+
+    expect(screen.getAllByText("正在下载 embedding 模型…")).toHaveLength(1);
+    expect(container.querySelector(".task-progress__message")).not.toBeInTheDocument();
+  });
+
   it("renders fallback notices and failed package guidance", () => {
     const { rerender } = render(
       <TaskProgress

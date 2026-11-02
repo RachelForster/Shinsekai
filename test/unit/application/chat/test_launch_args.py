@@ -1,0 +1,148 @@
+import json
+import os
+import unittest
+from unittest.mock import patch
+
+from application.chat.runtime.launch_args import (
+    CHAT_LAUNCH_CONFIG_ENV,
+    build_chat_arg_parser,
+    load_chat_launch_config,
+    peek_chat_launch_config,
+    peek_chat_launch_endpoints,
+)
+
+
+def _tr(key, **_kwargs):
+    return key
+
+
+class ChatLaunchArgsTests(unittest.TestCase):
+    def test_ai_player_dialogue_defaults_on_and_explicit_false_survives_config(self):
+        parser = build_chat_arg_parser(_tr)
+        self.assertTrue(parser.parse_args([]).allow_player_dialogue)
+        self.assertFalse(parser.parse_args(["--no-allow-player-dialogue"]).allow_player_dialogue)
+        with patch.dict(os.environ, {CHAT_LAUNCH_CONFIG_ENV: json.dumps({"allow_player_dialogue": False})}):
+            parser.set_defaults(**load_chat_launch_config())
+        self.assertFalse(parser.parse_args([]).allow_player_dialogue)
+
+    def test_initial_sprite_defaults_to_visible_and_can_be_disabled(self):
+        parser = build_chat_arg_parser(_tr)
+        self.assertTrue(parser.parse_args([]).show_initial_sprite)
+        self.assertFalse(parser.parse_args(["--no-show-initial-sprite"]).show_initial_sprite)
+        with patch.dict(os.environ, {CHAT_LAUNCH_CONFIG_ENV: json.dumps({"show_initial_sprite": False})}):
+            config = load_chat_launch_config()
+        parser.set_defaults(**config)
+        self.assertFalse(parser.parse_args([]).show_initial_sprite)
+
+    def test_explicit_conversation_edit_flag_round_trips_through_launch_config(self):
+        with patch.dict(os.environ, {CHAT_LAUNCH_CONFIG_ENV: json.dumps({"use_current_template_for_history": True})}):
+            config = load_chat_launch_config()
+        parser = build_chat_arg_parser(_tr)
+        parser.set_defaults(**config)
+        self.assertTrue(parser.parse_args([]).use_current_template_for_history)
+        self.assertFalse(build_chat_arg_parser(_tr).parse_args([]).use_current_template_for_history)
+
+    def test_parser_accepts_mirror_stream_endpoint(self):
+        parser = build_chat_arg_parser(_tr)
+
+        args = parser.parse_args(
+            [
+                "--stream-endpoint",
+                "ws://127.0.0.1:8788/ws?sessionId=s1&role=producer",
+                "--init-stream-endpoint",
+                "ws://127.0.0.1:8788/ws?sessionId=init&role=producer",
+                "--mirror-stream-endpoint",
+                "ws://127.0.0.1:8788/ws?sessionId=s1&role=producer",
+            ]
+        )
+
+        self.assertEqual(
+            args.stream_endpoint, "ws://127.0.0.1:8788/ws?sessionId=s1&role=producer"
+        )
+        self.assertEqual(
+            args.init_stream_endpoint,
+            "ws://127.0.0.1:8788/ws?sessionId=init&role=producer",
+        )
+        self.assertEqual(
+            args.mirror_stream_endpoint,
+            "ws://127.0.0.1:8788/ws?sessionId=s1&role=producer",
+        )
+
+    def test_parser_accepts_semantic_media_selection(self):
+        parser = build_chat_arg_parser(_tr)
+
+        args = parser.parse_args(["--media-selection-mode", "semantic"])
+
+        self.assertEqual(args.media_selection_mode, "semantic")
+
+    def test_bridge_launch_config_is_loaded_from_json_environment(self):
+        payload = {
+            "history": "data/chat_history/session",
+            "stream_endpoint": "ws://127.0.0.1:8788/ws?sessionId=s1&role=producer",
+            "workflow": "assets/system/workflow/default.yaml",
+        }
+
+        with patch.dict(
+            os.environ,
+            {CHAT_LAUNCH_CONFIG_ENV: json.dumps(payload)},
+            clear=False,
+        ):
+            self.assertEqual(load_chat_launch_config(), payload)
+            self.assertNotIn(CHAT_LAUNCH_CONFIG_ENV, os.environ)
+
+    def test_bridge_launch_config_can_be_peeked_before_it_is_consumed(self):
+        payload = {
+            "init_stream_endpoint": "ws://127.0.0.1:8788/ws?sessionId=init",
+            "stream_endpoint": "ws://127.0.0.1:8788/ws?sessionId=runtime",
+        }
+
+        with patch.dict(
+            os.environ,
+            {CHAT_LAUNCH_CONFIG_ENV: json.dumps(payload)},
+            clear=False,
+        ):
+            self.assertEqual(peek_chat_launch_config(), payload)
+            self.assertIn(CHAT_LAUNCH_CONFIG_ENV, os.environ)
+            self.assertEqual(load_chat_launch_config(), payload)
+            self.assertNotIn(CHAT_LAUNCH_CONFIG_ENV, os.environ)
+
+    def test_endpoint_peek_survives_an_invalid_unrelated_launch_field(self):
+        raw = json.dumps(
+            {
+                "history": ["invalid"],
+                "init_stream_endpoint": "ws://127.0.0.1:8788/ws?sessionId=init",
+            }
+        )
+
+        with patch.dict(
+            os.environ,
+            {CHAT_LAUNCH_CONFIG_ENV: raw},
+            clear=False,
+        ):
+            self.assertEqual(
+                peek_chat_launch_endpoints(),
+                {"init_stream_endpoint": ("ws://127.0.0.1:8788/ws?sessionId=init")},
+            )
+            with self.assertRaises(ValueError):
+                load_chat_launch_config()
+
+    def test_bridge_launch_config_rejects_unknown_or_non_string_values(self):
+        with patch.dict(
+            os.environ,
+            {CHAT_LAUNCH_CONFIG_ENV: '{"unknown": "value"}'},
+            clear=False,
+        ):
+            with self.assertRaises(ValueError):
+                load_chat_launch_config()
+
+        with patch.dict(
+            os.environ,
+            {CHAT_LAUNCH_CONFIG_ENV: '{"history": ["not", "a", "string"]}'},
+            clear=False,
+        ):
+            with self.assertRaises(ValueError):
+                load_chat_launch_config()
+
+
+if __name__ == "__main__":
+    unittest.main()

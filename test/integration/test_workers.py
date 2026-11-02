@@ -1,7 +1,7 @@
-"""Integration tests: LLMWorker / TTSWorker / UIWorker QThread lifecycle.
+"""Integration tests: LLMWorker / DialogMediaWorker / PresentationWorker thread lifecycle.
 
-Requires pytest-qt for QApplication event loop.  All adapters are mocked;
-workers use real QThread, real queues, and the real handler dispatch chain.
+Workers use standard-library threads. All adapters are mocked;
+workers use standard threads, real queues, and the real handler dispatch chain.
 """
 
 from __future__ import annotations
@@ -13,12 +13,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from sdk.messages import UserInputMessage, LLMDialogMessage, TTSOutputMessage
+from sdk.messages import UserInputMessage, LLMDialogMessage, PresentationMessage
 from test.mocks import MockLLMAdapter
 
-# QThread workers
-from core.runtime.workers import LLMWorker, TTSWorker, UIWorker
-from core.runtime.app_runtime import AppRuntime, set_app_runtime
+# Runtime workers
+from application.runtime.workers import LLMWorker, DialogMediaWorker, PresentationWorker
+from application.runtime.context import AppRuntime, set_app_runtime
 
 pytestmark = pytest.mark.integration
 
@@ -31,7 +31,7 @@ def _make_runtime_for_workers(mock_llm_adapter=None, **overrides):
     """Build a minimal AppRuntime suitable for worker testing."""
     from config.schema import AppConfig, ApiConfig, SystemConfig, Character, Background
     from config.config_manager import ConfigManager
-    from llm.llm_manager import LLMManager
+    from ai.llm.llm_manager import LLMManager
     from test.conftest import make_app_config
 
     app_config = make_app_config()
@@ -56,8 +56,8 @@ def _make_runtime_for_workers(mock_llm_adapter=None, **overrides):
         t2i_manager=None,
         bgm_list=[],
         user_input_queue=overrides.get("user_input_queue", Queue()),
-        tts_queue=overrides.get("tts_queue", Queue()),
-        audio_path_queue=overrides.get("audio_path_queue", Queue()),
+        dialog_queue=overrides.get("dialog_queue", Queue()),
+        presentation_queue=overrides.get("presentation_queue", Queue()),
         text_processor=MagicMock(),
         opencc=MagicMock(),
     )
@@ -79,8 +79,8 @@ def _wait_for_unfinished_tasks(q: Queue, expected: int = 0, timeout: float = 5.0
 # ---------------------------------------------------------------------------
 
 class TestLLMWorker:
-    def test_worker_creates_and_runs(self, qtbot):
-        """LLMWorker starts, processes a message, puts dialogs into tts_queue, then stops."""
+    def test_worker_creates_and_runs(self):
+        """LLMWorker starts, processes a message, puts dialogs into dialog_queue, then stops."""
         mock_llm = MockLLMAdapter(responses=[
             json.dumps({"character_name": "TestChar", "speech": "Hello from LLM!", "sprite": "0"})
         ])
@@ -89,7 +89,7 @@ class TestLLMWorker:
 
         worker = LLMWorker(
             input_queue=rt.user_input_queue,
-            output_queue=rt.tts_queue,
+            output_queue=rt.dialog_queue,
         )
         worker.start()
         assert worker.isRunning()
@@ -97,13 +97,13 @@ class TestLLMWorker:
         # Feed a message
         rt.user_input_queue.put(UserInputMessage(text="Hi!"))
 
-        # Wait for output in tts_queue (poll with timeout)
+        # Wait for output in dialog_queue (poll with timeout)
         try:
-            result = rt.tts_queue.get(timeout=5)
+            result = rt.dialog_queue.get(timeout=5)
         except Exception:
             worker.stop()
             worker.wait(3000)
-            pytest.fail("Timed out waiting for tts_queue output")
+            pytest.fail("Timed out waiting for dialog_queue output")
 
         assert isinstance(result, LLMDialogMessage)
         assert result.name == "TestChar"
@@ -113,7 +113,7 @@ class TestLLMWorker:
         worker.wait(3000)
         assert not worker.isRunning()
 
-    def test_worker_stops_cleanly_without_processing(self, qtbot):
+    def test_worker_stops_cleanly_without_processing(self):
         """Worker can be stopped even if no messages were processed."""
         mock_llm = MockLLMAdapter(responses=["Unused"])
         rt = _make_runtime_for_workers(mock_llm_adapter=mock_llm, is_streaming=False)
@@ -121,7 +121,7 @@ class TestLLMWorker:
 
         worker = LLMWorker(
             input_queue=rt.user_input_queue,
-            output_queue=rt.tts_queue,
+            output_queue=rt.dialog_queue,
         )
         worker.start()
         assert worker.isRunning()
@@ -130,7 +130,7 @@ class TestLLMWorker:
         worker.wait(3000)
         assert not worker.isRunning()
 
-    def test_worker_handles_none_termination_signal(self, qtbot):
+    def test_worker_handles_none_termination_signal(self):
         """None in the input queue triggers worker exit."""
         mock_llm = MockLLMAdapter(responses=["Unused"])
         rt = _make_runtime_for_workers(mock_llm_adapter=mock_llm, is_streaming=False)
@@ -138,7 +138,7 @@ class TestLLMWorker:
 
         worker = LLMWorker(
             input_queue=rt.user_input_queue,
-            output_queue=rt.tts_queue,
+            output_queue=rt.dialog_queue,
         )
         worker.start()
         # Send None as termination
@@ -147,7 +147,7 @@ class TestLLMWorker:
         worker.wait(3000)
         assert not worker.isRunning()
 
-    def test_worker_streaming_mode(self, qtbot):
+    def test_worker_streaming_mode(self):
         """LLMWorker in streaming mode parses stream chunks correctly."""
         mock_llm = MockLLMAdapter(responses=[
             json.dumps({"character_name": "Alice", "speech": "Streamed!", "sprite": "1"})
@@ -157,13 +157,13 @@ class TestLLMWorker:
 
         worker = LLMWorker(
             input_queue=rt.user_input_queue,
-            output_queue=rt.tts_queue,
+            output_queue=rt.dialog_queue,
         )
         worker.start()
         rt.user_input_queue.put(UserInputMessage(text="Stream test"))
 
         try:
-            result = rt.tts_queue.get(timeout=5)
+            result = rt.dialog_queue.get(timeout=5)
         except Exception:
             worker.stop()
             worker.wait(3000)
@@ -175,7 +175,7 @@ class TestLLMWorker:
         worker.stop()
         worker.wait(3000)
 
-    def test_multiple_messages_sequential(self, qtbot):
+    def test_multiple_messages_sequential(self):
         """Worker processes multiple messages sequentially."""
         mock_llm = MockLLMAdapter(responses=[
             json.dumps({"character_name": "A", "speech": "First", "sprite": "0"}),
@@ -186,22 +186,22 @@ class TestLLMWorker:
 
         worker = LLMWorker(
             input_queue=rt.user_input_queue,
-            output_queue=rt.tts_queue,
+            output_queue=rt.dialog_queue,
         )
         worker.start()
 
         rt.user_input_queue.put(UserInputMessage(text="Q1"))
-        r1 = rt.tts_queue.get(timeout=5)
+        r1 = rt.dialog_queue.get(timeout=5)
         assert r1.name == "A"
 
         rt.user_input_queue.put(UserInputMessage(text="Q2"))
-        r2 = rt.tts_queue.get(timeout=5)
+        r2 = rt.dialog_queue.get(timeout=5)
         assert r2.name == "B"
 
         worker.stop()
         worker.wait(3000)
 
-    def test_worker_reports_llm_http_402_as_system_message(self, qtbot):
+    def test_worker_reports_llm_http_402_as_system_message(self):
         """LLM API 402 errors are surfaced as clear system messages."""
         error_cls = type("APIStatusError", (Exception,), {"__module__": "openai"})
 
@@ -223,19 +223,19 @@ class TestLLMWorker:
 
         worker = LLMWorker(
             input_queue=rt.user_input_queue,
-            output_queue=rt.tts_queue,
+            output_queue=rt.dialog_queue,
         )
         worker.start()
         rt.user_input_queue.put(UserInputMessage(text="Trigger 402"))
 
         try:
-            out = rt.audio_path_queue.get(timeout=5)
+            out = rt.presentation_queue.get(timeout=5)
         except Exception:
             worker.stop()
             worker.wait(3000)
             pytest.fail("Timed out waiting for HTTP error system message")
 
-        assert isinstance(out, TTSOutputMessage)
+        assert isinstance(out, PresentationMessage)
         assert out.is_system_message is True
         assert "402" in (out.text or "")
         assert "额度" in (out.text or "")
@@ -246,18 +246,18 @@ class TestLLMWorker:
 
 
 # ---------------------------------------------------------------------------
-# TTSWorker
+# DialogMediaWorker
 # ---------------------------------------------------------------------------
 
-class TestTTSWorker:
-    def test_worker_starts_and_stops(self, qtbot):
+class TestDialogMediaWorker:
+    def test_worker_starts_and_stops(self):
         mock_llm = MockLLMAdapter(responses=[""])
         rt = _make_runtime_for_workers(mock_llm_adapter=mock_llm)
         set_app_runtime(rt)
 
-        worker = TTSWorker(
-            input_queue=rt.tts_queue,
-            output_queue=rt.audio_path_queue,
+        worker = DialogMediaWorker(
+            input_queue=rt.dialog_queue,
+            output_queue=rt.presentation_queue,
         )
         worker.start()
         assert worker.isRunning()
@@ -266,103 +266,103 @@ class TestTTSWorker:
         worker.wait(3000)
         assert not worker.isRunning()
 
-    def test_worker_dispatches_narr_message(self, qtbot):
-        """TTSWorker dispatches a NARR message through the handler chain."""
+    def test_worker_dispatches_narr_message(self):
+        """DialogMediaWorker dispatches a NARR message through the handler chain."""
         mock_llm = MockLLMAdapter(responses=[""])
         rt = _make_runtime_for_workers(mock_llm_adapter=mock_llm)
         set_app_runtime(rt)
 
-        worker = TTSWorker(
-            input_queue=rt.tts_queue,
-            output_queue=rt.audio_path_queue,
+        worker = DialogMediaWorker(
+            input_queue=rt.dialog_queue,
+            output_queue=rt.presentation_queue,
         )
         worker.start()
 
         msg = LLMDialogMessage(name="NARR", text="Once upon a time...", asset_id="-1")
-        rt.tts_queue.put(msg)
+        rt.dialog_queue.put(msg)
 
         try:
-            out = rt.audio_path_queue.get(timeout=5)
+            out = rt.presentation_queue.get(timeout=5)
         except Exception:
             worker.stop()
             worker.wait(3000)
-            pytest.fail("Timed out waiting for audio_path_queue output")
+            pytest.fail("Timed out waiting for presentation_queue output")
 
-        assert isinstance(out, TTSOutputMessage)
+        assert isinstance(out, PresentationMessage)
         assert out.name == "NARR"
         assert out.is_system_message is True
-        assert _wait_for_unfinished_tasks(rt.tts_queue)
+        assert _wait_for_unfinished_tasks(rt.dialog_queue)
 
         worker.stop()
         worker.wait(3000)
 
-    def test_worker_marks_tts_task_done_on_dispatch_error(self, qtbot):
+    def test_worker_marks_tts_task_done_on_dispatch_error(self):
         mock_llm = MockLLMAdapter(responses=[""])
         rt = _make_runtime_for_workers(mock_llm_adapter=mock_llm)
         set_app_runtime(rt)
 
-        worker = TTSWorker(
-            input_queue=rt.tts_queue,
-            output_queue=rt.audio_path_queue,
+        worker = DialogMediaWorker(
+            input_queue=rt.dialog_queue,
+            output_queue=rt.presentation_queue,
         )
-        worker.tts_message_dispatcher = MagicMock()
-        worker.tts_message_dispatcher.dispatch.side_effect = RuntimeError("boom")
+        worker.dialog_media_dispatcher = MagicMock()
+        worker.dialog_media_dispatcher.dispatch.side_effect = RuntimeError("boom")
         worker.start()
 
-        rt.tts_queue.put(LLMDialogMessage(name="TestChar", text="Failure path", asset_id="-1"))
+        rt.dialog_queue.put(LLMDialogMessage(name="TestChar", text="Failure path", asset_id="-1"))
 
-        assert _wait_for_unfinished_tasks(rt.tts_queue)
+        assert _wait_for_unfinished_tasks(rt.dialog_queue)
         worker.stop()
         worker.wait(3000)
 
 
-class TestUIWorker:
-    def test_worker_marks_audio_task_done_after_dispatch(self, qtbot):
+class TestPresentationWorker:
+    def test_worker_marks_audio_task_done_after_dispatch(self):
         mock_llm = MockLLMAdapter(responses=[""])
         rt = _make_runtime_for_workers(mock_llm_adapter=mock_llm)
         set_app_runtime(rt)
 
-        worker = UIWorker(rt.audio_path_queue)
+        worker = PresentationWorker(rt.presentation_queue)
         worker.ui_out_dispatcher = MagicMock()
 
-        out = TTSOutputMessage(
+        out = PresentationMessage(
             audio_path="",
             name="NARR",
             text="Displayed",
             asset_id="-1",
             is_system_message=True,
         )
-        rt.audio_path_queue.put(out)
-        rt.audio_path_queue.put(None)
+        rt.presentation_queue.put(out)
+        rt.presentation_queue.put(None)
 
         worker.run()
 
         worker.ui_out_dispatcher.dispatch.assert_called_once_with(out)
-        assert rt.audio_path_queue.unfinished_tasks == 0
+        assert rt.presentation_queue.unfinished_tasks == 0
 
-    def test_worker_marks_audio_task_done_on_dispatch_error(self, qtbot):
+    def test_worker_marks_audio_task_done_on_dispatch_error(self):
         mock_llm = MockLLMAdapter(responses=[""])
         rt = _make_runtime_for_workers(mock_llm_adapter=mock_llm)
         set_app_runtime(rt)
 
-        worker = UIWorker(rt.audio_path_queue)
+        worker = PresentationWorker(rt.presentation_queue)
         worker.ui_out_dispatcher = MagicMock()
         worker.ui_out_dispatcher.dispatch.side_effect = RuntimeError("boom")
 
-        out = TTSOutputMessage(
+        out = PresentationMessage(
             audio_path="",
             name="NARR",
             text="",
             asset_id="-1",
             is_system_message=True,
         )
-        rt.audio_path_queue.put(out)
-        rt.audio_path_queue.put(None)
+        rt.presentation_queue.put(out)
+        rt.presentation_queue.put(None)
 
         worker.run()
 
         worker.ui_out_dispatcher.dispatch.assert_called_once_with(out)
-        assert rt.audio_path_queue.unfinished_tasks == 0
+        assert rt.presentation_queue.unfinished_tasks == 0
 
 
 # ---------------------------------------------------------------------------
@@ -370,8 +370,8 @@ class TestUIWorker:
 # ---------------------------------------------------------------------------
 
 class TestFullPipeline:
-    def test_user_input_to_audio_output(self, qtbot):
-        """End-to-end: UserInputMessage → LLMWorker → TTSWorker → audio_path_queue."""
+    def test_user_input_to_presentation_output(self):
+        """End-to-end: UserInputMessage → LLMWorker → DialogMediaWorker → presentation_queue."""
         mock_llm = MockLLMAdapter(responses=[
             json.dumps({"character_name": "TestChar", "speech": "Pipeline works!", "sprite": "0"})
         ])
@@ -380,32 +380,32 @@ class TestFullPipeline:
 
         llm_worker = LLMWorker(
             input_queue=rt.user_input_queue,
-            output_queue=rt.tts_queue,
+            output_queue=rt.dialog_queue,
         )
-        tts_worker = TTSWorker(
-            input_queue=rt.tts_queue,
-            output_queue=rt.audio_path_queue,
+        dialog_media_worker = DialogMediaWorker(
+            input_queue=rt.dialog_queue,
+            output_queue=rt.presentation_queue,
         )
         llm_worker.start()
-        tts_worker.start()
+        dialog_media_worker.start()
 
         # Feed user input
         rt.user_input_queue.put(UserInputMessage(text="Pipe me through!"))
 
         # Wait for final output
         try:
-            final = rt.audio_path_queue.get(timeout=10)
+            final = rt.presentation_queue.get(timeout=10)
         except Exception:
             llm_worker.stop()
-            tts_worker.stop()
+            dialog_media_worker.stop()
             llm_worker.wait(3000)
-            tts_worker.wait(3000)
+            dialog_media_worker.wait(3000)
             pytest.fail("Timed out waiting for pipeline output")
 
-        assert isinstance(final, TTSOutputMessage)
+        assert isinstance(final, PresentationMessage)
         assert "Pipeline works!" in (final.text or "")
 
         llm_worker.stop()
-        tts_worker.stop()
+        dialog_media_worker.stop()
         llm_worker.wait(3000)
-        tts_worker.wait(3000)
+        dialog_media_worker.wait(3000)

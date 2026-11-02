@@ -1,4 +1,6 @@
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
+import { builtinChatThemeManifests } from "../theme/builtinChatThemes";
+import { DEFAULT_CHAT_THEME_ID, type ChatThemeSummary } from "../theme/chatTheme";
 import { DEFAULT_CHARACTER_COLOR } from "../constants";
 import type {
   AppConfig,
@@ -12,6 +14,7 @@ import type {
 } from "./types";
 
 export const sampleConfig: AppConfig = {
+  vision_available: true,
   adapter_catalog: {
     asr: [
       {
@@ -63,6 +66,21 @@ export const sampleConfig: AppConfig = {
       { label: "IndexTTS", schema: {}, value: "index-tts" },
       { label: "CosyVoice", schema: {}, value: "cosyvoice" },
     ],
+    vision: [
+      { label: "自动选择", schema: {}, value: "auto" },
+      {
+        label: "DeepSeek Vision",
+        schema: { detail: { choices: ["auto", "low", "high", "original"], default: "auto", type: "str" } },
+        value: "deepseek",
+      },
+      { label: "OpenAI Vision", schema: {}, value: "chatgpt" },
+      { label: "Gemini Vision", schema: {}, value: "gemini" },
+      { label: "Claude Vision", schema: {}, value: "claude" },
+      { label: "豆包视觉", schema: {}, value: "doubao" },
+      { label: "通义千问视觉", schema: {}, value: "qwen" },
+      { label: "Ollama Vision（本地）", schema: {}, value: "ollama" },
+      { label: "Moondream（本地）", schema: {}, value: "moondream" },
+    ],
   },
   api_config: {
     gpt_sovits_api_path: "",
@@ -79,9 +97,17 @@ export const sampleConfig: AppConfig = {
     t2i_output_node_id: "9",
     llm_api_key: { Deepseek: "" },
     llm_base_url: "https://api.deepseek.com/v1",
+    llm_base_urls: { Deepseek: "https://api.deepseek.com/v1" },
     llm_model: {},
     llm_provider: "Deepseek",
     is_streaming: true,
+    vision_provider: "auto",
+    vision_model: {},
+    vision_config_version: 1,
+    interrupt_enabled: true,
+    is_batch_input_enabled: false,
+    batch_input_timeout: 5,
+    batch_input_separator: "\n---\n",
     temperature: 0.7,
     repetition_penalty: 1,
     presence_penalty: 0,
@@ -92,11 +118,18 @@ export const sampleConfig: AppConfig = {
     history_recent_messages: 20,
     max_tool_result_chars: 6000,
     max_active_tool_groups: 3,
+    knowledge_enabled: false,
+    knowledge_search_limit: 5,
+    memory_auto_enabled: false,
+    memory_extract_interval_turns: 5,
+    memory_search_limit: 5,
+    memory_recent_buffer_messages: 16,
     hugging_face_access_token: "",
     llm_extra_configs: {},
     tts_extra_configs: {},
     asr_extra_configs: {},
     t2i_extra_configs: {},
+    vision_extra_configs: {},
   },
   background_list: [
     {
@@ -108,8 +141,22 @@ export const sampleConfig: AppConfig = {
       bgm_tags: "音乐 1：安静、夜晚\n",
     },
   ],
+  effect_list: [
+    {
+      name: "默认特效",
+      color: "#5b8def",
+      prompt_text: "通用场景音效",
+      audio_list: [],
+      audio_tags: "",
+      image_list: [],
+      image_tags: "",
+      image_audio_list: [],
+    },
+  ],
   characters: [
     {
+      avatar_type: "static",
+      avatars: {},
       name: "Nanami",
       color: DEFAULT_CHARACTER_COLOR,
       sprite_prefix: "nanami",
@@ -146,12 +193,21 @@ export const sampleConfig: AppConfig = {
     live_room_id: "",
     chat_window_geometry_b64: "",
     chat_ui_theme_path: "",
+    chat_ui_theme_id: DEFAULT_CHAT_THEME_ID,
+    chat_ui_runtime_mode: "react",
+    react_chat_fork_experimental_enabled: false,
+    react_chat_flowchart_experimental_enabled: false,
+    story_system_enabled: false,
     mirror_auto_detect_china: true,
     mirror_region: "auto",
     huggingface_mirror_url: "",
     huggingface_cache_dir: "./data/cache/huggingface",
     github_mirror_url: "",
     pypi_mirror_url: "",
+    network_proxy_enabled: false,
+    http_proxy_url: "",
+    https_proxy_url: "",
+    socks5_proxy_url: "",
     music_cover_work_dir: "./data/music_cover",
     music_cover_yt_dlp_exe: "",
     music_cover_ffmpeg_exe: "",
@@ -263,15 +319,64 @@ export const sampleMcpTools: McpToolPreview[] = [
 ];
 
 export const sampleChatSnapshot: ChatSnapshot = {
-  backgroundPath: "/assets/system/picture/shinsekai.png",
+  backgroundPath: "",
   characterName: "Nanami",
   dialogText: "欢迎来到新世界。这里是 React 舞台预览，真实聊天事件会从 platform adapter 进入状态机。",
-  historyPath: "./data/chat_history/preview.json",
+  experimentalFeatures: {
+    conversationTree: true,
+    forkHistory: true,
+  },
+  conversationTree: {
+    activeBranchId: "main",
+    branches: [{ id: "main", label: "Main", parentId: null }],
+  },
+  historyEntries: [
+    { id: "history-0", role: "system", text: "旁白: 欢迎来到新世界。" },
+    {
+      createdAt: new Date(2026, 0, 2, 15, 4).getTime(),
+      id: "history-1",
+      revertUserIndex: 0,
+      role: "user",
+      text: "你: 你好，Nanami。",
+    },
+    { id: "history-2", role: "assistant", text: "Nanami: 欢迎来到新世界。" },
+  ],
+  historyPath: "./data/chat_history/preview",
   inputDraft: "",
   numericInfo: "idle",
   options: ["继续", "查看历史", "切换角色"],
-  sprites: [{ id: "nanami-default", path: "/assets/present_example.png", label: "Nanami" }],
+  runtimeMode: "react",
+  sprites: [
+    {
+      identityKey: "character:nanami",
+      avatarType: "static",
+      modelUrl: "",
+      id: "nanami-default",
+      path: "/assets/present_example.png",
+      label: "Nanami",
+    },
+  ],
+  stats: [
+    { icon: "heart", label: "HP", max: 100, value: 72 },
+    { icon: "sparkles", label: "Affinity", max: 100, value: 38 },
+    { icon: "coins", label: "Gold", value: 320 },
+  ],
   status: "idle",
+  turnOptions: {
+    batchEnabled: false,
+    batchIdleSeconds: 5,
+    interruptEnabled: true,
+  },
+  turnState: {
+    enabled: false,
+    pendingCount: 0,
+    pendingMessages: [],
+    remainingSeconds: null,
+    scheduled: false,
+    typing: false,
+  },
+  userDisplayName: "你",
+  voiceLanguage: "ja",
 };
 
 export const sampleChatTheme: ChatThemePayload = {
@@ -290,6 +395,16 @@ export const sampleChatTheme: ChatThemePayload = {
   },
   themeColor: "rgba(50,50,50,200)",
 };
+
+export const sampleChatThemeManifests = builtinChatThemeManifests;
+
+export const sampleChatThemeSummaries: ChatThemeSummary[] = Object.values(sampleChatThemeManifests).map((manifest) => ({
+  id: manifest.id,
+  name: manifest.name,
+  author: manifest.author,
+  version: manifest.version,
+  source: "builtin",
+}));
 
 export const sampleLastLaunch: ChatLaunchPayload = {
   backgroundName: "默认房间",

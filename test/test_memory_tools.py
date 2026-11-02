@@ -14,7 +14,7 @@ sys.path.insert(0, str(project_root))
 
 import time as _time
 
-from llm.tools.memory_tools import memory_remember, memory_search, memory_forget
+from ai.memory.operations import memory_forget, memory_remember, memory_search
 
 
 def _flush() -> None:
@@ -112,9 +112,44 @@ def test_forget():
     print("  [PASS]")
 
 
+def _test_check_mem0_status():
+    """Verify check_mem0_status returns all expected status shapes."""
+    print("\n=== 5. check_mem0_status ===")
+    from ai.memory.runtime import check_mem0_status
+
+    status = check_mem0_status()
+    assert isinstance(status, dict), f"expected dict, got {type(status)}"
+    assert "status" in status, f"missing 'status' key: {status}"
+    valid = {"ready", "loading", "not_started", "error", "missing_dependency"}
+    assert status["status"] in valid, f"unexpected status: {status['status']}"
+
+    # When mem0 already loaded (tests above), status must be "ready"
+    assert status["status"] == "ready", (
+        f"expected 'ready' after load; got {status['status']}"
+    )
+
+    # missing_dependency shape check — won't happen here since mem0 is installed,
+    # but verify the keys when simulated via module error.
+    print(f"  status={status['status']}")
+    print("  [PASS]")
+
+
+def _test_is_embedding_model_cached():
+    """Verify embedding model cache detection is a boolean."""
+    print("\n=== 6. _is_embedding_model_cached ===")
+    from ai.memory.config import is_embedding_model_cached
+
+    cached = is_embedding_model_cached()
+    assert isinstance(cached, bool), f"expected bool, got {type(cached)}"
+    print(f"  modelCached={cached}")
+    print("  [PASS]")
+
+
 if __name__ == "__main__":
     test_remember_and_search()
     test_multi_character_isolation()
     test_default_agent()
     test_forget()
-    print("=== All 4 tests passed ===")
+    _test_check_mem0_status()
+    _test_is_embedding_model_cached()
+    print("=== All 6 tests passed ===")

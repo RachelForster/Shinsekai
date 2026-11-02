@@ -15,6 +15,9 @@ class T2IAdapter(ABC):
           node IDs, etc.) are passed by subclasses / factories; defaults live in ``ApiConfig``.
     """
 
+    # Opt in when generate_image accepts reference_image_path as a local image.
+    supports_reference_images = False
+
     @classmethod
     def get_config_schema(cls) -> dict[str, dict]:
         """Metadata for adapter-specific options; empty ``{}`` means none."""

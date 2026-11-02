@@ -1,0 +1,176 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="960"
+  height="540"
+  viewBox="0 0 960 540"
+>
+  <defs>
+    <linearGradient id="sky" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#2e9ce5" />
+      <stop offset="0.58" stop-color="#b9f0f4" />
+      <stop offset="1" stop-color="#72c780" />
+    </linearGradient>
+    <linearGradient id="mountain" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#e6fbff" />
+      <stop offset="0.3" stop-color="#74aeca" />
+      <stop offset="1" stop-color="#438878" />
+    </linearGradient>
+    <filter
+      id="shadow"
+      color-interpolation-filters="sRGB"
+      x="-20%"
+      y="-20%"
+      width="140%"
+      height="140%"
+    >
+      <feDropShadow
+        dx="0"
+        dy="2"
+        stdDeviation="2"
+        flood-color="#000"
+        flood-opacity="0.45"
+      />
+    </filter>
+  </defs>
+  <rect width="960" height="540" fill="url(#sky)" />
+  <g opacity="0.62">
+    <ellipse cx="180" cy="122" rx="96" ry="44" fill="#e7ffff" />
+    <ellipse cx="246" cy="132" rx="88" ry="38" fill="#e7ffff" />
+    <ellipse cx="737" cy="145" rx="116" ry="40" fill="#e7ffff" />
+  </g>
+  <path d="M436 88 L542 330 H296 Z" fill="url(#mountain)" opacity="0.78" />
+  <path d="M594 122 L760 330 H438 Z" fill="url(#mountain)" opacity="0.72" />
+  <path d="M232 176 L380 340 H82 Z" fill="url(#mountain)" opacity="0.5" />
+  <path
+    d="M0 360 C160 312 260 385 420 340 C592 292 716 356 960 312 V540 H0 Z"
+    fill="#61b978"
+    opacity="0.78"
+  />
+  <path
+    d="M0 423 C180 372 306 430 486 388 C646 350 786 398 960 370 V540 H0 Z"
+    fill="#438e6a"
+    opacity="0.46"
+  />
+  <g transform="translate(632 292)" filter="url(#shadow)">
+    <rect
+      width="292"
+      height="42"
+      rx="22"
+      fill="rgba(38,51,64,0.78)"
+      stroke="rgba(238,246,255,0.3)"
+      stroke-width="2"
+    />
+    <circle cx="28" cy="21" r="16" fill="#f7f7f2" />
+    <circle cx="23" cy="22" r="2" fill="#3d464e" />
+    <circle cx="29" cy="22" r="2" fill="#3d464e" />
+    <circle cx="35" cy="22" r="2" fill="#3d464e" />
+    <text
+      x="54"
+      y="28"
+      fill="#fff"
+      font-family="Georgia, serif"
+      font-size="22"
+      font-weight="700"
+    >
+      You know...
+    </text>
+  </g>
+  <g transform="translate(632 346)" filter="url(#shadow)">
+    <rect
+      width="292"
+      height="42"
+      rx="22"
+      fill="rgba(38,51,64,0.72)"
+      stroke="rgba(238,246,255,0.24)"
+      stroke-width="2"
+    />
+    <circle cx="28" cy="21" r="16" fill="#f7f7f2" />
+    <circle cx="23" cy="22" r="2" fill="#3d464e" />
+    <circle cx="29" cy="22" r="2" fill="#3d464e" />
+    <circle cx="35" cy="22" r="2" fill="#3d464e" />
+    <text
+      x="54"
+      y="28"
+      fill="#fff"
+      font-family="Georgia, serif"
+      font-size="22"
+      font-weight="700"
+    >
+      I think...
+    </text>
+  </g>
+  <g transform="translate(632 400)" filter="url(#shadow)">
+    <rect
+      width="292"
+      height="42"
+      rx="22"
+      fill="rgba(38,51,64,0.72)"
+      stroke="rgba(238,246,255,0.24)"
+      stroke-width="2"
+    />
+    <circle cx="28" cy="21" r="16" fill="#f7f7f2" />
+    <circle cx="23" cy="22" r="2" fill="#3d464e" />
+    <circle cx="29" cy="22" r="2" fill="#3d464e" />
+    <circle cx="35" cy="22" r="2" fill="#3d464e" />
+    <text
+      x="54"
+      y="28"
+      fill="#fff"
+      font-family="Georgia, serif"
+      font-size="22"
+      font-weight="700"
+    >
+      Let&apos;s go.
+    </text>
+  </g>
+  <g filter="url(#shadow)">
+    <g stroke="#f1b733" stroke-linecap="round">
+      <line x1="312" x2="370" y1="416" y2="416" stroke-width="2.5" />
+      <circle
+        cx="384"
+        cy="416"
+        r="3.4"
+        fill="#f1b733"
+        stroke="#5b3a0e"
+        stroke-width="1"
+      />
+      <circle
+        cx="576"
+        cy="416"
+        r="3.4"
+        fill="#f1b733"
+        stroke="#5b3a0e"
+        stroke-width="1"
+      />
+      <line x1="590" x2="622" y1="416" y2="416" stroke-width="2.5" />
+    </g>
+    <text
+      x="480"
+      y="426"
+      text-anchor="middle"
+      fill="#f1b733"
+      stroke="#5b3a0e"
+      stroke-width="1.5"
+      paint-order="stroke"
+      font-family="Georgia, serif"
+      font-size="28"
+      font-weight="700"
+    >
+      Companion
+    </text>
+    <text
+      x="480"
+      y="490"
+      text-anchor="middle"
+      fill="#fff"
+      stroke="#1c242b"
+      stroke-width="2.5"
+      paint-order="stroke"
+      font-family="Georgia, serif"
+      font-size="25"
+      font-weight="700"
+    >
+      A bright open-world ADV caption theme...
+    </text>
+  </g>
+</svg>

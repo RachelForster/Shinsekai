@@ -4,7 +4,7 @@ import json
 import pytest
 
 from sdk.tool_registry import tool as sdk_tool, iter_registered_tools
-from llm.tools.tool_manager import ToolManager
+from ai.tools.tool_manager import ToolManager
 
 
 def _reset_tm():
@@ -19,7 +19,7 @@ def _reset_tm():
 class TestToolDecoratorGroup:
     def test_default_group_is_default(self):
         """@tool without group should get 'default'."""
-        import llm.tools.tool_search  # ensures @tool decorator fires
+        import ai.tools.tool_search  # ensures @tool decorator fires
         found = False
         for fn, nm, desc, grp, risk in iter_registered_tools():
             if (nm or fn.__name__) == "search_tools":
@@ -47,6 +47,21 @@ class TestToolManagerGroups:
 
         tm.register_function(my_func, name="default_tool")
         assert tm.get_tool_group("default_tool") == "default"
+
+    def test_moondream_tool_names_default_to_vision_group(self):
+        tm = _reset_tm()
+
+        def query():
+            return {"ok": True}
+
+        def ocr():
+            return {"ok": True}
+
+        tm.register_function(query, name="moondream_query_screen")
+        tm.register_function(ocr, name="moondream_ocr_screen")
+
+        assert tm.get_tool_group("moondream_query_screen") == "vision"
+        assert tm.get_tool_group("moondream_ocr_screen") == "vision"
 
     def test_get_definitions_all(self):
         tm = _reset_tm()
@@ -229,7 +244,7 @@ class TestMCPToolsGroup:
 class TestLRUGroupManagement:
     def test_initial_groups(self):
         """LLMManager starts with only default group."""
-        from llm.llm_manager import LLMManager
+        from ai.llm.llm_manager import LLMManager
         from test.mocks import MockLLMAdapter
 
         adapter = MockLLMAdapter(responses=[""])
@@ -240,7 +255,7 @@ class TestLRUGroupManagement:
 
     def test_search_tools_expands_groups(self):
         """Simulate what happens when search_tools is called in chat."""
-        from llm.llm_manager import LLMManager
+        from ai.llm.llm_manager import LLMManager
         from test.mocks import MockLLMAdapter
 
         adapter = MockLLMAdapter(responses=[""])
@@ -255,13 +270,7 @@ class TestLRUGroupManagement:
             return 1
         tm.register_function(mem_fn, name="mem", group="memory")
 
-        # Simulate the expansion logic
-        kw = "memory"
-        for g in tm.get_groups():
-            if g not in mgr._active_tool_groups and kw in g.lower():
-                mgr._active_tool_groups.insert(0, g)
-                if len(mgr._active_tool_groups) > mgr._max_active_groups:
-                    mgr._active_tool_groups.pop()
+        mgr._activate_tool_group_from_search('{"keyword":"memory"}')
 
         assert "memory" in mgr._active_tool_groups
         assert mgr._active_tool_groups[0] == "memory"  # inserted at front
@@ -269,7 +278,7 @@ class TestLRUGroupManagement:
     def test_lru_promotes_existing_group(self):
         """Searching an already-active group moves it to front."""
         adapter = __import__('test.mocks', fromlist=['MockLLMAdapter']).MockLLMAdapter
-        from llm.llm_manager import LLMManager
+        from ai.llm.llm_manager import LLMManager
 
         adapter = adapter(responses=[""])
         mgr = LLMManager(adapter=adapter, max_tokens=128000)
@@ -281,19 +290,15 @@ class TestLRUGroupManagement:
         for g in ["memory", "character", "default"]:
             tm.register_function(lambda: 1, name=f"fn_{g}", group=g)
 
-        for g in tm.get_groups():
-            if kw in g.lower():
-                if g in mgr._active_tool_groups:
-                    mgr._active_tool_groups.remove(g)
-                mgr._active_tool_groups.insert(0, g)
+        mgr._activate_tool_group_from_search(json.dumps({"keyword": kw}))
 
         assert mgr._active_tool_groups[0] == "character"
         assert "character" in mgr._active_tool_groups
         assert len(mgr._active_tool_groups) == 3  # no duplicate
 
-    def test_lru_evicts_when_full(self):
-        """When max groups exceeded, oldest is evicted (truncate)."""
-        from llm.llm_manager import LLMManager
+    def test_lru_evicts_oldest_non_default_group_when_full(self):
+        """Real group selection keeps default tools within the bounded budget."""
+        from ai.llm.llm_manager import LLMManager
         from test.mocks import MockLLMAdapter
 
         adapter = MockLLMAdapter(responses=[""])
@@ -306,22 +311,15 @@ class TestLRUGroupManagement:
         for g in ["default", "char", "mem", "new_group"]:
             tm.register_function(lambda: 1, name=f"fn_{g}", group=g)
 
-        # Simulate search for new_group — should evict default (oldest)
-        kw = "new_group"
-        for g in tm.get_groups():
-            if kw in g.lower():
-                if g in mgr._active_tool_groups:
-                    mgr._active_tool_groups.remove(g)
-                mgr._active_tool_groups.insert(0, g)
-                if len(mgr._active_tool_groups) > mgr._max_active_groups:
-                    mgr._active_tool_groups = mgr._active_tool_groups[:mgr._max_active_groups]
+        mgr._activate_tool_group_from_search('{"keyword":"new_group"}')
 
         assert "new_group" in mgr._active_tool_groups
+        assert "default" in mgr._active_tool_groups
         assert len(mgr._active_tool_groups) == 3
 
     def test_lru_keeps_default_group_when_limit_is_two(self):
         """Even with a tight group budget, default remains available."""
-        from llm.llm_manager import LLMManager
+        from ai.llm.llm_manager import LLMManager
         from test.mocks import MockLLMAdapter
 
         adapter = MockLLMAdapter(responses=[""])

@@ -17,6 +17,21 @@ export type DesktopRuntimeRepairAction = "start" | "installRuntimeDeps";
 
 export type DesktopRuntimeProfile = "local-ai" | "full";
 
+export type DesktopResizeDirection =
+  | "East"
+  | "North"
+  | "NorthEast"
+  | "NorthWest"
+  | "South"
+  | "SouthEast"
+  | "SouthWest"
+  | "West";
+
+export interface DesktopWindowCursorPosition {
+  x: number;
+  y: number;
+}
+
 export interface DesktopRuntimeCandidate {
   id: string;
   pythonId?: string | null;
@@ -41,6 +56,7 @@ export interface DesktopRuntimeState {
   status: DesktopRuntimeStatus;
   message?: string | null;
   bridgeUrl: string;
+  manualInstallCommand?: string | null;
   selectedCandidateId?: string | null;
   recommendedAction?: DesktopRuntimeRepairAction | null;
   candidates: DesktopRuntimeCandidate[];
@@ -74,6 +90,21 @@ export interface DesktopUpdateProgress {
   contentLength?: number | null;
 }
 
+export interface DesktopProjectRootCandidate {
+  path: string;
+  source: string;
+  hasProjectData: boolean;
+  selectable: boolean;
+}
+
+export interface DesktopProjectRootStatus {
+  currentPath: string;
+  locatorPath: string;
+  conflict: boolean;
+  requiresSelection: boolean;
+  candidates: DesktopProjectRootCandidate[];
+}
+
 export type DesktopEventUnlisten = () => void;
 
 declare global {
@@ -81,14 +112,17 @@ declare global {
     __TAURI_INTERNALS__?: unknown;
     __SHINSEKAI_RESTARTING__?: boolean;
     __SHINSEKAI_BRIDGE_RESTARTING__?: boolean;
+    __SHINSEKAI_BRIDGE_RESTART_EVENTS_BOUND__?: boolean;
   }
 }
 
 const bridgeRestartFinishedEvent = "shinsekai:bridge-restart-finished";
+const bridgeRestartStateEvent = "shinsekai:bridge-restart-state";
+const desktopChatStageRuntimeConfigChangeEvent = "shinsekai:chat-stage-runtime-config-change";
 const desktopUpdateProgressEvent = "shinsekai:update-progress";
 const desktopRuntimeProgressEvent = "shinsekai:runtime-progress";
 
-export function isTauriDesktop() {
+function detectTauriDesktopEnvironment() {
   if (typeof window === "undefined") {
     return false;
   }
@@ -98,6 +132,37 @@ export function isTauriDesktop() {
     window.location.protocol === "tauri:" ||
     window.location.hostname === "tauri.localhost"
   );
+}
+
+async function ensureDesktopBridgeRestartEvents() {
+  if (!detectTauriDesktopEnvironment() || typeof window === "undefined") {
+    return;
+  }
+  if (window.__SHINSEKAI_BRIDGE_RESTART_EVENTS_BOUND__) {
+    return;
+  }
+  window.__SHINSEKAI_BRIDGE_RESTART_EVENTS_BOUND__ = true;
+  try {
+    const { listen } = await import("@tauri-apps/api/event");
+    await listen<boolean>(bridgeRestartStateEvent, (event) => {
+      if (event.payload) {
+        markDesktopBridgeRestarting();
+      } else {
+        clearDesktopBridgeRestarting();
+      }
+    });
+  } catch (error) {
+    window.__SHINSEKAI_BRIDGE_RESTART_EVENTS_BOUND__ = false;
+    console.error("Desktop bridge restart listener failed", error);
+  }
+}
+
+export function isTauriDesktop() {
+  const tauri = detectTauriDesktopEnvironment();
+  if (tauri) {
+    void ensureDesktopBridgeRestartEvents();
+  }
+  return tauri;
 }
 
 async function invokeDesktop<T>(command: string, args?: Record<string, unknown>): Promise<T> {
@@ -121,8 +186,49 @@ export function browseDesktopFiles(options?: { path?: string; showHidden?: boole
   return invokeDesktop<FileBrowserSnapshot>("desktop_files_browse", options ?? {});
 }
 
+export interface DesktopNativePickOptions {
+  defaultPath?: string;
+  extensions?: string[];
+  mode?: "file" | "path" | "directory";
+  multiple?: boolean;
+  title?: string;
+}
+
+export async function pickDesktopNativePath(options: DesktopNativePickOptions = {}): Promise<string[] | null> {
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const directory = options.mode === "directory";
+  const extensions = (options.extensions ?? []).map((item) => item.trim().replace(/^\.+/, "")).filter(Boolean);
+  const rawDefaultPath = options.defaultPath?.trim() || "";
+  // The native dialog requires an existing absolute path; project-relative
+  // initial paths (e.g. "plugins") are simply left to the dialog's own
+  // starting location.
+  const defaultPath =
+    rawDefaultPath.startsWith("/") || rawDefaultPath.startsWith("~") || /^[A-Za-z]:[\\/]/.test(rawDefaultPath)
+      ? rawDefaultPath
+      : undefined;
+  const result = await open({
+    defaultPath,
+    directory,
+    filters: extensions.length ? [{ extensions, name: extensions.join(", ") }] : undefined,
+    multiple: Boolean(options.multiple) && !directory,
+    title: options.title || undefined,
+  });
+  if (result === null) {
+    return null;
+  }
+  return Array.isArray(result) ? result : [result];
+}
+
 export function checkDesktopUpdate() {
   return invokeDesktop<DesktopUpdate | null>("desktop_update_check");
+}
+
+export function getDesktopProjectRootStatus() {
+  return invokeDesktop<DesktopProjectRootStatus>("desktop_project_root_status");
+}
+
+export function selectDesktopProjectRoot(path: string) {
+  return invokeDesktop<DesktopProjectRootStatus>("desktop_project_root_select", { path });
 }
 
 export async function installDesktopUpdate() {
@@ -151,6 +257,24 @@ export async function onDesktopRuntimeProgress(
 ): Promise<DesktopEventUnlisten> {
   const { listen } = await import("@tauri-apps/api/event");
   return listen<DesktopRuntimeProgress>(desktopRuntimeProgressEvent, (event) => listener(event.payload));
+}
+
+export async function emitDesktopChatStageRuntimeConfigChange(config: unknown) {
+  if (!isTauriDesktop()) {
+    return;
+  }
+  const { emit } = await import("@tauri-apps/api/event");
+  await emit(desktopChatStageRuntimeConfigChangeEvent, config);
+}
+
+export async function onDesktopChatStageRuntimeConfigChange(
+  listener: (config: unknown) => void,
+): Promise<DesktopEventUnlisten> {
+  if (!isTauriDesktop()) {
+    return () => undefined;
+  }
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<unknown>(desktopChatStageRuntimeConfigChangeEvent, (event) => listener(event.payload));
 }
 
 export async function restartDesktopBridge() {
@@ -297,16 +421,44 @@ export function minimizeDesktopWindow() {
   return invokeDesktop<void>("desktop_window_minimize");
 }
 
+export function hideDesktopWindow() {
+  return invokeDesktop<void>("desktop_window_hide");
+}
+
+export function destroyDesktopChatWindow() {
+  return invokeDesktop<void>("desktop_chat_window_destroy");
+}
+
 export function toggleMaximizeDesktopWindow() {
   return invokeDesktop<void>("desktop_window_toggle_maximize");
+}
+
+export function setDesktopWindowAlwaysOnTop(alwaysOnTop: boolean) {
+  return invokeDesktop<void>("desktop_window_set_always_on_top", { alwaysOnTop });
 }
 
 export function startDesktopWindowDrag() {
   return invokeDesktop<void>("desktop_window_start_drag");
 }
 
+export function startDesktopWindowResize(direction: DesktopResizeDirection) {
+  return invokeDesktop<void>("desktop_window_start_resize", { direction });
+}
+
+export function setDesktopWindowClickThrough(ignore: boolean) {
+  return invokeDesktop<void>("desktop_window_set_ignore_cursor_events", { ignore });
+}
+
+export function getDesktopWindowCursorPosition() {
+  return invokeDesktop<DesktopWindowCursorPosition>("desktop_window_cursor_position");
+}
+
 export function closeDesktopWindow() {
   return invokeDesktop<void>("desktop_window_close");
+}
+
+export function openDesktopChatWindow() {
+  return invokeDesktop<void>("desktop_open_chat_window");
 }
 
 export function openDesktopExternalUrl(url: string) {

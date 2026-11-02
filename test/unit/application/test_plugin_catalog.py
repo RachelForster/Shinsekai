@@ -1,0 +1,287 @@
+from pathlib import Path
+from types import SimpleNamespace
+
+from plugin_system.registry.catalog import RegistryPluginRecord
+from application.plugins.catalog import (
+    _display_title_for_offline_plugin_entry,
+    _plugin_rows,
+    _plugin_registry_rows,
+    _resolve_loaded_plugin_for_manifest_entry,
+    _uninstall_plugin,
+)
+
+
+class DemoPlugin:
+    pass
+
+
+def test_uninstall_plugin_deletes_only_a_directory_below_plugins_root(tmp_path, monkeypatch):
+    import plugin_system.host as plugin_host
+    import plugin_system.registry.download as registry_download
+
+    plugin_dir = tmp_path / "plugins" / "demo"
+    plugin_dir.mkdir(parents=True)
+    (plugin_dir / "plugin.py").write_text("class Demo: pass\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("application.plugins.catalog._plugin_rows", lambda: [])
+    monkeypatch.setattr(plugin_host, "remove_plugin_manifest_entry", lambda _entry: True)
+    monkeypatch.setattr(
+        plugin_host,
+        "infer_plugin_package_directory",
+        lambda _entry: Path("plugins") / "demo",
+    )
+    monkeypatch.setattr(
+        registry_download,
+        "unmark_repo_for_manifest_entry",
+        lambda _entry: None,
+    )
+
+    result = _uninstall_plugin("plugins.demo.plugin:Demo")
+
+    assert result["folderNote"] == ""
+    assert not plugin_dir.exists()
+
+
+def test_uninstall_plugin_refuses_directory_outside_plugins_root(tmp_path, monkeypatch):
+    import plugin_system.host as plugin_host
+    import plugin_system.registry.download as registry_download
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "keep.txt").write_text("keep", encoding="utf-8")
+    (tmp_path / "plugins").mkdir()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("application.plugins.catalog._plugin_rows", lambda: [])
+    monkeypatch.setattr(plugin_host, "remove_plugin_manifest_entry", lambda _entry: True)
+    monkeypatch.setattr(
+        plugin_host,
+        "infer_plugin_package_directory",
+        lambda _entry: outside,
+    )
+    monkeypatch.setattr(
+        registry_download,
+        "unmark_repo_for_manifest_entry",
+        lambda _entry: None,
+    )
+
+    result = _uninstall_plugin("plugins.demo.plugin:Demo")
+
+    assert "outside project root" in result["folderNote"]
+    assert (outside / "keep.txt").read_text(encoding="utf-8") == "keep"
+
+
+def test_uninstall_plugin_refuses_nested_package_directory(tmp_path, monkeypatch):
+    import plugin_system.host as plugin_host
+    import plugin_system.registry.download as registry_download
+
+    nested = tmp_path / "plugins" / "owner" / "demo"
+    nested.mkdir(parents=True)
+    (nested / "keep.txt").write_text("keep", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("application.plugins.catalog._plugin_rows", lambda: [])
+    monkeypatch.setattr(plugin_host, "remove_plugin_manifest_entry", lambda _entry: True)
+    monkeypatch.setattr(
+        plugin_host,
+        "infer_plugin_package_directory",
+        lambda _entry: Path("plugins") / "owner" / "demo",
+    )
+    monkeypatch.setattr(
+        registry_download,
+        "unmark_repo_for_manifest_entry",
+        lambda _entry: None,
+    )
+
+    result = _uninstall_plugin("plugins.owner/demo.plugin:Demo")
+
+    assert "非顶层插件目录" in result["folderNote"]
+    assert (nested / "keep.txt").read_text(encoding="utf-8") == "keep"
+
+
+def test_display_title_for_offline_plugin_entry_uses_class_or_module_tail():
+    assert _display_title_for_offline_plugin_entry("plugins.demo.plugin:DemoPlugin") == "DemoPlugin"
+    assert _display_title_for_offline_plugin_entry("plugins.demo.plugin") == "plugin"
+    assert _display_title_for_offline_plugin_entry("Demo") == "Demo"
+
+
+def test_resolve_loaded_plugin_for_manifest_entry_matches_full_entry_or_module():
+    plugin = DemoPlugin()
+    manager = SimpleNamespace(plugins=[plugin])
+    full_entry = f"{DemoPlugin.__module__}:{DemoPlugin.__qualname__}"
+
+    assert _resolve_loaded_plugin_for_manifest_entry(full_entry, manager) is plugin
+    assert _resolve_loaded_plugin_for_manifest_entry(DemoPlugin.__module__, manager) is plugin
+    assert _resolve_loaded_plugin_for_manifest_entry("missing.module:Plugin", manager) is None
+    assert _resolve_loaded_plugin_for_manifest_entry(full_entry, None) is None
+
+
+def test_resolve_loaded_plugin_for_manifest_entry_handles_manager_errors():
+    class BrokenManager:
+        @property
+        def plugins(self):
+            raise RuntimeError("unavailable")
+
+    assert _resolve_loaded_plugin_for_manifest_entry("anything", BrokenManager()) is None
+
+
+def test_plugin_rows_include_persisted_install_metadata(monkeypatch):
+    import plugin_system.host as plugin_host
+
+    plugin = SimpleNamespace(
+        plugin_author="Tester",
+        plugin_description="Demo description",
+        plugin_id="demo",
+        plugin_name="Demo Plugin",
+        plugin_version="0.1.0",
+    )
+    manager = SimpleNamespace(plugins=[plugin])
+    entry = f"{DemoPlugin.__module__}:{DemoPlugin.__qualname__}"
+
+    monkeypatch.setattr(plugin_host, "get_plugin_manager", lambda: manager)
+    monkeypatch.setattr(plugin_host, "read_plugin_manifest_items", lambda: [{"enabled": True, "entry": entry}])
+    monkeypatch.setattr(plugin_host, "infer_plugin_package_directory", lambda _entry: None)
+    monkeypatch.setattr(plugin_host, "collect_settings_contributions", lambda: [])
+    monkeypatch.setattr(plugin_host, "collect_tools_tab_contributions", lambda: [])
+    monkeypatch.setattr(plugin_host, "collect_chat_ui_contributions", lambda: [])
+    monkeypatch.setattr(plugin_host, "collect_frontend_config_contributions", lambda: [])
+    monkeypatch.setattr(plugin_host, "collect_frontend_page_contributions", lambda: [])
+    monkeypatch.setattr(
+        "plugin_system.registry.download.load_plugin_install_metadata",
+        lambda value: {"packageSha256": "abc123", "sourceLabel": "官方包体 (R2)"} if value == entry else {},
+    )
+
+    rows = _plugin_rows()
+
+    assert rows[0]["install"] == {"packageSha256": "abc123", "sourceLabel": "官方包体 (R2)"}
+
+
+def test_plugin_rows_fall_back_to_registry_author_when_manifest_author_is_missing(monkeypatch):
+    import plugin_system.host as plugin_host
+
+    entry = f"{DemoPlugin.__module__}:{DemoPlugin.__qualname__}"
+    plugin = SimpleNamespace(
+        plugin_author="",
+        plugin_description="Demo description",
+        plugin_id="demo",
+        plugin_name="Demo Plugin",
+        plugin_version="0.1.0",
+    )
+    manager = SimpleNamespace(plugins=[plugin])
+    record = RegistryPluginRecord(
+        id="demo",
+        name="demo",
+        display_name="Demo Plugin",
+        author="Registry Author",
+        repo="owner/demo",
+        description="Registry description",
+        short_description="Registry short description",
+        entry=entry,
+    )
+
+    monkeypatch.setattr(plugin_host, "get_plugin_manager", lambda: manager)
+    monkeypatch.setattr(plugin_host, "read_plugin_manifest_items", lambda: [{"enabled": True, "entry": entry}])
+    monkeypatch.setattr(plugin_host, "infer_plugin_package_directory", lambda _entry: None)
+    monkeypatch.setattr(plugin_host, "collect_settings_contributions", lambda: [])
+    monkeypatch.setattr(plugin_host, "collect_tools_tab_contributions", lambda: [])
+    monkeypatch.setattr(plugin_host, "collect_chat_ui_contributions", lambda: [])
+    monkeypatch.setattr(plugin_host, "collect_frontend_config_contributions", lambda: [])
+    monkeypatch.setattr(plugin_host, "collect_frontend_page_contributions", lambda: [])
+    monkeypatch.setattr(
+        "plugin_system.registry.download.load_plugin_install_metadata",
+        lambda value: {"entry": entry, "repo": "owner/demo"} if value == entry else {},
+    )
+    monkeypatch.setattr(
+        "plugin_system.registry.catalog.fetch_registry_plugins",
+        lambda **_kwargs: [record],
+    )
+
+    rows = _plugin_rows()
+
+    assert rows[0]["author"] == "Registry Author"
+
+
+def test_plugin_registry_rows_expose_market_metadata(monkeypatch):
+    record = RegistryPluginRecord(
+        id="demo",
+        name="demo",
+        display_name="Demo Plugin",
+        author="Tester",
+        repo="owner/demo",
+        description="Long detail text",
+        short_description="Short card text",
+        entry="plugins.demo.plugin:DemoPlugin",
+        version="v0.1.0",
+        lowest_shinsekai_version=">=2.0.0",
+        source_url="https://github.com/owner/demo",
+        readme_url="https://raw.githubusercontent.com/owner/demo/main/README.md",
+        download_url="https://plugins.example.invalid/plugins/demo.zip",
+        sha256="abc123",
+        commit_sha="deadbeef",
+        size=4096,
+        updated_at="2026-06-06T00:00:00Z",
+        download_count=345,
+        tags=["utility", "ai"],
+        logo="https://plugins.example.invalid/plugins/demo/logo.png",
+        stars=12,
+        forks=3,
+        social_link="https://github.com/tester",
+        package_source="r2",
+        package_url="https://plugins.example.invalid/plugins/demo.zip",
+        package_sha256="abc123",
+        package_size=4096,
+        package_r2_key="plugins/owner/demo/v0.1.0/demo.zip",
+        security_scan={"llm_agent": {"pass": True}},
+    )
+
+    monkeypatch.setattr(
+        "plugin_system.registry.catalog.fetch_registry_plugins",
+        lambda: [record],
+    )
+    monkeypatch.setattr(
+        "plugin_system.registry.download.load_downloaded_repos",
+        lambda: {"owner/demo"},
+    )
+    monkeypatch.setattr(
+        "application.plugins.catalog._plugin_rows",
+        lambda: [{"entry": "plugins.demo.plugin:DemoPlugin"}],
+    )
+
+    rows = _plugin_registry_rows()
+
+    assert rows == [
+        {
+            "author": "Tester",
+            "commitSha": "deadbeef",
+            "description": "Long detail text",
+            "displayName": "Demo Plugin",
+            "downloadUrl": "https://plugins.example.invalid/plugins/demo.zip",
+            "downloadCount": 345,
+            "downloaded": True,
+            "entry": "plugins.demo.plugin:DemoPlugin",
+            "forks": 3,
+            "id": "demo",
+            "installed": True,
+            "logo": "https://plugins.example.invalid/plugins/demo/logo.png",
+            "name": "demo",
+            "packageR2Key": "plugins/owner/demo/v0.1.0/demo.zip",
+            "packageSha256": "abc123",
+            "packageSize": 4096,
+            "packageSource": "r2",
+            "packageUrl": "https://plugins.example.invalid/plugins/demo.zip",
+            "readmeUrl": "https://raw.githubusercontent.com/owner/demo/main/README.md",
+            "repo": "owner/demo",
+            "review": None,
+            "securityScan": {"llm_agent": {"pass": True}},
+            "sha256": "abc123",
+            "lowestShinsekaiVersion": ">=2.0.0",
+            "shortDescription": "Short card text",
+            "size": 4096,
+            "socialLink": "https://github.com/tester",
+            "sourceUrl": "https://github.com/owner/demo",
+            "stars": 12,
+            "tags": ["utility", "ai"],
+            "trustLevel": "community",
+            "updatedAt": "2026-06-06T00:00:00Z",
+            "verified": False,
+            "version": "v0.1.0",
+        }
+    ]

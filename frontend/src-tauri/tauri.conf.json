@@ -8,6 +8,7 @@
     "beforeBuildCommand": "pnpm prepare:runtime --verify --skip-wheels && pnpm build && pnpm prepare:tauri-resources && pnpm verify:tauri-resources"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [],
     "security": {
       "csp": null
@@ -19,7 +20,8 @@
     "targets": "all",
     "windows": {
       "nsis": {
-        "installMode": "currentUser"
+        "installMode": "currentUser",
+        "template": "./windows/installer.nsi"
       }
     },
     "icon": [

@@ -1,11 +1,12 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AdapterExtraForm } from "../../../features/api-settings/AdapterExtraForm";
 import { ApiLanguageSection } from "../../../features/api-settings/ApiLanguageSection";
 import { AsrSettingsSection } from "../../../features/api-settings/AsrSettingsSection";
 import { LlmConnectionSection } from "../../../features/api-settings/LlmConnectionSection";
+import { MemorySettingsSection } from "../../../features/api-settings/MemorySettingsSection";
 import { ResourceLinksSection } from "../../../features/api-settings/ResourceLinksSection";
 import { T2iSetupSection } from "../../../features/api-settings/T2iSetupSection";
 import { TtsBundleSection } from "../../../features/api-settings/TtsBundleSection";
@@ -13,6 +14,7 @@ import { resourceLinks } from "../../../features/api-settings/apiSettingsUtils";
 import { I18nProvider } from "../../../shared/i18n";
 import { sampleConfig } from "../../../shared/platform/sampleData";
 import type { TaskSnapshot, TtsBundleDownloadResult } from "../../../shared/platform/types";
+import { ToastProvider } from "../../../shared/ui";
 
 const filesMock = vi.hoisted(() => ({
   openExternal: vi.fn(),
@@ -22,8 +24,49 @@ vi.mock("../../../entities/files/repository", () => ({
   openExternal: filesMock.openExternal,
 }));
 
+const modelAssetRepositoryMock = vi.hoisted(() => ({
+  downloadModelAsset: vi.fn(),
+  getModelAssetStatus: vi.fn(),
+}));
+
+vi.mock("../../../entities/model-assets/repository", () => ({
+  downloadModelAsset: modelAssetRepositoryMock.downloadModelAsset,
+  getModelAssetStatus: modelAssetRepositoryMock.getModelAssetStatus,
+}));
+
+const configRepositoryMock = vi.hoisted(() => ({
+  getMemoryStatus: vi.fn(),
+}));
+
+vi.mock("../../../entities/config/repository", () => ({
+  getMemoryStatus: configRepositoryMock.getMemoryStatus,
+}));
+
+const runtimeRepositoryMock = vi.hoisted(() => ({
+  installMissingRuntimeDependency: vi.fn(),
+}));
+
+vi.mock("../../../entities/chat/repository", () => ({
+  installMissingRuntimeDependency: runtimeRepositoryMock.installMissingRuntimeDependency,
+}));
+
+const desktopApiMock = vi.hoisted(() => ({
+  isTauriDesktop: vi.fn(),
+  restartDesktopBridge: vi.fn(),
+}));
+
+vi.mock("../../../shared/desktop/desktopApi", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../shared/desktop/desktopApi")>()),
+  isTauriDesktop: desktopApiMock.isTauriDesktop,
+  restartDesktopBridge: desktopApiMock.restartDesktopBridge,
+}));
+
 function renderZh(children: ReactNode) {
-  return render(<I18nProvider language="zh_CN">{children}</I18nProvider>);
+  return render(
+    <I18nProvider language="zh_CN">
+      <ToastProvider>{children}</ToastProvider>
+    </I18nProvider>,
+  );
 }
 
 function runningTask(): TaskSnapshot<TtsBundleDownloadResult> {
@@ -43,6 +86,44 @@ function runningTask(): TaskSnapshot<TtsBundleDownloadResult> {
 }
 
 describe("API settings sections", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    desktopApiMock.isTauriDesktop.mockReturnValue(false);
+    desktopApiMock.restartDesktopBridge.mockResolvedValue({
+      bridgeUrl: "http://127.0.0.1:8787",
+      candidates: [],
+      status: "ready",
+    });
+    configRepositoryMock.getMemoryStatus.mockResolvedValue({ modelCached: false, status: "not_started" });
+    runtimeRepositoryMock.installMissingRuntimeDependency.mockResolvedValue({
+      message: "installed",
+      moduleName: "mem0",
+      packageName: "mem0ai",
+      pipCode: 0,
+      pipOutput: "",
+    });
+    modelAssetRepositoryMock.getModelAssetStatus.mockResolvedValue({
+      assetId: "memory.embedding",
+      cached: false,
+      downloadable: true,
+      repoId: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+      source: "huggingface",
+      title: "mem0 embedding model",
+      variant: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+    });
+    modelAssetRepositoryMock.downloadModelAsset.mockResolvedValue({
+      assetId: "memory.embedding",
+      cached: true,
+      downloadable: true,
+      downloaded: true,
+      path: "C:/cache/memory",
+      repoId: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+      source: "huggingface",
+      title: "mem0 embedding model",
+      variant: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+    });
+  });
+
   it("renders adapter extra schemas with defaults and emits only the changed field", () => {
     const onChange = vi.fn();
     renderZh(
@@ -113,6 +194,7 @@ describe("API settings sections", () => {
         disabled={false}
         draft={sampleConfig.api_config}
         onAsrExtraChange={() => {}}
+        onPersistSystemDraft={() => Promise.resolve()}
         onSystemPatch={onSystemPatch}
         showWhisperFields={false}
         systemDraft={sampleConfig.system_config}
@@ -174,6 +256,261 @@ describe("API settings sections", () => {
     expect(screen.getByText("Text")).toBeInTheDocument();
     expect(screen.getByText("Vision")).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: /Thinking/ })).toBeDisabled();
+  });
+
+  it("restores the mem0 and embedding setup status without initializing long-term memory", async () => {
+    configRepositoryMock.getMemoryStatus.mockResolvedValue({ modelCached: true, status: "not_started" });
+    const props = {
+      disabled: false,
+      draft: { ...sampleConfig.api_config, memory_auto_enabled: false },
+      onChange: vi.fn(),
+    };
+
+    const first = renderZh(<MemorySettingsSection {...props} />);
+    expect(await screen.findByText("mem0 已就绪 · 模型已就绪")).toBeInTheDocument();
+    first.unmount();
+    renderZh(<MemorySettingsSection {...props} />);
+
+    expect(await screen.findByText("mem0 已就绪 · 模型已就绪")).toBeInTheDocument();
+    expect(configRepositoryMock.getMemoryStatus).toHaveBeenCalledTimes(2);
+    expect(configRepositoryMock.getMemoryStatus).toHaveBeenNthCalledWith(1, { startLoading: false });
+    expect(configRepositoryMock.getMemoryStatus).toHaveBeenNthCalledWith(2, { startLoading: false });
+    expect(runtimeRepositoryMock.installMissingRuntimeDependency).not.toHaveBeenCalled();
+    expect(modelAssetRepositoryMock.downloadModelAsset).not.toHaveBeenCalled();
+  });
+
+  it("rechecks a cached embedding without creating a download task", async () => {
+    configRepositoryMock.getMemoryStatus.mockResolvedValue({ modelCached: true, status: "not_started" });
+
+    renderZh(
+      <MemorySettingsSection draft={{ ...sampleConfig.api_config, memory_auto_enabled: false }} onChange={vi.fn()} />,
+    );
+    await screen.findByText("mem0 已就绪 · 模型已就绪");
+    fireEvent.click(screen.getByRole("button", { name: "重新检查" }));
+
+    await waitFor(() => expect(configRepositoryMock.getMemoryStatus).toHaveBeenCalledTimes(2));
+    expect(configRepositoryMock.getMemoryStatus).toHaveBeenLastCalledWith({ startLoading: false });
+    expect(modelAssetRepositoryMock.downloadModelAsset).not.toHaveBeenCalled();
+  });
+
+  it("downloads the embedding through the shared model asset service", async () => {
+    const operations: string[] = [];
+    let finishDownload!: () => void;
+    runtimeRepositoryMock.installMissingRuntimeDependency.mockImplementation(async (input) => {
+      operations.push(`install:${input.moduleName}`);
+      return {
+        message: "installed",
+        moduleName: input.moduleName,
+        packageName: "huggingface-hub==0.36.2",
+        pipCode: 0,
+        pipOutput: "",
+      };
+    });
+    modelAssetRepositoryMock.downloadModelAsset.mockImplementation(async (_input, options) => {
+      operations.push("download");
+      options.onTaskUpdate({
+        ...runningTask(),
+        message: "Downloading mem0 embedding model (128.0 MB / 448.8 MB).",
+        phase: "download",
+        progress: 0.3,
+        status: "running",
+      });
+      await new Promise<void>((resolve) => {
+        finishDownload = resolve;
+      });
+      return {
+        assetId: "memory.embedding",
+        cached: true,
+        downloadable: true,
+        downloaded: true,
+        source: "huggingface",
+        title: "mem0 embedding model",
+        variant: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+      };
+    });
+
+    renderZh(
+      <MemorySettingsSection draft={{ ...sampleConfig.api_config, memory_auto_enabled: false }} onChange={vi.fn()} />,
+    );
+    await screen.findByText("mem0 已就绪 · 模型尚未下载");
+    fireEvent.click(screen.getByRole("button", { name: "下载模型" }));
+
+    expect((await screen.findAllByText("正在下载长期记忆模型…")).length).toBeGreaterThan(0);
+    expect(screen.getByText("mem0 已就绪 · 模型尚未下载")).toBeInTheDocument();
+    expect(screen.getByText("Downloading mem0 embedding model (128.0 MB / 448.8 MB).")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "正在下载长期记忆模型…" }));
+    expect(modelAssetRepositoryMock.downloadModelAsset).toHaveBeenCalledTimes(1);
+    finishDownload();
+    expect(await screen.findByText("mem0 已就绪 · 模型已就绪")).toBeInTheDocument();
+    expect(modelAssetRepositoryMock.downloadModelAsset).toHaveBeenCalledWith(
+      { assetId: "memory.embedding" },
+      { onTaskUpdate: expect.any(Function) },
+    );
+    expect(runtimeRepositoryMock.installMissingRuntimeDependency).not.toHaveBeenCalled();
+    expect(operations).toEqual(["download"]);
+    expect(configRepositoryMock.getMemoryStatus).toHaveBeenCalledTimes(3);
+    for (const [options] of configRepositoryMock.getMemoryStatus.mock.calls) {
+      expect(options).toEqual({ startLoading: false });
+    }
+  });
+
+  it("keeps automatic memory disabled and points to model setup when dependencies are missing", async () => {
+    const onChange = vi.fn();
+    configRepositoryMock.getMemoryStatus.mockResolvedValue({
+      moduleName: "mem0",
+      packageName: "mem0ai",
+      status: "missing_dependency",
+    });
+
+    renderZh(
+      <MemorySettingsSection draft={{ ...sampleConfig.api_config, memory_auto_enabled: false }} onChange={onChange} />,
+    );
+    await screen.findByText("缺少 mem0ai 依赖。");
+    fireEvent.click(screen.getByRole("checkbox", { name: "启用自动长期记忆" }));
+
+    expect(await screen.findByText("检测到你还没有下载长期记忆依赖，请点击右上角下载模型进行下载")).toBeInTheDocument();
+    expect(onChange).not.toHaveBeenCalled();
+    expect(runtimeRepositoryMock.installMissingRuntimeDependency).not.toHaveBeenCalled();
+    expect(modelAssetRepositoryMock.downloadModelAsset).not.toHaveBeenCalled();
+    expect(configRepositoryMock.getMemoryStatus).toHaveBeenCalledTimes(2);
+    expect(configRepositoryMock.getMemoryStatus).toHaveBeenLastCalledWith({ startLoading: false });
+  });
+
+  it("enables automatic memory after a fresh setup check succeeds", async () => {
+    const onChange = vi.fn();
+    configRepositoryMock.getMemoryStatus
+      .mockResolvedValueOnce({ modelCached: false, status: "not_started" })
+      .mockResolvedValueOnce({ modelCached: true, status: "not_started" });
+
+    renderZh(
+      <MemorySettingsSection draft={{ ...sampleConfig.api_config, memory_auto_enabled: false }} onChange={onChange} />,
+    );
+    await screen.findByText("mem0 已就绪 · 模型尚未下载");
+    fireEvent.click(screen.getByRole("checkbox", { name: "启用自动长期记忆" }));
+
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ memory_auto_enabled: true })));
+    expect(configRepositoryMock.getMemoryStatus).toHaveBeenCalledTimes(2);
+    expect(configRepositoryMock.getMemoryStatus).toHaveBeenLastCalledWith({ startLoading: false });
+  });
+
+  it("installs a missing mem0 dependency before downloading the embedding", async () => {
+    const missingDependency = {
+      moduleName: "mem0",
+      packageName: "mem0ai",
+      status: "missing_dependency" as const,
+    };
+    configRepositoryMock.getMemoryStatus
+      .mockResolvedValueOnce(missingDependency)
+      .mockResolvedValueOnce(missingDependency)
+      .mockResolvedValueOnce({ modelCached: false, status: "not_started" })
+      .mockResolvedValueOnce({ modelCached: true, status: "not_started" });
+    let completeInstall!: () => void;
+    let finishInstall!: () => void;
+    runtimeRepositoryMock.installMissingRuntimeDependency.mockImplementation(async (input, options) => {
+      options.onTaskUpdate({
+        ...runningTask(),
+        kind: "runtime-dependency-install",
+        message: "Raw pip output",
+        phase: "pip",
+      });
+      await new Promise<void>((resolve) => {
+        completeInstall = () => {
+          options.onTaskUpdate({
+            ...runningTask(),
+            kind: "runtime-dependency-install",
+            message: "installed",
+            phase: "completed",
+            progress: 1,
+            status: "succeeded",
+          });
+          resolve();
+        };
+      });
+      await new Promise<void>((resolve) => {
+        finishInstall = resolve;
+      });
+      return { message: "installed", moduleName: "mem0", packageName: "mem0ai", pipCode: 0, pipOutput: "" };
+    });
+
+    renderZh(
+      <MemorySettingsSection draft={{ ...sampleConfig.api_config, memory_auto_enabled: false }} onChange={vi.fn()} />,
+    );
+    await screen.findByText("缺少 mem0ai 依赖。");
+    fireEvent.click(screen.getByRole("button", { name: "安装依赖" }));
+
+    expect((await screen.findAllByText("正在安装 mem0ai…")).length).toBeGreaterThan(0);
+    expect(screen.getByText("Raw pip output")).toBeInTheDocument();
+    await act(async () => completeInstall());
+    expect((await screen.findAllByText("长期记忆依赖已安装")).length).toBeGreaterThan(0);
+    await act(async () => finishInstall());
+
+    expect(await screen.findByText("mem0 已就绪 · 模型已就绪")).toBeInTheDocument();
+    expect(runtimeRepositoryMock.installMissingRuntimeDependency).toHaveBeenCalledWith(
+      { moduleName: "mem0" },
+      { onTaskUpdate: expect.any(Function) },
+    );
+    expect(runtimeRepositoryMock.installMissingRuntimeDependency).toHaveBeenCalledTimes(1);
+    expect(modelAssetRepositoryMock.downloadModelAsset).toHaveBeenCalledTimes(1);
+    for (const [options] of configRepositoryMock.getMemoryStatus.mock.calls) {
+      expect(options).toEqual({ startLoading: false });
+    }
+  });
+
+  it("restarts the Tauri bridge after repairing memory dependencies before using a cached model", async () => {
+    const missingDependency = {
+      moduleName: "mem0",
+      packageName: "mem0ai",
+      status: "missing_dependency" as const,
+    };
+    desktopApiMock.isTauriDesktop.mockReturnValue(true);
+    configRepositoryMock.getMemoryStatus
+      .mockResolvedValueOnce(missingDependency)
+      .mockResolvedValueOnce(missingDependency)
+      .mockResolvedValueOnce({ modelCached: true, status: "not_started" });
+
+    renderZh(
+      <MemorySettingsSection draft={{ ...sampleConfig.api_config, memory_auto_enabled: false }} onChange={vi.fn()} />,
+    );
+    await screen.findByText("缺少 mem0ai 依赖。");
+    fireEvent.click(screen.getByRole("button", { name: "安装依赖" }));
+
+    expect(await screen.findByText("mem0 已就绪 · 模型已就绪")).toBeInTheDocument();
+    expect(runtimeRepositoryMock.installMissingRuntimeDependency).toHaveBeenCalledTimes(1);
+    expect(desktopApiMock.restartDesktopBridge).toHaveBeenCalledTimes(1);
+    expect(configRepositoryMock.getMemoryStatus).toHaveBeenCalledTimes(3);
+    expect(modelAssetRepositoryMock.downloadModelAsset).not.toHaveBeenCalled();
+  });
+
+  it("does not start a second model download while chat is already loading memory", async () => {
+    configRepositoryMock.getMemoryStatus.mockResolvedValue({
+      modelCached: false,
+      status: "loading",
+      task: { ...runningTask(), kind: "memory", phase: "download" },
+    });
+
+    renderZh(
+      <MemorySettingsSection draft={{ ...sampleConfig.api_config, memory_auto_enabled: true }} onChange={vi.fn()} />,
+    );
+    expect((await screen.findAllByText("正在下载长期记忆模型…")).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "重新检查" }));
+
+    await waitFor(() => expect(configRepositoryMock.getMemoryStatus).toHaveBeenCalledTimes(2));
+    expect(modelAssetRepositoryMock.downloadModelAsset).not.toHaveBeenCalled();
+  });
+
+  it("does not expose an earlier runtime API-key error during setup checks", async () => {
+    configRepositoryMock.getMemoryStatus.mockResolvedValue({ message: "Invalid API key: secret", status: "error" });
+
+    renderZh(
+      <MemorySettingsSection draft={{ ...sampleConfig.api_config, memory_auto_enabled: true }} onChange={vi.fn()} />,
+    );
+    expect(await screen.findByText("记忆系统不可用。")).toBeInTheDocument();
+    expect(screen.queryByText(/Invalid API key/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "重新检查" }));
+
+    await waitFor(() => expect(configRepositoryMock.getMemoryStatus).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText(/Invalid API key/)).not.toBeInTheDocument();
+    expect(modelAssetRepositoryMock.downloadModelAsset).not.toHaveBeenCalled();
   });
 
   it("makes T2I setup optional and applies local ComfyUI defaults", () => {
@@ -260,7 +597,7 @@ describe("API settings sections", () => {
     fireEvent.click(screen.getByRole("button", { name: "取消下载" }));
     fireEvent.click(screen.getByRole("button", { name: "开始下载" }));
     fireEvent.click(screen.getByRole("combobox"));
-    fireEvent.click(screen.getByRole("option", { name: "50 系显卡 GPT-SoVITS v2pro" }));
+    fireEvent.click(screen.getAllByRole("option", { name: /GPT-SoVITS v2pro/ })[1]);
 
     expect(onCancelDownload).toHaveBeenCalledTimes(1);
     expect(onStartDownload).toHaveBeenCalledTimes(1);

@@ -11,11 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from config.config_manager import ConfigManager
-    from ui.settings_ui.context import SettingsUIContext
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -38,7 +34,7 @@ class PluginHostContext:
     huggingface_cache_dir: Path
 
     @classmethod
-    def from_config_manager(cls, cm: ConfigManager | None) -> PluginHostContext:
+    def from_config_manager(cls, cm: Any | None) -> PluginHostContext:
         if cm is None:
             return cls(
                 ui_language="zh_CN",
@@ -73,9 +69,10 @@ class PluginHostContext:
 
 @dataclass(frozen=True)
 class PluginSettingsUIContext:
-    """
-    What plugin-built Settings / Tools tabs may see: read-only host snapshot plus
-    a few path and listing fields. No config managers or save APIs.
+    """Deprecated context retained only for old Qt contribution imports.
+
+    The current host does not construct this context or invoke legacy Qt
+    contribution builders. It remains importable so older plugins can load.
     """
 
     host: PluginHostContext
@@ -85,7 +82,7 @@ class PluginSettingsUIContext:
     background_names: tuple[str, ...]
 
     @classmethod
-    def from_settings_ui_context(cls, ctx: SettingsUIContext) -> PluginSettingsUIContext:
+    def from_settings_ui_context(cls, ctx: Any) -> PluginSettingsUIContext:
         host = PluginHostContext.from_config_manager(ctx.config_manager)
         cfg = ctx.config_manager.config
         characters = tuple(str(c.name) for c in cfg.characters)

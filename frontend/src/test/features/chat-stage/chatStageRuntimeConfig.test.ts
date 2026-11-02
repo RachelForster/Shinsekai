@@ -1,0 +1,470 @@
+import type { CSSProperties } from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const desktopEventMocks = vi.hoisted(() => ({
+  emit: vi.fn(),
+  listen: vi.fn(),
+}));
+
+vi.mock("../../../shared/desktop/desktopApi", () => ({
+  emitDesktopChatStageRuntimeConfigChange: (config: unknown) => desktopEventMocks.emit(config),
+  onDesktopChatStageRuntimeConfigChange: (listener: (config: unknown) => void) => desktopEventMocks.listen(listener),
+}));
+
+import {
+  chatStageRuntimeStyle,
+  chatStageRuntimeConfigVersion,
+  defaultChatStageRuntimeConfig,
+  effectiveChatStageTextStyle,
+  normalizeChatStageRuntimeConfig,
+  readChatStageRuntimeConfig,
+  resetChatStageRuntimeThemeAppearance,
+  resetPersistedChatStageRuntimeThemeAppearance,
+  runtimeSpriteScale,
+  runtimeSpriteFraming,
+  runtimeSpriteFramingKey,
+  writeChatStageRuntimeConfig,
+  subscribeChatStageRuntimeConfig,
+} from "../../../features/chat-stage/runtimeConfig";
+
+describe("chat stage runtime config", () => {
+  it("loads old configs without cropping and sanitizes independently keyed framing values", () => {
+    expect(
+      normalizeChatStageRuntimeConfig({ version: 4, config: { spriteScales: { "Mio-0": 1.2 } } }).spriteFramings,
+    ).toEqual({});
+    const config = normalizeChatStageRuntimeConfig({
+      spriteFramings: {
+        " character:mio ": { heightRatio: 0.5, verticalPosition: 0.25 },
+        "character:ren": { heightRatio: -2, verticalPosition: 4 },
+        bad: null,
+        invalid: "bad",
+        "": { heightRatio: 0.3 },
+      },
+    });
+    expect(config.spriteFramings).toEqual({
+      "character:mio": { heightRatio: 0.5, verticalPosition: 0.25 },
+      "character:ren": { heightRatio: 0.2, verticalPosition: 1 },
+    });
+    writeChatStageRuntimeConfig(config);
+    expect(readChatStageRuntimeConfig().spriteFramings).toEqual(config.spriteFramings);
+    expect(resetChatStageRuntimeThemeAppearance(config).spriteFramings).toEqual(config.spriteFramings);
+  });
+  it.each(["static", "l2d", "mmd", "future-format"])(
+    "keeps framing for %s across expression URLs and snapshot IDs",
+    (avatarType) => {
+      const config = normalizeChatStageRuntimeConfig({
+        spriteFramings: { "character:mio": { heightRatio: 0.5, verticalPosition: 0.25 } },
+      });
+      const sprite = {
+        identityKey: "character:mio",
+        id: "Mio-0",
+        label: "Mio",
+        characterName: "Mio",
+        path: "/first",
+        modelUrl: "",
+        avatarType,
+      };
+      expect(runtimeSpriteFraming(config, sprite, 0)).toEqual({ heightRatio: 0.5, verticalPosition: 0.25 });
+      expect(
+        runtimeSpriteFraming(config, { ...sprite, characterName: "mio", label: "mio", id: "mio", path: "/new" }, 1),
+      ).toEqual({
+        heightRatio: 0.5,
+        verticalPosition: 0.25,
+      });
+      expect(
+        runtimeSpriteFraming(config, { ...sprite, identityKey: "character:ren", characterName: "Ren" }, 0),
+      ).toEqual({
+        heightRatio: 1,
+        verticalPosition: 0,
+      });
+    },
+  );
+
+  it("keeps same-filename unowned images separate across URL changes and reloads", () => {
+    const first = {
+      identityKey: "image:/a/portrait.png",
+      id: "portrait",
+      label: "portrait",
+      characterName: "portrait",
+      path: "/media?path=/a/portrait.png&token=old",
+      modelUrl: "",
+      avatarType: "static",
+    };
+    const second = { ...first, identityKey: "image:/b/portrait.png", path: "/media?path=/b/portrait.png&token=old" };
+    const config = normalizeChatStageRuntimeConfig({
+      spriteFramings: { [runtimeSpriteFramingKey(first, 0)]: { heightRatio: 0.3, verticalPosition: 0.4 } },
+    });
+    writeChatStageRuntimeConfig(config);
+    const restored = readChatStageRuntimeConfig();
+    expect(
+      runtimeSpriteFraming(restored, { ...first, id: "portrait:2", path: "/media?path=/a/portrait.png&token=new" }, 2),
+    ).toEqual({ heightRatio: 0.3, verticalPosition: 0.4 });
+    expect(runtimeSpriteFraming(restored, second, 0)).toEqual({ heightRatio: 1, verticalPosition: 0 });
+  });
+
+  it("uses distinct asset fallbacks when older producers provide identical display names", () => {
+    const first = {
+      id: "portrait",
+      label: "portrait",
+      characterName: "portrait",
+      path: "a/portrait.png",
+      modelUrl: "",
+      avatarType: "static",
+    };
+    const second = { ...first, path: "b/portrait.png" };
+    expect(runtimeSpriteFramingKey(first, 0)).not.toBe(runtimeSpriteFramingKey(second, 0));
+    const config = normalizeChatStageRuntimeConfig({ spriteFramings: { portrait: { heightRatio: 0.3 } } });
+    expect(runtimeSpriteFraming(config, first, 0)).toEqual({ heightRatio: 1, verticalPosition: 0 });
+    expect(runtimeSpriteFraming(config, second, 0)).toEqual({ heightRatio: 1, verticalPosition: 0 });
+  });
+
+  beforeEach(() => {
+    desktopEventMocks.emit.mockReset();
+    desktopEventMocks.emit.mockResolvedValue(undefined);
+    desktopEventMocks.listen.mockReset();
+    desktopEventMocks.listen.mockResolvedValue(() => undefined);
+    window.localStorage.removeItem("shinsekai-chat-stage-runtime-config");
+  });
+
+  it("normalizes legacy unversioned persisted config", () => {
+    expect(
+      normalizeChatStageRuntimeConfig({
+        dialogOpacity: 0.2,
+        dialogText: {
+          align: "invalid",
+          direction: "rtl",
+          fontSize: 999,
+        },
+        spriteScale: 1.4,
+        typewriterCps: "48",
+      }),
+    ).toEqual({
+      ...defaultChatStageRuntimeConfig,
+      dialogOpacity: 0.35,
+      dialogText: {
+        ...defaultChatStageRuntimeConfig.dialogText,
+        direction: "rtl",
+        fontSize: 64,
+      },
+      spriteScales: { __default__: 1.4 },
+      typewriterCps: 48,
+    });
+  });
+
+  it("normalizes versioned persisted config envelopes", () => {
+    expect(
+      normalizeChatStageRuntimeConfig({
+        config: {
+          autoHideInput: false,
+          autoHideTopTools: false,
+          configThemeColor: "#123abc",
+          configUseMainThemeColor: false,
+          dialogScale: 1.1,
+          immersiveMode: true,
+        },
+        version: chatStageRuntimeConfigVersion,
+      }),
+    ).toEqual({
+      ...defaultChatStageRuntimeConfig,
+      autoHideInput: false,
+      autoHideTopTools: false,
+      configThemeColor: "#123abc",
+      configUseMainThemeColor: false,
+      dialogScale: 1.1,
+      immersiveMode: true,
+    });
+  });
+
+  it("restores theme-owned appearance without clearing behavior and layout preferences", () => {
+    const customized = {
+      ...defaultChatStageRuntimeConfig,
+      configThemeColor: "#ff3355",
+      configUseMainThemeColor: true,
+      dialogFill: {
+        color: "#112233",
+        color2: "#445566",
+        gradient: true,
+        gradientDirection: "to-top" as const,
+        gradientMode: "dual" as const,
+        opacity: 0.7,
+      },
+      dialogOpacity: 0.55,
+      dialogText: {
+        align: "right" as const,
+        alignOverride: true,
+        bold: true,
+        boldOverride: true,
+        color: "#ddeeff",
+        direction: "rtl" as const,
+        fontFamily: "Verdana",
+        fontSize: 24,
+      },
+      nameText: {
+        bold: false,
+        boldOverride: true,
+        color: "#ffeeaa",
+        fontFamily: "Georgia",
+        fontSize: 20,
+      },
+      spriteScales: { Mio: 1.4 },
+      typewriterCps: 96,
+      windowScale: 1.1,
+    };
+
+    expect(resetChatStageRuntimeThemeAppearance(customized, "rgb(34, 170, 136)")).toEqual({
+      ...customized,
+      configThemeColor: "#22aa88",
+      configUseMainThemeColor: false,
+      dialogFill: defaultChatStageRuntimeConfig.dialogFill,
+      dialogText: {
+        ...defaultChatStageRuntimeConfig.dialogText,
+        direction: "rtl",
+      },
+      nameText: defaultChatStageRuntimeConfig.nameText,
+    });
+  });
+
+  it("persists and broadcasts restored theme appearance in the current window and across webviews", () => {
+    window.localStorage.setItem(
+      "shinsekai-chat-stage-runtime-config",
+      JSON.stringify({
+        config: {
+          configThemeColor: "#ff3355",
+          dialogOpacity: 0.6,
+          dialogText: { color: "#112233" },
+        },
+        version: chatStageRuntimeConfigVersion,
+      }),
+    );
+    const listener = vi.fn();
+    const unsubscribe = subscribeChatStageRuntimeConfig(listener);
+
+    const next = resetPersistedChatStageRuntimeThemeAppearance("#336699");
+
+    expect(listener).toHaveBeenCalledWith(next);
+    expect(desktopEventMocks.emit).toHaveBeenCalledWith(next);
+    expect(next.configThemeColor).toBe("#336699");
+    expect(next.dialogOpacity).toBe(0.6);
+    expect(next.dialogText).toEqual(defaultChatStageRuntimeConfig.dialogText);
+    expect(JSON.parse(window.localStorage.getItem("shinsekai-chat-stage-runtime-config") || "{}")).toMatchObject({
+      config: {
+        configThemeColor: "#336699",
+        configUseMainThemeColor: false,
+        dialogOpacity: 0.6,
+      },
+      version: chatStageRuntimeConfigVersion,
+    });
+
+    unsubscribe();
+    window.localStorage.removeItem("shinsekai-chat-stage-runtime-config");
+  });
+
+  it("applies runtime config received from another webview", async () => {
+    const listener = vi.fn();
+    let desktopListener: (config: unknown) => void = () => {
+      throw new Error("desktop listener was not registered");
+    };
+    const unlisten = vi.fn();
+    desktopEventMocks.listen.mockImplementation(async (callback: (config: unknown) => void) => {
+      desktopListener = callback;
+      return unlisten;
+    });
+    const unsubscribe = subscribeChatStageRuntimeConfig(listener);
+    await vi.waitFor(() => expect(desktopEventMocks.listen).toHaveBeenCalledTimes(1));
+
+    desktopListener({
+      configThemeColor: "#4a6cff",
+      dialogOpacity: 0.7,
+      dialogText: { color: "#abcdef" },
+    });
+
+    expect(listener).toHaveBeenCalledWith({
+      ...defaultChatStageRuntimeConfig,
+      configThemeColor: "#4a6cff",
+      dialogOpacity: 0.7,
+      dialogText: {
+        ...defaultChatStageRuntimeConfig.dialogText,
+        color: "#abcdef",
+      },
+    });
+
+    unsubscribe();
+    expect(unlisten).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-reads persisted config after the desktop listener is ready", async () => {
+    let finishDesktopSubscription: ((unlisten: () => void) => void) | undefined;
+    desktopEventMocks.listen.mockImplementation(
+      () =>
+        new Promise<() => void>((resolve) => {
+          finishDesktopSubscription = resolve;
+        }),
+    );
+    const listener = vi.fn();
+    const unsubscribe = subscribeChatStageRuntimeConfig(listener);
+    const next = {
+      ...defaultChatStageRuntimeConfig,
+      configThemeColor: "#55aacc",
+      dialogOpacity: 0.65,
+    };
+    window.localStorage.setItem(
+      "shinsekai-chat-stage-runtime-config",
+      JSON.stringify({
+        config: next,
+        version: chatStageRuntimeConfigVersion,
+      }),
+    );
+
+    finishDesktopSubscription?.(() => undefined);
+
+    await vi.waitFor(() => expect(listener).toHaveBeenCalledWith(next));
+    unsubscribe();
+  });
+
+  it("reloads runtime config when another browser context changes local storage", () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeChatStageRuntimeConfig(listener);
+    const next = {
+      ...defaultChatStageRuntimeConfig,
+      configThemeColor: "#aa44cc",
+      dialogOpacity: 0.8,
+    };
+
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: "shinsekai-chat-stage-runtime-config",
+        newValue: JSON.stringify({
+          config: next,
+          version: chatStageRuntimeConfigVersion,
+        }),
+      }),
+    );
+
+    expect(listener).toHaveBeenCalledWith(next);
+    unsubscribe();
+  });
+
+  it("migrates legacy sprite-id scale keys to stable character keys", () => {
+    const config = normalizeChatStageRuntimeConfig({
+      config: {
+        spriteScales: {
+          "Mio-1": 0.8,
+          "Mio-0": 1.35,
+        },
+      },
+      version: 3,
+    });
+
+    expect(config.spriteScales).toEqual({ "Mio-0": 1.35, "Mio-1": 0.8, Mio: 1.35 });
+    expect(
+      runtimeSpriteScale(
+        config,
+        {
+          avatarType: "static",
+          modelUrl: "",
+          characterName: "Mio",
+          id: "Mio-0",
+          label: "Mio",
+          path: "asset://mio.png",
+        },
+        0,
+      ),
+    ).toBe(1.35);
+  });
+
+  it("falls back safely when persisted JSON is malformed", () => {
+    window.localStorage.setItem("shinsekai-chat-stage-runtime-config", "{not-json");
+
+    expect(readChatStageRuntimeConfig()).toEqual(defaultChatStageRuntimeConfig);
+
+    window.localStorage.removeItem("shinsekai-chat-stage-runtime-config");
+  });
+
+  it("uses theme alignment until the runtime config explicitly overrides it", () => {
+    const themeStyle = { "--chat-dialog-text-theme-align": "left" } as CSSProperties;
+    const runtimeStyle = chatStageRuntimeStyle(defaultChatStageRuntimeConfig, themeStyle) as unknown as Record<
+      string,
+      unknown
+    >;
+
+    expect(
+      effectiveChatStageTextStyle(
+        defaultChatStageRuntimeConfig.dialogText,
+        defaultChatStageRuntimeConfig.dialogText,
+        themeStyle,
+        "dialogText",
+      ).align,
+    ).toBe("left");
+    expect(runtimeStyle["--chat-dialog-text-align"]).toBe("var(--chat-dialog-text-theme-align, center)");
+
+    const overridden = {
+      ...defaultChatStageRuntimeConfig,
+      dialogText: {
+        ...defaultChatStageRuntimeConfig.dialogText,
+        align: "center" as const,
+        alignOverride: true,
+      },
+    };
+    const overriddenStyle = chatStageRuntimeStyle(overridden, themeStyle) as unknown as Record<string, unknown>;
+    expect(overriddenStyle["--chat-dialog-text-align"]).toBe("center");
+  });
+
+  it("keeps the default dialog width cap and widens it when dialogWidthPct is set", () => {
+    const themeStyle = {} as CSSProperties;
+    const defaultStyle = chatStageRuntimeStyle(defaultChatStageRuntimeConfig, themeStyle) as unknown as Record<
+      string,
+      unknown
+    >;
+    expect(defaultStyle["--chat-dialog-runtime-width"]).toBe("1040px");
+    expect(defaultStyle["--chat-dialog-width"]).toBeUndefined();
+    expect(defaultStyle["--chat-dialog-max-width"]).toBeUndefined();
+    expect(defaultStyle["--chat-dialog-responsive-width"]).toBeUndefined();
+
+    const widened = chatStageRuntimeStyle(
+      { ...defaultChatStageRuntimeConfig, dialogWidthPct: 100 },
+      themeStyle,
+    ) as unknown as Record<string, unknown>;
+    expect(widened["--chat-dialog-width"]).toBe("100vw");
+    expect(widened["--chat-dialog-runtime-width"]).toBe("100vw");
+    expect(widened["--chat-dialog-max-width"]).toBe("100vw");
+    expect(widened["--chat-dialog-responsive-width"]).toBe("100vw");
+
+    const clamped = chatStageRuntimeStyle(
+      { ...defaultChatStageRuntimeConfig, dialogWidthPct: 500 },
+      themeStyle,
+    ) as unknown as Record<string, unknown>;
+    expect(clamped["--chat-dialog-width"]).toBe("100vw");
+
+    const scaled = chatStageRuntimeStyle(
+      {
+        ...defaultChatStageRuntimeConfig,
+        dialogScale: 1.2,
+        dialogWidthPct: 100,
+        windowScale: 1.2,
+      },
+      themeStyle,
+    ) as unknown as Record<string, unknown>;
+    expect(scaled["--chat-dialog-composed-scale"]).toBe("1.44");
+    expect(scaled["--chat-dialog-width"]).toBe("calc(100vw * 0.69444444)");
+    expect(scaled["--chat-dialog-runtime-width"]).toBe("calc(100vw * 0.69444444)");
+    expect(scaled["--chat-dialog-max-width"]).toBe("calc(100vw * 0.69444444)");
+    expect(scaled["--chat-dialog-responsive-width"]).toBe("calc(100vw * 0.69444444)");
+    expect(0.69444444 * 1.44).toBeCloseTo(1, 7);
+  });
+
+  it("disables custom dialog width when a persisted value is invalid", () => {
+    for (const dialogWidthPct of ["invalid", "", Number.NaN, Number.POSITIVE_INFINITY, false, {}]) {
+      expect(normalizeChatStageRuntimeConfig({ dialogWidthPct }).dialogWidthPct).toBeNull();
+    }
+
+    expect(normalizeChatStageRuntimeConfig({ dialogWidthPct: "72" }).dialogWidthPct).toBe(72);
+    expect(normalizeChatStageRuntimeConfig({ dialogWidthPct: 500 }).dialogWidthPct).toBe(100);
+
+    const invalidStyle = chatStageRuntimeStyle(
+      { ...defaultChatStageRuntimeConfig, dialogWidthPct: Number.NaN },
+      {},
+    ) as unknown as Record<string, unknown>;
+    expect(invalidStyle["--chat-dialog-runtime-width"]).toBe("1040px");
+    expect(invalidStyle["--chat-dialog-responsive-width"]).toBeUndefined();
+  });
+});

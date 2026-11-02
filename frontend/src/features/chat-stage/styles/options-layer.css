@@ -1,0 +1,214 @@
+.options-layer {
+  position: relative;
+  z-index: 1;
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  color: var(--chat-options-color, var(--chat-option-color));
+  background: transparent;
+  box-shadow: none;
+  opacity: 1;
+  backdrop-filter: none;
+  isolation: isolate;
+  translate: 0 -24px;
+  /* Slide-only entrance (no opacity fade): the option buttons use backdrop-filter,
+     and fading the group's opacity makes Chromium/Edge flash a bright bar for one
+     frame while it re-composites the backdrop. */
+  animation: chat-options-rise 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes chat-options-rise {
+  from {
+    transform: translateY(8px);
+  }
+
+  to {
+    transform: translateY(0);
+  }
+}
+
+.options-layer__scroll {
+  display: grid;
+  box-sizing: border-box;
+  width: 100%;
+  gap: var(--chat-options-gap);
+  justify-items: stretch;
+  padding: clamp(4px, 0.8vw, 10px);
+  overflow: visible;
+}
+
+.options-layer__item {
+  position: relative;
+  min-width: 0;
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+  animation: chat-option-enter 280ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.options-layer__item:nth-child(2) {
+  animation-delay: 35ms;
+}
+
+.options-layer__item:nth-child(3) {
+  animation-delay: 70ms;
+}
+
+.options-layer__item:nth-child(n + 4) {
+  animation-delay: 105ms;
+}
+
+.options-layer__button {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  justify-content: var(--chat-option-justify-content);
+  min-height: var(--chat-option-min-height);
+  padding: var(--chat-option-padding);
+  overflow: hidden;
+  border-color: var(--chat-option-border-color);
+  border-radius: var(--chat-option-border-radius, 6px);
+  border-image-source: var(--chat-option-background-image, none);
+  border-image-slice: var(--chat-option-background-slice, 32) fill;
+  border-image-width: var(--chat-option-background-width, 32px);
+  border-image-outset: var(--chat-option-background-outset, 0px);
+  border-image-repeat: stretch;
+  color: var(--chat-option-color);
+  background: var(--chat-sheen), var(--chat-option-background);
+  box-shadow:
+    0 14px 34px color-mix(in srgb, var(--stage-shadow) 78%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    var(--chat-option-box-shadow, none);
+  /* No backdrop-filter: when the option animates in, a backdrop-filtered element
+     inside a transforming ancestor gets re-composited per frame and Chromium/Edge
+     flash a bright bar on the first frame. The tinted --chat-option-background keeps
+     the look without the flash. */
+  text-align: var(--chat-option-text-align);
+  text-shadow: var(--chat-option-text-shadow);
+  white-space: normal;
+  font-size: var(--chat-option-font-size);
+  font-weight: var(--chat-option-font-weight);
+  letter-spacing: 0.01em;
+  line-height: 1.45;
+  transform: none;
+  transition:
+    color 150ms ease,
+    background 150ms ease,
+    border-color 150ms ease,
+    box-shadow 180ms ease;
+}
+
+.options-layer__button .button__label {
+  position: relative;
+  z-index: 2;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.options-layer__detail {
+  display: block;
+  margin-top: 0.35rem;
+  color: color-mix(in srgb, currentColor 72%, transparent);
+  font-size: 0.82em;
+  font-weight: 450;
+  overflow-wrap: anywhere;
+}
+
+.options-layer__button::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 3px;
+  height: 56%;
+  border-radius: 0 999px 999px 0;
+  background: var(--stage-accent);
+  box-shadow: 0 0 12px color-mix(in oklch, var(--stage-accent) 70%, transparent);
+  content: "";
+  opacity: 0.56;
+  transform: translateY(-50%) scaleY(0.62);
+  transform-origin: center;
+  transition:
+    opacity 150ms ease,
+    transform 180ms ease;
+}
+
+.options-layer__button:hover:not(:disabled) {
+  border-color: var(--chat-option-hover-border-color, var(--stage-line-strong));
+  color: var(--chat-option-hover-color, var(--chat-option-color));
+  background: var(--chat-option-hover-background);
+  box-shadow: var(
+    --chat-option-hover-base-shadow,
+    0 18px 38px color-mix(in srgb, var(--stage-shadow) 86%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 0 22px -8px color-mix(in oklch, var(--stage-accent) 58%, transparent)
+  );
+  transform: none;
+}
+
+.options-layer__item:has(.options-layer__button:hover:not(:disabled)),
+.options-layer__item:has(.options-layer__button:focus-visible) {
+  transform: translateX(6px);
+}
+
+.options-layer__button:hover:not(:disabled)::before,
+.options-layer__button:focus-visible::before {
+  opacity: 1;
+  transform: translateY(-50%) scaleY(1);
+}
+
+.options-layer__button::after {
+  position: absolute;
+  top: 50%;
+  left: 14px;
+  width: var(--chat-option-icon-size);
+  height: var(--chat-option-icon-size);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 36% 52%, rgba(61, 70, 78, 0.92) 0 2px, transparent 2.5px),
+    radial-gradient(circle at 50% 52%, rgba(61, 70, 78, 0.92) 0 2px, transparent 2.5px),
+    radial-gradient(circle at 64% 52%, rgba(61, 70, 78, 0.92) 0 2px, transparent 2.5px), #f7f7f2;
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+  content: "";
+  opacity: var(--chat-option-icon-opacity);
+  pointer-events: none;
+  transform: translateY(-50%);
+  z-index: 2;
+}
+
+.options-layer__button:focus-visible {
+  outline: none;
+  border-color: var(--chat-option-active-border-color, var(--stage-accent));
+  color: var(--chat-option-active-color, var(--chat-option-color));
+  background: var(--chat-option-active-background, var(--chat-option-hover-background));
+  box-shadow:
+    var(--chat-option-focus-outline, 0 0 0 2px color-mix(in oklch, var(--stage-accent) 55%, transparent)),
+    var(--chat-option-active-box-shadow, none);
+  transform: none;
+}
+
+.options-layer__button:active:not(:disabled) {
+  border-color: var(--chat-option-active-border-color, var(--chat-option-hover-border-color, var(--stage-line-strong)));
+  color: var(--chat-option-active-color, var(--chat-option-hover-color, var(--chat-option-color)));
+  background: var(--chat-option-active-background, var(--chat-option-hover-background));
+  transform: none;
+}
+
+.options-layer__item:has(.options-layer__button:active:not(:disabled)) {
+  transform: translateX(3px) scale(0.995);
+}
+
+@keyframes chat-option-enter {
+  from {
+    transform: translateX(18px);
+  }
+
+  to {
+    transform: translateX(0);
+  }
+}

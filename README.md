@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/system/picture/shinsekai-github-banner.png" alt="Shinsekai GitHub Banner" width="100%">
+</p>
+
 [中文版](README.md) | [English Version](https://github.com/RachelForster/Shinsekai/blob/main/docs/README_EN.md)
 
 # 新世界（Shinsekai）
@@ -13,9 +17,12 @@
 - **多模型、可换引擎**：在 **API 设定** 对接常见 LLM 与 OpenAI 兼容端点；**TTS** 含 GPT-SoVITS、Genie TTS 等，无独显也可选轻量方案；**文生图**可接 ComfyUI 等工作流（同页配置）。  
 - **听懂与说出口**：麦克风 **ASR**（如 Vosk；更多后端可装**插件**）与台词 **TTS** 可选开关，适配「只打字」「只朗读立绘音频」等多种玩法。  
 - **模型不仅会聊天**：内置/插件 **LLM 工具**（如角色与世界书相关能力）+ **MCP** 接入外部服务，把检索、自动化等能力收进同一次对话。  
-- **可扩展、可换肤**：**插件 SDK** 扩展适配器与设置页、聊天栏控件；主题与聊天窗样式可通过配置与插件微调（如 `chat_ui_theme`）。  
+- **长期记忆**：按角色沉淀、检索和管理跨会话记忆，让人物关系、剧情进度与重要事件在后续对话中自然延续。
+- **自定义聊天皮肤**：内置聊天主题管理与可视化编辑，支持上传、复制、切换和调整对话框、姓名框、字体、颜色及舞台样式。
+- **100+ 角色包**：提供超过 100 个可直接导入的角色包，快速扩充角色阵容；也支持自行制作、导入和导出 `.char` 包。
+- **插件扩展**：**插件 SDK** 可扩展适配器、设置页与聊天栏控件，并通过插件继续增加 LLM、TTS、ASR、T2I 和工具能力。
 - **数据在本地、可备份**：配置与资源默认落在项目 **`data/`** 下（`api.yaml`、`system_config.yaml`、角色与历史等），便于打包备份与二次开发。  
-- **开源可玩**：源码与 [发行版整合包](https://github.com/RachelForster/Shinsekai/releases) 任选；社区插件索引见 [Shinsekai-Plugin-Registry](https://github.com/RachelForster/Shinsekai-Plugin-Registry)。
+- **公开源码**：源码与 [发行版整合包](https://github.com/RachelForster/Shinsekai/releases) 任选；社区插件索引见 [Shinsekai-Plugin-Registry](https://github.com/RachelForster/Shinsekai-Plugin-Registry)。
 
 ---
 
@@ -39,7 +46,7 @@
 | **LLM 与工具** | **API 设定**中配置供应商、**模型 ID**、Key、Base URL；支持 **流式**输出与 **工具调用**；工具来源包括内置/插件 **`@tool`** 与 **MCP**（`data/config/mcp.yaml`）。 |
 | **文生图（T2I）** | 在 **API 设定**中配置 **ComfyUI** 等服务端地址、工作流与节点 ID；可按需接入其他 **T2I 适配器**（插件注册）。 |
 | **设置与系统集成** | **React 设置中心**通过本地 Python bridge 管理 **API**（`data/config/api.yaml`）与 **系统**（`data/config/system_config.yaml`）：界面语言、语音识别后端、主题色、字体等；配置读写仍留在 Python 层。 |
-| **插件与小工具** | `data/config/plugins.yaml` 清单加载；**插件**页发现/安装、启用禁用；**小工具**页对齐 PySide 设置窗的立绘提示词、批量生成、裁剪和抠图流程；插件可扩展 LLM/TTS/ASR/T2I、工具与 **Settings / 工具箱 / 聊天窗** 入口。 |
+| **插件与小工具** | `data/config/plugins.yaml` 清单加载；**插件**页发现/安装、启用禁用；**小工具**页提供立绘提示词、批量生成、裁剪和抠图流程；插件可扩展 LLM/TTS/ASR/T2I、工具与 React **Settings / 工具箱 / 聊天窗** 入口。 |
 | **MCP** | **插件 → MCP** 子页或 YAML 连接远端/本机 MCP Server（SSE / stdio），工具并入当前进程的 LLM 工具列表。 |
 | **视觉与其它扩展** | 视觉理解、主题编辑等能力可通过 **官方或社区插件** 启用（如仓库内 `plugins/` 示例）；具体能力以各插件说明为准。 |
 
@@ -107,7 +114,7 @@ pnpm build
 cd ..
 ```
 
-源码仓库不再提交 `frontend/dist`。`start-react.*` 发现构建产物不存在时会提示手动运行 `cd frontend && pnpm install && pnpm build`；需要自动构建时可显式传入 `--build-if-missing` 或 `--build-if-stale`。正式桌面安装包会在 release 构建流程中生成并内置前端资源。旧 PySide 设置页仍作为兼容入口保留：`python webui_qt.py`。
+源码仓库不再提交 `frontend/dist`。`start-react.*` 发现构建产物不存在时会提示手动运行 `cd frontend && pnpm install && pnpm build`；需要自动构建时可显式传入 `--build-if-missing` 或 `--build-if-stale`。正式桌面安装包会在 release 构建流程中生成并内置前端资源。Qt 设置页和 Qt 聊天窗已退出，不再提供 Python UI 兼容入口。
 
 ### Tauri 桌面端开发
 
@@ -205,6 +212,8 @@ pnpm sync:version
 |------|------|
 | **项目主页（GitHub Pages）** | [rachelforster.github.io/Shinsekai](https://rachelforster.github.io/Shinsekai/) |
 | **图形界面使用指南（新手）** | [docs/GUI_USER_GUIDE_zh-CN.md](docs/GUI_USER_GUIDE_zh-CN.md) |
+| 立绘智能生成与 MiniMax H3 接入 | [docs/CHARACTER_SPRITE_GENERATION_zh-CN.md](docs/CHARACTER_SPRITE_GENERATION_zh-CN.md) |
+| 聊天皮肤定义与制作指南 | [docs/CHAT_UI_THEME_GUIDE_zh-CN.md](docs/CHAT_UI_THEME_GUIDE_zh-CN.md) |
 | 英文说明 | [docs/README_EN.md](docs/README_EN.md) |
 | 插件开发者指南 | [docs/PLUGIN_DEVELOPER_GUIDE.md](docs/PLUGIN_DEVELOPER_GUIDE.md) |
 | 本仓库 | [github.com/RachelForster/Shinsekai](https://github.com/RachelForster/Shinsekai) |
@@ -219,4 +228,4 @@ pnpm sync:version
 
 ## 许可说明
 
-新世界是源码可见项目，不是开源项目。你可以查看源码、本地构建自用，也可以公开 fork 用于讨论和贡献；未经书面许可，禁止再分发、发布 Release、发布安装包、上架应用商店或商业使用。详见 [LICENSE](LICENSE)。
+新世界是公开源码项目。你可以查看源码、本地构建自用，也可以公开 fork 用于讨论和贡献；未经书面许可，禁止再分发、发布 Release、发布安装包、上架应用商店或商业使用。详见 [LICENSE](LICENSE)。

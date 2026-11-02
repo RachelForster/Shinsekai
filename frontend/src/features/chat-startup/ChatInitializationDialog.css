@@ -1,0 +1,111 @@
+.chat-initialization-dialog {
+  width: min(620px, 100%);
+}
+
+.chat-initialization-dialog__content {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.chat-initialization-dialog__hero {
+  position: relative;
+  display: grid;
+  min-height: 172px;
+  grid-template-columns: minmax(132px, 0.42fr) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-4);
+  overflow: hidden;
+  padding: var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--color-accent-primary) 34%, var(--color-border));
+  border-radius: var(--radius-control);
+  background:
+    radial-gradient(
+      circle at 18% 22%,
+      color-mix(in srgb, var(--color-accent-primary) 20%, transparent),
+      transparent 42%
+    ),
+    linear-gradient(135deg, var(--color-surface-raised), var(--color-surface));
+}
+
+.chat-initialization-dialog__hero::after {
+  position: absolute;
+  right: -32px;
+  bottom: -42px;
+  width: 132px;
+  height: 132px;
+  border: 1px solid color-mix(in srgb, var(--color-accent-primary) 18%, transparent);
+  border-radius: 50%;
+  content: "";
+}
+
+.chat-initialization-dialog__mascot {
+  z-index: 1;
+  display: grid;
+  min-height: 140px;
+  place-items: center;
+}
+
+.chat-initialization-dialog__mascot img {
+  display: block;
+  width: min(168px, 100%);
+  max-height: 156px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 12px 18px color-mix(in srgb, var(--color-shadow) 72%, transparent));
+}
+
+.chat-initialization-dialog__copy {
+  z-index: 1;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.chat-initialization-dialog__copy strong {
+  color: var(--color-accent-primary);
+  font-size: 17px;
+  line-height: 1.4;
+}
+
+.chat-initialization-dialog__copy p {
+  margin: 0;
+  color: var(--color-text-muted);
+  line-height: 1.6;
+}
+
+.chat-initialization-dialog__error {
+  padding: var(--space-3);
+  border: 1px solid var(--color-danger-border);
+  border-radius: var(--radius-control);
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 560px) {
+  .chat-initialization-dialog__hero {
+    grid-template-columns: minmax(0, 1fr);
+    text-align: center;
+  }
+
+  .chat-initialization-dialog__mascot {
+    min-height: 112px;
+  }
+
+  .chat-initialization-dialog__mascot img {
+    max-height: 124px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-initialization-dialog__mascot img {
+    visibility: hidden;
+  }
+
+  .chat-initialization-dialog__mascot::after {
+    color: var(--color-accent-primary);
+    content: "🐾";
+    font-size: 42px;
+  }
+}

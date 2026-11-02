@@ -12,7 +12,7 @@ import yaml
 if TYPE_CHECKING:
     import pandas as pd
 
-# 不在此模块顶层 import gradio：设置界面（webui_qt）会 import 本类，Gradio 会拖入巨大依赖链且
+# 不在此模块顶层 import UI 框架；配置模型必须可由 bridge 与 CLI 轻量加载。
 # PyInstaller 需为各子包补数据文件。旧 Gradio WebUI 仍通过本类；仅 handle_bgm_selection 在 Gradio 下使用。
 
 BACKGROUND_CONFIG_PATH = ConfigManager._BACKGOUND_CONFIG_PATH # 更正为背景配置路径

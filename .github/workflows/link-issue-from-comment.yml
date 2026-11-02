@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Append closing keyword to PR body
+      - name: Append issue link to PR body
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -69,33 +69,44 @@ jobs:
           fi
 
           # GitHub 只在 PR 指向默认分支时解释 closing keywords
-          if [[ "$base_ref" != "$default_branch" ]]; then
-            gh pr comment "$PR_NUMBER" --repo "$REPO" --body "This PR targets \`$base_ref\`, not the default branch \`$default_branch\`; GitHub may ignore closing keywords."
-            exit 0
+          target_number="${target#*#}"
+          target_issue="$(gh api "repos/$target_repo/issues/$target_number")"
+          target_title="$(jq -r '.title // ""' <<<"$target_issue")"
+          target_labels="$(jq -r '[.labels[].name | ascii_downcase] | join(",")' <<<"$target_issue")"
+
+          link_keyword="Closes"
+          link_reason="normal issue"
+          if [[ "$target_title" == "[RC "* || ",$target_labels," == *",release-blocker,"* || ",$target_labels," == *",needs-fix,"* || ",$target_labels," == *",needs-cherrypick,"* || ",$target_labels," == *",cherry-picked,"* ]]; then
+            link_keyword="Refs"
+            link_reason="release issue"
+          elif [[ "$base_ref" != "$default_branch" ]]; then
+            link_keyword="Refs"
+            link_reason="non-default branch"
           fi
 
           gh api "repos/$REPO/pulls/$PR_NUMBER" --jq '.body // ""' > /tmp/pr_body.md
 
-          TARGET="$target" python3 - <<'PY'
+          TARGET="$target" LINK_KEYWORD="$link_keyword" python3 - <<'PY'
           import os
           import re
 
           body = open("/tmp/pr_body.md", encoding="utf-8").read()
           target = os.environ["TARGET"]
           target_key = target.lower()
-          line = f"Closes {target}"
+          link_keyword = os.environ["LINK_KEYWORD"]
+          line = f"{link_keyword} {target}"
 
           start = "<!-- issue-link-bot:start -->"
           end = "<!-- issue-link-bot:end -->"
           heading = "### Linked issues"
-          closing_re = re.compile(
-              r"^(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+"
+          link_re = re.compile(
+              r"^(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|refs?|references?)\s+"
               r"(?P<issue>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#\d+)\s*$",
               re.IGNORECASE,
           )
 
-          def closing_issue_ref(text):
-              match = closing_re.match(text.strip())
+          def linked_issue_ref(text):
+              match = link_re.match(text.strip())
               if not match:
                   return None
               return match.group("issue")
@@ -104,14 +115,14 @@ jobs:
               normalized = []
               seen = set()
               for raw_line in lines:
-                  issue_ref = closing_issue_ref(raw_line)
+                  issue_ref = linked_issue_ref(raw_line)
                   if not issue_ref:
                       continue
                   key = issue_ref.lower()
                   if key in seen:
                       continue
                   seen.add(key)
-                  normalized.append(f"Closes {issue_ref}")
+                  normalized.append(line if key == target_key else raw_line.strip())
               return normalized, seen
 
           def render_block(lines):
@@ -120,7 +131,7 @@ jobs:
 
           existing_issue_refs = {
               issue_ref.lower()
-              for issue_ref in map(closing_issue_ref, body.splitlines())
+              for issue_ref in map(linked_issue_ref, body.splitlines())
               if issue_ref
           }
 
@@ -146,4 +157,4 @@ jobs:
             --raw-field body="$(cat /tmp/new_pr_body.md)" \
             >/dev/null
 
-          gh pr comment "$PR_NUMBER" --repo "$REPO" --body "Linked: \`Closes $target\` was added to the PR description."
+          gh pr comment "$PR_NUMBER" --repo "$REPO" --body "Linked: \`$link_keyword $target\` was added to the PR description ($link_reason)."

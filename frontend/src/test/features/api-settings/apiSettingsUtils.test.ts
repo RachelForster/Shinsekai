@@ -6,6 +6,10 @@ import {
   DEFAULT_T2I_API_URL,
   DEFAULT_T2I_OUTPUT_NODE_ID,
   DEFAULT_T2I_PROMPT_NODE_ID,
+  effectiveVisionApiKey,
+  effectiveVisionBaseUrl,
+  effectiveVisionModel,
+  resolveVisionProvider,
   inferT2iSetupMode,
   isT2iReadyForSprites,
   isTaskRunning,
@@ -26,6 +30,7 @@ function apiConfig(overrides: Partial<ApiConfig> = {}): ApiConfig {
     asr_extra_configs: {},
     llm_api_key: {},
     llm_base_url: "",
+    llm_base_urls: {},
     llm_model: {},
     llm_provider: "Deepseek",
     ...overrides,
@@ -82,6 +87,7 @@ describe("API settings utilities", () => {
   it("preserves custom ASR and model options for existing configs", () => {
     expect(resolveAsrWhisperPresetValue("large-v3")).toBe("large-v3");
     expect(resolveAsrWhisperPresetValue("custom-model")).toBe("__custom__");
+    expect(resolveAsrWhisperPresetValue("")).toBe("__custom__");
 
     expect(
       withCurrentOption(
@@ -184,5 +190,49 @@ describe("API settings utilities", () => {
     expect(isT2iReadyForSprites(emptyComfy)).toBe(false);
     expect(isT2iReadyForSprites({ ...emptyComfy, t2i_default_workflow_path: "D:/workflows/sprite.json" })).toBe(true);
     expect(isT2iReadyForSprites(stableDiffusion)).toBe(true);
+  });
+
+  it("preserves a configured local ComfyUI port and workflow node IDs when filling defaults", () => {
+    const configured = apiConfig({
+      t2i_api_url: "http://localhost:8189",
+      t2i_default_workflow_path: "D:/minimax_h3_i2v_api.json",
+      t2i_provider: "comfyui",
+      t2i_prompt_node_id: "131",
+      t2i_output_node_id: "92",
+      t2i_work_path: "",
+    });
+    expect(applyT2iSetupMode(configured, "local")).toEqual(configured);
+  });
+
+  it("uses credentials from the corresponding provider independently of the active LLM", () => {
+    const config = apiConfig({
+      llm_api_key: { ChatGPT: "chat-key", Deepseek: "shared-key" },
+      llm_base_url: "https://api.openai.com/v1",
+      llm_base_urls: {
+        ChatGPT: "https://api.openai.com/v1",
+        Deepseek: "https://deepseek-proxy.example.com/v1",
+      },
+      llm_provider: "ChatGPT",
+      vision_provider: "deepseek",
+    });
+
+    expect(effectiveVisionApiKey(config)).toBe("shared-key");
+    expect(effectiveVisionBaseUrl(config)).toBe("https://deepseek-proxy.example.com/v1");
+  });
+
+  it("follows the active LLM by default and preserves explicit vision choices", () => {
+    const config = apiConfig({
+      vision_provider: "auto",
+      vision_model: {},
+      llm_provider: "ChatGPT",
+      llm_model: { ChatGPT: "current-vision-model" },
+      llm_api_key: { ChatGPT: "key" },
+    });
+    expect(resolveVisionProvider(config)).toBe("chatgpt");
+    expect(effectiveVisionModel(config)).toBe("current-vision-model");
+    expect(effectiveVisionApiKey(config)).toBe("key");
+    expect(resolveVisionProvider({ ...config, llm_provider: "通义千问" })).toBe("qwen");
+    expect(resolveVisionProvider({ ...config, vision_provider: "moondream" })).toBe("moondream");
+    expect(effectiveVisionModel({ ...config, vision_model: { chatgpt: "explicit-model" } })).toBe("explicit-model");
   });
 });

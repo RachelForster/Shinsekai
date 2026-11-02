@@ -1,6 +1,7 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUpCircle, BookOpen, Power, RotateCcw, Send, Settings, Trash2 } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { openExternal } from "../../entities/files/repository";
 import {
@@ -23,7 +24,6 @@ import type {
 import {
   desktopRestartErrorMessage,
   isTauriDesktop,
-  restartDesktopBridge,
   writeDesktopRestartDebugLog,
 } from "../../shared/desktop/desktopApi";
 import { useI18n } from "../../shared/i18n";
@@ -54,9 +54,51 @@ import {
   pluginToolsTabs,
   type PluginView,
 } from "./pluginUtils";
+import { reloadPluginService } from "./pluginReload";
 import "./PluginManagerPage.css";
 
 const INSTALLED_PLUGIN_PAGE_SIZE = 8;
+const PLUGIN_DEVELOPER_DOCS_URL = "https://plugins.shinsekai.studio/docs/plugin";
+
+interface PluginRouteReturnTo {
+  hash?: string;
+  pathname: string;
+  search?: string;
+  state?: unknown;
+}
+
+interface PluginRouteState {
+  pageId?: unknown;
+  pluginId?: unknown;
+  returnTo?: unknown;
+}
+
+interface PluginDetailState {
+  pageId: string;
+  plugin: PluginManifest;
+  returnTo: PluginRouteReturnTo | null;
+}
+
+function parsePluginRouteReturnTo(value: unknown): PluginRouteReturnTo | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const candidate = value as Partial<PluginRouteReturnTo>;
+  if (
+    typeof candidate.pathname !== "string" ||
+    (!candidate.pathname.startsWith("/settings") &&
+      candidate.pathname !== "/chat" &&
+      candidate.pathname !== "/chat-stage")
+  ) {
+    return null;
+  }
+  return {
+    hash: typeof candidate.hash === "string" ? candidate.hash : "",
+    pathname: candidate.pathname,
+    search: typeof candidate.search === "string" ? candidate.search : "",
+    state: candidate.state,
+  };
+}
 
 function normalizePluginKey(value: string | null | undefined) {
   return (value ?? "")
@@ -164,6 +206,14 @@ function installedTechnicalName(plugin: PluginManifest, catalog: PluginCatalogIt
   return "";
 }
 
+function pluginRouteIntentKey(
+  location: Pick<ReturnType<typeof useLocation>, "hash" | "key" | "pathname" | "search">,
+  pluginId: string,
+  pageId = "",
+) {
+  return `${location.key}:${location.pathname}${location.search}${location.hash}:${pluginId}:${pageId}`;
+}
+
 function catalogDescription(plugin: PluginCatalogItem | null | undefined) {
   return plugin?.shortDescription || plugin?.description || "";
 }
@@ -234,10 +284,26 @@ function hasCatalogUpdate(catalog: PluginCatalogItem | null | undefined, plugin:
   return hasVersionUpdate(catalog?.version, plugin?.version);
 }
 
+class PluginInstallReloadError extends Error {
+  plugin: PluginManifest;
+  reason: unknown;
+
+  constructor(plugin: PluginManifest, reason: unknown) {
+    super("Plugin reload after install failed.");
+    this.name = "PluginInstallReloadError";
+    this.plugin = plugin;
+    this.reason = reason;
+  }
+}
+
 export function PluginManagerPage() {
   const queryClient = useQueryClient();
+  const location = useLocation();
+  const navigate = useNavigate();
   const { showToast } = useToast();
   const { t } = useI18n();
+  const pageRef = useRef<HTMLDivElement | null>(null);
+  const headerRef = useRef<HTMLElement | null>(null);
   const pluginsQuery = useQuery({ queryFn: listPlugins, queryKey: pluginsQueryKey });
   const data = pluginsQuery.data ?? [];
   const isLoading = pluginsQuery.isLoading;
@@ -246,7 +312,8 @@ export function PluginManagerPage() {
   const [installTask, setInstallTask] = useState<TaskSnapshot<PluginManifest> | null>(null);
   const [pendingCatalogInstall, setPendingCatalogInstall] = useState<PluginCatalogItem | null>(null);
   const [pendingUninstall, setPendingUninstall] = useState<PluginManifest | null>(null);
-  const [detailPlugin, setDetailPlugin] = useState<PluginManifest | null>(null);
+  const [detail, setDetail] = useState<PluginDetailState | null>(null);
+  const consumedRouteIntentRef = useRef("");
   const [pluginReloadPending, setPluginReloadPending] = useState(false);
   const [publisherOpen, setPublisherOpen] = useState(false);
   const [appUpdateTask, setAppUpdateTask] = useState<TaskSnapshot<AppUpdateResult> | null>(null);
@@ -268,6 +335,53 @@ export function PluginManagerPage() {
     matcher: installedPluginMatches,
     pageSize: INSTALLED_PLUGIN_PAGE_SIZE,
   });
+
+  useEffect(() => {
+    const page = pageRef.current;
+    const header = headerRef.current;
+    if (!page || !header) {
+      return undefined;
+    }
+
+    const updateStickyHeaderHeight = () => {
+      page.style.setProperty("--plugin-sticky-header-height", `${Math.ceil(header.getBoundingClientRect().height)}px`);
+    };
+
+    updateStickyHeaderHeight();
+    window.addEventListener("resize", updateStickyHeaderHeight);
+
+    if (typeof ResizeObserver === "undefined") {
+      return () => {
+        window.removeEventListener("resize", updateStickyHeaderHeight);
+      };
+    }
+
+    const observer = new ResizeObserver(updateStickyHeaderHeight);
+    observer.observe(header);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updateStickyHeaderHeight);
+    };
+  }, []);
+
+  useEffect(() => {
+    const state = location.state as PluginRouteState | null;
+    const pluginId = typeof state?.pluginId === "string" ? state.pluginId : "";
+    const pageId = typeof state?.pageId === "string" ? state.pageId.trim() : "";
+    if (!pluginId || !data.length || (detail?.plugin.id === pluginId && detail.pageId === pageId)) {
+      return;
+    }
+    const intentKey = pluginRouteIntentKey(location, pluginId, pageId);
+    if (consumedRouteIntentRef.current === intentKey) {
+      return;
+    }
+    const plugin = data.find((item) => item.id === pluginId || pluginActionId(item) === pluginId);
+    if (!plugin) {
+      return;
+    }
+    consumedRouteIntentRef.current = intentKey;
+    setDetail({ pageId, plugin, returnTo: parsePluginRouteReturnTo(state?.returnTo) });
+  }, [data, detail?.pageId, detail?.plugin.id, location, location.state]);
 
   const catalogQuery = useQuery({
     enabled: view !== "mcp",
@@ -297,12 +411,36 @@ export function PluginManagerPage() {
   });
 
   const installMutation = useMutation({
-    mutationFn: (input: PluginInstallInput | string) => installPlugin(input, { onTaskUpdate: setInstallTask }),
+    mutationFn: async (input: PluginInstallInput | string) => {
+      const plugin = await installPlugin(input, { onTaskUpdate: setInstallTask });
+      if (isTauriDesktop()) {
+        setPluginReloadPending(true);
+        try {
+          await reloadPluginService(queryClient);
+        } catch (error) {
+          await writeDesktopRestartDebugLog(
+            `PluginManagerPage install reload catch: ${desktopRestartErrorMessage(error)}`,
+          );
+          throw new PluginInstallReloadError(plugin, error);
+        }
+      }
+      return plugin;
+    },
     onMutate(input) {
       setInstallTask(null);
       setInstallingSource(pluginInstallSource(input));
     },
     onError(error) {
+      if (error instanceof PluginInstallReloadError) {
+        queryClient.invalidateQueries({ queryKey: pluginsQueryKey });
+        queryClient.invalidateQueries({ queryKey: pluginCatalogQueryKey });
+        showToast({
+          kind: "error",
+          message: `${error.plugin.title}: ${desktopRestartErrorMessage(error.reason) || t("plugin.appRestart.failed")}`,
+          title: t("plugin.appRestart.failed"),
+        });
+        return;
+      }
       showToast({
         kind: "error",
         message: error instanceof Error ? error.message : t("plugin.error.installFallback"),
@@ -314,12 +452,13 @@ export function PluginManagerPage() {
       queryClient.invalidateQueries({ queryKey: pluginCatalogQueryKey });
       showToast({
         kind: "success",
-        message: `${plugin.title}。${t("plugin.toast.restartHint")}`,
+        message: `${plugin.title}。${isTauriDesktop() ? t("plugin.toast.activated") : t("plugin.toast.restartHint")}`,
         title: t("plugin.toast.installSuccess"),
       });
     },
     onSettled() {
       setInstallingSource("");
+      setPluginReloadPending(false);
     },
   });
 
@@ -408,9 +547,7 @@ export function PluginManagerPage() {
   const handleReloadPlugins = async () => {
     setPluginReloadPending(true);
     try {
-      await waitForReloadAnimationFrame();
-      const runtime = await restartDesktopBridge();
-      await waitForPluginBridgeReady(runtime.bridgeUrl);
+      await reloadPluginService(queryClient);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: pluginsQueryKey }),
         queryClient.invalidateQueries({ queryKey: pluginCatalogQueryKey }),
@@ -432,13 +569,23 @@ export function PluginManagerPage() {
     }
   };
 
-  if (detailPlugin) {
-    return <PluginDetailPanel detailPlugin={detailPlugin} onBack={() => setDetailPlugin(null)} />;
+  const handleDetailBack = () => {
+    if (detail?.returnTo) {
+      const { state, ...to } = detail.returnTo;
+      setDetail(null);
+      navigate(to, { state });
+      return;
+    }
+    setDetail(null);
+  };
+
+  if (detail) {
+    return <PluginDetailPanel detailPlugin={detail.plugin} initialPageId={detail.pageId} onBack={handleDetailBack} />;
   }
 
   return (
-    <div className="page plugin-page">
-      <header className="page__header">
+    <div className="page plugin-page" ref={pageRef}>
+      <header className="page__header" ref={headerRef}>
         <div>
           <h1 className="page__title">{t("nav.plugins")}</h1>
           {pluginReloadPending ? (
@@ -446,6 +593,13 @@ export function PluginManagerPage() {
           ) : null}
         </div>
         <div className="page__actions plugin-page__actions">
+          <Button
+            icon={<BookOpen aria-hidden className="button__icon" />}
+            onClick={() => openExternal(PLUGIN_DEVELOPER_DOCS_URL)}
+            variant="ghost"
+          >
+            {t("plugin.action.developerDocs")}
+          </Button>
           <Button
             icon={<Send aria-hidden className="button__icon" />}
             onClick={() => setPublisherOpen(true)}
@@ -663,7 +817,9 @@ export function PluginManagerPage() {
                         <Button
                           disabled={pluginBusy || !loaded}
                           icon={<Settings aria-hidden className="button__icon" />}
-                          onClick={() => setDetailPlugin(plugin)}
+                          onClick={() => {
+                            setDetail({ pageId: "", plugin, returnTo: null });
+                          }}
                           tooltip={t("plugin.action.viewConfig")}
                           variant="ghost"
                         >
@@ -704,94 +860,4 @@ export function PluginManagerPage() {
       <PluginPublisherDialog onClose={() => setPublisherOpen(false)} open={publisherOpen} />
     </div>
   );
-}
-
-function waitForReloadAnimationFrame() {
-  if (typeof window === "undefined" || typeof window.requestAnimationFrame !== "function") {
-    return Promise.resolve();
-  }
-  return new Promise<void>((resolve) => {
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => resolve());
-    });
-  });
-}
-
-async function waitForPluginBridgeReady(bridgeUrl: string, timeoutMs = 15000) {
-  if (!bridgeUrl) {
-    return;
-  }
-  const baseUrl = bridgeUrl.replace(/\/$/, "");
-  const url = `${baseUrl}/api/health`;
-  const started = Date.now();
-  let lastError: unknown;
-
-  while (Date.now() - started < timeoutMs) {
-    try {
-      const response = await fetch(url, { cache: "no-store" });
-      const payload = await response.json().catch(() => null);
-      if (response.ok && payload?.ok === true) {
-        const status = normalizePluginLoadStatus(payload?.plugins) ?? (await fetchPluginLoadStatus(baseUrl));
-        if (!status || status.status === "ready") {
-          return;
-        }
-        if (status.status === "error") {
-          throw new PluginLoadTerminalError(status.error || "Plugin service reload failed.");
-        }
-        lastError = new Error(`Plugin service is still ${status.status}.`);
-      } else {
-        lastError = new Error(`Plugin service health check failed: ${response.status}`);
-      }
-    } catch (error) {
-      if (error instanceof PluginLoadTerminalError) {
-        throw error;
-      }
-      lastError = error;
-    }
-    await delayPluginReload(160);
-  }
-
-  throw new Error(lastError instanceof Error ? lastError.message : `Timed out waiting for plugin service at ${url}`);
-}
-
-class PluginLoadTerminalError extends Error {}
-
-type PluginLoadStatus = {
-  error?: string;
-  status?: string;
-};
-
-async function fetchPluginLoadStatus(baseUrl: string): Promise<PluginLoadStatus | null> {
-  try {
-    const response = await fetch(`${baseUrl}/api/plugins/status`, { cache: "no-store" });
-    if (response.status === 404) {
-      return null;
-    }
-    const payload = await response.json().catch(() => null);
-    if (!response.ok) {
-      return null;
-    }
-    return normalizePluginLoadStatus(payload);
-  } catch {
-    return null;
-  }
-}
-
-function normalizePluginLoadStatus(value: unknown): PluginLoadStatus | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-  const record = value as Record<string, unknown>;
-  const status = typeof record.status === "string" ? record.status : "";
-  if (!status) {
-    return null;
-  }
-  return {
-    error: typeof record.error === "string" ? record.error : "",
-    status,
-  };
-}
-
-function delayPluginReload(ms: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }

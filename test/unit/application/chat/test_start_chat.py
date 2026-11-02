@@ -1,0 +1,385 @@
+from __future__ import annotations
+
+import threading
+import time
+from typing import Any
+from unittest.mock import Mock
+
+from application.chat.start_chat import start_chat
+from application.chat.host.lifecycle import chat_lifecycle_lock
+from application.chat.stop_chat import ChatSessionChanged
+from application.runtime.state import BridgeState
+from application.runtime.tasks import _get_task, _request_task_cancel
+
+
+class _ChatStreamStub:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._counter = 0
+        self.create_session_calls: list[dict[str, Any]] = []
+        self.deleted_sessions: list[str] = []
+        self.snapshots: dict[str, dict[str, Any]] = {}
+
+    def create_session(self, snapshot: dict[str, Any]) -> dict[str, str]:
+        with self._lock:
+            self.create_session_calls.append(dict(snapshot))
+            self._counter += 1
+            session_id = f"init-session-{self._counter}"
+            self.snapshots[session_id] = {**snapshot, "sessionId": session_id}
+        return {
+            "producerEndpoint": f"ws://127.0.0.1:8788/ws?sessionId={session_id}&role=producer",
+            "sessionId": session_id,
+            "wsUrl": "ws://127.0.0.1:8788/ws",
+        }
+
+    def delete_session(self, session_id: str) -> None:
+        with self._lock:
+            self.deleted_sessions.append(session_id)
+            self.snapshots.pop(session_id, None)
+
+    def get_snapshot(self, session_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            snapshot = self.snapshots.get(session_id)
+            if snapshot is None:
+                return None
+            result = dict(snapshot)
+            if isinstance(result.get("initTask"), dict):
+                result["initTask"] = dict(result["initTask"])
+            return result
+
+    def set_init_task(self, session_id: str, task: dict[str, Any]) -> None:
+        with self._lock:
+            self.snapshots[session_id]["initTask"] = dict(task)
+
+
+def _state() -> BridgeState:
+    state = BridgeState(
+        background_manager=None,
+        character_manager=None,
+        config_manager=None,
+        template_generator=None,
+    )
+    state.chat_stream = _ChatStreamStub()
+    return state
+
+
+def test_rejected_edit_does_not_cleanup_existing_runtime(monkeypatch):
+    state = _state()
+    runtime = _patch_runtime(monkeypatch)
+    runtime["running"] = True
+    launch = Mock()
+    task = start_chat(state, mode="reconfigure", launch=launch, before_launch=Mock(side_effect=ValueError("invalid edit")))
+    result = _wait_for_task(state, task["id"], {"failed"})
+    assert "invalid edit" in result["error"]
+    assert runtime["running"] is True
+    assert runtime["closeReasons"] == []
+    assert state.chat_stream.create_session_calls == []
+    launch.assert_not_called()
+
+
+def _wait_for_task(
+    state: BridgeState, task_id: str, statuses: set[str], timeout: float = 3.0
+) -> dict[str, Any]:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        task = _get_task(state, task_id)
+        if str(task.get("status") or "") in statuses:
+            return task
+        time.sleep(0.01)
+    raise AssertionError(
+        f"task {task_id} did not reach {statuses}: {_get_task(state, task_id)}"
+    )
+
+
+def _patch_runtime(monkeypatch, *, mode: str = "react") -> dict[str, Any]:
+    source_snapshot = {
+        "chatProcessRunning": False,
+        "dialogText": "preserved dialog",
+        "inputDraft": "preserved draft",
+        "options": ["preserved option"],
+        "sprites": [{"id": "stale", "label": "Stale", "path": "stale.png"}],
+        "status": "idle",
+    }
+    runtime = {"running": False, "closeReasons": [], "sourceSnapshot": source_snapshot}
+
+    monkeypatch.setattr(
+        "application.chat.start_chat._chat_process_running", lambda: runtime["running"]
+    )
+    monkeypatch.setattr(
+        "application.chat.start_chat._chat_runtime_mode", lambda _state: mode
+    )
+    monkeypatch.setattr(
+        "application.chat.start_chat._chat_snapshot",
+        lambda _state, *_args, **_kwargs: {
+            **source_snapshot,
+            "chatProcessRunning": runtime["running"],
+            "options": list(source_snapshot["options"]),
+            "sprites": [dict(sprite) for sprite in source_snapshot["sprites"]],
+        },
+    )
+
+    def close_chat(_state, *, reason: str, expected_session_id=None, **_kwargs):
+        if expected_session_id is not None and expected_session_id != str(_state.chat_session.get("sessionId") or ""):
+            raise ChatSessionChanged("chat changed")
+        runtime["running"] = False
+        runtime["closeReasons"].append(reason)
+        return {"status": "idle"}
+
+    monkeypatch.setattr("application.chat.start_chat.stop_chat", close_chat)
+    return runtime
+
+
+def test_initializing_session_can_end_and_its_cleanup_cannot_stop_a_new_session(monkeypatch):
+    state = _state()
+    runtime = _patch_runtime(monkeypatch)
+    launched = threading.Event()
+
+    def launch(stream_info):
+        state.chat_session = {"sessionId": stream_info["sessionId"]}
+        runtime["running"] = True
+        launched.set()
+        return {"_chatInitStreamAttached": True}
+
+    task = start_chat(state, mode="launch", launch=launch)
+    assert launched.wait(2)
+    # The initialization wait must release the lifecycle lock so a client can
+    # finish A and launch B while A's background task is still unwinding.
+    with chat_lifecycle_lock(state):
+        previous_id = state.chat_session["sessionId"]
+        state.chat_session = {"sessionId": "session-B"}
+    result = _wait_for_task(state, task["id"], {"failed"})
+    assert "chat session changed" in result["error"]
+    assert state.chat_session == {"sessionId": "session-B"}
+    assert runtime["running"] is True
+    assert runtime["closeReasons"] == []
+    assert previous_id in state.chat_stream.deleted_sessions
+
+
+def test_chat_init_deduplicates_and_waits_for_explicit_completion(monkeypatch):
+    state = _state()
+    runtime = _patch_runtime(monkeypatch)
+    persist_history_path = Mock(return_value=True)
+    monkeypatch.setattr(
+        "application.chat.start_chat.persist_confirmed_history_path",
+        persist_history_path,
+    )
+    release_completion = threading.Event()
+    launch_calls: list[str] = []
+
+    def launch(stream_info: dict[str, str]) -> dict[str, Any]:
+        session_id = stream_info["sessionId"]
+        launch_calls.append(session_id)
+        runtime["running"] = True
+        state.chat_session = {"sessionId": session_id}
+        state.chat_stream.set_init_task(
+            session_id,
+            {
+                "status": "running",
+                "phase": "memory",
+                "progress": 0.45,
+                "message": "Loading memory",
+            },
+        )
+
+        def complete() -> None:
+            release_completion.wait(timeout=2.0)
+            state.chat_stream.set_init_task(
+                session_id,
+                {
+                    "status": "succeeded",
+                    "phase": "completed",
+                    "progress": 1,
+                    "message": "Ready",
+                },
+            )
+
+        threading.Thread(target=complete, daemon=True).start()
+        return {
+            "status": "idle",
+            "_chatInitStreamAttached": True,
+            "_pendingHistoryPath": "history/new-chat",
+        }
+
+    first = start_chat(state, mode="launch", launch=launch, timeout=2.0)
+    running = _wait_for_task(state, first["id"], {"running"})
+    while running.get("phase") != "memory":
+        time.sleep(0.01)
+        running = _get_task(state, first["id"])
+
+    second = start_chat(state, mode="launch", launch=launch, timeout=2.0)
+    assert second["id"] == first["id"]
+    assert running["progress"] == 0.45
+    assert running["message"] == "Loading memory"
+    persist_history_path.assert_not_called()
+
+    release_completion.set()
+    finished = _wait_for_task(state, first["id"], {"succeeded"})
+
+    assert state.chat_stream.create_session_calls == [
+        {
+            "chatProcessRunning": False,
+            "dialogText": "preserved dialog",
+            "inputDraft": "preserved draft",
+            "options": ["preserved option"],
+            "sprites": [],
+            "status": "idle",
+        }
+    ]
+    assert runtime["sourceSnapshot"]["sprites"] == [
+        {"id": "stale", "label": "Stale", "path": "stale.png"}
+    ]
+    assert len(launch_calls) == 1
+    assert finished["progress"] == 1
+    assert finished["result"]["chatProcessRunning"] is True
+    assert state.chat_stream.deleted_sessions == []
+    assert state.chat_init_task_id == ""
+    persist_history_path.assert_called_once_with(state, "history/new-chat")
+
+
+def test_producer_connection_without_init_terminal_event_times_out(monkeypatch):
+    state = _state()
+    runtime = _patch_runtime(monkeypatch)
+    persist_history_path = Mock(return_value=True)
+    monkeypatch.setattr(
+        "application.chat.start_chat.persist_confirmed_history_path",
+        persist_history_path,
+    )
+
+    def launch(_stream_info: dict[str, str]) -> dict[str, Any]:
+        runtime["running"] = True
+        return {
+            "status": "idle",
+            "_chatInitStreamAttached": True,
+            "_pendingHistoryPath": "history/failed-chat",
+        }
+
+    task = start_chat(state, mode="launch", launch=launch, timeout=0.08)
+    failed = _wait_for_task(state, task["id"], {"failed"})
+
+    assert "timed out" in failed["error"]
+    assert runtime["closeReasons"] == ["Chat initialization did not complete."]
+    assert state.chat_stream.deleted_sessions == ["init-session-1"]
+    persist_history_path.assert_not_called()
+
+
+def test_chat_init_does_not_treat_a_closing_runtime_as_ready(monkeypatch):
+    state = _state()
+    state.chat_runtime_closing = True
+    runtime = _patch_runtime(monkeypatch)
+    runtime["running"] = True
+    launch_called = False
+
+    def launch(_stream_info: dict[str, str]) -> dict[str, Any]:
+        nonlocal launch_called
+        launch_called = True
+        return {"status": "idle", "_chatInitStreamAttached": True}
+
+    task = start_chat(state, mode="launch", launch=launch, timeout=1.0)
+    failed = _wait_for_task(state, task["id"], {"failed"})
+
+    assert "closing" in failed["error"]
+    assert launch_called is False
+    assert state.chat_stream.snapshots == {}
+
+
+def test_failed_init_event_fails_task_and_cleans_process_and_session(monkeypatch):
+    state = _state()
+    runtime = _patch_runtime(monkeypatch)
+
+    def launch(stream_info: dict[str, str]) -> dict[str, Any]:
+        runtime["running"] = True
+        state.chat_session = {"sessionId": stream_info["sessionId"]}
+        state.chat_stream.set_init_task(
+            stream_info["sessionId"],
+            {
+                "status": "failed",
+                "phase": "tts",
+                "progress": 0.3,
+                "message": "TTS failed",
+                "error": "server did not start",
+            },
+        )
+        return {"status": "idle", "_chatInitStreamAttached": True}
+
+    task = start_chat(state, mode="launch", launch=launch, timeout=1.0)
+    failed = _wait_for_task(state, task["id"], {"failed"})
+
+    assert failed["phase"] == "failed"
+    assert failed["error"] == "server did not start"
+    assert runtime["running"] is False
+    assert state.chat_stream.deleted_sessions == ["init-session-1"]
+    assert state.chat_session["sessionId"] == ""
+
+
+def test_runtime_dependency_error_is_a_successful_actionable_result(monkeypatch):
+    state = _state()
+    _patch_runtime(monkeypatch)
+    dependency_snapshot = {
+        "dialogText": "Missing Python module: demo_runtime",
+        "inputDraft": "",
+        "options": [],
+        "runtimeDependencyError": {
+            "kind": "missing_dependency",
+            "moduleName": "demo_runtime",
+            "packageName": "demo-runtime",
+        },
+        "sprites": [],
+        "status": "error",
+        "statusMessage": "Missing Python module: demo_runtime",
+    }
+
+    task = start_chat(
+        state,
+        mode="launch",
+        launch=lambda _stream_info: dict(dependency_snapshot),
+        timeout=1.0,
+    )
+    finished = _wait_for_task(state, task["id"], {"succeeded"})
+
+    assert finished["result"] == dependency_snapshot
+    assert state.chat_stream.deleted_sessions == ["init-session-1"]
+
+
+def test_cancelled_chat_init_cleans_runtime(monkeypatch):
+    state = _state()
+    runtime = _patch_runtime(monkeypatch)
+    launched = threading.Event()
+
+    def launch(_stream_info: dict[str, str]) -> dict[str, Any]:
+        runtime["running"] = True
+        launched.set()
+        return {"status": "idle", "_chatInitStreamAttached": True}
+
+    task = start_chat(state, mode="resume-last", launch=launch, timeout=2.0)
+    assert launched.wait(timeout=1.0)
+    _request_task_cancel(state, task["id"])
+    cancelled = _wait_for_task(state, task["id"], {"cancelled"})
+
+    assert cancelled["status"] == "cancelled"
+    assert runtime["running"] is False
+    assert state.chat_stream.deleted_sessions == ["init-session-1"]
+
+
+def test_native_chat_init_deletes_hidden_progress_session_after_success(monkeypatch):
+    state = _state()
+    runtime = _patch_runtime(monkeypatch, mode="native")
+
+    def launch(stream_info: dict[str, str]) -> dict[str, Any]:
+        runtime["running"] = True
+        state.chat_stream.set_init_task(
+            stream_info["sessionId"],
+            {
+                "status": "succeeded",
+                "phase": "completed",
+                "progress": 1,
+                "message": "Ready",
+            },
+        )
+        return {"status": "idle", "_chatInitStreamAttached": True}
+
+    task = start_chat(state, mode="launch", launch=launch, timeout=1.0)
+    finished = _wait_for_task(state, task["id"], {"succeeded"})
+
+    assert finished["result"]["chatProcessRunning"] is True
+    assert state.chat_stream.deleted_sessions == ["init-session-1"]
+    assert not state.chat_session.get("sessionId")

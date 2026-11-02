@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from .state import BridgeState, _jsonify
-from .tasks import _append_task_log, _update_task
+from application.runtime.state import BridgeState, _jsonify
+from application.runtime.tasks import _append_task_log, _update_task
 
 
 def _music_cover_source(payload: dict[str, Any]) -> str:

@@ -1,5 +1,6 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PluginManagerPage } from "../../../features/plugin-manager/PluginManagerPage";
@@ -15,34 +16,60 @@ import type { TaskProgressOptions } from "../../../shared/platform/types";
 import { ToastProvider } from "../../../shared/ui";
 
 const mockGetPluginUiDetail = vi.fn<() => Promise<PluginUIDetail>>();
+const mockGetAppUpdateInfo = vi.fn();
 const mockInstallPlugin =
   vi.fn<
     (input: PluginInstallInput | string, options?: TaskProgressOptions<PluginManifest>) => Promise<PluginManifest>
   >();
+const mockListAppUpdateTags = vi.fn<() => Promise<string[]>>();
 const mockListPluginCatalog = vi.fn<() => Promise<PluginCatalogItem[]>>();
 const mockListPlugins = vi.fn<() => Promise<PluginManifest[]>>();
 const mockListRepoTags = vi.fn<() => Promise<string[]>>();
+const mockOpenExternal = vi.fn();
+const mockRunAppUpdate = vi.fn();
+const mockIsTauriDesktop = vi.fn(() => false);
+const mockReloadPluginService = vi.fn<() => Promise<unknown>>();
 
 vi.mock("../../../entities/plugin/repository", () => ({
-  getAppUpdateInfo: vi.fn(async () => null),
+  getAppUpdateInfo: () => mockGetAppUpdateInfo(),
   getPluginUiDetail: () => mockGetPluginUiDetail(),
   installPlugin: (input: PluginInstallInput | string, options?: TaskProgressOptions<PluginManifest>) =>
     mockInstallPlugin(input, options),
   buildPluginSubmissionIssueUrl: vi.fn(),
   copyPluginSubmissionJson: vi.fn(),
-  listAppUpdateTags: vi.fn(),
+  listAppUpdateTags: () => mockListAppUpdateTags(),
   listPluginCatalog: () => mockListPluginCatalog(),
   listPlugins: () => mockListPlugins(),
   listRepoTags: () => mockListRepoTags(),
   pluginCatalogQueryKey: ["plugins", "catalog"],
   pluginsQueryKey: ["plugins"],
   pluginUiQueryKey: (id: string) => ["plugins", "ui", id],
-  runAppUpdate: vi.fn(),
+  runAppUpdate: (...args: unknown[]) => mockRunAppUpdate(...args),
   savePluginUiConfig: vi.fn(),
   scanLocalPlugin: vi.fn(),
   setPluginEnabled: vi.fn(),
   uninstallPlugin: vi.fn(),
   validatePluginSubmission: vi.fn(),
+}));
+
+vi.mock("../../../entities/files/repository", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../entities/files/repository")>();
+  return {
+    ...actual,
+    openExternal: (...args: unknown[]) => mockOpenExternal(...args),
+  };
+});
+
+vi.mock("../../../shared/desktop/desktopApi", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../shared/desktop/desktopApi")>();
+  return {
+    ...actual,
+    isTauriDesktop: () => mockIsTauriDesktop(),
+  };
+});
+
+vi.mock("../../../features/plugin-manager/pluginReload", () => ({
+  reloadPluginService: () => mockReloadPluginService(),
 }));
 
 const configurablePlugin: PluginManifest = {
@@ -131,7 +158,35 @@ const detailPage: PluginUIPage = {
   values: { status: "ready" },
 };
 
-function renderPage() {
+const phonePage: PluginUIPage = {
+  ...detailPage,
+  description: "Phone panel",
+  id: "phone",
+  schema: [
+    {
+      fields: [{ defaultValue: true, key: "enabled", label: "Enabled", type: "boolean" }],
+      id: "phone-main",
+      title: "Phone controls",
+    },
+  ],
+  title: "Phone",
+  values: { enabled: true },
+};
+
+function LocationProbe() {
+  const location = useLocation();
+  return (
+    <output aria-label="location">
+      {location.pathname}
+      {JSON.stringify(location.state)}
+    </output>
+  );
+}
+
+function renderPage(
+  initialEntries: Parameters<typeof MemoryRouter>[0]["initialEntries"] = ["/settings/plugins"],
+  includeLocationProbe = false,
+) {
   const client = new QueryClient({
     defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
   });
@@ -140,7 +195,13 @@ function renderPage() {
     <QueryClientProvider client={client}>
       <ToastProvider>
         <I18nProvider language="en">
-          <PluginManagerPage />
+          <MemoryRouter
+            future={{ v7_relativeSplatPath: true, v7_startTransition: true }}
+            initialEntries={initialEntries}
+          >
+            <PluginManagerPage />
+            {includeLocationProbe ? <LocationProbe /> : null}
+          </MemoryRouter>
         </I18nProvider>
       </ToastProvider>
     </QueryClientProvider>,
@@ -158,6 +219,8 @@ async function findPluginCard(title: string) {
 describe("PluginManagerPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockIsTauriDesktop.mockReturnValue(false);
+    mockReloadPluginService.mockResolvedValue(undefined);
     mockGetPluginUiDetail.mockResolvedValue({ pages: [detailPage], plugin: configurablePlugin });
     mockInstallPlugin.mockImplementation(async (_input, options) => {
       options?.onTaskUpdate?.({
@@ -178,9 +241,27 @@ describe("PluginManagerPage", () => {
       });
       return plainPlugin;
     });
+    mockGetAppUpdateInfo.mockResolvedValue({ repo: "RachelForster/Shinsekai", version: "0.3.0" });
+    mockListAppUpdateTags.mockResolvedValue(["v0.3.1"]);
     mockListPluginCatalog.mockResolvedValue([]);
     mockListPlugins.mockResolvedValue([configurablePlugin, plainPlugin, unloadedPlugin]);
     mockListRepoTags.mockResolvedValue([]);
+    mockOpenExternal.mockResolvedValue(undefined);
+    mockRunAppUpdate.mockImplementation(async (_input, options?: TaskProgressOptions<unknown>) => {
+      options?.onTaskUpdate?.({
+        createdAt: 1,
+        id: "app-update-task",
+        kind: "app-update",
+        logs: ["checked out tag"],
+        message: "Updated from selected ref",
+        phase: "completed",
+        progress: 1,
+        status: "succeeded",
+        title: "App update",
+        updatedAt: 2,
+      });
+      return { message: "Update ready" };
+    });
   });
 
   it("shows configuration actions only for plugins that expose frontend pages", async () => {
@@ -207,6 +288,98 @@ describe("PluginManagerPage", () => {
     expect(mockGetPluginUiDetail).toHaveBeenCalledTimes(1);
   });
 
+  it("opens plugin configuration from route state", async () => {
+    renderPage([{ pathname: "/settings/plugins", state: { pluginId: "configurable" } }]);
+
+    expect(await screen.findByText("Dynamic detail description")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Dynamic Group" })).toBeInTheDocument();
+    expect(mockGetPluginUiDetail).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens the requested plugin page and returns to Chat", async () => {
+    mockGetPluginUiDetail.mockResolvedValue({ pages: [detailPage, phonePage], plugin: configurablePlugin });
+    renderPage(
+      [
+        {
+          pathname: "/settings/plugins",
+          state: {
+            pageId: "phone",
+            pluginId: "configurable",
+            returnTo: { pathname: "/chat-stage", search: "?shinsekai_bridge=http%3A%2F%2F127.0.0.1%3A8787" },
+          },
+        },
+      ],
+      true,
+    );
+
+    expect(await screen.findByText("Phone panel")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Phone controls" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Back to plugins" }));
+
+    await waitFor(() => expect(screen.getByLabelText("location")).toHaveTextContent("/chat-stage"));
+  });
+
+  it("reapplies the requested plugin page after cold-cache fallback pages are replaced", async () => {
+    let resolveDetail!: (value: { pages: PluginUIPage[]; plugin: PluginManifest }) => void;
+    mockGetPluginUiDetail.mockReturnValue(
+      new Promise((resolve) => {
+        resolveDetail = resolve;
+      }),
+    );
+    renderPage([
+      {
+        pathname: "/settings/plugins",
+        state: {
+          pageId: "phone",
+          pluginId: "configurable",
+        },
+      },
+    ]);
+
+    await waitFor(() => expect(mockGetPluginUiDetail).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      resolveDetail({
+        pages: [{ ...detailPage, id: "settings-0", title: "Real settings" }, phonePage],
+        plugin: configurablePlugin,
+      });
+    });
+
+    expect(await screen.findByText("Phone panel")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Phone controls" })).toBeInTheDocument();
+  });
+
+  it("returns plugin configuration to the route it came from", async () => {
+    renderPage(
+      [
+        {
+          pathname: "/settings/plugins",
+          state: {
+            pluginId: "configurable",
+            returnTo: { pathname: "/settings/onboarding", state: { activeStep: "plugins" } },
+          },
+        },
+      ],
+      true,
+    );
+
+    expect(await screen.findByText("Dynamic detail description")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Back to plugins" }));
+
+    await waitFor(() => expect(screen.getByLabelText("location")).toHaveTextContent("/settings/onboarding"));
+    expect(screen.getByLabelText("location")).toHaveTextContent('"activeStep":"plugins"');
+  });
+
+  it("does not reopen consumed route-state configuration after returning to the plugin list", async () => {
+    renderPage([{ pathname: "/settings/plugins", state: { pluginId: "configurable" } }]);
+
+    expect(await screen.findByText("Dynamic detail description")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Back to plugins" }));
+
+    await waitFor(() => expect(screen.queryByText("Dynamic detail description")).not.toBeInTheDocument());
+    expect(await findPluginCard("Configurable Plugin")).toBeInTheDocument();
+    expect(mockGetPluginUiDetail).toHaveBeenCalledTimes(1);
+  });
+
   it("opens the local plugin publisher dialog from the page actions", async () => {
     renderPage();
 
@@ -214,6 +387,14 @@ describe("PluginManagerPage", () => {
 
     expect(screen.getByRole("heading", { name: "Submit plugin to market" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Read metadata" })).toBeInTheDocument();
+  });
+
+  it("opens the plugin developer documentation from the page header", async () => {
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Developer docs" }));
+
+    expect(mockOpenExternal).toHaveBeenCalledWith("https://plugins.shinsekai.studio/docs/plugin");
   });
 
   it("uses the installed manifest title as the primary name and the registry name as the secondary name", async () => {
@@ -404,5 +585,162 @@ describe("PluginManagerPage", () => {
 
     const card = await findPluginCard("Registry Display");
     expect(await within(card).findByRole("button", { name: /Update to/ })).toBeInTheDocument();
+  });
+
+  it("renders rich discovery metadata, opens links, and installs an official package", async () => {
+    mockListPlugins.mockResolvedValue([]);
+    mockListPluginCatalog.mockResolvedValue([
+      {
+        ...catalogItem,
+        logo: "https://example.invalid/logo.png",
+        packageSha256: "1234567890abcdef",
+        packageSize: 2048,
+        securityScan: { static: { pass: true }, secrets: { pass: false } },
+        socialLink: "https://example.invalid/author",
+        tags: ["browser", "vision", "tools", "agent", "automation"],
+        trustLevel: "verified",
+        verified: true,
+      },
+    ]);
+
+    renderPage();
+    fireEvent.click(await screen.findByRole("tab", { name: "Discover" }));
+
+    const card = (await screen.findByRole("heading", { name: "Registry Display" })).closest(
+      ".plugin-market-card",
+    ) as HTMLElement;
+    expect(within(card).getByText("Verified")).toBeInTheDocument();
+    expect(within(card).getByText("Scan passed")).toBeInTheDocument();
+    expect(within(card).getByText("Supports >=0.2.0")).toBeInTheDocument();
+    expect(within(card).getByText("+1")).toBeInTheDocument();
+    expect(within(card).getByText("2.0 KB")).toBeInTheDocument();
+
+    fireEvent.click(within(card).getByRole("button", { name: "Registry Author" }));
+    fireEvent.click(within(card).getByRole("button", { name: "GitHub" }));
+    expect(mockOpenExternal).toHaveBeenCalledWith("https://example.invalid/author");
+    expect(mockOpenExternal).toHaveBeenCalledWith("https://github.com/owner/registry-display");
+
+    fireEvent.click(within(card).getByRole("button", { name: "Install" }));
+    const dialog = await screen.findByRole("dialog", { name: "Choose plugin version" });
+    expect(within(dialog).getByText("R2")).toBeInTheDocument();
+    expect(within(dialog).getByText("1234567890...")).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Install" }));
+    await waitFor(() =>
+      expect(mockInstallPlugin).toHaveBeenCalledWith(
+        expect.objectContaining({
+          overwrite: false,
+          refKind: "latest",
+          source: "registry-display",
+        }),
+        expect.any(Object),
+      ),
+    );
+  });
+
+  it("reloads the plugin service after installing a plugin on desktop", async () => {
+    mockIsTauriDesktop.mockReturnValue(true);
+    mockListPlugins.mockResolvedValue([]);
+    mockListPluginCatalog.mockResolvedValue([catalogItem]);
+
+    renderPage();
+    fireEvent.click(await screen.findByRole("tab", { name: "Discover" }));
+    const card = (await screen.findByRole("heading", { name: "Registry Display" })).closest(
+      ".plugin-market-card",
+    ) as HTMLElement;
+    fireEvent.click(within(card).getByRole("button", { name: "Install" }));
+    const dialog = await screen.findByRole("dialog", { name: "Choose plugin version" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Install" }));
+
+    await waitFor(() => expect(mockInstallPlugin).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mockReloadPluginService).toHaveBeenCalledTimes(1));
+  });
+
+  it("surfaces a reload failure after install instead of reporting success", async () => {
+    mockIsTauriDesktop.mockReturnValue(true);
+    mockReloadPluginService.mockRejectedValue(new Error("bridge restart failed"));
+    mockListPlugins.mockResolvedValue([]);
+    mockListPluginCatalog.mockResolvedValue([catalogItem]);
+
+    renderPage();
+    fireEvent.click(await screen.findByRole("tab", { name: "Discover" }));
+    const card = (await screen.findByRole("heading", { name: "Registry Display" })).closest(
+      ".plugin-market-card",
+    ) as HTMLElement;
+    fireEvent.click(within(card).getByRole("button", { name: "Install" }));
+    const dialog = await screen.findByRole("dialog", { name: "Choose plugin version" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Install" }));
+
+    expect(await screen.findByText(/bridge restart failed/)).toBeInTheDocument();
+    expect(screen.queryByText("Plugin installed")).not.toBeInTheDocument();
+  });
+
+  it("installs a repository catalog plugin from a selected tag", async () => {
+    mockListPlugins.mockResolvedValue([]);
+    mockListRepoTags.mockResolvedValue(["v1.2.0", "v1.1.0"]);
+    mockListPluginCatalog.mockResolvedValue([
+      {
+        ...catalogItem,
+        displayName: "Git Plugin",
+        downloadUrl: undefined,
+        id: "git-plugin",
+        name: "git_plugin",
+        packageUrl: undefined,
+        repo: "owner/git-plugin",
+        trustLevel: "pending_review",
+        verified: false,
+      },
+    ]);
+
+    renderPage();
+    fireEvent.click(await screen.findByRole("tab", { name: "Discover" }));
+    const card = (await screen.findByRole("heading", { name: "Git Plugin" })).closest(
+      ".plugin-market-card",
+    ) as HTMLElement;
+
+    fireEvent.click(within(card).getByRole("button", { name: "Install" }));
+    const dialog = await screen.findByRole("dialog", { name: "Choose plugin version" });
+    expect(await within(dialog).findByText("Repository: owner/git-plugin")).toBeInTheDocument();
+    expect(within(dialog).getByText("Pending review")).toBeInTheDocument();
+    expect(within(dialog).getByText(/current version or commit is still waiting for review/)).toBeInTheDocument();
+
+    fireEvent.change(within(dialog).getByLabelText("Version"), { target: { value: "tag:v1.2.0" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Install" }));
+
+    await waitFor(() =>
+      expect(mockInstallPlugin).toHaveBeenCalledWith(
+        expect.objectContaining({
+          overwrite: false,
+          refKind: "tag",
+          source: "owner/git-plugin",
+          tagName: "v1.2.0",
+        }),
+        expect.any(Object),
+      ),
+    );
+  });
+
+  it("runs an app update from a selected tag in the discovery panel", async () => {
+    mockListPlugins.mockResolvedValue([]);
+    mockListPluginCatalog.mockResolvedValue([catalogItem]);
+
+    renderPage();
+    fireEvent.click(await screen.findByRole("tab", { name: "Discover" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Update app" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Update application" });
+    expect(within(dialog).getByText("Repository: RachelForster/Shinsekai")).toBeInTheDocument();
+    expect(await within(dialog).findByText("v0.3.1")).toBeInTheDocument();
+
+    fireEvent.change(within(dialog).getByLabelText("Version"), { target: { value: "tag:v0.3.1" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Update" }));
+
+    await waitFor(() =>
+      expect(mockRunAppUpdate).toHaveBeenCalledWith({ refKind: "tag", tagName: "v0.3.1" }, expect.any(Object)),
+    );
+    expect(await screen.findByText("Updated from selected ref")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Update application" })).not.toBeInTheDocument());
+    expect(screen.getByText("Updated from selected ref")).toBeInTheDocument();
   });
 });

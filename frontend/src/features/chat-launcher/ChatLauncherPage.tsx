@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 
 import { backgroundsQueryKey, listBackgrounds } from "../../entities/background/repository";
 import { charactersQueryKey, listCharacters } from "../../entities/character/repository";
+import { effectsQueryKey, listEffects } from "../../entities/effect/repository";
 import { installMissingRuntimeDependency, launchChat } from "../../entities/chat/repository";
 import { configQueryKey, getAppConfig } from "../../entities/config/repository";
 import {
@@ -13,9 +14,24 @@ import {
   saveTemplateSession,
   templatesQueryKey,
 } from "../../entities/template/repository";
+import { ChatInitializationDialog } from "../chat-startup/ChatInitializationDialog";
+import { MobileAccessDialog } from "../mobile-access/MobileAccessDialog";
+import { useChatInitialization } from "../chat-startup/useChatInitialization";
+import { compatibleInitialSpritePath } from "../chat-startup/initialSpriteSelection";
+import { useChatLaunchGuard } from "../chat-startup/useChatLaunchGuard";
+import {
+  synchronizeChatLaunchPayloadWithSession,
+  synchronizeTemplateLaunchSessionWithSnapshot,
+} from "../template-editor/templateFlow";
 import { TRANSPARENT_BACKGROUND_NAME } from "../../shared/constants";
+import { showChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";
-import type { ChatLaunchPayload, ChatSnapshot, TemplateLaunchSession } from "../../shared/platform/types";
+import type {
+  ChatLaunchPayload,
+  ChatSnapshot,
+  MobileAccessInfo,
+  TemplateLaunchSession,
+} from "../../shared/platform/types";
 import {
   AlertDialog,
   AsyncButton,
@@ -24,6 +40,7 @@ import {
   FilePicker,
   QueryErrorState,
   Select,
+  Switch,
   TextInput,
   useToast,
 } from "../../shared/ui";
@@ -38,27 +55,42 @@ export function ChatLauncherPage() {
   const charactersQuery = useQuery({ queryFn: listCharacters, queryKey: charactersQueryKey });
   const backgroundsQuery = useQuery({ queryFn: listBackgrounds, queryKey: backgroundsQueryKey });
   const templatesQuery = useQuery({ queryFn: listTemplates, queryKey: templatesQueryKey });
+  const effectsQuery = useQuery({ queryFn: listEffects, queryKey: effectsQueryKey });
   const sessionQuery = useQuery({
     queryFn: getTemplateSession,
     queryKey: [...templatesQueryKey, "session"],
   });
   const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
+  const { refreshRuntimeStatus, runtimeLaunchDisabled, updateRuntimeStatusFromSnapshot } = useChatLaunchGuard();
+  const {
+    closeInitialization,
+    initializationError,
+    initializationOpen,
+    initializationPending,
+    initializationTask,
+    runChatInitialization,
+  } = useChatInitialization();
   const characters = charactersQuery.data ?? [];
   const backgrounds = backgroundsQuery.data ?? [];
+  const effects = Array.isArray(effectsQuery.data) ? effectsQuery.data : [];
   const templates = templatesQuery.data ?? [];
   const launchSession = sessionQuery.data;
   const sessionFetched = sessionQuery.isFetched;
   const appConfig = configQuery.data;
   const [templateId, setTemplateId] = useState("");
   const [backgroundName, setBackgroundName] = useState(TRANSPARENT_BACKGROUND_NAME);
+  const [selectedEffects, setSelectedEffects] = useState<string[]>([]);
   const [selectedCharacters, setSelectedCharacters] = useState<string[]>([]);
   const [historyPath, setHistoryPath] = useState("");
   const [initSpritePath, setInitSpritePath] = useState("");
+  const [showInitialSprite, setShowInitialSprite] = useState(true);
   const [useCg, setUseCg] = useState(false);
+  const [mobileAccessInfo, setMobileAccessInfo] = useState<MobileAccessInfo | null>(null);
   const [quickRestartOpen, setQuickRestartOpen] = useState(false);
   const [sessionRestored, setSessionRestored] = useState(false);
 
   const selectedTemplate = templates.find((template) => template.id === templateId) ?? templates[0];
+  const activeTemplateId = selectedTemplate?.id ?? "";
   const backgroundOptions = useMemo(() => {
     const names = backgrounds.map((background) => background.name);
     return names.includes(TRANSPARENT_BACKGROUND_NAME) ? names : [...names, TRANSPARENT_BACKGROUND_NAME];
@@ -108,24 +140,51 @@ export function ChatLauncherPage() {
       setTemplateId(restoredTemplate.id);
     }
     setBackgroundName(launchSession.background || TRANSPARENT_BACKGROUND_NAME);
+    setSelectedEffects(Array.isArray(launchSession.effectNames) ? launchSession.effectNames : []);
     setSelectedCharacters(Array.isArray(launchSession.selectedCharacters) ? launchSession.selectedCharacters : []);
     setHistoryPath(launchSession.historyPath || "");
     setInitSpritePath(launchSession.initSpritePath || "");
+    setShowInitialSprite(launchSession.showInitialSprite ?? true);
     setUseCg(launchSession.useCg ?? false);
   }, [launchSession, sessionFetched, sessionRestored, templates]);
 
+  useEffect(() => {
+    if (!sessionRestored) {
+      return;
+    }
+    setInitSpritePath((current) => compatibleInitialSpritePath({ characters, path: current, selectedCharacters }));
+  }, [characters, selectedCharacters, sessionRestored]);
+
+  const updateSelectedCharacters = (nextCharacters: string[]) => {
+    setSelectedCharacters(nextCharacters);
+    setInitSpritePath((current) =>
+      compatibleInitialSpritePath({
+        characters,
+        path: current,
+        preserveUnknown: false,
+        selectedCharacters: nextCharacters,
+      }),
+    );
+  };
+
   const buildSession = (): TemplateLaunchSession => ({
     background: backgroundName,
+    characterPromptMode: launchSession?.characterPromptMode,
+    enableMobileAccess: launchSession?.enableMobileAccess ?? false,
+    effectNames: selectedEffects,
     filenameStub: selectedTemplate?.name ?? "",
     historyPath: historyPath.trim(),
     initSpritePath: initSpritePath.trim(),
+    showInitialSprite,
     maxDialogItems: launchSession?.maxDialogItems ?? 0,
     maxSpeechChars: launchSession?.maxSpeechChars ?? 0,
+    mediaSelectionMode: selectedTemplate?.mediaSelectionMode ?? "indexed",
+    primaryCharacters: launchSession?.primaryCharacters,
     roomId: launchSession?.roomId ?? "",
     scenario: selectedTemplate?.scenario ?? "",
     selectedCharacters,
     system: selectedTemplate?.system ?? "",
-    templateFileDropdown: selectedTemplate?.id ?? templateId,
+    templateFileDropdown: activeTemplateId,
     useCg,
     useChoice: launchSession?.useChoice ?? true,
     useCot: launchSession?.useCot ?? false,
@@ -170,12 +229,21 @@ export function ChatLauncherPage() {
 
   const launchMutation = useMutation({
     mutationFn: async (payload: ChatLaunchPayload) => {
-      const session = buildSession();
-      await saveTemplateSession(session);
-      queryClient.setQueryData([...templatesQueryKey, "session"], session);
-      return launchChat(payload);
+      return runChatInitialization(async (options) => {
+        const session = buildSession();
+        const savedSession = await saveTemplateSession(session);
+        queryClient.setQueryData([...templatesQueryKey, "session"], savedSession);
+        const snapshot = await launchChat(synchronizeChatLaunchPayloadWithSession(payload, savedSession), options);
+        const confirmedSession = synchronizeTemplateLaunchSessionWithSnapshot(savedSession, snapshot);
+        if (confirmedSession !== savedSession) {
+          queryClient.setQueryData([...templatesQueryKey, "session"], confirmedSession);
+          setHistoryPath(confirmedSession.historyPath);
+        }
+        return snapshot;
+      });
     },
     onError(error) {
+      void refreshRuntimeStatus();
       showToast({
         kind: "error",
         message: error instanceof Error ? error.message : "",
@@ -183,17 +251,29 @@ export function ChatLauncherPage() {
       });
     },
     onSuccess(snapshot) {
+      void updateRuntimeStatusFromSnapshot(snapshot);
       if (snapshot.runtimeDependencyError) {
         void handleRuntimeDependencyError(snapshot);
         return;
       }
-      showToast({ kind: "success", message: snapshot.dialogText, title: t("launch.toast.started") });
-      navigate("/chat");
+      showToast({
+        kind: "success",
+        message: snapshot.statusMessage || snapshot.dialogText,
+        title: t("launch.toast.started"),
+      });
+      if (snapshot.mobileAccess) {
+        setMobileAccessInfo(snapshot.mobileAccess);
+        return;
+      }
+      void showChatSurface({ navigate, snapshot });
     },
   });
 
-  const ready = Boolean(templateId && backgroundName);
+  const ready = Boolean(activeTemplateId && backgroundName);
   const submitLaunch = (resetHistory: boolean) => {
+    if (runtimeLaunchDisabled) {
+      return;
+    }
     if (!ready || !selectedTemplate) {
       showToast({ kind: "error", message: t("launch.emptyBody"), title: t("launch.toast.failed") });
       return;
@@ -201,13 +281,16 @@ export function ChatLauncherPage() {
     launchMutation.mutate({
       backgroundName,
       characters: selectedCharacters,
+      effectNames: selectedEffects.length ? selectedEffects : undefined,
       historyPath: historyPath.trim(),
       initSpritePath: initSpritePath.trim(),
+      showInitialSprite,
+      mediaSelectionMode: selectedTemplate.mediaSelectionMode ?? "indexed",
       resetHistory,
       roomId: launchSession?.roomId ?? "",
       scenario: selectedTemplate.scenario ?? "",
       system: selectedTemplate.system ?? "",
-      templateId,
+      templateId: activeTemplateId,
       templateName: selectedTemplate.name,
       useCg,
     });
@@ -221,6 +304,7 @@ export function ChatLauncherPage() {
         </div>
         <div className="page__actions">
           <AsyncButton
+            disabled={runtimeLaunchDisabled || initializationPending}
             icon={<Play aria-hidden className="button__icon" />}
             loading={launchMutation.isPending}
             onClick={() => submitLaunch(false)}
@@ -229,6 +313,7 @@ export function ChatLauncherPage() {
             {t("launch.start")}
           </AsyncButton>
           <Button
+            disabled={runtimeLaunchDisabled || initializationPending}
             icon={<RotateCw aria-hidden className="button__icon" />}
             onClick={() => {
               if (launchMutation.isPending) {
@@ -264,7 +349,11 @@ export function ChatLauncherPage() {
             <label className="field-row">
               <span className="field-row__label">{t("launch.template")}</span>
               <span className="field-row__control">
-                <Select onChange={(event) => setTemplateId(event.target.value)} value={templateId}>
+                <Select
+                  aria-label={t("launch.template")}
+                  onChange={(event) => setTemplateId(event.target.value)}
+                  value={activeTemplateId}
+                >
                   {templates.map((template) => (
                     <option key={template.id} value={template.id}>
                       {template.name}
@@ -276,7 +365,11 @@ export function ChatLauncherPage() {
             <label className="field-row">
               <span className="field-row__label">{t("launch.background")}</span>
               <span className="field-row__control">
-                <Select onChange={(event) => setBackgroundName(event.target.value)} value={backgroundName}>
+                <Select
+                  aria-label={t("launch.background")}
+                  onChange={(event) => setBackgroundName(event.target.value)}
+                  value={backgroundName}
+                >
                   {backgroundOptions.map((name) => (
                     <option key={name} value={name}>
                       {name === TRANSPARENT_BACKGROUND_NAME ? t("template.transparentBackground") : name}
@@ -291,7 +384,7 @@ export function ChatLauncherPage() {
                 <Select
                   multiple
                   onChange={(event) =>
-                    setSelectedCharacters(Array.from(event.currentTarget.selectedOptions).map((item) => item.value))
+                    updateSelectedCharacters(Array.from(event.currentTarget.selectedOptions).map((item) => item.value))
                   }
                   value={selectedCharacters}
                 >
@@ -304,11 +397,41 @@ export function ChatLauncherPage() {
                 <span className="field-row__help">{t("launch.historyHelp")}</span>
               </span>
             </label>
-            <label className="field-row">
-              <span className="field-row__label">{t("template.field.initSprite")}</span>
+            {effects.length > 0 ? (
+              <label className="field-row">
+                <span className="field-row__label">{t("template.field.effectName")}</span>
+                <span className="field-row__control">
+                  <Select
+                    multiple
+                    onChange={(event) =>
+                      setSelectedEffects(Array.from(event.currentTarget.selectedOptions).map((item) => item.value))
+                    }
+                    value={selectedEffects}
+                  >
+                    {effects.map((effect) => (
+                      <option key={effect.name} value={effect.name}>
+                        {effect.name}
+                      </option>
+                    ))}
+                  </Select>
+                </span>
+              </label>
+            ) : null}
+            <div className="field-row">
+              <span className="field-row__label">
+                <label htmlFor="launch-initial-sprite">{t("template.field.initSprite")}</label>
+                <Switch
+                  aria-label={t("template.field.showInitialSprite")}
+                  checked={showInitialSprite}
+                  onChange={(event) => setShowInitialSprite(event.target.checked)}
+                  title={t("template.field.showInitialSprite")}
+                />
+              </span>
               <span className="field-row__control">
                 <FilePicker
                   acceptedExtensions={[".gif", ".jpeg", ".jpg", ".png", ".webp"]}
+                  disabled={!showInitialSprite}
+                  id="launch-initial-sprite"
                   onChange={(event) => setInitSpritePath(event.target.value)}
                   onPathChange={setInitSpritePath}
                   pickLabel={t("common.chooseFile")}
@@ -317,7 +440,7 @@ export function ChatLauncherPage() {
                   value={initSpritePath}
                 />
               </span>
-            </label>
+            </div>
             <label className="field-row">
               <span className="field-row__label">{t("launch.history")}</span>
               <span className="field-row__control">
@@ -354,6 +477,25 @@ export function ChatLauncherPage() {
         }}
         open={quickRestartOpen}
         title={t("template.quickRestart.title")}
+      />
+      <ChatInitializationDialog
+        error={initializationError}
+        onClose={closeInitialization}
+        open={initializationOpen}
+        pending={initializationPending}
+        task={initializationTask}
+      />
+      <MobileAccessDialog
+        info={mobileAccessInfo}
+        onClose={() => setMobileAccessInfo(null)}
+        onOpenLocalChat={() => {
+          const info = mobileAccessInfo;
+          setMobileAccessInfo(null);
+          return showChatSurface({
+            navigate,
+            snapshot: info ? { runtimeMode: "react", wsUrl: info.websocketUrl } : null,
+          });
+        }}
       />
     </div>
   );

@@ -1,27 +1,100 @@
 import { getPlatform } from "../../shared/platform/platform";
+import { normalizePlayerOptions } from "../../shared/playerCharacterOptions";
 import type {
   ChatCommand,
+  ChatCloseOptions,
   ChatCommandResult,
+  ChatHistoryEntry,
   ChatLaunchPayload,
+  ChatResumeOverrides,
+  ChatRuntimeProcessState,
   ChatSnapshot,
   RuntimeDependencyInstallInput,
   RuntimeDependencyInstallResult,
   TaskProgressOptions,
+  TemplateLaunchSession,
 } from "../../shared/platform/types";
 import type { ChatThemePayload } from "../../shared/theme/chatChromeTheme";
+import type { ChatThemeManifest, ChatThemeSummary, SaveChatThemeInput } from "../../shared/theme/chatTheme";
+import type { ChatStageEvent } from "../../shared/platform/types";
 
 export const chatQueryKey = ["chat"] as const;
+export const chatObserverQueryKey = ["chat", "observer-snapshot"] as const;
+export const conversationsQueryKey = ["chat", "conversations"] as const;
+
+export const listConversations = () => getPlatform().chat.listConversations();
+export const prepareConversation = (id: string) => getPlatform().chat.prepareConversation(id);
+export const getCurrentConversation = () => getPlatform().chat.getCurrentConversation();
+export const reconfigureConversation = (
+  id: string,
+  payload: ChatLaunchPayload,
+  options?: TaskProgressOptions<ChatSnapshot>,
+) => getPlatform().chat.reconfigureConversation(id, payload, options);
+export const renameConversation = (id: string, title: string) => getPlatform().chat.renameConversation(id, title);
+export const deleteConversation = (id: string) => getPlatform().chat.deleteConversation(id);
+
+export async function getConversationSession(id: string): Promise<TemplateLaunchSession> {
+  const payload = await prepareConversation(id);
+  const options = { ...payload, ...payload.editorSession };
+  return {
+    maxDialogItems: options.maxDialogItems ?? 0,
+    maxSpeechChars: options.maxSpeechChars ?? 0,
+    useChoice: options.useChoice ?? true,
+    useCot: options.useCot ?? false,
+    useEffect: options.useEffect ?? true,
+    useNarration: options.useNarration ?? true,
+    useStat: options.useStat ?? true,
+    useTranslation: options.useTranslation ?? true,
+    voiceLanguage: options.voiceLanguage || "ja",
+    characterPromptMode: options.characterPromptMode,
+    primaryCharacters: options.primaryCharacters,
+    ...normalizePlayerOptions(options),
+    enableMobileAccess: options.enableMobileAccess,
+    background: payload.backgroundName,
+    effectNames: payload.effectNames ?? [],
+    filenameStub: payload.templateName ?? "",
+    historyPath: payload.historyPath,
+    initSpritePath: payload.initSpritePath ?? "",
+    showInitialSprite: payload.showInitialSprite ?? true,
+    mediaSelectionMode: payload.mediaSelectionMode ?? "indexed",
+    roomId: payload.roomId ?? "",
+    scenario: payload.scenario ?? "",
+    system: payload.system ?? "",
+    selectedCharacters: payload.characters,
+    templateFileDropdown: payload.templateId,
+    useCg: payload.useCg ?? false,
+  };
+}
+export const chatRuntimeStatusQueryKey = ["chat", "runtime-status"] as const;
+export const chatThemeQueryKey = ["chat", "themes"] as const;
+
+export { runtimeStatusFromSnapshot } from "../../shared/platform/chatRuntimeStatus";
 
 export function getChatSnapshot(): Promise<ChatSnapshot> {
   return getPlatform().chat.getSnapshot();
+}
+
+export function getChatObserverSnapshot(): Promise<ChatSnapshot> {
+  return getPlatform().chat.getSnapshot({ claimRenderer: false });
+}
+
+export function getChatRuntimeStatus(): Promise<ChatRuntimeProcessState> {
+  return getPlatform().chat.getRuntimeStatus();
+}
+
+export function closeChat(options?: ChatCloseOptions): Promise<ChatSnapshot> {
+  return getPlatform().chat.close(options);
 }
 
 export function getChatTheme(): Promise<ChatThemePayload> {
   return getPlatform().chat.getTheme();
 }
 
-export function launchChat(payload: ChatLaunchPayload): Promise<ChatSnapshot> {
-  return getPlatform().chat.launch(payload);
+export function launchChat(
+  payload: ChatLaunchPayload,
+  options?: TaskProgressOptions<ChatSnapshot>,
+): Promise<ChatSnapshot> {
+  return getPlatform().chat.launch(payload, options);
 }
 
 export function installMissingRuntimeDependency(
@@ -31,14 +104,65 @@ export function installMissingRuntimeDependency(
   return getPlatform().runtime.installMissingDependency(input, options);
 }
 
-export function resumeLastChat(): Promise<ChatSnapshot> {
-  return getPlatform().chat.resumeLast();
+export function resumeLastChat(
+  options?: TaskProgressOptions<ChatSnapshot>,
+  overrides?: ChatResumeOverrides,
+): Promise<ChatSnapshot> {
+  return getPlatform().chat.resumeLast(options, overrides);
 }
 
 export function sendChatCommand(command: ChatCommand): Promise<ChatCommandResult> {
   return getPlatform().chat.command(command);
 }
 
+export function getChatHistory(): Promise<ChatHistoryEntry[]> {
+  return getPlatform().chat.getHistory();
+}
+
+export function getChatHistoryVoice(voiceId: string): Promise<string[]> {
+  return getPlatform().chat.getHistoryVoice(voiceId);
+}
+
 export function subscribeChat(listener: (snapshot: ChatSnapshot) => void): () => void {
   return getPlatform().chat.subscribe(listener);
+}
+
+// --- 主题 mod 系统 ---
+
+export function listChatThemes(): Promise<ChatThemeSummary[]> {
+  return getPlatform().chat.listThemes();
+}
+
+export function getChatThemeManifest(id: string): Promise<ChatThemeManifest> {
+  return getPlatform().chat.getThemeManifest(id);
+}
+
+export function getActiveChatThemeId(): Promise<string> {
+  return getPlatform().chat.getActiveThemeId();
+}
+
+export function setActiveChatTheme(id: string): Promise<void> {
+  return getPlatform().chat.setActiveThemeId(id);
+}
+
+export function uploadChatTheme(file: File): Promise<ChatThemeSummary> {
+  return getPlatform().chat.uploadTheme(file);
+}
+
+export function uploadChatAttachments(files: File[]) {
+  return getPlatform().chat.uploadAttachments(files);
+}
+
+export function saveChatTheme(input: SaveChatThemeInput): Promise<ChatThemeSummary> {
+  return getPlatform().chat.saveTheme(input);
+}
+
+export function deleteChatTheme(id: string): Promise<void> {
+  return getPlatform().chat.deleteTheme(id);
+}
+
+// --- 实时事件流（WebSocket）---
+
+export function subscribeChatEvents(listener: (event: ChatStageEvent) => void): () => void {
+  return getPlatform().chat.subscribeEvents(listener);
 }

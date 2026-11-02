@@ -8,6 +8,18 @@ const repoRoot = path.resolve(frontendDir, "..");
 const stageRoot = path.join(frontendDir, "src-tauri", "resources");
 const runtimeEnv = process.env.SHINSEKAI_TAURI_RUNTIME_DIR?.trim();
 const runtimeSource = runtimeEnv ? path.resolve(runtimeEnv) : path.join(repoRoot, "runtime");
+const retiredSourceDirectories = new Set(
+  [
+    "ui",
+    "llm",
+    "asr",
+    "tts",
+    "t2i",
+    path.join("core", "runtime"),
+    path.join("core", "plugins"),
+    path.join("core", "mobile_access"),
+  ].map((relativePath) => path.resolve(repoRoot, relativePath)),
+);
 
 const files = [
   "VERSION",
@@ -16,25 +28,27 @@ const files = [
   "requirements.txt",
   "requirements-runtime-core.txt",
   "requirements-runtime-local-ai.txt",
+  "requirements-toonout.txt",
   "requirements-dev.txt",
 ];
 const directories = [
+  "ai",
+  "application",
   "assets",
-  "asr",
   "config",
   "core",
   "frontend_bridge_core",
   "i18n",
   "live",
-  "llm",
+  "plugin_system",
   "sdk",
-  "t2i",
   "tools",
-  "tts",
-  "ui",
 ];
 
 function filter(source) {
+  if (retiredSourceDirectories.has(path.resolve(source))) {
+    return false;
+  }
   const name = path.basename(source);
   if (name === "__pycache__") {
     return false;

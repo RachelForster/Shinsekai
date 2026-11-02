@@ -1,19 +1,24 @@
 pyyaml
+packaging>=24
+filelock>=3.13,<4
 pydantic
 requests
+huggingface-hub==0.36.2
 numpy
 openai
 socksio
 opencc-python-reimplemented
 google-genai
 anthropic
+mcp>=1.2.0
 tiktoken
-PySide6
 Pillow
+av
+qrcode>=7.4,<9
 pygame-ce>=2.5.7; sys_platform == "win32" and platform_machine == "ARM64"
 pygame; sys_platform != "win32" or platform_machine != "ARM64"
 pandas
-rembg
+rembg[cpu]
 pyaudio; sys_platform == "linux"
 pyaudio; sys_platform == "win32" and platform_machine != "ARM64"
 vosk; sys_platform != "win32" or platform_machine != "ARM64"

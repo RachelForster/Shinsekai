@@ -1,1 +1,1 @@
-"""Chat history, ChatUI wiring, and main CLI helpers."""
+"""Framework-independent helpers for selecting character sprites."""

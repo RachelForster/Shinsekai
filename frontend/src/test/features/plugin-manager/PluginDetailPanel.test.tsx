@@ -166,6 +166,66 @@ describe("PluginDetailPanel", () => {
     expect(screen.getByLabelText("Extra JSON")).toHaveValue(JSON.stringify({ retries: 1 }, null, 2));
   });
 
+  it("hides conditional settings immediately and preserves their values when saving", async () => {
+    const page: PluginUIPage = {
+      ...configPage,
+      i18n: undefined,
+      schema: [
+        {
+          fields: [
+            {
+              defaultValue: "remote",
+              key: "adapter",
+              label: "Adapter",
+              options: [
+                { label: "Remote", value: "remote" },
+                { label: "Local", value: "local" },
+              ],
+              type: "select",
+            },
+            {
+              defaultValue: "default-model",
+              key: "local_model",
+              label: "Local model",
+              type: "text",
+              visibleWhen: { adapter: "local" },
+            },
+          ],
+          id: "backend",
+          title: "Backend",
+        },
+      ],
+      values: { adapter: "remote", local_model: "saved-model" },
+    };
+    mockGetPluginUiDetail.mockResolvedValue({ pages: [page], plugin });
+    mockSavePluginUiConfig.mockImplementation(async (_id, _pageId, values) => ({
+      message: "Saved",
+      page: { ...page, values },
+      plugin,
+    }));
+    renderPanel();
+
+    const adapter = await screen.findByRole("combobox");
+    expect(screen.queryByLabelText("Local model")).not.toBeInTheDocument();
+    fireEvent.click(adapter);
+    fireEvent.click(screen.getByRole("option", { name: "Local" }));
+    fireEvent.change(screen.getByLabelText("Local model"), { target: { value: "edited-model" } });
+    fireEvent.click(adapter);
+    fireEvent.click(screen.getByRole("option", { name: "Remote" }));
+    expect(screen.queryByLabelText("Local model")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+
+    await waitFor(() =>
+      expect(mockSavePluginUiConfig).toHaveBeenCalledWith("demo.plugin", "settings", {
+        adapter: "remote",
+        local_model: "edited-model",
+      }),
+    );
+    fireEvent.click(await screen.findByRole("combobox"));
+    fireEvent.click(screen.getByRole("option", { name: "Local" }));
+    expect(screen.getByLabelText("Local model")).toHaveValue("edited-model");
+  });
+
   it("saves the edited draft and shows the localized restart hint", async () => {
     renderPanel();
 

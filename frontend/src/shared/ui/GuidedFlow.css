@@ -48,21 +48,22 @@
 }
 
 .guided-flow__steps {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  display: flex;
+  min-width: 0;
   gap: var(--space-2);
 }
 
 .guided-flow__step {
   display: grid;
   min-width: 0;
-  min-height: 76px;
-  grid-template-columns: 34px minmax(0, 1fr);
+  min-height: 52px;
+  flex: 1 1 0;
+  grid-template-columns: 30px minmax(0, 1fr);
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
-  padding: 10px;
+  padding: 8px;
   color: var(--color-text-muted);
   background: var(--color-surface);
   cursor: pointer;
@@ -98,8 +99,8 @@
 
 .guided-flow__step-icon {
   display: grid;
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   place-items: center;
   border: 1px solid var(--color-accent-border);
   border-radius: var(--radius-control);
@@ -129,9 +130,8 @@
 }
 
 .guided-flow__step-copy {
-  display: grid;
+  display: block;
   min-width: 0;
-  gap: 4px;
 }
 
 .guided-flow__step-title-row {
@@ -142,8 +142,7 @@
   gap: 8px;
 }
 
-.guided-flow__step-title,
-.guided-flow__step-description {
+.guided-flow__step-title {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -184,12 +183,6 @@
   background: var(--color-bg-input);
 }
 
-.guided-flow__step-description {
-  color: var(--color-text-muted);
-  font-size: 12px;
-  line-height: 1.25;
-}
-
 .guided-flow__body {
   min-width: 0;
   min-height: 0;
@@ -221,10 +214,6 @@
     grid-template-columns: 1fr;
     align-items: start;
   }
-
-  .guided-flow__steps {
-    grid-template-columns: 1fr;
-  }
 }
 
 @media (max-width: 620px) {
@@ -245,7 +234,7 @@
   }
 
   .guided-flow__step {
-    flex: 0 0 178px;
+    flex: 0 0 150px;
   }
 
   .guided-flow__footer {

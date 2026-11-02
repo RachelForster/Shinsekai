@@ -1,5 +1,5 @@
 -r requirements.txt
 pytest
-pytest-qt
+pytest-cov
 pytest-mock
 pytest-env

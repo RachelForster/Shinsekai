@@ -1,19 +1,35 @@
 import yaml
 
+from config.sprite_voice import normalize_sprite_voice_types
+from config.schema import Character
+
+
 class CharacterConfig:
-    def __init__(self, name, color, sprite_prefix, gpt_model_path=None, sovits_model_path=None, refer_audio_path=None, prompt_text=None, prompt_lang=None, sprites=[], emotion_tags="", sprite_scale=1.0, character_setting="", speech_speed=1.0, speech_volume=1.0, pronunciation_map=None, scenarios=None):
+    def __init__(self, name, color, sprite_prefix, gpt_model_path=None, sovits_model_path=None, refer_audio_path=None, prompt_text=None, prompt_lang=None, sprites=[], emotion_tags="", sprite_scale=1.0, character_setting="", speech_speed=1.0, speech_volume=1.0, pronunciation_map=None, character_brief="", avatar_type="static", avatars=None, portrait_crop=None, sprite_transitions=None, scenarios=None):
         # 角色基本信息
         self.name = name
         self.color = color
         self.sprite_prefix = sprite_prefix
         self.sprites = sprites
+        self.character_brief = "" if character_brief is None else character_brief
         self.character_setting = character_setting
         self.sprite_scale = sprite_scale
+        self.portrait_crop = portrait_crop
         self.emotion_tags = emotion_tags
         self.scenarios = scenarios or []
         self.speech_speed = speech_speed
         self.speech_volume = speech_volume
         self.pronunciation_map = pronunciation_map or {}
+        avatar_fields = Character(
+            name=name, color=color, sprite_prefix=sprite_prefix,
+            avatar_type=avatar_type, avatars=avatars,
+            sprite_transitions=sprite_transitions,
+        )
+        self.avatar_type = avatar_fields.avatar_type
+        # Packages and legacy config files must contain plain YAML-safe data,
+        # even when the caller supplies ModelSprites / Sprite instances.
+        self.avatars = avatar_fields.model_dump(mode="json")["avatars"]
+        self.sprite_transitions = avatar_fields.model_dump(mode="json")["sprite_transitions"]
 
         # gpt-sovits 语音配置
         self.gpt_model_path = gpt_model_path
@@ -50,6 +66,7 @@ class CharacterConfig:
     
     @staticmethod
     def parse_dic(char_data):
+        char_data = normalize_sprite_voice_types(char_data)
         character = CharacterConfig(
                 name=char_data['name'],
                 color=char_data['color'],
@@ -62,11 +79,15 @@ class CharacterConfig:
                 sprites=char_data.get("sprites"),
                 sprite_scale=char_data.get("sprite_scale", 1.0),
                 emotion_tags=char_data.get("emotion_tags", ""),
+                character_brief=char_data.get("character_brief", ""),
                 character_setting=char_data.get("character_setting", ""),
                 speech_speed=char_data.get("speech_speed", 1.0),
                 speech_volume=char_data.get("speech_volume", 1.0),
                 pronunciation_map=char_data.get("pronunciation_map", None),
                 scenarios=char_data.get("scenarios", []),
+                portrait_crop=char_data.get("portrait_crop"),
+                avatar_type=char_data.get("avatar_type", "static"),
+                avatars=char_data.get("avatars"),
+                sprite_transitions=char_data.get("sprite_transitions"),
             )
         return character
-    

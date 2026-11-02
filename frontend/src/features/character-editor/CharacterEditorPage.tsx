@@ -2,20 +2,21 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WheelEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { configQueryKey, getAppConfig } from "../../entities/config/repository";
+import { templatesQueryKey } from "../../entities/template/repository";
 import {
   charactersQueryKey,
+  autoLabelCharacterSprites,
   deleteCharacter,
   deleteAllCharacterSprites,
-  deleteCharacterMemory,
   deleteCharacterSprite,
   deleteScenarioVoice,
   deleteSpriteVoice,
   exportCharacter,
+  generateCharacterBrief,
   generateCharacterSetting,
   importCharacters,
-  listCharacterMemories,
   listCharacters,
-  rememberCharacterMemory,
   saveCharacter,
   saveCharacterEmotionTags,
   saveCharacterScenarios,
@@ -23,6 +24,7 @@ import {
   saveScenarioVoiceType,
   saveSpriteScale,
   saveSpriteVoiceText,
+  saveSpriteVoiceType,
   translateCharacterFields,
   uploadCharacterSprites,
   uploadScenarioVoice,
@@ -31,17 +33,29 @@ import {
 import type { Character, CharacterScenario, Sprite } from "../../entities/config/types";
 import { fileUrl } from "../../entities/files/repository";
 import { getPlatform } from "../../shared/platform/platform";
-import { baseName, numberedTags, tagContents } from "../../shared/assets/assetText";
+import { baseName, numberedTags, removeTagRows, tagContents } from "../../shared/assets/assetText";
+import { isVideoMedia } from "../../shared/assets/visualMedia";
 import { DEFAULT_CHARACTER_COLOR } from "../../shared/constants";
 import { useI18n } from "../../shared/i18n";
+import type {
+  ImageAutoLabelResult,
+  SpriteVoiceType,
+  TaskSnapshot,
+  TemplateLaunchSession,
+} from "../../shared/platform/types";
 import { AlertDialog, PageSectionNav, useToast } from "../../shared/ui";
 import { CharacterBasicSection } from "./CharacterBasicSection";
 import { CharacterScenarioSection } from "./CharacterScenarioSection";
+import { CharacterMemoryDialogs } from "./CharacterMemoryDialogs";
+import { CharacterMemoryImportDialogs } from "./CharacterMemoryImportDialogs";
 import { CharacterMemorySection } from "./CharacterMemorySection";
 import { CharacterPageHeader } from "./CharacterPageHeader";
 import { CharacterPersonalitySection } from "./CharacterPersonalitySection";
 import { CharacterSpritesSection } from "./CharacterSpritesSection";
+import { SpriteGenerationPage } from "./SpriteGenerationPage";
 import { CharacterVoiceSection } from "./CharacterVoiceSection";
+import { MediaAutoLabelProgressDialog } from "../media-auto-label/MediaAutoLabelProgressDialog";
+import { useVisionAvailability } from "../media-auto-label/useVisionAvailability";
 import { SpriteTagsDialog } from "./SpriteTagsDialog";
 import {
   SPRITE_SCALE_STEP,
@@ -51,15 +65,36 @@ import {
   pronunciationTextToMap,
   type CharacterResourceDeleteTarget,
 } from "./characterEditorUtils";
+import { useCharacterMemoryController } from "./useCharacterMemoryController";
+import { useCharacterMemoryImportController } from "./useCharacterMemoryImportController";
 import "./CharacterEditorPage.css";
+import { ModelStateEditor } from "./ModelStateEditor";
+
+export function mergeSprites(serverSprites: Sprite[], current: Character) {
+  const currentSpritesByPath = new Map(
+    current.sprites.filter((sprite) => sprite.path).map((sprite) => [sprite.path, sprite]),
+  );
+  const canFallbackToIndex = serverSprites.length === current.sprites.length;
+  return serverSprites.map((sprite, index) => {
+    const currentSprite =
+      currentSpritesByPath.get(sprite.path) ?? (canFallbackToIndex ? current.sprites[index] : undefined);
+    return {
+      ...sprite,
+      voice_type: sprite.voice_type ?? currentSprite?.voice_type,
+    };
+  });
+}
 
 export function CharacterEditorPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const { t } = useI18n();
+  const visionAvailable = useVisionAvailability();
   const charactersQuery = useQuery({ queryFn: listCharacters, queryKey: charactersQueryKey });
+  const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
   const data = charactersQuery.data ?? [];
   const isLoading = charactersQuery.isLoading;
+  const voiceReferenceReadOnly = configQuery.data?.api_config?.tts_provider === "kaggle-gpt-sovits";
   const [selectedName, setSelectedName] = useState("");
   const [draft, setDraft] = useState<Character>(createCharacter());
   const [isCreating, setIsCreating] = useState(false);
@@ -70,11 +105,31 @@ export function CharacterEditorPage() {
   const [selectedSpriteIndex, setSelectedSpriteIndex] = useState(0);
   const [bulkSpriteTagsOpen, setBulkSpriteTagsOpen] = useState(false);
   const [bulkSpriteTagsDraft, setBulkSpriteTagsDraft] = useState("");
+  const [autoLabelDialogOpen, setAutoLabelDialogOpen] = useState(false);
+  const [spriteGenerationOpen, setSpriteGenerationOpen] = useState(false);
+  const generationReturnRef = useRef<{ element: HTMLElement | null; scrollTop: number } | null>(null);
+  useEffect(() => {
+    if (spriteGenerationOpen || !generationReturnRef.current) return;
+    const saved = generationReturnRef.current;
+    generationReturnRef.current = null;
+    const frame = requestAnimationFrame(() => {
+      if (saved.element) saved.element.scrollTop = saved.scrollTop;
+      document.querySelector<HTMLElement>("[data-sprite-generation-trigger]")?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [spriteGenerationOpen]);
+  const preserveImportedDraftRef = useRef<Character | null>(null);
+  const [autoLabelTask, setAutoLabelTask] = useState<TaskSnapshot<ImageAutoLabelResult> | null>(null);
   const [nameError, setNameError] = useState("");
   const [pronunciationText, setPronunciationText] = useState("");
-  const [memoryInput, setMemoryInput] = useState("");
   const colorInputRef = useRef<HTMLInputElement | null>(null);
   const memoryName = draft.name.trim();
+  const memoryController = useCharacterMemoryController({ memoryName });
+  const memoryImportController = useCharacterMemoryImportController({
+    ensureReady: memoryController.ensureReady,
+    memoryName,
+    onRefresh: memoryController.refresh,
+  });
   const currentCharacterName = isCreating ? "" : selectedName;
   const isSavedCharacter = Boolean(
     currentCharacterName && data.some((character) => character.name === currentCharacterName),
@@ -97,8 +152,14 @@ export function CharacterEditorPage() {
     return data[0];
   }, [data, isCreating, selectedName]);
 
+  const prevSelectedNameRef = useRef<string>("");
   useEffect(() => {
-    if (selected) {
+    if (selected && selected.name === preserveImportedDraftRef.current?.name) {
+      preserveImportedDraftRef.current = null;
+      return;
+    }
+    if (selected && selected.name !== prevSelectedNameRef.current) {
+      prevSelectedNameRef.current = selected.name;
       setSelectedName(selected.name);
       setDraft(structuredClone(selected));
       setPronunciationText(pronunciationMapToText(selected.pronunciation_map));
@@ -106,18 +167,15 @@ export function CharacterEditorPage() {
       setPendingVoicePaths({});
       setSelectedSpriteIndex(0);
       setNameError("");
+    } else if (selected) {
+      // same character, just sync draft silently (e.g. after invalidateQueries)
+      setDraft(structuredClone(selected));
     }
   }, [selected]);
 
   useEffect(() => {
     setSelectedSpriteIndex((current) => Math.min(current, Math.max(0, draft.sprites.length - 1)));
   }, [draft.sprites.length]);
-
-  const memoryQuery = useQuery({
-    enabled: false,
-    queryFn: () => listCharacterMemories(memoryName),
-    queryKey: ["character-memories", memoryName],
-  });
 
   const saveMutation = useMutation({
     mutationFn: ({ character, originalName }: { character: Character; originalName?: string }) =>
@@ -139,14 +197,47 @@ export function CharacterEditorPage() {
       setSelectedName(character.name);
       setDraft(structuredClone(character));
       setPronunciationText(pronunciationMapToText(character.pronunciation_map));
+      if (variables.originalName && variables.originalName !== character.name) {
+        void queryClient.invalidateQueries({ queryKey: ["knowledge", "binding-names"] });
+        queryClient.setQueryData<TemplateLaunchSession | null>([...templatesQueryKey, "session"], (current) =>
+          current
+            ? {
+                ...current,
+                primaryCharacters: current.primaryCharacters?.map((name) =>
+                  name === variables.originalName ? character.name : name,
+                ),
+                selectedCharacters: current.selectedCharacters.map((name) =>
+                  name === variables.originalName ? character.name : name,
+                ),
+              }
+            : current,
+        );
+      }
       showToast({ kind: "success", title: t("character.toast.saved") });
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: deleteCharacter,
-    onSuccess() {
+    onSuccess(_result, deletedName) {
       queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+      void queryClient.invalidateQueries({ queryKey: ["knowledge", "instances"] });
+      void queryClient.invalidateQueries({ queryKey: ["knowledge", "binding-names"] });
+      queryClient.setQueryData<TemplateLaunchSession | null>([...templatesQueryKey, "session"], (current) => {
+        if (!current) {
+          return current;
+        }
+        const primaryCharacters = current.primaryCharacters?.filter((name) => name !== deletedName);
+        return {
+          ...current,
+          characterPromptMode:
+            current.characterPromptMode === "compact" && !primaryCharacters?.length
+              ? undefined
+              : current.characterPromptMode,
+          primaryCharacters,
+          selectedCharacters: current.selectedCharacters.filter((name) => name !== deletedName),
+        };
+      });
       setPendingDelete(null);
       showToast({ kind: "success", title: t("character.toast.deleted") });
     },
@@ -203,8 +294,27 @@ export function CharacterEditorPage() {
       });
     },
     onSuccess(result) {
-      update("character_setting", result.characterSetting);
+      setDraft((current) => ({
+        ...current,
+        character_brief: result.characterBrief ?? current.character_brief ?? "",
+        character_setting: result.characterSetting,
+      }));
       showToast({ kind: "success", message: result.message, title: t("character.action.aiWrite") });
+    },
+  });
+
+  const aiBriefMutation = useMutation({
+    mutationFn: () => generateCharacterBrief({ name: draft.name.trim(), setting: draft.character_setting }),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("character.error.aiFallback"),
+        title: t("character.action.aiBrief"),
+      });
+    },
+    onSuccess(result) {
+      update("character_brief", result.characterBrief);
+      showToast({ kind: "success", message: result.message, title: t("character.action.aiBrief") });
     },
   });
 
@@ -240,36 +350,6 @@ export function CharacterEditorPage() {
     },
   });
 
-  const memoryAddMutation = useMutation({
-    mutationFn: () => rememberCharacterMemory(memoryName, memoryInput),
-    onError(error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("character.memory.error"),
-        title: t("character.memory.add"),
-      });
-    },
-    onSuccess(result) {
-      setMemoryInput("");
-      queryClient.setQueryData(["character-memories", memoryName], result);
-      showToast({ kind: "success", title: t("character.memory.add") });
-    },
-  });
-
-  const memoryDeleteMutation = useMutation({
-    mutationFn: ({ memoryId, name }: { memoryId: string; name: string }) => deleteCharacterMemory(name, memoryId),
-    onError(error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("character.memory.error"),
-        title: t("character.memory.delete"),
-      });
-    },
-    onSuccess(result, variables) {
-      queryClient.setQueryData(["character-memories", variables.name], result);
-    },
-  });
-
   const voiceUploadMutation = useMutation({
     mutationFn: ({ index, voicePath, voiceText }: { index: number; voicePath: string; voiceText: string }) =>
       uploadSpriteVoice({
@@ -277,6 +357,7 @@ export function CharacterEditorPage() {
         spriteIndex: index,
         voicePath,
         voiceText,
+        voiceType: spriteVoiceType(draft.sprites[index], draft),
       }),
     onError(error) {
       showToast({
@@ -287,7 +368,10 @@ export function CharacterEditorPage() {
     },
     onSuccess(character, variables) {
       queryClient.invalidateQueries({ queryKey: charactersQueryKey });
-      setDraft((current) => ({ ...current, sprites: character.sprites }));
+      setDraft((current) => ({
+        ...current,
+        sprites: mergeSprites(character.sprites, current),
+      }));
       setPendingVoicePaths((current) => {
         const next = { ...current };
         delete next[variables.index];
@@ -325,6 +409,18 @@ export function CharacterEditorPage() {
     },
   });
 
+  const voiceTypeMutation = useMutation({
+    mutationFn: ({ index, voiceType: vt }: { index: number; voiceType: SpriteVoiceType }) =>
+      saveSpriteVoiceType(currentCharacterName, index, vt),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("character.sprite.voiceError"),
+        title: t("character.sprite.voiceType"),
+      });
+    },
+  });
+
   const voiceDeleteMutation = useMutation({
     mutationFn: ({ index, name }: { index: number; name: string }) => deleteSpriteVoice(name, index),
     onError(error) {
@@ -336,7 +432,10 @@ export function CharacterEditorPage() {
     },
     onSuccess(character, variables) {
       queryClient.invalidateQueries({ queryKey: charactersQueryKey });
-      setDraft((current) => ({ ...current, sprites: character.sprites }));
+      setDraft((current) => ({
+        ...current,
+        sprites: mergeSprites(character.sprites, current),
+      }));
       setPendingVoicePaths((current) => {
         const next = { ...current };
         delete next[variables.index];
@@ -348,7 +447,6 @@ export function CharacterEditorPage() {
 
   // ---------- 情景模块 ----------
 
-  const [scenarioPendingVoicePath, setScenarioPendingVoicePath] = useState("");
 
   const scenarioSaveMutation = useMutation({
     mutationFn: (scenarios: CharacterScenario[]) => saveCharacterScenarios(currentCharacterName, scenarios),
@@ -498,9 +596,15 @@ export function CharacterEditorPage() {
       });
       setIsCreating(false);
       setSelectedName(character.name);
-      setDraft(structuredClone(character));
+      setDraft((current) => ({
+        ...structuredClone(character),
+        sprites: mergeSprites(character.sprites, current),
+      }));
       setPronunciationText(pronunciationMapToText(character.pronunciation_map));
       setPendingSpritePaths([]);
+      if (variables.saveFirst && variables.originalName && variables.originalName !== character.name) {
+        void queryClient.invalidateQueries({ queryKey: ["knowledge", "binding-names"] });
+      }
       showToast({ kind: "success", title: t("character.sprite.uploadImages") });
     },
   });
@@ -521,8 +625,36 @@ export function CharacterEditorPage() {
     },
   });
 
+  const autoLabelMutation = useMutation({
+    mutationFn: () =>
+      autoLabelCharacterSprites(currentCharacterName, {
+        onTaskUpdate: setAutoLabelTask,
+      }),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("mediaAutoLabel.error"),
+        title: t("mediaAutoLabel.action"),
+      });
+    },
+    onSuccess(result) {
+      queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+      setDraft((current) => ({ ...current, emotion_tags: result.tags }));
+      showToast({
+        kind: result.failedCount ? "info" : "success",
+        message: t("mediaAutoLabel.complete", {
+          annotated: result.annotatedCount,
+          failed: result.failedCount,
+          skipped: result.skippedCount,
+        }),
+        title: t("mediaAutoLabel.action"),
+      });
+    },
+  });
+
   const spriteDeleteMutation = useMutation({
-    mutationFn: ({ index, name }: { index: number; name: string }) => deleteCharacterSprite(name, index),
+    mutationFn: ({ index, name }: { draft: Character; index: number; name: string }) =>
+      deleteCharacterSprite(name, index),
     onError(error) {
       showToast({
         kind: "error",
@@ -530,9 +662,26 @@ export function CharacterEditorPage() {
         title: t("common.remove"),
       });
     },
-    onSuccess(character) {
-      queryClient.invalidateQueries({ queryKey: charactersQueryKey });
-      setDraft((current) => ({ ...current, emotion_tags: character.emotion_tags, sprites: character.sprites }));
+    onSuccess(character, variables) {
+      const emotionTags = removeTagRows(
+        variables.draft.emotion_tags,
+        variables.draft.sprites.length,
+        [variables.index],
+        "立绘",
+      );
+      const nextCharacter = {
+        ...character,
+        emotion_tags: emotionTags,
+        sprites: mergeSprites(character.sprites, variables.draft),
+      };
+      queryClient.setQueryData<Character[]>(charactersQueryKey, (current = []) =>
+        current.map((item) => (item.name === nextCharacter.name ? nextCharacter : item)),
+      );
+      setDraft((current) => ({
+        ...current,
+        emotion_tags: removeTagRows(current.emotion_tags, current.sprites.length, [variables.index], "立绘"),
+        sprites: mergeSprites(character.sprites, current),
+      }));
       showToast({ kind: "success", title: t("common.remove") });
     },
   });
@@ -548,7 +697,11 @@ export function CharacterEditorPage() {
     },
     onSuccess(character) {
       queryClient.invalidateQueries({ queryKey: charactersQueryKey });
-      setDraft((current) => ({ ...current, emotion_tags: character.emotion_tags, sprites: character.sprites }));
+      setDraft((current) => ({
+        ...current,
+        emotion_tags: character.emotion_tags,
+        sprites: mergeSprites(character.sprites, current),
+      }));
       showToast({ kind: "success", title: t("character.sprite.clear") });
     },
   });
@@ -583,6 +736,17 @@ export function CharacterEditorPage() {
       return { ...current, sprites };
     });
   };
+
+  const characterHasGptSovitsModel = (character: Character) =>
+    Boolean(character.gpt_model_path?.trim() && character.sovits_model_path?.trim());
+
+  const spriteHasReferenceVoiceText = (sprite: Sprite | undefined) => Boolean(sprite?.voice_text?.trim());
+
+  const defaultSpriteVoiceType = (sprite: Sprite | undefined, character: Character): SpriteVoiceType =>
+    characterHasGptSovitsModel(character) && spriteHasReferenceVoiceText(sprite) ? "reference" : "fallback";
+
+  const spriteVoiceType = (sprite: Sprite | undefined, character: Character): SpriteVoiceType =>
+    sprite?.voice_type ?? defaultSpriteVoiceType(sprite, character);
 
   const updateSpriteTag = (index: number, value: string) => {
     setDraft((current) => {
@@ -678,7 +842,8 @@ export function CharacterEditorPage() {
         badge: sprite.voice_path ? t("character.sprite.hasVoice") : t("character.sprite.noVoice"),
         badgeTone: sprite.voice_path ? ("default" as const) : ("muted" as const),
         id: `${sprite.path}-${index}`,
-        imageSrc: sprite.path ? fileUrl(sprite.path) : "",
+        imageSrc: sprite.path && !isVideoMedia(sprite.path) ? fileUrl(sprite.path) : "",
+        videoSrc: isVideoMedia(sprite.path) ? fileUrl(sprite.path) : undefined,
         meta: spriteTags[index] || sprite.voice_text || "",
         title: baseName(sprite.path) || `${index + 1}`,
       })),
@@ -692,18 +857,18 @@ export function CharacterEditorPage() {
     { id: "character-memory", label: t("character.memory.section") },
   ];
 
-  const confirmPendingResourceDelete = () => {
+  const confirmPendingResourceDelete = async () => {
     if (!pendingResourceDelete) {
       return;
     }
     const target = pendingResourceDelete;
     setPendingResourceDelete(null);
     if (target.kind === "memory") {
-      memoryDeleteMutation.mutate({ memoryId: target.memoryId, name: target.characterName });
+      await memoryController.deleteMemory({ memoryId: target.memoryId, name: target.characterName });
       return;
     }
     if (target.kind === "sprite") {
-      spriteDeleteMutation.mutate({ index: target.index, name: target.characterName });
+      spriteDeleteMutation.mutate({ draft: structuredClone(draft), index: target.index, name: target.characterName });
       return;
     }
     if (target.kind === "all-sprites") {
@@ -804,6 +969,18 @@ export function CharacterEditorPage() {
     aiSettingMutation.mutate();
   };
 
+  const generateBrief = () => {
+    if (!draft.name.trim() || !draft.character_setting.trim()) {
+      showToast({
+        kind: "error",
+        message: t("character.validation.briefSourceRequired"),
+        title: t("common.validationFailed"),
+      });
+      return;
+    }
+    aiBriefMutation.mutate();
+  };
+
   const translateDraft = () => {
     if (!draft.name.trim() && !draft.character_setting.trim() && !draft.emotion_tags.trim()) {
       showToast({
@@ -877,6 +1054,13 @@ export function CharacterEditorPage() {
     const savedText = selected?.sprites[selectedSpriteIndex]?.voice_text ?? "";
     if (currentCharacterName && text !== savedText && !voiceTextMutation.isPending) {
       voiceTextMutation.mutate({ index: selectedSpriteIndex, text });
+    }
+  };
+
+  const handleSpriteVoiceTypeChange = (value: SpriteVoiceType) => {
+    updateSprite(selectedSpriteIndex, { voice_type: value });
+    if (isSavedCharacter) {
+      voiceTypeMutation.mutate({ index: selectedSpriteIndex, voiceType: value });
     }
   };
 
@@ -987,6 +1171,49 @@ export function CharacterEditorPage() {
       scenarioSaveMutation.mutate(draft.scenarios ?? []);
     },
   };
+  if (spriteGenerationOpen) {
+    return (
+      <SpriteGenerationPage
+        character={draft}
+        name={currentCharacterName}
+        onClose={() => setSpriteGenerationOpen(false)}
+        onImported={(character, replacedIndex) => {
+          // Updating the resource collection must not discard unsaved personality or tag edits.
+          preserveImportedDraftRef.current = character;
+          queryClient.setQueryData<Character[]>(charactersQueryKey, (current = []) =>
+            current.map((item) => (item.name === character.name ? character : item)),
+          );
+          setDraft((current) => {
+            const currentSpritesByPath = new Map(current.sprites.map((sprite) => [sprite.path, sprite]));
+            const replacedIndices =
+              replacedIndex === undefined ? [] : Array.isArray(replacedIndex) ? replacedIndex : [replacedIndex];
+            for (const index of replacedIndices) {
+              if (current.sprites[index] && character.sprites[index]) {
+                const path = character.sprites[index].path;
+                currentSpritesByPath.set(path, { ...current.sprites[index], path });
+              }
+            }
+            const currentTags = tagContents(current.emotion_tags, current.sprites.length);
+            const tagsByPath = new Map(current.sprites.map((sprite, index) => [sprite.path, currentTags[index]]));
+            const savedTags = tagContents(character.emotion_tags, character.sprites.length);
+            return {
+              ...current,
+              sprites: character.sprites.map((sprite) => currentSpritesByPath.get(sprite.path) ?? sprite),
+              sprite_transitions: character.sprite_transitions,
+              emotion_tags: numberedTags(
+                "立绘",
+                character.sprites.map((sprite, index) => tagsByPath.get(sprite.path) ?? savedTags[index]),
+              ),
+            };
+          });
+          showToast({
+            kind: "success",
+            title: t(replacedIndex === undefined ? "spriteGeneration.saved" : "spriteGeneration.replaced"),
+          });
+        }}
+      />
+    );
+  }
 
   return (
     <div className="page character-page">
@@ -1023,8 +1250,10 @@ export function CharacterEditorPage() {
 
           <CharacterPersonalitySection
             aiPending={aiSettingMutation.isPending}
+            briefPending={aiBriefMutation.isPending}
             draft={draft}
             id="character-personality"
+            onAiBrief={generateBrief}
             onAiWrite={generateSetting}
             onChange={update}
             onTranslate={translateDraft}
@@ -1032,39 +1261,11 @@ export function CharacterEditorPage() {
           />
         </div>
 
-        <CharacterVoiceSection draft={draft} id="character-voice" onChange={update} />
-
-        <CharacterSpritesSection
+        <CharacterVoiceSection
           draft={draft}
-          emotionTagsPending={emotionTagsMutation.isPending}
-          id="character-sprites"
-          onClearSprites={requestClearSprites}
-          onOpenBulkTags={openBulkSpriteTagsDialog}
-          onPendingSpritePathsChange={setPendingSpritePaths}
-          onPendingVoicePathChange={updatePendingVoicePath}
-          onSaveScale={saveSpriteScaleValue}
-          onSaveTags={saveSpriteTags}
-          onScaleChange={update}
-          onScaleWheel={handleSpriteScaleWheel}
-          onSelectSprite={setSelectedSpriteIndex}
-          onSpriteDelete={requestSelectedSpriteDelete}
-          onSpriteTagChange={(value) => updateSpriteTag(selectedSpriteIndex, value)}
-          onSpriteUpload={uploadSprites}
-          onSpriteVoiceDelete={requestSelectedSpriteVoiceDelete}
-          onSpriteVoiceTextBlur={saveSelectedSpriteVoiceText}
-          onSpriteVoiceTextChange={(value) => updateSprite(selectedSpriteIndex, { voice_text: value })}
-          onSpriteVoiceUpload={uploadSelectedSpriteVoice}
-          pendingSpritePaths={pendingSpritePaths}
-          pendingVoicePath={pendingVoicePaths[selectedSpriteIndex] ?? ""}
-          selectedSprite={selectedSprite}
-          selectedSpriteIndex={selectedSpriteIndex}
-          selectedSpriteTag={selectedSpriteTag}
-          spriteDeletePending={spriteDeleteMutation.isPending}
-          spriteGalleryItems={spriteGalleryItems}
-          spriteScalePending={spriteScaleMutation.isPending}
-          spriteUploadPending={spriteUploadMutation.isPending}
-          voiceDeletePending={voiceDeleteMutation.isPending}
-          voiceUploadPending={voiceUploadMutation.isPending}
+          id="character-voice"
+          onChange={update}
+          voiceReferenceReadOnly={voiceReferenceReadOnly}
         />
 
         <CharacterScenarioSection
@@ -1086,22 +1287,107 @@ export function CharacterEditorPage() {
           onUploadScenarioVoice={scenarioHandlers.uploadScenarioVoice}
         />
 
+        <ModelStateEditor
+          character={draft}
+          onChange={setDraft}
+          onSaved={(character) => {
+            queryClient.setQueryData<Character[]>(charactersQueryKey, (current = [character]) =>
+              current.map((item) => (item.name === character.name ? character : item)),
+            );
+            setDraft(structuredClone(character));
+          }}
+        />
+
+        {draft.avatar_type === "static" && (
+          <CharacterSpritesSection
+            generateDisabled={!isSavedCharacter || !draft.character_setting.trim()}
+            generateHint={
+              !isSavedCharacter
+                ? t("spriteGeneration.saveFirst")
+                : !draft.character_setting.trim()
+                  ? t("spriteGeneration.settingRequired")
+                  : undefined
+            }
+            onGenerate={() => {
+              const element = document.querySelector<HTMLElement>(".content-outlet");
+              generationReturnRef.current = { element, scrollTop: element?.scrollTop ?? 0 };
+              setSpriteGenerationOpen(true);
+            }}
+            autoLabelAvailable={visionAvailable}
+            autoLabelDisabled={!isSavedCharacter || !draft.sprites.length || !spriteTags.some((tag) => !tag.trim())}
+            autoLabelPending={autoLabelMutation.isPending}
+            draft={draft}
+            emotionTagsPending={emotionTagsMutation.isPending}
+            id="character-sprites"
+            onClearSprites={requestClearSprites}
+            onAutoLabel={() => {
+              setAutoLabelTask(null);
+              setAutoLabelDialogOpen(true);
+              autoLabelMutation.mutate();
+            }}
+            onOpenBulkTags={openBulkSpriteTagsDialog}
+            onPendingSpritePathsChange={setPendingSpritePaths}
+            onPendingVoicePathChange={updatePendingVoicePath}
+            onSaveScale={saveSpriteScaleValue}
+            onSaveTags={saveSpriteTags}
+            onScaleChange={update}
+            onScaleWheel={handleSpriteScaleWheel}
+            onSelectSprite={setSelectedSpriteIndex}
+            onSpriteDelete={requestSelectedSpriteDelete}
+            onSpriteTagChange={(value) => updateSpriteTag(selectedSpriteIndex, value)}
+            onSpriteUpload={uploadSprites}
+            onSpriteVoiceDelete={requestSelectedSpriteVoiceDelete}
+            onSpriteVoiceTextBlur={saveSelectedSpriteVoiceText}
+            onSpriteVoiceTextChange={(value) => updateSprite(selectedSpriteIndex, { voice_text: value })}
+            onSpriteVoiceUpload={uploadSelectedSpriteVoice}
+            onSpriteVoiceTypeChange={handleSpriteVoiceTypeChange}
+            pendingSpritePaths={pendingSpritePaths}
+            pendingVoicePath={pendingVoicePaths[selectedSpriteIndex] ?? ""}
+            selectedSprite={
+              selectedSprite ? { ...selectedSprite, voice_type: spriteVoiceType(selectedSprite, draft) } : undefined
+            }
+            selectedSpriteIndex={selectedSpriteIndex}
+            selectedSpriteTag={selectedSpriteTag}
+            spriteDeletePending={spriteDeleteMutation.isPending}
+            spriteGalleryItems={spriteGalleryItems}
+            spriteScalePending={spriteScaleMutation.isPending}
+            spriteUploadPending={spriteUploadMutation.isPending}
+            voiceDeletePending={voiceDeleteMutation.isPending}
+            voiceUploadPending={voiceUploadMutation.isPending}
+          />
+        )}
+
         <CharacterMemorySection
-          addPending={memoryAddMutation.isPending}
-          data={memoryQuery.data}
-          deletePending={memoryDeleteMutation.isPending}
-          error={memoryQuery.error}
+          addPending={memoryController.addPending}
+          data={memoryController.data}
+          deletePending={memoryController.deletePending}
+          depError={memoryController.depError}
+          depInstalling={memoryController.depInstalling}
+          error={memoryController.error}
           id="character-memory"
-          isError={memoryQuery.isError}
-          isFetched={memoryQuery.isFetched}
-          isFetching={memoryQuery.isFetching}
-          isLoading={memoryQuery.isLoading}
-          memoryInput={memoryInput}
+          isChecking={memoryController.isChecking}
+          isError={memoryController.isError}
+          isFetched={memoryController.isFetched}
+          isFetching={memoryController.isFetching}
+          isLoading={memoryController.isLoading}
+          memoryInput={memoryController.memoryInput}
+          memoryImportPending={memoryImportController.previewPending || memoryImportController.importPending}
           memoryName={memoryName}
-          onAddMemory={() => memoryAddMutation.mutate()}
+          memoryPage={memoryController.memoryPage}
+          memoryTotalPages={memoryController.memoryTotalPages}
+          activeSearchQuery={memoryController.activeSearchQuery}
+          onAddMemory={() => void memoryController.add()}
+          onClearSearch={memoryController.clearSearch}
           onDeleteMemory={requestMemoryDelete}
-          onMemoryInputChange={setMemoryInput}
-          onRefresh={() => void memoryQuery.refetch()}
+          onInstallDep={() => void memoryController.installDependency()}
+          onImportMemories={() => void memoryImportController.openPicker()}
+          onMemoryInputChange={memoryController.setMemoryInput}
+          onMemoryPageChange={memoryController.setMemoryPage}
+          onRefresh={() => void memoryController.refresh()}
+          onSearch={() => void memoryController.search()}
+          onSearchInputChange={memoryController.setSearchInput}
+          searchInput={memoryController.searchInput}
+          searchPending={memoryController.searchPending}
         />
       </div>
 
@@ -1132,6 +1418,38 @@ export function CharacterEditorPage() {
         onConfirm={confirmPendingResourceDelete}
         open={Boolean(pendingResourceDelete)}
         title={pendingResourceDeleteCopy?.title ?? t("common.delete")}
+      />
+
+      <CharacterMemoryDialogs
+        depInstalling={memoryController.depInstalling}
+        dependencyOpen={memoryController.dependencyDialogOpen}
+        dependencyTask={memoryController.dependencyTask}
+        loadingMessage={memoryController.loadingMessage}
+        loadingOpen={memoryController.loadingDialogOpen}
+        loadingTask={memoryController.loadingTask}
+        onCloseDependency={memoryController.closeDependencyDialog}
+        onCloseLoading={memoryController.closeLoadingDialog}
+      />
+      <CharacterMemoryImportDialogs
+        importPending={memoryImportController.importPending}
+        onClosePicker={memoryImportController.closePicker}
+        onClosePreview={memoryImportController.closePreview}
+        onCloseTask={memoryImportController.closeTask}
+        onConfirm={() => void memoryImportController.confirmImport()}
+        onSelect={(items) => void memoryImportController.previewItems(items)}
+        pickerOpen={memoryImportController.pickerOpen}
+        preview={memoryImportController.preview}
+        previewOpen={memoryImportController.previewOpen}
+        result={memoryImportController.result}
+        task={memoryImportController.task}
+        taskOpen={memoryImportController.taskOpen}
+      />
+      <MediaAutoLabelProgressDialog
+        onClose={() => setAutoLabelDialogOpen(false)}
+        open={autoLabelDialogOpen}
+        pending={autoLabelMutation.isPending}
+        result={autoLabelMutation.data ?? null}
+        task={autoLabelTask}
       />
     </div>
   );

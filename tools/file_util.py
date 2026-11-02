@@ -11,6 +11,8 @@ from config.config_manager import ConfigManager
 from typing import List
 import platform
 import subprocess
+import tempfile
+from copy import deepcopy
 
 # 定义项目的基础数据路径
 BASE_DATA_PATH = Path('./data')
@@ -26,7 +28,7 @@ BGM_UPLOAD_DIR = BASE_DATA_PATH / 'bgm'
 _WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:")
 
 
-def _open_export_folder(output_path: str | os.PathLike) -> None:
+def _open_export_folder(output_path: str | os.PathLike) -> bool:
     folder_path = Path(output_path).parent.resolve()
 
     try:
@@ -34,11 +36,15 @@ def _open_export_folder(output_path: str | os.PathLike) -> None:
         if system == 'Windows':
             os.startfile(folder_path)  # type: ignore[attr-defined]
         elif system == 'Darwin':  # macOS
-            subprocess.Popen(['open', str(folder_path)])
+            subprocess.run(['open', str(folder_path)], check=True, timeout=10)
         elif system == 'Linux':
-            subprocess.Popen(['xdg-open', str(folder_path)])
+            subprocess.run(['xdg-open', str(folder_path)], check=True, timeout=10)
+        else:
+            return False
+        return True
     except Exception as e:
         print(f"Failed to open export folder {folder_path}: {e}")
+        return False
 
 
 def _safe_package_relpath(path: str | os.PathLike | None, field_name: str) -> Path:
@@ -147,8 +153,13 @@ def export_character(character_configs: list[CharacterConfig], output_path: str,
                 'prompt_text': config.prompt_text,
                 'prompt_lang': config.prompt_lang,
                 'sprite_scale': config.sprite_scale,
+                'portrait_crop': getattr(config, 'portrait_crop', None),
                 'sprites': config.sprites,
                 'emotion_tags': config.emotion_tags,
+                'avatar_type': getattr(config, 'avatar_type', 'static') or 'static',
+                'avatars': deepcopy(getattr(config, 'avatars', None) or {}),
+                'sprite_transitions': [],
+                'character_brief': getattr(config, 'character_brief', '') or '',
                 'character_setting': config.character_setting,
                 'speech_speed': getattr(config, 'speech_speed', 1.0),
                 'speech_volume': getattr(config, 'speech_volume', 1.0),
@@ -185,30 +196,87 @@ def export_character(character_configs: list[CharacterConfig], output_path: str,
             if config.sprite_prefix:
                 sprite_source_dir = SPRITE_DIR / config.sprite_prefix
                 if sprite_source_dir.is_dir():
-                    shutil.copytree(sprite_source_dir, temp_dir / 'sprites' / config.sprite_prefix, dirs_exist_ok=True)
+                    from core.media.asset_import import ignore_pending_batches
+                    shutil.copytree(sprite_source_dir, temp_dir / 'sprites' / config.sprite_prefix,
+                                    dirs_exist_ok=True, ignore=ignore_pending_batches)
 
             # 重写 sprite/voice path 为仅文件名（导入时按文件名匹配重建路径）
             sprites = char_data.get('sprites') or []
             normalized_sprites = []
             for s in sprites if isinstance(sprites, list) else []:
-                if isinstance(s, dict):
+                # 统一转为 dict（Pydantic Sprite 对象需显式转换，否则 yaml.dump 可能丢失数据）
+                if hasattr(s, 'model_dump'):
+                    sprite_data = s.model_dump()
+                elif isinstance(s, dict):
                     sprite_data = dict(s)
-                    if sprite_data.get('path'):
-                        sprite_data['path'] = _safe_package_basename_or_legacy_absolute(
-                            sprite_data['path'], "sprite path"
-                        )
-                    else:
-                        sprite_data['path'] = ""
-                    if sprite_data.get('voice_path'):
-                        sprite_data['voice_path'] = _safe_package_basename_or_legacy_absolute(
-                            sprite_data['voice_path'], "voice_path"
-                        )
-                    normalized_sprites.append(sprite_data)
                 else:
-                    normalized_sprites.append(s)
+                    sprite_data = {"path": str(getattr(s, "path", ""))}
+                if sprite_data.get('path'):
+                    sprite_data['path'] = _safe_package_basename_or_legacy_absolute(
+                        sprite_data['path'], "sprite path"
+                    )
+                else:
+                    sprite_data['path'] = ""
+                if sprite_data.get('voice_path'):
+                    sprite_data['voice_path'] = _safe_package_basename_or_legacy_absolute(
+                        sprite_data['voice_path'], "voice_path"
+                    )
+                # 清理 voice_type 的 None 值，避免 YAML 中多余的 null
+                if 'voice_type' in sprite_data and sprite_data['voice_type'] is None:
+                    del sprite_data['voice_type']
+                normalized_sprites.append(sprite_data)
             if isinstance(sprites, list):
                 char_data['sprites'] = normalized_sprites
 
+            # Transition endpoints use the same portable names as regular sprites.
+            from core.sprite.transitions import field, valid_transitions
+            from sdk.path_utils import safe_existing_file_path
+            for edge in valid_transitions(config):
+                clip = safe_existing_file_path(field(edge, 'path'), roots=[SPRITE_DIR / config.sprite_prefix])
+                relative = Path('transitions') / clip.name
+                destination = temp_dir / 'sprites' / config.sprite_prefix / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(clip, destination)
+                char_data['sprite_transitions'].append({
+                    **dict(edge), 'path': relative.as_posix(),
+                    'from_path': _safe_package_basename_or_legacy_absolute(field(edge, 'from_path'), 'transition source'),
+                    'to_path': _safe_package_basename_or_legacy_absolute(field(edge, 'to_path'), 'transition target'),
+                })
+
+            # Preserve package-relative model dependencies and state/voice paths.
+            from core.media.avatar.registry import adapter_for, is_registered_format
+            from sdk.path_utils import safe_existing_file_path
+            for kind, bank in char_data.get('avatars', {}).items():
+                if not bank.get('model_path') or not is_registered_format(kind):
+                    continue
+                if not Path(bank['model_path']).is_file():
+                    continue  # Metadata from unavailable/older configurations remains intact.
+                source_root = SPRITE_DIR / config.sprite_prefix
+                model = safe_existing_file_path(bank['model_path'], roots=[source_root])
+                adapter = adapter_for(kind)
+                files = set(adapter.inspect(model).files)
+                for sprite in bank.get('sprites', []):
+                    state_file = safe_existing_file_path(sprite['path'], roots=[model.parent])
+                    state = adapter.parse_state(model, json.loads(state_file.read_text(encoding='utf-8')))
+                    files.add(state_file)
+                    files.update(adapter.state_files(model, state))
+                    if sprite.get('voice_path'):
+                        voice = safe_existing_file_path(sprite['voice_path'], roots=[
+                            SPEECH_DIR / config.sprite_prefix, model.parent,
+                            source_root / 'avatar-voices' / kind,
+                        ])
+                        relative_voice = Path('avatar-voices') / kind / voice.name
+                        destination = temp_dir / 'sprites' / config.sprite_prefix / relative_voice
+                        destination.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(voice, destination)
+                        sprite['voice_path'] = relative_voice.as_posix()
+                    sprite['path'] = state_file.relative_to(source_root.resolve()).as_posix()
+                for file in files:
+                    checked = safe_existing_file_path(file, roots=[source_root])
+                    destination = temp_dir / 'sprites' / config.sprite_prefix / checked.relative_to(source_root.resolve())
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(checked, destination)
+                bank['model_path'] = model.relative_to(source_root.resolve()).as_posix()
             # 重写 scenario voice_path 为仅文件名
             scenarios = char_data.get('scenarios') or []
             if isinstance(scenarios, list):
@@ -324,6 +392,54 @@ def import_character(input_path: str) -> list[CharacterConfig]:
 
         if not yaml_data:
             raise ValueError("YAML配置文件为空或格式错误。")
+        if not isinstance(yaml_data, list) or not all(
+            isinstance(char_data, dict) for char_data in yaml_data
+        ):
+            raise ValueError("YAML人物配置必须是对象列表。")
+
+        # Validate every package entry before copying any assets or changing config.
+        for char_data in yaml_data:
+            CharacterConfig.parse_dic(char_data=dict(char_data))
+
+        # Revalidate bundled model states before publishing any character.
+        # Never trust dependency indexes supplied by an external .char file.
+        from core.media.avatar.registry import adapter_for, is_registered_format
+        from core.media.avatar.state_dependencies import write_state_index
+        from sdk.path_utils import safe_existing_file_path
+        for char_data in yaml_data:
+            prefix = _safe_package_name(char_data.get('sprite_prefix', ''), "sprite_prefix")
+            package_root = temp_dir / 'sprites' / prefix
+            for edge in char_data.get('sprite_transitions') or []:
+                relative = _safe_package_relpath(edge['path'], 'transition clip')
+                if relative.parts[0] != 'transitions' or relative.suffix.lower() != '.webm':
+                    raise ValueError('Invalid transition clip path')
+                checked_clip = safe_existing_file_path(relative, roots=[package_root])
+                from core.media.alpha_video import verify_alpha_video
+                expected_frames = edge.get('frame_count', 5)
+                if expected_frames not in {5, 22} or verify_alpha_video(checked_clip) != expected_frames:
+                    raise ValueError('Transition clip frame count does not match its metadata')
+                for key in ('from_path', 'to_path'):
+                    _safe_package_basename(edge[key], 'transition endpoint')
+            for kind, bank in (char_data.get('avatars') or {}).items():
+                if not is_registered_format(kind) or not bank.get('model_path'):
+                    continue
+                try:
+                    relative = _safe_package_relpath(bank['model_path'], 'avatar model')
+                except ValueError:
+                    continue  # Preserve unbundled legacy metadata.
+                if not (package_root / relative).is_file():
+                    continue
+                model = safe_existing_file_path(relative, roots=[package_root])
+                adapter = adapter_for(kind)
+                adapter.inspect(model)
+                from core.media.asset_import import PENDING_MARKER
+                if any(model.parent.rglob(PENDING_MARKER)):
+                    raise ValueError("Character package contains an uncommitted avatar import")
+                for sprite in bank.get('sprites', []):
+                    saved = safe_existing_file_path(sprite['path'], roots=[package_root])
+                    saved = safe_existing_file_path(saved, roots=[model.parent])
+                    parsed = adapter.parse_state(model, json.loads(saved.read_text(encoding='utf-8')))
+                    write_state_index(adapter, model, saved, parsed)
 
         # 读取现有配置，用于检测冲突
         existing_names = set()
@@ -410,6 +526,14 @@ def import_character(input_path: str) -> list[CharacterConfig]:
                             s['voice_path'] = new_vp.as_posix()
                     else:
                         s['voice_path'] = filename
+                    voice_type = str(s.get('voice_type') or '').strip().lower()
+                    if voice_type:
+                        if voice_type not in {'fallback', 'preset', 'reference'}:
+                            raise ValueError(f"voice_type must be fallback, preset, or reference: {voice_type!r}")
+                        s['voice_type'] = voice_type
+                    else:
+                        s['voice_type'] = 'reference' if str(s.get('voice_text') or '').strip() else 'fallback'
+
 
             # 修复 scenario voice_path：指向 SPEECH_DIR
             scenarios = char_data.get('scenarios') or []
@@ -447,7 +571,34 @@ def import_character(input_path: str) -> list[CharacterConfig]:
                     else:
                         char_data[key] = None
 
+            for edge in char_data.get('sprite_transitions') or []:
+                edge['path'] = (dest_sprite_dir / _safe_package_relpath(edge['path'], 'transition clip')).resolve().as_posix()
+                for key in ('from_path', 'to_path'):
+                    endpoint = dest_sprite_dir / _safe_package_basename(edge[key], 'transition endpoint')
+                    try:
+                        edge[key] = str(endpoint.relative_to(Path.cwd()))
+                    except ValueError:
+                        edge[key] = endpoint.as_posix()
+
             # 将更新后的数据创建为 CharacterConfig 对象
+            for kind, bank in char_data.get('avatars', {}).items():
+                model_text = bank.get('model_path', '')
+                if not model_text or not new_sprite_prefix:
+                    continue
+                # Only rebase entries actually present in this package; legacy unknown
+                # banks may contain metadata with no bundled files.
+                try:
+                    model_relative = _safe_package_relpath(model_text, 'avatar model')
+                except ValueError:
+                    continue
+                if not (source_sprite_dir / model_relative).is_file():
+                    continue
+                # Stored paths have one unambiguous base even with a relative SPRITE_DIR.
+                bank['model_path'] = (dest_sprite_dir / model_relative).resolve().as_posix()
+                for sprite in bank.get('sprites', []):
+                    sprite['path'] = (dest_sprite_dir / _safe_package_relpath(sprite['path'], 'avatar state')).resolve().as_posix()
+                    if sprite.get('voice_path'):
+                        sprite['voice_path'] = (dest_sprite_dir / _safe_package_relpath(sprite['voice_path'], 'avatar voice')).resolve().as_posix()
             imported_configs.append(CharacterConfig.parse_dic(char_data=char_data))
         
         # 将配置追加到 characters.yaml
@@ -462,8 +613,23 @@ def import_character(input_path: str) -> list[CharacterConfig]:
         new_data_list = [config.__dict__ for config in imported_configs]
         existing_data.extend(new_data_list)
         
-        with open(CHARACTERS_CONFIG_PATH, 'w', encoding='utf-8') as f:
-            yaml.dump(existing_data, f, allow_unicode=True, sort_keys=False)
+        temp_config_path = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                "w",
+                delete=False,
+                dir=CONFIG_DIR,
+                encoding="utf-8",
+                prefix="characters-",
+                suffix=".yaml.tmp",
+            ) as f:
+                temp_config_path = Path(f.name)
+                yaml.dump(existing_data, f, allow_unicode=True, sort_keys=False)
+            os.replace(temp_config_path, CHARACTERS_CONFIG_PATH)
+            temp_config_path = None
+        finally:
+            if temp_config_path is not None:
+                temp_config_path.unlink(missing_ok=True)
 
         print(f"人物成功从 {input_path} 导入，并已将配置追加到 {CHARACTERS_CONFIG_PATH}。")
         return imported_configs

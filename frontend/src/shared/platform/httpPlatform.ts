@@ -1,4 +1,8 @@
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
+import type { StorySuggestion } from "./storyEditorTypes";
+import type { ChatThemeManifest, ChatThemeSummary } from "../theme/chatTheme";
+import { PlatformRequestError } from "./errors";
+import { createAgentHttpPlatform } from "./agentHttpPlatform";
 import {
   isTauriDesktop,
   isDesktopBridgeRestarting,
@@ -8,34 +12,64 @@ import {
 } from "../desktop/desktopApi";
 import type {
   ApiConfig,
+  AvatarRuntimeStatus,
   AppConfig,
   AppUpdateInfo,
   AppUpdateResult,
   ChatCommand,
   ChatCommandResult,
+  ChatHistoryEntry,
   ChatLaunchPayload,
+  ChatRuntimeProcessState,
   ChatSnapshot,
+  ChatUpstreamCommand,
   BatchToolResult,
   Background,
   BackgroundTranslateResult,
   Character,
+  GeneratedCharacterSprite,
+  SpritePromptPair,
+  CharacterBriefBatchResult,
+  CharacterBriefResult,
+  CharacterMemory,
+  CharacterMemoryImportPreview,
+  CharacterMemoryImportResult,
+  KnowledgeInstanceList,
+  KnowledgeBindingList,
+  KnowledgeBindingNames,
+  KnowledgeBindingResult,
+  KnowledgeDeleteResult,
+  KnowledgeEntryPage,
+  KnowledgeEntrySearch,
+  KnowledgeImportPreview,
+  KnowledgeImportResult,
   CharacterMemoryList,
   CharacterSettingResult,
+  Mem0Status,
   CharacterTranslateResult,
   DiagnosticBundleResult,
+  Effect,
   FileBrowserSnapshot,
   LogFileList,
   LogSnapshot,
   LlmModelOption,
   LlmConnectionTestResult,
+  ComfyUIConnectionTestResult,
+  ImageAutoLabelResult,
   McpConfig,
   McpToolPreview,
+  ModelAssetDownloadResult,
+  ModelAssetStatus,
   MusicCoverRunResult,
   MusicCoverSearchResult,
+  NetworkProxyDetectionResult,
   PluginCatalogItem,
   PluginConfigActionResult,
   PluginConfigSaveResult,
+  PluginLoadStatus,
   PluginManifest,
+  PluginSlotActionResult,
+  PluginSlotContribution,
   PluginLocalScanResult,
   PluginSubmissionClipboardResult,
   PluginSubmissionInput,
@@ -44,31 +78,130 @@ import type {
   PluginUninstallResult,
   PluginUIDetail,
   RuntimeDependencyInstallResult,
+  ChatStageEvent,
   ShinsekaiPlatform,
   SpriteGenerationResult,
   SpritePromptResult,
+  StoryGenerationTask,
   SystemConfig,
   TaskProgressOptions,
   TaskSnapshot,
+  TemplateGenerationResult,
   TemplateLaunchSession,
   TemplateSummary,
   TtsBundleDownloadResult,
   TtsBundleRecommendation,
+  ChatAttachmentInput,
 } from "./types";
+import { currentChatRendererId } from "./chatRenderer";
+
+const bridgeAuthTokens = new Map<string, string>();
+
+function normalizedBaseUrl(baseUrl: string) {
+  return baseUrl.replace(/\/$/, "");
+}
+
+function rememberBridgeAuthToken(baseUrl: string, authToken?: string) {
+  const token = authToken?.trim() ?? "";
+  const key = normalizedBaseUrl(baseUrl);
+  if (token) {
+    bridgeAuthTokens.set(key, token);
+  } else {
+    bridgeAuthTokens.delete(key);
+  }
+}
+
+function bridgeAuthToken(baseUrl: string) {
+  return bridgeAuthTokens.get(normalizedBaseUrl(baseUrl)) ?? "";
+}
+
+function bridgeAuthHeaders(baseUrl: string): Record<string, string> {
+  const token = bridgeAuthToken(baseUrl);
+  return token ? { "X-Shinsekai-Bridge-Token": token } : {};
+}
+
+function headersRecord(headers?: HeadersInit): Record<string, string> {
+  if (!headers) {
+    return {};
+  }
+  if (typeof Headers !== "undefined" && headers instanceof Headers) {
+    const result: Record<string, string> = {};
+    headers.forEach((value, key) => {
+      result[key] = value;
+    });
+    return result;
+  }
+  if (Array.isArray(headers)) {
+    return Object.fromEntries(headers.map(([key, value]) => [key, value]));
+  }
+  return { ...(headers as Record<string, string>) };
+}
+
+function appendBridgeAuthQuery(baseUrl: string, pathOrUrl: string) {
+  const token = bridgeAuthToken(baseUrl);
+  if (!token) {
+    return pathOrUrl;
+  }
+  const separator = pathOrUrl.includes("?") ? "&" : "?";
+  return `${pathOrUrl}${separator}shinsekai_bridge_token=${encodeURIComponent(token)}`;
+}
+
+function bridgeUrl(baseUrl: string, path: string) {
+  const base = new URL(baseUrl);
+  const url = new URL(appendBridgeAuthQuery(baseUrl, path), base);
+  if (url.origin !== base.origin) {
+    throw new Error("Bridge URL must stay on the active bridge origin");
+  }
+  return url.toString();
+}
+
+function normalizeCharacterMemoryRow(row: unknown): CharacterMemory {
+  if (row && typeof row === "object") {
+    const record = row as Record<string, unknown>;
+    return {
+      id: String(record.id ?? ""),
+      memory: String(record.memory ?? record.content ?? record.text ?? ""),
+    };
+  }
+  return { id: "", memory: String(row ?? "") };
+}
+
+function normalizeCharacterMemoryList(payload: unknown, fallbackAgentId: string): CharacterMemoryList {
+  const record = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {};
+  const rawMemories = Array.isArray(record.memories)
+    ? record.memories
+    : Array.isArray(record.results)
+      ? record.results
+      : [];
+  const memories = rawMemories.map(normalizeCharacterMemoryRow);
+  return {
+    agentId: String(record.agentId ?? record.agent_id ?? (fallbackAgentId || "user")),
+    count: typeof record.count === "number" ? record.count : memories.length,
+    memories,
+  };
+}
+
+function openBridgeWindow(apiBase: string, path: string) {
+  const url = bridgeUrl(apiBase, path);
+  window.open(url, "_blank", "noopener,noreferrer");
+}
 
 async function requestJson<T>(baseUrl: string, path: string, init?: RequestInit): Promise<T> {
-  const requestInit = {
+  const requestHeaders: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...bridgeAuthHeaders(baseUrl),
+    ...headersRecord(init?.headers),
+  };
+  const requestInit: RequestInit = {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
+    headers: requestHeaders,
   };
   const response = await fetchWithStartupRetry(`${baseUrl}${path}`, requestInit);
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const message = typeof data?.error === "string" ? data.error : `${response.status} ${response.statusText}`;
-    throw new Error(message);
+    const errorCode = typeof data?.errorCode === "string" ? data.errorCode : undefined;
+    throw new PlatformRequestError(message, response.status, errorCode);
   }
   return data as T;
 }
@@ -76,14 +209,17 @@ async function requestJson<T>(baseUrl: string, path: string, init?: RequestInit)
 async function fetchWithStartupRetry(url: string, init: RequestInit): Promise<Response> {
   const method = (init.method ?? "GET").toUpperCase();
   const retryable = method === "GET" || method === "HEAD";
-  const attempts = retryable ? 15 : 1;
+  const maxRetryAttempts = retryable ? 15 : 1;
   let lastError: unknown;
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
+  let attempt = 0;
+  let waitedForBridgeRestart = false;
+  for (;;) {
     try {
       return await fetch(url, init);
     } catch (error) {
       lastError = error;
-      if (isDesktopBridgeRestarting() && isTransientBridgeError(error)) {
+      if (isDesktopBridgeRestarting() && isTransientBridgeError(error) && !waitedForBridgeRestart) {
+        waitedForBridgeRestart = true;
         logBridgeRestartRetry(method, url, error);
         await waitForDesktopBridgeRestart();
         continue;
@@ -98,6 +234,10 @@ async function fetchWithStartupRetry(url: string, init: RequestInit): Promise<Re
         }
         throw error;
       }
+      if (attempt + 1 >= maxRetryAttempts) {
+        break;
+      }
+      attempt += 1;
       await delay(200 + attempt * 150);
     }
   }
@@ -114,10 +254,14 @@ function isTransientBridgeError(error: unknown) {
 
 async function requestForm<T>(baseUrl: string, path: string, formData: FormData): Promise<T> {
   const url = `${baseUrl}${path}`;
-  const init = {
+  const headers = bridgeAuthHeaders(baseUrl);
+  const init: RequestInit = {
     body: formData,
     method: "POST",
   };
+  if (Object.keys(headers).length) {
+    init.headers = headers;
+  }
   const response = await fetch(url, init).catch(async (error) => {
     if (isDesktopBridgeRestarting() && isTransientBridgeError(error)) {
       logBridgeRestartRetry("POST", url, error);
@@ -133,7 +277,8 @@ async function requestForm<T>(baseUrl: string, path: string, formData: FormData)
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const message = typeof data?.error === "string" ? data.error : `${response.status} ${response.statusText}`;
-    throw new Error(message);
+    const errorCode = typeof data?.errorCode === "string" ? data.errorCode : undefined;
+    throw new PlatformRequestError(message, response.status, errorCode);
   }
   return data as T;
 }
@@ -155,8 +300,23 @@ function uploadFiles<T>(apiBase: string, path: string, files: File[]): Promise<T
 }
 
 function openDownload(apiBase: string, path: string) {
-  const url = `${apiBase}/api/download?path=${encodeURIComponent(path)}`;
-  window.open(url, "_blank", "noopener,noreferrer");
+  openBridgeWindow(apiBase, `/api/download?path=${encodeURIComponent(path)}`);
+}
+
+async function exportPackage(apiBase: string, resource: string, name: string) {
+  const openFolder = isTauriDesktop();
+  const result = await requestJson<{ downloadUrl: string; path: string; folderOpened?: boolean }>(
+    apiBase,
+    `/api/${resource}/export`,
+    {
+      body: JSON.stringify({ name, ...(openFolder ? { openFolder: true } : {}) }),
+      method: "POST",
+    },
+  );
+  if (!openFolder || result.folderOpened !== true) {
+    openDownload(apiBase, result.path);
+  }
+  return result.path;
 }
 
 function delay(ms: number) {
@@ -218,6 +378,35 @@ function sanitizeRestartLogUrl(url: string) {
   }
 }
 
+function buildChatViewerWebSocketUrl(wsUrl: string, sessionId: string, authToken = "") {
+  const url = new URL(wsUrl);
+  url.searchParams.set("sessionId", sessionId);
+  url.searchParams.set("role", "viewer");
+  url.searchParams.set("rendererId", currentChatRendererId());
+  if (authToken.trim()) {
+    url.searchParams.set("shinsekai_bridge_token", authToken.trim());
+  }
+  return url.toString();
+}
+
+function isRealtimeChatCommand(command: ChatCommand): command is ChatUpstreamCommand {
+  return command.type !== "copy-history" && command.type !== "open-history";
+}
+
+function makeChatCommandId() {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+  return `cmd-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function chatSnapshotPath(claimRenderer = true) {
+  if (!claimRenderer) return "/api/chat/snapshot";
+  return `/api/chat/snapshot?rendererId=${encodeURIComponent(currentChatRendererId())}`;
+}
+
+const CHAT_WEBSOCKET_HANDSHAKE_TIMEOUT_MS = 1500;
+
 function isTaskRunning(task: TaskSnapshot) {
   return task.status === "queued" || task.status === "running";
 }
@@ -250,13 +439,23 @@ async function waitForTask<TResult>(
   return task.result;
 }
 
-export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
-  const apiBase = baseUrl.replace(/\/$/, "");
+export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPlatform {
+  const apiBase = normalizedBaseUrl(baseUrl);
+  rememberBridgeAuthToken(apiBase, authToken);
 
   return {
+    agent: createAgentHttpPlatform((path, init) => requestJson(apiBase, path, init)),
     backgrounds: {
       delete: async (name) => {
         await requestJson(apiBase, `/api/backgrounds/${encodePath(name)}`, { method: "DELETE" });
+      },
+      autoLabelImages: async (name, options) => {
+        const task = await requestJson<TaskSnapshot<ImageAutoLabelResult>>(
+          apiBase,
+          "/api/backgrounds/images/auto-label",
+          { body: JSON.stringify({ name }), method: "POST" },
+        );
+        return waitForTask(apiBase, task, options);
       },
       deleteAllBgm: (name) =>
         requestJson<Background>(apiBase, "/api/backgrounds/bgm/delete-all", {
@@ -278,14 +477,7 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
           body: JSON.stringify({ index, name }),
           method: "POST",
         }),
-      export: async (name) => {
-        const result = await requestJson<{ downloadUrl: string; path: string }>(apiBase, "/api/backgrounds/export", {
-          body: JSON.stringify({ name }),
-          method: "POST",
-        });
-        openDownload(apiBase, result.path);
-        return result.path;
-      },
+      export: (name) => exportPackage(apiBase, "backgrounds", name),
       import: (items) => {
         if (isFileList(items)) {
           return uploadFiles<Background[]>(apiBase, "/api/backgrounds/import-upload", items);
@@ -327,39 +519,150 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
           method: "POST",
         }),
     },
+    effects: {
+      delete: async (name) => {
+        await requestJson(apiBase, `/api/effects/${encodePath(name)}`, { method: "DELETE" });
+      },
+      deleteAllAudio: (name) =>
+        requestJson<Effect>(apiBase, "/api/effects/audio/delete-all", {
+          body: JSON.stringify({ name }),
+          method: "POST",
+        }),
+      deleteAudio: (name, index) =>
+        requestJson<Effect>(apiBase, "/api/effects/audio/delete", {
+          body: JSON.stringify({ index, name }),
+          method: "POST",
+        }),
+      deleteImage: (name, index) =>
+        requestJson<Effect>(apiBase, "/api/effects/images/delete", {
+          body: JSON.stringify({ index, name }),
+          method: "POST",
+        }),
+      export: (name) => exportPackage(apiBase, "effects", name),
+      import: (items) => {
+        if (isFileList(items)) {
+          return uploadFiles<Effect[]>(apiBase, "/api/effects/import-upload", items);
+        }
+        return requestJson<Effect[]>(apiBase, "/api/effects/import", {
+          body: JSON.stringify({ paths: items }),
+          method: "POST",
+        });
+      },
+      list: () => requestJson<Effect[]>(apiBase, "/api/effects"),
+      save: (effect, originalName) =>
+        requestJson<Effect>(apiBase, "/api/effects", {
+          body: JSON.stringify({ effect, originalName }),
+          method: "POST",
+        }),
+      saveAudioTags: (input) =>
+        requestJson<Effect>(apiBase, "/api/effects/audio-tags", {
+          body: JSON.stringify(input),
+          method: "POST",
+        }),
+      saveImageTags: (input) =>
+        requestJson<Effect>(apiBase, "/api/effects/image-tags", {
+          body: JSON.stringify(input),
+          method: "POST",
+        }),
+      uploadAudio: (input) =>
+        requestJson<Effect>(apiBase, "/api/effects/audio/upload", {
+          body: JSON.stringify(input),
+          method: "POST",
+        }),
+      uploadImages: (input) =>
+        requestJson<Effect>(apiBase, "/api/effects/images/upload", {
+          body: JSON.stringify(input),
+          method: "POST",
+        }),
+      uploadImageAudio: (input) =>
+        requestJson<Effect>(apiBase, "/api/effects/images/audio/upload", {
+          body: JSON.stringify(input),
+          method: "POST",
+        }),
+    },
     chat: {
+      close: (options) =>
+        requestJson<ChatSnapshot>(apiBase, "/api/chat/close", {
+          body: JSON.stringify({ expectedSessionId: options?.expectedSessionId }),
+          keepalive: true,
+          method: "POST",
+        }),
       command: async (command: ChatCommand) => {
+        let payload: ChatCommand =
+          isRealtimeChatCommand(command) && !command.cmdId ? { ...command, cmdId: makeChatCommandId() } : command;
+        if (payload.type === "audio-playback-signal" && payload.payload && typeof payload.payload === "object") {
+          payload = {
+            ...payload,
+            payload: {
+              ...payload.payload,
+              rendererId: currentChatRendererId(),
+            },
+          };
+        }
         const result = await requestJson<ChatCommandResult>(apiBase, "/api/chat/command", {
-          body: JSON.stringify(command),
+          body: JSON.stringify(payload),
           method: "POST",
         });
         if (result.clipboardText != null) {
           await navigator.clipboard.writeText(result.clipboardText);
         }
         if (result.downloadUrl) {
-          window.open(`${apiBase}${result.downloadUrl}`, "_blank", "noopener,noreferrer");
+          openBridgeWindow(apiBase, result.downloadUrl);
         }
         return result;
       },
-      getSnapshot: () => requestJson<ChatSnapshot>(apiBase, "/api/chat/snapshot"),
+      getHistory: () => requestJson<ChatHistoryEntry[]>(apiBase, "/api/chat/history"),
+      getHistoryVoice: async (voiceId) => {
+        const { segmentCount } = await requestJson<{ segmentCount: number }>(
+          apiBase,
+          `/api/chat/history-voice/${encodePath(voiceId)}`,
+        );
+        return Array.from({ length: segmentCount }, (_, index) =>
+          bridgeUrl(apiBase, `/api/chat/history-voice-file?voiceId=${encodeURIComponent(voiceId)}&segment=${index}`),
+        );
+      },
+      listConversations: () => requestJson(apiBase, "/api/chat/conversations"),
+      deleteConversation: async (id) => {
+        await requestJson(apiBase, `/api/chat/conversations/${encodePath(id)}`, { method: "DELETE" });
+      },
+      getCurrentConversation: () => requestJson(apiBase, "/api/chat/conversations/current"),
+      async reconfigureConversation(conversationId, payload, options) {
+        const task = await requestJson<TaskSnapshot<ChatSnapshot>>(apiBase, "/api/chat/init", {
+          body: JSON.stringify({ mode: "reconfigure", conversationId, payload }),
+          method: "POST",
+        });
+        return waitForTask(apiBase, task, options);
+      },
+      prepareConversation: (id) => requestJson(apiBase, `/api/chat/conversations/${encodePath(id)}/launch-payload`),
+      renameConversation: (id, title) =>
+        requestJson(apiBase, `/api/chat/conversations/${encodePath(id)}/rename`, {
+          method: "POST",
+          body: JSON.stringify({ title }),
+        }),
+      getRuntimeStatus: () => requestJson<ChatRuntimeProcessState>(apiBase, "/api/chat/runtime-status"),
+      getSnapshot: (options) => requestJson<ChatSnapshot>(apiBase, chatSnapshotPath(options?.claimRenderer)),
       getTheme: () => requestJson<ChatThemePayload>(apiBase, "/api/chat/theme"),
-      launch: (payload: ChatLaunchPayload) =>
-        requestJson<ChatSnapshot>(apiBase, "/api/chat/launch", {
-          body: JSON.stringify(payload),
+      async launch(payload: ChatLaunchPayload, options) {
+        const task = await requestJson<TaskSnapshot<ChatSnapshot>>(apiBase, "/api/chat/init", {
+          body: JSON.stringify({ mode: "launch", payload }),
           method: "POST",
-        }),
-      resumeLast: () =>
-        requestJson<ChatSnapshot>(apiBase, "/api/chat/resume-last", {
-          body: JSON.stringify({}),
+        });
+        return waitForTask(apiBase, task, options);
+      },
+      async resumeLast(options, overrides) {
+        const task = await requestJson<TaskSnapshot<ChatSnapshot>>(apiBase, "/api/chat/init", {
+          body: JSON.stringify({ mode: "resume-last", enableMobileAccess: overrides?.enableMobileAccess }),
           method: "POST",
-        }),
+        });
+        return waitForTask(apiBase, task, options);
+      },
       subscribe(listener) {
         let stopped = false;
         let timeoutId = 0;
 
         const poll = async () => {
           try {
-            const snapshot = await requestJson<ChatSnapshot>(apiBase, "/api/chat/snapshot");
+            const snapshot = await requestJson<ChatSnapshot>(apiBase, chatSnapshotPath());
             if (!stopped) {
               listener(snapshot);
             }
@@ -376,8 +679,457 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
           window.clearTimeout(timeoutId);
         };
       },
+      listThemes: async () => {
+        const themes = await requestJson<ChatThemeSummary[]>(apiBase, "/api/chat/themes");
+        return themes.map((theme) => ({
+          ...theme,
+          previewUrl: theme.previewUrl ? bridgeUrl(apiBase, theme.previewUrl) : undefined,
+        }));
+      },
+      getThemeManifest: (id) => requestJson<ChatThemeManifest>(apiBase, `/api/chat/themes/${encodePath(id)}`),
+      getActiveThemeId: async () => {
+        const result = await requestJson<{ id: string }>(apiBase, "/api/chat/themes/active");
+        return result.id ?? "";
+      },
+      setActiveThemeId: async (id) => {
+        await requestJson(apiBase, "/api/chat/themes/active", {
+          body: JSON.stringify({ id }),
+          method: "POST",
+        });
+      },
+      uploadTheme: (file) => uploadFiles<ChatThemeSummary>(apiBase, "/api/chat/themes/upload", [file]),
+      uploadAttachments: (files) =>
+        uploadFiles<{ attachments: ChatAttachmentInput[] }>(apiBase, "/api/chat/attachments/upload", files),
+      saveTheme: (input) =>
+        requestJson<ChatThemeSummary>(apiBase, "/api/chat/themes/save", {
+          body: JSON.stringify(input),
+          method: "POST",
+        }),
+      deleteTheme: async (id) => {
+        await requestJson(apiBase, `/api/chat/themes/${encodePath(id)}`, { method: "DELETE" });
+      },
+      subscribeEvents(listener) {
+        let stopped = false;
+        let timeoutId = 0;
+        let connectTimeoutId = 0;
+        let seq = 0;
+        let socket: WebSocket | null = null;
+        let lastEventSeq = 0;
+        let currentSessionId = "";
+
+        const emitSnapshot = (snapshot: ChatSnapshot) => {
+          if (snapshot.sessionId && snapshot.sessionId !== currentSessionId) {
+            currentSessionId = snapshot.sessionId;
+            seq = 0;
+            lastEventSeq = 0;
+          }
+          const snapshotSeq =
+            typeof snapshot.eventSeq === "number" && Number.isFinite(snapshot.eventSeq) ? snapshot.eventSeq : 0;
+          const event: ChatStageEvent = {
+            seq: Math.max(seq, lastEventSeq, snapshotSeq),
+            snapshot,
+            ts: Date.now(),
+            type: "snapshot",
+            v: 1,
+          };
+          lastEventSeq = Math.max(lastEventSeq, snapshotSeq);
+          seq = Math.max(seq, event.seq);
+          listener(event);
+        };
+
+        const emitTransportState = (
+          state: "connected" | "connecting" | "polling" | "reconnecting",
+          transport: "snapshot" | "websocket",
+        ) => {
+          const nextSeq = Math.max(seq, lastEventSeq);
+          seq = Math.max(seq, nextSeq);
+          listener({
+            seq: nextSeq,
+            state,
+            transport,
+            ts: Date.now(),
+            type: "transport.state",
+            v: 1,
+          });
+        };
+
+        const closeSocket = () => {
+          window.clearTimeout(connectTimeoutId);
+          connectTimeoutId = 0;
+          if (!socket) {
+            return;
+          }
+          socket.onclose = null;
+          socket.onerror = null;
+          socket.onmessage = null;
+          try {
+            socket.close();
+          } catch {
+            // ignore
+          }
+          socket = null;
+        };
+
+        const connectWebSocket = (snapshot: ChatSnapshot) => {
+          const WebSocketCtor = globalThis.WebSocket;
+          if (!snapshot.wsUrl || !snapshot.sessionId || typeof WebSocketCtor === "undefined") {
+            emitTransportState("polling", "snapshot");
+            return false;
+          }
+          closeSocket();
+          let websocketConnected = false;
+          const ws = new WebSocketCtor(
+            buildChatViewerWebSocketUrl(snapshot.wsUrl, snapshot.sessionId, bridgeAuthToken(apiBase)),
+          );
+          socket = ws;
+          connectTimeoutId = window.setTimeout(() => {
+            if (stopped || socket !== ws || websocketConnected) {
+              return;
+            }
+            closeSocket();
+            emitTransportState("polling", "snapshot");
+            timeoutId = window.setTimeout(poll, 0);
+          }, CHAT_WEBSOCKET_HANDSHAKE_TIMEOUT_MS);
+          ws.onopen = () => {
+            if (websocketConnected) {
+              return;
+            }
+            websocketConnected = true;
+            window.clearTimeout(connectTimeoutId);
+            connectTimeoutId = 0;
+            emitTransportState("connected", "websocket");
+          };
+          ws.onmessage = (message) => {
+            try {
+              if (!websocketConnected) {
+                websocketConnected = true;
+                window.clearTimeout(connectTimeoutId);
+                connectTimeoutId = 0;
+                emitTransportState("connected", "websocket");
+              }
+              const parsed = JSON.parse(String(message.data ?? ""));
+              if (!parsed || typeof parsed !== "object" || typeof parsed.type !== "string") {
+                return;
+              }
+              if (typeof parsed.seq === "number") {
+                if (lastEventSeq > 0 && parsed.seq > lastEventSeq + 1) {
+                  void requestJson<ChatSnapshot>(apiBase, chatSnapshotPath())
+                    .then((nextSnapshot) => {
+                      if (!stopped && socket === ws) {
+                        emitSnapshot(nextSnapshot);
+                      }
+                    })
+                    .catch(() => {
+                      // ignore gap recovery failure; normal reconnect path will retry
+                    });
+                }
+                lastEventSeq = Math.max(lastEventSeq, parsed.seq);
+              }
+              listener(parsed as ChatStageEvent);
+            } catch {
+              // ignore malformed websocket payloads
+            }
+          };
+          ws.onerror = () => {
+            try {
+              ws.close();
+            } catch {
+              // ignore
+            }
+          };
+          ws.onclose = () => {
+            if (socket === ws) {
+              socket = null;
+            }
+            websocketConnected = false;
+            window.clearTimeout(connectTimeoutId);
+            connectTimeoutId = 0;
+            if (!stopped) {
+              emitTransportState("reconnecting", "websocket");
+              timeoutId = window.setTimeout(connectFromSnapshot, 800);
+            }
+          };
+          return true;
+        };
+
+        const poll = async () => {
+          try {
+            const snapshot = await requestJson<ChatSnapshot>(apiBase, chatSnapshotPath());
+            if (!stopped) {
+              emitSnapshot(snapshot);
+              if (connectWebSocket(snapshot)) {
+                return;
+              }
+            }
+          } finally {
+            if (!stopped && socket == null) {
+              emitTransportState("polling", "snapshot");
+              timeoutId = window.setTimeout(poll, 1400);
+            }
+          }
+        };
+
+        const connectFromSnapshot = async () => {
+          try {
+            const snapshot = await requestJson<ChatSnapshot>(apiBase, chatSnapshotPath());
+            if (stopped) {
+              return;
+            }
+            emitSnapshot(snapshot);
+            if (!connectWebSocket(snapshot)) {
+              timeoutId = window.setTimeout(poll, 1400);
+            }
+          } catch {
+            if (!stopped) {
+              emitTransportState("polling", "snapshot");
+              timeoutId = window.setTimeout(poll, 1400);
+            }
+          }
+        };
+
+        void connectFromSnapshot();
+        return () => {
+          stopped = true;
+          window.clearTimeout(timeoutId);
+          window.clearTimeout(connectTimeoutId);
+          closeSocket();
+        };
+      },
+    },
+    story: {
+      readDocument: (storyPath) =>
+        requestJson(apiBase, "/api/story/editor/read", {
+          body: JSON.stringify({ storyPath }),
+          method: "POST",
+        }),
+      saveDocument: (input) =>
+        requestJson(apiBase, "/api/story/editor/save", {
+          body: JSON.stringify(input),
+          method: "POST",
+        }),
+      async suggestGraph(input) {
+        const task = await requestJson<TaskSnapshot<StorySuggestion>>(apiBase, "/api/story/editor/suggest", {
+          body: JSON.stringify(input),
+          method: "POST",
+        });
+        return waitForTask(apiBase, task);
+      },
+      list: () => requestJson(apiBase, "/api/story/library"),
+      delete: async (storyPath) => {
+        await requestJson(apiBase, "/api/story/library/delete", {
+          body: JSON.stringify({ storyPath }),
+          method: "POST",
+        });
+      },
+      prepareLaunch: (storyPath, historyPath = "") =>
+        requestJson(apiBase, "/api/story/launch-payload", {
+          body: JSON.stringify({ storyPath, historyPath }),
+          method: "POST",
+        }),
+      getPreview: (id) => requestJson(apiBase, `/api/story/generation/${encodePath(id)}/preview`),
+      startSession: (storyPath) =>
+        requestJson(apiBase, "/api/story/start", {
+          body: JSON.stringify({ storyPath }),
+          method: "POST",
+        }),
+      cancelGeneration: (id) =>
+        requestJson<StoryGenerationTask>(apiBase, `/api/story/generation/${encodePath(id)}/cancel`, {
+          body: JSON.stringify({}),
+          method: "POST",
+        }),
+      getGeneration: (id) => requestJson<StoryGenerationTask>(apiBase, `/api/story/generation/${encodePath(id)}`),
+      async regenerateGeneration(id, stage, options) {
+        const task = await requestJson<TaskSnapshot<StoryGenerationTask>>(
+          apiBase,
+          `/api/story/generation/${encodePath(id)}/regenerate`,
+          { body: JSON.stringify({ stage }), method: "POST" },
+        );
+        return waitForTask(apiBase, task, options);
+      },
+      async resumeGeneration(id, options) {
+        const task = await requestJson<TaskSnapshot<StoryGenerationTask>>(
+          apiBase,
+          `/api/story/generation/${encodePath(id)}/resume`,
+          { body: JSON.stringify({}), method: "POST" },
+        );
+        return waitForTask(apiBase, task, options);
+      },
+      async startGeneration(input, options) {
+        const task = await requestJson<TaskSnapshot<StoryGenerationTask>>(apiBase, "/api/story/generation/start", {
+          body: JSON.stringify(input),
+          method: "POST",
+        });
+        return waitForTask(apiBase, task, options);
+      },
+    },
+    knowledge: {
+      getKnowledgeStatus: (options) =>
+        requestJson<Mem0Status>(apiBase, "/api/knowledge/status", {
+          body: JSON.stringify({ startLoading: options?.startLoading ?? false, retry: options?.retry ?? false }),
+          method: "POST",
+        }),
+      importKnowledge: async (knowledgeId, items, options) => {
+        const task = await uploadFiles<TaskSnapshot<KnowledgeImportResult>>(
+          apiBase,
+          `/api/knowledge/import-upload?knowledge_id=${encodeURIComponent(knowledgeId)}`,
+          items,
+        );
+        return waitForTask(apiBase, task, options);
+      },
+      listKnowledgeInstances: ({ query, page, refresh = false }) =>
+        requestJson<KnowledgeInstanceList | Mem0Status>(
+          apiBase,
+          `/api/knowledge/instances?${new URLSearchParams({ query, page: String(page), refresh: String(refresh) })}`,
+        ),
+      listKnowledgeBindings: (characterName, page = 1) =>
+        requestJson<KnowledgeBindingList>(
+          apiBase,
+          `/api/knowledge/bindings?${new URLSearchParams({ character_name: characterName, page: String(page) })}`,
+        ),
+      addKnowledgeBinding: (characterName, knowledgeId) =>
+        requestJson<KnowledgeBindingResult>(apiBase, "/api/knowledge/bindings/add", {
+          method: "POST",
+          body: JSON.stringify({ character_name: characterName, knowledge_id: knowledgeId }),
+        }),
+      listKnowledgeBindingNames: (knowledgeId) =>
+        requestJson<KnowledgeBindingNames>(
+          apiBase,
+          `/api/knowledge/bindings/knowledge?knowledge_id=${encodeURIComponent(knowledgeId)}`,
+        ),
+      batchKnowledgeBindings: (knowledgeId, add, remove) =>
+        requestJson<KnowledgeBindingNames & { ok: true }>(apiBase, "/api/knowledge/bindings/batch", {
+          method: "POST",
+          body: JSON.stringify({ knowledge_id: knowledgeId, add, remove }),
+        }),
+      removeKnowledgeBinding: (characterName, knowledgeId) =>
+        requestJson<KnowledgeBindingResult>(apiBase, "/api/knowledge/bindings/remove", {
+          method: "POST",
+          body: JSON.stringify({ character_name: characterName, knowledge_id: knowledgeId }),
+        }),
+      addKnowledgeEntry: (knowledgeId, content) =>
+        requestJson<KnowledgeEntryPage | Mem0Status>(apiBase, "/api/knowledge/remember-and-list", {
+          method: "POST",
+          body: JSON.stringify({ knowledge_id: knowledgeId, content }),
+        }),
+      deleteKnowledgeEntry: (knowledgeId, memoryId) =>
+        requestJson<KnowledgeEntryPage | Mem0Status>(apiBase, "/api/knowledge/forget-and-list", {
+          method: "POST",
+          body: JSON.stringify({ knowledge_id: knowledgeId, memory_id: memoryId }),
+        }),
+      deleteKnowledge: (knowledgeId) =>
+        requestJson<KnowledgeDeleteResult | Mem0Status>(apiBase, "/api/knowledge/delete", {
+          method: "POST",
+          body: JSON.stringify({ knowledge_id: knowledgeId }),
+        }),
+      listKnowledgeEntries: (knowledgeId) =>
+        requestJson<KnowledgeEntryPage | Mem0Status>(
+          apiBase,
+          `/api/knowledge/entries?${new URLSearchParams({ knowledge_id: knowledgeId })}`,
+        ),
+      searchKnowledgeEntries: (knowledgeId, query) =>
+        requestJson<KnowledgeEntrySearch | Mem0Status>(apiBase, "/api/knowledge/entries/search", {
+          method: "POST",
+          body: JSON.stringify({ knowledge_id: knowledgeId, query, limit: 200 }),
+        }),
+      previewKnowledgeImport: (knowledgeId, items) => {
+        return uploadFiles<KnowledgeImportPreview>(
+          apiBase,
+          `/api/knowledge/import-preview-upload?knowledge_id=${encodeURIComponent(knowledgeId)}`,
+          items,
+        );
+      },
     },
     characters: {
+      async planSprites(input, options) {
+        const task = await requestJson<TaskSnapshot<{ items: SpritePromptPair[] }>>(
+          apiBase,
+          "/api/characters/sprites/plan",
+          { method: "POST", body: JSON.stringify(input) },
+        );
+        return waitForTask(apiBase, task, options);
+      },
+      async renderSprite(input, options) {
+        const task = await requestJson<TaskSnapshot<GeneratedCharacterSprite>>(
+          apiBase,
+          "/api/characters/sprites/render",
+          { method: "POST", body: JSON.stringify(input) },
+        );
+        return waitForTask(apiBase, task, options);
+      },
+      async animateSprite(input, options) {
+        const task = await requestJson<TaskSnapshot<GeneratedCharacterSprite>>(
+          apiBase,
+          "/api/characters/sprites/animate",
+          { method: "POST", body: JSON.stringify(input) },
+        );
+        return waitForTask(apiBase, task, options);
+      },
+      async analyzeSpriteTransitions(input, options) {
+        const task = await requestJson<TaskSnapshot<import("./types").SpriteTransitionAnalysis>>(
+          apiBase,
+          "/api/characters/sprites/transitions/analyze",
+          { method: "POST", body: JSON.stringify(input) },
+        );
+        return waitForTask(apiBase, task, options);
+      },
+      async generateSpriteTransition(input, options) {
+        const task = await requestJson<TaskSnapshot<import("./types").GeneratedSpriteTransition>>(
+          apiBase,
+          "/api/characters/sprites/transitions/generate",
+          { method: "POST", body: JSON.stringify(input) },
+        );
+        return waitForTask(apiBase, task, options);
+      },
+      saveSpriteTransitions: (input) =>
+        requestJson<Character>(apiBase, "/api/characters/sprites/transitions/save", {
+          method: "POST",
+          body: JSON.stringify(input),
+        }),
+      async captureSpriteFrame(input, options) {
+        const task = await requestJson<TaskSnapshot<GeneratedCharacterSprite>>(
+          apiBase,
+          "/api/characters/sprites/frame",
+          { method: "POST", body: JSON.stringify(input) },
+        );
+        return waitForTask(apiBase, task, options);
+      },
+      async removeSpriteBackground(input, options) {
+        const task = await requestJson<TaskSnapshot<GeneratedCharacterSprite>>(
+          apiBase,
+          "/api/characters/sprites/remove-background",
+          { method: "POST", body: JSON.stringify(input) },
+        );
+        return waitForTask(apiBase, task, options);
+      },
+      importGeneratedSprites: (input) =>
+        requestJson<Character>(apiBase, "/api/characters/sprites/import-generated", {
+          method: "POST",
+          body: JSON.stringify(input),
+        }),
+      importModelStates: async (input) => {
+        const task = await requestJson<TaskSnapshot<Character>>(apiBase, "/api/characters/model/states/import", {
+          body: JSON.stringify(input),
+          method: "POST",
+        });
+        return waitForTask(apiBase, task);
+      },
+      importModel: async (input) => {
+        const task = await requestJson<TaskSnapshot<Character>>(apiBase, "/api/characters/model/import", {
+          body: JSON.stringify(input),
+          method: "POST",
+        });
+        return waitForTask(apiBase, task);
+      },
+      saveModelState: (input) =>
+        requestJson<Character>(apiBase, "/api/characters/model/state", { body: JSON.stringify(input), method: "POST" }),
+      autoLabelSprites: async (name, options) => {
+        const task = await requestJson<TaskSnapshot<ImageAutoLabelResult>>(
+          apiBase,
+          "/api/characters/sprites/auto-label",
+          { body: JSON.stringify({ name }), method: "POST" },
+        );
+        return waitForTask(apiBase, task, options);
+      },
       delete: async (name) => {
         await requestJson(apiBase, `/api/characters/${encodePath(name)}`, { method: "DELETE" });
       },
@@ -401,14 +1153,17 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
           body: JSON.stringify({ name, spriteIndex }),
           method: "POST",
         }),
-      export: async (name) => {
-        const result = await requestJson<{ downloadUrl: string; path: string }>(apiBase, "/api/characters/export", {
-          body: JSON.stringify({ name }),
+      export: (name) => exportPackage(apiBase, "characters", name),
+      ensureBriefs: (names) =>
+        requestJson<CharacterBriefBatchResult>(apiBase, "/api/characters/ensure-briefs", {
+          body: JSON.stringify({ names }),
           method: "POST",
-        });
-        openDownload(apiBase, result.path);
-        return result.path;
-      },
+        }),
+      generateBrief: (input) =>
+        requestJson<CharacterBriefResult>(apiBase, "/api/characters/ai-brief", {
+          body: JSON.stringify(input),
+          method: "POST",
+        }),
       generateSetting: (input) =>
         requestJson<CharacterSettingResult>(apiBase, "/api/characters/ai-setting", {
           body: JSON.stringify(input),
@@ -423,12 +1178,39 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
           method: "POST",
         });
       },
+      getMem0Status: () =>
+        requestJson<Mem0Status>(apiBase, "/api/characters/memories/status", {
+          body: "{}",
+          method: "POST",
+        }),
+      importMemories: async (name, items, options) => {
+        const task = await uploadFiles<TaskSnapshot<CharacterMemoryImportResult>>(
+          apiBase,
+          `/api/characters/memories/import-upload?name=${encodeURIComponent(name)}`,
+          items,
+        );
+        return waitForTask(apiBase, task, options);
+      },
       list: () => requestJson<Character[]>(apiBase, "/api/characters"),
       listMemories: (name) =>
         requestJson<CharacterMemoryList>(apiBase, "/api/characters/memories/list", {
           body: JSON.stringify({ name }),
           method: "POST",
         }),
+      previewMemoryImport: (name, items) => {
+        return uploadFiles<CharacterMemoryImportPreview>(
+          apiBase,
+          `/api/characters/memories/import-preview-upload?name=${encodeURIComponent(name)}`,
+          items,
+        );
+      },
+      searchMemories: async ({ limit = 200, name, query }) => {
+        const result = await requestJson<unknown>(apiBase, "/api/memory/search", {
+          body: JSON.stringify({ characterName: name, limit, query }),
+          method: "POST",
+        });
+        return normalizeCharacterMemoryList(result, name);
+      },
       remember: (name, content) =>
         requestJson<CharacterMemoryList>(apiBase, "/api/characters/memories/add", {
           body: JSON.stringify({ content, name }),
@@ -452,6 +1234,11 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
       saveSpriteVoiceText: (name, spriteIndex, voiceText) =>
         requestJson<Character>(apiBase, "/api/characters/sprite-voice/text", {
           body: JSON.stringify({ name, spriteIndex, voiceText }),
+          method: "POST",
+        }),
+      saveSpriteVoiceType: (name, spriteIndex, voiceType) =>
+        requestJson<Character>(apiBase, "/api/characters/sprite-voice/voice-type", {
+          body: JSON.stringify({ name, spriteIndex, voiceType }),
           method: "POST",
         }),
       translateFields: (input) =>
@@ -522,7 +1309,18 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
           body: JSON.stringify(input),
           method: "POST",
         }),
+      testComfyuiConnection: (input) =>
+        requestJson<ComfyUIConnectionTestResult>(apiBase, "/api/config/comfyui-connection-test", {
+          body: JSON.stringify(input),
+          method: "POST",
+        }),
       get: () => requestJson<AppConfig>(apiBase, "/api/config"),
+      detectNetworkProxy: () => requestJson<NetworkProxyDetectionResult>(apiBase, "/api/config/network-proxy/detect"),
+      getMemoryStatus: (options) =>
+        requestJson<Mem0Status>(apiBase, "/api/memory/status", {
+          body: JSON.stringify({ startLoading: options?.startLoading ?? true }),
+          method: "POST",
+        }),
       getTtsBundleRecommendation: () =>
         requestJson<TtsBundleRecommendation>(apiBase, "/api/config/tts-bundle/recommendation"),
       saveApi: (config: ApiConfig) =>
@@ -536,7 +1334,47 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
           method: "POST",
         }),
     },
+    avatarRuntimes: {
+      status: (format) =>
+        requestJson<AvatarRuntimeStatus>(apiBase, `/api/avatar/runtime/${encodeURIComponent(format)}/status`, {
+          method: "POST",
+          body: "{}",
+        }),
+      async prepare(format, input) {
+        const task = await requestJson<TaskSnapshot<unknown>>(
+          apiBase,
+          `/api/avatar/runtime/${encodeURIComponent(format)}/prepare`,
+          { method: "POST", body: JSON.stringify(input) },
+        );
+        return waitForTask(apiBase, task);
+      },
+      async install(format, input) {
+        const task = await requestJson<TaskSnapshot<AvatarRuntimeStatus>>(
+          apiBase,
+          `/api/avatar/runtime/${encodeURIComponent(format)}/install`,
+          { method: "POST", body: JSON.stringify(input) },
+        );
+        return waitForTask(apiBase, task);
+      },
+    },
+    modelAssets: {
+      async download(input, options) {
+        const task = await requestJson<TaskSnapshot<ModelAssetDownloadResult>>(apiBase, "/api/model-assets/download", {
+          body: JSON.stringify(input),
+          method: "POST",
+        });
+        return waitForTask(apiBase, task, options);
+      },
+      status: (input) =>
+        requestJson<ModelAssetStatus>(apiBase, "/api/model-assets/status", {
+          body: JSON.stringify(input),
+          method: "POST",
+        }),
+    },
     files: {
+      openT2iWorkflowFolder() {
+        return requestJson<{ path: string }>(apiBase, "/api/files/t2i-workflows/open", { method: "POST" });
+      },
       browse(options) {
         return requestJson<FileBrowserSnapshot>(apiBase, "/api/files/browse", {
           body: JSON.stringify(options ?? {}),
@@ -550,7 +1388,13 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
         if (/^(?:https?:|blob:|data:|\/assets\/)/.test(path)) {
           return path;
         }
-        return `${apiBase}/api/media?path=${encodeURIComponent(path)}`;
+        return bridgeUrl(apiBase, `/api/media?path=${encodeURIComponent(path)}`);
+      },
+      modelUrl(modelPath, path) {
+        return bridgeUrl(
+          apiBase,
+          `/api/avatar/file?model_path=${encodeURIComponent(modelPath)}&path=${encodeURIComponent(path)}`,
+        );
       },
       async thumbnailBatch(paths, options) {
         const localPaths = paths.filter((path) => path && !/^(?:https?:|blob:|data:|\/assets\/)/.test(path));
@@ -580,7 +1424,10 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
                   return [item.path, item.dataUrl] as const;
                 }
                 if (item.cachePath) {
-                  return [item.path, `${apiBase}/api/media?path=${encodeURIComponent(item.cachePath)}`] as const;
+                  return [
+                    item.path,
+                    bridgeUrl(apiBase, `/api/media?path=${encodeURIComponent(item.cachePath)}`),
+                  ] as const;
                 }
                 if (item.dataUrl) {
                   return [item.path, item.dataUrl] as const;
@@ -602,7 +1449,7 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
         if (options?.size) {
           params.set("size", String(options.size));
         }
-        return `${apiBase}/api/media/thumbnail?${params.toString()}`;
+        return bridgeUrl(apiBase, `/api/media/thumbnail?${params.toString()}`);
       },
       async openExternal(url) {
         if (isTauriDesktop()) {
@@ -685,6 +1532,8 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
       },
       getUi: (id) => requestJson<PluginUIDetail>(apiBase, `/api/plugins/${encodePath(id)}/ui`),
       list: () => requestJson<PluginManifest[]>(apiBase, "/api/plugins"),
+      listSlotContributions: () => requestJson<PluginSlotContribution[]>(apiBase, "/api/plugins/chat-ui-contributions"),
+      status: () => requestJson<PluginLoadStatus>(apiBase, "/api/plugins/status"),
       async repoTags(repo) {
         const result = await requestJson<{ tags: string[] }>(apiBase, "/api/plugins/repo-tags", {
           body: JSON.stringify({ repo }),
@@ -722,6 +1571,12 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
           apiBase,
           `/api/plugins/${encodePath(id)}/ui/${encodePath(pageId)}/actions/${encodePath(actionId)}`,
           { body: JSON.stringify({ values }), method: "POST" },
+        ),
+      runSlotContribution: (pluginId, contributionId) =>
+        requestJson<PluginSlotActionResult>(
+          apiBase,
+          `/api/plugins/${encodePath(pluginId)}/chat-ui/${encodePath(contributionId)}/run`,
+          { body: JSON.stringify({}), method: "POST" },
         ),
       saveUiConfig: (id, pageId, values) =>
         requestJson<PluginConfigSaveResult>(apiBase, `/api/plugins/${encodePath(id)}/ui/${encodePath(pageId)}/config`, {
@@ -768,7 +1623,7 @@ export function createHttpPlatform(baseUrl: string): ShinsekaiPlatform {
     },
     templates: {
       generate: (input) =>
-        requestJson<TemplateSummary>(apiBase, "/api/templates/generate", {
+        requestJson<TemplateGenerationResult>(apiBase, "/api/templates/generate", {
           body: JSON.stringify(input),
           method: "POST",
         }),

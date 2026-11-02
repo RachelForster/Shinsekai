@@ -394,6 +394,7 @@ fn check_bridge_runtime(
         .arg(&bridge)
         .arg("--check-runtime")
         .arg("--json")
+        .arg("--requirements-only")
         .arg("--profile")
         .arg(profile)
         .arg("--project-root")

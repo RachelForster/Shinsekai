@@ -17,7 +17,7 @@ import traceback
 import random
 import time
 
-from llm.llm_manager import LLMManager,LLMAdapterFactory
+from ai.llm.llm_manager import LLMAdapterFactory, LLMManager
 from config.config_manager import ConfigManager
 
 config = ConfigManager()

@@ -1,22 +1,22 @@
 """
-抽象消息处理器基类 — TTS 消费 LLMDialogMessage，UI 消费 TTSOutputMessage。
+抽象消息处理器基类 — 对话媒体层消费 LLMDialogMessage，UI 消费 PresentationMessage。
 
-具体实现见 :mod:`core.handlers.tts_message_handler` / :mod:`core.handlers.ui_message_handler`。
+具体实现见 :mod:`application.chat.presentation.handlers.dialog_media` /
+:mod:`application.chat.presentation.handlers.presentation`。
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from sdk.messages import LLMDialogMessage, TTSOutputMessage
+from sdk.messages import LLMDialogMessage, PresentationMessage
 
 
 class MessageHandler(ABC):
-    """TTS 队列中 LLM 单条 dialog 的处理器。bgm/CG 等用原始名，其馀可用 opencc 繁简。"""
+    """对话媒体队列中单条消息的处理器。bgm/CG 用原始名，其余可用 OpenCC 繁简。"""
 
     @abstractmethod
-    def can_handle(self, msg: LLMDialogMessage) -> bool:
-        ...
+    def can_handle(self, msg: LLMDialogMessage) -> bool: ...
 
     def pre_process(self, msg: LLMDialogMessage) -> None:
         pass
@@ -28,24 +28,23 @@ class MessageHandler(ABC):
         pass
 
     def init(self) -> None:
-        """在 TTS worker 构建调度器后执行一次，可从 get_app_runtime() 取资源。"""
+        """在 dialog media worker 构建调度器后执行一次，可从 get_app_runtime() 取资源。"""
         pass
 
 
 class UIOutputMessageHandler(ABC):
-    """UI 队列中 TTSOutputMessage 的处理器。"""
+    """UI 队列中 PresentationMessage 的处理器。"""
 
     @abstractmethod
-    def can_handle(self, out: TTSOutputMessage) -> bool:
-        ...
+    def can_handle(self, out: PresentationMessage) -> bool: ...
 
-    def pre_process(self, out: TTSOutputMessage) -> None:
+    def pre_process(self, out: PresentationMessage) -> None:
         pass
 
-    def handle(self, out: TTSOutputMessage) -> None:
+    def handle(self, out: PresentationMessage) -> None:
         pass
 
-    def post_process(self, out: TTSOutputMessage) -> None:
+    def post_process(self, out: PresentationMessage) -> None:
         pass
 
     def init(self) -> None:

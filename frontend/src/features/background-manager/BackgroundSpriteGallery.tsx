@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Image as ImageIcon, Save, Tags, Trash2, Upload } from "lucide-react";
+import { Image as ImageIcon, Save, Sparkles, Tags, Trash2, Upload } from "lucide-react";
 
 import type { Background } from "../../entities/config/types";
 import { fileThumbnailBatch, fileThumbnailUrl, fileUrl } from "../../entities/files/repository";
 import { useI18n } from "../../shared/i18n";
+import { isVideoMedia, VISUAL_MEDIA_EXTENSIONS } from "../../shared/assets/visualMedia";
 import type { ImageAssetGalleryItem } from "../../shared/ui";
 import {
   AsyncButton,
@@ -13,14 +14,19 @@ import {
   PathDisplay,
   PathPickerDialog,
   TextInput,
+  VisualMedia,
 } from "../../shared/ui";
 
 interface BackgroundSpriteGalleryProps {
+  autoLabelAvailable?: boolean;
+  autoLabelDisabled?: boolean;
+  autoLabelPending?: boolean;
   currentBackgroundName: string;
   deletePending: boolean;
   id?: string;
   imageRowTags: string[];
   onClearImages: () => void;
+  onAutoLabel?: () => void;
   onDeleteImage: (index: number) => void;
   onOpenBulkTags: () => void;
   onSaveImageTags: () => void;
@@ -45,11 +51,15 @@ function visibleImageCountForSelection(total: number, selectedIndex: number) {
 }
 
 export function BackgroundSpriteGallery({
+  autoLabelAvailable = false,
+  autoLabelDisabled = true,
+  autoLabelPending = false,
   currentBackgroundName,
   deletePending,
   id,
   imageRowTags,
   onClearImages,
+  onAutoLabel,
   onDeleteImage,
   onOpenBulkTags,
   onSaveImageTags,
@@ -75,10 +85,13 @@ export function BackgroundSpriteGallery({
     .join("\0");
   const previousSpritePathKey = useRef(spritePathKey);
   const visibleSprites = useMemo(() => sprites.slice(0, visibleImageCount), [sprites, visibleImageCount]);
-  const spritePaths = useMemo(() => (spritePathKey ? [...new Set(spritePathKey.split("\0"))] : []), [spritePathKey]);
+  const spritePaths = useMemo(
+    () => (spritePathKey ? [...new Set(spritePathKey.split("\0"))].filter((path) => !isVideoMedia(path)) : []),
+    [spritePathKey],
+  );
   const visibleSpritePathKey = visibleSprites
     .map((sprite) => sprite.path)
-    .filter(Boolean)
+    .filter((path) => path && !isVideoMedia(path))
     .join("\0");
   const visibleSpritePaths = useMemo(
     () => (visibleSpritePathKey ? [...new Set(visibleSpritePathKey.split("\0"))] : []),
@@ -146,9 +159,11 @@ export function BackgroundSpriteGallery({
 
   const backgroundImageItems: ImageAssetGalleryItem[] = visibleSprites.map((sprite, index) => ({
     id: `${sprite.path}-${index}`,
-    imageSrc: sprite.path
-      ? (thumbnailSources[sprite.path] ?? (thumbnailBatchReady ? fileThumbnailUrl(sprite.path, 160) : ""))
-      : "",
+    videoSrc: isVideoMedia(sprite.path) ? fileUrl(sprite.path) : undefined,
+    imageSrc:
+      sprite.path && !isVideoMedia(sprite.path)
+        ? (thumbnailSources[sprite.path] ?? (thumbnailBatchReady ? fileThumbnailUrl(sprite.path, 160) : ""))
+        : "",
     meta: imageRowTags[index] || "",
     title: sprite.path ? sprite.path.split(/[\\/]/).pop() || `${index + 1}` : `${index + 1}`,
   }));
@@ -158,6 +173,17 @@ export function BackgroundSpriteGallery({
       <div className="section__header">
         <h2 className="section__title">{t("background.section.images")}</h2>
         <div className="page__actions">
+          {autoLabelAvailable ? (
+            <AsyncButton
+              disabled={autoLabelDisabled}
+              icon={<Sparkles aria-hidden className="button__icon" />}
+              loading={autoLabelPending}
+              onClick={onAutoLabel}
+              variant="ghost"
+            >
+              {t("mediaAutoLabel.action")}
+            </AsyncButton>
+          ) : null}
           <AsyncButton
             disabled={!currentBackgroundName}
             icon={<Upload aria-hidden className="button__icon" />}
@@ -214,7 +240,7 @@ export function BackgroundSpriteGallery({
             <aside className="asset-inspector asset-inspector--background">
               <div className="asset-inspector__preview asset-inspector__preview--background">
                 {selectedImage.path ? (
-                  <img alt="" decoding="async" src={fileUrl(selectedImage.path)} />
+                  <VisualMedia alt="" errorMessage={t("visualMedia.videoError")} src={fileUrl(selectedImage.path)} />
                 ) : (
                   <ImageIcon aria-hidden className="asset-inspector__fallback" />
                 )}
@@ -257,7 +283,7 @@ export function BackgroundSpriteGallery({
         ) : null}
       </div>
       <PathPickerDialog
-        acceptedExtensions={[".gif", ".jpeg", ".jpg", ".png", ".webp"]}
+        acceptedExtensions={VISUAL_MEDIA_EXTENSIONS}
         multiple
         onClose={() => setPickerOpen(false)}
         onSelect={(path) => {

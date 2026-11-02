@@ -1,0 +1,285 @@
+from __future__ import annotations
+
+import base64
+from copy import deepcopy
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+from ai.vision.message_content import normalize_anthropic_user_content, normalize_openai_messages
+from ai.vision.service import ChatVisionService, configured_vision_available, configured_vision_manager
+from ai.vision.vision_manager import VisionManager
+from core.media.chat_attachments import resolve_chat_attachments
+
+
+class _NativeAdapter:
+    supports_native_vision = True
+
+
+class _TextAdapter:
+    supports_native_vision = False
+
+
+class _UnknownAdapter:
+    pass
+
+
+class _FallbackVision:
+    def __init__(self) -> None:
+        self.calls: list[tuple[bytes, str]] = []
+
+    def describe(self, image_bytes: bytes, prompt: str) -> str:
+        self.calls.append((image_bytes, prompt))
+        return "a moon over a quiet lake"
+
+
+def test_configured_vision_available_uses_corresponding_llm_credentials():
+    config = SimpleNamespace(
+        llm_api_key={"Deepseek": "shared-key"},
+        llm_base_urls={"Deepseek": "https://api.deepseek.com/v1"},
+        llm_provider="ChatGPT",
+        llm_base_url="https://api.openai.com/v1",
+        vision_model={"deepseek": "deepseek-flash"},
+        vision_provider="deepseek",
+    )
+
+    assert configured_vision_available(config) is True
+
+
+def test_registered_plugin_vision_does_not_require_builtin_provider_credentials(monkeypatch):
+    monkeypatch.setitem(VisionManager._adapters, "plugin-vision", _FallbackVision)
+    config = SimpleNamespace(vision_provider="plugin-vision")
+
+    assert configured_vision_available(config) is True
+
+
+def test_auto_vision_selects_current_llm_before_local_fallback(monkeypatch):
+    config = SimpleNamespace(vision_provider="auto",llm_provider="ChatGPT",llm_api_key={"ChatGPT":"key"},llm_base_urls={},llm_model={"ChatGPT":"current-model"},vision_model={})
+    calls=[]
+    vision = _FallbackVision()
+    monkeypatch.setattr("ai.vision.service.VisionManager",lambda provider,**kwargs: calls.append((provider,kwargs)) or vision)
+    monkeypatch.setattr("ai.vision.service.active_vision_fallback",lambda: pytest.fail("auto must follow LLM before a plugin"))
+    assert configured_vision_manager(config) is vision
+    assert calls == [("chatgpt",{"api_config":config})]
+
+
+def test_auto_vision_availability_uses_inherited_llm_model():
+    config=SimpleNamespace(vision_provider="auto",llm_provider="ChatGPT",llm_api_key={"ChatGPT":"key"},llm_base_urls={},llm_model={"ChatGPT":"current-model"},vision_model={})
+    assert configured_vision_available(config) is True
+    config.llm_api_key={}
+    assert configured_vision_available(config) is False
+
+
+def _image_attachment(tmp_path: Path):
+    path = tmp_path / "moon.png"
+    path.write_bytes(b"image-bytes")
+    return resolve_chat_attachments([{"kind": "image", "path": str(path)}])[0]
+
+
+def test_chat_vision_service_prefers_native_image_blocks(tmp_path: Path):
+    image = _image_attachment(tmp_path)
+
+    prepared = ChatVisionService().prepare("What is here?", [image], adapter=_NativeAdapter())
+
+    assert prepared.mode == "native"
+    assert isinstance(prepared.content, list)
+    assert prepared.content[0] == {"type": "text", "text": "What is here?\n\nImage attachments: moon.png"}
+    assert prepared.content[1]["type"] == "local_image"
+    assert prepared.content[1]["path"] == str(image.path)
+    assert prepared.content[1]["data"] == base64.b64encode(b"image-bytes").decode("ascii")
+
+
+@pytest.mark.parametrize("mode", ["text", "native", "fallback", "unavailable"])
+def test_turn_sections_rerender_background_without_losing_attachments(tmp_path, mode):
+    image = _image_attachment(tmp_path)
+    document = tmp_path / "facts.txt"
+    document.write_text("literal {facts}", encoding="utf-8")
+    files = resolve_chat_attachments([{"kind": "file", "path": str(document)}])
+    service = ChatVisionService(
+        lambda: _FallbackVision(), fallback_available=lambda: mode != "unavailable",
+        file_reader=lambda _: {"content": "literal {facts}"},
+    )
+    prepared = service.prepare(
+        "检查 {input}", files + ([image] if mode != "text" else []),
+        adapter=_NativeAdapter() if mode == "native" else _TextAdapter(),
+    )
+    original = deepcopy(prepared.content)
+    assert prepared.mode == mode
+    assert prepared.prompt_context.user_input == "检查 {input}"
+    assert "literal {facts}" in prepared.prompt_context.attachments[0]
+    first = prepared.render_content(background={"图片": "old.png"})
+    second = prepared.render_content(background={"图片": "new.png"})
+    text = second[0]["text"] if isinstance(second, list) else second
+    assert "new.png" in text and "old.png" not in text
+    assert text.index("[当前显示背景]") < text.index("检查 {input}") < text.index("literal {facts}")
+    assert text.count("literal {facts}") == 1
+    if mode == "native":
+        assert first[1:] == second[1:] == original[1:]
+    elif mode == "fallback":
+        assert "a moon over a quiet lake" in text
+    elif mode == "unavailable":
+        assert "could not be inspected" in text
+    assert prepared.content == original
+    assert prepared.render_content() == original
+    assert "当前显示背景" not in prepared.display_text
+
+
+def test_chat_vision_service_falls_back_to_moondream_for_text_only_adapter(tmp_path: Path):
+    image = _image_attachment(tmp_path)
+    fallback = _FallbackVision()
+
+    prepared = ChatVisionService(lambda: fallback).prepare("Explain", [image], adapter=_TextAdapter())
+
+    assert prepared.mode == "fallback"
+    assert "a moon over a quiet lake" in prepared.content
+    assert fallback.calls[0][0] == b"image-bytes"
+
+
+def test_native_image_blocks_are_encoded_only_at_provider_boundary(tmp_path: Path):
+    image = _image_attachment(tmp_path)
+    prepared = ChatVisionService().prepare("Inspect", [image], adapter=_NativeAdapter())
+    messages = [{"role": "user", "content": prepared.content}]
+
+    openai = normalize_openai_messages(messages, supports_native_vision=True)
+    data_url = openai[0]["content"][1]["image_url"]["url"]
+    assert data_url == f"data:image/png;base64,{base64.b64encode(b'image-bytes').decode('ascii')}"
+    assert messages[0]["content"][1]["type"] == "local_image"
+
+    anthropic = normalize_anthropic_user_content(prepared.content)
+    assert anthropic[1]["type"] == "image"
+    assert anthropic[1]["source"]["media_type"] == "image/png"
+    assert anthropic[1]["source"]["data"] == base64.b64encode(b"image-bytes").decode("ascii")
+
+
+def test_chat_turn_identity_is_history_metadata_only():
+    from core.chat_history.identity import CHAT_TURN_ID
+
+    messages = [{"role": "user", "content": "hello", CHAT_TURN_ID: "a" * 32}]
+    assert normalize_openai_messages(messages) == [{"role": "user", "content": "hello"}]
+    assert messages[0][CHAT_TURN_ID] == "a" * 32
+
+
+def test_persisted_image_data_survives_deleted_source_file(tmp_path: Path):
+    image = _image_attachment(tmp_path)
+    prepared = ChatVisionService().prepare("Inspect", [image], adapter=_NativeAdapter())
+    messages = [{"role": "user", "content": prepared.content}]
+    image.path.unlink()
+
+    openai = normalize_openai_messages(messages, supports_native_vision=True)
+    assert openai[0]["content"][1]["image_url"]["url"].endswith(
+        base64.b64encode(b"image-bytes").decode("ascii")
+    )
+    anthropic = normalize_anthropic_user_content(prepared.content)
+    assert anthropic[1]["source"]["data"] == base64.b64encode(b"image-bytes").decode("ascii")
+
+
+def test_stale_legacy_image_path_is_safely_omitted(tmp_path: Path):
+    missing = tmp_path / "missing.png"
+    content = [
+        {"type": "text", "text": "Continue the conversation"},
+        {"type": "local_image", "media_type": "image/png", "name": "missing.png", "path": str(missing)},
+    ]
+
+    openai = normalize_openai_messages(
+        [{"role": "user", "content": content}],
+        supports_native_vision=True,
+    )
+    assert openai[0]["content"][1]["type"] == "text"
+    assert "no longer available" in openai[0]["content"][1]["text"]
+    anthropic = normalize_anthropic_user_content(content)
+    assert anthropic[1]["type"] == "text"
+    assert "no longer available" in anthropic[1]["text"]
+
+
+def test_historical_images_are_downgraded_for_text_only_model(tmp_path: Path):
+    image = _image_attachment(tmp_path)
+    prepared = ChatVisionService().prepare("Inspect", [image], adapter=_NativeAdapter())
+
+    normalized = normalize_openai_messages(
+        [
+            {
+                "role": "user",
+                "content": prepared.content,
+                "display_content": "Inspect\n[image: moon.png]",
+                "input_text": "Inspect",
+                "attachments": [{"kind": "image", "path": str(image.path)}],
+            }
+        ],
+        supports_native_vision=False,
+    )
+
+    assert isinstance(normalized[0]["content"], str)
+    assert "current model does not support image input" in normalized[0]["content"]
+    assert "image_url" not in normalized[0]["content"]
+    assert "display_content" not in normalized[0]
+    assert "input_text" not in normalized[0]
+    assert "attachments" not in normalized[0]
+
+
+def test_unknown_vision_capability_defaults_to_safe_unavailable_fallback(tmp_path: Path):
+    image = _image_attachment(tmp_path)
+    factory_called = False
+
+    def fallback_factory():
+        nonlocal factory_called
+        factory_called = True
+        return _FallbackVision()
+
+    prepared = ChatVisionService(
+        fallback_factory,
+        fallback_available=lambda: False,
+    ).prepare("Inspect", [image], adapter=_UnknownAdapter())
+
+    assert ChatVisionService.supports_native_images(_UnknownAdapter()) is False
+    assert prepared.mode == "unavailable"
+    assert "Moondream" in prepared.content
+    assert "moon.png" in prepared.content
+    assert factory_called is False
+
+
+def test_missing_default_moondream_plugin_returns_recoverable_prompt(tmp_path: Path, monkeypatch):
+    image = _image_attachment(tmp_path)
+    monkeypatch.setattr("ai.vision.service._configured_vision_provider", lambda *_: "auto")
+    monkeypatch.setattr("ai.vision.service.installed_moondream_directory", lambda: None)
+
+    prepared = ChatVisionService().prepare("Inspect", [image], adapter=_TextAdapter())
+
+    assert prepared.mode == "unavailable"
+    assert "switch to a vision-capable model" in prepared.content
+
+
+def test_installed_moondream_without_torch_returns_recoverable_prompt(tmp_path: Path, monkeypatch):
+    image = _image_attachment(tmp_path)
+    monkeypatch.setattr("ai.vision.service._configured_vision_provider", lambda *_: "auto")
+    # Moondream plugin directory is present, but its PyTorch runtime dependency is
+    # not importable: report it unavailable so the user gets the guidance prompt
+    # instead of a raw missing-module crash.
+    monkeypatch.setattr("ai.vision.service.installed_moondream_directory", lambda: tmp_path)
+    monkeypatch.setattr(
+        "ai.vision.service.importlib.util.find_spec",
+        lambda name: None if name == "torch" else object(),
+    )
+
+    prepared = ChatVisionService().prepare("Inspect", [image], adapter=_TextAdapter())
+
+    assert prepared.mode == "unavailable"
+    assert "switch to a vision-capable model" in prepared.content
+
+
+def test_file_attachments_are_read_locally_and_passed_to_the_llm(tmp_path: Path):
+    document = tmp_path / "facts.txt"
+    document.write_text("facts", encoding="utf-8")
+    attachment = resolve_chat_attachments([{"kind": "file", "path": str(document)}])[0]
+    reads: list[str] = []
+
+    def local_file_read(path: str):
+        reads.append(path)
+        return {"content": "facts from local file_read", "path": path, "truncated": False}
+
+    prepared = ChatVisionService(file_reader=local_file_read).prepare("Read it", [attachment], adapter=_NativeAdapter())
+
+    assert prepared.mode == "text"
+    assert reads == [str(document.resolve())]
+    assert "facts from local file_read" in prepared.content
+    assert "BEGIN ATTACHED FILE: facts.txt" in prepared.content

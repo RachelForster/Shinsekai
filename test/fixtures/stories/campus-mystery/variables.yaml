@@ -1,0 +1,20 @@
+variables:
+  trust.ling:
+    type: integer
+    initial: 0
+    min: 0
+    max: 100
+    scope: branch
+    visible: true
+    allowSemanticInput: true
+
+  flags.arrived_old_school:
+    type: boolean
+    initial: false
+    scope: branch
+
+  inventory:
+    type: string_set
+    initial: [old_school_key]
+    scope: branch
+    visible: true

@@ -17,17 +17,23 @@ use serde::Serialize;
 use tauri::{
     http::{header, Response, StatusCode},
     AppHandle, Emitter, Manager, State, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
-    WindowEvent,
+    Window, WindowEvent,
 };
 #[cfg(desktop)]
 use tauri_plugin_updater::{Update, UpdaterExt};
+use tauri_runtime::ResizeDirection;
 
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
+mod atomic_file;
+mod autostart;
+mod background;
 mod desktop_files;
+mod project_root;
+mod reminders;
 mod runtime;
 
 type DesktopResult<T> = Result<T, Box<dyn Error>>;
@@ -40,8 +46,11 @@ const FRONTEND_DIST_MARKER: &str = ".dist-current";
 const FRONTEND_DIST_RELEASES: &str = ".dist-releases";
 #[cfg(desktop)]
 const UPDATE_PROGRESS_EVENT: &str = "shinsekai:update-progress";
+const BRIDGE_RESTART_STATE_EVENT: &str = "shinsekai:bridge-restart-state";
 const RUNTIME_PROGRESS_EVENT: &str = "shinsekai:runtime-progress";
+const SHOW_BACKEND_CONSOLE_ENV: &str = "SHINSEKAI_SHOW_BACKEND_CONSOLE";
 const BRIDGE_STOP_TIMEOUT: Duration = Duration::from_secs(5);
+const BRIDGE_CHAT_CLOSE_TIMEOUT: Duration = Duration::from_secs(3);
 
 #[cfg(unix)]
 unsafe extern "C" {
@@ -51,13 +60,22 @@ unsafe extern "C" {
 struct BridgeProcess {
     child: Mutex<Option<Child>>,
     candidate_id: Option<String>,
+    bridge_port: u16,
+    auth_token: String,
 }
 
 impl BridgeProcess {
-    fn new(child: Child, candidate_id: Option<String>) -> Self {
+    fn new(
+        child: Child,
+        candidate_id: Option<String>,
+        bridge_port: u16,
+        auth_token: String,
+    ) -> Self {
         Self {
             child: Mutex::new(Some(child)),
             candidate_id,
+            bridge_port,
+            auth_token,
         }
     }
 
@@ -79,15 +97,42 @@ impl BridgeProcess {
                         ));
                     }
                 }
-                if let Err(error) = child.kill() {
-                    restart_debug_log(format!("bridge stop kill failed error={error}"));
+                match send_bridge_agent_close(self.bridge_port, &self.auth_token) {
+                    Ok(()) => restart_debug_log("bridge stop closed Agent runtime"),
+                    Err(error) => {
+                        restart_debug_log(format!("bridge stop Agent close failed error={error}"))
+                    }
                 }
+                match send_bridge_chat_close(self.bridge_port, &self.auth_token) {
+                    Ok(()) => restart_debug_log(format!(
+                        "bridge stop closed active chat port={}",
+                        self.bridge_port
+                    )),
+                    Err(error) => restart_debug_log(format!(
+                        "bridge stop chat close failed port={} error={error}",
+                        self.bridge_port
+                    )),
+                }
+                let mut forced_kill_sent = match request_bridge_child_stop(&mut child) {
+                    Ok(forced) => forced,
+                    Err(error) => {
+                        restart_debug_log(format!("bridge stop terminate failed error={error}"));
+                        false
+                    }
+                };
+                let graceful_deadline = Instant::now() + Duration::from_secs(1);
                 let started = Instant::now();
                 loop {
                     match child.try_wait() {
                         Ok(Some(status)) => {
                             restart_debug_log(format!("bridge stop completed status={status}"));
                             break;
+                        }
+                        Ok(None) if !forced_kill_sent && Instant::now() >= graceful_deadline => {
+                            if let Err(error) = child.kill() {
+                                restart_debug_log(format!("bridge stop kill failed error={error}"));
+                            }
+                            forced_kill_sent = true;
                         }
                         Ok(None) if started.elapsed() < BRIDGE_STOP_TIMEOUT => {
                             thread::sleep(Duration::from_millis(50));
@@ -117,6 +162,22 @@ impl Drop for BridgeProcess {
     }
 }
 
+#[cfg(unix)]
+fn request_bridge_child_stop(child: &mut Child) -> Result<bool, String> {
+    let result = unsafe { libc::kill(child.id() as libc::pid_t, libc::SIGTERM) };
+    if result == 0 {
+        Ok(false)
+    } else {
+        Err(std::io::Error::last_os_error().to_string())
+    }
+}
+
+#[cfg(windows)]
+fn request_bridge_child_stop(child: &mut Child) -> Result<bool, String> {
+    child.kill().map_err(|error| error.to_string())?;
+    Ok(true)
+}
+
 struct BridgeLaunch {
     child: Child,
 }
@@ -138,6 +199,7 @@ enum DesktopRuntimePhase {
     Error {
         message: String,
         view: Option<runtime::RuntimeScanView>,
+        dependency_install_failed: bool,
     },
 }
 
@@ -147,6 +209,7 @@ struct DesktopRuntimeView {
     status: &'static str,
     message: Option<String>,
     bridge_url: String,
+    manual_install_command: Option<String>,
     selected_candidate_id: Option<String>,
     recommended_action: Option<runtime::RuntimeRepairActionKind>,
     candidates: Vec<runtime::RuntimeCandidateView>,
@@ -155,9 +218,11 @@ struct DesktopRuntimeView {
 struct DesktopState {
     source_root: PathBuf,
     project_root: PathBuf,
+    project_root_controller: project_root::ProjectRootController,
     app_root: PathBuf,
     frontend_dist: PathBuf,
     bridge_port: u16,
+    bridge_auth_token: String,
     bridge: Mutex<Option<BridgeProcess>>,
     runtime: Mutex<DesktopRuntimePhase>,
 }
@@ -180,16 +245,20 @@ impl DesktopState {
     fn new(
         source_root: PathBuf,
         project_root: PathBuf,
+        project_root_controller: project_root::ProjectRootController,
         app_root: PathBuf,
         frontend_dist: PathBuf,
         bridge_port: u16,
+        bridge_auth_token: String,
     ) -> Self {
         Self {
             source_root,
             project_root,
+            project_root_controller,
             app_root,
             frontend_dist,
             bridge_port,
+            bridge_auth_token,
             bridge: Mutex::new(None),
             runtime: Mutex::new(DesktopRuntimePhase::Checking { view: None }),
         }
@@ -232,15 +301,20 @@ impl DesktopState {
             .unwrap_or_else(|_| DesktopRuntimePhase::Error {
                 message: "runtime state lock is poisoned".to_string(),
                 view: None,
+                dependency_install_failed: false,
             });
-        let (status, message, scan_view) = match phase {
-            DesktopRuntimePhase::Checking { view } => ("checking", None, view),
+        let (status, message, scan_view, dependency_install_failed) = match phase {
+            DesktopRuntimePhase::Checking { view } => ("checking", None, view, false),
             DesktopRuntimePhase::NeedsAction { view } => {
-                ("needsAction", view.message.clone(), Some(view))
+                ("needsAction", view.message.clone(), Some(view), false)
             }
-            DesktopRuntimePhase::Updating { view } => ("updating", None, view),
-            DesktopRuntimePhase::Ready { view } => ("ready", None, view),
-            DesktopRuntimePhase::Error { message, view } => ("error", Some(message), view),
+            DesktopRuntimePhase::Updating { view } => ("updating", None, view, false),
+            DesktopRuntimePhase::Ready { view } => ("ready", None, view, false),
+            DesktopRuntimePhase::Error {
+                message,
+                view,
+                dependency_install_failed,
+            } => ("error", Some(message), view, dependency_install_failed),
         };
         let scanned_selected_candidate_id = scan_view
             .as_ref()
@@ -256,10 +330,22 @@ impl DesktopState {
         for candidate in &mut candidates {
             candidate.selected = Some(&candidate.id) == selected_candidate_id.as_ref();
         }
+        let manual_install_command = dependency_install_failed
+            .then(|| {
+                runtime::manual_install_command(
+                    &self.source_root,
+                    candidates
+                        .iter()
+                        .find(|candidate| candidate.selected)
+                        .or_else(|| candidates.first()),
+                )
+            })
+            .flatten();
         DesktopRuntimeView {
             status,
             message,
             bridge_url: self.bridge_url(),
+            manual_install_command,
             selected_candidate_id,
             recommended_action,
             candidates,
@@ -304,27 +390,61 @@ struct DesktopUpdateDownloadProgress {
     content_length: Option<u64>,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopWindowCursorPosition {
+    x: f64,
+    y: f64,
+}
+
 pub fn run() {
     restart_debug_log("run enter");
     let protocol_frontend_dist = Arc::new(Mutex::new(None::<PathBuf>));
     let protocol_frontend_dist_for_handler = Arc::clone(&protocol_frontend_dist);
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
+            background::show_main(app)
+        }))
         .register_uri_scheme_protocol(LIVE_FRONTEND_SCHEME, move |_ctx, request| {
             serve_live_frontend_protocol(&protocol_frontend_dist_for_handler, request.uri().path())
         })
         .invoke_handler(tauri::generate_handler![
+            background::desktop_background_get,
+            background::desktop_background_save,
+            autostart::desktop_autostart_get,
+            autostart::desktop_autostart_set,
+            background::desktop_window_close_status,
+            background::desktop_window_resolve_close,
+            reminders::desktop_reminders_inbox,
+            reminders::desktop_reminders_visible,
+            reminders::desktop_reminders_dismiss,
+            reminders::desktop_reminders_window,
+            reminders::desktop_reminders_list,
+            reminders::desktop_reminders_cancel,
+            reminders::desktop_reminders_update,
+            reminders::desktop_reminders_delete,
+            reminders::desktop_reminders_view,
             desktop_runtime_state,
             desktop_runtime_repair,
             desktop_runtime_install_profile,
+            desktop_project_root_status,
+            desktop_project_root_select,
             desktop_files_browse,
             desktop_restart_debug_log,
             desktop_app_restart,
             desktop_bridge_restart,
             desktop_frontend_reload,
+            desktop_window_hide,
+            desktop_chat_window_destroy,
             desktop_window_minimize,
+            desktop_window_set_always_on_top,
             desktop_window_toggle_maximize,
             desktop_window_start_drag,
+            desktop_window_start_resize,
+            desktop_window_set_ignore_cursor_events,
+            desktop_window_cursor_position,
             desktop_window_close,
+            desktop_open_chat_window,
             desktop_open_external_url,
             #[cfg(desktop)]
             desktop_update_check,
@@ -332,14 +452,37 @@ pub fn run() {
             desktop_update_install
         ])
         .on_window_event(|window, event| {
-            if window.label() != "main" {
-                return;
+            if matches!(event, WindowEvent::Resized(_)) && window.label() == "main" {
+                if let Some(background) = window
+                    .app_handle()
+                    .try_state::<background::BackgroundState>()
+                {
+                    if background.minimize_to_tray() && window.is_minimized().unwrap_or(false) {
+                        let _ = window.hide();
+                    }
+                }
             }
             if let WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                let app = window.app_handle().clone();
-                let state = app.state::<DesktopState>();
-                shutdown_desktop_app(&app, state.inner(), "main window close requested");
+                match window.label() {
+                    "main" => {
+                        api.prevent_close();
+                        let app = window.app_handle().clone();
+                        if let Err(error) = background::request_main_close(&app) {
+                            restart_debug_log(format!("main close request failed: {error}"));
+                        }
+                    }
+                    "chat" => {
+                        api.prevent_close();
+                        let app = window.app_handle().clone();
+                        let state = app.state::<DesktopState>();
+                        request_bridge_chat_close(
+                            state.inner(),
+                            "chat window close requested",
+                        );
+                        let _ = window.destroy();
+                    }
+                    _ => {}
+                }
             }
         })
         .setup(move |app| {
@@ -349,15 +492,26 @@ pub fn run() {
                     .plugin(tauri_plugin_updater::Builder::new().build())?;
                 app.manage(DesktopUpdateState::new());
             }
+            app.handle().plugin(tauri_plugin_dialog::init())?;
+            app.handle().plugin(tauri_plugin_notification::init())?;
+            app.handle().plugin(tauri_plugin_autostart::Builder::new().build())?;
 
             let source_root = resolve_source_root(app)?;
             let app_root = resolve_app_root(app, &source_root)?;
-            let project_root = resolve_project_root(app, &app_root)?;
+            let project_root::ResolvedProjectRoot {
+                path: project_root,
+                controller: project_root_controller,
+            } = resolve_project_root(app, &source_root, &app_root)?;
+            let project_root_requires_selection = project_root_controller
+                .status()
+                .requires_selection;
             let frontend_dist = resolve_frontend_dist(&source_root)?;
             let bridge_port = choose_bridge_port()?;
-            let url = app_window_url(bridge_port);
+            let bridge_auth_token = generate_bridge_auth_token()?;
+            let url = app_window_url(bridge_port, &bridge_auth_token);
             restart_debug_log(format!(
-                "setup resolved source_root={} project_root={} app_root={} frontend_dist={} bridge_port={} url={}",
+                "{} source_root={} project_root={} app_root={} frontend_dist={} bridge_port={} url={}",
+                project_root_setup_log_event(project_root_requires_selection),
                 source_root.display(),
                 project_root.display(),
                 app_root.display(),
@@ -371,9 +525,11 @@ pub fn run() {
             app.manage(DesktopState::new(
                 source_root,
                 project_root,
+                project_root_controller,
                 app_root,
                 frontend_dist,
                 bridge_port,
+                bridge_auth_token,
             ));
 
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App(url.into()))
@@ -385,13 +541,36 @@ pub fn run() {
                 .center()
                 .build()?;
 
-            let app_handle = app.handle().clone();
-            thread::spawn(move || bootstrap_runtime(app_handle));
-            restart_debug_log("setup complete; runtime bootstrap spawned");
+            if let Err(error) = reminders::setup(app.handle()) {
+                restart_debug_log(format!("reminder panel setup failed: {error}"));
+            }
+            background::setup(app.handle())?;
+
+            if should_bootstrap_runtime(project_root_requires_selection) {
+                let app_handle = app.handle().clone();
+                thread::spawn(move || bootstrap_runtime(app_handle));
+                restart_debug_log("setup complete; runtime bootstrap spawned");
+            } else {
+                restart_debug_log(
+                    "setup complete; runtime bootstrap deferred for project-root selection",
+                );
+            }
             Ok(())
         })
         .run(tauri::generate_context!())
         .expect("error while running Shinsekai desktop shell");
+}
+
+fn should_bootstrap_runtime(project_root_requires_selection: bool) -> bool {
+    !project_root_requires_selection
+}
+
+fn project_root_setup_log_event(project_root_requires_selection: bool) -> &'static str {
+    if project_root_requires_selection {
+        "setup awaiting project-root selection"
+    } else {
+        "setup resolved"
+    }
 }
 
 fn restart_debug_log_path() -> PathBuf {
@@ -405,11 +584,12 @@ fn restart_debug_log(message: impl AsRef<str>) {
         .duration_since(UNIX_EPOCH)
         .map(|duration| format!("{}.{:03}", duration.as_secs(), duration.subsec_millis()))
         .unwrap_or_else(|_| "time-error".to_string());
+    let message = sanitize_restart_debug_log_message(message.as_ref());
     let line = format!(
         "ts={} pid={} component=desktop {}\n",
         timestamp,
         std::process::id(),
-        message.as_ref()
+        message
     );
     eprint!("[restart-debug] {}", line);
     if let Ok(mut file) = OpenOptions::new()
@@ -421,9 +601,49 @@ fn restart_debug_log(message: impl AsRef<str>) {
     }
 }
 
+fn sanitize_restart_debug_log_message(message: &str) -> String {
+    message
+        .replace('\0', "\\0")
+        .replace('\r', "\\r")
+        .replace('\n', "\\n")
+}
+
+fn bytes_to_hex(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut result = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        result.push(HEX[(byte >> 4) as usize] as char);
+        result.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    result
+}
+
+fn generate_bridge_auth_token() -> DesktopResult<String> {
+    let mut bytes = [0_u8; 32];
+    getrandom::fill(&mut bytes)
+        .map_err(|error| format!("failed to generate bridge auth token: {error}"))?;
+    Ok(bytes_to_hex(&bytes))
+}
+
 #[tauri::command]
 fn desktop_runtime_state(state: State<'_, DesktopState>) -> DesktopRuntimeView {
     state.runtime_view()
+}
+
+#[tauri::command]
+fn desktop_project_root_status(state: State<'_, DesktopState>) -> project_root::ProjectRootStatus {
+    state.project_root_controller.status()
+}
+
+#[tauri::command]
+fn desktop_project_root_select(
+    state: State<'_, DesktopState>,
+    path: String,
+) -> Result<project_root::ProjectRootStatus, String> {
+    restart_debug_log(format!(
+        "desktop_project_root_select command received path={path}"
+    ));
+    state.project_root_controller.select(&path)
 }
 
 async fn run_runtime_blocking<T, F>(
@@ -493,9 +713,14 @@ fn desktop_runtime_repair_blocking(
     ));
     let scan = runtime::scan_runtime_view(app, &state.source_root);
     state.set_runtime(DesktopRuntimePhase::Updating { view: Some(scan) });
+    let dependency_install_attempted =
+        action == runtime::RuntimeRepairActionKind::InstallRuntimeDeps;
     let repaired_path =
-        runtime::repair_runtime_candidate(app, &state.source_root, &candidate_id, action)
-            .map_err(|error| set_runtime_error_state(app, state, error.to_string()))?;
+        runtime::repair_runtime_candidate(app, &state.source_root, &candidate_id, action).map_err(
+            |error| {
+                set_runtime_error_state(app, state, error.to_string(), dependency_install_attempted)
+            },
+        )?;
     emit_runtime_progress(
         app,
         "checkingBridge",
@@ -503,7 +728,12 @@ fn desktop_runtime_repair_blocking(
         None,
         Some("Checking repaired runtime"),
     );
-    start_repaired_runtime_for_state(app, state, repaired_path.as_deref())
+    start_repaired_runtime_for_state(
+        app,
+        state,
+        repaired_path.as_deref(),
+        dependency_install_attempted,
+    )
 }
 
 #[tauri::command]
@@ -720,6 +950,10 @@ fn emit_runtime_progress(
     );
 }
 
+fn emit_bridge_restart_state(app: &AppHandle, restarting: bool) {
+    let _ = app.emit(BRIDGE_RESTART_STATE_EVENT, restarting);
+}
+
 #[cfg(desktop)]
 fn desktop_update_error(error: impl std::fmt::Display) -> String {
     error.to_string()
@@ -733,16 +967,19 @@ fn desktop_app_restart(app: AppHandle, state: State<'_, DesktopState>) -> Result
 
 #[tauri::command]
 async fn desktop_bridge_restart(app: AppHandle) -> Result<DesktopRuntimeView, String> {
-    run_runtime_blocking("desktop_bridge_restart", app, |app, state| {
+    emit_bridge_restart_state(&app, true);
+    let result = run_runtime_blocking("desktop_bridge_restart", app.clone(), |app, state| {
         restart_bridge_for_state(app, state)
     })
-    .await
+    .await;
+    emit_bridge_restart_state(&app, false);
+    result
 }
 
 #[tauri::command]
 fn desktop_frontend_reload(app: AppHandle, state: State<'_, DesktopState>) -> Result<(), String> {
     restart_debug_log("desktop_frontend_reload command received");
-    navigate_main_window_to_live_frontend(&app, state.bridge_port)
+    reload_live_frontend_windows(&app, state.bridge_port, &state.bridge_auth_token)
 }
 
 fn restart_bridge_for_state(
@@ -774,11 +1011,12 @@ fn start_runtime_candidate_for_state(
             app,
             state,
             "Shinsekai only starts the managed Python runtime under runtime/.".to_string(),
+            false,
         ));
     }
-    let scan = runtime::install_dir_runtime_view(&state.source_root);
+    let scan = runtime::scan_runtime_view(app, &state.source_root);
     restart_debug_log(format!(
-        "start_runtime_candidate fixed runtime candidates={} selected={:?}",
+        "start_runtime_candidate validated runtime candidates={} selected={:?}",
         scan.candidates.len(),
         scan.selected_candidate_id
     ));
@@ -831,6 +1069,7 @@ fn start_runtime_candidate_for_state(
             state.set_runtime(DesktopRuntimePhase::Error {
                 message: message.clone(),
                 view: Some(view),
+                dependency_install_failed: false,
             });
             Err(message)
         }
@@ -841,6 +1080,7 @@ fn start_repaired_runtime_for_state(
     app: &AppHandle,
     state: &DesktopState,
     repaired_path: Option<&Path>,
+    dependency_install_attempted: bool,
 ) -> Result<DesktopRuntimeView, String> {
     let repaired_candidate_id = repaired_path
         .and_then(|path| runtime::ready_candidate_id_for_path(app, &state.source_root, path));
@@ -849,16 +1089,28 @@ fn start_repaired_runtime_for_state(
             app,
             state,
             "repaired runtime did not produce a ready candidate".to_string(),
+            dependency_install_attempted,
         ));
     }
-    start_runtime_candidate_for_state(app, state, repaired_candidate_id.as_deref())
+    match start_runtime_candidate_for_state(app, state, repaired_candidate_id.as_deref()) {
+        Err(message) if dependency_install_attempted => {
+            Err(set_runtime_error_state(app, state, message, true))
+        }
+        result => result,
+    }
 }
 
-fn set_runtime_error_state(app: &AppHandle, state: &DesktopState, message: String) -> String {
+fn set_runtime_error_state(
+    app: &AppHandle,
+    state: &DesktopState,
+    message: String,
+    dependency_install_failed: bool,
+) -> String {
     let view = runtime::scan_runtime_view(app, &state.source_root);
     state.set_runtime(DesktopRuntimePhase::Error {
         message: message.clone(),
         view: Some(view),
+        dependency_install_failed,
     });
     message
 }
@@ -898,6 +1150,78 @@ fn shutdown_desktop_app(app: &AppHandle, state: &DesktopState, reason: &str) {
     }
     restart_debug_log("shutdown requested app.exit(0)");
     app.exit(0);
+}
+
+fn request_bridge_chat_close(state: &DesktopState, reason: &str) {
+    if !state.has_bridge() {
+        restart_debug_log(format!(
+            "request_bridge_chat_close skipped reason={reason} bridge_running=false"
+        ));
+        return;
+    }
+    match send_bridge_chat_close(state.bridge_port, &state.bridge_auth_token) {
+        Ok(()) => restart_debug_log(format!(
+            "request_bridge_chat_close dispatched reason={reason} port={}",
+            state.bridge_port
+        )),
+        Err(error) => restart_debug_log(format!(
+            "request_bridge_chat_close failed reason={reason} port={} error={error}",
+            state.bridge_port
+        )),
+    }
+}
+
+fn send_bridge_chat_close(port: u16, auth_token: &str) -> Result<(), String> {
+    send_bridge_close_request(
+        port,
+        auth_token,
+        "/api/chat/close",
+        BRIDGE_CHAT_CLOSE_TIMEOUT,
+    )
+}
+
+fn send_bridge_agent_close(port: u16, auth_token: &str) -> Result<(), String> {
+    send_bridge_close_request(
+        port,
+        auth_token,
+        "/api/agent/runtime/stop",
+        Duration::from_secs(7),
+    )
+}
+
+fn send_bridge_close_request(
+    port: u16,
+    auth_token: &str,
+    path: &str,
+    timeout: Duration,
+) -> Result<(), String> {
+    let addr: SocketAddr = format!("{BRIDGE_HOST}:{port}")
+        .parse::<SocketAddr>()
+        .map_err(|error| error.to_string())?;
+    let mut stream = TcpStream::connect_timeout(&addr, Duration::from_millis(200))
+        .map_err(|error| error.to_string())?;
+    let _ = stream.set_write_timeout(Some(Duration::from_millis(500)));
+    let _ = stream.set_read_timeout(Some(timeout));
+    let request = format!(
+        "POST {path} HTTP/1.1\r\nHost: {BRIDGE_HOST}\r\nContent-Type: application/json\r\nX-Shinsekai-Bridge-Token: {auth_token}\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}"
+    );
+    stream
+        .write_all(request.as_bytes())
+        .map_err(|error| error.to_string())?;
+    stream.flush().map_err(|error| error.to_string())?;
+
+    let mut response = String::new();
+    stream
+        .read_to_string(&mut response)
+        .map_err(|error| error.to_string())?;
+    if response.starts_with("HTTP/1.1 200") || response.starts_with("HTTP/1.0 200") {
+        return Ok(());
+    }
+    if response.is_empty() {
+        return Err("bridge closed connection before responding".to_string());
+    }
+    let status_line = response.lines().next().unwrap_or_default();
+    Err(format!("unexpected bridge response: {status_line}"))
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -1021,8 +1345,39 @@ Start-Process -FilePath $exe -ArgumentList $argv
 }
 
 #[tauri::command]
+fn desktop_window_hide(window: WebviewWindow) -> Result<(), String> {
+    window.hide().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn desktop_chat_window_destroy(window: WebviewWindow) -> Result<(), String> {
+    if window.label() != "chat" {
+        return Err("desktop_chat_window_destroy is only available to the chat window".to_string());
+    }
+    window.destroy().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn desktop_window_minimize(window: WebviewWindow) -> Result<(), String> {
+    if window.label() == "main"
+        && window
+            .app_handle()
+            .state::<background::BackgroundState>()
+            .minimize_to_tray()
+    {
+        return window.hide().map_err(|error| error.to_string());
+    }
     window.minimize().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn desktop_window_set_always_on_top(
+    window: WebviewWindow,
+    always_on_top: bool,
+) -> Result<(), String> {
+    window
+        .set_always_on_top(always_on_top)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -1039,10 +1394,176 @@ fn desktop_window_start_drag(window: WebviewWindow) -> Result<(), String> {
     window.start_dragging().map_err(|error| error.to_string())
 }
 
+fn parse_resize_direction(direction: &str) -> Result<ResizeDirection, String> {
+    match direction {
+        "East" => Ok(ResizeDirection::East),
+        "North" => Ok(ResizeDirection::North),
+        "NorthEast" => Ok(ResizeDirection::NorthEast),
+        "NorthWest" => Ok(ResizeDirection::NorthWest),
+        "South" => Ok(ResizeDirection::South),
+        "SouthEast" => Ok(ResizeDirection::SouthEast),
+        "SouthWest" => Ok(ResizeDirection::SouthWest),
+        "West" => Ok(ResizeDirection::West),
+        _ => Err(format!("unknown resize direction: {direction}")),
+    }
+}
+
 #[tauri::command]
-fn desktop_window_close(app: AppHandle, state: State<'_, DesktopState>) -> Result<(), String> {
-    shutdown_desktop_app(&app, state.inner(), "desktop_window_close command");
+fn desktop_window_start_resize(window: Window, direction: String) -> Result<(), String> {
+    let direction = parse_resize_direction(direction.trim())?;
+    window
+        .start_resize_dragging(direction)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn desktop_window_set_ignore_cursor_events(
+    window: WebviewWindow,
+    ignore: bool,
+) -> Result<(), String> {
+    window
+        .set_ignore_cursor_events(ignore)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn desktop_window_cursor_position(
+    window: WebviewWindow,
+) -> Result<DesktopWindowCursorPosition, String> {
+    let cursor = window
+        .cursor_position()
+        .map_err(|error| error.to_string())?;
+    let origin = window.outer_position().map_err(|error| error.to_string())?;
+    let scale = window.scale_factor().map_err(|error| error.to_string())?;
+    let scale = if scale > 0.0 { scale } else { 1.0 };
+    Ok(DesktopWindowCursorPosition {
+        x: (cursor.x - f64::from(origin.x)) / scale,
+        y: (cursor.y - f64::from(origin.y)) / scale,
+    })
+}
+
+#[tauri::command]
+fn desktop_window_close(
+    window: WebviewWindow,
+    app: AppHandle,
+    state: State<'_, DesktopState>,
+) -> Result<(), String> {
+    if window.label() == "main" {
+        return background::request_main_close(&app);
+    }
+    if window.label() == "chat" {
+        request_bridge_chat_close(state.inner(), "desktop_window_close command");
+        return window.destroy().map_err(|error| error.to_string());
+    }
+    window.close().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+#[cfg(target_os = "windows")]
+fn desktop_open_chat_window(app: AppHandle, state: State<'_, DesktopState>) -> Result<(), String> {
+    debug_assert!(current_chat_window_open_plan().defer_command);
+    let thread_app = app.clone();
+    let bridge_port = state.bridge_port;
+    let auth_token = state.bridge_auth_token.clone();
+    restart_debug_log("desktop_open_chat_window windows schedule requested");
+    thread::spawn(move || {
+        restart_debug_log("desktop_open_chat_window windows thread start");
+        thread::sleep(Duration::from_millis(100));
+        let scheduled_app = thread_app.clone();
+        match thread_app.run_on_main_thread(move || {
+            restart_debug_log("desktop_open_chat_window windows scheduled start");
+            match open_chat_window(&scheduled_app, bridge_port, &auth_token) {
+                Ok(()) => restart_debug_log("desktop_open_chat_window windows scheduled completed"),
+                Err(error) => restart_debug_log(format!(
+                    "desktop_open_chat_window windows scheduled failed error={error}"
+                )),
+            }
+        }) {
+            Ok(()) => restart_debug_log("desktop_open_chat_window windows run_on_main_thread ok"),
+            Err(error) => restart_debug_log(format!(
+                "desktop_open_chat_window windows run_on_main_thread failed error={error}"
+            )),
+        }
+    });
+    restart_debug_log("desktop_open_chat_window windows command returned after spawn");
     Ok(())
+}
+
+#[tauri::command]
+#[cfg(not(target_os = "windows"))]
+fn desktop_open_chat_window(app: AppHandle, state: State<'_, DesktopState>) -> Result<(), String> {
+    debug_assert!(!current_chat_window_open_plan().defer_command);
+    open_chat_window(&app, state.bridge_port, &state.bridge_auth_token)
+}
+
+fn open_chat_window(app: &AppHandle, bridge_port: u16, auth_token: &str) -> Result<(), String> {
+    let open_plan = current_chat_window_open_plan();
+    let chat_window = if let Some(window) = app.get_webview_window("chat") {
+        restart_debug_log("desktop_open_chat_window reuse existing window");
+        window
+    } else {
+        let url = chat_window_url(bridge_port, auth_token);
+        restart_debug_log(format!("desktop_open_chat_window create url={url}"));
+        WebviewWindowBuilder::new(app, "chat", WebviewUrl::App(url.into()))
+            .title("Shinsekai Chat")
+            .inner_size(1280.0, 820.0)
+            .min_inner_size(960.0, 620.0)
+            .resizable(true)
+            .transparent(true)
+            .decorations(false)
+            .always_on_top(true)
+            // Keep the chat window in the taskbar so it can be restored after
+            // minimizing (a frameless + skip_taskbar window vanishes with no way back).
+            // Disable Tauri's native drag-drop handler so HTML5 file drops reach the
+            // webview (InputLayer relies on the DOM `drop` event for attachments).
+            .disable_drag_drop_handler()
+            .shadow(false)
+            .center()
+            .build()
+            .map_err(|error| error.to_string())?
+    };
+
+    #[cfg(not(target_os = "windows"))]
+    if open_plan.navigate_after_create {
+        navigate_chat_window_to_live_frontend(app, bridge_port, auth_token)?;
+    }
+    let _ = chat_window.show();
+    let _ = chat_window.unminimize();
+
+    if open_plan.focus_after_show {
+        let _ = chat_window.set_focus();
+    } else {
+        restart_debug_log("desktop_open_chat_window windows focus skipped");
+    }
+
+    Ok(())
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ChatWindowOpenPlan {
+    defer_command: bool,
+    navigate_after_create: bool,
+    focus_after_show: bool,
+}
+
+fn current_chat_window_open_plan() -> ChatWindowOpenPlan {
+    chat_window_open_plan_for_windows(cfg!(target_os = "windows"))
+}
+
+fn chat_window_open_plan_for_windows(is_windows: bool) -> ChatWindowOpenPlan {
+    if is_windows {
+        ChatWindowOpenPlan {
+            defer_command: true,
+            focus_after_show: false,
+            navigate_after_create: false,
+        }
+    } else {
+        ChatWindowOpenPlan {
+            defer_command: false,
+            focus_after_show: true,
+            navigate_after_create: true,
+        }
+    }
 }
 
 #[tauri::command]
@@ -1090,7 +1611,11 @@ fn bootstrap_runtime(app: AppHandle) {
     match start_runtime_candidate_for_state(&app, &state, None) {
         Ok(_) => {
             restart_debug_log("bootstrap_runtime ready");
-            if let Err(error) = navigate_main_window_to_live_frontend(&app, state.bridge_port) {
+            if let Err(error) = navigate_main_window_to_live_frontend(
+                &app,
+                state.bridge_port,
+                &state.bridge_auth_token,
+            ) {
                 restart_debug_log(format!(
                     "bootstrap_runtime frontend navigate failed error={error}"
                 ));
@@ -1102,29 +1627,120 @@ fn bootstrap_runtime(app: AppHandle) {
     }
 }
 
-fn app_window_url(port: u16) -> String {
-    let bridge_url = format!("http://{BRIDGE_HOST}:{port}");
-    let encoded = bridge_url.replace(':', "%3A").replace('/', "%2F");
-    format!("index.html?shinsekai_bridge={encoded}#/settings/api")
+fn encode_query_value(value: &str) -> String {
+    value
+        .replace(':', "%3A")
+        .replace('/', "%2F")
+        .replace(' ', "%20")
+        .replace('&', "%26")
+        .replace('=', "%3D")
+        .replace('#', "%23")
 }
 
-fn live_frontend_url(port: u16) -> String {
-    let bridge_url = format!("http://{BRIDGE_HOST}:{port}");
-    let encoded = bridge_url.replace(':', "%3A").replace('/', "%2F");
+fn encode_bridge_url(port: u16) -> String {
+    encode_query_value(&format!("http://{BRIDGE_HOST}:{port}"))
+}
+
+fn app_window_url_for_route(port: u16, auth_token: &str, route: &str) -> String {
+    let encoded = encode_bridge_url(port);
+    let encoded_token = encode_query_value(auth_token);
+    format!("index.html?shinsekai_bridge={encoded}&shinsekai_bridge_token={encoded_token}#{route}")
+}
+
+fn app_window_url(port: u16, auth_token: &str) -> String {
+    app_window_url_for_route(port, auth_token, "/settings/api")
+}
+
+fn chat_window_url(port: u16, auth_token: &str) -> String {
+    app_window_url_for_route(port, auth_token, "/chat-stage")
+}
+
+fn live_frontend_origin_for_platform(is_windows: bool) -> String {
+    if is_windows {
+        format!("http://{LIVE_FRONTEND_SCHEME}.localhost")
+    } else {
+        format!("{LIVE_FRONTEND_SCHEME}://localhost")
+    }
+}
+
+fn live_frontend_url_for_route(port: u16, auth_token: &str, route: &str) -> String {
+    let encoded = encode_bridge_url(port);
+    let encoded_token = encode_query_value(auth_token);
+    let origin = live_frontend_origin_for_platform(cfg!(windows));
     let reload_token = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis().to_string())
         .unwrap_or_else(|_| "0".to_string());
     format!(
-        "{LIVE_FRONTEND_SCHEME}://localhost/?shinsekai_bridge={encoded}&shinsekai_reload={reload_token}#/settings/api"
+        "{origin}/?shinsekai_bridge={encoded}&shinsekai_bridge_token={encoded_token}&shinsekai_reload={reload_token}#{route}"
     )
 }
 
-fn navigate_main_window_to_live_frontend(app: &AppHandle, bridge_port: u16) -> Result<(), String> {
-    let url = Url::parse(&live_frontend_url(bridge_port)).map_err(|error| error.to_string())?;
-    if let Some(window) = app.get_webview_window("main") {
-        restart_debug_log(format!("navigate live frontend url={url}"));
+fn live_frontend_url(port: u16, auth_token: &str) -> String {
+    live_frontend_url_for_route(port, auth_token, "/settings/api")
+}
+
+fn live_chat_frontend_url(port: u16, auth_token: &str) -> String {
+    live_frontend_url_for_route(port, auth_token, "/chat-stage")
+}
+
+fn navigate_window_to_live_frontend(
+    app: &AppHandle,
+    label: &str,
+    target_url: &str,
+) -> Result<(), String> {
+    let url = Url::parse(target_url).map_err(|error| error.to_string())?;
+    if let Some(window) = app.get_webview_window(label) {
+        restart_debug_log(format!("navigate {label} live frontend url={url}"));
         window.navigate(url).map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+fn navigate_main_window_to_live_frontend(
+    app: &AppHandle,
+    bridge_port: u16,
+    auth_token: &str,
+) -> Result<(), String> {
+    navigate_window_to_live_frontend(
+        app,
+        "reminders",
+        &live_frontend_url_for_route(bridge_port, auth_token, "/reminders"),
+    )?;
+    navigate_window_to_live_frontend(app, "main", &live_frontend_url(bridge_port, auth_token))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn navigate_chat_window_to_live_frontend(
+    app: &AppHandle,
+    bridge_port: u16,
+    auth_token: &str,
+) -> Result<(), String> {
+    navigate_window_to_live_frontend(
+        app,
+        "chat",
+        &live_chat_frontend_url(bridge_port, auth_token),
+    )
+}
+
+fn live_frontend_reload_targets(bridge_port: u16, auth_token: &str) -> [(&'static str, String); 3] {
+    [
+        ("main", live_frontend_url(bridge_port, auth_token)),
+        ("chat", live_chat_frontend_url(bridge_port, auth_token)),
+        (
+            "reminders",
+            live_frontend_url_for_route(bridge_port, auth_token, "/reminders"),
+        ),
+    ]
+}
+
+fn reload_live_frontend_windows(
+    app: &AppHandle,
+    bridge_port: u16,
+    auth_token: &str,
+) -> Result<(), String> {
+    for (label, target_url) in live_frontend_reload_targets(bridge_port, auth_token) {
+        navigate_window_to_live_frontend(app, label, &target_url)?;
     }
     Ok(())
 }
@@ -1341,6 +1957,26 @@ mod tests {
     use super::*;
 
     #[test]
+    fn runtime_backend_console_truthy_values_are_case_insensitive() {
+        for value in ["1", "true", "TRUE", "yes", "Yes", "on", "ON"] {
+            assert!(
+                is_truthy_env_value(value),
+                "expected {value:?} to be truthy"
+            );
+        }
+    }
+
+    #[test]
+    fn runtime_backend_console_rejects_other_values() {
+        for value in ["", "0", "false", "off", "y", " true "] {
+            assert!(
+                !is_truthy_env_value(value),
+                "expected {value:?} to be falsey"
+            );
+        }
+    }
+
+    #[test]
     fn resolve_published_frontend_dist_uses_current_marker() {
         let root = temp_test_dir("published-dist");
         let raw_dist = root.join("frontend").join("dist");
@@ -1398,57 +2034,26 @@ mod tests {
     }
 
     #[test]
-    fn install_dir_project_root_migrates_app_data_when_install_data_is_empty() {
-        let root = temp_test_dir("install-project-root-migrate");
-        let app_root = root.join("Shinsekai");
-        let app_data_project = root.join("app-data").join("project");
-        let old_config = app_data_project.join("data").join("config");
-        fs::create_dir_all(&old_config).unwrap();
-        fs::create_dir_all(&app_root).unwrap();
-        fs::write(old_config.join("system_config.yaml"), "ok").unwrap();
-
-        let selected = install_dir_project_root(&app_root, &app_data_project)
-            .unwrap()
-            .unwrap();
-
-        assert_eq!(selected, app_root);
-        assert!(selected
-            .join("data")
-            .join("config")
-            .join("system_config.yaml")
-            .is_file());
-        let _ = fs::remove_dir_all(root);
+    fn project_root_conflict_defers_runtime_bootstrap() {
+        assert!(!should_bootstrap_runtime(true));
+        assert!(should_bootstrap_runtime(false));
     }
 
     #[test]
-    fn install_dir_project_root_keeps_existing_install_data() {
-        let root = temp_test_dir("install-project-root-existing-data");
-        let app_root = root.join("Shinsekai");
-        let app_data_project = root.join("app-data").join("project");
-        fs::create_dir_all(app_data_project.join("data").join("config")).unwrap();
-        fs::create_dir_all(app_root.join("data")).unwrap();
-        fs::write(
-            app_data_project
-                .join("data")
-                .join("config")
-                .join("old.yaml"),
-            "old",
-        )
-        .unwrap();
-        fs::write(app_root.join("data").join("existing.txt"), "existing").unwrap();
+    fn unresolved_project_root_is_not_logged_as_a_recovery_source() {
+        assert_eq!(
+            project_root_setup_log_event(true),
+            "setup awaiting project-root selection"
+        );
+        assert_eq!(project_root_setup_log_event(false), "setup resolved");
+    }
 
-        let selected = install_dir_project_root(&app_root, &app_data_project)
-            .unwrap()
-            .unwrap();
-
-        assert_eq!(selected, app_root);
-        assert!(selected.join("data").join("existing.txt").is_file());
-        assert!(!selected
-            .join("data")
-            .join("config")
-            .join("old.yaml")
-            .is_file());
-        let _ = fs::remove_dir_all(root);
+    #[test]
+    fn restart_debug_log_messages_cannot_inject_additional_lines() {
+        assert_eq!(
+            sanitize_restart_debug_log_message("safe\r\nsetup resolved injected\0"),
+            "safe\\r\\nsetup resolved injected\\0"
+        );
     }
 
     #[test]
@@ -1473,6 +2078,129 @@ mod tests {
             }
             _ => panic!("scan without a ready candidate should enter runtime guidance"),
         }
+    }
+
+    #[test]
+    fn window_urls_encode_bridge_and_route() {
+        assert_eq!(
+            app_window_url(8787, "token-1"),
+            "index.html?shinsekai_bridge=http%3A%2F%2F127.0.0.1%3A8787&shinsekai_bridge_token=token-1#/settings/api"
+        );
+        assert_eq!(
+            chat_window_url(8787, "token-1"),
+            "index.html?shinsekai_bridge=http%3A%2F%2F127.0.0.1%3A8787&shinsekai_bridge_token=token-1#/chat-stage"
+        );
+    }
+
+    #[test]
+    fn live_frontend_urls_target_expected_routes() {
+        let main = live_frontend_url(8787, "token-1");
+        let chat = live_chat_frontend_url(8787, "token-1");
+        let expected_origin = live_frontend_origin_for_platform(cfg!(windows));
+
+        assert!(main.starts_with(&format!(
+            "{expected_origin}/?shinsekai_bridge=http%3A%2F%2F127.0.0.1%3A8787"
+        )));
+        assert!(main.contains("shinsekai_bridge_token=token-1"));
+        assert!(main.contains("#/settings/api"));
+        assert!(chat.starts_with(&format!(
+            "{expected_origin}/?shinsekai_bridge=http%3A%2F%2F127.0.0.1%3A8787"
+        )));
+        assert!(chat.contains("shinsekai_bridge_token=token-1"));
+        assert!(chat.contains("#/chat-stage"));
+    }
+
+    #[test]
+    fn live_frontend_origin_matches_tauri_custom_protocol_mapping() {
+        assert_eq!(
+            live_frontend_origin_for_platform(true),
+            "http://shinsekai.localhost"
+        );
+        assert_eq!(
+            live_frontend_origin_for_platform(false),
+            "shinsekai://localhost"
+        );
+    }
+
+    #[test]
+    fn live_frontend_reload_targets_cover_main_and_chat_windows() {
+        let targets = live_frontend_reload_targets(8787, "token-1");
+
+        assert_eq!(targets[0].0, "main");
+        assert!(targets[0].1.contains("#/settings/api"));
+        assert_eq!(targets[1].0, "chat");
+        assert!(targets[1].1.contains("#/chat-stage"));
+        assert!(targets[1].1.starts_with(&format!(
+            "{}/?shinsekai_bridge=http%3A%2F%2F127.0.0.1%3A8787",
+            live_frontend_origin_for_platform(cfg!(windows))
+        )));
+        assert!(targets[1].1.contains("shinsekai_bridge_token=token-1"));
+        assert_eq!(targets[2].0, "reminders");
+        assert!(targets[2].1.contains("#/reminders"));
+    }
+
+    #[test]
+    fn windows_chat_window_open_plan_avoids_webview_timing_hazards() {
+        let plan = chat_window_open_plan_for_windows(true);
+
+        assert!(plan.defer_command);
+        assert!(!plan.navigate_after_create);
+        assert!(!plan.focus_after_show);
+    }
+
+    #[test]
+    fn non_windows_chat_window_open_plan_keeps_existing_live_navigation() {
+        let plan = chat_window_open_plan_for_windows(false);
+
+        assert!(!plan.defer_command);
+        assert!(plan.navigate_after_create);
+        assert!(plan.focus_after_show);
+    }
+
+    #[test]
+    fn send_bridge_chat_close_posts_local_close_request() {
+        let listener = TcpListener::bind((BRIDGE_HOST, 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buffer = [0_u8; 1024];
+            let read = stream.read(&mut buffer).unwrap();
+            let request = String::from_utf8_lossy(&buffer[..read]).to_string();
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}")
+                .unwrap();
+            request
+        });
+
+        send_bridge_chat_close(port, "token-1").unwrap();
+
+        let request = handle.join().unwrap();
+        assert!(request.starts_with("POST /api/chat/close HTTP/1.1\r\n"));
+        assert!(request.contains("Host: 127.0.0.1\r\n"));
+        assert!(request.contains("Content-Type: application/json\r\n"));
+        assert!(request.contains("X-Shinsekai-Bridge-Token: token-1\r\n"));
+        assert!(request.ends_with("\r\n\r\n{}"));
+    }
+
+    #[test]
+    fn send_bridge_agent_close_posts_authenticated_runtime_shutdown() {
+        let listener = TcpListener::bind((BRIDGE_HOST, 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buffer = [0_u8; 1024];
+            let read = stream.read(&mut buffer).unwrap();
+            let request = String::from_utf8_lossy(&buffer[..read]).to_string();
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}")
+                .unwrap();
+            request
+        });
+        send_bridge_agent_close(port, "agent-token").unwrap();
+        let request = handle.join().unwrap();
+        assert!(request.starts_with("POST /api/agent/runtime/stop HTTP/1.1\r\n"));
+        assert!(request.contains("X-Shinsekai-Bridge-Token: agent-token\r\n"));
+        assert!(request.ends_with("\r\n\r\n{}"));
     }
 
     fn runtime_scan_view(selected_candidate_id: Option<&str>) -> runtime::RuntimeScanView {
@@ -1517,9 +2245,15 @@ fn start_bridge_for_state(
         &state.app_root,
         &state.frontend_dist,
         state.bridge_port,
+        &state.bridge_auth_token,
         runtime,
     )?;
-    let mut child = Some(BridgeProcess::new(bridge.child, candidate_id.clone()));
+    let mut child = Some(BridgeProcess::new(
+        bridge.child,
+        candidate_id.clone(),
+        state.bridge_port,
+        state.bridge_auth_token.clone(),
+    ));
     if let Ok(mut bridge_process) = state.bridge.lock() {
         if bridge_process.is_none() {
             *bridge_process = child.take();
@@ -1538,6 +2272,7 @@ fn spawn_bridge(
     app_root: &Path,
     frontend_dist: &Path,
     port: u16,
+    auth_token: &str,
     runtime: runtime::PythonRuntime,
 ) -> DesktopResult<BridgeLaunch> {
     println!("Using Shinsekai Python runtime: {}", runtime.description);
@@ -1564,6 +2299,8 @@ fn spawn_bridge(
         .arg(port.to_string())
         .arg("--parent-pid")
         .arg(std::process::id().to_string())
+        .arg("--auth-token")
+        .arg(auth_token)
         .arg("--project-root")
         .arg(&project_root)
         .arg("--app-root")
@@ -1573,7 +2310,15 @@ fn spawn_bridge(
         .current_dir(&source_root);
 
     #[cfg(windows)]
-    command.creation_flags(0x0800_0000);
+    {
+        if show_backend_console() {
+            const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
+            command.creation_flags(CREATE_NEW_CONSOLE);
+        } else {
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+    }
 
     let mut child = command.spawn().map_err(|error| {
         restart_debug_log(format!("spawn_bridge failed error={error}"));
@@ -1591,6 +2336,19 @@ fn spawn_bridge(
         port
     ));
     Ok(BridgeLaunch { child })
+}
+
+pub(crate) fn show_backend_console() -> bool {
+    env::var(SHOW_BACKEND_CONSOLE_ENV)
+        .map(|value| is_truthy_env_value(&value))
+        .unwrap_or(false)
+}
+
+fn is_truthy_env_value(value: &str) -> bool {
+    matches!(
+        value.to_ascii_lowercase().as_str(),
+        "1" | "true" | "yes" | "on"
+    )
 }
 
 fn resolve_source_root(app: &tauri::App) -> DesktopResult<PathBuf> {
@@ -1636,89 +2394,58 @@ fn resolve_source_root(app: &tauri::App) -> DesktopResult<PathBuf> {
     Err("could not locate Shinsekai application resources; set SHINSEKAI_SOURCE_ROOT".into())
 }
 
-fn resolve_project_root(app: &tauri::App, app_root: &Path) -> DesktopResult<PathBuf> {
-    if let Some(root) = env_path("SHINSEKAI_PROJECT_ROOT") {
-        fs::create_dir_all(&root)?;
-        return Ok(root);
-    }
-
-    let app_data_project_root = app.path().app_data_dir()?.join("project");
-    if let Some(root) = install_dir_project_root(app_root, &app_data_project_root)? {
-        return Ok(root);
-    }
-
-    fs::create_dir_all(&app_data_project_root)?;
-    Ok(app_data_project_root)
-}
-
-fn install_dir_project_root(
+fn resolve_project_root(
+    app: &tauri::App,
+    source_root: &Path,
     app_root: &Path,
-    app_data_project_root: &Path,
-) -> DesktopResult<Option<PathBuf>> {
-    let data_root = app_root.join("data");
-    if fs::create_dir_all(&data_root).is_err() || !can_write_directory(&data_root) {
-        return Ok(None);
-    }
-    migrate_project_data_if_empty(app_data_project_root, app_root)?;
-    Ok(Some(app_root.to_path_buf()))
-}
+) -> DesktopResult<project_root::ResolvedProjectRoot> {
+    let app_config_dir = app.path().app_config_dir()?;
+    let app_data_dir = app.path().app_data_dir()?;
+    let config_dir = app.path().config_dir()?;
+    let data_dir = app.path().data_dir()?;
+    let locator_path = app_config_dir.join(project_root::PROJECT_ROOT_LOCATOR_FILE);
 
-fn can_write_directory(path: &Path) -> bool {
-    let nonce = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_nanos())
-        .unwrap_or_default();
-    let probe = path.join(format!(
-        ".shinsekai-write-test-{}-{nonce}",
-        std::process::id()
-    ));
-    let ok = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&probe)
-        .and_then(|mut file| file.write_all(b"ok"))
-        .is_ok();
-    let _ = fs::remove_file(probe);
-    ok
-}
+    let expanded_env = |name: &str| {
+        env::var_os(name)
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from)
+            .map(ExpandHome::expand_home)
+            .map(PathBuf::into_os_string)
+    };
+    let explicit_root = project_root::preferred_environment_root(
+        expanded_env("SHINSEKAI_PROJECT_ROOT"),
+        expanded_env("EASYAI_PROJECT_ROOT"),
+    );
 
-fn migrate_project_data_if_empty(
-    app_data_project_root: &Path,
-    install_project_root: &Path,
-) -> DesktopResult<()> {
-    let old_data = app_data_project_root.join("data");
-    let new_data = install_project_root.join("data");
-    if !old_data.is_dir() || !directory_is_empty(&new_data)? {
-        return Ok(());
+    let legacy_config_dir = config_dir.join(project_root::LEGACY_APP_IDENTIFIER);
+    let legacy_data_dir = data_dir.join(project_root::LEGACY_APP_IDENTIFIER);
+    let current_data_dir = data_dir.join(project_root::CURRENT_APP_IDENTIFIER);
+    let mut restart_log_paths = vec![env::temp_dir().join(RESTART_DEBUG_LOG_FILE)];
+    if let Some(custom_log) = env::var_os("SHINSEKAI_RESTART_LOG")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+    {
+        restart_log_paths.insert(0, custom_log);
     }
-    copy_dir_missing(&old_data, &new_data)?;
-    Ok(())
-}
 
-fn directory_is_empty(path: &Path) -> DesktopResult<bool> {
-    if !path.is_dir() {
-        return Ok(true);
-    }
-    Ok(fs::read_dir(path)?.next().is_none())
-}
-
-fn copy_dir_missing(src: &Path, dst: &Path) -> DesktopResult<()> {
-    fs::create_dir_all(dst)?;
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let src_path = entry.path();
-        let dst_path = dst.join(entry.file_name());
-        if dst_path.exists() {
-            continue;
-        }
-        let file_type = entry.file_type()?;
-        if file_type.is_dir() {
-            copy_dir_missing(&src_path, &dst_path)?;
-        } else if file_type.is_file() {
-            fs::copy(&src_path, &dst_path)?;
-        }
-    }
-    Ok(())
+    let options = project_root::ProjectRootResolveOptions {
+        explicit_root,
+        source_root: source_root.to_path_buf(),
+        app_root: app_root.to_path_buf(),
+        current_app_data_project_root: app_data_dir.join("project"),
+        legacy_app_data_project_roots: vec![legacy_data_dir.join("project")],
+        locator_path,
+        locator_read_paths: vec![
+            app_data_dir.join(project_root::PROJECT_ROOT_LOCATOR_FILE),
+            current_data_dir.join(project_root::PROJECT_ROOT_LOCATOR_FILE),
+            legacy_config_dir.join(project_root::PROJECT_ROOT_LOCATOR_FILE),
+            legacy_data_dir.join(project_root::PROJECT_ROOT_LOCATOR_FILE),
+        ],
+        restart_log_paths,
+        untrusted_candidate_roots: project_root::windows_legacy_install_dir_hints(),
+        development_source: dev_project_root().as_deref() == Some(source_root),
+    };
+    project_root::resolve(options).map_err(Into::into)
 }
 
 fn resolve_app_root(app: &tauri::App, source_root: &Path) -> DesktopResult<PathBuf> {

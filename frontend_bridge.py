@@ -9,17 +9,25 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import importlib.metadata
 import json
 import os
 import platform
 import re
+import secrets
+import signal
 import sys
 import tempfile
 import threading
 import time
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+
+from frontend_bridge_core.path_utils import resolve_regular_path
+from core.runtime_env.requirements import (
+    RequirementCheck,
+    check_requirement,
+    requirement_name,
+)
 
 
 def _configure_stdio_encoding() -> None:
@@ -29,7 +37,7 @@ def _configure_stdio_encoding() -> None:
 
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parent
+    return resolve_regular_path(Path(__file__).parent)
 
 
 def _restart_debug_log_path() -> Path:
@@ -48,6 +56,108 @@ def _restart_debug_log(message: str) -> None:
         pass
 
 
+_bridge_state_lock = threading.Lock()
+_bridge_state = None
+
+
+def _set_bridge_state(state) -> None:
+    global _bridge_state
+    with _bridge_state_lock:
+        _bridge_state = state
+
+
+def _forward_plugin_user_input(state, event: dict) -> None:
+    """Forward one validated frontend-action input event to the Chat process."""
+    session_id = str(
+        getattr(state, "chat_session", {}).get("sessionId") or ""
+    ).strip()
+    chat_stream = getattr(state, "chat_stream", None)
+    if not session_id or chat_stream is None:
+        raise RuntimeError("No active React Chat runtime can accept plugin input")
+    command = {
+        "cmdId": secrets.token_hex(16),
+        "payload": {
+            "attachments": [],
+            "text": str(event.get("text") or ""),
+        },
+        "type": "send-message",
+    }
+    if not chat_stream.send_command(session_id, command):
+        raise RuntimeError("The active React Chat runtime rejected plugin input")
+
+
+def _shutdown_bridge_runtime(reason: str) -> None:
+    _restart_debug_log(f"bridge runtime shutdown begin reason={reason}")
+    with _bridge_state_lock:
+        state = _bridge_state
+    services = getattr(state, "services", None)
+    if services is not None:
+        try:
+            services.close()
+        except Exception as exc:
+            _restart_debug_log(f"bridge runtime Agent shutdown failed reason={reason} error={exc}")
+    try:
+        from plugin_system.host import (
+            bind_frontend_ui_runtime,
+            bind_frontend_user_input_runtime,
+        )
+
+        bind_frontend_ui_runtime(None)
+        bind_frontend_user_input_runtime(None)
+    except Exception as exc:
+        _restart_debug_log(
+            f"bridge runtime plugin transport unbind failed reason={reason} error={exc}"
+        )
+    try:
+        from application.chat.composition import shutdown_active_chat_process
+
+        shutdown_active_chat_process(wait_timeout=1.5)
+    except Exception as exc:
+        _restart_debug_log(f"bridge runtime chat shutdown failed reason={reason} error={exc}")
+
+    with _bridge_state_lock:
+        state = _bridge_state
+    if state is not None:
+        presenter = getattr(state, "reminder_presenter", None)
+        if presenter is not None:
+            presenter.close()
+        try:
+            from application.chat.composition import _session_lifecycle
+
+            lifecycle = _session_lifecycle(state)
+            try:
+                lifecycle.closing(reason)
+            finally:
+                try:
+                    lifecycle.ended(reason)
+                finally:
+                    lifecycle.dispose()
+        except Exception as exc:
+            _restart_debug_log(
+                f"bridge runtime session cleanup failed reason={reason} error={exc}"
+            )
+    chat_stream = getattr(state, "chat_stream", None) if state is not None else None
+    if chat_stream is not None:
+        try:
+            chat_stream.stop()
+        except Exception as exc:
+            _restart_debug_log(f"bridge runtime chat stream stop failed reason={reason} error={exc}")
+    _restart_debug_log(f"bridge runtime shutdown completed reason={reason}")
+
+
+def _install_bridge_signal_handlers() -> None:
+    def handle_signal(signum, _frame) -> None:
+        _restart_debug_log(f"bridge signal received signum={signum}")
+        _shutdown_bridge_runtime(f"signal {signum}")
+        os._exit(0)
+
+    for signum in (getattr(signal, "SIGTERM", None), getattr(signal, "SIGINT", None)):
+        if signum is None:
+            continue
+        with contextlib.suppress(ValueError):
+            signal.signal(signum, handle_signal)
+
+
 def _configure_runtime_context(
     project_root: str | None = None,
     frontend_dist: str | None = "frontend/dist",
@@ -61,11 +171,11 @@ def _configure_runtime_context(
         dist_path = Path(frontend_dist).expanduser()
         if not dist_path.is_absolute():
             dist_path = repo_root / dist_path
-        resolved_frontend_dist = str(dist_path.resolve())
+        resolved_frontend_dist = str(resolve_regular_path(dist_path))
 
     raw_app_root = app_root or os.environ.get("SHINSEKAI_APP_ROOT")
     if raw_app_root:
-        app_root_path = Path(raw_app_root).expanduser().resolve(strict=False)
+        app_root_path = resolve_regular_path(raw_app_root)
         if app_root_path.exists() and app_root_path.is_dir():
             resolved_app_root = str(app_root_path)
             os.environ["SHINSEKAI_APP_ROOT"] = resolved_app_root
@@ -74,26 +184,158 @@ def _configure_runtime_context(
         os.environ.setdefault("SHINSEKAI_APP_ROOT", resolved_app_root)
 
     if project_root:
-        root = Path(project_root).expanduser().resolve()
-        root.mkdir(parents=True, exist_ok=True)
-        os.environ["EASYAI_PROJECT_ROOT"] = str(root)
+        root = _prepare_project_root(project_root, "--project-root")
+    else:
+        root = None
+        for env_name in ("SHINSEKAI_PROJECT_ROOT", "EASYAI_PROJECT_ROOT"):
+            raw_project_root = os.environ.get(env_name, "").strip()
+            if not raw_project_root:
+                continue
+            # An explicitly configured root is authoritative.  In particular,
+            # never fall through from a broken SHINSEKAI_PROJECT_ROOT to the
+            # legacy variable or cwd: doing so could make the bridge write a
+            # second, apparently empty project on another drive.
+            root = _prepare_project_root(raw_project_root, env_name)
+            break
+        if root is None:
+            root = resolve_regular_path(Path.cwd())
+    resolved_project_root = str(root)
+    try:
         os.chdir(root)
+    except OSError as exc:
+        raise RuntimeError(
+            f"project root is not accessible: {resolved_project_root}: {exc}"
+        ) from exc
+    os.environ["SHINSEKAI_PROJECT_ROOT"] = resolved_project_root
+    os.environ["EASYAI_PROJECT_ROOT"] = resolved_project_root
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
     return repo_root, resolved_frontend_dist, resolved_app_root
 
 
+def _prepare_project_root(raw_path: str, source: str) -> Path:
+    """Create and validate an authoritative project-root override."""
+
+    try:
+        configured = Path(raw_path).expanduser()
+        if source != "--project-root" and not configured.is_absolute():
+            raise ValueError("environment project roots must be absolute")
+        root = resolve_regular_path(configured)
+        root.mkdir(parents=True, exist_ok=True)
+        data_root = root / "data"
+        data_root.mkdir(parents=True, exist_ok=True)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise RuntimeError(
+            f"{source} project root cannot be created or accessed: {raw_path!r}: {exc}"
+        ) from exc
+
+    if not root.is_dir():
+        raise RuntimeError(f"{source} project root is not a directory: {root}")
+    if not data_root.is_dir():
+        raise RuntimeError(f"{source} project data path is not a directory: {data_root}")
+
+    # O_EXCL ensures cleanup can never remove somebody else's file if two
+    # bridge processes probe the same directory concurrently.
+    probe = data_root / (
+        f".shinsekai-write-test-{os.getpid()}-{secrets.token_hex(8)}"
+    )
+    descriptor: int | None = None
+    owned_probe = False
+    probe_errors: list[str] = []
+    try:
+        descriptor = os.open(probe, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        owned_probe = True
+        payload = memoryview(b"ok")
+        while payload:
+            written = os.write(descriptor, payload)
+            if written <= 0:
+                raise OSError("write probe made no progress")
+            payload = payload[written:]
+    except OSError as exc:
+        probe_errors.append(f"write: {exc}")
+    finally:
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError as exc:
+                probe_errors.append(f"close: {exc}")
+        if owned_probe:
+            try:
+                probe.unlink()
+            except OSError as exc:
+                probe_errors.append(f"cleanup: {exc}")
+    if probe_errors:
+        raise RuntimeError(
+            f"{source} project root is not safely writable: {root}: {'; '.join(probe_errors)}"
+        )
+
+    try:
+        return resolve_regular_path(root, strict=True)
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise RuntimeError(
+            f"{source} project root cannot be resolved after creation: {root}: {exc}"
+        ) from exc
+
+
 def _start_plugin_loader(state, logger) -> None:
-    from frontend_bridge_core.state import set_plugin_load_status
+    from application.runtime.state import set_plugin_load_status
 
     def load_plugins() -> None:
         time.sleep(0.05)
         set_plugin_load_status(state, "loading")
         _restart_debug_log("plugin load background start")
         try:
-            from core.plugins.plugin_host import ensure_plugins_loaded
+            from plugin_system.host import (
+                bind_frontend_ui_runtime,
+                bind_frontend_user_input_runtime,
+                ensure_plugins_loaded,
+                PluginRuntimeBindings,
+            )
+            from ai.vision.fallback_registry import configure_registered_fallbacks
+            from core.media.avatar.registry import configure_registered_formats
+            from ai.asr.asr_manager import ASRAdapterFactory
+            from ai.llm.llm_manager import LLMAdapterFactory
+            from ai.tools.tool_manager import ToolManager
+            from ai.t2i.t2i_manager import T2IAdapterFactory
+            from ai.tts.tts_manager import TTSAdapterFactory
 
-            ensure_plugins_loaded(state.config_manager)
+            def register_mcp_tools(tool_manager) -> None:
+                from ai.tools.mcp_tool_setup import register_mcp_tools_from_config
+
+                register_mcp_tools_from_config(tool_manager)
+
+            ensure_plugins_loaded(
+                state.config_manager,
+                runtime_bindings=PluginRuntimeBindings(
+                    llm_adapters=LLMAdapterFactory._adapters,
+                    tts_adapters=TTSAdapterFactory._adapters,
+                    asr_adapters=ASRAdapterFactory._adapters,
+                    t2i_adapters=T2IAdapterFactory._adapters,
+                    create_tool_manager=ToolManager,
+                    configure_vision_fallbacks=configure_registered_fallbacks,
+                    configure_avatar_formats=configure_registered_formats,
+                    register_mcp_tools=register_mcp_tools,
+                ),
+            )
+            bind_frontend_user_input_runtime(
+                lambda event: _forward_plugin_user_input(state, event)
+            )
+
+            def emit_plugin_ui_event(event: dict[str, Any]) -> None:
+                session_id = str(
+                    getattr(state, "chat_session", {}).get("sessionId") or ""
+                ).strip()
+                chat_stream = getattr(state, "chat_stream", None)
+                if (
+                    not session_id
+                    or chat_stream is None
+                    or not chat_stream.publish_event(session_id, event)
+                ):
+                    raise RuntimeError(
+                        "No active React Chat runtime can present plugin pages"
+                    )
+
+            bind_frontend_ui_runtime(emit_plugin_ui_event)
         except Exception as exc:
             set_plugin_load_status(state, "error", error=str(exc))
             _restart_debug_log(f"plugin load background failed error={exc}")
@@ -119,37 +361,53 @@ def run(
     open_browser: bool = False,
     parent_pid: int | None = None,
     app_root: str | None = None,
+    auth_token: str | None = None,
 ) -> None:
     _restart_debug_log(
         f"run start host={host} port={port} project_root={project_root or ''} app_root={app_root or ''} frontend_dist={frontend_dist or ''} parent_pid={parent_pid or 0}"
     )
+    _install_bridge_signal_handlers()
     _start_parent_watchdog(parent_pid)
     _repo_root_value, resolved_frontend_dist, resolved_app_root = _configure_runtime_context(
         project_root,
         frontend_dist,
         app_root,
     )
+    resolved_project_root = os.environ["EASYAI_PROJECT_ROOT"]
     from sdk.logging import configure_logging, get_logger
 
-    configure_logging("frontend-bridge", project_root=Path.cwd())
+    configure_logging("frontend-bridge", project_root=Path(resolved_project_root))
     logger = get_logger(__name__)
     from config.mirror_env import apply_mirror_environment_from_system_config
+    from config.network_proxy import apply_network_proxy_environment_from_system_config
 
+    apply_network_proxy_environment_from_system_config()
     apply_mirror_environment_from_system_config()
+    os.environ["SHINSEKAI_MEMORY_SERVICE_OWNER"] = "1"
+    os.environ["SHINSEKAI_KNOWLEDGE_SERVICE_OWNER"] = "1"
 
     from config.background_manager import BackgroundManager
     from config.character_manager import CharacterManager
     from config.config_manager import ConfigManager
     from i18n import init_i18n
-    from llm.template_generator import TemplateGenerator
+    from ai.llm.template_generator import TemplateGenerator
 
-    from frontend_bridge_core.handler import FrontendBridgeHandler
-    from frontend_bridge_core.state import BridgeState
+    from frontend_bridge_core.chat_stream import ChatStreamService
+    from frontend_bridge_core.routes.api import FrontendBridgeHandler
+    from frontend_bridge_core.transport.mobile_access import MobileAccessTransport
+    from application.runtime.state import BridgeState
     from frontend_bridge_core.static import _schedule_browser_open
 
     config_manager = ConfigManager()
     init_i18n(config_manager.config.system_config.ui_language)
+    bridge_auth_token = (
+        str(auth_token or "").strip()
+        or os.environ.get("SHINSEKAI_BRIDGE_AUTH_TOKEN", "").strip()
+        or secrets.token_urlsafe(32)
+    )
 
+    from core.media.avatar.registry import configure_builtin_formats
+    configure_builtin_formats()
     state = BridgeState(
         config_manager=config_manager,
         character_manager=CharacterManager(),
@@ -157,11 +415,38 @@ def run(
         template_generator=TemplateGenerator(),
         frontend_dist_dir=resolved_frontend_dist,
         app_root_dir=resolved_app_root,
+        project_root_dir=resolved_project_root,
+        auth_token=bridge_auth_token,
+    )
+    _set_bridge_state(state)
+    from application.characters.import_recovery import recover_model_imports
+    recover_model_imports(state)
+    state.chat_stream = ChatStreamService(host=host, bridge_port=port, auth_token=bridge_auth_token)
+    state.resource_urls = state.chat_stream.resource_urls
+    state.chat_stream.start()
+
+    def create_mobile_http_server(bind_host: str, mobile_port: int) -> ThreadingHTTPServer:
+        mobile_server = ThreadingHTTPServer(
+            (bind_host, mobile_port),
+            FrontendBridgeHandler,
+        )
+        mobile_server.state = state  # type: ignore[attr-defined]
+        return mobile_server
+
+    state.mobile_access_service = MobileAccessTransport(
+        auth_token=bridge_auth_token,
+        http_server_factory=create_mobile_http_server,
+        preferred_http_port=port + 2,
+        start_websocket=state.chat_stream.start_mobile_listener,
+        stop_websocket=state.chat_stream.stop_mobile_listener,
     )
     server = ThreadingHTTPServer((host, port), FrontendBridgeHandler)
     server.state = state  # type: ignore[attr-defined]
     _restart_debug_log(f"server listening host={host} port={port} frontend_dist={resolved_frontend_dist}")
     _start_plugin_loader(state, logger)
+    from application.story.generation_recovery import recover_story_generations
+
+    recover_story_generations(state)
     logger.info(
         "Frontend bridge listening",
         extra={
@@ -180,7 +465,9 @@ def run(
             },
         )
         if open_browser:
-            _schedule_browser_open(f"http://{host}:{port}/#/settings/api")
+            _schedule_browser_open(
+                f"http://{host}:{port}/?shinsekai_bridge_token={bridge_auth_token}#/settings/api"
+            )
     elif resolved_frontend_dist:
         logger.warning(
             "Built frontend not found; API bridge only",
@@ -190,7 +477,29 @@ def run(
             },
         )
     _restart_debug_log("serve_forever enter")
-    server.serve_forever()
+    try:
+        from frontend_bridge_core.transport.agent_http_tools import build_bridge_http_tools
+
+        state.services.start_agent(
+            config_manager,
+            Path(resolved_project_root) / "data" / "agent",
+            tools=build_bridge_http_tools(
+                str(server.server_address[0]),
+                int(server.server_address[1]),
+                bridge_auth_token,
+            ),
+        )
+        server.serve_forever()
+    finally:
+        _restart_debug_log("serve_forever exit")
+        with contextlib.suppress(Exception):
+            server.server_close()
+        generation_service = getattr(state, "story_generation_service", None)
+        recovery = getattr(generation_service, "_recovery", None)
+        if recovery is not None:
+            recovery.stop()
+        _shutdown_bridge_runtime("server exit")
+        _set_bridge_state(None)
 
 
 def _start_parent_watchdog(parent_pid: int | None) -> None:
@@ -214,17 +523,21 @@ def _watch_posix_parent(parent_pid: int) -> None:
     while True:
         time.sleep(0.25)
         if os.getppid() != parent_pid:
-            _restart_debug_log(
-                f"parent watchdog exit reason=ppid_changed expected={parent_pid} actual={os.getppid()}"
+            _exit_bridge_after_parent_loss(
+                f"ppid_changed expected={parent_pid} actual={os.getppid()}"
             )
-            os._exit(0)
         try:
             os.kill(parent_pid, 0)
         except ProcessLookupError:
-            _restart_debug_log(f"parent watchdog exit reason=parent_missing parent_pid={parent_pid}")
-            os._exit(0)
+            _exit_bridge_after_parent_loss(f"parent_missing parent_pid={parent_pid}")
         except PermissionError:
             continue
+
+
+def _exit_bridge_after_parent_loss(detail: str) -> None:
+    _restart_debug_log(f"parent watchdog exit reason={detail}")
+    _shutdown_bridge_runtime(f"parent watchdog {detail}")
+    os._exit(0)
 
 
 def _watch_windows_parent(parent_pid: int) -> None:
@@ -235,14 +548,12 @@ def _watch_windows_parent(parent_pid: int) -> None:
     kernel32 = ctypes.windll.kernel32
     handle = kernel32.OpenProcess(synchronize, False, parent_pid)
     if not handle:
-        _restart_debug_log(f"parent watchdog exit reason=open_process_failed parent_pid={parent_pid}")
-        os._exit(0)
+        _exit_bridge_after_parent_loss(f"open_process_failed parent_pid={parent_pid}")
     try:
         while True:
             time.sleep(0.25)
             if kernel32.WaitForSingleObject(handle, 0) != wait_timeout:
-                _restart_debug_log(f"parent watchdog exit reason=parent_signaled parent_pid={parent_pid}")
-                os._exit(0)
+                _exit_bridge_after_parent_loss(f"parent_signaled parent_pid={parent_pid}")
     finally:
         kernel32.CloseHandle(handle)
 
@@ -253,33 +564,36 @@ def check_runtime(
     requirements_file: str | None = None,
     app_root: str | None = None,
     profile: str = "desktop-core",
+    requirements_only: bool = False,
 ) -> None:
+    if requirements_only:
+        _check_runtime_requirements(_repo_root(), requirements_file, profile)
+        return
+
     repo_root, _resolved_frontend_dist, _resolved_app_root = _configure_runtime_context(
         project_root,
         frontend_dist,
         app_root,
     )
+    resolved_project_root = os.environ["EASYAI_PROJECT_ROOT"]
     from sdk.logging import configure_logging
 
-    configure_logging("frontend-bridge", project_root=Path.cwd())
+    configure_logging("frontend-bridge", project_root=Path(resolved_project_root))
     from config.mirror_env import apply_mirror_environment_from_system_config
+    from config.network_proxy import apply_network_proxy_environment_from_system_config
 
+    apply_network_proxy_environment_from_system_config()
     apply_mirror_environment_from_system_config()
-    requirements_file = requirements_file or _default_runtime_requirements_file(repo_root, profile)
-    if requirements_file:
-        requirements_path = Path(requirements_file).expanduser()
-        if not requirements_path.is_absolute():
-            requirements_path = repo_root / requirements_path
-        _check_required_distributions(requirements_path)
+    _check_runtime_requirements(repo_root, requirements_file, profile)
 
     from config.background_manager import BackgroundManager
     from config.character_manager import CharacterManager
     from config.config_manager import ConfigManager
     from i18n import init_i18n
-    from llm.template_generator import TemplateGenerator
+    from ai.llm.template_generator import TemplateGenerator
 
-    from frontend_bridge_core.handler import FrontendBridgeHandler  # noqa: F401
-    from frontend_bridge_core.state import BridgeState  # noqa: F401
+    from application.runtime.state import BridgeState  # noqa: F401
+    from frontend_bridge_core.routes.api import FrontendBridgeHandler  # noqa: F401
     from frontend_bridge_core.static import _frontend_dist_root  # noqa: F401
 
     config_manager = ConfigManager()
@@ -295,16 +609,28 @@ def runtime_check_report(
     requirements_file: str | None = None,
     app_root: str | None = None,
     profile: str = "desktop-core",
+    requirements_only: bool = False,
 ) -> dict[str, object]:
     try:
-        check_runtime(project_root, frontend_dist, requirements_file, app_root, profile)
+        check_runtime(
+            project_root,
+            frontend_dist,
+            requirements_file,
+            app_root,
+            profile,
+            requirements_only,
+        )
     except Exception as exc:
         message = str(exc)
         return {
             "ok": False,
             "profile": profile,
             "message": message,
-            "missingDistributions": _missing_distributions_from_message(message),
+            "missingDistributions": (
+                exc.distributions
+                if isinstance(exc, RuntimeDistributionError)
+                else _missing_distributions_from_message(message)
+            ),
         }
     return {
         "ok": True,
@@ -322,34 +648,57 @@ def _default_runtime_requirements_file(repo_root: Path, profile: str) -> str:
     return str(repo_root / "requirements.txt")
 
 
+def _check_runtime_requirements(
+    repo_root: Path,
+    requirements_file: str | None,
+    profile: str,
+) -> None:
+    requirements_file = requirements_file or _default_runtime_requirements_file(
+        repo_root, profile
+    )
+    if not requirements_file:
+        return
+    requirements_path = Path(requirements_file).expanduser()
+    if not requirements_path.is_absolute():
+        requirements_path = repo_root / requirements_path
+    _check_required_distributions(requirements_path)
+
+
+class RuntimeDistributionError(RuntimeError):
+    def __init__(self, checks: list[RequirementCheck]) -> None:
+        self.distributions = list(dict.fromkeys(check.name for check in checks))
+        detail = "; ".join(check.issue for check in checks)
+        super().__init__(f"unsatisfied Python runtime requirements: {detail}")
+
+
 def _check_required_distributions(requirements_path: Path) -> None:
     if not requirements_path.is_file():
         raise FileNotFoundError(f"requirements file not found: {requirements_path}")
 
-    missing: list[str] = []
-    for requirement in _iter_requirement_names(requirements_path):
-        try:
-            importlib.metadata.version(requirement)
-        except importlib.metadata.PackageNotFoundError:
-            missing.append(requirement)
-
-    if missing:
-        joined = ", ".join(sorted(set(missing)))
-        raise RuntimeError(f"missing Python runtime distributions: {joined}")
+    unsatisfied = [
+        check
+        for requirement in _iter_requirements(requirements_path)
+        if not (check := check_requirement(requirement)).satisfied
+    ]
+    if unsatisfied:
+        raise RuntimeDistributionError(unsatisfied)
 
 
 def _missing_distributions_from_message(message: str) -> list[str]:
-    prefix = "missing Python runtime distributions:"
-    if prefix not in message:
-        return []
-    return [
-        item.strip()
-        for item in message.split(prefix, 1)[1].split(",", maxsplit=128)
-        if item.strip()
-    ]
+    for prefix in (
+        "missing Python runtime distributions:",
+        "unsatisfied Python runtime distributions:",
+    ):
+        if prefix in message:
+            return [
+                item.strip()
+                for item in message.split(prefix, 1)[1].split(",", maxsplit=128)
+                if item.strip()
+            ]
+    return []
 
 
-def _iter_requirement_names(requirements_path: Path, seen: set[Path] | None = None):
+def _iter_requirements(requirements_path: Path, seen: set[Path] | None = None):
     requirements_path = requirements_path.resolve()
     seen = seen or set()
     if requirements_path in seen:
@@ -362,7 +711,7 @@ def _iter_requirement_names(requirements_path: Path, seen: set[Path] | None = No
 
         included_path = _included_requirements_path(requirements_path, line)
         if included_path is not None:
-            yield from _iter_requirement_names(included_path, seen)
+            yield from _iter_requirements(included_path, seen)
             continue
 
         if line.startswith(("-", "http://", "https://")):
@@ -371,9 +720,13 @@ def _iter_requirement_names(requirements_path: Path, seen: set[Path] | None = No
         requirement, marker = _split_requirement_marker(line)
         if marker and not _marker_applies(marker):
             continue
+        if requirement:
+            yield requirement
 
-        name = re.split(r"\s*(?:===|==|~=|!=|<=|>=|<|>)\s*", requirement, maxsplit=1)[0]
-        name = name.split("[", 1)[0].strip()
+
+def _iter_requirement_names(requirements_path: Path, seen: set[Path] | None = None):
+    for requirement in _iter_requirements(requirements_path, seen):
+        name = requirement_name(requirement)
         if name:
             yield name
 
@@ -456,6 +809,11 @@ def main() -> None:
         help="Desktop shell process PID. The bridge exits automatically when this parent exits.",
     )
     parser.add_argument(
+        "--auth-token",
+        default="",
+        help="Shared token required by frontend HTTP write requests and chat WebSocket connections.",
+    )
+    parser.add_argument(
         "--check-runtime",
         action="store_true",
         help="Validate the Python runtime and exit without starting the HTTP bridge.",
@@ -469,6 +827,11 @@ def main() -> None:
         "--profile",
         default="desktop-core",
         help="Runtime requirements profile used by --check-runtime.",
+    )
+    parser.add_argument(
+        "--requirements-only",
+        action="store_true",
+        help="Validate requirement presence and versions without initializing application state.",
     )
     parser.add_argument(
         "--json",
@@ -485,6 +848,7 @@ def main() -> None:
                     args.requirements_file or None,
                     args.app_root or None,
                     args.profile,
+                    args.requirements_only,
                 )
             print(json.dumps(report, ensure_ascii=True))
             if not report["ok"]:
@@ -496,6 +860,7 @@ def main() -> None:
                 args.requirements_file or None,
                 args.app_root or None,
                 args.profile,
+                args.requirements_only,
             )
             print("Shinsekai Python runtime check completed.")
         return
@@ -508,6 +873,7 @@ def main() -> None:
         open_browser=args.open_browser,
         parent_pid=args.parent_pid or None,
         app_root=args.app_root or None,
+        auth_token=args.auth_token or None,
     )
 
 

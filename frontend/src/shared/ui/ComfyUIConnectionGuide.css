@@ -1,0 +1,18 @@
+.comfy-connection-guide {
+  display: grid;
+  gap: var(--space-3);
+  margin: var(--space-3) 0;
+  padding-left: var(--space-5);
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.comfy-connection-guide strong {
+  color: var(--color-text-primary);
+}
+
+.comfy-connection-guide p {
+  margin: var(--space-1) 0 0;
+}

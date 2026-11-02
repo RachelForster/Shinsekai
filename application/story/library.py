@@ -1,0 +1,195 @@
+"""Discover playable projects and prepare launches with their saved progress."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+from application.chat.history.paths import resolve_history_path_for_project
+from application.chat.conversation_library import saved_conversation_launch
+from application.chat.host.projection import TRANSPARENT_BACKGROUND_NAME
+from application.story.persistence import JsonStorySessionRepository
+from application.story.project_loader import load_story_project
+from application.story.selection import normal_template_options
+from config.feature_flags import FeatureFlag
+from core.chat_history.storage import (
+    STORY_SESSION_FILENAME,
+    chat_history_active_path,
+    chat_history_session_dir,
+)
+from core.story import (
+    CharacterSourceType,
+    StoryCompiler,
+    StoryNode,
+    StoryValidationError,
+)
+from sdk.path_utils import safe_existing_path
+
+
+def _read_project(state: Any, story_path: str | Path):
+    state.config_manager.feature_flags.require(FeatureFlag.STORY_SYSTEM)
+    root = Path(state.project_root_dir).resolve()
+    candidate = Path(story_path)
+    if not candidate.is_absolute():
+        candidate = root / candidate
+    path = safe_existing_path(candidate, roots=(root,), field="story path")
+    project = load_story_project(path)
+    return path, project, StoryCompiler().compile(project)
+
+
+def supports_graph_editing(project: Any) -> bool:
+    return all(isinstance(node, StoryNode) for node in project.narrative_graph.nodes)
+
+
+def _matches(saved: dict, program: Any) -> bool:
+    return (
+        saved.get("storyId") == program.story_id
+        and saved.get("storyVersion") == program.story_version
+        and saved.get("programSourceHash") == program.source_hash
+    )
+
+
+def list_story_library(state: Any) -> list[dict]:
+    state.config_manager.feature_flags.require(FeatureFlag.STORY_SYSTEM)
+    root = Path(state.project_root_dir).resolve()
+    stories_root = root / "data" / "stories"
+    histories = []
+    history_root = Path(state.history_dir).resolve()
+    for path in history_root.rglob(STORY_SESSION_FILENAME):
+        try:
+            safe_existing_path(path, roots=(history_root,), field="story save")
+            saved = JsonStorySessionRepository(path.parent).load()
+            if saved:
+                histories.append((path.stat().st_mtime * 1000, path.parent, saved))
+        except (OSError, ValueError):
+            continue
+    histories.sort(key=lambda item: item[0], reverse=True)
+    entries = []
+    for path in stories_root.rglob("*"):
+        if path.suffix.lower() not in {".json", ".yaml", ".yml"} or not path.is_file():
+            continue
+        relative = path.relative_to(stories_root)
+        if ".generation" in relative.parts and not path.name.startswith("edited-"):
+            if path.name != "draft.json":
+                continue
+            try:
+                task = json.loads(
+                    path.with_name("task.json").read_text(encoding="utf-8")
+                )
+                if task.get("status") != "succeeded" or not (
+                    task.get("validation") or {}
+                ).get("valid"):
+                    continue
+            except (OSError, ValueError, AttributeError):
+                continue
+        try:
+            resolved, project, program = _read_project(state, path)
+            updated_at = path.stat().st_mtime * 1000
+        except (OSError, ValueError, StoryValidationError):
+            continue
+        history = next((item for item in histories if _matches(item[2], program)), None)
+        node_title = ""
+        if history:
+            saved = history[2]
+            branch = saved.get("branches", {}).get(saved.get("activeBranchId"), {})
+            node = program.nodes_by_id.get(branch.get("state", {}).get("currentNodeId"))
+            node_title = node.title if node else ""
+            updated_at = max(updated_at, history[0])
+        entries.append(
+            {
+                "id": project.id,
+                "title": project.title,
+                "version": project.version,
+                "storyPath": resolved.as_posix(),
+                "canEditGraph": supports_graph_editing(project),
+                "characters": [
+                    str(item.source.character_id or item.id)
+                    for item in project.character_registry.characters
+                ],
+                "backgrounds": list(project.metadata.backgrounds),
+                "historyPath": history[1].as_posix() if history else "",
+                "currentNodeTitle": node_title,
+                "updatedAt": updated_at,
+            }
+        )
+    return sorted(entries, key=lambda item: item["updatedAt"], reverse=True)
+
+
+def _pending_story_attachment(state: Any, history: Path, story: Path) -> bool:
+    directory = chat_history_session_dir(history)
+    # Only recover an interrupted first attachment. A missing committed save or
+    # damaged storage must not silently restart an already played story.
+    if (
+        (directory / STORY_SESSION_FILENAME).exists()
+        or (directory / "story-prompt-binding.json").exists()
+        or not chat_history_active_path(history).is_file()
+    ):
+        return False
+    launch = saved_conversation_launch(state, history)
+    source = (launch or {}).get("storyPath")
+    if not isinstance(source, str) or not source.strip():
+        return False
+    root = Path(state.project_root_dir).resolve()
+    try:
+        recorded = safe_existing_path(root / source, roots=(root,), field="story path")
+    except (OSError, ValueError):
+        return False
+    # A directory and its manifest refer to the same project.
+    recorded = recorded / "manifest.yaml" if recorded.is_dir() else recorded
+    story = story / "manifest.yaml" if story.is_dir() else story
+    return recorded == story
+
+
+def prepare_story_launch(state: Any, story_path: str, history_path: str = "") -> dict:
+    if not story_path.strip():
+        raise ValueError("请选择剧本。")
+    resolved_story, project, program = _read_project(state, story_path)
+    if history_path:
+        resolved_history = resolve_history_path_for_project(state, history_path)
+        saved = JsonStorySessionRepository(
+            chat_history_session_dir(resolved_history)
+        ).load()
+        can_resume = (
+            _matches(saved, program) if saved is not None
+            else _pending_story_attachment(state, resolved_history, resolved_story)
+        )
+        if not can_resume:
+            raise ValueError("存档与当前剧本不匹配，请刷新已有剧本后重试。")
+        history_path = resolved_history.as_posix()
+    bindings = project.metadata.resource_bindings
+    names = list(
+        bindings.get("characters")
+        or [
+            str(item.source.character_id or item.id)
+            for item in project.character_registry.characters
+            if item.source.type == CharacterSourceType.LOCAL_LIBRARY
+        ]
+    )
+    names = [
+        name
+        for name in names
+        if state.config_manager.get_character_by_name(name) is not None
+    ]
+    player_character = str(bindings.get("playerCharacter") or "")
+    if player_character not in names:
+        player_character = ""
+    background = bindings.get("openingBackground") or TRANSPARENT_BACKGROUND_NAME
+    payload = {
+        **dict(bindings.get("templateOptions") or {}),
+        **normal_template_options(state),
+        "templateId": "",
+        "storyPath": resolved_story.as_posix(),
+        "templateName": project.title,
+        "characters": names,
+        "backgroundName": background,
+        "characterPromptMode": bindings.get("characterPromptMode", "full"),
+        "primaryCharacters": list(bindings.get("primaryCharacters", names)),
+        "playerCharacter": player_character,
+        "readPlayerSpeech": bool(bindings.get("readPlayerSpeech")) if player_character else False,
+        "allowPlayerDialogue": bool(bindings.get("allowPlayerDialogue", True)),
+        "historyPath": history_path,
+        "resetHistory": not bool(history_path),
+        "scenario": f"正在游玩互动剧本《{project.title}》。根据当前节点的剧情要求和已发生的对话推进故事。",
+    }
+    return payload

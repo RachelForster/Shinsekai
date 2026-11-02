@@ -6,8 +6,10 @@ from __future__ import annotations
 
 import inspect
 import json
+import os
 import re
 import subprocess
+import tempfile
 import time
 import unicodedata
 from dataclasses import dataclass, field
@@ -17,8 +19,15 @@ from typing import Callable, List, Optional, Tuple
 import requests
 
 from config.schema import SystemConfig
+from frontend_bridge_core.security import (
+    safe_search_query,
+    validated_http_url,
+)
+from sdk.path_utils import reject_control_chars, safe_existing_file_path
 
 LogFn = Callable[[str], None]
+YOUTUBE_HOSTS = {"youtube.com", "youtu.be", "youtube-nocookie.com"}
+BILIBILI_HOSTS = {"bilibili.com", "b23.tv"}
 
 
 def _slug(s: str, max_len: int = 80) -> str:
@@ -30,9 +39,45 @@ def _slug(s: str, max_len: int = 80) -> str:
 
 def _which_yt_dlp(system_config: SystemConfig) -> str:
     exe = (system_config.music_cover_yt_dlp_exe or "").strip()
-    if exe:
-        return exe
-    return "yt-dlp"
+    return exe or "yt-dlp"
+
+
+def _yt_dlp_environment(raw_executable: str) -> dict[str, str] | None:
+    """Resolve configured yt-dlp through PATH, keeping request data off argv."""
+
+    raw = reject_control_chars(raw_executable or "yt-dlp", field="yt-dlp executable")
+    if raw in {"yt-dlp", "yt-dlp.exe"}:
+        return None
+    executable = safe_existing_file_path(
+        raw,
+        roots=[Path.cwd(), Path.home(), Path(tempfile.gettempdir())],
+        field="yt-dlp executable",
+    )
+    if executable.name.casefold() not in {"yt-dlp", "yt-dlp.exe"}:
+        raise ValueError("configured executable must be named yt-dlp or yt-dlp.exe")
+    environment = os.environ.copy()
+    environment["PATH"] = (
+        str(executable.parent) + os.pathsep + environment.get("PATH", "")
+    )
+    return environment
+
+
+def _validated_public_media_url(raw_url: str, *, allowed_hosts: set[str] | None = None) -> str:
+    return validated_http_url(
+        raw_url,
+        allowed_hosts=allowed_hosts,
+        allow_localhost=False,
+        allow_private_hosts=False,
+        field="media URL",
+    )
+
+
+def _is_allowed_media_url(raw_url: str, allowed_hosts: set[str]) -> bool:
+    try:
+        _validated_public_media_url(raw_url, allowed_hosts=allowed_hosts)
+    except (TypeError, ValueError):
+        return False
+    return True
 
 
 def _apply_ffmpeg_path(system_config: SystemConfig) -> None:
@@ -82,14 +127,24 @@ def bilibili_search_videos(query: str, limit: int = 8) -> List[dict]:
 
 
 def youtube_search_videos(query: str, limit: int = 8, yt_dlp: str = "yt-dlp") -> List[dict]:
+    limit = max(1, min(int(limit), 20))
+    query = safe_search_query(query)
     cmd = [
-        yt_dlp,
-        f"ytsearch{limit}:{query}",
+        "yt-dlp",
+        "--batch-file",
+        "-",
         "-j",
         "--flat-playlist",
         "--skip-download",
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+    proc = subprocess.run(
+        cmd,
+        capture_output=True,
+        env=_yt_dlp_environment(yt_dlp),
+        input=f"ytsearch{limit}:{query}\n",
+        text=True,
+        timeout=180,
+    )
     if proc.returncode != 0:
         raise RuntimeError(proc.stderr or proc.stdout or "yt-dlp 搜索失败")
     out: List[dict] = []
@@ -116,10 +171,11 @@ def _run_yt_dlp_download(
     log: LogFn,
 ) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
-    outtmpl = str(out_dir / "%(title)s.%(ext)s")
+    media_url = _validated_public_media_url(media_url)
     cmd = [
-        yt_dlp,
-        media_url,
+        "yt-dlp",
+        "--batch-file",
+        "-",
         "-f",
         "bestaudio/best",
         "-x",
@@ -132,11 +188,19 @@ def _run_yt_dlp_download(
         "--sub-langs",
         "all",
         "-o",
-        outtmpl,
+        "%(title)s.%(ext)s",
         "--no-playlist",
     ]
     log("执行下载: " + " ".join(cmd[:5]) + " ...")
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+    proc = subprocess.run(
+        cmd,
+        capture_output=True,
+        cwd=out_dir,
+        env=_yt_dlp_environment(yt_dlp),
+        input=f"{media_url}\n",
+        text=True,
+        timeout=600,
+    )
     if proc.returncode != 0:
         raise RuntimeError(proc.stderr or proc.stdout or "yt-dlp 下载失败")
     wavs = sorted(out_dir.glob("*.wav"), key=lambda p: p.stat().st_mtime, reverse=True)
@@ -413,11 +477,13 @@ def resolve_media_url(
     yt_dlp = _which_yt_dlp(system_config)
 
     if source == "url":
-        return q, q
+        return _validated_public_media_url(q), q
 
     if source == "bilibili":
-        if re.match(r"^BV[\w]+$", q, re.I) or "bilibili.com" in q:
-            return q if q.startswith("http") else f"https://www.bilibili.com/video/{q}", q
+        if re.fullmatch(r"BV[A-Za-z0-9]+", q, re.I):
+            return f"https://www.bilibili.com/video/{q}", q
+        if _is_allowed_media_url(q, BILIBILI_HOSTS):
+            return _validated_public_media_url(q, allowed_hosts=BILIBILI_HOSTS), q
         items = bilibili_search_videos(q)
         if not items:
             raise RuntimeError("B站未找到相关视频")
@@ -427,8 +493,8 @@ def resolve_media_url(
         return it["url"], it["title"]
 
     if source == "youtube":
-        if "youtube.com" in q or "youtu.be" in q:
-            return q, q
+        if _is_allowed_media_url(q, YOUTUBE_HOSTS):
+            return _validated_public_media_url(q, allowed_hosts=YOUTUBE_HOSTS), q
         items = youtube_search_videos(q, limit=8, yt_dlp=yt_dlp)
         if not items:
             raise RuntimeError("YouTube 搜索无结果")
@@ -524,12 +590,12 @@ def search_preview(
     lines: List[str] = []
     try:
         if source == "youtube":
-            if "youtube.com" in q or "youtu.be" in q:
+            if _is_allowed_media_url(q, YOUTUBE_HOSTS):
                 return "当前为完整 URL，无需搜索，可直接执行流水线。"
             for i, it in enumerate(youtube_search_videos(q, limit=max_items, yt_dlp=yt_dlp)):
                 lines.append(f"{i}. {it['title']}\n   {it['url']}")
         elif source == "bilibili":
-            if re.match(r"^BV[\w]+$", q, re.I) or "bilibili.com" in q:
+            if re.fullmatch(r"BV[A-Za-z0-9]+", q, re.I) or _is_allowed_media_url(q, BILIBILI_HOSTS):
                 return "当前为 BV 号或完整 URL，无需搜索，可直接执行流水线。"
             for i, it in enumerate(bilibili_search_videos(q, limit=max_items)):
                 lines.append(f"{i}. {it['title']}\n   {it['url']}")

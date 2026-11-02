@@ -5,7 +5,7 @@ from collections.abc import Mapping
 from typing import Any
 from urllib.parse import quote
 
-from .plugin_catalog import _plugin_rows
+from application.plugins.catalog import _plugin_rows
 
 
 def _plugin_data_root(plugin_id: str) -> Path:
@@ -301,27 +301,112 @@ def _builtin_plugin_config_page(plugin_id: str, page_id: str) -> dict[str, Any] 
 
 
 def _frontend_config_contributions_for(plugin_id: str) -> list[Any]:
-    try:
-        from core.plugins.plugin_host import collect_frontend_config_contributions
-    except Exception:
-        return []
-    out: list[Any] = []
-    for contribution in collect_frontend_config_contributions():
-        if str(getattr(contribution, "plugin_id", "") or "").strip() == plugin_id:
-            out.append(contribution)
-    return sorted(out, key=lambda item: float(getattr(item, "order", 100.0) or 100.0))
+    from application.plugins.catalog import frontend_config_contributions_for
+
+    return frontend_config_contributions_for(plugin_id)
 
 
 def _frontend_page_contributions_for(plugin_id: str) -> list[Any]:
-    try:
-        from core.plugins.plugin_host import collect_frontend_page_contributions
-    except Exception:
-        return []
-    out: list[Any] = []
-    for contribution in collect_frontend_page_contributions():
-        if str(getattr(contribution, "plugin_id", "") or "").strip() == plugin_id:
-            out.append(contribution)
-    return sorted(out, key=lambda item: float(getattr(item, "order", 100.0) or 100.0))
+    from application.plugins.catalog import frontend_page_contributions_for
+
+    return frontend_page_contributions_for(plugin_id)
+
+
+def _frontend_chat_ui_contributions() -> list[Any]:
+    from application.plugins.catalog import frontend_chat_ui_contributions
+
+    return frontend_chat_ui_contributions()
+
+
+def _frontend_chat_ui_action(contribution: Any) -> tuple[str, str, str]:
+    """Return (actionType, pageId, pageMode). pageMode is how an open-plugin-page
+    contribution presents its page: "navigate" (default) or "overlay" (a floating
+    window hosted over the chat stage)."""
+    action = getattr(contribution, "action", None)
+    if callable(action):
+        return "callback", "", "navigate"
+    if isinstance(action, Mapping):
+        action_type = str(action.get("type") or "").strip()
+        page_id = str(action.get("page_id") or action.get("pageId") or "").strip()
+        if action_type == "open-plugin-page" and page_id:
+            mode = str(action.get("mode") or "navigate").strip().lower()
+            if mode not in ("navigate", "overlay"):
+                mode = "navigate"
+            return action_type, page_id, mode
+    return "none", "", "navigate"
+
+
+def _frontend_chat_ui_contribution_payloads() -> list[dict[str, Any]]:
+    allowed_slots = {"chat-dialog-actions", "chat-output", "chat-toolbar", "chat-top-toolbar"}
+    allowed_icons = {"info", "play", "puzzle", "settings", "smartphone", "sparkles"}
+    allowed_presentations = {"button", "icon-only"}
+    allowed_variants = {"danger", "ghost", "primary"}
+    rows: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for contribution in _frontend_chat_ui_contributions():
+        plugin_id = str(getattr(contribution, "plugin_id", "") or "").strip()
+        contribution_id = str(getattr(contribution, "contribution_id", "") or "").strip()
+        title = str(getattr(contribution, "title", "") or "").strip()
+        slot = str(getattr(contribution, "slot", "") or "").strip()
+        key = (plugin_id, contribution_id)
+        if not plugin_id or not contribution_id or not title or slot not in allowed_slots or key in seen:
+            continue
+        seen.add(key)
+        action_type, page_id, page_mode = _frontend_chat_ui_action(contribution)
+        icon = str(getattr(contribution, "icon", "") or "puzzle").strip()
+        presentation = str(getattr(contribution, "presentation", "") or "button").strip()
+        if slot == "chat-top-toolbar":
+            presentation = "icon-only"
+        variant = str(getattr(contribution, "variant", "") or "ghost").strip()
+        rows.append(
+            {
+                "actionLabel": str(getattr(contribution, "action_label", "") or "").strip() or title,
+                "actionType": action_type,
+                "actionable": action_type != "none",
+                "description": str(getattr(contribution, "description", "") or "").strip()[:500],
+                "icon": icon if icon in allowed_icons else "puzzle",
+                "id": contribution_id,
+                "order": float(getattr(contribution, "order", 100.0) or 100.0),
+                "pageId": page_id,
+                "pageMode": page_mode,
+                "pluginId": plugin_id,
+                "pluginVersion": str(getattr(contribution, "plugin_version", "") or "")[:64],
+                "presentation": presentation if presentation in allowed_presentations else "button",
+                "slot": slot,
+                "title": title[:160],
+                "variant": variant if variant in allowed_variants else "ghost",
+            }
+        )
+    return rows
+
+
+def _run_frontend_chat_ui_contribution(plugin_id: str, contribution_id: str) -> dict[str, Any]:
+    lookup_plugin = plugin_id.strip()
+    lookup_contribution = contribution_id.strip()
+    for contribution in _frontend_chat_ui_contributions():
+        current_plugin = str(getattr(contribution, "plugin_id", "") or "").strip()
+        current_id = str(getattr(contribution, "contribution_id", "") or "").strip()
+        if current_plugin != lookup_plugin or current_id != lookup_contribution:
+            continue
+        action = getattr(contribution, "action", None)
+        if not callable(action):
+            raise ValueError("该插件插槽只提供状态展示，没有可执行动作。")
+        result = action()
+        if isinstance(result, Mapping):
+            message = str(result.get("message") or "").strip()
+            kind = str(result.get("kind") or "success").strip()
+        else:
+            message = str(result or "").strip()
+            kind = "success"
+        if kind not in {"error", "info", "success"}:
+            kind = "success"
+        return {
+            "id": current_id,
+            "kind": kind,
+            "message": message[:1000],
+            "pluginId": current_plugin,
+        }
+    raise KeyError(f"plugin chat UI contribution not found: {lookup_plugin}/{lookup_contribution}")
 
 
 def _frontend_page_contribution(plugin_id: str, page_id: str) -> Any | None:
@@ -408,11 +493,6 @@ def _frontend_page_payload(contribution: Any) -> dict[str, Any]:
 
 
 def _plugin_ui_detail(plugin_id_or_entry: str) -> dict[str, Any]:
-    try:
-        from core.plugins.plugin_host import collect_settings_contributions, collect_tools_tab_contributions
-    except Exception:
-        raise KeyError(f"plugin not found: {plugin_id_or_entry}")
-
     lookup = plugin_id_or_entry.strip()
     plugin_row = None
     for row in _plugin_rows():
@@ -436,50 +516,6 @@ def _plugin_ui_detail(plugin_id_or_entry: str) -> dict[str, Any]:
         if (str(page.get("kind") or ""), str(page.get("id") or "")) in frontend_page_keys:
             continue
         frontend_page_keys.add((str(page.get("kind") or ""), str(page.get("id") or "")))
-        pages.append(page)
-
-    for contribution in collect_settings_contributions():
-        if str(getattr(contribution, "plugin_id", "") or "").strip() != plugin_id:
-            continue
-        page_id = str(getattr(contribution, "page_id", "") or "").strip()
-        if ("settings", page_id) in frontend_page_keys:
-            continue
-        title = str(getattr(contribution, "nav_label", "") or "").strip() or page_id
-        page: dict[str, Any] = {
-            "id": page_id,
-            "kind": "settings",
-            "order": float(getattr(contribution, "order", 100.0) or 100.0),
-            "pluginId": plugin_id,
-            "pluginVersion": str(getattr(contribution, "plugin_version", "") or ""),
-            "title": title,
-        }
-        builtin = _builtin_plugin_config_page(plugin_id, page_id)
-        if builtin is not None:
-            page.update(builtin)
-        else:
-            page["unavailableReason"] = "该插件设置页仍以 PyQt Widget 形式贡献，当前 React 端没有可渲染的配置 schema。"
-        pages.append(page)
-
-    for contribution in collect_tools_tab_contributions():
-        if str(getattr(contribution, "plugin_id", "") or "").strip() != plugin_id:
-            continue
-        page_id = str(getattr(contribution, "tab_id", "") or "").strip()
-        if ("tools", page_id) in frontend_page_keys:
-            continue
-        title = str(getattr(contribution, "title", "") or "").strip() or page_id
-        page = {
-            "id": page_id,
-            "kind": "tools",
-            "order": float(getattr(contribution, "order", 100.0) or 100.0),
-            "pluginId": plugin_id,
-            "pluginVersion": str(getattr(contribution, "plugin_version", "") or ""),
-            "title": title,
-        }
-        builtin = _builtin_plugin_config_page(plugin_id, page_id)
-        if builtin is not None:
-            page.update(builtin)
-        else:
-            page["unavailableReason"] = "该插件工具页仍以 PyQt Widget 形式贡献，当前 React 端没有可渲染的配置 schema。"
         pages.append(page)
 
     pages.sort(key=lambda item: (float(item.get("order") or 100.0), str(item.get("title") or "")))

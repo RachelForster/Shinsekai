@@ -14,7 +14,7 @@ project_root = current_script.parent.parent
 if str(project_root) not in sys.path:
     sys.path.append(str(project_root))
 
-from tts.tts_manager import TTSManager
+from ai.tts.tts_manager import TTSManager
 UPLOAD_DIR = "./data/sprite"
 VOICE_DIR = "./data/speech"
 API_CONFIG_PATH = "./data/config/api.yaml"

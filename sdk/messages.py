@@ -8,37 +8,73 @@
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 
 class UserInputMessage(BaseModel):
     """用户输入队列的消息格式 (user_input_queue)。"""
 
     text: str = Field(..., description="用户输入的聊天文本")
+    attachments: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="User-selected chat attachments validated by core.media before processing.",
+    )
 
 
 class LLMDialogMessage(BaseModel):
-    """LLM 输出对话片段队列的消息格式 (tts_queue)。"""
+    """LLM 输出对话片段队列的消息格式 (dialog_queue)。"""
 
     model_config = ConfigDict(populate_by_name=True, extra="allow")
 
-    name: str = Field(..., alias="character_name", description="实体名称（角色名 / 系统关键字如 bgm/NARR 等）")
-    text: Optional[str] = Field("", alias="speech", description="文本内容（台词 / 系统提示）")
-    asset_id: Optional[Union[str, int]] = Field("-1", alias="sprite", description="资源编号（立绘索引 / BGM 索引等），-1 表示无需变化")
-    translate: Optional[str] = Field("", description="可选的翻译文本，如果存在则用于 TTS")
+    name: str = Field(
+        ...,
+        alias="character_name",
+        description="实体名称（角色名 / 系统关键字如 bgm/NARR 等）",
+    )
+    text: Optional[str] = Field(
+        "", alias="speech", description="文本内容（台词 / 系统提示）"
+    )
+    asset_id: Optional[Union[str, int]] = Field(
+        "-1",
+        alias="sprite",
+        description="资源编号（立绘索引 / BGM 索引等），-1 表示无需变化",
+    )
+    vibe: Optional[str] = Field(
+        "",
+        description="用于语义选择立绘、场景或 BGM 的简短氛围描述",
+    )
+    translate: Optional[str] = Field(
+        "", description="可选的翻译文本，如果存在则用于 TTS"
+    )
     effect: Optional[str] = Field("", description="特效名称")
+    dialog_id: str = Field("", exclude=True, repr=False, description="Durable history dialog identity")
+    turn_id: Optional[int] = Field(
+        None,
+        exclude=True,
+        repr=False,
+        description="Internal runtime turn identity",
+    )
 
 
-class TTSOutputMessage(BaseModel):
-    """TTS Worker 处理后输出的 UI 队列消息 (audio_path_queue)。"""
+class PresentationMessage(BaseModel):
+    """Dialog media worker 处理后输出的 UI 队列消息 (presentation_queue)。"""
 
     model_config = ConfigDict(populate_by_name=True)
 
     audio_path: str = Field(..., description="生成的语音 / 资源文件的路径")
+    voice_id: str = Field("", description="历史语音的稳定标识")
+    dialog_id: str = Field("", exclude=True, repr=False, description="Durable history dialog identity")
     name: str = Field(..., alias="character_name", description="实体名称")
     text: Optional[str] = Field("", alias="speech", description="文本内容")
-    asset_id: Optional[Union[str, int]] = Field("-1", alias="sprite", description="资源编号")
+    asset_id: Optional[Union[str, int]] = Field(
+        "-1", alias="sprite", description="资源编号"
+    )
     effect: Optional[str] = Field("", description="特效名称")
     is_system_message: bool = Field(False, description="是否是系统通知或非对话消息")
     is_final_segment: bool = Field(True, description="是否是多段TTS中的最后一段")
     timeout: Optional[float] = Field(None, description="可选的等待时间（秒）")
+
+
+# Public compatibility alias for plugins built against releases before the
+# dialog-media stage received its broader name.
+TTSOutputMessage = PresentationMessage

@@ -4,6 +4,7 @@ import { Download, ExternalLink, Languages, Plus, Save, Trash2, Upload } from "l
 
 import {
   backgroundsQueryKey,
+  autoLabelBackgroundImages,
   deleteAllBackgroundBgm,
   deleteAllBackgroundImages,
   deleteBackground,
@@ -21,8 +22,9 @@ import {
 } from "../../entities/background/repository";
 import type { Background } from "../../entities/config/types";
 import { openExternal } from "../../entities/files/repository";
-import { baseName, numberedTags, tagContents } from "../../shared/assets/assetText";
+import { baseName, numberedTags, removeTagRows, tagContents } from "../../shared/assets/assetText";
 import { useI18n } from "../../shared/i18n";
+import type { ImageAutoLabelResult, TaskSnapshot } from "../../shared/platform/types";
 import {
   AlertDialog,
   AsyncButton,
@@ -38,6 +40,9 @@ import {
 import { BackgroundMusicSection } from "./BackgroundMusicSection";
 import { BackgroundSpriteGallery } from "./BackgroundSpriteGallery";
 import { BackgroundTagsDialog } from "./BackgroundTagsDialog";
+import { KnowledgeManagerPage } from "../knowledge-manager/KnowledgeManagerPage";
+import { MediaAutoLabelProgressDialog } from "../media-auto-label/MediaAutoLabelProgressDialog";
+import { useVisionAvailability } from "../media-auto-label/useVisionAvailability";
 import {
   backgroundDeleteDialogCopy,
   createBackground,
@@ -53,11 +58,13 @@ export function BackgroundManagerPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const { t } = useI18n();
+  const visionAvailable = useVisionAvailability();
   const backgroundsQuery = useQuery({ queryFn: listBackgrounds, queryKey: backgroundsQueryKey });
   const data = backgroundsQuery.data ?? [];
   const isLoading = backgroundsQuery.isLoading;
   const [selectedName, setSelectedName] = useState("");
   const [draft, setDraft] = useState<Background>(createBackground());
+  const [draftSourceName, setDraftSourceName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<BackgroundDeleteTarget | null>(null);
   const [selectedBgmIndexes, setSelectedBgmIndexes] = useState<number[]>([]);
@@ -67,6 +74,8 @@ export function BackgroundManagerPage() {
   const [bulkImageTagsDraft, setBulkImageTagsDraft] = useState("");
   const [bulkBgmTagsOpen, setBulkBgmTagsOpen] = useState(false);
   const [bulkBgmTagsDraft, setBulkBgmTagsDraft] = useState("");
+  const [autoLabelDialogOpen, setAutoLabelDialogOpen] = useState(false);
+  const [autoLabelTask, setAutoLabelTask] = useState<TaskSnapshot<ImageAutoLabelResult> | null>(null);
   const [bgmSort, setBgmSort] = useState<{ direction: BgmSortDirection; key: BgmSortKey }>({
     direction: "asc",
     key: "index",
@@ -82,7 +91,9 @@ export function BackgroundManagerPage() {
     }
     return data[0];
   }, [data, isCreating, selectedName]);
-  const currentBackgroundName = isCreating ? "" : selectedName;
+  const currentBackgroundName = isCreating ? "" : selected?.name || selectedName;
+  const draftMatchesSelection = isCreating || !selected || draftSourceName === selected.name;
+  const currentDraft = draftMatchesSelection ? draft : selected;
   const isSavedBackground = Boolean(
     currentBackgroundName && data.some((background) => background.name === currentBackgroundName),
   );
@@ -91,6 +102,7 @@ export function BackgroundManagerPage() {
     if (selected) {
       setSelectedName(selected.name);
       setDraft(structuredClone(selected));
+      setDraftSourceName(selected.name);
       setSelectedBgmIndexes([]);
       setSelectedImageIndex(0);
       setNameError("");
@@ -98,8 +110,8 @@ export function BackgroundManagerPage() {
   }, [selected]);
 
   useEffect(() => {
-    setSelectedImageIndex((current) => Math.min(current, Math.max(0, draft.sprites.length - 1)));
-  }, [draft.sprites.length]);
+    setSelectedImageIndex((current) => Math.min(current, Math.max(0, currentDraft.sprites.length - 1)));
+  }, [currentDraft.sprites.length]);
 
   const saveMutation = useMutation({
     mutationFn: ({ background, originalName }: { background: Background; originalName?: string }) =>
@@ -120,6 +132,7 @@ export function BackgroundManagerPage() {
       setIsCreating(false);
       setSelectedName(background.name);
       setDraft(structuredClone(background));
+      setDraftSourceName(background.name);
       setSelectedBgmIndexes([]);
       setSelectedImageIndex(0);
       showToast({ kind: "success", title: t("background.toast.saved") });
@@ -149,7 +162,8 @@ export function BackgroundManagerPage() {
       if (lastImported) {
         setIsCreating(false);
         setSelectedName(lastImported.name);
-        setDraft(lastImported);
+        setDraft(structuredClone(lastImported));
+        setDraftSourceName(lastImported.name);
       }
       showToast({ kind: "success", title: t("background.toast.importComplete", { count: imported.length }) });
     },
@@ -179,10 +193,10 @@ export function BackgroundManagerPage() {
   const translateMutation = useMutation({
     mutationFn: () =>
       translateBackgroundFields({
-        bgTags: draft.bg_tags,
-        bgmRowTags: tagContents(draft.bgm_tags, draft.bgm_list.length),
-        bgmTags: draft.bgm_tags,
-        name: draft.name,
+        bgTags: currentDraft.bg_tags,
+        bgmRowTags: tagContents(currentDraft.bgm_tags, currentDraft.bgm_list.length),
+        bgmTags: currentDraft.bgm_tags,
+        name: currentDraft.name,
       }),
     onError(error) {
       showToast({
@@ -214,7 +228,7 @@ export function BackgroundManagerPage() {
 
   const imageUploadMutation = useMutation({
     mutationFn: (paths: string[]) =>
-      uploadBackgroundImages({ bgTags: draft.bg_tags, name: currentBackgroundName, paths }),
+      uploadBackgroundImages({ bgTags: currentDraft.bg_tags, name: currentBackgroundName, paths }),
     onError(error) {
       showToast({
         kind: "error",
@@ -245,9 +259,36 @@ export function BackgroundManagerPage() {
     },
   });
 
+  const autoLabelMutation = useMutation({
+    mutationFn: () =>
+      autoLabelBackgroundImages(currentBackgroundName, {
+        onTaskUpdate: setAutoLabelTask,
+      }),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("mediaAutoLabel.error"),
+        title: t("mediaAutoLabel.action"),
+      });
+    },
+    onSuccess(result) {
+      queryClient.invalidateQueries({ queryKey: backgroundsQueryKey });
+      setDraft((current) => ({ ...current, bg_tags: result.tags }));
+      showToast({
+        kind: result.failedCount ? "info" : "success",
+        message: t("mediaAutoLabel.complete", {
+          annotated: result.annotatedCount,
+          failed: result.failedCount,
+          skipped: result.skippedCount,
+        }),
+        title: t("mediaAutoLabel.action"),
+      });
+    },
+  });
+
   const bgmUploadMutation = useMutation({
     mutationFn: (paths: string[]) =>
-      uploadBackgroundBgm({ bgmTags: draft.bgm_tags, name: currentBackgroundName, paths }),
+      uploadBackgroundBgm({ bgmTags: currentDraft.bgm_tags, name: currentBackgroundName, paths }),
     onError(error) {
       showToast({
         kind: "error",
@@ -279,7 +320,8 @@ export function BackgroundManagerPage() {
   });
 
   const imageDeleteMutation = useMutation({
-    mutationFn: ({ index, name }: { index: number; name: string }) => deleteBackgroundImage(name, index),
+    mutationFn: ({ index, name }: { index: number; itemCount: number; name: string; tagBlock: string }) =>
+      deleteBackgroundImage(name, index),
     onError(error) {
       showToast({
         kind: "error",
@@ -287,9 +329,17 @@ export function BackgroundManagerPage() {
         title: t("common.remove"),
       });
     },
-    onSuccess(background) {
-      queryClient.invalidateQueries({ queryKey: backgroundsQueryKey });
-      setDraft((current) => ({ ...current, bg_tags: background.bg_tags, sprites: background.sprites }));
+    onSuccess(background, variables) {
+      const bgTags = removeTagRows(variables.tagBlock, variables.itemCount, [variables.index], "场景");
+      const nextBackground = { ...background, bg_tags: bgTags };
+      queryClient.setQueryData<Background[]>(backgroundsQueryKey, (current = []) =>
+        current.map((item) => (item.name === nextBackground.name ? nextBackground : item)),
+      );
+      setDraft((current) => ({
+        ...current,
+        bg_tags: removeTagRows(current.bg_tags, current.sprites.length, [variables.index], "场景"),
+        sprites: background.sprites,
+      }));
       showToast({ kind: "success", title: t("common.remove") });
     },
   });
@@ -311,7 +361,8 @@ export function BackgroundManagerPage() {
   });
 
   const bgmDeleteMutation = useMutation({
-    mutationFn: ({ index, name }: { index: number; name: string }) => deleteBackgroundBgm(name, index),
+    mutationFn: ({ index, name }: { index: number; itemCount: number; name: string; tagBlock: string }) =>
+      deleteBackgroundBgm(name, index),
     onError(error) {
       showToast({
         kind: "error",
@@ -319,16 +370,24 @@ export function BackgroundManagerPage() {
         title: t("common.remove"),
       });
     },
-    onSuccess(background) {
-      queryClient.invalidateQueries({ queryKey: backgroundsQueryKey });
-      setDraft((current) => ({ ...current, bgm_list: background.bgm_list, bgm_tags: background.bgm_tags }));
+    onSuccess(background, variables) {
+      const bgmTags = removeTagRows(variables.tagBlock, variables.itemCount, [variables.index], "音乐");
+      const nextBackground = { ...background, bgm_tags: bgmTags };
+      queryClient.setQueryData<Background[]>(backgroundsQueryKey, (current = []) =>
+        current.map((item) => (item.name === nextBackground.name ? nextBackground : item)),
+      );
+      setDraft((current) => ({
+        ...current,
+        bgm_list: background.bgm_list,
+        bgm_tags: removeTagRows(current.bgm_tags, current.bgm_list.length, [variables.index], "音乐"),
+      }));
       setSelectedBgmIndexes([]);
       showToast({ kind: "success", title: t("common.remove") });
     },
   });
 
   const bgmBatchDeleteMutation = useMutation({
-    mutationFn: async ({ indexes, name }: { indexes: number[]; name: string }) => {
+    mutationFn: async ({ indexes, name }: { indexes: number[]; itemCount: number; name: string; tagBlock: string }) => {
       let background: Background | null = null;
       for (const index of [...indexes].sort((a, b) => b - a)) {
         background = await deleteBackgroundBgm(name, index);
@@ -345,9 +404,17 @@ export function BackgroundManagerPage() {
         title: t("background.asset.deleteSelectedBgm"),
       });
     },
-    onSuccess(background) {
-      queryClient.invalidateQueries({ queryKey: backgroundsQueryKey });
-      setDraft((current) => ({ ...current, bgm_list: background.bgm_list, bgm_tags: background.bgm_tags }));
+    onSuccess(background, variables) {
+      const bgmTags = removeTagRows(variables.tagBlock, variables.itemCount, variables.indexes, "音乐");
+      const nextBackground = { ...background, bgm_tags: bgmTags };
+      queryClient.setQueryData<Background[]>(backgroundsQueryKey, (current = []) =>
+        current.map((item) => (item.name === nextBackground.name ? nextBackground : item)),
+      );
+      setDraft((current) => ({
+        ...current,
+        bgm_list: background.bgm_list,
+        bgm_tags: removeTagRows(current.bgm_tags, current.bgm_list.length, variables.indexes, "音乐"),
+      }));
       setSelectedBgmIndexes([]);
       showToast({ kind: "success", title: t("background.asset.deleteSelectedBgm") });
     },
@@ -371,30 +438,41 @@ export function BackgroundManagerPage() {
   });
 
   const update = <K extends keyof Background>(name: K, value: Background[K]) => {
-    setDraft((current) => ({ ...current, [name]: value }));
+    setDraft((current) => ({ ...(draftMatchesSelection ? current : structuredClone(currentDraft)), [name]: value }));
+    setDraftSourceName(currentBackgroundName);
     if (name === "name" && String(value).trim()) {
       setNameError("");
     }
   };
 
-  const updateBgmRowTag = useCallback((index: number, value: string) => {
-    setDraft((current) => {
-      const tags = tagContents(current.bgm_tags, current.bgm_list.length);
-      tags[index] = value;
-      return { ...current, bgm_tags: numberedTags("音乐", tags) };
-    });
-  }, []);
+  const updateBgmRowTag = useCallback(
+    (index: number, value: string) => {
+      setDraft((current) => {
+        const baseDraft = draftMatchesSelection ? current : currentDraft;
+        const tags = tagContents(baseDraft.bgm_tags, baseDraft.bgm_list.length);
+        tags[index] = value;
+        return { ...baseDraft, bgm_tags: numberedTags("音乐", tags) };
+      });
+      setDraftSourceName(currentBackgroundName);
+    },
+    [currentBackgroundName, currentDraft, draftMatchesSelection],
+  );
 
-  const updateImageRowTag = useCallback((index: number, value: string) => {
-    setDraft((current) => {
-      const tags = tagContents(current.bg_tags, current.sprites.length);
-      tags[index] = value;
-      return { ...current, bg_tags: numberedTags("场景", tags) };
-    });
-  }, []);
+  const updateImageRowTag = useCallback(
+    (index: number, value: string) => {
+      setDraft((current) => {
+        const baseDraft = draftMatchesSelection ? current : currentDraft;
+        const tags = tagContents(baseDraft.bg_tags, baseDraft.sprites.length);
+        tags[index] = value;
+        return { ...baseDraft, bg_tags: numberedTags("场景", tags) };
+      });
+      setDraftSourceName(currentBackgroundName);
+    },
+    [currentBackgroundName, currentDraft, draftMatchesSelection],
+  );
 
   const openBulkImageTagsDialog = () => {
-    setBulkImageTagsDraft(draft.bg_tags);
+    setBulkImageTagsDraft(currentDraft.bg_tags);
     setBulkImageTagsOpen(true);
   };
 
@@ -411,7 +489,7 @@ export function BackgroundManagerPage() {
   };
 
   const openBulkBgmTagsDialog = () => {
-    setBulkBgmTagsDraft(draft.bgm_tags);
+    setBulkBgmTagsDraft(currentDraft.bgm_tags);
     setBulkBgmTagsOpen(true);
   };
 
@@ -438,11 +516,11 @@ export function BackgroundManagerPage() {
 
   const toggleAllBgmSelection = useCallback(() => {
     setSelectedBgmIndexes((current) => {
-      const validSelection = current.filter((index) => index >= 0 && index < draft.bgm_list.length);
-      const allSelected = draft.bgm_list.length > 0 && validSelection.length === draft.bgm_list.length;
-      return allSelected ? [] : draft.bgm_list.map((_, index) => index);
+      const validSelection = current.filter((index) => index >= 0 && index < currentDraft.bgm_list.length);
+      const allSelected = currentDraft.bgm_list.length > 0 && validSelection.length === currentDraft.bgm_list.length;
+      return allSelected ? [] : currentDraft.bgm_list.map((_, index) => index);
     });
-  }, [draft.bgm_list]);
+  }, [currentDraft.bgm_list]);
 
   const toggleBgmSort = useCallback((key: BgmSortKey) => {
     setBgmSort((current) => {
@@ -455,7 +533,7 @@ export function BackgroundManagerPage() {
 
   const handleImageDelete = useCallback(
     (index: number) => {
-      const image = draft.sprites[index];
+      const image = currentDraft.sprites[index];
       if (!currentBackgroundName || !image) {
         showToast({ kind: "error", title: t("common.remove") });
         return;
@@ -467,12 +545,12 @@ export function BackgroundManagerPage() {
         name: currentBackgroundName,
       });
     },
-    [currentBackgroundName, draft.sprites, showToast, t],
+    [currentBackgroundName, currentDraft.sprites, showToast, t],
   );
 
   const handleBgmDelete = useCallback(
     (index: number) => {
-      const path = draft.bgm_list[index];
+      const path = currentDraft.bgm_list[index];
       if (!currentBackgroundName || !path) {
         showToast({ kind: "error", title: t("common.remove") });
         return;
@@ -484,7 +562,7 @@ export function BackgroundManagerPage() {
         name: currentBackgroundName,
       });
     },
-    [currentBackgroundName, draft.bgm_list, showToast, t],
+    [currentBackgroundName, currentDraft.bgm_list, showToast, t],
   );
 
   const confirmPendingDelete = () => {
@@ -497,16 +575,31 @@ export function BackgroundManagerPage() {
       deleteAllBgm: bgmDeleteAllMutation.mutate,
       deleteAllImages: imageDeleteAllMutation.mutate,
       deleteBackground: deleteMutation.mutate,
-      deleteBgm: bgmDeleteMutation.mutate,
-      deleteImage: imageDeleteMutation.mutate,
-      deleteSelectedBgm: bgmBatchDeleteMutation.mutate,
+      deleteBgm: (input) =>
+        bgmDeleteMutation.mutate({
+          ...input,
+          itemCount: currentDraft.bgm_list.length,
+          tagBlock: currentDraft.bgm_tags,
+        }),
+      deleteImage: (input) =>
+        imageDeleteMutation.mutate({
+          ...input,
+          itemCount: currentDraft.sprites.length,
+          tagBlock: currentDraft.bg_tags,
+        }),
+      deleteSelectedBgm: (input) =>
+        bgmBatchDeleteMutation.mutate({
+          ...input,
+          itemCount: currentDraft.bgm_list.length,
+          tagBlock: currentDraft.bgm_tags,
+        }),
     });
   };
 
   const pendingDeleteCopy = pendingDelete ? backgroundDeleteDialogCopy(pendingDelete, t) : null;
 
   const buildBackgroundSaveInput = (overrides: Partial<Background> = {}) => {
-    const nextDraft = { ...draft, ...overrides };
+    const nextDraft = { ...currentDraft, ...overrides };
     if (!nextDraft.name.trim()) {
       setNameError(t("background.validation.nameRequired"));
       showToast({
@@ -522,7 +615,7 @@ export function BackgroundManagerPage() {
         name: nextDraft.name.trim(),
         sprite_prefix: nextDraft.sprite_prefix.trim() || "temp",
       },
-      originalName: isSavedBackground ? selectedName : undefined,
+      originalName: isSavedBackground ? currentBackgroundName : undefined,
     };
   };
 
@@ -535,12 +628,12 @@ export function BackgroundManagerPage() {
   };
 
   const bgmRowTags = useMemo(
-    () => tagContents(draft.bgm_tags, draft.bgm_list.length),
-    [draft.bgm_list.length, draft.bgm_tags],
+    () => tagContents(currentDraft.bgm_tags, currentDraft.bgm_list.length),
+    [currentDraft.bgm_list.length, currentDraft.bgm_tags],
   );
   const sortedBgmItems = useMemo(() => {
     const direction = bgmSort.direction === "asc" ? 1 : -1;
-    return draft.bgm_list
+    return currentDraft.bgm_list
       .map((path, originalIndex) => ({ filename: baseName(path), originalIndex, path }))
       .sort((left, right) => {
         if (bgmSort.key === "filename") {
@@ -552,16 +645,17 @@ export function BackgroundManagerPage() {
         }
         return (left.originalIndex - right.originalIndex) * direction;
       });
-  }, [bgmSort.direction, bgmSort.key, draft.bgm_list]);
+  }, [bgmSort.direction, bgmSort.key, currentDraft.bgm_list]);
   const imageRowTags = useMemo(
-    () => tagContents(draft.bg_tags, draft.sprites.length),
-    [draft.bg_tags, draft.sprites.length],
+    () => tagContents(currentDraft.bg_tags, currentDraft.sprites.length),
+    [currentDraft.bg_tags, currentDraft.sprites.length],
   );
   const selectedBgmIndexSet = useMemo(() => new Set(selectedBgmIndexes), [selectedBgmIndexes]);
   const backgroundSectionNavItems = [
     { id: "background-info", label: t("background.section.info") },
     { id: "background-images", label: t("background.section.images") },
     { id: "background-bgm", label: t("background.section.bgm") },
+    { id: "background-knowledge", label: t("knowledge.title") },
   ];
 
   return (
@@ -639,6 +733,7 @@ export function BackgroundManagerPage() {
               setIsCreating(true);
               setSelectedName("");
               setDraft(createBackground());
+              setDraftSourceName("");
               setSelectedBgmIndexes([]);
               setSelectedImageIndex(0);
               setNameError("");
@@ -694,7 +789,7 @@ export function BackgroundManagerPage() {
                 icon={<Languages aria-hidden className="button__icon" />}
                 loading={translateMutation.isPending}
                 onClick={() => {
-                  if (!draft.name.trim() && !draft.bg_tags.trim() && !draft.bgm_tags.trim()) {
+                  if (!currentDraft.name.trim() && !currentDraft.bg_tags.trim() && !currentDraft.bgm_tags.trim()) {
                     showToast({
                       kind: "error",
                       message: t("common.fixInvalidFields"),
@@ -734,7 +829,7 @@ export function BackgroundManagerPage() {
                 <TextInput
                   className={nameError ? "input--error" : ""}
                   onChange={(event) => update("name", event.target.value)}
-                  value={draft.name}
+                  value={currentDraft.name}
                 />
                 {nameError ? <span className="field-error">{nameError}</span> : null}
               </span>
@@ -744,7 +839,7 @@ export function BackgroundManagerPage() {
               <span className="field-row__control">
                 <TextInput
                   onChange={(event) => update("sprite_prefix", event.target.value)}
-                  value={draft.sprite_prefix}
+                  value={currentDraft.sprite_prefix}
                 />
               </span>
             </label>
@@ -753,16 +848,26 @@ export function BackgroundManagerPage() {
 
         {/* Sprite gallery */}
         <BackgroundSpriteGallery
+          autoLabelAvailable={visionAvailable}
+          autoLabelDisabled={
+            !isSavedBackground || !currentDraft.sprites.length || !imageRowTags.some((tag) => !tag.trim())
+          }
+          autoLabelPending={autoLabelMutation.isPending}
           currentBackgroundName={currentBackgroundName}
           deletePending={imageDeleteMutation.isPending}
           id="background-images"
           imageRowTags={imageRowTags}
           onClearImages={() => {
-            if (!currentBackgroundName || !draft.sprites.length) {
+            if (!currentBackgroundName || !currentDraft.sprites.length) {
               showToast({ kind: "error", title: t("background.asset.clearImages") });
               return;
             }
-            setPendingDelete({ count: draft.sprites.length, kind: "all-images", name: currentBackgroundName });
+            setPendingDelete({ count: currentDraft.sprites.length, kind: "all-images", name: currentBackgroundName });
+          }}
+          onAutoLabel={() => {
+            setAutoLabelTask(null);
+            setAutoLabelDialogOpen(true);
+            autoLabelMutation.mutate();
           }}
           onDeleteImage={handleImageDelete}
           onOpenBulkTags={openBulkImageTagsDialog}
@@ -775,27 +880,27 @@ export function BackgroundManagerPage() {
               });
               return;
             }
-            imageTagsSaveMutation.mutate(draft.bg_tags);
+            imageTagsSaveMutation.mutate(currentDraft.bg_tags);
           }}
           onSelectImage={setSelectedImageIndex}
           onUpdateImageTag={updateImageRowTag}
           onUploadImages={(paths) => imageUploadMutation.mutate(paths)}
           saveTagsPending={imageTagsSaveMutation.isPending}
           selectedImageIndex={selectedImageIndex}
-          sprites={draft.sprites}
+          sprites={currentDraft.sprites}
           uploadPending={imageUploadMutation.isPending}
         />
 
         {/* BGM section */}
         <BackgroundMusicSection
           batchDeletePending={bgmBatchDeleteMutation.isPending}
-          bgmList={draft.bgm_list}
+          bgmList={currentDraft.bgm_list}
           bgmRowTags={bgmRowTags}
           currentBackgroundName={currentBackgroundName}
           deletePending={bgmDeleteMutation.isPending}
           id="background-bgm"
           onBatchDelete={() => {
-            const validIndexes = selectedBgmIndexes.filter((i) => i >= 0 && i < draft.bgm_list.length);
+            const validIndexes = selectedBgmIndexes.filter((i) => i >= 0 && i < currentDraft.bgm_list.length);
             if (!validIndexes.length) {
               showToast({ kind: "error", title: t("background.asset.noSelectedBgm") });
               return;
@@ -808,11 +913,11 @@ export function BackgroundManagerPage() {
             });
           }}
           onClearAll={() => {
-            if (!currentBackgroundName || !draft.bgm_list.length) {
+            if (!currentBackgroundName || !currentDraft.bgm_list.length) {
               showToast({ kind: "error", title: t("background.asset.clearBgm") });
               return;
             }
-            setPendingDelete({ count: draft.bgm_list.length, kind: "all-bgm", name: currentBackgroundName });
+            setPendingDelete({ count: currentDraft.bgm_list.length, kind: "all-bgm", name: currentBackgroundName });
           }}
           onDelete={handleBgmDelete}
           onOpenBulkTags={openBulkBgmTagsDialog}
@@ -827,6 +932,9 @@ export function BackgroundManagerPage() {
           sortedBgmItems={sortedBgmItems}
           uploadPending={bgmUploadMutation.isPending}
         />
+        <section aria-label={t("knowledge.title")} className="section page-section-anchor" id="background-knowledge">
+          <KnowledgeManagerPage embedded />
+        </section>
       </section>
 
       <BackgroundTagsDialog
@@ -859,6 +967,13 @@ export function BackgroundManagerPage() {
         onConfirm={confirmPendingDelete}
         open={Boolean(pendingDelete)}
         title={pendingDeleteCopy?.title ?? t("common.delete")}
+      />
+      <MediaAutoLabelProgressDialog
+        onClose={() => setAutoLabelDialogOpen(false)}
+        open={autoLabelDialogOpen}
+        pending={autoLabelMutation.isPending}
+        result={autoLabelMutation.data ?? null}
+        task={autoLabelTask}
       />
     </div>
   );

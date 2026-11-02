@@ -6,6 +6,7 @@ mod managed;
 mod manifest;
 mod python_env;
 mod python_probe;
+mod pytorch;
 mod resolver;
 
 pub use resolver::{RuntimeCandidateView, RuntimeRepairActionKind, RuntimeScanView};
@@ -18,6 +19,67 @@ pub struct PythonRuntime {
     pub command: Command,
     pub description: String,
     pub candidate_id: Option<String>,
+}
+
+pub fn manual_install_command(
+    source_root: &Path,
+    candidate: Option<&RuntimeCandidateView>,
+) -> Option<String> {
+    let candidate = candidate.filter(|candidate| {
+        candidate.managed
+            && !candidate.path.trim().is_empty()
+            && matches!(
+                candidate.status,
+                resolver::RuntimeCandidateStatus::Ready
+                    | resolver::RuntimeCandidateStatus::MissingCoreDeps
+                    | resolver::RuntimeCandidateStatus::MissingOptionalDeps
+                    | resolver::RuntimeCandidateStatus::BrokenBridge
+            )
+    })?;
+    let python = if candidate.display_path.trim().is_empty() {
+        python_probe::display_path(Path::new(&candidate.path))
+    } else {
+        candidate.display_path.clone()
+    };
+    let profile = runtime_profile();
+    let requirements =
+        python_probe::display_path(&runtime_requirements_path(source_root, &profile));
+    Some(manual_install_command_for_shell(
+        &python,
+        &requirements,
+        cfg!(windows),
+    ))
+}
+
+fn runtime_requirements_path(source_root: &Path, profile: &str) -> PathBuf {
+    let runtime_manifest = manifest::load_manifest(source_root).ok();
+    let requirements =
+        manifest::runtime_requirements(source_root, runtime_manifest.as_ref(), profile);
+    let path = PathBuf::from(requirements.requirements_file);
+    if path.is_absolute() {
+        path
+    } else {
+        source_root.join(path)
+    }
+}
+
+fn manual_install_command_for_shell(python: &str, requirements: &str, windows: bool) -> String {
+    let python = quote_shell_argument(python, windows);
+    let requirements = quote_shell_argument(requirements, windows);
+    let invocation = if windows {
+        format!("& {python}")
+    } else {
+        python
+    };
+    format!("{invocation} -m pip install --requirement {requirements}")
+}
+
+fn quote_shell_argument(value: &str, windows: bool) -> String {
+    if windows {
+        format!("'{}'", value.replace('\'', "''"))
+    } else {
+        format!("'{}'", value.replace('\'', "'\\''"))
+    }
 }
 
 pub fn scan_runtime_view<R: Runtime>(app: &impl Manager<R>, source_root: &Path) -> RuntimeScanView {
@@ -223,6 +285,9 @@ fn runtime_profile() -> String {
 fn bridge_launch_python(python: &Path) -> PathBuf {
     #[cfg(windows)]
     {
+        if crate::show_backend_console() {
+            return python.to_path_buf();
+        }
         pythonw_for_python(python).unwrap_or_else(|| python.to_path_buf())
     }
     #[cfg(not(windows))]
@@ -275,6 +340,57 @@ fn normalized_path(path: &Path) -> PathBuf {
 mod tests {
     use super::*;
     use std::{fs, time::SystemTime};
+
+    #[test]
+    fn manual_install_command_quotes_windows_paths_for_powershell() {
+        assert_eq!(
+            manual_install_command_for_shell(
+                r"C:\Users\O'Brien\Shinsekai runtime\python.exe",
+                r"C:\Program Files\Shinsekai\requirements-runtime-core.txt",
+                true,
+            ),
+            "& 'C:\\Users\\O''Brien\\Shinsekai runtime\\python.exe' -m pip install --requirement 'C:\\Program Files\\Shinsekai\\requirements-runtime-core.txt'"
+        );
+    }
+
+    #[test]
+    fn manual_install_command_quotes_posix_paths() {
+        assert_eq!(
+            manual_install_command_for_shell(
+                "/Users/o'brien/Shinsekai runtime/bin/python3",
+                "/Applications/Shinsekai/resources/requirements-runtime-core.txt",
+                false,
+            ),
+            "'/Users/o'\\''brien/Shinsekai runtime/bin/python3' -m pip install --requirement '/Applications/Shinsekai/resources/requirements-runtime-core.txt'"
+        );
+    }
+
+    #[test]
+    fn manual_install_command_uses_profile_requirements() {
+        let source_root = unique_temp_dir("manual-profile-requirements");
+        fs::create_dir_all(&source_root).unwrap();
+        fs::write(
+            source_root.join(manifest::MANIFEST_FILE),
+            r#"{
+                "version": "test",
+                "profiles": {
+                    "desktop-core": { "requirements": "requirements-runtime-core.txt" },
+                    "local-ai": {
+                        "extends": "desktop-core",
+                        "requirements": "requirements-runtime-local-ai.txt"
+                    }
+                }
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            runtime_requirements_path(&source_root, "local-ai"),
+            source_root.join("requirements-runtime-local-ai.txt")
+        );
+
+        let _ = fs::remove_dir_all(source_root);
+    }
 
     #[test]
     fn ready_candidate_id_for_path_matches_python_executable() {

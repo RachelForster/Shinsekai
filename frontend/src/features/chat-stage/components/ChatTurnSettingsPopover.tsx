@@ -1,0 +1,155 @@
+import { useEffect, useState } from "react";
+import { Play, X } from "lucide-react";
+
+import { useI18n } from "../../../shared/i18n";
+import type { ChatTurnOptions, ChatTurnState } from "../../../shared/platform/types";
+import { Button, IconButton, Switch } from "../../../shared/ui";
+
+export function ChatTurnSettingsPopover({
+  bgmVolume,
+  effectVolume,
+  longPressTalk,
+  onBgmVolumeChange,
+  onEffectVolumeChange,
+  onLongPressTalkChange,
+  onCancelBatch,
+  onClose,
+  onEditConversation,
+  onFlushBatch,
+  onTurnOptionsChange,
+  open,
+  turnOptions,
+  turnState,
+}: {
+  bgmVolume: number;
+  effectVolume: number;
+  longPressTalk: boolean;
+  onBgmVolumeChange: (value: number) => void;
+  onEffectVolumeChange: (value: number) => void;
+  onLongPressTalkChange: (value: boolean) => void;
+  onCancelBatch: () => void;
+  onClose: () => void;
+  onEditConversation?: () => void;
+  onFlushBatch: () => void;
+  onTurnOptionsChange: (options: ChatTurnOptions) => void;
+  open: boolean;
+  turnOptions: ChatTurnOptions;
+  turnState: ChatTurnState;
+}) {
+  const { t } = useI18n();
+  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(turnState.remainingSeconds);
+
+  useEffect(() => {
+    setRemainingSeconds(turnState.remainingSeconds);
+  }, [turnState.remainingSeconds]);
+
+  useEffect(() => {
+    if (!open || !turnState.scheduled || remainingSeconds == null || remainingSeconds <= 0) {
+      return;
+    }
+    const timer = window.setTimeout(
+      () => setRemainingSeconds((current) => (current == null ? null : Math.max(0, current - 1))),
+      1000,
+    );
+    return () => window.clearTimeout(timer);
+  }, [open, remainingSeconds, turnState.scheduled]);
+
+  if (!open) {
+    return null;
+  }
+
+  return (
+    <section
+      aria-label={t("chat.input.settings")}
+      className="dialog-stage-controls__chat-settings"
+      id="chat-turn-settings-popover"
+      role="dialog"
+    >
+      <header className="dialog-stage-controls__chat-settings-header">
+        <strong>{t("chat.input.settings")}</strong>
+        <IconButton className="dialog-stage-controls__chat-settings-close" label={t("common.close")} onClick={onClose}>
+          <X aria-hidden />
+        </IconButton>
+      </header>
+      {onEditConversation && <Button onClick={onEditConversation}>{t("conversation.editCurrent")}</Button>}
+      <div className="dialog-stage-controls__chat-settings-options">
+        <Switch
+          checked={turnOptions.batchEnabled}
+          className="dialog-stage-controls__chat-setting"
+          id="chat-turn-settings-batch"
+          onChange={(event) => onTurnOptionsChange({ ...turnOptions, batchEnabled: event.currentTarget.checked })}
+        >
+          {t("chat.config.batchEnabled")}
+        </Switch>
+        <Switch
+          checked={turnOptions.interruptEnabled}
+          className="dialog-stage-controls__chat-setting"
+          id="chat-turn-settings-interrupt"
+          onChange={(event) => onTurnOptionsChange({ ...turnOptions, interruptEnabled: event.currentTarget.checked })}
+        >
+          {t("chat.config.interruptEnabled")}
+        </Switch>
+        <Switch
+          checked={longPressTalk}
+          className="dialog-stage-controls__chat-setting"
+          id="chat-turn-settings-hold-to-talk"
+          onChange={(event) => onLongPressTalkChange(event.currentTarget.checked)}
+        >
+          {t("chat.config.longPressTalk")}
+        </Switch>
+        <label className="dialog-stage-controls__chat-setting dialog-stage-controls__chat-slider">
+          <span className="dialog-stage-controls__chat-slider-label">
+            {t("chat.config.bgmVolume")}
+            <span className="dialog-stage-controls__chat-slider-value">{Math.round(bgmVolume * 100)}%</span>
+          </span>
+          <input
+            aria-label={t("chat.config.bgmVolume")}
+            className="dialog-stage-controls__chat-slider-input"
+            max={1}
+            min={0}
+            onChange={(event) => onBgmVolumeChange(Number(event.currentTarget.value))}
+            step={0.05}
+            type="range"
+            value={bgmVolume}
+          />
+        </label>
+        <label className="dialog-stage-controls__chat-setting dialog-stage-controls__chat-slider">
+          <span className="dialog-stage-controls__chat-slider-label">
+            {t("chat.config.effectVolume")}
+            <span className="dialog-stage-controls__chat-slider-value">{Math.round(effectVolume * 100)}%</span>
+          </span>
+          <input
+            aria-label={t("chat.config.effectVolume")}
+            className="dialog-stage-controls__chat-slider-input"
+            max={1}
+            min={0}
+            onChange={(event) => onEffectVolumeChange(Number(event.currentTarget.value))}
+            step={0.05}
+            type="range"
+            value={effectVolume}
+          />
+        </label>
+      </div>
+      {turnOptions.batchEnabled && turnState.pendingCount > 0 ? (
+        <div className="dialog-stage-controls__batch-row">
+          <span className="dialog-stage-controls__batch-status" role="status">
+            {turnState.typing
+              ? t("chat.input.batchWaiting", { count: turnState.pendingCount })
+              : t("chat.input.batchCountdown", {
+                  count: turnState.pendingCount,
+                  seconds: remainingSeconds ?? turnOptions.batchIdleSeconds,
+                })}
+          </span>
+          <div className="dialog-stage-controls__batch-actions">
+            <IconButton label={t("chat.input.batchSendNow")} onClick={onFlushBatch}>
+              <Play aria-hidden />
+            </IconButton>
+            <IconButton label={t("chat.input.batchCancel")} onClick={onCancelBatch}>
+              <X aria-hidden />
+            </IconButton>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}

@@ -1,4 +1,5 @@
 const ONBOARDING_SEEN_KEY = "shinsekai-onboarding-seen";
+const FIRST_INSTALL_BASELINE_PENDING_KEY = "shinsekai-first-install-baseline-pending";
 
 const ONBOARDING_PATH = "/settings/onboarding";
 const TEMPLATE_PATH = "/settings/templates";
@@ -25,11 +26,27 @@ function getLocalStorage() {
 
 export function getInitialSettingsPath() {
   const localStorage = getLocalStorage();
-  const hasSeenOnboarding = readStorage(localStorage, ONBOARDING_SEEN_KEY) === "true";
-  if (hasSeenOnboarding) {
+  if (hasSeenOnboarding()) {
     return TEMPLATE_PATH;
   }
 
   writeStorage(localStorage, ONBOARDING_SEEN_KEY, "true");
+  writeStorage(localStorage, FIRST_INSTALL_BASELINE_PENDING_KEY, "true");
   return ONBOARDING_PATH;
+}
+
+export function hasSeenOnboarding() {
+  return readStorage(getLocalStorage(), ONBOARDING_SEEN_KEY) === "true";
+}
+
+export function hasPendingFirstInstallBaseline() {
+  return readStorage(getLocalStorage(), FIRST_INSTALL_BASELINE_PENDING_KEY) === "true";
+}
+
+export function clearPendingFirstInstallBaseline() {
+  try {
+    getLocalStorage()?.removeItem(FIRST_INSTALL_BASELINE_PENDING_KEY);
+  } catch {
+    // Storage may be unavailable in restricted browser contexts.
+  }
 }

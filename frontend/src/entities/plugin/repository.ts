@@ -14,7 +14,9 @@ import type {
 } from "./types";
 
 export const pluginCatalogQueryKey = ["plugins", "catalog"] as const;
+export const pluginLoadStatusQueryKey = ["plugins", "status"] as const;
 export const pluginsQueryKey = ["plugins"] as const;
+export const pluginSlotContributionsQueryKey = ["plugins", "slot-contributions"] as const;
 export const mcpConfigQueryKey = ["plugins", "mcp", "config"] as const;
 
 export function pluginUiQueryKey(id: string) {
@@ -23,6 +25,18 @@ export function pluginUiQueryKey(id: string) {
 
 export function listPlugins() {
   return getPlatform().plugins.list();
+}
+
+export function getPluginLoadStatus() {
+  return getPlatform().plugins.status();
+}
+
+export function listPluginSlotContributions() {
+  return getPlatform().plugins.listSlotContributions();
+}
+
+export function runPluginSlotContribution(pluginId: string, contributionId: string) {
+  return getPlatform().plugins.runSlotContribution(pluginId, contributionId);
 }
 
 export function getPluginUiDetail(id: string): Promise<PluginUIDetail> {

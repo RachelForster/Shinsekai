@@ -9,12 +9,24 @@ export function getAppConfig() {
   return getPlatform().config.get();
 }
 
+export function getMemoryStatus(options?: { startLoading?: boolean }) {
+  return getPlatform().config.getMemoryStatus(options);
+}
+
+export function detectNetworkProxy() {
+  return getPlatform().config.detectNetworkProxy();
+}
+
 export function fetchLlmModels(input: { apiKey: string; baseUrl: string; provider: string }) {
   return getPlatform().config.fetchLlmModels(input);
 }
 
 export function testLlmConnection(input: { apiKey: string; baseUrl: string; model: string; provider: string }) {
   return getPlatform().config.testLlmConnection(input);
+}
+
+export function testComfyuiConnection(input: { baseUrl: string }) {
+  return getPlatform().config.testComfyuiConnection(input);
 }
 
 export function downloadTtsBundle(

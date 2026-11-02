@@ -271,7 +271,7 @@ React 组件命名：
 
 ## 7. 聊天主题扩展
 
-聊天窗允许通过 `data/chat_ui_theme.json` 或配置路径覆盖局部外观。主题扩展只能影响视觉声明，不应改变布局稳定性。
+聊天皮肤以 `data/chat_ui_themes/<id>/theme.json` 和主题目录内的静态资源定义。主题扩展只能影响白名单内的视觉声明和受控布局参数，不应改变布局稳定性。完整契约见 [`docs/CHAT_UI_THEME_GUIDE_zh-CN.md`](docs/CHAT_UI_THEME_GUIDE_zh-CN.md)。
 
 允许：
 
@@ -287,7 +287,7 @@ React 组件命名：
 
 React 实现：
 
-- 主题 JSON 进入 `theme/chatChromeTheme.ts` 解析。
+- 主题 JSON 由 `frontend/src/shared/theme/chatTheme.ts` 解析。
 - 解析结果转成 CSS variables 或受控 style object。
 - 所有用户主题字段必须经过 allowlist 过滤。
 - 组件只读取 theme token，不拼接任意 CSS 字符串。

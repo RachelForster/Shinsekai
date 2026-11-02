@@ -1,6 +1,6 @@
 import type { FrontendLanguage } from "../../shared/i18n/messages";
 
-export type OnboardingStepId = "api" | "plugins" | "characters" | "backgrounds" | "chat";
+export type OnboardingStepId = "api" | "plugins" | "characters" | "backgrounds" | "complete";
 
 export type OnboardingCopy = {
   actions: {
@@ -40,6 +40,7 @@ export type OnboardingCopy = {
     ttsPath: string;
     ttsProvider: string;
     ttsSpeed: string;
+    unsavedWarning: string;
     voiceDescription: string;
     voiceTitle: string;
   };
@@ -55,28 +56,6 @@ export type OnboardingCopy = {
     title: string;
     transparentBody: string;
     transparentTitle: string;
-  };
-  chat: {
-    background: string;
-    character: string;
-    description: string;
-    multiCharacterHint: string;
-    noBackground: string;
-    noCharacter: string;
-    noTemplate: string;
-    optionHelp: string;
-    template: string;
-    templateCreated: string;
-    scenario: string;
-    title: string;
-    toggleCg: string;
-    toggleChoice: string;
-    toggleCot: string;
-    toggleEffect: string;
-    toggleNarration: string;
-    toggleStat: string;
-    toggleTranslation: string;
-    togglesTitle: string;
   };
   characters: {
     color: string;
@@ -96,24 +75,39 @@ export type OnboardingCopy = {
     loading: string;
     selectPlaceholder: string;
   };
+  complete: {
+    bannerBody: string;
+    bannerTitle: string;
+    description: string;
+    openTemplates: string;
+    title: string;
+  };
   plugins: {
     aiDependencyHint: string;
     browserBody: string;
     browserGuide: string;
     browserTitle: string;
+    configReady: string;
+    configure: string;
     dependencyStep: string;
     description: string;
     empty: string;
+    installDone: string;
+    installPending: string;
     installSelected: string;
+    installedNoConfig: string;
     loading: string;
     marketplaceHint: string;
     noMatch: string;
+    reloadFailed: string;
+    reloadPending: string;
     selectedCount: string;
     title: string;
     visualBody: string;
     visualGuide: string;
     visualTitle: string;
     voiceBody: string;
+    uninstalledWarning: string;
     voiceGuide: string;
     voiceTitle: string;
   };
@@ -166,6 +160,8 @@ export const onboardingCopy: Record<FrontendLanguage, OnboardingCopy> = {
       ttsPath: "TTS service path / URL",
       ttsProvider: "Voice provider",
       ttsSpeed: "Speech speed",
+      unsavedWarning:
+        "You haven't saved your API configuration yet. Shinsekai can't respond without an LLM provider. Skip anyway?",
       voiceDescription: "Choose a voice provider and keep a practical speech speed.",
       voiceTitle: "Voice",
     },
@@ -182,29 +178,6 @@ export const onboardingCopy: Record<FrontendLanguage, OnboardingCopy> = {
       transparentBody:
         "Skipping background import is fine. With a transparent stage, Shinsekai can run like a desktop companion on top of your current screen.",
       transparentTitle: "Transparent desktop companion",
-    },
-    chat: {
-      background: "Background",
-      character: "Character",
-      description: "Create a quick launch template, then launch or resume chat.",
-      multiCharacterHint: "Hold Ctrl or Shift to select multiple characters for group chat.",
-      noBackground: "Create or import a background first.",
-      noCharacter: "Create or import a character first.",
-      noTemplate: "Create a quick template first.",
-      optionHelp:
-        "To turn off RPG choices, narration, or the stat panel in the top-left corner, disable choices, narration, or the status panel here before launching chat.",
-      template: "Template",
-      templateCreated: "Quick template saved",
-      scenario: "Scenario",
-      title: "Enable chat",
-      toggleCg: "Use CG generation",
-      toggleChoice: "Enable choices",
-      toggleCot: "Reasoning prompts",
-      toggleEffect: "Scene effects",
-      toggleNarration: "Narration",
-      toggleStat: "Status panel",
-      toggleTranslation: "Translation",
-      togglesTitle: "Common toggles",
     },
     characters: {
       color: "Theme color",
@@ -224,6 +197,14 @@ export const onboardingCopy: Record<FrontendLanguage, OnboardingCopy> = {
       loading: "Loading",
       selectPlaceholder: "Select",
     },
+    complete: {
+      bannerBody:
+        "Open the template page to choose characters and a chat template. You can generate, edit, launch, or quickly restart from there.",
+      bannerTitle: "Setup complete. Time to chat.",
+      description: "Everything important is ready. Continue in Templates for character and template selection.",
+      openTemplates: "Open templates",
+      title: "Ready",
+    },
     plugins: {
       aiDependencyHint:
         "Visual and voice input plugins need AI dependencies. Installation can take a while, especially during package download and extraction.",
@@ -231,15 +212,24 @@ export const onboardingCopy: Record<FrontendLanguage, OnboardingCopy> = {
       browserGuide:
         "After installation, open plugin settings and turn off headless mode when you want to see browser actions.",
       browserTitle: "Browser plugin",
+      configReady: "Installed and reloaded. Configuration is ready.",
+      configure: "Configure",
       dependencyStep: "Install AI dependencies first, then download plugins.",
       description: "Install common extensions directly from the guide.",
       empty: "No plugin packages are available right now.",
+      installDone: "Dependencies and selected plugins are installed. Plugins were reloaded and are ready to configure.",
+      installPending: "Installing dependencies first, then downloading and installing the selected plugins.",
       installSelected: "One-click download",
+      installedNoConfig: "Installed and reloaded. No separate plugin settings are needed.",
       loading: "Loading plugin catalog",
       marketplaceHint: "Find more plugins in Plugins > Discover.",
       noMatch: "No matching market plugin was found yet.",
+      reloadFailed: "Dependencies and plugins were installed, but plugin reload failed",
+      reloadPending: "Download finished. Reloading plugins so the new settings pages become available...",
       selectedCount: "{count} selected",
       title: "Common plugins",
+      uninstalledWarning:
+        "No plugins have been installed yet. Voice, vision, and browser features won't be available. Skip anyway?",
       visualBody: "Gives the assistant visual understanding for screen and image workflows.",
       visualGuide: "After installation, enable active screen recognition in the visual plugin settings.",
       visualTitle: "Visual plugin",
@@ -247,7 +237,7 @@ export const onboardingCopy: Record<FrontendLanguage, OnboardingCopy> = {
       voiceGuide: "After installation, configure voice input in the API page.",
       voiceTitle: "Voice input plugin",
     },
-    finishLabel: "Start chatting",
+    finishLabel: "Open templates",
     optionalLabel: "Skippable",
     requiredLabel: "Required",
     stepLabel: "Step {current} of {total}",
@@ -294,6 +284,8 @@ export const onboardingCopy: Record<FrontendLanguage, OnboardingCopy> = {
       ttsPath: "TTS サービスパス / URL",
       ttsProvider: "音声プロバイダー",
       ttsSpeed: "話速",
+      unsavedWarning:
+        "API 設定がまだ保存されていません。LLM プロバイダーがないと AI は応答できません。それでもスキップしますか？",
       voiceDescription: "音声プロバイダーと実用的な話速を設定します。",
       voiceTitle: "音声",
     },
@@ -310,29 +302,6 @@ export const onboardingCopy: Record<FrontendLanguage, OnboardingCopy> = {
       transparentBody:
         "背景を導入しなくても大丈夫です。透明背景のままなら、今の画面の上でデスクトップマスコットとして使えます。",
       transparentTitle: "透明背景でデスクトップマスコット",
-    },
-    chat: {
-      background: "背景",
-      character: "キャラクター",
-      description: "クイック起動テンプレートを作成し、チャットを開始します。",
-      multiCharacterHint: "Ctrl または Shift を押しながら複数キャラクターを選択できます。",
-      noBackground: "先に背景を作成または導入してください。",
-      noCharacter: "先にキャラクターを作成または導入してください。",
-      noTemplate: "先にクイックテンプレートを作成してください。",
-      optionHelp:
-        "RPG の選択肢、ナレーション、または左上のステータスパネルをオフにしたい場合は、チャット開始前にここで「選択肢」「ナレーション」「ステータス」をオフにしてください。",
-      template: "テンプレート",
-      templateCreated: "クイックテンプレートを保存しました",
-      scenario: "シナリオ",
-      title: "チャットを有効化",
-      toggleCg: "CG 生成",
-      toggleChoice: "選択肢",
-      toggleCot: "推論プロンプト",
-      toggleEffect: "演出",
-      toggleNarration: "ナレーション",
-      toggleStat: "ステータス",
-      toggleTranslation: "翻訳",
-      togglesTitle: "よく使う切り替え",
     },
     characters: {
       color: "テーマカラー",
@@ -352,21 +321,39 @@ export const onboardingCopy: Record<FrontendLanguage, OnboardingCopy> = {
       loading: "読み込み中",
       selectPlaceholder: "選択",
     },
+    complete: {
+      bannerBody:
+        "テンプレートページでキャラクターとチャットテンプレートを選択できます。生成、編集、開始、クイック再起動はそこから行えます。",
+      bannerTitle: "設定が完了しました。チャットできます。",
+      description: "必要な準備は整いました。テンプレートページでキャラクターとテンプレートを選びましょう。",
+      openTemplates: "テンプレートへ進む",
+      title: "準備完了",
+    },
     plugins: {
       aiDependencyHint:
         "視覚プラグインと音声入力プラグインは AI 依存関係をインストールします。ダウンロードや展開に時間がかかる場合があります。",
       browserBody: "チャット中に Web ページを閲覧・操作できるようにします。",
       browserGuide: "インストール後、動作を見たい場合はプラグイン設定で headless をオフにしてください。",
       browserTitle: "ブラウザプラグイン",
+      configReady: "インストールと再読み込みが完了しました。設定できます。",
+      configure: "設定へ",
       dependencyStep: "先に AI 依存関係を入れてから、プラグインをダウンロードします。",
       description: "よく使う拡張をガイドから直接インストールします。",
       empty: "現在利用できるプラグインがありません。",
+      installDone: "依存関係と選択したプラグインのインストールが完了しました。プラグインも再読み込み済みです。",
+      installPending: "先に依存関係をインストールし、その後プラグイン本体をダウンロードしてインストールします。",
       installSelected: "一括ダウンロード",
+      installedNoConfig: "インストールと再読み込みが完了しました。追加設定は不要です。",
       loading: "プラグイン一覧を読み込み中",
       marketplaceHint: "その他のプラグインは「プラグイン」>「発見」にあります。",
       noMatch: "対応するマーケットプラグインがまだ見つかりません。",
+      reloadFailed: "依存関係とプラグインはインストールされましたが、プラグイン再読み込みに失敗しました",
+      reloadPending:
+        "ダウンロードが完了しました。新しい設定ページを有効にするため、プラグインを再読み込みしています...",
       selectedCount: "{count} 件選択中",
       title: "よく使うプラグイン",
+      uninstalledWarning:
+        "プラグインがまだインストールされていません。音声・視覚・ブラウザ機能は利用できません。それでもスキップしますか？",
       visualBody: "画面や画像を理解するための視覚拡張です。",
       visualGuide: "インストール後、視覚プラグイン設定で画面の自動認識を有効にしてください。",
       visualTitle: "視覚プラグイン",
@@ -374,7 +361,7 @@ export const onboardingCopy: Record<FrontendLanguage, OnboardingCopy> = {
       voiceGuide: "インストール後、API ページで音声入力を設定してください。",
       voiceTitle: "音声入力プラグイン",
     },
-    finishLabel: "チャットへ進む",
+    finishLabel: "テンプレートへ進む",
     optionalLabel: "スキップ可",
     requiredLabel: "必須",
     stepLabel: "{total} 中 {current} ステップ",
@@ -420,6 +407,7 @@ export const onboardingCopy: Record<FrontendLanguage, OnboardingCopy> = {
       ttsPath: "TTS 服务路径 / URL",
       ttsProvider: "语音服务商",
       ttsSpeed: "语速",
+      unsavedWarning: "API 配置还没有保存哦。没有 LLM 服务商 AI 就无法回复。确定要跳过吗？",
       voiceDescription: "需要本地语音能力时，直接下载推荐语音包即可。",
       voiceTitle: "语音",
     },
@@ -435,29 +423,6 @@ export const onboardingCopy: Record<FrontendLanguage, OnboardingCopy> = {
       title: "背景",
       transparentBody: "背景不是必填项。不导入背景时，聊天舞台会保持透明，人物可以像桌宠一样悬浮在当前屏幕上。",
       transparentTitle: "也可以使用透明背景",
-    },
-    chat: {
-      background: "背景",
-      character: "人物",
-      description: "创建快速启动模板，然后启动或恢复聊天。",
-      multiCharacterHint: "按住 Ctrl 或 Shift 可以多选人物，用来开启多人聊天。",
-      noBackground: "请先创建或导入背景。",
-      noCharacter: "请先创建或导入人物。",
-      noTemplate: "请先创建快速模板。",
-      optionHelp:
-        "如果你想关闭 RPG 选项、旁白，或者左上角的数值面板，请在这里关闭「启用选项」「旁白」「状态栏」，然后再启动聊天。",
-      template: "模板",
-      templateCreated: "快速模板已保存",
-      scenario: "情景",
-      title: "启用聊天",
-      toggleCg: "启用 CG 生成",
-      toggleChoice: "启用选项",
-      toggleCot: "推理提示",
-      toggleEffect: "场景效果",
-      toggleNarration: "旁白",
-      toggleStat: "状态栏",
-      toggleTranslation: "翻译",
-      togglesTitle: "常见开关",
     },
     characters: {
       color: "主题色",
@@ -477,20 +442,35 @@ export const onboardingCopy: Record<FrontendLanguage, OnboardingCopy> = {
       loading: "正在加载",
       selectPlaceholder: "请选择",
     },
+    complete: {
+      bannerBody: "接下来到模板页选择人物和聊天模板。你可以在那里生成模板、编辑模板、启动聊天或快速重开。",
+      bannerTitle: "已配置完成，可以聊天啦",
+      description: "关键配置已经准备好，下一步去模板页选择人物和模板。",
+      openTemplates: "前往模板页",
+      title: "完成",
+    },
     plugins: {
       aiDependencyHint: "视觉插件和语音输入插件需要安装 AI 依赖，下载和安装时间会比较久，请耐心等待。",
       browserBody: "让工具在聊天中浏览和操作网页。",
       browserGuide: "安装后进入插件设置，想看到浏览器操作时请取消勾选无头模式。",
       browserTitle: "浏览器插件",
+      configReady: "已安装并重载，可以去配置。",
+      configure: "去配置",
       dependencyStep: "会先安装 AI 相关依赖，再下载并安装插件。",
       description: "直接在引导页安装常见扩展。",
       empty: "暂时没有可用插件包。",
+      installDone: "依赖和已选择的插件本体都已安装完成，插件服务也已重载，现在可以进入配置。",
+      installPending: "正在先安装依赖，然后下载并安装已选择的插件本体。",
       installSelected: "一键下载",
+      installedNoConfig: "已安装并重载，此插件无需单独配置。",
       loading: "正在读取插件市场",
       marketplaceHint: "更多插件可以在「插件」>「发现」里查看。",
       noMatch: "暂时没有在插件市场匹配到对应插件。",
+      reloadFailed: "依赖和插件本体已安装，但插件服务重载失败",
+      reloadPending: "下载已完成，正在重载插件服务，让新的设置页生效...",
       selectedCount: "已选择 {count} 项",
       title: "常见插件",
+      uninstalledWarning: "你还没有安装插件哦。跳过的话语音、视觉、浏览器功能都用不了。确定要跳过吗？",
       visualBody: "让助手具备屏幕和图片理解能力。",
       visualGuide: "安装后进入视觉插件设置，勾选主动识别屏幕。",
       visualTitle: "视觉插件",
@@ -498,7 +478,7 @@ export const onboardingCopy: Record<FrontendLanguage, OnboardingCopy> = {
       voiceGuide: "安装后请到 API 页面勾选并配置语音输入。",
       voiceTitle: "语音输入插件",
     },
-    finishLabel: "开始聊天",
+    finishLabel: "进入模板页",
     optionalLabel: "可跳过",
     requiredLabel: "必做",
     stepLabel: "第 {current} / {total} 步",

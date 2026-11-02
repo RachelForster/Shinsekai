@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from core.runtime.workflow import build_runtime_workflow
+from application.runtime.workflow import build_runtime_workflow
 from sdk.graph import (
     DagBuilder,
     DagNode,

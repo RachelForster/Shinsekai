@@ -20,10 +20,15 @@ import {
   testLlmConnection,
   ttsBundleRecommendationQueryKey,
 } from "../../entities/config/repository";
-import type { ApiConfig, SystemConfig } from "../../entities/config/types";
+import type { ApiConfig, AppConfig, SystemConfig } from "../../entities/config/types";
+import { installMissingRuntimeDependency, resumeLastChat } from "../../entities/chat/repository";
+import { ChatInitializationDialog } from "../chat-startup/ChatInitializationDialog";
+import { useChatInitialization } from "../chat-startup/useChatInitialization";
+import { useChatLaunchGuard } from "../chat-startup/useChatLaunchGuard";
+import { useMobileAccessPreference } from "../mobile-access/useMobileAccessPreference";
 import { useAppState } from "../../shared/app-state/AppState";
+import { showChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";
-import { resumeLastChat } from "../../entities/chat/repository";
 import type { LlmModelOption, TaskSnapshot, TtsBundleDownloadResult, TtsBundleKind } from "../../shared/platform/types";
 import {
   AsyncButton,
@@ -39,12 +44,17 @@ import { AdapterExtraSection } from "./AdapterExtraSection";
 import { ApiLanguageSection } from "./ApiLanguageSection";
 import { AsrSettingsSection } from "./AsrSettingsSection";
 import { LlmConnectionSection } from "./LlmConnectionSection";
+import { KnowledgeSettingsSection } from "./KnowledgeSettingsSection";
+import { MemorySettingsSection } from "./MemorySettingsSection";
 import { ResourceLinksSection } from "./ResourceLinksSection";
 import { T2iSetupSection } from "./T2iSetupSection";
 import { TtsBundleSection } from "./TtsBundleSection";
+import { VisionSettingsSection } from "./VisionSettingsSection";
 import {
   activeMapValue,
   adapterSchema,
+  applyDownloadedTtsBundle,
+  applyTtsProviderDefaults,
   apiSchemaWithAdapterOptions,
   asrComputeOptions,
   asrProviderOptions,
@@ -61,13 +71,22 @@ import {
   normalizeApiConfigForUi,
   normalizeAsrProvider,
   normalizeSystemAsrForSave,
+  normalizeTtsProvider,
   normalizeUiLanguage,
   requiresTtsServerConfig,
+  requiresTtsWorkPath,
   resolveAsrWhisperPresetValue,
   syncCompactRatioDraft,
   thinkingUnsupported,
   t2iProviderSelectOptions,
   updateAsrExtraConfig,
+  effectiveVisionApiKey,
+  effectiveVisionBaseUrl,
+  effectiveVisionModel,
+  resolveVisionProvider,
+  visionModelFetchKey,
+  visionProviderLlmProviders,
+  visionProviderRequiresApiKey,
   withCurrentOption,
   VOSK_MODEL_PATH,
   type UiLanguage,
@@ -100,22 +119,34 @@ export function ApiSettingsPage() {
   const { showToast } = useToast();
   const { t } = useI18n();
   const { dispatch } = useAppState();
+  const [mobileAccessEnabled] = useMobileAccessPreference();
   const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
   const ttsBundleRecommendationQuery = useQuery({
     queryFn: getTtsBundleRecommendation,
     queryKey: ttsBundleRecommendationQueryKey,
     staleTime: 300_000,
   });
+  const { refreshRuntimeStatus, runtimeLaunchDisabled, updateRuntimeStatusFromSnapshot } = useChatLaunchGuard();
+  const {
+    closeInitialization,
+    initializationError,
+    initializationOpen,
+    initializationPending,
+    initializationTask,
+    runChatInitialization,
+  } = useChatInitialization();
   const { data, isLoading } = configQuery;
   const [draft, setDraft] = useState<ApiConfig | null>(null);
   const [systemDraft, setSystemDraft] = useState<SystemConfig | null>(null);
   const [errors, setErrors] = useState<SchemaErrorMap<ApiConfig>>({});
   const [modelOptions, setModelOptions] = useState<LlmModelOption[]>([]);
+  const [visionModelOptions, setVisionModelOptions] = useState<LlmModelOption[]>([]);
   const [llmConnectionDialog, setLlmConnectionDialog] = useState<{ kind: "error" | "success"; message: string } | null>(
     null,
   );
   const [llmConnectionOk, setLlmConnectionOk] = useState(false);
   const activeModelFetchKey = useRef<string | null>(null);
+  const activeVisionModelFetchKey = useRef<string | null>(null);
   const [ttsBundleKind, setTtsBundleKind] = useState<TtsBundleKind>("genie");
   const [ttsBundleKindTouched, setTtsBundleKindTouched] = useState(false);
   const [ttsBundleDialogOpen, setTtsBundleDialogOpen] = useState(false);
@@ -126,15 +157,23 @@ export function ApiSettingsPage() {
     () => apiSchemaWithAdapterOptions(adapterCatalog, draft),
     [adapterCatalog, draft?.t2i_provider, draft?.tts_provider],
   );
+  const installedTtsBundlePathForProvider = (provider: string) => {
+    const normalizedProvider = normalizeTtsProvider(provider);
+    return data?.tts_bundle_installed_paths?.[normalizedProvider] ?? "";
+  };
 
   useEffect(() => {
     if (data?.api_config) {
-      setDraft(normalizeApiConfigForUi(data.api_config));
+      setDraft(
+        normalizeApiConfigForUi(data.api_config, installedTtsBundlePathForProvider(data.api_config.tts_provider)),
+      );
       activeModelFetchKey.current = null;
       setModelOptions([]);
+      activeVisionModelFetchKey.current = null;
+      setVisionModelOptions([]);
       setErrors({});
     }
-  }, [data?.api_config]);
+  }, [data?.api_config, data?.tts_bundle_installed_paths]);
 
   useEffect(() => {
     if (data?.system_config) {
@@ -188,8 +227,14 @@ export function ApiSettingsPage() {
   });
 
   const resumeMutation = useMutation({
-    mutationFn: resumeLastChat,
+    mutationFn: async () => {
+      if (runtimeLaunchDisabled) {
+        throw new Error(t("launch.runtimeBusy"));
+      }
+      return runChatInitialization((options) => resumeLastChat(options, { enableMobileAccess: mobileAccessEnabled }));
+    },
     onError(error) {
+      void refreshRuntimeStatus();
       showToast({
         kind: "error",
         message: error instanceof Error ? error.message : t("api.resume.tip"),
@@ -197,7 +242,42 @@ export function ApiSettingsPage() {
       });
     },
     onSuccess(snapshot) {
-      showToast({ kind: "success", message: snapshot.dialogText, title: t("api.resume.title") });
+      void updateRuntimeStatusFromSnapshot(snapshot);
+      if (snapshot.runtimeDependencyError) {
+        const dependencyError = snapshot.runtimeDependencyError;
+        const shouldInstall = window.confirm(
+          t("runtimeDeps.installConfirm", {
+            module: dependencyError.moduleName,
+            package: dependencyError.packageName,
+          }),
+        );
+        if (!shouldInstall) {
+          showToast({ kind: "error", message: snapshot.dialogText, title: t("api.resume.title") });
+          return;
+        }
+        void installMissingRuntimeDependency({ moduleName: dependencyError.moduleName })
+          .then((result) => {
+            showToast({
+              kind: "success",
+              message: result.message || t("runtimeDeps.installSucceeded"),
+              title: t("runtimeDeps.installTitle"),
+            });
+          })
+          .catch((error: unknown) => {
+            showToast({
+              kind: "error",
+              message: error instanceof Error ? error.message : t("runtimeDeps.installFailed"),
+              title: t("runtimeDeps.installFailed"),
+            });
+          });
+        return;
+      }
+      showToast({
+        kind: "success",
+        message: snapshot.statusMessage || snapshot.dialogText,
+        title: t("api.resume.title"),
+      });
+      void showChatSurface({ snapshot });
     },
   });
 
@@ -273,6 +353,41 @@ export function ApiSettingsPage() {
     },
   });
 
+  const visionModelFetchMutation = useMutation({
+    mutationFn: (input: { apiKey: string; baseUrl: string; fetchKey: string; provider: string }) =>
+      fetchLlmModels({ apiKey: input.apiKey, baseUrl: input.baseUrl, provider: input.provider }),
+    onError(error, input) {
+      if (activeVisionModelFetchKey.current !== input.fetchKey) return;
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("api.vision.fetchFailed"),
+        title: t("api.vision.fetchTitle"),
+      });
+    },
+    onMutate(input) {
+      activeVisionModelFetchKey.current = input.fetchKey;
+    },
+    onSuccess(options, input) {
+      if (activeVisionModelFetchKey.current !== input.fetchKey) return;
+      setVisionModelOptions(options);
+      if (!options.length) {
+        showToast({ kind: "error", message: t("api.vision.fetchEmpty"), title: t("api.vision.fetchTitle") });
+        return;
+      }
+      setDraft((current) => {
+        if (!current || visionModelFetchKey(current) !== input.fetchKey) return current;
+        const provider = resolveVisionProvider(current);
+        const model = activeMapValue(current.vision_model, provider);
+        return model ? current : { ...current, vision_model: { ...current.vision_model, [provider]: options[0].id } };
+      });
+      showToast({
+        kind: "success",
+        message: t("api.vision.fetchDone", { count: options.length }),
+        title: t("api.vision.fetchTitle"),
+      });
+    },
+  });
+
   const ttsBundleMutation = useMutation({
     mutationFn: () => downloadTtsBundle({ kind: ttsBundleKind }, { onTaskUpdate: setTtsBundleTask }),
     onError(error) {
@@ -294,15 +409,7 @@ export function ApiSettingsPage() {
     onSuccess(result) {
       setTtsBundleDialogOpen(false);
       setTtsBundleError(null);
-      setDraft((current) =>
-        current
-          ? {
-              ...current,
-              gpt_sovits_api_path: result.path,
-              tts_provider: result.provider,
-            }
-          : current,
-      );
+      setDraft((current) => (current ? applyDownloadedTtsBundle(current, result) : current));
       showToast({
         kind: "success",
         message: t("api.tts.bundleDone", { path: result.path }),
@@ -363,6 +470,14 @@ export function ApiSettingsPage() {
   const availableModelOptions = mergeModelOptions(modelOptions, activeModel ? [{ id: activeModel, tags: [] }] : []);
   const selectedOption = availableModelOptions.find((option) => option.id === activeModel);
   const modelCandidateListId = "llm-model-candidates";
+  const activeVisionApiKey = effectiveVisionApiKey(draft);
+  const activeVisionBaseUrl = effectiveVisionBaseUrl(draft);
+  const resolvedVisionProvider = resolveVisionProvider(draft);
+  const activeVisionModel = effectiveVisionModel(draft);
+  const availableVisionModelOptions = mergeModelOptions(
+    visionModelOptions,
+    activeVisionModel ? [{ id: activeVisionModel, tags: ["vision"] }] : [],
+  );
   const canCancelTtsBundleDownload =
     ttsBundleMutation.isPending && isTaskRunning(ttsBundleTask) && !ttsBundleTask?.cancelRequested;
   const openTtsBundleDialog = () => {
@@ -408,12 +523,26 @@ export function ApiSettingsPage() {
       activeModelFetchKey.current = null;
       setModelOptions([]);
       resetLlmConnectionState();
+      const baseUrl = String(patch.llm_base_url ?? "");
+      updateDraft({
+        ...patch,
+        llm_base_urls: { ...draft.llm_base_urls, [draft.llm_provider]: baseUrl },
+      });
+      return;
     }
     updateDraft(patch);
   };
 
   const updateSystemDraft = (patch: Partial<SystemConfig>) => {
     setSystemDraft({ ...systemDraft, ...patch });
+  };
+
+  const persistSystemDraftForModel = async () => {
+    const saved = await saveSystemConfig(normalizeSystemAsrForSave(systemDraft));
+    queryClient.setQueryData<AppConfig>(configQueryKey, (current) =>
+      current ? { ...current, system_config: saved } : current,
+    );
+    setSystemDraft(saved);
   };
 
   const handleLanguageChange = (language: UiLanguage) => {
@@ -425,10 +554,28 @@ export function ApiSettingsPage() {
     activeModelFetchKey.current = null;
     setModelOptions([]);
     resetLlmConnectionState();
+    const baseUrl = activeMapValue(draft.llm_base_urls, provider) || llmDefaultBaseUrls[provider] || "";
     setDraft({
       ...draft,
-      llm_base_url: llmDefaultBaseUrls[provider] ?? "",
+      llm_base_url: baseUrl,
+      llm_base_urls: { ...draft.llm_base_urls, [provider]: baseUrl },
       llm_provider: provider,
+    });
+  };
+
+  const updateVisionProvider = (provider: string) => {
+    activeVisionModelFetchKey.current = null;
+    setVisionModelOptions([]);
+    setDraft({
+      ...draft,
+      vision_model:
+        provider === "auto"
+          ? draft.vision_model
+          : {
+              ...draft.vision_model,
+              [provider]: draft.vision_model?.[provider] ?? effectiveVisionModel(draft, provider),
+            },
+      vision_provider: provider,
     });
   };
 
@@ -460,8 +607,32 @@ export function ApiSettingsPage() {
     });
   };
 
+  const updateVisionModel = (value: string) => {
+    setDraft({
+      ...draft,
+      vision_model: { ...draft.vision_model, [resolvedVisionProvider]: value },
+    });
+  };
+
+  const updateVisionSharedCredential = (key: "llm_api_key" | "llm_base_urls", value: string) => {
+    const provider = visionProviderLlmProviders[resolvedVisionProvider];
+    if (!provider) return;
+    activeVisionModelFetchKey.current = null;
+    setVisionModelOptions([]);
+    if (provider === draft.llm_provider) {
+      activeModelFetchKey.current = null;
+      setModelOptions([]);
+      resetLlmConnectionState();
+    }
+    setDraft({
+      ...draft,
+      [key]: { ...draft[key], [provider]: value },
+      ...(key === "llm_base_urls" && provider === draft.llm_provider ? { llm_base_url: value } : {}),
+    });
+  };
+
   const updateAdapterExtra = (
-    bucket: "llm_extra_configs" | "t2i_extra_configs" | "tts_extra_configs",
+    bucket: "llm_extra_configs" | "t2i_extra_configs" | "tts_extra_configs" | "vision_extra_configs",
     provider: string,
     key: string,
     value: unknown,
@@ -491,6 +662,22 @@ export function ApiSettingsPage() {
     });
   };
 
+  const handleFetchVisionModels = () => {
+    if (
+      !activeVisionBaseUrl.trim() ||
+      (visionProviderRequiresApiKey(resolvedVisionProvider) && !activeVisionApiKey.trim())
+    ) {
+      showToast({ kind: "error", message: t("api.vision.fetchMissing"), title: t("api.vision.fetchTitle") });
+      return;
+    }
+    visionModelFetchMutation.mutate({
+      apiKey: activeVisionApiKey || "ollama",
+      baseUrl: activeVisionBaseUrl,
+      fetchKey: visionModelFetchKey(draft),
+      provider: resolvedVisionProvider,
+    });
+  };
+
   const handleTestLlmConnection = () => {
     if (!draft.llm_base_url.trim() || !activeApiKey.trim()) {
       setLlmConnectionOk(false);
@@ -514,6 +701,15 @@ export function ApiSettingsPage() {
     setDraft(updateAsrExtraConfig(draft, provider, key, value));
   };
 
+  const updateTtsDraftFromSchema = (nextDraft: ApiConfig) => {
+    const syncedDraft = syncCompactRatioDraft(nextDraft);
+    if (normalizeTtsProvider(nextDraft.tts_provider) !== normalizeTtsProvider(draft.tts_provider)) {
+      setDraft(applyTtsProviderDefaults(syncedDraft, installedTtsBundlePathForProvider(nextDraft.tts_provider)));
+      return;
+    }
+    setDraft(syncedDraft);
+  };
+
   const llmProviderSelectOptions = withCurrentOption(
     catalogOptions(adapterCatalog?.llm, llmProviderOptions),
     draft.llm_provider,
@@ -522,10 +718,28 @@ export function ApiSettingsPage() {
   const llmExtraSchema = adapterSchema(adapterCatalog?.llm, draft.llm_provider);
   const ttsExtraSchema = adapterSchema(adapterCatalog?.tts, draft.tts_provider);
   const t2iExtraSchema = adapterSchema(adapterCatalog?.t2i, draft.t2i_provider);
+  const visionExtraSchema = adapterSchema(adapterCatalog?.vision, resolvedVisionProvider);
+  const visionProviderOptions = withCurrentOption(
+    catalogOptions(adapterCatalog?.vision, [
+      { label: t("api.vision.auto"), value: "auto" },
+      { label: "DeepSeek Vision", value: "deepseek" },
+      { label: "OpenAI Vision", value: "chatgpt" },
+      { label: "Gemini Vision", value: "gemini" },
+      { label: "Claude Vision", value: "claude" },
+      { label: "豆包视觉", value: "doubao" },
+      { label: "通义千问视觉", value: "qwen" },
+      { label: "Ollama Vision（本地）", value: "ollama" },
+      { label: "Moondream", value: "moondream" },
+    ]).map((option) => (option.value === "auto" ? { ...option, label: t("api.vision.auto") } : option)),
+    draft.vision_provider,
+  );
   const apiSectionNavItems = [
     { id: "api-language", label: t("api.language.title") },
     { id: "api-llm", label: t("api.llm.connectionTitle") },
     { id: "api-tts", label: t("api.tts.bundleTitle") },
+    { id: "api-vision", label: t("api.vision.title") },
+    { id: "api-memory", label: t("api.memory.title") },
+    { id: "api-knowledge", label: t("api.knowledge.title") },
     { id: "api-t2i", label: t("api.t2i.title") },
     { id: "api-asr", label: t("system.asr.title") },
     { id: "api-links", label: t("api.links.title") },
@@ -546,16 +760,42 @@ export function ApiSettingsPage() {
       showToast({ kind: "error", message: "LLM API 基础网址不能包含引号。", title: t("common.validationFailed") });
       return;
     }
+    if (
+      !["auto", "moondream"].includes(draft.vision_provider.toLowerCase()) &&
+      visionProviderLlmProviders[draft.vision_provider] &&
+      (!activeVisionBaseUrl.trim() ||
+        (visionProviderRequiresApiKey(draft.vision_provider) && !activeVisionApiKey.trim()) ||
+        !activeVisionModel.trim())
+    ) {
+      showToast({ kind: "error", message: t("api.vision.required"), title: t("common.validationFailed") });
+      return;
+    }
+    if (containsPathQuotes(activeVisionBaseUrl)) {
+      showToast({ kind: "error", message: t("api.vision.invalidBaseUrl"), title: t("common.validationFailed") });
+      return;
+    }
+    const ttsProvider = normalizeTtsProvider(draft.tts_provider);
+    const isKaggleTts = ttsProvider === "kaggle-gpt-sovits";
     if (requiresTtsServerConfig(draft.tts_provider)) {
-      if (!draft.gpt_sovits_url.trim() || !draft.gpt_sovits_api_path.trim()) {
+      if (!draft.gpt_sovits_url.trim()) {
         showToast({
           kind: "error",
-          message: "当前 TTS 引擎需要填写 URL 和服务启动路径。",
+          message: "当前 TTS 引擎需要填写 URL。",
           title: t("common.validationFailed"),
         });
         return;
       }
-      if (containsPathQuotes(draft.gpt_sovits_url) || containsPathQuotes(draft.gpt_sovits_api_path)) {
+      if (requiresTtsWorkPath(ttsProvider) && !draft.gpt_sovits_api_path.trim()) {
+        const message = "本地 TTS 引擎需要填写服务启动路径。";
+        setErrors({ ...nextErrors, gpt_sovits_api_path: message });
+        showToast({
+          kind: "error",
+          message,
+          title: t("common.validationFailed"),
+        });
+        return;
+      }
+      if (containsPathQuotes(draft.gpt_sovits_url) || (!isKaggleTts && containsPathQuotes(draft.gpt_sovits_api_path))) {
         showToast({
           kind: "error",
           message: "TTS URL 和服务启动路径不能包含引号。",
@@ -568,6 +808,12 @@ export function ApiSettingsPage() {
       ...draft,
       ...buildPayloadFromSchema(apiSchema, draft),
     };
+    if (normalizeTtsProvider(nextConfig.tts_provider) === "kaggle-gpt-sovits") {
+      nextConfig = {
+        ...nextConfig,
+        gpt_sovits_api_path: "",
+      };
+    }
     const nextSystem = normalizeSystemAsrForSave(systemDraft);
     nextConfig = normalizeApiAsrForSave(nextConfig, nextSystem);
     if (thinkingUnsupported(activeModel)) {
@@ -598,6 +844,7 @@ export function ApiSettingsPage() {
             {t("common.save")}
           </AsyncButton>
           <AsyncButton
+            disabled={runtimeLaunchDisabled || initializationPending}
             icon={<RotateCcw aria-hidden className="button__icon" />}
             loading={resumeMutation.isPending}
             onClick={() => resumeMutation.mutate()}
@@ -670,8 +917,41 @@ export function ApiSettingsPage() {
         disabled={saveMutation.isPending}
         errors={errors}
         groups={apiSchema.filter((g) => g.id === "tts")}
-        onChange={(nextDraft) => setDraft(syncCompactRatioDraft(nextDraft))}
+        onChange={updateTtsDraftFromSchema}
         value={draft}
+      />
+      <VisionSettingsSection
+        activeApiKey={activeVisionApiKey}
+        activeBaseUrl={activeVisionBaseUrl}
+        activeModel={activeVisionModel}
+        apiKeyRequired={visionProviderRequiresApiKey(resolvedVisionProvider)}
+        availableModelOptions={availableVisionModelOptions}
+        disabled={saveMutation.isPending}
+        draft={draft}
+        extraSchema={visionExtraSchema}
+        fetchModelsPending={visionModelFetchMutation.isPending}
+        id="api-vision"
+        onAdapterExtraChange={(key, value) =>
+          updateAdapterExtra("vision_extra_configs", resolvedVisionProvider, key, value)
+        }
+        onFetchModels={handleFetchVisionModels}
+        onProviderChange={updateVisionProvider}
+        onProviderMapChange={updateVisionModel}
+        onSharedCredentialChange={updateVisionSharedCredential}
+        providerOptions={visionProviderOptions}
+        sharedLlmProvider={visionProviderLlmProviders[resolvedVisionProvider]}
+      />
+      <MemorySettingsSection
+        disabled={saveMutation.isPending}
+        draft={draft}
+        id="api-memory"
+        onChange={(nextDraft) => setDraft(syncCompactRatioDraft(nextDraft))}
+      />
+      <KnowledgeSettingsSection
+        disabled={saveMutation.isPending}
+        draft={draft}
+        id="api-knowledge"
+        onChange={(nextDraft) => setDraft(syncCompactRatioDraft(nextDraft))}
       />
       <T2iSetupSection
         disabled={saveMutation.isPending}
@@ -695,6 +975,7 @@ export function ApiSettingsPage() {
         draft={draft}
         id="api-asr"
         onAsrExtraChange={updateAsrExtra}
+        onPersistSystemDraft={persistSystemDraftForModel}
         onSystemPatch={updateSystemDraft}
         showWhisperFields={showWhisperFields}
         systemDraft={systemDraft}
@@ -735,6 +1016,13 @@ export function ApiSettingsPage() {
           {llmConnectionDialog?.message ?? ""}
         </div>
       </Dialog>
+      <ChatInitializationDialog
+        error={initializationError}
+        onClose={closeInitialization}
+        open={initializationOpen}
+        pending={initializationPending}
+        task={initializationTask}
+      />
     </div>
   );
 }

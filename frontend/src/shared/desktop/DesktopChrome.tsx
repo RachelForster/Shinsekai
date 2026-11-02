@@ -1,5 +1,6 @@
-import { Maximize2, Minus, X } from "lucide-react";
+import { Check, Copy, Maximize2, Minus, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { useLocation } from "react-router-dom";
 
 import { useI18n } from "../i18n";
 import { Button } from "../ui/Button";
@@ -21,6 +22,8 @@ import {
   type DesktopRuntimeState,
 } from "./desktopApi";
 import { RuntimeProgressPanel } from "./RuntimeProgressPanel";
+import { ProjectRootGate } from "./ProjectRootGate";
+import { DesktopCloseDialog } from "./DesktopCloseDialog";
 import { appendRuntimeProgressLog } from "./runtimeProgressLog";
 
 function DesktopTitleBar() {
@@ -113,6 +116,7 @@ function DesktopRuntimeGate({ children }: { children: ReactNode }) {
   });
   const [runtimeProgress, setRuntimeProgress] = useState<DesktopRuntimeProgress | null>(null);
   const [busy, setBusy] = useState(false);
+  const [commandCopied, setCommandCopied] = useState(false);
   const autoRepairKeys = useRef(new Set<string>());
 
   useEffect(() => {
@@ -207,18 +211,50 @@ function DesktopRuntimeGate({ children }: { children: ReactNode }) {
           `DesktopRuntimeGate repair displayed bridge error: ${desktopRestartErrorMessage(error)}`,
         );
       }
-      setRuntime((current) => ({
-        ...current,
-        message: desktopRestartErrorMessage(error),
-        status: "error",
-      }));
+      const message = desktopRestartErrorMessage(error);
+      try {
+        const failedRuntime = await getDesktopRuntimeState();
+        setRuntime({
+          ...failedRuntime,
+          message: failedRuntime.message || message,
+          status: "error",
+        });
+      } catch {
+        setRuntime((current) => ({
+          ...current,
+          message,
+          status: "error",
+        }));
+      }
     } finally {
       setBusy(false);
     }
   }, []);
 
+  const handleCopyManualInstallCommand = useCallback(async () => {
+    if (!runtime.manualInstallCommand || !navigator.clipboard?.writeText) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(runtime.manualInstallCommand);
+      setCommandCopied(true);
+    } catch (error) {
+      console.error("Copy runtime dependency command failed", error);
+    }
+  }, [runtime.manualInstallCommand]);
+
   useEffect(() => {
-    if (busy || runtime.status === "checking" || runtime.status === "updating" || runtime.status === "ready") {
+    setCommandCopied(false);
+  }, [runtime.manualInstallCommand]);
+
+  useEffect(() => {
+    if (
+      busy ||
+      runtime.manualInstallCommand ||
+      runtime.status === "checking" ||
+      runtime.status === "updating" ||
+      runtime.status === "ready"
+    ) {
       return;
     }
     const candidate = runtime.candidates?.find((candidate) => candidate.selected) ?? runtime.candidates?.[0];
@@ -269,6 +305,24 @@ function DesktopRuntimeGate({ children }: { children: ReactNode }) {
             <code>{runtimeCandidate.displayPath ?? runtimeCandidate.path}</code>
           </div>
         ) : null}
+        {runtime.manualInstallCommand ? (
+          <div className="desktop-runtime__manual-install">
+            <div className="desktop-runtime__manual-install-header">
+              <div>
+                <strong>{t("desktop.runtime.manualInstallTitle")}</strong>
+                <p>{t("desktop.runtime.manualInstallHint")}</p>
+              </div>
+              <Button
+                aria-label={t("desktop.runtime.copyCommand")}
+                icon={commandCopied ? <Check aria-hidden /> : <Copy aria-hidden />}
+                onClick={handleCopyManualInstallCommand}
+              >
+                {t(commandCopied ? "desktop.runtime.commandCopied" : "desktop.runtime.copyCommand")}
+              </Button>
+            </div>
+            <code>{runtime.manualInstallCommand}</code>
+          </div>
+        ) : null}
         {runtimeCandidate && canInstallDeps ? (
           <div className="desktop-runtime__actions">
             <Button
@@ -287,16 +341,30 @@ function DesktopRuntimeGate({ children }: { children: ReactNode }) {
 
 export function DesktopChrome({ children }: { children: ReactNode }) {
   const desktop = useMemo(() => isTauriDesktop(), []);
+  const location = useLocation();
+  const standaloneChatRoute = location.pathname === "/chat" || location.pathname === "/chat-stage";
 
   if (!desktop) {
     return <>{children}</>;
   }
 
+  if (standaloneChatRoute) {
+    return (
+      <>
+        <DesktopCloseDialog />
+        <ProjectRootGate>{children}</ProjectRootGate>
+      </>
+    );
+  }
+
   return (
     <div className="desktop-frame">
+      <DesktopCloseDialog />
       <DesktopTitleBar />
       <div className="desktop-frame__content">
-        <DesktopRuntimeGate>{children}</DesktopRuntimeGate>
+        <ProjectRootGate>
+          <DesktopRuntimeGate>{children}</DesktopRuntimeGate>
+        </ProjectRootGate>
       </div>
     </div>
   );

@@ -1,4 +1,7 @@
 import yaml
+import sys
+import os
+import tempfile
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Union
 from pydantic import ValidationError
@@ -8,23 +11,28 @@ from config.schema import (
     ApiConfig,
     SystemConfig,
     Background,
+    Effect,
     clamp_compact_target_ratio,
 )
-from llm.constants import LLM_BASE_URLS
+from config.tts_provider_config import (
+    default_tts_work_path,
+    is_http_url,
+    normalize_tts_provider,
+    requires_tts_work_path,
+    tts_server_url_or_default,
+    uses_shared_tts_server_config,
+)
+from config.llm_defaults import resolve_llm_base_url
+from config.feature_flags import FeatureFlagConfigManager
 from config.mirror_env import apply_mirror_environment
+from config.network_proxy import apply_network_proxy_environment
+from config.sprite_voice import normalize_sprite_voice_types
 import traceback
 
 
-def _llm_default_base_url(llm_provider: str) -> str:
-    """Return the built-in base URL for a provider, accepting minor case drift."""
-    provider = (llm_provider or "").strip()
-    if provider in LLM_BASE_URLS:
-        return LLM_BASE_URLS[provider]
-    provider_lower = provider.lower()
-    for name, base_url in LLM_BASE_URLS.items():
-        if name.lower() == provider_lower:
-            return base_url
-    return ""
+def character_name_key(name: str) -> str:
+    """Return the case-insensitive identity key used for character lookup."""
+    return name.lower()
 
 
 class ConfigManager:
@@ -40,6 +48,7 @@ class ConfigManager:
     _CHARACTERS_CONFIG_PATH = Path("data/config/characters.yaml")
     _SYSTEM_CONFIG_PATH = Path("data/config/system_config.yaml")
     _BACKGOUND_CONFIG_PATH = Path("data/config/background.yaml")
+    _EFFECT_CONFIG_PATH = Path("data/config/effect.yaml")
     _VERSION_PATH = Path("VERSION")
 
     def __new__(cls, *args, **kwargs):
@@ -54,12 +63,10 @@ class ConfigManager:
     def version(self) -> str:
         """读取项目根目录 VERSION 文件，缺失时返回占位字符串。"""
         candidates = [self._VERSION_PATH]
-        try:
-            from core.paths import resource_path
-
-            candidates.append(resource_path("VERSION"))
-        except Exception:
-            pass
+        frozen_root = getattr(sys, "_MEIPASS", None)
+        if frozen_root:
+            candidates.append(Path(frozen_root) / "VERSION")
+        candidates.append(Path(sys.executable).resolve(strict=False).parent / "VERSION")
         seen: set[Path] = set()
         for candidate in candidates:
             try:
@@ -87,6 +94,11 @@ class ConfigManager:
                  raise RuntimeError("配置加载失败，无法访问配置数据。")
         return self._config
 
+    @property
+    def feature_flags(self) -> FeatureFlagConfigManager:
+        """Return the centralized flag view for the current system config."""
+        return FeatureFlagConfigManager(self.config.system_config)
+
     # --- 内部加载/合并逻辑 ---
     def _load_yaml(self, file_path: Path) -> Dict[str, Any]:
         """加载单个 YAML 文件"""
@@ -107,6 +119,7 @@ class ConfigManager:
             characters_data = self._load_yaml(self._CHARACTERS_CONFIG_PATH)
             system_data = self._load_yaml(self._SYSTEM_CONFIG_PATH)
             background_data = self._load_yaml(self._BACKGOUND_CONFIG_PATH)
+            effect_data = self._load_yaml(self._EFFECT_CONFIG_PATH)
 
             # 通过 Pydantic 进行验证和结构化
             api_config = ApiConfig.model_validate(api_data)
@@ -116,16 +129,21 @@ class ConfigManager:
             if not isinstance(characters_data, list):
                 characters_data = [] # 处理文件为空或格式错误的情况
                 
-            character_list = [Character.model_validate(item) for item in characters_data]
+            character_list = [Character.model_validate(normalize_sprite_voice_types(item)) for item in characters_data]
             background = [Background.model_validate(item) for item in background_data]
+            if not isinstance(effect_data, list):
+                effect_data = []
+            effect_list = [Effect.model_validate(item) for item in effect_data]
 
             # 构建顶层 AppConfig 实体
             self._config = AppConfig(
                 api_config=api_config,
                 system_config=system_config,
                 characters=character_list,
-                background_list=background
+                background_list=background,
+                effect_list=effect_list,
             )
+            apply_network_proxy_environment(system_config)
             apply_mirror_environment(system_config)
             print("配置加载成功！")
         except ValidationError as e:
@@ -141,6 +159,23 @@ class ConfigManager:
     def reload(self) -> None:
         """重新加载所有配置文件"""
         self._load_all_configs()
+
+    def refresh_media_catalogs(self) -> None:
+        """Reload editable character/background assets without resetting runtime config."""
+        characters_data = self._load_yaml(self._CHARACTERS_CONFIG_PATH)
+        background_data = self._load_yaml(self._BACKGOUND_CONFIG_PATH)
+        if not isinstance(characters_data, list):
+            characters_data = []
+        if not isinstance(background_data, list):
+            background_data = []
+        characters = [
+            Character.model_validate(normalize_sprite_voice_types(item))
+            for item in characters_data
+        ]
+        backgrounds = [Background.model_validate(item) for item in background_data]
+        self._config = self.config.model_copy(
+            update={"characters": characters, "background_list": backgrounds}
+        )
         
     def save_api_config(self) -> None:
         """独立保存 API 配置到 api.yaml"""
@@ -167,6 +202,7 @@ class ConfigManager:
             self._SYSTEM_CONFIG_PATH, 
             self.config.system_config.model_dump(by_alias=True)
         )
+        apply_network_proxy_environment(self.config.system_config)
         apply_mirror_environment(self.config.system_config)
         print("system_config.yaml 保存完成。")
 
@@ -223,37 +259,43 @@ class ConfigManager:
 
         current_api_config.llm_provider = llm_provider
         current_api_config.llm_base_url = base_url
+        current_api_config.llm_base_urls[llm_provider] = base_url
         current_api_config.is_streaming = (is_streaming == "是")
-        def _norm_tts(v: str) -> str:
-            s = (v or "").strip().lower()
-            if s in ("none", "off", "disable", "disabled", "不使用"):
-                return "none"
-            legacy = {
-                "gpt sovits": "gpt-sovits",
-                "genie tts": "genie-tts",
-            }
-            return legacy.get(s, (v or "").strip().lower())
-
-        current_api_config.tts_provider = _norm_tts(tts_provider)
+        current_api_config.tts_provider = normalize_tts_provider(tts_provider)
 
         def _norm_t2i_provider(v: str) -> str:
             s = (v or "").strip()
             if not s:
                 return "comfyui"
-            try:
-                from t2i.t2i_manager import T2IAdapterFactory
-
-                lowered = s.lower()
-                for k in T2IAdapterFactory._adapters:
-                    if k.lower() == lowered:
-                        return k
-            except Exception:
-                pass
+            lowered = s.lower()
+            if lowered in {"comfyui", "stable diffusion"}:
+                return lowered
             return s
 
         current_api_config.t2i_provider = _norm_t2i_provider(t2i_provider)
-        current_api_config.gpt_sovits_url = sovits_url
-        current_api_config.gpt_sovits_api_path = gpt_sovits_api_path
+        current_api_config.gpt_sovits_url = tts_server_url_or_default(
+            current_api_config.tts_provider,
+            sovits_url,
+        )
+        current_api_config.gpt_sovits_api_path = default_tts_work_path(
+            current_api_config.tts_provider,
+            gpt_sovits_api_path,
+        )
+        if uses_shared_tts_server_config(current_api_config.tts_provider):
+            tts_url = str(current_api_config.gpt_sovits_url or "").strip()
+            tts_path = str(current_api_config.gpt_sovits_api_path or "").strip()
+            if not tts_url:
+                return "错误：当前 TTS 引擎需要填写 URL。"
+            if not is_http_url(tts_url):
+                return "错误：TTS URL 必须是有效的 http(s) URL。"
+            if requires_tts_work_path(current_api_config.tts_provider) and not tts_path:
+                return "错误：本地 TTS 引擎需要填写服务启动路径。"
+            if (
+                tts_path
+                and current_api_config.tts_provider != "kaggle-gpt-sovits"
+                and not Path(tts_path).expanduser().is_dir()
+            ):
+                return "错误：TTS 服务启动路径必须是已存在的目录。"
         current_api_config.t2i_api_url=t2i_url
         current_api_config.t2i_work_path=t2i_work_path
         current_api_config.t2i_default_workflow_path=t2i_default_workflow_path
@@ -295,7 +337,7 @@ class ConfigManager:
 
         api_config = self.config.api_config
         
-        base_url = _llm_default_base_url(llm_provider)
+        base_url = resolve_llm_base_url(api_config, llm_provider)
         
         # 从字典中获取对应提供商的模型和 API Key
         llm_model = api_config.llm_model.get(llm_provider, "")
@@ -307,12 +349,11 @@ class ConfigManager:
     def save_characters_config(self) -> None:
         """独立保存角色列表配置到 characters.yaml"""
         if self._config is None:
-            print("警告：配置未加载或加载失败，无法保存角色配置。")
-            return
+            raise RuntimeError("配置未加载或加载失败，无法保存角色配置。")
             
         print("正在保存 characters.yaml...")
-        # 角色列表需要将每个 Character 实体转换为字典
-        characters_data = [char.model_dump(by_alias=True) for char in self.config.characters]
+        # JSON 模式将嵌套的 Path 转为字符串，避免 YAML 写出 safe_load 无法读取的 Python 标签。
+        characters_data = [char.model_dump(mode="json", by_alias=True) for char in self.config.characters]
         self._save_single_config(self._CHARACTERS_CONFIG_PATH, characters_data)
         print("characters.yaml 保存完成。")
     
@@ -320,22 +361,39 @@ class ConfigManager:
         if self._config is None:
             print("警告：配置未加载或加载失败，无法保存角色配置。")
             return
-            
+
         print("正在保存 background.yaml...")
-        # 角色列表需要将每个 Character 实体转换为字典
         background_data = [char.model_dump(by_alias=True) for char in self.config.background_list]
         self._save_single_config(self._BACKGOUND_CONFIG_PATH, background_data)
         print("background.yaml 保存完成。")
 
+    def save_effect_config(self) -> None:
+        if self._config is None:
+            print("警告：配置未加载或加载失败，无法保存特效配置。")
+            return
+
+        print("正在保存 effect.yaml...")
+        effect_data = [ef.model_dump(by_alias=True) for ef in self.config.effect_list]
+        self._save_single_config(self._EFFECT_CONFIG_PATH, effect_data)
+        print("effect.yaml 保存完成。")
+
     def _save_single_config(self, file_path: Path, data: Union[Dict, List]) -> None:
-        """保存单个配置到 YAML 文件"""
+        """Atomically save YAML; callers must observe failures to roll back changes."""
         file_path.parent.mkdir(parents=True, exist_ok=True) # 确保目录存在
+        temporary_path = None
         try:
-            with open(file_path, 'w', encoding='utf-8') as f:
-                # 使用 default_flow_style=False 提高 YAML 的可读性
+            with tempfile.NamedTemporaryFile(
+                mode='w', encoding='utf-8', dir=file_path.parent,
+                prefix=f'.{file_path.name}.', suffix='.tmp', delete=False,
+            ) as f:
+                temporary_path = Path(f.name)
                 yaml.dump(data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
-        except Exception as e:
-            print(f"错误：保存配置到 {file_path} 失败: {e}")
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(temporary_path, file_path)
+        finally:
+            if temporary_path is not None:
+                temporary_path.unlink(missing_ok=True)
 
     def get_background_by_name(self, name: str) -> Optional[Background]:
         for char in self.config.background_list:
@@ -343,10 +401,22 @@ class ConfigManager:
                 return char
         return None
 
+    def get_effect_by_name(self, name: str) -> Optional[Effect]:
+        for ef in self.config.effect_list:
+            if ef.name.lower() == name.lower():
+                return ef
+        return None
+
+    def list_effects(self) -> tuple[Effect, ...]:
+        """Return a stable read-only snapshot for application use cases."""
+
+        return tuple(self.config.effect_list)
+
     def get_character_by_name(self, name: str) -> Optional[Character]:
         """根据角色名称获取角色配置实体"""
+        name_key = character_name_key(name)
         for char in self.config.characters:
-            if char.name.lower() == name.lower():
+            if character_name_key(char.name) == name_key:
                 return char
         return None
 
@@ -354,16 +424,15 @@ class ConfigManager:
         llm_provider = self.config.api_config.llm_provider
         api_key = self.config.api_config.llm_api_key.get(llm_provider,"")
         model = self.config.api_config.llm_model.get(llm_provider,"")
-        base_url = str(self.config.api_config.llm_base_url or "").strip()
-        if not base_url:
-            base_url = _llm_default_base_url(llm_provider)
+        base_url = resolve_llm_base_url(self.config.api_config, llm_provider)
         return llm_provider, model, base_url, api_key
 
     def get_gpt_sovits_config(self):
+        provider = normalize_tts_provider(self.config.api_config.tts_provider)
         return (
-            self.config.api_config.gpt_sovits_url,
-            self.config.api_config.gpt_sovits_api_path,
-            self.config.api_config.tts_provider
+            tts_server_url_or_default(provider, self.config.api_config.gpt_sovits_url),
+            default_tts_work_path(provider, self.config.api_config.gpt_sovits_api_path),
+            provider,
         )
 
     def get_adapter_extra_config(self, kind: str, provider_key: str) -> Dict[str, Any]:
@@ -380,6 +449,8 @@ class ConfigManager:
             src = ac.asr_extra_configs or {}
         elif kind == "t2i":
             src = ac.t2i_extra_configs or {}
+        elif kind == "vision":
+            src = ac.vision_extra_configs or {}
         else:
             return {}
         return dict(src.get(pk, {}) or {})
@@ -406,46 +477,32 @@ class ConfigManager:
             m = dict(ac.t2i_extra_configs or {})
             m[pk] = dict(data)
             ac.t2i_extra_configs = m
+        elif kind == "vision":
+            m = dict(ac.vision_extra_configs or {})
+            m[pk] = dict(data)
+            ac.vision_extra_configs = m
         else:
             return
         self.config.api_config = ac
 
     def merged_llm_factory_kwargs(self, llm_provider: str, base_kwargs: Dict[str, Any]) -> Dict[str, Any]:
-        from config.adapter_extra_kwargs import filter_kwargs_for_ctor
-        from llm.llm_manager import LLMAdapterFactory
-
-        cls = LLMAdapterFactory._adapters.get(llm_provider)
         out = dict(base_kwargs)
-        if cls is None:
-            return out
         extra = self.get_adapter_extra_config("llm", llm_provider)
-        out.update(filter_kwargs_for_ctor(cls, extra))
+        out.update(extra)
         return out
 
     def merged_tts_factory_kwargs(self, adapter_name: str, base_kwargs: Dict[str, Any]) -> Dict[str, Any]:
-        from config.adapter_extra_kwargs import filter_kwargs_for_ctor
-        from tts.tts_manager import TTSAdapterFactory
-
         slug = (adapter_name or "").strip().lower()
-        cls = TTSAdapterFactory._adapters.get(slug)
         out = dict(base_kwargs)
-        if cls is None:
-            return out
         extra = self.get_adapter_extra_config("tts", slug)
-        out.update(filter_kwargs_for_ctor(cls, extra))
+        out.update(extra)
         return out
 
     def merged_t2i_factory_kwargs(self, adapter_name: str, base_kwargs: Dict[str, Any]) -> Dict[str, Any]:
-        from config.adapter_extra_kwargs import filter_kwargs_for_ctor
-        from t2i.t2i_manager import T2IAdapterFactory
-
         name = (adapter_name or "").strip().lower()
-        cls = T2IAdapterFactory._adapters.get(name)
         out = dict(base_kwargs)
-        if cls is None:
-            return out
         extra = self.get_adapter_extra_config("t2i", name)
-        out.update(filter_kwargs_for_ctor(cls, extra))
+        out.update(extra)
         return out
 
     def get_base_font_size(self) -> int:

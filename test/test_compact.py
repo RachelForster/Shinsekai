@@ -5,8 +5,8 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from llm.llm_adapter import DeepSeekAdapter
-from llm.llm_manager import LLMManager, LLMAdapterFactory
+from ai.llm.llm_adapter import DeepSeekAdapter
+from ai.llm.llm_manager import LLMManager, LLMAdapterFactory
 
 def test_compact_functionality():
     """测试compact功能"""
@@ -82,7 +82,7 @@ def test_compact_functionality():
             print(f"   ❌ 手动压缩失败或不需要压缩")
         
         print("\n4. 测试CompactManager独立功能")
-        from llm.compact_manager import CompactManager
+        from ai.llm.compact_manager import CompactManager
         
         compact_manager = CompactManager(adapter, max_tokens=1000, compact_threshold=0.5)
         

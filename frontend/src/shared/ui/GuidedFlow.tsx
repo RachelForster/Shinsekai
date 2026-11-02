@@ -8,7 +8,6 @@ import "./GuidedFlow.css";
 export interface GuidedFlowStep {
   accent?: "accent" | "info" | "success" | "warning";
   content: ReactNode;
-  description: string;
   icon?: ReactNode;
   id: string;
   optional?: boolean;
@@ -18,6 +17,7 @@ export interface GuidedFlowStep {
 interface GuidedFlowProps {
   activeId?: string;
   backLabel: string;
+  beforeNext?: (currentStepId: string) => boolean | Promise<boolean>;
   finishLabel: string;
   nextLabel: string;
   onActiveChange?: (id: string) => void;
@@ -36,6 +36,7 @@ function clampStep(index: number, total: number) {
 export function GuidedFlow({
   activeId,
   backLabel,
+  beforeNext,
   finishLabel,
   nextLabel,
   onActiveChange,
@@ -107,7 +108,6 @@ export function GuidedFlow({
                       {step.optional ? optionalLabel : requiredLabel}
                     </span>
                   </span>
-                  <span className="guided-flow__step-description">{step.description}</span>
                 </span>
               </button>
             );
@@ -131,10 +131,14 @@ export function GuidedFlow({
           </Button>
           <Button
             icon={isLast ? <Check aria-hidden size={16} /> : <ArrowRight aria-hidden size={16} />}
-            onClick={() => {
+            onClick={async () => {
               if (isLast) {
                 onFinish?.();
                 return;
+              }
+              if (beforeNext) {
+                const allowed = await beforeNext(activeStep.id);
+                if (!allowed) return;
               }
               setActiveIndex(activeIndex + 1);
             }}

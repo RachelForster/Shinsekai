@@ -8,9 +8,6 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from core.plugins.registry_catalog import parse_registry_plugins
-
-
 def normalize_repo_slug(repo: str) -> str:
     parts = [p.strip() for p in repo.strip().strip("/").split("/") if p.strip()]
     return "/".join(parts).lower()
@@ -36,7 +33,11 @@ def dump_registry_json(rows: list[dict[str, Any]]) -> str:
 
 
 def validate_rows(rows: list[dict[str, Any]]) -> None:
-    parse_registry_plugins(rows)
+    for index, row in enumerate(rows):
+        name = str(row.get("name") or "").strip()
+        repo = str(row.get("repo") or "").strip()
+        if not name and not repo:
+            raise ValueError(f"registry[{index}] needs at least name or repo")
 
 
 def merge_registry_entry(

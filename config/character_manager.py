@@ -1,8 +1,11 @@
 import os
 import shutil
+import hashlib
+import re
+from uuid import uuid4
 from pathlib import Path
 from typing import List, Dict, Any, Tuple, Optional, Union
-from config.schema import Character, Sprite
+from config.schema import Character, ModelSprites, Sprite, SpriteTransition
 from config.config_manager import ConfigManager
 import yaml
 
@@ -12,23 +15,42 @@ MODEL_DIR = "data/models"
 CHARACTER_CONFIG_PATH = ConfigManager._CHARACTERS_CONFIG_PATH 
 
 
+def _sprite_field(sprite_data: Union[Sprite, dict], key: str, default: Any = "") -> Any:
+    if isinstance(sprite_data, Sprite):
+        return getattr(sprite_data, key, default)
+    return sprite_data.get(key, default)
+
+
+def _voice_filename_for_sprite(sprite_data: Union[Sprite, dict], sprite_index: int, file_ext: str) -> str:
+    sprite_path = str(_sprite_field(sprite_data, "path", "") or "")
+    sprite_stem = Path(sprite_path).stem
+    safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", sprite_stem).strip("._-")
+    if not safe_stem:
+        safe_stem = f"sprite_{sprite_index:02d}"
+    digest_source = sprite_path or safe_stem or str(sprite_index)
+    digest = hashlib.sha1(digest_source.encode("utf-8")).hexdigest()[:10]
+    return f"voice_{safe_stem}_{digest}{file_ext}"
+
+
+def _is_path_inside_directory(path: str, directory: str) -> bool:
+    try:
+        Path(path).resolve(strict=False).relative_to(Path(directory).resolve(strict=False))
+        return True
+    except (OSError, ValueError):
+        return False
+
+
 class CharacterManager:
     """
-    负责角色配置、立绘、语音和 LLM 设定的管理。
+    负责角色配置、立绘和语音资源的管理。
     内部使用 ConfigManager 来持久化数据。
     """
-    
-    # 私有属性，用于缓存 LLM Manager 实例
-    _llm_manager: Optional[Any] = None 
-    # 记录当前缓存的 LLM adapter 参数；设置页改模型或 API 后用它判断是否需要重建。
-    _llm_config_signature: Optional[Tuple[Tuple[str, str], ...]] = None
+
     _config_manager: ConfigManager
     
     def __init__(self):
         """初始化 CharacterManager，获取 ConfigManager 单例。"""
         self._config_manager = ConfigManager()
-        self._llm_manager = None
-        self._llm_config_signature = None
 
     def _get_characters(self) -> List[Character]:
         """获取当前的 Character 列表"""
@@ -44,107 +66,24 @@ class CharacterManager:
         """保存角色配置的便捷方法"""
         self._config_manager.save_characters_config()
 
-    def generate_character_setting(self, name: str, setting: str) -> Tuple[str, str]:
-        """
-        使用 LLM 为角色生成详细设定。
-        
-        Args:
-            name: 角色名称。
-            setting: 用户的补充信息/初步设定。
-            
-        Returns:
-            Tuple[str, str]: (操作结果消息, 生成或当前的设定内容)
-        """
-        if not name:
-            return "请选择或输入要生成的角色的名字！", setting
-        
-        # 查找角色
+    def save_avatar_bank(self, name: str, avatar_type: str, bank: ModelSprites, *, activate: bool = False) -> None:
+        """Persist one validated bank without replacing other types or static assets."""
         character = self._config_manager.get_character_by_name(name)
-        
-        # 如果角色不存在，则先创建一个默认角色
         if character is None:
-            self.add_character(name=name, color='', sprite_prefix='', gpt_model_path='', 
-                                            sovits_model_path='', refer_audio_path='', prompt_text='', prompt_lang='', character_setting=setting)
-            # 重新获取角色实例
-            character = self._config_manager.get_character_by_name(name)
-            if character is None:
-                return f"创建角色 {name} 失败。", setting
-
-        setting = "无" if not setting else setting
-        
-        # 构造 Prompt 模板
-        template = f"""
-        你需要帮助用户写出{name}的角色设定，包括{name}的背景信息，性格特点，和语言习惯。输出plain text格式，不要使用markdown格式。
-        将{name}的背景信息，性格特点，和语言习惯分段写，并且同一段内标号，不一定是3点，有可能比3点多。
-        输出格式示例：
-        {name}的背景信息：
-        1.姓名和出处：
-        2.外表：
-        3.背景：
-        4.经历：
-
-        {name}的性格特点：
-        1.
-        2.
-        3.
-
-        {name}的语言习惯：
-        1.
-        2.
-        """
-        
+            raise KeyError(name)
+        validated = Character(name=name, color=character.color, sprite_prefix=character.sprite_prefix,
+                              avatars={avatar_type: bank}).avatars
+        previous = character.avatars
+        previous_type = character.avatar_type
+        character.avatars = {**previous, **validated}
+        if activate:
+            character.avatar_type = avatar_type
         try:
-            llm_provider, llm_model, llm_base_url, api_key = self._config_manager.get_llm_api_config()
-            
-            if not llm_provider or not api_key or not llm_model:
-                return "LLM 配置不完整，请先设定大语言模型供应商、模型和 API Key。", setting
-
-            from llm.llm_manager import LLMAdapterFactory, LLMManager
-
-            llm_factory_kwargs = self._config_manager.merged_llm_factory_kwargs(
-                llm_provider,
-                {
-                    "llm_provider": llm_provider,
-                    "api_key": api_key,
-                    "base_url": llm_base_url,
-                    "model": llm_model,
-                },
-            )
-            # 用最终传给 adapter 的参数做签名，覆盖 provider 默认值和用户在设置页的覆盖项。
-            # 这样角色页复用 CharacterManager 时，也能感知模型、API Key、Base URL 等变更。
-            llm_config_signature = tuple(
-                sorted((str(k), repr(v)) for k, v in llm_factory_kwargs.items())
-            )
-
-            # 配置没变就复用已有 LLMManager；配置变了才重建 adapter，避免继续请求旧模型。
-            if self._llm_manager is None or self._llm_config_signature != llm_config_signature:
-                llm_adapter = LLMAdapterFactory.create_adapter(
-                    **llm_factory_kwargs
-                )
-                self._llm_manager = LLMManager(adapter=llm_adapter, user_template=template)
-                self._llm_config_signature = llm_config_signature
-                
-            self._llm_manager.set_user_template(template)
-            
-            # 假设 chat 方法返回生成的文本
-            new_setting_text = self._llm_manager.chat(
-                f"补充信息：{setting},请输出结果：",
-                stream=False,
-                response_format={"type": "text"},
-                include_local_time=False,
-            )
-            
-            # 更新 Character 实例并保存
-            character.character_setting = new_setting_text
-            self._config_manager.save_characters_config() 
-            
-            return "输出成功", character.character_setting
-            
-        except ImportError:
-            return "输出失败: LLM 模块依赖未找到 (LLMAdapterFactory, LLMManager)", setting
-        except Exception as e:
-            return f"输出失败:{e}", setting
-
+            self._save_characters_config()
+        except Exception:
+            character.avatars = previous
+            character.avatar_type = previous_type
+            raise
 
     def save_characters_to_file(self) -> str:
         """
@@ -159,6 +98,37 @@ class CharacterManager:
         except Exception as e:
             return f"保存失败: {str(e)}"
 
+    def save_sprite_transitions(self, name: str, results: list[dict]) -> None:
+        """Copy approved clips, replace directed edges atomically, and retain originals."""
+        from sdk.path_utils import safe_child_path
+
+        character = self._config_manager.get_character_by_name(name)
+        if character is None:
+            raise KeyError(name)
+        directory = safe_child_path(Path(UPLOAD_DIR), f"{character.sprite_prefix}/transitions")
+        directory.mkdir(parents=True, exist_ok=True)
+        previous = character.sprite_transitions
+        edges = {(edge.from_path, edge.to_path): edge for edge in previous}
+        copied = []
+        try:
+            for result in results:
+                destination = directory / f"{uuid4().hex}.webm"
+                copied.append(destination)
+                shutil.copyfile(result["path"], destination)
+                edge = SpriteTransition(
+                    from_path=result["fromPath"], to_path=result["toPath"], path=destination.as_posix(),
+                    from_fingerprint=result["fromFingerprint"], to_fingerprint=result["toFingerprint"],
+                    frame_count=result["frameCount"],
+                )
+                edges[(edge.from_path, edge.to_path)] = edge
+            character.sprite_transitions = list(edges.values())
+            self._save_characters_config()
+        except Exception:
+            character.sprite_transitions = previous
+            for path in copied:
+                path.unlink(missing_ok=True)
+            raise
+
 
     def add_character(self, name: str, color: str, sprite_prefix: str, gpt_model_path: str,
                      sovits_model_path: str, refer_audio_path: str, prompt_text: str,
@@ -167,12 +137,18 @@ class CharacterManager:
                      speech_volume: float = 1.0,
                      pronunciation_map: dict = None,
                      edit_as_name: Optional[str] = None,
-                     emotion_tags: Optional[str] = None) -> Tuple[str, List[str]]:
+                     emotion_tags: Optional[str] = None,
+                     character_brief: Optional[str] = None,
+                     avatar_type: Optional[str] = None,
+                     avatars: Optional[Dict[str, Union[ModelSprites, dict]]] = None,
+                     portrait_crop=None,
+                     sprite_portrait_crops: Optional[dict[int, object]] = None) -> Tuple[str, List[str]]:
         """
         添加或更新角色配置。
 
         若 edit_as_name 为当前列表中已存在的名字（如 UI 下拉当前选中项），
         则按该条记录做更新；名称栏改为新名字时视为重命名，不会新建另一条角色。
+        省略 avatar_type / avatars 的旧调用会保留现有形象配置；显式 static / {} 会重置它们。
 
         Returns:
             Tuple[str, List[str]]: (操作结果消息, 当前所有角色名称列表)
@@ -203,6 +179,11 @@ class CharacterManager:
                         current_names,
                     )
 
+        avatar_fields = Character(
+            name=name, color=color, sprite_prefix=sprite_prefix,
+            avatar_type=avatar_type, avatars=avatars,
+        )
+
         if edit_as_name and str(edit_as_name).strip():
             target = self._config_manager.get_character_by_name(str(edit_as_name).strip())
             if target is not None:
@@ -217,6 +198,8 @@ class CharacterManager:
                 target.prompt_text = prompt_text
                 target.prompt_lang = prompt_lang
                 target.refer_audio_path = refer_audio_path
+                if character_brief is not None:
+                    target.character_brief = character_brief
                 target.character_setting = character_setting
                 target.speech_speed = speech_speed
                 target.speech_volume = speech_volume
@@ -224,6 +207,19 @@ class CharacterManager:
                     target.pronunciation_map = pronunciation_map
                 if emotion_tags is not None:
                     target.emotion_tags = emotion_tags
+                if portrait_crop is not None:
+                    target.portrait_crop = portrait_crop
+                for index, crop in (sprite_portrait_crops or {}).items():
+                    if 0 <= index < len(target.sprites):
+                        sprite = target.sprites[index]
+                        if isinstance(sprite, dict):
+                            sprite["portrait_crop"] = crop.model_dump() if crop else None
+                        else:
+                            sprite.portrait_crop = crop
+                if avatar_type is not None:
+                    target.avatar_type = avatar_fields.avatar_type
+                if avatars is not None:
+                    target.avatars = avatar_fields.avatars
                 self._save_characters_config()
                 return "人物已更新！", [c.name for c in characters]
 
@@ -243,10 +239,14 @@ class CharacterManager:
                 sprites=[],
                 sprite_scale=1.0,
                 emotion_tags=emotion_tags or "",
+                character_brief=character_brief or "",
                 character_setting=character_setting,
                 speech_speed=speech_speed,
                 speech_volume=speech_volume,
                 pronunciation_map=pronunciation_map or {},
+                portrait_crop=portrait_crop,
+                avatar_type=avatar_fields.avatar_type,
+                avatars=avatar_fields.avatars,
             )
             characters.append(new_character)
             self._save_characters_config()
@@ -261,6 +261,8 @@ class CharacterManager:
             existing_character.prompt_text = prompt_text
             existing_character.prompt_lang = prompt_lang
             existing_character.refer_audio_path = refer_audio_path
+            if character_brief is not None:
+                existing_character.character_brief = character_brief
             existing_character.character_setting = character_setting
             existing_character.speech_speed = speech_speed
             existing_character.speech_volume = speech_volume
@@ -268,6 +270,19 @@ class CharacterManager:
                 existing_character.pronunciation_map = pronunciation_map
             if emotion_tags is not None:
                 existing_character.emotion_tags = emotion_tags
+            if portrait_crop is not None:
+                existing_character.portrait_crop = portrait_crop
+            for index, crop in (sprite_portrait_crops or {}).items():
+                if 0 <= index < len(existing_character.sprites):
+                    sprite = existing_character.sprites[index]
+                    if isinstance(sprite, dict):
+                        sprite["portrait_crop"] = crop.model_dump() if crop else None
+                    else:
+                        sprite.portrait_crop = crop
+            if avatar_type is not None:
+                existing_character.avatar_type = avatar_fields.avatar_type
+            if avatars is not None:
+                existing_character.avatars = avatar_fields.avatars
 
             self._save_characters_config()
             return "人物已更新！", [c.name for c in characters]
@@ -328,7 +343,17 @@ class CharacterManager:
             return [c.name for c in self._get_characters()]
 
 
-    def upload_sprites(self, character_name: str, sprite_files: List[Any], emotion_tags: str) -> Tuple[str, List[str], str]:
+    def upload_sprites(
+        self,
+        character_name: str,
+        sprite_files: List[Any],
+        emotion_tags: str,
+        *,
+        sprite_tags: Optional[List[str]] = None,
+        replace_index: Optional[int] = None,
+        expected_path: Optional[str] = None,
+        replacements: Optional[List[Tuple[int, str]]] = None,
+    ) -> Tuple[str, List[str], str]:
         """
         上传立绘文件并更新角色的立绘列表和情绪标签。
 
@@ -340,6 +365,9 @@ class CharacterManager:
         
         if not sprite_files:
             return "请选择要上传的图片！", [], ''
+
+        if sprite_tags is not None and len(sprite_tags) != len(sprite_files):
+            raise ValueError("Each sprite requires one tag entry")
         
         character: Optional[Character] = self._config_manager.get_character_by_name(character_name)
         if not character:
@@ -352,22 +380,77 @@ class CharacterManager:
             character.sprites = []
 
         num_existing_sprites = len(character.sprites)
+        if replace_index is not None:
+            if replacements is not None or len(sprite_files) != 1:
+                raise ValueError("请选择一张有效的原立绘进行替换")
+            replacements = [(replace_index, expected_path)]
+        if replacements is not None and len(replacements) != len(sprite_files):
+            raise ValueError("每张生成结果需要一个替换目标")
+        seen_targets = set()
+        for index, path in replacements or []:
+            if (
+                isinstance(index, bool)
+                or not isinstance(index, int)
+                or not 0 <= index < num_existing_sprites
+            ):
+                raise ValueError("请选择一张有效的原立绘进行替换")
+            if index in seen_targets:
+                raise ValueError("同一原立绘只能选择一个结果替换")
+            seen_targets.add(index)
+            if path != _sprite_field(character.sprites[index], "path"):
+                raise ValueError("原立绘已改变或尚未保存，请刷新角色后重新选择")
         emotion_tags_to_add = ''
+        original_sprites = character.sprites
+        original_tags = character.emotion_tags
+        new_sprites = []
         
         for i, file in enumerate(sprite_files):
             filename = os.path.basename(file.name)
+            if replacements is not None:
+                filename = f"{uuid4().hex}{Path(filename).suffix}"
             dest_path = os.path.join(char_dir, filename)
             shutil.copyfile(file.name, dest_path)
             
             new_sprite_data = {"path": dest_path}
-            character.sprites.append(new_sprite_data)
+            if replacements is not None:
+                original = original_sprites[replacements[i][0]]
+                new_sprite_data = (
+                    original.model_copy(update={"path": dest_path})
+                    if isinstance(original, Sprite)
+                    else {**original, "path": dest_path}
+                )
+            new_sprites.append(new_sprite_data)
             
-            emotion_tags_to_add += f'立绘 {num_existing_sprites + i + 1}：\n'
+            tag = sprite_tags[i] if sprite_tags is not None else ""
+            emotion_tags_to_add += f'立绘 {num_existing_sprites + i + 1}：{tag}\n'
             
         current_emotion_tags = character.emotion_tags if character.emotion_tags else ""
-        character.emotion_tags = current_emotion_tags + emotion_tags_to_add
+        character.sprites = original_sprites + new_sprites
+        if replacements is not None:
+            character.sprites = list(original_sprites)
+            for (index, _), sprite in zip(replacements, new_sprites):
+                character.sprites[index] = sprite
+        if current_emotion_tags and not current_emotion_tags.endswith("\n"):
+            current_emotion_tags += "\n"
+        if replacements is not None:
+            from sdk.asset_tags import numbered_tags, tag_contents
+            tags = tag_contents(original_tags, num_existing_sprites)
+            if sprite_tags is not None:
+                for (index, _), tag in zip(replacements, sprite_tags):
+                    tags[index] = tag
+            character.emotion_tags = numbered_tags("立绘", tags)
+        elif sprite_tags is not None:
+            from sdk.asset_tags import numbered_tags, tag_contents
+            character.emotion_tags = numbered_tags("立绘", tag_contents(current_emotion_tags, num_existing_sprites) + sprite_tags)
+        else:
+            character.emotion_tags = current_emotion_tags + emotion_tags_to_add
 
-        self._config_manager.save_characters_config()
+        try:
+            self._config_manager.save_characters_config()
+        except Exception:
+            character.sprites = original_sprites
+            character.emotion_tags = original_tags
+            raise
 
         all_sprite_paths = [s.path if isinstance(s, Sprite) else s.get('path', '') for s in character.sprites]
         return f"成功为 {character_name} 上传 {len(sprite_files)} 张立绘！", all_sprite_paths, character.emotion_tags
@@ -387,13 +470,26 @@ class CharacterManager:
         if not character:
             return f"找不到角色: {character_name}", [], ""
         
-        # 删除立绘目录
-        char_dir = os.path.join(UPLOAD_DIR, character.sprite_prefix)
-        if os.path.exists(char_dir):
-            shutil.rmtree(char_dir)
+        # Static assets share this root with independently managed model banks.
+        # Validate the root before removing children; preserve model/package voices.
+        from sdk.path_utils import safe_child_path
+        char_dir = safe_child_path(Path(UPLOAD_DIR), character.sprite_prefix)
+        char_voice_dir = safe_child_path(Path(VOICE_DIR), character.sprite_prefix)
+        if char_dir == Path(UPLOAD_DIR).resolve() or char_voice_dir == Path(VOICE_DIR).resolve():
+            raise PermissionError("Character asset directory must not be the shared root")
+        if char_dir.is_dir():
+            for child in char_dir.iterdir():
+                if child.name.lower() in {"avatars", "avatar-voices"}:
+                    continue
+                if child.is_dir() and not child.is_symlink():
+                    checked = safe_child_path(char_dir, child.name)
+                    shutil.rmtree(checked)
+                else:
+                    child.unlink()
+            if not any(char_dir.iterdir()):
+                char_dir.rmdir()
 
         # 删除语音目录
-        char_voice_dir = os.path.join(VOICE_DIR, character.sprite_prefix)
         if os.path.exists(char_voice_dir):
             shutil.rmtree(char_voice_dir)
         
@@ -491,7 +587,7 @@ class CharacterManager:
             return f"标注出错了：{e}"
 
 
-    def upload_voice(self, character_name: str, sprite_index: int, voice_file: str, voice_text: str) -> Tuple[str, Optional[str]]:
+    def upload_voice(self, character_name: str, sprite_index: int, voice_file: str, voice_text: str, voice_type: str = "") -> Tuple[str, Optional[str]]:
         """
         为指定立绘上传语音文件。
         
@@ -509,7 +605,7 @@ class CharacterManager:
             return "立绘不存在！", None
         
         sprite_data: Union[Sprite, dict] = character.sprites[sprite_index]
-        original_voice_path = sprite_data.voice_path if isinstance(sprite_data, Sprite) else sprite_data.get("voice_path", "")
+        original_voice_path = str(_sprite_field(sprite_data, "voice_path", "") or "")
         
         if (not voice_file) and (not original_voice_path):
             return "请选择语音文件！", None
@@ -518,7 +614,7 @@ class CharacterManager:
         Path(voice_char_dir).mkdir(parents=True, exist_ok=True)
         
         file_ext = Path(voice_file).suffix
-        voice_filename = f"voice_{sprite_index:02d}{file_ext}"
+        voice_filename = _voice_filename_for_sprite(sprite_data, sprite_index, file_ext)
         voice_path = os.path.join(voice_char_dir, voice_filename)
         shutil.copyfile(voice_file, voice_path)
         
@@ -526,11 +622,26 @@ class CharacterManager:
         if isinstance(sprite_data, Sprite):
             sprite_data.voice_path = voice_path
             sprite_data.voice_text = voice_text
+            if voice_type:
+                sprite_data.voice_type = voice_type
         else:
             character.sprites[sprite_index]["voice_path"] = voice_path
             character.sprites[sprite_index]["voice_text"] = voice_text
+            if voice_type:
+                character.sprites[sprite_index]["voice_type"] = voice_type
             
         self._config_manager.save_characters_config()
+
+        if (
+            original_voice_path
+            and os.path.abspath(original_voice_path) != os.path.abspath(voice_path)
+            and _is_path_inside_directory(original_voice_path, voice_char_dir)
+        ):
+            try:
+                if os.path.isfile(original_voice_path):
+                    os.remove(original_voice_path)
+            except OSError:
+                pass
         
         return f"语音已上传到立绘 {sprite_index+1}！", voice_path
 
@@ -579,6 +690,25 @@ class CharacterManager:
 
         self._config_manager.save_characters_config()
         return "语音文字已保存"
+
+    def save_sprite_voice_type(self, character_name: str, sprite_index: int, voice_type: str) -> str:
+        """单独保存立绘的语音类型（preset/reference），不需要重新上传音频。"""
+        if not character_name:
+            return "请先选择角色！"
+        character = self._config_manager.get_character_by_name(character_name)
+        if not character:
+            return f"找不到角色: {character_name}"
+        if not character.sprites or sprite_index < 0 or sprite_index >= len(character.sprites):
+            return "立绘不存在！"
+
+        sprite_data = character.sprites[sprite_index]
+        if isinstance(sprite_data, Sprite):
+            sprite_data.voice_type = voice_type if voice_type else None
+        else:
+            sprite_data["voice_type"] = voice_type if voice_type else None
+
+        self._config_manager.save_characters_config()
+        return "语音类型已保存"
 
     def delete_sprite_voice(self, character_name: str, sprite_index: int) -> str:
         """删除指定立绘的语音文件和引用。"""

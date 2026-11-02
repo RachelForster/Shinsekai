@@ -89,6 +89,8 @@
 
 .custom-select__menu {
   position: fixed;
+  box-sizing: border-box;
+  max-width: calc(100vw - 24px);
   z-index: 80;
 }
 

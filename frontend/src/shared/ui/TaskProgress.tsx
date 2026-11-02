@@ -1,6 +1,7 @@
 import "./TaskProgress.css";
 
 interface TaskProgressSnapshot {
+  completedItems?: number;
   dependencyInstallStatus?: string;
   errorUserMessage?: string;
   fallbackAllowed?: boolean;
@@ -17,9 +18,16 @@ interface TaskProgressSnapshot {
   phase: string;
   progress?: number | null;
   status: string;
+  totalItems?: number;
 }
 
 interface TaskProgressProps {
+  compact?: boolean;
+  labels?: {
+    message?: string;
+    phase?: string;
+    status?: string;
+  };
   logLimit?: number;
   task: TaskProgressSnapshot | null;
 }
@@ -32,6 +40,7 @@ function taskPercent(progress: number | null | undefined) {
 }
 
 const phaseLabels: Record<string, string> = {
+  annotating: "标注图片",
   cancelled: "已取消",
   completed: "完成",
   crop: "裁剪",
@@ -41,6 +50,7 @@ const phaseLabels: Record<string, string> = {
   generate: "生成",
   install: "安装",
   installingDeps: "安装依赖",
+  "loading-model": "加载模型",
   manifest: "登记插件",
   merge: "合并文件",
   pipeline: "执行流程",
@@ -102,17 +112,22 @@ function compactSha(value: string | undefined) {
   return sha.length > 16 ? `${sha.slice(0, 12)}...` : sha;
 }
 
-export function TaskProgress({ logLimit = 6, task }: TaskProgressProps) {
+export function TaskProgress({ compact = false, labels, logLimit = 6, task }: TaskProgressProps) {
   if (!task) {
     return null;
   }
 
   const percent = taskPercent(task.progress);
+  const itemProgress =
+    typeof task.completedItems === "number" && typeof task.totalItems === "number"
+      ? `${task.completedItems}/${task.totalItems}`
+      : "";
   const logs = logLimit > 0 ? (task.logs ?? []).slice(-logLimit) : [];
   const notice = task.notice || (task.status === "failed" ? task.errorUserMessage : "");
   const noticeKind = task.noticeKind || (task.status === "failed" ? "error" : "info");
-  const message = task.message || task.status;
-  const showMessage = message !== notice;
+  const displayPhase = labels?.phase ?? phaseLabels[task.phase] ?? task.phase;
+  const message = labels?.message ?? task.message ?? labels?.status ?? task.status;
+  const showMessage = message !== notice && message !== displayPhase;
   const sourceLabel = task.installSourceLabel || statusLabel(task.installSource, installSourceLabels);
   const packageLabel = statusLabel(task.packageStatus, packageStatusLabels);
   const dependencyLabel = statusLabel(task.dependencyInstallStatus, dependencyStatusLabels);
@@ -127,19 +142,30 @@ export function TaskProgress({ logLimit = 6, task }: TaskProgressProps) {
   ].filter((item): item is { label: string; value: string } => Boolean(item));
 
   return (
-    <div className="task-progress" role="status" aria-live="polite">
+    <div className={`task-progress${compact ? " task-progress--compact" : ""}`} role="status" aria-live="polite">
       <div className="task-progress__meta">
-        <strong>{phaseLabels[task.phase] ?? task.phase}</strong>
-        <span>{percent == null ? task.status : `${percent}%`}</span>
+        {displayPhase ? <strong>{displayPhase}</strong> : null}
+        <span>
+          {[itemProgress, percent == null ? (labels?.status ?? task.status) : `${percent}%`]
+            .filter(Boolean)
+            .join(" · ")}
+        </span>
       </div>
       {percent == null ? null : (
         <div className="task-progress__track" aria-hidden>
           <span className="task-progress__fill" style={{ width: `${percent}%` }} />
         </div>
       )}
-      {showMessage ? <div className="task-progress__message">{message}</div> : null}
+      {showMessage ? (
+        <div className="task-progress__message" title={compact ? message : undefined}>
+          {message}
+        </div>
+      ) : null}
       {notice ? (
-        <div className={`task-progress__notice task-progress__notice--${noticeKind}`}>
+        <div
+          className={`task-progress__notice task-progress__notice--${noticeKind}`}
+          title={compact ? notice : undefined}
+        >
           {notice}
           {task.fallbackAllowed && task.status === "failed" ? " 可稍后重试。" : ""}
         </div>

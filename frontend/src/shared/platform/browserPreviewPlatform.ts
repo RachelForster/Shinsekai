@@ -1,6 +1,11 @@
+import { createStoryPreviewPlatform } from "./storyPreviewPlatform";
+import { createAgentPreviewPlatform } from "./agentPreviewPlatform";
+import { PlatformRequestError } from "./errors";
 import {
   sampleChatSnapshot,
   sampleConfig,
+  sampleChatThemeManifests,
+  sampleChatThemeSummaries,
   sampleMcpConfig,
   sampleMcpTools,
   samplePluginCatalog,
@@ -9,12 +14,29 @@ import {
   sampleTemplates,
 } from "./sampleData";
 import { DEFAULT_CHARACTER_COLOR } from "../constants";
+import { DEFAULT_PLAYER_OPTIONS } from "../playerCharacterOptions";
+import { numberedTags, tagContents } from "../assets/assetText";
+import { runtimeStatusFromSnapshot } from "./chatRuntimeStatus";
+import type { ChatThemePayload } from "../theme/chatChromeTheme";
+import { DEFAULT_CHAT_THEME_ID, type ChatThemeManifest, type ChatThemeSummary } from "../theme/chatTheme";
 import type {
   BatchToolResult,
   Background,
   Character,
+  GeneratedCharacterSprite,
+  CharacterMemoryImportPreview,
+  CharacterMemoryImportResult,
   CharacterMemoryList,
+  KnowledgeImportPreview,
+  KnowledgeImportResult,
+  ChatConversationBranch,
+  ChatHistoryEntry,
+  ChatLaunchPayload,
+  ConversationSummary,
+  ChatSendPayload,
   ChatSnapshot,
+  ChatStageEvent,
+  Effect,
   LogSnapshot,
   MusicCoverRunResult,
   PluginCatalogItem,
@@ -25,10 +47,23 @@ import type {
   TemplateLaunchSession,
   SpriteGenerationResult,
   SpritePromptResult,
+  StoryGenerationTask,
   TaskProgressOptions,
   TaskSnapshot,
-  TemplateSummary,
 } from "./types";
+
+const bundledChatThemeAssets = import.meta.glob<string>(
+  "../../../../assets/chat_ui_themes/**/*.{gif,jpeg,jpg,mp3,ogg,otf,png,svg,ttf,wav,webp,woff,woff2}",
+  { eager: true, import: "default", query: "?url" },
+);
+const bundledChatThemeRoot = "../../../../assets/chat_ui_themes/";
+const previewSpriteUrl = new URL("../../../../assets/present_example.png", import.meta.url).href;
+const builtinChatThemeAssetUrls: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.entries(bundledChatThemeAssets).map(([path, url]) => [
+    `data/chat_ui_themes/${path.slice(bundledChatThemeRoot.length)}`,
+    url,
+  ]),
+);
 
 function clone<T>(value: T): T {
   return structuredClone(value);
@@ -36,6 +71,65 @@ function clone<T>(value: T): T {
 
 function delay<T>(value: T, ms = 120): Promise<T> {
   return new Promise((resolve) => window.setTimeout(() => resolve(clone(value)), ms));
+}
+
+async function previewMemoryImport(items: File[]): Promise<CharacterMemoryImportPreview> {
+  const files = await Promise.all(
+    items.map(async (item) => {
+      const name = item.name;
+      let content = "";
+      try {
+        content = await item.text();
+      } catch {
+        content = "";
+      }
+      const dialogueCharacters = content.length || 3_600;
+      const dialogueLineCount = content ? Math.max(1, content.split(/\r?\n/).filter((line) => line.trim()).length) : 40;
+      const sourceTokens = Math.max(1, Math.ceil(dialogueCharacters / 4));
+      return {
+        chunkCount: Math.max(1, Math.ceil(sourceTokens / 2_500)),
+        dialogueCharacters,
+        dialogueLineCount,
+        kind: name.toLowerCase().endsWith(".json") ? "json" : "txt",
+        name,
+        sourceTokens,
+      };
+    }),
+  );
+  const sourceTokens = files.reduce((sum, file) => sum + file.sourceTokens, 0);
+  const chunkCount = files.reduce((sum, file) => sum + file.chunkCount, 0);
+  const estimatedInputTokens = sourceTokens + chunkCount * 600;
+  const estimatedOutputTokens = chunkCount * 350;
+  return {
+    chunkCount,
+    dialogueCharacters: files.reduce((sum, file) => sum + file.dialogueCharacters, 0),
+    dialogueLineCount: files.reduce((sum, file) => sum + file.dialogueLineCount, 0),
+    estimatedInputTokens,
+    estimatedOutputTokens,
+    estimatedTotalTokens: estimatedInputTokens + estimatedOutputTokens,
+    fileCount: files.length,
+    files,
+    sourceTokens,
+    warnings: files.some((file) => file.kind === "json")
+      ? ["JSON history will be converted to plain dialogue before extraction."]
+      : [],
+  };
+}
+
+function looksLikeLocalModelReference(value: string) {
+  const normalized = value.replace(/\\/g, "/");
+  const slashCount = normalized.split("/").length - 1;
+  return (
+    value.startsWith(".") ||
+    value.startsWith("/") ||
+    value.startsWith("\\") ||
+    value.startsWith("~") ||
+    value.endsWith("/") ||
+    value.endsWith("\\") ||
+    value.includes("\\") ||
+    /^[A-Za-z]:[\\/]/.test(value) ||
+    slashCount > 1
+  );
 }
 
 function previewTask<TResult>(
@@ -272,24 +366,275 @@ function previewLogSnapshot(): LogSnapshot {
   };
 }
 
+function cloneHistoryEntries(entries: ChatHistoryEntry[] | undefined): ChatHistoryEntry[] {
+  return (entries ?? []).map((entry) => ({ ...entry }));
+}
+
+function browserPreviewChatPayload(payload: unknown) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    const text = String(payload ?? "").trim();
+    return { displayText: text, text };
+  }
+  const candidate = payload as Partial<ChatSendPayload>;
+  const text = String(candidate.text ?? "").trim();
+  const labels = Array.isArray(candidate.attachments)
+    ? candidate.attachments
+        .filter((attachment) => attachment?.kind === "image" || attachment?.kind === "file")
+        .map((attachment) => `[${attachment.kind}: ${String(attachment.name || "attachment")}]`)
+    : [];
+  return { displayText: [text, labels.join(" ")].filter(Boolean).join("\n"), text };
+}
+
+function isPreviewRealtimeCommand(command: { type: string }) {
+  return command.type !== "copy-history" && command.type !== "dismiss-plugin-page" && command.type !== "open-history";
+}
+
+function themeBlockQss(block?: {
+  background?: string;
+  borderColor?: string;
+  borderRadius?: string;
+  boxShadow?: string;
+  color?: string;
+}) {
+  if (!block) {
+    return "";
+  }
+  return [
+    block.background ? `background-color: ${block.background}` : "",
+    block.borderColor ? `border-color: ${block.borderColor}` : "",
+    block.borderRadius ? `border-radius: ${block.borderRadius}` : "",
+    block.boxShadow ? `box-shadow: ${block.boxShadow}` : "",
+    block.color ? `color: ${block.color}` : "",
+  ]
+    .filter(Boolean)
+    .join("; ");
+}
+
+function previewThemePayloadFromManifest(manifest: ChatThemeManifest): ChatThemePayload {
+  return {
+    raw: {
+      busy_bar_label: {
+        extra_qss: themeBlockQss(manifest.tokens.toolbar),
+      },
+      dialog_label: {
+        extra_qss: themeBlockQss(manifest.tokens.dialog),
+      },
+      dialog_offset_y: manifest.tokens.dialog?.offsetY ?? 0,
+      dialog_padding: manifest.tokens.dialog?.padding ?? 40,
+      dialog_width_pct: manifest.tokens.dialog?.widthPct ?? 86,
+      input_bar: {
+        extra_qss: themeBlockQss(manifest.tokens.input),
+      },
+      option_row: {
+        extra_qss: themeBlockQss(manifest.tokens.options),
+        hover_extra_qss: themeBlockQss(manifest.tokens.options?.hover),
+      },
+      options_gap: manifest.tokens.options?.gap ?? 10,
+      send_button: {
+        extra_qss: themeBlockQss(manifest.tokens.send),
+      },
+    },
+    themeColor: manifest.tokens.global?.themeColor ?? sampleChatTheme.themeColor,
+  };
+}
+
 export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
   const config = clone(sampleConfig);
+  const generatedSprites = new Map<string, GeneratedCharacterSprite & { imported?: boolean }>();
   let templates = clone(sampleTemplates);
   let plugins = clone(samplePlugins);
   let pluginCatalog = clone(samplePluginCatalog);
   let mcpConfig = clone(sampleMcpConfig);
   let chat = clone(sampleChatSnapshot);
+  const conversations = new Map<string, { summary: ConversationSummary; payload: ChatLaunchPayload }>();
+  let previewBranchCounter = 1;
+  let previewHistoryCounter = 0;
+  const previewBranches = new Map<string, ChatConversationBranch & { historyEntries: ChatHistoryEntry[] }>();
+  previewBranches.set("main", {
+    id: "main",
+    label: "Main",
+    parentId: null,
+    historyEntries: cloneHistoryEntries(chat.historyEntries),
+  });
+  let activeThemeId = DEFAULT_CHAT_THEME_ID;
   let templateSession: TemplateLaunchSession | null = null;
+  const cachedModelAssets = new Set<string>();
   const characterMemories = new Map<string, CharacterMemoryList>();
+  const knowledgeData = new Map<
+    string,
+    { memories: Array<{ id: string; memory: string }>; characters: Array<{ name: string; createdAt: string }> }
+  >();
+  knowledgeData.set("preview-knowledge", {
+    memories: Array.from({ length: 18 }, (_, index) => ({
+      id: `knowledge-preview-${index + 1}`,
+      memory: `雾港世界设定 ${index + 1}：居民依靠钟声辨认进港的船只。`,
+    })),
+    characters: config.characters.map((character) => ({ name: character.name, createdAt: "2026-09-14 00:00:00" })),
+  });
+  function requiredKnowledgeValue(value: string, field: string) {
+    const text = value.trim();
+    if (!text) throw new Error(`${field} is required`);
+    return text;
+  }
+  function removePreviewBinding(name: string, knowledgeId: string) {
+    const data = knowledgeData.get(knowledgeId);
+    if (!data) return false;
+    const before = data.characters.length;
+    data.characters = data.characters.filter((character) => character.name !== name);
+    if (!data.characters.length && !data.memories.length) knowledgeData.delete(knowledgeId);
+    return before !== data.characters.length;
+  }
+  function addPreviewBinding(name: string, knowledgeId: string) {
+    const data = knowledgeData.get(knowledgeId) ?? { memories: [], characters: [] };
+    if (!data.characters.some((character) => character.name === name)) {
+      data.characters.push({ name, createdAt: new Date().toISOString() });
+    }
+    knowledgeData.set(knowledgeId, data);
+  }
   const chatListeners = new Set<(snapshot: ChatSnapshot) => void>();
+  const chatEventListeners = new Set<(event: ChatStageEvent) => void>();
+  let previewChatEventSeq = 0;
+  const pendingChatTimeouts = new Set<number>();
+  const previewThemeManifests = new Map<string, ChatThemeManifest>(
+    Object.entries(sampleChatThemeManifests).map(([id, manifest]) => [id, clone(manifest)]),
+  );
+  const previewThemeSources = new Map<string, ChatThemeSummary["source"]>(
+    sampleChatThemeSummaries.map((theme) => [theme.id, theme.source]),
+  );
+  const previewThemeAssetBases = new Map<string, string>(
+    sampleChatThemeSummaries.filter((theme) => theme.source === "builtin").map((theme) => [theme.id, theme.id]),
+  );
 
   const emitChat = () => {
     const snapshot = clone(chat);
     chatListeners.forEach((listener) => listener(snapshot));
+    const event: ChatStageEvent = {
+      seq: (previewChatEventSeq += 1),
+      snapshot,
+      ts: Date.now(),
+      type: "snapshot",
+      v: 1,
+    };
+    chatEventListeners.forEach((listener) => listener(event));
   };
 
+  const emitTurnState = () => {
+    const snapshot = clone(chat);
+    chatListeners.forEach((listener) => listener(snapshot));
+    const event: ChatStageEvent = {
+      options: clone(chat.turnOptions ?? sampleChatSnapshot.turnOptions!),
+      seq: (previewChatEventSeq += 1),
+      state: clone(chat.turnState ?? sampleChatSnapshot.turnState!),
+      ts: Date.now(),
+      type: "chat.turn.state",
+      v: 1,
+    };
+    chatEventListeners.forEach((listener) => listener(event));
+  };
+
+  const previewBranchTree = () => ({
+    activeBranchId: chat.conversationTree?.activeBranchId || "main",
+    branches: [...previewBranches.values()].map(({ historyEntries: _historyEntries, ...branch }) => ({ ...branch })),
+  });
+
+  const savePreviewActiveBranch = () => {
+    const activeBranchId = chat.conversationTree?.activeBranchId || "main";
+    const branch = previewBranches.get(activeBranchId);
+    if (branch) {
+      branch.historyEntries = cloneHistoryEntries(chat.historyEntries);
+      branch.updatedAt = Date.now();
+    }
+  };
+
+  const stripPreviewUserPrefix = (value: string) => {
+    const parts = value.split(/：|:/);
+    return parts.length > 1 ? parts.slice(1).join("：").trim() : value.trim();
+  };
+
+  const clearScheduledChatUpdates = () => {
+    for (const timeoutId of pendingChatTimeouts) {
+      window.clearTimeout(timeoutId);
+    }
+    pendingChatTimeouts.clear();
+  };
+
+  const scheduleChatUpdate = (delayMs: number, patch: (current: ChatSnapshot) => ChatSnapshot) => {
+    const timeoutId = window.setTimeout(() => {
+      pendingChatTimeouts.delete(timeoutId);
+      chat = patch(chat);
+      emitChat();
+    }, delayMs);
+    pendingChatTimeouts.add(timeoutId);
+  };
+
+  const resolvePreviewManifest = (id: string) =>
+    previewThemeManifests.get(id) ?? previewThemeManifests.get(DEFAULT_CHAT_THEME_ID);
+
+  const resolvePreviewThemeAssetUrl = (path: string) => {
+    const direct = builtinChatThemeAssetUrls[path];
+    if (direct) {
+      return direct;
+    }
+    const prefix = "data/chat_ui_themes/";
+    if (!path.startsWith(prefix)) {
+      return path;
+    }
+    const themePath = path.slice(prefix.length);
+    const separator = themePath.indexOf("/");
+    if (separator <= 0) {
+      return path;
+    }
+    const themeId = themePath.slice(0, separator);
+    const relativeAsset = themePath.slice(separator + 1);
+    const assetBaseId = previewThemeAssetBases.get(themeId);
+    if (!assetBaseId || assetBaseId === themeId) {
+      return path;
+    }
+    return builtinChatThemeAssetUrls[`${prefix}${assetBaseId}/${relativeAsset}`] ?? path;
+  };
+
+  const listPreviewThemes = (): ChatThemeSummary[] =>
+    Array.from(previewThemeManifests.values()).map((manifest) => {
+      const source = previewThemeSources.get(manifest.id) ?? "user";
+      const previewPath = manifest.preview ? `data/chat_ui_themes/${manifest.id}/${manifest.preview}` : "";
+      return {
+        id: manifest.id,
+        name: clone(manifest.name),
+        author: manifest.author,
+        version: manifest.version,
+        previewUrl: source === "builtin" ? builtinChatThemeAssetUrls[previewPath] : undefined,
+        source,
+      };
+    });
+
   return {
+    agent: createAgentPreviewPlatform(),
     backgrounds: {
+      async autoLabelImages(name) {
+        const background = config.background_list.find((item) => item.name === name);
+        if (!background) {
+          throw new Error(`Background not found: ${name}`);
+        }
+        const tags = tagContents(background.bg_tags, background.sprites.length);
+        let annotatedCount = 0;
+        tags.forEach((tag, index) => {
+          if (!tag.trim()) {
+            tags[index] = "室内，柔和光线，安静氛围";
+            annotatedCount += 1;
+          }
+        });
+        background.bg_tags = numberedTags("场景", tags);
+        return delay({
+          annotatedCount,
+          failedCount: 0,
+          failures: [],
+          name,
+          scope: "background" as const,
+          skippedCount: background.sprites.length - annotatedCount,
+          tags: background.bg_tags,
+          totalCount: background.sprites.length,
+        });
+      },
       async delete(name) {
         config.background_list = config.background_list.filter((background) => background.name !== name);
       },
@@ -420,94 +765,1182 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         return delay(background);
       },
     },
+    effects: {
+      async delete(name) {
+        config.effect_list = config.effect_list.filter((effect) => effect.name !== name);
+      },
+      async deleteAllAudio(name) {
+        const effect = config.effect_list.find((item) => item.name === name);
+        if (!effect) {
+          throw new Error("特效方案不存在。");
+        }
+        effect.audio_list = [];
+        effect.audio_tags = "";
+        return delay(effect);
+      },
+      async deleteAudio(name, index) {
+        const effect = config.effect_list.find((item) => item.name === name);
+        if (!effect || index < 0 || index >= effect.audio_list.length) {
+          throw new Error("特效音频不存在。");
+        }
+        const tags = tagContents(effect.audio_tags, effect.audio_list.length, true);
+        effect.audio_list = effect.audio_list.filter((_, itemIndex) => itemIndex !== index);
+        effect.audio_tags = numberedTags(
+          "特效",
+          tags.filter((_, itemIndex) => itemIndex !== index),
+        );
+        return delay(effect);
+      },
+      async deleteImage(name, index) {
+        const effect = config.effect_list.find((item) => item.name === name);
+        if (!effect || index < 0 || index >= effect.image_list.length) {
+          throw new Error("特效图片不存在。");
+        }
+        const tags = tagContents(effect.image_tags, effect.image_list.length, true);
+        effect.image_list = effect.image_list.filter((_, itemIndex) => itemIndex !== index);
+        effect.image_audio_list = effect.image_audio_list.filter((_, itemIndex) => itemIndex !== index);
+        effect.image_tags = numberedTags(
+          "图片",
+          tags.filter((_, itemIndex) => itemIndex !== index),
+        );
+        return delay(effect);
+      },
+      export: (name) => delay(`./data/export/${name}.ef`),
+      import: async (items) => {
+        const imported = items.map<Effect>((item, index) => {
+          const label = item instanceof File ? item.name : item.split("/").pop() || `effect-${index + 1}`;
+          return {
+            name: label.replace(/\.ef$/i, ""),
+            color: "#5b8def",
+            prompt_text: "",
+            audio_list: [],
+            audio_tags: "",
+            image_list: [],
+            image_tags: "",
+            image_audio_list: [],
+          };
+        });
+        config.effect_list = [...config.effect_list, ...imported];
+        return delay(imported);
+      },
+      list: () => delay(clone(config.effect_list)),
+      async save(effect, originalName) {
+        if (originalName && originalName !== effect.name) {
+          const existing = config.effect_list.find((item) => item.name === originalName);
+          if (existing) {
+            Object.assign(existing, effect);
+            return delay(clone(existing));
+          }
+        }
+        const existing = config.effect_list.find((item) => item.name === effect.name);
+        if (existing) {
+          Object.assign(existing, effect);
+          return delay(clone(existing));
+        }
+        config.effect_list = [...config.effect_list, clone(effect)];
+        return delay(clone(effect));
+      },
+      async saveAudioTags(input) {
+        const effect = config.effect_list.find((item) => item.name === input.name);
+        if (!effect) {
+          throw new Error("特效方案不存在。");
+        }
+        effect.audio_tags = input.audioTags;
+        return delay(effect);
+      },
+      async saveImageTags(input) {
+        const effect = config.effect_list.find((item) => item.name === input.name);
+        if (!effect) throw new Error("特效方案不存在。");
+        effect.image_tags = input.imageTags;
+        return delay(effect);
+      },
+      async uploadAudio(input) {
+        const effect = config.effect_list.find((item) => item.name === input.name);
+        if (!effect) {
+          throw new Error("特效方案不存在。");
+        }
+        const tags = tagContents(input.audioTags || effect.audio_tags, effect.audio_list.length, true);
+        effect.audio_list = [...effect.audio_list, ...input.paths];
+        effect.audio_tags = numberedTags("特效", [...tags, ...input.paths.map(() => "")]);
+        return delay(effect);
+      },
+      async uploadImages(input) {
+        const effect = config.effect_list.find((item) => item.name === input.name);
+        if (!effect) throw new Error("特效方案不存在。");
+        const tags = tagContents(input.imageTags || effect.image_tags, effect.image_list.length, true);
+        effect.image_list = [...effect.image_list, ...input.paths];
+        effect.image_audio_list = [...effect.image_audio_list, ...input.paths.map(() => "")];
+        effect.image_tags = numberedTags("图片", [...tags, ...input.paths.map(() => "")]);
+        return delay(effect);
+      },
+      async uploadImageAudio(input) {
+        const effect = config.effect_list.find((item) => item.name === input.name);
+        if (!effect || input.index < 0 || input.index >= effect.image_list.length) {
+          throw new Error("特效图片不存在。");
+        }
+        effect.image_audio_list = [...effect.image_audio_list];
+        while (effect.image_audio_list.length < effect.image_list.length) effect.image_audio_list.push("");
+        effect.image_audio_list[input.index] = input.path;
+        return delay(effect);
+      },
+    },
     chat: {
+      async getCurrentConversation() {
+        return clone(conversations.get(chat.historyPath ?? "")?.summary ?? null);
+      },
+      async reconfigureConversation(id, payload, options) {
+        const item = conversations.get(id);
+        if (!item) throw new Error("Conversation not found");
+        if (chat.chatProcessRunning && chat.historyPath !== item.summary.historyPath) {
+          throw new Error("Another chat is running");
+        }
+        if (
+          chat.chatProcessRunning &&
+          (!["idle", "paused", "error"].includes(chat.status) ||
+            chat.turnState?.pendingCount ||
+            chat.turnState?.scheduled)
+        ) {
+          throw new Error("Wait for the current reply to finish");
+        }
+        return this.launch({ ...payload, historyPath: item.summary.historyPath, resetHistory: false }, options);
+      },
+      async listConversations() {
+        return clone([...conversations.values()].map((item) => item.summary).sort((a, b) => b.updatedAt - a.updatedAt));
+      },
+      async prepareConversation(id) {
+        const item = conversations.get(id);
+        if (!item) throw new Error("Conversation not found");
+        return clone(item.payload);
+      },
+      async renameConversation(id, title) {
+        const item = conversations.get(id);
+        if (!item) throw new Error("Conversation not found");
+        item.summary.title = title;
+        return clone(item.summary);
+      },
+      async deleteConversation(id) {
+        const item = conversations.get(id);
+        if (!item) throw new Error("Conversation not found");
+        if ((chat.chatProcessRunning || chat.chatRuntimeClosing) && chat.historyPath === item.summary.historyPath) {
+          throw new Error("Close this chat before deleting it.");
+        }
+        conversations.delete(id);
+      },
+      async close(options) {
+        if (options?.expectedSessionId !== undefined && options.expectedSessionId !== (chat.sessionId ?? "")) {
+          throw new PlatformRequestError("The current chat has changed.", 409, "chat_session_changed");
+        }
+        clearScheduledChatUpdates();
+        chat = {
+          ...chat,
+          chatProcessRunning: false,
+          chatRuntimeClosing: false,
+          notificationText: "聊天会话已结束。",
+          options: [],
+          sessionClosedReason: "聊天会话已结束。",
+          status: "idle",
+        };
+        emitChat();
+        return delay(chat);
+      },
       async command(command) {
-        if (command.type === "send-message") {
+        if (isPreviewRealtimeCommand(command) && String(chat.sessionClosedReason ?? "").trim()) {
           chat = {
             ...chat,
-            dialogText: String(command.payload ?? ""),
+            notificationText: "",
+            sessionClosedReason: "",
+          };
+        }
+        if (command.type === "dismiss-plugin-page") {
+          const payload = command.payload as { pluginId?: unknown; presentationId?: unknown } | undefined;
+          const pluginId = String(payload?.pluginId ?? "");
+          const presentationId = String(payload?.presentationId ?? "");
+          chat = {
+            ...chat,
+            pluginPagePresentations: (chat.pluginPagePresentations ?? []).filter(
+              (item) => item.pluginId !== pluginId || item.presentationId !== presentationId,
+            ),
+          };
+          emitChat();
+        }
+        if (command.type === "update-turn-options") {
+          const payload = command.payload as Partial<NonNullable<ChatSnapshot["turnOptions"]>> | undefined;
+          const nextOptions = {
+            batchEnabled: Boolean(payload?.batchEnabled),
+            batchIdleSeconds: Math.min(120, Math.max(0.3, Number(payload?.batchIdleSeconds) || 5)),
+            interruptEnabled: payload?.interruptEnabled !== false,
+          };
+          config.api_config.interrupt_enabled = nextOptions.interruptEnabled;
+          config.api_config.is_batch_input_enabled = nextOptions.batchEnabled;
+          config.api_config.batch_input_timeout = nextOptions.batchIdleSeconds;
+          chat = {
+            ...chat,
+            turnOptions: nextOptions,
+            turnState: {
+              ...(chat.turnState ?? sampleChatSnapshot.turnState!),
+              enabled: nextOptions.batchEnabled,
+              ...(!nextOptions.batchEnabled
+                ? { pendingCount: 0, pendingMessages: [], remainingSeconds: null, scheduled: false, typing: false }
+                : {}),
+            },
+          };
+          emitTurnState();
+        }
+        if (command.type === "chat-input-state") {
+          const payload = command.payload as { composing?: unknown; hasText?: unknown } | undefined;
+          const active = Boolean(payload?.composing || payload?.hasText);
+          chat = {
+            ...chat,
+            turnState: {
+              ...(chat.turnState ?? sampleChatSnapshot.turnState!),
+              remainingSeconds: active ? null : (chat.turnOptions?.batchIdleSeconds ?? 5),
+              scheduled: !active && (chat.turnState?.pendingCount ?? 0) > 0,
+              typing: active && (chat.turnState?.pendingCount ?? 0) > 0,
+            },
+          };
+          emitTurnState();
+        }
+        if (command.type === "flush-input-batch" || command.type === "cancel-input-batch") {
+          chat = {
+            ...chat,
+            turnState: {
+              ...(chat.turnState ?? sampleChatSnapshot.turnState!),
+              pendingCount: 0,
+              pendingMessages: [],
+              remainingSeconds: null,
+              scheduled: false,
+              typing: false,
+            },
+          };
+          emitTurnState();
+        }
+        if (command.type === "send-message") {
+          const payload = browserPreviewChatPayload(command.payload);
+          const displayText = payload.displayText;
+          if (chat.turnOptions?.batchEnabled) {
+            chat = {
+              ...chat,
+              inputDraft: "",
+              options: [],
+              turnState: {
+                ...(chat.turnState ?? sampleChatSnapshot.turnState!),
+                enabled: true,
+                pendingCount: (chat.turnState?.pendingCount ?? 0) + 1,
+                pendingMessages: [...(chat.turnState?.pendingMessages ?? []), displayText],
+                remainingSeconds: chat.turnOptions.batchIdleSeconds,
+                scheduled: true,
+                typing: false,
+              },
+            };
+            emitTurnState();
+            return delay(chat);
+          }
+          clearScheduledChatUpdates();
+          const userDisplayName = chat.userDisplayName?.trim() || "你";
+          const nextUserIndex =
+            Math.max(-1, ...cloneHistoryEntries(chat.historyEntries).map((entry) => entry.revertUserIndex ?? -1)) + 1;
+          chat = {
+            ...chat,
+            characterName: userDisplayName,
+            dialogText: displayText,
+            historyEntries: [
+              ...cloneHistoryEntries(chat.historyEntries),
+              {
+                createdAt: Date.now(),
+                id: `history-${Date.now()}-user`,
+                revertUserIndex: nextUserIndex,
+                role: "user",
+                text: `${userDisplayName}: ${displayText}`,
+              },
+            ],
             inputDraft: "",
+            options: [],
             numericInfo: "streaming",
             status: "streaming",
           };
           emitChat();
-          window.setTimeout(() => {
-            chat = { ...chat, numericInfo: "speaking", status: "speaking" };
-            emitChat();
-          }, 700);
+          scheduleChatUpdate(700, (current) => ({
+            ...current,
+            characterName: "Nanami",
+            dialogText: `收到：${displayText}`,
+            historyEntries: [
+              ...cloneHistoryEntries(current.historyEntries),
+              { id: `history-${Date.now()}-assistant`, role: "assistant", text: `Nanami: 收到：${displayText}` },
+            ],
+            numericInfo: "speaking",
+            status: "speaking",
+          }));
+          scheduleChatUpdate(1400, (current) => ({ ...current, numericInfo: "idle", status: "idle" }));
         }
         if (command.type === "submit-option") {
+          const option = String(command.payload ?? "").trim();
+          if (chat.turnOptions?.batchEnabled) {
+            chat = {
+              ...chat,
+              inputDraft: "",
+              turnState: {
+                ...(chat.turnState ?? sampleChatSnapshot.turnState!),
+                enabled: true,
+                pendingCount: (chat.turnState?.pendingCount ?? 0) + 1,
+                pendingMessages: [...(chat.turnState?.pendingMessages ?? []), option],
+                remainingSeconds: chat.turnOptions.batchIdleSeconds,
+                scheduled: true,
+                typing: false,
+              },
+            };
+            emitTurnState();
+            return delay(chat);
+          }
+          clearScheduledChatUpdates();
           chat = {
             ...chat,
-            dialogText: `选择：${String(command.payload ?? "")}`,
+            dialogText: `选择：${option}`,
+            historyEntries: [
+              ...cloneHistoryEntries(chat.historyEntries),
+              { id: `history-${Date.now()}-option`, role: "options", text: `选项: ${option}` },
+            ],
+            options: [],
             status: "generating",
             numericInfo: "generating",
           };
           emitChat();
+          scheduleChatUpdate(650, (current) => ({
+            ...current,
+            dialogText: `Nanami: 已选择「${option}」`,
+            historyEntries: [
+              ...cloneHistoryEntries(current.historyEntries),
+              { id: `history-${Date.now()}-assistant`, role: "assistant", text: `Nanami: 已选择「${option}」` },
+            ],
+            numericInfo: "idle",
+            status: "idle",
+          }));
         }
-        if (command.type === "skip-speech") {
+        if (command.type === "skip-speech" || command.type === "dialog-advance") {
+          clearScheduledChatUpdates();
           chat = { ...chat, status: "idle", numericInfo: "idle" };
           emitChat();
         }
-        if (command.type === "clear-history") {
-          chat = { ...chat, dialogText: "浏览器预览历史已清空。", status: "idle", numericInfo: "idle" };
+        if (["pause-asr", "finish-asr-hold", "cancel-asr-hold"].includes(command.type)) {
+          clearScheduledChatUpdates();
+          chat = {
+            ...chat,
+            asrEnabled: false,
+            asrLoading: false,
+            asrRunning: false,
+            status: "paused",
+            numericInfo: "paused",
+          };
           emitChat();
         }
+        if (command.type === "resume-asr" || command.type === "begin-asr-hold") {
+          clearScheduledChatUpdates();
+          chat = {
+            ...chat,
+            asrEnabled: true,
+            asrLoading: false,
+            asrRunning: true,
+            status: "listening",
+            numericInfo: "listening",
+          };
+          emitChat();
+        }
+        if (command.type === "change-voice-language") {
+          const voiceLanguage =
+            String(command.payload ?? "")
+              .trim()
+              .toLowerCase() || "ja";
+          config.system_config.voice_language = voiceLanguage;
+          chat = { ...chat, numericInfo: "idle", status: "idle", voiceLanguage };
+          emitChat();
+        }
+        if (command.type === "clear-history") {
+          clearScheduledChatUpdates();
+          chat = {
+            ...chat,
+            dialogText: "浏览器预览历史已清空。",
+            historyEntries: [],
+            options: [],
+            status: "idle",
+            numericInfo: "idle",
+          };
+          emitChat();
+        }
+        if (command.type === "revert-history") {
+          clearScheduledChatUpdates();
+          const revertUserIndex = Number(command.payload);
+          const entries = cloneHistoryEntries(chat.historyEntries);
+          const userEntryPosition = entries.findIndex(
+            (entry) => entry.role === "user" && entry.revertUserIndex === revertUserIndex,
+          );
+          if (userEntryPosition >= 0) {
+            let targetIndex = -1;
+            for (let index = userEntryPosition - 1; index >= 0; index -= 1) {
+              if (entries[index]?.role !== "user") {
+                targetIndex = index;
+                break;
+              }
+            }
+            if (targetIndex >= 0) {
+              const nextEntries = entries.slice(0, targetIndex + 1);
+              const lastEntry = nextEntries[nextEntries.length - 1];
+              chat = {
+                ...chat,
+                dialogText: lastEntry?.text ?? "",
+                historyEntries: nextEntries,
+                options:
+                  lastEntry?.role === "options"
+                    ? lastEntry.text
+                        .split(/：|:/)
+                        .slice(1)
+                        .join("：")
+                        .split("/")
+                        .map((item) => item.trim())
+                        .filter(Boolean)
+                    : [],
+                status: "idle",
+                numericInfo: "idle",
+              };
+              emitChat();
+            }
+          }
+        }
+        if (command.type === "fork-history") {
+          clearScheduledChatUpdates();
+          savePreviewActiveBranch();
+          const payload = command.payload;
+          const userIndex = Number(
+            typeof payload === "object" && payload ? (payload as { userIndex?: unknown }).userIndex : payload,
+          );
+          const entries = cloneHistoryEntries(chat.historyEntries);
+          const userEntryPosition = entries.findIndex(
+            (entry) => entry.role === "user" && entry.revertUserIndex === userIndex,
+          );
+          if (userEntryPosition >= 0) {
+            const userEntry = entries[userEntryPosition];
+            const userText = stripPreviewUserPrefix(userEntry?.text ?? "");
+            const prefixEntries = entries.slice(0, userEntryPosition);
+            previewBranchCounter += 1;
+            const branchId = `branch-${previewBranchCounter}`;
+            previewBranches.set(branchId, {
+              createdAt: Date.now(),
+              forkedFromEntryId: userEntry?.id,
+              forkedFromText: userText,
+              historyEntries: cloneHistoryEntries(prefixEntries),
+              id: branchId,
+              label: `Branch ${previewBranchCounter}`,
+              parentId: chat.conversationTree?.activeBranchId || "main",
+              updatedAt: Date.now(),
+            });
+            const nextUserIndex = Math.max(-1, ...prefixEntries.map((entry) => entry.revertUserIndex ?? -1)) + 1;
+            chat = {
+              ...chat,
+              characterName: chat.userDisplayName?.trim() || "你",
+              conversationTree: { activeBranchId: branchId, branches: previewBranchTree().branches },
+              dialogText: userText,
+              historyEntries: [
+                ...cloneHistoryEntries(prefixEntries),
+                {
+                  createdAt: Date.now(),
+                  id: `history-${Date.now()}-user`,
+                  revertUserIndex: nextUserIndex,
+                  role: "user",
+                  text: `${chat.userDisplayName?.trim() || "你"}: ${userText}`,
+                },
+              ],
+              options: [],
+              numericInfo: "streaming",
+              status: "streaming",
+            };
+            chat.conversationTree = previewBranchTree();
+            emitChat();
+            scheduleChatUpdate(700, (current) => ({
+              ...current,
+              characterName: "Nanami",
+              dialogText: `分支回复：${userText}`,
+              historyEntries: [
+                ...cloneHistoryEntries(current.historyEntries),
+                { id: `history-${Date.now()}-assistant`, role: "assistant", text: `Nanami: 分支回复：${userText}` },
+              ],
+              numericInfo: "idle",
+              status: "idle",
+            }));
+          }
+        }
+        if (command.type === "switch-branch") {
+          clearScheduledChatUpdates();
+          savePreviewActiveBranch();
+          const branchId = String(command.payload ?? "").trim();
+          const branch = previewBranches.get(branchId);
+          if (branch) {
+            chat = {
+              ...chat,
+              conversationTree: { activeBranchId: branchId, branches: previewBranchTree().branches },
+              dialogText: branch.historyEntries.at(-1)?.text ?? "",
+              historyEntries: cloneHistoryEntries(branch.historyEntries),
+              numericInfo: "idle",
+              options: [],
+              status: "idle",
+            };
+            chat.conversationTree = previewBranchTree();
+            emitChat();
+          }
+        }
+        if (command.type === "rename-branch") {
+          const payload = command.payload;
+          const branchId =
+            typeof payload === "object" && payload
+              ? String((payload as { branchId?: unknown }).branchId ?? "").trim()
+              : "";
+          const label =
+            typeof payload === "object" && payload ? String((payload as { label?: unknown }).label ?? "").trim() : "";
+          const branch = previewBranches.get(branchId);
+          if (branch && label) {
+            branch.label = label.slice(0, 64);
+            branch.updatedAt = Date.now();
+            chat.conversationTree = previewBranchTree();
+            emitChat();
+          }
+        }
         if (command.type === "copy-history") {
-          return { ...clone(chat), clipboardText: chat.dialogText };
+          return {
+            ...clone(chat),
+            clipboardText: cloneHistoryEntries(chat.historyEntries)
+              .map((entry) => entry.text)
+              .join("\n"),
+          };
         }
         if (command.type === "open-history") {
-          return { ...clone(chat), openedPath: chat.historyPath ?? "./data/chat_history/preview.json" };
+          return { ...clone(chat), openedPath: chat.historyPath ?? "./data/chat_history/preview" };
+        }
+        if (command.type === "set-voice-archive" && typeof command.payload === "boolean") {
+          chat = { ...chat, voiceArchiveEnabled: command.payload };
+          emitChat();
         }
         return clone(chat);
       },
+      getHistory: () => delay(cloneHistoryEntries(chat.historyEntries)),
+      getHistoryVoice: () => delay([]),
+      getRuntimeStatus: () => delay(runtimeStatusFromSnapshot(chat)),
       getSnapshot: () => delay(chat),
-      getTheme: () => delay(sampleChatTheme),
-      async launch(payload) {
-        const character = config.characters.find((item) => payload.characters.includes(item.name));
+      getTheme: () =>
+        delay(
+          previewThemePayloadFromManifest(
+            resolvePreviewManifest(activeThemeId) ?? sampleChatThemeManifests[DEFAULT_CHAT_THEME_ID],
+          ),
+        ),
+      async launch(payload, options) {
+        const taskId = `preview-chat-init-${Date.now()}`;
+        previewTask<ChatSnapshot>(
+          taskId,
+          {
+            kind: "chat-initialization",
+            message: "Preparing chat runtime",
+            phase: "preparing",
+            progress: 0.08,
+            status: "running",
+            title: "Initialize chat",
+          },
+          options,
+        );
+        await delay(null, 80);
+        previewTask<ChatSnapshot>(
+          taskId,
+          {
+            kind: "chat-initialization",
+            message: "Starting voice services",
+            phase: "tts",
+            progress: 0.46,
+            status: "running",
+            title: "Initialize chat",
+          },
+          options,
+        );
+        await delay(null, 80);
+        previewTask<ChatSnapshot>(
+          taskId,
+          {
+            kind: "chat-initialization",
+            message: "Loading chat memory",
+            phase: "memory",
+            progress: 0.76,
+            status: "running",
+            title: "Initialize chat",
+          },
+          options,
+        );
+        await delay(null, 80);
+        const player = config.characters.find(
+          (item) => item.name === payload.playerCharacter && payload.characters.includes(item.name),
+        );
+        const character = config.characters.find(
+          (item) => payload.characters.includes(item.name) && item.name !== player?.name,
+        );
         const background = config.background_list.find((item) => item.name === payload.backgroundName);
-        const historyPath = payload.historyPath || chat.historyPath || "./data/chat_history/preview.json";
+        const requestedHistoryPath = payload.historyPath || chat.historyPath || "./data/chat_history/preview";
+        const historyBase = requestedHistoryPath.toLowerCase().endsWith(".json")
+          ? requestedHistoryPath.slice(0, -".json".length)
+          : requestedHistoryPath;
+        const historyPath = payload.resetHistory
+          ? `${historyBase}-quick-restart-${(previewHistoryCounter += 1)}`
+          : requestedHistoryPath;
         chat = {
           ...chat,
           backgroundPath: background?.sprites[0]?.path,
+          userDisplayName: player?.name || "你",
+          playerPortrait: player?.sprites[0]
+            ? {
+                characterName: player.name,
+                url: player.sprites[0].path,
+                crop: player.sprites[0].portrait_crop ?? player.portrait_crop ?? { x: 0.5, y: 0.2, zoom: 1 },
+              }
+            : null,
           characterName: character?.name,
-          dialogText: `${payload.templateId} 已启动：${historyPath}`,
+          chatProcessRunning: true,
+          chatRuntimeClosing: false,
+          dialogText: "",
           historyPath,
-          sprites: character?.sprites[0]
-            ? [{ id: `${character.name}-0`, label: character.name, path: character.sprites[0].path }]
-            : [],
+          sprites:
+            payload.showInitialSprite !== false && character?.sprites[0]
+              ? [
+                  {
+                    avatarType: "static",
+                    modelUrl: "",
+                    id: `${character.name}-0`,
+                    identityKey: `character:${character.name.toLowerCase()}`,
+                    label: character.name,
+                    path: character.sprites[0].path,
+                  },
+                ]
+              : [],
+          sessionClosedReason: "",
           status: "idle",
+          statusMessage: `${payload.templateId || payload.templateName || "预览聊天"} 已启动：${historyPath}`,
         };
+        if (templateSession) {
+          templateSession = { ...templateSession, historyPath };
+        }
+        conversations.set(historyPath, {
+          payload: clone({ ...payload, historyPath, resetHistory: false }),
+          summary: {
+            id: historyPath,
+            title:
+              conversations.get(historyPath)?.summary.title ||
+              payload.conversationTitle?.trim() ||
+              payload.templateName ||
+              "",
+            characters: payload.characters,
+            preview: "",
+            updatedAt: Date.now(),
+            kind: payload.storyPath ? "story" : (conversations.get(historyPath)?.summary.kind ?? "normal"),
+            storyPath: payload.storyPath || conversations.get(historyPath)?.summary.storyPath || "",
+            historyPath,
+            hasSettings: true,
+          },
+        });
         emitChat();
-        return delay(chat);
+        previewTask<ChatSnapshot>(
+          taskId,
+          {
+            kind: "chat-initialization",
+            message: "Chat is ready",
+            phase: "completed",
+            progress: 1,
+            result: clone(chat),
+            status: "succeeded",
+            title: "Initialize chat",
+          },
+          options,
+        );
+        return clone(chat);
       },
-      async resumeLast() {
-        const character = config.characters.find((item) => templateSession?.selectedCharacters?.includes(item.name));
+      async resumeLast(options) {
+        const taskId = `preview-chat-init-${Date.now()}`;
+        previewTask<ChatSnapshot>(
+          taskId,
+          {
+            kind: "chat-initialization",
+            message: "Preparing the previous chat",
+            phase: "preparing",
+            progress: 0.12,
+            status: "running",
+            title: "Initialize chat",
+          },
+          options,
+        );
+        await delay(null, 80);
+        previewTask<ChatSnapshot>(
+          taskId,
+          {
+            kind: "chat-initialization",
+            message: "Restoring chat services",
+            phase: "runtime",
+            progress: 0.68,
+            status: "running",
+            title: "Initialize chat",
+          },
+          options,
+        );
+        await delay(null, 80);
+        const player = config.characters.find(
+          (item) =>
+            item.name === templateSession?.playerCharacter && templateSession?.selectedCharacters?.includes(item.name),
+        );
+        const character = config.characters.find(
+          (item) => templateSession?.selectedCharacters?.includes(item.name) && item.name !== player?.name,
+        );
         const background = config.background_list.find((item) => item.name === templateSession?.background);
-        const historyPath = templateSession?.historyPath || chat.historyPath || "./data/chat_history/preview.json";
+        const historyPath = templateSession?.historyPath || chat.historyPath || "./data/chat_history/preview";
         chat = {
           ...chat,
           backgroundPath: background?.sprites[0]?.path ?? chat.backgroundPath,
+          userDisplayName: player?.name || "你",
+          playerPortrait: player?.sprites[0]
+            ? chat.playerPortrait?.characterName === player.name
+              ? chat.playerPortrait
+              : {
+                  characterName: player.name,
+                  url: player.sprites[0].path,
+                  crop: player.sprites[0].portrait_crop ?? player.portrait_crop ?? { x: 0.5, y: 0.2, zoom: 1 },
+                }
+            : null,
           characterName: character?.name ?? chat.characterName,
-          dialogText: `已恢复上次启动：${historyPath}`,
+          chatProcessRunning: true,
+          chatRuntimeClosing: false,
+          dialogText: "",
           historyPath,
-          sprites: character?.sprites[0]
-            ? [{ id: `${character.name}-0`, label: character.name, path: character.sprites[0].path }]
-            : chat.sprites,
+          sprites:
+            templateSession?.showInitialSprite === false
+              ? []
+              : character?.sprites[0]
+                ? [
+                    {
+                      avatarType: "static",
+                      modelUrl: "",
+                      id: `${character.name}-0`,
+                      identityKey: `character:${character.name.toLowerCase()}`,
+                      label: character.name,
+                      path: character.sprites[0].path,
+                    },
+                  ]
+                : chat.sprites,
+          sessionClosedReason: "",
           status: "idle",
+          statusMessage: `已恢复上次启动：${historyPath}`,
         };
         emitChat();
-        return delay(chat);
+        previewTask<ChatSnapshot>(
+          taskId,
+          {
+            kind: "chat-initialization",
+            message: "Chat is ready",
+            phase: "completed",
+            progress: 1,
+            result: clone(chat),
+            status: "succeeded",
+            title: "Initialize chat",
+          },
+          options,
+        );
+        return clone(chat);
       },
       subscribe(listener) {
         chatListeners.add(listener);
         listener(clone(chat));
         return () => chatListeners.delete(listener);
       },
+      listThemes: () => delay<ChatThemeSummary[]>(listPreviewThemes()),
+      async getThemeManifest(id) {
+        const manifest = resolvePreviewManifest(id);
+        if (!manifest) {
+          throw new Error(`主题不存在：${id}`);
+        }
+        return delay<ChatThemeManifest>(manifest);
+      },
+      getActiveThemeId: () => delay(activeThemeId),
+      async setActiveThemeId(id) {
+        if (!previewThemeManifests.has(id)) {
+          throw new Error(`主题不存在：${id}`);
+        }
+        activeThemeId = id;
+      },
+      async uploadTheme(file) {
+        const id =
+          file.name
+            .replace(/\.zip$/i, "")
+            .trim()
+            .replace(/[^\w-]+/g, "-") || "uploaded-theme";
+        const base = resolvePreviewManifest(activeThemeId) ?? sampleChatThemeManifests[DEFAULT_CHAT_THEME_ID];
+        const manifest: ChatThemeManifest = {
+          ...clone(base),
+          id,
+          name: { zh_CN: file.name, en: file.name, ja: file.name },
+          tokens: {
+            ...clone(base.tokens),
+            global: {
+              ...clone(base.tokens.global ?? {}),
+              themeColor: "#2fbf9f",
+            },
+            send: {
+              ...clone(base.tokens.send ?? {}),
+              background: "#2fbf9f",
+            },
+          },
+        };
+        previewThemeManifests.set(id, manifest);
+        previewThemeSources.set(id, "user");
+        previewThemeAssetBases.delete(id);
+        return delay<ChatThemeSummary>({
+          id,
+          name: clone(manifest.name),
+          author: manifest.author,
+          version: manifest.version,
+          source: "user",
+        });
+      },
+      async uploadAttachments() {
+        return { attachments: [] };
+      },
+      async saveTheme(input) {
+        const manifest = clone(input.manifest);
+        const existingSource = previewThemeSources.get(manifest.id);
+        const creating = manifest.id !== input.baseId;
+        if (existingSource === "builtin") {
+          throw new Error("内置主题不可编辑。");
+        }
+        if (creating && previewThemeManifests.has(manifest.id)) {
+          throw new Error(`主题已存在：${manifest.id}`);
+        }
+        if (!previewThemeManifests.has(manifest.id) && !previewThemeManifests.has(input.baseId)) {
+          throw new Error(`基础主题不存在：${input.baseId}`);
+        }
+        previewThemeManifests.set(manifest.id, manifest);
+        previewThemeSources.set(manifest.id, "user");
+        if (creating) {
+          const assetBaseId = previewThemeAssetBases.get(input.baseId);
+          if (assetBaseId) {
+            previewThemeAssetBases.set(manifest.id, assetBaseId);
+          } else {
+            previewThemeAssetBases.delete(manifest.id);
+          }
+        }
+        return delay<ChatThemeSummary>({
+          id: manifest.id,
+          name: clone(manifest.name),
+          author: manifest.author,
+          version: manifest.version,
+          source: "user",
+        });
+      },
+      async deleteTheme(id) {
+        if ((previewThemeSources.get(id) ?? "user") !== "user") {
+          throw new Error("内置主题不能删除。");
+        }
+        previewThemeManifests.delete(id);
+        previewThemeSources.delete(id);
+        previewThemeAssetBases.delete(id);
+        if (activeThemeId === id) {
+          activeThemeId = DEFAULT_CHAT_THEME_ID;
+        }
+      },
+      subscribeEvents(listener) {
+        chatEventListeners.add(listener);
+        listener({
+          seq: (previewChatEventSeq += 1),
+          snapshot: clone(chat),
+          ts: Date.now(),
+          type: "snapshot",
+          v: 1,
+        });
+        return () => {
+          chatEventListeners.delete(listener);
+        };
+      },
+    },
+    knowledge: {
+      getKnowledgeStatus: () => delay({ status: "ready" as const }),
+      async importKnowledge(knowledgeId, items, options) {
+        const preview = await previewMemoryImport(items);
+        const taskId = `knowledge-import-${Date.now()}`;
+        previewTask<KnowledgeImportResult>(
+          taskId,
+          {
+            kind: "knowledge-import",
+            message: "Importing material",
+            phase: "extracting",
+            progress: 0.5,
+            status: "running",
+            title: "Import material",
+          },
+          options,
+        );
+        await delay(undefined, 120);
+        const result: KnowledgeImportResult = {
+          chunkCount: preview.chunkCount,
+          duplicateCount: 0,
+          estimatedTotalTokens: preview.estimatedTotalTokens,
+          extractedCount: items.length,
+          fileCount: preview.fileCount,
+          memories: items.map((item) => `Knowledge imported from ${item.name}`),
+          savedCount: items.length,
+          knowledge_id: knowledgeId,
+        };
+        const currentKnowledge = knowledgeData.get(knowledgeId) ?? { memories: [], characters: [] };
+        currentKnowledge.memories.push(
+          ...(result.memories ?? []).map((memory, index) => ({ id: `${taskId}-${index}`, memory })),
+        );
+        knowledgeData.set(knowledgeId, currentKnowledge);
+        previewTask(
+          taskId,
+          {
+            kind: "knowledge-import",
+            message: "Material import complete",
+            phase: "completed",
+            progress: 1,
+            result,
+            status: "succeeded",
+            title: "Import material",
+          },
+          options,
+        );
+        return clone(result);
+      },
+      async listKnowledgeInstances({ query, page }) {
+        const term = query.trim().toLowerCase();
+        const knowledge = [...knowledgeData]
+          .filter(([id]) => id.toLowerCase().includes(term))
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([knowledgeId, data]) => ({
+            knowledge_id: knowledgeId,
+            entryCount: data.memories.length,
+            characterCount: data.characters.length,
+          }));
+        return delay({
+          count: knowledge.length,
+          page,
+          pageSize: 20,
+          knowledge: knowledge.slice((page - 1) * 20, page * 20),
+        });
+      },
+      async listKnowledgeBindings(characterName, page = 1) {
+        const name = requiredKnowledgeValue(characterName, "character name");
+        page = Math.max(1, Math.trunc(page));
+        const bindings = [...knowledgeData]
+          .flatMap(([knowledgeId, data]) =>
+            data.characters
+              .filter((character) => character.name === name)
+              .map((character) => ({ knowledge_id: knowledgeId, createdAt: character.createdAt })),
+          )
+          .sort((a, b) => (a.knowledge_id < b.knowledge_id ? -1 : a.knowledge_id > b.knowledge_id ? 1 : 0));
+        return delay({
+          characterName: name,
+          count: bindings.length,
+          page,
+          pageSize: 20,
+          bindings: bindings.slice((page - 1) * 20, page * 20),
+        });
+      },
+      async addKnowledgeBinding(characterName, knowledgeId) {
+        const name = requiredKnowledgeValue(characterName, "character name");
+        const wid = requiredKnowledgeValue(knowledgeId, "knowledge id");
+        addPreviewBinding(name, wid);
+        return delay({ ok: true as const, characterName: name, knowledge_id: wid });
+      },
+      async listKnowledgeBindingNames(knowledgeId) {
+        const wid = requiredKnowledgeValue(knowledgeId, "knowledge id");
+        return delay({
+          knowledge_id: wid,
+          characterNames: (knowledgeData.get(wid)?.characters ?? []).map((c) => c.name).sort(),
+        });
+      },
+      async batchKnowledgeBindings(knowledgeId, add, remove) {
+        const wid = requiredKnowledgeValue(knowledgeId, "knowledge id");
+        const added = [...new Set(add.map((name) => requiredKnowledgeValue(name, "character name")))];
+        const removed = [...new Set(remove.map((name) => requiredKnowledgeValue(name, "character name")))];
+        if (added.some((name) => removed.includes(name)))
+          throw new Error("a character cannot be added and removed in the same request");
+        removed.forEach((name) => removePreviewBinding(name, wid));
+        added.forEach((name) => addPreviewBinding(name, wid));
+        return delay({
+          ok: true as const,
+          knowledge_id: wid,
+          characterNames: (knowledgeData.get(wid)?.characters ?? []).map((c) => c.name).sort(),
+        });
+      },
+      async removeKnowledgeBinding(characterName, knowledgeId) {
+        const name = requiredKnowledgeValue(characterName, "character name");
+        const wid = requiredKnowledgeValue(knowledgeId, "knowledge id");
+        const deleted = removePreviewBinding(name, wid);
+        return delay({ ok: true as const, characterName: name, knowledge_id: wid, deleted });
+      },
+      async addKnowledgeEntry(knowledgeId, content) {
+        const wid = requiredKnowledgeValue(knowledgeId, "knowledge id");
+        const text = requiredKnowledgeValue(content, "content");
+        const data = knowledgeData.get(wid) ?? { memories: [], characters: [] };
+        if (!data.memories.some((entry) => entry.memory === text)) {
+          data.memories.push({ id: crypto.randomUUID(), memory: text });
+        }
+        knowledgeData.set(wid, data);
+        const memories = data.memories.slice(0, 200);
+        return delay({ knowledge_id: wid, count: memories.length, memories });
+      },
+      async deleteKnowledgeEntry(knowledgeId, memoryId) {
+        const wid = requiredKnowledgeValue(knowledgeId, "knowledge id");
+        const id = requiredKnowledgeValue(memoryId, "memory id");
+        const data = knowledgeData.get(wid);
+        if (data) {
+          data.memories = data.memories.filter((entry) => entry.id !== id);
+          if (!data.memories.length && !data.characters.length) knowledgeData.delete(wid);
+        }
+        const memories = (data?.memories ?? []).slice(0, 200);
+        return delay({ knowledge_id: wid, count: memories.length, memories });
+      },
+      async deleteKnowledge(knowledgeId) {
+        const wid = requiredKnowledgeValue(knowledgeId, "knowledge id");
+        const data = knowledgeData.get(wid);
+        const result = {
+          ok: true,
+          knowledge_id: wid,
+          deletedEntryCount: data?.memories.length ?? 0,
+          deletedBindingCount: data?.characters.length ?? 0,
+        };
+        knowledgeData.delete(wid);
+        return delay(result);
+      },
+      async listKnowledgeEntries(knowledgeId) {
+        const memories = (knowledgeData.get(knowledgeId)?.memories ?? []).slice(0, 200);
+        return delay({ knowledge_id: knowledgeId, count: memories.length, memories });
+      },
+      async searchKnowledgeEntries(knowledgeId, query) {
+        const memories = (knowledgeData.get(knowledgeId)?.memories ?? [])
+          .filter((row) => row.memory.toLowerCase().includes(query.trim().toLowerCase()))
+          .slice(0, 200);
+        return delay({ knowledge_id: knowledgeId, query, count: memories.length, memories });
+      },
+      previewKnowledgeImport: (_knowledgeId, items): Promise<KnowledgeImportPreview> => previewMemoryImport(items),
     },
     characters: {
+      importModelStates: async () => {
+        throw new Error("Preset import requires the local bridge");
+      },
+      importModel: async () => {
+        throw new Error("Model import requires the local bridge");
+      },
+      saveModelState: async () => {
+        throw new Error("Model state saving requires the local bridge");
+      },
+      async planSprites(input) {
+        const framing = input.referenceImage
+          ? ", preserve the reference image's exact framing, crop, camera angle, character scale and screen position throughout, keep all pose changes within the original frame"
+          : ", full body, full scene";
+        return delay({
+          items: Array.from({ length: input.count }, (_, i) => ({
+            prompt: `make the character stand and ${["smile warmly with relaxed eyebrows, wave the open right hand beside the head, and rest the relaxed left hand at the side", "furrow the eyebrows slightly, press the lips together thoughtfully, rest the right fingertips on the chin, and place the left hand loosely at the waist", "raise the eyebrows, open the mouth slightly in surprise, and hold both open hands at shoulder height with palms facing forward", "give a confident small smile with slightly narrowed eyes and cross both arms at chest height, with the left hand resting on the right upper arm and the right hand resting on the left upper arm"][i % 4]}${framing}, locked-off static camera, fixed viewpoint and focal length throughout, plain light, sprite`,
+            tagging: ["微笑，放松，日常对话", "思考，托腮，分析", "惊讶，张开双手，意外", "自信，抱臂，坚定"][i % 4],
+          })),
+        });
+      },
+      async renderSprite(input) {
+        const character = config.characters.find((item) => item.name === input.name);
+        if (!character) throw new Error("Character not found");
+        const result = {
+          ...input,
+          taskId: crypto.randomUUID(),
+          path: input.referenceImage || character.sprites[0]?.path || "data/sprite/mika/normal.png",
+          backgroundRemoved: input.removeBackground !== false,
+        };
+        generatedSprites.set(result.taskId, result);
+        return delay(result);
+      },
+      async animateSprite() {
+        throw new PlatformRequestError(
+          "动态立绘需要连接本机新世界与 H3 服务；浏览器预览不会生成或伪造透明视频。",
+          501,
+          "local_app_required",
+        );
+      },
+      async analyzeSpriteTransitions() {
+        throw new PlatformRequestError("聊天过渡分析需要连接本机新世界。", 501, "local_app_required");
+      },
+      async generateSpriteTransition() {
+        throw new PlatformRequestError("过渡生成需要连接本机新世界与 H3 服务。", 501, "local_app_required");
+      },
+      async saveSpriteTransitions() {
+        throw new PlatformRequestError("请在本机新世界中保存过渡。", 501, "local_app_required");
+      },
+      async captureSpriteFrame(input) {
+        const source = generatedSprites.get(input.taskId);
+        if (!source || source.name !== input.name || !source.videoPath) throw new Error("Invalid generated video");
+        const result = { ...source, taskId: crypto.randomUUID(), frameTime: input.seconds, imported: false };
+        generatedSprites.set(result.taskId, result);
+        return delay(result);
+      },
+      async removeSpriteBackground(input) {
+        const source = generatedSprites.get(input.taskId);
+        if (!source || source.name !== input.name) throw new Error("Invalid generated sprite");
+        const result = { ...source, taskId: crypto.randomUUID(), backgroundRemoved: true, imported: false };
+        generatedSprites.set(result.taskId, result);
+        return delay(result);
+      },
+      async importGeneratedSprites(input) {
+        const character = config.characters.find((item) => item.name === input.name);
+        if (!character) throw new Error("Character not found");
+        const tags = tagContents(character.emotion_tags, character.sprites.length);
+        for (const item of input.items) {
+          const result = generatedSprites.get(item.taskId);
+          if (!result || result.name !== input.name) throw new Error("Invalid generated sprite");
+          if (result.imported) continue;
+          if (input.replace) {
+            const target = character.sprites[input.replace.index];
+            if (input.items.length !== 1 || !target || target.path !== input.replace.path)
+              throw new Error("Original sprite changed");
+            character.sprites[input.replace.index] = { ...target, path: result.path };
+            tags[input.replace.index] = item.tagging;
+          } else {
+            character.sprites.push({ path: result.path });
+            tags.push(item.tagging);
+          }
+          result.imported = true;
+        }
+        character.emotion_tags = numberedTags("立绘", tags);
+        return delay(character);
+      },
+      async autoLabelSprites(name) {
+        const character = config.characters.find((item) => item.name === name);
+        if (!character) {
+          throw new Error(`Character not found: ${name}`);
+        }
+        const tags = tagContents(character.emotion_tags, character.sprites.length);
+        let annotatedCount = 0;
+        tags.forEach((tag, index) => {
+          if (!tag.trim()) {
+            tags[index] = "平静，微笑，站立";
+            annotatedCount += 1;
+          }
+        });
+        character.emotion_tags = numberedTags("立绘", tags);
+        return delay({
+          annotatedCount,
+          failedCount: 0,
+          failures: [],
+          name,
+          scope: "character" as const,
+          skippedCount: character.sprites.length - annotatedCount,
+          tags: character.emotion_tags,
+          totalCount: character.sprites.length,
+        });
+      },
       async delete(name) {
         config.characters = config.characters.filter((character) => character.name !== name);
+        for (const [knowledgeId, data] of knowledgeData) {
+          data.characters = data.characters.filter((character) => character.name !== name);
+          if (!data.memories.length && !data.characters.length) knowledgeData.delete(knowledgeId);
+        }
+        if (templateSession) {
+          templateSession = {
+            ...templateSession,
+            selectedCharacters: templateSession.selectedCharacters.filter((selectedName) => selectedName !== name),
+          };
+        }
       },
       async deleteMemory(name, memoryId) {
         const agentId = name || "user";
@@ -554,8 +1987,27 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         return delay(character);
       },
       export: (name) => delay(`./data/export/${name}.char`),
+      async ensureBriefs(names) {
+        const wanted = new Set(names);
+        const selected = config.characters.filter((character) => wanted.has(character.name));
+        const generatedNames: string[] = [];
+        for (const character of selected) {
+          if (!character.character_brief?.trim()) {
+            character.character_brief = `${character.name}的精简人物简介。`;
+            generatedNames.push(character.name);
+          }
+        }
+        return delay({ characters: selected, generatedNames });
+      },
+      async generateBrief(input) {
+        return delay({
+          characterBrief: `${input.name || "角色"}的精简人物简介。`,
+          message: "输出成功",
+        });
+      },
       async generateSetting(input) {
         return delay({
+          characterBrief: `${input.name || "角色"}的精简人物简介。`,
           characterSetting: `${input.name || "角色"}的背景信息：\n1. 浏览器预览生成的设定。\n\n语言习惯：\n1. 温和且简洁。`,
           message: "输出成功",
         });
@@ -564,6 +2016,9 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         const imported = items.map<Character>((item, index) => {
           const label = item instanceof File ? item.name : item.split("/").pop() || `character-${index + 1}`;
           return {
+            avatar_type: "static",
+            avatars: {},
+            character_brief: "",
             character_setting: "导入预览角色",
             color: DEFAULT_CHARACTER_COLOR,
             emotion_tags: "",
@@ -579,6 +2034,68 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         config.characters.push(...imported);
         return delay(imported);
       },
+      getMem0Status: () => delay({ status: "ready" as const }),
+      async importMemories(name, items, options) {
+        const preview = await previewMemoryImport(items);
+        const taskId = `memory-import-${Date.now()}`;
+        previewTask<CharacterMemoryImportResult>(
+          taskId,
+          {
+            kind: "character-memory-import",
+            message: "Preparing dialogue chunks",
+            phase: "preparing",
+            title: "Import long-term memories",
+          },
+          options,
+        );
+        await delay(undefined, 80);
+        previewTask<CharacterMemoryImportResult>(
+          taskId,
+          {
+            kind: "character-memory-import",
+            message: "Extracting long-term memories",
+            phase: "extracting",
+            progress: 0.55,
+            status: "running",
+            title: "Import long-term memories",
+          },
+          options,
+        );
+        await delay(undefined, 120);
+        const memories = items.map((item, index) => {
+          return `Imported memory ${index + 1} from ${item.name}`;
+        });
+        const agentId = name || "user";
+        const current = characterMemories.get(agentId) ?? { agentId, count: 0, memories: [] };
+        const nextMemories = [
+          ...current.memories,
+          ...memories.map((memory, index) => ({ id: `${agentId}-import-${Date.now()}-${index}`, memory })),
+        ];
+        characterMemories.set(agentId, { agentId, count: nextMemories.length, memories: nextMemories });
+        const result: CharacterMemoryImportResult = {
+          chunkCount: preview.chunkCount,
+          duplicateCount: 0,
+          estimatedTotalTokens: preview.estimatedTotalTokens,
+          extractedCount: memories.length,
+          fileCount: preview.fileCount,
+          memories,
+          savedCount: memories.length,
+        };
+        previewTask(
+          taskId,
+          {
+            kind: "character-memory-import",
+            message: "Memory import complete",
+            phase: "completed",
+            progress: 1,
+            result,
+            status: "succeeded",
+            title: "Import long-term memories",
+          },
+          options,
+        );
+        return clone(result);
+      },
       list: () => delay(config.characters),
       async listMemories(name) {
         const agentId = name || "user";
@@ -589,6 +2106,17 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         };
         characterMemories.set(agentId, existing);
         return delay(existing);
+      },
+      previewMemoryImport: (_name, items) => previewMemoryImport(items),
+      async searchMemories({ limit = 200, name, query }) {
+        const agentId = name || "user";
+        const existing = await this.listMemories(agentId);
+        const normalizedQuery = query.trim().toLowerCase();
+        const memories = normalizedQuery
+          ? existing.memories.filter((memory) => memory.memory.toLowerCase().includes(normalizedQuery))
+          : existing.memories;
+        const limitedMemories = memories.slice(0, limit);
+        return delay({ agentId, count: limitedMemories.length, memories: limitedMemories });
       },
       async remember(name, content) {
         const agentId = name || "user";
@@ -619,13 +2147,43 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           sovits_model_path: character.sovits_model_path?.trim() || "",
           sprite_prefix: character.sprite_prefix.trim() || "temp",
           sprite_scale: index >= 0 ? config.characters[index].sprite_scale : 1,
-          sprites: index >= 0 ? config.characters[index].sprites : [],
+          sprites:
+            index >= 0
+              ? config.characters[index].sprites.map((sprite, spriteIndex) => ({
+                  ...sprite,
+                  portrait_crop:
+                    character.sprites[spriteIndex]?.portrait_crop === null
+                      ? null
+                      : (character.sprites[spriteIndex]?.portrait_crop ?? sprite.portrait_crop),
+                }))
+              : [],
           character_setting: character.character_setting.trim(),
         };
         if (index >= 0) {
           config.characters[index] = savedCharacter;
         } else {
           config.characters.push(savedCharacter);
+        }
+        if (originalName && originalName !== savedCharacter.name) {
+          for (const data of knowledgeData.values()) {
+            const oldBinding = data.characters.find((item) => item.name === originalName);
+            if (!oldBinding) continue;
+            const targetBinding = data.characters.find((item) => item.name === savedCharacter.name);
+            if (targetBinding) {
+              targetBinding.createdAt = [targetBinding.createdAt, oldBinding.createdAt].sort()[0];
+              data.characters = data.characters.filter((item) => item.name !== originalName);
+            } else {
+              oldBinding.name = savedCharacter.name;
+            }
+          }
+        }
+        if (templateSession && originalName && originalName !== savedCharacter.name) {
+          templateSession = {
+            ...templateSession,
+            selectedCharacters: templateSession.selectedCharacters.map((name) =>
+              name === originalName ? savedCharacter.name : name,
+            ),
+          };
         }
         return delay(savedCharacter);
       },
@@ -659,6 +2217,17 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         character.sprites[spriteIndex] = { ...character.sprites[spriteIndex], voice_text: voiceText };
         return delay(character);
       },
+      async saveSpriteVoiceType(name, spriteIndex, voiceType) {
+        const character = config.characters.find((item) => item.name === name);
+        if (!character || !character.sprites[spriteIndex]) {
+          throw new Error("立绘不存在。");
+        }
+        character.sprites[spriteIndex] = {
+          ...character.sprites[spriteIndex],
+          voice_type: voiceType,
+        };
+        return delay(character);
+      },
       async translateFields(input) {
         return delay({
           characterSetting: input.characterSetting,
@@ -689,6 +2258,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           ...character.sprites[input.spriteIndex],
           voice_path: input.voicePath,
           voice_text: input.voiceText,
+          voice_type: input.voiceType,
         };
         return delay(character);
       },
@@ -766,8 +2336,13 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           options,
         );
         await delay(null, 160);
+        const bundleRoots = {
+          genie: "data/tts_bundles/installed/genie_tts_server/Genie-TTS-Server",
+          gptso: "data/tts_bundles/installed/gpt_sovits_v2pro/GPT-SoVITS-v2pro-20250604",
+          gptso50: "data/tts_bundles/installed/gpt_sovits_nvidia50/GPT-SoVITS-v2pro-20250604-nvidia50",
+        } as const;
         const result = {
-          path: `data/tts_bundles/installed/${input.kind}`,
+          path: bundleRoots[input.kind],
           provider: input.kind === "genie" ? "genie-tts" : "gpt-sovits",
         } as const;
         previewTask(
@@ -787,7 +2362,18 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           "当前页面未连接 Shinsekai Python bridge，无法进行真实 LLM 连通检测。请使用 start-react 启动，或为 Vite 设置 VITE_SHINSEKAI_API_BASE。",
         );
       },
+      testComfyuiConnection: async () => {
+        throw new Error("当前页面未连接 Shinsekai Python bridge，无法进行真实 ComfyUI 连通检测。");
+      },
       get: () => delay(config),
+      detectNetworkProxy: () =>
+        delay({
+          http_proxy_url: "",
+          https_proxy_url: "",
+          socks5_proxy_url: "",
+          source: "browser-preview",
+        }),
+      getMemoryStatus: () => delay({ modelCached: true, status: "ready" as const }),
       getTtsBundleRecommendation: () =>
         delay({
           gpus: [{ device: "NVIDIA GeForce RTX 4070", vendor: "NVIDIA", vram_gb: 12 }],
@@ -803,12 +2389,120 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         return delay(config.system_config);
       },
     },
+    avatarRuntimes: {
+      async status() {
+        throw new Error("SDK installation requires a running Shinsekai bridge");
+      },
+      async prepare() {
+        throw new Error("SDK installation requires a running Shinsekai bridge");
+      },
+      async install() {
+        throw new Error("SDK installation requires a running Shinsekai bridge");
+      },
+    },
+    modelAssets: {
+      async download(input, options) {
+        const memoryEmbedding = input.assetId === "memory.embedding";
+        const moondreamVision = input.assetId === "vision.moondream";
+        const variant = memoryEmbedding
+          ? "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+          : moondreamVision
+            ? "vikhyatk/moondream2"
+            : String((input.configured ? config.system_config.asr_whisper_model_size : input.variant) || "small");
+        const local = Boolean(
+          !memoryEmbedding && !moondreamVision && input.configured && looksLikeLocalModelReference(variant),
+        );
+        const repoId =
+          memoryEmbedding || moondreamVision
+            ? variant
+            : variant.includes("/")
+              ? variant
+              : `Systran/faster-whisper-${variant}`;
+        const key = `${input.assetId}:${variant}`;
+        const taskId = `preview-model-${Date.now()}`;
+        previewTask(
+          taskId,
+          {
+            kind: "model-download",
+            message: `正在下载 ${variant}。`,
+            phase: "download",
+            progress: 0.42,
+            status: "running",
+            title: "模型下载",
+          },
+          options,
+        );
+        await delay(null, 180);
+        const result = {
+          assetId: input.assetId,
+          cached: true,
+          downloadable: !local,
+          downloaded: !local,
+          path: local ? variant : `preview-cache/${variant}`,
+          ...(local ? {} : { repoId }),
+          source: local ? ("local" as const) : ("huggingface" as const),
+          title: memoryEmbedding ? "Long-term memory embedding" : moondreamVision ? "Moondream vision" : "Whisper ASR",
+          variant,
+        };
+        if (!local) {
+          cachedModelAssets.add(key);
+        }
+        previewTask(
+          taskId,
+          {
+            kind: "model-download",
+            message: `${variant} 已缓存。`,
+            phase: "completed",
+            progress: 1,
+            result,
+            status: "succeeded",
+            title: "模型下载",
+          },
+          options,
+        );
+        return result;
+      },
+      status(input) {
+        const memoryEmbedding = input.assetId === "memory.embedding";
+        const moondreamVision = input.assetId === "vision.moondream";
+        const variant = memoryEmbedding
+          ? "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+          : moondreamVision
+            ? "vikhyatk/moondream2"
+            : String((input.configured ? config.system_config.asr_whisper_model_size : input.variant) || "small");
+        const local = Boolean(
+          !memoryEmbedding && !moondreamVision && input.configured && looksLikeLocalModelReference(variant),
+        );
+        const repoId =
+          memoryEmbedding || moondreamVision
+            ? variant
+            : variant.includes("/")
+              ? variant
+              : `Systran/faster-whisper-${variant}`;
+        return delay({
+          assetId: input.assetId,
+          cached: local || cachedModelAssets.has(`${input.assetId}:${variant}`),
+          downloadable: !local,
+          ...(local ? { path: variant } : { repoId }),
+          source: local ? ("local" as const) : ("huggingface" as const),
+          title: memoryEmbedding ? "Long-term memory embedding" : moondreamVision ? "Moondream vision" : "Whisper ASR",
+          variant,
+        });
+      },
+    },
     files: {
+      async openT2iWorkflowFolder() {
+        throw new PlatformRequestError("Bundled workflows require the local app.", 501, "local_app_required");
+      },
+      modelUrl: () => {
+        throw new Error("Models require the local bridge");
+      },
       browse(options) {
         return delay(previewFileBrowser(options?.path));
       },
       fileUrl(path) {
-        return path;
+        if (path === "/assets/present_example.png") return previewSpriteUrl;
+        return resolvePreviewThemeAssetUrl(path);
       },
       thumbnailBatch(paths, _options) {
         return delay(Object.fromEntries(paths.filter(Boolean).map((path) => [path, path])));
@@ -1058,7 +2752,38 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         return delay(plugin, 400);
       },
       list: () => delay(plugins),
+      listSlotContributions: () =>
+        delay(
+          plugins.some((plugin) => plugin.id === "core-tools" && plugin.enabled)
+            ? [
+                {
+                  actionLabel: "生成场景提示",
+                  actionType: "callback" as const,
+                  actionable: true,
+                  description: "由宿主安全渲染的浏览器预览贡献。",
+                  icon: "sparkles" as const,
+                  id: "scene-prompt",
+                  order: 100,
+                  pageId: "",
+                  pluginId: "core-tools",
+                  pluginVersion: "built-in",
+                  presentation: "button" as const,
+                  slot: "chat-output" as const,
+                  title: "场景灵感",
+                  variant: "ghost" as const,
+                },
+              ]
+            : [],
+        ),
+      status: () => delay({ status: "ready" as const }),
       repoTags: () => delay(["v1.0.0", "v0.9.0"]),
+      runSlotContribution: (pluginId, contributionId) =>
+        delay({
+          id: contributionId,
+          kind: "success" as const,
+          message: "浏览器预览动作已执行。",
+          pluginId,
+        }),
       scanLocal(input) {
         const baseName = input.path.split(/[\\/]/).filter(Boolean).pop() || "preview-plugin";
         return delay({
@@ -1241,18 +2966,39 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         updatedAt: Date.now(),
       }),
     },
+    story: createStoryPreviewPlatform(
+      () => clone(chat),
+      (snapshot) => {
+        chat = snapshot;
+      },
+      (storyPath) => {
+        const selected = [...conversations].filter(([, item]) => item.summary.storyPath === storyPath);
+        if (
+          (chat.chatProcessRunning || chat.chatRuntimeClosing) &&
+          selected.some(([, item]) => item.summary.historyPath === chat.historyPath)
+        ) {
+          throw new Error("请先关闭该剧本版本的聊天，再删除剧本及关联对话。");
+        }
+        for (const [id] of selected) conversations.delete(id);
+      },
+    ),
     templates: {
       async generate(input) {
         if (input.voiceLanguage) {
           config.system_config.voice_language = input.voiceLanguage;
         }
-        const system = `角色：${input.characters.join("、")}\n背景：${input.backgroundName}\n请按剧情向 RPG 风格推进对白。`;
-        const template: TemplateSummary = {
-          content: [input.scenario, system].filter(Boolean).join("\n\n"),
+        const scenario =
+          input.scenario ||
+          `你需要模拟一个RPG剧情对话系统，出场人物有：${input.characters.join("、")} 以及其他相关人物，请根据剧情调度人物。`;
+        const system = "";
+        const template = {
+          content: [scenario, system].filter(Boolean).join("\n\n"),
           id: "",
           name: input.name || "新模板",
           path: "",
-          scenario: input.scenario || "",
+          resolvedCharacters: [...input.characters],
+          allowPlayerDialogue: input.allowPlayerDialogue ?? DEFAULT_PLAYER_OPTIONS.allowPlayerDialogue,
+          scenario,
           system,
           updatedAt: "",
         };

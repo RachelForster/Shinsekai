@@ -76,41 +76,9 @@ def _write_stderr(
         pass
 
 
-def _show_qt_dialog(title: str, message: str, detail: str) -> bool:
-    try:
-        from PySide6.QtWidgets import QApplication, QMessageBox
-    except Exception:
-        return False
-
-    app = QApplication.instance()
-    owns_app = False
-    if app is None:
-        try:
-            app = QApplication([])
-            owns_app = True
-        except Exception:
-            return False
-
-    try:
-        box = QMessageBox()
-        box.setIcon(QMessageBox.Icon.Critical)
-        box.setWindowTitle(title)
-        box.setText(message)
-        if detail:
-            box.setDetailedText(detail[-20000:])
-        box.exec()
-        return True
-    except Exception:
-        return False
-    finally:
-        if owns_app:
-            try:
-                app.quit()
-            except Exception:
-                pass
-
-
 def _show_windows_dialog(title: str, message: str) -> bool:
+    if _dialog_suppressed():
+        return False
     if os.name != "nt":
         return False
     try:
@@ -122,23 +90,36 @@ def _show_windows_dialog(title: str, message: str) -> bool:
         return False
 
 
-def show_error_dialog(title: str, message: str, detail: str = "") -> bool:
-    global _dialog_shown
-    if _dialog_shown:
-        return False
-    _dialog_shown = True
-    return _show_qt_dialog(title, message, detail) or _show_windows_dialog(title, message)
+def _running_under_pytest() -> bool:
+    return "PYTEST_CURRENT_TEST" in os.environ or "pytest" in sys.modules
 
 
-def _should_show_dialog(show_dialog: bool) -> bool:
-    if not show_dialog:
-        return False
+def _dialog_suppressed() -> bool:
     raw = (
         os.environ.get("SHINSEKAI_SUPPRESS_MAIN_ERROR_DIALOG")
         or os.environ.get("SHINSEKAI_DISABLE_MAIN_ERROR_DIALOG")
         or ""
     )
-    return raw.strip().lower() not in {"1", "true", "yes", "on"}
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def show_error_dialog(title: str, message: str, detail: str = "") -> bool:
+    global _dialog_shown
+    if _running_under_pytest() or _dialog_suppressed():
+        return False
+    if _dialog_shown:
+        return False
+    _dialog_shown = True
+    del detail
+    return _show_windows_dialog(title, message)
+
+
+def _should_show_dialog(show_dialog: bool) -> bool:
+    if not show_dialog:
+        return False
+    if _running_under_pytest():
+        return False
+    return not _dialog_suppressed()
 
 
 def report_main_exception(

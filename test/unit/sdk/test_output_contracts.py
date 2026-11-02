@@ -1,0 +1,465 @@
+from __future__ import annotations
+
+from types import SimpleNamespace
+
+import pytest
+
+from core.messaging.dialog_tokens import BGM, SCENE
+from ai.llm.template_generator import DEFAULT_DIALOG_CONTRACT_ID, NoValidCharactersError, TemplateGenerator
+from i18n import tr_in_bundle
+from sdk.register import PluginCapabilityRegistry
+from sdk.types import (
+    ChatOutputContract,
+    FieldPatch,
+    OutputContractPatch,
+    OutputFieldSpec,
+    RequirementPatch,
+    RequirementSpec,
+    WorkflowContribution,
+)
+from core.messaging.stream_parser import LlmResponseStreamParser
+
+
+def test_register_dag_yaml_is_workflow_contribution() -> None:
+    registry = PluginCapabilityRegistry()
+
+    registry.register_dag_yaml("plugins/demo/workflow.yaml")
+
+    workflows = registry.workflow_contributions
+    assert len(workflows) == 1
+    assert workflows[0].yaml_path == "plugins/demo/workflow.yaml"
+    assert workflows[0].name == "workflow"
+    assert registry.dag_yaml_paths == ["plugins/demo/workflow.yaml"]
+
+
+def test_register_workflow_with_output_contract() -> None:
+    registry = PluginCapabilityRegistry()
+    contribution = WorkflowContribution(
+        id="demo.workflow",
+        name="Demo Workflow",
+        yaml_path="plugins/demo/workflow.yaml",
+        output_contract=ChatOutputContract(
+            id="demo.output.v1",
+            json_schema={"type": "object"},
+            target_export="llm.output",
+        ),
+    )
+
+    registry.register_workflow(contribution)
+
+    assert registry.workflow_contributions == [contribution]
+    assert registry.dag_yaml_paths == ["plugins/demo/workflow.yaml"]
+
+
+def test_template_generator_applies_speech_contract_patch(monkeypatch) -> None:
+    character = SimpleNamespace(
+        sprites=[object()],
+        emotion_tags="happy: 01",
+        character_setting="A test character.",
+    )
+
+    monkeypatch.setattr(
+        "ai.llm.template_generator.config_manager",
+        SimpleNamespace(get_character_by_name=lambda name: character),
+    )
+
+    patch = OutputContractPatch(
+        id="demo.emotion-tags",
+        target_contract=DEFAULT_DIALOG_CONTRACT_ID,
+        field_patches={
+            "speech": FieldPatch(
+                description="Speech may include parenthesized vocal tags.",
+            )
+        },
+        requirement_patches={
+            "r_speech": RequirementPatch(
+                mode="append",
+                text="Allow concise parenthesized tags such as (cough), (laugh), or (sigh).",
+            )
+        },
+        add_requirements=(
+            RequirementSpec(
+                id="demo_emotion_tag_balance",
+                text="Do not overuse parenthesized vocal tags.",
+                order=71,
+            ),
+        ),
+    )
+
+    template, warning = TemplateGenerator(output_contract_patches=[patch]).generate_chat_template(
+        selected_characters=["Alice"],
+        bg_name=None,
+        use_effect=False,
+        use_cg=False,
+        use_llm_translation=False,
+    )
+
+    assert warning == ""
+    assert "Speech may include parenthesized vocal tags." in template
+    assert "Allow concise parenthesized tags such as (cough), (laugh), or (sigh)." in template
+    assert "Do not overuse parenthesized vocal tags." in template
+
+
+def test_template_generator_renders_added_field_aliases(monkeypatch) -> None:
+    character = SimpleNamespace(
+        sprites=[object()],
+        emotion_tags="happy: 01",
+        character_setting="A test character.",
+    )
+
+    monkeypatch.setattr(
+        "ai.llm.template_generator.config_manager",
+        SimpleNamespace(get_character_by_name=lambda name: character),
+    )
+
+    patch = OutputContractPatch(
+        id="demo.camera",
+        target_contract=DEFAULT_DIALOG_CONTRACT_ID,
+        add_fields=(
+            OutputFieldSpec(
+                key="camera",
+                type="string",
+                description="Camera framing for this line.",
+                aliases=("shot", "framing"),
+            ),
+        ),
+    )
+
+    template, warning = TemplateGenerator(output_contract_patches=[patch]).generate_chat_template(
+        selected_characters=["Alice"],
+        bg_name=None,
+        use_effect=False,
+        use_cg=False,
+        use_llm_translation=False,
+    )
+
+    assert warning == ""
+    assert "camera (string, optional): Camera framing for this line. Aliases: shot, framing." in template
+
+
+def test_template_generator_ends_with_json_format_reminder(monkeypatch) -> None:
+    character = SimpleNamespace(
+        sprites=[object()],
+        emotion_tags="happy: 01",
+        character_setting="A test character.",
+    )
+
+    monkeypatch.setattr(
+        "ai.llm.template_generator.config_manager",
+        SimpleNamespace(get_character_by_name=lambda name: character),
+    )
+    monkeypatch.setattr("ai.llm.template_generator._format_llm_tools_block", lambda: "")
+
+    def fake_translation(key: str, **kwargs) -> str:
+        if key == "closing":
+            return "Begin the scene.\n"
+        if key == "closing_json_reminder":
+            return "MUST_USE_REQUIRED_JSON_FORMAT\n"
+        if key == "closing_tool_protocol":
+            return "REQUIRE_REAL_TOOL_RESULTS\n"
+        return f"{key}\n"
+
+    monkeypatch.setattr("ai.llm.template_generator._T", fake_translation)
+
+    template, warning = TemplateGenerator(output_contract_patches=[]).generate_chat_template(
+        selected_characters=["Alice"],
+        bg_name=None,
+        use_effect=False,
+        use_cg=False,
+        use_llm_translation=False,
+    )
+
+    assert warning == ""
+    assert template.endswith("Begin the scene.\nMUST_USE_REQUIRED_JSON_FORMAT\nREQUIRE_REAL_TOOL_RESULTS\n")
+
+
+def test_template_generator_preserves_effect_toggle_without_duplicate_field_contract(monkeypatch) -> None:
+    character = SimpleNamespace(
+        sprites=[object()],
+        emotion_tags="happy: 01",
+        character_setting="A test character.",
+    )
+    monkeypatch.setattr(
+        "ai.llm.template_generator.config_manager",
+        SimpleNamespace(get_character_by_name=lambda _name: character),
+    )
+    monkeypatch.setattr(
+        "ai.llm.template_generator._T",
+        lambda key, **_kwargs: f"<{key}>\n",
+    )
+    generator = TemplateGenerator(output_contract_patches=[])
+
+    disabled, _ = generator.generate_chat_template(
+        selected_characters=["Alice"],
+        bg_name=None,
+        use_effect=False,
+        use_cg=False,
+        use_llm_translation=False,
+    )
+    enabled, _ = generator.generate_chat_template(
+        selected_characters=["Alice"],
+        bg_name=None,
+        use_effect=True,
+        use_cg=False,
+        use_llm_translation=False,
+    )
+
+    for marker in ("<json_line_effect>", "<r_effect>"):
+        assert marker not in disabled
+        assert marker in enabled
+    for template in (disabled, enabled):
+        assert "<effects_header>" not in template
+        assert "Output field contract" not in template
+        assert template.count("<r_speech>") == 1
+
+
+def test_effect_requirement_retains_audio_modes_and_image_aliases() -> None:
+    requirement = tr_in_bundle("template_gen.r_effect", "zh_CN")
+
+    assert "同行逗号分隔项为别名" in requirement
+    assert "不用于图片" in requirement
+    for prefix in ("before:", "after:", "loop:", "stop:"):
+        assert prefix in requirement
+
+
+def test_template_generator_skips_characters_missing_from_restored_selection(
+    monkeypatch,
+    caplog,
+) -> None:
+    character = SimpleNamespace(
+        name="Alice",
+        sprites=[object()],
+        emotion_tags="happy: 01",
+        character_setting="A test character.",
+    )
+
+    monkeypatch.setattr(
+        "ai.llm.template_generator.config_manager",
+        SimpleNamespace(
+            get_character_by_name=lambda name: character if name == "Alice" else None,
+        ),
+    )
+    monkeypatch.setattr(
+        "ai.llm.template_generator._T",
+        lambda key, **kwargs: f"{key}:{kwargs}\n",
+    )
+
+    template, warning = TemplateGenerator(output_contract_patches=[]).generate_chat_template(
+        selected_characters=["Deleted Character", " Alice "],
+        bg_name=None,
+        use_effect=False,
+        use_cg=False,
+        use_llm_translation=False,
+    )
+
+    assert warning == ""
+    assert "Alice" in template
+    assert "Deleted Character" not in template
+    assert "Skipping missing characters during template generation: Deleted Character" in caplog.text
+
+
+def test_template_generator_raises_domain_error_when_all_selections_are_missing(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "ai.llm.template_generator.config_manager",
+        SimpleNamespace(get_character_by_name=lambda name: None),
+    )
+    monkeypatch.setattr(
+        "ai.llm.template_generator._T",
+        lambda key, **kwargs: f"template_gen.{key}",
+    )
+
+    with pytest.raises(NoValidCharactersError) as error:
+        TemplateGenerator(output_contract_patches=[]).generate_chat_template(
+            selected_characters=["Deleted Character"],
+            bg_name=None,
+            use_effect=False,
+            use_cg=False,
+            use_llm_translation=False,
+        )
+
+    assert error.value.error_code == "no_valid_characters"
+    assert str(error.value) == "template_gen.err_no_characters"
+
+
+def test_template_generator_uses_config_character_identity_for_deduplication(
+    monkeypatch,
+) -> None:
+    characters = [
+        SimpleNamespace(
+            name="Straße",
+            sprites=[],
+            emotion_tags="",
+            character_setting="",
+        ),
+        SimpleNamespace(
+            name="STRASSE",
+            sprites=[],
+            emotion_tags="",
+            character_setting="",
+        ),
+    ]
+    characters_by_key = {character.name.lower(): character for character in characters}
+    monkeypatch.setattr(
+        "ai.llm.template_generator.config_manager",
+        SimpleNamespace(
+            get_character_by_name=lambda name: characters_by_key.get(name.lower()),
+        ),
+    )
+    monkeypatch.setattr(
+        "ai.llm.template_generator._T",
+        lambda key, **kwargs: f"{key}:{kwargs}\n",
+    )
+
+    generator = TemplateGenerator(output_contract_patches=[])
+    resolved = generator.resolve_chat_template_characters(["Straße", "STRASSE"])
+    template, warning = generator.generate_chat_template(
+        selected_characters=["Straße", "STRASSE"],
+        bg_name=None,
+        use_effect=False,
+        use_cg=False,
+        use_llm_translation=False,
+    )
+
+    assert [name for name, _character in resolved] == ["Straße", "STRASSE"]
+    assert warning == ""
+    assert "sprites_count:{'name': 'STRASSE', 'n': 0}" in template
+    assert "sprites_count:{'name': 'Straße', 'n': 0}" in template
+
+
+def test_template_generator_handles_character_with_null_sprites(monkeypatch) -> None:
+    character = SimpleNamespace(
+        name="Alice",
+        sprites=None,
+        emotion_tags="",
+        character_setting="",
+    )
+
+    monkeypatch.setattr(
+        "ai.llm.template_generator.config_manager",
+        SimpleNamespace(get_character_by_name=lambda name: character),
+    )
+    monkeypatch.setattr(
+        "ai.llm.template_generator._T",
+        lambda key, **kwargs: (
+            f"{kwargs['name']}:{kwargs['n']}\n"
+            if key == "sprites_count"
+            else f"template_gen.{key}\n"
+        ),
+    )
+
+    template, warning = TemplateGenerator(output_contract_patches=[]).generate_chat_template(
+        selected_characters=["Alice"],
+        bg_name=None,
+        use_effect=False,
+        use_cg=False,
+        use_llm_translation=False,
+    )
+
+    assert warning == ""
+    assert "Alice:0" in template
+
+
+def test_template_generator_omits_scene_and_bgm_for_transparent_background(monkeypatch) -> None:
+    character = SimpleNamespace(
+        sprites=[object()],
+        emotion_tags="happy: 01",
+        character_setting="A test character.",
+    )
+    background = SimpleNamespace(
+        sprites=[{"path": "room.png"}],
+        bg_tags="scene 1: room",
+        bgm_list=["room.mp3"],
+        bgm_tags="music 1: room theme",
+    )
+
+    monkeypatch.setattr(
+        "ai.llm.template_generator.config_manager",
+        SimpleNamespace(
+            get_background_by_name=lambda name: background,
+            get_character_by_name=lambda name: character,
+        ),
+    )
+    monkeypatch.setattr(
+        "ai.llm.template_generator._T",
+        lambda key, **kwargs: (
+            f"template_gen.{key} opt_scene={kwargs.get('opt_scene', '')} opt_bgm={kwargs.get('opt_bgm', '')}"
+            if key == "r_cname"
+            else f"template_gen.{key}"
+        ),
+    )
+
+    transparent_template, transparent_warning = TemplateGenerator(output_contract_patches=[]).generate_chat_template(
+        selected_characters=["Alice"],
+        bg_name="透明场景",
+        use_effect=False,
+        use_cg=False,
+        use_llm_translation=False,
+    )
+    real_background_template, real_background_warning = TemplateGenerator(
+        output_contract_patches=[]
+    ).generate_chat_template(
+        selected_characters=["Alice"],
+        bg_name="Room",
+        use_effect=False,
+        use_cg=False,
+        use_llm_translation=False,
+    )
+
+    assert transparent_warning == ""
+    assert real_background_warning == ""
+    assert "template_gen.r_scene" not in transparent_template
+    assert "template_gen.r_bgm" not in transparent_template
+    assert "template_gen.scene_block_header" not in transparent_template
+    assert "template_gen.bgm_block_header" not in transparent_template
+    assert f", {SCENE}" not in transparent_template
+    assert f", {BGM}" not in transparent_template
+    assert "template_gen.r_scene" in real_background_template
+    assert "template_gen.r_bgm" in real_background_template
+    assert "template_gen.scene_block_header" in real_background_template
+    assert "template_gen.bgm_block_header" in real_background_template
+    assert f", {SCENE}" in real_background_template
+    assert f", {BGM}" in real_background_template
+
+
+def test_template_generator_warns_for_unknown_requirement_patch_mode(monkeypatch, caplog) -> None:
+    character = SimpleNamespace(
+        sprites=[object()],
+        emotion_tags="happy: 01",
+        character_setting="A test character.",
+    )
+
+    monkeypatch.setattr(
+        "ai.llm.template_generator.config_manager",
+        SimpleNamespace(get_character_by_name=lambda name: character),
+    )
+
+    patch = OutputContractPatch(
+        id="demo.bad-mode",
+        target_contract=DEFAULT_DIALOG_CONTRACT_ID,
+        requirement_patches={
+            "r_speech": RequirementPatch(mode="unknown", text="Ignored at runtime."),
+        },
+    )
+
+    TemplateGenerator(output_contract_patches=[patch]).generate_chat_template(
+        selected_characters=["Alice"],
+        bg_name=None,
+        use_effect=False,
+        use_cg=False,
+        use_llm_translation=False,
+    )
+
+    assert "Unknown RequirementPatch.mode" in caplog.text
+
+
+def test_llm_dialog_message_preserves_contract_extra_fields() -> None:
+    msg = next(
+        LlmResponseStreamParser().feed(
+            '{"character_name": "Alice", "speech": "Hi", "sprite": "01", "camera": "close_up"}'
+        )
+    )
+
+    assert msg.name == "Alice"
+    assert msg.model_extra == {"camera": "close_up"}

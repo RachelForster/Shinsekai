@@ -6,19 +6,51 @@ from __future__ import annotations
 
 import importlib
 import logging
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Type
 
 from sdk.handlers import MessageHandler, UIOutputMessageHandler
-from sdk.adapters import ASRAdapter, LLMAdapter, T2IAdapter, TTSAdapter
+from sdk.adapters import (
+    ASRAdapter,
+    AvatarFormatContribution,
+    LLMAdapter,
+    ModelAssetAdapter,
+    T2IAdapter,
+    TTSAdapter,
+    VisionAdapterFactory,
+    VisionAvailabilityProbe,
+    VisionFallbackContribution,
+)
+from sdk.chat_init import InitChatContext
+from sdk.chat_lifecycle import (
+    ChatProcessContext,
+    ChatProcessEvent,
+    ChatSessionContext,
+    ChatSessionEvent,
+)
+from sdk.frontend_user_input import (
+    FrontendUserInputController,
+    _controller_for_plugin as _frontend_user_input_controller_for_plugin,
+)
+from sdk.frontend_ui import (
+    MAX_FRONTEND_UI_IDENTIFIER_LENGTH,
+    FrontendUIController,
+    _controller_for_plugin,
+)
+from sdk.hooks import (
+    BeforeChatContext,
+    BeforeCompactContext,
+    MessageAddedContext,
+    PluginHookDispatcher,
+)
 
-if TYPE_CHECKING:
-    from llm.tools.tool_manager import ToolManager
+from sdk.tool_protocol import ToolManager
 from sdk.plugin import PluginBase
 from sdk.types import (
     ChatUIContribution,
+    FrontendChatUIContribution,
     FrontendConfigContribution,
     FrontendPageContribution,
     OutputContractPatch,
@@ -29,6 +61,7 @@ from sdk.types import (
 )
 
 logger = logging.getLogger(__name__)
+
 
 @dataclass(frozen=True)
 class _ClassEntry:
@@ -119,13 +152,15 @@ class PluginCapabilityRegistry:
     :meth:`register_llm_tool` callbacks. You may still use :meth:`register_llm_tool` for imperative registration.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, hook_dispatcher: PluginHookDispatcher | None = None) -> None:
         self._llm_adapters: dict[str, Type[LLMAdapter]] = {}
         self._tts_adapters: dict[str, Type[TTSAdapter]] = {}
         self._asr_adapters: dict[str, Type[ASRAdapter]] = {}
         self._t2i_adapters: dict[str, Type[T2IAdapter]] = {}
+        self._vision_fallbacks: dict[str, VisionFallbackContribution] = {}
+        self._avatar_formats: dict[str, AvatarFormatContribution] = {}
         self._llm_tool_registrars: list[Callable[[ToolManager], None]] = []
-        self._tts_handlers: list[MessageHandler] = []
+        self._dialog_media_handlers: list[MessageHandler] = []
         self._ui_handlers: list[UIOutputMessageHandler] = []
         self._user_input_triggers: list[Callable[[Callable[[str], None]], None]] = []
         self._user_input_processors: list[Callable[[str], str | None]] = []
@@ -133,12 +168,13 @@ class PluginCapabilityRegistry:
         self._settings_ui_plugin_ctx: tuple[str, str] | None = None
         self._tools_tab_contributions: list[ToolsTabContribution] = []
         self._frontend_config_contributions: list[FrontendConfigContribution] = []
+        self._frontend_chat_ui_contributions: list[FrontendChatUIContribution] = []
         self._frontend_page_contributions: list[FrontendPageContribution] = []
         self._chat_ui_contributions: list[ChatUIContribution] = []
         self._workflow_contributions: list[WorkflowContribution] = []
         self._output_contract_patches: list[OutputContractPatch] = []
         # [MemorySystem] 精简前钩子存储列表
-        self._compact_hooks: list[Callable[[list], None]] = []
+        self._hook_dispatcher = hook_dispatcher or PluginHookDispatcher()
 
     def register_llm_adapter(self, provider: str, adapter_cls: Type[LLMAdapter]) -> None:
         self._llm_adapters[provider] = adapter_cls
@@ -154,17 +190,78 @@ class PluginCapabilityRegistry:
         """Register optional T2I backends (slug 建议小写，与 ``T2IAdapterFactory.create_adapter`` 查找一致)。"""
         self._t2i_adapters[provider.strip().lower()] = adapter_cls
 
+    def register_vision_fallback(
+        self,
+        provider: str,
+        factory: VisionAdapterFactory,
+        available: VisionAvailabilityProbe,
+        *,
+        priority: int = 100,
+    ) -> None:
+        """Register an optional image-understanding backend for text-only LLMs."""
+        clean_provider = str(provider or "").strip().lower()
+        if not clean_provider:
+            raise ValueError("vision fallback provider cannot be empty")
+        if not callable(factory) or not callable(available):
+            raise TypeError("vision fallback factory and available probe must be callables")
+        self._vision_fallbacks[clean_provider] = VisionFallbackContribution(
+            provider=clean_provider,
+            factory=factory,
+            available=available,
+            priority=int(priority),
+        )
+
+    def register_avatar_format(
+        self,
+        format_id: str,
+        factory: Callable[[], ModelAssetAdapter],
+        *,
+        label: str = "",
+        priority: int = 100,
+    ) -> None:
+        """Register an optional model avatar format (e.g. a custom live2d/VRM-like loader).
+
+        ``format_id`` becomes a value of ``Character.avatar_type`` and the key under
+        ``Character.avatars``. The host invokes ``factory`` while configuring
+        plugins; expensive model loading belongs in the adapter's operations.
+        """
+        clean_id = str(format_id or "").strip().lower()
+        if not clean_id:
+            raise ValueError("avatar format id cannot be empty")
+        if clean_id == "static":
+            raise ValueError("'static' is a reserved avatar type")
+        if clean_id in self._avatar_formats:
+            raise ValueError(f"duplicate avatar format: {clean_id}")
+        if not callable(factory):
+            raise TypeError("avatar format factory must be callable")
+        self._avatar_formats[clean_id] = AvatarFormatContribution(
+            format_id=clean_id,
+            factory=factory,
+            label=str(label or "").strip(),
+            priority=int(priority),
+        )
+
     def register_llm_tool(self, registrar: Callable[[ToolManager], None]) -> None:
         self._llm_tool_registrars.append(registrar)
 
     def register_message_handler(
         self,
         *,
+        dialog_media_handler: MessageHandler | None = None,
         tts_handler: MessageHandler | None = None,
         ui_handler: UIOutputMessageHandler | None = None,
     ) -> None:
-        if tts_handler is not None:
-            self._tts_handlers.append(tts_handler)
+        if dialog_media_handler is not None and tts_handler is not None:
+            raise ValueError(
+                "dialog_media_handler and legacy tts_handler cannot both be set"
+            )
+        media_handler = (
+            dialog_media_handler
+            if dialog_media_handler is not None
+            else tts_handler
+        )
+        if media_handler is not None:
+            self._dialog_media_handlers.append(media_handler)
         if ui_handler is not None:
             self._ui_handlers.append(ui_handler)
 
@@ -184,7 +281,31 @@ class PluginCapabilityRegistry:
     def clear_settings_ui_plugin_context(self) -> None:
         self._settings_ui_plugin_ctx = None
 
+    def frontend_ui(self) -> FrontendUIController:
+        """Return a runtime page controller bound to the plugin being initialized."""
+        ctx = self._settings_ui_plugin_ctx
+        if ctx is None:
+            raise RuntimeError(
+                "frontend_ui() is only available during PluginBase.initialize"
+            )
+        return _controller_for_plugin(ctx[0])
+
+    def frontend_user_input(self) -> FrontendUserInputController:
+        """Return a bridge transport for submitting user text from frontend actions."""
+        ctx = self._settings_ui_plugin_ctx
+        if ctx is None:
+            raise RuntimeError(
+                "frontend_user_input() is only available during PluginBase.initialize"
+            )
+        return _frontend_user_input_controller_for_plugin(ctx[0])
+
     def register_settings_ui(self, contribution: SettingsUIContribution) -> None:
+        """Register deprecated Qt settings metadata for load compatibility.
+
+        The current host deliberately ignores this metadata and never calls
+        ``contribution.build``. Use :meth:`register_frontend_config_page` or
+        :meth:`register_frontend_page` for rendered UI.
+        """
         ctx = self._settings_ui_plugin_ctx
         if ctx is not None:
             pid, ver = ctx
@@ -196,6 +317,12 @@ class PluginCapabilityRegistry:
         self._settings_contributions.append(contribution)
 
     def register_tools_tab(self, contribution: ToolsTabContribution) -> None:
+        """Register deprecated Qt tools metadata for load compatibility.
+
+        The current host deliberately ignores this metadata and never calls
+        ``contribution.build``. Use :meth:`register_frontend_config_page` with
+        ``kind="tools"`` or :meth:`register_frontend_page`.
+        """
         ctx = self._settings_ui_plugin_ctx
         if ctx is not None:
             pid, ver = ctx
@@ -228,7 +355,62 @@ class PluginCapabilityRegistry:
             )
         self._frontend_page_contributions.append(contribution)
 
+    def register_frontend_chat_ui(self, contribution: FrontendChatUIContribution) -> None:
+        """Register a JSON-only Chat UI item rendered by the host application."""
+        if contribution.slot not in {
+            "chat-dialog-actions",
+            "chat-output",
+            "chat-toolbar",
+            "chat-top-toolbar",
+        }:
+            raise ValueError(f"Unsupported frontend chat UI slot: {contribution.slot}")
+        if not contribution.contribution_id.strip() or not contribution.title.strip():
+            raise ValueError(
+                "FrontendChatUIContribution requires a non-empty id and title"
+            )
+        if (
+            len(contribution.contribution_id.strip())
+            > MAX_FRONTEND_UI_IDENTIFIER_LENGTH
+        ):
+            raise ValueError(
+                "FrontendChatUIContribution contribution_id cannot exceed "
+                f"{MAX_FRONTEND_UI_IDENTIFIER_LENGTH} characters"
+            )
+        if contribution.presentation not in {"button", "icon-only"}:
+            raise ValueError(f"Unsupported frontend chat UI presentation: {contribution.presentation}")
+        if isinstance(contribution.action, Mapping):
+            action_type = str(contribution.action.get("type") or "").strip()
+            page_id = str(contribution.action.get("page_id") or contribution.action.get("pageId") or "").strip()
+            if action_type != "open-plugin-page" or not page_id:
+                raise ValueError("FrontendChatUIContribution open-plugin-page action requires a non-empty page_id")
+            if len(page_id) > MAX_FRONTEND_UI_IDENTIFIER_LENGTH:
+                raise ValueError(
+                    "FrontendChatUIContribution page_id cannot exceed "
+                    f"{MAX_FRONTEND_UI_IDENTIFIER_LENGTH} characters"
+                )
+        ctx = self._settings_ui_plugin_ctx
+        if ctx is not None:
+            pid, ver = ctx
+            contribution = replace(
+                contribution,
+                plugin_id=contribution.plugin_id or pid,
+                plugin_version=contribution.plugin_version or ver,
+            )
+        plugin_id = str(contribution.plugin_id or "").strip()
+        if len(plugin_id) > MAX_FRONTEND_UI_IDENTIFIER_LENGTH:
+            raise ValueError(
+                "FrontendChatUIContribution plugin_id cannot exceed "
+                f"{MAX_FRONTEND_UI_IDENTIFIER_LENGTH} characters"
+            )
+        self._frontend_chat_ui_contributions.append(contribution)
+
     def register_chat_ui_widget(self, contribution: ChatUIContribution) -> None:
+        """Register deprecated Qt chat metadata for load compatibility.
+
+        The current host deliberately ignores this metadata and never calls
+        ``contribution.build``. Use :meth:`register_frontend_chat_ui` or
+        :meth:`register_frontend_page` for rendered UI.
+        """
         ctx = self._settings_ui_plugin_ctx
         if ctx is not None:
             pid, ver = ctx
@@ -274,9 +456,80 @@ class PluginCapabilityRegistry:
         self._output_contract_patches.append(patch)
 
     # [MemorySystem] 注册精简前回调钩子
+    @property
+    def hook_dispatcher(self) -> PluginHookDispatcher:
+        return self._hook_dispatcher
+
     def register_compact_hook(self, hook: Callable[[list], None]) -> None:
         """注册精简前回调。回调接收即将被精简的完整消息列表，在 compact_messages() 执行前调用。"""
-        self._compact_hooks.append(hook)
+
+        def _legacy_context_adapter(context: BeforeCompactContext) -> None:
+            hook(context.messages)
+
+        self._hook_dispatcher.register_before_compact(
+            _legacy_context_adapter,
+            label=getattr(hook, "__name__", "") or "legacy_compact_hook",
+            legacy_hook=hook,
+        )
+
+    def register_before_compact_hook(
+        self,
+        hook: Callable[[BeforeCompactContext], None],
+    ) -> None:
+        self._hook_dispatcher.register_before_compact(hook)
+
+    def register_message_added_hook(
+        self,
+        hook: Callable[[MessageAddedContext], None],
+    ) -> None:
+        self._hook_dispatcher.register_message_added(hook)
+
+    def register_before_chat_hook(
+        self,
+        hook: Callable[[BeforeChatContext], None],
+    ) -> None:
+        self._hook_dispatcher.register_before_chat(hook)
+
+    def register_init_chat_hook(
+        self,
+        hook: Callable[[InitChatContext], None],
+        *,
+        label: str = "",
+        weight: float = 1.0,
+        critical: bool = False,
+    ) -> None:
+        """Register one-time work performed while a chat runtime starts.
+
+        ``weight`` controls the hook's share of the dispatcher progress range.
+        Non-critical hook failures are logged and skipped; ``critical=True``
+        aborts chat initialization.
+        """
+
+        self._hook_dispatcher.register_init_chat(
+            hook,
+            label=label,
+            weight=weight,
+            critical=critical,
+        )
+
+    def register_chat_session_hook(
+        self,
+        event: ChatSessionEvent | str,
+        hook: Callable[[ChatSessionContext], None],
+        *,
+        label: str = ""
+    ) -> None:
+        self._hook_dispatcher.register_chat_session(event, hook, label=label)
+
+    def register_chat_process_hook(
+        self,
+        event: ChatProcessEvent | str,
+        hook: Callable[[ChatProcessContext], None],
+        *,
+        label: str = "",
+    ) -> None:
+        """Observe bridge-owned process transitions without interfering with cleanup."""
+        self._hook_dispatcher.register_chat_process(event, hook, label=label)
 
     @property
     def llm_adapters(self) -> dict[str, Type[LLMAdapter]]:
@@ -295,8 +548,24 @@ class PluginCapabilityRegistry:
         return dict(self._t2i_adapters)
 
     @property
-    def message_handlers(self) -> tuple[list[MessageHandler], list[UIOutputMessageHandler]]:
-        return list(self._tts_handlers), list(self._ui_handlers)
+    def vision_fallbacks(self) -> list[VisionFallbackContribution]:
+        return sorted(
+            self._vision_fallbacks.values(),
+            key=lambda contribution: (contribution.priority, contribution.provider),
+        )
+
+    @property
+    def avatar_formats(self) -> list[AvatarFormatContribution]:
+        return sorted(
+            self._avatar_formats.values(),
+            key=lambda contribution: (contribution.priority, contribution.format_id),
+        )
+
+    @property
+    def message_handlers(
+        self,
+    ) -> tuple[list[MessageHandler], list[UIOutputMessageHandler]]:
+        return list(self._dialog_media_handlers), list(self._ui_handlers)
 
     @property
     def user_input_hooks(
@@ -321,6 +590,10 @@ class PluginCapabilityRegistry:
         return sorted(self._frontend_page_contributions, key=lambda c: c.order)
 
     @property
+    def frontend_chat_ui_contributions(self) -> list[FrontendChatUIContribution]:
+        return sorted(self._frontend_chat_ui_contributions, key=lambda c: c.order)
+
+    @property
     def chat_ui_contributions(self) -> list[ChatUIContribution]:
         return sorted(self._chat_ui_contributions, key=lambda c: c.order)
 
@@ -339,7 +612,7 @@ class PluginCapabilityRegistry:
     # [MemorySystem] 暴露已注册的精简前钩子列表
     @property
     def compact_hooks(self) -> list[Callable[[list], None]]:
-        return list(self._compact_hooks)
+        return list(self._hook_dispatcher.legacy_compact_hooks)
 
     def apply_llm_tools(self, tool_manager: ToolManager) -> None:
         for registrar in self._llm_tool_registrars:

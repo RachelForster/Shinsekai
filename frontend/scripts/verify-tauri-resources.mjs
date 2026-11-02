@@ -1,11 +1,14 @@
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { verifyLlmRuntimeSources } from "./verify-llm-runtime.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const frontendDir = path.resolve(scriptDir, "..");
 const resourcesDir = path.join(frontendDir, "src-tauri", "resources");
 const runtimeMarkerPath = path.join(resourcesDir, "runtime", ".shinsekai-runtime.json");
+
+await verifyLlmRuntimeSources(path.resolve(frontendDir, ".."), resourcesDir);
 
 const runtimeMarker = await readJson(runtimeMarkerPath);
 
@@ -23,6 +26,37 @@ for (const requiredFile of runtimeMarker.requiredFiles ?? []) {
 await assertExists(path.join(resourcesDir, "runtime_manifest.json"));
 await assertExists(path.join(resourcesDir, "main.py"));
 await assertExists(path.join(resourcesDir, "frontend_bridge.py"));
+await assertExists(path.join(resourcesDir, "application", "chat", "host", "mobile_access.py"));
+await assertExists(path.join(resourcesDir, "application", "chat", "composition.py"));
+await assertExists(path.join(resourcesDir, "application", "chat", "runtime", "commands.py"));
+await assertExists(path.join(resourcesDir, "application", "chat", "history", "branches.py"));
+await assertExists(path.join(resourcesDir, "application", "chat", "runtime", "startup.py"));
+await assertExists(path.join(resourcesDir, "application", "chat", "runtime", "session.py"));
+await assertExists(path.join(resourcesDir, "application", "chat", "presentation", "assets.py"));
+await assertExists(path.join(resourcesDir, "application", "chat", "runtime", "stream_wiring.py"));
+await assertExists(path.join(resourcesDir, "application", "chat", "build_effect_context.py"));
+await assertExists(path.join(resourcesDir, "application", "chat", "start_chat.py"));
+await assertExists(path.join(resourcesDir, "application", "chat", "stop_chat.py"));
+await assertExists(path.join(resourcesDir, "application", "chat", "presentation", "initial_sprite.py"));
+await assertExists(path.join(resourcesDir, "application", "chat", "runtime", "turn_wiring.py"));
+await assertExists(path.join(resourcesDir, "application", "characters", "generate_character.py"));
+await assertExists(path.join(resourcesDir, "application", "memory", "manage_memories.py"));
+await assertExists(path.join(resourcesDir, "application", "model_assets", "download_model.py"));
+await assertExists(path.join(resourcesDir, "application", "plugins", "install_plugin.py"));
+await assertExists(path.join(resourcesDir, "application", "plugins", "update_application.py"));
+await assertExists(path.join(resourcesDir, "frontend_bridge_core", "model_assets.py"));
+await assertExists(path.join(resourcesDir, "frontend_bridge_core", "plugin_install.py"));
+await assertExists(path.join(resourcesDir, "frontend_bridge_core", "transport", "chat_session.py"));
+await assertExists(path.join(resourcesDir, "application", "effects", "management.py"));
+await assertExists(path.join(resourcesDir, "application", "runtime", "dependencies.py"));
+await assertExists(path.join(resourcesDir, "frontend_bridge_core", "transport", "mobile_access.py"));
+await assertExists(path.join(resourcesDir, "frontend_bridge_core", "transport", "chat_commands.py"));
+await assertExists(path.join(resourcesDir, "ai", "llm", "llm_manager.py"));
+await assertExists(path.join(resourcesDir, "ai", "asr", "asr_adapter.py"));
+await assertExists(path.join(resourcesDir, "ai", "tts", "tts_manager.py"));
+await assertExists(path.join(resourcesDir, "ai", "t2i", "t2i_manager.py"));
+await assertExists(path.join(resourcesDir, "ai", "tools", "tool_manager.py"));
+await assertExists(path.join(resourcesDir, "plugin_system", "host", "service.py"));
 await assertExists(path.join(resourcesDir, "requirements-runtime-core.txt"));
 await assertExists(path.join(resourcesDir, "assets", "system", "workflow", "default.yaml"));
 await assertExists(path.join(resourcesDir, "assets", "system", "workflow", "headless.yaml"));
@@ -30,6 +64,30 @@ await assertExists(path.join(resourcesDir, "assets", "system", "picture", "shins
 await assertExists(path.join(resourcesDir, "assets", "system", "picture", "Icon.png"));
 await assertExists(path.join(resourcesDir, "assets", "system", "picture", "dialog_frame.png"));
 await assertExists(path.join(resourcesDir, "assets", "system", "sound", "switch.ogg"));
+await assertExists(path.join(resourcesDir, "assets", "chat_ui_themes", "windborne-adventure", "theme.json"));
+await assertExists(path.join(resourcesDir, "assets", "chat_ui_themes", "windborne-adventure", "preview.png"));
+for (const retiredPath of [
+  "ui",
+  "llm",
+  "asr",
+  "tts",
+  "t2i",
+  path.join("core", "runtime"),
+  path.join("core", "plugins"),
+  path.join("core", "mobile_access"),
+  path.join("core", "messaging", "chat_turn_wiring.py"),
+  path.join("core", "sprite", "initial_sprite.py"),
+  path.join("application", "media", "effects.py"),
+  path.join("application", "characters", "generation.py"),
+  path.join("application", "chat", "effects.py"),
+  path.join("application", "chat", "initialization.py"),
+  path.join("application", "memory", "service.py"),
+  path.join("application", "model_assets", "service.py"),
+  path.join("application", "plugins", "updates.py"),
+  path.join("frontend_bridge_core", "handler.py"),
+]) {
+  await assertMissing(path.join(resourcesDir, retiredPath));
+}
 
 console.log(`Verified Tauri resources for ${runtimeMarker.target} ${runtimeMarker.triple}`);
 
@@ -47,6 +105,15 @@ async function assertExists(filePath) {
   } catch {
     throw new Error(`required Tauri resource is missing: ${path.relative(frontendDir, filePath)}`);
   }
+}
+
+async function assertMissing(filePath) {
+  try {
+    await access(filePath);
+  } catch {
+    return;
+  }
+  throw new Error(`retired Tauri resource is still staged: ${path.relative(frontendDir, filePath)}`);
 }
 
 function runtimePythonPath(marker) {

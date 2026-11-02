@@ -1,407 +1,1045 @@
-import { useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { Copy, History, Mic, MicOff, RotateCcw, Send, SkipForward, Trash2 } from "lucide-react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
-import { getChatSnapshot, getChatTheme, sendChatCommand, subscribeChat } from "../../entities/chat/repository";
+import { isTauriDesktop, setDesktopWindowAlwaysOnTop } from "../../shared/desktop/desktopApi";
+import { closeChatSurface } from "../../shared/desktop/chatWindow";
+import { getChatHistoryVoice, sendChatCommand, uploadChatAttachments } from "../../entities/chat/repository";
 import { useI18n } from "../../shared/i18n";
-import { PluginSlot } from "../../shared/plugin/PluginSlot";
-import type { ChatCommand, ChatSnapshot, ChatSprite } from "../../shared/platform/types";
-import { parseChatChromeTheme } from "../../shared/theme/chatChromeTheme";
-import type { ChatThemePayload } from "../../shared/theme/chatChromeTheme";
-import { AlertDialog, Button, IconButton, TextArea, ToolbarButton, useToast } from "../../shared/ui";
+import type { PluginPageTarget } from "../../shared/plugin/PluginSlot";
+import type { ChatAttachmentInput, ChatOption, ChatSendPayload, ChatTurnOptions } from "../../shared/platform/types";
+import { normalizeThemeColor } from "../../shared/theme/appTheme";
+import { DEFAULT_TYPEWRITER_CPS } from "../../shared/theme/chatTheme";
+import { AlertDialog, useToast } from "../../shared/ui";
+import { closeChatRuntime } from "../chat-startup/runtimeState";
+import { ChatSoundPlayer } from "./audio/ChatSoundPlayer";
+import type { VoicePlaybackSignal } from "./audio/soundPlayer";
+import { ChatConfigDialog } from "./components/ChatConfigDialog";
+import { ConversationTreeDialog } from "./components/ConversationTreeDialog";
+import { DialogStageControls } from "./components/DialogStageControls";
+import { HistoryDialog } from "./components/HistoryDialog";
+import { InputLayer } from "./components/InputLayer";
+import { PluginPageOverlay } from "./components/PluginPageOverlay";
+import {
+  BackgroundLayer,
+  BusyLayer,
+  CgLayer,
+  DialogLayer,
+  EffectImageLayer,
+  NotificationLayer,
+  OptionsLayer,
+  SpriteLayer,
+  StatLayer,
+  StandaloneDesktopResizeHandles,
+  TokenUsageLayer,
+  ToolConfirmationLayer,
+} from "./components/StageLayers";
+import { TopStageTools } from "./components/TopStageTools";
+import { StoryDebugPanel } from "./components/StoryDebugPanel";
 import "./chat-stage.css";
-import { chatStageReducer, emptyChatState } from "./chatState";
+import { buildChatStageViewModel, chatStageReducer, emptyChatState } from "./chatState";
+import { isRemoteMobileAccessPage, layerClassName } from "./chatStageUtils";
+import { useChatStageCommands } from "./hooks/useChatStageCommands";
+import { useChatStageEvents } from "./hooks/useChatStageEvents";
+import { useChatStageKeyboardShortcuts } from "./hooks/useChatStageKeyboardShortcuts";
+import { useHoldToTalk } from "./hooks/useHoldToTalk";
+import { useDesktopClickThrough } from "./hooks/useDesktopClickThrough";
+import { useDesktopWindowDrag } from "./hooks/useDesktopWindowDrag";
+import { useDialogTypewriter } from "./hooks/useDialogTypewriter";
+import { useMainThemeColor } from "./hooks/useMainThemeColor";
+import { useRecentUserInputs } from "./hooks/useRecentUserInputs";
+import {
+  chatStageRuntimeStyle,
+  defaultChatStageRuntimeConfig,
+  effectiveChatStageTextStyle,
+  readChatStageRuntimeConfig,
+  resetChatStageRuntimeThemeAppearance,
+  runtimeSpriteScale,
+  runtimeSpriteFraming,
+  subscribeChatStageRuntimeConfig,
+  writeChatStageRuntimeConfig,
+} from "./runtimeConfig";
+import { useOptionalChatTheme } from "./theme/ChatThemeProvider";
+import { limitChatStageSpritesToSlots } from "./state/sprites";
+import { normalizeVisualFraming, type VisualFraming } from "../../modules/character-visual";
+import { playerPortraitForDialog } from "./state/text";
+import {
+  CHAT_ATTACHMENT_LIMIT,
+  CHAT_IMAGE_EXTENSIONS,
+  chatAttachmentDisplayText,
+  mergeChatAttachmentInputs,
+} from "./attachments";
 
-interface BrowserSpeechRecognition {
-  abort: () => void;
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  onend: (() => void) | null;
-  onerror: ((event: { error?: string; message?: string }) => void) | null;
-  onresult:
-    | ((event: { resultIndex: number; results: ArrayLike<{ 0: { transcript: string }; isFinal: boolean }> }) => void)
-    | null;
-  start: () => void;
-  stop: () => void;
+interface ChatRouteInputState {
+  inputAttachments: ChatAttachmentInput[];
+  inputDraft: string;
 }
 
-type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
+const CurrentConversationEditorDialog = lazy(() =>
+  import("../chat-workspace/CurrentConversationEditorDialog").then((module) => ({
+    default: module.CurrentConversationEditorDialog,
+  })),
+);
 
-function getSpeechRecognitionConstructor(): BrowserSpeechRecognitionConstructor | null {
-  const scope = window as typeof window & {
-    SpeechRecognition?: BrowserSpeechRecognitionConstructor;
-    webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
+function chatRouteInputState(value: unknown): ChatRouteInputState {
+  if (!value || typeof value !== "object") {
+    return { inputAttachments: [], inputDraft: "" };
+  }
+  const chatInput = (value as { chatInput?: unknown }).chatInput;
+  if (!chatInput || typeof chatInput !== "object") {
+    return { inputAttachments: [], inputDraft: "" };
+  }
+  const candidate = chatInput as { inputAttachments?: unknown; inputDraft?: unknown };
+  const inputAttachments = Array.isArray(candidate.inputAttachments)
+    ? candidate.inputAttachments
+        .filter((attachment): attachment is ChatAttachmentInput =>
+          Boolean(
+            attachment &&
+            typeof attachment === "object" &&
+            ((attachment as ChatAttachmentInput).kind === "file" ||
+              (attachment as ChatAttachmentInput).kind === "image") &&
+            typeof (attachment as ChatAttachmentInput).name === "string" &&
+            typeof (attachment as ChatAttachmentInput).path === "string",
+          ),
+        )
+        .slice(0, CHAT_ATTACHMENT_LIMIT)
+        .map((attachment) => ({ ...attachment }))
+    : [];
+  return {
+    inputAttachments,
+    inputDraft: typeof candidate.inputDraft === "string" ? candidate.inputDraft : "",
   };
-  return scope.SpeechRecognition ?? scope.webkitSpeechRecognition ?? null;
 }
 
-function speechRecognitionLanguage(language: string) {
-  if (language === "en") {
-    return "en-US";
-  }
-  if (language === "ja") {
-    return "ja-JP";
-  }
-  return "zh-CN";
+function initialChatStageState(routeState: unknown) {
+  return { ...emptyChatState, ...chatRouteInputState(routeState) };
 }
 
-function cleanTranscript(text: string, language: string) {
-  const trimmed = text.trim();
-  if (language === "en") {
-    return trimmed;
-  }
-  return trimmed.replace(/\s+/g, "");
-}
-
-function appendTranscript(base: string, transcript: string, language: string) {
-  const text = cleanTranscript(transcript, language);
-  if (!text) {
-    return base;
-  }
-  const current = base.trim();
-  if (!current) {
-    return text;
-  }
-  const separator = language === "en" ? " " : "，";
-  if (/[，。！？,.!?;；:：\s]$/.test(current)) {
-    return `${current}${text}`;
-  }
-  return `${current}${separator}${text}`;
-}
-
-function BackgroundLayer({ path }: { path?: string }) {
-  return (
-    <div className="chat-stage__background">
-      {path ? <img alt="" src={path} /> : <div className="chat-stage__fallback">Background</div>}
-    </div>
-  );
-}
-
-function SpriteLayer({ sprites }: { sprites: ChatSprite[] }) {
-  return (
-    <div className="sprite-layer">
-      {sprites.map((sprite) => (
-        <figure className="sprite-layer__figure" key={sprite.id}>
-          <img alt={sprite.label} className="sprite-layer__image" src={sprite.path} />
-        </figure>
-      ))}
-    </div>
-  );
-}
-
-function DialogLayer({ characterName, text }: { characterName?: string; text: string }) {
-  const { t } = useI18n();
-  return (
-    <section aria-live="polite" className="dialog-layer">
-      {characterName ? <p className="dialog-layer__name">{characterName}</p> : null}
-      <p className="dialog-layer__text">{text || t("chat.emptyDialog")}</p>
-      <PluginSlot slot="chat-output" />
-    </section>
-  );
-}
-
-function OptionsLayer({ onSelect, options }: { onSelect: (option: string) => void; options: string[] }) {
-  if (!options.length) {
-    return null;
-  }
-  return (
-    <div className="options-layer">
-      {options.map((option) => (
-        <Button className="options-layer__button" key={option} onClick={() => onSelect(option)}>
-          {option}
-        </Button>
-      ))}
-    </div>
-  );
-}
-
-function FloatingToolbar({ onCommand, status }: { onCommand: (command: ChatCommand) => void; status: string }) {
-  const { t } = useI18n();
-  return (
-    <div className="floating-toolbar">
-      <IconButton label={t("chat.toolbar.reroll")} onClick={() => onCommand({ type: "reroll" })}>
-        <RotateCcw aria-hidden className="icon-button__icon" />
-      </IconButton>
-      <IconButton label={t("chat.toolbar.copyHistory")} onClick={() => onCommand({ type: "copy-history" })}>
-        <Copy aria-hidden className="icon-button__icon" />
-      </IconButton>
-      <IconButton label={t("chat.toolbar.openHistory")} onClick={() => onCommand({ type: "open-history" })}>
-        <History aria-hidden className="icon-button__icon" />
-      </IconButton>
-      <IconButton label={t("chat.toolbar.clearHistory")} onClick={() => onCommand({ type: "clear-history" })}>
-        <Trash2 aria-hidden className="icon-button__icon" />
-      </IconButton>
-      <IconButton label={t("chat.toolbar.pauseAsr")} onClick={() => onCommand({ type: "pause-asr" })}>
-        <MicOff aria-hidden className="icon-button__icon" />
-      </IconButton>
-      <ToolbarButton
-        icon={<SkipForward aria-hidden className="button__icon" />}
-        onClick={() => onCommand({ type: "skip-speech" })}
-      >
-        {t("chat.toolbar.skipSpeech")}
-      </ToolbarButton>
-      <span className="floating-toolbar__status">{status}</span>
-      <PluginSlot slot="chat-toolbar" />
-    </div>
-  );
-}
-
-function InputLayer({
-  disabled,
-  onChange,
-  onSubmit,
-  value,
-}: {
-  disabled: boolean;
-  onChange: (value: string) => void;
-  onSubmit: () => void;
-  value: string;
-}) {
-  const { language, t } = useI18n();
-  const { showToast } = useToast();
-  const [listening, setListening] = useState(false);
-  const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
-  const transcriptBaseRef = useRef("");
-  const valueRef = useRef(value);
-
-  useEffect(() => {
-    valueRef.current = value;
-  }, [value]);
-
-  const stopListening = () => {
-    const recognition = recognitionRef.current;
-    recognitionRef.current = null;
-    if (recognition) {
-      recognition.stop();
-    }
-    setListening(false);
-  };
-
-  useEffect(() => {
-    if (disabled && listening) {
-      stopListening();
-    }
-  }, [disabled, listening]);
-
-  useEffect(
-    () => () => {
-      recognitionRef.current?.abort();
-      recognitionRef.current = null;
+function withChatRouteInputState(routeState: unknown, chatInput: ChatRouteInputState) {
+  const previousState =
+    routeState && typeof routeState === "object" && !Array.isArray(routeState)
+      ? (routeState as Record<string, unknown>)
+      : {};
+  return {
+    ...previousState,
+    chatInput: {
+      inputAttachments: chatInput.inputAttachments.map((attachment) => ({ ...attachment })),
+      inputDraft: chatInput.inputDraft,
     },
-    [],
-  );
-
-  const startListening = () => {
-    const Recognition = getSpeechRecognitionConstructor();
-    if (!Recognition) {
-      showToast({ kind: "error", message: t("chat.input.micUnsupported"), title: t("common.operationFailed") });
-      return;
-    }
-    try {
-      const recognition = new Recognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = speechRecognitionLanguage(language);
-      transcriptBaseRef.current = valueRef.current.trim();
-      recognition.onresult = (event) => {
-        let finalText = "";
-        let interimText = "";
-        for (let index = event.resultIndex; index < event.results.length; index += 1) {
-          const result = event.results[index];
-          const transcript = result[0]?.transcript ?? "";
-          if (result.isFinal) {
-            finalText += transcript;
-          } else {
-            interimText += transcript;
-          }
-        }
-        if (finalText) {
-          const next = appendTranscript(transcriptBaseRef.current, finalText, language);
-          transcriptBaseRef.current = next;
-          onChange(next);
-        } else if (interimText) {
-          onChange(appendTranscript(transcriptBaseRef.current, interimText, language));
-        }
-      };
-      recognition.onerror = (event) => {
-        recognitionRef.current = null;
-        setListening(false);
-        const denied = event.error === "not-allowed" || event.error === "service-not-allowed";
-        if (event.error !== "no-speech") {
-          showToast({
-            kind: "error",
-            message: denied ? t("chat.input.micDenied") : event.message || event.error || t("chat.input.micError"),
-            title: t("common.operationFailed"),
-          });
-        }
-      };
-      recognition.onend = () => {
-        recognitionRef.current = null;
-        setListening(false);
-      };
-      recognitionRef.current = recognition;
-      recognition.start();
-      setListening(true);
-    } catch (error) {
-      recognitionRef.current = null;
-      setListening(false);
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("chat.input.micError"),
-        title: t("common.operationFailed"),
-      });
-    }
   };
-
-  return (
-    <div className="input-layer">
-      <TextArea
-        className="input-layer__input"
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.value)}
-        onKeyDown={(event) => {
-          if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
-            event.preventDefault();
-            onSubmit();
-          }
-        }}
-        placeholder={t("chat.input.placeholder")}
-        value={value}
-      />
-      <IconButton
-        className={["input-layer__mic", listening ? "input-layer__mic--active" : ""].filter(Boolean).join(" ")}
-        disabled={disabled && !listening}
-        label={listening ? t("chat.input.micStop") : t("chat.input.micStart")}
-        onClick={() => {
-          if (listening) {
-            stopListening();
-          } else {
-            startListening();
-          }
-        }}
-      >
-        {listening ? (
-          <MicOff aria-hidden className="icon-button__icon" />
-        ) : (
-          <Mic aria-hidden className="icon-button__icon" />
-        )}
-      </IconButton>
-      <Button
-        disabled={!value.trim() || disabled}
-        icon={<Send aria-hidden className="button__icon" />}
-        onClick={onSubmit}
-        variant="primary"
-      >
-        {t("chat.input.send")}
-      </Button>
-    </div>
-  );
 }
 
 export function ChatStagePage() {
-  const [state, dispatch] = useReducer(chatStageReducer, emptyChatState);
-  const [themePayload, setThemePayload] = useState<ChatThemePayload | null>(null);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [state, dispatch] = useReducer(chatStageReducer, location.state, initialChatStageState);
   const [confirmClearHistory, setConfirmClearHistory] = useState(false);
+  const [confirmRevertUserIndex, setConfirmRevertUserIndex] = useState<number | null>(null);
+  const [branchDialogOpen, setBranchDialogOpen] = useState(false);
+  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const historyReplayRef = useRef<{ stop: () => void } | null>(null);
+  const historyReplayGenerationRef = useRef(0);
+  const [conversationEditorOpen, setConversationEditorOpen] = useState(false);
+  const [dialogControlsLocked, setDialogControlsLocked] = useState(false);
+  const [runtimeConfig, setRuntimeConfig] = useState(readChatStageRuntimeConfig);
+  const [attachmentUploadPending, setAttachmentUploadPending] = useState(false);
+  const mainThemeColor = useMainThemeColor();
+  const [themePickerOpen, setThemePickerOpen] = useState(false);
+  const [tokenUsageOpen, setTokenUsageOpen] = useState(false);
+  const [toolbarConfigOpen, setToolbarConfigOpen] = useState(false);
+  const imageAttachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const fileAttachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const pendingAttachmentSlotsRef = useRef(0);
+  const [overlayTarget, setOverlayTarget] = useState<PluginPageTarget | null>(null);
+  const locallyDismissedPresentationRef = useRef<string | null>(null);
   const { showToast } = useToast();
   const { t } = useI18n();
-  const themeStyle = useMemo(() => parseChatChromeTheme(themePayload), [themePayload]);
+  const stopHistoryReplay = useCallback(() => {
+    historyReplayGenerationRef.current += 1;
+    historyReplayRef.current?.stop();
+    historyReplayRef.current = null;
+  }, []);
+
+  useEffect(() => () => stopHistoryReplay(), [stopHistoryReplay]);
+
+  const replayHistoryVoice = useCallback(
+    async (voiceId: string) => {
+      stopHistoryReplay();
+      const generation = historyReplayGenerationRef.current;
+      try {
+        const urls = await getChatHistoryVoice(voiceId);
+        if (!urls.length) throw new Error("voice has no segments");
+        for (const url of urls) {
+          if (generation !== historyReplayGenerationRef.current) return;
+          await new Promise<void>((resolve, reject) => {
+            const audio = new Audio(url);
+            let finished = false;
+            const finish = (error?: unknown) => {
+              if (finished) return;
+              finished = true;
+              audio.onended = null;
+              audio.onerror = null;
+              historyReplayRef.current = null;
+              if (error) reject(error);
+              else resolve();
+            };
+            audio.onended = () => finish();
+            audio.onerror = () => finish(new Error("voice playback failed"));
+            historyReplayRef.current = {
+              stop: () => {
+                audio.pause();
+                finish();
+              },
+            };
+            void audio.play().catch(finish);
+          });
+        }
+      } catch {
+        if (generation === historyReplayGenerationRef.current) {
+          showToast({ kind: "error", title: t("chat.history.voiceExpired") });
+        }
+      }
+    },
+    [showToast, stopHistoryReplay, t],
+  );
+  const theme = useOptionalChatTheme();
+  const themeStyle = theme?.style ?? {};
+  const stageStyle = useMemo(
+    () => chatStageRuntimeStyle(runtimeConfig, themeStyle, mainThemeColor),
+    [mainThemeColor, runtimeConfig, themeStyle],
+  );
+  const effectiveDialogText = useMemo(
+    () =>
+      effectiveChatStageTextStyle(
+        runtimeConfig.dialogText,
+        defaultChatStageRuntimeConfig.dialogText,
+        themeStyle,
+        "dialogText",
+      ),
+    [runtimeConfig.dialogText, themeStyle],
+  );
+  const effectiveNameText = useMemo(
+    () =>
+      effectiveChatStageTextStyle(
+        runtimeConfig.nameText,
+        defaultChatStageRuntimeConfig.nameText,
+        themeStyle,
+        "nameText",
+      ),
+    [runtimeConfig.nameText, themeStyle],
+  );
+  const viewModel = useMemo(() => buildChatStageViewModel(state), [state]);
+  const { recentInputs, rememberInput } = useRecentUserInputs();
+  const stageSprites = useMemo(
+    () => (isRemoteMobileAccessPage() ? limitChatStageSpritesToSlots(viewModel.sprites, 1) : viewModel.sprites),
+    [viewModel.sprites],
+  );
+  const standaloneDesktopWindow = isTauriDesktop() && location.pathname === "/chat-stage";
+  const handleWindowDrag = useDesktopWindowDrag(standaloneDesktopWindow);
+  const transparentBackground = !viewModel.backgroundPath;
+  const statsVisible = viewModel.stats.length > 0;
+  const tokenUsageVisible = tokenUsageOpen && Boolean(viewModel.tokenUsageText);
+  const modalOpen =
+    conversationEditorOpen ||
+    overlayTarget != null ||
+    themePickerOpen ||
+    toolbarConfigOpen ||
+    branchDialogOpen ||
+    historyDialogOpen ||
+    confirmClearHistory ||
+    confirmRevertUserIndex != null;
+  const clickThroughEnabled = standaloneDesktopWindow && transparentBackground && !modalOpen;
+  const dialogToolbarPlacement =
+    typeof themeStyle["--chat-dialog-toolbar-placement"] === "string"
+      ? themeStyle["--chat-dialog-toolbar-placement"]
+      : "";
+  const dialogToolbarDetached = dialogToolbarPlacement === "input" || dialogToolbarPlacement === "dialog-top";
+  const dialogToolbarReveal = themeStyle["--chat-dialog-toolbar-reveal"] === "hover" ? "hover" : "always";
+  const inputLayout = themeStyle["--chat-input-layout"] === "pill" ? "pill" : "default";
+  const forkHistoryEnabled = state.experimentalFeatures?.forkHistory === true;
+  const conversationTreeEnabled = state.experimentalFeatures?.conversationTree === true;
+  const dialogTextDirection = effectiveDialogText.direction ?? "ltr";
+  const typewriterCps = runtimeConfig.typewriterCps ?? theme?.resolved?.typewriter.cps ?? DEFAULT_TYPEWRITER_CPS;
+  const { historyLoading, refreshHistory, sendCommand } = useChatStageCommands({
+    confirmClearHistory,
+    dispatch,
+    operationFailedTitle: t("common.operationFailed"),
+    setConfirmClearHistory,
+    showToast,
+    t,
+  });
+  const handlePlaybackSignal = useCallback(
+    (signal: VoicePlaybackSignal) => {
+      void sendCommand({ payload: signal, type: "audio-playback-signal" });
+    },
+    [sendCommand],
+  );
+  const autoAdvanceDialog = useCallback(() => {
+    void sendCommand({ type: "dialog-advance" });
+  }, [sendCommand]);
+  const {
+    dialogTotalCharacters,
+    displayedDialog,
+    queueAnimatedDialog,
+    showDialogImmediately,
+    showFullDialog,
+    typingDialog,
+  } = useDialogTypewriter({
+    auto: runtimeConfig.auto,
+    characterName: viewModel.dialogCharacterName,
+    dialogVisible: viewModel.layers.dialog,
+    html: viewModel.dialogHtml,
+    onAutoAdvance: autoAdvanceDialog,
+    optionsVisible: viewModel.layers.options,
+    status: viewModel.status,
+    text: viewModel.dialogText,
+    textDirection: dialogTextDirection,
+    typewriterCps,
+  });
+  const {
+    handleStageContextMenu,
+    handleStageFocus,
+    handleStagePointerDown,
+    handleStagePointerLeave,
+    handleStagePointerMove,
+  } = useDesktopClickThrough({
+    clickThroughEnabled,
+    standaloneDesktopWindow,
+    transparentBackground,
+  });
+  const { replaceSession } = useChatStageEvents({
+    dispatch,
+    eventSeq: state.eventSeq,
+    sessionId: state.sessionId,
+    loadFallbackMessage: t("chat.error.loadFallback"),
+    queueAnimatedDialog,
+  });
 
   useEffect(() => {
-    let mounted = true;
-    getChatTheme()
-      .then((theme) => {
-        if (mounted) {
-          setThemePayload(theme);
-        }
-      })
-      .catch(() => {
-        if (mounted) {
-          setThemePayload(null);
-        }
-      });
-    getChatSnapshot()
-      .then((snapshot: ChatSnapshot) => {
-        if (mounted) {
-          dispatch({ snapshot, type: "hydrate" });
-        }
-      })
-      .catch((error) => {
-        dispatch({ message: error instanceof Error ? error.message : t("chat.error.loadFallback"), type: "error" });
-      });
-    const unsubscribe = subscribeChat((snapshot) => dispatch({ snapshot, type: "hydrate" }));
-    return () => {
-      mounted = false;
-      unsubscribe();
-    };
-  }, [t]);
-
-  const sendCommand = async (command: ChatCommand) => {
-    if (command.type === "clear-history" && !confirmClearHistory) {
-      setConfirmClearHistory(true);
+    const presentation = state.pluginPagePresentations?.at(-1);
+    if (!presentation) {
+      locallyDismissedPresentationRef.current = null;
+      setOverlayTarget((current) => (current?.presentationId ? null : current));
       return;
     }
-    try {
-      const snapshot = await sendChatCommand(command);
-      dispatch({ snapshot, type: "hydrate" });
-      if (command.type === "copy-history") {
-        showToast({ kind: "success", title: t("chat.toast.historyCopied") });
+    const presentationKey = `${presentation.pluginId}\0${presentation.presentationId}`;
+    if (locallyDismissedPresentationRef.current === presentationKey) {
+      setOverlayTarget((current) => (current?.presentationId ? null : current));
+      return;
+    }
+    setOverlayTarget((current) => {
+      if (
+        current?.pluginId === presentation.pluginId &&
+        current.presentationId === presentation.presentationId &&
+        current.payload === presentation.payload
+      ) {
+        return current;
       }
-      if (command.type === "open-history") {
-        showToast({
-          kind: "success",
-          message: snapshot.openedPath || snapshot.historyPath,
-          title: t("chat.toast.historyOpened"),
-        });
-      }
-      if (command.type === "clear-history") {
-        setConfirmClearHistory(false);
-        showToast({ kind: "success", title: t("chat.toast.historyCleared") });
-      }
-    } catch (error) {
+      return {
+        mode: presentation.mode,
+        pageId: presentation.pageId,
+        payload: presentation.payload,
+        pluginId: presentation.pluginId,
+        presentationId: presentation.presentationId,
+      };
+    });
+  }, [state.pluginPagePresentations]);
+
+  const closePluginPageOverlay = useCallback(() => {
+    const current = overlayTarget;
+    setOverlayTarget(null);
+    if (!current?.presentationId) {
+      return;
+    }
+    locallyDismissedPresentationRef.current = `${current.pluginId}\0${current.presentationId}`;
+    void sendCommand({
+      payload: {
+        pluginId: current.pluginId,
+        presentationId: current.presentationId,
+      },
+      type: "dismiss-plugin-page",
+    });
+  }, [overlayTarget, sendCommand]);
+
+  useEffect(() => {
+    if (!viewModel.layers.dialog) {
+      setToolbarConfigOpen(false);
+    }
+  }, [viewModel.layers.dialog]);
+
+  useEffect(() => {
+    if (!viewModel.tokenUsageText) {
+      setTokenUsageOpen(false);
+    }
+  }, [viewModel.tokenUsageText]);
+
+  useEffect(() => {
+    if (!conversationTreeEnabled) {
+      setBranchDialogOpen(false);
+    }
+  }, [conversationTreeEnabled]);
+
+  useEffect(() => {
+    writeChatStageRuntimeConfig(runtimeConfig);
+  }, [runtimeConfig]);
+
+  useEffect(() => subscribeChatStageRuntimeConfig(setRuntimeConfig), []);
+
+  useEffect(() => {
+    if (!standaloneDesktopWindow) {
+      return;
+    }
+    void setDesktopWindowAlwaysOnTop(runtimeConfig.alwaysOnTop).catch((error) => {
+      console.error("Desktop chat window always-on-top toggle failed", error);
+    });
+  }, [runtimeConfig.alwaysOnTop, standaloneDesktopWindow]);
+
+  const submit = async (textOverride?: string) => {
+    if (pendingAttachmentSlotsRef.current) {
+      return;
+    }
+    const text = (textOverride ?? viewModel.inputDraft).trim();
+    const attachments = viewModel.inputAttachments.map((attachment) => ({ ...attachment }));
+    if (!text && !attachments.length) {
+      return;
+    }
+    rememberInput(text);
+    const displayText = chatAttachmentDisplayText(text, attachments);
+    const payload: string | ChatSendPayload = attachments.length ? { attachments, text } : text;
+    showDialogImmediately();
+    dispatch({
+      queued: state.turnOptions.batchEnabled,
+      source: "send-message",
+      text: displayText,
+      type: "submitUserMessage",
+    });
+    await sendCommand({ payload, type: "send-message" });
+  };
+
+  const addAttachments = (attachments: ChatAttachmentInput[]) => {
+    const next = mergeChatAttachmentInputs(state.inputAttachments, attachments);
+    const existing = new Set(state.inputAttachments.map((attachment) => `${attachment.kind}\0${attachment.path}`));
+    const requested = new Set(
+      attachments
+        .map((attachment) => `${attachment.kind}\0${attachment.path.trim()}`)
+        .filter((key) => !key.endsWith("\0"))
+        .filter((key) => !existing.has(key)),
+    );
+    if (next.length - state.inputAttachments.length < requested.size) {
       showToast({
         kind: "error",
-        message: error instanceof Error ? error.message : t("chat.error.commandFallback"),
+        message: t("chat.input.attachmentLimit", { count: CHAT_ATTACHMENT_LIMIT }),
         title: t("common.operationFailed"),
       });
     }
+    dispatch({ attachments, type: "addAttachments" });
   };
 
-  const submit = () => {
-    const text = state.inputDraft.trim();
-    if (!text) {
+  const handleDropFiles = async (files: File[]) => {
+    if (!files.length) {
       return;
     }
-    dispatch({ status: "generating", type: "setStatus" });
-    sendCommand({ payload: text, type: "send-message" });
+    const availableSlots = Math.max(
+      0,
+      CHAT_ATTACHMENT_LIMIT - state.inputAttachments.length - pendingAttachmentSlotsRef.current,
+    );
+    const acceptedFiles = files.slice(0, availableSlots);
+    if (acceptedFiles.length < files.length) {
+      showToast({
+        kind: "error",
+        message: t("chat.input.attachmentLimit", { count: CHAT_ATTACHMENT_LIMIT }),
+        title: t("common.operationFailed"),
+      });
+    }
+    if (!acceptedFiles.length) {
+      return;
+    }
+    pendingAttachmentSlotsRef.current += acceptedFiles.length;
+    setAttachmentUploadPending(true);
+    try {
+      const { attachments } = await uploadChatAttachments(acceptedFiles);
+      addAttachments(attachments);
+    } catch (error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : String(error),
+        title: t("common.operationFailed"),
+      });
+    } finally {
+      pendingAttachmentSlotsRef.current = Math.max(0, pendingAttachmentSlotsRef.current - acceptedFiles.length);
+      setAttachmentUploadPending(pendingAttachmentSlotsRef.current > 0);
+    }
   };
+
+  const pickAttachments = (kind: ChatAttachmentInput["kind"]) => {
+    (kind === "image" ? imageAttachmentInputRef.current : fileAttachmentInputRef.current)?.click();
+  };
+
+  const handlePickedFiles = (input: HTMLInputElement) => {
+    const files = Array.from(input.files ?? []);
+    input.value = "";
+    void handleDropFiles(files);
+  };
+
+  const submitOption = (option: ChatOption) => {
+    const label = typeof option === "string" ? option : option.label;
+    if (typeof option !== "string" && !option.enabled) {
+      return;
+    }
+    showDialogImmediately();
+    dispatch({
+      queued: state.turnOptions.batchEnabled,
+      source: "submit-option",
+      text: label,
+      type: "submitUserMessage",
+    });
+    void sendCommand({
+      payload:
+        typeof option === "string"
+          ? option
+          : {
+              choiceId: option.id,
+              expectedNodeId: option.expectedNodeId,
+              expectedRevision: option.expectedRevision,
+              kind: "story-choice",
+            },
+      type: "submit-option",
+    });
+  };
+
+  const resolveToolConfirmation = (action: "confirm" | "cancel") => {
+    const confirmation = state.toolConfirmation;
+    if (!confirmation) {
+      return;
+    }
+    void sendCommand({
+      payload: {
+        action,
+        confirmationId: confirmation.confirmationId,
+        kind: "tool-confirmation",
+      },
+      type: "submit-option",
+    });
+  };
+
+  const updateRuntimeTextSpeed = (typewriterCps: number) => {
+    setRuntimeConfig((current) => ({ ...current, typewriterCps }));
+  };
+
+  const updateTurnOptions = useCallback(
+    (options: ChatTurnOptions) => {
+      const previous = state.turnOptions;
+      dispatch({ options, type: "setTurnOptions" });
+      void sendChatCommand({ payload: options, type: "update-turn-options" }).catch((error) => {
+        dispatch({ options: previous, type: "setTurnOptions" });
+        showToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : t("chat.error.commandFallback"),
+          title: t("common.operationFailed"),
+        });
+      });
+    },
+    [showToast, state.turnOptions, t],
+  );
+
+  const updateInputActivity = useCallback((inputState: { composing: boolean; hasText: boolean }) => {
+    void sendChatCommand({ payload: inputState, type: "chat-input-state" }).catch(() => undefined);
+  }, []);
+
+  const updateRuntimeAlwaysOnTop = (alwaysOnTop: boolean) => {
+    setRuntimeConfig((current) => ({ ...current, alwaysOnTop }));
+  };
+  const updateRuntimeBgmVolume = (bgmVolume: number) => {
+    setRuntimeConfig((current) => ({ ...current, bgmVolume: Math.min(1, Math.max(0, bgmVolume)) }));
+  };
+  const updateRuntimeEffectVolume = (effectVolume: number) => {
+    setRuntimeConfig((current) => ({ ...current, effectVolume: Math.min(1, Math.max(0, effectVolume)) }));
+  };
+  const updateRuntimeLongPressTalk = (longPressTalk: boolean) => {
+    setRuntimeConfig((current) => ({ ...current, longPressTalk }));
+    if (longPressTalk) void sendCommand({ type: "pause-asr" });
+  };
+  const updateRuntimeImmersiveMode = (immersiveMode: boolean) => {
+    setRuntimeConfig((current) => ({ ...current, immersiveMode }));
+  };
+
+  const updateRuntimeAutoHideTopTools = (autoHideTopTools: boolean) => {
+    setRuntimeConfig((current) => ({ ...current, autoHideTopTools }));
+  };
+
+  const updateRuntimeAutoHideInput = (autoHideInput: boolean) => {
+    setRuntimeConfig((current) => ({ ...current, autoHideInput }));
+  };
+
+  const updateRuntimeDialogOpacity = (dialogOpacity: number) => {
+    setRuntimeConfig((current) => ({ ...current, dialogOpacity }));
+  };
+
+  const updateRuntimeDialogFill: Parameters<typeof ChatConfigDialog>[0]["onDialogFillChange"] = (patch) => {
+    setRuntimeConfig((current) => ({ ...current, dialogFill: { ...current.dialogFill, ...patch } }));
+  };
+
+  const updateRuntimeDialogScale = (dialogScale: number) => {
+    setRuntimeConfig((current) => ({ ...current, dialogScale }));
+  };
+
+  const updateRuntimeDialogWidthPct = (dialogWidthPct: number | null) => {
+    setRuntimeConfig((current) => ({ ...current, dialogWidthPct }));
+  };
+
+  const updateRuntimeSpriteOffsetX = (spriteOffsetX: number) => {
+    setRuntimeConfig((current) => ({ ...current, spriteOffsetX }));
+  };
+
+  const updateRuntimeSpriteOffsetY = (spriteOffsetY: number) => {
+    setRuntimeConfig((current) => ({ ...current, spriteOffsetY }));
+  };
+
+  const updateRuntimeSpriteScale = (spriteKey: string, spriteScale: number) => {
+    setRuntimeConfig((current) => ({
+      ...current,
+      spriteScales: {
+        ...current.spriteScales,
+        [spriteKey]: spriteScale,
+      },
+    }));
+  };
+
+  const updateRuntimeWindowScale = (windowScale: number) => {
+    setRuntimeConfig((current) => ({ ...current, windowScale }));
+  };
+
+  const updateRuntimeSpriteFraming = (spriteKey: string, framing: VisualFraming) => {
+    setRuntimeConfig((current) => ({
+      ...current,
+      spriteFramings: { ...current.spriteFramings, [spriteKey]: normalizeVisualFraming(framing) },
+    }));
+  };
+
+  const updateRuntimeConfigThemeColor = (configThemeColor: string) => {
+    setRuntimeConfig((current) => ({ ...current, configThemeColor: normalizeThemeColor(configThemeColor) }));
+  };
+
+  const updateRuntimeConfigUseMainThemeColor = (configUseMainThemeColor: boolean) => {
+    setRuntimeConfig((current) => ({ ...current, configUseMainThemeColor }));
+  };
+
+  const resetRuntimeThemeAppearance = () => {
+    const themeColor = (themeStyle as Record<string, unknown>)["--chat-theme-color"];
+    setRuntimeConfig((current) =>
+      resetChatStageRuntimeThemeAppearance(current, typeof themeColor === "string" ? themeColor : mainThemeColor),
+    );
+  };
+
+  const updateRuntimeTextStyle: Parameters<typeof ChatConfigDialog>[0]["onTextStyleChange"] = (target, patch) => {
+    setRuntimeConfig((current) => ({
+      ...current,
+      [target]: {
+        ...current[target],
+        ...patch,
+      },
+    }));
+  };
+
+  const advanceDialog = useCallback(() => {
+    if (typingDialog) {
+      showFullDialog();
+      return;
+    }
+    if (!viewModel.layers.dialog || !dialogTotalCharacters) {
+      return;
+    }
+    void sendCommand({ type: "dialog-advance" });
+  }, [dialogTotalCharacters, sendCommand, showFullDialog, typingDialog, viewModel.layers.dialog]);
+
+  const toggleAuto = useCallback(() => {
+    setRuntimeConfig((current) => ({ ...current, auto: !current.auto }));
+  }, []);
+
+  useChatStageKeyboardShortcuts({
+    disabled: modalOpen,
+    onAdvance: advanceDialog,
+    onToggleAuto: toggleAuto,
+  });
+
+  useHoldToTalk({
+    enabled: runtimeConfig.longPressTalk,
+    disabled: modalOpen || viewModel.inputDisabled || Boolean(state.sessionClosedReason),
+    onCommand: sendCommand,
+  });
+
+  const openHistoryDialog = () => {
+    setHistoryDialogOpen(true);
+    void refreshHistory();
+  };
+
+  const closeSurface = () => {
+    return closeChatSurface({
+      closeRuntime: closeChatRuntime,
+      webPath: state.story ? "/settings/templates?mode=story&view=library" : undefined,
+      navigate,
+      snapshot: state,
+    });
+  };
+
+  const openPluginPage = useCallback(
+    ({ mode, pageId, pluginId }: PluginPageTarget) => {
+      if (mode === "overlay") {
+        setOverlayTarget({ mode, pageId, pluginId });
+        return;
+      }
+      navigate(
+        { pathname: "/settings/plugins", search: location.search },
+        {
+          state: {
+            pageId,
+            pluginId,
+            returnTo: {
+              hash: location.hash,
+              pathname: location.pathname,
+              search: location.search,
+              state: withChatRouteInputState(location.state, {
+                inputAttachments: state.inputAttachments,
+                inputDraft: state.inputDraft,
+              }),
+            },
+          },
+        },
+      );
+    },
+    [
+      location.hash,
+      location.pathname,
+      location.search,
+      location.state,
+      navigate,
+      state.inputAttachments,
+      state.inputDraft,
+    ],
+  );
+
+  const dialogSurfaceVisible = viewModel.layers.dialog || viewModel.layers.options;
+  const dialogToolbar = (
+    <DialogStageControls
+      onEditConversation={() => setConversationEditorOpen(true)}
+      asrEnabled={viewModel.asrEnabled}
+      auto={runtimeConfig.auto}
+      bgmVolume={runtimeConfig.bgmVolume}
+      effectVolume={runtimeConfig.effectVolume}
+      closeLabel={t(standaloneDesktopWindow ? "desktop.titlebar.close" : "chat.toolbar.close")}
+      configOpen={toolbarConfigOpen}
+      hidden={!dialogSurfaceVisible}
+      hideCloseButton={standaloneDesktopWindow}
+      longPressTalk={runtimeConfig.longPressTalk}
+      locked={dialogControlsLocked}
+      onAutoChange={(auto) => setRuntimeConfig((current) => ({ ...current, auto }))}
+      onBgmVolumeChange={updateRuntimeBgmVolume}
+      onEffectVolumeChange={updateRuntimeEffectVolume}
+      onCancelBatch={() => void sendCommand({ type: "cancel-input-batch" })}
+      onCloseSurface={closeSurface}
+      onCommand={sendCommand}
+      onConfigOpenChange={setToolbarConfigOpen}
+      onFlushBatch={() => void sendCommand({ type: "flush-input-batch" })}
+      onLongPressTalkChange={updateRuntimeLongPressTalk}
+      onLockedChange={setDialogControlsLocked}
+      onOpenBranches={() => setBranchDialogOpen(true)}
+      onOpenHistory={openHistoryDialog}
+      onOpenPluginPage={openPluginPage}
+      onTurnOptionsChange={updateTurnOptions}
+      showBranches={conversationTreeEnabled}
+      showAsrControl={!viewModel.layers.input}
+      turnOptions={state.turnOptions}
+      turnState={state.turnState}
+    />
+  );
 
   return (
     <>
-      <main className="chat-stage" style={themeStyle}>
-        <BackgroundLayer path={state.backgroundPath} />
-        <SpriteLayer sprites={state.sprites} />
-        <DialogLayer characterName={state.characterName} text={state.error ?? state.dialogText} />
-        <OptionsLayer
-          onSelect={(option) => sendCommand({ payload: option, type: "submit-option" })}
-          options={state.options}
+      {overlayTarget ? <PluginPageOverlay onClose={closePluginPageOverlay} target={overlayTarget} /> : null}
+      <main
+        className="chat-stage"
+        data-background={transparentBackground ? "transparent" : "media"}
+        data-click-through={clickThroughEnabled ? "true" : "false"}
+        data-stat-visible={statsVisible ? "true" : "false"}
+        data-token-visible={tokenUsageVisible ? "true" : "false"}
+        onContextMenuCapture={handleStageContextMenu}
+        onFocusCapture={handleStageFocus}
+        onPointerDownCapture={handleStagePointerDown}
+        onPointerLeave={handleStagePointerLeave}
+        onPointerMoveCapture={handleStagePointerMove}
+        style={stageStyle}
+      >
+        <StandaloneDesktopResizeHandles hidden={!standaloneDesktopWindow} />
+        <TopStageTools
+          autoHide={runtimeConfig.immersiveMode && runtimeConfig.autoHideTopTools}
+          hidden={!viewModel.layers.toolbar}
+          onCloseDesktopWindow={closeSurface}
+          onOpenPluginPage={openPluginPage}
+          onThemePickerOpenChange={setThemePickerOpen}
+          onTokenUsageOpenChange={setTokenUsageOpen}
+          standaloneDesktopWindow={standaloneDesktopWindow}
+          status={viewModel.statusText}
+          themePickerOpen={themePickerOpen}
+          tokenUsageAvailable={Boolean(viewModel.tokenUsageText)}
+          tokenUsageOpen={tokenUsageOpen}
+          transportMode={viewModel.transportMode}
+          transportState={viewModel.transportState}
         />
-        <FloatingToolbar onCommand={sendCommand} status={state.numericInfo ?? state.status} />
+        <BackgroundLayer
+          hidden={!viewModel.layers.background}
+          onDragStart={standaloneDesktopWindow && !transparentBackground ? handleWindowDrag : undefined}
+          path={viewModel.backgroundPath}
+          transparent={transparentBackground}
+        />
+        <ChatSoundPlayer
+          key={state.sessionId}
+          bgmPath={viewModel.bgmPath}
+          bgmVolume={runtimeConfig.bgmVolume}
+          effectVolume={runtimeConfig.effectVolume}
+          commands={state.audioCommands}
+          onPlaybackSignal={handlePlaybackSignal}
+        />
+        <CgLayer hidden={!viewModel.layers.cg} path={viewModel.cgPath} />
+        <EffectImageLayer effect={state.effectImage} />
+        <SpriteLayer
+          hidden={!viewModel.layers.sprites}
+          onDragStart={standaloneDesktopWindow ? handleWindowDrag : undefined}
+          runtimeScaleForSprite={(sprite, index) => runtimeSpriteScale(runtimeConfig, sprite, index)}
+          runtimeFramingForSprite={(sprite, index) => runtimeSpriteFraming(runtimeConfig, sprite, index)}
+          speaker={viewModel.dialogCharacterName}
+          responding={viewModel.status === "speaking" || viewModel.status === "streaming" || typingDialog}
+          thinkingCharacterName={viewModel.thinkingCharacterName}
+          sprites={stageSprites}
+        />
+        <StatLayer stats={viewModel.stats} />
+        <StoryDebugPanel story={viewModel.story} />
+        <TokenUsageLayer hidden={!tokenUsageVisible} text={viewModel.tokenUsageText} />
+        <BusyLayer hidden={!viewModel.layers.busy} text={viewModel.busyText} />
+        <NotificationLayer
+          hidden={!viewModel.layers.notification}
+          spritesVisible={viewModel.layers.sprites && stageSprites.length > 0}
+          text={viewModel.notificationText}
+        />
+        <div
+          aria-hidden={!dialogSurfaceVisible}
+          className={layerClassName("dialog-stack", !dialogSurfaceVisible)}
+          hidden={!dialogSurfaceVisible}
+        >
+          {viewModel.layers.options ? (
+            <>
+              {viewModel.toolConfirmation ? (
+                <ToolConfirmationLayer confirmation={viewModel.toolConfirmation} onResolve={resolveToolConfirmation} />
+              ) : (
+                <OptionsLayer hidden={false} onSelect={submitOption} options={viewModel.options} />
+              )}
+              {!dialogToolbarDetached ? <div className="dialog-layer__toolbar">{dialogToolbar}</div> : null}
+            </>
+          ) : (
+            <DialogLayer
+              canAdvance={viewModel.layers.dialog && !typingDialog && dialogTotalCharacters > 0}
+              characterName={viewModel.dialogCharacterName}
+              playerPortrait={playerPortraitForDialog(
+                state.playerPortrait,
+                viewModel.dialogCharacterName,
+                viewModel.dialogText,
+              )}
+              hidden={!viewModel.layers.dialog}
+              htmlNodes={displayedDialog.nodes}
+              onAdvance={advanceDialog}
+              onOpenPluginPage={openPluginPage}
+              onSkip={typingDialog ? advanceDialog : undefined}
+              text={typingDialog ? displayedDialog.text : viewModel.dialogText}
+              textDirection={dialogTextDirection}
+              toolbar={dialogToolbarDetached ? undefined : dialogToolbar}
+              typing={typingDialog}
+            />
+          )}
+        </div>
+        {dialogToolbarDetached ? (
+          <div
+            aria-hidden={!dialogSurfaceVisible}
+            className={layerClassName("dialog-toolbar-layer", !dialogSurfaceVisible)}
+            data-chat-stage-hitbox="true"
+            data-locked={dialogControlsLocked ? "true" : "false"}
+            data-placement={dialogToolbarPlacement}
+            data-reveal={dialogToolbarReveal}
+            hidden={!dialogSurfaceVisible}
+          >
+            {dialogToolbar}
+          </div>
+        ) : null}
         <InputLayer
-          disabled={state.status === "generating" || state.status === "streaming"}
+          asrEnabled={viewModel.asrEnabled}
+          asrLoading={viewModel.asrLoading}
+          asrRunning={viewModel.asrRunning}
+          attachments={viewModel.inputAttachments}
+          autoHide={runtimeConfig.immersiveMode && runtimeConfig.autoHideInput}
+          batchEnabled={state.turnOptions.batchEnabled}
+          disabled={viewModel.inputDisabled}
+          hidden={!viewModel.layers.input}
+          inputLayout={inputLayout}
           onChange={(text) => dispatch({ text, type: "setDraft" })}
+          onCommand={sendCommand}
+          onDropFiles={handleDropFiles}
+          onFlushBatch={() => sendCommand({ type: "flush-input-batch" })}
+          onInputActivity={updateInputActivity}
+          onPickAttachments={pickAttachments}
+          onRemoveAttachment={(attachment) =>
+            dispatch({
+              attachments: state.inputAttachments.filter(
+                (candidate) => candidate.kind !== attachment.kind || candidate.path !== attachment.path,
+              ),
+              type: "setAttachments",
+            })
+          }
           onSubmit={submit}
-          value={state.inputDraft}
+          previousMessages={recentInputs}
+          submitDisabled={attachmentUploadPending}
+          value={viewModel.inputDraft}
+        />
+        <HistoryDialog
+          entries={state.historyEntries ?? []}
+          forkEnabled={forkHistoryEnabled}
+          loading={historyLoading}
+          onClear={() => void sendCommand({ type: "clear-history" })}
+          onClose={() => {
+            stopHistoryReplay();
+            setHistoryDialogOpen(false);
+          }}
+          onCopy={() => void sendCommand({ type: "copy-history" })}
+          onFork={(userIndex) => {
+            setHistoryDialogOpen(false);
+            void sendCommand({ payload: { userIndex }, type: "fork-history" });
+          }}
+          onRefresh={() => {
+            void refreshHistory();
+          }}
+          onReplayVoice={(voiceId) => void replayHistoryVoice(voiceId)}
+          onRevert={(userIndex) => setConfirmRevertUserIndex(userIndex)}
+          onSaveVoice={(voiceId) => void sendCommand({ payload: voiceId, type: "save-history-voice" })}
+          onToggleVoiceArchive={(enabled) => void sendCommand({ payload: enabled, type: "set-voice-archive" })}
+          open={historyDialogOpen}
+          userDisplayName={viewModel.userDisplayName}
+          voiceArchiveEnabled={state.voiceArchiveEnabled === true}
+        />
+        {conversationTreeEnabled ? (
+          <ConversationTreeDialog
+            onClose={() => setBranchDialogOpen(false)}
+            onRenameBranch={(branchId, label) => {
+              void sendCommand({ payload: { branchId, label }, type: "rename-branch" });
+            }}
+            onSwitchBranch={(branchId) => {
+              void sendCommand({ payload: branchId, type: "switch-branch" });
+            }}
+            open={branchDialogOpen}
+            tree={state.conversationTree}
+          />
+        ) : null}
+        <ChatConfigDialog
+          alwaysOnTop={runtimeConfig.alwaysOnTop}
+          autoHideInput={runtimeConfig.autoHideInput}
+          autoHideTopTools={runtimeConfig.autoHideTopTools}
+          configThemeColor={runtimeConfig.configThemeColor}
+          configUseMainThemeColor={runtimeConfig.configUseMainThemeColor}
+          dialogFill={runtimeConfig.dialogFill}
+          dialogText={runtimeConfig.dialogText}
+          dialogOpacity={runtimeConfig.dialogOpacity}
+          dialogScale={runtimeConfig.dialogScale}
+          dialogWidthPct={runtimeConfig.dialogWidthPct}
+          effectiveDialogText={effectiveDialogText}
+          effectiveNameText={effectiveNameText}
+          immersiveMode={runtimeConfig.immersiveMode}
+          mainThemeColor={mainThemeColor}
+          nameText={runtimeConfig.nameText}
+          onClose={() => setToolbarConfigOpen(false)}
+          onCommand={sendCommand}
+          onAlwaysOnTopChange={updateRuntimeAlwaysOnTop}
+          onAutoHideInputChange={updateRuntimeAutoHideInput}
+          onAutoHideTopToolsChange={updateRuntimeAutoHideTopTools}
+          onConfigThemeColorChange={updateRuntimeConfigThemeColor}
+          onConfigUseMainThemeColorChange={updateRuntimeConfigUseMainThemeColor}
+          onDialogFillChange={updateRuntimeDialogFill}
+          onDialogOpacityChange={updateRuntimeDialogOpacity}
+          onDialogScaleChange={updateRuntimeDialogScale}
+          onDialogWidthPctChange={updateRuntimeDialogWidthPct}
+          onImmersiveModeChange={updateRuntimeImmersiveMode}
+          onResetThemeAppearance={resetRuntimeThemeAppearance}
+          onOpenPluginPage={openPluginPage}
+          onSpriteOffsetXChange={updateRuntimeSpriteOffsetX}
+          onSpriteOffsetYChange={updateRuntimeSpriteOffsetY}
+          onSpriteScaleChange={updateRuntimeSpriteScale}
+          onSpriteFramingChange={updateRuntimeSpriteFraming}
+          onTextSpeedChange={updateRuntimeTextSpeed}
+          onTextStyleChange={updateRuntimeTextStyle}
+          onTurnOptionsChange={updateTurnOptions}
+          onWindowScaleChange={updateRuntimeWindowScale}
+          open={toolbarConfigOpen}
+          spriteOffsetX={runtimeConfig.spriteOffsetX}
+          spriteOffsetY={runtimeConfig.spriteOffsetY}
+          spriteScales={runtimeConfig.spriteScales}
+          spriteFramings={runtimeConfig.spriteFramings}
+          sprites={stageSprites}
+          textSpeed={typewriterCps}
+          turnOptions={state.turnOptions}
+          voiceLanguage={viewModel.voiceLanguage || "ja"}
+          windowControlsAvailable={standaloneDesktopWindow}
+          windowScale={runtimeConfig.windowScale}
         />
       </main>
+      <input
+        accept={CHAT_IMAGE_EXTENSIONS.join(",")}
+        aria-label={t("chat.input.imagePickerTitle")}
+        hidden
+        multiple
+        onChange={(event) => handlePickedFiles(event.currentTarget)}
+        ref={imageAttachmentInputRef}
+        type="file"
+      />
+      <input
+        aria-label={t("chat.input.filePickerTitle")}
+        hidden
+        multiple
+        onChange={(event) => handlePickedFiles(event.currentTarget)}
+        ref={fileAttachmentInputRef}
+        type="file"
+      />
+      {conversationEditorOpen && (
+        <Suspense fallback={null}>
+          <CurrentConversationEditorDialog
+            onClose={() => setConversationEditorOpen(false)}
+            onApplied={(snapshot) => {
+              replaceSession(snapshot);
+              showDialogImmediately();
+              setConversationEditorOpen(false);
+            }}
+          />
+        </Suspense>
+      )}
       <AlertDialog
         body={t("chat.clear.confirmBody")}
         cancelLabel={t("common.cancel")}
         closeLabel={t("common.close")}
         confirmLabel={t("chat.clear.confirmAction")}
         onCancel={() => setConfirmClearHistory(false)}
-        onConfirm={() => sendCommand({ type: "clear-history" })}
+        onConfirm={() => void sendCommand({ type: "clear-history" })}
         open={confirmClearHistory}
         title={t("chat.clear.confirmTitle")}
+      />
+      <AlertDialog
+        body={t("chat.history.revertConfirmBody")}
+        cancelLabel={t("common.cancel")}
+        closeLabel={t("common.close")}
+        confirmLabel={t("chat.history.revertConfirmAction")}
+        onCancel={() => setConfirmRevertUserIndex(null)}
+        onConfirm={() => {
+          if (confirmRevertUserIndex == null) {
+            return;
+          }
+          setConfirmRevertUserIndex(null);
+          setHistoryDialogOpen(false);
+          void sendCommand({ payload: confirmRevertUserIndex, type: "revert-history" });
+        }}
+        open={confirmRevertUserIndex != null}
+        title={t("chat.history.revertConfirmTitle")}
       />
     </>
   );

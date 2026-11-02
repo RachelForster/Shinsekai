@@ -1,0 +1,1 @@
+"""Chat application use cases."""

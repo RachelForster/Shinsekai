@@ -27,8 +27,19 @@ export function browseFiles(options?: { path?: string; showHidden?: boolean }): 
   return getPlatform().files.browse(options);
 }
 
+export function openT2iWorkflowFolder(): Promise<{ path: string }> {
+  return getPlatform().files.openT2iWorkflowFolder();
+}
+
 export function fileUrl(path: string): string {
   return getPlatform().files.fileUrl(path);
+}
+
+export function modelFileUrl(
+  modelPath: string,
+  path = modelPath.replaceAll("\\", "/").split("/").at(-1) ?? "",
+): string {
+  return getPlatform().files.modelUrl(modelPath, path);
 }
 
 export function fileThumbnailUrl(path: string, size = 160): string {

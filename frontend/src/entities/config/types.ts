@@ -7,6 +7,8 @@ export type {
   Background,
   Character,
   CharacterScenario,
+  Effect,
+  ModelSprites,
   Sprite,
   SystemConfig,
 } from "../../shared/platform/types";

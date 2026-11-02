@@ -1,0 +1,234 @@
+import { describe, expect, it, vi } from "vitest";
+
+import { SoundPlayer } from "../../../features/chat-stage/audio/soundPlayer";
+import { VoiceAnalyser } from "../../../features/chat-stage/audio/voiceAnalyser";
+
+class FakeAudio {
+  currentTime = 0;
+  loop = false;
+  onended: ((this: GlobalEventHandlers, ev: Event) => unknown) | null = null;
+  onerror: OnErrorEventHandler = null;
+  paused = true;
+  preload = "";
+  volume = 1;
+
+  constructor(readonly src: string) {}
+
+  pause = vi.fn(() => {
+    this.paused = true;
+  });
+
+  play = vi.fn(async () => {
+    this.paused = false;
+  });
+
+  finish() {
+    this.paused = true;
+    this.onended?.call(this as unknown as GlobalEventHandlers, new Event("ended"));
+  }
+}
+
+function createHarness() {
+  const audio: FakeAudio[] = [];
+  const player = new SoundPlayer((url) => {
+    const item = new FakeAudio(url);
+    audio.push(item);
+    return item as unknown as HTMLAudioElement;
+  });
+  return { audio, player };
+}
+
+describe("SoundPlayer", () => {
+  it.each(["", "http://127.0.0.1:8787"])(
+    "loads newly generated speech after the 100-file cache wraps (%s)",
+    async (base) => {
+      const files = new Map<string, string>();
+      const browserCache = new Map<string, string>();
+      const heard: string[] = [];
+      const audio: FakeAudio[] = [];
+      const player = new SoundPlayer((url) => {
+        const request = new URL(url, window.location.href);
+        expect(request.searchParams.get("shinsekai_bridge_token")).toBe("test+token");
+        expect(request.hash).toBe("#voice");
+        // Model the browser reusing an already fetched URL after a disk overwrite.
+        if (!browserCache.has(url)) {
+          browserCache.set(url, files.get(request.searchParams.get("path")!)!);
+        }
+        heard.push(browserCache.get(url)!);
+        const item = new FakeAudio(url);
+        audio.push(item);
+        return item as unknown as HTMLAudioElement;
+      });
+
+      for (let index = 0; index <= 100; index += 1) {
+        const path = `cache/audio/${index % 100}.wav`;
+        files.set(path, `Speech ${index}`);
+        player.playVoice(
+          `playback-${index}`,
+          `${base}/api/media?path=${encodeURIComponent(path)}&shinsekai_bridge_token=test%2Btoken#voice`,
+        );
+        await Promise.resolve();
+        audio[index].finish();
+      }
+
+      expect(heard).toEqual(Array.from({ length: 101 }, (_, index) => `Speech ${index}`));
+      player.dispose();
+    },
+  );
+
+  it("uses separate requests for queued plays of the same bridge media path", async () => {
+    const { audio, player } = createHarness();
+    const url = "http://127.0.0.1:8787/api/media?path=cache%2Faudio%2F0.wav";
+    player.playVoice("first", url);
+    player.playVoice("second", url);
+    await Promise.resolve();
+    audio[0].finish();
+    await Promise.resolve();
+    expect(audio).toHaveLength(2);
+    expect(audio[0].src).not.toBe(audio[1].src);
+    player.dispose();
+  });
+
+  it.each([
+    "https://cdn.example.com/speech.wav?signature=keep-this",
+    "blob:http://localhost/audio-id",
+    "data:audio/wav;base64,UklGRg==",
+    "/assets/preset.wav",
+  ])("preserves non-bridge voice URLs (%s)", (url) => {
+    const { audio, player } = createHarness();
+    player.playVoice("voice", url);
+    expect(audio[0].src).toBe(url);
+    player.dispose();
+  });
+
+  it("emits avatar boundaries for actual queued speakers and does not treat interruption as a sentence ending", async () => {
+    const audio: FakeAudio[] = [];
+    const boundary = vi.fn();
+    const player = new SoundPlayer(
+      (url) => {
+        const item = new FakeAudio(url);
+        audio.push(item);
+        return item as unknown as HTMLAudioElement;
+      },
+      undefined,
+      boundary,
+    );
+    player.playVoice("one", "one.wav", 1, "A");
+    player.playVoice("two", "two.wav", 1, "B");
+    await Promise.resolve();
+    expect(boundary.mock.calls).toEqual([["A", "started"]]);
+    audio[0].finish();
+    await Promise.resolve();
+    expect(boundary.mock.calls).toEqual([
+      ["A", "started"],
+      ["A", "finished"],
+      ["B", "started"],
+    ]);
+    player.stopVoice();
+    audio[1].finish();
+    expect(boundary).toHaveBeenCalledTimes(3);
+    player.dispose();
+  });
+  it("retains queued character identity and clears the voice analyser between speakers", async () => {
+    const start = vi.spyOn(VoiceAnalyser.prototype, "start").mockImplementation(() => {});
+    const stop = vi.spyOn(VoiceAnalyser.prototype, "stop").mockImplementation(() => {});
+    const audio: FakeAudio[] = [];
+    const player = new SoundPlayer((url) => {
+      const item = new FakeAudio(url);
+      audio.push(item);
+      return item as unknown as HTMLAudioElement;
+    }, vi.fn());
+    player.playVoice("one", "one.wav", 1, "A");
+    player.playVoice("two", "two.wav", 1, "B");
+    await Promise.resolve();
+    expect(start).toHaveBeenLastCalledWith(audio[0], "A");
+    audio[0].finish();
+    await Promise.resolve();
+    expect(stop).toHaveBeenCalled();
+    expect(start).toHaveBeenLastCalledWith(audio[1], "B");
+    player.stopVoice();
+    expect(stop).toHaveBeenCalledTimes(2);
+    player.dispose();
+    start.mockRestore();
+    stop.mockRestore();
+  });
+  it("keeps BGM looping while voice and effects use independent channels", async () => {
+    const { audio, player } = createHarness();
+    const signals: Array<{ playbackId: string; state: string }> = [];
+    player.subscribeVoiceSignal((signal) => signals.push(signal));
+
+    player.setBgm("bgm.mp3", 0.4);
+    player.playVoice("voice-1", "voice-1.wav");
+    player.playVoice("voice-2", "voice-2.wav");
+    player.playEffect("impact.wav");
+    player.startLoopEffect("rain", "rain.wav");
+    await Promise.resolve();
+
+    expect(audio).toHaveLength(4);
+    expect(audio[0]).toMatchObject({ loop: true, src: "bgm.mp3", volume: 0.4 });
+    expect(audio[1].src).toBe("voice-1.wav");
+    expect(audio[2].src).toBe("impact.wav");
+    expect(audio[3]).toMatchObject({ loop: true, src: "rain.wav" });
+
+    audio[1].finish();
+    await Promise.resolve();
+    expect(audio).toHaveLength(5);
+    expect(audio[4].src).toBe("voice-2.wav");
+    expect(signals).toContainEqual({ playbackId: "voice-1", state: "started" });
+    expect(signals).toContainEqual({ playbackId: "voice-1", state: "finished" });
+
+    player.stopLoopEffect("rain");
+    expect(audio[3].pause).toHaveBeenCalledOnce();
+  });
+
+  it("applies the configured volume to new and active sound effects", async () => {
+    const { audio, player } = createHarness();
+
+    player.playEffect("impact.wav");
+    player.startLoopEffect("rain", "rain.wav");
+    player.setEffectVolume(0.35);
+    player.playEffect("typing.wav");
+    await Promise.resolve();
+
+    expect(audio).toHaveLength(3);
+    expect(audio.map((item) => item.volume)).toEqual([0.35, 0.35, 0.35]);
+  });
+
+  it("reports autoplay blocking and retries active channels after unlock", async () => {
+    const { audio, player } = createHarness();
+    const lockStates: boolean[] = [];
+    player.subscribeLock((locked) => lockStates.push(locked));
+    const blocked = Object.assign(new Error("autoplay blocked"), { name: "NotAllowedError" });
+
+    player.setBgm("bgm.mp3");
+    audio[0].play.mockRejectedValueOnce(blocked);
+    audio[0].paused = true;
+    player.setBgm("bgm.mp3");
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(lockStates.at(-1)).toBe(true);
+    await player.unlock();
+    expect(lockStates.at(-1)).toBe(false);
+  });
+
+  it("does not report voice start until autoplay is unlocked", async () => {
+    const signals: Array<{ playbackId: string; state: string }> = [];
+    const blocked = Object.assign(new Error("autoplay blocked"), { name: "NotAllowedError" });
+    const audio = new FakeAudio("voice.wav");
+    audio.play.mockRejectedValueOnce(blocked);
+    const player = new SoundPlayer(() => audio as unknown as HTMLAudioElement);
+    player.subscribeVoiceSignal((signal) => signals.push(signal));
+
+    player.playVoice("voice-locked", "voice.wav");
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(signals).toEqual([]);
+    await player.unlock();
+    expect(signals).toEqual([{ playbackId: "voice-locked", state: "started" }]);
+
+    audio.finish();
+    expect(signals.at(-1)).toEqual({ playbackId: "voice-locked", state: "finished" });
+  });
+});

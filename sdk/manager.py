@@ -8,18 +8,27 @@ import json
 import logging
 from collections.abc import Callable, Iterable, Iterator, MutableMapping, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Type
+from typing import Any, Type
 
 import yaml
 
 from sdk.handlers import MessageHandler, UIOutputMessageHandler
-from sdk.adapters import ASRAdapter, LLMAdapter, T2IAdapter, TTSAdapter
+from sdk.adapters import (
+    ASRAdapter,
+    AvatarFormatContribution,
+    LLMAdapter,
+    T2IAdapter,
+    TTSAdapter,
+    VisionFallbackContribution,
+)
 
+from sdk.hooks import PluginHookDispatcher
 from sdk.plugin import PluginBase
 from sdk.plugin_host_context import PluginHostContext
 from sdk.register import PluginCapabilityRegistry, PluginDiscoveryRegistry
 from sdk.types import (
     ChatUIContribution,
+    FrontendChatUIContribution,
     FrontendConfigContribution,
     FrontendPageContribution,
     OutputContractPatch,
@@ -29,9 +38,7 @@ from sdk.types import (
     WorkflowContribution,
 )
 
-if TYPE_CHECKING:
-    from config.config_manager import ConfigManager
-    from llm.tools.tool_manager import ToolManager
+from sdk.tool_protocol import ToolManager
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +56,7 @@ class PluginManager:
     1. ``load_manifest_file`` and/or ``register_plugin_class`` / ``register_plugin_entry``
     2. ``instantiate_all()`` — build instances only
     3. ``load_own_config_all(app_config=...)`` — call ``initialize`` on each plugin
-    4. ``apply_llm_providers`` / ``apply_tts_providers`` / ``apply_asr_providers`` / ``apply_t2i_providers``
+    4. Apply adapter providers and collect optional capabilities such as vision fallbacks
 
     **Manifest:** JSON/YAML list of :class:`~sdk.types.PluginDescriptor` dicts::
 
@@ -67,6 +74,7 @@ class PluginManager:
             Path(plugin_data_root) if plugin_data_root is not None else Path("data/plugins")
         )
         self._discovery = discovery if discovery is not None else PluginDiscoveryRegistry()
+        self._hook_dispatcher = PluginHookDispatcher()
         self._capabilities: PluginCapabilityRegistry | None = None
         self._instances: list[PluginBase] = []
         self._instantiated = False
@@ -81,6 +89,10 @@ class PluginManager:
     def capabilities(self) -> PluginCapabilityRegistry | None:
         """Last capability registry filled by :meth:`load_own_config_all`; ``None`` until then."""
         return self._capabilities
+
+    @property
+    def hook_dispatcher(self) -> PluginHookDispatcher:
+        return self._hook_dispatcher
 
     @property
     def plugins(self) -> Sequence[PluginBase]:
@@ -147,12 +159,15 @@ class PluginManager:
         )
         self._instantiated = True
 
-    def _ensure_plugins_initialized(self, app_config: ConfigManager | None = None) -> None:
+    def _ensure_plugins_initialized(self, app_config: Any | None = None) -> None:
         self._ensure_plugins_instantiated()
         if self._initialized and app_config is None:
             return
         self._plugin_data_root.mkdir(parents=True, exist_ok=True)
-        self._capabilities = PluginCapabilityRegistry()
+        self._hook_dispatcher.clear()
+        self._capabilities = PluginCapabilityRegistry(
+            hook_dispatcher=self._hook_dispatcher,
+        )
         host = PluginHostContext.from_config_manager(app_config)
 
         for plugin in self._instances:
@@ -171,7 +186,7 @@ class PluginManager:
                     self._capabilities.clear_settings_ui_plugin_context()
         self._initialized = True
 
-    def load_own_config_all(self, app_config: ConfigManager | None = None) -> None:
+    def load_own_config_all(self, app_config: Any | None = None) -> None:
         """Run :meth:`~sdk.plugin.PluginBase.initialize` for every plugin instance."""
         self._ensure_plugins_initialized(app_config=app_config)
 
@@ -202,6 +217,18 @@ class PluginManager:
         self._ensure_plugins_initialized()
         if self._capabilities is not None:
             target.update(self._capabilities.t2i_adapters)
+
+    def collect_vision_fallbacks(self) -> list[VisionFallbackContribution]:
+        self._ensure_plugins_initialized()
+        if self._capabilities is None:
+            return []
+        return self._capabilities.vision_fallbacks
+
+    def collect_avatar_formats(self) -> list[AvatarFormatContribution]:
+        self._ensure_plugins_initialized()
+        if self._capabilities is None:
+            return []
+        return self._capabilities.avatar_formats
 
     def apply_llm_tools(self, tool_manager: ToolManager) -> None:
         self._ensure_plugins_initialized()
@@ -237,16 +264,18 @@ class PluginManager:
         processors.extend(plugin_processors)
 
     def collect_settings_contributions(self) -> list[SettingsUIContribution]:
+        """Return no deprecated Qt settings contributions.
+
+        Plugin initialization still accepts and records the legacy metadata,
+        but the current host must never render it.
+        """
         self._ensure_plugins_initialized()
-        if self._capabilities is None:
-            return []
-        return self._capabilities.settings_contributions
+        return []
 
     def collect_tools_tab_contributions(self) -> list[ToolsTabContribution]:
+        """Return no deprecated Qt tools contributions."""
         self._ensure_plugins_initialized()
-        if self._capabilities is None:
-            return []
-        return self._capabilities.tools_tab_contributions
+        return []
 
     def collect_frontend_config_contributions(self) -> list[FrontendConfigContribution]:
         self._ensure_plugins_initialized()
@@ -260,11 +289,16 @@ class PluginManager:
             return []
         return self._capabilities.frontend_page_contributions
 
-    def collect_chat_ui_contributions(self) -> list[ChatUIContribution]:
+    def collect_frontend_chat_ui_contributions(self) -> list[FrontendChatUIContribution]:
         self._ensure_plugins_initialized()
         if self._capabilities is None:
             return []
-        return self._capabilities.chat_ui_contributions
+        return self._capabilities.frontend_chat_ui_contributions
+
+    def collect_chat_ui_contributions(self) -> list[ChatUIContribution]:
+        """Return no deprecated Qt chat contributions."""
+        self._ensure_plugins_initialized()
+        return []
 
     def collect_dag_yaml_paths(self) -> list[str]:
         self._ensure_plugins_initialized()

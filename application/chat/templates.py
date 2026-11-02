@@ -1,0 +1,717 @@
+from __future__ import annotations
+
+import hashlib
+import json
+from pathlib import Path
+from typing import Any
+
+from config.config_manager import character_name_key
+from core.chat_history.storage import ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME
+from application.chat.presentation.initial_sprite import (
+    initial_sprite_path_for_characters,
+)
+from ai.llm.template.integrations.localization import translate_template
+from ai.llm.template.dialog.context import EffectCatalogContext, EffectCatalogEntry
+from application.chat.build_effect_context import SelectedEffectContext
+from ai.llm.template.prompts import (
+    RuntimePromptContext,
+    UserPromptContext,
+    build_runtime_prompt_section,
+    build_user_prompt_section,
+)
+from ai.llm.template_generator import (
+    NoValidCharactersError,
+    json_format_reminder,
+    resolve_chat_template_characters,
+)
+
+from application.runtime.state import BridgeState
+from sdk.path_utils import safe_child_path, safe_filename
+
+MARK_SCENARIO = "<<<EASYAI_USER_SCENARIO>>>"
+MARK_SYSTEM = "<<<EASYAI_SYSTEM_TEMPLATE>>>"
+MARK_METADATA = "<<<EASYAI_TEMPLATE_METADATA>>>"
+TEMP_SPLIT_META = "_temp_split.json"
+DEFAULT_EMPTY_SCENARIO = "你扮演一个RPG系统。"
+
+
+def _template_dir(state: BridgeState) -> Path:
+    path = Path(state.template_dir_path)
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _template_id(path: Path) -> str:
+    return path.name
+
+
+def _normalize_media_selection_mode(value: object) -> str:
+    return (
+        "semantic"
+        if str(value or "").strip().lower() == "semantic"
+        else "indexed"
+    )
+
+
+def _compose_stored_template(
+    scenario: str,
+    system: str,
+    *,
+    media_selection_mode: str = "indexed",
+    player_character: str = "",
+    read_player_speech: bool = False,
+    allow_player_dialogue: bool = True,
+) -> str:
+    a = (scenario or "").replace("\r\n", "\n").rstrip()
+    b = (system or "").replace("\r\n", "\n").rstrip()
+    player_name = str(player_character or "").strip()
+    metadata_fields: dict[str, Any] = {
+        "mediaSelectionMode": _normalize_media_selection_mode(media_selection_mode),
+    }
+    if player_name:
+        metadata_fields.update(
+            {
+                "playerCharacter": player_name,
+                "readPlayerSpeech": bool(read_player_speech),
+                "allowPlayerDialogue": bool(allow_player_dialogue),
+            }
+        )
+    metadata = json.dumps(
+        metadata_fields,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    return f"{MARK_METADATA}\n{metadata}\n{MARK_SCENARIO}\n{a}\n{MARK_SYSTEM}\n{b}\n"
+
+
+def _parse_stored_template_metadata(raw: str) -> dict[str, Any]:
+    text = (raw or "").replace("\r\n", "\n")
+    if MARK_METADATA not in text:
+        return {
+            "mediaSelectionMode": "indexed",
+            "playerCharacter": "",
+            "readPlayerSpeech": False,
+            "allowPlayerDialogue": True,
+        }
+    try:
+        start = text.index(MARK_METADATA) + len(MARK_METADATA)
+        end = text.index(MARK_SCENARIO, start)
+        parsed = json.loads(text[start:end].strip())
+    except (ValueError, json.JSONDecodeError):
+        parsed = {}
+    metadata = parsed if isinstance(parsed, dict) else {}
+    player_character = str(metadata.get("playerCharacter") or "").strip()
+    return {
+        "mediaSelectionMode": _normalize_media_selection_mode(
+            metadata.get("mediaSelectionMode")
+        ),
+        "playerCharacter": player_character,
+        "allowPlayerDialogue": bool(metadata.get("allowPlayerDialogue", True)),
+        "readPlayerSpeech": bool(
+            metadata.get("readPlayerSpeech", False) and player_character
+        ),
+    }
+
+
+def _parse_stored_template(raw: str) -> tuple[str, str]:
+    text = (raw or "").replace("\r\n", "\n")
+    if MARK_SCENARIO in text and MARK_SYSTEM in text:
+        try:
+            i = text.index(MARK_SCENARIO) + len(MARK_SCENARIO)
+            j = text.index(MARK_SYSTEM, i)
+            return text[i:j].strip("\n"), text[j + len(MARK_SYSTEM) :].strip("\n")
+        except ValueError:
+            pass
+    text = text.strip()
+    return (text, "") if text else ("", "")
+
+
+def _compose_for_llm(scenario: str, system: str) -> str:
+    context = UserPromptContext(
+        prefix=(scenario or "").strip(),
+        user_input=(system or "").strip(),
+    )
+    return build_user_prompt_section().render(context)
+
+
+def _effective_user_scenario(user_scenario: str) -> str:
+    return (user_scenario or "").strip() or DEFAULT_EMPTY_SCENARIO
+
+
+def _compose_runtime_template(
+    system_template: str,
+    user_scenario: str,
+    effect_context: SelectedEffectContext | None = None,
+) -> str:
+    catalog = None
+    if effect_context is not None:
+        catalog = EffectCatalogContext(
+            effects=tuple(
+                EffectCatalogEntry(item.label, item.kind, item.modes)
+                for item in effect_context.catalog
+            ),
+            translate=translate_template,
+        )
+    context = RuntimePromptContext(
+        system_template=(system_template or "").rstrip(),
+        user_scenario=_effective_user_scenario(user_scenario),
+        json_reminder=json_format_reminder(),
+        effect_catalog=catalog,
+    )
+    return build_runtime_prompt_section().render(context) + "\n"
+
+
+def _normalize_hash_character_names(character_names: Any = None) -> list[str]:
+    if not isinstance(character_names, list):
+        return []
+    names = {str(item).strip() for item in character_names if str(item).strip()}
+    return sorted(names)
+
+
+def _scenario_from_template_like(template: dict[str, Any]) -> str:
+    raw_scenario = template.get("scenario")
+    if raw_scenario is not None:
+        return str(raw_scenario)
+    return str(template.get("content") or "")
+
+
+def _history_id_from_scenario(
+    user_scenario: str,
+    character_names: Any = None,
+) -> str:
+    stable = {
+        "characters": _normalize_hash_character_names(character_names),
+        "scenario": _effective_user_scenario(user_scenario),
+    }
+    return hashlib.md5(
+        json.dumps(stable, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def _latest_history_json(history_dir: str) -> Path | None:
+    path = Path(history_dir)
+    if not path.is_dir():
+        return None
+    candidates: list[tuple[Path, float]] = [
+        (item, item.stat().st_mtime) for item in path.glob("*.json") if item.is_file()
+    ]
+    candidates.extend(
+        (
+            item,
+            max(
+                child.stat().st_mtime
+                for child in (
+                    item / ACTIVE_HISTORY_FILENAME,
+                    item / BRANCH_TREE_FILENAME,
+                    item / f"{ACTIVE_HISTORY_FILENAME}.tmp",
+                )
+                if child.is_file()
+            ),
+        )
+        for item in path.iterdir()
+        if item.is_dir()
+        and any(
+            (item / name).is_file()
+            for name in (ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME, f"{ACTIVE_HISTORY_FILENAME}.tmp")
+        )
+    )
+    candidates.extend(
+        (item.parent / item.name[:-4], item.stat().st_mtime)
+        for item in path.glob("*.json.tmp")
+        if item.is_file()
+    )
+    if not candidates:
+        return None
+    return max(candidates, key=lambda item: item[1])[0]
+
+
+def _read_split_meta(template_dir: Path) -> tuple[str, str] | None:
+    meta_path = template_dir / TEMP_SPLIT_META
+    if not meta_path.is_file():
+        return None
+    try:
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    scenario = data.get("scenario", "")
+    system = data.get("system", "")
+    if not isinstance(scenario, str):
+        scenario = ""
+    if not isinstance(system, str):
+        system = ""
+    if scenario.strip() or system.strip():
+        return scenario, system
+    return None
+
+
+def _repair_template_parts_from_session_if_needed(
+    state: BridgeState,
+    scenario: str,
+    system: str,
+) -> tuple[str, str]:
+    if not _has_untranslated_template_keys(scenario, system):
+        return scenario, system
+    from application.chat.history.session_store import load_template_session
+
+    repaired = _repair_template_session_if_needed(state, load_template_session(state.template_dir_path))
+    if not repaired:
+        return scenario, system
+    return str(repaired.get("scenario_text") or ""), str(repaired.get("system_template_text") or "")
+
+
+def _resume_template_parts(state: BridgeState) -> tuple[str, str, str] | None:
+    template_dir = _template_dir(state)
+    temp_path = template_dir / "_temp.txt"
+    if temp_path.is_file() and temp_path.stat().st_size > 0:
+        split_meta = _read_split_meta(template_dir)
+        if split_meta is not None:
+            scenario, system = _repair_template_parts_from_session_if_needed(state, split_meta[0], split_meta[1])
+            return scenario, system, "_temp.txt"
+        try:
+            scenario, system = _parse_stored_template(temp_path.read_text(encoding="utf-8"))
+        except OSError:
+            scenario, system = "", ""
+        if scenario.strip() or system.strip():
+            return scenario, system, "_temp.txt"
+
+    candidates = [item for item in template_dir.glob("*.txt") if item.is_file() and item.name != "_temp.txt"]
+    if not candidates:
+        return None
+    path = max(candidates, key=lambda item: item.stat().st_mtime)
+    try:
+        scenario, system = _parse_stored_template(path.read_text(encoding="utf-8"))
+    except OSError:
+        return None
+    if scenario.strip() or system.strip():
+        return scenario, system, path.name
+    return None
+
+
+def _list_templates(state: BridgeState) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for path in sorted(_template_dir(state).glob("*.txt"), key=lambda item: item.name.lower()):
+        try:
+            raw = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        scenario, system = _parse_stored_template(raw)
+        metadata = _parse_stored_template_metadata(raw)
+        rows.append(
+            {
+                "content": _compose_for_llm(scenario, system),
+                "id": _template_id(path),
+                "name": path.stem,
+                "path": path.as_posix(),
+                "scenario": scenario,
+                "system": system,
+                "mediaSelectionMode": metadata["mediaSelectionMode"],
+                "playerCharacter": metadata["playerCharacter"],
+                "readPlayerSpeech": metadata["readPlayerSpeech"],
+                "allowPlayerDialogue": metadata["allowPlayerDialogue"],
+                "updatedAt": str(int(path.stat().st_mtime)),
+            }
+        )
+    return rows
+
+
+def _save_template_summary(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
+    template = payload.get("template", payload)
+    if not isinstance(template, dict):
+        raise ValueError("template payload must be an object")
+    name = str(template.get("name") or template.get("id") or "").strip()
+    if not name:
+        raise ValueError("template name is required")
+    scenario = _scenario_from_template_like(template)
+    system = str(template.get("system") or "")
+    media_selection_mode = _normalize_media_selection_mode(
+        template.get("mediaSelectionMode")
+    )
+    file_name = safe_filename(name, default_suffix=".txt")
+    safe_child_path(_template_dir(state), file_name).write_text(
+        _compose_stored_template(
+            scenario,
+            system,
+            media_selection_mode=media_selection_mode,
+            player_character=str(template.get("playerCharacter") or ""),
+            read_player_speech=bool(template.get("readPlayerSpeech", False)),
+            allow_player_dialogue=bool(template.get("allowPlayerDialogue", True)),
+        ),
+        encoding="utf-8",
+    )
+    for row in _list_templates(state):
+        if row["id"] == file_name:
+            return row
+    raise RuntimeError("template was saved but not found")
+
+
+def _generate_template_summary(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
+    selected = payload.get("characters") or []
+    resolved_names = _resolve_template_character_names(state, selected)
+    if not resolved_names:
+        raise NoValidCharactersError()
+    background = str(payload.get("backgroundName") or "")
+    voice_language = str(payload.get("voiceLanguage") or "").strip()
+    if voice_language:
+        sc = state.config_manager.config.system_config.model_copy(deep=True)
+        sc.voice_language = voice_language
+        state.config_manager.config.system_config = sc
+        state.config_manager.save_system_config()
+    max_speech_chars = max(0, int(payload.get("maxSpeechChars") or 0))
+    max_dialog_items = max(0, int(payload.get("maxDialogItems") or 0))
+    prompt_mode = str(payload.get("characterPromptMode") or "").strip().lower()
+    from application.chat.player_control import resolve_player
+    player_character = resolve_player(state.config_manager, resolved_names, payload.get("playerCharacter"))
+    read_player_speech = bool(player_character and payload.get("readPlayerSpeech", False))
+    primary_characters = (
+        _resolve_template_character_names(state, payload.get("primaryCharacters") or [])
+        if prompt_mode == "compact"
+        else None
+    )
+    media_selection_mode = (
+        "semantic"
+        if str(payload.get("mediaSelectionMode") or "").strip().lower()
+        == "semantic"
+        else "indexed"
+    )
+    if primary_characters is not None:
+        if player_character and player_character not in primary_characters:
+            primary_characters.append(player_character)
+        selected_keys = {character_name_key(name) for name in resolved_names}
+        primary_characters = [
+            name
+            for name in primary_characters
+            if character_name_key(name) in selected_keys
+        ]
+    content, result = state.template_generator.generate_chat_template(
+        resolved_names,
+        background,
+        bool(payload.get("useEffect", True)),
+        bool(payload.get("useCg", False)),
+        bool(payload.get("useTranslation", True)),
+        bool(payload.get("useCot", False)),
+        bool(payload.get("useChoice", True)),
+        bool(payload.get("useNarration", True)),
+        bool(payload.get("useStat", True)),
+        max_speech_chars=max_speech_chars,
+        max_dialog_items=max_dialog_items,
+        primary_characters=primary_characters,
+        media_selection_mode=media_selection_mode,
+        player_character=player_character,
+        read_player_speech=read_player_speech,
+        allow_player_dialogue=bool(payload.get("allowPlayerDialogue", True)),
+    )
+    output_name = str(result or "").strip()
+    name = str(output_name or payload.get("name") or "generated").strip()
+    scenario = str(payload.get("scenario") or "")
+    row = {
+        "content": _compose_for_llm(scenario, content),
+        "id": "",
+        "name": name,
+        "path": "",
+        "scenario": scenario,
+        "system": content,
+        "mediaSelectionMode": media_selection_mode,
+        "playerCharacter": player_character,
+        "readPlayerSpeech": read_player_speech,
+        "allowPlayerDialogue": bool(payload.get("allowPlayerDialogue", True)),
+        "updatedAt": "",
+        "resolvedCharacters": resolved_names,
+    }
+    row["generationMessage"] = result
+    return row
+
+
+def _resolve_template_character_names(state: BridgeState, selected: Any) -> list[str]:
+    """Return the canonical valid character names used by every template-flow boundary."""
+    if not isinstance(selected, list):
+        raise ValueError("characters must be a list")
+    resolved = resolve_chat_template_characters(selected, state.config_manager)
+    resolved_names = [name for name, _character in resolved]
+    if selected and not resolved_names:
+        raise NoValidCharactersError()
+    return resolved_names
+
+
+def _safe_session_int(value: Any, default: int = 0) -> int:
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def _session_string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
+def _template_session_to_frontend(raw: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not raw:
+        return None
+    payload = {
+        "background": str(raw.get("background") or ""),
+        "effectNames": _session_string_list(raw.get("effect_names")),
+        "enableMobileAccess": bool(raw.get("enable_mobile_access", False)),
+        "filenameStub": str(raw.get("filename_stub") or ""),
+        "historyPath": str(raw.get("history_file") or ""),
+        "initSpritePath": str(raw.get("init_sprite_path") or ""),
+        "showInitialSprite": raw.get("show_initial_sprite", True) is not False,
+        "maxDialogItems": _safe_session_int(raw.get("max_dialog_items")),
+        "maxSpeechChars": _safe_session_int(raw.get("max_speech_chars")),
+        "roomId": str(raw.get("room_id") or ""),
+        "scenario": str(raw.get("scenario_text") or ""),
+        "selectedCharacters": _session_string_list(raw.get("selected_characters")),
+        "system": str(raw.get("system_template_text") or ""),
+        "templateFileDropdown": str(raw.get("template_file_dropdown") or ""),
+        "workflowPath": str(raw.get("workflow_path") or ""),
+        "useCg": bool(raw.get("use_cg_yes", False)),
+        "useChoice": bool(raw.get("use_choice_yes", True)),
+        "useCot": bool(raw.get("use_cot_yes", False)),
+        "useEffect": bool(raw.get("use_effect_yes", True)),
+        "useNarration": bool(raw.get("use_narration_yes", True)),
+        "useStat": bool(raw.get("use_stat_yes", True)),
+        "useTranslation": bool(raw.get("use_tr_yes", True)),
+        "voiceLanguage": str(raw.get("voice_lang") or ""),
+        "mediaSelectionMode": (
+            "semantic"
+            if str(raw.get("media_selection_mode") or "").strip().lower()
+            == "semantic"
+            else "indexed"
+        ),
+    }
+    prompt_mode = str(raw.get("character_prompt_mode") or "").strip().lower()
+    if prompt_mode in {"compact", "full"}:
+        payload["characterPromptMode"] = prompt_mode
+        payload["primaryCharacters"] = _session_string_list(
+            raw.get("primary_characters")
+        )
+    payload["playerCharacter"] = str(raw.get("player_character") or "")
+    payload["readPlayerSpeech"] = bool(raw.get("read_player_speech", False))
+    payload["allowPlayerDialogue"] = bool(raw.get("allow_player_dialogue", True))
+    return payload
+
+
+def _persist_template_session_repair(state: BridgeState, raw: dict[str, Any]) -> None:
+    from application.chat.history.session_store import save_template_session
+
+    save_template_session(state.template_dir_path, raw)
+
+
+def _reconcile_template_session_characters(
+    state: BridgeState,
+    raw: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Remove stale names and canonicalize restored template selections."""
+    if not raw:
+        return raw
+    selected = _session_string_list(raw.get("selected_characters"))
+    resolved = resolve_chat_template_characters(selected, state.config_manager)
+    resolved_names = [name for name, _character in resolved]
+    resolved_by_key = {
+        character_name_key(name): name
+        for name in resolved_names
+        if character_name_key(name)
+    }
+    primary = _session_string_list(raw.get("primary_characters"))
+    resolved_primary: list[str] = []
+    seen_primary_keys: set[str] = set()
+    for name in primary:
+        key = character_name_key(name)
+        canonical_name = resolved_by_key.get(key)
+        if canonical_name and key not in seen_primary_keys:
+            resolved_primary.append(canonical_name)
+            seen_primary_keys.add(key)
+
+    prompt_mode = str(raw.get("character_prompt_mode") or "").strip().lower()
+    if prompt_mode == "compact" and not resolved_primary:
+        prompt_mode = ""
+    saved_player = str(raw.get("player_character") or "")
+    resolved_player = resolved_by_key.get(character_name_key(saved_player), "")
+    if (
+        resolved_names == selected
+        and resolved_primary == primary
+        and prompt_mode == str(raw.get("character_prompt_mode") or "")
+        and saved_player == resolved_player
+    ):
+        return raw
+
+    repaired = dict(raw)
+    repaired["selected_characters"] = resolved_names
+    repaired["primary_characters"] = resolved_primary
+    repaired["character_prompt_mode"] = prompt_mode
+    repaired["player_character"] = resolved_player
+    repaired["init_sprite_path"] = initial_sprite_path_for_characters(
+        state.config_manager,
+        str(raw.get("init_sprite_path") or ""),
+        resolved_names,
+    )
+    try:
+        _persist_template_session_repair(state, repaired)
+    except OSError:
+        pass
+    return repaired
+
+
+def _rename_template_session_character(
+    state: BridgeState,
+    original_name: str,
+    saved_name: str,
+) -> None:
+    """Carry a character rename into the persisted template selection."""
+    original_key = character_name_key(original_name)
+    if not original_key or original_key == character_name_key(saved_name):
+        return
+    from application.chat.history.session_store import load_template_session
+
+    raw = load_template_session(state.template_dir_path)
+    if not raw:
+        return
+    selected = _session_string_list(raw.get("selected_characters"))
+    renamed = [
+        saved_name if character_name_key(name) == original_key else name
+        for name in selected
+    ]
+    if renamed == selected:
+        return
+    repaired = dict(raw)
+    repaired["selected_characters"] = renamed
+    if character_name_key(str(raw.get("player_character") or "")) == original_key:
+        repaired["player_character"] = saved_name
+    primary = _session_string_list(raw.get("primary_characters"))
+    repaired["primary_characters"] = [
+        saved_name if character_name_key(name) == original_key else name
+        for name in primary
+    ]
+    reconciled = _reconcile_template_session_characters(state, repaired)
+    if reconciled is repaired:
+        _persist_template_session_repair(state, repaired)
+
+
+def _load_template_session_payload(state: BridgeState) -> dict[str, Any] | None:
+    from application.chat.history.session_store import load_template_session
+
+    raw = load_template_session(state.template_dir_path)
+    raw = _reconcile_template_session_characters(state, raw)
+    raw = _repair_template_session_if_needed(state, raw)
+    return _template_session_to_frontend(raw)
+
+
+def _save_template_session_payload(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
+    from application.chat.history.session_store import save_template_session
+
+    selected_characters = _resolve_template_character_names(
+        state,
+        payload.get("selectedCharacters") or [],
+    )
+    init_sprite_path = initial_sprite_path_for_characters(
+        state.config_manager,
+        str(payload.get("initSpritePath") or ""),
+        selected_characters,
+    )
+    prompt_mode = str(payload.get("characterPromptMode") or "").strip().lower()
+    if prompt_mode not in {"compact", "full"}:
+        prompt_mode = "full" if len(selected_characters) <= 4 else ""
+    primary_characters = _resolve_template_character_names(
+        state,
+        payload.get("primaryCharacters") or [],
+    )
+    selected_keys = {character_name_key(name) for name in selected_characters}
+    primary_characters = [
+        name
+        for name in primary_characters
+        if character_name_key(name) in selected_keys
+    ]
+    data = {
+        "player_character": str(payload.get("playerCharacter") or ""),
+        "read_player_speech": bool(payload.get("readPlayerSpeech", False)),
+        "allow_player_dialogue": bool(payload.get("allowPlayerDialogue", True)),
+        "selected_characters": selected_characters,
+        "character_prompt_mode": prompt_mode,
+        "primary_characters": primary_characters,
+        "background": str(payload.get("background") or ""),
+        "effect_names": _session_string_list(payload.get("effectNames")),
+        "enable_mobile_access": bool(payload.get("enableMobileAccess", False)),
+        "voice_lang": str(payload.get("voiceLanguage") or ""),
+        "use_effect_yes": bool(payload.get("useEffect", True)),
+        "use_tr_yes": bool(payload.get("useTranslation", True)),
+        "use_cg_yes": bool(payload.get("useCg", False)),
+        "use_cot_yes": bool(payload.get("useCot", False)),
+        "use_choice_yes": bool(payload.get("useChoice", True)),
+        "use_narration_yes": bool(payload.get("useNarration", True)),
+        "use_stat_yes": bool(payload.get("useStat", True)),
+        "max_speech_chars": _safe_session_int(payload.get("maxSpeechChars")),
+        "max_dialog_items": _safe_session_int(payload.get("maxDialogItems")),
+        "scenario_text": str(payload.get("scenario") or ""),
+        "system_template_text": str(payload.get("system") or ""),
+        "filename_stub": str(payload.get("filenameStub") or ""),
+        "template_file_dropdown": str(payload.get("templateFileDropdown") or ""),
+        "init_sprite_path": init_sprite_path,
+        "show_initial_sprite": payload.get("showInitialSprite", True) is not False,
+        "history_file": str(payload.get("historyPath") or ""),
+        "room_id": str(payload.get("roomId") or ""),
+        "workflow_path": str(payload.get("workflowPath") or ""),
+        "media_selection_mode": (
+            "semantic"
+            if str(payload.get("mediaSelectionMode") or "").strip().lower()
+            == "semantic"
+            else "indexed"
+        ),
+    }
+    save_template_session(state.template_dir_path, data)
+    loaded = _load_template_session_payload(state)
+    if loaded is None:
+        raise RuntimeError("template session was saved but not found")
+    return loaded
+
+
+def _has_untranslated_template_keys(*values: Any) -> bool:
+    return any("template_gen." in str(value or "") for value in values)
+
+
+def _repair_template_session_if_needed(state: BridgeState, raw: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not raw or not _has_untranslated_template_keys(raw.get("scenario_text"), raw.get("system_template_text")):
+        return raw
+    selected = raw.get("selected_characters") or []
+    if not isinstance(selected, list) or not selected:
+        return raw
+    try:
+        content, _result = state.template_generator.generate_chat_template(
+            [str(item) for item in selected if str(item)],
+            str(raw.get("background") or ""),
+            bool(raw.get("use_effect_yes", True)),
+            bool(raw.get("use_cg_yes", False)),
+            bool(raw.get("use_tr_yes", True)),
+            bool(raw.get("use_cot_yes", False)),
+            bool(raw.get("use_choice_yes", True)),
+            bool(raw.get("use_narration_yes", True)),
+            bool(raw.get("use_stat_yes", True)),
+            max_speech_chars=_safe_session_int(raw.get("max_speech_chars")),
+            max_dialog_items=_safe_session_int(raw.get("max_dialog_items")),
+            primary_characters=(
+                _session_string_list(raw.get("primary_characters"))
+                if str(raw.get("character_prompt_mode") or "").strip().lower()
+                == "compact"
+                else None
+            ),
+            media_selection_mode=(
+                "semantic"
+                if str(raw.get("media_selection_mode") or "").strip().lower()
+                == "semantic"
+                else "indexed"
+            ),
+        )
+    except NoValidCharactersError:
+        return raw
+    repaired = dict(raw)
+    if _has_untranslated_template_keys(repaired.get("scenario_text")):
+        repaired["scenario_text"] = ""
+    repaired["system_template_text"] = content
+    try:
+        from application.chat.history.session_store import save_template_session
+
+        save_template_session(state.template_dir_path, repaired)
+    except Exception:
+        pass
+    return repaired

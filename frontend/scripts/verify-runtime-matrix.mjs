@@ -10,6 +10,7 @@ const runtimeSourcesPath = path.join(frontendDir, "src-tauri", "runtime_sources.
 const workflowPath = path.join(repoRoot, ".github", "workflows", "tauri-desktop.yml");
 const releaseWorkflowPath = path.join(repoRoot, ".github", "workflows", "release.yml");
 const packageJsonPath = path.join(frontendDir, "package.json");
+const srcTauriCargoTomlPath = path.join(frontendDir, "src-tauri", "Cargo.toml");
 const tauriConfigPath = path.join(frontendDir, "src-tauri", "tauri.conf.json");
 const prepareRuntimeScriptPath = path.join(frontendDir, "scripts", "prepare-runtime.mjs");
 const prepareTauriResourcesScriptPath = path.join(frontendDir, "scripts", "prepare-tauri-resources.mjs");
@@ -31,7 +32,7 @@ const windowsRequiredFiles = new Map([
 const expectedBundles = new Map([
   ["linux-x64", ["deb"]],
   ["linux-arm64", ["deb"]],
-  ["windows-x64", ["none"]],
+  ["windows-x64", ["nsis"]],
   ["windows-arm64", ["none"]],
   ["macos-arm64", ["dmg"]],
 ]);
@@ -48,6 +49,7 @@ const runtimeSources = JSON.parse(await readFile(runtimeSourcesPath, "utf8"));
 const workflow = await readFile(workflowPath, "utf8");
 const releaseWorkflow = await readFile(releaseWorkflowPath, "utf8");
 const packageJson = JSON.parse(await readFile(packageJsonPath, "utf8"));
+const srcTauriCargoToml = await readFile(srcTauriCargoTomlPath, "utf8");
 const tauriConfig = JSON.parse(await readFile(tauriConfigPath, "utf8"));
 const prepareRuntimeScript = await readFile(prepareRuntimeScriptPath, "utf8");
 const prepareTauriResourcesScript = await readFile(prepareTauriResourcesScriptPath, "utf8");
@@ -196,6 +198,14 @@ for (const command of [
 }
 check(tauriConfig.bundle?.resources?.["resources/"] === "", "Tauri bundle must include the staged resources directory");
 check(
+  tauriConfig.app?.macOSPrivateApi === true,
+  "Tauri app config must enable macOSPrivateApi for transparent desktop chat windows",
+);
+check(
+  /tauri\s*=\s*\{[^}]*features\s*=\s*\[[^\]]*"macos-private-api"/s.test(srcTauriCargoToml),
+  "src-tauri Cargo.toml must enable the tauri macos-private-api feature",
+);
+check(
   rustToolchainConfig.includes(`channel = "${expectedRustToolchain}"`) &&
     rustToolchainConfig.includes('profile = "minimal"'),
   `rust-toolchain.toml must pin Rust ${expectedRustToolchain} with the minimal profile`,
@@ -211,6 +221,14 @@ check(
     !workflow.includes("RUSTC_WRAPPER=sccache") &&
     !releaseWorkflow.includes("RUSTC_WRAPPER=sccache"),
   "desktop and release workflows must rely on rust-cache target reuse instead of sccache",
+);
+check(
+  workflow.includes("shared-key: build") && releaseWorkflow.includes("shared-key: build"),
+  "desktop and release workflows must share the platform-isolated Rust build cache",
+);
+check(
+  !workflow.includes("choco install nsis") && !releaseWorkflow.includes("choco install nsis"),
+  "Tauri workflows must use tauri-bundler's pinned NSIS toolchain instead of installing an unused system copy",
 );
 check(!workflow.includes("needs: runtime-gate"), "desktop build matrix must run in parallel with runtime-gate");
 check(
@@ -243,7 +261,6 @@ check(
   !releaseWorkflow.includes("find frontend/src-tauri/target/release/bundle -type f") &&
     releaseWorkflow.includes('collect_required "frontend/src-tauri/target/release/bundle/appimage/*.AppImage"') &&
     releaseWorkflow.includes('collect_required "frontend/src-tauri/target/release/bundle/deb/*.deb"') &&
-    releaseWorkflow.includes('collect_required "frontend/src-tauri/target/release/bundle/msi/*.msi"') &&
     releaseWorkflow.includes('collect_required "frontend/src-tauri/target/release/bundle/nsis/*.exe"') &&
     releaseWorkflow.includes('collect_required "frontend/src-tauri/target/release/bundle/dmg/*.dmg"') &&
     releaseWorkflow.includes('collect_required "frontend/src-tauri/target/release/bundle/macos/*.app.tar.gz"'),
@@ -256,10 +273,6 @@ check(
     workflow.includes("pnpm verify:packaged-runtime --target ${{ matrix.platform }}") &&
     workflow.includes("if: matrix.bundles != 'none'"),
   "workflow must skip installer generation and artifact upload for no-bundle platforms",
-);
-check(
-  workflow.includes("if: runner.os == 'Windows' && matrix.bundles != 'none'"),
-  "workflow must skip Windows installer dependency installation for no-bundle Windows builds",
 );
 check(!workflow.includes("pnpm tauri build -v"), "workflow must not use verbose Tauri build logging in CI");
 check(

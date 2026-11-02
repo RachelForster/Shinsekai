@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
+  ArrowUpDown,
   Box,
   CheckCircle2,
   Clock3,
@@ -89,10 +90,31 @@ type DesktopUpdateErrorFallback = "plugin.desktopUpdate.checkFailed" | "plugin.d
 type PluginTrustState = "verified" | "community" | "pending" | "blocked";
 
 const CATALOG_PAGE_SIZE = 10;
+type PluginCatalogSort = "latest" | "downloads";
 
 function catalogDisplayName(plugin: PluginCatalogItem) {
   const raw = plugin as PluginCatalogItem & { display_name?: string; title?: string };
   return plugin.displayName || raw.display_name || raw.title || plugin.name || plugin.repo || plugin.entry;
+}
+
+function catalogUpdatedTime(plugin: PluginCatalogItem) {
+  const value = Date.parse(plugin.updatedAt ?? "");
+  return Number.isFinite(value) ? value : 0;
+}
+
+function catalogDownloadCount(plugin: PluginCatalogItem) {
+  const value = Number(plugin.downloadCount ?? 0);
+  return Number.isFinite(value) && value > 0 ? Math.trunc(value) : 0;
+}
+
+export function sortCatalogPlugins(items: PluginCatalogItem[], sort: PluginCatalogSort) {
+  return [...items].sort((left, right) => {
+    const updatedDelta = catalogUpdatedTime(right) - catalogUpdatedTime(left);
+    const downloadsDelta = catalogDownloadCount(right) - catalogDownloadCount(left);
+    const primaryDelta = sort === "downloads" ? downloadsDelta : updatedDelta;
+    const secondaryDelta = sort === "downloads" ? updatedDelta : downloadsDelta;
+    return primaryDelta || secondaryDelta || catalogDisplayName(left).localeCompare(catalogDisplayName(right));
+  });
 }
 
 function catalogDescription(plugin: PluginCatalogItem) {
@@ -432,6 +454,7 @@ export function PluginCatalogPanel({
   const [desktopUpdate, setDesktopUpdate] = useState<DesktopUpdate | null>(null);
   const [desktopUpdateProgress, setDesktopUpdateProgress] = useState<DesktopUpdateProgress | null>(null);
   const [desktopUpdateError, setDesktopUpdateError] = useState("");
+  const [catalogSort, setCatalogSort] = useState<PluginCatalogSort>("latest");
   const catalogMatches = useCallback((plugin: PluginCatalogItem, query: string) => {
     return searchablePluginText([
       plugin.id,
@@ -444,14 +467,19 @@ export function PluginCatalogPanel({
       plugin.shortDescription,
       plugin.version,
       plugin.updatedAt,
+      plugin.downloadCount,
       plugin.tags?.join(" "),
       plugin.downloadUrl,
       plugin.packageUrl,
       plugin.downloaded ? "downloaded installed update" : "not installed",
     ]).includes(query);
   }, []);
+  const sortedCatalogPlugins = useMemo(
+    () => sortCatalogPlugins(catalogQuery.data ?? [], catalogSort),
+    [catalogQuery.data, catalogSort],
+  );
   const catalogItems = usePagedPluginList({
-    items: catalogQuery.data ?? [],
+    items: sortedCatalogPlugins,
     matcher: catalogMatches,
     pageSize: CATALOG_PAGE_SIZE,
   });
@@ -690,6 +718,10 @@ export function PluginCatalogPanel({
             <Star aria-hidden size={14} />
             {Number(plugin.stars || 0).toLocaleString()}
           </span>
+          <span title={t("plugin.catalog.downloads", { count: catalogDownloadCount(plugin) })}>
+            <DownloadCloud aria-hidden size={14} />
+            {t("plugin.catalog.downloads", { count: catalogDownloadCount(plugin).toLocaleString() })}
+          </span>
           {packageSize ? (
             <span title={plugin.packageR2Key || plugin.downloadUrl || ""}>
               <Box aria-hidden size={14} />
@@ -802,6 +834,22 @@ export function PluginCatalogPanel({
       ) : null}
       {catalogQuery.data?.length ? (
         <PluginListControls
+          afterSearch={
+            <label className="plugin-catalog-sort">
+              <ArrowUpDown aria-hidden className="plugin-catalog-sort__icon" />
+              <Select
+                aria-label={t("plugin.catalog.sortLabel")}
+                onChange={(event) => {
+                  setCatalogSort(event.target.value === "downloads" ? "downloads" : "latest");
+                  catalogItems.setPage(1);
+                }}
+                value={catalogSort}
+              >
+                <option value="latest">{t("plugin.catalog.sortLatest")}</option>
+                <option value="downloads">{t("plugin.catalog.sortDownloads")}</option>
+              </Select>
+            </label>
+          }
           filteredCount={catalogItems.filteredItems.length}
           page={catalogItems.page}
           placeholder={t("plugin.list.searchCatalog")}

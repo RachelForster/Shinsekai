@@ -1,0 +1,42 @@
+name: Release cherry-pick command
+
+on:
+  issue_comment:
+    types: [created, edited]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  cherry-pick:
+    if: >-
+      ${{
+        !github.event.issue.pull_request &&
+        (
+          startsWith(github.event.comment.body, '/cherry-pick') ||
+          startsWith(github.event.comment.body, '/cherrypick')
+        )
+      }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      - name: Cherry-pick to release branch and open PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          COMMENT_AUTHOR: ${{ github.event.comment.user.login }}
+          AUTHOR_ASSOCIATION: ${{ github.event.comment.author_association }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          RUN_ID: ${{ github.run_id }}
+        run: python3 scripts/release_cherry_pick_command.py

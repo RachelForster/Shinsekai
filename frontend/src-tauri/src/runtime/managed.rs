@@ -12,7 +12,7 @@ use std::{
 use serde::Serialize;
 use tauri::{Emitter, Manager, Runtime};
 
-use super::{manifest::RuntimeRequirements, python_env};
+use super::{manifest::RuntimeRequirements, python_env, pytorch};
 
 type RuntimeResult<T> = Result<T, Box<dyn Error>>;
 const RUNTIME_PROGRESS_EVENT: &str = "shinsekai:runtime-progress";
@@ -75,10 +75,103 @@ where
     F: FnMut(&str),
 {
     ensure_python_pip_available(python)?;
+    let requirements_text = fs::read_to_string(requirements_path).map_err(|error| {
+        format!(
+            "read runtime requirements file {} failed: {error}",
+            requirements_path.display()
+        )
+    })?;
+    let requirement_lines = requirements_text
+        .lines()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    let (torch_lines, other_lines) = pytorch::partition_requirement_lines(&requirement_lines);
+    let split_torch = !torch_lines.is_empty() && !cfg!(target_os = "macos");
+
+    if split_torch {
+        let plan = pytorch::install_plan(python, &torch_lines, pip_index_urls);
+        on_log_line(&format!(
+            "PyTorch plan: index={} ({}), install={}, force_reinstall={}: {}",
+            plan.index_url,
+            plan.index_reason,
+            plan.install_required,
+            plan.force_reinstall,
+            plan.detail,
+        ));
+        let torch_requirements = write_temp_requirements(
+            requirements_path,
+            "shinsekai-torch",
+            &plan.requirement_lines,
+        )?;
+        let other_requirements =
+            write_temp_requirements(requirements_path, "shinsekai-runtime", &other_lines)?;
+        let result = (|| {
+            if plan.install_required {
+                let mut install_torch = pytorch_install_command(
+                    python,
+                    &torch_requirements,
+                    &plan.index_url,
+                    plan.force_reinstall,
+                );
+                run_command_with_live_log(
+                    &mut install_torch,
+                    "install Shinsekai PyTorch runtime dependencies",
+                    &mut on_log_line,
+                )?;
+                if plan.force_reinstall {
+                    let mut repair_dependencies = pytorch_install_command(
+                        python,
+                        &torch_requirements,
+                        &plan.index_url,
+                        false,
+                    );
+                    run_command_with_live_log(
+                        &mut repair_dependencies,
+                        "repair Shinsekai PyTorch runtime dependencies",
+                        &mut on_log_line,
+                    )?;
+                }
+            }
+            if !has_non_comment_requirement(&other_lines) {
+                return Ok(());
+            }
+            install_runtime_requirements_file_with_indexes(
+                python,
+                &other_requirements,
+                pip_index_urls,
+                Some(&torch_requirements),
+                &mut on_log_line,
+            )
+        })();
+        let _ = fs::remove_file(torch_requirements);
+        let _ = fs::remove_file(other_requirements);
+        return result;
+    }
+
+    install_runtime_requirements_file_with_indexes(
+        python,
+        requirements_path,
+        pip_index_urls,
+        None,
+        &mut on_log_line,
+    )
+}
+
+fn install_runtime_requirements_file_with_indexes<F>(
+    python: &Path,
+    requirements_path: &Path,
+    pip_index_urls: &[String],
+    constraints_path: Option<&Path>,
+    mut on_log_line: F,
+) -> RuntimeResult<()>
+where
+    F: FnMut(&str),
+{
     let mut errors = Vec::new();
 
     if pip_index_urls.is_empty() {
         let mut install = pip_install_command(python, requirements_path, None);
+        apply_pip_constraints(&mut install, constraints_path);
         return run_command_with_live_log(
             &mut install,
             "install Shinsekai runtime dependencies",
@@ -88,6 +181,7 @@ where
 
     for pip_index_url in pip_index_urls {
         let mut install = pip_install_command(python, requirements_path, Some(pip_index_url));
+        apply_pip_constraints(&mut install, constraints_path);
         on_log_line(&format!("Using pip index: {}", pip_index_url.trim()));
         match run_command_with_live_log(
             &mut install,
@@ -105,6 +199,33 @@ where
     .into())
 }
 
+fn write_temp_requirements(
+    requirements_path: &Path,
+    prefix: &str,
+    lines: &[String],
+) -> RuntimeResult<PathBuf> {
+    let parent = requirements_path.parent().unwrap_or_else(|| Path::new("."));
+    let filename = format!(
+        "{}-{}-{}.txt",
+        prefix,
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    );
+    let path = parent.join(filename);
+    fs::write(&path, lines.join("\n"))?;
+    Ok(path)
+}
+
+fn has_non_comment_requirement(lines: &[String]) -> bool {
+    lines.iter().any(|line| {
+        let trimmed = line.split('#').next().unwrap_or("").trim();
+        !trimmed.is_empty() && !trimmed.starts_with('#')
+    })
+}
+
 fn pip_install_command(
     python: &Path,
     requirements_path: &Path,
@@ -114,6 +235,36 @@ fn pip_install_command(
     install.arg("-m").arg("pip").arg("install");
     configure_pip_install_command(&mut install, python, pip_index_url);
     install.arg("-r").arg(requirements_path);
+    install
+}
+
+fn apply_pip_constraints(command: &mut Command, constraints_path: Option<&Path>) {
+    if let Some(path) = constraints_path {
+        command.arg("-c").arg(path);
+    }
+}
+
+fn pytorch_install_command(
+    python: &Path,
+    requirements_path: &Path,
+    index_url: &str,
+    force_stack_only: bool,
+) -> Command {
+    let mut install = pip_install_command(python, requirements_path, None);
+    install
+        .arg("--index-url")
+        .arg(index_url)
+        .arg("--extra-index-url")
+        .arg("https://pypi.org/simple");
+    if force_stack_only {
+        // Without --no-deps, pip applies --force-reinstall to every resolved
+        // transitive dependency. A following plain install repairs only
+        // dependencies that are missing or genuinely incompatible.
+        install
+            .arg("--upgrade")
+            .arg("--force-reinstall")
+            .arg("--no-deps");
+    }
     install
 }
 
@@ -144,24 +295,19 @@ pub fn install_runtime_dependencies<R: Runtime, M: Manager<R> + Emitter<R>>(
         Some("Installing Shinsekai runtime dependencies"),
         None,
     );
-    install_runtime_requirements(
-        python,
-        &requirements_path,
-        pip_index_urls,
-        |line| {
-            emit_runtime_progress(
-                app,
-                "installingDeps",
-                Some(candidate_id.to_string()),
-                Some("local".to_string()),
-                None,
-                None,
-                None,
-                Some("Installing Shinsekai runtime dependencies"),
-                Some(line),
-            );
-        },
-    )?;
+    install_runtime_requirements(python, &requirements_path, pip_index_urls, |line| {
+        emit_runtime_progress(
+            app,
+            "installingDeps",
+            Some(candidate_id.to_string()),
+            Some("local".to_string()),
+            None,
+            None,
+            None,
+            Some("Installing Shinsekai runtime dependencies"),
+            Some(line),
+        );
+    })?;
 
     emit_runtime_progress(
         app,
@@ -236,7 +382,9 @@ fn verify_python_imports(python: &Path, modules: &[String]) -> RuntimeResult<()>
 }
 
 fn run_command(command: &mut Command, label: &str) -> RuntimeResult<()> {
-    let output = command.output()?;
+    let output = command
+        .output()
+        .map_err(|error| format!("{label} failed to start: {error}"))?;
     if output.status.success() {
         return Ok(());
     }
@@ -271,10 +419,18 @@ where
     let mut readers = Vec::new();
 
     if let Some(stdout) = stdout {
-        readers.push(spawn_output_reader(OutputStream::Stdout, stdout, tx.clone()));
+        readers.push(spawn_output_reader(
+            OutputStream::Stdout,
+            stdout,
+            tx.clone(),
+        ));
     }
     if let Some(stderr) = stderr {
-        readers.push(spawn_output_reader(OutputStream::Stderr, stderr, tx.clone()));
+        readers.push(spawn_output_reader(
+            OutputStream::Stderr,
+            stderr,
+            tx.clone(),
+        ));
     }
     drop(tx);
 
@@ -288,7 +444,12 @@ where
         &mut on_log_line,
     )?;
     for entry in rx {
-        push_output_line(entry, &mut stdout_lines, &mut stderr_lines, &mut on_log_line);
+        push_output_line(
+            entry,
+            &mut stdout_lines,
+            &mut stderr_lines,
+            &mut on_log_line,
+        );
     }
     for reader in readers {
         let _ = reader.join();

@@ -1,0 +1,66 @@
+startNodeId: transfer-day
+
+nodes:
+  - id: transfer-day
+    title: 转校日
+    type: story
+    commitment: frozen
+    castPolicy:
+      mode: fixed
+      required: [ling]
+      constraints:
+        minActive: 1
+        maxActive: 2
+    choices:
+      - id: prepare-investigation
+        label: 和绫约定调查旧校舍
+        effects:
+          - increment: [trust.ling, 10]
+        goto: old-school-gate
+
+  - id: old-school-gate
+    title: 旧校舍门前
+    type: story
+    commitment: frozen
+    enterWhen:
+      gte: [trust.ling, 10]
+    castPolicy:
+      mode: role-based
+      required: [ling]
+      requiredRoles:
+        - role: authority
+          count: 1
+          prefer: [detective-zhou]
+      constraints:
+        minActive: 2
+        maxActive: 3
+      fallback:
+        onMissingRole: error
+        onLoadFailure: continue-without-optional
+    onEnter:
+      - set: [flags.arrived_old_school, true]
+    choices:
+      - id: enter-with-key
+        label: 使用旧钥匙进入
+        when:
+          contains: [inventory, old_school_key]
+        effects:
+          - remove-set: [inventory, old_school_key]
+        goto: truth-ending
+    freeformIntents:
+      - id: reassure-ling
+        examples: [我会陪着你, 我们一起面对]
+        effects:
+          - increment: [trust.ling, 5]
+        resultBeat: 绫的神情稍微放松下来。
+
+  - id: truth-ending
+    title: 雨声之后
+    type: ending
+    commitment: frozen
+    castPolicy:
+      mode: fixed
+      required: [ling]
+      constraints:
+        minActive: 1
+        maxActive: 2

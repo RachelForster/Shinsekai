@@ -1,0 +1,266 @@
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { StoryLaunchButton } from "../../../features/story-generator/components/StoryLaunchButton";
+import { I18nProvider, type FrontendLanguage } from "../../../shared/i18n";
+import { ToastProvider } from "../../../shared/ui";
+import { setMobileAccessPreference } from "../../../features/mobile-access/useMobileAccessPreference";
+
+const {
+  launchChat,
+  getChatRuntimeStatus,
+  getChatSnapshot,
+  startStorySession,
+  showChatSurface,
+  prepareStoryLaunch,
+  prepareConversation,
+} = vi.hoisted(() => ({
+  prepareStoryLaunch: vi.fn(),
+  prepareConversation: vi.fn(),
+  launchChat: vi.fn(),
+  getChatRuntimeStatus: vi.fn(),
+  getChatSnapshot: vi.fn(),
+  startStorySession: vi.fn(),
+  showChatSurface: vi.fn(),
+}));
+vi.mock("../../../entities/chat/repository", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../entities/chat/repository")>()),
+  launchChat,
+  prepareConversation,
+  getChatRuntimeStatus,
+  getChatSnapshot,
+  chatQueryKey: ["chat"],
+  conversationsQueryKey: ["chat", "conversations"],
+}));
+vi.mock("../../../entities/story/repository", () => ({
+  startStorySession,
+  prepareStoryLaunch,
+  storyLibraryQueryKey: ["story-library"],
+}));
+vi.mock("../../../shared/desktop/chatWindow", () => ({ showChatSurface }));
+vi.mock("../../../features/chat-startup/ChatInitializationDialog", () => ({ ChatInitializationDialog: () => null }));
+
+function renderButton(
+  historyPath = "",
+  language: FrontendLanguage = "zh_CN",
+  conversationId?: string,
+  conversationTitle?: string,
+) {
+  return render(
+    <QueryClientProvider client={new QueryClient()}>
+      <I18nProvider language={language}>
+        <MemoryRouter>
+          <ToastProvider>
+            <StoryLaunchButton
+              storyPath="story/draft.json"
+              historyPath={historyPath}
+              disabled={false}
+              conversationId={conversationId}
+              conversationTitle={conversationTitle}
+            />
+          </ToastProvider>
+        </MemoryRouter>
+      </I18nProvider>
+    </QueryClientProvider>,
+  );
+}
+
+describe("story launch", () => {
+  it.each([false, true])("applies the shared mobile preference %s when resuming a saved story", async (enabled) => {
+    setMobileAccessPreference(enabled);
+    prepareConversation.mockResolvedValue({ historyPath: "saved", enableMobileAccess: !enabled });
+    renderButton("saved", "en", "saved-id");
+    fireEvent.click(screen.getByRole("button", { name: "Play story" }));
+    await waitFor(() =>
+      expect(launchChat).toHaveBeenCalledWith(
+        expect.objectContaining({ enableMobileAccess: enabled, historyPath: "saved" }),
+        expect.anything(),
+      ),
+    );
+  });
+  it("uses the same QR and local-chat handoff for a newly created mobile story", async () => {
+    setMobileAccessPreference(true);
+    launchChat.mockResolvedValueOnce({
+      sessionId: "session-1",
+      mobileAccess: {
+        enabled: true,
+        host: "192.168.1.20",
+        httpPort: 8789,
+        websocketPort: 8790,
+        qrCodeDataUrl: "data:image/png;base64,dGVzdA==",
+        url: "http://192.168.1.20:8789/",
+        websocketUrl: "ws://192.168.1.20:8790/ws",
+      },
+    });
+    renderButton("", "en");
+    fireEvent.click(screen.getByRole("button", { name: "Play story" }));
+    const dialog = await screen.findByRole("dialog", { name: "Mobile access is ready" });
+    expect(launchChat).toHaveBeenCalledWith(expect.objectContaining({ enableMobileAccess: true }), expect.anything());
+    expect(showChatSurface).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Open local chat" }));
+    await waitFor(() =>
+      expect(showChatSurface).toHaveBeenCalledWith(
+        expect.objectContaining({
+          snapshot: { runtimeMode: "react", wsUrl: "ws://192.168.1.20:8790/ws" },
+        }),
+      ),
+    );
+  });
+  it("passes the new chat title without changing story preparation", async () => {
+    renderButton("", "en", undefined, "Evening adventure");
+    fireEvent.click(screen.getByRole("button", { name: "Play story" }));
+    await waitFor(() =>
+      expect(launchChat).toHaveBeenCalledWith(
+        expect.objectContaining({ conversationTitle: "Evening adventure", historyPath: "" }),
+        expect.anything(),
+      ),
+    );
+    expect(prepareStoryLaunch).toHaveBeenCalledWith("story/draft.json", "");
+  });
+
+  it("generates a timestamp title when the new-chat title is cleared", async () => {
+    renderButton("", "en", undefined, "  ");
+    fireEvent.click(screen.getByRole("button", { name: "Play story" }));
+    await waitFor(() =>
+      expect(launchChat).toHaveBeenCalledWith(
+        expect.objectContaining({ conversationTitle: expect.stringMatching(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/) }),
+        expect.anything(),
+      ),
+    );
+  });
+  it("validates the selected story save and resumes its own prompt settings", async () => {
+    prepareConversation.mockResolvedValue({
+      historyPath: "saved",
+      system: "Saved rules",
+      scenario: "The culprit is Ling",
+      resetHistory: false,
+    });
+    renderButton("saved", "zh_CN", "saved-id");
+    fireEvent.click(screen.getByRole("button", { name: "运行剧本" }));
+    await waitFor(() => expect(showChatSurface).toHaveBeenCalled());
+    expect(prepareStoryLaunch).toHaveBeenCalledWith("story/draft.json", "saved");
+    expect(prepareConversation).toHaveBeenCalledWith("saved-id");
+    expect(launchChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        historyPath: "saved",
+        system: "Saved rules",
+        scenario: "Current node guidance",
+        resetHistory: false,
+      }),
+      expect.anything(),
+    );
+    expect(startStorySession).toHaveBeenCalledWith("story/draft.json");
+  });
+  it("localizes the default launch action and active-chat error", async () => {
+    getChatRuntimeStatus.mockResolvedValue({ state: "running" });
+    renderButton("", "en");
+    fireEvent.click(screen.getByRole("button", { name: "Play story" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("End the current chat before playing a story.");
+    expect(launchChat).not.toHaveBeenCalled();
+  });
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    getChatSnapshot.mockResolvedValue({ sessionId: "session-1", runtimeMode: "react" });
+    getChatRuntimeStatus.mockResolvedValue({ state: "idle" });
+    prepareStoryLaunch.mockImplementation((_storyPath: string, historyPath: string) =>
+      Promise.resolve({
+        templateId: "",
+        characters: ["小玲"],
+        backgroundName: "旧校舍",
+        system: "人物设定",
+        scenario: "Current node guidance",
+        historyPath,
+        resetHistory: !historyPath,
+      }),
+    );
+    launchChat.mockResolvedValue({ sessionId: "session-1", runtimeMode: "react" });
+    startStorySession.mockResolvedValue({ story: { storyId: "story-1" } });
+  });
+  it("initializes a fresh history, attaches the generated draft, then opens chat", async () => {
+    renderButton();
+    fireEvent.click(screen.getByRole("button", { name: "运行剧本" }));
+    await waitFor(() => expect(showChatSurface).toHaveBeenCalled());
+    expect(launchChat).toHaveBeenCalledWith(
+      expect.objectContaining({ templateId: "", characters: ["小玲"], backgroundName: "旧校舍", resetHistory: true }),
+      expect.anything(),
+    );
+    expect(startStorySession).toHaveBeenCalledWith("story/draft.json");
+    expect(startStorySession.mock.invocationCallOrder[0]).toBeGreaterThan(launchChat.mock.invocationCallOrder[0]);
+  });
+  it("continues the selected save without resetting its history", async () => {
+    renderButton("data/chat_history/saved");
+    fireEvent.click(screen.getByRole("button", { name: "运行剧本" }));
+    await waitFor(() => expect(showChatSurface).toHaveBeenCalled());
+    expect(prepareStoryLaunch).toHaveBeenCalledWith("story/draft.json", "data/chat_history/saved");
+    expect(launchChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        historyPath: "data/chat_history/saved",
+        resetHistory: false,
+      }),
+      expect.anything(),
+    );
+  });
+  it("does not attach a story to someone else's running chat", async () => {
+    getChatRuntimeStatus.mockResolvedValue({ state: "running" });
+    renderButton();
+    fireEvent.click(screen.getByRole("button", { name: "运行剧本" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("请先结束当前聊天");
+    expect(launchChat).not.toHaveBeenCalled();
+    expect(startStorySession).not.toHaveBeenCalled();
+  });
+  it("retries attachment after a failure without creating another history", async () => {
+    startStorySession.mockRejectedValueOnce(new Error("立绘尚未准备好"));
+    renderButton();
+    fireEvent.click(screen.getByRole("button", { name: "运行剧本" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("立绘尚未准备好");
+    expect(showChatSurface).not.toHaveBeenCalled();
+    getChatRuntimeStatus.mockResolvedValue({ state: "running" });
+    fireEvent.click(screen.getByRole("button", { name: "运行剧本" }));
+    await waitFor(() => expect(showChatSurface).toHaveBeenCalled());
+    expect(launchChat).toHaveBeenCalledTimes(1);
+  });
+  it("preserves attachment retry after remount with a new query cache", async () => {
+    startStorySession.mockRejectedValueOnce(new Error("network unavailable"));
+    const first = renderButton();
+    fireEvent.click(screen.getByRole("button", { name: "运行剧本" }));
+    await screen.findByRole("alert");
+    first.unmount();
+    getChatRuntimeStatus.mockResolvedValue({ state: "running" });
+    renderButton();
+    fireEvent.click(screen.getByRole("button", { name: "运行剧本" }));
+    await waitFor(() => expect(showChatSurface).toHaveBeenCalled());
+    expect(launchChat).toHaveBeenCalledTimes(1);
+    expect(startStorySession).toHaveBeenCalledTimes(2);
+    expect(localStorage.getItem("story.pending-attachment.v1")).toBeNull();
+  });
+  it("disables story launch while the backend is closing", async () => {
+    getChatRuntimeStatus.mockResolvedValue({ state: "closing" });
+    renderButton();
+    const button = screen.getByRole("button", { name: "运行剧本" });
+    await waitFor(() => expect(button).toBeDisabled());
+    fireEvent.click(button);
+    expect(prepareStoryLaunch).not.toHaveBeenCalled();
+    expect(launchChat).not.toHaveBeenCalled();
+    expect(startStorySession).not.toHaveBeenCalled();
+  });
+  it.each(["changed-session", "changed-save", "closing"])("rejects a stale retry after %s", async (change) => {
+    startStorySession.mockRejectedValueOnce(new Error("network unavailable"));
+    const first = renderButton();
+    fireEvent.click(screen.getByRole("button", { name: "运行剧本" }));
+    await screen.findByRole("alert");
+    first.unmount();
+    getChatRuntimeStatus.mockResolvedValue({ state: change === "closing" ? "closing" : "running" });
+    if (change === "changed-session") getChatSnapshot.mockResolvedValue({ sessionId: "session-2" });
+    renderButton(change === "changed-save" ? "different-save" : "");
+    if (change === "closing") {
+      await waitFor(() => expect(screen.getByRole("button", { name: "运行剧本" })).toBeDisabled());
+      expect(startStorySession).toHaveBeenCalledTimes(1);
+      return;
+    }
+    fireEvent.click(screen.getByRole("button", { name: "运行剧本" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("请先结束当前聊天");
+    expect(startStorySession).toHaveBeenCalledTimes(1);
+  });
+});

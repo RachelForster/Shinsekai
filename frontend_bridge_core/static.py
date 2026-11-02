@@ -4,7 +4,7 @@ import threading
 import webbrowser
 from pathlib import Path
 
-from .state import BridgeState
+from application.runtime.state import BridgeState
 
 
 def _frontend_dist_root(state: BridgeState) -> Path | None:

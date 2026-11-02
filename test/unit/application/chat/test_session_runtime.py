@@ -1,0 +1,738 @@
+from __future__ import annotations
+
+from contextlib import nullcontext
+from pathlib import Path
+import subprocess
+import sys
+from types import SimpleNamespace
+from unittest.mock import Mock
+
+import pytest
+
+from application.chat.runtime import session as session_runtime
+
+
+def test_chat_child_registers_reminders_before_templates_are_loaded(tmp_path, monkeypatch):
+    # A fresh interpreter avoids registrations leaked by other tests or the bridge.
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", str(tmp_path))
+    result = subprocess.run(
+        [sys.executable, "-X", "utf8", "-c", """
+import json
+import sys
+from types import SimpleNamespace
+from application.chat.runtime.session import _import_builtin_tools
+from ai.tools.tool_manager import ToolManager
+from sdk.tool_registry import apply_registered_tools
+
+assert 'ai.llm.template.integrations.tools' not in sys.modules
+_import_builtin_tools()
+manager = ToolManager()
+# The same one-time registry application performed by plugin startup.
+apply_registered_tools(manager)
+names = {entry['function']['name'] for entry in manager.get_definitions(groups='default')}
+assert 'manage_reminders' in names, names
+sys.modules['ai.tools.reminder_tools'].get_llm_host_runtime = lambda: SimpleNamespace(
+    manage_reminders=lambda payload: {'ok': True, 'action': payload['action']}
+)
+assert json.loads(manager.execute('manage_reminders', '{"action":"list"}')) == {
+    'ok': True, 'action': 'list'
+}
+"""],
+        cwd=Path(__file__).resolve().parents[4],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.fixture(autouse=True)
+def _reset_active_initialization(monkeypatch):
+    monkeypatch.setattr(session_runtime, "_active_initialization", None)
+
+
+class _Transport:
+    def __init__(self, *, streaming: bool) -> None:
+        self.streaming = streaming
+        self.stream_sink = object() if streaming else None
+        from application.media.resource_urls import UnconfiguredResourceUrls
+        self.resource_urls = UnconfiguredResourceUrls()
+        self.events = []
+        self.initialization_events = []
+        self.closed_initialization = 0
+
+    def emit(self, payload) -> None:
+        self.events.append(payload)
+
+    def emit_initialization(self, payload) -> None:
+        self.initialization_events.append(payload)
+
+    def bind_command_dispatcher(self, dispatcher) -> None:
+        self.dispatcher = dispatcher
+
+    def close_initialization(self) -> None:
+        self.closed_initialization += 1
+
+    def close(self) -> None:
+        pass
+
+
+class _Initialization:
+    service = SimpleNamespace(report=Mock())
+
+    def __init__(self) -> None:
+        self.completed = 0
+
+    def phase(self, _name):
+        return nullcontext()
+
+    def complete(self) -> None:
+        self.completed += 1
+
+
+def _options(**overrides):
+    args = {
+        "bg": "room",
+        "effect_names": "rain",
+        "headless": False,
+        "history": "history.json",
+        "init_sprite_path": "sprite.png",
+        "media_selection_mode": "indexed",
+        "room_id": "",
+        "stream_endpoint": "ws://chat",
+        "template": "default",
+        "tts": "none",
+        "t2i": "",
+        "workflow": "workflow.yaml",
+    }
+    args.update(overrides)
+    return session_runtime.ChatLaunchOptions(
+        args=SimpleNamespace(**args),
+        config=SimpleNamespace(),
+        translate=lambda key, **_kwargs: key,
+        translate_bundle=lambda key, _locale, **_kwargs: key,
+        create_asr_adapter=Mock(),
+        asr_language=lambda _config: "en",
+        started_at=0.0,
+    )
+
+
+def _startup(config=None):
+    return SimpleNamespace(
+        config=config or SimpleNamespace(),
+        llm_manager=SimpleNamespace(get_messages=lambda: []),
+        tts_manager=None,
+        t2i_manager=None,
+        plugin_manager=None,
+        messages=[],
+        character_names=(),
+    )
+
+
+def test_factory_selects_streaming_and_headless_sessions(monkeypatch) -> None:
+    monkeypatch.setattr(
+        session_runtime,
+        "create_chat_startup_context",
+        lambda *_args, config, **_kwargs: _startup(config),
+    )
+
+    streaming_transport = _Transport(streaming=True)
+    streaming = session_runtime.create_chat_session(
+        _options(),
+        streaming_transport,
+    )
+    headless_transport = _Transport(streaming=False)
+    headless = session_runtime.create_chat_session(
+        _options(stream_endpoint="", headless=True),
+        headless_transport,
+    )
+
+    assert isinstance(streaming, session_runtime.StreamingChatSession)
+    assert isinstance(headless, session_runtime.HeadlessChatSession)
+    assert streaming_transport.initialization_events[0]["type"] == "chat.init.progress"
+    assert headless_transport.initialization_events[0]["type"] == "chat.init.progress"
+
+
+def test_factory_reports_missing_llm_as_initialization_failure(
+    monkeypatch,
+    capsys,
+) -> None:
+    def fail_startup(*_args, **_kwargs):
+        raise session_runtime.MissingLlmProviderError("missing llm")
+
+    monkeypatch.setattr(session_runtime, "create_chat_startup_context", fail_startup)
+    transport = _Transport(streaming=True)
+
+    with pytest.raises(session_runtime.MissingLlmProviderError):
+        session_runtime.create_chat_session(_options(), transport)
+
+    assert transport.initialization_events[-1]["type"] == "chat.init.failed"
+    assert transport.closed_initialization == 1
+    assert "main.err_select_llm" in capsys.readouterr().out
+
+
+def test_config_error_is_reported_through_preparsed_transport(monkeypatch) -> None:
+    transport = _Transport(streaming=False)
+    monkeypatch.setattr(
+        "config.network_proxy.apply_network_proxy_environment_from_system_config",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        "config.mirror_env.apply_mirror_environment_from_system_config",
+        lambda: None,
+    )
+    monkeypatch.setattr(session_runtime, "_import_builtin_tools", lambda: None)
+    monkeypatch.setattr(
+        session_runtime,
+        "load_chat_config",
+        Mock(side_effect=ValueError("invalid system yaml")),
+    )
+
+    with pytest.raises(ValueError, match="invalid system yaml"):
+        session_runtime.parse_launch_options(transport)
+
+    failed = transport.initialization_events[-1]
+    assert failed["type"] == "chat.init.failed"
+    assert failed["task"]["error"] == "invalid system yaml"
+    assert failed["task"]["message"] == "Failed while loading configuration."
+
+
+def test_early_launch_endpoints_prefer_cli_without_consuming_config(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "application.chat.runtime.launch_args.peek_chat_launch_endpoints",
+        lambda: {
+            "init_stream_endpoint": "ws://config-init",
+            "stream_endpoint": "ws://config-runtime",
+        },
+    )
+    monkeypatch.setattr(
+        session_runtime.sys,
+        "argv",
+        [
+            "main.py",
+            "--stream-endpoint=ws://ignored-runtime",
+            "--stream-endpoint",
+            "ws://cli-runtime",
+        ],
+    )
+
+    endpoints = session_runtime.peek_launch_endpoints()
+
+    assert endpoints.init_stream_endpoint == "ws://config-init"
+    assert endpoints.stream_endpoint == "ws://cli-runtime"
+
+
+def test_argument_error_is_reported_through_preparsed_transport(monkeypatch) -> None:
+    transport = _Transport(streaming=False)
+    config = SimpleNamespace(
+        config=SimpleNamespace(
+            system_config=SimpleNamespace(ui_language="zh_CN"),
+        )
+    )
+    monkeypatch.setattr(
+        "config.network_proxy.apply_network_proxy_environment_from_system_config",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        "config.mirror_env.apply_mirror_environment_from_system_config",
+        lambda: None,
+    )
+    monkeypatch.setattr(session_runtime, "_import_builtin_tools", lambda: None)
+    monkeypatch.setattr(session_runtime, "load_chat_config", lambda: config)
+    monkeypatch.setattr("i18n.init_i18n", lambda _language: None)
+    monkeypatch.setattr(
+        "application.chat.runtime.launch_args.load_chat_launch_config",
+        lambda: {},
+    )
+    monkeypatch.setattr(
+        "application.chat.runtime.launch_args.parse_chat_args",
+        Mock(side_effect=ValueError("invalid launch argument")),
+    )
+
+    with pytest.raises(ValueError, match="invalid launch argument"):
+        session_runtime.parse_launch_options(transport)
+
+    failed = transport.initialization_events[-1]
+    assert failed["type"] == "chat.init.failed"
+    assert failed["task"]["error"] == "invalid launch argument"
+    assert failed["task"]["message"] == "Failed while reading chat settings."
+
+
+def test_argparse_system_exit_is_reported_as_failure(monkeypatch) -> None:
+    transport = _Transport(streaming=False)
+    config = SimpleNamespace(
+        config=SimpleNamespace(
+            system_config=SimpleNamespace(ui_language="zh_CN"),
+        )
+    )
+    monkeypatch.setattr(
+        "config.network_proxy.apply_network_proxy_environment_from_system_config",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        "config.mirror_env.apply_mirror_environment_from_system_config",
+        lambda: None,
+    )
+    monkeypatch.setattr(session_runtime, "_import_builtin_tools", lambda: None)
+    monkeypatch.setattr(session_runtime, "load_chat_config", lambda: config)
+    monkeypatch.setattr("i18n.init_i18n", lambda _language: None)
+    monkeypatch.setattr(
+        "application.chat.runtime.launch_args.load_chat_launch_config",
+        lambda: {},
+    )
+    monkeypatch.setattr(
+        "application.chat.runtime.launch_args.parse_chat_args",
+        Mock(side_effect=SystemExit(2)),
+    )
+
+    with pytest.raises(SystemExit) as raised:
+        session_runtime.parse_launch_options(transport)
+
+    assert raised.value.code == 2
+    failed = transport.initialization_events[-1]
+    assert failed["type"] == "chat.init.failed"
+    assert failed["task"]["error"] == "2"
+    assert failed["task"]["message"] == "Failed while reading chat settings."
+
+
+def test_session_factory_reuses_preparse_initialization_service(monkeypatch) -> None:
+    transport = _Transport(streaming=True)
+    initialization = session_runtime._initialization_for(transport)
+    events_before_factory = len(transport.initialization_events)
+    monkeypatch.setattr(
+        session_runtime,
+        "create_chat_startup_context",
+        lambda *_args, config, **_kwargs: _startup(config),
+    )
+
+    session = session_runtime.create_chat_session(_options(), transport)
+
+    assert session.initialization is initialization
+    assert len(transport.initialization_events) == events_before_factory
+    assert (
+        sum(
+            event["task"]["phase"] == "preparing"
+            for event in transport.initialization_events
+            if event["type"] == "chat.init.progress"
+        )
+        == 1
+    )
+
+
+def test_headless_session_owns_workflow_and_queue_assembly(monkeypatch) -> None:
+    config = SimpleNamespace(
+        config=SimpleNamespace(characters=[]),
+    )
+    options = _options(stream_endpoint="", headless=True, workflow="")
+    options = session_runtime.ChatLaunchOptions(
+        args=options.args,
+        config=config,
+        translate=options.translate,
+        translate_bundle=options.translate_bundle,
+        create_asr_adapter=options.create_asr_adapter,
+        asr_language=options.asr_language,
+        started_at=options.started_at,
+    )
+    workflow = SimpleNamespace(start=Mock(), stop=Mock())
+    handles = SimpleNamespace(
+        input_queue="input",
+        dialog_queue="tts",
+        presentation_queue="audio",
+        ui_worker="ui-worker",
+    )
+    captured = {}
+
+    def build_workflow(**kwargs):
+        captured.update(kwargs)
+        return workflow
+
+    monkeypatch.setattr(
+        "application.runtime.workflow.build_runtime_workflow",
+        build_workflow,
+    )
+    monkeypatch.setattr(
+        "application.runtime.workflow.get_chat_workflow_handles",
+        lambda _workflow: handles,
+    )
+    monkeypatch.setattr(
+        "application.chat.presentation.assets.load_presentation_assets",
+        lambda *_args: SimpleNamespace(bgm_paths=[], background_sprites=[]),
+    )
+    monkeypatch.setattr(
+        "application.chat.build_effect_context.build_effect_context",
+        lambda *_args: SimpleNamespace(keyword_map={"rain": "rain.mp3"}),
+    )
+    monkeypatch.setattr(
+        "core.paths.resource_path",
+        lambda path: f"bundled/{path}",
+    )
+    session = session_runtime.HeadlessChatSession(
+        options,
+        _startup(config),
+        _Transport(streaming=False),
+        _Initialization(),
+    )
+
+    runtime = session._build_runtime()
+
+    assert captured["workflow_path"].endswith("assets/system/workflow/headless.yaml")
+    assert runtime.workflow is workflow
+    assert runtime.input_queue == "input"
+    assert runtime.dialog_queue == "tts"
+    assert runtime.presentation_queue == "audio"
+    assert runtime.effect_keyword_map == {"rain": "rain.mp3"}
+
+
+def test_semantic_mode_injects_lookup_strategy_before_workflow_start(
+    monkeypatch,
+) -> None:
+    character = SimpleNamespace(
+        name="Alice",
+        sprites=[{"path": "calm.png"}, {"path": "angry.png"}],
+        emotion_tags="立绘 1：平静\n立绘 2：愤怒",
+    )
+    config = SimpleNamespace(
+        config=SimpleNamespace(characters=[character]),
+        get_character_by_name=lambda name: character if name == "Alice" else None,
+    )
+    options = _options(media_selection_mode="semantic")
+    workflow = SimpleNamespace(start=Mock(), stop=Mock())
+    dialog_media_worker = SimpleNamespace(asset_lookup_strategy=None)
+    handles = SimpleNamespace(
+        input_queue="input",
+        dialog_queue="dialog",
+        presentation_queue="presentation",
+        ui_worker="ui",
+        dialog_media_worker=dialog_media_worker,
+    )
+    strategy = object()
+    background = SimpleNamespace(
+        name="classroom",
+        sprites=[{"path": "day.png"}],
+        bg_tags="场景 1：晴朗教室",
+        bgm_list=["quiet.mp3"],
+        bgm_tags="音乐 1：安静",
+    )
+    monkeypatch.setattr(
+        "application.runtime.workflow.build_runtime_workflow",
+        lambda **_kwargs: workflow,
+    )
+    monkeypatch.setattr(
+        "application.runtime.workflow.get_chat_workflow_handles",
+        lambda _workflow: handles,
+    )
+    monkeypatch.setattr(
+        "application.chat.presentation.assets.load_presentation_assets",
+        lambda *_args: SimpleNamespace(
+            bgm_paths=["quiet.mp3"],
+            background_sprites=background.sprites,
+            background=background,
+        ),
+    )
+    monkeypatch.setattr(
+        "application.chat.build_effect_context.build_effect_context",
+        lambda *_args: SimpleNamespace(keyword_map={}),
+    )
+    factory = Mock(return_value=strategy)
+    monkeypatch.setattr(
+        "application.chat.dialog_media.create_asset_lookup_strategy",
+        factory,
+    )
+    indexer = Mock(return_value={"catalogCount": 3, "assetCount": 4, "addedCount": 4})
+    monkeypatch.setattr(
+        "ai.memory.media_assets.ensure_media_asset_indexes",
+        indexer,
+    )
+    startup = _startup(config)
+    startup.character_names = ("Alice",)
+    session = session_runtime.StreamingChatSession(
+        options,
+        startup,
+        _Transport(streaming=True),
+        _Initialization(),
+    )
+
+    session._build_runtime()
+
+    factory.assert_called_once_with("semantic")
+    catalogs = indexer.call_args.args[0]
+    assert [catalog.scope for catalog in catalogs] == [
+        "sprite:Alice",
+        "scene:classroom",
+        "bgm:classroom",
+    ]
+    assert [candidate.tags for candidate in catalogs[0].candidates] == [
+        "平静",
+        "愤怒",
+    ]
+    assert dialog_media_worker.asset_lookup_strategy is strategy
+
+
+def test_install_app_runtime_projects_all_session_dependencies(monkeypatch) -> None:
+    config = SimpleNamespace()
+    options = _options()
+    startup = _startup(config)
+    startup.tts_manager = "tts-manager"
+    startup.t2i_manager = "t2i-manager"
+    initialization = _Initialization()
+    session = session_runtime.StreamingChatSession(
+        options,
+        startup,
+        _Transport(streaming=True),
+        initialization,
+    )
+    session.ui_updates = "ui-updates"
+    session.chat_turn_service = "turn-service"
+    session.runtime = session_runtime._RuntimeComponents(
+        workflow=SimpleNamespace(),
+        input_queue="input",
+        dialog_queue="tts",
+        presentation_queue="audio",
+        ui_worker="worker",
+        presentation_assets=SimpleNamespace(bgm_paths=["bgm.mp3"]),
+        effect_keyword_map={"rain": "rain.mp3"},
+        text_processor="processor",
+        opencc="opencc",
+    )
+    captured = []
+    monkeypatch.setattr("application.runtime.context.set_app_runtime", captured.append)
+
+    session._install_app_runtime()
+
+    runtime = captured[0]
+    assert runtime.config is config
+    assert runtime.ui_update_manager == "ui-updates"
+    assert runtime.llm_manager is startup.llm_manager
+    assert runtime.tts_manager == "tts-manager"
+    assert runtime.t2i_manager == "t2i-manager"
+    assert runtime.bgm_list == ["bgm.mp3"]
+    assert runtime.user_input_queue == "input"
+    assert runtime.chat_turn_service == "turn-service"
+
+
+def test_headless_shutdown_omits_history_callback_without_history(monkeypatch) -> None:
+    options = _options(stream_endpoint="", headless=True, history="")
+    session = session_runtime.HeadlessChatSession(
+        options,
+        _startup(),
+        _Transport(streaming=False),
+        _Initialization(),
+    )
+    session.runtime = session_runtime._RuntimeComponents(
+        workflow=SimpleNamespace(stop=Mock()),
+        input_queue=None,
+        dialog_queue=None,
+        presentation_queue=None,
+        ui_worker=None,
+        presentation_assets=SimpleNamespace(bgm_paths=[]),
+        effect_keyword_map={},
+        text_processor=None,
+        opencc=None,
+    )
+    captured = {}
+    monkeypatch.setattr(
+        "application.runtime.shutdown.shutdown_chat_runtime",
+        lambda **kwargs: captured.update(kwargs),
+    )
+
+    session._shutdown()
+
+    assert captured["workflow"] is session.runtime.workflow
+    assert captured["save_history"] is None
+    assert captured["plugin_shutdown"].__self__ is session
+
+
+def test_headless_run_orders_runtime_start_wait_and_shutdown(monkeypatch) -> None:
+    events = []
+    options = _options(stream_endpoint="", headless=True)
+    initialization = _Initialization()
+    session = session_runtime.HeadlessChatSession(
+        options,
+        _startup(),
+        _Transport(streaming=False),
+        initialization,
+    )
+    runtime = session_runtime._RuntimeComponents(
+        workflow=SimpleNamespace(),
+        input_queue=None,
+        dialog_queue=None,
+        presentation_queue=None,
+        ui_worker=None,
+        presentation_assets=SimpleNamespace(bgm_paths=[]),
+        effect_keyword_map={},
+        text_processor=None,
+        opencc=None,
+    )
+
+    def build_runtime():
+        events.append("build")
+        session.runtime = runtime
+        return runtime
+
+    monkeypatch.setattr(
+        "application.chat.presentation.updates.HeadlessUIUpdateManager",
+        lambda **_kwargs: "headless-ui",
+    )
+    monkeypatch.setattr(session, "_build_runtime", build_runtime)
+    monkeypatch.setattr(
+        session,
+        "_create_turn_service",
+        lambda: events.append("turn-service"),
+    )
+    monkeypatch.setattr(
+        session,
+        "_install_app_runtime",
+        lambda: events.append("app-runtime"),
+    )
+    monkeypatch.setattr(
+        session,
+        "_start_workflow",
+        lambda: events.append("workflow-start"),
+    )
+    monkeypatch.setattr(
+        session,
+        "_wait_for_shutdown",
+        lambda: events.append("wait"),
+    )
+    monkeypatch.setattr(session, "_shutdown", lambda: events.append("shutdown"))
+
+    session.run()
+
+    assert events == [
+        "build",
+        "turn-service",
+        "app-runtime",
+        "workflow-start",
+        "wait",
+        "shutdown",
+    ]
+    assert initialization.completed == 1
+
+
+def test_streaming_shutdown_supplies_all_lifecycle_callbacks(monkeypatch) -> None:
+    transport = _Transport(streaming=True)
+    session = session_runtime.StreamingChatSession(
+        _options(),
+        _startup(),
+        transport,
+        _Initialization(),
+    )
+    workflow = SimpleNamespace(stop=Mock())
+    session.runtime = session_runtime._RuntimeComponents(
+        workflow=workflow,
+        input_queue=None,
+        dialog_queue=None,
+        presentation_queue=None,
+        ui_worker=None,
+        presentation_assets=SimpleNamespace(bgm_paths=[]),
+        effect_keyword_map={},
+        text_processor=None,
+        opencc=None,
+    )
+    runtime_asr = SimpleNamespace(close=Mock())
+    branch_manager = SimpleNamespace(persist=Mock())
+    session.streaming_bindings = SimpleNamespace(
+        runtime_asr=runtime_asr,
+        branch_manager=branch_manager,
+    )
+    session.ui_updates = SimpleNamespace(
+        current_background_path="bg.png",
+        current_bgm_path="bgm.mp3",
+    )
+    captured = {}
+    saved_background = []
+    monkeypatch.setattr(
+        "application.runtime.shutdown.shutdown_chat_runtime",
+        lambda **kwargs: captured.update(kwargs),
+    )
+    monkeypatch.setattr(
+        "application.chat.history.state.save_bg",
+        lambda **kwargs: saved_background.append(kwargs),
+    )
+
+    session._shutdown()
+    captured["save_background"]()
+    captured["emit_session_closed"]()
+
+    assert captured["workflow"] is workflow
+    assert captured["pre_shutdown"] == runtime_asr.close
+    assert captured["save_history"] == branch_manager.persist
+    assert captured["close_stream_sink"] == transport.close
+    assert saved_background == [{"bg_path": "bg.png", "bgm_path": "bgm.mp3"}]
+    assert transport.events[-1]["type"] == "session.closed"
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("available", [False, True])
+def test_session_registers_knowledge_only_when_enabled_and_available(monkeypatch, enabled, available):
+    transport = _Transport(streaming=False)
+    transport.knowledge_search = Mock() if available else None
+    transport.knowledge_status = Mock() if available else None
+    dispatcher = Mock()
+    register = Mock()
+    monkeypatch.setattr("application.knowledge.hooks.install_knowledge_hooks", register)
+    def build(*args, config, on_plugins_loaded, **kwargs):
+        register.assert_not_called()
+        assert "knowledge_client" not in kwargs
+        on_plugins_loaded(SimpleNamespace(hook_dispatcher=dispatcher))
+        return _startup(config)
+    monkeypatch.setattr(session_runtime, "create_chat_startup_context", build)
+    options = _options(stream_endpoint="", headless=True)
+    options.config.config = SimpleNamespace(api_config=SimpleNamespace(knowledge_enabled=enabled))
+    session_runtime.create_chat_session(options, transport)
+    if enabled and available:
+        register.assert_called_once_with(
+            dispatcher, search_func=transport.knowledge_search, status_func=transport.knowledge_status,
+        )
+    else:
+        register.assert_not_called()
+    if available:
+        transport.knowledge_search.assert_not_called()
+        transport.knowledge_status.assert_not_called()
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize("status", ["ready", "error"])
+def test_session_knowledge_follows_configuration_and_shared_init_lifecycle(
+    monkeypatch, enabled, streaming, status,
+):
+    from sdk.chat_init import InitChatContext
+    from sdk.hooks import BeforeChatContext, PluginHookDispatcher
+
+    dispatcher = PluginHookDispatcher()
+    transport = _Transport(streaming=streaming)
+    transport.knowledge_search = Mock(return_value={"memories": [{"memory": "A library fact"}]})
+    transport.knowledge_status = Mock(return_value={"status": status, "message": "service unavailable"})
+
+    def build(*args, config, init_service, on_plugins_loaded, **kwargs):
+        on_plugins_loaded(SimpleNamespace(hook_dispatcher=dispatcher))
+        assert dispatcher.dispatch_init_chat(InitChatContext(
+            service=init_service, character_names=("Mika",),
+        )) == ()
+        return _startup(config)
+
+    monkeypatch.setattr(session_runtime, "create_chat_startup_context", build)
+    options = _options(stream_endpoint="ws://chat" if streaming else "", headless=not streaming)
+    options.config.config = SimpleNamespace(api_config=SimpleNamespace(knowledge_enabled=enabled))
+
+    session_runtime.create_chat_session(options, transport)
+    query = BeforeChatContext(
+        messages=[{"role": "user", "content": "library"}],
+        tools=None, generation_kwargs={}, stream=streaming,
+    )
+    dispatcher.dispatch_before_chat(query)
+
+    if enabled:
+        transport.knowledge_status.assert_called_once_with(start_loading=True)
+    else:
+        transport.knowledge_status.assert_not_called()
+    if enabled and status == "ready":
+        transport.knowledge_search.assert_called_once_with("library", character_names=["Mika"], limit=5)
+        assert "A library fact" in query.messages[-1]["content"]
+    else:
+        transport.knowledge_search.assert_not_called()
+        assert len(query.messages) == 1

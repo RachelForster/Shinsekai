@@ -1,14 +1,39 @@
 from __future__ import annotations
 
 import json
+import os
 import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
-from .state import BridgeState, _jsonify
+from config.tts_provider_config import (
+    default_tts_work_path,
+    installed_tts_bundle_paths,
+    is_http_url,
+    normalize_tts_provider,
+    requires_tts_work_path,
+    tts_server_url_or_default,
+    uses_shared_tts_server_config,
+)
+from application.model_providers.catalog import (
+    adapter_catalog as _adapter_catalog,
+    claude_messages_endpoint_url,
+    claude_models_endpoint_url,
+    configured_vision_available as _configured_vision_available,
+    normalize_t2i_provider as _normalize_t2i_provider,
+)
+from config.vision_defaults import (
+    resolve_vision_api_key,
+    resolve_vision_base_url,
+    resolve_vision_model,
+    vision_llm_provider,
+    vision_provider_requires_api_key,
+)
+from config.llm_defaults import resolve_llm_base_url
+from .security import host_matches, validated_http_url
+from application.runtime.state import BridgeState, _jsonify
 
 _MODEL_REQUEST_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -25,15 +50,6 @@ _IMAGE_ONLY_MODEL_MARKERS = (
     "sdxl",
     "stable-diffusion",
 )
-_TTS_LABEL_PREFS: tuple[tuple[str, str], ...] = (
-    ("genie-tts", "Genie TTS"),
-    ("gpt-sovits", "GPT SoVITS"),
-    ("index-tts", "IndexTTS"),
-    ("cosyvoice", "CosyVoice"),
-)
-_PREFERRED_T2I_KEYS_LOWER: tuple[str, ...] = ("comfyui", "stable diffusion")
-
-
 class LlmModelDiscoveryHttpError(RuntimeError):
     def __init__(self, status_code: int, url: str, detail: str) -> None:
         self.status_code = status_code
@@ -48,99 +64,39 @@ class LlmModelDiscoveryConnectionError(RuntimeError):
         super().__init__(detail.strip() or "connection failed")
 
 
-def _adapter_schema(adapter_class: Any | None) -> dict[str, Any]:
-    if adapter_class is None:
-        return {}
-    getter = getattr(adapter_class, "get_config_schema", None)
-    if not callable(getter):
-        return {}
+def _state_project_root(state: BridgeState) -> Path:
+    """Resolve the writable project/data root without falling back to the app install root."""
+    candidates = (
+        getattr(state, "project_root_dir", ""),
+        os.environ.get("SHINSEKAI_PROJECT_ROOT", ""),
+        os.environ.get("EASYAI_PROJECT_ROOT", ""),
+    )
+    for candidate in candidates:
+        raw = str(candidate or "").strip()
+        if not raw:
+            continue
+        try:
+            return Path(raw).expanduser().resolve(strict=False)
+        except (OSError, RuntimeError, ValueError):
+            continue
     try:
-        schema = getter()
-    except Exception:
-        return {}
-    return _jsonify(schema) if isinstance(schema, dict) else {}
+        return Path.cwd().resolve(strict=False)
+    except (OSError, RuntimeError, ValueError):
+        return Path(".")
 
 
-def _adapter_option(value: str, label: str, adapter_class: Any | None = None) -> dict[str, Any]:
-    return {
-        "label": str(label or value),
-        "schema": _adapter_schema(adapter_class),
-        "value": str(value),
-    }
-
-
-def _adapter_catalog() -> dict[str, list[dict[str, Any]]]:
-    """Expose the same registered adapter choices the PyQt settings tab uses."""
-    try:
-        from asr.asr_manager import ASRAdapterFactory
-        from llm.constants import LLM_BASE_URLS
-        from llm.llm_manager import LLMAdapterFactory
-        from t2i.t2i_manager import T2IAdapterFactory
-        from tts.tts_manager import TTSAdapterFactory
-    except Exception:
-        return {"asr": [], "llm": [], "t2i": [], "tts": []}
-
-    llm_adapters = dict(LLMAdapterFactory._adapters)
-    llm: list[dict[str, Any]] = []
-    for key in LLM_BASE_URLS.keys():
-        if key in llm_adapters:
-            llm.append(_adapter_option(key, key, llm_adapters[key]))
-    for key in sorted(llm_adapters.keys(), key=str.lower):
-        if key not in {item["value"] for item in llm}:
-            llm.append(_adapter_option(key, key, llm_adapters[key]))
-
-    tts_adapters = dict(TTSAdapterFactory._adapters)
-    tts: list[dict[str, Any]] = [_adapter_option("none", "不使用", None)]
-    by_lower = {key.lower(): key for key in tts_adapters}
-    seen: set[str] = set()
-    for slug, label in _TTS_LABEL_PREFS:
-        canonical = by_lower.get(slug)
-        if canonical:
-            tts.append(_adapter_option(canonical, label, tts_adapters[canonical]))
-            seen.add(canonical)
-    for key in sorted(tts_adapters.keys(), key=str.lower):
-        if key not in seen:
-            tts.append(_adapter_option(key, key.replace("-", " ").title(), tts_adapters[key]))
-
-    t2i_adapters = dict(T2IAdapterFactory._adapters)
-    t2i_by_lower = {key.lower(): key for key in t2i_adapters}
-    t2i: list[dict[str, Any]] = []
-    fixed_t2i_labels = {"comfyui": "ComfyUI", "stable diffusion": "Stable Diffusion"}
-    for preferred in _PREFERRED_T2I_KEYS_LOWER:
-        canonical = t2i_by_lower.get(preferred)
-        if canonical:
-            t2i.append(
-                _adapter_option(
-                    canonical,
-                    fixed_t2i_labels.get(canonical.lower(), canonical.replace("-", " ").title()),
-                    t2i_adapters[canonical],
-                )
-            )
-    for key in sorted(t2i_adapters.keys(), key=str.lower):
-        if key not in {item["value"] for item in t2i}:
-            t2i.append(
-                _adapter_option(
-                    key,
-                    fixed_t2i_labels.get(key.lower(), key.replace("-", " ").title()),
-                    t2i_adapters[key],
-                )
-            )
-
-    asr_adapters = dict(ASRAdapterFactory._adapters)
-    asr_labels = {"faster_whisper": "faster-whisper", "realtime_stt": "RealtimeSTT", "vosk": "Vosk"}
-    asr: list[dict[str, Any]] = []
-    if "vosk" in asr_adapters:
-        asr.append(_adapter_option("vosk", asr_labels["vosk"], asr_adapters["vosk"]))
-    for key in sorted(k for k in asr_adapters.keys() if k != "vosk"):
-        asr.append(_adapter_option(key, asr_labels.get(key, key), asr_adapters[key]))
-
-    return {"asr": asr, "llm": llm, "t2i": t2i, "tts": tts}
-
-
-def _app_config_response(state: BridgeState) -> dict[str, Any]:
-    payload = _jsonify(state.config_manager.config)
+def _app_config_response(
+    state: BridgeState, *, settings_only: bool = False
+) -> dict[str, Any]:
+    config = state.config_manager.config
+    payload = _jsonify(
+        {key: getattr(config, key) for key in ("api_config", "system_config")}
+        if settings_only
+        else config
+    )
     if not isinstance(payload, dict):
         return {}
+    project_root = _state_project_root(state)
     try:
         from config.mirror_env import system_config_payload_with_resolved_mirrors
 
@@ -148,20 +104,47 @@ def _app_config_response(state: BridgeState) -> dict[str, Any]:
     except Exception:
         pass
     api_config = payload.get("api_config")
+    tts_bundle_paths = installed_tts_bundle_paths(project_root)
     if isinstance(api_config, dict):
         provider = str(api_config.get("llm_provider") or "Deepseek").strip() or "Deepseek"
-        if not str(api_config.get("llm_base_url") or "").strip():
+        base_urls = api_config.get("llm_base_urls")
+        if not isinstance(base_urls, dict):
+            base_urls = {}
+            api_config["llm_base_urls"] = base_urls
+        active_base_url = str(base_urls.get(provider) or api_config.get("llm_base_url") or "").strip()
+        if not active_base_url:
             try:
-                from llm.constants import LLM_BASE_URLS
+                from config.llm_defaults import LLM_BASE_URLS
 
-                api_config["llm_base_url"] = str(LLM_BASE_URLS.get(provider) or "")
+                active_base_url = str(LLM_BASE_URLS.get(provider) or "")
             except Exception:
                 pass
+        api_config["llm_base_url"] = active_base_url
+        if active_base_url:
+            base_urls[provider] = active_base_url
         llm_model = api_config.get("llm_model")
         if not isinstance(llm_model, dict):
             llm_model = {}
             api_config["llm_model"] = llm_model
+        tts_provider = normalize_tts_provider(str(api_config.get("tts_provider") or ""))
+        api_config["tts_provider"] = tts_provider
+        api_config["gpt_sovits_url"] = tts_server_url_or_default(
+            tts_provider,
+            str(api_config.get("gpt_sovits_url") or ""),
+        )
+        api_config["gpt_sovits_api_path"] = default_tts_work_path(
+            tts_provider,
+            str(api_config.get("gpt_sovits_api_path") or ""),
+            project_root,
+        )
+    if settings_only:
+        return payload
+    if tts_bundle_paths:
+        payload["tts_bundle_installed_paths"] = tts_bundle_paths
     payload["adapter_catalog"] = _adapter_catalog()
+    payload["vision_available"] = _configured_vision_available(
+        state.config_manager.config.api_config
+    )
     return payload
 
 
@@ -169,47 +152,13 @@ def _contains_quotes(value: str) -> bool:
     return '"' in value or "'" in value
 
 
-def _is_http_url(value: str) -> bool:
-    parsed = urlparse(value)
-    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
-
-
 def _provider_map_value(mapping: dict[str, str], provider: str) -> str:
     return str((mapping or {}).get(provider, "") or "").strip()
 
 
-def _normalize_tts_provider(value: str) -> str:
-    raw = str(value or "").strip()
-    low = raw.lower()
-    if low in {"none", "off", "disable", "disabled", "不使用"}:
-        return "none"
-    legacy = {
-        "genie tts": "genie-tts",
-        "gpt sovits": "gpt-sovits",
-        "gpt-sovits": "gpt-sovits",
-    }
-    return legacy.get(low, low or "gpt-sovits")
-
-
-def _normalize_t2i_provider(value: str) -> str:
-    raw = str(value or "").strip()
-    if not raw:
-        return "comfyui"
-    try:
-        from t2i.t2i_manager import T2IAdapterFactory
-
-        low = raw.lower()
-        for key in T2IAdapterFactory._adapters:
-            if key.lower() == low:
-                return key
-    except Exception:
-        pass
-    return raw
-
-
 def _validate_api_config_for_save(config: Any) -> None:
     provider = str(config.llm_provider or "").strip()
-    base_url = str(config.llm_base_url or "").strip()
+    base_url = resolve_llm_base_url(config, provider)
     api_key = _provider_map_value(config.llm_api_key, provider)
     model = _provider_map_value(config.llm_model, provider)
     if not provider or not base_url or not api_key or not model:
@@ -217,19 +166,39 @@ def _validate_api_config_for_save(config: Any) -> None:
     if _contains_quotes(base_url):
         raise ValueError("LLM API 基础网址不能包含引号。")
 
-    tts_provider = _normalize_tts_provider(config.tts_provider)
-    if tts_provider not in {"gpt-sovits", "genie-tts"}:
+    vision_provider = str(getattr(config, "vision_provider", "auto") or "auto").strip().lower()
+    if vision_provider not in {"auto", "moondream"} and vision_llm_provider(
+        vision_provider
+    ):
+        vision_api_key = resolve_vision_api_key(config, vision_provider)
+        vision_base_url = resolve_vision_base_url(config, vision_provider)
+        vision_model = resolve_vision_model(config, vision_provider)
+        if (
+            (vision_provider_requires_api_key(vision_provider) and not vision_api_key)
+            or not vision_base_url
+            or not vision_model
+        ):
+            raise ValueError(
+                "视觉适配器的基础地址和模型 ID 都需要填写；远程服务还需 API Key。"
+            )
+        if _contains_quotes(vision_base_url) or not is_http_url(vision_base_url):
+            raise ValueError("视觉服务基础地址必须是有效且不含引号的 http(s) URL。")
+
+    tts_provider = normalize_tts_provider(config.tts_provider)
+    if not uses_shared_tts_server_config(tts_provider):
         return
 
     tts_url = str(config.gpt_sovits_url or "").strip()
     tts_path = str(config.gpt_sovits_api_path or "").strip()
-    if not tts_url or not tts_path:
-        raise ValueError("当前 TTS 引擎需要填写 URL 和服务启动路径。")
+    if not tts_url:
+        raise ValueError("当前 TTS 引擎需要填写 URL。")
     if _contains_quotes(tts_url) or _contains_quotes(tts_path):
         raise ValueError("TTS URL 和服务启动路径不能包含引号。")
-    if not _is_http_url(tts_url):
+    if not is_http_url(tts_url):
         raise ValueError("TTS URL 必须是有效的 http(s) URL。")
-    if not Path(tts_path).expanduser().is_dir():
+    if requires_tts_work_path(tts_provider) and not tts_path:
+        raise ValueError("本地 TTS 引擎需要填写服务启动路径。")
+    if tts_path and tts_provider != "kaggle-gpt-sovits" and not Path(tts_path).expanduser().is_dir():
         raise ValueError("TTS 服务启动路径必须是已存在的目录。")
 
 
@@ -237,8 +206,23 @@ def _save_api_config(state: BridgeState, payload: dict[str, Any]) -> Any:
     from config.schema import ApiConfig
 
     config = ApiConfig.model_validate(payload).model_copy(deep=True)
-    config.tts_provider = _normalize_tts_provider(config.tts_provider)
+    active_base_url = str(config.llm_base_url or "").strip() or resolve_llm_base_url(
+        config, config.llm_provider
+    )
+    config.llm_base_url = active_base_url
+    config.llm_base_urls = dict(config.llm_base_urls or {})
+    config.llm_base_urls[config.llm_provider] = active_base_url
+    config.tts_provider = normalize_tts_provider(config.tts_provider)
     config.t2i_provider = _normalize_t2i_provider(config.t2i_provider)
+    config.gpt_sovits_url = tts_server_url_or_default(config.tts_provider, config.gpt_sovits_url)
+    if config.tts_provider == "kaggle-gpt-sovits":
+        config.gpt_sovits_api_path = ""
+    else:
+        config.gpt_sovits_api_path = default_tts_work_path(
+            config.tts_provider,
+            config.gpt_sovits_api_path,
+            _state_project_root(state),
+        )
     _validate_api_config_for_save(config)
     state.config_manager.config.api_config = config
     state.config_manager.save_api_config()
@@ -247,15 +231,14 @@ def _save_api_config(state: BridgeState, payload: dict[str, Any]) -> Any:
 
 def _llm_model_provider_kind(provider: str, base_url: str) -> str:
     low_provider = provider.strip().lower()
-    low_base = base_url.strip().lower()
-    if "gemini" in low_provider or "generativelanguage.googleapis.com" in low_base:
+    if "gemini" in low_provider or _base_url_host_matches(base_url, {"generativelanguage.googleapis.com"}):
         return "gemini"
-    if "deepseek" in low_provider or "api.deepseek.com" in low_base:
+    if "deepseek" in low_provider or _base_url_host_matches(base_url, {"api.deepseek.com"}):
         return "deepseek"
-    if low_provider == "claude" or "claude" in low_provider or "anthropic.com" in low_base:
+    if low_provider == "claude" or "claude" in low_provider or _base_url_host_matches(base_url, {"anthropic.com"}):
         return "anthropic"
     if (
-        "dashscope.aliyuncs.com" in low_base
+        _base_url_host_matches(base_url, {"dashscope.aliyuncs.com"})
         or "通义" in low_provider
         or "qwen" in low_provider
         or "dashscope" in low_provider
@@ -264,26 +247,45 @@ def _llm_model_provider_kind(provider: str, base_url: str) -> str:
     return "openai_compatible"
 
 
+def _base_url_host_matches(base_url: str, allowed_hosts: set[str]) -> bool:
+    try:
+        parsed = urllib.parse.urlsplit(str(base_url or "").strip())
+    except ValueError:
+        return False
+    return parsed.hostname is not None and host_matches(parsed.hostname, allowed_hosts)
+
+
 def _openai_models_endpoint(base_url: str) -> str:
     base = base_url.strip().rstrip("/")
     if not base:
         raise ValueError("请先填写 LLM 基础地址和 API Key。")
     if base.lower().endswith("/models"):
-        return base
-    return f"{base}/models"
+        return _validated_llm_endpoint(base)
+    return _validated_llm_endpoint(f"{base}/models")
+
+
+def _validated_llm_endpoint(endpoint: str) -> str:
+    return validated_http_url(
+        endpoint,
+        allow_localhost=True,
+        allow_private_hosts=True,
+        field="LLM endpoint",
+    )
 
 
 def _llm_models_endpoint(provider: str, base_url: str, api_key: str) -> str:
     kind = _llm_model_provider_kind(provider, base_url)
     base = base_url.strip().rstrip("/")
-    if kind == "gemini" and "generativelanguage.googleapis.com" in base.lower():
+    if kind == "anthropic":
+        return _validated_llm_endpoint(claude_models_endpoint_url(base))
+    if kind == "gemini" and _base_url_host_matches(base, {"generativelanguage.googleapis.com"}):
         marker_ix = base.lower().rfind("/openai")
         if marker_ix >= 0:
             base = base[:marker_ix]
         if not base.lower().endswith("/v1beta"):
             base = "https://generativelanguage.googleapis.com/v1beta"
-        return f"{base}/models?{urllib.parse.urlencode({'key': api_key.strip()})}"
-    if kind == "deepseek" and "api.deepseek.com" in base.lower() and base.lower().endswith("/v1"):
+        return _validated_llm_endpoint(f"{base}/models?{urllib.parse.urlencode({'key': api_key.strip()})}")
+    if kind == "deepseek" and _base_url_host_matches(base, {"api.deepseek.com"}) and base.lower().endswith("/v1"):
         base = base[:-3]
     if kind == "dashscope":
         low_base = base.lower()
@@ -293,7 +295,7 @@ def _llm_models_endpoint(provider: str, base_url: str, api_key: str) -> str:
         if low_base.endswith("/compatible-mode/v1"):
             base = base[: -len("/compatible-mode/v1")] + "/api/v1"
         if base.lower().endswith("/api/v1"):
-            return f"{base}/deployments/models?{query}"
+            return _validated_llm_endpoint(f"{base}/deployments/models?{query}")
     return _openai_models_endpoint(base)
 
 
@@ -302,17 +304,12 @@ def _openai_chat_endpoint(base_url: str) -> str:
     if not base:
         raise ValueError("请先填写 LLM 基础地址和 API Key。")
     if base.lower().endswith("/chat/completions"):
-        return base
-    return f"{base}/chat/completions"
+        return _validated_llm_endpoint(base)
+    return _validated_llm_endpoint(f"{base}/chat/completions")
 
 
 def _anthropic_messages_endpoint(base_url: str) -> str:
-    base = base_url.strip().rstrip("/")
-    if not base:
-        raise ValueError("请先填写 LLM 基础地址和 API Key。")
-    if base.lower().endswith("/messages"):
-        return base
-    return f"{base}/messages"
+    return _validated_llm_endpoint(claude_messages_endpoint_url(base_url))
 
 
 def _llm_model_request_headers(provider: str, base_url: str, api_key: str) -> dict[str, str]:
@@ -327,7 +324,7 @@ def _llm_model_request_headers(provider: str, base_url: str, api_key: str) -> di
         "User-Agent": _MODEL_REQUEST_USER_AGENT,
     }
     kind = _llm_model_provider_kind(provider, base_url)
-    if kind == "gemini" and "generativelanguage.googleapis.com" in base_url.lower():
+    if kind == "gemini" and _base_url_host_matches(base_url, {"generativelanguage.googleapis.com"}):
         return headers
     if kind == "anthropic":
         headers["x-api-key"] = key

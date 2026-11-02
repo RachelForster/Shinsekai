@@ -2,6 +2,11 @@ coverage
 dist
 .vite
 node_modules
+vendor/cubism-framework
+public/live2d/live2dcubismcore*.js
+public/live2d/models
+public/live2d/cubism-sdk.js
+public/live2d/cubism-*-LICENSE.md
 pnpm-lock.yaml
 playwright-report
 test-results

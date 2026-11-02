@@ -1,0 +1,431 @@
+from __future__ import annotations
+
+from application.characters import CharacterOperation
+from frontend_bridge_core.characters import (
+    _ensure_character_briefs,
+    _list_character_scenarios,
+    _save_character_scenarios,
+    _upload_scenario_voice,
+    _delete_scenario_voice,
+    _save_scenario_voice_text,
+    _save_scenario_voice_type,
+    _translate_scenario_names,
+    _execute_character_request,
+    _generate_character_brief,
+    _generate_character_setting,
+    _save_character_emotion_tags,
+    _save_sprite_scale,
+    _translate_character_fields,
+)
+from frontend_bridge_core.image_annotations import run_character_sprite_auto_label
+from frontend_bridge_core.sprite_transitions import (
+    run_sprite_transition,
+    save_sprite_transitions,
+    run_transition_analysis,
+)
+from frontend_bridge_core.sprite_generation import (
+    import_generated_sprites,
+    run_sprite_plan,
+    run_sprite_render,
+    run_sprite_frame,
+    run_sprite_cutout,
+    run_sprite_animation,
+)
+from frontend_bridge_core.routes.router import (
+    ApiRequest,
+    BodyKind,
+    JsonResponse,
+    Route,
+    TaskResponse,
+)
+
+
+def _list_characters(request: ApiRequest) -> JsonResponse:
+    characters = request.state.config_manager.config.characters
+
+    def name(character):
+        return character.get("name", "") if isinstance(character, dict) else character.name
+
+    if "name" in request.query:
+        selected = (request.query.get("name") or [""])[0]
+        if not selected.strip():
+            raise ValueError("character name is required")
+        for character in characters:
+            if name(character) == selected:
+                return JsonResponse(character)
+        raise KeyError(f"character not found: {selected}")
+    if (request.query.get("view") or [""])[0] == "names":
+        return JsonResponse([name(character) for character in characters])
+    return JsonResponse(characters)
+
+
+def _save_character_route(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(
+        _execute_character_request(request.state, CharacterOperation.SAVE, request.body)
+    )
+
+
+def _import_character_model(request: ApiRequest) -> TaskResponse:
+    body = dict(request.body)
+    return TaskResponse(kind="character-model-import", title="Import character model",
+                        message="Model import queued",
+                        worker=lambda task_id: _execute_character_request(
+                            request.state, CharacterOperation.IMPORT_MODEL, body))
+
+
+def _save_model_state(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(_execute_character_request(request.state, CharacterOperation.SAVE_MODEL_STATE, request.body))
+
+
+def _import_model_states(request: ApiRequest) -> TaskResponse:
+    body = dict(request.body)
+    return TaskResponse(kind="character-preset-import", title="Import character presets",
+                        message="Preset import queued",
+                        worker=lambda task_id: _execute_character_request(
+                            request.state, CharacterOperation.IMPORT_MODEL_STATES, body))
+
+
+def _generate_character_setting_route(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(_generate_character_setting(request.state, request.body))
+
+
+def _generate_character_brief_route(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(_generate_character_brief(request.state, request.body))
+
+
+def _ensure_character_briefs_route(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(_ensure_character_briefs(request.state, request.body))
+
+
+def _translate_character_fields_route(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(_translate_character_fields(request.state, request.body))
+
+
+def _upload_sprite_voice_route(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(
+        _execute_character_request(
+            request.state,
+            CharacterOperation.UPLOAD_SPRITE_VOICE,
+            request.body,
+        )
+    )
+
+
+def _upload_character_sprites_route(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(
+        _execute_character_request(
+            request.state,
+            CharacterOperation.UPLOAD_SPRITES,
+            request.body,
+        )
+    )
+
+
+def _save_character_emotion_tags_route(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(_save_character_emotion_tags(request.state, request.body))
+
+
+def _delete_character_sprite_route(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(
+        _execute_character_request(
+            request.state,
+            CharacterOperation.DELETE_SPRITE,
+            request.body,
+        )
+    )
+
+
+def _delete_all_character_sprites_route(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(
+        _execute_character_request(
+            request.state,
+            CharacterOperation.DELETE_ALL_SPRITES,
+            request.body,
+        )
+    )
+
+
+def _save_sprite_scale_route(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(_save_sprite_scale(request.state, request.body))
+
+
+def _save_sprite_voice_text_route(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(
+        _execute_character_request(
+            request.state,
+            CharacterOperation.SAVE_SPRITE_VOICE_TEXT,
+            request.body,
+        )
+    )
+
+
+def _save_sprite_voice_type_route(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(
+        _execute_character_request(
+            request.state,
+            CharacterOperation.SAVE_SPRITE_VOICE_TYPE,
+            request.body,
+        )
+    )
+
+
+def _delete_sprite_voice_route(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(
+        _execute_character_request(
+            request.state,
+            CharacterOperation.DELETE_SPRITE_VOICE,
+            request.body,
+        )
+    )
+
+
+def _delete_character_route(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(
+        _execute_character_request(
+            request.state,
+            CharacterOperation.DELETE,
+            {"name": request.params["name"]},
+        )
+    )
+
+
+def _auto_label_character_sprites(request: ApiRequest) -> TaskResponse:
+    name = str(request.body.get("name") or "").strip()
+    if not name:
+        raise ValueError("角色名称不能为空")
+    return TaskResponse(
+        kind="vision-character-smart-label",
+        title=f"智能标注 {name} 的角色立绘",
+        message="图片智能标注任务已排队。",
+        worker=lambda task_id: run_character_sprite_auto_label(
+            request.state,
+            task_id,
+            name,
+        ),
+    )
+
+
+def _plan_sprites(request: ApiRequest) -> TaskResponse:
+    body = dict(request.body)
+    return TaskResponse(
+        kind="character-sprite-plan",
+        title="设计立绘提示词",
+        message="正在准备立绘方案。",
+        worker=lambda task_id: run_sprite_plan(request.state, task_id, body),
+    )
+
+
+def _render_sprite(request: ApiRequest) -> TaskResponse:
+    body = dict(request.body)
+    return TaskResponse(
+        kind="character-sprite-render",
+        title="生成角色立绘",
+        message="正在准备图像生成。",
+        worker=lambda task_id: run_sprite_render(request.state, task_id, body),
+    )
+
+
+def _import_generated_sprites(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(import_generated_sprites(request.state, request.body))
+
+
+def _capture_sprite_frame(request: ApiRequest) -> TaskResponse:
+    body = dict(request.body)
+    return TaskResponse(
+        kind="character-sprite-frame",
+        title="截取立绘画面",
+        message="正在准备视频截帧。",
+        worker=lambda task_id: run_sprite_frame(request.state, task_id, body),
+    )
+
+
+def _remove_sprite_background(request: ApiRequest) -> TaskResponse:
+    body = dict(request.body)
+    return TaskResponse(
+        kind="character-sprite-cutout",
+        title="立绘抠图",
+        message="正在准备移除背景。",
+        worker=lambda task_id: run_sprite_cutout(request.state, task_id, body),
+    )
+
+
+def _animate_sprite(request: ApiRequest) -> TaskResponse:
+    body = dict(request.body)
+    return TaskResponse(kind="character-sprite-animate", title="生成透明动态立绘",
+                        message="正在准备 H3 动态生成与逐帧抠图。",
+                        worker=lambda task_id: run_sprite_animation(request.state, task_id, body))
+
+
+def _generate_sprite_transition(request: ApiRequest) -> TaskResponse:
+    body = dict(request.body)
+    return TaskResponse(
+        kind="character-sprite-transition", title="生成立绘过渡",
+        message="正在准备 22 帧透明过渡。",
+        worker=lambda task_id: run_sprite_transition(request.state, task_id, body),
+    )
+
+
+def _analyze_sprite_transitions(request: ApiRequest) -> TaskResponse:
+    body = dict(request.body)
+    return TaskResponse(
+        kind="character-transition-analysis",
+        title="分析常用立绘过渡",
+        message="正在准备最近聊天分析。",
+        worker=lambda task_id: run_transition_analysis(request.state, task_id, body),
+    )
+
+
+CHARACTER_ROUTES = (
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/scenarios/list",
+          handler=lambda request: JsonResponse(_list_character_scenarios(request.state, request.body)),
+          name="characters.scenarios.list"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/scenarios/save",
+          handler=lambda request: JsonResponse(_save_character_scenarios(request.state, request.body)),
+          name="characters.scenarios.save"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/scenarios/voice-upload",
+          handler=lambda request: JsonResponse(_upload_scenario_voice(request.state, request.body)),
+          name="characters.scenarios.voice-upload"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/scenarios/voice-delete",
+          handler=lambda request: JsonResponse(_delete_scenario_voice(request.state, request.body)),
+          name="characters.scenarios.voice-delete"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/scenarios/voice-text",
+          handler=lambda request: JsonResponse(_save_scenario_voice_text(request.state, request.body)),
+          name="characters.scenarios.voice-text"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/scenarios/voice-type",
+          handler=lambda request: JsonResponse(_save_scenario_voice_type(request.state, request.body)),
+          name="characters.scenarios.voice-type"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/scenarios/translate-names",
+          handler=lambda request: JsonResponse(_translate_scenario_names(request.state, request.body)),
+          name="characters.scenarios.translate-names"),
+
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/transitions/analyze",
+          handler=_analyze_sprite_transitions, name="characters.sprites.transitions.analyze"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/transitions/generate",
+          handler=_generate_sprite_transition,
+          name="characters.sprites.transitions.generate"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/transitions/save",
+          handler=lambda request: JsonResponse(save_sprite_transitions(request.state, request.body)),
+          name="characters.sprites.transitions.save"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/animate",
+          handler=_animate_sprite, name="characters.sprites.animate"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/remove-background",
+          handler=_remove_sprite_background, name="characters.sprites.remove_background"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/frame",
+          handler=_capture_sprite_frame, name="characters.sprites.frame"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/plan",
+          handler=_plan_sprites, name="characters.sprites.plan"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/render",
+          handler=_render_sprite, name="characters.sprites.render"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/import-generated",
+          handler=_import_generated_sprites, name="characters.sprites.import_generated"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/model/import",
+          handler=_import_character_model, name="characters.model.import"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/model/state",
+          handler=_save_model_state, name="characters.model.state"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/model/states/import",
+          handler=_import_model_states, name="characters.model.states.import"),
+    Route(
+        methods=frozenset({"GET"}),
+        pattern="/api/characters",
+        handler=_list_characters,
+        body_kind=BodyKind.NONE,
+        name="characters.list",
+    ),
+    Route(
+        methods=frozenset({"POST", "PUT"}),
+        pattern="/api/characters",
+        handler=_save_character_route,
+        name="characters.save",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/characters/ai-setting",
+        handler=_generate_character_setting_route,
+        name="characters.ai_setting",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/characters/ai-brief",
+        handler=_generate_character_brief_route,
+        name="characters.ai_brief",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/characters/ensure-briefs",
+        handler=_ensure_character_briefs_route,
+        name="characters.ensure_briefs",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/characters/translate",
+        handler=_translate_character_fields_route,
+        name="characters.translate",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/characters/sprite-voice/upload",
+        handler=_upload_sprite_voice_route,
+        name="characters.sprite_voice.upload",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/characters/sprites/upload",
+        handler=_upload_character_sprites_route,
+        name="characters.sprites.upload",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/characters/sprites/auto-label",
+        handler=_auto_label_character_sprites,
+        name="characters.sprites.auto_label",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/characters/emotion-tags",
+        handler=_save_character_emotion_tags_route,
+        name="characters.emotion_tags.save",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/characters/sprites/delete",
+        handler=_delete_character_sprite_route,
+        name="characters.sprites.delete",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/characters/sprites/delete-all",
+        handler=_delete_all_character_sprites_route,
+        name="characters.sprites.delete_all",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/characters/sprite-scale",
+        handler=_save_sprite_scale_route,
+        name="characters.sprite_scale.save",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/characters/sprite-voice/text",
+        handler=_save_sprite_voice_text_route,
+        name="characters.sprite_voice.text.save",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/characters/sprite-voice/voice-type",
+        handler=_save_sprite_voice_type_route,
+        name="characters.sprite_voice.voice_type.save",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/characters/sprite-voice/delete",
+        handler=_delete_sprite_voice_route,
+        name="characters.sprite_voice.delete",
+    ),
+    Route(
+        methods=frozenset({"DELETE"}),
+        pattern="/api/characters/{name}",
+        handler=_delete_character_route,
+        body_kind=BodyKind.NONE,
+        name="characters.delete",
+    ),
+)

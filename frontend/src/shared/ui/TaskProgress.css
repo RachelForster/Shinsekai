@@ -123,3 +123,39 @@
   font-size: 12px;
   white-space: pre-wrap;
 }
+
+.task-progress--compact {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 12px;
+}
+
+.task-progress--compact .task-progress__meta {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.task-progress--compact .task-progress__meta strong {
+  max-width: 12em;
+}
+
+.task-progress--compact .task-progress__track {
+  flex: 0 1 72px;
+  min-width: 24px;
+  height: 4px;
+}
+
+.task-progress--compact .task-progress__message,
+.task-progress--compact .task-progress__notice {
+  flex: 1;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -8,10 +8,12 @@ import { I18nProvider } from "../../../shared/i18n/I18nProvider";
 function renderSection() {
   const props: Parameters<typeof CharacterPersonalitySection>[0] = {
     aiPending: false,
+    briefPending: false,
     draft: {
       ...createCharacter(),
       character_setting: "A bright student council member.",
     },
+    onAiBrief: vi.fn(),
     onAiWrite: vi.fn(),
     onChange: vi.fn(),
     onTranslate: vi.fn(),
@@ -33,6 +35,12 @@ describe("CharacterPersonalitySection", () => {
 
     fireEvent.change(screen.getByLabelText("Character setting"), { target: { value: "Updated profile" } });
     expect(props.onChange).toHaveBeenCalledWith("character_setting", "Updated profile");
+
+    fireEvent.change(screen.getByLabelText("Character brief"), { target: { value: "Short profile" } });
+    expect(props.onChange).toHaveBeenCalledWith("character_brief", "Short profile");
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate brief" }));
+    expect(props.onAiBrief).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByRole("button", { name: "AI write" }));
     expect(props.onAiWrite).toHaveBeenCalledTimes(1);

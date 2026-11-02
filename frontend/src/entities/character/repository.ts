@@ -1,10 +1,17 @@
-import type { Character, CharacterScenario } from "../../entities/config/types";
 import { getPlatform } from "../../shared/platform/platform";
+import type { Character, CharacterScenario } from "../config/types";
+import type {
+  CharacterMemoryImportResult,
+  ImageAutoLabelResult,
+  ShinsekaiPlatform,
+  SpriteVoiceType,
+  TaskProgressOptions,
+} from "../../shared/platform/types";
+
+export const charactersQueryKey = ["characters"] as const;
 
 export function listCharacters() {
-  return getPlatform()
-    .config.get()
-    .then((config) => config.characters);
+  return getPlatform().characters.list();
 }
 
 export function saveCharacter(character: Character, originalName?: string) {
@@ -15,43 +22,151 @@ export function deleteCharacter(name: string) {
   return getPlatform().characters.delete(name);
 }
 
-export function importCharacters(paths: string[]) {
-  return getPlatform().characters.import(paths);
+export function importCharacters(items: File[] | string[]) {
+  return getPlatform().characters.import(items);
 }
 
 export function exportCharacter(name: string) {
   return getPlatform().characters.export(name);
 }
 
+export function importCharacterModel(input: Parameters<ShinsekaiPlatform["characters"]["importModel"]>[0]) {
+  return getPlatform().characters.importModel(input);
+}
+
+export function importCharacterModelStates(input: Parameters<ShinsekaiPlatform["characters"]["importModelStates"]>[0]) {
+  return getPlatform().characters.importModelStates(input);
+}
+
+export function saveCharacterModelState(input: Parameters<ShinsekaiPlatform["characters"]["saveModelState"]>[0]) {
+  return getPlatform().characters.saveModelState(input);
+}
+
+export function ensureCharacterBriefs(names: string[]) {
+  return getPlatform().characters.ensureBriefs(names);
+}
+
+export function generateCharacterBrief(input: { name: string; setting: string }) {
+  return getPlatform().characters.generateBrief(input);
+}
+
 export function generateCharacterSetting(input: { name: string; setting: string }) {
   return getPlatform().characters.generateSetting(input);
 }
 
-export function translateCharacterFields(input: { name: string; characterSetting: string; emotionTags: string }) {
+export function translateCharacterFields(input: { characterSetting: string; emotionTags: string; name: string }) {
   return getPlatform().characters.translateFields(input);
 }
 
-export function uploadCharacterSprites(input: { name: string; paths: string[]; emotionTags: string }) {
+export function getMem0Status() {
+  return getPlatform().characters.getMem0Status();
+}
+
+export function listCharacterMemories(name: string) {
+  return getPlatform().characters.listMemories(name);
+}
+
+export function searchCharacterMemories(input: { limit?: number; name: string; query: string }) {
+  return getPlatform().characters.searchMemories(input);
+}
+
+export function rememberCharacterMemory(name: string, content: string) {
+  return getPlatform().characters.remember(name, content);
+}
+
+export function deleteCharacterMemory(name: string, memoryId: string) {
+  return getPlatform().characters.deleteMemory(name, memoryId);
+}
+
+export function previewCharacterMemoryImport(name: string, items: File[]) {
+  return getPlatform().characters.previewMemoryImport(name, items);
+}
+
+export function importCharacterMemories(
+  name: string,
+  items: File[],
+  options?: TaskProgressOptions<CharacterMemoryImportResult>,
+) {
+  return getPlatform().characters.importMemories(name, items, options);
+}
+
+export function uploadCharacterSprites(input: { emotionTags: string; name: string; paths: string[] }) {
   return getPlatform().characters.uploadSprites(input);
 }
 
-export function deleteCharacterSprite(name: string, index: number) {
-  return getPlatform().characters.deleteSprite(name, index);
+export function autoLabelCharacterSprites(name: string, options?: TaskProgressOptions<ImageAutoLabelResult>) {
+  return getPlatform().characters.autoLabelSprites(name, options);
 }
 
-export function deleteAllCharacterSprites(name: string) {
-  return getPlatform().characters.deleteAllSprites(name);
+export function planCharacterSprites(...args: Parameters<ShinsekaiPlatform["characters"]["planSprites"]>) {
+  return getPlatform().characters.planSprites(...args);
+}
+
+export function renderCharacterSprite(...args: Parameters<ShinsekaiPlatform["characters"]["renderSprite"]>) {
+  return getPlatform().characters.renderSprite(...args);
+}
+
+export function animateCharacterSprite(...args: Parameters<ShinsekaiPlatform["characters"]["animateSprite"]>) {
+  return getPlatform().characters.animateSprite(...args);
+}
+
+export function analyzeSpriteTransitions(
+  ...args: Parameters<ShinsekaiPlatform["characters"]["analyzeSpriteTransitions"]>
+) {
+  return getPlatform().characters.analyzeSpriteTransitions(...args);
+}
+
+export function generateSpriteTransition(
+  ...args: Parameters<ShinsekaiPlatform["characters"]["generateSpriteTransition"]>
+) {
+  return getPlatform().characters.generateSpriteTransition(...args);
+}
+
+export function saveSpriteTransitions(...args: Parameters<ShinsekaiPlatform["characters"]["saveSpriteTransitions"]>) {
+  return getPlatform().characters.saveSpriteTransitions(...args);
+}
+
+export function importGeneratedCharacterSprites(
+  input: Parameters<ShinsekaiPlatform["characters"]["importGeneratedSprites"]>[0],
+) {
+  return getPlatform().characters.importGeneratedSprites(input);
+}
+
+export function captureCharacterSpriteFrame(
+  ...args: Parameters<ShinsekaiPlatform["characters"]["captureSpriteFrame"]>
+) {
+  return getPlatform().characters.captureSpriteFrame(...args);
 }
 
 export function saveCharacterEmotionTags(name: string, emotionTags: string) {
   return getPlatform().characters.saveEmotionTags(name, emotionTags);
 }
 
+export function removeCharacterSpriteBackground(
+  ...args: Parameters<ShinsekaiPlatform["characters"]["removeSpriteBackground"]>
+) {
+  return getPlatform().characters.removeSpriteBackground(...args);
+}
+
+export function deleteCharacterSprite(name: string, spriteIndex: number) {
+  return getPlatform().characters.deleteSprite(name, spriteIndex);
+}
+
+export function deleteAllCharacterSprites(name: string) {
+  return getPlatform().characters.deleteAllSprites(name);
+}
+
 export function saveSpriteScale(name: string, scale: number) {
   return getPlatform().characters.saveSpriteScale(name, scale);
 }
 
-export function uploadSpriteVoice(input: { name: string; spriteIndex: number; voicePath: string; voiceText: string }) {
+export function uploadSpriteVoice(input: {
+  name: string;
+  spriteIndex: number;
+  voicePath: string;
+  voiceText: string;
+  voiceType?: SpriteVoiceType;
+}) {
   return getPlatform().characters.uploadSpriteVoice(input);
 }
 
@@ -59,11 +174,13 @@ export function saveSpriteVoiceText(name: string, spriteIndex: number, voiceText
   return getPlatform().characters.saveSpriteVoiceText(name, spriteIndex, voiceText);
 }
 
+export function saveSpriteVoiceType(name: string, spriteIndex: number, voiceType: SpriteVoiceType) {
+  return getPlatform().characters.saveSpriteVoiceType(name, spriteIndex, voiceType);
+}
+
 export function deleteSpriteVoice(name: string, spriteIndex: number) {
   return getPlatform().characters.deleteSpriteVoice(name, spriteIndex);
 }
-
-// ---------- 情景模块 ----------
 
 export function saveCharacterScenarios(name: string, scenarios: CharacterScenario[]) {
   return getPlatform().characters.saveScenarios(name, scenarios);
@@ -90,19 +207,3 @@ export function saveScenarioVoiceText(input: { name: string; scenarioIndex: numb
 export function saveScenarioVoiceType(input: { name: string; scenarioIndex: number; voiceType: string }) {
   return getPlatform().characters.saveScenarioVoiceType(input);
 }
-
-// ---------- memory ----------
-
-export function listCharacterMemories(name: string) {
-  return getPlatform().characters.listMemories(name);
-}
-
-export function rememberCharacterMemory(name: string, content: string) {
-  return getPlatform().characters.remember(name, content);
-}
-
-export function deleteCharacterMemory(name: string, memoryId: string) {
-  return getPlatform().characters.deleteMemory(name, memoryId);
-}
-
-export const charactersQueryKey = ["characters"] as const;

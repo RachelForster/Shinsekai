@@ -11,26 +11,8 @@ from typing import Any
 
 
 def _detect_gpus() -> list[dict[str, Any]]:
-    try:
-        from ui.settings_ui.tts.tts_env_probe import get_gpu_list
-
-        rows = get_gpu_list()
-    except Exception:
-        return []
-    if not isinstance(rows, list):
-        return []
-    gpus: list[dict[str, Any]] = []
-    for row in rows:
-        if isinstance(row, dict):
-            gpus.append(
-                {
-                    "device": row.get("device", ""),
-                    "vendor": row.get("vendor", ""),
-                    "vendor_id": row.get("vendor_id", ""),
-                    "vram_gb": row.get("vram_gb", ""),
-                }
-            )
-    return gpus
+    """GPU probing belonged to the retired Qt settings process."""
+    return []
 
 
 def runtime_environment(

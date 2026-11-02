@@ -1,0 +1,16 @@
+schemaVersion: 1
+id: campus-mystery
+version: 1
+title: 旧校舍的雨声
+status: published
+startNodeId: transfer-day
+
+metadata:
+  language: zh-CN
+  estimatedMinutes: 20
+  generationMode: manual
+
+variablesRef: variables.yaml
+castRef: cast.yaml
+narrativeGraphRef: graph.yaml
+logicGraphRef: logic_graph.yaml

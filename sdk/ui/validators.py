@@ -7,9 +7,39 @@
 
 from __future__ import annotations
 
+import os
 import re
+import tempfile
 from pathlib import Path
 from typing import Any
+
+from sdk.path_utils import reject_control_chars, safe_existing_path
+
+
+def _local_input_roots() -> tuple[Path, ...]:
+    """Trusted roots for form fields that reference local files.
+
+    Cover the whole local machine like the file picker does (all existing
+    drives on Windows, the filesystem anchor elsewhere), otherwise saving a
+    form whose paths live outside cwd/temp/home fails with "outside the
+    allowed roots".
+    """
+
+    roots = [Path.cwd(), Path(tempfile.gettempdir())]
+    try:
+        roots.append(Path.home())
+    except RuntimeError:
+        pass
+    if os.name == "nt":
+        for code in range(ord("A"), ord("Z") + 1):
+            drive = Path(f"{chr(code)}:/")
+            if drive.exists():
+                roots.append(drive)
+    else:
+        anchor = Path("/")
+        if anchor.exists():
+            roots.append(anchor)
+    return tuple(dict.fromkeys(roots))
 
 
 # ── 基础校验 ──────────────────────────────────────────────────────────────────
@@ -36,7 +66,14 @@ def file_exists(path: str | Path | None, label: str = "") -> tuple[bool, str]:
     """文件路径必须存在（跳过空值由 not_empty 负责）。"""
     if not path:
         return True, ""
-    p = Path(path)
+    try:
+        p = safe_existing_path(
+            reject_control_chars(str(path), field=label or "path"),
+            roots=_local_input_roots(),
+            field=label or "path",
+        )
+    except (OSError, ValueError) as exc:
+        return False, str(exc)
     if not p.is_file():
         return False, _msg(f"文件不存在: {p}", label)
     return True, ""
@@ -46,7 +83,14 @@ def dir_exists(path: str | Path | None, label: str = "") -> tuple[bool, str]:
     """目录路径必须存在。"""
     if not path:
         return True, ""
-    p = Path(path)
+    try:
+        p = safe_existing_path(
+            reject_control_chars(str(path), field=label or "path"),
+            roots=_local_input_roots(),
+            field=label or "path",
+        )
+    except (OSError, ValueError) as exc:
+        return False, str(exc)
     if not p.is_dir():
         return False, _msg(f"目录不存在: {p}", label)
     return True, ""
@@ -56,7 +100,14 @@ def path_exists(path: str | Path | None, label: str = "") -> tuple[bool, str]:
     """路径必须存在（文件或目录均可）。"""
     if not path:
         return True, ""
-    p = Path(path)
+    try:
+        p = safe_existing_path(
+            reject_control_chars(str(path), field=label or "path"),
+            roots=_local_input_roots(),
+            field=label or "path",
+        )
+    except (OSError, ValueError) as exc:
+        return False, str(exc)
     if not p.exists():
         return False, _msg(f"路径不存在: {p}", label)
     return True, ""
@@ -66,7 +117,11 @@ def path_is_absolute(path: str | Path | None, label: str = "") -> tuple[bool, st
     """路径必须是绝对路径。"""
     if not path:
         return True, ""
-    if not Path(path).is_absolute():
+    try:
+        p = Path(reject_control_chars(str(path), field=label or "path"))
+    except ValueError as exc:
+        return False, str(exc)
+    if not p.is_absolute():
         return False, _msg("必须填写绝对路径", label)
     return True, ""
 
@@ -200,7 +255,7 @@ def first_error(*checks: tuple[bool, str]) -> tuple[bool, str]:
 
 def warn_if_invalid(checks_or_ok, errors=None, *,
                     title: str = "提示", parent=None) -> bool:
-    """校验失败时弹窗警告。
+    """Return ``False`` and emit a warning when validation fails.
 
     两种用法::
 
@@ -226,14 +281,16 @@ def warn_if_invalid(checks_or_ok, errors=None, *,
     if isinstance(msgs, str):
         msgs = [msgs]
     text = "\n".join(msgs)
-    from PySide6.QtWidgets import QMessageBox
-    QMessageBox.warning(parent, title, text)
+    del parent
+    import warnings
+
+    warnings.warn(f"{title}: {text}", stacklevel=2)
     return False
 
 
 def validate_or_block(*checks: tuple[bool, str],
                       title: str = "提示", parent=None) -> bool:
-    """依次校验，遇到第一个失败就弹窗并返回 False。
+    """Return ``False`` and emit a warning for the first failed check.
 
     适合放在保存按钮逻辑开头::
 
@@ -246,8 +303,10 @@ def validate_or_block(*checks: tuple[bool, str],
     ok, err = first_error(*checks)
     if ok:
         return True
-    from PySide6.QtWidgets import QMessageBox
-    QMessageBox.warning(parent, title, err)
+    del parent
+    import warnings
+
+    warnings.warn(f"{title}: {err}", stacklevel=2)
     return False
 
 

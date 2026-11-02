@@ -120,7 +120,7 @@ from pathlib import Path
 from sdk.plugin import PluginBase
 from sdk.plugin_host_context import PluginHostContext
 from sdk.register import PluginCapabilityRegistry
-from sdk.types import SettingsUIContribution
+from sdk.types import FrontendConfigContribution
 
 
 class {class_name}(PluginBase):
@@ -146,19 +146,23 @@ class {class_name}(PluginBase):
     ) -> None:
         _ = plugin_root, host
 
-        def build_settings(plg):
-            from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
+        values = {{"enabled": True}}
 
-            w = QWidget()
-            lay = QVBoxLayout(w)
-            lay.addWidget(QLabel("TODO: build settings using ``plg`` snapshot."))
-            return w
-
-        register.register_settings_ui(
-            SettingsUIContribution(
+        register.register_frontend_config(
+            FrontendConfigContribution(
                 page_id="{page_id}",
-                nav_label="{display_name}",
-                build=build_settings,
+                title="{display_name}",
+                schema=[
+                    {{
+                        "id": "main",
+                        "title": "Settings",
+                        "fields": [
+                            {{"key": "enabled", "type": "boolean", "label": "Enabled"}}
+                        ],
+                    }}
+                ],
+                load_values=lambda: dict(values),
+                save_values=lambda incoming: values.update(incoming),
                 order=100.0,
             )
         )

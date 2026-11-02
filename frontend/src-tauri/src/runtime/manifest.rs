@@ -22,7 +22,6 @@ const DEFAULT_REQUIRED_IMPORTS: &[&str] = &[
     "google.genai",
     "anthropic",
     "tiktoken",
-    "PySide6",
     "pygame",
 ];
 const DEFAULT_REQUIREMENTS_FILE: &str = "requirements-runtime-core.txt";

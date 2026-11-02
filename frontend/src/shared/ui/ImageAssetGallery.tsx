@@ -2,12 +2,14 @@ import "./ImageAssetGallery.css";
 import { useEffect, useState } from "react";
 import type { UIEvent } from "react";
 import { Image as ImageIcon } from "lucide-react";
+import { VisualMedia } from "./VisualMedia";
 
 export interface ImageAssetGalleryItem {
   badge?: string;
   badgeTone?: "default" | "muted";
   id: string;
   imageSrc?: string;
+  videoSrc?: string;
   meta?: string;
   title: string;
 }
@@ -23,8 +25,9 @@ interface ImageAssetGalleryProps {
 }
 
 interface ImageAssetThumbProps {
-  decoding: "async" | "auto" | "sync";
-  loading: "eager" | "lazy";
+  alt?: string;
+  decoding?: "async" | "auto" | "sync";
+  loading?: "eager" | "lazy";
   src?: string;
 }
 
@@ -35,7 +38,7 @@ function imageThumbStateForSource(src?: string): "empty" | "loaded" | "loading" 
   return src.startsWith("data:image/") ? "loaded" : "loading";
 }
 
-function ImageAssetThumb({ decoding, loading, src }: ImageAssetThumbProps) {
+export function ImageAssetThumb({ alt = "", decoding = "async", loading = "lazy", src }: ImageAssetThumbProps) {
   const [state, setState] = useState<"empty" | "error" | "loaded" | "loading">(() => imageThumbStateForSource(src));
 
   useEffect(() => {
@@ -48,7 +51,7 @@ function ImageAssetThumb({ decoding, loading, src }: ImageAssetThumbProps) {
     <span className="image-asset-card__media" data-state={state}>
       {src ? (
         <img
-          alt=""
+          alt={alt}
           decoding={decoding}
           loading={loading}
           onError={() => setState("error")}
@@ -60,6 +63,27 @@ function ImageAssetThumb({ decoding, loading, src }: ImageAssetThumbProps) {
         />
       ) : null}
       {showPlaceholder ? (
+        <span aria-hidden className="image-asset-card__placeholder">
+          <ImageIcon className="image-asset-card__fallback" />
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+function VideoAssetThumb({ src }: { src: string }) {
+  const [state, setState] = useState("loading");
+  return (
+    <span className="image-asset-card__media" data-state={state}>
+      <VisualMedia
+        alt=""
+        autoPlay={false}
+        loading="lazy"
+        onError={() => setState("error")}
+        onLoad={() => setState("loaded")}
+        src={src}
+      />
+      {state !== "loaded" ? (
         <span aria-hidden className="image-asset-card__placeholder">
           <ImageIcon className="image-asset-card__fallback" />
         </span>
@@ -98,7 +122,11 @@ export function ImageAssetGallery({
           title={item.title}
           type="button"
         >
-          <ImageAssetThumb decoding={imageDecoding} loading={imageLoading} src={item.imageSrc} />
+          {item.videoSrc ? (
+            <VideoAssetThumb key={item.videoSrc} src={item.videoSrc} />
+          ) : (
+            <ImageAssetThumb decoding={imageDecoding} loading={imageLoading} src={item.imageSrc} />
+          )}
           <span className="image-asset-card__body">
             <span className="image-asset-card__title">
               <span>{index + 1}</span>

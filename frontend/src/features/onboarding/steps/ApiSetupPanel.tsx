@@ -13,7 +13,12 @@ import {
   ttsBundleRecommendationQueryKey,
 } from "../../../entities/config/repository";
 import type { ApiConfig } from "../../../entities/config/types";
-import type { TaskSnapshot, TtsBundleDownloadResult } from "../../../shared/platform/types";
+import type { TaskSnapshot, TtsBundleDownloadResult, TtsBundleKind } from "../../../shared/platform/types";
+import {
+  applyDownloadedTtsBundle,
+  llmDefaultBaseUrls,
+  normalizeProviderBaseUrls,
+} from "../../api-settings/apiSettingsUtils";
 import {
   AsyncButton,
   Button,
@@ -29,6 +34,7 @@ import type { OnboardingCopy } from "../onboardingCopy";
 
 interface ApiSetupPanelProps {
   copy: OnboardingCopy;
+  onSaved?: () => void;
 }
 
 function activeProviderValue(record: Record<string, string> | undefined, provider: string) {
@@ -39,11 +45,7 @@ function updateProviderValue(record: Record<string, string> | undefined, provide
   return { ...(record ?? {}), [provider]: value };
 }
 
-function withApiDraftValue<K extends keyof ApiConfig>(draft: ApiConfig | null, key: K, value: ApiConfig[K]) {
-  return draft ? { ...draft, [key]: value } : draft;
-}
-
-export function ApiSetupPanel({ copy }: ApiSetupPanelProps) {
+export function ApiSetupPanel({ copy, onSaved }: ApiSetupPanelProps) {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
@@ -57,7 +59,7 @@ export function ApiSetupPanel({ copy }: ApiSetupPanelProps) {
 
   useEffect(() => {
     if (configQuery.data?.api_config) {
-      setDraft(configQuery.data.api_config);
+      setDraft(normalizeProviderBaseUrls(configQuery.data.api_config));
     }
   }, [configQuery.data?.api_config]);
 
@@ -84,12 +86,13 @@ export function ApiSetupPanel({ copy }: ApiSetupPanelProps) {
       queryClient.setQueryData(configQueryKey, (current: typeof configQuery.data) =>
         current ? { ...current, api_config: saved } : current,
       );
+      onSaved?.();
       showToast({ kind: "success", title: copy.actions.saved });
     },
   });
 
   const ttsBundleMutation = useMutation({
-    mutationFn: () => downloadTtsBundle({ kind: ttsBundleKind }, { onTaskUpdate: setTtsBundleTask }),
+    mutationFn: (kind: TtsBundleKind) => downloadTtsBundle({ kind }, { onTaskUpdate: setTtsBundleTask }),
     onError(error) {
       showToast({ kind: "error", message: error instanceof Error ? error.message : "", title: copy.toastFailed });
     },
@@ -98,12 +101,7 @@ export function ApiSetupPanel({ copy }: ApiSetupPanelProps) {
     },
     onSuccess(result) {
       if (draft) {
-        const next = {
-          ...draft,
-          gpt_sovits_api_path: result.path,
-          gpt_sovits_url: result.path,
-          tts_provider: result.provider,
-        };
+        const next = applyDownloadedTtsBundle(draft, result);
         setDraft(next);
         saveMutation.mutate(next);
       }
@@ -171,11 +169,20 @@ export function ApiSetupPanel({ copy }: ApiSetupPanelProps) {
         <div className="onboarding-form-grid">
           <FieldBlock label={copy.api.provider}>
             <Select
-              onChange={(event) =>
-                setDraft(
-                  (current) => withApiDraftValue(current, "llm_provider", event.target.value) as ApiConfig | null,
-                )
-              }
+              onChange={(event) => {
+                const nextProvider = event.target.value;
+                setDraft((current) => {
+                  if (!current) return current;
+                  const nextBaseUrl =
+                    activeProviderValue(current.llm_base_urls, nextProvider) || llmDefaultBaseUrls[nextProvider] || "";
+                  return {
+                    ...current,
+                    llm_base_url: nextBaseUrl,
+                    llm_base_urls: updateProviderValue(current.llm_base_urls, nextProvider, nextBaseUrl),
+                    llm_provider: nextProvider,
+                  };
+                });
+              }}
               value={provider}
             >
               {providerChoices.map((option) => (
@@ -187,11 +194,18 @@ export function ApiSetupPanel({ copy }: ApiSetupPanelProps) {
           </FieldBlock>
           <FieldBlock label={copy.api.baseUrl}>
             <TextInput
-              onChange={(event) =>
-                setDraft(
-                  (current) => withApiDraftValue(current, "llm_base_url", event.target.value) as ApiConfig | null,
-                )
-              }
+              onChange={(event) => {
+                const nextBaseUrl = event.target.value;
+                setDraft((current) =>
+                  current
+                    ? {
+                        ...current,
+                        llm_base_url: nextBaseUrl,
+                        llm_base_urls: updateProviderValue(current.llm_base_urls, provider, nextBaseUrl),
+                      }
+                    : current,
+                );
+              }}
               placeholder="https://api.openai.com/v1"
               value={baseUrl}
             />
@@ -279,9 +293,10 @@ export function ApiSetupPanel({ copy }: ApiSetupPanelProps) {
             <span>{copy.api.bundleHint}</span>
           </div>
           <AsyncButton
+            disabled={!ttsBundleRecommendationQuery.isSuccess}
             icon={<DownloadCloud aria-hidden size={16} />}
-            loading={ttsBundleMutation.isPending || saveMutation.isPending}
-            onClick={() => ttsBundleMutation.mutate()}
+            loading={ttsBundleMutation.isPending || saveMutation.isPending || ttsBundleRecommendationQuery.isLoading}
+            onClick={() => ttsBundleMutation.mutate(ttsBundleKind)}
             variant="primary"
           >
             {copy.api.bundleButton}

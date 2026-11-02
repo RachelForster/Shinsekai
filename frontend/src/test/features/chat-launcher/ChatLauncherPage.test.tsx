@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ChatLauncherPage } from "../../../features/chat-launcher/ChatLauncherPage";
@@ -10,13 +10,24 @@ import { ToastProvider } from "../../../shared/ui";
 
 const mocks = {
   getAppConfig: vi.fn(),
+  getChatSnapshot: vi.fn(),
   getTemplateSession: vi.fn(),
   launchChat: vi.fn(),
   listBackgrounds: vi.fn(),
   listCharacters: vi.fn(),
   listTemplates: vi.fn(),
+  refreshRuntimeStatus: vi.fn(),
   saveTemplateSession: vi.fn(),
+  updateRuntimeStatusFromSnapshot: vi.fn(),
+  useChatLaunchGuard: vi.fn(),
 };
+
+const desktopMocks = vi.hoisted(() => ({
+  isTauriDesktop: vi.fn(),
+  isDesktopBridgeConnectionError: vi.fn(),
+  openDesktopChatWindow: vi.fn(),
+  writeDesktopRestartDebugLog: vi.fn(),
+}));
 
 vi.mock("../../../entities/background/repository", () => ({
   backgroundsQueryKey: ["backgrounds"],
@@ -37,31 +48,72 @@ vi.mock("../../../entities/config/repository", () => ({
   getAppConfig: () => mocks.getAppConfig(),
 }));
 vi.mock("../../../entities/chat/repository", () => ({
+  chatQueryKey: ["chat"],
+  getChatSnapshot: () => mocks.getChatSnapshot(),
+  installMissingRuntimeDependency: (input: unknown) => Promise.resolve(input),
   launchChat: (payload: unknown) => mocks.launchChat(payload),
 }));
+vi.mock("../../../features/chat-startup/useChatLaunchGuard", () => ({
+  useChatLaunchGuard: () => mocks.useChatLaunchGuard(),
+}));
+vi.mock("../../../shared/desktop/desktopApi", () => ({
+  isDesktopBridgeConnectionError: desktopMocks.isDesktopBridgeConnectionError,
+  isTauriDesktop: desktopMocks.isTauriDesktop,
+  openDesktopChatWindow: desktopMocks.openDesktopChatWindow,
+  writeDesktopRestartDebugLog: desktopMocks.writeDesktopRestartDebugLog,
+}));
+
+function LocationProbe() {
+  const location = useLocation();
+  return <output data-testid="location">{location.pathname}</output>;
+}
 
 function renderPage() {
-  return render(
-    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const result = render(
+    <QueryClientProvider client={queryClient}>
       <ToastProvider>
         <I18nProvider language="en">
           <MemoryRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
             <ChatLauncherPage />
+            <LocationProbe />
           </MemoryRouter>
         </I18nProvider>
       </ToastProvider>
     </QueryClientProvider>,
   );
+  return { ...result, queryClient };
+}
+
+async function expectTemplateSelectToShow(templateName: string) {
+  await waitFor(() => expect(screen.getByRole("combobox", { name: "Template" })).toHaveTextContent(templateName));
 }
 
 describe("ChatLauncherPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.useChatLaunchGuard.mockReturnValue({
+      refreshRuntimeStatus: mocks.refreshRuntimeStatus,
+      runtimeLaunchDisabled: false,
+      updateRuntimeStatusFromSnapshot: mocks.updateRuntimeStatusFromSnapshot,
+    });
+    window.location.hash = "";
+    desktopMocks.isDesktopBridgeConnectionError.mockReturnValue(false);
+    desktopMocks.isTauriDesktop.mockReturnValue(false);
+    desktopMocks.openDesktopChatWindow.mockResolvedValue(undefined);
+    desktopMocks.writeDesktopRestartDebugLog.mockResolvedValue(undefined);
     mocks.listBackgrounds.mockResolvedValue([]);
     mocks.listCharacters.mockResolvedValue([]);
     mocks.listTemplates.mockResolvedValue([]);
     mocks.getAppConfig.mockResolvedValue({
       system_config: { voice_language: "ja" },
+    });
+    mocks.getChatSnapshot.mockResolvedValue({
+      dialogText: "",
+      inputDraft: "",
+      options: [],
+      sprites: [],
+      status: "idle",
     });
     mocks.getTemplateSession.mockResolvedValue(null);
     mocks.saveTemplateSession.mockImplementation(async (session: TemplateLaunchSession) => session);
@@ -77,6 +129,154 @@ describe("ChatLauncherPage", () => {
   it("renders the page title", async () => {
     renderPage();
     expect(await screen.findByText("Launch chat")).toBeInTheDocument();
+    expect(mocks.getChatSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("navigates to /chat after a successful browser launch", async () => {
+    mocks.listTemplates.mockResolvedValue([
+      {
+        content: "template content",
+        id: "tpl-browser",
+        name: "Browser Template",
+        path: "D:/templates/browser.yaml",
+        scenario: "",
+        system: "",
+        updatedAt: "2026-01-01",
+      },
+    ]);
+    mocks.listCharacters.mockResolvedValue([{ name: "Mio" }]);
+
+    renderPage();
+
+    await expectTemplateSelectToShow("Browser Template");
+    fireEvent.click(screen.getByRole("button", { name: "Launch" }));
+
+    await waitFor(() => expect(mocks.launchChat).toHaveBeenCalledTimes(1));
+    expect(mocks.launchChat).toHaveBeenCalledWith(expect.objectContaining({ templateId: "tpl-browser" }));
+    expect(mocks.updateRuntimeStatusFromSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({ dialogText: "Ready" }),
+    );
+    await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/chat"));
+    expect(desktopMocks.openDesktopChatWindow).not.toHaveBeenCalled();
+  });
+
+  it("keeps the initialization progress open until the chat is ready", async () => {
+    mocks.listTemplates.mockResolvedValue([
+      {
+        content: "template content",
+        id: "tpl-slow",
+        name: "Slow Template",
+        path: "D:/templates/slow.yaml",
+        scenario: "",
+        system: "",
+        updatedAt: "2026-01-01",
+      },
+    ]);
+    let resolveLaunch!: (snapshot: object) => void;
+    mocks.launchChat.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveLaunch = resolve;
+      }),
+    );
+
+    renderPage();
+
+    await expectTemplateSelectToShow("Slow Template");
+    fireEvent.click(screen.getByRole("button", { name: "Launch" }));
+
+    expect(await screen.findByRole("dialog", { name: "Preparing chat" })).toBeInTheDocument();
+    expect(document.querySelector('img[src="/chat-init-catgirl.gif"]')).toBeInTheDocument();
+    expect(desktopMocks.openDesktopChatWindow).not.toHaveBeenCalled();
+    resolveLaunch({
+      dialogText: "Ready",
+      inputDraft: "",
+      options: [],
+      sprites: [],
+      status: "idle",
+    });
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Preparing chat" })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/chat"));
+  });
+
+  it("refreshes runtime status after a launch failure", async () => {
+    mocks.listTemplates.mockResolvedValue([
+      {
+        content: "template content",
+        id: "tpl-failure",
+        name: "Failure Template",
+        path: "D:/templates/failure.yaml",
+        scenario: "",
+        system: "",
+        updatedAt: "2026-01-01",
+      },
+    ]);
+    mocks.launchChat.mockRejectedValueOnce(new Error("runtime closing"));
+
+    renderPage();
+
+    await expectTemplateSelectToShow("Failure Template");
+    fireEvent.click(screen.getByRole("button", { name: "Launch" }));
+
+    expect(await screen.findByRole("dialog", { name: "Preparing chat" })).toHaveTextContent("runtime closing");
+    expect(mocks.refreshRuntimeStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens the standalone desktop chat window after a successful desktop launch", async () => {
+    desktopMocks.isTauriDesktop.mockReturnValue(true);
+    mocks.listTemplates.mockResolvedValue([
+      {
+        content: "template content",
+        id: "tpl-desktop",
+        name: "Desktop Template",
+        path: "D:/templates/desktop.yaml",
+        scenario: "",
+        system: "",
+        updatedAt: "2026-01-01",
+      },
+    ]);
+    mocks.listCharacters.mockResolvedValue([{ name: "Mio" }]);
+
+    renderPage();
+
+    await expectTemplateSelectToShow("Desktop Template");
+    fireEvent.click(screen.getByRole("button", { name: "Launch" }));
+
+    await waitFor(() => expect(mocks.launchChat).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(desktopMocks.openDesktopChatWindow).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId("location")).toHaveTextContent("/");
+  });
+
+  it("does not navigate to the React chat surface when launch falls back to native chat", async () => {
+    mocks.listTemplates.mockResolvedValue([
+      {
+        content: "template content",
+        id: "tpl-native",
+        name: "Native Template",
+        path: "D:/templates/native.yaml",
+        scenario: "",
+        system: "",
+        updatedAt: "2026-01-01",
+      },
+    ]);
+    mocks.listCharacters.mockResolvedValue([{ name: "Mio" }]);
+    mocks.launchChat.mockResolvedValue({
+      dialogText: "Native chat started",
+      inputDraft: "",
+      options: [],
+      runtimeMode: "native",
+      sprites: [],
+      status: "idle",
+    });
+
+    renderPage();
+
+    await expectTemplateSelectToShow("Native Template");
+    fireEvent.click(screen.getByRole("button", { name: "Launch" }));
+
+    await waitFor(() => expect(mocks.launchChat).toHaveBeenCalledTimes(1));
+    expect(desktopMocks.openDesktopChatWindow).not.toHaveBeenCalled();
+    expect(screen.getByTestId("location")).toHaveTextContent("/");
   });
 
   it("restores saved launch session values before starting chat", async () => {
@@ -85,6 +285,7 @@ describe("ChatLauncherPage", () => {
         content: "template content",
         id: "tpl-session",
         name: "Session Template",
+        mediaSelectionMode: "semantic",
         path: "D:/templates/session.yaml",
         scenario: "festival night",
         system: "stay in character",
@@ -104,11 +305,15 @@ describe("ChatLauncherPage", () => {
     mocks.listCharacters.mockResolvedValue([{ name: "Mio" }, { name: "Aki" }]);
     mocks.getTemplateSession.mockResolvedValue({
       background: "school",
+      characterPromptMode: "compact",
+      effectNames: [],
       filenameStub: "Session Template",
       historyPath: " D:/history/session.json ",
       initSpritePath: " D:/sprites/init.png ",
       maxDialogItems: 12,
       maxSpeechChars: 160,
+      mediaSelectionMode: "semantic",
+      primaryCharacters: ["Mio"],
       roomId: "room-7",
       scenario: "old scenario",
       selectedCharacters: ["Mio", "Aki"],
@@ -126,7 +331,7 @@ describe("ChatLauncherPage", () => {
 
     renderPage();
 
-    expect(await screen.findByText("Session Template")).toBeInTheDocument();
+    await expectTemplateSelectToShow("Session Template");
     await waitFor(() => expect(screen.getAllByDisplayValue(/session\.json/).length).toBeGreaterThan(0));
     expect(screen.getByDisplayValue(/D:\/sprites\/init\.png/)).toBeInTheDocument();
 
@@ -136,8 +341,12 @@ describe("ChatLauncherPage", () => {
     expect(mocks.saveTemplateSession).toHaveBeenCalledWith(
       expect.objectContaining({
         background: "school",
+        characterPromptMode: "compact",
+        effectNames: [],
         historyPath: "D:/history/session.json",
         initSpritePath: "D:/sprites/init.png",
+        mediaSelectionMode: "semantic",
+        primaryCharacters: ["Mio"],
         roomId: "room-7",
         selectedCharacters: ["Mio", "Aki"],
         templateFileDropdown: "tpl-session",
@@ -151,6 +360,7 @@ describe("ChatLauncherPage", () => {
         characters: ["Mio", "Aki"],
         historyPath: "D:/history/session.json",
         initSpritePath: "D:/sprites/init.png",
+        mediaSelectionMode: "semantic",
         resetHistory: false,
         roomId: "room-7",
         scenario: "festival night",
@@ -159,6 +369,68 @@ describe("ChatLauncherPage", () => {
         templateName: "Session Template",
         useCg: true,
       }),
+    );
+  });
+
+  it("clears a restored initial sprite when the selected character changes", async () => {
+    mocks.listTemplates.mockResolvedValue([
+      {
+        content: "template content",
+        id: "tpl-session",
+        name: "Session Template",
+        path: "D:/templates/session.yaml",
+        scenario: "",
+        system: "",
+        updatedAt: "2026-01-01",
+      },
+    ]);
+    mocks.listCharacters.mockResolvedValue([
+      { name: "Nanami", sprites: [{ path: "D:/sprites/nanami.png" }] },
+      { name: "Junko", sprites: [{ path: "D:/sprites/junko.png" }] },
+    ]);
+    mocks.getTemplateSession.mockResolvedValue({
+      background: "透明场景",
+      effectNames: [],
+      filenameStub: "Session Template",
+      historyPath: "",
+      initSpritePath: "D:/sprites/junko.png",
+      maxDialogItems: 0,
+      maxSpeechChars: 0,
+      roomId: "",
+      scenario: "",
+      selectedCharacters: ["Junko"],
+      system: "",
+      templateFileDropdown: "tpl-session",
+      useCg: false,
+      useChoice: true,
+      useCot: false,
+      useEffect: true,
+      useNarration: true,
+      useStat: true,
+      useTranslation: true,
+      voiceLanguage: "ja",
+    } satisfies TemplateLaunchSession);
+
+    renderPage();
+
+    await waitFor(() => expect(screen.getByLabelText("Initial sprite")).toHaveValue("D:/sprites/junko.png"));
+    const characterSelect = Array.from(document.querySelectorAll<HTMLSelectElement>("select[multiple]")).find(
+      (select) => Array.from(select.options).some((option) => option.value === "Junko"),
+    )!;
+    for (const option of Array.from(characterSelect.options)) {
+      option.selected = option.value === "Nanami";
+    }
+    fireEvent.change(characterSelect);
+
+    await waitFor(() => expect(screen.getByLabelText("Initial sprite")).toHaveValue(""));
+    fireEvent.click(screen.getByRole("button", { name: "Launch" }));
+
+    await waitFor(() => expect(mocks.launchChat).toHaveBeenCalledTimes(1));
+    expect(mocks.saveTemplateSession).toHaveBeenCalledWith(
+      expect.objectContaining({ initSpritePath: "", selectedCharacters: ["Nanami"] }),
+    );
+    expect(mocks.launchChat).toHaveBeenCalledWith(
+      expect.objectContaining({ characters: ["Nanami"], initSpritePath: "" }),
     );
   });
 
@@ -176,10 +448,19 @@ describe("ChatLauncherPage", () => {
     ]);
     mocks.listBackgrounds.mockResolvedValue([]);
     mocks.listCharacters.mockResolvedValue([{ name: "Mio" }]);
+    mocks.launchChat.mockResolvedValueOnce({
+      dialogText: "Ready",
+      historyPath: "D:/history/confirmed.json",
+      inputDraft: "",
+      options: [],
+      sprites: [],
+      status: "idle",
+    });
 
-    renderPage();
+    const { queryClient } = renderPage();
 
-    expect(await screen.findByText("Default Template")).toBeInTheDocument();
+    await expectTemplateSelectToShow("Default Template");
+    fireEvent.change(screen.getByLabelText("History"), { target: { value: "D:/history/previous.json" } });
 
     fireEvent.click(screen.getByRole("button", { name: "Quick restart" }));
     expect(mocks.launchChat).not.toHaveBeenCalled();
@@ -189,5 +470,36 @@ describe("ChatLauncherPage", () => {
 
     await waitFor(() => expect(mocks.launchChat).toHaveBeenCalledTimes(1));
     expect(mocks.launchChat).toHaveBeenCalledWith(expect.objectContaining({ resetHistory: true }));
+    await waitFor(() => expect(screen.getByDisplayValue("D:/history/confirmed.json")).toBeInTheDocument());
+    expect(queryClient.getQueryData<TemplateLaunchSession>(["templates", "session"])?.historyPath).toBe(
+      "D:/history/confirmed.json",
+    );
+    expect(mocks.saveTemplateSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables launch actions while an existing chat process is still running", async () => {
+    mocks.useChatLaunchGuard.mockReturnValue({
+      refreshRuntimeStatus: mocks.refreshRuntimeStatus,
+      runtimeLaunchDisabled: true,
+      updateRuntimeStatusFromSnapshot: mocks.updateRuntimeStatusFromSnapshot,
+    });
+    mocks.listTemplates.mockResolvedValue([
+      {
+        content: "template content",
+        id: "tpl-busy",
+        name: "Busy Template",
+        path: "D:/templates/busy.yaml",
+        scenario: "",
+        system: "",
+        updatedAt: "2026-01-01",
+      },
+    ]);
+
+    renderPage();
+
+    await expectTemplateSelectToShow("Busy Template");
+    expect(await screen.findByRole("button", { name: "Launch" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Quick restart" })).toBeDisabled();
+    expect(mocks.getChatSnapshot).not.toHaveBeenCalled();
   });
 });

@@ -1,6 +1,14 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
+declare const process: {
+  env: {
+    FRONTEND_COVERAGE_THRESHOLD?: string;
+  };
+};
+
+const coverageThreshold = Number(process.env.FRONTEND_COVERAGE_THRESHOLD ?? 85);
+
 function modulePath(path: string) {
   return new URL(path, import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
 }
@@ -28,6 +36,14 @@ export default defineConfig({
             return undefined;
           }
 
+          // Keep the 3D SDK behind the PMX adapter's lazy import.
+          if (has("/typescript/")) {
+            return "l2d-compiler";
+          }
+          if (has("/@babylonjs/") || has("/babylon-mmd/")) {
+            return "mmd-vendor";
+          }
+
           if (
             has("/react/") ||
             has("/react-dom/") ||
@@ -52,13 +68,33 @@ export default defineConfig({
     },
   },
   server: {
+    fs: {
+      allow: [modulePath("."), modulePath("../assets/chat_ui_themes"), modulePath("../assets/present_example.png")],
+    },
     host: "127.0.0.1",
     port: 5173,
   },
   test: {
+    // MMD ships extensionless ESM imports; resolve them through Vite, not Node.
+    server: { deps: { inline: ["babylon-mmd"] } },
+    // DOM + coverage workers otherwise saturate large Windows hosts and time out healthy tests.
+    maxWorkers: 4,
+    minWorkers: 1,
     environment: "jsdom",
     globals: true,
     include: ["src/test/**/*.{test,spec}.{ts,tsx}"],
     setupFiles: "./src/test/setup.ts",
+    coverage: {
+      provider: "v8",
+      all: true,
+      include: ["src/**/*.{ts,tsx}"],
+      exclude: ["src/test/**", "src/**/*.d.ts", "src/vite-env.d.ts", "src/main.tsx"],
+      reporter: ["text", "html", "lcov", "json-summary"],
+      reportsDirectory: "./coverage",
+      thresholds: {
+        lines: coverageThreshold,
+        statements: coverageThreshold,
+      },
+    },
   },
 });

@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="../assets/system/picture/shinsekai-github-banner.png" alt="Shinsekai GitHub Banner" width="100%">
+</p>
+
 [中文版](https://github.com/RachelForster/Shinsekai/blob/main/README.md) | [English](https://github.com/RachelForster/Shinsekai/blob/main/docs/README_EN.md)
 
 # Shinsekai
@@ -9,13 +13,16 @@ A desktop assistant for **visual-novel / otome / story-driven RPG** play: let a 
 ## Why Shinsekai
 
 - **One pipeline for performance**: templates, session history, sprite swaps and moods, TTS/ASR, and input plumbing are wired so you spend less time context-switching between tools.  
-- **Two-window design**: the **Settings** app (`webui.py` / bundle) holds API, characters, and plugins; the **chat** window stays focused on dialogue and stage direction.  
+- **Two-window design**: the React/Tauri **Settings** app holds API, characters, and plugins; the **chat** window stays focused on dialogue and stage direction.
 - **Swap models and engines**: connect mainstream LLMs and OpenAI-compatible endpoints under **API settings**; **TTS** spans GPT-SoVITS, Genie TTS, CosyVoice, and lighter stacks without a discrete GPU; **image gen** can target ComfyUI-style backends on the same page.  
 - **Listen and speak**: optional mic **ASR** (e.g. Vosk; more via **plugins**) and line **TTS**, or turn synthesis off and rely on per-sprite bundled audio only.  
 - **More than plain chat**: built-in / plugin **LLM tools** plus **MCP** bring search, automation, and other services into the same turn.  
-- **Extensible & themeable**: the **plugin SDK** adds adapters, settings pages, and chat chrome; UI language, fonts, and chat styling can be tuned via config and plugins (e.g. `chat_ui_theme`).  
+- **Long-term memory**: store, retrieve, and manage character-scoped memories across sessions so relationships, story progress, and important events carry naturally into later conversations.
+- **Custom chat themes**: manage and visually edit chat themes, including upload, clone, switch, and customization flows for dialog frames, nameplates, fonts, colors, and stage styling.
+- **100+ character packs**: choose from more than 100 ready-to-import character packs, or create, import, and export your own `.char` packages.
+- **Plugin extensibility**: the **plugin SDK** adds adapters, settings pages, chat controls, and additional LLM, TTS, ASR, T2I, and tool capabilities.
 - **Local-first data**: defaults live under **`data/`** (`api.yaml`, `system_config.yaml`, characters, history)—easy to back up or fork for your own project.  
-- **Open source**: start from git or a [release bundle](https://github.com/RachelForster/Shinsekai/releases); optional plugins are listed in [Shinsekai-Plugin-Registry](https://github.com/RachelForster/Shinsekai-Plugin-Registry).
+- **Source available**: start from git or a [release bundle](https://github.com/RachelForster/Shinsekai/releases); optional plugins are listed in [Shinsekai-Plugin-Registry](https://github.com/RachelForster/Shinsekai-Plugin-Registry).
 
 ---
 
@@ -39,7 +46,7 @@ A desktop assistant for **visual-novel / otome / story-driven RPG** play: let a 
 | **Voice** | **TTS**: GPT-SoVITS, Genie TTS, CosyVoice, etc.—pick an engine under **API settings** and point at your server paths/URLs; choose “off” to play **per-sprite line audio** only. **ASR**: mic recognition defaults to **Vosk**; Whisper-class engines via **plugins**. |
 | **LLM & tools** | Configure provider, **model id**, keys, and base URL under **API settings**; **streaming** and **tool calls**; tools from built-in / plugin **`@tool`** plus **MCP** (`data/config/mcp.yaml`). |
 | **Text-to-image (T2I)** | **API settings** for **ComfyUI** (endpoint, workflow, node ids); other **T2I adapters** can be added via plugins. |
-| **Settings & system** | **PySide** Settings for **API** (`data/config/api.yaml`) and **system** (`data/config/system_config.yaml`): UI language, ASR backend, theme tint, font size, and more. |
+| **Settings & system** | **React/Tauri** Settings for **API** (`data/config/api.yaml`) and **system** (`data/config/system_config.yaml`): UI language, ASR backend, theme tint, font size, and more. |
 | **Plugins** | `data/config/plugins.yaml` manifest; **Plugins** tab to discover/install and toggle; extends LLM/TTS/ASR/T2I, tools, **Settings / Tools / chat** surfaces. |
 | **MCP** | **Plugins → MCP** or YAML to attach SSE/stdio servers; tools registered into the in-process LLM tool list. |
 | **Vision & other extensions** | Vision, theme editors, etc. ship as **official or community plugins** (see `plugins/`); capabilities vary by package README. |
@@ -75,13 +82,14 @@ Linux source users may also run `./scripts/install-linux.sh`. If a Python 3.10 n
 
 ### 3. Open Settings
 
-Bundle: `start.bat`. From source:
+Bundle: `start-react.bat`. From source, use the platform launch script:
 
 ```bash
-python webui_qt.py
+./start-react.sh
 ```
 
-On Linux source checkouts, `./scripts/start-linux.sh` uses the active non-`base` conda environment first, then `.venv`, then system `python3.10`.
+Windows and macOS provide `start-react.bat` and `start-react.command`. The retired Qt
+settings and chat windows are no longer available.
 
 ### 4. First conversation
 
@@ -127,6 +135,7 @@ Independent of the plugin system: you can wire external capabilities through YAM
 |------|------|
 | Chinese README | [README.md](https://github.com/RachelForster/Shinsekai/blob/main/README.md) |
 | GUI user guide (Chinese, non-technical) | [GUI_USER_GUIDE_zh-CN.md](GUI_USER_GUIDE_zh-CN.md) |
+| Chat UI theme guide (Chinese) | [CHAT_UI_THEME_GUIDE_zh-CN.md](CHAT_UI_THEME_GUIDE_zh-CN.md) |
 | Plugin developer guide | [PLUGIN_DEVELOPER_GUIDE.md](PLUGIN_DEVELOPER_GUIDE.md) |
 | Repository | [github.com/RachelForster/Shinsekai](https://github.com/RachelForster/Shinsekai) |
 
@@ -136,4 +145,4 @@ Issues and PRs are welcome. If you redistribute character or voice assets, follo
 
 ## License Notice
 
-Shinsekai is source-available, not open source. You may inspect the source code, build it locally for personal use, and maintain public forks for discussion and contribution. Redistribution, release builds, installer packages, app store distribution, and commercial use are not permitted without written permission. See [LICENSE](../LICENSE).
+Shinsekai is a source-available project. You may inspect the source code, build it locally for personal use, and maintain public forks for discussion and contribution. Redistribution, release builds, installer packages, app store distribution, and commercial use are not permitted without written permission. See [LICENSE](../LICENSE).

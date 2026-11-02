@@ -1,0 +1,329 @@
+from __future__ import annotations
+
+import threading
+import time
+from collections.abc import Callable
+from typing import Any
+
+from application.chat.composition import (
+    _chat_process_running,
+    _chat_snapshot,
+    _session_lifecycle,
+)
+from application.chat.host.projection import (
+    _chat_runtime_closing,
+    _chat_runtime_mode,
+    _chat_stream_initial_snapshot,
+)
+from application.chat.host.launch_history import persist_confirmed_history_path
+from application.chat.host.lifecycle import chat_lifecycle_lock
+from application.chat.stop_chat import ChatSessionChanged, stop_chat
+from application.runtime.state import BridgeState
+from application.runtime.tasks import (
+    TaskCancelled,
+    _create_task,
+    _get_task,
+    _is_running_task,
+    _is_task_cancel_requested,
+    _run_background_task,
+    _update_task,
+)
+from sdk.logging import get_logger
+
+
+logger = get_logger(__name__)
+
+CHAT_INIT_TIMEOUT_SECONDS = 15 * 60.0
+CHAT_INIT_POLL_INTERVAL_SECONDS = 0.12
+
+_TASK_TEXT_FIELDS = (
+    "errorCode",
+    "errorDetail",
+    "errorUserMessage",
+    "message",
+    "notice",
+    "noticeKind",
+    "phase",
+)
+
+
+class ChatInitFailed(RuntimeError):
+    pass
+
+
+def _chat_init_lock(state: BridgeState) -> threading.Lock:
+    lock = getattr(state, "chat_init_lock", None)
+    if lock is None:
+        lock = threading.Lock()
+        state.chat_init_lock = lock
+    return lock
+
+
+def _safe_task_changes(raw_task: dict[str, Any]) -> dict[str, Any]:
+    changes: dict[str, Any] = {}
+    for field in _TASK_TEXT_FIELDS:
+        if field in raw_task:
+            changes[field] = str(raw_task.get(field) or "")[:4000]
+
+    if "httpStatus" in raw_task:
+        value = raw_task.get("httpStatus")
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            changes["httpStatus"] = int(value)
+
+    if "progress" in raw_task:
+        progress = raw_task.get("progress")
+        if progress is None:
+            changes["progress"] = None
+        elif isinstance(progress, (int, float)) and not isinstance(progress, bool):
+            changes["progress"] = max(0.0, min(1.0, float(progress)))
+
+    logs = raw_task.get("logs")
+    if isinstance(logs, list):
+        changes["logs"] = [
+            str(line)[:4000] for line in logs[-120:] if str(line).strip()
+        ]
+    return changes
+
+
+def _terminal_error(task: dict[str, Any], fallback: str) -> str:
+    for field in ("errorUserMessage", "error", "message"):
+        value = str(task.get(field) or "").strip()
+        if value:
+            return value
+    return fallback
+
+
+def _cleanup_chat_init(
+    state: BridgeState,
+    session_id: str,
+    *,
+    reason: str,
+    expected_session_id: str | None,
+    launch_id: str = "",
+    error: BaseException | None = None,
+) -> None:
+    with chat_lifecycle_lock(state):
+        try:
+            stop_chat(state, reason=reason, expected_session_id=expected_session_id)
+        except ChatSessionChanged:
+            pass
+        finally:
+            lifecycle = _session_lifecycle(state)
+            try:
+                lifecycle.release_stream(session_id)
+            finally:
+                if error is not None:
+                    lifecycle.report_failure(error, session_id=session_id, launch_id=launch_id, reason=reason)
+
+
+def _run_chat_init(
+    state: BridgeState,
+    task_id: str,
+    launch: Callable[[dict[str, str]], dict[str, Any]],
+    *,
+    timeout: float,
+    before_launch: Callable[[], None] | None = None,
+) -> dict[str, Any]:
+    session_id = ""
+    expected_session_id = None
+    expected_launch_id = ""
+    try:
+        # Keep validation, restart, stream creation and process launch atomic.
+        # Release the lock before waiting for asynchronous runtime initialization.
+        with chat_lifecycle_lock(state):
+            if _chat_runtime_closing(state):
+                raise RuntimeError("chat runtime is closing; try again shortly")
+            # Validate before creating an init stream: rejected edits must not clean up
+            # (and consequently stop) the currently running conversation.
+            if before_launch is not None:
+                if _is_task_cancel_requested(state, task_id):
+                    raise TaskCancelled()
+                before_launch()
+            # Preserve the legacy behavior for an already-running, fully initialized
+            # runtime. The async API simply resolves to its current snapshot.
+            if _chat_process_running():
+                return _chat_snapshot(state)
+
+            chat_stream = getattr(state, "chat_stream", None)
+            if chat_stream is None:
+                raise RuntimeError("chat stream service is unavailable")
+
+            expected_session_id = str(state.chat_session.get("sessionId") or "").strip()
+            stream_info = chat_stream.create_session(
+                _chat_stream_initial_snapshot(_chat_snapshot(state, "idle", ""))
+            )
+            session_id = str(stream_info.get("sessionId") or "").strip()
+            if not session_id:
+                raise RuntimeError("failed to create chat initialization session")
+
+            keep_session = _chat_runtime_mode(state) == "react"
+            if _is_task_cancel_requested(state, task_id):
+                raise TaskCancelled()
+            _update_task(
+                state,
+                task_id,
+                message="Starting chat runtime.",
+                phase="launching",
+                progress=0.02,
+            )
+            try:
+                launch_result = launch(stream_info)
+            finally:
+                expected_session_id = str(
+                    state.chat_session.get("sessionId") or ""
+                ).strip()
+                expected_launch_id = str(getattr(state, "chat_session_launch_id", "") or "")
+            if not isinstance(launch_result, dict):
+                raise RuntimeError("chat launch returned an invalid result")
+            pending_history_path = str(
+                launch_result.pop("_pendingHistoryPath", "") or ""
+            ).strip()
+            if str(launch_result.get("status") or "") == "error" and isinstance(
+                launch_result.get("runtimeDependencyError"),
+                dict,
+            ):
+                # A missing runtime dependency is an expected, actionable result.
+                # Keep the task successful so the frontend can open its existing
+                # dependency-install confirmation flow from the returned snapshot.
+                launch_result.pop("_chatInitStreamAttached", None)
+                _session_lifecycle(state).release_stream(session_id)
+                return launch_result
+            if str(launch_result.get("status") or "") == "error":
+                raise ChatInitFailed(
+                    str(
+                        launch_result.get("statusMessage")
+                        or launch_result.get("dialogText")
+                        or "chat launch failed"
+                    )
+                )
+
+            # A callback may resolve to an existing runtime without attaching
+            # its initialization stream.
+            if not bool(launch_result.pop("_chatInitStreamAttached", False)):
+                if _chat_process_running():
+                    _session_lifecycle(state).release_stream(session_id)
+                    return _chat_snapshot(state)
+                raise ChatInitFailed(
+                    "chat runtime did not attach its initialization stream"
+                )
+
+        deadline = time.monotonic() + max(float(timeout), 0.1)
+        last_changes: dict[str, Any] | None = None
+        while time.monotonic() < deadline:
+            if _is_task_cancel_requested(state, task_id):
+                raise TaskCancelled()
+
+            with chat_lifecycle_lock(state):
+                if (
+                    str(state.chat_session.get("sessionId") or "").strip()
+                    != expected_session_id
+                ):
+                    raise ChatInitFailed("chat session changed during initialization")
+                snapshot = chat_stream.get_snapshot(session_id)
+            init_task = snapshot.get("initTask") if isinstance(snapshot, dict) else None
+            if isinstance(init_task, dict):
+                changes = _safe_task_changes(init_task)
+                if changes and changes != last_changes:
+                    _update_task(state, task_id, **changes)
+                    last_changes = changes
+
+                status = str(init_task.get("status") or "").strip().lower()
+                if status == "succeeded":
+                    with chat_lifecycle_lock(state):
+                        if (
+                            str(state.chat_session.get("sessionId") or "").strip()
+                            != expected_session_id
+                        ):
+                            raise ChatInitFailed(
+                                "chat session changed during initialization"
+                            )
+                        _session_lifecycle(
+                            state,
+                            remember_history=persist_confirmed_history_path,
+                        ).ready(pending_history_path)
+                        if not keep_session:
+                            _session_lifecycle(state).release_stream(session_id)
+                        return _chat_snapshot(state)
+                if status == "failed":
+                    raise ChatInitFailed(
+                        _terminal_error(init_task, "chat initialization failed")
+                    )
+                if status == "cancelled":
+                    raise TaskCancelled()
+
+            if not _chat_process_running():
+                detail = init_task if isinstance(init_task, dict) else {}
+                raise ChatInitFailed(
+                    _terminal_error(
+                        detail, "chat process exited before initialization completed"
+                    )
+                )
+            time.sleep(CHAT_INIT_POLL_INTERVAL_SECONDS)
+
+        raise TimeoutError(
+            f"chat initialization timed out after {int(max(float(timeout), 0.1))} seconds"
+        )
+    except BaseException as error:
+        if session_id:
+            _cleanup_chat_init(
+                state,
+                session_id,
+                reason="Chat initialization did not complete.",
+                expected_session_id=expected_session_id,
+                launch_id=expected_launch_id,
+                error=error,
+            )
+        raise
+
+
+def start_chat(
+    state: BridgeState,
+    *,
+    mode: str,
+    launch: Callable[[dict[str, str]], dict[str, Any]],
+    timeout: float = CHAT_INIT_TIMEOUT_SECONDS,
+    before_launch: Callable[[], None] | None = None,
+) -> dict[str, Any]:
+    normalized_mode = str(mode or "").strip().lower()
+    if normalized_mode not in {"launch", "resume-last", "reconfigure"}:
+        raise ValueError("unsupported chat initialization mode")
+
+    lock = _chat_init_lock(state)
+    with lock:
+        active_id = str(getattr(state, "chat_init_task_id", "") or "").strip()
+        if active_id:
+            try:
+                active_task = _get_task(state, active_id)
+            except KeyError:
+                active_task = None
+            if active_task is not None and _is_running_task(active_task):
+                if normalized_mode == "reconfigure":
+                    raise RuntimeError("chat initialization is already in progress")
+                return active_task
+            state.chat_init_task_id = ""
+
+        task = _create_task(
+            state,
+            kind="chat-init",
+            title="Initialize chat",
+            message="Preparing chat runtime.",
+        )
+        task_id = str(task["id"])
+        state.chat_init_task_id = task_id
+
+    def _run() -> None:
+        try:
+            _run_background_task(
+                state,
+                task_id,
+                lambda: _run_chat_init(
+                    state, task_id, launch, timeout=timeout, before_launch=before_launch
+                ),
+            )
+        finally:
+            with lock:
+                if str(getattr(state, "chat_init_task_id", "") or "") == task_id:
+                    state.chat_init_task_id = ""
+
+    threading.Thread(target=_run, name=f"chat-init-{task_id[:8]}", daemon=True).start()
+    return _get_task(state, task_id)

@@ -15,6 +15,8 @@ function renderEn(children: ReactNode) {
 }
 
 const characterDraft: Character = {
+  avatar_type: "static",
+  avatars: {},
   character_setting: "Quiet student.",
   color: "#66ccff",
   emotion_tags: "happy",
@@ -29,6 +31,7 @@ const characterDraft: Character = {
       path: "/project/chars/mika/Sprite01.webp",
       voice_path: "/project/chars/mika/voice/Sprite01.wav",
       voice_text: "Hello",
+      voice_type: "reference",
     },
   ],
 };
@@ -134,6 +137,7 @@ describe("Character editor sections", () => {
         onSpriteTagChange={onSpriteTagChange}
         onSpriteVoiceTextBlur={onSpriteVoiceTextBlur}
         onSpriteVoiceTextChange={onSpriteVoiceTextChange}
+        onSpriteVoiceTypeChange={vi.fn()}
         pendingSpritePaths={["/tmp/new.webp"]}
         pendingVoicePath="/tmp/new.wav"
         selectedSprite={characterDraft.sprites[0]}
@@ -202,17 +206,32 @@ describe("Character editor sections", () => {
           ],
         }}
         deletePending={false}
+        depError={null}
+        depInstalling={false}
         error={null}
+        isChecking={false}
         isError={false}
         isFetched
         isFetching={false}
         isLoading={false}
         memoryInput="New memory"
+        memoryImportPending={false}
         memoryName="Mika"
+        memoryPage={1}
+        memoryTotalPages={1}
+        activeSearchQuery=""
         onAddMemory={onAddMemory}
+        onClearSearch={vi.fn()}
         onDeleteMemory={onDeleteMemory}
+        onInstallDep={vi.fn()}
+        onImportMemories={vi.fn()}
         onMemoryInputChange={onMemoryInputChange}
+        onMemoryPageChange={vi.fn()}
         onRefresh={onRefresh}
+        onSearch={vi.fn()}
+        onSearchInputChange={vi.fn()}
+        searchInput=""
+        searchPending={false}
       />,
     );
 

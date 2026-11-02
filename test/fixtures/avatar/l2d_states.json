@@ -1,0 +1,16 @@
+{
+  "valid": [
+    {"parameters": {}, "expressions": [], "motion": ""},
+    {"parameters": {"ParamAngleX": 12, "ParamMouthOpenY": 0.2}, "expressions": ["expressions/smile.exp3.json"], "motion": "motions/nod.motion3.json"}
+  ],
+  "invalid": [
+    {},
+    {"parameters": {"ParamAngleX": true}, "expressions": [], "motion": ""},
+    {"parameters": {}, "expressions": ["../smile.exp3.json"], "motion": ""},
+    {"parameters": {}, "expressions": ["https://example.com/smile.exp3.json"], "motion": ""},
+    {"parameters": {}, "expressions": ["expressions/smile.exp3.json", "expressions/smile.exp3.json"], "motion": ""},
+    {"parameters": {}, "expressions": [], "motion": null},
+    {"parameters": {}, "expressions": [], "motion": "motion.png"},
+    {"parameters": {}, "expressions": [], "motion": "", "other": 1}
+  ]
+}

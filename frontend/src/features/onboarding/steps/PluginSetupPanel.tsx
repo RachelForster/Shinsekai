@@ -1,18 +1,26 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, DownloadCloud, Eye, Globe2, Mic2 } from "lucide-react";
+import { CheckCircle2, DownloadCloud, Eye, Globe2, Mic2, Settings } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { installMissingRuntimeDependency } from "../../../entities/chat/repository";
 import {
   installPlugin,
+  listPlugins,
   listPluginCatalog,
   pluginCatalogQueryKey,
   pluginsQueryKey,
 } from "../../../entities/plugin/repository";
 import type { PluginCatalogItem, PluginManifest } from "../../../entities/plugin/types";
+import {
+  desktopRestartErrorMessage,
+  isTauriDesktop,
+  writeDesktopRestartDebugLog,
+} from "../../../shared/desktop/desktopApi";
 import type { RuntimeDependencyInstallResult, TaskSnapshot } from "../../../shared/platform/types";
 import { Button, EmptyState, QueryErrorState, TaskProgress, useToast } from "../../../shared/ui";
 import { catalogInstallSource } from "../../plugin-manager/pluginUtils";
+import { reloadPluginService } from "../../plugin-manager/pluginReload";
 import { OnboardingPanelLayout, OnboardingTaskPanel } from "../OnboardingPanelLayout";
 import type { OnboardingCopy } from "../onboardingCopy";
 
@@ -30,7 +38,10 @@ interface PluginPreset {
 
 interface PluginSetupPanelProps {
   copy: OnboardingCopy;
+  onInstalled?: () => void;
 }
+
+type PluginReloadStatus = "idle" | "reloading" | "done" | "failed";
 
 function normalizeSearchText(value: string) {
   return value.toLowerCase().replace(/[_-]+/g, " ");
@@ -99,16 +110,79 @@ function selectedCountLabel(template: string, count: number) {
   return template.replace("{count}", String(count));
 }
 
-export function PluginSetupPanel({ copy }: PluginSetupPanelProps) {
+function pluginHasConfig(plugin: PluginManifest | null | undefined) {
+  return Boolean(plugin && ((plugin.settingsPages ?? []).length || (plugin.toolsTabs ?? []).length));
+}
+
+function findReloadedPlugin(plugin: PluginManifest, plugins: PluginManifest[]) {
+  return (
+    plugins.find((item) => item.id === plugin.id) ??
+    plugins.find((item) => item.entry && item.entry === plugin.entry) ??
+    plugins.find((item) => item.title && item.title === plugin.title)
+  );
+}
+
+function pluginManifestText(plugin: PluginManifest) {
+  return normalizeSearchText(
+    [
+      plugin.id,
+      plugin.title,
+      plugin.description,
+      plugin.entry,
+      plugin.directory,
+      plugin.install?.entry,
+      plugin.install?.repo,
+      plugin.install?.sourceLabel,
+      ...(plugin.settingsPages ?? []),
+      ...(plugin.toolsTabs ?? []),
+      ...(plugin.slots ?? []),
+    ]
+      .filter(Boolean)
+      .join(" "),
+  );
+}
+
+function installedPluginMatchScore(plugin: PluginManifest, preset: PluginPreset) {
+  const text = pluginManifestText(plugin);
+  if (preset.excludedKeywords?.some((keyword) => text.includes(normalizeSearchText(keyword)))) {
+    return 0;
+  }
+  return preset.keywords.reduce((score, keyword) => {
+    return text.includes(normalizeSearchText(keyword)) ? score + 1 : score;
+  }, 0);
+}
+
+function findInstalledPresetPlugin(plugins: PluginManifest[], preset: PluginPreset) {
+  let best: { plugin: PluginManifest; score: number } | null = null;
+  for (const plugin of plugins) {
+    const score = installedPluginMatchScore(plugin, preset);
+    if (score > 0 && (!best || score > best.score)) {
+      best = { plugin, score };
+    }
+  }
+  return best?.plugin;
+}
+
+export function PluginSetupPanel({ copy, onInstalled }: PluginSetupPanelProps) {
   const queryClient = useQueryClient();
+  const location = useLocation();
+  const navigate = useNavigate();
   const { showToast } = useToast();
   const [selectedIds, setSelectedIds] = useState<PluginPresetId[]>(["visual", "browser", "voice"]);
   const [dependencyTask, setDependencyTask] = useState<TaskSnapshot<RuntimeDependencyInstallResult> | null>(null);
   const [installTask, setInstallTask] = useState<TaskSnapshot<PluginManifest> | null>(null);
+  const [installedPlugins, setInstalledPlugins] = useState<Partial<Record<PluginPresetId, PluginManifest>>>({});
+  const [reloadError, setReloadError] = useState("");
+  const [reloadStatus, setReloadStatus] = useState<PluginReloadStatus>("idle");
   const catalogQuery = useQuery({
     queryFn: listPluginCatalog,
     queryKey: pluginCatalogQueryKey,
     staleTime: 300_000,
+  });
+  const pluginsQuery = useQuery({
+    queryFn: listPlugins,
+    queryKey: pluginsQueryKey,
+    staleTime: 30_000,
   });
 
   const presets = useMemo<PluginPreset[]>(
@@ -151,6 +225,7 @@ export function PluginSetupPanel({ copy }: PluginSetupPanelProps) {
 
   const installMutation = useMutation({
     mutationFn: async () => {
+      const installed: Partial<Record<PluginPresetId, PluginManifest>> = {};
       const modules = Array.from(new Set(selectedPresets.flatMap((preset) => preset.dependencies)));
       for (const moduleName of modules) {
         await installMissingRuntimeDependency({ moduleName }, { onTaskUpdate: setDependencyTask });
@@ -161,14 +236,46 @@ export function PluginSetupPanel({ copy }: PluginSetupPanelProps) {
         if (!source) {
           continue;
         }
-        await installPlugin(source, { onTaskUpdate: setInstallTask });
+        installed[preset.id] = await installPlugin(source, { onTaskUpdate: setInstallTask });
       }
+      if (Object.keys(installed).length) {
+        setInstalledPlugins(installed);
+        if (isTauriDesktop()) {
+          setReloadStatus("reloading");
+          try {
+            await reloadPluginService(queryClient);
+          } catch (error) {
+            const message = desktopRestartErrorMessage(error);
+            setReloadStatus("failed");
+            setReloadError(message);
+            await writeDesktopRestartDebugLog(`Onboarding plugin reload catch: ${message}`);
+            throw error;
+          }
+          setReloadStatus("done");
+        }
+        const reloadedPlugins = await queryClient.fetchQuery({ queryFn: listPlugins, queryKey: pluginsQueryKey });
+        const refreshed = Object.fromEntries(
+          Object.entries(installed).map(([presetId, plugin]) => [
+            presetId,
+            findReloadedPlugin(plugin, reloadedPlugins) ?? plugin,
+          ]),
+        ) as Partial<Record<PluginPresetId, PluginManifest>>;
+        setInstalledPlugins(refreshed);
+      }
+    },
+    onMutate() {
+      setDependencyTask(null);
+      setInstallTask(null);
+      setInstalledPlugins({});
+      setReloadError("");
+      setReloadStatus("idle");
     },
     onError(error) {
       showToast({ kind: "error", message: error instanceof Error ? error.message : "", title: copy.toastFailed });
     },
     onSuccess() {
-      showToast({ kind: "success", title: copy.toastSuccess });
+      showToast({ kind: "success", title: copy.plugins.installDone });
+      onInstalled?.();
       void queryClient.invalidateQueries({ queryKey: pluginsQueryKey });
       void queryClient.invalidateQueries({ queryKey: pluginCatalogQueryKey });
     },
@@ -202,24 +309,69 @@ export function PluginSetupPanel({ copy }: PluginSetupPanelProps) {
             const plugin = findPluginMatch(catalog, preset);
             const selected = selectedIds.includes(preset.id);
             const Icon = preset.id === "visual" ? Eye : preset.id === "browser" ? Globe2 : Mic2;
+            const installedPlugin =
+              installedPlugins[preset.id] ?? findInstalledPresetPlugin(pluginsQuery.data ?? [], preset);
+            const hasConfig = pluginHasConfig(installedPlugin);
+            const canConfigure = Boolean(
+              installedPlugin && hasConfig && (reloadStatus === "done" || installedPlugin.loaded !== false),
+            );
+            const status = installedPlugin
+              ? hasConfig
+                ? copy.plugins.configReady
+                : copy.plugins.installedNoConfig
+              : plugin
+                ? pluginTitle(plugin)
+                : copy.plugins.noMatch;
             return (
-              <button
+              <article
                 className="onboarding-plugin-choice"
                 data-selected={selected ? "true" : undefined}
+                data-installed={installedPlugin ? "true" : undefined}
                 key={preset.id}
-                onClick={() => toggleSelected(preset.id)}
-                type="button"
               >
-                <span className="onboarding-plugin-choice__mark">
-                  {selected ? <CheckCircle2 aria-hidden size={18} /> : <Icon aria-hidden size={18} />}
-                </span>
-                <span className="onboarding-plugin-choice__body">
-                  <strong>{preset.title}</strong>
-                  <span>{preset.body}</span>
-                  <em>{plugin ? pluginTitle(plugin) : copy.plugins.noMatch}</em>
-                  <small>{preset.guide}</small>
-                </span>
-              </button>
+                <button
+                  className="onboarding-plugin-choice__select"
+                  disabled={installMutation.isPending}
+                  onClick={() => toggleSelected(preset.id)}
+                  type="button"
+                >
+                  <span className="onboarding-plugin-choice__mark">
+                    {installedPlugin || selected ? (
+                      <CheckCircle2 aria-hidden size={18} />
+                    ) : (
+                      <Icon aria-hidden size={18} />
+                    )}
+                  </span>
+                  <span className="onboarding-plugin-choice__body">
+                    <strong>{preset.title}</strong>
+                    <span>{preset.body}</span>
+                    <em>{status}</em>
+                    <small>{preset.guide}</small>
+                  </span>
+                </button>
+                {installedPlugin && canConfigure ? (
+                  <Button
+                    className="onboarding-plugin-choice__configure"
+                    icon={<Settings aria-hidden size={15} />}
+                    onClick={() =>
+                      navigate("/settings/plugins", {
+                        state: {
+                          pluginId: installedPlugin.id,
+                          returnTo: {
+                            hash: location.hash,
+                            pathname: location.pathname,
+                            search: location.search,
+                            state: { activeStep: "plugins" },
+                          },
+                        },
+                      })
+                    }
+                    variant="ghost"
+                  >
+                    {copy.plugins.configure}
+                  </Button>
+                ) : null}
+              </article>
             );
           })}
         </div>
@@ -235,6 +387,17 @@ export function PluginSetupPanel({ copy }: PluginSetupPanelProps) {
             {copy.plugins.installSelected}
           </Button>
         </div>
+        {installMutation.isPending || reloadStatus !== "idle" ? (
+          <div className="onboarding-plugin-install-status" data-state={reloadStatus}>
+            {reloadStatus === "reloading"
+              ? copy.plugins.reloadPending
+              : reloadStatus === "done"
+                ? copy.plugins.installDone
+                : reloadStatus === "failed"
+                  ? `${copy.plugins.reloadFailed}${reloadError ? `：${reloadError}` : ""}`
+                  : copy.plugins.installPending}
+          </div>
+        ) : null}
         <TaskProgress task={dependencyTask} />
         <TaskProgress task={installTask} />
       </div>
