@@ -231,6 +231,15 @@ function captureStageEvents() {
   return (event: ChatStageEvent) => act(() => listener?.(event));
 }
 
+function blurDisabledInput(input: HTMLElement) {
+  // jsdom keeps disabled controls focused and ignores their blur() method.
+  const temporaryTarget = document.createElement("button");
+  document.body.append(temporaryTarget);
+  act(() => temporaryTarget.focus());
+  temporaryTarget.remove();
+  expect(input).not.toHaveFocus();
+}
+
 describe("ChatStagePage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -328,7 +337,7 @@ describe("ChatStagePage", () => {
   });
 
   it.each(["default", "pill"] as const)(
-    "returns focus to the %s input after sending, even when new options arrive",
+    "returns focus to the %s input as soon as it is enabled, even while speech continues",
     async (layout) => {
       const emit = captureStageEvents();
       if (layout === "pill") themeContextMocks.optional = { style: { "--chat-input-layout": "pill" } as CSSProperties };
@@ -343,13 +352,15 @@ describe("ChatStagePage", () => {
       act(() => send.focus());
       fireEvent.click(send);
       expect(input).toBeDisabled();
-      act(() => input.blur()); // Browsers blur disabled controls; jsdom does not.
+      blurDisabledInput(input);
       emit({ type: "options.show", options: ["New choice"], seq: 1, ts: 1, v: 1 });
       expect(screen.getByRole("button", { name: "New choice" })).not.toHaveFocus();
       emit({ type: "status.change", status: "speaking", seq: 2, ts: 2, v: 1 });
-      expect(input).not.toHaveFocus();
+      await waitFor(() => expect(input).toHaveFocus());
+      fireEvent.change(input, { target: { value: "next message while speech continues" } });
       emit({ type: "status.change", status: "idle", seq: 3, ts: 3, v: 1 });
       await waitFor(() => expect(input).toHaveFocus());
+      expect(input).toHaveValue("next message while speech continues");
       expect(screen.getByRole("button", { name: "New choice" })).not.toHaveFocus();
     },
   );
@@ -390,14 +401,18 @@ describe("ChatStagePage", () => {
     expect(input).toHaveValue("a new draft");
   });
 
-  it("waits for the reply typewriter before returning keyboard focus", async () => {
+  it("returns typing focus when re-enabled without waiting for the reply typewriter", async () => {
     const emit = captureStageEvents();
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({ turnOptions: { batchEnabled: false, batchIdleSeconds: 5, interruptEnabled: false } }),
+    );
     renderPage();
     const input = await screen.findByRole("textbox");
     act(() => input.focus());
     fireEvent.change(input, { target: { value: "hello" } });
     fireEvent.keyDown(input, { key: "Enter" });
-    act(() => input.blur());
+    expect(input).toBeDisabled();
+    blurDisabledInput(input);
     emit({
       type: "dialog.end",
       fullHtml: "<p>A new reply.</p>",
@@ -409,10 +424,33 @@ describe("ChatStagePage", () => {
       v: 1,
     });
     emit({ type: "status.change", status: "idle", seq: 2, ts: 2, v: 1 });
-    expect(input).not.toHaveFocus();
-    fireEvent.click(document.querySelector(".dialog-layer__text")!);
     await waitFor(() => expect(input).toHaveFocus());
+    fireEvent.change(input, { target: { value: "draft during the reply animation" } });
+    expect(input).toHaveValue("draft during the reply animation");
   });
+
+  it.each(["default", "pill"] as const)(
+    "restores the %s field after an Enter send and temporary disable",
+    async (layout) => {
+      const emit = captureStageEvents();
+      if (layout === "pill") themeContextMocks.optional = { style: { "--chat-input-layout": "pill" } as CSSProperties };
+      mocks.getChatSnapshot.mockResolvedValue(
+        snapshot({ turnOptions: { batchEnabled: false, batchIdleSeconds: 5, interruptEnabled: false } }),
+      );
+      renderPage();
+      const input = await screen.findByRole("textbox");
+      act(() => input.focus());
+      fireEvent.change(input, { target: { value: "send with enter" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(input).toBeDisabled();
+      blurDisabledInput(input);
+      emit({ type: "status.change", status: "speaking", seq: 1, ts: 1, v: 1 });
+      expect(input).toBeEnabled();
+      await waitFor(() => expect(input).toHaveFocus());
+      fireEvent.change(input, { target: { value: "keep typing without clicking again" } });
+      expect(input).toHaveValue("keep typing without clicking again");
+    },
+  );
 
   it("does not steal focus from history opened while a reply is running", async () => {
     const emit = captureStageEvents();
@@ -433,13 +471,18 @@ describe("ChatStagePage", () => {
 
   it("defers focus restoration while the window is inactive", async () => {
     const emit = captureStageEvents();
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({ turnOptions: { batchEnabled: false, batchIdleSeconds: 5, interruptEnabled: false } }),
+    );
     renderPage();
     const input = await screen.findByRole("textbox");
     act(() => input.focus());
     fireEvent.change(input, { target: { value: "hello" } });
     fireEvent.keyDown(input, { key: "Enter" });
-    act(() => input.blur());
+    expect(input).toBeDisabled();
+    blurDisabledInput(input);
     fireEvent(window, new Event("blur"));
+    expect(input).not.toHaveFocus();
     emit({ type: "status.change", status: "idle", seq: 1, ts: 1, v: 1 });
     expect(input).not.toHaveFocus();
     fireEvent(window, new Event("focus"));

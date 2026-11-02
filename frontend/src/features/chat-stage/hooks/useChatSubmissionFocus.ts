@@ -4,7 +4,7 @@ import type { ChatOption } from "../../../shared/platform/types";
 
 type SubmissionTarget = { kind: "input" } | { kind: "options"; index: number };
 
-/** Return keyboard focus after a reply without competing with deliberate user focus. */
+/** Restore an available composer immediately; choices wait for the reply to finish. */
 export function useChatSubmissionFocus({
   blocked,
   inputDisabled,
@@ -73,18 +73,17 @@ export function useChatSubmissionFocus({
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage) return;
-    if (replying) {
+    const goal = preferred.current;
+    if ((goal?.kind === "input" && inputDisabled) || (goal?.kind !== "input" && replying)) {
       if (preferred.current) pending.current = true;
       return;
     }
-    if (inputDisabled && preferred.current?.kind === "input") pending.current = true;
     if (blocked || !windowActive.current || document.visibilityState === "hidden") return;
     const buttons = [...stage.querySelectorAll<HTMLButtonElement>(".options-layer__button")];
     const firstEnabled = buttons.find((button) => !button.disabled);
     const initialOptions = !preferred.current && !initializedOptions.current && firstEnabled;
     if (!pending.current && !initialOptions) return;
     const input = stage.querySelector<HTMLInputElement | HTMLTextAreaElement>(".input-layer__input:not(:disabled)");
-    const goal = preferred.current;
     const selected = goal?.kind === "options" ? buttons[goal.index] : undefined;
     const target =
       goal?.kind === "input"
