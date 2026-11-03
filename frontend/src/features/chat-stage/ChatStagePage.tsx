@@ -47,6 +47,7 @@ import { useDesktopWindowDrag } from "./hooks/useDesktopWindowDrag";
 import { useDialogTypewriter } from "./hooks/useDialogTypewriter";
 import { useMainThemeColor } from "./hooks/useMainThemeColor";
 import { useRecentUserInputs } from "./hooks/useRecentUserInputs";
+import { useChatSubmissionFocus } from "./hooks/useChatSubmissionFocus";
 import {
   chatStageRuntimeStyle,
   defaultChatStageRuntimeConfig,
@@ -295,6 +296,15 @@ export function ChatStagePage() {
     textDirection: dialogTextDirection,
     typewriterCps,
   });
+  const { stageRef, rememberSubmission } = useChatSubmissionFocus({
+    blocked: modalOpen || Boolean(viewModel.toolConfirmation),
+    inputDisabled: viewModel.inputDisabled,
+    options: viewModel.options,
+    replying:
+      ["generating", "streaming", "speaking"].includes(viewModel.status) ||
+      (typingDialog && viewModel.layers.dialog && !viewModel.layers.options),
+    sessionId: state.sessionId,
+  });
   const {
     handleStageContextMenu,
     handleStageFocus,
@@ -402,6 +412,7 @@ export function ChatStagePage() {
     if (!text && !attachments.length) {
       return;
     }
+    rememberSubmission({ kind: "input" });
     rememberInput(text);
     const displayText = chatAttachmentDisplayText(text, attachments);
     const payload: string | ChatSendPayload = attachments.length ? { attachments, text } : text;
@@ -485,6 +496,7 @@ export function ChatStagePage() {
     if (typeof option !== "string" && !option.enabled) {
       return;
     }
+    rememberSubmission({ kind: "options", index: Math.max(0, viewModel.options.indexOf(option)) });
     showDialogImmediately();
     dispatch({
       queued: state.turnOptions.batchEnabled,
@@ -756,6 +768,7 @@ export function ChatStagePage() {
     <>
       {overlayTarget ? <PluginPageOverlay onClose={closePluginPageOverlay} target={overlayTarget} /> : null}
       <main
+        ref={stageRef}
         className="chat-stage"
         data-background={transparentBackground ? "transparent" : "media"}
         data-click-through={clickThroughEnabled ? "true" : "false"}

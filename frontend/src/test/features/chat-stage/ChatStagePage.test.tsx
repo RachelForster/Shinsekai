@@ -222,6 +222,24 @@ function finishSpriteFade(image: Element) {
   }
 }
 
+function captureStageEvents() {
+  let listener: ((event: ChatStageEvent) => void) | undefined;
+  mocks.subscribeChatEvents.mockImplementation((next) => {
+    listener = next;
+    return vi.fn();
+  });
+  return (event: ChatStageEvent) => act(() => listener?.(event));
+}
+
+function blurDisabledInput(input: HTMLElement) {
+  // jsdom keeps disabled controls focused and ignores their blur() method.
+  const temporaryTarget = document.createElement("button");
+  document.body.append(temporaryTarget);
+  act(() => temporaryTarget.focus());
+  temporaryTarget.remove();
+  expect(input).not.toHaveFocus();
+}
+
 describe("ChatStagePage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -316,6 +334,180 @@ describe("ChatStagePage", () => {
         type: "submit-option",
       }),
     );
+  });
+
+  it.each(["default", "pill"] as const)(
+    "returns focus to the %s input as soon as it is enabled, even while speech continues",
+    async (layout) => {
+      const emit = captureStageEvents();
+      if (layout === "pill") themeContextMocks.optional = { style: { "--chat-input-layout": "pill" } as CSSProperties };
+      mocks.getChatSnapshot.mockResolvedValue(
+        snapshot({ turnOptions: { batchEnabled: false, batchIdleSeconds: 5, interruptEnabled: false } }),
+      );
+      renderPage();
+      const input = await screen.findByRole("textbox");
+      act(() => input.focus());
+      fireEvent.change(input, { target: { value: "keep my typing focus" } });
+      const send = screen.getByRole("button", { name: "Send" });
+      act(() => send.focus());
+      fireEvent.click(send);
+      expect(input).toBeDisabled();
+      blurDisabledInput(input);
+      emit({ type: "options.show", options: ["New choice"], seq: 1, ts: 1, v: 1 });
+      expect(screen.getByRole("button", { name: "New choice" })).not.toHaveFocus();
+      emit({ type: "status.change", status: "speaking", seq: 2, ts: 2, v: 1 });
+      await waitFor(() => expect(input).toHaveFocus());
+      fireEvent.change(input, { target: { value: "next message while speech continues" } });
+      emit({ type: "status.change", status: "idle", seq: 3, ts: 3, v: 1 });
+      await waitFor(() => expect(input).toHaveFocus());
+      expect(input).toHaveValue("next message while speech continues");
+      expect(screen.getByRole("button", { name: "New choice" })).not.toHaveFocus();
+    },
+  );
+
+  it("returns to the selected option position after the reply instead of focusing the input", async () => {
+    const emit = captureStageEvents();
+    mocks.getChatSnapshot.mockResolvedValue(snapshot({ options: ["First choice", "Second choice"] }));
+    renderPage();
+    const selected = await screen.findByRole("button", { name: "Second choice" });
+    act(() => selected.focus());
+    fireEvent.keyDown(selected, { key: "Enter" });
+    emit({ type: "options.show", options: ["Next first", "Next second"], seq: 1, ts: 1, v: 1 });
+    expect(screen.getByRole("button", { name: "Next first" })).not.toHaveFocus();
+    emit({ type: "status.change", status: "idle", seq: 2, ts: 2, v: 1 });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Next second" })).toHaveFocus());
+    expect(screen.getByRole("textbox")).not.toHaveFocus();
+  });
+
+  it("falls back to the input and returns to late options only while the fallback is untouched", async () => {
+    const emit = captureStageEvents();
+    mocks.getChatSnapshot.mockResolvedValue(snapshot({ options: ["First choice", "Second choice"] }));
+    renderPage();
+    const selected = await screen.findByRole("button", { name: "Second choice" });
+    act(() => selected.focus());
+    fireEvent.click(selected);
+    emit({ type: "status.change", status: "idle", seq: 1, ts: 1, v: 1 });
+    const input = screen.getByRole("textbox");
+    await waitFor(() => expect(input).toHaveFocus());
+    emit({ type: "snapshot", snapshot: snapshot({ eventSeq: 2, options: [] }), seq: 2, ts: 2, v: 1 });
+    emit({ type: "options.show", options: ["Late first", "Late second"], seq: 3, ts: 3, v: 1 });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Late second" })).toHaveFocus());
+    fireEvent.click(screen.getByRole("button", { name: "Late second" }));
+    emit({ type: "status.change", status: "idle", seq: 4, ts: 4, v: 1 });
+    await waitFor(() => expect(input).toHaveFocus());
+    fireEvent.change(input, { target: { value: "a new draft" } });
+    emit({ type: "options.show", options: ["Another choice"], seq: 5, ts: 5, v: 1 });
+    expect(input).toHaveFocus();
+    expect(input).toHaveValue("a new draft");
+  });
+
+  it("returns typing focus when re-enabled without waiting for the reply typewriter", async () => {
+    const emit = captureStageEvents();
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({ turnOptions: { batchEnabled: false, batchIdleSeconds: 5, interruptEnabled: false } }),
+    );
+    renderPage();
+    const input = await screen.findByRole("textbox");
+    act(() => input.focus());
+    fireEvent.change(input, { target: { value: "hello" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(input).toBeDisabled();
+    blurDisabledInput(input);
+    emit({
+      type: "dialog.end",
+      fullHtml: "<p>A new reply.</p>",
+      color: "#fff",
+      isSystem: false,
+      speaker: "Mio",
+      seq: 1,
+      ts: 1,
+      v: 1,
+    });
+    emit({ type: "status.change", status: "idle", seq: 2, ts: 2, v: 1 });
+    await waitFor(() => expect(input).toHaveFocus());
+    fireEvent.change(input, { target: { value: "draft during the reply animation" } });
+    expect(input).toHaveValue("draft during the reply animation");
+  });
+
+  it.each(["default", "pill"] as const)(
+    "restores the %s field after an Enter send and temporary disable",
+    async (layout) => {
+      const emit = captureStageEvents();
+      if (layout === "pill") themeContextMocks.optional = { style: { "--chat-input-layout": "pill" } as CSSProperties };
+      mocks.getChatSnapshot.mockResolvedValue(
+        snapshot({ turnOptions: { batchEnabled: false, batchIdleSeconds: 5, interruptEnabled: false } }),
+      );
+      renderPage();
+      const input = await screen.findByRole("textbox");
+      act(() => input.focus());
+      fireEvent.change(input, { target: { value: "send with enter" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(input).toBeDisabled();
+      blurDisabledInput(input);
+      emit({ type: "status.change", status: "speaking", seq: 1, ts: 1, v: 1 });
+      expect(input).toBeEnabled();
+      await waitFor(() => expect(input).toHaveFocus());
+      fireEvent.change(input, { target: { value: "keep typing without clicking again" } });
+      expect(input).toHaveValue("keep typing without clicking again");
+    },
+  );
+
+  it("does not steal focus from history opened while a reply is running", async () => {
+    const emit = captureStageEvents();
+    renderPage();
+    const input = await screen.findByRole("textbox");
+    act(() => input.focus());
+    fireEvent.change(input, { target: { value: "hello" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.click(screen.getByRole("button", { name: "Open history" }));
+    const dialog = await screen.findByRole("dialog", { name: "Conversation history" });
+    const close = within(dialog).getAllByRole("button", { name: "Close" })[0]!;
+    act(() => close.focus());
+    emit({ type: "options.show", options: ["Reply choice"], seq: 1, ts: 1, v: 1 });
+    emit({ type: "status.change", status: "idle", seq: 2, ts: 2, v: 1 });
+    expect(close).toHaveFocus();
+    expect(input).not.toHaveFocus();
+  });
+
+  it("defers focus restoration while the window is inactive", async () => {
+    const emit = captureStageEvents();
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({ turnOptions: { batchEnabled: false, batchIdleSeconds: 5, interruptEnabled: false } }),
+    );
+    renderPage();
+    const input = await screen.findByRole("textbox");
+    act(() => input.focus());
+    fireEvent.change(input, { target: { value: "hello" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(input).toBeDisabled();
+    blurDisabledInput(input);
+    fireEvent(window, new Event("blur"));
+    expect(input).not.toHaveFocus();
+    emit({ type: "status.change", status: "idle", seq: 1, ts: 1, v: 1 });
+    expect(input).not.toHaveFocus();
+    fireEvent(window, new Event("focus"));
+    await waitFor(() => expect(input).toHaveFocus());
+  });
+
+  it("focuses an enabled option when the first choice is locked", async () => {
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({
+        options: [
+          {
+            source: "story",
+            id: "locked",
+            label: "Locked choice",
+            enabled: false,
+            expectedNodeId: "node",
+            expectedRevision: 1,
+          },
+          "Available choice",
+        ],
+      }),
+    );
+    renderPage();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Available choice" })).toHaveFocus());
+    expect(screen.getByRole("button", { name: "Locked choice" })).toBeDisabled();
   });
 
   it("renders localized correlated tool confirmation controls without submitting dialog text", async () => {
@@ -1174,6 +1366,7 @@ describe("ChatStagePage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
     await waitFor(() => expect(input).toHaveValue("retry me"));
+    expect(input).toHaveFocus();
     expect(screen.getByText("Ready")).toBeInTheDocument();
     expect(mocks.sendChatCommand).toHaveBeenCalledTimes(1);
     expect(mocks.sendChatCommand).toHaveBeenCalledWith({ payload: "retry me", type: "send-message" });

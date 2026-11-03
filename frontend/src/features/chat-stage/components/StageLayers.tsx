@@ -368,7 +368,7 @@ export function OptionsLayer({
       hidden={hidden}
     >
       <div aria-label={t("chat.options.label")} className="options-layer__scroll" role="list">
-        {options.map((option, index) => {
+        {options.map((option) => {
           const label = typeof option === "string" ? option : option.label;
           const disabled = typeof option !== "string" && !option.enabled;
           const key = typeof option === "string" ? option : `${option.expectedRevision}:${option.id}`;
@@ -376,7 +376,6 @@ export function OptionsLayer({
             <div className="options-layer__item" key={key} role="listitem">
               <ThemeFrame prefix="chat-option" />
               <Button
-                autoFocus={index === 0}
                 className="options-layer__button"
                 disabled={disabled}
                 onClick={() => onSelect(option)}
