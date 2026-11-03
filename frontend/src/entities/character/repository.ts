@@ -1,5 +1,5 @@
 import { getPlatform } from "../../shared/platform/platform";
-import type { Character } from "../config/types";
+import type { Character, CharacterScenario } from "../config/types";
 import type {
   CharacterMemoryImportResult,
   ImageAutoLabelResult,
@@ -180,4 +180,31 @@ export function saveSpriteVoiceType(name: string, spriteIndex: number, voiceType
 
 export function deleteSpriteVoice(name: string, spriteIndex: number) {
   return getPlatform().characters.deleteSpriteVoice(name, spriteIndex);
+}
+
+export function saveCharacterScenarios(name: string, scenarios: CharacterScenario[]) {
+  return getPlatform().characters.saveScenarios(name, scenarios);
+}
+
+export function uploadScenarioVoice(input: {
+  name: string;
+  scenarioIndex: number;
+  voicePath: string;
+  voiceText: string;
+  voiceType: string;
+  scenarios?: CharacterScenario[];
+}) {
+  return getPlatform().characters.uploadScenarioVoice(input);
+}
+
+export function deleteScenarioVoice(name: string, scenarioIndex: number) {
+  return getPlatform().characters.deleteScenarioVoice(name, scenarioIndex);
+}
+
+export function saveScenarioVoiceText(input: { name: string; scenarioIndex: number; voiceText: string }) {
+  return getPlatform().characters.saveScenarioVoiceText(input);
+}
+
+export function saveScenarioVoiceType(input: { name: string; scenarioIndex: number; voiceType: string }) {
+  return getPlatform().characters.saveScenarioVoiceType(input);
 }

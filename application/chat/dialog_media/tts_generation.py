@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import re
+from dataclasses import replace
+
+import yaml
+
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 from urllib.parse import urlparse
 
 from ai.tts.model_session import tts_model_session
+from sdk.voice_tags import VOICE_TAG_PATTERN, strip_voice_tags
 from .models import TtsGenerationRequest
 
 
@@ -39,6 +44,17 @@ class DefaultTtsGenerationStrategy(TtsGenerationStrategy):
             yield from self._generate(request)
 
     def _generate(self, request: TtsGenerationRequest) -> Iterator[str]:
+        scenario = self._voice_scenario(request)
+        if scenario:
+            voice_type = str(scenario.get("voice_type") or "").strip().lower()
+            if voice_type == "preset" and scenario.get("voice_path"):
+                yield self._absolute(scenario["voice_path"])
+                return
+            if voice_type == "reference" and scenario.get("voice_path"):
+                request = replace(request, sprite=replace(
+                    request.sprite, voice_type="reference",
+                    voice_path=scenario["voice_path"], voice_text=scenario.get("voice_text") or "",
+                ))
         manager = request.runtime.tts_manager
         if manager is None:
             yield self._fallback_audio_path(request)
@@ -66,6 +82,8 @@ class DefaultTtsGenerationStrategy(TtsGenerationStrategy):
             return
 
         speech_text, text_processor = self._speech_input(request)
+        if scenario:
+            speech_text = strip_voice_tags(speech_text)
         ref_audio_path = self._absolute(character.refer_audio_path)
         prompt_text = character.prompt_text
         if self._can_use_sprite_reference(request):
@@ -103,6 +121,28 @@ class DefaultTtsGenerationStrategy(TtsGenerationStrategy):
                 yield ""
                 return
             yield audio_path
+
+    @staticmethod
+    def _voice_scenario(request: TtsGenerationRequest) -> dict | None:
+        scenarios = getattr(request.character, "scenarios", []) or []
+        # Read current disk metadata, as the media worker may hold an older config.
+        path = getattr(getattr(request.runtime, "config", None), "_CHARACTERS_CONFIG_PATH", "data/config/characters.yaml")
+        try:
+            with Path(path).open(encoding="utf-8") as stream:
+                characters = yaml.safe_load(stream) or []
+            for character in characters:
+                if character.get("name") == request.character_name:
+                    scenarios = character.get("scenarios") or []
+                    break
+        except (OSError, TypeError, ValueError, yaml.YAMLError):
+            pass
+        tags = VOICE_TAG_PATTERN.findall(request.message.text or "")
+        for tag in tags:
+            for scenario in scenarios:
+                data = scenario if isinstance(scenario, dict) else scenario.model_dump()
+                if str(data.get("name", "")).lower() == tag.lower():
+                    return data
+        return None
 
     def _fallback_audio_path(self, request: TtsGenerationRequest) -> str:
         sprite = request.sprite

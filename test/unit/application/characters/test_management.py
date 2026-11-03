@@ -127,7 +127,8 @@ def execute(use_case, operation, payload):
     {"avatar_type": None, "avatars": None},
     {},
 ])
-def test_save_avatar_banks_survive_config_reload(tmp_path, existing, avatar_fields):
+@pytest.mark.parametrize("scenarios", [[], [{"name": "happy", "voice_type": "preset", "voice_path": "happy.wav"}]])
+def test_save_avatar_banks_survive_config_reload(tmp_path, existing, avatar_fields, scenarios):
     crop = {"x": 0.3, "y": 0.4, "zoom": 2.0}
     sprite_crop = {"x": 0.6, "y": 0.2, "zoom": 3.0}
     character = Character(
@@ -175,6 +176,7 @@ def test_save_avatar_banks_survive_config_reload(tmp_path, existing, avatar_fiel
     result = execute(use_case, CharacterOperation.SAVE, {
         "character": {"name": "Mika", "color": "#ffffff", "sprite_prefix": "mika",
                       "character_setting": "Edited in the existing editor",
+                      "scenarios": scenarios,
                       "portrait_crop": crop,
                       "sprites": [{"path": "neutral.png", "portrait_crop": sprite_crop}],
                       **avatar_fields},
@@ -182,6 +184,7 @@ def test_save_avatar_banks_survive_config_reload(tmp_path, existing, avatar_fiel
     assert result["avatar_type"] == expected.avatar_type
     assert result["avatars"] == expected.model_dump(mode="json")["avatars"]
     assert config.get_character_by_name("Mika").model_dump(mode="json")["avatars"] == result["avatars"]
+    assert result["scenarios"] == [dict(voice_text=None, **item) for item in scenarios]
     assert result["portrait_crop"] == crop
     if existing:
         assert result["sprites"][0]["portrait_crop"] == sprite_crop

@@ -1,0 +1,197 @@
+import { useState } from "react";
+import { HelpCircle, Languages, Plus, Save, Trash2 } from "lucide-react";
+
+import type { Character, CharacterScenario } from "../../entities/config/types";
+import { fileUrl } from "../../entities/files/repository";
+import { useI18n } from "../../shared/i18n";
+import { AlertDialog, AsyncButton, AudioPlayer, Button, EmptyState, FilePicker, TextInput } from "../../shared/ui";
+
+export interface CharacterScenarioSectionProps {
+  draft: Character;
+  hasUnsavedChanges: boolean;
+  isSavedCharacter: boolean;
+  scenarioSavePending: boolean;
+  translatePending: boolean;
+  onAddScenario: () => void;
+  onAiTranslate: () => void;
+  onDeleteScenario: (index: number) => void;
+  onScenarioNameChange: (index: number, name: string) => void;
+  onScenarioVoiceTextChange: (index: number, text: string) => void;
+  onScenarioVoiceTypeChange: (index: number, voiceType: string) => void;
+  onSaveAllScenarios: () => void;
+  onUploadScenarioVoice: (index: number, filePath: string) => void;
+}
+
+function Hint({ text }: { text: string }) {
+  return (
+    <span className="hint-icon" title={text}>
+      <HelpCircle aria-hidden size={14} />
+    </span>
+  );
+}
+
+export function CharacterScenarioSection({
+  draft,
+  hasUnsavedChanges,
+  isSavedCharacter,
+  scenarioSavePending,
+  translatePending,
+  onAddScenario,
+  onAiTranslate,
+  onDeleteScenario,
+  onScenarioNameChange,
+  onScenarioVoiceTextChange,
+  onScenarioVoiceTypeChange,
+  onSaveAllScenarios,
+  onUploadScenarioVoice,
+}: CharacterScenarioSectionProps) {
+  const { t } = useI18n();
+  const scenarios: CharacterScenario[] = draft.scenarios ?? [];
+  const [pendingDeleteIndex, setPendingDeleteIndex] = useState<number | null>(null);
+
+  return (
+    <section className="section">
+      <div className="section__header">
+        <h2 className="section__title">{t("character.section.voiceTags")}</h2>
+        <div className="page__actions">
+          <AsyncButton
+            disabled={hasUnsavedChanges || !isSavedCharacter || scenarioSavePending}
+            icon={<Languages aria-hidden className="button__icon" />}
+            loading={translatePending}
+            onClick={onAiTranslate}
+            variant="ghost"
+          >
+            {t("character.voiceTag.aiTranslate")}
+          </AsyncButton>
+          <Button
+            disabled={scenarioSavePending}
+            icon={<Plus aria-hidden className="button__icon" />}
+            onClick={onAddScenario}
+            variant="ghost"
+          >
+            {t("character.voiceTag.add")}
+          </Button>
+          <AsyncButton
+            icon={<Save aria-hidden className="button__icon" />}
+            disabled={!isSavedCharacter}
+            loading={scenarioSavePending}
+            onClick={onSaveAllScenarios}
+            variant={hasUnsavedChanges ? "primary" : "ghost"}
+          >
+            {t("character.voiceTag.saveAll")}
+            {hasUnsavedChanges && <span className="save-dot" />}
+          </AsyncButton>
+        </div>
+      </div>
+
+      <p className="section__description">{t("character.voiceTag.description")}</p>
+      <p className="section__description">
+        {t("character.voiceTag.voiceTypePreset")}：{t("character.voiceTag.voiceTypePresetHint")} &middot;{" "}
+        {t("character.voiceTag.voiceTypeReference")}：{t("character.voiceTag.voiceTypeReferenceHint")} &middot;{" "}
+        {t("character.voiceTag.saveBeforeTranslate")}
+      </p>
+
+      {scenarios.length === 0 && <EmptyState title={t("character.voiceTag.empty")} />}
+
+      <div className="scenario-list">
+        {scenarios.map((scenario, si) => {
+          const voiceType = scenario.voice_type ?? "preset";
+          const voicePath = scenario.voice_path ?? "";
+          return (
+            <div className="scenario-card" key={`scenario-${si}`}>
+              <div className="scenario-card__row">
+                <span className="scenario-card__index">{t("character.voiceTag.index", { index: si + 1 })}</span>
+                <TextInput
+                  className="scenario-card__name"
+                  disabled={scenarioSavePending}
+                  maxLength={15}
+                  onChange={(event) => onScenarioNameChange(si, event.target.value)}
+                  placeholder={t("character.voiceTag.namePlaceholder")}
+                  value={scenario.name}
+                />
+                <span className="scenario-card__hint-group">
+                  <Hint text={t("character.voiceTag.nameHint")} />
+                  <FilePicker
+                    disabled={!isSavedCharacter || scenarioSavePending}
+                    acceptedExtensions={
+                      voiceType === "reference" ? [".wav"] : [".flac", ".m4a", ".mp3", ".ogg", ".wav"]
+                    }
+                    onPathChange={(path) => onUploadScenarioVoice(si, path)}
+                    pickLabel={t("character.voiceTag.uploadVoice")}
+                  />
+                </span>
+                {voicePath ? (
+                  <>
+                    <span className="scenario-card__filename">{voicePath.split("/").pop()?.split("\\").pop()}</span>
+                    <AudioPlayer
+                      className="scenario-card__player"
+                      label={voicePath.split("/").pop()?.split("\\").pop() ?? "Audio"}
+                      preload="metadata"
+                      key={voicePath}
+                      src={fileUrl(voicePath)}
+                    />
+                  </>
+                ) : null}
+                <div className="scenario-card__voice-type">
+                  <label className="radio-group__item">
+                    <input
+                      disabled={scenarioSavePending}
+                      checked={voiceType === "preset"}
+                      className="radio-group__input"
+                      name={`scenarioVoiceType-${si}`}
+                      onChange={() => onScenarioVoiceTypeChange(si, "preset")}
+                      type="radio"
+                    />
+                    <span>{t("character.voiceTag.voiceTypePreset")}</span>
+                  </label>
+                  <label className="radio-group__item">
+                    <input
+                      disabled={scenarioSavePending}
+                      checked={voiceType === "reference"}
+                      className="radio-group__input"
+                      name={`scenarioVoiceType-${si}`}
+                      onChange={() => onScenarioVoiceTypeChange(si, "reference")}
+                      type="radio"
+                    />
+                    <span>{t("character.voiceTag.voiceTypeReference")}</span>
+                  </label>
+                  {voiceType === "reference" && (
+                    <span className="scenario-card__hint">{t("character.voiceTag.voiceHint")}</span>
+                  )}
+                </div>
+                <TextInput
+                  disabled={scenarioSavePending}
+                  className="scenario-card__voice-text"
+                  onChange={(event) => onScenarioVoiceTextChange(si, event.target.value)}
+                  placeholder={t("character.voiceTag.voiceText")}
+                  value={scenario.voice_text ?? ""}
+                />
+                <div className="scenario-card__actions">
+                  <Button
+                    disabled={scenarioSavePending}
+                    icon={<Trash2 aria-hidden className="button__icon" />}
+                    onClick={() => setPendingDeleteIndex(si)}
+                    variant="ghost"
+                  />
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {pendingDeleteIndex !== null && (
+        <AlertDialog
+          body={t("character.voiceTag.deleteConfirmBody", { index: pendingDeleteIndex + 1 })}
+          onCancel={() => setPendingDeleteIndex(null)}
+          onConfirm={() => {
+            onDeleteScenario(pendingDeleteIndex);
+            setPendingDeleteIndex(null);
+          }}
+          open
+          title={t("character.voiceTag.deleteConfirmTitle")}
+        />
+      )}
+    </section>
+  );
+}

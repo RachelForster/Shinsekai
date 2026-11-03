@@ -245,6 +245,10 @@ class CharacterUseCase:
         )
         if message.startswith("名称不能为空") or "已与其他角色重复" in message or message.startswith("保存失败"):
             raise RuntimeError(message)
+        if "scenarios" in body:
+            self._state.character_manager.save_character_scenarios(
+                saved_name, [scenario.model_dump() for scenario in character.scenarios]
+            )
         self._state.config_manager.reload()
         if original_name and original_name != saved_name:
             from application.knowledge.manage_knowledge import rename_character_bindings

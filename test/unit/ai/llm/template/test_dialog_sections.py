@@ -208,3 +208,14 @@ def test_semantic_media_mode_uses_vibe_and_omits_numbered_asset_catalogs(context
     assert "<scene_block_header>" not in rendered
     assert "<bgm_block_header>" not in rendered
     assert "Alice profile" in rendered
+
+
+
+def test_character_section_includes_voice_tag_catalog(context):
+    character = SimpleNamespace(sprites=[], emotion_tags="", scenarios=[{"name": "happy"}])
+    context = replace(context, characters=(("Alice", character),),
+                      translate=lambda key, **kwargs: f"{key}:{kwargs}")
+    rendered = CharacterSection().render(context)
+    assert "voice_tags_header" in rendered
+    assert "[happy]" in rendered
+    assert "r_voice_tag" in RequirementsSection().render(context)

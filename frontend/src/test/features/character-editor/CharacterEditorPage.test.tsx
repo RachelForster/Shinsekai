@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CharacterEditorPage, mergeSprites } from "../../../features/character-editor/CharacterEditorPage";
 import type { Character } from "../../../entities/config/types";
 import { I18nProvider } from "../../../shared/i18n/I18nProvider";
+import { getPlatform } from "../../../shared/platform/platform";
 import { sampleConfig } from "../../../shared/platform/sampleData";
 import type { TemplateLaunchSession } from "../../../shared/platform/types";
 import { ToastProvider } from "../../../shared/ui";
@@ -16,6 +17,8 @@ const mockPlanCharacterSprites = vi.fn();
 const mockRenderCharacterSprite = vi.fn();
 const mockImportGeneratedCharacterSprites = vi.fn();
 const mockSaveCharacter = vi.fn();
+const mockSaveScenarios = vi.fn();
+const mockUploadScenario = vi.fn();
 const mockSaveCharacterEmotionTags = vi.fn();
 const mockUploadCharacterSprites = vi.fn();
 const mockUploadSpriteVoice = vi.fn();
@@ -137,6 +140,8 @@ vi.mock("../../../entities/character/repository", () => ({
   searchCharacterMemories: (input: { limit?: number; name: string; query: string }) =>
     mockSearchCharacterMemories(input),
   saveCharacter: (character: Character, originalName?: string) => mockSaveCharacter(character, originalName),
+  saveCharacterScenarios: (name: string, scenarios: Character["scenarios"]) => mockSaveScenarios(name, scenarios),
+  uploadScenarioVoice: (input: unknown) => mockUploadScenario(input),
   saveCharacterEmotionTags: (name: string, emotionTags: string) => mockSaveCharacterEmotionTags(name, emotionTags),
   saveSpriteScale: (name: string, scale: number) => mockSaveSpriteScale(name, scale),
   saveSpriteVoiceText: (name: string, index: number, text: string) => mockSaveSpriteVoiceText(name, index, text),
@@ -860,5 +865,104 @@ describe("CharacterEditorPage", () => {
     await waitFor(() => expect(screen.queryByText("Missing Python dependency")).not.toBeInTheDocument());
     await waitFor(() => expect(mockGetMem0Status).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(mockListCharacterMemories).toHaveBeenCalledTimes(2));
+  });
+});
+
+describe("voice tag drafts", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetAppConfig.mockResolvedValue(structuredClone(sampleConfig));
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
+    mockListCharacters.mockResolvedValue([
+      { ...structuredClone(character), scenarios: [{ name: "happy", voice_type: "preset" }] },
+    ]);
+    mockSaveScenarios.mockImplementation(async (_name: string, scenarios: Character["scenarios"]) => ({
+      ...structuredClone(character),
+      scenarios,
+    }));
+    mockUploadScenario.mockImplementation(async () => ({
+      ...structuredClone(character),
+      scenarios: [{ name: "renamed", voice_type: "preset", voice_text: "local words", voice_path: "tag.wav" }],
+    }));
+  });
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  it("keeps local name and voice-text edits when changing voice type", async () => {
+    renderPage();
+    const name = await screen.findByPlaceholderText("Tag name");
+    fireEvent.change(name, { target: { value: "renamed" } });
+    fireEvent.change(screen.getByPlaceholderText("Voice text"), { target: { value: "local words" } });
+    const section = screen.getByRole("heading", { name: "Voice Trigger Tags" }).closest("section")!;
+    fireEvent.click(within(section).getByRole("radio", { name: "Reference" }));
+    expect(name).toHaveValue("renamed");
+    expect(screen.getByPlaceholderText("Voice text")).toHaveValue("local words");
+    fireEvent.click(within(section).getByRole("button", { name: /Save all tags/ }));
+    await waitFor(() =>
+      expect(mockSaveScenarios).toHaveBeenCalledWith("Mika", [
+        { name: "renamed", voice_type: "reference", voice_text: "local words" },
+      ]),
+    );
+  });
+
+  it("uploads a new tag with its draft atomically and preserves unrelated edits on refetch", async () => {
+    mockListCharacters.mockResolvedValue([{ ...structuredClone(character), scenarios: [] }]);
+    renderPage();
+    await screen.findByDisplayValue("Mika");
+    const section = screen.getByRole("heading", { name: "Voice Trigger Tags" }).closest("section")!;
+    fireEvent.click(within(section).getByRole("button", { name: "Add tag" }));
+    fireEvent.change(screen.getByPlaceholderText("Tag name"), { target: { value: "renamed" } });
+    fireEvent.change(screen.getByPlaceholderText("Voice text"), { target: { value: "local words" } });
+    fireEvent.change(screen.getByLabelText("Character setting"), { target: { value: "Unsaved personality" } });
+    fireEvent.click(within(section).getByRole("button", { name: "Upload voice" }));
+    await waitFor(() =>
+      expect(mockUploadScenario).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "Mika",
+          scenarioIndex: 0,
+          voiceText: "local words",
+          voiceType: "preset",
+          scenarios: [{ name: "renamed", voice_text: "local words", voice_type: "preset" }],
+        }),
+      ),
+    );
+    expect(mockSaveScenarios).not.toHaveBeenCalled();
+    await screen.findByText("tag.wav");
+    expect(screen.getByLabelText("Character setting")).toHaveValue("Unsaved personality");
+    expect(screen.getByPlaceholderText("Tag name")).toHaveValue("renamed");
+  });
+
+  it("reports translation failures without replacing the tag draft", async () => {
+    mockListCharacters.mockResolvedValue([
+      { ...structuredClone(character), scenarios: [{ name: "悲伤", voice_type: "preset" }] },
+    ]);
+    vi.spyOn(getPlatform().characters, "translateScenarioNames").mockRejectedValue(
+      new Error("Translation unavailable"),
+    );
+    renderPage();
+    await screen.findByDisplayValue("悲伤");
+    const section = screen.getByRole("heading", { name: "Voice Trigger Tags" }).closest("section")!;
+    fireEvent.click(within(section).getByRole("button", { name: "AI Translate" }));
+    await screen.findByText("Translation unavailable");
+    expect(screen.getByPlaceholderText("Tag name")).toHaveValue("悲伤");
+    expect(mockSaveScenarios).not.toHaveBeenCalled();
+  });
+
+  it("saves translated tag names only after a valid translation", async () => {
+    mockListCharacters.mockResolvedValue([
+      { ...structuredClone(character), scenarios: [{ name: "悲伤", voice_type: "preset" }] },
+    ]);
+    vi.spyOn(getPlatform().characters, "translateScenarioNames").mockResolvedValue({ translated: { "0": "sad-face" } });
+    renderPage();
+    await screen.findByDisplayValue("悲伤");
+    const section = screen.getByRole("heading", { name: "Voice Trigger Tags" }).closest("section")!;
+    fireEvent.click(within(section).getByRole("button", { name: "AI Translate" }));
+    await waitFor(() =>
+      expect(mockSaveScenarios).toHaveBeenCalledWith("Mika", [{ name: "sad-face", voice_type: "preset" }]),
+    );
+    await screen.findByDisplayValue("sad-face");
   });
 });

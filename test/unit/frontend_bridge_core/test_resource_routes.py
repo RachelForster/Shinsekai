@@ -50,6 +50,13 @@ def _request(
 
 def test_character_route_contracts_remain_stable() -> None:
     assert _contracts(CHARACTER_ROUTES) == {
+        ("POST", "/api/characters/scenarios/list"),
+        ("POST", "/api/characters/scenarios/save"),
+        ("POST", "/api/characters/scenarios/voice-upload"),
+        ("POST", "/api/characters/scenarios/voice-delete"),
+        ("POST", "/api/characters/scenarios/voice-text"),
+        ("POST", "/api/characters/scenarios/voice-type"),
+        ("POST", "/api/characters/scenarios/translate-names"),
         ("GET", "/api/characters"),
         ("POST", "/api/characters"),
         ("POST", "/api/characters/ai-brief"),

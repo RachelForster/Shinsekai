@@ -141,3 +141,103 @@ def _save_sprite_scale(state: BridgeState, payload: dict[str, Any]) -> dict[str,
     if text.startswith("名称不能为空") or text.startswith("找不到"):
         raise RuntimeError(text)
     return _character_json_after_reload(state, name)
+
+def _validate_reference_audio(voice_path: str) -> None:
+    """参考音频校验：仅限 WAV 格式，时长 3-10 秒"""
+    from sdk.ui.validators import audio_duration_between
+
+    ext = Path(voice_path).suffix.lower()
+    if ext != ".wav":
+        raise ValueError("参考语音仅支持 WAV 格式")
+    ok, err = audio_duration_between(voice_path, 3.0, 10.0, "参考语音")
+    if not ok:
+        raise ValueError(err)
+
+
+def _list_character_scenarios(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
+    name = str(payload.get("name") or "").strip()
+    scenarios = state.character_manager.get_character_scenarios(name)
+    return {"scenarios": scenarios, "name": name}
+
+
+def _save_character_scenarios(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
+    name = str(payload.get("name") or "").strip()
+    scenarios = payload.get("scenarios") or []
+    message = state.character_manager.save_character_scenarios(name, scenarios)
+    if message.startswith("找不到") or message.startswith("请先"):
+        raise RuntimeError(message)
+    return _character_json_after_reload(state, name)
+
+
+def _upload_scenario_voice(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
+    name = str(payload.get("name") or "").strip()
+    scenario_index = int(payload.get("scenarioIndex") or 0)
+    voice_path = str(payload.get("voicePath") or "").strip()
+    voice_text = str(payload.get("voiceText") or "").strip()
+    voice_type = str(payload.get("voiceType") or "").strip().lower()
+    if not voice_path:
+        raise ValueError("voice path is required")
+    from sdk.path_utils import safe_existing_file_path
+    voice_path = str(safe_existing_file_path(voice_path, roots=_local_file_access_roots(state)))
+    if voice_type == "reference":
+        _validate_reference_audio(voice_path)
+    elif voice_type != "preset" and voice_text.strip():
+        _validate_reference_audio(voice_path)
+    scenarios = payload.get("scenarios")
+    if scenarios is not None and not isinstance(scenarios, list):
+        raise ValueError("scenarios must be a list")
+    message, _path = state.character_manager.upload_scenario_voice(
+        name, scenario_index, voice_path, voice_text, voice_type, scenarios=scenarios,
+    )
+    if message.startswith("找不到") or message.startswith("情景不存在") or message.startswith("请先") or message.startswith("请选择"):
+        raise RuntimeError(message)
+    return _character_json_after_reload(state, name)
+
+
+def _delete_scenario_voice(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
+    name = str(payload.get("name") or "").strip()
+    scenario_index = int(payload.get("scenarioIndex") or 0)
+    message = state.character_manager.delete_scenario_voice(name, scenario_index)
+    if message.startswith("找不到") or message.startswith("情景不存在"):
+        raise RuntimeError(message)
+    return _character_json_after_reload(state, name)
+
+
+def _save_scenario_voice_text(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
+    name = str(payload.get("name") or "").strip()
+    scenario_index = int(payload.get("scenarioIndex") or 0)
+    voice_text = str(payload.get("voiceText") or "").strip()
+    message = state.character_manager.save_scenario_voice_text(name, scenario_index, voice_text)
+    if message.startswith("找不到"):
+        raise RuntimeError(message)
+    return _character_json_after_reload(state, name)
+
+
+def _save_scenario_voice_type(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
+    name = str(payload.get("name") or "").strip()
+    scenario_index = int(payload.get("scenarioIndex") or 0)
+    voice_type = str(payload.get("voiceType") or "").strip().lower()
+    if not voice_type:
+        raise ValueError("voice type is required")
+    message = state.character_manager.save_scenario_voice_type(name, scenario_index, voice_type)
+    if message.startswith("找不到"):
+        raise RuntimeError(message)
+    return _character_json_after_reload(state, name)
+
+
+def _translate_scenario_names(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
+    """AI translate scenario tag names to English."""
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        raise ValueError("name is required")
+    from application.localization.scenario_translation import translate_scenario_names
+
+    character = state.config_manager.get_character_by_name(name)
+    if character is None:
+        raise KeyError(f"character not found: {name}")
+    names = payload.get("names")
+    if names is None:
+        names = [scenario.name for scenario in character.scenarios]
+    if not isinstance(names, list) or not all(isinstance(item, str) for item in names):
+        raise ValueError("names must be a list of strings")
+    return {"translated": translate_scenario_names(state.config_manager, names)}

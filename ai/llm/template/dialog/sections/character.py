@@ -96,4 +96,20 @@ class CharacterSection(Section[DialogTemplateContext]):
                 for index, (name, character) in enumerate(supporting_characters)
             ),
         )
-        return sprites, profiles, briefs, *self.children
+        voice_tags = TextSection(
+            "voice_tags",
+            enabled=any(getattr(character, "scenarios", []) for _, character in context.characters),
+            text=context.translate("voice_tags_header"),
+            children=tuple(
+                TextSection(
+                    f"voice_tags.{index}",
+                    text=context.translate("voice_tags_for", name=name, tags=" ".join(
+                        f"[{scenario.get('name', '') if isinstance(scenario, dict) else scenario.name}]"
+                        for scenario in getattr(character, "scenarios", [])
+                    )),
+                )
+                for index, (name, character) in enumerate(context.characters)
+                if getattr(character, "scenarios", [])
+            ),
+        )
+        return sprites, profiles, briefs, *((voice_tags,) if voice_tags.enabled else ()), *self.children

@@ -126,6 +126,7 @@ def build_requirement_sections(
         ("r_cg", 150, context.use_cg, None),
         ("r_translate", 160, context.use_llm_translation, None),
         ("r_effect", 170, context.use_effect, None),
+        ("r_voice_tag", 180, any(getattr(character, "scenarios", []) for _, character in context.characters), None),
     )
     return tuple(
         _RequirementRuleSection(

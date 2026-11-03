@@ -43,6 +43,13 @@ export interface AvatarRuntimeImport {
   accepted_license: boolean;
 }
 
+export interface CharacterScenario {
+  name: string;
+  voice_path?: string;
+  voice_type?: "preset" | "reference" | null;
+  voice_text?: string;
+}
+
 export interface Character {
   sprite_transitions?: SpriteTransition[];
   portrait_crop?: PortraitCrop;
@@ -54,6 +61,7 @@ export interface Character {
   character_setting: string;
   sprite_scale: number;
   emotion_tags: string;
+  scenarios?: CharacterScenario[];
   /** 默认 "static"；模型格式为已注册的格式 id。 */
   avatar_type: string;
   /** 格式 id → 该格式的模型与资源；static 不在此映射中。 */
@@ -1879,6 +1887,22 @@ export interface ShinsekaiPlatform {
       voiceText: string;
       voiceType?: SpriteVoiceType;
     }) => Promise<Character>;
+    saveScenarios: (name: string, scenarios: CharacterScenario[]) => Promise<Character>;
+    uploadScenarioVoice: (input: {
+      name: string;
+      scenarioIndex: number;
+      voicePath: string;
+      voiceText: string;
+      voiceType: string;
+      scenarios?: CharacterScenario[];
+    }) => Promise<Character>;
+    deleteScenarioVoice: (name: string, scenarioIndex: number) => Promise<Character>;
+    saveScenarioVoiceText: (input: { name: string; scenarioIndex: number; voiceText: string }) => Promise<Character>;
+    translateScenarioNames: (
+      name: string,
+      names: string[],
+    ) => Promise<{ translated: Record<string, string>; error?: string }>;
+    saveScenarioVoiceType: (input: { name: string; scenarioIndex: number; voiceType: string }) => Promise<Character>;
   };
   config: {
     cancelTtsBundleDownload: (taskId: string) => Promise<TaskSnapshot<TtsBundleDownloadResult>>;

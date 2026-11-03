@@ -3,6 +3,13 @@ from __future__ import annotations
 from application.characters import CharacterOperation
 from frontend_bridge_core.characters import (
     _ensure_character_briefs,
+    _list_character_scenarios,
+    _save_character_scenarios,
+    _upload_scenario_voice,
+    _delete_scenario_voice,
+    _save_scenario_voice_text,
+    _save_scenario_voice_type,
+    _translate_scenario_names,
     _execute_character_request,
     _generate_character_brief,
     _generate_character_setting,
@@ -269,6 +276,28 @@ def _analyze_sprite_transitions(request: ApiRequest) -> TaskResponse:
 
 
 CHARACTER_ROUTES = (
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/scenarios/list",
+          handler=lambda request: JsonResponse(_list_character_scenarios(request.state, request.body)),
+          name="characters.scenarios.list"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/scenarios/save",
+          handler=lambda request: JsonResponse(_save_character_scenarios(request.state, request.body)),
+          name="characters.scenarios.save"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/scenarios/voice-upload",
+          handler=lambda request: JsonResponse(_upload_scenario_voice(request.state, request.body)),
+          name="characters.scenarios.voice-upload"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/scenarios/voice-delete",
+          handler=lambda request: JsonResponse(_delete_scenario_voice(request.state, request.body)),
+          name="characters.scenarios.voice-delete"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/scenarios/voice-text",
+          handler=lambda request: JsonResponse(_save_scenario_voice_text(request.state, request.body)),
+          name="characters.scenarios.voice-text"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/scenarios/voice-type",
+          handler=lambda request: JsonResponse(_save_scenario_voice_type(request.state, request.body)),
+          name="characters.scenarios.voice-type"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/scenarios/translate-names",
+          handler=lambda request: JsonResponse(_translate_scenario_names(request.state, request.body)),
+          name="characters.scenarios.translate-names"),
+
     Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/transitions/analyze",
           handler=_analyze_sprite_transitions, name="characters.sprites.transitions.analyze"),
     Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/transitions/generate",

@@ -70,13 +70,39 @@ class SpriteTransition(BaseModel):
     to_fingerprint: str
     frame_count: int = Field(default=5, ge=1)
 
+
+class CharacterScenario(BaseModel):
+    """角色的单个情景（情绪或动作），由 AI 自主识别"""
+    name: str = Field(..., description="情景名称（英文，如 happy / kiss / angry）")
+    voice_path: Optional[str] = Field(None, description="语音文件路径（可选）")
+    voice_type: Optional[str] = Field(None, description="语音类型: preset 或 reference")
+    voice_text: Optional[str] = Field(None, description="语音对应文本内容")
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        import re
+        value = value.strip()
+        if value and not re.fullmatch(r"[\w-]+", value):
+            raise ValueError("voice tag names may contain letters, numbers, underscores or hyphens")
+        return value
+
+    @field_validator("voice_type", mode="before")
+    @classmethod
+    def normalize_voice_type(cls, value):
+        value = str(value or "").strip().lower() or None
+        if value not in {None, "preset", "reference"}:
+            raise ValueError("voice_type must be preset or reference")
+        return value
+
+
 class Character(BaseModel):
     """单个角色配置的实体模型"""
     # 角色基本信息
     name: str = Field(..., description="角色名称")
     color: str = Field(..., description="角色对话框或名字的颜色")
     sprite_prefix: str = Field(..., description="立绘文件名的通用前缀")
-    
+
     # 列表中可能包含 Sprite 模型，也可能只是原始字典
     sprites: List[Union[Sprite, dict]] = Field(default_factory=list, description="角色的立绘和对应语音的列表")
     sprite_transitions: DefaultIfNone[List[SpriteTransition]] = Field(default_factory=list)
@@ -88,6 +114,7 @@ class Character(BaseModel):
     sprite_scale: DefaultIfNone[float] = Field(default=1.0, description="立绘的缩放比例 (默认值 1.0)")
     portrait_crop: DefaultIfNone[PortraitCrop] = Field(default_factory=PortraitCrop)
     emotion_tags: DefaultIfNone[str] = Field(default="", description="情绪标签和对应的立绘编号描述")
+    scenarios: List[CharacterScenario] = Field(default_factory=list, description="情景配置列表（由 AI 自主识别情绪或动作）")
     avatar_type: DefaultIfNone[str] = Field(default="static", description="当前选择的形象类型：static 或已注册的模型格式 id")
     avatars: DefaultIfNone[Dict[str, ModelSprites]] = Field(
         default_factory=dict,

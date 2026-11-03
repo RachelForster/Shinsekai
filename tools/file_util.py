@@ -164,6 +164,7 @@ def export_character(character_configs: list[CharacterConfig], output_path: str,
                 'speech_speed': getattr(config, 'speech_speed', 1.0),
                 'speech_volume': getattr(config, 'speech_volume', 1.0),
                 'pronunciation_map': getattr(config, 'pronunciation_map', None) or {},
+                'scenarios': deepcopy(getattr(config, 'scenarios', []) or []),
             }
 
             # 处理绝对路径的模型和参考音频
@@ -276,6 +277,14 @@ def export_character(character_configs: list[CharacterConfig], output_path: str,
                     destination.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(checked, destination)
                 bank['model_path'] = model.relative_to(source_root.resolve()).as_posix()
+            # 重写 scenario voice_path 为仅文件名
+            scenarios = char_data.get('scenarios') or []
+            if isinstance(scenarios, list):
+                for s in scenarios:
+                    if isinstance(s, dict) and s.get('voice_path'):
+                        s['voice_path'] = _safe_package_basename_or_legacy_absolute(
+                            s['voice_path'], "scenario voice_path"
+                        )
 
             # 复制语音文件
             if config.sprite_prefix:
@@ -524,7 +533,25 @@ def import_character(input_path: str) -> list[CharacterConfig]:
                         s['voice_type'] = voice_type
                     else:
                         s['voice_type'] = 'reference' if str(s.get('voice_text') or '').strip() else 'fallback'
-            
+
+
+            # 修复 scenario voice_path：指向 SPEECH_DIR
+            scenarios = char_data.get('scenarios') or []
+            if isinstance(scenarios, list):
+                for sc in scenarios:
+                    if isinstance(sc, dict) and sc.get('voice_path'):
+                        filename = _safe_package_basename_or_legacy_absolute(
+                            sc['voice_path'], "scenario voice_path"
+                        )
+                        if new_sprite_prefix:
+                            new_vp = dest_speech_dir / filename
+                            try:
+                                sc['voice_path'] = str(new_vp.relative_to(Path.cwd()))
+                            except ValueError:
+                                sc['voice_path'] = new_vp.as_posix()
+                        else:
+                            sc['voice_path'] = filename
+
             # 恢复模型文件并更新路径
             model_paths = {
                 'gpt_model_path': char_data.get('gpt_model_path'),

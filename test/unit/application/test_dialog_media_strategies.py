@@ -1,5 +1,6 @@
 """Tests for replaceable sprite lookup and TTS generation strategies."""
 
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -632,3 +633,52 @@ def test_dialog_media_worker_passes_injected_strategies_to_handler_chain(monkeyp
         tts_generation_strategy=generation,
     )
     dispatcher.init_handlers.assert_called_once_with()
+
+
+@pytest.mark.parametrize("voice_type", ["PRESET", "reference"])
+@pytest.mark.parametrize("translated", [False, True])
+def test_voice_tag_overrides_sprite_voice(tmp_path, voice_type, translated):
+    voice = tmp_path / "tag.wav"
+    voice.write_bytes(b"audio")
+    manager = MagicMock()
+    manager.generate_tts.return_value = "generated.wav"
+    runtime = SimpleNamespace(
+        tts_manager=manager, text_processor=SimpleNamespace(remove_parentheses=lambda text: text, replace_names=lambda text: text),
+        config=SimpleNamespace(
+            _CHARACTERS_CONFIG_PATH=tmp_path / "missing.yaml",
+            config=SimpleNamespace(api_config=SimpleNamespace(tts_split_enabled=False)),
+        ),
+    )
+    request = TtsGenerationRequest(
+        runtime=runtime,
+        character=_character(scenarios=[{
+            "name": "sad-face", "voice_type": voice_type,
+            "voice_path": str(voice), "voice_text": "reference words",
+        }]),
+        character_name="Alice",
+        message=LLMDialogMessage(name="Alice", text="I feel [SAD-FACE] very tired", translate="Translated words" if translated else ""),
+        sprite=ResolvedSpriteAsset(asset_id="1", voice_type="preset", voice_path="sprite.wav"),
+    )
+    paths = list(DefaultTtsGenerationStrategy().generate(request))
+    if voice_type == "PRESET":
+        assert paths == [voice.resolve().as_posix()]
+        manager.generate_tts.assert_not_called()
+    else:
+        assert paths == ["generated.wav"]
+        assert manager.generate_tts.call_args.args == (("Translated words" if translated else "I feel very tired"),)
+        assert manager.generate_tts.call_args.kwargs["ref_audio_path"] == voice.resolve().as_posix()
+        assert manager.generate_tts.call_args.kwargs["prompt_text"] == "reference words"
+
+
+def test_voice_tag_reads_fresh_yaml_metadata(tmp_path):
+    config = tmp_path / "characters.yaml"
+    config.write_text(yaml.safe_dump([{"name": "Alice", "scenarios": [
+        {"name": "happy", "voice_type": "preset", "voice_path": "fresh.wav"}
+    ]}]), encoding="utf-8")
+    request = TtsGenerationRequest(
+        runtime=SimpleNamespace(tts_manager=None, config=SimpleNamespace(_CHARACTERS_CONFIG_PATH=config)),
+        character=_character(scenarios=[]), character_name="Alice",
+        message=LLMDialogMessage(name="Alice", text="[happy]Hello"),
+        sprite=ResolvedSpriteAsset(asset_id="1"),
+    )
+    assert list(DefaultTtsGenerationStrategy().generate(request)) == [Path("fresh.wav").resolve().as_posix()]
