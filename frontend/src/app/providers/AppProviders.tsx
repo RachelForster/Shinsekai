@@ -2,6 +2,7 @@ import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { useEffect, type ReactNode } from "react";
 
 import { browseFiles } from "../../entities/files/repository";
+import { useCharacterCatalogSync } from "../../entities/character/useCharacterCatalogSync";
 import { configQueryKey, getAppConfig } from "../../entities/config/repository";
 import { ChatThemeProvider } from "../../features/chat-stage/theme/ChatThemeProvider";
 import { queryClient } from "../../shared/async/queryClient";
@@ -17,6 +18,7 @@ function AppI18nProvider({ children }: { children: ReactNode }) {
 }
 
 export function AppRuntimeProviders({ children }: { children: ReactNode }) {
+  useCharacterCatalogSync();
   const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
 
   useEffect(() => {

@@ -2097,6 +2097,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         return clone(result);
       },
       list: () => delay(config.characters),
+      revision: () => delay(JSON.stringify(config.characters)),
       async listMemories(name) {
         const agentId = name || "user";
         const existing = characterMemories.get(agentId) ?? {

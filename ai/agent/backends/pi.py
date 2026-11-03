@@ -292,7 +292,7 @@ class PiAgentBackend:
         model = {
             key: value
             for key, value in session.model.items()
-            if key not in ("baseUrl", "api")
+            if key not in ("baseUrl", "api", "thinkingLevel")
         }
         (agent_dir / "models.json").write_text(
             json.dumps(
@@ -346,6 +346,7 @@ class PiAgentBackend:
             str(session.root / "policy.md"),
         ]
         command += ["--tools", ",".join((*PI_BUILTIN_TOOLS, *native_names))]
+        command += ["--thinking", session.model.get("thinkingLevel", "off")]
         for path in session.marker["skills"]:
             command += ["--skill", path]
         server = await asyncio.start_server(serve, "127.0.0.1", 0, limit=MAX_PI_FRAME)
@@ -466,7 +467,7 @@ class PiAgentBackend:
                         model_phase,
                         (
                             "failed"
-                            if stop_reason in ("error", "aborted")
+                            if stop_reason in ("error", "aborted", "length")
                             else "succeeded"
                         ),
                     )
@@ -538,7 +539,8 @@ class PiAgentBackend:
                 elif kind == "agent_settled":
                     break
             result = AgentResult(
-                summary=summary, data={"usage": usage if usage_seen else None}
+                summary=summary,
+                data={"usage": usage if usage_seen else None, "stopReason": stop_reason},
             )
             if stop_reason == "error":
                 error_code = (
@@ -571,6 +573,17 @@ class PiAgentBackend:
                 completion = AgentTaskCompletion(status="cancelled", result=result)
             elif stop_reason == "stop":
                 completion = AgentTaskCompletion(status="succeeded", result=result)
+            elif stop_reason == "length":
+                completion = AgentTaskCompletion(
+                    status="failed",
+                    result=result,
+                    error=fault(
+                        "LIMIT_EXCEEDED",
+                        "Pi 模型单次输出达到 token 上限，回复被截断"
+                        f"（maxTokens={session.model.get('maxTokens', 'unknown')}，包含思考内容）。"
+                        "请提高输出上限或缩短本轮任务后继续；已执行的操作不会自动重试。",
+                    ).error,
+                )
             else:
                 raise fault(
                     "PROTOCOL_MISMATCH", "Pi settled without a final assistant response"

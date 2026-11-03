@@ -1192,6 +1192,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         return waitForTask(apiBase, task, options);
       },
       list: () => requestJson<Character[]>(apiBase, "/api/characters"),
+      revision: () => requestJson<string>(apiBase, "/api/characters?view=revision"),
       listMemories: (name) =>
         requestJson<CharacterMemoryList>(apiBase, "/api/characters/memories/list", {
           body: JSON.stringify({ name }),

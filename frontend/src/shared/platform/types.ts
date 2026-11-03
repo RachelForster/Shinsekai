@@ -1849,6 +1849,7 @@ export interface ShinsekaiPlatform {
     generateSetting: (input: { name: string; setting: string }) => Promise<CharacterSettingResult>;
     import: (items: File[] | string[]) => Promise<Character[]>;
     list: () => Promise<Character[]>;
+    revision: () => Promise<string>;
     getMem0Status: () => Promise<Mem0Status>;
     importMemories: (
       name: string,
