@@ -385,3 +385,19 @@ def test_headless_presenter_records_framework_neutral_history() -> None:
     assert len(history) == 2
     assert "hello" in history[0]
     assert "Mio" in history[1]
+
+
+def test_user_message_with_emoji_survives_gbk_console(monkeypatch) -> None:
+    import io
+    import sys
+
+    output = io.TextIOWrapper(io.BytesIO(), encoding="gbk")
+    monkeypatch.setattr(sys, "stdout", output)
+    history: list[str] = []
+    presenter = HeadlessUIUpdateManager(chat_history=history)
+
+    presenter.record_user_message("😡")
+    presenter.record_user_message("下一条")
+
+    assert "😡" in history[0]
+    assert "下一条" in history[1]

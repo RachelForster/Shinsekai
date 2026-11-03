@@ -257,7 +257,10 @@ class HeadlessUIUpdateManager:
         if not value:
             return
         self.chat_history.append(_format_user_html(value))
-        print(f"你: {value}")
+        try:
+            print(f"你: {value}")
+        except UnicodeEncodeError:
+            print(f"你: {value}".encode("ascii", errors="backslashreplace").decode("ascii"))
 
     def update_sprite(self, character_name: str, sprite_id: int) -> None:
         pass
