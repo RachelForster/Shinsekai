@@ -25,6 +25,23 @@ RESOURCE_ROUTES = (
 )
 
 
+def test_character_revision_does_not_read_or_serialize_character_details():
+    from frontend_bridge_core.routes.character_routes import _list_characters
+
+    class Manager:
+        characters_revision = "saved-version"
+
+        @property
+        def config(self):
+            raise AssertionError("Version polling must not read the full character catalog")
+
+    response = _list_characters(ApiRequest(
+        state=SimpleNamespace(config_manager=Manager()),
+        method="GET", path="/api/characters", query={"view": ["revision"]}, params={}, body={},
+    ))
+    assert response == JsonResponse("saved-version")
+
+
 def _contracts(routes) -> set[tuple[str, str]]:
     return {(method, route.pattern) for route in routes for method in route.methods}
 

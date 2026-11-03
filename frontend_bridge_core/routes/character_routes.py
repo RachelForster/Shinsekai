@@ -34,6 +34,8 @@ from frontend_bridge_core.routes.router import (
 
 
 def _list_characters(request: ApiRequest) -> JsonResponse:
+    if (request.query.get("view") or [""])[0] == "revision":
+        return JsonResponse(request.state.config_manager.characters_revision)
     characters = request.state.config_manager.config.characters
 
     def name(character):

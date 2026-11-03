@@ -95,6 +95,11 @@ class BridgeHttpHandler(BaseHTTPRequestHandler):
 
         is_polling_request = (
             path in _POLLING_PATHS
+            or (
+                method in {"GET", "HEAD", "OPTIONS"}
+                and path == "/api/characters"
+                and parse_qs(urlparse(getattr(self, "path", "")).query).get("view") == ["revision"]
+            )
             or (method in {"GET", "HEAD", "OPTIONS"} and path.startswith("/api/agent/"))
             or (
                 method in {"GET", "HEAD", "OPTIONS"}

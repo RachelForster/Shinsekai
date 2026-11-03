@@ -23,6 +23,16 @@ function mockJsonResponse(body: unknown, ok = true) {
 }
 
 describe("http platform", () => {
+  it("checks the lightweight character catalog version through authenticated HTTP", async () => {
+    const fetchMock = vi.fn(() => mockJsonResponse("saved-version"));
+    vi.stubGlobal("fetch", fetchMock);
+    const platform = createHttpPlatform("http://127.0.0.1:8787", "token");
+    await expect(platform.characters.revision()).resolves.toBe("saved-version");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/characters?view=revision",
+      expect.objectContaining({ headers: expect.objectContaining({ "X-Shinsekai-Bridge-Token": "token" }) }),
+    );
+  });
   it("analyzes directed sprite transitions through the authenticated task transport", async () => {
     const result = { name: "Mika", items: [], dialogCount: 8, transitionCount: 0, basis: "instructions" };
     const fetchMock = vi.fn(() => mockJsonResponse({ id: "analysis", status: "succeeded", result }));

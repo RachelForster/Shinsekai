@@ -14,6 +14,10 @@ export function listCharacters() {
   return getPlatform().characters.list();
 }
 
+export function getCharactersRevision() {
+  return getPlatform().characters.revision();
+}
+
 export function saveCharacter(character: Character, originalName?: string) {
   return getPlatform().characters.save(character, originalName);
 }

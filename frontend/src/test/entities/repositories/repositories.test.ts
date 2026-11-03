@@ -339,6 +339,7 @@ describe("entity repositories", () => {
           savedCount: 1,
         }),
         list: vi.fn().mockResolvedValue([character]),
+        revision: vi.fn().mockResolvedValue("catalog-v1"),
         listMemories: vi.fn().mockResolvedValue({ agentId: "Nanami", count: 0, memories: [] }),
         previewMemoryImport: vi.fn().mockResolvedValue({
           chunkCount: 1,
