@@ -12,7 +12,7 @@ from application.characters.animate_sprites import (
     verify_transparent_animation,
     retry_animation_matting,
 )
-from application.characters.generate_sprites import boundary_frame, matting_options
+from application.characters.generate_sprites import boundary_frame, matting_options, validate_h3_sprite_resolution
 from application.characters.transition_recommendations import (
     analyze_transition_recommendations,
 )
@@ -74,8 +74,6 @@ def _unchanged(result, identity):
 
 
 def run_sprite_transition(state, task_id, payload):
-    from ai.t2i.reference_image import validate_h3_sprite_resolution
-
     matting_options(payload)
     resolution = validate_h3_sprite_resolution(payload.get("h3Resolution", "workflow"))
     if not isinstance(payload.get("regenerate", False), bool):

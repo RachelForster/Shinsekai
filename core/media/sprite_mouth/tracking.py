@@ -62,6 +62,22 @@ def _face_motion(anchors, offsets, scores, eye_distance):
     return np.column_stack([np.eye(2), shift]), float(min(scores[i], scores[j]))
 
 
+def _eyes_agree_with_nose(anchors, offsets, scores, eye_distance, last_linear):
+    eyes = scores[:2] >= .65
+    tolerance = max(1., eye_distance * .0175)
+    if eyes.all():
+        eye_motion = _face_motion(anchors[:2], offsets[:2], scores[:2], eye_distance)
+        if eye_motion is None:
+            return False
+        nose_y = transform(anchors[2], eye_motion[0])[1]
+        return abs(nose_y - anchors[2, 1] - offsets[2, 1]) <= tolerance
+    # With only one eye, compare its movement relative to the nose in the last
+    # reliable head pose. A blink can move the eyelid template while the head stays still.
+    relative = anchors[:2] - anchors[2]
+    expected_y = relative @ (last_linear[1] - [0., 1.])
+    return np.any(eyes & (np.abs(offsets[:2, 1] - offsets[2, 1] - expected_y) <= tolerance))
+
+
 def track(detector, source_video, reference, prediction, *, tracking_keypoints=None, progress=None):
     if source_video is None:
         return {"fps": 0, "duration": 0, "track": [{"time": 0, "matrix": [1, 0, 0, 1, 0, 0]}]}
@@ -96,7 +112,14 @@ def track(detector, source_video, reference, prediction, *, tracking_keypoints=N
             for i in range(3)
         ]
         offsets, quality = (np.asarray(values) for values in zip(*matches))
-        motion = _face_motion(fixed, offsets, quality, distance)
+        linear = matrices[-1][:, :2] if matrices else np.eye(2)
+        if quality[2] >= .8 and not _eyes_agree_with_nose(fixed, offsets, quality, distance, linear):
+            # Keep the previous scale and rotation through a blink, while the
+            # nose still follows real head movement. Landmark fallback can also move with eyelids.
+            nose = fixed[2]
+            motion = np.column_stack([linear, nose + offsets[2] - linear @ nose]), float(quality[2])
+        else:
+            motion = _face_motion(fixed, offsets, quality, distance)
         if motion is None and detector is not None and sum(usable[:3]) >= 2:
             try:
                 current = detect(detector, image, mouth=False, chin=False)["keypoints"]
@@ -108,7 +131,6 @@ def track(detector, source_video, reference, prediction, *, tracking_keypoints=N
         if motion is None and usable[3]:
             shift, score = _match(gray, templates[3], boxes[3], margin)
             if score >= .5:
-                linear = matrices[-1][:, :2] if matrices else np.eye(2)
                 motion = np.column_stack([linear, anchors[3] + shift - linear @ anchors[3]]), score
         matrix, score = motion if motion is not None else (matrices[-1] if matrices else np.eye(2, 3), 0.)
         matrices.append(matrix)

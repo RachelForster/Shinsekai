@@ -97,6 +97,40 @@ def test_head_motion_ignores_an_unreliable_eye_and_rejects_a_slipped_match():
     assert motion == pytest.approx(np.array([[1., 0., 1.], [0., 1., 3.]]))
 
 
+@pytest.mark.parametrize("eye_scores", [(.58, .6), (.65, .58), (.91, .93)])
+def test_dynamic_mouth_follows_the_nose_when_eyelids_move(monkeypatch, eye_scores):
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("cv2")
+    pytest.importorskip("av")
+    from core.media.sprite_mouth import tracking
+    from core.media.sprite_mouth.geometry import transform
+
+    points = np.zeros((28, 3))
+    points[11:17] = [30, 30, 1]
+    points[17:23] = [90, 30, 1]
+    points[23] = [60, 45, 1]
+    points[2] = [60, 72, 1]
+    reference = np.random.default_rng(0).integers(0, 256, (100, 120, 3), dtype=np.uint8)
+    anchors = points[[11, 17, 23], :2]
+    open_pose = np.array([[.99, .08, -1.], [-.08, .99, 7.]])
+    blink_pose = open_pose.copy()
+    blink_pose[:, 2] += [2, -3]
+    open_offsets = transform(anchors, open_pose) - anchors
+    blink_offsets = transform(anchors, blink_pose) - anchors
+    blink_offsets[:2, 1] += 6  # The eyelids move down while the head moves up.
+    matches = iter(
+        list(zip(open_offsets, [.98, .98, .98])) * 3
+        + list(zip(blink_offsets, [*eye_scores, .98])) * 5
+    )
+    monkeypatch.setattr(tracking, "_match", lambda *_: next(matches))
+    monkeypatch.setattr(tracking, "video_frames", lambda _: ((i, i / 24, 24, reference) for i in range(8)))
+    detector = Mock(side_effect=AssertionError("a reliable nose should avoid landmark fallback during a blink"))
+    profile = tracking.track(detector, "dynamic.webm", reference, {"keypoints": points})
+    assert profile["track"][0]["matrix"] == pytest.approx(tracking.canvas_matrix(open_pose))
+    assert profile["track"][-1]["matrix"] == pytest.approx(tracking.canvas_matrix(blink_pose))
+    detector.assert_not_called()
+
+
 def test_applying_frames_does_not_require_landmarks_in_unselected_frames(tmp_path, monkeypatch):
     np = pytest.importorskip("numpy")
     pytest.importorskip("cv2")

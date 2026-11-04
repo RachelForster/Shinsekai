@@ -1520,6 +1520,36 @@ describe("sprite generator", () => {
     expect(mouths.save).toHaveBeenCalledTimes(1);
   });
 
+  it("recalculates tracking for a saved animated sprite using its current mouth frames", async () => {
+    const manual = { mouthBox: [0.43, 0.36, 0.55, 0.39], chin: [0.5, 0.42] };
+    const selectedFrames = { closed: 0, half: 2, open: 1 };
+    mouths.generate.mockResolvedValueOnce({
+      ready: true,
+      cached: true,
+      taskId: "previous-track",
+      frames: [0, 1, 2].map((index) => ({ index, path: `${index}.jpg` })),
+      selectedFrames,
+      manual,
+    });
+    const savedSprite = { path: "animated.mp4", mouth_sync: "old-track.json" };
+    mount({ ...character, sprites: [savedSprite] });
+    fireEvent.click(screen.getByRole("tab", { name: "Mouth sync" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Sprite 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Prepare selected mouths (1)" }));
+    const preview = await screen.findByRole("button", { name: "Preview and correct" });
+    await waitFor(() => expect(preview).toBeEnabled());
+    fireEvent.click(preview);
+    fireEvent.click(screen.getByRole("button", { name: "Apply frames and placement" }));
+    await waitFor(() => expect(mouths.generate).toHaveBeenCalledTimes(2));
+    expect(mouths.generate.mock.calls[1][0]).toEqual(
+      expect.objectContaining({ retryTaskId: "previous-track", selectedFrames, manual }),
+    );
+    expect(mouths.generate.mock.calls[1][0].regenerate).toBeUndefined();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Apply frames and placement" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Save and close" }));
+    await waitFor(() => expect(mouths.save).toHaveBeenCalledOnce());
+  });
+
   it("reuses a failed mouth clip when applying manually chosen frames", async () => {
     mouths.generate.mockResolvedValueOnce({
       ready: false,

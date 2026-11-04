@@ -21,11 +21,10 @@ from application.characters.animate_sprites import (
     verify_transparent_animation,
     retry_animation_matting,
 )
-from core.sprite.selection import resolve_runtime_path
-from core.sprite.transitions import field, sprite_fingerprint
+from config.sprite_files import sprite_field, sprite_fingerprint
 from frontend_bridge_core.sprite_mouth import discard_mouth_bundle, inherit_mouth_bundle, install_mouth_bundle
 from frontend_bridge_core.tools import _local_file_access_roots
-from sdk.path_utils import safe_child_path, safe_existing_file_path
+from sdk.path_utils import normalize_path_identity, safe_child_path, safe_existing_file_path
 
 
 def run_sprite_plan(state, task_id, payload):
@@ -53,7 +52,11 @@ def run_sprite_animation(state, task_id, payload):
         field="referenceImage",
     )
     reference_sprite = next(
-        (path for sprite in character.sprites if (path := field(sprite, "path")) and resolve_runtime_path(path) == reference),
+        (
+            path for sprite in character.sprites
+            if (path := sprite_field(sprite, "path"))
+            and normalize_path_identity(path, field="initial sprite path") == reference
+        ),
         None,
     )
     reference_fingerprint = sprite_fingerprint(reference) if reference_sprite else None
