@@ -34,6 +34,14 @@ export function importCharacterModel(input: Parameters<ShinsekaiPlatform["charac
   return getPlatform().characters.importModel(input);
 }
 
+export function previewMmdMotion(input: Parameters<ShinsekaiPlatform["characters"]["previewMmdMotion"]>[0]) {
+  return getPlatform().characters.previewMmdMotion(input);
+}
+
+export function saveMmdMotion(input: Parameters<ShinsekaiPlatform["characters"]["saveMmdMotion"]>[0]) {
+  return getPlatform().characters.saveMmdMotion(input);
+}
+
 export function importCharacterModelStates(input: Parameters<ShinsekaiPlatform["characters"]["importModelStates"]>[0]) {
   return getPlatform().characters.importModelStates(input);
 }

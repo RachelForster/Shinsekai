@@ -3,6 +3,8 @@ import { create } from "../../src/modules/character-visual/adapters/mmd/module";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
+import { PmxObject } from "babylon-mmd/esm/Loader/Parser/pmxObject";
+import { PmxReader } from "babylon-mmd/esm/Loader/Parser/pmxReader";
 import {
   bindAvatarVoice,
   routeAvatarVoice,
@@ -32,6 +34,18 @@ try {
   const scene = Engine.Instances.at(-1)!.scenes[0];
   const root = scene.meshes.find((mesh) => mesh.metadata?.skeleton);
   const skeleton = root?.metadata.skeleton;
+  const parsed = await PmxReader.ParseAsync(await (await fetch(modelUrl)).arrayBuffer());
+  const morphTargetNames = (name: string) => {
+    const seen = new Set<number>();
+    const collect = (index: number): string[] => {
+      if (seen.has(index)) return [];
+      seen.add(index);
+      const morph = parsed.morphs[index];
+      if (!morph) return [];
+      return morph.type === PmxObject.Morph.Type.GroupMorph ? Array.from(morph.indices).flatMap(collect) : [morph.name];
+    };
+    return parsed.morphs.flatMap((morph, index) => (morph.name === name ? collect(index) : []));
+  };
   const headIndex = skeleton?.bones.findIndex((bone: { name: string }) => ["頭", "head"].includes(bone.name));
   const findChest = (names: string[]) =>
     skeleton?.bones.findIndex((bone: { name: string }) =>
@@ -193,12 +207,14 @@ try {
         return Math.atan2(relative.m[8], relative.m[10]);
       },
       readMorphWeight: (name: string) => {
+        // A PMX group morph has no mesh target of its own: inspect its leaf targets.
+        const targetNames = new Set(morphTargetNames(name));
         let weight = 0;
         for (const mesh of root?.metadata.meshes ?? []) {
           const manager = mesh.morphTargetManager;
           for (let i = 0; i < (manager?.numTargets ?? 0); i++) {
             const target = manager.getTarget(i);
-            if (target.name === name) weight = Math.max(weight, target.influence);
+            if (targetNames.has(target.name)) weight = Math.max(weight, target.influence);
           }
         }
         return weight;

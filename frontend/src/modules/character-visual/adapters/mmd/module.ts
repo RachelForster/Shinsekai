@@ -290,7 +290,12 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
         const now = performance.now();
         const smooth = nextMode === "play" && hasApplied && !reducedMotion?.matches;
         transition.start(smooth, now);
-        motions.set(motion, nextMode === "play" && reducedMotion?.matches ? "restore" : nextMode, smooth);
+        motions.set(
+          motion,
+          nextMode === "play" && reducedMotion?.matches ? "restore" : nextMode,
+          smooth,
+          next.motionBase === "resting",
+        );
         current = structuredClone(next);
         view.update(current.camera, engine.getRenderWidth(), engine.getRenderHeight());
         capabilities.mouth = Boolean(current.mouthMorph);
