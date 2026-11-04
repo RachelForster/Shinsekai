@@ -7,11 +7,16 @@ import { VisualMedia } from "./VisualMedia";
 export interface ImageAssetGalleryItem {
   badge?: string;
   badgeTone?: "default" | "muted";
+  cornerLabel?: string;
   id: string;
   imageSrc?: string;
   videoSrc?: string;
   meta?: string;
   title: string;
+}
+
+export function ImageAssetCornerLabel({ children }: { children: string }) {
+  return <span className="image-asset-corner-label">{children}</span>;
 }
 
 interface ImageAssetGalleryProps {
@@ -127,6 +132,7 @@ export function ImageAssetGallery({
           ) : (
             <ImageAssetThumb decoding={imageDecoding} loading={imageLoading} src={item.imageSrc} />
           )}
+          {item.cornerLabel ? <ImageAssetCornerLabel>{item.cornerLabel}</ImageAssetCornerLabel> : null}
           <span className="image-asset-card__body">
             <span className="image-asset-card__title">
               <span>{index + 1}</span>

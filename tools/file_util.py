@@ -220,6 +220,16 @@ def export_character(character_configs: list[CharacterConfig], output_path: str,
                     sprite_data['voice_path'] = _safe_package_basename_or_legacy_absolute(
                         sprite_data['voice_path'], "voice_path"
                     )
+                if sprite_data.get('mouth_sync'):
+                    from core.media.sprite_mouth.manifest import valid_mouth_sync
+                    from sdk.path_utils import safe_existing_file_path
+                    mouth = valid_mouth_sync(s)
+                    if mouth:
+                        base = (SPRITE_DIR / config.sprite_prefix).resolve()
+                        checked = safe_existing_file_path(mouth, roots=[base])
+                        sprite_data['mouth_sync'] = checked.relative_to(base).as_posix()
+                    else:
+                        sprite_data.pop('mouth_sync', None)
                 # 清理 voice_type 的 None 值，避免 YAML 中多余的 null
                 if 'voice_type' in sprite_data and sprite_data['voice_type'] is None:
                     del sprite_data['voice_type']
@@ -400,6 +410,13 @@ def import_character(input_path: str) -> list[CharacterConfig]:
         for char_data in yaml_data:
             prefix = _safe_package_name(char_data.get('sprite_prefix', ''), "sprite_prefix")
             package_root = temp_dir / 'sprites' / prefix
+            for sprite in char_data.get('sprites') or []:
+                if isinstance(sprite, dict) and sprite.get('mouth_sync'):
+                    relative = _safe_package_relpath(sprite['mouth_sync'], 'mouth sync')
+                    if relative.parts[0] != 'mouth-sync' or relative.name != 'manifest.json':
+                        raise ValueError('Invalid mouth sync bundle path')
+                    from core.media.sprite_mouth.manifest import read_manifest
+                    read_manifest(safe_existing_file_path(relative, roots=[package_root]))
             for edge in char_data.get('sprite_transitions') or []:
                 relative = _safe_package_relpath(edge['path'], 'transition clip')
                 if relative.parts[0] != 'transitions' or relative.suffix.lower() != '.webm':
@@ -524,6 +541,11 @@ def import_character(input_path: str) -> list[CharacterConfig]:
                         s['voice_type'] = voice_type
                     else:
                         s['voice_type'] = 'reference' if str(s.get('voice_text') or '').strip() else 'fallback'
+
+            for sprite in sprites:
+                if isinstance(sprite, dict) and sprite.get('mouth_sync'):
+                    relative = _safe_package_relpath(sprite['mouth_sync'], 'mouth sync')
+                    sprite['mouth_sync'] = (dest_sprite_dir / relative).resolve().as_posix()
             
             # 恢复模型文件并更新路径
             model_paths = {

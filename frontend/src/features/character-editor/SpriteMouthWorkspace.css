@@ -1,0 +1,238 @@
+.sprite-mouth-setup {
+  border: 1px solid var(--border-color, #d8dce5);
+  border-radius: 10px;
+  padding: 12px;
+}
+.sprite-mouth-setup summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.sprite-mouth-setup label {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+.sprite-mouth-setup__models {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0;
+  font-size: 12px;
+}
+.sprite-mouth-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0;
+}
+.sprite-mouth-actions .input-group {
+  width: auto;
+  max-width: 100%;
+}
+.sprite-mouth-card {
+  border: 1px solid var(--border-color, #d8dce5);
+  border-radius: 12px;
+  padding: 12px;
+  min-width: 0;
+}
+.sprite-mouth-card[data-active="true"] {
+  outline: 2px solid var(--accent-color, #8379bd);
+}
+.sprite-mouth-card header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.sprite-mouth-card header label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.sprite-mouth-card__preview {
+  position: relative;
+  height: 260px;
+  margin: 10px 0;
+  overflow: hidden;
+  border-radius: 8px;
+  background: repeating-conic-gradient(#e8e8ed 0% 25%, #f8f8fa 0% 50%) 50% / 20px 20px;
+}
+.sprite-mouth-card__media {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.sprite-mouth-hover-preview {
+  position: fixed;
+  z-index: 45;
+  overflow: hidden;
+  pointer-events: none;
+  border: 1px solid var(--color-border-hover);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-sidebar);
+  box-shadow: 0 12px 36px var(--color-shadow);
+}
+.sprite-mouth-dialog {
+  width: min(1100px, 94vw);
+  max-width: 94vw;
+  max-height: calc(100dvh - 32px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.sprite-mouth-dialog > .dialog__header,
+.sprite-mouth-dialog > .dialog__footer {
+  flex: 0 0 auto;
+}
+.sprite-mouth-dialog > .dialog__body {
+  min-height: 0;
+  overflow: auto;
+}
+.sprite-mouth-editor {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(300px, 1fr);
+  gap: 24px;
+}
+.sprite-mouth-editor__preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.sprite-mouth-editor__viewport {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  touch-action: none;
+  background: repeating-conic-gradient(#e8e8ed 0% 25%, #f8f8fa 0% 50%) 50% / 20px 20px;
+}
+.sprite-mouth-editor__canvas-shell {
+  --mouth-preview-height: 58vh;
+  position: relative;
+  width: min(100%, calc(var(--mouth-preview-height) * var(--mouth-aspect)));
+}
+.sprite-mouth-editor__plane {
+  position: absolute;
+  inset: 0;
+  transform-origin: center;
+}
+.sprite-mouth-editor__zoom {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 8px;
+  background: var(--color-bg-sidebar);
+  box-shadow: 0 2px 8px #0002;
+}
+.sprite-mouth-editor__zoom .button {
+  min-width: 30px;
+  padding: 5px;
+}
+.sprite-mouth-editor__pose-frame {
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  background: transparent;
+}
+.sprite-mouth-timeline {
+  margin-top: 14px;
+}
+.sprite-mouth-timeline__position {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 8px 0;
+}
+.sprite-mouth-timeline input[type="range"] {
+  width: 100%;
+}
+.sprite-mouth-editor__media {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+}
+.sprite-mouth-editor__anchors {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.sprite-mouth-editor__mouth,
+.sprite-mouth-editor__chin,
+.sprite-mouth-editor__resize {
+  position: absolute;
+  pointer-events: auto;
+  touch-action: none;
+  padding: 0;
+}
+.sprite-mouth-editor__mouth {
+  background: #ff4b5b20;
+  border: calc(2px / var(--mouth-zoom, 1)) solid #f34557;
+  cursor: move;
+  min-width: calc(8px / var(--mouth-zoom, 1));
+  min-height: calc(5px / var(--mouth-zoom, 1));
+}
+.sprite-mouth-editor__chin {
+  width: calc(14px / var(--mouth-zoom, 1));
+  height: calc(14px / var(--mouth-zoom, 1));
+  border: calc(2px / var(--mouth-zoom, 1)) solid #fff;
+  border-radius: 50%;
+  background: #22b484;
+  transform: translate(-50%, -50%);
+  cursor: move;
+}
+.sprite-mouth-editor__resize {
+  width: calc(12px / var(--mouth-zoom, 1));
+  height: calc(12px / var(--mouth-zoom, 1));
+  border: calc(2px / var(--mouth-zoom, 1)) solid #fff;
+  background: #f34557;
+  transform: translate(-50%, -50%);
+  cursor: nwse-resize;
+}
+.sprite-mouth-editor__adjustments {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.sprite-mouth-editor__adjustments label {
+  display: grid;
+  gap: 6px;
+}
+.sprite-mouth-editor__poses {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.sprite-mouth-editor__poses label {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.sprite-mouth-editor__poses img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: contain;
+  background: #f1f1f5;
+}
+.sprite-mouth-editor__speech {
+  display: block;
+  width: 100%;
+  max-height: 180px;
+  margin-top: 14px;
+  background: #f1f1f5;
+}
+@media (max-width: 760px) {
+  .sprite-mouth-editor {
+    grid-template-columns: 1fr;
+  }
+  .sprite-mouth-editor__canvas-shell {
+    --mouth-preview-height: 42vh;
+  }
+}

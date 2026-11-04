@@ -100,6 +100,26 @@ WRITE_APIS = {
         "/api/characters/sprites/upload",
         "body.name、body.paths（已存在的图片路径列表）",
     ),
+    "characters.sprites.plan": _Api(
+        "POST",
+        "/api/characters/sprites/plan",
+        "body.name、setting、count（1–12，创建人物默认 10）、requirements、referenceImage（可选）；返回提示词方案任务",
+    ),
+    "characters.sprites.render": _Api(
+        "POST",
+        "/api/characters/sprites/render",
+        "body.name、prompt、tagging、referenceImage（可选）、removeBackground（默认 true）、h3Resolution（workflow/hd/native）；通过已配置 T2I/H3 生成一张静态立绘，返回任务",
+    ),
+    "characters.sprites.remove_background": _Api(
+        "POST",
+        "/api/characters/sprites/remove-background",
+        "body.name、taskId；重试已有生成结果的抠图，不重新生成",
+    ),
+    "characters.sprites.import_generated": _Api(
+        "POST",
+        "/api/characters/sprites/import-generated",
+        'body.name、items（1–12 项，每项 {taskId, tagging}）；按已成功的生成任务导入并保存人物，重复导入同一任务不会新增副本',
+    ),
     "plugins.install": _Api(
         "POST", "/api/plugins/install", "body.source 为目录中的插件来源；返回安装任务"
     ),

@@ -12,7 +12,7 @@ from application.characters.animate_sprites import (
     verify_transparent_animation,
     retry_animation_matting,
 )
-from application.characters.generate_sprites import boundary_frame, matting_options
+from application.characters.generate_sprites import boundary_frame, matting_options, validate_h3_sprite_resolution
 from application.characters.transition_recommendations import (
     analyze_transition_recommendations,
 )
@@ -75,6 +75,7 @@ def _unchanged(result, identity):
 
 def run_sprite_transition(state, task_id, payload):
     matting_options(payload)
+    resolution = validate_h3_sprite_resolution(payload.get("h3Resolution", "workflow"))
     if not isinstance(payload.get("regenerate", False), bool):
         raise ValueError("regenerate 必须为布尔值")
     if payload.get("retryTaskId") is not None and not isinstance(
@@ -98,6 +99,7 @@ def run_sprite_transition(state, task_id, payload):
                     edge["fromPath"] == identity["fromPath"]
                     and edge["toPath"] == identity["toPath"]
                     and edge["frameCount"] == TRANSITION_FRAME_COUNT
+                    and edge["h3Resolution"] == resolution
                 ):
                     return {
                         **identity,
@@ -106,6 +108,7 @@ def run_sprite_transition(state, task_id, payload):
                         "cached": True,
                         "alphaVerified": True,
                         "frameCount": TRANSITION_FRAME_COUNT,
+                        "h3Resolution": resolution,
                     }
         root = Path(state.project_root_dir) / "cache" / "sprite_generation"
         _update_task(

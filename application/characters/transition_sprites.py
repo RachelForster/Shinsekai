@@ -55,6 +55,7 @@ def saved_transitions(character):
             "toPath": field(edge, "to_path"),
             "path": field(edge, "path"),
             "frameCount": field(edge, "frame_count", 5),
+            "h3Resolution": field(edge, "h3_resolution", "workflow"),
         }
         for edge in valid_transitions(character)
     ]

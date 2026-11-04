@@ -10,6 +10,7 @@ import { useI18n } from "../../shared/i18n";
 import type {
   Character,
   GeneratedSpriteTransition,
+  H3SpriteResolution,
   SpriteTransitionAnalysis,
   TaskSnapshot,
   SpriteMattingOptions,
@@ -47,6 +48,7 @@ export function useSpriteTransitions(
   mattingOptions: SpriteMattingOptions,
 ) {
   const { t } = useI18n();
+  const [h3Resolution, setH3Resolution] = useState<H3SpriteResolution>("workflow");
   const [sourceSelection, setSourceSelection] = useState<string[]>([]);
   const [items, setItems] = useState<TransitionCandidate[]>(() =>
     (character.sprite_transitions ?? [])
@@ -69,6 +71,7 @@ export function useSpriteTransitions(
           alphaVerified: true,
           cached: true,
           frameCount: edge.frame_count ?? 5,
+          h3Resolution: edge.h3_resolution ?? "workflow",
         },
       })),
   );
@@ -101,22 +104,30 @@ export function useSpriteTransitions(
   const update = (id: string, patch: Partial<TransitionCandidate>) =>
     setItems((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
 
-  const isReady = (fromPath: string, toPath: string, result = analysis) =>
-    Boolean(result?.items.some((item) => item.fromPath === fromPath && item.toPath === toPath && item.existing)) ||
-    items.some(
-      (item) =>
-        item.id === transitionKey(fromPath, toPath) &&
-        item.result?.taskId &&
-        item.result.alphaVerified &&
-        item.result.frameCount === SPRITE_TRANSITION_FRAME_COUNT &&
-        !item.error,
+  const matchesResolution = (result?: GeneratedSpriteTransition, preset = h3Resolution) =>
+    (result?.h3Resolution ?? "workflow") === preset;
+  const isReady = (fromPath: string, toPath: string, result = analysis, preset = h3Resolution) => {
+    const saved = character.sprite_transitions?.find((edge) => edge.from_path === fromPath && edge.to_path === toPath);
+    return (
+      ((saved?.h3_resolution ?? "workflow") === preset &&
+        Boolean(result?.items.some((item) => item.fromPath === fromPath && item.toPath === toPath && item.existing))) ||
+      items.some(
+        (item) =>
+          item.id === transitionKey(fromPath, toPath) &&
+          item.result?.taskId &&
+          item.result.alphaVerified &&
+          item.result.frameCount === SPRITE_TRANSITION_FRAME_COUNT &&
+          matchesResolution(item.result, preset) &&
+          !item.error,
+      )
     );
-  const chooseTop = (result = analysis, count = recommendationCount, skip = skipExisting) => {
+  };
+  const chooseTop = (result = analysis, count = recommendationCount, skip = skipExisting, preset = h3Resolution) => {
     const limit = Number(count);
     setRecommendedSelection(
       result && Number.isSafeInteger(limit) && limit > 0
         ? result.items
-            .filter((item) => !skip || !isReady(item.fromPath, item.toPath, result))
+            .filter((item) => !skip || !isReady(item.fromPath, item.toPath, result, preset))
             .slice(0, limit)
             .map((item) => transitionKey(item.fromPath, item.toPath))
         : [],
@@ -165,7 +176,8 @@ export function useSpriteTransitions(
         regenerate ||
         pair.saved ||
         !pair.result?.alphaVerified ||
-        pair.result.frameCount !== SPRITE_TRANSITION_FRAME_COUNT,
+        pair.result.frameCount !== SPRITE_TRANSITION_FRAME_COUNT ||
+        !matchesResolution(pair.result),
     );
     setItems((current) => [...current, ...pairs.filter((pair) => !current.some((item) => item.id === pair.id))]);
     try {
@@ -181,8 +193,9 @@ export function useSpriteTransitions(
               fromPath: pair.fromPath,
               toPath: pair.toPath,
               regenerate,
+              h3Resolution,
               ...mattingOptions,
-              ...((retryMatting || (!regenerate && !pair.result?.alphaVerified)) &&
+              ...((retryMatting || (!regenerate && !pair.result?.alphaVerified && matchesResolution(pair.result))) &&
               pair.result?.taskId &&
               pair.result.requestedFrames === SPRITE_TRANSITION_FRAME_COUNT
                 ? { retryTaskId: pair.result.taskId }
@@ -246,6 +259,12 @@ export function useSpriteTransitions(
   return {
     analysis,
     analyze,
+    h3Resolution,
+    setH3Resolution: (value: H3SpriteResolution) => {
+      setH3Resolution(value);
+      chooseTop(analysis, recommendationCount, skipExisting, value);
+    },
+    matchesResolution,
     planningMode,
     setPlanningMode,
     recommendationCount,

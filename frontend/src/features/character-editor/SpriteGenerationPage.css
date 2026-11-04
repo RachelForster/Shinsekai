@@ -591,6 +591,7 @@
 }
 
 .sprite-generation__preview {
+  position: relative;
   height: 240px;
   overflow: hidden;
   border-radius: var(--radius-control);
@@ -882,7 +883,7 @@
   left: var(--space-2);
   accent-color: var(--color-accent-primary);
 }
-.sprite-generation__source-card span {
+.sprite-generation__source-card > span {
   color: var(--color-text-muted);
   overflow-wrap: anywhere;
 }
@@ -914,6 +915,10 @@
   font-size: 11px;
   line-height: 1.4;
   white-space: nowrap;
+}
+.sprite-generation__source-card .sprite-generation__source-type[data-mouth-sync="true"] {
+  top: auto;
+  bottom: var(--space-1);
 }
 .sprite-generation__source-image img,
 .sprite-generation__source-image video {

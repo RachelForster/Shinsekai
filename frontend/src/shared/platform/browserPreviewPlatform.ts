@@ -1851,6 +1851,46 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         generatedSprites.set(result.taskId, result);
         return delay(result);
       },
+      async getSpriteMouthSetup() {
+        return {
+          pythonPath: "",
+          version: [],
+          missing: [],
+          compatible: false,
+          runtimeReady: false,
+          device: "auto",
+          modelDirectory: "",
+          modelsReady: false,
+          models: [
+            { id: "yolov3", ready: false, size: 246354512 },
+            { id: "hrnetv2", ready: false, size: 38917560 },
+          ],
+        };
+      },
+      async configureSpriteMouth() {
+        throw new Error("请连接本机新世界以配置口型识别环境。");
+      },
+      async importSpriteMouthModels() {
+        throw new Error("请连接本机新世界以导入口型模型。");
+      },
+      async downloadSpriteMouthModels() {
+        throw new Error("请连接本机新世界以下载口型模型。");
+      },
+      async installSpriteMouthRuntime() {
+        throw new Error("请连接本机新世界以安装口型识别依赖。");
+      },
+      async generateSpriteMouth() {
+        throw new Error("口型同步需要连接本机新世界与 H3 服务；浏览器预览不会伪造识别结果。");
+      },
+      async readSpriteMouth() {
+        throw new Error("请连接本机新世界以读取口型配置。");
+      },
+      async saveSpriteMouths() {
+        throw new Error("请连接本机新世界以保存口型配置。");
+      },
+      async removeSpriteMouth() {
+        throw new Error("请连接本机新世界以移除口型配置。");
+      },
       async animateSprite() {
         throw new PlatformRequestError(
           "动态立绘需要连接本机新世界与 H3 服务；浏览器预览不会生成或伪造透明视频。",
@@ -2097,6 +2137,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         return clone(result);
       },
       list: () => delay(config.characters),
+      revision: () => delay(JSON.stringify(config.characters)),
       async listMemories(name) {
         const agentId = name || "user";
         const existing = characterMemories.get(agentId) ?? {

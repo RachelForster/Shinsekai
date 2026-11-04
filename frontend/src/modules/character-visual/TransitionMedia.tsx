@@ -9,6 +9,7 @@ import {
 } from "../../shared/assets/spriteTransition";
 import { transitionAdjustment } from "./transitionPresentation";
 import { useSpriteTransitionPlaybackRate } from "../../shared/assets/useSpriteTransitionPlaybackRate";
+import { SpriteMouthMedia } from "./SpriteMouthMedia";
 
 interface Playback {
   id: number;
@@ -31,11 +32,18 @@ const FADE_DURATION_MS = 160;
 export function TransitionMedia({
   transitions,
   enabled,
+  mouthSync,
+  voiceCharacterName,
   ...props
 }: VisualMediaProps & {
   transitions?: SpriteTransitionMedia[];
   enabled: boolean;
+  mouthSync?: string;
+  voiceCharacterName?: string;
 }) {
+  const mouths = useRef(new Map<string, string>());
+  if (mouthSync) mouths.current.set(props.src, mouthSync);
+  else mouths.current.delete(props.src);
   const playbackRate = useSpriteTransitionPlaybackRate();
   const [displayed, setDisplayed] = useState(props.src);
   const settled = useRef(props.src);
@@ -291,8 +299,10 @@ export function TransitionMedia({
               style={{ opacity: visible ? 1 : 0 }}
               aria-hidden={!visible}
             >
-              <VisualMedia
+              <SpriteMouthMedia
                 {...props}
+                mouthSync={mouths.current.get(src)}
+                voiceCharacterName={voiceCharacterName}
                 src={src}
                 alt={visible ? props.alt : ""}
                 className="character-visual__static-image"

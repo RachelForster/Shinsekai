@@ -125,6 +125,7 @@ def test_render_forces_twenty_two_frames_distinct_anchors_and_coordinated_hair(
         store,
         {
             "name": "Mika",
+            "h3Resolution": "hd",
             **({"autoScreen": True, "alphaMatting": True} if experimental else {}),
         },
         tmp_path / "out.png",
@@ -136,6 +137,8 @@ def test_render_forces_twenty_two_frames_distinct_anchors_and_coordinated_hair(
     assert inputs["first_frame"] == ["114", 0]
     assert inputs["last_frame"] == ["shinsekai_last_frame", 0]
     assert inputs["width"] / inputs["height"] == pytest.approx(2 / 3, abs=0.03)
+    assert (inputs["width"], inputs["height"]) == (672, 1024)
+    assert result["h3Resolution"] == "hd"
     assert workflow["130"]["inputs"]["fps"] == 24
     assert adapter.reference_node_id == "114"
     assert adapter.generate_image.call_args.kwargs["last_reference_image_path"] == str(
@@ -280,18 +283,19 @@ def test_matting_retry_does_not_generate_again_and_saved_pairs_reuse_cache(
     video = root / "raw.mp4"
     video.write_bytes(b"raw")
     render = Mock(
-        return_value={
+        side_effect=lambda _store, payload, *_paths: {
             "videoPath": str(video),
             "playbackSpeed": 1,
             "prompt": "transition",
             "tagging": "过渡",
             "requestedFrames": 22,
+            "h3Resolution": payload["h3Resolution"],
         }
     )
     monkeypatch.setattr(bridge, "render_transition", render)
     matte = Mock(side_effect=RuntimeError("matting failed"))
     monkeypatch.setattr(sprite_generation, "make_transparent_animation", matte)
-    payload = {"name": "Mika", "fromPath": str(paths[0]), "toPath": str(paths[1])}
+    payload = {"name": "Mika", "fromPath": str(paths[0]), "toPath": str(paths[1]), "h3Resolution": "hd"}
     first = _create_task(state, kind="character-sprite-transition", title="transition")
     result = bridge.run_sprite_transition(state, first["id"], payload)
     assert result["alphaVerified"] is False
@@ -305,9 +309,10 @@ def test_matting_retry_does_not_generate_again_and_saved_pairs_reuse_cache(
     matte.side_effect = finish
     retry = _create_task(state, kind="character-sprite-transition", title="retry")
     result = bridge.run_sprite_transition(
-        state, retry["id"], {**payload, "retryTaskId": first["id"]}
+        state, retry["id"], {**payload, "retryTaskId": first["id"], "h3Resolution": "native"}
     )
     assert result["alphaVerified"] and "backgroundRemovalError" not in result
+    assert result["h3Resolution"] == "hd"
     assert render.call_count == 1
     _update_task(state, retry["id"], status="succeeded", result=result)
     monkeypatch.setattr(bridge, "verify_transparent_animation", Mock(return_value=22))
@@ -315,7 +320,11 @@ def test_matting_retry_does_not_generate_again_and_saved_pairs_reuse_cache(
         state, {"name": "Mika", "items": [{"taskId": retry["id"]}]}
     )
     cached = bridge.run_sprite_transition(state, "cached", payload)
-    assert cached["cached"] and render.call_count == 1
+    assert cached["cached"] and cached["h3Resolution"] == "hd" and render.call_count == 1
+    assert character.sprite_transitions[0].h3_resolution == "hd"
+    new_task = _create_task(state, kind="character-sprite-transition", title="higher resolution")
+    new = bridge.run_sprite_transition(state, new_task["id"], {**payload, "h3Resolution": "native"})
+    assert not new.get("cached") and new["h3Resolution"] == "native" and render.call_count == 2
 
 
 def test_legacy_five_frame_transition_still_plays_but_generation_rebuilds_it(
