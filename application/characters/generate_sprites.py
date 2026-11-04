@@ -8,6 +8,7 @@ import secrets
 from pathlib import Path
 from typing import Any
 
+from ai.t2i.reference_image import validate_h3_sprite_resolution
 from application.characters.generate_briefs import chat_character_text
 from application.characters.h3_idle_workflow import stabilize_idle_workflow
 from application.media.sprite_tags import SPRITE_TAG_INSTRUCTIONS
@@ -180,7 +181,7 @@ def render_sprite(
     from PIL import Image
 
     from ai.t2i.t2i_manager import T2IAdapterFactory, T2IManager
-    from ai.t2i.reference_image import H3_SPRITE_RESOLUTIONS, reference_canvas_size, validate_h3_sprite_resolution
+    from ai.t2i.reference_image import H3_SPRITE_RESOLUTIONS, reference_canvas_size
 
     pair = prompt_pair(payload)
     processing = matting_options(payload)

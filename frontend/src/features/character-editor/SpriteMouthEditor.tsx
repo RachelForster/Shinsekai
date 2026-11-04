@@ -2,6 +2,7 @@ import { useRef, useState, type PointerEvent as ReactPointerEvent, type Keyboard
 
 import { fileUrl } from "../../entities/files/repository";
 import { SpriteMouthMedia } from "../../modules/character-visual";
+import { isVideoMedia } from "../../shared/assets/visualMedia";
 import { useI18n } from "../../shared/i18n";
 import type { MouthPose, SpriteMouthCorrection, SpriteMouthManual } from "../../shared/platform/types";
 import { AsyncButton, Button, Dialog, NumberInput, Select, Switch, VisualMedia } from "../../shared/ui";
@@ -131,6 +132,7 @@ export function SpriteMouthEditor({
     poses.every((pose) => choices.some((frame) => frame.index === frames[pose])) &&
     new Set(Object.values(frames)).size === 3;
   const canApply = choices.length ? validFrames : manualEnabled;
+  const canRefreshTracking = isVideoMedia(item.path) && validFrames;
   const selection = { manual: manualEnabled ? manual : undefined, selectedFrames: validFrames ? frames : undefined };
   const close = () => onClose(canApply ? selection : undefined);
   return (
@@ -145,7 +147,7 @@ export function SpriteMouthEditor({
       footer={
         <>
           <AsyncButton
-            disabled={busy || !canApply || (result?.ready && !item.calibrationDirty)}
+            disabled={busy || !canApply || (result?.ready && !item.calibrationDirty && !canRefreshTracking)}
             loading={busy && !queued}
             onClick={() => onApply(selection.manual, selection.selectedFrames)}
           >

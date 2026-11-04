@@ -12,8 +12,8 @@ from application.characters.mouth_sync import build_bundle, copy_mouth_assets, t
 from application.characters import mouth_resources
 from application.runtime.state import _jsonify
 from application.runtime.tasks import _update_task
-from core.media.sprite_mouth.manifest import correction, read_manifest, suggested_mouth_box, valid_mouth_sync
-from core.sprite.transitions import field, sprite_fingerprint
+from config.sprite_files import sprite_field, sprite_fingerprint
+from config.sprite_mouth import correction, read_manifest, suggested_mouth_box, valid_mouth_sync
 from frontend_bridge_core.tools import _local_file_access_roots
 from sdk.path_utils import safe_child_path, safe_existing_file_path
 
@@ -24,7 +24,7 @@ def _source(state, payload):
     if character is None:
         raise ValueError("请先保存角色再制作口型")
     path = str(payload.get("spritePath") or "")
-    matches = [(i, sprite) for i, sprite in enumerate(character.sprites) if str(field(sprite, "path", "")) == path]
+    matches = [(i, sprite) for i, sprite in enumerate(character.sprites) if str(sprite_field(sprite, "path", "")) == path]
     if len(matches) != 1:
         raise ValueError("来源立绘已变化或不属于当前角色，请重新选择")
     index, sprite = matches[0]
@@ -80,7 +80,7 @@ def install_mouth_bundle(state, character, manifest, data=None):
 
 def inherit_mouth_bundle(state, name, reference, video, output, progress):
     _, _, sprite, source = _source(state, {"name": name, "spritePath": reference["path"]})
-    path = field(sprite, "mouth_sync")
+    path = sprite_field(sprite, "mouth_sync")
     if not path:
         return None
     manifest = _bundle_manifest(state, path)
@@ -156,7 +156,7 @@ def _previous(state, task_id, name, source, fingerprint):
 def run_sprite_mouth(state, task_id, payload):
     character, _, sprite, source = _source(state, payload)
     name = character.name
-    original = str(field(sprite, "path"))
+    original = str(sprite_field(sprite, "path"))
     fingerprint = sprite_fingerprint(source)
     identity = {"name": name, "spritePath": original, "sourceFingerprint": fingerprint, "taskId": task_id}
     if not isinstance(payload.get("regenerate", False), bool):
