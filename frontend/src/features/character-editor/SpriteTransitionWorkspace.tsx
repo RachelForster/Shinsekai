@@ -29,6 +29,7 @@ import { SpriteGenerationSetupGuide } from "./SpriteGenerationSetupGuide";
 import { SpriteTransitionRecommendations } from "./SpriteTransitionRecommendations";
 import { SpriteMattingStatus } from "./SpriteMattingStatus";
 import { SpriteMattingSettings } from "./SpriteMattingSettings";
+import { SpriteH3ResolutionSelect } from "./SpriteH3ResolutionSelect";
 import { transitionPairs, type SpriteTransitionController } from "./useSpriteTransitions";
 
 export function SpriteTransitionWorkspace({
@@ -53,6 +54,7 @@ export function SpriteTransitionWorkspace({
   const sources = character.sprites.map((sprite, index) => ({
     id: sprite.path,
     referenceImage: sprite.path,
+    mouthSync: Boolean(sprite.mouth_sync),
     tagging: tags[index],
     index,
     origin: "existing" as const,
@@ -73,6 +75,7 @@ export function SpriteTransitionWorkspace({
           item.id === pair.id &&
           item.result?.alphaVerified &&
           item.result.frameCount === SPRITE_TRANSITION_FRAME_COUNT &&
+          controller.matchesResolution(item.result) &&
           !item.error,
       ),
   );
@@ -141,6 +144,11 @@ export function SpriteTransitionWorkspace({
             {t(recommended ? "spriteTransition.recommendationHint" : "spriteTransition.directionHint")}
           </p>
           <p className="sprite-generation__hint">{t("spriteTransition.reuseHint")}</p>
+          <SpriteH3ResolutionSelect
+            value={controller.h3Resolution}
+            onChange={controller.setH3Resolution}
+            disabled={busy}
+          />
           <SpriteMattingSettings value={mattingOptions} onChange={onMattingChange} disabled={busy} />
           <label className="field-row field-row--stack">
             <span className="field-row__label">{t("spriteTransition.speed")}</span>

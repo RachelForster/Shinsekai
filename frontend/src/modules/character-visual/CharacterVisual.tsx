@@ -51,12 +51,15 @@ function StaticVisual({
   framing,
   active,
   mode,
+  voiceCharacterName,
 }: CharacterVisualProps) {
   const [aspectRatio, setAspectRatio] = useState(1);
   const style = visualFramingStyle(framing);
   const image = (
     <TransitionMedia
       transitions={asset.transitions}
+      mouthSync={asset.mouthSync}
+      voiceCharacterName={mode === "edit" ? undefined : voiceCharacterName}
       enabled={mode === "play"}
       alt={asset.label}
       active={active}

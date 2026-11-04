@@ -23,6 +23,30 @@ function mockJsonResponse(body: unknown, ok = true) {
 }
 
 describe("http platform", () => {
+  it("prepares mouth profiles through an authenticated background task and reports progress", async () => {
+    const result = { ready: true, taskId: "mouth-task", manifestPath: "mouth-sync/manifest.json" };
+    const fetchMock = vi.fn(() => mockJsonResponse({ id: "mouth-task", status: "succeeded", result }));
+    vi.stubGlobal("fetch", fetchMock);
+    const progress = vi.fn();
+    const platform = createHttpPlatform("http://127.0.0.1:8787", "token");
+    const input = {
+      name: "Mika",
+      spritePath: "portrait.webm",
+      retryTaskId: "original-clip",
+      selectedFrames: { closed: 1, half: 10, open: 22 },
+    };
+    await expect(platform.characters.generateSpriteMouth(input, { onTaskUpdate: progress })).resolves.toEqual(result);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/characters/sprites/mouth/generate",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify(input),
+        headers: expect.objectContaining({ "X-Shinsekai-Bridge-Token": "token" }),
+      }),
+    );
+    expect(progress).toHaveBeenCalledOnce();
+  });
+
   it("checks the lightweight character catalog version through authenticated HTTP", async () => {
     const fetchMock = vi.fn(() => mockJsonResponse("saved-version"));
     vi.stubGlobal("fetch", fetchMock);

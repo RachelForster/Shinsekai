@@ -1,6 +1,8 @@
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
 import type { SpriteTransitionMedia as SpriteTransitionAsset } from "../assets/spriteTransition";
 import type { AgentPlatform } from "./agentTypes";
+import type { MouthPose, SpriteMouthCorrection, SpriteMouthManual, SpriteMouthManifest } from "../assets/spriteMouth";
+export type { MouthPose, SpriteMouthCorrection, SpriteMouthManual, SpriteMouthManifest } from "../assets/spriteMouth";
 import type { ChatThemeManifest, ChatThemeSummary, SaveChatThemeInput } from "../theme/chatTheme";
 
 export interface PortraitCrop {
@@ -16,6 +18,7 @@ export interface PlayerPortrait {
 }
 
 export interface Sprite {
+  mouth_sync?: string | null;
   portrait_crop?: PortraitCrop | null;
   path: string;
   voice_path?: string;
@@ -1005,6 +1008,7 @@ export interface RuntimeDependencyInstallResult {
 }
 
 export interface ChatSprite {
+  mouthSync?: string;
   transitions?: SpriteTransitionMedia[];
   /** Producer-owned identity, independent of display labels, expression URLs and snapshot IDs. */
   identityKey?: string;
@@ -1392,6 +1396,7 @@ export type ChatStageEvent =
   | (ChatEventBase & { type: "plugin.page.dismiss"; pluginId: string; presentationId: string })
   | (ChatEventBase & {
       type: "sprite.show";
+      mouthSync?: string;
       transitions?: SpriteTransitionMedia[];
       identityKey?: string;
       characterName: string;
@@ -1534,8 +1539,11 @@ export interface GeneratedCharacterSprite extends SpritePromptPair {
   originalPath?: string;
   backgroundRemoved?: boolean;
   backgroundRemovalError?: string;
+  mouthSyncManifest?: string;
+  mouthSyncError?: string;
   animation?: boolean;
   alphaVerified?: boolean;
+  h3Resolution?: H3SpriteResolution;
   frameCount?: number;
   duration?: number;
   playbackSpeed?: number;
@@ -1569,6 +1577,7 @@ export interface CharacterSpriteAnimationInput extends SpriteMattingOptions {
   loop: boolean;
   motion: string;
   playbackSpeed?: number;
+  h3Resolution?: H3SpriteResolution;
   customPrompt?: string;
 }
 
@@ -1576,8 +1585,52 @@ export interface TaskProgressOptions<TResult = unknown> {
   onTaskUpdate?: (task: TaskSnapshot<TResult>) => void;
 }
 
+export interface SpriteMouthSetup {
+  pythonPath: string;
+  version: number[];
+  missing: string[];
+  compatible: boolean;
+  runtimeReady: boolean;
+  device: "auto" | "cpu" | "cuda";
+  modelDirectory: string;
+  modelsReady: boolean;
+  models: { id: string; ready: boolean; size: number }[];
+}
+export interface SpriteMouthInput {
+  name: string;
+  spritePath: string;
+  frameCount?: 5 | 22 | 39;
+  speechVideo?: string;
+  regenerate?: boolean;
+  retryTaskId?: string;
+  manual?: SpriteMouthManual | null;
+  selectedFrames?: Record<MouthPose, number>;
+  correction?: SpriteMouthCorrection;
+}
+export interface GeneratedSpriteMouth {
+  speechFps?: number;
+  correction?: SpriteMouthCorrection;
+  name?: string;
+  spritePath?: string;
+  sourceFingerprint?: string;
+  taskId?: string;
+  ready: boolean;
+  calibrationNeeded?: boolean;
+  message?: string;
+  manifestPath?: string;
+  profile?: SpriteMouthManifest;
+  reference?: string;
+  speechVideo?: string;
+  frames?: { index: number; path: string; time?: number }[];
+  selectedFrames?: Record<MouthPose, number>;
+  manual?: SpriteMouthManual | null;
+  suggestedManual?: SpriteMouthManual;
+  cached?: boolean;
+}
+
 export interface SpriteTransition {
   frame_count?: number;
+  h3_resolution?: H3SpriteResolution;
   from_path: string;
   to_path: string;
   path: string;
@@ -1593,6 +1646,7 @@ export interface SpriteTransitionInput extends SpriteMattingOptions {
   toPath: string;
   regenerate?: boolean;
   retryTaskId?: string;
+  h3Resolution?: H3SpriteResolution;
 }
 
 export interface SpriteTransitionRecommendation {
@@ -1911,6 +1965,24 @@ export interface ShinsekaiPlatform {
       input: CharacterSpriteAnimationInput,
       options?: TaskProgressOptions<GeneratedCharacterSprite>,
     ) => Promise<GeneratedCharacterSprite>;
+    getSpriteMouthSetup: () => Promise<SpriteMouthSetup>;
+    configureSpriteMouth: (input: {
+      pythonPath?: string;
+      device?: "auto" | "cpu" | "cuda";
+    }) => Promise<SpriteMouthSetup>;
+    importSpriteMouthModels: (input: { paths: string[] }) => Promise<SpriteMouthSetup>;
+    downloadSpriteMouthModels: (options?: TaskProgressOptions<SpriteMouthSetup>) => Promise<SpriteMouthSetup>;
+    installSpriteMouthRuntime: (options?: TaskProgressOptions<SpriteMouthSetup>) => Promise<SpriteMouthSetup>;
+    generateSpriteMouth: (
+      input: SpriteMouthInput,
+      options?: TaskProgressOptions<GeneratedSpriteMouth>,
+    ) => Promise<GeneratedSpriteMouth>;
+    readSpriteMouth: (path: string) => Promise<GeneratedSpriteMouth>;
+    saveSpriteMouths: (input: {
+      name: string;
+      items: { taskId: string; correction?: SpriteMouthCorrection }[];
+    }) => Promise<Character>;
+    removeSpriteMouth: (input: { name: string; spritePath: string }) => Promise<Character>;
     analyzeSpriteTransitions: (
       input: { name: string },
       options?: TaskProgressOptions<SpriteTransitionAnalysis>,

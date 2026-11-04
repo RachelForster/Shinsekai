@@ -35,6 +35,7 @@ export function useSpriteGeneration(
   sprites: Character["sprites"],
   mattingOptions: SpriteMattingOptions,
   h3Resolution: H3SpriteResolution = "workflow",
+  animationResolution?: H3SpriteResolution,
 ) {
   const [items, setItems] = useState<SpriteCandidate[]>([]);
   const [busy, setBusy] = useState<"plan" | "render" | "frame" | "cutout" | "import" | "replace" | "animate" | null>(
@@ -165,7 +166,12 @@ export function useSpriteGeneration(
       const additions = entries.filter((entry) => !entry.existing).length;
       if (items.length + additions > 12) throw new Error("每次最多保留 12 个方案，请先添加或移除部分方案。");
       const candidates = entries.map(({ input, existing }) => ({
-        input: { ...input, ...mattingOptions, tagging: existing?.tagging ?? input.tagging },
+        input: {
+          ...input,
+          ...mattingOptions,
+          h3Resolution: animationResolution ?? input.h3Resolution ?? "workflow",
+          tagging: existing?.tagging ?? input.tagging,
+        },
         item: existing ?? {
           id: crypto.randomUUID(),
           prompt: "",
