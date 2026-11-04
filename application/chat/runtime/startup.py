@@ -70,6 +70,19 @@ def chat_history_is_present(history_argument: str) -> bool:
         return False
 
 
+def _memory_scope_context(config, history, names):
+    from ai.memory.session_scope import session_scopes
+    characters = [c for c in config.config.characters if c.name in names]
+    if not characters or any(not getattr(c, "id", None) for c in characters):
+        return {"memoryScoped": True, "memoryScopes": {}, "memorySession": ""}
+    scopes, session = session_scopes(history, characters)
+    result = {"memoryScoped": True, "memoryScopes": scopes, "memorySession": session}
+    from application.chat.doki_handoff import present_witnesses
+    if present_witnesses(history) is not None:
+        result["memoryWitnesses"] = lambda: present_witnesses(history)
+    return result
+
+
 def create_chat_startup_context(
     args: Any,
     *,
@@ -188,13 +201,16 @@ def create_chat_startup_context(
         from application.chat.history.state import load_chat_history
         messages = load_chat_history(str(chat_history_active_path(args.history)))
 
+    from application.chat.doki_handoff import install_runtime as install_doki_runtime
+    install_doki_runtime(llm_manager, config, args)
+
     with startup_phase("chat.init_hooks"):
         if plugin_manager is not None:
             init_context = runtime.InitChatContext(
                 service=init_service,
                 character_names=tuple(character_names),
                 tts_provider=tts_provider,
-                voice_language=str(config.config.system_config.voice_language or "ja"),
+                voice_language=str(os.environ.get("SHINSEKAI_CHAT_VOICE_LANGUAGE") or config.config.system_config.voice_language or "ja"),
                 memory_enabled=_memory_auto_enabled(),
                 runtime_mode=(
                     "react"
@@ -202,7 +218,7 @@ def create_chat_startup_context(
                     else "headless" if args.headless else "native"
                 ),
                 headless=bool(args.headless),
-                metadata={"workflowPath": str(args.workflow or "")},
+                metadata={"workflowPath": str(args.workflow or ""), **_memory_scope_context(config, args.history, character_names)},
             ).scaled(0.68, 0.82)
             plugin_manager.hook_dispatcher.dispatch_init_chat(init_context)
 
@@ -350,7 +366,7 @@ def _initialize_tts(
             manager = runtime.TTSManager(tts_server_url=gsv_url)
             manager.set_tts_adapter(adapter=adapter)
             voice_language = (
-                str(config.config.system_config.voice_language or "ja").strip() or "ja"
+                str(os.environ.get("SHINSEKAI_CHAT_VOICE_LANGUAGE") or config.config.system_config.voice_language or "ja").strip() or "ja"
             )
             manager.set_language(voice_language)
             return manager, adapter_name

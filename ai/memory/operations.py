@@ -56,7 +56,12 @@ def _search_mem0(mem: Any, query: str, *, filters: dict[str, str], limit: int) -
 def _memory_service_url() -> str:
     if str(os.environ.get(_MEMORY_SERVICE_OWNER_ENV) or "").strip() == "1":
         return ""
-    return str(os.environ.get(_MEMORY_SERVICE_URL_ENV) or "").strip().rstrip("/")
+    explicit = str(os.environ.get(_MEMORY_SERVICE_URL_ENV) or "").strip().rstrip("/")
+    if explicit:
+        return explicit
+    from ai.memory.connection import discover
+    endpoint = discover()
+    return endpoint["url"] if endpoint and endpoint.get("pid") != os.getpid() else ""
 
 
 def _memory_service_timeout_sec() -> float:
@@ -89,6 +94,11 @@ def _memory_service_request(
         "Content-Type": "application/json",
     }
     token = str(os.environ.get(_MEMORY_SERVICE_TOKEN_ENV) or "").strip()
+    if not str(os.environ.get(_MEMORY_SERVICE_URL_ENV) or "").strip():
+        from ai.memory.connection import discover
+        descriptor = discover()
+        if descriptor and descriptor.get("url") == base_url:
+            token = descriptor["token"]
     if token:
         headers[_MEMORY_SERVICE_TOKEN_HEADER] = token
 
@@ -175,7 +185,12 @@ def _start_memory_service_ready_monitor() -> None:
     threading.Thread(target=_monitor, name="memory-service-ready-monitor", daemon=True).start()
 
 
-def memory_list(character_name: str | None = None, *, limit: int = 200) -> dict[str, Any]:
+def memory_list(character_name: str | None = None, *, limit: int = 200, scope=None) -> dict[str, Any]:
+    from ai.memory.session_scope import current_scope
+    scope = scope if scope is not None else current_scope(character_name)
+    if scope is not None:
+        from ai.memory.scoped import scoped_call
+        return scoped_call("list", {"scope": scope, "limit": limit})
     agent_id = _resolve_agent_id(character_name)
     service_result = _memory_service_request("list", {"name": agent_id, "limit": limit})
     if service_result is not None:
@@ -198,7 +213,13 @@ def memory_search(
     character_name: str | None = None,
     *,
     limit: int = 10,
+    scope=None,
 ) -> dict[str, Any]:
+    from ai.memory.session_scope import current_scope
+    scope = scope if scope is not None else current_scope(character_name)
+    if scope is not None:
+        from ai.memory.scoped import scoped_call
+        return scoped_call("search", {"scope": scope, "query": query, "limit": limit})
     q = (query or "").strip()
     if not q:
         return {"error": "query 不能为空"}
@@ -233,7 +254,13 @@ def memory_search(
 def memory_remember(
     content: str,
     character_name: str | None = None,
+    *, scope=None, metadata=None,
 ) -> dict[str, Any]:
+    from ai.memory.session_scope import current_scope, tool_metadata
+    scope = scope if scope is not None else current_scope(character_name)
+    if scope is not None:
+        from ai.memory.scoped import scoped_call
+        return scoped_call("remember", {"scope": scope, "content": content, "metadata": metadata or tool_metadata()})
     text = (content or "").strip()
     if not text:
         return {"error": "content 不能为空"}
@@ -291,7 +318,12 @@ def memory_remember_and_list(
     return memory_list(character_name)
 
 
-def memory_forget(memory_id: str) -> dict[str, Any]:
+def memory_forget(memory_id: str, *, scope=None) -> dict[str, Any]:
+    from ai.memory.session_scope import current_scope
+    scope = scope if scope is not None else current_scope()
+    if scope is not None:
+        from ai.memory.scoped import scoped_call
+        return scoped_call("forget", {"scope": scope, "memoryId": memory_id})
     mid = (memory_id or "").strip()
     if not mid:
         return {"error": "memory_id 不能为空"}

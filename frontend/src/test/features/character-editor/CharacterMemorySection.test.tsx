@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { PlatformRequestError } from "../../../shared/platform/errors";
 import { CharacterMemorySection } from "../../../features/character-editor/CharacterMemorySection";
 import { I18nProvider } from "../../../shared/i18n/I18nProvider";
 
@@ -169,5 +170,31 @@ describe("CharacterMemorySection", () => {
     expect(screen.getByRole("button", { name: "Initializing memory system…" })).toBeDisabled();
     // Button label + EmptyState title both show the text
     expect(screen.getAllByText("Initializing memory system…")).toHaveLength(2);
+  });
+  it("shows daily memory preparation without an operation-failed state", () => {
+    renderSection({
+      error: new PlatformRequestError("Internal tool instruction", 503, "doki_memory_preparing"),
+      isError: true,
+      isFetched: true,
+      memoryName: "Mio",
+      memoryInput: "A new memory",
+    });
+    expect(screen.getByText("Preparing long-term memory")).toBeInTheDocument();
+    expect(screen.queryByText("Operation failed")).not.toBeInTheDocument();
+    expect(screen.queryByText("Internal tool instruction")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add memory" })).toBeDisabled();
+    expect(screen.getByText(/Memories will appear automatically/)).toBeInTheDocument();
+  });
+
+  it("keeps real memory failures visible with a retry action", () => {
+    const { props } = renderSection({
+      error: new PlatformRequestError("Model loading failed", 503),
+      isError: true,
+      memoryName: "Mio",
+    });
+    expect(screen.getByText("Operation failed")).toBeInTheDocument();
+    expect(screen.getByText("Model loading failed")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(props.onRefresh).toHaveBeenCalledTimes(1);
   });
 });

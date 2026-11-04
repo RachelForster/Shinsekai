@@ -581,6 +581,12 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         }),
     },
     chat: {
+      dokiPosts: (input) =>
+        requestJson(apiBase, "/api/integrations/doki/post-to-doki", { method: "POST", body: JSON.stringify(input) }),
+      dokiConfiguration: (action, input) =>
+        requestJson(apiBase, `/api/integrations/doki/${action}`, { method: "POST", body: JSON.stringify(input) }),
+      ackDokiHandoff: (input) =>
+        requestJson(apiBase, "/api/integrations/doki/entered", { method: "POST", body: JSON.stringify(input) }),
       close: (options) =>
         requestJson<ChatSnapshot>(apiBase, "/api/chat/close", {
           body: JSON.stringify({ expectedSessionId: options?.expectedSessionId }),
@@ -1040,6 +1046,11 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
       },
     },
     characters: {
+      linkDoki: (input) =>
+        requestJson(apiBase, "/api/characters/links/doki", { method: "POST", body: JSON.stringify(input) }),
+      listDoki: () => requestJson(apiBase, "/api/characters/exchange/doki-list", { method: "POST", body: "{}" }),
+      prepareExchange: (input) =>
+        requestJson(apiBase, "/api/characters/exchange/prepare", { method: "POST", body: JSON.stringify(input) }),
       async planSprites(input, options) {
         const task = await requestJson<TaskSnapshot<{ items: SpritePromptPair[] }>>(
           apiBase,
@@ -1133,9 +1144,9 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
       delete: async (name) => {
         await requestJson(apiBase, `/api/characters/${encodePath(name)}`, { method: "DELETE" });
       },
-      deleteMemory: (name, memoryId) =>
+      deleteMemory: (name, memoryId, timeline) =>
         requestJson<CharacterMemoryList>(apiBase, "/api/characters/memories/delete", {
-          body: JSON.stringify({ memoryId, name }),
+          body: JSON.stringify({ memoryId, name, timeline }),
           method: "POST",
         }),
       deleteSpriteVoice: (name, spriteIndex) =>
@@ -1192,9 +1203,9 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         return waitForTask(apiBase, task, options);
       },
       list: () => requestJson<Character[]>(apiBase, "/api/characters"),
-      listMemories: (name) =>
+      listMemories: (name, timeline) =>
         requestJson<CharacterMemoryList>(apiBase, "/api/characters/memories/list", {
-          body: JSON.stringify({ name }),
+          body: JSON.stringify({ name, timeline }),
           method: "POST",
         }),
       previewMemoryImport: (name, items) => {
@@ -1204,16 +1215,16 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           items,
         );
       },
-      searchMemories: async ({ limit = 200, name, query }) => {
+      searchMemories: async ({ limit = 200, name, query, timeline }) => {
         const result = await requestJson<unknown>(apiBase, "/api/memory/search", {
-          body: JSON.stringify({ characterName: name, limit, query }),
+          body: JSON.stringify({ characterName: name, limit, query, timeline }),
           method: "POST",
         });
         return normalizeCharacterMemoryList(result, name);
       },
-      remember: (name, content) =>
+      remember: (name, content, timeline) =>
         requestJson<CharacterMemoryList>(apiBase, "/api/characters/memories/add", {
-          body: JSON.stringify({ content, name }),
+          body: JSON.stringify({ content, name, timeline }),
           method: "POST",
         }),
       save: (character, originalName) =>

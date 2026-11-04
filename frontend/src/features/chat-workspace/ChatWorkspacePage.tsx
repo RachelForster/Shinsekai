@@ -30,9 +30,13 @@ export function ChatWorkspacePage() {
   const [params, setParams] = useSearchParams();
   const initialization = useChatInitialization();
   const mobileAccess = useMobileAccessLaunch();
+  const dokiId = params.get("doki") || undefined;
   const conversationId = params.get("conversation") || undefined;
   const configuring =
-    params.get("tab") === "new" || Boolean(conversationId) || (!params.has("tab") && params.has("mode"));
+    Boolean(dokiId) ||
+    params.get("tab") === "new" ||
+    Boolean(conversationId) ||
+    (!params.has("tab") && params.has("mode"));
   const mode = params.get("mode") === "story" ? "story" : "normal";
   const [creating, setCreating] = useState(false);
   const [kind, setKind] = useState<"normal" | "story">("normal");
@@ -66,7 +70,9 @@ export function ChatWorkspacePage() {
             </label>
           )}
           <Suspense fallback={<p role="status">{t("common.loading")}</p>}>
-            {conversationId && (params.get("kind") === "story" || mode === "story") ? (
+            {dokiId ? (
+              <NormalMode key={dokiId} dokiId={dokiId} />
+            ) : conversationId && (params.get("kind") === "story" || mode === "story") ? (
               <StorySettings key={conversationId} conversationId={conversationId} />
             ) : conversationId || mode === "normal" ? (
               <NormalMode

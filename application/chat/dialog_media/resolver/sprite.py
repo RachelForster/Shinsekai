@@ -25,6 +25,7 @@ class ResolvedSpriteAsset(ResolvedAsset):
     voice_type: str | None = None
     voice_path: str = ""
     voice_text: str = ""
+    voice_lang: str = ""
 
     @property
     def sprite(self) -> Any | None:
@@ -73,6 +74,7 @@ class SpriteAssetResolver:
             voice_type=voice_type,
             voice_path=voice_path,
             voice_text=voice_text,
+            voice_lang=str(self._value(sprite, "voice_lang", "") or ""),
         )
 
     def _read_voice_config(

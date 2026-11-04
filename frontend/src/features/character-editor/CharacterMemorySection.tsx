@@ -1,6 +1,7 @@
 import { Brain, ChevronLeft, ChevronRight, Download, RefreshCw, Search, Upload, X } from "lucide-react";
 
 import { useI18n } from "../../shared/i18n";
+import { platformErrorCode } from "../../shared/platform/errors";
 import type { CharacterMemoryList } from "../../shared/platform/types";
 import { AsyncButton, Button, EmptyState, QueryErrorState, TextInput } from "../../shared/ui";
 
@@ -45,7 +46,7 @@ export function CharacterMemorySection({
   depInstalling,
   error,
   id,
-  isChecking,
+  isChecking: checking,
   isError,
   isFetched,
   isFetching,
@@ -70,6 +71,8 @@ export function CharacterMemorySection({
   searchPending,
 }: CharacterMemorySectionProps) {
   const { t } = useI18n();
+  const preparing = platformErrorCode(error) === "doki_memory_preparing";
+  const isChecking = checking || preparing;
   const hasMemoryRows = Boolean(data?.memories.length);
 
   return (
@@ -137,7 +140,12 @@ export function CharacterMemorySection({
         </p>
       ) : null}
       {!memoryName ? <EmptyState title={t("character.memory.nameRequired")} /> : null}
-      {memoryName && isChecking ? <EmptyState title={t("character.memory.initializing")} /> : null}
+      {memoryName && isChecking ? (
+        <EmptyState
+          title={t(preparing ? "character.exchange.memoryPreparing" : "character.memory.initializing")}
+          body={preparing ? t("character.exchange.memoryPreparingHint") : undefined}
+        />
+      ) : null}
       {memoryName && depError ? (
         <div className="empty-state" role="status">
           <div className="empty-state__icon">
@@ -153,7 +161,7 @@ export function CharacterMemorySection({
         </div>
       ) : null}
       {memoryName && isLoading ? <EmptyState title={t("character.memory.loading")} /> : null}
-      {memoryName && isError && !depError ? (
+      {memoryName && isError && !depError && !preparing ? (
         <QueryErrorState
           body={t("character.memory.error")}
           error={error}
@@ -220,7 +228,11 @@ export function CharacterMemorySection({
             placeholder={t("character.memory.placeholder")}
             value={memoryInput}
           />
-          <AsyncButton disabled={!memoryName || !memoryInput.trim()} loading={addPending} onClick={onAddMemory}>
+          <AsyncButton
+            disabled={!memoryName || !memoryInput.trim() || preparing}
+            loading={addPending}
+            onClick={onAddMemory}
+          >
             {t("character.memory.add")}
           </AsyncButton>
         </div>

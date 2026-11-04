@@ -6,9 +6,11 @@ import { ConversationLibrary } from "../../../features/chat-workspace/Conversati
 import { I18nProvider } from "../../../shared/i18n";
 import { ToastProvider } from "../../../shared/ui";
 import { setMobileAccessPreference } from "../../../features/mobile-access/useMobileAccessPreference";
+import { getPlatform } from "../../../shared/platform/platform";
 import { PlatformRequestError } from "../../../shared/platform/errors";
 
 const mocks = vi.hoisted(() => ({
+  posts: vi.fn(),
   list: vi.fn(),
   prepare: vi.fn(),
   rename: vi.fn(),
@@ -104,6 +106,10 @@ function page() {
 describe("conversation library", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    getPlatform().chat.dokiPosts = mocks.posts;
+    mocks.posts.mockImplementation(async (input) =>
+      input.action === "recipients" ? { characters: [{ id: "B", name: "B" }] } : { id: "draft" },
+    );
     localStorage.clear();
     mocks.list.mockResolvedValue([entry]);
     mocks.status.mockResolvedValue({ state: "idle" });
@@ -450,5 +456,35 @@ describe("conversation library", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "New chat" }));
     expect(onCreate).toHaveBeenCalledOnce();
+  });
+  it("keeps only two save categories and groups old independent saves with native saves", async () => {
+    mocks.list.mockResolvedValue([
+      entry,
+      { ...entry, id: "old-independent", title: "Old independent story", dokiTimeline: "independent" },
+      { ...entry, id: "daily", title: "Daily date", dokiTimeline: "daily" },
+    ]);
+    page();
+    expect(await screen.findByText("Old independent story")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "全部" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "独立剧情" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "默认配置" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Doki 日常线" }));
+    expect(screen.getByText("Daily date")).toBeInTheDocument();
+    expect(screen.queryByText("Old independent story")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "默认配置" })).toBeInTheDocument();
+  });
+
+  it("sends a selected save to Doki for preview without launching or auto-sending a chat", async () => {
+    page();
+    fireEvent.click(await screen.findByRole("button", { name: "分享到 Doki" }));
+    await waitFor(() => expect(mocks.posts).toHaveBeenCalledWith({ action: "recipients" }));
+    const dialog = within(screen.getByRole("dialog"));
+    await waitFor(() => expect(dialog.getByRole("button", { name: "在 Doki 生成帖子" })).not.toBeDisabled());
+    fireEvent.click(dialog.getByRole("button", { name: "在 Doki 生成帖子" }));
+    await waitFor(() =>
+      expect(mocks.posts).toHaveBeenCalledWith({ action: "request", conversation_id: "one", recipient_id: "B" }),
+    );
+    expect(await dialog.findByText(/已送到 Doki/)).toBeInTheDocument();
+    expect(mocks.launch).not.toHaveBeenCalled();
   });
 });

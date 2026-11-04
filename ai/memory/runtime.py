@@ -80,6 +80,8 @@ def _module_is_available(module_name: str) -> bool:
 
 
 def _create_mem0_instance(memory_type: Any, snapshot_path: str) -> Any:
+    from ai.memory.connection import acquire_lease
+    acquire_lease("vector.lock")
     config = build_mem0_config()
     logger.info(
         "mem0 后台初始化: llm.provider=%s embedder.provider=%s",

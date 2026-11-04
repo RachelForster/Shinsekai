@@ -16,6 +16,8 @@ export interface PlayerPortrait {
 }
 
 export interface Sprite {
+  tags?: string[];
+  voice_lang?: string;
   portrait_crop?: PortraitCrop | null;
   path: string;
   voice_path?: string;
@@ -44,6 +46,14 @@ export interface AvatarRuntimeImport {
 }
 
 export interface Character {
+  id?: string;
+  emotion_resources?: Array<{
+    tag: string;
+    voice_path?: string;
+    voice_text?: string;
+    voice_type?: SpriteVoiceType;
+    voice_lang?: string;
+  }>;
   sprite_transitions?: SpriteTransition[];
   portrait_crop?: PortraitCrop;
   name: string;
@@ -569,6 +579,9 @@ export interface TemplateGenerationResult extends TemplateSummary {
 }
 
 export interface ConversationSummary {
+  dokiEnded?: boolean;
+  dokiTimeline?: "daily" | "independent" | null;
+  dokiHandoffId?: string;
   id: string;
   title: string;
   characters: string[];
@@ -890,6 +903,7 @@ export interface KnowledgeImportResult extends CharacterMemoryImportResult {
 }
 
 export interface CharacterMemorySearchInput {
+  timeline?: string;
   limit?: number;
   name: string;
   query: string;
@@ -1689,6 +1703,16 @@ export interface ShinsekaiPlatform {
     uploadImageAudio: (input: { index: number; name: string; path: string }) => Promise<Effect>;
   };
   chat: {
+    dokiPosts?: (input: {
+      action: "recipients" | "request";
+      conversation_id?: string;
+      recipient_id?: string;
+    }) => Promise<{ characters?: Array<{ id: string; name: string }>; id?: string }>;
+    dokiConfiguration?: (
+      action: "configuration" | "defaults" | "configured-launch",
+      input: { handoff_id?: string; session?: TemplateLaunchSession },
+    ) => Promise<{ session?: TemplateLaunchSession; snapshot?: ChatSnapshot; ended?: boolean; warnings?: string[] }>;
+    ackDokiHandoff?: (input: { historyPath: string; sessionId: string }) => Promise<{ doki: boolean; status?: string }>;
     getCurrentConversation: () => Promise<ConversationSummary | null>;
     reconfigureConversation: (
       id: string,
@@ -1780,6 +1804,34 @@ export interface ShinsekaiPlatform {
     previewKnowledgeImport: (knowledgeId: string, items: File[]) => Promise<KnowledgeImportPreview>;
   };
   characters: {
+    linkDoki?: (input: {
+      action: "state" | "doki-list" | "bind" | "unlink";
+      characterId: string;
+      dokiId?: string;
+      role?: string;
+    }) => Promise<{
+      link?: {
+        id: string;
+        doki_name: string;
+        shinsekai_name: string;
+        role: string;
+        available: boolean;
+        memory_identity: string;
+      } | null;
+      characters?: Array<{ id: string; name: string; role: string; linked: boolean }>;
+    }>;
+    listDoki?: () => Promise<{ characters: Array<{ id: string; name: string; persona: string }> }>;
+    prepareExchange?: (input: {
+      dokiId?: string;
+      path?: string;
+      index?: number;
+      targetName?: string;
+      previewOnly?: boolean;
+    }) => Promise<{
+      character?: Character;
+      originalName?: string;
+      characters?: Array<{ index: number; name: string; persona: string }>;
+    }>;
     importModel: (input: { name: string; avatar_type: string; source_path: string }) => Promise<Character>;
     importModelStates: (input: {
       name: string;
@@ -1841,7 +1893,7 @@ export interface ShinsekaiPlatform {
       options?: TaskProgressOptions<GeneratedCharacterSprite>,
     ) => Promise<GeneratedCharacterSprite>;
     delete: (name: string) => Promise<void>;
-    deleteMemory: (name: string, memoryId: string) => Promise<CharacterMemoryList>;
+    deleteMemory: (name: string, memoryId: string, timeline?: string) => Promise<CharacterMemoryList>;
     deleteSpriteVoice: (name: string, spriteIndex: number) => Promise<Character>;
     ensureBriefs: (names: string[]) => Promise<CharacterBriefBatchResult>;
     export: (name: string) => Promise<string>;
@@ -1855,9 +1907,9 @@ export interface ShinsekaiPlatform {
       items: File[],
       options?: TaskProgressOptions<CharacterMemoryImportResult>,
     ) => Promise<CharacterMemoryImportResult>;
-    listMemories: (name: string) => Promise<CharacterMemoryList>;
+    listMemories: (name: string, timeline?: string) => Promise<CharacterMemoryList>;
     previewMemoryImport: (name: string, items: File[]) => Promise<CharacterMemoryImportPreview>;
-    remember: (name: string, content: string) => Promise<CharacterMemoryList>;
+    remember: (name: string, content: string, timeline?: string) => Promise<CharacterMemoryList>;
     searchMemories: (input: CharacterMemorySearchInput) => Promise<CharacterMemoryList>;
     save: (character: Character, originalName?: string) => Promise<Character>;
     saveEmotionTags: (name: string, emotionTags: string) => Promise<Character>;

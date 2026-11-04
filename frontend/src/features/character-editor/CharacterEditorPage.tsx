@@ -1,3 +1,4 @@
+import { getPlatform } from "../../shared/platform/platform";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WheelEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -37,7 +38,7 @@ import type {
   TaskSnapshot,
   TemplateLaunchSession,
 } from "../../shared/platform/types";
-import { AlertDialog, PageSectionNav, useToast } from "../../shared/ui";
+import { AlertDialog, PageSectionNav, Select, useToast } from "../../shared/ui";
 import { CharacterBasicSection } from "./CharacterBasicSection";
 import { CharacterMemoryDialogs } from "./CharacterMemoryDialogs";
 import { CharacterMemoryImportDialogs } from "./CharacterMemoryImportDialogs";
@@ -62,6 +63,8 @@ import { useCharacterMemoryController } from "./useCharacterMemoryController";
 import { useCharacterMemoryImportController } from "./useCharacterMemoryImportController";
 import "./CharacterEditorPage.css";
 import { ModelStateEditor } from "./ModelStateEditor";
+import { CharacterExchangePanel } from "./CharacterExchangePanel";
+import { CharacterLinkPanel } from "./CharacterLinkPanel";
 
 export function mergeSprites(serverSprites: Sprite[], current: Character) {
   const currentSpritesByPath = new Map(
@@ -73,6 +76,8 @@ export function mergeSprites(serverSprites: Sprite[], current: Character) {
       currentSpritesByPath.get(sprite.path) ?? (canFallbackToIndex ? current.sprites[index] : undefined);
     return {
       ...sprite,
+      tags: sprite.tags ?? currentSprite?.tags,
+      voice_lang: sprite.voice_lang ?? currentSprite?.voice_lang,
       voice_type: sprite.voice_type ?? currentSprite?.voice_type,
     };
   });
@@ -117,7 +122,25 @@ export function CharacterEditorPage() {
   const [pronunciationText, setPronunciationText] = useState("");
   const colorInputRef = useRef<HTMLInputElement | null>(null);
   const memoryName = draft.name.trim();
-  const memoryController = useCharacterMemoryController({ memoryName });
+  const [memoryTimeline, setMemoryTimeline] = useState("legacy");
+  useEffect(() => {
+    let current = true;
+    setMemoryTimeline("legacy");
+    const operation = getPlatform().characters.linkDoki;
+    if (draft.id && operation)
+      operation({ action: "state", characterId: draft.id })
+        .then((result) => {
+          if (current && result.link?.role === "character") setMemoryTimeline("daily");
+        })
+        .catch(() => {});
+    return () => {
+      current = false;
+    };
+  }, [draft.id]);
+  const memoryController = useCharacterMemoryController({
+    memoryName,
+    timeline: memoryTimeline === "daily" ? "daily" : undefined,
+  });
   const memoryImportController = useCharacterMemoryImportController({
     ensureReady: memoryController.ensureReady,
     memoryName,
@@ -146,9 +169,16 @@ export function CharacterEditorPage() {
   }, [data, isCreating, selectedName]);
 
   const prevSelectedNameRef = useRef<string>("");
+  const exchangeDraftRef = useRef<{ character: Character; originalName: string } | null>(null);
   useEffect(() => {
     if (selected && selected.name === preserveImportedDraftRef.current?.name) {
       preserveImportedDraftRef.current = null;
+      exchangeDraftRef.current = null;
+      return;
+    }
+    if (selected && exchangeDraftRef.current?.originalName === selected.name) {
+      setDraft(exchangeDraftRef.current.character);
+      setPronunciationText(pronunciationMapToText(exchangeDraftRef.current.character.pronunciation_map));
       return;
     }
     if (selected && selected.name !== prevSelectedNameRef.current) {
@@ -181,6 +211,7 @@ export function CharacterEditorPage() {
       });
     },
     onSuccess(character, variables) {
+      exchangeDraftRef.current = null;
       queryClient.setQueryData<Character[]>(charactersQueryKey, (current = []) => {
         const targetNames = new Set([variables.originalName, character.name].filter(Boolean));
         const next = current.filter((item) => !targetNames.has(item.name));
@@ -1054,6 +1085,30 @@ export function CharacterEditorPage() {
   return (
     <div className="page character-page">
       <CharacterPageHeader
+        linkAction={
+          <CharacterLinkPanel
+            compact
+            character={selected}
+            onLinked={(role) => setMemoryTimeline(role === "character" ? "daily" : "legacy")}
+          />
+        }
+        exchangeActions={
+          <CharacterExchangePanel
+            compact
+            characters={data}
+            selectedName={selectedName}
+            onPrepared={(character, originalName) => {
+              exchangeDraftRef.current = { character, originalName };
+              setSelectedName(originalName);
+              setIsCreating(!originalName);
+              setDraft(character);
+              setPronunciationText(pronunciationMapToText(character.pronunciation_map));
+              setPendingSpritePaths([]);
+              setPendingVoicePaths({});
+              setSelectedSpriteIndex(0);
+            }}
+          />
+        }
         characters={data}
         exportPending={exportMutation.isPending}
         importPending={importMutation.isPending}
@@ -1174,6 +1229,18 @@ export function CharacterEditorPage() {
           />
         )}
 
+        <label className="field-row">
+          <span className="field-row__label">记忆线路</span>
+          <Select
+            aria-label="记忆线路"
+            value={memoryTimeline}
+            onChange={(event) => setMemoryTimeline(event.target.value)}
+            disabled={memoryController.isFetching || memoryController.addPending || memoryController.deletePending}
+          >
+            <option value="legacy">新世界原有记忆</option>
+            <option value="daily">Doki 日常线（已链接角色）</option>
+          </Select>
+        </label>
         <CharacterMemorySection
           addPending={memoryController.addPending}
           data={memoryController.data}
@@ -1188,7 +1255,9 @@ export function CharacterEditorPage() {
           isFetching={memoryController.isFetching}
           isLoading={memoryController.isLoading}
           memoryInput={memoryController.memoryInput}
-          memoryImportPending={memoryImportController.previewPending || memoryImportController.importPending}
+          memoryImportPending={
+            memoryTimeline === "daily" || memoryImportController.previewPending || memoryImportController.importPending
+          }
           memoryName={memoryName}
           memoryPage={memoryController.memoryPage}
           memoryTotalPages={memoryController.memoryTotalPages}
