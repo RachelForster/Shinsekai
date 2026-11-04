@@ -114,6 +114,26 @@ export function animateCharacterSprite(...args: Parameters<ShinsekaiPlatform["ch
   return getPlatform().characters.animateSprite(...args);
 }
 
+export const spriteMouthRepository = {
+  status: () => getPlatform().characters.getSpriteMouthSetup(),
+  configure: (...args: Parameters<ShinsekaiPlatform["characters"]["configureSpriteMouth"]>) =>
+    getPlatform().characters.configureSpriteMouth(...args),
+  importModels: (...args: Parameters<ShinsekaiPlatform["characters"]["importSpriteMouthModels"]>) =>
+    getPlatform().characters.importSpriteMouthModels(...args),
+  download: (...args: Parameters<ShinsekaiPlatform["characters"]["downloadSpriteMouthModels"]>) =>
+    getPlatform().characters.downloadSpriteMouthModels(...args),
+  install: (...args: Parameters<ShinsekaiPlatform["characters"]["installSpriteMouthRuntime"]>) =>
+    getPlatform().characters.installSpriteMouthRuntime(...args),
+  generate: (...args: Parameters<ShinsekaiPlatform["characters"]["generateSpriteMouth"]>) =>
+    getPlatform().characters.generateSpriteMouth(...args),
+  read: (...args: Parameters<ShinsekaiPlatform["characters"]["readSpriteMouth"]>) =>
+    getPlatform().characters.readSpriteMouth(...args),
+  save: (...args: Parameters<ShinsekaiPlatform["characters"]["saveSpriteMouths"]>) =>
+    getPlatform().characters.saveSpriteMouths(...args),
+  remove: (...args: Parameters<ShinsekaiPlatform["characters"]["removeSpriteMouth"]>) =>
+    getPlatform().characters.removeSpriteMouth(...args),
+};
+
 export function analyzeSpriteTransitions(
   ...args: Parameters<ShinsekaiPlatform["characters"]["analyzeSpriteTransitions"]>
 ) {

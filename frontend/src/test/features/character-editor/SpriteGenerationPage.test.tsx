@@ -21,7 +21,14 @@ const analyzeTransitions = vi.fn();
 const saveTransitions = vi.fn();
 const openFolder = vi.fn();
 const openExternal = vi.fn();
+const mouths = { status: vi.fn(), generate: vi.fn(), save: vi.fn(), remove: vi.fn() };
 vi.mock("../../../entities/character/repository", () => ({
+  spriteMouthRepository: {
+    status: (...args: unknown[]) => mouths.status(...args),
+    generate: (...args: unknown[]) => mouths.generate(...args),
+    save: (...args: unknown[]) => mouths.save(...args),
+    remove: (...args: unknown[]) => mouths.remove(...args),
+  },
   planCharacterSprites: (...args: unknown[]) => plan(...args),
   renderCharacterSprite: (...args: unknown[]) => draw(...args),
   animateCharacterSprite: (...args: unknown[]) => animate(...args),
@@ -89,6 +96,28 @@ describe("sprite generator", () => {
   beforeEach(() => {
     setSpriteTransitionPlaybackRate(1);
     vi.clearAllMocks();
+    mouths.status.mockResolvedValue({
+      runtimeReady: true,
+      modelsReady: true,
+      compatible: true,
+      missing: [],
+      version: [3, 13],
+      pythonPath: "python.exe",
+      device: "auto",
+      models: [],
+      modelDirectory: "models",
+    });
+    mouths.generate.mockImplementation(async (input) => ({
+      ready: true,
+      taskId: `mouth-${input.spritePath}`,
+      spritePath: input.spritePath,
+      frames: [0, 1, 2].map((index) => ({ index, path: `${index}.jpg` })),
+      selectedFrames: { closed: 0, half: 1, open: 2 },
+    }));
+    mouths.save.mockResolvedValue({
+      ...character,
+      sprites: [{ path: "old.png", mouth_sync: "manifest.json" }, { path: "animated.mp4" }],
+    });
     vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
     vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
     vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
@@ -309,10 +338,12 @@ describe("sprite generator", () => {
     expect(draw).toHaveBeenLastCalledWith(expect.objectContaining({ h3Resolution: "native" }), expect.anything());
     await waitFor(() => expect(screen.getAllByRole("button", { name: "Redraw" })[0]).toBeEnabled());
     fireEvent.click(screen.getAllByRole("button", { name: "Make animated sprite" })[0]);
-    expect(screen.queryByRole("combobox", { name: "H3 generation resolution" })).not.toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "H3 generation resolution" })).toHaveTextContent("Follow workflow");
+    fireEvent.click(screen.getByRole("combobox", { name: "H3 generation resolution" }));
+    fireEvent.click(screen.getByRole("option", { name: "High · ~0.7 MP" }));
     fireEvent.click(screen.getByRole("button", { name: "Generate transparent animation" }));
     await waitFor(() => expect(animate).toHaveBeenCalledOnce());
-    expect(animate.mock.calls[0][0]).not.toHaveProperty("h3Resolution");
+    expect(animate.mock.calls[0][0]).toHaveProperty("h3Resolution", "hd");
   });
 
   it("locks the H3 resolution while generation is running", async () => {
@@ -1183,12 +1214,21 @@ describe("sprite generator", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "Select Sprite 1" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "Select Sprite 2" }));
     expect(screen.getByText("2 selected · 2 clips")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("combobox", { name: "H3 generation resolution" }));
+    fireEvent.click(screen.getByRole("option", { name: "High · ~0.7 MP" }));
     fireEvent.click(screen.getByRole("button", { name: "Generate / resume 2 clips" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Save 2 transitions" })).toBeEnabled());
     expect(transition.mock.calls.map(([input]) => [input.fromPath, input.toPath])).toEqual([
       ["old.png", "animated.mp4"],
       ["animated.mp4", "old.png"],
     ]);
+    expect(transition.mock.calls.map(([input]) => input.h3Resolution)).toEqual(["hd", "hd"]);
+    fireEvent.click(screen.getByRole("combobox", { name: "H3 generation resolution" }));
+    fireEvent.click(screen.getByRole("option", { name: "Ultra · ~1 MP" }));
+    fireEvent.click(screen.getByRole("button", { name: "Generate / resume 2 clips" }));
+    await waitFor(() => expect(transition).toHaveBeenCalledTimes(4));
+    expect(transition.mock.calls.slice(2).map(([input]) => input.h3Resolution)).toEqual(["native", "native"]);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save 2 transitions" })).toBeEnabled());
     expect(plan).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Save 2 transitions" }));
     await waitFor(() =>
@@ -1293,6 +1333,213 @@ describe("sprite generator", () => {
     fireEvent.click(screen.getByRole("button", { name: "Generate / resume 1 clips" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Save 2 transitions" })).toBeEnabled());
     expect(transition).toHaveBeenCalledTimes(2);
+  });
+
+  it("prepares mouths for selected images and videos and saves bindings without adding portraits", async () => {
+    const { imported } = mount();
+    fireEvent.click(screen.getByRole("tab", { name: "Mouth sync" }));
+    await waitFor(() => expect(mouths.status).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole("button", { name: "Select all sources" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Prepare selected mouths (2)" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Prepare selected mouths (2)" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save mouth profiles (2)" })).toBeEnabled());
+    expect(mouths.generate.mock.calls.map(([input]) => input.spritePath)).toEqual(["old.png", "animated.mp4"]);
+    expect(mouths.generate.mock.calls.every(([input]) => input.frameCount === 22)).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Save mouth profiles (2)" }));
+    await waitFor(() => expect(imported).toHaveBeenCalledOnce());
+    expect(mouths.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "Mika",
+        items: expect.arrayContaining([
+          expect.objectContaining({ taskId: "mouth-old.png" }),
+          expect.objectContaining({ taskId: "mouth-animated.mp4" }),
+        ]),
+      }),
+    );
+    expect(draw).not.toHaveBeenCalled();
+  });
+
+  it("uses the selected shorter length for generation and the current choice for regeneration", async () => {
+    mount();
+    fireEvent.click(screen.getByRole("tab", { name: "Mouth sync" }));
+    fireEvent.change(screen.getByLabelText("Talking clip length"), { target: { value: "5" } });
+    expect(screen.getByText(/Five frames may not contain all three mouth poses/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Sprite 1" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Prepare selected mouths (1)" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Prepare selected mouths (1)" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Regenerate talking clip" })).toBeEnabled());
+    expect(mouths.generate.mock.calls[0][0].frameCount).toBe(5);
+    fireEvent.change(screen.getByLabelText("Talking clip length"), { target: { value: "39" } });
+    fireEvent.click(screen.getByRole("button", { name: "Regenerate talking clip" }));
+    await waitFor(() => expect(mouths.generate).toHaveBeenCalledTimes(2));
+    expect(mouths.generate.mock.calls[1][0]).toEqual(expect.objectContaining({ frameCount: 39, regenerate: true }));
+  });
+
+  it("previews and adjusts a finished mouth while the next portrait is generating", async () => {
+    const original = mouths.generate.getMockImplementation()!;
+    let finishSecond!: (value: unknown) => void;
+    const second = new Promise((resolve) => {
+      finishSecond = resolve;
+    });
+    mouths.generate.mockImplementation((input, ...rest) =>
+      input.spritePath === "animated.mp4" ? second : original(input, ...rest),
+    );
+    mount();
+    fireEvent.click(screen.getByRole("tab", { name: "Mouth sync" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select all sources" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Prepare selected mouths (2)" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Prepare selected mouths (2)" }));
+    await waitFor(() => expect(mouths.generate).toHaveBeenCalledTimes(2));
+    fireEvent.click(screen.getByRole("tab", { name: "Static sprites" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Mouth sync" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Preview and correct" })[0]);
+    fireEvent.change(screen.getByLabelText("Horizontal offset"), { target: { value: "3" } });
+    fireEvent.click(screen.getByLabelText("Show alignment guides"));
+    fireEvent.keyDown(screen.getByRole("button", { name: "Chin anchor" }), { key: "ArrowDown" });
+    fireEvent.click(screen.getByRole("button", { name: "Apply frames and placement" }));
+    expect(mouths.generate).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("button", { name: "Queued to apply after the current generation" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Save and close" }));
+    await act(async () => {
+      finishSecond({ ready: true, taskId: "second", frames: [], selectedFrames: { closed: 0, half: 1, open: 2 } });
+    });
+    await waitFor(() => expect(mouths.generate).toHaveBeenCalledTimes(3));
+    expect(mouths.generate.mock.calls[2][0]).toEqual(
+      expect.objectContaining({ retryTaskId: "mouth-old.png", correction: expect.objectContaining({ offsetX: 3 }) }),
+    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save mouth profiles (1)" })).toBeEnabled());
+    expect(mouths.save).toHaveBeenCalledWith({
+      name: "Mika",
+      items: [{ taskId: "mouth-old.png", correction: expect.objectContaining({ offsetX: 3 }) }],
+    });
+  });
+
+  it("keeps the three frame selectors and manual anchors after an unsuccessful apply", async () => {
+    mouths.generate.mockResolvedValueOnce({
+      ready: false,
+      taskId: "original",
+      frames: [0, 1, 2].map((index) => ({ index, path: `${index}.jpg` })),
+      selectedFrames: { closed: 0, half: 1, open: 2 },
+    });
+    mouths.generate.mockResolvedValueOnce({ ready: false, taskId: "retry", message: "landmarks unreliable" });
+    mount();
+    fireEvent.click(screen.getByRole("tab", { name: "Mouth sync" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Sprite 1" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Prepare selected mouths (1)" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Prepare selected mouths (1)" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Preview and correct" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Preview and correct" }));
+    fireEvent.click(screen.getByLabelText("Show alignment guides"));
+    fireEvent.keyDown(screen.getByRole("button", { name: "Mouth region" }), { key: "ArrowRight" });
+    fireEvent.click(screen.getByRole("button", { name: "Apply frames and placement" }));
+    await waitFor(() => expect(mouths.generate).toHaveBeenCalledTimes(2));
+    await screen.findAllByText("landmarks unreliable");
+    const closed = screen.getByRole("combobox", { name: "Closed" });
+    fireEvent.click(closed);
+    expect(screen.getAllByRole("option")).toHaveLength(3);
+    fireEvent.click(screen.getByRole("option", { name: "Frame 1" }));
+    expect(screen.getByLabelText("Show alignment guides")).toBeChecked();
+    mouths.generate.mockResolvedValueOnce({ ready: false, taskId: "retry-again", message: "landmarks unreliable" });
+    fireEvent.click(screen.getByRole("button", { name: "Save and close" }));
+    await waitFor(() => expect(mouths.generate).toHaveBeenCalledTimes(3));
+    fireEvent.click(screen.getByRole("button", { name: "Preview and correct" }));
+    expect(screen.getByLabelText("Show alignment guides")).toBeChecked();
+    expect(mouths.save).not.toHaveBeenCalled();
+  });
+
+  it("enlarges the hover preview and saves hand placement and frames when the editor closes", async () => {
+    mouths.generate.mockImplementation(async (input) => ({
+      ready: true,
+      taskId: input.retryTaskId ? "applied-manual" : `mouth-${input.spritePath}`,
+      reference: "reference.png",
+      frames: [0, 1, 2, 3].map((index) => ({ index, path: `${index}.jpg` })),
+      selectedFrames: input.selectedFrames ?? { closed: 0, half: 1, open: 2 },
+      manual: input.manual,
+      profile: {
+        width: 512,
+        height: 672,
+        patchBox: [20, 30, 40, 50],
+        mouths: { closed: "closed.png", half: "half.png", open: "open.png" },
+      },
+    }));
+    mount();
+    fireEvent.click(screen.getByRole("tab", { name: "Mouth sync" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select all sources" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Prepare selected mouths (2)" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Prepare selected mouths (2)" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save mouth profiles (2)" })).toBeEnabled());
+    const card = document.querySelector(".sprite-mouth-card")!;
+    fireEvent.mouseEnter(card);
+    expect(document.querySelector(".sprite-mouth-hover-preview canvas")).toBeInTheDocument();
+    fireEvent.mouseLeave(card);
+    expect(document.querySelector(".sprite-mouth-hover-preview")).not.toBeInTheDocument();
+    const edit = () => fireEvent.click(screen.getAllByRole("button", { name: "Preview and correct" })[0]);
+    edit();
+    fireEvent.click(screen.getByLabelText("Show alignment guides"));
+    fireEvent.keyDown(screen.getByRole("button", { name: "Mouth region" }), { key: "ArrowRight" });
+    fireEvent.keyDown(screen.getByRole("button", { name: "Chin anchor" }), { key: "ArrowDown" });
+    const mouthStyle = screen.getByRole("button", { name: "Mouth region" }).getAttribute("style");
+    const chinStyle = screen.getByRole("button", { name: "Chin anchor" }).getAttribute("style");
+    fireEvent.change(screen.getByLabelText("Horizontal offset"), { target: { value: "3" } });
+    fireEvent.click(screen.getByRole("combobox", { name: "Open" }));
+    fireEvent.click(screen.getByRole("option", { name: "Frame 4" }));
+    const submit = screen.getByRole("button", { name: "Apply frames and placement" });
+    fireEvent.click(submit);
+    await waitFor(() => expect(screen.getByLabelText("Simulate speech")).toBeEnabled());
+    expect(mouths.generate).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        retryTaskId: "mouth-old.png",
+        manual: {
+          mouthBox: [0.45 + 1 / 512, 0.35, 0.55 + 1 / 512, 0.38],
+          chin: [0.5, 0.42 + 1 / 672],
+        },
+        selectedFrames: { closed: 0, half: 1, open: 3 },
+        correction: expect.objectContaining({ offsetX: 3 }),
+      }),
+      expect.anything(),
+    );
+    expect(screen.getByRole("dialog").querySelector(".sprite-mouth-media__overlay")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Show alignment guides"));
+    expect(screen.queryByRole("button", { name: "Mouth region" })).not.toBeInTheDocument();
+    expect(submit).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Close and save adjustments" }));
+    await waitFor(() =>
+      expect(mouths.save).toHaveBeenCalledWith({
+        name: "Mika",
+        items: [{ taskId: "applied-manual", correction: expect.objectContaining({ offsetX: 3 }) }],
+      }),
+    );
+    edit();
+    expect(screen.getByRole("button", { name: "Restore automatic placement" })).toBeVisible();
+    fireEvent.click(screen.getByLabelText("Show alignment guides"));
+    expect(screen.getByRole("button", { name: "Mouth region" })).toHaveAttribute("style", mouthStyle);
+    expect(screen.getByRole("button", { name: "Chin anchor" })).toHaveAttribute("style", chinStyle);
+    expect(screen.getByRole("combobox", { name: "Open" })).toHaveTextContent("Frame 4");
+    expect(screen.getByLabelText("Horizontal offset")).toHaveValue(3);
+    fireEvent.click(screen.getByRole("button", { name: "Save and close" }));
+    expect(mouths.save).toHaveBeenCalledTimes(1);
+  });
+
+  it("reuses a failed mouth clip when applying manually chosen frames", async () => {
+    mouths.generate.mockResolvedValueOnce({
+      ready: false,
+      taskId: "needs-correction",
+      frames: [0, 1, 2].map((index) => ({ index, path: `${index}.jpg` })),
+      selectedFrames: { closed: 0, half: 1, open: 2 },
+    });
+    mount();
+    fireEvent.click(screen.getByRole("tab", { name: "Mouth sync" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Sprite 1" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Prepare selected mouths (1)" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Prepare selected mouths (1)" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Preview and correct" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Preview and correct" }));
+    fireEvent.click(screen.getByRole("button", { name: "Apply frames and placement" }));
+    await waitFor(() => expect(mouths.generate).toHaveBeenCalledTimes(2));
+    expect(mouths.generate.mock.calls[1][0]).toEqual(
+      expect.objectContaining({ retryTaskId: "needs-correction", selectedFrames: { closed: 0, half: 1, open: 2 } }),
+    );
+    expect(mouths.generate.mock.calls[1][0].regenerate).toBeUndefined();
   });
 
   it("retains ideas when planning fails and confirms discarding unsaved previews", async () => {
