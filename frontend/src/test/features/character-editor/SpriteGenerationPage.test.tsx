@@ -1359,6 +1359,38 @@ describe("sprite generator", () => {
     expect(draw).not.toHaveBeenCalled();
   });
 
+  it("queues more than 12 mouths and retries only the unsaved results after a save batch fails", async () => {
+    const sprites = Array.from({ length: 25 }, (_, index) => ({ path: `portrait-${index + 1}.png` }));
+    mouths.save
+      .mockResolvedValueOnce({ ...character, sprites })
+      .mockRejectedValueOnce(new Error("Mouth batch save failed"))
+      .mockResolvedValue({ ...character, sprites });
+    mount({ ...character, sprites });
+    fireEvent.click(screen.getByRole("tab", { name: "Mouth sync" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select all sources" }));
+    const prepare = screen.getByRole("button", { name: "Prepare selected mouths (25)" });
+    await waitFor(() => expect(prepare).toBeEnabled());
+    fireEvent.click(prepare);
+    const saveBatch = await screen.findByRole("button", { name: "Save mouth profiles (25)" });
+    await waitFor(() => expect(saveBatch).toBeEnabled());
+    expect(mouths.generate.mock.calls.map(([input]) => input.spritePath)).toEqual(sprites.map((sprite) => sprite.path));
+
+    fireEvent.click(saveBatch);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Mouth batch save failed");
+    expect(screen.getAllByText("Saved", { exact: true })).toHaveLength(12);
+    expect(mouths.save).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(screen.getByRole("button", { name: "Save mouth profiles (13)" }));
+    await waitFor(() => expect(screen.getAllByText("Saved", { exact: true })).toHaveLength(25));
+    const saveCalls = mouths.save.mock.calls.map(([input]) =>
+      input.items.map(({ taskId }: { taskId: string }) => taskId),
+    );
+    expect(saveCalls.map((ids) => ids.length)).toEqual([12, 12, 12, 1]);
+    expect(saveCalls[2]).toEqual(saveCalls[1]);
+    expect([saveCalls[0], saveCalls[2], saveCalls[3]].flat()).toEqual(sprites.map((sprite) => `mouth-${sprite.path}`));
+    expect(screen.getAllByRole("button", { name: "Preview and correct" })[0]).toBeEnabled();
+  });
+
   it("uses the selected shorter length for generation and the current choice for regeneration", async () => {
     mount();
     fireEvent.click(screen.getByRole("tab", { name: "Mouth sync" }));

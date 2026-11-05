@@ -156,7 +156,7 @@ export function SpriteMouthWorkspace({
               selectedSources={controller.selection}
               onSourceSelectionChange={controller.setSelection}
               busy={busy}
-              remaining={12}
+              remaining={sources.length}
               title={t("spriteMouth.stepSource")}
               hint={t("spriteMouth.selectHint")}
             />
@@ -213,7 +213,13 @@ export function SpriteMouthWorkspace({
                         <input
                           type="checkbox"
                           checked={item.selected}
-                          disabled={busyFor(item.path) || item.calibrationDirty || !result?.ready || !result.taskId}
+                          disabled={
+                            busyFor(item.path) ||
+                            item.saved ||
+                            item.calibrationDirty ||
+                            !result?.ready ||
+                            !result.taskId
+                          }
                           onChange={(event) => controller.select(item.path, event.target.checked)}
                           aria-label={`${t("spriteMouth.select")} · ${label(item.path)}`}
                         />

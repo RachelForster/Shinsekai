@@ -116,7 +116,8 @@ export const jaMessages: Record<MessageKey, string> = {
   "spriteMouth.refresh": "リソースを確認",
   "spriteMouth.ready": "準備完了",
   "spriteMouth.missing": "未準備",
-  "spriteMouth.selectHint": "最大12枚。静止画は固定位置、動画は全体の追従軌跡を計算します。",
+  "spriteMouth.selectHint":
+    "複数選択や全選択ができ、1枚ずつ処理します。静止画は固定位置、動画は全体の追従軌跡を計算します。",
   "spriteMouth.generate": "選択した口形を作成（{count}）",
   "spriteMouth.stop": "この立ち絵の完了後に停止",
   "spriteMouth.stopping": "キューを停止中",

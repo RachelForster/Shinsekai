@@ -112,7 +112,7 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "spriteMouth.refresh": "检查资源",
   "spriteMouth.ready": "已就绪",
   "spriteMouth.missing": "未就绪",
-  "spriteMouth.selectHint": "每次最多选择 12 张。静态立绘固定定位，动态立绘匹配完整视频。",
+  "spriteMouth.selectHint": "可多选或全选，系统会逐张制作。静态立绘固定定位，动态立绘匹配完整视频。",
   "spriteMouth.generate": "制作所选口型（{count}）",
   "spriteMouth.stop": "本张完成后停止",
   "spriteMouth.stopping": "正在停止队列",

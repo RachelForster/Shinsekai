@@ -12,6 +12,8 @@ import type {
   TaskSnapshot,
 } from "../../shared/platform/types";
 
+const MOUTH_SAVE_BATCH_SIZE = 12;
+
 export const defaultMouthCorrection: SpriteMouthCorrection = { offsetX: 0, offsetY: 0, scale: 1, rotation: 0, gain: 1 };
 export interface MouthCalibrationDraft {
   manual: SpriteMouthManual;
@@ -230,36 +232,33 @@ export function useSpriteMouths(
   }, [externalBusy]);
 
   const enqueue = async (paths: string[], options: MouthOptions, reanalysis: boolean, saveAfter = false) => {
-    if (!paths.length || paths.length > 12) {
-      setError("请选择 1–12 张立绘");
+    if (!paths.length) {
+      setError("请至少选择一张立绘");
       return;
     }
     if (!saveAfter && lock.current && lock.current !== "generate") {
       setError("请等待当前操作完成");
       return;
     }
-    if (
-      latestItems.current.length +
-        paths.filter((path) => !latestItems.current.some((item) => item.path === path)).length >
-      12
-    ) {
-      setError("每次最多保留 12 份结果，请先保存或移除已有结果");
-      return;
-    }
     setStopping(false);
     setError("");
-    for (const path of paths) {
-      if (path === runningJob.current?.path || jobs.current.some((job) => job.path === path)) continue;
+    const pending = new Set(jobs.current.map((job) => job.path));
+    const queuedPaths: string[] = [];
+    for (const path of new Set(paths)) {
+      if (path === runningJob.current?.path || pending.has(path)) continue;
       const job: MouthJob = { path, name, options, kind: reanalysis ? "apply" : "generate", saveAfter };
       if (reanalysis) jobs.current.unshift(job);
       else jobs.current.push(job);
-      progress.current.total += 1;
-      mutate((values) =>
-        values.some((item) => item.path === path)
-          ? values
-          : [...values, { path, selected: false, correction: { ...defaultMouthCorrection } }],
-      );
+      queuedPaths.push(path);
     }
+    progress.current.total += queuedPaths.length;
+    mutate((values) => {
+      const existing = new Set(values.map((item) => item.path));
+      const additions = queuedPaths
+        .filter((path) => !existing.has(path))
+        .map((path) => ({ path, selected: false, correction: { ...defaultMouthCorrection } }));
+      return additions.length ? [...values, ...additions] : values;
+    });
     setQueue({ ...progress.current });
     syncPending();
     await pumpRef.current();
@@ -289,15 +288,20 @@ export function useSpriteMouths(
     }
   };
   const selected = items.filter(
-    (item) => item.selected && !item.calibrationDirty && item.result?.ready && item.result.taskId,
+    (item) => item.selected && !item.saved && !item.calibrationDirty && item.result?.ready && item.result.taskId,
   );
   const save = () =>
-    operate("save", () =>
-      persist(
-        name,
-        selected.map((item) => ({ path: item.path, taskId: item.result!.taskId!, correction: item.correction })),
-      ),
-    );
+    operate("save", async () => {
+      const snapshots = selected.map((item) => ({
+        path: item.path,
+        taskId: item.result!.taskId!,
+        correction: item.correction,
+      }));
+      for (let index = 0; index < snapshots.length; index += MOUTH_SAVE_BATCH_SIZE) {
+        if (name !== currentSource.current.name) return;
+        await persist(name, snapshots.slice(index, index + MOUTH_SAVE_BATCH_SIZE));
+      }
+    });
   const finish = (path: string, options: MouthOptions | undefined, invalidFrames: string) => {
     const pending = [runningJob.current, ...jobs.current].find((job) => job?.path === path);
     if (pending) {

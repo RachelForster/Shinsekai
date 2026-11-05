@@ -119,7 +119,7 @@ export const enMessages: Record<MessageKey, string> = {
   "spriteMouth.ready": "Ready",
   "spriteMouth.missing": "Not ready",
   "spriteMouth.selectHint":
-    "Select up to 12. Images use a fixed position; videos get a tracking path for the full clip.",
+    "Select multiple portraits or select all to queue them one at a time. Images use a fixed position and videos get a tracking path for the full clip.",
   "spriteMouth.generate": "Prepare selected mouths ({count})",
   "spriteMouth.stop": "Stop after this portrait",
   "spriteMouth.stopping": "Stopping queue",
