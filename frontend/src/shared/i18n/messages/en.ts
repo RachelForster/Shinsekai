@@ -77,6 +77,15 @@ export const enMessages: Record<MessageKey, string> = {
   "chat.replay.changed": "History changed. Refresh and select again.",
 
   "spriteMouth.tab": "Mouth sync",
+  "spriteMouth.includeBlink": "Include a blink",
+  "spriteMouth.blinkHint": "Available for 22 or 39 frames. This makes a new clip with speech and a blink.",
+  "spriteMouth.eyeFrames": "Eye frames",
+  "spriteMouth.eyeFramesHint":
+    "Pause and step through the clip, then export the current frame as a PNG with its eye pose.",
+  "spriteMouth.eyeExport.open": "Export eyes open",
+  "spriteMouth.eyeExport.half": "Export eyes half closed",
+  "spriteMouth.eyeExport.closed": "Export eyes closed",
+  "spriteMouth.eyeExportFailed": "Could not export this frame. Try another frame.",
   "spriteMouth.inherited": "Mouth poses from the reference portrait will be attached when saved.",
   "spriteMouth.inheritFailed": "Could not reuse the reference mouth poses. {error}",
   "spriteMouth.canvasZoom": "Preview canvas zoom",

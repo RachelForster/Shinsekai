@@ -40,7 +40,11 @@ export function SpriteMouthTimeline({
   const video = useRef<HTMLVideoElement>(null);
   const pendingSeek = useRef<number | null>(null);
   const [position, setPosition] = useState(0);
+  const [canExport, setCanExport] = useState(false);
+  const [exportFailed, setExportFailed] = useState(false);
   const actualFps = Number.isFinite(fps) && fps > 0 ? fps : 24;
+  const frameAvailable = (player: HTMLVideoElement) =>
+    player.paused && !player.seeking && player.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
   const syncTime = (time: number) => {
     const next = mouthFrameAtTime(frames, time, actualFps);
     if (pendingSeek.current !== null) {
@@ -57,6 +61,7 @@ export function SpriteMouthTimeline({
     const interval = frames[next + 1]?.time === undefined ? 1 / actualFps : frames[next + 1].time! - time;
     const player = video.current;
     pendingSeek.current = next;
+    setCanExport(false);
     if (player) {
       player.pause();
       player.currentTime = time + Math.max(0.0001, interval * 0.2);
@@ -78,9 +83,47 @@ export function SpriteMouthTimeline({
     if (requestedFrame) seek(frames.findIndex((frame) => frame.index === requestedFrame.index));
   }, [requestedFrame]);
   const current = frames[position];
+  const exportEyeFrame = (pose: MouthPose) => {
+    const player = video.current;
+    if (
+      !current ||
+      !player ||
+      !frameAvailable(player) ||
+      mouthFrameAtTime(frames, player.currentTime, actualFps) !== position
+    )
+      return;
+    setExportFailed(false);
+    const canvas = document.createElement("canvas");
+    canvas.width = player.videoWidth;
+    canvas.height = player.videoHeight;
+    const context = canvas.getContext("2d");
+    if (!context || !canvas.width || !canvas.height) {
+      setExportFailed(true);
+      return;
+    }
+    try {
+      context.drawImage(player, 0, 0);
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          setExportFailed(true);
+          return;
+        }
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `eyes-${pose}-frame-${current.index + 1}.png`;
+        link.click();
+        window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      }, "image/png");
+    } catch {
+      setExportFailed(true);
+    }
+  };
   useEffect(() => {
     const player = video.current;
     if (!player) return;
+    setCanExport(false);
+    setExportFailed(false);
     player.setAttribute("src", fileUrl(src));
     return () => {
       player.pause();
@@ -96,6 +139,7 @@ export function SpriteMouthTimeline({
         controls
         muted
         playsInline
+        crossOrigin="anonymous"
         src={fileUrl(src)}
         onLoadedMetadata={(event) => {
           event.currentTarget.playbackRate = 0.5;
@@ -104,12 +148,17 @@ export function SpriteMouthTimeline({
         }}
         onPlay={() => {
           pendingSeek.current = null;
+          setCanExport(false);
         }}
+        onPause={(event) => setCanExport(frameAvailable(event.currentTarget))}
+        onSeeking={() => setCanExport(false)}
+        onLoadedData={(event) => setCanExport(frameAvailable(event.currentTarget))}
         onTimeUpdate={(event) => {
           if (!event.currentTarget.requestVideoFrameCallback) syncTime(event.currentTarget.currentTime);
         }}
         onSeeked={(event) => {
           if (!event.currentTarget.requestVideoFrameCallback) syncTime(event.currentTarget.currentTime);
+          setCanExport(frameAvailable(event.currentTarget));
         }}
       />
       {frames.length ? (
@@ -149,6 +198,18 @@ export function SpriteMouthTimeline({
               </Button>
             ))}
           </div>
+          <details>
+            <summary>{t("spriteMouth.eyeFrames")}</summary>
+            <p className="sprite-generation__hint">{t("spriteMouth.eyeFramesHint")}</p>
+            <div className="sprite-mouth-actions">
+              {(["open", "half", "closed"] as const).map((pose) => (
+                <Button key={pose} disabled={!current || !canExport} onClick={() => exportEyeFrame(pose)}>
+                  {t(`spriteMouth.eyeExport.${pose}`)}
+                </Button>
+              ))}
+            </div>
+            {exportFailed ? <p role="alert">{t("spriteMouth.eyeExportFailed")}</p> : null}
+          </details>
         </>
       ) : null}
     </div>

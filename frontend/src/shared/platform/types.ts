@@ -1600,6 +1600,7 @@ export interface SpriteMouthInput {
   name: string;
   spritePath: string;
   frameCount?: 5 | 22 | 39;
+  includeBlink?: boolean;
   speechVideo?: string;
   regenerate?: boolean;
   retryTaskId?: string;

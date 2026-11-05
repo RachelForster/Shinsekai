@@ -13,6 +13,7 @@ import {
   FilePicker,
   ImageAssetCornerLabel,
   Select,
+  Switch,
   TaskProgress,
 } from "../../shared/ui";
 import { SpriteAnimationSourcePicker } from "./SpriteAnimationSourcePicker";
@@ -31,6 +32,8 @@ export function SpriteMouthWorkspace({
   const { t } = useI18n();
   const [speechVideo, setSpeechVideo] = useState("");
   const [frameCount, setFrameCount] = useState<5 | 22 | 39>(22);
+  const [blinkRequested, setBlinkRequested] = useState(false);
+  const includeBlink = blinkRequested && frameCount !== 5 && !speechVideo;
   const [editing, setEditing] = useState("");
   const [hovered, setHovered] = useState<{ path: string; bounds: DOMRect }>();
   const [sourcesOpen, setSourcesOpen] = useState(true);
@@ -59,7 +62,9 @@ export function SpriteMouthWorkspace({
   const selectedSources = sources.filter((source) => controller.selection.includes(source.id));
   const readySetup = controller.setup?.runtimeReady && controller.setup.modelsReady;
   const canReuseAll =
-    selectedSources.length > 0 && selectedSources.every((source) => character.sprites[source.index].mouth_sync);
+    !includeBlink &&
+    selectedSources.length > 0 &&
+    selectedSources.every((source) => character.sprites[source.index].mouth_sync);
   const busy = Boolean(controller.busy || controller.externalBusy || controller.pendingPaths.length);
   const busyFor = (path: string) => controller.activePath === path || controller.pendingPaths.includes(path);
   const editingItem = controller.items.find((item) => item.path === editing);
@@ -95,6 +100,14 @@ export function SpriteMouthWorkspace({
           <p className="sprite-generation__hint">
             {t(frameCount === 5 ? "spriteMouth.shortClipHint" : "spriteMouth.frameCountHint")}
           </p>
+          <Switch
+            checked={includeBlink}
+            disabled={busy || frameCount === 5 || Boolean(speechVideo)}
+            onChange={(event) => setBlinkRequested(event.target.checked)}
+          >
+            {t("spriteMouth.includeBlink")}
+          </Switch>
+          <p className="sprite-generation__hint">{t("spriteMouth.blinkHint")}</p>
           <label>
             {t("spriteMouth.speechVideo")}
             <FilePicker
@@ -122,7 +135,7 @@ export function SpriteMouthWorkspace({
               setSourcesOpen(false);
               void controller.generate(
                 selectedSources.map((source) => source.id),
-                { frameCount, ...(speechVideo ? { speechVideo } : {}) },
+                { frameCount, ...(speechVideo ? { speechVideo } : {}), ...(includeBlink ? { includeBlink } : {}) },
               );
             }}
           >
@@ -266,7 +279,13 @@ export function SpriteMouthWorkspace({
                       </Button>
                       <Button
                         disabled={busy || !readySetup}
-                        onClick={() => void controller.generate([item.path], { regenerate: true, frameCount })}
+                        onClick={() =>
+                          void controller.generate([item.path], {
+                            regenerate: true,
+                            frameCount,
+                            ...(includeBlink ? { includeBlink } : {}),
+                          })
+                        }
                       >
                         {t("spriteMouth.redraw")}
                       </Button>

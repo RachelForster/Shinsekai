@@ -161,6 +161,9 @@ def run_sprite_mouth(state, task_id, payload):
     identity = {"name": name, "spritePath": original, "sourceFingerprint": fingerprint, "taskId": task_id}
     if not isinstance(payload.get("regenerate", False), bool):
         raise ValueError("regenerate 必须为布尔值")
+    include_blink = payload.get("includeBlink", False)
+    if not isinstance(include_blink, bool):
+        raise ValueError("includeBlink 必须为布尔值")
     previous = None
     if payload.get("retryTaskId"):
         previous = _previous(state, str(payload["retryTaskId"]), name, original, fingerprint)
@@ -172,7 +175,7 @@ def run_sprite_mouth(state, task_id, payload):
             "correction": previous.get("correction") or (previous.get("profile") or {}).get("correction"),
             **payload,
         }
-    elif not payload.get("regenerate", False):
+    elif not payload.get("regenerate", False) and not include_blink:
         saved = valid_mouth_sync(sprite)
         if saved:
             return {**identity, **describe_bundle(state, saved), "cached": True}

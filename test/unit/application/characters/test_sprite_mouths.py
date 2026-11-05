@@ -320,7 +320,7 @@ def test_mouth_frame_count_rejects_invalid_choices(value):
         mouth_frame_count({"frameCount": value})
 
 
-@pytest.mark.parametrize("options, expected", [({}, 22), ({"frameCount": 5}, 5), ({"frameCount": 39}, 39)])
+@pytest.mark.parametrize("options, expected", [({}, 22), ({"frameCount": 5}, 5), ({"frameCount": 39}, 39), ({"includeBlink": True}, 22)])
 def test_bundle_passes_selected_length_to_generator(tmp_path, monkeypatch, options, expected):
     from application.characters import mouth_sync
 
@@ -334,3 +334,5 @@ def test_bundle_passes_selected_length_to_generator(tmp_path, monkeypatch, optio
     monkeypatch.setattr(mouth_sync, "render_sprite", renderer)
     build_bundle(tmp_path, None, source, source, tmp_path / "mouth", sprite_fingerprint(source), {"name": "Mika", **options}, Mock())
     assert renderer.call_args.kwargs["h3_frame_count"] == expected
+    prompt = renderer.call_args.args[1]["prompt"]
+    assert ("eyelids fully closed" in prompt) == options.get("includeBlink", False)

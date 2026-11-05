@@ -1396,15 +1396,20 @@ describe("sprite generator", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Mouth sync" }));
     fireEvent.change(screen.getByLabelText("Talking clip length"), { target: { value: "5" } });
     expect(screen.getByText(/Five frames may not contain all three mouth poses/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Include a blink")).toBeDisabled();
     fireEvent.click(screen.getByRole("checkbox", { name: "Select Sprite 1" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Prepare selected mouths (1)" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Prepare selected mouths (1)" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Regenerate talking clip" })).toBeEnabled());
     expect(mouths.generate.mock.calls[0][0].frameCount).toBe(5);
+    expect(mouths.generate.mock.calls[0][0].includeBlink).toBeUndefined();
     fireEvent.change(screen.getByLabelText("Talking clip length"), { target: { value: "39" } });
+    fireEvent.click(screen.getByLabelText("Include a blink"));
     fireEvent.click(screen.getByRole("button", { name: "Regenerate talking clip" }));
     await waitFor(() => expect(mouths.generate).toHaveBeenCalledTimes(2));
-    expect(mouths.generate.mock.calls[1][0]).toEqual(expect.objectContaining({ frameCount: 39, regenerate: true }));
+    expect(mouths.generate.mock.calls[1][0]).toEqual(
+      expect.objectContaining({ frameCount: 39, regenerate: true, includeBlink: true }),
+    );
   });
 
   it("previews and adjusts a finished mouth while the next portrait is generating", async () => {

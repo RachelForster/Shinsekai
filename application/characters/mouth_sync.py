@@ -31,6 +31,19 @@ MOUTH_PROMPT = (
     "head angle, ears, hair, neck and clothing from the reference. Same character "
     "design, lighting and crop, locked camera, plain white background."
 )
+MOUTH_BLINK_PROMPT = (
+    "A short, fixed-camera animation of this exact 2D portrait. In the first half, "
+    "with both eyes held at the original openness and gaze, softly say one short "
+    "syllable. Show the original resting mouth, a slightly parted mouth and a modest "
+    "vowel opening, then return to the resting mouth. Keep the mouth resting during "
+    "one natural blink in the second half: eyes open, eyelids half lowered, eyelids "
+    "fully closed briefly, then smoothly reopen to the original gaze and eye shape. "
+    "Blink only if both eyes are open and visible in the reference. Only the lips and "
+    "eyelids move. Preserve the eyebrows, nose, cheeks, chin, jawline, head angle, "
+    "ears, hair, neck, clothing and proportions. Keep visible skin between the lips "
+    "and the nose and chin. Match the exact original framing and lighting, plain "
+    "white background. End at the original expression."
+)
 
 
 def mouth_frame_count(payload):
@@ -146,9 +159,13 @@ def build_bundle(root, config_store, source, reference, output, fingerprint, pay
             frame["path"] = str(output / frame["path"])
         return {"ready": False, "calibrationNeeded": True, "message": str(error), "reference": str(input_reference), "directory": str(output), "manual": manual, "selectedFrames": payload.get("selectedFrames"), "correction": adjustments, **assets}
     if not speech.is_file():
+        include_blink = payload.get("includeBlink", False)
+        if include_blink and frame_count == 5:
+            raise ValueError("同时生成说话和眨眼请选择 22 帧或 39 帧")
         progress(f"正在生成 {frame_count} 帧说话视频")
         generated = render_sprite(
-            config_store, {"name": payload["name"], "prompt": MOUTH_PROMPT, "tagging": "口型素材"},
+            config_store,
+            {"name": payload["name"], "prompt": MOUTH_BLINK_PROMPT if include_blink else MOUTH_PROMPT, "tagging": "口型素材"},
             output / "generated.png", output / "face-reference.png",
             require_h3_video=True, loop_reference=True, h3_frame_count=frame_count,
         )
