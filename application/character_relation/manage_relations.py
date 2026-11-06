@@ -3,38 +3,6 @@ from copy import deepcopy
 from config.character_manager import CharacterManager
 from config.schema import RelationGraph, RelationNode, RelationEdge
 
-_MAX_CONTEXT_NODES = 100
-_MAX_CONTEXT_EDGES = 1000
-
-def _normalize_relation_key(value: str) -> str:
-    return value.strip().lower()
-
-
-def _select_relation_context(graph, character_names):
-    if not isinstance(character_names, (list, tuple)) or any(not isinstance(n, str) for n in character_names):
-        raise ValueError("character_names must be an array of names")
-    nodes = graph["nodes"]
-    character_keys = {_normalize_relation_key(s) for s in character_names}
-    matched = {node["key"] for node in nodes
-               if _normalize_relation_key(node["key"]) in character_keys}
-    matched.discard(graph["owner"])
-    prioritized = sorted(nodes, key=lambda n: (
-        n["key"] != graph["owner"],
-        n["key"] not in matched,
-        n["key"],
-    ))
-    allowed = {n["key"] for n in prioritized[:_MAX_CONTEXT_NODES]}
-    edges = sorted((e for e in graph["edges"] if e["source"] in allowed and e["target"] in allowed),
-                   key=lambda e: (graph["owner"] not in (e["source"], e["target"]), e["source"], e["target"]))
-    chosen_nodes = [n for n in nodes if n["key"] in allowed]
-    return {
-        "owner": graph["owner"],
-        "nodes": chosen_nodes,
-        "edges": edges[:_MAX_CONTEXT_EDGES],
-        "matched": sorted(matched & allowed), "unresolved": [],
-    }
-
-
 def _add_node(graph, node):
     node = RelationNode.model_validate(node).model_dump(exclude_none=True)
     if any(existing["key"] == node["key"] for existing in graph["nodes"]):
@@ -114,9 +82,6 @@ class CharacterRelationUseCase:
         if not graph["nodes"]:
             graph["nodes"] = [{"key": owner}]
         return self._build_relation_view(graph | {"owner": owner})
-
-    def select_relation_context(self, owner, character_names):
-        return _select_relation_context(self.get_relation_graph(owner), character_names)
 
     def apply_relation_changes(self, owner,operations):
         owner = self._resolve_relation_owner(owner)

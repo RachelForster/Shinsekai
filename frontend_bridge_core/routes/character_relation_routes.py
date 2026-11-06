@@ -33,15 +33,6 @@ def apply_relation_changes(request: ApiRequest) -> JsonResponse:
         )
     )
 
-def select_relation_context(request: ApiRequest) -> JsonResponse:
-    return JsonResponse(
-        get_relation_use_case(request).select_relation_context(
-            request.body.get("owner"),
-            request.body.get("character_names", []),
-        )
-    )
-
-
 CHARACTER_RELATION_ROUTES = (
     Route(
         methods=frozenset({"GET"}),
@@ -55,11 +46,5 @@ CHARACTER_RELATION_ROUTES = (
         pattern="/api/character-relations/graphs/{owner}/changes",
         handler=apply_relation_changes,
         name="character_relations.graphs.apply_changes",
-    ),
-    Route(
-        methods=frozenset({"POST"}),
-        pattern="/api/character-relations/context",
-        handler=select_relation_context,
-        name="character_relations.context.select",
     ),
 )

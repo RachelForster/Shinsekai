@@ -7,6 +7,7 @@ from ai.llm.template import Section
 from ai.llm.template.dialog import (
     BackgroundSection,
     CharacterSection,
+    RelationSection,
     DialogTemplateContext,
     DialogTemplateSection,
     JsonSchemaSection,
@@ -26,6 +27,10 @@ def context():
                     sprites=[object()],
                     emotion_tags="happy: 01",
                     character_setting="Alice profile",
+                    relation_graph={
+                        "nodes": [{"key": "Alice"}, {"key": "Bob"}],
+                        "edges": [{"source": "Alice", "target": "Bob", "content": "friend"}],
+                    },
                 ),
             ),
         ),
@@ -43,13 +48,14 @@ def context():
     )
 
 
-def test_dialog_root_exposes_the_five_major_section_types(context):
+def test_dialog_root_exposes_the_six_major_section_types(context):
     root = DialogTemplateSection()
 
     assert [type(child) for child in root.children] == [
         JsonSchemaSection,
         CharacterSection,
         PlayerSection,
+        RelationSection,
         BackgroundSection,
         RequirementsSection,
     ]
@@ -59,6 +65,7 @@ def test_dialog_root_exposes_the_five_major_section_types(context):
         "<preamble>",
         "<json_head_top>",
         "<sprites_header>",
+        "<relations_header>",
         "<scene_block_header>",
         "TOOLS",
         "<requirements_header>",
@@ -75,6 +82,7 @@ def test_dialog_root_exposes_the_five_major_section_types(context):
     [
         (JsonSchemaSection, ("<json_head_top>", "<json_foot>")),
         (CharacterSection, ("<sprites_header>", "<profile_header>", "Alice profile")),
+        (RelationSection, ("<relations_header>", "<relations_owner>")),
         (BackgroundSection, ("<scene_block_header>", "room: 01", "song: 01")),
         (
             RequirementsSection,
@@ -208,3 +216,11 @@ def test_semantic_media_mode_uses_vibe_and_omits_numbered_asset_catalogs(context
     assert "<scene_block_header>" not in rendered
     assert "<bgm_block_header>" not in rendered
     assert "Alice profile" in rendered
+
+
+def test_relation_section_renders_when_relationships_are_available(context):
+    root = DialogTemplateSection()
+    rendered = root.render(context)
+    assert "<relations_header>" not in root.render(replace(context, primary_character_names=frozenset()))
+    assert rendered.count("<relations_header>") == 1
+    assert "<relations_owner>" in rendered
