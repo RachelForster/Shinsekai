@@ -17,6 +17,7 @@ describe("character editor utilities", () => {
       avatar_type: "static",
       avatars: {},
       character_brief: "",
+      relation_graph: {nodes: [], edges: [] },
       character_setting: "",
       color: DEFAULT_CHARACTER_COLOR,
       emotion_tags: "",

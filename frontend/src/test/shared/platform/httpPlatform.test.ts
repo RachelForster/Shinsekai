@@ -2889,4 +2889,34 @@ describe("http platform", () => {
       "http://127.0.0.1:8787/api/tools/sprites/remove-background",
     ]);
   });
+
+  it("uses the graph owner in endpoint URLs and sends operations", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+    const api = createHttpPlatform("http://127.0.0.1:8787").characterRelation;
+    const operations = [{ op: "delete_node" as const, key: "C" }];
+    vi.stubGlobal("fetch", fetchMock);
+    await api.getRelationGraph("Nanami");
+    await api.applyRelationChanges("Nanami", operations);
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "http://127.0.0.1:8787/api/character-relations/graphs/Nanami",
+      "http://127.0.0.1:8787/api/character-relations/graphs/Nanami/changes",
+    ]);
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({operations});
+  });
+
+  it("propagates relationship operation errors without retrying the request", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      statusText: "Bad Request",
+      json: async () => ({ error: "Node does not exist" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      createHttpPlatform("http://127.0.0.1:8787").characterRelation.applyRelationChanges("A",[
+        { op: "delete_node", key: "B" },
+      ]),
+    ).rejects.toThrow("Node does not exist");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });

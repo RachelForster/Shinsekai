@@ -92,6 +92,7 @@ import type {
   TtsBundleDownloadResult,
   TtsBundleRecommendation,
   ChatAttachmentInput,
+  CharacterRelationGraph,
 } from "./types";
 import { currentChatRendererId } from "./chatRenderer";
 
@@ -1038,6 +1039,19 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           items,
         );
       },
+    },
+    characterRelation: {
+      getRelationGraph: (owner) =>
+        requestJson<CharacterRelationGraph>(apiBase, `/api/character-relations/graphs/${encodeURIComponent(owner)}`),
+      applyRelationChanges: (owner, operations) =>
+        requestJson<CharacterRelationGraph>(
+          apiBase,
+          `/api/character-relations/graphs/${encodeURIComponent(owner)}/changes`,
+          {
+            method: "POST",
+            body: JSON.stringify({ operations }),
+          },
+        ),
     },
     characters: {
       async planSprites(input, options) {

@@ -3,6 +3,30 @@ import type { SpriteTransitionMedia as SpriteTransitionAsset } from "../assets/s
 import type { AgentPlatform } from "./agentTypes";
 import type { ChatThemeManifest, ChatThemeSummary, SaveChatThemeInput } from "../theme/chatTheme";
 
+export interface RelationNode {
+  key: string;
+}
+export interface RelationEdge {
+  source: string;
+  target: string;
+  temperature: number;
+  content: string;
+}
+
+export interface RelationGraph {
+  nodes: RelationNode[];
+  edges: RelationEdge[];
+}
+
+export interface CharacterRelationGraph extends RelationGraph {
+  owner: string;
+}
+export type RelationRequest =
+  | { op: "add_node"; node: RelationNode }
+  | { op: "delete_node"; key: string }
+  | { op: "upsert_edge"; edge: RelationEdge }
+  | { op: "delete_edge"; source: string; target: string };
+
 export interface PortraitCrop {
   x: number;
   y: number;
@@ -51,6 +75,7 @@ export interface Character {
   sprite_prefix: string;
   sprites: Sprite[];
   character_brief?: string;
+  relation_graph?: RelationGraph;
   character_setting: string;
   sprite_scale: number;
   emotion_tags: string;
@@ -1778,6 +1803,13 @@ export interface ShinsekaiPlatform {
     listKnowledgeEntries: (knowledgeId: string) => Promise<KnowledgeEntryPage | Mem0Status>;
     searchKnowledgeEntries: (knowledgeId: string, query: string) => Promise<KnowledgeEntrySearch | Mem0Status>;
     previewKnowledgeImport: (knowledgeId: string, items: File[]) => Promise<KnowledgeImportPreview>;
+  };
+  characterRelation: {
+    getRelationGraph: (owner: string) => Promise<CharacterRelationGraph>;
+    applyRelationChanges: (
+      owner: string,
+      operations: RelationRequest[],
+    ) => Promise<CharacterRelationGraph>;
   };
   characters: {
     importModel: (input: { name: string; avatar_type: string; source_path: string }) => Promise<Character>;

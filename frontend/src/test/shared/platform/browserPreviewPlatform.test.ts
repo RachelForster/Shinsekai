@@ -1055,3 +1055,22 @@ it("deletes image rows in preview without shifting tags across blank lines", asy
     vi.useRealTimers();
   }
 });
+
+it("preserves updated relations when saving an outdated character draft", async () => {
+    const platform = createBrowserPreviewPlatform();
+    const original = (await platform.characters.list())[0];
+    const stale = structuredClone(original);
+    const graph = await platform.characterRelation.applyRelationChanges(original.name,  [
+      { op: "add_node", node: { key: "Local" } },
+      { op: "upsert_edge", edge: { source: original.name, target: "Local", temperature: 6, content: "Friend" } },
+    ]);
+    const character = (await platform.characters.list()).find((item) => item.name === original.name)!;
+    expect(character.relation_graph).toEqual({ nodes: graph.nodes, edges: graph.edges });
+    expect(character.relation_graph).not.toHaveProperty("owner");
+    const saved = await platform.characters.save({ ...stale, name: `${original.name} renamed` }, original.name);
+    expect(saved.relation_graph).toEqual(character.relation_graph);
+    const renamed = await platform.characterRelation.getRelationGraph(saved.name);
+    expect(renamed.owner).toBe(saved.name);
+    expect(renamed.nodes).toEqual(graph.nodes);
+    expect(renamed.edges).toEqual(graph.edges);
+});
