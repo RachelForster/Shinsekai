@@ -53,7 +53,6 @@ class RelationEdge(BaseModel):
     source: str = Field(..., description="起点节点标识")
     target: str = Field(..., description="终点节点标识")
     temperature: DefaultIfNone[int] = Field(default=0, ge=-10, le=10, description="关系温度")
-    color: Optional[str] = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$", description="关系连线颜色")
     content: DefaultIfNone[str] = Field(default="", max_length=100, description="关系描述")
 
     @model_validator(mode="after")

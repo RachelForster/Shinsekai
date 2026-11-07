@@ -99,8 +99,7 @@ BASIC_CHAR = {
     "character_setting": "A girl.",
     "relation_graph": {
         "nodes": [{"key": "Alice"}, {"key": "Bob"}],
-        "edges": [{"source": "Alice", "target": "Bob", "temperature": 6,
-                   "color": "#ff0000", "content": "Trusted friend"}],
+        "edges": [{"source": "Alice", "target": "Bob", "temperature": 6, "content": "Trusted friend"}],
     },
     "prompt_text": "hi",
     "prompt_lang": "ja",
@@ -267,8 +266,7 @@ def test_char_export_excludes_in_flight_preset_batches(tmp_path, monkeypatch):
 def test_relation_graph_survives_char_export_import(tmp_path):
     graph = {
         "nodes": [{"key": "Alice"}, {"key": "Bob"}],
-        "edges": [{"source": "Alice", "target": "Bob", "temperature": 6,
-                   "color": "#aabbcc", "content": "Trusted friend"}],
+        "edges": [{"source": "Alice", "target": "Bob", "temperature": 6, "content": "Trusted friend"}],
     }
     config = CharacterConfig.parse_dic(dict(BASIC_CHAR, relation_graph=graph))
     with _mock_dirs(tmp_path):

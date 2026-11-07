@@ -163,10 +163,9 @@ def test_delete_node_missing_node_raises_error(service):
 
 
 def test_upsert_edge_new_pair_creates_directed_edge(service):
-    graph = apply(service, add_node("pareo"), upsert_edge(temperature=7, color="#aabbcc"))
+    graph = apply(service, add_node("pareo"), upsert_edge(temperature=7))
     assert graph["edges"] == [{
-        "source": "chuchu", "target": "pareo", "content": "Trusted friend",
-        "temperature": 7, "color": "#aabbcc",
+        "source": "chuchu", "target": "pareo", "content": "Trusted friend","temperature": 7,
     }]
 
 
