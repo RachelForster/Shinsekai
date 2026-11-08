@@ -123,6 +123,16 @@ export function getChatHistoryVoice(voiceId: string): Promise<string[]> {
   return getPlatform().chat.getHistoryVoice(voiceId);
 }
 
+export const prepareChatReplay = () => getPlatform().chat.prepareReplay();
+export const getChatReplay = (id: string) => getPlatform().chat.getReplay(id);
+export const startChatReplay = (id: string, start: string, end: string, generate: boolean) =>
+  getPlatform().chat.startReplay(id, start, end, generate);
+export const generateChatReplayVoice = (id: string, key: string, signal?: AbortSignal) =>
+  getPlatform().chat.generateReplayVoice(id, key, signal);
+export const cancelChatReplay = (id: string) => getPlatform().chat.cancelReplay(id);
+export const controlChatReplay = (id: string, control: import("../../shared/platform/types").ChatReplayControl) =>
+  getPlatform().chat.controlReplay(id, control);
+
 export function subscribeChat(listener: (snapshot: ChatSnapshot) => void): () => void {
   return getPlatform().chat.subscribe(listener);
 }

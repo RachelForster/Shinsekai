@@ -113,6 +113,12 @@ class ChatCommandRouter:
 
     def handle(self, state: Any, body: dict[str, Any]) -> dict[str, Any]:
         context = CommandContext(state, body, self.snapshot, self.runtime_commands)
+        service = getattr(state, "chat_replay_service", None)
+        if service is not None and service.is_active() and context.command in {
+            "send-message", "submit-option", "reroll", "clear-history", "revert-history",
+            "fork-history", "switch-branch", "begin-asr-hold", "resume-asr", "flush-input-batch",
+        }:
+            raise ValueError("回放期间无法推进或修改对话，请先退出回放")
         handler = self.handlers.get(context.command)
         if handler is None:
             raise ValueError(f"未知聊天命令：{context.command}")

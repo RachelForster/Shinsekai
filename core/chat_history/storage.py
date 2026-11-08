@@ -77,6 +77,12 @@ def chat_history_storage_files(path: str | Path) -> tuple[Path, ...]:
                 ))
             )
         )
+    replay = directory / "replay"
+    if replay.is_dir() and replay.resolve().is_relative_to(directory.resolve()):
+        files += tuple(file for file in replay.iterdir()
+                       if (file.is_file() or file.is_symlink()) and (
+                           re.fullmatch(r"[0-9a-f]{64}\.(?:frame\.json|voice\.json|wav)", file.name)
+                           or re.fullmatch(r"\.replay-[\w-]+\.tmp", file.name)))
     if candidate.suffix.lower() == ".json" and not _is_branch_file(candidate):
         files += (candidate, Path(str(candidate) + ".tmp"))
     return files
@@ -93,7 +99,7 @@ def _voice_storage_directories(directory: Path) -> tuple[Path, ...]:
 def prune_chat_history_storage(path: str | Path) -> None:
     """Remove empty owned directories, preserving unrelated and external files."""
     directory = chat_history_session_dir(path)
-    for folder in (*_voice_storage_directories(directory), directory):
+    for folder in (*_voice_storage_directories(directory), directory / "replay", directory):
         try:
             folder.rmdir()
         except OSError:

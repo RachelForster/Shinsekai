@@ -15,6 +15,7 @@ export function InputLayer({
   asrRunning,
   batchEnabled,
   disabled,
+  locked = false,
   hidden,
   inputLayout = "default",
   onChange,
@@ -36,6 +37,7 @@ export function InputLayer({
   autoHide?: boolean;
   batchEnabled: boolean;
   disabled: boolean;
+  locked?: boolean;
   hidden: boolean;
   inputLayout?: "default" | "pill";
   onChange: (value: string) => void;
@@ -200,7 +202,7 @@ export function InputLayer({
           aria-pressed={asrEnabled}
           className={`input-layer__press ${asrButtonClassName}`}
           data-active={asrEnabled ? "true" : "false"}
-          disabled={disabled && !asrEnabled}
+          disabled={locked || (disabled && !asrEnabled)}
           label={asrLabel}
           onClick={toggleAsr}
         >
@@ -363,7 +365,7 @@ export function InputLayer({
             aria-busy={asrLoading}
             aria-pressed={asrEnabled}
             className={`input-layer__voice-button ${asrButtonClassName}`}
-            disabled={disabled && !asrEnabled}
+            disabled={locked || (disabled && !asrEnabled)}
             label={asrLabel}
             onClick={toggleAsr}
           >

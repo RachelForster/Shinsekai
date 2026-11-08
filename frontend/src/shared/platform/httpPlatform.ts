@@ -19,6 +19,8 @@ import type {
   ChatCommand,
   ChatCommandResult,
   ChatHistoryEntry,
+  ChatReplaySnapshot,
+  ChatReplayVoice,
   ChatLaunchPayload,
   ChatRuntimeProcessState,
   ChatSnapshot,
@@ -612,6 +614,49 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         return result;
       },
       getHistory: () => requestJson<ChatHistoryEntry[]>(apiBase, "/api/chat/history"),
+      prepareReplay: async () => {
+        const snapshot = await requestJson<ChatReplaySnapshot>(apiBase, "/api/chat/replay", {
+          method: "POST",
+          body: "{}",
+        });
+        // Persisted checkpoints contain portable API paths, never old host tokens.
+        const rebase = (value: unknown): unknown => {
+          if (typeof value === "string" && value.startsWith("/api/")) return bridgeUrl(apiBase, value);
+          if (Array.isArray(value)) return value.map(rebase);
+          if (value && typeof value === "object")
+            return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, rebase(v)]));
+          return value;
+        };
+        return rebase(snapshot) as ChatReplaySnapshot;
+      },
+      getReplay: (id) => requestJson(apiBase, `/api/chat/replay/${encodePath(id)}`),
+      startReplay: async (id, startKey, endKey, generate) => {
+        await requestJson(apiBase, `/api/chat/replay/${encodePath(id)}/start`, {
+          method: "POST",
+          body: JSON.stringify({ startKey, endKey, generate }),
+        });
+      },
+      generateReplayVoice: async (id, key, signal) => {
+        const voice = await requestJson<ChatReplayVoice>(
+          apiBase,
+          `/api/chat/replay/${encodePath(id)}/voice/${encodePath(key)}`,
+          {
+            method: "POST",
+            body: "{}",
+            signal,
+          },
+        );
+        return { ...voice, voiceUrls: voice.voiceUrls.map((url) => bridgeUrl(apiBase, url)) };
+      },
+      cancelReplay: async (id) => {
+        await requestJson(apiBase, `/api/chat/replay/${encodePath(id)}`, { method: "DELETE" });
+      },
+      controlReplay: async (id, control) => {
+        await requestJson(apiBase, `/api/chat/replay/${encodePath(id)}/control`, {
+          method: "POST",
+          body: JSON.stringify(control),
+        });
+      },
       getHistoryVoice: async (voiceId) => {
         const { segmentCount } = await requestJson<{ segmentCount: number }>(
           apiBase,
@@ -1359,6 +1404,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         if (!path) {
           return "";
         }
+        if (path.startsWith("/api/")) return bridgeUrl(apiBase, path);
         if (/^(?:https?:|blob:|data:|\/assets\/)/.test(path)) {
           return path;
         }

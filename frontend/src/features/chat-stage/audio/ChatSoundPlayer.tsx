@@ -15,7 +15,9 @@ export function ChatSoundPlayer({
   effectVolume,
   commands,
   onPlaybackSignal,
+  voicePaused = false,
 }: {
+  voicePaused?: boolean;
   bgmPath?: string;
   bgmVolume: number;
   effectVolume: number;
@@ -40,6 +42,9 @@ export function ChatSoundPlayer({
   }, []);
 
   useEffect(() => playerRef.current?.subscribeVoiceSignal(onPlaybackSignal), [onPlaybackSignal]);
+  useEffect(() => {
+    playerRef.current?.setVoicePaused(voicePaused);
+  }, [voicePaused]);
 
   useEffect(() => {
     playerRef.current?.setBgm(stageAssetUrl(bgmPath), bgmVolume);

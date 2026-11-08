@@ -1,7 +1,10 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { Copy, GitFork, Play, RotateCcw, Save, Trash2 } from "lucide-react";
+import { Clapperboard, Copy, GitFork, Play, RotateCcw, Save, Trash2 } from "lucide-react";
 
-import type { ChatHistoryEntry } from "../../../shared/platform/types";
+import type { ChatHistoryEntry, ChatReplaySnapshot } from "../../../shared/platform/types";
+import { prepareChatReplay, startChatReplay, cancelChatReplay } from "../../../entities/chat/repository";
+import type { ActiveReplay } from "../replay/ReplayControls";
+import "../replay/replay.css";
 import { Button, Switch } from "../../../shared/ui";
 import { useI18n } from "../../../shared/i18n";
 import { ChatStageModal } from "./ChatStageModal";
@@ -118,7 +121,13 @@ export function HistoryDialog({
   open,
   userDisplayName,
   voiceArchiveEnabled,
+  onStartReplay,
+  replayDisabled = false,
+  onVoiceSettings,
 }: {
+  onStartReplay?: (replay: ActiveReplay) => void;
+  replayDisabled?: boolean;
+  onVoiceSettings?: () => void;
   entries: ChatHistoryEntry[];
   forkEnabled: boolean;
   loading: boolean;
@@ -140,12 +149,90 @@ export function HistoryDialog({
   const [query, setQuery] = useState("");
   const [visibleLimit, setVisibleLimit] = useState(historyRenderBatchSize);
   const bodyRef = useRef<HTMLDivElement | null>(null);
+  const scrollRef = useRef<number | null>(null);
+  const replayTriggerRef = useRef<string | null>(null);
+  const restoreFocusRef = useRef(false);
+  const [prepared, setPrepared] = useState<ChatReplaySnapshot | null>(null);
+  const [range, setRange] = useState<[number, number]>([0, 0]);
+  const [pick, setPick] = useState<"start" | "end" | null>(null);
+  const [preparing, setPreparing] = useState(false);
+  const [replayError, setReplayError] = useState("");
+  const requestRef = useRef(0);
+  const preparedRef = useRef(prepared);
+  preparedRef.current = prepared;
+  useEffect(
+    () => () => {
+      requestRef.current++;
+      if (preparedRef.current) void cancelChatReplay(preparedRef.current.id).catch(() => {});
+    },
+    [],
+  );
+  const cancelPreparation = () => {
+    requestRef.current++;
+    if (prepared) void cancelChatReplay(prepared.id).catch(() => {});
+    setPrepared(null);
+    setPick(null);
+    setPreparing(false);
+    setReplayError("");
+  };
+  const close = () => {
+    cancelPreparation();
+    onClose();
+  };
+  const prepare = async (entry?: ChatHistoryEntry) => {
+    if (preparing || replayDisabled) return;
+    const request = ++requestRef.current;
+    replayTriggerRef.current = entry?.id ?? null;
+    setPreparing(true);
+    setReplayError("");
+    try {
+      const snapshot = await prepareChatReplay();
+      if (request !== requestRef.current) {
+        void cancelChatReplay(snapshot.id).catch(() => {});
+        return;
+      }
+      const start = entry ? snapshot.entries.findIndex((item) => item.id === entry.id && item.text === entry.text) : 0;
+      if (start < 0 || !snapshot.entries.length) {
+        void cancelChatReplay(snapshot.id).catch(() => {});
+        throw new Error(t("chat.replay.changed"));
+      }
+      setPrepared(snapshot);
+      setRange([start, snapshot.entries.length - 1]);
+      setPick(null);
+    } catch (error) {
+      if (request === requestRef.current) setReplayError(error instanceof Error ? error.message : String(error));
+    } finally {
+      if (request === requestRef.current) setPreparing(false);
+    }
+  };
+  const begin = async (generate: boolean) => {
+    if (!prepared || preparing || replayDisabled) return;
+    const request = ++requestRef.current;
+    setPreparing(true);
+    setReplayError("");
+    try {
+      const selected = prepared.entries.slice(range[0], range[1] + 1);
+      await startChatReplay(prepared.id, selected[0].key, selected.at(-1)!.key, generate);
+      if (request !== requestRef.current) return;
+      setPrepared(null);
+      preparedRef.current = null;
+      restoreFocusRef.current = true;
+      onStartReplay?.({ snapshot: { ...prepared, entries: selected }, generate });
+    } catch (error) {
+      if (request === requestRef.current) setReplayError(error instanceof Error ? error.message : String(error));
+    } finally {
+      if (request === requestRef.current) setPreparing(false);
+    }
+  };
+  const selected = prepared?.entries.slice(range[0], range[1] + 1) ?? [];
+  const voiced = selected.filter((entry) => entry.voiceUrls.length).length;
+  const generatable = selected.filter((entry) => entry.canGenerate && !entry.voiceUrls.length).length;
 
   useEffect(() => {
     if (open) {
       setVisibleLimit(historyRenderBatchSize);
     }
-  }, [open, query]);
+  }, [query]);
 
   useEffect(() => {
     if (!open || loading) {
@@ -156,7 +243,17 @@ export function HistoryDialog({
     const frame = requestAnimationFrame(() => {
       const body = bodyRef.current;
       if (body) {
-        body.scrollTop = body.scrollHeight;
+        body.scrollTop = scrollRef.current ?? body.scrollHeight;
+        if (restoreFocusRef.current) {
+          restoreFocusRef.current = false;
+          const entry = Array.from(body.querySelectorAll<HTMLElement>("[data-history-entry-id]")).find(
+            (element) => element.dataset.historyEntryId === replayTriggerRef.current,
+          );
+          const target =
+            entry?.querySelector<HTMLButtonElement>("[data-replay-start]") ??
+            body.querySelector<HTMLInputElement>("input");
+          target?.focus({ preventScroll: true });
+        }
       }
     });
     return () => cancelAnimationFrame(frame);
@@ -173,7 +270,7 @@ export function HistoryDialog({
   );
   const normalizedQuery = normalizeHistorySearch(query);
   const visibleEntries = useMemo(() => {
-    const mapped = entries.map((entry) => {
+    const mapped = (prepared?.entries ?? entries).map((entry) => {
       const dialog = splitHistoryEntryText(entry, userDisplayName, roleLabels);
       return {
         dialog,
@@ -183,6 +280,7 @@ export function HistoryDialog({
     });
     return mapped
       .filter(({ dialog, entry }) => !isHiddenSystemHistoryEntry(entry, dialog))
+      .map((item, originalIndex) => ({ ...item, originalIndex }))
       .filter(({ dialog, entry }) => {
         if (!normalizedQuery) {
           return true;
@@ -190,7 +288,7 @@ export function HistoryDialog({
         const haystack = `${dialog.speaker} ${dialog.body} ${roleLabels[entry.role]}`.toLocaleLowerCase();
         return haystack.includes(normalizedQuery);
       });
-  }, [entries, normalizedQuery, roleLabels, userDisplayName]);
+  }, [entries, prepared, normalizedQuery, roleLabels, userDisplayName]);
   // Render the newest `visibleLimit` entries so the dialog opens on the latest
   // messages; "show more" then reveals older entries above.
   const hiddenOlderCount = Math.max(0, visibleEntries.length - visibleLimit);
@@ -209,9 +307,18 @@ export function HistoryDialog({
       eyebrow={t("chat.actionBar.history")}
       headerActions={
         <>
+          {onStartReplay && (
+            <Button
+              disabled={replayDisabled || preparing || loading || !entries.length || Boolean(prepared)}
+              onClick={() => void prepare()}
+            >
+              {t("chat.replay.fromStart")}
+            </Button>
+          )}
           <div className="chat-history__voice-toggle">
             <label htmlFor="chat-history-voice-archive">{t("chat.history.voiceArchive")}</label>
             <Switch
+              disabled={Boolean(prepared)}
               checked={voiceArchiveEnabled}
               id="chat-history-voice-archive"
               onChange={(event) => onToggleVoiceArchive(event.target.checked)}
@@ -226,6 +333,7 @@ export function HistoryDialog({
             {t("chat.actionBar.copy")}
           </Button>
           <Button
+            disabled={Boolean(prepared)}
             aria-label={t("chat.toolbar.clearHistory")}
             className="chat-history__header-action"
             icon={<Trash2 aria-hidden className="button__icon" />}
@@ -237,12 +345,18 @@ export function HistoryDialog({
         </>
       }
       labelledBy={titleId}
-      onClose={onClose}
+      onClose={close}
       open={open}
       summary={t("chat.history.count", { count: visibleEntries.length })}
       title={t("chat.history.title")}
     >
-      <div className="chat-stage-modal__body chat-history-dialog__body" ref={bodyRef}>
+      <div
+        className="chat-stage-modal__body chat-history-dialog__body"
+        ref={bodyRef}
+        onScroll={(event) => {
+          scrollRef.current = event.currentTarget.scrollTop;
+        }}
+      >
         <div className="chat-history__filters">
           <input
             aria-label={t("chat.history.search")}
@@ -273,9 +387,16 @@ export function HistoryDialog({
                 {t("chat.history.showMore", { count: hiddenOlderCount })}
               </Button>
             ) : null}
-            {renderedEntries.map(({ dialog, entry, localTime }, index) => {
+            {renderedEntries.map(({ dialog, entry, localTime, originalIndex }) => {
               return (
                 <section
+                  data-history-entry-id={entry.id}
+                  data-replay-boundary={
+                    prepared &&
+                    (prepared.entries[range[0]].id === entry.id || prepared.entries[range[1]].id === entry.id)
+                      ? "true"
+                      : undefined
+                  }
                   className="chat-history__entry"
                   data-role={entry.role}
                   data-tone={historyEntryTone(entry.role)}
@@ -289,7 +410,7 @@ export function HistoryDialog({
                     </div>
                     <div className="chat-history__meta">
                       <span className="chat-history__index">
-                        {t("chat.history.entryIndex", { index: hiddenOlderCount + index + 1 })}
+                        {t("chat.history.entryIndex", { index: originalIndex + 1 })}
                       </span>
                       {localTime ? (
                         <time className="chat-history__time" dateTime={new Date(entry.createdAt ?? 0).toISOString()}>
@@ -299,44 +420,84 @@ export function HistoryDialog({
                     </div>
                   </header>
                   <p className="chat-history__text">{dialog.body}</p>
-                  {entry.voiceId ? (
-                    <div className="chat-history__actions">
-                      <Button
-                        className="chat-history__voice-button"
-                        icon={<Play aria-hidden className="button__icon" />}
-                        onClick={() => onReplayVoice(entry.voiceId!)}
-                      >
-                        {t("chat.history.replayVoice")}
-                      </Button>
-                      <Button
-                        className="chat-history__voice-button"
-                        icon={<Save aria-hidden className="button__icon" />}
-                        onClick={() => onSaveVoice(entry.voiceId!)}
-                      >
-                        {t("chat.history.saveVoice")}
-                      </Button>
-                    </div>
-                  ) : null}
-                  {entry.role === "user" && entry.revertUserIndex != null ? (
-                    <div className="chat-history__actions">
-                      {forkEnabled ? (
+                  <div className="chat-history__actions">
+                    {onStartReplay && (
+                      <>
+                        {!prepared ? (
+                          <Button
+                            data-replay-start
+                            className="chat-history__replay"
+                            icon={<Clapperboard aria-hidden className="button__icon" />}
+                            disabled={replayDisabled || preparing}
+                            onClick={() => void prepare(entry)}
+                          >
+                            {t("chat.replay.fromHere")}
+                          </Button>
+                        ) : (
+                          pick && (
+                            <Button
+                              disabled={
+                                preparing ||
+                                (pick === "end" &&
+                                  prepared.entries.findIndex((item) => item.id === entry.id) < range[0])
+                              }
+                              onClick={() => {
+                                const position = prepared.entries.findIndex((item) => item.id === entry.id);
+                                setRange(
+                                  pick === "end"
+                                    ? [range[0], position]
+                                    : [position, position > range[1] ? prepared.entries.length - 1 : range[1]],
+                                );
+                                setPick(null);
+                              }}
+                            >
+                              {t(pick === "end" ? "chat.replay.endHere" : "chat.replay.startHere")}
+                            </Button>
+                          )
+                        )}
+                      </>
+                    )}
+                    {entry.voiceId ? (
+                      <>
                         <Button
-                          className="chat-history__fork"
-                          icon={<GitFork aria-hidden className="button__icon" />}
-                          onClick={() => onFork(entry.revertUserIndex!)}
+                          className="chat-history__voice-button"
+                          icon={<Play aria-hidden className="button__icon" />}
+                          onClick={() => onReplayVoice(entry.voiceId!)}
                         >
-                          {t("chat.history.fork")}
+                          {t("chat.history.replayVoice")}
                         </Button>
-                      ) : null}
-                      <Button
-                        className="chat-history__revert"
-                        icon={<RotateCcw aria-hidden className="button__icon" />}
-                        onClick={() => onRevert(entry.revertUserIndex!)}
-                      >
-                        {t("chat.history.revert")}
-                      </Button>
-                    </div>
-                  ) : null}
+                        <Button
+                          className="chat-history__voice-button"
+                          icon={<Save aria-hidden className="button__icon" />}
+                          onClick={() => onSaveVoice(entry.voiceId!)}
+                        >
+                          {t("chat.history.saveVoice")}
+                        </Button>
+                      </>
+                    ) : null}
+                    {entry.role === "user" && entry.revertUserIndex != null ? (
+                      <>
+                        {forkEnabled ? (
+                          <Button
+                            disabled={Boolean(prepared)}
+                            className="chat-history__fork"
+                            icon={<GitFork aria-hidden className="button__icon" />}
+                            onClick={() => onFork(entry.revertUserIndex!)}
+                          >
+                            {t("chat.history.fork")}
+                          </Button>
+                        ) : null}
+                        <Button
+                          disabled={Boolean(prepared)}
+                          className="chat-history__revert"
+                          icon={<RotateCcw aria-hidden className="button__icon" />}
+                          onClick={() => onRevert(entry.revertUserIndex!)}
+                        >
+                          {t("chat.history.revert")}
+                        </Button>
+                      </>
+                    ) : null}
+                  </div>
                 </section>
               );
             })}
@@ -344,8 +505,59 @@ export function HistoryDialog({
         ) : null}
       </div>
       <footer className="chat-stage-modal__footer chat-history-dialog__footer">
-        <Button onClick={onRefresh}>{t("common.refresh")}</Button>
-        <Button onClick={onClose}>{t("common.close")}</Button>
+        {prepared ? (
+          <div className="chat-replay-range">
+            <p>{t("chat.replay.range", { start: range[0] + 1, end: range[1] + 1, count: selected.length })}</p>
+            <div className="chat-replay-bound">
+              <span>
+                {t("chat.replay.start")}: {prepared.entries[range[0]].text.slice(0, 70)}
+              </span>
+              <Button disabled={preparing} onClick={() => setPick("start")}>
+                {t("chat.replay.changeStart")}
+              </Button>
+            </div>
+            <div className="chat-replay-bound">
+              <span>
+                {t("chat.replay.end")}: {prepared.entries[range[1]].text.slice(0, 70)}
+              </span>
+              <Button disabled={preparing} onClick={() => setPick("end")}>
+                {t("chat.replay.changeEnd")}
+              </Button>
+            </div>
+            {pick && <p role="status">{t(pick === "end" ? "chat.replay.pickEnd" : "chat.replay.pickStart")}</p>}
+            <p>{t("chat.replay.voices", { ready: voiced, missing: generatable })}</p>
+            {selected.some((entry) => !entry.frame) && <p>{t("chat.replay.noFrame")}</p>}
+            {generatable > 0 ? (
+              <p>{t("chat.replay.generateHint")}</p>
+            ) : (
+              selected.some((entry) => entry.role === "assistant" && !entry.voiceUrls.length && !entry.canGenerate) && (
+                <p>
+                  {t("chat.replay.noTts")}{" "}
+                  {onVoiceSettings && <Button onClick={onVoiceSettings}>{t("chat.replay.settings")}</Button>}
+                </p>
+              )
+            )}
+            <div className="chat-replay-range-actions">
+              <Button disabled={preparing || replayDisabled} onClick={() => void begin(false)}>
+                {t("chat.replay.direct")}
+              </Button>
+              {generatable > 0 && (
+                <Button disabled={preparing || replayDisabled} variant="primary" onClick={() => void begin(true)}>
+                  {t("chat.replay.generate")}
+                </Button>
+              )}
+              <Button onClick={cancelPreparation}>{t("common.cancel")}</Button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <Button onClick={onRefresh}>{t("common.refresh")}</Button>
+            <Button onClick={close}>{t("common.close")}</Button>
+          </>
+        )}
+        {preparing && <p role="status">{t("chat.replay.preparing")}</p>}
+        {replayDisabled && onStartReplay && <p>{t("chat.replay.busy")}</p>}
+        {replayError && <p role="alert">{replayError}</p>}
       </footer>
     </ChatStageModal>
   );

@@ -174,6 +174,18 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
         )
         return next_snapshot
 
+    if event_type == "replay.state":
+        next_snapshot["replay"] = event.get("replay")
+        if event.get("replay"):
+            next_snapshot["status"] = "replaying"
+        return next_snapshot
+
+    if event_type == "presentation.restore":
+        from application.chat.presentation.replay import PRESENTATION_KEYS
+        next_snapshot.update({k: v for k, v in event.get("presentation", {}).items() if k in PRESENTATION_KEYS})
+        next_snapshot["replaySelectedIndex"] = None
+        return next_snapshot
+
     if event_type == "dialog.end":
         _clear_transient_notification_state(next_snapshot)
         full_html = str(event.get("fullHtml") or "")
@@ -272,6 +284,7 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
         return next_snapshot
 
     if event_type == "options.show":
+        next_snapshot["replaySelectedIndex"] = event.get("selectedIndex")
         _clear_transient_notification_state(next_snapshot)
         next_snapshot["options"] = [
             dict(item) if isinstance(item, dict) else str(item)

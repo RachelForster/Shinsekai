@@ -26,6 +26,7 @@ const mocks = {
   getAppConfig: vi.fn(),
   getChatHistory: vi.fn(),
   getChatHistoryVoice: vi.fn(),
+  getChatReplay: vi.fn(),
   getChatSnapshot: vi.fn(),
   getChatTheme: vi.fn(),
   sendChatCommand: vi.fn(),
@@ -50,6 +51,7 @@ vi.mock("../../../entities/chat/repository", () => ({
   closeChat: () => mocks.closeChat(),
   getChatHistory: () => mocks.getChatHistory(),
   getChatHistoryVoice: (voiceId: string) => mocks.getChatHistoryVoice(voiceId),
+  getChatReplay: (id: string) => mocks.getChatReplay(id),
   getChatSnapshot: () => mocks.getChatSnapshot(),
   getChatTheme: () => mocks.getChatTheme(),
   sendChatCommand: (command: ChatCommand) => mocks.sendChatCommand(command),
@@ -241,6 +243,57 @@ function blurDisabledInput(input: HTMLElement) {
 }
 
 describe("ChatStagePage", () => {
+  it("renders replay through the normal stage, locks input and shows historical choices read-only", async () => {
+    const emit = captureStageEvents();
+    renderPage();
+    const input = await screen.findByRole("textbox");
+    fireEvent.change(input, { target: { value: "keep this draft" } });
+    const commandsBefore = mocks.sendChatCommand.mock.calls.length;
+    emit({
+      type: "replay.state",
+      replay: { id: "clip", index: 0, total: 2, paused: false, ended: false, waiting: false, error: "" },
+      seq: 1,
+      ts: 1,
+      v: 1,
+    });
+    emit({
+      type: "dialog.end",
+      speaker: "Mio",
+      fullHtml: "<p>Historical line</p>",
+      color: "",
+      isSystem: false,
+      animate: false,
+      seq: 2,
+      ts: 2,
+      v: 1,
+    });
+    expect(document.querySelectorAll(".dialog-layer")).toHaveLength(1);
+    expect(document.querySelector(".dialog-layer")).toHaveTextContent("Historical line");
+    expect(input).toBeDisabled();
+    expect(input).toHaveValue("keep this draft");
+    emit({ type: "options.show", options: ["First", "Second"], selectedIndex: 1, seq: 3, ts: 3, v: 1 });
+    const selected = screen.getByRole("button", { name: "Second Selected" });
+    expect(selected).toBeDisabled();
+    expect(selected).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "First" })).toBeDisabled();
+    fireEvent.keyDown(selected, { key: "Enter" });
+    fireEvent.click(selected);
+    expect(mocks.sendChatCommand.mock.calls.length).toBe(commandsBefore);
+    emit({ type: "status.change", status: "speaking", seq: 4, ts: 4, v: 1 });
+    expect(document.querySelector(".top-stage-tools__state")).toHaveTextContent("replaying");
+    emit({
+      type: "presentation.restore",
+      presentation: { characterName: "Mio", dialogHtml: "", dialogText: "Live restored", options: [] },
+      seq: 5,
+      ts: 5,
+      v: 1,
+    });
+    emit({ type: "replay.state", replay: null, seq: 6, ts: 6, v: 1 });
+    expect(input).toBeEnabled();
+    expect(input).toHaveValue("keep this draft");
+    expect(document.querySelector(".dialog-layer")).toHaveTextContent("Live restored");
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useRealTimers();
@@ -272,6 +325,7 @@ describe("ChatStagePage", () => {
     mocks.getChatSnapshot.mockResolvedValue(snapshot());
     mocks.getChatHistory.mockResolvedValue(snapshot().historyEntries as ChatHistoryEntry[]);
     mocks.getChatHistoryVoice.mockResolvedValue([]);
+    mocks.getChatReplay.mockReturnValue(new Promise(() => {}));
     desktopApiMocks.isTauriDesktop.mockReturnValue(false);
     desktopApiMocks.getDesktopWindowCursorPosition.mockResolvedValue({ x: 0, y: 0 });
     desktopApiMocks.minimizeDesktopWindow.mockResolvedValue(undefined);
@@ -2671,7 +2725,7 @@ describe("ChatStagePage", () => {
     const archiveToggle = within(header).getByRole("checkbox", { name: "Archive voices" });
     expect(archiveToggle).not.toBeChecked();
     expect(header.querySelector(".chat-history__voice-toggle")?.nextElementSibling).toHaveTextContent(/copy/i);
-    expect(within(dialog).getByRole("button", { name: "Replay" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Play voice" })).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "Save voice" }));
     await waitFor(() =>
       expect(mocks.sendChatCommand).toHaveBeenCalledWith({

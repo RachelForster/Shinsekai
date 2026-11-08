@@ -60,6 +60,7 @@ export class SoundPlayer {
   private bgm: HTMLAudioElement | null = null;
   private bgmUrl = "";
   private currentVoice: ActiveVoice | null = null;
+  private voicePaused = false;
   private effectVolume = 1;
   private readonly effectPlayers = new Set<HTMLAudioElement>();
   private readonly listeners = new Set<SoundPlayerLockListener>();
@@ -167,6 +168,29 @@ export class SoundPlayer {
     this.currentVoice = null;
   }
 
+  setVoicePaused(paused: boolean) {
+    this.voicePaused = paused;
+    const voice = this.currentVoice;
+    if (!voice) return;
+    if (paused) {
+      voice.audio.pause();
+      this.analyser?.stop();
+    } else {
+      this.requestPlay(
+        voice.audio,
+        () => {
+          if (this.voicePaused) {
+            voice.audio.pause();
+            return;
+          }
+          this.markVoiceStarted(voice);
+          this.analyser?.start(voice.audio, voice.characterName);
+        },
+        (error) => this.finishVoice(voice, "failed", String(error)),
+      );
+    }
+  }
+
   playEffect(url: string) {
     const nextUrl = url.trim();
     if (!nextUrl) {
@@ -224,9 +248,12 @@ export class SoundPlayer {
   }
 
   async unlock() {
-    const active = [this.bgm, this.currentVoice?.audio, ...this.effectPlayers, ...this.loopPlayers.values()].filter(
-      (audio): audio is HTMLAudioElement => Boolean(audio?.paused),
-    );
+    const active = [
+      this.bgm,
+      this.voicePaused ? null : this.currentVoice?.audio,
+      ...this.effectPlayers,
+      ...this.loopPlayers.values(),
+    ].filter((audio): audio is HTMLAudioElement => Boolean(audio?.paused));
     const results = await Promise.allSettled(
       active.map(async (audio) => {
         await this.play(audio);
@@ -254,9 +281,16 @@ export class SoundPlayer {
     this.currentVoice = activeVoice;
     audio.onended = () => this.finishVoice(activeVoice, "finished");
     audio.onerror = () => this.finishVoice(activeVoice, "failed", "audio playback failed");
+    if (this.voicePaused) return;
     this.requestPlay(
       audio,
-      () => this.markVoiceStarted(activeVoice),
+      () => {
+        if (this.voicePaused) {
+          audio.pause();
+          return;
+        }
+        this.markVoiceStarted(activeVoice);
+      },
       (error) => this.finishVoice(activeVoice, "failed", String(error)),
     );
   }

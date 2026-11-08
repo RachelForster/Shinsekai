@@ -39,6 +39,36 @@ function createHarness() {
 }
 
 describe("SoundPlayer", () => {
+  it("pauses the shared voice at its current position and resumes without a new playback identity", async () => {
+    const { audio, player } = createHarness();
+    const signal = vi.fn();
+    player.subscribeVoiceSignal(signal);
+    player.playVoice("replay-voice", "archived.wav");
+    await Promise.resolve();
+    audio[0].currentTime = 3.5;
+    player.setVoicePaused(true);
+    expect(audio[0].paused).toBe(true);
+    expect(audio[0].currentTime).toBe(3.5);
+    player.setVoicePaused(false);
+    await Promise.resolve();
+    expect(audio).toHaveLength(1);
+    expect(audio[0].currentTime).toBe(3.5);
+    expect(signal.mock.calls).toEqual([[{ playbackId: "replay-voice", state: "started" }]]);
+    audio[0].finish();
+    expect(signal).toHaveBeenLastCalledWith({ playbackId: "replay-voice", state: "finished" });
+    player.dispose();
+  });
+
+  it("holds a late voice request while paused until the user resumes", async () => {
+    const { audio, player } = createHarness();
+    player.setVoicePaused(true);
+    player.playVoice("late", "generated.wav");
+    expect(audio[0].play).not.toHaveBeenCalled();
+    player.setVoicePaused(false);
+    await Promise.resolve();
+    expect(audio[0].play).toHaveBeenCalledTimes(1);
+    player.dispose();
+  });
   it.each(["", "http://127.0.0.1:8787"])(
     "loads newly generated speech after the 100-file cache wraps (%s)",
     async (base) => {

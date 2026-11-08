@@ -313,6 +313,19 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         self._notification_lock = threading.Lock()
         self._notification_version = 0
         self._history_sync_lock = threading.Lock()
+        self._presentation_emit_lock = threading.RLock()
+
+    def _emit(self, event: dict) -> None:
+        with self._presentation_emit_lock:
+            recorder = getattr(self, "replay_recorder", None)
+            if recorder is not None and not getattr(self, "replay_active", False):
+                try:
+                    recorder.observe(event)
+                except (OSError, ValueError):
+                    # Optional replay storage must not interrupt the live performance.
+                    import logging
+                    logging.getLogger(__name__).warning("Could not save replay frame", exc_info=True)
+            self._sink.emit(event)
 
     def _get_or_create_sprite_slot(self, character_name: str) -> int:
         """Mirror the legacy Qt SpritePanel character-to-slot LRU."""
@@ -343,7 +356,7 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
             for entry in entries:
                 if entry.get("voiceId") and (archive is None or not archive.has_voice(entry["voiceId"])):
                     entry.pop("voiceId", None)
-            self._sink.emit({
+            self._emit({
                 "type": "history.replace",
                 "entries": entries,
                 "voiceArchiveEnabled": bool(archive and archive.enabled),
@@ -355,12 +368,12 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         with self._notification_lock:
             self._notification_version += 1
             version = self._notification_version
-            self._sink.emit({"type": "notification.change", "text": text})
+            self._emit({"type": "notification.change", "text": text})
         if text == "语音已保存":
             def clear_saved_notification() -> None:
                 with self._notification_lock:
                     if version == self._notification_version:
-                        self._sink.emit({"type": "notification.change", "text": ""})
+                        self._emit({"type": "notification.change", "text": ""})
 
             timer = threading.Timer(2.5, clear_saved_notification)
             timer.daemon = True
@@ -368,19 +381,19 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
 
     def post_busy_bar(self, text: str, timeout: float = 0.0) -> None:
         if text:
-            self._sink.emit({"type": "busy.show", "text": text, "durationSeconds": float(timeout)})
+            self._emit({"type": "busy.show", "text": text, "durationSeconds": float(timeout)})
         else:
-            self._sink.emit({"type": "busy.hide"})
+            self._emit({"type": "busy.hide"})
 
     def hide_busy_bar(self) -> None:
-        self._sink.emit({"type": "busy.hide"})
+        self._emit({"type": "busy.hide"})
 
     def post_options(self, option_list: List[Any]) -> None:
         options = [str(x) for x in (option_list or [])]
         if options:
-            self._sink.emit({"type": "options.show", "options": options})
+            self._emit({"type": "options.show", "options": options})
         else:
-            self._sink.emit({"type": "options.clear"})
+            self._emit({"type": "options.clear"})
         self.sync_history_entries()
 
     def post_tool_confirmation(
@@ -392,7 +405,7 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         risk: str = "high",
     ) -> None:
         normalized_risk = "medium" if str(risk).casefold() == "medium" else "high"
-        self._sink.emit(
+        self._emit(
             {
                 "type": "tool.confirmation.show",
                 "confirmationId": str(confirmation_id or ""),
@@ -403,7 +416,7 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         )
 
     def clear_tool_confirmation(self, confirmation_id: str) -> None:
-        self._sink.emit(
+        self._emit(
             {
                 "type": "tool.confirmation.clear",
                 "confirmationId": str(confirmation_id or ""),
@@ -413,10 +426,10 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
     def post_numeric_value(self, text: str) -> None:
         stats = parse_stat_payload(text)
         if stats or not str(text or "").strip():
-            self._sink.emit({"type": "stats.update", "stats": stats})
+            self._emit({"type": "stats.update", "stats": stats})
 
     def post_context_token_estimate(self, estimate: Dict[str, Any]) -> None:
-        self._sink.emit({"type": "numeric.update", "html": format_context_token_estimate(estimate)})
+        self._emit({"type": "numeric.update", "html": format_context_token_estimate(estimate)})
 
     def post_background(self, path: str) -> None:
         url = self._media_url(path)
@@ -424,25 +437,25 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
             self._sprite_lru.clear()
         self._background_url = url
         self.current_background_path = path or None
-        self._sink.emit({"type": "background.change", "url": url})
+        self._emit({"type": "background.change", "url": url})
 
     def switch_bgm(self, new_bgm_path: str) -> None:
         path = str(new_bgm_path or "").strip()
         self.current_bgm_path = path or None
-        self._sink.emit({"type": "bgm.change", "url": self._media_url(path)})
+        self._emit({"type": "bgm.change", "url": self._media_url(path)})
 
     def post_cg(self, path: str) -> None:
         if path:
-            self._sink.emit({"type": "cg.show", "url": self._media_url(path)})
+            self._emit({"type": "cg.show", "url": self._media_url(path)})
         else:
-            self._sink.emit({"type": "cg.hide"})
+            self._emit({"type": "cg.hide"})
 
     def post_llm_reply_finished(self) -> None:
-        self._sink.emit({"type": "reply.finished"})
-        self._sink.emit({"type": "status.change", "status": "idle"})
+        self._emit({"type": "reply.finished"})
+        self._emit({"type": "status.change", "status": "idle"})
 
     def post_pause_asr(self) -> None:
-        self._sink.emit({"type": "asr.state", "running": False})
+        self._emit({"type": "asr.state", "running": False})
 
     def post_tts_play(
         self,
@@ -472,27 +485,27 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         }
         if playback_id:
             payload["playbackId"] = str(playback_id)
-        self._sink.emit(payload)
+        self._emit(payload)
 
     def post_tts_skip(self, *, playback_id: str = "") -> None:
         payload = {"type": "tts.skip"}
         if playback_id:
             payload["playbackId"] = str(playback_id)
-        self._sink.emit(payload)
+        self._emit(payload)
 
     def play_sound_effect(self, sound_effect_path: str) -> None:
         raw_path = str(sound_effect_path or "").strip()
         if not raw_path:
             return
         path = resource_path(raw_path) if Path(raw_path).is_absolute() else raw_path
-        self._sink.emit({"type": "effect.play", "url": self._media_url(str(path))})
+        self._emit({"type": "effect.play", "url": self._media_url(str(path))})
 
     def show_image_effect(self, keyword: str, image_effect_path: str) -> None:
         raw_path = str(image_effect_path or "").strip()
         if not raw_path:
             return
         path = resource_path(raw_path) if Path(raw_path).is_absolute() else raw_path
-        self._sink.emit(
+        self._emit(
             {
                 "type": "effect.image.show",
                 "url": self._media_url(str(path)),
@@ -508,7 +521,7 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
             return
         path = resource_path(raw_path) if Path(raw_path).is_absolute() else raw_path
         self._looping_effects[key] = str(path)
-        self._sink.emit(
+        self._emit(
             {
                 "type": "effect.loop.start",
                 "key": key,
@@ -521,22 +534,22 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         if not key or key not in self._looping_effects:
             return
         self._looping_effects.pop(key, None)
-        self._sink.emit({"type": "effect.loop.stop", "key": key})
+        self._emit({"type": "effect.loop.stop", "key": key})
 
     def stop_all_loop_effects(self) -> None:
         if not self._looping_effects:
             return
         self._looping_effects.clear()
-        self._sink.emit({"type": "effect.loop.stop-all"})
+        self._emit({"type": "effect.loop.stop-all"})
 
     def post_session_closed(self, reason: str = "聊天会话已结束。") -> None:
-        self._sink.emit({"type": "session.closed", "reason": str(reason or "聊天会话已结束。")})
+        self._emit({"type": "session.closed", "reason": str(reason or "聊天会话已结束。")})
 
     def set_user_display_name(self, name: str) -> None:
         super().set_user_display_name(name)
         value = str(name or "").strip()
         if value:
-            self._sink.emit({"type": "user.display_name.change", "name": value})
+            self._emit({"type": "user.display_name.change", "name": value})
 
     # --- 高层业务组装 → 事件 ---
 
@@ -577,7 +590,7 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
             formatted = formatted.replace("<p ", f"<p data-voice-id='{voice_id}' ", 1)
         if str(speech or "").strip() or str(name or "").strip():
             self.chat_history.append(formatted)
-        self._sink.emit(
+        self._emit(
             {
                 "type": "dialog.end",
                 "speaker": name or "",
@@ -606,7 +619,7 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         self._apply_player_portrait_for_dialog(speaker, html.unescape(re.sub(r'<[^>]*>', '', full_html)))
         if append_history and str(full_html or "").strip():
             self.chat_history.append(full_html)
-        self._sink.emit(
+        self._emit(
             {
                 "type": "dialog.end",
                 "speaker": speaker,
@@ -628,7 +641,7 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
             return
         character_name = str(getattr(character_config, "name", "") or character_name)
         display_slot = self._get_or_create_sprite_slot(character_name)
-        self._sink.emit(
+        self._emit(
             {
                 "type": "sprite.show",
                 "characterName": character_name,
@@ -657,7 +670,7 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
             else getattr(sprite, "portrait_crop", None)
         )
         crop = crop or getattr(character_config, "portrait_crop", None)
-        self._sink.emit(
+        self._emit(
             {
                 "type": "player.portrait.show",
                 "characterName": character_name,
@@ -681,7 +694,7 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         if not path:
             return False
         resolved_character_name = character_name or Path(path).stem or "initial"
-        self._sink.emit(
+        self._emit(
             {
                 "type": "sprite.show",
                 "characterName": resolved_character_name,
@@ -702,7 +715,7 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
             character_name,
         )
         self._sprite_lru.pop(character_name, None)
-        self._sink.emit({"type": "sprite.remove", "characterName": character_name})
+        self._emit({"type": "sprite.remove", "characterName": character_name})
 
     def resolve_effect(self, effect: str, args: Dict[str, Any], after_dialog: bool = False) -> bool:
         raw = str(effect or "").strip()

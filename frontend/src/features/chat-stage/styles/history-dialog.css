@@ -329,6 +329,7 @@
   justify-content: flex-end;
 }
 
+.chat-history__replay,
 .chat-history__fork,
 .chat-history__revert,
 .chat-history__voice-button {
@@ -339,6 +340,7 @@
   background: color-mix(in oklch, var(--history-entry-accent) 10%, rgba(255, 255, 255, 0.06));
 }
 
+.chat-history__replay:hover,
 .chat-history__fork:hover,
 .chat-history__revert:hover,
 .chat-history__voice-button:hover {
