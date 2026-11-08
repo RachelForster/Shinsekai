@@ -3,7 +3,7 @@ import type {
   RelationEdge,
   RelationNode,
   RelationRequest,
-} from "../../shared/platform/types";
+} from "../../../shared/platform/types";
 
 export interface RelationRow {
   edge?: RelationEdge;

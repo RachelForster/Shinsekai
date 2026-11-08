@@ -1,4 +1,4 @@
-import type { CharacterRelationGraph } from "../../shared/platform/types";
+import type { CharacterRelationGraph } from "../../../shared/platform/types";
 
 export const normalizeRelationName = (name: string): string => name.trim().toLowerCase();
 

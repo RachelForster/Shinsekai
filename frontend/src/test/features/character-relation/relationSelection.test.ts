@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeRelationName, relationOwnerKey } from "../../../features/character-relation/relationSelection";
+import { normalizeRelationName, relationOwnerKey } from "../../../features/character-relation/model/relationSelection";
 import type { CharacterRelationGraph } from "../../../shared/platform/types";
 
 function createGraph(keys: string[]): CharacterRelationGraph {
