@@ -44,6 +44,7 @@ import { CharacterMemoryImportDialogs } from "./CharacterMemoryImportDialogs";
 import { CharacterMemorySection } from "./CharacterMemorySection";
 import { CharacterPageHeader } from "./CharacterPageHeader";
 import { CharacterPersonalitySection } from "./CharacterPersonalitySection";
+import { CharacterRelationSection } from "../character-relation/view/CharacterRelationSection";
 import { CharacterSpritesSection } from "./CharacterSpritesSection";
 import { SpriteGenerationPage } from "./SpriteGenerationPage";
 import { CharacterVoiceSection } from "./CharacterVoiceSection";
@@ -733,6 +734,7 @@ export function CharacterEditorPage() {
     { id: "character-voice", label: t("character.section.voice") },
     { id: "character-sprites", label: t("character.section.sprites") },
     { id: "character-memory", label: t("character.memory.section") },
+    { id: "character-relations", label: t("relation.title") },
   ];
 
   const confirmPendingResourceDelete = async () => {
@@ -1205,6 +1207,11 @@ export function CharacterEditorPage() {
           onSearchInputChange={memoryController.setSearchInput}
           searchInput={memoryController.searchInput}
           searchPending={memoryController.searchPending}
+        />
+
+        <CharacterRelationSection
+          key={currentCharacterName || "new"}
+          primary={isSavedCharacter ? currentCharacterName : ""}
         />
       </div>
 
