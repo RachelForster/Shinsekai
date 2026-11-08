@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from "react";
 
 import { fileUrl } from "../../entities/files/repository";
 import { useI18n } from "../../shared/i18n";
-import type { MouthPose } from "../../shared/platform/types";
-import { Button } from "../../shared/ui";
+import type { MouthPose, SpriteEyeFrames } from "../../shared/platform/types";
+import { Button, Select } from "../../shared/ui";
+
+const eyePoses = ["open", "half", "closed"] as const;
 
 export interface MouthFrame {
   index: number;
@@ -28,6 +30,8 @@ export function SpriteMouthTimeline({
   disabled,
   requestedFrame,
   onPick,
+  savedEyeFrames,
+  onSaveEyes,
 }: {
   src: string;
   frames: MouthFrame[];
@@ -35,6 +39,8 @@ export function SpriteMouthTimeline({
   disabled: boolean;
   requestedFrame?: { index: number; sequence: number };
   onPick: (pose: MouthPose, index: number) => void;
+  savedEyeFrames?: SpriteEyeFrames;
+  onSaveEyes?: (frames: SpriteEyeFrames) => void;
 }) {
   const { t } = useI18n();
   const video = useRef<HTMLVideoElement>(null);
@@ -42,6 +48,10 @@ export function SpriteMouthTimeline({
   const [position, setPosition] = useState(0);
   const [canExport, setCanExport] = useState(false);
   const [exportFailed, setExportFailed] = useState(false);
+  const [eyeDraft, setEyeDraft] = useState<SpriteEyeFrames>();
+  const eyeFrames = eyeDraft ?? savedEyeFrames;
+  const eyesChanged = eyePoses.some((pose) => eyeFrames?.[pose] !== savedEyeFrames?.[pose]);
+  const hasSavedEyes = eyePoses.some((pose) => savedEyeFrames?.[pose] !== undefined);
   const actualFps = Number.isFinite(fps) && fps > 0 ? fps : 24;
   const frameAvailable = (player: HTMLVideoElement) =>
     player.paused && !player.seeking && player.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
@@ -198,11 +208,79 @@ export function SpriteMouthTimeline({
               </Button>
             ))}
           </div>
-          <details>
+          <details open={eyePoses.some((pose) => eyeFrames?.[pose] !== undefined) || undefined}>
             <summary>{t("spriteMouth.eyeFrames")}</summary>
-            <p className="sprite-generation__hint">{t("spriteMouth.eyeFramesHint")}</p>
+            <p className="sprite-generation__hint">
+              {t(onSaveEyes ? "spriteMouth.eyeFramesHint" : "spriteMouth.eyeSaveNeedsMouth")}
+            </p>
+            <div className="sprite-mouth-editor__poses">
+              {eyePoses.map((pose) => {
+                const chosen = frames.findIndex((frame) => frame.index === eyeFrames?.[pose]);
+                const label = t(`spriteMouth.eyePose.${pose}`);
+                return (
+                  <label key={pose}>
+                    {label}
+                    {chosen >= 0 ? (
+                      <button
+                        type="button"
+                        className="sprite-mouth-editor__pose-frame"
+                        aria-label={t("spriteMouth.previewFrame", { pose: label })}
+                        onClick={() => seek(chosen)}
+                      >
+                        <img alt="" src={fileUrl(frames[chosen].path)} />
+                      </button>
+                    ) : null}
+                    <Select
+                      aria-label={label}
+                      disabled={disabled || !onSaveEyes}
+                      value={chosen < 0 ? "" : frames[chosen].index}
+                      onChange={(event) => {
+                        const next = { ...eyeFrames };
+                        if (event.target.value === "") delete next[pose];
+                        else {
+                          next[pose] = Number(event.target.value);
+                          seek(frames.findIndex((frame) => frame.index === next[pose]));
+                        }
+                        setEyeDraft(next);
+                      }}
+                    >
+                      <option value="">{t("spriteMouth.eyeUnselected")}</option>
+                      {frames.map((frame) => (
+                        <option
+                          key={frame.index}
+                          value={frame.index}
+                          disabled={eyePoses.some((other) => other !== pose && eyeFrames?.[other] === frame.index)}
+                        >
+                          {t("spriteMouth.frame", { n: frame.index + 1 })}
+                        </option>
+                      ))}
+                    </Select>
+                  </label>
+                );
+              })}
+            </div>
+            {onSaveEyes ? (
+              <div className="sprite-mouth-actions">
+                <Button disabled={disabled || !eyesChanged} onClick={() => onSaveEyes(eyeDraft ?? {})}>
+                  {t("spriteMouth.eyeSave")}
+                </Button>
+                {hasSavedEyes ? (
+                  <Button
+                    variant="ghost"
+                    disabled={disabled}
+                    onClick={() => {
+                      setEyeDraft({});
+                      onSaveEyes({});
+                    }}
+                  >
+                    {t("spriteMouth.eyeClear")}
+                  </Button>
+                ) : null}
+                {hasSavedEyes && !eyesChanged ? <span role="status">{t("spriteMouth.saved")}</span> : null}
+              </div>
+            ) : null}
             <div className="sprite-mouth-actions">
-              {(["open", "half", "closed"] as const).map((pose) => (
+              {eyePoses.map((pose) => (
                 <Button key={pose} disabled={!current || !canExport} onClick={() => exportEyeFrame(pose)}>
                   {t(`spriteMouth.eyeExport.${pose}`)}
                 </Button>

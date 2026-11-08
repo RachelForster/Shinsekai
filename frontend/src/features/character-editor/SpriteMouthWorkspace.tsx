@@ -344,6 +344,7 @@ export function SpriteMouthWorkspace({
             setEditing("");
           }}
           onAdjust={(change) => controller.adjust(editingItem.path, change)}
+          onSaveEyes={(frames) => controller.saveEyes(editingItem.path, frames)}
           onDraftChange={(draft) => controller.editDraft(editingItem.path, draft)}
           onApply={(manual, selectedFrames) =>
             void controller.reanalyse(editingItem.path, applyOptions({ manual, selectedFrames }))

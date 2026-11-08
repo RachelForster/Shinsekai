@@ -79,6 +79,53 @@ def test_changed_source_cannot_receive_an_old_result(state):
     assert not list((source.parent / "mouth-sync").glob("*/manifest.json"))
 
 
+def test_eye_frames_can_be_saved_and_corrected_without_rebuilding_mouth_assets(state):
+    current, character, source = state
+    result = complete(current, source)
+    original = Path(result["manifestPath"]).parent
+    (original / "speech.mp4").write_bytes(b"clip")
+    frames = original / "frames"
+    frames.mkdir()
+    for index in range(4):
+        Image.new("RGB", (20, 20), "pink").save(frames / f"{index:03d}.jpg")
+    def save_eyes(eyes, task=result):
+        bridge.save_sprite_mouths(current, {
+            "name": "Mika", "eyesOnly": True, "items": [{"taskId": task["taskId"], "eyeFrames": eyes}],
+        })
+
+    with pytest.raises(ValueError, match="先保存"):
+        save_eyes({"closed": 2})
+    bridge.save_sprite_mouths(current, {"name": "Mika", "items": [{"taskId": result["taskId"]}]})
+    saved = Path(character.sprites[0]["mouth_sync"])
+    assert "eyeFrames" not in bridge.describe_bundle(current, saved)
+    eyes = {"open": 0, "half": 1, "closed": 3}
+    save_eyes(eyes)
+    assert Path(character.sprites[0]["mouth_sync"]) == saved
+    assert bridge.describe_bundle(current, saved)["eyeFrames"] == eyes
+    assert (saved.parent / "mouth-open.png").read_bytes() == (original / "mouth-open.png").read_bytes()
+    with pytest.raises(ValueError, match="不同帧"):
+        save_eyes({"open": 0, "closed": 0})
+    assert bridge.describe_bundle(current, saved)["eyeFrames"] == eyes
+    cached = {**result, "manifestPath": str(saved)}
+    _update_task(current, result["taskId"], result=cached)
+    bridge.save_sprite_mouths(current, {
+        "name": "Mika", "items": [{"taskId": result["taskId"], "correction": {"offsetX": 3}}],
+    })
+    newer = Path(character.sprites[0]["mouth_sync"])
+    assert bridge.describe_bundle(current, newer)["eyeFrames"] == eyes
+    save_eyes({})
+    assert "eyeFrames" not in bridge.describe_bundle(current, newer)
+    assert read_manifest(newer)["correction"]["offsetX"] == 3
+    assert Path(character.sprites[0]["mouth_sync"]) == newer
+    bridge.save_sprite_mouths(current, {"name": "Mika", "items": [{"taskId": result["taskId"]}]})
+    assert "eyeFrames" not in bridge.describe_bundle(current, character.sprites[0]["mouth_sync"])
+
+    different = complete(current, source)
+    Path(different["manifestPath"]).with_name("speech.mp4").write_bytes(b"different clip")
+    with pytest.raises(ValueError, match="当前说话视频"):
+        save_eyes({}, different)
+
+
 @pytest.mark.parametrize("clear_manual", [False, True])
 def test_retrying_frames_inherits_manual_placement_and_playback_correction(state, monkeypatch, clear_manual):
     current, _, source = state

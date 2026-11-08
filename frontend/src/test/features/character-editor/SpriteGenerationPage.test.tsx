@@ -1436,7 +1436,7 @@ describe("sprite generator", () => {
     fireEvent.click(screen.getByRole("button", { name: "Apply frames and placement" }));
     expect(mouths.generate).toHaveBeenCalledTimes(2);
     expect(screen.getByRole("button", { name: "Queued to apply after the current generation" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "Save and close" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save mouth and close" }));
     await act(async () => {
       finishSecond({ ready: true, taskId: "second", frames: [], selectedFrames: { closed: 0, half: 1, open: 2 } });
     });
@@ -1477,7 +1477,7 @@ describe("sprite generator", () => {
     fireEvent.click(screen.getByRole("option", { name: "Frame 1" }));
     expect(screen.getByLabelText("Show alignment guides")).toBeChecked();
     mouths.generate.mockResolvedValueOnce({ ready: false, taskId: "retry-again", message: "landmarks unreliable" });
-    fireEvent.click(screen.getByRole("button", { name: "Save and close" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save mouth and close" }));
     await waitFor(() => expect(mouths.generate).toHaveBeenCalledTimes(3));
     fireEvent.click(screen.getByRole("button", { name: "Preview and correct" }));
     expect(screen.getByLabelText("Show alignment guides")).toBeChecked();
@@ -1539,7 +1539,7 @@ describe("sprite generator", () => {
     fireEvent.click(screen.getByLabelText("Show alignment guides"));
     expect(screen.queryByRole("button", { name: "Mouth region" })).not.toBeInTheDocument();
     expect(submit).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "Close and save adjustments" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close and save mouth adjustments" }));
     await waitFor(() =>
       expect(mouths.save).toHaveBeenCalledWith({
         name: "Mika",
@@ -1553,8 +1553,65 @@ describe("sprite generator", () => {
     expect(screen.getByRole("button", { name: "Chin anchor" })).toHaveAttribute("style", chinStyle);
     expect(screen.getByRole("combobox", { name: "Open" })).toHaveTextContent("Frame 4");
     expect(screen.getByLabelText("Horizontal offset")).toHaveValue(3);
-    fireEvent.click(screen.getByRole("button", { name: "Save and close" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save mouth and close" }));
     expect(mouths.save).toHaveBeenCalledTimes(1);
+  });
+
+  it("saves or clears eye frames independently of mouth changes", async () => {
+    mouths.generate.mockResolvedValueOnce({
+      ready: true,
+      cached: true,
+      taskId: "blink-profile",
+      speechVideo: "speech.mp4",
+      frames: [0, 1, 2, 3].map((index) => ({ index, path: `${index}.jpg` })),
+      selectedFrames: { closed: 0, half: 1, open: 2 },
+      eyeFrames: { open: 0, half: 1, closed: 2 },
+    });
+    const savedSprite = { path: "old.png", mouth_sync: "blink-profile.json" };
+    mount({ ...character, sprites: [savedSprite] });
+    fireEvent.click(screen.getByRole("tab", { name: "Mouth sync" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select Sprite 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Prepare selected mouths (1)" }));
+    const edit = await screen.findByRole("button", { name: "Preview and correct" });
+    await waitFor(() => expect(edit).toBeEnabled());
+    fireEvent.click(edit);
+    const eye = () => screen.getByRole("combobox", { name: "Eyes closed" });
+    const chooseEyeFrame = () => {
+      fireEvent.click(eye());
+      fireEvent.click(screen.getByRole("option", { name: "Frame 4" }));
+    };
+    expect(eye()).toHaveTextContent("Frame 3");
+    chooseEyeFrame();
+    fireEvent.change(screen.getByLabelText("Horizontal offset"), { target: { value: 3 } });
+    fireEvent.click(screen.getByRole("button", { name: "Save mouth and close" }));
+    await waitFor(() => expect(mouths.save).toHaveBeenCalledOnce());
+    expect(mouths.save).toHaveBeenCalledWith({
+      name: "Mika",
+      items: [{ taskId: "blink-profile", correction: expect.objectContaining({ offsetX: 3 }) }],
+    });
+    await waitFor(() => expect(edit).toBeEnabled());
+    fireEvent.click(edit);
+    expect(eye()).toHaveTextContent("Frame 3");
+    chooseEyeFrame();
+    fireEvent.click(screen.getByRole("button", { name: "Save eye frames" }));
+    await waitFor(() => expect(mouths.save).toHaveBeenCalledTimes(2));
+    expect(mouths.save).toHaveBeenLastCalledWith({
+      name: "Mika",
+      eyesOnly: true,
+      items: [{ taskId: "blink-profile", eyeFrames: { open: 0, half: 1, closed: 3 } }],
+    });
+    const clearEyes = screen.getByRole("button", { name: "Clear saved eye frames" });
+    await waitFor(() => expect(clearEyes).toBeEnabled());
+    expect(eye()).toHaveTextContent("Frame 4");
+    expect(screen.getByRole("combobox", { name: "Open" })).toHaveTextContent("Frame 3");
+    fireEvent.click(clearEyes);
+    await waitFor(() => expect(mouths.save).toHaveBeenCalledTimes(3));
+    expect(mouths.save).toHaveBeenLastCalledWith({
+      name: "Mika",
+      eyesOnly: true,
+      items: [{ taskId: "blink-profile", eyeFrames: {} }],
+    });
+    expect(mouths.generate).toHaveBeenCalledOnce();
   });
 
   it("recalculates tracking for a saved animated sprite using its current mouth frames", async () => {
@@ -1583,7 +1640,7 @@ describe("sprite generator", () => {
     );
     expect(mouths.generate.mock.calls[1][0].regenerate).toBeUndefined();
     await waitFor(() => expect(screen.getByRole("button", { name: "Apply frames and placement" })).toBeEnabled());
-    fireEvent.click(screen.getByRole("button", { name: "Save and close" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save mouth and close" }));
     await waitFor(() => expect(mouths.save).toHaveBeenCalledOnce());
   });
 

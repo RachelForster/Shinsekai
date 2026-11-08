@@ -5,6 +5,7 @@ import type {
   Character,
   GeneratedSpriteMouth,
   MouthPose,
+  SpriteEyeFrames,
   SpriteMouthCorrection,
   SpriteMouthInput,
   SpriteMouthManual,
@@ -26,7 +27,9 @@ export interface MouthCandidate {
   error?: string;
   selected: boolean;
   saved?: boolean;
+  clipSaved?: boolean;
   correction: SpriteMouthCorrection;
+  eyeFrames?: SpriteEyeFrames;
   draft?: MouthCalibrationDraft;
   calibrationDirty?: boolean;
   applyFailed?: boolean;
@@ -41,6 +44,7 @@ interface MouthSave {
 type MouthJob = { name: string; path: string } & (
   | { kind: "generate" | "apply"; options: MouthOptions; saveAfter?: boolean }
   | { kind: "save"; item: MouthSave }
+  | { kind: "saveEyes"; taskId: string; eyeFrames: SpriteEyeFrames }
 );
 
 export function useSpriteMouths(
@@ -92,17 +96,14 @@ export function useSpriteMouths(
     if (owner !== currentSource.current.name) return;
     onSaved(saved);
     mutate((values) =>
-      values.map((item) =>
-        !item.calibrationDirty &&
-        snapshots.some(
-          (snapshot) =>
-            snapshot.path === item.path &&
-            snapshot.taskId === item.result?.taskId &&
-            snapshot.correction === item.correction,
-        )
-          ? { ...item, saved: true, selected: false }
-          : item,
-      ),
+      values.map((item) => {
+        const snapshot = snapshots.find((entry) => entry.path === item.path && entry.taskId === item.result?.taskId);
+        if (!snapshot) return item;
+        if (!item.calibrationDirty && snapshot.correction === item.correction) {
+          return { ...item, saved: true, clipSaved: true, selected: false };
+        }
+        return { ...item, clipSaved: true };
+      }),
     );
   };
 
@@ -130,7 +131,7 @@ export function useSpriteMouths(
         if (!isCurrent(job)) continue;
         runningJob.current = job;
         setActivePath(job.path);
-        setBusy(job.kind === "save" ? "save" : "generate");
+        setBusy(job.kind === "save" || job.kind === "saveEyes" ? "save" : "generate");
         setTask(null);
         progress.current.current += 1;
         setQueue({ ...progress.current });
@@ -139,6 +140,15 @@ export function useSpriteMouths(
         try {
           if (job.kind === "save") {
             await persist(job.name, [job.item]);
+            continue;
+          }
+          if (job.kind === "saveEyes") {
+            await spriteMouthRepository.save({
+              name: job.name,
+              eyesOnly: true,
+              items: [{ taskId: job.taskId, eyeFrames: job.eyeFrames }],
+            });
+            if (isCurrent(job)) update(job.path, { eyeFrames: job.eyeFrames });
             continue;
           }
           const reanalysis = job.kind === "apply";
@@ -175,6 +185,8 @@ export function useSpriteMouths(
                 error: undefined,
                 correction:
                   keepCorrection && !job.options.correction ? item.correction : (appliedCorrection ?? item.correction),
+                eyeFrames: reanalysis ? item.eyeFrames : result.eyeFrames,
+                clipSaved: reanalysis ? item.clipSaved : Boolean(result.cached),
                 draft: keepDraft || (!result.ready && reanalysis) ? item.draft : undefined,
                 calibrationDirty: keepDraft || (!result.ready && reanalysis),
                 applyFailed: !result.ready && reanalysis,
@@ -184,13 +196,11 @@ export function useSpriteMouths(
             }),
           );
           if (job.saveAfter && result.ready && result.taskId) {
+            const item = latestItems.current.find((candidate) => candidate.path === job.path);
             snapshot = {
               path: job.path,
               taskId: result.taskId,
-              correction:
-                appliedCorrection ??
-                latestItems.current.find((item) => item.path === job.path)?.correction ??
-                defaultMouthCorrection,
+              correction: appliedCorrection ?? item?.correction ?? defaultMouthCorrection,
             };
           }
         } catch (failure) {
@@ -198,7 +208,9 @@ export function useSpriteMouths(
             const error = message(failure);
             update(
               job.path,
-              job.kind === "save" ? { error } : { error, selected: false, applyFailed: job.kind === "apply" },
+              job.kind === "save" || job.kind === "saveEyes"
+                ? { error }
+                : { error, selected: false, applyFailed: job.kind === "apply" },
             );
           }
         }
@@ -242,10 +254,11 @@ export function useSpriteMouths(
     }
     setStopping(false);
     setError("");
-    const pending = new Set(jobs.current.map((job) => job.path));
+    const blocksEnqueue = (job: MouthJob | undefined) => job && (!saveAfter || job.kind !== "saveEyes");
+    const pending = new Set(jobs.current.filter(blocksEnqueue).map((job) => job.path));
     const queuedPaths: string[] = [];
     for (const path of new Set(paths)) {
-      if (path === runningJob.current?.path || pending.has(path)) continue;
+      if ((path === runningJob.current?.path && blocksEnqueue(runningJob.current)) || pending.has(path)) continue;
       const job: MouthJob = { path, name, options, kind: reanalysis ? "apply" : "generate", saveAfter };
       if (reanalysis) jobs.current.unshift(job);
       else jobs.current.push(job);
@@ -302,8 +315,19 @@ export function useSpriteMouths(
         await persist(name, snapshots.slice(index, index + MOUTH_SAVE_BATCH_SIZE));
       }
     });
+  const queueSave = (job: MouthJob) => {
+    jobs.current.unshift(job);
+    progress.current.total += 1;
+    setQueue({ ...progress.current });
+    syncPending();
+    void pumpRef.current();
+  };
+  const pendingJob = (path: string, includeEyeSaves = true) =>
+    [runningJob.current, ...jobs.current].find(
+      (job) => job?.path === path && (includeEyeSaves || job.kind !== "saveEyes"),
+    );
   const finish = (path: string, options: MouthOptions | undefined, invalidFrames: string) => {
-    const pending = [runningJob.current, ...jobs.current].find((job) => job?.path === path);
+    const pending = pendingJob(path, false);
     if (pending) {
       if (pending.kind === "apply") pending.saveAfter = true;
       return;
@@ -314,16 +338,12 @@ export function useSpriteMouths(
       if (options) void enqueue([path], options, true, true);
       else update(path, { error: invalidFrames });
     } else if (item.result?.ready && item.result.taskId) {
-      jobs.current.unshift({
+      queueSave({
         kind: "save",
         path,
         name,
         item: { path, taskId: item.result.taskId, correction: item.correction },
       });
-      progress.current.total += 1;
-      setQueue({ ...progress.current });
-      syncPending();
-      void pumpRef.current();
     }
   };
   return {
@@ -360,6 +380,12 @@ export function useSpriteMouths(
       }),
     adjust: (path: string, correction: SpriteMouthCorrection) =>
       update(path, { correction, selected: true, saved: false }),
+    saveEyes: (path: string, eyeFrames: SpriteEyeFrames) => {
+      const item = latestItems.current.find((candidate) => candidate.path === path);
+      if (item?.clipSaved && item.result?.ready && item.result.taskId && !pendingJob(path)) {
+        queueSave({ name, path, kind: "saveEyes", taskId: item.result.taskId, eyeFrames });
+      }
+    },
     editDraft: (path: string, draft: MouthCalibrationDraft) =>
       update(path, { draft, calibrationDirty: true, applyFailed: false, selected: false, saved: false }),
     select: (path: string, selected: boolean) => update(path, { selected }),

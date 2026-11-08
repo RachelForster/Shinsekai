@@ -4,7 +4,7 @@ import { fileUrl } from "../../entities/files/repository";
 import { SpriteMouthMedia } from "../../modules/character-visual";
 import { isVideoMedia } from "../../shared/assets/visualMedia";
 import { useI18n } from "../../shared/i18n";
-import type { MouthPose, SpriteMouthCorrection, SpriteMouthManual } from "../../shared/platform/types";
+import type { MouthPose, SpriteEyeFrames, SpriteMouthCorrection, SpriteMouthManual } from "../../shared/platform/types";
 import { AsyncButton, Button, Dialog, NumberInput, Select, Switch, VisualMedia } from "../../shared/ui";
 import { defaultMouthCorrection, type MouthCandidate, type MouthCalibrationDraft } from "./useSpriteMouths";
 import { SpriteMouthCanvas } from "./SpriteMouthCanvas";
@@ -33,6 +33,7 @@ export function SpriteMouthEditor({
   busy,
   onClose,
   onAdjust,
+  onSaveEyes,
   onApply,
   onDraftChange,
   queued = false,
@@ -41,6 +42,7 @@ export function SpriteMouthEditor({
   busy: boolean;
   onClose: (selection?: MouthEditorSelection) => void;
   onAdjust: (change: SpriteMouthCorrection) => void;
+  onSaveEyes: (frames: SpriteEyeFrames) => void;
   onApply: (manual: SpriteMouthManual | undefined, frames: Record<MouthPose, number> | undefined) => void;
   onDraftChange: (draft: MouthCalibrationDraft) => void;
   queued?: boolean;
@@ -310,12 +312,15 @@ export function SpriteMouthEditor({
           )}
           {result?.speechVideo ? (
             <SpriteMouthTimeline
+              key={result.speechVideo}
               src={result.speechVideo}
               frames={choices}
               fps={result.speechFps}
               disabled={busy}
               requestedFrame={requestedFrame}
               onPick={pickFrame}
+              savedEyeFrames={item.eyeFrames}
+              onSaveEyes={item.clipSaved && result.ready ? onSaveEyes : undefined}
             />
           ) : null}
         </div>

@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import json
 import math
+import os
 from pathlib import Path
 import re
 import shutil
+from threading import Lock
 from uuid import uuid4
 
 from application.characters.mouth_sync import build_bundle, copy_mouth_assets, transfer_bundle
@@ -16,6 +18,9 @@ from config.sprite_files import sprite_field, sprite_fingerprint
 from config.sprite_mouth import correction, read_manifest, suggested_mouth_box, valid_mouth_sync
 from frontend_bridge_core.tools import _local_file_access_roots
 from sdk.path_utils import safe_child_path, safe_existing_file_path
+
+
+_save_lock = Lock()
 
 
 def _source(state, payload):
@@ -139,6 +144,7 @@ def describe_bundle(state, path):
         "speechVideo": _public_path(state, safe_child_path(directory, "speech.mp4")),
         "frames": frames, "speechFps": fps, "suggestedManual": suggested,
         "selectedFrames": data.get("selectedFrames"), "manual": data.get("manual"),
+        **({"eyeFrames": data["eyeFrames"]} if "eyeFrames" in data else {}),
     }
 
 
@@ -223,11 +229,64 @@ def run_sprite_mouth(state, task_id, payload):
     return {**identity, **result}
 
 
+def _validate_eye_frames(manifest, eyes):
+    if not isinstance(eyes, dict) or set(eyes) - {"open", "half", "closed"}:
+        raise ValueError("无效的眼睛选帧")
+    if any(
+        type(index) is not int or not 0 <= index < 180
+        or not safe_child_path(manifest.parent, f"frames/{index:03d}.jpg").is_file()
+        for index in eyes.values()
+    ):
+        raise ValueError("眼睛选帧超出说话视频范围")
+    if len(set(eyes.values())) != len(eyes):
+        raise ValueError("不同的眼睛状态请选择不同帧")
+
+
+def _same_speech(first, second):
+    if first == second:
+        return True
+    a, b = (safe_child_path(manifest.parent, "speech.mp4") for manifest in (first, second))
+    return a.is_file() and b.is_file() and sprite_fingerprint(a) == sprite_fingerprint(b)
+
+
+def _saved_profile(state, sprite, fingerprint):
+    try:
+        path = _bundle_manifest(state, sprite_field(sprite, "mouth_sync"))
+        data = read_manifest(path)
+        if data["sourceFingerprint"] == fingerprint:
+            return path, data
+    except (OSError, ValueError):
+        pass
+    return None, None
+
+
+def _save_eye_frames(manifest, data, eyes):
+    _validate_eye_frames(manifest, eyes)
+    if eyes:
+        data["eyeFrames"] = eyes
+    else:
+        data.pop("eyeFrames", None)
+    temporary = manifest.with_name(f".eyes-{uuid4().hex}.tmp")
+    try:
+        temporary.write_text(json.dumps(data), encoding="utf-8")
+        os.replace(temporary, manifest)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def save_sprite_mouths(state, payload):
+    with _save_lock:
+        return _save_sprite_mouths(state, payload)
+
+
+def _save_sprite_mouths(state, payload):
     name = str(payload.get("name") or "").strip()
     items = payload.get("items")
     if not isinstance(items, list) or not 1 <= len(items) <= 12:
         raise ValueError("请选择 1–12 份口型结果")
+    eyes_only = payload.get("eyesOnly", False)
+    if type(eyes_only) is not bool or (eyes_only and len(items) != 1):
+        raise ValueError("请选择一份眨眼选帧")
     results, seen = [], set()
     for item in items:
         if not isinstance(item, dict):
@@ -236,7 +295,7 @@ def save_sprite_mouths(state, payload):
         with state.task_lock:
             task = state.tasks.get(task_id) or {}
             result = dict(task.get("result") or {})
-        character, index, _, source = _source(state, {"name": name, "spritePath": result.get("spritePath")})
+        character, index, sprite, source = _source(state, {"name": name, "spritePath": result.get("spritePath")})
         result = _previous(state, task_id, name, result.get("spritePath"), sprite_fingerprint(source))
         if not result.get("ready"):
             raise ValueError("请先完成口型识别或人工校准")
@@ -244,8 +303,24 @@ def save_sprite_mouths(state, payload):
             raise ValueError("同一张立绘不能同时保存多份口型")
         seen.add(index)
         manifest = _bundle_manifest(state, result["manifestPath"])
+        current, current_data = _saved_profile(state, sprite, result["sourceFingerprint"])
+        if eyes_only:
+            if current is None or not _same_speech(manifest, current):
+                raise ValueError("请先保存当前说话视频的口型，再保存眼睛选帧")
+            _save_eye_frames(current, current_data, item.get("eyeFrames"))
+            return _jsonify(character)
         data = read_manifest(manifest)
         data["correction"] = correction(item.get("correction", data.get("correction")))
+        # A cached task can still point at a prior installation. Preserve the
+        # latest eye choices only when they belong to this exact clip.
+        data.pop("eyeFrames", None)
+        if "eyeFrames" in item:
+            eyes = item["eyeFrames"]
+            _validate_eye_frames(manifest, eyes)
+        else:
+            eyes = current_data.get("eyeFrames") if current and _same_speech(manifest, current) else None
+        if eyes:
+            data["eyeFrames"] = eyes
         results.append((index, result["spritePath"], character, manifest, data))
     installed = []
     try:
@@ -287,7 +362,8 @@ def import_mouth_models(state, payload):
 
 
 def remove_sprite_mouth(state, payload):
-    character, index, _, _ = _source(state, payload)
-    state.character_manager.save_sprite_mouths(character.name, [(index, payload["spritePath"], None)])
-    state.config_manager.reload()
-    return _jsonify(state.config_manager.get_character_by_name(character.name))
+    with _save_lock:
+        character, index, _, _ = _source(state, payload)
+        state.character_manager.save_sprite_mouths(character.name, [(index, payload["spritePath"], None)])
+        state.config_manager.reload()
+        return _jsonify(state.config_manager.get_character_by_name(character.name))

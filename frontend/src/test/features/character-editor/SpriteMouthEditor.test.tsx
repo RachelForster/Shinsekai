@@ -26,6 +26,7 @@ function mountEditable() {
         busy={false}
         onClose={vi.fn()}
         onAdjust={vi.fn()}
+        onSaveEyes={vi.fn()}
         onDraftChange={(next) => {
           setValue(next);
           draft(next);

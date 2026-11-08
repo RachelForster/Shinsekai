@@ -1608,6 +1608,8 @@ export interface SpriteMouthInput {
   selectedFrames?: Record<MouthPose, number>;
   correction?: SpriteMouthCorrection;
 }
+export type SpriteEyeFrames = Partial<Record<MouthPose, number>>;
+
 export interface GeneratedSpriteMouth {
   speechFps?: number;
   correction?: SpriteMouthCorrection;
@@ -1624,6 +1626,7 @@ export interface GeneratedSpriteMouth {
   speechVideo?: string;
   frames?: { index: number; path: string; time?: number }[];
   selectedFrames?: Record<MouthPose, number>;
+  eyeFrames?: SpriteEyeFrames;
   manual?: SpriteMouthManual | null;
   suggestedManual?: SpriteMouthManual;
   cached?: boolean;
@@ -1981,7 +1984,8 @@ export interface ShinsekaiPlatform {
     readSpriteMouth: (path: string) => Promise<GeneratedSpriteMouth>;
     saveSpriteMouths: (input: {
       name: string;
-      items: { taskId: string; correction?: SpriteMouthCorrection }[];
+      eyesOnly?: boolean;
+      items: { taskId: string; correction?: SpriteMouthCorrection; eyeFrames?: SpriteEyeFrames }[];
     }) => Promise<Character>;
     removeSpriteMouth: (input: { name: string; spritePath: string }) => Promise<Character>;
     analyzeSpriteTransitions: (
