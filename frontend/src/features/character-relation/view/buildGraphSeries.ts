@@ -81,30 +81,30 @@ export function graphSeries({
       }),
     ),
     links: graph.edges.map((edge) => {
-        const visible = edge.source === activeNodeKey;
-        const relationText = edge.content.trim() || emptyRelationLabel;
-        return {
-          id: relationEdgeId(edge.source, edge.target),
-          source: edge.source,
-          target: edge.target,
-          // ECharts maps larger edge values to shorter springs.
-          value: -(edgeLengths[relationEdgeId(edge.source, edge.target)] ?? 40),
-          symbol: ["none", visible ? "arrow" : "none"],
-          symbolSize: 10,
-          lineStyle: {
-            color: visible ? theme.accent : theme.muted,
-            opacity: visible ? 1 : 0.45,
-            width: visible ? 2 : 1.5,
-            curveness: 0,
-          },
-          label: {
-            show: visible,
-            formatter: () => (relationText.length > 64 ? relationText.slice(0, 64) + "…" : relationText),
-            color: textColor,
-            backgroundColor: "transparent",
-            padding: 0,
-          },
-        };
-      }),
+      const visible = edge.source === activeNodeKey;
+      const relationText = edge.content.trim() || emptyRelationLabel;
+      return {
+        id: relationEdgeId(edge.source, edge.target),
+        source: edge.source,
+        target: edge.target,
+        // ECharts maps larger edge values to shorter springs.
+        value: -(edgeLengths[relationEdgeId(edge.source, edge.target)] ?? 40),
+        symbol: ["none", visible ? "arrow" : "none"],
+        symbolSize: 10,
+        lineStyle: {
+          color: visible ? theme.accent : theme.muted,
+          opacity: visible ? 1 : 0.45,
+          width: visible ? 2 : 1.5,
+          curveness: 0,
+        },
+        label: {
+          show: visible,
+          formatter: () => (relationText.length > 64 ? relationText.slice(0, 64) + "…" : relationText),
+          color: textColor,
+          backgroundColor: "transparent",
+          padding: 0,
+        },
+      };
+    }),
   };
 }

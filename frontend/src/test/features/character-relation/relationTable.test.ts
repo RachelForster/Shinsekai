@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { convertGraphToRows, tableOperations, type RelationRow } from "../../../features/character-relation/model/relationTable";
+import {
+  convertGraphToRows,
+  tableOperations,
+  type RelationRow,
+} from "../../../features/character-relation/model/relationTable";
 import type { CharacterRelationGraph } from "../../../shared/platform/types";
 
 const nodes = [{ key: "A" }, { key: "B" }];
@@ -14,7 +18,7 @@ function createRows(overrides: Partial<RelationRow> = {}): RelationRow[] {
       temperature: "8",
       ...overrides,
     },
-    { source: "", target: "", relation: "", temperature: "0"},
+    { source: "", target: "", relation: "", temperature: "0" },
   ];
 }
 

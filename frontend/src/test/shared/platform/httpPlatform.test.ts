@@ -2901,7 +2901,7 @@ describe("http platform", () => {
       "http://127.0.0.1:8787/api/character-relations/graphs/Nanami",
       "http://127.0.0.1:8787/api/character-relations/graphs/Nanami/changes",
     ]);
-    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({operations});
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ operations });
   });
 
   it("propagates relationship operation errors without retrying the request", async () => {
@@ -2913,7 +2913,7 @@ describe("http platform", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     await expect(
-      createHttpPlatform("http://127.0.0.1:8787").characterRelation.applyRelationChanges("A",[
+      createHttpPlatform("http://127.0.0.1:8787").characterRelation.applyRelationChanges("A", [
         { op: "delete_node", key: "B" },
       ]),
     ).rejects.toThrow("Node does not exist");

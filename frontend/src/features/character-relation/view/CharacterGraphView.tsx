@@ -10,9 +10,19 @@ interface CharacterGraphViewProps {
 
 export function CharacterGraphView({ graph, disabled, active }: CharacterGraphViewProps) {
   const {
-    t, selected, container, fitGraph, resetLayout, handleKeyDown, handlePersonSelection,
-    handlePointerDown, handlePointerMove, handlePointerUp, cancelDrag,
-    handleLostPointerCapture, handleClickCapture,
+    t,
+    selected,
+    container,
+    fitGraph,
+    resetLayout,
+    handleKeyDown,
+    handlePersonSelection,
+    handlePointerDown,
+    handlePointerMove,
+    handlePointerUp,
+    cancelDrag,
+    handleLostPointerCapture,
+    handleClickCapture,
   } = useCharacterGraphController({ graph, disabled, active });
 
   return (

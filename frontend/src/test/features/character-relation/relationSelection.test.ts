@@ -4,7 +4,7 @@ import { normalizeRelationName, relationOwnerKey } from "../../../features/chara
 import type { CharacterRelationGraph } from "../../../shared/platform/types";
 
 function createGraph(keys: string[]): CharacterRelationGraph {
-  return { owner: "A", nodes: keys.map((key) => ({ key })), edges: [], };
+  return { owner: "A", nodes: keys.map((key) => ({ key })), edges: [] };
 }
 
 describe("relationOwnerKey", () => {

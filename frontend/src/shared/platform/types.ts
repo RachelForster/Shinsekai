@@ -1806,10 +1806,7 @@ export interface ShinsekaiPlatform {
   };
   characterRelation: {
     getRelationGraph: (owner: string) => Promise<CharacterRelationGraph>;
-    applyRelationChanges: (
-      owner: string,
-      operations: RelationRequest[],
-    ) => Promise<CharacterRelationGraph>;
+    applyRelationChanges: (owner: string, operations: RelationRequest[]) => Promise<CharacterRelationGraph>;
   };
   characters: {
     importModel: (input: { name: string; avatar_type: string; source_path: string }) => Promise<Character>;

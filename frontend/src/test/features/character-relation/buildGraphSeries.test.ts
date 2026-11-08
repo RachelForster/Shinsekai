@@ -47,8 +47,12 @@ describe("graphSeries", () => {
     const series = graphSeries({
       graph: { owner: "A", nodes: [{ key: "A" }, { key: "B" }], edges: [] },
       positions: { A: { x: 0, y: 0 }, B: { x: 100, y: 0 } },
-      activeNodeKey: "B", selectedNodeKey: "", emptyRelationLabel: "",
-      textColor: "#fff", backgroundColor: "#000", characters: [{ name: "B", color: "#123abc" }],
+      activeNodeKey: "B",
+      selectedNodeKey: "",
+      emptyRelationLabel: "",
+      textColor: "#fff",
+      backgroundColor: "#000",
+      characters: [{ name: "B", color: "#123abc" }],
     });
     expect(series.data).toMatchObject([
       { itemStyle: { borderColor: "#fff" } },
@@ -85,15 +89,26 @@ describe("graphSeries", () => {
 
   it("shows all edges dimly when no node is active", () => {
     const series = graphSeries({
-      graph: { owner: "A", nodes: [{ key: "A" }, { key: "B" }, { key: "C" }], edges: [
-        { source: "A", target: "B", temperature: 0, content: "first" },
-        { source: "B", target: "C", temperature: 0, content: "second" },
-      ] },
+      graph: {
+        owner: "A",
+        nodes: [{ key: "A" }, { key: "B" }, { key: "C" }],
+        edges: [
+          { source: "A", target: "B", temperature: 0, content: "first" },
+          { source: "B", target: "C", temperature: 0, content: "second" },
+        ],
+      },
       positions: { A: { x: 0, y: 0 }, B: { x: 100, y: 0 }, C: { x: 200, y: 0 } },
-      activeNodeKey: "", selectedNodeKey: "", emptyRelationLabel: "", textColor: "#fff", backgroundColor: "#000",
+      activeNodeKey: "",
+      selectedNodeKey: "",
+      emptyRelationLabel: "",
+      textColor: "#fff",
+      backgroundColor: "#000",
     });
     expect(series.links).toHaveLength(2);
-    expect(series.links?.map((edge) => [edge.label?.show, edge.lineStyle?.opacity])).toEqual([[false, 0.45], [false, 0.45]]);
+    expect(series.links?.map((edge) => [edge.label?.show, edge.lineStyle?.opacity])).toEqual([
+      [false, 0.45],
+      [false, 0.45],
+    ]);
   });
 
   it("uses the graph foreground color for relationship lines", () => {

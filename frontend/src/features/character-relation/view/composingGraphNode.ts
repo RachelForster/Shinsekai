@@ -59,9 +59,10 @@ export function composeGraphNode({
   avatars: ReadonlyMap<string, HTMLCanvasElement>;
 }) {
   const name = normalizeRelationName(node.key);
-  const borderColor = node.key === activeNodeKey || node.key === selectedNodeKey
-    ? characterColors.get(name) || theme.accent
-    : theme.muted;
+  const borderColor =
+    node.key === activeNodeKey || node.key === selectedNodeKey
+      ? characterColors.get(name) || theme.accent
+      : theme.muted;
   const borderWidth = node.key === activeNodeKey || node.key === owner ? 4 : 2;
   const fill = node.key === activeNodeKey ? theme.selected : backgroundColor;
   const avatar = avatars.get(name);

@@ -4,11 +4,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { charactersQueryKey, listCharacters } from "../../../entities/character/repository";
 import { useI18n } from "../../../shared/i18n";
-import type {
-  CharacterRelationGraph,
-  RelationRequest,
-  RelationNode,
-} from "../../../shared/platform/types";
+import type { CharacterRelationGraph, RelationRequest, RelationNode } from "../../../shared/platform/types";
 import { AsyncButton, Button, TextInput } from "../../../shared/ui";
 import { CharacterPicker } from "../../template-editor/CharacterPicker";
 import { getCharacterChipStyle } from "../../template-editor/templateFlow";

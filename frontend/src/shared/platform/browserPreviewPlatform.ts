@@ -2067,7 +2067,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
             avatar_type: "static",
             avatars: {},
             character_brief: "",
-            relation_graph: {nodes: [], edges: [] },
+            relation_graph: { nodes: [], edges: [] },
             character_setting: "导入预览角色",
             color: DEFAULT_CHARACTER_COLOR,
             emotion_tags: "",
@@ -2329,20 +2329,14 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           applyRelationRequest(graph, request);
         }
         const keys = new Set(graph.nodes.map((n) => n.key));
-        if (graph.nodes.length > 1000)
-          throw new Error("Too many nodes");
+        if (graph.nodes.length > 1000) throw new Error("Too many nodes");
         if (new Set(graph.nodes.map((n) => identity(n.key))).size !== graph.nodes.length)
           throw new Error("Node keys must be unique");
         for (const node of graph.nodes) {
-          if (
-            !node.key.trim() ||
-            node.key !== node.key.trim() ||
-            node.key.length > 200
-          )
+          if (!node.key.trim() || node.key !== node.key.trim() || node.key.length > 200)
             throw new Error("Invalid node");
         }
-        if (graph.edges.length > 10000)
-          throw new Error("Too many edges");
+        if (graph.edges.length > 10000) throw new Error("Too many edges");
         for (const e of graph.edges) {
           if (
             !keys.has(e.source) ||

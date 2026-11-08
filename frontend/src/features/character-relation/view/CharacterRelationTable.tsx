@@ -51,11 +51,7 @@ export function CharacterRelationTable({
   };
   const deleteRelation = (index: number) => {
     // Retain the original edge to generate delete_edge on save.
-    setRows((previous) =>
-      previous.map((row, i) =>
-        i === index ? { ...emptyRelationRow(), edge: row.edge } : row,
-      ),
-    );
+    setRows((previous) => previous.map((row, i) => (i === index ? { ...emptyRelationRow(), edge: row.edge } : row)));
     setDirty(true);
     onDirty(true);
     setError("");
@@ -131,10 +127,7 @@ export function CharacterRelationTable({
                       type="button"
                       aria-label={`${t("relation.deleteEdge")} ${index + 1}`}
                       title={t("relation.deleteEdge")}
-                      disabled={
-                        pending ||
-                        (!row.source && !row.target && !row.relation && row.temperature === "0")
-                      }
+                      disabled={pending || (!row.source && !row.target && !row.relation && row.temperature === "0")}
                       onClick={() => deleteRelation(index)}
                     >
                       <Trash2 size={14} aria-hidden="true" />
