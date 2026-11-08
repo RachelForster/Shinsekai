@@ -68,4 +68,4 @@ class RelationSection(Section[DialogTemplateContext]):
                 rendered.append(heading + "\n" + "\n".join(lines))
         if not rendered:
             return ""
-        return context.translate("relations_header") + context.translate("relations_description") + "\n" + "\n".join(rendered) + "\n\n"
+        return context.translate("relations_header") + context.translate("relations_description") + "\n" + "\n\n".join(rendered) + "\n\n"

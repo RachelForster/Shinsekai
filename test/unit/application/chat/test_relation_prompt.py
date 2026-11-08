@@ -46,6 +46,7 @@ def test_prompt_preserves_separate_owner_perspectives_and_primary_scope():
     text = render([("A", first), ("B", second)])
     assert "[A]\nA to B: friend" in text
     assert "[B]\nA to B: rival" in text
+    assert "A to B: friend\n\n[B]" in text
     assert "[B]" not in render([("A", first), ("B", second)], frozenset({"A"}))
     assert render([("A", first)], frozenset()) == ""
 

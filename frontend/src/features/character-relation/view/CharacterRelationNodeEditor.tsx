@@ -2,7 +2,6 @@ import { useQuery } from "@tanstack/react-query";
 import { Save, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-
 import { charactersQueryKey, listCharacters } from "../../../entities/character/repository";
 import { useI18n } from "../../../shared/i18n";
 import type {

@@ -80,9 +80,7 @@ export function graphSeries({
         avatars,
       }),
     ),
-    links: graph.edges
-      .filter((edge) => !selectedNodeKey || edge.source === selectedNodeKey)
-      .map((edge) => {
+    links: graph.edges.map((edge) => {
         const visible = edge.source === activeNodeKey;
         const relationText = edge.content.trim() || emptyRelationLabel;
         return {

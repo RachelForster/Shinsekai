@@ -65,6 +65,34 @@ function expectEqualNodeDimensions(chart: EChartsType, nodeIndices: number[]): v
 }
 
 describe("ECharts force layout", () => {
+  it("keeps the entire chain in the simulation while A is selected and fixed", () => {
+    const chart = init(null, undefined, { renderer: "svg", ssr: true, width: 1200, height: 800 });
+    const graph: CharacterRelationGraph = {
+      owner: "A", nodes: ["A", "B", "C"].map((key) => ({ key })),
+      edges: [
+        { source: "A", target: "B", temperature: 0, content: "first" },
+        { source: "B", target: "C", temperature: 0, content: "second" },
+      ],
+    };
+    const series = graphSeries({
+      graph, positions: { A: { x: -400, y: 0 }, B: { x: 0, y: 0 }, C: { x: 400, y: 0 } },
+      activeNodeKey: "A", selectedNodeKey: "A", fixedKeys: new Set(["A"]),
+      emptyRelationLabel: "", textColor: "#fff", backgroundColor: "#000",
+    });
+    try {
+      chart.setOption({ series: [{ ...series, force: { ...series.force, repulsion: 0, gravity: 0, layoutAnimation: false } }] });
+      const before = readGraphPositions(chart);
+      installGraphBounds(chart);
+      const force = graphModel(chart).forceLayout;
+      force.warmUp();
+      for (let tick = 0; tick < 100; tick++) force.step();
+      const after = readGraphPositions(chart);
+      expect(after.C.x - after.B.x).toBeLessThan(before.C.x - before.B.x);
+    } finally {
+      chart.dispose();
+    }
+  });
+
   it("keeps repelling nodes against the walls without bouncing back inward", () => {
     const chart = init(null, undefined, { renderer: "svg", ssr: true, width: 640, height: 560 });
     const graph: CharacterRelationGraph = {
