@@ -52,7 +52,9 @@ def initialized_graph(service):
 
 
 def test_query_uninitialized_graph_returns_owner_node(service):
-    assert service.get_relation_graph("chuchu")["nodes"] == [{"key": "chuchu"}]
+    assert service.get_relation_graph("chuchu") == {
+        "owner": "chuchu", "nodes": [{"key": "chuchu"}], "edges": [],
+    }
 
 
 def rename_owner(service, new_name):
@@ -72,11 +74,10 @@ def test_rename_owner_migrates_graph(service, initialized_graph, new_name):
     for node in expected["nodes"]:
         if node["key"] == "chuchu":
             node["key"] = new_name
-    for collection in ("edges", "outgoing", "incoming"):
-        for edge in expected[collection]:
-            for endpoint in ("source", "target"):
-                if edge[endpoint] == "chuchu":
-                    edge[endpoint] = new_name
+    for edge in expected["edges"]:
+        for endpoint in ("source", "target"):
+            if edge[endpoint] == "chuchu":
+                edge[endpoint] = new_name
     assert graph == expected
     assert service.get_relation_graph("pareo") == other_before
     data = yaml.safe_load(service.config._CHARACTERS_CONFIG_PATH.read_text(encoding="utf-8"))
@@ -195,9 +196,9 @@ def test_upsert_edge_existing_pair_replaces_edge(service, initialized_graph):
 
 
 def test_upsert_edge_preserves_reverse_direction(service, initialized_graph):
-    reverse = initialized_graph["incoming"]
+    reverse = [edge for edge in initialized_graph["edges"] if edge["source"] == "pareo" and edge["target"] == "chuchu"]
     graph = apply(service, upsert_edge(temperature=9))
-    assert graph["incoming"] == reverse
+    assert [edge for edge in graph["edges"] if edge["source"] == "pareo" and edge["target"] == "chuchu"] == reverse
 
 
 def test_upsert_edge_does_not_modify_other_owner_perspective(service, initialized_graph):
@@ -215,7 +216,7 @@ def test_upsert_edge_invalid_endpoints_raise_error(service, initialized_graph, s
 
 def test_delete_edge_removes_only_requested_direction(service, initialized_graph):
     graph = apply(service, {"op": "delete_edge", "source": "chuchu", "target": "pareo"})
-    assert graph["edges"] == initialized_graph["incoming"]
+    assert graph["edges"] == [edge for edge in initialized_graph["edges"] if edge["source"] == "pareo" and edge["target"] == "chuchu"]
 
 
 def test_delete_edge_missing_pair_raises_error(service):
@@ -232,7 +233,8 @@ def test_apply_changes_batch_adds_nodes_and_edges(service):
         upsert_edge("pareo", "lock", temperature=-2),
         owner="chuchu",
     )
-    assert {"nodes": graph["nodes"], "edges": graph["edges"]} == {
+    assert graph == {
+        "owner": "chuchu",
         "nodes": [{"key": "chuchu"}, {"key": "pareo"}, {"key": "lock"}],
         "edges": [
             {"source": "chuchu", "target": "pareo", "temperature": 7, "content": "Trusted friend"},

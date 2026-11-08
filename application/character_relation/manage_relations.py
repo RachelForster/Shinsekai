@@ -70,18 +70,13 @@ class CharacterRelationUseCase:
             raise ValueError(f"Character not found: {name}")
         return character.name
 
-    def _build_relation_view(self, graph):
-        return {**graph,
-            "outgoing": [e for e in graph["edges"] if e["source"] == graph["owner"]],
-            "incoming": [e for e in graph["edges"] if e["target"] == graph["owner"]]}
-
     def get_relation_graph(self, owner):
         owner = self._resolve_relation_owner(owner)
         character = self.config.get_character_by_name(owner)
         graph = self.character_manager.parse_relation_graph(character.relation_graph).model_dump(mode="json", exclude_none=True)
         if not graph["nodes"]:
             graph["nodes"] = [{"key": owner}]
-        return self._build_relation_view(graph | {"owner": owner})
+        return graph | {"owner": owner}
 
     def apply_relation_changes(self, owner,operations):
         owner = self._resolve_relation_owner(owner)
@@ -94,7 +89,7 @@ class CharacterRelationUseCase:
             return updated
 
         graph = self.character_manager.update_relation_graph(owner,mutate)
-        return self._build_relation_view(graph.model_dump(mode="json", exclude_none=True) | {"owner": owner})
+        return graph.model_dump(mode="json", exclude_none=True) | {"owner": owner}
 
 
 def build_relation_use_case(config):
