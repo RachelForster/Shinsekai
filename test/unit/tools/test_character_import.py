@@ -283,6 +283,47 @@ def test_relation_graph_survives_char_export_import(tmp_path):
     assert saved["relation_graph"] == graph
 
 
+def test_import_name_conflict_renames_owner_in_relation_graph(tmp_path):
+    graph = {
+        "nodes": [{"key": "Alice"}, {"key": "Bob"}, {"key": "Carol"}],
+        "edges": [
+            {"source": "Alice", "target": "Bob", "temperature": 6, "content": "Friend"},
+            {"source": "Bob", "target": "Alice", "temperature": -1, "content": "Rival"},
+            {"source": "Bob", "target": "Carol", "temperature": 0, "content": "Knows"},
+        ],
+    }
+    archive = _make_export_zip(tmp_path, dict(BASIC_CHAR, relation_graph=graph))
+    existing = {"name": "Alice", "color": "#000", "sprite_prefix": "existing", "relation_graph": graph}
+    with _mock_dirs(tmp_path):
+        file_util.CHARACTERS_CONFIG_PATH.write_text(yaml.safe_dump([existing], allow_unicode=True), encoding="utf-8")
+        imported = file_util.import_character(str(archive))[0]
+        saved = yaml.safe_load(file_util.CHARACTERS_CONFIG_PATH.read_text(encoding="utf-8"))
+
+    assert imported.name != "Alice"
+    assert imported.relation_graph["nodes"] == [{"key": imported.name}, {"key": "Bob"}, {"key": "Carol"}]
+    assert [(edge["source"], edge["target"]) for edge in imported.relation_graph["edges"]] == [
+        (imported.name, "Bob"), ("Bob", imported.name), ("Bob", "Carol")
+    ]
+    assert saved[0] == existing
+    assert saved[1]["relation_graph"] == imported.relation_graph
+    Character.model_validate(saved[1])
+
+
+def test_import_name_conflict_rejects_owner_node_collision_before_saving(tmp_path):
+    graph = {
+        "nodes": [{"key": "Alice"}, {"key": "Alice（1）"}],
+        "edges": [],
+    }
+    archive = _make_export_zip(tmp_path, dict(BASIC_CHAR, relation_graph=graph))
+    existing = [{"name": "Alice", "color": "#000", "sprite_prefix": "existing"}]
+    with _mock_dirs(tmp_path):
+        original = yaml.safe_dump(existing, allow_unicode=True)
+        file_util.CHARACTERS_CONFIG_PATH.write_text(original, encoding="utf-8")
+        with pytest.raises(ValueError, match="Node keys must be unique"):
+            file_util.import_character(str(archive))
+        assert file_util.CHARACTERS_CONFIG_PATH.read_text(encoding="utf-8") == original
+
+
 @pytest.mark.parametrize("typed", [False, True])
 def test_avatar_banks_survive_char_export_import(tmp_path, monkeypatch, typed):
     monkeypatch.chdir(tmp_path)

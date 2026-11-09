@@ -2185,6 +2185,26 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         if (duplicateIndex >= 0) {
           throw new Error(`名称「${character.name}」已与其他角色重复！`);
         }
+        const relationGraph = clone(
+          (index >= 0 ? config.characters[index].relation_graph : character.relation_graph) ?? {
+            nodes: [],
+            edges: [],
+          },
+        );
+        if (index >= 0 && originalName && originalName !== character.name) {
+          relationGraph.nodes = relationGraph.nodes.map((node) => ({
+            ...node,
+            key: node.key === originalName ? character.name : node.key,
+          }));
+          if (new Set(relationGraph.nodes.map((node) => identity(node.key))).size !== relationGraph.nodes.length) {
+            throw new Error("Node keys must be unique");
+          }
+          relationGraph.edges = relationGraph.edges.map((edge) => ({
+            ...edge,
+            source: edge.source === originalName ? character.name : edge.source,
+            target: edge.target === originalName ? character.name : edge.target,
+          }));
+        }
         const savedCharacter = {
           ...clone(character),
           color: character.color.trim() || DEFAULT_CHARACTER_COLOR,
@@ -2207,12 +2227,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
                 }))
               : [],
           character_setting: character.character_setting.trim(),
-          relation_graph: clone(
-            (index >= 0 ? config.characters[index].relation_graph : character.relation_graph) ?? {
-              nodes: [],
-              edges: [],
-            },
-          ),
+          relation_graph: relationGraph,
         };
         if (index >= 0) {
           config.characters[index] = savedCharacter;
@@ -2329,14 +2344,14 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           applyRelationRequest(graph, request);
         }
         const keys = new Set(graph.nodes.map((n) => n.key));
-        if (graph.nodes.length > 1000) throw new Error("Too many nodes");
+        if (graph.nodes.length > 100) throw new Error("Too many nodes");
         if (new Set(graph.nodes.map((n) => identity(n.key))).size !== graph.nodes.length)
           throw new Error("Node keys must be unique");
         for (const node of graph.nodes) {
           if (!node.key.trim() || node.key !== node.key.trim() || node.key.length > 200)
             throw new Error("Invalid node");
         }
-        if (graph.edges.length > 10000) throw new Error("Too many edges");
+        if (graph.edges.length > 156) throw new Error("Too many edges");
         for (const e of graph.edges) {
           if (
             !keys.has(e.source) ||

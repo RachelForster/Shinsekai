@@ -65,9 +65,9 @@ def test_prompt_empty_or_invalid_graph_is_omitted():
 
 
 def test_prompt_includes_all_selected_relationships():
-    names = ["A"] + [f"B{i}" for i in range(250)]
+    names = ["A"] + [f"B{i}" for i in range(99)]
     graph = character(names, [edge("A", name, "x" * 100) for name in names[1:]])
     text = render([("A", graph)])
     lines = [line for line in text.splitlines() if line.startswith("A to ")]
-    assert len(lines) == 250
+    assert len(lines) == 99
     assert all(line.endswith("x" * 100) for line in lines)

@@ -457,6 +457,12 @@ def import_character(input_path: str) -> list[CharacterConfig]:
             # 解决名称冲突
             new_name = _resolve_name_conflict(original_name, imported_names)
             char_data['name'] = new_name
+            if char_data.get('relation_graph'):
+                from config.character_manager import CharacterManager
+                graph = CharacterManager.parse_relation_graph(char_data['relation_graph'])
+                char_data['relation_graph'] = CharacterManager._rename_relation_graph_owner(
+                    graph, original_name, new_name
+                ).model_dump(mode="json", exclude_none=True)
             imported_names.add(new_name)
             
             # 解决sprite_prefix冲突

@@ -65,8 +65,8 @@ class RelationEdge(BaseModel):
 class RelationGraph(BaseModel):
     """所属角色的独立关系图谱"""
     model_config = ConfigDict(extra="forbid")
-    nodes: DefaultIfNone[List[RelationNode]] = Field(default_factory=list, max_length=1000, description="关系节点列表")
-    edges: DefaultIfNone[List[RelationEdge]] = Field(default_factory=list, max_length=10000, description="有向关系列表")
+    nodes: DefaultIfNone[List[RelationNode]] = Field(default_factory=list, max_length=100, description="关系节点列表")
+    edges: DefaultIfNone[List[RelationEdge]] = Field(default_factory=list, max_length=156, description="有向关系列表")
 
     @model_validator(mode="after")
     def validate_relation_graph(self):
