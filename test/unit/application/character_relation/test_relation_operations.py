@@ -4,12 +4,15 @@ Names follow test_<operation>_<condition>_<expected_behavior>.
 Input constraints are checked through operations; prompt rendering belongs in chat tests.
 """
 from copy import deepcopy
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
 from types import SimpleNamespace
 
 import pytest
 import yaml
 
 from application.character_relation.manage_relations import CharacterRelationUseCase, apply_relation_operations
+from application.characters.management import CharacterOperation, CharacterRequest, CharacterUseCase
 from config.config_manager import ConfigManager
 from config.schema import Character
 
@@ -287,3 +290,70 @@ def test_apply_changes_persisted_graph_can_be_reloaded(service, initialized_grap
     data = yaml.safe_load(service.config._CHARACTERS_CONFIG_PATH.read_text(encoding="utf-8"))
     reopened = Character.model_validate(data[0]).relation_graph.model_dump(mode="json", exclude_none=True)
     assert reopened == {field: initialized_graph[field] for field in ("nodes", "edges")}
+
+
+def test_concurrent_graph_updates_preserve_both_nodes(service, monkeypatch):
+    first_entered = Event()
+    release_first = Event()
+    second_started = Event()
+    second_entered = Event()
+
+    def paused_apply(graph, operations):
+        updated = apply_relation_operations(graph, operations)
+        if not first_entered.is_set():
+            first_entered.set()
+            assert release_first.wait(5)
+        else:
+            second_entered.set()
+        return updated
+
+    monkeypatch.setattr("application.character_relation.manage_relations.apply_relation_operations", paused_apply)
+
+    def second_update():
+        second_started.set()
+        return apply(service, add_node("second"))
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(apply, service, add_node("first"))
+        try:
+            assert first_entered.wait(5)
+            second = executor.submit(second_update)
+            assert second_started.wait(5)
+            assert not second_entered.wait(0.2)
+        finally:
+            release_first.set()
+        first.result(timeout=5)
+        second.result(timeout=5)
+
+    graph = service.get_relation_graph("chuchu")
+    assert {node["key"] for node in graph["nodes"]} == {"chuchu", "first", "second"}
+    persisted = yaml.safe_load(service.config._CHARACTERS_CONFIG_PATH.read_text(encoding="utf-8"))
+    assert {node["key"] for node in persisted[0]["relation_graph"]["nodes"]} == {"chuchu", "first", "second"}
+
+
+def test_graph_update_waits_for_character_mutation(service, monkeypatch):
+    entered = Event()
+    release = Event()
+    state = SimpleNamespace(config_manager=service.config)
+    characters = CharacterUseCase(state)
+
+    def save_character(_body):
+        entered.set()
+        assert release.wait(5)
+        service.config.get_character_by_name("chuchu").character_brief = "updated"
+        service.config.save_characters_config()
+
+    monkeypatch.setattr(characters, "_save", save_character)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(characters.execute, CharacterRequest(CharacterOperation.SAVE, {}))
+        try:
+            assert entered.wait(5)
+            second = executor.submit(apply, service, add_node("friend"))
+        finally:
+            release.set()
+        first.result(timeout=5)
+        second.result(timeout=5)
+
+    persisted = yaml.safe_load(service.config._CHARACTERS_CONFIG_PATH.read_text(encoding="utf-8"))[0]
+    assert persisted["character_brief"] == "updated"
+    assert {node["key"] for node in persisted["relation_graph"]["nodes"]} == {"chuchu", "friend"}

@@ -1,5 +1,6 @@
 """Use cases for reading and editing owner-scoped relationship graphs."""
 from copy import deepcopy
+from application.characters.management import CharacterUseCase
 from config.character_manager import CharacterManager
 from config.schema import RelationGraph, RelationNode, RelationEdge
 
@@ -79,17 +80,18 @@ class CharacterRelationUseCase:
         return graph | {"owner": owner}
 
     def apply_relation_changes(self, owner,operations):
-        owner = self._resolve_relation_owner(owner)
+        with CharacterUseCase._mutation_lock:
+            owner = self._resolve_relation_owner(owner)
 
-        def mutate(graph):
-            if not graph["nodes"]:
-                graph["nodes"] = [{"key": owner}]
-            updated = apply_relation_operations(graph | {"owner": owner}, operations)
-            updated.pop("owner")
-            return updated
+            def mutate(graph):
+                if not graph["nodes"]:
+                    graph["nodes"] = [{"key": owner}]
+                updated = apply_relation_operations(graph | {"owner": owner}, operations)
+                updated.pop("owner")
+                return updated
 
-        graph = self.character_manager.update_relation_graph(owner,mutate)
-        return graph.model_dump(mode="json", exclude_none=True) | {"owner": owner}
+            graph = self.character_manager.update_relation_graph(owner,mutate)
+            return graph.model_dump(mode="json", exclude_none=True) | {"owner": owner}
 
 
 def build_relation_use_case(config):
