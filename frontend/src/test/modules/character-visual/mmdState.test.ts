@@ -22,6 +22,16 @@ describe("MMD morph state", () => {
     expect(parseState(state)).toEqual(state);
     expect(parseState({ ...state, motion: "" })).toEqual(neutralState());
   });
+  it("marks managed prompt-generated clips as resting-based without changing imported motions", () => {
+    const managed = "states/.batch-0123456789abcdef0123456789abcdef/motion.vmd";
+    expect(parseState({ ...neutralState(), motion: managed }).motionBase).toBe("resting");
+    expect(parseState({ ...neutralState(), motion: "states/user/preset.vmd" }).motionBase).toBeUndefined();
+    expect(parseState({ ...neutralState(), motion: "preview-1.vmd", motionBase: "resting" }).motionBase).toBe(
+      "resting",
+    );
+    expect(() => parseState({ ...neutralState(), motionBase: "resting" })).toThrow();
+    expect(() => parseState({ ...neutralState(), motion: managed, motionBase: "authored" })).toThrow();
+  });
   it.each([
     "../pose.vpd",
     "/pose.vpd",

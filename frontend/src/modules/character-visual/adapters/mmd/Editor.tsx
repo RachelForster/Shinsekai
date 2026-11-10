@@ -25,7 +25,7 @@ export function Editor({ session, value, onChange }: AvatarEditorProps<MmdState,
       {value.motion && (
         <div className="field-row field-row--stack">
           <PathDisplay path={value.motion} />
-          <Button variant="ghost" onClick={() => onChange({ ...value, motion: "" })}>
+          <Button variant="ghost" onClick={() => onChange({ ...value, motion: "", motionBase: undefined })}>
             {t("character.avatar.clearMotion")}
           </Button>
         </div>
@@ -61,7 +61,12 @@ export function Editor({ session, value, onChange }: AvatarEditorProps<MmdState,
       {!session.capabilities.blink && <p role="status">{t("character.avatar.mmd.noBlink")}</p>}
       <Button
         onClick={() =>
-          onChange({ ...neutralState(value.mouthMorph, value.blinkMorph), camera: value.camera, motion: value.motion })
+          onChange({
+            ...neutralState(value.mouthMorph, value.blinkMorph),
+            camera: value.camera,
+            motion: value.motion,
+            motionBase: value.motionBase,
+          })
         }
         variant="ghost"
       >

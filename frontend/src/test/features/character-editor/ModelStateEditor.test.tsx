@@ -24,6 +24,8 @@ let character: Character;
 const importModel = vi.fn();
 const importModelStates = vi.fn();
 const saveModelState = vi.fn();
+const previewMmdMotion = vi.fn();
+const saveMmdMotion = vi.fn();
 const modelUrl = vi.fn((_model: string, path: string) => `http://localhost/api/avatar/file?path=${path}`);
 const fetchState = vi.fn();
 
@@ -86,7 +88,13 @@ beforeEach(() => {
     }),
   });
   window.__SHINSEKAI_IPC__ = {
-    characters: { importModel, importModelStates, saveModelState },
+    characters: {
+      importModel,
+      importModelStates,
+      saveModelState,
+      previewMmdMotion,
+      saveMmdMotion,
+    },
     files: { modelUrl },
   } as unknown as ShinsekaiPlatform;
   pickPath.mockResolvedValue(["C:/models/haru.model3.json"]);
@@ -111,6 +119,75 @@ afterEach(() => {
 });
 
 describe("ModelStateEditor shared controls and repositories", () => {
+  it("previews generated MMD bytes temporarily and only saves after confirmation", async () => {
+    registerAvatarFormat({
+      ...l2dFormat,
+      id: "mmd",
+      label: "MMD / PMX",
+      load: async () => ({ create: async () => session, Editor: () => null }),
+    });
+    character.avatar_type = "mmd";
+    character.avatars = { mmd: { model_path: "C:/models/madoka.pmx", sprites: [], emotion_tags: "" } };
+    state = { morphs: {}, mouthMorph: "", blinkMorph: "", camera: { yaw: 0, pitch: 0, zoom: 1, panX: 0, panY: 0 } };
+    const initial = structuredClone(state as Record<string, unknown>);
+    const faceCamera = { yaw: 0, pitch: 0, zoom: 2, panX: 0, panY: 0.07 };
+    previewMmdMotion.mockResolvedValue({
+      plan: { action: "wave", expression: "smile", intensity: 0.8, duration_frames: 90 },
+      setting_digest: "a".repeat(64),
+      vmd_base64: "AA==",
+    });
+    saveMmdMotion.mockResolvedValue(character);
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:preview") });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
+    const { onSaved } = view();
+    fireEvent.click(screen.getByRole("button", { name: "Generate MMD motion from prompt" }));
+    await waitFor(() =>
+      expect(session.apply).toHaveBeenCalledWith({ ...initial, camera: faceCamera }, "edit", expect.any(AbortSignal)),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "View full body" }));
+    await waitFor(() => expect(session.apply).toHaveBeenCalledWith(initial, "edit", expect.any(AbortSignal)));
+    fireEvent.click(screen.getByRole("button", { name: "View face" }));
+    await waitFor(() =>
+      expect(session.apply).toHaveBeenCalledWith({ ...initial, camera: faceCamera }, "edit", expect.any(AbortSignal)),
+    );
+    fireEvent.change(screen.getByRole("textbox", { name: "Motion prompt" }), {
+      target: { value: "wave goodbye and smile" },
+    });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Generate and preview" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Generate and preview" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save motion preset" })).toBeEnabled());
+    expect(previewMmdMotion).toHaveBeenCalledWith({
+      name: character.name,
+      model_path: "C:/models/madoka.pmx",
+      prompt: "wave goodbye and smile",
+    });
+    expect(screen.getByRole("status")).toHaveTextContent("Wave + Smile");
+    expect(session.apply).toHaveBeenCalledWith(
+      { ...initial, camera: faceCamera, motion: "preview-1.vmd", motionBase: "resting" },
+      "play",
+      expect.any(AbortSignal),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "View full body" }));
+    await waitFor(() =>
+      expect(session.apply).toHaveBeenCalledWith(
+        { ...initial, motion: "preview-1.vmd", motionBase: "resting" },
+        "play",
+        expect.any(AbortSignal),
+      ),
+    );
+    expect(saveMmdMotion).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Save motion preset" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith(character));
+    expect(saveMmdMotion).toHaveBeenCalledWith({
+      name: character.name,
+      model_path: "C:/models/madoka.pmx",
+      plan: { action: "wave", expression: "smile", intensity: 0.8, duration_frames: 90 },
+      setting_digest: "a".repeat(64),
+      state: initial,
+      tag: "wave goodbye and smile",
+    });
+  });
+
   it("batch imports opaque presets through shared multiple selection and preserves preview state", async () => {
     clearRegisteredAvatarFormats();
     registerAvatarFormat({

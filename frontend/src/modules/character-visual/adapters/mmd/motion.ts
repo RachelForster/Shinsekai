@@ -27,6 +27,7 @@ export class MmdMotionPlayer {
   private elapsed = 0;
   private frame = 0;
   private playing = false;
+  private restingBase = false;
   private blend = 1;
   private readonly poses;
   private readonly scratchPosition = Vector3.Zero();
@@ -53,12 +54,13 @@ export class MmdMotionPlayer {
     return bound;
   }
 
-  set(animation: MmdRuntimeModelAnimation | null, mode: ApplyMode, smooth: boolean) {
+  set(animation: MmdRuntimeModelAnimation | null, mode: ApplyMode, smooth: boolean, restingBase = false) {
     this.poses.forEach(({ bone, position, rotation }) => {
       position.copyFrom(bone.position);
       rotation.copyFrom(bone.rotationQuaternion);
     });
     this.animation = animation;
+    this.restingBase = Boolean(animation && restingBase);
     this.elapsed = 0;
     this.playing = mode === "play";
     // A restored snapshot represents the persistent final pose, not a replay.
@@ -103,6 +105,18 @@ export class MmdMotionPlayer {
     });
     this.model.ikSolverStates.fill(1);
     this.animation?.animate(this.frame);
+    if (this.restingBase) {
+      // The SDK evaluates generated keyframes as offsets from the PMX bind pose.
+      // Compose their result with this model's own relaxed arm pose; imported
+      // VMD/VPD clips keep the authored absolute pose unchanged.
+      this.poses.forEach(({ bone }) => {
+        const base = this.defaultRotations.get(bone.name);
+        if (base) {
+          base.multiplyToRef(bone.rotationQuaternion, this.scratchRotation);
+          bone.setRotationQuaternion(this.scratchRotation, Space.LOCAL);
+        }
+      });
+    }
     if (this.blend < 1) {
       this.blend = Math.min(1, this.blend + seconds / 0.3);
       const weight = this.blend * this.blend * (3 - 2 * this.blend);
