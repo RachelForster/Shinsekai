@@ -1,4 +1,4 @@
-"""Per-dialog presentation checkpoints and derived replay audio (no chat writes)."""
+"""Persist per-dialog presentation checkpoints and derived replay audio."""
 from __future__ import annotations
 
 import copy
