@@ -1,5 +1,13 @@
 # E2E CUJ Test Plan
 
+`chat-replay.spec.ts` covers searching and selecting an inclusive replay range,
+history longer than one render batch, locating the endpoint, preserving the live
+input draft while disabling input, the normal stage and `replaying` status,
+inline icon actions, read-only highlighted choices, skipping pending speech
+generation, and ignoring late synthesis after exit. Desktop and narrow layouts
+assert that the controls do not overlap dialog or choices. It uses the real app
+with controlled IPC and does not contact a voice provider.
+
 This folder contains Playwright Critical User Journey tests.
 
 Each file owns one user-facing workflow category. Preview-safe journeys run

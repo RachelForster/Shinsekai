@@ -968,7 +968,15 @@ export interface TtsBundleDownloadResult {
   provider: "genie-tts" | "gpt-sovits";
 }
 
-export type ChatRuntimeStatus = "idle" | "listening" | "generating" | "streaming" | "speaking" | "paused" | "error";
+export type ChatRuntimeStatus =
+  | "idle"
+  | "listening"
+  | "generating"
+  | "streaming"
+  | "speaking"
+  | "paused"
+  | "replaying"
+  | "error";
 
 export interface ChatRuntimeProcessState {
   chatProcessRunning: boolean;
@@ -1014,6 +1022,7 @@ export interface ChatSprite {
 export type ChatHistoryRole = "assistant" | "options" | "system" | "user";
 
 export interface ChatHistoryEntry {
+  dialogId?: string;
   createdAt?: number;
   id: string;
   revertUserIndex?: number;
@@ -1021,6 +1030,73 @@ export interface ChatHistoryEntry {
   text: string;
   voiceId?: string;
 }
+
+export interface ChatReplayEntry extends ChatHistoryEntry {
+  options?: string[];
+  selectedIndex?: number | null;
+  voiceVolume?: number;
+  key: string;
+  position: number;
+  speaker: string;
+  body: string;
+  canGenerate: boolean;
+  voiceUrls: string[];
+  voiceSource: string;
+  voiceLabel: string;
+  frame?: { backgroundPath: string; bgmPath: string; cgPath: string; sprites: ChatSprite[]; stats: ChatStat[] } | null;
+}
+
+export interface ChatReplaySnapshot {
+  historyCount: number;
+  id: string;
+  sessionId: string;
+  branchId: string;
+  branchLabel: string;
+  entries: ChatReplayEntry[];
+}
+
+export type ChatReplayVoice = Pick<ChatReplayEntry, "voiceUrls" | "voiceSource" | "voiceLabel">;
+
+export interface ChatReplayProgress {
+  voiceSource?: string;
+  voiceLabel?: string;
+  input?: {
+    phase: "typing" | "submitting";
+    text: string;
+    durationMs: number;
+    epoch: number;
+  };
+  id: string;
+  index: number;
+  total: number;
+  paused: boolean;
+  ended: boolean;
+  waiting: boolean;
+  error: string;
+}
+
+export interface ChatReplayControl {
+  action: "pause" | "play" | "seek" | "skip-voice" | "retry";
+  index?: number;
+  playing?: boolean;
+}
+
+export type ChatPresentation = Partial<
+  Pick<
+    ChatSnapshot,
+    | "backgroundPath"
+    | "bgmPath"
+    | "cgPath"
+    | "sprites"
+    | "stats"
+    | "characterName"
+    | "dialogHtml"
+    | "dialogText"
+    | "options"
+    | "systemMessageText"
+    | "playerPortrait"
+  >
+>;
 
 export interface ChatConversationBranch {
   createdAt?: number;
@@ -1189,6 +1265,8 @@ export interface ChatSnapshot {
   storyAck?: Record<string, unknown>;
   stats?: ChatStat[];
   status: ChatRuntimeStatus;
+  replay?: ChatReplayProgress | null;
+  replaySelectedIndex?: number | null;
   statusMessage?: string;
   systemMessageText?: string;
   toolConfirmation?: ChatToolConfirmation | null;
@@ -1298,7 +1376,14 @@ export type ChatStageEvent =
       error?: string;
       ok: boolean;
     })
-  | (ChatEventBase & { type: "dialog.end"; speaker: string; color: string; isSystem: boolean; fullHtml: string })
+  | (ChatEventBase & {
+      type: "dialog.end";
+      speaker: string;
+      color: string;
+      isSystem: boolean;
+      fullHtml: string;
+      animate?: boolean;
+    })
   | (ChatEventBase & { type: "user.display_name.change"; name: string })
   | (ChatEventBase & { type: "history.replace"; entries: ChatHistoryEntry[]; voiceArchiveEnabled?: boolean })
   | (ChatEventBase & { type: "conversation.tree"; tree: ChatConversationTree })
@@ -1323,7 +1408,9 @@ export type ChatStageEvent =
   | (ChatEventBase & { type: "bgm.change"; url: string })
   | (ChatEventBase & { type: "cg.show"; url: string })
   | (ChatEventBase & { type: "cg.hide" })
-  | (ChatEventBase & { type: "options.show"; options: ChatOption[] })
+  | (ChatEventBase & { type: "options.show"; options: ChatOption[]; selectedIndex?: number | null })
+  | (ChatEventBase & { type: "replay.state"; replay: ChatReplayProgress | null })
+  | (ChatEventBase & { type: "presentation.restore"; presentation: ChatPresentation })
   | (ChatEventBase & { type: "options.clear" })
   | (ChatEventBase & { type: "story.state.replace"; story: ChatStoryState })
   | (ChatEventBase & {
@@ -1703,6 +1790,12 @@ export interface ShinsekaiPlatform {
     command: (command: ChatCommand) => Promise<ChatCommandResult>;
     getHistory: () => Promise<ChatHistoryEntry[]>;
     getHistoryVoice: (voiceId: string) => Promise<string[]>;
+    prepareReplay: () => Promise<ChatReplaySnapshot>;
+    getReplay: (id: string) => Promise<{ snapshot: ChatReplaySnapshot; generate: boolean }>;
+    startReplay: (id: string, startKey: string, endKey: string, generate: boolean) => Promise<void>;
+    generateReplayVoice: (id: string, key: string, signal?: AbortSignal) => Promise<ChatReplayVoice>;
+    cancelReplay: (id: string) => Promise<void>;
+    controlReplay: (id: string, control: ChatReplayControl) => Promise<void>;
     getRuntimeStatus: () => Promise<ChatRuntimeProcessState>;
     getSnapshot: (options?: ChatSnapshotOptions) => Promise<ChatSnapshot>;
     getTheme: () => Promise<ChatThemePayload>;

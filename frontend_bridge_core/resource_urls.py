@@ -44,6 +44,8 @@ class BridgeResourceUrls:
 
     def media_url(self, raw_path: str) -> str:
         path = str(raw_path or "").strip()
+        if path.startswith("/api/"):
+            return self._url(path)
         if not path or path.startswith(
             ("http://", "https://", "blob:", "data:", "/assets/")
         ):

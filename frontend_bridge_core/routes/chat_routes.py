@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from http import HTTPStatus
+from application.chat.replay import replay_service
 
 from application.chat.conversation_library import (
     conversation_launch_payload,
@@ -143,6 +144,18 @@ def _delete_conversation(request: ApiRequest) -> JsonResponse:
 
 
 CHAT_ROUTES = (
+    Route(methods=frozenset({"POST"}), pattern="/api/chat/replay", name="chat.replay.prepare",
+          handler=lambda request: JsonResponse(replay_service(request.state).prepare())),
+    Route(methods=frozenset({"POST"}), pattern="/api/chat/replay/{replay_id}/start", name="chat.replay.start",
+          handler=lambda request: JsonResponse(replay_service(request.state).start(request.params["replay_id"], request.body))),
+    Route(methods=frozenset({"GET"}), pattern="/api/chat/replay/{replay_id}", name="chat.replay.current", body_kind=BodyKind.NONE,
+          handler=lambda request: JsonResponse(replay_service(request.state).current(request.params["replay_id"]))),
+    Route(methods=frozenset({"POST"}), pattern="/api/chat/replay/{replay_id}/voice/{entry_id}", name="chat.replay.voice",
+          handler=lambda request: JsonResponse(replay_service(request.state).generate(request.params["replay_id"], request.params["entry_id"]))),
+    Route(methods=frozenset({"POST"}), pattern="/api/chat/replay/{replay_id}/control", name="chat.replay.control",
+          handler=lambda request: JsonResponse(replay_service(request.state).control(request.params["replay_id"], request.body))),
+    Route(methods=frozenset({"DELETE"}), pattern="/api/chat/replay/{replay_id}", name="chat.replay.cancel", body_kind=BodyKind.NONE,
+          handler=lambda request: JsonResponse(replay_service(request.state).cancel(request.params["replay_id"]))),
     Route(methods=frozenset({"DELETE"}), pattern="/api/chat/conversations/{conversation_id}",
           handler=_delete_conversation, body_kind=BodyKind.NONE, name="chat.conversations.delete"),
     Route(methods=frozenset({"GET"}), pattern="/api/chat/conversations/current", handler=_current_conversation,

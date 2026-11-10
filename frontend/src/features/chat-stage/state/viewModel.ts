@@ -58,6 +58,7 @@ export function buildChatStageViewModel(state: ChatStageState): ChatStageViewMod
     dialogText: systemPromptText ? "" : dialog.dialogText,
     inputAttachments: state.inputAttachments,
     inputDisabled:
+      Boolean(state.replay) ||
       Boolean(state.toolConfirmation) ||
       !state.layers.input ||
       ((state.status === "generating" || state.status === "streaming") && !state.turnOptions.interruptEnabled),
@@ -68,8 +69,8 @@ export function buildChatStageViewModel(state: ChatStageState): ChatStageViewMod
     sprites: state.sprites,
     stats: state.stats ?? [],
     story: state.story,
-    status: state.status,
-    statusText: state.status,
+    status: state.replay ? "replaying" : state.status,
+    statusText: state.replay ? "replaying" : state.status,
     tokenUsageText,
     toolConfirmation: state.toolConfirmation,
     transportMode: state.transportMode,

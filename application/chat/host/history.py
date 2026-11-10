@@ -66,6 +66,7 @@ def _serialize_history_entries_from_messages(
 ) -> list[dict[str, Any]]:
     if not isinstance(messages, list):
         return []
+    from core.chat_history.identity import CHAT_TURN_ID, DialogIdentities
     entries: list[dict[str, Any]] = []
     user_index = 0
     row_index = 0
@@ -97,9 +98,11 @@ def _serialize_history_entries_from_messages(
             continue
         if role != "assistant":
             continue
+        identities = DialogIdentities(str(message.get(CHAT_TURN_ID) or ""))
         for item in parse_assistant_dialog_content(message.get("content", "")):
             if not isinstance(item, dict):
                 continue
+            dialog_id = identities.next(item)
             speaker = str(item.get("character_name") or "").strip()
             speech = str(item.get("speech") or "").strip()
             if not speech:
@@ -108,6 +111,7 @@ def _serialize_history_entries_from_messages(
             entries.append(
                 {
                     "id": f"history-{row_index}",
+                    **({"dialogId": dialog_id} if dialog_id else {}),
                     "role": _history_entry_role_from_text(plain),
                     "text": plain,
                 }

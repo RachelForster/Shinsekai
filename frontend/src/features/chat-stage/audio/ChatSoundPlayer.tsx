@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Volume2 } from "lucide-react";
 
 import { useI18n } from "../../../shared/i18n";
@@ -7,29 +7,52 @@ import { currentChatRendererId } from "../../../shared/platform/chatRenderer";
 import { stageAssetUrl } from "../chatStageUtils";
 import type { ChatAudioCommand } from "../state/types";
 import { SoundPlayer, type VoicePlaybackSignal } from "./soundPlayer";
+import type { RecordingAudio } from "./stageAudioMixer";
 import { routeAvatarVoice, routeAvatarSpeechEvent } from "../../../modules/character-visual";
 
-export function ChatSoundPlayer({
-  bgmPath,
-  bgmVolume,
-  effectVolume,
-  commands,
-  onPlaybackSignal,
-}: {
+export interface ChatSoundPlayerHandle {
+  recordAudio: () => RecordingAudio;
+}
+
+interface ChatSoundPlayerProps {
+  voicePaused?: boolean;
   bgmPath?: string;
   bgmVolume: number;
   effectVolume: number;
   commands: ChatAudioCommand[];
   onPlaybackSignal: (signal: VoicePlaybackSignal) => void;
-}) {
+}
+
+export const ChatSoundPlayer = forwardRef<ChatSoundPlayerHandle, ChatSoundPlayerProps>(function ChatSoundPlayer(
+  { bgmPath, bgmVolume, effectVolume, commands, onPlaybackSignal, voicePaused = false },
+  ref,
+) {
   const playerRef = useRef<SoundPlayer | null>(null);
   const processedCommandIdsRef = useRef(new Set<string>());
   const [locked, setLocked] = useState(false);
   const { t } = useI18n();
 
-  if (!playerRef.current && typeof Audio !== "undefined") {
-    playerRef.current = new SoundPlayer(undefined, routeAvatarVoice, routeAvatarSpeechEvent);
-  }
+  useEffect(() => {
+    if (typeof Audio === "undefined") return;
+    const player = new SoundPlayer(undefined, routeAvatarVoice, routeAvatarSpeechEvent);
+    playerRef.current = player;
+    return () => {
+      player.dispose();
+      playerRef.current = null;
+      processedCommandIdsRef.current.clear();
+    };
+  }, []);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      recordAudio: () => {
+        if (!playerRef.current) throw new Error("Stage audio is unavailable");
+        return playerRef.current.recordAudio();
+      },
+    }),
+    [],
+  );
 
   useEffect(() => {
     const player = playerRef.current;
@@ -40,6 +63,9 @@ export function ChatSoundPlayer({
   }, []);
 
   useEffect(() => playerRef.current?.subscribeVoiceSignal(onPlaybackSignal), [onPlaybackSignal]);
+  useEffect(() => {
+    playerRef.current?.setVoicePaused(voicePaused);
+  }, [voicePaused]);
 
   useEffect(() => {
     playerRef.current?.setBgm(stageAssetUrl(bgmPath), bgmVolume);
@@ -101,14 +127,6 @@ export function ChatSoundPlayer({
     }
   }, [commands]);
 
-  useEffect(
-    () => () => {
-      playerRef.current?.dispose();
-      playerRef.current = null;
-    },
-    [],
-  );
-
   return (
     <>
       <span aria-hidden data-bgm-src={stageAssetUrl(bgmPath)} data-chat-stage-audio-player hidden />
@@ -126,4 +144,4 @@ export function ChatSoundPlayer({
       ) : null}
     </>
   );
-}
+});
