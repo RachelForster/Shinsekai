@@ -14,9 +14,11 @@ import uuid
 from pathlib import Path
 
 from application.chat.history.paths import resolve_history_path_for_project
-from application.chat.replay_store import ReplayStore
+from application.chat.history.state import canonical_user_turn_payload
+from application.chat.replay_store import ReplayStore, replay_dialog_inputs, replay_history_messages
 from application.chat.voice_archive import VoiceArchive
 from core.chat_history.storage import chat_history_active_path
+from core.chat_history.text import strip_local_time_prefix
 from core.messaging.dialog_tokens import is_option_history_name
 from application.chat.presentation.replay import PRESENTATION_KEYS
 
@@ -28,6 +30,17 @@ def digest(value):
 def split_text(entry):
     match = re.match(r"^\s*([^：:\n]{1,120})[：:]\s*([\s\S]*)$", entry["text"])
     return (match[1].strip(), match[2]) if match else ("", entry["text"])
+
+
+def replay_user_text(entry, body, users):
+    clean = strip_local_time_prefix(body)
+    index = entry.get("revertUserIndex")
+    source = users[index] if type(index) is int and 0 <= index < len(users) else None
+    if source and "input_text" in source:
+        display = source.get("display_content") or source.get("content")
+        if isinstance(display, str) and strip_local_time_prefix(display) == clean:
+            return canonical_user_turn_payload(source)["text"]
+    return canonical_user_turn_payload(None, fallback_text=clean)["text"]
 
 
 def revision(entries):
@@ -72,6 +85,9 @@ class ChatReplayService:
             raise ValueError("请先退出当前回放")
         source = _chat_history(self.state)
         store = ReplayStore(path)
+        messages = replay_history_messages(chat_history_active_path(path))
+        legacy_by_id, legacy_by_text, speech_by_id, speech_by_text = replay_dialog_inputs(messages)
+        users = [message for message in messages if message.get("role") == "user"]
         archive = VoiceArchive(path)
         config = self.state.config_manager
         url, work_path, provider = config.get_gpt_sovits_config()
@@ -91,16 +107,26 @@ class ChatReplayService:
         for source_index, raw in enumerate(source):
             chain = digest([chain, raw.get("role"), raw.get("text"), raw.get("dialogId")])
             speaker, body = split_text(raw)
+            user_input = raw.get("role") == "user"
+            if user_input:
+                body = replay_user_text(raw, body, users)
             if raw.get("role") == "system" and speaker.casefold() in {"scene", "场景", "bgm"}:
                 frame = None
                 continue
             dialog_id = raw.get("dialogId", "")
             key = dialog_id if re.fullmatch(r"[0-9a-f]{64}", dialog_id) else chain
-            if dialog_id:
-                frame = store.read(dialog_id, "frame.json")
+            if dialog_id or raw.get("role") == "assistant":
+                frame = store.read(dialog_id, "frame.json") if dialog_id else None
+            recorded_message = frame.get("message") if dialog_id and frame else None
+            legacy_message = legacy_by_id.get(dialog_id) or legacy_by_text.get((speaker, body))
+            recorded_text = recorded_message.get("text") if isinstance(recorded_message, dict) else None
+            if not isinstance(recorded_text, str):
+                recorded_text = ""
+            speech = speech_by_id.get(dialog_id) or speech_by_text.get((speaker, body)) or recorded_text or body
+            speech_key = digest(speech)
             character = copy.deepcopy(config.get_character_by_name(speaker)) if raw.get("role") == "assistant" else None
             can_generate = bool(character and provider and provider != "none" and
-                                str(getattr(character, "refer_audio_path", "") or "").strip() and body.strip())
+                                str(getattr(character, "refer_audio_path", "") or "").strip() and speech.strip())
             paths, origin, voice_label = [], "", ""
             voice_id = raw.get("voiceId") or (archive.voice_for_dialog(dialog_id) if dialog_id else "")
             if voice_id:
@@ -110,12 +136,15 @@ class ChatReplayService:
                 except (ValueError, OSError):
                     paths = []
             saved = store.read(key, "voice.json")
-            if not paths and saved and re.fullmatch(r"[0-9a-f]{64}", str(saved.get("fileKey", ""))):
+            if (not paths and saved and saved.get("speechKey", digest(body)) == speech_key
+                    and re.fullmatch(r"[0-9a-f]{64}", str(saved.get("fileKey", "")))):
                 audio = store.path(saved["fileKey"], "wav")
                 if audio.is_file() and audio.stat().st_size:
                     paths, origin, voice_label = [audio], "generated", saved.get("label", "")
             entry = {**raw, "key": key, "position": len(plan["entries"]) + 1,
-                     "speaker": speaker, "body": body, "frame": copy.deepcopy(frame),
+                     "speaker": speaker, "body": body,
+                     **({"text": f"{speaker}: {body}" if speaker else body} if user_input else {}),
+                     "frame": copy.deepcopy({k: v for k, v in frame.items() if k != "message"}) if frame is not None else None,
                      "canGenerate": can_generate, "voiceSource": origin,
                      "voiceVolume": min(1.0, max(0.0, float(getattr(character, "speech_volume", 1.0) if character else 1.0))),
                      "voiceLabel": voice_label or (f"{speaker} · {provider}" if can_generate else ""),
@@ -129,11 +158,12 @@ class ChatReplayService:
                     if following.get("role") == "options" or is_option_history_name(split_text(following)[0]):
                         break
                     if following.get("role") == "user":
-                        selected = split_text(following)[1].strip()
+                        selected = replay_user_text(following, split_text(following)[1], users)
                         entry["selectedIndex"] = choices.index(selected) if choices.count(selected) == 1 else None
                         break
             plan["entries"].append(entry)
-            plan["private"][key] = {"character": character, "paths": paths}
+            plan["private"][key] = {"character": character, "paths": paths, "speech": speech,
+                                    "message": recorded_message or (legacy_message if raw.get("role") == "assistant" else None)}
         with self.lock:
             now = time.monotonic()
             for old_id, old in list(self.plans.items()):
@@ -188,6 +218,7 @@ class ChatReplayService:
         plan["range"] = set(keys[start:end + 1])
         plan["generate"] = body.get("generate") is True
         entries = [{**entry, "paths": [str(p) for p in plan["private"][entry["key"]]["paths"]],
+                    "message": plan["private"][entry["key"]]["message"],
                     "waitForVoice": bool(plan["generate"] and entry["canGenerate"])}
                    for entry in plan["entries"][start:end + 1]]
         plan["selected"] = entries
@@ -318,7 +349,7 @@ class ChatReplayService:
                 return {k: entry[k] for k in ("voiceUrls", "voiceSource", "voiceLabel")}
             store = plan["store"]
             character = private["character"]
-            file_key = digest([key, entry["body"], plan["settings"], vars(character)])
+            file_key = digest([key, private["speech"], plan["settings"], vars(character)])
             target = store.path(file_key, "wav")
             if not target.is_file():
                 generated = self._synthesize(plan, entry, character)
@@ -338,7 +369,8 @@ class ChatReplayService:
                             temporary.unlink(missing_ok=True)
                 finally:
                     generated.unlink(missing_ok=True)
-            store.write(key, "voice.json", {"fileKey": file_key, "label": entry["voiceLabel"], "source": "generated"})
+            store.write(key, "voice.json", {"fileKey": file_key, "speechKey": digest(private["speech"]),
+                                            "label": entry["voiceLabel"], "source": "generated"})
             private["paths"] = [target]
             entry.update(voiceUrls=self._urls(plan_id, key, [target]), voiceSource="generated")
             return {k: entry[k] for k in ("voiceUrls", "voiceSource", "voiceLabel")}
@@ -354,7 +386,8 @@ class ChatReplayService:
             manager.set_tts_adapter(adapter)
             adapter.wait_until_ready(timeout_seconds=30)
             processor = TextProcessor(pronunciation_map={})
-            speech = processor.remove_parentheses(entry["body"])
+            source = plan["private"][entry["key"]]["speech"]
+            speech = processor.html_to_plain_qt(processor.remove_parentheses(source)).strip()
             if not speech:
                 raise ValueError("此句只有动作描述，没有可合成的台词")
             # Read the saved line in its own language. Replay never asks a

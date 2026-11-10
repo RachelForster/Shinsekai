@@ -430,6 +430,7 @@ pub fn run() {
             desktop_project_root_status,
             desktop_project_root_select,
             desktop_files_browse,
+            desktop_files::desktop_files_save_history_export,
             desktop_restart_debug_log,
             desktop_app_restart,
             desktop_bridge_restart,
@@ -2443,7 +2444,8 @@ fn resolve_project_root(
         ],
         restart_log_paths,
         untrusted_candidate_roots: project_root::windows_legacy_install_dir_hints(),
-        development_source: dev_project_root().as_deref() == Some(source_root),
+        development_source: app_root == source_root
+            && dev_project_root().as_deref() == Some(source_root),
     };
     project_root::resolve(options).map_err(Into::into)
 }

@@ -1,10 +1,12 @@
 """Read-only history messages consumed by the normal presentation worker."""
 from __future__ import annotations
 
-import html
 import threading
 import time
+from urllib.parse import parse_qs, urlsplit
 
+from config.config_manager import character_name_key
+from core.paths import resource_path
 from sdk.messages import PresentationMessage
 
 
@@ -19,10 +21,16 @@ class ReplayPresentationMessage(PresentationMessage):
     epoch: int
     index: int
     preview: bool = False
+    animate: bool = True
+    restore_sprite: bool = False
+    sprite_slot: int = 0
+    selected_index: int | None = None
 
 
 class ReplayPresentation:
     """Queue ownership, pacing and interruption, without touching chat history."""
+
+    SUBMIT_FEEDBACK_SECONDS = 0.85
 
     def __init__(self, worker, ui):
         self.worker, self.ui = worker, ui
@@ -30,6 +38,7 @@ class ReplayPresentation:
         self.id = ""
         self.epoch = 0
         self.entries = []
+        self.input = None
         self.restore = {}
         self.index = 0
         self.paused = self.ended = self.waiting = False
@@ -51,6 +60,7 @@ class ReplayPresentation:
             "error": self.error,
             "voiceSource": entry.get("voiceSource", ""),
             "voiceLabel": entry.get("voiceLabel", ""),
+            **({"input": self.input} if self.input else {}),
         } if self.id else None
         if state != self.last_state:
             self.last_state = state
@@ -79,10 +89,23 @@ class ReplayPresentation:
     def _enqueue(self):
         for index in range(self.index, len(self.entries)):
             entry = self.entries[index]
+            role = entry.get("role")
+            name = "CHOICE" if entry.get("options") else entry["speaker"]
+            payload = {"audio_path": "", "name": name, "text": entry["body"], "asset_id": None,
+                       "is_system_message": role == "system" or bool(entry.get("options"))}
+            recorded = entry.get("message")
+            if isinstance(recorded, dict):
+                try:
+                    payload = PresentationMessage.model_validate({
+                        **payload, **recorded, "audio_path": "",
+                    }).model_dump(exclude={"voice_id"})
+                except ValueError:
+                    pass
             self.worker.presentation_queue.put(ReplayPresentationMessage(
-                audio_path="", name=entry["speaker"], text=entry["body"],
+                **payload,
+                dialog_id=entry.get("dialogId", ""),
                 replay_id=self.id, epoch=self.epoch, index=index,
-                preview=index == self.index,
+                preview=index == self.index, selected_index=entry.get("selectedIndex"),
             ))
 
     def start(self, payload):
@@ -93,6 +116,7 @@ class ReplayPresentation:
                 raise ValueError("回放片段为空")
             self.id = payload["id"]
             self.entries = payload["entries"]
+            self.input = None
             self.restore = payload["restore"]
             self.epoch += 1
             self.index = 0
@@ -113,6 +137,7 @@ class ReplayPresentation:
             if action == "stop":
                 self.epoch += 1
                 self.id = ""
+                self.input = None
                 self.worker.skip_speech()
                 self.ui._emit({"type": "presentation.restore", "presentation": self.restore})
                 self.ui._emit({"type": "status.change", "status": "idle"})
@@ -124,6 +149,7 @@ class ReplayPresentation:
             elif action == "seek":
                 self.index = max(0, min(len(self.entries) - 1, int(payload["index"])))
                 self.epoch += 1
+                self.input = None
                 self._set_paused(not payload.get("playing", False))
                 self.ended = self.waiting = False
                 self.error = ""
@@ -174,6 +200,16 @@ class ReplayPresentation:
                 break
         return self._gate(message)
 
+    def _type_user_message(self, message, text):
+        duration_ms = 0 if self.paused else min(5200, max(650, round(len(text) * 62)))
+        self.input = {"phase": "typing", "text": text, "durationMs": duration_ms, "epoch": message.epoch}
+        self._emit()
+        if not self._pace(message, duration_ms / 1000 + 0.18):
+            return False
+        self.input = {"phase": "submitting", "text": text, "durationMs": 0, "epoch": message.epoch}
+        self._emit()
+        return True
+
     def present(self, message):
         with self.condition:
             if not self._valid(message):
@@ -186,20 +222,36 @@ class ReplayPresentation:
             self.error = entry.get("voiceError", "")
             self._emit()
             frame = entry.get("frame") or {}
-            self.ui._emit({"type": "presentation.restore", "presentation": self._urls({
-                "backgroundPath": frame.get("backgroundPath", ""),
-                "bgmPath": frame.get("bgmPath", ""), "cgPath": frame.get("cgPath", ""),
-                "sprites": frame.get("sprites", []), "stats": frame.get("stats", []),
-                "options": [], "systemMessageText": "", "playerPortrait": None,
-            })})
-            # Use the same dialog event/typewriter and options component as live play.
-            self.ui._emit({"type": "dialog.end", "speaker": entry["speaker"],
-                           "animate": not self.paused, "color": "",
-                           "isSystem": False, "fullHtml": f"<p>{html.escape(entry['body'])}</p>"})
+            sprites = [sprite for sprite in (frame.get("sprites") or []) if _replay_sprite_available(sprite)]
+            speaker = character_name_key(message.name)
+            restore_sprite = entry.get("role") == "assistant" and not frame.get("cgPath") and not any(
+                character_name_key(str(sprite.get("characterName") or sprite.get("label") or sprite.get("id") or "")) == speaker
+                for sprite in sprites
+            )
+            occupied = {sprite.get("slot", index) for index, sprite in enumerate(sprites)}
+            slot_count = getattr(self.ui, "max_sprite_slots", 3)
+            slot = next((index for index in range(slot_count) if index not in occupied), slot_count - 1)
+            presentation = {"options": [], "systemMessageText": ""}
+            if entry.get("role") != "user" or message.preview:
+                presentation.update({
+                    "backgroundPath": frame.get("backgroundPath", ""),
+                    "bgmPath": frame.get("bgmPath", ""), "cgPath": frame.get("cgPath", ""),
+                    "sprites": sprites, "stats": frame.get("stats", []),
+                    "playerPortrait": frame.get("playerPortrait"),
+                })
+            self.ui._emit({"type": "presentation.restore", "presentation": self._urls(presentation)})
+            user_input = entry.get("role") == "user" and bool(message.text)
+            if user_input and not self._type_user_message(message, message.text):
+                return
+            self.worker.ui_out_dispatcher.dispatch(message.model_copy(update={
+                "animate": not self.paused and not user_input, "restore_sprite": restore_sprite, "sprite_slot": slot,
+            }))
             text_started = self._clock()
-            if entry.get("options"):
-                self.ui._emit({"type": "options.show", "options": entry["options"],
-                               "selectedIndex": entry.get("selectedIndex")})
+            if user_input:
+                if not self._pace(message, self.SUBMIT_FEEDBACK_SECONDS):
+                    return
+                self.input = None
+                self._emit()
             if not self._gate(message):
                 return
             while (entry.get("waitForVoice") and not entry.get("paths")
@@ -227,7 +279,11 @@ class ReplayPresentation:
                 break
         with self.condition:
             # Text-only lines use the same reading pace as ordinary presentation.
-            if not self._pace(message, max(len(entry["body"]) / 8, 0.5) - (self._clock() - text_started)):
+            if user_input:
+                duration = min(4.5, max(2.4, len(message.text) / 18))
+            else:
+                duration = message.timeout if message.timeout and message.timeout > 0 else max(len(message.text or "") / 8, 0.5)
+            if not self._pace(message, duration - (self._clock() - text_started)):
                 return
             if not self._gate(message):
                 return
@@ -235,3 +291,22 @@ class ReplayPresentation:
                 self.ended = True
                 self._set_paused(True)
                 self._emit()
+
+
+def _replay_sprite_available(sprite):
+    path = sprite.get("path") if isinstance(sprite, dict) else None
+    if not isinstance(path, str) or not path:
+        return False
+    try:
+        parsed = urlsplit(path)
+        query = parse_qs(parsed.query)
+        if parsed.path == "/api/media":
+            return resource_path(query["path"][0]).is_file()
+        if parsed.path == "/api/avatar/file":
+            model = resource_path(query["model_path"][0])
+            return model.is_file() and (model.parent / query["path"][0]).is_file()
+        if parsed.scheme in {"http", "https", "data"}:
+            return True
+        return resource_path(path.removeprefix("/") if path.startswith("/assets/") else path).is_file()
+    except (KeyError, OSError, RuntimeError, ValueError):
+        return False

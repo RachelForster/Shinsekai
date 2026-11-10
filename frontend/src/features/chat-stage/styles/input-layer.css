@@ -424,6 +424,53 @@
   stroke-width: 1.75;
 }
 
+.input-layer[data-replay-input="typing"] {
+  border-color: color-mix(in oklch, var(--stage-accent) 68%, transparent);
+}
+
+.input-layer[data-replay-input="typing"] .input-layer__input:disabled {
+  opacity: 1;
+  -webkit-text-fill-color: currentColor;
+}
+
+.input-layer[data-replay-ready="true"] :is(.input-layer__send.button--primary, .input-layer__quick-submit) {
+  opacity: 1;
+}
+
+.input-layer[data-replay-input="submitting"] :is(.input-layer__send.button--primary, .input-layer__quick-submit) {
+  opacity: 1;
+  border-color: var(--stage-accent);
+  color: var(--chat-send-color);
+  background: var(--chat-send-background);
+  animation: replay-submit-press 220ms ease-out;
+}
+
+.input-layer__replay-status {
+  position: absolute;
+  right: 8px;
+  bottom: calc(100% + 4px);
+  padding: 3px 8px;
+  border: 1px solid var(--stage-line-strong);
+  border-radius: 999px;
+  color: var(--chat-dialog-color);
+  background: var(--stage-glass-strong);
+  font-size: 11px;
+  line-height: 1.4;
+  pointer-events: none;
+}
+
+@keyframes replay-submit-press {
+  35% {
+    scale: 0.88;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .input-layer[data-replay-input="submitting"] :is(.input-layer__send.button--primary, .input-layer__quick-submit) {
+    animation: none;
+  }
+}
+
 .input-layer__panel {
   position: absolute;
   right: 0;

@@ -227,6 +227,9 @@ class PresentationWorker(ThreadDagNode):
                 if turn.is_cancelled():
                     continue
                 self._dialog_active = True
+                recorder = getattr(self.ui_update_manager, "replay_recorder", None)
+                if recorder is not None:
+                    recorder.record_message(output_data)
                 self.ui_out_dispatcher.dispatch(output_data)
             except Exception as e:
                 logger.exception(

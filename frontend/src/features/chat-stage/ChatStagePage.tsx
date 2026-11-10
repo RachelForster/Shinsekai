@@ -16,13 +16,16 @@ import { normalizeThemeColor } from "../../shared/theme/appTheme";
 import { DEFAULT_TYPEWRITER_CPS } from "../../shared/theme/chatTheme";
 import { AlertDialog, useToast } from "../../shared/ui";
 import { closeChatRuntime } from "../chat-startup/runtimeState";
-import { ChatSoundPlayer } from "./audio/ChatSoundPlayer";
+import { ChatSoundPlayer, type ChatSoundPlayerHandle } from "./audio/ChatSoundPlayer";
 import type { VoicePlaybackSignal } from "./audio/soundPlayer";
 import { ChatConfigDialog } from "./components/ChatConfigDialog";
 import { ConversationTreeDialog } from "./components/ConversationTreeDialog";
 import { DialogStageControls } from "./components/DialogStageControls";
 import { HistoryDialog } from "./components/HistoryDialog";
+import { HistoryExportDialog } from "./replay/HistoryExportDialog";
+import { saveHistoryExport, type HistoryExportFormat, type HistoryExportResult } from "./replay/historyExport";
 import { ReplayControls, type ActiveReplay } from "./replay/ReplayControls";
+import { useReplayCapture } from "./replay/useReplayCapture";
 import { InputLayer } from "./components/InputLayer";
 import { PluginPageOverlay } from "./components/PluginPageOverlay";
 import {
@@ -146,6 +149,7 @@ export function ChatStagePage() {
   const [activeReplay, setActiveReplay] = useState<ActiveReplay | null>(null);
   const observedReplayIdRef = useRef<string>();
   const historyReplayRef = useRef<{ stop: () => void } | null>(null);
+  const soundPlayerRef = useRef<ChatSoundPlayerHandle>(null);
   const historyReplayGenerationRef = useRef(0);
   const [conversationEditorOpen, setConversationEditorOpen] = useState(false);
   const [dialogControlsLocked, setDialogControlsLocked] = useState(false);
@@ -162,6 +166,22 @@ export function ChatStagePage() {
   const locallyDismissedPresentationRef = useRef<string | null>(null);
   const { showToast } = useToast();
   const { t } = useI18n();
+  const [historyExport, setHistoryExport] = useState<HistoryExportResult>();
+  const exportHistory = useCallback(async (blob: Blob, format: HistoryExportFormat) => {
+    setHistoryExport(await saveHistoryExport(blob, format));
+  }, []);
+  const historyPreviewUrl = historyExport?.previewUrl;
+  useEffect(
+    () => () => {
+      if (historyPreviewUrl) URL.revokeObjectURL(historyPreviewUrl);
+    },
+    [historyPreviewUrl],
+  );
+  const capturingReplay = useReplayCapture(
+    activeReplay?.capture,
+    Boolean(state.replay && state.replay.id === activeReplay?.snapshot.id && state.replay.ended),
+    exportHistory,
+  );
   const stopHistoryReplay = useCallback(() => {
     historyReplayGenerationRef.current += 1;
     historyReplayRef.current?.stop();
@@ -256,6 +276,7 @@ export function ChatStagePage() {
     toolbarConfigOpen ||
     branchDialogOpen ||
     historyDialogOpen ||
+    historyExport != null ||
     confirmClearHistory ||
     confirmRevertUserIndex != null;
   const clickThroughEnabled = standaloneDesktopWindow && transparentBackground && !modalOpen;
@@ -263,8 +284,7 @@ export function ChatStagePage() {
     typeof themeStyle["--chat-dialog-toolbar-placement"] === "string"
       ? themeStyle["--chat-dialog-toolbar-placement"]
       : "";
-  const dialogToolbarDetached =
-    Boolean(activeReplay) || dialogToolbarPlacement === "input" || dialogToolbarPlacement === "dialog-top";
+  const dialogToolbarDetached = dialogToolbarPlacement === "input" || dialogToolbarPlacement === "dialog-top";
   const dialogToolbarReveal = themeStyle["--chat-dialog-toolbar-reveal"] === "hover" ? "hover" : "always";
   const inputLayout = themeStyle["--chat-input-layout"] === "pill" ? "pill" : "default";
   const forkHistoryEnabled = state.experimentalFeatures?.forkHistory === true;
@@ -417,7 +437,7 @@ export function ChatStagePage() {
   }, [runtimeConfig.alwaysOnTop, standaloneDesktopWindow]);
 
   const submit = async (textOverride?: string) => {
-    if (pendingAttachmentSlotsRef.current) {
+    if (activeReplay || state.replay || pendingAttachmentSlotsRef.current) {
       return;
     }
     const text = (textOverride ?? viewModel.inputDraft).trim();
@@ -830,6 +850,7 @@ export function ChatStagePage() {
         ref={stageRef}
         className="chat-stage"
         data-replaying={activeReplay || state.replay ? "true" : undefined}
+        data-replay-recording={capturingReplay ? "true" : undefined}
         data-background={transparentBackground ? "transparent" : "media"}
         data-click-through={clickThroughEnabled ? "true" : "false"}
         data-stat-visible={statsVisible ? "true" : "false"}
@@ -864,6 +885,7 @@ export function ChatStagePage() {
           transparent={transparentBackground}
         />
         <ChatSoundPlayer
+          ref={soundPlayerRef}
           voicePaused={Boolean(state.replay?.paused)}
           key={state.sessionId}
           bgmPath={viewModel.bgmPath}
@@ -911,7 +933,9 @@ export function ChatStagePage() {
                   selectedIndex={state.replaySelectedIndex}
                 />
               )}
-              {!dialogToolbarDetached ? <div className="dialog-layer__toolbar">{dialogToolbar}</div> : null}
+              {!dialogToolbarDetached && !activeReplay ? (
+                <div className="dialog-layer__toolbar">{dialogToolbar}</div>
+              ) : null}
             </>
           ) : (
             <DialogLayer
@@ -930,12 +954,12 @@ export function ChatStagePage() {
               onSkip={typingDialog ? advanceDialog : undefined}
               text={typingDialog ? displayedDialog.text : viewModel.dialogText}
               textDirection={dialogTextDirection}
-              toolbar={dialogToolbarDetached ? undefined : dialogToolbar}
+              toolbar={dialogToolbarDetached || activeReplay ? undefined : dialogToolbar}
               typing={typingDialog}
             />
           )}
         </div>
-        {dialogToolbarDetached ? (
+        {dialogToolbarDetached || activeReplay ? (
           <div
             aria-hidden={!dialogSurfaceVisible}
             className={layerClassName("dialog-toolbar-layer", !dialogSurfaceVisible)}
@@ -953,11 +977,11 @@ export function ChatStagePage() {
           asrLoading={viewModel.asrLoading}
           asrRunning={viewModel.asrRunning}
           attachments={viewModel.inputAttachments}
-          autoHide={!activeReplay && runtimeConfig.immersiveMode && runtimeConfig.autoHideInput}
+          autoHide={!activeReplay && !state.replay && runtimeConfig.immersiveMode && runtimeConfig.autoHideInput}
           batchEnabled={state.turnOptions.batchEnabled}
           disabled={Boolean(activeReplay) || viewModel.inputDisabled}
           locked={Boolean(activeReplay || state.replay)}
-          hidden={!viewModel.layers.input}
+          hidden={!viewModel.layers.input && !activeReplay && !state.replay}
           inputLayout={inputLayout}
           onChange={(text) => dispatch({ text, type: "setDraft" })}
           onCommand={sendCommand}
@@ -975,10 +999,15 @@ export function ChatStagePage() {
           }
           onSubmit={submit}
           previousMessages={recentInputs}
+          replayProgress={state.replay}
           submitDisabled={attachmentUploadPending}
           value={viewModel.inputDraft}
         />
         <HistoryDialog
+          recordAudio={() => {
+            if (!soundPlayerRef.current) throw new Error("Stage audio is unavailable");
+            return soundPlayerRef.current.recordAudio();
+          }}
           replayDisabled={
             Boolean(state.sessionClosedReason) ||
             ["generating", "streaming", "speaking", "initializing"].includes(viewModel.status) ||
@@ -1000,7 +1029,7 @@ export function ChatStagePage() {
             stopHistoryReplay();
             setHistoryDialogOpen(false);
           }}
-          onCopy={() => void sendCommand({ type: "copy-history" })}
+          onExportImage={(blob) => exportHistory(blob, "png")}
           onFork={(userIndex) => {
             setHistoryDialogOpen(false);
             void sendCommand({ payload: { userIndex }, type: "fork-history" });
@@ -1012,10 +1041,11 @@ export function ChatStagePage() {
           onRevert={(userIndex) => setConfirmRevertUserIndex(userIndex)}
           onSaveVoice={(voiceId) => void sendCommand({ payload: voiceId, type: "save-history-voice" })}
           onToggleVoiceArchive={(enabled) => void sendCommand({ payload: enabled, type: "set-voice-archive" })}
-          open={historyDialogOpen}
+          open={historyDialogOpen && !historyExport}
           userDisplayName={viewModel.userDisplayName}
           voiceArchiveEnabled={state.voiceArchiveEnabled === true}
         />
+        {historyExport && <HistoryExportDialog result={historyExport} onClose={() => setHistoryExport(undefined)} />}
         {conversationTreeEnabled ? (
           <ConversationTreeDialog
             onClose={() => setBranchDialogOpen(false)}

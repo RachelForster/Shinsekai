@@ -89,7 +89,7 @@ if errorlevel 1 (
 )
 
 echo Building Tauri app...
-call pnpm exec tauri build --no-bundle
+call pnpm exec tauri build --no-bundle --config src-tauri/tauri.local.conf.json
 if errorlevel 1 (
     popd
     echo.
@@ -121,6 +121,10 @@ echo Opening %EXE_PATH%...
 if "%SHINSEKAI_SHOW_BACKEND_CONSOLE%"=="1" (
     echo Backend console debug mode enabled.
 )
+:: Run from the checkout while keeping the existing desktop app/data location.
+if not defined SHINSEKAI_SOURCE_ROOT set "SHINSEKAI_SOURCE_ROOT=%~dp0."
+if not defined SHINSEKAI_APP_ROOT for %%I in ("%EXE_PATH%") do set "SHINSEKAI_APP_ROOT=%%~dpI."
+if not defined SHINSEKAI_RUNTIME_MANIFEST set "SHINSEKAI_RUNTIME_MANIFEST=%~dp0frontend\src-tauri\runtime_manifest.json"
 start "" "%EXE_PATH%"
 endlocal
 exit /b 0

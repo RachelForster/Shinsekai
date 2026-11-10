@@ -1,14 +1,113 @@
 use std::{
     env, fs,
+    io::{self, Write},
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
 
 use serde::Serialize;
+use tauri::{
+    ipc::{InvokeBody, Request},
+    AppHandle, Manager,
+};
 
 use crate::DesktopResult;
 
 const MAX_DESKTOP_FILE_BROWSER_ENTRIES: usize = 2000;
+
+#[derive(Serialize)]
+pub(crate) struct DesktopHistoryExport {
+    path: String,
+    name: String,
+    opened: bool,
+}
+
+#[tauri::command(async)]
+pub(crate) fn desktop_files_save_history_export(
+    app: AppHandle,
+    request: Request<'_>,
+) -> Result<DesktopHistoryExport, String> {
+    let InvokeBody::Raw(bytes) = request.body() else {
+        return Err("expected binary image or video".into());
+    };
+    let downloads = app
+        .path()
+        .download_dir()
+        .map_err(|error| error.to_string())?;
+    let (path, name) = save_history_export(&downloads.join("Shinsekai"), bytes)
+        .map_err(|error| error.to_string())?;
+    Ok(DesktopHistoryExport {
+        opened: open_history_export(&path),
+        path: desktop_display_path(&path),
+        name,
+    })
+}
+
+fn save_history_export(directory: &Path, bytes: &[u8]) -> io::Result<(PathBuf, String)> {
+    let extension = if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        "png"
+    } else if bytes.get(4..8) == Some(b"ftyp") {
+        "mp4"
+    } else if bytes.starts_with(b"\x1a\x45\xdf\xa3") {
+        "webm"
+    } else {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "unsupported history export",
+        ));
+    };
+    fs::create_dir_all(directory)?;
+    let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S-%3f");
+    for index in 0.. {
+        let name = format!("shinsekai-{timestamp}-{index}.{extension}");
+        let path = directory.join(&name);
+        let mut file = match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+        {
+            Ok(file) => file,
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        };
+        if let Err(error) = file.write_all(bytes) {
+            drop(file);
+            let _ = fs::remove_file(&path);
+            return Err(error);
+        }
+        return Ok((path, name));
+    }
+    unreachable!()
+}
+
+#[cfg(windows)]
+fn open_history_export(path: &Path) -> bool {
+    use std::{ffi::c_void, os::windows::ffi::OsStrExt, ptr::null};
+    #[link(name = "shell32")]
+    unsafe extern "system" {
+        fn ShellExecuteW(
+            window: *const c_void,
+            operation: *const u16,
+            file: *const u16,
+            parameters: *const u16,
+            directory: *const u16,
+            show: i32,
+        ) -> isize;
+    }
+    let file: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+    // SW_SHOWNORMAL opens the saved media using its default Windows association.
+    unsafe { ShellExecuteW(null(), null(), file.as_ptr(), null(), null(), 1) > 32 }
+}
+
+#[cfg(not(windows))]
+fn open_history_export(path: &Path) -> bool {
+    let opener = if cfg!(target_os = "macos") {
+        "open"
+    } else {
+        "xdg-open"
+    };
+    std::process::Command::new(opener).arg(path).spawn().is_ok()
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -320,6 +419,27 @@ fn system_time_secs(value: SystemTime) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn history_exports_keep_their_format_and_never_overwrite() {
+        let directory = unique_temp_dir("history-export");
+        for (bytes, extension) in [
+            (b"\x89PNG\r\n\x1a\nimage".as_slice(), "png"),
+            (b"\x00\x00\x00\x18ftypmp42".as_slice(), "mp4"),
+            (b"\x1a\x45\xdf\xa3video".as_slice(), "webm"),
+        ] {
+            let (path, name) = save_history_export(&directory, bytes).unwrap();
+            let (second, _) = save_history_export(&directory, bytes).unwrap();
+            assert_ne!(path, second);
+            assert_eq!(path, directory.join(name));
+            assert_eq!(path.extension().unwrap(), extension);
+            assert_eq!(fs::read(&path).unwrap(), bytes);
+            fs::remove_file(path).unwrap();
+            fs::remove_file(second).unwrap();
+        }
+        assert!(save_history_export(&directory, b"arbitrary file").is_err());
+        fs::remove_dir(directory).unwrap();
+    }
 
     #[test]
     fn browse_desktop_files_resolves_relative_paths_and_filters_hidden_entries() {

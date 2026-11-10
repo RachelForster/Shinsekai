@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import threading
 import time
 from contextlib import nullcontext
@@ -13,7 +14,9 @@ import pytest
 from application.chat.replay import ChatReplayService
 from application.chat.replay_store import ReplayRecorder, ReplayStore
 from application.chat.voice_archive import VoiceArchive
+from core.chat_history.identity import CHAT_TURN_ID, DialogIdentities
 from core.chat_history.storage import remove_chat_history_storage
+from sdk.messages import PresentationMessage
 
 
 @pytest.fixture
@@ -67,6 +70,43 @@ def test_direct_replay_freezes_range_without_synthesis_or_chat_writes(replay):
     assert source[:-1] == original
     assert path.read_text() == "[]"
     assert not (path.parent / "replay").exists()
+
+
+def test_replay_uses_the_original_user_input_without_internal_time_or_attachment_labels(replay):
+    service, source, _, path = replay
+    source[0].update(text="You: [本地时间 2026-11-09 22:00:00]\nhello [附件: sample.png]", revertUserIndex=0)
+    path.write_text(json.dumps([{
+        "role": "user", "content": "[本地时间 2026-11-09 22:00:00]\nhello [附件: sample.png]",
+        "input_text": "hello",
+    }], ensure_ascii=False), encoding="utf-8")
+    source.insert(1, {"role": "user", "text": "You: [Local time 2026-11-09 22:01:00]\nlegacy [file:notes.txt]"})
+    entries = service.prepare()["entries"]
+    assert [entry["body"] for entry in entries[:2]] == ["hello", "legacy"]
+    assert [entry["text"] for entry in entries[:2]] == ["You: hello", "You: legacy"]
+    assert "本地时间" in path.read_text(encoding="utf-8")
+
+
+def test_replay_enqueues_the_recorded_message_and_recovers_older_sprite_indices(replay):
+    service, _, _, path = replay
+    path.write_text(json.dumps([{"role": "assistant", "content": json.dumps({"dialog": [
+        {"character_name": "Mio", "speech": "first", "sprite": 1},
+        {"character_name": "Mio", "speech": "second", "sprite": 2},
+        {"character_name": "Mio", "speech": "third", "sprite": -1},
+    ]})}]), encoding="utf-8")
+    recorder = ReplayRecorder(ReplayStore(path))
+    recorder.record_message(PresentationMessage(
+        audio_path="temporary.wav", name="Mio", text="Recorded caption",
+        dialog_id="a" * 64, asset_id="3", effect="DISAPPOINTED",
+    ))
+    recorder.observe({"type": "dialog.end", "fullHtml": f"<p data-dialog-id='{'a' * 64}'>caption</p>"})
+    snapshot = service.prepare()
+    begin(service, snapshot, 1, 3)
+    entries = service.plans[snapshot["id"]]["selected"]
+    assert entries[0]["message"]["text"] == "Recorded caption"
+    assert entries[0]["message"]["asset_id"] == "3"
+    assert entries[0]["message"]["effect"] == "DISAPPOINTED"
+    assert "audio_path" not in entries[0]["message"]
+    assert [entry["message"]["asset_id"] for entry in entries[1:]] == ["2", "2"]
 
 
 def test_range_is_inclusive_and_rejects_reversed_changed_and_outside_requests(replay):
@@ -216,10 +256,27 @@ def test_host_rejects_mutation_before_story_choice_or_transport(replay):
     mutate.assert_not_called()
 
 
-def test_synthesis_reads_saved_text_in_its_language_and_keeps_the_shared_server_running(replay, tmp_path, monkeypatch):
-    service, source, _, _ = replay
+@pytest.mark.parametrize(("translation", "language", "expected"), [
+    ("", "zh", "你好"),
+    ("（微笑）こんにちは", "ja", "こんにちは"),
+])
+def test_synthesis_uses_original_speech_and_keeps_the_shared_server_running(
+    replay, tmp_path, monkeypatch, translation, language, expected,
+):
+    service, source, _, history_path = replay
     source[1]["text"] = "Mio: （微笑）你好"
+    if translation:
+        dialog = {"character_name": "Mio", "speech": "原始文本", "translate": translation}
+        source[1]["dialogId"] = DialogIdentities("saved-turn").next(dialog)
+        history_path.write_text(json.dumps([{
+            "role": "assistant", CHAT_TURN_ID: "saved-turn", "content": json.dumps({"dialog": [dialog]}),
+        }]), encoding="utf-8")
+        store = ReplayStore(history_path)
+        store.write(source[1]["dialogId"], "voice.json", {"fileKey": "d" * 64, "source": "generated"})
+        store.path("d" * 64, "wav").write_bytes(b"audio generated from the old caption")
     snapshot = service.prepare()
+    assert snapshot["entries"][1]["body"] == "（微笑）你好"
+    assert not snapshot["entries"][1]["voiceUrls"]
     begin(service, snapshot, 1, 1, True)
     audio = tmp_path / "synthesized.wav"
     audio.write_bytes(b"audio")
@@ -229,8 +286,8 @@ def test_synthesis_reads_saved_text_in_its_language_and_keeps_the_shared_server_
     monkeypatch.setattr("ai.tts.tts_manager.TTSAdapterFactory.create_adapter", Mock(return_value=adapter))
     monkeypatch.setattr("ai.tts.model_session.tts_model_session", lambda *_: nullcontext())
     service.generate(snapshot["id"], snapshot["entries"][1]["key"])
-    manager.set_language.assert_called_once_with("zh")
-    assert manager.generate_tts.call_args.args == ("你好",)
+    manager.set_language.assert_called_once_with(language)
+    assert manager.generate_tts.call_args.args == (expected,)
     assert "text_processor" not in manager.generate_tts.call_args.kwargs
     manager.shutdown.assert_called_once_with(stop_server=False)
 
@@ -288,6 +345,10 @@ def test_recorder_saves_resolved_checkpoint_without_bridge_credentials(tmp_path)
     assert frame["sprites"][0]["path"] == "mio.png"
     assert frame["sprites"][0]["applyMode"] == "restore"
     assert "secret" not in store.path("a" * 64, "frame.json").read_text()
+    recorder.observe({"type": "sprite.remove", "characterName": "Mio"})
+    recorder.observe({"type": "dialog.end", "fullHtml": f"<p data-dialog-id='{'c' * 64}'>left</p>"})
+    assert not store.read("c" * 64, "frame.json")["sprites"]
+    recorder.observe({"type": "sprite.show", "slot": 0, "characterName": "Mio", "url": "mio.png"})
     recorder.observe({"type": "background.change", "url": "day.png"})
     recorder.observe({"type": "bgm.change", "url": ""})
     recorder.observe({"type": "dialog.end", "fullHtml": f"<p data-dialog-id='{'b' * 64}'>bye</p>"})

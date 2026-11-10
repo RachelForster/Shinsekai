@@ -171,11 +171,11 @@ describe("SoundPlayer", () => {
     player.playVoice("one", "one.wav", 1, "A");
     player.playVoice("two", "two.wav", 1, "B");
     await Promise.resolve();
-    expect(start).toHaveBeenLastCalledWith(audio[0], "A");
+    expect(start).toHaveBeenLastCalledWith(audio[0], "A", undefined);
     audio[0].finish();
     await Promise.resolve();
     expect(stop).toHaveBeenCalled();
-    expect(start).toHaveBeenLastCalledWith(audio[1], "B");
+    expect(start).toHaveBeenLastCalledWith(audio[1], "B", undefined);
     player.stopVoice();
     expect(stop).toHaveBeenCalledTimes(2);
     player.dispose();

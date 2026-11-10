@@ -270,7 +270,7 @@ describe("ChatStagePage", () => {
     expect(document.querySelectorAll(".dialog-layer")).toHaveLength(1);
     expect(document.querySelector(".dialog-layer")).toHaveTextContent("Historical line");
     expect(input).toBeDisabled();
-    expect(input).toHaveValue("keep this draft");
+    expect(input).toHaveValue("");
     emit({ type: "options.show", options: ["First", "Second"], selectedIndex: 1, seq: 3, ts: 3, v: 1 });
     const selected = screen.getByRole("button", { name: "Second Selected" });
     expect(selected).toBeDisabled();
@@ -1919,24 +1919,19 @@ describe("ChatStagePage", () => {
     await waitFor(() => expect(mocks.sendChatCommand).toHaveBeenCalledWith({ type: "resume-asr" }));
   });
 
-  it("keeps the current dialog visible after copying history", async () => {
-    mocks.sendChatCommand.mockResolvedValue(
-      snapshot({
-        dialogText: "",
-        inputDraft: "",
-        options: [],
-      }),
-    );
-
+  it("offers copying only after selecting messages in history", async () => {
+    mocks.getChatHistory.mockResolvedValueOnce([{ id: "history-0", role: "assistant", text: "Mio: Ready" }]);
     renderPage();
 
     await screen.findByText("Ready");
     fireEvent.click(screen.getByRole("button", { name: "Open history" }));
     const historyDialog = await screen.findByRole("dialog", { name: "Conversation history" });
-    fireEvent.click(within(historyDialog).getByRole("button", { name: "Copy history" }));
-
-    await waitFor(() => expect(mocks.sendChatCommand).toHaveBeenCalledWith({ type: "copy-history" }));
-    expect(document.querySelector(".dialog-layer__html")).toHaveTextContent("Ready");
+    expect(within(historyDialog).queryByRole("button", { name: "Copy history" })).not.toBeInTheDocument();
+    fireEvent.click(await within(historyDialog).findByRole("button", { name: "Replay/Share" }));
+    const copy = within(historyDialog).getByRole("button", { name: /^copy$/i });
+    expect(copy).toBeDisabled();
+    fireEvent.click(within(historyDialog).getByRole("checkbox", { name: "Select message 1" }));
+    expect(copy).toBeEnabled();
   });
 
   it("remembers per-character framing through presets, expression changes and stage reload", async () => {
@@ -2665,7 +2660,7 @@ describe("ChatStagePage", () => {
     expect(dialog).toHaveClass("chat-stage-modal");
     expect(dialog.querySelector(".chat-stage-modal__header")).not.toBeNull();
     expect(dialog.querySelector(".chat-stage-modal__summary")?.tagName).toBe("DIV");
-    expect(within(dialog).getByRole("button", { name: "Copy history" })).toHaveTextContent("COPY");
+    expect(within(dialog).getByRole("button", { name: "Replay/Share" })).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Clear history" })).toHaveTextContent("CLEAR");
     expect(within(dialog).getByText("2 entries")).toBeInTheDocument();
     const nameplates = dialog.querySelectorAll(".chat-history__nameplate");
@@ -2724,7 +2719,7 @@ describe("ChatStagePage", () => {
     const header = dialog.querySelector(".chat-stage-modal__header") as HTMLElement;
     const archiveToggle = within(header).getByRole("checkbox", { name: "Archive voices" });
     expect(archiveToggle).not.toBeChecked();
-    expect(header.querySelector(".chat-history__voice-toggle")?.nextElementSibling).toHaveTextContent(/copy/i);
+    expect(within(header).queryByRole("button", { name: "Copy history" })).not.toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Play voice" })).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "Save voice" }));
     await waitFor(() =>

@@ -1,4 +1,5 @@
 import { VoiceAnalyser, type MouthListener } from "./voiceAnalyser";
+import { StageAudioMixer } from "./stageAudioMixer";
 
 export type SoundPlayerLockListener = (locked: boolean) => void;
 export type VoicePlaybackState = "started" | "finished" | "interrupted" | "failed";
@@ -9,12 +10,31 @@ export interface VoicePlaybackSignal {
 }
 export type VoicePlaybackSignalListener = (signal: VoicePlaybackSignal) => void;
 
-type AudioFactory = (url: string) => HTMLAudioElement;
+type AudioFactory = (url: string, cors: boolean) => HTMLAudioElement;
 type QueuedVoice = { playbackId: string; url: string; volume: number; characterName: string };
 type ActiveVoice = QueuedVoice & { audio: HTMLAudioElement; started: boolean };
 
 function clampVolume(value: number) {
   return Math.min(1, Math.max(0, Number.isFinite(value) ? value : 1));
+}
+
+function canMixStageAsset(url: string) {
+  try {
+    const asset = new URL(url, window.location.href);
+    const localBridge = asset.pathname === "/api/media" && /^(127\.0\.0\.1|localhost|\[::1\])$/i.test(asset.hostname);
+    return (
+      asset.origin === window.location.origin || asset.protocol === "data:" || asset.protocol === "blob:" || localBridge
+    );
+  } catch {
+    return false;
+  }
+}
+
+function createStageAudio(url: string, cors: boolean) {
+  const audio = new Audio();
+  if (cors) audio.crossOrigin = "anonymous";
+  audio.src = url;
+  return audio;
 }
 
 function voiceRequestUrl(url: string, playbackId: string) {
@@ -57,6 +77,8 @@ function stopAudio(audio: HTMLAudioElement | null | undefined) {
 export class SoundPlayer {
   private readonly createAudio: AudioFactory;
   private readonly analyser: VoiceAnalyser | null;
+  private readonly mixer = new StageAudioMixer();
+  private readonly mixable = new WeakSet<HTMLAudioElement>();
   private bgm: HTMLAudioElement | null = null;
   private bgmUrl = "";
   private currentVoice: ActiveVoice | null = null;
@@ -70,7 +92,7 @@ export class SoundPlayer {
   private readonly voiceSignalListeners = new Set<VoicePlaybackSignalListener>();
 
   constructor(
-    createAudio: AudioFactory = (url) => new Audio(url),
+    createAudio: AudioFactory = createStageAudio,
     onMouth?: MouthListener,
     private readonly onVoiceBoundary?: (characterName: string, state: "started" | "finished") => void,
   ) {
@@ -96,7 +118,7 @@ export class SoundPlayer {
   setBgm(url: string, volume = 1) {
     const nextUrl = url.trim();
     if (!nextUrl) {
-      stopAudio(this.bgm);
+      this.releaseAudio(this.bgm);
       this.bgm = null;
       this.bgmUrl = "";
       return;
@@ -108,8 +130,8 @@ export class SoundPlayer {
       }
       return;
     }
-    stopAudio(this.bgm);
-    const audio = this.createAudio(nextUrl);
+    this.releaseAudio(this.bgm);
+    const audio = this.createChannelAudio(nextUrl);
     audio.loop = true;
     audio.preload = "auto";
     audio.volume = clampVolume(volume);
@@ -164,7 +186,7 @@ export class SoundPlayer {
     }
     this.voiceQueue.length = 0;
     this.analyser?.stop();
-    stopAudio(this.currentVoice?.audio);
+    this.releaseAudio(this.currentVoice?.audio);
     this.currentVoice = null;
   }
 
@@ -183,8 +205,8 @@ export class SoundPlayer {
             voice.audio.pause();
             return;
           }
-          this.markVoiceStarted(voice);
-          this.analyser?.start(voice.audio, voice.characterName);
+          if (voice.started) this.analyseVoice(voice);
+          else this.markVoiceStarted(voice);
         },
         (error) => this.finishVoice(voice, "failed", String(error)),
       );
@@ -196,11 +218,16 @@ export class SoundPlayer {
     if (!nextUrl) {
       return;
     }
-    const audio = this.createAudio(nextUrl);
+    const audio = this.createChannelAudio(nextUrl);
     audio.preload = "auto";
     audio.volume = this.effectVolume;
     this.effectPlayers.add(audio);
-    audio.onended = () => this.effectPlayers.delete(audio);
+    const release = () => {
+      this.effectPlayers.delete(audio);
+      this.mixer.release(audio);
+    };
+    audio.onended = release;
+    audio.onerror = release;
     this.requestPlay(audio);
   }
 
@@ -211,7 +238,7 @@ export class SoundPlayer {
       return;
     }
     this.stopLoopEffect(nextKey);
-    const audio = this.createAudio(nextUrl);
+    const audio = this.createChannelAudio(nextUrl);
     audio.loop = true;
     audio.preload = "auto";
     audio.volume = this.effectVolume;
@@ -224,27 +251,35 @@ export class SoundPlayer {
     if (!audio) {
       return;
     }
-    stopAudio(audio);
+    this.releaseAudio(audio);
     this.loopPlayers.delete(key);
   }
 
   stopAllLoopEffects() {
     for (const audio of this.loopPlayers.values()) {
-      stopAudio(audio);
+      this.releaseAudio(audio);
     }
     this.loopPlayers.clear();
   }
 
   stopAll() {
-    stopAudio(this.bgm);
+    this.releaseAudio(this.bgm);
     this.bgm = null;
     this.bgmUrl = "";
     this.stopVoice();
     for (const audio of this.effectPlayers) {
-      stopAudio(audio);
+      this.releaseAudio(audio);
     }
     this.effectPlayers.clear();
     this.stopAllLoopEffects();
+  }
+
+  recordAudio() {
+    const recording = this.mixer.startRecording();
+    for (const audio of [this.bgm, this.currentVoice?.audio, ...this.effectPlayers, ...this.loopPlayers.values()]) {
+      this.routeRecordingAudio(audio);
+    }
+    return recording;
   }
 
   async unlock() {
@@ -267,14 +302,13 @@ export class SoundPlayer {
 
   dispose() {
     this.stopAll();
-    this.analyser?.dispose();
+    this.mixer.dispose();
     this.listeners.clear();
     this.voiceSignalListeners.clear();
   }
 
   private startVoice(voice: QueuedVoice) {
-    const audio = this.createAudio(voiceRequestUrl(voice.url, voice.playbackId));
-    audio.crossOrigin = "anonymous";
+    const audio = this.createChannelAudio(voiceRequestUrl(voice.url, voice.playbackId), true);
     audio.preload = "auto";
     audio.volume = voice.volume;
     const activeVoice: ActiveVoice = { ...voice, audio, started: false };
@@ -312,9 +346,32 @@ export class SoundPlayer {
 
   private play(audio: HTMLAudioElement) {
     try {
+      if (this.mixer.recording) this.routeRecordingAudio(audio);
       return Promise.resolve(audio.play());
     } catch (error) {
       return Promise.reject(error);
+    }
+  }
+
+  private createChannelAudio(url: string, voice = false) {
+    const cors = voice || canMixStageAsset(url);
+    const audio = this.createAudio(url, cors);
+    if (cors) this.mixable.add(audio);
+    return audio;
+  }
+
+  private routeRecordingAudio(audio: HTMLAudioElement | undefined | null) {
+    if (audio && this.mixable.has(audio)) this.mixer.source(audio);
+  }
+
+  private releaseAudio(audio: HTMLAudioElement | undefined | null) {
+    stopAudio(audio);
+    this.mixer.release(audio);
+  }
+
+  private analyseVoice(voice: ActiveVoice) {
+    if (this.analyser && voice.characterName) {
+      this.analyser.start(voice.audio, voice.characterName, this.mixer.source(voice.audio));
     }
   }
 
@@ -333,7 +390,7 @@ export class SoundPlayer {
       return;
     }
     voice.started = true;
-    this.analyser?.start(voice.audio, voice.characterName);
+    this.analyseVoice(voice);
     this.onVoiceBoundary?.(voice.characterName, "started");
     this.emitVoiceSignal(voice.playbackId, "started");
   }
@@ -344,6 +401,7 @@ export class SoundPlayer {
     }
     this.currentVoice = null;
     this.analyser?.stop();
+    this.mixer.release(voice.audio);
     if (state === "finished") this.onVoiceBoundary?.(voice.characterName, "finished");
     this.emitVoiceSignal(voice.playbackId, state, error);
     const next = this.voiceQueue.shift();

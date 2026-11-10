@@ -1060,6 +1060,12 @@ export type ChatReplayVoice = Pick<ChatReplayEntry, "voiceUrls" | "voiceSource" 
 export interface ChatReplayProgress {
   voiceSource?: string;
   voiceLabel?: string;
+  input?: {
+    phase: "typing" | "submitting";
+    text: string;
+    durationMs: number;
+    epoch: number;
+  };
   id: string;
   index: number;
   total: number;
