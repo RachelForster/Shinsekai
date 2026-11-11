@@ -372,7 +372,7 @@ def dispatch_file_request(
         return True
     replay_audio = re.fullmatch(r"/api/chat/replay/([0-9a-f]{32})/audio/([0-9a-f]{64})/(\d+)", path)
     if replay_audio:
-        from application.chat.replay import replay_service
+        from application.chat.history.replay import replay_service
         handler._require_authorized_media_read()
         handler._send_local_file(replay_service(handler.state).audio_source(
             replay_audio[1], replay_audio[2], int(replay_audio[3])), send_body=send_body)

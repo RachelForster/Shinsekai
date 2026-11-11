@@ -11,8 +11,8 @@ from unittest.mock import Mock
 
 import pytest
 
-from application.chat.replay import ChatReplayService
-from application.chat.replay_store import ReplayRecorder, ReplayStore
+from application.chat.history.replay import ChatReplayService
+from application.chat.history.replay_store import ReplayRecorder, ReplayStore
 from application.chat.voice_archive import VoiceArchive
 from core.chat_history.identity import CHAT_TURN_ID, DialogIdentities
 from core.chat_history.storage import remove_chat_history_storage
@@ -43,7 +43,7 @@ def replay(tmp_path, monkeypatch):
     state = SimpleNamespace(chat_session={"sessionId": "session", "historyPath": str(path)},
                             project_root_dir=str(tmp_path), config_manager=config,
                             chat_stream=SimpleNamespace(get_snapshot=lambda sid: snapshot, send_command=Mock(return_value=True)))
-    monkeypatch.setattr("application.chat.replay.resolve_history_path_for_project", lambda state, raw: Path(raw))
+    monkeypatch.setattr("application.chat.history.replay.resolve_history_path_for_project", lambda state, raw: Path(raw))
     monkeypatch.setattr("application.chat.composition._chat_history", lambda state: copy.deepcopy(source))
     service = ChatReplayService(state)
     monkeypatch.setattr(service, "_prefetch", lambda plan: None)
