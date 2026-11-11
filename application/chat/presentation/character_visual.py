@@ -9,7 +9,7 @@ from config.character_assets import get_character_assets, get_character_avatar_t
 from config.config_manager import character_name_key
 from core.sprite.selection import resolve_runtime_path, sprite_entry_path
 from core.sprite.transitions import field, valid_transitions
-from core.media.transition_presentation import transition_presentation
+from core.sprite.transition_presentation import transition_presentation
 
 
 def image_visual_identity(raw_path: str) -> str:

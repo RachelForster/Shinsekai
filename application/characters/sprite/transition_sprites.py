@@ -1,52 +1,114 @@
-"""Task ownership and persistence for directed sprite transitions."""
+"""Generate a short, locked-camera transition with two exact keyframes."""
+
+from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, Iterable
 
-from application.characters.transition_sprites import (
-    render_transition,
-    transition_identity,
-    saved_transitions,
-    TRANSITION_FRAME_COUNT,
-)
-from application.characters.animate_sprites import (
-    verify_transparent_animation,
+from application.characters.sprite.animate_sprites import (
+    _finish_animation,
     retry_animation_matting,
+    verify_transparent_animation,
 )
-from application.characters.generate_sprites import boundary_frame, matting_options
-from application.characters.transition_recommendations import (
-    analyze_transition_recommendations,
+from application.characters.sprite.generate_sprites import (
+    SPRITE_CAMERA_SUFFIX,
+    SPRITE_REFERENCE_FRAMING_SUFFIX,
+    _local_file_access_roots,
+    _resolve_file_access_roots,
+    boundary_frame,
+    matting_options,
+    render_sprite,
 )
 from application.runtime.state import _jsonify
 from application.runtime.tasks import _update_task
-from frontend_bridge_core.sprite_generation import _finish_animation
-from frontend_bridge_core.tools import _local_file_access_roots
+from core.sprite.selection import sprite_entry_path
+from core.sprite.transitions import (
+    TRANSITION_FRAME_COUNT,
+    field,
+    sprite_fingerprint,
+    valid_transitions,
+)
 from sdk.path_utils import safe_existing_file_path
 
+TRANSITION_PROMPT = (
+    "make the character transition directly from the standing pose, hand positions "
+    "and facial expression in the first reference to those in the last reference; "
+    "begin changing pose immediately and progress continuously throughout the shot; "
+    "complete the pose change and reach the last reference's hand positions and "
+    "facial expression by the final frame; keep the feet planted, the original neck "
+    "length and character proportions, and the same standing location; let the hair "
+    "roots follow the head and torso motion, with the hair lengths and tips trailing "
+    "slightly behind through natural inertia and coordinated follow-through, then "
+    "settling toward the last reference pose while preserving the original hairstyle"
+    + SPRITE_REFERENCE_FRAMING_SUFFIX
+    + SPRITE_CAMERA_SUFFIX
+)
 
-def run_transition_analysis(state, task_id, payload):
-    _update_task(state, task_id, progress=0.1, message="正在读取该角色的最近聊天。")
-    result = analyze_transition_recommendations(
-        state,
-        payload,
-        progress=lambda message: _update_task(
-            state, task_id, progress=0.4, message=message
-        ),
+
+def transition_identity(character, start, end):
+    paths = {sprite_entry_path(sprite) for sprite in character.sprites}
+    if (
+        not isinstance(start, str)
+        or not isinstance(end, str)
+        or start == end
+        or start not in paths
+        or end not in paths
+    ):
+        raise ValueError("请选择角色立绘库中两张不同的立绘")
+    return {
+        "name": character.name,
+        "fromPath": start,
+        "toPath": end,
+        "fromFingerprint": sprite_fingerprint(start),
+        "toFingerprint": sprite_fingerprint(end),
+    }
+
+
+def saved_transitions(character):
+    return [
+        {
+            "fromPath": field(edge, "from_path"),
+            "toPath": field(edge, "to_path"),
+            "path": field(edge, "path"),
+            "frameCount": field(edge, "frame_count", 5),
+        }
+        for edge in valid_transitions(character)
+    ]
+
+
+def render_transition(config_store, payload, output, first, last):
+    result = render_sprite(
+        config_store,
+        {**payload, "prompt": TRANSITION_PROMPT, "tagging": "过渡，站立"},
+        output,
+        first,
+        require_h3_video=True,
+        last_reference=last,
     )
-    _update_task(state, task_id, progress=1.0, message="单向过渡推荐已完成。")
-    return result
+    return {
+        **result,
+        "animation": True,
+        "playbackSpeed": 1.0,
+        "requestedFrames": TRANSITION_FRAME_COUNT,
+    }
 
 
-def _endpoints(state, payload):
+def _endpoints(
+    state: Any, payload: dict, *, file_access_roots: Iterable[Path] = ()
+):
     name = str(payload.get("name") or "").strip()
     character = state.config_manager.get_character_by_name(name)
     if character is None:
         raise ValueError("请先保存角色再生成过渡")
     start, end = payload.get("fromPath"), payload.get("toPath")
     identity = transition_identity(character, start, end)
+    roots = (
+        _resolve_file_access_roots(state, file_access_roots)
+        if file_access_roots
+        else _local_file_access_roots(state)
+    )
     first, last = [
-        safe_existing_file_path(
-            path, roots=_local_file_access_roots(state), field="sprite"
-        )
+        safe_existing_file_path(path, roots=roots, field="sprite")
         for path in (start, end)
     ]
     return character, first, last, identity
@@ -73,7 +135,9 @@ def _unchanged(result, identity):
         raise ValueError("来源立绘已变化，请重新生成过渡")
 
 
-def run_sprite_transition(state, task_id, payload):
+def run_sprite_transition(
+    state, task_id, payload, *, file_access_roots: Iterable[Path] = ()
+):
     matting_options(payload)
     if not isinstance(payload.get("regenerate", False), bool):
         raise ValueError("regenerate 必须为布尔值")
@@ -81,7 +145,9 @@ def run_sprite_transition(state, task_id, payload):
         payload["retryTaskId"], str
     ):
         raise ValueError("retryTaskId 必须为任务编号")
-    character, first, last, identity = _endpoints(state, payload)
+    character, first, last, identity = _endpoints(
+        state, payload, file_access_roots=file_access_roots
+    )
     if payload.get("retryTaskId"):
         with state.task_lock:
             source = dict(
@@ -136,7 +202,9 @@ def run_sprite_transition(state, task_id, payload):
     return result
 
 
-def save_sprite_transitions(state, payload):
+def save_sprite_transitions(
+    state, payload, *, file_access_roots: Iterable[Path] = ()
+):
     name = str(payload.get("name") or "").strip()
     items = payload.get("items")
     if not isinstance(items, list) or not items:
@@ -159,6 +227,7 @@ def save_sprite_transitions(state, payload):
                     "fromPath": result["fromPath"],
                     "toPath": result["toPath"],
                 },
+                file_access_roots=file_access_roots,
             )
             _unchanged(result, identity)
             if result.get("imported") or result.get("cached"):
