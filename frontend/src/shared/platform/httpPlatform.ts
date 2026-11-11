@@ -1085,6 +1085,48 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
       },
     },
     characters: {
+      getSpriteMouthSetup: () =>
+        requestJson(apiBase, "/api/characters/sprites/mouth/status", { method: "POST", body: "{}" }),
+      configureSpriteMouth: (input) =>
+        requestJson(apiBase, "/api/characters/sprites/mouth/configure", {
+          method: "POST",
+          body: JSON.stringify(input),
+        }),
+      importSpriteMouthModels: (input) =>
+        requestJson(apiBase, "/api/characters/sprites/mouth/models/import", {
+          method: "POST",
+          body: JSON.stringify(input),
+        }),
+      async downloadSpriteMouthModels(options) {
+        const task = await requestJson<TaskSnapshot<import("./types").SpriteMouthSetup>>(
+          apiBase,
+          "/api/characters/sprites/mouth/models/download",
+          { method: "POST", body: "{}" },
+        );
+        return waitForTask(apiBase, task, options);
+      },
+      async installSpriteMouthRuntime(options) {
+        const task = await requestJson<TaskSnapshot<import("./types").SpriteMouthSetup>>(
+          apiBase,
+          "/api/characters/sprites/mouth/runtime/install",
+          { method: "POST", body: "{}" },
+        );
+        return waitForTask(apiBase, task, options);
+      },
+      async generateSpriteMouth(input, options) {
+        const task = await requestJson<TaskSnapshot<import("./types").GeneratedSpriteMouth>>(
+          apiBase,
+          "/api/characters/sprites/mouth/generate",
+          { method: "POST", body: JSON.stringify(input) },
+        );
+        return waitForTask(apiBase, task, options);
+      },
+      readSpriteMouth: (path) =>
+        requestJson(apiBase, "/api/characters/sprites/mouth/read", { method: "POST", body: JSON.stringify({ path }) }),
+      saveSpriteMouths: (input) =>
+        requestJson(apiBase, "/api/characters/sprites/mouth/save", { method: "POST", body: JSON.stringify(input) }),
+      removeSpriteMouth: (input) =>
+        requestJson(apiBase, "/api/characters/sprites/mouth/remove", { method: "POST", body: JSON.stringify(input) }),
       async planSprites(input, options) {
         const task = await requestJson<TaskSnapshot<{ items: SpritePromptPair[] }>>(
           apiBase,
@@ -1237,6 +1279,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         return waitForTask(apiBase, task, options);
       },
       list: () => requestJson<Character[]>(apiBase, "/api/characters"),
+      revision: () => requestJson<string>(apiBase, "/api/characters?view=revision"),
       listMemories: (name) =>
         requestJson<CharacterMemoryList>(apiBase, "/api/characters/memories/list", {
           body: JSON.stringify({ name }),

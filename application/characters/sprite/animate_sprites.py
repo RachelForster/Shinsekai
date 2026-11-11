@@ -17,7 +17,12 @@ from application.characters.sprite.generate_sprites import (
 )
 from application.media.resource_paths import MediaResourcePaths
 from application.runtime.tasks import _update_task
-from sdk.path_utils import safe_existing_file_path
+from config.sprite_files import sprite_field, sprite_fingerprint
+from sdk.path_utils import (
+    normalize_path_identity,
+    safe_child_path,
+    safe_existing_file_path,
+)
 
 
 def animation_speed(payload):
@@ -232,7 +237,8 @@ def run_sprite_animation(
 ):
     animation_prompt(payload)
     name = str(payload.get("name") or "").strip()
-    if not state.config_manager.get_character_by_name(name):
+    character = state.config_manager.get_character_by_name(name)
+    if character is None:
         raise ValueError("请先保存角色再生成动态立绘")
     if not payload.get("referenceImage"):
         raise ValueError("请先选择参考立绘或视频")
@@ -241,6 +247,16 @@ def run_sprite_animation(
         roots=_resolve_file_access_roots(state, file_access_roots),
         field="referenceImage",
     )
+    reference_sprite = next(
+        (
+            path
+            for sprite in character.sprites
+            if (path := sprite_field(sprite, "path"))
+            and normalize_path_identity(path, field="initial sprite path") == reference
+        ),
+        None,
+    )
+    reference_fingerprint = sprite_fingerprint(reference) if reference_sprite else None
     output = (
         Path(state.project_root_dir) / "cache" / "sprite_generation" / f"{task_id}.png"
     )
@@ -264,6 +280,12 @@ def run_sprite_animation(
     result = render_animation(
         state.config_manager, {**payload, "name": name}, output, reference
     )
+    if reference_sprite:
+        result["mouthReference"] = {
+            "path": reference_sprite,
+            "fingerprint": reference_fingerprint,
+            "frame": str(reference),
+        }
     return _finish_animation(state, task_id, result)
 
 
@@ -283,6 +305,8 @@ def _finish_animation(state, task_id, source):
         "backgroundRemoved": False,
     }
     result.pop("backgroundRemovalError", None)
+    result.pop("mouthSyncManifest", None)
+    result.pop("mouthSyncError", None)
 
     def progress(done, total):
         if done == 1 or done % 4 == 0 or done == total:
@@ -312,4 +336,26 @@ def _finish_animation(state, task_id, source):
         result.update(metadata, path=output.as_posix(), backgroundRemoved=True)
     except Exception as exc:
         result["backgroundRemovalError"] = str(exc)
+    if result["alphaVerified"] and result.get("mouthReference"):
+        from application.characters.sprite.mouth_sync import inherit_mouth_bundle
+
+        try:
+            manifest = inherit_mouth_bundle(
+                state,
+                result["name"],
+                result["mouthReference"],
+                output,
+                safe_child_path(video.parent, f"{task_id}-mouth"),
+                lambda message: _update_task(
+                    state,
+                    task_id,
+                    phase="mouth-sync",
+                    progress=0.97,
+                    message=message,
+                ),
+            )
+            if manifest:
+                result["mouthSyncManifest"] = str(manifest)
+        except Exception as exc:
+            result["mouthSyncError"] = str(exc)
     return _approve_sprite_media(state, result)

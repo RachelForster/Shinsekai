@@ -1,10 +1,29 @@
 import { it, expect, vi } from "vitest";
 import {
   bindAvatarVoice,
+  bindMouthLevel,
   routeAvatarVoice,
   routeAvatarSpeechEvent,
 } from "../../../modules/character-visual/voiceRoute";
 import type { AvatarSession } from "../../../modules/character-visual/contracts";
+
+it("drives sprite mouths only for the speaking character and closes on finish and detach", () => {
+  const a = vi.fn();
+  const b = vi.fn();
+  const offA = bindMouthLevel("sprite-A", a);
+  const offB = bindMouthLevel("sprite-B", b);
+  routeAvatarVoice("sprite-A", 0.7);
+  expect(a).toHaveBeenLastCalledWith(0.7);
+  expect(b).not.toHaveBeenCalled();
+  routeAvatarSpeechEvent("sprite-A", "finished");
+  expect(a).toHaveBeenLastCalledWith(0);
+  offA();
+  a.mockClear();
+  routeAvatarVoice("sprite-A", 1);
+  expect(a).not.toHaveBeenCalled();
+  offB();
+  expect(b).toHaveBeenLastCalledWith(0);
+});
 
 it("routes speech boundaries only to the voice's character, with optional adapter support", () => {
   const a = { capabilities: { mouth: false }, notifySpeechEvent: vi.fn() } as unknown as AvatarSession<

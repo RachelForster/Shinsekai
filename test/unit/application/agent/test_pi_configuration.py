@@ -54,6 +54,38 @@ def test_ollama_reuses_keyless_local_configuration():
     assert resolve_pi_model(ModelConfig("Ollama", key="")).api_key == "ollama"
 
 
+@pytest.mark.parametrize("enabled,effort,level", [(False, "high", "off"), (True, "high", "high"), (True, "max", "xhigh")])
+def test_deepseek_preserves_thinking_setting_and_allows_longer_output(enabled, effort, level):
+    config = ModelConfig("Deepseek")
+    config.config.api_config.max_context_tokens = 128000
+    config.config.api_config.llm_extra_configs = {
+        "Deepseek": {"thinking_enabled": enabled, "reasoning_effort": effort}
+    }
+    binding = resolve_pi_model(config)
+    assert binding.model["reasoning"] is True
+    assert binding.model["thinkingLevel"] == level
+    assert binding.model["compat"]["thinkingFormat"] == "deepseek"
+    assert binding.model["maxTokens"] == 16384
+    config.config.api_config.llm_extra_configs["Deepseek"]["thinking_enabled"] = not enabled
+    assert resolve_pi_model(config).reference != binding.reference
+
+
+@pytest.mark.parametrize("field", ["max_tokens", "max_completion_tokens"])
+def test_pi_respects_explicit_output_limit(field):
+    config = ModelConfig()
+    config.config.api_config.llm_extra_configs = {"ChatGPT": {field: 6000}}
+    assert resolve_pi_model(config).model["maxTokens"] == 6000
+
+
+@pytest.mark.parametrize("limit", [True, 0, -1, "4096", 8193])
+def test_pi_rejects_invalid_output_limit(limit):
+    config = ModelConfig()
+    config.config.api_config.llm_extra_configs = {"ChatGPT": {"max_tokens": limit}}
+    with pytest.raises(AgentRequestError) as error:
+        resolve_pi_model(config)
+    assert error.value.error.code == "INVALID_REQUEST"
+
+
 @pytest.mark.parametrize(
     "change,code",
     [

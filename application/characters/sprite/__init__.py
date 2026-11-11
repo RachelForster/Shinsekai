@@ -1,1 +1,1 @@
-"""Character sprite generation, idle animation, and transition use cases."""
+"""Character sprite generation, idle animation, transitions, and mouth sync use cases."""

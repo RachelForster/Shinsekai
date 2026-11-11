@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Iterable
 
+from ai.t2i.reference_image import validate_h3_sprite_resolution
 from application.characters.sprite.animate_sprites import (
     _finish_animation,
     retry_animation_matting,
@@ -71,6 +72,7 @@ def saved_transitions(character):
             "toPath": field(edge, "to_path"),
             "path": field(edge, "path"),
             "frameCount": field(edge, "frame_count", 5),
+            "h3Resolution": field(edge, "h3_resolution", "workflow"),
         }
         for edge in valid_transitions(character)
     ]
@@ -139,6 +141,7 @@ def run_sprite_transition(
     state, task_id, payload, *, file_access_roots: Iterable[Path] = ()
 ):
     matting_options(payload)
+    resolution = validate_h3_sprite_resolution(payload.get("h3Resolution", "workflow"))
     if not isinstance(payload.get("regenerate", False), bool):
         raise ValueError("regenerate 必须为布尔值")
     if payload.get("retryTaskId") is not None and not isinstance(
@@ -164,6 +167,7 @@ def run_sprite_transition(
                     edge["fromPath"] == identity["fromPath"]
                     and edge["toPath"] == identity["toPath"]
                     and edge["frameCount"] == TRANSITION_FRAME_COUNT
+                    and edge["h3Resolution"] == resolution
                 ):
                     return {
                         **identity,
@@ -172,6 +176,7 @@ def run_sprite_transition(
                         "cached": True,
                         "alphaVerified": True,
                         "frameCount": TRANSITION_FRAME_COUNT,
+                        "h3Resolution": resolution,
                     }
         root = Path(state.project_root_dir) / "cache" / "sprite_generation"
         _update_task(

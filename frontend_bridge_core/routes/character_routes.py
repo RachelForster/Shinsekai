@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from application.characters import CharacterOperation
+from application.characters.sprite import mouth_resources
 from application.characters.sprite.animate_sprites import run_sprite_animation
 from application.characters.sprite.generate_sprites import (
     import_generated_sprites,
@@ -8,6 +9,18 @@ from application.characters.sprite.generate_sprites import (
     run_sprite_frame,
     run_sprite_plan,
     run_sprite_render,
+)
+from application.characters.sprite.mouth_resources import (
+    configure_mouth_setup,
+    import_mouth_models,
+    run_mouth_setup,
+)
+from application.characters.sprite.mouth_sync import (
+    describe_bundle,
+    read_profile,
+    remove_sprite_mouth,
+    run_sprite_mouth,
+    save_sprite_mouths,
 )
 from application.characters.sprite.transition_recommendations import run_transition_analysis
 from application.characters.sprite.transition_sprites import (
@@ -35,6 +48,8 @@ from frontend_bridge_core.tools import _local_file_access_roots
 
 
 def _list_characters(request: ApiRequest) -> JsonResponse:
+    if (request.query.get("view") or [""])[0] == "revision":
+        return JsonResponse(request.state.config_manager.characters_revision)
     characters = request.state.config_manager.config.characters
 
     def name(character):
@@ -269,7 +284,58 @@ def _analyze_sprite_transitions(request: ApiRequest) -> TaskResponse:
     )
 
 
+def _generate_sprite_mouth(request: ApiRequest) -> TaskResponse:
+    body = dict(request.body)
+    return TaskResponse(
+        kind="character-sprite-mouth", title="制作立绘口型",
+        message="正在准备嘴型生成与匹配。",
+        worker=lambda task_id: run_sprite_mouth(
+            request.state,
+            task_id,
+            body,
+            file_access_roots=_local_file_access_roots(request.state),
+        ),
+    )
+
+
+def _mouth_setup_task(request: ApiRequest, action: str) -> TaskResponse:
+    return TaskResponse(
+        kind="sprite-mouth-setup", title="准备口型识别资源",
+        message="正在准备识别资源。",
+        worker=lambda task_id: run_mouth_setup(request.state, task_id, request.body, action),
+    )
+
+
 CHARACTER_ROUTES = (
+    Route(methods=frozenset({"GET"}), pattern="/api/characters/sprites/mouth/profile",
+          handler=lambda request: JsonResponse(read_profile(request.state, (request.query.get("path") or [""])[0])),
+          body_kind=BodyKind.NONE, name="characters.sprites.mouth.profile"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/mouth/status",
+          handler=lambda request: JsonResponse(mouth_resources.status(request.state.project_root_dir, request.state.config_manager)),
+          name="characters.sprites.mouth.status"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/mouth/configure",
+          handler=lambda request: JsonResponse(configure_mouth_setup(request.state, request.body)),
+          name="characters.sprites.mouth.configure"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/mouth/models/import",
+          handler=lambda request: JsonResponse(import_mouth_models(request.state, request.body, file_access_roots=_local_file_access_roots(request.state))),
+          name="characters.sprites.mouth.models.import"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/mouth/models/download",
+          handler=lambda request: _mouth_setup_task(request, "download"),
+          name="characters.sprites.mouth.models.download"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/mouth/runtime/install",
+          handler=lambda request: _mouth_setup_task(request, "install"),
+          name="characters.sprites.mouth.runtime.install"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/mouth/generate",
+          handler=_generate_sprite_mouth, name="characters.sprites.mouth.generate"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/mouth/read",
+          handler=lambda request: JsonResponse(describe_bundle(request.state, request.body.get("path"))),
+          name="characters.sprites.mouth.read"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/mouth/save",
+          handler=lambda request: JsonResponse(save_sprite_mouths(request.state, request.body, file_access_roots=_local_file_access_roots(request.state))),
+          name="characters.sprites.mouth.save"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/mouth/remove",
+          handler=lambda request: JsonResponse(remove_sprite_mouth(request.state, request.body, file_access_roots=_local_file_access_roots(request.state))),
+          name="characters.sprites.mouth.remove"),
     Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/transitions/analyze",
           handler=_analyze_sprite_transitions, name="characters.sprites.transitions.analyze"),
     Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/transitions/generate",

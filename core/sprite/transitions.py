@@ -1,35 +1,9 @@
 """Validate directed transitions without relying on mutable sprite indices."""
 
-from functools import lru_cache
-import hashlib
-from pathlib import Path
-
+from config.sprite_files import sprite_field as field, sprite_fingerprint
 from core.sprite.selection import resolve_runtime_path, sprite_entry_path
 
 TRANSITION_FRAME_COUNT = 22
-
-
-def field(value, key, default=None):
-    return (
-        value.get(key, default)
-        if isinstance(value, dict)
-        else getattr(value, key, default)
-    )
-
-
-@lru_cache(maxsize=512)
-def _digest(path, mtime, size):
-    digest = hashlib.sha256()
-    with open(path, "rb") as source:
-        for chunk in iter(lambda: source.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def sprite_fingerprint(path):
-    resolved = resolve_runtime_path(str(path))
-    stat = resolved.stat()
-    return _digest(str(resolved), stat.st_mtime_ns, stat.st_size)
 
 
 def valid_transitions(character):

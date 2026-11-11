@@ -1054,6 +1054,80 @@ def test_animation_matting_failure_can_retry_without_rerender_and_cannot_be_impo
     verified.assert_called_once()
 
 
+@pytest.mark.parametrize("replace", [False, True])
+def test_saving_animation_reuses_saved_mouth_poses_from_its_reference(sprite_state, monkeypatch, replace):
+    import json
+    from application.characters.sprite import mouth_sync as sprite_mouth
+    from core.sprite.mouth.manifest import read_manifest, valid_mouth_sync
+    from core.sprite.transitions import sprite_fingerprint
+
+    state, character = sprite_state
+    root = Path(state.project_root_dir)
+    source_dir = root / "data/sprite/mika"
+    source_dir.mkdir(parents=True)
+    source = source_dir / "reference.png"
+    Image.new("RGBA", (80, 120), "pink").save(source)
+    bundle = source_dir / "mouth-sync" / "static"
+    bundle.mkdir(parents=True)
+    patches = {pose: f"mouth-{pose}.png" for pose in ("closed", "half", "open")}
+    profile = {
+        "version": 1, "sourceFingerprint": sprite_fingerprint(source), "width": 80, "height": 120,
+        "patchBox": [30, 70, 50, 82], "mouths": patches, "selectedFrames": {"closed": 1, "half": 4, "open": 8},
+        "correction": {"offsetX": 3, "gain": 1.4},
+        "track": [{"time": 0, "matrix": [1, 0, 0, 1, 0, 0]}],
+    }
+    for filename in patches.values():
+        Image.new("RGBA", (20, 12), "pink").save(bundle / filename)
+    (bundle / "manifest.json").write_text(json.dumps(profile), encoding="utf-8")
+    character.sprites = [{"path": str(source), "mouth_sync": str(bundle / "manifest.json"), "voice_text": "hello"}]
+    raw = root / "cache/sprite_generation/idle.mp4"
+    raw.parent.mkdir(parents=True)
+    raw.write_bytes(b"cached animation")
+    monkeypatch.setattr(bridge, "_local_file_access_roots", lambda _: (root,))
+    monkeypatch.setattr(animate_sprites, "_local_file_access_roots", lambda _: (root,))
+    monkeypatch.setattr(sprite_mouth, "_local_file_access_roots", lambda _: (root,))
+    monkeypatch.setattr(animate_sprites, "render_animation", Mock(return_value={"name": "Mika", "prompt": "idle", "tagging": "平静", "videoPath": str(raw)}))
+    monkeypatch.setattr(animate_sprites, "verify_transparent_animation", lambda _: 2)
+
+    def matte(_raw, output, **_kwargs):
+        output.write_bytes(b"verified alpha")
+        return {"alphaVerified": True}
+
+    def transfer(_root, _store, video, _frame, manifest, output, fingerprint, _progress):
+        assert manifest == bundle / "manifest.json" and fingerprint == sprite_fingerprint(video)
+        output.mkdir()
+        for filename in patches.values():
+            (output / filename).write_bytes((bundle / filename).read_bytes())
+        target = output / "manifest.json"
+        target.write_text(json.dumps({
+            **profile, "sourceFingerprint": fingerprint,
+            "track": [*profile["track"], {"time": .04, "matrix": [1, 0, 0, 1, 1, 2]}],
+        }), encoding="utf-8")
+        return target
+
+    monkeypatch.setattr(animate_sprites, "make_transparent_animation", matte)
+    align = Mock(side_effect=transfer)
+    monkeypatch.setattr(sprite_mouth, "transfer_bundle", align)
+    task = _create_task(state, kind="character-sprite-animate", title="animate")
+    generated = animate_sprites.run_sprite_animation(state, task["id"], {"name": "Mika", "referenceImage": str(source), "tagging": "平静"})
+    assert generated.get("mouthSyncManifest") and not generated.get("mouthSyncError")
+    _update_task(state, task["id"], status="succeeded", result=generated)
+    payload = {"name": "Mika", "items": [{"taskId": task["id"]}]}
+    if replace:
+        payload["replace"] = {"index": 0, "path": str(source)}
+    saved = bridge.import_generated_sprites(state, payload)
+    dynamic = saved["sprites"][-1]
+    assert dynamic["path"].endswith(".webm") and valid_mouth_sync(dynamic)
+    inherited = read_manifest(dynamic["mouth_sync"])
+    assert inherited["selectedFrames"] == profile["selectedFrames"]
+    assert inherited["correction"]["gain"] == 1.4 and len(inherited["track"]) == 2
+    assert source.is_file() and read_manifest(bundle / "manifest.json")["sourceFingerprint"] == sprite_fingerprint(source)
+    assert len(saved["sprites"]) == (1 if replace else 2)
+    bridge.import_generated_sprites(state, payload)
+    align.assert_called_once()
+    state.config_manager.save_characters_config.assert_called_once()
+
+
 @pytest.mark.parametrize(
     "custom_prompt", [None, "make the character gently sway one sleeve, fixed camera"]
 )
@@ -1108,6 +1182,7 @@ def test_h3_animation_anchors_last_frame_to_the_same_reference(
             "name": "Mika",
             "prompt": "idle",
             "tagging": "平静",
+            "h3Resolution": "native",
             **({"customPrompt": custom_prompt} if custom_prompt else {}),
         },
         tmp_path / "sprite.png",
@@ -1117,6 +1192,8 @@ def test_h3_animation_anchors_last_frame_to_the_same_reference(
     assert Path(result["videoPath"]) == video
     assert adapter.generate_image.call_args.kwargs.get("h3_static_sprite") is None
     assert adapter.workflow_template["131"]["inputs"]["length"] == 107
+    assert result["h3Resolution"] == "native"
+    assert (node["inputs"]["width"], node["inputs"]["height"]) == (800, 1216)
     if custom_prompt:
         assert adapter.generate_image.call_args.kwargs["prompt"] == custom_prompt
     guides = [

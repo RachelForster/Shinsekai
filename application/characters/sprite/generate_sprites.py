@@ -9,6 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Iterable
 
+from ai.t2i.reference_image import validate_h3_sprite_resolution
 from application.characters.generate_briefs import chat_character_text
 from application.characters.sprite.h3_idle_workflow import stabilize_idle_workflow
 from application.media.resource_paths import MediaResourcePaths
@@ -180,11 +181,12 @@ def render_sprite(
     loop_reference: bool = False,
     stabilize_pose: bool = False,
     last_reference: Path | None = None,
+    h3_frame_count: int | None = None,
 ) -> dict:
     from PIL import Image
 
     from ai.t2i.t2i_manager import T2IAdapterFactory, T2IManager
-    from ai.t2i.reference_image import validate_h3_sprite_resolution
+    from ai.t2i.reference_image import H3_SPRITE_RESOLUTIONS, reference_canvas_size
 
     pair = prompt_pair(payload)
     processing = matting_options(payload)
@@ -238,8 +240,20 @@ def render_sprite(
                 for node in nodes:
                     if node.get("inputs", {}).get("first_frame"):
                         node["inputs"]["last_frame"] = node["inputs"]["first_frame"]
+            if h3_frame_count is not None:
+                if (
+                    isinstance(h3_frame_count, bool)
+                    or not isinstance(h3_frame_count, int)
+                    or not 5 <= h3_frame_count <= 362
+                    or h3_frame_count % 17 != 5
+                ):
+                    raise ValueError("H3 帧数须为 5–362 范围内的 17k+5")
+                for node in nodes:
+                    node["inputs"]["length"] = h3_frame_count
+                for node in adapter.workflow_template.values():
+                    if node.get("class_type") == "CreateVideo":
+                        node["inputs"]["fps"] = 24
             if last_reference:
-                from ai.t2i.reference_image import reference_canvas_size
                 from core.sprite.transitions import TRANSITION_FRAME_COUNT
 
                 first = nodes[0]["inputs"]["first_frame"]
@@ -256,8 +270,9 @@ def render_sprite(
                     "inputs": {"image": "last.png"},
                 }
                 canvas = nodes[0]["inputs"]
+                budget = H3_SPRITE_RESOLUTIONS[h3_resolution] or (canvas["width"], canvas["height"])
                 width, height = reference_canvas_size(
-                    reference, canvas["width"], canvas["height"]
+                    reference, *budget
                 )
                 for node in nodes:
                     node["inputs"].update(
@@ -269,6 +284,10 @@ def render_sprite(
                 for node in adapter.workflow_template.values():
                     if node.get("class_type") == "CreateVideo":
                         node["inputs"]["fps"] = 24
+            elif budget := H3_SPRITE_RESOLUTIONS[h3_resolution]:
+                width, height = reference_canvas_size(reference, *budget)
+                for node in nodes:
+                    node["inputs"].update(width=width, height=height)
             if stabilize_pose:
                 adapter.workflow_template = stabilize_idle_workflow(
                     adapter.workflow_template
@@ -322,6 +341,7 @@ def render_sprite(
             **pair,
             **media,
             **({"matting": matting} if matting else {}),
+            **({"h3Resolution": h3_resolution} if require_h3_video else {}),
             "path": output.as_posix(),
             "name": str(payload.get("name") or ""),
         }
@@ -687,13 +707,34 @@ def import_generated_sprites(state, payload):
             if target is not None:
                 replacements.append((target["index"], target["path"]))
         if files:
-            state.character_manager.upload_sprites(
+            from application.characters.sprite.mouth_sync import (
+                discard_mouth_bundle,
+                install_mouth_bundle,
+            )
+
+            mouths = []
+            try:
+                if any(task["result"].get("animation") for task in tasks):
+                    for task in tasks:
+                        manifest = task["result"].get("mouthSyncManifest")
+                        mouths.append(
+                            str(install_mouth_bundle(state, character, manifest))
+                            if manifest
+                            else None
+                        )
+                state.character_manager.upload_sprites(
                 name,
                 files,
                 character.emotion_tags,
                 sprite_tags=tags,
                 **({"replacements": replacements} if replacements else {}),
+                **({"sprite_mouths": mouths} if mouths else {}),
             )
+            except Exception:
+                for manifest in mouths:
+                    if manifest:
+                        discard_mouth_bundle(state, manifest)
+                raise
             for task in tasks:
                 task["result"] = {**task["result"], "imported": True}
     state.config_manager.reload()

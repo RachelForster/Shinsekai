@@ -87,6 +87,27 @@ def test_allowlist_matches_existing_json_http_routes():
         assert not api.path.startswith("/api/agent")
 
 
+@pytest.mark.parametrize("operation,path,body,asynchronous", [
+    ("characters.sprites.plan", "/api/characters/sprites/plan",
+     {"name": "Mika", "setting": "quiet", "count": 10, "referenceImage": "ref.png"}, True),
+    ("characters.sprites.render", "/api/characters/sprites/render",
+     {"name": "Mika", "prompt": "smile", "tagging": "微笑", "referenceImage": "ref.png",
+      "removeBackground": True, "h3Resolution": "workflow"}, True),
+    ("characters.sprites.remove_background", "/api/characters/sprites/remove-background",
+     {"name": "Mika", "taskId": "render-1"}, True),
+    ("characters.sprites.import_generated", "/api/characters/sprites/import-generated",
+     {"name": "Mika", "items": [{"taskId": f"render-{i}", "tagging": "微笑"} for i in range(10)]}, False),
+])
+def test_agent_can_plan_render_and_import_ten_static_sprites(bridge, operation, path, body, asynchronous):
+    _, requests, reply = bridge
+    reply.update(status=202 if asynchronous else 200, data={"id": "sprite-task"} if asynchronous else {"name": "Mika"})
+    result = invoke(bridge, 1, {"operation": operation, "body": body})
+    assert result.ok
+    assert result.data["accepted"] is asynchronous
+    assert result.data["taskId"] == ("sprite-task" if asynchronous else None)
+    assert requests == [("POST", path, "private-bridge-token", body)]
+
+
 @pytest.mark.parametrize("model", [BridgeReadInput, BridgeWriteInput])
 def test_model_cannot_choose_url_auth_or_unregistered_operations(model):
     for arguments in (

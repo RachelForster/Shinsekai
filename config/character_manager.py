@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import List, Dict, Any, Tuple, Optional, Union
 from config.schema import Character, ModelSprites, Sprite, SpriteTransition
 from config.config_manager import ConfigManager
+from config.sprite_files import sprite_field, sprite_fingerprint
+from config.sprite_mouth import read_manifest
 import yaml
 
 UPLOAD_DIR = "data/sprite"
@@ -15,14 +17,8 @@ MODEL_DIR = "data/models"
 CHARACTER_CONFIG_PATH = ConfigManager._CHARACTERS_CONFIG_PATH 
 
 
-def _sprite_field(sprite_data: Union[Sprite, dict], key: str, default: Any = "") -> Any:
-    if isinstance(sprite_data, Sprite):
-        return getattr(sprite_data, key, default)
-    return sprite_data.get(key, default)
-
-
 def _voice_filename_for_sprite(sprite_data: Union[Sprite, dict], sprite_index: int, file_ext: str) -> str:
-    sprite_path = str(_sprite_field(sprite_data, "path", "") or "")
+    sprite_path = str(sprite_field(sprite_data, "path", "") or "")
     sprite_stem = Path(sprite_path).stem
     safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", sprite_stem).strip("._-")
     if not safe_stem:
@@ -98,6 +94,24 @@ class CharacterManager:
         except Exception as e:
             return f"保存失败: {str(e)}"
 
+    def save_sprite_mouths(self, name: str, results: list[tuple[int, str, str | None]]) -> None:
+        character = self._config_manager.get_character_by_name(name)
+        if character is None:
+            raise ValueError("角色不存在")
+        previous = list(character.sprites)
+        try:
+            for index, source, path in results:
+                if not 0 <= index < len(character.sprites) or str(sprite_field(character.sprites[index], "path")) != source:
+                    raise ValueError("立绘列表已变化，请重新选择")
+                if path and read_manifest(path)["sourceFingerprint"] != sprite_fingerprint(source):
+                    raise ValueError("来源立绘已变化，请重新制作口型")
+                sprite = character.sprites[index]
+                character.sprites[index] = {**sprite, "mouth_sync": path} if isinstance(sprite, dict) else sprite.model_copy(update={"mouth_sync": path})
+            self._save_characters_config()
+        except Exception:
+            character.sprites = previous
+            raise
+
     def save_sprite_transitions(self, name: str, results: list[dict]) -> None:
         """Copy approved clips, replace directed edges atomically, and retain originals."""
         from sdk.path_utils import safe_child_path
@@ -119,6 +133,7 @@ class CharacterManager:
                     from_path=result["fromPath"], to_path=result["toPath"], path=destination.as_posix(),
                     from_fingerprint=result["fromFingerprint"], to_fingerprint=result["toFingerprint"],
                     frame_count=result["frameCount"],
+                    h3_resolution=result.get("h3Resolution", "workflow"),
                 )
                 edges[(edge.from_path, edge.to_path)] = edge
             character.sprite_transitions = list(edges.values())
@@ -350,6 +365,7 @@ class CharacterManager:
         emotion_tags: str,
         *,
         sprite_tags: Optional[List[str]] = None,
+        sprite_mouths: Optional[List[Optional[str]]] = None,
         replace_index: Optional[int] = None,
         expected_path: Optional[str] = None,
         replacements: Optional[List[Tuple[int, str]]] = None,
@@ -368,6 +384,12 @@ class CharacterManager:
 
         if sprite_tags is not None and len(sprite_tags) != len(sprite_files):
             raise ValueError("Each sprite requires one tag entry")
+        if sprite_mouths is not None:
+            if len(sprite_mouths) != len(sprite_files):
+                raise ValueError("每张生成结果需要一个口型条目")
+            for file, manifest in zip(sprite_files, sprite_mouths):
+                if manifest and read_manifest(manifest)["sourceFingerprint"] != sprite_fingerprint(file.name):
+                    raise ValueError("动态立绘已变化，请重新匹配口型")
         
         character: Optional[Character] = self._config_manager.get_character_by_name(character_name)
         if not character:
@@ -397,7 +419,7 @@ class CharacterManager:
             if index in seen_targets:
                 raise ValueError("同一原立绘只能选择一个结果替换")
             seen_targets.add(index)
-            if path != _sprite_field(character.sprites[index], "path"):
+            if path != sprite_field(character.sprites[index], "path", ""):
                 raise ValueError("原立绘已改变或尚未保存，请刷新角色后重新选择")
         emotion_tags_to_add = ''
         original_sprites = character.sprites
@@ -411,13 +433,16 @@ class CharacterManager:
             dest_path = os.path.join(char_dir, filename)
             shutil.copyfile(file.name, dest_path)
             
-            new_sprite_data = {"path": dest_path}
+            updates = {"path": dest_path}
+            if sprite_mouths is not None:
+                updates["mouth_sync"] = sprite_mouths[i]
+            new_sprite_data = updates
             if replacements is not None:
                 original = original_sprites[replacements[i][0]]
                 new_sprite_data = (
-                    original.model_copy(update={"path": dest_path})
+                    original.model_copy(update=updates)
                     if isinstance(original, Sprite)
-                    else {**original, "path": dest_path}
+                    else {**original, **updates}
                 )
             new_sprites.append(new_sprite_data)
             
@@ -600,7 +625,7 @@ class CharacterManager:
             return "立绘不存在！", None
         
         sprite_data: Union[Sprite, dict] = character.sprites[sprite_index]
-        original_voice_path = str(_sprite_field(sprite_data, "voice_path", "") or "")
+        original_voice_path = str(sprite_field(sprite_data, "voice_path", "") or "")
         
         if (not voice_file) and (not original_voice_path):
             return "请选择语音文件！", None

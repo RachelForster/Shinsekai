@@ -719,6 +719,7 @@ export function CharacterEditorPage() {
       draft.sprites.map((sprite, index) => ({
         badge: sprite.voice_path ? t("character.sprite.hasVoice") : t("character.sprite.noVoice"),
         badgeTone: sprite.voice_path ? ("default" as const) : ("muted" as const),
+        cornerLabel: sprite.mouth_sync ? t("spriteMouth.tab") : undefined,
         id: `${sprite.path}-${index}`,
         imageSrc: sprite.path && !isVideoMedia(sprite.path) ? fileUrl(sprite.path) : "",
         videoSrc: isVideoMedia(sprite.path) ? fileUrl(sprite.path) : undefined,
@@ -1034,7 +1035,10 @@ export function CharacterEditorPage() {
             const savedTags = tagContents(character.emotion_tags, character.sprites.length);
             return {
               ...current,
-              sprites: character.sprites.map((sprite) => currentSpritesByPath.get(sprite.path) ?? sprite),
+              sprites: character.sprites.map((sprite) => {
+                const draft = currentSpritesByPath.get(sprite.path);
+                return draft ? { ...draft, mouth_sync: sprite.mouth_sync } : sprite;
+              }),
               sprite_transitions: character.sprite_transitions,
               emotion_tags: numberedTags(
                 "立绘",
