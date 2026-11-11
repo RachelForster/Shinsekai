@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from http import HTTPStatus
-from application.chat.replay import replay_service
+from application.chat.history.replay import replay_service
 
 from application.chat.conversation_library import (
     conversation_launch_payload,
