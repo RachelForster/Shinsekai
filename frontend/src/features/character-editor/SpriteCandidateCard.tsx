@@ -44,7 +44,14 @@ export function SpriteCandidateCard({
   const promptLabel = t(animation ? "spriteAnimation.prompt" : "spriteGeneration.prompt");
   const stale = Boolean(item.result && item.result.prompt !== item.prompt);
   const selectable = Boolean(item.result && !stale && item.tagging.trim() && (!animation || item.result.alphaVerified));
-  const title = t(animation ? "spriteAnimation.sprite" : "spriteGeneration.sprite", { n: index + 1 });
+  const title = t(
+    item.animationInput?.animationMode === "speaking"
+      ? "spriteAnimation.speakingSprite"
+      : animation
+        ? "spriteAnimation.sprite"
+        : "spriteGeneration.sprite",
+    { n: index + 1 },
+  );
   const active = Boolean(busy && activeId === item.id);
 
   return (

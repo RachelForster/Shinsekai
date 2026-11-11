@@ -52,6 +52,7 @@ export function SpriteGenerationPage({ character, name, onClose, onImported }: P
   const [animationSourcesOpen, setAnimationSourcesOpen] = useState(true);
   const [animationInput, setAnimationInput] = useState<CharacterSpriteAnimationInput>({
     name,
+    animationMode: "idle",
     referenceImage: "",
     tagging: "平静，站立",
     breathing: true,
@@ -98,7 +99,10 @@ export function SpriteGenerationPage({ character, name, onClose, onImported }: P
   );
   const transitions = useSpriteTransitions(character, name, onImported, mattingOptions);
   const busy = generator.busy || transitions.busy;
-  const animationSources = spriteAnimationSources(character, generator.items);
+  const speaking = mode === "animation" && animationInput.animationMode === "speaking";
+  const animationSources = spriteAnimationSources(character, generator.items).filter(
+    (source) => !speaking || source.origin === "existing",
+  );
   const animationInputs =
     animationSourceMode === "library"
       ? animationSources
@@ -111,8 +115,12 @@ export function SpriteGenerationPage({ character, name, onClose, onImported }: P
       : animationInput.referenceImage
         ? [animationInput]
         : [];
-  const items = generator.items.filter((item) => Boolean(item.animationInput) === (mode === "animation"));
-  const selectedSprites = generator.selected.filter((item) => Boolean(item.animationInput) === (mode === "animation"));
+  const matchesMode = (item: SpriteCandidate) =>
+    Boolean(item.animationInput) === (mode === "animation") &&
+    (mode !== "animation" ||
+      (item.animationInput?.animationMode ?? "idle") === (animationInput.animationMode ?? "idle"));
+  const items = generator.items.filter(matchesMode);
+  const selectedSprites = generator.selected.filter(matchesMode);
   const selected = mode === "transition" ? transitions.selected : selectedSprites;
   const originals = selectedSprites.flatMap((item) => (item.original ? [item.original] : []));
   const replacementIssue =
@@ -219,13 +227,17 @@ export function SpriteGenerationPage({ character, name, onClose, onImported }: P
                 {t(
                   mode === "transition"
                     ? "spriteTransition.saveHint"
-                    : selected.length
-                      ? (replacementIssue ?? "spriteGeneration.replaceSelectedHint")
-                      : "spriteGeneration.saveHint",
+                    : speaking
+                      ? selected.length && replacementIssue
+                        ? replacementIssue
+                        : "spriteAnimation.speakingSaveHint"
+                      : selected.length
+                        ? (replacementIssue ?? "spriteGeneration.replaceSelectedHint")
+                        : "spriteGeneration.saveHint",
                 )}
               </span>
             </div>
-            {mode !== "transition" ? (
+            {mode !== "transition" && !speaking ? (
               <AsyncButton
                 disabled={Boolean(busy) || !selectedSprites.length || Boolean(replacementIssue)}
                 loading={busy === "replace"}
@@ -236,18 +248,19 @@ export function SpriteGenerationPage({ character, name, onClose, onImported }: P
               </AsyncButton>
             ) : null}
             <AsyncButton
-              disabled={Boolean(busy) || !selected.length}
+              disabled={Boolean(busy) || !selected.length || (speaking && Boolean(replacementIssue))}
               loading={busy === "import" || busy === "transition-save"}
-              onClick={() =>
-                mode === "transition"
-                  ? void transitions.save()
-                  : void generator.save(
-                      generator.selected.filter((item) => Boolean(item.animationInput) === (mode === "animation")),
-                    )
-              }
+              onClick={() => (mode === "transition" ? void transitions.save() : void generator.save(selectedSprites))}
               variant="primary"
             >
-              {t(mode === "transition" ? "spriteTransition.save" : "spriteGeneration.add", { count: selected.length })}
+              {t(
+                mode === "transition"
+                  ? "spriteTransition.save"
+                  : speaking
+                    ? "spriteAnimation.saveSpeaking"
+                    : "spriteGeneration.add",
+                { count: selected.length },
+              )}
             </AsyncButton>
           </>
         }
@@ -632,7 +645,7 @@ export function SpriteGenerationPage({ character, name, onClose, onImported }: P
                           removeBackground={removeBackground}
                           onPreview={setMediaPreview}
                           onReplace={
-                            character.sprites.length
+                            character.sprites.length && item.animationInput?.animationMode !== "speaking"
                               ? (item) => {
                                   const original = item.original;
                                   const source = item.animationInput?.referenceImage || reference;
@@ -650,6 +663,8 @@ export function SpriteGenerationPage({ character, name, onClose, onImported }: P
                             if (!item.result) return;
                             setAnimationInput((current) => ({
                               ...current,
+                              animationMode: "idle",
+                              playbackSpeed: 0.75,
                               referenceImage: item.result!.path,
                               tagging: item.tagging,
                             }));

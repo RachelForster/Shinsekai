@@ -6,6 +6,17 @@ import {
 } from "../../../modules/character-visual/voiceRoute";
 import type { AvatarSession } from "../../../modules/character-visual/contracts";
 
+it("keeps instant speech activity separate from model smoothing and replays both to a new expression", () => {
+  routeAvatarSpeechEvent("cadence", "started");
+  routeAvatarVoice("cadence", 0.5, 0);
+  const session = { setSpeechLevel: vi.fn(), setSpeechActivity: vi.fn() };
+  const unbind = bindAvatarVoice("cadence", session);
+  expect(session.setSpeechLevel).toHaveBeenLastCalledWith(0.5);
+  expect(session.setSpeechActivity).toHaveBeenLastCalledWith(0);
+  unbind();
+  routeAvatarSpeechEvent("cadence", "finished");
+});
+
 it("routes speech boundaries only to the voice's character, with optional adapter support", () => {
   const a = { capabilities: { mouth: false }, notifySpeechEvent: vi.fn() } as unknown as AvatarSession<
     unknown,

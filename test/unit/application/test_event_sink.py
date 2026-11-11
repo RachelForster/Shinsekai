@@ -8,6 +8,16 @@ from application.runtime.event_sink import (
 
 
 class EventSinkSnapshotTests(unittest.TestCase):
+    def test_speaking_sprite_survives_snapshot_and_clears_with_expression_change(self):
+        event = {"type": "sprite.show", "characterName": "Mika", "url": "idle.webm",
+                 "speakingUrl": "speaking.webm"}
+        snapshot = fold_event_into_snapshot(make_empty_chat_snapshot(), event)
+        self.assertEqual(snapshot["sprites"][0]["speakingUrl"], "speaking.webm")
+        snapshot = fold_event_into_snapshot(snapshot, {
+            "type": "sprite.show", "characterName": "Mika", "url": "other.png",
+        })
+        self.assertNotIn("speakingUrl", snapshot["sprites"][0])
+
     def test_legacy_sprite_event_gains_required_avatar_fields(self):
         event = build_event(1, {"type": "sprite.show", "characterName": "Alice", "url": "alice.png"})
         self.assertEqual(event["avatarType"], "static")

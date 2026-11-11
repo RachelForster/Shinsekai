@@ -2,10 +2,11 @@ import { beforeEach, afterEach, it, expect, vi } from "vitest";
 import { VoiceAnalyser } from "../../../features/chat-stage/audio/voiceAnalyser";
 
 let tick: FrameRequestCallback;
+let amplitude = 0.1;
 const disconnect = vi.fn();
 const analyser = {
   fftSize: 256,
-  getFloatTimeDomainData: (data: Float32Array) => data.fill(0.1),
+  getFloatTimeDomainData: (data: Float32Array) => data.fill(amplitude),
 };
 const source = {
   connect: vi.fn(),
@@ -13,6 +14,7 @@ const source = {
   context: { state: "running", createAnalyser: () => analyser },
 } as unknown as MediaElementAudioSourceNode;
 beforeEach(() => {
+  amplitude = 0.1;
   vi.stubGlobal(
     "requestAnimationFrame",
     vi.fn((callback: FrameRequestCallback) => {
@@ -32,7 +34,7 @@ it("routes only actual playing voice and clears during pause/buffering and stop"
   driver.start(audio, "Haru", source);
   await Promise.resolve();
   tick(0);
-  expect(listener).toHaveBeenLastCalledWith("Haru", expect.any(Number));
+  expect(listener).toHaveBeenLastCalledWith("Haru", expect.any(Number), expect.any(Number));
   expect(listener.mock.lastCall![1]).toBeGreaterThan(0);
   audio.dispatchEvent(new Event("waiting"));
   tick(10);
@@ -51,5 +53,20 @@ it("does not create WebAudio for a voice without a character", () => {
   const driver = new VoiceAnalyser(listener);
   driver.start(new Audio(), "", source);
   expect(requestAnimationFrame).not.toHaveBeenCalled();
+  driver.stop();
+});
+
+it("reports a syllable gap immediately while retaining the model mouth's smooth decay", async () => {
+  const listener = vi.fn();
+  const driver = new VoiceAnalyser(listener);
+  const audio = new Audio();
+  Object.defineProperty(audio, "paused", { value: false });
+  driver.start(audio, "Haru", source);
+  await Promise.resolve();
+  tick(0);
+  amplitude = 0;
+  tick(16);
+  expect(listener.mock.lastCall![1]).toBeGreaterThan(0);
+  expect(listener.mock.lastCall![2]).toBe(0);
   driver.stop();
 });

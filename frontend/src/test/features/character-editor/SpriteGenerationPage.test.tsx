@@ -86,6 +86,37 @@ async function drawAll() {
 }
 
 describe("sprite generator", () => {
+  it("generates a speaking clip from a saved video and saves it as a binding instead of replacing the original", async () => {
+    const { imported } = mount();
+    fireEvent.click(screen.getByRole("tab", { name: "Animated sprites" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Speaking · 56 frames" }));
+    expect(screen.queryByRole("tab", { name: "Upload one" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("checkbox", { name: /Sprite 2/i }));
+    animate.mockResolvedValueOnce({
+      name: "Mika",
+      path: "talk.webm",
+      taskId: "talk",
+      prompt: "speak softly",
+      tagging: "平静，站立",
+      animation: true,
+      animationMode: "speaking",
+      sourceSpritePath: "animated.mp4",
+      alphaVerified: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Generate transparent animation" }));
+    await waitFor(() =>
+      expect(animate).toHaveBeenCalledWith(
+        expect.objectContaining({ animationMode: "speaking", referenceImage: "animated.mp4", playbackSpeed: 1 }),
+        expect.anything(),
+      ),
+    );
+    const saveButton = await screen.findByRole("button", { name: "Save speaking sprites (1)" });
+    expect(saveButton).toBeEnabled();
+    expect(screen.queryByRole("button", { name: /Replace original/ })).not.toBeInTheDocument();
+    fireEvent.click(saveButton);
+    await waitFor(() => expect(imported).toHaveBeenCalled());
+    expect(save).toHaveBeenCalledWith({ name: "Mika", items: [{ taskId: "talk", tagging: "平静，站立" }] });
+  });
   beforeEach(() => {
     setSpriteTransitionPlaybackRate(1);
     vi.clearAllMocks();

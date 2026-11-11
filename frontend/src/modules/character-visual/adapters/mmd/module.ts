@@ -321,7 +321,7 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
         }
       },
       notifySpeechEvent(event) {
-        cueBlink(event === "started" ? "reply-start" : "sentence-end");
+        if (event !== "interrupted") cueBlink(event === "started" ? "reply-start" : "sentence-end");
       },
       resize,
       dispose,

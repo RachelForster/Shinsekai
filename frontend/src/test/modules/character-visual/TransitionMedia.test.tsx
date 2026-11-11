@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { TransitionMedia } from "../../../modules/character-visual/TransitionMedia";
 import { setSpriteTransitionPlaybackRate } from "../../../shared/assets/useSpriteTransitionPlaybackRate";
+import { routeAvatarSpeechEvent, routeAvatarVoice } from "../../../modules/character-visual/voiceRoute";
 
 beforeEach(() => {
   setSpriteTransitionPlaybackRate(1);
@@ -13,6 +14,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  routeAvatarSpeechEvent("Mika", "finished");
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.useRealTimers();
@@ -27,6 +29,29 @@ function decoded(element: HTMLImageElement | HTMLVideoElement) {
 function opacityEnded(element: Element) {
   fireEvent(element, Object.assign(new Event("transitionend", { bubbles: true }), { propertyName: "opacity" }));
 }
+
+it("retains the outgoing speaking surface until the expression fade is fully transparent", () => {
+  const view = render(
+    <TransitionMedia src="a.png" speakingSrc="a-talk.webm" voiceCharacterName="Mika" alt="Mika" enabled />,
+  );
+  decoded(view.container.querySelector("img")!);
+  const outgoingTalk = view.container.querySelector<HTMLVideoElement>('[src="a-talk.webm"]')!;
+  decoded(outgoingTalk);
+  act(() => {
+    routeAvatarSpeechEvent("Mika", "started");
+    routeAvatarVoice("Mika", 0.6);
+  });
+  expect(outgoingTalk.style.opacity).toBe("1");
+  view.rerender(<TransitionMedia src="b.png" speakingSrc="b-talk.webm" voiceCharacterName="Mika" alt="Mika" enabled />);
+  expect(view.container.querySelector('[src="a-talk.webm"]')).toBe(outgoingTalk);
+  expect(outgoingTalk.style.opacity).toBe("1");
+  decoded(view.container.querySelector<HTMLImageElement>('[src="b.png"]')!);
+  const content = view.container.querySelector(".character-visual__transition-content")!;
+  expect(content).toHaveAttribute("data-fade-phase", "out");
+  expect(outgoingTalk).toBeInTheDocument();
+  opacityEnded(content);
+  expect(outgoingTalk).not.toBeInTheDocument();
+});
 
 it.each([
   ["a.png", "b.png"],

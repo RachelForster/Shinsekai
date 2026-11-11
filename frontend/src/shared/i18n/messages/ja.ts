@@ -213,6 +213,19 @@ export const jaMessages: Record<MessageKey, string> = {
   "spriteAnimation.staticTab": "静止立ち絵",
   "spriteAnimation.animationTab": "動く立ち絵",
   "spriteAnimation.settings": "参照立ち絵と小さな動き",
+  "spriteAnimation.kind": "アニメーションの種類",
+  "spriteAnimation.idle": "待機 · 73 フレーム",
+  "spriteAnimation.speaking": "会話 · 56 フレーム",
+  "spriteAnimation.idleHint":
+    "元の口の形を保つ73フレームの穏やかなループ。標準速度で約4.1秒。既存の動画は維持されます。",
+  "spriteAnimation.speakingHint":
+    "保存済みの立ち絵の最初のフレームから56フレームの会話ループを生成します。短い無音で一時停止し、発話終了後は待機に戻ります。",
+  "spriteAnimation.speakingCameraHint":
+    "短いフレーズに合わせて口の形を変え、頭・胴体・腕・毛先をわずかに動かします。カメラ・立ち姿・首の比率・手の形・目の状態は保ちます。",
+  "spriteAnimation.speakingSaveHint": "元の立ち絵とタグを保ち、会話動画を紐付けます。再保存で紐付けを更新します。",
+  "spriteAnimation.saveSpeaking": "会話立ち絵を保存（{count}）",
+  "spriteAnimation.speakingSprite": "会話立ち絵 {n}",
+  "spriteAnimation.hasSpeaking": "会話動画あり",
   "spriteAnimation.reference": "参照画像・動画（必須）",
   "spriteAnimation.breathing": "体の微かな揺れ",
   "spriteAnimation.blinking": "自然なまばたき",

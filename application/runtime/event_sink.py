@@ -246,6 +246,10 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
                 next_sprite[axis] = event.get(axis)
         if event.get("identityKey"):
             next_sprite["identityKey"] = str(event["identityKey"])
+        if event.get("speakingUrl"):
+            next_sprite["speakingUrl"] = str(event["speakingUrl"])
+            if isinstance(event.get("speakingPresentation"), dict):
+                next_sprite["speakingPresentation"] = dict(event["speakingPresentation"])
         current.append(next_sprite)
         next_snapshot["sprites"] = current
         return next_snapshot

@@ -1,4 +1,4 @@
-"""Build restrained idle motion without inventing character appearance."""
+"""Generate and process idle and speaking sprite animations."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from application.characters.sprite.generate_sprites import (
     SPRITE_REFERENCE_FRAMING_SUFFIX,
     _approve_sprite_media,
     _local_file_access_roots,
+    _speaking_target,
     boundary_frame,
     matting_options,
     prompt_pair,
@@ -20,8 +21,17 @@ from application.runtime.tasks import _update_task
 from sdk.path_utils import safe_existing_file_path
 
 
+def animation_mode(payload):
+    mode = payload.get("animationMode", "idle")
+    if mode not in ("idle", "speaking"):
+        raise ValueError("动态立绘类型须为 idle 或 speaking")
+    return mode
+
+
 def animation_speed(payload):
-    speed = payload.get("playbackSpeed", 0.75)
+    speed = payload.get(
+        "playbackSpeed", 1 if animation_mode(payload) == "speaking" else 0.75
+    )
     if (
         isinstance(speed, bool)
         or not isinstance(speed, (int, float))
@@ -32,6 +42,7 @@ def animation_speed(payload):
 
 
 def animation_prompt(payload):
+    speaking = animation_mode(payload) == "speaking"
     animation_speed(payload)
     loop = payload.get("loop", True)
     if not isinstance(loop, bool):
@@ -49,10 +60,19 @@ def animation_prompt(payload):
             # Keep the legacy key so saved queues and redraw settings remain compatible.
             "breathing",
             True,
-            "let the body and relaxed limbs sway very slightly and slowly as one "
-            "coordinated motion over the whole shot, keeping the feet planted and "
-            "retaining the original hand gesture; let the hair sway very gently with "
-            "a soft delay; use smooth, gradual easing and a tiny range of motion",
+            (
+                "let small, graceful head tilts and a slight upper-torso shift gently "
+                "accent a few spoken syllables, then softly settle between phrases; "
+                "let the relaxed forearms and wrists follow these accents very slightly "
+                "while retaining the original hand gesture and hand positions; "
+                "let the hair tips follow the body with a soft delay; use varied, "
+                "unhurried timing rather than repetitive nodding or constant swaying"
+                if speaking else
+                "let the body and relaxed limbs sway very slightly and slowly as one "
+                "coordinated motion over the whole shot, keeping the feet planted and "
+                "retaining the original hand gesture; let the hair sway very gently with "
+                "a soft delay; use smooth, gradual easing and a tiny range of motion"
+            ),
         ),
         (
             "blinking",
@@ -62,7 +82,11 @@ def animation_prompt(payload):
             "eye shape and gaze, with a long pause between movements; if either eye "
             "is closed, winking, squinting, stylized or obscured in the reference, "
             "keep both eyes exactly as depicted for the whole shot without blinking "
-            "or opening them; preserve the original head tilt and facial expression",
+            "or opening them; "
+            + (
+                "retain the reference eye style and emotional expression"
+                if speaking else "preserve the original head tilt and facial expression"
+            ),
         ),
         (
             "breeze",
@@ -80,6 +104,37 @@ def animation_prompt(payload):
         raise ValueError("补充动作应为 2000 字符内的文本")
     if custom.strip():
         motions.append(custom.strip())
+    if speaking:
+        # Lead with articulation. Idle's rigid chin/neck distances suppress jaw motion.
+        prompt = (
+            "make the character visibly speak in two short, natural conversational phrases; "
+            "articulate several changing syllables in each phrase with clearly readable, "
+            "moderate lip and jaw movements, varying between gently parted, open, softly "
+            "rounded and briefly closed mouth shapes; vary the timing and opening size "
+            "with gentle accents on a few syllables, soften the end of each phrase and "
+            "briefly close the lips between phrases, without chewing, a sustained open "
+            "mouth or exaggerated mouth opening; preserve the reference emotion, with "
+            "small expression-consistent facial accents; keep the original standing "
+            "stance, foot placement and hand gesture; preserve the original neck length "
+            "and keep the shoulders relaxed at their reference resting height, without "
+            "shrugging, vertical head bobbing or neck compression; "
+            + (
+                "preserve the reference eye shape, eyelid position and gaze throughout, "
+                "without blinking or opening closed eyes; "
+                if not payload.get("blinking", True) else ""
+            )
+            + "; ".join(motions)
+            + "; use a poised, small range of motion, a single continuous shot, steady "
+            "lighting and a stationary background"
+            + (
+                "; let the final phrase settle smoothly into the reference mouth at rest "
+                "for a seamless conversational loop"
+                if loop else ""
+            )
+            + SPRITE_REFERENCE_FRAMING_SUFFIX
+            + SPRITE_CAMERA_SUFFIX
+        )
+        return prompt_pair({"prompt": prompt, "tagging": payload.get("tagging", "平静，站立")})
     if not motions:
         raise ValueError("请至少选择一种轻微动作")
     action = "; ".join(motions)
@@ -98,6 +153,7 @@ def animation_prompt(payload):
                 if not payload.get("blinking", True)
                 else ""
             )
+            + "keep the reference mouth shape still without speaking; "
             + action
             + "; keep the feet and body center rooted in place with tiny, slow, flowing motion only, "
             "a single continuous shot, steady lighting and a stationary background"
@@ -128,6 +184,7 @@ def render_animation(config_store, payload, output, reference):
         **result,
         "path": result["videoPath"],
         "animation": True,
+        "animationMode": animation_mode(payload),
         "alphaVerified": False,
         "playbackSpeed": animation_speed(payload),
     }
@@ -232,10 +289,14 @@ def run_sprite_animation(
 ):
     animation_prompt(payload)
     name = str(payload.get("name") or "").strip()
-    if not state.config_manager.get_character_by_name(name):
+    character = state.config_manager.get_character_by_name(name)
+    if not character:
         raise ValueError("请先保存角色再生成动态立绘")
     if not payload.get("referenceImage"):
         raise ValueError("请先选择参考立绘或视频")
+    source_path = None
+    if animation_mode(payload) == "speaking":
+        _, source_path = _speaking_target(character, payload["referenceImage"])
     reference = safe_existing_file_path(
         str(payload["referenceImage"]),
         roots=_resolve_file_access_roots(state, file_access_roots),
@@ -257,13 +318,19 @@ def run_sprite_animation(
     _update_task(
         state,
         task_id,
-        message="正在用 H3 生成固定镜头的轻微动态。",
+        message=(
+            "正在用 H3 生成 56 帧固定镜头的说话立绘。"
+            if source_path
+            else "正在用 H3 生成 73 帧固定镜头的待机立绘。"
+        ),
         phase="generate",
         progress=0.1,
     )
     result = render_animation(
         state.config_manager, {**payload, "name": name}, output, reference
     )
+    if source_path:
+        result.update(animationMode="speaking", sourceSpritePath=source_path)
     return _finish_animation(state, task_id, result)
 
 

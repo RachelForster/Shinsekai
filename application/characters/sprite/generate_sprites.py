@@ -10,12 +10,18 @@ from types import SimpleNamespace
 from typing import Any, Iterable
 
 from application.characters.generate_briefs import chat_character_text
-from application.characters.sprite.h3_idle_workflow import stabilize_idle_workflow
+from application.characters.sprite.h3_idle_workflow import (
+    ANIMATION_FPS,
+    IDLE_FRAME_COUNT,
+    SPEAKING_FRAME_COUNT,
+    stabilize_idle_workflow,
+)
 from application.media.resource_paths import MediaResourcePaths
 from application.media.sprite_tags import SPRITE_TAG_INSTRUCTIONS
 from application.runtime.state import _jsonify
 from application.runtime.tasks import _update_task
 from core.media.asset_tags import normalize_generated_tags
+from core.sprite.selection import sprite_entry_path
 from sdk.path_utils import safe_existing_file_path
 
 
@@ -271,8 +277,17 @@ def render_sprite(
                         node["inputs"]["fps"] = 24
             if stabilize_pose:
                 adapter.workflow_template = stabilize_idle_workflow(
-                    adapter.workflow_template
+                    adapter.workflow_template,
+                    frame_count=(
+                        SPEAKING_FRAME_COUNT
+                        if payload.get("animationMode") == "speaking"
+                        else IDLE_FRAME_COUNT
+                    ),
+                    anchor_pose=payload.get("animationMode") != "speaking",
                 )
+                for node in adapter.workflow_template.values():
+                    if node.get("class_type") == "CreateVideo":
+                        node["inputs"]["fps"] = ANIMATION_FPS
             from core.media.chroma_key import choose_screen_color
 
             matting = (
@@ -617,6 +632,17 @@ def run_sprite_cutout(state, task_id, payload):
     )
 
 
+def _speaking_target(character, source):
+    matches = [
+        (index, source)
+        for index, sprite in enumerate(character.sprites)
+        if source and sprite_entry_path(sprite) == source
+    ]
+    if len(matches) != 1:
+        raise ValueError("原立绘已改变或尚未保存，请重新选择角色中已保存的立绘")
+    return matches[0]
+
+
 def import_generated_sprites(state, payload):
     from application.characters.sprite.animate_sprites import verify_transparent_animation
 
@@ -639,6 +665,7 @@ def import_generated_sprites(state, payload):
         if character is None:
             raise ValueError("找不到角色，请先保存角色")
         tasks, tags, files, seen = [], [], [], set()
+        speaking_modes = set()
         replacements = []
         replace_items = any(
             isinstance(item, dict) and "replace" in item for item in items
@@ -666,6 +693,15 @@ def import_generated_sprites(state, payload):
             result = task.get("result") or {}
             if result.get("imported"):
                 continue
+            speaking = result.get("animationMode") == "speaking"
+            speaking_modes.add(speaking)
+            if len(speaking_modes) > 1:
+                raise ValueError("请分别保存待机立绘和说话立绘")
+            if speaking:
+                index, source = _speaking_target(character, result.get("sourceSpritePath"))
+                if (index, source) in replacements:
+                    raise ValueError("同一原立绘只能选择一个说话结果")
+                target = {"index": index, "path": source}
             path = safe_existing_file_path(
                 result["path"],
                 roots=(Path(state.project_root_dir) / "cache" / "sprite_generation",),
@@ -693,6 +729,7 @@ def import_generated_sprites(state, payload):
                 character.emotion_tags,
                 sprite_tags=tags,
                 **({"replacements": replacements} if replacements else {}),
+                **({"speaking": True} if speaking_modes == {True} else {}),
             )
             for task in tasks:
                 task["result"] = {**task["result"], "imported": True}

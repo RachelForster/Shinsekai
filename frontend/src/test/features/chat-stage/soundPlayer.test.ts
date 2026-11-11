@@ -156,7 +156,8 @@ describe("SoundPlayer", () => {
     ]);
     player.stopVoice();
     audio[1].finish();
-    expect(boundary).toHaveBeenCalledTimes(3);
+    expect(boundary).toHaveBeenCalledTimes(4);
+    expect(boundary).toHaveBeenLastCalledWith("B", "interrupted");
     player.dispose();
   });
   it("retains queued character identity and clears the voice analyser between speakers", async () => {

@@ -353,6 +353,7 @@ class CharacterManager:
         replace_index: Optional[int] = None,
         expected_path: Optional[str] = None,
         replacements: Optional[List[Tuple[int, str]]] = None,
+        speaking: bool = False,
     ) -> Tuple[str, List[str], str]:
         """
         上传立绘文件并更新角色的立绘列表和情绪标签。
@@ -386,6 +387,8 @@ class CharacterManager:
             replacements = [(replace_index, expected_path)]
         if replacements is not None and len(replacements) != len(sprite_files):
             raise ValueError("每张生成结果需要一个替换目标")
+        if speaking and replacements is None:
+            raise ValueError("说话立绘需要绑定到原立绘")
         seen_targets = set()
         for index, path in replacements or []:
             if (
@@ -414,10 +417,15 @@ class CharacterManager:
             new_sprite_data = {"path": dest_path}
             if replacements is not None:
                 original = original_sprites[replacements[i][0]]
+                fields = (
+                    {"speaking_path": dest_path}
+                    if speaking
+                    else {"path": dest_path, "speaking_path": None}
+                )
                 new_sprite_data = (
-                    original.model_copy(update={"path": dest_path})
+                    original.model_copy(update=fields)
                     if isinstance(original, Sprite)
-                    else {**original, "path": dest_path}
+                    else {**original, **fields}
                 )
             new_sprites.append(new_sprite_data)
             
@@ -432,7 +440,9 @@ class CharacterManager:
                 character.sprites[index] = sprite
         if current_emotion_tags and not current_emotion_tags.endswith("\n"):
             current_emotion_tags += "\n"
-        if replacements is not None:
+        if speaking:
+            character.emotion_tags = original_tags
+        elif replacements is not None:
             from sdk.asset_tags import numbered_tags, tag_contents
             tags = tag_contents(original_tags, num_existing_sprites)
             if sprite_tags is not None:

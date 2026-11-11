@@ -9,6 +9,7 @@ import {
 } from "../../shared/assets/spriteTransition";
 import { transitionAdjustment } from "./transitionPresentation";
 import { useSpriteTransitionPlaybackRate } from "../../shared/assets/useSpriteTransitionPlaybackRate";
+import { SpeakingMedia } from "./SpeakingMedia";
 
 interface Playback {
   id: number;
@@ -31,10 +32,16 @@ const FADE_DURATION_MS = 160;
 export function TransitionMedia({
   transitions,
   enabled,
+  speakingSrc,
+  speakingPresentation,
+  voiceCharacterName,
   ...props
 }: VisualMediaProps & {
   transitions?: SpriteTransitionMedia[];
   enabled: boolean;
+  speakingSrc?: string;
+  speakingPresentation?: SpriteTransitionPresentation;
+  voiceCharacterName?: string;
 }) {
   const playbackRate = useSpriteTransitionPlaybackRate();
   const [displayed, setDisplayed] = useState(props.src);
@@ -59,6 +66,9 @@ export function TransitionMedia({
   );
   const incoming = useRef(transitions);
   incoming.current = transitions;
+  const speechSources = useRef(new Map<string, { url: string; presentation?: SpriteTransitionPresentation }>());
+  if (speakingSrc) speechSources.current.set(props.src, { url: speakingSrc, presentation: speakingPresentation });
+  else speechSources.current.delete(props.src);
   const commit = (src: string) => {
     bridge.current = null;
     settled.current = src;
@@ -241,6 +251,7 @@ export function TransitionMedia({
     const retained = new Set([displayed, props.src, clip?.url]);
     for (const src of ready.current) if (!retained.has(src)) ready.current.delete(src);
     for (const src of dimensions.current.keys()) if (!retained.has(src)) dimensions.current.delete(src);
+    for (const src of speechSources.current.keys()) if (!retained.has(src)) speechSources.current.delete(src);
   }, [displayed, props.src, clip?.url]);
 
   useEffect(() => {
@@ -284,6 +295,8 @@ export function TransitionMedia({
       >
         {[...new Set([displayed, props.src])].map((src) => {
           const visible = src === displayed && !showClip;
+          const speech = speechSources.current.get(src);
+          const Media = speech && voiceCharacterName ? SpeakingMedia : VisualMedia;
           return (
             <div
               key={src}
@@ -291,8 +304,12 @@ export function TransitionMedia({
               style={{ opacity: visible ? 1 : 0 }}
               aria-hidden={!visible}
             >
-              <VisualMedia
+              <Media
+                key={`${src}:${speech?.url ?? ""}`}
                 {...props}
+                speakingSrc={speech?.url ?? ""}
+                speakingPresentation={speech?.presentation}
+                voiceCharacterName={voiceCharacterName ?? ""}
                 src={src}
                 alt={visible ? props.alt : ""}
                 className="character-visual__static-image"

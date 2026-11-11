@@ -51,6 +51,7 @@ class Sprite(BaseModel):
     voice_text: Optional[str] = Field(None, description="语音对应的文本内容 (可选, 存在于某些条目中)")
     voice_type: Optional[str] = Field(None, description="语音类型: fallback、preset 或 reference")
     portrait_crop: Optional[PortraitCrop] = None
+    speaking_path: Optional[FilePath] = Field(None, description="对应的透明说话立绘视频")
 
 class ModelSprites(BaseModel):
     """一个模型形象格式（如 l2d / vrm）的模型路径与它自己的资源列表、标签。

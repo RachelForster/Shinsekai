@@ -201,6 +201,18 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "spriteAnimation.staticTab": "静态立绘",
   "spriteAnimation.animationTab": "动态立绘",
   "spriteAnimation.settings": "参考立绘与轻微动作",
+  "spriteAnimation.kind": "动态类型",
+  "spriteAnimation.idle": "待机版 · 73 帧",
+  "spriteAnimation.speaking": "说话版 · 56 帧",
+  "spriteAnimation.idleHint": "73 帧舒缓循环，默认速度约 4.1 秒，保留原嘴形。已有视频不变。",
+  "spriteAnimation.speakingHint":
+    "选择已保存的立绘，取首帧生成 56 帧说话循环。语音中短暂停顿时暂停视频，整句结束后恢复待机。",
+  "spriteAnimation.speakingCameraHint":
+    "嘴形按短句连续变化，头部、躯干、手臂和发梢轻微配合重音；保持镜头、站姿和肩颈比例，保留原手势与眼睛状态。",
+  "spriteAnimation.speakingSaveHint": "说话版绑定到来源立绘，保留原立绘和标签；再次保存会更新绑定。",
+  "spriteAnimation.saveSpeaking": "保存为说话立绘（{count}）",
+  "spriteAnimation.speakingSprite": "说话立绘 {n}",
+  "spriteAnimation.hasSpeaking": "已绑定说话版",
   "spriteAnimation.reference": "参考立绘／视频（必选）",
   "spriteAnimation.breathing": "身体微动",
   "spriteAnimation.blinking": "自然眨眼",

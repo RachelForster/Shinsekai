@@ -8,6 +8,7 @@ export interface SpriteAnimationSource {
   tagging: string;
   origin: "existing" | "generated";
   index: number;
+  hasSpeaking?: boolean;
 }
 
 export function spriteAnimationSources(character: Character, candidates: SpriteCandidate[]): SpriteAnimationSource[] {
@@ -34,6 +35,7 @@ export function spriteAnimationSources(character: Character, candidates: SpriteC
               referenceImage: sprite.path,
               tagging: tags[index],
               origin: "existing" as const,
+              hasSpeaking: Boolean(sprite.speaking_path),
               index,
             },
           ]

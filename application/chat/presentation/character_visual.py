@@ -26,6 +26,8 @@ class CharacterVisual:
     scale: float
     identity_key: str = ""
     transitions: tuple[dict[str, Any], ...] = ()
+    speaking_url: str = ""
+    speaking_presentation: dict[str, Any] | None = None
 
     def event_fields(self) -> dict[str, Any]:
         return {
@@ -35,6 +37,8 @@ class CharacterVisual:
             "scale": self.scale,
             "identityKey": self.identity_key,
             **({"transitions": list(self.transitions)} if self.transitions else {}),
+            **({"speakingUrl": self.speaking_url} if self.speaking_url else {}),
+            **({"speakingPresentation": self.speaking_presentation} if self.speaking_presentation else {}),
         }
 
     def snapshot_fields(self) -> dict[str, Any]:
@@ -91,6 +95,17 @@ def resolve_character_visual(
         if kind == "static"
         else ()
     )
+    speaking_path = field(assets.sprites[index], "speaking_path") if kind == "static" else ""
+    speaking_url = ""
+    speaking_presentation = None
+    if (
+        speaking_path
+        and str(speaking_path).lower().endswith(".webm")
+        and resolve_runtime_path(str(speaking_path)).is_file()
+    ):
+        speaking_url = urls.media_url(str(speaking_path))
+        speaking_presentation = transition_presentation(path, str(speaking_path), path)
     return CharacterVisual(
-        url, kind, model_url, float(scale or 1.0), identity_key, transitions
+        url, kind, model_url, float(scale or 1.0), identity_key, transitions,
+        speaking_url, speaking_presentation,
     )

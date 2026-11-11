@@ -1,12 +1,12 @@
 import type { ComponentType } from "react";
-import type { SpriteTransitionMedia } from "../../shared/assets/spriteTransition";
+import type { SpriteTransitionMedia, SpriteTransitionPresentation } from "../../shared/assets/spriteTransition";
 
 /** 状态应用模式：play 播放动作、restore 恢复快照、edit 编辑预览。 */
 export type ApplyMode = "play" | "restore" | "edit";
 
 /** Transient conversation cues, independent of saved poses or avatar format. */
 export type AvatarAttention = "idle" | "thinking" | "responding";
-export type AvatarSpeechEvent = "started" | "finished";
+export type AvatarSpeechEvent = "started" | "finished" | "interrupted";
 
 /** 一个格式对共享层声明的能力；共享层据此降级而不是按格式名假设。 */
 export interface AvatarCapabilities {
@@ -78,6 +78,8 @@ export interface AvatarFormat<S, C> {
 
 /** 舞台 / 预览交给 CharacterVisual 的资源引用，与具体格式无关。 */
 export interface CharacterVisualAsset {
+  speakingUrl?: string;
+  speakingPresentation?: SpriteTransitionPresentation;
   transitions?: SpriteTransitionMedia[];
   id: string;
   label: string;

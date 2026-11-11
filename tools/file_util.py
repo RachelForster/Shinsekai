@@ -216,6 +216,10 @@ def export_character(character_configs: list[CharacterConfig], output_path: str,
                     )
                 else:
                     sprite_data['path'] = ""
+                if sprite_data.get('speaking_path'):
+                    sprite_data['speaking_path'] = _safe_package_basename_or_legacy_absolute(
+                        sprite_data['speaking_path'], "speaking sprite path"
+                    )
                 if sprite_data.get('voice_path'):
                     sprite_data['voice_path'] = _safe_package_basename_or_legacy_absolute(
                         sprite_data['voice_path'], "voice_path"
@@ -400,6 +404,16 @@ def import_character(input_path: str) -> list[CharacterConfig]:
         for char_data in yaml_data:
             prefix = _safe_package_name(char_data.get('sprite_prefix', ''), "sprite_prefix")
             package_root = temp_dir / 'sprites' / prefix
+            for sprite in char_data.get('sprites') or []:
+                if isinstance(sprite, dict) and sprite.get('speaking_path'):
+                    filename = _safe_package_basename_or_legacy_absolute(
+                        sprite['speaking_path'], 'speaking sprite path'
+                    )
+                    if Path(filename).suffix.lower() != '.webm':
+                        raise ValueError('Speaking sprites must be transparent WebM videos')
+                    clip = safe_existing_file_path(filename, roots=[package_root])
+                    from core.media.alpha_video import verify_alpha_video
+                    verify_alpha_video(clip)
             for edge in char_data.get('sprite_transitions') or []:
                 relative = _safe_package_relpath(edge['path'], 'transition clip')
                 if relative.parts[0] != 'transitions' or relative.suffix.lower() != '.webm':
@@ -491,6 +505,11 @@ def import_character(input_path: str) -> list[CharacterConfig]:
                             s['path'] = new_path.as_posix()
                     else:
                         s['path'] = filename
+                    if s.get('speaking_path'):
+                        speaking_filename = _safe_package_basename_or_legacy_absolute(
+                            s['speaking_path'], "speaking sprite path"
+                        )
+                        s['speaking_path'] = (dest_sprite_dir / speaking_filename).as_posix() if new_sprite_prefix else speaking_filename
 
             if new_sprite_prefix:
                 # 恢复语音文件（使用新的sprite_prefix）

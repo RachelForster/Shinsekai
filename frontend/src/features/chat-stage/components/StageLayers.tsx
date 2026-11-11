@@ -152,6 +152,8 @@ export function SpriteLayer({
                 id: sprite.id,
                 label: sprite.label,
                 url: stageAssetUrl(sprite.path),
+                speakingUrl: sprite.speakingUrl ? stageAssetUrl(sprite.speakingUrl) : undefined,
+                speakingPresentation: sprite.speakingPresentation,
                 avatarType: sprite.avatarType ?? "static",
                 modelUrl: sprite.modelUrl ? stageAssetUrl(sprite.modelUrl) : "",
                 transitions: sprite.transitions?.map((edge) => ({

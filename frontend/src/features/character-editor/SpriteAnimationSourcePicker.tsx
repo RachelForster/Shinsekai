@@ -94,6 +94,9 @@ export function SpriteAnimationSourcePicker({
                 </span>
               </div>
               <strong>{label}</strong>
+              {source.hasSpeaking ? (
+                <span className="sprite-generation__badge">{t("spriteAnimation.hasSpeaking")}</span>
+              ) : null}
               <span>{source.tagging || untaggedLabel || t("spriteAnimation.untaggedSource")}</span>
             </label>
           );

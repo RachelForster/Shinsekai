@@ -224,6 +224,20 @@ export const enMessages: Record<MessageKey, string> = {
   "spriteAnimation.staticTab": "Static sprites",
   "spriteAnimation.animationTab": "Animated sprites",
   "spriteAnimation.settings": "Source sprite & idle motion",
+  "spriteAnimation.kind": "Animation type",
+  "spriteAnimation.idle": "Idle · 73 frames",
+  "spriteAnimation.speaking": "Speaking · 56 frames",
+  "spriteAnimation.idleHint":
+    "A gentle 73-frame idle loop, about 4.1 seconds at the default speed, with the reference mouth unchanged. Existing videos are kept.",
+  "spriteAnimation.speakingHint":
+    "Choose saved sprites to generate 56-frame speaking loops from their first frames. Short voice pauses freeze the video; speech ending returns to idle.",
+  "spriteAnimation.speakingCameraHint":
+    "Varied syllable shapes with subtle head, torso, arm and hair accents. Preserve the camera, standing pose, neck proportions, hand gesture and reference eye state.",
+  "spriteAnimation.speakingSaveHint":
+    "Bind speaking clips to their source sprites, keeping the originals and tags. Saving again updates the binding.",
+  "spriteAnimation.saveSpeaking": "Save speaking sprites ({count})",
+  "spriteAnimation.speakingSprite": "Speaking sprite {n}",
+  "spriteAnimation.hasSpeaking": "Speaking clip attached",
   "spriteAnimation.reference": "Source image or video (required)",
   "spriteAnimation.breathing": "Gentle body sway",
   "spriteAnimation.blinking": "Natural blinking",

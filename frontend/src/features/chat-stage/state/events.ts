@@ -20,6 +20,8 @@ function upsertSprite(state: ChatStageState, event: Extract<ChatStageEvent, { ty
     avatarType: event.avatarType ?? "static",
     modelUrl: event.modelUrl ?? "",
     transitions: event.transitions,
+    speakingUrl: event.speakingUrl,
+    speakingPresentation: event.speakingPresentation,
     stateSequence: event.seq,
   };
   const sprites = upsertChatStageSprite(state.sprites, nextSprite);

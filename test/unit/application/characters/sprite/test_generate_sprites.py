@@ -968,8 +968,9 @@ def test_animation_requires_h3_service_before_requesting_generation(tmp_path):
         )
 
 
+@pytest.mark.parametrize("mode", ["idle", "speaking"])
 def test_animation_matting_failure_can_retry_without_rerender_and_cannot_be_imported(
-    sprite_state, monkeypatch
+    sprite_state, monkeypatch, mode
 ):
     from application.characters.sprite import animate_sprites
     from core.media import alpha_video
@@ -978,6 +979,8 @@ def test_animation_matting_failure_can_retry_without_rerender_and_cannot_be_impo
     root = Path(state.project_root_dir)
     ref = root / "ref.png"
     Image.new("RGB", (8, 8), "white").save(ref)
+    if mode == "speaking":
+        character.sprites[0]["path"] = str(ref)
     monkeypatch.setattr(animate_sprites, "_local_file_access_roots", lambda _: (root,))
     video = root / "cache" / "sprite_generation" / "source.mp4"
     video.parent.mkdir(parents=True, exist_ok=True)
@@ -1005,7 +1008,12 @@ def test_animation_matting_failure_can_retry_without_rerender_and_cannot_be_impo
     result = animate_sprites.run_sprite_animation(
         state,
         task["id"],
-        {"name": "Mika", "referenceImage": str(ref), "tagging": "平静"},
+        {
+            "name": "Mika",
+            "referenceImage": str(ref),
+            "tagging": "平静",
+            "animationMode": mode,
+        },
     )
     assert result["alphaVerified"] is False
     assert Path(result["path"]) == video
@@ -1050,15 +1058,21 @@ def test_animation_matting_failure_can_retry_without_rerender_and_cannot_be_impo
     saved = bridge.import_generated_sprites(
         state, {"name": "Mika", "items": [{"taskId": retry["id"]}]}
     )
-    assert saved["sprites"][-1]["path"].endswith("-alpha.webm")
+    if mode == "speaking":
+        assert len(saved["sprites"]) == 1
+        assert saved["sprites"][0]["path"] == str(ref)
+        assert Path(saved["sprites"][0]["speaking_path"]).read_bytes() == b"verified alpha"
+    else:
+        assert saved["sprites"][-1]["path"].endswith("-alpha.webm")
     verified.assert_called_once()
 
 
 @pytest.mark.parametrize(
     "custom_prompt", [None, "make the character gently sway one sleeve, fixed camera"]
 )
+@pytest.mark.parametrize("mode,frames", [("idle", 73), ("speaking", 56)])
 def test_h3_animation_anchors_last_frame_to_the_same_reference(
-    tmp_path, monkeypatch, custom_prompt
+    tmp_path, monkeypatch, custom_prompt, mode, frames
 ):
     from ai.t2i.t2i_manager import T2IAdapterFactory
     from application.characters.sprite.animate_sprites import render_animation
@@ -1075,6 +1089,7 @@ def test_h3_animation_anchors_last_frame_to_the_same_reference(
         supports_reference_images=True,
         workflow_template={
             "131": node,
+            "video": {"class_type": "CreateVideo", "inputs": {"fps": 48}},
             "126": {
                 "class_type": "BasicGuider",
                 "inputs": {"conditioning": ["131", 0]},
@@ -1106,6 +1121,7 @@ def test_h3_animation_anchors_last_frame_to_the_same_reference(
         store,
         {
             "name": "Mika",
+            "animationMode": mode,
             "prompt": "idle",
             "tagging": "平静",
             **({"customPrompt": custom_prompt} if custom_prompt else {}),
@@ -1116,7 +1132,9 @@ def test_h3_animation_anchors_last_frame_to_the_same_reference(
     assert node["inputs"]["last_frame"] == node["inputs"]["first_frame"]
     assert Path(result["videoPath"]) == video
     assert adapter.generate_image.call_args.kwargs.get("h3_static_sprite") is None
-    assert adapter.workflow_template["131"]["inputs"]["length"] == 107
+    assert adapter.workflow_template["131"]["inputs"]["length"] == frames
+    assert adapter.workflow_template["video"]["inputs"]["fps"] == 24
+    assert result["animationMode"] == mode
     if custom_prompt:
         assert adapter.generate_image.call_args.kwargs["prompt"] == custom_prompt
     guides = [
@@ -1124,11 +1142,109 @@ def test_h3_animation_anchors_last_frame_to_the_same_reference(
         for key, item in adapter.workflow_template.items()
         if item["class_type"] == "MiniMaxH3AddGuide"
     ]
-    assert len(guides) == 2
-    assert adapter.workflow_template["126"]["inputs"]["conditioning"] == [
-        guides[-1][0],
-        0,
-    ]
+    assert len(guides) == (0 if mode == "speaking" else 2)
+    assert adapter.workflow_template["126"]["inputs"]["conditioning"] == (
+        [guides[-1][0], 0] if guides else ["131", 0]
+    )
+
+
+def test_speaking_prompt_keeps_reference_pose_and_moves_only_the_mouth_by_default():
+    from application.characters.sprite.animate_sprites import animation_prompt, animation_speed
+
+    payload = {"animationMode": "speaking", "breathing": False, "blinking": False}
+    prompt = animation_prompt(payload)["prompt"]
+    assert "clearly readable, moderate lip and jaw movements" in prompt
+    assert "two short, natural conversational phrases" in prompt
+    assert "vary the timing and opening size" in prompt
+    assert "briefly close the lips between phrases" in prompt
+    assert "vertical head bobbing or neck compression" in prompt
+    assert "reference mouth at rest" in prompt
+    assert "without blinking or opening closed eyes" in prompt
+    assert "original neck length" in prompt and "exact framing" in prompt
+    assert "mouth shape still without speaking" not in prompt
+    assert animation_speed(payload) == 1
+    assert "mouth shape still without speaking" in animation_prompt({})["prompt"]
+
+
+def test_speaking_body_accents_follow_syllables_without_freezing_the_jaw_or_neck():
+    from application.characters.sprite.animate_sprites import animation_prompt
+
+    prompt = animation_prompt({"animationMode": "speaking"})["prompt"]
+    assert prompt.startswith("make the character visibly speak")
+    assert "head tilts and a slight upper-torso shift" in prompt
+    assert "relaxed forearms and wrists" in prompt
+    assert "hair tips follow the body with a soft delay" in prompt
+    assert "rather than repetitive nodding or constant swaying" in prompt
+    assert "reference shoulder line almost motionless" not in prompt
+    assert "chin-to-collar" not in prompt
+    assert "continuous idle rhythm" not in prompt
+    assert "exact framing" in prompt and "locked-off static camera" in prompt
+    assert "only if both eyes are naturally open" in prompt
+    assert "without blinking or opening them" in prompt
+
+
+def test_speaking_import_binds_to_original_without_changing_tags_or_voice(sprite_state, monkeypatch):
+    from core.media import alpha_video
+
+    state, character = sprite_state
+    task_id = completed_sprite(state)
+    original = dict(character.sprites[0])
+    clip = Path(state.tasks[task_id]["result"]["path"]).with_suffix(".webm")
+    clip.write_bytes(b"alpha speaking video")
+    state.tasks[task_id]["result"].update(
+        path=str(clip), animation=True, alphaVerified=True,
+        animationMode="speaking", sourceSpritePath="old.png",
+    )
+    monkeypatch.setattr(alpha_video, "verify_alpha_video", lambda _: 56)
+    payload = {"name": "Mika", "items": [{"taskId": task_id, "tagging": "说话"}]}
+    saved = bridge.import_generated_sprites(state, payload)
+    assert len(saved["sprites"]) == 1
+    assert saved["sprites"][0] == {**original, "speaking_path": saved["sprites"][0]["speaking_path"]}
+    assert Path(saved["sprites"][0]["speaking_path"]).read_bytes() == clip.read_bytes()
+    assert saved["emotion_tags"] == "立绘 1：已有标签"
+    bridge.import_generated_sprites(state, payload)
+    state.config_manager.save_characters_config.assert_called_once()
+
+
+def test_speaking_import_rejects_changed_original_and_retries_failed_save(sprite_state, monkeypatch):
+    from core.media import alpha_video
+
+    state, character = sprite_state
+    task_id = completed_sprite(state)
+    clip = Path(state.tasks[task_id]["result"]["path"]).with_suffix(".webm")
+    clip.write_bytes(b"alpha speaking video")
+    state.tasks[task_id]["result"].update(
+        path=str(clip), animation=True, alphaVerified=True,
+        animationMode="speaking", sourceSpritePath="changed.png",
+    )
+    monkeypatch.setattr(alpha_video, "verify_alpha_video", lambda _: 56)
+    payload = {"name": "Mika", "items": [{"taskId": task_id}]}
+    with pytest.raises(ValueError, match="原立绘已改变"):
+        bridge.import_generated_sprites(state, payload)
+    state.tasks[task_id]["result"]["sourceSpritePath"] = "old.png"
+    original = character.sprites
+    state.config_manager.save_characters_config.side_effect = RuntimeError("disk full")
+    with pytest.raises(RuntimeError, match="disk full"):
+        bridge.import_generated_sprites(state, payload)
+    assert character.sprites is original
+    assert not state.tasks[task_id]["result"].get("imported")
+    state.config_manager.save_characters_config.side_effect = None
+    bridge.import_generated_sprites(state, payload)
+    assert character.sprites[0]["speaking_path"].endswith(".webm")
+
+
+def test_speaking_visual_is_shared_by_events_and_snapshot_and_missing_file_falls_back(tmp_path):
+    from application.chat.presentation.character_visual import resolve_character_visual
+    from application.media.resource_urls import UnconfiguredResourceUrls
+
+    clip = tmp_path / "talk.webm"
+    clip.write_bytes(b"video")
+    character = {"name": "Mika", "sprites": [{"path": "idle.png", "speaking_path": str(clip)}]}
+    visual = resolve_character_visual(character, 0, UnconfiguredResourceUrls())
+    assert visual.event_fields()["speakingUrl"] == str(clip)
+    assert visual.snapshot_fields()["speakingUrl"] == str(clip)
+    clip.unlink()
+    assert "speakingUrl" not in resolve_character_visual(character, 0, UnconfiguredResourceUrls()).event_fields()
 
 
 @pytest.mark.parametrize(

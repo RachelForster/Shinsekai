@@ -50,6 +50,7 @@ export function SpriteAnimationSettings({
   const patch = (next: Partial<CharacterSpriteAnimationInput>) => onChange({ ...value, ...next });
   const selected = sources.filter((source) => selectedSources.includes(source.id));
   const count = sourceMode === "library" ? selected.length : value.referenceImage ? 1 : 0;
+  const speaking = value.animationMode === "speaking";
   const tagged =
     sourceMode === "library"
       ? selected.every((source) => source.tagging.trim() || value.tagging.trim())
@@ -60,16 +61,34 @@ export function SpriteAnimationSettings({
       <h3 className="sprite-generation__section-title">{t("spriteAnimation.settings")}</h3>
       <div className="sprite-generation__settings-fields">
         <SegmentedTabs
-          ariaLabel={t("spriteAnimation.sourceMode")}
-          value={sourceMode}
-          onChange={(mode) => {
-            if (!busy) onSourceModeChange(mode);
+          ariaLabel={t("spriteAnimation.kind")}
+          value={value.animationMode ?? "idle"}
+          onChange={(animationMode) => {
+            if (busy) return;
+            onChange({ ...value, animationMode, playbackSpeed: animationMode === "speaking" ? 1 : 0.75, loop: true });
+            if (animationMode === "speaking") onSourceModeChange("library");
           }}
           items={[
-            { id: "library", label: t("spriteAnimation.library") },
-            { id: "file", label: t("spriteAnimation.uploadSingle") },
+            { id: "idle", label: t("spriteAnimation.idle") },
+            { id: "speaking", label: t("spriteAnimation.speaking") },
           ]}
         />
+        <p className="sprite-generation__hint">
+          {t(speaking ? "spriteAnimation.speakingHint" : "spriteAnimation.idleHint")}
+        </p>
+        {!speaking ? (
+          <SegmentedTabs
+            ariaLabel={t("spriteAnimation.sourceMode")}
+            value={sourceMode}
+            onChange={(mode) => {
+              if (!busy) onSourceModeChange(mode);
+            }}
+            items={[
+              { id: "library", label: t("spriteAnimation.library") },
+              { id: "file", label: t("spriteAnimation.uploadSingle") },
+            ]}
+          />
+        ) : null}
         {sourceMode === "library" ? (
           <p className="sprite-generation__hint">{t("spriteAnimation.libraryHint")}</p>
         ) : (
@@ -115,7 +134,9 @@ export function SpriteAnimationSettings({
             </Switch>
           ))}
         </div>
-        <p className="sprite-generation__hint">{t("spriteAnimation.cameraHint")}</p>
+        <p className="sprite-generation__hint">
+          {t(speaking ? "spriteAnimation.speakingCameraHint" : "spriteAnimation.cameraHint")}
+        </p>
         <SpriteMattingSettings value={value} onChange={patch} disabled={busy} />
         <label className="field-row field-row--stack">
           <span className="field-row__label">{t("spriteAnimation.speed")}</span>
@@ -170,7 +191,7 @@ export function SpriteAnimationSettings({
             !count ||
             count > remaining ||
             !tagged ||
-            !(value.breathing || value.blinking || value.breeze || value.motion.trim())
+            !(speaking || value.breathing || value.blinking || value.breeze || value.motion.trim())
           }
           onClick={onGenerate}
         >

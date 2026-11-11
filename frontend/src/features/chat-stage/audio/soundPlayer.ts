@@ -94,7 +94,7 @@ export class SoundPlayer {
   constructor(
     createAudio: AudioFactory = createStageAudio,
     onMouth?: MouthListener,
-    private readonly onVoiceBoundary?: (characterName: string, state: "started" | "finished") => void,
+    private readonly onVoiceBoundary?: (characterName: string, state: "started" | "finished" | "interrupted") => void,
   ) {
     this.createAudio = createAudio;
     this.analyser = onMouth ? new VoiceAnalyser(onMouth) : null;
@@ -185,6 +185,7 @@ export class SoundPlayer {
       return;
     }
     this.voiceQueue.length = 0;
+    if (this.currentVoice?.started) this.onVoiceBoundary?.(this.currentVoice.characterName, "interrupted");
     this.analyser?.stop();
     this.releaseAudio(this.currentVoice?.audio);
     this.currentVoice = null;
@@ -402,7 +403,7 @@ export class SoundPlayer {
     this.currentVoice = null;
     this.analyser?.stop();
     this.mixer.release(voice.audio);
-    if (state === "finished") this.onVoiceBoundary?.(voice.characterName, "finished");
+    if (voice.started) this.onVoiceBoundary?.(voice.characterName, state === "finished" ? "finished" : "interrupted");
     this.emitVoiceSignal(voice.playbackId, state, error);
     const next = this.voiceQueue.shift();
     if (next) {

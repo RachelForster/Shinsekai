@@ -487,16 +487,20 @@ def test_character_package_round_trip_preserves_transition_endpoints(
     directory.mkdir()
     first, last = directory / "first.png", directory / "last.png"
     for path, color in [(first, "red"), (last, "blue")]:
-        Image.new("RGBA", (32, 32), color).save(path)
+        image = Image.new("RGBA", (32, 32), color)
+        image.paste((0, 0, 0, 0), (0, 0, 8, 32))
+        image.save(path)
     (directory / "transitions").mkdir()
     clip = directory / "transitions/bridge.webm"
     alpha_clip(clip, frames)
+    speaking = directory / "speaking.webm"
+    alpha_clip(speaking, 56)
     config = CharacterConfig.parse_dic(
         {
             "name": "Mika",
             "color": "#fff",
             "sprite_prefix": "mika",
-            "sprites": [{"path": str(first)}, {"path": str(last)}],
+            "sprites": [{"path": str(first), "speaking_path": str(speaking)}, {"path": str(last)}],
             "sprite_transitions": [
                 {
                     "from_path": str(first),
@@ -519,3 +523,11 @@ def test_character_package_round_trip_preserves_transition_endpoints(
     assert edges[0]["from_path"] == restored.sprites[0]["path"]
     assert edges[0]["to_path"] == restored.sprites[1]["path"]
     assert edges[0]["frame_count"] == frames
+    restored_speaking = Path(restored.sprites[0]["speaking_path"])
+    assert restored_speaking.is_relative_to(tmp_path / "destination")
+    from core.media.alpha_video import verify_alpha_video
+    assert verify_alpha_video(restored_speaking) == 56
+    visual = resolve_character_visual(restored, 0, UnconfiguredResourceUrls())
+    assert Path(visual.speaking_url) == restored_speaking
+    assert visual.speaking_presentation["from"]["width"] == 32
+    assert visual.event_fields()["speakingPresentation"] == visual.snapshot_fields()["speakingPresentation"]

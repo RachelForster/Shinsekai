@@ -2,8 +2,12 @@
 
 from copy import deepcopy
 
+IDLE_FRAME_COUNT = 73
+SPEAKING_FRAME_COUNT = 56
+ANIMATION_FPS = 24
 
-def stabilize_idle_workflow(workflow):
+
+def stabilize_idle_workflow(workflow, *, frame_count=None, anchor_pose=True):
     prepared = deepcopy(workflow)
     next_id = max((int(key) for key in prepared if str(key).isdecimal()), default=0) + 1
     for source_id, node in list(prepared.items()):
@@ -21,7 +25,28 @@ def stabilize_idle_workflow(workflow):
         ):
             raise ValueError("H3 稳定待机姿态需要连接 first_frame 参考图与 vae")
         # Native H3 rounds up to 17k + 5 frames. Keep both anchors inside that clip.
-        frame_count = length + (5 - length) % 17
+        original_frames = length + (5 - length) % 17
+        frames = frame_count if frame_count is not None else original_frames
+        if frame_count is not None:
+            inputs["length"] = frames
+            # Preserve custom guide timing relative to the shortened clip.
+            for guide in prepared.values():
+                values = guide.get("inputs", {})
+                if (
+                    guide.get("class_type") == "MiniMaxH3AddGuide"
+                    and values.get("latent") == [source_id, 1]
+                ):
+                    index = values.get("frame_idx")
+                    if isinstance(index, bool) or not isinstance(index, int):
+                        raise ValueError("缩短动态立绘需要工作流中的 frame_idx 为整数")
+                    values["frame_idx"] = round(
+                        max(0, min(index, original_frames - 1))
+                        * (frames - 1) / (original_frames - 1)
+                    )
+        if not anchor_pose:
+            # First/last frames already close the loop. Repeating the still inside
+            # a speaking clip repeatedly shuts the mouth and arrests body accents.
+            continue
         positive = [source_id, 0]
         consumers = [
             (other["inputs"], field)
@@ -32,7 +57,7 @@ def stabilize_idle_workflow(workflow):
         ]
         # Keep the central motion uninterrupted; reinforce the resting pose near the ends.
         frame_indices = sorted(
-            {frame_count // 10, frame_count * 9 // 10} - {0, frame_count - 1}
+            {frames // 10, frames * 9 // 10} - {0, frames - 1}
         )
         for frame_index in frame_indices:
             guide_id = str(next_id)

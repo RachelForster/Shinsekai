@@ -1,5 +1,8 @@
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
-import type { SpriteTransitionMedia as SpriteTransitionAsset } from "../assets/spriteTransition";
+import type {
+  SpriteTransitionMedia as SpriteTransitionAsset,
+  SpriteTransitionPresentation,
+} from "../assets/spriteTransition";
 import type { AgentPlatform } from "./agentTypes";
 import type { ChatThemeManifest, ChatThemeSummary, SaveChatThemeInput } from "../theme/chatTheme";
 
@@ -16,6 +19,7 @@ export interface PlayerPortrait {
 }
 
 export interface Sprite {
+  speaking_path?: string | null;
   portrait_crop?: PortraitCrop | null;
   path: string;
   voice_path?: string;
@@ -1005,6 +1009,8 @@ export interface RuntimeDependencyInstallResult {
 }
 
 export interface ChatSprite {
+  speakingUrl?: string;
+  speakingPresentation?: SpriteTransitionPresentation;
   transitions?: SpriteTransitionMedia[];
   /** Producer-owned identity, independent of display labels, expression URLs and snapshot IDs. */
   identityKey?: string;
@@ -1392,6 +1398,8 @@ export type ChatStageEvent =
   | (ChatEventBase & { type: "plugin.page.dismiss"; pluginId: string; presentationId: string })
   | (ChatEventBase & {
       type: "sprite.show";
+      speakingUrl?: string;
+      speakingPresentation?: SpriteTransitionPresentation;
       transitions?: SpriteTransitionMedia[];
       identityKey?: string;
       characterName: string;
@@ -1526,6 +1534,8 @@ export interface CharacterSpritePlanInput {
 export type H3SpriteResolution = "workflow" | "hd" | "native";
 
 export interface GeneratedCharacterSprite extends SpritePromptPair {
+  animationMode?: "idle" | "speaking";
+  sourceSpritePath?: string;
   name: string;
   path: string;
   taskId: string;
@@ -1560,6 +1570,7 @@ export interface SpriteMattingOptions {
 }
 
 export interface CharacterSpriteAnimationInput extends SpriteMattingOptions {
+  animationMode?: "idle" | "speaking";
   name: string;
   referenceImage: string;
   tagging: string;

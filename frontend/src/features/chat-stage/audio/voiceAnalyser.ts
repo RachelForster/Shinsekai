@@ -1,4 +1,4 @@
-export type MouthListener = (characterName: string, value: number) => void;
+export type MouthListener = (characterName: string, value: number, instantLevel?: number) => void;
 
 /** Only voice passes through this analyser. Silence/transport stalls remove the drive. */
 export class VoiceAnalyser {
@@ -43,7 +43,8 @@ export class VoiceAnalyser {
           const rms = Math.sqrt(samples.reduce((sum, sample) => sum + sample * sample, 0) / samples.length);
           const target = Math.min(1, Math.max(0, (rms - 0.01) * 8)) * audio.volume;
           smooth += (target - smooth) * (target > smooth ? 0.65 : 0.25);
-          this.listener(characterName, smooth);
+          // Keep model-mouth smoothing, but let video cadence see real syllable gaps.
+          this.listener(characterName, smooth, target);
         } else {
           smooth = 0;
           this.listener(characterName, 0);
