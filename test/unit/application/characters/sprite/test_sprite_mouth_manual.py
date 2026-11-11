@@ -5,7 +5,7 @@ from unittest.mock import Mock
 import pytest
 from PIL import Image
 
-from application.characters import mouth_sync
+from application.characters.sprite import mouth_sync
 from core.sprite.transitions import sprite_fingerprint
 
 MANUAL = {"mouthBox": [.4, .35, .6, .48], "chin": [.5, .55]}
@@ -15,7 +15,7 @@ SELECTED = {"closed": 0, "half": 1, "open": 2}
 def test_complete_manual_anchors_do_not_call_or_require_a_detector():
     np = pytest.importorskip("numpy")
     pytest.importorskip("cv2")
-    from core.media.sprite_mouth.detector import detect
+    from core.sprite.mouth.detector import detect
 
     detector = Mock(side_effect=AssertionError("manual placement must not run recognition"))
     prediction = detect(detector, np.zeros((120, 80, 3), dtype=np.uint8), manual=MANUAL)
@@ -28,8 +28,8 @@ def test_manual_pipeline_works_with_no_detectable_face_and_records_frame_timing(
     av = pytest.importorskip("av")
     np = pytest.importorskip("numpy")
     pytest.importorskip("cv2")
-    from core.media.sprite_mouth import worker
-    from core.media.sprite_mouth.manifest import read_manifest
+    from core.sprite.mouth import worker
+    from core.sprite.mouth.manifest import read_manifest
 
     reference = tmp_path / "input.png"
     Image.new("RGB", (80, 120), "white").save(reference)
@@ -61,8 +61,8 @@ def test_manual_preparation_keeps_automatic_face_anchors_separate_from_hand_plac
     np = pytest.importorskip("numpy")
     pytest.importorskip("cv2")
     pytest.importorskip("av")
-    from core.media.sprite_mouth import worker
-    from core.media.sprite_mouth.geometry import manual_prediction
+    from core.sprite.mouth import worker
+    from core.sprite.mouth.geometry import manual_prediction
 
     reference = tmp_path / "input.png"
     Image.new("RGB", (80, 120), "white").save(reference)
@@ -83,8 +83,8 @@ def test_head_motion_ignores_an_unreliable_eye_and_rejects_a_slipped_match():
     np = pytest.importorskip("numpy")
     pytest.importorskip("cv2")
     pytest.importorskip("av")
-    from core.media.sprite_mouth.geometry import transform
-    from core.media.sprite_mouth.tracking import _face_motion
+    from core.sprite.mouth.geometry import transform
+    from core.sprite.mouth.tracking import _face_motion
 
     anchors = np.array([[30., 30.], [90., 30.], [60., 45.]])
     truth = np.array([[.99, .08, -1.], [-.08, .99, 7.]])
@@ -102,8 +102,8 @@ def test_dynamic_mouth_follows_the_nose_when_eyelids_move(monkeypatch, eye_score
     np = pytest.importorskip("numpy")
     pytest.importorskip("cv2")
     pytest.importorskip("av")
-    from core.media.sprite_mouth import tracking
-    from core.media.sprite_mouth.geometry import transform
+    from core.sprite.mouth import tracking
+    from core.sprite.mouth.geometry import transform
 
     points = np.zeros((28, 3))
     points[11:17] = [30, 30, 1]
@@ -134,8 +134,8 @@ def test_dynamic_mouth_follows_the_nose_when_eyelids_move(monkeypatch, eye_score
 def test_applying_frames_does_not_require_landmarks_in_unselected_frames(tmp_path, monkeypatch):
     np = pytest.importorskip("numpy")
     pytest.importorskip("cv2")
-    from core.media.sprite_mouth import extraction
-    from core.media.sprite_mouth.geometry import manual_prediction
+    from core.sprite.mouth import extraction
+    from core.sprite.mouth.geometry import manual_prediction
 
     prediction = manual_prediction(MANUAL, 80, 120)
     images = [np.full((120, 80, 3), index, dtype=np.uint8) for index in range(5)]

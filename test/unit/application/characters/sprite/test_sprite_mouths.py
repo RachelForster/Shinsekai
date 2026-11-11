@@ -7,13 +7,13 @@ from unittest.mock import Mock
 import pytest
 from PIL import Image
 
-from application.characters.mouth_sync import build_bundle, mouth_frame_count, validate_manual
+from application.characters.sprite.mouth_sync import build_bundle, mouth_frame_count, validate_manual
 from application.runtime.tasks import _create_task, _update_task
 from config.character_manager import CharacterManager
 from config.schema import Character
-from core.media.sprite_mouth.manifest import correction, read_manifest, valid_mouth_sync
+from core.sprite.mouth.manifest import correction, read_manifest, valid_mouth_sync
 from core.sprite.transitions import sprite_fingerprint
-from frontend_bridge_core import sprite_mouth as bridge
+from application.characters.sprite import mouth_sync as bridge
 
 
 def bundle(directory, source):
@@ -205,14 +205,14 @@ def test_manual_coordinates_are_checked_before_worker(value):
 
 def test_closed_only_video_is_not_mislabeled_as_three_mouth_states():
     pytest.importorskip("cv2")
-    from core.media.sprite_mouth.extraction import choose_frames
+    from core.sprite.mouth.extraction import choose_frames
     with pytest.raises(ValueError, match="开合|幅度"):
         choose_frames([.01, .012, .015, .02, .025], [1] * 5)
 
 
 def test_mouth_selection_uses_openness_instead_of_frame_order():
     pytest.importorskip("cv2")
-    from core.media.sprite_mouth.extraction import choose_frames
+    from core.sprite.mouth.extraction import choose_frames
     ratios = [.9, .01, .45, .91, .02, .43]
     selected = choose_frames(ratios, [1] * len(ratios))
     assert ratios[selected["closed"]] < .1
@@ -222,14 +222,14 @@ def test_mouth_selection_uses_openness_instead_of_frame_order():
 
 def test_mouth_selection_keeps_original_indices_when_some_frames_are_unreliable():
     pytest.importorskip("cv2")
-    from core.media.sprite_mouth.extraction import choose_frames
+    from core.sprite.mouth.extraction import choose_frames
     assert choose_frames([None, .03, None, .42, .83, None], [.9] * 6) == {"closed": 1, "half": 3, "open": 4}
 
 
 def test_auto_mouth_extraction_skips_frames_crossing_the_nose_or_chin(tmp_path, monkeypatch):
     np = pytest.importorskip("numpy")
     pytest.importorskip("cv2")
-    from core.media.sprite_mouth import extraction
+    from core.sprite.mouth import extraction
 
     points = np.ones((28, 3), dtype=np.float32)
     points[11:17, :2], points[17:23, :2] = [37, 30], [83, 30]
@@ -260,7 +260,7 @@ def test_auto_mouth_extraction_skips_frames_crossing_the_nose_or_chin(tmp_path, 
 
 def test_short_clip_keeps_transition_pose_when_wide_mouth_is_held_longer():
     pytest.importorskip("cv2")
-    from core.media.sprite_mouth.extraction import choose_frames
+    from core.sprite.mouth.extraction import choose_frames
     ratios = [.006] * 4 + [.637, .819, .865, .915, .947, .906] + [.858] * 10 + [.756, .006]
     selected = choose_frames(ratios, [1] * len(ratios))
     assert ratios[selected["closed"]] < .01
@@ -341,7 +341,7 @@ def test_mouth_bundle_survives_character_export_and_import(tmp_path, monkeypatch
 @pytest.mark.parametrize("frame_count", [5, 22, 39])
 def test_mouth_render_requests_selected_frames_and_reuses_first_reference_as_last(tmp_path, monkeypatch, frame_count):
     from ai.t2i.t2i_manager import T2IAdapterFactory, T2IManager
-    from application.characters.generate_sprites import render_sprite
+    from application.characters.sprite.generate_sprites import render_sprite
 
     video = tmp_path / "generated.mp4"
     video.write_bytes(b"video")
@@ -369,7 +369,7 @@ def test_mouth_frame_count_rejects_invalid_choices(value):
 
 @pytest.mark.parametrize("options, expected", [({}, 22), ({"frameCount": 5}, 5), ({"frameCount": 39}, 39), ({"includeBlink": True}, 22)])
 def test_bundle_passes_selected_length_to_generator(tmp_path, monkeypatch, options, expected):
-    from application.characters import mouth_sync
+    from application.characters.sprite import mouth_sync
 
     source = tmp_path / "reference.png"
     Image.new("RGB", (80, 120), "pink").save(source)

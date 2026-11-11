@@ -23,10 +23,10 @@ def emit(kind, **data):
 def prepare(request, detector):
     import numpy as np
     from PIL import Image
-    from core.media.sprite_mouth.detector import detect
-    from core.media.sprite_mouth.frames import reference_image
-    from core.media.sprite_mouth.geometry import bounded_box, stable_confidences
-    from core.media.sprite_mouth.manifest import suggested_mouth_box
+    from core.sprite.mouth.detector import detect
+    from core.sprite.mouth.frames import reference_image
+    from core.sprite.mouth.geometry import bounded_box, stable_confidences
+    from core.sprite.mouth.manifest import suggested_mouth_box
 
     output = Path(request["output"])
     output.mkdir(parents=True, exist_ok=True)
@@ -62,10 +62,10 @@ def prepare(request, detector):
 
 def analyze(request, detector, device):
     import numpy as np
-    from core.media.sprite_mouth.extraction import extract
-    from core.media.sprite_mouth.frames import reference_image, mouth_frames
-    from core.media.sprite_mouth.manifest import correction, read_manifest
-    from core.media.sprite_mouth.tracking import track
+    from core.sprite.mouth.extraction import extract
+    from core.sprite.mouth.frames import reference_image, mouth_frames
+    from core.sprite.mouth.manifest import correction, read_manifest
+    from core.sprite.mouth.tracking import track
 
     output = Path(request["output"])
     metadata = json.loads((output / "prepared.json").read_text(encoding="utf-8"))
@@ -107,7 +107,7 @@ def analyze(request, detector, device):
 def main():
     request = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
     if request["action"] == "inspect":
-        from core.media.sprite_mouth.frames import mouth_frames
+        from core.sprite.mouth.frames import mouth_frames
         output = Path(request["output"])
         _, previews = mouth_frames(output / "speech.mp4", output / "frames")
         timing = json.loads((output / "frames.json").read_text(encoding="utf-8"))
@@ -115,7 +115,7 @@ def main():
         return
     detector, device = None, "manual"
     if not request.get("manual") or (request["action"] == "analyze" and request.get("selectedFrames") is None):
-        from core.media.sprite_mouth.detector import load_detector
+        from core.sprite.mouth.detector import load_detector
         emit("progress", message="正在加载口型识别模型")
         detector, device = load_detector(request["models"], request.get("device", "auto"))
     if request["action"] == "prepare":
@@ -123,7 +123,7 @@ def main():
     elif request["action"] == "analyze":
         result = analyze(request, detector, device)
     elif request["action"] == "transfer":
-        from core.media.sprite_mouth.transfer import transfer
+        from core.sprite.mouth.transfer import transfer
         result = transfer(request, detector, lambda message: emit("progress", message=message))
     else:
         raise ValueError("未知口型处理操作")

@@ -3,7 +3,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from application.characters import mouth_resources as resources
+from application.characters.sprite import mouth_resources as resources
 
 
 def test_configured_old_python_is_reported_before_install(tmp_path, monkeypatch):

@@ -2,9 +2,9 @@
 import cv2
 import numpy as np
 
-from core.media.sprite_mouth.detector import detect
-from core.media.sprite_mouth.frames import video_frames
-from core.media.sprite_mouth.geometry import canvas_matrix, stable_confidences, stable_points, transform
+from core.sprite.mouth.detector import detect
+from core.sprite.mouth.frames import video_frames
+from core.sprite.mouth.geometry import canvas_matrix, stable_confidences, stable_points, transform
 
 
 def _box(point, half, shape):

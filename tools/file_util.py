@@ -221,7 +221,7 @@ def export_character(character_configs: list[CharacterConfig], output_path: str,
                         sprite_data['voice_path'], "voice_path"
                     )
                 if sprite_data.get('mouth_sync'):
-                    from core.media.sprite_mouth.manifest import valid_mouth_sync
+                    from core.sprite.mouth.manifest import valid_mouth_sync
                     from sdk.path_utils import safe_existing_file_path
                     mouth = valid_mouth_sync(s)
                     if mouth:
@@ -415,7 +415,7 @@ def import_character(input_path: str) -> list[CharacterConfig]:
                     relative = _safe_package_relpath(sprite['mouth_sync'], 'mouth sync')
                     if relative.parts[0] != 'mouth-sync' or relative.name != 'manifest.json':
                         raise ValueError('Invalid mouth sync bundle path')
-                    from core.media.sprite_mouth.manifest import read_manifest
+                    from core.sprite.mouth.manifest import read_manifest
                     read_manifest(safe_existing_file_path(relative, roots=[package_root]))
             for edge in char_data.get('sprite_transitions') or []:
                 relative = _safe_package_relpath(edge['path'], 'transition clip')

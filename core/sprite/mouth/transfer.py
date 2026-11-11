@@ -6,12 +6,12 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from core.media.sprite_mouth.detector import detect
-from core.media.sprite_mouth.extraction import _aligned_face
-from core.media.sprite_mouth.frames import reference_image, video_frames
-from core.media.sprite_mouth.geometry import bounded_box, compose_pose, transform
-from core.media.sprite_mouth.manifest import read_manifest, suggested_mouth_box
-from core.media.sprite_mouth.tracking import track
+from core.sprite.mouth.detector import detect
+from core.sprite.mouth.extraction import _aligned_face
+from core.sprite.mouth.frames import reference_image, video_frames
+from core.sprite.mouth.geometry import bounded_box, compose_pose, transform
+from core.sprite.mouth.manifest import read_manifest, suggested_mouth_box
+from core.sprite.mouth.tracking import track
 
 
 def _corners(box):

@@ -4,7 +4,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from core.media.sprite_mouth.geometry import manual_prediction
+from core.sprite.mouth.geometry import manual_prediction
 
 
 def load_detector(model_dir, device="auto"):

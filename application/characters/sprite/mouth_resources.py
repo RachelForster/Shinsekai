@@ -4,14 +4,16 @@ from __future__ import annotations
 from functools import lru_cache
 import hashlib
 import json
-import os
 from pathlib import Path
 import shutil
 import subprocess
 import sys
 import threading
+from typing import Any, Iterable
 
-from sdk.path_utils import reject_control_chars, safe_child_path
+from application.media.resource_paths import MediaResourcePaths
+from application.runtime.tasks import _update_task
+from sdk.path_utils import reject_control_chars, safe_child_path, safe_existing_file_path
 
 MODEL_FILES = {
     "yolov3": {
@@ -39,6 +41,23 @@ MODULES = {
     "PIL": "Pillow>=10",
 }
 _SETUP_LOCK = threading.Lock()
+
+
+def _local_file_access_roots(state: Any) -> tuple[Path, ...]:
+    project_root = Path(getattr(state, "project_root_dir", "") or Path.cwd())
+    return MediaResourcePaths(project_root).file_access_roots
+
+
+def _resolve_file_access_roots(
+    state: Any, file_access_roots: Iterable[Path] = ()
+) -> tuple[Path, ...]:
+    roots = tuple(file_access_roots)
+    if not roots:
+        return _local_file_access_roots(state)
+    project_root = Path(getattr(state, "project_root_dir", "") or Path.cwd())
+    return MediaResourcePaths(
+        project_root, file_access_roots=roots
+    ).file_access_roots
 
 
 def locations(root):
@@ -243,5 +262,38 @@ def worker_command(root, config_store, request_path):
     current = status(root, config_store)
     if not current["runtimeReady"] or not current["modelsReady"]:
         raise ValueError("请先在口型同步页准备识别环境和两份模型")
-    worker = Path(__file__).resolve().parents[2] / "core/media/sprite_mouth/worker.py"
+    worker = Path(__file__).resolve().parents[3] / "core/sprite/mouth/worker.py"
     return [current["pythonPath"], str(worker), str(request_path), str(package_directory(root, current["version"]))]
+
+
+def run_mouth_setup(state, task_id, payload, action):
+    root = state.project_root_dir
+
+    def progress(message, value):
+        _update_task(state, task_id, phase="mouth-setup", progress=value, message=message)
+
+    if action == "download":
+        download_models(root, progress)
+    elif action == "install":
+        install_runtime(root, state.config_manager, progress)
+    return status(root, state.config_manager)
+
+
+def configure_mouth_setup(state, payload):
+    configure(state.project_root_dir, payload)
+    return status(state.project_root_dir, state.config_manager)
+
+
+def import_mouth_models(
+    state, payload, *, file_access_roots: Iterable[Path] = ()
+):
+    paths = payload.get("paths")
+    if not isinstance(paths, list) or len(paths) != 2:
+        raise ValueError("请选择两份模型文件")
+    roots = _resolve_file_access_roots(state, file_access_roots)
+    checked = [
+        str(safe_existing_file_path(str(path), roots=roots, field="model"))
+        for path in paths
+    ]
+    import_models(state.project_root_dir, checked)
+    return status(state.project_root_dir, state.config_manager)

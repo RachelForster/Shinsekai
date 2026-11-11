@@ -5,9 +5,9 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from core.media.sprite_mouth.detector import detect
-from core.media.sprite_mouth.geometry import compose_pose, fit_pose, stable_points, transform
-from core.media.sprite_mouth.manifest import POSES
+from core.sprite.mouth.detector import detect
+from core.sprite.mouth.geometry import compose_pose, fit_pose, stable_points, transform
+from core.sprite.mouth.manifest import POSES
 
 
 def choose_frames(ratios, confidences):

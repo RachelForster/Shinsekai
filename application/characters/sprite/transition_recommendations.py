@@ -6,6 +6,7 @@ import re
 
 from application.characters.generate_briefs import chat_character_text
 from application.chat.conversation_library import recent_character_dialogs
+from application.runtime.tasks import _update_task
 from config.character_assets import get_character_assets, get_character_avatar_type
 from core.media.asset_tags import tag_contents
 from core.sprite.selection import sprite_entry_path
@@ -195,3 +196,16 @@ def analyze_transition_recommendations(state, payload, *, progress=None):
             for start, end in ranked
         ],
     }
+
+
+def run_transition_analysis(state, task_id, payload):
+    _update_task(state, task_id, progress=0.1, message="正在读取该角色的最近聊天。")
+    result = analyze_transition_recommendations(
+        state,
+        payload,
+        progress=lambda message: _update_task(
+            state, task_id, progress=0.4, message=message
+        ),
+    )
+    _update_task(state, task_id, progress=1.0, message="单向过渡推荐已完成。")
+    return result

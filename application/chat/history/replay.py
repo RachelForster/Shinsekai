@@ -15,7 +15,7 @@ from pathlib import Path
 
 from application.chat.history.paths import resolve_history_path_for_project
 from application.chat.history.state import canonical_user_turn_payload
-from application.chat.replay_store import ReplayStore, replay_dialog_inputs, replay_history_messages
+from application.chat.history.replay_store import ReplayStore, replay_dialog_inputs, replay_history_messages
 from application.chat.voice_archive import VoiceArchive
 from core.chat_history.storage import chat_history_active_path
 from core.chat_history.text import strip_local_time_prefix

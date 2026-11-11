@@ -6,7 +6,7 @@ import av
 import numpy as np
 from PIL import Image, ImageOps
 
-from core.media.sprite_mouth.manifest import MAX_DURATION, MAX_FRAMES
+from core.sprite.mouth.manifest import MAX_DURATION, MAX_FRAMES
 
 
 def reference_image(path):
