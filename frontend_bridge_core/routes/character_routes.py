@@ -1,6 +1,19 @@
 from __future__ import annotations
 
 from application.characters import CharacterOperation
+from application.characters.sprite.animate_sprites import run_sprite_animation
+from application.characters.sprite.generate_sprites import (
+    import_generated_sprites,
+    run_sprite_cutout,
+    run_sprite_frame,
+    run_sprite_plan,
+    run_sprite_render,
+)
+from application.characters.sprite.transition_recommendations import run_transition_analysis
+from application.characters.sprite.transition_sprites import (
+    run_sprite_transition,
+    save_sprite_transitions,
+)
 from frontend_bridge_core.characters import (
     _ensure_character_briefs,
     _execute_character_request,
@@ -11,19 +24,6 @@ from frontend_bridge_core.characters import (
     _translate_character_fields,
 )
 from frontend_bridge_core.image_annotations import run_character_sprite_auto_label
-from frontend_bridge_core.sprite_transitions import (
-    run_sprite_transition,
-    save_sprite_transitions,
-    run_transition_analysis,
-)
-from frontend_bridge_core.sprite_generation import (
-    import_generated_sprites,
-    run_sprite_plan,
-    run_sprite_render,
-    run_sprite_frame,
-    run_sprite_cutout,
-    run_sprite_animation,
-)
 from frontend_bridge_core.routes.router import (
     ApiRequest,
     BodyKind,
@@ -31,6 +31,7 @@ from frontend_bridge_core.routes.router import (
     Route,
     TaskResponse,
 )
+from frontend_bridge_core.tools import _local_file_access_roots
 
 
 def _list_characters(request: ApiRequest) -> JsonResponse:
@@ -214,7 +215,7 @@ def _render_sprite(request: ApiRequest) -> TaskResponse:
         kind="character-sprite-render",
         title="生成角色立绘",
         message="正在准备图像生成。",
-        worker=lambda task_id: run_sprite_render(request.state, task_id, body),
+        worker=lambda task_id: run_sprite_render(request.state, task_id, body, file_access_roots=_local_file_access_roots(request.state)),
     )
 
 
@@ -246,7 +247,7 @@ def _animate_sprite(request: ApiRequest) -> TaskResponse:
     body = dict(request.body)
     return TaskResponse(kind="character-sprite-animate", title="生成透明动态立绘",
                         message="正在准备 H3 动态生成与逐帧抠图。",
-                        worker=lambda task_id: run_sprite_animation(request.state, task_id, body))
+                        worker=lambda task_id: run_sprite_animation(request.state, task_id, body, file_access_roots=_local_file_access_roots(request.state)))
 
 
 def _generate_sprite_transition(request: ApiRequest) -> TaskResponse:
@@ -254,7 +255,7 @@ def _generate_sprite_transition(request: ApiRequest) -> TaskResponse:
     return TaskResponse(
         kind="character-sprite-transition", title="生成立绘过渡",
         message="正在准备 22 帧透明过渡。",
-        worker=lambda task_id: run_sprite_transition(request.state, task_id, body),
+        worker=lambda task_id: run_sprite_transition(request.state, task_id, body, file_access_roots=_local_file_access_roots(request.state)),
     )
 
 
@@ -275,7 +276,7 @@ CHARACTER_ROUTES = (
           handler=_generate_sprite_transition,
           name="characters.sprites.transitions.generate"),
     Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/transitions/save",
-          handler=lambda request: JsonResponse(save_sprite_transitions(request.state, request.body)),
+          handler=lambda request: JsonResponse(save_sprite_transitions(request.state, request.body, file_access_roots=_local_file_access_roots(request.state))),
           name="characters.sprites.transitions.save"),
     Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/animate",
           handler=_animate_sprite, name="characters.sprites.animate"),

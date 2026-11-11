@@ -200,6 +200,8 @@ frontend/src-tauri     Tauri 壳、打包配置和 Rust 侧能力
 
 ```text
 application/bootstrap/       进程启动、组合根、运行模式选择
+application/characters/      角色管理、设定生成与模型资产用例
+application/characters/sprite/ 立绘生成、动态立绘、过渡任务编排与过渡推荐用例
 application/chat/            聊天启动、停止、恢复和历史用例
 application/chat/presentation/handlers/   对话媒体与 UI 展示的应用处理链
 application/chat/dialog_media/  立绘查找与语音生成策略
@@ -306,12 +308,12 @@ ai/tools/     向 LLM 暴露能力的薄 tool wrapper
 core/app_update/    主程序版本检查、release 和更新包处理
 core/chat_history/  聊天记录归一化、分支状态和会话文件存储
 core/knowledge/     资料绑定 SQLite schema、CRUD 与绑定维护、文件准备和存储查询
-core/media/         文件、附件、媒体资源、安全格式和标签解析
+core/media/         文件、附件、通用图像/视频抠图、媒体资源、安全格式和标签解析
 core/messaging/     消息模型、流解析、对话协议和框架无关的 turn policy
 core/model_assets/  模型下载、缓存、来源和进度
 core/runtime_env/   Python、pip、依赖检测和运行环境诊断
 core/security/      归档、下载来源等宿主安全校验及旧路径兼容入口
-core/sprite/        立绘路径归一化和角色立绘匹配
+core/sprite/        立绘路径归一化、角色立绘匹配、过渡指纹校验与端点色彩校准
 core/story/         剧本 Schema、确定性规则、编译、事件、校验和路径模拟
 ```
 

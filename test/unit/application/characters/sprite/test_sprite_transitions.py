@@ -7,15 +7,15 @@ from unittest.mock import Mock
 import pytest
 from PIL import Image, ImageDraw
 
-from application.characters import transition_sprites as generation
+from application.characters.sprite import transition_sprites as generation
 from application.chat.presentation.character_visual import resolve_character_visual
 from application.media.resource_urls import UnconfiguredResourceUrls
 from application.runtime.tasks import _create_task, _update_task
 from config.character_manager import CharacterManager
 from config.schema import Character, SpriteTransition
 from core.sprite.transitions import sprite_fingerprint, valid_transitions
-from application.characters.generate_sprites import boundary_frame
-from frontend_bridge_core import sprite_generation, sprite_transitions as bridge
+from application.characters.sprite.generate_sprites import boundary_frame
+from application.characters.sprite import animate_sprites, generate_sprites as sprite_generation, transition_sprites as bridge
 
 
 @pytest.fixture
@@ -83,7 +83,7 @@ def test_render_forces_twenty_two_frames_distinct_anchors_and_coordinated_hair(
 
     workflow = json.loads(
         (
-            Path(__file__).resolve().parents[4]
+            Path(__file__).resolve().parents[5]
             / "ai/t2i/workflows/minimax_h3_i2v_api.json"
         ).read_text()
     )
@@ -290,7 +290,7 @@ def test_matting_retry_does_not_generate_again_and_saved_pairs_reuse_cache(
     )
     monkeypatch.setattr(bridge, "render_transition", render)
     matte = Mock(side_effect=RuntimeError("matting failed"))
-    monkeypatch.setattr(sprite_generation, "make_transparent_animation", matte)
+    monkeypatch.setattr(animate_sprites, "make_transparent_animation", matte)
     payload = {"name": "Mika", "fromPath": str(paths[0]), "toPath": str(paths[1])}
     first = _create_task(state, kind="character-sprite-transition", title="transition")
     result = bridge.run_sprite_transition(state, first["id"], payload)
@@ -442,12 +442,13 @@ def test_generation_from_saved_video_uses_first_frame_and_preserves_alpha(
         monkeypatch.setattr(sprite_generation, "render_sprite", renderer)
         monkeypatch.setattr(sprite_generation, "_finish_sprite", lambda _, __, result, ___: result)
     else:
-        monkeypatch.setattr(sprite_generation, "render_animation", renderer)
-        monkeypatch.setattr(sprite_generation, "_finish_animation", lambda _, __, result: result)
+        monkeypatch.setattr(animate_sprites, "_local_file_access_roots", lambda _: (tmp_path,))
+        monkeypatch.setattr(animate_sprites, "render_animation", renderer)
+        monkeypatch.setattr(animate_sprites, "_finish_animation", lambda _, __, result: result)
     task = _create_task(
         app, kind="character-sprite-render" if static else "character-sprite-animate", title="regenerate"
     )
-    run = sprite_generation.run_sprite_render if static else sprite_generation.run_sprite_animation
+    run = sprite_generation.run_sprite_render if static else animate_sprites.run_sprite_animation
     result = run(
         app,
         task["id"],
