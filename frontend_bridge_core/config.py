@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import urllib.error
 import urllib.parse
@@ -202,6 +203,25 @@ def _validate_api_config_for_save(config: Any) -> None:
         raise ValueError("TTS 服务启动路径必须是已存在的目录。")
 
 
+def _switch_running_perception_model(previous: Any, updated: Any) -> None:
+    if previous.perception_use_gguf == updated.perception_use_gguf:
+        return
+    from application.perception.server_launcher import get_perception_server_manager
+    from core.perception.models import PerceptionConfig
+
+    old_endpoint = PerceptionConfig.from_api_config(previous)
+    new_endpoint = PerceptionConfig.from_api_config(updated)
+    if old_endpoint.base_url != new_endpoint.base_url or old_endpoint.model == new_endpoint.model:
+        return
+    manager = get_perception_server_manager()
+    status = manager.status(explicit_python_path=updated.perception_python_path)
+    if (
+        status["managed"] and status["baseUrl"] == new_endpoint.base_url
+        and status["model"] != new_endpoint.model
+    ):
+        manager.start(base_url=new_endpoint.base_url, model=new_endpoint.model, python_path=updated.perception_python_path)
+
+
 def _save_api_config(state: BridgeState, payload: dict[str, Any]) -> Any:
     from config.schema import ApiConfig
 
@@ -224,8 +244,45 @@ def _save_api_config(state: BridgeState, payload: dict[str, Any]) -> Any:
             _state_project_root(state),
         )
     _validate_api_config_for_save(config)
+    previous = state.config_manager.config.api_config
+    _switch_running_perception_model(previous, config)
     state.config_manager.config.api_config = config
-    state.config_manager.save_api_config()
+    try:
+        state.config_manager.save_api_config()
+    except Exception:
+        state.config_manager.config.api_config = previous
+        try:
+            _switch_running_perception_model(config, previous)
+        except Exception:
+            logging.getLogger(__name__).exception("Could not restore the running perception model")
+        raise
+    try:
+        from frontend_bridge_core.routes.perception_routes import _forward_perception_command
+
+        _forward_perception_command(
+            state,
+            "perception-config-sync",
+            {
+                "perception_enabled": config.perception_enabled,
+                "perception_base_url": str(config.perception_base_url or ""),
+                "perception_api_key": str(config.perception_api_key or ""),
+                "perception_model": str(config.perception_model or ""),
+                "perception_use_gguf": config.perception_use_gguf,
+                "perception_interval_sec": float(config.perception_interval_sec),
+                "perception_capture_interval_sec": float(config.perception_capture_interval_sec),
+                "perception_ocr_interval_sec": float(config.perception_ocr_interval_sec),
+                "perception_frame_max_side": int(config.perception_frame_max_side),
+                "perception_diff_threshold": float(config.perception_diff_threshold),
+                "perception_ocr_enabled": config.perception_ocr_enabled,
+                "perception_reflex_enabled": bool(config.perception_reflex_enabled),
+                "perception_reflex_cooldown_sec": float(config.perception_reflex_cooldown_sec),
+                "perception_proactive_enabled": bool(config.perception_proactive_enabled),
+                "perception_salience_threshold": float(config.perception_salience_threshold),
+                "perception_proactive_cooldown_sec": float(config.perception_proactive_cooldown_sec),
+            },
+        )
+    except Exception:
+        pass
     return config
 
 

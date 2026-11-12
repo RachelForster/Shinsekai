@@ -11,6 +11,7 @@ from frontend_bridge_core.config import (
     _validate_api_config_for_save,
 )
 from application.runtime.state import BridgeState
+from core.perception.models import DEFAULT_PERCEPTION_MODEL, GGUF_MODEL_ID, PerceptionConfig
 
 
 def _valid_config(**overrides):
@@ -224,6 +225,38 @@ def test_save_api_config_defaults_tts_path_under_project_root(tmp_path):
     assert saved.llm_base_urls["Deepseek"] == "https://api.deepseek.com/v1"
     assert manager.config.api_config.gpt_sovits_api_path == project_bundle.as_posix()
     assert manager.saved is True
+
+
+def test_save_gguf_toggle_switches_managed_server_and_preserves_custom_model(tmp_path, monkeypatch):
+    _create_gpt_sovits_bundle(tmp_path)
+    state, manager = _bridge_state_for_config(tmp_path, tmp_path)
+    api = manager.config.api_config
+    api.perception_model = "custom-vision-model"
+    active = {"managed": True, "baseUrl": api.perception_base_url, "model": api.perception_model}
+    switched = []
+
+    def start(**options):
+        switched.append(options["model"])
+        active["model"] = options["model"]
+
+    monkeypatch.setattr(
+        "application.perception.server_launcher.get_perception_server_manager",
+        lambda: SimpleNamespace(status=lambda **_: active, start=start),
+    )
+    payload = api.model_dump(mode="json")
+    enabled = _save_api_config(state, {**payload, "perception_use_gguf": True})
+    assert enabled.perception_model == "custom-vision-model"
+    assert PerceptionConfig.from_api_config(enabled).model == GGUF_MODEL_ID
+    disabled = _save_api_config(state, {**payload, "perception_use_gguf": False})
+    assert PerceptionConfig.from_api_config(disabled).model == "custom-vision-model"
+    assert switched == [GGUF_MODEL_ID, "custom-vision-model"]
+
+
+def test_previous_gguf_alias_loads_with_the_switch_enabled():
+    api = ApiConfig.model_validate({"perception_model": GGUF_MODEL_ID})
+    assert api.perception_use_gguf
+    assert api.perception_model == DEFAULT_PERCEPTION_MODEL
+    assert PerceptionConfig.from_api_config(api).model == GGUF_MODEL_ID
 
 
 def test_project_root_lookup_supports_legacy_state_and_cwd_fallback(tmp_path, monkeypatch):

@@ -116,21 +116,32 @@ class LLMWorker(ThreadDagNode):
                         "vision_mode": prepared_input.mode,
                     },
                 )
-                tracker.start_cross("e2e")
-                self.ui_update_manager.post_notification("发送成功，正在等待回复中...")
-
-                if hasattr(self.ui_update_manager, "record_user_message"):
-                    self.ui_update_manager.record_user_message(
-                        prepared_input.display_text
-                    )
-                else:
-                    formatted_user_message = (
-                        "<p style='line-height: 135%; letter-spacing: 2px; color:white;'>"
-                        f"<b style='color:white;'>你</b>: {prepared_input.display_text}</p>"
-                    )
-                    self.ui_update_manager.chat_history.append(formatted_user_message)
-
+                message_source = str(getattr(message, "source", "user") or "user").strip()
+                is_perception_turn = message_source == "perception"
+                if turn.is_cancelled():
+                    continue
                 history_turn_id = uuid4().hex
+                prepare_perception_turn = rt.prepare_perception_turn
+                if prepare_perception_turn and not prepare_perception_turn(history_turn_id, message_source):
+                    rt.chat_turn_service.mark_generation_complete(turn)
+                    rt.chat_turn_service.mark_idle(turn)
+                    turn = None
+                    continue
+                tracker.start_cross("e2e")
+                if not is_perception_turn:
+                    self.ui_update_manager.post_notification("发送成功，正在等待回复中...")
+
+                    if hasattr(self.ui_update_manager, "record_user_message"):
+                        self.ui_update_manager.record_user_message(
+                            prepared_input.display_text
+                        )
+                    else:
+                        formatted_user_message = (
+                            "<p style='line-height: 135%; letter-spacing: 2px; color:white;'>"
+                            f"<b style='color:white;'>你</b>: {prepared_input.display_text}</p>"
+                        )
+                        self.ui_update_manager.chat_history.append(formatted_user_message)
+
                 dialog_identities = DialogIdentities(history_turn_id)
                 is_streaming = get_app_runtime().config.config.api_config.is_streaming
                 with tracker.track("LLM chat total"):
@@ -143,6 +154,8 @@ class LLMWorker(ThreadDagNode):
                             attachment.to_payload() for attachment in attachments
                         ],
                     }
+                    if message_source != "user":
+                        chat_kwargs["user_source"] = message_source
                     background = current_background_context(rt)
                     if attachments or background:
                         chat_kwargs["user_display_text"] = prepared_input.display_text

@@ -5,6 +5,7 @@ from pydantic_core import PydanticUseDefault
 from typing import List, Dict, Optional, Union, Any, Annotated, TypeVar, Literal
 from config.feature_flags import FeatureFlagConfigManager
 from config.network_proxy import normalize_proxy_url
+from core.perception.models import DEFAULT_PERCEPTION_MODEL, GGUF_MODEL_ID
 
 # ----------------- 解决 YAML None 问题的工具 -----------------
 def default_if_none(value: Any) -> Any:
@@ -203,6 +204,25 @@ class ApiConfig(BaseModel):
     memory_search_limit: DefaultIfNone[int] = Field(default=5, ge=1, le=20, description="Long-term memory search result limit per turn")
     memory_recent_buffer_messages: DefaultIfNone[int] = Field(default=16, ge=2, le=64, description="Recent messages used for automatic memory extraction")
 
+    # --- Real-time Game Perception (Local VLM Reflex + RP Input Cache + Gatekeeper) ---
+    perception_enabled: DefaultIfNone[bool] = Field(default=False, description="是否启用实时画面/游戏状态感知模块")
+    perception_base_url: DefaultIfNone[str] = Field(default="http://127.0.0.1:8091/v1", description="本地感知小模型 OpenAI 兼容服务地址")
+    perception_api_key: DefaultIfNone[str] = Field(default="", description="本地感知模型 API Key（本地服务可留空）")
+    perception_model: DefaultIfNone[str] = Field(default=DEFAULT_PERCEPTION_MODEL, description="常规感知模型名称")
+    perception_use_gguf: DefaultIfNone[bool] = Field(default=False, description="使用本地 Q4 GGUF 感知模型")
+    perception_python_path: DefaultIfNone[str] = Field(default="", description="一键启动本地感知推理服务的 Python 解释器或环境路径（留空自动检测本机 CUDA/Conda 环境）")
+    perception_interval_sec: DefaultIfNone[float] = Field(default=2.0, ge=0.5, le=30.0, description="本地感知模型的常规识别间隔（秒）")
+    perception_capture_interval_sec: DefaultIfNone[float] = Field(default=0.5, ge=0.2, le=5.0, description="共享屏幕画面变化检测间隔（秒）")
+    perception_ocr_interval_sec: DefaultIfNone[float] = Field(default=1.0, ge=0.5, le=10.0, description="共享屏幕文字识别间隔（秒）")
+    perception_frame_max_side: DefaultIfNone[int] = Field(default=512, ge=256, le=1280, description="共享屏幕上传帧最大边长（像素）")
+    perception_diff_threshold: DefaultIfNone[float] = Field(default=0.06, ge=0.0, le=0.5, description="画面像素变化跳过阈值（0 表示每周期都采样）")
+    perception_ocr_enabled: DefaultIfNone[bool] = Field(default=False, description="由内置本地感知服务识别共享画面中的文字")
+    perception_reflex_enabled: DefaultIfNone[bool] = Field(default=True, description="启用本地小模型快速反应（实时立绘切换 + 短促气泡台词，无语音）")
+    perception_reflex_cooldown_sec: DefaultIfNone[float] = Field(default=15.0, ge=0.5, le=60.0, description="气泡反应最小冷却时间（秒）")
+    perception_proactive_enabled: DefaultIfNone[bool] = Field(default=True, description="启用 Gatekeeper 主动触发主 RP 大模型发言")
+    perception_salience_threshold: DefaultIfNone[float] = Field(default=0.78, ge=0.1, le=1.0, description="Gatekeeper 放行主动 RP 发言的事件重要度阈值")
+    perception_proactive_cooldown_sec: DefaultIfNone[float] = Field(default=25.0, ge=3.0, le=600.0, description="主动 RP 发言最小冷却时间（秒）")
+
     hugging_face_access_token: DefaultIfNone[str] = Field(default="", description="Hugging Face Access Token")
 
     llm_extra_configs: DefaultIfNone[Dict[str, Dict[str, Any]]] = Field(
@@ -257,6 +277,13 @@ class ApiConfig(BaseModel):
             self.compact_target_ratio,
         )
         return self
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_perception_gguf_model(cls, value: Any) -> Any:
+        if isinstance(value, Mapping) and str(value.get("perception_model") or "").strip() == GGUF_MODEL_ID:
+            return {**value, "perception_model": DEFAULT_PERCEPTION_MODEL, "perception_use_gguf": True}
+        return value
 
 # System Config Model
 class SystemConfig(BaseModel):

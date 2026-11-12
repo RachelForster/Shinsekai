@@ -249,7 +249,7 @@ class ConversationBranchManager:
         current_user_index = -1
         for message in self.bindings.get_messages():
             role = message.get("role")
-            if role == "user":
+            if role == "user" and message.get("source") != "perception":
                 current_user_index += 1
                 if current_user_index >= user_index:
                     break
@@ -259,7 +259,7 @@ class ConversationBranchManager:
     def _user_message(self, user_index: int) -> dict[str, object] | None:
         current_user_index = -1
         for message in self.bindings.get_messages():
-            if message.get("role") != "user":
+            if message.get("role") != "user" or message.get("source") == "perception":
                 continue
             current_user_index += 1
             if current_user_index == user_index:

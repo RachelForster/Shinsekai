@@ -33,6 +33,7 @@ from frontend_bridge_core.routes.knowledge_routes import KNOWLEDGE_ROUTES
 from frontend_bridge_core.routes.reminder_routes import REMINDER_ROUTES
 from frontend_bridge_core.routes.model_asset_routes import MODEL_ASSET_ROUTES
 from frontend_bridge_core.routes.operation_routes import OPERATION_ROUTES
+from frontend_bridge_core.routes.perception_routes import PERCEPTION_ROUTES
 from frontend_bridge_core.routes.plugin_routes import PLUGIN_ROUTES
 from frontend_bridge_core.routes.router import Router
 from frontend_bridge_core.routes.system_routes import SYSTEM_ROUTES
@@ -64,6 +65,7 @@ _API_ROUTER = Router(
         *MODEL_ASSET_ROUTES,
         *TEMPLATE_ROUTES,
         *OPERATION_ROUTES,
+        *PERCEPTION_ROUTES,
         *PLUGIN_ROUTES,
         *TRANSFER_ROUTES,
         *UTILITY_ROUTES,

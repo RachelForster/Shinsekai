@@ -162,6 +162,29 @@ describe("ApiSettingsPage", () => {
     setMobileAccessPreference(false);
   });
 
+  it("saves the Q4 GGUF switch independently of the regular perception model", async () => {
+    const config = validAppConfig();
+    mocks.getAppConfig.mockResolvedValue({
+      ...config,
+      api_config: { ...config.api_config, perception_model: "custom-vision-model" },
+    });
+    mocks.saveApiConfig.mockImplementation(async (api) => api);
+    renderPage();
+    await screen.findByRole("heading", { name: "AI 服务设置" });
+    fireEvent.click(screen.getByText("实时感知与游戏反应", { selector: "summary" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "使用 Q4 GGUF" }));
+    expect(screen.getByRole("checkbox", { name: "使用 Q4 GGUF" })).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() =>
+      expect(mocks.saveApiConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          perception_model: "custom-vision-model",
+          perception_use_gguf: true,
+        }),
+      ),
+    );
+  });
+
   it("places vision understanding and long-term memory after TTS in the navigation and page", async () => {
     mocks.getAppConfig.mockResolvedValue(validAppConfig());
 
@@ -178,6 +201,7 @@ describe("ApiSettingsPage", () => {
       "LLM API 配置",
       "TTS 整合包",
       "视觉理解",
+      "实时感知与游戏反应",
       "长期记忆",
       "资料检索",
       "图像生成（T2I）",
@@ -187,9 +211,11 @@ describe("ApiSettingsPage", () => {
 
     const ttsSection = document.getElementById("api-tts")!;
     const visionSection = document.getElementById("api-vision")!;
+    const perceptionSection = document.getElementById("api-perception")!;
     const memorySection = document.getElementById("api-memory")!;
     expect(ttsSection.compareDocumentPosition(visionSection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(visionSection.compareDocumentPosition(memorySection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(visionSection.compareDocumentPosition(perceptionSection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(perceptionSection.compareDocumentPosition(memorySection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("shows a newly loaded ASR adapter and its fields when returning to settings after plugin reload", async () => {

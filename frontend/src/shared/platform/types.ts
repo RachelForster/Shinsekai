@@ -133,6 +133,23 @@ export interface ApiConfig {
   memory_extract_interval_turns: number;
   memory_search_limit: number;
   memory_recent_buffer_messages: number;
+  perception_enabled: boolean;
+  perception_base_url: string;
+  perception_api_key: string;
+  perception_model: string;
+  perception_use_gguf: boolean;
+  perception_python_path: string;
+  perception_interval_sec: number;
+  perception_capture_interval_sec: number;
+  perception_ocr_interval_sec: number;
+  perception_frame_max_side: number;
+  perception_diff_threshold: number;
+  perception_ocr_enabled: boolean;
+  perception_reflex_enabled: boolean;
+  perception_reflex_cooldown_sec: number;
+  perception_proactive_enabled: boolean;
+  perception_salience_threshold: number;
+  perception_proactive_cooldown_sec: number;
   hugging_face_access_token: string;
   llm_extra_configs: Record<string, Record<string, unknown>>;
   tts_extra_configs: Record<string, Record<string, unknown>>;
@@ -1209,9 +1226,155 @@ export interface ChatCloseOptions {
   expectedSessionId?: string;
 }
 
+export interface PerceptionRawBufferStats {
+  stateKeys: number;
+  pendingEvents: number;
+  hasFrame: boolean;
+  dirty: boolean;
+  game: string;
+}
+
+export interface PerceptionRpCacheStatus {
+  currentDigest: string;
+  recentDigestCount: number;
+  unconsumedEventCount: number;
+  totalNotableEvents: number;
+  lastSalience: number;
+  playerBusy: boolean;
+  game: string;
+  updatedAt: number;
+}
+
+export interface PerceptionRuntimeState {
+  enabled: boolean;
+  active: boolean;
+  screenShareActive: boolean;
+  model: string;
+  baseUrl: string;
+  intervalSec: number;
+  captureIntervalSec?: number;
+  ocrIntervalSec?: number;
+  frameMaxSide: number;
+  diffThreshold: number;
+  ocrEnabled?: boolean;
+  reflexEnabled: boolean;
+  proactiveEnabled: boolean;
+  salienceThreshold: number;
+  lastError: string;
+  rawBuffer?: PerceptionRawBufferStats;
+  rpCache?: PerceptionRpCacheStatus;
+}
+
+export interface PerceptionEndpointOptions {
+  apiKey?: string;
+  baseUrl?: string;
+  model?: string;
+}
+
+export interface PerceptionHealthProbe {
+  ok: boolean;
+  baseUrl: string;
+  configuredModel: string;
+  modelPresent?: boolean;
+  models: string[];
+  error?: string;
+  imageTest?: { ok: boolean; error?: string };
+}
+
+export interface PerceptionLocalServerStatus {
+  state: "stopped" | "starting" | "running" | "external_running" | "failed";
+  running: boolean;
+  starting: boolean;
+  managed: boolean;
+  pid: number | null;
+  pythonPath: string;
+  detectedPythonPath: string;
+  baseUrl: string;
+  model: string;
+  error: string;
+  logs: string[];
+}
+
+export interface PerceptionLocalServerStartInput {
+  baseUrl?: string;
+  model?: string;
+  pythonPath?: string;
+  device?: string;
+}
+
+export interface PerceptionStatusResponse {
+  chatSessionActive: boolean;
+  config: {
+    enabled: boolean;
+    baseUrl: string;
+    model: string;
+    intervalSec: number;
+    captureIntervalSec?: number;
+    ocrIntervalSec?: number;
+    frameMaxSide: number;
+    diffThreshold: number;
+    reflexEnabled: boolean;
+    reflexCooldownSec: number;
+    proactiveEnabled: boolean;
+    salienceThreshold: number;
+    proactiveCooldownSec: number;
+  };
+  ingestUrl: string;
+  localServer?: PerceptionLocalServerStatus;
+  runtime: PerceptionRuntimeState | null;
+  health?: PerceptionHealthProbe;
+}
+
+export interface ScreenOcrRegion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export type ScreenOcrScope = { mode: "bottom" | "full" } | { mode: "region"; region: ScreenOcrRegion };
+
+export type ScreenPlaybackAudioState = "unavailable" | "playing" | "quiet" | "stopped";
+
+export interface PerceptionIngestInput {
+  capturedAtMs?: number;
+  source?: string;
+  game?: string;
+  state?: Record<string, unknown>;
+  replaceState?: boolean;
+  event?: string | { type: string; data?: Record<string, unknown> };
+  data?: Record<string, unknown>;
+  events?: Array<{ type: string; data?: Record<string, unknown> }>;
+  imageBase64?: string;
+  mimeType?: string;
+  ocrOnly?: boolean;
+  ocrScope?: ScreenOcrScope;
+  width?: number;
+  height?: number;
+  screenPlaybackAudio?: ScreenPlaybackAudioState;
+  screenShareActive?: boolean;
+}
+
+export interface PerceptionIngestResult {
+  ok: boolean;
+  accepted: boolean;
+  reason?: string;
+  perception?: PerceptionRuntimeState | null;
+}
+
+export interface ChatSpriteReactionSnapshot {
+  characterName: string;
+  text: string;
+  durationMs: number;
+  expiresAt?: number;
+  seq: number;
+}
+
 export interface ChatSnapshot {
   voiceArchiveEnabled?: boolean;
   playerPortrait?: PlayerPortrait | null;
+  perception?: PerceptionRuntimeState | null;
+  spriteReaction?: ChatSpriteReactionSnapshot | null;
   activePlayback?: {
     characterName: string;
     playbackId: string;
@@ -1454,6 +1617,9 @@ export type ChatStageEvent =
   | (ChatEventBase & { type: "asr.partial"; text: string })
   | (ChatEventBase & { type: "asr.final"; text: string })
   | (ChatEventBase & { type: "asr.state"; enabled?: boolean; loading?: boolean; running: boolean })
+  | (ChatEventBase & { type: "perception.state"; perception: PerceptionRuntimeState })
+  | (ChatEventBase & { type: "sprite.reaction"; characterName: string; text: string; durationMs: number })
+  | (ChatEventBase & { type: "perception.capture_request"; reason?: string })
   | (ChatEventBase & { type: "reply.finished" })
   | (ChatEventBase & { type: "session.closed"; reason: string });
 
@@ -2153,6 +2319,16 @@ export interface ShinsekaiPlatform {
     openConfigFile: () => Promise<string>;
     previewTools: (config: McpConfig, options?: TaskProgressOptions<McpToolPreview[]>) => Promise<McpToolPreview[]>;
     saveAndApply: (config: McpConfig, options?: TaskProgressOptions<McpConfig>) => Promise<McpConfig>;
+  };
+  perception: {
+    clear: () => Promise<{ ok: boolean; accepted: boolean; perception?: PerceptionRuntimeState | null }>;
+    ingest: (input: PerceptionIngestInput) => Promise<PerceptionIngestResult>;
+    startServer: (
+      input?: PerceptionLocalServerStartInput,
+    ) => Promise<{ ok: boolean; localServer: PerceptionLocalServerStatus }>;
+    status: (options?: PerceptionEndpointOptions & { probe?: boolean }) => Promise<PerceptionStatusResponse>;
+    stopServer: () => Promise<{ ok: boolean; localServer: PerceptionLocalServerStatus }>;
+    testImage: (options: PerceptionEndpointOptions) => Promise<PerceptionHealthProbe>;
   };
   tasks: {
     get: <TResult = unknown>(id: string) => Promise<TaskSnapshot<TResult>>;

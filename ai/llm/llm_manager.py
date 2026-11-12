@@ -236,6 +236,7 @@ class LLMManager:
             include_local_time = bool(kwargs.pop("include_local_time", True))
             display_text = str(kwargs.pop("user_display_text", "") or "").strip()
             input_text = kwargs.pop("user_input_text", None)
+            user_source = str(kwargs.pop("user_source", "user") or "user").strip()
             history_turn_id = kwargs.pop("history_turn_id", "")
             attachments = kwargs.pop("user_attachments", None)
             groups = kwargs.pop("tool_groups", ())
@@ -249,6 +250,8 @@ class LLMManager:
                 metadata = {}
                 if history_turn_id:
                     metadata[CHAT_TURN_ID] = str(history_turn_id)
+                if user_source and user_source != "user":
+                    metadata["source"] = user_source
                 if display_text:
                     metadata["display_content"] = display_text
                 if input_text is not None:

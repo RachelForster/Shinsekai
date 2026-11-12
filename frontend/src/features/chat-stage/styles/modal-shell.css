@@ -29,6 +29,64 @@
   backdrop-filter: blur(28px) saturate(1.2);
 }
 
+.screen-share-settings-backdrop {
+  z-index: 160;
+}
+
+.screen-share-settings-dialog {
+  width: min(100%, 660px);
+  max-height: 92vh;
+  overflow: auto;
+}
+
+.screen-share-settings__body {
+  display: grid;
+  gap: 12px;
+  padding: 4px 20px 20px;
+}
+
+.screen-share-settings__modes {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.screen-share-settings__preview {
+  position: relative;
+  justify-self: center;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #0a0d11;
+}
+
+.screen-share-settings__preview[data-selectable="true"] {
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+}
+
+.screen-share-settings__preview video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.screen-share-settings__selection {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid #e1f5ff;
+  box-shadow: 0 0 0 150vmax rgb(0 0 0 / 45%);
+  pointer-events: none;
+}
+
+.screen-share-settings__hint {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
 .chat-config-dialog {
   --chat-stage-modal-accent: var(--chat-config-accent-local);
 }
