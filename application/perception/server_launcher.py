@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import atexit
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from dataclasses import replace
 import os
 from pathlib import Path
 import subprocess
@@ -522,6 +523,36 @@ def get_perception_server_manager() -> PerceptionLocalServerManager:
         if _default_manager is None:
             _default_manager = PerceptionLocalServerManager()
         return _default_manager
+
+
+def resolve_perception_config(api_config: Any) -> PerceptionConfig:
+    return PerceptionConfig.from_api_config(api_config)
+
+
+def probe_perception(
+    config: PerceptionConfig, options: Mapping[str, Any], *, image: bool = False,
+) -> dict[str, Any]:
+    config = replace(
+        config,
+        base_url=str(options.get("baseUrl") or "").strip() or config.base_url,
+        api_key=str(options.get("apiKey") or "").strip() or config.api_key,
+        model=str(options.get("model") or "").strip() or config.model,
+    )
+    client = PerceptionDecisionClient()
+    return client.probe_image(config) if image else client.probe_health(config)
+
+
+def switch_running_perception_model(previous: Any, updated: Any) -> None:
+    if previous.perception_use_gguf == updated.perception_use_gguf:
+        return
+    old_endpoint = PerceptionConfig.from_api_config(previous)
+    new_endpoint = PerceptionConfig.from_api_config(updated)
+    if old_endpoint.base_url != new_endpoint.base_url or old_endpoint.model == new_endpoint.model:
+        return
+    manager = get_perception_server_manager()
+    status = manager.status(explicit_python_path=updated.perception_python_path)
+    if status["managed"] and status["baseUrl"] == new_endpoint.base_url and status["model"] != new_endpoint.model:
+        manager.start(base_url=new_endpoint.base_url, model=new_endpoint.model, python_path=updated.perception_python_path)
 
 
 def shutdown_perception_local_server() -> None:

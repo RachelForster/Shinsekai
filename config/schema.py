@@ -5,7 +5,7 @@ from pydantic_core import PydanticUseDefault
 from typing import List, Dict, Optional, Union, Any, Annotated, TypeVar, Literal
 from config.feature_flags import FeatureFlagConfigManager
 from config.network_proxy import normalize_proxy_url
-from core.perception.models import DEFAULT_PERCEPTION_MODEL, GGUF_MODEL_ID
+from config.perception import DEFAULT_PERCEPTION_MODEL, GGUF_MODEL_ID
 
 # ----------------- 解决 YAML None 问题的工具 -----------------
 def default_if_none(value: Any) -> Any:

@@ -13,7 +13,6 @@ import urllib.error
 import urllib.request
 from urllib.parse import urlsplit
 
-from ai.perception.frames import prepare_screen_frame
 from ai.perception.parser import (
     InvalidPerceptionDecision,
     parse_perception_decision_json,
@@ -235,6 +234,8 @@ class PerceptionDecisionClient:
             and snapshot.frame.ocr_scope.mode != "full"
         )
         if screen_text is not None and snapshot.frame is not None and snapshot.frame.source == "screen_share":
+            from ai.perception.frames import prepare_screen_frame
+
             repeated_frame = (
                 previous_frame is not None
                 and snapshot.frame.image_base64 == previous_frame.image_base64

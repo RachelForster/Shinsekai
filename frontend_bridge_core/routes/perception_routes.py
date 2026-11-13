@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
 from http import HTTPStatus
 import secrets
-from typing import Any, Mapping
+from typing import Any
 
-from ai.perception.decision_client import PerceptionDecisionClient
-from application.perception.server_launcher import get_perception_server_manager
-from core.perception.models import PerceptionConfig
+from application.perception.server_launcher import (
+    get_perception_server_manager,
+    probe_perception,
+    resolve_perception_config,
+)
 from frontend_bridge_core.routes.router import (
     ApiRequest,
     BodyKind,
@@ -50,23 +51,14 @@ def forward_plugin_perception_from_bridge(state: Any, payload: dict[str, Any]) -
     return ok
 
 
-def _probe_config(config: PerceptionConfig, options: Mapping[str, Any]) -> PerceptionConfig:
-    return replace(
-        config,
-        base_url=str(options.get("baseUrl") or "").strip() or config.base_url,
-        api_key=str(options.get("apiKey") or "").strip() or config.api_key,
-        model=str(options.get("model") or "").strip() or config.model,
-    )
-
-
 def _perception_probe_image(request: ApiRequest) -> JsonResponse:
-    cfg = PerceptionConfig.from_api_config(request.state.config_manager.config.api_config)
-    return JsonResponse(PerceptionDecisionClient().probe_image(_probe_config(cfg, request.body)))
+    cfg = resolve_perception_config(request.state.config_manager.config.api_config)
+    return JsonResponse(probe_perception(cfg, request.body, image=True))
 
 
 def _perception_status(request: ApiRequest) -> JsonResponse:
     state = request.state
-    cfg = PerceptionConfig.from_api_config(state.config_manager.config.api_config)
+    cfg = resolve_perception_config(state.config_manager.config.api_config)
     session_id = str(getattr(state, "chat_session", {}).get("sessionId") or "").strip()
     chat_stream = getattr(state, "chat_stream", None)
     snapshot = chat_stream.get_snapshot(session_id) if (session_id and chat_stream) else None
@@ -83,7 +75,7 @@ def _perception_status(request: ApiRequest) -> JsonResponse:
     }
     if probe_flag:
         overrides = {key: (request.query.get(key) or [""])[0] for key in ("baseUrl", "model", "apiKey")}
-        health = PerceptionDecisionClient().probe_health(_probe_config(cfg, overrides))
+        health = probe_perception(cfg, overrides)
     else:
         health = None
 
@@ -169,7 +161,7 @@ def _perception_clear(request: ApiRequest) -> JsonResponse:
 
 def _perception_server_start(request: ApiRequest) -> JsonResponse:
     api_config = request.state.config_manager.config.api_config
-    cfg = PerceptionConfig.from_api_config(api_config)
+    cfg = resolve_perception_config(api_config)
     body = request.body if isinstance(request.body, dict) else {}
 
     base_url = str(body.get("baseUrl") or cfg.base_url).strip() or cfg.base_url

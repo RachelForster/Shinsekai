@@ -203,26 +203,8 @@ def _validate_api_config_for_save(config: Any) -> None:
         raise ValueError("TTS 服务启动路径必须是已存在的目录。")
 
 
-def _switch_running_perception_model(previous: Any, updated: Any) -> None:
-    if previous.perception_use_gguf == updated.perception_use_gguf:
-        return
-    from application.perception.server_launcher import get_perception_server_manager
-    from core.perception.models import PerceptionConfig
-
-    old_endpoint = PerceptionConfig.from_api_config(previous)
-    new_endpoint = PerceptionConfig.from_api_config(updated)
-    if old_endpoint.base_url != new_endpoint.base_url or old_endpoint.model == new_endpoint.model:
-        return
-    manager = get_perception_server_manager()
-    status = manager.status(explicit_python_path=updated.perception_python_path)
-    if (
-        status["managed"] and status["baseUrl"] == new_endpoint.base_url
-        and status["model"] != new_endpoint.model
-    ):
-        manager.start(base_url=new_endpoint.base_url, model=new_endpoint.model, python_path=updated.perception_python_path)
-
-
 def _save_api_config(state: BridgeState, payload: dict[str, Any]) -> Any:
+    from application.perception.server_launcher import switch_running_perception_model
     from config.schema import ApiConfig
 
     config = ApiConfig.model_validate(payload).model_copy(deep=True)
@@ -245,14 +227,14 @@ def _save_api_config(state: BridgeState, payload: dict[str, Any]) -> Any:
         )
     _validate_api_config_for_save(config)
     previous = state.config_manager.config.api_config
-    _switch_running_perception_model(previous, config)
+    switch_running_perception_model(previous, config)
     state.config_manager.config.api_config = config
     try:
         state.config_manager.save_api_config()
     except Exception:
         state.config_manager.config.api_config = previous
         try:
-            _switch_running_perception_model(config, previous)
+            switch_running_perception_model(config, previous)
         except Exception:
             logging.getLogger(__name__).exception("Could not restore the running perception model")
         raise

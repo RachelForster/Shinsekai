@@ -7,8 +7,7 @@ import time
 from typing import Any, Literal, Mapping
 from urllib.parse import urlsplit
 
-DEFAULT_PERCEPTION_MODEL = "Qwen/Qwen3-VL-2B-Instruct"
-GGUF_MODEL_ID = "Qwen/Qwen3-VL-2B-Instruct-GGUF:Q4_K_M"
+from config.perception import DEFAULT_PERCEPTION_MODEL, GGUF_MODEL_ID
 
 
 @dataclass(frozen=True, slots=True)
