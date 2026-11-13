@@ -24,6 +24,7 @@ import { ChatInitializationDialog } from "../chat-startup/ChatInitializationDial
 import { useChatInitialization } from "../chat-startup/useChatInitialization";
 import { useChatLaunchGuard } from "../chat-startup/useChatLaunchGuard";
 import { StoryLaunchButton } from "../story-generator/components/StoryLaunchButton";
+import { PluginSlot } from "../../shared/plugin/PluginSlot";
 import "./ConversationLibrary.css";
 
 function ConversationAvatar({ name, path }: { name: string; path?: string }) {
@@ -63,14 +64,14 @@ export function ConversationLibrary({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const date = new Intl.DateTimeFormat(language.replace("_", "-"), { dateStyle: "medium", timeStyle: "short" });
-  const launch = async (item: ConversationSummary) => {
+  const launch = async (id: string) => {
     if (runtimeClosing || init.initializationPending) return;
     setError("");
     try {
       const snapshot = await init.runChatInitialization(async (options) => {
         if ((await getChatRuntimeStatus()).state !== "idle") throw new Error(t("story.launch.busy"));
         return launchChat(
-          { ...(await prepareConversation(item.id)), enableMobileAccess: mobileAccessEnabled },
+          { ...(await prepareConversation(id)), enableMobileAccess: mobileAccessEnabled },
           options,
         );
       });
@@ -127,6 +128,7 @@ export function ConversationLibrary({
               {t("mobileAccess.launchHint")}
             </span>
           </div>
+          <PluginSlot slot="chat-workspace-actions" onLaunchConversation={launch} />
           {!isEmpty && (
             <Button variant="primary" disabled={runtimeLaunchDisabled || init.initializationPending} onClick={onCreate}>
               {t("conversation.new")}
@@ -179,7 +181,7 @@ export function ConversationLibrary({
                   <Button
                     variant="primary"
                     disabled={runtimeLaunchDisabled || init.initializationPending}
-                    onClick={() => (item.hasSettings ? void launch(item) : onEdit(item.id, item.kind))}
+                    onClick={() => (item.hasSettings ? void launch(item.id) : onEdit(item.id, item.kind))}
                   >
                     {t(item.hasSettings ? "conversation.continue" : "conversation.configureAndContinue")}
                   </Button>

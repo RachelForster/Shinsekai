@@ -238,6 +238,7 @@ export type PluginSlotId =
   | "chat-output"
   | "chat-toolbar"
   | "chat-top-toolbar"
+  | "chat-workspace-actions"
   | "settings-extension"
   | "settings-tools";
 
@@ -266,6 +267,7 @@ export interface PluginSlotContribution {
 }
 
 export interface PluginSlotActionResult {
+  conversationId?: string;
   id: string;
   kind: "error" | "info" | "success";
   message: string;
