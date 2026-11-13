@@ -1,7 +1,8 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import type { ReactNode } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 
+import { isTauriDesktop, takeDesktopPluginChatWake } from "../../shared/desktop/desktopApi";
 import { AppShell } from "../shell/AppShell";
 import { getInitialSettingsPath } from "../../features/onboarding/onboardingState";
 
@@ -97,6 +98,17 @@ function InitialSettingsRedirect() {
 }
 
 export function AppRoutes() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (!isTauriDesktop() || window.location.hash.startsWith("#/chat-stage")) return;
+    let active = true;
+    const check = async () => {
+      const request = await takeDesktopPluginChatWake().catch(() => null);
+      if (request && active) navigate("/settings/templates?pluginChat=" + encodeURIComponent(request));
+    };
+    const timer = window.setInterval(() => void check(), 500);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [navigate]);
   return (
     <Routes>
       <Route element={<AppShell />} path="/settings">

@@ -363,6 +363,7 @@ def _frontend_chat_ui_contribution_payloads() -> list[dict[str, Any]]:
                 "actionLabel": str(getattr(contribution, "action_label", "") or "").strip() or title,
                 "actionType": action_type,
                 "actionable": action_type != "none",
+                "externalLaunch": slot == "chat-workspace-actions" and getattr(contribution, "external_launch", False) is True,
                 "description": str(getattr(contribution, "description", "") or "").strip()[:500],
                 "icon": icon if icon in allowed_icons else "puzzle",
                 "id": contribution_id,

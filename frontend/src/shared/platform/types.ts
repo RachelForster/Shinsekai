@@ -249,6 +249,7 @@ export type PluginSlotContributionPresentation = "button" | "icon-only";
 export type PluginSlotContributionVariant = "danger" | "ghost" | "primary";
 
 export interface PluginSlotContribution {
+  externalLaunch?: boolean;
   actionLabel: string;
   actionType: PluginSlotContributionActionType;
   actionable: boolean;

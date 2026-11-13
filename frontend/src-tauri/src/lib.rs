@@ -397,12 +397,42 @@ struct DesktopWindowCursorPosition {
     y: f64,
 }
 
+#[derive(Default)]
+struct PluginChatWake(Mutex<Option<String>>);
+
+fn plugin_chat_wake_argument(args: impl IntoIterator<Item = String>) -> Option<String> {
+    args.into_iter().find_map(|arg| {
+        let id = arg.strip_prefix("--plugin-chat=")?;
+        let (plugin, action) = id.split_once('/')?;
+        if [plugin, action].iter().all(|part| !part.is_empty() && part.len() <= 128
+            && part.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'.' | b'_' | b'-'))) {
+            Some(id.to_owned())
+        } else {
+            None
+        }
+    })
+}
+
+#[tauri::command]
+fn desktop_take_plugin_chat_wake(window: WebviewWindow, state: State<'_, PluginChatWake>) -> Option<String> {
+    if window.label() != "main" {
+        return None;
+    }
+    state.0.lock().ok()?.take()
+}
+
 pub fn run() {
     restart_debug_log("run enter");
     let protocol_frontend_dist = Arc::new(Mutex::new(None::<PathBuf>));
     let protocol_frontend_dist_for_handler = Arc::clone(&protocol_frontend_dist);
     tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
+        .manage(PluginChatWake(Mutex::new(plugin_chat_wake_argument(env::args().skip(1)))))
+        .plugin(tauri_plugin_single_instance::init(|app, args, _| {
+            if let Some(request) = plugin_chat_wake_argument(args.into_iter().skip(1)) {
+                if let Ok(mut pending) = app.state::<PluginChatWake>().0.lock() {
+                    *pending = Some(request);
+                }
+            }
             background::show_main(app)
         }))
         .register_uri_scheme_protocol(LIVE_FRONTEND_SCHEME, move |_ctx, request| {
@@ -446,6 +476,7 @@ pub fn run() {
             desktop_window_cursor_position,
             desktop_window_close,
             desktop_open_chat_window,
+            desktop_take_plugin_chat_wake,
             desktop_open_external_url,
             #[cfg(desktop)]
             desktop_update_check,

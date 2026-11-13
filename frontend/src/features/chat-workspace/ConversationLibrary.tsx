@@ -1,4 +1,7 @@
-import { useId, useState } from "react";
+import { isTauriDesktop } from "../../shared/desktop/desktopApi";
+import { useSearchParams } from "react-router-dom";
+import { runPluginSlotContribution, listPluginSlotContributions } from "../../entities/plugin/repository";
+import { useEffect, useId, useRef, useState } from "react";
 import { Pencil, Settings, Trash2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { charactersQueryKey, listCharacters } from "../../entities/character/repository";
@@ -82,6 +85,34 @@ export function ConversationLibrary({
       setError(reason instanceof Error ? reason.message : String(reason));
     }
   };
+  const [params, setParams] = useSearchParams();
+  const handledWake = useRef<string | null>(null);
+  const wake = params.get("pluginChat");
+  useEffect(() => {
+    if (!wake || !isTauriDesktop()) { handledWake.current = null; return; }
+    if (handledWake.current === wake) return;
+    handledWake.current = wake;
+    void (async () => {
+      try {
+        const [plugin, action] = wake.split("/");
+        const items = await listPluginSlotContributions();
+        if (!items.some((item) => item.pluginId === plugin && item.id === action && item.slot === "chat-workspace-actions" && item.actionType === "callback" && item.externalLaunch)) {
+          throw new Error("The requested chat plugin action is unavailable.");
+        }
+        const result = await runPluginSlotContribution(plugin, action);
+        if (!result.conversationId) throw new Error(result.message || "The plugin did not return a conversation.");
+        await launch(result.conversationId);
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : String(reason));
+      } finally {
+        setParams((current) => {
+          const next = new URLSearchParams(current);
+          if (next.get("pluginChat") === wake) next.delete("pluginChat");
+          return next;
+        }, { replace: true });
+      }
+    })();
+  }, [wake]);
   const rename = async () => {
     if (!editing || saving) return;
     setSaving(true);

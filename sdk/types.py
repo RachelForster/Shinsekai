@@ -194,6 +194,7 @@ class FrontendChatUIContribution:
     variant: Literal["danger", "ghost", "primary"] = "ghost"
     plugin_id: str | None = None
     plugin_version: str | None = None
+    external_launch: bool = False
 
 
 @dataclass(frozen=True)
