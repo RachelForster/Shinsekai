@@ -736,14 +736,14 @@ export function ApiSettingsPage() {
   );
   const apiSectionNavItems = [
     { id: "api-language", label: t("api.language.title") },
-    { id: "api-llm", label: t("api.llm.connectionTitle") },
-    { id: "api-tts", label: t("api.tts.bundleTitle") },
+    { id: "api-llm", label: t("api.nav.llm") },
+    { id: "api-tts", label: t("api.nav.tts") },
     { id: "api-vision", label: t("api.vision.title") },
-    { id: "api-perception", label: t("api.perception.title") },
+    { id: "api-perception", label: t("api.nav.perception") },
     { id: "api-memory", label: t("api.memory.title") },
     { id: "api-knowledge", label: t("api.knowledge.title") },
-    { id: "api-t2i", label: t("api.t2i.title") },
-    { id: "api-asr", label: t("system.asr.title") },
+    { id: "api-t2i", label: t("api.nav.t2i") },
+    { id: "api-asr", label: t("api.nav.asr") },
     { id: "api-links", label: t("api.links.title") },
   ];
 

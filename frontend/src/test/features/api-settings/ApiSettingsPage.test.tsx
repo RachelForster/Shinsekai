@@ -198,14 +198,14 @@ describe("ApiSettingsPage", () => {
         .map((button) => button.textContent),
     ).toEqual([
       "界面语言",
-      "LLM API 配置",
-      "TTS 整合包",
+      "LLM",
+      "语音模块",
       "视觉理解",
-      "实时感知与游戏反应",
+      "实时反应",
       "长期记忆",
       "资料检索",
-      "图像生成（T2I）",
-      "语音输入（ASR）",
+      "图像生成",
+      "语音输入",
       "资源与说明",
     ]);
 
