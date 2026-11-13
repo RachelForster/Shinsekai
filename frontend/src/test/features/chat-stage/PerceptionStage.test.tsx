@@ -3,6 +3,8 @@
 import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import * as chatRepo from "../../../entities/chat/repository";
+import * as modelAssetsRepo from "../../../entities/model-assets/repository";
 import * as perceptionRepo from "../../../entities/perception/repository";
 import { PerceptionSettingsSection } from "../../../features/api-settings/PerceptionSettingsSection";
 import { DialogStageControls } from "../../../features/chat-stage/components/DialogStageControls";
@@ -659,6 +661,140 @@ describe("Perception chat-stage state & components", () => {
       startSpy.mockRestore();
       stopSpy.mockRestore();
       imageTestSpy.mockRestore();
+    }
+  });
+
+  it("installs missing perception runtime dependencies and downloads the VLM model in one click", async () => {
+    vi.useRealTimers();
+    const baseResponse = {
+      chatSessionActive: false,
+      config: {
+        baseUrl: "http://127.0.0.1:8091/v1",
+        diffThreshold: 0.035,
+        enabled: false,
+        frameMaxSide: 512,
+        intervalSec: 2,
+        model: "Qwen/Qwen3-VL-2B-Instruct",
+        proactiveCooldownSec: 25,
+        proactiveEnabled: true,
+        reflexCooldownSec: 4,
+        reflexEnabled: true,
+        salienceThreshold: 0.85,
+      },
+      ingestUrl: "http://127.0.0.1:8787/api/perception/ingest",
+      localServer: {
+        baseUrl: "http://127.0.0.1:8091/v1",
+        detectedPythonPath: "C:\\AI\\Shinsekai\\runtime\\python.exe",
+        error: "",
+        logs: [],
+        managed: false,
+        model: "Qwen/Qwen3-VL-2B-Instruct",
+        pid: null,
+        pythonPath: "C:\\AI\\Shinsekai\\runtime\\python.exe",
+        running: false,
+        starting: false,
+        state: "stopped" as const,
+      },
+      runtime: null,
+    };
+    const statusSpy = vi
+      .spyOn(perceptionRepo, "getPerceptionStatus")
+      .mockResolvedValueOnce({
+        ...baseResponse,
+        setup: {
+          downloadable: true,
+          message: "torch is not installed",
+          modelCached: false,
+          moduleName: "perception",
+          packageName: "torch",
+          pythonPath: "C:\\AI\\Shinsekai\\runtime\\python.exe",
+          status: "missing_dependency",
+        },
+      })
+      .mockResolvedValueOnce({
+        ...baseResponse,
+        setup: {
+          downloadable: true,
+          message: "torch is not installed",
+          modelCached: false,
+          moduleName: "perception",
+          packageName: "torch",
+          pythonPath: "C:\\AI\\Shinsekai\\runtime\\python.exe",
+          status: "missing_dependency",
+        },
+      })
+      .mockResolvedValueOnce({
+        ...baseResponse,
+        setup: {
+          downloadable: true,
+          modelCached: false,
+          pythonPath: "C:\\AI\\Shinsekai\\runtime\\python.exe",
+          status: "not_started",
+        },
+      })
+      .mockResolvedValue({
+        ...baseResponse,
+        setup: {
+          downloadable: true,
+          modelCached: true,
+          pythonPath: "C:\\AI\\Shinsekai\\runtime\\python.exe",
+          status: "ready",
+        },
+      });
+    const installSpy = vi.spyOn(chatRepo, "installMissingRuntimeDependency").mockResolvedValue({
+      message: "感知运行环境依赖已就绪。",
+      moduleName: "perception",
+      packageName: "PyTorch (cu128)",
+      pipCode: 0,
+      pipOutput: "Successfully installed torch transformers rapidocr-onnxruntime",
+    });
+    const downloadSpy = vi.spyOn(modelAssetsRepo, "downloadModelAsset").mockResolvedValue({
+      assetId: "perception.vlm",
+      cached: true,
+      downloadable: true,
+      downloaded: true,
+      repoId: "Qwen/Qwen3-VL-2B-Instruct",
+      source: "huggingface",
+      title: "Perception VLM (Qwen/Qwen3-VL-2B-Instruct)",
+      variant: "Qwen/Qwen3-VL-2B-Instruct",
+    });
+    const draft = {
+      ...sampleConfig.api_config,
+      perception_python_path: "C:\\AI\\Shinsekai\\runtime\\python.exe",
+    };
+
+    try {
+      render(
+        <I18nProvider language="zh_CN">
+          <ToastProvider>
+            <PerceptionSettingsSection draft={draft} onChange={() => {}} savedModel="Qwen/Qwen3-VL-2B-Instruct" />
+          </ToastProvider>
+        </I18nProvider>,
+      );
+
+      fireEvent.click(screen.getByText("实时感知与游戏反应").closest("summary")!);
+      expect(await screen.findByText("缺少 torch 等运行依赖")).toBeVisible();
+      const setupBtn = await screen.findByRole("button", { name: "下载依赖与模型" });
+      fireEvent.click(setupBtn);
+
+      await waitFor(() => {
+        expect(installSpy).toHaveBeenCalledWith(
+          {
+            moduleName: "perception",
+            pythonPath: "C:\\AI\\Shinsekai\\runtime\\python.exe",
+          },
+          expect.any(Object),
+        );
+      });
+      await waitFor(() => {
+        expect(downloadSpy).toHaveBeenCalledWith({ assetId: "perception.vlm" }, expect.any(Object));
+      });
+      expect(await screen.findByText("依赖已就绪 · 模型已就绪")).toBeVisible();
+      expect(await screen.findByRole("button", { name: "重新检查" })).toBeVisible();
+    } finally {
+      statusSpy.mockRestore();
+      installSpy.mockRestore();
+      downloadSpy.mockRestore();
     }
   });
 });

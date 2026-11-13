@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { Activity, Copy, Play, SlidersHorizontal, Square } from "lucide-react";
+import { Activity, Copy, DownloadCloud, Play, SlidersHorizontal, Square } from "lucide-react";
 
+import { installMissingRuntimeDependency } from "../../entities/chat/repository";
 import type { ApiConfig } from "../../entities/config/types";
+import { downloadModelAsset } from "../../entities/model-assets/repository";
 import {
   getPerceptionStatus,
   startPerceptionLocalServer,
@@ -11,8 +13,14 @@ import {
 import { useI18n } from "../../shared/i18n";
 import { DEFAULT_PERCEPTION_MODEL, effectivePerceptionModel } from "../../shared/platform/perceptionModel";
 import { resolvePlatformHttpUrl } from "../../shared/platform/platform";
-import type { PerceptionHealthProbe, PerceptionLocalServerStatus } from "../../shared/platform/types";
-import { AsyncButton, Button, NumberInput, Switch, TextInput, useToast } from "../../shared/ui";
+import type {
+  ModelAssetRef,
+  PerceptionHealthProbe,
+  PerceptionLocalServerStatus,
+  PerceptionSetupStatus,
+  TaskSnapshot,
+} from "../../shared/platform/types";
+import { AsyncButton, Button, NumberInput, Switch, TaskProgress, TextInput, useToast } from "../../shared/ui";
 import { clampFloat, clampInt, DEFAULT_PERCEPTION_API_KEY, DEFAULT_PERCEPTION_BASE_URL } from "./apiSettingsUtils";
 
 interface PerceptionSettingsSectionProps {
@@ -20,7 +28,17 @@ interface PerceptionSettingsSectionProps {
   draft: ApiConfig;
   id?: string;
   onChange: (draft: ApiConfig) => void;
+  savedModel?: string;
   savedUseGguf?: boolean;
+}
+
+const PERCEPTION_VLM_ASSET = { assetId: "perception.vlm" } as const;
+
+function dependencyPackageLabel(packageName: string | undefined, fallback: string) {
+  const label = String(packageName || "")
+    .replace(/(?:\[|[<>=!~]).*$/, "")
+    .trim();
+  return label || fallback;
 }
 
 function endpointOptions(draft: ApiConfig) {
@@ -29,6 +47,87 @@ function endpointOptions(draft: ApiConfig) {
     baseUrl: draft.perception_base_url || DEFAULT_PERCEPTION_BASE_URL,
     model: effectivePerceptionModel(draft),
   };
+}
+
+function statusQueryOptions(draft: ApiConfig) {
+  const model = effectivePerceptionModel(draft);
+  const pythonPath = (draft.perception_python_path || "").trim();
+  return {
+    probe: false,
+    ...(model !== DEFAULT_PERCEPTION_MODEL ? { model } : {}),
+    ...(pythonPath ? { pythonPath } : {}),
+  };
+}
+
+function perceptionSetupStatusLabel(setup: PerceptionSetupStatus | null, t: ReturnType<typeof useI18n>["t"]) {
+  if (!setup) {
+    return t("api.perception.setupUnknown");
+  }
+  if (setup.status === "missing_dependency") {
+    return t("api.perception.missingDependency", { packageName: setup.packageName || "torch" });
+  }
+  if (setup.status === "error") {
+    return setup.message || t("api.perception.setupError");
+  }
+  if (setup.status === "ready" || setup.modelCached) {
+    return t("api.perception.setupReady");
+  }
+  return setup.message || t("api.perception.setupModelMissing");
+}
+
+function perceptionActionLabel(setup: PerceptionSetupStatus | null, t: ReturnType<typeof useI18n>["t"]) {
+  if (!setup) {
+    return t("api.perception.checkSetup");
+  }
+  if (setup.status === "missing_dependency") {
+    return setup.modelCached || setup.downloadable === false
+      ? t("api.perception.installDependency")
+      : t("api.perception.installAndDownload");
+  }
+  if (setup.status === "error" || setup.modelCached || setup.downloadable === false) {
+    return t("api.perception.recheckModel");
+  }
+  return t("api.perception.downloadModel");
+}
+
+function perceptionTaskLabels(task: TaskSnapshot, t: ReturnType<typeof useI18n>["t"], dependencyPackage = "torch") {
+  const dependencyTask = task.kind === "runtime-dependency-install";
+  const phase =
+    task.phase === "pip"
+      ? t("api.perception.installingDependency", { packageName: dependencyPackage })
+      : task.phase === "queued"
+        ? t("api.perception.taskInProgress")
+        : task.phase === "download"
+          ? t("api.perception.downloading")
+          : task.phase === "verify"
+            ? t("api.perception.taskVerifying")
+            : task.phase === "completed"
+              ? t(dependencyTask ? "api.perception.dependencyInstalled" : "api.perception.modelCached")
+              : task.phase === "failed"
+                ? t(dependencyTask ? "api.perception.dependencyInstallFailed" : "api.perception.modelDownloadFailed")
+                : undefined;
+  const status =
+    task.status === "running"
+      ? t("api.perception.taskInProgress")
+      : task.status === "succeeded"
+        ? t(dependencyTask ? "api.perception.dependencyInstalled" : "api.perception.modelCached")
+        : task.status === "failed"
+          ? t(dependencyTask ? "api.perception.dependencyInstallFailed" : "api.perception.modelDownloadFailed")
+          : undefined;
+  return { phase, status };
+}
+
+function perceptionBusyLabel(
+  task: TaskSnapshot | null,
+  t: ReturnType<typeof useI18n>["t"],
+  dependencyPackage?: string,
+) {
+  if (!task) {
+    return dependencyPackage
+      ? t("api.perception.installingDependency", { packageName: dependencyPackage })
+      : t("api.perception.checking");
+  }
+  return perceptionTaskLabels(task, t, dependencyPackage).phase || t("api.perception.checking");
 }
 
 function formatProbeStatus(probe: PerceptionHealthProbe, t: ReturnType<typeof useI18n>["t"]) {
@@ -72,6 +171,7 @@ export function PerceptionSettingsSection({
   draft,
   id,
   onChange,
+  savedModel,
   savedUseGguf,
 }: PerceptionSettingsSectionProps) {
   const { t } = useI18n();
@@ -80,31 +180,44 @@ export function PerceptionSettingsSection({
   const [serverActionPending, setServerActionPending] = useState(false);
   const [probeResult, setProbeResult] = useState<PerceptionHealthProbe | null>(null);
   const [localServer, setLocalServer] = useState<PerceptionLocalServerStatus | null>(null);
+  const [setupStatus, setSetupStatus] = useState<PerceptionSetupStatus | null>(null);
+  const [setupTask, setSetupTask] = useState<TaskSnapshot | null>(null);
+  const [preparing, setPreparing] = useState(false);
+  const [installingDependencyPackage, setInstallingDependencyPackage] = useState<string>();
   const [resolvedIngestUrl, setResolvedIngestUrl] = useState(() => resolvePlatformHttpUrl("/api/perception/ingest"));
+  const setupInFlightRef = useRef(false);
+  const setupTokenRef = useRef(0);
   const draftRef = useRef(draft);
   draftRef.current = draft;
 
   const patch = (changes: Partial<ApiConfig>) => onChange({ ...draftRef.current, ...changes });
 
   useEffect(() => {
-    let cancelled = false;
-    void getPerceptionStatus({ probe: false })
+    if (setupInFlightRef.current) {
+      return;
+    }
+    const token = setupTokenRef.current + 1;
+    setupTokenRef.current = token;
+    void getPerceptionStatus(statusQueryOptions(draftRef.current))
       .then((response) => {
-        if (cancelled) return;
+        if (setupTokenRef.current !== token) return;
         if (response.ingestUrl) {
           setResolvedIngestUrl(response.ingestUrl);
         }
         if (response.localServer) {
           setLocalServer(response.localServer);
         }
+        if (response.setup) {
+          setSetupStatus(response.setup);
+        }
       })
       .catch(() => {
         // Ignore background status sync errors on mount.
       });
     return () => {
-      cancelled = true;
+      setupTokenRef.current += 1;
     };
-  }, [savedUseGguf]);
+  }, [savedUseGguf, draft.perception_use_gguf, draft.perception_model, draft.perception_python_path]);
 
   useEffect(() => {
     if (localServer?.state !== "starting") {
@@ -113,13 +226,18 @@ export function PerceptionSettingsSection({
     let cancelled = false;
     let timer: number;
     const poll = async () => {
-      const response = await getPerceptionStatus({ probe: false }).catch(() => null);
+      const response = await getPerceptionStatus(statusQueryOptions(draftRef.current)).catch(() => null);
       if (cancelled) return;
       const nextServer = response?.localServer;
+      if (response?.setup) {
+        setSetupStatus(response.setup);
+      }
       if (nextServer?.state === "running") {
-        const probed = await getPerceptionStatus({ ...endpointOptions(draftRef.current), probe: true }).catch(
-          () => null,
-        );
+        const probed = await getPerceptionStatus({
+          ...endpointOptions(draftRef.current),
+          ...(draftRef.current.perception_python_path ? { pythonPath: draftRef.current.perception_python_path } : {}),
+          probe: true,
+        }).catch(() => null);
         if (cancelled) return;
         setProbeResult(probed?.health ?? null);
       }
@@ -135,6 +253,147 @@ export function PerceptionSettingsSection({
     };
   }, [localServer?.state]);
 
+  const preparePerception = async () => {
+    if (setupInFlightRef.current) {
+      return;
+    }
+    setupInFlightRef.current = true;
+    const token = setupTokenRef.current + 1;
+    setupTokenRef.current = token;
+    setPreparing(true);
+    setSetupTask(null);
+    try {
+      let response = await getPerceptionStatus(statusQueryOptions(draftRef.current));
+      if (setupTokenRef.current !== token) {
+        return;
+      }
+      if (response.localServer) {
+        setLocalServer(response.localServer);
+      }
+      let nextSetup = response.setup ?? null;
+      setSetupStatus(nextSetup);
+
+      if (nextSetup?.status === "missing_dependency") {
+        const missing = nextSetup;
+        setInstallingDependencyPackage(dependencyPackageLabel(missing.packageName, "torch"));
+        const pythonPath = (draftRef.current.perception_python_path || "").trim();
+        await installMissingRuntimeDependency(
+          {
+            moduleName: missing.moduleName?.trim() || "perception",
+            ...(pythonPath ? { pythonPath } : {}),
+          },
+          {
+            onTaskUpdate(nextTask) {
+              if (setupTokenRef.current === token) {
+                setSetupTask(nextTask);
+              }
+            },
+          },
+        );
+        if (setupTokenRef.current !== token) {
+          return;
+        }
+        setSetupTask(null);
+        setInstallingDependencyPackage(undefined);
+        response = await getPerceptionStatus(statusQueryOptions(draftRef.current));
+        if (setupTokenRef.current !== token) {
+          return;
+        }
+        if (response.localServer) {
+          setLocalServer(response.localServer);
+        }
+        nextSetup = response.setup ?? null;
+        setSetupStatus(nextSetup);
+      }
+
+      if (nextSetup?.status === "missing_dependency" || nextSetup?.status === "error") {
+        showToast({
+          kind: "error",
+          message:
+            nextSetup.status === "missing_dependency"
+              ? t("api.perception.missingDependency", { packageName: nextSetup.packageName || "torch" })
+              : nextSetup.message || t("api.perception.setupError"),
+          title: t("api.perception.title"),
+        });
+        return;
+      }
+
+      if (
+        !nextSetup ||
+        nextSetup.modelCached ||
+        nextSetup.downloadable === false ||
+        draftRef.current.perception_use_gguf
+      ) {
+        return;
+      }
+
+      const rawModel = (draftRef.current.perception_model || "").trim() || DEFAULT_PERCEPTION_MODEL;
+      const persistedModel = (savedModel || "").trim() || DEFAULT_PERCEPTION_MODEL;
+      let assetRef: ModelAssetRef;
+      if (rawModel === DEFAULT_PERCEPTION_MODEL) {
+        assetRef = PERCEPTION_VLM_ASSET;
+      } else if (savedModel !== undefined && rawModel === persistedModel) {
+        assetRef = { assetId: "perception.vlm", configured: true };
+      } else {
+        showToast({
+          kind: "info",
+          message: t("api.perception.saveCustomModelFirst"),
+          title: t("api.perception.title"),
+        });
+        return;
+      }
+
+      const result = await downloadModelAsset(assetRef, {
+        onTaskUpdate(nextTask) {
+          if (setupTokenRef.current === token) {
+            setSetupTask(nextTask);
+          }
+        },
+      });
+      if (setupTokenRef.current !== token) {
+        return;
+      }
+      setSetupTask(null);
+      response = await getPerceptionStatus(statusQueryOptions(draftRef.current));
+      if (setupTokenRef.current !== token) {
+        return;
+      }
+      if (response.localServer) {
+        setLocalServer(response.localServer);
+      }
+      const refreshed: PerceptionSetupStatus = response.setup
+        ? {
+            ...response.setup,
+            modelCached: Boolean(response.setup.modelCached || result.cached),
+            status: response.setup.modelCached || result.cached ? "ready" : response.setup.status,
+          }
+        : {
+            downloadable: true,
+            modelCached: Boolean(result.cached),
+            status: result.cached ? "ready" : "not_started",
+          };
+      setSetupStatus(refreshed);
+      if (!refreshed.modelCached) {
+        throw new Error(t("api.perception.modelDownloadFailed"));
+      }
+    } catch (error) {
+      if (setupTokenRef.current === token) {
+        setSetupTask(null);
+        showToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : t("api.perception.modelDownloadFailed"),
+          title: t("api.perception.title"),
+        });
+      }
+    } finally {
+      setupInFlightRef.current = false;
+      if (setupTokenRef.current === token) {
+        setInstallingDependencyPackage(undefined);
+        setPreparing(false);
+      }
+    }
+  };
+
   const handleProbe = async (testImage = false) => {
     setProbing(true);
     try {
@@ -143,12 +402,19 @@ export function PerceptionSettingsSection({
         setProbeResult(await testPerceptionImage(options));
         return;
       }
-      const response = await getPerceptionStatus({ ...options, probe: true });
+      const response = await getPerceptionStatus({
+        ...options,
+        ...(draftRef.current.perception_python_path ? { pythonPath: draftRef.current.perception_python_path } : {}),
+        probe: true,
+      });
       if (response.ingestUrl) {
         setResolvedIngestUrl(response.ingestUrl);
       }
       if (response.localServer) {
         setLocalServer(response.localServer);
+      }
+      if (response.setup) {
+        setSetupStatus(response.setup);
       }
       setProbeResult(response.health ?? null);
     } catch (error) {
@@ -234,9 +500,19 @@ export function PerceptionSettingsSection({
             {status}
           </span>
           <div className="inline-actions">
+            <AsyncButton
+              disabled={disabled || isStarting || serverActionPending}
+              icon={<DownloadCloud aria-hidden className="button__icon" />}
+              loading={preparing}
+              onClick={() => void preparePerception()}
+            >
+              {preparing
+                ? perceptionBusyLabel(setupTask, t, installingDependencyPackage)
+                : perceptionActionLabel(setupStatus, t)}
+            </AsyncButton>
             {isManagedRunning ? (
               <AsyncButton
-                disabled={disabled || probing}
+                disabled={disabled || probing || preparing}
                 icon={<Square aria-hidden className="button__icon" />}
                 loading={serverActionPending}
                 onClick={() => void handleStopLocalServer()}
@@ -246,7 +522,7 @@ export function PerceptionSettingsSection({
               </AsyncButton>
             ) : (
               <AsyncButton
-                disabled={disabled || isStarting || probing}
+                disabled={disabled || isStarting || probing || preparing}
                 icon={<Play aria-hidden className="button__icon" />}
                 loading={serverActionPending || isStarting}
                 onClick={() => void handleStartLocalServer()}
@@ -257,7 +533,7 @@ export function PerceptionSettingsSection({
             )}
             <AsyncButton
               aria-busy={probing}
-              disabled={disabled || isStarting || serverActionPending}
+              disabled={disabled || isStarting || serverActionPending || preparing}
               icon={<Activity aria-hidden className="button__icon" />}
               loading={probing}
               onClick={() => void handleProbe(true)}
@@ -265,6 +541,20 @@ export function PerceptionSettingsSection({
               {t("api.perception.probeButton")}
             </AsyncButton>
           </div>
+        </div>
+
+        <div className="field-row" aria-live="polite">
+          <span className="field-row__label">{t("api.perception.setupStatus")}</span>
+          <span className="field-row__control">
+            <span className="memory-settings__status-value">{perceptionSetupStatusLabel(setupStatus, t)}</span>
+            {setupTask ? (
+              <TaskProgress
+                labels={perceptionTaskLabels(setupTask, t, installingDependencyPackage)}
+                logLimit={0}
+                task={setupTask}
+              />
+            ) : null}
+          </span>
         </div>
 
         <div className="perception-settings__toggles">

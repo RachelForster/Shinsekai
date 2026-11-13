@@ -1,8 +1,8 @@
-"""Pure-text local VLM helpers: persistent character voice-style cache & episode compaction."""
+"""Pure-text local VLM helper: persistent character voice-style cache."""
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 import hashlib
 import json
 import logging
@@ -12,14 +12,9 @@ from typing import Any
 
 from ai.perception.parser import (
     DEFAULT_VOICE_STYLE,
-    sanitize_episode_summary,
     sanitize_voice_style,
 )
-from ai.perception.prompts import (
-    build_episode_summary_messages,
-    build_voice_style_messages,
-)
-from core.perception.cache import build_fallback_episode_summary
+from ai.perception.prompts import build_voice_style_messages
 from core.perception.models import PerceptionConfig
 
 logger = logging.getLogger(__name__)
@@ -108,22 +103,7 @@ class VoiceStyleStore:
         return style
 
 
-def summarize_episode_batch(
-    batch: Sequence[tuple[float, str, str]],
-    config: PerceptionConfig,
-    *,
-    complete_text: TextCompletionFn,
-) -> str:
-    """Summarize one slice of evicted working-window items via local VLM text completion."""
-    items = list(batch)
-    if not items:
-        return ""
-    messages = build_episode_summary_messages(items)
-    try:
-        raw = complete_text(messages, config, 140, min(6.0, config.request_timeout_sec))
-        summary = sanitize_episode_summary(raw)
-        if summary:
-            return summary
-    except Exception:
-        logger.debug("episodic perception summary failed; using deterministic fallback", exc_info=True)
-    return build_fallback_episode_summary(items)
+__all__ = [
+    "TextCompletionFn",
+    "VoiceStyleStore",
+]

@@ -52,7 +52,7 @@ class PerceptionMemoryPolicy:
 
     # 2) Dual-stage summary character budgets
     overall_summary_max_chars: int = 180
-    minute_summary_max_chars: int = 90
+    minute_summary_max_chars: int = 120
 
     # 3) Live-window visual / OCR subtitle budgets
     subtitle_heavy_threshold: int = 3
@@ -101,7 +101,7 @@ class PerceptionMemoryPolicy:
         self.min_items_per_summary = _clamp_int(self.min_items_per_summary, 1, 12, 2)
         self.archive_batch_size = _clamp_int(self.archive_batch_size, 4, 48, 16)
         self.overall_summary_max_chars = _clamp_int(self.overall_summary_max_chars, 60, 400, 180)
-        self.minute_summary_max_chars = _clamp_int(self.minute_summary_max_chars, 40, 220, 90)
+        self.minute_summary_max_chars = _clamp_int(self.minute_summary_max_chars, 40, 240, 120)
         self.subtitle_heavy_threshold = _clamp_int(self.subtitle_heavy_threshold, 1, 10, 3)
         self.visual_beats_subtitle_heavy = _clamp_int(self.visual_beats_subtitle_heavy, 1, 4, 2)
         self.visual_beats_visual_heavy = _clamp_int(self.visual_beats_visual_heavy, 2, 8, 5)

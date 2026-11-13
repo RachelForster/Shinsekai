@@ -1712,6 +1712,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         if (options?.baseUrl?.trim()) params.set("baseUrl", options.baseUrl.trim());
         if (options?.model?.trim()) params.set("model", options.model.trim());
         if (options?.apiKey?.trim()) params.set("apiKey", options.apiKey.trim());
+        if (options?.pythonPath?.trim()) params.set("pythonPath", options.pythonPath.trim());
         const query = params.toString();
         return requestJson<PerceptionStatusResponse>(
           apiBase,

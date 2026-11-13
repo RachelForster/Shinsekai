@@ -8,6 +8,7 @@ from typing import Any
 
 from application.perception.server_launcher import (
     get_perception_server_manager,
+    inspect_perception_setup,
     probe_perception,
     resolve_perception_config,
 )
@@ -88,8 +89,18 @@ def _perception_status(request: ApiRequest) -> JsonResponse:
     )
 
     api_config = state.config_manager.config.api_config
-    configured_python = str(getattr(api_config, "perception_python_path", "") or "").strip()
+    query_python = str((request.query.get("pythonPath") or [""])[0]).strip()
+    query_model = str((request.query.get("model") or [""])[0]).strip()
+    configured_python = query_python or str(getattr(api_config, "perception_python_path", "") or "").strip()
+    configured_model = str(getattr(api_config, "perception_model", "") or "").strip()
     local_server = get_perception_server_manager().status(explicit_python_path=configured_python)
+    setup = inspect_perception_setup(
+        model=query_model or cfg.model,
+        python_path=configured_python,
+        configured_model=configured_model or cfg.model,
+        project_root=getattr(state, "project_root_dir", "") or None,
+        app_root=getattr(state, "app_root_dir", "") or None,
+    )
 
     return JsonResponse(
         {
@@ -112,6 +123,7 @@ def _perception_status(request: ApiRequest) -> JsonResponse:
             "ingestUrl": ingest_url,
             "localServer": local_server,
             "runtime": runtime_perception,
+            "setup": setup,
             **({"health": health} if health is not None else {}),
         }
     )

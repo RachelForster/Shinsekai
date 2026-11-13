@@ -627,22 +627,13 @@ class PerceptionCoordinator:
         self,
         job: Mapping[str, Any],
         epoch: int,
-        cfg: PerceptionConfig,
     ) -> bool:
         batch = list(job.get("batch") or ())
         if not batch:
             return False
-        custom_client = type(self.decision_client) is not PerceptionDecisionClient
-        summarize_fn = getattr(self.decision_client, "summarize_episode", None)
-        fallback_summarizer = (
-            (lambda items: summarize_fn(items, cfg))
-            if (self._cloud_complete is None and custom_client and callable(summarize_fn))
-            else None
-        )
         result = summarize_vision_window(
             job,
             cloud_complete=self._cloud_complete,
-            fallback_summarizer=fallback_summarizer,
         )
         with self._lock:
             if epoch != self._analysis_epoch or self._stop_event.is_set():
@@ -672,9 +663,9 @@ class PerceptionCoordinator:
             job = self.rp_input_cache.prepare_summary_job(now=now, force=force)
         if job is None:
             return False
-        return self._execute_summary_job(job, epoch, self.current_config())
+        return self._execute_summary_job(job, epoch)
 
-    def _maybe_schedule_cloud_summary(self, cfg: PerceptionConfig) -> None:
+    def _maybe_schedule_cloud_summary(self) -> None:
         """Launch out-of-band Cloud LLM summarization when a 2-minute window is due."""
         with self._lock:
             if self._stop_event.is_set():
@@ -687,7 +678,7 @@ class PerceptionCoordinator:
                 return
             worker = threading.Thread(
                 target=self._execute_summary_job,
-                args=(job, epoch, cfg),
+                args=(job, epoch),
                 name="shinsekai-perception-cloud-summary",
                 daemon=True,
             )
@@ -696,7 +687,7 @@ class PerceptionCoordinator:
 
     def _maybe_run_idle_maintenance(self, cfg: PerceptionConfig) -> None:
         """Run one-off voice style extraction when idle, and schedule Cloud LLM summaries."""
-        self._maybe_schedule_cloud_summary(cfg)
+        self._maybe_schedule_cloud_summary()
         if self.raw_buffer.has_dirty() or self._stop_event.is_set():
             return
         custom_client = type(self.decision_client) is not PerceptionDecisionClient
@@ -731,7 +722,7 @@ class PerceptionCoordinator:
 
             cfg = self.current_config()
             if not (cfg.enabled or self._screen_share_active):
-                self._maybe_schedule_cloud_summary(cfg)
+                self._maybe_schedule_cloud_summary()
                 continue
 
             if not self.raw_buffer.has_dirty():

@@ -23,6 +23,102 @@ CloudTextCompletionFn = Callable[[list[dict[str, str]]], str]
 
 _CODE_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE)
 
+_SLOT_PREFIX_PATTERNS: dict[str, re.Pattern[str]] = {
+    "subtitle": re.compile(r"^(?:字幕内容|屏幕文字|屏幕台词|字幕|台词|文字)\s*[：:]\s*"),
+    "visual": re.compile(r"^(?:画面内容|画面动态|画面表现|画面)\s*[：:]\s*"),
+    "turning_point": re.compile(r"^(?:关键转折|剧情转折|胜负转折|转折|反转)\s*[：:]\s*"),
+}
+
+_EMPTY_SLOT_TOKENS: frozenset[str] = frozenset(
+    {
+        "",
+        "无",
+        "暂无",
+        "没有",
+        "空",
+        "无内容",
+        "none",
+        "null",
+        "nil",
+        "n/a",
+        "na",
+        "false",
+        "-",
+        "—",
+        "——",
+    }
+)
+
+_EMPTY_SLOT_SENTENCE_RE = re.compile(
+    r"^(?:本段|当前|目前|暂时|此处|画面中|屏幕中)?(?:均|并|尚)?(?:无|没有|暂无|未见|未出现|未发生|不存在)"
+    r"(?:出现|发生)?(?:明显|显著|重大|关键|实质|特殊|任何|新的)?(?:的)?(?:屏幕|剧情)?"
+    r"(?:字幕内容|字幕|台词|文字|对话|画面内容|画面变化|画面动作|画面|关键转折|剧情转折|转折点|转折|反转|结果)$",
+    re.IGNORECASE,
+)
+
+
+def _clean_summary_slot(raw: Any, *, slot: str, slot_max_chars: int) -> str:
+    text = sanitize_episode_summary(str(raw or ""))
+    text = text.strip(" \"'“”‘’。！!？?；;，,")
+    prefix_re = _SLOT_PREFIX_PATTERNS.get(slot)
+    if prefix_re is not None:
+        text = prefix_re.sub("", text).strip(" \"'“”‘’。！!？?；;，,")
+    lowered = text.casefold().strip()
+    if not lowered or lowered in _EMPTY_SLOT_TOKENS:
+        return ""
+    if len(text) <= 20 and _EMPTY_SLOT_SENTENCE_RE.match(text):
+        return ""
+    text = re.sub(r"\s*[。；;！!]+\s*", "，", text).strip(" ，,。；;！!？?")
+    if len(text) > slot_max_chars:
+        clipped = text[:slot_max_chars]
+        last_sep = max(clipped.rfind("，"), clipped.rfind(","), clipped.rfind("、"))
+        if last_sep >= slot_max_chars // 2:
+            clipped = clipped[:last_sep]
+        text = clipped.rstrip(" ，,、：:")
+    return text
+
+
+def compose_minute_summary(
+    subtitle_summary: Any = "",
+    visual_summary: Any = "",
+    turning_point: Any = "",
+    *,
+    max_chars: int = 120,
+) -> str:
+    """Assemble the 2-to-3 sentence episodic summary in strict order: 字幕 -> 画面 -> 转折(optional)."""
+    limit = max(40, int(max_chars))
+    sub = _clean_summary_slot(subtitle_summary, slot="subtitle", slot_max_chars=42)
+    vis = _clean_summary_slot(visual_summary, slot="visual", slot_max_chars=40)
+    turn = _clean_summary_slot(turning_point, slot="turning_point", slot_max_chars=36)
+
+    sentences: list[str] = []
+    if sub:
+        sentences.append(f"字幕：{sub}。")
+    if vis:
+        sentences.append(f"画面：{vis}。")
+    if turn:
+        sentences.append(f"转折：{turn}。")
+
+    if not sentences:
+        return ""
+
+    joined = "".join(sentences)
+    if len(joined) <= limit:
+        return joined
+
+    per_slot = max(12, (limit - 4 * len(sentences)) // len(sentences))
+    tightened: list[str] = []
+    for label, val in (("字幕", sub), ("画面", vis), ("转折", turn)):
+        if not val:
+            continue
+        short_val = _clean_summary_slot(val, slot="", slot_max_chars=per_slot)
+        if short_val:
+            tightened.append(f"{label}：{short_val}。")
+    result = "".join(tightened)
+    if len(result) <= limit:
+        return result
+    return result[: limit - 1].rstrip(" ，,、：:。；;") + "。"
+
 
 @dataclass(frozen=True, slots=True)
 class CloudSummaryResult:
@@ -127,17 +223,19 @@ def build_cloud_summary_messages(
     previous_overall_summary: str = "",
     recent_episodes: Sequence[VisionEpisode] = (),
     policy_snapshot: Mapping[str, Any] | None = None,
-    minute_max_chars: int = 90,
+    minute_max_chars: int = 120,
     overall_max_chars: int = 180,
     active_game: str = "",
 ) -> list[dict[str, str]]:
     """Build stateless messages asking the Cloud LLM for dual summaries + adaptive guidance."""
     system_prompt = (
         "你是实时陪看/陪玩系统的云端视觉记忆整理与感知策略助手。\n"
-        "请根据「既有总体纪要」与「最近约2分钟按时间排列的画面及OCR字幕」，输出一个严格的JSON对象：\n"
+        "请根据「既有总体纪要」与本段约2分钟的「字幕/文字记录」及「画面记录」，高度提炼核心信息并输出一个严格的JSON对象：\n"
         "{\n"
-        f'  "minute_summary": "{minute_max_chars}字以内，客观浓缩本段2分钟关键画面动作与OCR台词事实，禁止加入情绪基调判断、主观感叹或脑补",\n'
-        f'  "overall_summary": "{overall_max_chars}字以内，在既有总体纪要基础上融合本段主线事实进展，保留核心人物/线索/胜负转折，禁止附带情绪基调标签",\n'
+        '  "subtitle_summary": "一句话（38字以内）清晰概括本段字幕/文字的核心内容或对话主旨；若本段无字幕填\\"\\"",\n'
+        '  "visual_summary": "一句话（36字以内）高度概括本段画面的核心场景与主要动作状态；若本段无画面填\\"\\"",\n'
+        '  "turning_point": "一句话（32字以内）点出本段的关键剧情反转、核心线索揭晓或胜负结果；若无明显转折必须填\\"\\"",\n'
+        f'  "overall_summary": "{overall_max_chars}字以内，在既有总体纪要基础上融合本段主线进展，保留核心人物/线索/胜负转折，禁止附带情绪基调标签",\n'
         '  "mood": "calm|serious|sad|tense|joyful|hyped|unclear",\n'
         '  "guidance": {\n'
         '    "scene_pace": "auto|dialogue_heavy|action_heavy|quiet",\n'
@@ -148,10 +246,13 @@ def build_cloud_summary_messages(
         "  }\n"
         "}\n"
         "规则：\n"
-        "1. 只依据提供的观察记录整理，OCR谐音错字可结合上下文轻微修正，但禁止编造未出现的信息。\n"
-        "2. guidance用于主动自适应指导后续参数：台词密集的文戏/科普/访谈设 scene_pace=\"dialogue_heavy\"、visual_beats_subtitle_heavy=1~2；"
+        "1. 严禁写成“先是……接着……随后……然后……”的时间流水账！subtitle_summary 与 visual_summary 各限干脆利落的一句话（总体控制"
+        f"{minute_max_chars}字以内），做高度归纳提炼而非逐条复述，且不要自带“字幕：”“画面：”“转折：”前缀。\n"
+        "2. turning_point 宁缺毋滥：常规剧情推进、普通对话或日常走位探索时必须填 \"\"，严禁硬凑或填写“无明显转折”。\n"
+        "3. 只依据提供的观察记录整理，OCR谐音错字可结合上下文轻微修正，禁止主观感叹、情绪基调判断或脑补未出现的信息。\n"
+        "4. guidance用于主动自适应指导后续参数：台词密集的文戏/科普/访谈设 scene_pace=\"dialogue_heavy\"、visual_beats_subtitle_heavy=1~2；"
         "少台词的探索/战斗设 scene_pace=\"action_heavy\"、visual_beats_visual_heavy=5~6；若琐碎波动过多可上调 notable_salience_floor（0.85~0.92）。无需调整时 guidance 可填 {}。\n"
-        "3. 只输出一行合法JSON对象，不要包含Markdown代码块。"
+        "5. 只输出一行合法JSON对象，不要包含Markdown代码块。"
     )
 
     user_sections: list[str] = []
@@ -167,8 +268,22 @@ def build_cloud_summary_messages(
         user_sections.append(
             "[当前策略参数] " + json.dumps(dict(policy_snapshot), ensure_ascii=False)
         )
-    obs_lines = [f"[{kind}] {text.strip()}" for _ts, kind, text in batch if str(text or "").strip()]
-    user_sections.append("[本段按时间排序的观察记录]\n" + "\n".join(obs_lines)[:2800])
+    text_lines = [
+        f"[{kind}] {text.strip()}"
+        for _ts, kind, text in batch
+        if kind != "画面" and str(text or "").strip()
+    ]
+    visual_lines = [
+        f"[画面] {text.strip()}"
+        for _ts, kind, text in batch
+        if kind == "画面" and str(text or "").strip()
+    ]
+    user_sections.append(
+        "[本段字幕/文字记录]\n" + ("\n".join(text_lines)[:1600] if text_lines else "（本段无字幕或文字）")
+    )
+    user_sections.append(
+        "[本段画面记录]\n" + ("\n".join(visual_lines)[:1400] if visual_lines else "（本段无画面变化）")
+    )
 
     return [
         {"role": "system", "content": system_prompt},
@@ -181,12 +296,22 @@ def parse_cloud_summary_response(
     *,
     batch: Sequence[tuple[float, str, str]],
     previous_overall_summary: str = "",
-    minute_max_chars: int = 90,
+    minute_max_chars: int = 120,
     overall_max_chars: int = 180,
     default_mood: str = "unclear",
 ) -> CloudSummaryResult:
     """Parse Cloud LLM JSON output with deterministic fallback on malformed responses."""
     items = list(batch)
+    has_text_items = (
+        any(kind != "画面" and str(text or "").strip() for _ts, kind, text in items)
+        if items
+        else True
+    )
+    has_visual_items = (
+        any(kind == "画面" and str(text or "").strip() for _ts, kind, text in items)
+        if items
+        else True
+    )
     cleaned = _CODE_FENCE_RE.sub("", str(raw_text or "").strip()).strip()
     start = cleaned.find("{")
     end = cleaned.rfind("}")
@@ -202,7 +327,20 @@ def parse_cloud_summary_response(
             parsed = None
 
     if parsed is not None:
-        minute = sanitize_episode_summary(str(parsed.get("minute_summary") or ""))[:minute_max_chars]
+        has_structured_slots = any(
+            key in parsed for key in ("subtitle_summary", "visual_summary", "turning_point")
+        )
+        if has_structured_slots:
+            minute = compose_minute_summary(
+                parsed.get("subtitle_summary", "") if has_text_items else "",
+                parsed.get("visual_summary", "") if has_visual_items else "",
+                parsed.get("turning_point", ""),
+                max_chars=minute_max_chars,
+            )
+        else:
+            minute = ""
+        if not minute and parsed.get("minute_summary"):
+            minute = sanitize_episode_summary(str(parsed.get("minute_summary") or ""))[:minute_max_chars]
         overall = sanitize_episode_summary(str(parsed.get("overall_summary") or ""))[:overall_max_chars]
         mood = normalize_scene_mood(parsed.get("mood")) or normalize_scene_mood(default_mood) or "unclear"
         raw_guidance = parsed.get("guidance")
@@ -234,14 +372,13 @@ def summarize_vision_window(
     job: Mapping[str, Any],
     *,
     cloud_complete: CloudTextCompletionFn | None = None,
-    fallback_summarizer: Callable[[Sequence[tuple[float, str, str]]], str] | None = None,
 ) -> CloudSummaryResult:
     """Run Cloud LLM dual-stage summarization on a prepared `RPInputCache` job."""
     batch = list(job.get("batch") or ())
     prev_overall = str(job.get("previous_overall_summary") or "")
     recent_episodes = tuple(job.get("recent_episodes") or ())
     policy_snapshot = job.get("policy_snapshot")
-    minute_max_chars = int(job.get("minute_max_chars") or 90)
+    minute_max_chars = int(job.get("minute_max_chars") or 120)
     overall_max_chars = int(job.get("overall_max_chars") or 180)
     active_game = str(job.get("active_game") or "")
     current_mood = str(job.get("current_mood") or "unclear")
@@ -277,14 +414,7 @@ def summarize_vision_window(
         except Exception:
             logger.debug("cloud vision memory summarization failed; falling back", exc_info=True)
 
-    minute = ""
-    if callable(fallback_summarizer):
-        try:
-            minute = sanitize_episode_summary(fallback_summarizer(batch))[:minute_max_chars]
-        except Exception:
-            minute = ""
-    if not minute:
-        minute = build_fallback_episode_summary(batch, max_chars=minute_max_chars)
+    minute = build_fallback_episode_summary(batch, max_chars=minute_max_chars)
     overall = merge_fallback_overall_summary(
         prev_overall,
         minute,
@@ -301,6 +431,7 @@ __all__ = [
     "CloudSummaryResult",
     "CloudTextCompletionFn",
     "build_cloud_summary_messages",
+    "compose_minute_summary",
     "create_cloud_text_completer",
     "extract_cloud_response_text",
     "parse_cloud_summary_response",

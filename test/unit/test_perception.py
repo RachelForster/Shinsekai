@@ -1868,6 +1868,186 @@ class TestVisionMemoryAndMoodGate(unittest.TestCase):
         self.assertIn("* [高亮] 扫描版古籍里框选的批注", rendered)
         self.assertNotIn("自己的聊天输入框内容", rendered)
 
+    def test_structured_episode_summary_enforces_subtitle_visual_and_optional_turning_point(self) -> None:
+        from ai.perception.cloud_summary import (
+            build_cloud_summary_messages,
+            compose_minute_summary,
+            parse_cloud_summary_response,
+            summarize_vision_window,
+        )
+        from core.perception.cache.episodes import build_fallback_episode_summary
+
+        batch = [
+            (10.0, "画面", "庭审大厅里律师翻开卷宗"),
+            (12.0, "字幕", "证人声称当晚十点在书房见过被告"),
+            (40.0, "画面", "律师举起受损怀表指向裂痕"),
+            (44.0, "字幕", "但怀表停在了九点四十五分"),
+        ]
+
+        # 1) Cloud prompt groups subtitle vs visual tracks and forbids chronological running logs
+        msgs = build_cloud_summary_messages(batch)
+        self.assertIn('"subtitle_summary"', msgs[0]["content"])
+        self.assertIn('"visual_summary"', msgs[0]["content"])
+        self.assertIn('"turning_point"', msgs[0]["content"])
+        self.assertIn("严禁写成“先是", msgs[0]["content"])
+        self.assertIn("[本段字幕/文字记录]", msgs[1]["content"])
+        self.assertIn("[本段画面记录]", msgs[1]["content"])
+
+        # 2) Full 3-sentence output (with duplicate prefixes stripped) renders in exact order: 字幕 -> 画面 -> 转折
+        res_with_turn = parse_cloud_summary_response(
+            json.dumps(
+                {
+                    "subtitle_summary": "字幕：律师指出怀表停在九点四十五分，反驳证人十点目击证词。",
+                    "visual_summary": "画面：庭审大厅内律师翻阅卷宗并举起裂痕怀表。",
+                    "turning_point": "关键转折：证人的时间线证词被当庭推翻。",
+                    "overall_summary": "围绕书房案庭审质证，证人时间线被怀表证物推翻。",
+                    "mood": "tense",
+                },
+                ensure_ascii=False,
+            ),
+            batch=batch,
+        )
+        self.assertEqual(
+            res_with_turn.minute_summary,
+            "字幕：律师指出怀表停在九点四十五分，反驳证人十点目击证词。"
+            "画面：庭审大厅内律师翻阅卷宗并举起裂痕怀表。"
+            "转折：证人的时间线证词被当庭推翻。",
+        )
+
+        # 3) Placeholder / empty turning_point ("", "无明显转折", "本段没有关键转折") omits `转折：` completely
+        for empty_turn in ("", "无", "无明显转折", "本段没有关键转折", "none"):
+            res_no_turn = parse_cloud_summary_response(
+                json.dumps(
+                    {
+                        "subtitle_summary": "双方核对火星逆行的观测日期与角度数据",
+                        "visual_summary": "书房内两人俯身查看星图手稿",
+                        "turning_point": empty_turn,
+                        "overall_summary": "两人在书房核对火星逆行观测手稿。",
+                    },
+                    ensure_ascii=False,
+                ),
+                batch=batch,
+            )
+            self.assertEqual(
+                res_no_turn.minute_summary,
+                "字幕：双方核对火星逆行的观测日期与角度数据。画面：书房内两人俯身查看星图手稿。",
+            )
+            self.assertNotIn("转折：", res_no_turn.minute_summary)
+
+        # 4) Silent gameplay (no subtitle/text items in batch) omits `字幕：` even if model outputs text
+        silent_batch = [
+            (10.0, "画面", "骑士翻滚躲开巨剑横扫"),
+            (28.0, "画面", "骑士抓住硬直反击击败守卫"),
+        ]
+        res_silent = parse_cloud_summary_response(
+            json.dumps(
+                {
+                    "subtitle_summary": "本段无字幕",
+                    "visual_summary": "骑士翻滚避开巨剑攻击并抓住破绽反击守卫",
+                    "turning_point": "成功击败守卫通关",
+                },
+                ensure_ascii=False,
+            ),
+            batch=silent_batch,
+        )
+        self.assertEqual(
+            res_silent.minute_summary,
+            "画面：骑士翻滚避开巨剑攻击并抓住破绽反击守卫。转折：成功击败守卫通关。",
+        )
+
+        # 5) Tight budget still preserves clean sentence endings
+        tight = compose_minute_summary(
+            "律师逐一质询证人昨晚进出书房的准确时间与路线细节",
+            "法庭中央律师举起停摆怀表展示给审判长查看",
+            "证人被迫承认记错了目击时间",
+            max_chars=66,
+        )
+        self.assertLessEqual(len(tight), 66)
+        self.assertTrue(tight.endswith("。"))
+
+        # 6) Offline deterministic fallback (when Cloud LLM is unavailable) follows 字幕 -> 画面 ordering
+        fallback = build_fallback_episode_summary(batch)
+        self.assertTrue(fallback.startswith("字幕："))
+        self.assertLess(fallback.index("字幕："), fallback.index("画面："))
+        offline_res = summarize_vision_window({"batch": batch}, cloud_complete=None)
+        self.assertEqual(offline_res.minute_summary, fallback)
+
+    def test_discover_shinsekai_python_and_inspect_perception_setup_transitions(self) -> None:
+        import os
+        import tempfile
+        from unittest import mock
+        from application.perception import server_launcher
+        from core.runtime_env.requirements import RequirementCheck
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            rel_py = Path("runtime/python.exe") if os.name == "nt" else Path("runtime/bin/python3")
+            bundled_py = root / rel_py
+            bundled_py.parent.mkdir(parents=True, exist_ok=True)
+            bundled_py.write_bytes(b"fake-python")
+
+            with mock.patch.dict(os.environ, {"SHINSEKAI_PERCEPTION_PYTHON": ""}, clear=False):
+                discovered = server_launcher.discover_perception_python("", app_root=root)
+                self.assertEqual(Path(discovered).resolve(), bundled_py.resolve())
+
+            missing_issue = (
+                RequirementCheck(
+                    requirement="torch>=2.1.0",
+                    name="torch",
+                    installed_version=None,
+                    applies=True,
+                    satisfied=False,
+                ),
+            )
+            with (
+                mock.patch.object(server_launcher, "perception_dependency_issues", return_value=missing_issue),
+                mock.patch.object(
+                    server_launcher,
+                    "inspect_model_asset",
+                    return_value={"cached": False, "downloadable": True},
+                ),
+                mock.patch.object(server_launcher, "_has_complete_hf_snapshot_in_hub_dir", return_value=False),
+            ):
+                st_missing = server_launcher.inspect_perception_setup(
+                    python_path=str(bundled_py),
+                    app_root=root,
+                )
+                self.assertEqual(st_missing["status"], "missing_dependency")
+                self.assertEqual(st_missing["packageName"], "torch")
+                self.assertFalse(st_missing["modelCached"])
+                self.assertTrue(st_missing["downloadable"])
+
+            with (
+                mock.patch.object(server_launcher, "perception_dependency_issues", return_value=()),
+                mock.patch.object(
+                    server_launcher,
+                    "inspect_model_asset",
+                    return_value={"cached": False, "downloadable": True},
+                ),
+                mock.patch.object(server_launcher, "_has_complete_hf_snapshot_in_hub_dir", return_value=False),
+            ):
+                st_model_missing = server_launcher.inspect_perception_setup(
+                    python_path=str(bundled_py),
+                    app_root=root,
+                )
+                self.assertEqual(st_model_missing["status"], "not_started")
+                self.assertFalse(st_model_missing["modelCached"])
+
+            with (
+                mock.patch.object(server_launcher, "perception_dependency_issues", return_value=()),
+                mock.patch.object(
+                    server_launcher,
+                    "inspect_model_asset",
+                    return_value={"cached": True, "downloadable": True},
+                ),
+            ):
+                st_ready = server_launcher.inspect_perception_setup(
+                    python_path=str(bundled_py),
+                    app_root=root,
+                )
+                self.assertEqual(st_ready["status"], "ready")
+                self.assertTrue(st_ready["modelCached"])
+
 
 if __name__ == "__main__":
     unittest.main()

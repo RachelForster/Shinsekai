@@ -280,3 +280,40 @@ def test_project_root_lookup_supports_legacy_state_and_cwd_fallback(tmp_path, mo
 
     monkeypatch.delenv("EASYAI_PROJECT_ROOT")
     assert _state_project_root(legacy_state) == cwd_root.resolve()
+
+
+def _create_bundled_runtime_python(root: Path) -> Path:
+    import os
+
+    rel = Path("runtime/python.exe") if os.name == "nt" else Path("runtime/bin/python3")
+    exe = root / rel
+    exe.parent.mkdir(parents=True, exist_ok=True)
+    exe.write_bytes(b"fake-python")
+    return exe.resolve()
+
+
+def test_app_config_and_save_default_perception_python_to_shinsekai_runtime(tmp_path, monkeypatch):
+    app_root = tmp_path / "ShinsekaiApp"
+    project_root = tmp_path / "ShinsekaiData"
+    _create_gpt_sovits_bundle(project_root)
+    bundled_py = _create_bundled_runtime_python(app_root)
+    state, manager = _bridge_state_for_config(project_root, app_root)
+    monkeypatch.setattr("frontend_bridge_core.config._adapter_catalog", lambda: {})
+
+    payload = _app_config_response(state)
+    assert Path(payload["api_config"]["perception_python_path"]).resolve() == bundled_py
+
+    saved_default = _save_api_config(state, _api_config_with_local_tts().model_dump(mode="json"))
+    assert Path(saved_default.perception_python_path).resolve() == bundled_py
+
+    custom_py = str(tmp_path / "custom-venv" / "python.exe")
+    saved_custom = _save_api_config(
+        state,
+        {
+            **_api_config_with_local_tts().model_dump(mode="json"),
+            "perception_python_path": custom_py,
+        },
+    )
+    assert saved_custom.perception_python_path == custom_py
+    assert manager.config.api_config.perception_python_path == custom_py
+

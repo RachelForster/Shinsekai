@@ -19,7 +19,7 @@ from ai.perception.parser import (
     try_extract_early_reflex,
 )
 from ai.perception.prompts import build_perception_messages
-from ai.perception.text_tasks import VoiceStyleStore, summarize_episode_batch
+from ai.perception.text_tasks import VoiceStyleStore
 from core.perception.models import (
     PerceptionConfig,
     PerceptionDigestResult,
@@ -101,13 +101,6 @@ class PerceptionDecisionClient:
             config,
             complete_text=self.complete_text,
         )
-
-    def summarize_episode(
-        self,
-        batch: Sequence[tuple[float, str, str]],
-        config: PerceptionConfig,
-    ) -> str:
-        return summarize_episode_batch(batch, config, complete_text=self.complete_text)
 
     def complete_text(
         self,

@@ -13,24 +13,32 @@ from core.perception.models import VisionEpisode, normalize_scene_mood
 def build_fallback_episode_summary(
     batch: list[tuple[float, str, str]],
     *,
-    max_chars: int = 90,
+    max_chars: int = 120,
 ) -> str:
-    """Deterministic compact fallback when Cloud LLM summarization is unavailable."""
+    """Deterministic compact fallback (字幕 -> 画面) when Cloud LLM summarization is unavailable."""
     visuals: list[str] = []
     subtitles: list[str] = []
     for _ts, kind, text in batch:
-        clean = str(text or "").strip().rstrip("。；;，,")
+        clean = str(text or "").strip().rstrip("。；;，,！!？?")
         if not clean:
             continue
         target = visuals if kind == "画面" else subtitles
         if not target or observation_key(clean) != observation_key(target[-1]):
             target.append(clean)
     parts: list[str] = []
-    if visuals:
-        parts.append("画面：" + " → ".join(visuals[:2])[:42])
     if subtitles:
-        parts.append("台词：" + " / ".join(subtitles[:2])[:48])
-    return "；".join(parts)[: max(30, int(max_chars))].rstrip(" ；;，,")
+        sub_clause = "，".join(subtitles[:2])[:46].rstrip(" ，,；;。")
+        parts.append(f"字幕：{sub_clause}。")
+    if visuals:
+        vis_clause = "，".join(visuals[:2])[:44].rstrip(" ，,；;。")
+        parts.append(f"画面：{vis_clause}。")
+    if not parts:
+        return ""
+    limit = max(30, int(max_chars))
+    joined = "".join(parts)
+    if len(joined) <= limit:
+        return joined
+    return joined[: limit - 1].rstrip(" ，,、：:。；;") + "。"
 
 
 def merge_fallback_overall_summary(
@@ -179,7 +187,7 @@ class EpisodeArchive:
         start_ts: float,
         end_ts: float,
         mood: str,
-        minute_max_chars: int = 90,
+        minute_max_chars: int = 120,
         overall_max_chars: int = 180,
         alloc_seq: Callable[[], int],
     ) -> VisionEpisode | None:

@@ -2506,16 +2506,22 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       async download(input, options) {
         const memoryEmbedding = input.assetId === "memory.embedding";
         const moondreamVision = input.assetId === "vision.moondream";
+        const perceptionVlm = input.assetId === "perception.vlm";
         const variant = memoryEmbedding
           ? "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
           : moondreamVision
             ? "vikhyatk/moondream2"
-            : String((input.configured ? config.system_config.asr_whisper_model_size : input.variant) || "small");
+            : perceptionVlm
+              ? String(
+                  (input.configured ? config.api_config.perception_model : input.variant) ||
+                    "Qwen/Qwen3-VL-2B-Instruct",
+                )
+              : String((input.configured ? config.system_config.asr_whisper_model_size : input.variant) || "small");
         const local = Boolean(
           !memoryEmbedding && !moondreamVision && input.configured && looksLikeLocalModelReference(variant),
         );
         const repoId =
-          memoryEmbedding || moondreamVision
+          memoryEmbedding || moondreamVision || perceptionVlm
             ? variant
             : variant.includes("/")
               ? variant
@@ -2543,7 +2549,13 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           path: local ? variant : `preview-cache/${variant}`,
           ...(local ? {} : { repoId }),
           source: local ? ("local" as const) : ("huggingface" as const),
-          title: memoryEmbedding ? "Long-term memory embedding" : moondreamVision ? "Moondream vision" : "Whisper ASR",
+          title: memoryEmbedding
+            ? "Long-term memory embedding"
+            : moondreamVision
+              ? "Moondream vision"
+              : perceptionVlm
+                ? `Perception VLM (${variant})`
+                : "Whisper ASR",
           variant,
         };
         if (!local) {
@@ -2567,16 +2579,22 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       status(input) {
         const memoryEmbedding = input.assetId === "memory.embedding";
         const moondreamVision = input.assetId === "vision.moondream";
+        const perceptionVlm = input.assetId === "perception.vlm";
         const variant = memoryEmbedding
           ? "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
           : moondreamVision
             ? "vikhyatk/moondream2"
-            : String((input.configured ? config.system_config.asr_whisper_model_size : input.variant) || "small");
+            : perceptionVlm
+              ? String(
+                  (input.configured ? config.api_config.perception_model : input.variant) ||
+                    "Qwen/Qwen3-VL-2B-Instruct",
+                )
+              : String((input.configured ? config.system_config.asr_whisper_model_size : input.variant) || "small");
         const local = Boolean(
           !memoryEmbedding && !moondreamVision && input.configured && looksLikeLocalModelReference(variant),
         );
         const repoId =
-          memoryEmbedding || moondreamVision
+          memoryEmbedding || moondreamVision || perceptionVlm
             ? variant
             : variant.includes("/")
               ? variant
@@ -2587,7 +2605,13 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           downloadable: !local,
           ...(local ? { path: variant } : { repoId }),
           source: local ? ("local" as const) : ("huggingface" as const),
-          title: memoryEmbedding ? "Long-term memory embedding" : moondreamVision ? "Moondream vision" : "Whisper ASR",
+          title: memoryEmbedding
+            ? "Long-term memory embedding"
+            : moondreamVision
+              ? "Moondream vision"
+              : perceptionVlm
+                ? `Perception VLM (${variant})`
+                : "Whisper ASR",
           variant,
         });
       },
@@ -3155,18 +3179,30 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           ingestUrl: "http://127.0.0.1:8787/api/perception/ingest",
           localServer: {
             baseUrl: config.api_config.perception_base_url,
-            detectedPythonPath: "preview-python",
+            detectedPythonPath: "runtime/python.exe",
             error: "",
             logs: [],
             managed: false,
             model: effectivePerceptionModel(config.api_config),
             pid: null,
-            pythonPath: config.api_config.perception_python_path || "preview-python",
+            pythonPath: config.api_config.perception_python_path || "runtime/python.exe",
             running: false,
             starting: false,
             state: "stopped",
           },
           runtime: chat.perception ?? null,
+          setup: {
+            downloadable: !config.api_config.perception_use_gguf,
+            modelCached: cachedModelAssets.has(
+              `perception.vlm:${config.api_config.perception_model || "Qwen/Qwen3-VL-2B-Instruct"}`,
+            ),
+            pythonPath: options?.pythonPath || config.api_config.perception_python_path || "runtime/python.exe",
+            status: cachedModelAssets.has(
+              `perception.vlm:${config.api_config.perception_model || "Qwen/Qwen3-VL-2B-Instruct"}`,
+            )
+              ? "ready"
+              : "not_started",
+          },
         });
       },
       async testImage(options) {

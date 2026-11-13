@@ -955,6 +955,7 @@ export function ApiSettingsPage() {
         draft={draft}
         id="api-perception"
         onChange={(nextDraft) => setDraft(syncCompactRatioDraft(nextDraft))}
+        savedModel={data?.api_config.perception_model}
         savedUseGguf={data?.api_config.perception_use_gguf}
       />
       <MemorySettingsSection

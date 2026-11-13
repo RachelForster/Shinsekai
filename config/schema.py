@@ -214,7 +214,7 @@ class ApiConfig(BaseModel):
     perception_api_key: DefaultIfNone[str] = Field(default="", description="本地感知模型 API Key（本地服务可留空）")
     perception_model: DefaultIfNone[str] = Field(default=DEFAULT_PERCEPTION_MODEL, description="常规感知模型名称")
     perception_use_gguf: DefaultIfNone[bool] = Field(default=False, description="使用本地 Q4 GGUF 感知模型")
-    perception_python_path: DefaultIfNone[str] = Field(default="", description="一键启动本地感知推理服务的 Python 解释器或环境路径（留空自动检测本机 CUDA/Conda 环境）")
+    perception_python_path: DefaultIfNone[str] = Field(default="", description="一键启动本地感知推理服务的 Python 解释器或环境路径（默认使用新世界自带 Python 运行时）")
     perception_interval_sec: DefaultIfNone[float] = Field(default=2.0, ge=0.5, le=30.0, description="本地感知模型的常规识别间隔（秒）")
     perception_capture_interval_sec: DefaultIfNone[float] = Field(default=0.5, ge=0.2, le=5.0, description="共享屏幕画面变化检测间隔（秒）")
     perception_ocr_interval_sec: DefaultIfNone[float] = Field(default=1.0, ge=0.5, le=10.0, description="共享屏幕文字识别间隔（秒）")

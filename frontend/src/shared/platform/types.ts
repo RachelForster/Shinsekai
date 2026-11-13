@@ -1014,6 +1014,7 @@ export interface RuntimeDependencyError {
 
 export interface RuntimeDependencyInstallInput {
   moduleName: string;
+  pythonPath?: string;
 }
 
 export interface RuntimeDependencyInstallResult {
@@ -1270,6 +1271,17 @@ export interface PerceptionEndpointOptions {
   apiKey?: string;
   baseUrl?: string;
   model?: string;
+  pythonPath?: string;
+}
+
+export interface PerceptionSetupStatus {
+  status: "ready" | "not_started" | "error" | "missing_dependency";
+  downloadable?: boolean;
+  message?: string;
+  modelCached?: boolean;
+  moduleName?: string;
+  packageName?: string;
+  pythonPath?: string;
 }
 
 export interface PerceptionHealthProbe {
@@ -1323,6 +1335,7 @@ export interface PerceptionStatusResponse {
   ingestUrl: string;
   localServer?: PerceptionLocalServerStatus;
   runtime: PerceptionRuntimeState | null;
+  setup?: PerceptionSetupStatus;
   health?: PerceptionHealthProbe;
 }
 

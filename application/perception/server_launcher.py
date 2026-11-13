@@ -16,6 +16,23 @@ from typing import Any
 from urllib.parse import urlparse
 
 from ai.perception.decision_client import PerceptionDecisionClient
+from application.model_assets.download_model import (
+    PERCEPTION_VLM_MODEL_ASSET,
+    ModelAssetRequest,
+    _PERCEPTION_ALLOW_PATTERNS,
+    _PERCEPTION_REQUIRED_FILE_GROUPS,
+    _is_huggingface_repo_id,
+    _looks_like_local_model_reference,
+    resolve_model_asset,
+)
+from application.runtime.dependencies import perception_dependency_issues
+from config.perception import DEFAULT_PERCEPTION_MODEL, default_perception_python_path
+from core.model_assets.service import (
+    ModelAssetSpec,
+    _snapshot_is_complete,
+    find_cached_huggingface_snapshot,
+    inspect_model_asset,
+)
 from core.perception.models import GGUF_MODEL_ID, PerceptionConfig
 
 _LOCAL_HOSTS = {"127.0.0.1", "localhost", "0.0.0.0", "::1"}
@@ -155,8 +172,13 @@ def _iter_candidate_env_dirs() -> list[Path]:
     return dirs
 
 
-def discover_perception_python(explicit_path: str = "") -> str:
-    """Resolve explicit Python path or auto-detect the best local Torch+Transformers Python."""
+def discover_perception_python(
+    explicit_path: str = "",
+    *,
+    project_root: str | Path | None = None,
+    app_root: str | Path | None = None,
+) -> str:
+    """Resolve explicit Python path or default to Shinsekai's own Python runtime."""
     raw = str(explicit_path or os.environ.get("SHINSEKAI_PERCEPTION_PYTHON") or "").strip().strip('"')
     if raw:
         p = Path(raw).expanduser()
@@ -168,6 +190,14 @@ def discover_perception_python(explicit_path: str = "") -> str:
         if p.is_file():
             return str(p)
         raise ValueError(f"指定的 Python 路径不存在：{p}")
+
+    shinsekai_py = default_perception_python_path(
+        "",
+        project_root=project_root,
+        app_root=app_root,
+    )
+    if shinsekai_py and Path(shinsekai_py).is_file():
+        return shinsekai_py
 
     best_path = ""
     best_score = 0
@@ -189,6 +219,150 @@ def discover_perception_python(explicit_path: str = "") -> str:
         best_path = str(current_exe)
 
     return best_path
+
+
+def _has_complete_hf_snapshot_in_hub_dir(
+    hub_dir: Path,
+    repo_id: str,
+    required_file_groups: tuple[tuple[str, ...], ...] = _PERCEPTION_REQUIRED_FILE_GROUPS,
+) -> bool:
+    if not hub_dir.is_dir() or "/" not in repo_id:
+        return False
+    repo_dir = hub_dir / ("models--" + repo_id.replace("/", "--"))
+    snapshots_dir = repo_dir / "snapshots"
+    if not snapshots_dir.is_dir():
+        return False
+    main_ref = repo_dir / "refs" / "main"
+    if main_ref.is_file():
+        try:
+            revision = main_ref.read_text(encoding="utf-8").strip()
+        except OSError:
+            revision = ""
+        if revision and revision not in {".", ".."} and "/" not in revision and "\\" not in revision:
+            if _snapshot_is_complete(snapshots_dir / revision, required_file_groups):
+                return True
+    try:
+        for snap in snapshots_dir.iterdir():
+            if snap.is_dir() and _snapshot_is_complete(snap, required_file_groups):
+                return True
+    except OSError:
+        return False
+    return False
+
+
+def inspect_perception_setup(
+    *,
+    model: str = DEFAULT_PERCEPTION_MODEL,
+    python_path: str = "",
+    configured_model: str = DEFAULT_PERCEPTION_MODEL,
+    project_root: str | Path | None = None,
+    app_root: str | Path | None = None,
+) -> dict[str, Any]:
+    """Check perception Python dependencies and VLM model cache status (Memory-compatible schema)."""
+    clean_model = str(model or DEFAULT_PERCEPTION_MODEL).strip() or DEFAULT_PERCEPTION_MODEL
+    clean_configured = (
+        str(configured_model or DEFAULT_PERCEPTION_MODEL).strip() or DEFAULT_PERCEPTION_MODEL
+    )
+    try:
+        target_python = discover_perception_python(
+            python_path,
+            project_root=project_root,
+            app_root=app_root,
+        )
+    except ValueError as exc:
+        return {
+            "status": "error",
+            "message": str(exc),
+            "modelCached": False,
+            "downloadable": False,
+            "pythonPath": str(python_path or "").strip(),
+        }
+
+    if not target_python:
+        return {
+            "status": "error",
+            "message": "未找到可用的 Python 解释器路径。",
+            "modelCached": False,
+            "downloadable": False,
+            "pythonPath": "",
+        }
+
+    model_cached = False
+    downloadable = False
+    model_error = ""
+    if clean_model == GGUF_MODEL_ID:
+        downloadable = False
+        try:
+            script_path = resolve_local_server_script()
+            _gguf_arguments(script_path.parent.parent)
+            model_cached = True
+        except Exception as exc:
+            model_cached = False
+            model_error = str(exc)
+    else:
+        spec: ModelAssetSpec | None = None
+        try:
+            if clean_model == DEFAULT_PERCEPTION_MODEL:
+                spec = PERCEPTION_VLM_MODEL_ASSET
+            elif clean_model == clean_configured:
+                spec = resolve_model_asset(
+                    ModelAssetRequest(asset_id="perception.vlm", configured=True),
+                    configured_perception_model=clean_configured,
+                )
+            elif _is_huggingface_repo_id(clean_model):
+                spec = ModelAssetSpec(
+                    asset_id="perception.vlm",
+                    title=f"Perception VLM ({clean_model})",
+                    variant=clean_model,
+                    repo_id=clean_model,
+                    allow_patterns=_PERCEPTION_ALLOW_PATTERNS,
+                    required_file_groups=_PERCEPTION_REQUIRED_FILE_GROUPS,
+                )
+            elif _looks_like_local_model_reference(clean_model):
+                downloadable = False
+                model_cached = False
+            else:
+                model_error = f"不支持的感知模型标识：{clean_model}"
+        except Exception as exc:
+            model_error = str(exc)
+
+        if spec is not None:
+            info = inspect_model_asset(spec)
+            downloadable = bool(info.get("downloadable"))
+            model_cached = bool(info.get("cached"))
+            if not model_cached and spec.source == "huggingface":
+                user_hf_hub = Path.home() / ".cache" / "huggingface" / "hub"
+                if _has_complete_hf_snapshot_in_hub_dir(user_hf_hub, spec.repo_id):
+                    model_cached = True
+
+    issues = perception_dependency_issues(target_python)
+    if issues:
+        return {
+            "status": "missing_dependency",
+            "moduleName": "perception",
+            "packageName": issues[0].name,
+            "modelCached": model_cached,
+            "downloadable": downloadable,
+            "pythonPath": target_python,
+            "message": "; ".join(issue.issue for issue in issues),
+        }
+
+    if model_error and not model_cached and clean_model != GGUF_MODEL_ID:
+        return {
+            "status": "error",
+            "message": model_error,
+            "modelCached": False,
+            "downloadable": False,
+            "pythonPath": target_python,
+        }
+
+    return {
+        "status": "ready" if model_cached else "not_started",
+        "modelCached": model_cached,
+        "downloadable": downloadable,
+        "pythonPath": target_python,
+        **({"message": model_error} if model_error else {}),
+    }
 
 
 def resolve_local_server_script() -> Path:
@@ -370,14 +544,25 @@ class PerceptionLocalServerManager:
         env["PYTHONUNBUFFERED"] = "1"
         env["PYTHONIOENCODING"] = "utf-8"
         # Shinsekai's mirror_env redirects HF_HOME/HF_HUB_CACHE to ./data/cache/huggingface.
-        # If the user already cached the VLM in ~/.cache/huggingface/hub, point directly there.
-        user_hf_hub = Path.home() / ".cache" / "huggingface" / "hub"
-        repo_dir_name = "models--" + clean_model.replace("/", "--")
-        if (user_hf_hub / repo_dir_name / "snapshots").is_dir():
-            for key in ("HF_HOME", "TRANSFORMERS_CACHE"):
-                env.pop(key, None)
-            env["HF_HUB_CACHE"] = str(user_hf_hub)
-            env["HUGGINGFACE_HUB_CACHE"] = str(user_hf_hub)
+        # Keep Shinsekai's cache when downloaded via the one-click downloader; otherwise fall
+        # back to ~/.cache/huggingface/hub if a complete snapshot already exists there.
+        if _is_huggingface_repo_id(clean_model):
+            active_spec = ModelAssetSpec(
+                asset_id="perception.vlm",
+                title=f"Perception VLM ({clean_model})",
+                variant=clean_model,
+                repo_id=clean_model,
+                required_file_groups=_PERCEPTION_REQUIRED_FILE_GROUPS,
+            )
+            user_hf_hub = Path.home() / ".cache" / "huggingface" / "hub"
+            if (
+                find_cached_huggingface_snapshot(active_spec) is None
+                and _has_complete_hf_snapshot_in_hub_dir(user_hf_hub, clean_model)
+            ):
+                for key in ("HF_HOME", "TRANSFORMERS_CACHE"):
+                    env.pop(key, None)
+                env["HF_HUB_CACHE"] = str(user_hf_hub)
+                env["HUGGINGFACE_HUB_CACHE"] = str(user_hf_hub)
 
         popen_kwargs: dict[str, Any] = {
             "stdin": subprocess.PIPE,

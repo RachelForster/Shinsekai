@@ -53,26 +53,6 @@ def build_voice_style_messages(character_name: str, character_brief: str) -> lis
     ]
 
 
-def build_episode_summary_messages(batch: Sequence[tuple[float, str, str]]) -> list[dict[str, str]]:
-    """Build a pure-text prompt summarizing one slice of evicted visual beats and subtitles."""
-    lines = [f"[{kind}] {text}" for _ts, kind, text in batch if text.strip()]
-    joined = "\n".join(lines)[:1800]
-    return [
-        {
-            "role": "system",
-            "content": (
-                "你是屏幕观看与游戏记录整理助手。请将下面按时间顺序排列的画面变化与字幕，客观浓缩为1条65字以内的分段纪要。\n"
-                "要求：影音并重，同时保留关键场景/动作物品（如墓碑、信件、血量变化、胜负结果）与台词核心意思；"
-                "严禁主观评价、感叹或脑补未出现的剧情；只输出一段纯文本。"
-            ),
-        },
-        {
-            "role": "user",
-            "content": joined,
-        },
-    ]
-
-
 def build_perception_messages(
     snapshot: RawPerceptionSnapshot,
     *,
@@ -239,7 +219,6 @@ def build_perception_messages(
 __all__ = [
     "DEFAULT_VOICE_STYLE",
     "InvalidPerceptionDecision",
-    "build_episode_summary_messages",
     "build_perception_messages",
     "build_voice_style_messages",
     "parse_perception_decision_json",

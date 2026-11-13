@@ -33,6 +33,7 @@ from config.vision_defaults import (
     vision_provider_requires_api_key,
 )
 from config.llm_defaults import resolve_llm_base_url
+from config.perception import default_perception_python_path
 from .security import host_matches, validated_http_url
 from application.runtime.state import BridgeState, _jsonify
 
@@ -138,6 +139,11 @@ def _app_config_response(
             str(api_config.get("gpt_sovits_api_path") or ""),
             project_root,
         )
+        api_config["perception_python_path"] = default_perception_python_path(
+            str(api_config.get("perception_python_path") or ""),
+            project_root=project_root,
+            app_root=getattr(state, "app_root_dir", ""),
+        )
     if settings_only:
         return payload
     if tts_bundle_paths:
@@ -225,6 +231,11 @@ def _save_api_config(state: BridgeState, payload: dict[str, Any]) -> Any:
             config.gpt_sovits_api_path,
             _state_project_root(state),
         )
+    config.perception_python_path = default_perception_python_path(
+        config.perception_python_path,
+        project_root=_state_project_root(state),
+        app_root=getattr(state, "app_root_dir", ""),
+    )
     _validate_api_config_for_save(config)
     previous = state.config_manager.config.api_config
     switch_running_perception_model(previous, config)
