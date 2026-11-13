@@ -112,6 +112,7 @@ export function templateGenerationKey(
 
 type TemplateGenerationOptions = PlayerCharacterOptions & {
   backgroundName: string;
+  backgroundNames?: string[];
   draft: TemplateSummary;
   effectNames?: string[];
   options: TemplateFlowOptions;
@@ -125,6 +126,7 @@ type TemplateGenerationOptions = PlayerCharacterOptions & {
 export function buildTemplateGenerateInput(input: TemplateGenerationOptions): TemplateGenerateInput {
   return {
     backgroundName: input.backgroundName,
+    backgroundNames: input.backgroundNames?.length ? input.backgroundNames : undefined,
     characterPromptMode: input.characterPromptMode,
     characters: input.selectedCharacters,
     effectNames: input.effectNames?.length ? input.effectNames : undefined,
@@ -149,6 +151,7 @@ export function buildTemplateGenerateInput(input: TemplateGenerationOptions): Te
 
 type TemplateSessionOptions = PlayerCharacterOptions & {
   backgroundName: string;
+  backgroundNames?: string[];
   draft: TemplateSummary;
   effectNames?: string[];
   mobileAccessEnabled: boolean;
@@ -164,6 +167,7 @@ type TemplateSessionOptions = PlayerCharacterOptions & {
 export function buildTemplateLaunchSession(input: TemplateSessionOptions): TemplateLaunchSession {
   return {
     background: input.backgroundName,
+    backgroundNames: input.backgroundNames?.length ? input.backgroundNames : [input.backgroundName],
     characterPromptMode: input.characterPromptMode,
     enableMobileAccess: input.mobileAccessEnabled,
     effectNames: input.effectNames ?? [],
@@ -194,6 +198,7 @@ export function buildTemplateLaunchSession(input: TemplateSessionOptions): Templ
 
 export function buildChatLaunchPayload(input: {
   backgroundName: string;
+  backgroundNames?: string[];
   effectNames?: string[];
   mobileAccessEnabled: boolean;
   resetHistory: boolean;
@@ -205,6 +210,7 @@ export function buildChatLaunchPayload(input: {
 }): ChatLaunchPayload {
   return {
     backgroundName: input.backgroundName,
+    backgroundNames: input.backgroundNames?.length ? input.backgroundNames : undefined,
     characters: input.selectedCharacters,
     enableMobileAccess: input.mobileAccessEnabled,
     effectNames: input.effectNames?.length ? input.effectNames : undefined,
@@ -230,6 +236,7 @@ export function synchronizeChatLaunchPayloadWithSession(
   return {
     ...payload,
     backgroundName: session.background,
+    backgroundNames: session.backgroundNames?.length ? session.backgroundNames : [session.background],
     characters: session.selectedCharacters,
     ...normalizePlayerOptions(session),
     enableMobileAccess: session.enableMobileAccess,

@@ -246,6 +246,7 @@ def test_source_launch_preserves_environment_configuration_and_template(
             stream_endpoint="ws://fixture/chat",
             init_stream_endpoint="ws://fixture/init",
             media_selection_mode="semantic",
+            selected_backgrounds=["School", "Roof"],
             show_initial_sprite=False,
         ),
     )
@@ -261,6 +262,7 @@ def test_source_launch_preserves_environment_configuration_and_template(
     assert payload["stream_endpoint"] == "ws://fixture/chat"
     assert payload["init_stream_endpoint"] == "ws://fixture/init"
     assert payload["media_selection_mode"] == "semantic"
+    assert json.loads(payload["background_names"]) == ["School", "Roof"]
     assert payload["show_initial_sprite"] is False
     assert payload["use_current_template_for_history"] is True
     assert env["SHINSEKAI_MEMORY_SERVICE_URL"] == "http://127.0.0.1:8787/api/memory"
