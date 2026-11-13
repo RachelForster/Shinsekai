@@ -2409,6 +2409,8 @@ export const jaMessages: Record<MessageKey, string> = {
   "api.perception.salienceThreshold": "発言しきい値（0–1）",
   "api.perception.salienceThresholdHelp": "値が低いほど発言しやすくなります。",
   "api.perception.proactiveCooldownSec": "自発発言の間隔（秒）",
+  "api.perception.proactiveCooldownHelp":
+    "音声共有中、静かな間の通常発言には最小間隔が適用されます。一時停止とみられる場面や緊急時はこの設定に従います。",
   "api.perception.probeButton": "画像認識をテスト",
   "api.perception.statusUnknown": "接続未確認",
   "api.perception.statusReady": "接続済み",

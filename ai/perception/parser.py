@@ -41,7 +41,7 @@ def sanitize_episode_summary(raw_text: str) -> str:
     cleaned = _CODE_FENCE_RE.sub("", str(raw_text or "").strip())
     cleaned = " ".join(line.strip() for line in cleaned.splitlines() if line.strip())
     cleaned = _SUMMARY_PREFIX_RE.sub("", cleaned).strip()
-    return cleaned[:140]
+    return cleaned[:200]
 
 
 def try_extract_early_reflex(partial_text: str) -> ReflexDecision | None:
@@ -90,7 +90,6 @@ def parse_perception_decision_json(
         salience_match = re.search(r'"salience"\s*:\s*([0-9]*\.?[0-9]+)', cleaned)
         busy_match = re.search(r'"player_busy"\s*:\s*(true|false)', cleaned, re.IGNORECASE)
         digest_match = re.search(r'"digest"\s*:\s*"([^"]*)"', cleaned)
-        screen_text_match = re.search(r'"screen_text"\s*:\s*"([^"]*)"', cleaned)
         salience_val = float(salience_match.group(1)) if salience_match else 0.0
         busy_val = busy_match.group(1).lower() == "true" if busy_match else False
         digest_val = digest_match.group(1).strip() if digest_match else ""
@@ -111,7 +110,6 @@ def parse_perception_decision_json(
             latency_ms=latency_ms,
             mood=normalize_scene_mood(mood_match.group(1) if mood_match else ""),
             visual_change=visual_change,
-            screen_text=(screen_text_match.group(1).strip()[:200] if screen_text_match else ""),
         )
 
     raw_reflex = parsed.get("reflex")
@@ -130,7 +128,6 @@ def parse_perception_decision_json(
         if explicit_change is not None and str(explicit_change).strip()
         else ""
     )
-    screen_text = str(fields.get("screen_text") or "").strip()[:200]
 
     if not digest and not reflex.act:
         explicit_none_change = isinstance(explicit_change, str) and explicit_change.strip().casefold() in {
@@ -159,5 +156,4 @@ def parse_perception_decision_json(
         latency_ms=latency_ms,
         mood=mood,
         visual_change=visual_change,
-        screen_text=screen_text,
     )

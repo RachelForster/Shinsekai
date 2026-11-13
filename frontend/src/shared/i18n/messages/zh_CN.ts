@@ -2323,6 +2323,7 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "api.perception.salienceThreshold": "发言阈值（0–1）",
   "api.perception.salienceThresholdHelp": "数值越低，角色越容易主动发言。",
   "api.perception.proactiveCooldownSec": "发言冷却（秒）",
+  "api.perception.proactiveCooldownHelp": "共享音频时，普通空档发言还受最小间隔限制。疑似暂停和紧急画面按此设置。",
   "api.perception.probeButton": "测试视觉",
   "api.perception.statusUnknown": "连接未检测",
   "api.perception.statusReady": "已连接",

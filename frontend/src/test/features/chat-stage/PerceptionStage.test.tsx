@@ -15,12 +15,21 @@ import { applyStageEvent } from "../../../features/chat-stage/state/events";
 import { hydrateFromSnapshot } from "../../../features/chat-stage/state/snapshot";
 import { I18nProvider } from "../../../shared/i18n/I18nProvider";
 import { sampleConfig } from "../../../shared/platform/sampleData";
-import type { ChatSnapshot } from "../../../shared/platform/types";
+import type { ChatSnapshot, ScreenPlaybackAudioSettings } from "../../../shared/platform/types";
 import { ToastProvider } from "../../../shared/ui";
 
 vi.mock("../../../shared/plugin/PluginSlot", () => ({
   PluginSlot: () => null,
 }));
+
+const playbackAudioSettings: ScreenPlaybackAudioSettings = {
+  quietWindowMs: 1500,
+  pauseSilenceMs: 2200,
+  pauseStillMs: 1200,
+  minPlaybackMs: 300,
+  silenceRms: 0.003,
+  quietRatio: 0.35,
+};
 
 describe("Perception chat-stage state & components", () => {
   beforeEach(() => {
@@ -243,12 +252,15 @@ describe("Perception chat-stage state & components", () => {
   });
 
   it("detects a sustained volume drop and waits for silence and a still image before inferring a pause", () => {
-    const detect = createScreenPlaybackDetector();
+    const detector = createScreenPlaybackDetector();
+    const detect = (level: number | null, now: number, lastMotionAt: number) =>
+      detector(level, now, lastMotionAt, playbackAudioSettings);
     expect(detect(null, 0, 0)).toBe("unavailable");
     expect(detect(0.1, 120, 0)).toBe("playing");
     expect(detect(0.09, 480, 0)).toBe("playing");
     expect(detect(0.02, 600, 0)).toBe("playing");
-    expect(detect(0.02, 1200, 1100)).toBe("quiet");
+    expect(detect(0.02, 1200, 1100)).toBe("playing");
+    expect(detect(0.02, 2100, 2000)).toBe("quiet");
     expect(detect(0, 3000, 1000)).toBe("quiet");
     expect(detect(0, 5400, 5300)).toBe("quiet");
     expect(detect(0, 6600, 5300)).toBe("stopped");
@@ -279,7 +291,11 @@ describe("Perception chat-stage state & components", () => {
     vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
     const ingest = vi.spyOn(perceptionRepo, "ingestPerception").mockResolvedValue({ ok: true, accepted: true });
     const clock = vi.spyOn(performance, "now").mockReturnValue(0);
-    const { result, unmount } = renderHook(() => useScreenShareCapture({}));
+    const initialProps: { settings?: ScreenPlaybackAudioSettings } = {};
+    const { result, rerender, unmount } = renderHook(
+      ({ settings }) => useScreenShareCapture({ playbackAudioSettings: settings }),
+      { initialProps },
+    );
     async function sample(at: number) {
       clock.mockReturnValue(at);
       await act(async () => {
@@ -292,11 +308,18 @@ describe("Perception chat-stage state & components", () => {
       });
       expect(getDisplayMedia).toHaveBeenCalledWith(expect.objectContaining({ audio: true }));
       await sample(120);
+      expect(ingest).toHaveBeenLastCalledWith(expect.objectContaining({ screenPlaybackAudio: "unavailable" }));
+      rerender({ settings: { ...playbackAudioSettings, quietWindowMs: 1800 } });
+      await sample(240);
       expect(ingest).toHaveBeenLastCalledWith(expect.objectContaining({ screenPlaybackAudio: "playing" }));
-      await sample(480);
+      await sample(540);
       level = 0;
       await sample(600);
       await sample(1200);
+      expect(ingest).toHaveBeenLastCalledWith(expect.objectContaining({ screenPlaybackAudio: "playing" }));
+      await sample(2160);
+      expect(ingest).toHaveBeenLastCalledWith(expect.objectContaining({ screenPlaybackAudio: "playing" }));
+      await sample(2400);
       expect(ingest).toHaveBeenLastCalledWith(expect.objectContaining({ screenPlaybackAudio: "quiet" }));
       await sample(2880);
       expect(ingest).toHaveBeenLastCalledWith(expect.objectContaining({ screenPlaybackAudio: "stopped" }));

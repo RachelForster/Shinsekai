@@ -1257,6 +1257,7 @@ export interface PerceptionRuntimeState {
   frameMaxSide: number;
   diffThreshold: number;
   ocrEnabled?: boolean;
+  screenPlaybackAudioSettings?: ScreenPlaybackAudioSettings;
   reflexEnabled: boolean;
   proactiveEnabled: boolean;
   salienceThreshold: number;
@@ -1335,6 +1336,15 @@ export interface ScreenOcrRegion {
 export type ScreenOcrScope = { mode: "bottom" | "full" } | { mode: "region"; region: ScreenOcrRegion };
 
 export type ScreenPlaybackAudioState = "unavailable" | "playing" | "quiet" | "stopped";
+
+export interface ScreenPlaybackAudioSettings {
+  quietWindowMs: number;
+  pauseSilenceMs: number;
+  pauseStillMs: number;
+  minPlaybackMs: number;
+  silenceRms: number;
+  quietRatio: number;
+}
 
 export interface PerceptionIngestInput {
   capturedAtMs?: number;

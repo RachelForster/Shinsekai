@@ -10,19 +10,29 @@ import threading
 import time
 from typing import Any
 
+from ai.perception.cloud_summary import CloudTextCompletionFn, summarize_vision_window
 from ai.perception.decision_client import PerceptionDecisionClient, PerceptionInferenceError
 from ai.perception.parser import InvalidPerceptionDecision
+from application.perception.cursor_reader import (
+    CursorObservation,
+    CursorProbe,
+    CursorReadingTracker,
+)
 from application.perception.expressions import (
     expression_sprite_candidates,
     sprite_prompt_choices,
 )
-from application.perception.reflex_policy import ReflexPolicy, comparison_text
+from application.perception.reflex_policy import (
+    ReflexPolicy,
+    comparison_text,
+    observation_bark,
+    short_reading_focus,
+)
 from config.character_assets import get_character_assets
 from core.perception.cache import (
     PROACTIVE_EVENT_MAX_AGE_SEC,
     PROACTIVE_TURN_INSTRUCTION,
     RPInputCache,
-    build_fallback_episode_summary,
 )
 from core.perception.gatekeeper import (
     URGENT_SCREEN_SALIENCE,
@@ -57,6 +67,8 @@ class PerceptionCoordinator:
         rp_input_cache: RPInputCache | None = None,
         gatekeeper: PerceptionGatekeeper | None = None,
         decision_client: PerceptionDecisionClient | None = None,
+        cloud_complete: CloudTextCompletionFn | None = None,
+        cursor_probe: CursorProbe | None = None,
     ) -> None:
         self._get_api_config = get_api_config
         self._resolve_character = resolve_character
@@ -65,6 +77,9 @@ class PerceptionCoordinator:
         self._enqueue_proactive_turn = enqueue_proactive_turn
         self._publish_state = publish_state or (lambda _state: None)
         self._notify_once = notify_once or (lambda _msg: None)
+        self._cloud_complete = cloud_complete
+        self._cursor_probe = cursor_probe
+        self._cursor_tracker = CursorReadingTracker()
 
         self.raw_buffer = raw_buffer or PerceptionRawBuffer()
         self.rp_input_cache = rp_input_cache or RPInputCache()
@@ -79,8 +94,11 @@ class PerceptionCoordinator:
         self._stop_event = threading.Event()
         self._wake_event = threading.Event()
         self._ocr_wake_event = threading.Event()
+        self._cursor_wake_event = threading.Event()
         self._worker: threading.Thread | None = None
         self._ocr_worker: threading.Thread | None = None
+        self._cursor_worker: threading.Thread | None = None
+        self._summary_worker: threading.Thread | None = None
 
         self._screen_share_active = False
         self._screen_generation = 0
@@ -91,6 +109,9 @@ class PerceptionCoordinator:
         self._latest_screen_frame: PerceptionFrame | None = None
         self._previous_vision_frame: PerceptionFrame | None = None
         self._latest_ocr: tuple[float, str] = (0.0, "")
+        self._last_subtitle_monotonic: float = 0.0
+        self._latest_highlight: tuple[float, str] = (0.0, "")
+        self._latest_cursor_ocr: tuple[float, str] = (0.0, "")
         self._recent_screen_text: deque[tuple[float, str]] = deque(maxlen=2)
         self._last_vision_ocr_key = ""
         self._screen_digest = ""
@@ -111,7 +132,10 @@ class PerceptionCoordinator:
 
     def start(self) -> None:
         with self._lock:
-            if any(worker is not None and worker.is_alive() for worker in (self._worker, self._ocr_worker)):
+            if any(
+                worker is not None and worker.is_alive()
+                for worker in (self._worker, self._ocr_worker, self._cursor_worker)
+            ):
                 return
             self._stop_event.clear()
             self._worker = threading.Thread(
@@ -126,6 +150,13 @@ class PerceptionCoordinator:
             )
             self._worker.start()
             self._ocr_worker.start()
+            if self._cursor_probe is not None:
+                self._cursor_worker = threading.Thread(
+                    target=self._run_cursor_loop,
+                    name="shinsekai-cursor-reader",
+                    daemon=True,
+                )
+                self._cursor_worker.start()
         self._emit_state()
 
     def stop(self, *, timeout: float = 3.0) -> None:
@@ -133,24 +164,34 @@ class PerceptionCoordinator:
             self._stop_event.set()
             self._wake_event.set()
             self._ocr_wake_event.set()
-            workers = (self._worker, self._ocr_worker)
+            self._cursor_wake_event.set()
+            workers = (self._worker, self._ocr_worker, self._cursor_worker, self._summary_worker)
             self._analysis_progress.notify_all()
         deadline = time.monotonic() + max(0.1, timeout)
         for worker in workers:
             if worker is not None and worker.is_alive():
                 worker.join(timeout=max(0.0, deadline - time.monotonic()))
+        if self._cursor_probe is not None:
+            try:
+                self._cursor_probe.close()
+            except Exception:
+                logger.debug("cursor probe close failed", exc_info=True)
 
     def clear(self) -> dict[str, Any]:
         with self._analysis_progress:
             self.raw_buffer.clear()
             self.rp_input_cache.clear()
             self._reflex_policy.reset()
+            self._cursor_tracker.reset()
             self._analysis_epoch += 1
             self._playback_stopped_at = 0.0
             self._processed_revision = self.raw_buffer.stats()["revision"]
             self._latest_screen_frame = None
             self._previous_vision_frame = None
             self._latest_ocr = (0.0, "")
+            self._last_subtitle_monotonic = 0.0
+            self._latest_highlight = (0.0, "")
+            self._latest_cursor_ocr = (0.0, "")
             self._recent_screen_text.clear()
             self._last_vision_ocr_key = ""
             self._screen_digest = ""
@@ -173,6 +214,10 @@ class PerceptionCoordinator:
                 self._latest_screen_frame = None
                 self._previous_vision_frame = None
                 self._latest_ocr = (0.0, "")
+                self._last_subtitle_monotonic = 0.0
+                self._latest_highlight = (0.0, "")
+                self._latest_cursor_ocr = (0.0, "")
+                self._cursor_tracker.reset()
                 self._recent_screen_text.clear()
                 self._last_vision_ocr_key = ""
                 self._screen_digest = ""
@@ -191,6 +236,7 @@ class PerceptionCoordinator:
         if changed:
             self._wake_event.set()
             self._ocr_wake_event.set()
+            self._cursor_wake_event.set()
             self._emit_state()
         return self.status_snapshot()
 
@@ -295,9 +341,10 @@ class PerceptionCoordinator:
                         if (previous_scope or ScreenOcrScope()) != (frame.ocr_scope or ScreenOcrScope()):
                             self._ocr_scope_revision += 1
                             self._latest_ocr = (0.0, "")
+                            self._last_subtitle_monotonic = 0.0
                             self._recent_screen_text.clear()
                             self._last_vision_ocr_key = ""
-                            self.rp_input_cache.clear_screen_text()
+                            self.rp_input_cache.clear_screen_text(preserve_highlights=True)
                         self._latest_screen_frame = frame
                         self._ocr_wake_event.set()
                     if not payload.get("ocrOnly"):
@@ -325,6 +372,7 @@ class PerceptionCoordinator:
             "frameMaxSide": cfg.frame_max_side,
             "diffThreshold": cfg.diff_threshold,
             "ocrEnabled": cfg.use_local_ocr,
+            "screenPlaybackAudioSettings": self.rp_input_cache.policy.screen_playback_audio_settings(),
             "reflexEnabled": cfg.reflex_enabled,
             "proactiveEnabled": cfg.proactive_enabled,
             "salienceThreshold": cfg.salience_threshold,
@@ -368,13 +416,15 @@ class PerceptionCoordinator:
         sprite_count: int,
         config: PerceptionConfig,
         sprite_choices: Mapping[int, str] | None = None,
+        fallback_bark: str = "",
+        now_mono: float | None = None,
     ) -> ReflexDecision | None:
         if not config.reflex_enabled or not reflex.act or not character_name:
             return None
         if self._is_chat_busy():
             logger.debug("Perception reaction skipped while chat is busy")
             return None
-        now = time.monotonic()
+        now = time.monotonic() if now_mono is None else float(now_mono)
         with self._lock:
             emitted = self._reflex_policy.select_emission(
                 reflex,
@@ -383,6 +433,7 @@ class PerceptionCoordinator:
                 sprite_count=sprite_count,
                 config=config,
                 sprite_choices=sprite_choices,
+                fallback_bark=fallback_bark,
                 now=now,
             )
         if emitted is None:
@@ -444,8 +495,11 @@ class PerceptionCoordinator:
                     or time.time() - frame.captured_at > max(3.0, cfg.ocr_interval_sec * 2)
                 ):
                     continue
+                had_subtitle = bool(comparison_text(self._latest_ocr[1]))
                 self._latest_ocr = (frame.captured_at, text)
                 key = comparison_text(text)
+                if key or had_subtitle:
+                    self._last_subtitle_monotonic = time.monotonic()
                 if key:
                     sample = (frame.captured_at, text)
                     if self._recent_screen_text and comparison_text(self._recent_screen_text[-1][1]) == key:
@@ -458,8 +512,191 @@ class PerceptionCoordinator:
                             self._wake_event.set()
                 self.rp_input_cache.record_screen_text(text, captured_at=frame.captured_at)
 
+    def _are_subtitles_active_locked(self, now_mono: float) -> bool:
+        """Return True when screen OCR currently sees subtitles or is within the dialogue gap."""
+        _ocr_at, ocr_text = self._latest_ocr
+        if comparison_text(ocr_text):
+            return True
+        if self._last_subtitle_monotonic <= 0.0:
+            return False
+        return (now_mono - self._last_subtitle_monotonic) < self.rp_input_cache.policy.cursor_subtitle_quiet_sec
+
+    def step_cursor_once(
+        self,
+        *,
+        now_mono: float | None = None,
+        now_wall: float | None = None,
+    ) -> CursorObservation | None:
+        """Run one `高亮 > 识别字幕 > 识别手边文字` tick and commit any recognized reading focus."""
+        probe = self._cursor_probe
+        if probe is None:
+            return None
+        mono = time.monotonic() if now_mono is None else float(now_mono)
+        wall = time.time() if now_wall is None else float(now_wall)
+        with self._lock:
+            if self._stop_event.is_set() or not self._screen_share_active:
+                return None
+            scope = (self._screen_generation, self._analysis_epoch)
+            subtitles_active = self._are_subtitles_active_locked(mono)
+            policy = self.rp_input_cache.policy
+
+        cfg = self.current_config()
+        try:
+            sample = probe.sample()
+            obs = self._cursor_tracker.step(
+                sample=sample,
+                probe=probe,
+                ocr_fn=lambda patch_frame: self.decision_client.read_screen_text(patch_frame, cfg),
+                use_local_ocr=cfg.use_local_ocr,
+                subtitles_active=subtitles_active,
+                policy=policy,
+                ocr_interval_sec=cfg.ocr_interval_sec,
+                now_mono=mono,
+                now_wall=wall,
+            )
+        except Exception:
+            logger.debug("cursor text probe failed", exc_info=True)
+            return None
+        if obs is None:
+            return None
+
+        with self._lock:
+            if (
+                self._stop_event.is_set()
+                or not self._screen_share_active
+                or scope != (self._screen_generation, self._analysis_epoch)
+            ):
+                return None
+            check_mono = time.monotonic() if now_mono is None else mono
+            if obs.source == "cursor" and self._are_subtitles_active_locked(check_mono):
+                # Subtitle arrived while cursor ROI OCR was running (`识别字幕 > 识别手边文字`)
+                return None
+            if obs.source == "highlight":
+                changed = self.rp_input_cache.record_highlighted_text(
+                    obs.text,
+                    captured_at=obs.captured_at,
+                )
+                self._latest_highlight = (obs.captured_at, obs.text)
+            else:
+                changed = self.rp_input_cache.record_cursor_text(
+                    obs.text,
+                    captured_at=obs.captured_at,
+                )
+                self._latest_cursor_ocr = (obs.captured_at, obs.text)
+
+        if changed:
+            reading = short_reading_focus(obs.text)
+            if reading:
+                char_name, _brief, expressions, sprite_choices, sprite_count = self._character_prompt_metadata()
+                effective_cfg = (
+                    replace(cfg, reflex_cooldown_sec=min(3.5, cfg.reflex_cooldown_sec))
+                    if obs.source == "highlight"
+                    else cfg
+                )
+                self._maybe_fire_reflex(
+                    ReflexDecision(act=True, bark=f"（正在读：{reading}）"),
+                    character_name=char_name,
+                    expressions=expressions,
+                    sprite_count=sprite_count,
+                    config=effective_cfg,
+                    sprite_choices=sprite_choices,
+                    now_mono=mono,
+                )
+            self._emit_state()
+        return obs
+
+    def _run_cursor_loop(self) -> None:
+        probe = self._cursor_probe
+        if probe is None:
+            return
+        try:
+            probe.prepare_thread()
+        except Exception:
+            logger.debug("cursor probe thread init failed", exc_info=True)
+        while not self._stop_event.is_set():
+            with self._lock:
+                active = self._screen_share_active
+            if not active:
+                self._cursor_wake_event.wait(timeout=1.0)
+                self._cursor_wake_event.clear()
+                continue
+            self.step_cursor_once()
+            self._stop_event.wait(timeout=0.05)
+
+    def _execute_summary_job(
+        self,
+        job: Mapping[str, Any],
+        epoch: int,
+        cfg: PerceptionConfig,
+    ) -> bool:
+        batch = list(job.get("batch") or ())
+        if not batch:
+            return False
+        custom_client = type(self.decision_client) is not PerceptionDecisionClient
+        summarize_fn = getattr(self.decision_client, "summarize_episode", None)
+        fallback_summarizer = (
+            (lambda items: summarize_fn(items, cfg))
+            if (self._cloud_complete is None and custom_client and callable(summarize_fn))
+            else None
+        )
+        result = summarize_vision_window(
+            job,
+            cloud_complete=self._cloud_complete,
+            fallback_summarizer=fallback_summarizer,
+        )
+        with self._lock:
+            if epoch != self._analysis_epoch or self._stop_event.is_set():
+                return False
+            self.rp_input_cache.commit_summary_job(
+                minute_summary=result.minute_summary,
+                overall_summary=result.overall_summary,
+                start_ts=batch[0][0],
+                end_ts=batch[-1][0],
+                mood=result.mood,
+                guidance=result.guidance,
+            )
+        self._emit_state()
+        return True
+
+    def run_due_cloud_summary(
+        self,
+        *,
+        now: float | None = None,
+        force: bool = False,
+    ) -> bool:
+        """Synchronously execute a due 2-minute Cloud LLM summary job if available."""
+        with self._lock:
+            if self._stop_event.is_set():
+                return False
+            epoch = self._analysis_epoch
+            job = self.rp_input_cache.prepare_summary_job(now=now, force=force)
+        if job is None:
+            return False
+        return self._execute_summary_job(job, epoch, self.current_config())
+
+    def _maybe_schedule_cloud_summary(self, cfg: PerceptionConfig) -> None:
+        """Launch out-of-band Cloud LLM summarization when a 2-minute window is due."""
+        with self._lock:
+            if self._stop_event.is_set():
+                return
+            if self._summary_worker is not None and self._summary_worker.is_alive():
+                return
+            epoch = self._analysis_epoch
+            job = self.rp_input_cache.prepare_summary_job(now=time.time())
+            if job is None:
+                return
+            worker = threading.Thread(
+                target=self._execute_summary_job,
+                args=(job, epoch, cfg),
+                name="shinsekai-perception-cloud-summary",
+                daemon=True,
+            )
+            self._summary_worker = worker
+        worker.start()
+
     def _maybe_run_idle_maintenance(self, cfg: PerceptionConfig) -> None:
-        """Run one-off voice style extraction and episodic compaction only when raw buffer is idle."""
+        """Run one-off voice style extraction when idle, and schedule Cloud LLM summaries."""
+        self._maybe_schedule_cloud_summary(cfg)
         if self.raw_buffer.has_dirty() or self._stop_event.is_set():
             return
         custom_client = type(self.decision_client) is not PerceptionDecisionClient
@@ -483,32 +720,6 @@ class PerceptionCoordinator:
                     except Exception:
                         logger.debug("background voice style extraction failed", exc_info=True)
 
-        if self.raw_buffer.has_dirty() or self._stop_event.is_set():
-            return
-        min_items = 6 if not self._screen_share_active else None
-        if not self.rp_input_cache.needs_episode_compaction(min_items=min_items):
-            return
-        batch = self.rp_input_cache.pop_archive_batch(min_items=min_items)
-        if not batch:
-            return
-        summarize_fn = getattr(self.decision_client, "summarize_episode", None)
-        if can_query_llm and callable(summarize_fn):
-            try:
-                summary = summarize_fn(batch, cfg)
-            except Exception:
-                logger.debug("background episode compaction failed", exc_info=True)
-                summary = build_fallback_episode_summary(batch)
-        else:
-            summary = build_fallback_episode_summary(batch)
-        if summary:
-            self.rp_input_cache.append_episode(
-                summary,
-                start_ts=batch[0][0],
-                end_ts=batch[-1][0],
-                mood=self.rp_input_cache.current_mood,
-            )
-            self._emit_state()
-
     def _run_loop(self) -> None:
         wake_timeout = 1.0
         while not self._stop_event.is_set():
@@ -520,8 +731,7 @@ class PerceptionCoordinator:
 
             cfg = self.current_config()
             if not (cfg.enabled or self._screen_share_active):
-                if self.rp_input_cache.needs_episode_compaction(min_items=6):
-                    self._maybe_run_idle_maintenance(cfg)
+                self._maybe_schedule_cloud_summary(cfg)
                 continue
 
             if not self.raw_buffer.has_dirty():
@@ -554,7 +764,7 @@ class PerceptionCoordinator:
                     and time.time() - frame.captured_at <= frame_max_age
                 )
 
-            def on_reflex(reflex: ReflexDecision) -> None:
+            def on_reflex(reflex: ReflexDecision, *, fallback_bark: str = "") -> None:
                 nonlocal displayed_reflex
                 with self._lock:
                     if epoch != self._analysis_epoch or self._stop_event.is_set():
@@ -568,7 +778,12 @@ class PerceptionCoordinator:
                     sprite_count=sprite_count,
                     config=cfg,
                     sprite_choices=sprite_choices,
+                    fallback_bark=fallback_bark,
                 )
+
+            def on_early_reflex(reflex: ReflexDecision) -> None:
+                if comparison_text(reflex.bark):
+                    on_reflex(reflex)
 
             try:
                 previous_frame = None
@@ -601,21 +816,31 @@ class PerceptionCoordinator:
                         if earlier and 0 < frame.captured_at - earlier.captured_at <= max(8.0, cfg.interval_sec * 2):
                             previous_frame = earlier
                         self._previous_vision_frame = frame
-                        ocr_at, text = self._latest_ocr
-                        if cfg.use_local_ocr and 0 <= frame.captured_at - ocr_at <= max(2.0, cfg.ocr_interval_sec * 2):
-                            screen_text = text
-                            key = comparison_text(text)
-                            if key:
-                                screen_text_changed = key != self._last_vision_ocr_key
-                                if screen_text_changed and len(self._recent_screen_text) == 2:
-                                    previous_at, previous_text = self._recent_screen_text[0]
-                                    if 0 <= ocr_at - previous_at <= max(4.0, cfg.ocr_interval_sec * 2):
-                                        previous_screen_text = previous_text
+                        hl_at, hl_text = self._latest_highlight
+                        ocr_at, sub_text = self._latest_ocr
+                        cur_at, cur_text = self._latest_cursor_ocr
+                        now_wall = time.time()
+                        # Priority: highlight > subtitle > cursor-adjacent text
+                        if comparison_text(hl_text) and 0 <= now_wall - hl_at <= max(6.0, cfg.interval_sec * 3):
+                            screen_text = hl_text
+                            screen_text_changed = comparison_text(hl_text) != self._last_vision_ocr_key
+                        elif cfg.use_local_ocr and 0 <= frame.captured_at - ocr_at <= max(2.0, cfg.ocr_interval_sec * 2) and comparison_text(sub_text):
+                            screen_text = sub_text
+                            key = comparison_text(sub_text)
+                            screen_text_changed = key != self._last_vision_ocr_key
+                            if screen_text_changed and len(self._recent_screen_text) == 2:
+                                previous_at, previous_text = self._recent_screen_text[0]
+                                if 0 <= ocr_at - previous_at <= max(4.0, cfg.ocr_interval_sec * 2):
+                                    previous_screen_text = previous_text
+                        elif cfg.use_local_ocr and comparison_text(cur_text) and 0 <= now_wall - cur_at <= max(5.0, cfg.interval_sec * 2):
+                            screen_text = cur_text
+                            screen_text_changed = comparison_text(cur_text) != self._last_vision_ocr_key
                     else:
                         previous_digest = self.rp_input_cache.current_digest
                     now = time.monotonic()
                     self._last_infer_monotonic = now
                     recent_barks = self._reflex_policy.recent_spoken_barks(char_name, now=now)
+                    focus_hint = self.rp_input_cache.policy.focus_hint
                 decide_kwargs: dict[str, Any] = {
                     "previous_digest": previous_digest,
                     "character_name": char_name,
@@ -630,8 +855,10 @@ class PerceptionCoordinator:
                     "previous_screen_text": previous_screen_text,
                     "screen_text_changed": screen_text_changed,
                     "retry_unreadable": not live_screen,
-                    "on_early_reflex": None if live_screen else on_reflex,
+                    "on_early_reflex": None if live_screen else on_early_reflex,
                 }
+                if focus_hint:
+                    decide_kwargs["reaction_guidance"] = f"当前观察侧重：{focus_hint}。"
                 result = self.decision_client.decide(snapshot, cfg, **decide_kwargs)
             except Exception as exc:
                 err_text = str(exc)
@@ -693,7 +920,12 @@ class PerceptionCoordinator:
                             now=now_mono,
                         )
                         if reflex.act:
-                            on_reflex(reflex)
+                            on_reflex(
+                                reflex,
+                                fallback_bark=observation_bark(
+                                    result, fresh_screen_text=screen_text if screen_text_changed else "",
+                                ),
+                            )
                     elif displayed_reflex is None and result.reflex.act:
                         reflex = self._reflex_policy.refine_for_context(
                             result,
@@ -704,7 +936,7 @@ class PerceptionCoordinator:
                             now=now_mono,
                         )
                         if reflex.act:
-                            on_reflex(reflex)
+                            on_reflex(reflex, fallback_bark=observation_bark(result, fresh_screen_text=""))
                     self._last_error = ""
                     self._warned_unreachable = False
                     observed_at = frame.captured_at if frame else max(

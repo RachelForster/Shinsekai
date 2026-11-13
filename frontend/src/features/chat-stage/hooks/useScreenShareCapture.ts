@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ingestPerception } from "../../../entities/perception/repository";
-import type { ScreenOcrScope, ScreenPlaybackAudioState } from "../../../shared/platform/types";
+import type {
+  ScreenOcrScope,
+  ScreenPlaybackAudioSettings,
+  ScreenPlaybackAudioState,
+} from "../../../shared/platform/types";
 import { createScreenPlaybackDetector, measureAudioLevel } from "./screenPlaybackAudio";
 
 const DIFF_GRID_WIDTH = 64;
@@ -21,6 +25,7 @@ export interface UseScreenShareCaptureOptions {
   ocrIntervalSec?: number;
   ocrEnabled?: boolean;
   proactiveEnabled?: boolean;
+  playbackAudioSettings?: ScreenPlaybackAudioSettings;
   characterAudioPlaying?: boolean;
   onBlackScreen?: () => void;
   onError?: (error: unknown, unsupported?: boolean) => void;
@@ -78,6 +83,7 @@ export function useScreenShareCapture({
   ocrEnabled = false,
   ocrIntervalSec = 1,
   proactiveEnabled = true,
+  playbackAudioSettings,
   characterAudioPlaying = false,
   onBlackScreen,
   onError,
@@ -99,6 +105,8 @@ export function useScreenShareCapture({
   const lastMotionAtRef = useRef(0);
   const characterAudioPlayingRef = useRef(characterAudioPlaying);
   characterAudioPlayingRef.current = characterAudioPlaying;
+  const playbackAudioSettingsRef = useRef(playbackAudioSettings);
+  playbackAudioSettingsRef.current = playbackAudioSettings;
   const blackFrameRef = useRef<{ since: number; reported: boolean } | null>(null);
   const pendingRequestRef = useRef<Promise<unknown> | null>(null);
   const frameErrorReportedRef = useRef(false);
@@ -427,9 +435,10 @@ export function useScreenShareCapture({
     const timer = window.setInterval(() => {
       if (!activeRef.current || streamRef.current !== stream) return;
       const now = performance.now();
-      const available = audioContext.state === "running" && track.readyState === "live" && !track.muted;
+      const settings = playbackAudioSettingsRef.current;
+      const available = settings && audioContext.state === "running" && track.readyState === "live" && !track.muted;
       const level = available && !characterAudioPlayingRef.current ? measureAudioLevel(analyser, samples) : null;
-      const state = detectPlayback(level, now, lastMotionAtRef.current);
+      const state = detectPlayback(level, now, lastMotionAtRef.current, settings);
       const status = available ? (state === "unavailable" ? "playing" : state) : "unavailable";
       if (shownState !== status) {
         shownState = status;

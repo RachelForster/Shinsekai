@@ -5,7 +5,11 @@ from pydantic_core import PydanticUseDefault
 from typing import List, Dict, Optional, Union, Any, Annotated, TypeVar, Literal
 from config.feature_flags import FeatureFlagConfigManager
 from config.network_proxy import normalize_proxy_url
-from config.perception import DEFAULT_PERCEPTION_MODEL, GGUF_MODEL_ID
+from config.perception import (
+    DEFAULT_PERCEPTION_MODEL,
+    DEFAULT_SALIENCE_THRESHOLD,
+    GGUF_MODEL_ID,
+)
 
 # ----------------- 解决 YAML None 问题的工具 -----------------
 def default_if_none(value: Any) -> Any:
@@ -220,7 +224,7 @@ class ApiConfig(BaseModel):
     perception_reflex_enabled: DefaultIfNone[bool] = Field(default=True, description="启用本地小模型快速反应（实时立绘切换 + 短促气泡台词，无语音）")
     perception_reflex_cooldown_sec: DefaultIfNone[float] = Field(default=15.0, ge=0.5, le=60.0, description="气泡反应最小冷却时间（秒）")
     perception_proactive_enabled: DefaultIfNone[bool] = Field(default=True, description="启用 Gatekeeper 主动触发主 RP 大模型发言")
-    perception_salience_threshold: DefaultIfNone[float] = Field(default=0.78, ge=0.1, le=1.0, description="Gatekeeper 放行主动 RP 发言的事件重要度阈值")
+    perception_salience_threshold: DefaultIfNone[float] = Field(default=DEFAULT_SALIENCE_THRESHOLD, ge=0.1, le=1.0, description="Gatekeeper 放行主动 RP 发言的事件重要度阈值")
     perception_proactive_cooldown_sec: DefaultIfNone[float] = Field(default=25.0, ge=3.0, le=600.0, description="主动 RP 发言最小冷却时间（秒）")
 
     hugging_face_access_token: DefaultIfNone[str] = Field(default="", description="Hugging Face Access Token")

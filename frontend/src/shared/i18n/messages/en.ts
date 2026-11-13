@@ -2437,6 +2437,8 @@ export const enMessages: Record<MessageKey, string> = {
   "api.perception.salienceThreshold": "Reply threshold (0–1)",
   "api.perception.salienceThresholdHelp": "Lower values allow more frequent replies.",
   "api.perception.proactiveCooldownSec": "Reply cooldown (s)",
+  "api.perception.proactiveCooldownHelp":
+    "With shared audio, ordinary comments during quiet moments also have a minimum interval. Likely pauses and urgent scenes use this setting.",
   "api.perception.probeButton": "Test vision",
   "api.perception.statusUnknown": "Connection untested",
   "api.perception.statusReady": "Connected",

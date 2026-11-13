@@ -7,7 +7,11 @@ import time
 from typing import Any, Literal, Mapping
 from urllib.parse import urlsplit
 
-from config.perception import DEFAULT_PERCEPTION_MODEL, GGUF_MODEL_ID
+from config.perception import (
+    DEFAULT_PERCEPTION_MODEL,
+    DEFAULT_SALIENCE_THRESHOLD,
+    GGUF_MODEL_ID,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,7 +28,7 @@ class PerceptionConfig:
     reflex_enabled: bool = True
     reflex_cooldown_sec: float = 15.0
     proactive_enabled: bool = True
-    salience_threshold: float = 0.78
+    salience_threshold: float = DEFAULT_SALIENCE_THRESHOLD
     proactive_cooldown_sec: float = 25.0
     request_timeout_sec: float = 10.0
     ocr_enabled: bool = False
@@ -78,7 +82,13 @@ class PerceptionConfig:
             proactive_enabled=bool(getattr(api_config, "perception_proactive_enabled", True)),
             salience_threshold=max(
                 0.1,
-                min(1.0, float(getattr(api_config, "perception_salience_threshold", 0.78) or 0.78)),
+                min(
+                    1.0,
+                    float(
+                        getattr(api_config, "perception_salience_threshold", DEFAULT_SALIENCE_THRESHOLD)
+                        or DEFAULT_SALIENCE_THRESHOLD
+                    ),
+                ),
             ),
             proactive_cooldown_sec=max(
                 3.0,
@@ -97,9 +107,12 @@ class PerceptionConfig:
         )
 
 
+TextObservationSource = Literal["subtitle", "highlight", "cursor"]
+
+
 @dataclass(frozen=True, slots=True)
 class ScreenOcrScope:
-    mode: Literal["bottom", "full", "region"] = "bottom"
+    mode: Literal["bottom", "full", "region", "cursor"] = "bottom"
     region: tuple[float, float, float, float] | None = None
 
     @classmethod
@@ -109,7 +122,7 @@ class ScreenOcrScope:
         if not isinstance(value, Mapping):
             raise ValueError("OCR scope must be an object")
         mode = value.get("mode")
-        if mode in ("bottom", "full"):
+        if mode in ("bottom", "full", "cursor"):
             return cls(mode=mode)
         region = value.get("region")
         if mode != "region" or not isinstance(region, Mapping):
@@ -327,11 +340,12 @@ class VisualBeat:
 
 @dataclass(slots=True)
 class SubtitleItem:
-    """One deduplicated subtitle / dialogue line ordered chronologically."""
+    """One deduplicated subtitle / highlight / cursor-adjacent text line ordered chronologically."""
 
     seq: int
     timestamp: float
     text: str
+    source: TextObservationSource = "subtitle"
 
 
 @dataclass(frozen=True, slots=True)

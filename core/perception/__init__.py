@@ -1,4 +1,4 @@
-"""Core domain models, two-tier caches, and gatekeeper for real-time perception."""
+"""Core domain models, two-tier caches, policy, and gatekeeper for real-time perception."""
 
 from core.perception.cache import PERCEPTION_CONTEXT_MARKER, RPInputCache
 from core.perception.gatekeeper import GatekeeperVerdict, PerceptionGatekeeper
@@ -11,6 +11,7 @@ from core.perception.models import (
     RawPerceptionSnapshot,
     ReflexDecision,
 )
+from core.perception.policy import PerceptionMemoryPolicy, VisionMemoryPolicy
 from core.perception.raw_buffer import PerceptionRawBuffer
 
 __all__ = [
@@ -22,8 +23,10 @@ __all__ = [
     "PerceptionEvent",
     "PerceptionFrame",
     "PerceptionGatekeeper",
+    "PerceptionMemoryPolicy",
     "PerceptionRawBuffer",
     "RPInputCache",
     "RawPerceptionSnapshot",
     "ReflexDecision",
+    "VisionMemoryPolicy",
 ]

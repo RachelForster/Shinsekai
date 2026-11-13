@@ -2262,6 +2262,7 @@ export type MessageKey =
   | "api.perception.salienceThreshold"
   | "api.perception.salienceThresholdHelp"
   | "api.perception.proactiveCooldownSec"
+  | "api.perception.proactiveCooldownHelp"
   | "api.perception.probeButton"
   | "api.perception.statusUnknown"
   | "api.perception.statusReady"

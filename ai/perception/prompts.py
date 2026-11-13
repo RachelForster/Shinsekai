@@ -112,15 +112,15 @@ def build_perception_messages(
             "你正和用户一起看共享屏幕，可能是视频、动画、直播或游戏。根据截图描述可见内容，"
             "不要猜测声音、对白或用户的操作。若只是观看，player_busy设为false。"
             f"{mood_rule}"
-            "明显的转折、哭戏高潮或险情可给salience 0.8以上，普通新画面约0.4，"
+            "仅重大剧情转折、强烈情绪高潮或危急险情才给salience 0.85以上，普通新画面或常规对白给0.3~0.55，"
             "0.95以上仅用于画面明确显示正在发生且需要立即提醒的险情，普通高潮和对白不要达到0.95。"
-            "重复画面、静止菜单或黑屏低于0.2。字幕和画面文字可用于反应，digest省略文字内容。"
+            "重复画面、静止菜单或黑屏低于0.2。屏幕字幕完全由外部OCR提供，digest只写纯画面视觉内容，禁止抄录或自行识别字幕文字。"
             "visual_change为none或全黑无可辨内容时，digest留空；全黑时反应留空且salience设为0。"
         )
     else:
         scene_rule = (
             f"{mood_rule}"
-            "salience表示局势戏剧性与值得角色开口的重要度（0.0~1.0，团灭/击杀/残血/通关/剧情转折>=0.8，挂机/菜单<=0.2），"
+            "salience表示局势戏剧性与值得角色主动开口的重要度（0.0~1.0，仅团灭/击杀Boss/丝血险境/通关/重大剧情转折才给>=0.85，常规探索或普通战斗0.3~0.6，挂机/菜单<=0.2），"
             "player_busy表示玩家是否正在激烈交火或高压操作。"
         )
 
@@ -143,7 +143,11 @@ def build_perception_messages(
                 "气氛悲伤沉重时禁止轻浮欢呼。把客观局势留给digest，bark避开照读字幕和猜测剧情。"
                 "画面和刚才一样或没把握时bark填null。"
             )
-        reflex_rule = f"{reaction_rule}{reaction_guidance}{sprite_rule}气泡和立绘各自可留空。"
+        reflex_rule = (
+            f"{reaction_rule}{reaction_guidance}{sprite_rule}"
+            "选择sprite_id时，bark也要填，短句应点出触发反应的那句字幕、具体画面细节或游戏事件。"
+            "只有短句时sprite_id可留空，没有具体触发点时两项留空。"
+        )
     else:
         reflex_rule = '固定输出 "reflex":{"sprite_id":null,"bark":null}。'
 
@@ -157,7 +161,7 @@ def build_perception_messages(
 
     user_lines: list[str] = []
     if limited_ocr:
-        user_lines.append("字幕以选定 OCR 范围提供的文字为准。screen_text 留空。")
+        user_lines.append("字幕仅以选定 OCR 范围提供的文字为准，不要自行识别截图中的其他文字。")
     anchor = (scene_anchor or previous_digest).strip()
     if compared_frames:
         user_lines.append("[画面] 拼图左侧为较早画面，右侧为当前画面。摘要直接写右侧看见的事物。")

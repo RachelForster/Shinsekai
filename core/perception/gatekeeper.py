@@ -84,11 +84,14 @@ class PerceptionGatekeeper:
                 salience=effective_salience,
             )
 
+        cooldown_sec = config.proactive_cooldown_sec
+        if screen_audio == "quiet" and not urgent:
+            cooldown_sec = max(cooldown_sec, cache.policy.quiet_screen_min_reply_interval_sec)
         now = self._monotonic()
         with self._lock:
             if (
                 self._last_proactive_at > 0.0
-                and (now - self._last_proactive_at) < config.proactive_cooldown_sec
+                and (now - self._last_proactive_at) < cooldown_sec
             ):
                 return GatekeeperVerdict(
                     False,

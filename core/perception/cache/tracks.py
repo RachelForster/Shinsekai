@@ -7,7 +7,26 @@ from difflib import SequenceMatcher
 import re
 from unicodedata import normalize
 
-from core.perception.models import SubtitleItem, VisualBeat
+from core.perception.models import SubtitleItem, TextObservationSource, VisualBeat
+
+TEXT_SOURCE_PRIORITY: dict[str, int] = {
+    "highlight": 3,
+    "subtitle": 2,
+    "cursor": 1,
+}
+TEXT_SOURCE_LABELS: dict[str, str] = {
+    "highlight": "高亮",
+    "subtitle": "字幕",
+    "cursor": "手边文字",
+}
+
+
+def text_source_priority(source: str) -> int:
+    return TEXT_SOURCE_PRIORITY.get(str(source or "subtitle"), 2)
+
+
+def text_source_label(source: str) -> str:
+    return TEXT_SOURCE_LABELS.get(str(source or "subtitle"), "字幕")
 
 _QUOTED_SUBTITLE_RE = re.compile(
     r"(?:画面|屏幕)?(?:下方|底部|上方)?的?有?字幕"
@@ -84,12 +103,13 @@ def clean_visual_summary(text: str, subtitle_keys: set[str]) -> str:
 
 
 class SubtitleTrack:
-    """Chronological OCR subtitle buffer with typewriter expansion merging."""
+    """Chronological OCR subtitle / highlight / cursor-text buffer with priority merging."""
 
     def __init__(self, *, max_items: int) -> None:
         self.max_items = max(4, int(max_items))
         self.items: list[SubtitleItem] = []
         self.last_raw_text: str = ""
+        self.last_raw_by_source: dict[str, str] = {}
 
     def subtitle_keys(self, *, recent: int = 12) -> set[str]:
         return {
@@ -105,23 +125,33 @@ class SubtitleTrack:
         captured_at: float,
         alloc_seq: Callable[[], int],
         on_evict: Callable[[float, str, str], None],
-    ) -> None:
+        source: TextObservationSource = "subtitle",
+    ) -> bool:
         trimmed = str(raw_text or "").strip()[:320]
         if not trimmed:
-            self.last_raw_text = ""
-            return
-        if trimmed == self.last_raw_text and self.items:
-            return
-        self.last_raw_text = trimmed
+            self.last_raw_by_source[source] = ""
+            if source == "subtitle":
+                self.last_raw_text = ""
+            return False
+        prev_raw = self.last_raw_text if source == "subtitle" else self.last_raw_by_source.get(source, "")
+        if trimmed == prev_raw and self.items:
+            return False
+        self.last_raw_by_source[source] = trimmed
+        if source == "subtitle":
+            self.last_raw_text = trimmed
+
+        changed = False
         for raw_line in trimmed.splitlines():
             line = raw_line.strip()
-            if line:
-                self._insert_line(
-                    line,
-                    captured_at=captured_at,
-                    alloc_seq=alloc_seq,
-                    on_evict=on_evict,
-                )
+            if line and self._insert_line(
+                line,
+                captured_at=captured_at,
+                alloc_seq=alloc_seq,
+                on_evict=on_evict,
+                source=source,
+            ):
+                changed = True
+        return changed
 
     def _insert_line(
         self,
@@ -130,50 +160,95 @@ class SubtitleTrack:
         captured_at: float,
         alloc_seq: Callable[[], int],
         on_evict: Callable[[float, str, str], None],
-    ) -> None:
+        source: TextObservationSource = "subtitle",
+    ) -> bool:
         clean = line[:180]
         key = observation_key(clean)
         if not key:
-            return
+            return False
         digits = digits_signature(clean)
+        new_prio = text_source_priority(source)
 
-        for item in reversed(self.items[-4:]):
+        for item in reversed(self.items[-6:]):
             dt = abs(captured_at - item.timestamp)
             item_key = observation_key(item.text)
+            old_prio = text_source_priority(item.source)
             if key == item_key:
+                if new_prio > old_prio:
+                    item.source = source
+                    item.text = clean
+                    item.timestamp = max(item.timestamp, captured_at)
+                    item.seq = alloc_seq()
+                    return True
                 item.timestamp = max(item.timestamp, captured_at)
-                return
-            if dt <= 4.5 and digits == digits_signature(item.text):
-                # Typewriter prefix/substring expansion of the same subtitle
+                return False
+
+            if new_prio > old_prio and dt <= 30.0 and digits == digits_signature(item.text):
+                if len(item_key) >= 3 and item_key in key:
+                    item.source = source
+                    item.text = clean
+                    item.timestamp = max(item.timestamp, captured_at)
+                    item.seq = alloc_seq()
+                    return True
+            elif new_prio < old_prio and dt <= 12.0:
+                if len(key) >= 3 and key in item_key:
+                    return False
+                if is_near_identical(item.text, clean, threshold=0.90):
+                    return False
+            elif dt <= 4.5 and digits == digits_signature(item.text):
+                # Typewriter prefix/substring expansion of the same text source
                 if len(item_key) >= 3 and item_key in key:
                     item.text = clean
                     item.timestamp = max(item.timestamp, captured_at)
                     item.seq = alloc_seq()
-                    return
+                    return True
                 if len(key) >= 3 and key in item_key and captured_at >= item.timestamp:
-                    return
+                    return False
                 if dt <= 3.5 and is_near_identical(item.text, clean, threshold=0.90):
                     if len(clean) >= len(item.text):
                         item.text = clean
                     item.timestamp = max(item.timestamp, captured_at)
-                    return
+                    return False
 
-        entry = SubtitleItem(seq=alloc_seq(), timestamp=captured_at, text=clean)
+        entry = SubtitleItem(seq=alloc_seq(), timestamp=captured_at, text=clean, source=source)
         self.items.append(entry)
         if len(self.items) >= 2 and self.items[-2].timestamp > entry.timestamp:
             self.items.sort(key=lambda s: (s.timestamp, s.seq))
         while len(self.items) > self.max_items:
             evicted = self.items.pop(0)
-            on_evict(evicted.timestamp, "字幕", evicted.text)
+            on_evict(evicted.timestamp, text_source_label(evicted.source), evicted.text)
+        return True
 
     def recent_lines(self, *, now: float, limit: int = 4, max_age_sec: float = 45.0) -> list[str]:
         cutoff = now - max_age_sec if max_age_sec > 0 else 0.0
         matching = [item.text for item in self.items if item.timestamp >= cutoff]
         return matching[-max(1, int(limit)) :]
 
-    def clear(self) -> None:
-        self.items.clear()
+    def evict_older_than(
+        self,
+        cutoff_ts: float,
+        on_evict: Callable[[float, str, str], None],
+    ) -> int:
+        evicted_count = 0
+        while self.items and self.items[0].timestamp < cutoff_ts:
+            evicted = self.items.pop(0)
+            on_evict(evicted.timestamp, text_source_label(evicted.source), evicted.text)
+            evicted_count += 1
+        return evicted_count
+
+    def reset_raw_tracking(self) -> None:
         self.last_raw_text = ""
+        self.last_raw_by_source.clear()
+
+    def clear(self, *, preserve_highlights: bool = False) -> None:
+        if preserve_highlights:
+            self.items = [item for item in self.items if item.source == "highlight"]
+            self.last_raw_text = ""
+            self.last_raw_by_source.pop("subtitle", None)
+            self.last_raw_by_source.pop("cursor", None)
+            return
+        self.items.clear()
+        self.reset_raw_tracking()
 
 
 class VisualTrack:
@@ -243,6 +318,18 @@ class VisualTrack:
         while len(self.beats) > self.max_beats:
             evicted = self.beats.pop(0)
             on_evict(evicted.timestamp, "画面", evicted.summary)
+
+    def evict_older_than(
+        self,
+        cutoff_ts: float,
+        on_evict: Callable[[float, str, str], None],
+    ) -> int:
+        evicted_count = 0
+        while self.beats and self.beats[0].timestamp < cutoff_ts:
+            evicted = self.beats.pop(0)
+            on_evict(evicted.timestamp, "画面", evicted.summary)
+            evicted_count += 1
+        return evicted_count
 
     def clear(self) -> None:
         self.beats.clear()

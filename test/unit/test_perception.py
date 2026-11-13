@@ -12,7 +12,7 @@ import unittest
 from unittest.mock import patch
 
 from PIL import Image
-from tools.perception_subtitles import select_subtitles
+from tools.perception_subtitles import select_cursor_text, select_subtitles
 
 from ai.perception.decision_client import PerceptionDecisionClient, PerceptionInferenceError
 from ai.perception.prompts import (
@@ -26,6 +26,7 @@ from application.chat.history.state import (
 )
 from application.chat.host.history import _serialize_history_entries_from_messages
 from application.perception.coordinator import PerceptionCoordinator
+from application.perception.cursor_reader import CursorPatch, CursorSample
 from application.perception.expressions import expression_sprite_candidates
 from application.perception.hooks import PerceptionAutoHooks
 from application.perception.server_launcher import (
@@ -47,7 +48,12 @@ from core.perception.models import (
 )
 from core.perception.raw_buffer import PerceptionRawBuffer
 from core.chat_history.identity import CHAT_TURN_ID
-from core.perception.cache import PERCEPTION_CONTEXT_MARKER, PROACTIVE_TURN_INSTRUCTION, RPInputCache
+from core.perception.cache import (
+    PERCEPTION_CONTEXT_MARKER,
+    PROACTIVE_TURN_INSTRUCTION,
+    PerceptionMemoryPolicy,
+    RPInputCache,
+)
 from plugin_system.host.service import bind_perception_runtime
 from sdk.register import PluginCapabilityRegistry
 
@@ -156,7 +162,9 @@ class TestRPInputCacheAndGatekeeper(unittest.TestCase):
         ctx = cache.format_for_rp_context(consume=False)
         self.assertIn("elden_demo", ctx)
         self.assertIn("玩家遭遇树精Boss", ctx)
-        self.assertIn("小心树精！", ctx)
+        self.assertNotIn("小心树精！", ctx)
+        self.assertNotIn("脱口", ctx)
+        self.assertNotIn("当前氛围", ctx)
 
         trigger_prompt = cache.format_proactive_trigger_prompt(consume=True)
         self.assertIn("玩家遭遇树精Boss", trigger_prompt)
@@ -206,6 +214,31 @@ class TestRPInputCacheAndGatekeeper(unittest.TestCase):
         self.assertEqual(gk.evaluate(cache, cfg, chat_busy=False).reason, "proactive_cooldown")
         fake_now[0] = 130.0
         self.assertTrue(gk.evaluate(cache, cfg, chat_busy=False).allow)
+
+    def test_normal_quiet_screen_replies_have_a_longer_interval(self) -> None:
+        clock = [100.0]
+        gatekeeper = PerceptionGatekeeper(monotonic_fn=lambda: clock[0])
+        cache = RPInputCache(policy=PerceptionMemoryPolicy(quiet_screen_min_reply_interval_sec=150.0))
+        cache.record_decision(PerceptionDigestResult(digest="讲者解释了光的散射", salience=0.85))
+        config = PerceptionConfig(enabled=True, proactive_cooldown_sec=60.0)
+
+        self.assertEqual(gatekeeper.evaluate(cache, config, screen_audio="quiet").reason, "quiet_screen")
+        gatekeeper.notify_proactive_fired()
+        clock[0] += 60.0
+        self.assertEqual(gatekeeper.evaluate(cache, config, screen_audio="quiet").reason, "proactive_cooldown")
+        self.assertEqual(gatekeeper.evaluate(cache, config, screen_audio="stopped").reason, "playback_stopped")
+        self.assertTrue(gatekeeper.evaluate(cache, config).allow)
+        clock[0] += 60.0
+        self.assertFalse(gatekeeper.evaluate(cache, config, screen_audio="quiet").allow)
+        clock[0] += 30.0
+        self.assertTrue(gatekeeper.evaluate(cache, config, screen_audio="quiet").allow)
+
+        gatekeeper.notify_proactive_fired()
+        cache.record_decision(PerceptionDigestResult(digest="行人即将被倒下的树砸到", salience=0.98))
+        clock[0] += 59.0
+        self.assertEqual(gatekeeper.evaluate(cache, config, screen_audio="playing").reason, "proactive_cooldown")
+        clock[0] += 1.0
+        self.assertEqual(gatekeeper.evaluate(cache, config, screen_audio="playing").reason, "urgent_screen")
 
 
 class TestPerceptionStreamingParser(unittest.TestCase):
@@ -264,6 +297,7 @@ class TestPerceptionStreamingParser(unittest.TestCase):
         self.assertIn("结合当前画面和可读的字幕", user["content"][1]["text"])
         self.assertIn("2 微笑", system["content"])
         self.assertIn("7 吃惊", system["content"])
+        self.assertIn("选择sprite_id时，bark也要填", system["content"])
         self.assertIn('"reflex":{"sprite_id":null,"bark":null}', system["content"])
         self.assertNotIn('"act":true', system["content"])
 
@@ -469,8 +503,10 @@ class TestPerceptionHooksAndCoordinator(unittest.TestCase):
             is_chat_busy=lambda: False,
             apply_reflex=lambda *_args: None,
             enqueue_proactive_turn=lambda prompt: queued.append(prompt) or True,
+            rp_input_cache=RPInputCache(policy=PerceptionMemoryPolicy(screen_audio_quiet_window_ms=1800)),
             gatekeeper=PerceptionGatekeeper(monotonic_fn=lambda: clock[0]),
         )
+        self.assertEqual(coordinator.status_snapshot()["screenPlaybackAudioSettings"]["quietWindowMs"], 1800)
         cache = coordinator.rp_input_cache
         hooks = PerceptionAutoHooks(
             rp_input_cache=cache,
@@ -701,7 +737,7 @@ class TestPerceptionHooksAndCoordinator(unittest.TestCase):
                     sprite_count=4,
                     config=PerceptionConfig(reflex_cooldown_sec=3.5),
                 )
-        self.assertEqual(shown, [(1, "这也太夸张了吧！"), (2, ""), (1, "等等，门后好像有人。")])
+        self.assertEqual(shown, [(1, "这也太夸张了吧！"), (2, "等等，门后好像有人。")])
         self.assertEqual(
             coordinator._reflex_policy.recent_spoken_barks("Nanami", now=110.0),
             ["这也太夸张了吧！", "等等，门后好像有人。"],
@@ -727,7 +763,7 @@ class TestPerceptionHooksAndCoordinator(unittest.TestCase):
                 )
         self.assertEqual(shown, ["这也太厉害了吧！", "等等，他要去哪？", "这也太厉害了吧！"])
 
-    def test_default_bubble_cooldown_leaves_explicit_sprite_switches_independent(self) -> None:
+    def test_default_bubble_cooldown_keeps_sprite_switches_with_their_bubbles(self) -> None:
         from config.schema import ApiConfig
 
         config = PerceptionConfig()
@@ -758,7 +794,25 @@ class TestPerceptionHooksAndCoordinator(unittest.TestCase):
                     expressions={"平静": (0,), "好奇": (1,), "开心": (2,)},
                     sprite_choices={1: "平静", 2: "沉思", 3: "微笑"},
                 )
-        self.assertEqual(shown, [(None, "它怎么浮起来了？"), (0, ""), (None, "这片海真美。")])
+        self.assertEqual(shown, [(None, "它怎么浮起来了？"), (None, "这片海真美。")])
+
+    def test_duplicate_bark_uses_current_observation_or_skips_the_sprite(self) -> None:
+        shown = []
+        coordinator = PerceptionCoordinator(
+            get_api_config=lambda: None,
+            resolve_character=lambda: None,
+            is_chat_busy=lambda: False,
+            apply_reflex=lambda _name, sprite, bark: shown.append((sprite, bark)),
+            enqueue_proactive_turn=lambda _prompt: False,
+        )
+        decision = ReflexDecision(act=True, sprite_id=1, bark="它往那边跑了！")
+        with patch("application.perception.coordinator.time.monotonic", side_effect=[100, 116, 132]):
+            for fallback in ("", "（看着小猫跳上窗台……）", "（看着小猫跳上窗台……）"):
+                coordinator._maybe_fire_reflex(
+                    decision, character_name="拉法尔", config=PerceptionConfig(), sprite_count=1,
+                    expressions={}, sprite_choices={1: "好奇"}, fallback_bark=fallback,
+                )
+        self.assertEqual(shown, [(0, "它往那边跑了！"), (0, "（看着小猫跳上窗台……）")])
 
     def test_auto_hooks_injects_context_and_marks_consumed(self) -> None:
         cache = RPInputCache()
@@ -800,8 +854,8 @@ class TestPerceptionHooksAndCoordinator(unittest.TestCase):
                     "YQ==": ("蓝色的大海和沙滩，岸边有棕榈树。", 2, "蓝色的大海……"),
                     "Yg==": ("门打开", 3, "咦，门怎么开了？"),
                     "Yw==": ("门打开", 3, "咦，门怎么开了？"),
-                    "ZA==": ("门打开", 2, ""),
-                    "ZQ==": ("", 3, ""),
+                    "ZA==": ("门打开", 3, ""),
+                    "ZQ==": ("", 2, ""),
                 }[image]
                 reflex = ReflexDecision(act=True, sprite_id=sprite_id, bark=bark)
                 return PerceptionDigestResult(reflex=reflex, digest=digest)
@@ -831,19 +885,19 @@ class TestPerceptionHooksAndCoordinator(unittest.TestCase):
             coordinator.ingest({"source": "screen_share", "imageBase64": "Yg=="})
             coordinator.wait_for_buffered_context()
             self.assertEqual(analyzed, [("YQ==", ""), ("Yg==", "蓝色的大海和沙滩，岸边有棕榈树。")])
-            self.assertEqual([sprite for _name, sprite, _bark in reactions], [1, 2])
-            self.assertEqual(reactions[0][2], "蓝色的大海……")
-            self.assertEqual(reactions[-1][2], "")
+            self.assertEqual(reactions, [("Nanami", 1, "蓝色的大海……")])
             coordinator.ingest({"source": "screen_share", "imageBase64": "Yw=="})
             coordinator.wait_for_buffered_context()
-            self.assertEqual(len(reactions), 2)
+            self.assertEqual(len(reactions), 1)
 
+            coordinator._reflex_policy.last_bark_monotonic -= 3.5
             coordinator.ingest({"source": "screen_share", "imageBase64": "ZA=="})
             coordinator.wait_for_buffered_context()
-            self.assertEqual(reactions[-1], ("Nanami", 1, ""))
+            self.assertEqual(reactions[-1], ("Nanami", 2, "（看着门打开……）"))
+            coordinator._reflex_policy.last_bark_monotonic -= 3.5
             coordinator.ingest({"source": "screen_share", "imageBase64": "ZQ=="})
             coordinator.wait_for_buffered_context()
-            self.assertEqual(reactions[-1], ("Nanami", 2, ""))
+            self.assertEqual(len(reactions), 2)
             self.assertEqual(coordinator.rp_input_cache.current_digest, "门打开")
         finally:
             coordinator.stop()
@@ -875,9 +929,11 @@ class TestPerceptionHooksAndCoordinator(unittest.TestCase):
         class FakeDecisionClient:
             def decide(self, snapshot, config, **kwargs):
                 on_early = kwargs.get("on_early_reflex")
-                reflex = ReflexDecision(act=True, sprite=1, bark="哇，干得漂亮！")
+                reflex = ReflexDecision(act=True, sprite=1)
                 if on_early:
                     on_early(reflex)
+                    if reflex_events:
+                        raise AssertionError("Sprite switched before its fallback bubble was available")
                 return PerceptionDigestResult(
                     reflex=reflex,
                     digest="玩家成功击败强敌精英怪。",
@@ -924,7 +980,7 @@ class TestPerceptionHooksAndCoordinator(unittest.TestCase):
         try:
             coordinator.ingest({"source": "plugin:demo", "game": "demo", "event": "boss_defeated"})
             self.assertTrue(done_event.wait(timeout=3.0))
-            self.assertEqual(reflex_events, [("Nanami", 1, "哇，干得漂亮！")])
+            self.assertEqual(reflex_events, [("Nanami", 1, "（看着玩家成功击败强敌精英怪……）")])
             self.assertEqual(len(proactive_prompts), 1)
             self.assertEqual(proactive_prompts, [PROACTIVE_TURN_INSTRUCTION])
             self.assertTrue(coordinator.rp_input_cache.has_unconsumed_notable())
@@ -1253,15 +1309,18 @@ class TestVisionMemoryAndMoodGate(unittest.TestCase):
         second_turn_pending = cache.take_turn_context(turn_id="t2", allow_consumed_context=False)
         self.assertIn("千万别让教会发现", second_turn_pending)
 
-        # Immediate manual follow-up question with no new frames still retains context bridge
+        # Immediate manual follow-up question within the 1-minute live window retains plain `[字幕]` without `[上文已看]`
         followup_turn = cache.take_turn_context(turn_id="t3", allow_consumed_context=True)
         self.assertIn("雨夜街道上停着一辆马车", followup_turn)
-        self.assertIn("[上文已看] 千万别让教会发现", followup_turn)
+        self.assertNotIn("[上文已看]", followup_turn)
+        self.assertIn("* [字幕] 今晚就要出发了", followup_turn)
+        self.assertIn("* [字幕] 千万别让教会发现", followup_turn)
 
     def test_static_interview_high_salience_subtitle_triggers_proactive_and_adaptive_visual_quota(self) -> None:
         cache = RPInputCache()
         gk = PerceptionGatekeeper()
-        cfg = PerceptionConfig(enabled=True, proactive_enabled=True, salience_threshold=0.78)
+        cfg = PerceptionConfig(enabled=True, proactive_enabled=True)
+        self.assertAlmostEqual(cfg.salience_threshold, 0.85)
         now = time.time()
 
         cache.record_decision(
@@ -1280,12 +1339,12 @@ class TestVisionMemoryAndMoodGate(unittest.TestCase):
 
         verdict = gk.evaluate(cache, cfg, chat_busy=False)
         self.assertTrue(verdict.allow)
-        proactive_ctx = cache.take_turn_context(proactive=True, salience_threshold=0.78)
+        proactive_ctx = cache.take_turn_context(proactive=True, salience_threshold=cfg.salience_threshold)
         self.assertIn("演播室里嘉宾坐在桌前", proactive_ctx)
         self.assertIn("其实那场事故并不是意外", proactive_ctx)
 
-        # Verify adaptive visual quota: 6 distinct visual beats with no subtitles -> all 6 shown;
-        # once >= 4 subtitles arrive -> visual beats tighten to 4.
+        # Verify adaptive visual quota: 6 distinct visual beats with no subtitles -> anchor + 5 beats = all 6 shown;
+        # once >= 3 subtitles arrive -> visual beats tighten to recent 2 (`第5` & `第6`) + anchor (`第1`).
         cache_visual = RPInputCache()
         for idx in range(6):
             cache_visual.record_decision(
@@ -1299,17 +1358,19 @@ class TestVisionMemoryAndMoodGate(unittest.TestCase):
         for idx in range(6):
             self.assertIn(f"第{idx + 1}座遗迹石室", visual_heavy_block)
 
-        for idx in range(5):
+        for idx in range(4):
             cache_visual.record_screen_text(f"碑文记载了第{idx + 1}段历史", captured_at=now + 1.0 + idx * 0.1)
         dialogue_heavy_block = cache_visual.format_for_rp_context(consume=False, include_recent_events=True)
         self.assertIn("当前场景（约 0 秒前）：玩家探索第1座遗迹石室", dialogue_heavy_block)
         self.assertNotIn("第2座遗迹石室", dialogue_heavy_block)
+        self.assertNotIn("第4座遗迹石室", dialogue_heavy_block)
+        self.assertIn("第5座遗迹石室", dialogue_heavy_block)
         self.assertIn("第6座遗迹石室", dialogue_heavy_block)
 
     def test_mood_gate_preserves_short_barks_and_emits_option_b_ambient_bubbles(self) -> None:
         emitted: list[tuple[str, int | None, str]] = []
         responses = iter([
-            # 1) `mood="unclear"` suppresses uncertain bark while still switching sprite
+            # 1) Replace an uncertain bark with an observed detail when switching sprites.
             PerceptionDigestResult(
                 mood="unclear",
                 visual_change="detail",
@@ -1317,11 +1378,12 @@ class TestVisionMemoryAndMoodGate(unittest.TestCase):
                 salience=0.35,
                 reflex=ReflexDecision(act=True, sprite_id=2, bark="这是什么？"),
             ),
-            # 2) `mood="sad"` with empty bark -> Option B emits `"……"` + sad sprite
+            # 2) A sad reaction with no bark identifies the subtitle that prompted it.
             PerceptionDigestResult(
                 mood="sad",
                 visual_change="cut",
                 digest="雨中少年跪在墓碑前低头哭泣",
+                ocr_text="他再也等不到回信了",
                 salience=0.82,
                 reflex=ReflexDecision(act=True, sprite_id=3, bark=""),
             ),
@@ -1385,12 +1447,12 @@ class TestVisionMemoryAndMoodGate(unittest.TestCase):
         try:
             coordinator.ingest({"source": "screen_share", "screenShareActive": True, "imageBase64": "ZjA="})
             coordinator.wait_for_buffered_context()
-            self.assertEqual(emitted[-1], ("拉法尔", 1, ""))
+            self.assertEqual(emitted[-1], ("拉法尔", 1, "（看着模糊的暗影掠过窗户……）"))
 
             time.sleep(0.55)
             coordinator.ingest({"source": "screen_share", "imageBase64": "ZjE="})
             coordinator.wait_for_buffered_context()
-            self.assertEqual(emitted[-1], ("拉法尔", 2, "……"))
+            self.assertEqual(emitted[-1], ("拉法尔", 2, "（正在读：他再也等不到回信了）"))
 
             time.sleep(0.55)
             coordinator.ingest({"source": "screen_share", "imageBase64": "ZjI="})
@@ -1412,9 +1474,10 @@ class TestVisionMemoryAndMoodGate(unittest.TestCase):
             coordinator.wait_for_buffered_context()
             self.assertEqual(emitted[-1], ("拉法尔", None, "（正在读：第二章：观测记录手稿）"))
 
-            # Ambient bubbles ("……" / "（看着……）" / "（正在读：……）") must not overwrite last spoken bark in RP context
+            # Neither spoken barks, ambient bubbles, nor mood labels should be injected into RP LLM context
             rp_ctx = coordinator.rp_input_cache.format_for_rp_context(consume=False, include_recent_events=True)
-            self.assertIn("哇……怎么会这样……", rp_ctx)
+            self.assertNotIn("哇……怎么会这样……", rp_ctx)
+            self.assertNotIn("当前氛围", rp_ctx)
             self.assertNotIn("（看着清晨的港口停着一艘帆船……）", rp_ctx)
             self.assertNotIn("（正在读：", rp_ctx)
             self.assertNotIn("这是什么", rp_ctx)
@@ -1481,9 +1544,329 @@ class TestVisionMemoryAndMoodGate(unittest.TestCase):
             PerceptionDigestResult(digest="旅人推开木屋大门", visual_change="cut", created_at=time.time())
         )
         rendered = cache.format_for_rp_context(consume=False, include_recent_events=True)
-        self.assertIn("前情纪要（按时间顺序）", rendered)
+        self.assertIn("- 前情纪要：", rendered)
+        self.assertIn("[分段纪要·约", rendered)
         self.assertIn("旅人顶着风雪连续穿过数片雪林", rendered)
         self.assertIn("旅人推开木屋大门", rendered)
+
+    def test_unified_policy_class_cloud_dual_summary_and_ocr_only_subtitles(self) -> None:
+        from config.schema import ApiConfig
+
+        # 1) Policy defaults & elevated 0.85 salience threshold
+        policy = PerceptionMemoryPolicy()
+        self.assertEqual(policy.live_window_sec, 60.0)
+        self.assertEqual(policy.minute_summary_interval_sec, 120.0)
+        self.assertEqual(policy.visual_beats_subtitle_heavy, 2)
+        self.assertAlmostEqual(policy.notable_salience_floor, 0.85)
+        self.assertAlmostEqual(ApiConfig().perception_salience_threshold, 0.85)
+        self.assertAlmostEqual(PerceptionConfig().salience_threshold, 0.85)
+
+        # Clamping & adaptive guidance
+        applied = policy.apply_cloud_guidance(
+            {
+                "scene_pace": "dialogue_heavy",
+                "visual_beats_subtitle_heavy": 99,
+                "notable_salience_floor": 0.2,
+                "focus_hint": "  关注法庭证人证词矛盾。 ",
+            }
+        )
+        self.assertEqual(applied["scene_pace"], "dialogue_heavy")
+        self.assertEqual(applied["visual_beats_subtitle_heavy"], 4)
+        self.assertAlmostEqual(applied["notable_salience_floor"], 0.70)
+        self.assertEqual(applied["focus_hint"], "关注法庭证人证词矛盾")
+        policy.reset_adaptive()
+        self.assertEqual(policy.scene_pace, "auto")
+        self.assertEqual(policy.visual_beats_subtitle_heavy, 2)
+        self.assertEqual(policy.focus_hint, "")
+
+        # 2) Subtitles come exclusively from OCR; Qwen `screen_text` is ignored; < 0.85 salience is not notable
+        cache = RPInputCache()
+        now = time.time()
+        parsed_qwen = parse_perception_decision_json(
+            '{"mood":"calm","visual_change":"cut","digest":"庭审大厅里律师翻开卷宗",'
+            '"screen_text":"Qwen误识别的台词","salience":0.80,"player_busy":false,'
+            '"reflex":{"sprite_id":null,"bark":null}}'
+        )
+        self.assertEqual(parsed_qwen.screen_text, "")
+        cache.record_decision(
+            PerceptionDigestResult(
+                digest="庭审大厅里律师翻开卷宗",
+                screen_text="Qwen误识别的台词",
+                salience=0.80,
+                visual_change="cut",
+                created_at=now - 200.0,
+            )
+        )
+        self.assertEqual(cache.recent_subtitles(max_age_sec=300.0), [])
+        self.assertFalse(cache.has_unconsumed_notable())
+
+        # 3) Dual-stage Cloud LLM summary (overall + 2-min slice) + recent 1-minute live content + active focus_hint
+        cache.record_screen_text("证人声称当晚十点在书房见过被告。", captured_at=now - 195.0)
+        cache.record_decision(
+            PerceptionDigestResult(
+                digest="律师举起怀表证物指向钟面裂痕",
+                salience=0.88,
+                visual_change="detail",
+                created_at=now - 90.0,
+            )
+        )
+        cache.record_screen_text("但怀表停在了九点四十五分！", captured_at=now - 85.0)
+
+        # Recent 1-minute live window items (`>= now - 60s`)
+        cache.record_decision(
+            PerceptionDigestResult(
+                digest="审判长敲下法槌要求证人重新解释",
+                salience=0.87,
+                visual_change="cut",
+                created_at=now - 25.0,
+            )
+        )
+        cache.record_screen_text("请你解释这十五分钟的误差。", captured_at=now - 15.0)
+
+        cloud_prompts: list[list[dict[str, str]]] = []
+        observed_guidance: list[str] = []
+
+        def fake_cloud_complete(messages: list[dict[str, str]]) -> str:
+            cloud_prompts.append(messages)
+            return json.dumps(
+                {
+                    "minute_summary": "律师出示停在九点四十五分的怀表，当庭反驳证人十点目击的证词。",
+                    "overall_summary": "围绕书房案展开庭审质证，律师用受损怀表揭穿证人时间线矛盾。",
+                    "mood": "tense",
+                    "guidance": {
+                        "scene_pace": "dialogue_heavy",
+                        "visual_beats_subtitle_heavy": 2,
+                        "notable_salience_floor": 0.88,
+                        "focus_hint": "紧盯证人微表情与新证物",
+                    },
+                },
+                ensure_ascii=False,
+            )
+
+        class GuidanceCapturingClient:
+            def decide(self, _snapshot, _cfg, **kwargs):
+                observed_guidance.append(kwargs.get("reaction_guidance", ""))
+                return PerceptionDigestResult(digest="证人额头冒汗后退半步", visual_change="detail")
+
+        coordinator = PerceptionCoordinator(
+            get_api_config=lambda: SimpleNamespace(perception_interval_sec=0.4),
+            resolve_character=lambda: None,
+            is_chat_busy=lambda: False,
+            apply_reflex=lambda *_args: None,
+            enqueue_proactive_turn=lambda _prompt: False,
+            rp_input_cache=cache,
+            decision_client=GuidanceCapturingClient(),  # type: ignore[arg-type]
+            cloud_complete=fake_cloud_complete,
+        )
+        self.assertTrue(coordinator.run_due_cloud_summary(now=now))
+        self.assertEqual(len(cloud_prompts), 1)
+        # Cloud prompt only received aged-out (>60s) items, keeping recent 1-min items in live window
+        self.assertIn("怀表停在了九点四十五分", cloud_prompts[0][1]["content"])
+        self.assertNotIn("请你解释这十五分钟的误差", cloud_prompts[0][1]["content"])
+
+        self.assertEqual(cache.policy.focus_hint, "紧盯证人微表情与新证物")
+        self.assertAlmostEqual(cache.policy.notable_salience_floor, 0.88)
+
+        user_turn_ctx = cache.take_turn_context(turn_id="user-ask", allow_consumed_context=True)
+        self.assertIn("- 前情纪要：", user_turn_ctx)
+        self.assertIn("[总体纪要] 围绕书房案展开庭审质证", user_turn_ctx)
+        self.assertIn("[分段纪要·约 1 分钟前] 律师出示停在九点四十五分的怀表", user_turn_ctx)
+        self.assertIn("审判长敲下法槌要求证人重新解释", user_turn_ctx)
+        self.assertIn("* [字幕] 请你解释这十五分钟的误差。", user_turn_ctx)
+        self.assertNotIn("怀表停在了九点四十五分！\n", user_turn_ctx)
+        self.assertNotIn("[上文已看]", user_turn_ctx)
+        self.assertNotIn("- 近期关键事件：", user_turn_ctx)
+
+        # Verify Cloud LLM `focus_hint` actively steers local Qwen on the next frame
+        coordinator.start()
+        try:
+            coordinator.ingest({"source": "screen_share", "screenShareActive": True, "imageBase64": "YQ=="})
+            coordinator.wait_for_buffered_context()
+            self.assertEqual(observed_guidance, ["当前观察侧重：紧盯证人微表情与新证物。"])
+        finally:
+            coordinator.stop()
+
+    def test_select_cursor_text_picks_center_lines_and_ignores_margins_and_chrome(self) -> None:
+        self.assertEqual(ScreenOcrScope.from_payload({"mode": "cursor"}).to_payload(), {"mode": "cursor"})
+
+        def row(left, top, right, bottom, text, conf=0.96):
+            return ([(left, top), (right, top), (right, bottom), (left, bottom)], text, conf)
+
+        # Patch 520x160 centered at cursor (260, 80)
+        rows = [
+            row(16, 6, 90, 26, "点赞"),
+            row(440, 8, 505, 26, "分享"),
+            row(24, 62, 488, 84, "前情纪要采用总体加两分钟分段结构，"),
+            row(24, 88, 360, 110, "字幕仅由本地OCR提供。"),
+            row(30, 138, 220, 156, "底部很远的无关评论"),
+        ]
+        self.assertEqual(
+            select_cursor_text(rows, width=520, height=160),
+            "前情纪要采用总体加两分钟分段结构，字幕仅由本地OCR提供。",
+        )
+
+        # When cursor sits in empty whitespace and nearest text is at extreme top/bottom edge (`dy > 0.36`)
+        distant_only = [row(20, 4, 260, 16, "边缘遥远标题")]
+        self.assertEqual(select_cursor_text(distant_only, width=520, height=160), "")
+
+    def test_text_priority_highlight_over_subtitle_over_cursor_end_to_end(self) -> None:
+        # 1) Track-level priority upgrade & non-downgrade (`highlight > subtitle > cursor`)
+        cache = RPInputCache()
+        t0 = time.time()
+        self.assertTrue(cache.record_cursor_text("地动说的核心观测记录", captured_at=t0 - 10.0))
+        ctx_initial = cache.take_turn_context(turn_id="c1", allow_consumed_context=True)
+        self.assertIn("* [手边文字] 地动说的核心观测记录", ctx_initial)
+
+        # Highlighting the same sentence upgrades `[手边文字]` -> `[高亮]` and advances `seq` watermark!
+        self.assertTrue(cache.record_highlighted_text("地动说的核心观测记录", captured_at=t0 - 8.0))
+        # Subsequent passive cursor hover on the same text must NOT downgrade `[高亮]`
+        self.assertFalse(cache.record_cursor_text("地动说的核心观测记录", captured_at=t0 - 6.0))
+        cache.record_screen_text("今晚观测火星逆行轨迹。", captured_at=t0 - 4.0)
+
+        ctx_upgraded = cache.take_turn_context(turn_id="c2", allow_consumed_context=False)
+        self.assertIn("* [高亮] 地动说的核心观测记录", ctx_upgraded)
+        self.assertNotIn("[手边文字]", ctx_upgraded)
+        self.assertIn("* [字幕] 今晚观测火星逆行轨迹。", ctx_upgraded)
+
+        # Switching OCR scope clears stale subtitles while preserving user highlights
+        cache.clear_screen_text(preserve_highlights=True)
+        self.assertEqual(cache.recent_subtitles(), ["地动说的核心观测记录"])
+
+        # 2) Coordinator runtime priority: `高亮 > 识别字幕 > 识别手边文字`
+        emitted_barks: list[str] = []
+        cursor_ocr_calls: list[str] = []
+
+        class FakeProbe:
+            def __init__(self) -> None:
+                self.current_sample = CursorSample(x=400, y=300, left_down=False, over_self_window=False)
+                self.selection_text = ""
+                self.thumb_byte = 40
+                self.patch_text = "手边段落第一句内容"
+
+            def prepare_thread(self) -> None:
+                pass
+
+            def sample(self) -> CursorSample | None:
+                return self.current_sample
+
+            def read_selected_text(self, _x: int, _y: int) -> str:
+                return self.selection_text
+
+            def capture_patch(self, _bbox, *, mode="cursor", captured_at=None) -> CursorPatch | None:
+                frame = PerceptionFrame(
+                    image_base64=base64.b64encode(self.patch_text.encode("utf-8")).decode("ascii"),
+                    source="cursor_ocr",
+                    captured_at=captured_at or time.time(),
+                    ocr_scope=ScreenOcrScope(mode=mode),
+                )
+                return CursorPatch(frame=frame, luma_thumb=bytes([self.thumb_byte]) * 128)
+
+            def close(self) -> None:
+                pass
+
+        probe = FakeProbe()
+
+        class FakeClient:
+            def read_screen_text(self, frame: PerceptionFrame, _cfg: PerceptionConfig) -> str:
+                text = base64.b64decode(frame.image_base64).decode("utf-8")
+                cursor_ocr_calls.append(f"{frame.ocr_scope.mode if frame.ocr_scope else 'none'}:{text}")
+                return text
+
+            def decide(self, *_args, **_kwargs) -> PerceptionDigestResult:
+                return PerceptionDigestResult()
+
+        coordinator = PerceptionCoordinator(
+            get_api_config=lambda: SimpleNamespace(
+                perception_ocr_enabled=True,
+                perception_ocr_interval_sec=0.5,
+                perception_reflex_cooldown_sec=5.0,
+            ),
+            resolve_character=lambda: SimpleNamespace(name="拉法尔", sprites=[], emotion_tags=""),
+            is_chat_busy=lambda: False,
+            apply_reflex=lambda _name, _sprite, bark: emitted_barks.append(bark),
+            enqueue_proactive_turn=lambda _prompt: False,
+            decision_client=FakeClient(),  # type: ignore[arg-type]
+            cursor_probe=probe,
+        )
+        coordinator.set_screen_share_active(True)
+        now_wall = time.time()
+
+        # Simulate active subtitle at mono=100.0 -> `识别手边文字` MUST be suppressed (`0` cursor OCR calls)
+        coordinator._latest_ocr = (now_wall, "视频底部正在播放的字幕")
+        coordinator._last_subtitle_monotonic = 100.0
+        self.assertIsNone(coordinator.step_cursor_once(now_mono=100.0, now_wall=now_wall))
+        self.assertIsNone(coordinator.step_cursor_once(now_mono=101.0, now_wall=now_wall + 1.0))
+        self.assertEqual(cursor_ocr_calls, [])
+
+        # Even while subtitles ARE active, user drag-highlight (`高亮`) wins immediately via UIA!
+        probe.selection_text = "引力透镜弯曲星光的推导公式"
+        probe.current_sample = CursorSample(x=300, y=260, left_down=True)
+        self.assertIsNone(coordinator.step_cursor_once(now_mono=101.2, now_wall=now_wall + 1.2))
+        probe.current_sample = CursorSample(x=460, y=262, left_down=False)
+        hl_obs = coordinator.step_cursor_once(now_mono=101.5, now_wall=now_wall + 1.5)
+        self.assertIsNotNone(hl_obs)
+        assert hl_obs is not None
+        self.assertEqual(hl_obs.source, "highlight")
+        self.assertEqual(hl_obs.text, "引力透镜弯曲星光的推导公式")
+        self.assertEqual(cursor_ocr_calls, [])  # UIA read took 0 OCR calls!
+        self.assertEqual(emitted_barks[-1], "（正在读：引力透镜弯曲星光的推导公式）")
+
+        # Subtitle disappears at mono=102.0; during 4.5s dialogue gap (e.g. mono=105.8) cursor OCR still waits
+        coordinator._latest_ocr = (now_wall + 2.0, "")
+        coordinator._last_subtitle_monotonic = 102.0
+        self.assertIsNone(coordinator.step_cursor_once(now_mono=105.0, now_wall=now_wall + 5.0))
+        self.assertIsNone(coordinator.step_cursor_once(now_mono=105.8, now_wall=now_wall + 5.8))
+        self.assertEqual(cursor_ocr_calls, [])
+
+        # Once subtitle quiet window (>= 4.5s after 102.0 -> 106.7) AND highlight suppression clear, dwell reads cursor text!
+        probe.current_sample = CursorSample(x=520, y=340, left_down=False)
+        self.assertIsNone(coordinator.step_cursor_once(now_mono=106.6, now_wall=now_wall + 6.6))
+        cur_obs = coordinator.step_cursor_once(now_mono=107.3, now_wall=now_wall + 7.3)
+        self.assertIsNotNone(cur_obs)
+        assert cur_obs is not None
+        self.assertEqual(cur_obs.source, "cursor")
+        self.assertEqual(cur_obs.text, "手边段落第一句内容")
+        self.assertEqual(len(cursor_ocr_calls), 1)
+        self.assertEqual(emitted_barks[-1], "（正在读：手边段落第一句内容）")
+
+        # Stationary cursor with unchanged pixels makes ZERO redundant OCR calls
+        self.assertIsNone(coordinator.step_cursor_once(now_mono=108.2, now_wall=now_wall + 8.2))
+        self.assertEqual(len(cursor_ocr_calls), 1)
+
+        # Scrolling new text under stationary cursor (`luma_thumb` changed) reads the new paragraph
+        probe.thumb_byte = 180
+        probe.patch_text = "滚动后新出现的第二段文字"
+        scrolled_obs = coordinator.step_cursor_once(now_mono=109.6, now_wall=now_wall + 9.6)
+        self.assertIsNotNone(scrolled_obs)
+        assert scrolled_obs is not None
+        self.assertEqual(scrolled_obs.text, "滚动后新出现的第二段文字")
+        self.assertEqual(len(cursor_ocr_calls), 2)
+
+        # Drag-selection fallback to ROI OCR when UIA returns empty (e.g. game / scanned PDF)
+        probe.selection_text = ""
+        probe.patch_text = "扫描版古籍里框选的批注"
+        probe.current_sample = CursorSample(x=200, y=420, left_down=True)
+        self.assertIsNone(coordinator.step_cursor_once(now_mono=111.0, now_wall=now_wall + 11.0))
+        probe.current_sample = CursorSample(x=380, y=424, left_down=False)
+        ocr_hl_obs = coordinator.step_cursor_once(now_mono=111.4, now_wall=now_wall + 11.4)
+        self.assertIsNotNone(ocr_hl_obs)
+        assert ocr_hl_obs is not None
+        self.assertEqual(ocr_hl_obs.source, "highlight")
+        self.assertEqual(ocr_hl_obs.text, "扫描版古籍里框选的批注")
+
+        # Hovering/dragging over Shinsekai's own window is always ignored
+        probe.selection_text = "自己的聊天输入框内容"
+        probe.current_sample = CursorSample(x=100, y=100, left_down=True, over_self_window=True)
+        self.assertIsNone(coordinator.step_cursor_once(now_mono=112.0, now_wall=now_wall + 12.0))
+        probe.current_sample = CursorSample(x=260, y=100, left_down=False, over_self_window=True)
+        self.assertIsNone(coordinator.step_cursor_once(now_mono=112.3, now_wall=now_wall + 12.3))
+
+        rendered = coordinator.rp_input_cache.format_for_rp_context(consume=False, include_recent_events=True)
+        self.assertIn("* [高亮] 引力透镜弯曲星光的推导公式", rendered)
+        self.assertIn("* [手边文字] 手边段落第一句内容", rendered)
+        self.assertIn("* [手边文字] 滚动后新出现的第二段文字", rendered)
+        self.assertIn("* [高亮] 扫描版古籍里框选的批注", rendered)
+        self.assertNotIn("自己的聊天输入框内容", rendered)
 
 
 if __name__ == "__main__":

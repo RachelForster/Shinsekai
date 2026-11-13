@@ -57,6 +57,14 @@ def short_reading_focus(screen_text: str) -> str:
     return cleaned
 
 
+def observation_bark(result: PerceptionDigestResult, *, fresh_screen_text: str) -> str:
+    reading = short_reading_focus(fresh_screen_text or result.ocr_text)
+    if reading:
+        return f"（正在读：{reading}）"
+    visual = short_visual_focus(result.digest)
+    return f"（看着{visual}……）" if visual else ""
+
+
 class ReflexPolicy:
     """Stateful cooldown, deduplication, sprite-rotation, and Option B ambient bubble policy."""
 
@@ -123,7 +131,7 @@ class ReflexPolicy:
             and not reflex.bark
             and self.is_bark_cooldown_open(now=now, cooldown_sec=config.reflex_cooldown_sec)
         ):
-            fresh_text = screen_text if screen_text_changed else (result.ocr_text or result.screen_text)
+            fresh_text = screen_text if screen_text_changed else result.ocr_text
             reading_focus = short_reading_focus(fresh_text)
             if result.mood == "sad" and (
                 result.salience >= 0.45 or screen_text_changed or reflex.act
@@ -149,6 +157,7 @@ class ReflexPolicy:
         sprite_count: int,
         config: PerceptionConfig,
         sprite_choices: Mapping[int, str] | None = None,
+        fallback_bark: str = "",
         now: float,
     ) -> ReflexDecision | None:
         """Resolve final `(sprite, bark)` under cooldown and similarity deduplication."""
@@ -175,33 +184,26 @@ class ReflexPolicy:
         if sprite_idx is not None and not 0 <= sprite_idx < sprite_count:
             sprite_idx = None
 
-        bark = reflex.bark
         if not self.is_bark_cooldown_open(now=now, cooldown_sec=config.reflex_cooldown_sec):
-            bark = ""
-
-        bark_key = comparison_text(bark)
-        if bark == "……" and any(
-            character_name == speaker and (now - shown_at) < 30.0 and text == "……"
-            for shown_at, speaker, text in self.recent_barks
-        ):
-            bark = ""
-        elif bark_key and any(
-            character_name == speaker
-            and (now - shown_at) < 45.0
-            and similar_bark(bark_key, comparison_text(text))
-            for shown_at, speaker, text in self.recent_barks
-        ):
-            bark = ""
+            return None
 
         if self.last_sprite == (character_name, sprite_idx) and (now - self.last_sprite_monotonic) < 4.0:
             sprite_idx = None
 
-        if not bark and sprite_idx is None:
+        bark = reflex.bark.strip()
+        repeated = self._is_repeated_bark(bark, character_name, now)
+        if sprite_idx is not None and (repeated or not comparison_text(bark)):
+            if not fallback_bark:
+                sprite_idx = None
+            else:
+                bark = fallback_bark
+                repeated = self._is_repeated_bark(bark, character_name, now)
+
+        if not bark or repeated:
             return None
 
-        if bark:
-            self.last_bark_monotonic = now
-            self.recent_barks.append((now, character_name, bark))
+        self.last_bark_monotonic = now
+        self.recent_barks.append((now, character_name, bark))
         if sprite_idx is not None:
             self.last_sprite = (character_name, sprite_idx)
             self.last_sprite_monotonic = now
@@ -209,3 +211,13 @@ class ReflexPolicy:
                 self.last_expression_sprite[expression_key] = sprite_idx
 
         return replace(reflex, sprite=sprite_idx, bark=bark)
+
+    def _is_repeated_bark(self, bark: str, character_name: str, now: float) -> bool:
+        key = comparison_text(bark)
+        return any(
+            speaker == character_name and (
+                (bark == text == "……" and now - shown_at < 30.0)
+                or (key and now - shown_at < 45.0 and similar_bark(key, comparison_text(text)))
+            )
+            for shown_at, speaker, text in self.recent_barks
+        )

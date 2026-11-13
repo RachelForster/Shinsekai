@@ -46,7 +46,7 @@ if not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core.perception.models import ScreenOcrScope
-from tools.perception_subtitles import select_screen_text, select_subtitles
+from tools.perception_subtitles import select_cursor_text, select_screen_text, select_subtitles
 
 try:
     from transformers import Qwen3VLForConditionalGeneration as VLModelClass
@@ -193,6 +193,8 @@ class _ScreenOcr:
         self._warned = False
         if scope.mode == "bottom":
             return select_subtitles(rows, width=image.width, height=image.height)
+        if scope.mode == "cursor":
+            return select_cursor_text(rows, width=image.width, height=image.height)
         return select_screen_text(rows)
 
 

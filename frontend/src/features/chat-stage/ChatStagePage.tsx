@@ -819,6 +819,7 @@ export function ChatStagePage() {
     ocrIntervalSec: state.perception?.ocrIntervalSec ?? 1,
     ocrEnabled: state.perception?.ocrEnabled ?? false,
     proactiveEnabled: state.perception?.proactiveEnabled ?? true,
+    playbackAudioSettings: state.perception?.screenPlaybackAudioSettings,
     characterAudioPlaying: viewModel.status === "speaking" || viewModel.status === "replaying",
     onBlackScreen: () => {
       showToast({ kind: "info", title: t("chat.perception.blackFrame") });

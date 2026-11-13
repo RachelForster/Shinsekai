@@ -522,6 +522,7 @@ export function PerceptionSettingsSection({
                     step={1}
                     value={draft.perception_proactive_cooldown_sec}
                   />
+                  <span className="field-row__help">{t("api.perception.proactiveCooldownHelp")}</span>
                 </span>
               </label>
             </div>

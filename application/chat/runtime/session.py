@@ -656,8 +656,13 @@ class StreamingChatSession(_BaseChatSession):
         return True
 
     def _configure_stream_runtime(self) -> None:
+        from ai.perception.cloud_summary import create_cloud_text_completer
         from application.chat.runtime.stream_wiring import wire_streaming_session
-        from application.perception import PerceptionCoordinator, install_perception_hooks
+        from application.perception import (
+            PerceptionCoordinator,
+            create_default_cursor_probe,
+            install_perception_hooks,
+        )
         from application.runtime.context import get_app_runtime
         from plugin_system.host import bind_perception_runtime
         from sdk.hooks import PluginHookDispatcher
@@ -703,6 +708,8 @@ class StreamingChatSession(_BaseChatSession):
                 {"type": "perception.state", "perception": state}
             ),
             notify_once=getattr(self.ui_updates, "post_notification", None),
+            cloud_complete=create_cloud_text_completer(self.config),
+            cursor_probe=create_default_cursor_probe(),
         )
         dispatcher = getattr(self.startup.llm_manager, "hook_dispatcher", None)
         if dispatcher is None:
