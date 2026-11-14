@@ -7,6 +7,7 @@ from application.model_assets.download_model import (
 )
 from frontend_bridge_core.model_assets import (
     configured_asr_model,
+    configured_perception_model,
     find_running_model_download,
     huggingface_token,
     model_download_enqueue_guard,
@@ -21,12 +22,19 @@ from frontend_bridge_core.routes.router import (
 )
 
 
+def _model_asset_kwargs(state: object, parsed: object) -> dict[str, str]:
+    kwargs = {"configured_asr_model": configured_asr_model(state)}  # type: ignore[arg-type]
+    if getattr(parsed, "asset_id", None) == "perception.vlm":
+        kwargs["configured_perception_model"] = configured_perception_model(state)  # type: ignore[arg-type]
+    return kwargs
+
+
 def _get_model_asset_status(request: ApiRequest) -> JsonResponse:
     parsed = parse_model_asset_request(request.body)
     return JsonResponse(
         inspect_model(
             parsed,
-            configured_asr_model=configured_asr_model(request.state),
+            **_model_asset_kwargs(request.state, parsed),
         )
     )
 
@@ -35,7 +43,7 @@ def _download_model_asset_route(request: ApiRequest) -> TaskResponse:
     parsed = parse_model_asset_request(request.body)
     spec = resolve_model_asset(
         parsed,
-        configured_asr_model=configured_asr_model(request.state),
+        **_model_asset_kwargs(request.state, parsed),
     )
     return TaskResponse(
         kind="model-download",

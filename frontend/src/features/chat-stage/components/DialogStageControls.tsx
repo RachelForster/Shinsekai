@@ -12,8 +12,11 @@ import {
   Lock,
   Mic,
   MicOff,
+  MonitorOff,
+  MonitorUp,
   Play,
   RotateCcw,
+  ScanLine,
   Settings,
   SlidersHorizontal,
   Unlock,
@@ -52,7 +55,11 @@ export function DialogStageControls({
   onOpenHistory,
   onEditConversation,
   onOpenPluginPage,
+  onOpenScreenSettings,
+  onToggleScreenShare,
   onTurnOptionsChange,
+  screenShareStarting = false,
+  screenSharing = false,
   showBranches,
   showAsrControl,
   turnOptions,
@@ -82,7 +89,11 @@ export function DialogStageControls({
   onOpenHistory: () => void;
   onEditConversation?: () => void;
   onOpenPluginPage: (target: PluginPageTarget) => void;
+  onOpenScreenSettings?: () => void;
+  onToggleScreenShare?: () => void;
   onTurnOptionsChange: (options: ChatTurnOptions) => void;
+  screenShareStarting?: boolean;
+  screenSharing?: boolean;
   showBranches: boolean;
   showAsrControl: boolean;
   turnOptions: ChatTurnOptions;
@@ -199,6 +210,42 @@ export function DialogStageControls({
               tooltip={t(asrEnabled ? "chat.toolbar.pauseAsr" : "chat.toolbar.resumeAsr")}
             >
               {t(asrEnabled ? "chat.actionBar.pauseAsr" : "chat.actionBar.resumeAsr")}
+            </ToolbarButton>
+          ) : null}
+          {onToggleScreenShare ? (
+            <ToolbarButton
+              aria-label={t(screenSharing ? "chat.toolbar.stopShareScreen" : "chat.toolbar.shareScreen")}
+              aria-pressed={screenSharing}
+              className="dialog-stage-controls__button"
+              data-active={screenSharing ? "true" : "false"}
+              disabled={screenShareStarting}
+              icon={
+                screenSharing ? (
+                  <MonitorOff aria-hidden className="button__icon" />
+                ) : (
+                  <MonitorUp aria-hidden className="button__icon" />
+                )
+              }
+              onClick={onToggleScreenShare}
+              tooltip={t(screenSharing ? "chat.toolbar.stopShareScreen" : "chat.toolbar.shareScreen")}
+            >
+              {t(screenSharing ? "chat.actionBar.stopShareScreen" : "chat.actionBar.shareScreen")}
+            </ToolbarButton>
+          ) : null}
+          {screenSharing && onOpenScreenSettings ? (
+            <ToolbarButton
+              aria-label={t("chat.perception.screenSettings")}
+              aria-haspopup="dialog"
+              className="dialog-stage-controls__button"
+              icon={<ScanLine aria-hidden className="button__icon" />}
+              onClick={() => {
+                setChatSettingsOpen(false);
+                onConfigOpenChange(false);
+                onOpenScreenSettings();
+              }}
+              tooltip={t("chat.perception.screenSettings")}
+            >
+              {t("chat.perception.screenSettings")}
             </ToolbarButton>
           ) : null}
           <ToolbarButton

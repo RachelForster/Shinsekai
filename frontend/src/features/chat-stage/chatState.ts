@@ -5,6 +5,7 @@ export type {
   ChatStageAction,
   ChatStageLayers,
   ChatStageSprite,
+  ChatStageSpriteReaction,
   ChatStageState,
   ChatStageViewModel,
 } from "./state/types";

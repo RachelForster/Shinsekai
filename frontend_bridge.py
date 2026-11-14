@@ -100,10 +100,12 @@ def _shutdown_bridge_runtime(reason: str) -> None:
         from plugin_system.host import (
             bind_frontend_ui_runtime,
             bind_frontend_user_input_runtime,
+            bind_perception_runtime,
         )
 
         bind_frontend_ui_runtime(None)
         bind_frontend_user_input_runtime(None)
+        bind_perception_runtime(None)
     except Exception as exc:
         _restart_debug_log(
             f"bridge runtime plugin transport unbind failed reason={reason} error={exc}"
@@ -114,6 +116,12 @@ def _shutdown_bridge_runtime(reason: str) -> None:
         shutdown_active_chat_process(wait_timeout=1.5)
     except Exception as exc:
         _restart_debug_log(f"bridge runtime chat shutdown failed reason={reason} error={exc}")
+    try:
+        from application.perception.server_launcher import shutdown_perception_local_server
+
+        shutdown_perception_local_server()
+    except Exception as exc:
+        _restart_debug_log(f"bridge perception local server shutdown failed reason={reason} error={exc}")
 
     with _bridge_state_lock:
         state = _bridge_state
@@ -288,8 +296,12 @@ def _start_plugin_loader(state, logger) -> None:
             from plugin_system.host import (
                 bind_frontend_ui_runtime,
                 bind_frontend_user_input_runtime,
+                bind_perception_runtime,
                 ensure_plugins_loaded,
                 PluginRuntimeBindings,
+            )
+            from frontend_bridge_core.routes.perception_routes import (
+                forward_plugin_perception_from_bridge,
             )
             from ai.vision.fallback_registry import configure_registered_fallbacks
             from core.media.avatar.registry import configure_registered_formats
@@ -319,6 +331,9 @@ def _start_plugin_loader(state, logger) -> None:
             )
             bind_frontend_user_input_runtime(
                 lambda event: _forward_plugin_user_input(state, event)
+            )
+            bind_perception_runtime(
+                lambda payload: forward_plugin_perception_from_bridge(state, payload)
             )
 
             def emit_plugin_ui_event(event: dict[str, Any]) -> None:

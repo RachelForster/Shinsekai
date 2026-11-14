@@ -39,6 +39,10 @@ from sdk.frontend_ui import (
     FrontendUIController,
     _controller_for_plugin,
 )
+from sdk.perception import (
+    PerceptionController,
+    _controller_for_plugin as _perception_controller_for_plugin,
+)
 from sdk.hooks import (
     BeforeChatContext,
     BeforeCompactContext,
@@ -298,6 +302,18 @@ class PluginCapabilityRegistry:
                 "frontend_user_input() is only available during PluginBase.initialize"
             )
         return _frontend_user_input_controller_for_plugin(ctx[0])
+
+    def perception(self, plugin_id: str = "") -> PerceptionController:
+        """Return a game-state / frame perception controller bound to this plugin."""
+        explicit = str(plugin_id or "").strip()
+        if explicit:
+            return _perception_controller_for_plugin(explicit)
+        ctx = self._settings_ui_plugin_ctx
+        if ctx is None:
+            raise RuntimeError(
+                "perception() without plugin_id is only available during PluginBase.initialize"
+            )
+        return _perception_controller_for_plugin(ctx[0])
 
     def register_settings_ui(self, contribution: SettingsUIContribution) -> None:
         """Register deprecated Qt settings metadata for load compatibility.

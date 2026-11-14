@@ -28,6 +28,8 @@ import { ReplayControls, type ActiveReplay } from "./replay/ReplayControls";
 import { useReplayCapture } from "./replay/useReplayCapture";
 import { InputLayer } from "./components/InputLayer";
 import { PluginPageOverlay } from "./components/PluginPageOverlay";
+import { ReactionBubble } from "./components/ReactionBubble";
+import { ScreenShareSettingsDialog } from "./components/ScreenShareSettingsDialog";
 import {
   BackgroundLayer,
   BusyLayer,
@@ -56,6 +58,7 @@ import { useDesktopWindowDrag } from "./hooks/useDesktopWindowDrag";
 import { useDialogTypewriter } from "./hooks/useDialogTypewriter";
 import { useMainThemeColor } from "./hooks/useMainThemeColor";
 import { useRecentUserInputs } from "./hooks/useRecentUserInputs";
+import { useScreenShareCapture } from "./hooks/useScreenShareCapture";
 import { useChatSubmissionFocus } from "./hooks/useChatSubmissionFocus";
 import {
   chatStageRuntimeStyle,
@@ -159,6 +162,7 @@ export function ChatStagePage() {
   const [themePickerOpen, setThemePickerOpen] = useState(false);
   const [tokenUsageOpen, setTokenUsageOpen] = useState(false);
   const [toolbarConfigOpen, setToolbarConfigOpen] = useState(false);
+  const [screenSettingsOpen, setScreenSettingsOpen] = useState(false);
   const imageAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const fileAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const pendingAttachmentSlotsRef = useRef(0);
@@ -274,6 +278,7 @@ export function ChatStagePage() {
     overlayTarget != null ||
     themePickerOpen ||
     toolbarConfigOpen ||
+    screenSettingsOpen ||
     branchDialogOpen ||
     historyDialogOpen ||
     historyExport != null ||
@@ -798,6 +803,53 @@ export function ChatStagePage() {
     ],
   );
 
+  const {
+    changeOcrScope,
+    ocrScope,
+    playbackAudio,
+    sharing: screenSharing,
+    stream: screenShareStream,
+    starting: screenShareStarting,
+    toggleSharing: toggleScreenShare,
+  } = useScreenShareCapture({
+    captureRequestSeq: state.perceptionCaptureRequestSeq,
+    captureIntervalSec: state.perception?.captureIntervalSec ?? 0.5,
+    diffThreshold: state.perception?.diffThreshold ?? 0.035,
+    frameMaxSide: state.perception?.frameMaxSide ?? 512,
+    ocrIntervalSec: state.perception?.ocrIntervalSec ?? 1,
+    ocrEnabled: state.perception?.ocrEnabled ?? false,
+    proactiveEnabled: state.perception?.proactiveEnabled ?? true,
+    playbackAudioSettings: state.perception?.screenPlaybackAudioSettings,
+    characterAudioPlaying: viewModel.status === "speaking" || viewModel.status === "replaying",
+    onBlackScreen: () => {
+      showToast({ kind: "info", title: t("chat.perception.blackFrame") });
+    },
+    onError: (error, unsupported) => {
+      showToast({
+        kind: "error",
+        message: unsupported
+          ? t("chat.perception.shareUnsupported")
+          : error instanceof Error
+            ? error.message
+            : undefined,
+        title: t("chat.perception.shareFailed"),
+      });
+    },
+    onFrameError: () => {
+      showToast({ kind: "error", title: t("chat.perception.frameUploadFailed") });
+    },
+    onStarted: () => {
+      showToast({ kind: "info", title: t("chat.perception.shareStarted") });
+    },
+    onStopped: () => {
+      showToast({ kind: "info", title: t("chat.perception.shareStopped") });
+    },
+    sessionClosed: Boolean(state.sessionClosedReason),
+  });
+  useEffect(() => {
+    if (!screenSharing) setScreenSettingsOpen(false);
+  }, [screenSharing]);
+
   const dialogSurfaceVisible = Boolean(activeReplay) || viewModel.layers.dialog || viewModel.layers.options;
   const dialogToolbar = activeReplay ? (
     <ReplayControls
@@ -835,7 +887,11 @@ export function ChatStagePage() {
       onOpenBranches={() => setBranchDialogOpen(true)}
       onOpenHistory={openHistoryDialog}
       onOpenPluginPage={openPluginPage}
+      onOpenScreenSettings={() => setScreenSettingsOpen(true)}
+      onToggleScreenShare={isRemoteMobileAccessPage() ? undefined : toggleScreenShare}
       onTurnOptionsChange={updateTurnOptions}
+      screenShareStarting={screenShareStarting}
+      screenSharing={screenSharing}
       showBranches={conversationTreeEnabled}
       showAsrControl={!viewModel.layers.input}
       turnOptions={state.turnOptions}
@@ -904,6 +960,16 @@ export function ChatStagePage() {
           speaker={viewModel.dialogCharacterName}
           responding={viewModel.status === "speaking" || viewModel.status === "streaming" || typingDialog}
           thinkingCharacterName={viewModel.thinkingCharacterName}
+          sprites={stageSprites}
+        />
+        <ReactionBubble
+          hidden={
+            Boolean(activeReplay || state.replay) ||
+            viewModel.status === "streaming" ||
+            viewModel.status === "speaking" ||
+            typingDialog
+          }
+          reaction={viewModel.spriteReaction}
           sprites={stageSprites}
         />
         <StatLayer stats={viewModel.stats} />
@@ -1046,6 +1112,17 @@ export function ChatStagePage() {
           voiceArchiveEnabled={state.voiceArchiveEnabled === true}
         />
         {historyExport && <HistoryExportDialog result={historyExport} onClose={() => setHistoryExport(undefined)} />}
+        {screenSettingsOpen && screenShareStream ? (
+          <ScreenShareSettingsDialog
+            ocrEnabled={Boolean(state.perception?.ocrEnabled)}
+            onClose={() => setScreenSettingsOpen(false)}
+            onScopeChange={changeOcrScope}
+            playbackAudio={playbackAudio}
+            proactiveEnabled={state.perception?.proactiveEnabled ?? true}
+            scope={ocrScope}
+            stream={screenShareStream}
+          />
+        ) : null}
         {conversationTreeEnabled ? (
           <ConversationTreeDialog
             onClose={() => setBranchDialogOpen(false)}

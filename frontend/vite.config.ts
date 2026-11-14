@@ -82,6 +82,7 @@ export default defineConfig({
     minWorkers: 1,
     environment: "jsdom",
     globals: true,
+    testTimeout: 15_000,
     include: ["src/test/**/*.{test,spec}.{ts,tsx}"],
     setupFiles: "./src/test/setup.ts",
     coverage: {

@@ -42,6 +42,20 @@ def configured_asr_model(state: BridgeState) -> str:
     )
 
 
+def configured_perception_model(state: BridgeState) -> str:
+    from config.perception import DEFAULT_PERCEPTION_MODEL
+
+    api_config = getattr(
+        getattr(getattr(state, "config_manager", None), "config", None),
+        "api_config",
+        None,
+    )
+    return (
+        str(getattr(api_config, "perception_model", "") or DEFAULT_PERCEPTION_MODEL).strip()
+        or DEFAULT_PERCEPTION_MODEL
+    )
+
+
 def huggingface_token(state: BridgeState) -> str:
     api_config = getattr(
         getattr(getattr(state, "config_manager", None), "config", None),

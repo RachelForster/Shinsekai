@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from config.perception import DEFAULT_PERCEPTION_MODEL
 from core.model_assets.service import (
     ModelAssetSpec,
     download_model_asset,
@@ -17,6 +18,29 @@ from sdk.path_utils import reject_control_chars
 _ASR_FASTER_WHISPER_ASSET_ID = "asr.faster-whisper"
 _MEMORY_EMBEDDING_ASSET_ID = "memory.embedding"
 _MOONDREAM_VISION_ASSET_ID = "vision.moondream"
+_PERCEPTION_VLM_ASSET_ID = "perception.vlm"
+_PERCEPTION_ALLOW_PATTERNS = (
+    "*.json",
+    "*.safetensors",
+    "*.txt",
+    "*.model",
+    "*.tiktoken",
+    "*.jinja",
+)
+_PERCEPTION_REQUIRED_FILE_GROUPS = (
+    ("config.json",),
+    ("preprocessor_config.json", "processor_config.json"),
+    ("tokenizer.json", "tokenizer_config.json"),
+    ("model.safetensors", "model-*.safetensors"),
+)
+PERCEPTION_VLM_MODEL_ASSET = ModelAssetSpec(
+    asset_id=_PERCEPTION_VLM_ASSET_ID,
+    title=f"Perception VLM ({DEFAULT_PERCEPTION_MODEL})",
+    variant=DEFAULT_PERCEPTION_MODEL,
+    repo_id=DEFAULT_PERCEPTION_MODEL,
+    allow_patterns=_PERCEPTION_ALLOW_PATTERNS,
+    required_file_groups=_PERCEPTION_REQUIRED_FILE_GROUPS,
+)
 _ASR_ALLOW_PATTERNS = (
     "config.json",
     "preprocessor_config.json",
@@ -160,10 +184,74 @@ def _faster_whisper_repo_id(model_name: str) -> str:
     )
 
 
+def _resolve_perception_vlm_asset(
+    request: ModelAssetRequest,
+    *,
+    configured_perception_model: str = DEFAULT_PERCEPTION_MODEL,
+) -> ModelAssetSpec:
+    if not request.configured:
+        if request.variant is None or not str(request.variant).strip():
+            return PERCEPTION_VLM_MODEL_ASSET
+        request_variant = _validated_model_reference(str(request.variant).strip())
+        if _looks_like_local_model_reference(request_variant):
+            raise ValueError("local model paths must be saved before they can be checked")
+        if request_variant == DEFAULT_PERCEPTION_MODEL:
+            return PERCEPTION_VLM_MODEL_ASSET
+        if _is_huggingface_repo_id(request_variant):
+            raise ValueError(
+                "custom Hugging Face model ids must be saved before they can be checked"
+            )
+        raise ValueError(
+            f"Unsupported perception model name: {request_variant}. "
+            "Use the default model, save a full Hugging Face repository id, or save a local model directory."
+        )
+
+    if request.variant is not None:
+        raise ValueError("configured model asset requests must not include a variant")
+    variant = _validated_model_reference(
+        str(configured_perception_model or DEFAULT_PERCEPTION_MODEL).strip()
+        or DEFAULT_PERCEPTION_MODEL
+    )
+    if variant == DEFAULT_PERCEPTION_MODEL:
+        return PERCEPTION_VLM_MODEL_ASSET
+
+    title = f"Perception VLM ({variant})"
+    local_path: Path | None = None
+    if _looks_like_local_model_reference(variant):
+        local_path = _configured_local_model_path(variant)
+    elif not _is_huggingface_repo_id(variant):
+        configured_path = _configured_local_model_path(variant)
+        if configured_path.exists():
+            local_path = configured_path
+    if local_path is not None:
+        return ModelAssetSpec(
+            asset_id=_PERCEPTION_VLM_ASSET_ID,
+            title=title,
+            variant=variant,
+            source="local",
+            local_path=local_path,
+            required_file_groups=_PERCEPTION_REQUIRED_FILE_GROUPS,
+        )
+    if not _is_huggingface_repo_id(variant):
+        raise ValueError(
+            f"Unsupported perception model name: {variant}. "
+            "Use a full Hugging Face repository id or a local model directory."
+        )
+    return ModelAssetSpec(
+        asset_id=_PERCEPTION_VLM_ASSET_ID,
+        title=title,
+        variant=variant,
+        repo_id=variant,
+        allow_patterns=_PERCEPTION_ALLOW_PATTERNS,
+        required_file_groups=_PERCEPTION_REQUIRED_FILE_GROUPS,
+    )
+
+
 def resolve_model_asset(
     request: ModelAssetRequest,
     *,
     configured_asr_model: str = "small",
+    configured_perception_model: str = DEFAULT_PERCEPTION_MODEL,
 ) -> ModelAssetSpec:
     asset_id = str(request.asset_id or "").strip()
     if asset_id == _MEMORY_EMBEDDING_ASSET_ID:
@@ -178,6 +266,11 @@ def resolve_model_asset(
         from ai.vision.moondream_adapter import MOONDREAM_MODEL_ASSET
 
         return MOONDREAM_MODEL_ASSET
+    if asset_id == _PERCEPTION_VLM_ASSET_ID:
+        return _resolve_perception_vlm_asset(
+            request,
+            configured_perception_model=configured_perception_model,
+        )
     if asset_id != _ASR_FASTER_WHISPER_ASSET_ID:
         raise ValueError(f"Unsupported model asset: {asset_id or '<empty>'}")
 
@@ -245,11 +338,13 @@ def inspect_model(
     request: ModelAssetRequest,
     *,
     configured_asr_model: str = "small",
+    configured_perception_model: str = DEFAULT_PERCEPTION_MODEL,
 ) -> dict[str, object]:
     return inspect_model_asset(
         resolve_model_asset(
             request,
             configured_asr_model=configured_asr_model,
+            configured_perception_model=configured_perception_model,
         )
     )
 

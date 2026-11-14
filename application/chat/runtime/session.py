@@ -504,13 +504,17 @@ class _BaseChatSession:
             restore_interrupt_handlers()
 
     def _shutdown_plugins(self) -> None:
-        from plugin_system.host import bind_frontend_ui_runtime
+        from plugin_system.host import (
+            bind_frontend_ui_runtime,
+            bind_perception_runtime,
+        )
 
         try:
             if self.startup.plugin_manager is not None:
                 self.startup.plugin_manager.shutdown_all()
         finally:
             bind_frontend_ui_runtime(None)
+            bind_perception_runtime(None)
 
     def _tts_shutdown(self) -> Callable[[], None] | None:
         manager = self.startup.tts_manager
@@ -526,6 +530,16 @@ class StreamingChatSession(_BaseChatSession):
     """Run a realtime chat session backed by a streaming transport."""
 
     mode = "stream"
+
+    def __init__(
+        self,
+        options: ChatLaunchOptions,
+        startup: ChatStartupContext,
+        transport: ChatSessionTransport,
+        initialization: _ChatInitialization,
+    ) -> None:
+        super().__init__(options, startup, transport, initialization)
+        self.perception_coordinator: Any | None = None
 
     def run(self) -> None:
         from application.chat.history.state import chat_history
@@ -554,6 +568,8 @@ class StreamingChatSession(_BaseChatSession):
             if character is not None and character.sprites:
                 self.ui_updates.update_player_portrait(player_name, 0)
         self._present_initial_ui()
+        if self.perception_coordinator is not None:
+            self.perception_coordinator.start()
         self.initialization.complete()
         self._start_live_comments()
         self._log_ready()
@@ -562,8 +578,94 @@ class StreamingChatSession(_BaseChatSession):
         finally:
             self._shutdown()
 
+    def _resolve_perception_character(self) -> Any | None:
+        player_name = str(getattr(self.args, "player_character", "") or "").strip()
+        sink = getattr(self.transport, "stream_sink", None)
+        snapshot = sink.snapshot() if sink is not None and hasattr(sink, "snapshot") else {}
+        if isinstance(snapshot, dict):
+            sprites = snapshot.get("sprites")
+            if isinstance(sprites, list):
+                for item in reversed(sprites):
+                    if not isinstance(item, dict):
+                        continue
+                    candidate = str(item.get("characterName") or item.get("label") or "").strip()
+                    if candidate and candidate != player_name:
+                        char = self.config.get_character_by_name(candidate)
+                        if char is not None:
+                            return char
+        for candidate in getattr(self.startup, "character_names", ()) or ():
+            name = str(candidate or "").strip()
+            if name and name != player_name:
+                char = self.config.get_character_by_name(name)
+                if char is not None:
+                    return char
+        for char in getattr(self.config.config, "characters", ()) or ():
+            name = str(getattr(char, "name", "") or "").strip()
+            if name and name != player_name:
+                return char
+        return None
+
+    def _is_chat_busy_for_perception(self) -> bool:
+        runtime = self.runtime
+        if runtime is not None and runtime.input_queue is not None and not runtime.input_queue.empty():
+            return True
+        if self.chat_turn_service is not None:
+            if self.chat_turn_service.is_active():
+                return True
+            batch = self.chat_turn_service.batch_state()
+            if batch.pending_count > 0 or batch.typing:
+                return True
+        sink = getattr(self.transport, "stream_sink", None)
+        if sink is not None and hasattr(sink, "snapshot"):
+            snapshot = sink.snapshot()
+            if isinstance(snapshot, dict):
+                if str(snapshot.get("status") or "") in {"generating", "streaming", "speaking", "replaying"}:
+                    return True
+                if snapshot.get("activePlayback"):
+                    return True
+        return False
+
+    def _apply_perception_reflex(
+        self,
+        character_name: str,
+        sprite_idx: int | None,
+        bark: str,
+    ) -> None:
+        if self.ui_updates is None:
+            return
+        if sprite_idx is not None:
+            self.ui_updates.update_sprite(character_name, sprite_idx)
+        if bark:
+            self.ui_updates.post_sprite_reaction(character_name, bark)
+
+    def _enqueue_proactive_perception_turn(self, prompt: str) -> bool:
+        from sdk.messages import UserInputMessage
+
+        runtime = self.runtime
+        if runtime is None or runtime.input_queue is None:
+            return False
+        if self._is_chat_busy_for_perception():
+            return False
+        runtime.input_queue.put(
+            UserInputMessage(
+                text=prompt,
+                attachments=[],
+                source="perception",
+            )
+        )
+        return True
+
     def _configure_stream_runtime(self) -> None:
+        from ai.perception.cloud_summary import create_cloud_text_completer
         from application.chat.runtime.stream_wiring import wire_streaming_session
+        from application.perception import (
+            PerceptionCoordinator,
+            create_default_cursor_probe,
+            install_perception_hooks,
+        )
+        from application.runtime.context import get_app_runtime
+        from plugin_system.host import bind_perception_runtime
+        from sdk.hooks import PluginHookDispatcher
 
         runtime = self._require_runtime()
 
@@ -593,6 +695,46 @@ class StreamingChatSession(_BaseChatSession):
         self._install_app_runtime()
         if hasattr(self.ui_updates, "sync_history_entries"):
             self.ui_updates.sync_history_entries()
+
+        self.perception_coordinator = PerceptionCoordinator(
+            get_api_config=lambda: getattr(
+                getattr(self.config, "config", None), "api_config", None
+            ),
+            resolve_character=self._resolve_perception_character,
+            is_chat_busy=self._is_chat_busy_for_perception,
+            apply_reflex=self._apply_perception_reflex,
+            enqueue_proactive_turn=self._enqueue_proactive_perception_turn,
+            publish_state=lambda state: self.transport.emit(
+                {"type": "perception.state", "perception": state}
+            ),
+            notify_once=getattr(self.ui_updates, "post_notification", None),
+            cloud_complete=create_cloud_text_completer(self.config),
+            cursor_probe=create_default_cursor_probe(),
+        )
+        dispatcher = getattr(self.startup.llm_manager, "hook_dispatcher", None)
+        if dispatcher is None:
+            dispatcher = PluginHookDispatcher()
+            self.startup.llm_manager.hook_dispatcher = dispatcher
+        perception_hooks = install_perception_hooks(
+            dispatcher,
+            rp_input_cache=self.perception_coordinator.rp_input_cache,
+            gatekeeper=self.perception_coordinator.gatekeeper,
+            is_enabled=self.perception_coordinator.is_effectively_enabled,
+            proactive_threshold=self.perception_coordinator.proactive_turn_threshold,
+        )
+        def prepare_perception_turn(turn_id: str, source: str) -> bool:
+            if not perception_hooks.prepare_turn(turn_id, source):
+                return False
+            bindings = getattr(self, "streaming_bindings", None)
+            if source == "perception":
+                self.perception_coordinator.mark_proactive_turn_admitted()
+                if bindings is not None and bindings.runtime_asr is not None:
+                    bindings.runtime_asr.pause_for_turn()
+            return True
+
+        get_app_runtime().prepare_perception_turn = prepare_perception_turn
+        bind_perception_runtime(self.perception_coordinator.ingest)
+
         self.streaming_bindings = wire_streaming_session(
             args=self.args,
             config=self.config,
@@ -605,6 +747,7 @@ class StreamingChatSession(_BaseChatSession):
             translate=self.options.translate,
             create_asr_adapter=self.options.create_asr_adapter,
             save_history=save_chat_history_and_delete_tmp,
+            perception_coordinator=self.perception_coordinator,
         )
 
     def _present_initial_ui(self) -> None:
@@ -678,11 +821,20 @@ class StreamingChatSession(_BaseChatSession):
         from application.chat.history.state import save_bg
         from application.runtime.shutdown import shutdown_chat_runtime
 
+        coordinator = self.perception_coordinator
+        if coordinator is None:
+            pre_shutdown = self.streaming_bindings.runtime_asr.close
+        else:
+
+            def pre_shutdown() -> None:
+                coordinator.stop()
+                self.streaming_bindings.runtime_asr.close()
+
         runtime = self._require_runtime()
         shutdown_chat_runtime(
             workflow=runtime.workflow,
             services=getattr(self, "application_services", None),
-            pre_shutdown=self.streaming_bindings.runtime_asr.close,
+            pre_shutdown=pre_shutdown,
             plugin_shutdown=self._shutdown_plugins,
             tts_shutdown=self._tts_shutdown(),
             save_history=self.streaming_bindings.branch_manager.persist,

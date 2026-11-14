@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import urllib.error
 import urllib.parse
@@ -32,6 +33,7 @@ from config.vision_defaults import (
     vision_provider_requires_api_key,
 )
 from config.llm_defaults import resolve_llm_base_url
+from config.perception import default_perception_python_path
 from .security import host_matches, validated_http_url
 from application.runtime.state import BridgeState, _jsonify
 
@@ -137,6 +139,11 @@ def _app_config_response(
             str(api_config.get("gpt_sovits_api_path") or ""),
             project_root,
         )
+        api_config["perception_python_path"] = default_perception_python_path(
+            str(api_config.get("perception_python_path") or ""),
+            project_root=project_root,
+            app_root=getattr(state, "app_root_dir", ""),
+        )
     if settings_only:
         return payload
     if tts_bundle_paths:
@@ -203,6 +210,7 @@ def _validate_api_config_for_save(config: Any) -> None:
 
 
 def _save_api_config(state: BridgeState, payload: dict[str, Any]) -> Any:
+    from application.perception.server_launcher import switch_running_perception_model
     from config.schema import ApiConfig
 
     config = ApiConfig.model_validate(payload).model_copy(deep=True)
@@ -223,9 +231,51 @@ def _save_api_config(state: BridgeState, payload: dict[str, Any]) -> Any:
             config.gpt_sovits_api_path,
             _state_project_root(state),
         )
+    config.perception_python_path = default_perception_python_path(
+        config.perception_python_path,
+        project_root=_state_project_root(state),
+        app_root=getattr(state, "app_root_dir", ""),
+    )
     _validate_api_config_for_save(config)
+    previous = state.config_manager.config.api_config
+    switch_running_perception_model(previous, config)
     state.config_manager.config.api_config = config
-    state.config_manager.save_api_config()
+    try:
+        state.config_manager.save_api_config()
+    except Exception:
+        state.config_manager.config.api_config = previous
+        try:
+            switch_running_perception_model(config, previous)
+        except Exception:
+            logging.getLogger(__name__).exception("Could not restore the running perception model")
+        raise
+    try:
+        from frontend_bridge_core.routes.perception_routes import _forward_perception_command
+
+        _forward_perception_command(
+            state,
+            "perception-config-sync",
+            {
+                "perception_enabled": config.perception_enabled,
+                "perception_base_url": str(config.perception_base_url or ""),
+                "perception_api_key": str(config.perception_api_key or ""),
+                "perception_model": str(config.perception_model or ""),
+                "perception_use_gguf": config.perception_use_gguf,
+                "perception_interval_sec": float(config.perception_interval_sec),
+                "perception_capture_interval_sec": float(config.perception_capture_interval_sec),
+                "perception_ocr_interval_sec": float(config.perception_ocr_interval_sec),
+                "perception_frame_max_side": int(config.perception_frame_max_side),
+                "perception_diff_threshold": float(config.perception_diff_threshold),
+                "perception_ocr_enabled": config.perception_ocr_enabled,
+                "perception_reflex_enabled": bool(config.perception_reflex_enabled),
+                "perception_reflex_cooldown_sec": float(config.perception_reflex_cooldown_sec),
+                "perception_proactive_enabled": bool(config.perception_proactive_enabled),
+                "perception_salience_threshold": float(config.perception_salience_threshold),
+                "perception_proactive_cooldown_sec": float(config.perception_proactive_cooldown_sec),
+            },
+        )
+    except Exception:
+        pass
     return config
 
 

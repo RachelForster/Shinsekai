@@ -19,6 +19,10 @@ class UserInputMessage(BaseModel):
         default_factory=list,
         description="User-selected chat attachments validated by core.media before processing.",
     )
+    source: str = Field(
+        default="user",
+        description="输入来源标识：user 表示真实用户输入，perception 表示感知系统主动触发",
+    )
 
 
 class LLMDialogMessage(BaseModel):

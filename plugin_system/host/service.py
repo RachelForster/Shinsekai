@@ -171,6 +171,23 @@ def bind_frontend_user_input_runtime(
     _bind_frontend_user_input_dispatcher(dispatch)
 
 
+def bind_perception_runtime(
+    ingest_payload: Callable[[dict[str, Any]], Any] | None,
+) -> None:
+    """Bind plugin game-state/frame perception pushes to the active runtime."""
+    from sdk.perception import _bind_perception_dispatcher
+
+    if ingest_payload is None:
+        _bind_perception_dispatcher(None)
+        return
+
+    def dispatch(payload: dict[str, Any]) -> bool:
+        result = ingest_payload(dict(payload))
+        return True if result is None else bool(result)
+
+    _bind_perception_dispatcher(dispatch)
+
+
 def ensure_plugins_loaded(
     config: ConfigManager | None = None,
     *,

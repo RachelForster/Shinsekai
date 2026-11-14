@@ -13,6 +13,7 @@ import type {
   ChatTurnState,
   ChatTransportMode,
   ChatTransportState,
+  PerceptionRuntimeState,
 } from "../../../shared/platform/types";
 
 export interface ChatStageLayers {
@@ -58,8 +59,18 @@ export interface ChatStageEffectImage {
   url: string;
 }
 
-export interface ChatStageState extends Omit<ChatSnapshot, "sprites" | "effectImage"> {
+export interface ChatStageSpriteReaction {
+  characterName: string;
+  deadline: number;
+  durationMs: number;
+  seq: number;
+  text: string;
+}
+
+export interface ChatStageState extends Omit<ChatSnapshot, "sprites" | "effectImage" | "spriteReaction"> {
   effectImage?: ChatStageEffectImage | null;
+  perceptionCaptureRequestSeq?: number;
+  spriteReaction?: ChatStageSpriteReaction | null;
   audioCommands: ChatAudioCommand[];
   asrTranscript?: string;
   busyDurationSeconds?: number;
@@ -119,6 +130,8 @@ export interface ChatStageViewModel {
   layers: ChatStageLayers;
   notificationText?: string;
   options: ChatOption[];
+  perception?: PerceptionRuntimeState | null;
+  spriteReaction?: ChatStageSpriteReaction | null;
   sprites: ChatStageSprite[];
   story?: ChatStoryState;
   stats: ChatStat[];

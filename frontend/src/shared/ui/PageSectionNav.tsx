@@ -18,6 +18,9 @@ export function PageSectionNav({ ariaLabel, items }: PageSectionNavProps) {
     if (!target) {
       return;
     }
+    if (target instanceof HTMLDetailsElement) {
+      target.open = true;
+    }
     const header = target.closest(".page")?.querySelector(".page__header");
     const container = target.closest(".content-outlet");
     const headerRect = header instanceof HTMLElement ? header.getBoundingClientRect() : null;

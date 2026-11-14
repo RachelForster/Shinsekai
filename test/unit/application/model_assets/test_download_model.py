@@ -428,3 +428,43 @@ def test_malformed_huggingface_repo_ids_are_rejected(repo_id):
             _state(model_name=repo_id),
             {"assetId": "asr.faster-whisper", "configured": True},
         )
+
+
+def test_resolve_perception_vlm_asset_defaults_and_enforces_configured_boundary(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    default_spec = model_assets.resolve_model_asset(
+        _request({"assetId": "perception.vlm"}),
+        configured_asr_model="small",
+    )
+    assert default_spec is model_assets.PERCEPTION_VLM_MODEL_ASSET
+
+    with pytest.raises(ValueError, match="must be saved"):
+        model_assets.resolve_model_asset(
+            _request({"assetId": "perception.vlm", "variant": "Qwen/Qwen2.5-VL-3B-Instruct"}),
+            configured_asr_model="small",
+        )
+
+    custom_spec = model_assets.resolve_model_asset(
+        _request({"assetId": "perception.vlm", "configured": True}),
+        configured_asr_model="small",
+        configured_perception_model="Qwen/Qwen2.5-VL-3B-Instruct",
+    )
+    assert custom_spec.source == "huggingface"
+    assert custom_spec.repo_id == "Qwen/Qwen2.5-VL-3B-Instruct"
+
+    local_vlm = tmp_path / "local-qwen-vl"
+    local_vlm.mkdir()
+    (local_vlm / "config.json").write_text("{}", encoding="utf-8")
+    (local_vlm / "preprocessor_config.json").write_text("{}", encoding="utf-8")
+    (local_vlm / "tokenizer.json").write_text("{}", encoding="utf-8")
+    (local_vlm / "model.safetensors").write_bytes(b"weights")
+
+    local_status = model_assets.inspect_model(
+        _request({"assetId": "perception.vlm", "configured": True}),
+        configured_asr_model="small",
+        configured_perception_model=str(local_vlm),
+    )
+    assert local_status["source"] == "local"
+    assert local_status["cached"] is True
+    assert local_status["downloadable"] is False
+

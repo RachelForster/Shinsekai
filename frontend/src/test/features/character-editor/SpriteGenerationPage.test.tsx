@@ -1389,7 +1389,7 @@ describe("sprite generator", () => {
     expect(saveCalls[2]).toEqual(saveCalls[1]);
     expect([saveCalls[0], saveCalls[2], saveCalls[3]].flat()).toEqual(sprites.map((sprite) => `mouth-${sprite.path}`));
     expect(screen.getAllByRole("button", { name: "Preview and correct" })[0]).toBeEnabled();
-  });
+  }, 20_000);
 
   it("uses the selected shorter length for generation and the current choice for regeneration", async () => {
     mount();

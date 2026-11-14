@@ -173,7 +173,6 @@ export function SidebarNav({ onAssistantToggle, assistantOpen }: SidebarNavProps
       </nav>
       <div className="sidebar__spacer" />
       <nav aria-label={t("nav.secondary")} className="sidebar__nav sidebar__nav--secondary">
-        <div className="sidebar__section-label">{t("nav.groupWorkspace")}</div>
         <button
           aria-pressed={assistantOpen}
           className="sidebar__link sidebar__link--button"

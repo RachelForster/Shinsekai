@@ -52,6 +52,84 @@
   }
 }
 
+.sprite-reaction-bubble {
+  --reaction-axis-center: 50%;
+  --reaction-offset-x: 0px;
+  position: absolute;
+  top: clamp(72px, 18vh, 210px);
+  left: var(--reaction-axis-center);
+  z-index: 11;
+  display: inline-flex;
+  max-width: min(320px, calc(100vw - 40px));
+  align-items: center;
+  gap: 8px;
+  padding: 9px 15px;
+  border: 1px solid color-mix(in oklch, var(--stage-accent) 44%, var(--stage-line));
+  border-radius: 18px;
+  color: var(--chat-toolbar-color, #f7f1f0);
+  background:
+    linear-gradient(135deg, color-mix(in oklch, var(--stage-accent) 16%, transparent), transparent 62%),
+    color-mix(in srgb, var(--stage-glass-strong) 90%, rgba(16, 14, 18, 0.72));
+  box-shadow:
+    0 14px 34px var(--stage-shadow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(16px) saturate(1.12);
+  pointer-events: none;
+  translate: calc(-50% + var(--chat-sprite-runtime-offset-x, 0px) + var(--reaction-offset-x)) 0;
+  animation-name: sprite-reaction-pop;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  animation-fill-mode: both;
+}
+
+.sprite-reaction-bubble::after {
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  border-right: 1px solid color-mix(in oklch, var(--stage-accent) 44%, var(--stage-line));
+  border-bottom: 1px solid color-mix(in oklch, var(--stage-accent) 44%, var(--stage-line));
+  background: color-mix(in srgb, var(--stage-glass-strong) 92%, rgba(16, 14, 18, 0.82));
+  content: "";
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.sprite-reaction-bubble__speaker {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: var(--stage-accent);
+  background: color-mix(in oklch, var(--stage-accent) 16%, rgba(255, 255, 255, 0.06));
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.sprite-reaction-bubble__text {
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.42;
+  letter-spacing: 0.01em;
+  overflow-wrap: anywhere;
+}
+
+@keyframes sprite-reaction-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.92);
+  }
+  8%,
+  86% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.97);
+  }
+}
+
 .chat-stage__busy {
   top: var(--stage-safe-top);
   min-height: 36px;

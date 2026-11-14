@@ -827,3 +827,75 @@ def test_install_runtime_dependency_redacts_credential_urls_from_output(monkeypa
 
     assert "secret-token" not in result["pipOutput"]
     assert "https://user:***@mirror.example/simple" in result["pipOutput"]
+
+
+def test_install_perception_runtime_dependency_installs_pytorch_and_pins_torch_constraints(
+    tmp_path, monkeypatch
+):
+    from types import SimpleNamespace
+    from application.runtime import dependencies as runtime_dependencies
+
+    rel = Path("runtime/python.exe") if os.name == "nt" else Path("runtime/bin/python3")
+    fake_py = tmp_path / rel
+    fake_py.parent.mkdir(parents=True, exist_ok=True)
+    fake_py.write_bytes(b"fake-python")
+
+    calls: list[list[str]] = []
+    seen_constraints: list[str] = []
+    version_snapshots = [
+        {"pillow": "12.3.0"},
+        {
+            "pillow": "12.3.0",
+            "torch": "2.7.1+cu128",
+            "torchvision": "0.22.1+cu128",
+            "torchaudio": "2.7.1+cu128",
+        },
+    ]
+
+    def fake_installed_versions(_py):
+        return version_snapshots.pop(0) if len(version_snapshots) > 1 else version_snapshots[0]
+
+    def fake_pip_install(cmd, **kwargs):
+        calls.append(list(cmd))
+        if "-c" in cmd:
+            c_path = Path(cmd[cmd.index("-c") + 1])
+            seen_constraints.extend(c_path.read_text(encoding="utf-8").splitlines())
+        on_line = kwargs.get("on_output_line")
+        if on_line:
+            on_line("Successfully installed packages")
+        return ("pip_ok", "")
+
+    monkeypatch.setattr(runtime_dependencies, "installed_versions_for_python", fake_installed_versions)
+    monkeypatch.setattr(runtime_dependencies, "_machine_expected_pytorch_build", lambda: "cu128")
+    monkeypatch.setattr(
+        runtime_dependencies,
+        "build_pytorch_install_plan",
+        lambda reqs, _versions, **_kw: SimpleNamespace(
+            requirement_lines=tuple(reqs),
+            index_url="https://download.pytorch.org/whl/cu128",
+            expected_build="cu128",
+            install_required=True,
+            force_reinstall=False,
+        ),
+    )
+    monkeypatch.setattr(runtime_dependencies, "_run_pip_install", fake_pip_install)
+
+    result = runtime_dependencies.install_runtime_dependency(
+        "perception",
+        python_path=str(fake_py),
+    )
+
+    assert result["moduleName"] == "perception"
+    assert Path(result["pythonPath"]) == fake_py.resolve()
+    assert len(calls) == 2
+    assert calls[0][0] == str(fake_py.resolve())
+    assert "https://download.pytorch.org/whl/cu128" in calls[0]
+    assert calls[1][0] == str(fake_py.resolve())
+    assert runtime_dependencies.PERCEPTION_TRANSFORMERS_SPEC in calls[1]
+    assert runtime_dependencies.PERCEPTION_ACCELERATE_SPEC in calls[1]
+    assert runtime_dependencies.HUGGINGFACE_HUB_SPEC in calls[1]
+    assert runtime_dependencies.PERCEPTION_RAPIDOCR_SPEC in calls[1]
+    assert runtime_dependencies.PERCEPTION_PILLOW_SPEC not in calls[1]
+    assert "torch==2.7.1" in seen_constraints
+    assert "torchvision==0.22.1" in seen_constraints
+
