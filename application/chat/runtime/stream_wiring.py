@@ -49,7 +49,7 @@ def wire_streaming_session(
     translate: Any,
     create_asr_adapter: Any,
     save_history: Any,
-    perception_coordinator: Any = None,
+    capability_commands: Any = None,
 ) -> StreamingSessionBindings:
     """Connect realtime adapters to transport-neutral chat use cases."""
 
@@ -65,7 +65,7 @@ def wire_streaming_session(
         translate=translate,
         create_asr_adapter=create_asr_adapter,
         save_history=save_history,
-        perception_coordinator=perception_coordinator,
+        capability_commands=capability_commands,
     )
     return wiring.wire()
 
@@ -85,7 +85,7 @@ class _StreamingSessionWiring:
         translate: Any,
         create_asr_adapter: Any,
         save_history: Any,
-        perception_coordinator: Any = None,
+        capability_commands: Any = None,
     ) -> None:
         self.args = args
         self.config = config
@@ -98,7 +98,7 @@ class _StreamingSessionWiring:
         self.translate = translate
         self.create_asr_adapter = create_asr_adapter
         self.save_history = save_history
-        self.perception_coordinator = perception_coordinator
+        self.capability_commands = capability_commands
         self.last_user_message: dict[str, object] = {
             "attachments": [],
             "text": "",
@@ -315,7 +315,7 @@ class _StreamingSessionWiring:
             tts_manager=self.startup.tts_manager,
             voice_archive=getattr(self.ui_updates, "voice_archive", None),
             replay=getattr(ui_worker, "replay", None),
-            perception_coordinator=self.perception_coordinator,
+            capability_commands=self.capability_commands,
         )
 
     def _sync_stream_history(self) -> None:
