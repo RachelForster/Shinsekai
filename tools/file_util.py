@@ -160,6 +160,7 @@ def export_character(character_configs: list[CharacterConfig], output_path: str,
                 'avatars': deepcopy(getattr(config, 'avatars', None) or {}),
                 'sprite_transitions': [],
                 'character_brief': getattr(config, 'character_brief', '') or '',
+                'relation_graph': getattr(config, 'relation_graph', None) or {},
                 'character_setting': config.character_setting,
                 'speech_speed': getattr(config, 'speech_speed', 1.0),
                 'speech_volume': getattr(config, 'speech_volume', 1.0),
@@ -473,6 +474,12 @@ def import_character(input_path: str) -> list[CharacterConfig]:
             # 解决名称冲突
             new_name = _resolve_name_conflict(original_name, imported_names)
             char_data['name'] = new_name
+            if char_data.get('relation_graph'):
+                from config.character_manager import CharacterManager
+                graph = CharacterManager.parse_relation_graph(char_data['relation_graph'])
+                char_data['relation_graph'] = CharacterManager._rename_relation_graph_owner(
+                    graph, original_name, new_name
+                ).model_dump(mode="json", exclude_none=True)
             imported_names.add(new_name)
             
             # 解决sprite_prefix冲突

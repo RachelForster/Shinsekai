@@ -97,6 +97,10 @@ BASIC_CHAR = {
     ],
     "emotion_tags": "1: smile\n2: angry",
     "character_setting": "A girl.",
+    "relation_graph": {
+        "nodes": [{"key": "Alice"}, {"key": "Bob"}],
+        "edges": [{"source": "Alice", "target": "Bob", "temperature": 6, "content": "Trusted friend"}],
+    },
     "prompt_text": "hi",
     "prompt_lang": "ja",
     "gpt_model_path": None,
@@ -257,6 +261,67 @@ def test_char_export_excludes_in_flight_preset_batches(tmp_path, monkeypatch):
             file_util.export_character([CharacterConfig.parse_dic(BASIC_CHAR)], str(output), open_folder=False)
             with zipfile.ZipFile(output) as archive:
                 assert not any(".batch-" in name for name in archive.namelist())
+
+
+def test_relation_graph_survives_char_export_import(tmp_path):
+    graph = {
+        "nodes": [{"key": "Alice"}, {"key": "Bob"}],
+        "edges": [{"source": "Alice", "target": "Bob", "temperature": 6, "content": "Trusted friend"}],
+    }
+    config = CharacterConfig.parse_dic(dict(BASIC_CHAR, relation_graph=graph))
+    with _mock_dirs(tmp_path):
+        output = tmp_path / "out.char"
+        file_util.export_character([config], str(output), open_folder=False)
+        with zipfile.ZipFile(output) as package:
+            exported = yaml.safe_load(package.read("character.yaml"))[0]
+        imported = file_util.import_character(str(output))[0]
+        saved = yaml.safe_load(file_util.CHARACTERS_CONFIG_PATH.read_text(encoding="utf-8"))[0]
+
+    assert config.relation_graph == graph
+    assert exported["relation_graph"] == graph
+    assert imported.relation_graph == graph
+    assert saved["relation_graph"] == graph
+
+
+def test_import_name_conflict_renames_owner_in_relation_graph(tmp_path):
+    graph = {
+        "nodes": [{"key": "Alice"}, {"key": "Bob"}, {"key": "Carol"}],
+        "edges": [
+            {"source": "Alice", "target": "Bob", "temperature": 6, "content": "Friend"},
+            {"source": "Bob", "target": "Alice", "temperature": -1, "content": "Rival"},
+            {"source": "Bob", "target": "Carol", "temperature": 0, "content": "Knows"},
+        ],
+    }
+    archive = _make_export_zip(tmp_path, dict(BASIC_CHAR, relation_graph=graph))
+    existing = {"name": "Alice", "color": "#000", "sprite_prefix": "existing", "relation_graph": graph}
+    with _mock_dirs(tmp_path):
+        file_util.CHARACTERS_CONFIG_PATH.write_text(yaml.safe_dump([existing], allow_unicode=True), encoding="utf-8")
+        imported = file_util.import_character(str(archive))[0]
+        saved = yaml.safe_load(file_util.CHARACTERS_CONFIG_PATH.read_text(encoding="utf-8"))
+
+    assert imported.name != "Alice"
+    assert imported.relation_graph["nodes"] == [{"key": imported.name}, {"key": "Bob"}, {"key": "Carol"}]
+    assert [(edge["source"], edge["target"]) for edge in imported.relation_graph["edges"]] == [
+        (imported.name, "Bob"), ("Bob", imported.name), ("Bob", "Carol")
+    ]
+    assert saved[0] == existing
+    assert saved[1]["relation_graph"] == imported.relation_graph
+    Character.model_validate(saved[1])
+
+
+def test_import_name_conflict_rejects_owner_node_collision_before_saving(tmp_path):
+    graph = {
+        "nodes": [{"key": "Alice"}, {"key": "Alice（1）"}],
+        "edges": [],
+    }
+    archive = _make_export_zip(tmp_path, dict(BASIC_CHAR, relation_graph=graph))
+    existing = [{"name": "Alice", "color": "#000", "sprite_prefix": "existing"}]
+    with _mock_dirs(tmp_path):
+        original = yaml.safe_dump(existing, allow_unicode=True)
+        file_util.CHARACTERS_CONFIG_PATH.write_text(original, encoding="utf-8")
+        with pytest.raises(ValueError, match="Node keys must be unique"):
+            file_util.import_character(str(archive))
+        assert file_util.CHARACTERS_CONFIG_PATH.read_text(encoding="utf-8") == original
 
 
 @pytest.mark.parametrize("typed", [False, True])
@@ -586,6 +651,18 @@ def _run_export(char_data: dict, tmp_path: Path, output: str | None = None) -> s
 
 class TestBackwardCompat:
     """Old export formats (full paths in sprite.path) must still import correctly."""
+
+    @pytest.mark.parametrize("graph_format", ["missing", "null"])
+    def test_import_legacy_character_preserves_fields(self, tmp_path, graph_format):
+        old = dict(BASIC_CHAR)
+        old.pop("relation_graph")
+        if graph_format == "null":
+            old["relation_graph"] = None
+        package = _make_export_zip(tmp_path, old)
+        with _mock_dirs(tmp_path):
+            imported = file_util.import_character(str(package))[0]
+            saved = yaml.safe_load(file_util.CHARACTERS_CONFIG_PATH.read_text(encoding="utf-8"))[0]
+        assert imported.relation_graph == saved["relation_graph"] == {}
 
     def test_old_relative_paths(self, tmp_path):
         """Sprite paths like 'data/sprites/alice/smile.png' from old exports."""

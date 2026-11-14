@@ -23,6 +23,10 @@ import type {
   BatchToolResult,
   Background,
   Character,
+  CharacterRelationGraph,
+  RelationNode,
+  RelationEdge,
+  RelationRequest,
   GeneratedCharacterSprite,
   CharacterMemoryImportPreview,
   CharacterMemoryImportResult,
@@ -65,6 +69,39 @@ const builtinChatThemeAssetUrls: Readonly<Record<string, string>> = Object.fromE
     url,
   ]),
 );
+
+const addNode = (graph: CharacterRelationGraph, node: RelationNode) => {
+  if (graph.nodes.some((n) => n.key === node.key)) throw new Error("Invalid node operation");
+  graph.nodes.push(node);
+};
+const deleteNode = (graph: CharacterRelationGraph, key: string) => {
+  if (key === graph.owner) throw new Error("Cannot delete the owner node");
+  if (!graph.nodes.some((n) => n.key === key)) throw new Error("Node does not exist");
+  graph.nodes = graph.nodes.filter((n) => n.key !== key);
+  graph.edges = graph.edges.filter((e) => e.source !== key && e.target !== key);
+};
+const upsertEdge = (graph: CharacterRelationGraph, edge: RelationEdge) => {
+  graph.edges = graph.edges.filter((e) => e.source !== edge.source || e.target !== edge.target);
+  graph.edges.push(edge);
+};
+const deleteEdge = (graph: CharacterRelationGraph, source: string, target: string) => {
+  if (!graph.edges.some((e) => e.source === source && e.target === target)) throw new Error("Edge does not exist");
+  graph.edges = graph.edges.filter((e) => e.source !== source || e.target !== target);
+};
+function applyRelationRequest(graph: CharacterRelationGraph, request: RelationRequest) {
+  switch (request.op) {
+    case "add_node":
+      return addNode(graph, request.node);
+    case "delete_node":
+      return deleteNode(graph, request.key);
+    case "upsert_edge":
+      return upsertEdge(graph, request.edge);
+    case "delete_edge":
+      return deleteEdge(graph, request.source, request.target);
+    default:
+      throw new Error("Unknown graph operation");
+  }
+}
 
 function clone<T>(value: T): T {
   return structuredClone(value);
@@ -644,6 +681,17 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         source,
       };
     });
+
+  const identity = (name: string) => name.trim().toLowerCase();
+  const character = (name: string) => config.characters.find((c) => identity(c.name) === identity(name));
+  const read = (owner: string) => {
+    const c = character(owner);
+    if (!c) throw new Error(`Character not found: ${owner}`);
+    const graph = structuredClone(c.relation_graph ?? { nodes: [], edges: [] });
+    graph.nodes = graph.nodes.map((node) => ({ key: node.key }));
+    if (!graph.nodes.length) graph.nodes = [{ key: c.name }];
+    return { ...graph, owner: c.name };
+  };
 
   return {
     agent: createAgentPreviewPlatform(),
@@ -2160,6 +2208,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
             avatar_type: "static",
             avatars: {},
             character_brief: "",
+            relation_graph: { nodes: [], edges: [] },
             character_setting: "导入预览角色",
             color: DEFAULT_CHARACTER_COLOR,
             emotion_tags: "",
@@ -2278,6 +2327,26 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         if (duplicateIndex >= 0) {
           throw new Error(`名称「${character.name}」已与其他角色重复！`);
         }
+        const relationGraph = clone(
+          (index >= 0 ? config.characters[index].relation_graph : character.relation_graph) ?? {
+            nodes: [],
+            edges: [],
+          },
+        );
+        if (index >= 0 && originalName && originalName !== character.name) {
+          relationGraph.nodes = relationGraph.nodes.map((node) => ({
+            ...node,
+            key: node.key === originalName ? character.name : node.key,
+          }));
+          if (new Set(relationGraph.nodes.map((node) => identity(node.key))).size !== relationGraph.nodes.length) {
+            throw new Error("Node keys must be unique");
+          }
+          relationGraph.edges = relationGraph.edges.map((edge) => ({
+            ...edge,
+            source: edge.source === originalName ? character.name : edge.source,
+            target: edge.target === originalName ? character.name : edge.target,
+          }));
+        }
         const savedCharacter = {
           ...clone(character),
           color: character.color.trim() || DEFAULT_CHARACTER_COLOR,
@@ -2300,6 +2369,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
                 }))
               : [],
           character_setting: character.character_setting.trim(),
+          relation_graph: relationGraph,
         };
         if (index >= 0) {
           config.characters[index] = savedCharacter;
@@ -2403,6 +2473,45 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           voice_type: input.voiceType,
         };
         return delay(character);
+      },
+    },
+    characterRelation: {
+      async getRelationGraph(owner) {
+        return read(owner);
+      },
+      async applyRelationChanges(owner, operations) {
+        const graph = read(owner);
+        if (!operations.length || operations.length > 1000) throw new Error("Invalid graph operations");
+        for (const request of operations) {
+          applyRelationRequest(graph, request);
+        }
+        const keys = new Set(graph.nodes.map((n) => n.key));
+        if (graph.nodes.length > 100) throw new Error("Too many nodes");
+        if (new Set(graph.nodes.map((n) => identity(n.key))).size !== graph.nodes.length)
+          throw new Error("Node keys must be unique");
+        for (const node of graph.nodes) {
+          if (!node.key.trim() || node.key !== node.key.trim() || node.key.length > 200)
+            throw new Error("Invalid node");
+        }
+        if (graph.edges.length > 156) throw new Error("Too many edges");
+        for (const e of graph.edges) {
+          if (
+            !keys.has(e.source) ||
+            !keys.has(e.target) ||
+            e.source === e.target ||
+            !Number.isInteger(e.temperature) ||
+            Math.abs(e.temperature) > 10 ||
+            typeof e.content !== "string" ||
+            Array.from(e.content).length > 100 ||
+            (e.content !== "" && !e.content.trim())
+          )
+            throw new Error("Invalid relationship");
+        }
+        character(graph.owner)!.relation_graph = {
+          nodes: graph.nodes.map((node) => ({ key: node.key })),
+          edges: structuredClone(graph.edges),
+        };
+        return structuredClone(graph);
       },
     },
     config: {
