@@ -506,6 +506,7 @@ class _BaseChatSession:
     def _shutdown_plugins(self) -> None:
         from plugin_system.host import (
             bind_frontend_ui_runtime,
+            bind_model_assets_runtime,
             bind_perception_runtime,
         )
 
@@ -514,6 +515,7 @@ class _BaseChatSession:
                 self.startup.plugin_manager.shutdown_all()
         finally:
             bind_frontend_ui_runtime(None)
+            bind_model_assets_runtime(None)
             bind_perception_runtime(None)
 
     def _tts_shutdown(self) -> Callable[[], None] | None:

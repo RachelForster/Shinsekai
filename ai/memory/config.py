@@ -39,21 +39,75 @@ def _is_positive_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0
 
 
-def _safe_snapshot_file(snapshot: Path, relative_path: str) -> Path | None:
-    if not relative_path:
+def _norm_resolved_path_str(path: Path) -> str:
+    text = str(path)
+    if os.name == "nt":
+        if text.startswith("\\\\?\\UNC\\"):
+            text = "\\\\" + text[8:]
+        elif text.startswith("\\\\?\\"):
+            text = text[4:]
+    return os.path.normcase(os.path.normpath(text))
+
+
+def _is_strictly_within_directory(target: Path, directory: Path) -> bool:
+    try:
+        target_norm = _norm_resolved_path_str(target)
+        dir_norm = _norm_resolved_path_str(directory)
+        return (
+            target_norm != dir_norm
+            and os.path.commonpath([dir_norm, target_norm]) == dir_norm
+        )
+    except ValueError:
+        return False
+
+
+def resolve_safe_snapshot_file(snapshot: Path, relative_path: str) -> Path | None:
+    """Resolve a snapshot file allowing regular in-snapshot files and same-repo HF blob links."""
+    normalized = str(relative_path or "").strip().replace("\\", "/")
+    if not normalized or normalized.startswith("/"):
         return None
-    candidate = Path(relative_path)
-    if candidate.is_absolute() or ".." in candidate.parts:
+    parts = normalized.split("/")
+    if any(part in {"", ".", ".."} for part in parts):
         return None
     try:
-        root_resolved = snapshot.resolve(strict=False)
-        target_resolved = (snapshot / candidate).resolve(strict=False)
-        if os.path.commonpath([str(root_resolved), str(target_resolved)]) != str(root_resolved):
+        if not snapshot.is_dir():
             return None
-        raw_target = snapshot / candidate
-        return raw_target if raw_target.is_file() else None
+        raw_target = snapshot / Path(*parts)
+        if not raw_target.is_file():
+            return None
+
+        snapshot_resolved = snapshot.resolve(strict=True)
+        target_resolved = raw_target.resolve(strict=True)
+        if _is_strictly_within_directory(target_resolved, snapshot_resolved):
+            return raw_target
+
+        # Standard Hugging Face Hub cache layout: <repo>/snapshots/<rev>/... -> <repo>/blobs/<sha>
+        if (
+            snapshot.parent.name == "snapshots"
+            and snapshot_resolved.parent.name == "snapshots"
+        ):
+            repo_resolved = snapshot_resolved.parent.parent.resolve(strict=True)
+            blobs_dir = repo_resolved / "blobs"
+            if blobs_dir.is_dir():
+                blobs_resolved = blobs_dir.resolve(strict=True)
+                if (
+                    _is_strictly_within_directory(blobs_resolved, repo_resolved)
+                    and _is_strictly_within_directory(target_resolved, blobs_resolved)
+                ):
+                    return raw_target
+        return None
     except (OSError, ValueError):
         return None
+
+
+_safe_snapshot_file = resolve_safe_snapshot_file
+
+
+def _read_snapshot_json_file(snapshot: Path, relative_path: str) -> Any | None:
+    safe_path = resolve_safe_snapshot_file(snapshot, relative_path)
+    if safe_path is None:
+        return None
+    return _read_json_file(safe_path)
 
 
 def _validate_onnx_file(path: Path) -> bool:
@@ -71,7 +125,7 @@ def _validate_onnx_file(path: Path) -> bool:
 def _validate_onnx_embedding_snapshot(snapshot: Path) -> bool:
     """Validate structured metadata, tokenizer vocab, and ONNX graph in a snapshot."""
     try:
-        config = _read_json_file(snapshot / "config.json")
+        config = _read_snapshot_json_file(snapshot, "config.json")
         if not isinstance(config, dict):
             return False
         hidden_size = config.get("hidden_size")
@@ -87,7 +141,7 @@ def _validate_onnx_embedding_snapshot(snapshot: Path) -> bool:
         ):
             return False
 
-        tokenizer_config = _read_json_file(snapshot / "tokenizer_config.json")
+        tokenizer_config = _read_snapshot_json_file(snapshot, "tokenizer_config.json")
         if (
             not isinstance(tokenizer_config, dict)
             or not isinstance(tokenizer_config.get("tokenizer_class"), str)
@@ -101,7 +155,7 @@ def _validate_onnx_embedding_snapshot(snapshot: Path) -> bool:
         ):
             return False
 
-        tokenizer = _read_json_file(snapshot / "tokenizer.json")
+        tokenizer = _read_snapshot_json_file(snapshot, "tokenizer.json")
         tokenizer_model = tokenizer.get("model") if isinstance(tokenizer, dict) else None
         if (
             not isinstance(tokenizer, dict)
@@ -117,7 +171,7 @@ def _validate_onnx_embedding_snapshot(snapshot: Path) -> bool:
             return False
 
         for candidate_rel in ONNX_MODEL_CANDIDATES:
-            onnx_file = _safe_snapshot_file(snapshot, candidate_rel)
+            onnx_file = resolve_safe_snapshot_file(snapshot, candidate_rel)
             if onnx_file is not None and _validate_onnx_file(onnx_file):
                 return True
         return False
@@ -144,6 +198,7 @@ EMBEDDING_MODEL_ASSET = ModelAssetSpec(
         ONNX_MODEL_CANDIDATES,
     ),
     snapshot_validator=_validate_onnx_embedding_snapshot,
+    enforce_allow_patterns=False,
 )
 
 

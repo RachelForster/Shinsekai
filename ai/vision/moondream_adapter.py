@@ -33,6 +33,7 @@ MOONDREAM_MODEL_ASSET = ModelAssetSpec(
         ("model.safetensors", "model-*.safetensors", "pytorch_model.bin", "pytorch_model-*.bin"),
         ("*.py",),
     ),
+    enforce_allow_patterns=False,
 )
 
 

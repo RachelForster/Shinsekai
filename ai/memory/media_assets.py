@@ -48,6 +48,11 @@ def _fingerprint(rows: Sequence[dict[str, str]]) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:24]
 
 
+def _slice_id(scope_id: str, fingerprint: str, asset_id: str) -> str:
+    scope_digest = hashlib.sha256(scope_id.encode("utf-8")).hexdigest()[:16]
+    return f"{scope_digest}:{fingerprint}:{asset_id}"
+
+
 def _pagination(method: Any, limit: int) -> dict[str, int]:
     parameters = inspect.signature(method).parameters
     return {"top_k": limit} if "top_k" in parameters else {"limit": limit}
@@ -107,7 +112,7 @@ def _ensure_hybrid_index(
     vectors = engine.embedder.embed_documents([row["tags"] for row in missing])
     entries = [
         VectorSliceEntry(
-            id=f"{fingerprint}:{row['asset_id']}",
+            id=_slice_id(scope_id, fingerprint, row["asset_id"]),
             namespace=NAMESPACE_MEDIA_ASSET,
             scope_id=scope_id,
             text=row["tags"],

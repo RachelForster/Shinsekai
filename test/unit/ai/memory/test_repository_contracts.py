@@ -549,3 +549,109 @@ def test_end_to_end_hybrid_engine_operations_media_knowledge_and_di_registry(
     finally:
         clear_memory_adapter_registrations()
         clear_shared_onnx_embedders()
+
+
+def test_media_assets_identical_catalogs_across_scopes_do_not_collide_or_overwrite(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("SHINSEKAI_MEMORY_SERVICE_URL", raising=False)
+
+    base_embedder = DeterministicHashEmbedder(dimensions=384)
+    embed_doc_calls: list[list[str]] = []
+
+    class _CountingEmbedder:
+        dimensions = 384
+
+        def embed_query(self, text: str):
+            return base_embedder.embed_query(text)
+
+        def embed_documents(self, texts, *, batch_size: int = 32):
+            del batch_size
+            batch = list(texts)
+            embed_doc_calls.append(batch)
+            return base_embedder.embed_documents(batch)
+
+        def status(self):
+            return base_embedder.status()
+
+    store = SqliteHybridStore(tmp_path / "shared_media_scopes.db")
+    engine = HybridMemoryEngine(
+        embedder=_CountingEmbedder(),
+        repo=SqliteHybridMemoryRepo(store),
+        vector_store=store,
+        store=store,
+    )
+    monkeypatch.setattr(media_assets, "ensure_mem0", lambda: engine)
+
+    shared_candidates = [
+        {"asset_id": "outfit-smile", "path": "shared/smile.png", "tags": "温柔微笑 开心 放松"},
+        {"asset_id": "outfit-serious", "path": "shared/serious.png", "tags": "严肃 认真 冷静"},
+    ]
+    try:
+        # Index identical candidate catalogs under two distinct character scopes
+        idx_res = media_assets.ensure_media_asset_indexes(
+            [
+                {"scope": "sprite:Alice", "candidates": shared_candidates},
+                {"scope": "sprite:Bob", "candidates": shared_candidates},
+            ]
+        )
+        assert idx_res == {"catalogCount": 2, "assetCount": 4, "addedCount": 4}
+        assert len(embed_doc_calls) == 2
+        assert dict(store.count_by_scope(namespace=NAMESPACE_MEDIA_ASSET)) == {
+            "__shinsekai_media__:sprite:alice": 2,
+            "__shinsekai_media__:sprite:bob": 2,
+        }
+
+        # Alternating searches across both scopes must hit existing indexes without re-embedding
+        embed_doc_calls.clear()
+        alice_hits = media_assets.search_media_assets(
+            scope="sprite:Alice",
+            vibe="温柔微笑",
+            candidates=shared_candidates,
+            limit=2,
+        )
+        bob_hits = media_assets.search_media_assets(
+            scope="sprite:Bob",
+            vibe="严肃 冷静",
+            candidates=shared_candidates,
+            limit=2,
+        )
+        alice_hits_again = media_assets.search_media_assets(
+            scope="sprite:Alice",
+            vibe="开心",
+            candidates=shared_candidates,
+            limit=2,
+        )
+        assert alice_hits[0]["asset_id"] == "outfit-smile"
+        assert bob_hits[0]["asset_id"] == "outfit-serious"
+        assert alice_hits_again[0]["asset_id"] == "outfit-smile"
+        assert embed_doc_calls == []
+
+        # Updating Alice's catalog must NOT evict or overwrite Bob's catalog slices
+        alice_updated = [
+            {"asset_id": "outfit-smile", "path": "shared/smile.png", "tags": "温柔微笑 开心 放松"},
+            {"asset_id": "outfit-surprised", "path": "alice/surprised.png", "tags": "惊讶 脸红"},
+            {"asset_id": "outfit-wink", "path": "alice/wink.png", "tags": "眨眼 俏皮"},
+        ]
+        media_assets.ensure_media_asset_indexes(
+            [{"scope": "sprite:Alice", "candidates": alice_updated}]
+        )
+        assert dict(store.count_by_scope(namespace=NAMESPACE_MEDIA_ASSET)) == {
+            "__shinsekai_media__:sprite:alice": 3,
+            "__shinsekai_media__:sprite:bob": 2,
+        }
+
+        # Bob's index remains intact and requires zero re-indexing
+        embed_doc_calls.clear()
+        bob_after_alice_update = media_assets.search_media_assets(
+            scope="sprite:Bob",
+            vibe="温柔微笑",
+            candidates=shared_candidates,
+            limit=2,
+        )
+        assert bob_after_alice_update[0]["asset_id"] == "outfit-smile"
+        assert embed_doc_calls == []
+    finally:
+        engine.close()

@@ -13,6 +13,7 @@ from typing import Any
 
 import numpy as np
 
+from ai.memory.config import resolve_safe_snapshot_file
 from ai.memory.constants import EMBEDDING_DIMS, ONNX_MODEL_CANDIDATES
 from sdk.adapters.memory import ReadinessStatus
 
@@ -25,9 +26,11 @@ def find_onnx_model_file(snapshot_dir: str | Path) -> Path | None:
     if not root.is_dir():
         return None
     for rel in ONNX_MODEL_CANDIDATES:
-        candidate = root / rel
+        candidate = resolve_safe_snapshot_file(root, rel)
+        if candidate is None:
+            continue
         try:
-            if candidate.is_file() and candidate.stat().st_size > 0:
+            if candidate.stat().st_size > 0:
                 return candidate
         except OSError:
             continue
@@ -178,9 +181,9 @@ class _FastRustTokenizerWrapper:
 
 
 def _load_tokenizer(snapshot_dir: Path, *, max_length: int = 256) -> Any:
-    tokenizer_json = snapshot_dir / "tokenizer.json"
-    if not tokenizer_json.is_file():
-        raise FileNotFoundError(f"tokenizer.json not found in {snapshot_dir}")
+    tokenizer_json = resolve_safe_snapshot_file(snapshot_dir, "tokenizer.json")
+    if tokenizer_json is None:
+        raise FileNotFoundError(f"Safe tokenizer.json not found in {snapshot_dir}")
     try:
         return _FastRustTokenizerWrapper(tokenizer_json, max_length=max_length)
     except ImportError:

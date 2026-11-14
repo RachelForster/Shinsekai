@@ -253,3 +253,143 @@ def test_embedding_model_cache_detection_ignores_incomplete_cache(monkeypatch, t
     monkeypatch.setenv("HF_HUB_CACHE", str(hub_cache))
 
     assert memory_config.is_embedding_model_cached() is False
+
+
+def _symlink_or_skip(link_path: Path, target_path: Path, *, target_is_directory: bool = False) -> None:
+    try:
+        link_path.symlink_to(target_path, target_is_directory=target_is_directory)
+    except OSError as exc:
+        if getattr(exc, "winerror", None) == 1314:
+            pytest.skip("Symlink privilege not enabled on this Windows environment")
+        raise
+
+
+def _write_hf_blob_symlinked_snapshot(model_dir: Path, revision: str = "abc123") -> Path:
+    """Create a standard Hugging Face Hub cache using relative symlinks into ../blobs/."""
+    blobs_dir = model_dir / "blobs"
+    blobs_dir.mkdir(parents=True, exist_ok=True)
+    snapshot = model_dir / "snapshots" / revision
+    (snapshot / "onnx").mkdir(parents=True, exist_ok=True)
+
+    blob_cfg = blobs_dir / "sha256-config"
+    blob_cfg.write_text(
+        json.dumps(
+            {
+                "architectures": ["BertModel"],
+                "hidden_size": 384,
+                "model_type": "bert",
+                "vocab_size": 250037,
+            }
+        ),
+        encoding="utf-8",
+    )
+    blob_tok_cfg = blobs_dir / "sha256-tok-config"
+    blob_tok_cfg.write_text(
+        json.dumps(
+            {
+                "model_max_length": 512,
+                "tokenizer_class": "XLMRobertaTokenizer",
+            }
+        ),
+        encoding="utf-8",
+    )
+    blob_tok = blobs_dir / "sha256-tokenizer"
+    blob_tok.write_text(
+        json.dumps(
+            {
+                "model": {"type": "Unigram", "vocab": [["<s>", 0.0], ["token", -1.0]]},
+                "version": "1.0",
+            }
+        ),
+        encoding="utf-8",
+    )
+    blob_onnx = blobs_dir / "sha256-onnx-quantized"
+    blob_onnx.write_bytes(b"\x08\x07\x12\x0cshinsekai-ut" + b"\x00" * 32)
+
+    _symlink_or_skip(snapshot / "config.json", Path("../../blobs/sha256-config"))
+    _symlink_or_skip(snapshot / "tokenizer_config.json", Path("../../blobs/sha256-tok-config"))
+    _symlink_or_skip(snapshot / "tokenizer.json", Path("../../blobs/sha256-tokenizer"))
+    _symlink_or_skip(
+        snapshot / "onnx" / "model_quantized.onnx",
+        Path("../../../blobs/sha256-onnx-quantized"),
+    )
+
+    refs = model_dir / "refs"
+    refs.mkdir(exist_ok=True)
+    (refs / "main").write_text(revision, encoding="utf-8")
+    return snapshot
+
+
+def test_onnx_snapshot_validation_accepts_regular_files_and_hf_blob_symlinks(
+    monkeypatch,
+    tmp_path,
+):
+    from ai.memory.backends.onnx_embedder import find_onnx_model_file
+
+    _isolate_embedding_cache_roots(monkeypatch, tmp_path)
+    hub_cache = tmp_path / "hub-cache"
+    monkeypatch.setenv("HF_HUB_CACHE", str(hub_cache))
+
+    # 1. Plain regular-file snapshot
+    plain_snapshot = tmp_path / "plain-local-model"
+    _write_complete_embedding_snapshot(plain_snapshot)
+    assert memory_config._validate_onnx_embedding_snapshot(plain_snapshot) is True
+    assert find_onnx_model_file(plain_snapshot) == plain_snapshot / "onnx" / "model_quantized.onnx"
+
+    # 2. Standard Hugging Face Hub cache with relative symlinks into same-repo blobs/
+    model_dir = hub_cache / _MODEL_HUB_DIR_NAME
+    hf_snapshot = _write_hf_blob_symlinked_snapshot(model_dir, revision="rev-hf-blobs")
+    assert (hf_snapshot / "onnx" / "model_quantized.onnx").is_symlink() is True
+    assert memory_config._validate_onnx_embedding_snapshot(hf_snapshot) is True
+    assert memory_config.embedding_model_snapshot_path() == hf_snapshot
+    assert memory_config.is_embedding_model_cached() is True
+    assert find_onnx_model_file(hf_snapshot) == hf_snapshot / "onnx" / "model_quantized.onnx"
+
+
+def test_onnx_snapshot_validation_rejects_out_of_bounds_symlinks(
+    monkeypatch,
+    tmp_path,
+):
+    from ai.memory.backends.onnx_embedder import find_onnx_model_file
+
+    _isolate_embedding_cache_roots(monkeypatch, tmp_path)
+    hub_cache = tmp_path / "hub-cache"
+    monkeypatch.setenv("HF_HUB_CACHE", str(hub_cache))
+
+    outside_dir = tmp_path / "outside-secrets"
+    outside_dir.mkdir()
+    outside_onnx = outside_dir / "external.onnx"
+    outside_onnx.write_bytes(b"\x08\x07\x12\x0cshinsekai-ut" + b"\x00" * 32)
+    other_repo_blob = hub_cache / "models--other--repo" / "blobs" / "sha256-other"
+    other_repo_blob.parent.mkdir(parents=True)
+    other_repo_blob.write_bytes(b"\x08\x07\x12\x0cshinsekai-ut" + b"\x00" * 32)
+
+    model_dir = hub_cache / _MODEL_HUB_DIR_NAME
+    snapshot = _write_hf_blob_symlinked_snapshot(model_dir, revision="rev-escape")
+
+    # 1. Symlink escaping completely outside hub cache -> rejected
+    onnx_link = snapshot / "onnx" / "model_quantized.onnx"
+    onnx_link.unlink()
+    _symlink_or_skip(onnx_link, outside_onnx)
+    assert memory_config.resolve_safe_snapshot_file(snapshot, "onnx/model_quantized.onnx") is None
+    assert memory_config._validate_onnx_embedding_snapshot(snapshot) is False
+    assert memory_config.embedding_model_snapshot_path() is None
+    assert find_onnx_model_file(snapshot) is None
+
+    # 2. Symlink pointing into a DIFFERENT Hugging Face repo's blobs/ -> rejected
+    onnx_link.unlink()
+    _symlink_or_skip(onnx_link, other_repo_blob)
+    assert memory_config.resolve_safe_snapshot_file(snapshot, "onnx/model_quantized.onnx") is None
+    assert memory_config._validate_onnx_embedding_snapshot(snapshot) is False
+
+    # 3. Restore valid ONNX link, but replace repo's blobs/ directory itself with an external symlink -> rejected
+    onnx_link.unlink()
+    _symlink_or_skip(onnx_link, Path("../../../blobs/sha256-onnx-quantized"))
+    assert memory_config._validate_onnx_embedding_snapshot(snapshot) is True
+
+    real_blobs = model_dir / "blobs"
+    moved_blobs = tmp_path / "hijacked-blobs"
+    real_blobs.rename(moved_blobs)
+    _symlink_or_skip(real_blobs, moved_blobs, target_is_directory=True)
+    assert memory_config.resolve_safe_snapshot_file(snapshot, "onnx/model_quantized.onnx") is None
+    assert memory_config._validate_onnx_embedding_snapshot(snapshot) is False
