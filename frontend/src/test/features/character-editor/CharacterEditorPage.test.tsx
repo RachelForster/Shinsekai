@@ -183,6 +183,10 @@ function renderPage(
   );
 }
 
+async function waitForCharacterLoaded(name = "Mika") {
+  await waitFor(() => expect(screen.getByLabelText("Character name")).toHaveValue(name));
+}
+
 describe("mergeSprites", () => {
   it("falls back to index only when rewritten paths keep the same list shape", () => {
     const current = {
@@ -344,7 +348,7 @@ describe("CharacterEditorPage", () => {
   it("saves batch sprite tags when the dialog is confirmed", async () => {
     renderPage();
 
-    await screen.findByDisplayValue("Mika");
+    await waitForCharacterLoaded();
     const batchTagsButton = screen.getByRole("button", { name: "Batch tags" });
     await waitFor(() => expect(batchTagsButton).toBeEnabled());
     fireEvent.click(batchTagsButton);
@@ -458,8 +462,8 @@ describe("CharacterEditorPage", () => {
   it("uploads sprite voice with the displayed default fallback type", async () => {
     renderPage();
 
-    await screen.findByDisplayValue("Mika");
-    fireEvent.click(screen.getByRole("button", { name: "Voice upload file" }));
+    await waitForCharacterLoaded();
+    fireEvent.click(await screen.findByRole("button", { name: "Voice upload file" }));
     fireEvent.click(screen.getByRole("button", { name: "Upload voice" }));
 
     await waitFor(() =>
@@ -484,8 +488,8 @@ describe("CharacterEditorPage", () => {
     ]);
     renderPage();
 
-    await screen.findByDisplayValue("Mika");
-    expect(screen.getByRole("radio", { name: "Fallback voice" })).toBeChecked();
+    await waitForCharacterLoaded();
+    expect(await screen.findByRole("radio", { name: "Fallback voice" })).toBeChecked();
     fireEvent.click(screen.getByRole("button", { name: "Voice upload file" }));
     fireEvent.click(screen.getByRole("button", { name: "Upload voice" }));
 
@@ -504,8 +508,8 @@ describe("CharacterEditorPage", () => {
   it("uploads sprite voice as preset after explicit selection", async () => {
     renderPage();
 
-    await screen.findByDisplayValue("Mika");
-    fireEvent.click(screen.getByRole("radio", { name: "Preset voice" }));
+    await waitForCharacterLoaded();
+    fireEvent.click(await screen.findByRole("radio", { name: "Preset voice" }));
     fireEvent.click(screen.getByRole("button", { name: "Voice upload file" }));
     fireEvent.click(screen.getByRole("button", { name: "Upload voice" }));
 
@@ -532,7 +536,7 @@ describe("CharacterEditorPage", () => {
     ]);
     renderPage();
 
-    await screen.findByDisplayValue("Mika");
+    await waitForCharacterLoaded();
     expect(await screen.findByRole("radio", { name: "Reference voice" })).toBeChecked();
     fireEvent.click(screen.getByRole("button", { name: "Voice upload file" }));
     fireEvent.click(screen.getByRole("button", { name: "Upload voice" }));
@@ -552,7 +556,7 @@ describe("CharacterEditorPage", () => {
   it("imports and exports packages, opens resources, and runs AI actions", async () => {
     renderPage();
 
-    await screen.findByDisplayValue("Mika");
+    await waitForCharacterLoaded();
     fireEvent.click(screen.getByRole("button", { name: "Community characters" }));
     fireEvent.click(screen.getByRole("button", { name: "Upload contribution" }));
     expect(mockOpenExternal).toHaveBeenCalledTimes(2);
@@ -594,12 +598,12 @@ describe("CharacterEditorPage", () => {
     ]);
     renderPage();
 
-    await screen.findByDisplayValue("Mika");
+    await waitForCharacterLoaded();
     fireEvent.change(screen.getByLabelText("Display scale"), { target: { value: "1.25" } });
     fireEvent.click(screen.getByRole("button", { name: "Save scale" }));
     await waitFor(() => expect(mockSaveSpriteScale).toHaveBeenCalledWith("Mika", 1.25));
 
-    fireEvent.click(screen.getByRole("radio", { name: "Reference voice" }));
+    fireEvent.click(await screen.findByRole("radio", { name: "Reference voice" }));
     await waitFor(() => expect(mockSaveSpriteVoiceType).toHaveBeenCalledWith("Mika", 0, "reference"));
 
     const voiceTextInput = screen.getByDisplayValue("hello");
@@ -635,7 +639,7 @@ describe("CharacterEditorPage", () => {
     ]);
     renderPage();
 
-    await screen.findByDisplayValue("Mika");
+    await waitForCharacterLoaded();
     fireEvent.click(await screen.findByTitle("sprite-b.png"));
     fireEvent.change(screen.getByLabelText("Sprite tag"), { target: { value: "unsaved second edit" } });
     fireEvent.click(screen.getByTitle("sprite-a.png"));
@@ -680,8 +684,8 @@ describe("CharacterEditorPage", () => {
     mockDeleteCharacterSprite.mockResolvedValue(updatedCharacter);
     renderPage();
 
-    await screen.findByDisplayValue("Mika");
-    expect(screen.getByRole("radio", { name: "Preset voice" })).toBeChecked();
+    await waitForCharacterLoaded();
+    expect(await screen.findByRole("radio", { name: "Preset voice" })).toBeChecked();
 
     fireEvent.click(screen.getByRole("button", { name: "Remove" }));
     const dialog = screen.getByRole("dialog", { name: "Remove" });
@@ -699,7 +703,7 @@ describe("CharacterEditorPage", () => {
   it("refreshes, adds, and deletes long-term memories", async () => {
     renderPage();
 
-    await screen.findByDisplayValue("Mika");
+    await waitForCharacterLoaded();
     fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
     await waitFor(() => expect(mockGetMem0Status).toHaveBeenCalled());
     expect(await screen.findByText("Likes tea")).toBeInTheDocument();
@@ -751,7 +755,7 @@ describe("CharacterEditorPage", () => {
     });
     renderPage(client);
 
-    await screen.findByDisplayValue("Mika");
+    await waitForCharacterLoaded();
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     const dialog = screen.getByRole("dialog", { name: "Delete character" });
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
@@ -778,7 +782,7 @@ describe("CharacterEditorPage", () => {
 
     renderPage();
 
-    await screen.findByDisplayValue("Mika");
+    await waitForCharacterLoaded();
     expect(screen.getByText(/Upload the \.char package in the Kaggle Notebook/)).toBeInTheDocument();
     const voiceReferencePickers = [
       screen.getByRole("button", { name: "GPT model path" }),
@@ -846,7 +850,7 @@ describe("CharacterEditorPage", () => {
 
     renderPage();
 
-    await screen.findByDisplayValue("Mika");
+    await waitForCharacterLoaded();
     fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
     expect(await screen.findByText("Missing Python dependency")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Install" }));

@@ -1,6 +1,63 @@
 import { describe, expect, it } from "vitest";
 
 import { translateMessage } from "../../../shared/i18n";
+import { frontendMessages } from "../../../shared/i18n/messages";
+import { enMessageSlices } from "../../../shared/i18n/messages/en";
+import { jaMessageSlices } from "../../../shared/i18n/messages/ja";
+import { zhCNMessageSlices } from "../../../shared/i18n/messages/zh_CN";
+
+function extractPlaceholders(template: string): string[] {
+  return [...new Set([...template.matchAll(/\{(\w+)\}/g)].map((match) => match[1]))].sort();
+}
+
+describe("i18n domain slices", () => {
+  it("keeps identical domain names and disjoint keys across all locales", () => {
+    const domainNames = Object.keys(zhCNMessageSlices).sort();
+    expect(Object.keys(enMessageSlices).sort()).toEqual(domainNames);
+    expect(Object.keys(jaMessageSlices).sort()).toEqual(domainNames);
+
+    const seenZhKeys = new Set<string>();
+    let sliceKeyCount = 0;
+
+    for (const domain of domainNames as Array<keyof typeof zhCNMessageSlices>) {
+      const zhKeys = Object.keys(zhCNMessageSlices[domain]).sort();
+      const enKeys = Object.keys(enMessageSlices[domain]).sort();
+      const jaKeys = Object.keys(jaMessageSlices[domain]).sort();
+
+      expect(zhKeys.length, `${domain} should not be empty`).toBeGreaterThan(0);
+      expect(enKeys, `${domain} en keys`).toEqual(zhKeys);
+      expect(jaKeys, `${domain} ja keys`).toEqual(zhKeys);
+
+      for (const key of zhKeys) {
+        expect(seenZhKeys.has(key), `duplicate i18n key across slices: ${key}`).toBe(false);
+        seenZhKeys.add(key);
+        sliceKeyCount += 1;
+      }
+    }
+
+    expect(Object.keys(frontendMessages.zh_CN)).toHaveLength(sliceKeyCount);
+    expect(Object.keys(frontendMessages.en).sort()).toEqual(Object.keys(frontendMessages.zh_CN).sort());
+    expect(Object.keys(frontendMessages.ja).sort()).toEqual(Object.keys(frontendMessages.zh_CN).sort());
+  });
+
+  it("preserves interpolation placeholders across zh_CN, en, and ja", () => {
+    const mismatches: string[] = [];
+    for (const key of Object.keys(frontendMessages.zh_CN) as Array<keyof typeof frontendMessages.zh_CN>) {
+      const zhPlaceholders = extractPlaceholders(frontendMessages.zh_CN[key]);
+      const enPlaceholders = extractPlaceholders(frontendMessages.en[key]);
+      const jaPlaceholders = extractPlaceholders(frontendMessages.ja[key]);
+      if (
+        zhPlaceholders.join(",") !== enPlaceholders.join(",") ||
+        zhPlaceholders.join(",") !== jaPlaceholders.join(",")
+      ) {
+        mismatches.push(
+          `${key}: zh=[${zhPlaceholders.join(",")}] en=[${enPlaceholders.join(",")}] ja=[${jaPlaceholders.join(",")}]`,
+        );
+      }
+    }
+    expect(mismatches).toEqual([]);
+  });
+});
 
 describe("translateMessage", () => {
   it("returns localized messages for supported languages", () => {
