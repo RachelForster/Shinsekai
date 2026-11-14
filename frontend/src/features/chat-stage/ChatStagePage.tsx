@@ -1050,7 +1050,7 @@ export function ChatStagePage() {
           className={layerClassName("dialog-stack", !dialogSurfaceVisible || miniAvatarActive)}
           hidden={!dialogSurfaceVisible || miniAvatarActive}
         >
-          {viewModel.layers.options ? (
+          {miniAvatarActive ? null : viewModel.layers.options ? (
             <>
               {viewModel.toolConfirmation ? (
                 <ToolConfirmationLayer confirmation={viewModel.toolConfirmation} onResolve={resolveToolConfirmation} />
@@ -1089,15 +1089,15 @@ export function ChatStagePage() {
             />
           )}
         </div>
-        {dialogToolbarDetached || activeReplay ? (
+        {!miniAvatarActive && (dialogToolbarDetached || activeReplay) ? (
           <div
-            aria-hidden={!dialogSurfaceVisible || miniAvatarActive}
-            className={layerClassName("dialog-toolbar-layer", !dialogSurfaceVisible || miniAvatarActive)}
+            aria-hidden={!dialogSurfaceVisible}
+            className={layerClassName("dialog-toolbar-layer", !dialogSurfaceVisible)}
             data-chat-stage-hitbox="true"
             data-locked={dialogControlsLocked ? "true" : "false"}
             data-placement={activeReplay ? "input" : dialogToolbarPlacement}
             data-reveal={dialogToolbarReveal}
-            hidden={!dialogSurfaceVisible || miniAvatarActive}
+            hidden={!dialogSurfaceVisible}
           >
             {dialogToolbar}
           </div>

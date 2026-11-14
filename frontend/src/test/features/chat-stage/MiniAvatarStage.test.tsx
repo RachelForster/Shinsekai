@@ -382,6 +382,43 @@ describe("MiniAvatarStage component", () => {
     expect(onExitMiniMode).toHaveBeenCalledTimes(1);
   });
 
+  it("auto-focuses the input bar when opened from the chat icon and hides it when focus is lost", () => {
+    renderMiniStage();
+
+    const hub = document.querySelector(".mini-avatar__hub")!;
+    fireEvent.pointerEnter(hub);
+
+    // Clicking the chat icon opens and focuses the input box.
+    fireEvent.click(screen.getByRole("button", { name: "Show input bar" }));
+    const input = screen.getByPlaceholderText("Enter dialogue");
+    expect(input).toHaveFocus();
+
+    // Moving focus inside the input bar (e.g. to the Send button) keeps it visible.
+    fireEvent.change(input, { target: { value: "Hello" } });
+    const sendButton = screen.getByRole("button", { name: "Send" });
+    fireEvent.blur(input, { relatedTarget: sendButton });
+    expect(screen.getByPlaceholderText("Enter dialogue")).toBeInTheDocument();
+
+    // Losing focus outside the input bar hides it immediately.
+    fireEvent.blur(input, { relatedTarget: document.querySelector(".mini-avatar__core") });
+    expect(screen.queryByPlaceholderText("Enter dialogue")).not.toBeInTheDocument();
+
+    // Re-opening and losing OS/window focus (e.g. clicking desktop wallpaper) also hides it.
+    fireEvent.click(screen.getByRole("button", { name: "Show input bar" }));
+    expect(screen.getByPlaceholderText("Enter dialogue")).toHaveFocus();
+    fireEvent.blur(window);
+    expect(screen.queryByPlaceholderText("Enter dialogue")).not.toBeInTheDocument();
+
+    // Re-opening and clicking the chat satellite button itself toggles it closed cleanly without reopening.
+    fireEvent.click(screen.getByRole("button", { name: "Show input bar" }));
+    const reopenedInput = screen.getByPlaceholderText("Enter dialogue");
+    const collapseChatButton = screen.getByRole("button", { name: "Hide input bar", pressed: true });
+    fireEvent.pointerDown(collapseChatButton);
+    fireEvent.blur(reopenedInput, { relatedTarget: collapseChatButton });
+    fireEvent.click(collapseChatButton);
+    expect(screen.queryByPlaceholderText("Enter dialogue")).not.toBeInTheDocument();
+  });
+
   it("handles single-bubble advance, idle auto-dismiss, and hover recall", () => {
     vi.useFakeTimers();
     const onAdvance = vi.fn();
@@ -549,6 +586,73 @@ describe("MiniAvatarStage component", () => {
     expect(stage).toHaveAttribute("data-background", "media");
     expect(desktopApiMocks.setDesktopChatWindowMiniMode).toHaveBeenCalledWith(false, true);
     expect(document.querySelector(".top-stage-tools")).toBeInTheDocument();
+  });
+
+  it("unmounts normal-stage options and hover toolbar in mini mode and omits spurious thinking text above choices", async () => {
+    const choiceLabels = ["继续假装听课", "回头瞪他一眼", "把书立起来挡住脸"];
+    const stageSnapshot: ChatSnapshot = {
+      backgroundPath: "http://127.0.0.1:8787/api/media?path=classroom.png",
+      characterName: "藤丸立香",
+      dialogText: "",
+      historyEntries: [],
+      historyPath: "data/chat_history/default.json",
+      inputDraft: "",
+      options: choiceLabels,
+      sprites: [{ avatarType: "static", id: "ritsuka", label: "藤丸立香", modelUrl: "", path: mioSprite.path }],
+      status: "idle",
+      voiceLanguage: "ja",
+    };
+
+    const sendChatCommand = vi.fn().mockResolvedValue(stageSnapshot);
+    const basePlatform = createHttpPlatform("http://127.0.0.1:8787");
+    platformMocks.getPlatform.mockReturnValue({
+      ...basePlatform,
+      chat: {
+        ...basePlatform.chat,
+        command: sendChatCommand,
+        getHistory: vi.fn().mockResolvedValue([]),
+        getSnapshot: vi.fn().mockResolvedValue(stageSnapshot),
+        subscribeEvents: vi.fn(() => () => undefined),
+      },
+    });
+
+    render(
+      <ToastProvider>
+        <MemoryRouter initialEntries={["/chat-stage"]}>
+          <I18nProvider language="en">
+            <ChatStagePage />
+          </I18nProvider>
+        </MemoryRouter>
+      </ToastProvider>,
+    );
+
+    await screen.findByRole("button", { name: "继续假装听课" });
+    expect(document.querySelector(".options-layer")).toBeInTheDocument();
+    expect(document.querySelector(".dialog-stage-controls")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Mini avatar mode" }));
+    await waitFor(() => expect(document.querySelector(".chat-stage")).toHaveAttribute("data-mini-avatar", "true"));
+
+    // Normal-stage options and bottom hover controls must not remain in the DOM behind the mini avatar.
+    expect(document.querySelector(".options-layer")).not.toBeInTheDocument();
+    expect(document.querySelector(".dialog-toolbar-layer")).not.toBeInTheDocument();
+    expect(document.querySelector(".dialog-stage-controls")).not.toBeInTheDocument();
+
+    // Mini bubble shows all choices without a spurious "Thinking…" body line.
+    expect(document.querySelector(".mini-avatar__bubble")).toHaveAttribute("data-visible", "true");
+    expect(document.querySelector(".mini-avatar__bubble-body")).not.toBeInTheDocument();
+    expect(screen.queryByText("Thinking…")).not.toBeInTheDocument();
+    for (const label of choiceLabels) {
+      expect(screen.getAllByRole("button", { name: label })).toHaveLength(1);
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: "回头瞪他一眼" }));
+    await waitFor(() =>
+      expect(sendChatCommand).toHaveBeenCalledWith({
+        payload: "回头瞪他一眼",
+        type: "submit-option",
+      }),
+    );
   });
 
   it("supports F8 hold-to-talk and live ASR preview directly inside mini avatar mode", async () => {
@@ -991,7 +1095,8 @@ describe("MiniAvatarStage component", () => {
     // Tool confirmation, desktop window drag, and bubble dismiss/restore.
     renderMiniStage({
       dialogCharacterName: "",
-      dialogText: "Dismissable line",
+      dialogText: "",
+      dialogVisible: false,
       onDesktopDragEnd,
       onResolveToolConfirmation,
       sprites: [],
@@ -999,6 +1104,7 @@ describe("MiniAvatarStage component", () => {
       toolConfirmation: { confirmationId: "tc-1", detail: "Write file", risk: "medium", toolName: "save_note" },
     });
 
+    expect(screen.getByText("Write file")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /save_note/i }));
     expect(onResolveToolConfirmation).toHaveBeenCalledWith("confirm");
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));

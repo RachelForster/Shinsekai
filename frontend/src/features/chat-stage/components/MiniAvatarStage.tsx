@@ -53,7 +53,7 @@ import type { ChatStageSprite, ChatStageSpriteReaction } from "../state/types";
 export const MINI_AVATAR_HOVER_HIDE_MS = 260;
 export const MINI_AVATAR_IDLE_BUBBLE_HIDE_MS = 8000;
 const MINI_AVATAR_DRAG_THRESHOLD_PX = 5;
-const MINI_AVATAR_STATIC_FRAMING: Readonly<VisualFraming> = { heightRatio: 0.74, verticalPosition: 0.16 };
+const MINI_AVATAR_STATIC_FRAMING: Readonly<VisualFraming> = { heightRatio: 0.68, verticalPosition: 0.08 };
 const MINI_AVATAR_MODEL_FRAMING: Readonly<VisualFraming> = { heightRatio: 0.32, verticalPosition: 0.06 };
 
 function composeMiniAvatarFraming(baseFraming: VisualFraming, runtimeFraming?: VisualFraming): VisualFraming {
@@ -246,7 +246,12 @@ export function MiniAvatarStage({
 
   const previousSpeakerRef = useRef<string>("");
   const hoverHideTimerRef = useRef<number | null>(null);
+  const pickingAttachmentTimerRef = useRef<number | null>(null);
+  const pickingAttachmentRef = useRef(false);
+  const prevAttachmentCountRef = useRef(0);
   const plusRootRef = useRef<HTMLDivElement | null>(null);
+  const chatButtonRef = useRef<HTMLButtonElement | null>(null);
+  const inputBarRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const historyIndexRef = useRef(-1);
   const inputActivityRef = useRef("");
@@ -283,11 +288,52 @@ export function MiniAvatarStage({
   const closePlusMenu = useCallback(() => setPlusMenuOpen(false), []);
   useDismissableLayer({ active: plusMenuOpen, onDismiss: closePlusMenu, rootRef: plusRootRef });
 
+  const focusInputSoon = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      if (inputRef.current && !inputRef.current.disabled) {
+        inputRef.current.focus();
+      } else {
+        inputBarRef.current?.focus();
+      }
+    });
+  }, []);
+
   useEffect(() => {
-    if (attachments.length > 0) {
+    if (attachments.length > prevAttachmentCountRef.current) {
       setInputPinned(true);
+      focusInputSoon();
     }
-  }, [attachments.length]);
+    prevAttachmentCountRef.current = attachments.length;
+  }, [attachments.length, focusInputSoon]);
+
+  useEffect(() => {
+    if (!inputPinned) {
+      return;
+    }
+    if (inputRef.current && !inputRef.current.disabled) {
+      inputRef.current.focus();
+    } else {
+      inputBarRef.current?.focus();
+    }
+    const handlePointerDownOutside = (event: globalThis.PointerEvent) => {
+      const target = event.target as Node | null;
+      if (target && (inputBarRef.current?.contains(target) || chatButtonRef.current?.contains(target))) {
+        return;
+      }
+      setInputPinned(false);
+    };
+    const handleWindowBlur = () => {
+      if (!pickingAttachmentRef.current) {
+        setInputPinned(false);
+      }
+    };
+    document.addEventListener("pointerdown", handlePointerDownOutside, true);
+    window.addEventListener("blur", handleWindowBlur);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDownOutside, true);
+      window.removeEventListener("blur", handleWindowBlur);
+    };
+  }, [inputPinned]);
 
   useEffect(() => {
     if (!inputValue.trim()) {
@@ -306,7 +352,38 @@ export function MiniAvatarStage({
     }
   }, []);
 
-  useEffect(() => clearHoverTimer, [clearHoverTimer]);
+  const windowFocusCleanupRef = useRef<(() => void) | null>(null);
+  const clearPickingAttachmentTimer = useCallback(() => {
+    if (pickingAttachmentTimerRef.current != null) {
+      window.clearTimeout(pickingAttachmentTimerRef.current);
+      pickingAttachmentTimerRef.current = null;
+    }
+    windowFocusCleanupRef.current?.();
+    windowFocusCleanupRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      clearHoverTimer();
+      clearPickingAttachmentTimer();
+    };
+  }, [clearHoverTimer, clearPickingAttachmentTimer]);
+
+  const markPickingAttachment = useCallback(() => {
+    pickingAttachmentRef.current = true;
+    clearPickingAttachmentTimer();
+    const handleWindowFocus = () => {
+      clearPickingAttachmentTimer();
+      pickingAttachmentRef.current = false;
+      focusInputSoon();
+    };
+    window.addEventListener("focus", handleWindowFocus);
+    windowFocusCleanupRef.current = () => window.removeEventListener("focus", handleWindowFocus);
+    pickingAttachmentTimerRef.current = window.setTimeout(() => {
+      pickingAttachmentTimerRef.current = null;
+      pickingAttachmentRef.current = false;
+    }, 500);
+  }, [clearPickingAttachmentTimer, focusInputSoon]);
 
   const handleHubPointerEnter = useCallback(() => {
     clearHoverTimer();
@@ -379,21 +456,20 @@ export function MiniAvatarStage({
 
   const controlsVisible = hovered || focusWithin || plusMenuOpen;
 
-  const focusInputSoon = useCallback(() => {
-    window.requestAnimationFrame(() => {
-      inputRef.current?.focus();
-    });
-  }, []);
-
   const handleToggleInputPinned = () => {
     setPlusMenuOpen(false);
-    setInputPinned((current) => {
-      const next = !current;
-      if (next) {
-        focusInputSoon();
-      }
-      return next;
-    });
+    setInputPinned((current) => !current);
+  };
+
+  const handleInputBarBlur = (event: FocusEvent<HTMLDivElement>) => {
+    const nextFocused = event.relatedTarget as Node | null;
+    if (nextFocused && (event.currentTarget.contains(nextFocused) || chatButtonRef.current?.contains(nextFocused))) {
+      return;
+    }
+    if (pickingAttachmentRef.current && nextFocused === null) {
+      return;
+    }
+    setInputPinned(false);
   };
 
   const reportInputActivity = (nextValue: string, composing: boolean) => {
@@ -431,6 +507,9 @@ export function MiniAvatarStage({
   const submitKeepingExpanded = async (flushBatch = false) => {
     if (!canSubmit) {
       return;
+    }
+    if (inputRef.current && !inputRef.current.disabled) {
+      inputRef.current.focus();
     }
     await onSubmit();
     if (flushBatch && batchEnabled) {
@@ -623,11 +702,15 @@ export function MiniAvatarStage({
   const bubbleBodyText =
     notificationVisible && notificationText?.trim()
       ? notificationText.trim()
-      : isThinking && !trimmedDialog
+      : isThinking && (!dialogVisible || !trimmedDialog)
         ? busyText?.trim() || t("chat.mini.thinking")
         : dialogVisible && trimmedDialog
           ? trimmedDialog
-          : reactionText || busyText?.trim() || t("chat.mini.thinking");
+          : toolConfirmation?.detail?.trim()
+            ? toolConfirmation.detail.trim()
+            : !hasInteractiveOptions && !toolConfirmation
+              ? reactionText
+              : "";
 
   return (
     <section
@@ -764,6 +847,7 @@ export function MiniAvatarStage({
               label={t(inputPinned ? "chat.mini.collapseInput" : "chat.mini.toggleInput")}
               onClick={handleToggleInputPinned}
               onPointerEnter={() => setHoverBubblePreview(true)}
+              ref={chatButtonRef}
               tabIndex={controlsVisible ? 0 : -1}
             >
               <MessageSquare aria-hidden className="icon-button__icon" />
@@ -797,6 +881,7 @@ export function MiniAvatarStage({
                 disabled={inputDisabled}
                 onClick={() => {
                   setPlusMenuOpen(false);
+                  markPickingAttachment();
                   setInputPinned(true);
                   onPickAttachments("image");
                   focusInputSoon();
@@ -811,6 +896,7 @@ export function MiniAvatarStage({
                 disabled={inputDisabled}
                 onClick={() => {
                   setPlusMenuOpen(false);
+                  markPickingAttachment();
                   setInputPinned(true);
                   onPickAttachments("file");
                   focusInputSoon();
@@ -908,7 +994,7 @@ export function MiniAvatarStage({
             </div>
           ) : null}
 
-          <div className="mini-avatar__bubble-body">{bubbleBodyText}</div>
+          {bubbleBodyText ? <div className="mini-avatar__bubble-body">{bubbleBodyText}</div> : null}
 
           {toolConfirmation ? (
             <div aria-label={t("chat.toolConfirmation.label")} className="mini-avatar__bubble-options" role="list">
@@ -953,9 +1039,12 @@ export function MiniAvatarStage({
           <div
             className="mini-avatar__input-bar"
             data-chat-stage-hitbox="true"
+            onBlurCapture={handleInputBarBlur}
             onDragLeave={handleDragLeave}
             onDragOver={handleDragOver}
             onDrop={handleDrop}
+            ref={inputBarRef}
+            tabIndex={-1}
           >
             {attachments.length ? (
               <div aria-label={t("chat.input.attachments")} className="mini-avatar__attachments">
@@ -966,6 +1055,7 @@ export function MiniAvatarStage({
                     disabled={inputDisabled}
                     key={`${attachment.kind}:${attachment.path}`}
                     onClick={() => onRemoveAttachment(attachment)}
+                    onMouseDown={(event) => event.preventDefault()}
                     title={attachment.name}
                     type="button"
                   >
@@ -1007,6 +1097,7 @@ export function MiniAvatarStage({
                 disabled={!canSubmit}
                 label={t("chat.input.send")}
                 onClick={() => void submitKeepingExpanded(false)}
+                onMouseDown={(event) => event.preventDefault()}
               >
                 <Send aria-hidden className="icon-button__icon" />
               </IconButton>
