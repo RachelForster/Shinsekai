@@ -1,13 +1,16 @@
-"""Knowledge operations using an explicitly supplied local store."""
+"""Knowledge operations using SOLID StaticVectorStorePort or duck-typed stores."""
 
 from __future__ import annotations
 
 import logging
 from typing import Any, Iterable
+import uuid
 
+from ai.knowledge.config import HybridKnowledgeStore
 from ai.memory.deduplication import find_duplicate_memory, semantic_deduplication_threshold
-from core.knowledge.coordination import knowledge_operation_lock as _knowledge_operation_lock
 from core.knowledge.catalog import format_knowledge_entry, invalidate_catalog_after_write, pagination_arguments
+from core.knowledge.coordination import knowledge_operation_lock as _knowledge_operation_lock
+from sdk.adapters.memory import VectorSliceEntry
 
 logger = logging.getLogger(__name__)
 
@@ -36,23 +39,76 @@ def _normalize_identifiers(values: Iterable[str]) -> list[str]:
 
 def _add_entry_if_not_duplicate(store: Any, content: str, knowledge_id: str) -> dict[str, Any]:
     """Deduplicate and write atomically under the caller's operation lock."""
+    if isinstance(store, HybridKnowledgeStore):
+        q_vec = store.embedder.embed_query(content)
+        hits = store.port.search_slices(
+            namespace=store.namespace,
+            scope_ids=(knowledge_id,),
+            query_vector=q_vec,
+            keyword_query=content,
+            limit=5,
+        )
+        candidates = [
+            {
+                "id": hit.entry.id,
+                "memory": hit.entry.text,
+                "score": max(0.0, min(1.0, float(hit.vector_score))),
+            }
+            for hit in hits
+        ]
+        duplicate = find_duplicate_memory(
+            content, candidates, threshold=semantic_deduplication_threshold(),
+        )
+        result: dict[str, Any] = {
+            "ok": True,
+            "duplicate": duplicate is not None,
+            "knowledge_id": knowledge_id,
+            "content": content,
+        }
+        if duplicate is not None:
+            result.update(
+                {
+                    "duplicate_type": duplicate.match_type,
+                    "similarity": duplicate.similarity,
+                    "existing_memory_id": duplicate.memory_id,
+                    "existing_memory": duplicate.memory,
+                }
+            )
+            return result
+        with invalidate_catalog_after_write():
+            store.port.upsert_slices(
+                (
+                    VectorSliceEntry(
+                        id=uuid.uuid4().hex,
+                        namespace=store.namespace,
+                        scope_id=knowledge_id,
+                        text=content,
+                        metadata={"user_id": knowledge_id},
+                        embedding=q_vec,
+                    ),
+                )
+            )
+        return result
+
     candidates = _search_store_entries(store, content, knowledge_id, 5)
     duplicate = find_duplicate_memory(
         content, candidates, threshold=semantic_deduplication_threshold(),
     )
-    result: dict[str, Any] = {
+    result = {
         "ok": True,
         "duplicate": duplicate is not None,
         "knowledge_id": knowledge_id,
         "content": content,
     }
     if duplicate is not None:
-        result.update({
-            "duplicate_type": duplicate.match_type,
-            "similarity": duplicate.similarity,
-            "existing_memory_id": duplicate.memory_id,
-            "existing_memory": duplicate.memory,
-        })
+        result.update(
+            {
+                "duplicate_type": duplicate.match_type,
+                "similarity": duplicate.similarity,
+                "existing_memory_id": duplicate.memory_id,
+                "existing_memory": duplicate.memory,
+            }
+        )
         return result
     with invalidate_catalog_after_write():
         store.add(content, user_id=knowledge_id, infer=False)
@@ -63,15 +119,36 @@ def _search_across_knowledge_bases(
     store: Any, query: str, knowledge_ids: list[str], limit: int,
 ) -> list[Any]:
     """Merge per-knowledge matches into a single score-ranked result set."""
+    bounded_limit = max(1, int(limit))
+    if isinstance(store, HybridKnowledgeStore):
+        with _knowledge_operation_lock:
+            q_vec = store.embedder.embed_query(query)
+            hits = store.port.search_slices(
+                namespace=store.namespace,
+                scope_ids=knowledge_ids,
+                query_vector=q_vec,
+                keyword_query=query,
+                limit=bounded_limit,
+            )
+        return [
+            {
+                "id": hit.entry.id,
+                "memory": hit.entry.text,
+                "score": hit.score,
+                "knowledge_id": hit.entry.scope_id,
+            }
+            for hit in hits
+        ]
+
     candidates: list[Any] = []
     for knowledge_id in knowledge_ids:
         with _knowledge_operation_lock:
-            candidates.extend(_search_store_entries(store, query, knowledge_id, max(1, int(limit))))
+            candidates.extend(_search_store_entries(store, query, knowledge_id, bounded_limit))
     candidates.sort(
         key=lambda row: float(row.get("score") or 0) if isinstance(row, dict) else 0,
         reverse=True,
     )
-    return candidates[:max(1, int(limit))]
+    return candidates[:bounded_limit]
 
 
 def add_knowledge_entry(store: Any, content: str, knowledge_id: str) -> dict[str, Any]:
@@ -115,9 +192,26 @@ def search_local_knowledge_entries(store: Any, knowledge_id: str, query: str, *,
             normalized_knowledge_id, text = str(knowledge_id or "").strip(), str(query or "").strip()
             if not normalized_knowledge_id or not text:
                 raise ValueError("knowledge id and query are required")
-            rows = _search_store_entries(store, text, normalized_knowledge_id, max(1, min(200, int(limit))))
-            entries = [format_knowledge_entry(row, include_text=True) for row in rows if isinstance(row, dict)]
-            return {"knowledge_id": normalized_knowledge_id, "query": text, "count": len(entries), "memories": entries}
+            bounded = max(1, min(200, int(limit)))
+            if isinstance(store, HybridKnowledgeStore):
+                q_vec = store.embedder.embed_query(text)
+                hits = store.port.search_slices(
+                    namespace=store.namespace,
+                    scope_ids=(normalized_knowledge_id,),
+                    query_vector=q_vec,
+                    keyword_query=text,
+                    limit=bounded,
+                )
+                entries = [{"id": hit.entry.id, "memory": hit.entry.text} for hit in hits]
+            else:
+                rows = _search_store_entries(store, text, normalized_knowledge_id, bounded)
+                entries = [format_knowledge_entry(row, include_text=True) for row in rows if isinstance(row, dict)]
+            return {
+                "knowledge_id": normalized_knowledge_id,
+                "query": text,
+                "count": len(entries),
+                "memories": entries,
+            }
     except Exception as e:
         logger.exception("search_local_knowledge_entries failed")
         return {"error": str(e)}

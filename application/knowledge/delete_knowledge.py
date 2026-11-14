@@ -9,6 +9,7 @@ from core.knowledge.catalog import collect_knowledge_entry_ids, invalidate_catal
 from application.knowledge.manage_knowledge import read_knowledge_entries
 from application.knowledge.runtime import get_mem0
 from core.knowledge.coordination import knowledge_operation_lock
+from sdk.adapters.memory import NAMESPACE_KNOWLEDGE
 
 logger = logging.getLogger(__name__)
 
@@ -39,10 +40,13 @@ def delete_knowledge_base(knowledge_id: str) -> dict[str, Any]:
             raise ValueError("knowledge id is required")
         stage = "initialize"
         store = get_mem0()
+        vs = store.vector_store
+        client = getattr(vs, "client", vs)
+        collection_name = getattr(vs, "collection_name", NAMESPACE_KNOWLEDGE)
         with knowledge_operation_lock, invalidate_catalog_after_write():
             stage = "collect"
             ids = collect_knowledge_entry_ids(
-                store.vector_store.client, store.vector_store.collection_name, normalized_knowledge_id,
+                client, collection_name, normalized_knowledge_id,
             )
             stage = "entries"
             for memory_id in ids:

@@ -527,11 +527,12 @@ def test_runtime_requirements_keep_memory_and_moondream_dependencies_compatible(
             if line.strip() and not line.lstrip().startswith("#")
         }
 
-        assert runtime_dependencies.SENTENCE_TRANSFORMERS_SPEC in lines
-        assert runtime_dependencies.TRANSFORMERS_SPEC in lines
-        assert runtime_dependencies.CLICK_SPEC in lines
-        assert runtime_dependencies.SPACY_SPEC in lines
+        assert runtime_dependencies.ONNXRUNTIME_SPEC in lines
+        assert runtime_dependencies.TOKENIZERS_SPEC in lines
+        assert "mem0ai[nlp]" not in lines
         assert "mem0ai[extras]" not in lines
+        assert "spacy>=3.8,<4" not in lines
+        assert "fastembed" not in lines
 
 
 def _fake_runtime_pip_install(calls):
@@ -604,46 +605,48 @@ def test_install_runtime_dependency_pins_huggingface_hub(monkeypatch):
     assert calls[0][:5] == [sys.executable, "-m", "pip", "install", expected]
 
 
-def test_install_runtime_dependency_installs_mem0_without_broad_extras(monkeypatch):
+def test_install_runtime_dependency_installs_memory_onnx_group_without_legacy_extras(monkeypatch):
     from application.runtime import dependencies as runtime_dependencies
 
     calls = []
     monkeypatch.setattr(runtime_dependencies, "_run_pip_install", _fake_runtime_pip_install(calls))
 
-    result = runtime_dependencies.install_runtime_dependency("mem0")
+    result = runtime_dependencies.install_runtime_dependency("onnxruntime")
 
-    assert result["packageName"] == "mem0ai"
-    assert calls[0][:11] == [
+    assert result["packageName"] == "onnxruntime"
+    assert calls[0][:6] == [
         sys.executable,
         "-m",
         "pip",
         "install",
-        runtime_dependencies.MEM0_SPEC,
-        runtime_dependencies.CLICK_SPEC,
-        runtime_dependencies.SPACY_SPEC,
-        runtime_dependencies.SENTENCE_TRANSFORMERS_SPEC,
-        runtime_dependencies.FASTEMBED_SPEC,
-        runtime_dependencies.TRANSFORMERS_SPEC,
+        runtime_dependencies.ONNXRUNTIME_SPEC,
         runtime_dependencies.HUGGINGFACE_HUB_SPEC,
     ]
     assert "mem0ai[extras]" not in calls[0]
+
+    calls.clear()
+    legacy_result = runtime_dependencies.install_runtime_dependency("mem0")
+    assert legacy_result["packageName"] == "mem0ai"
+    assert calls[0][:6] == [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        runtime_dependencies.ONNXRUNTIME_SPEC,
+        runtime_dependencies.HUGGINGFACE_HUB_SPEC,
+    ]
 
 
 def test_memory_runtime_dependency_check_detects_an_old_huggingface_version():
     from application.runtime import dependencies as runtime_dependencies
 
     versions = {
-        "click": "8.1.8",
-        "fastembed": "0.7.3",
         "huggingface-hub": "1.24.0",
-        "mem0ai": "2.0.12",
-        "sentence-transformers": "5.2.2",
-        "spacy": "3.8.11",
-        "transformers": "4.57.1",
+        "onnxruntime": "1.20.1",
     }
 
     issues = runtime_dependencies.runtime_dependency_issues(
-        "mem0",
+        "onnxruntime",
         installed_versions=versions,
     )
 
@@ -655,8 +658,8 @@ def test_memory_runtime_dependency_check_checks_the_complete_group():
     from application.runtime import dependencies as runtime_dependencies
 
     issues = runtime_dependencies.runtime_dependency_issues(
-        "mem0",
-        installed_versions={"mem0ai": "2.0.12"},
+        "onnxruntime",
+        installed_versions={"onnxruntime": "1.20.1"},
     )
 
     assert [issue.requirement for issue in issues] == list(
@@ -668,18 +671,13 @@ def test_memory_runtime_dependency_check_accepts_the_compatible_group():
     from application.runtime import dependencies as runtime_dependencies
 
     versions = {
-        "click": "8.1.8",
-        "fastembed": "0.7.3",
         "huggingface-hub": "0.36.2",
-        "mem0ai": "2.0.12",
-        "sentence-transformers": "5.2.2",
-        "spacy": "3.8.11",
-        "transformers": "4.57.1",
+        "onnxruntime": "1.20.1",
     }
 
     assert (
         runtime_dependencies.runtime_dependency_issues(
-            "mem0",
+            "onnxruntime",
             installed_versions=versions,
         )
         == ()
@@ -927,6 +925,19 @@ def test_declarative_runtime_dependency_registry_supports_custom_bundles_and_pro
                 package_specs=("pillow>=10.0",),
             )
         )
+    with pytest.raises(ValueError, match="reserved built-in runtime dependency key"):
+        register_runtime_dependency(
+            RuntimeDependencySpec(
+                key="onnxruntime",
+                package_specs=("onnxruntime>=1.0",),
+            )
+        )
+    onnx_spec = RUNTIME_DEPENDENCY_REGISTRY.get("onnxruntime")
+    assert onnx_spec is not None
+    assert onnx_spec.package_specs == runtime_dependencies.MEMORY_RUNTIME_PACKAGE_SPECS
+    tok_spec = RUNTIME_DEPENDENCY_REGISTRY.get("tokenizers")
+    assert tok_spec is not None
+    assert tok_spec.package_specs == (runtime_dependencies.TOKENIZERS_SPEC,)
 
     custom_spec = RuntimeDependencySpec(
         key="plugin_ocr_bundle",

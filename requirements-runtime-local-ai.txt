@@ -1,9 +1,4 @@
 -r requirements-runtime-core.txt
 onnxruntime
+tokenizers>=0.20,<1
 gpu-list
-mem0ai[nlp]
-click>=8.1,<9
-spacy>=3.7,<4
-sentence-transformers>=5.2,<6
-transformers>=4.51.1,<5
-fastembed

@@ -1,4 +1,4 @@
-"""User-facing memory operations."""
+"""User-facing memory operations backed by SOLID narrow ports."""
 
 from __future__ import annotations
 
@@ -13,7 +13,13 @@ import urllib.request
 from typing import Any
 
 from ai.memory.deduplication import find_duplicate_memory, semantic_deduplication_threshold
+from ai.memory.engine import (
+    HybridMemoryEngine,
+    resolve_memory_read_filter,
+    resolve_memory_write_target,
+)
 from ai.memory.runtime import ensure_mem0
+from sdk.adapters.memory import MemoryCandidateQuery, MemoryRecord
 
 logger = logging.getLogger(__name__)
 _MEMORY_SERVICE_URL_ENV = "SHINSEKAI_MEMORY_SERVICE_URL"
@@ -46,8 +52,7 @@ def _memory_row(row: Any) -> dict[str, str]:
 
 
 def _search_mem0(mem: Any, query: str, *, filters: dict[str, str], limit: int) -> Any:
-    """Search across Mem0 releases that renamed ``limit`` to ``top_k``."""
-
+    """Search across duck-typed memory stores supporting either limit or top_k."""
     parameters = inspect.signature(mem.search).parameters
     pagination = {"top_k": limit} if "top_k" in parameters else {"limit": limit}
     return mem.search(query, filters=filters, **pagination)
@@ -126,13 +131,7 @@ def memory_service_status(
     start_loading: bool,
     monitor_ready: bool = True,
 ) -> dict[str, Any] | None:
-    """Return bridge-owned memory status without loading mem0 in this process.
-
-    Chat initialization sets ``monitor_ready=False`` because it performs its
-    own foreground polling and must send ``startLoading=True`` only once.
-    Existing operation calls retain the background ready monitor behavior.
-    """
-
+    """Return bridge-owned memory status without loading engine in this process."""
     return _memory_service_request(
         "status",
         {"startLoading": bool(start_loading)},
@@ -181,10 +180,16 @@ def memory_list(character_name: str | None = None, *, limit: int = 200) -> dict[
     if service_result is not None:
         return service_result
     mem = ensure_mem0()
+    if isinstance(mem, HybridMemoryEngine):
+        with _mem0_operation_lock:
+            records = mem.repo.list_by_scope(
+                resolve_memory_read_filter(agent_id),
+                limit=max(1, int(limit)),
+            )
+        memories = [{"id": rec.id, "memory": rec.detail_text} for rec in records]
+        return {"agentId": agent_id, "count": len(memories), "memories": memories}
+
     with _mem0_operation_lock:
-        # mem0 renamed ``limit`` to ``top_k`` while retaining ``**kwargs``.
-        # With a new mem0 release the old name is therefore silently ignored
-        # and the query falls back to its default of 20 rows.
         parameters = inspect.signature(mem.get_all).parameters
         pagination = {"top_k": limit} if "top_k" in parameters else {"limit": limit}
         raw = mem.get_all(filters={"user_id": agent_id}, **pagination)
@@ -211,6 +216,38 @@ def memory_search(
     mem = ensure_mem0()
     agent_id = _resolve_agent_id(character_name)
     try:
+        if isinstance(mem, HybridMemoryEngine):
+            with _mem0_operation_lock:
+                q_vec = mem.embedder.embed_query(q)
+                hits = mem.repo.search_candidates(
+                    MemoryCandidateQuery(
+                        scope_filter=resolve_memory_read_filter(agent_id),
+                        query_vectors=(q_vec,),
+                        keyword_query=q,
+                        limit=max(1, int(limit)),
+                    )
+                )
+            mems = [
+                {
+                    "id": hit.record.id,
+                    "memory": hit.record.detail_text,
+                    "score": max(
+                        0.0,
+                        min(
+                            1.0,
+                            float(hit.vector_score if hit.vector_score > 0 else hit.fts_score),
+                        ),
+                    ),
+                }
+                for hit in hits
+            ]
+            return {
+                "agent_id": agent_id,
+                "query": q,
+                "count": len(mems),
+                "memories": mems,
+            }
+
         with _mem0_operation_lock:
             results = _search_mem0(mem, q, filters={"user_id": agent_id}, limit=limit)
         if isinstance(results, dict) and "results" in results:
@@ -246,6 +283,55 @@ def memory_remember(
     mem = ensure_mem0()
     agent_id = _resolve_agent_id(character_name)
     try:
+        if isinstance(mem, HybridMemoryEngine):
+            with _mem0_operation_lock:
+                q_vec = mem.embedder.embed_query(text)
+                cand_hits = mem.repo.search_candidates(
+                    MemoryCandidateQuery(
+                        scope_filter=resolve_memory_read_filter(agent_id),
+                        query_vectors=(q_vec,),
+                        keyword_query=text,
+                        limit=_SEMANTIC_DEDUPLICATION_SEARCH_LIMIT,
+                    )
+                )
+                candidates = [
+                    {
+                        "id": hit.record.id,
+                        "memory": hit.record.detail_text,
+                        "score": max(0.0, min(1.0, float(hit.vector_score))),
+                    }
+                    for hit in cand_hits
+                ]
+                duplicate = find_duplicate_memory(
+                    text,
+                    candidates,
+                    threshold=semantic_deduplication_threshold(),
+                )
+                if duplicate is not None:
+                    return {
+                        "ok": True,
+                        "duplicate": True,
+                        "duplicate_type": duplicate.match_type,
+                        "similarity": duplicate.similarity,
+                        "existing_memory_id": duplicate.memory_id,
+                        "existing_memory": duplicate.memory,
+                        "agent_id": agent_id,
+                        "content": text,
+                    }
+                scope, owner_id = resolve_memory_write_target(agent_id)
+                mem.repo.upsert(
+                    MemoryRecord(
+                        id="",
+                        scope=scope,
+                        owner_id=owner_id,
+                        detail_text=text,
+                        gist_text=text,
+                        kind="episodic",
+                        embedding=q_vec,
+                    )
+                )
+            return {"ok": True, "duplicate": False, "agent_id": agent_id, "content": text}
+
         with _mem0_operation_lock:
             candidates = _search_mem0(
                 mem,
@@ -301,7 +387,10 @@ def memory_forget(memory_id: str) -> dict[str, Any]:
     mem = ensure_mem0()
     try:
         with _mem0_operation_lock:
-            mem.delete(mid)
+            if isinstance(mem, HybridMemoryEngine):
+                mem.repo.delete(mid)
+            else:
+                mem.delete(mid)
         return {"ok": True, "memory_id": mid}
     except Exception as e:
         logger.exception("memory_forget 失败")

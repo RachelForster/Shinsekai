@@ -1,17 +1,9 @@
 import importlib
-
-
-import sys
-
-
 from pathlib import Path
-
-
+import sys
 from types import SimpleNamespace
 
-
 import pytest
-
 
 from application.knowledge import runtime
 from application.knowledge import tasks
@@ -23,17 +15,17 @@ def isolated_runtime(monkeypatch):
     monkeypatch.setattr(runtime, "_mem0_load_error", None)
     monkeypatch.setattr(runtime, "_mem0_loading", False)
     monkeypatch.setattr(tasks, "_mem0_task", None)
-    monkeypatch.setitem(sys.modules, "mem0", SimpleNamespace(Memory=object()))
+    monkeypatch.setitem(sys.modules, "onnxruntime", SimpleNamespace())
     monkeypatch.setattr(runtime, "embedding_model_snapshot_path", lambda: Path("cached-model"))
 
 
 def test_status_preserves_missing_transitive_dependency(monkeypatch):
     def missing(_name):
-        raise ModuleNotFoundError("No module named 'sentence_transformers'", name="sentence_transformers")
+        raise ModuleNotFoundError("No module named 'onnxruntime'", name="onnxruntime")
     monkeypatch.setattr(importlib, "import_module", missing)
     result = runtime.check_mem0_status(start_loading=False)
     assert result["status"] == "missing_dependency"
-    assert result["moduleName"] == "sentence_transformers"
+    assert result["moduleName"] == "onnxruntime"
 
 
 def test_peek_does_not_create_store_or_download(monkeypatch):
@@ -44,7 +36,7 @@ def test_peek_does_not_create_store_or_download(monkeypatch):
 
 
 def test_missing_dependency_fails_before_download(monkeypatch):
-    monkeypatch.setitem(sys.modules, "mem0", None)
+    monkeypatch.setitem(sys.modules, "onnxruntime", None)
     monkeypatch.setattr(runtime, "embedding_model_snapshot_path", lambda: None)
     monkeypatch.setattr(runtime, "download_model_asset", lambda *args, **kwargs: pytest.fail("download before dependency check"))
     with pytest.raises(ModuleNotFoundError):
@@ -53,14 +45,15 @@ def test_missing_dependency_fails_before_download(monkeypatch):
 
 
 def test_cached_snapshot_and_knowledge_config_are_used_once(monkeypatch):
-    import sys
     calls = []
     config = {"embedder": {"config": {}}, "vector_store": {"config": {"collection_name": "knowledge_knowledge"}}}
     store = object()
+
     def create(value):
         calls.append(value)
         return store
-    monkeypatch.setitem(sys.modules, "mem0", SimpleNamespace(Memory=SimpleNamespace(from_config=create)))
+
+    monkeypatch.setattr(runtime, "HybridKnowledgeStore", SimpleNamespace(from_config=create))
     monkeypatch.setattr(runtime, "embedding_model_snapshot_path", lambda: Path("cached-model"))
     monkeypatch.setattr("ai.knowledge.config.build_knowledge_mem0_config", lambda: config)
     monkeypatch.setattr(runtime, "download_model_asset", lambda *_: pytest.fail("unexpected download"))
@@ -77,15 +70,18 @@ def test_background_initialization_is_single_and_reports_loading(monkeypatch):
     threads = []
     calls = []
     real_thread = threading.Thread
+
     def tracked_thread(**kwargs):
         thread = real_thread(**kwargs)
         threads.append(thread)
         return thread
+
     def create(*_args):
         calls.append(True)
         entered.set()
         assert release.wait(5)
         return object()
+
     monkeypatch.setattr(runtime.threading, "Thread", tracked_thread)
     monkeypatch.setattr(runtime, "create_knowledge_mem0", create)
     try:
@@ -103,26 +99,27 @@ def test_background_initialization_is_single_and_reports_loading(monkeypatch):
 
 
 def test_cold_knowledge_download_does_not_initialize_memory(monkeypatch):
-    import sys
+    import inspect
     from ai.memory import runtime as memory_runtime
     from core.model_assets.service import download_model_asset as real_download
-    import inspect
 
     monkeypatch.setattr(memory_runtime, "get_mem0", lambda: pytest.fail("Knowledge initialized Memory"))
     monkeypatch.setattr(memory_runtime, "ensure_mem0", lambda: pytest.fail("Knowledge initialized Memory"))
     monkeypatch.setattr(memory_runtime, "_mem0_load_error", RuntimeError("Memory failed"))
     monkeypatch.setattr(runtime, "embedding_model_snapshot_path", lambda: None)
     downloads = []
+
     def download(*args, **kwargs):
         inspect.signature(real_download).bind(*args, **kwargs)
         kwargs["update_task"](phase="download", progress=0.5)
         downloads.append(args[0])
         return {"path": "knowledge-downloaded-model"}
+
     monkeypatch.setattr(runtime, "download_model_asset", download)
     config = {"embedder": {"config": {}}}
     monkeypatch.setattr("ai.knowledge.config.build_knowledge_mem0_config", lambda: config)
     store = object()
-    monkeypatch.setitem(sys.modules, "mem0", SimpleNamespace(Memory=SimpleNamespace(from_config=lambda _: store)))
+    monkeypatch.setattr(runtime, "HybridKnowledgeStore", SimpleNamespace(from_config=lambda _: store))
     assert runtime.get_mem0() is store
     assert len(downloads) == 1
     assert config["embedder"]["config"]["model"] == "knowledge-downloaded-model"
@@ -130,7 +127,7 @@ def test_cold_knowledge_download_does_not_initialize_memory(monkeypatch):
 
 
 def test_failed_dependency_waits_for_install_then_can_restart(monkeypatch):
-    monkeypatch.setattr(runtime, "_mem0_load_error", ModuleNotFoundError("No module named 'mem0'", name="mem0"))
+    monkeypatch.setattr(runtime, "_mem0_load_error", ModuleNotFoundError("No module named 'onnxruntime'", name="onnxruntime"))
     monkeypatch.setattr(importlib.util, "find_spec", lambda _: None)
     assert runtime.check_mem0_status()["status"] == "missing_dependency"
     monkeypatch.setattr(importlib.util, "find_spec", lambda _: object())
@@ -162,9 +159,11 @@ def test_initialization_failure_is_reported_and_success_clears_it(monkeypatch):
 
 def test_failed_knowledge_polling_does_not_restart(monkeypatch):
     calls = []
+
     def fail(*_args):
         calls.append(True)
         raise RuntimeError("download unavailable")
+
     monkeypatch.setattr(runtime, "create_knowledge_mem0", fail)
     with pytest.raises(RuntimeError, match="download unavailable"):
         runtime.get_mem0()
@@ -202,13 +201,16 @@ def test_get_waits_for_background_creation_and_times_out(monkeypatch):
         return store
 
     real_thread = threading.Thread
+
     def tracked_thread(**kwargs):
         target = kwargs.pop("target")
+
         def run():
             try:
                 target()
             finally:
                 finished.set()
+
         return real_thread(target=run, **kwargs)
 
     monkeypatch.setattr(runtime.threading, "Thread", tracked_thread)
@@ -226,18 +228,20 @@ def test_get_waits_for_background_creation_and_times_out(monkeypatch):
     assert runtime.get_mem0() is store
 
 
-@pytest.mark.parametrize("module_name", ["sentence_transformers", None])
+@pytest.mark.parametrize("module_name", ["onnxruntime", None])
 def test_background_dependency_error_has_structured_task(monkeypatch, module_name):
     error = ModuleNotFoundError("dependency unavailable", name=module_name)
+
     def fail(*_args):
         raise error
+
     monkeypatch.setattr(runtime, "create_knowledge_mem0", fail)
     monkeypatch.setattr(importlib.util, "find_spec", lambda _: None)
     with pytest.raises(ModuleNotFoundError):
         runtime.get_mem0()
     status = runtime.check_mem0_status(start_loading=False)
     assert status["status"] == "missing_dependency"
-    assert status["moduleName"] == (module_name or "mem0")
+    assert status["moduleName"] == "onnxruntime"
     assert status["task"]["errorCode"] == "missing_dependency"
     assert status["task"]["status"] == "failed"
     assert status["task"]["errorUserMessage"]
@@ -249,8 +253,10 @@ def test_download_error_and_retry_reset_task(monkeypatch):
     response = httpx.Response(503, request=request)
     error = httpx.HTTPStatusError("unavailable", request=request, response=response)
     monkeypatch.setattr(runtime, "embedding_model_snapshot_path", lambda: None)
+
     def download(*_args, **_kwargs):
         raise error
+
     monkeypatch.setattr(runtime, "download_model_asset", download)
     with pytest.raises(httpx.HTTPStatusError):
         runtime.get_mem0()
@@ -262,9 +268,11 @@ def test_download_error_and_retry_reset_task(monkeypatch):
     tasks.set_mem0_task(logs=["previous attempt"], result="old result")
     snapshots = []
     store = object()
+
     def create(*_args):
         snapshots.append(tasks.current_mem0_task())
         return store
+
     monkeypatch.setattr(runtime, "embedding_model_snapshot_path", lambda: Path("cached"))
     monkeypatch.setattr(runtime, "create_knowledge_mem0", create)
     runtime.start_mem0_loading(retry=True)
