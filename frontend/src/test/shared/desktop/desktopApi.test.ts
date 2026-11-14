@@ -35,8 +35,10 @@ import {
   repairDesktopRuntime,
   reloadDesktopFrontend,
   selectDesktopProjectRoot,
+  setDesktopChatWindowMiniMode,
   setDesktopWindowAlwaysOnTop,
   startDesktopWindowDrag,
+  syncDesktopChatWindowMiniLayout,
   toggleMaximizeDesktopWindow,
   closeDesktopWindow,
 } from "../../../shared/desktop/desktopApi";
@@ -149,6 +151,19 @@ describe("desktop API environment detection", () => {
     expect(mockInvoke).toHaveBeenCalledWith("desktop_window_close", undefined);
     expect(mockInvoke).toHaveBeenCalledWith("desktop_open_chat_window", undefined);
     expect(mockInvoke).toHaveBeenCalledWith("desktop_frontend_reload", undefined);
+  });
+
+  it("invokes desktop mini avatar window mode and layout sync commands", async () => {
+    mockInvoke.mockResolvedValue({ dockSide: "left" });
+
+    await expect(setDesktopChatWindowMiniMode(true, false)).resolves.toEqual({ dockSide: "left" });
+    await expect(syncDesktopChatWindowMiniLayout()).resolves.toEqual({ dockSide: "left" });
+
+    expect(mockInvoke).toHaveBeenCalledWith("desktop_chat_window_set_mini_mode", {
+      mini: true,
+      restoreAlwaysOnTop: false,
+    });
+    expect(mockInvoke).toHaveBeenCalledWith("desktop_chat_window_sync_mini_layout", undefined);
   });
 
   it("passes desktop file browser defaults and Windows paths through unchanged", async () => {
