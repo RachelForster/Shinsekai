@@ -42,6 +42,7 @@ class ConfigManager:
     """
     _instance: Optional['ConfigManager'] = None
     _config: Optional[AppConfig] = None
+    _characters_revision: str = ""
     
     # 配置文件路径定义
     _API_CONFIG_PATH = Path("data/config/api.yaml")
@@ -95,6 +96,16 @@ class ConfigManager:
         return self._config
 
     @property
+    def characters_revision(self) -> str:
+        """Opaque catalog version, changed only after a save or changed reload."""
+        return self._characters_revision
+
+    def _mark_characters_changed(self) -> None:
+        from uuid import uuid4
+
+        self._characters_revision = uuid4().hex
+
+    @property
     def feature_flags(self) -> FeatureFlagConfigManager:
         """Return the centralized flag view for the current system config."""
         return FeatureFlagConfigManager(self.config.system_config)
@@ -136,6 +147,7 @@ class ConfigManager:
             effect_list = [Effect.model_validate(item) for item in effect_data]
 
             # 构建顶层 AppConfig 实体
+            previous_config = self._config
             self._config = AppConfig(
                 api_config=api_config,
                 system_config=system_config,
@@ -143,6 +155,8 @@ class ConfigManager:
                 background_list=background,
                 effect_list=effect_list,
             )
+            if previous_config is None or previous_config.characters != character_list:
+                self._mark_characters_changed()
             apply_network_proxy_environment(system_config)
             apply_mirror_environment(system_config)
             print("配置加载成功！")
@@ -173,9 +187,12 @@ class ConfigManager:
             for item in characters_data
         ]
         backgrounds = [Background.model_validate(item) for item in background_data]
+        changed = self.config.characters != characters
         self._config = self.config.model_copy(
             update={"characters": characters, "background_list": backgrounds}
         )
+        if changed:
+            self._mark_characters_changed()
         
     def save_api_config(self) -> None:
         """独立保存 API 配置到 api.yaml"""
@@ -355,6 +372,7 @@ class ConfigManager:
         # JSON 模式将嵌套的 Path 转为字符串，避免 YAML 写出 safe_load 无法读取的 Python 标签。
         characters_data = [char.model_dump(mode="json", by_alias=True) for char in self.config.characters]
         self._save_single_config(self._CHARACTERS_CONFIG_PATH, characters_data)
+        self._mark_characters_changed()
         print("characters.yaml 保存完成。")
     
     def save_background_config(self) -> None:

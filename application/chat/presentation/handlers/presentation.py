@@ -14,6 +14,7 @@ from typing import Any, List
 from i18n import tr as tr_i18n
 
 from ai.asr.asr_adapter import get_asr_log
+from application.chat.presentation.replay import ReplayPresentationMessage
 from application.runtime.context import get_app_runtime
 from core.messaging.dialog_tokens import (
     SYSTEM_UI_SKIP,
@@ -68,13 +69,16 @@ class OptionsUiHandler(UIOutputMessageHandler):
     def handle(self, out: PresentationMessage) -> None:
         _ui().hide_busy_bar()
         sp = out.text or ""
+        option_list = [p.strip() for p in sp.split("/") if p.strip()]
+        if isinstance(out, ReplayPresentationMessage):
+            _ui().post_options(option_list, selected_index=out.selected_index)
+            return
         label = tr_i18n("dialog.option_badge")
         formatted_option = (
             f"<p style='line-height: 135%; letter-spacing: 2px; color:#84C2D5;'>"
             f"<b>{label}</b>：{sp}</p>"
         )
         _ui().chat_history.append(formatted_option)
-        option_list = [p.strip() for p in sp.split("/") if p.strip()]
         _ui().post_options(option_list)
 
 
@@ -120,6 +124,8 @@ class CgUiHandler(UIOutputMessageHandler):
 
     def handle(self, out: PresentationMessage) -> None:
         _ui().hide_busy_bar()
+        if isinstance(out, ReplayPresentationMessage) and not out.audio_path:
+            return
         try:
             path = out.audio_path or ""
             if "no person" in (out.text or ""):
@@ -144,11 +150,15 @@ class SystemMiscUiHandler(UIOutputMessageHandler):
 
     def handle(self, out: PresentationMessage) -> None:
         _ui().hide_busy_bar()
+        replay = out if isinstance(out, ReplayPresentationMessage) else None
         _ui().update_dialog(
             out.name,
             out.text or "",
             "#84C2D5",
+            **({"animate": replay.animate} if replay is not None else {}),
         )
+        if replay is not None:
+            return
         _ui().resolve_effect(
             effect=out.effect, args={"character_name": out.name}, after_dialog=False
         )
@@ -158,7 +168,7 @@ class SystemMiscUiHandler(UIOutputMessageHandler):
             ev.wait(timeout=max(len(sp) / 10, 0.5))
 
     def post_process(self, out: PresentationMessage) -> None:
-        if not out.is_final_segment:
+        if not out.is_final_segment or isinstance(out, ReplayPresentationMessage):
             return
         get_app_runtime().ui_update_manager.resolve_effect(
             effect=out.effect,
@@ -182,6 +192,7 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
         ui = rt.ui_update_manager
         ui.hide_busy_bar()
         ch = _play()
+        replay = out if isinstance(out, ReplayPresentationMessage) else None
         character_name = out.name
         speech = out.text or ""
         sprite_id = out.asset_id
@@ -190,7 +201,7 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
             audio_path = Path(audio_path).as_posix()
         effect = out.effect
         is_player = character_name == str(getattr(rt, "player_character", "") or "")
-        if is_player:
+        if is_player and replay is None:
             allow_dialogue = bool(getattr(rt, "allow_player_dialogue", True))
             generated_dialogue = allow_dialogue and bool(speech)
             continuation = allow_dialogue and out.timeout == 0 and bool(audio_path)
@@ -209,12 +220,18 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
                 audio_path = ""
         is_continuation = not speech  # 非首段，仅播放音频
 
-        if not is_continuation:
+        if not is_continuation and replay is None:
             from sdk.logging.timing import tracker
             tracker.stop_cross("e2e")
 
         character_config = get_character_by_name(character_name)
-        if character_config and not is_player:
+        if character_config and not is_player and replay is not None and replay.restore_sprite:
+            try:
+                index = int(sprite_id) - 1
+            except (TypeError, ValueError):
+                index = None
+            ui.update_sprite(character_name, index, slot=replay.sprite_slot)
+        elif character_config and not is_player and replay is None:
             try:
                 catalog = tuple(
                     str(
@@ -241,9 +258,10 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
 
         if not is_continuation:
             fallback_color = "#84C2D5"
-            if not character_config:
-                print(f"PresentationWorker: 未找到角色配置「{character_name}」，跳过立绘；仅在有台词时用占位颜色显示")
-            ui.post_notification(f"{character_name}正在回复……")
+            if replay is None:
+                if not character_config:
+                    print(f"PresentationWorker: 未找到角色配置「{character_name}」，跳过立绘；仅在有台词时用占位颜色显示")
+                ui.post_notification(f"{character_name}正在回复……")
             if speech:
                 color = character_config.color if character_config else fallback_color
                 ui.update_dialog(
@@ -252,8 +270,11 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
                     color,
                     is_system=False,
                     **({"voice_id": out.voice_id} if out.voice_id else {}),
-                    **({"dialog_id": out.dialog_id} if out.voice_id and out.dialog_id else {}),
+                    **({"dialog_id": out.dialog_id} if out.dialog_id else {}),
+                    **({"animate": replay.animate} if replay is not None else {}),
                 )
+        if replay is not None:
+            return
         if not is_continuation or str(effect or "").strip():
             ui.resolve_effect(
                 effect=effect, args={"character_name": character_name}, after_dialog=False
@@ -300,7 +321,7 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
             ev.wait(timeout=min_stop_time)
 
     def post_process(self, out: PresentationMessage) -> None:
-        if not out.is_final_segment:
+        if not out.is_final_segment or isinstance(out, ReplayPresentationMessage):
             return
         get_app_runtime().ui_update_manager.resolve_effect(
             effect=out.effect,

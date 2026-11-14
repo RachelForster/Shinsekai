@@ -1,20 +1,22 @@
-import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type DragEvent } from "react";
 import { FileText, ImagePlus, LoaderCircle, Mic, MicOff, Plus, Send, X } from "lucide-react";
 
 import { useI18n } from "../../../shared/i18n";
-import type { ChatAttachmentInput, ChatCommand } from "../../../shared/platform/types";
+import type { ChatAttachmentInput, ChatCommand, ChatReplayProgress } from "../../../shared/platform/types";
 import { Button, IconButton, TextArea, TextInput, ThemeFrame } from "../../../shared/ui";
 import { useDismissableLayer } from "../hooks/useDismissableLayer";
 import { useAutoHideRegion } from "../hooks/useAutoHideRegion";
+import { useReplayDraft } from "../replay/useReplayDraft";
 
 export function InputLayer({
-  attachments,
+  attachments: liveAttachments,
   autoHide = false,
   asrEnabled,
   asrLoading,
   asrRunning,
   batchEnabled,
   disabled,
+  locked = false,
   hidden,
   inputLayout = "default",
   onChange,
@@ -26,8 +28,9 @@ export function InputLayer({
   onRemoveAttachment,
   onSubmit,
   previousMessages,
+  replayProgress,
   submitDisabled = false,
-  value,
+  value: liveValue,
 }: {
   asrEnabled: boolean;
   asrLoading: boolean;
@@ -36,6 +39,7 @@ export function InputLayer({
   autoHide?: boolean;
   batchEnabled: boolean;
   disabled: boolean;
+  locked?: boolean;
   hidden: boolean;
   inputLayout?: "default" | "pill";
   onChange: (value: string) => void;
@@ -48,6 +52,7 @@ export function InputLayer({
   onRemoveAttachment: (attachment: ChatAttachmentInput) => void;
   submitDisabled?: boolean;
   previousMessages: string[];
+  replayProgress?: ChatReplayProgress | null;
   value: string;
 }) {
   const { t } = useI18n();
@@ -57,6 +62,10 @@ export function InputLayer({
   const historyIndexRef = useRef(-1);
   const inputActivityRef = useRef("");
   const pillLayout = inputLayout === "pill";
+  const replayDraft = useReplayDraft(replayProgress);
+  const replayPhase = replayProgress?.input?.phase;
+  const attachments = locked ? [] : liveAttachments;
+  const value = locked ? replayDraft : liveValue;
   const canSubmit = Boolean(value.trim() || attachments.length) && !disabled && !submitDisabled;
   const closePanel = useCallback(() => setPanelOpen(false), []);
   const forceVisible = Boolean(value.trim() || attachments.length) || asrEnabled || panelOpen;
@@ -160,10 +169,18 @@ export function InputLayer({
   useDismissableLayer({ active: panelOpen, onDismiss: closePanel, rootRef });
 
   useEffect(() => {
-    if (hidden || !pillLayout) {
+    if (hidden || locked || !pillLayout) {
       setPanelOpen(false);
     }
-  }, [hidden, pillLayout]);
+  }, [hidden, locked, pillLayout]);
+
+  useLayoutEffect(() => {
+    if (replayPhase !== "typing") return;
+    const input = rootRef.current?.querySelector<HTMLInputElement | HTMLTextAreaElement>(".input-layer__input");
+    if (!input) return;
+    if (pillLayout) input.scrollLeft = input.scrollWidth;
+    else input.scrollTop = input.scrollHeight;
+  }, [pillLayout, replayPhase, value]);
 
   if (hidden) {
     return null;
@@ -177,6 +194,8 @@ export function InputLayer({
       data-chat-stage-hitbox="true"
       data-force-visible={forceVisible ? "true" : "false"}
       data-layout={inputLayout}
+      data-replay-input={replayPhase}
+      data-replay-ready={replayPhase === "typing" && value ? "true" : undefined}
       data-asr-enabled={asrEnabled ? "true" : "false"}
       data-asr-loading={asrLoading ? "true" : "false"}
       data-listening={asrRunning ? "true" : "false"}
@@ -194,13 +213,18 @@ export function InputLayer({
       style={autoHideRegion.visible ? undefined : { pointerEvents: "none" }}
     >
       <ThemeFrame prefix="chat-input" />
+      {replayPhase === "submitting" ? (
+        <span className="input-layer__replay-status" role="status">
+          {t("chat.replay.messageSent")}
+        </span>
+      ) : null}
       {pillLayout ? (
         <IconButton
           aria-busy={asrLoading}
           aria-pressed={asrEnabled}
           className={`input-layer__press ${asrButtonClassName}`}
           data-active={asrEnabled ? "true" : "false"}
-          disabled={disabled && !asrEnabled}
+          disabled={locked || (disabled && !asrEnabled)}
           label={asrLabel}
           onClick={toggleAsr}
         >
@@ -316,6 +340,7 @@ export function InputLayer({
             <IconButton
               aria-expanded={panelOpen}
               className="input-layer__extra-toggle"
+              disabled={locked}
               label={t("chat.input.moreActions")}
               onClick={() => setPanelOpen((current) => !current)}
             >
@@ -363,7 +388,7 @@ export function InputLayer({
             aria-busy={asrLoading}
             aria-pressed={asrEnabled}
             className={`input-layer__voice-button ${asrButtonClassName}`}
-            disabled={disabled && !asrEnabled}
+            disabled={locked || (disabled && !asrEnabled)}
             label={asrLabel}
             onClick={toggleAsr}
           >

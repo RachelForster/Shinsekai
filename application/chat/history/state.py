@@ -127,6 +127,9 @@ def serialize_chat_history_entries(history: list[Any]) -> list[dict[str, Any]]:
             "role": role,
             "text": text,
         }
+        identity = re.search(r"\bdata-dialog-id=['\"]([0-9a-f]{64})['\"]", str(history_entry or ""))
+        if identity:
+            item["dialogId"] = identity.group(1)
         voice_match = re.search(r"\bdata-voice-id=['\"]([0-9a-f]{32})['\"]", str(history_entry or ""))
         if voice_match:
             item["voiceId"] = voice_match.group(1)

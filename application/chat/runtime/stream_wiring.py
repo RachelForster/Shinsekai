@@ -255,6 +255,8 @@ class _StreamingSessionWiring:
 
     def _create_command_dispatcher(self) -> ChatCommandDispatcher:
         ui_worker = self.runtime.ui_worker
+        if getattr(ui_worker, "replay", None) is not None:
+            ui_worker.replay.ui = self.ui_updates
 
         def handle_playback_signal(
             playback_id: str,
@@ -308,6 +310,7 @@ class _StreamingSessionWiring:
             history_presenter=StreamingHistoryPresenter(self.ui_updates),
             tts_manager=self.startup.tts_manager,
             voice_archive=getattr(self.ui_updates, "voice_archive", None),
+            replay=getattr(ui_worker, "replay", None),
         )
 
     def _sync_stream_history(self) -> None:

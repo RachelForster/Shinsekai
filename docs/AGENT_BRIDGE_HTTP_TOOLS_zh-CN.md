@@ -15,7 +15,7 @@ HTTP 实现位于 `frontend_bridge_core/transport/agent_http_tools.py`。`fronte
 
 bridge token 只保存在宿主 HTTP client 中，不传到 worker、提示词或工具 schema。响应中的凭据字段、已识别的秘密值与常见凭据文本会脱敏，同时保留人物正文、插件 schema 等业务内容。单个响应上限为 512 KiB，默认请求超时为 30 秒；插件工具调用为 90 秒，以覆盖浏览器启动与网页导航。
 
-CLI 没有桌面 bridge，因此不自动注册这两个 HTTP 工具。桌面与 CLI 均开启 Pi 内置文件、搜索和 shell 工具；MCP 保持关闭。宿主工具与技能引用固定在 session 快照中；升级后新建助手 session 使用新增插件工具操作和人物创建 skill `1.5.1`。原生文件与命令结果不经过本 HTTP 适配器的脱敏、call ID 去重或操作记录，详见 [Pi 工具说明](AGENT_PI_zh-CN.md)。
+CLI 没有桌面 bridge，因此不自动注册这两个 HTTP 工具。桌面与 CLI 均开启 Pi 内置文件、搜索和 shell 工具；MCP 保持关闭。宿主工具与技能引用固定在 session 快照中；升级后新建助手 session 使用新增插件工具操作和人物创建 skill `1.6.1`。原生文件与命令结果不经过本 HTTP 适配器的脱敏、call ID 去重或操作记录，详见 [Pi 工具说明](AGENT_PI_zh-CN.md)。
 
 ## 已注册操作
 
@@ -42,6 +42,10 @@ CLI 没有桌面 bridge，因此不自动注册这两个 HTTP 工具。桌面与
 | --- | --- | --- |
 | `characters.save` | POST `/api/characters` | `body.character`；编辑时带 `body.originalName` |
 | `characters.sprites.import` | POST `/api/characters/sprites/upload` | `body.name`、`body.paths` |
+| `characters.sprites.plan` | POST `/api/characters/sprites/plan` | `name`、`setting`、`count`（创建默认 10）、可选 `requirements`、`referenceImage`；返回任务 |
+| `characters.sprites.render` | POST `/api/characters/sprites/render` | `name`、`prompt`、`tagging`、可选 `referenceImage`、`removeBackground`、`h3Resolution`；返回静态立绘任务 |
+| `characters.sprites.remove_background` | POST `/api/characters/sprites/remove-background` | `name`、`taskId`；只重试抠图，返回新任务 |
+| `characters.sprites.import_generated` | POST `/api/characters/sprites/import-generated` | `name`、`items:[{taskId,tagging}]`（1–12 项）；导入成功结果并保存，重复任务不新增副本 |
 | `plugins.install` | POST `/api/plugins/install` | `body.source`，沿用已有安装和下载机制 |
 | `plugins.enable` | POST `/api/plugins/{plugin_id}/enabled` | `body.enabled` |
 | `plugins.configure` | POST `/api/plugins/{plugin_id}/ui/{page_id}/config` | `body.values`，先 inspect |
@@ -51,6 +55,8 @@ CLI 没有桌面 bridge，因此不自动注册这两个 HTTP 工具。桌面与
 | `tts.install` | POST `/api/config/tts-bundle/download` | `body.kind`：`genie`、`gptso`、`gptso50` |
 
 人物和插件先查名字或精简列表，确定任务目标后再读单项详情，不批量展开无关设定、资源或配置。精简在 HTTP 路由序列化响应前完成，人物库或插件说明较大时，列表不会因这些详情触及 512 KiB 限额。前端不带 `view` 的原有列表与配置请求保持完整响应。
+
+前端独立于助手面板，每秒查询 GET `/api/characters?view=revision` 的轻量版本号，仅在版本变化时使人物列表缓存失效并重新获取。`ConfigManager.save_characters_config()` 成功写盘以及加载到变化的人物配置时更新版本，覆盖 Agent 保存、生成立绘导入和其他既有人物操作。该版本不是人物保存的条件参数；原有写入接口仍需读取目标、核对并保留其他字段。
 
 例如 `characters.list` 的 `data` 为 `["Alice", "Bob"]`。只需要编辑 Alice 时，再调用：
 

@@ -86,6 +86,7 @@ class ChatCommandDispatcher:
         history_presenter: Any = None,
         tts_manager: Any = None,
         voice_archive: Any = None,
+        replay: Any = None,
     ) -> None:
         self.bindings = bindings
         self.config = config
@@ -100,8 +101,12 @@ class ChatCommandDispatcher:
         self.history_presenter = history_presenter
         self.tts_manager = tts_manager
         self.voice_archive = voice_archive
+        self.replay = replay
 
         self._handlers: dict[str, Callable[[object], None]] = {
+            "replay-start": lambda payload: self.replay.start(payload),
+            "replay-control": lambda payload: self.replay.control(payload),
+            "replay-voice": lambda payload: self.replay.voice(payload),
             "close-session": self._close_session,
             "send-message": self._send_message,
             "submit-option": self._submit_option,
@@ -132,6 +137,11 @@ class ChatCommandDispatcher:
         """Execute one request and convert failures into an ack-ready result."""
 
         try:
+            if self.replay is not None and self.replay.active and request.type in {
+                "send-message", "submit-option", "reroll", "clear-history", "revert-history",
+                "fork-history", "switch-branch", "begin-asr-hold", "resume-asr", "flush-input-batch",
+            }:
+                raise ValueError("回放期间无法推进或修改对话，请先退出回放")
             handler = self._handlers.get(request.type)
             if handler is None:
                 raise ValueError(f"未知实时聊天命令：{request.type}")

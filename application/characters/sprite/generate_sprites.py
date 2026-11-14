@@ -6,12 +6,18 @@ import json
 import re
 import secrets
 from pathlib import Path
-from typing import Any
+from types import SimpleNamespace
+from typing import Any, Iterable
 
+from ai.t2i.reference_image import validate_h3_sprite_resolution
 from application.characters.generate_briefs import chat_character_text
-from application.characters.h3_idle_workflow import stabilize_idle_workflow
+from application.characters.sprite.h3_idle_workflow import stabilize_idle_workflow
+from application.media.resource_paths import MediaResourcePaths
 from application.media.sprite_tags import SPRITE_TAG_INSTRUCTIONS
+from application.runtime.state import _jsonify
+from application.runtime.tasks import _update_task
 from core.media.asset_tags import normalize_generated_tags
+from sdk.path_utils import safe_existing_file_path
 
 
 SPRITE_CAMERA_SUFFIX = ", locked-off static camera, fixed viewpoint and focal length throughout, plain light, sprite"
@@ -152,7 +158,7 @@ def plan_sprites(config_store: Any, payload: dict) -> dict:
 def matting_options(
     payload, *, auto_screen=False, alpha_matting=False, model="toonout"
 ):
-    from tools.remove_bg import validate_matting_model
+    from core.media.background_removal import validate_matting_model
 
     options = {
         "autoScreen": payload.get("autoScreen", auto_screen),
@@ -175,11 +181,12 @@ def render_sprite(
     loop_reference: bool = False,
     stabilize_pose: bool = False,
     last_reference: Path | None = None,
+    h3_frame_count: int | None = None,
 ) -> dict:
     from PIL import Image
 
     from ai.t2i.t2i_manager import T2IAdapterFactory, T2IManager
-    from ai.t2i.reference_image import validate_h3_sprite_resolution
+    from ai.t2i.reference_image import H3_SPRITE_RESOLUTIONS, reference_canvas_size
 
     pair = prompt_pair(payload)
     processing = matting_options(payload)
@@ -233,8 +240,20 @@ def render_sprite(
                 for node in nodes:
                     if node.get("inputs", {}).get("first_frame"):
                         node["inputs"]["last_frame"] = node["inputs"]["first_frame"]
+            if h3_frame_count is not None:
+                if (
+                    isinstance(h3_frame_count, bool)
+                    or not isinstance(h3_frame_count, int)
+                    or not 5 <= h3_frame_count <= 362
+                    or h3_frame_count % 17 != 5
+                ):
+                    raise ValueError("H3 帧数须为 5–362 范围内的 17k+5")
+                for node in nodes:
+                    node["inputs"]["length"] = h3_frame_count
+                for node in adapter.workflow_template.values():
+                    if node.get("class_type") == "CreateVideo":
+                        node["inputs"]["fps"] = 24
             if last_reference:
-                from ai.t2i.reference_image import reference_canvas_size
                 from core.sprite.transitions import TRANSITION_FRAME_COUNT
 
                 first = nodes[0]["inputs"]["first_frame"]
@@ -251,8 +270,9 @@ def render_sprite(
                     "inputs": {"image": "last.png"},
                 }
                 canvas = nodes[0]["inputs"]
+                budget = H3_SPRITE_RESOLUTIONS[h3_resolution] or (canvas["width"], canvas["height"])
                 width, height = reference_canvas_size(
-                    reference, canvas["width"], canvas["height"]
+                    reference, *budget
                 )
                 for node in nodes:
                     node["inputs"].update(
@@ -264,6 +284,10 @@ def render_sprite(
                 for node in adapter.workflow_template.values():
                     if node.get("class_type") == "CreateVideo":
                         node["inputs"]["fps"] = 24
+            elif budget := H3_SPRITE_RESOLUTIONS[h3_resolution]:
+                width, height = reference_canvas_size(reference, *budget)
+                for node in nodes:
+                    node["inputs"].update(width=width, height=height)
             if stabilize_pose:
                 adapter.workflow_template = stabilize_idle_workflow(
                     adapter.workflow_template
@@ -317,6 +341,7 @@ def render_sprite(
             **pair,
             **media,
             **({"matting": matting} if matting else {}),
+            **({"h3Resolution": h3_resolution} if require_h3_video else {}),
             "path": output.as_posix(),
             "name": str(payload.get("name") or ""),
         }
@@ -386,7 +411,7 @@ def capture_sprite_frame(
 
 
 def remove_sprite_background(source: dict, original: Path, output: Path) -> dict:
-    from tools.remove_bg import ai_remove_background
+    from core.media.background_removal import ai_remove_background
 
     settings = dict(source.get("matting") or {})
     metadata = {}
@@ -411,3 +436,306 @@ def remove_sprite_background(source: dict, original: Path, output: Path) -> dict
         },
         **{key: source[key] for key in ("videoPath", "frameTime") if key in source},
     }
+
+
+def _local_file_access_roots(state: Any) -> tuple[Path, ...]:
+    project_root = Path(getattr(state, "project_root_dir", "") or Path.cwd())
+    return MediaResourcePaths(project_root).file_access_roots
+
+
+def _resolve_file_access_roots(
+    state: Any, file_access_roots: Iterable[Path] = ()
+) -> tuple[Path, ...]:
+    roots = tuple(file_access_roots)
+    if not roots:
+        return _local_file_access_roots(state)
+    project_root = Path(getattr(state, "project_root_dir", "") or Path.cwd())
+    return MediaResourcePaths(
+        project_root, file_access_roots=roots
+    ).file_access_roots
+
+
+def run_sprite_plan(state, task_id, payload):
+    _update_task(
+        state,
+        task_id,
+        message="正在根据人物性格设计提示词和标签。",
+        phase="prompt",
+        progress=0.1,
+    )
+    return plan_sprites(state.config_manager, payload)
+
+
+def run_sprite_render(
+    state, task_id, payload, *, file_access_roots: Iterable[Path] = ()
+):
+    matting_options(payload)
+    remove_background = _auto_remove_background(payload)
+    name = str(payload.get("name") or "").strip()
+    if not state.config_manager.get_character_by_name(name):
+        raise ValueError("请先保存角色再生成立绘")
+    output = (
+        Path(state.project_root_dir) / "cache" / "sprite_generation" / f"{task_id}.png"
+    )
+    reference = None
+    if payload.get("referenceImage"):
+        reference = safe_existing_file_path(
+            str(payload["referenceImage"]),
+            roots=_resolve_file_access_roots(state, file_access_roots),
+            field="referenceImage",
+        )
+        _update_task(
+            state,
+            task_id,
+            phase="reference",
+            progress=0.05,
+            message="正在读取参考立绘；视频将取首帧并保留透明通道。",
+        )
+        reference = boundary_frame(
+            reference, output.with_name(f"{task_id}-reference.png"), last=False
+        )
+    _update_task(
+        state,
+        task_id,
+        message="正在生成立绘，耗时取决于模型和工作流。",
+        phase="generate",
+        progress=0.15,
+    )
+    result = render_sprite(
+        state.config_manager, {**payload, "name": name}, output, reference
+    )
+    return _finish_sprite(state, task_id, result, remove_background)
+
+
+def _auto_remove_background(payload):
+    enabled = payload.get("removeBackground", True)
+    if not isinstance(enabled, bool):
+        raise ValueError("removeBackground 必须为布尔值")
+    return enabled
+
+
+def _finish_sprite(state, task_id, result, remove_background):
+    result = {**result, "taskId": task_id, "backgroundRemoved": False}
+    if not remove_background:
+        return _approve_sprite_media(state, result)
+    _update_task(
+        state,
+        task_id,
+        phase="remove-background",
+        message="正在自动移除立绘背景。",
+        progress=0.8,
+    )
+    original = Path(result["path"])
+    output = original.with_name(f"{task_id}-cutout.png")
+    try:
+        result = {
+            **remove_sprite_background(result, original, output),
+            "taskId": task_id,
+        }
+    except Exception as exc:
+        # A successful, expensive render stays usable even if local matting fails.
+        result = {**result, "backgroundRemovalError": str(exc)}
+    return _approve_sprite_media(state, result)
+
+
+def _approve_sprite_media(state, result):
+    approve = getattr(
+        getattr(state, "chat_stream", None), "approve_external_media_path", None
+    )
+    if callable(approve):
+        for key in ("path", "originalPath", "videoPath"):
+            if result.get(key):
+                path = safe_existing_file_path(
+                    result[key],
+                    roots=(
+                        Path(state.project_root_dir) / "cache" / "sprite_generation",
+                    ),
+                    field="generatedMedia",
+                )
+                approve(path.as_posix())
+    return result
+
+
+def _generated_task(state, task_id, name):
+    task = state.tasks.get(task_id)
+    if (
+        not task
+        or task["kind"]
+        not in {
+            "character-sprite-render",
+            "character-sprite-frame",
+            "character-sprite-cutout",
+            "character-sprite-animate",
+        }
+        or task["status"] != "succeeded"
+    ):
+        raise ValueError("立绘结果不可用，请重新生成")
+    if (task.get("result") or {}).get("name") != name:
+        raise ValueError("立绘结果不属于当前角色")
+    return task
+
+
+def run_sprite_frame(state, task_id, payload):
+    from application.characters.sprite.animate_sprites import retry_animation_matting
+
+    remove_background = _auto_remove_background(payload)
+    name = str(payload.get("name") or "").strip()
+    with state.task_lock:
+        source = dict(
+            _generated_task(state, str(payload.get("taskId") or ""), name)["result"]
+        )
+    if not source.get("videoPath"):
+        raise ValueError("这张立绘没有可截帧的视频")
+    video = safe_existing_file_path(
+        source["videoPath"],
+        roots=(Path(state.project_root_dir) / "cache" / "sprite_generation",),
+        field="generatedVideo",
+    )
+    if payload.get("seconds") is None:
+        raise ValueError("请选择截帧时间")
+    output = (
+        Path(state.project_root_dir) / "cache" / "sprite_generation" / f"{task_id}.png"
+    )
+    _update_task(
+        state, task_id, phase="frame", message="正在截取选中的视频画面。", progress=0.3
+    )
+    result = capture_sprite_frame(source, video, output, payload["seconds"])
+    result = retry_animation_matting(result, payload)
+    return _finish_sprite(state, task_id, result, remove_background)
+
+
+def run_sprite_cutout(state, task_id, payload):
+    from application.characters.sprite.animate_sprites import (
+        _finish_animation,
+        retry_animation_matting,
+    )
+
+    matting_options(payload)
+    name = str(payload.get("name") or "").strip()
+    with state.task_lock:
+        source = dict(
+            _generated_task(state, str(payload.get("taskId") or ""), name)["result"]
+        )
+    source = retry_animation_matting(source, payload)
+    if source.get("animation"):
+        return _finish_animation(state, task_id, source)
+    original = safe_existing_file_path(
+        source.get("originalPath") or source["path"],
+        roots=(Path(state.project_root_dir) / "cache" / "sprite_generation",),
+        field="generatedImage",
+    )
+    output = original.parent / f"{task_id}-cutout.png"
+    _update_task(
+        state,
+        task_id,
+        phase="remove-background",
+        message="正在移除立绘背景。",
+        progress=0.3,
+    )
+    return _approve_sprite_media(
+        state, {**remove_sprite_background(source, original, output), "taskId": task_id}
+    )
+
+
+def import_generated_sprites(state, payload):
+    from application.characters.sprite.animate_sprites import verify_transparent_animation
+
+    name = str(payload.get("name") or "").strip()
+    items = payload.get("items")
+    if not isinstance(items, list) or not 1 <= len(items) <= 12:
+        raise ValueError("请选择 1–12 张生成的立绘")
+    replacement = payload.get("replace")
+    if replacement is not None and (
+        not isinstance(replacement, dict)
+        or len(items) != 1
+        or isinstance(replacement.get("index"), bool)
+        or not isinstance(replacement.get("index"), int)
+        or not isinstance(replacement.get("path"), str)
+    ):
+        raise ValueError("替换时请选择一张结果和有效的原立绘")
+    # Serialize imports and mark task results together, making repeated submissions idempotent.
+    with state.task_lock:
+        character = state.config_manager.get_character_by_name(name)
+        if character is None:
+            raise ValueError("找不到角色，请先保存角色")
+        tasks, tags, files, seen = [], [], [], set()
+        replacements = []
+        replace_items = any(
+            isinstance(item, dict) and "replace" in item for item in items
+        )
+        if replace_items and replacement is not None:
+            raise ValueError("请使用一种替换方式提交结果")
+        for item in items:
+            if not isinstance(item, dict):
+                raise ValueError("无效的立绘结果")
+            target = item.get("replace") if replace_items else replacement
+            if replace_items and (
+                not isinstance(target, dict)
+                or isinstance(target.get("index"), bool)
+                or not isinstance(target.get("index"), int)
+                or not isinstance(target.get("path"), str)
+            ):
+                raise ValueError("每张生成结果需要一个有效的原立绘")
+            task_id = str(item.get("taskId") or "")
+            if task_id in seen:
+                if replace_items:
+                    raise ValueError("同一生成结果不能重复替换")
+                continue
+            seen.add(task_id)
+            task = _generated_task(state, task_id, name)
+            result = task.get("result") or {}
+            if result.get("imported"):
+                continue
+            path = safe_existing_file_path(
+                result["path"],
+                roots=(Path(state.project_root_dir) / "cache" / "sprite_generation",),
+                field="generatedImage",
+            )
+            if result.get("animation"):
+                if not result.get("alphaVerified") or path.suffix.lower() != ".webm":
+                    raise ValueError("动态立绘尚未完成透明处理，请先重试逐帧抠图")
+                verify_transparent_animation(path)
+            pair = prompt_pair(
+                {
+                    "prompt": result["prompt"],
+                    "tagging": item.get("tagging", result["tagging"]),
+                }
+            )
+            tasks.append(task)
+            files.append(SimpleNamespace(name=str(path)))
+            tags.append(pair["tagging"])
+            if target is not None:
+                replacements.append((target["index"], target["path"]))
+        if files:
+            from application.characters.sprite.mouth_sync import (
+                discard_mouth_bundle,
+                install_mouth_bundle,
+            )
+
+            mouths = []
+            try:
+                if any(task["result"].get("animation") for task in tasks):
+                    for task in tasks:
+                        manifest = task["result"].get("mouthSyncManifest")
+                        mouths.append(
+                            str(install_mouth_bundle(state, character, manifest))
+                            if manifest
+                            else None
+                        )
+                state.character_manager.upload_sprites(
+                name,
+                files,
+                character.emotion_tags,
+                sprite_tags=tags,
+                **({"replacements": replacements} if replacements else {}),
+                **({"sprite_mouths": mouths} if mouths else {}),
+            )
+            except Exception:
+                for manifest in mouths:
+                    if manifest:
+                        discard_mouth_bundle(state, manifest)
+                raise
+            for task in tasks:
+                task["result"] = {**task["result"], "imported": True}
+    state.config_manager.reload()
+    return _jsonify(state.config_manager.get_character_by_name(name))

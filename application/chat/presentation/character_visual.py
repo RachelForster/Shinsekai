@@ -2,14 +2,16 @@
 
 from dataclasses import dataclass
 import os
+from pathlib import Path
 from typing import Any
 
 from application.media.resource_urls import ResourceUrls
 from config.character_assets import get_character_assets, get_character_avatar_type
 from config.config_manager import character_name_key
+from core.sprite.mouth.manifest import valid_mouth_sync
 from core.sprite.selection import resolve_runtime_path, sprite_entry_path
+from core.sprite.transition_presentation import transition_presentation
 from core.sprite.transitions import field, valid_transitions
-from core.media.transition_presentation import transition_presentation
 
 
 def image_visual_identity(raw_path: str) -> str:
@@ -26,6 +28,7 @@ class CharacterVisual:
     scale: float
     identity_key: str = ""
     transitions: tuple[dict[str, Any], ...] = ()
+    mouth_sync: str = ""
 
     def event_fields(self) -> dict[str, Any]:
         return {
@@ -35,6 +38,7 @@ class CharacterVisual:
             "scale": self.scale,
             "identityKey": self.identity_key,
             **({"transitions": list(self.transitions)} if self.transitions else {}),
+            **({"mouthSync": self.mouth_sync} if self.mouth_sync else {}),
         }
 
     def snapshot_fields(self) -> dict[str, Any]:
@@ -91,6 +95,13 @@ def resolve_character_visual(
         if kind == "static"
         else ()
     )
+    mouth_sync = valid_mouth_sync(assets.sprites[index]) if kind == "static" else ""
+    if mouth_sync:
+        try:
+            mouth_sync = Path(mouth_sync).resolve().relative_to(Path.cwd().resolve()).as_posix()
+        except ValueError:
+            mouth_sync = ""
     return CharacterVisual(
-        url, kind, model_url, float(scale or 1.0), identity_key, transitions
+        url, kind, model_url, float(scale or 1.0), identity_key, transitions,
+        mouth_sync,
     )

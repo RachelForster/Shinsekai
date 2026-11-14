@@ -249,7 +249,8 @@ class TestCharacterDialogUiHandler:
         assert playback_call["volume"] == 0.8
         assert playback_call["minimum_duration_seconds"] == pytest.approx(0.625)
 
-    def test_react_runtime_uses_the_same_shared_playback_contract(self, tmp_path):
+    @pytest.mark.parametrize("has_audio", [True, False])
+    def test_react_runtime_preserves_dialog_identity_with_or_without_audio(self, tmp_path, has_audio):
         audio_path = tmp_path / "alice.wav"
         audio_path.write_bytes(b"wav")
 
@@ -279,7 +280,8 @@ class TestCharacterDialogUiHandler:
 
         handler = CharacterDialogUiHandler()
         out = PresentationMessage(
-            audio_path=audio_path.as_posix(),
+            audio_path=audio_path.as_posix() if has_audio else "",
+            dialog_id="a" * 64,
             name="Alice",
             text="Hello",
             asset_id="1",
@@ -299,8 +301,13 @@ class TestCharacterDialogUiHandler:
         ), patch("sdk.logging.timing.tracker.stop_cross", return_value=None):
             handler.handle(out)
 
-        ui.post_pause_asr.assert_called_once_with()
-        controller.play_and_wait.assert_called_once()
+        ui.update_dialog.assert_called_once_with("Alice", "Hello", "#abcdef", is_system=False, dialog_id="a" * 64)
+        if has_audio:
+            ui.post_pause_asr.assert_called_once_with()
+            controller.play_and_wait.assert_called_once()
+        else:
+            ui.post_pause_asr.assert_not_called()
+            controller.play_and_wait.assert_not_called()
 
 
 class TestHandlerChainAssembly:

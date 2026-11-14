@@ -1,6 +1,8 @@
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
 import type { SpriteTransitionMedia as SpriteTransitionAsset } from "../assets/spriteTransition";
 import type { AgentPlatform } from "./agentTypes";
+import type { MouthPose, SpriteMouthCorrection, SpriteMouthManual, SpriteMouthManifest } from "../assets/spriteMouth";
+export type { MouthPose, SpriteMouthCorrection, SpriteMouthManual, SpriteMouthManifest } from "../assets/spriteMouth";
 import type { ChatThemeManifest, ChatThemeSummary, SaveChatThemeInput } from "../theme/chatTheme";
 
 export interface RelationNode {
@@ -40,6 +42,7 @@ export interface PlayerPortrait {
 }
 
 export interface Sprite {
+  mouth_sync?: string | null;
   portrait_crop?: PortraitCrop | null;
   path: string;
   voice_path?: string;
@@ -993,7 +996,15 @@ export interface TtsBundleDownloadResult {
   provider: "genie-tts" | "gpt-sovits";
 }
 
-export type ChatRuntimeStatus = "idle" | "listening" | "generating" | "streaming" | "speaking" | "paused" | "error";
+export type ChatRuntimeStatus =
+  | "idle"
+  | "listening"
+  | "generating"
+  | "streaming"
+  | "speaking"
+  | "paused"
+  | "replaying"
+  | "error";
 
 export interface ChatRuntimeProcessState {
   chatProcessRunning: boolean;
@@ -1022,6 +1033,7 @@ export interface RuntimeDependencyInstallResult {
 }
 
 export interface ChatSprite {
+  mouthSync?: string;
   transitions?: SpriteTransitionMedia[];
   /** Producer-owned identity, independent of display labels, expression URLs and snapshot IDs. */
   identityKey?: string;
@@ -1039,6 +1051,7 @@ export interface ChatSprite {
 export type ChatHistoryRole = "assistant" | "options" | "system" | "user";
 
 export interface ChatHistoryEntry {
+  dialogId?: string;
   createdAt?: number;
   id: string;
   revertUserIndex?: number;
@@ -1046,6 +1059,73 @@ export interface ChatHistoryEntry {
   text: string;
   voiceId?: string;
 }
+
+export interface ChatReplayEntry extends ChatHistoryEntry {
+  options?: string[];
+  selectedIndex?: number | null;
+  voiceVolume?: number;
+  key: string;
+  position: number;
+  speaker: string;
+  body: string;
+  canGenerate: boolean;
+  voiceUrls: string[];
+  voiceSource: string;
+  voiceLabel: string;
+  frame?: { backgroundPath: string; bgmPath: string; cgPath: string; sprites: ChatSprite[]; stats: ChatStat[] } | null;
+}
+
+export interface ChatReplaySnapshot {
+  historyCount: number;
+  id: string;
+  sessionId: string;
+  branchId: string;
+  branchLabel: string;
+  entries: ChatReplayEntry[];
+}
+
+export type ChatReplayVoice = Pick<ChatReplayEntry, "voiceUrls" | "voiceSource" | "voiceLabel">;
+
+export interface ChatReplayProgress {
+  voiceSource?: string;
+  voiceLabel?: string;
+  input?: {
+    phase: "typing" | "submitting";
+    text: string;
+    durationMs: number;
+    epoch: number;
+  };
+  id: string;
+  index: number;
+  total: number;
+  paused: boolean;
+  ended: boolean;
+  waiting: boolean;
+  error: string;
+}
+
+export interface ChatReplayControl {
+  action: "pause" | "play" | "seek" | "skip-voice" | "retry";
+  index?: number;
+  playing?: boolean;
+}
+
+export type ChatPresentation = Partial<
+  Pick<
+    ChatSnapshot,
+    | "backgroundPath"
+    | "bgmPath"
+    | "cgPath"
+    | "sprites"
+    | "stats"
+    | "characterName"
+    | "dialogHtml"
+    | "dialogText"
+    | "options"
+    | "systemMessageText"
+    | "playerPortrait"
+  >
+>;
 
 export interface ChatConversationBranch {
   createdAt?: number;
@@ -1214,6 +1294,8 @@ export interface ChatSnapshot {
   storyAck?: Record<string, unknown>;
   stats?: ChatStat[];
   status: ChatRuntimeStatus;
+  replay?: ChatReplayProgress | null;
+  replaySelectedIndex?: number | null;
   statusMessage?: string;
   systemMessageText?: string;
   toolConfirmation?: ChatToolConfirmation | null;
@@ -1323,7 +1405,14 @@ export type ChatStageEvent =
       error?: string;
       ok: boolean;
     })
-  | (ChatEventBase & { type: "dialog.end"; speaker: string; color: string; isSystem: boolean; fullHtml: string })
+  | (ChatEventBase & {
+      type: "dialog.end";
+      speaker: string;
+      color: string;
+      isSystem: boolean;
+      fullHtml: string;
+      animate?: boolean;
+    })
   | (ChatEventBase & { type: "user.display_name.change"; name: string })
   | (ChatEventBase & { type: "history.replace"; entries: ChatHistoryEntry[]; voiceArchiveEnabled?: boolean })
   | (ChatEventBase & { type: "conversation.tree"; tree: ChatConversationTree })
@@ -1332,6 +1421,7 @@ export type ChatStageEvent =
   | (ChatEventBase & { type: "plugin.page.dismiss"; pluginId: string; presentationId: string })
   | (ChatEventBase & {
       type: "sprite.show";
+      mouthSync?: string;
       transitions?: SpriteTransitionMedia[];
       identityKey?: string;
       characterName: string;
@@ -1348,7 +1438,9 @@ export type ChatStageEvent =
   | (ChatEventBase & { type: "bgm.change"; url: string })
   | (ChatEventBase & { type: "cg.show"; url: string })
   | (ChatEventBase & { type: "cg.hide" })
-  | (ChatEventBase & { type: "options.show"; options: ChatOption[] })
+  | (ChatEventBase & { type: "options.show"; options: ChatOption[]; selectedIndex?: number | null })
+  | (ChatEventBase & { type: "replay.state"; replay: ChatReplayProgress | null })
+  | (ChatEventBase & { type: "presentation.restore"; presentation: ChatPresentation })
   | (ChatEventBase & { type: "options.clear" })
   | (ChatEventBase & { type: "story.state.replace"; story: ChatStoryState })
   | (ChatEventBase & {
@@ -1472,8 +1564,11 @@ export interface GeneratedCharacterSprite extends SpritePromptPair {
   originalPath?: string;
   backgroundRemoved?: boolean;
   backgroundRemovalError?: string;
+  mouthSyncManifest?: string;
+  mouthSyncError?: string;
   animation?: boolean;
   alphaVerified?: boolean;
+  h3Resolution?: H3SpriteResolution;
   frameCount?: number;
   duration?: number;
   playbackSpeed?: number;
@@ -1507,6 +1602,7 @@ export interface CharacterSpriteAnimationInput extends SpriteMattingOptions {
   loop: boolean;
   motion: string;
   playbackSpeed?: number;
+  h3Resolution?: H3SpriteResolution;
   customPrompt?: string;
 }
 
@@ -1514,8 +1610,56 @@ export interface TaskProgressOptions<TResult = unknown> {
   onTaskUpdate?: (task: TaskSnapshot<TResult>) => void;
 }
 
+export interface SpriteMouthSetup {
+  pythonPath: string;
+  version: number[];
+  missing: string[];
+  compatible: boolean;
+  runtimeReady: boolean;
+  device: "auto" | "cpu" | "cuda";
+  modelDirectory: string;
+  modelsReady: boolean;
+  models: { id: string; ready: boolean; size: number }[];
+}
+export interface SpriteMouthInput {
+  name: string;
+  spritePath: string;
+  frameCount?: 5 | 22 | 39;
+  includeBlink?: boolean;
+  speechVideo?: string;
+  regenerate?: boolean;
+  retryTaskId?: string;
+  manual?: SpriteMouthManual | null;
+  selectedFrames?: Record<MouthPose, number>;
+  correction?: SpriteMouthCorrection;
+}
+export type SpriteEyeFrames = Partial<Record<MouthPose, number>>;
+
+export interface GeneratedSpriteMouth {
+  speechFps?: number;
+  correction?: SpriteMouthCorrection;
+  name?: string;
+  spritePath?: string;
+  sourceFingerprint?: string;
+  taskId?: string;
+  ready: boolean;
+  calibrationNeeded?: boolean;
+  message?: string;
+  manifestPath?: string;
+  profile?: SpriteMouthManifest;
+  reference?: string;
+  speechVideo?: string;
+  frames?: { index: number; path: string; time?: number }[];
+  selectedFrames?: Record<MouthPose, number>;
+  eyeFrames?: SpriteEyeFrames;
+  manual?: SpriteMouthManual | null;
+  suggestedManual?: SpriteMouthManual;
+  cached?: boolean;
+}
+
 export interface SpriteTransition {
   frame_count?: number;
+  h3_resolution?: H3SpriteResolution;
   from_path: string;
   to_path: string;
   path: string;
@@ -1531,6 +1675,7 @@ export interface SpriteTransitionInput extends SpriteMattingOptions {
   toPath: string;
   regenerate?: boolean;
   retryTaskId?: string;
+  h3Resolution?: H3SpriteResolution;
 }
 
 export interface SpriteTransitionRecommendation {
@@ -1728,6 +1873,12 @@ export interface ShinsekaiPlatform {
     command: (command: ChatCommand) => Promise<ChatCommandResult>;
     getHistory: () => Promise<ChatHistoryEntry[]>;
     getHistoryVoice: (voiceId: string) => Promise<string[]>;
+    prepareReplay: () => Promise<ChatReplaySnapshot>;
+    getReplay: (id: string) => Promise<{ snapshot: ChatReplaySnapshot; generate: boolean }>;
+    startReplay: (id: string, startKey: string, endKey: string, generate: boolean) => Promise<void>;
+    generateReplayVoice: (id: string, key: string, signal?: AbortSignal) => Promise<ChatReplayVoice>;
+    cancelReplay: (id: string) => Promise<void>;
+    controlReplay: (id: string, control: ChatReplayControl) => Promise<void>;
     getRuntimeStatus: () => Promise<ChatRuntimeProcessState>;
     getSnapshot: (options?: ChatSnapshotOptions) => Promise<ChatSnapshot>;
     getTheme: () => Promise<ChatThemePayload>;
@@ -1847,6 +1998,25 @@ export interface ShinsekaiPlatform {
       input: CharacterSpriteAnimationInput,
       options?: TaskProgressOptions<GeneratedCharacterSprite>,
     ) => Promise<GeneratedCharacterSprite>;
+    getSpriteMouthSetup: () => Promise<SpriteMouthSetup>;
+    configureSpriteMouth: (input: {
+      pythonPath?: string;
+      device?: "auto" | "cpu" | "cuda";
+    }) => Promise<SpriteMouthSetup>;
+    importSpriteMouthModels: (input: { paths: string[] }) => Promise<SpriteMouthSetup>;
+    downloadSpriteMouthModels: (options?: TaskProgressOptions<SpriteMouthSetup>) => Promise<SpriteMouthSetup>;
+    installSpriteMouthRuntime: (options?: TaskProgressOptions<SpriteMouthSetup>) => Promise<SpriteMouthSetup>;
+    generateSpriteMouth: (
+      input: SpriteMouthInput,
+      options?: TaskProgressOptions<GeneratedSpriteMouth>,
+    ) => Promise<GeneratedSpriteMouth>;
+    readSpriteMouth: (path: string) => Promise<GeneratedSpriteMouth>;
+    saveSpriteMouths: (input: {
+      name: string;
+      eyesOnly?: boolean;
+      items: { taskId: string; correction?: SpriteMouthCorrection; eyeFrames?: SpriteEyeFrames }[];
+    }) => Promise<Character>;
+    removeSpriteMouth: (input: { name: string; spritePath: string }) => Promise<Character>;
     analyzeSpriteTransitions: (
       input: { name: string },
       options?: TaskProgressOptions<SpriteTransitionAnalysis>,
@@ -1878,6 +2048,7 @@ export interface ShinsekaiPlatform {
     generateSetting: (input: { name: string; setting: string }) => Promise<CharacterSettingResult>;
     import: (items: File[] | string[]) => Promise<Character[]>;
     list: () => Promise<Character[]>;
+    revision: () => Promise<string>;
     getMem0Status: () => Promise<Mem0Status>;
     importMemories: (
       name: string,

@@ -1,7 +1,7 @@
 from PIL import Image, ImageDraw
 import pytest
 
-from core.media import transition_presentation as module
+from core.sprite import transition_presentation as module
 
 
 def sprite(path, size=(120, 200), padding=5, shade=96):

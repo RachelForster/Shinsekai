@@ -65,16 +65,44 @@ def resolve_pi_model(config_manager, *, provider: str | None = None) -> PiModelB
     context_window = max(
         4096, int(config_manager.config.api_config.max_context_tokens or 32768)
     )
+    extra_configs = getattr(config_manager.config.api_config, "llm_extra_configs", {}) or {}
+    extra = extra_configs.get(provider, {}) or {}
+    default_output = min(16384 if provider == "Deepseek" else 4096, context_window // 4)
+    max_tokens = extra.get("max_completion_tokens", extra.get("max_tokens", default_output))
+    if type(max_tokens) is not int or max_tokens <= 0 or max_tokens > context_window:
+        raise fault(
+            "INVALID_REQUEST",
+            "Pi output token limit must be a positive integer within the context window",
+        )
     model = {
         "id": model_id,
         "baseUrl": base_url,
         "api": api,
         "contextWindow": context_window,
-        "maxTokens": min(4096, context_window // 4),
+        "maxTokens": max_tokens,
         "reasoning": False,
         "input": ["text"],
         "cost": {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0},
     }
+    if provider == "Deepseek":
+        # reasoning describes capability; disabling it prevents Pi from sending
+        # thinking.type=disabled, leaving DeepSeek's provider default enabled.
+        thinking_enabled = extra.get("thinking_enabled", False)
+        if type(thinking_enabled) is not bool:
+            raise fault("INVALID_REQUEST", "DeepSeek thinking_enabled must be a boolean")
+        effort = str(extra.get("reasoning_effort") or "high").strip().lower()
+        model.update(
+            reasoning=True,
+            thinkingLevel=(
+                ("xhigh" if effort == "max" else "high") if thinking_enabled else "off"
+            ),
+            thinkingLevelMap={"high": "high", "xhigh": "max"},
+            compat={
+                "thinkingFormat": "deepseek",
+                "supportsReasoningEffort": True,
+                "requiresReasoningContentOnAssistantMessages": True,
+            },
+        )
     fingerprint = hashlib.sha256(
         json.dumps([provider, model], sort_keys=True, ensure_ascii=False).encode()
     ).hexdigest()[:24]

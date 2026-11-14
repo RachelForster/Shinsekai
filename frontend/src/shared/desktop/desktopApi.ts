@@ -186,6 +186,14 @@ export function browseDesktopFiles(options?: { path?: string; showHidden?: boole
   return invokeDesktop<FileBrowserSnapshot>("desktop_files_browse", options ?? {});
 }
 
+export async function saveDesktopHistoryExport(blob: Blob) {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<{ name: string; path: string; opened: boolean }>(
+    "desktop_files_save_history_export",
+    await blob.arrayBuffer(),
+  );
+}
+
 export interface DesktopNativePickOptions {
   defaultPath?: string;
   extensions?: string[];

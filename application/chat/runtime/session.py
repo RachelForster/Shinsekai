@@ -541,6 +541,9 @@ class StreamingChatSession(_BaseChatSession):
                 bg_group=runtime.presentation_assets.background_sprites,
             )
             self.ui_updates.voice_archive = VoiceArchive(self.args.history) if self.args.history else None
+            if self.args.history:
+                from application.chat.history.replay_store import ReplayRecorder, ReplayStore
+                self.ui_updates.replay_recorder = ReplayRecorder(ReplayStore(self.args.history))
             self._configure_stream_runtime()
             player_name = str(getattr(self.args, "player_character", "") or "")
             if player_name:

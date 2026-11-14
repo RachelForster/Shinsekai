@@ -7,11 +7,11 @@ from unittest.mock import Mock
 import pytest
 from PIL import Image
 
-from application.characters import generate_sprites as generation
+from application.characters.sprite import generate_sprites as generation
 from application.runtime.tasks import _create_task, _update_task
 from config.character_manager import CharacterManager
 from config.schema import Character
-from frontend_bridge_core import sprite_generation as bridge
+from application.characters.sprite import animate_sprites, generate_sprites as bridge
 
 
 def test_planning_uses_draft_personality_and_returns_prompt_tag_pairs(monkeypatch):
@@ -345,7 +345,7 @@ def test_generated_replacement_keeps_position_voice_original_file_and_is_idempot
     character.emotion_tags = "立绘 1：旧标签\n立绘 2：保留标签\n"
     task_id = completed_sprite(state)
     verifier = Mock(return_value=5)
-    monkeypatch.setattr(bridge, "verify_transparent_animation", verifier)
+    monkeypatch.setattr(animate_sprites, "verify_transparent_animation", verifier)
     if animation:
         video = root / "cache" / "sprite_generation" / "one.webm"
         video.write_bytes(b"verified alpha video")
@@ -439,7 +439,7 @@ def test_batch_replacement_keeps_each_position_voice_tags_and_original_file(
             path=str(video), animation=True, alphaVerified=True
         )
     verifier = Mock(return_value=22)
-    monkeypatch.setattr(bridge, "verify_transparent_animation", verifier)
+    monkeypatch.setattr(animate_sprites, "verify_transparent_animation", verifier)
     payload = {
         "name": "Mika",
         "items": [
@@ -743,7 +743,7 @@ def test_auto_cutout_failure_keeps_render_and_can_retry_without_generating(
 def test_cutout_keeps_geometry_tags_and_video_but_not_import_state(
     tmp_path, monkeypatch
 ):
-    from tools import remove_bg
+    from core.media import background_removal as remove_bg
 
     original = tmp_path / "raw.png"
     Image.new("RGB", (24, 32), "white").save(original)
@@ -846,7 +846,7 @@ def test_cutout_rejects_untrusted_sources(sprite_state, monkeypatch, mutation):
 
 
 def test_idle_animation_prompt_keeps_framing_pose_and_no_appearance():
-    from application.characters.animate_sprites import animation_prompt
+    from application.characters.sprite.animate_sprites import animation_prompt
 
     pair = animation_prompt({"breeze": True, "tagging": "平静，站立"})
     assert "body and relaxed limbs sway very slightly and slowly" in pair["prompt"]
@@ -863,7 +863,7 @@ def test_idle_animation_prompt_keeps_framing_pose_and_no_appearance():
 def test_animation_render_rebuilds_body_sway_instead_of_reusing_old_prompt(
     tmp_path, monkeypatch, loop
 ):
-    from application.characters import animate_sprites
+    from application.characters.sprite import animate_sprites
 
     renderer = Mock(return_value={"videoPath": str(tmp_path / "idle.mp4")})
     monkeypatch.setattr(animate_sprites, "render_sprite", renderer)
@@ -910,7 +910,7 @@ def test_animation_render_rebuilds_body_sway_instead_of_reusing_old_prompt(
 
 
 def test_blinking_only_keeps_pose_stable_without_adding_body_sway():
-    from application.characters.animate_sprites import animation_prompt
+    from application.characters.sprite.animate_sprites import animation_prompt
 
     prompt = animation_prompt({"breathing": False, "blinking": True})["prompt"]
     assert "only if both eyes are naturally open in the reference" in prompt
@@ -925,7 +925,7 @@ def test_blinking_only_keeps_pose_stable_without_adding_body_sway():
 
 
 def test_disabled_blinking_preserves_reference_eyelid_state():
-    from application.characters.animate_sprites import animation_prompt
+    from application.characters.sprite.animate_sprites import animation_prompt
 
     prompt = animation_prompt({"blinking": False})["prompt"]
     assert "preserve the reference eye shape, eyelid position and gaze throughout" in prompt
@@ -946,7 +946,7 @@ def test_disabled_blinking_preserves_reference_eyelid_state():
     ],
 )
 def test_idle_animation_rejects_invalid_controls(payload):
-    from application.characters.animate_sprites import animation_prompt
+    from application.characters.sprite.animate_sprites import animation_prompt
 
     with pytest.raises(ValueError):
         animation_prompt(payload)
@@ -971,13 +971,14 @@ def test_animation_requires_h3_service_before_requesting_generation(tmp_path):
 def test_animation_matting_failure_can_retry_without_rerender_and_cannot_be_imported(
     sprite_state, monkeypatch
 ):
+    from application.characters.sprite import animate_sprites
     from core.media import alpha_video
 
     state, character = sprite_state
     root = Path(state.project_root_dir)
     ref = root / "ref.png"
     Image.new("RGB", (8, 8), "white").save(ref)
-    monkeypatch.setattr(bridge, "_local_file_access_roots", lambda _: (root,))
+    monkeypatch.setattr(animate_sprites, "_local_file_access_roots", lambda _: (root,))
     video = root / "cache" / "sprite_generation" / "source.mp4"
     video.parent.mkdir(parents=True, exist_ok=True)
     video.write_bytes(b"mock video")
@@ -997,11 +998,11 @@ def test_animation_matting_failure_can_retry_without_rerender_and_cannot_be_impo
             },
         }
     )
-    monkeypatch.setattr(bridge, "render_animation", renderer)
+    monkeypatch.setattr(animate_sprites, "render_animation", renderer)
     matting = Mock(side_effect=RuntimeError("matting failed"))
     monkeypatch.setattr(alpha_video, "remove_video_background", matting)
     task = _create_task(state, kind="character-sprite-animate", title="animate")
-    result = bridge.run_sprite_animation(
+    result = animate_sprites.run_sprite_animation(
         state,
         task["id"],
         {"name": "Mika", "referenceImage": str(ref), "tagging": "平静"},
@@ -1053,6 +1054,80 @@ def test_animation_matting_failure_can_retry_without_rerender_and_cannot_be_impo
     verified.assert_called_once()
 
 
+@pytest.mark.parametrize("replace", [False, True])
+def test_saving_animation_reuses_saved_mouth_poses_from_its_reference(sprite_state, monkeypatch, replace):
+    import json
+    from application.characters.sprite import mouth_sync as sprite_mouth
+    from core.sprite.mouth.manifest import read_manifest, valid_mouth_sync
+    from core.sprite.transitions import sprite_fingerprint
+
+    state, character = sprite_state
+    root = Path(state.project_root_dir)
+    source_dir = root / "data/sprite/mika"
+    source_dir.mkdir(parents=True)
+    source = source_dir / "reference.png"
+    Image.new("RGBA", (80, 120), "pink").save(source)
+    bundle = source_dir / "mouth-sync" / "static"
+    bundle.mkdir(parents=True)
+    patches = {pose: f"mouth-{pose}.png" for pose in ("closed", "half", "open")}
+    profile = {
+        "version": 1, "sourceFingerprint": sprite_fingerprint(source), "width": 80, "height": 120,
+        "patchBox": [30, 70, 50, 82], "mouths": patches, "selectedFrames": {"closed": 1, "half": 4, "open": 8},
+        "correction": {"offsetX": 3, "gain": 1.4},
+        "track": [{"time": 0, "matrix": [1, 0, 0, 1, 0, 0]}],
+    }
+    for filename in patches.values():
+        Image.new("RGBA", (20, 12), "pink").save(bundle / filename)
+    (bundle / "manifest.json").write_text(json.dumps(profile), encoding="utf-8")
+    character.sprites = [{"path": str(source), "mouth_sync": str(bundle / "manifest.json"), "voice_text": "hello"}]
+    raw = root / "cache/sprite_generation/idle.mp4"
+    raw.parent.mkdir(parents=True)
+    raw.write_bytes(b"cached animation")
+    monkeypatch.setattr(bridge, "_local_file_access_roots", lambda _: (root,))
+    monkeypatch.setattr(animate_sprites, "_local_file_access_roots", lambda _: (root,))
+    monkeypatch.setattr(sprite_mouth, "_local_file_access_roots", lambda _: (root,))
+    monkeypatch.setattr(animate_sprites, "render_animation", Mock(return_value={"name": "Mika", "prompt": "idle", "tagging": "平静", "videoPath": str(raw)}))
+    monkeypatch.setattr(animate_sprites, "verify_transparent_animation", lambda _: 2)
+
+    def matte(_raw, output, **_kwargs):
+        output.write_bytes(b"verified alpha")
+        return {"alphaVerified": True}
+
+    def transfer(_root, _store, video, _frame, manifest, output, fingerprint, _progress):
+        assert manifest == bundle / "manifest.json" and fingerprint == sprite_fingerprint(video)
+        output.mkdir()
+        for filename in patches.values():
+            (output / filename).write_bytes((bundle / filename).read_bytes())
+        target = output / "manifest.json"
+        target.write_text(json.dumps({
+            **profile, "sourceFingerprint": fingerprint,
+            "track": [*profile["track"], {"time": .04, "matrix": [1, 0, 0, 1, 1, 2]}],
+        }), encoding="utf-8")
+        return target
+
+    monkeypatch.setattr(animate_sprites, "make_transparent_animation", matte)
+    align = Mock(side_effect=transfer)
+    monkeypatch.setattr(sprite_mouth, "transfer_bundle", align)
+    task = _create_task(state, kind="character-sprite-animate", title="animate")
+    generated = animate_sprites.run_sprite_animation(state, task["id"], {"name": "Mika", "referenceImage": str(source), "tagging": "平静"})
+    assert generated.get("mouthSyncManifest") and not generated.get("mouthSyncError")
+    _update_task(state, task["id"], status="succeeded", result=generated)
+    payload = {"name": "Mika", "items": [{"taskId": task["id"]}]}
+    if replace:
+        payload["replace"] = {"index": 0, "path": str(source)}
+    saved = bridge.import_generated_sprites(state, payload)
+    dynamic = saved["sprites"][-1]
+    assert dynamic["path"].endswith(".webm") and valid_mouth_sync(dynamic)
+    inherited = read_manifest(dynamic["mouth_sync"])
+    assert inherited["selectedFrames"] == profile["selectedFrames"]
+    assert inherited["correction"]["gain"] == 1.4 and len(inherited["track"]) == 2
+    assert source.is_file() and read_manifest(bundle / "manifest.json")["sourceFingerprint"] == sprite_fingerprint(source)
+    assert len(saved["sprites"]) == (1 if replace else 2)
+    bridge.import_generated_sprites(state, payload)
+    align.assert_called_once()
+    state.config_manager.save_characters_config.assert_called_once()
+
+
 @pytest.mark.parametrize(
     "custom_prompt", [None, "make the character gently sway one sleeve, fixed camera"]
 )
@@ -1060,7 +1135,7 @@ def test_h3_animation_anchors_last_frame_to_the_same_reference(
     tmp_path, monkeypatch, custom_prompt
 ):
     from ai.t2i.t2i_manager import T2IAdapterFactory
-    from application.characters.animate_sprites import render_animation
+    from application.characters.sprite.animate_sprites import render_animation
 
     Image.new("RGB", (64, 96), "white").save(tmp_path / "ref.png")
 
@@ -1107,6 +1182,7 @@ def test_h3_animation_anchors_last_frame_to_the_same_reference(
             "name": "Mika",
             "prompt": "idle",
             "tagging": "平静",
+            "h3Resolution": "native",
             **({"customPrompt": custom_prompt} if custom_prompt else {}),
         },
         tmp_path / "sprite.png",
@@ -1116,6 +1192,8 @@ def test_h3_animation_anchors_last_frame_to_the_same_reference(
     assert Path(result["videoPath"]) == video
     assert adapter.generate_image.call_args.kwargs.get("h3_static_sprite") is None
     assert adapter.workflow_template["131"]["inputs"]["length"] == 107
+    assert result["h3Resolution"] == "native"
+    assert (node["inputs"]["width"], node["inputs"]["height"]) == (800, 1216)
     if custom_prompt:
         assert adapter.generate_image.call_args.kwargs["prompt"] == custom_prompt
     guides = [
@@ -1137,10 +1215,10 @@ def test_h3_animation_anchors_last_frame_to_the_same_reference(
 def test_idle_pose_guides_preserve_reference_sampler_graph_and_source_workflow(
     length, frames
 ):
-    from application.characters.h3_idle_workflow import stabilize_idle_workflow
+    from application.characters.sprite.h3_idle_workflow import stabilize_idle_workflow
 
     path = (
-        Path(generation.__file__).resolve().parents[2]
+        Path(generation.__file__).resolve().parents[3]
         / "ai/t2i/workflows/minimax_h3_i2v_api.json"
     )
     workflow = json.loads(path.read_text(encoding="utf-8"))
@@ -1169,7 +1247,7 @@ def test_idle_pose_guides_preserve_reference_sampler_graph_and_source_workflow(
 
 @pytest.mark.parametrize("length", [True, 4, ["length-node", 0]])
 def test_idle_pose_guides_reject_unresolved_or_invalid_length(length):
-    from application.characters.h3_idle_workflow import stabilize_idle_workflow
+    from application.characters.sprite.h3_idle_workflow import stabilize_idle_workflow
 
     with pytest.raises(ValueError, match="整数配置 length"):
         stabilize_idle_workflow(
@@ -1187,8 +1265,8 @@ def test_screen_mode_removes_white_background_artifacts_and_preserves_white_clot
     monkeypatch, refinement
 ):
     from PIL import ImageDraw
-    from application.characters.animate_sprites import _screen_matte
-    from tools import remove_bg
+    from application.characters.sprite.animate_sprites import _screen_matte
+    from core.media import background_removal as remove_bg
     from core.media import alpha_matting
 
     source = Image.new("RGB", (64, 96), (0, 255, 0))
@@ -1215,7 +1293,7 @@ def test_screen_mode_removes_white_background_artifacts_and_preserves_white_clot
 
 
 def test_matting_retry_can_switch_methods_without_losing_the_original_screen():
-    from application.characters.animate_sprites import retry_animation_matting
+    from application.characters.sprite.animate_sprites import retry_animation_matting
 
     source = {
         "videoPath": "raw.mp4",
@@ -1244,14 +1322,14 @@ def test_matting_retry_can_switch_methods_without_losing_the_original_screen():
 
 @pytest.mark.parametrize("payload", [{"autoScreen": 1}, {"alphaMatting": "false"}])
 def test_matting_retry_rejects_non_boolean_options(payload):
-    from application.characters.animate_sprites import retry_animation_matting
+    from application.characters.sprite.animate_sprites import retry_animation_matting
 
     with pytest.raises(ValueError, match="布尔值"):
         retry_animation_matting({"videoPath": "raw.mp4"}, payload)
 
 
 def test_manual_animation_prompt_replaces_presets_without_rewriting_the_text():
-    from application.characters.animate_sprites import animation_prompt
+    from application.characters.sprite.animate_sprites import animation_prompt
 
     text = "保持原图取景，左手缓慢挥动，头发轻轻晃动，镜头固定。"
     result = animation_prompt(
@@ -1270,7 +1348,7 @@ def test_manual_animation_prompt_replaces_presets_without_rewriting_the_text():
 
 @pytest.mark.parametrize("custom", [None, "", "   ", 2, "x" * 12001])
 def test_manual_animation_rejects_invalid_prompt_instead_of_falling_back(custom):
-    from application.characters.animate_sprites import animation_prompt
+    from application.characters.sprite.animate_sprites import animation_prompt
 
     with pytest.raises(ValueError):
         animation_prompt({"customPrompt": custom})

@@ -19,6 +19,8 @@ import type {
   ChatCommand,
   ChatCommandResult,
   ChatHistoryEntry,
+  ChatReplaySnapshot,
+  ChatReplayVoice,
   ChatLaunchPayload,
   ChatRuntimeProcessState,
   ChatSnapshot,
@@ -613,6 +615,49 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         return result;
       },
       getHistory: () => requestJson<ChatHistoryEntry[]>(apiBase, "/api/chat/history"),
+      prepareReplay: async () => {
+        const snapshot = await requestJson<ChatReplaySnapshot>(apiBase, "/api/chat/replay", {
+          method: "POST",
+          body: "{}",
+        });
+        // Persisted checkpoints contain portable API paths, never old host tokens.
+        const rebase = (value: unknown): unknown => {
+          if (typeof value === "string" && value.startsWith("/api/")) return bridgeUrl(apiBase, value);
+          if (Array.isArray(value)) return value.map(rebase);
+          if (value && typeof value === "object")
+            return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, rebase(v)]));
+          return value;
+        };
+        return rebase(snapshot) as ChatReplaySnapshot;
+      },
+      getReplay: (id) => requestJson(apiBase, `/api/chat/replay/${encodePath(id)}`),
+      startReplay: async (id, startKey, endKey, generate) => {
+        await requestJson(apiBase, `/api/chat/replay/${encodePath(id)}/start`, {
+          method: "POST",
+          body: JSON.stringify({ startKey, endKey, generate }),
+        });
+      },
+      generateReplayVoice: async (id, key, signal) => {
+        const voice = await requestJson<ChatReplayVoice>(
+          apiBase,
+          `/api/chat/replay/${encodePath(id)}/voice/${encodePath(key)}`,
+          {
+            method: "POST",
+            body: "{}",
+            signal,
+          },
+        );
+        return { ...voice, voiceUrls: voice.voiceUrls.map((url) => bridgeUrl(apiBase, url)) };
+      },
+      cancelReplay: async (id) => {
+        await requestJson(apiBase, `/api/chat/replay/${encodePath(id)}`, { method: "DELETE" });
+      },
+      controlReplay: async (id, control) => {
+        await requestJson(apiBase, `/api/chat/replay/${encodePath(id)}/control`, {
+          method: "POST",
+          body: JSON.stringify(control),
+        });
+      },
       getHistoryVoice: async (voiceId) => {
         const { segmentCount } = await requestJson<{ segmentCount: number }>(
           apiBase,
@@ -1054,6 +1099,48 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         ),
     },
     characters: {
+      getSpriteMouthSetup: () =>
+        requestJson(apiBase, "/api/characters/sprites/mouth/status", { method: "POST", body: "{}" }),
+      configureSpriteMouth: (input) =>
+        requestJson(apiBase, "/api/characters/sprites/mouth/configure", {
+          method: "POST",
+          body: JSON.stringify(input),
+        }),
+      importSpriteMouthModels: (input) =>
+        requestJson(apiBase, "/api/characters/sprites/mouth/models/import", {
+          method: "POST",
+          body: JSON.stringify(input),
+        }),
+      async downloadSpriteMouthModels(options) {
+        const task = await requestJson<TaskSnapshot<import("./types").SpriteMouthSetup>>(
+          apiBase,
+          "/api/characters/sprites/mouth/models/download",
+          { method: "POST", body: "{}" },
+        );
+        return waitForTask(apiBase, task, options);
+      },
+      async installSpriteMouthRuntime(options) {
+        const task = await requestJson<TaskSnapshot<import("./types").SpriteMouthSetup>>(
+          apiBase,
+          "/api/characters/sprites/mouth/runtime/install",
+          { method: "POST", body: "{}" },
+        );
+        return waitForTask(apiBase, task, options);
+      },
+      async generateSpriteMouth(input, options) {
+        const task = await requestJson<TaskSnapshot<import("./types").GeneratedSpriteMouth>>(
+          apiBase,
+          "/api/characters/sprites/mouth/generate",
+          { method: "POST", body: JSON.stringify(input) },
+        );
+        return waitForTask(apiBase, task, options);
+      },
+      readSpriteMouth: (path) =>
+        requestJson(apiBase, "/api/characters/sprites/mouth/read", { method: "POST", body: JSON.stringify({ path }) }),
+      saveSpriteMouths: (input) =>
+        requestJson(apiBase, "/api/characters/sprites/mouth/save", { method: "POST", body: JSON.stringify(input) }),
+      removeSpriteMouth: (input) =>
+        requestJson(apiBase, "/api/characters/sprites/mouth/remove", { method: "POST", body: JSON.stringify(input) }),
       async planSprites(input, options) {
         const task = await requestJson<TaskSnapshot<{ items: SpritePromptPair[] }>>(
           apiBase,
@@ -1206,6 +1293,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         return waitForTask(apiBase, task, options);
       },
       list: () => requestJson<Character[]>(apiBase, "/api/characters"),
+      revision: () => requestJson<string>(apiBase, "/api/characters?view=revision"),
       listMemories: (name) =>
         requestJson<CharacterMemoryList>(apiBase, "/api/characters/memories/list", {
           body: JSON.stringify({ name }),
@@ -1373,6 +1461,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         if (!path) {
           return "";
         }
+        if (path.startsWith("/api/")) return bridgeUrl(apiBase, path);
         if (/^(?:https?:|blob:|data:|\/assets\/)/.test(path)) {
           return path;
         }

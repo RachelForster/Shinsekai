@@ -8,12 +8,12 @@ from unittest.mock import Mock
 import pytest
 
 from application.characters import generate_briefs
-from application.characters import transition_recommendations as analysis
+from application.characters.sprite import transition_recommendations as analysis
 from application.chat.conversation_library import recent_character_dialogs
 from application.runtime.tasks import _create_task
 from config.schema import Character, SpriteTransition
 from core.sprite.transitions import sprite_fingerprint
-from frontend_bridge_core.sprite_transitions import run_transition_analysis
+from application.characters.sprite.transition_recommendations import run_transition_analysis
 
 
 @pytest.fixture

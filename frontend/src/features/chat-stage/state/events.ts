@@ -3,7 +3,7 @@ import { clearTransientNotificationState, withResolvedLayers } from "./layers";
 import { hydrateFromSnapshot, snapshotEventSeq } from "./snapshot";
 import { htmlToText } from "./text";
 import type { ChatAudioCommand, ChatStageSprite, ChatStageState } from "./types";
-import { upsertChatStageSprite } from "./sprites";
+import { normalizeChatStageSprites, upsertChatStageSprite } from "./sprites";
 
 function upsertSprite(state: ChatStageState, event: Extract<ChatStageEvent, { type: "sprite.show" }>): ChatStageState {
   const id = event.characterName;
@@ -20,6 +20,7 @@ function upsertSprite(state: ChatStageState, event: Extract<ChatStageEvent, { ty
     avatarType: event.avatarType ?? "static",
     modelUrl: event.modelUrl ?? "",
     transitions: event.transitions,
+    mouthSync: event.mouthSync,
     stateSequence: event.seq,
   };
   const sprites = upsertChatStageSprite(state.sprites, nextSprite);
@@ -59,6 +60,23 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, re
     return state;
   }
   switch (event.type) {
+    case "replay.state":
+      return withResolvedLayers({
+        ...state,
+        eventSeq: event.seq,
+        replay: event.replay,
+        status: event.replay ? "replaying" : "idle",
+      });
+    case "presentation.restore":
+      return withResolvedLayers({
+        ...state,
+        ...event.presentation,
+        eventSeq: event.seq,
+        replaySelectedIndex: null,
+        sprites: event.presentation.sprites
+          ? normalizeChatStageSprites(event.presentation.sprites.map((sprite) => ({ ...sprite, applyMode: "restore" })))
+          : state.sprites,
+      });
     case "player.portrait.show":
       return {
         ...state,
@@ -189,6 +207,7 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, re
     case "options.show":
       return withResolvedLayers({
         ...clearTransientNotificationState(state),
+        replaySelectedIndex: event.selectedIndex,
         eventSeq: Math.max(state.eventSeq, event.seq),
         options: event.options,
         toolConfirmation: null,

@@ -13,3 +13,8 @@ export const queryClient = new QueryClient({
     },
   },
 });
+
+queryClient.setQueryDefaults(["characters"], {
+  staleTime: 0,
+  refetchOnWindowFocus: true,
+});

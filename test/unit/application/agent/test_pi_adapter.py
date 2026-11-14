@@ -65,9 +65,11 @@ def run():
         emit({'type':'extension_ui_request','method':'confirm','id':'dialog-1','title':'Confirm','message':'Continue?'})
         answered.wait(5)
     if scenario == 'slow': stopped.wait(10)
-    reason = 'aborted' if stopped.is_set() else ('error' if scenario == 'error' else 'stop')
+    reason = 'aborted' if stopped.is_set() else ('error' if scenario == 'error' else ('length' if scenario in ('length', 'thinking-length') else 'stop'))
+    if scenario == 'thinking-length': text = ''
     emit({'type':'message_update','assistantMessageEvent':{'type':'text_delta','delta':text}})
-    emit({'type':'message_end','message':{'role':'assistant','content':[{'type':'text','text':text}], 'stopReason':reason,'errorMessage':'401 fixture-api-key','usage':{'input':5,'output':2,'totalTokens':7}}})
+    content = [{'type':'thinking','thinking':'unrequested-internal-reasoning'}] if scenario == 'thinking-length' else [{'type':'text','text':text}]
+    emit({'type':'message_end','message':{'role':'assistant','content':content, 'stopReason':reason,'errorMessage':'401 fixture-api-key','usage':{'input':5,'output':2,'totalTokens':7}}})
     emit({'type':'agent_end','messages':[],'willRetry':False})
     time.sleep(0.15)
     emit({'type':'agent_settled'})
@@ -114,6 +116,25 @@ def test_rpc_failure_is_portable_and_stops_process(tmp_path, scenario):
         finally:
             await rpc.close()
         assert rpc.process.returncode is not None
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("scenario", ["length", "thinking-length"])
+def test_truncated_reply_preserves_result_without_protocol_mismatch(monkeypatch, tmp_path, scenario):
+    async def run():
+        backend, config, task, host = setup(monkeypatch, tmp_path, scenario)
+        session = await backend.open_session(config)
+        events = [event async for event in backend.run(session, task, host)]
+        completion = events[-1].payload
+        assert completion.status == "failed"
+        assert completion.error.code == "LIMIT_EXCEEDED"
+        assert "token" in completion.error.message
+        assert completion.result.data["stopReason"] == "length"
+        assert completion.result.summary == ("" if scenario == "thinking-length" else "hello\u2028world")
+        assert not host.calls
+        assert "unrequested-internal-reasoning" not in json.dumps([event.to_wire() for event in events])
+        assert backend.rpc is None
 
     asyncio.run(run())
 

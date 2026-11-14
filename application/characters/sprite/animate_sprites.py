@@ -1,11 +1,27 @@
 """Build restrained idle motion without inventing character appearance."""
 
-from application.characters.generate_sprites import (
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any, Iterable
+
+from application.characters.sprite.generate_sprites import (
     SPRITE_CAMERA_SUFFIX,
     SPRITE_REFERENCE_FRAMING_SUFFIX,
+    _approve_sprite_media,
+    _local_file_access_roots,
+    boundary_frame,
+    matting_options,
     prompt_pair,
     render_sprite,
-    matting_options,
+)
+from application.media.resource_paths import MediaResourcePaths
+from application.runtime.tasks import _update_task
+from config.sprite_files import sprite_field, sprite_fingerprint
+from sdk.path_utils import (
+    normalize_path_identity,
+    safe_child_path,
+    safe_existing_file_path,
 )
 
 
@@ -145,8 +161,8 @@ def _screen_matte(image, *, settings, alpha_matting, foreground_matte=None):
     """A color key alone treats generated white background artifacts as foreground."""
     from PIL import ImageChops
 
+    from core.media.background_removal import remove_background_image
     from core.media.chroma_key import remove_screen_background
-    from tools.remove_bg import remove_background_image
 
     foreground = (
         foreground_matte(image)
@@ -164,7 +180,7 @@ def make_transparent_animation(
     from functools import partial
 
     from core.media.alpha_video import remove_video_background
-    from tools.remove_bg import background_remover
+    from core.media.background_removal import background_remover
 
     settings = dict(matting or {"method": "ai", "alphaMatting": False})
     alpha_matting = settings.get("alphaMatting", False)
@@ -202,3 +218,144 @@ def verify_transparent_animation(path):
     from core.media.alpha_video import verify_alpha_video
 
     return verify_alpha_video(path)
+
+
+def _resolve_file_access_roots(
+    state: Any, file_access_roots: Iterable[Path] = ()
+) -> tuple[Path, ...]:
+    roots = tuple(file_access_roots)
+    if not roots:
+        return _local_file_access_roots(state)
+    project_root = Path(getattr(state, "project_root_dir", "") or Path.cwd())
+    return MediaResourcePaths(
+        project_root, file_access_roots=roots
+    ).file_access_roots
+
+
+def run_sprite_animation(
+    state, task_id, payload, *, file_access_roots: Iterable[Path] = ()
+):
+    animation_prompt(payload)
+    name = str(payload.get("name") or "").strip()
+    character = state.config_manager.get_character_by_name(name)
+    if character is None:
+        raise ValueError("请先保存角色再生成动态立绘")
+    if not payload.get("referenceImage"):
+        raise ValueError("请先选择参考立绘或视频")
+    reference = safe_existing_file_path(
+        str(payload["referenceImage"]),
+        roots=_resolve_file_access_roots(state, file_access_roots),
+        field="referenceImage",
+    )
+    reference_sprite = next(
+        (
+            path
+            for sprite in character.sprites
+            if (path := sprite_field(sprite, "path"))
+            and normalize_path_identity(path, field="initial sprite path") == reference
+        ),
+        None,
+    )
+    reference_fingerprint = sprite_fingerprint(reference) if reference_sprite else None
+    output = (
+        Path(state.project_root_dir) / "cache" / "sprite_generation" / f"{task_id}.png"
+    )
+    _update_task(
+        state,
+        task_id,
+        message="正在读取参考立绘；动态立绘将取首帧并保留透明通道。",
+        phase="reference",
+        progress=0.05,
+    )
+    reference = boundary_frame(
+        reference, output.with_name(f"{task_id}-reference.png"), last=False
+    )
+    _update_task(
+        state,
+        task_id,
+        message="正在用 H3 生成固定镜头的轻微动态。",
+        phase="generate",
+        progress=0.1,
+    )
+    result = render_animation(
+        state.config_manager, {**payload, "name": name}, output, reference
+    )
+    if reference_sprite:
+        result["mouthReference"] = {
+            "path": reference_sprite,
+            "fingerprint": reference_fingerprint,
+            "frame": str(reference),
+        }
+    return _finish_animation(state, task_id, result)
+
+
+def _finish_animation(state, task_id, source):
+    video = safe_existing_file_path(
+        source["videoPath"],
+        roots=(Path(state.project_root_dir) / "cache" / "sprite_generation",),
+        field="generatedVideo",
+    )
+    output = video.parent / f"{task_id}-alpha.webm"
+    result = {
+        **source,
+        "taskId": task_id,
+        "animation": True,
+        "alphaVerified": False,
+        "path": video.as_posix(),
+        "backgroundRemoved": False,
+    }
+    result.pop("backgroundRemovalError", None)
+    result.pop("mouthSyncManifest", None)
+    result.pop("mouthSyncError", None)
+
+    def progress(done, total):
+        if done == 1 or done % 4 == 0 or done == total:
+            _update_task(
+                state,
+                task_id,
+                phase="video-matting",
+                progress=0.55 + 0.4 * min(done / total, 1),
+                message=f"正在逐帧抠图并编码透明视频：{done}/{total}",
+            )
+
+    _update_task(
+        state,
+        task_id,
+        phase="video-matting",
+        progress=0.55,
+        message="正在逐帧抠图并编码，完成后将校验透明视频。",
+    )
+    try:
+        metadata = make_transparent_animation(
+            video,
+            output,
+            progress=progress,
+            playback_speed=source.get("playbackSpeed", 0.75),
+            matting=source.get("matting"),
+        )
+        result.update(metadata, path=output.as_posix(), backgroundRemoved=True)
+    except Exception as exc:
+        result["backgroundRemovalError"] = str(exc)
+    if result["alphaVerified"] and result.get("mouthReference"):
+        from application.characters.sprite.mouth_sync import inherit_mouth_bundle
+
+        try:
+            manifest = inherit_mouth_bundle(
+                state,
+                result["name"],
+                result["mouthReference"],
+                output,
+                safe_child_path(video.parent, f"{task_id}-mouth"),
+                lambda message: _update_task(
+                    state,
+                    task_id,
+                    phase="mouth-sync",
+                    progress=0.97,
+                    message=message,
+                ),
+            )
+            if manifest:
+                result["mouthSyncManifest"] = str(manifest)
+        except Exception as exc:
+            result["mouthSyncError"] = str(exc)
+    return _approve_sprite_media(state, result)

@@ -29,6 +29,7 @@ const files = [
   "requirements-runtime-core.txt",
   "requirements-runtime-local-ai.txt",
   "requirements-toonout.txt",
+  "requirements-sprite-mouth.txt",
   "requirements-dev.txt",
 ];
 const directories = [

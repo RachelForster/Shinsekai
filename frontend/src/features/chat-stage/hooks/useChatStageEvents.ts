@@ -10,12 +10,14 @@ export function useChatStageEvents({
   sessionId,
   loadFallbackMessage,
   queueAnimatedDialog,
+  showDialogImmediately,
 }: {
   dispatch: Dispatch<ChatStageAction>;
   eventSeq: number;
   sessionId?: string;
   loadFallbackMessage: string;
   queueAnimatedDialog: (input: { characterName?: string; html?: string; text?: string }) => void;
+  showDialogImmediately?: () => void;
 }) {
   const eventSeqRef = useRef(0);
   eventSeqRef.current = eventSeq;
@@ -45,7 +47,14 @@ export function useChatStageEvents({
       });
     const unsubscribe = subscribeChatEvents((event) => {
       if (!mounted) return;
-      if (event.type === "dialog.end" && event.seq > eventSeqRef.current) {
+      if (
+        event.type === "presentation.restore" &&
+        event.seq > eventSeqRef.current &&
+        ("dialogHtml" in event.presentation || "dialogText" in event.presentation)
+      ) {
+        showDialogImmediately?.();
+      }
+      if (event.type === "dialog.end" && event.animate !== false && event.seq > eventSeqRef.current) {
         if (!event.isSystem || event.speaker.trim()) {
           queueAnimatedDialog({
             characterName: event.speaker,
@@ -62,6 +71,6 @@ export function useChatStageEvents({
     };
     cancelRef.current = cancel;
     return cancel;
-  }, [dispatch, loadFallbackMessage, queueAnimatedDialog, sessionId, subscriptionRevision]);
+  }, [dispatch, loadFallbackMessage, queueAnimatedDialog, showDialogImmediately, sessionId, subscriptionRevision]);
   return { replaceSession };
 }

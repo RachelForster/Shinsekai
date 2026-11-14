@@ -35,6 +35,7 @@ import type {
   KnowledgeImportResult,
   ChatConversationBranch,
   ChatHistoryEntry,
+  ChatReplaySnapshot,
   ChatLaunchPayload,
   ConversationSummary,
   ChatSendPayload,
@@ -553,6 +554,43 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       v: 1,
     };
     chatEventListeners.forEach((listener) => listener(event));
+  };
+
+  let replayPlan: ChatReplaySnapshot | null = null;
+  let replayRestore: ChatSnapshot | null = null;
+  let replayTimer: number | undefined;
+  const showPreviewReplay = () => {
+    window.clearTimeout(replayTimer);
+    const progress = chat.replay;
+    const entry = progress && replayPlan?.entries[progress.index];
+    if (!progress || !entry) return;
+    chat = {
+      ...chat,
+      status: "replaying",
+      characterName: entry.speaker,
+      dialogHtml: "",
+      dialogText: entry.body,
+      options: entry.options ?? [],
+      replaySelectedIndex: entry.selectedIndex,
+      backgroundPath: "",
+      bgmPath: "",
+      cgPath: "",
+      sprites: [],
+      stats: [],
+    };
+    emitChat();
+    if (progress.paused || progress.ended) return;
+    replayTimer = window.setTimeout(
+      () => {
+        if (chat.replay !== progress) return;
+        chat.replay =
+          progress.index === progress.total - 1
+            ? { ...progress, ended: true, paused: true }
+            : { ...progress, index: progress.index + 1 };
+        showPreviewReplay();
+      },
+      Math.max(700, entry.body.length * 125),
+    );
   };
 
   const emitTurnState = () => {
@@ -1368,6 +1406,69 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       },
       getHistory: () => delay(cloneHistoryEntries(chat.historyEntries)),
       getHistoryVoice: () => delay([]),
+      prepareReplay: async () => {
+        replayPlan = {
+          id: "preview-replay",
+          sessionId: chat.sessionId ?? "",
+          branchId: "main",
+          branchLabel: "",
+          historyCount: chat.historyEntries?.length ?? 0,
+          entries: cloneHistoryEntries(chat.historyEntries)
+            .filter((entry) => !/^\s*(?:scene|场景|bgm)[:：]/i.test(entry.text))
+            .map((entry, index) => {
+              const match = entry.text.match(/^\s*([^：:\n]+)[：:]\s*([\s\S]*)$/);
+              return {
+                ...entry,
+                key: entry.id,
+                position: index + 1,
+                speaker: match?.[1] ?? "",
+                body: match?.[2] ?? entry.text,
+                canGenerate: false,
+                voiceUrls: [],
+                voiceSource: "",
+                voiceLabel: "",
+                frame: null,
+              };
+            }),
+        };
+        return delay(clone(replayPlan));
+      },
+      startReplay: async (id, startKey, endKey) => {
+        if (!replayPlan || replayPlan.id !== id || chat.replay) throw new Error("Replay unavailable");
+        const start = replayPlan.entries.findIndex((entry) => entry.key === startKey);
+        const end = replayPlan.entries.findIndex((entry) => entry.key === endKey);
+        if (start < 0 || end < start) throw new Error("Invalid replay range");
+        replayRestore = clone(chat);
+        replayPlan = { ...replayPlan, entries: replayPlan.entries.slice(start, end + 1) };
+        chat.replay = { id, index: 0, total: end - start + 1, paused: false, ended: false, waiting: false, error: "" };
+        showPreviewReplay();
+      },
+      getReplay: async (id) => {
+        if (!replayPlan || chat.replay?.id !== id) throw new Error("No preview replay is running");
+        return { snapshot: clone(replayPlan), generate: false };
+      },
+      generateReplayVoice: async () => {
+        throw new Error("Preview has no voice provider");
+      },
+      cancelReplay: async (id) => {
+        if (chat.replay?.id !== id || !replayRestore) return;
+        window.clearTimeout(replayTimer);
+        chat = { ...replayRestore, replay: null, replaySelectedIndex: null };
+        replayRestore = null;
+        emitChat();
+      },
+      controlReplay: async (id, control) => {
+        if (chat.replay?.id !== id) throw new Error("No preview replay is running");
+        const progress = chat.replay;
+        if (control.action === "seek") {
+          const index = control.index ?? -1;
+          if (index < 0 || index >= progress.total) throw new Error("Invalid replay range");
+          chat.replay = { ...progress, index, paused: !control.playing, ended: false };
+        } else if (control.action === "play" || control.action === "pause") {
+          chat.replay = { ...progress, paused: control.action === "pause" };
+        }
+        showPreviewReplay();
+      },
       getRuntimeStatus: () => delay(runtimeStatusFromSnapshot(chat)),
       getSnapshot: () => delay(chat),
       getTheme: () =>
@@ -1899,6 +2000,46 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         generatedSprites.set(result.taskId, result);
         return delay(result);
       },
+      async getSpriteMouthSetup() {
+        return {
+          pythonPath: "",
+          version: [],
+          missing: [],
+          compatible: false,
+          runtimeReady: false,
+          device: "auto",
+          modelDirectory: "",
+          modelsReady: false,
+          models: [
+            { id: "yolov3", ready: false, size: 246354512 },
+            { id: "hrnetv2", ready: false, size: 38917560 },
+          ],
+        };
+      },
+      async configureSpriteMouth() {
+        throw new Error("请连接本机新世界以配置口型识别环境。");
+      },
+      async importSpriteMouthModels() {
+        throw new Error("请连接本机新世界以导入口型模型。");
+      },
+      async downloadSpriteMouthModels() {
+        throw new Error("请连接本机新世界以下载口型模型。");
+      },
+      async installSpriteMouthRuntime() {
+        throw new Error("请连接本机新世界以安装口型识别依赖。");
+      },
+      async generateSpriteMouth() {
+        throw new Error("口型同步需要连接本机新世界与 H3 服务；浏览器预览不会伪造识别结果。");
+      },
+      async readSpriteMouth() {
+        throw new Error("请连接本机新世界以读取口型配置。");
+      },
+      async saveSpriteMouths() {
+        throw new Error("请连接本机新世界以保存口型配置。");
+      },
+      async removeSpriteMouth() {
+        throw new Error("请连接本机新世界以移除口型配置。");
+      },
       async animateSprite() {
         throw new PlatformRequestError(
           "动态立绘需要连接本机新世界与 H3 服务；浏览器预览不会生成或伪造透明视频。",
@@ -2146,6 +2287,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         return clone(result);
       },
       list: () => delay(config.characters),
+      revision: () => delay(JSON.stringify(config.characters)),
       async listMemories(name) {
         const agentId = name || "user";
         const existing = characterMemories.get(agentId) ?? {

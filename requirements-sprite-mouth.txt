@@ -1,0 +1,6 @@
+# Optional offline sprite-mouth preprocessing; not needed for playback.
+# Use a Python >=3.12 interpreter. Existing local H3 Python can be reused.
+anime-face-detector==0.1.0
+opencv-python-headless>=4.10,<5
+av>=14
+Pillow>=10

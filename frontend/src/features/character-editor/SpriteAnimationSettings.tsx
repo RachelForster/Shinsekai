@@ -16,6 +16,7 @@ import {
 } from "../../shared/ui";
 import type { SpriteAnimationSource } from "./spriteAnimationSources";
 import { SpriteMattingSettings } from "./SpriteMattingSettings";
+import { SpriteH3ResolutionSelect } from "./SpriteH3ResolutionSelect";
 
 interface Props {
   value: CharacterSpriteAnimationInput;
@@ -116,6 +117,11 @@ export function SpriteAnimationSettings({
           ))}
         </div>
         <p className="sprite-generation__hint">{t("spriteAnimation.cameraHint")}</p>
+        <SpriteH3ResolutionSelect
+          value={value.h3Resolution ?? "workflow"}
+          onChange={(h3Resolution) => patch({ h3Resolution })}
+          disabled={busy}
+        />
         <SpriteMattingSettings value={value} onChange={patch} disabled={busy} />
         <label className="field-row field-row--stack">
           <span className="field-row__label">{t("spriteAnimation.speed")}</span>

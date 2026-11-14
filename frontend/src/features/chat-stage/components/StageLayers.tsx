@@ -9,7 +9,7 @@ import {
   type MouseEventHandler,
   type ReactNode,
 } from "react";
-import { Clock, Coins, Gauge, Heart, Shield, Sparkles, Star, Target, Zap, type LucideIcon } from "lucide-react";
+import { Check, Clock, Coins, Gauge, Heart, Shield, Sparkles, Star, Target, Zap, type LucideIcon } from "lucide-react";
 
 import { startDesktopWindowResize, type DesktopResizeDirection } from "../../../shared/desktop/desktopApi";
 import { useI18n } from "../../../shared/i18n";
@@ -154,6 +154,7 @@ export function SpriteLayer({
                 url: stageAssetUrl(sprite.path),
                 avatarType: sprite.avatarType ?? "static",
                 modelUrl: sprite.modelUrl ? stageAssetUrl(sprite.modelUrl) : "",
+                mouthSync: sprite.mouthSync ? stageAssetUrl(sprite.mouthSync) : undefined,
                 transitions: sprite.transitions?.map((edge) => ({
                   ...edge,
                   fromUrl: stageAssetUrl(edge.fromUrl),
@@ -186,6 +187,7 @@ export function SpriteLayer({
 }
 
 export function DialogLayer({
+  readOnly = false,
   playerPortrait,
   canAdvance,
   characterName,
@@ -199,6 +201,7 @@ export function DialogLayer({
   toolbar,
   typing,
 }: {
+  readOnly?: boolean;
   playerPortrait?: PlayerPortrait | null;
   canAdvance: boolean;
   characterName?: string;
@@ -279,7 +282,7 @@ export function DialogLayer({
             </div>
           </div>
         )}
-        <PluginSlot onOpenPluginPage={onOpenPluginPage} slot="chat-output" />
+        {!readOnly && <PluginSlot onOpenPluginPage={onOpenPluginPage} slot="chat-output" />}
         {toolbar ? <div className="dialog-layer__toolbar">{toolbar}</div> : null}
       </section>
     </div>
@@ -351,10 +354,14 @@ export function OptionsLayer({
   hidden,
   onSelect,
   options,
+  readOnly = false,
+  selectedIndex,
 }: {
   hidden: boolean;
   onSelect: (option: ChatOption) => void;
   options: ChatOption[];
+  readOnly?: boolean;
+  selectedIndex?: number | null;
 }) {
   const { t } = useI18n();
   if (hidden || !options.length) {
@@ -368,27 +375,38 @@ export function OptionsLayer({
       hidden={hidden}
     >
       <div aria-label={t("chat.options.label")} className="options-layer__scroll" role="list">
-        {options.map((option) => {
+        {options.map((option, index) => {
           const label = typeof option === "string" ? option : option.label;
-          const disabled = typeof option !== "string" && !option.enabled;
+          const disabled = readOnly || (typeof option !== "string" && !option.enabled);
+          const selected = readOnly && selectedIndex === index;
           const key = typeof option === "string" ? option : `${option.expectedRevision}:${option.id}`;
           return (
-            <div className="options-layer__item" key={key} role="listitem">
+            <div
+              className="options-layer__item"
+              data-replay-selected={selected ? "true" : undefined}
+              key={key}
+              role="listitem"
+            >
               <ThemeFrame prefix="chat-option" />
               <Button
                 className="options-layer__button"
                 disabled={disabled}
-                onClick={() => onSelect(option)}
+                aria-pressed={readOnly ? selected : undefined}
+                onClick={() => {
+                  if (!readOnly) onSelect(option);
+                }}
                 onKeyDown={(event: KeyboardEvent<HTMLButtonElement>) => {
                   if (event.key !== "Enter" || event.nativeEvent.isComposing) {
                     return;
                   }
                   event.preventDefault();
                   event.stopPropagation();
-                  onSelect(option);
+                  if (!readOnly) onSelect(option);
                 }}
               >
+                {selected && <Check aria-hidden className="button__icon" />}
                 {label}
+                {selected && <small className="options-layer__detail">{t("chat.replay.selected")}</small>}
               </Button>
             </div>
           );

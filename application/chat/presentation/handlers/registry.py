@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, List
 
 from sdk.handlers import MessageHandler, UIOutputMessageHandler
 from sdk.messages import LLMDialogMessage, PresentationMessage
+from application.chat.presentation.replay import ReplayPresentationMessage
 
 if TYPE_CHECKING:
     from application.chat.dialog_media import (
@@ -41,17 +42,19 @@ class DialogMediaDispatcher:
 
 
 class UiOutputMessageDispatcher:
-    def __init__(self, handlers: List[UIOutputMessageHandler]) -> None:
+    def __init__(self, handlers: List[UIOutputMessageHandler], *, live_only: int = 0) -> None:
         if not handlers:
             raise ValueError("至少需要一个 UI handler（末项应为缺省）")
         self._handlers = list(handlers)
+        self._live_only = live_only
 
     def init_handlers(self) -> None:
         for h in self._handlers:
             h.init()
 
     def dispatch(self, out: PresentationMessage) -> None:
-        for h in self._handlers:
+        handlers = self._handlers[self._live_only:] if isinstance(out, ReplayPresentationMessage) else self._handlers
+        for h in handlers:
             if h.can_handle(out):
                 h.pre_process(out)
                 h.handle(out)
@@ -88,5 +91,5 @@ def default_presentation_handler_chain() -> UiOutputMessageDispatcher:
     from plugin_system.host import get_plugin_ui_handlers
     from application.chat.presentation.handlers.presentation import get_ui_output_handlers
 
-    chain = list(get_plugin_ui_handlers()) + list(get_ui_output_handlers())
-    return UiOutputMessageDispatcher(chain)
+    plugins = list(get_plugin_ui_handlers())
+    return UiOutputMessageDispatcher(plugins + list(get_ui_output_handlers()), live_only=len(plugins))

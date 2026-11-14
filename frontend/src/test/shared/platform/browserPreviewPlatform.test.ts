@@ -63,6 +63,32 @@ function templateSession(overrides: Partial<TemplateLaunchSession> = {}): Templa
 }
 
 describe("browser preview platform chat themes", () => {
+  it("previews replay through the normal snapshot, pauses in range and restores live presentation", async () => {
+    vi.useFakeTimers();
+    const platform = createBrowserPreviewPlatform();
+    const live = await resolvePreview(platform.chat.getSnapshot());
+    const plan = await resolvePreview(platform.chat.prepareReplay());
+    const first = plan.entries[0];
+    const last = plan.entries[plan.entries.length - 1];
+    await platform.chat.startReplay(plan.id, first.key, last.key, false);
+    await platform.chat.controlReplay(plan.id, { action: "pause" });
+    const paused = await resolvePreview(platform.chat.getSnapshot());
+    expect(paused.status).toBe("replaying");
+    expect(paused.dialogText).toBe(first.body);
+    expect(paused.replay?.index).toBe(0);
+    await platform.chat.controlReplay(plan.id, { action: "seek", index: plan.entries.length - 1 });
+    expect((await platform.chat.getReplay(plan.id)).snapshot.entries).toHaveLength(plan.entries.length);
+    await platform.chat.controlReplay(plan.id, { action: "play" });
+    await vi.advanceTimersByTimeAsync(60_000);
+    const ended = await resolvePreview(platform.chat.getSnapshot());
+    expect(ended.replay?.ended).toBe(true);
+    await platform.chat.cancelReplay(plan.id);
+    const restored = await resolvePreview(platform.chat.getSnapshot());
+    expect(restored.replay).toBeNull();
+    expect(restored.historyEntries).toEqual(live.historyEntries);
+    expect(restored.dialogText).toBe(live.dialogText);
+  });
+
   it("deletes one story version and all its chats while retaining other versions", async () => {
     vi.useFakeTimers();
     const platform = createBrowserPreviewPlatform();
