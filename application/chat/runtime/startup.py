@@ -228,12 +228,20 @@ def _import_provider_runtime() -> SimpleNamespace:
     from ai.tools.tool_manager import ToolManager
     from ai.tts.tts_manager import TTSAdapterFactory, TTSManager
     from ai.vision.fallback_registry import configure_registered_fallbacks
+    from application.model_assets.download_model import (
+        configure_registered_model_assets,
+        create_plugin_model_assets_dispatcher,
+    )
     from core.media.avatar.registry import (
         configure_registered_formats,
         configure_builtin_formats,
     )
     configure_builtin_formats()
-    from plugin_system.host import ensure_plugins_loaded, PluginRuntimeBindings
+    from plugin_system.host import (
+        bind_model_assets_runtime,
+        ensure_plugins_loaded,
+        PluginRuntimeBindings,
+    )
     from sdk.chat_init import InitChatContext
 
     return SimpleNamespace(
@@ -247,8 +255,11 @@ def _import_provider_runtime() -> SimpleNamespace:
         TTSAdapterFactory=TTSAdapterFactory,
         TTSManager=TTSManager,
         ToolManager=ToolManager,
+        bind_model_assets_runtime=bind_model_assets_runtime,
         configure_registered_fallbacks=configure_registered_fallbacks,
         configure_registered_formats=configure_registered_formats,
+        configure_registered_model_assets=configure_registered_model_assets,
+        create_plugin_model_assets_dispatcher=create_plugin_model_assets_dispatcher,
         ensure_plugins_loaded=ensure_plugins_loaded,
         install_memory_hooks=install_memory_hooks,
     )
@@ -262,6 +273,62 @@ def _load_plugin_manager(
 
         register_mcp_tools_from_config(tool_manager)
 
+    bind_fn = getattr(runtime, "bind_model_assets_runtime", None)
+    create_dispatcher_fn = getattr(
+        runtime, "create_plugin_model_assets_dispatcher", None
+    )
+    if callable(bind_fn) and callable(create_dispatcher_fn):
+        from application.model_assets.registry import (
+            ASR_FASTER_WHISPER_ASSET_ID,
+            PERCEPTION_VLM_ASSET_ID,
+        )
+        from config.perception import DEFAULT_PERCEPTION_MODEL
+
+        bind_fn(
+            create_dispatcher_fn(
+                get_token=lambda: str(
+                    getattr(
+                        getattr(getattr(config, "config", None), "api_config", None),
+                        "hugging_face_access_token",
+                        "",
+                    )
+                    or ""
+                ).strip(),
+                get_configured_values=lambda: {
+                    ASR_FASTER_WHISPER_ASSET_ID: str(
+                        getattr(
+                            getattr(
+                                getattr(config, "config", None),
+                                "system_config",
+                                None,
+                            ),
+                            "asr_whisper_model_size",
+                            "",
+                        )
+                        or "small"
+                    ).strip()
+                    or "small",
+                    PERCEPTION_VLM_ASSET_ID: str(
+                        getattr(
+                            getattr(config, "config", None), "api_config", None
+                        )
+                        and getattr(
+                            config.config.api_config,
+                            "perception_model",
+                            DEFAULT_PERCEPTION_MODEL,
+                        )
+                        or DEFAULT_PERCEPTION_MODEL
+                    ).strip()
+                    or DEFAULT_PERCEPTION_MODEL,
+                },
+            )
+        )
+
+    extra_bindings: dict[str, Any] = {}
+    configure_assets_fn = getattr(runtime, "configure_registered_model_assets", None)
+    if callable(configure_assets_fn):
+        extra_bindings["configure_model_assets"] = configure_assets_fn
+
     return runtime.ensure_plugins_loaded(
         config,
         runtime_bindings=runtime.PluginRuntimeBindings(
@@ -273,6 +340,7 @@ def _load_plugin_manager(
             configure_vision_fallbacks=runtime.configure_registered_fallbacks,
             configure_avatar_formats=runtime.configure_registered_formats,
             register_mcp_tools=register_mcp_tools,
+            **extra_bindings,
         ),
     )
 

@@ -172,6 +172,7 @@ EMBEDDING_MODEL_ASSET = ModelAssetSpec(
         ("tokenizer.json",),
     ),
     snapshot_validator=_validate_sentence_transformer_snapshot,
+    enforce_allow_patterns=False,
 )
 
 
