@@ -1,7 +1,8 @@
-"""Lazy runtime for the isolated knowledge Mem0 instance."""
+"""Lazy runtime for the isolated HybridKnowledgeStore instance."""
 
 from __future__ import annotations
 
+import importlib
 import importlib.util
 import logging
 import threading
@@ -15,15 +16,20 @@ from sdk.exception.types import (
     runtime_dependency_error_from_module,
 )
 
+from ai.knowledge.config import (
+    HybridKnowledgeStore,
+    configure_mem0_environment,
+    create_knowledge_mem0,
+)
 from ai.memory.config import (
     EMBEDDING_MODEL_ASSET,
     embedding_model_snapshot_path,
 )
 from ai.memory.constants import EMBEDDING_MODEL
-from ai.knowledge.config import configure_mem0_environment, create_knowledge_mem0
 from application.knowledge.tasks import current_mem0_task, set_mem0_task
 
 logger = logging.getLogger(__name__)
+_REQUIRED_RUNTIME_MODULE = "onnxruntime"
 
 configure_mem0_environment()
 
@@ -31,7 +37,6 @@ _mem0: Any = None
 _mem0_load_error: BaseException | None = None
 _mem0_loading = False
 _lock = threading.Lock()
-
 
 
 def _preload_embedding_model() -> str:
@@ -48,7 +53,10 @@ def _preload_embedding_model() -> str:
 
 
 def _dependency_from_error(error: BaseException) -> dict[str, Any]:
-    return runtime_dependency_error_from_exception(error) or runtime_dependency_error_from_module("mem0")
+    return (
+        runtime_dependency_error_from_exception(error)
+        or runtime_dependency_error_from_module(_REQUIRED_RUNTIME_MODULE)
+    )
 
 
 def _module_is_available(module_name: str) -> bool:
@@ -113,7 +121,7 @@ def start_mem0_loading(*, retry: bool = False) -> None:
         stage = "dependency"
         try:
             configure_mem0_environment()
-            from mem0 import Memory
+            importlib.import_module(_REQUIRED_RUNTIME_MODULE)
 
             stage = "download"
             snapshot_path = _preload_embedding_model()
@@ -122,7 +130,7 @@ def start_mem0_loading(*, retry: bool = False) -> None:
                 phase="initialize", status="running", progress=0.96,
                 message="Initializing knowledge.",
             )
-            store = create_knowledge_mem0(Memory, snapshot_path)
+            store = create_knowledge_mem0(HybridKnowledgeStore, snapshot_path)
             with _lock:
                 set_mem0_task(
                     phase="completed", status="succeeded", progress=1.0,
@@ -145,7 +153,9 @@ def start_mem0_loading(*, retry: bool = False) -> None:
         logger.exception("Could not start Knowledge loader")
         raise
 
-_GET_MEM0_TIMEOUT_SEC = 600  # 10 minutes — covers worst-case first-time model download
+
+_GET_MEM0_TIMEOUT_SEC = 600
+
 
 def get_mem0() -> Any:
     """Return the Knowledge instance, waiting up to ten minutes for background loading."""
@@ -160,11 +170,11 @@ def get_mem0() -> Any:
         if not loading:
             if error is not None:
                 raise error
-            raise RuntimeError("Knowledge mem0 loading failed")
+            raise RuntimeError("Knowledge store loading failed")
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise TimeoutError(f"Knowledge mem0 加载超时（{_GET_MEM0_TIMEOUT_SEC} 秒）。请检查网络连接和模型下载状态。")
-        time.sleep(min(0.5, remaining))
+        time.sleep(min(0.05, remaining))
 
 
 def check_mem0_status(*, start_loading: bool = True, retry: bool = False) -> dict[str, Any]:
@@ -180,8 +190,11 @@ def check_mem0_status(*, start_loading: bool = True, retry: bool = False) -> dic
     if loading:
         return {"status": "loading", "modelCached": embedding_model_snapshot_path() is not None, **task_fields}
     if error is not None:
-        dependency = (_dependency_from_error(error) if isinstance(error, ModuleNotFoundError)
-                      else runtime_dependency_error_from_exception(error))
+        dependency = (
+            _dependency_from_error(error)
+            if isinstance(error, ModuleNotFoundError)
+            else runtime_dependency_error_from_exception(error)
+        )
         if dependency is not None and not _module_is_available(str(dependency["moduleName"])):
             return _missing_dependency_status(dependency)
         if not retry:
@@ -189,10 +202,13 @@ def check_mem0_status(*, start_loading: bool = True, retry: bool = False) -> dic
             return {"status": "error", "error": str(error), "message": message, **task_fields}
     configure_mem0_environment()
     try:
-        importlib.import_module("mem0")
+        importlib.import_module(_REQUIRED_RUNTIME_MODULE)
     except ImportError as exc:
-        dependency = (_dependency_from_error(exc) if isinstance(exc, ModuleNotFoundError)
-                      else runtime_dependency_error_from_exception(exc))
+        dependency = (
+            _dependency_from_error(exc)
+            if isinstance(exc, ModuleNotFoundError)
+            else runtime_dependency_error_from_exception(exc)
+        )
         if dependency is not None:
             return _missing_dependency_status(dependency)
         return {"status": "error", "message": str(exc), **task_fields}
@@ -205,3 +221,17 @@ def check_mem0_status(*, start_loading: bool = True, retry: bool = False) -> dic
         start_mem0_loading()
     task = current_mem0_task()
     return {"status": "loading", "modelCached": cached, **({"task": task} if task else {})}
+
+
+def reset_knowledge_runtime_for_tests() -> None:
+    """Reset knowledge singleton state for isolated unit tests."""
+    global _mem0, _mem0_loading, _mem0_load_error
+    with _lock:
+        if _mem0 is not None and hasattr(_mem0, "close"):
+            try:
+                _mem0.close()
+            except Exception:
+                pass
+        _mem0 = None
+        _mem0_loading = False
+        _mem0_load_error = None

@@ -1,4 +1,4 @@
-"""mem0 runtime loading and status management."""
+"""Hybrid memory engine runtime loading and status management."""
 
 from __future__ import annotations
 
@@ -23,15 +23,15 @@ from ai.memory.config import (
     is_embedding_model_cached,
 )
 from ai.memory.constants import EMBEDDING_MODEL
+from ai.memory.engine import HybridMemoryEngine
 from ai.memory.tasks import current_mem0_task, set_mem0_task
 
 logger = logging.getLogger(__name__)
+_REQUIRED_RUNTIME_MODULE = "onnxruntime"
 
 
 def _configure_mem0_environment() -> None:
-    # mem0 otherwise starts separate hosted/OSS PostHog clients and an
-    # additional telemetry vector store. Keep desktop memory local unless the
-    # user explicitly opts in before launch.
+    """Keep legacy telemetry opt-out variable set for backward compatibility."""
     os.environ.setdefault("MEM0_TELEMETRY", "False")
 
 
@@ -44,7 +44,7 @@ _loading_started_at: float = 0.0
 _lock = threading.Lock()
 
 _LOADING_FIRST_MSG = (
-    "记忆系统正在后台初始化（embedding + 向量库），首次约需 2-5 分钟，后续约 10-30 秒。"
+    "记忆系统正在后台初始化（ONNX embedding + 混合检索库），首次约需 1-3 分钟，后续约 1-3 秒。"
     "请直接告诉用户「记忆系统正在初始化，请稍等片刻」，不要重复调用本工具。"
 )
 
@@ -53,12 +53,15 @@ def _preload_embedding_model() -> str:
     result = download_model_asset(EMBEDDING_MODEL_ASSET, update_task=set_mem0_task)
     snapshot_path = result.get("path")
     if not snapshot_path:
-        raise RuntimeError("The mem0 embedding model snapshot could not be located after download.")
+        raise RuntimeError("The memory embedding model snapshot could not be located after download.")
     return str(snapshot_path)
 
 
 def _dependency_from_error(error: BaseException) -> dict[str, Any]:
-    return runtime_dependency_error_from_exception(error) or runtime_dependency_error_from_module("mem0")
+    return (
+        runtime_dependency_error_from_exception(error)
+        or runtime_dependency_error_from_module(_REQUIRED_RUNTIME_MODULE)
+    )
 
 
 def _missing_dependency_status(dependency: dict[str, Any]) -> dict[str, Any]:
@@ -79,15 +82,15 @@ def _module_is_available(module_name: str) -> bool:
         return False
 
 
-def _create_mem0_instance(memory_type: Any, snapshot_path: str) -> Any:
+def _create_mem0_instance(engine_type: Any, snapshot_path: str) -> Any:
     config = build_mem0_config()
     logger.info(
-        "mem0 后台初始化: llm.provider=%s embedder.provider=%s",
+        "混合记忆引擎后台初始化: llm.provider=%s embedder.provider=%s",
         config["llm"]["provider"],
         config["embedder"]["provider"],
     )
     config["embedder"]["config"]["model"] = snapshot_path
-    return memory_type.from_config(config)
+    return engine_type.from_config(config)
 
 
 def _loading_status_message() -> str:
@@ -96,7 +99,7 @@ def _loading_status_message() -> str:
         if elapsed < 60:
             return (
                 f"记忆系统仍在加载中（已等待 {elapsed} 秒）。"
-                "请直接告诉用户「记忆系统正在初始化，预计还需 1-4 分钟」，不要重复调用本工具。"
+                "请直接告诉用户「记忆系统正在初始化，预计还需片刻」，不要重复调用本工具。"
             )
         minutes = elapsed // 60
         seconds = elapsed % 60
@@ -108,7 +111,7 @@ def _loading_status_message() -> str:
 
 
 def start_mem0_loading() -> None:
-    """Start mem0 initialization in a background thread."""
+    """Start hybrid memory engine initialization in a background thread."""
     global _mem0_loading, _loading_started_at, _mem0_load_error
     with _lock:
         if _mem0 is not None or _mem0_loading:
@@ -127,7 +130,7 @@ def start_mem0_loading() -> None:
         notice="",
         noticeKind="info",
         status="running",
-        message="Loading cached mem0 embedding model." if cached else "Downloading mem0 embedding model.",
+        message="Loading cached ONNX embedding model." if cached else "Downloading ONNX embedding model.",
         progress=None,
     )
 
@@ -135,7 +138,7 @@ def start_mem0_loading() -> None:
         global _mem0, _mem0_loading, _mem0_load_error
         stage = "dependency"
         try:
-            from mem0 import Memory
+            import onnxruntime  # noqa: F401
 
             stage = "download"
             snapshot_path = _preload_embedding_model()
@@ -146,20 +149,20 @@ def start_mem0_loading() -> None:
                 message="Initializing long-term memory.",
                 progress=0.96,
             )
-            mem = _create_mem0_instance(Memory, snapshot_path)
+            mem = _create_mem0_instance(HybridMemoryEngine, snapshot_path)
             with _lock:
                 _mem0 = mem
             set_mem0_task(
                 phase="completed",
                 status="succeeded",
-                message="mem0 embedding model is ready.",
+                message="ONNX embedding model is ready.",
                 progress=1,
             )
-            logger.info("mem0 后台加载完成")
+            logger.info("混合记忆引擎后台加载完成")
         except ModuleNotFoundError as exc:
             dependency = _dependency_from_error(exc)
             package_name = str(dependency["packageName"])
-            logger.exception("mem0 后台加载失败: 缺少运行时依赖 %s", package_name)
+            logger.exception("混合记忆引擎加载失败: 缺少运行时依赖 %s", package_name)
             with _lock:
                 _mem0_load_error = exc
             user_message = f"长期记忆缺少 {package_name}，请先安装运行时依赖。"
@@ -175,7 +178,7 @@ def start_mem0_loading() -> None:
                 status="failed",
             )
         except Exception as exc:
-            logger.exception("mem0 后台加载失败")
+            logger.exception("混合记忆引擎加载失败")
             with _lock:
                 _mem0_load_error = exc
             if stage == "download":
@@ -211,26 +214,21 @@ def start_mem0_loading() -> None:
 
                 notify_tool_ready("memory", "记忆系统已就绪，可以继续使用。")
             except Exception:
-                logger.exception("mem0 就绪通知失败")
+                logger.exception("记忆引擎就绪通知失败")
         finally:
             with _lock:
                 _mem0_loading = False
 
-    t = threading.Thread(target=_load, name="mem0-loader", daemon=True)
+    t = threading.Thread(target=_load, name="memory-engine-loader", daemon=True)
     t.start()
-    logger.info("mem0 后台加载线程已启动")
+    logger.info("混合记忆引擎后台加载线程已启动")
 
 
-_GET_MEM0_TIMEOUT_SEC = 600  # 10 minutes — covers worst-case first-time model download
+_GET_MEM0_TIMEOUT_SEC = 600
 
 
 def get_mem0() -> Any:
-    """Return the mem0 instance, waiting for background initialization.
-
-    Blocks until mem0 is ready or a fatal error occurs, with a timeout
-    to prevent indefinite hangs if the download stalls.
-    Prefer :func:`ensure_mem0` for non-blocking callers.
-    """
+    """Return the memory engine instance, waiting for background initialization."""
     global _mem0, _mem0_load_error
     if _mem0 is not None:
         return _mem0
@@ -239,23 +237,23 @@ def get_mem0() -> Any:
 
     waited = 0.0
     while _mem0 is None and _mem0_loading:
-        time.sleep(0.5)
-        waited += 0.5
+        time.sleep(0.05)
+        waited += 0.05
         if waited >= _GET_MEM0_TIMEOUT_SEC:
             raise TimeoutError(
-                f"mem0 加载超时（已等待 {int(waited)} 秒 / {_GET_MEM0_TIMEOUT_SEC} 秒上限）。"
+                f"记忆引擎加载超时（已等待 {int(waited)} 秒 / {_GET_MEM0_TIMEOUT_SEC} 秒上限）。"
                 "请检查网络连接和 HuggingFace 模型下载是否正常。"
             )
 
     if _mem0 is None:
         if isinstance(_mem0_load_error, ModuleNotFoundError):
             raise _mem0_load_error
-        raise RuntimeError("mem0 加载失败")
+        raise RuntimeError(f"记忆引擎加载失败: {_mem0_load_error}" if _mem0_load_error else "记忆引擎加载失败")
     return _mem0
 
 
 def ensure_mem0() -> Any:
-    """Return mem0 if ready; otherwise start loading and raise ToolNotReady."""
+    """Return memory engine if ready; otherwise start loading and raise ToolNotReady."""
     if _mem0 is not None:
         return _mem0
     start_mem0_loading()
@@ -263,7 +261,7 @@ def ensure_mem0() -> Any:
 
 
 def check_mem0_status(*, start_loading: bool = True) -> dict[str, Any]:
-    """Return the current mem0 availability and model loading status."""
+    """Return the current memory engine availability and model loading status."""
     global _mem0, _mem0_loading, _mem0_load_error
     if _mem0 is not None:
         task = current_mem0_task()
@@ -281,9 +279,6 @@ def check_mem0_status(*, start_loading: bool = True) -> dict[str, Any]:
         if not _module_is_available(str(dependency["moduleName"])):
             return _missing_dependency_status(dependency)
 
-        # A dependency installer invalidates import caches before the next
-        # status read. Clear only the exact error we inspected so an error from
-        # a concurrent loader cannot be lost.
         with _lock:
             recovered = _mem0_load_error is load_error
             if recovered:
@@ -307,7 +302,7 @@ def check_mem0_status(*, start_loading: bool = True) -> dict[str, Any]:
             **({"task": task} if task else {}),
         }
     try:
-        import mem0  # noqa: F401
+        import onnxruntime  # noqa: F401
 
         if not start_loading:
             return {
@@ -327,3 +322,24 @@ def check_mem0_status(*, start_loading: bool = True) -> dict[str, Any]:
             task = current_mem0_task()
             return {"status": "error", "message": str(exc), **({"task": task} if task else {})}
         return _missing_dependency_status(dependency)
+
+
+def reset_memory_runtime_for_tests() -> None:
+    """Reset global singleton state for isolated unit tests."""
+    global _mem0, _mem0_loading, _mem0_load_error, _loading_started_at
+    with _lock:
+        if _mem0 is not None and hasattr(_mem0, "close"):
+            try:
+                _mem0.close()
+            except Exception:
+                pass
+        _mem0 = None
+        _mem0_loading = False
+        _mem0_load_error = None
+        _loading_started_at = 0.0
+
+
+start_memory_loading = start_mem0_loading
+get_memory_engine = get_mem0
+ensure_memory_engine = ensure_mem0
+check_memory_status = check_mem0_status

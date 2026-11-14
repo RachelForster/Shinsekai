@@ -8,6 +8,7 @@ pydantic
 pandas
 requests
 onnxruntime
+tokenizers>=0.20,<1
 rembg
 av
 google-genai
@@ -24,10 +25,4 @@ vosk; sys_platform != "win32" or platform_machine != "ARM64"
 gpu-list
 py7zr
 py7zz>=1.1.4; sys_platform == "darwin" or platform_machine == "x86_64" or platform_machine == "AMD64"
-mem0ai[nlp]
-click>=8.1,<9
-spacy>=3.7,<4
-sentence-transformers>=5.2,<6
-transformers>=4.51.1,<5
 huggingface-hub==0.36.2
-fastembed

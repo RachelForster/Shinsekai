@@ -9,6 +9,16 @@ from sdk.adapters.avatar import (
     ModelRuntimeInstaller,
 )
 from sdk.adapters.llm import LLMAdapter
+from sdk.adapters.memory import (
+    EmbeddingProvider,
+    EmbeddingProviderContribution,
+    MemoryExtractorPort,
+    MemoryRepository,
+    MemoryRepositoryContribution,
+    RecallPlanner,
+    RetentionPolicy,
+    StaticVectorStorePort,
+)
 from sdk.llm_response import ChatResponse, ResponseCodec, ResponseDelta
 from sdk.adapters.t2i import T2IAdapter
 from sdk.adapters.tts import TTSAdapter
@@ -23,6 +33,14 @@ __all__ = [
     "ASRAdapter",
     "AvatarFormatContribution",
     "LLMAdapter",
+    "EmbeddingProvider",
+    "EmbeddingProviderContribution",
+    "MemoryExtractorPort",
+    "MemoryRepository",
+    "MemoryRepositoryContribution",
+    "RecallPlanner",
+    "RetentionPolicy",
+    "StaticVectorStorePort",
     "ChatResponse",
     "ResponseCodec",
     "ResponseDelta",

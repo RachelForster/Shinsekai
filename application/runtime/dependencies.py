@@ -41,19 +41,12 @@ _SAFE_PACKAGE_RE = re.compile(r"^[A-Za-z0-9_.-]+(?:\[[A-Za-z0-9_,.-]+\])?$")
 _PYTHON_EXE_NAME_RE = re.compile(r"^python(?:\d+(?:\.\d+)*)?(?:\.exe)?$", re.IGNORECASE)
 HUGGINGFACE_HUB_VERSION = "0.36.2"
 HUGGINGFACE_HUB_SPEC = f"huggingface-hub=={HUGGINGFACE_HUB_VERSION}"
+ONNXRUNTIME_SPEC = "onnxruntime"
+TOKENIZERS_SPEC = "tokenizers>=0.20,<1"
 TRANSFORMERS_SPEC = "transformers>=4.51.1,<5"
 SENTENCE_TRANSFORMERS_SPEC = "sentence-transformers>=5.2,<6"
-FASTEMBED_SPEC = "fastembed"
-MEM0_SPEC = "mem0ai[nlp]"
-CLICK_SPEC = "click>=8.1,<9"
-SPACY_SPEC = "spacy>=3.7,<4"
 MEMORY_RUNTIME_PACKAGE_SPECS = (
-    MEM0_SPEC,
-    CLICK_SPEC,
-    SPACY_SPEC,
-    SENTENCE_TRANSFORMERS_SPEC,
-    FASTEMBED_SPEC,
-    TRANSFORMERS_SPEC,
+    ONNXRUNTIME_SPEC,
     HUGGINGFACE_HUB_SPEC,
 )
 PERCEPTION_TORCH_SPEC = "torch>=2.1.0"
@@ -74,6 +67,7 @@ PERCEPTION_RUNTIME_PACKAGE_SPECS = (
 )
 _RUNTIME_PACKAGE_SPECS = {
     "huggingface_hub": (HUGGINGFACE_HUB_SPEC,),
+    "onnxruntime": MEMORY_RUNTIME_PACKAGE_SPECS,
     "mem0": MEMORY_RUNTIME_PACKAGE_SPECS,
     "perception": PERCEPTION_RUNTIME_PACKAGE_SPECS,
     "sentence_transformers": (

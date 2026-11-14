@@ -1,4 +1,4 @@
-"""mem0 configuration helpers for long-term memory."""
+"""Configuration and ONNX asset validation helpers for long-term memory."""
 
 from __future__ import annotations
 
@@ -10,7 +10,16 @@ from typing import Any
 from config.config_manager import ConfigManager
 from core.model_assets.service import ModelAssetSpec, find_cached_huggingface_snapshot
 
-from ai.memory.constants import EMBEDDING_DIMS, EMBEDDING_MODEL, VECTOR_COLLECTION
+from ai.memory.constants import (
+    EMBEDDING_DIMS,
+    EMBEDDING_MODEL,
+    MEMORY_STORE_FILENAME,
+    ONNX_MODEL_CANDIDATES,
+    VECTOR_COLLECTION,
+)
+
+_MIN_ONNX_FILE_BYTES = 16
+_PROTOBUF_FIELD1_VARINT_TAG = 0x08
 
 
 def _read_json_file(path: Path) -> Any | None:
@@ -22,45 +31,45 @@ def _read_json_file(path: Path) -> Any | None:
         return None
 
 
-def _validate_safetensors_file(path: Path) -> bool:
-    """Parse the tensor index without loading the model payload into memory."""
-    try:
-        if not path.is_file() or path.stat().st_size <= 0:
-            return False
-        from safetensors import safe_open
-    except (ImportError, OSError):
-        return False
-    try:
-        with safe_open(str(path), framework="numpy") as tensors:
-            return bool(list(tensors.keys()))
-    except Exception:
-        return False
-
-
 def _is_positive_int(value: Any) -> bool:
     return type(value) is int and value > 0
 
 
-def _safe_module_directory(snapshot: Path, relative_path: str) -> bool:
+def _is_positive_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0
+
+
+def _safe_snapshot_file(snapshot: Path, relative_path: str) -> Path | None:
     if not relative_path:
-        return True
+        return None
     candidate = Path(relative_path)
     if candidate.is_absolute() or ".." in candidate.parts:
-        return False
+        return None
     try:
-        module_dir = (snapshot / candidate).resolve(strict=False)
-        return (
-            os.path.commonpath([str(snapshot.resolve(strict=False)), str(module_dir)])
-            == str(snapshot.resolve(strict=False))
-            and module_dir.is_dir()
-        )
+        root_resolved = snapshot.resolve(strict=False)
+        target_resolved = (snapshot / candidate).resolve(strict=False)
+        if os.path.commonpath([str(root_resolved), str(target_resolved)]) != str(root_resolved):
+            return None
+        raw_target = snapshot / candidate
+        return raw_target if raw_target.is_file() else None
     except (OSError, ValueError):
+        return None
+
+
+def _validate_onnx_file(path: Path) -> bool:
+    """Verify the ONNX ModelProto file exists, is non-trivial, and has a valid header."""
+    try:
+        if not path.is_file() or path.stat().st_size < _MIN_ONNX_FILE_BYTES:
+            return False
+        with path.open("rb") as fh:
+            header = fh.read(_MIN_ONNX_FILE_BYTES)
+        return len(header) >= _MIN_ONNX_FILE_BYTES and header[0] == _PROTOBUF_FIELD1_VARINT_TAG
+    except OSError:
         return False
 
 
-def _validate_sentence_transformer_snapshot(snapshot: Path) -> bool:
-    """Validate the structured files needed for local SentenceTransformer loading."""
-
+def _validate_onnx_embedding_snapshot(snapshot: Path) -> bool:
+    """Validate structured metadata, tokenizer vocab, and ONNX graph in a snapshot."""
     try:
         config = _read_json_file(snapshot / "config.json")
         if not isinstance(config, dict):
@@ -70,53 +79,11 @@ def _validate_sentence_transformer_snapshot(snapshot: Path) -> bool:
             not isinstance(config.get("model_type"), str)
             or not config["model_type"].strip()
             or not _is_positive_int(hidden_size)
+            or hidden_size != EMBEDDING_DIMS
             or not _is_positive_int(config.get("vocab_size"))
             or not isinstance(config.get("architectures"), list)
             or not config["architectures"]
             or not all(isinstance(name, str) and name for name in config["architectures"])
-        ):
-            return False
-
-        modules = _read_json_file(snapshot / "modules.json")
-        if not isinstance(modules, list) or not modules:
-            return False
-
-        module_types: set[str] = set()
-        module_indexes: set[int] = set()
-        for module in modules:
-            if not isinstance(module, dict):
-                return False
-            module_type = module.get("type")
-            module_path = module.get("path")
-            module_index = module.get("idx")
-            if (
-                not isinstance(module.get("name"), str)
-                or not isinstance(module_path, str)
-                or not isinstance(module_type, str)
-                or not module_type.startswith("sentence_transformers.models.")
-                or type(module_index) is not int
-                or module_index in module_indexes
-                or not _safe_module_directory(snapshot, module_path)
-            ):
-                return False
-            module_indexes.add(module_index)
-            module_types.add(module_type)
-        if not any(name.endswith(".Transformer") for name in module_types):
-            return False
-        if not any(name.endswith(".Pooling") for name in module_types):
-            return False
-
-        pooling = _read_json_file(snapshot / "1_Pooling" / "config.json")
-        if not isinstance(pooling, dict):
-            return False
-        if pooling.get("word_embedding_dimension") != hidden_size or not any(
-            pooling.get(key) is True
-            for key in (
-                "pooling_mode_cls_token",
-                "pooling_mode_mean_tokens",
-                "pooling_mode_max_tokens",
-                "pooling_mode_mean_sqrt_len_tokens",
-            )
         ):
             return False
 
@@ -125,58 +92,75 @@ def _validate_sentence_transformer_snapshot(snapshot: Path) -> bool:
             not isinstance(tokenizer_config, dict)
             or not isinstance(tokenizer_config.get("tokenizer_class"), str)
             or not tokenizer_config["tokenizer_class"].strip()
-            or not _is_positive_int(tokenizer_config.get("model_max_length"))
         ):
             return False
+        if (
+            "model_max_length" in tokenizer_config
+            and tokenizer_config["model_max_length"] is not None
+            and not _is_positive_number(tokenizer_config["model_max_length"])
+        ):
+            return False
+
         tokenizer = _read_json_file(snapshot / "tokenizer.json")
         tokenizer_model = tokenizer.get("model") if isinstance(tokenizer, dict) else None
         if (
             not isinstance(tokenizer, dict)
             or not isinstance(tokenizer.get("version"), str)
             or not isinstance(tokenizer_model, dict)
-            or not isinstance(tokenizer_model.get("type"), str)
-            or not isinstance(tokenizer_model.get("vocab"), list)
-            or not tokenizer_model["vocab"]
         ):
             return False
-        if not _validate_safetensors_file(snapshot / "model.safetensors"):
+        model_type = tokenizer_model.get("type")
+        if model_type is not None and (not isinstance(model_type, str) or not model_type.strip()):
             return False
-        return True
+        vocab = tokenizer_model.get("vocab")
+        if not isinstance(vocab, (list, dict)) or not vocab:
+            return False
+
+        for candidate_rel in ONNX_MODEL_CANDIDATES:
+            onnx_file = _safe_snapshot_file(snapshot, candidate_rel)
+            if onnx_file is not None and _validate_onnx_file(onnx_file):
+                return True
+        return False
     except (OSError, TypeError, ValueError):
         return False
 
+
 EMBEDDING_MODEL_ASSET = ModelAssetSpec(
     asset_id="memory.embedding",
-    title="mem0 embedding model",
+    title="ONNX multilingual MiniLM embedding model",
     variant=EMBEDDING_MODEL,
     repo_id=EMBEDDING_MODEL,
     allow_patterns=(
-        "1_Pooling/config.json",
         "config.json",
-        "config_sentence_transformers.json",
-        "model.safetensors",
-        "modules.json",
-        "sentence_bert_config.json",
-        "sentencepiece.bpe.model",
         "special_tokens_map.json",
         "tokenizer.json",
         "tokenizer_config.json",
-        "unigram.json",
+        "onnx/model_quantized.onnx",
     ),
     required_file_groups=(
         ("config.json",),
-        ("modules.json",),
-        ("1_Pooling/config.json",),
         ("tokenizer_config.json",),
-        ("model.safetensors",),
         ("tokenizer.json",),
+        ONNX_MODEL_CANDIDATES,
     ),
-    snapshot_validator=_validate_sentence_transformer_snapshot,
+    snapshot_validator=_validate_onnx_embedding_snapshot,
 )
 
 
-def build_mem0_config() -> dict[str, Any]:
-    """Build the mem0 config from Shinsekai's local LLM settings."""
+def memory_store_db_path() -> Path:
+    """Return the path to the unified SQLite hybrid memory store."""
+    root = Path.cwd() / "data" / "memory"
+    root.mkdir(parents=True, exist_ok=True)
+    return root / MEMORY_STORE_FILENAME
+
+
+def legacy_memory_qdrant_path() -> Path:
+    """Return the legacy local Qdrant directory path (if present for migration)."""
+    return Path.cwd() / "data" / "memory" / "qdrant"
+
+
+def build_memory_engine_config() -> dict[str, Any]:
+    """Build the hybrid memory engine configuration from Shinsekai's settings."""
     cfg = ConfigManager()
     provider, model, base_url, api_key = cfg.get_llm_api_config()
     provider_lower = (provider or "").strip().lower()
@@ -216,38 +200,37 @@ def build_mem0_config() -> dict[str, Any]:
             },
         }
 
-    embedder_config: dict[str, Any] = {
-        "provider": "huggingface",
-        "config": {
-            "model": EMBEDDING_MODEL,
-            "embedding_dims": EMBEDDING_DIMS,
-        },
-    }
-
-    qdrant_path = (Path.cwd() / "data" / "memory" / "qdrant").as_posix()
-    os.makedirs(qdrant_path, exist_ok=True)
-
+    db_path = memory_store_db_path()
     return {
         "vector_store": {
-            "provider": "qdrant",
+            "provider": "sqlite_hybrid",
             "config": {
-                "path": qdrant_path,
+                "path": db_path.as_posix(),
+                "legacy_qdrant_path": legacy_memory_qdrant_path().as_posix(),
                 "collection_name": VECTOR_COLLECTION,
                 "embedding_model_dims": EMBEDDING_DIMS,
-                "on_disk": True,
             },
         },
         "llm": llm_config,
-        "embedder": embedder_config,
+        "embedder": {
+            "provider": "onnxruntime",
+            "config": {
+                "model": EMBEDDING_MODEL,
+                "embedding_dims": EMBEDDING_DIMS,
+            },
+        },
         "history_db_path": str(Path.cwd() / "data" / "memory" / "mem0_history.db"),
     }
 
 
+build_mem0_config = build_memory_engine_config
+
+
 def is_embedding_model_cached() -> bool:
-    """Return whether the configured HuggingFace embedding model is cached."""
+    """Return whether the configured ONNX embedding model snapshot is cached."""
     return embedding_model_snapshot_path() is not None
 
 
 def embedding_model_snapshot_path() -> Path | None:
-    """Return a complete local snapshot for the configured embedding model."""
+    """Return a validated local snapshot for the configured ONNX embedding model."""
     return find_cached_huggingface_snapshot(EMBEDDING_MODEL_ASSET)

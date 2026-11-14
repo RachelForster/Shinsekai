@@ -1,27 +1,26 @@
-"""Knowledge record queries and cached entry counts."""
+"""Knowledge record queries and cached entry counts over StaticVectorStorePort."""
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import inspect
 import threading
 import time
-from contextlib import contextmanager
-
-from typing import TYPE_CHECKING, Any, Callable, Iterator
+from types import SimpleNamespace
+from typing import Any, Callable, Iterator
 from uuid import UUID
 
-if TYPE_CHECKING:
-    from qdrant_client import QdrantClient
+from sdk.adapters.memory import NAMESPACE_KNOWLEDGE, StaticVectorStorePort
 
 _catalog_lock = threading.Lock()
-_catalog_client: QdrantClient | None = None
+_catalog_client: Any = None
 _catalog_collection: str | None = None
 _catalog_expires = 0.0
 _catalog_counts: dict[str, int] = {}
 
 
 def pagination_arguments(method: Callable[..., Any], limit: int) -> dict[str, int]:
-    """Support Mem0 releases using either limit or top_k."""
+    """Support stores using either limit or top_k."""
     parameter = "top_k" if "top_k" in inspect.signature(method).parameters else "limit"
     return {parameter: limit}
 
@@ -45,20 +44,57 @@ def list_store_entries(get_all: Callable[..., Any], knowledge_id: str, limit: in
 
 
 def scroll_knowledge_records(
-    client: QdrantClient, collection_name: str, *,
-    knowledge_id: str | None = None, cursor: str | None = None,
-    limit: int = 100, catalog: bool = False,
+    client: Any,
+    collection_name: str,
+    *,
+    knowledge_id: str | None = None,
+    cursor: str | None = None,
+    limit: int = 100,
+    catalog: bool = False,
 ) -> tuple[list[Any], Any]:
-    """Read one page without loading vectors; catalog reads project only IDs."""
-    from qdrant_client.models import FieldCondition, Filter, MatchValue
-
+    """Read one page without loading dense vectors; catalog reads project only user_id."""
     offset: str | int | None = None
     if cursor:
         try:
             offset = int(cursor) if cursor.isdecimal() else str(UUID(cursor))
         except ValueError as exc:
             raise ValueError("invalid knowledge entries cursor") from exc
-    condition = Filter(must=[FieldCondition(key="user_id", match=MatchValue(value=knowledge_id))]) if knowledge_id else None
+
+    if isinstance(client, StaticVectorStorePort):
+        if offset is not None and not isinstance(offset, int):
+            raise ValueError("invalid knowledge entries cursor")
+        offset_int = int(offset or 0)
+        bounded_limit = max(1, int(limit))
+        namespace = str(collection_name or NAMESPACE_KNOWLEDGE).strip() or NAMESPACE_KNOWLEDGE
+        target_scope = str(knowledge_id).strip() if knowledge_id else None
+        raw_entries = client.list_slices(
+            namespace=namespace,
+            scope_id=target_scope,
+            offset=offset_int,
+            limit=bounded_limit + 1,
+        )
+        has_more = len(raw_entries) > bounded_limit
+        page = raw_entries[:bounded_limit]
+        next_cursor = offset_int + len(page) if has_more else None
+        records = [
+            SimpleNamespace(
+                id=entry.id,
+                payload=(
+                    {"user_id": entry.scope_id}
+                    if catalog
+                    else {
+                        **dict(entry.metadata),
+                        "user_id": entry.scope_id,
+                        "data": entry.text,
+                    }
+                ),
+                vector=None,
+            )
+            for entry in page
+        ]
+        return records, next_cursor
+
+    condition = {"user_id": knowledge_id} if knowledge_id else None
     return client.scroll(
         collection_name=collection_name,
         scroll_filter=condition,
@@ -70,9 +106,9 @@ def scroll_knowledge_records(
 
 
 def collect_knowledge_entry_ids(
-    client: QdrantClient, collection_name: str, knowledge_id: str,
+    client: Any, collection_name: str, knowledge_id: str,
 ) -> list[str]:
-    """Collect every entry before deletion so scrolling sees a stable collection."""
+    """Collect every entry before deletion so scrolling sees a stable snapshot."""
     knowledge_id = str(knowledge_id or "").strip()
     if not knowledge_id:
         raise ValueError("knowledge id is required")
@@ -104,12 +140,14 @@ def invalidate_catalog_after_write() -> Iterator[None]:
         invalidate_knowledge_catalog()
 
 
-def _build_knowledge_catalog(client: QdrantClient, collection_name: str) -> dict[str, int]:
+def _build_knowledge_catalog(client: Any, collection_name: str) -> dict[str, int]:
     """Count entries across all vector-store pages."""
     counts: dict[str, int] = {}
     cursor = None
     while True:
-        records, next_cursor = scroll_knowledge_records(client, collection_name, cursor=cursor, limit=256, catalog=True)
+        records, next_cursor = scroll_knowledge_records(
+            client, collection_name, cursor=cursor, limit=256, catalog=True,
+        )
         for record in records:
             payload = record.payload or {}
             knowledge_id = str(payload.get("user_id") or "").strip()
@@ -122,13 +160,9 @@ def _build_knowledge_catalog(client: QdrantClient, collection_name: str) -> dict
 
 
 def get_knowledge_entry_counts(
-    client: QdrantClient, collection_name: str, *, refresh: bool = False,
+    client: Any, collection_name: str, *, refresh: bool = False,
 ) -> dict[str, int]:
-    """Reuse a catalog for 30 seconds; publish only fully completed scans.
-
-    The caller holds the knowledge operation lock before acquiring the catalog
-    lock, matching the lock order used by writes and invalidation.
-    """
+    """Reuse a catalog for 30 seconds; publish only fully completed scans."""
     global _catalog_client, _catalog_collection, _catalog_expires, _catalog_counts
     with _catalog_lock:
         if (

@@ -35,13 +35,13 @@ def test_check_mem0_before_call_returns_none_when_mem0_importable(monkeypatch):
     from frontend_bridge_core.memory import _check_mem0_before_call
 
     def _fake_find_spec(name):
-        if name == "mem0":
+        if name == "onnxruntime":
             return object()
         return importlib.util.find_spec(name)
 
     monkeypatch.setattr(importlib.util, "find_spec", _fake_find_spec)
     result = _check_mem0_before_call()
-    assert result is None, f"expected None when mem0 is importable, got {result}"
+    assert result is None, f"expected None when onnxruntime is importable, got {result}"
 
 
 def test_check_mem0_before_call_returns_dep_error_when_missing(monkeypatch):
@@ -50,7 +50,7 @@ def test_check_mem0_before_call_returns_dep_error_when_missing(monkeypatch):
     from frontend_bridge_core.memory import _check_mem0_before_call
 
     def _fake_find_spec(name):
-        if name == "mem0":
+        if name == "onnxruntime":
             return None
         return importlib.util.find_spec(name)
 
@@ -59,8 +59,8 @@ def test_check_mem0_before_call_returns_dep_error_when_missing(monkeypatch):
     result = _check_mem0_before_call()
     assert isinstance(result, dict), f"expected dict, got {type(result)}"
     assert result.get("kind") == "missing_dependency"
-    assert result.get("moduleName") == "mem0"
-    assert result.get("packageName") == "mem0ai"
+    assert result.get("moduleName") == "onnxruntime"
+    assert result.get("packageName") == "onnxruntime"
 
 
 def test_get_mem0_status_returns_valid_status():
@@ -79,7 +79,7 @@ def test_get_mem0_status_can_peek_without_starting_loading(monkeypatch):
     from frontend_bridge_core.memory import _get_mem0_status
 
     def _fake_find_spec(name):
-        if name == "mem0":
+        if name == "onnxruntime":
             return object()
         return importlib.util.find_spec(name)
 
@@ -105,7 +105,7 @@ def test_get_mem0_status_missing_dependency_when_not_importable(monkeypatch):
     from frontend_bridge_core.memory import _get_mem0_status
 
     def _fake_find_spec(name):
-        if name == "mem0":
+        if name == "onnxruntime":
             return None
         return importlib.util.find_spec(name)
 
@@ -113,8 +113,8 @@ def test_get_mem0_status_missing_dependency_when_not_importable(monkeypatch):
 
     result = _get_mem0_status()
     assert result["status"] == "missing_dependency"
-    assert result["moduleName"] == "mem0"
-    assert result["packageName"] == "mem0ai"
+    assert result["moduleName"] == "onnxruntime"
+    assert result["packageName"] == "onnxruntime"
 
 
 def test_get_mem0_status_reports_an_incompatible_memory_dependency_group(monkeypatch):
@@ -122,7 +122,7 @@ def test_get_mem0_status_reports_an_incompatible_memory_dependency_group(monkeyp
     from frontend_bridge_core.memory import _get_mem0_status
     from sdk.exception.types import runtime_dependency_error_from_module
 
-    dependency_error = runtime_dependency_error_from_module("mem0")
+    dependency_error = runtime_dependency_error_from_module("onnxruntime")
     dependency_error["message"] = (
         "Missing or incompatible Python runtime dependencies: "
         "huggingface-hub 1.24.0 does not satisfy huggingface-hub==0.36.2"
@@ -136,8 +136,8 @@ def test_get_mem0_status_reports_an_incompatible_memory_dependency_group(monkeyp
     result = _get_mem0_status(start_loading=False)
 
     assert result["status"] == "missing_dependency"
-    assert result["moduleName"] == "mem0"
-    assert result["packageName"] == "mem0ai"
+    assert result["moduleName"] == "onnxruntime"
+    assert result["packageName"] == "onnxruntime"
     assert "1.24.0" in result["message"]
 
 
@@ -150,8 +150,8 @@ def test_check_mem0_status_includes_task_when_import_fails(monkeypatch):
     task = {"id": "mem0-embedding-model", "status": "running"}
 
     def _fake_import(name, *args, **kwargs):
-        if name == "mem0":
-            raise ModuleNotFoundError("No module named 'qdrant_client'", name="qdrant_client")
+        if name == "onnxruntime":
+            raise ModuleNotFoundError("No module named 'onnxruntime'", name="onnxruntime")
         return original_import(name, *args, **kwargs)
 
     monkeypatch.setattr(runtime, "_mem0", None)
@@ -164,9 +164,9 @@ def test_check_mem0_status_includes_task_when_import_fails(monkeypatch):
 
     assert result == {
         "status": "missing_dependency",
-        "message": "Missing Python module: qdrant_client",
-        "moduleName": "qdrant_client",
-        "packageName": "qdrant_client",
+        "message": "Missing Python module: onnxruntime",
+        "moduleName": "onnxruntime",
+        "packageName": "onnxruntime",
         "task": task,
     }
 
@@ -174,7 +174,7 @@ def test_check_mem0_status_includes_task_when_import_fails(monkeypatch):
 def test_check_mem0_status_does_not_retry_an_unresolved_dependency(monkeypatch):
     from ai.memory import runtime
 
-    error = ModuleNotFoundError("No module named 'qdrant_client'", name="qdrant_client")
+    error = ModuleNotFoundError("No module named 'onnxruntime'", name="onnxruntime")
     starts = []
     monkeypatch.setattr(runtime, "_mem0", None)
     monkeypatch.setattr(runtime, "_mem0_loading", False)
@@ -187,9 +187,9 @@ def test_check_mem0_status_does_not_retry_an_unresolved_dependency(monkeypatch):
 
     assert result == {
         "status": "missing_dependency",
-        "message": "Missing Python module: qdrant_client",
-        "moduleName": "qdrant_client",
-        "packageName": "qdrant_client",
+        "message": "Missing Python module: onnxruntime",
+        "moduleName": "onnxruntime",
+        "packageName": "onnxruntime",
     }
     assert starts == []
 
@@ -200,9 +200,9 @@ def test_check_mem0_status_recovers_after_dependency_install(monkeypatch):
 
     from ai.memory import runtime
 
-    error = ModuleNotFoundError("No module named 'qdrant_client'", name="qdrant_client")
+    error = ModuleNotFoundError("No module named 'onnxruntime'", name="onnxruntime")
     starts = []
-    monkeypatch.setitem(sys.modules, "mem0", types.ModuleType("mem0"))
+    monkeypatch.setitem(sys.modules, "onnxruntime", types.ModuleType("onnxruntime"))
     monkeypatch.setattr(runtime, "_mem0", None)
     monkeypatch.setattr(runtime, "_mem0_loading", False)
     monkeypatch.setattr(runtime, "_mem0_load_error", error)
@@ -251,15 +251,13 @@ def test_start_mem0_loading_preserves_internal_missing_dependency(monkeypatch):
 
     from ai.memory import runtime
 
-    error = ModuleNotFoundError("No module named 'qdrant_client'", name="qdrant_client")
+    error = ModuleNotFoundError("No module named 'tokenizers'", name="tokenizers")
     updates = []
 
     def _raise_missing_dependency(*args, **kwargs):
         raise error
 
-    mem0_module = types.ModuleType("mem0")
-    mem0_module.Memory = object
-    monkeypatch.setitem(sys.modules, "mem0", mem0_module)
+    monkeypatch.setitem(sys.modules, "onnxruntime", types.ModuleType("onnxruntime"))
     monkeypatch.setattr(runtime, "_mem0", None)
     monkeypatch.setattr(runtime, "_mem0_loading", False)
     monkeypatch.setattr(runtime, "_mem0_load_error", None)
@@ -273,8 +271,8 @@ def test_start_mem0_loading_preserves_internal_missing_dependency(monkeypatch):
 
     assert runtime._mem0_load_error is error
     assert runtime._mem0_loading is False
-    assert updates[-1]["error"] == "No module named 'qdrant_client'"
-    assert updates[-1]["message"] == "Missing Python module: qdrant_client"
+    assert updates[-1]["error"] == "No module named 'tokenizers'"
+    assert updates[-1]["message"] == "Missing Python module: tokenizers"
 
 
 def test_start_mem0_loading_reports_post_download_failure_as_initialization(monkeypatch):
@@ -289,9 +287,7 @@ def test_start_mem0_loading_reports_post_download_failure_as_initialization(monk
     def _raise_initialization_error(*args, **kwargs):
         raise error
 
-    mem0_module = types.ModuleType("mem0")
-    mem0_module.Memory = object
-    monkeypatch.setitem(sys.modules, "mem0", mem0_module)
+    monkeypatch.setitem(sys.modules, "onnxruntime", types.ModuleType("onnxruntime"))
     monkeypatch.setattr(runtime, "_mem0", None)
     monkeypatch.setattr(runtime, "_mem0_loading", False)
     monkeypatch.setattr(runtime, "_mem0_load_error", None)

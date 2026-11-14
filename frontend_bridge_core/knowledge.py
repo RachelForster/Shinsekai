@@ -5,20 +5,20 @@ from typing import Any, Sequence
 
 
 def _check_mem0_before_call() -> dict[str, Any] | None:
-    """Check the same complete dependency group used by the memory bridge."""
+    """Check the same ONNX dependency group used by the memory bridge."""
     import importlib.util
 
     from application.runtime.dependencies import runtime_dependency_error_for_module
     from sdk.exception.types import runtime_dependency_error_from_module
 
-    error = runtime_dependency_error_for_module("mem0")
+    error = runtime_dependency_error_for_module("onnxruntime")
     if error is not None:
         return error
     try:
-        available = importlib.util.find_spec("mem0") is not None
+        available = importlib.util.find_spec("onnxruntime") is not None
     except (ImportError, AttributeError, ValueError):
         available = False
-    return None if available else runtime_dependency_error_from_module("mem0")
+    return None if available else runtime_dependency_error_from_module("onnxruntime")
 
 
 def _get_knowledge_status(*, start_loading: bool = True, retry: bool = False) -> dict[str, Any]:

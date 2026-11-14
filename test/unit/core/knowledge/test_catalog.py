@@ -1,32 +1,64 @@
+from contextlib import nullcontext
 from types import SimpleNamespace
 from uuid import UUID
-from contextlib import nullcontext
 
 import pytest
-from qdrant_client import QdrantClient, models
 
 from core.knowledge import catalog
-from core.knowledge.catalog import format_knowledge_entry, list_store_entries, scroll_knowledge_records
+from core.knowledge.catalog import (
+    format_knowledge_entry,
+    list_store_entries,
+    scroll_knowledge_records,
+)
+from core.vector_store.sqlite_hybrid_store import SqliteHybridStore
+from sdk.adapters.memory import VectorSliceEntry
+
+
+def _upsert_test_points(
+    store: SqliteHybridStore,
+    namespace: str,
+    rows: list[tuple[str, str, str]],
+) -> None:
+    store.upsert_slices(
+        [
+            VectorSliceEntry(
+                id=str(pid),
+                namespace=namespace,
+                scope_id=scope_id,
+                text=text,
+                metadata={"user_id": scope_id},
+                embedding=[1.0, 0.0],
+            )
+            for pid, scope_id, text in rows
+        ]
+    )
 
 
 @pytest.fixture
 def knowledge_store(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    client = QdrantClient(":memory:")
-    client.create_collection("knowledge", vectors_config=models.VectorParams(size=2, distance=models.Distance.COSINE))
-    client.upsert("knowledge", points=[models.PointStruct(
-        id=i, vector=[1.0, 0.0], payload={"user_id": "alpha" if i < 270 else "orphan", "data": f"entry-{i}"}
-    ) for i in range(275)])
+    store = SqliteHybridStore(tmp_path / "catalog_test.db")
+    _upsert_test_points(
+        store,
+        "knowledge",
+        [
+            (str(i), "alpha" if i < 270 else "orphan", f"entry-{i}")
+            for i in range(275)
+        ],
+    )
     catalog.invalidate_knowledge_catalog()
     try:
-        yield client
+        yield store
     finally:
-        client.close()
+        store.close()
         catalog.invalidate_knowledge_catalog()
 
 
 def test_counts_scan_all_vector_pages(knowledge_store):
-    assert catalog.get_knowledge_entry_counts(knowledge_store, "knowledge") == {"alpha": 270, "orphan": 5}
+    assert catalog.get_knowledge_entry_counts(knowledge_store, "knowledge") == {
+        "alpha": 270,
+        "orphan": 5,
+    }
 
 
 def test_collect_entry_ids_reads_all_pages_and_only_the_selected_knowledge(knowledge_store):
@@ -57,19 +89,15 @@ def test_collect_entry_ids_rejects_blank_id_before_reading(monkeypatch):
 
 def test_counts_do_not_reuse_cache_for_another_collection(knowledge_store):
     assert catalog.get_knowledge_entry_counts(knowledge_store, "knowledge") == {"alpha": 270, "orphan": 5}
-    knowledge_store.create_collection("other", vectors_config=models.VectorParams(size=2, distance=models.Distance.COSINE))
-    knowledge_store.upsert("other", points=[
-        models.PointStruct(id=1, vector=[1.0, 0.0], payload={"user_id": "different"}),
-    ])
+    _upsert_test_points(knowledge_store, "other", [("1", "different", "other-entry")])
     assert catalog.get_knowledge_entry_counts(knowledge_store, "other") == {"different": 1}
     assert catalog.get_knowledge_entry_counts(knowledge_store, "knowledge") == {"alpha": 270, "orphan": 5}
 
 
-def test_counts_do_not_reuse_cache_for_another_client(knowledge_store):
+def test_counts_do_not_reuse_cache_for_another_client(knowledge_store, tmp_path):
     assert catalog.get_knowledge_entry_counts(knowledge_store, "knowledge") == {"alpha": 270, "orphan": 5}
-    other = QdrantClient(":memory:")
+    other = SqliteHybridStore(tmp_path / "other_catalog.db")
     try:
-        other.create_collection("knowledge", vectors_config=models.VectorParams(size=2, distance=models.Distance.COSINE))
         assert catalog.get_knowledge_entry_counts(other, "knowledge") == {}
     finally:
         other.close()
@@ -78,9 +106,7 @@ def test_counts_do_not_reuse_cache_for_another_client(knowledge_store):
 
 def test_catalog_invalidation_observes_new_data(knowledge_store):
     catalog.get_knowledge_entry_counts(knowledge_store, "knowledge")
-    knowledge_store.upsert("knowledge", points=[models.PointStruct(
-        id=300, vector=[1.0, 0.0], payload={"user_id": "new-knowledge", "data": "new"}
-    )])
+    _upsert_test_points(knowledge_store, "knowledge", [("300", "new-knowledge", "new")])
     catalog.invalidate_knowledge_catalog()
     result = catalog.get_knowledge_entry_counts(knowledge_store, "knowledge")
     assert len(result) == 3
@@ -93,9 +119,7 @@ def test_write_scope_refreshes_cached_counts_even_after_partial_failure(knowledg
     expected = pytest.raises(RuntimeError, match="write interrupted") if fail_after_write else nullcontext()
     with expected:
         with catalog.invalidate_catalog_after_write():
-            knowledge_store.upsert("knowledge", points=[
-                models.PointStruct(id=300, vector=[1.0, 0.0], payload={"user_id": "new"}),
-            ])
+            _upsert_test_points(knowledge_store, "knowledge", [("300", "new", "new")])
             if fail_after_write:
                 raise RuntimeError("write interrupted")
     assert catalog.get_knowledge_entry_counts(knowledge_store, "knowledge")["new"] == 1
@@ -105,9 +129,7 @@ def test_catalog_reuses_cache_until_ttl_expires(knowledge_store, monkeypatch):
     clock = [100.0]
     monkeypatch.setattr(catalog.time, "monotonic", lambda: clock[0])
     assert catalog.get_knowledge_entry_counts(knowledge_store, "knowledge") == {"alpha": 270, "orphan": 5}
-    knowledge_store.upsert("knowledge", points=[models.PointStruct(
-        id=300, vector=[1.0, 0.0], payload={"user_id": "new", "data": "new"},
-    )])
+    _upsert_test_points(knowledge_store, "knowledge", [("300", "new", "new")])
     clock[0] = 129.0
     assert catalog.get_knowledge_entry_counts(knowledge_store, "knowledge").get("new", 0) == 0
     clock[0] = 130.0
@@ -117,9 +139,7 @@ def test_catalog_reuses_cache_until_ttl_expires(knowledge_store, monkeypatch):
 def test_catalog_refresh_bypasses_unexpired_cache(knowledge_store, monkeypatch):
     monkeypatch.setattr(catalog.time, "monotonic", lambda: 100.0)
     catalog.get_knowledge_entry_counts(knowledge_store, "knowledge")
-    knowledge_store.upsert("knowledge", points=[models.PointStruct(
-        id=300, vector=[1.0, 0.0], payload={"user_id": "new", "data": "new"},
-    )])
+    _upsert_test_points(knowledge_store, "knowledge", [("300", "new", "new")])
     assert catalog.get_knowledge_entry_counts(knowledge_store, "knowledge").get("new", 0) == 0
     assert catalog.get_knowledge_entry_counts(knowledge_store, "knowledge", refresh=True).get("new", 0) == 1
 
@@ -139,27 +159,32 @@ def test_failed_catalog_refresh_does_not_publish_partial_scan(knowledge_store, m
     assert catalog.get_knowledge_entry_counts(knowledge_store, "knowledge") == expected
 
 
-def test_scroll_filters_knowledge_and_paginates_without_vectors():
-    client = QdrantClient(":memory:")
+def test_scroll_filters_knowledge_and_paginates_without_vectors(tmp_path):
+    store = SqliteHybridStore(tmp_path / "scroll.db")
     try:
-        client.create_collection("knowledge", vectors_config=models.VectorParams(size=2, distance=models.Distance.COSINE))
-        client.upsert("knowledge", points=[
-            models.PointStruct(id=i, vector=[1.0, 0.0], payload={"user_id": name, "data": str(i)})
-            for i, name in enumerate(["alpha", "other", "alpha"])
-        ])
-        rows, cursor = scroll_knowledge_records(client, "knowledge", knowledge_id="alpha", limit=1)
-        assert [row.id for row in rows] == [0]
+        _upsert_test_points(
+            store,
+            "knowledge",
+            [
+                (str(i), name, str(i))
+                for i, name in enumerate(["alpha", "other", "alpha"])
+            ],
+        )
+        rows, cursor = scroll_knowledge_records(store, "knowledge", knowledge_id="alpha", limit=1)
+        assert [row.id for row in rows] == ["0"]
         assert rows[0].payload == {"user_id": "alpha", "data": "0"}
         assert rows[0].vector is None
         assert cursor is not None
-        rows, cursor = scroll_knowledge_records(client, "knowledge", knowledge_id="alpha", cursor=str(cursor), limit=1)
-        assert [row.id for row in rows] == [2]
+        rows, cursor = scroll_knowledge_records(
+            store, "knowledge", knowledge_id="alpha", cursor=str(cursor), limit=1
+        )
+        assert [row.id for row in rows] == ["2"]
         assert cursor is None
-        rows, _ = scroll_knowledge_records(client, "knowledge", catalog=True)
+        rows, _ = scroll_knowledge_records(store, "knowledge", catalog=True)
         assert len(rows) == 3
         assert all(set(row.payload) == {"user_id"} for row in rows)
     finally:
-        client.close()
+        store.close()
 
 
 @pytest.mark.parametrize("cursor,expected", [(None, None), ("42", 42), (str(UUID(int=1)), str(UUID(int=1)))])
