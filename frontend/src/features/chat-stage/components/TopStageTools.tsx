@@ -1,4 +1,4 @@
-import { Activity, Maximize2, Minus, X } from "lucide-react";
+import { Activity, CircleUserRound, Maximize2, Minus, X } from "lucide-react";
 
 import { minimizeDesktopWindow, toggleMaximizeDesktopWindow } from "../../../shared/desktop/desktopApi";
 import { useI18n } from "../../../shared/i18n";
@@ -12,7 +12,9 @@ import { ChatThemePicker } from "../theme/ChatThemePicker";
 export function TopStageTools({
   autoHide = false,
   hidden,
+  miniAvatarDisabled = false,
   onCloseDesktopWindow,
+  onEnterMiniAvatar,
   onOpenPluginPage,
   onThemePickerOpenChange,
   onTokenUsageOpenChange,
@@ -26,7 +28,9 @@ export function TopStageTools({
 }: {
   autoHide?: boolean;
   hidden: boolean;
+  miniAvatarDisabled?: boolean;
   onCloseDesktopWindow: () => Promise<void>;
+  onEnterMiniAvatar?: () => void;
   onOpenPluginPage: (target: PluginPageTarget) => void;
   onThemePickerOpenChange: (open: boolean) => void;
   onTokenUsageOpenChange: (open: boolean) => void;
@@ -93,6 +97,16 @@ export function TopStageTools({
         >
           <Activity aria-hidden className="icon-button__icon" />
         </IconButton>
+        {onEnterMiniAvatar ? (
+          <IconButton
+            className="top-stage-tools__button top-stage-tools__button--mini-avatar"
+            disabled={miniAvatarDisabled}
+            label={t("chat.mini.enter")}
+            onClick={onEnterMiniAvatar}
+          >
+            <CircleUserRound aria-hidden className="icon-button__icon" />
+          </IconButton>
+        ) : null}
         {standaloneDesktopWindow ? (
           <>
             <IconButton

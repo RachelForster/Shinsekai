@@ -276,6 +276,7 @@ export function TransitionMedia({
       ref={host}
       className={`${props.className ?? ""} character-visual__transition`}
       style={{ aspectRatio, ...props.style }}
+      data-orientation={aspectRatio > 1 ? "landscape" : "portrait"}
       data-chat-stage-hitbox={props.hitbox ? "true" : undefined}
       onMouseDown={props.onMouseDown}
     >
