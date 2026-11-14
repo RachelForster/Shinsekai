@@ -42,7 +42,11 @@ class PreparedChatInput:
     prompt_context: UserPromptContext | None = None
 
     def render_content(
-        self, *, background: Mapping[str, str | int] | None = None
+        self,
+        *,
+        background: Mapping[str, str | int] | None = None,
+        prefix: str = "",
+        suffix: str = "",
     ) -> str | list[dict[str, Any]]:
         """Render turn sections while keeping native image blocks intact."""
         context = self.prompt_context
@@ -51,7 +55,20 @@ class PreparedChatInput:
                 (block.get("text", "") for block in self.content if block.get("type") == "text"), ""
             )
             context = UserPromptContext(user_input=text)
-        text = build_user_prompt_section().render(replace(context, background=background))
+        merged_prefix = "\n\n".join(
+            part for part in (context.prefix, prefix) if part and part.strip()
+        )
+        merged_suffix = "\n\n".join(
+            part for part in (context.suffix, suffix) if part and part.strip()
+        )
+        text = build_user_prompt_section().render(
+            replace(
+                context,
+                background=background,
+                prefix=merged_prefix,
+                suffix=merged_suffix,
+            )
+        )
         if isinstance(self.content, str):
             return text
         blocks = [dict(block) for block in self.content]
