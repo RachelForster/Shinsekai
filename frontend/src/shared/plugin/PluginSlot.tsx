@@ -46,6 +46,7 @@ export interface PluginUIContribution {
 interface PluginSlotProps {
   contributions?: PluginUIContribution[];
   onOpenPluginPage?: (target: PluginPageTarget) => void;
+  onLaunchConversation?: (id: string) => Promise<void>;
   slot: PluginSlotId;
 }
 
@@ -118,9 +119,11 @@ const hostIcons: Record<PluginSlotContributionIcon, ReactNode> = {
 function SerializableContribution({
   contribution,
   onOpenPluginPage,
+  onLaunchConversation,
 }: {
   contribution: PluginSlotContribution;
   onOpenPluginPage?: (target: PluginPageTarget) => void;
+  onLaunchConversation?: (id: string) => Promise<void>;
 }) {
   const [running, setRunning] = useState(false);
   const { showToast } = useToast();
@@ -140,6 +143,10 @@ function SerializableContribution({
     setRunning(true);
     try {
       const result = await runPluginSlotContribution(contribution.pluginId, contribution.id);
+      if (result.conversationId && onLaunchConversation) {
+        await onLaunchConversation(result.conversationId);
+        return;
+      }
       showToast({
         kind: result.kind,
         message: result.message || undefined,
@@ -203,9 +210,11 @@ function SerializableContribution({
 
 function ConnectedPluginSlot({
   onOpenPluginPage,
+  onLaunchConversation,
   slot,
 }: {
   onOpenPluginPage?: (target: PluginPageTarget) => void;
+  onLaunchConversation?: (id: string) => Promise<void>;
   slot: PluginSlotId;
 }) {
   const query = useQuery({
@@ -227,16 +236,26 @@ function ConnectedPluginSlot({
           data-plugin-title={item.title}
           key={`${item.pluginId}:${item.id}`}
         >
-          <SerializableContribution contribution={item} onOpenPluginPage={onOpenPluginPage} />
+          <SerializableContribution
+            contribution={item}
+            onOpenPluginPage={onOpenPluginPage}
+            onLaunchConversation={onLaunchConversation}
+          />
         </div>
       ))}
     </div>
   );
 }
 
-export function PluginSlot({ contributions, onOpenPluginPage, slot }: PluginSlotProps) {
+export function PluginSlot({ contributions, onOpenPluginPage, onLaunchConversation, slot }: PluginSlotProps) {
   if (contributions === undefined) {
-    return <ConnectedPluginSlot onOpenPluginPage={onOpenPluginPage} slot={slot} />;
+    return (
+      <ConnectedPluginSlot
+        onOpenPluginPage={onOpenPluginPage}
+        onLaunchConversation={onLaunchConversation}
+        slot={slot}
+      />
+    );
   }
   const items = normalizePluginContributions(contributions).filter((item) => item.slot === slot);
   if (!items.length) {

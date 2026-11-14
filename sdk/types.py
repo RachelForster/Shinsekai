@@ -183,7 +183,7 @@ class FrontendChatUIContribution:
     """
 
     contribution_id: str
-    slot: Literal["chat-dialog-actions", "chat-output", "chat-toolbar", "chat-top-toolbar"]
+    slot: Literal["chat-dialog-actions", "chat-output", "chat-toolbar", "chat-top-toolbar", "chat-workspace-actions"]
     title: str
     action: Callable[[], Mapping[str, Any] | str | None] | Mapping[str, str] | None = None
     action_label: str = ""
@@ -194,6 +194,7 @@ class FrontendChatUIContribution:
     variant: Literal["danger", "ghost", "primary"] = "ghost"
     plugin_id: str | None = None
     plugin_version: str | None = None
+    external_launch: bool = False
 
 
 @dataclass(frozen=True)

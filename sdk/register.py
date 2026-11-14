@@ -448,6 +448,7 @@ class PluginCapabilityRegistry:
             "chat-output",
             "chat-toolbar",
             "chat-top-toolbar",
+            "chat-workspace-actions",
         }:
             raise ValueError(f"Unsupported frontend chat UI slot: {contribution.slot}")
         if not contribution.contribution_id.strip() or not contribution.title.strip():

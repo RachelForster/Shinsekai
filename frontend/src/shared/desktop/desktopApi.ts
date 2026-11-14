@@ -176,6 +176,10 @@ async function invokeDesktop<T>(command: string, args?: Record<string, unknown>)
   return invoke<T>(command, args);
 }
 
+export function takeDesktopPluginChatWake() {
+  return invokeDesktop<string | null>("desktop_take_plugin_chat_wake");
+}
+
 export function getDesktopRuntimeState() {
   return invokeDesktop<DesktopRuntimeState>("desktop_runtime_state");
 }

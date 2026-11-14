@@ -1,4 +1,7 @@
-import { useId, useState } from "react";
+import { isTauriDesktop } from "../../shared/desktop/desktopApi";
+import { useSearchParams } from "react-router-dom";
+import { runPluginSlotContribution, listPluginSlotContributions } from "../../entities/plugin/repository";
+import { useEffect, useId, useRef, useState } from "react";
 import { Pencil, Settings, Trash2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { charactersQueryKey, listCharacters } from "../../entities/character/repository";
@@ -24,6 +27,7 @@ import { ChatInitializationDialog } from "../chat-startup/ChatInitializationDial
 import { useChatInitialization } from "../chat-startup/useChatInitialization";
 import { useChatLaunchGuard } from "../chat-startup/useChatLaunchGuard";
 import { StoryLaunchButton } from "../story-generator/components/StoryLaunchButton";
+import { PluginSlot } from "../../shared/plugin/PluginSlot";
 import "./ConversationLibrary.css";
 
 function ConversationAvatar({ name, path }: { name: string; path?: string }) {
@@ -63,16 +67,13 @@ export function ConversationLibrary({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const date = new Intl.DateTimeFormat(language.replace("_", "-"), { dateStyle: "medium", timeStyle: "short" });
-  const launch = async (item: ConversationSummary) => {
+  const launch = async (id: string) => {
     if (runtimeClosing || init.initializationPending) return;
     setError("");
     try {
       const snapshot = await init.runChatInitialization(async (options) => {
         if ((await getChatRuntimeStatus()).state !== "idle") throw new Error(t("story.launch.busy"));
-        return launchChat(
-          { ...(await prepareConversation(item.id)), enableMobileAccess: mobileAccessEnabled },
-          options,
-        );
+        return launchChat({ ...(await prepareConversation(id)), enableMobileAccess: mobileAccessEnabled }, options);
       });
       client.setQueryData(chatQueryKey, snapshot);
       await updateRuntimeStatusFromSnapshot(snapshot);
@@ -81,6 +82,49 @@ export function ConversationLibrary({
       setError(reason instanceof Error ? reason.message : String(reason));
     }
   };
+  const [params, setParams] = useSearchParams();
+  const handledWake = useRef<string | null>(null);
+  const wake = params.get("pluginChat");
+  useEffect(() => {
+    if (!wake || !isTauriDesktop()) {
+      handledWake.current = null;
+      return;
+    }
+    if (handledWake.current === wake) return;
+    handledWake.current = wake;
+    void (async () => {
+      try {
+        const [plugin, action] = wake.split("/");
+        const items = await listPluginSlotContributions();
+        if (
+          !items.some(
+            (item) =>
+              item.pluginId === plugin &&
+              item.id === action &&
+              item.slot === "chat-workspace-actions" &&
+              item.actionType === "callback" &&
+              item.externalLaunch,
+          )
+        ) {
+          throw new Error("The requested chat plugin action is unavailable.");
+        }
+        const result = await runPluginSlotContribution(plugin, action);
+        if (!result.conversationId) throw new Error(result.message || "The plugin did not return a conversation.");
+        await launch(result.conversationId);
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : String(reason));
+      } finally {
+        setParams(
+          (current) => {
+            const next = new URLSearchParams(current);
+            if (next.get("pluginChat") === wake) next.delete("pluginChat");
+            return next;
+          },
+          { replace: true },
+        );
+      }
+    })();
+  }, [wake]);
   const rename = async () => {
     if (!editing || saving) return;
     setSaving(true);
@@ -127,6 +171,7 @@ export function ConversationLibrary({
               {t("mobileAccess.launchHint")}
             </span>
           </div>
+          <PluginSlot slot="chat-workspace-actions" onLaunchConversation={launch} />
           {!isEmpty && (
             <Button variant="primary" disabled={runtimeLaunchDisabled || init.initializationPending} onClick={onCreate}>
               {t("conversation.new")}
@@ -179,7 +224,7 @@ export function ConversationLibrary({
                   <Button
                     variant="primary"
                     disabled={runtimeLaunchDisabled || init.initializationPending}
-                    onClick={() => (item.hasSettings ? void launch(item) : onEdit(item.id, item.kind))}
+                    onClick={() => (item.hasSettings ? void launch(item.id) : onEdit(item.id, item.kind))}
                   >
                     {t(item.hasSettings ? "conversation.continue" : "conversation.configureAndContinue")}
                   </Button>
