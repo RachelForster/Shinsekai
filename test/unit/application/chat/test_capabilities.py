@@ -35,6 +35,7 @@ from application.chat.capabilities import (
     TurnAdmissionRequest,
     TurnContextPipeline,
     TurnUserPromptContribution,
+    build_default_session_capabilities,
 )
 from application.chat.runtime.commands import (
     ChatCommandBindings,
@@ -45,7 +46,12 @@ from application.chat.runtime.commands import (
 from application.runtime.context import AppRuntime, set_app_runtime
 from application.runtime.workers.llm_worker import LLMWorker
 from core.messaging.chat_turn_service import ChatTurnService
-from sdk.hooks import BeforeChatContext, MessageAddedContext, PluginHookDispatcher
+from sdk.hooks import (
+    BeforeChatContext,
+    MessageAddedContext,
+    PluginHookDispatcher,
+    PluginHookEvent,
+)
 from sdk.messages import UserInputMessage
 
 
@@ -191,6 +197,161 @@ def test_turn_context_pipeline_short_circuits_when_provider_rejects() -> None:
     )
     assert decision == TurnAdmissionDecision(admitted=False, record_user_message=False)
     assert after.events == []
+
+
+def test_turn_context_pipeline_registers_hooks_only_for_non_delegating_observers() -> None:
+    class _BeforeOnlyProvider(BaseTurnContextProvider):
+        capability_id = "before_only"
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def before_chat(self, context: BeforeChatContext) -> None:
+            self.calls += 1
+            context.messages.append({"role": "system", "content": "[before]"})
+
+    class _MessageAddedOnlyProvider(BaseTurnContextProvider):
+        capability_id = "message_only"
+
+        def __init__(self) -> None:
+            self.roles: list[str] = []
+
+        def message_added(self, context: MessageAddedContext) -> None:
+            self.roles.append(context.role)
+
+    delegated = _RecordingTurnProvider(
+        "delegated",
+        delegates_to_hook_dispatcher=True,
+    )
+    pipeline = TurnContextPipeline((BackgroundTurnContextProvider(), delegated))
+    dispatcher = PluginHookDispatcher()
+
+    pipeline.register_dispatcher_hooks(dispatcher)
+    assert dispatcher.has_hooks(PluginHookEvent.BEFORE_CHAT) is False
+    assert dispatcher.has_hooks(PluginHookEvent.MESSAGE_ADDED) is False
+
+    before_provider = _BeforeOnlyProvider()
+    pipeline.register(before_provider)
+    assert dispatcher.has_hooks(PluginHookEvent.BEFORE_CHAT) is True
+    assert dispatcher.has_hooks(PluginHookEvent.MESSAGE_ADDED) is False
+
+    message_provider = _MessageAddedOnlyProvider()
+    pipeline.register(message_provider)
+    pipeline.register_dispatcher_hooks(dispatcher)
+    assert dispatcher.has_hooks(PluginHookEvent.MESSAGE_ADDED) is True
+
+    before_ctx = BeforeChatContext(
+        messages=[{"role": "user", "content": "hi"}],
+        tools=None,
+        generation_kwargs={},
+        stream=False,
+    )
+    dispatcher.dispatch_before_chat(before_ctx)
+    assert before_provider.calls == 1
+    assert [m["content"] for m in before_ctx.messages] == ["hi", "[before]"]
+
+    dispatcher.dispatch_message_added(
+        MessageAddedContext(
+            role="user",
+            message={"role": "user", "content": "hi"},
+            messages=before_ctx.messages,
+        )
+    )
+    assert message_provider.roles == ["user"]
+
+
+def test_headless_default_capabilities_skip_message_added_hook_and_history_deepcopy(
+    monkeypatch,
+) -> None:
+    from ai.llm.conversation_history import ConversationHistory
+
+    monkeypatch.setenv("SHINSEKAI_MEMORY_AUTO_ENABLED", "0")
+    dispatcher = PluginHookDispatcher()
+    alice = SimpleNamespace(
+        name="Alice",
+        relation_graph={
+            "nodes": [{"key": "Alice"}, {"key": "Bob"}],
+            "edges": [{"source": "Alice", "target": "Bob", "content": "朋友"}],
+        },
+    )
+    config = SimpleNamespace(
+        config=SimpleNamespace(
+            api_config=SimpleNamespace(knowledge_enabled=False),
+            characters=[alice],
+        ),
+        get_character_by_name=lambda name: alice if name == "Alice" else None,
+    )
+    args = SimpleNamespace(
+        headless=True,
+        history="",
+        player_character="",
+        allow_player_dialogue=True,
+        primary_characters="",
+    )
+    llm_manager = SimpleNamespace(hook_dispatcher=dispatcher)
+
+    cap_set = build_default_session_capabilities()
+    cap_set.on_plugins_loaded(
+        PluginLoadedCapabilityContext(
+            args=args,
+            config=config,
+            plugin_manager=SimpleNamespace(hook_dispatcher=dispatcher),
+            hook_dispatcher=dispatcher,
+            transport=SimpleNamespace(),
+        )
+    )
+    cap_set.on_llm_ready(
+        StartupCapabilityContext(
+            args=args,
+            config=config,
+            llm_adapter=object(),
+            llm_manager=llm_manager,
+            plugin_manager=SimpleNamespace(hook_dispatcher=dispatcher),
+            hook_dispatcher=dispatcher,
+            character_names=("Alice",),
+        )
+    )
+    pipeline = cap_set.build_turn_context_pipeline()
+    app_runtime = SimpleNamespace(turn_context_pipeline=pipeline)
+    cap_set.configure_session_runtime(
+        SessionRuntimeCapabilityContext(
+            mode="headless",
+            args=args,
+            config=config,
+            startup=SimpleNamespace(llm_manager=llm_manager),
+            transport=SimpleNamespace(),
+            runtime=SimpleNamespace(),
+            ui_updates=SimpleNamespace(),
+            chat_turn_service=SimpleNamespace(),
+            app_runtime=app_runtime,
+        )
+    )
+
+    assert dispatcher.has_hooks(PluginHookEvent.BEFORE_CHAT) is True
+    assert dispatcher.has_hooks(PluginHookEvent.MESSAGE_ADDED) is False
+
+    deepcopy_calls: list[Any] = []
+    monkeypatch.setattr(
+        "ai.llm.conversation_history.copy.deepcopy",
+        lambda value, *a, **kw: deepcopy_calls.append(value) or value,
+    )
+    history = ConversationHistory(
+        compact_manager=SimpleNamespace(
+            auto_compact_if_needed=lambda messages: messages,
+            count_tokens=lambda _messages: 0,
+        ),
+        journal=SimpleNamespace(append=lambda _msg: None),
+        user_template="system",
+        max_context_tokens=8192,
+        history_recent_messages=8,
+        max_tool_result_chars=2000,
+        hook_dispatcher=dispatcher,
+        use_current_template_for_history=False,
+        logger=Mock(),
+    )
+    history.add_message("user", "第一句")
+    history.add_message("assistant", "第二句")
+    assert deepcopy_calls == []
 
 
 def test_session_capability_set_orders_lifecycle_and_composes_shutdown() -> None:
@@ -488,6 +649,126 @@ def test_relation_capability_skips_duplicate_and_injects_live_updates(
     assert updated_ctx.messages[-1]["role"] == "system"
     assert updated_ctx.messages[-1]["content"].startswith(RELATION_CONTEXT_MARKER)
     assert "宿敌" in updated_ctx.messages[-1]["content"]
+
+
+def test_relation_capability_preserves_compact_primary_character_scope(
+    tmp_path: Path,
+) -> None:
+    char_file = tmp_path / "character_config.yaml"
+    char_file.write_text("characters: []\n", encoding="utf-8")
+
+    nodes = [{"key": "Alice"}, {"key": "Bob"}, {"key": "Carol"}, {"key": "Player"}]
+    alice = SimpleNamespace(
+        name="Alice",
+        relation_graph={
+            "nodes": nodes,
+            "edges": [
+                {"source": "Alice", "target": "Bob", "content": "信赖的前辈"}
+            ],
+        },
+    )
+    bob = SimpleNamespace(
+        name="Bob",
+        relation_graph={
+            "nodes": nodes,
+            "edges": [
+                {"source": "Bob", "target": "Carol", "content": "次要人物关系"}
+            ],
+        },
+    )
+    carol = SimpleNamespace(name="Carol", relation_graph=None)
+    player = SimpleNamespace(
+        name="Player",
+        relation_graph={
+            "nodes": nodes,
+            "edges": [
+                {"source": "Player", "target": "Alice", "content": "主角视角"}
+            ],
+        },
+    )
+
+    def refresh_media_catalogs() -> None:
+        alice.relation_graph = {
+            "nodes": nodes,
+            "edges": [
+                {"source": "Alice", "target": "Bob", "content": "动摇的盟友"}
+            ],
+        }
+        bob.relation_graph = {
+            "nodes": nodes,
+            "edges": [
+                {"source": "Bob", "target": "Carol", "content": "更新后的次要关系"}
+            ],
+        }
+
+    lookup_map = {"Alice": alice, "Bob": bob, "Carol": carol, "Player": player}
+    config = SimpleNamespace(
+        _CHARACTERS_CONFIG_PATH=str(char_file),
+        config=SimpleNamespace(characters=[alice, bob, carol, player]),
+        get_character_by_name=lookup_map.get,
+        refresh_media_catalogs=refresh_media_catalogs,
+    )
+    translate = lambda key, **kwargs: f"{key}:{kwargs}\n"
+
+    dispatcher = PluginHookDispatcher()
+    relation_cap = RelationSessionCapability(translate=translate)
+    relation_cap.on_llm_ready(
+        StartupCapabilityContext(
+            args=SimpleNamespace(
+                primary_characters='["alice"]',
+                player_character="Player",
+                allow_player_dialogue=False,
+            ),
+            config=config,
+            llm_adapter=object(),
+            llm_manager=SimpleNamespace(hook_dispatcher=dispatcher),
+            plugin_manager=None,
+            hook_dispatcher=dispatcher,
+            character_names=("Alice", "Bob", "Carol", "Player"),
+        )
+    )
+    provider = relation_cap.turn_context_providers()[0]
+    assert isinstance(provider, RelationTurnContextProvider)
+
+    compact_block = provider.render_relation_block()
+    assert "Alice" in compact_block
+    assert "信赖的前辈" in compact_block
+    assert "次要人物关系" not in compact_block
+    assert "主角视角" not in compact_block
+
+    # Initial compact system prompt contains only primary character relations;
+    # non-primary Bob having relations must NOT cause full relation re-injection.
+    unchanged_ctx = BeforeChatContext(
+        messages=[
+            {"role": "system", "content": f"Compact prompt\n\n{compact_block}"},
+            {"role": "user", "content": "你好"},
+        ],
+        tools=None,
+        generation_kwargs={},
+        stream=False,
+    )
+    dispatcher.dispatch_before_chat(unchanged_ctx)
+    assert len(unchanged_ctx.messages) == 2
+
+    # When character config changes on disk, re-rendered block stays scoped to Alice.
+    stat = char_file.stat()
+    os.utime(char_file, ns=(stat.st_atime_ns, stat.st_mtime_ns + 10_000_000))
+    updated_ctx = BeforeChatContext(
+        messages=[
+            {"role": "system", "content": f"Compact prompt\n\n{compact_block}"},
+            {"role": "user", "content": "继续"},
+        ],
+        tools=None,
+        generation_kwargs={},
+        stream=False,
+    )
+    dispatcher.dispatch_before_chat(updated_ctx)
+    assert len(updated_ctx.messages) == 3
+    injected = updated_ctx.messages[-1]["content"]
+    assert injected.startswith(RELATION_CONTEXT_MARKER)
+    assert "动摇的盟友" in injected
+    assert "更新后的次要关系" not in injected
+    assert "主角视角" not in injected
 
 
 @dataclass

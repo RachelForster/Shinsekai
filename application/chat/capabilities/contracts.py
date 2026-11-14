@@ -73,6 +73,7 @@ class StartupCapabilityContext:
     plugin_manager: Any | None
     hook_dispatcher: PluginHookDispatcher | None
     character_names: tuple[str, ...]
+    primary_character_names: tuple[str, ...] | None = None
     runtime_imports: Any = None
 
 

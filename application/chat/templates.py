@@ -434,6 +434,46 @@ def _resolve_template_character_names(state: BridgeState, selected: Any) -> list
     return resolved_names
 
 
+def _resolve_launch_primary_characters(
+    state: BridgeState,
+    source: dict[str, Any],
+    characters: list[str],
+    player_character: str,
+) -> list[str] | None:
+    """Resolve canonical compact-mode primary characters for a launched chat session."""
+    mode_source = source
+    if "characterPromptMode" not in mode_source:
+        editor_session = source.get("editorSession")
+        if (
+            isinstance(editor_session, dict)
+            and "characterPromptMode" in editor_session
+        ):
+            mode_source = editor_session
+    prompt_mode = str(mode_source.get("characterPromptMode") or "").strip().lower()
+    if prompt_mode != "compact":
+        return None
+    raw_primary = mode_source.get("primaryCharacters")
+    primary_candidates = raw_primary if isinstance(raw_primary, list) else []
+    resolved_primary = [
+        name
+        for name, _character in resolve_chat_template_characters(
+            primary_candidates, state.config_manager
+        )
+    ]
+    if (
+        not source.get("storyPath")
+        and player_character
+        and player_character not in resolved_primary
+    ):
+        resolved_primary.append(player_character)
+    selected_keys = {character_name_key(name) for name in characters}
+    return [
+        name
+        for name in resolved_primary
+        if character_name_key(name) in selected_keys
+    ]
+
+
 def _safe_session_int(value: Any, default: int = 0) -> int:
     try:
         return max(0, int(value))

@@ -7,6 +7,7 @@ import threading
 from typing import Any
 
 from application.chat.capabilities.contracts import (
+    BaseTurnContextProvider,
     PluginLoadedCapabilityContext,
     SessionCapability,
     SessionRuntimeCapabilityContext,
@@ -19,6 +20,20 @@ from application.chat.capabilities.contracts import (
 )
 
 
+def _provider_observes_hook(provider: TurnContextProvider, method_name: str) -> bool:
+    """Return whether `provider` needs pipeline forwarding for `method_name`."""
+    if getattr(provider, "delegates_to_hook_dispatcher", False):
+        return False
+    base_method = getattr(BaseTurnContextProvider, method_name)
+    instance_dict = getattr(provider, "__dict__", None)
+    if isinstance(instance_dict, Mapping) and method_name in instance_dict:
+        return callable(instance_dict[method_name])
+    cls_method = getattr(type(provider), method_name, None)
+    if cls_method is not None:
+        return callable(cls_method) and cls_method is not base_method
+    return callable(getattr(provider, method_name, None))
+
+
 class TurnContextPipeline:
     """Execute registered `TurnContextProvider`s uniformly for each chat turn."""
 
@@ -28,7 +43,9 @@ class TurnContextPipeline:
     ) -> None:
         self._lock = threading.RLock()
         self._providers: list[TurnContextProvider] = []
-        self._bound_dispatcher_ids: set[int] = set()
+        self._dispatchers: list[Any] = []
+        self._before_chat_dispatcher_ids: set[int] = set()
+        self._message_added_dispatcher_ids: set[int] = set()
         for provider in providers:
             self.register(provider)
 
@@ -54,6 +71,9 @@ class TurnContextPipeline:
             ):
                 return
             self._providers.append(provider)
+            dispatchers = tuple(self._dispatchers)
+        for dispatcher in dispatchers:
+            self._sync_dispatcher_hooks(dispatcher)
 
     def unregister(self, capability_id: str) -> bool:
         target = str(capability_id or "").strip()
@@ -137,19 +157,41 @@ class TurnContextPipeline:
 
     def register_dispatcher_hooks(self, dispatcher: Any) -> None:
         """Bind custom providers' `before_chat` / `message_added` callbacks onto `dispatcher`."""
+        self._sync_dispatcher_hooks(dispatcher)
+
+    def _sync_dispatcher_hooks(self, dispatcher: Any) -> None:
         if dispatcher is None:
             return
         with self._lock:
             dispatcher_id = id(dispatcher)
-            if dispatcher_id in self._bound_dispatcher_ids:
-                return
-            self._bound_dispatcher_ids.add(dispatcher_id)
-        if hasattr(dispatcher, "register_before_chat"):
+            if all(id(existing) != dispatcher_id for existing in self._dispatchers):
+                self._dispatchers.append(dispatcher)
+            need_before_chat = (
+                dispatcher_id not in self._before_chat_dispatcher_ids
+                and hasattr(dispatcher, "register_before_chat")
+                and any(
+                    _provider_observes_hook(provider, "before_chat")
+                    for provider in self._providers
+                )
+            )
+            need_message_added = (
+                dispatcher_id not in self._message_added_dispatcher_ids
+                and hasattr(dispatcher, "register_message_added")
+                and any(
+                    _provider_observes_hook(provider, "message_added")
+                    for provider in self._providers
+                )
+            )
+            if need_before_chat:
+                self._before_chat_dispatcher_ids.add(dispatcher_id)
+            if need_message_added:
+                self._message_added_dispatcher_ids.add(dispatcher_id)
+        if need_before_chat:
             dispatcher.register_before_chat(
                 self._dispatch_before_chat_from_hook_dispatcher,
                 label="turn_context_pipeline_before_chat",
             )
-        if hasattr(dispatcher, "register_message_added"):
+        if need_message_added:
             dispatcher.register_message_added(
                 self._dispatch_message_added_from_hook_dispatcher,
                 label="turn_context_pipeline_message_added",
@@ -157,13 +199,13 @@ class TurnContextPipeline:
 
     def _dispatch_before_chat_from_hook_dispatcher(self, context: Any) -> None:
         for provider in self.providers():
-            if getattr(provider, "delegates_to_hook_dispatcher", False):
+            if not _provider_observes_hook(provider, "before_chat"):
                 continue
             provider.before_chat(context)
 
     def _dispatch_message_added_from_hook_dispatcher(self, context: Any) -> None:
         for provider in self.providers():
-            if getattr(provider, "delegates_to_hook_dispatcher", False):
+            if not _provider_observes_hook(provider, "message_added"):
                 continue
             provider.message_added(context)
 

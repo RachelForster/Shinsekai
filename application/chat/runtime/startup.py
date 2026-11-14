@@ -137,6 +137,7 @@ def create_chat_startup_context(
         raise MissingLlmProviderError("No language model provider is configured.")
 
     character_names = _session_character_names(args, config)
+    primary_character_names = _session_primary_character_names(args)
     with startup_phase("llm.init"):
         llm_adapter = runtime.LLMAdapterFactory.create_adapter(
             **config.merged_llm_factory_kwargs(
@@ -193,6 +194,7 @@ def create_chat_startup_context(
                     else None
                 ),
                 character_names=tuple(character_names),
+                primary_character_names=primary_character_names,
                 runtime_imports=runtime,
             )
         )
@@ -481,6 +483,23 @@ def _parse_character_names(raw: str) -> list[str]:
     if not isinstance(parsed, list):
         return []
     return [str(item).strip() for item in parsed if str(item).strip()]
+
+
+def _session_primary_character_names(args: Any) -> tuple[str, ...] | None:
+    raw = getattr(args, "primary_characters", None)
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text:
+        return None
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        parts = tuple(part.strip() for part in text.split(",") if part.strip())
+        return parts or None
+    if not isinstance(parsed, list):
+        return None
+    return tuple(str(item).strip() for item in parsed if str(item).strip())
 
 
 def _session_character_names(args: Any, config: ConfigManager) -> list[str]:

@@ -17,11 +17,13 @@ from frontend_bridge_core.chat_session import _usable_media_selection_mode
 class _SystemConfig:
     chat_ui_runtime_mode = "react"
     live_room_id = ""
+    voice_language = "ja"
 
     def model_copy(self, *, deep: bool):
         clone = _SystemConfig()
         clone.chat_ui_runtime_mode = self.chat_ui_runtime_mode
         clone.live_room_id = self.live_room_id
+        clone.voice_language = self.voice_language
         return clone
 
 
@@ -475,3 +477,93 @@ def test_launch_chat_passes_knowledge_settings(tmp_path, monkeypatch):
     assert "12345" in message
     assert captured["env"]["SHINSEKAI_KNOWLEDGE_SERVICE_URL"] == "http://127.0.0.1:8787/api/knowledge"
     assert captured["env"]["SHINSEKAI_KNOWLEDGE_SERVICE_OWNER"] == "0"
+
+
+def test_launch_chat_forwards_compact_primary_characters_to_child_config(
+    tmp_path,
+    monkeypatch,
+):
+    from frontend_bridge_core.chat_session import launch_chat
+
+    project_root = tmp_path / "project"
+    app_root = tmp_path / "Shinsekai"
+    template_dir = project_root / "data" / "character_templates"
+    history_dir = project_root / "data" / "chat_history"
+    app_root.mkdir()
+    template_dir.mkdir(parents=True)
+    history_dir.mkdir(parents=True)
+
+    captured_configs: list[dict] = []
+
+    def fake_popen(cmd, *, cwd, env, **kwargs):
+        del cmd, cwd, kwargs
+        captured_configs.append(json.loads(env[CHAT_LAUNCH_CONFIG_ENV]))
+        return _DummyProcess()
+
+    monkeypatch.setenv("EASYAI_PROJECT_ROOT", str(project_root))
+    monkeypatch.setattr(sys, "frozen", False, raising=False)
+    monkeypatch.setattr(chat.subprocess, "Popen", fake_popen)
+
+    chars = {
+        name: SimpleNamespace(name=name, character_setting=f"{name} setting", sprites=[])
+        for name in ("Alice", "Bob", "Carol", "Dave", "Player")
+    }
+    config_manager = _ConfigManager()
+    config_manager.config.system_config.voice_language = "ja"
+    config_manager.config.characters = list(chars.values())
+    config_manager.config.effects = []
+    config_manager.get_character_by_name = chars.get
+    config_manager.get_background_by_name = lambda _name: None
+    config_manager.list_effects = lambda: []
+
+    state = SimpleNamespace(
+        app_root_dir=str(app_root),
+        chat_session={},
+        chat_stream=None,
+        config_manager=config_manager,
+        history_dir=str(history_dir),
+        template_dir_path=str(template_dir),
+    )
+
+    monkeypatch.setattr(chat._supervisor.resources, "process", None)
+    launch_chat(
+        state,
+        {
+            "backgroundName": "",
+            "characterPromptMode": "compact",
+            "characters": ["Alice", "Bob", "Carol", "Dave", "Player"],
+            "historyPath": str(history_dir / "compact_session.json"),
+            "playerCharacter": "Player",
+            "primaryCharacters": ["Alice"],
+            "scenario": "scene",
+            "system": "system",
+            "templateId": "_temp.txt",
+        },
+    )
+    assert json.loads(captured_configs[-1]["characters"]) == [
+        "Alice",
+        "Bob",
+        "Carol",
+        "Dave",
+        "Player",
+    ]
+    assert json.loads(captured_configs[-1]["primary_characters"]) == [
+        "Alice",
+        "Player",
+    ]
+
+    monkeypatch.setattr(chat._supervisor.resources, "process", None)
+    launch_chat(
+        state,
+        {
+            "backgroundName": "",
+            "characterPromptMode": "full",
+            "characters": ["Alice", "Bob"],
+            "historyPath": str(history_dir / "full_session.json"),
+            "primaryCharacters": ["Alice"],
+            "scenario": "scene",
+            "system": "system",
+            "templateId": "_temp.txt",
+        },
+    )
+    assert "primary_characters" not in captured_configs[-1]

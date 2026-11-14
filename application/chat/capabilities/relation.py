@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+import json
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -36,44 +37,87 @@ def _character_config_mtime_ns(config: Any) -> int | None:
         return None
 
 
+def _parse_primary_character_names(raw: object) -> tuple[str, ...] | None:
+    if raw is None:
+        return None
+    if isinstance(raw, (list, tuple, set, frozenset)):
+        return tuple(str(item or "").strip() for item in raw if str(item or "").strip())
+    text = str(raw).strip()
+    if not text:
+        return None
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        parts = tuple(part.strip() for part in text.split(",") if part.strip())
+        return parts or None
+    if not isinstance(parsed, list):
+        return None
+    return tuple(str(item or "").strip() for item in parsed if str(item or "").strip())
+
+
+def _resolve_character_record(config: Any, candidate: str) -> Any | None:
+    lookup = getattr(config, "get_character_by_name", None)
+    char = lookup(candidate) if callable(lookup) else None
+    if char is not None:
+        return char
+    all_chars = getattr(getattr(config, "config", None), "characters", None)
+    if isinstance(all_chars, (list, tuple)):
+        key = candidate.casefold()
+        return next(
+            (
+                item
+                for item in all_chars
+                if str(getattr(item, "name", "") or "").strip().casefold() == key
+            ),
+            None,
+        )
+    return None
+
+
 def _resolve_session_characters(
     config: Any,
     character_names: Sequence[str],
     *,
     player_character: str = "",
+    allow_player_dialogue: bool = True,
 ) -> list[tuple[str, Any]]:
     seen: set[str] = set()
     resolved: list[tuple[str, Any]] = []
+    player_name = str(player_character or "").strip()
+    excluded_player_keys: set[str] = set()
+    if player_name and not allow_player_dialogue:
+        excluded_player_keys.add(player_name.casefold())
+        player_char = _resolve_character_record(config, player_name)
+        if player_char is not None:
+            canonical_player = str(
+                getattr(player_char, "name", "") or player_name
+            ).strip()
+            if canonical_player:
+                excluded_player_keys.add(canonical_player.casefold())
+
     candidates = [
         *(str(name or "").strip() for name in character_names),
-        str(player_character or "").strip(),
+        player_name if allow_player_dialogue else "",
     ]
-    lookup = getattr(config, "get_character_by_name", None)
     all_chars = getattr(getattr(config, "config", None), "characters", None)
+    had_explicit_selection = any(candidates) or bool(excluded_player_keys)
 
     for candidate in candidates:
         if not candidate:
             continue
         key = candidate.casefold()
-        if key in seen:
+        if key in seen or key in excluded_player_keys:
             continue
-        char = lookup(candidate) if callable(lookup) else None
-        if char is None and isinstance(all_chars, (list, tuple)):
-            char = next(
-                (
-                    item
-                    for item in all_chars
-                    if str(getattr(item, "name", "") or "").strip().casefold() == key
-                ),
-                None,
-            )
+        char = _resolve_character_record(config, candidate)
         if char is not None:
             canonical = str(getattr(char, "name", "") or candidate).strip()
+            if canonical.casefold() in excluded_player_keys:
+                continue
             seen.add(canonical.casefold())
             seen.add(key)
             resolved.append((canonical, char))
 
-    if not resolved and isinstance(all_chars, (list, tuple)):
+    if not had_explicit_selection and not resolved and isinstance(all_chars, (list, tuple)):
         for char in all_chars:
             name = str(getattr(char, "name", "") or "").strip()
             if name and name.casefold() not in seen:
@@ -93,7 +137,9 @@ class RelationTurnContextProvider(BaseTurnContextProvider):
         *,
         config: Any,
         character_names: Sequence[str] = (),
+        primary_character_names: Sequence[str] | frozenset[str] | set[str] | None = None,
         player_character: str = "",
+        allow_player_dialogue: bool = True,
         translate: Callable[..., str] = translate_template,
     ) -> None:
         self.config = config
@@ -102,7 +148,17 @@ class RelationTurnContextProvider(BaseTurnContextProvider):
             for name in character_names
             if str(name or "").strip()
         )
+        self.primary_character_names: tuple[str, ...] | None = (
+            None
+            if primary_character_names is None
+            else tuple(
+                str(name or "").strip()
+                for name in primary_character_names
+                if str(name or "").strip()
+            )
+        )
         self.player_character = str(player_character or "").strip()
+        self.allow_player_dialogue = bool(allow_player_dialogue)
         self.translate = translate
         self._last_mtime_ns = _character_config_mtime_ns(config)
 
@@ -125,14 +181,22 @@ class RelationTurnContextProvider(BaseTurnContextProvider):
             self.config,
             self.character_names,
             player_character=self.player_character,
+            allow_player_dialogue=self.allow_player_dialogue,
         )
         if not characters:
             return ""
+        resolved_primary_names: frozenset[str] | None = None
+        if self.primary_character_names is not None:
+            primary_keys = {name.casefold() for name in self.primary_character_names}
+            resolved_primary_names = frozenset(
+                name for name, _char in characters if name.casefold() in primary_keys
+            )
         template_context = DialogTemplateContext(
             characters=tuple(characters),
             translate=self.translate,
             target_voice_name="",
             json_reminder="",
+            primary_character_names=resolved_primary_names,
         )
         return RelationSection().render(template_context).strip()
 
@@ -197,10 +261,22 @@ class RelationSessionCapability(BaseSessionCapability):
         player_character = str(
             getattr(context.args, "player_character", "") or ""
         ).strip()
+        allow_player_dialogue = bool(
+            getattr(context.args, "allow_player_dialogue", True)
+        )
+        primary_character_names = (
+            context.primary_character_names
+            if context.primary_character_names is not None
+            else _parse_primary_character_names(
+                getattr(context.args, "primary_characters", None)
+            )
+        )
         self._provider = RelationTurnContextProvider(
             config=context.config,
             character_names=context.character_names,
+            primary_character_names=primary_character_names,
             player_character=player_character,
+            allow_player_dialogue=allow_player_dialogue,
             translate=self._translate,
         )
         self._provider.delegates_to_hook_dispatcher = True
