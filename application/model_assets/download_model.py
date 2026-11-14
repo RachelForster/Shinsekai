@@ -276,6 +276,31 @@ def _register_builtin_definitions(registry: ModelAssetRegistry) -> None:
 _register_builtin_definitions(MODEL_ASSET_REGISTRY)
 
 
+def _normalize_request_patterns(patterns: tuple[str, ...] | list[str]) -> tuple[str, ...]:
+    if not patterns:
+        return ()
+    return tuple(
+        reject_control_chars(str(item).strip(), field="allow_pattern")
+        for item in patterns
+        if str(item).strip()
+    )
+
+
+def _normalize_request_file_groups(
+    groups: tuple[tuple[str, ...], ...] | list[tuple[str, ...]],
+) -> tuple[tuple[str, ...], ...]:
+    if not groups:
+        return ()
+    normalized: list[tuple[str, ...]] = []
+    for group in groups:
+        if isinstance(group, (str, bytes)):
+            raise TypeError("each required_file_groups entry must be a sequence of patterns")
+        cleaned = _normalize_request_patterns(tuple(group))
+        if cleaned:
+            normalized.append(cleaned)
+    return tuple(normalized)
+
+
 def _resolve_direct_repo_definition(
     definition: ModelAssetDefinition,
     request: ModelAssetRequest,
@@ -296,6 +321,11 @@ def _resolve_direct_repo_definition(
         )
     clean_revision = _optional_clean_text(request.revision, field="revision")
     clean_title = _optional_clean_text(request.title, field="title")
+    allow_patterns = _normalize_request_patterns(request.allow_patterns) or definition.allow_patterns
+    required_file_groups = (
+        _normalize_request_file_groups(request.required_file_groups)
+        or definition.required_file_groups
+    )
     variant_label = f"{repo_id}@{clean_revision}" if clean_revision else repo_id
     return ModelAssetSpec(
         asset_id=definition.asset_id,
@@ -304,8 +334,8 @@ def _resolve_direct_repo_definition(
         source="huggingface",
         repo_id=repo_id,
         revision=clean_revision,
-        allow_patterns=request.allow_patterns or definition.allow_patterns,
-        required_file_groups=request.required_file_groups or definition.required_file_groups,
+        allow_patterns=allow_patterns,
+        required_file_groups=required_file_groups,
         snapshot_validator=definition.snapshot_validator,
     )
 
@@ -316,9 +346,17 @@ def _resolve_definition(
     *,
     configured_lookup: Mapping[str, str],
 ) -> ModelAssetSpec:
+    clean_request_revision = _optional_clean_text(request.revision, field="revision")
+
     if definition.static_spec_factory is not None:
         if request.configured or request.variant is not None or request.repo_id is not None:
             raise ValueError(definition.reject_variant_message)
+        if clean_request_revision:
+            raise ValueError(f"{definition.asset_id} model requests do not accept a revision")
+        if request.allow_patterns or request.required_file_groups:
+            raise ValueError(
+                f"{definition.asset_id} model requests do not accept custom file patterns"
+            )
         return definition.static_spec_factory()
 
     if definition.allow_direct_repo_in_request:
@@ -328,11 +366,12 @@ def _resolve_definition(
         raise ValueError(
             f"{definition.asset_id} requests do not accept repoId; use assetId='{_HUGGINGFACE_REPO_ASSET_ID}' or omit assetId"
         )
+    if request.allow_patterns or request.required_file_groups:
+        raise ValueError(
+            f"{definition.asset_id} model requests do not accept custom file patterns"
+        )
 
-    effective_revision = (
-        _optional_clean_text(request.revision, field="revision")
-        or definition.revision
-    )
+    effective_revision = clean_request_revision or definition.revision
 
     if not request.configured:
         raw_variant = (
@@ -346,7 +385,7 @@ def _resolve_definition(
         if (
             definition.default_spec is not None
             and request_variant == definition.default_variant
-            and not request.revision
+            and not clean_request_revision
         ):
             return definition.default_spec
         if request_variant in definition.aliases:
@@ -386,7 +425,7 @@ def _resolve_definition(
     if (
         definition.default_spec is not None
         and variant == definition.default_variant
-        and not request.revision
+        and not clean_request_revision
     ):
         return definition.default_spec
 
@@ -412,6 +451,8 @@ def _resolve_definition(
             if configured_path.exists():
                 local_path = configured_path
     if local_path is not None:
+        if clean_request_revision:
+            raise ValueError("revision is not supported for local model assets")
         return ModelAssetSpec(
             asset_id=definition.asset_id,
             title=title,
@@ -478,6 +519,7 @@ def inspect_model(
     configured_asr_model: str = "small",
     configured_perception_model: str = DEFAULT_PERCEPTION_MODEL,
     configured_values: Mapping[str, str] | None = None,
+    token: str = "",
     registry: ModelAssetRegistry = MODEL_ASSET_REGISTRY,
 ) -> dict[str, object]:
     return inspect_model_asset(
@@ -487,7 +529,8 @@ def inspect_model(
             configured_perception_model=configured_perception_model,
             configured_values=configured_values,
             registry=registry,
-        )
+        ),
+        token=str(token or "").strip(),
     )
 
 
@@ -531,11 +574,13 @@ def create_plugin_model_assets_dispatcher(
             ),
         )
         configured_map = dict(get_configured_values() or {}) if get_configured_values else {}
+        token = str(get_token() or "").strip() if get_token is not None else ""
         if action == "status":
             return dict(
                 inspect_model(
                     request,
                     configured_values=configured_map,
+                    token=token,
                     registry=registry,
                 )
             )
@@ -547,7 +592,6 @@ def create_plugin_model_assets_dispatcher(
             )
             on_progress = command.get("onProgress")
             progress_cb = on_progress if callable(on_progress) else (lambda **_changes: None)
-            token = str(get_token() or "").strip() if get_token is not None else ""
             return dict(
                 download_model(
                     spec,

@@ -306,6 +306,16 @@ def test_revision_selects_matching_ref_or_commit_hash_and_forwards_to_downloader
     (model_dir / "refs").mkdir(parents=True)
     (model_dir / "refs" / "main").write_text("main-sha", encoding="utf-8")
 
+    monkeypatch.setattr(
+        service,
+        "_fetch_huggingface_revision_files",
+        lambda *_args, **_kwargs: (
+            ("config.json", None),
+            ("model.bin", None),
+            ("tokenizer.json", None),
+        ),
+    )
+
     pinned_spec = _spec(revision="2025-01-09", allow_patterns=(), required_file_groups=())
     default_spec = _spec()
     assert pinned_spec.task_key != default_spec.task_key
@@ -345,6 +355,151 @@ def test_revision_selects_matching_ref_or_commit_hash_and_forwards_to_downloader
     assert commit_status["cached"] is True
     assert commit_status["revision"] == commit_sha
     assert Path(str(commit_status["path"])) == commit_snapshot.resolve()
+
+
+def test_partial_single_file_cache_is_not_treated_as_complete_for_full_repo_or_scoped_patterns(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
+    monkeypatch.setenv("HF_HOME", str(tmp_path / "unused-home"))
+    monkeypatch.delenv("HUGGINGFACE_HUB_CACHE", raising=False)
+
+    model_dir = tmp_path / "models--owner--model"
+    snapshot = model_dir / "snapshots" / "rev1"
+    snapshot.mkdir(parents=True)
+    (snapshot / "config.json").write_text("{}", encoding="utf-8")
+    refs = model_dir / "refs"
+    refs.mkdir(parents=True)
+    (refs / "main").write_text("rev1", encoding="utf-8")
+
+    monkeypatch.setattr(
+        service,
+        "_fetch_huggingface_revision_files",
+        lambda *_args, **_kwargs: (("config.json", None), ("weights.bin", None)),
+    )
+
+    scoped_spec = service.ModelAssetSpec(
+        asset_id="huggingface.repo",
+        title="owner/model",
+        variant="owner/model",
+        repo_id="owner/model",
+        allow_patterns=("weights.bin",),
+        required_file_groups=(),
+    )
+    assert service.inspect_model_asset(scoped_spec)["cached"] is False
+
+    scoped_calls = []
+
+    def fake_scoped_preload(repo_id, **kwargs):
+        scoped_calls.append((repo_id, kwargs))
+        assert (snapshot / "config.json").is_file()
+        (snapshot / "weights.bin").write_bytes(b"weights")
+        return str(snapshot)
+
+    monkeypatch.setattr(service, "preload_huggingface_snapshot", fake_scoped_preload)
+    scoped_result = service.download_model_asset(
+        scoped_spec,
+        update_task=lambda **_changes: None,
+    )
+    assert scoped_result["cached"] is True
+    assert scoped_result["downloaded"] is True
+    assert len(scoped_calls) == 1
+    assert scoped_calls[0][1]["allow_patterns"] == ["weights.bin"]
+    assert (snapshot / "config.json").is_file()
+    assert (snapshot / "weights.bin").is_file()
+
+    # Reset cache back to partial config.json only and verify full-repo request.
+    (snapshot / "weights.bin").unlink()
+    full_spec = service.ModelAssetSpec(
+        asset_id="huggingface.repo",
+        title="owner/model",
+        variant="owner/model",
+        repo_id="owner/model",
+        allow_patterns=(),
+        required_file_groups=(),
+    )
+    assert service.inspect_model_asset(full_spec)["cached"] is False
+
+    full_calls = []
+
+    def fake_full_preload(repo_id, **kwargs):
+        full_calls.append((repo_id, kwargs))
+        snapshot.mkdir(parents=True, exist_ok=True)
+        (snapshot / "config.json").write_text("{}", encoding="utf-8")
+        (snapshot / "weights.bin").write_bytes(b"weights")
+        return str(snapshot)
+
+    monkeypatch.setattr(service, "preload_huggingface_snapshot", fake_full_preload)
+    full_result = service.download_model_asset(
+        full_spec,
+        update_task=lambda **_changes: None,
+    )
+    assert full_result["cached"] is True
+    assert full_result["downloaded"] is True
+    assert len(full_calls) == 1
+    assert "allow_patterns" not in full_calls[0][1]
+
+    repeat_result = service.download_model_asset(
+        full_spec,
+        update_task=lambda **_changes: None,
+    )
+    assert repeat_result["cached"] is True
+    assert repeat_result["downloaded"] is False
+    assert len(full_calls) == 1
+
+
+def test_wildcard_allow_patterns_and_offline_unverified_cache_reject_partial_snapshots(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
+    monkeypatch.setenv("HF_HOME", str(tmp_path / "unused-home"))
+    monkeypatch.delenv("HUGGINGFACE_HUB_CACHE", raising=False)
+
+    model_dir = tmp_path / "models--owner--model"
+    snapshot = model_dir / "snapshots" / "rev2"
+    snapshot.mkdir(parents=True)
+    (snapshot / "config.json").write_text("{}", encoding="utf-8")
+    refs = model_dir / "refs"
+    refs.mkdir(parents=True)
+    (refs / "main").write_text("rev2", encoding="utf-8")
+
+    # Offline / manifest unavailable: unverified single-file snapshot must not
+    # pass as a full repository or wildcard allow_patterns hit.
+    monkeypatch.setattr(
+        service,
+        "_fetch_huggingface_revision_files",
+        lambda *_args, **_kwargs: None,
+    )
+    full_spec = service.ModelAssetSpec(
+        asset_id="huggingface.repo",
+        title="owner/model",
+        variant="owner/model",
+        repo_id="owner/model",
+    )
+    wildcard_json_spec = service.ModelAssetSpec(
+        asset_id="huggingface.repo",
+        title="owner/model",
+        variant="owner/model",
+        repo_id="owner/model",
+        allow_patterns=("*.json",),
+    )
+    assert service.inspect_model_asset(full_spec)["cached"] is False
+    assert service.inspect_model_asset(wildcard_json_spec)["cached"] is False
+
+    # With manifest listing config.json + tokenizer.json, missing tokenizer.json fails *.json.
+    monkeypatch.setattr(
+        service,
+        "_fetch_huggingface_revision_files",
+        lambda *_args, **_kwargs: (
+            ("config.json", None),
+            ("tokenizer.json", None),
+            ("weights.bin", None),
+        ),
+    )
+    assert service.inspect_model_asset(wildcard_json_spec)["cached"] is False
+    (snapshot / "tokenizer.json").write_text("{}", encoding="utf-8")
+    assert service.inspect_model_asset(wildcard_json_spec)["cached"] is True
+    assert service.inspect_model_asset(full_spec)["cached"] is False
 
 
 @pytest.mark.parametrize(

@@ -648,3 +648,108 @@ def test_plugin_registered_model_assets_and_sdk_controller_reuse_host_token(monk
     assert seen_downloads[2][0].allow_patterns == ()
 
 
+def test_fixed_model_assets_reject_explicit_revision_and_custom_patterns(tmp_path):
+    from sdk.register import PluginCapabilityRegistry
+
+    for fixed_asset_id in ("memory.embedding", "vision.moondream"):
+        with pytest.raises(ValueError, match="do not accept a revision"):
+            model_assets.resolve_model_asset(
+                ModelAssetRequest(asset_id=fixed_asset_id, revision="v1.0")
+            )
+        with pytest.raises(ValueError, match="do not accept a revision"):
+            model_assets.inspect_model(
+                ModelAssetRequest(asset_id=fixed_asset_id, revision="v1.0")
+            )
+        with pytest.raises(ValueError, match="do not accept custom file patterns"):
+            model_assets.resolve_model_asset(
+                ModelAssetRequest(asset_id=fixed_asset_id, allow_patterns=("config.json",))
+            )
+
+    cap_reg = PluginCapabilityRegistry()
+    cap_reg.register_model_asset(
+        asset_id="plugin.demo.fixed",
+        repo_id="BAAI/bge-small-en-v1.5",
+        revision="v2.0",
+        plugin_id="demo_plugin",
+    )
+    custom_registry = model_assets.ModelAssetRegistry()
+    model_assets._register_builtin_definitions(custom_registry)
+    custom_registry.configure_plugin_contributions(cap_reg.model_assets_contributions)
+
+    default_plugin_spec = model_assets.resolve_model_asset(
+        ModelAssetRequest(asset_id="plugin.demo.fixed"),
+        registry=custom_registry,
+    )
+    assert default_plugin_spec.revision == "v2.0"
+
+    with pytest.raises(ValueError, match="do not accept a revision"):
+        model_assets.resolve_model_asset(
+            ModelAssetRequest(asset_id="plugin.demo.fixed", revision="v1.0"),
+            registry=custom_registry,
+        )
+
+    local_dir = tmp_path / "local-whisper"
+    local_dir.mkdir()
+    with pytest.raises(ValueError, match="revision is not supported for local model assets"):
+        model_assets.resolve_model_asset(
+            ModelAssetRequest(
+                asset_id="asr.faster-whisper",
+                configured=True,
+                revision="v1.0",
+            ),
+            configured_asr_model=str(local_dir),
+        )
+
+
+def test_direct_model_download_checks_requested_scope_against_partial_cache(
+    tmp_path, monkeypatch
+):
+    from core.model_assets import service
+
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
+    monkeypatch.setenv("HF_HOME", str(tmp_path / "unused-home"))
+    monkeypatch.delenv("HUGGINGFACE_HUB_CACHE", raising=False)
+
+    model_dir = tmp_path / "models--owner--demo"
+    snapshot = model_dir / "snapshots" / "sha1"
+    snapshot.mkdir(parents=True)
+    (snapshot / "config.json").write_text("{}", encoding="utf-8")
+    (model_dir / "refs").mkdir(parents=True)
+    (model_dir / "refs" / "main").write_text("sha1", encoding="utf-8")
+
+    monkeypatch.setattr(
+        service,
+        "_fetch_huggingface_revision_files",
+        lambda *_args, **_kwargs: (("config.json", None), ("weights.bin", None)),
+    )
+
+    weights_only_req = ModelAssetRequest(
+        repo_id="owner/demo",
+        allow_patterns=("weights.bin",),
+    )
+    full_repo_req = ModelAssetRequest(repo_id="owner/demo")
+
+    assert model_assets.inspect_model(weights_only_req)["cached"] is False
+    assert model_assets.inspect_model(full_repo_req)["cached"] is False
+
+    preload_calls: list[tuple[str, dict[str, object]]] = []
+
+    def fake_preload(repo_id, **kwargs):
+        preload_calls.append((repo_id, kwargs))
+        (snapshot / "weights.bin").write_bytes(b"weights-data")
+        return str(snapshot)
+
+    monkeypatch.setattr(service, "preload_huggingface_snapshot", fake_preload)
+
+    weights_spec = model_assets.resolve_model_asset(weights_only_req)
+    downloaded = model_assets.download_model(
+        weights_spec,
+        update_task=lambda **_changes: None,
+    )
+    assert downloaded["cached"] is True
+    assert downloaded["downloaded"] is True
+    assert len(preload_calls) == 1
+    assert preload_calls[0][1]["allow_patterns"] == ["weights.bin"]
+    assert model_assets.inspect_model(full_repo_req)["cached"] is True
+
+

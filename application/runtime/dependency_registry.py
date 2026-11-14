@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 import threading
+from typing import Any
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,6 +20,7 @@ class RuntimeDependencySpec:
     install_only_unsatisfied: bool = False
     install_spec_overrides: Mapping[str, str] = field(default_factory=dict)
     requires_target_python: bool = False
+    target_python: str | Path | Callable[[Any], str | Path | None] | None = None
     default_label: str = ""
     secondary_group_label: str = ""
     success_message: str = ""
@@ -34,6 +37,14 @@ class RuntimeDependencySpec:
         cleaned_torch = tuple(
             str(item).strip() for item in self.pytorch_specs if str(item).strip()
         )
+        if (
+            self.target_python is not None
+            and not isinstance(self.target_python, (str, Path))
+            and not callable(self.target_python)
+        ):
+            raise TypeError(
+                "RuntimeDependencySpec.target_python must be a path or callable"
+            )
         object.__setattr__(self, "key", cleaned_key)
         object.__setattr__(self, "package_specs", cleaned_specs)
         object.__setattr__(self, "pytorch_specs", cleaned_torch)

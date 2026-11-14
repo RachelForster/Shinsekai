@@ -163,3 +163,46 @@ def test_status_and_download_routes_support_direct_huggingface_repo_id(
     assert worker_calls[0][0].required_file_groups == ()
     assert worker_calls[0][1] == "hf-route-secret"
 
+
+def test_routes_reject_explicit_revision_for_fixed_model_assets() -> None:
+    import threading
+    from application.runtime.state import BridgeState
+
+    state = BridgeState(
+        config_manager=SimpleNamespace(
+            config=SimpleNamespace(
+                api_config=SimpleNamespace(
+                    hugging_face_access_token="",
+                    perception_model="",
+                ),
+                system_config=SimpleNamespace(asr_whisper_model_size="small"),
+            )
+        ),
+        character_manager=None,
+        background_manager=None,
+        template_generator=None,
+        task_lock=threading.Lock(),
+    )
+
+    for path in ("/api/model-assets/status", "/api/model-assets/download"):
+        for fixed_asset in ("memory.embedding", "vision.moondream"):
+            sent: list[tuple[object, HTTPStatus]] = []
+            handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
+            handler.server = SimpleNamespace(state=state)
+            handler.path = path
+            handler._require_authorized_write = lambda _path: None
+            handler._read_json = lambda aid=fixed_asset: {
+                "assetId": aid,
+                "revision": "v1.0",
+            }
+            handler._log_request_exception = lambda _exc: None
+            handler._send_json = lambda data, status=HTTPStatus.OK, bucket=sent: bucket.append(
+                (data, status)
+            )
+            handler.do_POST()
+
+            assert len(sent) == 1
+            payload, status = sent[0]
+            assert status == HTTPStatus.BAD_REQUEST
+            assert "do not accept a revision" in str(payload.get("error", ""))
+

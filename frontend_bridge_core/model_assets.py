@@ -45,6 +45,30 @@ def parse_model_asset_request(payload: dict[str, Any]) -> ModelAssetRequest:
         if not isinstance(raw_title, str):
             raise ValueError("title must be a string")
         title = raw_title.strip()
+    allow_patterns: tuple[str, ...] = ()
+    if "allowPatterns" in payload and payload.get("allowPatterns") is not None:
+        raw_patterns = payload.get("allowPatterns")
+        if not isinstance(raw_patterns, list) or not all(
+            isinstance(item, str) for item in raw_patterns
+        ):
+            raise ValueError("allowPatterns must be a list of strings")
+        allow_patterns = tuple(item.strip() for item in raw_patterns if item.strip())
+    required_file_groups: tuple[tuple[str, ...], ...] = ()
+    if (
+        "requiredFileGroups" in payload
+        and payload.get("requiredFileGroups") is not None
+    ):
+        raw_groups = payload.get("requiredFileGroups")
+        if not isinstance(raw_groups, list) or not all(
+            isinstance(group, list) and all(isinstance(item, str) for item in group)
+            for group in raw_groups
+        ):
+            raise ValueError("requiredFileGroups must be a list of string lists")
+        required_file_groups = tuple(
+            cleaned
+            for group in raw_groups
+            if (cleaned := tuple(item.strip() for item in group if item.strip()))
+        )
     return ModelAssetRequest(
         asset_id=str(payload.get("assetId") or "").strip(),
         configured=configured,
@@ -52,6 +76,8 @@ def parse_model_asset_request(payload: dict[str, Any]) -> ModelAssetRequest:
         repo_id=repo_id,
         revision=revision,
         title=title,
+        allow_patterns=allow_patterns,
+        required_file_groups=required_file_groups,
     )
 
 

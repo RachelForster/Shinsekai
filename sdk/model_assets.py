@@ -183,23 +183,34 @@ class ModelAssetsController:
         variant: str | None = None,
         configured: bool = False,
         revision: str = "",
+        allow_patterns: Sequence[str] = (),
+        required_file_groups: Sequence[Sequence[str]] = (),
     ) -> dict[str, Any]:
         """Inspect cache status for a direct Hugging Face ``repo_id`` or registered ``asset_id``."""
         clean_repo = str(repo_id or "").strip()
         clean_asset = str(asset_id or "").strip()
         if not clean_repo and not clean_asset:
             raise ValueError("status() requires either repo_id or asset_id")
-        return _dispatch_model_asset_command(
-            {
-                "action": "status",
-                "pluginId": self._plugin_id,
-                "repoId": clean_repo,
-                "assetId": clean_asset,
-                "variant": variant,
-                "configured": bool(configured),
-                "revision": str(revision or "").strip(),
-            }
-        )
+        if clean_asset and (allow_patterns or required_file_groups):
+            raise ValueError(
+                "allow_patterns and required_file_groups overrides are only supported for direct repo_id requests"
+            )
+        cleaned_patterns = _normalize_patterns(allow_patterns)
+        cleaned_groups = _normalize_file_groups(required_file_groups)
+        command: dict[str, Any] = {
+            "action": "status",
+            "pluginId": self._plugin_id,
+            "repoId": clean_repo,
+            "assetId": clean_asset,
+            "variant": variant,
+            "configured": bool(configured),
+            "revision": str(revision or "").strip(),
+        }
+        if cleaned_patterns:
+            command["allowPatterns"] = cleaned_patterns
+        if cleaned_groups:
+            command["requiredFileGroups"] = cleaned_groups
+        return _dispatch_model_asset_command(command)
 
     def download(
         self,
@@ -244,18 +255,25 @@ def inspect_huggingface_model(
     repo_id: str,
     *,
     revision: str = "",
+    allow_patterns: Sequence[str] = (),
+    required_file_groups: Sequence[Sequence[str]] = (),
 ) -> dict[str, Any]:
     """Inspect whether ``owner/repo`` is cached in the host Hugging Face hub cache."""
     clean_repo = str(repo_id or "").strip()
     if not clean_repo:
         raise ValueError("repo_id cannot be empty")
-    return _dispatch_model_asset_command(
-        {
-            "action": "status",
-            "repoId": clean_repo,
-            "revision": str(revision or "").strip(),
-        }
-    )
+    cleaned_patterns = _normalize_patterns(allow_patterns)
+    cleaned_groups = _normalize_file_groups(required_file_groups)
+    command: dict[str, Any] = {
+        "action": "status",
+        "repoId": clean_repo,
+        "revision": str(revision or "").strip(),
+    }
+    if cleaned_patterns:
+        command["allowPatterns"] = cleaned_patterns
+    if cleaned_groups:
+        command["requiredFileGroups"] = cleaned_groups
+    return _dispatch_model_asset_command(command)
 
 
 def download_huggingface_model(

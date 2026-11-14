@@ -27,6 +27,7 @@ def _get_model_asset_status(request: ApiRequest) -> JsonResponse:
         inspect_model(
             parsed,
             configured_values=configured_model_values(request.state),
+            token=huggingface_token(request.state),
         )
     )
 

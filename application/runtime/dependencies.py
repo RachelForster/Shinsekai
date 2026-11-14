@@ -26,6 +26,7 @@ from core.runtime_env.requirements import (
     RequirementCheck,
     canonical_distribution_name,
     check_requirement,
+    requirement_name,
     unsatisfied_requirements,
 )
 from sdk.exception.types import (
@@ -81,6 +82,26 @@ PERCEPTION_RUNTIME_PACKAGE_SPECS = (
 )
 
 
+def _resolve_perception_target_python(state: Any) -> str:
+    raw = ""
+    project_root = getattr(state, "project_root_dir", "") if state is not None else ""
+    app_root = getattr(state, "app_root_dir", "") if state is not None else ""
+    if state is not None:
+        api_cfg = getattr(
+            getattr(getattr(state, "config_manager", None), "config", None),
+            "api_config",
+            None,
+        )
+        raw = str(getattr(api_cfg, "perception_python_path", "") or "").strip().strip('"')
+    if not raw:
+        raw = os.environ.get("SHINSEKAI_PERCEPTION_PYTHON", "").strip().strip('"')
+    return default_perception_python_path(
+        raw,
+        project_root=project_root or None,
+        app_root=app_root or None,
+    )
+
+
 def _register_builtin_runtime_dependencies(registry: RuntimeDependencyRegistry) -> None:
     registry.register_builtin(
         RuntimeDependencySpec(
@@ -105,6 +126,7 @@ def _register_builtin_runtime_dependencies(registry: RuntimeDependencyRegistry) 
                 PERCEPTION_HUGGINGFACE_HUB_SPEC: HUGGINGFACE_HUB_SPEC,
             },
             requires_target_python=True,
+            target_python=_resolve_perception_target_python,
             default_label="PyTorch / Transformers",
             secondary_group_label="Transformers / RapidOCR",
             success_message="感知运行环境依赖已就绪。",
@@ -220,14 +242,12 @@ def _machine_expected_pytorch_build() -> str:
     return pytorch_index_build(index_url)
 
 
-def runtime_dependency_issues(
-    module_name: str,
+def _spec_dependency_issues(
+    spec: RuntimeDependencySpec,
     *,
     installed_versions: Mapping[str, str] | None = None,
     python_exe: str | Path | None = None,
-    registry: RuntimeDependencyRegistry = RUNTIME_DEPENDENCY_REGISTRY,
 ) -> tuple[RequirementCheck, ...]:
-    spec = resolve_runtime_dependency_spec(module_name, registry=registry)
     versions: Mapping[str, str] | None = installed_versions
     if versions is None and python_exe is not None:
         versions = installed_versions_for_python(python_exe)
@@ -259,6 +279,65 @@ def runtime_dependency_issues(
                 ),
             )
     return tuple(issues)
+
+
+def runtime_dependency_issues(
+    module_name: str,
+    *,
+    installed_versions: Mapping[str, str] | None = None,
+    python_exe: str | Path | None = None,
+    registry: RuntimeDependencyRegistry = RUNTIME_DEPENDENCY_REGISTRY,
+) -> tuple[RequirementCheck, ...]:
+    spec = resolve_runtime_dependency_spec(module_name, registry=registry)
+    return _spec_dependency_issues(
+        spec,
+        installed_versions=installed_versions,
+        python_exe=python_exe,
+    )
+
+
+def _host_pinned_pytorch_map() -> tuple[dict[str, str], dict[str, str]]:
+    pinned_versions: dict[str, str] = {}
+    pinned_requirements: dict[str, str] = {}
+    for line in HOST_PYTORCH_REQUIREMENTS:
+        cleaned = str(line or "").strip()
+        if not cleaned:
+            continue
+        name = canonical_distribution_name(requirement_name(cleaned))
+        if not name:
+            continue
+        pinned_requirements[name] = cleaned
+        if "==" in cleaned:
+            pinned_ver = cleaned.split("==", 1)[1].split(";", 1)[0].strip()
+            if pinned_ver:
+                pinned_versions[name] = pinned_ver
+    return pinned_versions, pinned_requirements
+
+
+def _pytorch_host_pin_conflicts(
+    requirements_to_check: tuple[str, ...],
+    *,
+    strict_pytorch_only: bool = False,
+) -> list[str]:
+    pinned_versions, pinned_requirements = _host_pinned_pytorch_map()
+    conflicts: list[str] = []
+    for req_text in requirements_to_check:
+        cleaned = str(req_text or "").strip()
+        if not cleaned:
+            continue
+        canonical = canonical_distribution_name(requirement_name(cleaned))
+        if canonical in pinned_versions:
+            check = check_requirement(cleaned, pinned_versions)
+            if check.applies and not check.satisfied:
+                conflicts.append(
+                    f"{cleaned} conflicts with host-pinned {pinned_requirements[canonical]}"
+                )
+        elif strict_pytorch_only:
+            conflicts.append(
+                f"{cleaned} is not managed by host-pinned PyTorch stack "
+                f"({', '.join(HOST_PYTORCH_REQUIREMENTS)})"
+            )
+    return conflicts
 
 
 def perception_dependency_issues(
@@ -316,28 +395,32 @@ def _write_temp_lines(prefix: str, lines: list[str]) -> Path:
 def _resolve_target_python_executable(
     python_path: str | None,
     state: Any,
+    *,
+    spec: RuntimeDependencySpec | None = None,
 ) -> Path:
     raw = str(python_path or "").strip().strip('"')
-    project_root = getattr(state, "project_root_dir", "") if state is not None else ""
-    app_root = getattr(state, "app_root_dir", "") if state is not None else ""
-    if not raw and state is not None:
-        api_cfg = getattr(
-            getattr(getattr(state, "config_manager", None), "config", None),
-            "api_config",
-            None,
+    if not raw and spec is not None and spec.target_python is not None:
+        resolved_target = (
+            spec.target_python(state)
+            if callable(spec.target_python)
+            else spec.target_python
         )
-        raw = str(getattr(api_cfg, "perception_python_path", "") or "").strip().strip('"')
-    if not raw:
-        raw = os.environ.get("SHINSEKAI_PERCEPTION_PYTHON", "").strip().strip('"')
-    resolved_str = default_perception_python_path(
-        raw,
-        project_root=project_root or None,
-        app_root=app_root or None,
-    )
-    if not resolved_str:
-        raise ValueError("未找到可用的 Python 解释器路径。")
+        raw = str(resolved_target or "").strip().strip('"')
 
-    candidate = Path(resolved_str).expanduser()
+    if not raw:
+        if spec is not None and spec.requires_target_python:
+            if spec.key == "perception":
+                raise ValueError("未找到可用的 Python 解释器路径。")
+            raise ValueError(
+                f"Runtime dependency bundle '{spec.key}' requires an explicit pythonPath."
+            )
+        if getattr(sys, "frozen", False):
+            raise RuntimeError(
+                "cannot run pip from a frozen executable; install dependencies in the bundled Python runtime"
+            )
+        return Path(sys.executable)
+
+    candidate = Path(raw).expanduser()
     if candidate.is_dir():
         if os.name == "nt":
             rel_names = ("python.exe", "python3.exe", "Scripts/python.exe")
@@ -419,15 +502,26 @@ def _execute_staged_dependency_spec(
     constraint_tf: Path | None = None
     try:
         if spec.pytorch_specs and sys.platform != "darwin":
-            torch_unsatisfied = bool(
-                unsatisfied_requirements(spec.pytorch_specs, versions)
-            )
+            unsatisfied_torch = unsatisfied_requirements(spec.pytorch_specs, versions)
+            torch_unsatisfied = bool(unsatisfied_torch)
             cuda_missing = (
                 not torch_unsatisfied
                 and not python_has_cuda_torch(target_py, versions)
                 and _machine_expected_pytorch_build().startswith("cu")
             )
             if torch_unsatisfied or cuda_missing:
+                pin_conflicts = _pytorch_host_pin_conflicts(
+                    spec.pytorch_specs,
+                    strict_pytorch_only=True,
+                )
+                if pin_conflicts:
+                    conflict_parts = [issue.issue for issue in unsatisfied_torch]
+                    conflict_parts.extend(pin_conflicts)
+                    _fail(
+                        f"Cannot satisfy PyTorch requirements for runtime bundle '{spec.key}': "
+                        + "; ".join(conflict_parts),
+                        "pytorch_version_conflict",
+                    )
                 plan = build_pytorch_install_plan(
                     list(HOST_PYTORCH_REQUIREMENTS),
                     versions,
@@ -532,6 +626,33 @@ def _execute_staged_dependency_spec(
             )
             if code3 != "pip_ok":
                 _fail(detail3, code3)
+
+        importlib.invalidate_caches()
+        final_versions = installed_versions_for_python(target_py)
+        remaining_issues = _spec_dependency_issues(
+            spec,
+            installed_versions=final_versions,
+            python_exe=target_py,
+        )
+        if remaining_issues:
+            detail_parts = [issue.issue for issue in remaining_issues]
+            if sys.platform != "darwin" and (spec.pytorch_specs or spec.pin_installed_torch):
+                remaining_reqs = tuple(
+                    issue.requirement
+                    for issue in remaining_issues
+                    if issue.requirement != "torch (CUDA)"
+                )
+                for conflict in _pytorch_host_pin_conflicts(
+                    remaining_reqs,
+                    strict_pytorch_only=False,
+                ):
+                    if conflict not in detail_parts:
+                        detail_parts.append(conflict)
+            _fail(
+                f"Target interpreter {target_py} does not satisfy runtime bundle "
+                f"'{spec.key}': " + "; ".join(detail_parts),
+                "bundle_verification_failed",
+            )
     finally:
         for tf in (torch_tf, constraint_tf):
             if tf is not None:
@@ -540,7 +661,6 @@ def _execute_staged_dependency_spec(
                 except OSError:
                     pass
 
-    importlib.invalidate_caches()
     output = "\n".join(output_lines).strip()
     return {
         "message": spec.success_message or f"Installed {current_label}.",
@@ -565,8 +685,13 @@ def install_runtime_dependency(
         raise ValueError("moduleName is required")
 
     spec = resolve_runtime_dependency_spec(cleaned_module, registry=registry)
-    if spec.pytorch_specs or spec.install_only_unsatisfied or spec.requires_target_python:
-        target_py = _resolve_target_python_executable(python_path, _state)
+    if (
+        spec.pytorch_specs
+        or spec.install_only_unsatisfied
+        or spec.requires_target_python
+        or spec.target_python is not None
+    ):
+        target_py = _resolve_target_python_executable(python_path, _state, spec=spec)
         return _execute_staged_dependency_spec(
             cleaned_module,
             spec,
@@ -585,7 +710,7 @@ def install_runtime_dependency(
     )
     target_exe: str | Path | None = None
     if python_path:
-        target_exe = _resolve_target_python_executable(python_path, _state)
+        target_exe = _resolve_target_python_executable(python_path, _state, spec=spec)
     elif getattr(sys, "frozen", False):
         raise RuntimeError(
             "cannot run pip from a frozen executable; install dependencies in the bundled Python runtime"
