@@ -51,6 +51,12 @@ const RUNTIME_PROGRESS_EVENT: &str = "shinsekai:runtime-progress";
 const SHOW_BACKEND_CONSOLE_ENV: &str = "SHINSEKAI_SHOW_BACKEND_CONSOLE";
 const BRIDGE_STOP_TIMEOUT: Duration = Duration::from_secs(5);
 const BRIDGE_CHAT_CLOSE_TIMEOUT: Duration = Duration::from_secs(3);
+const CHAT_WINDOW_DEFAULT_WIDTH: f64 = 1280.0;
+const CHAT_WINDOW_DEFAULT_HEIGHT: f64 = 820.0;
+const CHAT_WINDOW_MIN_WIDTH: f64 = 960.0;
+const CHAT_WINDOW_MIN_HEIGHT: f64 = 620.0;
+const CHAT_MINI_WINDOW_WIDTH: f64 = 640.0;
+const CHAT_MINI_WINDOW_HEIGHT: f64 = 340.0;
 
 #[cfg(unix)]
 unsafe extern "C" {
@@ -215,6 +221,26 @@ struct DesktopRuntimeView {
     candidates: Vec<runtime::RuntimeCandidateView>,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct SavedChatWindowBounds {
+    position: tauri::PhysicalPosition<i32>,
+    size: tauri::PhysicalSize<u32>,
+    maximized: bool,
+}
+
+#[derive(Default)]
+struct ChatWindowModeState {
+    mini_active: bool,
+    normal_bounds: Option<SavedChatWindowBounds>,
+    mini_position: Option<tauri::PhysicalPosition<i32>>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopMiniWindowLayout {
+    dock_side: &'static str,
+}
+
 struct DesktopState {
     source_root: PathBuf,
     project_root: PathBuf,
@@ -225,6 +251,7 @@ struct DesktopState {
     bridge_auth_token: String,
     bridge: Mutex<Option<BridgeProcess>>,
     runtime: Mutex<DesktopRuntimePhase>,
+    chat_window_mode: Mutex<ChatWindowModeState>,
 }
 
 #[cfg(desktop)]
@@ -261,6 +288,14 @@ impl DesktopState {
             bridge_auth_token,
             bridge: Mutex::new(None),
             runtime: Mutex::new(DesktopRuntimePhase::Checking { view: None }),
+            chat_window_mode: Mutex::new(ChatWindowModeState::default()),
+        }
+    }
+
+    fn reset_chat_window_session_bounds(&self) {
+        if let Ok(mut mode) = self.chat_window_mode.lock() {
+            mode.mini_active = false;
+            mode.normal_bounds = None;
         }
     }
 
@@ -474,6 +509,8 @@ pub fn run() {
             desktop_window_start_resize,
             desktop_window_set_ignore_cursor_events,
             desktop_window_cursor_position,
+            desktop_chat_window_set_mini_mode,
+            desktop_chat_window_sync_mini_layout,
             desktop_window_close,
             desktop_open_chat_window,
             desktop_take_plugin_chat_wake,
@@ -1382,10 +1419,14 @@ fn desktop_window_hide(window: WebviewWindow) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn desktop_chat_window_destroy(window: WebviewWindow) -> Result<(), String> {
+fn desktop_chat_window_destroy(
+    window: WebviewWindow,
+    state: State<'_, DesktopState>,
+) -> Result<(), String> {
     if window.label() != "chat" {
         return Err("desktop_chat_window_destroy is only available to the chat window".to_string());
     }
+    state.reset_chat_window_session_bounds();
     window.destroy().map_err(|error| error.to_string())
 }
 
@@ -1474,6 +1515,164 @@ fn desktop_window_cursor_position(
     })
 }
 
+fn compute_mini_dock_side(
+    window_center_x: f64,
+    monitor_left: f64,
+    monitor_width: f64,
+) -> &'static str {
+    if monitor_width > 0.0 && (window_center_x - monitor_left) / monitor_width >= 0.62 {
+        "right"
+    } else {
+        "left"
+    }
+}
+
+fn default_mini_window_position(
+    monitor_pos: (i32, i32),
+    monitor_size: (u32, u32),
+    mini_size: (u32, u32),
+) -> tauri::PhysicalPosition<i32> {
+    let mon_w = f64::from(monitor_size.0);
+    let mon_h = f64::from(monitor_size.1);
+    let mini_w = f64::from(mini_size.0);
+    let mini_h = f64::from(mini_size.1);
+    let target_x = f64::from(monitor_pos.0) + mon_w * 0.84 - mini_w * 0.5;
+    let target_y = f64::from(monitor_pos.1) + (mon_h * 0.24 - mini_h * 0.5).max(16.0);
+    tauri::PhysicalPosition::new(target_x.round() as i32, target_y.round() as i32)
+}
+
+fn current_window_mini_dock_side(window: &WebviewWindow) -> &'static str {
+    let Ok(origin) = window.outer_position() else {
+        return "left";
+    };
+    let Ok(size) = window.outer_size() else {
+        return "left";
+    };
+    let monitor = window
+        .current_monitor()
+        .ok()
+        .flatten()
+        .or_else(|| window.primary_monitor().ok().flatten());
+    let Some(monitor) = monitor else {
+        return "left";
+    };
+    let center_x = f64::from(origin.x) + f64::from(size.width) * 0.5;
+    compute_mini_dock_side(
+        center_x,
+        f64::from(monitor.position().x),
+        f64::from(monitor.size().width),
+    )
+}
+
+#[tauri::command]
+fn desktop_chat_window_set_mini_mode(
+    window: WebviewWindow,
+    state: State<'_, DesktopState>,
+    mini: bool,
+    restore_always_on_top: bool,
+) -> Result<DesktopMiniWindowLayout, String> {
+    if window.label() != "chat" {
+        return Ok(DesktopMiniWindowLayout { dock_side: "left" });
+    }
+    let mut mode = state
+        .chat_window_mode
+        .lock()
+        .map_err(|error| error.to_string())?;
+    if mini {
+        if !mode.mini_active {
+            let maximized = window.is_maximized().unwrap_or(false);
+            if maximized {
+                let _ = window.unmaximize();
+            }
+            if let (Ok(position), Ok(size)) = (window.outer_position(), window.inner_size()) {
+                mode.normal_bounds = Some(SavedChatWindowBounds {
+                    position,
+                    size,
+                    maximized,
+                });
+            }
+            mode.mini_active = true;
+        }
+        let mini_logical = tauri::LogicalSize::new(CHAT_MINI_WINDOW_WIDTH, CHAT_MINI_WINDOW_HEIGHT);
+        let _ = window.set_always_on_top(true);
+        let _ = window.set_min_size(Some(mini_logical));
+        let _ = window.set_size(mini_logical);
+        let _ = window.set_resizable(false);
+        let target_pos = mode.mini_position.or_else(|| {
+            let monitor = window
+                .current_monitor()
+                .ok()
+                .flatten()
+                .or_else(|| window.primary_monitor().ok().flatten())?;
+            let scale = window.scale_factor().unwrap_or(1.0).max(0.5);
+            let mini_phys = (
+                (CHAT_MINI_WINDOW_WIDTH * scale).round() as u32,
+                (CHAT_MINI_WINDOW_HEIGHT * scale).round() as u32,
+            );
+            let computed = default_mini_window_position(
+                (monitor.position().x, monitor.position().y),
+                (monitor.size().width, monitor.size().height),
+                mini_phys,
+            );
+            mode.mini_position = Some(computed);
+            Some(computed)
+        });
+        if let Some(pos) = target_pos {
+            let _ = window.set_position(pos);
+        }
+        Ok(DesktopMiniWindowLayout {
+            dock_side: current_window_mini_dock_side(&window),
+        })
+    } else {
+        if mode.mini_active {
+            if let Ok(pos) = window.outer_position() {
+                mode.mini_position = Some(pos);
+            }
+            mode.mini_active = false;
+            let saved = mode.normal_bounds.take();
+            let _ = window.set_resizable(true);
+            let _ = window.set_always_on_top(restore_always_on_top);
+            let normal_min = tauri::LogicalSize::new(CHAT_WINDOW_MIN_WIDTH, CHAT_WINDOW_MIN_HEIGHT);
+            if let Some(bounds) = saved {
+                let _ = window.set_size(bounds.size);
+                let _ = window.set_position(bounds.position);
+                let _ = window.set_min_size(Some(normal_min));
+                if bounds.maximized {
+                    let _ = window.maximize();
+                }
+            } else {
+                let _ = window.set_size(tauri::LogicalSize::new(
+                    CHAT_WINDOW_DEFAULT_WIDTH,
+                    CHAT_WINDOW_DEFAULT_HEIGHT,
+                ));
+                let _ = window.set_min_size(Some(normal_min));
+                let _ = window.center();
+            }
+        }
+        Ok(DesktopMiniWindowLayout { dock_side: "left" })
+    }
+}
+
+#[tauri::command]
+fn desktop_chat_window_sync_mini_layout(
+    window: WebviewWindow,
+    state: State<'_, DesktopState>,
+) -> Result<DesktopMiniWindowLayout, String> {
+    if window.label() != "chat" {
+        return Ok(DesktopMiniWindowLayout { dock_side: "left" });
+    }
+    if let Ok(mut mode) = state.chat_window_mode.lock() {
+        if mode.mini_active {
+            if let Ok(pos) = window.outer_position() {
+                mode.mini_position = Some(pos);
+            }
+        }
+    }
+    Ok(DesktopMiniWindowLayout {
+        dock_side: current_window_mini_dock_side(&window),
+    })
+}
+
 #[tauri::command]
 fn desktop_window_close(
     window: WebviewWindow,
@@ -1484,6 +1683,7 @@ fn desktop_window_close(
         return background::request_main_close(&app);
     }
     if window.label() == "chat" {
+        state.reset_chat_window_session_bounds();
         request_bridge_chat_close(state.inner(), "desktop_window_close command");
         return window.destroy().map_err(|error| error.to_string());
     }
@@ -2187,6 +2387,24 @@ mod tests {
         assert!(!plan.defer_command);
         assert!(plan.navigate_after_create);
         assert!(plan.focus_after_show);
+    }
+
+    #[test]
+    fn mini_dock_side_flips_on_right_portion_of_monitor() {
+        assert_eq!(compute_mini_dock_side(400.0, 0.0, 1920.0), "left");
+        assert_eq!(compute_mini_dock_side(1100.0, 0.0, 1920.0), "left");
+        assert_eq!(compute_mini_dock_side(1300.0, 0.0, 1920.0), "right");
+        // Secondary monitor with negative X offset:
+        assert_eq!(compute_mini_dock_side(-300.0, -1920.0, 1920.0), "right");
+        assert_eq!(compute_mini_dock_side(-1500.0, -1920.0, 1920.0), "left");
+    }
+
+    #[test]
+    fn default_mini_window_position_places_avatar_in_upper_right_region() {
+        let pos = default_mini_window_position((0, 0), (1920, 1080), (640, 340));
+        let center_x = f64::from(pos.x) + 320.0;
+        assert_eq!(compute_mini_dock_side(center_x, 0.0, 1920.0), "right");
+        assert!(pos.y >= 16);
     }
 
     #[test]

@@ -67,6 +67,8 @@ _POLLING_PATHS = {
     "/api/chat/snapshot",
     "/api/memory/status",
     "/api/model-assets/status",
+    "/api/perception/ingest",
+    "/api/perception/status",
     "/api/plugins/status",
 }
 

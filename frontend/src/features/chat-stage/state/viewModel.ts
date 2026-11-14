@@ -66,6 +66,8 @@ export function buildChatStageViewModel(state: ChatStageState): ChatStageViewMod
     layers,
     notificationText,
     options: state.options,
+    perception: state.perception ?? null,
+    spriteReaction: state.spriteReaction ?? null,
     sprites: state.sprites,
     stats: state.stats ?? [],
     story: state.story,

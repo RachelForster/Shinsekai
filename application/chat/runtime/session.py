@@ -13,6 +13,13 @@ import time
 from typing import Any, Protocol
 
 from core.media.effect_image import ImageEffectAsset
+from application.chat.capabilities import (
+    PluginLoadedCapabilityContext,
+    SessionCapabilitySet,
+    SessionRuntimeCapabilityContext,
+    StreamingWiringCapabilityContext,
+    build_default_session_capabilities,
+)
 from application.chat.runtime.startup import (
     ChatStartupContext,
     MissingLlmProviderError,
@@ -248,10 +255,17 @@ def parse_launch_options(transport: ChatSessionTransport) -> ChatLaunchOptions:
 def create_chat_session(
     options: ChatLaunchOptions,
     transport: ChatSessionTransport,
+    *,
+    capabilities: SessionCapabilitySet | None = None,
 ) -> StreamingChatSession | HeadlessChatSession:
     """Create the selected session after assembling provider dependencies."""
 
     initialization = _initialization_for(transport)
+    active_capabilities = (
+        capabilities
+        if capabilities is not None
+        else build_default_session_capabilities()
+    )
 
     def configure_plugin_runtime(plugin_manager: Any | None) -> None:
         from plugin_system.host import bind_frontend_ui_runtime
@@ -261,18 +275,19 @@ def create_chat_session(
             if plugin_manager is not None and transport.streaming
             else None
         )
-        search = getattr(transport, "knowledge_search", None)
-        status = getattr(transport, "knowledge_status", None)
-        if (
-            options.config.config.api_config.knowledge_enabled
-            and plugin_manager is not None
-            and search is not None
-            and status is not None
-        ):
-            from application.knowledge.hooks import install_knowledge_hooks
-            install_knowledge_hooks(
-                plugin_manager.hook_dispatcher, search_func=search, status_func=status,
+        active_capabilities.on_plugins_loaded(
+            PluginLoadedCapabilityContext(
+                args=options.args,
+                config=options.config,
+                plugin_manager=plugin_manager,
+                hook_dispatcher=(
+                    plugin_manager.hook_dispatcher
+                    if plugin_manager is not None
+                    else None
+                ),
+                transport=transport,
             )
+        )
 
     try:
         startup = create_chat_startup_context(
@@ -282,6 +297,7 @@ def create_chat_session(
             translate=options.translate,
             phase=initialization.phase,
             on_plugins_loaded=configure_plugin_runtime,
+            capabilities=active_capabilities,
         )
     except MissingLlmProviderError as exc:
         initialization.fail(exc)
@@ -289,9 +305,21 @@ def create_chat_session(
         raise
 
     if options.args.stream_endpoint:
-        return StreamingChatSession(options, startup, transport, initialization)
+        return StreamingChatSession(
+            options,
+            startup,
+            transport,
+            initialization,
+            capabilities=active_capabilities,
+        )
     if options.args.headless:
-        return HeadlessChatSession(options, startup, transport, initialization)
+        return HeadlessChatSession(
+            options,
+            startup,
+            transport,
+            initialization,
+            capabilities=active_capabilities,
+        )
     raise SystemExit(
         "The Qt chat window has been retired; launch chat through React/Tauri "
         "or pass --headless."
@@ -351,12 +379,19 @@ class _BaseChatSession:
         startup: ChatStartupContext,
         transport: ChatSessionTransport,
         initialization: _ChatInitialization,
+        *,
+        capabilities: SessionCapabilitySet | None = None,
     ) -> None:
         self.options = options
         self.args = options.args
         self.startup = startup
         self.transport = transport
         self.initialization = initialization
+        self.capabilities = (
+            capabilities
+            if capabilities is not None
+            else build_default_session_capabilities()
+        )
         self.runtime: _RuntimeComponents | None = None
         self.ui_updates: Any | None = None
         self.chat_turn_service: Any | None = None
@@ -463,6 +498,10 @@ class _BaseChatSession:
 
         runtime = self._require_runtime()
         self.application_services = ApplicationServices()
+        turn_context_pipeline = self.capabilities.build_turn_context_pipeline()
+        turn_context_pipeline.register_dispatcher_hooks(
+            getattr(self.startup.llm_manager, "hook_dispatcher", None)
+        )
         set_app_runtime(
             AppRuntime(
                 services=self.application_services,
@@ -486,8 +525,28 @@ class _BaseChatSession:
                 allow_player_dialogue=bool(getattr(self.args, "allow_player_dialogue", True)),
                 background=getattr(runtime.presentation_assets, "background", None),
                 chat_turn_service=self.chat_turn_service,
+                turn_context_pipeline=turn_context_pipeline,
             )
         )
+
+    def _configure_capabilities_runtime(self) -> Any:
+        from application.runtime.context import try_get_app_runtime
+
+        app_runtime = try_get_app_runtime()
+        self.capabilities.configure_session_runtime(
+            SessionRuntimeCapabilityContext(
+                mode=self.mode,
+                args=self.args,
+                config=self.config,
+                startup=self.startup,
+                transport=self.transport,
+                runtime=self._require_runtime(),
+                ui_updates=self.ui_updates,
+                chat_turn_service=self.chat_turn_service,
+                app_runtime=app_runtime,
+            )
+        )
+        return app_runtime
 
     def _start_workflow(self) -> None:
         with self.initialization.phase("workflow.start"):
@@ -504,13 +563,18 @@ class _BaseChatSession:
             restore_interrupt_handlers()
 
     def _shutdown_plugins(self) -> None:
-        from plugin_system.host import bind_frontend_ui_runtime
+        from plugin_system.host import (
+            bind_frontend_ui_runtime,
+            bind_model_assets_runtime,
+        )
 
         try:
             if self.startup.plugin_manager is not None:
                 self.startup.plugin_manager.shutdown_all()
         finally:
             bind_frontend_ui_runtime(None)
+            bind_model_assets_runtime(None)
+            self.capabilities.on_shutdown()
 
     def _tts_shutdown(self) -> Callable[[], None] | None:
         manager = self.startup.tts_manager
@@ -554,6 +618,7 @@ class StreamingChatSession(_BaseChatSession):
             if character is not None and character.sprites:
                 self.ui_updates.update_player_portrait(player_name, 0)
         self._present_initial_ui()
+        self.capabilities.on_session_ready()
         self.initialization.complete()
         self._start_live_comments()
         self._log_ready()
@@ -593,6 +658,8 @@ class StreamingChatSession(_BaseChatSession):
         self._install_app_runtime()
         if hasattr(self.ui_updates, "sync_history_entries"):
             self.ui_updates.sync_history_entries()
+
+        app_runtime = self._configure_capabilities_runtime()
         self.streaming_bindings = wire_streaming_session(
             args=self.args,
             config=self.config,
@@ -605,6 +672,13 @@ class StreamingChatSession(_BaseChatSession):
             translate=self.options.translate,
             create_asr_adapter=self.options.create_asr_adapter,
             save_history=save_chat_history_and_delete_tmp,
+            capability_commands=self.capabilities.command_handlers(),
+        )
+        self.capabilities.bind_streaming_session(
+            StreamingWiringCapabilityContext(
+                bindings=self.streaming_bindings,
+                app_runtime=app_runtime,
+            )
         )
 
     def _present_initial_ui(self) -> None:
@@ -678,11 +752,14 @@ class StreamingChatSession(_BaseChatSession):
         from application.chat.history.state import save_bg
         from application.runtime.shutdown import shutdown_chat_runtime
 
+        pre_shutdown = self.capabilities.compose_pre_shutdown(
+            self.streaming_bindings.runtime_asr.close
+        )
         runtime = self._require_runtime()
         shutdown_chat_runtime(
             workflow=runtime.workflow,
             services=getattr(self, "application_services", None),
-            pre_shutdown=self.streaming_bindings.runtime_asr.close,
+            pre_shutdown=pre_shutdown,
             plugin_shutdown=self._shutdown_plugins,
             tts_shutdown=self._tts_shutdown(),
             save_history=self.streaming_bindings.branch_manager.persist,
@@ -711,7 +788,9 @@ class HeadlessChatSession(_BaseChatSession):
         self.ui_updates = HeadlessUIUpdateManager(chat_history=chat_history)
         self._create_turn_service()
         self._install_app_runtime()
+        self._configure_capabilities_runtime()
         self._start_workflow()
+        self.capabilities.on_session_ready()
         self.initialization.complete()
         print(f"Workflow started: {self.args.workflow or 'default'}")
         try:

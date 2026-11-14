@@ -44,7 +44,9 @@ def make_empty_chat_snapshot() -> Dict[str, Any]:
         "effectImage": None,
         "loopingEffects": [],
         "options": [],
+        "perception": None,
         "pluginPagePresentations": [],
+        "spriteReaction": None,
         "sprites": [],
         "stats": [],
         "status": "idle",
@@ -607,6 +609,35 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
             next_snapshot["status"] = "paused"
         return next_snapshot
 
+    if event_type == "perception.state":
+        perception = event.get("perception")
+        if isinstance(perception, dict):
+            next_snapshot["perception"] = dict(perception)
+        return next_snapshot
+
+    if event_type == "sprite.reaction":
+        try:
+            duration_ms = max(800, int(event.get("durationMs") or 3600))
+            triggered_at = int(event.get("ts") or 0)
+        except (TypeError, ValueError):
+            duration_ms = 3600
+            triggered_at = 0
+        text = str(event.get("text") or "").strip()
+        if text:
+            next_snapshot["spriteReaction"] = {
+                "characterName": str(event.get("characterName") or ""),
+                "text": text,
+                "durationMs": duration_ms,
+                "expiresAt": triggered_at + duration_ms,
+                "seq": int(event.get("seq") or 0),
+            }
+        else:
+            next_snapshot["spriteReaction"] = None
+        return next_snapshot
+
+    if event_type == "perception.capture_request":
+        return next_snapshot
+
     if event_type == "reply.finished":
         _clear_transient_notification_state(next_snapshot)
         next_snapshot["activePlayback"] = None
@@ -621,8 +652,10 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
         next_snapshot["loopingEffects"] = []
         next_snapshot["notificationText"] = str(event.get("reason") or "")
         next_snapshot["options"] = []
+        next_snapshot["perception"] = None
         next_snapshot["pluginPagePresentations"] = []
         next_snapshot["sessionClosedReason"] = str(event.get("reason") or "")
+        next_snapshot["spriteReaction"] = None
         next_snapshot["status"] = "idle"
         next_snapshot["systemMessageText"] = ""
         next_snapshot["toolConfirmation"] = None

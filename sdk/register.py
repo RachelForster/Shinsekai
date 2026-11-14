@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import importlib
 import logging
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Type
@@ -38,6 +38,15 @@ from sdk.frontend_ui import (
     MAX_FRONTEND_UI_IDENTIFIER_LENGTH,
     FrontendUIController,
     _controller_for_plugin,
+)
+from sdk.model_assets import (
+    ModelAssetContribution,
+    ModelAssetsController,
+    _controller_for_plugin as _model_assets_controller_for_plugin,
+)
+from sdk.perception import (
+    PerceptionController,
+    _controller_for_plugin as _perception_controller_for_plugin,
 )
 from sdk.hooks import (
     BeforeChatContext,
@@ -159,6 +168,7 @@ class PluginCapabilityRegistry:
         self._t2i_adapters: dict[str, Type[T2IAdapter]] = {}
         self._vision_fallbacks: dict[str, VisionFallbackContribution] = {}
         self._avatar_formats: dict[str, AvatarFormatContribution] = {}
+        self._model_assets: dict[str, ModelAssetContribution] = {}
         self._llm_tool_registrars: list[Callable[[ToolManager], None]] = []
         self._dialog_media_handlers: list[MessageHandler] = []
         self._ui_handlers: list[UIOutputMessageHandler] = []
@@ -298,6 +308,82 @@ class PluginCapabilityRegistry:
                 "frontend_user_input() is only available during PluginBase.initialize"
             )
         return _frontend_user_input_controller_for_plugin(ctx[0])
+
+    def perception(self, plugin_id: str = "") -> PerceptionController:
+        """Return a game-state / frame perception controller bound to this plugin."""
+        explicit = str(plugin_id or "").strip()
+        if explicit:
+            return _perception_controller_for_plugin(explicit)
+        ctx = self._settings_ui_plugin_ctx
+        if ctx is None:
+            raise RuntimeError(
+                "perception() without plugin_id is only available during PluginBase.initialize"
+            )
+        return _perception_controller_for_plugin(ctx[0])
+
+    def register_model_asset(
+        self,
+        contribution_or_asset_id: ModelAssetContribution | str = "",
+        *,
+        asset_id: str = "",
+        repo_id: str = "",
+        title: str = "",
+        revision: str = "",
+        allow_patterns: Sequence[str] = (),
+        required_file_groups: Sequence[Sequence[str]] = (),
+        aliases: Mapping[str, str] | None = None,
+        configured_model_getter: Callable[[], str] | None = None,
+        allow_custom_configured_repo: bool = True,
+        allow_configured_local_path: bool = False,
+        snapshot_validator: Callable[[Path], bool] | None = None,
+        plugin_id: str = "",
+    ) -> ModelAssetContribution:
+        """Register a named Hugging Face model asset owned by this plugin."""
+        if isinstance(contribution_or_asset_id, ModelAssetContribution):
+            if asset_id:
+                raise ValueError(
+                    "cannot pass both a ModelAssetContribution and asset_id"
+                )
+            contribution = contribution_or_asset_id
+        else:
+            if contribution_or_asset_id and asset_id:
+                raise ValueError(
+                    "cannot specify asset_id both positionally and by keyword"
+                )
+            resolved_asset_id = str(asset_id or contribution_or_asset_id or "")
+            contribution = ModelAssetContribution(
+                asset_id=resolved_asset_id,
+                repo_id=repo_id,
+                title=title,
+                revision=revision,
+                allow_patterns=tuple(allow_patterns),
+                required_file_groups=tuple(tuple(g) for g in required_file_groups),
+                aliases=dict(aliases or {}),
+                configured_model_getter=configured_model_getter,
+                allow_custom_configured_repo=allow_custom_configured_repo,
+                allow_configured_local_path=allow_configured_local_path,
+                snapshot_validator=snapshot_validator,
+                plugin_id=str(plugin_id or "").strip(),
+            )
+        ctx = self._settings_ui_plugin_ctx
+        if ctx is not None and not contribution.plugin_id:
+            contribution = replace(contribution, plugin_id=ctx[0])
+        if contribution.asset_id in self._model_assets:
+            raise ValueError(f"duplicate model asset: {contribution.asset_id}")
+        self._model_assets[contribution.asset_id] = contribution
+        return contribution
+
+    def model_assets(self, plugin_id: str = "") -> ModelAssetsController:
+        """Return a model-asset status & download controller bound to this plugin."""
+        explicit = str(plugin_id or "").strip()
+        if explicit:
+            return _model_assets_controller_for_plugin(explicit)
+        ctx = self._settings_ui_plugin_ctx
+        if ctx is None:
+            raise RuntimeError(
+                "model_assets() without plugin_id is only available during PluginBase.initialize"
+            )
+        return _model_assets_controller_for_plugin(ctx[0])
 
     def register_settings_ui(self, contribution: SettingsUIContribution) -> None:
         """Register deprecated Qt settings metadata for load compatibility.
@@ -560,6 +646,13 @@ class PluginCapabilityRegistry:
         return sorted(
             self._avatar_formats.values(),
             key=lambda contribution: (contribution.priority, contribution.format_id),
+        )
+
+    @property
+    def model_assets_contributions(self) -> list[ModelAssetContribution]:
+        return sorted(
+            self._model_assets.values(),
+            key=lambda contribution: contribution.asset_id,
         )
 
     @property

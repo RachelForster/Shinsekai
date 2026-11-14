@@ -357,10 +357,12 @@ describe("ChatLauncherPage", () => {
     expect(mocks.launchChat).toHaveBeenCalledWith(
       expect.objectContaining({
         backgroundName: "school",
+        characterPromptMode: "compact",
         characters: ["Mio", "Aki"],
         historyPath: "D:/history/session.json",
         initSpritePath: "D:/sprites/init.png",
         mediaSelectionMode: "semantic",
+        primaryCharacters: ["Mio"],
         resetHistory: false,
         roomId: "room-7",
         scenario: "festival night",

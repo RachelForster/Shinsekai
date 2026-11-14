@@ -113,6 +113,7 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, re
               dialogHtml: event.fullHtml,
               dialogText: htmlToText(event.fullHtml),
               options: [],
+              spriteReaction: null,
               systemMessageText: undefined,
             }),
       });
@@ -332,6 +333,7 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, re
         }),
         characterName: event.characterName,
         eventSeq: Math.max(state.eventSeq, event.seq),
+        spriteReaction: null,
         status: "speaking",
       });
     case "tts.skip": {
@@ -437,6 +439,35 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, re
         status: event.running ? "listening" : replyInProgress ? state.status : "paused",
       });
     }
+    case "perception.state":
+      return withResolvedLayers({
+        ...state,
+        eventSeq: Math.max(state.eventSeq, event.seq),
+        perception: { ...event.perception },
+      });
+    case "sprite.reaction": {
+      const text = event.text.trim();
+      const durationMs = Math.max(800, event.durationMs || 3600);
+      return withResolvedLayers({
+        ...state,
+        eventSeq: Math.max(state.eventSeq, event.seq),
+        spriteReaction: text
+          ? {
+              characterName: event.characterName,
+              deadline: receivedAt + durationMs,
+              durationMs,
+              seq: event.seq,
+              text,
+            }
+          : null,
+      });
+    }
+    case "perception.capture_request":
+      return {
+        ...state,
+        eventSeq: Math.max(state.eventSeq, event.seq),
+        perceptionCaptureRequestSeq: event.seq,
+      };
     case "reply.finished":
       return withResolvedLayers({
         ...clearTransientNotificationState(state),
@@ -459,8 +490,10 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, re
         notificationText: event.reason,
         loopingEffects: [],
         options: [],
+        perception: null,
         pluginPagePresentations: [],
         sessionClosedReason: event.reason,
+        spriteReaction: null,
         status: "idle",
         systemMessageText: undefined,
         toolConfirmation: null,

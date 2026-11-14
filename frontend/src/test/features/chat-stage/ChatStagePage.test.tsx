@@ -243,6 +243,29 @@ function blurDisabledInput(input: HTMLElement) {
 }
 
 describe("ChatStagePage", () => {
+  it("keeps a fast perception bubble visible while the main reply is generating", async () => {
+    const emit = captureStageEvents();
+    renderPage();
+    await screen.findByRole("textbox");
+
+    emit({
+      type: "sprite.reaction",
+      characterName: "Mio",
+      durationMs: 3600,
+      seq: 1,
+      text: "That was close!",
+      ts: 1,
+      v: 1,
+    });
+    expect(screen.getByText("That was close!")).toBeVisible();
+
+    emit({ type: "status.change", status: "generating", seq: 2, ts: 2, v: 1 });
+    expect(screen.getByText("That was close!")).toBeVisible();
+
+    emit({ type: "status.change", status: "speaking", seq: 3, ts: 3, v: 1 });
+    expect(screen.queryByText("That was close!")).toBeNull();
+  });
+
   it("renders replay through the normal stage, locks input and shows historical choices read-only", async () => {
     const emit = captureStageEvents();
     renderPage();
@@ -2159,6 +2182,7 @@ describe("ChatStagePage", () => {
         dialogWidthPct: null,
         immersiveMode: false,
         longPressTalk: false,
+        miniAvatarMode: false,
         nameText: {
           bold: false,
           boldOverride: true,

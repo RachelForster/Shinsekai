@@ -1,0 +1,197 @@
+/* Section layout */
+.character-relation-section {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-3);
+}
+.relation-field {
+  display: grid;
+  gap: var(--space-2);
+  margin-block: var(--space-3);
+}
+.relation-character-picker .template-character-grid {
+  max-height: 280px;
+}
+.relation-field select {
+  width: 100%;
+  padding: 8px;
+  color: var(--color-text-primary);
+  background: var(--color-bg-panel);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+/* Graph view */
+.relation-tabs {
+  display: flex;
+  gap: var(--space-2);
+}
+.relation-tabs [aria-selected="true"] {
+  border-color: var(--color-accent-secondary);
+  background: var(--color-control-active);
+}
+.relation-graph-canvas {
+  box-sizing: border-box;
+  min-width: 0;
+  background: var(--color-bg-app);
+  height: 560px;
+  min-height: 320px;
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  touch-action: none;
+}
+.relation-graph-view {
+  min-width: 0;
+  display: grid;
+  gap: var(--space-3);
+}
+/* Character selection */
+.relation-character-picker {
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+}
+.relation-custom-node-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.relation-character-area {
+  display: grid;
+  gap: var(--space-2);
+  padding-bottom: var(--space-3);
+  margin-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+.relation-character-area h3 {
+  margin: 0;
+}
+.relation-custom-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.relation-custom-header input {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+.relation-custom-node {
+  cursor: default;
+}
+.relation-custom-node button {
+  display: inline-flex;
+  flex-shrink: 0;
+  padding: 3px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.relation-custom-node button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.relation-custom-node button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.character-relation-section [hidden] {
+  display: none;
+}
+
+/* Relationship table */
+.relation-sheet {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.relation-sheet-scroll {
+  min-width: 0;
+  overflow: auto;
+  max-height: 640px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+.relation-sheet-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+}
+.relation-sheet-table th,
+.relation-sheet-table td {
+  border-right: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  padding: 0;
+  vertical-align: middle;
+}
+.relation-sheet-table th {
+  padding: 10px;
+  overflow-wrap: anywhere;
+  background: var(--color-bg-panel);
+  color: var(--color-text-muted);
+}
+.relation-sheet-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.relation-sheet-table th:first-child {
+  width: 48px;
+}
+.relation-sheet-row-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.relation-sheet-table th:nth-child(4) {
+  width: 28%;
+}
+.relation-sheet-table th:nth-child(5) {
+  width: 76px;
+}
+.relation-sheet-table input[type="number"] {
+  padding-inline: 6px;
+}
+.relation-sheet-table input,
+.relation-sheet-table select,
+.relation-sheet-table textarea {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+  padding: 10px;
+  color: var(--color-text-primary);
+  background: transparent;
+  font: inherit;
+  box-sizing: border-box;
+}
+.relation-sheet-table textarea {
+  resize: vertical;
+  display: block;
+}
+.relation-sheet-table :is(input, select, textarea):focus {
+  outline: 2px solid var(--color-accent-secondary);
+  outline-offset: -2px;
+  background: var(--color-bg-panel);
+}
+.relation-sheet-table button {
+  padding: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+.relation-sheet-table button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Responsive layout */
+@media (max-width: 600px) {
+  .relation-graph-canvas {
+    height: 420px;
+  }
+}

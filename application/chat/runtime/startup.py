@@ -7,11 +7,15 @@ from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 import json
 import logging
-import os
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Protocol
 
+from application.chat.capabilities import (
+    SessionCapabilitySet,
+    StartupCapabilityContext,
+    build_default_session_capabilities,
+)
 from core.chat_history.storage import chat_history_active_path
 
 if TYPE_CHECKING:
@@ -79,10 +83,16 @@ def create_chat_startup_context(
     phase: StartupPhase | None = None,
     output: Callable[[str], None] = print,
     on_plugins_loaded: Callable[[PluginManager | None], None] | None = None,
+    capabilities: SessionCapabilitySet | None = None,
 ) -> ChatStartupContext:
     """Create providers, managers, restored messages, and startup hooks."""
 
     startup_phase = phase or (lambda _step: nullcontext())
+    active_capabilities = (
+        capabilities
+        if capabilities is not None
+        else build_default_session_capabilities()
+    )
 
     with startup_phase("plugins.import"):
         runtime = _import_provider_runtime()
@@ -126,7 +136,8 @@ def create_chat_startup_context(
     if not llm_provider:
         raise MissingLlmProviderError("No language model provider is configured.")
 
-    character_names = _memory_character_names(args, config)
+    character_names = _session_character_names(args, config)
+    primary_character_names = _session_primary_character_names(args)
     with startup_phase("llm.init"):
         llm_adapter = runtime.LLMAdapterFactory.create_adapter(
             **config.merged_llm_factory_kwargs(
@@ -170,12 +181,23 @@ def create_chat_startup_context(
             ),
             **({"use_current_template_for_history": True} if getattr(args, "use_current_template_for_history", False) else {}),
         )
-        if plugin_manager is not None:
-            runtime.install_memory_hooks(
-                plugin_manager.hook_dispatcher,
+        active_capabilities.on_llm_ready(
+            StartupCapabilityContext(
+                args=args,
+                config=config,
                 llm_adapter=llm_adapter,
-                character_names=character_names,
+                llm_manager=llm_manager,
+                plugin_manager=plugin_manager,
+                hook_dispatcher=(
+                    plugin_manager.hook_dispatcher
+                    if plugin_manager is not None
+                    else None
+                ),
+                character_names=tuple(character_names),
+                primary_character_names=primary_character_names,
+                runtime_imports=runtime,
             )
+        )
 
     from application.story.prompt_runtime import install_story_prompt_hooks
 
@@ -195,7 +217,6 @@ def create_chat_startup_context(
                 character_names=tuple(character_names),
                 tts_provider=tts_provider,
                 voice_language=str(config.config.system_config.voice_language or "ja"),
-                memory_enabled=_memory_auto_enabled(),
                 runtime_mode=(
                     "react"
                     if args.stream_endpoint
@@ -203,6 +224,7 @@ def create_chat_startup_context(
                 ),
                 headless=bool(args.headless),
                 metadata={"workflowPath": str(args.workflow or ""), "historyPath": str(args.history or "")},
+                **active_capabilities.collect_init_chat_flags(),
             ).scaled(0.68, 0.82)
             plugin_manager.hook_dispatcher.dispatch_init_chat(init_context)
 
@@ -223,17 +245,24 @@ def create_chat_startup_context(
 def _import_provider_runtime() -> SimpleNamespace:
     from ai.asr.asr_manager import ASRAdapterFactory
     from ai.llm.llm_manager import LLMAdapterFactory, LLMManager
-    from ai.memory.hooks import install_memory_hooks
     from ai.t2i.t2i_manager import T2IAdapterFactory, T2IManager
     from ai.tools.tool_manager import ToolManager
     from ai.tts.tts_manager import TTSAdapterFactory, TTSManager
     from ai.vision.fallback_registry import configure_registered_fallbacks
+    from application.model_assets.download_model import (
+        configure_registered_model_assets,
+        create_plugin_model_assets_dispatcher,
+    )
     from core.media.avatar.registry import (
         configure_registered_formats,
         configure_builtin_formats,
     )
     configure_builtin_formats()
-    from plugin_system.host import ensure_plugins_loaded, PluginRuntimeBindings
+    from plugin_system.host import (
+        bind_model_assets_runtime,
+        ensure_plugins_loaded,
+        PluginRuntimeBindings,
+    )
     from sdk.chat_init import InitChatContext
 
     return SimpleNamespace(
@@ -247,10 +276,12 @@ def _import_provider_runtime() -> SimpleNamespace:
         TTSAdapterFactory=TTSAdapterFactory,
         TTSManager=TTSManager,
         ToolManager=ToolManager,
+        bind_model_assets_runtime=bind_model_assets_runtime,
         configure_registered_fallbacks=configure_registered_fallbacks,
         configure_registered_formats=configure_registered_formats,
+        configure_registered_model_assets=configure_registered_model_assets,
+        create_plugin_model_assets_dispatcher=create_plugin_model_assets_dispatcher,
         ensure_plugins_loaded=ensure_plugins_loaded,
-        install_memory_hooks=install_memory_hooks,
     )
 
 
@@ -261,6 +292,62 @@ def _load_plugin_manager(
         from ai.tools.mcp_tool_setup import register_mcp_tools_from_config
 
         register_mcp_tools_from_config(tool_manager)
+
+    bind_fn = getattr(runtime, "bind_model_assets_runtime", None)
+    create_dispatcher_fn = getattr(
+        runtime, "create_plugin_model_assets_dispatcher", None
+    )
+    if callable(bind_fn) and callable(create_dispatcher_fn):
+        from application.model_assets.registry import (
+            ASR_FASTER_WHISPER_ASSET_ID,
+            PERCEPTION_VLM_ASSET_ID,
+        )
+        from config.perception import DEFAULT_PERCEPTION_MODEL
+
+        bind_fn(
+            create_dispatcher_fn(
+                get_token=lambda: str(
+                    getattr(
+                        getattr(getattr(config, "config", None), "api_config", None),
+                        "hugging_face_access_token",
+                        "",
+                    )
+                    or ""
+                ).strip(),
+                get_configured_values=lambda: {
+                    ASR_FASTER_WHISPER_ASSET_ID: str(
+                        getattr(
+                            getattr(
+                                getattr(config, "config", None),
+                                "system_config",
+                                None,
+                            ),
+                            "asr_whisper_model_size",
+                            "",
+                        )
+                        or "small"
+                    ).strip()
+                    or "small",
+                    PERCEPTION_VLM_ASSET_ID: str(
+                        getattr(
+                            getattr(config, "config", None), "api_config", None
+                        )
+                        and getattr(
+                            config.config.api_config,
+                            "perception_model",
+                            DEFAULT_PERCEPTION_MODEL,
+                        )
+                        or DEFAULT_PERCEPTION_MODEL
+                    ).strip()
+                    or DEFAULT_PERCEPTION_MODEL,
+                },
+            )
+        )
+
+    extra_bindings: dict[str, Any] = {}
+    configure_assets_fn = getattr(runtime, "configure_registered_model_assets", None)
+    if callable(configure_assets_fn):
+        extra_bindings["configure_model_assets"] = configure_assets_fn
 
     return runtime.ensure_plugins_loaded(
         config,
@@ -273,6 +360,7 @@ def _load_plugin_manager(
             configure_vision_fallbacks=runtime.configure_registered_fallbacks,
             configure_avatar_formats=runtime.configure_registered_formats,
             register_mcp_tools=register_mcp_tools,
+            **extra_bindings,
         ),
     )
 
@@ -397,7 +485,24 @@ def _parse_character_names(raw: str) -> list[str]:
     return [str(item).strip() for item in parsed if str(item).strip()]
 
 
-def _memory_character_names(args: Any, config: ConfigManager) -> list[str]:
+def _session_primary_character_names(args: Any) -> tuple[str, ...] | None:
+    raw = getattr(args, "primary_characters", None)
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text:
+        return None
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        parts = tuple(part.strip() for part in text.split(",") if part.strip())
+        return parts or None
+    if not isinstance(parsed, list):
+        return None
+    return tuple(str(item).strip() for item in parsed if str(item).strip())
+
+
+def _session_character_names(args: Any, config: ConfigManager) -> list[str]:
     from application.chat.presentation.initial_sprite import find_character_sprite_by_path
 
     names = _parse_character_names(getattr(args, "characters", ""))
@@ -410,23 +515,12 @@ def _memory_character_names(args: Any, config: ConfigManager) -> list[str]:
         matched = find_character_sprite_by_path(config, init_sprite_path)
     except OSError:
         logger.warning(
-            "Failed to resolve memory character from initial sprite path",
+            "Failed to resolve session character from initial sprite path",
             extra={
-                "event": "memory.character.resolve_failed",
+                "event": "chat.character.resolve_failed",
                 "sprite_path": init_sprite_path,
             },
             exc_info=True,
         )
         return []
     return [matched[0]] if matched is not None else []
-
-
-def _memory_auto_enabled() -> bool:
-    return str(
-        os.environ.get("SHINSEKAI_MEMORY_AUTO_ENABLED") or "1"
-    ).strip().lower() not in {
-        "0",
-        "false",
-        "no",
-        "off",
-    }

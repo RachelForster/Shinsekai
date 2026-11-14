@@ -156,6 +156,159 @@
   font-weight: 600;
 }
 
+/* ── Live Perception & Game Reactions ── */
+
+.perception-settings__body {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.perception-settings__service {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+}
+
+.perception-settings__status {
+  min-width: 0;
+  flex: 1 1 135px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.perception-settings__status[data-tone="running"],
+.perception-settings__status[data-tone="external_running"] {
+  color: var(--color-success);
+}
+
+.perception-settings__status[data-tone="starting"] {
+  color: var(--color-accent-primary);
+}
+
+.perception-settings__status[data-tone="failed"] {
+  color: var(--color-danger);
+}
+
+.perception-settings__log {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.perception-settings__toggles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+  gap: var(--space-2);
+}
+
+.perception-settings__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: 40px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  color: var(--color-text-primary);
+  background: var(--color-surface);
+  font-size: 13px;
+  font-weight: 600;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.perception-settings__toggle .switch__label {
+  order: -1;
+  opacity: 1;
+}
+
+.perception-settings__toggle:hover:not(.switch--disabled) {
+  border-color: var(--color-border-hover);
+  background: var(--color-surface-hover);
+}
+
+.perception-settings__hint {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.perception-settings__advanced {
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-2);
+}
+
+.perception-settings__advanced-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  list-style: none;
+  user-select: none;
+}
+
+.perception-settings__advanced-summary::-webkit-details-marker {
+  display: none;
+}
+
+.perception-settings__advanced-summary::after {
+  width: 6px;
+  height: 6px;
+  margin-left: 4px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  content: "";
+  transform: rotate(-45deg);
+  transition: transform 120ms ease;
+}
+
+.perception-settings__advanced[open] > .perception-settings__advanced-summary::after {
+  transform: rotate(45deg);
+}
+
+.perception-settings__advanced-body {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.perception-settings__group-title {
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.perception-settings__fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.perception-settings .api-page__model-control > .input {
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .perception-settings__fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* T2I setup */
 
 .t2i-setup {

@@ -213,6 +213,14 @@ def is_user_history_entry(history_entry: str) -> bool:
     return "你</b>" in history_entry or "你</b>：" in history_entry or "你</b>:" in history_entry
 
 
+def _is_real_user_message(message: Any) -> bool:
+    return (
+        isinstance(message, Mapping)
+        and message.get("role") == "user"
+        and message.get("source") != "perception"
+    )
+
+
 def pop_last_assistant_turn(chat_history: list, messages: list) -> str:
     """从 chat_history 和 messages 尾部移除最近一次问答（含 assistant 回复与最后一条 user）。
 
@@ -230,10 +238,14 @@ def pop_last_assistant_turn(chat_history: list, messages: list) -> str:
         chat_history.pop()
     if chat_history and is_user_history_entry(chat_history[-1]):
         chat_history.pop()
-    # 同步 messages 列表：先删 assistant，再删最后一条 user
-    while messages and messages[-1].get("role") != "user":
+    # 同步 messages 列表：跳过感知主动触发回合，先删 assistant/perception，再删最后一条真实 user（保留 system）
+    while (
+        messages
+        and messages[-1].get("role") != "system"
+        and not _is_real_user_message(messages[-1])
+    ):
         messages.pop()
-    if messages and messages[-1].get("role") == "user":
+    if messages and _is_real_user_message(messages[-1]):
         messages.pop()
     return last_user
 
@@ -280,7 +292,7 @@ def pop_last_assistant_turn_payload(chat_history: list, messages: list) -> dict[
     """Remove the latest turn and return its canonical replay payload."""
     last_user_message: Mapping[str, Any] | None = None
     for message in reversed(messages):
-        if message.get("role") == "user":
+        if _is_real_user_message(message):
             last_user_message = message
             break
     history_entry = pop_last_assistant_turn(chat_history, messages)
@@ -340,8 +352,7 @@ def revert_chat_history(user_index: int, llm_manager: Any, hist: list, window: A
     new_messages = []
     current_user_idx = -1
     for message in messages:
-        role = message.get("role")
-        if role == "user":
+        if _is_real_user_message(message):
             current_user_idx += 1
             if current_user_idx >= user_index:
                 break

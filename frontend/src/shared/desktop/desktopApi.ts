@@ -32,6 +32,12 @@ export interface DesktopWindowCursorPosition {
   y: number;
 }
 
+export type DesktopMiniDockSide = "left" | "right";
+
+export interface DesktopMiniWindowLayout {
+  dockSide: DesktopMiniDockSide;
+}
+
 export interface DesktopRuntimeCandidate {
   id: string;
   pythonId?: string | null;
@@ -463,6 +469,17 @@ export function setDesktopWindowClickThrough(ignore: boolean) {
 
 export function getDesktopWindowCursorPosition() {
   return invokeDesktop<DesktopWindowCursorPosition>("desktop_window_cursor_position");
+}
+
+export function setDesktopChatWindowMiniMode(mini: boolean, restoreAlwaysOnTop = true) {
+  return invokeDesktop<DesktopMiniWindowLayout>("desktop_chat_window_set_mini_mode", {
+    mini,
+    restoreAlwaysOnTop,
+  });
+}
+
+export function syncDesktopChatWindowMiniLayout() {
+  return invokeDesktop<DesktopMiniWindowLayout>("desktop_chat_window_sync_mini_layout");
 }
 
 export function closeDesktopWindow() {

@@ -467,4 +467,23 @@ describe("chat stage runtime config", () => {
     expect(invalidStyle["--chat-dialog-runtime-width"]).toBe("1040px");
     expect(invalidStyle["--chat-dialog-responsive-width"]).toBeUndefined();
   });
+
+  it("normalizes miniAvatarMode and preserves it across theme appearance resets", () => {
+    expect(defaultChatStageRuntimeConfig.miniAvatarMode).toBe(false);
+    expect(normalizeChatStageRuntimeConfig({}).miniAvatarMode).toBe(false);
+    expect(normalizeChatStageRuntimeConfig({ miniAvatarMode: "yes" }).miniAvatarMode).toBe(false);
+
+    const miniConfig = normalizeChatStageRuntimeConfig({
+      config: {
+        configThemeColor: "#ff5577",
+        miniAvatarMode: true,
+      },
+      version: chatStageRuntimeConfigVersion,
+    });
+    expect(miniConfig.miniAvatarMode).toBe(true);
+
+    writeChatStageRuntimeConfig(miniConfig);
+    expect(readChatStageRuntimeConfig().miniAvatarMode).toBe(true);
+    expect(resetChatStageRuntimeThemeAppearance(miniConfig, "#22aa88").miniAvatarMode).toBe(true);
+  });
 });

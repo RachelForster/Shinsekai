@@ -62,6 +62,7 @@ class PluginRuntimeBindings:
     configure_vision_fallbacks: Callable[[list[Any]], None]
     configure_avatar_formats: Callable[[list[Any]], None]
     register_mcp_tools: Callable[[Any], None] | None = None
+    configure_model_assets: Callable[[list[Any]], None] | None = None
 
 
 def get_plugin_manager() -> PluginManager | None:
@@ -171,6 +172,39 @@ def bind_frontend_user_input_runtime(
     _bind_frontend_user_input_dispatcher(dispatch)
 
 
+def bind_perception_runtime(
+    ingest_payload: Callable[[dict[str, Any]], Any] | None,
+) -> None:
+    """Bind plugin game-state/frame perception pushes to the active runtime."""
+    from sdk.perception import _bind_perception_dispatcher
+
+    if ingest_payload is None:
+        _bind_perception_dispatcher(None)
+        return
+
+    def dispatch(payload: dict[str, Any]) -> bool:
+        result = ingest_payload(dict(payload))
+        return True if result is None else bool(result)
+
+    _bind_perception_dispatcher(dispatch)
+
+
+def bind_model_assets_runtime(
+    dispatch_command: Callable[[dict[str, Any]], dict[str, Any]] | None,
+) -> None:
+    """Bind plugin model-asset status and download calls to the host service."""
+    from sdk.model_assets import _bind_model_assets_dispatcher
+
+    if dispatch_command is None:
+        _bind_model_assets_dispatcher(None)
+        return
+
+    def dispatch(command: dict[str, Any]) -> dict[str, Any]:
+        return dict(dispatch_command(dict(command)))
+
+    _bind_model_assets_dispatcher(dispatch)
+
+
 def ensure_plugins_loaded(
     config: ConfigManager | None = None,
     *,
@@ -227,6 +261,11 @@ def ensure_plugins_loaded(
             runtime_bindings.configure_avatar_formats(mgr.collect_avatar_formats())
         except Exception:
             logger.exception("collect_avatar_formats failed")
+        if runtime_bindings.configure_model_assets is not None:
+            try:
+                runtime_bindings.configure_model_assets(mgr.collect_model_assets())
+            except Exception:
+                logger.exception("collect_model_assets failed")
         try:
             from sdk.tool_registry import apply_registered_tools
 

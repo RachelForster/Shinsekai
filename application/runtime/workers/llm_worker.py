@@ -5,7 +5,10 @@ from queue import Queue
 from uuid import uuid4
 
 from ai.vision.service import ChatVisionService
-from application.chat.runtime.background_prompt import current_background_context
+from application.chat.capabilities import (
+    TurnAdmissionRequest,
+    get_turn_context_pipeline,
+)
 from core.chat_history.identity import DialogIdentities
 from core.media.chat_attachments import resolve_chat_attachments
 from core.messaging.dialog_reconciliation import reconcile_dialog_repair
@@ -116,21 +119,41 @@ class LLMWorker(ThreadDagNode):
                         "vision_mode": prepared_input.mode,
                     },
                 )
-                tracker.start_cross("e2e")
-                self.ui_update_manager.post_notification("发送成功，正在等待回复中...")
-
-                if hasattr(self.ui_update_manager, "record_user_message"):
-                    self.ui_update_manager.record_user_message(
-                        prepared_input.display_text
-                    )
-                else:
-                    formatted_user_message = (
-                        "<p style='line-height: 135%; letter-spacing: 2px; color:white;'>"
-                        f"<b style='color:white;'>你</b>: {prepared_input.display_text}</p>"
-                    )
-                    self.ui_update_manager.chat_history.append(formatted_user_message)
-
+                message_source = (
+                    str(getattr(message, "source", "user") or "user").strip() or "user"
+                )
+                if turn.is_cancelled():
+                    continue
                 history_turn_id = uuid4().hex
+                turn_pipeline = get_turn_context_pipeline(rt)
+                turn_request = TurnAdmissionRequest(
+                    history_turn_id=history_turn_id,
+                    source=message_source,
+                    text=str(message.text or ""),
+                    attachment_count=len(attachments),
+                    runtime=rt,
+                )
+                admission = turn_pipeline.admit_turn(turn_request)
+                if not admission.admitted:
+                    rt.chat_turn_service.mark_generation_complete(turn)
+                    rt.chat_turn_service.mark_idle(turn)
+                    turn = None
+                    continue
+                tracker.start_cross("e2e")
+                if admission.record_user_message:
+                    self.ui_update_manager.post_notification("发送成功，正在等待回复中...")
+
+                    if hasattr(self.ui_update_manager, "record_user_message"):
+                        self.ui_update_manager.record_user_message(
+                            prepared_input.display_text
+                        )
+                    else:
+                        formatted_user_message = (
+                            "<p style='line-height: 135%; letter-spacing: 2px; color:white;'>"
+                            f"<b style='color:white;'>你</b>: {prepared_input.display_text}</p>"
+                        )
+                        self.ui_update_manager.chat_history.append(formatted_user_message)
+
                 dialog_identities = DialogIdentities(history_turn_id)
                 is_streaming = get_app_runtime().config.config.api_config.is_streaming
                 with tracker.track("LLM chat total"):
@@ -143,11 +166,20 @@ class LLMWorker(ThreadDagNode):
                             attachment.to_payload() for attachment in attachments
                         ],
                     }
-                    background = current_background_context(rt)
-                    if attachments or background:
+                    if message_source != "user":
+                        chat_kwargs["user_source"] = message_source
+                    prompt_envelope = turn_pipeline.collect_user_prompt(turn_request)
+                    if attachments or prompt_envelope.has_enrichment:
                         chat_kwargs["user_display_text"] = prepared_input.display_text
+                    render_kwargs: dict[str, object] = {
+                        "background": prompt_envelope.background,
+                    }
+                    if prompt_envelope.prefix:
+                        render_kwargs["prefix"] = prompt_envelope.prefix
+                    if prompt_envelope.suffix:
+                        render_kwargs["suffix"] = prompt_envelope.suffix
                     raw_response = self.llm_manager.chat(
-                        prepared_input.render_content(background=background),
+                        prepared_input.render_content(**render_kwargs),
                         **chat_kwargs,
                     )
 

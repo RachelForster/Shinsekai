@@ -16,6 +16,7 @@ from frontend_bridge_core.routes.background_routes import BACKGROUND_ROUTES
 from frontend_bridge_core.routes.agent_routes import AGENT_ROUTES
 from frontend_bridge_core.routes.character_routes import CHARACTER_ROUTES
 from frontend_bridge_core.routes.avatar_runtime_routes import AVATAR_RUNTIME_ROUTES
+from frontend_bridge_core.routes.character_relation_routes import CHARACTER_RELATION_ROUTES
 from frontend_bridge_core.routes.chat_routes import CHAT_ROUTES
 from frontend_bridge_core.routes.effect_routes import EFFECT_ROUTES
 from frontend_bridge_core.routes.file_transport import (
@@ -33,6 +34,7 @@ from frontend_bridge_core.routes.knowledge_routes import KNOWLEDGE_ROUTES
 from frontend_bridge_core.routes.reminder_routes import REMINDER_ROUTES
 from frontend_bridge_core.routes.model_asset_routes import MODEL_ASSET_ROUTES
 from frontend_bridge_core.routes.operation_routes import OPERATION_ROUTES
+from frontend_bridge_core.routes.perception_routes import PERCEPTION_ROUTES
 from frontend_bridge_core.routes.plugin_routes import PLUGIN_ROUTES
 from frontend_bridge_core.routes.router import Router
 from frontend_bridge_core.routes.system_routes import SYSTEM_ROUTES
@@ -55,6 +57,7 @@ _API_ROUTER = Router(
         *STORY_ROUTES,
         *CHARACTER_ROUTES,
         *AVATAR_RUNTIME_ROUTES,
+        *CHARACTER_RELATION_ROUTES,
         *CHAT_ROUTES,
         *BACKGROUND_ROUTES,
         *EFFECT_ROUTES,
@@ -64,6 +67,7 @@ _API_ROUTER = Router(
         *MODEL_ASSET_ROUTES,
         *TEMPLATE_ROUTES,
         *OPERATION_ROUTES,
+        *PERCEPTION_ROUTES,
         *PLUGIN_ROUTES,
         *TRANSFER_ROUTES,
         *UTILITY_ROUTES,

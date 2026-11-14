@@ -267,6 +267,15 @@ class HeadlessUIUpdateManager:
     def update_sprite(self, character_name: str, sprite_id: int | None, *, slot: int | None = None) -> None:
         pass
 
+    def post_sprite_reaction(
+        self,
+        character_name: str,
+        text: str,
+        *,
+        duration_ms: int = 3600,
+    ) -> None:
+        pass
+
     def update_player_portrait(self, character_name: str, sprite_id: int) -> None:
         pass
 
@@ -751,6 +760,25 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         )
         self._sprite_lru.pop(character_name, None)
         self._emit({"type": "sprite.remove", "characterName": character_name})
+
+    def post_sprite_reaction(
+        self,
+        character_name: str,
+        text: str,
+        *,
+        duration_ms: int = 3600,
+    ) -> None:
+        cleaned = str(text or "").strip()
+        if not cleaned:
+            return
+        self._emit(
+            {
+                "type": "sprite.reaction",
+                "characterName": str(character_name or "").strip(),
+                "text": cleaned[:80],
+                "durationMs": max(800, int(duration_ms or 3600)),
+            }
+        )
 
     def resolve_effect(self, effect: str, args: Dict[str, Any], after_dialog: bool = False) -> bool:
         raw = str(effect or "").strip()

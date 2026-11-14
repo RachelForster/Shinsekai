@@ -11,7 +11,7 @@ import threading
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from typing import Any, Iterator, List, Optional
+from typing import Any, Callable, Iterator, List, Optional
 
 from core.media.effect_image import ImageEffectAsset
 from core.messaging.chat_turn_service import ChatTurnService
@@ -98,6 +98,8 @@ class AppRuntime:
     )
     agent_requester: AgentRequester = field(default_factory=NullAgentRequester, kw_only=True)
     services: ApplicationServices = field(default_factory=ApplicationServices, kw_only=True)
+    turn_context_pipeline: Any = field(default=None, kw_only=True)
+    prepare_perception_turn: Callable[[str, str], bool] | None = field(default=None, kw_only=True)
 
 
 _runtime: Optional[AppRuntime] = None

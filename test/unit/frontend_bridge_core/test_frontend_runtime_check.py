@@ -827,3 +827,435 @@ def test_install_runtime_dependency_redacts_credential_urls_from_output(monkeypa
 
     assert "secret-token" not in result["pipOutput"]
     assert "https://user:***@mirror.example/simple" in result["pipOutput"]
+
+
+def test_install_perception_runtime_dependency_installs_pytorch_and_pins_torch_constraints(
+    tmp_path, monkeypatch
+):
+    from types import SimpleNamespace
+    from application.runtime import dependencies as runtime_dependencies
+
+    rel = Path("runtime/python.exe") if os.name == "nt" else Path("runtime/bin/python3")
+    fake_py = tmp_path / rel
+    fake_py.parent.mkdir(parents=True, exist_ok=True)
+    fake_py.write_bytes(b"fake-python")
+
+    calls: list[list[str]] = []
+    seen_constraints: list[str] = []
+    version_snapshots = [
+        {"pillow": "12.3.0"},
+        {
+            "pillow": "12.3.0",
+            "torch": "2.7.1+cu128",
+            "torchvision": "0.22.1+cu128",
+            "torchaudio": "2.7.1+cu128",
+        },
+        {
+            "pillow": "12.3.0",
+            "torch": "2.7.1+cu128",
+            "torchvision": "0.22.1+cu128",
+            "torchaudio": "2.7.1+cu128",
+            "transformers": "4.57.1",
+            "accelerate": "1.2.1",
+            "huggingface-hub": runtime_dependencies.HUGGINGFACE_HUB_VERSION,
+            "rapidocr-onnxruntime": "1.4.4",
+        },
+    ]
+
+    def fake_installed_versions(_py):
+        return version_snapshots.pop(0) if len(version_snapshots) > 1 else version_snapshots[0]
+
+    def fake_pip_install(cmd, **kwargs):
+        calls.append(list(cmd))
+        if "-c" in cmd:
+            c_path = Path(cmd[cmd.index("-c") + 1])
+            seen_constraints.extend(c_path.read_text(encoding="utf-8").splitlines())
+        on_line = kwargs.get("on_output_line")
+        if on_line:
+            on_line("Successfully installed packages")
+        return ("pip_ok", "")
+
+    monkeypatch.setattr(runtime_dependencies, "installed_versions_for_python", fake_installed_versions)
+    monkeypatch.setattr(runtime_dependencies, "_machine_expected_pytorch_build", lambda: "cu128")
+    monkeypatch.setattr(
+        runtime_dependencies,
+        "build_pytorch_install_plan",
+        lambda reqs, _versions, **_kw: SimpleNamespace(
+            requirement_lines=tuple(reqs),
+            index_url="https://download.pytorch.org/whl/cu128",
+            expected_build="cu128",
+            install_required=True,
+            force_reinstall=False,
+        ),
+    )
+    monkeypatch.setattr(runtime_dependencies, "_run_pip_install", fake_pip_install)
+
+    result = runtime_dependencies.install_runtime_dependency(
+        "perception",
+        python_path=str(fake_py),
+    )
+
+    assert result["moduleName"] == "perception"
+    assert Path(result["pythonPath"]) == fake_py.resolve()
+    assert len(calls) == 2
+    assert calls[0][0] == str(fake_py.resolve())
+    assert "https://download.pytorch.org/whl/cu128" in calls[0]
+    assert calls[1][0] == str(fake_py.resolve())
+    assert runtime_dependencies.PERCEPTION_TRANSFORMERS_SPEC in calls[1]
+    assert runtime_dependencies.PERCEPTION_ACCELERATE_SPEC in calls[1]
+    assert runtime_dependencies.HUGGINGFACE_HUB_SPEC in calls[1]
+    assert runtime_dependencies.PERCEPTION_RAPIDOCR_SPEC in calls[1]
+    assert runtime_dependencies.PERCEPTION_PILLOW_SPEC not in calls[1]
+    assert "torch==2.7.1" in seen_constraints
+    assert "torchvision==0.22.1" in seen_constraints
+
+
+def test_declarative_runtime_dependency_registry_supports_custom_bundles_and_protects_builtins(
+    monkeypatch,
+):
+    from application.runtime import dependencies as runtime_dependencies
+    from application.runtime.dependency_registry import (
+        RUNTIME_DEPENDENCY_REGISTRY,
+        RuntimeDependencySpec,
+        register_runtime_dependency,
+    )
+
+    with pytest.raises(ValueError, match="reserved built-in runtime dependency key"):
+        register_runtime_dependency(
+            RuntimeDependencySpec(
+                key="perception",
+                package_specs=("pillow>=10.0",),
+            )
+        )
+
+    custom_spec = RuntimeDependencySpec(
+        key="plugin_ocr_bundle",
+        package_specs=("rapidocr-onnxruntime>=1.3,<2.0", "pillow>=10.0"),
+        install_only_unsatisfied=True,
+        default_label="Plugin OCR runtime",
+        success_message="Installed Plugin OCR runtime bundle",
+    )
+    register_runtime_dependency(custom_spec)
+    try:
+        issues = runtime_dependencies.runtime_dependency_issues(
+            "plugin_ocr_bundle",
+            installed_versions={"pillow": "11.0.0"},
+        )
+        assert [issue.name for issue in issues] == ["rapidocr-onnxruntime"]
+
+        calls: list[list[str]] = []
+        installed_state = {"pillow": "11.0.0"}
+
+        def fake_pip_and_record(cmd, *, cwd, timeout_sec, detail_max=1600, on_output_line=None):
+            calls.append(cmd)
+            installed_state["rapidocr-onnxruntime"] = "1.4.4"
+            return ("pip_ok", "")
+
+        monkeypatch.setattr(
+            runtime_dependencies,
+            "installed_versions_for_python",
+            lambda _py=None: dict(installed_state),
+        )
+        monkeypatch.setattr(
+            runtime_dependencies,
+            "_run_pip_install",
+            fake_pip_and_record,
+        )
+        result = runtime_dependencies.install_runtime_dependency("plugin_ocr_bundle")
+        assert result["packageName"] == "Plugin OCR runtime"
+        assert result["message"] == "Installed Plugin OCR runtime bundle"
+        assert Path(result["pythonPath"]) == Path(sys.executable)
+        assert len(calls) == 1
+        assert calls[0][0] == sys.executable
+        assert "rapidocr-onnxruntime>=1.3,<2.0" in calls[0]
+        assert "pillow>=10.0" not in calls[0]
+    finally:
+        assert RUNTIME_DEPENDENCY_REGISTRY.unregister("plugin_ocr_bundle") is True
+
+
+def test_install_runtime_dependency_reports_host_pytorch_pin_conflict_and_verifies_bundle(
+    tmp_path, monkeypatch
+):
+    from application.runtime import dependencies as runtime_dependencies
+    from application.runtime.dependency_registry import (
+        RuntimeDependencyRegistry,
+        RuntimeDependencySpec,
+    )
+
+    if sys.platform == "darwin":
+        pytest.skip("Host-pinned CUDA/CPU PyTorch plan applies to non-macOS platforms")
+
+    rel = Path("runtime/python.exe") if os.name == "nt" else Path("runtime/bin/python3")
+    fake_py = tmp_path / rel
+    fake_py.parent.mkdir(parents=True, exist_ok=True)
+    fake_py.write_bytes(b"fake-python")
+
+    registry = RuntimeDependencyRegistry()
+    runtime_dependencies._register_builtin_runtime_dependencies(registry)
+    registry.register(
+        RuntimeDependencySpec(
+            key="future_torch_bundle",
+            package_specs=("torch>=2.10", "pillow>=10.0"),
+            pytorch_specs=("torch>=2.10",),
+            install_only_unsatisfied=True,
+        )
+    )
+
+    pip_calls: list[list[str]] = []
+    monkeypatch.setattr(
+        runtime_dependencies,
+        "installed_versions_for_python",
+        lambda _py: {"torch": "2.7.1+cu128", "pillow": "11.0.0"},
+    )
+    monkeypatch.setattr(runtime_dependencies, "_machine_expected_pytorch_build", lambda: "cu128")
+    monkeypatch.setattr(
+        runtime_dependencies,
+        "_run_pip_install",
+        _fake_runtime_pip_install(pip_calls),
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        runtime_dependencies.install_runtime_dependency(
+            "future_torch_bundle",
+            python_path=str(fake_py),
+            registry=registry,
+        )
+
+    err_text = str(exc_info.value)
+    assert pip_calls == []
+    assert "torch>=2.10" in err_text
+    assert "torch==2.7.1" in err_text
+
+    # Post-install verification must also fail if pip returns ok without satisfying the bundle.
+    registry.register(
+        RuntimeDependencySpec(
+            key="unmet_after_pip_bundle",
+            package_specs=("torch>=2.10", "rapidocr-onnxruntime>=1.3"),
+            pin_installed_torch=True,
+            install_only_unsatisfied=True,
+        )
+    )
+    monkeypatch.setattr(
+        runtime_dependencies,
+        "installed_versions_for_python",
+        lambda _py: {"torch": "2.7.1+cu128", "rapidocr-onnxruntime": "1.4.4"},
+    )
+    with pytest.raises(RuntimeError) as post_exc:
+        runtime_dependencies.install_runtime_dependency(
+            "unmet_after_pip_bundle",
+            python_path=str(fake_py),
+            registry=registry,
+        )
+    post_text = str(post_exc.value)
+    assert "does not satisfy torch>=2.10" in post_text
+    assert "conflicts with host-pinned torch==2.7.1" in post_text
+
+
+def test_custom_bundle_defaults_to_chat_interpreter_instead_of_perception_python(
+    tmp_path, monkeypatch
+):
+    from types import SimpleNamespace
+    from application.runtime import dependencies as runtime_dependencies
+    from application.runtime.dependency_registry import (
+        RuntimeDependencyRegistry,
+        RuntimeDependencySpec,
+    )
+
+    exe_name = "python.exe" if os.name == "nt" else "python3"
+    perception_py = tmp_path / "perception_env" / exe_name
+    perception_py.parent.mkdir(parents=True, exist_ok=True)
+    perception_py.write_bytes(b"fake-perception-python")
+
+    bundle_py = tmp_path / "bundle_env" / exe_name
+    bundle_py.parent.mkdir(parents=True, exist_ok=True)
+    bundle_py.write_bytes(b"fake-bundle-python")
+
+    caller_py = tmp_path / "caller_env" / exe_name
+    caller_py.parent.mkdir(parents=True, exist_ok=True)
+    caller_py.write_bytes(b"fake-caller-python")
+
+    monkeypatch.setenv("SHINSEKAI_PERCEPTION_PYTHON", str(perception_py))
+    state = SimpleNamespace(
+        project_root_dir=str(tmp_path),
+        app_root_dir=str(tmp_path),
+        config_manager=SimpleNamespace(
+            config=SimpleNamespace(
+                api_config=SimpleNamespace(perception_python_path=str(perception_py))
+            )
+        ),
+    )
+
+    registry = RuntimeDependencyRegistry()
+    runtime_dependencies._register_builtin_runtime_dependencies(registry)
+    registry.register(
+        RuntimeDependencySpec(
+            key="chat_plugin_bundle",
+            package_specs=("rapidocr-onnxruntime>=1.3",),
+            install_only_unsatisfied=True,
+        )
+    )
+    registry.register(
+        RuntimeDependencySpec(
+            key="dedicated_worker_bundle",
+            package_specs=("rapidocr-onnxruntime>=1.3",),
+            install_only_unsatisfied=True,
+            target_python=str(bundle_py),
+        )
+    )
+
+    versions_by_exe: dict[str, dict[str, str]] = {}
+    seen_executables: list[str] = []
+
+    def fake_versions(py_exe):
+        return dict(versions_by_exe.get(str(Path(py_exe).resolve()), {}))
+
+    def fake_pip(cmd, *, cwd, timeout_sec, detail_max=1600, on_output_line=None):
+        exe_key = str(Path(cmd[0]).resolve())
+        seen_executables.append(cmd[0])
+        versions_by_exe[exe_key] = {
+            "pillow": "12.3.0",
+            "torch": "2.7.1+cu128",
+            "torchvision": "0.22.1+cu128",
+            "torchaudio": "2.7.1+cu128",
+            "transformers": "4.57.1",
+            "accelerate": "1.2.1",
+            "huggingface-hub": runtime_dependencies.HUGGINGFACE_HUB_VERSION,
+            "rapidocr-onnxruntime": "1.4.4",
+        }
+        return ("pip_ok", "")
+
+    monkeypatch.setattr(runtime_dependencies, "installed_versions_for_python", fake_versions)
+    monkeypatch.setattr(runtime_dependencies, "_machine_expected_pytorch_build", lambda: "cpu")
+    monkeypatch.setattr(runtime_dependencies, "_run_pip_install", fake_pip)
+
+    # 1. Custom bundle without pythonPath installs into sys.executable, NOT perception_python_path.
+    chat_result = runtime_dependencies.install_runtime_dependency(
+        "chat_plugin_bundle",
+        _state=state,
+        registry=registry,
+    )
+    assert Path(chat_result["pythonPath"]) == Path(sys.executable)
+    assert Path(chat_result["pythonPath"]).resolve() != perception_py.resolve()
+
+    # 2. Custom bundle with explicit caller python_path installs into caller_py.
+    caller_result = runtime_dependencies.install_runtime_dependency(
+        "chat_plugin_bundle",
+        python_path=str(caller_py),
+        _state=state,
+        registry=registry,
+    )
+    assert Path(caller_result["pythonPath"]) == caller_py.resolve()
+
+    # 3. Custom bundle declaring target_python installs into bundle_py when python_path is omitted.
+    worker_result = runtime_dependencies.install_runtime_dependency(
+        "dedicated_worker_bundle",
+        _state=state,
+        registry=registry,
+    )
+    assert Path(worker_result["pythonPath"]) == bundle_py.resolve()
+
+    # 4. Built-in perception bundle still resolves perception_python_path when python_path is omitted.
+    perception_result = runtime_dependencies.install_runtime_dependency(
+        "perception",
+        _state=state,
+        registry=registry,
+    )
+    assert Path(perception_result["pythonPath"]) == perception_py.resolve()
+
+
+def test_pytorch_specs_only_requirement_is_enforced_in_checks_and_post_install(
+    tmp_path, monkeypatch
+):
+    from application.runtime import dependencies as runtime_dependencies
+    from application.runtime.dependency_registry import (
+        RuntimeDependencyRegistry,
+        RuntimeDependencySpec,
+    )
+
+    exe_name = "python.exe" if os.name == "nt" else "python3"
+    target_py = tmp_path / "torch_bundle_env" / exe_name
+    target_py.parent.mkdir(parents=True, exist_ok=True)
+    target_py.write_bytes(b"fake-python")
+
+    registry = RuntimeDependencyRegistry()
+    runtime_dependencies._register_builtin_runtime_dependencies(registry)
+    registry.register(
+        RuntimeDependencySpec(
+            key="pytorch_only_declared_in_pytorch_specs",
+            package_specs=("pillow>=10.0",),
+            pytorch_specs=("torch>=2.7",),
+            install_only_unsatisfied=True,
+        )
+    )
+    registry.register(
+        RuntimeDependencySpec(
+            key="pure_pytorch_specs_bundle",
+            pytorch_specs=("torch>=2.7",),
+        )
+    )
+
+    monkeypatch.setattr(runtime_dependencies, "_machine_expected_pytorch_build", lambda: "cpu")
+
+    # 1. Dependency issue checks must surface missing/older torch even when only declared in pytorch_specs.
+    issues_missing = runtime_dependencies.runtime_dependency_issues(
+        "pytorch_only_declared_in_pytorch_specs",
+        installed_versions={"pillow": "11.0.0"},
+        python_exe=target_py,
+        registry=registry,
+    )
+    assert [item.requirement for item in issues_missing] == ["torch>=2.7"]
+
+    pure_issues = runtime_dependencies.runtime_dependency_issues(
+        "pure_pytorch_specs_bundle",
+        installed_versions={},
+        python_exe=target_py,
+        registry=registry,
+    )
+    assert [item.requirement for item in pure_issues] == ["torch>=2.7"]
+
+    # 2. Simulated installation leaving target environment without torch must NOT return pipCode=0.
+    env_versions: dict[str, str] = {"pillow": "11.0.0"}
+    pip_calls: list[list[str]] = []
+
+    def fake_noop_pip(cmd, *, cwd, timeout_sec, detail_max=1600, on_output_line=None):
+        pip_calls.append(cmd)
+        return ("pip_ok", "")
+
+    monkeypatch.setattr(
+        runtime_dependencies,
+        "installed_versions_for_python",
+        lambda _py: dict(env_versions),
+    )
+    monkeypatch.setattr(runtime_dependencies, "_run_pip_install", fake_noop_pip)
+
+    with pytest.raises(RuntimeError, match=r"torch>=2\.7"):
+        runtime_dependencies.install_runtime_dependency(
+            "pytorch_only_declared_in_pytorch_specs",
+            python_path=str(target_py),
+            registry=registry,
+        )
+    assert len(pip_calls) == 1
+
+    with pytest.raises(RuntimeError, match=r"torch>=2\.7"):
+        runtime_dependencies.install_runtime_dependency(
+            "pure_pytorch_specs_bundle",
+            python_path=str(target_py),
+            registry=registry,
+        )
+
+    # 3. Once pip actually installs a satisfying torch into the target interpreter, installation succeeds.
+    def fake_working_pip(cmd, *, cwd, timeout_sec, detail_max=1600, on_output_line=None):
+        pip_calls.append(cmd)
+        env_versions["torch"] = "2.7.1+cu128"
+        return ("pip_ok", "")
+
+    monkeypatch.setattr(runtime_dependencies, "_run_pip_install", fake_working_pip)
+    ok_result = runtime_dependencies.install_runtime_dependency(
+        "pytorch_only_declared_in_pytorch_specs",
+        python_path=str(target_py),
+        registry=registry,
+    )
+    assert ok_result["pipCode"] == 0
+    assert Path(ok_result["pythonPath"]) == target_py.resolve()
+
+

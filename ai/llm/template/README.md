@@ -58,19 +58,21 @@ DialogTemplateSection             sections/dialog_template.py
   JsonSchemaSection               sections/json_schema.py
   CharacterSection                sections/character.py
   BackgroundSection               sections/background.py
+  RelationSection                 sections/relation.py
   RequirementsSection             sections/requirements.py
 ```
 
-The root renders the preamble, then its four children in priority order.
+The root renders the preamble, then its five children in priority order.
 `JsonSchemaSection` owns the JSON example;
-`CharacterSection` owns sprites and character profiles; `BackgroundSection`
+`CharacterSection` owns sprites and character profiles;`RelationSection` owns
+optional owner-scoped relationship data; `BackgroundSection`
 owns scene and music catalogs; `RequirementsSection` owns tool guidance,
 patched field guidance and rules, closing text and the final JSON reminder. Small text nodes
 within each section use `enabled` for optional content. Context-dependent child
 nodes are returned internally by `_resolve_children`, then handled by the same
 Composite renderer as static children.
 
-All five classes are exported from `ai.llm.template.dialog` and can be
+All six classes are exported from `ai.llm.template.dialog` and can be
 constructed without arguments. Customize `root.children` with
 `dataclasses.replace` to disable, reorder or replace a major section.
 `build_dialog_section()` remains a compatibility factory returning the named root.
@@ -166,7 +168,10 @@ template/
       dialog_template.py
       json_schema.py
       character.py
+      player.py
+      relation.py
       background.py
+      effects.py
       requirements.py
       field_requirements.py # Plugin field changes and removal projection
     patches.py            # Shared SDK OutputContractPatch reducers

@@ -87,6 +87,7 @@ class ChatCommandDispatcher:
         tts_manager: Any = None,
         voice_archive: Any = None,
         replay: Any = None,
+        capability_commands: Mapping[str, Callable[[object], None]] | None = None,
     ) -> None:
         self.bindings = bindings
         self.config = config
@@ -132,6 +133,8 @@ class ChatCommandDispatcher:
             "switch-branch": self._switch_branch,
             "rename-branch": self._rename_branch,
         }
+        if capability_commands:
+            self._handlers.update(capability_commands)
 
     def execute(self, request: ChatCommandRequest) -> ChatCommandResult:
         """Execute one request and convert failures into an ack-ready result."""

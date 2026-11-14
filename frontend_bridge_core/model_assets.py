@@ -7,6 +7,10 @@ import threading
 from typing import Any, Callable, Iterator
 
 from application.model_assets.download_model import ModelAssetRequest
+from application.model_assets.registry import (
+    ASR_FASTER_WHISPER_ASSET_ID,
+    PERCEPTION_VLM_ASSET_ID,
+)
 from application.runtime.state import BridgeState
 from application.runtime.tasks import _update_task
 
@@ -18,15 +22,62 @@ def parse_model_asset_request(payload: dict[str, Any]) -> ModelAssetRequest:
     configured = payload.get("configured", False)
     if not isinstance(configured, bool):
         raise ValueError("configured must be a boolean")
+    repo_id: str | None = None
+    if "repoId" in payload and payload.get("repoId") is not None:
+        raw_repo = payload.get("repoId")
+        if not isinstance(raw_repo, str):
+            raise ValueError("repoId must be a string")
+        repo_id = raw_repo.strip()
     variant: str | None = None
     if "variant" in payload:
         variant = str(payload.get("variant") or "")
     elif "modelName" in payload:
         variant = str(payload.get("modelName") or "")
+    revision = ""
+    if "revision" in payload and payload.get("revision") is not None:
+        raw_revision = payload.get("revision")
+        if not isinstance(raw_revision, str):
+            raise ValueError("revision must be a string")
+        revision = raw_revision.strip()
+    title = ""
+    if "title" in payload and payload.get("title") is not None:
+        raw_title = payload.get("title")
+        if not isinstance(raw_title, str):
+            raise ValueError("title must be a string")
+        title = raw_title.strip()
+    allow_patterns: tuple[str, ...] = ()
+    if "allowPatterns" in payload and payload.get("allowPatterns") is not None:
+        raw_patterns = payload.get("allowPatterns")
+        if not isinstance(raw_patterns, list) or not all(
+            isinstance(item, str) for item in raw_patterns
+        ):
+            raise ValueError("allowPatterns must be a list of strings")
+        allow_patterns = tuple(item.strip() for item in raw_patterns if item.strip())
+    required_file_groups: tuple[tuple[str, ...], ...] = ()
+    if (
+        "requiredFileGroups" in payload
+        and payload.get("requiredFileGroups") is not None
+    ):
+        raw_groups = payload.get("requiredFileGroups")
+        if not isinstance(raw_groups, list) or not all(
+            isinstance(group, list) and all(isinstance(item, str) for item in group)
+            for group in raw_groups
+        ):
+            raise ValueError("requiredFileGroups must be a list of string lists")
+        required_file_groups = tuple(
+            cleaned
+            for group in raw_groups
+            if (cleaned := tuple(item.strip() for item in group if item.strip()))
+        )
     return ModelAssetRequest(
         asset_id=str(payload.get("assetId") or "").strip(),
         configured=configured,
         variant=variant,
+        repo_id=repo_id,
+        revision=revision,
+        title=title,
+        allow_patterns=allow_patterns,
+        required_file_groups=required_file_groups,
     )
 
 
@@ -40,6 +91,28 @@ def configured_asr_model(state: BridgeState) -> str:
         str(getattr(system_config, "asr_whisper_model_size", "") or "small").strip()
         or "small"
     )
+
+
+def configured_perception_model(state: BridgeState) -> str:
+    from config.perception import DEFAULT_PERCEPTION_MODEL
+
+    api_config = getattr(
+        getattr(getattr(state, "config_manager", None), "config", None),
+        "api_config",
+        None,
+    )
+    return (
+        str(getattr(api_config, "perception_model", "") or DEFAULT_PERCEPTION_MODEL).strip()
+        or DEFAULT_PERCEPTION_MODEL
+    )
+
+
+def configured_model_values(state: BridgeState) -> dict[str, str]:
+    """Return host-persisted model identifiers keyed by declarative asset_id."""
+    return {
+        ASR_FASTER_WHISPER_ASSET_ID: configured_asr_model(state),
+        PERCEPTION_VLM_ASSET_ID: configured_perception_model(state),
+    }
 
 
 def huggingface_token(state: BridgeState) -> str:

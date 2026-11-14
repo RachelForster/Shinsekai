@@ -1,10 +1,15 @@
 from collections.abc import Mapping
 
-from pydantic import BaseModel, Field, HttpUrl, FilePath, BeforeValidator, field_validator, model_validator
+from pydantic import ConfigDict, BaseModel, Field, HttpUrl, FilePath, BeforeValidator, field_validator, model_validator
 from pydantic_core import PydanticUseDefault
 from typing import List, Dict, Optional, Union, Any, Annotated, TypeVar, Literal
 from config.feature_flags import FeatureFlagConfigManager
 from config.network_proxy import normalize_proxy_url
+from config.perception import (
+    DEFAULT_PERCEPTION_MODEL,
+    DEFAULT_SALIENCE_THRESHOLD,
+    GGUF_MODEL_ID,
+)
 
 # ----------------- 解决 YAML None 问题的工具 -----------------
 def default_if_none(value: Any) -> Any:
@@ -34,6 +39,54 @@ def clamp_compact_target_ratio(compact_threshold: float, compact_target_ratio: f
         return compact_target_ratio
     max_target = max(0.0, threshold - COMPACT_TARGET_RATIO_MIN_GAP)
     return round(min(target, max_target), 6)
+
+class RelationNode(BaseModel):
+    """角色关系图谱的节点"""
+    model_config = ConfigDict(extra="forbid")
+    key: str = Field(..., min_length=1, max_length=200, description="人物名称及图谱节点标识")
+
+    @model_validator(mode="after")
+    def validate_relation_node(self):
+        if not self.key.strip() or self.key != self.key.strip():
+            raise ValueError("Node key must be non-empty and trimmed")
+        return self
+
+
+class RelationEdge(BaseModel):
+    """角色关系图谱的有向边"""
+    model_config = ConfigDict(extra="forbid")
+    source: str = Field(..., description="起点节点标识")
+    target: str = Field(..., description="终点节点标识")
+    temperature: DefaultIfNone[int] = Field(default=0, ge=-10, le=10, description="关系温度")
+    content: DefaultIfNone[str] = Field(default="", max_length=100, description="关系描述")
+
+    @model_validator(mode="after")
+    def validate_relation_content(self):
+        if self.content and not self.content.strip():
+            raise ValueError("Relationship content must not be blank")
+        return self
+
+
+class RelationGraph(BaseModel):
+    """所属角色的独立关系图谱"""
+    model_config = ConfigDict(extra="forbid")
+    nodes: DefaultIfNone[List[RelationNode]] = Field(default_factory=list, max_length=100, description="关系节点列表")
+    edges: DefaultIfNone[List[RelationEdge]] = Field(default_factory=list, max_length=156, description="有向关系列表")
+
+    @model_validator(mode="after")
+    def validate_relation_graph(self):
+        keys = [n.key for n in self.nodes]
+        if len({k.strip().lower() for k in keys}) != len(keys):
+            raise ValueError("Node keys must be unique")
+        pairs = set()
+        for edge in self.edges:
+            pair = (edge.source, edge.target)
+            if edge.source not in keys or edge.target not in keys or edge.source == edge.target:
+                raise ValueError("Edge endpoints must be distinct existing nodes")
+            if pair in pairs:
+                raise ValueError("Duplicate directed edge")
+            pairs.add(pair)
+        return self
 
 
 # Character Config Models
@@ -86,6 +139,7 @@ class Character(BaseModel):
         default="",
         description="用于次要角色精简提示词的角色简介",
     )
+    relation_graph: DefaultIfNone[RelationGraph] = Field(default_factory=RelationGraph, description="角色独立的关系图谱")
     character_setting: DefaultIfNone[str] = Field(default="", description="角色背景、性格和语言习惯的详细描述")
     sprite_scale: DefaultIfNone[float] = Field(default=1.0, description="立绘的缩放比例 (默认值 1.0)")
     portrait_crop: DefaultIfNone[PortraitCrop] = Field(default_factory=PortraitCrop)
@@ -203,6 +257,25 @@ class ApiConfig(BaseModel):
     memory_search_limit: DefaultIfNone[int] = Field(default=5, ge=1, le=20, description="Long-term memory search result limit per turn")
     memory_recent_buffer_messages: DefaultIfNone[int] = Field(default=16, ge=2, le=64, description="Recent messages used for automatic memory extraction")
 
+    # --- Real-time Game Perception (Local VLM Reflex + RP Input Cache + Gatekeeper) ---
+    perception_enabled: DefaultIfNone[bool] = Field(default=False, description="是否启用实时画面/游戏状态感知模块")
+    perception_base_url: DefaultIfNone[str] = Field(default="http://127.0.0.1:8091/v1", description="本地感知小模型 OpenAI 兼容服务地址")
+    perception_api_key: DefaultIfNone[str] = Field(default="", description="本地感知模型 API Key（本地服务可留空）")
+    perception_model: DefaultIfNone[str] = Field(default=DEFAULT_PERCEPTION_MODEL, description="常规感知模型名称")
+    perception_use_gguf: DefaultIfNone[bool] = Field(default=False, description="使用本地 Q4 GGUF 感知模型")
+    perception_python_path: DefaultIfNone[str] = Field(default="", description="一键启动本地感知推理服务的 Python 解释器或环境路径（默认使用新世界自带 Python 运行时）")
+    perception_interval_sec: DefaultIfNone[float] = Field(default=2.0, ge=0.5, le=30.0, description="本地感知模型的常规识别间隔（秒）")
+    perception_capture_interval_sec: DefaultIfNone[float] = Field(default=0.5, ge=0.2, le=5.0, description="共享屏幕画面变化检测间隔（秒）")
+    perception_ocr_interval_sec: DefaultIfNone[float] = Field(default=1.0, ge=0.5, le=10.0, description="共享屏幕文字识别间隔（秒）")
+    perception_frame_max_side: DefaultIfNone[int] = Field(default=512, ge=256, le=1280, description="共享屏幕上传帧最大边长（像素）")
+    perception_diff_threshold: DefaultIfNone[float] = Field(default=0.06, ge=0.0, le=0.5, description="画面像素变化跳过阈值（0 表示每周期都采样）")
+    perception_ocr_enabled: DefaultIfNone[bool] = Field(default=False, description="由内置本地感知服务识别共享画面中的文字")
+    perception_reflex_enabled: DefaultIfNone[bool] = Field(default=True, description="启用本地小模型快速反应（实时立绘切换 + 短促气泡台词，无语音）")
+    perception_reflex_cooldown_sec: DefaultIfNone[float] = Field(default=15.0, ge=0.5, le=60.0, description="气泡反应最小冷却时间（秒）")
+    perception_proactive_enabled: DefaultIfNone[bool] = Field(default=True, description="启用 Gatekeeper 主动触发主 RP 大模型发言")
+    perception_salience_threshold: DefaultIfNone[float] = Field(default=DEFAULT_SALIENCE_THRESHOLD, ge=0.1, le=1.0, description="Gatekeeper 放行主动 RP 发言的事件重要度阈值")
+    perception_proactive_cooldown_sec: DefaultIfNone[float] = Field(default=25.0, ge=3.0, le=600.0, description="主动 RP 发言最小冷却时间（秒）")
+
     hugging_face_access_token: DefaultIfNone[str] = Field(default="", description="Hugging Face Access Token")
 
     llm_extra_configs: DefaultIfNone[Dict[str, Dict[str, Any]]] = Field(
@@ -257,6 +330,13 @@ class ApiConfig(BaseModel):
             self.compact_target_ratio,
         )
         return self
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_perception_gguf_model(cls, value: Any) -> Any:
+        if isinstance(value, Mapping) and str(value.get("perception_model") or "").strip() == GGUF_MODEL_ID:
+            return {**value, "perception_model": DEFAULT_PERCEPTION_MODEL, "perception_use_gguf": True}
+        return value
 
 # System Config Model
 class SystemConfig(BaseModel):

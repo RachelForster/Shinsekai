@@ -78,6 +78,8 @@ def _serialize_history_entries_from_messages(
             continue
         role = str(message.get("role") or "").strip()
         if role == "user":
+            if str(message.get("source") or "user") == "perception":
+                continue
             text = str(
                 message.get("display_content") or message.get("content") or ""
             ).strip()

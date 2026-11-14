@@ -130,6 +130,8 @@ class HistoryManager:
             for message in messages:
                 if message["role"] == 'user':
                     identities = DialogIdentities(message.get(CHAT_TURN_ID, ""))
+                    if message.get("source") == "perception":
+                        continue
                     display_content = message.get("display_content") or message.get("content", "")
                     self.chat_history.append(
                         f"<p style='line-height: 135%; letter-spacing: 2px; color:white;'>"

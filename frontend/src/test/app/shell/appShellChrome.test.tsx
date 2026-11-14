@@ -59,13 +59,13 @@ describe("app shell chrome", () => {
     expect(screen.getByText("基础设置")).toBeInTheDocument();
     expect(screen.getByText("扩展")).toBeInTheDocument();
     expect(screen.getByText("维护诊断")).toBeInTheDocument();
-    expect(screen.getByText("工作区")).toBeInTheDocument();
+    expect(screen.queryByText("工作区")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /GitHub 仓库/i })).toBeInTheDocument();
     expect(await screen.findByText("12 stars")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "AI 服务" })).toHaveAttribute("href", "/settings/api");
     expect(screen.getByRole("link", { name: "插件管理" })).toHaveAttribute("href", "/settings/plugins");
 
-    const assistant = screen.getByRole("button", { name: "助手" });
+    const assistant = screen.getByRole("button", { name: "智能助手" });
     expect(assistant).toHaveAttribute("aria-pressed", "false");
     fireEvent.click(assistant);
     expect(onAssistantToggle).toHaveBeenCalledTimes(1);

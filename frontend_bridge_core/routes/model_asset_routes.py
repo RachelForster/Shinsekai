@@ -6,7 +6,7 @@ from application.model_assets.download_model import (
     resolve_model_asset,
 )
 from frontend_bridge_core.model_assets import (
-    configured_asr_model,
+    configured_model_values,
     find_running_model_download,
     huggingface_token,
     model_download_enqueue_guard,
@@ -26,7 +26,8 @@ def _get_model_asset_status(request: ApiRequest) -> JsonResponse:
     return JsonResponse(
         inspect_model(
             parsed,
-            configured_asr_model=configured_asr_model(request.state),
+            configured_values=configured_model_values(request.state),
+            token=huggingface_token(request.state),
         )
     )
 
@@ -35,17 +36,22 @@ def _download_model_asset_route(request: ApiRequest) -> TaskResponse:
     parsed = parse_model_asset_request(request.body)
     spec = resolve_model_asset(
         parsed,
-        configured_asr_model=configured_asr_model(request.state),
+        configured_values=configured_model_values(request.state),
     )
+    task_updates = {
+        "assetId": spec.asset_id,
+        "assetKey": spec.task_key,
+        "variant": spec.variant,
+    }
+    if getattr(spec, "repo_id", ""):
+        task_updates["repoId"] = spec.repo_id
+    if getattr(spec, "revision", ""):
+        task_updates["revision"] = spec.revision
     return TaskResponse(
         kind="model-download",
         title=spec.title,
         message=f"{spec.title} download queued.",
-        task_updates={
-            "assetId": spec.asset_id,
-            "assetKey": spec.task_key,
-            "variant": spec.variant,
-        },
+        task_updates=task_updates,
         worker=lambda task_id: download_model(
             spec,
             token=huggingface_token(request.state),

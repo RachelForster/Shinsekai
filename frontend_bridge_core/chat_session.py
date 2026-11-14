@@ -39,6 +39,7 @@ from application.chat.templates import (
     _list_templates,
     _load_template_session_payload,
     _repair_template_parts_from_session_if_needed,
+    _resolve_launch_primary_characters,
     _resolve_template_character_names,
     _resume_template_parts,
     _scenario_from_template_like,
@@ -281,6 +282,12 @@ def _launch_chat_locked(
     )
     from application.chat.player_control import resolve_player
     player_character = resolve_player(state.config_manager, characters, body.get("playerCharacter"))
+    primary_characters = _resolve_launch_primary_characters(
+        state,
+        body,
+        characters,
+        player_character,
+    )
     first_character = next((name for name in characters if name != player_character), "")
     init_sprite_path = initial_sprite_path_for_characters(
         state.config_manager,
@@ -386,6 +393,11 @@ def _launch_chat_locked(
             ),
             workflow_path=str(body.get("workflowPath") or ""),
             media_selection_mode=media_selection_mode,
+            **(
+                {"primary_character_names": primary_characters}
+                if primary_characters is not None
+                else {}
+            ),
             **(
                 {"use_current_template_for_history": True}
                 if body.get("useCurrentTemplateForHistory")
@@ -500,6 +512,12 @@ def _resume_last_chat_locked(
     media_selection_mode = _usable_media_selection_mode(requested_media_mode)
     from application.chat.player_control import resolve_player
     player_character = resolve_player(state.config_manager, selected_characters, session.get("playerCharacter"))
+    primary_characters = _resolve_launch_primary_characters(
+        state,
+        session,
+        selected_characters,
+        player_character,
+    )
     first_character = next((name for name in selected_characters if name != player_character), "")
     init_sprite_path = initial_sprite_path_for_characters(
         state.config_manager,
@@ -582,6 +600,11 @@ def _resume_last_chat_locked(
             ),
             workflow_path=str(session.get("workflowPath") or ""),
             media_selection_mode=media_selection_mode,
+            **(
+                {"primary_character_names": primary_characters}
+                if primary_characters is not None
+                else {}
+            ),
         )
     )
     failure = _complete_chat_launch(
