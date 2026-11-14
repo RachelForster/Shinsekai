@@ -87,7 +87,7 @@ class ChatCommandDispatcher:
         tts_manager: Any = None,
         voice_archive: Any = None,
         replay: Any = None,
-        perception_coordinator: Any = None,
+        capability_commands: Mapping[str, Callable[[object], None]] | None = None,
     ) -> None:
         self.bindings = bindings
         self.config = config
@@ -103,7 +103,6 @@ class ChatCommandDispatcher:
         self.tts_manager = tts_manager
         self.voice_archive = voice_archive
         self.replay = replay
-        self.perception_coordinator = perception_coordinator
 
         self._handlers: dict[str, Callable[[object], None]] = {
             "replay-start": lambda payload: self.replay.start(payload),
@@ -126,9 +125,6 @@ class ChatCommandDispatcher:
             "begin-asr-hold": self._begin_asr_hold,
             "finish-asr-hold": self._finish_asr_hold,
             "cancel-asr-hold": self._cancel_asr_hold,
-            "perception-ingest": self._perception_ingest,
-            "perception-clear": self._perception_clear,
-            "perception-config-sync": self._perception_config_sync,
             "reroll": self._reroll,
             "clear-history": self._clear_history,
             "change-voice-language": self._change_voice_language,
@@ -137,6 +133,8 @@ class ChatCommandDispatcher:
             "switch-branch": self._switch_branch,
             "rename-branch": self._rename_branch,
         }
+        if capability_commands:
+            self._handlers.update(capability_commands)
 
     def execute(self, request: ChatCommandRequest) -> ChatCommandResult:
         """Execute one request and convert failures into an ack-ready result."""
@@ -302,46 +300,6 @@ class ChatCommandDispatcher:
 
     def _cancel_asr_hold(self, _payload: object) -> None:
         self.runtime_asr.finish_hold(cancel=True)
-
-    def _perception_ingest(self, payload: object) -> None:
-        if self.perception_coordinator is None:
-            return
-        if not isinstance(payload, Mapping):
-            raise ValueError("Perception ingest payload must be an object.")
-        self.perception_coordinator.ingest(payload)
-
-    def _perception_clear(self, _payload: object) -> None:
-        if self.perception_coordinator is None:
-            return
-        self.perception_coordinator.clear()
-
-    def _perception_config_sync(self, payload: object) -> None:
-        if not isinstance(payload, Mapping):
-            return
-        api_config = self.config.config.api_config.model_copy(deep=True)
-        for key in (
-            "perception_enabled",
-            "perception_base_url",
-            "perception_api_key",
-            "perception_model",
-            "perception_use_gguf",
-            "perception_interval_sec",
-            "perception_capture_interval_sec",
-            "perception_ocr_interval_sec",
-            "perception_frame_max_side",
-            "perception_diff_threshold",
-            "perception_ocr_enabled",
-            "perception_reflex_enabled",
-            "perception_reflex_cooldown_sec",
-            "perception_proactive_enabled",
-            "perception_salience_threshold",
-            "perception_proactive_cooldown_sec",
-        ):
-            if key in payload:
-                setattr(api_config, key, payload[key])
-        self.config.config.api_config = api_config
-        if self.perception_coordinator is not None:
-            self.perception_coordinator._emit_state()
 
     def _reroll(self, _payload: object) -> None:
         messages = self.llm_manager.get_messages()

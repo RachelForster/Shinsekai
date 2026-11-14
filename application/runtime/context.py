@@ -98,6 +98,7 @@ class AppRuntime:
     )
     agent_requester: AgentRequester = field(default_factory=NullAgentRequester, kw_only=True)
     services: ApplicationServices = field(default_factory=ApplicationServices, kw_only=True)
+    turn_context_pipeline: Any = field(default=None, kw_only=True)
     prepare_perception_turn: Callable[[str, str], bool] | None = field(default=None, kw_only=True)
 
 

@@ -39,6 +39,7 @@ class ChatLaunchPreparation:
         state: Any,
         *,
         character_names: list[str] | None = None,
+        primary_character_names: list[str] | None = None,
         effect_names: str = "",
         effect_context: SelectedEffectContext | None = None,
         history_file: str,
@@ -131,6 +132,10 @@ class ChatLaunchPreparation:
         if character_names:
             launch_config["characters"] = json.dumps(
                 character_names, ensure_ascii=False
+            )
+        if primary_character_names is not None:
+            launch_config["primary_characters"] = json.dumps(
+                list(primary_character_names), ensure_ascii=False
             )
         if player_name:
             launch_config["player_character"] = player_name

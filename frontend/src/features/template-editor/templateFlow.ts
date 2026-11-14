@@ -230,7 +230,9 @@ export function synchronizeChatLaunchPayloadWithSession(
   return {
     ...payload,
     backgroundName: session.background,
+    characterPromptMode: session.characterPromptMode,
     characters: session.selectedCharacters,
+    primaryCharacters: session.primaryCharacters,
     ...normalizePlayerOptions(session),
     enableMobileAccess: session.enableMobileAccess,
     effectNames: effectNames.length ? effectNames : undefined,
