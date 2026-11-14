@@ -100,11 +100,13 @@ def _shutdown_bridge_runtime(reason: str) -> None:
         from plugin_system.host import (
             bind_frontend_ui_runtime,
             bind_frontend_user_input_runtime,
+            bind_model_assets_runtime,
             bind_perception_runtime,
         )
 
         bind_frontend_ui_runtime(None)
         bind_frontend_user_input_runtime(None)
+        bind_model_assets_runtime(None)
         bind_perception_runtime(None)
     except Exception as exc:
         _restart_debug_log(
@@ -296,9 +298,18 @@ def _start_plugin_loader(state, logger) -> None:
             from plugin_system.host import (
                 bind_frontend_ui_runtime,
                 bind_frontend_user_input_runtime,
+                bind_model_assets_runtime,
                 bind_perception_runtime,
                 ensure_plugins_loaded,
                 PluginRuntimeBindings,
+            )
+            from application.model_assets.download_model import (
+                configure_registered_model_assets,
+                create_plugin_model_assets_dispatcher,
+            )
+            from frontend_bridge_core.model_assets import (
+                configured_model_values,
+                huggingface_token,
             )
             from frontend_bridge_core.routes.perception_routes import (
                 forward_plugin_perception_from_bridge,
@@ -316,6 +327,13 @@ def _start_plugin_loader(state, logger) -> None:
 
                 register_mcp_tools_from_config(tool_manager)
 
+            bind_model_assets_runtime(
+                create_plugin_model_assets_dispatcher(
+                    get_token=lambda: huggingface_token(state),
+                    get_configured_values=lambda: configured_model_values(state),
+                )
+            )
+
             ensure_plugins_loaded(
                 state.config_manager,
                 runtime_bindings=PluginRuntimeBindings(
@@ -327,6 +345,7 @@ def _start_plugin_loader(state, logger) -> None:
                     configure_vision_fallbacks=configure_registered_fallbacks,
                     configure_avatar_formats=configure_registered_formats,
                     register_mcp_tools=register_mcp_tools,
+                    configure_model_assets=configure_registered_model_assets,
                 ),
             )
             bind_frontend_user_input_runtime(

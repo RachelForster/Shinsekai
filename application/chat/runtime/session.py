@@ -563,13 +563,17 @@ class _BaseChatSession:
             restore_interrupt_handlers()
 
     def _shutdown_plugins(self) -> None:
-        from plugin_system.host import bind_frontend_ui_runtime
+        from plugin_system.host import (
+            bind_frontend_ui_runtime,
+            bind_model_assets_runtime,
+        )
 
         try:
             if self.startup.plugin_manager is not None:
                 self.startup.plugin_manager.shutdown_all()
         finally:
             bind_frontend_ui_runtime(None)
+            bind_model_assets_runtime(None)
             self.capabilities.on_shutdown()
 
     def _tts_shutdown(self) -> Callable[[], None] | None:
