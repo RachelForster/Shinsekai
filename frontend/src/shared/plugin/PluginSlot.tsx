@@ -236,7 +236,11 @@ function ConnectedPluginSlot({
           data-plugin-title={item.title}
           key={`${item.pluginId}:${item.id}`}
         >
-          <SerializableContribution contribution={item} onOpenPluginPage={onOpenPluginPage} onLaunchConversation={onLaunchConversation} />
+          <SerializableContribution
+            contribution={item}
+            onOpenPluginPage={onOpenPluginPage}
+            onLaunchConversation={onLaunchConversation}
+          />
         </div>
       ))}
     </div>
@@ -245,7 +249,13 @@ function ConnectedPluginSlot({
 
 export function PluginSlot({ contributions, onOpenPluginPage, onLaunchConversation, slot }: PluginSlotProps) {
   if (contributions === undefined) {
-    return <ConnectedPluginSlot onOpenPluginPage={onOpenPluginPage} onLaunchConversation={onLaunchConversation} slot={slot} />;
+    return (
+      <ConnectedPluginSlot
+        onOpenPluginPage={onOpenPluginPage}
+        onLaunchConversation={onLaunchConversation}
+        slot={slot}
+      />
+    );
   }
   const items = normalizePluginContributions(contributions).filter((item) => item.slot === slot);
   if (!items.length) {

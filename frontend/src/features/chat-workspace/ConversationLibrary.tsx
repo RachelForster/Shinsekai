@@ -73,10 +73,7 @@ export function ConversationLibrary({
     try {
       const snapshot = await init.runChatInitialization(async (options) => {
         if ((await getChatRuntimeStatus()).state !== "idle") throw new Error(t("story.launch.busy"));
-        return launchChat(
-          { ...(await prepareConversation(id)), enableMobileAccess: mobileAccessEnabled },
-          options,
-        );
+        return launchChat({ ...(await prepareConversation(id)), enableMobileAccess: mobileAccessEnabled }, options);
       });
       client.setQueryData(chatQueryKey, snapshot);
       await updateRuntimeStatusFromSnapshot(snapshot);
@@ -89,14 +86,26 @@ export function ConversationLibrary({
   const handledWake = useRef<string | null>(null);
   const wake = params.get("pluginChat");
   useEffect(() => {
-    if (!wake || !isTauriDesktop()) { handledWake.current = null; return; }
+    if (!wake || !isTauriDesktop()) {
+      handledWake.current = null;
+      return;
+    }
     if (handledWake.current === wake) return;
     handledWake.current = wake;
     void (async () => {
       try {
         const [plugin, action] = wake.split("/");
         const items = await listPluginSlotContributions();
-        if (!items.some((item) => item.pluginId === plugin && item.id === action && item.slot === "chat-workspace-actions" && item.actionType === "callback" && item.externalLaunch)) {
+        if (
+          !items.some(
+            (item) =>
+              item.pluginId === plugin &&
+              item.id === action &&
+              item.slot === "chat-workspace-actions" &&
+              item.actionType === "callback" &&
+              item.externalLaunch,
+          )
+        ) {
           throw new Error("The requested chat plugin action is unavailable.");
         }
         const result = await runPluginSlotContribution(plugin, action);
@@ -105,11 +114,14 @@ export function ConversationLibrary({
       } catch (reason) {
         setError(reason instanceof Error ? reason.message : String(reason));
       } finally {
-        setParams((current) => {
-          const next = new URLSearchParams(current);
-          if (next.get("pluginChat") === wake) next.delete("pluginChat");
-          return next;
-        }, { replace: true });
+        setParams(
+          (current) => {
+            const next = new URLSearchParams(current);
+            if (next.get("pluginChat") === wake) next.delete("pluginChat");
+            return next;
+          },
+          { replace: true },
+        );
       }
     })();
   }, [wake]);

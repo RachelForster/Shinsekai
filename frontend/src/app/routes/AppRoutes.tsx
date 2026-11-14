@@ -107,7 +107,10 @@ export function AppRoutes() {
       if (request && active) navigate("/settings/templates?pluginChat=" + encodeURIComponent(request));
     };
     const timer = window.setInterval(() => void check(), 500);
-    return () => { active = false; window.clearInterval(timer); };
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
   }, [navigate]);
   return (
     <Routes>
