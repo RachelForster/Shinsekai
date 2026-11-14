@@ -304,7 +304,9 @@ class CharacterMediaHandler(MessageHandler):
                 name=character_name,
                 text=speech if first else "",
                 asset_id=sprite.asset_id,
-                effect=(message.effect or "") if first else "",
+                effect=(message.effect or "") if (
+                    is_final if str(message.effect or "").strip().upper() == "LEAVE" else first
+                ) else "",
                 is_system_message=False,
                 is_final_segment=is_final,
                 timeout=None if first else 0,
