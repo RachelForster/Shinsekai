@@ -468,3 +468,183 @@ def test_resolve_perception_vlm_asset_defaults_and_enforces_configured_boundary(
     assert local_status["cached"] is True
     assert local_status["downloadable"] is False
 
+
+def test_direct_huggingface_repo_resolves_full_snapshot_by_default():
+    spec = model_assets.resolve_model_asset(
+        ModelAssetRequest(repo_id="BAAI/bge-m3"),
+    )
+    assert spec.asset_id == "huggingface.repo"
+    assert spec.source == "huggingface"
+    assert spec.repo_id == "BAAI/bge-m3"
+    assert spec.variant == "BAAI/bge-m3"
+    assert spec.title == "BAAI/bge-m3"
+    assert spec.revision == ""
+    assert spec.allow_patterns == ()
+    assert spec.required_file_groups == ()
+
+    pinned = model_assets.resolve_model_asset(
+        ModelAssetRequest(
+            asset_id="huggingface.repo",
+            repo_id="Qwen/Qwen2.5-VL-3B-Instruct",
+            revision="2025-01-09",
+            title="Qwen 2.5 VL",
+        ),
+    )
+    assert pinned.asset_id == "huggingface.repo"
+    assert pinned.repo_id == "Qwen/Qwen2.5-VL-3B-Instruct"
+    assert pinned.revision == "2025-01-09"
+    assert pinned.variant == "Qwen/Qwen2.5-VL-3B-Instruct@2025-01-09"
+    assert pinned.title == "Qwen 2.5 VL"
+
+
+@pytest.mark.parametrize(
+    ("bad_repo", "expected_pattern"),
+    [
+        ("", "repoId is required"),
+        ("../secret", "local model paths are not allowed"),
+        ("/private/model", "local model paths are not allowed"),
+        (r"C:\Windows\System32", "local model paths are not allowed"),
+        (r"\\server\share\model", "local model paths are not allowed"),
+        ("owner/../../secret", "local model paths are not allowed"),
+        ("small", "Invalid Hugging Face repository id"),
+        ("owner/model--bad", "Invalid Hugging Face repository id"),
+    ],
+)
+def test_direct_huggingface_repo_rejects_local_paths_and_malformed_ids_before_path_access(
+    monkeypatch, bad_repo, expected_pattern
+):
+    def unexpected_path_access(*_args, **_kwargs):
+        raise AssertionError("direct repoId reached Path")
+
+    monkeypatch.setattr(model_assets, "Path", unexpected_path_access)
+
+    with pytest.raises(ValueError, match=expected_pattern):
+        model_assets.resolve_model_asset(ModelAssetRequest(repo_id=bad_repo))
+
+
+def test_direct_repo_rejects_configured_flag_and_named_assets_reject_repo_id():
+    with pytest.raises(ValueError, match="do not accept configured=True"):
+        model_assets.resolve_model_asset(
+            ModelAssetRequest(repo_id="BAAI/bge-m3", configured=True)
+        )
+
+    with pytest.raises(ValueError, match="do not accept repoId"):
+        model_assets.resolve_model_asset(
+            ModelAssetRequest(asset_id="asr.faster-whisper", repo_id="BAAI/bge-m3")
+        )
+
+
+def test_plugin_registered_model_assets_and_sdk_controller_reuse_host_token(monkeypatch):
+    from plugin_system.host.service import bind_model_assets_runtime
+    from sdk.model_assets import (
+        download_huggingface_model,
+        download_registered_model_asset,
+    )
+    from sdk.register import PluginCapabilityRegistry
+
+    cap_reg = PluginCapabilityRegistry()
+    active_plugin_model = {"value": "fast"}
+
+    cap_reg.register_model_asset(
+        asset_id="plugin.demo.embed",
+        repo_id="BAAI/bge-small-en-v1.5",
+        title="Demo Embedder",
+        allow_patterns=("*.json", "*.safetensors"),
+        required_file_groups=(("config.json",), ("model.safetensors",)),
+        plugin_id="demo_plugin",
+    )
+    cap_reg.register_model_asset(
+        asset_id="plugin.demo.reranker",
+        title="Demo Reranker",
+        aliases={
+            "fast": "BAAI/bge-reranker-base",
+            "large": "BAAI/bge-reranker-large",
+        },
+        configured_model_getter=lambda: active_plugin_model["value"],
+        plugin_id="demo_plugin",
+    )
+
+    with pytest.raises(ValueError, match="reserved host model asset id"):
+        cap_reg.register_model_asset(
+            asset_id="asr.faster-whisper",
+            repo_id="Systran/faster-whisper-small",
+        )
+
+    custom_registry = model_assets.ModelAssetRegistry()
+    model_assets._register_builtin_definitions(custom_registry)
+    custom_registry.configure_plugin_contributions(cap_reg.model_assets_contributions)
+
+    embed_spec = model_assets.resolve_model_asset(
+        ModelAssetRequest(asset_id="plugin.demo.embed"),
+        registry=custom_registry,
+    )
+    assert embed_spec.repo_id == "BAAI/bge-small-en-v1.5"
+    assert embed_spec.allow_patterns == ("*.json", "*.safetensors")
+
+    with pytest.raises(ValueError, match="do not accept a variant"):
+        model_assets.resolve_model_asset(
+            ModelAssetRequest(asset_id="plugin.demo.embed", variant="other"),
+            registry=custom_registry,
+        )
+
+    reranker_configured = model_assets.resolve_model_asset(
+        ModelAssetRequest(asset_id="plugin.demo.reranker", configured=True),
+        registry=custom_registry,
+    )
+    assert reranker_configured.repo_id == "BAAI/bge-reranker-base"
+
+    active_plugin_model["value"] = "BAAI/bge-reranker-v2-m3"
+    reranker_custom = model_assets.resolve_model_asset(
+        ModelAssetRequest(asset_id="plugin.demo.reranker", configured=True),
+        registry=custom_registry,
+    )
+    assert reranker_custom.repo_id == "BAAI/bge-reranker-v2-m3"
+
+    seen_downloads: list[tuple[object, str]] = []
+    progress_events: list[dict[str, object]] = []
+
+    def fake_download(spec, *, update_task, token=""):
+        seen_downloads.append((spec, token))
+        update_task(phase="download", progress=0.75)
+        return {
+            "assetId": spec.asset_id,
+            "repoId": spec.repo_id,
+            "cached": True,
+            "downloaded": True,
+        }
+
+    monkeypatch.setattr(model_assets, "download_model_asset", fake_download)
+    dispatcher = model_assets.create_plugin_model_assets_dispatcher(
+        get_token=lambda: "hf-host-secret-token",
+        get_configured_values=lambda: {"asr.faster-whisper": "small"},
+        registry=custom_registry,
+    )
+    bind_model_assets_runtime(dispatcher)
+    try:
+        controller = cap_reg.model_assets("demo_plugin")
+        direct_result = controller.download(
+            "BAAI/bge-m3",
+            revision="v1.0",
+            allow_patterns=("config.json", "model.safetensors"),
+            on_progress=lambda **kw: progress_events.append(kw),
+        )
+        registered_result = download_registered_model_asset("plugin.demo.embed")
+        helper_result = download_huggingface_model("Qwen/Qwen2.5-0.5B")
+    finally:
+        bind_model_assets_runtime(None)
+
+    assert "hf-host-secret-token" not in str(direct_result)
+    assert direct_result["repoId"] == "BAAI/bge-m3"
+    assert registered_result["assetId"] == "plugin.demo.embed"
+    assert helper_result["repoId"] == "Qwen/Qwen2.5-0.5B"
+    assert progress_events == [{"phase": "download", "progress": 0.75}]
+    assert [token for _spec, token in seen_downloads] == [
+        "hf-host-secret-token",
+        "hf-host-secret-token",
+        "hf-host-secret-token",
+    ]
+    assert seen_downloads[0][0].allow_patterns == ("config.json", "model.safetensors")
+    assert seen_downloads[0][0].revision == "v1.0"
+    assert seen_downloads[2][0].allow_patterns == ()
+
+

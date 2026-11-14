@@ -291,3 +291,82 @@ def test_download_model_asset_rejects_missing_local_directory(tmp_path):
 
     with pytest.raises(ValueError, match="Local model directory does not exist"):
         service.download_model_asset(spec, update_task=lambda **_changes: None)
+
+
+def test_revision_selects_matching_ref_or_commit_hash_and_forwards_to_downloader(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
+    monkeypatch.setenv("HF_HOME", str(tmp_path / "unused-home"))
+    monkeypatch.delenv("HUGGINGFACE_HUB_CACHE", raising=False)
+
+    model_dir = tmp_path / "models--owner--model"
+    main_snapshot = model_dir / "snapshots" / "main-sha"
+    _write_complete_snapshot(main_snapshot)
+    (model_dir / "refs").mkdir(parents=True)
+    (model_dir / "refs" / "main").write_text("main-sha", encoding="utf-8")
+
+    pinned_spec = _spec(revision="2025-01-09", allow_patterns=(), required_file_groups=())
+    default_spec = _spec()
+    assert pinned_spec.task_key != default_spec.task_key
+    assert pinned_spec.task_key.endswith("@2025-01-09")
+
+    missing_pinned = service.inspect_model_asset(pinned_spec)
+    assert missing_pinned["cached"] is False
+    assert missing_pinned["revision"] == "2025-01-09"
+
+    pinned_snapshot = model_dir / "snapshots" / "pinned-sha"
+    (model_dir / "refs" / "2025-01-09").write_text("pinned-sha", encoding="utf-8")
+    calls = []
+
+    def fake_preload(repo_id, **kwargs):
+        calls.append((repo_id, kwargs))
+        _write_complete_snapshot(pinned_snapshot)
+        return str(pinned_snapshot)
+
+    monkeypatch.setattr(service, "preload_huggingface_snapshot", fake_preload)
+    downloaded = service.download_model_asset(
+        pinned_spec,
+        update_task=lambda **_changes: None,
+    )
+    assert downloaded["cached"] is True
+    assert downloaded["downloaded"] is True
+    assert downloaded["revision"] == "2025-01-09"
+    assert calls[0][0] == "owner/model"
+    assert calls[0][1]["revision"] == "2025-01-09"
+    assert "allow_patterns" not in calls[0][1]
+
+    commit_sha = "a" * 40
+    commit_snapshot = model_dir / "snapshots" / commit_sha
+    _write_complete_snapshot(commit_snapshot)
+    commit_status = service.inspect_model_asset(
+        _spec(revision=commit_sha, allow_patterns=(), required_file_groups=())
+    )
+    assert commit_status["cached"] is True
+    assert commit_status["revision"] == commit_sha
+    assert Path(str(commit_status["path"])) == commit_snapshot.resolve()
+
+
+@pytest.mark.parametrize(
+    "bad_revision",
+    [
+        "../outside",
+        "refs/../../evil",
+        "bad\x00rev",
+        "rev with spaces",
+    ],
+)
+def test_model_asset_spec_rejects_invalid_revisions(bad_revision):
+    with pytest.raises(ValueError, match="Invalid Hugging Face revision"):
+        _spec(revision=bad_revision)
+
+
+def test_local_model_asset_spec_rejects_revision(tmp_path):
+    with pytest.raises(ValueError, match="revision is not supported for local model assets"):
+        _spec(
+            source="local",
+            repo_id="",
+            local_path=tmp_path / "local-model",
+            revision="v1.0",
+        )
+

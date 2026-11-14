@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import threading
 from dataclasses import dataclass
@@ -12,8 +13,25 @@ from .downloads import preload_huggingface_snapshot
 TaskUpdate = Callable[..., None]
 ModelAssetSource = Literal["huggingface", "local"]
 
+_REVISION_RE = re.compile(r"^[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$")
+_COMMIT_HASH_RE = re.compile(r"^[0-9a-f]{40}$")
+
 _MODEL_ASSET_DOWNLOAD_LOCKS_GUARD = threading.Lock()
 _MODEL_ASSET_DOWNLOAD_LOCKS: dict[str, threading.Lock] = {}
+
+
+def _validate_revision(revision: str) -> str:
+    cleaned = str(revision or "").strip()
+    if not cleaned:
+        return ""
+    if (
+        len(cleaned) > 128
+        or any(ord(ch) < 32 or ord(ch) == 127 for ch in cleaned)
+        or ".." in cleaned.split("/")
+        or not _REVISION_RE.fullmatch(cleaned)
+    ):
+        raise ValueError(f"Invalid Hugging Face revision: {revision!r}")
+    return cleaned
 
 
 def _model_asset_download_lock(task_key: str) -> threading.Lock:
@@ -30,6 +48,7 @@ class ModelAssetSpec:
     variant: str
     source: ModelAssetSource = "huggingface"
     repo_id: str = ""
+    revision: str = ""
     local_path: Path | None = None
     allow_patterns: tuple[str, ...] = ()
     required_file_groups: tuple[tuple[str, ...], ...] = ()
@@ -38,10 +57,16 @@ class ModelAssetSpec:
     def __post_init__(self) -> None:
         if not self.asset_id.strip():
             raise ValueError("asset_id is required")
+        cleaned_revision = _validate_revision(self.revision)
+        if cleaned_revision != self.revision:
+            object.__setattr__(self, "revision", cleaned_revision)
         if self.source == "huggingface" and not self.repo_id.strip():
             raise ValueError("repo_id is required for Hugging Face model assets")
-        if self.source == "local" and self.local_path is None:
-            raise ValueError("local_path is required for local model assets")
+        if self.source == "local":
+            if self.local_path is None:
+                raise ValueError("local_path is required for local model assets")
+            if self.revision:
+                raise ValueError("revision is not supported for local model assets")
 
     @property
     def task_key(self) -> str:
@@ -49,6 +74,8 @@ class ModelAssetSpec:
             location = str(self.local_path.resolve(strict=False)) if self.local_path else ""
         else:
             location = self.repo_id.strip().casefold()
+            if self.revision:
+                location = f"{location}@{self.revision}"
         return f"{self.asset_id}:{self.source}:{location}"
 
 
@@ -112,6 +139,7 @@ def _main_huggingface_snapshots(spec: ModelAssetSpec) -> tuple[Path, ...]:
     except ImportError:
         return ()
 
+    ref_name = spec.revision or "main"
     snapshots: list[Path] = []
     for root in _huggingface_cache_roots():
         try:
@@ -124,10 +152,20 @@ def _main_huggingface_snapshots(spec: ModelAssetSpec) -> tuple[Path, ...]:
                 os.path.commonpath([str(resolved_root), str(repo_dir)])
             ) != os.path.normcase(str(resolved_root)):
                 continue
-            revision = (repo_dir / "refs" / "main").read_text(encoding="utf-8").strip()
+            snapshots_dir = (repo_dir / "snapshots").resolve(strict=False)
+            refs_dir = (repo_dir / "refs").resolve(strict=False)
+            ref_file = (refs_dir / Path(*ref_name.split("/"))).resolve(strict=False)
+            revision = ""
+            if (
+                os.path.normcase(os.path.commonpath([str(refs_dir), str(ref_file)]))
+                == os.path.normcase(str(refs_dir))
+                and ref_file.is_file()
+            ):
+                revision = ref_file.read_text(encoding="utf-8").strip()
+            elif _COMMIT_HASH_RE.fullmatch(ref_name):
+                revision = ref_name
             if not revision or revision in {".", ".."} or "/" in revision or "\\" in revision:
                 continue
-            snapshots_dir = (repo_dir / "snapshots").resolve(strict=False)
             snapshot = snapshots_dir / revision
             resolved_snapshot = snapshot.resolve(strict=False)
             if os.path.normcase(
@@ -213,6 +251,8 @@ def inspect_model_asset(spec: ModelAssetSpec) -> dict[str, object]:
         return result
 
     result["repoId"] = spec.repo_id
+    if spec.revision:
+        result["revision"] = spec.revision
     snapshot = find_cached_huggingface_snapshot(spec)
     if snapshot is not None:
         result["cached"] = True
@@ -248,6 +288,8 @@ def _download_model_asset_unlocked(
         # partial or corrupt file survives.
         _remove_invalid_main_snapshots(spec)
         snapshot_kwargs["force_download"] = True
+    if spec.revision:
+        snapshot_kwargs["revision"] = spec.revision
     if spec.allow_patterns:
         snapshot_kwargs["allow_patterns"] = list(spec.allow_patterns)
     if token.strip():
@@ -277,7 +319,7 @@ def _download_model_asset_unlocked(
         raise RuntimeError(
             f"Downloaded model snapshot is incomplete: {spec.repo_id}"
         )
-    return {
+    downloaded_result: dict[str, object] = {
         "assetId": spec.asset_id,
         "variant": spec.variant,
         "title": spec.title,
@@ -288,6 +330,9 @@ def _download_model_asset_unlocked(
         "downloadable": True,
         "downloaded": True,
     }
+    if spec.revision:
+        downloaded_result["revision"] = spec.revision
+    return downloaded_result
 
 
 def download_model_asset(

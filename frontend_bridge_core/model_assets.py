@@ -7,6 +7,10 @@ import threading
 from typing import Any, Callable, Iterator
 
 from application.model_assets.download_model import ModelAssetRequest
+from application.model_assets.registry import (
+    ASR_FASTER_WHISPER_ASSET_ID,
+    PERCEPTION_VLM_ASSET_ID,
+)
 from application.runtime.state import BridgeState
 from application.runtime.tasks import _update_task
 
@@ -18,15 +22,36 @@ def parse_model_asset_request(payload: dict[str, Any]) -> ModelAssetRequest:
     configured = payload.get("configured", False)
     if not isinstance(configured, bool):
         raise ValueError("configured must be a boolean")
+    repo_id: str | None = None
+    if "repoId" in payload and payload.get("repoId") is not None:
+        raw_repo = payload.get("repoId")
+        if not isinstance(raw_repo, str):
+            raise ValueError("repoId must be a string")
+        repo_id = raw_repo.strip()
     variant: str | None = None
     if "variant" in payload:
         variant = str(payload.get("variant") or "")
     elif "modelName" in payload:
         variant = str(payload.get("modelName") or "")
+    revision = ""
+    if "revision" in payload and payload.get("revision") is not None:
+        raw_revision = payload.get("revision")
+        if not isinstance(raw_revision, str):
+            raise ValueError("revision must be a string")
+        revision = raw_revision.strip()
+    title = ""
+    if "title" in payload and payload.get("title") is not None:
+        raw_title = payload.get("title")
+        if not isinstance(raw_title, str):
+            raise ValueError("title must be a string")
+        title = raw_title.strip()
     return ModelAssetRequest(
         asset_id=str(payload.get("assetId") or "").strip(),
         configured=configured,
         variant=variant,
+        repo_id=repo_id,
+        revision=revision,
+        title=title,
     )
 
 
@@ -54,6 +79,14 @@ def configured_perception_model(state: BridgeState) -> str:
         str(getattr(api_config, "perception_model", "") or DEFAULT_PERCEPTION_MODEL).strip()
         or DEFAULT_PERCEPTION_MODEL
     )
+
+
+def configured_model_values(state: BridgeState) -> dict[str, str]:
+    """Return host-persisted model identifiers keyed by declarative asset_id."""
+    return {
+        ASR_FASTER_WHISPER_ASSET_ID: configured_asr_model(state),
+        PERCEPTION_VLM_ASSET_ID: configured_perception_model(state),
+    }
 
 
 def huggingface_token(state: BridgeState) -> str:

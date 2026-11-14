@@ -899,3 +899,58 @@ def test_install_perception_runtime_dependency_installs_pytorch_and_pins_torch_c
     assert "torch==2.7.1" in seen_constraints
     assert "torchvision==0.22.1" in seen_constraints
 
+
+def test_declarative_runtime_dependency_registry_supports_custom_bundles_and_protects_builtins(
+    monkeypatch,
+):
+    from application.runtime import dependencies as runtime_dependencies
+    from application.runtime.dependency_registry import (
+        RUNTIME_DEPENDENCY_REGISTRY,
+        RuntimeDependencySpec,
+        register_runtime_dependency,
+    )
+
+    with pytest.raises(ValueError, match="reserved built-in runtime dependency key"):
+        register_runtime_dependency(
+            RuntimeDependencySpec(
+                key="perception",
+                package_specs=("pillow>=10.0",),
+            )
+        )
+
+    custom_spec = RuntimeDependencySpec(
+        key="plugin_ocr_bundle",
+        package_specs=("rapidocr-onnxruntime>=1.3,<2.0", "pillow>=10.0"),
+        install_only_unsatisfied=True,
+        default_label="Plugin OCR runtime",
+        success_message="Installed Plugin OCR runtime bundle",
+    )
+    register_runtime_dependency(custom_spec)
+    try:
+        issues = runtime_dependencies.runtime_dependency_issues(
+            "plugin_ocr_bundle",
+            installed_versions={"pillow": "11.0.0"},
+        )
+        assert [issue.name for issue in issues] == ["rapidocr-onnxruntime"]
+
+        calls: list[list[str]] = []
+        monkeypatch.setattr(
+            runtime_dependencies,
+            "installed_versions_for_python",
+            lambda _py=None: {"pillow": "11.0.0"},
+        )
+        monkeypatch.setattr(
+            runtime_dependencies,
+            "_run_pip_install",
+            _fake_runtime_pip_install(calls),
+        )
+        result = runtime_dependencies.install_runtime_dependency("plugin_ocr_bundle")
+        assert result["packageName"] == "Plugin OCR runtime"
+        assert result["message"] == "Installed Plugin OCR runtime bundle"
+        assert len(calls) == 1
+        assert "rapidocr-onnxruntime>=1.3,<2.0" in calls[0]
+        assert "pillow>=10.0" not in calls[0]
+    finally:
+        assert RUNTIME_DEPENDENCY_REGISTRY.unregister("plugin_ocr_bundle") is True
+
+

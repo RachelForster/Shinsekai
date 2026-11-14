@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import os
-import re
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+import os
 from pathlib import Path
-from typing import Callable
+import re
+from typing import Any
 
 from config.perception import DEFAULT_PERCEPTION_MODEL
 from core.model_assets.service import (
@@ -12,13 +13,20 @@ from core.model_assets.service import (
     download_model_asset,
     inspect_model_asset,
 )
-
 from sdk.path_utils import reject_control_chars
 
-_ASR_FASTER_WHISPER_ASSET_ID = "asr.faster-whisper"
-_MEMORY_EMBEDDING_ASSET_ID = "memory.embedding"
-_MOONDREAM_VISION_ASSET_ID = "vision.moondream"
-_PERCEPTION_VLM_ASSET_ID = "perception.vlm"
+from .registry import (
+    ASR_FASTER_WHISPER_ASSET_ID as _ASR_FASTER_WHISPER_ASSET_ID,
+    HUGGINGFACE_REPO_ASSET_ID as _HUGGINGFACE_REPO_ASSET_ID,
+    MEMORY_EMBEDDING_ASSET_ID as _MEMORY_EMBEDDING_ASSET_ID,
+    MODEL_ASSET_REGISTRY,
+    MOONDREAM_VISION_ASSET_ID as _MOONDREAM_VISION_ASSET_ID,
+    ModelAssetDefinition,
+    ModelAssetRegistry,
+    PERCEPTION_VLM_ASSET_ID as _PERCEPTION_VLM_ASSET_ID,
+    configure_registered_model_assets,
+)
+
 _PERCEPTION_ALLOW_PATTERNS = (
     "*.json",
     "*.safetensors",
@@ -87,11 +95,16 @@ _MAX_MODEL_REFERENCE_LENGTH = 512
 
 @dataclass(frozen=True, slots=True)
 class ModelAssetRequest:
-    """Transport-independent request for a configured or named model asset."""
+    """Transport-independent request for a configured, named, or direct Hugging Face model asset."""
 
-    asset_id: str
+    asset_id: str = ""
     configured: bool = False
     variant: str | None = None
+    repo_id: str | None = None
+    revision: str = ""
+    title: str = ""
+    allow_patterns: tuple[str, ...] = ()
+    required_file_groups: tuple[tuple[str, ...], ...] = ()
 
 
 def _validated_model_reference(value: str) -> str:
@@ -99,6 +112,13 @@ def _validated_model_reference(value: str) -> str:
     if len(raw) > _MAX_MODEL_REFERENCE_LENGTH:
         raise ValueError("model reference is too long")
     return raw
+
+
+def _optional_clean_text(value: str, *, field: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    return reject_control_chars(text, field=field)
 
 
 def _is_huggingface_repo_id(value: str) -> bool:
@@ -172,78 +192,253 @@ def _configured_local_model_path(value: str) -> Path:
     return resolved
 
 
-def _faster_whisper_repo_id(model_name: str) -> str:
-    model = _validated_model_reference(str(model_name or "small").strip() or "small")
-    if model in _ASR_MODEL_REPOS:
-        return _ASR_MODEL_REPOS[model]
-    if _is_huggingface_repo_id(model):
-        return model
-    raise ValueError(
-        f"Unsupported faster-whisper model name: {model}. "
-        "Use a supported model alias, a full Hugging Face repository id, or a local model directory."
+def _load_memory_embedding_spec() -> ModelAssetSpec:
+    from ai.memory.config import EMBEDDING_MODEL_ASSET
+
+    return EMBEDDING_MODEL_ASSET
+
+
+def _load_moondream_spec() -> ModelAssetSpec:
+    from ai.vision.moondream_adapter import MOONDREAM_MODEL_ASSET
+
+    return MOONDREAM_MODEL_ASSET
+
+
+def _register_builtin_definitions(registry: ModelAssetRegistry) -> None:
+    registry.register_builtin(
+        ModelAssetDefinition(
+            asset_id=_MEMORY_EMBEDDING_ASSET_ID,
+            static_spec_factory=_load_memory_embedding_spec,
+            reject_variant_message="memory embedding model requests do not accept a variant",
+        )
+    )
+    registry.register_builtin(
+        ModelAssetDefinition(
+            asset_id=_MOONDREAM_VISION_ASSET_ID,
+            static_spec_factory=_load_moondream_spec,
+            reject_variant_message="Moondream model requests do not accept a variant",
+        )
+    )
+    registry.register_builtin(
+        ModelAssetDefinition(
+            asset_id=_PERCEPTION_VLM_ASSET_ID,
+            default_variant=DEFAULT_PERCEPTION_MODEL,
+            default_spec=PERCEPTION_VLM_MODEL_ASSET,
+            title_template="Perception VLM ({variant})",
+            aliases={DEFAULT_PERCEPTION_MODEL: DEFAULT_PERCEPTION_MODEL},
+            allow_patterns=_PERCEPTION_ALLOW_PATTERNS,
+            required_file_groups=_PERCEPTION_REQUIRED_FILE_GROUPS,
+            allow_configured=True,
+            configured_key=_PERCEPTION_VLM_ASSET_ID,
+            allow_custom_configured_repo=True,
+            allow_configured_local_path=True,
+            unsupported_variant_message=lambda variant: (
+                f"Unsupported perception model name: {variant}. "
+                "Use the default model, save a full Hugging Face repository id, or save a local model directory."
+            ),
+            unsupported_configured_message=lambda variant: (
+                f"Unsupported perception model name: {variant}. "
+                "Use a full Hugging Face repository id or a local model directory."
+            ),
+        )
+    )
+    registry.register_builtin(
+        ModelAssetDefinition(
+            asset_id=_ASR_FASTER_WHISPER_ASSET_ID,
+            default_variant="small",
+            title_template="faster-whisper {variant}",
+            aliases=_ASR_MODEL_REPOS,
+            allow_patterns=_ASR_ALLOW_PATTERNS,
+            required_file_groups=_ASR_REQUIRED_FILE_GROUPS,
+            allow_configured=True,
+            configured_key=_ASR_FASTER_WHISPER_ASSET_ID,
+            allow_custom_configured_repo=True,
+            allow_configured_local_path=True,
+            unsupported_variant_message=lambda variant: (
+                f"Unsupported faster-whisper model name: {variant}. "
+                "Use a supported model alias, a full Hugging Face repository id, or a local model directory."
+            ),
+            unsupported_configured_message=lambda variant: (
+                f"Unsupported faster-whisper model name: {variant}. "
+                "Use a supported model alias, a full Hugging Face repository id, or a local model directory."
+            ),
+        )
+    )
+    registry.register_builtin(
+        ModelAssetDefinition(
+            asset_id=_HUGGINGFACE_REPO_ASSET_ID,
+            allow_direct_repo_in_request=True,
+            allow_configured=False,
+        )
     )
 
 
-def _resolve_perception_vlm_asset(
+_register_builtin_definitions(MODEL_ASSET_REGISTRY)
+
+
+def _resolve_direct_repo_definition(
+    definition: ModelAssetDefinition,
+    request: ModelAssetRequest,
+) -> ModelAssetSpec:
+    if request.configured:
+        raise ValueError("direct Hugging Face repository requests do not accept configured=True")
+    raw_repo = request.repo_id if request.repo_id is not None else request.variant
+    if not str(raw_repo or "").strip():
+        raise ValueError("repoId is required")
+    repo_id = _validated_model_reference(str(raw_repo or "").strip())
+    if _looks_like_local_model_reference(repo_id):
+        raise ValueError(
+            "local model paths are not allowed for direct model downloads; expected Hugging Face 'owner/repo'"
+        )
+    if not _is_huggingface_repo_id(repo_id):
+        raise ValueError(
+            f"Invalid Hugging Face repository id: {repo_id}. Expected 'owner/repo'."
+        )
+    clean_revision = _optional_clean_text(request.revision, field="revision")
+    clean_title = _optional_clean_text(request.title, field="title")
+    variant_label = f"{repo_id}@{clean_revision}" if clean_revision else repo_id
+    return ModelAssetSpec(
+        asset_id=definition.asset_id,
+        title=clean_title or variant_label,
+        variant=variant_label,
+        source="huggingface",
+        repo_id=repo_id,
+        revision=clean_revision,
+        allow_patterns=request.allow_patterns or definition.allow_patterns,
+        required_file_groups=request.required_file_groups or definition.required_file_groups,
+        snapshot_validator=definition.snapshot_validator,
+    )
+
+
+def _resolve_definition(
+    definition: ModelAssetDefinition,
     request: ModelAssetRequest,
     *,
-    configured_perception_model: str = DEFAULT_PERCEPTION_MODEL,
+    configured_lookup: Mapping[str, str],
 ) -> ModelAssetSpec:
+    if definition.static_spec_factory is not None:
+        if request.configured or request.variant is not None or request.repo_id is not None:
+            raise ValueError(definition.reject_variant_message)
+        return definition.static_spec_factory()
+
+    if definition.allow_direct_repo_in_request:
+        return _resolve_direct_repo_definition(definition, request)
+
+    if request.repo_id is not None:
+        raise ValueError(
+            f"{definition.asset_id} requests do not accept repoId; use assetId='{_HUGGINGFACE_REPO_ASSET_ID}' or omit assetId"
+        )
+
+    effective_revision = (
+        _optional_clean_text(request.revision, field="revision")
+        or definition.revision
+    )
+
     if not request.configured:
-        if request.variant is None or not str(request.variant).strip():
-            return PERCEPTION_VLM_MODEL_ASSET
-        request_variant = _validated_model_reference(str(request.variant).strip())
+        raw_variant = (
+            definition.default_variant
+            if request.variant is None or not str(request.variant).strip()
+            else str(request.variant).strip()
+        )
+        request_variant = _validated_model_reference(raw_variant)
         if _looks_like_local_model_reference(request_variant):
             raise ValueError("local model paths must be saved before they can be checked")
-        if request_variant == DEFAULT_PERCEPTION_MODEL:
-            return PERCEPTION_VLM_MODEL_ASSET
+        if (
+            definition.default_spec is not None
+            and request_variant == definition.default_variant
+            and not request.revision
+        ):
+            return definition.default_spec
+        if request_variant in definition.aliases:
+            return ModelAssetSpec(
+                asset_id=definition.asset_id,
+                title=definition.title_template.format(variant=request_variant),
+                variant=request_variant,
+                repo_id=definition.aliases[request_variant],
+                revision=effective_revision,
+                allow_patterns=definition.allow_patterns,
+                required_file_groups=definition.required_file_groups,
+                snapshot_validator=definition.snapshot_validator,
+            )
         if _is_huggingface_repo_id(request_variant):
             raise ValueError(
                 "custom Hugging Face model ids must be saved before they can be checked"
             )
+        message_builder = definition.unsupported_variant_message
         raise ValueError(
-            f"Unsupported perception model name: {request_variant}. "
-            "Use the default model, save a full Hugging Face repository id, or save a local model directory."
+            message_builder(request_variant)
+            if message_builder is not None
+            else f"Unsupported model variant for {definition.asset_id}: {request_variant}"
         )
 
+    if not definition.allow_configured:
+        raise ValueError(definition.reject_variant_message)
     if request.variant is not None:
         raise ValueError("configured model asset requests must not include a variant")
-    variant = _validated_model_reference(
-        str(configured_perception_model or DEFAULT_PERCEPTION_MODEL).strip()
-        or DEFAULT_PERCEPTION_MODEL
-    )
-    if variant == DEFAULT_PERCEPTION_MODEL:
-        return PERCEPTION_VLM_MODEL_ASSET
 
-    title = f"Perception VLM ({variant})"
+    raw_configured = ""
+    if definition.configured_getter is not None:
+        raw_configured = str(definition.configured_getter() or "").strip()
+    elif definition.configured_key:
+        raw_configured = str(configured_lookup.get(definition.configured_key, "") or "").strip()
+    variant = _validated_model_reference(raw_configured or definition.default_variant)
+
+    if (
+        definition.default_spec is not None
+        and variant == definition.default_variant
+        and not request.revision
+    ):
+        return definition.default_spec
+
+    title = definition.title_template.format(variant=variant)
+    if variant in definition.aliases:
+        return ModelAssetSpec(
+            asset_id=definition.asset_id,
+            title=title,
+            variant=variant,
+            repo_id=definition.aliases[variant],
+            revision=effective_revision,
+            allow_patterns=definition.allow_patterns,
+            required_file_groups=definition.required_file_groups,
+            snapshot_validator=definition.snapshot_validator,
+        )
+
     local_path: Path | None = None
-    if _looks_like_local_model_reference(variant):
-        local_path = _configured_local_model_path(variant)
-    elif not _is_huggingface_repo_id(variant):
-        configured_path = _configured_local_model_path(variant)
-        if configured_path.exists():
-            local_path = configured_path
+    if definition.allow_configured_local_path:
+        if _looks_like_local_model_reference(variant):
+            local_path = _configured_local_model_path(variant)
+        else:
+            configured_path = _configured_local_model_path(variant)
+            if configured_path.exists():
+                local_path = configured_path
     if local_path is not None:
         return ModelAssetSpec(
-            asset_id=_PERCEPTION_VLM_ASSET_ID,
+            asset_id=definition.asset_id,
             title=title,
             variant=variant,
             source="local",
             local_path=local_path,
-            required_file_groups=_PERCEPTION_REQUIRED_FILE_GROUPS,
+            required_file_groups=definition.required_file_groups,
+            snapshot_validator=definition.snapshot_validator,
         )
-    if not _is_huggingface_repo_id(variant):
-        raise ValueError(
-            f"Unsupported perception model name: {variant}. "
-            "Use a full Hugging Face repository id or a local model directory."
+
+    if definition.allow_custom_configured_repo and _is_huggingface_repo_id(variant):
+        return ModelAssetSpec(
+            asset_id=definition.asset_id,
+            title=title,
+            variant=variant,
+            repo_id=variant,
+            revision=effective_revision,
+            allow_patterns=definition.allow_patterns,
+            required_file_groups=definition.required_file_groups,
+            snapshot_validator=definition.snapshot_validator,
         )
-    return ModelAssetSpec(
-        asset_id=_PERCEPTION_VLM_ASSET_ID,
-        title=title,
-        variant=variant,
-        repo_id=variant,
-        allow_patterns=_PERCEPTION_ALLOW_PATTERNS,
-        required_file_groups=_PERCEPTION_REQUIRED_FILE_GROUPS,
+
+    configured_error = definition.unsupported_configured_message
+    raise ValueError(
+        configured_error(variant)
+        if configured_error is not None
+        else f"Unsupported configured model for {definition.asset_id}: {variant}"
     )
 
 
@@ -252,85 +447,28 @@ def resolve_model_asset(
     *,
     configured_asr_model: str = "small",
     configured_perception_model: str = DEFAULT_PERCEPTION_MODEL,
+    configured_values: Mapping[str, str] | None = None,
+    registry: ModelAssetRegistry = MODEL_ASSET_REGISTRY,
 ) -> ModelAssetSpec:
     asset_id = str(request.asset_id or "").strip()
-    if asset_id == _MEMORY_EMBEDDING_ASSET_ID:
-        if request.configured or request.variant is not None:
-            raise ValueError("memory embedding model requests do not accept a variant")
-        from ai.memory.config import EMBEDDING_MODEL_ASSET
+    if not asset_id and request.repo_id is not None:
+        asset_id = _HUGGINGFACE_REPO_ASSET_ID
 
-        return EMBEDDING_MODEL_ASSET
-    if asset_id == _MOONDREAM_VISION_ASSET_ID:
-        if request.configured or request.variant is not None:
-            raise ValueError("Moondream model requests do not accept a variant")
-        from ai.vision.moondream_adapter import MOONDREAM_MODEL_ASSET
-
-        return MOONDREAM_MODEL_ASSET
-    if asset_id == _PERCEPTION_VLM_ASSET_ID:
-        return _resolve_perception_vlm_asset(
-            request,
-            configured_perception_model=configured_perception_model,
-        )
-    if asset_id != _ASR_FASTER_WHISPER_ASSET_ID:
+    definition = registry.get(asset_id)
+    if definition is None:
         raise ValueError(f"Unsupported model asset: {asset_id or '<empty>'}")
 
-    # Security boundary: request variants are network identifiers only. Local
-    # filesystem paths may come only from the persisted server-side config.
-    if not request.configured:
-        request_variant = _validated_model_reference(str(request.variant or "small"))
-        if _looks_like_local_model_reference(request_variant):
-            raise ValueError(
-                "local model paths must be saved before they can be checked"
-            )
-        if request_variant not in _ASR_MODEL_REPOS:
-            if _is_huggingface_repo_id(request_variant):
-                raise ValueError(
-                    "custom Hugging Face model ids must be saved before they can be checked"
-                )
-            _faster_whisper_repo_id(
-                request_variant
-            )  # Raises the canonical unsupported-model error.
-        return ModelAssetSpec(
-            asset_id=asset_id,
-            title=f"faster-whisper {request_variant}",
-            variant=request_variant,
-            repo_id=_ASR_MODEL_REPOS[request_variant],
-            allow_patterns=_ASR_ALLOW_PATTERNS,
-            required_file_groups=_ASR_REQUIRED_FILE_GROUPS,
-        )
+    lookup: dict[str, str] = {
+        _ASR_FASTER_WHISPER_ASSET_ID: configured_asr_model,
+        _PERCEPTION_VLM_ASSET_ID: configured_perception_model,
+    }
+    if configured_values:
+        lookup.update(configured_values)
 
-    if request.variant is not None:
-        raise ValueError("configured model asset requests must not include a variant")
-    variant = _validated_model_reference(configured_asr_model)
-
-    title = f"faster-whisper {variant}"
-    local_path: Path | None = None
-    if _looks_like_local_model_reference(variant):
-        local_path = _configured_local_model_path(variant)
-    elif variant not in _ASR_MODEL_REPOS:
-        # Preserve legacy relative local model configs without letting an HTTP
-        # request value reach the filesystem. Explicit aliases always remain
-        # Hugging Face models; ambiguous custom values are local only when the
-        # validated configured path already exists.
-        configured_path = _configured_local_model_path(variant)
-        if configured_path.exists():
-            local_path = configured_path
-    if local_path is not None:
-        return ModelAssetSpec(
-            asset_id=asset_id,
-            title=title,
-            variant=variant,
-            source="local",
-            local_path=local_path,
-            required_file_groups=_ASR_REQUIRED_FILE_GROUPS,
-        )
-    return ModelAssetSpec(
-        asset_id=asset_id,
-        title=title,
-        variant=variant,
-        repo_id=_faster_whisper_repo_id(variant),
-        allow_patterns=_ASR_ALLOW_PATTERNS,
-        required_file_groups=_ASR_REQUIRED_FILE_GROUPS,
+    return _resolve_definition(
+        definition,
+        request,
+        configured_lookup=lookup,
     )
 
 
@@ -339,12 +477,16 @@ def inspect_model(
     *,
     configured_asr_model: str = "small",
     configured_perception_model: str = DEFAULT_PERCEPTION_MODEL,
+    configured_values: Mapping[str, str] | None = None,
+    registry: ModelAssetRegistry = MODEL_ASSET_REGISTRY,
 ) -> dict[str, object]:
     return inspect_model_asset(
         resolve_model_asset(
             request,
             configured_asr_model=configured_asr_model,
             configured_perception_model=configured_perception_model,
+            configured_values=configured_values,
+            registry=registry,
         )
     )
 
@@ -362,3 +504,71 @@ def download_model(
         update_task=update_task,
         token=str(token or "").strip(),
     )
+
+
+def create_plugin_model_assets_dispatcher(
+    *,
+    get_token: Callable[[], str] | None = None,
+    get_configured_values: Callable[[], Mapping[str, str]] | None = None,
+    registry: ModelAssetRegistry = MODEL_ASSET_REGISTRY,
+) -> Callable[[dict[str, Any]], dict[str, Any]]:
+    """Build a host runtime dispatcher for ``sdk.model_assets`` plugin calls."""
+
+    def dispatch(command: dict[str, Any]) -> dict[str, Any]:
+        action = str(command.get("action") or "").strip()
+        raw_repo = str(command.get("repoId") or "").strip()
+        raw_asset = str(command.get("assetId") or "").strip()
+        request = ModelAssetRequest(
+            asset_id=raw_asset,
+            configured=bool(command.get("configured", False)),
+            variant=command.get("variant"),
+            repo_id=raw_repo if raw_repo else None,
+            revision=str(command.get("revision") or "").strip(),
+            title=str(command.get("title") or "").strip(),
+            allow_patterns=tuple(command.get("allowPatterns") or ()),
+            required_file_groups=tuple(
+                tuple(group) for group in (command.get("requiredFileGroups") or ())
+            ),
+        )
+        configured_map = dict(get_configured_values() or {}) if get_configured_values else {}
+        if action == "status":
+            return dict(
+                inspect_model(
+                    request,
+                    configured_values=configured_map,
+                    registry=registry,
+                )
+            )
+        if action == "download":
+            spec = resolve_model_asset(
+                request,
+                configured_values=configured_map,
+                registry=registry,
+            )
+            on_progress = command.get("onProgress")
+            progress_cb = on_progress if callable(on_progress) else (lambda **_changes: None)
+            token = str(get_token() or "").strip() if get_token is not None else ""
+            return dict(
+                download_model(
+                    spec,
+                    update_task=progress_cb,
+                    token=token,
+                )
+            )
+        raise ValueError(f"Unsupported plugin model-assets action: {action or '<empty>'}")
+
+    return dispatch
+
+
+__all__ = [
+    "MODEL_ASSET_REGISTRY",
+    "ModelAssetDefinition",
+    "ModelAssetRegistry",
+    "ModelAssetRequest",
+    "PERCEPTION_VLM_MODEL_ASSET",
+    "configure_registered_model_assets",
+    "create_plugin_model_assets_dispatcher",
+    "download_model",
+    "inspect_model",
+    "resolve_model_asset",
+]
