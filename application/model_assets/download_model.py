@@ -48,6 +48,7 @@ PERCEPTION_VLM_MODEL_ASSET = ModelAssetSpec(
     repo_id=DEFAULT_PERCEPTION_MODEL,
     allow_patterns=_PERCEPTION_ALLOW_PATTERNS,
     required_file_groups=_PERCEPTION_REQUIRED_FILE_GROUPS,
+    enforce_allow_patterns=False,
 )
 _ASR_ALLOW_PATTERNS = (
     "config.json",
@@ -228,6 +229,7 @@ def _register_builtin_definitions(registry: ModelAssetRegistry) -> None:
             aliases={DEFAULT_PERCEPTION_MODEL: DEFAULT_PERCEPTION_MODEL},
             allow_patterns=_PERCEPTION_ALLOW_PATTERNS,
             required_file_groups=_PERCEPTION_REQUIRED_FILE_GROUPS,
+            enforce_allow_patterns=False,
             allow_configured=True,
             configured_key=_PERCEPTION_VLM_ASSET_ID,
             allow_custom_configured_repo=True,
@@ -250,6 +252,7 @@ def _register_builtin_definitions(registry: ModelAssetRegistry) -> None:
             aliases=_ASR_MODEL_REPOS,
             allow_patterns=_ASR_ALLOW_PATTERNS,
             required_file_groups=_ASR_REQUIRED_FILE_GROUPS,
+            enforce_allow_patterns=False,
             allow_configured=True,
             configured_key=_ASR_FASTER_WHISPER_ASSET_ID,
             allow_custom_configured_repo=True,
@@ -337,6 +340,7 @@ def _resolve_direct_repo_definition(
         allow_patterns=allow_patterns,
         required_file_groups=required_file_groups,
         snapshot_validator=definition.snapshot_validator,
+        enforce_allow_patterns=definition.enforce_allow_patterns,
     )
 
 
@@ -398,6 +402,7 @@ def _resolve_definition(
                 allow_patterns=definition.allow_patterns,
                 required_file_groups=definition.required_file_groups,
                 snapshot_validator=definition.snapshot_validator,
+                enforce_allow_patterns=definition.enforce_allow_patterns,
             )
         if _is_huggingface_repo_id(request_variant):
             raise ValueError(
@@ -440,6 +445,7 @@ def _resolve_definition(
             allow_patterns=definition.allow_patterns,
             required_file_groups=definition.required_file_groups,
             snapshot_validator=definition.snapshot_validator,
+            enforce_allow_patterns=definition.enforce_allow_patterns,
         )
 
     local_path: Path | None = None
@@ -461,6 +467,7 @@ def _resolve_definition(
             local_path=local_path,
             required_file_groups=definition.required_file_groups,
             snapshot_validator=definition.snapshot_validator,
+            enforce_allow_patterns=definition.enforce_allow_patterns,
         )
 
     if definition.allow_custom_configured_repo and _is_huggingface_repo_id(variant):
@@ -473,6 +480,7 @@ def _resolve_definition(
             allow_patterns=definition.allow_patterns,
             required_file_groups=definition.required_file_groups,
             snapshot_validator=definition.snapshot_validator,
+            enforce_allow_patterns=definition.enforce_allow_patterns,
         )
 
     configured_error = definition.unsupported_configured_message

@@ -242,6 +242,17 @@ def _machine_expected_pytorch_build() -> str:
     return pytorch_index_build(index_url)
 
 
+def _all_bundle_requirement_specs(spec: RuntimeDependencySpec) -> tuple[str, ...]:
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for raw in (*spec.package_specs, *spec.pytorch_specs):
+        item = str(raw or "").strip()
+        if item and item not in seen:
+            seen.add(item)
+            ordered.append(item)
+    return tuple(ordered)
+
+
 def _spec_dependency_issues(
     spec: RuntimeDependencySpec,
     *,
@@ -251,7 +262,7 @@ def _spec_dependency_issues(
     versions: Mapping[str, str] | None = installed_versions
     if versions is None and python_exe is not None:
         versions = installed_versions_for_python(python_exe)
-    issues = list(unsatisfied_requirements(spec.package_specs, versions))
+    issues = list(unsatisfied_requirements(_all_bundle_requirement_specs(spec), versions))
     if spec.pytorch_specs and python_exe is not None and sys.platform != "darwin":
         version_map = dict(versions) if versions is not None else {}
         missing_names = {canonical_distribution_name(issue.name) for issue in issues}
@@ -577,11 +588,12 @@ def _execute_staged_dependency_spec(
                             _fail(detail2, code2)
                     versions = installed_versions_for_python(target_py)
 
+        all_specs = _all_bundle_requirement_specs(spec)
         pytorch_spec_set = set(spec.pytorch_specs)
         other_check_specs = (
-            spec.package_specs
+            all_specs
             if sys.platform == "darwin" or not pytorch_spec_set
-            else tuple(item for item in spec.package_specs if item not in pytorch_spec_set)
+            else tuple(item for item in all_specs if item not in pytorch_spec_set)
         )
         missing_other = unsatisfied_requirements(other_check_specs, versions)
         install_specs = tuple(

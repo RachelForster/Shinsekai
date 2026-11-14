@@ -752,4 +752,23 @@ def test_direct_model_download_checks_requested_scope_against_partial_cache(
     assert preload_calls[0][1]["allow_patterns"] == ["weights.bin"]
     assert model_assets.inspect_model(full_repo_req)["cached"] is True
 
+    # Reset back to config.json only and verify simultaneous allow_patterns + required_file_groups.
+    (snapshot / "weights.bin").unlink()
+    combined_req = ModelAssetRequest(
+        repo_id="owner/demo",
+        allow_patterns=("config.json", "weights.bin"),
+        required_file_groups=(("config.json",),),
+    )
+    assert model_assets.inspect_model(combined_req)["cached"] is False
+
+    combined_spec = model_assets.resolve_model_asset(combined_req)
+    combined_downloaded = model_assets.download_model(
+        combined_spec,
+        update_task=lambda **_changes: None,
+    )
+    assert combined_downloaded["cached"] is True
+    assert combined_downloaded["downloaded"] is True
+    assert len(preload_calls) == 2
+    assert preload_calls[1][1]["allow_patterns"] == ["config.json", "weights.bin"]
+
 

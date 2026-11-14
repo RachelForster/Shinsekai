@@ -14,7 +14,7 @@ class RuntimeDependencySpec:
     """Declarative specification for checking and installing a Python runtime bundle."""
 
     key: str
-    package_specs: tuple[str, ...]
+    package_specs: tuple[str, ...] = ()
     pytorch_specs: tuple[str, ...] = ()
     pin_installed_torch: bool = False
     install_only_unsatisfied: bool = False
@@ -32,11 +32,11 @@ class RuntimeDependencySpec:
         cleaned_specs = tuple(
             str(item).strip() for item in self.package_specs if str(item).strip()
         )
-        if not cleaned_specs:
-            raise ValueError("RuntimeDependencySpec.package_specs must not be empty")
         cleaned_torch = tuple(
             str(item).strip() for item in self.pytorch_specs if str(item).strip()
         )
+        if not cleaned_specs and not cleaned_torch:
+            raise ValueError("RuntimeDependencySpec.package_specs must not be empty")
         if (
             self.target_python is not None
             and not isinstance(self.target_python, (str, Path))

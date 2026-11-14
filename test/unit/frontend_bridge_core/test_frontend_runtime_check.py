@@ -1163,3 +1163,99 @@ def test_custom_bundle_defaults_to_chat_interpreter_instead_of_perception_python
     assert Path(perception_result["pythonPath"]) == perception_py.resolve()
 
 
+def test_pytorch_specs_only_requirement_is_enforced_in_checks_and_post_install(
+    tmp_path, monkeypatch
+):
+    from application.runtime import dependencies as runtime_dependencies
+    from application.runtime.dependency_registry import (
+        RuntimeDependencyRegistry,
+        RuntimeDependencySpec,
+    )
+
+    exe_name = "python.exe" if os.name == "nt" else "python3"
+    target_py = tmp_path / "torch_bundle_env" / exe_name
+    target_py.parent.mkdir(parents=True, exist_ok=True)
+    target_py.write_bytes(b"fake-python")
+
+    registry = RuntimeDependencyRegistry()
+    runtime_dependencies._register_builtin_runtime_dependencies(registry)
+    registry.register(
+        RuntimeDependencySpec(
+            key="pytorch_only_declared_in_pytorch_specs",
+            package_specs=("pillow>=10.0",),
+            pytorch_specs=("torch>=2.7",),
+            install_only_unsatisfied=True,
+        )
+    )
+    registry.register(
+        RuntimeDependencySpec(
+            key="pure_pytorch_specs_bundle",
+            pytorch_specs=("torch>=2.7",),
+        )
+    )
+
+    monkeypatch.setattr(runtime_dependencies, "_machine_expected_pytorch_build", lambda: "cpu")
+
+    # 1. Dependency issue checks must surface missing/older torch even when only declared in pytorch_specs.
+    issues_missing = runtime_dependencies.runtime_dependency_issues(
+        "pytorch_only_declared_in_pytorch_specs",
+        installed_versions={"pillow": "11.0.0"},
+        python_exe=target_py,
+        registry=registry,
+    )
+    assert [item.requirement for item in issues_missing] == ["torch>=2.7"]
+
+    pure_issues = runtime_dependencies.runtime_dependency_issues(
+        "pure_pytorch_specs_bundle",
+        installed_versions={},
+        python_exe=target_py,
+        registry=registry,
+    )
+    assert [item.requirement for item in pure_issues] == ["torch>=2.7"]
+
+    # 2. Simulated installation leaving target environment without torch must NOT return pipCode=0.
+    env_versions: dict[str, str] = {"pillow": "11.0.0"}
+    pip_calls: list[list[str]] = []
+
+    def fake_noop_pip(cmd, *, cwd, timeout_sec, detail_max=1600, on_output_line=None):
+        pip_calls.append(cmd)
+        return ("pip_ok", "")
+
+    monkeypatch.setattr(
+        runtime_dependencies,
+        "installed_versions_for_python",
+        lambda _py: dict(env_versions),
+    )
+    monkeypatch.setattr(runtime_dependencies, "_run_pip_install", fake_noop_pip)
+
+    with pytest.raises(RuntimeError, match=r"torch>=2\.7"):
+        runtime_dependencies.install_runtime_dependency(
+            "pytorch_only_declared_in_pytorch_specs",
+            python_path=str(target_py),
+            registry=registry,
+        )
+    assert len(pip_calls) == 1
+
+    with pytest.raises(RuntimeError, match=r"torch>=2\.7"):
+        runtime_dependencies.install_runtime_dependency(
+            "pure_pytorch_specs_bundle",
+            python_path=str(target_py),
+            registry=registry,
+        )
+
+    # 3. Once pip actually installs a satisfying torch into the target interpreter, installation succeeds.
+    def fake_working_pip(cmd, *, cwd, timeout_sec, detail_max=1600, on_output_line=None):
+        pip_calls.append(cmd)
+        env_versions["torch"] = "2.7.1+cu128"
+        return ("pip_ok", "")
+
+    monkeypatch.setattr(runtime_dependencies, "_run_pip_install", fake_working_pip)
+    ok_result = runtime_dependencies.install_runtime_dependency(
+        "pytorch_only_declared_in_pytorch_specs",
+        python_path=str(target_py),
+        registry=registry,
+    )
+    assert ok_result["pipCode"] == 0
+    assert Path(ok_result["pythonPath"]) == target_py.resolve()
+
+

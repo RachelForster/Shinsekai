@@ -317,6 +317,7 @@ def inspect_perception_setup(
                     repo_id=clean_model,
                     allow_patterns=_PERCEPTION_ALLOW_PATTERNS,
                     required_file_groups=_PERCEPTION_REQUIRED_FILE_GROUPS,
+                    enforce_allow_patterns=False,
                 )
             elif _looks_like_local_model_reference(clean_model):
                 downloadable = False

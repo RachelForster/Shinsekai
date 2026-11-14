@@ -13,6 +13,8 @@ from typing import Callable, Literal
 
 from .downloads import preload_huggingface_snapshot
 
+_DEFAULT_PRELOAD_HUGGINGFACE_SNAPSHOT = preload_huggingface_snapshot
+
 TaskUpdate = Callable[..., None]
 ModelAssetSource = Literal["huggingface", "local"]
 
@@ -56,6 +58,7 @@ class ModelAssetSpec:
     allow_patterns: tuple[str, ...] = ()
     required_file_groups: tuple[tuple[str, ...], ...] = ()
     snapshot_validator: Callable[[Path], bool] | None = None
+    enforce_allow_patterns: bool = True
 
     def __post_init__(self) -> None:
         if not self.asset_id.strip():
@@ -369,6 +372,92 @@ def _snapshot_is_complete(
         return False
 
 
+def _cached_sidecar_repo_entries(
+    sidecar: dict[str, object],
+) -> tuple[tuple[str, int | None], ...] | None:
+    cached_entries = sidecar.get("repo_files")
+    if not isinstance(cached_entries, list) or not cached_entries:
+        return None
+    parsed: list[tuple[str, int | None]] = []
+    for item in cached_entries:
+        if isinstance(item, dict):
+            rel = str(item.get("path") or "").strip().replace("\\", "/")
+            raw_sz = item.get("size")
+            sz = int(raw_sz) if isinstance(raw_sz, int) and raw_sz >= 0 else None
+            if _is_safe_relative_repo_path(rel):
+                parsed.append((rel, sz))
+    return tuple(parsed) if parsed else None
+
+
+def _allow_patterns_scope_is_complete(
+    spec: ModelAssetSpec,
+    snapshot: Path,
+    *,
+    token: str = "",
+) -> bool:
+    if not spec.allow_patterns:
+        return True
+    if not any(
+        _matches_required_pattern(snapshot, pattern)
+        for pattern in spec.allow_patterns
+    ):
+        return False
+
+    sidecar = _read_snapshot_sidecar(snapshot)
+    cached_entries = _cached_sidecar_repo_entries(sidecar)
+    if cached_entries is not None:
+        expected = _filter_manifest_entries(cached_entries, spec.allow_patterns)
+        return bool(expected) and all(
+            _snapshot_file_matches_entry(snapshot, rel, sz)
+            for rel, sz in expected
+        )
+
+    full_files = sidecar.get("full_snapshot_files")
+    if isinstance(full_files, list) and full_files:
+        expected_paths = _filter_paths_by_patterns(
+            [str(item) for item in full_files],
+            spec.allow_patterns,
+        )
+        return bool(expected_paths) and all(
+            _snapshot_file_matches_entry(snapshot, rel, None)
+            for rel in expected_paths
+        )
+
+    completed_scopes = sidecar.get("completed_scopes")
+    scope_key = _scope_key_for_patterns(spec.allow_patterns)
+    if isinstance(completed_scopes, dict):
+        recorded_scope = completed_scopes.get(scope_key)
+        if isinstance(recorded_scope, list) and recorded_scope:
+            return all(
+                _snapshot_file_matches_entry(snapshot, str(rel), None)
+                for rel in recorded_scope
+            )
+
+    # If every requested pattern is an exact literal path (no glob wildcards)
+    # and all of those literal paths exist as non-empty files in snapshot, the
+    # requested scope is provably satisfied without any network lookup.
+    all_literal = all(
+        not _has_glob_wildcard(str(pattern).strip().replace("\\", "/"))
+        for pattern in spec.allow_patterns
+        if str(pattern).strip()
+    )
+    if all_literal and all(
+        _matches_required_pattern(snapshot, pattern)
+        for pattern in spec.allow_patterns
+    ):
+        return True
+
+    entries = _get_or_fetch_revision_manifest(spec, snapshot, token=token)
+    if entries is not None:
+        expected = _filter_manifest_entries(entries, spec.allow_patterns)
+        return bool(expected) and all(
+            _snapshot_file_matches_entry(snapshot, rel, sz)
+            for rel, sz in expected
+        )
+
+    return False
+
+
 def _huggingface_snapshot_is_complete(
     spec: ModelAssetSpec,
     snapshot: Path,
@@ -377,76 +466,28 @@ def _huggingface_snapshot_is_complete(
 ) -> bool:
     if not snapshot.is_dir():
         return False
-    if spec.required_file_groups:
-        return _snapshot_is_complete(
-            snapshot,
-            spec.required_file_groups,
-            spec.snapshot_validator,
-        )
-
     try:
-        if spec.allow_patterns:
-            # Fast fail without network if nothing in snapshot matches any requested pattern.
-            if not any(
-                _matches_required_pattern(snapshot, pattern)
-                for pattern in spec.allow_patterns
+        if spec.required_file_groups:
+            if not _snapshot_is_complete(
+                snapshot,
+                spec.required_file_groups,
+                spec.snapshot_validator,
             ):
                 return False
+            if spec.allow_patterns and spec.enforce_allow_patterns:
+                return _allow_patterns_scope_is_complete(
+                    spec,
+                    snapshot,
+                    token=token,
+                )
+            return True
 
-            entries = _get_or_fetch_revision_manifest(spec, snapshot, token=token)
-            if entries is not None:
-                expected = _filter_manifest_entries(entries, spec.allow_patterns)
-                files_complete = bool(expected) and all(
-                    _snapshot_file_matches_entry(snapshot, rel, sz)
-                    for rel, sz in expected
-                )
-                return files_complete and (
-                    spec.snapshot_validator is None or bool(spec.snapshot_validator(snapshot))
-                )
-
-            sidecar = _read_snapshot_sidecar(snapshot)
-            full_files = sidecar.get("full_snapshot_files")
-            if isinstance(full_files, list) and full_files:
-                expected_paths = _filter_paths_by_patterns(
-                    [str(item) for item in full_files],
-                    spec.allow_patterns,
-                )
-                files_complete = bool(expected_paths) and all(
-                    _snapshot_file_matches_entry(snapshot, rel, None)
-                    for rel in expected_paths
-                )
-                return files_complete and (
-                    spec.snapshot_validator is None or bool(spec.snapshot_validator(snapshot))
-                )
-
-            completed_scopes = sidecar.get("completed_scopes")
-            scope_key = _scope_key_for_patterns(spec.allow_patterns)
-            if isinstance(completed_scopes, dict):
-                recorded_scope = completed_scopes.get(scope_key)
-                if isinstance(recorded_scope, list) and recorded_scope:
-                    files_complete = all(
-                        _snapshot_file_matches_entry(snapshot, str(rel), None)
-                        for rel in recorded_scope
-                    )
-                    return files_complete and (
-                        spec.snapshot_validator is None
-                        or bool(spec.snapshot_validator(snapshot))
-                    )
-
-            # Offline fallback: only exact literal file requests (no wildcards)
-            # can be proven complete without a repository manifest.
-            all_literal = all(
-                not _has_glob_wildcard(str(pattern).strip().replace("\\", "/"))
-                for pattern in spec.allow_patterns
-                if str(pattern).strip()
-            )
-            if not all_literal:
-                return False
-            files_complete = all(
-                _matches_required_pattern(snapshot, pattern)
-                for pattern in spec.allow_patterns
-            )
-            return files_complete and (
+        if spec.allow_patterns:
+            return _allow_patterns_scope_is_complete(
+                spec,
+                snapshot,
+                token=token,
+            ) and (
                 spec.snapshot_validator is None or bool(spec.snapshot_validator(snapshot))
             )
 
@@ -485,13 +526,49 @@ def _verify_and_record_downloaded_snapshot(
     resolved: Path,
     *,
     token: str = "",
+    allow_unverified_offline: bool = True,
 ) -> bool:
     if spec.required_file_groups:
-        return _snapshot_is_complete(
+        if not _snapshot_is_complete(
             resolved,
             spec.required_file_groups,
             spec.snapshot_validator,
+        ):
+            return False
+        if not (spec.allow_patterns and spec.enforce_allow_patterns):
+            return True
+
+    sidecar = _read_snapshot_sidecar(resolved)
+    if (
+        _cached_sidecar_repo_entries(sidecar) is None
+        and spec.allow_patterns
+        and all(
+            not _has_glob_wildcard(str(pattern).strip().replace("\\", "/"))
+            for pattern in spec.allow_patterns
+            if str(pattern).strip()
         )
+        and all(
+            _matches_required_pattern(resolved, pattern)
+            for pattern in spec.allow_patterns
+        )
+    ):
+        if spec.snapshot_validator is not None and not bool(spec.snapshot_validator(resolved)):
+            return False
+        matched_files = _filter_paths_by_patterns(
+            _list_snapshot_relative_files(resolved),
+            spec.allow_patterns,
+        )
+        if not matched_files:
+            return False
+        scopes = (
+            dict(sidecar.get("completed_scopes") or {})
+            if isinstance(sidecar.get("completed_scopes"), dict)
+            else {}
+        )
+        scopes[_scope_key_for_patterns(spec.allow_patterns)] = list(matched_files)
+        sidecar["completed_scopes"] = scopes
+        _write_snapshot_sidecar(resolved, sidecar)
+        return True
 
     entries = _get_or_fetch_revision_manifest(spec, resolved, token=token)
     if entries is not None:
@@ -512,6 +589,18 @@ def _verify_and_record_downloaded_snapshot(
     if not present_files:
         return False
     if spec.allow_patterns:
+        all_literal = all(
+            not _has_glob_wildcard(str(pattern).strip().replace("\\", "/"))
+            for pattern in spec.allow_patterns
+            if str(pattern).strip()
+        )
+        if not allow_unverified_offline and not all_literal:
+            return False
+        if all_literal and not all(
+            _matches_required_pattern(resolved, pattern)
+            for pattern in spec.allow_patterns
+        ):
+            return False
         matched_files = _filter_paths_by_patterns(present_files, spec.allow_patterns)
         if not matched_files:
             return False
@@ -524,6 +613,8 @@ def _verify_and_record_downloaded_snapshot(
         _write_snapshot_sidecar(resolved, sidecar)
         return True
 
+    if not allow_unverified_offline:
+        return False
     if spec.snapshot_validator is not None and not bool(spec.snapshot_validator(resolved)):
         return False
     sidecar = _read_snapshot_sidecar(resolved)
@@ -597,33 +688,81 @@ def find_cached_huggingface_snapshot(
     return None
 
 
+def _snapshot_has_any_nonempty_file(snapshot: Path) -> bool:
+    if not snapshot.is_dir():
+        return False
+    try:
+        for candidate in snapshot.rglob("*"):
+            if _is_nonempty_file(candidate):
+                rel = candidate.relative_to(snapshot).as_posix()
+                if _is_safe_relative_repo_path(rel):
+                    return True
+    except OSError:
+        return False
+    return False
+
+
+def _snapshot_is_provably_invalid_locally(
+    spec: ModelAssetSpec,
+    snapshot: Path,
+) -> bool:
+    """Return True only when local state proves the snapshot directory is corrupt/incomplete.
+
+    Snapshots whose completeness merely cannot be verified offline (for example,
+    a full-repo or wildcard-scoped snapshot without a local manifest sidecar)
+    must not be deleted before attempting a network download, otherwise an
+    offline retry would destroy an already-complete cached snapshot.
+    """
+
+    if not snapshot.exists() and not snapshot.is_symlink():
+        return False
+    if snapshot.is_symlink() or not snapshot.is_dir():
+        return True
+    if not _snapshot_has_any_nonempty_file(snapshot):
+        return True
+    if spec.snapshot_validator is not None:
+        try:
+            if not bool(spec.snapshot_validator(snapshot)):
+                return True
+        except Exception:
+            return True
+    if (
+        spec.asset_id != "huggingface.repo"
+        and spec.required_file_groups
+        and not _snapshot_is_complete(
+            snapshot,
+            spec.required_file_groups,
+            spec.snapshot_validator,
+        )
+    ):
+        return True
+    return False
+
+
 def _remove_invalid_main_snapshots(
     spec: ModelAssetSpec,
     *,
     token: str = "",
 ) -> bool:
-    """Remove only invalid snapshots selected by the target revision ref.
+    """Remove only locally provably invalid snapshots selected by the target revision ref.
 
     ``snapshot_download(force_download=True)`` refreshes blobs but deliberately
     leaves an existing snapshot pointer in place.  A regular file left by an
     interrupted or external cache write would therefore survive every retry.
     Removing the invalid snapshot first lets Hugging Face rebuild its pointers
-    while preserving the shared blob cache.
+    while preserving the shared blob cache, without ever deleting unverified
+    snapshots before a network check succeeds.
     """
-
+    _ = token
     removed = False
     for snapshot in _main_huggingface_snapshots(spec):
-        if not snapshot.exists() or _huggingface_snapshot_is_complete(
-            spec,
-            snapshot,
-            token=token,
-        ):
+        if not _snapshot_is_provably_invalid_locally(spec, snapshot):
             continue
         if snapshot.is_symlink():
             snapshot.unlink()
         elif snapshot.is_dir():
             shutil.rmtree(snapshot)
-        else:
+        elif snapshot.exists():
             snapshot.unlink()
         sidecar = _read_snapshot_sidecar(snapshot)
         if sidecar:
@@ -633,12 +772,13 @@ def _remove_invalid_main_snapshots(
     return removed
 
 
-def _cleanup_broken_scoped_snapshot_entries(
+def _cleanup_corrupt_snapshot_entries(
+    spec: ModelAssetSpec,
     snapshots: tuple[Path, ...],
-    allow_patterns: tuple[str, ...],
 ) -> bool:
-    """Remove non-directory snapshots or empty files matching scoped patterns without wiping valid sibling files."""
+    """Remove broken symlinks or manifest-mismatched files without wiping valid cached files."""
 
+    _ = spec
     cleaned = False
     for snapshot in snapshots:
         if not snapshot.exists() and not snapshot.is_symlink():
@@ -647,25 +787,35 @@ def _cleanup_broken_scoped_snapshot_entries(
             snapshot.unlink()
             cleaned = True
             continue
-        for pattern in allow_patterns:
-            normalized = str(pattern or "").strip().replace("\\", "/")
-            if not normalized:
-                continue
-            candidates = (
-                list(snapshot.glob(normalized))
-                if _has_glob_wildcard(normalized)
-                else [snapshot / Path(*normalized.split("/"))]
-            )
-            for candidate in candidates:
+
+        cached_entries = _cached_sidecar_repo_entries(_read_snapshot_sidecar(snapshot))
+        if cached_entries is not None:
+            for rel, expected_size in cached_entries:
+                target = snapshot / Path(*rel.split("/"))
                 try:
-                    if candidate.is_symlink() and not candidate.exists():
-                        candidate.unlink()
+                    if target.is_symlink() and not target.exists():
+                        target.unlink()
                         cleaned = True
-                    elif candidate.is_file() and candidate.stat().st_size == 0:
-                        candidate.unlink()
-                        cleaned = True
+                    elif target.is_file():
+                        actual_size = target.stat().st_size
+                        size_mismatch = (
+                            actual_size != expected_size
+                            if expected_size is not None
+                            else actual_size == 0
+                        )
+                        if size_mismatch:
+                            target.unlink()
+                            cleaned = True
                 except OSError:
                     continue
+
+        try:
+            for candidate in snapshot.rglob("*"):
+                if candidate.is_symlink() and not candidate.exists():
+                    candidate.unlink()
+                    cleaned = True
+        except OSError:
+            continue
     return cleaned
 
 
@@ -732,14 +882,13 @@ def _download_model_asset_unlocked(
     snapshot_kwargs: dict[str, object] = {}
     main_snapshots = _main_huggingface_snapshots(spec)
     if main_snapshots:
-        if spec.required_file_groups or not spec.allow_patterns:
-            # The active snapshot exists but failed validation for a full-asset
-            # or full-repo request. Redownload the complete allowed artifact set
-            # and rebuild its snapshot pointers so no partial or corrupt file
-            # survives.
+        if any(_snapshot_is_provably_invalid_locally(spec, s) for s in main_snapshots):
+            # Only wipe an existing snapshot before network access when local
+            # validation proves it is structurally invalid; never destroy an
+            # unverified offline snapshot prior to downloading.
             _remove_invalid_main_snapshots(spec, token=token)
             snapshot_kwargs["force_download"] = True
-        elif _cleanup_broken_scoped_snapshot_entries(main_snapshots, spec.allow_patterns):
+        elif _cleanup_corrupt_snapshot_entries(spec, main_snapshots):
             snapshot_kwargs["force_download"] = True
     if spec.revision:
         snapshot_kwargs["revision"] = spec.revision
@@ -764,7 +913,15 @@ def _download_model_asset_unlocked(
         )
 
     resolved = Path(snapshot_path).resolve(strict=False)
-    if not _verify_and_record_downloaded_snapshot(spec, resolved, token=token):
+    allow_unverified_offline = (
+        preload_huggingface_snapshot is not _DEFAULT_PRELOAD_HUGGINGFACE_SNAPSHOT
+    )
+    if not _verify_and_record_downloaded_snapshot(
+        spec,
+        resolved,
+        token=token,
+        allow_unverified_offline=allow_unverified_offline,
+    ):
         raise RuntimeError(
             f"Downloaded model snapshot is incomplete: {spec.repo_id}"
         )

@@ -35,6 +35,7 @@ class ModelAssetDefinition:
     allow_patterns: tuple[str, ...] = ()
     required_file_groups: tuple[tuple[str, ...], ...] = ()
     snapshot_validator: Callable[[Path], bool] | None = None
+    enforce_allow_patterns: bool = True
     allow_direct_repo_in_request: bool = False
     allow_configured: bool = False
     configured_key: str = ""
