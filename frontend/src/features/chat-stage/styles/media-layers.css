@@ -1,5 +1,5 @@
 .chat-stage__layer--hidden {
-  display: none;
+  display: none !important;
 }
 
 .chat-stage__background,
