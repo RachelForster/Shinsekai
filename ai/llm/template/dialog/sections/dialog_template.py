@@ -9,11 +9,12 @@ from .character import CharacterSection
 from .json_schema import JsonSchemaSection
 from .player import PlayerSection
 from .requirements import RequirementsSection
+from .relation import RelationSection
 
 
 @dataclass(frozen=True)
 class DialogTemplateSection(Section[DialogTemplateContext]):
-    """Render the preamble and four directly owned domain sections."""
+    """Render the preamble and directly owned domain sections."""
 
     id: str = "dialog.system"
     children: tuple[Section[DialogTemplateContext], ...] = field(
@@ -21,6 +22,7 @@ class DialogTemplateSection(Section[DialogTemplateContext]):
             JsonSchemaSection(priority=10),
             CharacterSection(priority=20),
             PlayerSection(priority=25),
+            RelationSection(priority=27),
             BackgroundSection(priority=30),
             RequirementsSection(priority=40),
         )

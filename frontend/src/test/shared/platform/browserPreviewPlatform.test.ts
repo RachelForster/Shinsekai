@@ -1081,3 +1081,39 @@ it("deletes image rows in preview without shifting tags across blank lines", asy
     vi.useRealTimers();
   }
 });
+
+it("preserves updated relations when saving an outdated character draft", async () => {
+  const platform = createBrowserPreviewPlatform();
+  const original = (await platform.characters.list())[0];
+  const stale = structuredClone(original);
+  const graph = await platform.characterRelation.applyRelationChanges(original.name, [
+    { op: "add_node", node: { key: "Local" } },
+    { op: "upsert_edge", edge: { source: original.name, target: "Local", temperature: 6, content: "Friend" } },
+    { op: "upsert_edge", edge: { source: "Local", target: original.name, temperature: 2, content: "Friend" } },
+  ]);
+  const character = (await platform.characters.list()).find((item) => item.name === original.name)!;
+  expect(character.relation_graph).toEqual({ nodes: graph.nodes, edges: graph.edges });
+  expect(character.relation_graph).not.toHaveProperty("owner");
+  const saved = await platform.characters.save({ ...stale, name: `${original.name} renamed` }, original.name);
+  const renamed = await platform.characterRelation.getRelationGraph(saved.name);
+  expect(renamed.owner).toBe(saved.name);
+  expect(renamed.nodes).toEqual([{ key: saved.name }, { key: "Local" }]);
+  expect(renamed.edges).toEqual([
+    { source: saved.name, target: "Local", temperature: 6, content: "Friend" },
+    { source: "Local", target: saved.name, temperature: 2, content: "Friend" },
+  ]);
+  expect(saved.relation_graph).toEqual({ nodes: renamed.nodes, edges: renamed.edges });
+});
+
+it("rejects a rename that collides with a relation node without changing the character", async () => {
+  const platform = createBrowserPreviewPlatform();
+  const original = (await platform.characters.list())[0];
+  const graph = await platform.characterRelation.applyRelationChanges(original.name, [
+    { op: "add_node", node: { key: "Local" } },
+  ]);
+  await expect(platform.characters.save({ ...original, name: "local" }, original.name)).rejects.toThrow(
+    "Node keys must be unique",
+  );
+  expect(await platform.characterRelation.getRelationGraph(original.name)).toEqual(graph);
+  expect((await platform.characters.list()).some((item) => item.name === "local")).toBe(false);
+});

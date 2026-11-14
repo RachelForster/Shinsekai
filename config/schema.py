@@ -1,6 +1,6 @@
 from collections.abc import Mapping
 
-from pydantic import BaseModel, Field, HttpUrl, FilePath, BeforeValidator, field_validator, model_validator
+from pydantic import ConfigDict, BaseModel, Field, HttpUrl, FilePath, BeforeValidator, field_validator, model_validator
 from pydantic_core import PydanticUseDefault
 from typing import List, Dict, Optional, Union, Any, Annotated, TypeVar, Literal
 from config.feature_flags import FeatureFlagConfigManager
@@ -39,6 +39,54 @@ def clamp_compact_target_ratio(compact_threshold: float, compact_target_ratio: f
         return compact_target_ratio
     max_target = max(0.0, threshold - COMPACT_TARGET_RATIO_MIN_GAP)
     return round(min(target, max_target), 6)
+
+class RelationNode(BaseModel):
+    """角色关系图谱的节点"""
+    model_config = ConfigDict(extra="forbid")
+    key: str = Field(..., min_length=1, max_length=200, description="人物名称及图谱节点标识")
+
+    @model_validator(mode="after")
+    def validate_relation_node(self):
+        if not self.key.strip() or self.key != self.key.strip():
+            raise ValueError("Node key must be non-empty and trimmed")
+        return self
+
+
+class RelationEdge(BaseModel):
+    """角色关系图谱的有向边"""
+    model_config = ConfigDict(extra="forbid")
+    source: str = Field(..., description="起点节点标识")
+    target: str = Field(..., description="终点节点标识")
+    temperature: DefaultIfNone[int] = Field(default=0, ge=-10, le=10, description="关系温度")
+    content: DefaultIfNone[str] = Field(default="", max_length=100, description="关系描述")
+
+    @model_validator(mode="after")
+    def validate_relation_content(self):
+        if self.content and not self.content.strip():
+            raise ValueError("Relationship content must not be blank")
+        return self
+
+
+class RelationGraph(BaseModel):
+    """所属角色的独立关系图谱"""
+    model_config = ConfigDict(extra="forbid")
+    nodes: DefaultIfNone[List[RelationNode]] = Field(default_factory=list, max_length=100, description="关系节点列表")
+    edges: DefaultIfNone[List[RelationEdge]] = Field(default_factory=list, max_length=156, description="有向关系列表")
+
+    @model_validator(mode="after")
+    def validate_relation_graph(self):
+        keys = [n.key for n in self.nodes]
+        if len({k.strip().lower() for k in keys}) != len(keys):
+            raise ValueError("Node keys must be unique")
+        pairs = set()
+        for edge in self.edges:
+            pair = (edge.source, edge.target)
+            if edge.source not in keys or edge.target not in keys or edge.source == edge.target:
+                raise ValueError("Edge endpoints must be distinct existing nodes")
+            if pair in pairs:
+                raise ValueError("Duplicate directed edge")
+            pairs.add(pair)
+        return self
 
 
 # Character Config Models
@@ -91,6 +139,7 @@ class Character(BaseModel):
         default="",
         description="用于次要角色精简提示词的角色简介",
     )
+    relation_graph: DefaultIfNone[RelationGraph] = Field(default_factory=RelationGraph, description="角色独立的关系图谱")
     character_setting: DefaultIfNone[str] = Field(default="", description="角色背景、性格和语言习惯的详细描述")
     sprite_scale: DefaultIfNone[float] = Field(default=1.0, description="立绘的缩放比例 (默认值 1.0)")
     portrait_crop: DefaultIfNone[PortraitCrop] = Field(default_factory=PortraitCrop)

@@ -5,7 +5,9 @@ import re
 from uuid import uuid4
 from pathlib import Path
 from typing import List, Dict, Any, Tuple, Optional, Union
-from config.schema import Character, ModelSprites, Sprite, SpriteTransition
+from copy import deepcopy
+from collections.abc import Mapping
+from config.schema import Character, ModelSprites, Sprite, SpriteTransition, RelationGraph
 from config.config_manager import ConfigManager
 from config.sprite_files import sprite_field, sprite_fingerprint
 from config.sprite_mouth import read_manifest
@@ -157,7 +159,8 @@ class CharacterManager:
                      avatar_type: Optional[str] = None,
                      avatars: Optional[Dict[str, Union[ModelSprites, dict]]] = None,
                      portrait_crop=None,
-                     sprite_portrait_crops: Optional[dict[int, object]] = None) -> Tuple[str, List[str]]:
+                     sprite_portrait_crops: Optional[dict[int, object]] = None,
+                     relation_graph: Optional[Union[RelationGraph, dict]] = None) -> Tuple[str, List[str]]:
         """
         添加或更新角色配置。
 
@@ -205,6 +208,7 @@ class CharacterManager:
                 taken = self._config_manager.get_character_by_name(name)
                 if taken is not None and taken is not target:
                     return f"名称「{name}」已与其他角色重复！", [c.name for c in characters]
+                target.relation_graph = self._rename_relation_graph_owner(target.relation_graph, target.name, name)
                 target.name = name
                 target.color = color
                 target.sprite_prefix = sprite_prefix
@@ -262,6 +266,7 @@ class CharacterManager:
                 portrait_crop=portrait_crop,
                 avatar_type=avatar_fields.avatar_type,
                 avatars=avatar_fields.avatars,
+                relation_graph=relation_graph,
             )
             characters.append(new_character)
             self._save_characters_config()
@@ -822,3 +827,40 @@ class CharacterManager:
                  char_info_list = []
                  
             return f"加载失败: {str(e)}", char_info_list
+
+
+    @staticmethod
+    def _rename_relation_graph_owner(graph: RelationGraph, old_name: str, new_name: str) -> RelationGraph:
+        """迁移自身图谱中的名称引用。"""
+        value = graph.model_dump(mode="json")
+        for node in value["nodes"]:
+            if node["key"] == old_name:
+                node["key"] = new_name
+        for edge in value["edges"]:
+            for endpoint in ("source", "target"):
+                if edge[endpoint] == old_name:
+                    edge[endpoint] = new_name
+        return RelationGraph.model_validate(value)
+
+    @staticmethod
+    def parse_relation_graph(data: Optional[Union[RelationGraph, Mapping[str, Any]]] = None) -> RelationGraph:
+        """解析关系图谱；缺失时返回独立空图。"""
+        if isinstance(data, RelationGraph):
+            data = data.model_dump(mode="json")
+        graph = RelationGraph.model_validate(deepcopy(data) if data is not None else {})
+        return graph
+
+    def update_relation_graph(self, char_name: str, mutate) -> RelationGraph:
+        """修改并校验图谱，然后保存角色配置。"""
+        character = self._config_manager.get_character_by_name(char_name)
+        if character is None:
+            raise ValueError(f"Character not found: {char_name}")
+        graph = character.relation_graph
+        updated = self.parse_relation_graph(mutate(graph.model_dump(mode="json")))
+        character.relation_graph = updated
+        try:
+            self._save_characters_config()
+        except Exception:
+            character.relation_graph = graph
+            raise
+        return updated.model_copy(deep=True)

@@ -175,6 +175,7 @@ export const sampleConfig: AppConfig = {
       avatar_type: "static",
       avatars: {},
       name: "Nanami",
+      relation_graph: { nodes: [], edges: [] },
       color: DEFAULT_CHARACTER_COLOR,
       sprite_prefix: "nanami",
       sprites: [
