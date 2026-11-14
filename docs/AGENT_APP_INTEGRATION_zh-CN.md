@@ -69,4 +69,4 @@ python -m pytest test/unit/application/agent/test_pi_http.py -q
 
 活动测试还覆盖事件重放与去重、交错宿主与原生工具、当前动作在回复输出后保持可见、结束状态、计时、抽屉恢复及两种宽度的布局。官方 Pi 测试验证原生 read、write、edit 和 shell 的开始与结束事件经 worker、数据库与 HTTP 回传。
 
-本阶段提供应用生命周期、HTTP 和普通聊天 UI，新会话由 Pi 按需加载功能介绍、诊断、人物创建和插件开发四个 skills，见 [技能说明](AGENT_SKILLS_zh-CN.md)。桌面助手已可通过 [HTTP 工具](AGENT_BRIDGE_HTTP_TOOLS_zh-CN.md) 修改人物、默认生成并导入 10 张 H3 静态立绘、导入已有立绘、读取日志、管理插件，并调用已加载浏览器插件进行搜索、导航与读取正文；同时开启 Pi 原生文件、搜索及 shell 工具，可编写文件并调用实际可用的本机程序。媒体专用接口及角色委托仍需后续接入。升级后新建 session 使用新增工具操作、人物创建 skill `1.6.1` 和新提示快照。
+本阶段提供应用生命周期、HTTP 和普通聊天 UI，新会话由 Pi 按需加载功能介绍、诊断、人物创建和插件开发四个 skills，见 [技能说明](AGENT_SKILLS_zh-CN.md)。桌面助手已可通过 [HTTP 工具](AGENT_BRIDGE_HTTP_TOOLS_zh-CN.md) 修改人物、自动采集清洗并绑定角色语音（`characters.voice.prepare`，默认挂预训练白模直用）、默认生成并导入 10 张 H3 静态立绘、导入已有立绘、读取日志、管理插件，并按需调用已加载浏览器插件；同时开启 Pi 原生文件、搜索及 shell 工具，可编写文件并调用实际可用的本机程序。升级后新建 session 使用新增工具操作、人物创建 skill `1.7.0` 和新提示快照。

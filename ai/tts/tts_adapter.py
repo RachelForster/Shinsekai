@@ -49,6 +49,63 @@ def _wait_for_http_service_ready(
         time.sleep(min(interval, remaining))
 
 
+PRETRAINED_MODEL_CANDIDATES: tuple[tuple[str, str], ...] = (
+    (
+        "GPT_SoVITS/pretrained_models/s1v3.ckpt",
+        "GPT_SoVITS/pretrained_models/v2Pro/s2Gv2ProPlus.pth",
+    ),
+    (
+        "GPT_SoVITS/pretrained_models/s1v3.ckpt",
+        "GPT_SoVITS/pretrained_models/v2Pro/s2Gv2Pro.pth",
+    ),
+    (
+        "GPT_SoVITS/pretrained_models/s1v3.ckpt",
+        "GPT_SoVITS/pretrained_models/gsv-v4-pretrained/s2v4.pth",
+    ),
+    (
+        "GPT_SoVITS/pretrained_models/s1v3.ckpt",
+        "GPT_SoVITS/pretrained_models/s2Gv3.pth",
+    ),
+    (
+        "GPT_SoVITS/pretrained_models/gsv-v2final-pretrained/s1bert25hz-5kh-longer-epoch=12-step=369668.ckpt",
+        "GPT_SoVITS/pretrained_models/gsv-v2final-pretrained/s2G2333k.pth",
+    ),
+    (
+        "GPT_SoVITS/pretrained_models/s1bert25hz-2kh-longer-epoch=68e-step=50232.ckpt",
+        "GPT_SoVITS/pretrained_models/s2G488k.pth",
+    ),
+)
+
+
+def resolve_pretrained_base_models(work_path: str | Path | None) -> tuple[str, str]:
+    """Return installed local pretrained (gpt_ckpt, sovits_pth) paths for zero-shot fallback."""
+    raw = str(work_path or "").strip()
+    if not raw:
+        return "", ""
+    root = Path(raw)
+    if root.suffix.lower() == ".py":
+        root = root.parent
+    if not root.is_dir():
+        return "", ""
+
+    for rel_gpt, rel_sovits in PRETRAINED_MODEL_CANDIDATES:
+        gpt_file = root / rel_gpt
+        sovits_file = root / rel_sovits
+        if gpt_file.is_file() and sovits_file.is_file():
+            return gpt_file.resolve().as_posix(), sovits_file.resolve().as_posix()
+
+    found_gpt = ""
+    found_sovits = ""
+    for rel_gpt, rel_sovits in PRETRAINED_MODEL_CANDIDATES:
+        if not found_gpt and (root / rel_gpt).is_file():
+            found_gpt = (root / rel_gpt).resolve().as_posix()
+        if not found_sovits and (root / rel_sovits).is_file():
+            found_sovits = (root / rel_sovits).resolve().as_posix()
+        if found_gpt and found_sovits:
+            break
+    return found_gpt, found_sovits
+
+
 class GPTSoVitsAdapter(TTSAdapter):
     """
     Adapter for the GPT-SoVITS TTS service.
@@ -63,8 +120,8 @@ class GPTSoVitsAdapter(TTSAdapter):
         if self._is_local_server_url():
             # Loopback services must not be routed through HTTP(S)_PROXY.
             self._session.trust_env = False
-        self.sovits_model_path = ''
-        self.gpt_model_path = ''
+        self.sovits_model_path: Optional[str] = None
+        self.gpt_model_path: Optional[str] = None
         self.gpt_sovits_work_path = str(gpt_sovits_work_path or "").strip() or None
         self._server_process = None
 
@@ -224,41 +281,61 @@ class GPTSoVitsAdapter(TTSAdapter):
         """
         Switches the GPT-SoVITS models.
         `model_info` is expected to be a dictionary with 'gpt_model_path' and 'sovits_model_path'.
+        When empty on a local server with a configured `gpt_sovits_work_path`, resolves to the
+        installed pretrained base weights so zero-shot characters never inherit a previous
+        character's fine-tuned model.
         """
+        model_info = model_info or {}
+        gpt_model_path = str(model_info.get("gpt_model_path") or "").strip()
+        sovits_model_path = str(model_info.get("sovits_model_path") or "").strip()
 
-        gpt_model_path = model_info.get('gpt_model_path', '')
-        sovits_model_path = model_info.get('sovits_model_path', '')
+        if (
+            (not gpt_model_path or not sovits_model_path)
+            and self._is_local_server_url()
+            and getattr(self, "gpt_sovits_work_path", None)
+        ):
+            base_gpt, base_sovits = resolve_pretrained_base_models(self.gpt_sovits_work_path)
+            if not gpt_model_path and base_gpt:
+                gpt_model_path = base_gpt
+            if not sovits_model_path and base_sovits:
+                sovits_model_path = base_sovits
 
         if self.sovits_model_path == sovits_model_path and self.gpt_model_path == gpt_model_path:
             print("No model switch needed, current models are already set.", self.gpt_model_path, self.sovits_model_path)
             return
 
         try:
-            if gpt_model_path and gpt_model_path.endswith(".ckpt"):
-                response = self._session.get(
-                    self.tts_server_url + "set_gpt_weights",
-                    params={"weights_path": gpt_model_path},
-                    timeout=180,
-                )
-                if not response.ok:
-                    raise RuntimeError(self._response_error_text(response, "GPT weight switch"))
-                self.gpt_model_path = gpt_model_path
-                print(f"gpt model switched successfully: {gpt_model_path}")
+            if gpt_model_path and gpt_model_path.lower().endswith(".ckpt"):
+                if self.gpt_model_path != gpt_model_path:
+                    response = self._session.get(
+                        self.tts_server_url + "set_gpt_weights",
+                        params={"weights_path": gpt_model_path},
+                        timeout=180,
+                    )
+                    if not response.ok:
+                        raise RuntimeError(self._response_error_text(response, "GPT weight switch"))
+                    self.gpt_model_path = gpt_model_path
+                    print(f"gpt model switched successfully: {gpt_model_path}")
+            elif not gpt_model_path and self.gpt_model_path is None:
+                self.gpt_model_path = ""
         except Exception as e:
             print(f"Failed to switch gpt model: {e}")
             raise
 
         try:
-            if sovits_model_path and sovits_model_path.endswith(".pth"):
-                response = self._session.get(
-                    self.tts_server_url + "set_sovits_weights",
-                    params={"weights_path": sovits_model_path},
-                    timeout=180,
-                )
-                if not response.ok:
-                    raise RuntimeError(self._response_error_text(response, "SoVITS weight switch"))
-                self.sovits_model_path = sovits_model_path
-                print(f"sovits model switched successfully: {sovits_model_path}")
+            if sovits_model_path and sovits_model_path.lower().endswith(".pth"):
+                if self.sovits_model_path != sovits_model_path:
+                    response = self._session.get(
+                        self.tts_server_url + "set_sovits_weights",
+                        params={"weights_path": sovits_model_path},
+                        timeout=180,
+                    )
+                    if not response.ok:
+                        raise RuntimeError(self._response_error_text(response, "SoVITS weight switch"))
+                    self.sovits_model_path = sovits_model_path
+                    print(f"sovits model switched successfully: {sovits_model_path}")
+            elif not sovits_model_path and self.sovits_model_path is None:
+                self.sovits_model_path = ""
         except Exception as e:
             print(f"Failed to switch sovits model: {e}")
             raise
