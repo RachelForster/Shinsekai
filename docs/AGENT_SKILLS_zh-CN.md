@@ -27,7 +27,7 @@ assets/agent/
 
 ## 当前加载方式
 
-`application/agent/skills.py` 保存显式技能清单及各技能版本，引用形式为 `skill:<name>@<version>`。人物创建技能为 `1.6.1`，故障排查为 `1.1.0`，其余保持 `1.0.0`；`ASSISTANT_PROFILE` 选择这四个引用，桌面助手和 Pi CLI 的新会话均使用它们。`prepare_pi_agent()` 默认解析随应用发布的文件路径，显式传入 `skill_paths` 时使用调用方的映射，包括空映射。
+`application/agent/skills.py` 保存显式技能清单及各技能版本，引用形式为 `skill:<name>@<version>`。人物创建技能为 `1.7.0`，故障排查为 `1.1.0`，其余保持 `1.0.0`；`ASSISTANT_PROFILE` 选择这四个引用，桌面助手和 Pi CLI 的新会话均使用它们。`prepare_pi_agent()` 默认解析随应用发布的文件路径，显式传入 `skill_paths` 时使用调用方的映射，包括空映射。
 
 当前默认 `skillLoading=native`。Adapter 在首次打开会话时将选定技能保存为独立的 `SKILL.md` 快照，通过显式 `--skill` 路径交给 Pi。系统策略只保存通用行为规则；Pi 原生目录向模型展示名称、简介和路径，由模型根据任务选择并使用 `read` 读取正文。详细流程见 [系统提示实现](https://github.com/earendil-works/pi/blob/v1.0.4/packages/coding-agent/src/core/system-prompt.ts)。四份技能正文不再提前加入系统提示。
 
@@ -39,7 +39,7 @@ Pi 的 `read`、`bash`、`powershell`、`edit`、`write`、`grep`、`find`、`ls
 
 ## 人物创建流程与工具接入
 
-人物创建 `1.6.1` 的流程如下，技能正文自包含在同一个 `SKILL.md` 中，并说明 HTTP 工具、Pi 文件与 shell 工具的使用方式，以及异步受理和失败核对方式。技能入口直接给出新建字段、默认值、完整保存 JSON，以及「背景信息、性格特点、语言习惯」三段纯文本模板。新建只查名字列表防重名，不读取其他人物的设定作为范例；编辑才读取指定目标，新建保存后查询新人物核对。插件先列 id、名称及状态，再通过 `plugins.inspect` 读取目标配置，通过 `plugins.tools` 获取目标插件的工具 schema，再用 `plugins.tools.invoke` 调用。网页资料按页面选择工具：curl 等直接 HTTP 请求取得有效正文时可以使用，需要 JavaScript 渲染、交互或直接请求无效时使用浏览器，用户明确指定浏览器时按其要求执行。工具连续失败时先检查错误与实际状态；导航冲突时确认当前地址，再按顺序导航和读取。没有新证据时不重复相同调用，改用有效来源或已有直接 HTTP 能力，无法完成的部分明确报告。通用策略也要求仅展开当前任务需要的详情；`app.config` 只返回 API 和系统设置。
+人物创建 `1.7.0` 的流程如下，技能正文自包含在同一个 `SKILL.md` 中，并说明 HTTP 工具、Pi 文件与 shell 工具的使用方式，以及异步受理和失败核对方式。技能入口直接给出新建字段、默认值、完整保存 JSON，以及「背景信息、性格特点、语言习惯」三段纯文本模板。新建只查名字列表防重名，不读取其他人物的设定作为范例；编辑才读取指定目标，新建保存后查询新人物核对。网页资料优先通过轻量 JSON/HTTP 接口（如 Bangumi API、MediaWiki `api.php`、`curl.exe`）获取，无需默认依赖 Playwright；仅纯前端动态渲染页面或用户指定浏览器时才调用浏览器插件。工具连续失败时先检查错误与实际状态；没有新证据时不重复相同调用，改用有效来源或已有直接 HTTP 能力，无法完成的部分明确报告。通用策略也要求仅展开当前任务需要的详情；`app.config` 只返回 API 和系统设置。
 
 1. 需要浏览器时查询插件、加载状态和 Agent 工具是否可用。有安装与配置能力且任务已授权时自动补齐；否则引导安装。保留用户偏好，无偏好时 Windows 优先可启动的 Edge，再选 Chrome 或 Playwright Chromium；只配置插件后端。
 2. 已有资料够用就不搜索；百科、官网等来源为备选关系，通常读取一个有效页面即可。关键缺项或冲突时才补查；同名或版本不明时确认身份。
@@ -58,11 +58,11 @@ Pi 的 `read`、`bash`、`powershell`、`edit`、`write`、`grep`、`find`、`ls
 | --- | --- | --- |
 | 插件查询、安装、配置 | `application/plugins/catalog.py`、`application/plugins/install_plugin.py`、插件前端配置 contribution | 已通过 HTTP 工具接入 |
 | 网页搜索、导航、读取正文 | Playwright Browser 插件，ID `com.shinsekai.playwright_browser` | 已通过通用 HTTP 插件工具入口接入 Agent，按需发现 schema |
-| 媒体搜索、下载、人声分离 | `live/music_cover_pipeline.py` 的 yt-dlp、ffmpeg 和分离能力 | 尚无专用 HTTP 工具；可通过 shell 调用已安装程序，须核对依赖和结果 |
-| GPU 检测与 TTS 环境 | `core/model_assets/tts_environment.py`、现有模型与凭据配置 | 已接推理环境查询与整合包下载；训练检查仍待补充 |
-| 训练、转写、权重检查 | 可选 GPT-SoVITS 训练插件，如 `local.gpt_sovits_batch_trainer` | 已接通用插件动作；插件独立安装，须 inspect 实际能力并核对结果 |
-| 参考音频切片、质量与合成检查 | 既有音频处理和 TTS adapter | 专用接口待接；shell 可执行本机已有音频处理程序，合成仍需可用服务 |
-| 人物保存、语音绑定、立绘导入 | `application/characters/management.py` 的 `CharacterUseCase` | 已接人物保存与已有立绘导入，保留既有校验；音频处理及合成测试待接 |
+| 媒体搜索、下载、人声分离 | `application/characters/voice/pipeline/` 与 `tools/uvr5_headless_entry.py` | 已通过 `characters.voice.prepare` 接入（含 B 站语音合集检索、独立 `yt-dlp` 校验下载与内置 UVR5 分离） |
+| GPU 检测与 TTS 环境 | `core/model_assets/tts_environment.py`、现有模型与凭据配置 | 已接推理环境查询与整合包下载；`characters.voice.prepare` 自动探测显卡批次与预训练白模 |
+| 训练、转写、权重检查 | `application/characters/voice/pipeline/` 及可选批量训练插件 `local.gpt_sovits_batch_trainer` | `characters.voice.prepare` 默认免训练挂白模直用，支持 `train=true` 微调 `v2ProPlus` |
+| 参考音频切片、质量与合成检查 | `application/characters/voice/pipeline/reference_selection.py`、`synthesis_verification.py` | 已通过 `characters.voice.prepare` 自动完成切片、ASR、声学优选与短句合成自检 |
+| 人物保存、语音绑定、立绘导入 | `application/characters/management.py` 的 `CharacterUseCase` | 已完整接通人物保存、静态立绘生成导入与角色语音自动准备绑定 |
 | 游戏资源提取 | 用户指定游戏对应的可用工具 | 尚无通用解包入口；缺少能力时提供准备步骤 |
 
 HTTP 能力经 `AgentHostTool.from_models()`、`AgentProfile.tool_names` 和 `AgentService.tools` 显式注册，Pi 原生工具由 Adapter 启用。已加载浏览器插件的工具通过 HTTP 按插件查询和调用，无需角色聊天会话；插件、浏览器及其他媒体和训练依赖仍须实际可用。

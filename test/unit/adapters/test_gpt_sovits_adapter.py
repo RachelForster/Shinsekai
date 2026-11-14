@@ -3,7 +3,12 @@ from types import SimpleNamespace
 import pytest
 import requests
 
-from ai.tts.tts_adapter import GPTSoVitsAdapter, IndexTTSAdapter, KaggleGPTSoVitsAdapter
+from ai.tts.tts_adapter import (
+    GPTSoVitsAdapter,
+    IndexTTSAdapter,
+    KaggleGPTSoVitsAdapter,
+    resolve_pretrained_base_models,
+)
 
 
 @pytest.mark.parametrize(
@@ -185,3 +190,104 @@ def test_kaggle_gpt_sovits_uses_remote_reference_audio(monkeypatch, tmp_path):
     assert post_calls[0][1]["json"]["speed_factor"] == 1.0
     assert post_calls[0][1]["json"]["parallel_infer"] is True
     assert post_calls[0][1]["json"]["split_bucket"] is True
+
+
+def test_resolve_pretrained_base_models_prefers_v2proplus_then_fallbacks(tmp_path):
+    assert resolve_pretrained_base_models(None) == ("", "")
+    assert resolve_pretrained_base_models(tmp_path) == ("", "")
+
+    v2_gpt = tmp_path / "GPT_SoVITS/pretrained_models/gsv-v2final-pretrained/s1bert25hz-5kh-longer-epoch=12-step=369668.ckpt"
+    v2_sovits = tmp_path / "GPT_SoVITS/pretrained_models/gsv-v2final-pretrained/s2G2333k.pth"
+    v2_gpt.parent.mkdir(parents=True, exist_ok=True)
+    v2_gpt.write_bytes(b"gpt")
+    v2_sovits.write_bytes(b"sovits")
+    assert resolve_pretrained_base_models(tmp_path) == (
+        v2_gpt.resolve().as_posix(),
+        v2_sovits.resolve().as_posix(),
+    )
+
+    pro_gpt = tmp_path / "GPT_SoVITS/pretrained_models/s1v3.ckpt"
+    pro_sovits = tmp_path / "GPT_SoVITS/pretrained_models/v2Pro/s2Gv2ProPlus.pth"
+    pro_sovits.parent.mkdir(parents=True, exist_ok=True)
+    pro_gpt.write_bytes(b"s1v3")
+    pro_sovits.write_bytes(b"v2proplus")
+    assert resolve_pretrained_base_models(tmp_path / "api_v2.py") == (
+        pro_gpt.resolve().as_posix(),
+        pro_sovits.resolve().as_posix(),
+    )
+
+
+def test_switch_model_resets_to_pretrained_base_after_trained_character(monkeypatch, tmp_path):
+    pro_gpt = tmp_path / "GPT_SoVITS/pretrained_models/s1v3.ckpt"
+    pro_sovits = tmp_path / "GPT_SoVITS/pretrained_models/v2Pro/s2Gv2ProPlus.pth"
+    pro_sovits.parent.mkdir(parents=True, exist_ok=True)
+    pro_gpt.write_bytes(b"s1v3")
+    pro_sovits.write_bytes(b"v2proplus")
+
+    weight_switches = []
+
+    def fake_get(self, url, *args, **kwargs):
+        if url.endswith("set_gpt_weights") or url.endswith("set_sovits_weights"):
+            weight_switches.append((url.rsplit("/", 1)[-1], kwargs.get("params", {}).get("weights_path")))
+        return SimpleNamespace(ok=True, status_code=200, text="")
+
+    monkeypatch.setattr("ai.tts.tts_adapter.requests.Session.get", fake_get)
+
+    adapter = GPTSoVitsAdapter(
+        tts_server_url="http://127.0.0.1:9880/",
+        gpt_sovits_work_path=str(tmp_path),
+    )
+    try:
+        # 1. Speak as fine-tuned character A
+        adapter.switch_model(
+            {
+                "gpt_model_path": "C:/models/charA-e15.ckpt",
+                "sovits_model_path": "C:/models/charA_e8_s120.pth",
+            }
+        )
+        assert weight_switches == [
+            ("set_gpt_weights", "C:/models/charA-e15.ckpt"),
+            ("set_sovits_weights", "C:/models/charA_e8_s120.pth"),
+        ]
+
+        # 2. Switch to zero-shot character B (empty model paths) -> must switch back to pretrained base
+        weight_switches.clear()
+        adapter.switch_model({"gpt_model_path": "", "sovits_model_path": ""})
+        assert weight_switches == [
+            ("set_gpt_weights", pro_gpt.resolve().as_posix()),
+            ("set_sovits_weights", pro_sovits.resolve().as_posix()),
+        ]
+
+        # 3. Switch to another zero-shot character C -> cached pretrained weights reused without HTTP calls
+        weight_switches.clear()
+        adapter.switch_model({"gpt_model_path": "", "sovits_model_path": ""})
+        assert weight_switches == []
+    finally:
+        adapter.stop_server()
+
+
+def test_remote_gpt_sovits_does_not_inject_local_pretrained_paths(monkeypatch, tmp_path):
+    pro_gpt = tmp_path / "GPT_SoVITS/pretrained_models/s1v3.ckpt"
+    pro_sovits = tmp_path / "GPT_SoVITS/pretrained_models/v2Pro/s2Gv2ProPlus.pth"
+    pro_sovits.parent.mkdir(parents=True, exist_ok=True)
+    pro_gpt.write_bytes(b"s1v3")
+    pro_sovits.write_bytes(b"v2proplus")
+
+    weight_switches = []
+
+    def fake_get(self, url, *args, **kwargs):
+        if url.endswith("set_gpt_weights") or url.endswith("set_sovits_weights"):
+            weight_switches.append(url)
+        return SimpleNamespace(ok=True, status_code=200, text="")
+
+    monkeypatch.setattr("ai.tts.tts_adapter.requests.Session.get", fake_get)
+
+    adapter = GPTSoVitsAdapter(
+        tts_server_url="https://remote-gsv.example.com/",
+        gpt_sovits_work_path=str(tmp_path),
+    )
+    try:
+        adapter.switch_model({"gpt_model_path": "", "sovits_model_path": ""})
+        assert weight_switches == []
+    finally:
+        adapter.stop_server()
