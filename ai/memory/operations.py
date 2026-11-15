@@ -111,6 +111,14 @@ def current_memory_tool_context() -> MemoryToolSessionContext:
         return _default_tool_context
 
 
+def _memory_request_context(session_id: str | None) -> MemoryToolSessionContext:
+    # Chat tools inherit the bound session. HTTP always supplies its own scope,
+    # including an empty session ID for global memory.
+    if session_id is None:
+        return current_memory_tool_context()
+    return MemoryToolSessionContext(session_id=str(session_id).strip())
+
+
 def _resolve_agent_id(character_name: str | None) -> str:
     name = (character_name or "").strip()
     return name if name else "user"
@@ -277,16 +285,16 @@ def memory_search(
     character_name: str | None = None,
     *,
     limit: int = 10,
-    session_id: str = "",
+    session_id: str | None = None,
     memory_mode: str = "",
 ) -> dict[str, Any]:
     q = (query or "").strip()
     if not q:
         return {"error": "query 不能为空"}
 
-    ctx = current_memory_tool_context()
-    eff_session_id = str(session_id or ctx.session_id or "").strip()
-    eff_mode = str(memory_mode or ctx.memory_mode or "").strip()
+    ctx = _memory_request_context(session_id)
+    eff_session_id = ctx.session_id
+    eff_mode = str(memory_mode or ctx.memory_mode).strip()
     agent_id = _resolve_agent_id(character_name)
 
     payload: dict[str, Any] = {
@@ -450,14 +458,14 @@ def memory_remember(
     event_at: float | None = None,
     memory_mode: str = "",
     player_character: str = "",
-    source_session_id: str = "",
+    source_session_id: str | None = None,
     source_turn_seq: int | None = None,
 ) -> dict[str, Any]:
     text = (content or "").strip()
     if not text:
         return {"error": "content 不能为空"}
 
-    ctx = current_memory_tool_context()
+    ctx = _memory_request_context(source_session_id)
     clean_gist = str(gist_text or "").strip()
     clean_slot = str(slot_key or "").strip()
     clean_kind = str(kind or "episodic").strip() or "episodic"
@@ -465,10 +473,9 @@ def memory_remember(
     clean_entities = [str(e).strip() for e in entities if str(e).strip()]
     clean_imp = float(max(0.0, min(1.0, float(importance))))
     clean_event = None if event_at is None else float(event_at)
-    clean_session = str(source_session_id or ctx.session_id or "").strip()
-    same_session = clean_session == ctx.session_id
-    clean_mode = str(memory_mode or (ctx.memory_mode if same_session else "")).strip()
-    clean_persona = str(player_character or (ctx.player_character if same_session else "")).strip()
+    clean_session = ctx.session_id
+    clean_mode = str(memory_mode or ctx.memory_mode).strip()
+    clean_persona = str(player_character or ctx.player_character).strip()
     clean_seq = None if source_turn_seq is None else int(source_turn_seq)
     agent_id = _resolve_agent_id(character_name)
 
@@ -617,7 +624,7 @@ def memory_remember_and_list(
     text = (content or "").strip()
     if not text:
         return {"error": "memory content is required"}
-    result = memory_remember(text, character_name=character_name)
+    result = memory_remember(text, character_name=character_name, source_session_id="")
     if isinstance(result, dict) and result.get("error"):
         return result
     if isinstance(result, dict) and result.get("status") == "loading":
@@ -626,14 +633,14 @@ def memory_remember_and_list(
 
 
 def memory_forget(
-    memory_id: str, *, session_id: str = "", memory_mode: str = "",
+    memory_id: str, *, session_id: str | None = None, memory_mode: str = "",
 ) -> dict[str, Any]:
     mid = (memory_id or "").strip()
     if not mid:
         return {"error": "memory_id is required"}
-    ctx = current_memory_tool_context()
-    sid = str(session_id or ctx.session_id or "").strip()
-    mode = str(memory_mode or ctx.memory_mode or "").strip()
+    ctx = _memory_request_context(session_id)
+    sid = ctx.session_id
+    mode = str(memory_mode or ctx.memory_mode).strip()
     payload = {"memoryId": mid}
     if sid:
         payload["sessionId"] = sid
@@ -677,7 +684,7 @@ def memory_forget_and_list(
     mid = (memory_id or "").strip()
     if not mid:
         return {"error": "memory id is required"}
-    result = memory_forget(mid)
+    result = memory_forget(mid, session_id="")
     if isinstance(result, dict) and result.get("error"):
         return result
     if isinstance(result, dict) and result.get("status") == "loading":

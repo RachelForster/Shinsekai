@@ -363,11 +363,12 @@ def test_memory_service_owner_skips_proxy(monkeypatch):
 
 
 def test_memory_remember_and_list_preserves_loading_result(monkeypatch):
-    monkeypatch.setattr(
-        operations,
-        "memory_remember",
-        lambda _text, character_name=None: {"status": "loading", "message": "loading"},
-    )
+    def remember(_text, *, character_name, source_session_id):
+        assert character_name == "Alice"
+        assert source_session_id == ""
+        return {"status": "loading", "message": "loading"}
+
+    monkeypatch.setattr(operations, "memory_remember", remember)
     monkeypatch.setattr(
         operations,
         "memory_list",
