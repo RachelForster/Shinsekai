@@ -29,7 +29,7 @@ await assertExists(path.join(resourcesDir, "frontend_bridge.py"));
 await assertExists(path.join(resourcesDir, "application", "chat", "host", "mobile_access.py"));
 await assertExists(path.join(resourcesDir, "application", "chat", "composition.py"));
 await assertExists(path.join(resourcesDir, "application", "chat", "runtime", "commands.py"));
-await assertExists(path.join(resourcesDir, "application", "chat", "history", "branches.py"));
+await assertExists(path.join(resourcesDir, "application", "chat", "history", "state.py"));
 await assertExists(path.join(resourcesDir, "application", "chat", "runtime", "startup.py"));
 await assertExists(path.join(resourcesDir, "application", "chat", "runtime", "session.py"));
 await assertExists(path.join(resourcesDir, "application", "chat", "presentation", "assets.py"));
@@ -81,6 +81,7 @@ for (const retiredPath of [
   path.join("application", "characters", "generation.py"),
   path.join("application", "chat", "effects.py"),
   path.join("application", "chat", "initialization.py"),
+  path.join("application", "chat", "history", "branches.py"),
   path.join("application", "memory", "service.py"),
   path.join("application", "model_assets", "service.py"),
   path.join("application", "plugins", "updates.py"),
