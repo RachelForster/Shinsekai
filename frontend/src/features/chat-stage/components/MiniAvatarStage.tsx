@@ -32,17 +32,31 @@ import {
 import {
   CharacterVisual,
   STATIC_AVATAR_TYPE,
+  TransitionMedia,
   normalizeVisualFraming,
   visualFramingMinRatio,
   type VisualFraming,
 } from "../../../modules/character-visual";
-import { startDesktopWindowDrag, type DesktopMiniDockSide } from "../../../shared/desktop/desktopApi";
+import { Portrait } from "../../../shared/components/Portrait";
+import {
+  onDesktopMiniAvatarInputShortcut,
+  setDesktopChatWindowMiniInputShortcut,
+  startDesktopWindowDrag,
+  type DesktopMiniDockSide,
+} from "../../../shared/desktop/desktopApi";
 import { useI18n } from "../../../shared/i18n";
+import {
+  DEFAULT_MINI_INPUT_SHORTCUT,
+  formatMiniInputShortcut,
+  matchesMiniInputShortcut,
+  normalizeMiniInputShortcut,
+} from "../miniInputShortcut";
 import type {
   ChatAttachmentInput,
   ChatCommand,
   ChatOption,
   ChatToolConfirmation,
+  PlayerPortrait,
 } from "../../../shared/platform/types";
 import { IconButton, TextInput } from "../../../shared/ui";
 import { classNames, hideBrokenStageAsset, stageAssetUrl } from "../chatStageUtils";
@@ -53,7 +67,6 @@ import type { ChatStageSprite, ChatStageSpriteReaction } from "../state/types";
 export const MINI_AVATAR_HOVER_HIDE_MS = 260;
 export const MINI_AVATAR_IDLE_BUBBLE_HIDE_MS = 8000;
 const MINI_AVATAR_DRAG_THRESHOLD_PX = 5;
-const MINI_AVATAR_STATIC_FRAMING: Readonly<VisualFraming> = { heightRatio: 0.74, verticalPosition: 0.16 };
 const MINI_AVATAR_MODEL_FRAMING: Readonly<VisualFraming> = { heightRatio: 0.32, verticalPosition: 0.06 };
 
 function composeMiniAvatarFraming(baseFraming: VisualFraming, runtimeFraming?: VisualFraming): VisualFraming {
@@ -148,6 +161,7 @@ export function MiniAvatarStage({
   inputValue,
   locked = false,
   longPressTalk = false,
+  miniInputShortcut = DEFAULT_MINI_INPUT_SHORTCUT,
   notificationText,
   notificationVisible,
   onAdvance,
@@ -159,6 +173,7 @@ export function MiniAvatarStage({
   onExitMiniMode,
   onFlushBatch,
   onInputActivity,
+  onInputPinnedChange,
   onLongPressTalkChange,
   onPickAttachments,
   onRemoveAttachment,
@@ -168,10 +183,12 @@ export function MiniAvatarStage({
   onToggleScreenShare,
   options,
   optionsVisible,
+  playerPortrait = null,
   previousMessages,
   runtimeFramingForSprite,
   screenShareStarting = false,
   screenSharing = false,
+  shortcutDisabled = false,
   spriteReaction,
   sprites,
   standaloneDesktopWindow,
@@ -198,6 +215,7 @@ export function MiniAvatarStage({
   inputValue: string;
   locked?: boolean;
   longPressTalk?: boolean;
+  miniInputShortcut?: string;
   notificationText?: string;
   notificationVisible: boolean;
   onAdvance: () => void;
@@ -209,6 +227,7 @@ export function MiniAvatarStage({
   onExitMiniMode: () => void;
   onFlushBatch: () => void | Promise<void>;
   onInputActivity: (state: { composing: boolean; hasText: boolean }) => void;
+  onInputPinnedChange?: (pinned: boolean) => void;
   onLongPressTalkChange?: (value: boolean) => void;
   onPickAttachments: (kind: ChatAttachmentInput["kind"]) => void;
   onRemoveAttachment: (attachment: ChatAttachmentInput) => void;
@@ -218,10 +237,12 @@ export function MiniAvatarStage({
   onToggleScreenShare?: () => void;
   options: ChatOption[];
   optionsVisible: boolean;
+  playerPortrait?: PlayerPortrait | null;
   previousMessages: string[];
   runtimeFramingForSprite?: (sprite: ChatStageSprite, index: number) => VisualFraming;
   screenShareStarting?: boolean;
   screenSharing?: boolean;
+  shortcutDisabled?: boolean;
   spriteReaction?: ChatStageSpriteReaction | null;
   sprites: readonly ChatStageSprite[];
   standaloneDesktopWindow: boolean;
@@ -246,10 +267,18 @@ export function MiniAvatarStage({
 
   const previousSpeakerRef = useRef<string>("");
   const hoverHideTimerRef = useRef<number | null>(null);
+  const pickingAttachmentTimerRef = useRef<number | null>(null);
+  const pickingAttachmentRef = useRef(false);
+  const prevAttachmentCountRef = useRef(0);
   const plusRootRef = useRef<HTMLDivElement | null>(null);
+  const chatButtonRef = useRef<HTMLButtonElement | null>(null);
+  const inputBarRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const historyIndexRef = useRef(-1);
   const inputActivityRef = useRef("");
+  const lastShortcutHandledAtRef = useRef(-Infinity);
+  const shortcutActivatingUntilRef = useRef(-Infinity);
+  const shortcutRetryTimerRef = useRef<number | null>(null);
   const dragSessionRef = useRef<{
     active: boolean;
     dragged: boolean;
@@ -280,14 +309,199 @@ export function MiniAvatarStage({
   }, [resolvedSpeaker.speakerName]);
 
   const effectiveDockSide = standaloneDesktopWindow ? dockSide : webDockSide;
+  const normalizedInputShortcut = useMemo(() => normalizeMiniInputShortcut(miniInputShortcut, ""), [miniInputShortcut]);
+  const formattedInputShortcut = useMemo(
+    () => formatMiniInputShortcut(normalizedInputShortcut),
+    [normalizedInputShortcut],
+  );
   const closePlusMenu = useCallback(() => setPlusMenuOpen(false), []);
   useDismissableLayer({ active: plusMenuOpen, onDismiss: closePlusMenu, rootRef: plusRootRef });
 
+  const focusInputSoon = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      if (inputRef.current && !inputRef.current.disabled) {
+        inputRef.current.focus();
+      } else {
+        inputBarRef.current?.focus();
+      }
+    });
+  }, []);
+
   useEffect(() => {
-    if (attachments.length > 0) {
-      setInputPinned(true);
+    onInputPinnedChange?.(inputPinned);
+  }, [inputPinned, onInputPinnedChange]);
+
+  useEffect(
+    () => () => {
+      onInputPinnedChange?.(false);
+      if (shortcutRetryTimerRef.current != null) {
+        window.clearTimeout(shortcutRetryTimerRef.current);
+        shortcutRetryTimerRef.current = null;
+      }
+    },
+    [onInputPinnedChange],
+  );
+
+  useEffect(() => {
+    if (
+      inputPinned &&
+      !inputDisabled &&
+      !locked &&
+      inputRef.current &&
+      document.activeElement === inputBarRef.current
+    ) {
+      inputRef.current.focus();
     }
-  }, [attachments.length]);
+  }, [inputDisabled, inputPinned, locked]);
+
+  useEffect(() => {
+    if (attachments.length > prevAttachmentCountRef.current) {
+      setInputPinned(true);
+      focusInputSoon();
+    }
+    prevAttachmentCountRef.current = attachments.length;
+  }, [attachments.length, focusInputSoon]);
+
+  useEffect(() => {
+    if (!inputPinned) {
+      return;
+    }
+    if (inputRef.current && !inputRef.current.disabled) {
+      inputRef.current.focus();
+    } else {
+      inputBarRef.current?.focus();
+    }
+    const handlePointerDownOutside = (event: globalThis.PointerEvent) => {
+      const target = event.target as Node | null;
+      if (target && (inputBarRef.current?.contains(target) || chatButtonRef.current?.contains(target))) {
+        return;
+      }
+      setInputPinned(false);
+    };
+    const handleWindowBlur = () => {
+      if (pickingAttachmentRef.current || performance.now() < shortcutActivatingUntilRef.current) {
+        return;
+      }
+      setInputPinned(false);
+    };
+    const handleWindowFocus = () => {
+      if (performance.now() < shortcutActivatingUntilRef.current) {
+        focusInputSoon();
+      }
+    };
+    document.addEventListener("pointerdown", handlePointerDownOutside, true);
+    window.addEventListener("blur", handleWindowBlur);
+    window.addEventListener("focus", handleWindowFocus);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDownOutside, true);
+      window.removeEventListener("blur", handleWindowBlur);
+      window.removeEventListener("focus", handleWindowFocus);
+    };
+  }, [focusInputSoon, inputPinned]);
+
+  const triggerInputShortcut = useCallback(
+    (fromGlobalDesktopEvent: boolean) => {
+      if (locked || shortcutDisabled || !normalizedInputShortcut) {
+        return;
+      }
+      const now = performance.now();
+      if (now - lastShortcutHandledAtRef.current < 150) {
+        return;
+      }
+      lastShortcutHandledAtRef.current = now;
+
+      const activeElement = document.activeElement;
+      if (inputPinned && document.hasFocus() && activeElement && inputBarRef.current?.contains(activeElement)) {
+        shortcutActivatingUntilRef.current = -Infinity;
+        setInputPinned(false);
+        return;
+      }
+
+      shortcutActivatingUntilRef.current = now + (fromGlobalDesktopEvent ? 400 : 120);
+      setPlusMenuOpen(false);
+      setInputPinned(true);
+      if (inputRef.current && !inputRef.current.disabled) {
+        inputRef.current.focus();
+      } else {
+        inputBarRef.current?.focus();
+      }
+      focusInputSoon();
+      if (fromGlobalDesktopEvent) {
+        if (shortcutRetryTimerRef.current != null) {
+          window.clearTimeout(shortcutRetryTimerRef.current);
+        }
+        shortcutRetryTimerRef.current = window.setTimeout(() => {
+          shortcutRetryTimerRef.current = null;
+          if (inputRef.current && !inputRef.current.disabled) {
+            inputRef.current.focus();
+          } else {
+            inputBarRef.current?.focus();
+          }
+        }, 48);
+      }
+    },
+    [focusInputSoon, inputPinned, locked, normalizedInputShortcut, shortcutDisabled],
+  );
+
+  useEffect(() => {
+    if (!normalizedInputShortcut || locked || shortcutDisabled) {
+      return;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!matchesMiniInputShortcut(event, normalizedInputShortcut)) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      triggerInputShortcut(false);
+    };
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, [locked, normalizedInputShortcut, shortcutDisabled, triggerInputShortcut]);
+
+  const triggerInputShortcutRef = useRef(triggerInputShortcut);
+  triggerInputShortcutRef.current = triggerInputShortcut;
+
+  useEffect(() => {
+    if (!standaloneDesktopWindow) {
+      return;
+    }
+    const activeShortcut = !locked && !shortcutDisabled && normalizedInputShortcut ? normalizedInputShortcut : null;
+    let disposed = false;
+    let unlisten: (() => void) | null = null;
+
+    if (activeShortcut) {
+      void onDesktopMiniAvatarInputShortcut(() => {
+        if (!disposed) {
+          triggerInputShortcutRef.current(true);
+        }
+      })
+        .then((cleanup) => {
+          if (disposed) {
+            cleanup();
+          } else {
+            unlisten = cleanup;
+          }
+        })
+        .catch((error) => {
+          console.error("Desktop mini-avatar shortcut listener failed", error);
+        });
+    }
+
+    void setDesktopChatWindowMiniInputShortcut(activeShortcut).catch((error) => {
+      console.error("Desktop mini-avatar global shortcut update failed", error);
+    });
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+      void setDesktopChatWindowMiniInputShortcut(null).catch((error) => {
+        console.error("Desktop mini-avatar global shortcut cleanup failed", error);
+      });
+    };
+  }, [locked, normalizedInputShortcut, shortcutDisabled, standaloneDesktopWindow]);
 
   useEffect(() => {
     if (!inputValue.trim()) {
@@ -306,7 +520,38 @@ export function MiniAvatarStage({
     }
   }, []);
 
-  useEffect(() => clearHoverTimer, [clearHoverTimer]);
+  const windowFocusCleanupRef = useRef<(() => void) | null>(null);
+  const clearPickingAttachmentTimer = useCallback(() => {
+    if (pickingAttachmentTimerRef.current != null) {
+      window.clearTimeout(pickingAttachmentTimerRef.current);
+      pickingAttachmentTimerRef.current = null;
+    }
+    windowFocusCleanupRef.current?.();
+    windowFocusCleanupRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      clearHoverTimer();
+      clearPickingAttachmentTimer();
+    };
+  }, [clearHoverTimer, clearPickingAttachmentTimer]);
+
+  const markPickingAttachment = useCallback(() => {
+    pickingAttachmentRef.current = true;
+    clearPickingAttachmentTimer();
+    const handleWindowFocus = () => {
+      clearPickingAttachmentTimer();
+      pickingAttachmentRef.current = false;
+      focusInputSoon();
+    };
+    window.addEventListener("focus", handleWindowFocus);
+    windowFocusCleanupRef.current = () => window.removeEventListener("focus", handleWindowFocus);
+    pickingAttachmentTimerRef.current = window.setTimeout(() => {
+      pickingAttachmentTimerRef.current = null;
+      pickingAttachmentRef.current = false;
+    }, 500);
+  }, [clearPickingAttachmentTimer, focusInputSoon]);
 
   const handleHubPointerEnter = useCallback(() => {
     clearHoverTimer();
@@ -342,7 +587,13 @@ export function MiniAvatarStage({
   const trimmedDialog = dialogText.trim();
   const reactionText = spriteReaction?.text?.trim() ?? "";
 
-  const contentSignature = `${resolvedSpeaker.speakerName}\0${trimmedDialog}\0${status}\0${notificationText ?? ""}\0${spriteReaction?.seq ?? 0}`;
+  const hasMatchingPlayerStageSprite = Boolean(
+    playerPortrait?.characterName &&
+    sprites.some((sprite) => chatStageSpriteCharacterName(sprite) === playerPortrait.characterName),
+  );
+  const activePlayerPortrait = playerPortrait?.url && !hasMatchingPlayerStageSprite ? playerPortrait : null;
+
+  const contentSignature = `${activePlayerPortrait?.characterName ?? resolvedSpeaker.speakerName}\0${trimmedDialog}\0${status}\0${notificationText ?? ""}\0${spriteReaction?.seq ?? 0}`;
   useEffect(() => {
     setIdleDismissed(false);
   }, [contentSignature]);
@@ -379,21 +630,27 @@ export function MiniAvatarStage({
 
   const controlsVisible = hovered || focusWithin || plusMenuOpen;
 
-  const focusInputSoon = useCallback(() => {
-    window.requestAnimationFrame(() => {
-      inputRef.current?.focus();
-    });
-  }, []);
-
   const handleToggleInputPinned = () => {
     setPlusMenuOpen(false);
-    setInputPinned((current) => {
-      const next = !current;
-      if (next) {
-        focusInputSoon();
-      }
-      return next;
-    });
+    setInputPinned((current) => !current);
+  };
+
+  const handleInputBarBlur = (event: FocusEvent<HTMLDivElement>) => {
+    const nextFocused = event.relatedTarget as Node | null;
+    if (nextFocused && (event.currentTarget.contains(nextFocused) || chatButtonRef.current?.contains(nextFocused))) {
+      return;
+    }
+    if (pickingAttachmentRef.current && nextFocused === null) {
+      return;
+    }
+    if (
+      performance.now() < shortcutActivatingUntilRef.current &&
+      (nextFocused === null || nextFocused === document.body)
+    ) {
+      focusInputSoon();
+      return;
+    }
+    setInputPinned(false);
   };
 
   const reportInputActivity = (nextValue: string, composing: boolean) => {
@@ -431,6 +688,9 @@ export function MiniAvatarStage({
   const submitKeepingExpanded = async (flushBatch = false) => {
     if (!canSubmit) {
       return;
+    }
+    if (inputRef.current && !inputRef.current.disabled) {
+      inputRef.current.focus();
     }
     await onSubmit();
     if (flushBatch && batchEnabled) {
@@ -587,11 +847,22 @@ export function MiniAvatarStage({
       speakerNameFallback(resolvedSpeaker.speakerName, dialogCharacterName, userDisplayName)
     : "";
   const activeFraming = composeMiniAvatarFraming(
-    activeAvatarType === STATIC_AVATAR_TYPE ? MINI_AVATAR_STATIC_FRAMING : MINI_AVATAR_MODEL_FRAMING,
+    MINI_AVATAR_MODEL_FRAMING,
     activeSprite && activeSpriteIndex >= 0 ? runtimeFramingForSprite?.(activeSprite, activeSpriteIndex) : undefined,
   );
-  const speakerLabel = speakerNameFallback(resolvedSpeaker.speakerName, dialogCharacterName, userDisplayName);
+  const speakerLabel =
+    activePlayerPortrait?.characterName?.trim() ||
+    speakerNameFallback(resolvedSpeaker.speakerName, dialogCharacterName, userDisplayName);
   const speakerInitial = Array.from(speakerLabel)[0] ?? "";
+  const fallbackNode = (
+    <span aria-hidden className="mini-avatar__fallback">
+      {speakerInitial ? (
+        <span className="mini-avatar__initial">{speakerInitial}</span>
+      ) : (
+        <UserRound className="mini-avatar__fallback-icon" />
+      )}
+    </span>
+  );
   const asrLabel = t(asrEnabled ? "chat.toolbar.pauseAsr" : "chat.toolbar.resumeAsr");
   const asrIcon = asrLoading ? (
     <LoaderCircle aria-hidden className="icon-button__icon input-layer__asr-spinner" />
@@ -623,11 +894,15 @@ export function MiniAvatarStage({
   const bubbleBodyText =
     notificationVisible && notificationText?.trim()
       ? notificationText.trim()
-      : isThinking && !trimmedDialog
+      : isThinking && (!dialogVisible || !trimmedDialog)
         ? busyText?.trim() || t("chat.mini.thinking")
         : dialogVisible && trimmedDialog
           ? trimmedDialog
-          : reactionText || busyText?.trim() || t("chat.mini.thinking");
+          : toolConfirmation?.detail?.trim()
+            ? toolConfirmation.detail.trim()
+            : !hasInteractiveOptions && !toolConfirmation
+              ? reactionText
+              : "";
 
   return (
     <section
@@ -666,46 +941,84 @@ export function MiniAvatarStage({
             title={t("chat.mini.avatarHint")}
             type="button"
           >
-            {canRenderVisualAsset && activeSprite ? (
-              <div className="mini-avatar__visual">
-                <CharacterVisual
+            {activePlayerPortrait ? (
+              <Portrait
+                active
+                alt={activePlayerPortrait.characterName}
+                className="mini-avatar__portrait"
+                crop={activePlayerPortrait.crop}
+                fallback={fallbackNode}
+                key={`player:${activePlayerPortrait.characterName}`}
+                name={activePlayerPortrait.characterName}
+                onError={hideBrokenStageAsset}
+                path={activePlayerPortrait.url}
+                shape="circle"
+              />
+            ) : canRenderVisualAsset && activeSprite ? (
+              activeAvatarType === STATIC_AVATAR_TYPE ? (
+                <Portrait
                   active
-                  asset={{
-                    avatarType: activeSprite.avatarType ?? STATIC_AVATAR_TYPE,
-                    id: activeSprite.id,
-                    label: activeSprite.label,
-                    modelUrl: activeSprite.modelUrl ? stageAssetUrl(activeSprite.modelUrl) : "",
-                    mouthSync: activeSprite.mouthSync ? stageAssetUrl(activeSprite.mouthSync) : undefined,
-                    transitions: activeSprite.transitions?.map((edge) => ({
-                      ...edge,
-                      fromUrl: stageAssetUrl(edge.fromUrl),
-                      url: stageAssetUrl(edge.url),
-                    })),
-                    url: activeSprite.path ? stageAssetUrl(activeSprite.path) : "",
-                  }}
-                  attention={isSpeaking ? "responding" : isThinking ? "thinking" : "idle"}
-                  className="mini-avatar__visual-surface"
-                  framing={activeFraming}
-                  hitbox={false}
+                  alt={activeSprite.label}
+                  className="mini-avatar__portrait"
+                  crop={activeSprite.portraitCrop}
+                  fallback={fallbackNode}
                   key={activeCharacterKey}
-                  mode={activeSprite.applyMode ?? "play"}
-                  onImageError={(event) => {
+                  name={speakerLabel || activeSprite.label}
+                  onError={(event) => {
                     hideBrokenStageAsset(event);
                     setFailedSpriteAssetKey(activeSpriteAssetKey);
                   }}
-                  onMouseDown={() => {}}
-                  stateSequence={activeSprite.stateSequence}
-                  voiceCharacterName={activeVoiceCharacterName}
+                  path={activeSprite.path}
+                  renderMedia={(mediaProps) => (
+                    <TransitionMedia
+                      {...mediaProps}
+                      enabled={(activeSprite.applyMode ?? "play") === "play"}
+                      mouthSync={activeSprite.mouthSync ? stageAssetUrl(activeSprite.mouthSync) : undefined}
+                      transitions={activeSprite.transitions?.map((edge) => ({
+                        ...edge,
+                        fromUrl: stageAssetUrl(edge.fromUrl),
+                        url: stageAssetUrl(edge.url),
+                      }))}
+                      voiceCharacterName={activeVoiceCharacterName}
+                    />
+                  )}
+                  shape="circle"
                 />
-              </div>
+              ) : (
+                <div className="mini-avatar__visual">
+                  <CharacterVisual
+                    active
+                    asset={{
+                      avatarType: activeSprite.avatarType ?? STATIC_AVATAR_TYPE,
+                      id: activeSprite.id,
+                      label: activeSprite.label,
+                      modelUrl: activeSprite.modelUrl ? stageAssetUrl(activeSprite.modelUrl) : "",
+                      mouthSync: activeSprite.mouthSync ? stageAssetUrl(activeSprite.mouthSync) : undefined,
+                      transitions: activeSprite.transitions?.map((edge) => ({
+                        ...edge,
+                        fromUrl: stageAssetUrl(edge.fromUrl),
+                        url: stageAssetUrl(edge.url),
+                      })),
+                      url: activeSprite.path ? stageAssetUrl(activeSprite.path) : "",
+                    }}
+                    attention={isSpeaking ? "responding" : isThinking ? "thinking" : "idle"}
+                    className="mini-avatar__visual-surface"
+                    framing={activeFraming}
+                    hitbox={false}
+                    key={activeCharacterKey}
+                    mode={activeSprite.applyMode ?? "play"}
+                    onImageError={(event) => {
+                      hideBrokenStageAsset(event);
+                      setFailedSpriteAssetKey(activeSpriteAssetKey);
+                    }}
+                    onMouseDown={() => {}}
+                    stateSequence={activeSprite.stateSequence}
+                    voiceCharacterName={activeVoiceCharacterName}
+                  />
+                </div>
+              )
             ) : (
-              <span aria-hidden className="mini-avatar__fallback">
-                {speakerInitial ? (
-                  <span className="mini-avatar__initial">{speakerInitial}</span>
-                ) : (
-                  <UserRound className="mini-avatar__fallback-icon" />
-                )}
-              </span>
+              fallbackNode
             )}
           </button>
 
@@ -754,6 +1067,7 @@ export function MiniAvatarStage({
 
             <IconButton
               aria-expanded={inputPinned}
+              aria-keyshortcuts={formattedInputShortcut || undefined}
               aria-pressed={inputPinned}
               className={classNames(
                 "mini-avatar__satellite mini-avatar__satellite--chat",
@@ -764,7 +1078,13 @@ export function MiniAvatarStage({
               label={t(inputPinned ? "chat.mini.collapseInput" : "chat.mini.toggleInput")}
               onClick={handleToggleInputPinned}
               onPointerEnter={() => setHoverBubblePreview(true)}
+              ref={chatButtonRef}
               tabIndex={controlsVisible ? 0 : -1}
+              title={
+                formattedInputShortcut
+                  ? `${t(inputPinned ? "chat.mini.collapseInput" : "chat.mini.toggleInput")} (${formattedInputShortcut})`
+                  : t(inputPinned ? "chat.mini.collapseInput" : "chat.mini.toggleInput")
+              }
             >
               <MessageSquare aria-hidden className="icon-button__icon" />
             </IconButton>
@@ -797,6 +1117,7 @@ export function MiniAvatarStage({
                 disabled={inputDisabled}
                 onClick={() => {
                   setPlusMenuOpen(false);
+                  markPickingAttachment();
                   setInputPinned(true);
                   onPickAttachments("image");
                   focusInputSoon();
@@ -811,6 +1132,7 @@ export function MiniAvatarStage({
                 disabled={inputDisabled}
                 onClick={() => {
                   setPlusMenuOpen(false);
+                  markPickingAttachment();
                   setInputPinned(true);
                   onPickAttachments("file");
                   focusInputSoon();
@@ -908,7 +1230,7 @@ export function MiniAvatarStage({
             </div>
           ) : null}
 
-          <div className="mini-avatar__bubble-body">{bubbleBodyText}</div>
+          {bubbleBodyText ? <div className="mini-avatar__bubble-body">{bubbleBodyText}</div> : null}
 
           {toolConfirmation ? (
             <div aria-label={t("chat.toolConfirmation.label")} className="mini-avatar__bubble-options" role="list">
@@ -953,9 +1275,12 @@ export function MiniAvatarStage({
           <div
             className="mini-avatar__input-bar"
             data-chat-stage-hitbox="true"
+            onBlurCapture={handleInputBarBlur}
             onDragLeave={handleDragLeave}
             onDragOver={handleDragOver}
             onDrop={handleDrop}
+            ref={inputBarRef}
+            tabIndex={-1}
           >
             {attachments.length ? (
               <div aria-label={t("chat.input.attachments")} className="mini-avatar__attachments">
@@ -966,6 +1291,7 @@ export function MiniAvatarStage({
                     disabled={inputDisabled}
                     key={`${attachment.kind}:${attachment.path}`}
                     onClick={() => onRemoveAttachment(attachment)}
+                    onMouseDown={(event) => event.preventDefault()}
                     title={attachment.name}
                     type="button"
                   >
@@ -1007,6 +1333,7 @@ export function MiniAvatarStage({
                 disabled={!canSubmit}
                 label={t("chat.input.send")}
                 onClick={() => void submitKeepingExpanded(false)}
+                onMouseDown={(event) => event.preventDefault()}
               >
                 <Send aria-hidden className="icon-button__icon" />
               </IconButton>

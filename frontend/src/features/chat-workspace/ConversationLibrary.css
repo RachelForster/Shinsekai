@@ -98,12 +98,6 @@
   place-items: center;
   background: var(--color-surface-hover);
 }
-.conversation-card__avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: top;
-}
 .conversation-card__content {
   min-width: 0;
   overflow: hidden;

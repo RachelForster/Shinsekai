@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import logging
+import os
 import re
 import threading
 import time
@@ -17,7 +18,7 @@ if TYPE_CHECKING:
 from core.media.effect_bindings import effect_modes
 from core.messaging.stat_payload import parse_stat_payload
 from core.paths import resource_path
-from core.sprite.selection import sprite_entry_path
+from core.sprite.selection import resolve_runtime_path, sprite_entry_path
 from config.character_assets import get_character_assets
 from config.config_manager import character_name_key
 from application.chat.presentation.character_visual import (
@@ -738,6 +739,25 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         if not path:
             return False
         resolved_character_name = character_name or Path(path).stem or "initial"
+        portrait_crop: dict[str, float] | None = None
+        if character_name:
+            try:
+                character_config = get_character_by_name(character_name)
+                if character_config is not None:
+                    from .character_visual import _resolve_portrait_crop
+
+                    target_norm = os.path.normcase(str(resolve_runtime_path(path)))
+                    matched_sprite = next(
+                        (
+                            item
+                            for item in getattr(character_config, "sprites", []) or []
+                            if os.path.normcase(str(resolve_runtime_path(sprite_entry_path(item)))) == target_norm
+                        ),
+                        None,
+                    )
+                    portrait_crop = _resolve_portrait_crop(character_config, matched_sprite)
+            except Exception:
+                portrait_crop = None
         self._emit(
             {
                 "type": "sprite.show",
@@ -748,6 +768,7 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
                 "slot": self._get_or_create_sprite_slot(resolved_character_name),
                 "avatarType": "static",
                 "modelUrl": "",
+                **({"portraitCrop": portrait_crop} if portrait_crop else {}),
             }
         )
         return True

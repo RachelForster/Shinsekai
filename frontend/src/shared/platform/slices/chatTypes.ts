@@ -2,7 +2,7 @@ import type { ChatThemePayload } from "../../theme/chatChromeTheme";
 import type { ChatThemeManifest, ChatThemeSummary, SaveChatThemeInput } from "../../theme/chatTheme";
 import type { StoryDocument, StoryEditInput, StorySuggestion, StorySuggestionInput } from "../storyEditorTypes";
 import type { StoryGenerationPreview } from "../storyPreviewTypes";
-import type { PlayerPortrait, SpriteTransitionMedia } from "./characterTypes";
+import type { PlayerPortrait, PortraitCrop, SpriteTransitionMedia } from "./characterTypes";
 import type { PerceptionRuntimeState } from "./perceptionTypes";
 import type { PluginPagePresentation } from "./pluginTypes";
 import type { StoryGenerationInput, StoryGenerationStage, StoryGenerationTask, StoryLibraryEntry } from "./storyTypes";
@@ -80,6 +80,7 @@ export interface ChatRuntimeProcessState {
 
 export interface ChatSprite {
   mouthSync?: string;
+  portraitCrop?: PortraitCrop;
   transitions?: SpriteTransitionMedia[];
   /** Producer-owned identity, independent of display labels, expression URLs and snapshot IDs. */
   identityKey?: string;
@@ -468,6 +469,7 @@ export type ChatStageEvent =
   | (ChatEventBase & {
       type: "sprite.show";
       mouthSync?: string;
+      portraitCrop?: PortraitCrop;
       transitions?: SpriteTransitionMedia[];
       identityKey?: string;
       characterName: string;

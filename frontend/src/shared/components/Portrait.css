@@ -1,0 +1,126 @@
+.portrait {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  user-select: none;
+  background: transparent;
+}
+
+.portrait--square {
+  aspect-ratio: 1;
+}
+
+.portrait--circle {
+  aspect-ratio: 1;
+  border-radius: 50%;
+}
+
+:where(.portrait--fill) {
+  width: 100%;
+  height: 100%;
+}
+
+.portrait__fallback {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.portrait-crop-dialog__body {
+  display: grid;
+  gap: 16px;
+}
+
+.portrait-crop-dialog__hint {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.portrait-crop-dialog__workspace {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 18px;
+}
+
+.portrait-crop-dialog__previews {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+}
+
+.portrait-crop-dialog__stage {
+  border-radius: var(--radius-panel, 14px);
+  border: 1px solid var(--color-border);
+  background:
+    radial-gradient(circle at 30% 25%, rgb(255 255 255 / 8%), transparent 65%),
+    var(--color-surface-raised, var(--color-surface));
+  cursor: grab;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 16%);
+}
+
+.portrait-crop-dialog__stage:active {
+  cursor: grabbing;
+}
+
+.portrait-crop-dialog__mini-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.portrait-crop-dialog__mini-preview {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-raised, var(--color-surface));
+}
+
+.portrait-crop-dialog__mini-preview--card {
+  width: 44px;
+  height: 52px;
+  border-radius: var(--radius-control, 10px);
+}
+
+.portrait-crop-dialog__controls {
+  display: grid;
+  gap: 14px;
+  flex: 1;
+  min-width: 180px;
+}
+
+.portrait-crop-dialog__slider-label {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.portrait-crop-dialog__slider-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.portrait-crop-dialog__slider-value {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.portrait-crop-dialog__range {
+  width: 100%;
+  accent-color: var(--color-accent-primary);
+}
+
+.portrait-crop-dialog__toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}

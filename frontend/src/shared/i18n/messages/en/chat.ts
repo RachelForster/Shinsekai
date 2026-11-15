@@ -434,4 +434,12 @@ export const chatEnMessages: Record<ChatMessageKey, string> = {
   "chat.mini.skipHint": "Click to skip",
   "chat.mini.dismissBubble": "Dismiss bubble",
   "chat.mini.micActive": "Voice listening active",
+  "chat.config.sectionMiniAvatar": "Mini avatar mode",
+  "chat.config.miniInputShortcut": "Quick input shortcut",
+  "chat.config.miniInputShortcutHelp":
+    "Press in mini avatar mode to open and focus the input bar (works globally in the desktop app; use Ctrl, Alt, Super, or a function key).",
+  "chat.config.miniInputShortcutRecording": "Press shortcut… (Esc to cancel)",
+  "chat.config.miniInputShortcutUnset": "Not set (click to record)",
+  "chat.config.miniInputShortcutClear": "Clear",
+  "chat.config.miniInputShortcutReset": "Reset",
 };

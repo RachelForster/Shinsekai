@@ -201,10 +201,51 @@
 }
 
 .chat-config-dialog__text-input:focus,
-.chat-config-dialog__color-input:focus-visible {
+.chat-config-dialog__color-input:focus-visible,
+.chat-config-dialog__shortcut-recorder:focus-visible,
+.chat-config-dialog__shortcut-recorder[data-recording="true"] {
   outline: 0;
   border-color: var(--chat-config-accent-local);
   box-shadow: 0 0 0 2px color-mix(in oklch, var(--chat-config-accent-local) 34%, transparent);
+}
+
+.chat-config-dialog__shortcut-control {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.chat-config-dialog__shortcut-recorder {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 7px;
+  padding: 0 10px;
+  overflow: hidden;
+  color: var(--chat-toolbar-color, #fffaf0);
+  background: rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-config-dialog__shortcut-recorder[data-recording="true"] {
+  color: var(--chat-config-accent-local);
+  background: color-mix(in oklch, var(--chat-config-accent-local) 14%, rgba(255, 255, 255, 0.06));
+}
+
+.chat-config-dialog__shortcut-action {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 0 10px;
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .chat-config-dialog__color-input {

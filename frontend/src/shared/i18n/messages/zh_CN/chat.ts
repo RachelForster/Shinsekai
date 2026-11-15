@@ -421,6 +421,14 @@ export const chatZhCNMessages = {
   "chat.mini.skipHint": "点击跳过",
   "chat.mini.dismissBubble": "收起气泡",
   "chat.mini.micActive": "语音监听中",
+  "chat.config.sectionMiniAvatar": "小图标模式",
+  "chat.config.miniInputShortcut": "唤醒输入框快捷键",
+  "chat.config.miniInputShortcutHelp":
+    "在小图标模式下按快捷键可随时展开并聚焦输入框（桌面端支持后台全局唤起；请使用 Ctrl / Alt / Super 组合键或功能键）。",
+  "chat.config.miniInputShortcutRecording": "请按下快捷键…（Esc 取消）",
+  "chat.config.miniInputShortcutUnset": "未设置（点击录制）",
+  "chat.config.miniInputShortcutClear": "清空",
+  "chat.config.miniInputShortcutReset": "默认",
 } satisfies Record<string, string>;
 
 export type ChatMessageKey = keyof typeof chatZhCNMessages;
