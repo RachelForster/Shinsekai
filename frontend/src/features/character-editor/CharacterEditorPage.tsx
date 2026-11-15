@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { WheelEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { configQueryKey, getAppConfig } from "../../entities/config/repository";
@@ -19,7 +18,6 @@ import {
   saveCharacter,
   saveCharacterEmotionTags,
   saveCharacterSpriteGroups,
-  saveSpriteScale,
   saveSpriteVoiceText,
   saveSpriteVoiceType,
   translateCharacterFields,
@@ -55,8 +53,6 @@ import { useVisionAvailability } from "../media-auto-label/useVisionAvailability
 import { SpriteTagsDialog } from "./SpriteTagsDialog";
 import {
   DEFAULT_SPRITE_GROUP,
-  SPRITE_SCALE_STEP,
-  clampSpriteScale,
   createCharacter,
   isSelfPersonaCharacter,
   normalizeSpriteGroupName,
@@ -104,7 +100,6 @@ export function CharacterEditorPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const [pendingResourceDelete, setPendingResourceDelete] = useState<CharacterResourceDeleteTarget | null>(null);
-  const [pendingSpritePaths, setPendingSpritePaths] = useState<string[]>([]);
   const [pendingVoicePaths, setPendingVoicePaths] = useState<Record<number, string>>({});
   const [selectedSpriteIndex, setSelectedSpriteIndex] = useState(0);
   const [activeSpriteGroup, setActiveSpriteGroup] = useState("__all__");
@@ -170,7 +165,6 @@ export function CharacterEditorPage() {
       setSelectedName(selected.name);
       setDraft(structuredClone(selected));
       setPronunciationText(pronunciationMapToText(selected.pronunciation_map));
-      setPendingSpritePaths([]);
       setPendingVoicePaths({});
       setSelectedSpriteIndex(0);
       setActiveSpriteGroup("__all__");
@@ -494,7 +488,6 @@ export function CharacterEditorPage() {
         sprites: mergeSprites(character.sprites, current),
       }));
       setPronunciationText(pronunciationMapToText(character.pronunciation_map));
-      setPendingSpritePaths([]);
       if (variables.saveFirst && variables.originalName && variables.originalName !== character.name) {
         void queryClient.invalidateQueries({ queryKey: ["knowledge", "binding-names"] });
       }
@@ -596,22 +589,6 @@ export function CharacterEditorPage() {
         sprites: mergeSprites(character.sprites, current),
       }));
       showToast({ kind: "success", title: t("character.sprite.clear") });
-    },
-  });
-
-  const spriteScaleMutation = useMutation({
-    mutationFn: () => saveSpriteScale(currentCharacterName, Number(draft.sprite_scale) || 0),
-    onError(error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("character.sprite.imageError"),
-        title: t("character.sprite.saveScale"),
-      });
-    },
-    onSuccess(character) {
-      queryClient.invalidateQueries({ queryKey: charactersQueryKey });
-      setDraft((current) => ({ ...current, sprite_scale: character.sprite_scale }));
-      showToast({ kind: "success", title: t("character.sprite.saveScale") });
     },
   });
 
@@ -791,14 +768,6 @@ export function CharacterEditorPage() {
     setBulkSpriteTagsOpen(true);
   };
 
-  const handleSpriteScaleWheel = (event: WheelEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    const direction = event.deltaY < 0 ? 1 : -1;
-    const current = Number(draft.sprite_scale) || 0;
-    update("sprite_scale", clampSpriteScale(current + direction * SPRITE_SCALE_STEP));
-  };
-
   const buildCharacterSaveInput = () => {
     if (!draft.name.trim()) {
       setNameError(t("character.validation.nameRequired"));
@@ -958,7 +927,6 @@ export function CharacterEditorPage() {
     setSelectedName("");
     setDraft(createCharacter());
     setPronunciationText("");
-    setPendingSpritePaths([]);
     setPendingVoicePaths({});
     setSelectedSpriteIndex(0);
     setActiveSpriteGroup("__all__");
@@ -1030,9 +998,8 @@ export function CharacterEditorPage() {
     translateMutation.mutate();
   };
 
-  const uploadSprites = () => {
-    if (!pendingSpritePaths.length) {
-      showToast({ kind: "error", title: t("character.sprite.selectImages") });
+  const uploadSprites = (paths: string[]) => {
+    if (!paths.length) {
       return;
     }
     const input = buildCharacterSaveInput();
@@ -1044,7 +1011,7 @@ export function CharacterEditorPage() {
       emotionTags: input.character.emotion_tags,
       group:
         activeSpriteGroup !== "__all__" && activeSpriteGroup !== DEFAULT_SPRITE_GROUP ? activeSpriteGroup : undefined,
-      paths: pendingSpritePaths,
+      paths,
       saveFirst: !isSavedCharacter || input.character.name !== currentCharacterName,
     });
   };
@@ -1059,18 +1026,6 @@ export function CharacterEditorPage() {
       count: draft.sprites.length,
       kind: "all-sprites",
     });
-  };
-
-  const saveSpriteScaleValue = () => {
-    if (!isSavedCharacter) {
-      showToast({
-        kind: "error",
-        message: t("character.validation.nameRequired"),
-        title: t("character.sprite.saveScale"),
-      });
-      return;
-    }
-    spriteScaleMutation.mutate();
   };
 
   const saveSpriteTags = () => {
@@ -1319,12 +1274,8 @@ export function CharacterEditorPage() {
               portraitCropMutation.reset();
               setPortraitCropOpen(true);
             }}
-            onPendingSpritePathsChange={setPendingSpritePaths}
             onPendingVoicePathChange={updatePendingVoicePath}
-            onSaveScale={saveSpriteScaleValue}
             onSaveTags={saveSpriteTags}
-            onScaleChange={update}
-            onScaleWheel={handleSpriteScaleWheel}
             onSelectSprite={setSelectedSpriteIndex}
             onSpriteDelete={requestSelectedSpriteDelete}
             onSpriteTagChange={(value) => updateSpriteTag(selectedSpriteIndex, value)}
@@ -1334,7 +1285,6 @@ export function CharacterEditorPage() {
             onSpriteVoiceTextChange={(value) => updateSprite(selectedSpriteIndex, { voice_text: value })}
             onSpriteVoiceUpload={uploadSelectedSpriteVoice}
             onSpriteVoiceTypeChange={handleSpriteVoiceTypeChange}
-            pendingSpritePaths={pendingSpritePaths}
             pendingVoicePath={pendingVoicePaths[selectedSpriteIndex] ?? ""}
             selectedSprite={
               selectedSprite ? { ...selectedSprite, voice_type: spriteVoiceType(selectedSprite, draft) } : undefined
@@ -1344,7 +1294,6 @@ export function CharacterEditorPage() {
             spriteDeletePending={spriteDeleteMutation.isPending}
             spriteGalleryItems={spriteGalleryItems}
             spriteGroupsPending={spriteGroupsMutation.isPending}
-            spriteScalePending={spriteScaleMutation.isPending}
             spriteUploadPending={spriteUploadMutation.isPending}
             voiceDeletePending={voiceDeleteMutation.isPending}
             voiceUploadPending={voiceUploadMutation.isPending}

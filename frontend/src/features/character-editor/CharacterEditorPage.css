@@ -142,14 +142,6 @@
 }
 
 /* Scale control */
-.character-scale-control {
-  align-items: stretch;
-}
-
-.character-scale-control .input {
-  max-width: 140px;
-}
-
 /* Sprite tag editor */
 .sprite-tag-row {
   align-items: stretch;

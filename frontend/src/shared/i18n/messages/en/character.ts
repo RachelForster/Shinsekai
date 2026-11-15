@@ -189,6 +189,7 @@ export const characterEnMessages: Record<CharacterMessageKey, string> = {
   "character.sprite.clear": "Delete all sprites",
   "character.sprite.clearConfirmBody": "Delete all {count} sprites from “{name}”?",
   "character.sprite.deleteConfirmBody": "Delete sprite #{index} “{filename}” from “{name}”?",
+  "character.sprite.generate": "Generate sprites",
   "character.sprite.empty": "No sprites",
   "character.sprite.hasVoice": "Voice",
   "character.sprite.imageError": "Sprite image operation failed.",

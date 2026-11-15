@@ -190,6 +190,7 @@ export const characterJaMessages: Record<CharacterMessageKey, string> = {
   "character.sprite.clear": "立ち絵をすべて削除",
   "character.sprite.clearConfirmBody": "「{name}」から {count} 枚の立ち絵をすべて削除しますか？",
   "character.sprite.deleteConfirmBody": "「{name}」から立ち絵 #{index}「{filename}」を削除しますか？",
+  "character.sprite.generate": "立ち絵を自動生成",
   "character.sprite.empty": "立ち絵がありません",
   "character.sprite.hasVoice": "音声あり",
   "character.sprite.imageError": "立ち絵画像の操作に失敗しました。",

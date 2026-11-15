@@ -37,7 +37,6 @@ const mockListCharacterMemories = vi.fn();
 const mockOpenExternal = vi.fn();
 const mockRememberCharacterMemory = vi.fn();
 const mockSearchCharacterMemories = vi.fn();
-const mockSaveSpriteScale = vi.fn();
 const mockSaveSpriteVoiceText = vi.fn();
 const mockSaveSpriteVoiceType = vi.fn();
 const mockTranslateCharacterFields = vi.fn();
@@ -146,7 +145,6 @@ vi.mock("../../../entities/character/repository", () => ({
   saveCharacter: (character: Character, originalName?: string) => mockSaveCharacter(character, originalName),
   saveCharacterEmotionTags: (name: string, emotionTags: string) => mockSaveCharacterEmotionTags(name, emotionTags),
   saveCharacterSpriteGroups: (input: unknown) => mockSaveCharacterSpriteGroups(input),
-  saveSpriteScale: (name: string, scale: number) => mockSaveSpriteScale(name, scale),
   saveSpriteVoiceText: (name: string, index: number, text: string) => mockSaveSpriteVoiceText(name, index, text),
   saveSpriteVoiceType: (name: string, index: number, voiceType: string) =>
     mockSaveSpriteVoiceType(name, index, voiceType),
@@ -323,11 +321,6 @@ describe("CharacterEditorPage", () => {
       ...character,
       emotion_tags: emotionTags,
     }));
-    mockSaveSpriteScale.mockImplementation(async (name: string, scale: number) => ({
-      ...structuredClone(character),
-      name,
-      sprite_scale: scale,
-    }));
     mockSaveSpriteVoiceText.mockImplementation(async (name: string, index: number, text: string) => ({
       ...structuredClone(character),
       name,
@@ -447,8 +440,12 @@ describe("CharacterEditorPage", () => {
 
     fireEvent.change(screen.getByLabelText("Character name"), { target: { value: "Sora" } });
     fireEvent.change(screen.getByLabelText("Upload directory name (ASCII)"), { target: { value: "sora" } });
-    fireEvent.click(screen.getByRole("button", { name: "Choose images or MP4 / WebM videos..." }));
+    expect(screen.queryByText("Choose images or MP4 / WebM videos...")).not.toBeInTheDocument();
+    pickerState.paths = ["D:/new/sora.png", "D:/new/sora.webm"];
     fireEvent.click(screen.getByRole("button", { name: "Upload" }));
+    const picker = screen.getByRole("dialog", { name: "Choose images or MP4 / WebM videos..." });
+    expect(mockUploadCharacterSprites).not.toHaveBeenCalled();
+    fireEvent.click(within(picker).getByRole("button", { name: "Choose mocked paths" }));
 
     await waitFor(() =>
       expect(mockSaveCharacter).toHaveBeenCalledWith(
@@ -463,7 +460,7 @@ describe("CharacterEditorPage", () => {
       expect(mockUploadCharacterSprites).toHaveBeenCalledWith({
         emotionTags: "",
         name: "Sora",
-        paths: ["D:/new/sora.png"],
+        paths: ["D:/new/sora.png", "D:/new/sora.webm"],
       }),
     );
     await waitFor(() => expect(screen.getByRole("combobox", { name: "Current character" })).toHaveTextContent("Sora"));
@@ -609,9 +606,7 @@ describe("CharacterEditorPage", () => {
     renderPage();
 
     await waitForCharacterLoaded();
-    fireEvent.change(screen.getByLabelText("Display scale"), { target: { value: "1.25" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save scale" }));
-    await waitFor(() => expect(mockSaveSpriteScale).toHaveBeenCalledWith("Mika", 1.25));
+    expect(screen.queryByLabelText("Display scale")).not.toBeInTheDocument();
 
     fireEvent.click(await screen.findByRole("radio", { name: "Reference voice" }));
     await waitFor(() => expect(mockSaveSpriteVoiceType).toHaveBeenCalledWith("Mika", 0, "reference"));
@@ -823,13 +818,10 @@ describe("CharacterEditorPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByText(/Sprite directory must contain ASCII characters only/)).toBeInTheDocument();
 
+    pickerState.paths = ["D:/new/sora.png"];
     fireEvent.click(screen.getByRole("button", { name: "Upload" }));
-    await waitFor(() => expect(screen.getAllByText("Choose images or MP4 / WebM videos...").length).toBeGreaterThan(1));
+    fireEvent.click(screen.getByRole("button", { name: "Choose mocked paths" }));
     expect(mockUploadCharacterSprites).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByRole("button", { name: "Save scale" }));
-    await waitFor(() => expect(screen.getAllByText("Save scale").length).toBeGreaterThan(1));
-    expect(mockSaveSpriteScale).not.toHaveBeenCalled();
 
     expect(mockSaveCharacterEmotionTags).not.toHaveBeenCalled();
     expect(mockUploadSpriteVoice).not.toHaveBeenCalled();

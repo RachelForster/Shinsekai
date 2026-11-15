@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type WheelEventHandler } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CheckSquare,
   Crop,
@@ -27,22 +27,14 @@ import {
   EmptyState,
   FilePicker,
   ImageAssetGallery,
-  NumberInput,
+  PathPickerDialog,
   PathDisplay,
   Select,
   Switch,
   TextInput,
   VisualMedia,
 } from "../../shared/ui";
-import {
-  DEFAULT_SPRITE_GROUP,
-  SPRITE_SCALE_MAX,
-  SPRITE_SCALE_MIN,
-  SPRITE_SCALE_STEP,
-  normalizeSpriteGroupName,
-  resolveCharacterSpriteGroups,
-  type CharacterFieldChange,
-} from "./characterEditorUtils";
+import { DEFAULT_SPRITE_GROUP, normalizeSpriteGroupName, resolveCharacterSpriteGroups } from "./characterEditorUtils";
 
 export interface SpriteGroupsPatch {
   assignments?: Record<string, string>;
@@ -71,22 +63,17 @@ interface CharacterSpritesSectionProps {
   onOpenBulkTags: () => void;
   onOpenPortraitCrop?: () => void;
   onOpenSmartGroup?: () => void;
-  onPendingSpritePathsChange: (paths: string[]) => void;
   onPendingVoicePathChange: (path: string) => void;
-  onSaveScale: () => void;
   onSaveTags: () => void;
-  onScaleChange: CharacterFieldChange;
-  onScaleWheel: WheelEventHandler<HTMLDivElement>;
   onSelectSprite: (index: number) => void;
   onSpriteDelete: () => void;
   onSpriteTagChange: (value: string) => void;
-  onSpriteUpload: () => void;
+  onSpriteUpload: (paths: string[]) => void;
   onSpriteVoiceDelete: () => void;
   onSpriteVoiceTextBlur: (text: string) => void;
   onSpriteVoiceTextChange: (value: string) => void;
   onSpriteVoiceTypeChange: (value: SpriteVoiceType) => void;
   onSpriteVoiceUpload: () => void;
-  pendingSpritePaths: string[];
   pendingVoicePath: string;
   selectedSprite?: Sprite;
   selectedSpriteIndex: number;
@@ -94,7 +81,6 @@ interface CharacterSpritesSectionProps {
   spriteDeletePending: boolean;
   spriteGalleryItems: ImageAssetGalleryItem[];
   spriteGroupsPending?: boolean;
-  spriteScalePending: boolean;
   spriteUploadPending: boolean;
   voiceDeletePending: boolean;
   voiceUploadPending: boolean;
@@ -119,12 +105,8 @@ export function CharacterSpritesSection({
   onOpenBulkTags,
   onOpenPortraitCrop,
   onOpenSmartGroup,
-  onPendingSpritePathsChange,
   onPendingVoicePathChange,
-  onSaveScale,
   onSaveTags,
-  onScaleChange,
-  onScaleWheel,
   onSelectSprite,
   onSpriteDelete,
   onSpriteTagChange,
@@ -134,7 +116,6 @@ export function CharacterSpritesSection({
   onSpriteVoiceTextChange,
   onSpriteVoiceTypeChange,
   onSpriteVoiceUpload,
-  pendingSpritePaths,
   pendingVoicePath,
   selectedSprite,
   selectedSpriteIndex,
@@ -142,12 +123,12 @@ export function CharacterSpritesSection({
   spriteDeletePending,
   spriteGalleryItems,
   spriteGroupsPending = false,
-  spriteScalePending,
   spriteUploadPending,
   voiceDeletePending,
   voiceUploadPending,
 }: CharacterSpritesSectionProps) {
   const { t } = useI18n();
+  const [spritePickerOpen, setSpritePickerOpen] = useState(false);
   const [internalActiveGroup, setInternalActiveGroup] = useState("__all__");
   const activeSpriteGroup = controlledActiveGroup ?? internalActiveGroup;
   const setActiveSpriteGroup = (nextGroup: string) => {
@@ -349,12 +330,12 @@ export function CharacterSpritesSection({
             tooltip={generateHint}
             variant="ghost"
           >
-            {t("spriteGeneration.action")}
+            {t("character.sprite.generate")}
           </Button>
           <AsyncButton
             icon={<Upload aria-hidden className="button__icon" />}
             loading={spriteUploadPending}
-            onClick={onSpriteUpload}
+            onClick={() => setSpritePickerOpen(true)}
             variant="ghost"
           >
             {t("character.sprite.uploadImages")}
@@ -383,46 +364,17 @@ export function CharacterSpritesSection({
           </Button>
         </div>
       </div>
+      <PathPickerDialog
+        acceptedExtensions={VISUAL_MEDIA_EXTENSIONS}
+        multiple
+        mode="file"
+        onClose={() => setSpritePickerOpen(false)}
+        onSelect={(path) => onSpriteUpload([path])}
+        onSelectMany={onSpriteUpload}
+        open={spritePickerOpen}
+        title={t("character.sprite.selectImages")}
+      />
       <div className="asset-editor">
-        <label className="field-row field-row--stack">
-          <span className="field-row__label">{t("character.sprite.selectImages")}</span>
-          <span className="field-row__control">
-            <FilePicker
-              acceptedExtensions={VISUAL_MEDIA_EXTENSIONS}
-              multiple
-              onPathsChange={(paths) => {
-                if (paths.length) {
-                  onPendingSpritePathsChange(paths);
-                }
-              }}
-              pickLabel={t("common.chooseFile")}
-              pickerTitle={t("character.sprite.selectImages")}
-              value={
-                pendingSpritePaths.length
-                  ? t("character.sprite.selectedFiles", { count: pendingSpritePaths.length })
-                  : ""
-              }
-            />
-          </span>
-        </label>
-        <label className="field-row field-row--stack">
-          <span className="field-row__label">{t("character.field.spriteScale")}</span>
-          <span className="field-row__control">
-            <div className="input-group character-scale-control" onWheel={onScaleWheel}>
-              <NumberInput
-                max={SPRITE_SCALE_MAX}
-                min={SPRITE_SCALE_MIN}
-                onChange={(event) => onScaleChange("sprite_scale", Number(event.target.value))}
-                step={SPRITE_SCALE_STEP}
-                value={draft.sprite_scale}
-              />
-              <AsyncButton loading={spriteScalePending} onClick={onSaveScale}>
-                {t("character.sprite.saveScale")}
-              </AsyncButton>
-            </div>
-          </span>
-        </label>
-
         {showOutfitGroupBar ? (
           <div className="sprite-group-panel">
             <div className="sprite-group-bar">
