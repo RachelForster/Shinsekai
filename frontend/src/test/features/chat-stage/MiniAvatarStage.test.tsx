@@ -12,6 +12,13 @@ import {
   MiniAvatarStage,
   resolveMiniAvatarSpeaker,
 } from "../../../features/chat-stage/components/MiniAvatarStage";
+import {
+  DEFAULT_MINI_INPUT_SHORTCUT,
+  formatMiniInputShortcut,
+  matchesMiniInputShortcut,
+  normalizeMiniInputShortcut,
+  shortcutFromKeyboardEvent,
+} from "../../../features/chat-stage/miniInputShortcut";
 import type { ChatStageSprite } from "../../../features/chat-stage/state/types";
 import { registerAvatarFormat, routeAvatarVoice } from "../../../modules/character-visual";
 import { I18nProvider } from "../../../shared/i18n/I18nProvider";
@@ -25,10 +32,13 @@ const platformMocks = vi.hoisted(() => ({
 
 const desktopApiMocks = vi.hoisted(() => ({
   closeDesktopWindow: vi.fn(),
+  getDesktopWindowCursorPosition: vi.fn(),
   getDesktopWindowCursorState: vi.fn(),
   isDesktopChatWindow: vi.fn(),
   isTauriDesktop: vi.fn(),
   minimizeDesktopWindow: vi.fn(),
+  onDesktopMiniAvatarInputShortcut: vi.fn(),
+  setDesktopChatWindowMiniInputShortcut: vi.fn(),
   setDesktopChatWindowMiniMode: vi.fn(),
   setDesktopWindowAlwaysOnTop: vi.fn(),
   setDesktopWindowClickThrough: vi.fn(),
@@ -50,10 +60,15 @@ vi.mock("../../../shared/desktop/desktopApi", async (importOriginal) => {
   return {
     ...actual,
     closeDesktopWindow: () => desktopApiMocks.closeDesktopWindow(),
+    getDesktopWindowCursorPosition: () => desktopApiMocks.getDesktopWindowCursorPosition(),
     getDesktopWindowCursorState: () => desktopApiMocks.getDesktopWindowCursorState(),
     isDesktopChatWindow: () => desktopApiMocks.isDesktopChatWindow(),
     isTauriDesktop: () => desktopApiMocks.isTauriDesktop(),
     minimizeDesktopWindow: () => desktopApiMocks.minimizeDesktopWindow(),
+    onDesktopMiniAvatarInputShortcut: (listener: () => void) =>
+      desktopApiMocks.onDesktopMiniAvatarInputShortcut(listener),
+    setDesktopChatWindowMiniInputShortcut: (shortcut: string | null) =>
+      desktopApiMocks.setDesktopChatWindowMiniInputShortcut(shortcut),
     setDesktopChatWindowMiniMode: (mini: boolean, restoreAlwaysOnTop: boolean) =>
       desktopApiMocks.setDesktopChatWindowMiniMode(mini, restoreAlwaysOnTop),
     setDesktopWindowAlwaysOnTop: (alwaysOnTop: boolean) => desktopApiMocks.setDesktopWindowAlwaysOnTop(alwaysOnTop),
@@ -209,7 +224,10 @@ describe("MiniAvatarStage component", () => {
     window.localStorage.removeItem("shinsekai-chat-stage-runtime-config");
     desktopApiMocks.isDesktopChatWindow.mockReturnValue(false);
     desktopApiMocks.isTauriDesktop.mockReturnValue(false);
+    desktopApiMocks.getDesktopWindowCursorPosition.mockResolvedValue({ x: -500, y: -500 });
     desktopApiMocks.getDesktopWindowCursorState.mockResolvedValue({ focused: true, inside: true, x: 100, y: 100 });
+    desktopApiMocks.onDesktopMiniAvatarInputShortcut.mockResolvedValue(() => undefined);
+    desktopApiMocks.setDesktopChatWindowMiniInputShortcut.mockResolvedValue({ error: null, registered: true });
     desktopApiMocks.setDesktopChatWindowMiniMode.mockResolvedValue({ dockSide: "right" });
     desktopApiMocks.setDesktopWindowClickThrough.mockResolvedValue(undefined);
     desktopApiMocks.syncDesktopChatWindowMiniLayout.mockResolvedValue({ dockSide: "right" });
@@ -1243,5 +1261,197 @@ describe("MiniAvatarStage component", () => {
     expect(bubble).toHaveAttribute("data-visible", "false");
     fireEvent.click(document.querySelector(".mini-avatar__core")!);
     expect(bubble).toHaveAttribute("data-visible", "true");
+  });
+
+  it("normalizes, formats, and matches mini input shortcuts safely", () => {
+    expect(DEFAULT_MINI_INPUT_SHORTCUT).toBe("Alt+Q");
+    expect(normalizeMiniInputShortcut(undefined)).toBe("Alt+Q");
+    expect(normalizeMiniInputShortcut("")).toBe("");
+    expect(normalizeMiniInputShortcut("   ")).toBe("");
+    expect(normalizeMiniInputShortcut("Control+option+q")).toBe("Ctrl+Alt+Q");
+    expect(normalizeMiniInputShortcut("F7")).toBe("F7");
+    // Bare letters and bare F8 (reserved for hold-to-talk) fall back safely.
+    expect(normalizeMiniInputShortcut("Q")).toBe("Alt+Q");
+    expect(normalizeMiniInputShortcut("Shift+Q")).toBe("Alt+Q");
+    expect(normalizeMiniInputShortcut("F8")).toBe("Alt+Q");
+    expect(normalizeMiniInputShortcut("Alt+F8")).toBe("Alt+F8");
+
+    expect(formatMiniInputShortcut("Ctrl+Shift+Slash")).toBe("Ctrl + Shift + /");
+    expect(formatMiniInputShortcut("Alt+Q")).toBe("Alt + Q");
+    expect(formatMiniInputShortcut("")).toBe("");
+
+    expect(
+      shortcutFromKeyboardEvent({
+        altKey: true,
+        code: "KeyQ",
+        ctrlKey: false,
+        key: "q",
+        metaKey: false,
+        shiftKey: false,
+      }),
+    ).toBe("Alt+Q");
+    expect(
+      shortcutFromKeyboardEvent({
+        altKey: false,
+        code: "AltLeft",
+        ctrlKey: false,
+        key: "Alt",
+        metaKey: false,
+        shiftKey: false,
+      }),
+    ).toBeNull();
+    expect(
+      matchesMiniInputShortcut(
+        {
+          altKey: true,
+          code: "KeyQ",
+          ctrlKey: false,
+          isComposing: false,
+          key: "q",
+          metaKey: false,
+          repeat: false,
+          shiftKey: false,
+        },
+        "Alt+Q",
+      ),
+    ).toBe(true);
+  });
+
+  it("opens, focuses, and toggles the input bar with the keyboard shortcut in web mode", () => {
+    let now = 1000;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    renderMiniStage();
+
+    const chatButton = screen.getByRole("button", { name: "Show input bar" });
+    expect(chatButton).toHaveAttribute("title", "Show input bar (Alt + Q)");
+    expect(chatButton).toHaveAttribute("aria-keyshortcuts", "Alt + Q");
+    expect(screen.queryByPlaceholderText("Enter dialogue")).not.toBeInTheDocument();
+
+    fireEvent.keyDown(window, { altKey: true, code: "KeyQ", key: "q" });
+
+    const input = screen.getByPlaceholderText("Enter dialogue");
+    expect(input).toBeInTheDocument();
+    expect(document.activeElement).toBe(input);
+    expect(screen.getByRole("button", { name: "Hide input bar", pressed: true })).toHaveAttribute(
+      "title",
+      "Hide input bar (Alt + Q)",
+    );
+
+    now += 300;
+    fireEvent.keyDown(input, { altKey: true, code: "KeyQ", key: "q" });
+    expect(screen.queryByPlaceholderText("Enter dialogue")).not.toBeInTheDocument();
+  });
+
+  it("syncs global desktop shortcut, disables click-through while pinned, and supports custom shortcut recording", async () => {
+    let now = 2000;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    desktopApiMocks.isTauriDesktop.mockReturnValue(true);
+    desktopApiMocks.isDesktopChatWindow.mockReturnValue(true);
+
+    let globalShortcutTrigger: (() => void) | null = null;
+    desktopApiMocks.onDesktopMiniAvatarInputShortcut.mockImplementation(async (listener: () => void) => {
+      globalShortcutTrigger = listener;
+      return () => {
+        if (globalShortcutTrigger === listener) {
+          globalShortcutTrigger = null;
+        }
+      };
+    });
+
+    const stageSnapshot: ChatSnapshot = {
+      backgroundPath: "http://127.0.0.1:8787/api/media?path=room.png",
+      characterName: "Mio",
+      dialogText: "Shortcut integration test",
+      historyEntries: [],
+      historyPath: "data/chat_history/default.json",
+      inputDraft: "",
+      options: [],
+      sprites: [mioSprite],
+      status: "idle",
+      voiceLanguage: "ja",
+    };
+
+    const basePlatform = createHttpPlatform("http://127.0.0.1:8787");
+    platformMocks.getPlatform.mockReturnValue({
+      ...basePlatform,
+      chat: {
+        ...basePlatform.chat,
+        command: vi.fn().mockResolvedValue(stageSnapshot),
+        getHistory: vi.fn().mockResolvedValue([]),
+        getSnapshot: vi.fn().mockResolvedValue(stageSnapshot),
+        subscribeEvents: vi.fn(() => () => undefined),
+      },
+    });
+
+    render(
+      <ToastProvider>
+        <MemoryRouter initialEntries={["/chat-stage"]}>
+          <I18nProvider language="en">
+            <ChatStagePage />
+          </I18nProvider>
+        </MemoryRouter>
+      </ToastProvider>,
+    );
+
+    await screen.findByText("Shortcut integration test");
+
+    // Customize the shortcut in ChatConfigDialog first (also test Escape cancel + Reset + record).
+    fireEvent.click(screen.getByRole("button", { name: "Chat appearance settings" }));
+    const recorder = await screen.findByRole("button", { name: /^Quick input shortcut$/i });
+    expect(recorder).toHaveTextContent("Alt + Q");
+
+    fireEvent.click(recorder);
+    expect(recorder).toHaveAttribute("data-recording", "true");
+    // Pressing Escape cancels recording without closing the settings modal.
+    fireEvent.keyDown(recorder, { code: "Escape", key: "Escape" });
+    expect(recorder).toHaveAttribute("data-recording", "false");
+    expect(screen.getByRole("dialog", { name: "Chat appearance settings" })).toBeInTheDocument();
+
+    // Clear, reset, then record Ctrl+Shift+Space.
+    fireEvent.click(screen.getByRole("button", { name: "Quick input shortcut: Clear" }));
+    expect(recorder).toHaveTextContent("Not set (click to record)");
+    fireEvent.click(screen.getByRole("button", { name: "Quick input shortcut: Reset" }));
+    expect(recorder).toHaveTextContent("Alt + Q");
+
+    fireEvent.click(recorder);
+    fireEvent.keyDown(recorder, { code: "Space", ctrlKey: true, key: " ", shiftKey: true });
+    expect(recorder).toHaveTextContent("Ctrl + Shift + Space");
+
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Chat appearance settings" })).not.toBeInTheDocument(),
+    );
+
+    // Enter mini avatar mode -> registers custom global shortcut and enables click-through initially.
+    fireEvent.click(screen.getByRole("button", { name: "Mini avatar mode" }));
+    await waitFor(() =>
+      expect(desktopApiMocks.setDesktopChatWindowMiniInputShortcut).toHaveBeenCalledWith("Ctrl+Shift+Space"),
+    );
+    await waitFor(() => expect(globalShortcutTrigger).not.toBeNull());
+    expect(desktopApiMocks.setDesktopWindowClickThrough).toHaveBeenLastCalledWith(true);
+
+    // Triggering the desktop global shortcut opens & focuses the input bar and disables click-through.
+    now += 300;
+    act(() => {
+      globalShortcutTrigger?.();
+    });
+
+    const input = await screen.findByPlaceholderText("Enter dialogue");
+    expect(document.activeElement).toBe(input);
+    await waitFor(() => expect(desktopApiMocks.setDesktopWindowClickThrough).toHaveBeenLastCalledWith(false));
+
+    // Transient OS window blur within the activation grace period does NOT close the pinned input bar.
+    now += 50;
+    fireEvent.blur(window);
+    expect(screen.getByPlaceholderText("Enter dialogue")).toBeInTheDocument();
+
+    // Pressing Escape closes the input bar and restores desktop click-through.
+    fireEvent.keyDown(input, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByPlaceholderText("Enter dialogue")).not.toBeInTheDocument());
+    await waitFor(() => expect(desktopApiMocks.setDesktopWindowClickThrough).toHaveBeenLastCalledWith(true));
+
+    // Exiting mini avatar mode unregisters the global shortcut cleanly.
+    fireEvent.click(screen.getByRole("button", { name: "Exit mini avatar mode" }));
+    await waitFor(() => expect(desktopApiMocks.setDesktopChatWindowMiniInputShortcut).toHaveBeenLastCalledWith(null));
   });
 });

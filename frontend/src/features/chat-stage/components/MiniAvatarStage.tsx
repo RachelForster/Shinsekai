@@ -38,8 +38,19 @@ import {
   type VisualFraming,
 } from "../../../modules/character-visual";
 import { Portrait } from "../../../shared/components/Portrait";
-import { startDesktopWindowDrag, type DesktopMiniDockSide } from "../../../shared/desktop/desktopApi";
+import {
+  onDesktopMiniAvatarInputShortcut,
+  setDesktopChatWindowMiniInputShortcut,
+  startDesktopWindowDrag,
+  type DesktopMiniDockSide,
+} from "../../../shared/desktop/desktopApi";
 import { useI18n } from "../../../shared/i18n";
+import {
+  DEFAULT_MINI_INPUT_SHORTCUT,
+  formatMiniInputShortcut,
+  matchesMiniInputShortcut,
+  normalizeMiniInputShortcut,
+} from "../miniInputShortcut";
 import type {
   ChatAttachmentInput,
   ChatCommand,
@@ -150,6 +161,7 @@ export function MiniAvatarStage({
   inputValue,
   locked = false,
   longPressTalk = false,
+  miniInputShortcut = DEFAULT_MINI_INPUT_SHORTCUT,
   notificationText,
   notificationVisible,
   onAdvance,
@@ -161,6 +173,7 @@ export function MiniAvatarStage({
   onExitMiniMode,
   onFlushBatch,
   onInputActivity,
+  onInputPinnedChange,
   onLongPressTalkChange,
   onPickAttachments,
   onRemoveAttachment,
@@ -175,6 +188,7 @@ export function MiniAvatarStage({
   runtimeFramingForSprite,
   screenShareStarting = false,
   screenSharing = false,
+  shortcutDisabled = false,
   spriteReaction,
   sprites,
   standaloneDesktopWindow,
@@ -201,6 +215,7 @@ export function MiniAvatarStage({
   inputValue: string;
   locked?: boolean;
   longPressTalk?: boolean;
+  miniInputShortcut?: string;
   notificationText?: string;
   notificationVisible: boolean;
   onAdvance: () => void;
@@ -212,6 +227,7 @@ export function MiniAvatarStage({
   onExitMiniMode: () => void;
   onFlushBatch: () => void | Promise<void>;
   onInputActivity: (state: { composing: boolean; hasText: boolean }) => void;
+  onInputPinnedChange?: (pinned: boolean) => void;
   onLongPressTalkChange?: (value: boolean) => void;
   onPickAttachments: (kind: ChatAttachmentInput["kind"]) => void;
   onRemoveAttachment: (attachment: ChatAttachmentInput) => void;
@@ -226,6 +242,7 @@ export function MiniAvatarStage({
   runtimeFramingForSprite?: (sprite: ChatStageSprite, index: number) => VisualFraming;
   screenShareStarting?: boolean;
   screenSharing?: boolean;
+  shortcutDisabled?: boolean;
   spriteReaction?: ChatStageSpriteReaction | null;
   sprites: readonly ChatStageSprite[];
   standaloneDesktopWindow: boolean;
@@ -259,6 +276,9 @@ export function MiniAvatarStage({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const historyIndexRef = useRef(-1);
   const inputActivityRef = useRef("");
+  const lastShortcutHandledAtRef = useRef(-Infinity);
+  const shortcutActivatingUntilRef = useRef(-Infinity);
+  const shortcutRetryTimerRef = useRef<number | null>(null);
   const dragSessionRef = useRef<{
     active: boolean;
     dragged: boolean;
@@ -289,6 +309,11 @@ export function MiniAvatarStage({
   }, [resolvedSpeaker.speakerName]);
 
   const effectiveDockSide = standaloneDesktopWindow ? dockSide : webDockSide;
+  const normalizedInputShortcut = useMemo(() => normalizeMiniInputShortcut(miniInputShortcut, ""), [miniInputShortcut]);
+  const formattedInputShortcut = useMemo(
+    () => formatMiniInputShortcut(normalizedInputShortcut),
+    [normalizedInputShortcut],
+  );
   const closePlusMenu = useCallback(() => setPlusMenuOpen(false), []);
   useDismissableLayer({ active: plusMenuOpen, onDismiss: closePlusMenu, rootRef: plusRootRef });
 
@@ -301,6 +326,33 @@ export function MiniAvatarStage({
       }
     });
   }, []);
+
+  useEffect(() => {
+    onInputPinnedChange?.(inputPinned);
+  }, [inputPinned, onInputPinnedChange]);
+
+  useEffect(
+    () => () => {
+      onInputPinnedChange?.(false);
+      if (shortcutRetryTimerRef.current != null) {
+        window.clearTimeout(shortcutRetryTimerRef.current);
+        shortcutRetryTimerRef.current = null;
+      }
+    },
+    [onInputPinnedChange],
+  );
+
+  useEffect(() => {
+    if (
+      inputPinned &&
+      !inputDisabled &&
+      !locked &&
+      inputRef.current &&
+      document.activeElement === inputBarRef.current
+    ) {
+      inputRef.current.focus();
+    }
+  }, [inputDisabled, inputPinned, locked]);
 
   useEffect(() => {
     if (attachments.length > prevAttachmentCountRef.current) {
@@ -327,17 +379,129 @@ export function MiniAvatarStage({
       setInputPinned(false);
     };
     const handleWindowBlur = () => {
-      if (!pickingAttachmentRef.current) {
-        setInputPinned(false);
+      if (pickingAttachmentRef.current || performance.now() < shortcutActivatingUntilRef.current) {
+        return;
+      }
+      setInputPinned(false);
+    };
+    const handleWindowFocus = () => {
+      if (performance.now() < shortcutActivatingUntilRef.current) {
+        focusInputSoon();
       }
     };
     document.addEventListener("pointerdown", handlePointerDownOutside, true);
     window.addEventListener("blur", handleWindowBlur);
+    window.addEventListener("focus", handleWindowFocus);
     return () => {
       document.removeEventListener("pointerdown", handlePointerDownOutside, true);
       window.removeEventListener("blur", handleWindowBlur);
+      window.removeEventListener("focus", handleWindowFocus);
     };
-  }, [inputPinned]);
+  }, [focusInputSoon, inputPinned]);
+
+  const triggerInputShortcut = useCallback(
+    (fromGlobalDesktopEvent: boolean) => {
+      if (locked || shortcutDisabled || !normalizedInputShortcut) {
+        return;
+      }
+      const now = performance.now();
+      if (now - lastShortcutHandledAtRef.current < 150) {
+        return;
+      }
+      lastShortcutHandledAtRef.current = now;
+
+      const activeElement = document.activeElement;
+      if (inputPinned && document.hasFocus() && activeElement && inputBarRef.current?.contains(activeElement)) {
+        shortcutActivatingUntilRef.current = -Infinity;
+        setInputPinned(false);
+        return;
+      }
+
+      shortcutActivatingUntilRef.current = now + (fromGlobalDesktopEvent ? 400 : 120);
+      setPlusMenuOpen(false);
+      setInputPinned(true);
+      if (inputRef.current && !inputRef.current.disabled) {
+        inputRef.current.focus();
+      } else {
+        inputBarRef.current?.focus();
+      }
+      focusInputSoon();
+      if (fromGlobalDesktopEvent) {
+        if (shortcutRetryTimerRef.current != null) {
+          window.clearTimeout(shortcutRetryTimerRef.current);
+        }
+        shortcutRetryTimerRef.current = window.setTimeout(() => {
+          shortcutRetryTimerRef.current = null;
+          if (inputRef.current && !inputRef.current.disabled) {
+            inputRef.current.focus();
+          } else {
+            inputBarRef.current?.focus();
+          }
+        }, 48);
+      }
+    },
+    [focusInputSoon, inputPinned, locked, normalizedInputShortcut, shortcutDisabled],
+  );
+
+  useEffect(() => {
+    if (!normalizedInputShortcut || locked || shortcutDisabled) {
+      return;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!matchesMiniInputShortcut(event, normalizedInputShortcut)) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      triggerInputShortcut(false);
+    };
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, [locked, normalizedInputShortcut, shortcutDisabled, triggerInputShortcut]);
+
+  const triggerInputShortcutRef = useRef(triggerInputShortcut);
+  triggerInputShortcutRef.current = triggerInputShortcut;
+
+  useEffect(() => {
+    if (!standaloneDesktopWindow) {
+      return;
+    }
+    const activeShortcut = !locked && !shortcutDisabled && normalizedInputShortcut ? normalizedInputShortcut : null;
+    let disposed = false;
+    let unlisten: (() => void) | null = null;
+
+    if (activeShortcut) {
+      void onDesktopMiniAvatarInputShortcut(() => {
+        if (!disposed) {
+          triggerInputShortcutRef.current(true);
+        }
+      })
+        .then((cleanup) => {
+          if (disposed) {
+            cleanup();
+          } else {
+            unlisten = cleanup;
+          }
+        })
+        .catch((error) => {
+          console.error("Desktop mini-avatar shortcut listener failed", error);
+        });
+    }
+
+    void setDesktopChatWindowMiniInputShortcut(activeShortcut).catch((error) => {
+      console.error("Desktop mini-avatar global shortcut update failed", error);
+    });
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+      void setDesktopChatWindowMiniInputShortcut(null).catch((error) => {
+        console.error("Desktop mini-avatar global shortcut cleanup failed", error);
+      });
+    };
+  }, [locked, normalizedInputShortcut, shortcutDisabled, standaloneDesktopWindow]);
 
   useEffect(() => {
     if (!inputValue.trim()) {
@@ -477,6 +641,13 @@ export function MiniAvatarStage({
       return;
     }
     if (pickingAttachmentRef.current && nextFocused === null) {
+      return;
+    }
+    if (
+      performance.now() < shortcutActivatingUntilRef.current &&
+      (nextFocused === null || nextFocused === document.body)
+    ) {
+      focusInputSoon();
       return;
     }
     setInputPinned(false);
@@ -896,6 +1067,7 @@ export function MiniAvatarStage({
 
             <IconButton
               aria-expanded={inputPinned}
+              aria-keyshortcuts={formattedInputShortcut || undefined}
               aria-pressed={inputPinned}
               className={classNames(
                 "mini-avatar__satellite mini-avatar__satellite--chat",
@@ -908,6 +1080,11 @@ export function MiniAvatarStage({
               onPointerEnter={() => setHoverBubblePreview(true)}
               ref={chatButtonRef}
               tabIndex={controlsVisible ? 0 : -1}
+              title={
+                formattedInputShortcut
+                  ? `${t(inputPinned ? "chat.mini.collapseInput" : "chat.mini.toggleInput")} (${formattedInputShortcut})`
+                  : t(inputPinned ? "chat.mini.collapseInput" : "chat.mini.toggleInput")
+              }
             >
               <MessageSquare aria-hidden className="icon-button__icon" />
             </IconButton>
