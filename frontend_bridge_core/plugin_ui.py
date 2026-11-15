@@ -337,7 +337,7 @@ def _frontend_chat_ui_action(contribution: Any) -> tuple[str, str, str]:
 
 
 def _frontend_chat_ui_contribution_payloads() -> list[dict[str, Any]]:
-    allowed_slots = {"chat-dialog-actions", "chat-output", "chat-toolbar", "chat-top-toolbar"}
+    allowed_slots = {"chat-dialog-actions", "chat-output", "chat-toolbar", "chat-top-toolbar", "chat-workspace-actions"}
     allowed_icons = {"info", "play", "puzzle", "settings", "smartphone", "sparkles"}
     allowed_presentations = {"button", "icon-only"}
     allowed_variants = {"danger", "ghost", "primary"}
@@ -363,6 +363,8 @@ def _frontend_chat_ui_contribution_payloads() -> list[dict[str, Any]]:
                 "actionLabel": str(getattr(contribution, "action_label", "") or "").strip() or title,
                 "actionType": action_type,
                 "actionable": action_type != "none",
+                **({"externalLaunch": True} if slot == "chat-workspace-actions"
+                   and getattr(contribution, "external_launch", False) is True else {}),
                 "description": str(getattr(contribution, "description", "") or "").strip()[:500],
                 "icon": icon if icon in allowed_icons else "puzzle",
                 "id": contribution_id,
@@ -398,12 +400,19 @@ def _run_frontend_chat_ui_contribution(plugin_id: str, contribution_id: str) -> 
         else:
             message = str(result or "").strip()
             kind = "success"
+        conversation_id = result.get("conversationId") if isinstance(result, Mapping) else None
+        if conversation_id is not None and (
+            contribution.slot != "chat-workspace-actions" or kind != "success"
+            or not isinstance(conversation_id, str) or not conversation_id or len(conversation_id) > 128
+        ):
+            raise ValueError("Invalid plugin conversation launch request")
         if kind not in {"error", "info", "success"}:
             kind = "success"
         return {
             "id": current_id,
             "kind": kind,
             "message": message[:1000],
+            **({"conversationId": conversation_id} if conversation_id else {}),
             "pluginId": current_plugin,
         }
     raise KeyError(f"plugin chat UI contribution not found: {lookup_plugin}/{lookup_contribution}")
