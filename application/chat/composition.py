@@ -63,7 +63,7 @@ from application.chat.host.commands import (
     TurnOptionsCommands,
     InputCommands,
     SelectionCommands,
-    BranchCommands,
+    HistoryRevertCommand,
 )
 from application.chat.voice_archive import VoiceArchive
 from core.chat_history.storage import chat_history_session_dir
@@ -256,7 +256,7 @@ _story_access = StoryCoordinatorAccess(
 _story_history = story.StoryHistoryRecorder(
     _history_projection, projection._chat_user_display_name_from_snapshot
 )
-_story_branches = story.StoryBranchCoordinator(
+_story_history_rollback = story.StoryHistoryRollback(
     _story_access, resolve_history_path_for_project
 )
 _snapshot_projection = projection.SnapshotProjection(
@@ -270,7 +270,7 @@ _history_commands = HistoryCommands(
     history=_history_projection,
     download_file=_history_downloads.current_file,
     issue_download=_history_downloads.issue,
-    discard_story=_story_branches.discard,
+    discard_story=_story_history_rollback.discard,
 )
 _input_commands = InputCommands(
     turn_options=projection._chat_turn_options,
@@ -283,10 +283,9 @@ _selection_commands = SelectionCommands(
     text_selection=_input_commands.message,
 )
 _turn_commands = TurnOptionsCommands(projection._chat_turn_options)
-_branch_commands = BranchCommands(
-    features=projection._chat_experimental_features,
-    sync=_story_branches.sync,
-    publish=_story_branches.publish,
+_history_revert = HistoryRevertCommand(
+    restore_story=_story_history_rollback.restore,
+    publish_story=_story_history_rollback.publish,
 )
 
 for command, handler in {
@@ -322,10 +321,7 @@ for command, handler in {
     "set-character-outfit": forward_current,
     "set-auto-outfit-switch": forward_current,
     "reroll": reroll,
-    "revert-history": _branch_commands.revert,
-    "fork-history": _branch_commands.fork,
-    "switch-branch": _branch_commands.switch,
-    "rename-branch": _branch_commands.rename,
+    "revert-history": _history_revert.revert,
 }.items():
     _command_router.register(command, handler)
 

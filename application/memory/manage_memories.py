@@ -6,8 +6,9 @@ chunk sizing, adapter selection, progress, and cancellation composition.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any, Callable
 
 
 def check_mem0_status(*, start_loading: bool = True) -> dict[str, Any]:
@@ -85,7 +86,7 @@ def recall_turn_memories(payload: dict[str, Any]) -> dict[str, Any]:
         active_character_names=char_names,
         session_id=str(payload.get("sessionId", payload.get("session_id", "")) or ""),
         memory_mode=str(
-            payload.get("memoryMode", payload.get("memory_mode", "shared")) or "shared"
+            payload.get("memoryMode", payload.get("memory_mode", "")) or ""
         ),
         source=str(payload.get("source") or "user"),
         now_ts=float(payload.get("nowTs", payload.get("now_ts", 0.0)) or 0.0),
@@ -131,6 +132,7 @@ def remember_memory(
     source_session_id: str = "",
     source_turn_seq: int | None = None,
 ) -> dict[str, Any]:
+    from ai.memory.extraction import dialogue_memory_kind
     from ai.memory.operations import memory_remember
 
     return memory_remember(
@@ -138,7 +140,7 @@ def remember_memory(
         character_name=character_name,
         gist_text=gist_text,
         slot_key=slot_key,
-        kind=kind,
+        kind=dialogue_memory_kind(kind),
         topic_tags=topic_tags,
         entities=entities,
         importance=importance,
@@ -151,18 +153,18 @@ def remember_memory(
     )
 
 
-def rollback_memories(session_id: str, *, turn_seq: int) -> dict[str, Any]:
+def rollback_memories(session_id: str, *, turn_seq: int, protected_turn_seqs: Sequence[int] = ()) -> dict[str, Any]:
     from ai.memory.operations import memory_rollback_after_turn
 
-    return memory_rollback_after_turn(session_id, turn_seq)
+    return memory_rollback_after_turn(session_id, turn_seq, protected_turn_seqs=protected_turn_seqs)
 
 
-def forget_memory(memory_id: str, *, session_id: str = "") -> dict[str, Any]:
+def forget_memory(
+    memory_id: str, *, session_id: str = "", memory_mode: str = "",
+) -> dict[str, Any]:
     from ai.memory.operations import memory_forget
 
-    if session_id:
-        return memory_forget(memory_id, session_id=session_id)
-    return memory_forget(memory_id)
+    return memory_forget(memory_id, session_id=session_id, memory_mode=memory_mode)
 
 
 def remember_and_list(

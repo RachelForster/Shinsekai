@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import sqlite3
 import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -15,18 +17,27 @@ from ai.memory.engine import HybridMemoryEngine
 from ai.memory.extraction import (
     MemoryExtractor,
     derive_fallback_gist,
+    parse_memory_drafts,
 )
 from ai.memory.hooks import MemoryAutoHooks
 from ai.memory.queue import MemoryWriteQueue
-from ai.tools.memory_tools import _tool_memory_remember, _tool_memory_search
+from ai.tools.memory_tools import _tool_memory_forget, _tool_memory_remember, _tool_memory_search
+from application.chat.capabilities.contracts import StartupCapabilityContext
+from application.chat.capabilities.memory import MemorySessionCapability
 from application.memory.manage_memories import recall_turn_memories
 from application.perception.hooks import PerceptionAutoHooks
 from core.chat_history.identity import CHAT_TURN_ID
+from core.chat_history import sqlite_session_store
+from core.chat_history.models import turn_node_from_message
 from core.chat_history.sqlite_session_store import SqliteSessionStore
+from core.chat_history.storage import close_session_store, open_session_store
+from frontend_bridge_core import memory as bridge_memory
+from frontend_bridge_core.routes import memory_routes
 from core.perception.cache import PROACTIVE_TURN_INSTRUCTION, RPInputCache
 from core.perception.gatekeeper import PerceptionGatekeeper
 from core.perception.models import PerceptionDigestResult
 from sdk.adapters.memory import (
+    SCOPE_CHAR_CANON,
     SCOPE_CHAR_CROSS_SAVE,
     SCOPE_SAVE_ISOLATED,
     SCOPE_SELF_PUBLIC,
@@ -35,7 +46,11 @@ from sdk.adapters.memory import (
     MemoryExtractorPort,
     MemoryScopeFilter,
 )
-from sdk.adapters.session import MEMORY_MODE_INHERIT_READONLY, MEMORY_MODE_ISOLATED
+from sdk.adapters.session import (
+    MEMORY_MODE_INHERIT_READONLY,
+    MEMORY_MODE_ISOLATED,
+    MEMORY_MODE_SHARED,
+)
 from sdk.hooks import (
     BeforeChatContext,
     BeforeCompactContext,
@@ -388,7 +403,12 @@ def test_bound_memory_tools_route_into_active_save_and_release_windows_sqlite_ha
             }
         )
         assert bridge_recall["ok"] is True
-        assert "黑曜石长枪" in bridge_recall["rendered"]
+        assert search_res["memories"][0]["id"] == res2["id"]
+        assert bridge_recall["recalled_ids"] == [res2["id"]]
+        assert '黑曜石长枪' in bridge_recall["rendered"]
+        assert _tool_memory_forget(res2["id"])["ok"]
+        assert session_store.save_memory_repo.get(res2["id"]) is None
+        assert "error" in _tool_memory_forget(res2["id"])
     finally:
         operations.reset_memory_tool_context(token)
         session_store.close()
@@ -397,3 +417,199 @@ def test_bound_memory_tools_route_into_active_save_and_release_windows_sqlite_ha
     # Verify zero leaked SQLite file descriptors on Windows (unlink succeeds cleanly)
     (save_dir / "history.db").unlink()
     global_db_path.unlink()
+
+
+def test_cold_bridge_resolves_managed_save_without_writing_globally(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sqlite_session_store, "_known_session_db_paths", {})
+    monkeypatch.setattr(operations, "_memory_service_url", lambda: "")
+    monkeypatch.setattr(bridge_memory, "_check_mem0_before_call", lambda: None)
+    shared = SqliteHybridMemoryRepo(tmp_path / "shared.db")
+    engine = HybridMemoryEngine(embedder=DeterministicHashEmbedder(dimensions=384), repo=shared)
+    monkeypatch.setattr(operations, "ensure_mem0", lambda: engine)
+    directory = tmp_path / "data" / "chat_history" / "story-save"
+    directory.mkdir(parents=True)
+    (directory / "story-v2.json").touch()
+    store = SqliteSessionStore(directory)
+    sid = store.session_id
+    store.close()
+    # Simulate the bridge before it has seen the chat child's path registry.
+    sqlite_session_store._known_session_db_paths.clear()
+
+    def request(route, **body):
+        return route(SimpleNamespace(body=body)).data
+
+    try:
+        written = request(
+            memory_routes._memory_remember,
+            content="Mika promised to bring the amber compass",
+            characterName="Mika",
+            sourceSessionId=sid,
+        )
+        assert written["ok"]
+        assert shared.get(written["id"]) is None
+        found = request(
+            memory_routes._memory_search,
+            query="amber compass",
+            characterName="Mika",
+            sessionId=sid,
+        )
+        assert [row["id"] for row in found["memories"]] == [written["id"]]
+        recalled = request(
+            memory_routes._memory_recall,
+            userText="Where is the amber compass?",
+            activeCharacterNames=["Mika"],
+            sessionId=sid,
+        )
+        assert written["id"] in recalled["recalled_ids"]
+        assert request(
+            memory_routes._memory_forget, memoryId=written["id"], sessionId=sid,
+        )["ok"]
+        assert "error" in request(
+            memory_routes._memory_forget, memoryId=written["id"], sessionId=sid,
+        )
+        for mode in ("", MEMORY_MODE_ISOLATED, MEMORY_MODE_INHERIT_READONLY):
+            failed = request(
+                memory_routes._memory_remember,
+                content="This must never enter global memory",
+                characterName="Mika",
+                sourceSessionId="absent",
+                memoryMode=mode,
+            )
+            assert "error" in failed
+        assert not shared.list_by_scope(MemoryScopeFilter(scopes=(SCOPE_CHAR_CROSS_SAVE,)))
+    finally:
+        shared.close()
+
+
+def test_dialogue_cannot_create_canon(tmp_path, monkeypatch):
+    row = {"character_name": "Mika", "detail": "Mika says she can see through walls", "kind": "CANON"}
+    drafts = parse_memory_drafts(json.dumps([row]), character_names=["Mika"])
+    assert [draft.kind for draft in drafts] == ["episodic"]
+
+    repo = SqliteHybridMemoryRepo(tmp_path / "global.db")
+    engine = HybridMemoryEngine(embedder=DeterministicHashEmbedder(dimensions=384), repo=repo)
+    monkeypatch.setattr(operations, "ensure_mem0", lambda: engine)
+    monkeypatch.setattr(operations, "_memory_service_url", lambda: "")
+    try:
+        result = _tool_memory_remember(row["detail"], character_name="Mika", kind="canon")
+        record = repo.get(result["id"])
+        assert record.scope == SCOPE_CHAR_CROSS_SAVE and record.kind == "episodic"
+        assert not record.pinned
+        assert not repo.list_by_scope(MemoryScopeFilter(scopes=(SCOPE_CHAR_CANON,)))
+    finally:
+        repo.close()
+
+
+def test_reopening_a_save_uses_the_previous_turn_for_offline_recall(tmp_path):
+    directory = tmp_path / "save"
+    directory.mkdir()
+    past = 1_760_000_000
+    offline = 9 * 24 * 60 * 60
+    last_message = {"role": "assistant", "content": "Talk to you later"}
+    store = open_session_store(directory)
+    store.append_turn(turn_node_from_message(last_message, created_at_ms=past * 1000))
+    # Proactive messages and internal tool calls should not reset the dialogue clock.
+    store.append_turn(turn_node_from_message(
+        {"role": "user", "source": "perception", "content": "Camera event"},
+        created_at_ms=(past + 60) * 1000,
+    ))
+    close_session_store(directory)
+    open_session_store(directory)
+
+    recorded = []
+    adapter = MockLLMAdapter()
+
+    def installer(_dispatcher, **kwargs):
+        return MemoryAutoHooks(
+            **kwargs,
+            queue=MemoryWriteQueue(path=tmp_path / "queue.json"),
+            clock_func=lambda: past + offline,
+            recall_func=lambda turn: (recorded.append(turn) or {"ok": True}),
+        )
+
+    capability = MemorySessionCapability()
+    prior_rollback = sqlite_session_store.get_default_shared_memory_rollback()
+    try:
+        capability.on_llm_ready(StartupCapabilityContext(
+            args=SimpleNamespace(history=str(directory)),
+            config=None,
+            llm_adapter=adapter,
+            llm_manager=None,
+            plugin_manager=None,
+            hook_dispatcher=PluginHookDispatcher(),
+            character_names=("Mika",),
+            runtime_imports=SimpleNamespace(install_memory_hooks=installer),
+        ))
+        capability.turn_context_providers()[0].before_chat(BeforeChatContext(
+            messages=[last_message, {"role": "user", "content": "Hello"}],
+            tools=None,
+            generation_kwargs={},
+            stream=False,
+        ))
+
+        assert len(recorded) == 1
+        assert recorded[0].seconds_since_last_turn == offline
+    finally:
+        capability.on_shutdown()
+        close_session_store(directory)
+        sqlite_session_store.set_default_shared_memory_rollback(prior_rollback)
+
+
+@pytest.mark.parametrize("story_file", ["story-v2.json", "story-prompt-binding.json"])
+def test_legacy_shared_default_yields_to_story_but_explicit_shared_survives(tmp_path, story_file):
+    directory = tmp_path / "story"
+    directory.mkdir()
+    store = SqliteSessionStore(directory)
+    store.close()
+    with sqlite3.connect(directory / "history.db") as conn:
+        conn.execute("INSERT INTO session_meta (key, value) VALUES ('memory_mode', 'shared')")
+    conn.close()
+    store = SqliteSessionStore(directory)
+    try:
+        assert store.get_memory_mode() == MEMORY_MODE_SHARED
+        (directory / story_file).touch()
+        assert store.get_memory_mode() == MEMORY_MODE_ISOLATED
+        store.set_memory_mode(MEMORY_MODE_SHARED)
+    finally:
+        store.close()
+    store = SqliteSessionStore(directory)
+    try:
+        assert store.get_memory_mode() == MEMORY_MODE_SHARED
+    finally:
+        store.close()
+
+
+def test_queue_preserves_distinct_save_modes_and_personas_after_reload(tmp_path):
+    path = tmp_path / "queue.json"
+    queue = MemoryWriteQueue(path=path)
+    scopes = [
+        ("save-a", MEMORY_MODE_ISOLATED, "Rin"),
+        ("save-b", MEMORY_MODE_ISOLATED, "Rin"),
+        ("save-a", MEMORY_MODE_INHERIT_READONLY, "Rin"),
+        ("save-a", MEMORY_MODE_ISOLATED, "Noa"),
+    ]
+    for session, mode, persona in scopes:
+        assert queue.enqueue(
+            "The compass is amber",
+            character_name="Mika",
+            source_session_id=session,
+            memory_mode=mode,
+            player_character=persona,
+        )["queued"]
+    written = []
+
+    def remember(_memory, _character_name, **kwargs):
+        written.append((kwargs["source_session_id"], kwargs["memory_mode"], kwargs["player_character"]))
+        return {"ok": True}
+
+    restored = MemoryWriteQueue(path=path, remember_func=remember)
+    assert restored.enqueue(
+        "The compass is amber",
+        character_name="Mika",
+        source_session_id="save-a",
+        memory_mode=MEMORY_MODE_ISOLATED,
+        player_character="Rin",
+    )["duplicate"]
+    restored.flush()
+    assert written == scopes

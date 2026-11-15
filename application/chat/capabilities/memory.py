@@ -14,9 +14,14 @@ from application.chat.capabilities.contracts import (
     StartupCapabilityContext,
     TurnContextProvider,
 )
-from core.chat_history.models import normalize_memory_mode
+from core.chat_history.models import (
+    is_real_user_turn_message,
+    normalize_memory_mode,
+    rollback_memory_for_timeline,
+)
 from core.chat_history.sqlite_session_store import set_default_shared_memory_rollback
 from core.chat_history.storage import (
+    legacy_active_history_branch,
     peek_open_session_store,
     session_id_for_history_path,
 )
@@ -35,6 +40,20 @@ def is_memory_auto_enabled() -> bool:
         "no",
         "off",
     }
+
+
+def _last_dialogue_turn_at(history_path: str) -> float:
+    store = peek_open_session_store(history_path)
+    if store is None:
+        return 0.0
+    branch = legacy_active_history_branch(history_path)
+    for turn in reversed(store.list_turns(branch_id=branch)):
+        raw = turn.raw_message
+        if not turn.created_at_ms or turn.source == "perception" or not raw.get("content"):
+            continue
+        if is_real_user_turn_message(raw) or (turn.role == "assistant" and not raw.get("tool_calls")):
+            return turn.created_at_ms / 1000.0
+    return 0.0
 
 
 class MemoryTurnContextProvider(BaseTurnContextProvider):
@@ -125,6 +144,7 @@ class MemorySessionCapability(BaseSessionCapability):
         candidate_kwargs: dict[str, Any] = {}
         if resolved_session_id:
             candidate_kwargs["session_id"] = resolved_session_id
+            candidate_kwargs["last_turn_at"] = lambda: _last_dialogue_turn_at(history_arg)
         if resolved_memory_mode:
             candidate_kwargs["memory_mode"] = resolved_memory_mode
         if player_character:
@@ -143,12 +163,16 @@ class MemorySessionCapability(BaseSessionCapability):
         if hooks is not None:
             self._provider = MemoryTurnContextProvider(hooks)
 
-        def _cascade_rollback(sid: str, turn_seq: int) -> int:
+        def _cascade_rollback(
+            sid: str, turn_seq: int, *, protected_turn_seqs: Sequence[int] = (),
+        ) -> int:
             removed_pending = 0
             hook_rb = getattr(self._hooks, "rollback_after_turn", None)
             if callable(hook_rb):
-                removed_pending = int(hook_rb(sid, turn_seq) or 0)
-            return removed_pending + memory_rollback_count(sid, turn_seq)
+                removed_pending = rollback_memory_for_timeline(hook_rb, sid, turn_seq, protected_turn_seqs)
+            return removed_pending + rollback_memory_for_timeline(
+                memory_rollback_count, sid, turn_seq, protected_turn_seqs
+            )
 
         set_default_shared_memory_rollback(_cascade_rollback)
 

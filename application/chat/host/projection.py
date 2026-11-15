@@ -37,21 +37,6 @@ def _chat_runtime_mode(_state: Any) -> str:
     return "react"
 
 
-def _chat_experimental_features(state: Any) -> dict[str, bool]:
-    config_manager = getattr(state, "config_manager", None)
-    system_config = getattr(
-        getattr(config_manager, "config", None), "system_config", None
-    )
-    return {
-        "conversationTree": bool(
-            getattr(system_config, "react_chat_flowchart_experimental_enabled", False)
-        ),
-        "forkHistory": bool(
-            getattr(system_config, "react_chat_fork_experimental_enabled", False)
-        ),
-    }
-
-
 def _chat_turn_options(state: Any) -> dict[str, Any]:
     config_manager = getattr(state, "config_manager", None)
     api_config = getattr(getattr(config_manager, "config", None), "api_config", None)
@@ -279,7 +264,6 @@ class SnapshotProjection:
         chat_stream = getattr(state, "chat_stream", None)
         voice_language = _chat_voice_language(state)
         runtime_mode = _chat_runtime_mode(state)
-        experimental_features = _chat_experimental_features(state)
         user_display_name = _chat_user_display_name(state)
         runtime_state = {
             "chatProcessRunning": self.running(),
@@ -303,10 +287,8 @@ class SnapshotProjection:
                     state, next_snapshot
                 )
                 next_snapshot["runtimeMode"] = runtime_mode
-                next_snapshot["experimentalFeatures"] = experimental_features
                 next_snapshot["userDisplayName"] = user_display_name
-                if not experimental_features["conversationTree"]:
-                    next_snapshot.pop("conversationTree", None)
+                next_snapshot.pop("conversationTree", None)  # Ignore stale snapshots from older runtimes.
                 if voice_language and (
                     not str(next_snapshot.get("voiceLanguage") or "").strip()
                 ):
@@ -343,7 +325,6 @@ class SnapshotProjection:
             "inputDraft": "",
             "numericInfo": status,
             "options": [],
-            "experimentalFeatures": experimental_features,
             "runtimeMode": runtime_mode,
             "sprites": sprites,
             "status": status or "idle",

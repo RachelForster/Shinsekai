@@ -9,9 +9,11 @@ from core.chat_history.identity import CHAT_TURN_ID, DialogIdentities
 from core.chat_history.models import render_messages_to_ui_history
 from core.chat_history.storage import (
     chat_history_db_path,
+    legacy_active_history_branch,
     load_branch_state,
     open_session_store,
     peek_open_session_store,
+    write_active_history_snapshot,
 )
 from core.chat_history.text import _repair_json_string, parse_assistant_dialog_content
 
@@ -59,44 +61,46 @@ class HistoryManager:
     def _resolve_active_branch_id(history_path: Path, branch_id: str | None = None) -> str:
         if branch_id and str(branch_id).strip():
             return str(branch_id).strip()
-        branch_state = load_branch_state(history_path)
-        if isinstance(branch_state, dict):
-            active = str(branch_state.get("active") or "").strip()
-            if active:
-                return active
-        return "main"
+        return legacy_active_history_branch(history_path)
 
-    def save_chat_history(self, file_path, history, *, branch_id: str | None = None):
-        """
-        正常关闭或分支持久化：同步 SQLite 会话库并将完整未压缩历史镜像写入 JSON 文件。
-        返回 True 表示成功，False 表示失败。
-        """
+    def save_chat_history(self, file_path, history, *, branch_id: str | None = None, journaled: bool = False):
+        """Write the complete JSON snapshot, optionally importing an explicit history."""
         if not file_path:
             print("没有提供历史文件名，跳过保存。")
             return True
         history_path = Path(file_path)
         try:
             resolved_branch = self._resolve_active_branch_id(history_path, branch_id)
+            existing = chat_history_db_path(history_path).is_file() or peek_open_session_store(history_path) is not None
             store = open_session_store(history_path)
-            sync_fn = getattr(store, "sync_messages", None)
-            if callable(sync_fn):
-                sync_fn(history, branch_id=resolved_branch)
+            if journaled and existing:
+                # The runtime window may have dropped or normalized messages.
+                # Only the journal and explicit rollback may change durable turns.
+                set_prompt = getattr(store, "set_system_prompt", None)
+                if callable(set_prompt) and history and history[0].get("role") == "system":
+                    set_prompt(str(history[0].get("content") or ""), branch_id=resolved_branch)
+                get_migration_error = getattr(store, "get_migration_error", None)
+                if self._tmp_path(file_path).exists() or (
+                    callable(get_migration_error) and get_migration_error()
+                ):
+                    # Recovery still needs the legacy snapshot as an input.
+                    return True
             else:
                 store.replace_turns(history, branch_id=resolved_branch)
 
-            has_system = any(
-                isinstance(m, dict) and m.get("role") == "system"
-                for m in (history or [])
+            get_prompt = getattr(store, "get_system_prompt", None)
+            has_system = (
+                get_prompt(branch_id=resolved_branch) is not None if callable(get_prompt)
+                else bool(history and history[0].get("role") == "system")
             )
             full_fn = getattr(store, "build_full_raw_messages", None)
             mirror = (
                 full_fn(include_system=has_system, branch_id=resolved_branch)
                 if callable(full_fn)
-                else list(history)
+                else ([m for m in history if m.get("role") == "system"] if has_system else [])
+                + [dict(t.raw_message) for t in store.list_turns(branch_id=resolved_branch)]
             )
-            history_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(history_path, "w", encoding="utf-8") as f:
-                json.dump(mirror, f, ensure_ascii=False, indent=4)
+            write_active_history_snapshot(history_path, mirror)
             print(f"聊天记录已保存到 {history_path}")
             return True
         except Exception as e:
@@ -105,7 +109,7 @@ class HistoryManager:
 
     @staticmethod
     def delete_tmp(history_file: str) -> None:
-        """正常关闭成功后删除临时文件。"""
+        """Remove a legacy journal when explicitly discarding history."""
         if not history_file:
             return
         tmp = HistoryManager._tmp_path(history_file)
@@ -126,12 +130,18 @@ class HistoryManager:
 
         if (
             not history_path.exists()
-            and not tmp.exists()
             and not db_path.exists()
             and peek_open_session_store(history_path) is None
         ):
-            self.chat_history.clear()
-            return []
+            # Some old saves kept their sole snapshot in branches.json.
+            tree = load_branch_state(history_path)
+            if tree:
+                snapshot = tree["branches"][tree["active"]]["messages"]
+                if not self.save_chat_history(history_path, snapshot):
+                    raise OSError(f"Could not import chat history at {history_path}")
+            elif not tmp.exists():
+                self.chat_history.clear()
+                return []
 
         resolved_branch = self._resolve_active_branch_id(history_path)
         store = open_session_store(history_path)
@@ -153,9 +163,7 @@ class HistoryManager:
 
         if merged_tmp:
             try:
-                history_path.parent.mkdir(parents=True, exist_ok=True)
-                with open(history_path, "w", encoding="utf-8") as f:
-                    json.dump(messages, f, ensure_ascii=False, indent=4)
+                write_active_history_snapshot(history_path, messages)
                 tmp.unlink(missing_ok=True)
             except Exception as e:
                 print(f"合并临时聊天记录失败: {e}")

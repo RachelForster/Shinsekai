@@ -87,8 +87,6 @@ export interface SystemConfig {
   chat_ui_theme_path: string;
   chat_ui_theme_id: string;
   chat_ui_runtime_mode: "react";
-  react_chat_fork_experimental_enabled: boolean;
-  react_chat_flowchart_experimental_enabled: boolean;
   story_system_enabled: boolean;
   mirror_auto_detect_china: boolean;
   mirror_region: string;

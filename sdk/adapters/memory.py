@@ -251,7 +251,9 @@ class MemoryRepository(Protocol):
     def record_recall(self, memory_ids: Sequence[str], *, recalled_at: float) -> int:
         """Increment recall_count and update last_recalled_at for recalled IDs."""
 
-    def rollback_after_turn(self, session_id: str, turn_seq: int) -> int:
+    def rollback_after_turn(
+        self, session_id: str, turn_seq: int, *, protected_turn_seqs: Sequence[int] = (),
+    ) -> int:
         """Delete unpinned memories created after turn_seq and restore superseded slots."""
 
     def set_pinned(self, memory_id: str, pinned: bool) -> bool:

@@ -296,7 +296,7 @@ def test_multi_auto_compact_before_compact_extraction_restart_and_four_in_one_re
     assert len(active_loc_after_reroll) == 1
     assert "商店街" in active_loc_after_reroll[0].detail_text
 
-    # 5. Now Revert all the way back to user_index=1 ("水族馆", seq=3 -> truncates after seq=2, BEFORE Checkpoint 1!):
+    # 5. Revert to the first completed turn (seq 2).
     replayed_stage: list[str] = []
     fake_window = SimpleNamespace(
         setDisplayWords=lambda html: replayed_stage.append(html),
@@ -317,12 +317,12 @@ def test_multi_auto_compact_before_compact_extraction_restart_and_four_in_one_re
     assert len(reloaded_ui) == 2
     assert len(replayed_stage) == 1 and "检票口" in replayed_stage[0]
 
-    # Cascade Check (2): All CompactCheckpoints > 2 deleted; LLM prompt has raw pre-compact Turn 1 with ZERO summary/spoilers!
-    assert store.get_active_compact_checkpoint() is None
+    # A checkpoint covering only retained turns is still valid. Its exact
+    # anchor depends on the tokenizer; no future checkpoint may survive.
+    assert all(cp.up_to_seq <= 2 for cp in store.list_compact_checkpoints())
     post_revert_msgs = llm_restarted.get_messages()
-    assert len(post_revert_msgs) == 3  # system + user1 + assistant1
-    assert not any(is_compact_summary_message(m) for m in post_revert_msgs)
-    assert "车站集合" in post_revert_msgs[1]["content"]
+    assert post_revert_msgs == store.build_active_llm_messages()
+    assert "车站集合" in store.list_turns()[0].raw_message["content"]
     assert "摩天轮" not in json.dumps(post_revert_msgs, ensure_ascii=False)
     assert "水族馆" not in json.dumps(post_revert_msgs, ensure_ascii=False)
 
@@ -367,6 +367,7 @@ def test_bridge_memory_remember_and_rollback_routes(
                 "characterName": "Mio",
                 "content": "Mio当前心情：平静",
                 "slotKey": "Mio:mood",
+                "memoryMode": "shared",
                 "sourceSessionId": "bridge-sess-1",
                 "sourceTurnSeq": 2,
             },
@@ -385,6 +386,7 @@ def test_bridge_memory_remember_and_rollback_routes(
                 "characterName": "Mio",
                 "content": "Mio当前心情：害羞",
                 "slotKey": "Mio:mood",
+                "memoryMode": "shared",
                 "sourceSessionId": "bridge-sess-1",
                 "sourceTurnSeq": 6,
             },
@@ -409,3 +411,41 @@ def test_bridge_memory_remember_and_rollback_routes(
     active = shared_db.list_by_scope(MemoryScopeFilter(owner_ids=("Mio",)))
     assert len(active) == 1
     assert active[0].detail_text == "Mio当前心情：平静"
+
+
+
+def test_compaction_anchor_only_covers_messages_sent_to_the_summarizer(monkeypatch):
+    from ai.llm.compact_manager import CompactManager
+
+    hooks = PluginHookDispatcher()
+    covered = []
+    hooks.register_before_compact(lambda context: covered.append(context.up_to_seq))
+    checkpoints = []
+    compactor = CompactManager(
+        object(), max_tokens=260, compact_threshold=0.50, compact_target_ratio=0.45,
+        recent_message_limit=2, hook_dispatcher=hooks,
+        on_checkpoint=lambda seq, summary: checkpoints.append((seq, summary)),
+    )
+    monkeypatch.setattr(compactor, "count_tokens", lambda messages: sum(len(m["content"]) for m in messages))
+    monkeypatch.setattr(compactor, "count_text_tokens", len)
+    prompts = []
+
+    def summarize(prompt):
+        prompts.append(prompt)
+        return "summary " * 10
+
+    monkeypatch.setattr(compactor, "_call_llm_for_compaction", summarize)
+    messages = [
+        {"role": "system", "content": "system"},
+        {"role": "user", "content": "older message " * 8, "_turn_seq": 1},
+        {"role": "assistant", "content": "keep this recent message", "_turn_seq": 2},
+        {"role": "user", "content": "keep current message", "_turn_seq": 3},
+    ]
+
+    compacted = compactor.compact_messages(messages)
+
+    assert covered == [1]
+    assert [seq for seq, _ in checkpoints] == [1]
+    assert "keep this recent message" not in prompts[0]
+    assert compacted[-2:] == messages[-2:]
+    assert compactor.count_tokens(compacted) <= 117

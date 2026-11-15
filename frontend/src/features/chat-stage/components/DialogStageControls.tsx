@@ -7,7 +7,6 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
-  GitBranch,
   History,
   Lock,
   Mic,
@@ -62,7 +61,6 @@ export function DialogStageControls({
   onFlushBatch,
   onLongPressTalkChange,
   onLockedChange,
-  onOpenBranches,
   onOpenHistory,
   onEditConversation,
   onOpenPluginPage,
@@ -73,7 +71,6 @@ export function DialogStageControls({
   outfits,
   screenShareStarting = false,
   screenSharing = false,
-  showBranches,
   showAsrControl,
   turnOptions,
   turnState,
@@ -100,7 +97,6 @@ export function DialogStageControls({
   onFlushBatch: () => void;
   onLongPressTalkChange: (value: boolean) => void;
   onLockedChange: (locked: boolean) => void;
-  onOpenBranches: () => void;
   onOpenHistory: () => void;
   onEditConversation?: () => void;
   onOpenPluginPage: (target: PluginPageTarget) => void;
@@ -111,7 +107,6 @@ export function DialogStageControls({
   outfits?: Record<string, CharacterOutfitState>;
   screenShareStarting?: boolean;
   screenSharing?: boolean;
-  showBranches: boolean;
   showAsrControl: boolean;
   turnOptions: ChatTurnOptions;
   turnState: ChatTurnState;
@@ -152,9 +147,6 @@ export function DialogStageControls({
 
   const lockLabel = locked ? t("chat.toolbar.unlockActions") : t("chat.toolbar.lockActions");
   const lockText = locked ? t("chat.actionBar.unlock") : t("chat.actionBar.lock");
-  const branchTooltip = showBranches
-    ? t("chat.toolbar.openBranches")
-    : t("chat.toolbar.openBranchesExperimentalDisabled");
 
   return (
     <div
@@ -189,18 +181,6 @@ export function DialogStageControls({
             tooltip={t("chat.toolbar.openHistory")}
           >
             {t("chat.actionBar.history")}
-          </ToolbarButton>
-          <ToolbarButton
-            aria-disabled={!showBranches}
-            aria-label={branchTooltip}
-            className="dialog-stage-controls__button"
-            data-experimental="true"
-            disabled={!showBranches}
-            icon={<GitBranch aria-hidden className="button__icon" />}
-            onClick={onOpenBranches}
-            tooltip={branchTooltip}
-          >
-            {t("chat.actionBar.branches")}
           </ToolbarButton>
           <ToolbarButton
             aria-label={t("chat.toolbar.autoPlay")}

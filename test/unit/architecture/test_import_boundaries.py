@@ -719,37 +719,13 @@ def test_effect_bridge_remains_a_transport_adapter() -> None:
         "Effect routes must use EffectUseCase.execute as their single entry point."
     )
 
-def test_main_delegates_conversation_branch_management() -> None:
-    """Keep branch use cases testable outside the process entry point."""
+def test_chat_runtime_has_no_conversation_branch_commands() -> None:
+    runtime = (REPO_ROOT / "application/chat/runtime/commands.py").read_text(encoding="utf-8")
+    assert '"revert-history"' in runtime
+    assert not any(f'"{command}"' in runtime for command in (
+        "fork-history", "switch-branch", "rename-branch",
+    ))
 
-    entrypoint = REPO_ROOT / "main.py"
-    use_case = REPO_ROOT / 'application' / 'chat' / 'history' / 'branches.py'
-    session_runtime = REPO_ROOT / 'application' / 'chat' / 'runtime' / 'session.py'
-    streaming_wiring = REPO_ROOT / 'application' / 'chat' / 'runtime' / 'stream_wiring.py'
-    source = entrypoint.read_text(encoding="utf-8")
-    session_source = session_runtime.read_text(encoding="utf-8")
-    wiring_source = streaming_wiring.read_text(encoding="utf-8")
-    retired_implementations = {
-        "def _active_branch_id",
-        "def _branch_tree_payload",
-        "def _branches",
-        "def _default_branch_state",
-        "def _fork_history_branch",
-        "def _load_initial_branch_state",
-        "def _persist_branch_state",
-        "def _rename_history_branch",
-        "def _switch_history_branch",
-        "load_branch_state(",
-        "save_branch_state(",
-    }
-
-    assert use_case.is_file()
-    assert "ConversationBranchManager(" in wiring_source
-    assert not {
-        item
-        for item in retired_implementations
-        if item in source or item in session_source or item in wiring_source
-    }, "main.py must delegate branch state and operations to manage_branches.py."
 
 def test_package_export_results_remain_transport_independent() -> None:
     """Application export results must not encode the bridge's HTTP routes."""

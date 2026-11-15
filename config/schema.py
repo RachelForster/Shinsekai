@@ -445,14 +445,6 @@ class SystemConfig(BaseModel):
         default="react",
         description="聊天界面运行模式；当前固定使用流式 React chat stage",
     )
-    react_chat_fork_experimental_enabled: DefaultIfNone[bool] = Field(
-        default=False,
-        description="实验性功能：启用 React Chat UI 的历史 Fork 功能",
-    )
-    react_chat_flowchart_experimental_enabled: DefaultIfNone[bool] = Field(
-        default=False,
-        description="实验性功能：启用 React Chat UI 的对话分支流程图/树功能",
-    )
     story_system_enabled: DefaultIfNone[bool] = Field(
         default=False,
         description="Experimental master switch for every structured story capability.",

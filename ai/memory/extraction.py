@@ -31,7 +31,7 @@ _SYSTEM_PROMPT = (
     "You extract durable long-term memories from roleplay chat. "
     "Return only JSON. Do not include prose."
 )
-_VALID_KINDS = frozenset({"profile", "episodic", "promise", "canon"})
+_DIALOGUE_KINDS = frozenset({"profile", "episodic", "promise"})
 _SELF_NAMES = frozenset({"user", "__self__", "你", "自设", "player", "human"})
 
 
@@ -40,6 +40,12 @@ def clean_text(value: Any, *, max_chars: int | None = None) -> str:
     if max_chars is not None and len(text) > max_chars:
         return text[:max_chars].rstrip()
     return text
+
+
+def dialogue_memory_kind(value: Any) -> str:
+    """Dialogue can record facts and promises, never configure character canon."""
+    kind = clean_text(value, max_chars=24).lower()
+    return kind if kind in _DIALOGUE_KINDS else "episodic"
 
 
 def derive_fallback_gist(detail: str, *, max_chars: int = MAX_GIST_CHARS) -> str:
@@ -293,8 +299,7 @@ def parse_memory_drafts(
         raw_gist = clean_text(row.get("gist") or row.get("summary"), max_chars=MAX_GIST_CHARS)
         gist = raw_gist or derive_fallback_gist(detail)
 
-        raw_kind = clean_text(row.get("kind"), max_chars=24).lower()
-        kind = raw_kind if raw_kind in _VALID_KINDS else "episodic"
+        kind = dialogue_memory_kind(row.get("kind"))
         slot_key = clean_text(row.get("slot_key") or row.get("slotKey"), max_chars=120)
         topics = _normalize_string_tuple(row.get("topics") or row.get("topic_tags"), max_items=6)
         entities = _normalize_string_tuple(row.get("entities"), max_items=8)

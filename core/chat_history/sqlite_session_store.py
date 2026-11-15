@@ -16,7 +16,6 @@ from pathlib import Path
 from typing import Any
 
 from core.chat_history.models import (
-    COMPACT_UP_TO_SEQ_KEY,
     CompactCheckpoint,
     MEMORY_MODE_ISOLATED,
     MEMORY_MODE_SHARED,
@@ -28,6 +27,7 @@ from core.chat_history.models import (
     extract_summary_body,
     is_compact_summary_message,
     normalize_memory_mode,
+    rollback_memory_for_timeline,
     strip_internal_message_keys,
     turn_node_from_message,
 )
@@ -49,6 +49,7 @@ SESSION_SCHEMA_VERSION = "1"
 
 _META_SCHEMA_VERSION = "schema_version"
 _META_MEMORY_MODE = "memory_mode"
+_META_MEMORY_MODE_EXPLICIT = "memory_mode_explicit"
 _META_AUTO_OUTFIT_SWITCH = "auto_outfit_switch"
 _META_LEGACY_MIGRATED = "legacy_migrated"
 _META_LEGACY_ERROR = "legacy_migration_error"
@@ -181,8 +182,10 @@ class _SessionSaveMemoryRepo:
     def record_recall(self, memory_ids: Sequence[str], *, recalled_at: float) -> int:
         return self._store.record_recall(memory_ids, recalled_at=recalled_at)
 
-    def rollback_after_turn(self, session_id: str, turn_seq: int) -> int:
-        return self._store.rollback_after_turn(session_id, turn_seq)
+    def rollback_after_turn(
+        self, session_id: str, turn_seq: int, *, protected_turn_seqs: Sequence[int] = (),
+    ) -> int:
+        return self._store.rollback_after_turn(session_id, turn_seq, protected_turn_seqs=protected_turn_seqs)
 
     def set_pinned(self, memory_id: str, pinned: bool) -> bool:
         return self._store.set_pinned(memory_id, pinned)
@@ -203,6 +206,53 @@ def _longest_suffix_prefix_overlap(
     return 0
 
 
+def durable_history_messages(messages: Sequence[Any]) -> list[dict[str, Any]]:
+    return [
+        strip_internal_message_keys(m)
+        for m in messages
+        if isinstance(m, Mapping)
+        and m.get("role") != "system"
+        and not is_compact_summary_message(m)
+    ]
+
+
+def legacy_journal_overlap(
+    existing: Sequence[Mapping[str, Any]],
+    pending: Sequence[Mapping[str, Any]],
+    snapshot: Sequence[Mapping[str, Any]],
+) -> int:
+    """Match an old dual-written journal from the last saved snapshot onward."""
+    overlap = _longest_suffix_prefix_overlap(existing, pending)
+    if list(existing[:len(snapshot)]) != list(snapshot):
+        return overlap
+
+    # The old writer committed to SQLite before appending to .tmp. The
+    # journal can match the start of the DB tail even if the DB is ahead.
+    starts = [len(snapshot)]
+    if snapshot:
+        starts.append(len(snapshot) - 1)
+    for start in starts:
+        matched = 0
+        for saved, journaled in zip(existing[start:], pending):
+            if saved != journaled:
+                break
+            matched += 1
+        if start == len(snapshot) or matched > 1:
+            overlap = max(overlap, matched)
+    return overlap
+
+
+def read_legacy_history_journal(path: Path) -> list[Any]:
+    raw = path.read_text(encoding="utf-8").strip()
+    try:
+        return json.loads("[" + raw.rstrip(",\n\r") + "]")
+    except ValueError:
+        # Legacy writers appended a JSON object per line. After a crash,
+        # recover complete records while ignoring only the torn last line.
+        lines = raw.splitlines()
+        return [json.loads(line.strip().rstrip(",")) for line in lines[:-1]]
+
+
 class SqliteSessionStore:
     """Thread-safe SQLite implementation of ConversationSessionPort backed by history.db."""
 
@@ -211,7 +261,7 @@ class SqliteSessionStore:
         db_path: str | Path,
         *,
         session_id: str | None = None,
-        shared_memory_rollback: Callable[[str, int], int] | None = None,
+        shared_memory_rollback: Callable[..., int] | None = None,
         max_pool_size: int = 4,
     ) -> None:
         raw_str = str(db_path)
@@ -255,11 +305,11 @@ class SqliteSessionStore:
         return self._save_repo
 
     @property
-    def shared_memory_rollback(self) -> Callable[[str, int], int] | None:
+    def shared_memory_rollback(self) -> Callable[..., int] | None:
         return self._shared_memory_rollback
 
     @shared_memory_rollback.setter
-    def shared_memory_rollback(self, callback: Callable[[str, int], int] | None) -> None:
+    def shared_memory_rollback(self, callback: Callable[..., int] | None) -> None:
         self._shared_memory_rollback = callback
 
     def _init_session_schema(self) -> None:
@@ -487,46 +537,21 @@ class SqliteSessionStore:
                     summary_idx = idx
 
             if summary_idx >= 0:
+                existing_branch = self.list_turns(branch_id=b)
+                if existing_branch:
+                    # An LLM window is a projection, including when its tail
+                    # was trimmed again for a smaller context. Never replace
+                    # journaled turns or their sequence numbers with it.
+                    return existing_branch
+
                 summary_msg = non_system[summary_idx]
-                tail_msgs = [strip_internal_message_keys(m) for m in non_system[summary_idx + 1 :]]
-                existing_branch = list(self.list_turns(branch_id=b))
-                active_cp = self.get_active_compact_checkpoint(branch_id=b)
-                raw_up_to = summary_msg.get(COMPACT_UP_TO_SEQ_KEY)
-                if raw_up_to is not None:
-                    anchor_seq = int(raw_up_to)
-                elif active_cp is not None:
-                    anchor_seq = active_cp.up_to_seq
-                else:
-                    anchor_seq = 0
-
                 body = extract_summary_body(str(summary_msg.get("content") or ""))
-                if body and (
-                    active_cp is None
-                    or active_cp.up_to_seq != anchor_seq
-                    or active_cp.rolling_summary != body
-                ):
-                    self.add_compact_checkpoint(
-                        up_to_seq=anchor_seq,
-                        rolling_summary=body,
-                        branch_id=b,
-                    )
-
-                post_turns = [t for t in existing_branch if t.seq > anchor_seq]
-                post_raw = [dict(t.raw_message) for t in post_turns]
-                if post_raw == tail_msgs:
-                    return tuple(existing_branch)
-                if len(tail_msgs) > len(post_raw) and tail_msgs[: len(post_raw)] == post_raw:
-                    for extra in tail_msgs[len(post_raw) :]:
-                        self.append_raw_message(extra, branch_id=b)
-                    return self.list_turns(branch_id=b)
-                with self._store._borrow_conn() as conn:
-                    conn.execute(
-                        "DELETE FROM turns WHERE branch_id = ? AND seq > ?",
-                        (b, anchor_seq),
-                    )
-                    conn.commit()
-                for extra in tail_msgs:
-                    self.append_raw_message(extra, branch_id=b)
+                if body and not body.startswith("【历史摘要】"):
+                    # A legacy JSON export may only contain the old summary
+                    # and its tail, with no raw prefix available to import.
+                    self.add_compact_checkpoint(up_to_seq=0, rolling_summary=body, branch_id=b)
+                for item in non_system[summary_idx + 1 :]:
+                    self.append_raw_message(item, branch_id=b)
                 return self.list_turns(branch_id=b)
 
             clean_incoming = [strip_internal_message_keys(m) for m in non_system]
@@ -592,6 +617,13 @@ class SqliteSessionStore:
         b = str(branch_id or "main").strip() or "main"
         with self._write_lock:
             with self._store._borrow_conn() as conn:
+                protected = tuple(
+                    int(row["seq"])
+                    for row in conn.execute(
+                        "SELECT seq FROM turns WHERE branch_id != ? AND seq > ?",
+                        (b, cutoff),
+                    )
+                )
                 cur_turns = conn.execute(
                     "DELETE FROM turns WHERE branch_id = ? AND seq > ?",
                     (b, cutoff),
@@ -605,7 +637,7 @@ class SqliteSessionStore:
                     )
                 else:
                     cur_cp = conn.execute(
-                        "DELETE FROM compact_checkpoints WHERE branch_id = ? AND up_to_seq >= ?",
+                        "DELETE FROM compact_checkpoints WHERE branch_id = ? AND up_to_seq > ?",
                         (b, cutoff),
                     )
                 deleted_checkpoints = int(cur_cp.rowcount or 0)
@@ -624,12 +656,14 @@ class SqliteSessionStore:
                 self._write_outfits_conn(conn, restored_outfits)
                 conn.commit()
 
-            rolled_back_save = self._save_repo.rollback_after_turn(self._session_id, cutoff)
+            rolled_back_save = self._save_repo.rollback_after_turn(
+                self._session_id, cutoff, protected_turn_seqs=protected,
+            )
 
         rolled_back_shared = 0
         if self._shared_memory_rollback is not None:
-            rolled_back_shared = int(
-                self._shared_memory_rollback(self._session_id, cutoff) or 0
+            rolled_back_shared = rollback_memory_for_timeline(
+                self._shared_memory_rollback, self._session_id, cutoff, protected,
             )
 
         return TruncateReport(
@@ -802,7 +836,11 @@ class SqliteSessionStore:
 
     def get_memory_mode(self) -> MemoryMode:
         raw = self._get_meta(_META_MEMORY_MODE)
-        if raw is None and self._db_path is not None:
+        # Older databases seeded "shared" even when nobody chose a mode.
+        uses_default = raw is None or (
+            raw == MEMORY_MODE_SHARED and self._get_meta(_META_MEMORY_MODE_EXPLICIT) != "1"
+        )
+        if uses_default and self._db_path is not None:
             session_dir = self._db_path.parent
             if (session_dir / "story-v2.json").is_file() or (
                 session_dir / "story-prompt-binding.json"
@@ -812,7 +850,13 @@ class SqliteSessionStore:
 
     def set_memory_mode(self, mode: MemoryMode) -> None:
         normalized = normalize_memory_mode(mode)
-        self._set_meta(_META_MEMORY_MODE, normalized)
+        with self._write_lock, self._store._borrow_conn() as conn:
+            conn.executemany(
+                "INSERT INTO session_meta(key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                ((_META_MEMORY_MODE, normalized), (_META_MEMORY_MODE_EXPLICIT, "1")),
+            )
+            conn.commit()
 
     def get_auto_outfit_switch(self) -> bool:
         raw = self._get_meta(_META_AUTO_OUTFIT_SWITCH)
@@ -905,7 +949,7 @@ class SqliteSessionStore:
             migrated_flag = self._get_meta(_META_LEGACY_MIGRATED) == "1"
             existing_turns = list(self.list_turns(branch_id=b))
 
-            if not migrated_flag and not existing_turns and active_path.exists():
+            if not migrated_flag and active_path.exists():
                 try:
                     loaded = json.loads(active_path.read_text(encoding="utf-8"))
                     if not isinstance(loaded, list):
@@ -918,7 +962,16 @@ class SqliteSessionStore:
                         exc,
                     )
                 else:
-                    self.sync_messages(loaded, branch_id=b)
+                    if not existing_turns:
+                        self.sync_messages(loaded, branch_id=b)
+                    else:
+                        # Resume an interrupted import if the database already
+                        # contains a prefix of the legacy snapshot.
+                        original = durable_history_messages(loaded)
+                        imported = [dict(t.raw_message) for t in existing_turns]
+                        if original[:len(imported)] == imported:
+                            for item in original[len(imported):]:
+                                self.append_raw_message(item, branch_id=b)
                     self._set_meta(_META_LEGACY_MIGRATED, "1")
                     self._set_meta(_META_LEGACY_ERROR, "")
                     existing_turns = list(self.list_turns(branch_id=b))
@@ -933,14 +986,7 @@ class SqliteSessionStore:
                     size = 0
                 if size > 0:
                     try:
-                        raw = tmp_path.read_text(encoding="utf-8").strip()
-                        if raw:
-                            trimmed = raw.rstrip(",\n\r")
-                            tmp_messages = json.loads("[" + trimmed + "]")
-                            if not isinstance(tmp_messages, list):
-                                raise ValueError(".tmp payload did not decode to a list")
-                        else:
-                            tmp_messages = []
+                        tmp_messages = read_legacy_history_journal(tmp_path)
                     except Exception as exc:
                         logger.warning(
                             "Temporary chat journal %s could not be decoded; preserving file: %s",
@@ -948,13 +994,18 @@ class SqliteSessionStore:
                             exc,
                         )
                     else:
-                        clean_tmp = [
-                            strip_internal_message_keys(m)
-                            for m in tmp_messages
-                            if isinstance(m, Mapping) and m.get("role") != "system"
-                        ]
+                        clean_tmp = durable_history_messages(tmp_messages)
                         existing_raw = [dict(t.raw_message) for t in existing_turns]
-                        overlap = _longest_suffix_prefix_overlap(existing_raw, clean_tmp)
+                        snapshot: list[dict[str, Any]] = []
+                        if active_path.exists():
+                            try:
+                                active = json.loads(active_path.read_text(encoding="utf-8"))
+                                if not isinstance(active, list):
+                                    return False
+                                snapshot = durable_history_messages(active)
+                            except (OSError, ValueError):
+                                return False
+                        overlap = legacy_journal_overlap(existing_raw, clean_tmp, snapshot)
                         to_append = clean_tmp[overlap:]
                         for msg in to_append:
                             self.append_raw_message(msg, branch_id=b)
@@ -986,7 +1037,7 @@ _open_stores_lock = threading.RLock()
 _open_stores: dict[str, ConversationSessionPort] = {}
 _known_session_db_paths: dict[str, Path] = {}
 _default_shared_rollback_lock = threading.Lock()
-_default_shared_rollback: Callable[[str, int], int] | None = None
+_default_shared_rollback: Callable[..., int] | None = None
 
 
 def _register_session_db_path(session_id: str, db_path: Path) -> None:
@@ -998,7 +1049,7 @@ def _register_session_db_path(session_id: str, db_path: Path) -> None:
 
 
 def set_default_shared_memory_rollback(
-    callback: Callable[[str, int], int] | None,
+    callback: Callable[..., int] | None,
 ) -> None:
     """Register the default shared-memory rollback hook used by opened session stores."""
     global _default_shared_rollback
@@ -1010,7 +1061,7 @@ def set_default_shared_memory_rollback(
                 store.shared_memory_rollback = callback
 
 
-def get_default_shared_memory_rollback() -> Callable[[str, int], int] | None:
+def get_default_shared_memory_rollback() -> Callable[..., int] | None:
     with _default_shared_rollback_lock:
         return _default_shared_rollback
 
@@ -1029,7 +1080,7 @@ def _evict_open_store_instance(instance: ConversationSessionPort) -> None:
 def open_session_store_for_dir(
     session_dir: str | Path,
     *,
-    shared_memory_rollback: Callable[[str, int], int] | None = None,
+    shared_memory_rollback: Callable[..., int] | None = None,
 ) -> ConversationSessionPort:
     """Return a cached or newly opened ConversationSessionPort for session_dir."""
     directory = Path(session_dir)
@@ -1092,15 +1143,14 @@ def _discover_session_db_path(session_id: str) -> Path | None:
         known = _known_session_db_paths.get(sid)
     if known is not None:
         return known
-    for root in (
-        Path.cwd() / "data" / "chat_history",
-        Path.cwd() / "data" / "conversations",
-    ):
+    data_dir = Path.cwd() / "data"
+    for root in (data_dir / "chat_history", data_dir / "conversations"):
         if not root.is_dir():
             continue
         try:
+            resolved_root = root.resolve()
             for child in root.iterdir():
-                if not child.is_dir():
+                if not child.is_dir() or not child.resolve().is_relative_to(resolved_root):
                     continue
                 if canonical_session_id_for_dir(child) == sid:
                     db_path = child / HISTORY_DB_FILENAME
@@ -1108,12 +1158,20 @@ def _discover_session_db_path(session_id: str) -> Path | None:
                     return db_path
             for db_candidate in root.rglob(HISTORY_DB_FILENAME):
                 parent = db_candidate.parent
+                if not parent.resolve().is_relative_to(resolved_root):
+                    continue
                 if canonical_session_id_for_dir(parent) == sid:
                     _register_session_db_path(sid, db_candidate)
                     return db_candidate
         except OSError:
             continue
     return None
+
+
+def register_session_db_directory(session_dir: str | Path) -> None:
+    """Register a server-approved save before a separate runtime opens it."""
+    directory = Path(session_dir).resolve()
+    _register_session_db_path(canonical_session_id_for_dir(directory), directory / HISTORY_DB_FILENAME)
 
 
 @contextmanager
@@ -1234,11 +1292,13 @@ def read_session_preferences_readonly(session_dir: str | Path) -> dict[str, Any]
     try:
         conn.row_factory = sqlite3.Row
         meta_rows = conn.execute(
-            "SELECT key, value FROM session_meta WHERE key IN (?, ?)",
-            (_META_MEMORY_MODE, _META_AUTO_OUTFIT_SWITCH),
+            "SELECT key, value FROM session_meta WHERE key IN (?, ?, ?)",
+            (_META_MEMORY_MODE, _META_MEMORY_MODE_EXPLICIT, _META_AUTO_OUTFIT_SWITCH),
         ).fetchall()
         meta = {str(r["key"]): str(r["value"]) for r in meta_rows}
         raw_mode = meta.get(_META_MEMORY_MODE)
+        if raw_mode == MEMORY_MODE_SHARED and meta.get(_META_MEMORY_MODE_EXPLICIT) != "1":
+            raw_mode = None
         raw_auto = meta.get(_META_AUTO_OUTFIT_SWITCH)
         auto_switch = (
             True
@@ -1296,7 +1356,10 @@ def read_full_raw_messages_readonly(
     if not db_file.is_file():
         return None
     b = str(branch_id or "main").strip() or "main"
-    conn = sqlite3.connect(str(db_file), timeout=2.0)
+    try:
+        conn = sqlite3.connect(db_file.resolve().as_uri() + "?mode=ro", uri=True, timeout=2.0)
+    except sqlite3.Error:
+        return None
     try:
         conn.row_factory = sqlite3.Row
         messages: list[dict[str, Any]] = []
@@ -1339,5 +1402,6 @@ __all__ = [
     "peek_open_session_store_for_dir",
     "read_full_raw_messages_readonly",
     "read_session_preferences_readonly",
+    "register_session_db_directory",
     "set_default_shared_memory_rollback",
 ]

@@ -14,6 +14,7 @@ import time
 from typing import Any, Callable
 import uuid
 
+from ai.memory.extraction import dialogue_memory_kind
 from ai.memory.operations import memory_remember
 
 logger = logging.getLogger(__name__)
@@ -132,7 +133,7 @@ class MemoryQueueItem:
             created_at=created_at,
             gist_text=_clean_text(raw.get("gist_text") or raw.get("gistText")),
             slot_key=_clean_text(raw.get("slot_key") or raw.get("slotKey")),
-            kind=_clean_text(raw.get("kind")) or "episodic",
+            kind=dialogue_memory_kind(raw.get("kind")),
             topic_tags=topics or None,
             entities=ents or None,
             importance=importance,
@@ -199,7 +200,7 @@ class MemoryWriteQueue:
         except (TypeError, ValueError):
             clean_confidence = 1.0
         clean_slot = _clean_text(slot_key)
-        clean_kind = _clean_text(kind) or "episodic"
+        clean_kind = dialogue_memory_kind(kind)
         clean_session = _clean_text(source_session_id)
         clean_seq = None if source_turn_seq is None else int(source_turn_seq)
         clean_imp: float | None = None
@@ -211,40 +212,43 @@ class MemoryWriteQueue:
         clean_event_at = None if event_at is None else float(event_at)
         clean_topics = _clean_str_list(topic_tags)
         clean_entities = _clean_str_list(entities)
-        dedupe_key = self._dedupe_key(character, text)
+        item = MemoryQueueItem(
+            id=uuid.uuid4().hex,
+            character_name=character,
+            memory=text,
+            source=_clean_text(source) or "auto",
+            confidence=max(0.0, min(1.0, clean_confidence)),
+            created_at=time.time(),
+            gist_text=_clean_text(gist_text),
+            slot_key=clean_slot,
+            kind=clean_kind,
+            topic_tags=clean_topics or None,
+            entities=clean_entities or None,
+            importance=clean_imp,
+            event_at=clean_event_at,
+            memory_mode=_clean_text(memory_mode),
+            player_character=_clean_text(player_character),
+            source_session_id=clean_session,
+            source_turn_seq=clean_seq,
+        )
+        dedupe_key = self._dedupe_key(item)
         with self._lock:
-            for item in self._items:
-                if self._dedupe_key(item.character_name, item.memory) == dedupe_key:
-                    return {"ok": True, "queued": False, "duplicate": True, "id": item.id}
-            item = MemoryQueueItem(
-                id=uuid.uuid4().hex,
-                character_name=character,
-                memory=text,
-                source=_clean_text(source) or "auto",
-                confidence=max(0.0, min(1.0, clean_confidence)),
-                created_at=time.time(),
-                gist_text=_clean_text(gist_text),
-                slot_key=clean_slot,
-                kind=clean_kind,
-                topic_tags=clean_topics or None,
-                entities=clean_entities or None,
-                importance=clean_imp,
-                event_at=clean_event_at,
-                memory_mode=_clean_text(memory_mode),
-                player_character=_clean_text(player_character),
-                source_session_id=clean_session,
-                source_turn_seq=clean_seq,
-            )
+            for pending in self._items:
+                if self._dedupe_key(pending) == dedupe_key:
+                    return {"ok": True, "queued": False, "duplicate": True, "id": pending.id}
             self._items.append(item)
             self._save_locked()
             return {"ok": True, "queued": True, "id": item.id}
 
-    def rollback_after_turn(self, session_id: str, turn_seq: int) -> int:
+    def rollback_after_turn(
+        self, session_id: str, turn_seq: int, *, protected_turn_seqs: Sequence[int] = (),
+    ) -> int:
         """Drop queued items originating from session_id at turns > turn_seq."""
         sid = _clean_text(session_id)
         if not sid:
             return 0
         cutoff = max(0, int(turn_seq))
+        protected = frozenset(protected_turn_seqs)
         with self._lock:
             retained = [
                 item
@@ -253,6 +257,7 @@ class MemoryWriteQueue:
                     item.source_session_id == sid
                     and item.source_turn_seq is not None
                     and item.source_turn_seq > cutoff
+                    and item.source_turn_seq not in protected
                 )
             ]
             removed = len(self._items) - len(retained)
@@ -355,14 +360,14 @@ class MemoryWriteQueue:
             rows = raw.get("items") if isinstance(raw, dict) else raw
             if not isinstance(rows, list):
                 return
-            seen: set[str] = set()
+            seen: set[tuple[str, str, str, str, str]] = set()
             for row in rows:
                 if not isinstance(row, dict):
                     continue
                 item = MemoryQueueItem.from_dict(row)
                 if item is None:
                     continue
-                key = self._dedupe_key(item.character_name, item.memory)
+                key = self._dedupe_key(item)
                 if key in seen:
                     continue
                 seen.add(key)
@@ -387,5 +392,11 @@ class MemoryWriteQueue:
                 logger.debug("failed to remove memory queue temp file %s", tmp_path, exc_info=True)
 
     @staticmethod
-    def _dedupe_key(character_name: str, memory: str) -> str:
-        return f"{_resolve_character_name(character_name).casefold()}\n{_clean_text(memory).casefold()}"
+    def _dedupe_key(item: MemoryQueueItem) -> tuple[str, str, str, str, str]:
+        return (
+            _resolve_character_name(item.character_name).casefold(),
+            _clean_text(item.memory).casefold(),
+            item.source_session_id,
+            item.memory_mode.casefold(),
+            item.player_character.casefold(),
+        )

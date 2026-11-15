@@ -99,7 +99,6 @@ describe("Chat stage outfit & memory mode state and controls", () => {
           onFlushBatch={vi.fn()}
           onLockedChange={vi.fn()}
           onLongPressTalkChange={vi.fn()}
-          onOpenBranches={vi.fn()}
           onOpenHistory={vi.fn()}
           onOpenPluginPage={vi.fn()}
           onTurnOptionsChange={vi.fn()}
@@ -114,7 +113,6 @@ describe("Chat stage outfit & memory mode state and controls", () => {
             Nanami: { activeGroup: "校服", characterName: "Nanami", locked: false },
           }}
           showAsrControl={false}
-          showBranches={false}
           turnOptions={emptyChatState.turnOptions}
           turnState={emptyChatState.turnState}
         />

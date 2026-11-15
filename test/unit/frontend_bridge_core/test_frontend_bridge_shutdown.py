@@ -116,7 +116,7 @@ def test_threading_http_server_memory_and_knowledge_routes_bound_connections_and
     from urllib import request as urllib_request
 
     from ai.knowledge.config import HybridKnowledgeStore
-    from ai.memory import runtime as memory_runtime
+    from ai.memory import operations, runtime as memory_runtime
     from ai.memory.backends.in_memory import DeterministicHashEmbedder
     from ai.memory.backends.sqlite_repo import SqliteHybridMemoryRepo
     from ai.memory.engine import HybridMemoryEngine
@@ -201,6 +201,9 @@ def test_threading_http_server_memory_and_knowledge_routes_bound_connections_and
             assert resp.status == 200
             return json.loads(resp.read().decode("utf-8"))
 
+    stale_context = operations.bind_memory_tool_context(
+        session_id="unrelated-chat-save", memory_mode="isolated",
+    )
     try:
         # 24 requests served by distinct short-lived ThreadingHTTPServer worker threads
         def _exercise_pair(idx: int) -> None:
@@ -251,6 +254,7 @@ def test_threading_http_server_memory_and_knowledge_routes_bound_connections_and
         mem_db.unlink()
         know_db.unlink()
     finally:
+        operations.reset_memory_tool_context(stale_context)
         server.shutdown()
         server.server_close()
         frontend_bridge._set_bridge_state(None)

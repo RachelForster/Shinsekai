@@ -29,11 +29,10 @@ def _create_wiring(**overrides):
     return wiring._StreamingSessionWiring(**values)
 
 
-def test_wiring_composes_plugins_branches_asr_and_command_dispatcher(
+def test_wiring_composes_plugins_asr_and_command_dispatcher(
     monkeypatch,
 ) -> None:
     emit_user_text = Mock(return_value=True)
-    branch_manager = SimpleNamespace()
     runtime_asr = SimpleNamespace()
     dispatcher = SimpleNamespace()
     instance = _create_wiring()
@@ -49,11 +48,6 @@ def test_wiring_composes_plugins_branches_asr_and_command_dispatcher(
     )
     monkeypatch.setattr(
         instance,
-        "_create_branch_manager",
-        lambda: branch_manager,
-    )
-    monkeypatch.setattr(
-        instance,
         "_create_streaming_asr",
         lambda: runtime_asr,
     )
@@ -66,7 +60,6 @@ def test_wiring_composes_plugins_branches_asr_and_command_dispatcher(
 
     bindings = instance.wire()
 
-    assert bindings.branch_manager is branch_manager
     assert bindings.runtime_asr is runtime_asr
     assert bindings.last_user_message == {"attachments": [], "text": ""}
     assert instance.emit_user_text is emit_user_text

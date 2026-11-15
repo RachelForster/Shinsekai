@@ -10,6 +10,7 @@ from typing import Any
 
 from ai.memory.config import build_mem0_config as _build_mem0_config
 from ai.memory.config import is_embedding_model_cached as _is_embedding_model_cached
+from ai.memory.extraction import dialogue_memory_kind
 from ai.memory.operations import memory_forget, memory_remember, memory_search
 from ai.memory.runtime import check_mem0_status
 from ai.memory.runtime import get_mem0 as _get_mem0
@@ -70,7 +71,8 @@ def _tool_memory_remember(
     extra: dict[str, Any] = {}
     if slot_key:
         extra["slot_key"] = slot_key
-    if kind and kind != "episodic":
+    kind = dialogue_memory_kind(kind)
+    if kind != "episodic":
         extra["kind"] = kind
     return memory_remember(content, character_name=character_name, **extra)
 

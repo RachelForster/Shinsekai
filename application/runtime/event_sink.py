@@ -349,12 +349,6 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
             next_snapshot["voiceArchiveEnabled"] = event["voiceArchiveEnabled"]
         return next_snapshot
 
-    if event_type == "conversation.tree":
-        tree = event.get("tree")
-        if isinstance(tree, dict):
-            next_snapshot["conversationTree"] = dict(tree)
-        return next_snapshot
-
     if event_type == "plugin.page.present":
         plugin_id = str(event.get("pluginId") or "").strip()[:128]
         page_id = str(event.get("pageId") or "").strip()[:128]

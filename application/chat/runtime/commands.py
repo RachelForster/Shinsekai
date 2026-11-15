@@ -12,15 +12,22 @@ from application.chat.history.state import (
     pop_last_assistant_turn_payload,
     revert_chat_history,
 )
-from application.chat.history.branches import (
-    ConversationBranchManager,
-    SubmitRuntimeText,
-)
 from application.runtime.context import try_get_app_runtime
 from core.chat_history.storage import (
     chat_history_active_path,
     remove_chat_history_storage,
 )
+
+
+class SubmitRuntimeText(Protocol):
+    def __call__(
+        self,
+        text: str,
+        *,
+        attachments: list[dict[str, object]] | None = None,
+        ignore_unavailable_attachments: bool = False,
+        notify_key: str | None = "main.notify_submitted",
+    ) -> bool: ...
 
 
 class TranslateText(Protocol):
@@ -66,6 +73,8 @@ class ChatCommandBindings:
     resolve_tool_confirmation: Callable[[str, str], bool]
     ui: ChatCommandUiBindings
     translate: TranslateText
+    persist_history: Callable[[list[Any]], object] = lambda _messages: None
+    replay_media: Callable[[list[Any]], None] = lambda _messages: None
 
 
 class ChatCommandDispatcher:
@@ -79,7 +88,6 @@ class ChatCommandDispatcher:
         llm_manager: Any,
         runtime_asr: Any,
         chat_turn_service: Any,
-        branch_manager: ConversationBranchManager,
         chat_history: MutableSequence[Any],
         last_user_message: Mapping[str, object],
         presentation_queue: Any,
@@ -95,7 +103,6 @@ class ChatCommandDispatcher:
         self.llm_manager = llm_manager
         self.runtime_asr = runtime_asr
         self.chat_turn_service = chat_turn_service
-        self.branch_manager = branch_manager
         self.chat_history = chat_history
         self.last_user_message = last_user_message
         self.presentation_queue = presentation_queue
@@ -130,9 +137,6 @@ class ChatCommandDispatcher:
             "clear-history": self._clear_history,
             "change-voice-language": self._change_voice_language,
             "revert-history": self._revert_history,
-            "fork-history": self._fork_history,
-            "switch-branch": self._switch_branch,
-            "rename-branch": self._rename_branch,
         }
         if capability_commands:
             self._handlers.update(capability_commands)
@@ -143,7 +147,7 @@ class ChatCommandDispatcher:
         try:
             if self.replay is not None and self.replay.active and request.type in {
                 "send-message", "submit-option", "reroll", "clear-history", "revert-history",
-                "fork-history", "switch-branch", "begin-asr-hold", "resume-asr", "flush-input-batch",
+                "begin-asr-hold", "resume-asr", "flush-input-batch",
             }:
                 raise ValueError("回放期间无法推进或修改对话，请先退出回放")
             handler = self._handlers.get(request.type)
@@ -317,10 +321,9 @@ class ChatCommandDispatcher:
                 messages,
                 llm_manager=self.llm_manager,
                 history_path=self.history_argument,
-                branch_id=getattr(self.branch_manager, "active_branch_id", "main"),
             )
             if self.history_argument:
-                self.branch_manager.persist()
+                self.bindings.persist_history(self.llm_manager.get_messages())
         else:
             reroll_payload = pop_last_assistant_turn_payload(self.chat_history, messages)
         reroll_text = str(reroll_payload.get("text") or "")
@@ -350,11 +353,8 @@ class ChatCommandDispatcher:
         else:
             history_target = str(Path("data/chat_history") / "_temp.json")
         clear_chat_history(history_target, self.presentation_queue, self.llm_manager)
-        self.branch_manager.reset()
-        self.branch_manager.persist()
         self.bindings.ui.clear_options()
         self.bindings.ui.sync_history()
-        self.branch_manager.publish_tree()
         self._resync_session_outfits()
 
     def _change_voice_language(self, payload: object) -> None:
@@ -386,43 +386,20 @@ class ChatCommandDispatcher:
     def _revert_history(self, payload: object) -> None:
         index = int(payload)
         self.chat_turn_service.cancel_pending_batch()
+        revert_chat_history(
+            index,
+            llm_manager=self.llm_manager,
+            hist=self.chat_history,
+            window=self.history_presenter,
+            **({"history_path": self.history_argument} if self.history_argument else {}),
+        )
+        messages = self.llm_manager.get_messages()
+        self.bindings.replay_media(messages)
         if self.history_argument:
-            revert_chat_history(
-                index,
-                llm_manager=self.llm_manager,
-                hist=self.chat_history,
-                window=self.history_presenter,
-                history_path=self.history_argument,
-                branch_id=getattr(self.branch_manager, "active_branch_id", "main"),
-            )
-        else:
-            revert_chat_history(
-                index,
-                llm_manager=self.llm_manager,
-                hist=self.chat_history,
-                window=self.history_presenter,
-            )
-        replay_media = getattr(self.branch_manager, "replay_media", None)
-        if callable(replay_media):
-            replay_media(self.llm_manager.get_messages())
-        self.branch_manager.persist()
+            self.bindings.persist_history(messages)
         self.bindings.ui.clear_options()
         self.bindings.ui.sync_history()
         self._resync_session_outfits()
-
-    def _fork_history(self, payload: object) -> None:
-        raw_payload = (
-            payload if isinstance(payload, Mapping) else {"userIndex": payload}
-        )
-        self.branch_manager.fork(
-            int(raw_payload.get("userIndex")),
-            branch_id=str(raw_payload.get("branchId") or "").strip(),
-        )
-
-    def _switch_branch(self, payload: object) -> None:
-        self.branch_manager.switch(str(payload or ""))
-        self._resync_session_outfits()
-        self.bindings.ui.notify("已切换对话分支。")
 
     @staticmethod
     def _resync_session_outfits() -> None:
@@ -431,11 +408,3 @@ class ChatCommandDispatcher:
         resync = getattr(controller, "resync_from_session_store", None)
         if callable(resync):
             resync()
-
-    def _rename_branch(self, payload: object) -> None:
-        raw_payload = payload if isinstance(payload, Mapping) else {}
-        self.branch_manager.rename(
-            str(raw_payload.get("branchId") or ""),
-            str(raw_payload.get("label") or ""),
-        )
-        self.bindings.ui.notify("已重命名对话分支。")

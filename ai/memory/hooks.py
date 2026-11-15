@@ -8,6 +8,7 @@ import logging
 import os
 import threading
 import time
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from ai.memory.chunking import DEFAULT_DIALOGUE_CHUNK_TOKENS
@@ -141,6 +142,7 @@ class MemoryAutoHooks:
         sleep_func=time.sleep,
         monotonic_func=time.monotonic,
         clock_func=time.time,
+        last_turn_at: Callable[[], float] | None = None,
     ) -> None:
         self.llm_adapter = llm_adapter
         self.character_names = [
@@ -167,13 +169,16 @@ class MemoryAutoHooks:
         self._clock = clock_func
         self._lock = threading.RLock()
         self._summary_lock = threading.Lock()
+        self._write_lock = threading.Lock()
+        self._rollback_epoch = 0
         self._buffer: list[dict[str, Any]] = []
         self._user_turns = 0
         self._last_extract_turn = 0
         self._last_extracted_seq = 0
         self._last_seen_seq = 0
         self._last_injected_user = ""
-        self._last_turn_ts = 0.0
+        self._read_last_turn_at = last_turn_at
+        self._last_turn_ts = last_turn_at() if last_turn_at is not None else 0.0
         self._recent_injected_window: deque[frozenset[str]] = deque(
             maxlen=self.cooldown_turns
         )
@@ -464,6 +469,7 @@ class MemoryAutoHooks:
                 self._last_extract_turn = self._user_turns
                 snapshot = list(self._buffer)
                 turn = self._user_turns
+                epoch = self._rollback_epoch
                 seqs = [
                     int(item["turn_seq"])
                     for item in snapshot
@@ -484,6 +490,7 @@ class MemoryAutoHooks:
                 source=f"periodic:{turn}",
                 session_id=effective_session,
                 turn_seq=extract_seq,
+                epoch=epoch,
             )
 
     def before_compact(self, context: BeforeCompactContext) -> None:
@@ -546,43 +553,55 @@ class MemoryAutoHooks:
             else:
                 self._buffer.clear()
             self._last_extract_turn = self._user_turns
+            epoch = self._rollback_epoch
 
         self._extract_enqueue_and_flush(
             snapshot,
             source=f"before_compact:{anchor_seq if anchor_seq is not None else self._user_turns}",
             session_id=effective_session,
             turn_seq=anchor_seq,
+            epoch=epoch,
         )
 
-    def rollback_after_turn(self, session_id: str, turn_seq: int) -> int:
+    def rollback_after_turn(
+        self, session_id: str, turn_seq: int, *, protected_turn_seqs: Sequence[int] = (),
+    ) -> int:
         """Synchronize buffered hook state and pending write queue on session revert/reroll."""
         sid = str(session_id or "").strip()
         cutoff = max(0, int(turn_seq))
-        with self._lock:
-            if not sid or not self.session_id or sid == self.session_id:
-                self._buffer = [
-                    item
-                    for item in self._buffer
-                    if item.get("turn_seq") is not None and int(item["turn_seq"]) <= cutoff
-                ]
-                self._last_extracted_seq = min(self._last_extracted_seq, cutoff)
-                self._last_seen_seq = min(self._last_seen_seq, cutoff)
-                self._last_injected_user = ""
-                self._recent_injected_window.clear()
-        return self.queue.rollback_after_turn(sid, cutoff)
+        with self._write_lock:
+            with self._lock:
+                if not sid or not self.session_id or sid == self.session_id:
+                    self._buffer = [
+                        item
+                        for item in self._buffer
+                        if item.get("turn_seq") is not None and int(item["turn_seq"]) <= cutoff
+                    ]
+                    self._last_extracted_seq = min(self._last_extracted_seq, cutoff)
+                    self._last_seen_seq = min(self._last_seen_seq, cutoff)
+                    self._last_injected_user = ""
+                    self._recent_injected_window.clear()
+                    if self._read_last_turn_at is not None:
+                        self._last_turn_ts = self._read_last_turn_at()
+                    self._rollback_epoch += 1
+            return self.queue.rollback_after_turn(
+                sid, cutoff, protected_turn_seqs=protected_turn_seqs
+            )
 
     def shutdown(self, *, wait_timeout: float = 3.0) -> dict[str, Any]:
-        tail_snapshot, tail_turn, tail_seq, tail_session = self._shutdown_tail_snapshot()
+        tail_snapshot, tail_turn, tail_seq, tail_session, epoch = self._shutdown_tail_snapshot()
         if tail_snapshot:
             self._extract_enqueue_and_flush(
                 tail_snapshot,
                 source=f"shutdown:{tail_turn}",
                 session_id=tail_session,
                 turn_seq=tail_seq,
+                epoch=epoch,
             )
         for worker in self._live_workers():
             worker.join(timeout=max(0.0, wait_timeout))
-        return self.queue.flush()
+        with self._write_lock:
+            return self.queue.flush()
 
     def wait_for_idle(self, timeout: float = 3.0) -> None:
         for worker in self._live_workers():
@@ -595,10 +614,11 @@ class MemoryAutoHooks:
         source: str,
         session_id: str = "",
         turn_seq: int | None = None,
+        epoch: int,
     ) -> None:
         worker = threading.Thread(
             target=self._extract_enqueue_and_flush,
-            args=(messages, source, session_id, turn_seq),
+            args=(messages, source, session_id, turn_seq, epoch),
             name="memory-auto-extractor",
             daemon=True,
         )
@@ -611,8 +631,9 @@ class MemoryAutoHooks:
         self,
         messages: list[dict[str, Any]],
         source: str,
-        session_id: str = "",
-        turn_seq: int | None = None,
+        session_id: str,
+        turn_seq: int | None,
+        epoch: int,
     ) -> None:
         with self._summary_lock:
             try:
@@ -622,41 +643,41 @@ class MemoryAutoHooks:
                     session_id=resolved_session,
                     turn_seq=turn_seq,
                 )
-                if resolved_session and turn_seq is not None:
+                with self._write_lock:
                     with self._lock:
-                        if self._last_seen_seq > 0 and int(turn_seq) > self._last_seen_seq:
+                        if epoch != self._rollback_epoch:
                             return
-                for draft in drafts:
-                    char_target = (
-                        "user"
-                        if draft.owner_id in {"__self__", "user", ""}
-                        else draft.owner_id
-                    )
-                    self.queue.enqueue(
-                        draft.detail_text,
-                        character_name=char_target,
-                        source=source,
-                        confidence=float(draft.importance),
-                        gist_text=draft.gist_text,
-                        slot_key=draft.slot_key,
-                        kind=draft.kind,
-                        topic_tags=draft.topic_tags,
-                        entities=draft.entities,
-                        importance=draft.importance,
-                        event_at=draft.event_at,
-                        memory_mode=self.memory_mode,
-                        player_character=self.player_character,
-                        source_session_id=resolved_session,
-                        source_turn_seq=turn_seq,
-                    )
-                self.queue.flush()
+                    for draft in drafts:
+                        char_target = (
+                            "user"
+                            if draft.owner_id in {"__self__", "user", ""}
+                            else draft.owner_id
+                        )
+                        self.queue.enqueue(
+                            draft.detail_text,
+                            character_name=char_target,
+                            source=source,
+                            confidence=float(draft.importance),
+                            gist_text=draft.gist_text,
+                            slot_key=draft.slot_key,
+                            kind=draft.kind,
+                            topic_tags=draft.topic_tags,
+                            entities=draft.entities,
+                            importance=draft.importance,
+                            event_at=draft.event_at,
+                            memory_mode=self.memory_mode,
+                            player_character=self.player_character,
+                            source_session_id=resolved_session,
+                            source_turn_seq=turn_seq,
+                        )
+                    self.queue.flush()
             except Exception:
                 logger.exception("automatic memory extraction failed")
 
-    def _shutdown_tail_snapshot(self) -> tuple[list[dict[str, Any]], int, int | None, str]:
+    def _shutdown_tail_snapshot(self) -> tuple[list[dict[str, Any]], int, int | None, str, int]:
         with self._lock:
             if not self._buffer or self._user_turns <= self._last_extract_turn:
-                return [], self._user_turns, None, self.session_id
+                return [], self._user_turns, None, self.session_id, self._rollback_epoch
             self._last_extract_turn = self._user_turns
             snapshot = list(self._buffer)
             seqs = [
@@ -667,7 +688,7 @@ class MemoryAutoHooks:
             tail_seq = (
                 max(seqs) if seqs else (self._last_seen_seq if self._last_seen_seq > 0 else None)
             )
-            return snapshot, self._user_turns, tail_seq, self.session_id
+            return snapshot, self._user_turns, tail_seq, self.session_id, self._rollback_epoch
 
     def _extract_drafts(
         self,
@@ -783,6 +804,7 @@ def install_memory_hooks(
     memory_mode: str = "",
     player_character: str = "",
     queue: MemoryWriteQueue | None = None,
+    last_turn_at: Callable[[], float] | None = None,
 ) -> MemoryAutoHooks | None:
     if dispatcher is None or not _env_enabled("SHINSEKAI_MEMORY_AUTO_ENABLED", True):
         return None
@@ -793,6 +815,7 @@ def install_memory_hooks(
         memory_mode=memory_mode,
         player_character=player_character,
         queue=queue,
+        last_turn_at=last_turn_at,
         extract_interval_turns=_env_int(
             "SHINSEKAI_MEMORY_EXTRACT_INTERVAL_TURNS",
             DEFAULT_EXTRACT_INTERVAL_TURNS,

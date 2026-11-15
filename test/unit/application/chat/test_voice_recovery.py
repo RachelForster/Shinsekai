@@ -196,7 +196,6 @@ def test_bridge_reader_keeps_last_valid_index_and_refreshes_valid_replacement(vo
 @pytest.mark.parametrize("recovery", ["normal-close", "interrupted-journal"])
 def test_restart_restores_duplicate_dialog_voices_before_first_history_sync(voice, monkeypatch, recovery):
     from ai.llm.history_manager import HistoryManager
-    from application.chat.history.branches import ConversationBranchManager
     from application.chat.presentation.updates import StreamingUIUpdateManager
     from application.media.resource_urls import UnconfiguredResourceUrls
     from core.chat_history.identity import DialogIdentities, CHAT_TURN_ID
@@ -230,12 +229,7 @@ def test_restart_restores_duplicate_dialog_voices_before_first_history_sync(voic
         "active": "main", "counter": 1,
         "branches": {"main": {"id": "main", "messages": [], "history": ["stale HTML"]}},
     })
-    loaded = storage.load_chat_history(str(active))
-    manager = ConversationBranchManager(
-        history_path=str(session), chat_history=history,
-        bindings=SimpleNamespace(get_messages=lambda: loaded, set_messages=Mock()),
-    )
-    manager.load(loaded, active_history_present=True)
+    assert storage.load_chat_history(str(active)) == messages
     assert "stale HTML" not in history
     sink = Mock()
     ui = StreamingUIUpdateManager(sink, chat_history=history, resource_urls=UnconfiguredResourceUrls())

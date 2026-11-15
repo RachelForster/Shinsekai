@@ -192,6 +192,9 @@ def _memory_remember(request: ApiRequest) -> JsonResponse:
 
 def _memory_rollback(request: ApiRequest) -> JsonResponse:
     raw_seq = request.body.get("turnSeq", request.body.get("turn_seq", 0))
+    protected = request.body.get("protectedTurnSeqs", [])
+    if not isinstance(protected, list) or any(type(seq) is not int or seq < 1 for seq in protected):
+        raise ValueError("protectedTurnSeqs must be a list of positive turn sequence numbers")
     return JsonResponse(
         _memory_tool_rollback(
             str(
@@ -200,16 +203,19 @@ def _memory_rollback(request: ApiRequest) -> JsonResponse:
                 or ""
             ),
             int(raw_seq or 0),
+            protected_turn_seqs=protected,
         )
     )
 
 
 def _memory_forget(request: ApiRequest) -> JsonResponse:
-    sid = str(request.body.get("sessionId") or request.body.get("session_id") or "")
-    mid = str(request.body.get("memoryId") or request.body.get("memory_id") or "")
-    if sid:
-        return JsonResponse(_memory_tool_forget(mid, session_id=sid))
-    return JsonResponse(_memory_tool_forget(mid))
+    return JsonResponse(
+        _memory_tool_forget(
+            str(request.body.get("memoryId") or request.body.get("memory_id") or ""),
+            session_id=str(request.body.get("sessionId") or request.body.get("session_id") or ""),
+            memory_mode=str(request.body.get("memoryMode") or request.body.get("memory_mode") or ""),
+        )
+    )
 
 
 def _memory_pin(request: ApiRequest) -> JsonResponse:

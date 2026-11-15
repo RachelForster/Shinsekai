@@ -328,11 +328,14 @@ class InMemoryMemoryRepository:
                 removed += 1
         return removed
 
-    def rollback_after_turn(self, session_id: str, turn_seq: int) -> int:
+    def rollback_after_turn(
+        self, session_id: str, turn_seq: int, *, protected_turn_seqs: Sequence[int] = (),
+    ) -> int:
         sid = str(session_id or "").strip()
         if not sid:
             return 0
         cutoff = int(turn_seq)
+        protected = frozenset(protected_turn_seqs)
         with self._lock:
             to_delete = {
                 mid
@@ -340,6 +343,7 @@ class InMemoryMemoryRepository:
                 if rec.source_session_id == sid
                 and rec.source_turn_seq is not None
                 and rec.source_turn_seq > cutoff
+                and rec.source_turn_seq not in protected
                 and not rec.pinned
                 and rec.scope != SCOPE_CHAR_CANON
             }
