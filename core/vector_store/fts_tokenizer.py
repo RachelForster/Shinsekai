@@ -48,15 +48,22 @@ def tokenize_for_fts(text: str) -> str:
     return " ".join(_extract_tokens(text, include_cjk_unigrams=True))
 
 
-def build_fts_match_query(query: str, *, max_terms: int = 24) -> str:
-    """Build a syntax-safe FTS5 MATCH expression from arbitrary user text."""
+def extract_fts_query_terms(query: str, *, max_terms: int = 24) -> tuple[str, ...]:
+    """Extract bounded bigram + Latin word query terms used for FTS5 matching."""
     # Prefer bigrams + Latin words for multi-char CJK queries so common single
     # characters (e.g. "的", "了", "我") do not flood candidate recall.
     terms = _extract_tokens(query, include_cjk_unigrams=False)
     if not terms:
         terms = _extract_tokens(query, include_cjk_unigrams=True)
     if not terms:
+        return ()
+    return tuple(terms[: max(1, int(max_terms))])
+
+
+def build_fts_match_query(query: str, *, max_terms: int = 24) -> str:
+    """Build a syntax-safe FTS5 MATCH expression from arbitrary user text."""
+    bounded = extract_fts_query_terms(query, max_terms=max_terms)
+    if not bounded:
         return ""
-    bounded = terms[: max(1, int(max_terms))]
     escaped = ['"' + term.replace('"', '""') + '"' for term in bounded]
     return " OR ".join(escaped)

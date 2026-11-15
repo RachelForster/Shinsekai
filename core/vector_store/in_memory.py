@@ -204,7 +204,7 @@ class InMemoryMemoryRepository:
                 )
                 hit_count = sum(1 for term in terms if term in doc_tokens)
                 if hit_count > 0:
-                    f_score = hit_count / (1.0 + hit_count)
+                    f_score = hit_count / (2.2 + hit_count)
 
             if q_vecs and v_score <= 0.0 and f_score <= 0.0 and not has_vec:
                 continue

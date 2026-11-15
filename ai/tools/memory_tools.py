@@ -30,11 +30,12 @@ __all__ = [
     name="memory_search",
     group="memory",
     description=(
-        "Search YOUR memory. "
+        "Search YOUR long-term memory (including older or dormant memories when queried directly). "
         "character_name: YOUR OWN full name from dialog (the character who is speaking). "
         "When you are playing a character, use that character's name. "
-        "query: Chinese or English keywords. Call BEFORE using cross-session info. "
-        "NOTE: first call may return status:'loading' (model initializing, 2-5 min). "
+        "query: Chinese, Japanese, or English keywords or time hints (e.g. '昨天 约定', '京都 红叶'). "
+        "Call BEFORE using cross-session info. "
+        "NOTE: first call may return status:'loading'. "
         "If you get status:'loading', follow the message instruction — do NOT retry this tool or any memory_* tool."
     ),
 )
@@ -50,19 +51,28 @@ def _tool_memory_search(
     name="memory_remember",
     group="memory",
     description=(
-        "Save a fact to YOUR memory. "
+        "Save a durable fact or promise to YOUR memory. "
         "character_name: YOUR OWN full name from dialog (the character who is speaking). "
         "When you are playing 狛枝凪斗, use '狛枝凪斗', NOT 'user'. "
-        "content: the fact in Chinese or English. "
-        "Only use character_name='user' for facts about the human user, not about yourself. "
+        "content: the concrete fact in Chinese, Japanese, or English. "
+        "Only use character_name='user' for public facts about the human user, not about yourself. "
+        "slot_key: optional conflict-update key (e.g. 'profile:favorite_drink') when updating a changeable preference. "
+        "kind: optional 'episodic' (default), 'profile', or 'promise'. "
         "NOTE: first call may return status:'loading'. If so, follow the message — do NOT retry any memory_* tool."
     ),
 )
 def _tool_memory_remember(
     content: str,
     character_name: str = "user",
+    slot_key: str = "",
+    kind: str = "episodic",
 ) -> dict[str, Any]:
-    return memory_remember(content, character_name=character_name)
+    extra: dict[str, Any] = {}
+    if slot_key:
+        extra["slot_key"] = slot_key
+    if kind and kind != "episodic":
+        extra["kind"] = kind
+    return memory_remember(content, character_name=character_name, **extra)
 
 
 @tool(

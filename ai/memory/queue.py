@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from dataclasses import asdict, dataclass
 import inspect
 import json
 import logging
 import os
+from pathlib import Path
 import threading
 import time
-import uuid
-from dataclasses import asdict, dataclass
-from pathlib import Path
 from typing import Any, Callable
+import uuid
 
 from ai.memory.operations import memory_remember
 
@@ -31,7 +32,10 @@ def _clean_text(value: Any) -> str:
 
 
 def _resolve_character_name(value: str | None) -> str:
-    return _clean_text(value) or "user"
+    resolved = _clean_text(value)
+    if resolved == "__self__":
+        return "user"
+    return resolved or "user"
 
 
 def _remember_succeeded(result: Any) -> bool:
@@ -48,6 +52,19 @@ def _remember_failure_message(result: Any) -> str:
     return f"remember did not report success: {result!r}"
 
 
+def _clean_str_list(raw: Any) -> list[str]:
+    if not isinstance(raw, (list, tuple)):
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        val = _clean_text(item)
+        if val and val.casefold() not in seen:
+            seen.add(val.casefold())
+            out.append(val)
+    return out
+
+
 @dataclass
 class MemoryQueueItem:
     id: str
@@ -56,8 +73,15 @@ class MemoryQueueItem:
     source: str
     confidence: float
     created_at: float
+    gist_text: str = ""
     slot_key: str = ""
     kind: str = "episodic"
+    topic_tags: list[str] | None = None
+    entities: list[str] | None = None
+    importance: float | None = None
+    event_at: float | None = None
+    memory_mode: str = ""
+    player_character: str = ""
     source_session_id: str = ""
     source_turn_seq: int | None = None
 
@@ -81,16 +105,45 @@ class MemoryQueueItem:
                 turn_seq = int(raw_turn_seq)
             except (TypeError, ValueError):
                 turn_seq = None
+        raw_imp = raw.get("importance")
+        importance: float | None = None
+        if raw_imp is not None and raw_imp != "":
+            try:
+                importance = max(0.0, min(1.0, float(raw_imp)))
+            except (TypeError, ValueError):
+                importance = None
+        raw_event_at = raw.get("event_at", raw.get("eventAt"))
+        event_at: float | None = None
+        if raw_event_at is not None and raw_event_at != "":
+            try:
+                event_at = float(raw_event_at)
+            except (TypeError, ValueError):
+                event_at = None
+        topics = _clean_str_list(raw.get("topic_tags") or raw.get("topicTags"))
+        ents = _clean_str_list(raw.get("entities"))
         return cls(
             id=_clean_text(raw.get("id")) or uuid.uuid4().hex,
-            character_name=_resolve_character_name(raw.get("character_name") or raw.get("characterName")),
+            character_name=_resolve_character_name(
+                raw.get("character_name") or raw.get("characterName")
+            ),
             memory=memory,
             source=_clean_text(raw.get("source")) or "unknown",
             confidence=max(0.0, min(1.0, confidence)),
             created_at=created_at,
+            gist_text=_clean_text(raw.get("gist_text") or raw.get("gistText")),
             slot_key=_clean_text(raw.get("slot_key") or raw.get("slotKey")),
             kind=_clean_text(raw.get("kind")) or "episodic",
-            source_session_id=_clean_text(raw.get("source_session_id") or raw.get("sourceSessionId")),
+            topic_tags=topics or None,
+            entities=ents or None,
+            importance=importance,
+            event_at=event_at,
+            memory_mode=_clean_text(raw.get("memory_mode") or raw.get("memoryMode")),
+            player_character=_clean_text(
+                raw.get("player_character") or raw.get("playerCharacter")
+            ),
+            source_session_id=_clean_text(
+                raw.get("source_session_id") or raw.get("sourceSessionId")
+            ),
             source_turn_seq=turn_seq,
         )
 
@@ -102,7 +155,7 @@ class MemoryWriteQueue:
         self,
         *,
         path: str | Path | None = None,
-        remember_func: Callable[[str, str | None], dict[str, Any]] | None = None,
+        remember_func: Callable[..., dict[str, Any]] | None = None,
     ) -> None:
         self.path = Path(path) if path is not None else _default_queue_path()
         self._remember = remember_func or memory_remember
@@ -125,8 +178,15 @@ class MemoryWriteQueue:
         character_name: str | None = None,
         source: str = "auto",
         confidence: float = 1.0,
+        gist_text: str = "",
         slot_key: str = "",
         kind: str = "episodic",
+        topic_tags: Sequence[str] = (),
+        entities: Sequence[str] = (),
+        importance: float | None = None,
+        event_at: float | None = None,
+        memory_mode: str = "",
+        player_character: str = "",
         source_session_id: str = "",
         source_turn_seq: int | None = None,
     ) -> dict[str, Any]:
@@ -142,6 +202,15 @@ class MemoryWriteQueue:
         clean_kind = _clean_text(kind) or "episodic"
         clean_session = _clean_text(source_session_id)
         clean_seq = None if source_turn_seq is None else int(source_turn_seq)
+        clean_imp: float | None = None
+        if importance is not None:
+            try:
+                clean_imp = max(0.0, min(1.0, float(importance)))
+            except (TypeError, ValueError):
+                clean_imp = None
+        clean_event_at = None if event_at is None else float(event_at)
+        clean_topics = _clean_str_list(topic_tags)
+        clean_entities = _clean_str_list(entities)
         dedupe_key = self._dedupe_key(character, text)
         with self._lock:
             for item in self._items:
@@ -154,8 +223,15 @@ class MemoryWriteQueue:
                 source=_clean_text(source) or "auto",
                 confidence=max(0.0, min(1.0, clean_confidence)),
                 created_at=time.time(),
+                gist_text=_clean_text(gist_text),
                 slot_key=clean_slot,
                 kind=clean_kind,
+                topic_tags=clean_topics or None,
+                entities=clean_entities or None,
+                importance=clean_imp,
+                event_at=clean_event_at,
+                memory_mode=_clean_text(memory_mode),
+                player_character=_clean_text(player_character),
                 source_session_id=clean_session,
                 source_turn_seq=clean_seq,
             )
@@ -192,10 +268,24 @@ class MemoryWriteQueue:
 
     def _invoke_remember(self, item: MemoryQueueItem) -> dict[str, Any]:
         extra_kwargs: dict[str, Any] = {}
+        if item.gist_text:
+            extra_kwargs["gist_text"] = item.gist_text
         if item.slot_key:
             extra_kwargs["slot_key"] = item.slot_key
         if item.kind and item.kind != "episodic":
             extra_kwargs["kind"] = item.kind
+        if item.topic_tags:
+            extra_kwargs["topic_tags"] = tuple(item.topic_tags)
+        if item.entities:
+            extra_kwargs["entities"] = tuple(item.entities)
+        if item.importance is not None:
+            extra_kwargs["importance"] = item.importance
+        if item.event_at is not None:
+            extra_kwargs["event_at"] = item.event_at
+        if item.memory_mode:
+            extra_kwargs["memory_mode"] = item.memory_mode
+        if item.player_character:
+            extra_kwargs["player_character"] = item.player_character
         if item.source_session_id:
             extra_kwargs["source_session_id"] = item.source_session_id
         if item.source_turn_seq is not None:

@@ -54,7 +54,14 @@ def _list_character_memories(name: str) -> dict[str, Any]:
         return {"status": "loading", "message": exc.message}
 
 
-def _memory_tool_search(query: str, character_name: str, limit: int = 10) -> dict[str, Any]:
+def _memory_tool_search(
+    query: str,
+    character_name: str,
+    limit: int = 10,
+    *,
+    session_id: str = "",
+    memory_mode: str = "",
+) -> dict[str, Any]:
     dep_error = _check_mem0_before_call()
     if dep_error is not None:
         return dep_error
@@ -63,7 +70,27 @@ def _memory_tool_search(query: str, character_name: str, limit: int = 10) -> dic
     from application.memory.manage_memories import search_memories
 
     try:
-        return search_memories(query, character_name=character_name, limit=limit)
+        return search_memories(
+            query,
+            character_name=character_name,
+            limit=limit,
+            session_id=session_id,
+            memory_mode=memory_mode,
+        )
+    except ToolNotReady as exc:
+        return {"status": "loading", "message": exc.message}
+
+
+def _memory_tool_recall(payload: dict[str, Any]) -> dict[str, Any]:
+    dep_error = _check_mem0_before_call()
+    if dep_error is not None:
+        return dep_error
+
+    from sdk.tool_registry import ToolNotReady
+    from application.memory.manage_memories import recall_turn_memories
+
+    try:
+        return recall_turn_memories(payload)
     except ToolNotReady as exc:
         return {"status": "loading", "message": exc.message}
 
@@ -72,8 +99,16 @@ def _memory_tool_remember(
     content: str,
     character_name: str,
     *,
+    gist_text: str = "",
     slot_key: str = "",
     kind: str = "episodic",
+    topic_tags: Sequence[str] = (),
+    entities: Sequence[str] = (),
+    importance: float = 0.5,
+    pinned: bool = False,
+    event_at: float | None = None,
+    memory_mode: str = "",
+    player_character: str = "",
     source_session_id: str = "",
     source_turn_seq: int | None = None,
 ) -> dict[str, Any]:
@@ -88,8 +123,16 @@ def _memory_tool_remember(
         return remember_memory(
             content,
             character_name=character_name,
+            gist_text=gist_text,
             slot_key=slot_key,
             kind=kind,
+            topic_tags=topic_tags,
+            entities=entities,
+            importance=importance,
+            pinned=pinned,
+            event_at=event_at,
+            memory_mode=memory_mode,
+            player_character=player_character,
             source_session_id=source_session_id,
             source_turn_seq=source_turn_seq,
         )
