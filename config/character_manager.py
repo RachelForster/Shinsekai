@@ -185,7 +185,8 @@ class CharacterManager:
                      sprite_groups: Optional[List[str]] = None,
                      default_sprite_group: Optional[str] = None,
                      fallback_to_default_group: Optional[bool] = None,
-                     sprite_group_map: Optional[dict[int, Optional[str]]] = None) -> Tuple[str, List[str]]:
+                     sprite_group_map: Optional[dict[int, Optional[str]]] = None,
+                     display_name: Optional[str] = None) -> Tuple[str, List[str]]:
         """
         添加或更新角色配置。
 
@@ -259,6 +260,8 @@ class CharacterManager:
                     return f"名称「{name}」已与其他角色重复！", [c.name for c in characters]
                 target.relation_graph = self._rename_relation_graph_owner(target.relation_graph, target.name, name)
                 target.name = name
+                if is_self_persona_name(name) and display_name is not None:
+                    target.display_name = display_name
                 target.color = color
                 target.sprite_prefix = sprite_prefix
                 target.gpt_model_path = gpt_model_path
@@ -341,6 +344,8 @@ class CharacterManager:
         else:
             # 更新现有 Character 实例的属性
             existing_character.name = name
+            if is_self_persona_name(name) and display_name is not None:
+                existing_character.display_name = display_name
             existing_character.color = color
             existing_character.sprite_prefix = sprite_prefix
             existing_character.gpt_model_path = gpt_model_path

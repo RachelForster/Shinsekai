@@ -88,6 +88,7 @@ export interface Character {
   is_builtin?: boolean;
   pinned?: boolean;
   undeletable?: boolean;
+  display_name?: string;
   sprite_transitions?: SpriteTransition[];
   portrait_crop?: PortraitCrop;
   name: string;

@@ -6,11 +6,14 @@ from pathlib import Path
 from types import SimpleNamespace
 import zipfile
 
+import yaml
+
 from ai.llm.template_generator import TemplateGenerator
+from application.characters.management import CharacterOperation, CharacterRequest, CharacterUseCase
 from application.characters.sprite.auto_group_sprites import (
     analyze_character_sprite_groups,
 )
-from application.chat.player_control import resolve_player
+from application.chat.player_control import resolve_player, resolve_player_display_name
 from config.character_config import CharacterConfig
 from config.character_manager import CharacterManager
 from config.config_manager import ConfigManager
@@ -170,6 +173,49 @@ def test_self_persona_cannot_be_deleted_renamed_or_collided():
     assert saved.character_setting == "一名精通古文献修复的大学生"
     assert saved.is_builtin is True
     assert saved.undeletable is True
+
+
+def test_self_persona_display_name_survives_save_and_reload(tmp_path):
+    mgr = _build_manager([])
+    config = mgr._config_manager
+    config.config.api_config = SimpleNamespace()
+    path = tmp_path / "characters.yaml"
+
+    def save():
+        path.write_text(
+            yaml.safe_dump([item.model_dump(mode="json") for item in config.config.characters]),
+            encoding="utf-8",
+        )
+
+    def reload():
+        config.config.characters = [
+            Character.model_validate(value) for value in yaml.safe_load(path.read_text(encoding="utf-8"))
+        ]
+
+    config.save_characters_config = save
+    config.reload = reload
+    use_case = CharacterUseCase(SimpleNamespace(
+        config_manager=config, character_manager=mgr, project_root_dir=tmp_path,
+    ))
+    persona = build_default_self_persona().model_dump(mode="json")
+    updated = use_case.execute(CharacterRequest(CharacterOperation.SAVE, {
+        "originalName": SELF_PERSONA_NAME,
+        "character": {**persona, "display_name": "  Robin  "},
+    }))
+    assert updated["display_name"] == "Robin"
+    assert [c.name for c in config.config.characters] == [SELF_PERSONA_NAME]
+    assert updated["sprite_prefix"] == SELF_PERSONA_SPRITE_PREFIX
+    assert updated["undeletable"] is True
+    assert resolve_player(config, [], SELF_PERSONA_NAME) == SELF_PERSONA_NAME
+    assert resolve_player_display_name(config, SELF_PERSONA_NAME) == "Robin"
+    assert resolve_player_display_name(config, "") == "Robin"
+    assert resolve_player_display_name(config, "", "Guest") == "Guest"
+
+    use_case.execute(CharacterRequest(CharacterOperation.SAVE, {
+        "originalName": SELF_PERSONA_NAME,
+        "character": {**persona, "display_name": ""},
+    }))
+    assert resolve_player_display_name(config, SELF_PERSONA_NAME) == SELF_PERSONA_NAME
 
 
 def test_cha_import_blocks_overwriting_self_persona_and_preserves_sprite_groups(

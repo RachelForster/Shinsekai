@@ -2,6 +2,7 @@ import { Palette, Trash2 } from "lucide-react";
 
 import type { Character } from "../../entities/config/types";
 import { useI18n } from "../../shared/i18n";
+import { SELF_PERSONA_NAME } from "../../shared/playerCharacterOptions";
 import { Button, TextArea, TextInput } from "../../shared/ui";
 import { isSelfPersonaCharacter, type CharacterFieldChange } from "./characterEditorUtils";
 
@@ -32,6 +33,7 @@ export function CharacterBasicSection({
 }: CharacterBasicSectionProps) {
   const { t } = useI18n();
   const lockedPersona = isSelfPersonaCharacter(draft);
+  const canEditDisplayName = draft.name === SELF_PERSONA_NAME;
 
   return (
     <section className="section page-section-anchor" id={id}>
@@ -53,18 +55,19 @@ export function CharacterBasicSection({
       ) : null}
       <div className="form-grid form-grid--two">
         <label className="field-row">
-          <span className="field-row__label">{t("character.field.name")}</span>
+          <span className="field-row__label">
+            {t(canEditDisplayName ? "character.selfPersona.displayName" : "character.field.name")}
+          </span>
           <span className="field-row__control">
             <TextInput
               className={nameError ? "input--error" : ""}
-              disabled={lockedPersona}
-              onChange={(event) => onChange("name", event.target.value)}
-              readOnly={lockedPersona}
-              value={draft.name}
+              disabled={lockedPersona && !canEditDisplayName}
+              maxLength={canEditDisplayName ? 24 : undefined}
+              onChange={(event) => onChange(canEditDisplayName ? "display_name" : "name", event.target.value)}
+              placeholder={canEditDisplayName ? draft.name : undefined}
+              readOnly={lockedPersona && !canEditDisplayName}
+              value={canEditDisplayName ? (draft.display_name ?? "") : draft.name}
             />
-            {lockedPersona ? (
-              <span className="field-row__hint">{t("character.selfPersona.lockedFieldHint")}</span>
-            ) : null}
             {nameError ? <span className="field-error">{nameError}</span> : null}
           </span>
         </label>

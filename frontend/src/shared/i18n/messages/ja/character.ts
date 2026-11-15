@@ -236,7 +236,8 @@ export const characterJaMessages: Record<CharacterMessageKey, string> = {
   "character.selfPersona.bannerTitle": "プレイヤー共通設定・自己記憶",
   "character.selfPersona.bannerBody":
     "「自設」はプレイヤー自身の共通プロフィール・好み・立ち絵を保持します。他の主控人物を指定しない場合、自動的にプレイヤー背景として対話へ反映され、主控人物として直接選択することもできます。",
-  "character.selfPersona.lockedFieldHint": "標準自設の名前と立ち絵ディレクトリは固定されており、削除できません。",
+  "character.selfPersona.displayName": "表示名",
+  "character.selfPersona.lockedFieldHint": "内蔵自設の立ち絵ディレクトリは固定で、削除できません。",
   "character.memory.canonSection": "固有設定 / コア記憶",
   "character.memory.dynamicSection": "動的記憶",
   "character.memory.addAsCanon": "固有設定として追加（忘却しない）",

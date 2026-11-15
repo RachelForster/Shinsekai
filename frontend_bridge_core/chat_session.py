@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from application.chat.presentation.user_display import sanitize_user_display_name
+from application.chat.player_control import resolve_player, resolve_player_display_name
 from application.chat.build_effect_context import build_effect_context
 from application.chat.conversation_library import (
     remember_conversation,
@@ -280,7 +280,6 @@ def _launch_chat_locked(
         state,
         body.get("characters") or [],
     )
-    from application.chat.player_control import resolve_player
     from config.schema import is_self_persona_name
     player_character = resolve_player(state.config_manager, characters, body.get("playerCharacter"))
     if not is_self_persona_name(player_character) and any(
@@ -335,7 +334,9 @@ def _launch_chat_locked(
     )
     if start_fresh_history:
         clear_story_session(state)
-    user_display_name = player_character or sanitize_user_display_name(body.get("userDisplayName"))
+    user_display_name = resolve_player_display_name(
+        state.config_manager, player_character, body.get("userDisplayName"),
+    )
     raw_memory_mode = str(body.get("memoryMode") or "").strip()
     if not raw_memory_mode and body.get("storyPath"):
         raw_memory_mode = "isolated"
@@ -533,7 +534,6 @@ def _resume_last_chat_locked(
     )
     requested_media_mode = session.get("mediaSelectionMode")
     media_selection_mode = _usable_media_selection_mode(requested_media_mode)
-    from application.chat.player_control import resolve_player
     player_character = resolve_player(state.config_manager, selected_characters, session.get("playerCharacter"))
     primary_characters = _resolve_launch_primary_characters(
         state,
@@ -553,7 +553,9 @@ def _resume_last_chat_locked(
         or ""
     )
     selected_bg = str(session.get("background") or TRANSPARENT_BACKGROUND_NAME)
-    user_display_name = player_character or sanitize_user_display_name(session.get("userDisplayName"))
+    user_display_name = resolve_player_display_name(
+        state.config_manager, player_character, session.get("userDisplayName"),
+    )
     session_base = {
         "backgroundName": selected_bg,
         "playerCharacter": player_character,

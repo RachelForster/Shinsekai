@@ -1,5 +1,6 @@
 import type { Character } from "../../entities/config/types";
 import { useI18n } from "../../shared/i18n";
+import { getCharacterDisplayName } from "../../shared/playerCharacterOptions";
 import { EmptyState, QueryErrorState } from "../../shared/ui";
 import { isSelfPersonaCharacter } from "./characterEditorUtils";
 
@@ -53,7 +54,7 @@ export function CharacterListPanel({
           type="button"
         >
           <span className="entity-list__primary">
-            {character.name}
+            {getCharacterDisplayName(character)}
             {isSelfPersonaCharacter(character) ? (
               <span className="character-builtin-badge">{t("character.selfPersona.badge")}</span>
             ) : null}

@@ -140,6 +140,9 @@ class ChatLaunchPreparation:
             launch_config["primary_characters"] = json.dumps(
                 list(primary_character_names), ensure_ascii=False
             )
+        user_display_name = str(chat_session.get("userDisplayName") or "").strip()
+        if user_display_name:
+            launch_config["user_display_name"] = user_display_name
         if player_name:
             launch_config["player_character"] = player_name
             launch_config["read_player_speech"] = read_player_speech

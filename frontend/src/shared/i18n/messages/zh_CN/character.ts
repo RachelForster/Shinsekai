@@ -223,7 +223,8 @@ export const characterZhCNMessages = {
   "character.selfPersona.bannerTitle": "玩家全局自设与公共自我记忆",
   "character.selfPersona.bannerBody":
     "「自设」用于承载玩家自身的全局人设、喜好与立绘。未指定其他主控人物时，其设定会自动作为玩家背景注入对话；也可在开局时直接选为主控人物。",
-  "character.selfPersona.lockedFieldHint": "内置自设的角色名与立绘目录固定不可修改，也不可删除。",
+  "character.selfPersona.displayName": "显示名称",
+  "character.selfPersona.lockedFieldHint": "内置自设的立绘目录固定，自设不可删除。",
   "character.memory.canonSection": "固有设定 / 核心记忆",
   "character.memory.dynamicSection": "动态记忆",
   "character.memory.addAsCanon": "设为固有设定（永不遗忘）",

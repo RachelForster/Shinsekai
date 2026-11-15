@@ -235,6 +235,14 @@ class CharacterUseCase:
             raise ValueError("不能将其他角色重命名为「自设」")
         if is_self_persona_name(target_name) and not str(body.get("sprite_prefix") or "").strip():
             body = {**body, "sprite_prefix": SELF_PERSONA_SPRITE_PREFIX}
+        if is_self_persona_name(target_name) and "display_name" in body:
+            from core.chat_history.text import sanitize_user_display_name
+
+            raw_name = str(body["display_name"] or "").strip()
+            display_name = sanitize_user_display_name(raw_name)
+            if raw_name and not display_name:
+                raise ValueError("自设显示名无效，请使用 24 个字符以内的名称")
+            body = {**body, "display_name": display_name}
         validate_character_payload(body, allow_remote_voice_paths=self._uses_remote_gpt_sovits())
         character = Character.model_validate(body)
         saved_name = character.name.strip()
@@ -274,6 +282,11 @@ class CharacterUseCase:
             avatar_type=character.avatar_type if "avatar_type" in body else None,
             avatars=character.avatars if "avatars" in body else None,
             relation_graph=character.relation_graph if "relation_graph" in body else None,
+            **(
+                {"display_name": character.display_name}
+                if is_self_persona_name(saved_name) and "display_name" in body
+                else {}
+            ),
         )
         if (
             message.startswith("名称不能为空")

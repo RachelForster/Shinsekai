@@ -5,6 +5,7 @@ import { Download, ExternalLink, Plus, Save, Upload } from "lucide-react";
 import type { Character } from "../../entities/config/types";
 import { openExternal } from "../../entities/files/repository";
 import { useI18n } from "../../shared/i18n";
+import { getCharacterDisplayName } from "../../shared/playerCharacterOptions";
 import { AsyncButton, Button, PathPickerDialog, Select } from "../../shared/ui";
 import { CHARACTER_RESOURCES_URL, isSelfPersonaCharacter } from "./characterEditorUtils";
 
@@ -77,7 +78,7 @@ export function CharacterPageHeader({
             {isCreating ? <option value="">{t("common.new")}</option> : null}
             {characters.map((character) => (
               <option key={character.name} value={character.name}>
-                {character.name}
+                {getCharacterDisplayName(character)}
               </option>
             ))}
           </Select>

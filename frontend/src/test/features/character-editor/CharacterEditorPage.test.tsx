@@ -370,7 +370,7 @@ describe("CharacterEditorPage", () => {
     renderPage();
 
     fireEvent.change(screen.getByLabelText("Character name"), { target: { value: "Sora" } });
-    fireEvent.change(screen.getByLabelText("Upload directory name (ASCII)"), { target: { value: "sora" } });
+    fireEvent.change(screen.getByLabelText(/Upload directory name \(ASCII\)/), { target: { value: "sora" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() =>
@@ -439,7 +439,7 @@ describe("CharacterEditorPage", () => {
     renderPage();
 
     fireEvent.change(screen.getByLabelText("Character name"), { target: { value: "Sora" } });
-    fireEvent.change(screen.getByLabelText("Upload directory name (ASCII)"), { target: { value: "sora" } });
+    fireEvent.change(screen.getByLabelText(/Upload directory name \(ASCII\)/), { target: { value: "sora" } });
     expect(screen.queryByText("Choose images or MP4 / WebM videos...")).not.toBeInTheDocument();
     pickerState.paths = ["D:/new/sora.png", "D:/new/sora.webm"];
     fireEvent.click(screen.getByRole("button", { name: "Upload" }));
@@ -814,7 +814,7 @@ describe("CharacterEditorPage", () => {
     expect(mockSaveCharacter).not.toHaveBeenCalled();
 
     fireEvent.change(nameInput, { target: { value: "Sora" } });
-    fireEvent.change(screen.getByLabelText("Upload directory name (ASCII)"), { target: { value: "空" } });
+    fireEvent.change(screen.getByLabelText(/Upload directory name \(ASCII\)/), { target: { value: "空" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByText(/Sprite directory must contain ASCII characters only/)).toBeInTheDocument();
 
@@ -896,7 +896,7 @@ describe("CharacterEditorPage", () => {
     expect(screen.getByLabelText("Character setting")).toHaveValue("Unsaved personality text");
   });
 
-  it("locks name and sprite prefix, hides delete, and keeps built-in 自设 pinned first after saving", async () => {
+  it("locks the sprite prefix, hides delete, and keeps built-in 自设 pinned first after saving", async () => {
     const selfPersona: Character = {
       ...character,
       character_setting: "Player persona bio",
@@ -911,9 +911,7 @@ describe("CharacterEditorPage", () => {
     mockSaveCharacter.mockImplementation(async (saved: Character) => structuredClone(saved));
 
     renderPage();
-    await waitFor(() => expect(screen.getByLabelText(/Character name/)).toHaveValue("自设"));
-
-    expect(screen.getByLabelText(/Character name/)).toBeDisabled();
+    expect(await screen.findByLabelText("Display name")).toHaveAttribute("placeholder", "自设");
     expect(screen.getByLabelText(/Upload directory name \(ASCII\)/)).toBeDisabled();
     expect(screen.getByText("Global Player Persona & Public Self-Memory")).toBeInTheDocument();
     const basicSection = document.getElementById("character-basic") as HTMLElement;
@@ -929,5 +927,25 @@ describe("CharacterEditorPage", () => {
     fireEvent.click(screen.getByRole("combobox", { name: "Current character" }));
     const options = screen.getAllByRole("option");
     expect(options.map((option) => option.textContent)).toEqual(["自设", "Mika"]);
+  });
+  it("saves a display name for the built-in persona under its original ID", async () => {
+    const id = "自设";
+    mockListCharacters.mockResolvedValue([
+      { ...structuredClone(character), name: id, sprite_prefix: "__self__", is_builtin: true, undeletable: true },
+    ]);
+    renderPage();
+    const name = await screen.findByLabelText("Display name");
+    expect(name).toBeEnabled();
+    expect(screen.getByLabelText(/Upload directory name \(ASCII\)/)).toBeDisabled();
+    fireEvent.change(name, { target: { value: "Robin" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(mockSaveCharacter).toHaveBeenCalledWith(
+        expect.objectContaining({ name: id, display_name: "Robin", sprite_prefix: "__self__" }),
+        id,
+      ),
+    );
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Current character" })).toHaveTextContent("Robin"));
   });
 });

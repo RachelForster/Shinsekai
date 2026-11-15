@@ -1,6 +1,7 @@
 import { UserRound, Users } from "lucide-react";
 import type { Character } from "../../shared/platform/types";
 import { useI18n } from "../../shared/i18n";
+import { getCharacterDisplayName } from "../../shared/playerCharacterOptions";
 import { Button } from "../../shared/ui";
 import { getCharacterChipStyle } from "./templateFlow";
 import "./CharacterPicker.css";
@@ -22,7 +23,10 @@ export function CharacterPicker({
 }) {
   const { t } = useI18n();
   const names = new Set(selected);
-  const effectivePlayerCharacter = names.has(playerCharacter) ? playerCharacter : "";
+  const effectivePlayerCharacter = characters.find(
+    (character) => names.has(playerCharacter) && character.name === playerCharacter,
+  );
+  const playerDisplayName = effectivePlayerCharacter ? getCharacterDisplayName(effectivePlayerCharacter) : "";
   return (
     <div className="template-character-picker">
       <div className="template-character-picker__header">
@@ -38,9 +42,9 @@ export function CharacterPicker({
               >
                 {t("player.configure")}
               </Button>
-              {effectivePlayerCharacter ? (
-                <span className="template-character-picker__player-name" title={effectivePlayerCharacter}>
-                  {effectivePlayerCharacter}
+              {playerDisplayName ? (
+                <span className="template-character-picker__player-name" title={playerDisplayName}>
+                  {playerDisplayName}
                 </span>
               ) : null}
             </div>
@@ -78,7 +82,7 @@ export function CharacterPicker({
             className={`template-character-card${names.has(character.name) ? " template-character-card--selected" : ""}`}
             disabled={disabled}
             style={getCharacterChipStyle(character.color ?? "")}
-            title={character.name}
+            title={getCharacterDisplayName(character)}
             type="button"
             onClick={() =>
               onChange(
@@ -89,7 +93,7 @@ export function CharacterPicker({
             }
           >
             <span aria-hidden className="template-character-card__dot" />
-            <span className="template-character-card__name">{character.name}</span>
+            <span className="template-character-card__name">{getCharacterDisplayName(character)}</span>
           </button>
         ))}
       </div>

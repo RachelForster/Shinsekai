@@ -49,6 +49,7 @@ def build_chat_arg_parser(tr_i18n: Callable[..., str]) -> argparse.ArgumentParse
         help="JSON array or comma-separated primary character names for compact prompt mode.",
     )
     parser.add_argument("--player-character", type=str, default="")
+    parser.add_argument("--user-display-name", type=str, default="")
     parser.add_argument("--allow-player-dialogue", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument(
         "--read-player-speech",

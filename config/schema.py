@@ -151,6 +151,7 @@ class Character(BaseModel):
     """单个角色配置的实体模型"""
     # 角色基本信息
     name: str = Field(..., description="角色名称")
+    display_name: DefaultIfNone[str] = Field(default="", max_length=24, description="内置自设的显示名")
     color: str = Field(..., description="角色对话框或名字的颜色")
     sprite_prefix: str = Field(..., description="立绘文件名的通用前缀")
     

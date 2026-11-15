@@ -1,9 +1,9 @@
 import type { Character } from "../../entities/config/types";
 import { DEFAULT_CHARACTER_COLOR } from "../../shared/constants";
+import { SELF_PERSONA_NAME } from "../../shared/playerCharacterOptions";
 
 export const CHARACTER_RESOURCES_URL = "https://shinsekai.end0rph1n.icu/resources";
 
-export const SELF_PERSONA_NAME = "自设";
 export const SELF_PERSONA_SPRITE_PREFIX = "__self__";
 export const DEFAULT_SPRITE_GROUP = "默认";
 
