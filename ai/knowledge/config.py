@@ -151,7 +151,10 @@ class HybridKnowledgeStore:
         )
 
     def close(self) -> None:
-        if self.store is not None:
+        close_port = getattr(self.port, "close", None)
+        if callable(close_port):
+            close_port()
+        if self.store is not None and self.store is not self.port:
             self.store.close()
 
     def get_all(

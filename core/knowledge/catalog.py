@@ -131,6 +131,15 @@ def invalidate_knowledge_catalog() -> None:
         _catalog_expires = 0.0
 
 
+def reset_knowledge_catalog() -> None:
+    global _catalog_client, _catalog_collection, _catalog_expires, _catalog_counts
+    with _catalog_lock:
+        _catalog_client = None
+        _catalog_collection = None
+        _catalog_expires = 0.0
+        _catalog_counts = {}
+
+
 @contextmanager
 def invalidate_catalog_after_write() -> Iterator[None]:
     """Expire counts after writes, including failures after partial changes."""

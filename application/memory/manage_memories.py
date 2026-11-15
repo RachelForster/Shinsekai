@@ -16,6 +16,12 @@ def check_mem0_status(*, start_loading: bool = True) -> dict[str, Any]:
     return _check_mem0_status(start_loading=start_loading)
 
 
+def shutdown_memory_runtime() -> None:
+    from ai.memory.runtime import shutdown_memory_runtime as _shutdown_memory_runtime
+
+    _shutdown_memory_runtime()
+
+
 def wait_for_memory_ready() -> None:
     """Wait for the existing memory runtime before launching semantic media."""
     from ai.memory.runtime import get_mem0

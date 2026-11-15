@@ -251,11 +251,18 @@ def test_onnx_minilm_embedder_mean_pooling_l2_norm_and_lru_cache(tmp_path: Path)
 
 
 def test_find_onnx_model_file_prefers_quantized_graph(tmp_path: Path):
+    from test.unit.ai.memory.test_service_config import build_valid_minilm_onnx_bytes
+
+    valid_onnx = build_valid_minilm_onnx_bytes(384)
     (tmp_path / "onnx").mkdir()
-    (tmp_path / "onnx" / "model.onnx").write_bytes(b"\x08" + b"\x00" * 31)
+    (tmp_path / "onnx" / "model.onnx").write_bytes(valid_onnx)
     assert find_onnx_model_file(tmp_path) == tmp_path / "onnx" / "model.onnx"
 
-    (tmp_path / "onnx" / "model_quantized.onnx").write_bytes(b"\x08" + b"\x00" * 31)
+    # Corrupt quantized graph starting with 0x08 must be skipped in favor of valid model.onnx
+    (tmp_path / "onnx" / "model_quantized.onnx").write_bytes(b"\x08" + b"\x00" * 63)
+    assert find_onnx_model_file(tmp_path) == tmp_path / "onnx" / "model.onnx"
+
+    (tmp_path / "onnx" / "model_quantized.onnx").write_bytes(valid_onnx)
     assert find_onnx_model_file(tmp_path) == tmp_path / "onnx" / "model_quantized.onnx"
 
 

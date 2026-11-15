@@ -9,6 +9,7 @@ import threading
 import time
 from typing import Any
 
+from core.knowledge.catalog import reset_knowledge_catalog
 from core.model_assets.service import download_model_asset
 from sdk.exception.types import (
     download_error_from_exception,
@@ -36,6 +37,7 @@ configure_mem0_environment()
 _mem0: Any = None
 _mem0_load_error: BaseException | None = None
 _mem0_loading = False
+_runtime_generation: int = 0
 _lock = threading.Lock()
 
 
@@ -71,7 +73,7 @@ def _missing_dependency_status(dependency: dict[str, Any]) -> dict[str, Any]:
     return {**dependency, "status": "missing_dependency", **({"task": task} if task else {})}
 
 
-def _record_loading_error(exc: Exception, stage: str) -> None:
+def _record_loading_error(exc: Exception, stage: str, *, expected_generation: int | None = None) -> None:
     global _mem0_load_error
     dependency = runtime_dependency_error_from_exception(exc)
     if isinstance(exc, ModuleNotFoundError):
@@ -92,6 +94,8 @@ def _record_loading_error(exc: Exception, stage: str) -> None:
         user_message = f"资料初始化失败：{exc}"
         notice = str(exc)
     with _lock:
+        if expected_generation is not None and _runtime_generation != expected_generation:
+            return
         _mem0_load_error = exc
         set_mem0_task(
             error=str(exc), errorCode=error_code, errorUserMessage=user_message,
@@ -115,10 +119,12 @@ def start_mem0_loading(*, retry: bool = False) -> None:
             errorUserMessage="", httpStatus=None, notice="", noticeKind="info",
         )
         _mem0_loading = True
+        load_generation = _runtime_generation
 
     def _load() -> None:
         global _mem0, _mem0_loading
         stage = "dependency"
+        published = False
         try:
             configure_mem0_environment()
             importlib.import_module(_REQUIRED_RUNTIME_MODULE)
@@ -132,24 +138,33 @@ def start_mem0_loading(*, retry: bool = False) -> None:
             )
             store = create_knowledge_mem0(HybridKnowledgeStore, snapshot_path)
             with _lock:
-                set_mem0_task(
-                    phase="completed", status="succeeded", progress=1.0,
-                    message="Knowledge is ready.",
-                )
-                _mem0 = store
+                if _runtime_generation == load_generation:
+                    set_mem0_task(
+                        phase="completed", status="succeeded", progress=1.0,
+                        message="Knowledge is ready.",
+                    )
+                    _mem0 = store
+                    published = True
+            if not published and hasattr(store, "close"):
+                try:
+                    store.close()
+                except Exception:
+                    pass
         except Exception as exc:
             logger.exception("Knowledge initialization failed")
-            _record_loading_error(exc, stage)
+            _record_loading_error(exc, stage, expected_generation=load_generation)
         finally:
             with _lock:
-                _mem0_loading = False
+                if _runtime_generation == load_generation:
+                    _mem0_loading = False
 
     try:
         threading.Thread(target=_load, name="knowledge-loader", daemon=True).start()
     except Exception as exc:
-        _record_loading_error(exc, "initialize")
+        _record_loading_error(exc, "initialize", expected_generation=load_generation)
         with _lock:
-            _mem0_loading = False
+            if _runtime_generation == load_generation:
+                _mem0_loading = False
         logger.exception("Could not start Knowledge loader")
         raise
 
@@ -223,15 +238,23 @@ def check_mem0_status(*, start_loading: bool = True, retry: bool = False) -> dic
     return {"status": "loading", "modelCached": cached, **({"task": task} if task else {})}
 
 
-def reset_knowledge_runtime_for_tests() -> None:
-    """Reset knowledge singleton state for isolated unit tests."""
-    global _mem0, _mem0_loading, _mem0_load_error
+def shutdown_knowledge_runtime() -> None:
+    """Close the global knowledge store and release SQLite / catalog resources."""
+    global _mem0, _mem0_loading, _mem0_load_error, _runtime_generation
     with _lock:
-        if _mem0 is not None and hasattr(_mem0, "close"):
-            try:
-                _mem0.close()
-            except Exception:
-                pass
+        _runtime_generation += 1
+        instance = _mem0
         _mem0 = None
         _mem0_loading = False
         _mem0_load_error = None
+    if instance is not None and hasattr(instance, "close"):
+        try:
+            instance.close()
+        except Exception:
+            logger.exception("Knowledge store shutdown failed")
+    reset_knowledge_catalog()
+
+
+def reset_knowledge_runtime_for_tests() -> None:
+    """Reset knowledge singleton state for isolated unit tests."""
+    shutdown_knowledge_runtime()

@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import sqlite3
 import threading
 import time
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -157,9 +158,14 @@ class _SliceMatrixCacheEntry:
 
 
 class SqliteHybridStore:
-    """Thread-safe SQLite (WAL + FTS5) + NumPy hybrid engine."""
+    """Thread-safe SQLite (WAL + FTS5) + NumPy hybrid engine with bounded connection pooling."""
 
-    def __init__(self, db_path: str | Path = ":memory:") -> None:
+    def __init__(
+        self,
+        db_path: str | Path = ":memory:",
+        *,
+        max_idle_connections: int = 4,
+    ) -> None:
         self._is_memory = str(db_path) == ":memory:"
         if self._is_memory:
             self._db_target = f"file:shinsekai_mem_{uuid.uuid4().hex}?mode=memory&cache=shared"
@@ -174,23 +180,39 @@ class SqliteHybridStore:
 
         self._lock = threading.RLock()
         self._local = threading.local()
-        self._connections: list[sqlite3.Connection] = []
+        self._max_idle_connections = max(1, int(max_idle_connections))
+        self._idle_connections: list[sqlite3.Connection] = []
+        self._active_connections: set[sqlite3.Connection] = set()
         self._anchor_conn: sqlite3.Connection | None = None
         self._epoch = 0
         self._slice_cache: dict[tuple[str, str], _SliceMatrixCacheEntry] = {}
         self._closed = False
 
         if self._is_memory:
-            # Keep shared in-memory DB alive across thread connections until close().
+            # Keep shared in-memory DB alive across pooled connections until close().
             self._anchor_conn = self._open_connection()
-        with self._lock:
-            conn = self._conn()
+        with self._lock, self._borrow_conn() as conn:
             conn.executescript(_SCHEMA_SQL)
             conn.commit()
 
     @property
     def db_path(self) -> Path | None:
         return self._path
+
+    @property
+    def idle_connection_count(self) -> int:
+        with self._lock:
+            return len(self._idle_connections)
+
+    @property
+    def active_connection_count(self) -> int:
+        with self._lock:
+            return len(self._active_connections)
+
+    @property
+    def is_closed(self) -> bool:
+        with self._lock:
+            return self._closed
 
     def _open_connection(self) -> sqlite3.Connection:
         conn = sqlite3.connect(
@@ -207,16 +229,66 @@ class SqliteHybridStore:
         conn.execute("PRAGMA foreign_keys = ON")
         return conn
 
-    def _conn(self) -> sqlite3.Connection:
-        if self._closed:
-            raise RuntimeError("SqliteHybridStore is closed")
-        conn = getattr(self._local, "conn", None)
+    @contextlib.contextmanager
+    def _borrow_conn(self) -> Iterator[sqlite3.Connection]:
+        """Check out a pooled SQLite connection for the duration of an operation.
+
+        Short-lived threads (such as ``ThreadingHTTPServer`` request handlers)
+        immediately return the connection to ``_idle_connections`` on exit (or
+        close excess connections beyond ``_max_idle_connections``), preventing
+        per-thread SQLite handle, memory, and WAL reader leaks.
+        """
+        reentrant = getattr(self._local, "borrowed_conn", None)
+        if reentrant is not None:
+            if self._closed:
+                raise RuntimeError("SqliteHybridStore is closed")
+            yield reentrant
+            return
+
+        conn: sqlite3.Connection | None = None
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("SqliteHybridStore is closed")
+            if self._idle_connections:
+                conn = self._idle_connections.pop()
+                self._active_connections.add(conn)
+
         if conn is None:
-            conn = self._open_connection()
-            self._local.conn = conn
+            opened = self._open_connection()
             with self._lock:
-                self._connections.append(conn)
-        return conn
+                if self._closed:
+                    with contextlib.suppress(Exception):
+                        opened.close()
+                    raise RuntimeError("SqliteHybridStore is closed")
+                self._active_connections.add(opened)
+                conn = opened
+
+        self._local.borrowed_conn = conn
+        try:
+            yield conn
+        finally:
+            with contextlib.suppress(AttributeError):
+                delattr(self._local, "borrowed_conn")
+            if conn.in_transaction:
+                with contextlib.suppress(Exception):
+                    conn.rollback()
+            close_conn = False
+            close_anchor: sqlite3.Connection | None = None
+            with self._lock:
+                self._active_connections.discard(conn)
+                if self._closed or len(self._idle_connections) >= self._max_idle_connections:
+                    close_conn = True
+                else:
+                    self._idle_connections.append(conn)
+                if self._closed and not self._active_connections and self._anchor_conn is not None:
+                    close_anchor = self._anchor_conn
+                    self._anchor_conn = None
+            if close_conn:
+                with contextlib.suppress(Exception):
+                    conn.close()
+            if close_anchor is not None:
+                with contextlib.suppress(Exception):
+                    close_anchor.close()
 
     def _data_version(self, conn: sqlite3.Connection) -> int:
         row = conn.execute("PRAGMA data_version").fetchone()
@@ -227,43 +299,41 @@ class SqliteHybridStore:
         self._slice_cache.clear()
 
     def close(self) -> None:
+        conns_to_close: list[sqlite3.Connection] = []
         with self._lock:
             if self._closed:
                 return
             self._closed = True
             self._slice_cache.clear()
-            conns = list(self._connections)
-            self._connections.clear()
-            if self._anchor_conn is not None:
-                conns.append(self._anchor_conn)
+            conns_to_close.extend(self._idle_connections)
+            self._idle_connections.clear()
+            if not self._active_connections and self._anchor_conn is not None:
+                conns_to_close.append(self._anchor_conn)
                 self._anchor_conn = None
         seen: set[int] = set()
-        for conn in conns:
+        for conn in conns_to_close:
             if id(conn) in seen:
                 continue
             seen.add(id(conn))
-            try:
+            with contextlib.suppress(Exception):
                 conn.close()
-            except Exception:
-                pass
-        if hasattr(self._local, "conn"):
-            delattr(self._local, "conn")
+        with contextlib.suppress(AttributeError):
+            delattr(self._local, "borrowed_conn")
 
     # ------------------------------------------------------------------
     # Metadata helpers (migration flags, schema info)
     # ------------------------------------------------------------------
 
     def get_meta(self, key: str) -> str | None:
-        conn = self._conn()
-        row = conn.execute(
-            "SELECT value FROM store_meta WHERE key = ?",
-            (str(key),),
-        ).fetchone()
+        with self._borrow_conn() as conn:
+            row = conn.execute(
+                "SELECT value FROM store_meta WHERE key = ?",
+                (str(key),),
+            ).fetchone()
         return None if row is None else str(row["value"])
 
     def set_meta(self, key: str, value: str) -> None:
-        with self._lock:
-            conn = self._conn()
+        with self._lock, self._borrow_conn() as conn:
             conn.execute(
                 "INSERT INTO store_meta(key, value) VALUES (?, ?) "
                 "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -404,8 +474,7 @@ class SqliteHybridStore:
         )
         fts_tokens = tokenize_for_fts(self._memory_fts_source(normalized_record))
 
-        with self._lock:
-            conn = self._conn()
+        with self._lock, self._borrow_conn() as conn:
             with conn:
                 if slot_key and normalized_record.superseded_by is None:
                     if normalized_record.source_session_id and scope == "save_isolated":
@@ -503,48 +572,48 @@ class SqliteHybridStore:
         mid = str(memory_id or "").strip()
         if not mid:
             return None
-        conn = self._conn()
-        row = conn.execute(
-            "SELECT * FROM memories WHERE id = ?",
-            (mid,),
-        ).fetchone()
+        with self._borrow_conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM memories WHERE id = ?",
+                (mid,),
+            ).fetchone()
         return None if row is None else self._row_to_memory_record(row, include_embedding=True)
 
     def search_candidates(self, query: MemoryCandidateQuery) -> Sequence[CandidateHit]:
         limit = max(1, int(query.limit))
-        conn = self._conn()
         where_sql, params = self._build_scope_where(query.scope_filter, table_alias="m")
+        match_expr = build_fts_match_query(query.keyword_query)
+        fts_scores: dict[str, float] = {}
 
-        rows = conn.execute(
-            f"SELECT m.* FROM memories m WHERE {where_sql} ORDER BY m.created_at DESC, m.rowid DESC",
-            params,
-        ).fetchall()
-        if not rows:
-            return ()
+        with self._borrow_conn() as conn:
+            rows = conn.execute(
+                f"SELECT m.* FROM memories m WHERE {where_sql} ORDER BY m.created_at DESC, m.rowid DESC",
+                params,
+            ).fetchall()
+            if not rows:
+                return ()
+            if match_expr:
+                fts_rows = conn.execute(
+                    f"""
+                    SELECT f.memory_id, bm25(memories_fts) AS rank_score
+                    FROM memories_fts f
+                    JOIN memories m ON m.id = f.memory_id
+                    WHERE memories_fts MATCH ? AND {where_sql}
+                    ORDER BY rank_score ASC
+                    LIMIT ?
+                    """,
+                    [match_expr, *params, max(limit * 4, 40)],
+                ).fetchall()
+                for row in fts_rows:
+                    raw_bm25 = abs(float(row["rank_score"] or 0.0))
+                    # SQLite bm25() returns negative scores (more negative = better match).
+                    fts_scores[str(row["memory_id"])] = raw_bm25 / (1.0 + raw_bm25)
 
         q_vecs = [
             vec
             for raw in query.query_vectors
             if (vec := normalize_vector(raw)) is not None
         ]
-        fts_scores: dict[str, float] = {}
-        match_expr = build_fts_match_query(query.keyword_query)
-        if match_expr:
-            fts_rows = conn.execute(
-                f"""
-                SELECT f.memory_id, bm25(memories_fts) AS rank_score
-                FROM memories_fts f
-                JOIN memories m ON m.id = f.memory_id
-                WHERE memories_fts MATCH ? AND {where_sql}
-                ORDER BY rank_score ASC
-                LIMIT ?
-                """,
-                [match_expr, *params, max(limit * 4, 40)],
-            ).fetchall()
-            for row in fts_rows:
-                raw_bm25 = abs(float(row["rank_score"] or 0.0))
-                # SQLite bm25() returns negative scores (more negative = better match).
-                fts_scores[str(row["memory_id"])] = raw_bm25 / (1.0 + raw_bm25)
 
         vec_scores = np.zeros(len(rows), dtype=np.float32)
         if q_vecs:
@@ -620,19 +689,19 @@ class SqliteHybridStore:
         bounded_limit = max(1, int(limit))
         where_sql, params = self._build_scope_where(scope_filter, table_alias="m")
         ent_placeholders = ",".join("?" for _ in norm_entities)
-        conn = self._conn()
-        rows = conn.execute(
-            f"""
-            SELECT m.*, COUNT(DISTINCT e.entity_norm) AS hit_count
-            FROM memory_entities e
-            JOIN memories m ON m.id = e.memory_id
-            WHERE e.entity_norm IN ({ent_placeholders}) AND {where_sql}
-            GROUP BY m.id
-            ORDER BY hit_count DESC, m.importance DESC, m.created_at DESC
-            LIMIT ?
-            """,
-            [*norm_entities, *params, bounded_limit],
-        ).fetchall()
+        with self._borrow_conn() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT m.*, COUNT(DISTINCT e.entity_norm) AS hit_count
+                FROM memory_entities e
+                JOIN memories m ON m.id = e.memory_id
+                WHERE e.entity_norm IN ({ent_placeholders}) AND {where_sql}
+                GROUP BY m.id
+                ORDER BY hit_count DESC, m.importance DESC, m.created_at DESC
+                LIMIT ?
+                """,
+                [*norm_entities, *params, bounded_limit],
+            ).fetchall()
         return tuple(self._row_to_memory_record(row) for row in rows)
 
     def list_by_scope(
@@ -643,16 +712,16 @@ class SqliteHybridStore:
     ) -> Sequence[MemoryRecord]:
         bounded_limit = max(1, int(limit))
         where_sql, params = self._build_scope_where(scope_filter, table_alias="m")
-        conn = self._conn()
-        rows = conn.execute(
-            f"""
-            SELECT m.* FROM memories m
-            WHERE {where_sql}
-            ORDER BY m.pinned DESC, m.created_at DESC, m.rowid DESC
-            LIMIT ?
-            """,
-            [*params, bounded_limit],
-        ).fetchall()
+        with self._borrow_conn() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT m.* FROM memories m
+                WHERE {where_sql}
+                ORDER BY m.pinned DESC, m.created_at DESC, m.rowid DESC
+                LIMIT ?
+                """,
+                [*params, bounded_limit],
+            ).fetchall()
         return tuple(self._row_to_memory_record(row) for row in rows)
 
     def record_recall(self, memory_ids: Sequence[str], *, recalled_at: float) -> int:
@@ -661,8 +730,7 @@ class SqliteHybridStore:
             return 0
         placeholders = ",".join("?" for _ in ids)
         ts = float(recalled_at)
-        with self._lock:
-            conn = self._conn()
+        with self._lock, self._borrow_conn() as conn:
             with conn:
                 cur = conn.execute(
                     f"""
@@ -717,8 +785,7 @@ class SqliteHybridStore:
         if not sid:
             return 0
         cutoff = int(turn_seq)
-        with self._lock:
-            conn = self._conn()
+        with self._lock, self._borrow_conn() as conn:
             rows = conn.execute(
                 """
                 SELECT id, superseded_by FROM memories
@@ -759,8 +826,7 @@ class SqliteHybridStore:
         mid = str(memory_id or "").strip()
         if not mid:
             return False
-        with self._lock:
-            conn = self._conn()
+        with self._lock, self._borrow_conn() as conn:
             with conn:
                 cur = conn.execute(
                     "UPDATE memories SET pinned = ? WHERE id = ?",
@@ -773,8 +839,7 @@ class SqliteHybridStore:
         mid = str(memory_id or "").strip()
         if not mid:
             return False
-        with self._lock:
-            conn = self._conn()
+        with self._lock, self._borrow_conn() as conn:
             row = conn.execute(
                 "SELECT id, superseded_by FROM memories WHERE id = ?",
                 (mid,),
@@ -831,8 +896,7 @@ class SqliteHybridStore:
         if not entries:
             return 0
         now = time.time()
-        with self._lock:
-            conn = self._conn()
+        with self._lock, self._borrow_conn() as conn:
             count = 0
             with conn:
                 for entry in entries:
@@ -957,32 +1021,34 @@ class SqliteHybridStore:
         bounded_limit = max(1, int(limit))
         q_vec = normalize_vector(query_vector)
 
-        conn = self._conn()
-        dv = self._data_version(conn)
-
         fts_scores: dict[str, float] = {}
         match_expr = build_fts_match_query(keyword_query)
-        if match_expr:
-            scope_placeholders = ",".join("?" for _ in scopes)
-            fts_rows = conn.execute(
-                f"""
-                SELECT slice_id, bm25(vector_entries_fts) AS rank_score
-                FROM vector_entries_fts
-                WHERE vector_entries_fts MATCH ?
-                  AND namespace = ?
-                  AND scope_id IN ({scope_placeholders})
-                ORDER BY rank_score ASC
-                LIMIT ?
-                """,
-                [match_expr, ns, *scopes, max(bounded_limit * 5, 50)],
-            ).fetchall()
-            for row in fts_rows:
-                raw_bm25 = abs(float(row["rank_score"] or 0.0))
-                fts_scores[str(row["slice_id"])] = raw_bm25 / (1.0 + raw_bm25)
+        with self._borrow_conn() as conn:
+            dv = self._data_version(conn)
+            if match_expr:
+                scope_placeholders = ",".join("?" for _ in scopes)
+                fts_rows = conn.execute(
+                    f"""
+                    SELECT slice_id, bm25(vector_entries_fts) AS rank_score
+                    FROM vector_entries_fts
+                    WHERE vector_entries_fts MATCH ?
+                      AND namespace = ?
+                      AND scope_id IN ({scope_placeholders})
+                    ORDER BY rank_score ASC
+                    LIMIT ?
+                    """,
+                    [match_expr, ns, *scopes, max(bounded_limit * 5, 50)],
+                ).fetchall()
+                for row in fts_rows:
+                    raw_bm25 = abs(float(row["rank_score"] or 0.0))
+                    fts_scores[str(row["slice_id"])] = raw_bm25 / (1.0 + raw_bm25)
+            cached_scopes = [
+                self._get_scope_matrix_cache(conn, ns, scope_id, dv)
+                for scope_id in scopes
+            ]
 
         hits: list[VectorSliceHit] = []
-        for scope_id in scopes:
-            cached = self._get_scope_matrix_cache(conn, ns, scope_id, dv)
+        for cached in cached_scopes:
             if not cached.entries:
                 continue
             if (
@@ -1042,55 +1108,55 @@ class SqliteHybridStore:
             return ()
         bounded_offset = max(0, int(offset))
         bounded_limit = max(1, int(limit))
-        conn = self._conn()
 
-        if metadata_filter:
+        with self._borrow_conn() as conn:
+            if metadata_filter:
+                if scope_id is not None:
+                    rows = conn.execute(
+                        "SELECT * FROM vector_entries WHERE namespace = ? AND scope_id = ? "
+                        "ORDER BY created_at ASC, rowid ASC",
+                        (ns, str(scope_id).strip()),
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        "SELECT * FROM vector_entries WHERE namespace = ? "
+                        "ORDER BY created_at ASC, rowid ASC",
+                        (ns,),
+                    ).fetchall()
+                filtered = [
+                    entry
+                    for row in rows
+                    if self._metadata_matches(
+                        (entry := self._row_to_slice_entry(row)).metadata,
+                        metadata_filter,
+                    )
+                ]
+                return tuple(filtered[bounded_offset : bounded_offset + bounded_limit])
+
             if scope_id is not None:
                 rows = conn.execute(
                     "SELECT * FROM vector_entries WHERE namespace = ? AND scope_id = ? "
-                    "ORDER BY created_at ASC, rowid ASC",
-                    (ns, str(scope_id).strip()),
+                    "ORDER BY created_at ASC, rowid ASC LIMIT ? OFFSET ?",
+                    (ns, str(scope_id).strip(), bounded_limit, bounded_offset),
                 ).fetchall()
             else:
                 rows = conn.execute(
                     "SELECT * FROM vector_entries WHERE namespace = ? "
-                    "ORDER BY created_at ASC, rowid ASC",
-                    (ns,),
+                    "ORDER BY created_at ASC, rowid ASC LIMIT ? OFFSET ?",
+                    (ns, bounded_limit, bounded_offset),
                 ).fetchall()
-            filtered = [
-                entry
-                for row in rows
-                if self._metadata_matches(
-                    (entry := self._row_to_slice_entry(row)).metadata,
-                    metadata_filter,
-                )
-            ]
-            return tuple(filtered[bounded_offset : bounded_offset + bounded_limit])
-
-        if scope_id is not None:
-            rows = conn.execute(
-                "SELECT * FROM vector_entries WHERE namespace = ? AND scope_id = ? "
-                "ORDER BY created_at ASC, rowid ASC LIMIT ? OFFSET ?",
-                (ns, str(scope_id).strip(), bounded_limit, bounded_offset),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT * FROM vector_entries WHERE namespace = ? "
-                "ORDER BY created_at ASC, rowid ASC LIMIT ? OFFSET ?",
-                (ns, bounded_limit, bounded_offset),
-            ).fetchall()
         return tuple(self._row_to_slice_entry(row) for row in rows)
 
     def count_by_scope(self, *, namespace: str) -> Mapping[str, int]:
         ns = str(namespace or "").strip()
         if not ns:
             return {}
-        conn = self._conn()
-        rows = conn.execute(
-            "SELECT scope_id, COUNT(*) AS cnt FROM vector_entries "
-            "WHERE namespace = ? GROUP BY scope_id",
-            (ns,),
-        ).fetchall()
+        with self._borrow_conn() as conn:
+            rows = conn.execute(
+                "SELECT scope_id, COUNT(*) AS cnt FROM vector_entries "
+                "WHERE namespace = ? GROUP BY scope_id",
+                (ns,),
+            ).fetchall()
         return {
             str(row["scope_id"]): int(row["cnt"])
             for row in rows
@@ -1102,8 +1168,7 @@ class SqliteHybridStore:
         sid = str(slice_id or "").strip()
         if not ns or not sid:
             return False
-        with self._lock:
-            conn = self._conn()
+        with self._lock, self._borrow_conn() as conn:
             with conn:
                 conn.execute(
                     "DELETE FROM vector_entries_fts WHERE namespace = ? AND slice_id = ?",
@@ -1121,8 +1186,7 @@ class SqliteHybridStore:
         sc = str(scope_id or "").strip()
         if not ns or not sc:
             return 0
-        with self._lock:
-            conn = self._conn()
+        with self._lock, self._borrow_conn() as conn:
             with conn:
                 conn.execute(
                     "DELETE FROM vector_entries_fts WHERE namespace = ? AND scope_id = ?",

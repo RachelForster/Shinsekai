@@ -152,6 +152,18 @@ def _shutdown_bridge_runtime(reason: str) -> None:
             chat_stream.stop()
         except Exception as exc:
             _restart_debug_log(f"bridge runtime chat stream stop failed reason={reason} error={exc}")
+    try:
+        from application.memory.manage_memories import shutdown_memory_runtime
+
+        shutdown_memory_runtime()
+    except Exception as exc:
+        _restart_debug_log(f"bridge runtime memory shutdown failed reason={reason} error={exc}")
+    try:
+        from application.knowledge.runtime import shutdown_knowledge_runtime
+
+        shutdown_knowledge_runtime()
+    except Exception as exc:
+        _restart_debug_log(f"bridge runtime knowledge shutdown failed reason={reason} error={exc}")
     _restart_debug_log(f"bridge runtime shutdown completed reason={reason}")
 
 

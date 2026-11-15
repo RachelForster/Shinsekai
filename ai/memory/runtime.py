@@ -23,7 +23,7 @@ from ai.memory.config import (
     is_embedding_model_cached,
 )
 from ai.memory.constants import EMBEDDING_MODEL
-from ai.memory.engine import HybridMemoryEngine
+from ai.memory.engine import HybridMemoryEngine, clear_shared_onnx_embedders
 from ai.memory.tasks import current_mem0_task, set_mem0_task
 
 logger = logging.getLogger(__name__)
@@ -41,6 +41,7 @@ _mem0: Any = None
 _mem0_load_error: BaseException | None = None
 _mem0_loading = False
 _loading_started_at: float = 0.0
+_runtime_generation: int = 0
 _lock = threading.Lock()
 
 _LOADING_FIRST_MSG = (
@@ -119,6 +120,7 @@ def start_mem0_loading() -> None:
         _mem0_loading = True
         _mem0_load_error = None
         _loading_started_at = time.time()
+        load_generation = _runtime_generation
 
     cached = is_embedding_model_cached()
     set_mem0_task(
@@ -137,6 +139,7 @@ def start_mem0_loading() -> None:
     def _load() -> None:
         global _mem0, _mem0_loading, _mem0_load_error
         stage = "dependency"
+        published = False
         try:
             import onnxruntime  # noqa: F401
 
@@ -151,7 +154,16 @@ def start_mem0_loading() -> None:
             )
             mem = _create_mem0_instance(HybridMemoryEngine, snapshot_path)
             with _lock:
-                _mem0 = mem
+                if _runtime_generation == load_generation:
+                    _mem0 = mem
+                    published = True
+            if not published:
+                if hasattr(mem, "close"):
+                    try:
+                        mem.close()
+                    except Exception:
+                        pass
+                return
             set_mem0_task(
                 phase="completed",
                 status="succeeded",
@@ -164,6 +176,8 @@ def start_mem0_loading() -> None:
             package_name = str(dependency["packageName"])
             logger.exception("混合记忆引擎加载失败: 缺少运行时依赖 %s", package_name)
             with _lock:
+                if _runtime_generation != load_generation:
+                    return
                 _mem0_load_error = exc
             user_message = f"长期记忆缺少 {package_name}，请先安装运行时依赖。"
             set_mem0_task(
@@ -180,6 +194,8 @@ def start_mem0_loading() -> None:
         except Exception as exc:
             logger.exception("混合记忆引擎加载失败")
             with _lock:
+                if _runtime_generation != load_generation:
+                    return
                 _mem0_load_error = exc
             if stage == "download":
                 presented_error = download_error_from_exception(
@@ -209,15 +225,17 @@ def start_mem0_loading() -> None:
                 status="failed",
             )
         else:
-            try:
-                from sdk.tool_registry import notify_tool_ready
+            if published:
+                try:
+                    from sdk.tool_registry import notify_tool_ready
 
-                notify_tool_ready("memory", "记忆系统已就绪，可以继续使用。")
-            except Exception:
-                logger.exception("记忆引擎就绪通知失败")
+                    notify_tool_ready("memory", "记忆系统已就绪，可以继续使用。")
+                except Exception:
+                    logger.exception("记忆引擎就绪通知失败")
         finally:
             with _lock:
-                _mem0_loading = False
+                if _runtime_generation == load_generation:
+                    _mem0_loading = False
 
     t = threading.Thread(target=_load, name="memory-engine-loader", daemon=True)
     t.start()
@@ -324,19 +342,27 @@ def check_mem0_status(*, start_loading: bool = True) -> dict[str, Any]:
         return _missing_dependency_status(dependency)
 
 
-def reset_memory_runtime_for_tests() -> None:
-    """Reset global singleton state for isolated unit tests."""
-    global _mem0, _mem0_loading, _mem0_load_error, _loading_started_at
+def shutdown_memory_runtime() -> None:
+    """Close the global memory engine and release SQLite / embedder resources."""
+    global _mem0, _mem0_loading, _mem0_load_error, _loading_started_at, _runtime_generation
     with _lock:
-        if _mem0 is not None and hasattr(_mem0, "close"):
-            try:
-                _mem0.close()
-            except Exception:
-                pass
+        _runtime_generation += 1
+        instance = _mem0
         _mem0 = None
         _mem0_loading = False
         _mem0_load_error = None
         _loading_started_at = 0.0
+    if instance is not None and hasattr(instance, "close"):
+        try:
+            instance.close()
+        except Exception:
+            logger.exception("混合记忆引擎关闭失败")
+    clear_shared_onnx_embedders()
+
+
+def reset_memory_runtime_for_tests() -> None:
+    """Reset global singleton state for isolated unit tests."""
+    shutdown_memory_runtime()
 
 
 start_memory_loading = start_mem0_loading

@@ -655,3 +655,109 @@ def test_media_assets_identical_catalogs_across_scopes_do_not_collide_or_overwri
         assert embed_doc_calls == []
     finally:
         engine.close()
+
+
+def test_sqlite_hybrid_store_bounds_connections_across_short_lived_threads_and_closes_handles(
+    tmp_path: Path,
+):
+    import threading
+
+    db_path = tmp_path / "threaded_pool.db"
+    embedder = DeterministicHashEmbedder(dimensions=32)
+    store = SqliteHybridStore(db_path, max_idle_connections=2)
+    errors: list[BaseException] = []
+
+    def _request_worker(idx: int) -> None:
+        try:
+            text = f"请求线程 {idx} 写入的角色记忆与世界观条目"
+            vec = embedder.embed_query(text)
+            store.upsert(
+                MemoryRecord(
+                    id=f"mem-{idx}",
+                    scope=SCOPE_CHAR_CROSS_SAVE,
+                    owner_id="Alice",
+                    detail_text=text,
+                    created_at=float(idx + 1),
+                    embedding=vec,
+                )
+            )
+            hits = store.search_candidates(
+                MemoryCandidateQuery(
+                    scope_filter=MemoryScopeFilter(owner_ids=("Alice",)),
+                    query_vectors=(vec,),
+                    keyword_query=f"线程 {idx}",
+                    limit=3,
+                )
+            )
+            assert hits
+            store.upsert_slices(
+                [
+                    VectorSliceEntry(
+                        id=f"kb-{idx}",
+                        namespace=NAMESPACE_KNOWLEDGE,
+                        scope_id="wb-main",
+                        text=text,
+                        metadata={"user_id": "wb-main"},
+                        created_at=float(idx + 1),
+                        embedding=vec,
+                    )
+                ]
+            )
+            kb_hits = store.search_slices(
+                namespace=NAMESPACE_KNOWLEDGE,
+                scope_ids=("wb-main",),
+                query_vector=vec,
+                keyword_query=f"线程 {idx}",
+                limit=3,
+            )
+            assert kb_hits
+            store.set_meta(f"req:{idx}", str(idx))
+            assert store.get_meta(f"req:{idx}") == str(idx)
+        except BaseException as exc:  # pragma: no cover - collected and asserted below
+            errors.append(exc)
+
+    try:
+        # 5 waves x 8 short-lived threads = 40 distinct thread IDs (mimicking ThreadingHTTPServer)
+        for wave in range(5):
+            threads = [
+                threading.Thread(target=_request_worker, args=(wave * 8 + i,))
+                for i in range(8)
+            ]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join(timeout=10.0)
+                assert not t.is_alive()
+
+        assert errors == []
+        assert store.active_connection_count == 0
+        assert store.idle_connection_count <= 2
+
+        # Uncommitted write inside an aborted _borrow_conn() must roll back cleanly before pool return
+        with pytest.raises(RuntimeError, match="abort-mid-tx"):
+            with store._borrow_conn() as conn:
+                conn.execute(
+                    "INSERT INTO store_meta(key, value) VALUES (?, ?)",
+                    ("uncommitted_key", "dirty"),
+                )
+                assert conn.in_transaction is True
+                raise RuntimeError("abort-mid-tx")
+
+        assert store.get_meta("uncommitted_key") is None
+        assert store.active_connection_count == 0
+        assert store.idle_connection_count <= 2
+    finally:
+        store.close()
+
+    assert store.is_closed is True
+    assert store.active_connection_count == 0
+    assert store.idle_connection_count == 0
+    with pytest.raises(RuntimeError, match="closed"):
+        store.get_meta("req:0")
+
+    # On Windows, unlinking an SQLite WAL database fails with WinError 32 if ANY handle leaked
+    db_path.unlink()
+    for suffix in ("-wal", "-shm"):
+        sidecar = Path(f"{db_path}{suffix}")
+        if sidecar.exists():
+            sidecar.unlink()

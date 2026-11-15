@@ -13,15 +13,19 @@ from typing import Any
 
 import numpy as np
 
-from ai.memory.config import resolve_safe_snapshot_file
+from ai.memory.config import resolve_safe_snapshot_file, validate_onnx_model_file
 from ai.memory.constants import EMBEDDING_DIMS, ONNX_MODEL_CANDIDATES
 from sdk.adapters.memory import ReadinessStatus
 
 _SP_SPACE = "\u2581"
 
 
-def find_onnx_model_file(snapshot_dir: str | Path) -> Path | None:
-    """Locate the preferred quantized or standard ONNX graph inside a snapshot."""
+def find_onnx_model_file(
+    snapshot_dir: str | Path,
+    *,
+    expected_dims: int | None = EMBEDDING_DIMS,
+) -> Path | None:
+    """Locate the preferred validated quantized or standard ONNX graph inside a snapshot."""
     root = Path(snapshot_dir)
     if not root.is_dir():
         return None
@@ -29,11 +33,8 @@ def find_onnx_model_file(snapshot_dir: str | Path) -> Path | None:
         candidate = resolve_safe_snapshot_file(root, rel)
         if candidate is None:
             continue
-        try:
-            if candidate.stat().st_size > 0:
-                return candidate
-        except OSError:
-            continue
+        if validate_onnx_model_file(candidate, expected_dims=expected_dims):
+            return candidate
     return None
 
 
@@ -164,7 +165,7 @@ class _FastRustTokenizerWrapper:
     def __init__(self, tokenizer_json_path: Path, *, max_length: int = 256) -> None:
         from tokenizers import Tokenizer
 
-        tok = Tokenizer.from_file(str(tokenizer_json_path))
+        tok = Tokenizer.from_str(tokenizer_json_path.read_text(encoding="utf-8"))
         pad_id = tok.token_to_id("<pad>")
         if pad_id is None:
             pad_id = tok.token_to_id("[PAD]") or 0
@@ -216,7 +217,10 @@ class OnnxMiniLmEmbedder:
         else:
             import onnxruntime as ort
 
-            onnx_path = find_onnx_model_file(self._snapshot_dir)
+            onnx_path = find_onnx_model_file(
+                self._snapshot_dir,
+                expected_dims=self._dimensions,
+            )
             if onnx_path is None:
                 raise FileNotFoundError(
                     f"No ONNX model file found under {self._snapshot_dir}"

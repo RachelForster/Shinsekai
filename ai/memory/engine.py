@@ -144,6 +144,9 @@ class HybridMemoryEngine:
         )
 
     def close(self) -> None:
+        close_repo = getattr(self.repo, "close", None)
+        if callable(close_repo):
+            close_repo()
         if self.store is not None:
             self.store.close()
 
