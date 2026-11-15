@@ -306,7 +306,22 @@ class ChatCommandDispatcher:
         strip_orphaned = getattr(self.llm_manager, "_strip_orphaned_tool_calls", None)
         if callable(strip_orphaned):
             strip_orphaned()
-        reroll_payload = pop_last_assistant_turn_payload(self.chat_history, messages)
+        has_journal = (
+            getattr(getattr(self.llm_manager, "_history", None), "journal", None)
+            is not None
+        )
+        if self.history_argument or has_journal:
+            reroll_payload = pop_last_assistant_turn_payload(
+                self.chat_history,
+                messages,
+                llm_manager=self.llm_manager,
+                history_path=self.history_argument,
+                branch_id=getattr(self.branch_manager, "active_branch_id", "main"),
+            )
+            if self.history_argument:
+                self.branch_manager.persist()
+        else:
+            reroll_payload = pop_last_assistant_turn_payload(self.chat_history, messages)
         reroll_text = str(reroll_payload.get("text") or "")
         reroll_attachments = list(reroll_payload.get("attachments") or [])
         if not reroll_text and not reroll_attachments:
@@ -368,12 +383,22 @@ class ChatCommandDispatcher:
     def _revert_history(self, payload: object) -> None:
         index = int(payload)
         self.chat_turn_service.cancel_pending_batch()
-        revert_chat_history(
-            index,
-            llm_manager=self.llm_manager,
-            hist=self.chat_history,
-            window=self.history_presenter,
-        )
+        if self.history_argument:
+            revert_chat_history(
+                index,
+                llm_manager=self.llm_manager,
+                hist=self.chat_history,
+                window=self.history_presenter,
+                history_path=self.history_argument,
+                branch_id=getattr(self.branch_manager, "active_branch_id", "main"),
+            )
+        else:
+            revert_chat_history(
+                index,
+                llm_manager=self.llm_manager,
+                hist=self.chat_history,
+                window=self.history_presenter,
+            )
         replay_media = getattr(self.branch_manager, "replay_media", None)
         if callable(replay_media):
             replay_media(self.llm_manager.get_messages())

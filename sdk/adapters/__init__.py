@@ -19,6 +19,14 @@ from sdk.adapters.memory import (
     RetentionPolicy,
     StaticVectorStorePort,
 )
+from sdk.adapters.session import (
+    CompactCheckpoint,
+    ConversationSessionPort,
+    OutfitState,
+    SessionStoreContribution,
+    TruncateReport,
+    TurnNode,
+)
 from sdk.llm_response import ChatResponse, ResponseCodec, ResponseDelta
 from sdk.adapters.t2i import T2IAdapter
 from sdk.adapters.tts import TTSAdapter
@@ -33,14 +41,20 @@ __all__ = [
     "ASRAdapter",
     "AvatarFormatContribution",
     "LLMAdapter",
+    "CompactCheckpoint",
+    "ConversationSessionPort",
     "EmbeddingProvider",
     "EmbeddingProviderContribution",
     "MemoryExtractorPort",
     "MemoryRepository",
     "MemoryRepositoryContribution",
+    "OutfitState",
     "RecallPlanner",
     "RetentionPolicy",
+    "SessionStoreContribution",
     "StaticVectorStorePort",
+    "TruncateReport",
+    "TurnNode",
     "ChatResponse",
     "ResponseCodec",
     "ResponseDelta",

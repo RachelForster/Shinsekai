@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 import copy
 import json
 from typing import Any, Optional
 
 from ai.llm.message_sanitizer import strip_orphaned_tool_calls
 from ai.llm.ports import HistoryCompactor, MessageJournal
+from core.chat_history.models import (
+    COMPACT_UP_TO_SEQ_KEY,
+    build_compact_summary_message,
+    is_compact_summary_message,
+    strip_internal_message_keys,
+)
 from sdk.hooks import BeforeChatContext, MessageAddedContext, PluginHookDispatcher, PluginHookEvent
 
 
@@ -28,11 +35,108 @@ class ConversationHistory:
         self.use_current_template_for_history = use_current_template_for_history
         self.logger = logger
         self.messages: list[dict] = []
+        self._seq_by_msg_id: dict[int, int] = {}
+        self._bind_compactor_session_hooks()
+
+    def _journal_session_id(self) -> str:
+        return str(getattr(self.journal, "session_id", "") or "").strip()
+
+    def _journal_branch_id(self) -> str:
+        return str(getattr(self.journal, "active_branch_id", "main") or "main").strip() or "main"
+
+    def _journal_session_store(self) -> Any | None:
+        return getattr(self.journal, "session_store", None)
+
+    def _bind_compactor_session_hooks(self) -> None:
+        if (
+            hasattr(self.compact_manager, "resolve_message_seq")
+            and getattr(self.compact_manager, "resolve_message_seq", None) is None
+        ):
+            self.compact_manager.resolve_message_seq = self.resolve_message_seq
+        if (
+            hasattr(self.compact_manager, "on_checkpoint")
+            and getattr(self.compact_manager, "on_checkpoint", None) is None
+        ):
+            self.compact_manager.on_checkpoint = self._record_compact_checkpoint
+        sid = self._journal_session_id()
+        if (
+            sid
+            and hasattr(self.compact_manager, "session_id")
+            and not getattr(self.compact_manager, "session_id", "")
+        ):
+            self.compact_manager.session_id = sid
+
+    def resolve_message_seq(self, message: Mapping[str, Any]) -> int | None:
+        mapped = self._seq_by_msg_id.get(id(message))
+        if mapped is not None:
+            return mapped
+        for key in ("_turn_seq", COMPACT_UP_TO_SEQ_KEY):
+            raw = message.get(key)
+            if raw is not None:
+                try:
+                    return int(raw)
+                except (TypeError, ValueError):
+                    pass
+        return None
+
+    def _record_compact_checkpoint(self, up_to_seq: int, rolling_summary: str) -> None:
+        store = self._journal_session_store()
+        if store is None or up_to_seq <= 0 or not str(rolling_summary or "").strip():
+            return
+        store.add_compact_checkpoint(
+            up_to_seq=int(up_to_seq),
+            rolling_summary=str(rolling_summary),
+            branch_id=self._journal_branch_id(),
+        )
+
+    def _prune_seq_index(self) -> None:
+        live_ids = {id(m) for m in self.messages}
+        self._seq_by_msg_id = {
+            mid: seq for mid, seq in self._seq_by_msg_id.items() if mid in live_ids
+        }
+
+    def _rebind_seq_index_from_store(self) -> None:
+        self._seq_by_msg_id.clear()
+        store = self._journal_session_store()
+        if store is None:
+            return
+        branch_id = self._journal_branch_id()
+        after_seq = 0
+        body_msgs: list[dict[str, Any]] = []
+        for msg in self.messages:
+            if not isinstance(msg, dict) or msg.get("role") == "system":
+                continue
+            if is_compact_summary_message(msg):
+                raw_anchor = msg.get(COMPACT_UP_TO_SEQ_KEY)
+                if raw_anchor is not None:
+                    try:
+                        after_seq = max(after_seq, int(raw_anchor))
+                    except (TypeError, ValueError):
+                        pass
+                else:
+                    cp = store.get_active_compact_checkpoint(branch_id=branch_id)
+                    if cp is not None:
+                        after_seq = max(after_seq, cp.up_to_seq)
+                continue
+            body_msgs.append(msg)
+
+        turns = list(store.list_turns(branch_id=branch_id, after_seq=after_seq))
+        if len(turns) == len(body_msgs):
+            for msg, turn in zip(body_msgs, turns):
+                self._seq_by_msg_id[id(msg)] = turn.seq
+            return
+        # Prefix match fallback (e.g. after in-memory revert before persist)
+        for msg, turn in zip(body_msgs, turns):
+            if strip_internal_message_keys(msg) == dict(turn.raw_message):
+                self._seq_by_msg_id[id(msg)] = turn.seq
+            else:
+                break
 
     def set_user_template(self, template: str):
         """Sets the system prompt/user template and resets the messages list."""
         self.messages = [{"role": "system", "content": template}]
         self.user_template = template
+        self._seq_by_msg_id.clear()
 
     def add_message(self, role: str, content: Optional[str], **kwargs):
         """
@@ -45,7 +149,11 @@ class ConversationHistory:
         msg.update(kwargs)
         self.messages.append(msg)
 
-        self.journal.append(msg)
+        appended_seq = self.journal.append(msg)
+        if not isinstance(appended_seq, int):
+            appended_seq = getattr(self.journal, "last_turn_seq", None)
+        if isinstance(appended_seq, int) and appended_seq > 0:
+            self._seq_by_msg_id[id(msg)] = appended_seq
 
         if (
             self.hook_dispatcher is not None
@@ -56,6 +164,8 @@ class ConversationHistory:
                     role=role,
                     message=copy.deepcopy(msg),
                     messages=copy.deepcopy(self.messages),
+                    session_id=self._journal_session_id(),
+                    turn_seq=appended_seq if isinstance(appended_seq, int) else None,
                 )
             )
 
@@ -73,9 +183,11 @@ class ConversationHistory:
                 after_tokens,
             )
             self.messages = compacted_messages
+            self._prune_seq_index()
 
     def clear_messages(self):
         self.messages = [{"role": "system", "content": self.user_template}]
+        self._seq_by_msg_id.clear()
 
     def _prepare_tool_result_for_history(self, result: Any) -> str:
         """Bound tool output before it becomes permanent prompt history."""
@@ -154,6 +266,36 @@ class ConversationHistory:
         """Returns the current list of messages."""
         return self.messages
 
+    def _apply_checkpoint_window_if_matching(self, messages: list[dict]) -> list[dict]:
+        store = self._journal_session_store()
+        if store is None or any(is_compact_summary_message(m) for m in messages):
+            return messages
+        branch_id = self._journal_branch_id()
+        cp = store.get_active_compact_checkpoint(branch_id=branch_id)
+        if cp is None:
+            return messages
+
+        sys_msg = messages[0] if messages and messages[0].get("role") == "system" else None
+        non_sys = [
+            strip_internal_message_keys(m)
+            for m in (messages[1:] if sys_msg is not None else messages)
+            if isinstance(m, Mapping)
+        ]
+        all_turns = list(store.list_turns(branch_id=branch_id))
+        if not all_turns or [dict(t.raw_message) for t in all_turns] != non_sys:
+            return messages
+
+        assembled: list[dict[str, Any]] = []
+        if sys_msg is not None:
+            assembled.append(dict(sys_msg))
+        assembled.append(
+            build_compact_summary_message(cp.rolling_summary, up_to_seq=cp.up_to_seq)
+        )
+        for turn in all_turns:
+            if turn.seq > cp.up_to_seq:
+                assembled.append(copy.deepcopy(dict(turn.raw_message)))
+        return assembled
+
     def set_messages(self, new_messages: list):
         """Sets the conversation history to a new list of messages."""
         if isinstance(new_messages, list):
@@ -163,8 +305,11 @@ class ConversationHistory:
                     self.messages[0] = {**self.messages[0], "content": self.user_template}
                 else:
                     self.messages.insert(0, {"role": "system", "content": self.user_template})
+            self.messages = self._apply_checkpoint_window_if_matching(self.messages)
             self._strip_orphaned_tool_calls()
             self.messages = self._trim_loaded_history_if_needed(self.messages)
+            self._rebind_seq_index_from_store()
+            self._prune_seq_index()
             self.compact_manager.set_token_count(self.compact_manager.count_tokens(self.messages))
             print("Chat history has been updated.")
         else:

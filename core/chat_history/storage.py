@@ -8,6 +8,15 @@ import re
 from pathlib import Path
 from typing import Any
 
+from core.chat_history.sqlite_session_store import (
+    HISTORY_DB_FILENAME,
+    canonical_session_id_for_dir,
+    close_session_store_for_dir,
+    open_session_store_for_dir,
+    peek_open_session_store_for_dir,
+)
+from sdk.adapters.session import ConversationSessionPort
+
 ACTIVE_HISTORY_FILENAME = "active.json"
 BRANCH_TREE_FILENAME = "branches.json"
 STORY_SESSION_FILENAME = "story-v2.json"
@@ -49,6 +58,32 @@ def chat_history_branch_tree_path(path: str | Path) -> Path:
     return chat_history_session_dir(path) / BRANCH_TREE_FILENAME
 
 
+def chat_history_db_path(path: str | Path) -> Path:
+    return chat_history_session_dir(path) / HISTORY_DB_FILENAME
+
+
+def session_id_for_history_path(path: str | Path) -> str:
+    if not str(path or "").strip():
+        return ""
+    return canonical_session_id_for_dir(chat_history_session_dir(path))
+
+
+def open_session_store(path: str | Path) -> ConversationSessionPort:
+    return open_session_store_for_dir(chat_history_session_dir(path))
+
+
+def peek_open_session_store(path: str | Path) -> ConversationSessionPort | None:
+    if not str(path or "").strip():
+        return None
+    return peek_open_session_store_for_dir(chat_history_session_dir(path))
+
+
+def close_session_store(path: str | Path) -> None:
+    if not str(path or "").strip():
+        return
+    close_session_store_for_dir(chat_history_session_dir(path))
+
+
 def chat_history_download_path(path: str | Path) -> Path:
     tree_path = chat_history_branch_tree_path(path)
     if tree_path.is_file():
@@ -62,6 +97,9 @@ def chat_history_storage_files(path: str | Path) -> tuple[Path, ...]:
     directory = chat_history_session_dir(candidate)
     files = tuple(directory / name for name in (
         BRANCH_TREE_FILENAME,
+        f"{HISTORY_DB_FILENAME}-shm",
+        f"{HISTORY_DB_FILENAME}-wal",
+        HISTORY_DB_FILENAME,
         f"{ACTIVE_HISTORY_FILENAME}.tmp",
         ACTIVE_HISTORY_FILENAME,
         STORY_SESSION_FILENAME,
@@ -114,6 +152,7 @@ def remove_chat_history_storage(path: str | Path) -> None:
     # Legacy aliases are removed last. If branch metadata is locked, the
     # authoritative active history remains intact and the clear is reported as
     # failed instead of leaving a partially-cleared session.
+    close_session_store(path)
     for target in chat_history_storage_files(path):
         target.unlink(missing_ok=True)
     prune_chat_history_storage(path)

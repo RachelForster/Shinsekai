@@ -68,7 +68,15 @@ def _memory_tool_search(query: str, character_name: str, limit: int = 10) -> dic
         return {"status": "loading", "message": exc.message}
 
 
-def _memory_tool_remember(content: str, character_name: str) -> dict[str, Any]:
+def _memory_tool_remember(
+    content: str,
+    character_name: str,
+    *,
+    slot_key: str = "",
+    kind: str = "episodic",
+    source_session_id: str = "",
+    source_turn_seq: int | None = None,
+) -> dict[str, Any]:
     dep_error = _check_mem0_before_call()
     if dep_error is not None:
         return dep_error
@@ -77,9 +85,22 @@ def _memory_tool_remember(content: str, character_name: str) -> dict[str, Any]:
     from application.memory.manage_memories import remember_memory
 
     try:
-        return remember_memory(content, character_name=character_name)
+        return remember_memory(
+            content,
+            character_name=character_name,
+            slot_key=slot_key,
+            kind=kind,
+            source_session_id=source_session_id,
+            source_turn_seq=source_turn_seq,
+        )
     except ToolNotReady as exc:
         return {"status": "loading", "message": exc.message}
+
+
+def _memory_tool_rollback(session_id: str, turn_seq: int) -> dict[str, Any]:
+    from application.memory.manage_memories import rollback_memories
+
+    return rollback_memories(session_id, turn_seq=int(turn_seq))
 
 
 def _memory_tool_forget(memory_id: str) -> dict[str, Any]:

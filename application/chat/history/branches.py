@@ -13,8 +13,15 @@ from application.chat.history.state import (
     history_entry_plain_text,
     is_user_history_entry,
 )
+from core.chat_history.models import (
+    is_compact_summary_message,
+    is_real_user_turn_message,
+)
 from core.chat_history.storage import (
+    chat_history_db_path,
     load_branch_state,
+    open_session_store,
+    peek_open_session_store,
     reconcile_active_branch_state,
     save_branch_state,
 )
@@ -115,8 +122,8 @@ class ConversationBranchManager:
         if not self.history_path:
             return
         self._save_active_branch()
-        self.bindings.persist_messages(self.bindings.get_messages())
         save_branch_state(self.history_path, self.state)
+        self.bindings.persist_messages(self.bindings.get_messages())
 
     def replay_media(self, messages: list[Any] | None = None) -> None:
         source = self.bindings.get_messages() if messages is None else messages
@@ -244,12 +251,41 @@ class ConversationBranchManager:
                     return index
         return -1
 
+    def _open_store_if_present(self):
+        if not self.history_path:
+            return None
+        cached = peek_open_session_store(self.history_path)
+        if cached is not None:
+            return cached
+        if chat_history_db_path(self.history_path).is_file():
+            return open_session_store(self.history_path)
+        return None
+
     def _messages_before_user(self, user_index: int) -> list[Any]:
+        current_messages = self.bindings.get_messages()
+        store = self._open_store_if_present()
+        if store is not None and any(
+            is_compact_summary_message(m) for m in current_messages
+        ):
+            turns = list(store.list_turns(branch_id=self.active_branch_id))
+            real_user_turns = [
+                t for t in turns if is_real_user_turn_message(t.raw_message)
+            ]
+            if 0 <= user_index < len(real_user_turns):
+                cutoff = real_user_turns[user_index].seq - 1
+                sys_prompt = None
+                if current_messages and current_messages[0].get("role") == "system":
+                    sys_prompt = str(current_messages[0].get("content") or "")
+                return store.build_active_llm_messages(
+                    system_prompt=sys_prompt,
+                    branch_id=self.active_branch_id,
+                    max_seq=cutoff,
+                )
+
         new_messages = []
         current_user_index = -1
-        for message in self.bindings.get_messages():
-            role = message.get("role")
-            if role == "user" and message.get("source") != "perception":
+        for message in current_messages:
+            if is_real_user_turn_message(message):
                 current_user_index += 1
                 if current_user_index >= user_index:
                     break
@@ -257,9 +293,21 @@ class ConversationBranchManager:
         return new_messages
 
     def _user_message(self, user_index: int) -> dict[str, object] | None:
+        current_messages = self.bindings.get_messages()
+        store = self._open_store_if_present()
+        if store is not None and any(
+            is_compact_summary_message(m) for m in current_messages
+        ):
+            turns = list(store.list_turns(branch_id=self.active_branch_id))
+            real_user_turns = [
+                t for t in turns if is_real_user_turn_message(t.raw_message)
+            ]
+            if 0 <= user_index < len(real_user_turns):
+                return copy.deepcopy(dict(real_user_turns[user_index].raw_message))
+
         current_user_index = -1
-        for message in self.bindings.get_messages():
-            if message.get("role") != "user" or message.get("source") == "perception":
+        for message in current_messages:
+            if not is_real_user_turn_message(message):
                 continue
             current_user_index += 1
             if current_user_index == user_index:

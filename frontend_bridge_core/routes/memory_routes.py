@@ -9,6 +9,7 @@ from frontend_bridge_core.memory import (
     _memory_asset_search,
     _memory_tool_forget,
     _memory_tool_remember,
+    _memory_tool_rollback,
     _memory_tool_search,
 )
 from frontend_bridge_core.routes.router import ApiRequest, JsonResponse, Route
@@ -69,6 +70,8 @@ def _memory_search(request: ApiRequest) -> JsonResponse:
 
 
 def _memory_remember(request: ApiRequest) -> JsonResponse:
+    raw_seq = request.body.get("sourceTurnSeq", request.body.get("source_turn_seq"))
+    parsed_seq = None if raw_seq is None or raw_seq == "" else int(raw_seq)
     return JsonResponse(
         _memory_tool_remember(
             str(request.body.get("content") or ""),
@@ -77,6 +80,30 @@ def _memory_remember(request: ApiRequest) -> JsonResponse:
                 or request.body.get("character_name")
                 or ""
             ),
+            slot_key=str(
+                request.body.get("slotKey") or request.body.get("slot_key") or ""
+            ),
+            kind=str(request.body.get("kind") or "episodic"),
+            source_session_id=str(
+                request.body.get("sourceSessionId")
+                or request.body.get("source_session_id")
+                or ""
+            ),
+            source_turn_seq=parsed_seq,
+        )
+    )
+
+
+def _memory_rollback(request: ApiRequest) -> JsonResponse:
+    raw_seq = request.body.get("turnSeq", request.body.get("turn_seq", 0))
+    return JsonResponse(
+        _memory_tool_rollback(
+            str(
+                request.body.get("sessionId")
+                or request.body.get("session_id")
+                or ""
+            ),
+            int(raw_seq or 0),
         )
     )
 
@@ -163,5 +190,11 @@ MEMORY_ROUTES = (
         pattern="/api/memory/forget",
         handler=_memory_forget,
         name="memory.forget",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/memory/rollback",
+        handler=_memory_rollback,
+        name="memory.rollback",
     ),
 )
