@@ -107,14 +107,25 @@ describe("CharacterSpritesSection", () => {
     expect(onAutoLabel).toHaveBeenCalledOnce();
   });
 
-  it("shows an empty state and disables batch tagging when there are no sprites", () => {
+  it("shows an empty state and disables batch tagging and portrait crop when there are no sprites", () => {
+    const onOpenPortraitCrop = vi.fn();
     renderSection({
       draft: { ...createCharacter(), sprites: [] },
+      onOpenPortraitCrop,
       selectedSprite: undefined,
       spriteGalleryItems: [],
     });
 
     expect(screen.getByRole("button", { name: "Batch tags" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Portrait crop" })).toBeDisabled();
+  });
+
+  it("opens the portrait crop dialog when Portrait crop is clicked", () => {
+    const onOpenPortraitCrop = vi.fn();
+    renderSection({ onOpenPortraitCrop });
+
+    fireEvent.click(screen.getByRole("button", { name: "Portrait crop" }));
+    expect(onOpenPortraitCrop).toHaveBeenCalledOnce();
   });
 
   it("routes gallery, scale, tag, voice, and destructive actions through callbacks", () => {

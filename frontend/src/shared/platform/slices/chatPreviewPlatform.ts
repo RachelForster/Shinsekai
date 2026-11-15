@@ -760,6 +760,8 @@ export function createChatPreviewPlatform(ctx: BrowserPreviewContext): ChatPlatf
                   identityKey: `character:${character.name.toLowerCase()}`,
                   label: character.name,
                   path: character.sprites[0].path,
+                  portraitCrop: character.sprites[0].portrait_crop ??
+                    character.portrait_crop ?? { x: 0.5, y: 0.2, zoom: 1 },
                 },
               ]
             : [],
@@ -875,6 +877,8 @@ export function createChatPreviewPlatform(ctx: BrowserPreviewContext): ChatPlatf
                     identityKey: `character:${character.name.toLowerCase()}`,
                     label: character.name,
                     path: character.sprites[0].path,
+                    portraitCrop: character.sprites[0].portrait_crop ??
+                      character.portrait_crop ?? { x: 0.5, y: 0.2, zoom: 1 },
                   },
                 ]
               : chat.sprites,

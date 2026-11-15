@@ -9,6 +9,7 @@ import { setMobileAccessPreference } from "../../../features/mobile-access/useMo
 import { PlatformRequestError } from "../../../shared/platform/errors";
 
 const mocks = vi.hoisted(() => ({
+  characters: vi.fn(),
   list: vi.fn(),
   prepare: vi.fn(),
   rename: vi.fn(),
@@ -38,7 +39,7 @@ vi.mock("../../../entities/chat/repository", async (importOriginal) => ({
 }));
 vi.mock("../../../entities/character/repository", () => ({
   charactersQueryKey: ["characters"],
-  listCharacters: async () => [],
+  listCharacters: mocks.characters,
 }));
 vi.mock("../../../features/story-generator/components/StoryLaunchButton", () => ({
   StoryLaunchButton: ({
@@ -105,6 +106,7 @@ describe("conversation library", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    mocks.characters.mockResolvedValue([]);
     mocks.list.mockResolvedValue([entry]);
     mocks.status.mockResolvedValue({ state: "idle" });
     mocks.prepare.mockResolvedValue({
@@ -450,5 +452,34 @@ describe("conversation library", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "New chat" }));
     expect(onCreate).toHaveBeenCalledOnce();
+  });
+
+  it("renders conversation card avatars through the unified Portrait component with saved crop", async () => {
+    mocks.characters.mockResolvedValue([
+      {
+        avatar_type: "static",
+        avatars: {},
+        character_setting: "",
+        color: "#ffffff",
+        emotion_tags: "",
+        name: "Alice",
+        portrait_crop: { x: 0.35, y: 0.15, zoom: 2 },
+        pronunciation_map: {},
+        speech_speed: 1,
+        speech_volume: 1,
+        sprite_prefix: "alice",
+        sprite_scale: 1,
+        sprites: [{ path: "alice-idle.png" }],
+      },
+    ]);
+    page();
+    await screen.findByText("Good night");
+    await waitFor(() => expect(document.querySelector(".conversation-card__avatar img")).toBeInTheDocument());
+    const avatarImg = document.querySelector<HTMLImageElement>(".conversation-card__avatar img")!;
+    expect(avatarImg).toHaveStyle({ visibility: "hidden" });
+    Object.defineProperties(avatarImg, { naturalWidth: { value: 600 }, naturalHeight: { value: 1200 } });
+    fireEvent.load(avatarImg);
+    expect(avatarImg.closest(".portrait")).toHaveAttribute("data-measured", "true");
+    expect(avatarImg).toHaveStyle({ width: "200%", height: "400%", visibility: "visible" });
   });
 });

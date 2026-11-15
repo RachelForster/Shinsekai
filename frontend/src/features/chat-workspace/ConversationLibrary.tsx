@@ -12,7 +12,7 @@ import {
   renameConversation,
   deleteConversation,
 } from "../../entities/chat/repository";
-import { fileThumbnailUrl } from "../../entities/files/repository";
+import { Portrait, resolveSpritePortraitCrop } from "../../shared/components/Portrait";
 import type { ConversationSummary } from "../../shared/platform/types";
 import { ConversationTypeBadge } from "./ConversationTypeBadge";
 import { ActiveConversationPanel } from "./ActiveConversationPanel";
@@ -25,19 +25,6 @@ import { useChatInitialization } from "../chat-startup/useChatInitialization";
 import { useChatLaunchGuard } from "../chat-startup/useChatLaunchGuard";
 import { StoryLaunchButton } from "../story-generator/components/StoryLaunchButton";
 import "./ConversationLibrary.css";
-
-function ConversationAvatar({ name, path }: { name: string; path?: string }) {
-  const [failedPath, setFailedPath] = useState<string>();
-  return (
-    <div className="conversation-card__avatar" aria-hidden="true">
-      {path && path !== failedPath ? (
-        <img src={fileThumbnailUrl(path, 128)} alt="" loading="lazy" onError={() => setFailedPath(path)} />
-      ) : (
-        name.slice(0, 1)
-      )}
-    </div>
-  );
-}
 
 export function ConversationLibrary({
   onCreate,
@@ -156,7 +143,17 @@ export function ConversationLibrary({
           const name = item.title || t("conversation.untitled");
           return (
             <article className="conversation-card" key={item.id}>
-              <ConversationAvatar name={character?.name || name} path={sprite} />
+              <Portrait
+                active={false}
+                alt=""
+                ariaHidden
+                className="conversation-card__avatar"
+                crop={resolveSpritePortraitCrop(character, 0)}
+                loading="lazy"
+                name={character?.name || name}
+                path={sprite}
+                shape="fill"
+              />
               <div className="conversation-card__content">
                 <h2>{name}</h2>
                 <div className="conversation-card__meta">

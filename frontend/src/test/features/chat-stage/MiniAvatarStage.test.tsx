@@ -882,7 +882,7 @@ describe("MiniAvatarStage component", () => {
     fireEvent.loadedMetadata(idleVideo);
     fireEvent.loadedData(idleVideo);
 
-    const frame = document.querySelector(".mini-avatar__core .character-visual__static-frame")!;
+    const frame = document.querySelector(".mini-avatar__core .portrait")!;
     expect(frame).toHaveAttribute("data-orientation", "landscape");
 
     rerender(
@@ -927,6 +927,110 @@ describe("MiniAvatarStage component", () => {
     expect(
       document.querySelector('video[src="http://127.0.0.1:8787/api/media?path=mio-idle-to-smile.webm"]'),
     ).toBeInTheDocument();
+  });
+
+  it("applies saved sprite portraitCrop and playerPortrait crop via unified Portrait", () => {
+    const croppedMio: ChatStageSprite = {
+      ...mioSprite,
+      portraitCrop: { x: 0.4, y: 0.15, zoom: 2 },
+    };
+
+    const { rerender } = render(
+      <I18nProvider language="en">
+        <MiniAvatarStage
+          asrEnabled={false}
+          asrLoading={false}
+          asrRunning={false}
+          attachments={[]}
+          batchEnabled={false}
+          canAdvance={false}
+          dialogCharacterName="Mio"
+          dialogText="Cropped Mio"
+          dialogVisible
+          dockSide="right"
+          inputDisabled={false}
+          inputValue=""
+          notificationVisible={false}
+          onAdvance={vi.fn()}
+          onChangeInput={vi.fn()}
+          onCommand={vi.fn()}
+          onExitMiniMode={vi.fn()}
+          onFlushBatch={vi.fn()}
+          onInputActivity={vi.fn()}
+          onPickAttachments={vi.fn()}
+          onRemoveAttachment={vi.fn()}
+          onResolveToolConfirmation={vi.fn()}
+          onSelectOption={vi.fn()}
+          onSubmit={vi.fn()}
+          options={[]}
+          optionsVisible={false}
+          previousMessages={[]}
+          sprites={[croppedMio]}
+          standaloneDesktopWindow={false}
+          status="speaking"
+          typing={false}
+          userDisplayName="Player"
+        />
+      </I18nProvider>,
+    );
+
+    const spritePortrait = document.querySelector<HTMLElement>(".mini-avatar__core .portrait.portrait--circle")!;
+    expect(spritePortrait).toBeInTheDocument();
+    const spriteImg = document.querySelector<HTMLImageElement>(".mini-avatar__core img")!;
+    Object.defineProperties(spriteImg, { naturalWidth: { value: 800 }, naturalHeight: { value: 1200 } });
+    fireEvent.load(spriteImg);
+    expect(spritePortrait).toHaveAttribute("data-measured", "true");
+    const transitionSurface = document.querySelector<HTMLElement>(".mini-avatar__core .character-visual__transition")!;
+    expect(transitionSurface.style.width).toBe("200%");
+    expect(transitionSurface.style.height).toBe("300%");
+
+    rerender(
+      <I18nProvider language="en">
+        <MiniAvatarStage
+          asrEnabled={false}
+          asrLoading={false}
+          asrRunning={false}
+          attachments={[]}
+          batchEnabled={false}
+          canAdvance={false}
+          dialogCharacterName="Ritsuka"
+          dialogText="Player protagonist speaking"
+          dialogVisible
+          dockSide="right"
+          inputDisabled={false}
+          inputValue=""
+          notificationVisible={false}
+          onAdvance={vi.fn()}
+          onChangeInput={vi.fn()}
+          onCommand={vi.fn()}
+          onExitMiniMode={vi.fn()}
+          onFlushBatch={vi.fn()}
+          onInputActivity={vi.fn()}
+          onPickAttachments={vi.fn()}
+          onRemoveAttachment={vi.fn()}
+          onResolveToolConfirmation={vi.fn()}
+          onSelectOption={vi.fn()}
+          onSubmit={vi.fn()}
+          options={[]}
+          optionsVisible={false}
+          playerPortrait={{
+            characterName: "Ritsuka",
+            crop: { x: 0.6, y: 0.2, zoom: 2 },
+            url: "http://127.0.0.1:8787/api/media?path=ritsuka.png",
+          }}
+          previousMessages={[]}
+          sprites={[croppedMio]}
+          standaloneDesktopWindow={false}
+          status="speaking"
+          typing={false}
+          userDisplayName="Player"
+        />
+      </I18nProvider>,
+    );
+
+    const playerImg = document.querySelector<HTMLImageElement>(".mini-avatar__core img")!;
+    expect(playerImg).toHaveAttribute("src", "http://127.0.0.1:8787/api/media?path=ritsuka.png");
+    expect(document.querySelector(".mini-avatar__bubble-speaker")).toHaveTextContent("Ritsuka");
   });
 
   it("mounts model avatars (Live2D/MMD) even when sprite.path carries a state JSON URL", async () => {

@@ -1,5 +1,5 @@
 import type { WheelEventHandler } from "react";
-import { Image as ImageIcon, Sparkles, Tags, Trash2, Upload, Volume2 } from "lucide-react";
+import { Crop, Image as ImageIcon, Sparkles, Tags, Trash2, Upload, Volume2 } from "lucide-react";
 
 import type { Character, Sprite } from "../../entities/config/types";
 import { fileUrl } from "../../entities/files/repository";
@@ -39,6 +39,7 @@ interface CharacterSpritesSectionProps {
   generateDisabled?: boolean;
   generateHint?: string;
   onOpenBulkTags: () => void;
+  onOpenPortraitCrop?: () => void;
   onPendingSpritePathsChange: (paths: string[]) => void;
   onPendingVoicePathChange: (path: string) => void;
   onSaveScale: () => void;
@@ -80,6 +81,7 @@ export function CharacterSpritesSection({
   onClearSprites,
   onAutoLabel,
   onOpenBulkTags,
+  onOpenPortraitCrop,
   onPendingSpritePathsChange,
   onPendingVoicePathChange,
   onSaveScale,
@@ -158,6 +160,16 @@ export function CharacterSpritesSection({
           >
             {t("character.sprite.batchTags")}
           </Button>
+          {onOpenPortraitCrop ? (
+            <Button
+              disabled={!draft.sprites.length}
+              icon={<Crop aria-hidden className="button__icon" />}
+              onClick={onOpenPortraitCrop}
+              variant="ghost"
+            >
+              {t("character.sprite.portraitCrop")}
+            </Button>
+          ) : null}
           <Button icon={<Trash2 aria-hidden className="button__icon" />} onClick={onClearSprites} variant="ghost">
             {t("character.sprite.clear")}
           </Button>

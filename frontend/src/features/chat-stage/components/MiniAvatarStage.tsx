@@ -32,10 +32,12 @@ import {
 import {
   CharacterVisual,
   STATIC_AVATAR_TYPE,
+  TransitionMedia,
   normalizeVisualFraming,
   visualFramingMinRatio,
   type VisualFraming,
 } from "../../../modules/character-visual";
+import { Portrait } from "../../../shared/components/Portrait";
 import { startDesktopWindowDrag, type DesktopMiniDockSide } from "../../../shared/desktop/desktopApi";
 import { useI18n } from "../../../shared/i18n";
 import type {
@@ -43,6 +45,7 @@ import type {
   ChatCommand,
   ChatOption,
   ChatToolConfirmation,
+  PlayerPortrait,
 } from "../../../shared/platform/types";
 import { IconButton, TextInput } from "../../../shared/ui";
 import { classNames, hideBrokenStageAsset, stageAssetUrl } from "../chatStageUtils";
@@ -53,7 +56,6 @@ import type { ChatStageSprite, ChatStageSpriteReaction } from "../state/types";
 export const MINI_AVATAR_HOVER_HIDE_MS = 260;
 export const MINI_AVATAR_IDLE_BUBBLE_HIDE_MS = 8000;
 const MINI_AVATAR_DRAG_THRESHOLD_PX = 5;
-const MINI_AVATAR_STATIC_FRAMING: Readonly<VisualFraming> = { heightRatio: 0.68, verticalPosition: 0.08 };
 const MINI_AVATAR_MODEL_FRAMING: Readonly<VisualFraming> = { heightRatio: 0.32, verticalPosition: 0.06 };
 
 function composeMiniAvatarFraming(baseFraming: VisualFraming, runtimeFraming?: VisualFraming): VisualFraming {
@@ -168,6 +170,7 @@ export function MiniAvatarStage({
   onToggleScreenShare,
   options,
   optionsVisible,
+  playerPortrait = null,
   previousMessages,
   runtimeFramingForSprite,
   screenShareStarting = false,
@@ -218,6 +221,7 @@ export function MiniAvatarStage({
   onToggleScreenShare?: () => void;
   options: ChatOption[];
   optionsVisible: boolean;
+  playerPortrait?: PlayerPortrait | null;
   previousMessages: string[];
   runtimeFramingForSprite?: (sprite: ChatStageSprite, index: number) => VisualFraming;
   screenShareStarting?: boolean;
@@ -419,7 +423,13 @@ export function MiniAvatarStage({
   const trimmedDialog = dialogText.trim();
   const reactionText = spriteReaction?.text?.trim() ?? "";
 
-  const contentSignature = `${resolvedSpeaker.speakerName}\0${trimmedDialog}\0${status}\0${notificationText ?? ""}\0${spriteReaction?.seq ?? 0}`;
+  const hasMatchingPlayerStageSprite = Boolean(
+    playerPortrait?.characterName &&
+    sprites.some((sprite) => chatStageSpriteCharacterName(sprite) === playerPortrait.characterName),
+  );
+  const activePlayerPortrait = playerPortrait?.url && !hasMatchingPlayerStageSprite ? playerPortrait : null;
+
+  const contentSignature = `${activePlayerPortrait?.characterName ?? resolvedSpeaker.speakerName}\0${trimmedDialog}\0${status}\0${notificationText ?? ""}\0${spriteReaction?.seq ?? 0}`;
   useEffect(() => {
     setIdleDismissed(false);
   }, [contentSignature]);
@@ -666,11 +676,22 @@ export function MiniAvatarStage({
       speakerNameFallback(resolvedSpeaker.speakerName, dialogCharacterName, userDisplayName)
     : "";
   const activeFraming = composeMiniAvatarFraming(
-    activeAvatarType === STATIC_AVATAR_TYPE ? MINI_AVATAR_STATIC_FRAMING : MINI_AVATAR_MODEL_FRAMING,
+    MINI_AVATAR_MODEL_FRAMING,
     activeSprite && activeSpriteIndex >= 0 ? runtimeFramingForSprite?.(activeSprite, activeSpriteIndex) : undefined,
   );
-  const speakerLabel = speakerNameFallback(resolvedSpeaker.speakerName, dialogCharacterName, userDisplayName);
+  const speakerLabel =
+    activePlayerPortrait?.characterName?.trim() ||
+    speakerNameFallback(resolvedSpeaker.speakerName, dialogCharacterName, userDisplayName);
   const speakerInitial = Array.from(speakerLabel)[0] ?? "";
+  const fallbackNode = (
+    <span aria-hidden className="mini-avatar__fallback">
+      {speakerInitial ? (
+        <span className="mini-avatar__initial">{speakerInitial}</span>
+      ) : (
+        <UserRound className="mini-avatar__fallback-icon" />
+      )}
+    </span>
+  );
   const asrLabel = t(asrEnabled ? "chat.toolbar.pauseAsr" : "chat.toolbar.resumeAsr");
   const asrIcon = asrLoading ? (
     <LoaderCircle aria-hidden className="icon-button__icon input-layer__asr-spinner" />
@@ -749,46 +770,84 @@ export function MiniAvatarStage({
             title={t("chat.mini.avatarHint")}
             type="button"
           >
-            {canRenderVisualAsset && activeSprite ? (
-              <div className="mini-avatar__visual">
-                <CharacterVisual
+            {activePlayerPortrait ? (
+              <Portrait
+                active
+                alt={activePlayerPortrait.characterName}
+                className="mini-avatar__portrait"
+                crop={activePlayerPortrait.crop}
+                fallback={fallbackNode}
+                key={`player:${activePlayerPortrait.characterName}`}
+                name={activePlayerPortrait.characterName}
+                onError={hideBrokenStageAsset}
+                path={activePlayerPortrait.url}
+                shape="circle"
+              />
+            ) : canRenderVisualAsset && activeSprite ? (
+              activeAvatarType === STATIC_AVATAR_TYPE ? (
+                <Portrait
                   active
-                  asset={{
-                    avatarType: activeSprite.avatarType ?? STATIC_AVATAR_TYPE,
-                    id: activeSprite.id,
-                    label: activeSprite.label,
-                    modelUrl: activeSprite.modelUrl ? stageAssetUrl(activeSprite.modelUrl) : "",
-                    mouthSync: activeSprite.mouthSync ? stageAssetUrl(activeSprite.mouthSync) : undefined,
-                    transitions: activeSprite.transitions?.map((edge) => ({
-                      ...edge,
-                      fromUrl: stageAssetUrl(edge.fromUrl),
-                      url: stageAssetUrl(edge.url),
-                    })),
-                    url: activeSprite.path ? stageAssetUrl(activeSprite.path) : "",
-                  }}
-                  attention={isSpeaking ? "responding" : isThinking ? "thinking" : "idle"}
-                  className="mini-avatar__visual-surface"
-                  framing={activeFraming}
-                  hitbox={false}
+                  alt={activeSprite.label}
+                  className="mini-avatar__portrait"
+                  crop={activeSprite.portraitCrop}
+                  fallback={fallbackNode}
                   key={activeCharacterKey}
-                  mode={activeSprite.applyMode ?? "play"}
-                  onImageError={(event) => {
+                  name={speakerLabel || activeSprite.label}
+                  onError={(event) => {
                     hideBrokenStageAsset(event);
                     setFailedSpriteAssetKey(activeSpriteAssetKey);
                   }}
-                  onMouseDown={() => {}}
-                  stateSequence={activeSprite.stateSequence}
-                  voiceCharacterName={activeVoiceCharacterName}
+                  path={activeSprite.path}
+                  renderMedia={(mediaProps) => (
+                    <TransitionMedia
+                      {...mediaProps}
+                      enabled={(activeSprite.applyMode ?? "play") === "play"}
+                      mouthSync={activeSprite.mouthSync ? stageAssetUrl(activeSprite.mouthSync) : undefined}
+                      transitions={activeSprite.transitions?.map((edge) => ({
+                        ...edge,
+                        fromUrl: stageAssetUrl(edge.fromUrl),
+                        url: stageAssetUrl(edge.url),
+                      }))}
+                      voiceCharacterName={activeVoiceCharacterName}
+                    />
+                  )}
+                  shape="circle"
                 />
-              </div>
+              ) : (
+                <div className="mini-avatar__visual">
+                  <CharacterVisual
+                    active
+                    asset={{
+                      avatarType: activeSprite.avatarType ?? STATIC_AVATAR_TYPE,
+                      id: activeSprite.id,
+                      label: activeSprite.label,
+                      modelUrl: activeSprite.modelUrl ? stageAssetUrl(activeSprite.modelUrl) : "",
+                      mouthSync: activeSprite.mouthSync ? stageAssetUrl(activeSprite.mouthSync) : undefined,
+                      transitions: activeSprite.transitions?.map((edge) => ({
+                        ...edge,
+                        fromUrl: stageAssetUrl(edge.fromUrl),
+                        url: stageAssetUrl(edge.url),
+                      })),
+                      url: activeSprite.path ? stageAssetUrl(activeSprite.path) : "",
+                    }}
+                    attention={isSpeaking ? "responding" : isThinking ? "thinking" : "idle"}
+                    className="mini-avatar__visual-surface"
+                    framing={activeFraming}
+                    hitbox={false}
+                    key={activeCharacterKey}
+                    mode={activeSprite.applyMode ?? "play"}
+                    onImageError={(event) => {
+                      hideBrokenStageAsset(event);
+                      setFailedSpriteAssetKey(activeSpriteAssetKey);
+                    }}
+                    onMouseDown={() => {}}
+                    stateSequence={activeSprite.stateSequence}
+                    voiceCharacterName={activeVoiceCharacterName}
+                  />
+                </div>
+              )
             ) : (
-              <span aria-hidden className="mini-avatar__fallback">
-                {speakerInitial ? (
-                  <span className="mini-avatar__initial">{speakerInitial}</span>
-                ) : (
-                  <UserRound className="mini-avatar__fallback-icon" />
-                )}
-              </span>
+              fallbackNode
             )}
           </button>
 

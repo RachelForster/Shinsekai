@@ -1183,6 +1183,11 @@ export function ChatStagePage() {
             onToggleScreenShare={remoteMobileAccess ? undefined : toggleScreenShare}
             options={viewModel.options}
             optionsVisible={viewModel.layers.options}
+            playerPortrait={playerPortraitForDialog(
+              state.playerPortrait,
+              viewModel.dialogCharacterName,
+              viewModel.dialogText,
+            )}
             previousMessages={recentInputs}
             runtimeFramingForSprite={(sprite, index) => runtimeSpriteFraming(runtimeConfig, sprite, index)}
             screenShareStarting={screenShareStarting}
