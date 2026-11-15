@@ -105,6 +105,7 @@ def test_character_route_contracts_remain_stable() -> None:
         ("POST", "/api/characters/sprites/render"),
         ("POST", "/api/characters/sprites/upload"),
         ("POST", "/api/characters/translate"),
+        ("POST", "/api/characters/voice/prepare"),
         ("PUT", "/api/characters"),
         ("DELETE", "/api/characters/{name}"),
     }

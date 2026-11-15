@@ -66,6 +66,8 @@ class BridgeState:
     reminder_presenter: Any = field(default=None, kw_only=True)
     resource_urls: ResourceUrls = field(default_factory=UnconfiguredResourceUrls, kw_only=True)
     services: ApplicationServices = field(default_factory=ApplicationServices, kw_only=True)
+    task_cancel_callbacks: dict[str, list[Any]] = field(default_factory=dict, kw_only=True)
+    task_threads: dict[str, threading.Thread] = field(default_factory=dict, kw_only=True)
     # Keep this field last so positional construction by older integrations remains compatible.
     project_root_dir: str = field(default_factory=_default_project_root_dir)
 
