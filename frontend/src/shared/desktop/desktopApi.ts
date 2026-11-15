@@ -38,6 +38,11 @@ export interface DesktopMiniWindowLayout {
   dockSide: DesktopMiniDockSide;
 }
 
+export interface DesktopMiniInputShortcutStatus {
+  registered: boolean;
+  error?: string | null;
+}
+
 export interface DesktopRuntimeCandidate {
   id: string;
   pythonId?: string | null;
@@ -125,6 +130,7 @@ declare global {
 const bridgeRestartFinishedEvent = "shinsekai:bridge-restart-finished";
 const bridgeRestartStateEvent = "shinsekai:bridge-restart-state";
 const desktopChatStageRuntimeConfigChangeEvent = "shinsekai:chat-stage-runtime-config-change";
+const desktopMiniAvatarInputShortcutEvent = "shinsekai:mini-avatar-input-shortcut";
 const desktopUpdateProgressEvent = "shinsekai:update-progress";
 const desktopRuntimeProgressEvent = "shinsekai:runtime-progress";
 
@@ -472,6 +478,23 @@ export function setDesktopChatWindowMiniMode(mini: boolean, restoreAlwaysOnTop =
     mini,
     restoreAlwaysOnTop,
   });
+}
+
+export function setDesktopChatWindowMiniInputShortcut(shortcut: string | null) {
+  if (!isTauriDesktop()) {
+    return Promise.resolve<DesktopMiniInputShortcutStatus>({ error: null, registered: false });
+  }
+  return invokeDesktop<DesktopMiniInputShortcutStatus>("desktop_chat_window_set_mini_input_shortcut", {
+    shortcut: shortcut?.trim() || null,
+  });
+}
+
+export async function onDesktopMiniAvatarInputShortcut(listener: () => void): Promise<DesktopEventUnlisten> {
+  if (!isTauriDesktop()) {
+    return () => undefined;
+  }
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<unknown>(desktopMiniAvatarInputShortcutEvent, () => listener());
 }
 
 export function syncDesktopChatWindowMiniLayout() {

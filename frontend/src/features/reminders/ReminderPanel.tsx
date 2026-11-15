@@ -1,22 +1,9 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
-import {
-  Bell,
-  Pencil,
-  Check,
-  ChevronLeft,
-  ChevronRight,
-  Home,
-  SlidersHorizontal,
-  Volume2,
-  VolumeX,
-  Play,
-  X,
-} from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Bell, Pencil, Check, ChevronLeft, ChevronRight, Home, Volume2, VolumeX, Play, X } from "lucide-react";
 
 import { listCharacters } from "../../entities/character/repository";
 import { getAppConfig } from "../../entities/config/repository";
 import type { Character } from "../../entities/config/types";
-import { fileUrl } from "../../entities/files/repository";
 import {
   deleteReminder,
   updateReminder,
@@ -25,6 +12,7 @@ import {
   listReminders,
 } from "../../entities/reminder/repository";
 import type { ReminderNotice, ScheduledReminder } from "../../entities/reminder/types";
+import { Portrait, resolveSpritePortraitCrop } from "../../shared/components/Portrait";
 import {
   getReminderView,
   onReminderViewChanged,
@@ -39,15 +27,6 @@ import { CompactReminderCard } from "./CompactReminderCard";
 import { useReminderAudio } from "./useReminderAudio";
 import "./ReminderPanel.css";
 
-function initialCrop() {
-  try {
-    const value = Number(localStorage.getItem("shinsekai.reminder.portraitCrop"));
-    return value >= 0.25 && value <= 0.75 ? value : 0.5;
-  } catch {
-    return 0.5;
-  }
-}
-
 export function ReminderPanel() {
   const [inbox, setInbox] = useState<ReminderNotice[]>([]);
   const [schedules, setSchedules] = useState<ScheduledReminder[]>([]);
@@ -55,8 +34,6 @@ export function ReminderPanel() {
   const [language, setLanguage] = useState<FrontendLanguage>("zh_CN");
   const [selected, setSelected] = useState<ReminderNotice | null>(null);
   const [tab, setTab] = useState<"upcoming" | "inbox">("upcoming");
-  const [crop, setCrop] = useState(initialCrop);
-  const [customize, setCustomize] = useState(false);
   const [management, setManagement] = useState(false);
   const [editing, setEditing] = useState<ScheduledReminder | null>(null);
   const [error, setError] = useState("");
@@ -242,20 +219,17 @@ export function ReminderPanel() {
       </button>
     </>
   );
+  const portraitName = character?.name ?? current?.character_name ?? "Shinsekai";
+  const portraitCrop = resolveSpritePortraitCrop(character, 0);
   const portraitElement = (
-    <div className="reminder-panel__portrait" style={{ "--portrait-crop": crop } as CSSProperties}>
-      <span aria-hidden>{(character?.name ?? current?.character_name ?? "S").slice(0, 1)}</span>
-      {portrait && (
-        <img
-          key={portrait}
-          src={fileUrl(portrait)}
-          alt={character?.name ?? ""}
-          onError={(event) => {
-            event.currentTarget.style.display = "none";
-          }}
-        />
-      )}
-    </div>
+    <Portrait
+      alt={character?.name ?? ""}
+      className="reminder-panel__portrait"
+      crop={portraitCrop}
+      name={portraitName}
+      path={portrait}
+      shape="fill"
+    />
   );
 
   if (management && editing) {
@@ -345,22 +319,16 @@ export function ReminderPanel() {
         </button>
       </header>
       <section className="reminder-panel__hero" aria-live="polite">
-        <div className="reminder-panel__portrait" style={{ "--portrait-crop": crop } as CSSProperties}>
-          <span aria-hidden>{(character?.name ?? current?.character_name ?? "S").slice(0, 1)}</span>
-          {portrait && (
-            <img
-              key={portrait}
-              src={fileUrl(portrait)}
-              alt={character?.name ?? ""}
-              onError={(event) => {
-                event.currentTarget.style.display = "none";
-              }}
-            />
-          )}
-          <div className="reminder-panel__portrait-label">
-            {character?.name ?? current?.character_name ?? "Shinsekai"}
-          </div>
-        </div>
+        <Portrait
+          alt={character?.name ?? ""}
+          className="reminder-panel__portrait"
+          crop={portraitCrop}
+          name={portraitName}
+          path={portrait}
+          shape="fill"
+        >
+          <div className="reminder-panel__portrait-label">{portraitName}</div>
+        </Portrait>
         <div className="reminder-panel__message">
           <span className="reminder-panel__eyebrow">
             {current ? formatTime(current.due_at) : "SHINSEKAI · WITH YOU"}
@@ -446,37 +414,12 @@ export function ReminderPanel() {
           <button onClick={() => void refresh()}>{t("reminder.retry")}</button>
         </div>
       )}
-      {customize && (
-        <label className="reminder-panel__crop">
-          {t("reminder.top")} {Math.round(crop * 100)}%
-          <input
-            aria-label={t("reminder.crop")}
-            type="range"
-            min="0.25"
-            max="0.75"
-            step="0.05"
-            value={crop}
-            onChange={(event) => {
-              const value = Number(event.target.value);
-              setCrop(value);
-              try {
-                localStorage.setItem("shinsekai.reminder.portraitCrop", String(value));
-              } catch {
-                /* Keep the adjustment for this session. */
-              }
-            }}
-          />
-        </label>
-      )}
       <footer className="reminder-panel__footer">
         <button onClick={() => void run(() => reminderWindow("main"))}>
           <Home size={14} />
           {t("reminder.main")}
         </button>
         <span>{t("reminder.running")}</span>
-        <button aria-label={t("reminder.crop")} aria-expanded={customize} onClick={() => setCustomize(!customize)}>
-          <SlidersHorizontal size={15} />
-        </button>
       </footer>
     </main>
   );

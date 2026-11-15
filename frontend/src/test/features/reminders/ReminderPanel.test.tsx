@@ -99,19 +99,26 @@ describe("character reminder panel", () => {
     expect(screen.queryByRole("button", { name: `编辑日程: ${scheduled.title}` })).not.toBeInTheDocument();
   });
 
-  it("uses the app theme and remembers a top-half portrait crop", async () => {
+  it("uses the app theme and renders the character's saved portrait crop", async () => {
     localStorage.setItem("shinsekai-color-scheme", "dark");
+    mocks.people.mockResolvedValue([
+      { name: "澪", portrait_crop: { x: 0.4, y: 0.15, zoom: 2 }, sprites: [{ path: "portrait.png" }] },
+    ]);
     render(<ReminderPanel />);
-    expect(await screen.findByRole("img", { name: "澪" })).toHaveAttribute("src", "/files/portrait.png");
+    const portraitImg = await screen.findByAltText("澪");
+    expect(portraitImg).toHaveAttribute("src", "/files/portrait.png");
+    expect(portraitImg).toHaveStyle({ visibility: "hidden" });
+    Object.defineProperties(portraitImg, { naturalWidth: { value: 600 }, naturalHeight: { value: 1200 } });
+    fireEvent.load(portraitImg);
+    expect(portraitImg.closest(".portrait")).toHaveAttribute("data-measured", "true");
+    expect(portraitImg).toHaveStyle({ width: "200%", height: "400%", visibility: "visible" });
     expect(document.documentElement.style.getPropertyValue("--theme-accent")).toBe("#5599aa");
     expect(document.documentElement.dataset.colorScheme).toBe("dark");
     fireEvent.click(screen.getByRole("button", { name: "管理提醒" }));
     await screen.findByRole("button", { name: "返回小卡片" });
     expect(mocks.window).toHaveBeenCalledWith("manage");
-    fireEvent.click(screen.getByRole("button", { name: "头像裁切" }));
-    expect(screen.getByRole("slider")).toHaveValue("0.5");
-    fireEvent.change(screen.getByRole("slider"), { target: { value: "0.35" } });
-    expect(localStorage.getItem("shinsekai.reminder.portraitCrop")).toBe("0.35");
+    expect(document.querySelector(".reminder-panel__portrait-label")).toHaveTextContent("澪");
+    expect(screen.queryByRole("button", { name: "头像裁切" })).not.toBeInTheDocument();
   });
 
   it("loads arrivals recorded before the webview subscribed and dismisses only that arrival", async () => {

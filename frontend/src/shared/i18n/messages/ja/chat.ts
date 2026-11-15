@@ -431,4 +431,12 @@ export const chatJaMessages: Record<ChatMessageKey, string> = {
   "chat.mini.skipHint": "クリックでスキップ",
   "chat.mini.dismissBubble": "吹き出しを閉じる",
   "chat.mini.micActive": "音声認識が有効",
+  "chat.config.sectionMiniAvatar": "ミニアイコンモード",
+  "chat.config.miniInputShortcut": "入力欄ショートカット",
+  "chat.config.miniInputShortcutHelp":
+    "ミニアイコンモードで入力欄を開いてフォーカスします（デスクトップ版はグローバル対応。Ctrl / Alt / Super またはファンクションキーを使用）。",
+  "chat.config.miniInputShortcutRecording": "キーを押してください…（Esc でキャンセル）",
+  "chat.config.miniInputShortcutUnset": "未設定（クリックして登録）",
+  "chat.config.miniInputShortcutClear": "クリア",
+  "chat.config.miniInputShortcutReset": "初期値",
 };

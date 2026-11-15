@@ -20,6 +20,34 @@ def image_visual_identity(raw_path: str) -> str:
     return f"image:{path}"
 
 
+def _resolve_portrait_crop(character: Any, sprite_entry: Any) -> dict[str, float] | None:
+    sprite_crop = (
+        sprite_entry.get("portrait_crop")
+        if isinstance(sprite_entry, dict)
+        else getattr(sprite_entry, "portrait_crop", None)
+    )
+    character_crop = (
+        character.get("portrait_crop")
+        if isinstance(character, dict)
+        else getattr(character, "portrait_crop", None)
+    )
+    crop = sprite_crop or character_crop
+    if crop is None:
+        return None
+    raw = (
+        crop.model_dump()
+        if hasattr(crop, "model_dump")
+        else (dict(crop) if isinstance(crop, dict) else None)
+    )
+    if not raw:
+        return None
+    return {
+        "x": float(raw.get("x", 0.5)),
+        "y": float(raw.get("y", 0.2)),
+        "zoom": float(raw.get("zoom", 1.0)),
+    }
+
+
 @dataclass(frozen=True, slots=True)
 class CharacterVisual:
     url: str
@@ -29,6 +57,7 @@ class CharacterVisual:
     identity_key: str = ""
     transitions: tuple[dict[str, Any], ...] = ()
     mouth_sync: str = ""
+    portrait_crop: dict[str, float] | None = None
 
     def event_fields(self) -> dict[str, Any]:
         return {
@@ -39,6 +68,7 @@ class CharacterVisual:
             "identityKey": self.identity_key,
             **({"transitions": list(self.transitions)} if self.transitions else {}),
             **({"mouthSync": self.mouth_sync} if self.mouth_sync else {}),
+            **({"portraitCrop": dict(self.portrait_crop)} if self.portrait_crop else {}),
         }
 
     def snapshot_fields(self) -> dict[str, Any]:
@@ -101,7 +131,12 @@ def resolve_character_visual(
             mouth_sync = Path(mouth_sync).resolve().relative_to(Path.cwd().resolve()).as_posix()
         except ValueError:
             mouth_sync = ""
+    portrait_crop = (
+        _resolve_portrait_crop(character, assets.sprites[index])
+        if kind == "static"
+        else None
+    )
     return CharacterVisual(
         url, kind, model_url, float(scale or 1.0), identity_key, transitions,
-        mouth_sync,
+        mouth_sync, portrait_crop,
     )

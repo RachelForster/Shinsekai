@@ -192,16 +192,18 @@ describe("mergeSprites", () => {
     const current = {
       ...structuredClone(character),
       sprites: [
-        { path: "D:/old/sprite-a.png", voice_type: "preset" as const },
+        {
+          path: "D:/old/sprite-a.png",
+          portrait_crop: { x: 0.3, y: 0.2, zoom: 2 },
+          voice_type: "preset" as const,
+        },
         { path: "D:/old/sprite-b.png", voice_type: "reference" as const },
       ],
     };
 
-    expect(
-      mergeSprites([{ path: "D:/new/sprite-a.png" }, { path: "D:/new/sprite-b.png" }], current).map(
-        (sprite) => sprite.voice_type,
-      ),
-    ).toEqual(["preset", "reference"]);
+    const merged = mergeSprites([{ path: "D:/new/sprite-a.png" }, { path: "D:/new/sprite-b.png" }], current);
+    expect(merged.map((sprite) => sprite.voice_type)).toEqual(["preset", "reference"]);
+    expect(merged[0].portrait_crop).toEqual({ x: 0.3, y: 0.2, zoom: 2 });
 
     expect(mergeSprites([{ path: "D:/new/sprite-b.png" }], current).map((sprite) => sprite.voice_type)).toEqual([
       undefined,
@@ -864,5 +866,33 @@ describe("CharacterEditorPage", () => {
     await waitFor(() => expect(screen.queryByText("Missing Python dependency")).not.toBeInTheDocument());
     await waitFor(() => expect(mockGetMem0Status).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(mockListCharacterMemories).toHaveBeenCalledTimes(2));
+  });
+
+  it("opens Portrait crop from the sprites section and saves portrait_crop without discarding unsaved draft edits", async () => {
+    mockSaveCharacter.mockImplementation(async (saved: Character) => structuredClone(saved));
+
+    renderPage();
+    await waitForCharacterLoaded();
+
+    fireEvent.change(screen.getByLabelText("Character setting"), {
+      target: { value: "Unsaved personality text" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Avatar" }));
+    const dialog = await screen.findByRole("dialog", { name: /Adjust portrait crop/i });
+    const sliders = within(dialog).getAllByRole("slider");
+    expect(sliders).toHaveLength(3);
+    fireEvent.change(sliders[0], { target: { value: "0.35" } });
+    fireEvent.change(sliders[1], { target: { value: "0.18" } });
+    fireEvent.change(sliders[2], { target: { value: "2.4" } });
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(mockSaveCharacter).toHaveBeenCalledTimes(1));
+    const [savedPayload, originalName] = mockSaveCharacter.mock.calls[0] as [Character, string];
+    expect(originalName).toBe("Mika");
+    expect(savedPayload.portrait_crop).toEqual({ x: 0.35, y: 0.18, zoom: 2.4 });
+    expect(savedPayload.character_setting).toBe("Quiet student.");
+    expect(screen.getByLabelText("Character setting")).toHaveValue("Unsaved personality text");
   });
 });

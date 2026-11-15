@@ -1,5 +1,12 @@
-import { describe, expect, it } from "vitest";
-import { portraitGeometry } from "../../../shared/components/Portrait";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import {
+  Portrait,
+  portraitGeometry,
+  portraitViewportGeometry,
+  resolveSpritePortraitCrop,
+} from "../../../shared/components/Portrait";
+import { PortraitCropDialog } from "../../../shared/components/PortraitCropDialog";
 import { applyPortraitCrop } from "../../../features/template-editor/PlayerCharacterSettings";
 import { playerPortraitForDialog } from "../../../features/chat-stage/state/text";
 import { chatStageReducer, emptyChatState } from "../../../features/chat-stage/chatState";
@@ -7,6 +14,7 @@ import {
   buildTemplateLaunchSession,
   synchronizeChatLaunchPayloadWithSession,
 } from "../../../features/template-editor/templateFlow";
+import { I18nProvider } from "../../../shared/i18n/I18nProvider";
 
 describe("player portrait", () => {
   it("shows only for player speech and narration mentioning the player", () => {
@@ -122,5 +130,92 @@ describe("player portrait", () => {
     expect(payload.readPlayerSpeech).toBe(true);
     expect(session.allowPlayerDialogue).toBe(allowPlayerDialogue ?? true);
     expect(payload.allowPlayerDialogue).toBe(allowPlayerDialogue ?? true);
+  });
+
+  it("fits non-square card viewports without stretching and resolves sprite vs default crops", () => {
+    const rectViewport = portraitViewportGeometry(600, 1200, { x: 0.5, y: 0.2, zoom: 2 }, 56 / 64);
+    expect(rectViewport.width / rectViewport.height).toBeCloseTo(56 / 64, 5);
+    expect(rectViewport.left).toBeGreaterThanOrEqual(0);
+    expect(rectViewport.top).toBeGreaterThanOrEqual(0);
+    expect(rectViewport.left + rectViewport.width).toBeLessThanOrEqual(600);
+    expect(rectViewport.top + rectViewport.height).toBeLessThanOrEqual(1200);
+
+    const character = {
+      portrait_crop: { x: 0.4, y: 0.25, zoom: 1.5 },
+      sprites: [{ path: "a.png" }, { path: "b.png", portrait_crop: { x: 0.7, y: 0.3, zoom: 2.5 } }],
+    };
+    expect(resolveSpritePortraitCrop(character, 0)).toEqual({ x: 0.4, y: 0.25, zoom: 1.5 });
+    expect(resolveSpritePortraitCrop(character, 1)).toEqual({ x: 0.7, y: 0.3, zoom: 2.5 });
+  });
+
+  it("falls back cleanly on broken images and supports pointer drag, wheel zoom, sprite switch, and reset in PortraitCropDialog", () => {
+    const { unmount } = render(<Portrait name="Mio" path="http://127.0.0.1:8787/broken.png" shape="circle" />);
+    const img = screen.getByAltText("Mio");
+    fireEvent.error(img);
+    expect(document.querySelector(".portrait__fallback")).toHaveTextContent("M");
+    unmount();
+
+    const onSave = vi.fn();
+    const onClose = vi.fn();
+    render(
+      <I18nProvider language="en">
+        <PortraitCropDialog
+          character={{
+            avatar_type: "static",
+            avatars: {},
+            character_setting: "",
+            color: "#ffffff",
+            emotion_tags: "Sprite 1: neutral\nSprite 2: smile\n",
+            name: "Mio",
+            portrait_crop: { x: 0.5, y: 0.2, zoom: 1.5 },
+            pronunciation_map: {},
+            speech_speed: 1,
+            speech_volume: 1,
+            sprite_prefix: "mio",
+            sprite_scale: 1,
+            sprites: [{ path: "http://127.0.0.1:8787/mio-1.png" }, { path: "http://127.0.0.1:8787/mio-2.png" }],
+          }}
+          initialSpriteIndex={0}
+          onClose={onClose}
+          onSave={onSave}
+          open
+        />
+      </I18nProvider>,
+    );
+
+    const stage = document.querySelector<HTMLElement>(".portrait-crop-dialog__stage")!;
+    Object.defineProperty(stage, "clientWidth", { configurable: true, value: 240 });
+    const stageImg = stage.querySelector("img")!;
+    Object.defineProperties(stageImg, { naturalWidth: { value: 600 }, naturalHeight: { value: 1200 } });
+    fireEvent.load(stageImg);
+
+    fireEvent.wheel(stage, { deltaY: -100 });
+    fireEvent(
+      stage,
+      Object.assign(new MouseEvent("pointerdown", { bubbles: true, buttons: 1, clientX: 100, clientY: 100 }), {
+        pointerId: 1,
+      }),
+    );
+    fireEvent(
+      stage,
+      Object.assign(new MouseEvent("pointermove", { bubbles: true, buttons: 1, clientX: 130, clientY: 120 }), {
+        pointerId: 1,
+      }),
+    );
+
+    // Switch to sprite 2 and enable per-sprite crop
+    fireEvent.click(screen.getByRole("combobox"));
+    fireEvent.click(screen.getByRole("option", { name: /mio-2\.png/ }));
+    fireEvent.click(
+      screen.getByRole("checkbox", {
+        name: "Apply only to this sprite (otherwise save as character default)",
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Reset crop" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(onSave).toHaveBeenCalledOnce();
+    const saved = onSave.mock.calls[0][0];
+    expect(saved.sprites[1].portrait_crop).toEqual({ x: 0.5, y: 0.2, zoom: 1 });
   });
 });
