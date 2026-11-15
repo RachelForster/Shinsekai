@@ -73,6 +73,21 @@ class PromptTurnJournal:
             self._ensure_reply_locked(turn)
 
     def _ensure_reply_locked(self, turn: dict[str, Any]) -> None:
+        from core.chat_history.storage import chat_history_db_path, open_session_store, peek_open_session_store
+
+        if chat_history_db_path(self.history_path).is_file() or peek_open_session_store(self.history_path) is not None:
+            # Normal chat has already migrated at startup. Commit the reply to
+            # the same journal as user turns before updating the story state.
+            store = open_session_store(self.history_path)
+            branch_id = str(turn["expected"][0])
+            message = turn["message"]
+            marker = message["_storyTurnId"]
+            if not any(
+                item.raw_message.get("_storyTurnId") == marker
+                for item in store.list_turns(branch_id=branch_id)
+            ):
+                store.append_raw_message(message, branch_id=branch_id)
+            return
         active = chat_history_active_path(self.history_path)
         temporary = Path(str(active) + ".tmp")
         marker = turn["message"]["_storyTurnId"]

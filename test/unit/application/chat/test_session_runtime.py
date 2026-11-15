@@ -633,10 +633,8 @@ def test_streaming_shutdown_supplies_all_lifecycle_callbacks(monkeypatch) -> Non
         opencc=None,
     )
     runtime_asr = SimpleNamespace(close=Mock())
-    branch_manager = SimpleNamespace(persist=Mock())
     session.streaming_bindings = SimpleNamespace(
         runtime_asr=runtime_asr,
-        branch_manager=branch_manager,
     )
     session.ui_updates = SimpleNamespace(
         current_background_path="bg.png",
@@ -659,7 +657,7 @@ def test_streaming_shutdown_supplies_all_lifecycle_callbacks(monkeypatch) -> Non
 
     assert captured["workflow"] is workflow
     assert captured["pre_shutdown"] == runtime_asr.close
-    assert captured["save_history"] == branch_manager.persist
+    assert callable(captured["save_history"])
     assert captured["close_stream_sink"] == transport.close
     assert saved_background == [{"bg_path": "bg.png", "bgm_path": "bgm.mp3"}]
     assert transport.events[-1]["type"] == "session.closed"

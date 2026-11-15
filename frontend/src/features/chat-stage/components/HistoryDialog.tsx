@@ -5,7 +5,6 @@ import {
   Check,
   Clapperboard,
   Copy,
-  GitFork,
   ListChecks,
   Play,
   RotateCcw,
@@ -158,12 +157,10 @@ function sameHistoryMessage(source: ChatHistoryEntry, target: ChatHistoryEntry) 
 
 export function HistoryDialog({
   entries,
-  forkEnabled,
   loading,
   onClear,
   onClose,
   onExportImage,
-  onFork,
   onRefresh,
   onReplayVoice,
   onRevert,
@@ -180,12 +177,10 @@ export function HistoryDialog({
   recordAudio: () => RecordingAudio;
   replayDisabled?: boolean;
   entries: ChatHistoryEntry[];
-  forkEnabled: boolean;
   loading: boolean;
   onClear: () => void;
   onClose: () => void;
   onExportImage: (blob: Blob) => Promise<void>;
-  onFork: (userIndex: number) => void;
   onRefresh: () => void;
   onReplayVoice: (voiceId: string) => void;
   onRevert: (userIndex: number) => void;
@@ -576,15 +571,6 @@ export function HistoryDialog({
                       ) : null}
                       {entry.role === "user" && entry.revertUserIndex != null ? (
                         <>
-                          {forkEnabled ? (
-                            <Button
-                              className="chat-history__fork"
-                              icon={<GitFork aria-hidden className="button__icon" />}
-                              onClick={() => onFork(entry.revertUserIndex!)}
-                            >
-                              {t("chat.history.fork")}
-                            </Button>
-                          ) : null}
                           <Button
                             className="chat-history__revert"
                             icon={<RotateCcw aria-hidden className="button__icon" />}

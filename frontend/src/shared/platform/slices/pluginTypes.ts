@@ -5,6 +5,7 @@ export type PluginSlotId =
   | "chat-output"
   | "chat-toolbar"
   | "chat-top-toolbar"
+  | "chat-workspace-actions"
   | "settings-extension"
   | "settings-tools";
 
@@ -15,6 +16,7 @@ export type PluginSlotContributionPresentation = "button" | "icon-only";
 export type PluginSlotContributionVariant = "danger" | "ghost" | "primary";
 
 export interface PluginSlotContribution {
+  externalLaunch?: boolean;
   actionLabel: string;
   actionType: PluginSlotContributionActionType;
   actionable: boolean;
@@ -33,6 +35,7 @@ export interface PluginSlotContribution {
 }
 
 export interface PluginSlotActionResult {
+  conversationId?: string;
   id: string;
   kind: "error" | "info" | "success";
   message: string;

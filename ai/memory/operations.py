@@ -22,9 +22,11 @@ from ai.memory.engine import (
     HybridMemoryEngine,
     resolve_memory_read_filter,
 )
+from ai.memory.orchestrator import is_roleplay_player_persona
 from ai.memory.ports import resolve_registered_memory_repository
 from ai.memory.rule_recall_planner import RuleRecallPlanner
 from ai.memory.runtime import ensure_mem0, peek_mem0
+from core.chat_history.models import rollback_memory_for_timeline
 from core.chat_history.sqlite_session_store import borrow_session_store_by_id
 from core.vector_store.sqlite_hybrid_store import SqliteHybridStore
 from sdk.adapters.memory import (
@@ -314,6 +316,8 @@ def memory_search(
                         else MEMORY_MODE_SHARED
                     )
                 )
+                if save_repo is None and (resolved_mode != MEMORY_MODE_SHARED or (eff_session_id and not eff_mode)):
+                    return {"error": "save-scoped memory store unavailable"}
                 mems = mem.orchestrator.search_for_tool(
                     q,
                     character_name=agent_id,
@@ -378,6 +382,8 @@ def memory_recall_turn(turn_input: TurnRecallInput) -> dict[str, Any]:
                     if sess_store is not None and not explicit_mode
                     else normalize_memory_mode(explicit_mode or MEMORY_MODE_SHARED)
                 )
+                if save_repo is None and (resolved_mode != MEMORY_MODE_SHARED or (sid and not explicit_mode)):
+                    return {"error": "save-scoped memory store unavailable"}
                 effective_input = replace(turn_input, memory_mode=resolved_mode)
                 block = mem.orchestrator.recall_for_turn(
                     effective_input,
@@ -460,8 +466,9 @@ def memory_remember(
     clean_imp = float(max(0.0, min(1.0, float(importance))))
     clean_event = None if event_at is None else float(event_at)
     clean_session = str(source_session_id or ctx.session_id or "").strip()
-    clean_mode = str(memory_mode or ctx.memory_mode or "").strip()
-    clean_persona = str(player_character or ctx.player_character or "").strip()
+    same_session = clean_session == ctx.session_id
+    clean_mode = str(memory_mode or (ctx.memory_mode if same_session else "")).strip()
+    clean_persona = str(player_character or (ctx.player_character if same_session else "")).strip()
     clean_seq = None if source_turn_seq is None else int(source_turn_seq)
     agent_id = _resolve_agent_id(character_name)
 
@@ -514,9 +521,12 @@ def memory_remember(
                         else MEMORY_MODE_SHARED
                     )
                 )
-                # Graceful fallback to shared if isolated/inherit_readonly requested without session db
-                if resolved_mode != MEMORY_MODE_SHARED and save_repo is None:
-                    resolved_mode = MEMORY_MODE_SHARED
+                if save_repo is None and (
+                    resolved_mode != MEMORY_MODE_SHARED
+                    or is_roleplay_player_persona(clean_persona)
+                    or (clean_session and not clean_mode)
+                ):
+                    return {"error": "save-scoped memory store unavailable"}
 
                 is_self = agent_id.casefold() in {"", "user", "__self__"}
                 draft_scope = (
@@ -564,6 +574,12 @@ def memory_remember(
                     out["superseded_ids"] = list(report.superseded_ids)
                 return out
 
+        if (
+            (clean_mode and normalize_memory_mode(clean_mode) != MEMORY_MODE_SHARED)
+            or is_roleplay_player_persona(clean_persona)
+            or (clean_session and not clean_mode)
+        ):
+            return {"error": "save-scoped memory store unavailable"}
         with _mem0_operation_lock:
             candidates = _search_mem0(
                 mem,
@@ -609,24 +625,49 @@ def memory_remember_and_list(
     return memory_list(character_name)
 
 
-def memory_forget(memory_id: str) -> dict[str, Any]:
+def memory_forget(
+    memory_id: str, *, session_id: str = "", memory_mode: str = "",
+) -> dict[str, Any]:
     mid = (memory_id or "").strip()
     if not mid:
-        return {"error": "memory_id 不能为空"}
-    service_result = _memory_service_request("forget", {"memoryId": mid})
+        return {"error": "memory_id is required"}
+    ctx = current_memory_tool_context()
+    sid = str(session_id or ctx.session_id or "").strip()
+    mode = str(memory_mode or ctx.memory_mode or "").strip()
+    payload = {"memoryId": mid}
+    if sid:
+        payload["sessionId"] = sid
+    if mode:
+        payload["memoryMode"] = mode
+    service_result = _memory_service_request("forget", payload)
     if service_result is not None:
         return service_result
     mem = ensure_mem0()
     try:
         with _mem0_operation_lock:
             if isinstance(mem, HybridMemoryEngine):
-                mem.repo.delete(mid)
+                with borrow_session_store_by_id(sid) as store:
+                    save_repo = getattr(store, "save_memory_repo", None)
+                    resolved_mode = (
+                        store.get_memory_mode() if store is not None and not mode
+                        else normalize_memory_mode(mode)
+                    )
+                    if save_repo is None and (sid or resolved_mode != MEMORY_MODE_SHARED):
+                        return {"error": "save-scoped memory store unavailable"}
+                    deleted = save_repo is not None and save_repo.delete(mid)
+                    if not deleted and resolved_mode == MEMORY_MODE_SHARED:
+                        deleted = mem.repo.delete(mid)
             else:
-                mem.delete(mid)
+                if sid or normalize_memory_mode(mode) != MEMORY_MODE_SHARED:
+                    return {"error": "save-scoped memory store unavailable"}
+                result = mem.delete(mid)
+                deleted = result is not False
+        if not deleted:
+            return {"error": "memory not found", "memory_id": mid}
         return {"ok": True, "memory_id": mid}
-    except Exception as e:
-        logger.exception("memory_forget 失败")
-        return {"error": str(e)}
+    except Exception as exc:
+        logger.exception("memory_forget failed")
+        return {"error": str(exc)}
 
 
 def memory_forget_and_list(
@@ -647,6 +688,8 @@ def memory_forget_and_list(
 def memory_rollback_after_turn(
     session_id: str,
     turn_seq: int,
+    *,
+    protected_turn_seqs: Sequence[int] = (),
 ) -> dict[str, Any]:
     """Roll back unpinned memories created after turn_seq and restore superseded slots."""
     sid = str(session_id or "").strip()
@@ -654,9 +697,12 @@ def memory_rollback_after_turn(
     if not sid:
         return {"ok": True, "session_id": "", "turn_seq": cutoff, "rolled_back": 0}
 
+    payload: dict[str, Any] = {"sessionId": sid, "turnSeq": cutoff}
+    if protected_turn_seqs:
+        payload["protectedTurnSeqs"] = list(protected_turn_seqs)
     service_result = _memory_service_request(
         "rollback",
-        {"sessionId": sid, "turnSeq": cutoff},
+        payload,
         monitor_ready=False,
     )
     if service_result is not None:
@@ -666,7 +712,7 @@ def memory_rollback_after_turn(
         with _mem0_operation_lock:
             loaded = peek_mem0()
             if isinstance(loaded, HybridMemoryEngine):
-                removed = loaded.repo.rollback_after_turn(sid, cutoff)
+                removed = rollback_memory_for_timeline(loaded.repo.rollback_after_turn, sid, cutoff, protected_turn_seqs)
                 return {
                     "ok": True,
                     "session_id": sid,
@@ -674,7 +720,7 @@ def memory_rollback_after_turn(
                     "rolled_back": int(removed),
                 }
             if loaded is not None and hasattr(loaded, "rollback_after_turn"):
-                removed = loaded.rollback_after_turn(sid, cutoff)
+                removed = rollback_memory_for_timeline(loaded.rollback_after_turn, sid, cutoff, protected_turn_seqs)
                 return {
                     "ok": True,
                     "session_id": sid,
@@ -685,7 +731,7 @@ def memory_rollback_after_turn(
             registered_repo = resolve_registered_memory_repository()
             if registered_repo is not None:
                 try:
-                    removed = registered_repo.rollback_after_turn(sid, cutoff)
+                    removed = rollback_memory_for_timeline(registered_repo.rollback_after_turn, sid, cutoff, protected_turn_seqs)
                 finally:
                     close_fn = getattr(registered_repo, "close", None)
                     if callable(close_fn):
@@ -707,7 +753,7 @@ def memory_rollback_after_turn(
                 }
             transient_store = SqliteHybridStore(db_path, max_idle_connections=1)
             try:
-                removed = transient_store.rollback_after_turn(sid, cutoff)
+                removed = transient_store.rollback_after_turn(sid, cutoff, protected_turn_seqs=protected_turn_seqs)
             finally:
                 transient_store.close()
             return {
@@ -721,9 +767,11 @@ def memory_rollback_after_turn(
         return {"error": str(exc)}
 
 
-def memory_rollback_count(session_id: str, turn_seq: int) -> int:
+def memory_rollback_count(
+    session_id: str, turn_seq: int, *, protected_turn_seqs: Sequence[int] = (),
+) -> int:
     """Convenience adapter returning integer rolled_back count for session truncation."""
-    res = memory_rollback_after_turn(session_id, turn_seq)
+    res = memory_rollback_after_turn(session_id, turn_seq, protected_turn_seqs=protected_turn_seqs)
     if not isinstance(res, dict) or res.get("error"):
         return 0
     try:

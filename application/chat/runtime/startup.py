@@ -208,7 +208,7 @@ def create_chat_startup_context(
     if story_hooks is not None and story_hooks.journal.load() is not None:
         story_hooks.recover_pending()
         # Recovery can restore a reply whose append was interrupted. Reload it
-        # before branches and the UI consume startup history.
+        # before the UI consumes startup history.
         from application.chat.history.state import load_chat_history
         messages = load_chat_history(str(chat_history_active_path(args.history)))
 
@@ -225,7 +225,7 @@ def create_chat_startup_context(
                     else "headless" if args.headless else "native"
                 ),
                 headless=bool(args.headless),
-                metadata={"workflowPath": str(args.workflow or "")},
+                metadata={"workflowPath": str(args.workflow or ""), "historyPath": str(args.history or "")},
                 **active_capabilities.collect_init_chat_flags(),
             ).scaled(0.68, 0.82)
             plugin_manager.hook_dispatcher.dispatch_init_chat(init_context)

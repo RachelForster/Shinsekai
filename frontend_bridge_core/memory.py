@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 
 def _check_mem0_before_call() -> dict[str, Any] | None:
@@ -140,13 +141,15 @@ def _memory_tool_remember(
         return {"status": "loading", "message": exc.message}
 
 
-def _memory_tool_rollback(session_id: str, turn_seq: int) -> dict[str, Any]:
+def _memory_tool_rollback(session_id: str, turn_seq: int, *, protected_turn_seqs: Sequence[int] = ()) -> dict[str, Any]:
     from application.memory.manage_memories import rollback_memories
 
-    return rollback_memories(session_id, turn_seq=int(turn_seq))
+    return rollback_memories(session_id, turn_seq=int(turn_seq), protected_turn_seqs=protected_turn_seqs)
 
 
-def _memory_tool_forget(memory_id: str) -> dict[str, Any]:
+def _memory_tool_forget(
+    memory_id: str, *, session_id: str = "", memory_mode: str = "",
+) -> dict[str, Any]:
     dep_error = _check_mem0_before_call()
     if dep_error is not None:
         return dep_error
@@ -155,7 +158,7 @@ def _memory_tool_forget(memory_id: str) -> dict[str, Any]:
     from application.memory.manage_memories import forget_memory
 
     try:
-        return forget_memory(memory_id)
+        return forget_memory(memory_id, session_id=session_id, memory_mode=memory_mode)
     except ToolNotReady as exc:
         return {"status": "loading", "message": exc.message}
 

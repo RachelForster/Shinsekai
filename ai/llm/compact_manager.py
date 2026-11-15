@@ -307,7 +307,9 @@ class CompactManager:
                     or all(self._is_summary_message(m) for m in older_messages)
                 )
                 base_window = (
-                    ([system_message] if system_message else []) + recent_messages
+                    ([system_message] if system_message else [])
+                    + [self._summary_message("摘要", up_to_seq=self._max_seq_for_messages(older_messages))]
+                    + recent_messages
                 )
                 over_target = (
                     target_budget is not None
@@ -344,38 +346,45 @@ class CompactManager:
             # 使用LLM进行压缩
             compacted_content = self._limit_summary(self._call_llm_for_compaction(compact_prompt))
 
-            summary_msg = self._summary_message(compacted_content, up_to_seq=up_to_seq)
-
-            # 构建压缩后的消息列表
-            compacted_messages = []
-            if system_message:
-                compacted_messages.append(system_message)
-            compacted_messages.append(summary_msg)
-            compacted_messages.extend(recent_messages)
-
-            if target_budget is not None:
-                compacted_messages = self.trim_messages_to_budget(
-                    compacted_messages,
-                    token_budget=target_budget,
-                    recent_message_limit=self.recent_message_limit,
-                    summary_message=summary_msg,
+            def window(summary: str) -> List[Dict[str, Any]]:
+                return (
+                    ([system_message] if system_message else [])
+                    + [self._summary_message(summary, up_to_seq=up_to_seq)]
+                    + recent_messages
                 )
 
-            surviving_ids = {id(m) for m in compacted_messages}
-            evicted_all = list(older_messages) + [
-                m for m in recent_messages if id(m) not in surviving_ids
-            ]
-            final_up_to_seq = self._max_seq_for_messages(evicted_all) or up_to_seq
-            if final_up_to_seq is not None:
-                summary_msg[COMPACT_UP_TO_SEQ_KEY] = int(final_up_to_seq)
-                if callable(self.on_checkpoint):
-                    self.on_checkpoint(int(final_up_to_seq), compacted_content)
+            if target_budget is not None and self.count_tokens(window(compacted_content)) > target_budget:
+                # Fit the generated summary around the chosen recent window.
+                # Advancing the anchor after dropping an unsummarized message
+                # would hide that message from every future prompt.
+                low, high = 1, len(compacted_content)
+                best = ""
+                while low <= high:
+                    mid = (low + high) // 2
+                    candidate = compacted_content[:mid].rstrip()
+                    if self.count_tokens(window(candidate)) <= target_budget:
+                        best = candidate
+                        low = mid + 1
+                    else:
+                        high = mid - 1
+                if best:
+                    compacted_content = best
+
+            if not compacted_content.strip():
+                return messages
+            compacted_messages = window(compacted_content)
+            if up_to_seq is not None and callable(self.on_checkpoint):
+                self.on_checkpoint(up_to_seq, compacted_content)
 
             self.num_tokens = self.count_tokens(compacted_messages)
             return compacted_messages
 
         except Exception as e:
             logger.error(f"Compaction failed: {e}")
+            if up_to_seq is not None:
+                # Try again on a future turn rather than hide journaled
+                # messages behind an omission marker without an anchor.
+                return messages
             token_budget = None
             if self.max_tokens > 0:
                 token_budget = max(1, math.floor(self.max_tokens * self.compact_target_ratio))

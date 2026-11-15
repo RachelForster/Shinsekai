@@ -10,7 +10,6 @@ from dataclasses import replace
 from typing import Any
 
 from core.chat_history.models import (
-    COMPACT_UP_TO_SEQ_KEY,
     CompactCheckpoint,
     MEMORY_MODE_SHARED,
     MemoryMode,
@@ -21,6 +20,7 @@ from core.chat_history.models import (
     extract_summary_body,
     is_compact_summary_message,
     normalize_memory_mode,
+    rollback_memory_for_timeline,
     strip_internal_message_keys,
     turn_node_from_message,
 )
@@ -35,7 +35,7 @@ class InMemorySessionStore:
         self,
         session_id: str = "in-memory-session",
         *,
-        shared_memory_rollback: Callable[[str, int], int] | None = None,
+        shared_memory_rollback: Callable[..., int] | None = None,
     ) -> None:
         self._session_id = str(session_id or "in-memory-session").strip() or "in-memory-session"
         self._shared_memory_rollback = shared_memory_rollback
@@ -166,41 +166,15 @@ class InMemorySessionStore:
                 if is_compact_summary_message(item):
                     summary_idx = idx
             if summary_idx >= 0:
+                existing_branch = self.list_turns(branch_id=b)
+                if existing_branch:
+                    return existing_branch
                 summary_msg = non_system[summary_idx]
-                tail_msgs = [strip_internal_message_keys(m) for m in non_system[summary_idx + 1 :]]
-                existing_branch = [t for t in self._turns if t.branch_id == b]
-                active_cp = self.get_active_compact_checkpoint(branch_id=b)
-                raw_up_to = summary_msg.get(COMPACT_UP_TO_SEQ_KEY)
-                if raw_up_to is not None:
-                    anchor_seq = int(raw_up_to)
-                elif active_cp is not None:
-                    anchor_seq = active_cp.up_to_seq
-                else:
-                    anchor_seq = 0
-
                 body = extract_summary_body(str(summary_msg.get("content") or ""))
-                if body and (
-                    active_cp is None
-                    or active_cp.up_to_seq != anchor_seq
-                    or active_cp.rolling_summary != body
-                ):
-                    self.add_compact_checkpoint(
-                        up_to_seq=anchor_seq,
-                        rolling_summary=body,
-                        branch_id=b,
-                    )
-
-                post_turns = [t for t in existing_branch if t.seq > anchor_seq]
-                post_raw = [dict(t.raw_message) for t in post_turns]
-                if post_raw == tail_msgs:
-                    return tuple(existing_branch)
-                if len(tail_msgs) > len(post_raw) and tail_msgs[: len(post_raw)] == post_raw:
-                    for extra in tail_msgs[len(post_raw) :]:
-                        self.append_raw_message(extra, branch_id=b)
-                    return self.list_turns(branch_id=b)
-                self._delete_branch_turns_after_locked(b, anchor_seq)
-                for extra in tail_msgs:
-                    self.append_raw_message(extra, branch_id=b)
+                if body and not body.startswith("【历史摘要】"):
+                    self.add_compact_checkpoint(up_to_seq=0, rolling_summary=body, branch_id=b)
+                for item in non_system[summary_idx + 1 :]:
+                    self.append_raw_message(item, branch_id=b)
                 return self.list_turns(branch_id=b)
 
             clean_incoming = [strip_internal_message_keys(m) for m in non_system]
@@ -262,6 +236,7 @@ class InMemorySessionStore:
         cutoff = max(0, int(seq))
         b = str(branch_id or "main").strip() or "main"
         with self._lock:
+            protected = tuple(t.seq for t in self._turns if t.branch_id != b and t.seq > cutoff)
             deleted_turns = self._delete_branch_turns_after_locked(b, cutoff)
 
             before_cp = len(self._checkpoints)
@@ -273,7 +248,7 @@ class InMemorySessionStore:
                 self._checkpoints = [
                     cp
                     for cp in self._checkpoints
-                    if not (cp.branch_id == b and cp.up_to_seq >= cutoff)
+                    if not (cp.branch_id == b and cp.up_to_seq > cutoff)
                 ]
             deleted_checkpoints = before_cp - len(self._checkpoints)
 
@@ -285,12 +260,14 @@ class InMemorySessionStore:
                 self._outfits = {}
             restored_outfits = dict(self._outfits)
 
-            rolled_back_save = self._save_repo.rollback_after_turn(self._session_id, cutoff)
+            rolled_back_save = self._save_repo.rollback_after_turn(
+                self._session_id, cutoff, protected_turn_seqs=protected,
+            )
 
         rolled_back_shared = 0
         if self._shared_memory_rollback is not None:
-            rolled_back_shared = int(
-                self._shared_memory_rollback(self._session_id, cutoff) or 0
+            rolled_back_shared = rollback_memory_for_timeline(
+                self._shared_memory_rollback, self._session_id, cutoff, protected,
             )
 
         return TruncateReport(

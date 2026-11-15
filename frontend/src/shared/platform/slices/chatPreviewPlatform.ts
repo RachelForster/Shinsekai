@@ -2,14 +2,7 @@ import { DEFAULT_CHAT_THEME_ID, type ChatThemeManifest, type ChatThemeSummary } 
 import { runtimeStatusFromSnapshot } from "../chatRuntimeStatus";
 import { PlatformRequestError } from "../errors";
 import { sampleChatSnapshot, sampleChatThemeManifests } from "../sampleData";
-import type {
-  ChatConversationBranch,
-  ChatHistoryEntry,
-  ChatPlatform,
-  ChatReplaySnapshot,
-  ChatSendPayload,
-  ChatSnapshot,
-} from "./chatTypes";
+import type { ChatHistoryEntry, ChatPlatform, ChatReplaySnapshot, ChatSendPayload, ChatSnapshot } from "./chatTypes";
 import {
   type BrowserPreviewContext,
   clone,
@@ -63,16 +56,7 @@ export function createChatPreviewPlatform(ctx: BrowserPreviewContext): ChatPlatf
     setTemplateSession,
   } = ctx;
 
-  let previewBranchCounter = 1;
   let previewHistoryCounter = 0;
-  const previewBranches = new Map<string, ChatConversationBranch & { historyEntries: ChatHistoryEntry[] }>();
-  previewBranches.set("main", {
-    id: "main",
-    label: "Main",
-    parentId: null,
-    historyEntries: cloneHistoryEntries(getChat().historyEntries),
-  });
-
   const pendingChatTimeouts = new Set<number>();
   let replayPlan: ChatReplaySnapshot | null = null;
   let replayRestore: ChatSnapshot | null = null;
@@ -112,26 +96,6 @@ export function createChatPreviewPlatform(ctx: BrowserPreviewContext): ChatPlatf
       },
       Math.max(700, entry.body.length * 125),
     );
-  };
-
-  const previewBranchTree = () => ({
-    activeBranchId: getChat().conversationTree?.activeBranchId || "main",
-    branches: [...previewBranches.values()].map(({ historyEntries: _historyEntries, ...branch }) => ({ ...branch })),
-  });
-
-  const savePreviewActiveBranch = () => {
-    const current = getChat();
-    const activeBranchId = current.conversationTree?.activeBranchId || "main";
-    const branch = previewBranches.get(activeBranchId);
-    if (branch) {
-      branch.historyEntries = cloneHistoryEntries(current.historyEntries);
-      branch.updatedAt = Date.now();
-    }
-  };
-
-  const stripPreviewUserPrefix = (value: string) => {
-    const parts = value.split(/：|:/);
-    return parts.length > 1 ? parts.slice(1).join("：").trim() : value.trim();
   };
 
   const clearScheduledChatUpdates = () => {
@@ -452,134 +416,25 @@ export function createChatPreviewPlatform(ctx: BrowserPreviewContext): ChatPlatf
           (entry) => entry.role === "user" && entry.revertUserIndex === revertUserIndex,
         );
         if (userEntryPosition >= 0) {
-          let targetIndex = -1;
-          for (let index = userEntryPosition - 1; index >= 0; index -= 1) {
-            if (entries[index]?.role !== "user") {
-              targetIndex = index;
-              break;
-            }
-          }
-          if (targetIndex >= 0) {
-            const nextEntries = entries.slice(0, targetIndex + 1);
-            const lastEntry = nextEntries[nextEntries.length - 1];
-            setChat({
-              ...chat,
-              dialogText: lastEntry?.text ?? "",
-              historyEntries: nextEntries,
-              options:
-                lastEntry?.role === "options"
-                  ? lastEntry.text
-                      .split(/：|:/)
-                      .slice(1)
-                      .join("：")
-                      .split("/")
-                      .map((item) => item.trim())
-                      .filter(Boolean)
-                  : [],
-              status: "idle",
-              numericInfo: "idle",
-            });
-            emitChat();
-          }
-        }
-      }
-      if (command.type === "fork-history") {
-        clearScheduledChatUpdates();
-        savePreviewActiveBranch();
-        const payload = command.payload;
-        const userIndex = Number(
-          typeof payload === "object" && payload ? (payload as { userIndex?: unknown }).userIndex : payload,
-        );
-        const chat = getChat();
-        const entries = cloneHistoryEntries(chat.historyEntries);
-        const userEntryPosition = entries.findIndex(
-          (entry) => entry.role === "user" && entry.revertUserIndex === userIndex,
-        );
-        if (userEntryPosition >= 0) {
-          const userEntry = entries[userEntryPosition];
-          const userText = stripPreviewUserPrefix(userEntry?.text ?? "");
-          const prefixEntries = entries.slice(0, userEntryPosition);
-          previewBranchCounter += 1;
-          const branchId = `branch-${previewBranchCounter}`;
-          previewBranches.set(branchId, {
-            createdAt: Date.now(),
-            forkedFromEntryId: userEntry?.id,
-            forkedFromText: userText,
-            historyEntries: cloneHistoryEntries(prefixEntries),
-            id: branchId,
-            label: `Branch ${previewBranchCounter}`,
-            parentId: chat.conversationTree?.activeBranchId || "main",
-            updatedAt: Date.now(),
-          });
-          const nextUserIndex = Math.max(-1, ...prefixEntries.map((entry) => entry.revertUserIndex ?? -1)) + 1;
-          const forked: ChatSnapshot = {
+          const nextEntries = entries.slice(0, userEntryPosition);
+          const lastEntry = nextEntries.at(-1);
+          setChat({
             ...chat,
-            characterName: chat.userDisplayName?.trim() || "你",
-            conversationTree: { activeBranchId: branchId, branches: previewBranchTree().branches },
-            dialogText: userText,
-            historyEntries: [
-              ...cloneHistoryEntries(prefixEntries),
-              {
-                createdAt: Date.now(),
-                id: `history-${Date.now()}-user`,
-                revertUserIndex: nextUserIndex,
-                role: "user",
-                text: `${chat.userDisplayName?.trim() || "你"}: ${userText}`,
-              },
-            ],
-            options: [],
-            numericInfo: "streaming",
-            status: "streaming",
-          };
-          setChat(forked);
-          forked.conversationTree = previewBranchTree();
-          emitChat();
-          scheduleChatUpdate(700, (current) => ({
-            ...current,
-            characterName: "Nanami",
-            dialogText: `分支回复：${userText}`,
-            historyEntries: [
-              ...cloneHistoryEntries(current.historyEntries),
-              { id: `history-${Date.now()}-assistant`, role: "assistant", text: `Nanami: 分支回复：${userText}` },
-            ],
-            numericInfo: "idle",
+            dialogText: lastEntry?.text ?? "",
+            historyEntries: nextEntries,
+            options:
+              lastEntry?.role === "options"
+                ? lastEntry.text
+                    .split(/：|:/)
+                    .slice(1)
+                    .join("：")
+                    .split("/")
+                    .map((item) => item.trim())
+                    .filter(Boolean)
+                : [],
             status: "idle",
-          }));
-        }
-      }
-      if (command.type === "switch-branch") {
-        clearScheduledChatUpdates();
-        savePreviewActiveBranch();
-        const branchId = String(command.payload ?? "").trim();
-        const branch = previewBranches.get(branchId);
-        if (branch) {
-          const switched: ChatSnapshot = {
-            ...getChat(),
-            conversationTree: { activeBranchId: branchId, branches: previewBranchTree().branches },
-            dialogText: branch.historyEntries.at(-1)?.text ?? "",
-            historyEntries: cloneHistoryEntries(branch.historyEntries),
             numericInfo: "idle",
-            options: [],
-            status: "idle",
-          };
-          setChat(switched);
-          switched.conversationTree = previewBranchTree();
-          emitChat();
-        }
-      }
-      if (command.type === "rename-branch") {
-        const payload = command.payload;
-        const branchId =
-          typeof payload === "object" && payload
-            ? String((payload as { branchId?: unknown }).branchId ?? "").trim()
-            : "";
-        const label =
-          typeof payload === "object" && payload ? String((payload as { label?: unknown }).label ?? "").trim() : "";
-        const branch = previewBranches.get(branchId);
-        if (branch && label) {
-          branch.label = label.slice(0, 64);
-          branch.updatedAt = Date.now();
-          getChat().conversationTree = previewBranchTree();
+          });
           emitChat();
         }
       }
