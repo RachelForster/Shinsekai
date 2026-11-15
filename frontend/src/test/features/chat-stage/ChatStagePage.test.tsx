@@ -2183,6 +2183,7 @@ describe("ChatStagePage", () => {
         immersiveMode: false,
         longPressTalk: false,
         miniAvatarMode: false,
+        miniInputShortcut: "Alt+Q",
         nameText: {
           bold: false,
           boldOverride: true,

@@ -48,6 +48,7 @@ const FRONTEND_DIST_RELEASES: &str = ".dist-releases";
 const UPDATE_PROGRESS_EVENT: &str = "shinsekai:update-progress";
 const BRIDGE_RESTART_STATE_EVENT: &str = "shinsekai:bridge-restart-state";
 const RUNTIME_PROGRESS_EVENT: &str = "shinsekai:runtime-progress";
+const MINI_AVATAR_INPUT_SHORTCUT_EVENT: &str = "shinsekai:mini-avatar-input-shortcut";
 const SHOW_BACKEND_CONSOLE_ENV: &str = "SHINSEKAI_SHOW_BACKEND_CONSOLE";
 const BRIDGE_STOP_TIMEOUT: Duration = Duration::from_secs(5);
 const BRIDGE_CHAT_CLOSE_TIMEOUT: Duration = Duration::from_secs(3);
@@ -55,8 +56,8 @@ const CHAT_WINDOW_DEFAULT_WIDTH: f64 = 1280.0;
 const CHAT_WINDOW_DEFAULT_HEIGHT: f64 = 820.0;
 const CHAT_WINDOW_MIN_WIDTH: f64 = 960.0;
 const CHAT_WINDOW_MIN_HEIGHT: f64 = 620.0;
-const CHAT_MINI_WINDOW_WIDTH: f64 = 640.0;
-const CHAT_MINI_WINDOW_HEIGHT: f64 = 340.0;
+const CHAT_MINI_WINDOW_WIDTH: f64 = 760.0;
+const CHAT_MINI_WINDOW_HEIGHT: f64 = 420.0;
 
 #[cfg(unix)]
 unsafe extern "C" {
@@ -231,8 +232,16 @@ struct SavedChatWindowBounds {
 #[derive(Default)]
 struct ChatWindowModeState {
     mini_active: bool,
+    mini_input_shortcut: Option<String>,
     normal_bounds: Option<SavedChatWindowBounds>,
     mini_position: Option<tauri::PhysicalPosition<i32>>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopMiniInputShortcutStatus {
+    registered: bool,
+    error: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -252,6 +261,7 @@ struct DesktopState {
     bridge: Mutex<Option<BridgeProcess>>,
     runtime: Mutex<DesktopRuntimePhase>,
     chat_window_mode: Mutex<ChatWindowModeState>,
+    mini_shortcut_sync_lock: Mutex<()>,
 }
 
 #[cfg(desktop)]
@@ -289,12 +299,14 @@ impl DesktopState {
             bridge: Mutex::new(None),
             runtime: Mutex::new(DesktopRuntimePhase::Checking { view: None }),
             chat_window_mode: Mutex::new(ChatWindowModeState::default()),
+            mini_shortcut_sync_lock: Mutex::new(()),
         }
     }
 
     fn reset_chat_window_session_bounds(&self) {
         if let Ok(mut mode) = self.chat_window_mode.lock() {
             mode.mini_active = false;
+            mode.mini_input_shortcut = None;
             mode.normal_bounds = None;
         }
     }
@@ -480,6 +492,7 @@ pub fn run() {
             desktop_window_set_ignore_cursor_events,
             desktop_window_cursor_position,
             desktop_chat_window_set_mini_mode,
+            desktop_chat_window_set_mini_input_shortcut,
             desktop_chat_window_sync_mini_layout,
             desktop_window_close,
             desktop_open_chat_window,
@@ -513,6 +526,8 @@ pub fn run() {
                         api.prevent_close();
                         let app = window.app_handle().clone();
                         let state = app.state::<DesktopState>();
+                        state.reset_chat_window_session_bounds();
+                        schedule_mini_input_global_shortcut_sync(&app);
                         request_bridge_chat_close(
                             state.inner(),
                             "chat window close requested",
@@ -529,6 +544,12 @@ pub fn run() {
                 app.handle()
                     .plugin(tauri_plugin_updater::Builder::new().build())?;
                 app.manage(DesktopUpdateState::new());
+                if let Err(error) = app
+                    .handle()
+                    .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+                {
+                    restart_debug_log(format!("global shortcut plugin setup failed: {error}"));
+                }
             }
             app.handle().plugin(tauri_plugin_dialog::init())?;
             app.handle().plugin(tauri_plugin_notification::init())?;
@@ -1396,6 +1417,7 @@ fn desktop_chat_window_destroy(
         return Err("desktop_chat_window_destroy is only available to the chat window".to_string());
     }
     state.reset_chat_window_session_bounds();
+    schedule_mini_input_global_shortcut_sync(window.app_handle());
     window.destroy().map_err(|error| error.to_string())
 }
 
@@ -1589,6 +1611,8 @@ fn desktop_chat_window_set_mini_mode(
         if let Some(pos) = target_pos {
             let _ = window.set_position(pos);
         }
+        drop(mode);
+        schedule_mini_input_global_shortcut_sync(window.app_handle());
         Ok(DesktopMiniWindowLayout {
             dock_side: current_window_mini_dock_side(&window),
         })
@@ -1618,8 +1642,157 @@ fn desktop_chat_window_set_mini_mode(
                 let _ = window.center();
             }
         }
+        drop(mode);
+        schedule_mini_input_global_shortcut_sync(window.app_handle());
         Ok(DesktopMiniWindowLayout { dock_side: "left" })
     }
+}
+
+fn desired_mini_input_global_shortcut(
+    mini_active: bool,
+    chat_window_present: bool,
+    configured: Option<&str>,
+) -> Option<String> {
+    if !mini_active || !chat_window_present {
+        return None;
+    }
+    configured
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn activate_mini_avatar_input_from_shortcut(app: &AppHandle) {
+    let mini_active = app
+        .try_state::<DesktopState>()
+        .and_then(|state| state.chat_window_mode.lock().ok().map(|mode| mode.mini_active))
+        .unwrap_or(false);
+    if !mini_active {
+        return;
+    }
+    let Some(chat_window) = app.get_webview_window("chat") else {
+        return;
+    };
+    let _ = chat_window.set_ignore_cursor_events(false);
+    let _ = chat_window.show();
+    let _ = chat_window.unminimize();
+    let _ = chat_window.set_focus();
+    let _ = chat_window.emit_to("chat", MINI_AVATAR_INPUT_SHORTCUT_EVENT, ());
+}
+
+#[cfg(desktop)]
+fn apply_mini_input_global_shortcut_blocking(app: &AppHandle) -> DesktopMiniInputShortcutStatus {
+    use tauri_plugin_global_shortcut::ShortcutState;
+
+    let Some(global_shortcut) =
+        app.try_state::<tauri_plugin_global_shortcut::GlobalShortcut<tauri::Wry>>()
+    else {
+        return DesktopMiniInputShortcutStatus {
+            registered: false,
+            error: Some("global shortcut plugin is unavailable".to_string()),
+        };
+    };
+
+    let Some(state) = app.try_state::<DesktopState>() else {
+        return DesktopMiniInputShortcutStatus {
+            registered: false,
+            error: None,
+        };
+    };
+
+    let _sync_guard = match state.mini_shortcut_sync_lock.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+
+    let desired = state
+        .chat_window_mode
+        .lock()
+        .ok()
+        .and_then(|mode| {
+            desired_mini_input_global_shortcut(
+                mode.mini_active,
+                app.get_webview_window("chat").is_some(),
+                mode.mini_input_shortcut.as_deref(),
+            )
+        });
+
+    if let Err(error) = global_shortcut.unregister_all() {
+        restart_debug_log(format!("mini shortcut unregister_all failed: {error}"));
+    }
+
+    let Some(shortcut) = desired else {
+        return DesktopMiniInputShortcutStatus {
+            registered: false,
+            error: None,
+        };
+    };
+
+    match global_shortcut.on_shortcut(shortcut.as_str(), |app_handle, _shortcut, event| {
+        if event.state == ShortcutState::Pressed {
+            activate_mini_avatar_input_from_shortcut(app_handle);
+        }
+    }) {
+        Ok(()) => DesktopMiniInputShortcutStatus {
+            registered: true,
+            error: None,
+        },
+        Err(error) => {
+            let message = error.to_string();
+            restart_debug_log(format!(
+                "mini shortcut register failed shortcut={shortcut} error={message}"
+            ));
+            DesktopMiniInputShortcutStatus {
+                registered: false,
+                error: Some(message),
+            }
+        }
+    }
+}
+
+#[cfg(not(desktop))]
+fn apply_mini_input_global_shortcut_blocking(_app: &AppHandle) -> DesktopMiniInputShortcutStatus {
+    DesktopMiniInputShortcutStatus {
+        registered: false,
+        error: None,
+    }
+}
+
+fn schedule_mini_input_global_shortcut_sync(app: &AppHandle) {
+    let app_handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let _ = apply_mini_input_global_shortcut_blocking(&app_handle);
+    });
+}
+
+#[tauri::command]
+async fn desktop_chat_window_set_mini_input_shortcut(
+    app: AppHandle,
+    window: WebviewWindow,
+    shortcut: Option<String>,
+) -> Result<DesktopMiniInputShortcutStatus, String> {
+    if window.label() != "chat" {
+        return Ok(DesktopMiniInputShortcutStatus {
+            registered: false,
+            error: None,
+        });
+    }
+    let normalized = shortcut
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    {
+        let state = app.state::<DesktopState>();
+        let mut mode = state
+            .chat_window_mode
+            .lock()
+            .map_err(|error| error.to_string())?;
+        mode.mini_input_shortcut = normalized;
+    }
+    tauri::async_runtime::spawn_blocking(move || apply_mini_input_global_shortcut_blocking(&app))
+        .await
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -1653,6 +1826,7 @@ fn desktop_window_close(
     }
     if window.label() == "chat" {
         state.reset_chat_window_session_bounds();
+        schedule_mini_input_global_shortcut_sync(&app);
         request_bridge_chat_close(state.inner(), "desktop_window_close command");
         return window.destroy().map_err(|error| error.to_string());
     }
@@ -2374,6 +2548,37 @@ mod tests {
         let center_x = f64::from(pos.x) + 320.0;
         assert_eq!(compute_mini_dock_side(center_x, 0.0, 1920.0), "right");
         assert!(pos.y >= 16);
+    }
+
+    #[test]
+    fn desired_mini_input_shortcut_requires_active_mini_chat_window() {
+        assert_eq!(
+            desired_mini_input_global_shortcut(true, true, Some(" Alt+Q ")),
+            Some("Alt+Q".to_string())
+        );
+        assert_eq!(
+            desired_mini_input_global_shortcut(false, true, Some("Alt+Q")),
+            None
+        );
+        assert_eq!(
+            desired_mini_input_global_shortcut(true, false, Some("Alt+Q")),
+            None
+        );
+        assert_eq!(
+            desired_mini_input_global_shortcut(true, true, Some("   ")),
+            None
+        );
+        assert_eq!(desired_mini_input_global_shortcut(true, true, None), None);
+
+        #[cfg(desktop)]
+        for accelerator in ["Alt+Q", "Ctrl+Shift+Space", "Super+Slash", "F7", "Alt+Backquote"] {
+            assert!(
+                accelerator
+                    .parse::<tauri_plugin_global_shortcut::Shortcut>()
+                    .is_ok(),
+                "expected {accelerator} to parse as a valid global shortcut"
+            );
+        }
     }
 
     #[test]

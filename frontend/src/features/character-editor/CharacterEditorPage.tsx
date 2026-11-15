@@ -63,6 +63,7 @@ import { useCharacterMemoryController } from "./useCharacterMemoryController";
 import { useCharacterMemoryImportController } from "./useCharacterMemoryImportController";
 import "./CharacterEditorPage.css";
 import { ModelStateEditor } from "./ModelStateEditor";
+import { PortraitCropDialog } from "../../shared/components/PortraitCropDialog";
 
 export function mergeSprites(serverSprites: Sprite[], current: Character) {
   const currentSpritesByPath = new Map(
@@ -74,6 +75,7 @@ export function mergeSprites(serverSprites: Sprite[], current: Character) {
       currentSpritesByPath.get(sprite.path) ?? (canFallbackToIndex ? current.sprites[index] : undefined);
     return {
       ...sprite,
+      portrait_crop: sprite.portrait_crop !== undefined ? sprite.portrait_crop : currentSprite?.portrait_crop,
       voice_type: sprite.voice_type ?? currentSprite?.voice_type,
     };
   });
@@ -99,6 +101,7 @@ export function CharacterEditorPage() {
   const [selectedSpriteIndex, setSelectedSpriteIndex] = useState(0);
   const [bulkSpriteTagsOpen, setBulkSpriteTagsOpen] = useState(false);
   const [bulkSpriteTagsDraft, setBulkSpriteTagsDraft] = useState("");
+  const [portraitCropOpen, setPortraitCropOpen] = useState(false);
   const [autoLabelDialogOpen, setAutoLabelDialogOpen] = useState(false);
   const [spriteGenerationOpen, setSpriteGenerationOpen] = useState(false);
   const generationReturnRef = useRef<{ element: HTMLElement | null; scrollTop: number } | null>(null);
@@ -600,6 +603,64 @@ export function CharacterEditorPage() {
       showToast({ kind: "success", title: t("character.sprite.saveScale") });
     },
   });
+
+  const portraitCropMutation = useMutation({
+    mutationFn: (nextCharacter: Character) => {
+      const base = selected ? structuredClone(selected) : structuredClone(nextCharacter);
+      const editedByPath = new Map(nextCharacter.sprites.map((sprite) => [sprite.path, sprite.portrait_crop]));
+      base.portrait_crop = nextCharacter.portrait_crop;
+      base.sprites = base.sprites.map((sprite, index) => {
+        const editedCrop = editedByPath.has(sprite.path)
+          ? editedByPath.get(sprite.path)
+          : nextCharacter.sprites[index]?.portrait_crop;
+        return {
+          ...sprite,
+          portrait_crop: editedCrop,
+        };
+      });
+      return saveCharacter(base, base.name);
+    },
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("character.sprite.imageError"),
+        title: t("character.sprite.portraitCropTitle"),
+      });
+    },
+    onSuccess(character) {
+      preserveImportedDraftRef.current = character;
+      queryClient.setQueryData<Character[]>(charactersQueryKey, (current = []) =>
+        current.map((item) => (item.name === character.name ? character : item)),
+      );
+      setDraft((current) => ({
+        ...current,
+        portrait_crop: character.portrait_crop,
+        sprites: current.sprites.map((sprite, index) => {
+          const savedSprite = character.sprites.find((item) => item.path === sprite.path) ?? character.sprites[index];
+          return savedSprite ? { ...sprite, portrait_crop: savedSprite.portrait_crop } : sprite;
+        }),
+      }));
+      setPortraitCropOpen(false);
+      showToast({ kind: "success", title: t("character.sprite.portraitCropSaved") });
+    },
+  });
+
+  const handleSavePortraitCrop = (nextCharacter: Character) => {
+    if (!isSavedCharacter) {
+      setDraft((current) => ({
+        ...current,
+        portrait_crop: nextCharacter.portrait_crop,
+        sprites: current.sprites.map((sprite, index) => ({
+          ...sprite,
+          portrait_crop: nextCharacter.sprites[index]?.portrait_crop,
+        })),
+      }));
+      setPortraitCropOpen(false);
+      showToast({ kind: "success", title: t("character.sprite.portraitCropSaved") });
+      return;
+    }
+    portraitCropMutation.mutate(nextCharacter);
+  };
 
   const update = <K extends keyof Character>(name: K, value: Character[K]) => {
     setDraft((current) => ({ ...current, [name]: value }));
@@ -1149,6 +1210,10 @@ export function CharacterEditorPage() {
               autoLabelMutation.mutate();
             }}
             onOpenBulkTags={openBulkSpriteTagsDialog}
+            onOpenPortraitCrop={() => {
+              portraitCropMutation.reset();
+              setPortraitCropOpen(true);
+            }}
             onPendingSpritePathsChange={setPendingSpritePaths}
             onPendingVoicePathChange={updatePendingVoicePath}
             onSaveScale={saveSpriteScaleValue}
@@ -1225,6 +1290,22 @@ export function CharacterEditorPage() {
         onClose={() => setBulkSpriteTagsOpen(false)}
         onConfirm={confirmBulkSpriteTags}
         open={bulkSpriteTagsOpen}
+      />
+
+      <PortraitCropDialog
+        character={draft}
+        error={
+          portraitCropMutation.isError
+            ? portraitCropMutation.error instanceof Error
+              ? portraitCropMutation.error.message
+              : String(portraitCropMutation.error)
+            : undefined
+        }
+        initialSpriteIndex={selectedSpriteIndex}
+        onClose={() => setPortraitCropOpen(false)}
+        onSave={handleSavePortraitCrop}
+        open={portraitCropOpen}
+        saving={portraitCropMutation.isPending}
       />
 
       <AlertDialog

@@ -122,17 +122,9 @@ html.reminder-surface,
   font-size: 40px;
   color: var(--color-accent-primary);
 }
-.reminder-panel__portrait img {
-  position: absolute;
-  height: calc(100% / var(--portrait-crop));
-  width: auto;
-  max-width: none;
-  top: 0;
-  left: 50%;
-  transform: translateX(-50%);
-}
 .reminder-panel__portrait-label {
   position: absolute;
+  z-index: 1;
   bottom: 0;
   left: 0;
   right: 0;
@@ -246,17 +238,6 @@ html.reminder-surface,
 .reminder-panel__footer > span {
   color: var(--color-text-muted);
   font-size: 10px;
-}
-.reminder-panel__crop {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 11px;
-}
-.reminder-panel__crop input {
-  min-width: 0;
-  flex: 1;
-  accent-color: var(--color-accent-primary);
 }
 .reminder-panel__error {
   display: flex;

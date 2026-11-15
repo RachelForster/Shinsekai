@@ -37,4 +37,5 @@ tauri-runtime = "2.11.2"
 zip = "5.0.0"
 
 [target.'cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))'.dependencies]
+tauri-plugin-global-shortcut = "2"
 tauri-plugin-updater = "2.10.1"

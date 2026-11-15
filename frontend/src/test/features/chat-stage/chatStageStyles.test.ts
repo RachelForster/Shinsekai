@@ -7,6 +7,7 @@ const controlsCss: string = readFileSync("src/features/chat-stage/styles/control
 const dialogLayerCss: string = readFileSync("src/features/chat-stage/styles/dialog-layer.css", "utf8");
 const inputLayerCss: string = readFileSync("src/features/chat-stage/styles/input-layer.css", "utf8");
 const mediaLayersCss: string = readFileSync("src/features/chat-stage/styles/media-layers.css", "utf8");
+const miniAvatarCss: string = readFileSync("src/features/chat-stage/styles/mini-avatar.css", "utf8");
 const optionsLayerCss: string = readFileSync("src/features/chat-stage/styles/options-layer.css", "utf8");
 const responsiveCss: string = readFileSync("src/features/chat-stage/styles/responsive.css", "utf8");
 const themePickerCss: string = readFileSync("src/features/chat-stage/theme/chat-theme-picker.css", "utf8");
@@ -130,5 +131,23 @@ describe("chat stage immersive styles", () => {
 
     expect(responsiveDialogBlock).toContain("width: var(--chat-dialog-responsive-width, calc(100vw - 24px));");
     expect(responsiveDialogBlock).toContain("max-width: var(--chat-dialog-responsive-width, calc(100vw - 24px));");
+  });
+
+  it("enforces hidden stage layers and readable theme-safe surfaces in mini avatar mode", () => {
+    const hiddenBlock = mediaLayersCss.split(".chat-stage__layer--hidden {")[1]?.split("}")[0] ?? "";
+    const bubbleBlock = miniAvatarCss.split(".mini-avatar__bubble {")[1]?.split("}")[0] ?? "";
+    const bodyBlock = miniAvatarCss.split(".mini-avatar__bubble-body {")[1]?.split("}")[0] ?? "";
+    const optionsBlock = miniAvatarCss.split(".mini-avatar__bubble-options {")[1]?.split("}")[0] ?? "";
+    const optionButtonBlock = miniAvatarCss.split(".mini-avatar__option-button {")[1]?.split("}")[0] ?? "";
+
+    expect(hiddenBlock).toContain("display: none !important;");
+    expect(miniAvatarCss).toContain(".dialog-toolbar-layer");
+    expect(bubbleBlock).toContain("width: 308px;");
+    expect(bubbleBlock).toContain("max-height: 340px;");
+    expect(bodyBlock).toContain("font-size: 15px;");
+    expect(optionsBlock).toContain("max-height: 232px;");
+    expect(optionButtonBlock).toContain("font-size: 14px;");
+    expect(optionButtonBlock).toContain("white-space: normal;");
+    expect(miniAvatarCss).toContain("::-webkit-scrollbar-button");
   });
 });

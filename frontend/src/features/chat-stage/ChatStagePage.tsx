@@ -278,6 +278,7 @@ export function ChatStagePage() {
   const handleWindowDrag = useDesktopWindowDrag(standaloneDesktopWindow);
   const miniAvatarActive = runtimeConfig.miniAvatarMode && !activeReplay && !state.replay && !remoteMobileAccess;
   const [miniDockSide, setMiniDockSide] = useState<DesktopMiniDockSide>("right");
+  const [miniInputPinned, setMiniInputPinned] = useState(false);
   const wasMiniAvatarActiveRef = useRef(false);
   const transparentBackground = miniAvatarActive || !viewModel.backgroundPath;
   const statsVisible = viewModel.stats.length > 0;
@@ -295,7 +296,8 @@ export function ChatStagePage() {
     historyExport != null ||
     confirmClearHistory ||
     confirmRevertUserIndex != null;
-  const clickThroughEnabled = standaloneDesktopWindow && transparentBackground && !modalOpen;
+  const clickThroughEnabled =
+    standaloneDesktopWindow && transparentBackground && !modalOpen && !(miniAvatarActive && miniInputPinned);
   const dialogToolbarPlacement =
     typeof themeStyle["--chat-dialog-toolbar-placement"] === "string"
       ? themeStyle["--chat-dialog-toolbar-placement"]
@@ -734,6 +736,13 @@ export function ChatStagePage() {
     setRuntimeConfig((current) => ({ ...current, configUseMainThemeColor }));
   };
 
+  const updateRuntimeMiniInputShortcut = (miniInputShortcut: string) => {
+    setRuntimeConfig((current) => ({
+      ...current,
+      miniInputShortcut: miniInputShortcut.trim(),
+    }));
+  };
+
   const resetRuntimeThemeAppearance = () => {
     const themeColor = (themeStyle as Record<string, unknown>)["--chat-theme-color"];
     setRuntimeConfig((current) =>
@@ -1050,7 +1059,7 @@ export function ChatStagePage() {
           className={layerClassName("dialog-stack", !dialogSurfaceVisible || miniAvatarActive)}
           hidden={!dialogSurfaceVisible || miniAvatarActive}
         >
-          {viewModel.layers.options ? (
+          {miniAvatarActive ? null : viewModel.layers.options ? (
             <>
               {viewModel.toolConfirmation ? (
                 <ToolConfirmationLayer confirmation={viewModel.toolConfirmation} onResolve={resolveToolConfirmation} />
@@ -1089,15 +1098,15 @@ export function ChatStagePage() {
             />
           )}
         </div>
-        {dialogToolbarDetached || activeReplay ? (
+        {!miniAvatarActive && (dialogToolbarDetached || activeReplay) ? (
           <div
-            aria-hidden={!dialogSurfaceVisible || miniAvatarActive}
-            className={layerClassName("dialog-toolbar-layer", !dialogSurfaceVisible || miniAvatarActive)}
+            aria-hidden={!dialogSurfaceVisible}
+            className={layerClassName("dialog-toolbar-layer", !dialogSurfaceVisible)}
             data-chat-stage-hitbox="true"
             data-locked={dialogControlsLocked ? "true" : "false"}
             data-placement={activeReplay ? "input" : dialogToolbarPlacement}
             data-reveal={dialogToolbarReveal}
-            hidden={!dialogSurfaceVisible || miniAvatarActive}
+            hidden={!dialogSurfaceVisible}
           >
             {dialogToolbar}
           </div>
@@ -1156,6 +1165,7 @@ export function ChatStagePage() {
             inputValue={viewModel.inputDraft}
             locked={Boolean(activeReplay || state.replay)}
             longPressTalk={runtimeConfig.longPressTalk}
+            miniInputShortcut={runtimeConfig.miniInputShortcut}
             notificationText={viewModel.notificationText}
             notificationVisible={viewModel.layers.notification}
             onAdvance={advanceDialog}
@@ -1167,6 +1177,7 @@ export function ChatStagePage() {
             onExitMiniMode={exitMiniAvatarMode}
             onFlushBatch={() => sendCommand({ type: "flush-input-batch" })}
             onInputActivity={updateInputActivity}
+            onInputPinnedChange={setMiniInputPinned}
             onLongPressTalkChange={updateRuntimeLongPressTalk}
             onPickAttachments={pickAttachments}
             onRemoveAttachment={(attachment) =>
@@ -1183,10 +1194,16 @@ export function ChatStagePage() {
             onToggleScreenShare={remoteMobileAccess ? undefined : toggleScreenShare}
             options={viewModel.options}
             optionsVisible={viewModel.layers.options}
+            playerPortrait={playerPortraitForDialog(
+              state.playerPortrait,
+              viewModel.dialogCharacterName,
+              viewModel.dialogText,
+            )}
             previousMessages={recentInputs}
             runtimeFramingForSprite={(sprite, index) => runtimeSpriteFraming(runtimeConfig, sprite, index)}
             screenShareStarting={screenShareStarting}
             screenSharing={screenSharing}
+            shortcutDisabled={modalOpen}
             spriteReaction={viewModel.spriteReaction}
             sprites={stageSprites}
             standaloneDesktopWindow={standaloneDesktopWindow}
@@ -1280,6 +1297,7 @@ export function ChatStagePage() {
           effectiveNameText={effectiveNameText}
           immersiveMode={runtimeConfig.immersiveMode}
           mainThemeColor={mainThemeColor}
+          miniInputShortcut={runtimeConfig.miniInputShortcut}
           nameText={runtimeConfig.nameText}
           onClose={() => setToolbarConfigOpen(false)}
           onCommand={sendCommand}
@@ -1293,6 +1311,7 @@ export function ChatStagePage() {
           onDialogScaleChange={updateRuntimeDialogScale}
           onDialogWidthPctChange={updateRuntimeDialogWidthPct}
           onImmersiveModeChange={updateRuntimeImmersiveMode}
+          onMiniInputShortcutChange={updateRuntimeMiniInputShortcut}
           onResetThemeAppearance={resetRuntimeThemeAppearance}
           onOpenPluginPage={openPluginPage}
           onSpriteOffsetXChange={updateRuntimeSpriteOffsetX}
