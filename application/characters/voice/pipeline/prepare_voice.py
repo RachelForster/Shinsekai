@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Mapping
+from concurrent.futures import Future, ThreadPoolExecutor
 import contextlib
 import hashlib
 import json
@@ -18,6 +19,7 @@ from application.characters import (
     CharacterUseCase,
     parse_character_request,
 )
+from application.characters.voice.pipeline.community_models import search_community_gsv_models
 from application.characters.voice.pipeline.gsv_runtime import (
     CancellableGsvRunner,
     SubprocessFailed,
@@ -77,6 +79,17 @@ def _normalize_sources(payload: Mapping[str, Any]) -> list[str]:
     if isinstance(raw, list) and all(isinstance(item, str) for item in raw):
         return [item.strip() for item in raw if item.strip()]
     raise ValueError("sources 必须为字符串列表")
+
+
+def _normalize_aliases(payload: Mapping[str, Any]) -> list[str]:
+    raw = payload.get("aliases")
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        return [part.strip() for part in re.split(r"[,，;/]+", raw) if part.strip()]
+    if isinstance(raw, list) and all(isinstance(item, str) for item in raw):
+        return [item.strip() for item in raw if item.strip()]
+    raise ValueError("aliases 必须为字符串列表")
 
 
 def _build_experiment_name(character_name: str, sprite_prefix: str) -> str:
@@ -146,11 +159,13 @@ def run_character_voice_prepare(
         raise KeyError(f"找不到角色：{name}，请先保存角色设定。")
 
     sources = _normalize_sources(payload)
+    aliases = _normalize_aliases(payload)
     query = str(payload.get("query") or "").strip()
     use_uvr = _parse_use_uvr(payload)
     dereverb = _parse_bool_flag(payload, "dereverb", False)
     train = _parse_bool_flag(payload, "train", False)
     verify_synthesis = _parse_bool_flag(payload, "verifySynthesis", True)
+    search_community_models = _parse_bool_flag(payload, "searchCommunityModels", not train)
 
     asr_lang = str(payload.get("language") or "auto").strip().lower() or "auto"
     if asr_lang not in _ALLOWED_ASR_LANGS:
@@ -196,8 +211,21 @@ def run_character_voice_prepare(
             profile=profile,
         )
 
+        community_pool: ThreadPoolExecutor | None = None
+        community_future: Future[list[dict[str, Any]]] | None = None
         try:
             with runner:
+                runner.check_cancelled()
+                if search_community_models:
+                    community_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="voice-community")
+                    community_future = community_pool.submit(
+                        search_community_gsv_models,
+                        name,
+                        query,
+                        aliases=aliases,
+                        max_results=5,
+                    )
+
                 # Stage 1: Acquire audio
                 _update_task(
                     state,
@@ -429,6 +457,15 @@ def run_character_voice_prepare(
                         persisted_ref.unlink(missing_ok=True)
                     raise
 
+                community_models: list[dict[str, Any]] = []
+                if community_future is not None:
+                    try:
+                        community_models = community_future.result(timeout=4.0)
+                    except Exception:
+                        community_models = []
+                    if community_models:
+                        runner.log(f"检测到 {len(community_models)} 个社区已训练的 GPT-SoVITS 模型候选。")
+
                 return {
                     "name": name,
                     "mode": voice_mode,
@@ -452,8 +489,11 @@ def run_character_voice_prepare(
                         "pretrainedFallbackGpt": base_gpt if not train else "",
                         "pretrainedFallbackSovits": base_sovits if not train else "",
                     },
+                    "communityModels": community_models,
                     "synthesisCheck": synthesis_check,
                     "character": saved_character,
                 }
         finally:
+            if community_pool is not None:
+                community_pool.shutdown(wait=False, cancel_futures=True)
             safe_rmtree_child(work_root, work_dir)

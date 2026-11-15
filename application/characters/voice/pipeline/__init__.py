@@ -1,6 +1,10 @@
 """Automated character voice preparation pipeline (source acquisition, UVR5, ASR, reference selection, training)."""
 
 from application.characters.voice.pipeline.bilibili_search import search_bilibili_voice_urls
+from application.characters.voice.pipeline.community_models import (
+    CommunityVoiceModel,
+    search_community_gsv_models,
+)
 from application.characters.voice.pipeline.prepare_voice import run_character_voice_prepare
 from application.characters.voice.pipeline.reference_selection import (
     ReferenceCandidate,
@@ -22,6 +26,7 @@ from application.characters.voice.pipeline.yt_dlp_extractor import ensure_yt_dlp
 
 __all__ = [
     "AcquiredVoiceSources",
+    "CommunityVoiceModel",
     "ReferenceCandidate",
     "WavAcoustics",
     "acquire_voice_sources",
@@ -33,5 +38,6 @@ __all__ = [
     "run_character_voice_prepare",
     "score_reference_candidate",
     "search_bilibili_voice_urls",
+    "search_community_gsv_models",
     "select_best_reference_clip",
 ]

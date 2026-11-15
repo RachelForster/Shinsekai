@@ -2,7 +2,7 @@
 name: shinsekai-character-creation
 description: 为 Shinsekai 一句话创建或完善可用人物：优先通过轻量 HTTP/JSON 接口检索百科资料与官方参考立绘，调用异步管线生成导入 10 张透明静态立绘，并自动获取语音、UVR5 去伴奏、切分 ASR、优选参考音频（默认挂 GPT-SoVITS 预训练白模即开即用，按需可选微调训练）。在用户要求创建人物、人设、角色档案、准备角色立绘与语音或修改现有人物时使用。
 metadata:
-  version: "1.7.0"
+  version: "1.8.0"
 ---
 
 # Shinsekai 人物创建
@@ -138,13 +138,14 @@ metadata:
 3. **音源传参优先级**：
    - **已有纯净台词音频直链或本地干声文件**：传入 `sources: ["https://.../voice1.ogg"]`，设 `useUvr: false`，跳过 `yt-dlp` 与 UVR5，最快最保真。
    - **无现成干声直链（常规情况）**：直接传入 `query: "角色名 作品名 语音合集"`（或已确认的 B 站/视频平台单人语音合集链接 `sources: ["https://www.bilibili.com/video/BV..."]`），保持 `useUvr: "auto"`、`dereverb: false`。后端会自动检索匹配度最高的语音视频，用单文件 `yt-dlp` 截取前 3 分钟音轨（免安装 Python 依赖，缺失时自动下载官方 `yt-dlp.exe` 并校验 SHA-256），调用 GPT-SoVITS 内置 UVR5（`HP2`）分离人声去 BGM，再经 `slice_audio.py` 与 Faster Whisper ASR 打分挑出最佳 4.5–7.5s 台词片段。仅当原视频混响严重时才设 `dereverb: true`。
-   - 调用示例：
+   - 调用示例（可将第 1 节查到的英文名/罗马音/常见别名填入 `aliases`，以便同步检索 B 站、魔搭与 Hugging Face 上的社区现成 GPT-SoVITS 模型）：
      ```json
      {
        "operation": "characters.voice.prepare",
        "body": {
          "name": "山田凉",
          "query": "山田凉 孤独摇滚 语音合集",
+         "aliases": ["Ryo Yamada", "山田リョウ"],
          "useUvr": "auto",
          "dereverb": false,
          "train": false,
@@ -152,10 +153,13 @@ metadata:
        }
      }
      ```
-4. **用户明确要求训练 GSV 时（`train: true`）**：
+4. **非阻塞社区现成模型探测与本地权重绑定**：
+   - 免训练模式下，`characters.voice.prepare` **不会中断或阻塞一键建人流程**：一边用预训练白模配好即开即用语音，一边并发检索 **B 站、ModelScope（魔搭）与 Hugging Face** 上别人已训练好的同名角色 GPT-SoVITS 模型，写入返回结果的 `communityModels` 数组。
+   - 若用户直接提供了已下载解压的本地 `.ckpt` 与 `.pth` 路径（或后续按交付提示下载后发来路径）：若人物尚无 `refer_audio_path`，先跑一次 `characters.voice.prepare`（`train: false`）生成 3–10s 参考音频与转写台词；再通过 `characters.get` 读取最新完整配置，填入 `gpt_model_path`（`.ckpt`）和 `sovits_model_path`（`.pth`）后带 `originalName` 调用 `characters.save` 绑定，不覆盖立绘与其他设定。
+5. **用户明确要求训练 GSV 时（`train: true`）**：
    - 仅在用户明确要求训练/微调模型时才将 `"train"` 设为 `true`。提交前先通过工具核对本机具备单卡 ≥8GB 可用显存与完整 `v2ProPlus` 预训练底模；不满足条件或训练中途失败时，向用户说明原因并回退 `train: false` 白模参考语音方案交付可用人物，不擅自调用付费远程算力。
-5. **检查任务结果**：
-   - 通过 `tasks.get` 等待 `character-voice-prepare` 任务结束，核对返回结果中的 `mode`（`zero_shot_pretrained` 或 `trained_v2proplus`）、`referenceAudio`（路径、时长、台词、评分）以及 `synthesisCheck.verified` 是否为 `true`。
+6. **检查任务结果**：
+   - 通过 `tasks.get` 等待 `character-voice-prepare` 任务结束，核对返回结果中的 `mode`（`zero_shot_pretrained` 或 `trained_v2proplus`）、`referenceAudio`（路径、时长、台词、评分）、`communityModels` 候选列表以及 `synthesisCheck.verified` 是否为 `true`。
 
 ## 3. HTTP 生成并导入 10 张透明静态立绘
 
@@ -174,4 +178,5 @@ metadata:
 - **人物身份与设定来源**：作品版本、检索来源 URL（或原创说明）。
 - **立绘结果**：已导入张数、参考图来源、情绪标签概览（区分 AI 生成与官方原图）。
 - **语音结果**：音源链接/查询词、是否启用 UVR5 去伴奏（及所用模型）、选中的参考音频路径/时长/台词、当前运行模式（默认预训练白模直推 `zero_shot_pretrained` 或微调权重 `trained_v2proplus`）以及短句合成自检状态。
+- **社区现成语音模型提示（仅当 `communityModels` 非空时附上）**：列出检索到的 B 站 / 魔搭 / Hugging Face 现成 GPT-SoVITS 模型标题与链接，提示用户当前已用预训练白模配好即开即用语音，若想换用更高还原度的微调模型，下载解压出 `.ckpt` 与 `.pth` 后把本地文件路径发给 Agent 即可一键绑定。`communityModels` 为空时不展示此项。
 - **未完成事项（如有）**：明确区分「已检索」「已下载」「已导入」「已合成验证」，某一步因外部服务未配置受阻时如实说明配置入口，不虚报全部完成。

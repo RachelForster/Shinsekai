@@ -27,13 +27,24 @@ from application.characters.voice.pipeline.gsv_runtime import (
     SubprocessFailed,
 )
 from application.characters.voice.pipeline.gsv_training import safe_rmtree_child
-from application.characters.voice.pipeline.prepare_voice import _build_experiment_name
+from application.characters.voice.pipeline.prepare_voice import (
+    _build_experiment_name,
+    _normalize_aliases,
+)
 from application.runtime.tasks import (
     TaskCancelled,
     _create_task,
     _request_task_cancel,
 )
 from config.schema import Character
+
+
+@pytest.fixture(autouse=True)
+def _stub_community_model_search(monkeypatch):
+    monkeypatch.setattr(
+        "application.characters.voice.pipeline.prepare_voice.search_community_gsv_models",
+        lambda *args, **kwargs: [],
+    )
 
 
 def _make_speech_wav_bytes(seconds: float = 5.6, rate: int = 32_000) -> bytes:
@@ -267,12 +278,37 @@ def test_prepare_character_voice_default_zero_shot_pretrained_flow(monkeypatch, 
     monkeypatch.setattr("ai.tts.tts_adapter.requests.Session.get", fake_session_get)
     monkeypatch.setattr("ai.tts.tts_adapter.requests.Session.post", fake_session_post)
 
+    captured_community_args: dict[str, object] = {}
+
+    def fake_community_search(character_name: str, query: str = "", *, aliases=(), max_results: int = 5):
+        captured_community_args["name"] = character_name
+        captured_community_args["query"] = query
+        captured_community_args["aliases"] = list(aliases)
+        return [
+            {
+                "platform": "bilibili",
+                "title": "这是一条关于山田凉和喜多郁代的模型分享",
+                "url": "https://www.bilibili.com/video/BV1p2TfzrE6D",
+                "author": "头上生艹_",
+                "summary": "训练模型版本：v2-ProPlus",
+                "downloads": 8448,
+                "likes": 546,
+                "score": 97.0,
+            }
+        ]
+
+    monkeypatch.setattr(
+        "application.characters.voice.pipeline.prepare_voice.search_community_gsv_models",
+        fake_community_search,
+    )
+
     result = run_character_voice_prepare(
         state,
         task_id,
         {
             "name": "山田凉",
             "query": "山田凉 孤独摇滚",
+            "aliases": ["Ryo Yamada", "山田リョウ"],
             "useUvr": "auto",
             "train": False,
             "verifySynthesis": True,
@@ -280,6 +316,13 @@ def test_prepare_character_voice_default_zero_shot_pretrained_flow(monkeypatch, 
     )
 
     assert executed_stages == ["yt-dlp 音轨提取", "UVR5 人声分离", "语音切分", "Faster Whisper ASR"]
+    assert captured_community_args == {
+        "name": "山田凉",
+        "query": "山田凉 孤独摇滚",
+        "aliases": ["Ryo Yamada", "山田リョウ"],
+    }
+    assert len(result["communityModels"]) == 1
+    assert result["communityModels"][0]["url"] == "https://www.bilibili.com/video/BV1p2TfzrE6D"
     assert result["mode"] == "zero_shot_pretrained"
     assert result["trained"] is False
     assert result["uvrUsed"] is True
@@ -811,3 +854,75 @@ def test_character_voice_prepare_route_and_bundled_skill_budget(monkeypatch, tmp
     assert captured["task_id"] == "task-xyz"
     assert captured["body"]["name"] == "山田凉"
     assert captured["body"]["train"] is False
+
+
+def test_community_model_search_failure_or_disable_never_blocks_voice_prepare(monkeypatch, tmp_path):
+    assert _normalize_aliases({"aliases": "Furina, 芙卡洛斯 / Focalors"}) == ["Furina", "芙卡洛斯", "Focalors"]
+    with pytest.raises(ValueError, match="aliases"):
+        _normalize_aliases({"aliases": 123})
+
+    gsv_root = _create_fake_gsv_bundle(tmp_path)
+    wav_5s = _make_speech_wav_bytes(5.4)
+    local_voice = tmp_path / "voice.wav"
+    local_voice.write_bytes(wav_5s)
+    state = _FakeState(tmp_path, gsv_root, Character(name="容错角色", color="#d07d7d", sprite_prefix="ch_resilient"))
+
+    def fake_run(self, label: str, command, *, cwd=None, extra_env=None):
+        cmd_list = [str(x) for x in command]
+        if label == "语音切分":
+            sdir = Path(cmd_list[cmd_list.index("tools/slice_audio.py") + 2])
+            sdir.mkdir(parents=True, exist_ok=True)
+            (sdir / "001.wav").write_bytes(wav_5s)
+        elif label == "Faster Whisper ASR":
+            sdir = Path(cmd_list[cmd_list.index("-i") + 1])
+            adir = Path(cmd_list[cmd_list.index("-o") + 1])
+            adir.mkdir(parents=True, exist_ok=True)
+            (adir / f"{sdir.name}.list").write_text(
+                f"{sdir / '001.wav'}|rs|ZH|即使社区模型搜索超时，主流程依然正常完成。\n",
+                encoding="utf-8",
+            )
+
+    monkeypatch.setattr(
+        "application.characters.voice.pipeline.gsv_runtime.CancellableGsvRunner.run",
+        fake_run,
+    )
+
+    called_count = 0
+
+    def exploding_search(*_args, **_kwargs):
+        nonlocal called_count
+        called_count += 1
+        raise RuntimeError("simulated community search crash")
+
+    monkeypatch.setattr(
+        "application.characters.voice.pipeline.prepare_voice.search_community_gsv_models",
+        exploding_search,
+    )
+
+    t1 = _create_task(state, kind="character-voice-prepare", title="resilient-1")
+    res1 = run_character_voice_prepare(
+        state,
+        t1["id"],
+        {"name": "容错角色", "sources": [str(local_voice)], "useUvr": False, "verifySynthesis": False},
+        file_access_roots=(tmp_path,),
+    )
+    assert called_count == 1
+    assert res1["communityModels"] == []
+    assert res1["mode"] == "zero_shot_pretrained"
+
+    t2 = _create_task(state, kind="character-voice-prepare", title="resilient-2")
+    res2 = run_character_voice_prepare(
+        state,
+        t2["id"],
+        {
+            "name": "容错角色",
+            "sources": [str(local_voice)],
+            "useUvr": False,
+            "verifySynthesis": False,
+            "searchCommunityModels": False,
+        },
+        file_access_roots=(tmp_path,),
+    )
+    assert called_count == 1  # Not called when searchCommunityModels=False
+    assert res2["communityModels"] == []
+
