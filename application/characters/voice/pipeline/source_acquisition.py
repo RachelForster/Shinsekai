@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
-import ipaddress
 import os
 from pathlib import Path
 import re
@@ -26,6 +25,7 @@ from application.characters.voice.pipeline.yt_dlp_extractor import (
 )
 from application.media.resource_paths import MediaResourcePaths
 from sdk.path_utils import safe_existing_path
+from sdk.url_safety import open_public_http_stream, validate_public_http_url
 
 
 _URI_SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
@@ -39,29 +39,10 @@ class AcquiredVoiceSources:
     yt_dlp_used: bool
 
 
-def validate_external_http_url(url: str) -> str:
-    """Validate an external HTTP(S) URL and reject loopback, private, link-local, or reserved IPs."""
-    cleaned = str(url or "").strip()
-    parsed = urlparse(cleaned)
-    if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
-        raise ValueError(f"不支持的音频/视频链接协议：{cleaned}")
-    host = parsed.hostname.strip().lower()
-    if host in {"localhost", "0.0.0.0"} or host.endswith(".localhost"):
-        raise ValueError(f"禁止访问本地回环地址：{cleaned}")
-    try:
-        addr = ipaddress.ip_address(host)
-    except ValueError:
-        return cleaned
-    if (
-        addr.is_loopback
-        or addr.is_private
-        or addr.is_link_local
-        or addr.is_reserved
-        or addr.is_multicast
-        or addr.is_unspecified
-    ):
-        raise ValueError(f"禁止访问内网或保留地址：{cleaned}")
-    return cleaned
+def validate_external_http_url(url: str, *, resolve_dns: bool = True) -> str:
+    """Validate an external HTTP(S) URL and reject loopback, private, link-local, or reserved hosts/IPs."""
+    validated, _records = validate_public_http_url(url, resolve_dns=resolve_dns)
+    return validated
 
 
 def _has_uri_scheme(value: str) -> bool:
@@ -81,18 +62,13 @@ def _download_direct_audio_url(
     *,
     check_cancelled: Callable[[], None],
 ) -> Path | None:
-    """Attempt direct HTTP audio download; return None if response is an HTML webpage."""
-    validated = validate_external_http_url(url)
-    parsed = urlparse(validated)
-    suffix = Path(parsed.path).suffix.lower()
-
+    """Attempt direct HTTP audio download with hop-by-hop public IP validation; return None if HTML."""
     session = requests.Session()
     session.headers.update({"User-Agent": DEFAULT_HTTP_UA})
     try:
-        with session.get(validated, stream=True, timeout=45, allow_redirects=True) as resp:
-            if resp.url:
-                validate_external_http_url(resp.url)
+        with open_public_http_stream(session, url, timeout=45.0) as (final_url, resp):
             resp.raise_for_status()
+            suffix = Path(urlparse(final_url).path).suffix.lower()
             content_type = str(resp.headers.get("Content-Type") or "").lower()
             is_audio_ct = content_type.startswith("audio/") or content_type in {
                 "application/ogg",
@@ -107,18 +83,22 @@ def _download_direct_audio_url(
             target = dest_dir / f"direct_{index:03d}{ext}"
             total_bytes = 0
             max_bytes = 250 * 1024 * 1024
-            with open(target, "wb") as out_f:
-                for chunk in resp.iter_content(chunk_size=128 * 1024):
-                    check_cancelled()
-                    if not chunk:
-                        continue
-                    total_bytes += len(chunk)
-                    if total_bytes > max_bytes:
-                        raise ValueError(f"音频文件超过大小上限（250MB）：{validated}")
-                    out_f.write(chunk)
+            try:
+                with open(target, "wb") as out_f:
+                    for chunk in resp.iter_content(chunk_size=128 * 1024):
+                        check_cancelled()
+                        if not chunk:
+                            continue
+                        total_bytes += len(chunk)
+                        if total_bytes > max_bytes:
+                            raise ValueError(f"音频文件超过大小上限（250MB）：{final_url}")
+                        out_f.write(chunk)
+            except BaseException:
+                target.unlink(missing_ok=True)
+                raise
             if total_bytes <= 44:
                 target.unlink(missing_ok=True)
-                raise ValueError(f"下载到的音频文件为空：{validated}")
+                raise ValueError(f"下载到的音频文件为空：{final_url}")
             return target
     finally:
         session.close()

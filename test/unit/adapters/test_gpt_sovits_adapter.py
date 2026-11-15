@@ -217,6 +217,18 @@ def test_resolve_pretrained_base_models_prefers_v2proplus_then_fallbacks(tmp_pat
     )
 
 
+def test_resolve_pretrained_base_models_rejects_mismatched_partial_candidates(tmp_path):
+    # Only s1v3.ckpt (v3/v4/v2Pro) + old v2 s2G2333k.pth exist -> must NOT mix incompatible pairs!
+    s1v3 = tmp_path / "GPT_SoVITS/pretrained_models/s1v3.ckpt"
+    old_v2_sovits = tmp_path / "GPT_SoVITS/pretrained_models/gsv-v2final-pretrained/s2G2333k.pth"
+    s1v3.parent.mkdir(parents=True, exist_ok=True)
+    old_v2_sovits.parent.mkdir(parents=True, exist_ok=True)
+    s1v3.write_bytes(b"s1v3")
+    old_v2_sovits.write_bytes(b"v2-sovits")
+
+    assert resolve_pretrained_base_models(tmp_path) == ("", "")
+
+
 def test_switch_model_resets_to_pretrained_base_after_trained_character(monkeypatch, tmp_path):
     pro_gpt = tmp_path / "GPT_SoVITS/pretrained_models/s1v3.ckpt"
     pro_sovits = tmp_path / "GPT_SoVITS/pretrained_models/v2Pro/s2Gv2ProPlus.pth"

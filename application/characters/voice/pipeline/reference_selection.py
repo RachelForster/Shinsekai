@@ -25,6 +25,28 @@ AUDIO_SUFFIXES = {".flac", ".m4a", ".mp3", ".ogg", ".opus", ".wav"}
 _ASCII_TOKEN_RE = re.compile(r"[A-Za-z0-9']+")
 _SPOKEN_CHAR_RE = re.compile(r"[\u3040-\u30ff\u3400-\u9fffA-Za-z0-9]")
 _TERMINAL_PUNCT_RE = re.compile(r"[。！？.!?…～~」』）\)]$")
+_SAFE_SINGLE_DIR_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+_WINDOWS_RESERVED_DIR_NAMES = frozenset(
+    {
+        "con",
+        "prn",
+        "aux",
+        "nul",
+        *(f"com{idx}" for idx in range(1, 10)),
+        *(f"lpt{idx}" for idx in range(1, 10)),
+    }
+)
+
+
+def is_safe_single_dir_name(raw: str) -> bool:
+    """Return True only when ``raw`` is a safe single-level directory component."""
+    prefix = str(raw or "").strip()
+    if not prefix or prefix in {".", ".."} or ".." in prefix or "/" in prefix or "\\" in prefix:
+        return False
+    stem = prefix.split(".", 1)[0].lower()
+    if stem in _WINDOWS_RESERVED_DIR_NAMES:
+        return False
+    return bool(_SAFE_SINGLE_DIR_RE.fullmatch(prefix))
 
 _PROMPT_LANGS = {
     "ja": "ja",
@@ -346,12 +368,15 @@ def copy_reference_clip_to_character_speech(
 ) -> Path:
     """Copy the selected reference WAV into `data/speech/<sprite_prefix>/` for permanent storage."""
     prefix = str(sprite_prefix or "").strip()
-    if not prefix or "/" in prefix or "\\" in prefix or ".." in prefix:
+    if not is_safe_single_dir_name(prefix):
         raise ValueError(f"无效的人物语音目录前缀：{sprite_prefix!r}")
     if candidate.path.suffix.lower() != ".wav":
         raise ValueError("参考语音切片必须为 WAV 格式。")
 
-    target_dir = project_root.resolve() / "data" / "speech" / prefix
+    speech_root = (project_root.resolve() / "data" / "speech").resolve(strict=False)
+    target_dir = (speech_root / prefix).resolve(strict=False)
+    if target_dir.parent != speech_root:
+        raise ValueError(f"无效的人物语音目录前缀：{sprite_prefix!r}")
     target_dir.mkdir(parents=True, exist_ok=True)
     digest = hashlib.sha1(candidate.path.read_bytes()).hexdigest()[:10]
     destination = target_dir / f"ref_{digest}.wav"

@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import re
 import shutil
+import uuid
 
 import yaml
 
@@ -13,6 +14,7 @@ from application.characters.voice.pipeline.gsv_runtime import (
     MODEL_VERSION,
     CancellableGsvRunner,
 )
+from application.characters.voice.pipeline.reference_selection import is_safe_single_dir_name
 from application.runtime.tasks import _update_task
 
 
@@ -25,15 +27,52 @@ _GPT_WEIGHT_RE = re.compile(r"^(.+)-e(\d+)\.ckpt$", re.IGNORECASE)
 _SOVITS_WEIGHT_RE = re.compile(r"^(.+)_e(\d+)_s(\d+)\.pth$", re.IGNORECASE)
 
 
-def select_latest_trained_weights(gsv_root: Path, exp_name: str) -> tuple[Path, Path]:
+def safe_rmtree_child(parent_dir: Path, child_dir: Path) -> None:
+    """Delete ``child_dir`` only after verifying it resolves strictly as a direct child of ``parent_dir``."""
+    resolved_parent = parent_dir.resolve(strict=False)
+    resolved_child = child_dir.resolve(strict=False)
+    if resolved_child == resolved_parent or resolved_child.parent != resolved_parent:
+        raise PermissionError(f"拒绝删除预期目录之外的路径：{child_dir}")
+    if resolved_child.exists():
+        shutil.rmtree(resolved_child, ignore_errors=True)
+
+
+def build_run_experiment_name(base_exp_name: str, task_id: str) -> str:
+    """Build a task-unique, safe single-component experiment name for isolated GSV training."""
+    if not is_safe_single_dir_name(base_exp_name):
+        raise ValueError(f"不安全的训练实验名：{base_exp_name!r}")
+    token = re.sub(r"[^A-Za-z0-9]", "", str(task_id or ""))[:12]
+    if not token:
+        token = uuid.uuid4().hex[:12]
+    run_name = f"{base_exp_name[:48]}_{token}"
+    if not is_safe_single_dir_name(run_name):
+        raise ValueError(f"不安全的训练运行实验名：{run_name!r}")
+    return run_name
+
+
+def _snapshot_filenames(directory: Path) -> set[str]:
+    if not directory.is_dir():
+        return set()
+    return {item.name for item in directory.iterdir() if item.is_file()}
+
+
+def select_latest_trained_weights(
+    gsv_root: Path,
+    exp_name: str,
+    *,
+    excluded_gpt_names: set[str] | None = None,
+    excluded_sovits_names: set[str] | None = None,
+) -> tuple[Path, Path]:
     """Locate the highest-epoch/step GPT (.ckpt) and SoVITS (.pth) weights produced for `exp_name`."""
     gpt_dir = gsv_root / "GPT_weights_v2ProPlus"
     sovits_dir = gsv_root / "SoVITS_weights_v2ProPlus"
+    skip_gpt = excluded_gpt_names or set()
+    skip_sovits = excluded_sovits_names or set()
 
     gpt_matches: list[tuple[int, float, Path]] = []
     if gpt_dir.is_dir():
         for path in gpt_dir.iterdir():
-            if not path.is_file():
+            if not path.is_file() or path.name in skip_gpt:
                 continue
             match = _GPT_WEIGHT_RE.fullmatch(path.name)
             if match and match.group(1) == exp_name:
@@ -42,7 +81,7 @@ def select_latest_trained_weights(gsv_root: Path, exp_name: str) -> tuple[Path, 
     sovits_matches: list[tuple[int, int, float, Path]] = []
     if sovits_dir.is_dir():
         for path in sovits_dir.iterdir():
-            if not path.is_file():
+            if not path.is_file() or path.name in skip_sovits:
                 continue
             match = _SOVITS_WEIGHT_RE.fullmatch(path.name)
             if match and match.group(1) == exp_name:
@@ -67,164 +106,184 @@ def run_v2proplus_training(
     sliced_dir: Path,
     list_path: Path,
 ) -> tuple[Path, Path]:
-    """Execute 1A/1B/1C dataset preparation followed by SoVITS and GPT fine-tuning."""
+    """Execute 1A/1B/1C dataset preparation followed by isolated per-run SoVITS and GPT fine-tuning."""
     gsv_root = runner.gsv_root
     profile = runner.profile
-    exp_dir = gsv_root / "logs" / exp_name
-    if exp_dir.exists():
-        shutil.rmtree(exp_dir, ignore_errors=True)
-    exp_dir.mkdir(parents=True, exist_ok=True)
+    run_exp_name = build_run_experiment_name(exp_name, runner.task_id)
 
-    common = {
-        "inp_text": str(list_path),
-        "inp_wav_dir": str(sliced_dir),
-        "exp_name": exp_name,
-        "opt_dir": str(exp_dir),
-        "i_part": "0",
-        "all_parts": "1",
-        "_CUDA_VISIBLE_DEVICES": profile.gpu,
-        "is_half": str(profile.use_half),
-        "version": MODEL_VERSION,
-    }
+    logs_root = gsv_root / "logs"
+    exp_dir = logs_root / run_exp_name
+    temp_root = gsv_root / "TEMP" / "shinsekai_voice_prepare"
+    temp_cfg_dir = temp_root / run_exp_name
 
-    _update_task(
-        runner.state,
-        runner.task_id,
-        phase="train-prepare",
-        progress=0.62,
-        message="正在提取训练文本、HuBERT 与音色语义特征（1A/1B/1C）。",
-    )
-    text_env = {
-        **common,
-        "bert_pretrained_dir": "GPT_SoVITS/pretrained_models/chinese-roberta-wwm-ext-large",
-    }
-    runner.run(
-        "1A 文本特征提取",
-        runner.python_cmd("GPT_SoVITS/prepare_datasets/1-get-text.py"),
-        extra_env=text_env,
-    )
-    part_txt = exp_dir / "2-name2text-0.txt"
-    out_txt = exp_dir / "2-name2text.txt"
-    if part_txt.is_file():
-        content = part_txt.read_text(encoding="utf-8").strip()
-        out_txt.write_text(content + ("\n" if content else ""), encoding="utf-8")
-        part_txt.unlink()
-    if not out_txt.is_file() or not out_txt.read_text(encoding="utf-8").strip():
-        raise RuntimeError("1A 文本特征提取未产出有效结果。")
+    safe_rmtree_child(logs_root, exp_dir)
+    safe_rmtree_child(temp_root, temp_cfg_dir)
 
-    hubert_env = {
-        **common,
-        "cnhubert_base_dir": "GPT_SoVITS/pretrained_models/chinese-hubert-base",
-        "sv_path": "GPT_SoVITS/pretrained_models/sv/pretrained_eres2netv2w24s4ep4.ckpt",
-    }
-    runner.run(
-        "1B HuBERT/WAV32K 特征提取",
-        runner.python_cmd("GPT_SoVITS/prepare_datasets/2-get-hubert-wav32k.py"),
-        extra_env=hubert_env,
-    )
-    runner.run(
-        "1B 说话人向量提取",
-        runner.python_cmd("GPT_SoVITS/prepare_datasets/2-get-sv.py"),
-        extra_env=hubert_env,
-    )
+    gpt_weights_dir = gsv_root / "GPT_weights_v2ProPlus"
+    sovits_weights_dir = gsv_root / "SoVITS_weights_v2ProPlus"
+    pre_existing_gpt = _snapshot_filenames(gpt_weights_dir)
+    pre_existing_sovits = _snapshot_filenames(sovits_weights_dir)
 
-    sem_env = {
-        **common,
-        "pretrained_s2G": "GPT_SoVITS/pretrained_models/v2Pro/s2Gv2ProPlus.pth",
-        "s2config_path": "GPT_SoVITS/configs/s2v2ProPlus.json",
-    }
-    runner.run(
-        "1C 语义 Token 提取",
-        runner.python_cmd("GPT_SoVITS/prepare_datasets/3-get-semantic.py"),
-        extra_env=sem_env,
-    )
-    part_sem = exp_dir / "6-name2semantic-0.tsv"
-    out_sem = exp_dir / "6-name2semantic.tsv"
-    if part_sem.is_file():
-        body = part_sem.read_text(encoding="utf-8").strip()
-        out_sem.write_text("item_name\tsemantic_audio\n" + body + ("\n" if body else ""), encoding="utf-8")
-        part_sem.unlink()
-    if not out_sem.is_file() or len(out_sem.read_text(encoding="utf-8").splitlines()) < 2:
-        raise RuntimeError("1C 语义特征提取未产出有效结果。")
+    try:
+        exp_dir.mkdir(parents=True, exist_ok=True)
+        temp_cfg_dir.mkdir(parents=True, exist_ok=True)
 
-    _update_task(
-        runner.state,
-        runner.task_id,
-        phase="train-sovits",
-        progress=0.74,
-        message=f"正在微调 SoVITS 声学模型（{SOVITS_EPOCHS} 轮）。",
-    )
-    s2_cfg = json.loads((gsv_root / "GPT_SoVITS" / "configs" / "s2v2ProPlus.json").read_text(encoding="utf-8"))
-    s2_cfg["train"].update(
-        {
-            "batch_size": profile.batch_size,
-            "epochs": SOVITS_EPOCHS,
-            "text_low_lr_rate": 0.4,
+        common = {
+            "inp_text": str(list_path),
+            "inp_wav_dir": str(sliced_dir),
+            "exp_name": run_exp_name,
+            "opt_dir": str(exp_dir),
+            "i_part": "0",
+            "all_parts": "1",
+            "_CUDA_VISIBLE_DEVICES": profile.gpu,
+            "is_half": str(profile.use_half),
+            "version": MODEL_VERSION,
+        }
+
+        _update_task(
+            runner.state,
+            runner.task_id,
+            phase="train-prepare",
+            progress=0.62,
+            message="正在提取训练文本、HuBERT 与音色语义特征（1A/1B/1C）。",
+        )
+        text_env = {
+            **common,
+            "bert_pretrained_dir": "GPT_SoVITS/pretrained_models/chinese-roberta-wwm-ext-large",
+        }
+        runner.run(
+            "1A 文本特征提取",
+            runner.python_cmd("GPT_SoVITS/prepare_datasets/1-get-text.py"),
+            extra_env=text_env,
+        )
+        part_txt = exp_dir / "2-name2text-0.txt"
+        out_txt = exp_dir / "2-name2text.txt"
+        if part_txt.is_file():
+            content = part_txt.read_text(encoding="utf-8").strip()
+            out_txt.write_text(content + ("\n" if content else ""), encoding="utf-8")
+            part_txt.unlink()
+        if not out_txt.is_file() or not out_txt.read_text(encoding="utf-8").strip():
+            raise RuntimeError("1A 文本特征提取未产出有效结果。")
+
+        hubert_env = {
+            **common,
+            "cnhubert_base_dir": "GPT_SoVITS/pretrained_models/chinese-hubert-base",
+            "sv_path": "GPT_SoVITS/pretrained_models/sv/pretrained_eres2netv2w24s4ep4.ckpt",
+        }
+        runner.run(
+            "1B HuBERT/WAV32K 特征提取",
+            runner.python_cmd("GPT_SoVITS/prepare_datasets/2-get-hubert-wav32k.py"),
+            extra_env=hubert_env,
+        )
+        runner.run(
+            "1B 说话人向量提取",
+            runner.python_cmd("GPT_SoVITS/prepare_datasets/2-get-sv.py"),
+            extra_env=hubert_env,
+        )
+
+        sem_env = {
+            **common,
             "pretrained_s2G": "GPT_SoVITS/pretrained_models/v2Pro/s2Gv2ProPlus.pth",
-            "pretrained_s2D": "GPT_SoVITS/pretrained_models/v2Pro/s2Dv2ProPlus.pth",
-            "if_save_latest": True,
-            "if_save_every_weights": True,
-            "save_every_epoch": SOVITS_SAVE_EVERY,
-            "gpu_numbers": profile.gpu,
-            "grad_ckpt": False,
-            "lora_rank": "32",
-            "fp16_run": profile.use_half,
+            "s2config_path": "GPT_SoVITS/configs/s2v2ProPlus.json",
         }
-    )
-    s2_cfg["model"]["version"] = MODEL_VERSION
-    s2_cfg["data"]["exp_dir"] = str(exp_dir)
-    s2_cfg["s2_ckpt_dir"] = str(exp_dir)
-    s2_cfg["save_weight_dir"] = "SoVITS_weights_v2ProPlus"
-    s2_cfg["name"] = exp_name
-    s2_cfg["version"] = MODEL_VERSION
+        runner.run(
+            "1C 语义 Token 提取",
+            runner.python_cmd("GPT_SoVITS/prepare_datasets/3-get-semantic.py"),
+            extra_env=sem_env,
+        )
+        part_sem = exp_dir / "6-name2semantic-0.tsv"
+        out_sem = exp_dir / "6-name2semantic.tsv"
+        if part_sem.is_file():
+            body = part_sem.read_text(encoding="utf-8").strip()
+            out_sem.write_text("item_name\tsemantic_audio\n" + body + ("\n" if body else ""), encoding="utf-8")
+            part_sem.unlink()
+        if not out_sem.is_file() or len(out_sem.read_text(encoding="utf-8").splitlines()) < 2:
+            raise RuntimeError("1C 语义特征提取未产出有效结果。")
 
-    (exp_dir / f"logs_s2_{MODEL_VERSION}").mkdir(parents=True, exist_ok=True)
-    (gsv_root / "SoVITS_weights_v2ProPlus").mkdir(parents=True, exist_ok=True)
-    temp_cfg_dir = gsv_root / "TEMP" / "shinsekai_voice_prepare" / exp_name
-    temp_cfg_dir.mkdir(parents=True, exist_ok=True)
-    s2_cfg_path = temp_cfg_dir / "s2.json"
-    s2_cfg_path.write_text(json.dumps(s2_cfg, ensure_ascii=True, indent=2), encoding="utf-8")
+        _update_task(
+            runner.state,
+            runner.task_id,
+            phase="train-sovits",
+            progress=0.74,
+            message=f"正在微调 SoVITS 声学模型（{SOVITS_EPOCHS} 轮）。",
+        )
+        s2_cfg = json.loads((gsv_root / "GPT_SoVITS" / "configs" / "s2v2ProPlus.json").read_text(encoding="utf-8"))
+        s2_cfg["train"].update(
+            {
+                "batch_size": profile.batch_size,
+                "epochs": SOVITS_EPOCHS,
+                "text_low_lr_rate": 0.4,
+                "pretrained_s2G": "GPT_SoVITS/pretrained_models/v2Pro/s2Gv2ProPlus.pth",
+                "pretrained_s2D": "GPT_SoVITS/pretrained_models/v2Pro/s2Dv2ProPlus.pth",
+                "if_save_latest": True,
+                "if_save_every_weights": True,
+                "save_every_epoch": SOVITS_SAVE_EVERY,
+                "gpu_numbers": profile.gpu,
+                "grad_ckpt": False,
+                "lora_rank": "32",
+                "fp16_run": profile.use_half,
+            }
+        )
+        s2_cfg["model"]["version"] = MODEL_VERSION
+        s2_cfg["data"]["exp_dir"] = str(exp_dir)
+        s2_cfg["s2_ckpt_dir"] = str(exp_dir)
+        s2_cfg["save_weight_dir"] = "SoVITS_weights_v2ProPlus"
+        s2_cfg["name"] = run_exp_name
+        s2_cfg["version"] = MODEL_VERSION
 
-    runner.run(
-        "SoVITS 训练",
-        runner.python_cmd("GPT_SoVITS/s2_train.py", "--config", str(s2_cfg_path)),
-    )
+        (exp_dir / f"logs_s2_{MODEL_VERSION}").mkdir(parents=True, exist_ok=True)
+        sovits_weights_dir.mkdir(parents=True, exist_ok=True)
+        s2_cfg_path = temp_cfg_dir / "s2.json"
+        s2_cfg_path.write_text(json.dumps(s2_cfg, ensure_ascii=True, indent=2), encoding="utf-8")
 
-    _update_task(
-        runner.state,
-        runner.task_id,
-        phase="train-gpt",
-        progress=0.86,
-        message=f"正在微调 GPT 韵律模型（{GPT_EPOCHS} 轮）。",
-    )
-    s1_cfg = yaml.safe_load((gsv_root / "GPT_SoVITS" / "configs" / "s1longer-v2.yaml").read_text(encoding="utf-8"))
-    s1_cfg["train"].update(
-        {
-            "batch_size": profile.batch_size,
-            "epochs": GPT_EPOCHS,
-            "save_every_n_epoch": GPT_SAVE_EVERY,
-            "if_save_every_weights": True,
-            "if_save_latest": True,
-            "if_dpo": False,
-            "half_weights_save_dir": "GPT_weights_v2ProPlus",
-            "exp_name": exp_name,
-        }
-    )
-    if not profile.use_half:
-        s1_cfg["train"]["precision"] = "32"
-    s1_cfg["pretrained_s1"] = "GPT_SoVITS/pretrained_models/s1v3.ckpt"
-    s1_cfg["train_semantic_path"] = str(out_sem)
-    s1_cfg["train_phoneme_path"] = str(out_txt)
-    s1_cfg["output_dir"] = str(exp_dir / f"logs_s1_{MODEL_VERSION}")
+        runner.run(
+            "SoVITS 训练",
+            runner.python_cmd("GPT_SoVITS/s2_train.py", "--config", str(s2_cfg_path)),
+        )
 
-    (gsv_root / "GPT_weights_v2ProPlus").mkdir(parents=True, exist_ok=True)
-    s1_cfg_path = temp_cfg_dir / "s1.yaml"
-    s1_cfg_path.write_text(yaml.safe_dump(s1_cfg, allow_unicode=False, sort_keys=False), encoding="utf-8")
+        _update_task(
+            runner.state,
+            runner.task_id,
+            phase="train-gpt",
+            progress=0.84,
+            message=f"正在微调 GPT 韵律模型（{GPT_EPOCHS} 轮）。",
+        )
+        s1_cfg = yaml.safe_load((gsv_root / "GPT_SoVITS" / "configs" / "s1longer-v2.yaml").read_text(encoding="utf-8"))
+        s1_cfg["train"].update(
+            {
+                "batch_size": profile.batch_size,
+                "epochs": GPT_EPOCHS,
+                "save_every_n_epoch": GPT_SAVE_EVERY,
+                "if_save_every_weights": True,
+                "if_save_latest": True,
+                "if_dpo": False,
+                "half_weights_save_dir": "GPT_weights_v2ProPlus",
+                "exp_name": run_exp_name,
+            }
+        )
+        if not profile.use_half:
+            s1_cfg["train"]["precision"] = "32"
+        s1_cfg["pretrained_s1"] = "GPT_SoVITS/pretrained_models/s1v3.ckpt"
+        s1_cfg["train_semantic_path"] = str(out_sem)
+        s1_cfg["train_phoneme_path"] = str(out_txt)
+        s1_cfg["output_dir"] = str(exp_dir / f"logs_s1_{MODEL_VERSION}")
 
-    runner.run(
-        "GPT 训练",
-        runner.python_cmd("GPT_SoVITS/s1_train.py", "--config_file", str(s1_cfg_path)),
-        extra_env={"_CUDA_VISIBLE_DEVICES": profile.gpu, "hz": "25hz"},
-    )
+        gpt_weights_dir.mkdir(parents=True, exist_ok=True)
+        s1_cfg_path = temp_cfg_dir / "s1.yaml"
+        s1_cfg_path.write_text(yaml.safe_dump(s1_cfg, allow_unicode=False, sort_keys=False), encoding="utf-8")
 
-    return select_latest_trained_weights(gsv_root, exp_name)
+        runner.run(
+            "GPT 训练",
+            runner.python_cmd("GPT_SoVITS/s1_train.py", "--config_file", str(s1_cfg_path)),
+            extra_env={"_CUDA_VISIBLE_DEVICES": profile.gpu, "hz": "25hz"},
+        )
+
+        return select_latest_trained_weights(
+            gsv_root,
+            run_exp_name,
+            excluded_gpt_names=pre_existing_gpt,
+            excluded_sovits_names=pre_existing_sovits,
+        )
+    finally:
+        safe_rmtree_child(temp_root, temp_cfg_dir)
+        safe_rmtree_child(logs_root, exp_dir)

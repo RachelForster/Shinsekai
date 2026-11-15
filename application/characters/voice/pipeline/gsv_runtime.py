@@ -2,26 +2,30 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 import os
 from pathlib import Path
 import queue
+import signal
 import subprocess
 import threading
 from typing import Any
+from urllib.parse import urlparse
 
 from ai.tts.tts_adapter import resolve_pretrained_base_models
 from application.runtime.tasks import (
     TaskCancelled,
     _append_task_log,
     _is_task_cancel_requested,
+    register_task_cancel_callback,
 )
 
 
 MODEL_VERSION = "v2ProPlus"
 ASR_MODEL_SIZE = "large-v3"
 FASTER_WHISPER_REPO = "Systran/faster-whisper-large-v3"
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "0.0.0.0", "::1"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +66,14 @@ def detect_runtime_profile() -> GsvRuntimeProfile:
         return GsvRuntimeProfile()
 
 
+def _is_loopback_gsv_url(url: str) -> bool:
+    parsed = urlparse(str(url or "").strip())
+    if parsed.scheme.lower() not in {"http", "https"}:
+        return False
+    host = (parsed.hostname or "").strip().rstrip(".").lower()
+    return host in _LOOPBACK_HOSTS
+
+
 def resolve_gpt_sovits_settings(state: Any, project_root: Path) -> tuple[str, Path, str]:
     config_manager = state.config_manager
     get_cfg = getattr(config_manager, "get_gpt_sovits_config", None)
@@ -72,6 +84,18 @@ def resolve_gpt_sovits_settings(state: Any, project_root: Path) -> tuple[str, Pa
         gsv_url = str(getattr(api_cfg, "gpt_sovits_url", "") or "http://127.0.0.1:9880/")
         raw_work_path = str(getattr(api_cfg, "gpt_sovits_api_path", "") or "")
         provider = str(getattr(api_cfg, "tts_provider", "") or "gpt-sovits")
+
+    normalized_provider = str(provider or "gpt-sovits").strip()
+    if normalized_provider.lower() == "kaggle-gpt-sovits":
+        raise ValueError(
+            "自动角色语音准备需要本机 GPT-SoVITS 服务，暂不支持远程 Kaggle GPT-SoVITS。"
+        )
+
+    effective_url = str(gsv_url or "http://127.0.0.1:9880/").strip()
+    if not _is_loopback_gsv_url(effective_url):
+        raise ValueError(
+            f"自动角色语音准备仅支持本机回环 GPT-SoVITS 服务（127.0.0.1 / localhost），当前配置为远程地址：{effective_url}"
+        )
 
     cleaned_path = str(raw_work_path or "").strip().strip('"')
     if not cleaned_path:
@@ -86,7 +110,7 @@ def resolve_gpt_sovits_settings(state: Any, project_root: Path) -> tuple[str, Pa
     root = expanded.resolve(strict=False)
     if not root.is_dir():
         raise FileNotFoundError(f"配置的 GPT-SoVITS 目录不存在：{root}")
-    return str(gsv_url or "http://127.0.0.1:9880/"), root, str(provider or "gpt-sovits")
+    return effective_url, root, normalized_provider or "gpt-sovits"
 
 
 def _resolve_gsv_python(gsv_root: Path) -> Path:
@@ -126,7 +150,7 @@ def validate_gsv_bundle(gsv_root: Path, *, train: bool) -> tuple[Path, str, str]
     base_gpt, base_sovits = resolve_pretrained_base_models(gsv_root)
     if not train and (not base_gpt or not base_sovits):
         raise ValueError(
-            f"GPT-SoVITS 目录中未找到可用的预训练白模（如 s1v3.ckpt + s2Gv2ProPlus.pth）：{gsv_root}"
+            f"GPT-SoVITS 目录中未找到可用的成对预训练白模（如 s1v3.ckpt + s2Gv2ProPlus.pth）：{gsv_root}"
         )
     return gsv_python, base_gpt, base_sovits
 
@@ -194,8 +218,15 @@ def validate_asr_list_complete(list_path: Path) -> int:
     return len(lines)
 
 
+def _reap_process(proc: subprocess.Popen[Any], *, timeout: float = 5.0) -> None:
+    try:
+        proc.wait(timeout=timeout)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
 class CancellableGsvRunner:
-    """Execute GPT-SoVITS / ffmpeg / yt-dlp child processes with live task logging and tree termination."""
+    """Execute GPT-SoVITS / ffmpeg / yt-dlp child process groups with task & shutdown lifecycle ownership."""
 
     def __init__(
         self,
@@ -213,6 +244,26 @@ class CancellableGsvRunner:
         self.profile = profile
         self._lock = threading.RLock()
         self._processes: dict[int, subprocess.Popen[str]] = {}
+        self._unregister_cancel: Callable[[], None] | None = None
+        if hasattr(state, "task_lock"):
+            self._unregister_cancel = register_task_cancel_callback(
+                state,
+                task_id,
+                self.terminate_all,
+            )
+
+    def __enter__(self) -> CancellableGsvRunner:
+        return self
+
+    def __exit__(self, _exc_type: Any, _exc: Any, _tb: Any) -> None:
+        self.close()
+
+    def close(self) -> None:
+        unregister = self._unregister_cancel
+        self._unregister_cancel = None
+        if callable(unregister):
+            unregister()
+        self.terminate_all()
 
     def check_cancelled(self) -> None:
         if _is_task_cancel_requested(self.state, self.task_id):
@@ -252,22 +303,65 @@ class CancellableGsvRunner:
     @staticmethod
     def _kill_tree(proc: subprocess.Popen[str]) -> None:
         if proc.poll() is not None:
+            _reap_process(proc, timeout=1.0)
             return
-        try:
-            if os.name == "nt":
+        if os.name == "nt":
+            try:
                 subprocess.run(
                     ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
                     capture_output=True,
                     timeout=15,
                     creationflags=subprocess.CREATE_NO_WINDOW,
                 )
+            except (OSError, subprocess.SubprocessError):
+                pass
+            if proc.poll() is None:
+                try:
+                    proc.kill()
+                except OSError:
+                    pass
+            _reap_process(proc, timeout=5.0)
+            return
+
+        # POSIX: terminate the dedicated session / process group, then escalate to SIGKILL and reap.
+        killpg_fn = getattr(os, "killpg", None)
+        getpgid_fn = getattr(os, "getpgid", None)
+        pgid = proc.pid
+        if callable(getpgid_fn):
+            try:
+                pgid = int(getpgid_fn(proc.pid))
+            except OSError:
+                pgid = proc.pid
+
+        try:
+            if callable(killpg_fn):
+                killpg_fn(pgid, signal.SIGTERM)
             else:
                 proc.terminate()
+        except OSError:
+            try:
+                proc.terminate()
+            except OSError:
+                pass
+
+        try:
+            proc.wait(timeout=2.0)
+            return
         except (OSError, subprocess.SubprocessError):
+            pass
+
+        sigkill = getattr(signal, "SIGKILL", signal.SIGTERM)
+        try:
+            if callable(killpg_fn):
+                killpg_fn(pgid, sigkill)
+            else:
+                proc.kill()
+        except OSError:
             try:
                 proc.kill()
             except OSError:
                 pass
+        _reap_process(proc, timeout=5.0)
 
     def run(
         self,
@@ -293,6 +387,7 @@ class CancellableGsvRunner:
             errors="replace",
             bufsize=1,
             creationflags=creationflags,
+            start_new_session=(os.name != "nt"),
         )
         with self._lock:
             self._processes[proc.pid] = proc
@@ -329,6 +424,8 @@ class CancellableGsvRunner:
                 tail = " | ".join(recent_lines[-3:])
                 raise SubprocessFailed(label, rc, tail)
         finally:
+            if proc.poll() is None:
+                self._kill_tree(proc)
             with self._lock:
                 self._processes.pop(proc.pid, None)
             if proc.stdout is not None:

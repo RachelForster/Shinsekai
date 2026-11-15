@@ -10,6 +10,7 @@ import pytest
 from application.characters.voice.pipeline.reference_selection import (
     copy_reference_clip_to_character_speech,
     is_hallucinated_transcript,
+    is_safe_single_dir_name,
     load_asr_transcripts,
     score_reference_candidate,
     select_best_reference_clip,
@@ -114,12 +115,14 @@ def test_select_best_reference_clip_prefers_clean_conversational_clip(tmp_path):
     assert copied.parent == (tmp_path / "data" / "speech" / "ch_ryo_01").resolve()
     assert analyze_wav_acoustics(copied) is not None
 
-    with pytest.raises(ValueError, match="目录前缀"):
-        copy_reference_clip_to_character_speech(
-            winner,
-            project_root=tmp_path,
-            sprite_prefix="../escape",
-        )
+    for unsafe_prefix in ("", ".", "..", ".hidden", "a..b", "../escape", "CON", "a/b", r"a\b"):
+        assert is_safe_single_dir_name(unsafe_prefix) is False, unsafe_prefix
+        with pytest.raises(ValueError, match="目录前缀"):
+            copy_reference_clip_to_character_speech(
+                winner,
+                project_root=tmp_path,
+                sprite_prefix=unsafe_prefix,
+            )
 
 
 def test_uvr5_weight_selection_prefers_hp2_and_deecho_normal(tmp_path):

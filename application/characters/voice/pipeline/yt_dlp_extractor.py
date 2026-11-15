@@ -9,10 +9,12 @@ from pathlib import Path
 import platform
 import re
 import shutil
+from urllib.parse import urlsplit
 
 import requests
 
 from application.characters.voice.pipeline.bilibili_search import DEFAULT_HTTP_UA
+from sdk.url_safety import is_bilibili_target, resolve_public_http_redirects
 
 
 DIRECT_AUDIO_SUFFIXES = {
@@ -150,6 +152,13 @@ def extract_audio_with_yt_dlp(
     run_subprocess: Callable[[str, Sequence[str]], None],
 ) -> list[Path]:
     """Run yt-dlp to extract WAV audio up to `max_download_seconds`, with Edge cookie fallback on Bilibili."""
+    effective_target = str(target_spec or "").strip()
+    if urlsplit(effective_target).scheme.lower() in {"http", "https"}:
+        effective_target = resolve_public_http_redirects(
+            effective_target,
+            user_agent=DEFAULT_HTTP_UA,
+        )
+
     out_template = str(dest_dir / f"video_{index:03d}_%(id)s.%(ext)s")
     base_cmd = [
         str(yt_dlp_bin),
@@ -171,13 +180,13 @@ def extract_audio_with_yt_dlp(
         base_cmd.extend(["--download-sections", f"*00:00-{_format_mmss(max_download_seconds)}"])
 
     before = {path.name for path in dest_dir.iterdir() if path.is_file()}
-    cmd = [*base_cmd, "--", target_spec]
+    cmd = [*base_cmd, "--", effective_target]
     try:
         run_subprocess("yt-dlp 音轨提取", cmd)
     except RuntimeError as first_err:
         # Retry once with Edge browser cookies if Bilibili blocks anonymous extraction (e.g. HTTP 412).
-        if "bilibili.com" in target_spec.lower() or "b23.tv" in target_spec.lower():
-            retry_cmd = [*base_cmd, "--cookies-from-browser", "edge", "--", target_spec]
+        if is_bilibili_target(effective_target):
+            retry_cmd = [*base_cmd, "--cookies-from-browser", "edge", "--", effective_target]
             try:
                 run_subprocess("yt-dlp 音轨提取（浏览器访客重试）", retry_cmd)
             except RuntimeError:
@@ -197,5 +206,5 @@ def extract_audio_with_yt_dlp(
         key=lambda item: item.name,
     )
     if not produced:
-        raise RuntimeError(f"yt-dlp 未能从 {target_spec} 提取出有效音频文件。")
+        raise RuntimeError(f"yt-dlp 未能从 {effective_target} 提取出有效音频文件。")
     return produced

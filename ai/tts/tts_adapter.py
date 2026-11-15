@@ -94,16 +94,7 @@ def resolve_pretrained_base_models(work_path: str | Path | None) -> tuple[str, s
         if gpt_file.is_file() and sovits_file.is_file():
             return gpt_file.resolve().as_posix(), sovits_file.resolve().as_posix()
 
-    found_gpt = ""
-    found_sovits = ""
-    for rel_gpt, rel_sovits in PRETRAINED_MODEL_CANDIDATES:
-        if not found_gpt and (root / rel_gpt).is_file():
-            found_gpt = (root / rel_gpt).resolve().as_posix()
-        if not found_sovits and (root / rel_sovits).is_file():
-            found_sovits = (root / rel_sovits).resolve().as_posix()
-        if found_gpt and found_sovits:
-            break
-    return found_gpt, found_sovits
+    return "", ""
 
 
 class GPTSoVitsAdapter(TTSAdapter):
