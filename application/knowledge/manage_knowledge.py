@@ -11,6 +11,7 @@ from core.knowledge.catalog import get_knowledge_entry_counts, list_store_entrie
 from application.knowledge.runtime import get_mem0
 from core.knowledge.bindings import get_knowledge_binding_counts
 from core.knowledge.coordination import knowledge_operation_lock
+from sdk.adapters.memory import NAMESPACE_KNOWLEDGE
 
 logger = logging.getLogger(__name__)
 
@@ -106,9 +107,12 @@ def list_instances(
     """Merge both stores before matching IDs and paginating the directory."""
     try:
         store = get_mem0()
+        vs = store.vector_store
+        client = getattr(vs, "client", vs)
+        collection_name = getattr(vs, "collection_name", NAMESPACE_KNOWLEDGE)
         with knowledge_operation_lock:
             counts = get_knowledge_entry_counts(
-                store.vector_store.client, store.vector_store.collection_name, refresh=refresh,
+                client, collection_name, refresh=refresh,
             )
             bindings = get_knowledge_binding_counts()
             term = query.strip().casefold()

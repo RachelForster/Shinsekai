@@ -49,19 +49,12 @@ _SAFE_PACKAGE_RE = re.compile(r"^[A-Za-z0-9_.-]+(?:\[[A-Za-z0-9_,.-]+\])?$")
 _PYTHON_EXE_NAME_RE = re.compile(r"^python(?:\d+(?:\.\d+)*)?(?:\.exe)?$", re.IGNORECASE)
 HUGGINGFACE_HUB_VERSION = "0.36.2"
 HUGGINGFACE_HUB_SPEC = f"huggingface-hub=={HUGGINGFACE_HUB_VERSION}"
+ONNXRUNTIME_SPEC = "onnxruntime"
+TOKENIZERS_SPEC = "tokenizers>=0.20,<1"
 TRANSFORMERS_SPEC = "transformers>=4.51.1,<5"
 SENTENCE_TRANSFORMERS_SPEC = "sentence-transformers>=5.2,<6"
-FASTEMBED_SPEC = "fastembed"
-MEM0_SPEC = "mem0ai[nlp]"
-CLICK_SPEC = "click>=8.1,<9"
-SPACY_SPEC = "spacy>=3.7,<4"
 MEMORY_RUNTIME_PACKAGE_SPECS = (
-    MEM0_SPEC,
-    CLICK_SPEC,
-    SPACY_SPEC,
-    SENTENCE_TRANSFORMERS_SPEC,
-    FASTEMBED_SPEC,
-    TRANSFORMERS_SPEC,
+    ONNXRUNTIME_SPEC,
     HUGGINGFACE_HUB_SPEC,
 )
 PERCEPTION_TORCH_SPEC = "torch>=2.1.0"
@@ -80,8 +73,6 @@ PERCEPTION_RUNTIME_PACKAGE_SPECS = (
     PERCEPTION_PILLOW_SPEC,
     PERCEPTION_RAPIDOCR_SPEC,
 )
-
-
 def _resolve_perception_target_python(state: Any) -> str:
     raw = ""
     project_root = getattr(state, "project_root_dir", "") if state is not None else ""
@@ -111,8 +102,20 @@ def _register_builtin_runtime_dependencies(registry: RuntimeDependencyRegistry) 
     )
     registry.register_builtin(
         RuntimeDependencySpec(
+            key="onnxruntime",
+            package_specs=MEMORY_RUNTIME_PACKAGE_SPECS,
+        )
+    )
+    registry.register_builtin(
+        RuntimeDependencySpec(
             key="mem0",
             package_specs=MEMORY_RUNTIME_PACKAGE_SPECS,
+        )
+    )
+    registry.register_builtin(
+        RuntimeDependencySpec(
+            key="tokenizers",
+            package_specs=(TOKENIZERS_SPEC,),
         )
     )
     registry.register_builtin(

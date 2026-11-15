@@ -1,4 +1,4 @@
-"""Mem0-backed index for tagged sprites, scenes, and BGM assets."""
+"""Static vector slice index for tagged sprites, scenes, and BGM assets."""
 
 from __future__ import annotations
 
@@ -9,8 +9,10 @@ import logging
 from collections.abc import Sequence
 from typing import Any
 
-from ai.memory.operations import _memory_service_request, _mem0_operation_lock
+from ai.memory.engine import HybridMemoryEngine
+from ai.memory.operations import _mem0_operation_lock, _memory_service_request
 from ai.memory.runtime import ensure_mem0
+from sdk.adapters.memory import NAMESPACE_MEDIA_ASSET, VectorSliceEntry
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +48,11 @@ def _fingerprint(rows: Sequence[dict[str, str]]) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:24]
 
 
+def _slice_id(scope_id: str, fingerprint: str, asset_id: str) -> str:
+    scope_digest = hashlib.sha256(scope_id.encode("utf-8")).hexdigest()[:16]
+    return f"{scope_digest}:{fingerprint}:{asset_id}"
+
+
 def _pagination(method: Any, limit: int) -> dict[str, int]:
     parameters = inspect.signature(method).parameters
     return {"top_k": limit} if "top_k" in parameters else {"limit": limit}
@@ -71,12 +78,65 @@ def _filters(scope_id: str, fingerprint: str | None = None) -> dict[str, str]:
     return filters
 
 
+def _ensure_hybrid_index(
+    engine: HybridMemoryEngine,
+    scope_id: str,
+    rows: Sequence[dict[str, str]],
+) -> tuple[str, int]:
+    fingerprint = _fingerprint(rows)
+    existing_slices = engine.vector_store.list_slices(
+        namespace=NAMESPACE_MEDIA_ASSET,
+        scope_id=scope_id,
+        limit=max(len(rows) * 2, 500),
+    )
+    has_stale = any(
+        str(entry.metadata.get("catalog_fingerprint") or "") != fingerprint
+        for entry in existing_slices
+    )
+    if has_stale:
+        engine.vector_store.delete_scope(
+            namespace=NAMESPACE_MEDIA_ASSET,
+            scope_id=scope_id,
+        )
+        existing_ids: set[str] = set()
+    else:
+        existing_ids = {
+            str(entry.metadata.get("asset_id") or "").strip()
+            for entry in existing_slices
+        }
+
+    missing = [row for row in rows if row["asset_id"] not in existing_ids]
+    if not missing:
+        return fingerprint, 0
+
+    vectors = engine.embedder.embed_documents([row["tags"] for row in missing])
+    entries = [
+        VectorSliceEntry(
+            id=_slice_id(scope_id, fingerprint, row["asset_id"]),
+            namespace=NAMESPACE_MEDIA_ASSET,
+            scope_id=scope_id,
+            text=row["tags"],
+            metadata={
+                "asset_id": row["asset_id"],
+                "asset_path": row["path"],
+                "catalog_fingerprint": fingerprint,
+            },
+            embedding=vectors[idx],
+        )
+        for idx, row in enumerate(missing)
+    ]
+    added_count = engine.vector_store.upsert_slices(entries)
+    return fingerprint, added_count
+
+
 def _ensure_index(
     mem: Any, scope_id: str, rows: Sequence[dict[str, str]]
 ) -> tuple[str, int]:
+    if isinstance(mem, HybridMemoryEngine):
+        return _ensure_hybrid_index(mem, scope_id, rows)
+
     fingerprint = _fingerprint(rows)
     current_filters = _filters(scope_id, fingerprint)
-    # Read the whole catalog so large catalogs do not re-add existing assets.
     existing = _results(
         mem.get_all(filters=current_filters, **_pagination(mem.get_all, len(rows)))
     )
@@ -148,7 +208,6 @@ def _local_index_catalogs(catalogs: Sequence[Any]) -> dict[str, int]:
 
 def ensure_media_asset_indexes(catalogs: Sequence[Any]) -> dict[str, int]:
     """Ensure all tagged catalogs exist before semantic lookup begins."""
-
     payload = {"catalogs": [_catalog_payload(catalog) for catalog in catalogs]}
     service_result = _memory_service_request("asset-index", payload)
     if service_result is not None:
@@ -181,12 +240,35 @@ def _local_search(
         return []
     mem = ensure_mem0()
     scope_id = _scope_id(scope)
+    bounded_limit = max(1, min(int(limit), len(rows)))
+
+    if isinstance(mem, HybridMemoryEngine):
+        with _mem0_operation_lock:
+            fingerprint, _added_count = _ensure_hybrid_index(mem, scope_id, rows)
+            q_vec = mem.embedder.embed_query(query)
+            hits = mem.vector_store.search_slices(
+                namespace=NAMESPACE_MEDIA_ASSET,
+                scope_ids=(scope_id,),
+                query_vector=q_vec,
+                keyword_query=query,
+                metadata_filter={"catalog_fingerprint": fingerprint},
+                limit=bounded_limit,
+            )
+        return [
+            {
+                "asset_id": str(hit.entry.metadata.get("asset_id") or "").strip(),
+                "score": hit.score,
+            }
+            for hit in hits
+            if str(hit.entry.metadata.get("asset_id") or "").strip()
+        ]
+
     with _mem0_operation_lock:
         fingerprint, _added_count = _ensure_index(mem, scope_id, rows)
         raw = mem.search(
             query,
             filters=_filters(scope_id, fingerprint),
-            **_pagination(mem.search, max(1, min(int(limit), len(rows)))),
+            **_pagination(mem.search, bounded_limit),
         )
     matches = []
     for row in _results(raw):
@@ -204,8 +286,7 @@ def search_media_assets(
     candidates: Sequence[Any],
     limit: int = 3,
 ) -> list[dict[str, Any]]:
-    """Index current candidates and return Mem0 matches for ``vibe``."""
-
+    """Index current candidates and return semantic matches for ``vibe``."""
     rows = _candidate_rows(candidates)
     payload = {
         "scope": str(scope or ""),
@@ -222,7 +303,6 @@ def search_media_assets(
 
 def media_asset_search_response(payload: dict[str, Any]) -> dict[str, Any]:
     """Validate a bridge request and return a stable JSON response."""
-
     matches = _local_search(
         scope=str(payload.get("scope") or ""),
         vibe=str(payload.get("vibe") or ""),
@@ -234,6 +314,5 @@ def media_asset_search_response(payload: dict[str, Any]) -> dict[str, Any]:
 
 def media_asset_index_response(payload: dict[str, Any]) -> dict[str, int]:
     """Ensure bridge-owned indexes for a batch of catalogs."""
-
     catalogs = payload.get("catalogs")
     return _local_index_catalogs(catalogs if isinstance(catalogs, list) else [])

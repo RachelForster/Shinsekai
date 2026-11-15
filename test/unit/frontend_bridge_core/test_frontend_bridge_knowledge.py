@@ -14,7 +14,7 @@ from sdk.exception.types import runtime_dependency_error_from_module
 
 @pytest.fixture
 def missing_runtime(monkeypatch):
-    error = runtime_dependency_error_from_module("mem0")
+    error = runtime_dependency_error_from_module("onnxruntime")
     error["message"] = "Missing or incompatible runtime dependencies"
     monkeypatch.setattr(dependencies, "runtime_dependency_error_for_module", lambda _: error)
     return error
@@ -49,7 +49,7 @@ def test_check_mem0_before_call_reports_unavailable_module(monkeypatch, invalid_
         return None
     monkeypatch.setattr(importlib.util, "find_spec", find_spec)
     result = knowledge._check_mem0_before_call()
-    assert result["moduleName"] == "mem0"
+    assert result["moduleName"] == "onnxruntime"
     assert result["kind"] == "missing_dependency"
 
 
