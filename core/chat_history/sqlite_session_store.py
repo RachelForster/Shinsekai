@@ -50,6 +50,7 @@ SESSION_SCHEMA_VERSION = "1"
 _META_SCHEMA_VERSION = "schema_version"
 _META_MEMORY_MODE = "memory_mode"
 _META_MEMORY_MODE_EXPLICIT = "memory_mode_explicit"
+_META_MEMORY_MODE_START_SEQ = "memory_mode_start_seq"
 _META_AUTO_OUTFIT_SWITCH = "auto_outfit_switch"
 _META_LEGACY_MIGRATED = "legacy_migrated"
 _META_LEGACY_ERROR = "legacy_migration_error"
@@ -850,13 +851,29 @@ class SqliteSessionStore:
 
     def set_memory_mode(self, mode: MemoryMode) -> None:
         normalized = normalize_memory_mode(mode)
-        with self._write_lock, self._store._borrow_conn() as conn:
-            conn.executemany(
-                "INSERT INTO session_meta(key, value) VALUES (?, ?) "
-                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                ((_META_MEMORY_MODE, normalized), (_META_MEMORY_MODE_EXPLICIT, "1")),
-            )
-            conn.commit()
+        with self._write_lock:
+            changed = self.get_memory_mode() != normalized
+            with self._store._borrow_conn() as conn:
+                prefs = [(_META_MEMORY_MODE, normalized), (_META_MEMORY_MODE_EXPLICIT, "1")]
+                if changed:
+                    # Do not extract old dialogue again under a different scope.
+                    last_seq = int(conn.execute("SELECT COALESCE(MAX(seq), 0) FROM turns").fetchone()[0])
+                    previous = conn.execute(
+                        "SELECT value FROM session_meta WHERE key = ?", (_META_MEMORY_MODE_START_SEQ,),
+                    ).fetchone()
+                    boundary = max(last_seq, int(previous[0]) if previous is not None else 0)
+                    if boundary:
+                        prefs.append((_META_MEMORY_MODE_START_SEQ, str(boundary)))
+                conn.executemany(
+                    "INSERT INTO session_meta(key, value) VALUES (?, ?) "
+                    "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                    prefs,
+                )
+                conn.commit()
+
+    def get_memory_mode_start_seq(self) -> int | None:
+        stored = self._get_meta(_META_MEMORY_MODE_START_SEQ)
+        return int(stored) if stored else None
 
     def get_auto_outfit_switch(self) -> bool:
         raw = self._get_meta(_META_AUTO_OUTFIT_SWITCH)

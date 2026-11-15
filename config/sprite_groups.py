@@ -204,14 +204,6 @@ def filter_sprite_indices_for_group(
     if not fallback_ok:
         return ()
 
-    if target_group != DEFAULT_SPRITE_GROUP:
-        default_matched = tuple(
-            index for index, sprite in enumerate(sprites)
-            if sprite_group_of(sprite) == DEFAULT_SPRITE_GROUP
-        )
-        if default_matched:
-            return default_matched
-
     fallback_group = resolve_default_sprite_group(character, avatar_type=avatar_type)
     if fallback_group != target_group:
         fallback_matched = tuple(

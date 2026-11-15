@@ -111,12 +111,21 @@ def reset_memory_tool_context(token: Token[MemoryToolSessionContext] | None = No
     _active_tool_context.set(MemoryToolSessionContext())
 
 
+def update_memory_tool_context_mode(session_id: str, mode: str) -> None:
+    """Update the mode shared by the chat runtime's command and model threads."""
+    global _default_tool_context
+    with _default_tool_context_lock:
+        if _default_tool_context.session_id == session_id:
+            _default_tool_context = replace(_default_tool_context, memory_mode=mode)
+
+
 def current_memory_tool_context() -> MemoryToolSessionContext:
     ctx = _active_tool_context.get()
-    if ctx.session_id or ctx.memory_mode or ctx.player_character:
-        return ctx
     with _default_tool_context_lock:
-        return _default_tool_context
+        default = _default_tool_context
+    if ctx.session_id == default.session_id and ctx.player_character == default.player_character:
+        return default
+    return ctx if ctx.session_id or ctx.memory_mode or ctx.player_character else default
 
 
 def _memory_request_context(session_id: str | None) -> MemoryToolSessionContext:
@@ -816,6 +825,9 @@ def _update_repo_pin(repo: Any, memory_id: str, pinned: bool) -> bool:
     existing = repo.get(memory_id) if hasattr(repo, "get") else None
     if existing is None:
         return False
+    if pinned and existing.scope == SCOPE_CHAR_CROSS_SAVE:
+        repo.upsert(replace(existing, pinned=True, scope=SCOPE_CHAR_CANON))
+        return True
     if not pinned and (existing.scope == SCOPE_CHAR_CANON or existing.kind == "canon"):
         demoted_scope = (
             SCOPE_SELF_PUBLIC
@@ -835,6 +847,17 @@ def _update_repo_pin(repo: Any, memory_id: str, pinned: bool) -> bool:
         repo.upsert(demoted)
         return True
     return bool(repo.set_pinned(memory_id, bool(pinned)))
+
+
+def _memory_mutation_repositories(engine: HybridMemoryEngine, store: Any, sid: str):
+    if not sid:
+        return (engine.repo,)
+    save_repo = getattr(store, "save_memory_repo", None)
+    if save_repo is None:
+        raise ValueError("save-scoped memory store unavailable")
+    if store.get_memory_mode() == MEMORY_MODE_SHARED:
+        return (save_repo, engine.repo)
+    return (save_repo,)
 
 
 def memory_set_pinned(
@@ -858,13 +881,15 @@ def memory_set_pinned(
         updated = False
         with _mem0_operation_lock, borrow_session_store_by_id(sid) as sess_store:
             if isinstance(mem, HybridMemoryEngine):
-                updated = _update_repo_pin(mem.repo, mid, bool(pinned))
-                save_repo = getattr(sess_store, "save_memory_repo", None) if sess_store is not None else None
-                if save_repo is not None:
-                    updated = _update_repo_pin(save_repo, mid, bool(pinned)) or updated
-            elif hasattr(mem, "set_pinned"):
-                updated = bool(mem.set_pinned(mid, bool(pinned)))
-        return {"ok": True, "memory_id": mid, "pinned": bool(pinned), "updated": updated}
+                updated = any(
+                    _update_repo_pin(repo, mid, pinned)
+                    for repo in _memory_mutation_repositories(mem, sess_store, sid)
+                )
+            elif not sid and hasattr(mem, "set_pinned"):
+                updated = bool(mem.set_pinned(mid, pinned))
+        if not updated:
+            return {"error": "memory not found in a writable scope", "memory_id": mid}
+        return {"ok": True, "memory_id": mid, "pinned": bool(pinned), "updated": True}
     except Exception as exc:
         logger.exception("memory_set_pinned 失败")
         return {"error": str(exc)}
@@ -906,12 +931,14 @@ def memory_awaken(
         now_ts = time.time()
         with _mem0_operation_lock, borrow_session_store_by_id(sid) as sess_store:
             if isinstance(mem, HybridMemoryEngine):
-                awakened += int(mem.repo.record_recall((mid,), recalled_at=now_ts))
-                save_repo = getattr(sess_store, "save_memory_repo", None) if sess_store is not None else None
-                if save_repo is not None:
-                    awakened += int(save_repo.record_recall((mid,), recalled_at=now_ts))
-            elif hasattr(mem, "record_recall"):
-                awakened += int(mem.record_recall((mid,), recalled_at=now_ts))
+                for repo in _memory_mutation_repositories(mem, sess_store, sid):
+                    awakened = int(repo.record_recall((mid,), recalled_at=now_ts))
+                    if awakened:
+                        break
+            elif not sid and hasattr(mem, "record_recall"):
+                awakened = int(mem.record_recall((mid,), recalled_at=now_ts))
+        if not awakened:
+            return {"error": "memory not found in a writable scope", "memory_id": mid}
         return {"ok": True, "memory_id": mid, "awakened": awakened}
     except Exception as exc:
         logger.exception("memory_awaken 失败")

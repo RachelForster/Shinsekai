@@ -170,7 +170,6 @@ def _memory_remember(request: ApiRequest) -> JsonResponse:
             topic_tags=topics,
             entities=entities,
             importance=parsed_imp,
-            pinned=bool(request.body.get("pinned", False)),
             event_at=parsed_event,
             memory_mode=str(
                 request.body.get("memoryMode") or request.body.get("memory_mode") or ""

@@ -28,7 +28,6 @@ from application.chat.dialog_media import (
     TtsGenerationRequest,
     TtsGenerationStrategy,
 )
-from config.schema import DEFAULT_SPRITE_GROUP
 from config.sprite_groups import (
     allows_default_group_fallback,
     has_multiple_sprite_groups,
@@ -393,18 +392,19 @@ class CharacterMediaHandler(MessageHandler):
             candidates,
             lookup_result,
         )
+        default_group = resolve_default_sprite_group(character_config) if active_group is not None else None
         if (
             not sprite.found
-            and active_group is not None
+            and default_group is not None
+            and active_group != default_group
             and str(msg.vibe or "").strip()
             and allows_default_group_fallback(character_config)
-            and active_group != DEFAULT_SPRITE_GROUP
         ):
             candidates_for_group = getattr(
                 self.sprite_resolver, "candidates_for_group", None
             )
             default_candidates = (
-                candidates_for_group(character_config, DEFAULT_SPRITE_GROUP)
+                candidates_for_group(character_config, default_group)
                 if callable(candidates_for_group)
                 else ()
             )
@@ -412,7 +412,7 @@ class CharacterMediaHandler(MessageHandler):
                 fb_result = self.asset_lookup_strategy.lookup(
                     _lookup_request(
                         msg,
-                        scope=f"sprite:{name_s}:{DEFAULT_SPRITE_GROUP}",
+                        scope=f"sprite:{name_s}:{default_group}",
                         candidates=default_candidates,
                         previous_asset_id=self._last_sprite_by_character.get(
                             name_s, ""

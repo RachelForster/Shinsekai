@@ -15,6 +15,7 @@ from application.chat.capabilities.contracts import (
     StartupCapabilityContext,
     TurnContextProvider,
 )
+from application.chat.presentation.initial_sprite import find_character_sprite_by_path
 from config.character_assets import get_character_assets
 from config.sprite_groups import (
     allows_default_group_fallback,
@@ -26,8 +27,9 @@ from config.sprite_groups import (
     resolve_effective_sprite_group,
 )
 from core.chat_history.models import OutfitState
-from core.chat_history.storage import peek_open_session_store
+from core.chat_history.storage import open_session_store, peek_open_session_store
 from core.media.asset_tags import tag_contents
+from core.sprite.selection import sprite_entry_path
 
 if TYPE_CHECKING:
     from sdk.hooks import BeforeChatContext, MessageAddedContext
@@ -87,21 +89,6 @@ class OutfitRuntimeController:
         initial_outfits_raw: str = "",
         character_names: Sequence[str] = (),
     ) -> None:
-        open_store = peek_open_session_store(history_arg) if history_arg else None
-        stored_states = (
-            dict(open_store.list_outfit_states()) if open_store is not None else {}
-        )
-        if auto_outfit_switch_arg is False:
-            auto_switch = False
-            if open_store is not None:
-                open_store.set_auto_outfit_switch(False)
-        elif open_store is not None:
-            auto_switch = bool(open_store.get_auto_outfit_switch())
-        elif isinstance(auto_outfit_switch_arg, bool):
-            auto_switch = auto_outfit_switch_arg
-        else:
-            auto_switch = True
-
         parsed_initial: dict[str, Any] = {}
         raw_text = str(initial_outfits_raw or "").strip()
         if raw_text:
@@ -111,6 +98,21 @@ class OutfitRuntimeController:
                     parsed_initial = loaded
             except (TypeError, ValueError):
                 parsed_initial = {}
+
+        open_store = None
+        if history_arg:
+            open_store = (
+                open_session_store(history_arg)
+                if auto_outfit_switch_arg is not None or parsed_initial
+                else peek_open_session_store(history_arg)
+            )
+        stored_states = dict(open_store.list_outfit_states()) if open_store is not None else {}
+        if auto_outfit_switch_arg is not None:
+            auto_switch = auto_outfit_switch_arg
+            if open_store is not None:
+                open_store.set_auto_outfit_switch(auto_switch)
+        else:
+            auto_switch = open_store.get_auto_outfit_switch() if open_store is not None else True
 
         states: dict[str, OutfitState] = {}
         for cname, item in stored_states.items():
@@ -239,6 +241,23 @@ class OutfitRuntimeController:
             character, st.active_group if st is not None else None
         )
 
+    def resolve_initial_sprite_path(self, path: str) -> str:
+        if not path or self.config is None:
+            return path
+        match = find_character_sprite_by_path(self.config, path)
+        if match is None:
+            return path
+        name, index = match
+        character = _lookup_character(self.config, name)
+        if character is None or not has_multiple_sprite_groups(character):
+            return path
+        indices = filter_sprite_indices_for_group(character, self.active_group_for(character))
+        if not indices:
+            return ""
+        if index in indices:
+            return path
+        return sprite_entry_path(get_character_assets(character).sprites[indices[0]])
+
     def is_locked(self, character_name: str) -> bool:
         cname = str(character_name or "").strip()
         with self._lock:
@@ -333,15 +352,11 @@ class OutfitRuntimeController:
                 locked=next_locked,
                 updated_at_ms=int(time.time() * 1000),
             )
+            if self.history_arg:
+                open_session_store(self.history_arg).set_outfit_state(next_state)
             self._states[cname] = next_state
             self._pending_db_keys.discard(cname)
             group_changed = next_group != prev_group
-            history_arg = self.history_arg
-
-        if history_arg:
-            open_store = peek_open_session_store(history_arg)
-            if open_store is not None:
-                open_store.set_outfit_state(next_state)
 
         self.emit_state()
         if group_changed:
@@ -350,12 +365,9 @@ class OutfitRuntimeController:
 
     def set_auto_outfit_switch_enabled(self, enabled: bool) -> None:
         with self._lock:
-            self.auto_outfit_switch = bool(enabled)
-            history_arg = self.history_arg
-        if history_arg:
-            open_store = peek_open_session_store(history_arg)
-            if open_store is not None:
-                open_store.set_auto_outfit_switch(bool(enabled))
+            if self.history_arg:
+                open_session_store(self.history_arg).set_auto_outfit_switch(enabled)
+            self.auto_outfit_switch = enabled
         self.emit_state()
 
     def resync_from_session_store(self) -> None:
@@ -617,6 +629,9 @@ class OutfitSessionCapability(BaseSessionCapability):
             initial_outfits_raw=initial_outfits_raw,
             character_names=context.character_names,
         )
+        initial_path = str(getattr(context.args, "init_sprite_path", "") or "")
+        if initial_path:
+            context.args.init_sprite_path = self.controller.resolve_initial_sprite_path(initial_path)
         if history_arg and self.controller.has_any_multi_group_character():
             self._persistence_provider = OutfitPersistenceProvider(self.controller)
         else:

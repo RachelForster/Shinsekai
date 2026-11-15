@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 import time
 from types import SimpleNamespace
@@ -12,6 +13,9 @@ from ai.memory import operations
 from ai.memory.backends.in_memory import DeterministicHashEmbedder
 from ai.memory.backends.sqlite_repo import SqliteHybridMemoryRepo
 from ai.memory.engine import HybridMemoryEngine
+from ai.memory.hooks import MemoryAutoHooks
+from ai.memory.queue import MemoryWriteQueue
+from application.chat.capabilities.contracts import StartupCapabilityContext
 from application.chat.capabilities.memory import MemorySessionCapability
 from application.chat.conversation_library import (
     _id,
@@ -19,12 +23,22 @@ from application.chat.conversation_library import (
     remember_conversation,
     update_conversation_settings,
 )
+from application.chat.host.projection import _chat_session_preferences_patch
 from config.schema import SELF_PERSONA_NAME
 from core.chat_history.sqlite_session_store import (
     close_all_session_stores,
+    close_session_store_for_dir,
     open_session_store_for_dir,
 )
-from sdk.adapters.memory import SCOPE_CHAR_CANON, SCOPE_CHAR_CROSS_SAVE, SCOPE_SELF_PUBLIC
+from frontend_bridge_core import memory as bridge_memory
+from frontend_bridge_core.routes import memory_routes
+from sdk.adapters.memory import (
+    SCOPE_CHAR_CANON,
+    SCOPE_CHAR_CROSS_SAVE,
+    SCOPE_SELF_PUBLIC,
+    TurnRecallInput,
+)
+from sdk.hooks import BeforeCompactContext, PluginHookDispatcher
 
 
 @pytest.fixture()
@@ -119,6 +133,7 @@ def test_pin_unpin_demotes_canon_for_ebbinghaus_decay_and_awaken_restores_clarit
     )
     assert repinned_resp["memories"][0]["pinned"] is True
     assert repinned_resp["memories"][0]["clarity"] == "canon"
+    assert repinned_resp["memories"][0]["scope"] == SCOPE_CHAR_CANON
 
 
 def test_session_isolated_memories_merge_into_list_pin_and_awaken(
@@ -219,3 +234,132 @@ def test_conversation_settings_and_live_set_memory_mode_command(tmp_path):
     assert emitted == [{"type": "memory.mode", "memoryMode": "isolated"}]
     cap.on_shutdown()
     close_all_session_stores()
+
+
+def test_inherited_global_memory_can_be_read_without_being_reinforced_or_edited(
+    tmp_path, hybrid_engine,
+):
+    store = open_session_store_for_dir(tmp_path / "readonly")
+    store.set_memory_mode("inherit_readonly")
+    content = "Mika promised to return the silver compass on Friday"
+    mid = operations.memory_remember(content, character_name="Mika")["id"]
+    original = hybrid_engine.repo.get(mid)
+
+    recall = operations.memory_recall_turn(TurnRecallInput(
+        user_text=content,
+        active_character_names=("Mika",),
+        session_id=store.session_id,
+        memory_mode="inherit_readonly",
+    ))
+    assert mid in recall["recalled_ids"]
+    result = operations.memory_search(content, character_name="Mika", session_id=store.session_id)
+    assert mid in [row["id"] for row in result["memories"]]
+    assert "error" in operations.memory_set_pinned(mid, True, session_id=store.session_id)
+    assert "error" in operations.memory_awaken(mid, session_id=store.session_id)
+    updated = hybrid_engine.repo.get(mid)
+    assert updated.recall_count == original.recall_count
+    assert updated.last_recalled_at == original.last_recalled_at
+    assert not updated.pinned
+
+
+def test_chat_remember_does_not_create_pinned_canon(hybrid_engine, monkeypatch):
+    monkeypatch.setattr(bridge_memory, "_check_mem0_before_call", lambda: None)
+    result = memory_routes._memory_remember(SimpleNamespace(body={
+        "characterName": "Mika",
+        "content": "Mika saw a compass turn silver",
+        "kind": "canon",
+        "pinned": True,
+    })).data
+    item = hybrid_engine.repo.get(result["id"])
+    assert item.scope == SCOPE_CHAR_CROSS_SAVE
+    assert item.kind == "episodic"
+    assert not item.pinned
+
+
+def test_fresh_save_exposes_and_persists_memory_mode_before_first_turn(tmp_path):
+    directory = tmp_path / "fresh"
+    state = SimpleNamespace(chat_session={
+        "historyPath": str(directory),
+        "memoryMode": "isolated",
+        "autoOutfitSwitch": False,
+    })
+    before_startup = _chat_session_preferences_patch(state)
+    assert before_startup["memoryMode"] == "isolated"
+    assert before_startup["autoOutfitSwitch"] is False
+
+    cap = MemorySessionCapability()
+    try:
+        cap.on_llm_ready(StartupCapabilityContext(
+            args=SimpleNamespace(history=str(directory), memory_mode="isolated"),
+            config=None,
+            llm_adapter=None,
+            llm_manager=None,
+            plugin_manager=None,
+            hook_dispatcher=None,
+            character_names=("Mika",),
+        ))
+        close_session_store_for_dir(directory)
+        assert open_session_store_for_dir(directory).get_memory_mode() == "isolated"
+        assert not open_session_store_for_dir(directory).list_turns()
+    finally:
+        cap.on_shutdown()
+        close_session_store_for_dir(directory)
+
+
+def test_live_mode_switch_excludes_older_dialogue_after_restart(tmp_path, monkeypatch):
+    directory = tmp_path / "previous-mode"
+    store = open_session_store_for_dir(directory)
+    store.set_memory_mode("isolated")
+    private_turn = store.append_raw_message({"role": "user", "content": "Old isolated fact"})
+    extraction_windows = []
+
+    def install_hooks(_dispatcher, **kwargs):
+        hooks = MemoryAutoHooks(
+            **kwargs,
+            queue=MemoryWriteQueue(path=tmp_path / "pending.json"),
+        )
+        monkeypatch.setattr(
+            hooks, "_extract_drafts",
+            lambda messages, **_: extraction_windows.append(messages) or [],
+        )
+        return hooks
+
+    startup = StartupCapabilityContext(
+        args=SimpleNamespace(history=str(directory)),
+        config=None,
+        llm_adapter=None,
+        llm_manager=None,
+        plugin_manager=None,
+        hook_dispatcher=PluginHookDispatcher(),
+        character_names=("Mika",),
+        runtime_imports=SimpleNamespace(install_memory_hooks=install_hooks),
+    )
+    cap = MemorySessionCapability()
+    reopened_cap = MemorySessionCapability()
+    try:
+        cap.on_llm_ready(startup)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            pool.submit(cap.command_handlers()["set-memory-mode"], "shared").result()
+        assert operations.current_memory_tool_context().memory_mode == "shared"
+        assert store.get_memory_mode_start_seq() == private_turn.seq
+        cap.on_shutdown()
+        close_session_store_for_dir(directory)
+
+        reopened = open_session_store_for_dir(directory)
+        shared_turn = reopened.append_raw_message({"role": "user", "content": "New shared fact"})
+        reopened_cap.on_llm_ready(startup)
+        older = [
+            {**turn.raw_message, "_turn_seq": turn.seq}
+            for turn in (private_turn, shared_turn)
+        ]
+        reopened_cap._hooks.before_compact(BeforeCompactContext(
+            messages=older, older_messages=older, recent_messages=[],
+            up_to_seq=shared_turn.seq,
+        ))
+        assert [[m["turn_seq"] for m in window] for window in extraction_windows] == [[shared_turn.seq]]
+    finally:
+        if reopened_cap._tool_ctx_token is not None:
+            reopened_cap.on_shutdown()
+        if cap._tool_ctx_token is not None:
+            cap.on_shutdown()
+        close_session_store_for_dir(directory)

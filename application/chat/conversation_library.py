@@ -279,7 +279,8 @@ def _details(record: dict) -> dict:
             if isinstance(raw_launch_mode, str) and raw_launch_mode.strip()
             else (MEMORY_MODE_ISOLATED if story else str(prefs.get("memoryMode") or "shared"))
         )
-        auto_outfit_switch = bool(launch.get("autoOutfitSwitch", True))
+        launch_auto_outfit = launch.get("autoOutfitSwitch")
+        auto_outfit_switch = launch_auto_outfit if isinstance(launch_auto_outfit, bool) else True
     title = record.get("title") or launch.get("templateName") or ""
     if not title:
         title = " · ".join(characters[:3])

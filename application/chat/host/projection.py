@@ -8,7 +8,7 @@ import json
 from application.chat.presentation.user_display import sanitize_user_display_name
 from core.chat_history.models import normalize_memory_mode
 from core.chat_history.sqlite_session_store import read_session_preferences_readonly
-from core.chat_history.storage import chat_history_session_dir
+from core.chat_history.storage import chat_history_db_path, chat_history_session_dir
 from core.chat_history.text import DEFAULT_USER_DISPLAY_NAME
 from config.character_assets import get_character_assets
 from config.sprite_groups import (
@@ -177,6 +177,7 @@ def _chat_session_preferences_patch(state: Any) -> dict[str, Any]:
     chat_session = getattr(state, "chat_session", {}) or {}
     history_raw = str(chat_session.get("historyPath") or "").strip()
     prefs: dict[str, Any] = {}
+    has_saved_prefs = bool(history_raw and chat_history_db_path(history_raw).is_file())
     if history_raw:
         try:
             prefs = read_session_preferences_readonly(
@@ -185,16 +186,16 @@ def _chat_session_preferences_patch(state: Any) -> dict[str, Any]:
         except Exception:
             prefs = {}
 
-    session_mode = str(chat_session.get("memoryMode") or "").strip()
-    memory_mode = normalize_memory_mode(
-        str(prefs.get("memoryMode") or session_mode or "shared")
-    )
-    if "autoOutfitSwitch" in prefs and isinstance(prefs.get("autoOutfitSwitch"), bool):
-        auto_outfit_switch = bool(prefs["autoOutfitSwitch"])
-    elif isinstance(chat_session.get("autoOutfitSwitch"), bool):
-        auto_outfit_switch = bool(chat_session["autoOutfitSwitch"])
+    session_mode = chat_session.get("memoryMode")
+    saved_mode = prefs.get("memoryMode")
+    preferred_mode = saved_mode if has_saved_prefs else session_mode
+    memory_mode = normalize_memory_mode(str(preferred_mode or saved_mode or session_mode or "shared"))
+    session_auto = chat_session.get("autoOutfitSwitch")
+    if not has_saved_prefs and isinstance(session_auto, bool):
+        auto_outfit_switch = session_auto
     else:
-        auto_outfit_switch = True
+        saved_auto = prefs.get("autoOutfitSwitch", session_auto)
+        auto_outfit_switch = saved_auto if isinstance(saved_auto, bool) else True
 
     stored_outfits = prefs.get("outfits")
     stored_outfits = dict(stored_outfits) if isinstance(stored_outfits, dict) else {}

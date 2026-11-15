@@ -68,7 +68,7 @@ describe("story conversation settings", () => {
       storyPath: "original.json",
       historyPath: "save",
       hasSettings: true,
-      memoryMode: "shared",
+      memoryMode: "isolated",
       autoOutfitSwitch: false,
     });
     render(
@@ -83,10 +83,28 @@ describe("story conversation settings", () => {
     await waitFor(() =>
       expect(updateConversationSettings).toHaveBeenCalledWith("story-chat", { autoOutfitSwitch: false }),
     );
-    fireEvent.click(screen.getByRole("combobox", { name: "Long-term memory isolation" }));
+    const mode = screen.getByRole("combobox", { name: "Long-term memory isolation" });
+    await waitFor(() => expect(mode).toBeEnabled());
+    fireEvent.click(mode);
     fireEvent.click(screen.getByRole("option", { name: "Shared across saves" }));
     await waitFor(() =>
       expect(updateConversationSettings).toHaveBeenCalledWith("story-chat", { memoryMode: "shared" }),
     );
+  });
+  it("shows the saved setting again when an update fails", async () => {
+    listStories.mockResolvedValue([{ storyPath: "original.json", canEditGraph: false }]);
+    updateConversationSettings.mockRejectedValueOnce(new Error("Could not save settings"));
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <I18nProvider language="en">
+          <StoryConversationSettings conversationId="story-chat" />
+        </I18nProvider>
+      </QueryClientProvider>,
+    );
+    const mode = await screen.findByRole("combobox", { name: "Long-term memory isolation" });
+    fireEvent.click(mode);
+    fireEvent.click(screen.getByRole("option", { name: "Shared across saves" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not save settings");
+    expect(mode).toHaveTextContent("Isolated per save (Recommended)");
   });
 });

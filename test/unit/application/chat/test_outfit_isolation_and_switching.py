@@ -195,12 +195,12 @@ def test_pipeline_1_and_2_catalog_scopes_prompt_injection_and_semantic_fallback(
         {
             "character_name": "Kurisu",
             "speech": "让我想一想这个实验数据……",
-            "vibe": "思考",
+            "vibe": "脸红",
         }
     )
     handler.handle(msg_fb)
     emitted_2 = pres_q.get_nowait()
-    assert emitted_2.asset_id == "1"
+    assert emitted_2.asset_id == "3"
 
 
 def test_manual_lock_blocks_llm_switch_and_rollback_restores_previous_outfit(tmp_path):
@@ -431,3 +431,31 @@ def test_pipeline_4_transitions_and_recommendations_never_cross_outfit_groups(
             "existing": True,
         }
     ]
+
+
+def test_initial_outfit_persists_before_first_turn_and_replaces_mismatched_sprite(tmp_path):
+    directory = tmp_path / "fresh"
+    char = _multi_outfit_character(tmp_path)
+    cfg = _FakeConfigManager([char])
+    controller = OutfitRuntimeController()
+    try:
+        controller.initialize(
+            cfg,
+            history_arg=str(directory),
+            auto_outfit_switch_arg=False,
+            initial_outfits_raw=json.dumps({"Kurisu": "\u7761\u8863"}),
+            character_names=["Kurisu"],
+        )
+        assert controller.resolve_initial_sprite_path(str(char.sprites[0].path)) == str(char.sprites[3].path)
+
+        close_all_session_stores()
+        reopened = open_session_store_for_dir(directory)
+        assert reopened.get_outfit_state("Kurisu").active_group == "\u7761\u8863"
+        assert reopened.get_auto_outfit_switch() is False
+        assert not reopened.list_turns()
+
+        controller.initialize(cfg, history_arg=str(directory), auto_outfit_switch_arg=True)
+        assert reopened.get_auto_outfit_switch() is True
+        assert controller.build_state_payload()["autoOutfitSwitch"] is True
+    finally:
+        close_all_session_stores()

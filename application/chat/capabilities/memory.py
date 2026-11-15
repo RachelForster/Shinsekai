@@ -22,6 +22,7 @@ from core.chat_history.models import (
 from core.chat_history.sqlite_session_store import set_default_shared_memory_rollback
 from core.chat_history.storage import (
     legacy_active_history_branch,
+    open_session_store,
     peek_open_session_store,
     session_id_for_history_path,
 )
@@ -87,7 +88,6 @@ class MemorySessionCapability(BaseSessionCapability):
         self._tool_ctx_token: Any | None = None
         self._history_arg: str = ""
         self._session_id: str = ""
-        self._player_character: str = ""
         self._memory_mode: str = "shared"
         self._transport: Any | None = None
 
@@ -107,7 +107,8 @@ class MemorySessionCapability(BaseSessionCapability):
         open_store = peek_open_session_store(history_arg) if history_arg else None
         if raw_arg_mode:
             resolved_memory_mode = normalize_memory_mode(raw_arg_mode)
-            if open_store is not None:
+            if history_arg:
+                open_store = open_session_store(history_arg)
                 open_store.set_memory_mode(resolved_memory_mode)
         elif open_store is not None:
             resolved_memory_mode = open_store.get_memory_mode()
@@ -116,7 +117,6 @@ class MemorySessionCapability(BaseSessionCapability):
 
         self._history_arg = history_arg
         self._session_id = resolved_session_id
-        self._player_character = player_character
         self._memory_mode = resolved_memory_mode or "shared"
 
         self._tool_ctx_token = bind_memory_tool_context(
@@ -147,6 +147,9 @@ class MemorySessionCapability(BaseSessionCapability):
             candidate_kwargs["last_turn_at"] = lambda: _last_dialogue_turn_at(history_arg)
         if resolved_memory_mode:
             candidate_kwargs["memory_mode"] = resolved_memory_mode
+        read_mode_boundary = getattr(open_store, "get_memory_mode_start_seq", None)
+        if callable(read_mode_boundary) and (boundary := read_mode_boundary()) is not None:
+            candidate_kwargs["memory_mode_start_seq"] = boundary
         if player_character:
             candidate_kwargs["player_character"] = player_character
         extra_kwargs = {
@@ -190,10 +193,7 @@ class MemorySessionCapability(BaseSessionCapability):
         return {"set-memory-mode": self._handle_set_memory_mode}
 
     def _handle_set_memory_mode(self, payload: object) -> None:
-        from ai.memory.operations import (
-            bind_memory_tool_context,
-            reset_memory_tool_context,
-        )
+        from ai.memory.operations import update_memory_tool_context_mode
 
         raw = (
             payload.get("memoryMode")
@@ -206,22 +206,20 @@ class MemorySessionCapability(BaseSessionCapability):
                 "memoryMode must be 'isolated', 'shared', or 'inherit_readonly'"
             )
         mode = normalize_memory_mode(mode_text)
-        self._memory_mode = mode
+        last_seq = 0
         if self._history_arg:
-            open_store = peek_open_session_store(self._history_arg)
-            if open_store is not None:
-                open_store.set_memory_mode(mode)
-        if self._hooks is not None:
-            try:
-                self._hooks.memory_mode = mode
-            except Exception:
-                pass
-        reset_memory_tool_context(self._tool_ctx_token)
-        self._tool_ctx_token = bind_memory_tool_context(
-            session_id=self._session_id,
-            memory_mode=mode,
-            player_character=self._player_character,
-        )
+            store = open_session_store(self._history_arg)
+            store.set_memory_mode(mode)
+            read_mode_boundary = getattr(store, "get_memory_mode_start_seq", None)
+            if callable(read_mode_boundary):
+                last_seq = read_mode_boundary() or 0
+        self._memory_mode = mode
+        set_hook_mode = getattr(self._hooks, "set_memory_mode", None)
+        if callable(set_hook_mode):
+            set_hook_mode(mode, up_to_seq=last_seq)
+        elif self._hooks is not None:
+            self._hooks.memory_mode = mode
+        update_memory_tool_context_mode(self._session_id, mode)
         if self._transport is not None and hasattr(self._transport, "emit"):
             self._transport.emit({"type": "memory.mode", "memoryMode": mode})
 

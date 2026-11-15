@@ -221,6 +221,8 @@ class MemoryOrchestrator:
                         MemoryScopeFilter(
                             scopes=(SCOPE_CHAR_CANON,),
                             owner_ids=chars,
+                            event_from=event_from,
+                            event_to=event_to,
                         ),
                     )
                 )
@@ -592,7 +594,8 @@ class MemoryOrchestrator:
                 by_repo[rid] = (item.repo, [])
             by_repo[rid][1].append(item.record.id)
         for repo_obj, ids in by_repo.values():
-            repo_obj.record_recall(ids, recalled_at=now_ts)
+            if repo_obj is not self.global_repo or normalize_memory_mode(turn_input.memory_mode) == MEMORY_MODE_SHARED:
+                repo_obj.record_recall(ids, recalled_at=now_ts)
 
         multi_char = len(normalize_character_owners(turn_input.active_character_names)) > 1
         bullet_lines: list[str] = []
@@ -756,7 +759,8 @@ class MemoryOrchestrator:
                 }
             )
         for repo_obj, ids in by_repo.values():
-            repo_obj.record_recall(ids, recalled_at=eff_now)
+            if repo_obj is not self.global_repo or normalize_memory_mode(memory_mode) == MEMORY_MODE_SHARED:
+                repo_obj.record_recall(ids, recalled_at=eff_now)
         return out
 
     def ingest_drafts(

@@ -21,8 +21,6 @@ export function StoryConversationSettings({
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
-  const [localMemoryMode, setLocalMemoryMode] = useState<MemoryMode | null>(null);
-  const [localAutoOutfitSwitch, setLocalAutoOutfitSwitch] = useState<boolean | null>(null);
   const query = useQuery({
     queryKey: conversationsQueryKey,
     queryFn: listConversations,
@@ -37,19 +35,22 @@ export function StoryConversationSettings({
     staleTime: 0,
   });
   const settingsMutation = useMutation({
-    mutationFn: (patch: { autoOutfitSwitch?: boolean; memoryMode?: MemoryMode }) => {
-      if (!current) {
-        throw new Error(t("conversation.unavailable"));
-      }
-      return updateConversationSettings(current.id, patch);
-    },
-    onSuccess() {
-      void queryClient.invalidateQueries({ queryKey: conversationsQueryKey });
+    mutationFn: ({ id, patch }: { id: string; patch: { autoOutfitSwitch?: boolean; memoryMode?: MemoryMode } }) =>
+      updateConversationSettings(id, patch),
+    onSuccess(saved) {
+      queryClient.setQueryData<ConversationSummary[]>(conversationsQueryKey, (items) =>
+        items?.map((item) => (item.id === saved.id ? saved : item)),
+      );
+      queryClient.setQueryData<ConversationSummary | null>([...conversationsQueryKey, "current"], (item) =>
+        item?.id === saved.id ? saved : item,
+      );
     },
   });
 
-  const effectiveMemoryMode = localMemoryMode ?? current?.memoryMode ?? "isolated";
-  const effectiveAutoOutfitSwitch = localAutoOutfitSwitch ?? current?.autoOutfitSwitch ?? true;
+  const matchingRequest = settingsMutation.variables?.id === current?.id;
+  const latestSettings = matchingRequest && settingsMutation.isPending ? settingsMutation.variables?.patch : undefined;
+  const effectiveMemoryMode = latestSettings?.memoryMode ?? current?.memoryMode ?? "isolated";
+  const effectiveAutoOutfitSwitch = latestSettings?.autoOutfitSwitch ?? current?.autoOutfitSwitch ?? true;
   const canEdit = stories.data?.some((story) => story.storyPath === current?.storyPath && story.canEditGraph === true);
 
   return (
@@ -75,8 +76,7 @@ export function StoryConversationSettings({
                     disabled={settingsMutation.isPending}
                     onChange={(event) => {
                       const nextMode = event.target.value as MemoryMode;
-                      setLocalMemoryMode(nextMode);
-                      settingsMutation.mutate({ memoryMode: nextMode });
+                      settingsMutation.mutate({ id: current.id, patch: { memoryMode: nextMode } });
                     }}
                     value={effectiveMemoryMode}
                   >
@@ -98,13 +98,13 @@ export function StoryConversationSettings({
                     id="story-auto-outfit-switch"
                     onChange={(event) => {
                       const enabled = event.target.checked;
-                      setLocalAutoOutfitSwitch(enabled);
-                      settingsMutation.mutate({ autoOutfitSwitch: enabled });
+                      settingsMutation.mutate({ id: current.id, patch: { autoOutfitSwitch: enabled } });
                     }}
                   />
                 </span>
               </div>
             </div>
+            {matchingRequest && settingsMutation.isError && <p role="alert">{settingsMutation.error.message}</p>}
             {!conversation && (
               <StoryLaunchButton
                 storyPath={current.storyPath}
