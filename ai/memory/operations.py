@@ -10,6 +10,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,7 @@ from ai.memory.engine import (
 )
 from ai.memory.ports import resolve_registered_memory_repository
 from ai.memory.runtime import ensure_mem0, peek_mem0
+from core.chat_history.models import rollback_memory_for_timeline
 from core.vector_store.sqlite_hybrid_store import SqliteHybridStore
 from sdk.adapters.memory import MemoryCandidateQuery, MemoryRecord
 
@@ -441,6 +443,8 @@ def memory_forget_and_list(
 def memory_rollback_after_turn(
     session_id: str,
     turn_seq: int,
+    *,
+    protected_turn_seqs: Sequence[int] = (),
 ) -> dict[str, Any]:
     """Roll back unpinned memories created after turn_seq and restore superseded slots."""
     sid = str(session_id or "").strip()
@@ -448,9 +452,12 @@ def memory_rollback_after_turn(
     if not sid:
         return {"ok": True, "session_id": "", "turn_seq": cutoff, "rolled_back": 0}
 
+    payload: dict[str, Any] = {"sessionId": sid, "turnSeq": cutoff}
+    if protected_turn_seqs:
+        payload["protectedTurnSeqs"] = list(protected_turn_seqs)
     service_result = _memory_service_request(
         "rollback",
-        {"sessionId": sid, "turnSeq": cutoff},
+        payload,
         monitor_ready=False,
     )
     if service_result is not None:
@@ -460,7 +467,7 @@ def memory_rollback_after_turn(
         with _mem0_operation_lock:
             loaded = peek_mem0()
             if isinstance(loaded, HybridMemoryEngine):
-                removed = loaded.repo.rollback_after_turn(sid, cutoff)
+                removed = rollback_memory_for_timeline(loaded.repo.rollback_after_turn, sid, cutoff, protected_turn_seqs)
                 return {
                     "ok": True,
                     "session_id": sid,
@@ -468,7 +475,7 @@ def memory_rollback_after_turn(
                     "rolled_back": int(removed),
                 }
             if loaded is not None and hasattr(loaded, "rollback_after_turn"):
-                removed = loaded.rollback_after_turn(sid, cutoff)
+                removed = rollback_memory_for_timeline(loaded.rollback_after_turn, sid, cutoff, protected_turn_seqs)
                 return {
                     "ok": True,
                     "session_id": sid,
@@ -479,7 +486,7 @@ def memory_rollback_after_turn(
             registered_repo = resolve_registered_memory_repository()
             if registered_repo is not None:
                 try:
-                    removed = registered_repo.rollback_after_turn(sid, cutoff)
+                    removed = rollback_memory_for_timeline(registered_repo.rollback_after_turn, sid, cutoff, protected_turn_seqs)
                 finally:
                     close_fn = getattr(registered_repo, "close", None)
                     if callable(close_fn):
@@ -501,7 +508,7 @@ def memory_rollback_after_turn(
                 }
             transient_store = SqliteHybridStore(db_path, max_pool_size=1)
             try:
-                removed = transient_store.rollback_after_turn(sid, cutoff)
+                removed = transient_store.rollback_after_turn(sid, cutoff, protected_turn_seqs=protected_turn_seqs)
             finally:
                 transient_store.close()
             return {
@@ -515,9 +522,11 @@ def memory_rollback_after_turn(
         return {"error": str(exc)}
 
 
-def memory_rollback_count(session_id: str, turn_seq: int) -> int:
+def memory_rollback_count(
+    session_id: str, turn_seq: int, *, protected_turn_seqs: Sequence[int] = (),
+) -> int:
     """Convenience adapter returning integer rolled_back count for session truncation."""
-    res = memory_rollback_after_turn(session_id, turn_seq)
+    res = memory_rollback_after_turn(session_id, turn_seq, protected_turn_seqs=protected_turn_seqs)
     if not isinstance(res, dict) or res.get("error"):
         return 0
     try:

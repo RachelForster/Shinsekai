@@ -217,10 +217,6 @@ def test_runtime_option_defaults_and_empty_voice_language(state):
         "batchEnabled": False,
         "batchIdleSeconds": 5.0,
     }
-    assert chat.projection._chat_experimental_features(SimpleNamespace()) == {
-        "conversationTree": False,
-        "forkHistory": False,
-    }
     state.chat_stream.snapshot = None
     assert chat.projection._chat_user_display_name_from_snapshot(state) == "你"
 
@@ -344,27 +340,6 @@ def test_scene_turn_records_once_and_escapes_persisted_html(state):
 )
 def test_scene_history_deduplication(entries, text, dialogue, expected):
     assert chat.story._scene_turn_already_recorded(entries, text, dialogue) is expected
-
-
-def test_story_branch_alignment_and_command_translation(state, monkeypatch):
-    _with_branch(state)
-    story = SimpleNamespace(
-        branches={"main": {}, "branch-12": {}, "branch-invalid": {}},
-        checkpoint_generation_before_user_index=MagicMock(return_value=7),
-        fork=MagicMock(),
-        switch_branch=MagicMock(),
-        restore_generation=MagicMock(),
-    )
-    monkeypatch.setattr(chat._story_access, "session", lambda _: story)
-    body = {"payload": 2}
-    chat._story_branches.sync(state, "fork-history", body)
-    assert body["payload"] == {"userIndex": 2, "branchId": "branch-13"}
-    story.fork.assert_called_once_with("branch-13", generation=7)
-    chat._story_branches.sync(state, "switch-branch", {"payload": "main"})
-    chat._story_branches.sync(state, "switch-branch", {"payload": "absent"})
-    story.switch_branch.assert_called_once_with("main")
-    chat._story_branches.sync(state, "revert-history", {"payload": 1})
-    story.restore_generation.assert_called_once_with(7)
 
 
 def test_story_choice_labels_skip_bad_options_and_fall_back_to_id():

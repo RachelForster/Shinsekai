@@ -17,7 +17,7 @@ from application.chat.history.paths import resolve_history_path_for_project
 from application.chat.history.state import canonical_user_turn_payload
 from application.chat.history.replay_store import ReplayStore, replay_dialog_inputs, replay_history_messages
 from application.chat.voice_archive import VoiceArchive
-from core.chat_history.storage import chat_history_active_path
+from core.chat_history.storage import chat_history_active_path, chat_history_db_path, legacy_active_history_branch
 from core.chat_history.text import strip_local_time_prefix
 from core.messaging.dialog_tokens import is_option_history_name
 from application.chat.presentation.replay import PRESENTATION_KEYS
@@ -64,10 +64,7 @@ class ChatReplayService:
         stream = getattr(self.state, "chat_stream", None)
         snapshot = stream.get_snapshot(sid) if stream and sid else session
         snapshot = snapshot or session
-        tree = snapshot.get("conversationTree") or {}
-        branch = tree.get("activeBranchId", "main")
-        label = next((b.get("label", branch) for b in tree.get("branches", []) if b.get("id") == branch), "")
-        return path, sid, branch, label, snapshot
+        return path, sid, legacy_active_history_branch(path), "", snapshot
 
     @staticmethod
     def _require_idle(snapshot):
@@ -100,7 +97,7 @@ class ChatReplayService:
         plan = {"id": plan_id, "path": path, "sessionId": sid, "branchId": branch,
                 "branchLabel": label, "historyCount": len(source), "revision": revision(source), "entries": [], "private": {},
                 "store": store, "settings": settings, "cancelled": False, "range": None,
-                "storageExisted": chat_history_active_path(path).is_file(),
+                "storageExisted": chat_history_db_path(path).is_file() or chat_history_active_path(path).is_file(),
                 "touched": time.monotonic(), "generate": False}
         chain = digest([str(path), branch])
         frame = None
@@ -187,7 +184,9 @@ class ChatReplayService:
             if path != plan["path"] or sid != plan["sessionId"]:
                 plan["cancelled"] = True
                 raise ValueError("聊天会话已改变，请返回聊天")
-            if plan["storageExisted"] and not chat_history_active_path(path).is_file():
+            if plan["storageExisted"] and not (
+                chat_history_db_path(path).is_file() or chat_history_active_path(path).is_file()
+            ):
                 plan["cancelled"] = True
                 raise ValueError("聊天存档已移除，请返回聊天")
             plan["touched"] = time.monotonic()

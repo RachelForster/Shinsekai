@@ -166,26 +166,6 @@ export interface ChatReplayControl {
   playing?: boolean;
 }
 
-export interface ChatConversationBranch {
-  createdAt?: number;
-  forkedFromEntryId?: string;
-  forkedFromText?: string;
-  id: string;
-  label: string;
-  parentId?: string | null;
-  updatedAt?: number;
-}
-
-export interface ChatConversationTree {
-  activeBranchId: string;
-  branches: ChatConversationBranch[];
-}
-
-export interface ChatExperimentalFeatures {
-  conversationTree: boolean;
-  forkHistory: boolean;
-}
-
 export interface ChatTurnOptions {
   batchEnabled: boolean;
   batchIdleSeconds: number;
@@ -295,7 +275,6 @@ export interface ChatSnapshot {
   busyDurationSeconds?: number;
   busyText?: string;
   characterName?: string;
-  conversationTree?: ChatConversationTree;
   cgPath?: string;
   chatProcessRunning?: boolean;
   chatRuntimeClosing?: boolean;
@@ -312,7 +291,6 @@ export interface ChatSnapshot {
     seq: number;
     url: string;
   } | null;
-  experimentalFeatures?: ChatExperimentalFeatures;
   historyEntries?: ChatHistoryEntry[];
   historyPath?: string;
   inputDraft: string;
@@ -399,20 +377,17 @@ export interface ChatCommand {
     | "copy-history"
     | "dialog-advance"
     | "dismiss-plugin-page"
-    | "fork-history"
     | "flush-input-batch"
     | "open-history"
     | "pause-asr"
     | "begin-asr-hold"
     | "finish-asr-hold"
     | "cancel-asr-hold"
-    | "rename-branch"
     | "revert-history"
     | "resume-asr"
     | "reroll"
     | "send-message"
     | "skip-speech"
-    | "switch-branch"
     | "submit-option"
     | "update-turn-options";
 }
@@ -462,7 +437,6 @@ export type ChatStageEvent =
     })
   | (ChatEventBase & { type: "user.display_name.change"; name: string })
   | (ChatEventBase & { type: "history.replace"; entries: ChatHistoryEntry[]; voiceArchiveEnabled?: boolean })
-  | (ChatEventBase & { type: "conversation.tree"; tree: ChatConversationTree })
   | (ChatEventBase & { type: "chat.turn.state"; state: ChatTurnState; options?: ChatTurnOptions })
   | (ChatEventBase & PluginPagePresentation & { type: "plugin.page.present" })
   | (ChatEventBase & { type: "plugin.page.dismiss"; pluginId: string; presentationId: string })

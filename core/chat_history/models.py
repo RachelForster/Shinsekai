@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import copy
+import inspect
 import re
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 from core.chat_history.identity import CHAT_TURN_ID, DialogIdentities
@@ -35,6 +36,27 @@ _SUMMARY_WRAPPER_RE = re.compile(
     r"^【历史对话总结】以下是之前对话的压缩总结：\n?(.*?)(?:\n\n请基于这个上下文继续对话。)?\s*$",
     flags=re.DOTALL,
 )
+
+
+def rollback_memory_for_timeline(
+    rollback: Callable[..., int],
+    session_id: str,
+    cutoff: int,
+    protected_turn_seqs: Sequence[int] = (),
+) -> int:
+    if not protected_turn_seqs:
+        return int(rollback(session_id, cutoff) or 0)
+    try:
+        inspect.signature(rollback).bind(
+            session_id, cutoff, protected_turn_seqs=protected_turn_seqs
+        )
+    except (TypeError, ValueError):
+        # A legacy plugin that only supports a cutoff cannot safely clean
+        # up a save that contains other timelines.
+        return 0
+    return int(
+        rollback(session_id, cutoff, protected_turn_seqs=protected_turn_seqs) or 0
+    )
 
 
 def is_compact_summary_message(message: Any) -> bool:

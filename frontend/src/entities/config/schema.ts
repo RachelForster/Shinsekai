@@ -160,18 +160,6 @@ export const systemConfigFormSchema: Array<FormGroupSchema<SystemConfig>> = [
       },
       { label: "主题色", name: "theme_color", type: "color" },
       { label: "聊天主题", name: "chat_ui_theme_id", type: "text" },
-      {
-        description: "实验性功能，开启后 React Chat 历史记录里显示 Fork 按钮。",
-        label: "实验性：React Chat Fork",
-        name: "react_chat_fork_experimental_enabled",
-        type: "checkbox",
-      },
-      {
-        description: "实验性功能，开启后 React Chat 显示对话分支流程图入口。",
-        label: "实验性：React Chat 分支流程图",
-        name: "react_chat_flowchart_experimental_enabled",
-        type: "checkbox",
-      },
     ],
   },
   {

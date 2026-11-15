@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 import re
 from collections.abc import Callable, Mapping, MutableSequence
@@ -13,8 +12,10 @@ from core.chat_history.models import is_real_user_turn_message
 from core.chat_history.storage import (
     chat_history_active_path,
     chat_history_db_path,
+    legacy_active_history_branch,
     open_session_store,
     peek_open_session_store,
+    write_active_history_snapshot,
 )
 from core.chat_history.text import rendered_history_text as history_entry_plain_text
 from core.messaging.dialog_tokens import (
@@ -49,8 +50,10 @@ def getHistory() -> list[Any]:
     return get_history()
 
 
-def save_chat_history(file_path: str, history: Any) -> bool:
+def save_chat_history(file_path: str, history: Any, *, journaled: bool = False) -> bool:
     """根据提供的文件名保存聊天记录到 JSON 文件。"""
+    if journaled:
+        return _get_history_manager().save_chat_history(file_path, history, journaled=True)
     return _get_history_manager().save_chat_history(file_path, history)
 
 
@@ -235,8 +238,10 @@ def _resolve_session_store(
     branch_id: str = "main",
     session_store: ConversationSessionPort | None = None,
 ) -> tuple[ConversationSessionPort | None, str, str]:
-    resolved_branch = str(branch_id or "main").strip() or "main"
     clean_path = str(history_path or "").strip()
+    resolved_branch = str(branch_id or "main").strip() or "main"
+    if clean_path and resolved_branch == "main":
+        resolved_branch = legacy_active_history_branch(clean_path)
 
     if (
         session_store is not None
@@ -293,11 +298,7 @@ def _sync_truncated_mirror_files(
         full_fn = getattr(store, "build_full_raw_messages", None)
         if active_path.exists() and callable(full_fn):
             mirror = full_fn(include_system=include_system, branch_id=branch_id)
-            active_path.parent.mkdir(parents=True, exist_ok=True)
-            active_path.write_text(
-                json.dumps(mirror, ensure_ascii=False, indent=4),
-                encoding="utf-8",
-            )
+            write_active_history_snapshot(active_path, mirror)
     except OSError:
         pass
 
@@ -493,19 +494,6 @@ def revert_chat_history(
     if user_history_pos == -1:
         return None
 
-    if user_history_pos == 0:
-        del hist[:]
-    else:
-        target_index = -1
-        for idx in range(user_history_pos - 1, -1, -1):
-            if not is_user_history_entry(hist[idx]):
-                target_index = idx
-                break
-        if target_index < 0:
-            del hist[:]
-        else:
-            del hist[target_index + 1:]
-
     store, resolved_branch, resolved_path = _resolve_session_store(
         llm_manager,
         history_path=history_path,
@@ -538,6 +526,7 @@ def revert_chat_history(
             if not has_system and new_messages and new_messages[0].get("role") == "system":
                 new_messages = new_messages[1:]
             llm_manager.set_messages(new_messages)
+            del hist[user_history_pos:]
             _sync_truncated_mirror_files(
                 store,
                 history_path=resolved_path,
@@ -546,6 +535,7 @@ def revert_chat_history(
             )
             replay_latest_dialog_entry(window, hist)
             return report
+        return None
 
     if not messages:
         return None
@@ -558,9 +548,11 @@ def revert_chat_history(
             if current_user_idx >= user_index:
                 break
         new_messages.append(message)
+    else:
+        return None
 
     llm_manager.set_messages(new_messages)
-
+    del hist[user_history_pos:]
     replay_latest_dialog_entry(window, hist)
     return None
 

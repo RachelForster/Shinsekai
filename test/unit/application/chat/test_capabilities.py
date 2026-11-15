@@ -871,7 +871,6 @@ def test_perception_turn_provider_and_capability_commands(monkeypatch) -> None:
         llm_manager=SimpleNamespace(get_messages=lambda: []),
         runtime_asr=SimpleNamespace(),
         chat_turn_service=SimpleNamespace(),
-        branch_manager=SimpleNamespace(),
         chat_history=[],
         last_user_message={},
         presentation_queue=SimpleNamespace(),

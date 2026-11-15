@@ -162,10 +162,6 @@ function snapshot(overrides: Partial<ChatSnapshot> = {}): ChatSnapshot {
     backgroundPath: "asset://school.png",
     characterName: "Mio",
     dialogText: "Ready",
-    experimentalFeatures: {
-      conversationTree: true,
-      forkHistory: true,
-    },
     historyEntries: [
       { id: "history-0", role: "assistant", text: "Mio: Ready" },
       {
@@ -1603,7 +1599,7 @@ describe("ChatStagePage", () => {
     const lockButton = within(actionBar).getByRole("button", { name: "Lock chat actions" });
     expect(lockButton).toHaveTextContent("LOCK");
     expect(within(actionBar).getByRole("button", { name: "Open history" })).toHaveTextContent("HISTORY");
-    expect(within(actionBar).getByRole("button", { name: "Open conversation tree" })).toHaveTextContent("TREE");
+    expect(within(actionBar).queryByRole("button", { name: "Open conversation tree" })).not.toBeInTheDocument();
     expect(within(actionBar).getByRole("button", { name: "Retry reply" })).toHaveTextContent("RETRY");
     expect(within(actionBar).queryByRole("button", { name: "Skip" })).not.toBeInTheDocument();
     expect(within(actionBar).queryByRole("button", { name: "Copy history" })).not.toBeInTheDocument();
@@ -1626,90 +1622,6 @@ describe("ChatStagePage", () => {
     expect(topTools).toHaveFocus();
     expect(within(topControls).getByRole("button", { name: "Token usage" })).toBeInTheDocument();
     expect(within(topTools).queryByRole("button", { name: "Open history" })).not.toBeInTheDocument();
-  });
-
-  it("opens the conversation tree from the toolbar and switches branches", async () => {
-    const conversationTree = {
-      activeBranchId: "main",
-      branches: [
-        { id: "main", label: "Main", parentId: null },
-        { forkedFromText: "hello", id: "branch-2", label: "Branch 2", parentId: "main" },
-        { forkedFromText: "branch path", id: "branch-3", label: "Branch 3", parentId: "branch-2" },
-      ],
-    };
-    mocks.getChatSnapshot.mockResolvedValue(
-      snapshot({
-        conversationTree,
-      }),
-    );
-    mocks.sendChatCommand.mockImplementation(async (command: ChatCommand) =>
-      snapshot({ conversationTree, dialogText: command.type, inputDraft: "", options: [] }),
-    );
-
-    renderPage();
-    await screen.findByText("Ready");
-
-    fireEvent.click(screen.getByRole("button", { name: "Open conversation tree" }));
-    const dialog = await screen.findByRole("dialog", { name: "Conversation branches" });
-    expect(within(dialog).getByText("Branch 2")).toBeInTheDocument();
-    expect(within(dialog).getByText("Forked from: hello")).toBeInTheDocument();
-    expect(within(dialog).getByText("Branch 3")).toBeInTheDocument();
-
-    fireEvent.click(within(dialog).getByRole("button", { name: "Collapse Branch 2" }));
-    await waitFor(() => expect(within(dialog).queryByText("Branch 3")).not.toBeInTheDocument());
-
-    fireEvent.click(within(dialog).getByRole("button", { name: "Expand Branch 2" }));
-    await waitFor(() => expect(within(dialog).getByText("Branch 3")).toBeInTheDocument());
-
-    const branch2Node = within(dialog).getByText("Branch 2").closest("article") as HTMLElement;
-    fireEvent.click(within(branch2Node).getByRole("button", { name: "Rename Branch 2" }));
-    fireEvent.change(within(branch2Node).getByRole("textbox", { name: "Branch name" }), {
-      target: { value: "Side route" },
-    });
-    fireEvent.click(within(branch2Node).getByRole("button", { name: "Save branch name" }));
-
-    await waitFor(() =>
-      expect(mocks.sendChatCommand).toHaveBeenCalledWith({
-        payload: { branchId: "branch-2", label: "Side route" },
-        type: "rename-branch",
-      }),
-    );
-
-    const refreshedBranch2Node = within(dialog).getByText("Branch 2").closest("article") as HTMLElement;
-    fireEvent.click(within(refreshedBranch2Node).getByRole("button", { name: "Switch" }));
-
-    await waitFor(() =>
-      expect(mocks.sendChatCommand).toHaveBeenCalledWith({ payload: "branch-2", type: "switch-branch" }),
-    );
-  });
-
-  it("disables experimental conversation tree and hides fork controls unless enabled", async () => {
-    mocks.getChatSnapshot.mockResolvedValue(
-      snapshot({
-        experimentalFeatures: { conversationTree: false, forkHistory: false },
-      }),
-    );
-    mocks.getChatHistory.mockResolvedValueOnce([
-      {
-        createdAt: userHistoryCreatedAt,
-        id: "history-1",
-        revertUserIndex: 0,
-        role: "user",
-        text: "你: hello",
-      },
-    ] satisfies ChatHistoryEntry[]);
-
-    renderPage();
-    await screen.findByText("Ready");
-
-    expect(
-      screen.getByRole("button", { name: "Conversation tree is experimental and disabled in settings" }),
-    ).toBeDisabled();
-
-    fireEvent.click(screen.getByRole("button", { name: "Open history" }));
-    const dialog = await screen.findByRole("dialog", { name: "Conversation history" });
-    expect(within(dialog).queryByRole("button", { name: "Fork" })).not.toBeInTheDocument();
-    expect(within(dialog).getByRole("button", { name: "Revert to previous turn" })).toBeInTheDocument();
   });
 
   it("uses opt-in theme placement for the detached dialog toolbar with start options", async () => {
@@ -2712,14 +2624,9 @@ describe("ChatStagePage", () => {
     expect(within(dialog).queryByText("Mio: Ready")).not.toBeInTheDocument();
     expect(within(dialog).queryByText("你: hello")).not.toBeInTheDocument();
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "Fork" }));
-    await waitFor(() =>
-      expect(mocks.sendChatCommand).toHaveBeenCalledWith({ payload: { userIndex: 0 }, type: "fork-history" }),
-    );
-
-    fireEvent.click(await screen.findByRole("button", { name: "Open history" }));
-    const reopenedDialog = await screen.findByRole("dialog", { name: "Conversation history" });
-    fireEvent.click(within(reopenedDialog).getByRole("button", { name: "Revert to previous turn" }));
+    expect(screen.queryByRole("button", { name: "Open conversation tree" })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "Fork" })).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Revert to previous turn" }));
 
     const confirm = await screen.findByRole("dialog", { name: "Revert history" });
     fireEvent.click(within(confirm).getByRole("button", { name: "Revert" }));

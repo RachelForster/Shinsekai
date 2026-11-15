@@ -25,7 +25,6 @@ import { closeChatRuntime } from "../chat-startup/runtimeState";
 import { ChatSoundPlayer, type ChatSoundPlayerHandle } from "./audio/ChatSoundPlayer";
 import type { VoicePlaybackSignal } from "./audio/soundPlayer";
 import { ChatConfigDialog } from "./components/ChatConfigDialog";
-import { ConversationTreeDialog } from "./components/ConversationTreeDialog";
 import { DialogStageControls } from "./components/DialogStageControls";
 import { HistoryDialog } from "./components/HistoryDialog";
 import { HistoryExportDialog } from "./replay/HistoryExportDialog";
@@ -154,7 +153,6 @@ export function ChatStagePage() {
   const [state, dispatch] = useReducer(chatStageReducer, location.state, initialChatStageState);
   const [confirmClearHistory, setConfirmClearHistory] = useState(false);
   const [confirmRevertUserIndex, setConfirmRevertUserIndex] = useState<number | null>(null);
-  const [branchDialogOpen, setBranchDialogOpen] = useState(false);
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [activeReplay, setActiveReplay] = useState<ActiveReplay | null>(null);
   const observedReplayIdRef = useRef<string>();
@@ -291,7 +289,6 @@ export function ChatStagePage() {
     themePickerOpen ||
     toolbarConfigOpen ||
     screenSettingsOpen ||
-    branchDialogOpen ||
     historyDialogOpen ||
     historyExport != null ||
     confirmClearHistory ||
@@ -305,8 +302,6 @@ export function ChatStagePage() {
   const dialogToolbarDetached = dialogToolbarPlacement === "input" || dialogToolbarPlacement === "dialog-top";
   const dialogToolbarReveal = themeStyle["--chat-dialog-toolbar-reveal"] === "hover" ? "hover" : "always";
   const inputLayout = themeStyle["--chat-input-layout"] === "pill" ? "pill" : "default";
-  const forkHistoryEnabled = state.experimentalFeatures?.forkHistory === true;
-  const conversationTreeEnabled = state.experimentalFeatures?.conversationTree === true;
   const dialogTextDirection = effectiveDialogText.direction ?? "ltr";
   const typewriterCps = runtimeConfig.typewriterCps ?? theme?.resolved?.typewriter.cps ?? DEFAULT_TYPEWRITER_CPS;
   const { historyLoading, refreshHistory, sendCommand } = useChatStageCommands({
@@ -434,12 +429,6 @@ export function ChatStagePage() {
   }, [viewModel.tokenUsageText]);
 
   useEffect(() => {
-    if (!conversationTreeEnabled) {
-      setBranchDialogOpen(false);
-    }
-  }, [conversationTreeEnabled]);
-
-  useEffect(() => {
     writeChatStageRuntimeConfig(runtimeConfig);
   }, [runtimeConfig]);
 
@@ -493,7 +482,6 @@ export function ChatStagePage() {
     setTokenUsageOpen(false);
     setToolbarConfigOpen(false);
     setHistoryDialogOpen(false);
-    setBranchDialogOpen(false);
     setScreenSettingsOpen(false);
     setConversationEditorOpen(false);
     setRuntimeConfig((current) => (current.miniAvatarMode ? current : { ...current, miniAvatarMode: true }));
@@ -953,7 +941,6 @@ export function ChatStagePage() {
       onFlushBatch={() => void sendCommand({ type: "flush-input-batch" })}
       onLongPressTalkChange={updateRuntimeLongPressTalk}
       onLockedChange={setDialogControlsLocked}
-      onOpenBranches={() => setBranchDialogOpen(true)}
       onOpenHistory={openHistoryDialog}
       onOpenPluginPage={openPluginPage}
       onOpenScreenSettings={() => setScreenSettingsOpen(true)}
@@ -961,7 +948,6 @@ export function ChatStagePage() {
       onTurnOptionsChange={updateTurnOptions}
       screenShareStarting={screenShareStarting}
       screenSharing={screenSharing}
-      showBranches={conversationTreeEnabled}
       showAsrControl={!viewModel.layers.input}
       turnOptions={state.turnOptions}
       turnState={state.turnState}
@@ -1234,7 +1220,6 @@ export function ChatStagePage() {
             setActiveReplay(replay);
           }}
           entries={state.historyEntries ?? []}
-          forkEnabled={forkHistoryEnabled}
           loading={historyLoading}
           onClear={() => void sendCommand({ type: "clear-history" })}
           onClose={() => {
@@ -1242,10 +1227,6 @@ export function ChatStagePage() {
             setHistoryDialogOpen(false);
           }}
           onExportImage={(blob) => exportHistory(blob, "png")}
-          onFork={(userIndex) => {
-            setHistoryDialogOpen(false);
-            void sendCommand({ payload: { userIndex }, type: "fork-history" });
-          }}
           onRefresh={() => {
             void refreshHistory();
           }}
@@ -1267,19 +1248,6 @@ export function ChatStagePage() {
             proactiveEnabled={state.perception?.proactiveEnabled ?? true}
             scope={ocrScope}
             stream={screenShareStream}
-          />
-        ) : null}
-        {conversationTreeEnabled ? (
-          <ConversationTreeDialog
-            onClose={() => setBranchDialogOpen(false)}
-            onRenameBranch={(branchId, label) => {
-              void sendCommand({ payload: { branchId, label }, type: "rename-branch" });
-            }}
-            onSwitchBranch={(branchId) => {
-              void sendCommand({ payload: branchId, type: "switch-branch" });
-            }}
-            open={branchDialogOpen}
-            tree={state.conversationTree}
           />
         ) : null}
         <ChatConfigDialog

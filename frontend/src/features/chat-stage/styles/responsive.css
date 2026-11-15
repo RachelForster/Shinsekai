@@ -172,19 +172,6 @@
   .chat-history-dialog {
     width: calc(100vw - 24px);
   }
-
-  .chat-branch-dialog {
-    width: calc(100vw - 24px);
-  }
-
-  .chat-branch-tree__node {
-    grid-template-columns: 22px minmax(0, 1fr);
-  }
-
-  .chat-branch-tree__actions {
-    grid-column: 2;
-    justify-self: start;
-  }
 }
 
 @media (max-width: 520px) {

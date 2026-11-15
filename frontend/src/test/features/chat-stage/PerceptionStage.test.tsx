@@ -185,14 +185,12 @@ describe("Perception chat-stage state & components", () => {
             onFlushBatch={() => {}}
             onLockedChange={() => {}}
             onLongPressTalkChange={() => {}}
-            onOpenBranches={() => {}}
             onOpenHistory={() => {}}
             onOpenPluginPage={() => {}}
             onToggleScreenShare={onToggleScreenShare}
             onTurnOptionsChange={() => {}}
             screenSharing={false}
             showAsrControl={false}
-            showBranches={false}
             turnOptions={{ batchEnabled: false, batchIdleSeconds: 5, interruptEnabled: true }}
             turnState={{
               enabled: false,

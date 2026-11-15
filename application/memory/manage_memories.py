@@ -6,8 +6,9 @@ chunk sizing, adapter selection, progress, and cancellation composition.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any, Callable
 
 
 def check_mem0_status(*, start_loading: bool = True) -> dict[str, Any]:
@@ -79,10 +80,10 @@ def remember_memory(
     )
 
 
-def rollback_memories(session_id: str, *, turn_seq: int) -> dict[str, Any]:
+def rollback_memories(session_id: str, *, turn_seq: int, protected_turn_seqs: Sequence[int] = ()) -> dict[str, Any]:
     from ai.memory.operations import memory_rollback_after_turn
 
-    return memory_rollback_after_turn(session_id, turn_seq)
+    return memory_rollback_after_turn(session_id, turn_seq, protected_turn_seqs=protected_turn_seqs)
 
 
 def forget_memory(memory_id: str) -> dict[str, Any]:

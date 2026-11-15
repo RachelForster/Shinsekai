@@ -147,9 +147,8 @@ class ConversationHistory:
             content = self._prepare_tool_result_for_history(content)
         msg = {"role": role, "content": content}
         msg.update(kwargs)
-        self.messages.append(msg)
-
         appended_seq = self.journal.append(msg)
+        self.messages.append(msg)
         if not isinstance(appended_seq, int):
             appended_seq = getattr(self.journal, "last_turn_seq", None)
         if isinstance(appended_seq, int) and appended_seq > 0:
@@ -307,7 +306,11 @@ class ConversationHistory:
                     self.messages.insert(0, {"role": "system", "content": self.user_template})
             self.messages = self._apply_checkpoint_window_if_matching(self.messages)
             self._strip_orphaned_tool_calls()
-            self.messages = self._trim_loaded_history_if_needed(self.messages)
+            if self._journal_session_store() is None:
+                # Without durable turns, bound the restored prompt as before.
+                # A saved session needs the full unsummarized prefix for its
+                # next compaction, including after a context budget change.
+                self.messages = self._trim_loaded_history_if_needed(self.messages)
             self._rebind_seq_index_from_store()
             self._prune_seq_index()
             self.compact_manager.set_token_count(self.compact_manager.count_tokens(self.messages))

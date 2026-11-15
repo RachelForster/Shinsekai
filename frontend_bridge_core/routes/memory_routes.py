@@ -96,6 +96,9 @@ def _memory_remember(request: ApiRequest) -> JsonResponse:
 
 def _memory_rollback(request: ApiRequest) -> JsonResponse:
     raw_seq = request.body.get("turnSeq", request.body.get("turn_seq", 0))
+    protected = request.body.get("protectedTurnSeqs", [])
+    if not isinstance(protected, list) or any(type(seq) is not int or seq < 1 for seq in protected):
+        raise ValueError("protectedTurnSeqs must be a list of positive turn sequence numbers")
     return JsonResponse(
         _memory_tool_rollback(
             str(
@@ -104,6 +107,7 @@ def _memory_rollback(request: ApiRequest) -> JsonResponse:
                 or ""
             ),
             int(raw_seq or 0),
+            protected_turn_seqs=protected,
         )
     )
 

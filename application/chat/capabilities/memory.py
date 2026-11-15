@@ -13,6 +13,7 @@ from application.chat.capabilities.contracts import (
     StartupCapabilityContext,
     TurnContextProvider,
 )
+from core.chat_history.models import rollback_memory_for_timeline
 from core.chat_history.sqlite_session_store import set_default_shared_memory_rollback
 from core.chat_history.storage import session_id_for_history_path
 
@@ -100,12 +101,16 @@ class MemorySessionCapability(BaseSessionCapability):
         if hooks is not None:
             self._provider = MemoryTurnContextProvider(hooks)
 
-        def _cascade_rollback(sid: str, turn_seq: int) -> int:
+        def _cascade_rollback(
+            sid: str, turn_seq: int, *, protected_turn_seqs: Sequence[int] = (),
+        ) -> int:
             removed_pending = 0
             hook_rb = getattr(self._hooks, "rollback_after_turn", None)
             if callable(hook_rb):
-                removed_pending = int(hook_rb(sid, turn_seq) or 0)
-            return removed_pending + memory_rollback_count(sid, turn_seq)
+                removed_pending = rollback_memory_for_timeline(hook_rb, sid, turn_seq, protected_turn_seqs)
+            return removed_pending + rollback_memory_for_timeline(
+                memory_rollback_count, sid, turn_seq, protected_turn_seqs
+            )
 
         set_default_shared_memory_rollback(_cascade_rollback)
 

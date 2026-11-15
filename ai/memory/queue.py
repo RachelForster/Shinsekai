@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 import inspect
 import json
 import logging
@@ -163,12 +164,15 @@ class MemoryWriteQueue:
             self._save_locked()
             return {"ok": True, "queued": True, "id": item.id}
 
-    def rollback_after_turn(self, session_id: str, turn_seq: int) -> int:
+    def rollback_after_turn(
+        self, session_id: str, turn_seq: int, *, protected_turn_seqs: Sequence[int] = (),
+    ) -> int:
         """Drop queued items originating from session_id at turns > turn_seq."""
         sid = _clean_text(session_id)
         if not sid:
             return 0
         cutoff = max(0, int(turn_seq))
+        protected = frozenset(protected_turn_seqs)
         with self._lock:
             retained = [
                 item
@@ -177,6 +181,7 @@ class MemoryWriteQueue:
                     item.source_session_id == sid
                     and item.source_turn_seq is not None
                     and item.source_turn_seq > cutoff
+                    and item.source_turn_seq not in protected
                 )
             ]
             removed = len(self._items) - len(retained)

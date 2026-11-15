@@ -131,15 +131,6 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, re
         historyEntries: event.entries.map((entry) => ({ ...entry })),
         voiceArchiveEnabled: event.voiceArchiveEnabled ?? state.voiceArchiveEnabled,
       });
-    case "conversation.tree":
-      return withResolvedLayers({
-        ...state,
-        conversationTree: {
-          activeBranchId: event.tree.activeBranchId,
-          branches: event.tree.branches.map((branch) => ({ ...branch })),
-        },
-        eventSeq: Math.max(state.eventSeq, event.seq),
-      });
     case "chat.turn.state":
       return withResolvedLayers({
         ...state,
