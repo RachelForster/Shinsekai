@@ -1,5 +1,10 @@
-import type { InputHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
-import { useState } from "react";
+import {
+  forwardRef,
+  useState,
+  type InputHTMLAttributes,
+  type SelectHTMLAttributes,
+  type TextareaHTMLAttributes,
+} from "react";
 import { FolderOpen } from "lucide-react";
 
 import type { PathPickerMode } from "../platform/types";
@@ -10,9 +15,12 @@ import { IconButton } from "./IconButton";
 import { PathDisplay } from "./PathDisplay";
 import { PathPickerDialog } from "./PathPickerDialog";
 
-export function TextInput({ className = "", ...props }: InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={["input", className].filter(Boolean).join(" ")} {...props} />;
-}
+export const TextInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function TextInput(
+  { className = "", ...props },
+  ref,
+) {
+  return <input className={["input", className].filter(Boolean).join(" ")} ref={ref} {...props} />;
+});
 
 export function TextArea({ className = "", ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return <textarea className={["textarea", className].filter(Boolean).join(" ")} {...props} />;

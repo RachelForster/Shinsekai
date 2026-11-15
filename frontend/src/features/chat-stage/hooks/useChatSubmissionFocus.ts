@@ -79,11 +79,15 @@ export function useChatSubmissionFocus({
       return;
     }
     if (blocked || !windowActive.current || document.visibilityState === "hidden") return;
-    const buttons = [...stage.querySelectorAll<HTMLButtonElement>(".options-layer__button")];
+    const buttons = [
+      ...stage.querySelectorAll<HTMLButtonElement>(".options-layer__button, .mini-avatar__option-button"),
+    ];
     const firstEnabled = buttons.find((button) => !button.disabled);
     const initialOptions = !preferred.current && !initializedOptions.current && firstEnabled;
     if (!pending.current && !initialOptions) return;
-    const input = stage.querySelector<HTMLInputElement | HTMLTextAreaElement>(".input-layer__input:not(:disabled)");
+    const input = stage.querySelector<HTMLInputElement | HTMLTextAreaElement>(
+      ".input-layer__input:not(:disabled), .mini-avatar__input:not(:disabled)",
+    );
     const selected = goal?.kind === "options" ? buttons[goal.index] : undefined;
     const target =
       goal?.kind === "input"
@@ -107,7 +111,7 @@ export function useChatSubmissionFocus({
       active !== document.documentElement &&
       active !== stage &&
       active !== fallbackInput.current &&
-      !active.matches(".input-layer__send, .input-layer__quick-submit")
+      !active.matches(".input-layer__send, .input-layer__quick-submit, .mini-avatar__send-button")
     )
       return;
     target.focus({ preventScroll: true });

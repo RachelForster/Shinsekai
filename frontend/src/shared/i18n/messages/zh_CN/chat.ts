@@ -410,6 +410,17 @@ export const chatZhCNMessages = {
   "chat.toolbar.stopShareScreen": "停止屏幕共享",
   "chat.actionBar.shareScreen": "共享屏幕",
   "chat.actionBar.stopShareScreen": "停止共享",
+  "chat.mini.enter": "小图标模式",
+  "chat.mini.exit": "退出小图标模式",
+  "chat.mini.avatarHint": "拖动移动位置 · 单击推进对白 · 双击返回主窗",
+  "chat.mini.toggleInput": "展开输入框",
+  "chat.mini.collapseInput": "收起输入框",
+  "chat.mini.controlsLabel": "小图标模式控制",
+  "chat.mini.thinking": "正在思考…",
+  "chat.mini.nextHint": "点击下一句",
+  "chat.mini.skipHint": "点击跳过",
+  "chat.mini.dismissBubble": "收起气泡",
+  "chat.mini.micActive": "语音监听中",
 } satisfies Record<string, string>;
 
 export type ChatMessageKey = keyof typeof chatZhCNMessages;
