@@ -117,14 +117,16 @@ describe("CharacterSpritesSection", () => {
     });
 
     expect(screen.getByRole("button", { name: "Batch tags" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Portrait crop" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Avatar" })).toBeDisabled();
   });
 
-  it("opens the portrait crop dialog when Portrait crop is clicked", () => {
+  it("opens the portrait crop dialog when Avatar is clicked", () => {
     const onOpenPortraitCrop = vi.fn();
     renderSection({ onOpenPortraitCrop });
 
-    fireEvent.click(screen.getByRole("button", { name: "Portrait crop" }));
+    const button = screen.getByRole("button", { name: "Avatar" });
+    expect(button).toHaveAttribute("title", "Adjust portrait crop");
+    fireEvent.click(button);
     expect(onOpenPortraitCrop).toHaveBeenCalledOnce();
   });
 

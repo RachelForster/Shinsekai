@@ -19,7 +19,7 @@ export const characterJaMessages: Record<CharacterMessageKey, string> = {
   "player.y": "縦位置",
   "player.zoom": "拡大率",
   "player.individual": "この立ち絵だけに適用（オフなら人物の既定値として保存）",
-  "character.sprite.portraitCrop": "アイコン範囲",
+  "character.sprite.portraitCrop": "アイコン",
   "character.sprite.portraitCropTitle": "アイコン範囲を調整",
   "character.sprite.portraitCropHint": "ドラッグやホイールで顔の位置を合わせるか、スライダーで微調整します。",
   "character.sprite.portraitCropSaved": "アイコン範囲を保存しました",

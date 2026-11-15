@@ -20,7 +20,7 @@ export const characterEnMessages: Record<CharacterMessageKey, string> = {
   "player.y": "Vertical position",
   "player.zoom": "Zoom",
   "player.individual": "Apply only to this sprite (otherwise save as character default)",
-  "character.sprite.portraitCrop": "Portrait crop",
+  "character.sprite.portraitCrop": "Avatar",
   "character.sprite.portraitCropTitle": "Adjust portrait crop",
   "character.sprite.portraitCropHint": "Drag or scroll to frame the head, or fine-tune with the sliders.",
   "character.sprite.portraitCropSaved": "Portrait crop saved",

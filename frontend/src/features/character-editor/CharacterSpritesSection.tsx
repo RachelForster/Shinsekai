@@ -165,6 +165,7 @@ export function CharacterSpritesSection({
               disabled={!draft.sprites.length}
               icon={<Crop aria-hidden className="button__icon" />}
               onClick={onOpenPortraitCrop}
+              tooltip={t("character.sprite.portraitCropTitle")}
               variant="ghost"
             >
               {t("character.sprite.portraitCrop")}

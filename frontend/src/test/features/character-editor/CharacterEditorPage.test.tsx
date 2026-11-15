@@ -878,8 +878,8 @@ describe("CharacterEditorPage", () => {
       target: { value: "Unsaved personality text" },
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Portrait crop" }));
-    const dialog = await screen.findByRole("dialog", { name: /Portrait crop/i });
+    fireEvent.click(screen.getByRole("button", { name: "Avatar" }));
+    const dialog = await screen.findByRole("dialog", { name: /Adjust portrait crop/i });
     const sliders = within(dialog).getAllByRole("slider");
     expect(sliders).toHaveLength(3);
     fireEvent.change(sliders[0], { target: { value: "0.35" } });

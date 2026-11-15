@@ -15,7 +15,7 @@ export const characterZhCNMessages = {
   "player.y": "垂直位置",
   "player.zoom": "缩放",
   "player.individual": "只应用于当前立绘（关闭则保存为角色默认）",
-  "character.sprite.portraitCrop": "头像范围",
+  "character.sprite.portraitCrop": "头像",
   "character.sprite.portraitCropTitle": "调整头像范围",
   "character.sprite.portraitCropHint": "拖动图片或滚动滚轮对准头部，也可以使用下方滑杆微调。",
   "character.sprite.portraitCropSaved": "头像范围已保存",
