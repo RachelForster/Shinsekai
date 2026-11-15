@@ -17,6 +17,7 @@ from application.chat.host.launch_history import (
     persist_confirmed_history_path,
     plan_chat_history_launch,
     resolve_chat_history_path,
+    resume_template_outfit_preferences,
 )
 from application.chat.host.mobile_access import configure_mobile_access
 from application.chat.host.projection import (
@@ -573,12 +574,7 @@ def _resume_last_chat_locked(
         ),
         "workflowPath": str(session.get("workflowPath") or ""),
         "memoryMode": str(session.get("memoryMode") or "").strip(),
-        "autoOutfitSwitch": (
-            bool(session["autoOutfitSwitch"])
-            if isinstance(session.get("autoOutfitSwitch"), bool)
-            else None
-        ),
-        "initialOutfits": {},
+        **resume_template_outfit_preferences(session, history_path),
     }
     release_unbound_story_session(state, session_base["historyPath"])
     if _chat_process_running():

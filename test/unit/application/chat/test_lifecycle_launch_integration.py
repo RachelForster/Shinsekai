@@ -1,12 +1,17 @@
 """Exercise actual bridge launch/resume through the supervisor, using fake Popen."""
 
 from dataclasses import replace
+import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from application.chat import composition as chat
+from application.chat.runtime.launch_args import CHAT_LAUNCH_CONFIG_ENV
 from application.chat.stop_chat import stop_chat
+from application.chat.templates import _save_template_session_payload
+from core.chat_history.storage import close_session_store, open_session_store
 from frontend_bridge_core import chat_session
 from sdk.chat_lifecycle import (
     ChatProcessContext,
@@ -43,6 +48,49 @@ class OwnedStream(RecordingStream):
     def delete_session(self, session_id):
         self.deleted.append(session_id)
         self.snapshot = None
+
+
+@pytest.mark.parametrize("has_saved_preferences", [False, True])
+def test_resume_last_passes_template_outfits_and_preserves_saved_preferences(
+    tmp_path, monkeypatch, has_saved_preferences,
+):
+    state = make_state(tmp_path, monkeypatch)
+    state.chat_session = {}
+    state.chat_stream = OwnedStream()
+    state.config_manager.config.effect_list = []
+    state.config_manager.config.background_list = []
+    history_path = Path(state.history_dir) / "legacy"
+    initial_outfits = {"Alice": {"activeGroup": "uniform", "locked": True}}
+    _save_template_session_payload(state, {
+        "historyPath": history_path.as_posix(),
+        "scenario": "scene",
+        "system": "system",
+        "autoOutfitSwitch": True,
+        "initialOutfits": initial_outfits,
+    })
+    if has_saved_preferences:
+        open_session_store(history_path).set_auto_outfit_switch(False)
+        close_session_store(history_path)
+
+    launch_config = {}
+
+    def popen(*_args, env, **_kwargs):
+        launch_config.update(json.loads(env[CHAT_LAUNCH_CONFIG_ENV]))
+        return FakeChild(["timeout", 0])
+
+    monkeypatch.setattr(chat.subprocess, "Popen", popen)
+    try:
+        result = chat_session.resume_last_chat(state)
+        assert result["sessionId"] == "actual-session"
+        assert json.loads(launch_config["initial_outfits"]) == initial_outfits
+        if has_saved_preferences:
+            assert "auto_outfit_switch" not in launch_config
+            assert result["autoOutfitSwitch"] is False
+        else:
+            assert launch_config["auto_outfit_switch"] is True
+    finally:
+        chat.shutdown_active_chat_process(wait_before_signal=0.5)
+        state.chat_session_lifecycle.dispose()
 
 
 @pytest.mark.parametrize(

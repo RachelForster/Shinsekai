@@ -322,6 +322,7 @@ class CharacterMediaHandler(MessageHandler):
     def handle(self, msg: LLMDialogMessage) -> None:
         rt = get_app_runtime()
         raw_name = str(msg.name or "")
+        replaying = bool(getattr(msg, "_presentation_replay", False))
         _refresh_config(rt)
         name_s = (
             raw_name
@@ -334,9 +335,7 @@ class CharacterMediaHandler(MessageHandler):
 
         if has_multiple_sprite_groups(character_config):
             outfit_controller = getattr(rt, "outfit_controller", None)
-            if outfit_controller is not None and not bool(
-                getattr(msg, "_presentation_replay", False)
-            ):
+            if outfit_controller is not None and not replaying:
                 outfit_switched, active_group = (
                     outfit_controller.apply_streamed_outfit_switch(
                         character_config,
@@ -395,6 +394,7 @@ class CharacterMediaHandler(MessageHandler):
         default_group = resolve_default_sprite_group(character_config) if active_group is not None else None
         if (
             not sprite.found
+            and not replaying
             and default_group is not None
             and active_group != default_group
             and str(msg.vibe or "").strip()
@@ -424,7 +424,11 @@ class CharacterMediaHandler(MessageHandler):
                     default_candidates,
                     fb_result,
                 )
-        if not sprite.found and outfit_switched and candidates:
+        # The saved group can differ from the group that supplied the old sprite ID.
+        if (
+            not sprite.found and candidates
+            and (outfit_switched or (replaying and active_group is not None))
+        ):
             sprite = self.sprite_resolver.resolve(
                 character_config,
                 candidates,
@@ -434,7 +438,7 @@ class CharacterMediaHandler(MessageHandler):
             )
         if sprite.found:
             self._last_sprite_by_character[name_s] = sprite.asset_id
-        if bool(getattr(msg, "_presentation_replay", False)):
+        if replaying:
             rt.presentation_queue.put(
                 PresentationMessage(
                     audio_path="",

@@ -27,7 +27,11 @@ from config.sprite_groups import (
     resolve_effective_sprite_group,
 )
 from core.chat_history.models import OutfitState
-from core.chat_history.storage import open_session_store, peek_open_session_store
+from core.chat_history.storage import (
+    chat_history_db_path,
+    open_session_store,
+    peek_open_session_store,
+)
 from core.media.asset_tags import tag_contents
 from core.sprite.selection import sprite_entry_path
 
@@ -103,7 +107,9 @@ class OutfitRuntimeController:
         if history_arg:
             open_store = (
                 open_session_store(history_arg)
-                if auto_outfit_switch_arg is not None or parsed_initial
+                if auto_outfit_switch_arg is not None
+                or parsed_initial
+                or chat_history_db_path(history_arg).is_file()
                 else peek_open_session_store(history_arg)
             )
         stored_states = dict(open_store.list_outfit_states()) if open_store is not None else {}

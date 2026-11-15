@@ -67,3 +67,29 @@ def test_enqueue_media_replay_marks_source_dialogs_without_rewriting_them() -> N
     assert replay.text == "original"
     assert replay.vibe == "angry"
     assert replay._presentation_replay is True
+
+
+def test_dialogue_without_a_sprite_change_keeps_the_previous_stage_sprite() -> None:
+    messages = [
+        _assistant('{"character_name":"Alice","speech":"hello","sprite":"5"}'),
+        _assistant(
+            '{"character_name":"Bob","speech":"I can hear you","sprite":"-1"}',
+            '{"character_name":"Alice","speech":"still here"}',
+        ),
+    ]
+
+    dialogs = latest_media_dialogs(messages, opencc=_OpenCC())
+
+    assert [(dialog.name, dialog.asset_id) for dialog in dialogs] == [("Alice", "5")]
+
+
+def test_player_portrait_alone_does_not_restore_a_stage_sprite() -> None:
+    output = Queue()
+    messages = [_assistant('{"character_name":"Player","speech":"hello","sprite":"2"}')]
+
+    has_character = enqueue_latest_media_replay(
+        messages, dialog_queue=output, opencc=_OpenCC(), player_name="Player",
+    )
+
+    assert has_character is False
+    assert output.get_nowait().name == "Player"

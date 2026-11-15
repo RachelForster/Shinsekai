@@ -20,6 +20,7 @@ from application.chat.capabilities.outfit import (
     OutfitRuntimeController,
 )
 from application.chat.dialog_media.catalogs import build_session_asset_catalogs
+from application.chat.dialog_media.replay import enqueue_latest_media_replay
 from application.chat.dialog_media.lookup import (
     AssetIdMatch,
     AssetLookupRequest,
@@ -35,6 +36,7 @@ from core.chat_history.sqlite_session_store import (
     close_all_session_stores,
     open_session_store_for_dir,
 )
+from core.chat_history.storage import close_session_store
 from core.perception.models import PerceptionConfig, ReflexDecision
 from core.sprite.transitions import TRANSITION_FRAME_COUNT, valid_transitions
 from sdk.hooks import BeforeChatContext, MessageAddedContext
@@ -459,3 +461,48 @@ def test_initial_outfit_persists_before_first_turn_and_replaces_mismatched_sprit
         assert controller.build_state_payload()["autoOutfitSwitch"] is True
     finally:
         close_all_session_stores()
+
+
+@pytest.mark.parametrize(("saved_sprite", "expected_sprite"), [("2", "4"), ("5", "5")])
+def test_resume_restores_the_saved_group_and_replays_a_sprite_from_it(
+    tmp_path, monkeypatch, saved_sprite, expected_sprite,
+):
+    directory = tmp_path / "saved-chat"
+    char = _multi_outfit_character(tmp_path)
+    cfg = _FakeConfigManager([char])
+    store = open_session_store_for_dir(directory)
+    store.set_outfit_state(OutfitState("Kurisu", "睡衣", locked=True))
+    store.set_auto_outfit_switch(False)
+    close_session_store(directory)
+
+    try:
+        controller = OutfitRuntimeController()
+        controller.initialize(cfg, history_arg=str(directory), character_names=[char.name])
+        assert controller.active_group_for(char) == "睡衣"
+        assert controller.is_locked(char.name)
+        assert controller.auto_outfit_switch is False
+
+        presentation_queue = queue.Queue()
+        opencc = SimpleNamespace(convert=lambda value: value)
+        runtime = SimpleNamespace(
+            config=cfg, outfit_controller=controller, opencc=opencc,
+            presentation_queue=presentation_queue,
+        )
+        monkeypatch.setattr(
+            "application.chat.presentation.handlers.dialog_media.get_app_runtime", lambda: runtime,
+        )
+        dialog_queue = queue.Queue()
+        assert enqueue_latest_media_replay(
+            [{"role": "assistant", "content": {"dialog": [
+                {"character_name": char.name, "sprite": saved_sprite, "outfit": "校服"},
+                {"character_name": char.name, "speech": "still here", "sprite": "-1"},
+            ]}}],
+            dialog_queue=dialog_queue, opencc=opencc,
+        )
+        CharacterMediaHandler().handle(dialog_queue.get_nowait())
+
+        assert presentation_queue.get_nowait().asset_id == expected_sprite
+        assert store is not open_session_store_for_dir(directory)
+        assert controller.active_group_for(char) == "睡衣"
+    finally:
+        close_session_store(directory)
