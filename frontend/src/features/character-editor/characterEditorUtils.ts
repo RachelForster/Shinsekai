@@ -106,11 +106,7 @@ export function resolveCharacterSpriteGroups(
   return ordered;
 }
 
-export function upsertCatalogCharacter(
-  current: Character[],
-  character: Character,
-  originalName?: string,
-): Character[] {
+export function upsertCatalogCharacter(current: Character[], character: Character, originalName?: string): Character[] {
   const targetNames = new Set([originalName, character.name].filter(Boolean));
   const next: Character[] = [];
   let replaced = false;

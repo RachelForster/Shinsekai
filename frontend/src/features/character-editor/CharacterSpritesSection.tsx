@@ -207,8 +207,7 @@ export function CharacterSpritesSection({
       return {
         ...item,
         globalIndex,
-        secondaryBadge:
-          activeSpriteGroup === "__all__" && spriteGroups.length > 1 ? spriteGroup : item.secondaryBadge,
+        secondaryBadge: activeSpriteGroup === "__all__" && spriteGroups.length > 1 ? spriteGroup : item.secondaryBadge,
         spriteGroup,
       };
     });
@@ -224,9 +223,7 @@ export function CharacterSpritesSection({
     if (group !== "__all__") {
       const currentGroup = normalizeSpriteGroupName(draft.sprites[selectedSpriteIndex]?.group);
       if (currentGroup !== group) {
-        const firstInGroup = draft.sprites.findIndex(
-          (sprite) => normalizeSpriteGroupName(sprite.group) === group,
-        );
+        const firstInGroup = draft.sprites.findIndex((sprite) => normalizeSpriteGroupName(sprite.group) === group);
         if (firstInGroup >= 0) {
           onSelectSprite(firstInGroup);
         }
@@ -253,9 +250,7 @@ export function CharacterSpritesSection({
       setRenamingGroup(null);
       return;
     }
-    const nextGroups = Array.from(
-      new Set(spriteGroups.map((group) => (group === target ? trimmed : group))),
-    );
+    const nextGroups = Array.from(new Set(spriteGroups.map((group) => (group === target ? trimmed : group))));
     const assignments: Record<string, string> = {};
     draft.sprites.forEach((sprite, index) => {
       if (normalizeSpriteGroupName(sprite.group) === target) {
@@ -510,11 +505,7 @@ export function CharacterSpritesSection({
                   placeholder={t("spriteGroup.newGroupPlaceholder")}
                   value={newGroupInput}
                 />
-                <AsyncButton
-                  disabled={!newGroupInput.trim()}
-                  loading={spriteGroupsPending}
-                  onClick={handleCreateGroup}
-                >
+                <AsyncButton disabled={!newGroupInput.trim()} loading={spriteGroupsPending} onClick={handleCreateGroup}>
                   {t("spriteGroup.create")}
                 </AsyncButton>
               </div>

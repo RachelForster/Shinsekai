@@ -710,7 +710,9 @@
   font-weight: 600;
   line-height: 1.3;
   cursor: pointer;
-  transition: background 140ms ease, border-color 140ms ease;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease;
 }
 
 .dialog-stage-controls__pill:hover {

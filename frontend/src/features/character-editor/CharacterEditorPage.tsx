@@ -1200,9 +1200,7 @@ export function CharacterEditorPage() {
               sprite_groups: character.sprite_groups ?? current.sprite_groups,
               sprites: character.sprites.map((sprite) => {
                 const draft = currentSpritesByPath.get(sprite.path);
-                return draft
-                  ? { ...draft, group: sprite.group ?? draft.group, mouth_sync: sprite.mouth_sync }
-                  : sprite;
+                return draft ? { ...draft, group: sprite.group ?? draft.group, mouth_sync: sprite.mouth_sync } : sprite;
               }),
               sprite_transitions: character.sprite_transitions,
               emotion_tags: numberedTags(
@@ -1376,9 +1374,7 @@ export function CharacterEditorPage() {
           activeSearchQuery={memoryController.activeSearchQuery}
           onAddAsCanonChange={memoryController.setAddAsCanon}
           onAddMemory={() => void memoryController.add()}
-          onAwakenMemory={(memory) =>
-            void memoryController.awakenMemory({ memoryId: memory.id, name: memoryName })
-          }
+          onAwakenMemory={(memory) => void memoryController.awakenMemory({ memoryId: memory.id, name: memoryName })}
           onClearSearch={memoryController.clearSearch}
           onDeleteMemory={requestMemoryDelete}
           onInstallDep={() => void memoryController.installDependency()}

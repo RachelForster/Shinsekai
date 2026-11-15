@@ -450,10 +450,7 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, re
         autoOutfitSwitch: event.autoOutfitSwitch,
         outfits: Object.fromEntries(Object.entries(event.outfits).map(([key, value]) => [key, { ...value }])),
         outfitCatalog: Object.fromEntries(
-          Object.entries(event.outfitCatalog).map(([key, value]) => [
-            key,
-            { ...value, groups: [...value.groups] },
-          ]),
+          Object.entries(event.outfitCatalog).map(([key, value]) => [key, { ...value, groups: [...value.groups] }]),
         ),
       });
     case "sprite.reaction": {

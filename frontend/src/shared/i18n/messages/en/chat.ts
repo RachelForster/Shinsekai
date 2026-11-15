@@ -438,7 +438,8 @@ export const chatEnMessages: Record<ChatMessageKey, string> = {
   "chat.memoryMode.shared": "Shared across saves",
   "chat.memoryMode.sharedHint": "Reads and writes the character's shared memory pool across conversations.",
   "chat.memoryMode.inheritReadonly": "Inherit read-only",
-  "chat.memoryMode.inheritReadonlyHint": "Reads shared and canon memories, while new memories stay isolated to this save.",
+  "chat.memoryMode.inheritReadonlyHint":
+    "Reads shared and canon memories, while new memories stay isolated to this save.",
   "launch.initialOutfits": "Initial outfits",
   "launch.initialOutfitDefault": "Follow character default",
   "launch.autoOutfitSwitch": "Allow automatic outfit switching",

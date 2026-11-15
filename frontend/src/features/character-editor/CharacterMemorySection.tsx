@@ -137,9 +137,9 @@ export function CharacterMemorySection({
         : null;
     const canAwaken = Boolean(
       onAwakenMemory &&
-        memory.id &&
-        !canon &&
-        (clarity === "faded" || clarity === "dormant" || (retentionPct !== null && retentionPct < 85)),
+      memory.id &&
+      !canon &&
+      (clarity === "faded" || clarity === "dormant" || (retentionPct !== null && retentionPct < 85)),
     );
 
     return (

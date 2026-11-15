@@ -503,7 +503,8 @@ export function createChatPreviewPlatform(ctx: BrowserPreviewContext): ChatPlatf
           };
           currentOutfits[characterName] = {
             ...prev,
-            activeGroup: typeof payload?.group === "string" && payload.group.trim() ? payload.group.trim() : prev.activeGroup,
+            activeGroup:
+              typeof payload?.group === "string" && payload.group.trim() ? payload.group.trim() : prev.activeGroup,
             locked: typeof payload?.locked === "boolean" ? payload.locked : prev.locked,
             updatedAtMs: Date.now(),
           };

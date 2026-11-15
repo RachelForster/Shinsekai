@@ -233,7 +233,8 @@ export const characterEnMessages: Record<CharacterMessageKey, string> = {
   "character.selfPersona.bannerTitle": "Global Player Persona & Public Self-Memory",
   "character.selfPersona.bannerBody":
     "This built-in persona stores your global player profile, preferences, and sprites. When no explicit player character is selected, its setting is automatically injected as player context; you can also choose it directly as the player character.",
-  "character.selfPersona.lockedFieldHint": "The built-in persona name and sprite directory are fixed and cannot be deleted.",
+  "character.selfPersona.lockedFieldHint":
+    "The built-in persona name and sprite directory are fixed and cannot be deleted.",
   "character.memory.canonSection": "Canon / Core Memories",
   "character.memory.dynamicSection": "Dynamic Memories",
   "character.memory.addAsCanon": "Add as canon (never fades)",

@@ -1,11 +1,7 @@
 import { Lock, Unlock, X } from "lucide-react";
 
 import { useI18n } from "../../../shared/i18n";
-import type {
-  CharacterOutfitCatalogEntry,
-  CharacterOutfitState,
-  ChatCommand,
-} from "../../../shared/platform/types";
+import type { CharacterOutfitCatalogEntry, CharacterOutfitState, ChatCommand } from "../../../shared/platform/types";
 import { IconButton, Switch } from "../../../shared/ui";
 
 export function ChatOutfitPopover({

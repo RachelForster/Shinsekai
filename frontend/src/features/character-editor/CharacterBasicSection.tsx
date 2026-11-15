@@ -62,7 +62,9 @@ export function CharacterBasicSection({
               readOnly={lockedPersona}
               value={draft.name}
             />
-            {lockedPersona ? <span className="field-row__hint">{t("character.selfPersona.lockedFieldHint")}</span> : null}
+            {lockedPersona ? (
+              <span className="field-row__hint">{t("character.selfPersona.lockedFieldHint")}</span>
+            ) : null}
             {nameError ? <span className="field-error">{nameError}</span> : null}
           </span>
         </label>
@@ -94,7 +96,9 @@ export function CharacterBasicSection({
               readOnly={lockedPersona}
               value={draft.sprite_prefix}
             />
-            {lockedPersona ? <span className="field-row__hint">{t("character.selfPersona.lockedFieldHint")}</span> : null}
+            {lockedPersona ? (
+              <span className="field-row__hint">{t("character.selfPersona.lockedFieldHint")}</span>
+            ) : null}
           </span>
         </label>
         <label className="field-row">

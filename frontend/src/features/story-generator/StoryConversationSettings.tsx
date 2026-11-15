@@ -1,10 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  conversationsQueryKey,
-  listConversations,
-  updateConversationSettings,
-} from "../../entities/chat/repository";
+import { conversationsQueryKey, listConversations, updateConversationSettings } from "../../entities/chat/repository";
 import { listStories, storyLibraryQueryKey } from "../../entities/story/repository";
 import { useI18n } from "../../shared/i18n";
 import { Button, Select, Switch } from "../../shared/ui";

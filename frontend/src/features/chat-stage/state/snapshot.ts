@@ -119,10 +119,7 @@ export function hydrateFromSnapshot(state: ChatStageState, snapshot: ChatSnapsho
       : undefined,
     outfitCatalog: snapshot.outfitCatalog
       ? Object.fromEntries(
-          Object.entries(snapshot.outfitCatalog).map(([key, value]) => [
-            key,
-            { ...value, groups: [...value.groups] },
-          ]),
+          Object.entries(snapshot.outfitCatalog).map(([key, value]) => [key, { ...value, groups: [...value.groups] }]),
         )
       : undefined,
     perception: snapshot.perception ? { ...snapshot.perception } : null,

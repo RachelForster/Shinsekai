@@ -200,8 +200,6 @@ describe("useCharacterMemoryController", () => {
     await act(async () => {
       await result.current.awakenMemory({ memoryId: "canon-1", name: "Mika" });
     });
-    await waitFor(() =>
-      expect(mockAwakenCharacterMemory).toHaveBeenCalledWith({ memoryId: "canon-1", name: "Mika" }),
-    );
+    await waitFor(() => expect(mockAwakenCharacterMemory).toHaveBeenCalledWith({ memoryId: "canon-1", name: "Mika" }));
   });
 });

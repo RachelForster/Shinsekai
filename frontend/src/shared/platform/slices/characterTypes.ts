@@ -513,7 +513,12 @@ export interface CharactersPlatform {
   ) => Promise<GeneratedCharacterSprite>;
   delete: (name: string) => Promise<void>;
   deleteMemory: (name: string, memoryId: string, options?: { sessionId?: string }) => Promise<CharacterMemoryList>;
-  pinMemory: (input: { name: string; memoryId: string; pinned: boolean; sessionId?: string }) => Promise<CharacterMemoryList>;
+  pinMemory: (input: {
+    name: string;
+    memoryId: string;
+    pinned: boolean;
+    sessionId?: string;
+  }) => Promise<CharacterMemoryList>;
   awakenMemory: (input: { name: string; memoryId: string; sessionId?: string }) => Promise<CharacterMemoryList>;
   deleteSpriteVoice: (name: string, spriteIndex: number) => Promise<Character>;
   ensureBriefs: (names: string[]) => Promise<CharacterBriefBatchResult>;
