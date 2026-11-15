@@ -223,7 +223,7 @@ def create_chat_startup_context(
                     else "headless" if args.headless else "native"
                 ),
                 headless=bool(args.headless),
-                metadata={"workflowPath": str(args.workflow or "")},
+                metadata={"workflowPath": str(args.workflow or ""), "historyPath": str(args.history or "")},
                 **active_capabilities.collect_init_chat_flags(),
             ).scaled(0.68, 0.82)
             plugin_manager.hook_dispatcher.dispatch_init_chat(init_context)
