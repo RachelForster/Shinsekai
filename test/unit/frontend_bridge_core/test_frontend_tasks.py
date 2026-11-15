@@ -1,3 +1,5 @@
+import threading
+
 from application.runtime.state import BridgeState, plugin_load_snapshot, set_plugin_load_status
 from application.runtime.tasks import (
     TaskCancelled,
@@ -9,6 +11,8 @@ from application.runtime.tasks import (
     _request_task_cancel,
     _run_background_task,
     _update_task,
+    register_task_cancel_callback,
+    shutdown_background_tasks,
 )
 
 
@@ -112,3 +116,28 @@ def test_task_logs_are_trimmed_and_ignore_blank_lines():
 
     stored = _get_task(state, task["id"])
     assert stored["logs"] == ["line 2", "line 3", "line 4"]
+
+
+def test_task_cancel_and_bridge_shutdown_invoke_registered_callbacks_and_join_workers():
+    state = _state()
+    task = _create_task(state, kind="character-voice-prepare", title="Voice")
+    started = threading.Event()
+    terminated = threading.Event()
+
+    def worker():
+        unregister = register_task_cancel_callback(state, task["id"], terminated.set)
+        try:
+            started.set()
+            terminated.wait(timeout=5.0)
+            raise TaskCancelled()
+        finally:
+            unregister()
+
+    thread = threading.Thread(target=_run_background_task, args=(state, task["id"], worker))
+    thread.start()
+    assert started.wait(timeout=2.0)
+
+    shutdown_background_tasks(state, wait_timeout=3.0)
+    assert terminated.is_set()
+    assert not thread.is_alive()
+    assert _get_task(state, task["id"])["status"] == "cancelled"

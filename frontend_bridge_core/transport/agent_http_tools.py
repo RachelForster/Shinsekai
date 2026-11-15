@@ -120,6 +120,11 @@ WRITE_APIS = {
         "/api/characters/sprites/import-generated",
         'body.name、items（1–12 项，每项 {taskId, tagging}）；按已成功的生成任务导入并保存人物，重复导入同一任务不会新增副本',
     ),
+    "characters.voice.prepare": _Api(
+        "POST",
+        "/api/characters/voice/prepare",
+        "body.name、sources（音频直链/视频URL/本地路径列表，可选）、query（无链接时自动检索语音视频关键词，如“角色名 作品 语音合集”）、useUvr（默认 auto）、dereverb（默认 false）、train（默认 false 直接挂预训练白模，仅用户明确要求训练时设 true）、maxDownloadSeconds（可选）、verifySynthesis（默认 true）；返回语音准备任务",
+    ),
     "plugins.install": _Api(
         "POST", "/api/plugins/install", "body.source 为目录中的插件来源；返回安装任务"
     ),

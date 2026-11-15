@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from application.characters import CharacterOperation
 from application.characters.sprite import mouth_resources
+from application.characters.voice.pipeline import run_character_voice_prepare
 from application.characters.sprite.animate_sprites import run_sprite_animation
 from application.characters.sprite.generate_sprites import (
     import_generated_sprites,
@@ -306,7 +307,31 @@ def _mouth_setup_task(request: ApiRequest, action: str) -> TaskResponse:
     )
 
 
+def _prepare_character_voice(request: ApiRequest) -> TaskResponse:
+    body = dict(request.body)
+    name = str(body.get("name") or "").strip()
+    if not name:
+        raise ValueError("角色名称不能为空")
+    return TaskResponse(
+        kind="character-voice-prepare",
+        title=f"准备 {name} 的角色语音",
+        message="角色语音处理任务已排队。",
+        worker=lambda task_id: run_character_voice_prepare(
+            request.state,
+            task_id,
+            body,
+            file_access_roots=_local_file_access_roots(request.state),
+        ),
+    )
+
+
 CHARACTER_ROUTES = (
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/characters/voice/prepare",
+        handler=_prepare_character_voice,
+        name="characters.voice.prepare",
+    ),
     Route(methods=frozenset({"GET"}), pattern="/api/characters/sprites/mouth/profile",
           handler=lambda request: JsonResponse(read_profile(request.state, (request.query.get("path") or [""])[0])),
           body_kind=BodyKind.NONE, name="characters.sprites.mouth.profile"),

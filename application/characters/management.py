@@ -23,6 +23,7 @@ class CharacterOperation(str, Enum):
     IMPORT_MODEL_STATES = "import-model-states"
     SAVE_MODEL_STATE = "save-model-state"
     SAVE = "save"
+    BIND_VOICE = "bind-voice"
     DELETE = "delete"
     UPLOAD_SPRITES = "upload-sprites"
     DELETE_SPRITE = "delete-sprite"
@@ -119,6 +120,7 @@ class CharacterUseCase:
             CharacterOperation.IMPORT_MODEL_STATES: lambda body: import_model_states(self, body),
             CharacterOperation.SAVE_MODEL_STATE: lambda body: save_model_state(self, body),
             CharacterOperation.SAVE: self._save,
+            CharacterOperation.BIND_VOICE: self._bind_voice,
             CharacterOperation.DELETE: self._delete,
             CharacterOperation.UPLOAD_SPRITES: self._upload_sprites,
             CharacterOperation.DELETE_SPRITE: self._delete_sprite,
@@ -266,6 +268,25 @@ class CharacterUseCase:
             update_conversation_character(self._state, original_name, saved_name)
         saved = self._state.config_manager.get_character_by_name(saved_name)
         return _jsonify(saved or character)
+
+    def _bind_voice(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Atomically reload and update only voice-binding fields under ``_mutation_lock``."""
+        name = str(payload.get("name") or "").strip()
+        if not name:
+            raise ValueError("character name is required")
+        self._state.config_manager.reload()
+        latest = self._character(name)
+        merged = dict(_jsonify(latest))
+        merged.update(
+            {
+                "gpt_model_path": str(payload.get("gpt_model_path") or "").strip(),
+                "sovits_model_path": str(payload.get("sovits_model_path") or "").strip(),
+                "refer_audio_path": str(payload.get("refer_audio_path") or "").strip(),
+                "prompt_text": str(payload.get("prompt_text") or "").strip(),
+                "prompt_lang": str(payload.get("prompt_lang") or "").strip(),
+            }
+        )
+        return self._save({"originalName": name, "character": merged})
 
     def _delete(self, payload: dict[str, Any]) -> dict[str, Any]:
         from application.chat.conversation_library import update_conversation_character
