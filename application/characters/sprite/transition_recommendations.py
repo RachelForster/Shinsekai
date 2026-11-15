@@ -8,6 +8,7 @@ from application.characters.generate_briefs import chat_character_text
 from application.chat.conversation_library import recent_character_dialogs
 from application.runtime.tasks import _update_task
 from config.character_assets import get_character_assets, get_character_avatar_type
+from config.sprite_groups import sprite_group_of
 from core.media.asset_tags import tag_contents
 from core.sprite.selection import sprite_entry_path
 from core.sprite.transitions import TRANSITION_FRAME_COUNT, field, valid_transitions
@@ -96,6 +97,10 @@ def analyze_transition_recommendations(state, payload, *, progress=None):
         raise ValueError("聊天过渡推荐仅适用于图片或视频立绘，请先切换到立绘形象")
     assets = get_character_assets(character)
     paths = [sprite_entry_path(sprite) for sprite in assets.sprites]
+    groups_by_path = {
+        sprite_entry_path(sprite): sprite_group_of(sprite)
+        for sprite in assets.sprites
+    }
     if len(set(filter(None, paths))) < 2:
         raise ValueError("请先保存至少两张不同的立绘")
     tags = tag_contents(assets.emotion_tags, len(paths))
@@ -157,7 +162,11 @@ def analyze_transition_recommendations(state, payload, *, progress=None):
         mapped += 1
         inferred += int(turn["needsMapping"])
         path = paths[sprite - 1]
-        if previous and previous != path:
+        if (
+            previous
+            and previous != path
+            and groups_by_path.get(previous) == groups_by_path.get(path)
+        ):
             counts[previous, path] += 1
         previous = path
     total = sum(counts.values())

@@ -114,6 +114,17 @@ export function hydrateFromSnapshot(state: ChatStageState, snapshot: ChatSnapsho
     ...emptyChatState,
     ...snapshot,
     effectImage: restoreEffectImage(state, snapshot, receivedAt),
+    outfits: snapshot.outfits
+      ? Object.fromEntries(Object.entries(snapshot.outfits).map(([key, value]) => [key, { ...value }]))
+      : undefined,
+    outfitCatalog: snapshot.outfitCatalog
+      ? Object.fromEntries(
+          Object.entries(snapshot.outfitCatalog).map(([key, value]) => [
+            key,
+            { ...value, groups: [...value.groups] },
+          ]),
+        )
+      : undefined,
     perception: snapshot.perception ? { ...snapshot.perception } : null,
     spriteReaction: restoreSpriteReaction(state, snapshot, receivedAt),
     audioCommands,

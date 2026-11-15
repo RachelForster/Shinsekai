@@ -185,6 +185,28 @@ export function createChatPreviewPlatform(ctx: BrowserPreviewContext): ChatPlatf
       item.summary.title = title;
       return clone(item.summary);
     },
+    async updateConversationSettings(id, input) {
+      const item = conversations.get(id);
+      if (!item) throw new Error("Conversation not found");
+      if (input.memoryMode !== undefined) {
+        item.summary.memoryMode = input.memoryMode;
+        item.payload.memoryMode = input.memoryMode;
+      }
+      if (input.autoOutfitSwitch !== undefined) {
+        item.summary.autoOutfitSwitch = input.autoOutfitSwitch;
+        item.payload.autoOutfitSwitch = input.autoOutfitSwitch;
+      }
+      const chat = getChat();
+      if (chat.historyPath === item.summary.historyPath) {
+        setChat({
+          ...chat,
+          ...(input.memoryMode !== undefined ? { memoryMode: input.memoryMode } : {}),
+          ...(input.autoOutfitSwitch !== undefined ? { autoOutfitSwitch: input.autoOutfitSwitch } : {}),
+        });
+        emitChat();
+      }
+      return clone(item.summary);
+    },
     async deleteConversation(id) {
       const item = conversations.get(id);
       if (!item) throw new Error("Conversation not found");
@@ -600,6 +622,40 @@ export function createChatPreviewPlatform(ctx: BrowserPreviewContext): ChatPlatf
         setChat({ ...getChat(), voiceArchiveEnabled: command.payload });
         emitChat();
       }
+      if (command.type === "set-memory-mode") {
+        const payload = command.payload as { memoryMode?: unknown } | undefined;
+        const memoryMode = String(payload?.memoryMode ?? "").trim();
+        if (memoryMode === "isolated" || memoryMode === "shared" || memoryMode === "inherit_readonly") {
+          setChat({ ...getChat(), memoryMode });
+          emitChat();
+        }
+      }
+      if (command.type === "set-auto-outfit-switch") {
+        const payload = command.payload as { enabled?: unknown } | undefined;
+        setChat({ ...getChat(), autoOutfitSwitch: Boolean(payload?.enabled) });
+        emitChat();
+      }
+      if (command.type === "set-character-outfit") {
+        const payload = command.payload as { characterName?: unknown; group?: unknown; locked?: unknown } | undefined;
+        const characterName = String(payload?.characterName ?? "").trim();
+        if (characterName) {
+          const chat = getChat();
+          const currentOutfits = { ...(chat.outfits ?? {}) };
+          const prev = currentOutfits[characterName] ?? {
+            characterName,
+            activeGroup: chat.outfitCatalog?.[characterName]?.defaultGroup || "默认",
+            locked: false,
+          };
+          currentOutfits[characterName] = {
+            ...prev,
+            activeGroup: typeof payload?.group === "string" && payload.group.trim() ? payload.group.trim() : prev.activeGroup,
+            locked: typeof payload?.locked === "boolean" ? payload.locked : prev.locked,
+            updatedAtMs: Date.now(),
+          };
+          setChat({ ...chat, outfits: currentOutfits });
+          emitChat();
+        }
+      }
       return clone(getChat());
     },
     getHistory: () => delay(cloneHistoryEntries(getChat().historyEntries)),
@@ -766,6 +822,8 @@ export function createChatPreviewPlatform(ctx: BrowserPreviewContext): ChatPlatf
               ]
             : [],
         sessionClosedReason: "",
+        memoryMode: payload.memoryMode ?? "isolated",
+        autoOutfitSwitch: payload.autoOutfitSwitch ?? true,
         status: "idle",
         statusMessage: `${payload.templateId || payload.templateName || "预览聊天"} 已启动：${historyPath}`,
       };
@@ -790,6 +848,8 @@ export function createChatPreviewPlatform(ctx: BrowserPreviewContext): ChatPlatf
           storyPath: payload.storyPath || conversations.get(historyPath)?.summary.storyPath || "",
           historyPath,
           hasSettings: true,
+          memoryMode: payload.memoryMode ?? "isolated",
+          autoOutfitSwitch: payload.autoOutfitSwitch ?? true,
         },
       });
       emitChat();

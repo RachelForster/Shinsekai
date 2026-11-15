@@ -289,12 +289,18 @@ def check_mem0_status(*, start_loading: bool = True) -> dict[str, Any]:
     global _mem0, _mem0_loading, _mem0_load_error
     if _mem0 is not None:
         task = current_mem0_task()
-        return {"status": "ready", "modelCached": True, **({"task": task} if task else {})}
+        return {
+            "status": "ready",
+            "modelCached": True,
+            "engine": "onnx_sqlite_hybrid",
+            **({"task": task} if task else {}),
+        }
     if _mem0_loading:
         task = current_mem0_task()
         return {
             "status": "loading",
             "modelCached": is_embedding_model_cached(),
+            "engine": "onnx_sqlite_hybrid",
             **({"task": task} if task else {}),
         }
     load_error = _mem0_load_error

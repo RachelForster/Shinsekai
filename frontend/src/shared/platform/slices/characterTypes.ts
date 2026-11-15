@@ -54,6 +54,7 @@ export interface PlayerPortrait {
 export type SpriteVoiceType = "fallback" | "preset" | "reference";
 
 export interface Sprite {
+  group?: string | null;
   mouth_sync?: string | null;
   portrait_crop?: PortraitCrop | null;
   path: string;
@@ -81,6 +82,12 @@ export interface AvatarRuntimeImport {
 }
 
 export interface Character {
+  sprite_groups?: string[];
+  default_sprite_group?: string | null;
+  fallback_to_default_group?: boolean;
+  is_builtin?: boolean;
+  pinned?: boolean;
+  undeletable?: boolean;
   sprite_transitions?: SpriteTransition[];
   portrait_crop?: PortraitCrop;
   name: string;
@@ -129,9 +136,35 @@ export interface CharacterTranslateResult {
   name: string;
 }
 
+export type CharacterMemoryClarity = "canon" | "clear" | "faded" | "dormant";
+
 export interface CharacterMemory {
   id: string;
   memory: string;
+  detail?: string;
+  gist?: string;
+  clarity?: CharacterMemoryClarity;
+  retention?: number;
+  kind?: string;
+  pinned?: boolean;
+  scope?: string;
+  slotKey?: string;
+  topicTags?: string[];
+  entities?: string[];
+  importance?: number;
+  createdAt?: number;
+  eventAt?: number | null;
+  lastRecalledAt?: number;
+  recallCount?: number;
+  sourceSessionId?: string;
+}
+
+export interface CharacterMemoryRememberOptions {
+  pinned?: boolean;
+  gistText?: string;
+  slotKey?: string;
+  kind?: string;
+  sessionId?: string;
 }
 
 export interface CharacterMemoryList {
@@ -176,15 +209,47 @@ export interface CharacterMemorySearchInput {
   limit?: number;
   name: string;
   query: string;
+  sessionId?: string;
+  memoryMode?: string;
 }
 
 export interface Mem0Status {
   status: "ready" | "loading" | "not_started" | "error" | "missing_dependency";
+  engine?: string;
   message?: string;
   modelCached?: boolean;
   moduleName?: string;
   packageName?: string;
   task?: TaskSnapshot;
+}
+
+export interface SaveSpriteGroupsInput {
+  name: string;
+  spriteGroups?: string[];
+  defaultSpriteGroup?: string;
+  fallbackToDefaultGroup?: boolean;
+  assignments?: Record<number | string, string | null>;
+  renameFrom?: string;
+  renameTo?: string;
+  deleteGroup?: string;
+  avatarType?: string;
+}
+
+export interface AutoGroupSpritesGroupSummary {
+  group: string;
+  count: number;
+  spriteIndices: number[];
+}
+
+export interface AutoGroupSpritesResult {
+  characterName: string;
+  avatarType: string;
+  groups: AutoGroupSpritesGroupSummary[];
+  spriteGroups: string[];
+  assignments: Record<string, string>;
+  changedCount: number;
+  applied?: boolean;
+  character?: Character | null;
 }
 
 export interface SpritePromptPair {
@@ -447,7 +512,9 @@ export interface CharactersPlatform {
     options?: TaskProgressOptions<GeneratedCharacterSprite>,
   ) => Promise<GeneratedCharacterSprite>;
   delete: (name: string) => Promise<void>;
-  deleteMemory: (name: string, memoryId: string) => Promise<CharacterMemoryList>;
+  deleteMemory: (name: string, memoryId: string, options?: { sessionId?: string }) => Promise<CharacterMemoryList>;
+  pinMemory: (input: { name: string; memoryId: string; pinned: boolean; sessionId?: string }) => Promise<CharacterMemoryList>;
+  awakenMemory: (input: { name: string; memoryId: string; sessionId?: string }) => Promise<CharacterMemoryList>;
   deleteSpriteVoice: (name: string, spriteIndex: number) => Promise<Character>;
   ensureBriefs: (names: string[]) => Promise<CharacterBriefBatchResult>;
   export: (name: string) => Promise<string>;
@@ -462,13 +529,20 @@ export interface CharactersPlatform {
     items: File[],
     options?: TaskProgressOptions<CharacterMemoryImportResult>,
   ) => Promise<CharacterMemoryImportResult>;
-  listMemories: (name: string) => Promise<CharacterMemoryList>;
+  listMemories: (name: string, options?: { sessionId?: string }) => Promise<CharacterMemoryList>;
   previewMemoryImport: (name: string, items: File[]) => Promise<CharacterMemoryImportPreview>;
-  remember: (name: string, content: string) => Promise<CharacterMemoryList>;
+  remember: (name: string, content: string, options?: CharacterMemoryRememberOptions) => Promise<CharacterMemoryList>;
   searchMemories: (input: CharacterMemorySearchInput) => Promise<CharacterMemoryList>;
   save: (character: Character, originalName?: string) => Promise<Character>;
   saveEmotionTags: (name: string, emotionTags: string) => Promise<Character>;
   saveSpriteScale: (name: string, scale: number) => Promise<Character>;
+  saveSpriteGroups: (input: SaveSpriteGroupsInput) => Promise<Character>;
+  autoGroupSprites: (input: {
+    name: string;
+    avatarType?: string;
+    overwriteExisting?: boolean;
+    apply?: boolean;
+  }) => Promise<AutoGroupSpritesResult>;
   saveSpriteVoiceText: (name: string, spriteIndex: number, voiceText: string) => Promise<Character>;
   saveSpriteVoiceType: (name: string, spriteIndex: number, voiceType: SpriteVoiceType) => Promise<Character>;
   deleteAllSprites: (name: string) => Promise<Character>;
@@ -478,7 +552,7 @@ export interface CharactersPlatform {
     emotionTags: string;
     name: string;
   }) => Promise<CharacterTranslateResult>;
-  uploadSprites: (input: { emotionTags: string; name: string; paths: string[] }) => Promise<Character>;
+  uploadSprites: (input: { emotionTags: string; name: string; paths: string[]; group?: string }) => Promise<Character>;
   uploadSpriteVoice: (input: {
     name: string;
     spriteIndex: number;

@@ -9,13 +9,29 @@ import type { StoryGenerationInput, StoryGenerationStage, StoryGenerationTask, S
 import type { RuntimeDependencyError, TaskProgressOptions, TaskSnapshot } from "./taskTypes";
 import type {
   CharacterPromptMode,
+  InitialOutfitValue,
   MediaSelectionMode,
+  MemoryMode,
   PlayerCharacterOptions,
   TemplateLaunchSession,
 } from "./workspaceTypes";
 
+export interface CharacterOutfitState {
+  characterName: string;
+  activeGroup: string;
+  locked: boolean;
+  updatedAtMs?: number;
+}
+
+export interface CharacterOutfitCatalogEntry {
+  groups: string[];
+  defaultGroup: string;
+  fallbackToDefaultGroup: boolean;
+}
+
 export interface ConversationSummary {
   id: string;
+  sessionId?: string;
   title: string;
   characters: string[];
   preview: string;
@@ -25,6 +41,9 @@ export interface ConversationSummary {
   historyPath: string;
   hasSettings: boolean;
   requiresCharacterSelection?: boolean;
+  memoryMode?: MemoryMode;
+  autoOutfitSwitch?: boolean;
+  outfits?: Record<string, CharacterOutfitState>;
 }
 
 export interface ChatLaunchPayload extends PlayerCharacterOptions {
@@ -50,6 +69,9 @@ export interface ChatLaunchPayload extends PlayerCharacterOptions {
   initSpritePath?: string;
   showInitialSprite?: boolean;
   mediaSelectionMode?: MediaSelectionMode;
+  memoryMode?: MemoryMode;
+  autoOutfitSwitch?: boolean;
+  initialOutfits?: Record<string, InitialOutfitValue>;
   resetHistory?: boolean;
   roomId?: string;
   scenario?: string;
@@ -275,6 +297,10 @@ export interface MobileAccessInfo {
 }
 
 export interface ChatSnapshot {
+  memoryMode?: MemoryMode;
+  autoOutfitSwitch?: boolean;
+  outfits?: Record<string, CharacterOutfitState>;
+  outfitCatalog?: Record<string, CharacterOutfitCatalogEntry>;
   voiceArchiveEnabled?: boolean;
   playerPortrait?: PlayerPortrait | null;
   perception?: PerceptionRuntimeState | null;
@@ -411,6 +437,9 @@ export interface ChatCommand {
     | "resume-asr"
     | "reroll"
     | "send-message"
+    | "set-auto-outfit-switch"
+    | "set-character-outfit"
+    | "set-memory-mode"
     | "skip-speech"
     | "switch-branch"
     | "submit-option"
@@ -528,6 +557,13 @@ export type ChatStageEvent =
   | (ChatEventBase & { type: "asr.final"; text: string })
   | (ChatEventBase & { type: "asr.state"; enabled?: boolean; loading?: boolean; running: boolean })
   | (ChatEventBase & { type: "perception.state"; perception: PerceptionRuntimeState })
+  | (ChatEventBase & { type: "memory.mode"; memoryMode: MemoryMode })
+  | (ChatEventBase & {
+      type: "outfit.state";
+      outfits: Record<string, CharacterOutfitState>;
+      outfitCatalog: Record<string, CharacterOutfitCatalogEntry>;
+      autoOutfitSwitch: boolean;
+    })
   | (ChatEventBase & { type: "sprite.reaction"; characterName: string; text: string; durationMs: number })
   | (ChatEventBase & { type: "perception.capture_request"; reason?: string })
   | (ChatEventBase & { type: "reply.finished" })
@@ -543,6 +579,10 @@ export interface ChatPlatform {
   listConversations: () => Promise<ConversationSummary[]>;
   prepareConversation: (id: string) => Promise<ChatLaunchPayload>;
   renameConversation: (id: string, title: string) => Promise<ConversationSummary>;
+  updateConversationSettings: (
+    id: string,
+    input: { memoryMode?: MemoryMode; autoOutfitSwitch?: boolean },
+  ) => Promise<ConversationSummary>;
   deleteConversation: (id: string) => Promise<void>;
   close: (options?: ChatCloseOptions) => Promise<ChatSnapshot>;
   command: (command: ChatCommand) => Promise<ChatCommandResult>;

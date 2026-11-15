@@ -278,6 +278,10 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
       });
     },
     async delete(name) {
+      const target = config.characters.find((character) => character.name === name);
+      if (target?.undeletable || target?.is_builtin || name.trim() === "自设") {
+        throw new Error(`角色「${name}」为内置角色，不可删除。`);
+      }
       config.characters = config.characters.filter((character) => character.name !== name);
       for (const [knowledgeId, data] of knowledgeData) {
         data.characters = data.characters.filter((character) => character.name !== name);
@@ -295,6 +299,40 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
       const agentId = name || "user";
       const current = characterMemories.get(agentId) ?? { agentId, count: 0, memories: [] };
       const memories = current.memories.filter((memory) => memory.id !== memoryId);
+      const next = { agentId, count: memories.length, memories };
+      characterMemories.set(agentId, next);
+      return delay(next);
+    },
+    async pinMemory({ memoryId, name, pinned }) {
+      const agentId = name || "user";
+      const current = await this.listMemories(agentId);
+      const memories = current.memories.map((memory) =>
+        memory.id === memoryId
+          ? {
+              ...memory,
+              pinned,
+              clarity: (pinned ? "canon" : "clear") as "canon" | "clear",
+              retention: 1,
+            }
+          : memory,
+      );
+      const next = { agentId, count: memories.length, memories };
+      characterMemories.set(agentId, next);
+      return delay(next);
+    },
+    async awakenMemory({ memoryId, name }) {
+      const agentId = name || "user";
+      const current = await this.listMemories(agentId);
+      const memories = current.memories.map((memory) =>
+        memory.id === memoryId
+          ? {
+              ...memory,
+              clarity: (memory.pinned ? "canon" : "clear") as "canon" | "clear",
+              retention: 1,
+              recallCount: (memory.recallCount ?? 0) + 1,
+            }
+          : memory,
+      );
       const next = { agentId, count: memories.length, memories };
       characterMemories.set(agentId, next);
       return delay(next);
@@ -469,10 +507,21 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
       const limitedMemories = memories.slice(0, limit);
       return delay({ agentId, count: limitedMemories.length, memories: limitedMemories });
     },
-    async remember(name, content) {
+    async remember(name, content, options) {
       const agentId = name || "user";
       const current = characterMemories.get(agentId) ?? { agentId, count: 0, memories: [] };
-      const memories = [...current.memories, { id: `${agentId}-${Date.now()}`, memory: content }];
+      const memoryItem = options?.pinned
+        ? {
+            id: `${agentId}-${Date.now()}`,
+            memory: content,
+            detail: content,
+            gist: options.gistText?.trim() || content,
+            pinned: true,
+            clarity: "canon" as const,
+            retention: 1,
+          }
+        : { id: `${agentId}-${Date.now()}`, memory: content };
+      const memories = [...current.memories, memoryItem];
       const next = { agentId, count: memories.length, memories };
       characterMemories.set(agentId, next);
       return delay(next);
@@ -522,6 +571,10 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
           index >= 0
             ? config.characters[index].sprites.map((sprite, spriteIndex) => ({
                 ...sprite,
+                group:
+                  character.sprites[spriteIndex]?.group !== undefined
+                    ? character.sprites[spriteIndex]?.group
+                    : sprite.group,
                 portrait_crop:
                   character.sprites[spriteIndex]?.portrait_crop === null
                     ? null
@@ -582,6 +635,107 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
       character.sprite_scale = scale;
       return delay(character);
     },
+    async saveSpriteGroups(input) {
+      const character = config.characters.find((item) => item.name === input.name);
+      if (!character) {
+        throw new Error(`角色不存在：${input.name}`);
+      }
+      let groups = [...(input.spriteGroups ?? character.sprite_groups ?? ["默认"])];
+      if (!groups.includes("默认")) groups.unshift("默认");
+      if (input.renameFrom && input.renameTo && input.renameFrom !== "默认") {
+        const nextName = input.renameTo.trim();
+        if (nextName) {
+          groups = groups.map((g) => (g === input.renameFrom ? nextName : g));
+          character.sprites = character.sprites.map((s) =>
+            (s.group || "默认") === input.renameFrom ? { ...s, group: nextName === "默认" ? null : nextName } : s,
+          );
+          if (character.default_sprite_group === input.renameFrom) {
+            character.default_sprite_group = nextName;
+          }
+        }
+      }
+      if (input.deleteGroup && input.deleteGroup !== "默认") {
+        groups = groups.filter((g) => g !== input.deleteGroup);
+        character.sprites = character.sprites.map((s) =>
+          (s.group || "默认") === input.deleteGroup ? { ...s, group: null } : s,
+        );
+        if (character.default_sprite_group === input.deleteGroup) {
+          character.default_sprite_group = "默认";
+        }
+      }
+      if (input.assignments) {
+        for (const [rawIndex, rawGroup] of Object.entries(input.assignments)) {
+          const idx = Number(rawIndex);
+          if (!Number.isInteger(idx) || !character.sprites[idx]) continue;
+          const clean = (rawGroup ?? "").trim();
+          const targetGroup = !clean || clean === "默认" ? null : clean;
+          if (targetGroup && !groups.includes(targetGroup)) groups.push(targetGroup);
+          character.sprites[idx] = { ...character.sprites[idx], group: targetGroup };
+        }
+      }
+      character.sprite_groups = [...new Set(["默认", ...groups.filter((g) => g && g !== "默认")])];
+      if (input.defaultSpriteGroup !== undefined) {
+        const def = input.defaultSpriteGroup.trim() || "默认";
+        character.default_sprite_group = def;
+        if (!character.sprite_groups.includes(def)) character.sprite_groups.push(def);
+      }
+      if (input.fallbackToDefaultGroup !== undefined) {
+        character.fallback_to_default_group = input.fallbackToDefaultGroup;
+      }
+      return delay(character);
+    },
+    async autoGroupSprites(input) {
+      const character = config.characters.find((item) => item.name === input.name);
+      if (!character) {
+        throw new Error(`角色不存在：${input.name}`);
+      }
+      const assignments: Record<string, string> = {};
+      const byGroup = new Map<string, number[]>();
+      character.sprites.forEach((sprite, idx) => {
+        const current = (sprite.group || "").trim();
+        if (current && current !== "默认" && !input.overwriteExisting) {
+          assignments[String(idx)] = current;
+          byGroup.set(current, [...(byGroup.get(current) ?? []), idx]);
+          return;
+        }
+        const filename = (sprite.path.split(/[\\/]/).pop() ?? "").replace(/\.[^.]+$/, "");
+        const prefixMatch = filename.match(/^([a-zA-Z\u4e00-\u9fa5]+)[_-]/);
+        const group = prefixMatch ? prefixMatch[1] : "默认";
+        assignments[String(idx)] = group;
+        byGroup.set(group, [...(byGroup.get(group) ?? []), idx]);
+      });
+      const spriteGroups = ["默认", ...[...byGroup.keys()].filter((g) => g !== "默认")];
+      const groups = spriteGroups
+        .filter((g) => byGroup.has(g))
+        .map((group) => ({
+          group,
+          count: (byGroup.get(group) ?? []).length,
+          spriteIndices: byGroup.get(group) ?? [],
+        }));
+      const changedCount = character.sprites.reduce((acc, sprite, idx) => {
+        const prev = (sprite.group || "").trim() || "默认";
+        const next = assignments[String(idx)] || "默认";
+        return prev !== next ? acc + 1 : acc;
+      }, 0);
+      let updatedCharacter: Character | null = null;
+      if (input.apply) {
+        updatedCharacter = await this.saveSpriteGroups({
+          name: character.name,
+          spriteGroups,
+          assignments,
+        });
+      }
+      return delay({
+        characterName: character.name,
+        avatarType: input.avatarType || character.avatar_type || "static",
+        groups,
+        spriteGroups,
+        assignments,
+        changedCount,
+        applied: Boolean(input.apply),
+        character: updatedCharacter,
+      });
+    },
     async saveSpriteVoiceText(name, spriteIndex, voiceText) {
       const character = config.characters.find((item) => item.name === name);
       if (!character || !character.sprites[spriteIndex]) {
@@ -614,10 +768,19 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
         throw new Error(`角色不存在：${input.name}`);
       }
       const start = character.sprites.length;
+      const groupName = input.group?.trim();
+      const targetGroup = !groupName || groupName === "默认" ? undefined : groupName;
       const nextSprites = input.paths.map((path) => ({
         path: `data/sprite/${character.sprite_prefix}/${path.split(/[\\/]/).pop() ?? path}`,
+        ...(targetGroup ? { group: targetGroup } : {}),
       }));
       character.sprites = [...character.sprites, ...nextSprites];
+      if (targetGroup) {
+        const currentGroups = character.sprite_groups ?? ["默认"];
+        if (!currentGroups.includes(targetGroup)) {
+          character.sprite_groups = [...currentGroups, targetGroup];
+        }
+      }
       const extraTags = input.paths.map((_, index) => `立绘 ${start + index + 1}：`).join("\n");
       character.emotion_tags = `${input.emotionTags || character.emotion_tags || ""}${extraTags ? `${extraTags}\n` : ""}`;
       return delay(character);

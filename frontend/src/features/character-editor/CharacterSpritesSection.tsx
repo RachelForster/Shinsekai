@@ -1,5 +1,17 @@
-import type { WheelEventHandler } from "react";
-import { Crop, Image as ImageIcon, Sparkles, Tags, Trash2, Upload, Volume2 } from "lucide-react";
+import { useEffect, useMemo, useState, type WheelEventHandler } from "react";
+import {
+  CheckSquare,
+  Crop,
+  FolderPlus,
+  Image as ImageIcon,
+  Pencil,
+  Sparkles,
+  Star,
+  Tags,
+  Trash2,
+  Upload,
+  Volume2,
+} from "lucide-react";
 
 import type { Character, Sprite } from "../../entities/config/types";
 import { fileUrl } from "../../entities/files/repository";
@@ -8,6 +20,7 @@ import { useI18n } from "../../shared/i18n";
 import type { SpriteVoiceType } from "../../shared/platform/types";
 import type { ImageAssetGalleryItem } from "../../shared/ui";
 import {
+  AlertDialog,
   AsyncButton,
   AudioPlayer,
   Button,
@@ -16,30 +29,48 @@ import {
   ImageAssetGallery,
   NumberInput,
   PathDisplay,
+  Select,
+  Switch,
   TextInput,
   VisualMedia,
 } from "../../shared/ui";
 import {
+  DEFAULT_SPRITE_GROUP,
   SPRITE_SCALE_MAX,
   SPRITE_SCALE_MIN,
   SPRITE_SCALE_STEP,
+  normalizeSpriteGroupName,
+  resolveCharacterSpriteGroups,
   type CharacterFieldChange,
 } from "./characterEditorUtils";
 
+export interface SpriteGroupsPatch {
+  assignments?: Record<string, string>;
+  defaultSpriteGroup?: string;
+  deleteGroup?: string;
+  fallbackToDefaultGroup?: boolean;
+  spriteGroups?: string[];
+}
+
 interface CharacterSpritesSectionProps {
+  activeSpriteGroup?: string;
   autoLabelAvailable?: boolean;
   autoLabelDisabled?: boolean;
   autoLabelPending?: boolean;
   draft: Character;
   emotionTagsPending: boolean;
-  id?: string;
-  onClearSprites: () => void;
-  onAutoLabel?: () => void;
-  onGenerate?: () => void;
   generateDisabled?: boolean;
   generateHint?: string;
+  id?: string;
+  isSavedCharacter?: boolean;
+  onActiveSpriteGroupChange?: (group: string) => void;
+  onApplySpriteGroups?: (patch: SpriteGroupsPatch) => void;
+  onAutoLabel?: () => void;
+  onClearSprites: () => void;
+  onGenerate?: () => void;
   onOpenBulkTags: () => void;
   onOpenPortraitCrop?: () => void;
+  onOpenSmartGroup?: () => void;
   onPendingSpritePathsChange: (paths: string[]) => void;
   onPendingVoicePathChange: (path: string) => void;
   onSaveScale: () => void;
@@ -53,8 +84,8 @@ interface CharacterSpritesSectionProps {
   onSpriteVoiceDelete: () => void;
   onSpriteVoiceTextBlur: (text: string) => void;
   onSpriteVoiceTextChange: (value: string) => void;
-  onSpriteVoiceUpload: () => void;
   onSpriteVoiceTypeChange: (value: SpriteVoiceType) => void;
+  onSpriteVoiceUpload: () => void;
   pendingSpritePaths: string[];
   pendingVoicePath: string;
   selectedSprite?: Sprite;
@@ -62,6 +93,7 @@ interface CharacterSpritesSectionProps {
   selectedSpriteTag: string;
   spriteDeletePending: boolean;
   spriteGalleryItems: ImageAssetGalleryItem[];
+  spriteGroupsPending?: boolean;
   spriteScalePending: boolean;
   spriteUploadPending: boolean;
   voiceDeletePending: boolean;
@@ -69,19 +101,24 @@ interface CharacterSpritesSectionProps {
 }
 
 export function CharacterSpritesSection({
+  activeSpriteGroup: controlledActiveGroup,
   autoLabelAvailable = false,
   autoLabelDisabled = true,
   autoLabelPending = false,
-  onGenerate,
-  generateDisabled = false,
-  generateHint,
   draft,
   emotionTagsPending,
+  generateDisabled = false,
+  generateHint,
   id,
-  onClearSprites,
+  isSavedCharacter = false,
+  onActiveSpriteGroupChange,
+  onApplySpriteGroups,
   onAutoLabel,
+  onClearSprites,
+  onGenerate,
   onOpenBulkTags,
   onOpenPortraitCrop,
+  onOpenSmartGroup,
   onPendingSpritePathsChange,
   onPendingVoicePathChange,
   onSaveScale,
@@ -95,8 +132,8 @@ export function CharacterSpritesSection({
   onSpriteVoiceDelete,
   onSpriteVoiceTextBlur,
   onSpriteVoiceTextChange,
-  onSpriteVoiceUpload,
   onSpriteVoiceTypeChange,
+  onSpriteVoiceUpload,
   pendingSpritePaths,
   pendingVoicePath,
   selectedSprite,
@@ -104,12 +141,184 @@ export function CharacterSpritesSection({
   selectedSpriteTag,
   spriteDeletePending,
   spriteGalleryItems,
+  spriteGroupsPending = false,
   spriteScalePending,
   spriteUploadPending,
   voiceDeletePending,
   voiceUploadPending,
 }: CharacterSpritesSectionProps) {
   const { t } = useI18n();
+  const [internalActiveGroup, setInternalActiveGroup] = useState("__all__");
+  const activeSpriteGroup = controlledActiveGroup ?? internalActiveGroup;
+  const setActiveSpriteGroup = (nextGroup: string) => {
+    if (onActiveSpriteGroupChange) {
+      onActiveSpriteGroupChange(nextGroup);
+    } else {
+      setInternalActiveGroup(nextGroup);
+    }
+  };
+
+  const [newGroupInput, setNewGroupInput] = useState("");
+  const [creatingGroupOpen, setCreatingGroupOpen] = useState(false);
+  const [renamingGroup, setRenamingGroup] = useState<string | null>(null);
+  const [renameInput, setRenameInput] = useState("");
+  const [pendingDeleteGroup, setPendingDeleteGroup] = useState<string | null>(null);
+  const [batchSelectMode, setBatchSelectMode] = useState(false);
+  const [checkedIndices, setCheckedIndices] = useState<Set<number>>(() => new Set());
+  const [batchTargetGroup, setBatchTargetGroup] = useState("");
+
+  useEffect(() => {
+    setCreatingGroupOpen(false);
+    setNewGroupInput("");
+    setRenamingGroup(null);
+    setRenameInput("");
+    setPendingDeleteGroup(null);
+    setBatchSelectMode(false);
+    setCheckedIndices(new Set());
+    setBatchTargetGroup("");
+  }, [draft.name]);
+
+  const spriteGroups = useMemo(() => resolveCharacterSpriteGroups(draft), [draft]);
+  const defaultGroup = normalizeSpriteGroupName(draft.default_sprite_group);
+  const fallbackToDefault = draft.fallback_to_default_group ?? true;
+
+  useEffect(() => {
+    if (activeSpriteGroup !== "__all__" && !spriteGroups.includes(activeSpriteGroup)) {
+      setActiveSpriteGroup("__all__");
+    }
+  }, [activeSpriteGroup, spriteGroups]);
+
+  const groupCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const group of spriteGroups) {
+      counts[group] = 0;
+    }
+    for (const sprite of draft.sprites) {
+      const group = normalizeSpriteGroupName(sprite.group);
+      counts[group] = (counts[group] ?? 0) + 1;
+    }
+    return counts;
+  }, [draft.sprites, spriteGroups]);
+
+  const visibleGalleryItems = useMemo(() => {
+    const indexed = spriteGalleryItems.map((item, index) => {
+      const globalIndex = item.globalIndex ?? index;
+      const spriteGroup = normalizeSpriteGroupName(draft.sprites[globalIndex]?.group);
+      return {
+        ...item,
+        globalIndex,
+        secondaryBadge:
+          activeSpriteGroup === "__all__" && spriteGroups.length > 1 ? spriteGroup : item.secondaryBadge,
+        spriteGroup,
+      };
+    });
+    if (activeSpriteGroup === "__all__") {
+      return indexed;
+    }
+    return indexed.filter((item) => item.spriteGroup === activeSpriteGroup);
+  }, [activeSpriteGroup, draft.sprites, spriteGalleryItems, spriteGroups.length]);
+
+  const handleSelectGroupTab = (group: string) => {
+    setActiveSpriteGroup(group);
+    setRenamingGroup(null);
+    if (group !== "__all__") {
+      const currentGroup = normalizeSpriteGroupName(draft.sprites[selectedSpriteIndex]?.group);
+      if (currentGroup !== group) {
+        const firstInGroup = draft.sprites.findIndex(
+          (sprite) => normalizeSpriteGroupName(sprite.group) === group,
+        );
+        if (firstInGroup >= 0) {
+          onSelectSprite(firstInGroup);
+        }
+      }
+    }
+  };
+
+  const handleCreateGroup = () => {
+    const trimmed = newGroupInput.trim();
+    if (!trimmed || !onApplySpriteGroups) {
+      return;
+    }
+    const nextGroups = spriteGroups.includes(trimmed) ? spriteGroups : [...spriteGroups, trimmed];
+    onApplySpriteGroups({ spriteGroups: nextGroups });
+    setNewGroupInput("");
+    setCreatingGroupOpen(false);
+    setActiveSpriteGroup(trimmed);
+  };
+
+  const handleConfirmRename = () => {
+    const target = renamingGroup;
+    const trimmed = renameInput.trim();
+    if (!target || !trimmed || trimmed === target || !onApplySpriteGroups) {
+      setRenamingGroup(null);
+      return;
+    }
+    const nextGroups = Array.from(
+      new Set(spriteGroups.map((group) => (group === target ? trimmed : group))),
+    );
+    const assignments: Record<string, string> = {};
+    draft.sprites.forEach((sprite, index) => {
+      if (normalizeSpriteGroupName(sprite.group) === target) {
+        assignments[String(index)] = trimmed;
+      }
+    });
+    onApplySpriteGroups({
+      assignments,
+      defaultSpriteGroup: defaultGroup === target ? trimmed : defaultGroup,
+      spriteGroups: nextGroups,
+    });
+    setRenamingGroup(null);
+    setRenameInput("");
+    setActiveSpriteGroup(trimmed);
+  };
+
+  const handleConfirmDeleteGroup = () => {
+    if (!pendingDeleteGroup || !onApplySpriteGroups) {
+      setPendingDeleteGroup(null);
+      return;
+    }
+    const target = pendingDeleteGroup;
+    setPendingDeleteGroup(null);
+    onApplySpriteGroups({ deleteGroup: target });
+    if (activeSpriteGroup === target) {
+      setActiveSpriteGroup("__all__");
+    }
+  };
+
+  const toggleCheckedSprite = (globalIndex: number) => {
+    setCheckedIndices((current) => {
+      const next = new Set(current);
+      if (next.has(globalIndex)) {
+        next.delete(globalIndex);
+      } else {
+        next.add(globalIndex);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectVisible = () => {
+    setCheckedIndices((current) => {
+      const next = new Set(current);
+      for (const item of visibleGalleryItems) {
+        next.add(item.globalIndex);
+      }
+      return next;
+    });
+  };
+
+  const handleBatchMove = () => {
+    if (!onApplySpriteGroups || !batchTargetGroup || checkedIndices.size === 0) {
+      return;
+    }
+    const assignments: Record<string, string> = {};
+    for (const index of checkedIndices) {
+      assignments[String(index)] = batchTargetGroup;
+    }
+    onApplySpriteGroups({ assignments });
+    setCheckedIndices(new Set());
+  };
+
   const voiceType = selectedSprite?.voice_type ?? "fallback";
   const voiceTypeHintKey =
     voiceType === "reference"
@@ -117,6 +326,9 @@ export function CharacterSpritesSection({
       : voiceType === "preset"
         ? "character.sprite.voicePresetHint"
         : "character.sprite.voiceFallbackHint";
+
+  const showOutfitGroupBar = Boolean(onApplySpriteGroups);
+  const selectedSpriteGroup = normalizeSpriteGroupName(selectedSprite?.group);
 
   return (
     <section className="section page-section-anchor" id={id}>
@@ -215,14 +427,214 @@ export function CharacterSpritesSection({
             </div>
           </span>
         </label>
+
+        {showOutfitGroupBar ? (
+          <div className="sprite-group-panel">
+            <div className="sprite-group-bar">
+              <div className="sprite-group-tabs" role="tablist">
+                <button
+                  aria-selected={activeSpriteGroup === "__all__"}
+                  className="sprite-group-tab"
+                  onClick={() => handleSelectGroupTab("__all__")}
+                  role="tab"
+                  type="button"
+                >
+                  {t("spriteGroup.all", { count: draft.sprites.length })}
+                </button>
+                {spriteGroups.map((group) => (
+                  <button
+                    aria-selected={activeSpriteGroup === group}
+                    className="sprite-group-tab"
+                    key={group}
+                    onClick={() => handleSelectGroupTab(group)}
+                    role="tab"
+                    type="button"
+                  >
+                    <span>{t("spriteGroup.tabCount", { count: groupCounts[group] ?? 0, name: group })}</span>
+                    {group === defaultGroup ? (
+                      <span className="sprite-group-tab__badge">{t("spriteGroup.defaultBadge")}</span>
+                    ) : null}
+                  </button>
+                ))}
+              </div>
+              <div className="sprite-group-actions">
+                <Button
+                  icon={<FolderPlus aria-hidden className="button__icon" />}
+                  onClick={() => setCreatingGroupOpen((current) => !current)}
+                  variant="ghost"
+                >
+                  {t("spriteGroup.newGroup")}
+                </Button>
+                {onOpenSmartGroup ? (
+                  <Button
+                    disabled={!isSavedCharacter || !draft.sprites.length}
+                    icon={<Sparkles aria-hidden className="button__icon" />}
+                    onClick={onOpenSmartGroup}
+                    variant="ghost"
+                  >
+                    {t("spriteGroup.autoGroup")}
+                  </Button>
+                ) : null}
+                <Button
+                  disabled={!draft.sprites.length}
+                  icon={<CheckSquare aria-hidden className="button__icon" />}
+                  onClick={() => {
+                    setBatchSelectMode((current) => !current);
+                    setCheckedIndices(new Set());
+                  }}
+                  variant="ghost"
+                >
+                  {t(batchSelectMode ? "spriteGroup.batchExitSelectMode" : "spriteGroup.batchSelectMode")}
+                </Button>
+                <Switch
+                  checked={fallbackToDefault}
+                  disabled={spriteGroupsPending}
+                  id="sprite-group-fallback-default"
+                  onChange={(event) => onApplySpriteGroups?.({ fallbackToDefaultGroup: event.currentTarget.checked })}
+                >
+                  {t("spriteGroup.fallbackToDefault")}
+                </Switch>
+              </div>
+            </div>
+
+            {creatingGroupOpen ? (
+              <div className="sprite-group-inline-editor">
+                <TextInput
+                  aria-label={t("spriteGroup.newGroupPlaceholder")}
+                  onChange={(event) => setNewGroupInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      handleCreateGroup();
+                    }
+                  }}
+                  placeholder={t("spriteGroup.newGroupPlaceholder")}
+                  value={newGroupInput}
+                />
+                <AsyncButton
+                  disabled={!newGroupInput.trim()}
+                  loading={spriteGroupsPending}
+                  onClick={handleCreateGroup}
+                >
+                  {t("spriteGroup.create")}
+                </AsyncButton>
+              </div>
+            ) : null}
+
+            {activeSpriteGroup !== "__all__" ? (
+              <div className="sprite-group-manage-row">
+                {activeSpriteGroup !== defaultGroup ? (
+                  <AsyncButton
+                    icon={<Star aria-hidden className="button__icon" />}
+                    loading={spriteGroupsPending}
+                    onClick={() => onApplySpriteGroups?.({ defaultSpriteGroup: activeSpriteGroup })}
+                    variant="ghost"
+                  >
+                    {t("spriteGroup.setDefault")}
+                  </AsyncButton>
+                ) : null}
+                {activeSpriteGroup !== DEFAULT_SPRITE_GROUP ? (
+                  <>
+                    <Button
+                      icon={<Pencil aria-hidden className="button__icon" />}
+                      onClick={() => {
+                        setRenamingGroup(activeSpriteGroup);
+                        setRenameInput(activeSpriteGroup);
+                      }}
+                      variant="ghost"
+                    >
+                      {t("spriteGroup.rename")}
+                    </Button>
+                    <Button
+                      icon={<Trash2 aria-hidden className="button__icon" />}
+                      onClick={() => setPendingDeleteGroup(activeSpriteGroup)}
+                      variant="ghost"
+                    >
+                      {t("spriteGroup.delete")}
+                    </Button>
+                  </>
+                ) : null}
+                {renamingGroup === activeSpriteGroup ? (
+                  <div className="sprite-group-inline-editor">
+                    <TextInput
+                      aria-label={t("spriteGroup.renamePrompt")}
+                      onChange={(event) => setRenameInput(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          handleConfirmRename();
+                        }
+                      }}
+                      placeholder={t("spriteGroup.renamePrompt")}
+                      value={renameInput}
+                    />
+                    <AsyncButton
+                      disabled={!renameInput.trim() || renameInput.trim() === activeSpriteGroup}
+                      loading={spriteGroupsPending}
+                      onClick={handleConfirmRename}
+                    >
+                      {t("common.save")}
+                    </AsyncButton>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {batchSelectMode && draft.sprites.length > 0 ? (
+              <div className="sprite-batch-bar">
+                <div className="sprite-batch-bar__selection">
+                  <Button onClick={handleSelectVisible} variant="ghost">
+                    {t("spriteGroup.batchSelectVisible")}
+                  </Button>
+                  <Button
+                    disabled={checkedIndices.size === 0}
+                    onClick={() => setCheckedIndices(new Set())}
+                    variant="ghost"
+                  >
+                    {t("spriteGroup.batchClearSelection")}
+                  </Button>
+                  <span className="inline-status">
+                    {t("spriteGroup.batchSelectedCount", { count: checkedIndices.size })}
+                  </span>
+                </div>
+                <div className="sprite-batch-bar__move">
+                  <Select
+                    aria-label={t("spriteGroup.batchMoveChoose")}
+                    onChange={(event) => setBatchTargetGroup(event.target.value)}
+                    value={batchTargetGroup}
+                  >
+                    <option value="">{t("spriteGroup.batchMoveChoose")}</option>
+                    {spriteGroups.map((group) => (
+                      <option key={group} value={group}>
+                        {group}
+                      </option>
+                    ))}
+                  </Select>
+                  <AsyncButton
+                    disabled={checkedIndices.size === 0 || !batchTargetGroup}
+                    loading={spriteGroupsPending}
+                    onClick={handleBatchMove}
+                  >
+                    {t("spriteGroup.batchMoveTo")}
+                  </AsyncButton>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         {!draft.sprites.length ? <EmptyState title={t("character.sprite.empty")} /> : null}
         {selectedSprite ? (
           <div className="asset-gallery-layout asset-gallery-layout--character">
-            <ImageAssetGallery
-              items={spriteGalleryItems}
-              onSelect={onSelectSprite}
-              selectedIndex={selectedSpriteIndex}
-            />
+            {visibleGalleryItems.length > 0 ? (
+              <ImageAssetGallery
+                checkedIndices={batchSelectMode ? checkedIndices : undefined}
+                items={visibleGalleryItems}
+                onSelect={onSelectSprite}
+                onToggleCheck={batchSelectMode ? toggleCheckedSprite : undefined}
+                selectedIndex={selectedSpriteIndex}
+              />
+            ) : (
+              <EmptyState title={t("character.sprite.empty")} />
+            )}
             <aside className="asset-inspector">
               <div className="asset-inspector__preview asset-inspector__preview--character">
                 {selectedSprite.path ? (
@@ -231,6 +643,29 @@ export function CharacterSpritesSection({
                   <ImageIcon aria-hidden className="asset-inspector__fallback" />
                 )}
               </div>
+              {showOutfitGroupBar ? (
+                <label className="field-row field-row--stack">
+                  <span className="field-row__label">{t("spriteGroup.assignLabel")}</span>
+                  <span className="field-row__control">
+                    <Select
+                      aria-label={t("spriteGroup.assignLabel")}
+                      disabled={spriteGroupsPending}
+                      onChange={(event) =>
+                        onApplySpriteGroups?.({
+                          assignments: { [String(selectedSpriteIndex)]: event.target.value },
+                        })
+                      }
+                      value={selectedSpriteGroup}
+                    >
+                      {spriteGroups.map((group) => (
+                        <option key={group} value={group}>
+                          {group}
+                        </option>
+                      ))}
+                    </Select>
+                  </span>
+                </label>
+              ) : null}
               <label className="field-row field-row--stack">
                 <span className="field-row__label">{t("character.sprite.tag")}</span>
                 <span className="field-row__control">
@@ -363,6 +798,16 @@ export function CharacterSpritesSection({
         <Volume2 aria-hidden className="button__icon" />
         {t("character.sprite.voiceHint")}
       </div>
+      <AlertDialog
+        body={t("spriteGroup.deleteConfirmBody", { group: pendingDeleteGroup ?? "" })}
+        cancelLabel={t("common.cancel")}
+        closeLabel={t("common.close")}
+        confirmLabel={t("spriteGroup.delete")}
+        onCancel={() => setPendingDeleteGroup(null)}
+        onConfirm={handleConfirmDeleteGroup}
+        open={Boolean(pendingDeleteGroup)}
+        title={t("spriteGroup.delete")}
+      />
     </section>
   );
 }

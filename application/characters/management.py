@@ -32,6 +32,8 @@ class CharacterOperation(str, Enum):
     SAVE_SPRITE_VOICE_TEXT = "save-sprite-voice-text"
     SAVE_SPRITE_VOICE_TYPE = "save-sprite-voice-type"
     DELETE_SPRITE_VOICE = "delete-sprite-voice"
+    SAVE_SPRITE_GROUPS = "save-sprite-groups"
+    AUTO_GROUP_SPRITES = "auto-group-sprites"
     IMPORT = "import"
     EXPORT = "export"
 
@@ -59,6 +61,7 @@ def parse_character_request(
 
 
 def validate_character_payload(body: dict[str, Any], *, allow_remote_voice_paths: bool = False) -> None:
+    from config.schema import SELF_PERSONA_SPRITE_PREFIX, is_self_persona_name
     from sdk.ui.validators import (
         ascii_only,
         audio_duration_between,
@@ -69,6 +72,8 @@ def validate_character_payload(body: dict[str, Any], *, allow_remote_voice_paths
     )
 
     sprite_prefix = str(body.get("sprite_prefix") or "").strip()
+    if is_self_persona_name(body.get("name")) and not sprite_prefix:
+        sprite_prefix = SELF_PERSONA_SPRITE_PREFIX
     gpt_model_path = str(body.get("gpt_model_path") or "").strip()
     sovits_model_path = str(body.get("sovits_model_path") or "").strip()
     refer_audio_path = str(body.get("refer_audio_path") or "").strip()
@@ -129,6 +134,8 @@ class CharacterUseCase:
             CharacterOperation.SAVE_SPRITE_VOICE_TEXT: self._save_sprite_voice_text,
             CharacterOperation.SAVE_SPRITE_VOICE_TYPE: self._save_sprite_voice_type,
             CharacterOperation.DELETE_SPRITE_VOICE: self._delete_sprite_voice,
+            CharacterOperation.SAVE_SPRITE_GROUPS: self._save_sprite_groups,
+            CharacterOperation.AUTO_GROUP_SPRITES: self._auto_group_sprites,
             CharacterOperation.IMPORT: self._import_packages,
             CharacterOperation.EXPORT: self._export_package,
         }
@@ -210,12 +217,24 @@ class CharacterUseCase:
             raise ValueError(error)
 
     def _save(self, payload: dict[str, Any]) -> dict[str, Any]:
-        from config.schema import Character, PortraitCrop
+        from config.schema import (
+            Character,
+            PortraitCrop,
+            SELF_PERSONA_SPRITE_PREFIX,
+            is_self_persona_name,
+        )
 
         body = payload.get("character", payload)
         if not isinstance(body, dict):
             raise ValueError("character payload must be an object")
         original_name = str(payload.get("originalName") or body.get("name") or "").strip()
+        target_name = str(body.get("name") or "").strip()
+        if original_name and is_self_persona_name(original_name) and not is_self_persona_name(target_name):
+            raise ValueError("内置「自设」人物不可重命名")
+        if original_name and not is_self_persona_name(original_name) and is_self_persona_name(target_name):
+            raise ValueError("不能将其他角色重命名为「自设」")
+        if is_self_persona_name(target_name) and not str(body.get("sprite_prefix") or "").strip():
+            body = {**body, "sprite_prefix": SELF_PERSONA_SPRITE_PREFIX}
         validate_character_payload(body, allow_remote_voice_paths=self._uses_remote_gpt_sovits())
         character = Character.model_validate(body)
         saved_name = character.name.strip()
@@ -241,12 +260,29 @@ class CharacterUseCase:
                 for index, item in enumerate(body.get("sprites", []))
                 if isinstance(item, dict) and "portrait_crop" in item
             },
+            sprite_group_map={
+                index: item.get("group")
+                for index, item in enumerate(body.get("sprites", []))
+                if isinstance(item, dict) and "group" in item
+            } or None,
+            sprite_groups=character.sprite_groups if "sprite_groups" in body else None,
+            default_sprite_group=character.default_sprite_group if "default_sprite_group" in body else None,
+            fallback_to_default_group=(
+                character.fallback_to_default_group if "fallback_to_default_group" in body else None
+            ),
             # Preserve stored banks when older clients omit the new fields.
             avatar_type=character.avatar_type if "avatar_type" in body else None,
             avatars=character.avatars if "avatars" in body else None,
             relation_graph=character.relation_graph if "relation_graph" in body else None,
         )
-        if message.startswith("名称不能为空") or "已与其他角色重复" in message or message.startswith("保存失败"):
+        if (
+            message.startswith("名称不能为空")
+            or "已与其他角色重复" in message
+            or "不可重命名" in message
+            or "不能将其他角色重命名" in message
+            or "占用" in message
+            or message.startswith("保存失败")
+        ):
             raise RuntimeError(message)
         self._state.config_manager.reload()
         if original_name and original_name != saved_name:
@@ -290,9 +326,15 @@ class CharacterUseCase:
 
     def _delete(self, payload: dict[str, Any]) -> dict[str, Any]:
         from application.chat.conversation_library import update_conversation_character
+        from config.schema import is_self_persona_name
 
         name = str(payload.get("name") or "").strip()
-        existed = self._state.config_manager.get_character_by_name(name) is not None
+        if is_self_persona_name(name):
+            raise ValueError("内置「自设」人物不可删除")
+        existing = self._state.config_manager.get_character_by_name(name)
+        if existing is not None and getattr(existing, "undeletable", False):
+            raise ValueError(f"内置人物「{existing.name}」不可删除")
+        existed = existing is not None
         message, names = self._state.character_manager.delete_character(name)
         if existed and self._state.config_manager.get_character_by_name(name) is None:
             from application.knowledge.manage_knowledge import clear_character_bindings
@@ -308,14 +350,107 @@ class CharacterUseCase:
 
     def _upload_sprites(self, payload: dict[str, Any]) -> dict[str, Any]:
         name = str(payload.get("name") or "").strip()
+        group = payload.get("group")
+        upload_kwargs: dict[str, Any] = {}
+        if group is not None and str(group).strip():
+            upload_kwargs["group"] = str(group).strip()
         message, _paths, _tags = self._state.character_manager.upload_sprites(
             name,
             self._files(payload.get("paths") or []),
             str(payload.get("emotionTags") or ""),
+            **upload_kwargs,
         )
         if message.startswith("找不到") or message.startswith("请选择") or message.startswith("请先"):
             raise RuntimeError(message)
         return self._after_reload(name)
+
+    def _save_sprite_groups(self, payload: dict[str, Any]) -> dict[str, Any]:
+        name = str(payload.get("name") or "").strip()
+        if not name:
+            raise ValueError("character name is required")
+        raw_assignments = payload.get("assignments")
+        assignments: dict[int, str | None] | None = None
+        if isinstance(raw_assignments, dict):
+            assignments = {
+                int(k): (None if v is None else str(v))
+                for k, v in raw_assignments.items()
+            }
+        raw_groups = payload.get("spriteGroups")
+        sprite_groups = [str(g) for g in raw_groups] if isinstance(raw_groups, list) else None
+        self._state.character_manager.save_sprite_groups(
+            name,
+            sprite_groups=sprite_groups,
+            default_sprite_group=(
+                str(payload["defaultSpriteGroup"])
+                if "defaultSpriteGroup" in payload and payload["defaultSpriteGroup"] is not None
+                else None
+            ),
+            fallback_to_default_group=(
+                bool(payload["fallbackToDefaultGroup"])
+                if "fallbackToDefaultGroup" in payload and payload["fallbackToDefaultGroup"] is not None
+                else None
+            ),
+            assignments=assignments,
+            rename_from=(
+                str(payload["renameFrom"])
+                if payload.get("renameFrom") is not None
+                else None
+            ),
+            rename_to=(
+                str(payload["renameTo"])
+                if payload.get("renameTo") is not None
+                else None
+            ),
+            delete_group=(
+                str(payload["deleteGroup"])
+                if payload.get("deleteGroup") is not None
+                else None
+            ),
+            avatar_type=(
+                str(payload["avatarType"])
+                if payload.get("avatarType") is not None
+                else None
+            ),
+        )
+        return self._after_reload(name)
+
+    def _auto_group_sprites(self, payload: dict[str, Any]) -> dict[str, Any]:
+        from application.characters.sprite.auto_group_sprites import analyze_character_sprite_groups
+
+        name = str(payload.get("name") or "").strip()
+        if not name:
+            raise ValueError("character name is required")
+        character = self._character(name)
+        avatar_type = (
+            str(payload["avatarType"]).strip()
+            if payload.get("avatarType") is not None
+            else None
+        )
+        overwrite_existing = bool(payload.get("overwriteExisting", False))
+        apply_now = bool(payload.get("apply", False))
+        analysis = analyze_character_sprite_groups(
+            character,
+            avatar_type=avatar_type,
+            overwrite_existing=overwrite_existing,
+        )
+        updated_char = None
+        if apply_now and analysis.get("assignments"):
+            assignments = {
+                int(k): str(v)
+                for k, v in dict(analysis["assignments"]).items()
+            }
+            self._state.character_manager.save_sprite_groups(
+                name,
+                sprite_groups=list(analysis.get("spriteGroups") or []),
+                assignments=assignments,
+                avatar_type=avatar_type,
+            )
+            updated_char = self._after_reload(name)
+        return {
+            **analysis,
+            "applied": apply_now,
+            "character": updated_char,
+        }
 
     def _delete_sprite(self, payload: dict[str, Any]) -> dict[str, Any]:
         name = str(payload.get("name") or "").strip()

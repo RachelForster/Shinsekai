@@ -281,14 +281,22 @@ def _launch_chat_locked(
         body.get("characters") or [],
     )
     from application.chat.player_control import resolve_player
+    from config.schema import is_self_persona_name
     player_character = resolve_player(state.config_manager, characters, body.get("playerCharacter"))
+    if not is_self_persona_name(player_character) and any(
+        not is_self_persona_name(name) for name in characters
+    ):
+        characters = [name for name in characters if not is_self_persona_name(name)]
     primary_characters = _resolve_launch_primary_characters(
         state,
         body,
         characters,
         player_character,
     )
-    first_character = next((name for name in characters if name != player_character), "")
+    first_character = next(
+        (name for name in characters if name != player_character and not is_self_persona_name(name)),
+        "",
+    )
     init_sprite_path = initial_sprite_path_for_characters(
         state.config_manager,
         str(body.get("initSpritePath") or ""),
@@ -328,6 +336,10 @@ def _launch_chat_locked(
     if start_fresh_history:
         clear_story_session(state)
     user_display_name = player_character or sanitize_user_display_name(body.get("userDisplayName"))
+    raw_memory_mode = str(body.get("memoryMode") or "").strip()
+    if not raw_memory_mode and body.get("storyPath"):
+        raw_memory_mode = "isolated"
+    raw_initial_outfits = body.get("initialOutfits")
     session_base = {
         "playerCharacter": player_character,
         "readPlayerSpeech": bool(body.get("readPlayerSpeech", False)),
@@ -342,6 +354,17 @@ def _launch_chat_locked(
             state.config_manager.config.system_config.voice_language or "ja"
         ),
         "workflowPath": str(body.get("workflowPath") or ""),
+        "memoryMode": raw_memory_mode,
+        "autoOutfitSwitch": (
+            bool(body["autoOutfitSwitch"])
+            if isinstance(body.get("autoOutfitSwitch"), bool)
+            else None
+        ),
+        "initialOutfits": (
+            dict(raw_initial_outfits)
+            if isinstance(raw_initial_outfits, dict)
+            else {}
+        ),
     }
     release_unbound_story_session(state, session_base["historyPath"])
     state.chat_session = {**state.chat_session, **session_base}
@@ -547,6 +570,13 @@ def _resume_last_chat_locked(
             or "ja"
         ),
         "workflowPath": str(session.get("workflowPath") or ""),
+        "memoryMode": str(session.get("memoryMode") or "").strip(),
+        "autoOutfitSwitch": (
+            bool(session["autoOutfitSwitch"])
+            if isinstance(session.get("autoOutfitSwitch"), bool)
+            else None
+        ),
+        "initialOutfits": {},
     }
     release_unbound_story_session(state, session_base["historyPath"])
     if _chat_process_running():

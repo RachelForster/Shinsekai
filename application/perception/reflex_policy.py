@@ -157,12 +157,15 @@ class ReflexPolicy:
         sprite_count: int,
         config: PerceptionConfig,
         sprite_choices: Mapping[int, str] | None = None,
+        allowed_indices: set[int] | frozenset[int] | None = None,
         fallback_bark: str = "",
         now: float,
     ) -> ReflexDecision | None:
         """Resolve final `(sprite, bark)` under cooldown and similarity deduplication."""
         expression = canonical_expression(reflex.expression)
         candidates = expressions.get(expression, ())
+        if allowed_indices is not None and candidates:
+            candidates = tuple(idx for idx in candidates if idx in allowed_indices)
         sprite_idx = reflex.sprite
         if reflex.sprite_id is not None:
             candidates = ()
@@ -182,6 +185,12 @@ class ReflexPolicy:
                 ordered[0],
             )
         if sprite_idx is not None and not 0 <= sprite_idx < sprite_count:
+            sprite_idx = None
+        if (
+            allowed_indices is not None
+            and sprite_idx is not None
+            and sprite_idx not in allowed_indices
+        ):
             sprite_idx = None
 
         if not self.is_bark_cooldown_open(now=now, cooldown_sec=config.reflex_cooldown_sec):

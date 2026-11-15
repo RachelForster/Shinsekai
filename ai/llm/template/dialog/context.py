@@ -31,6 +31,7 @@ class DialogTemplateContext(TemplateContext):
     json_reminder: str
     player_name: str = ""
     player_character: Any = None
+    self_persona_setting: str = ""
     read_player_speech: bool = False
     allow_player_dialogue: bool = True
     effect_catalog: EffectCatalogContext | None = field(default=None, kw_only=True)

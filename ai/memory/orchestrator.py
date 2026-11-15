@@ -7,6 +7,8 @@ from dataclasses import dataclass, replace
 import time
 from typing import Any
 
+import numpy as np
+
 from ai.memory.deduplication import find_duplicate_memory, semantic_deduplication_threshold
 from ai.memory.ebbinghaus import EbbinghausRetentionPolicy
 from ai.memory.rule_recall_planner import RuleRecallPlanner
@@ -39,6 +41,8 @@ from sdk.adapters.session import (
 
 INJECTION_HEADER = "[Shinsekai long-term memory context]"
 DEFAULT_MIN_RELEVANCE = 0.38
+DEFAULT_CANON_MIN_RELEVANCE = 0.48
+DEFAULT_CANON_MIN_SCORE = 0.60
 DEFAULT_DORMANT_AWAKEN_VECTOR_SIM = 0.82
 DEFAULT_DORMANT_AWAKEN_FTS_SCORE = 0.72
 DEFAULT_MAX_DORMANT_AWAKENED = 2
@@ -76,6 +80,45 @@ def normalize_character_owners(names: Sequence[str]) -> tuple[str, ...]:
     return tuple(out)
 
 
+def _is_canon_memory(
+    record: MemoryRecord,
+    retention_state: RetentionState | None = None,
+) -> bool:
+    """Return True for pinned / canon memories (character core experiences & pinned facts)."""
+    if retention_state is not None and retention_state.tier == "canon":
+        return True
+    return bool(
+        record.pinned
+        or record.scope == SCOPE_CHAR_CANON
+        or record.kind == "canon"
+    )
+
+
+def _normalize_vec(raw: Any | None) -> np.ndarray | None:
+    if raw is None:
+        return None
+    arr = np.asarray(raw, dtype=np.float32).reshape(-1)
+    if arr.size == 0:
+        return None
+    norm = float(np.linalg.norm(arr))
+    if norm <= 1e-12 or not np.isfinite(norm):
+        return None
+    return arr / norm
+
+
+def _max_cosine_against_queries(embedding: Any | None, query_vectors: Sequence[Any]) -> float:
+    """Compute max cosine similarity of a record embedding against normalized query clauses."""
+    doc_vec = _normalize_vec(embedding)
+    if doc_vec is None or not query_vectors:
+        return 0.0
+    best = 0.0
+    for raw_q in query_vectors:
+        q_vec = _normalize_vec(raw_q)
+        if q_vec is not None and q_vec.shape == doc_vec.shape:
+            best = max(best, float(np.dot(doc_vec, q_vec)))
+    return best
+
+
 @dataclass(frozen=True, slots=True)
 class _ScoredCandidate:
     repo: MemoryRepository
@@ -101,6 +144,8 @@ class MemoryOrchestrator:
         recall_planner: RecallPlanner | None = None,
         extractor: MemoryExtractorPort | None = None,
         min_relevance: float = DEFAULT_MIN_RELEVANCE,
+        canon_min_relevance: float = DEFAULT_CANON_MIN_RELEVANCE,
+        canon_min_score: float = DEFAULT_CANON_MIN_SCORE,
         dormant_awaken_vector_sim: float = DEFAULT_DORMANT_AWAKEN_VECTOR_SIM,
         dormant_awaken_fts_score: float = DEFAULT_DORMANT_AWAKEN_FTS_SCORE,
         max_dormant_awakened: int = DEFAULT_MAX_DORMANT_AWAKENED,
@@ -112,6 +157,8 @@ class MemoryOrchestrator:
         self.recall_planner: RecallPlanner = recall_planner or RuleRecallPlanner()
         self.extractor = extractor
         self.min_relevance = float(min_relevance)
+        self.canon_min_relevance = float(canon_min_relevance)
+        self.canon_min_score = float(canon_min_score)
         self.dormant_awaken_vector_sim = float(dormant_awaken_vector_sim)
         self.dormant_awaken_fts_score = float(dormant_awaken_fts_score)
         self.max_dormant_awakened = max(0, int(max_dormant_awakened))
@@ -335,7 +382,8 @@ class MemoryOrchestrator:
                 ):
                     collected[(id(repo), hit.record.id)] = (repo, hit, False, False, False)
 
-        # On >4h session wakeup, proactively surface promises / high-importance recent items
+        # On >4h session wakeup, proactively surface dynamic promises / high-importance recent items
+        # (never seed static canon lore without genuine query relevance).
         if plan.is_session_wakeup:
             wakeup_targets = self._build_read_targets(
                 memory_mode=turn_input.memory_mode,
@@ -346,6 +394,8 @@ class MemoryOrchestrator:
             )
             for repo, scope_filter in wakeup_targets:
                 for rec in repo.list_by_scope(scope_filter, limit=8):
+                    if _is_canon_memory(rec):
+                        continue
                     key = (id(repo), rec.id)
                     if key in collected:
                         existing_repo, existing_hit, is_temp, _is_hop, _ = collected[key]
@@ -386,9 +436,14 @@ class MemoryOrchestrator:
                         ex_repo, ex_hit, ex_temp, _ex_hop, ex_wake = collected[key]
                         collected[key] = (ex_repo, ex_hit, ex_temp, True, ex_wake)
                     else:
+                        hop_vec_score = _max_cosine_against_queries(hop_rec.embedding, q_vecs)
                         collected[key] = (
                             repo,
-                            CandidateHit(record=hop_rec, vector_score=0.0, fts_score=0.0),
+                            CandidateHit(
+                                record=hop_rec,
+                                vector_score=hop_vec_score,
+                                fts_score=0.0,
+                            ),
                             False,
                             True,
                             False,
@@ -418,15 +473,20 @@ class MemoryOrchestrator:
                 now_ts=now_ts,
                 offline_gap_seconds=offline_gap,
             )
+            is_canon = _is_canon_memory(rec, ret_state)
 
             fts_equiv = min(1.0, float(hit.fts_score) * 1.15)
-            relevance = max(float(hit.vector_score), fts_equiv)
-            if is_temporal_hit:
-                relevance = max(relevance + 0.22, 0.45)
-            if is_wakeup_seed:
-                relevance = max(relevance, 0.56)
-            if is_entity_hop:
-                relevance = max(relevance, 0.44)
+            raw_relevance = max(float(hit.vector_score), fts_equiv)
+            relevance = raw_relevance
+            if not is_canon:
+                if is_temporal_hit:
+                    relevance = max(relevance + 0.22, 0.45)
+                if is_wakeup_seed:
+                    relevance = max(relevance, 0.56)
+                if is_entity_hop:
+                    relevance = max(relevance, 0.44)
+            elif is_temporal_hit and raw_relevance > 0.0:
+                relevance = min(1.0, raw_relevance + 0.15)
 
             final_score = (
                 0.65 * min(1.0, max(0.0, relevance))
@@ -459,7 +519,10 @@ class MemoryOrchestrator:
                     )
                 continue
 
-            if relevance < self.min_relevance:
+            if is_canon:
+                if relevance < self.canon_min_relevance or final_score < self.canon_min_score:
+                    continue
+            elif relevance < self.min_relevance:
                 continue
 
             active_scored.append(
@@ -636,9 +699,24 @@ class MemoryOrchestrator:
                 0.0,
                 min(
                     1.0,
-                    float(hit.vector_score if hit.vector_score > 0 else hit.fts_score),
+                    max(float(hit.vector_score), float(hit.fts_score)),
                 ),
             )
+            if _is_canon_memory(rec, ret_state):
+                canon_relevance = max(
+                    float(hit.vector_score),
+                    min(1.0, float(hit.fts_score) * 1.15),
+                )
+                canon_final = (
+                    0.65 * min(1.0, max(0.0, canon_relevance))
+                    + 0.25 * ret_state.retention
+                    + 0.10 * max(0.0, min(1.0, float(rec.importance)))
+                )
+                if (
+                    canon_relevance < self.canon_min_relevance
+                    or canon_final < self.canon_min_score
+                ):
+                    continue
             # Active tool search uses a gentler awakening bar than passive before_chat
             if (
                 ret_state.tier == "dormant"
@@ -803,6 +881,8 @@ class MemoryOrchestrator:
 
 
 __all__ = [
+    "DEFAULT_CANON_MIN_RELEVANCE",
+    "DEFAULT_CANON_MIN_SCORE",
     "DEFAULT_DORMANT_AWAKEN_FTS_SCORE",
     "DEFAULT_DORMANT_AWAKEN_VECTOR_SIM",
     "DEFAULT_MAX_DORMANT_AWAKENED",

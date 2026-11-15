@@ -29,9 +29,11 @@ def wait_for_memory_ready() -> None:
     get_mem0()
 
 
-def list_memories(character_name: str) -> dict[str, Any]:
+def list_memories(character_name: str, *, session_id: str = "") -> dict[str, Any]:
     from ai.memory.operations import memory_list
 
+    if session_id:
+        return memory_list(character_name, session_id=session_id)
     return memory_list(character_name)
 
 
@@ -155,22 +157,95 @@ def rollback_memories(session_id: str, *, turn_seq: int) -> dict[str, Any]:
     return memory_rollback_after_turn(session_id, turn_seq)
 
 
-def forget_memory(memory_id: str) -> dict[str, Any]:
+def forget_memory(memory_id: str, *, session_id: str = "") -> dict[str, Any]:
     from ai.memory.operations import memory_forget
 
+    if session_id:
+        return memory_forget(memory_id, session_id=session_id)
     return memory_forget(memory_id)
 
 
-def remember_and_list(content: str, *, character_name: str) -> dict[str, Any]:
+def remember_and_list(
+    content: str,
+    *,
+    character_name: str,
+    pinned: bool = False,
+    gist_text: str = "",
+    slot_key: str = "",
+    kind: str = "",
+    session_id: str = "",
+) -> dict[str, Any]:
     from ai.memory.operations import memory_remember_and_list
 
-    return memory_remember_and_list(content, character_name=character_name)
+    extra: dict[str, Any] = {}
+    if pinned:
+        extra["pinned"] = True
+    if gist_text:
+        extra["gist_text"] = gist_text
+    if slot_key:
+        extra["slot_key"] = slot_key
+    if kind:
+        extra["kind"] = kind
+    if session_id:
+        extra["session_id"] = session_id
+    return memory_remember_and_list(content, character_name=character_name, **extra)
 
 
-def forget_and_list(memory_id: str, *, character_name: str) -> dict[str, Any]:
+def forget_and_list(
+    memory_id: str,
+    *,
+    character_name: str,
+    session_id: str = "",
+) -> dict[str, Any]:
     from ai.memory.operations import memory_forget_and_list
 
+    if session_id:
+        return memory_forget_and_list(memory_id, character_name=character_name, session_id=session_id)
     return memory_forget_and_list(memory_id, character_name=character_name)
+
+
+def pin_memory(memory_id: str, *, pinned: bool, session_id: str = "") -> dict[str, Any]:
+    from ai.memory.operations import memory_set_pinned
+
+    return memory_set_pinned(memory_id, pinned, session_id=session_id)
+
+
+def pin_and_list(
+    memory_id: str,
+    *,
+    pinned: bool,
+    character_name: str,
+    session_id: str = "",
+) -> dict[str, Any]:
+    from ai.memory.operations import memory_set_pinned_and_list
+
+    return memory_set_pinned_and_list(
+        memory_id,
+        pinned,
+        character_name=character_name,
+        session_id=session_id,
+    )
+
+
+def awaken_memory(memory_id: str, *, session_id: str = "") -> dict[str, Any]:
+    from ai.memory.operations import memory_awaken
+
+    return memory_awaken(memory_id, session_id=session_id)
+
+
+def awaken_and_list(
+    memory_id: str,
+    *,
+    character_name: str,
+    session_id: str = "",
+) -> dict[str, Any]:
+    from ai.memory.operations import memory_awaken_and_list
+
+    return memory_awaken_and_list(
+        memory_id,
+        character_name=character_name,
+        session_id=session_id,
+    )
 
 
 def preview_import(

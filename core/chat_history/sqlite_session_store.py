@@ -1092,20 +1092,62 @@ def _discover_session_db_path(session_id: str) -> Path | None:
         known = _known_session_db_paths.get(sid)
     if known is not None:
         return known
-    conv_root = Path.cwd() / "data" / "conversations"
-    if not conv_root.is_dir():
-        return None
-    try:
-        for child in conv_root.iterdir():
-            if not child.is_dir():
-                continue
-            if canonical_session_id_for_dir(child) == sid:
-                db_path = child / HISTORY_DB_FILENAME
-                _register_session_db_path(sid, db_path)
-                return db_path
-    except OSError:
-        return None
+    for root in (
+        Path.cwd() / "data" / "chat_history",
+        Path.cwd() / "data" / "conversations",
+    ):
+        if not root.is_dir():
+            continue
+        try:
+            for child in root.iterdir():
+                if not child.is_dir():
+                    continue
+                if canonical_session_id_for_dir(child) == sid:
+                    db_path = child / HISTORY_DB_FILENAME
+                    _register_session_db_path(sid, db_path)
+                    return db_path
+            for db_candidate in root.rglob(HISTORY_DB_FILENAME):
+                parent = db_candidate.parent
+                if canonical_session_id_for_dir(parent) == sid:
+                    _register_session_db_path(sid, db_candidate)
+                    return db_candidate
+        except OSError:
+            continue
     return None
+
+
+@contextmanager
+def borrow_session_store_for_dir(
+    session_dir: str | Path,
+    *,
+    create_if_dir_exists: bool = False,
+) -> Iterator[ConversationSessionPort | None]:
+    """Yield an open or transient ConversationSessionPort for session_dir without leaking handles."""
+    directory = Path(session_dir)
+    cached = peek_open_session_store_for_dir(directory)
+    if cached is not None:
+        yield cached
+        return
+    registered = resolve_registered_session_store(str(directory))
+    if registered is not None:
+        yield registered
+        return
+    db_path = directory / HISTORY_DB_FILENAME
+    sid = canonical_session_id_for_dir(directory)
+    if not db_path.is_file() and not (create_if_dir_exists and directory.is_dir()):
+        yield None
+        return
+    _register_session_db_path(sid, db_path)
+    transient = SqliteSessionStore(
+        db_path,
+        session_id=sid,
+        shared_memory_rollback=get_default_shared_memory_rollback(),
+        max_pool_size=1,
+    )
+    try:
+        yield transient
+    finally:
+        transient.close()
 
 
 @contextmanager
@@ -1141,6 +1183,97 @@ def borrow_session_store_by_id(
         yield transient
     finally:
         transient.close()
+
+
+def _default_memory_mode_for_dir(directory: Path, raw_mode: str | None = None) -> MemoryMode:
+    if raw_mode is not None and str(raw_mode).strip():
+        return normalize_memory_mode(raw_mode)
+    if (directory / "story-v2.json").is_file() or (
+        directory / "story-prompt-binding.json"
+    ).is_file():
+        return MEMORY_MODE_ISOLATED
+    return normalize_memory_mode(raw_mode)
+
+
+def read_session_preferences_readonly(session_dir: str | Path) -> dict[str, Any]:
+    """Read memoryMode, autoOutfitSwitch, and outfit states without leaking SQLite handles."""
+    import sqlite3
+
+    directory = Path(session_dir)
+    sid = canonical_session_id_for_dir(directory)
+    cached = peek_open_session_store_for_dir(directory)
+    if cached is not None:
+        outfits_map = cached.list_outfit_states()
+        return {
+            "sessionId": sid,
+            "memoryMode": cached.get_memory_mode(),
+            "autoOutfitSwitch": bool(cached.get_auto_outfit_switch()),
+            "outfits": {
+                cname: {
+                    "characterName": item.character_name,
+                    "activeGroup": item.active_group,
+                    "locked": bool(item.locked),
+                    "updatedAtMs": int(item.updated_at_ms),
+                }
+                for cname, item in outfits_map.items()
+            },
+        }
+
+    db_file = directory / HISTORY_DB_FILENAME
+    if directory.is_dir():
+        _register_session_db_path(sid, db_file)
+    if not db_file.is_file():
+        return {
+            "sessionId": sid,
+            "memoryMode": _default_memory_mode_for_dir(directory, None),
+            "autoOutfitSwitch": True,
+            "outfits": {},
+        }
+
+    conn = sqlite3.connect(str(db_file), timeout=2.0)
+    try:
+        conn.row_factory = sqlite3.Row
+        meta_rows = conn.execute(
+            "SELECT key, value FROM session_meta WHERE key IN (?, ?)",
+            (_META_MEMORY_MODE, _META_AUTO_OUTFIT_SWITCH),
+        ).fetchall()
+        meta = {str(r["key"]): str(r["value"]) for r in meta_rows}
+        raw_mode = meta.get(_META_MEMORY_MODE)
+        raw_auto = meta.get(_META_AUTO_OUTFIT_SWITCH)
+        auto_switch = (
+            True
+            if raw_auto is None
+            else str(raw_auto).strip().lower() not in {"0", "false", "no", "off"}
+        )
+        outfit_rows = conn.execute(
+            "SELECT character_name, active_group, locked, updated_at_ms "
+            "FROM outfit_states ORDER BY character_name ASC"
+        ).fetchall()
+        outfits = {
+            str(r["character_name"]): {
+                "characterName": str(r["character_name"]),
+                "activeGroup": str(r["active_group"] or ""),
+                "locked": bool(r["locked"]),
+                "updatedAtMs": int(r["updated_at_ms"] or 0),
+            }
+            for r in outfit_rows
+            if str(r["character_name"] or "").strip()
+        }
+        return {
+            "sessionId": sid,
+            "memoryMode": _default_memory_mode_for_dir(directory, raw_mode),
+            "autoOutfitSwitch": auto_switch,
+            "outfits": outfits,
+        }
+    except sqlite3.Error:
+        return {
+            "sessionId": sid,
+            "memoryMode": _default_memory_mode_for_dir(directory, None),
+            "autoOutfitSwitch": True,
+            "outfits": {},
+        }
+    finally:
+        conn.close()
 
 
 def read_full_raw_messages_readonly(
@@ -1197,6 +1330,7 @@ __all__ = [
     "SESSION_SCHEMA_VERSION",
     "SqliteSessionStore",
     "borrow_session_store_by_id",
+    "borrow_session_store_for_dir",
     "canonical_session_id_for_dir",
     "close_all_session_stores",
     "close_session_store_for_dir",
@@ -1204,5 +1338,6 @@ __all__ = [
     "open_session_store_for_dir",
     "peek_open_session_store_for_dir",
     "read_full_raw_messages_readonly",
+    "read_session_preferences_readonly",
     "set_default_shared_memory_rollback",
 ]

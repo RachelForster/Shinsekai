@@ -40,7 +40,7 @@ def _raise_memory_error(result: dict[str, Any]) -> None:
         raise RuntimeError(str(result["error"]))
 
 
-def _list_character_memories(name: str) -> dict[str, Any]:
+def _list_character_memories(name: str, *, session_id: str = "") -> dict[str, Any]:
     dep_error = _check_mem0_before_call()
     if dep_error is not None:
         return dep_error
@@ -49,6 +49,8 @@ def _list_character_memories(name: str) -> dict[str, Any]:
     from application.memory.manage_memories import list_memories
 
     try:
+        if session_id:
+            return list_memories(name, session_id=session_id)
         return list_memories(name)
     except ToolNotReady as exc:
         return {"status": "loading", "message": exc.message}
@@ -146,7 +148,7 @@ def _memory_tool_rollback(session_id: str, turn_seq: int) -> dict[str, Any]:
     return rollback_memories(session_id, turn_seq=int(turn_seq))
 
 
-def _memory_tool_forget(memory_id: str) -> dict[str, Any]:
+def _memory_tool_forget(memory_id: str, *, session_id: str = "") -> dict[str, Any]:
     dep_error = _check_mem0_before_call()
     if dep_error is not None:
         return dep_error
@@ -155,7 +157,37 @@ def _memory_tool_forget(memory_id: str) -> dict[str, Any]:
     from application.memory.manage_memories import forget_memory
 
     try:
+        if session_id:
+            return forget_memory(memory_id, session_id=session_id)
         return forget_memory(memory_id)
+    except ToolNotReady as exc:
+        return {"status": "loading", "message": exc.message}
+
+
+def _memory_tool_pin(memory_id: str, pinned: bool, *, session_id: str = "") -> dict[str, Any]:
+    dep_error = _check_mem0_before_call()
+    if dep_error is not None:
+        return dep_error
+
+    from sdk.tool_registry import ToolNotReady
+    from application.memory.manage_memories import pin_memory
+
+    try:
+        return pin_memory(memory_id, pinned=pinned, session_id=session_id)
+    except ToolNotReady as exc:
+        return {"status": "loading", "message": exc.message}
+
+
+def _memory_tool_awaken(memory_id: str, *, session_id: str = "") -> dict[str, Any]:
+    dep_error = _check_mem0_before_call()
+    if dep_error is not None:
+        return dep_error
+
+    from sdk.tool_registry import ToolNotReady
+    from application.memory.manage_memories import awaken_memory
+
+    try:
+        return awaken_memory(memory_id, session_id=session_id)
     except ToolNotReady as exc:
         return {"status": "loading", "message": exc.message}
 
@@ -188,7 +220,16 @@ def _memory_asset_index(payload: dict[str, Any]) -> dict[str, Any]:
         return {"status": "loading", "message": exc.message}
 
 
-def _add_character_memory(name: str, content: str) -> dict[str, Any]:
+def _add_character_memory(
+    name: str,
+    content: str,
+    *,
+    pinned: bool = False,
+    gist_text: str = "",
+    slot_key: str = "",
+    kind: str = "",
+    session_id: str = "",
+) -> dict[str, Any]:
     dep_error = _check_mem0_before_call()
     if dep_error is not None:
         return dep_error
@@ -196,15 +237,27 @@ def _add_character_memory(name: str, content: str) -> dict[str, Any]:
     from sdk.tool_registry import ToolNotReady
     from application.memory.manage_memories import remember_and_list
 
+    extra: dict[str, Any] = {}
+    if pinned:
+        extra["pinned"] = True
+    if gist_text:
+        extra["gist_text"] = gist_text
+    if slot_key:
+        extra["slot_key"] = slot_key
+    if kind:
+        extra["kind"] = kind
+    if session_id:
+        extra["session_id"] = session_id
+
     try:
-        result = remember_and_list(content, character_name=name)
+        result = remember_and_list(content, character_name=name, **extra)
     except ToolNotReady as exc:
         return {"status": "loading", "message": exc.message}
     _raise_memory_error(result)
     return result
 
 
-def _delete_character_memory(name: str, memory_id: str) -> dict[str, Any]:
+def _delete_character_memory(name: str, memory_id: str, *, session_id: str = "") -> dict[str, Any]:
     dep_error = _check_mem0_before_call()
     if dep_error is not None:
         return dep_error
@@ -213,7 +266,63 @@ def _delete_character_memory(name: str, memory_id: str) -> dict[str, Any]:
     from application.memory.manage_memories import forget_and_list
 
     try:
-        result = forget_and_list(memory_id, character_name=name)
+        result = (
+            forget_and_list(memory_id, character_name=name, session_id=session_id)
+            if session_id
+            else forget_and_list(memory_id, character_name=name)
+        )
+    except ToolNotReady as exc:
+        return {"status": "loading", "message": exc.message}
+    _raise_memory_error(result)
+    return result
+
+
+def _pin_character_memory(
+    name: str,
+    memory_id: str,
+    pinned: bool,
+    *,
+    session_id: str = "",
+) -> dict[str, Any]:
+    dep_error = _check_mem0_before_call()
+    if dep_error is not None:
+        return dep_error
+
+    from sdk.tool_registry import ToolNotReady
+    from application.memory.manage_memories import pin_and_list
+
+    try:
+        result = pin_and_list(
+            memory_id,
+            pinned=pinned,
+            character_name=name,
+            session_id=session_id,
+        )
+    except ToolNotReady as exc:
+        return {"status": "loading", "message": exc.message}
+    _raise_memory_error(result)
+    return result
+
+
+def _awaken_character_memory(
+    name: str,
+    memory_id: str,
+    *,
+    session_id: str = "",
+) -> dict[str, Any]:
+    dep_error = _check_mem0_before_call()
+    if dep_error is not None:
+        return dep_error
+
+    from sdk.tool_registry import ToolNotReady
+    from application.memory.manage_memories import awaken_and_list
+
+    try:
+        result = awaken_and_list(
+            memory_id,
+            character_name=name,
+            session_id=session_id,
+        )
     except ToolNotReady as exc:
         return {"status": "loading", "message": exc.message}
     _raise_memory_error(result)

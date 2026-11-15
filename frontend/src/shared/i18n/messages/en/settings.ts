@@ -274,4 +274,6 @@ export const settingsEnMessages: Record<SettingsMessageKey, string> = {
   "api.nav.perception": "Live Reactions",
   "api.nav.t2i": "Image Generation",
   "api.nav.asr": "Voice Input",
+  "api.memory.hybridSetupReady": "Local ONNX hybrid memory engine ready · model ready",
+  "api.memory.hybridSetupModelMissing": "Local ONNX hybrid memory engine ready · model not downloaded",
 };

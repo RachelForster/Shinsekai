@@ -12,11 +12,15 @@ import { ToastProvider } from "../../../shared/ui";
 
 const mockGetAppConfig = vi.fn();
 const mockListCharacters = vi.fn();
+const mockAutoGroupCharacterSprites = vi.fn();
+const mockAwakenCharacterMemory = vi.fn();
+const mockPinCharacterMemory = vi.fn();
 const mockPlanCharacterSprites = vi.fn();
 const mockRenderCharacterSprite = vi.fn();
 const mockImportGeneratedCharacterSprites = vi.fn();
 const mockSaveCharacter = vi.fn();
 const mockSaveCharacterEmotionTags = vi.fn();
+const mockSaveCharacterSpriteGroups = vi.fn();
 const mockUploadCharacterSprites = vi.fn();
 const mockUploadSpriteVoice = vi.fn();
 const mockDeleteAllCharacterSprites = vi.fn();
@@ -119,6 +123,8 @@ vi.mock("../../../entities/chat/repository", () => ({
 
 vi.mock("../../../entities/character/repository", () => ({
   charactersQueryKey: ["characters"],
+  autoGroupCharacterSprites: (input: unknown) => mockAutoGroupCharacterSprites(input),
+  awakenCharacterMemory: (input: unknown) => mockAwakenCharacterMemory(input),
   planCharacterSprites: (...args: unknown[]) => mockPlanCharacterSprites(...args),
   renderCharacterSprite: (...args: unknown[]) => mockRenderCharacterSprite(...args),
   importGeneratedCharacterSprites: (...args: unknown[]) => mockImportGeneratedCharacterSprites(...args),
@@ -133,11 +139,13 @@ vi.mock("../../../entities/character/repository", () => ({
   importCharacters: (paths: string[]) => mockImportCharacters(paths),
   listCharacterMemories: (name: string) => mockListCharacterMemories(name),
   listCharacters: () => mockListCharacters(),
-  rememberCharacterMemory: (name: string, memory: string) => mockRememberCharacterMemory(name, memory),
+  pinCharacterMemory: (input: unknown) => mockPinCharacterMemory(input),
+  rememberCharacterMemory: (...args: unknown[]) => mockRememberCharacterMemory(...args),
   searchCharacterMemories: (input: { limit?: number; name: string; query: string }) =>
     mockSearchCharacterMemories(input),
   saveCharacter: (character: Character, originalName?: string) => mockSaveCharacter(character, originalName),
   saveCharacterEmotionTags: (name: string, emotionTags: string) => mockSaveCharacterEmotionTags(name, emotionTags),
+  saveCharacterSpriteGroups: (input: unknown) => mockSaveCharacterSpriteGroups(input),
   saveSpriteScale: (name: string, scale: number) => mockSaveSpriteScale(name, scale),
   saveSpriteVoiceText: (name: string, index: number, text: string) => mockSaveSpriteVoiceText(name, index, text),
   saveSpriteVoiceType: (name: string, index: number, voiceType: string) =>
@@ -894,5 +902,40 @@ describe("CharacterEditorPage", () => {
     expect(savedPayload.portrait_crop).toEqual({ x: 0.35, y: 0.18, zoom: 2.4 });
     expect(savedPayload.character_setting).toBe("Quiet student.");
     expect(screen.getByLabelText("Character setting")).toHaveValue("Unsaved personality text");
+  });
+
+  it("locks name and sprite prefix, hides delete, and keeps built-in 自设 pinned first after saving", async () => {
+    const selfPersona: Character = {
+      ...character,
+      character_setting: "Player persona bio",
+      is_builtin: true,
+      name: "自设",
+      pinned: true,
+      sprite_prefix: "__self__",
+      sprites: [],
+      undeletable: true,
+    };
+    mockListCharacters.mockResolvedValue([selfPersona, character]);
+    mockSaveCharacter.mockImplementation(async (saved: Character) => structuredClone(saved));
+
+    renderPage();
+    await waitFor(() => expect(screen.getByLabelText(/Character name/)).toHaveValue("自设"));
+
+    expect(screen.getByLabelText(/Character name/)).toBeDisabled();
+    expect(screen.getByLabelText(/Upload directory name \(ASCII\)/)).toBeDisabled();
+    expect(screen.getByText("Global Player Persona & Public Self-Memory")).toBeInTheDocument();
+    const basicSection = document.getElementById("character-basic") as HTMLElement;
+    expect(within(basicSection).queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Character setting"), {
+      target: { value: "Updated player bio" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(mockSaveCharacter).toHaveBeenCalledTimes(1));
+
+    // Built-in 自设 remains first in the character selector even after saving!
+    fireEvent.click(screen.getByRole("combobox", { name: "Current character" }));
+    const options = screen.getAllByRole("option");
+    expect(options.map((option) => option.textContent)).toEqual(["自设", "Mika"]);
   });
 });

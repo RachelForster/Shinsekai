@@ -7,9 +7,25 @@ from pathlib import Path
 from typing import List, Dict, Any, Tuple, Optional, Union
 from copy import deepcopy
 from collections.abc import Mapping
-from config.schema import Character, ModelSprites, Sprite, SpriteTransition, RelationGraph
+from config.schema import (
+    Character,
+    DEFAULT_SPRITE_GROUP,
+    ModelSprites,
+    RelationGraph,
+    SELF_PERSONA_NAME,
+    SELF_PERSONA_SPRITE_PREFIX,
+    Sprite,
+    SpriteTransition,
+    is_self_persona_name,
+)
 from config.config_manager import ConfigManager
 from config.sprite_files import sprite_field, sprite_fingerprint
+from config.sprite_groups import (
+    normalize_sprite_group,
+    normalize_sprite_group_list,
+    set_sprite_group_value,
+    sprite_group_of,
+)
 from config.sprite_mouth import read_manifest
 import yaml
 
@@ -147,6 +163,11 @@ class CharacterManager:
             raise
 
 
+    def _resolve_mutable_character(self, name: str) -> Optional[Character]:
+        if is_self_persona_name(name):
+            return self._config_manager.ensure_self_persona_persisted()
+        return self._config_manager.get_character_by_name(name)
+
     def add_character(self, name: str, color: str, sprite_prefix: str, gpt_model_path: str,
                      sovits_model_path: str, refer_audio_path: str, prompt_text: str,
                      prompt_lang: str, character_setting: str,
@@ -160,7 +181,11 @@ class CharacterManager:
                      avatars: Optional[Dict[str, Union[ModelSprites, dict]]] = None,
                      portrait_crop=None,
                      sprite_portrait_crops: Optional[dict[int, object]] = None,
-                     relation_graph: Optional[Union[RelationGraph, dict]] = None) -> Tuple[str, List[str]]:
+                     relation_graph: Optional[Union[RelationGraph, dict]] = None,
+                     sprite_groups: Optional[List[str]] = None,
+                     default_sprite_group: Optional[str] = None,
+                     fallback_to_default_group: Optional[bool] = None,
+                     sprite_group_map: Optional[dict[int, Optional[str]]] = None) -> Tuple[str, List[str]]:
         """
         添加或更新角色配置。
 
@@ -175,23 +200,37 @@ class CharacterManager:
         if not name:
             return "名称不能为空！", current_names
 
+        trimmed_edit_as = str(edit_as_name).strip() if edit_as_name else ""
+        if trimmed_edit_as and is_self_persona_name(trimmed_edit_as) and not is_self_persona_name(name):
+            return "内置「自设」人物不可重命名！", current_names
+        if trimmed_edit_as and not is_self_persona_name(trimmed_edit_as) and is_self_persona_name(name):
+            return "不能将其他角色重命名为「自设」！", current_names
+
+        if is_self_persona_name(name) and not (sprite_prefix or "").strip():
+            sprite_prefix = SELF_PERSONA_SPRITE_PREFIX
+
         characters = self._config_manager.config.characters
 
         # check sprite_prefix collision (unique per-character upload directory)
         _prefix = (sprite_prefix or "").strip()
         if _prefix:
+            if _prefix == SELF_PERSONA_SPRITE_PREFIX and not is_self_persona_name(trimmed_edit_as or name):
+                return (
+                    f"立绘目录名「{_prefix}」已被系统角色「{SELF_PERSONA_NAME}」占用！",
+                    current_names,
+                )
             for c in characters:
                 _c_prefix = (c.sprite_prefix or "").strip()
                 if not _c_prefix or _prefix != _c_prefix:
                     continue
                 # editing: new prefix must not collide with *other* characters
-                if edit_as_name and str(edit_as_name).strip():
-                    if c.name != str(edit_as_name).strip():
+                if trimmed_edit_as:
+                    if c.name != trimmed_edit_as:
                         return (
                             f"立绘目录名「{_prefix}」已被角色「{c.name}」占用！",
                             current_names,
                         )
-                else:
+                elif not (is_self_persona_name(name) and is_self_persona_name(c.name)):
                     return (
                         f"立绘目录名「{_prefix}」已被角色「{c.name}」占用！",
                         current_names,
@@ -202,10 +241,20 @@ class CharacterManager:
             avatar_type=avatar_type, avatars=avatars,
         )
 
-        if edit_as_name and str(edit_as_name).strip():
-            target = self._config_manager.get_character_by_name(str(edit_as_name).strip())
+        if trimmed_edit_as:
+            target = (
+                self._config_manager.ensure_self_persona_persisted()
+                if is_self_persona_name(trimmed_edit_as)
+                else self._config_manager.get_character_by_name(trimmed_edit_as)
+            )
             if target is not None:
-                taken = self._config_manager.get_character_by_name(name)
+                if getattr(target, "undeletable", False) and target.name != name:
+                    return f"内置角色「{target.name}」不可重命名！", [c.name for c in characters]
+                taken = (
+                    None
+                    if is_self_persona_name(name) and is_self_persona_name(target.name)
+                    else self._config_manager.get_character_by_name(name)
+                )
                 if taken is not None and taken is not target:
                     return f"名称「{name}」已与其他角色重复！", [c.name for c in characters]
                 target.relation_graph = self._rename_relation_graph_owner(target.relation_graph, target.name, name)
@@ -235,14 +284,29 @@ class CharacterManager:
                             sprite["portrait_crop"] = crop.model_dump() if crop else None
                         else:
                             sprite.portrait_crop = crop
+                for index, group_val in (sprite_group_map or {}).items():
+                    if 0 <= index < len(target.sprites):
+                        target.sprites[index] = set_sprite_group_value(target.sprites[index], group_val)
+                if sprite_groups is not None:
+                    target.sprite_groups = normalize_sprite_group_list(sprite_groups)
+                if default_sprite_group is not None:
+                    target.default_sprite_group = str(default_sprite_group).strip()
+                if fallback_to_default_group is not None:
+                    target.fallback_to_default_group = bool(fallback_to_default_group)
                 if avatar_type is not None:
                     target.avatar_type = avatar_fields.avatar_type
                 if avatars is not None:
                     target.avatars = avatar_fields.avatars
+                if relation_graph is not None:
+                    target.relation_graph = self.parse_relation_graph(relation_graph)
                 self._save_characters_config()
                 return "人物已更新！", [c.name for c in characters]
 
-        existing_character: Optional[Character] = self._config_manager.get_character_by_name(name)
+        existing_character: Optional[Character] = (
+            self._config_manager.ensure_self_persona_persisted()
+            if is_self_persona_name(name)
+            else self._config_manager.get_character_by_name(name)
+        )
         
         if existing_character is None:
             # 创建新的 Character 实例
@@ -258,6 +322,9 @@ class CharacterManager:
                 sprites=[],
                 sprite_scale=1.0,
                 emotion_tags=emotion_tags or "",
+                sprite_groups=normalize_sprite_group_list(sprite_groups),
+                default_sprite_group=str(default_sprite_group or "").strip(),
+                fallback_to_default_group=True if fallback_to_default_group is None else bool(fallback_to_default_group),
                 character_brief=character_brief or "",
                 character_setting=character_setting,
                 speech_speed=speech_speed,
@@ -299,10 +366,21 @@ class CharacterManager:
                         sprite["portrait_crop"] = crop.model_dump() if crop else None
                     else:
                         sprite.portrait_crop = crop
+            for index, group_val in (sprite_group_map or {}).items():
+                if 0 <= index < len(existing_character.sprites):
+                    existing_character.sprites[index] = set_sprite_group_value(existing_character.sprites[index], group_val)
+            if sprite_groups is not None:
+                existing_character.sprite_groups = normalize_sprite_group_list(sprite_groups)
+            if default_sprite_group is not None:
+                existing_character.default_sprite_group = str(default_sprite_group).strip()
+            if fallback_to_default_group is not None:
+                existing_character.fallback_to_default_group = bool(fallback_to_default_group)
             if avatar_type is not None:
                 existing_character.avatar_type = avatar_fields.avatar_type
             if avatars is not None:
                 existing_character.avatars = avatar_fields.avatars
+            if relation_graph is not None:
+                existing_character.relation_graph = self.parse_relation_graph(relation_graph)
 
             self._save_characters_config()
             return "人物已更新！", [c.name for c in characters]
@@ -320,11 +398,17 @@ class CharacterManager:
         
         if not name or name == "新角色":
             return "请选择要删除的角色！", current_names
+
+        if is_self_persona_name(name):
+            return "内置「自设」人物不可删除！", current_names
         
         character_to_delete: Optional[Character] = self._config_manager.get_character_by_name(name)
         
         if character_to_delete is None:
             return f"找不到角色: {name}", current_names
+
+        if getattr(character_to_delete, "undeletable", False):
+            return f"内置角色「{character_to_delete.name}」不可删除！", current_names
         
         # 移除角色
         try:
@@ -374,6 +458,7 @@ class CharacterManager:
         replace_index: Optional[int] = None,
         expected_path: Optional[str] = None,
         replacements: Optional[List[Tuple[int, str]]] = None,
+        group: Optional[str] = None,
     ) -> Tuple[str, List[str], str]:
         """
         上传立绘文件并更新角色的立绘列表和情绪标签。
@@ -396,7 +481,7 @@ class CharacterManager:
                 if manifest and read_manifest(manifest)["sourceFingerprint"] != sprite_fingerprint(file.name):
                     raise ValueError("动态立绘已变化，请重新匹配口型")
         
-        character: Optional[Character] = self._config_manager.get_character_by_name(character_name)
+        character: Optional[Character] = self._resolve_mutable_character(character_name)
         if not character:
             return f"找不到角色: {character_name}", [], ''
         
@@ -429,7 +514,14 @@ class CharacterManager:
         emotion_tags_to_add = ''
         original_sprites = character.sprites
         original_tags = character.emotion_tags
+        original_groups = list(character.sprite_groups or [])
         new_sprites = []
+        cleaned_upload_group = str(group or "").strip()
+        stored_upload_group = (
+            None
+            if not cleaned_upload_group or cleaned_upload_group == DEFAULT_SPRITE_GROUP
+            else cleaned_upload_group
+        )
         
         for i, file in enumerate(sprite_files):
             filename = os.path.basename(file.name)
@@ -438,9 +530,11 @@ class CharacterManager:
             dest_path = os.path.join(char_dir, filename)
             shutil.copyfile(file.name, dest_path)
             
-            updates = {"path": dest_path}
+            updates: Dict[str, Any] = {"path": dest_path}
             if sprite_mouths is not None:
                 updates["mouth_sync"] = sprite_mouths[i]
+            if replacements is None and stored_upload_group is not None:
+                updates["group"] = stored_upload_group
             new_sprite_data = updates
             if replacements is not None:
                 original = original_sprites[replacements[i][0]]
@@ -460,6 +554,8 @@ class CharacterManager:
             character.sprites = list(original_sprites)
             for (index, _), sprite in zip(replacements, new_sprites):
                 character.sprites[index] = sprite
+        elif stored_upload_group is not None and stored_upload_group not in character.sprite_groups:
+            character.sprite_groups = normalize_sprite_group_list([*character.sprite_groups, stored_upload_group])
         if current_emotion_tags and not current_emotion_tags.endswith("\n"):
             current_emotion_tags += "\n"
         if replacements is not None:
@@ -480,6 +576,7 @@ class CharacterManager:
         except Exception:
             character.sprites = original_sprites
             character.emotion_tags = original_tags
+            character.sprite_groups = original_groups
             raise
 
         all_sprite_paths = [s.path if isinstance(s, Sprite) else s.get('path', '') for s in character.sprites]
@@ -849,6 +946,121 @@ class CharacterManager:
             data = data.model_dump(mode="json")
         graph = RelationGraph.model_validate(deepcopy(data) if data is not None else {})
         return graph
+
+    def save_sprite_groups(
+        self,
+        name: str,
+        *,
+        sprite_groups: Optional[List[str]] = None,
+        default_sprite_group: Optional[str] = None,
+        fallback_to_default_group: Optional[bool] = None,
+        assignments: Optional[Dict[int, Optional[str]]] = None,
+        rename_from: Optional[str] = None,
+        rename_to: Optional[str] = None,
+        delete_group: Optional[str] = None,
+        avatar_type: Optional[str] = None,
+    ) -> Character:
+        """原子保存立绘服装分组配置、批量移组、重命名与删除分组（保留原始全局立绘下标不变）。"""
+        if not name or not str(name).strip():
+            raise ValueError("角色名称不能为空")
+        character = self._resolve_mutable_character(str(name).strip())
+        if character is None:
+            raise KeyError(f"找不到角色: {name}")
+
+        target_avatar = (
+            str(character.avatar_type or "static").strip().lower()
+            if avatar_type is None
+            else str(avatar_type or "static").strip().lower()
+        ) or "static"
+
+        prev_sprites = list(character.sprites)
+        prev_avatars = deepcopy(character.avatars)
+        prev_groups = list(character.sprite_groups or [])
+        prev_default = character.default_sprite_group
+        prev_fallback = character.fallback_to_default_group
+
+        if target_avatar == "static":
+            bank_sprites = list(character.sprites or [])
+        else:
+            if target_avatar not in character.avatars:
+                raise KeyError(f"未知形象类型: {target_avatar}")
+            bank_sprites = list(character.avatars[target_avatar].sprites or [])
+
+        next_groups = normalize_sprite_group_list(
+            sprite_groups if sprite_groups is not None else character.sprite_groups
+        )
+        next_default = (
+            str(default_sprite_group).strip()
+            if default_sprite_group is not None
+            else str(character.default_sprite_group or "").strip()
+        )
+        next_fallback = (
+            bool(fallback_to_default_group)
+            if fallback_to_default_group is not None
+            else bool(character.fallback_to_default_group)
+        )
+
+        if rename_from is not None and rename_to is not None:
+            src = normalize_sprite_group(rename_from)
+            dst = normalize_sprite_group(rename_to)
+            if src == DEFAULT_SPRITE_GROUP:
+                raise ValueError("默认分组不可重命名")
+            if src != dst:
+                bank_sprites = [
+                    set_sprite_group_value(sp, dst) if sprite_group_of(sp) == src else sp
+                    for sp in bank_sprites
+                ]
+                next_groups = normalize_sprite_group_list(
+                    [dst if g == src else g for g in [*next_groups, dst]]
+                )
+                if next_default and normalize_sprite_group(next_default) == src:
+                    next_default = "" if dst == DEFAULT_SPRITE_GROUP else dst
+
+        if delete_group is not None:
+            removed = normalize_sprite_group(delete_group)
+            if removed == DEFAULT_SPRITE_GROUP:
+                raise ValueError("默认分组不可删除")
+            bank_sprites = [
+                set_sprite_group_value(sp, None) if sprite_group_of(sp) == removed else sp
+                for sp in bank_sprites
+            ]
+            next_groups = [g for g in next_groups if g != removed]
+            if next_default and normalize_sprite_group(next_default) == removed:
+                next_default = ""
+
+        if assignments:
+            added_groups: List[str] = []
+            for raw_idx, group_val in assignments.items():
+                idx = int(raw_idx)
+                if not 0 <= idx < len(bank_sprites):
+                    raise ValueError(f"立绘编号越界: {idx}")
+                bank_sprites[idx] = set_sprite_group_value(bank_sprites[idx], group_val)
+                norm = normalize_sprite_group(group_val)
+                if norm != DEFAULT_SPRITE_GROUP and norm not in next_groups and norm not in added_groups:
+                    added_groups.append(norm)
+            if added_groups:
+                next_groups = normalize_sprite_group_list([*next_groups, *added_groups])
+
+        if next_default and normalize_sprite_group(next_default) == DEFAULT_SPRITE_GROUP:
+            next_default = DEFAULT_SPRITE_GROUP
+
+        try:
+            if target_avatar == "static":
+                character.sprites = bank_sprites
+            else:
+                character.avatars[target_avatar].sprites = bank_sprites
+            character.sprite_groups = next_groups
+            character.default_sprite_group = next_default
+            character.fallback_to_default_group = next_fallback
+            self._save_characters_config()
+        except Exception:
+            character.sprites = prev_sprites
+            character.avatars = prev_avatars
+            character.sprite_groups = prev_groups
+            character.default_sprite_group = prev_default
+            character.fallback_to_default_group = prev_fallback
+            raise
+        return character
 
     def update_relation_graph(self, char_name: str, mutate) -> RelationGraph:
         """修改并校验图谱，然后保存角色配置。"""

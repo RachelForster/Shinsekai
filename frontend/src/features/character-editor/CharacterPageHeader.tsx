@@ -6,7 +6,7 @@ import type { Character } from "../../entities/config/types";
 import { openExternal } from "../../entities/files/repository";
 import { useI18n } from "../../shared/i18n";
 import { AsyncButton, Button, PathPickerDialog, Select } from "../../shared/ui";
-import { CHARACTER_RESOURCES_URL } from "./characterEditorUtils";
+import { CHARACTER_RESOURCES_URL, isSelfPersonaCharacter } from "./characterEditorUtils";
 
 interface CharacterPageHeaderProps {
   characters: Character[];
@@ -41,6 +41,8 @@ export function CharacterPageHeader({
 }: CharacterPageHeaderProps) {
   const { t } = useI18n();
   const [importPickerOpen, setImportPickerOpen] = useState(false);
+  const currentValue = isCreating ? "" : selectedName || characters[0]?.name || "";
+  const activeCharacter = isCreating ? undefined : characters.find((item) => item.name === currentValue);
 
   return (
     <header className="page__header character-page__header">
@@ -70,7 +72,7 @@ export function CharacterPageHeader({
             aria-label={t("character.row.current")}
             disabled={isLoading || !characters.length}
             onChange={(event) => onSelectCharacter(event.target.value)}
-            value={isCreating ? "" : selectedName || characters[0]?.name || ""}
+            value={currentValue}
           >
             {isCreating ? <option value="">{t("common.new")}</option> : null}
             {characters.map((character) => (
@@ -80,6 +82,9 @@ export function CharacterPageHeader({
             ))}
           </Select>
         </label>
+        {isSelfPersonaCharacter(activeCharacter) ? (
+          <span className="character-builtin-badge">{t("character.selfPersona.badge")}</span>
+        ) : null}
         <div className="character-page__toolbar-group character-page__toolbar-group--primary">
           <Button icon={<Plus aria-hidden className="button__icon" />} onClick={onCreate}>
             {t("common.new")}

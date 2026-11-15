@@ -619,6 +619,31 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
             next_snapshot["perception"] = dict(perception)
         return next_snapshot
 
+    if event_type == "outfit.state":
+        outfits = event.get("outfits")
+        if isinstance(outfits, dict):
+            next_snapshot["outfits"] = {
+                str(cname): dict(state_item)
+                for cname, state_item in outfits.items()
+                if str(cname).strip() and isinstance(state_item, dict)
+            }
+        if isinstance(event.get("autoOutfitSwitch"), bool):
+            next_snapshot["autoOutfitSwitch"] = bool(event["autoOutfitSwitch"])
+        catalog = event.get("outfitCatalog")
+        if isinstance(catalog, dict):
+            next_snapshot["outfitCatalog"] = {
+                str(cname): dict(entry)
+                for cname, entry in catalog.items()
+                if str(cname).strip() and isinstance(entry, dict)
+            }
+        return next_snapshot
+
+    if event_type == "memory.mode":
+        mode = str(event.get("memoryMode") or "").strip()
+        if mode in {"isolated", "shared", "inherit_readonly"}:
+            next_snapshot["memoryMode"] = mode
+        return next_snapshot
+
     if event_type == "sprite.reaction":
         try:
             duration_ms = max(800, int(event.get("durationMs") or 3600))

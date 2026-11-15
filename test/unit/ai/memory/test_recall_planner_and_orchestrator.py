@@ -650,3 +650,110 @@ def test_pluggable_retention_policy_and_recall_planner_contributions(tmp_path: P
         assert isinstance(engine.orchestrator.recall_planner, CustomPlanner)
     finally:
         clear_memory_adapter_registrations()
+
+
+def test_orchestrator_enforces_canon_score_threshold_across_turn_wakeup_hop_and_tool(
+    repo_pair,
+):
+    global_repo, _ = repo_pair
+    embedder = DeterministicHashEmbedder(dimensions=384)
+    orch = MemoryOrchestrator(embedder=embedder, global_repo=global_repo)
+    now_ts = _ts(2026, 11, 15, 21)
+
+    report = orch.ingest_drafts(
+        [
+            MemoryDraft(
+                owner_id="Mika",
+                scope=SCOPE_CHAR_CANON,
+                kind="canon",
+                pinned=True,
+                importance=0.95,
+                detail_text="Mika十二岁那年在暴风雨的海边失去了相依为命的姐姐",
+                gist_text="十二岁在海边暴风雨失去姐姐",
+                entities=("海边", "老馆"),
+            ),
+            MemoryDraft(
+                owner_id="Mika",
+                scope=SCOPE_CHAR_CANON,
+                kind="canon",
+                pinned=True,
+                importance=0.85,
+                detail_text="Mika左手腕上有一道小时候救流浪猫留下的浅浅疤痕",
+                gist_text="左手腕有救猫留下的疤痕",
+            ),
+            MemoryDraft(
+                owner_id="Mika",
+                scope=SCOPE_CHAR_CROSS_SAVE,
+                kind="promise",
+                importance=0.80,
+                detail_text="Mika答应明天傍晚和用户一起去老馆天台看彗星",
+                gist_text="答应一起去老馆天台看彗星",
+                entities=("老馆",),
+            ),
+        ],
+        now_ts=now_ts,
+    )
+    storm_canon_id, scar_canon_id, promise_id = report.added_ids
+
+    # 1. Unrelated chat & single incidental keyword ("海边") fall below canon threshold -> blocked!
+    casual_beach = orch.recall_for_turn(
+        TurnRecallInput(
+            user_text="周末我们去海边游泳玩水吧！",
+            active_character_names=("Mika",),
+            now_ts=now_ts + 30,
+        )
+    )
+    assert storm_canon_id not in casual_beach.recalled_ids
+    assert scar_canon_id not in casual_beach.recalled_ids
+
+    # 2. >4h session wakeup surfaces dynamic promise, NEVER unprompted canon backstory!
+    wakeup_block = orch.recall_for_turn(
+        TurnRecallInput(
+            user_text="早安",
+            active_character_names=("Mika",),
+            seconds_since_last_turn=6.0 * 3600.0,
+            now_ts=now_ts + 6.0 * 3600.0,
+        )
+    )
+    assert promise_id in wakeup_block.recalled_ids
+    assert storm_canon_id not in wakeup_block.recalled_ids
+    assert scar_canon_id not in wakeup_block.recalled_ids
+
+    # 3. 1-hop entity expansion on "老馆" does NOT bypass canon score threshold!
+    comet_block = orch.recall_for_turn(
+        TurnRecallInput(
+            user_text="明天傍晚去老馆天台看彗星要带望远镜吗？",
+            active_character_names=("Mika",),
+            now_ts=now_ts + 60,
+        )
+    )
+    assert promise_id in comet_block.recalled_ids
+    assert storm_canon_id not in comet_block.recalled_ids
+
+    # 4. Tool search (`search_for_tool`) also blocks low-score canon hits while allowing genuine matches
+    unrelated_tool_hits = orch.search_for_tool(
+        "今天晚饭吃什么好呢？",
+        character_name="Mika",
+        now_ts=now_ts + 90,
+    )
+    unrelated_ids = {row["id"] for row in unrelated_tool_hits}
+    assert storm_canon_id not in unrelated_ids
+    assert scar_canon_id not in unrelated_ids
+
+    relevant_tool_hits = orch.search_for_tool(
+        "你左手腕上那道疤痕是怎么留下的？",
+        character_name="Mika",
+        now_ts=now_ts + 90,
+    )
+    assert any(row["id"] == scar_canon_id for row in relevant_tool_hits)
+
+    # 5. Direct topic mention above threshold recalls canon memory cleanly as `[固有设定]`
+    direct_canon_block = orch.recall_for_turn(
+        TurnRecallInput(
+            user_text="跟我讲讲你姐姐和那场海边暴风雨的事吧",
+            active_character_names=("Mika",),
+            now_ts=now_ts + 120,
+        )
+    )
+    assert storm_canon_id in direct_canon_block.recalled_ids
+    assert "[固有设定] Mika十二岁那年在暴风雨的海边失去了相依为命的姐姐" in direct_canon_block.rendered

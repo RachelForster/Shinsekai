@@ -55,6 +55,24 @@ def build_chat_arg_parser(tr_i18n: Callable[..., str]) -> argparse.ArgumentParse
         action=argparse.BooleanOptionalAction,
         default=False,
     )
+    parser.add_argument(
+        "--memory-mode",
+        type=str,
+        default="",
+        help="Per-conversation memory isolation mode (isolated, shared, inherit_readonly).",
+    )
+    parser.add_argument(
+        "--auto-outfit-switch",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Allow context-driven outfit group switches when unlocked.",
+    )
+    parser.add_argument(
+        "--initial-outfits",
+        type=str,
+        default="",
+        help="JSON mapping of initial outfit groups or lock states per character.",
+    )
     parser.add_argument("--t2i", type=str, default="ComfyUI")
     parser.add_argument(
         "--workflow",
@@ -160,6 +178,7 @@ def _parse_chat_launch_config(raw_value: str) -> dict[str, Any]:
             "allow_player_dialogue",
             "use_current_template_for_history",
             "show_initial_sprite",
+            "auto_outfit_switch",
         }:
             if not isinstance(value, bool):
                 raise ValueError(f"chat launch config {key} must be boolean")

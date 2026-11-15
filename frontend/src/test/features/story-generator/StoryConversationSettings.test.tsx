@@ -1,10 +1,13 @@
 import type { ReactNode } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 import { StoryConversationSettings } from "../../../features/story-generator/StoryConversationSettings";
 import { I18nProvider } from "../../../shared/i18n";
-const { listStories } = vi.hoisted(() => ({ listStories: vi.fn() }));
+const { listStories, updateConversationSettings } = vi.hoisted(() => ({
+  listStories: vi.fn(),
+  updateConversationSettings: vi.fn(),
+}));
 vi.mock("../../../entities/story/repository", () => ({
   storyLibraryQueryKey: ["story-library"],
   listStories,
@@ -14,6 +17,7 @@ vi.mock("../../../entities/chat/repository", () => ({
   listConversations: async () => [
     { id: "story-chat", kind: "story", storyPath: "original.json", historyPath: "save", hasSettings: true },
   ],
+  updateConversationSettings,
 }));
 vi.mock("../../../features/story-generator/components/StoryFeatureGate", () => ({
   StoryFeatureGate: ({ children }: { children: ReactNode }) => children,
@@ -55,5 +59,34 @@ describe("story conversation settings", () => {
     expect(await screen.findByText("Node editing is unavailable for this story. You can still play it.")).toBeVisible();
     expect(screen.getByRole("button", { name: "save:story-chat" })).toBeEnabled();
     expect(screen.queryByRole("button", { name: "Open story editor (includes later plot)" })).not.toBeInTheDocument();
+  });
+  it("updates memory isolation mode and auto outfit switch for a story save", async () => {
+    listStories.mockResolvedValue([{ storyPath: "original.json", canEditGraph: false }]);
+    updateConversationSettings.mockResolvedValue({
+      id: "story-chat",
+      kind: "story",
+      storyPath: "original.json",
+      historyPath: "save",
+      hasSettings: true,
+      memoryMode: "shared",
+      autoOutfitSwitch: false,
+    });
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <I18nProvider language="en">
+          <StoryConversationSettings conversationId="story-chat" />
+        </I18nProvider>
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByRole("button", { name: "save:story-chat" })).toBeVisible();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Allow automatic outfit switching" }));
+    await waitFor(() =>
+      expect(updateConversationSettings).toHaveBeenCalledWith("story-chat", { autoOutfitSwitch: false }),
+    );
+    fireEvent.click(screen.getByRole("combobox", { name: "Long-term memory isolation" }));
+    fireEvent.click(screen.getByRole("option", { name: "Shared across saves" }));
+    await waitFor(() =>
+      expect(updateConversationSettings).toHaveBeenCalledWith("story-chat", { memoryMode: "shared" }),
+    );
   });
 });

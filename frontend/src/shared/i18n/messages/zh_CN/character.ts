@@ -218,6 +218,24 @@ export const characterZhCNMessages = {
   "character.validation.sovitsModelExt": "SoVITS 模型路径后缀应为 .pth。",
   "character.validation.spritePrefixAscii": "立绘目录只能包含英文、数字和英文标点。",
   "character.validation.spritePrefixRequired": "立绘目录不能为空。",
+  "character.selfPersona.badge": "内置自设",
+  "character.selfPersona.bannerTitle": "玩家全局自设与公共自我记忆",
+  "character.selfPersona.bannerBody":
+    "「自设」用于承载玩家自身的全局人设、喜好与立绘。未指定其他主控人物时，其设定会自动作为玩家背景注入对话；也可在开局时直接选为主控人物。",
+  "character.selfPersona.lockedFieldHint": "内置自设的角色名与立绘目录固定不可修改，也不可删除。",
+  "character.memory.canonSection": "固有设定 / 核心记忆",
+  "character.memory.dynamicSection": "动态记忆",
+  "character.memory.addAsCanon": "设为固有设定（永不遗忘）",
+  "character.memory.clarity.canon": "固有",
+  "character.memory.clarity.clear": "清晰",
+  "character.memory.clarity.faded": "模糊",
+  "character.memory.clarity.dormant": "沉睡",
+  "character.memory.retentionValue": "清晰度 {percent}%",
+  "character.memory.pin": "钉选为固有",
+  "character.memory.unpin": "取消钉选",
+  "character.memory.awaken": "唤醒",
+  "character.memory.expandDetail": "查看细节",
+  "character.memory.collapseDetail": "收起细节",
 } satisfies Record<string, string>;
 
 export type CharacterMessageKey = keyof typeof characterZhCNMessages;

@@ -69,7 +69,7 @@ def clear_shared_onnx_embedders() -> None:
 def resolve_memory_write_target(agent_id: str | None) -> tuple[str, str]:
     """Map user/character identifier to canonical (scope, owner_id) write target."""
     normalized = str(agent_id or "").strip()
-    if normalized.lower() in {"", "user", "__self__"}:
+    if normalized.lower() in {"", "user", "__self__"} or normalized == "自设":
         return (SCOPE_SELF_PUBLIC, "__self__")
     return (SCOPE_CHAR_CROSS_SAVE, normalized)
 
@@ -77,7 +77,7 @@ def resolve_memory_write_target(agent_id: str | None) -> tuple[str, str]:
 def resolve_memory_read_filter(agent_id: str | None) -> MemoryScopeFilter:
     """Map user/character identifier to orthogonal scope filter for reads/searches."""
     normalized = str(agent_id or "").strip()
-    if normalized.lower() in {"", "user", "__self__"}:
+    if normalized.lower() in {"", "user", "__self__"} or normalized == "自设":
         return MemoryScopeFilter(scopes=(SCOPE_SELF_PUBLIC,), owner_ids=("__self__",))
     return MemoryScopeFilter(
         scopes=(SCOPE_CHAR_CANON, SCOPE_CHAR_CROSS_SAVE),

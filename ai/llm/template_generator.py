@@ -8,6 +8,7 @@ method signatures and the ``(template, warning)`` result remain supported.
 from typing import Any
 
 from config.config_manager import ConfigManager
+from config.schema import SELF_PERSONA_NAME, is_self_persona_name
 from sdk.types import OutputContractPatch
 
 from .template.dialog import DialogTemplateContext, DialogTemplateSection
@@ -124,10 +125,29 @@ class TemplateGenerator:
             (character for name, character in characters if name == player_character),
             None,
         )
+        if player is None and is_self_persona_name(player_character):
+            getter = getattr(config_manager, "get_character_by_name", None)
+            candidate = getter(SELF_PERSONA_NAME) if callable(getter) else None
+            if candidate is not None and is_self_persona_name(getattr(candidate, "name", "")):
+                player = candidate
+        if not is_self_persona_name(player_character) and any(
+            not is_self_persona_name(name) for name, _character in characters
+        ):
+            characters = [
+                (name, character)
+                for name, character in characters
+                if not is_self_persona_name(name)
+            ]
         if player is not None and not allow_player_dialogue:
             characters = [(name, character) for name, character in characters if name != player_character]
         if not characters and player is None:
             raise NoValidCharactersError()
+        self_persona_setting = ""
+        if not player_character and player is None:
+            getter = getattr(config_manager, "get_character_by_name", None)
+            self_char = getter(SELF_PERSONA_NAME) if callable(getter) else None
+            if self_char is not None and is_self_persona_name(getattr(self_char, "name", "")):
+                self_persona_setting = str(getattr(self_char, "character_setting", "") or "").strip()
         has_background = bool(bg_name) and not is_transparent_background(bg_name)
         context = DialogTemplateContext(
             characters=tuple(characters),
@@ -136,6 +156,7 @@ class TemplateGenerator:
             json_reminder=json_format_reminder(),
             player_name=player_character if player is not None else "",
             player_character=player,
+            self_persona_setting=self_persona_setting,
             read_player_speech=bool(read_player_speech and player is not None),
             allow_player_dialogue=allow_player_dialogue,
             primary_character_names=(

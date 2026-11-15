@@ -142,6 +142,46 @@
   color: var(--color-text-muted);
 }
 
+.image-asset-card__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.image-asset-card__badge--group {
+  border-color: var(--color-accent-border);
+  color: var(--color-accent-secondary, var(--color-text-primary));
+  background: var(--color-surface-hover);
+}
+
+.image-asset-card-cell {
+  position: relative;
+  display: grid;
+  min-width: 0;
+}
+
+.image-asset-card-cell > .image-asset-card {
+  width: 100%;
+  height: 100%;
+}
+
+.image-asset-card-cell[data-checked="true"] > .image-asset-card {
+  border-color: var(--color-accent-border-strong, var(--color-info-border));
+}
+
+.image-asset-card__checkbox {
+  position: absolute;
+  z-index: 2;
+  inset-block-start: 10px;
+  inset-inline-start: 10px;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--color-accent-primary);
+  cursor: pointer;
+}
+
 .image-asset-corner-label {
   position: absolute;
   z-index: 1;

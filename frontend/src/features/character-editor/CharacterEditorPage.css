@@ -333,6 +333,301 @@
   gap: var(--space-2);
 }
 
+.memory-add-stack {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.memory-group {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.memory-group__title {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.memory-group__rows {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.memory-row__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: 2px;
+}
+
+.memory-row__detail {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-text-secondary, var(--color-text-primary));
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.memory-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+
+.memory-clarity-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.memory-clarity-badge--canon {
+  border-color: var(--color-accent-border-strong, var(--color-info-border));
+  color: var(--color-accent-primary, var(--color-info));
+  background: var(--color-info-bg);
+}
+
+.memory-clarity-badge--clear {
+  border-color: var(--color-info-border);
+  color: var(--color-info);
+}
+
+.memory-clarity-badge--faded {
+  border-color: var(--color-border);
+  color: var(--color-text-secondary, var(--color-text-muted));
+}
+
+.memory-clarity-badge--dormant {
+  border-color: var(--color-border);
+  color: var(--color-text-muted);
+  opacity: 0.82;
+}
+
+.memory-row[data-clarity="dormant"] > .memory-row__content > strong {
+  opacity: 0.78;
+}
+
+.memory-retention {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.memory-retention__track {
+  display: inline-block;
+  width: 44px;
+  height: 5px;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--color-border);
+}
+
+.memory-retention__fill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: var(--color-accent-primary, var(--color-info));
+}
+
+.memory-retention__label {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Built-in Self-Persona & Sprite Outfit Groups ── */
+
+.character-builtin-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-inline-start: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--color-info-border);
+  border-radius: var(--radius-full);
+  background: var(--color-info-bg);
+  color: var(--color-info);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.character-self-persona-banner {
+  display: grid;
+  gap: 4px;
+  margin-bottom: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-info-border);
+  border-radius: var(--radius-control);
+  background: var(--color-info-bg);
+}
+
+.character-self-persona-banner strong {
+  font-size: 13px;
+}
+
+.character-self-persona-banner p {
+  margin: 0;
+  color: var(--color-text-secondary, var(--color-text-muted));
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.sprite-group-panel {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-raised);
+}
+
+.sprite-group-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.sprite-group-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.sprite-group-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sprite-group-tab:hover {
+  border-color: var(--color-border-hover);
+  background: var(--color-btn-surface-hover);
+}
+
+.sprite-group-tab[aria-selected="true"] {
+  border-color: var(--color-info-border);
+  background: var(--color-info-bg);
+  color: var(--color-info);
+}
+
+.sprite-group-tab__badge {
+  padding: 0 5px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-hover);
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.sprite-group-actions,
+.sprite-group-manage-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.sprite-group-inline-editor {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 340px;
+}
+
+.sprite-batch-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-border);
+}
+
+.sprite-batch-bar__selection,
+.sprite-batch-bar__move {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.smart-outfit-dialog {
+  width: min(620px, 100%);
+}
+
+.smart-outfit-dialog__body {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.smart-outfit-dialog__intro {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.smart-outfit-dialog__groups {
+  display: grid;
+  gap: var(--space-2);
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.smart-outfit-dialog__group-card {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-raised);
+}
+
+.smart-outfit-dialog__group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.smart-outfit-dialog__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.smart-outfit-dialog__chip {
+  padding: 2px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  font-size: 11px;
+}
+
 .memory-pagination {
   display: flex;
   align-items: center;

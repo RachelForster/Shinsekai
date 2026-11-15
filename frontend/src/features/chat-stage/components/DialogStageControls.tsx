@@ -18,6 +18,7 @@ import {
   RotateCcw,
   ScanLine,
   Settings,
+  Shirt,
   SlidersHorizontal,
   Unlock,
   X,
@@ -25,14 +26,23 @@ import {
 
 import { useI18n } from "../../../shared/i18n";
 import { PluginSlot, type PluginPageTarget } from "../../../shared/plugin/PluginSlot";
-import type { ChatCommand, ChatTurnOptions, ChatTurnState } from "../../../shared/platform/types";
+import type {
+  CharacterOutfitCatalogEntry,
+  CharacterOutfitState,
+  ChatCommand,
+  ChatTurnOptions,
+  ChatTurnState,
+  MemoryMode,
+} from "../../../shared/platform/types";
 import { ThemeFrame, ToolbarButton } from "../../../shared/ui";
 import { useDismissableLayer } from "../hooks/useDismissableLayer";
+import { ChatOutfitPopover } from "./ChatOutfitPopover";
 import { ChatTurnSettingsPopover } from "./ChatTurnSettingsPopover";
 
 export function DialogStageControls({
   asrEnabled,
   auto,
+  autoOutfitSwitch = true,
   bgmVolume,
   effectVolume,
   closeLabel,
@@ -41,6 +51,7 @@ export function DialogStageControls({
   hidden,
   longPressTalk,
   locked,
+  memoryMode,
   onAutoChange,
   onBgmVolumeChange,
   onEffectVolumeChange,
@@ -58,6 +69,8 @@ export function DialogStageControls({
   onOpenScreenSettings,
   onToggleScreenShare,
   onTurnOptionsChange,
+  outfitCatalog,
+  outfits,
   screenShareStarting = false,
   screenSharing = false,
   showBranches,
@@ -67,6 +80,7 @@ export function DialogStageControls({
 }: {
   asrEnabled: boolean;
   auto: boolean;
+  autoOutfitSwitch?: boolean;
   bgmVolume: number;
   effectVolume: number;
   closeLabel: string;
@@ -75,6 +89,7 @@ export function DialogStageControls({
   hideCloseButton: boolean;
   longPressTalk: boolean;
   locked: boolean;
+  memoryMode?: MemoryMode;
   onAutoChange: (auto: boolean) => void;
   onBgmVolumeChange: (value: number) => void;
   onEffectVolumeChange: (value: number) => void;
@@ -92,6 +107,8 @@ export function DialogStageControls({
   onOpenScreenSettings?: () => void;
   onToggleScreenShare?: () => void;
   onTurnOptionsChange: (options: ChatTurnOptions) => void;
+  outfitCatalog?: Record<string, CharacterOutfitCatalogEntry>;
+  outfits?: Record<string, CharacterOutfitState>;
   screenShareStarting?: boolean;
   screenSharing?: boolean;
   showBranches: boolean;
@@ -101,13 +118,24 @@ export function DialogStageControls({
 }) {
   const { t } = useI18n();
   const [chatSettingsOpen, setChatSettingsOpen] = useState(false);
+  const [outfitOpen, setOutfitOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const closeChatSettings = useCallback(() => setChatSettingsOpen(false), []);
-  useDismissableLayer({ active: chatSettingsOpen, onDismiss: closeChatSettings, rootRef });
+  const closeOutfitPopover = useCallback(() => setOutfitOpen(false), []);
+  const closePopovers = useCallback(() => {
+    setChatSettingsOpen(false);
+    setOutfitOpen(false);
+  }, []);
+  useDismissableLayer({ active: chatSettingsOpen || outfitOpen, onDismiss: closePopovers, rootRef });
+
+  const hasSwitchableOutfits = Boolean(
+    outfitCatalog && Object.values(outfitCatalog).some((entry) => entry.groups.length > 1),
+  );
 
   useEffect(() => {
     if (hidden) {
       setChatSettingsOpen(false);
+      setOutfitOpen(false);
     }
   }, [hidden]);
 
@@ -239,13 +267,32 @@ export function DialogStageControls({
               className="dialog-stage-controls__button"
               icon={<ScanLine aria-hidden className="button__icon" />}
               onClick={() => {
-                setChatSettingsOpen(false);
+                closePopovers();
                 onConfigOpenChange(false);
                 onOpenScreenSettings();
               }}
               tooltip={t("chat.perception.screenSettings")}
             >
               {t("chat.perception.screenSettings")}
+            </ToolbarButton>
+          ) : null}
+          {hasSwitchableOutfits ? (
+            <ToolbarButton
+              aria-controls="chat-outfit-popover"
+              aria-expanded={outfitOpen}
+              aria-label={t("chat.toolbar.outfit")}
+              aria-pressed={outfitOpen}
+              className="dialog-stage-controls__button"
+              data-active={outfitOpen ? "true" : "false"}
+              icon={<Shirt aria-hidden className="button__icon" />}
+              onClick={() => {
+                setChatSettingsOpen(false);
+                onConfigOpenChange(false);
+                setOutfitOpen((current) => !current);
+              }}
+              tooltip={t("chat.toolbar.outfit")}
+            >
+              {t("chat.actionBar.outfit")}
             </ToolbarButton>
           ) : null}
           <ToolbarButton
@@ -257,6 +304,7 @@ export function DialogStageControls({
             data-active={chatSettingsOpen ? "true" : "false"}
             icon={<Settings aria-hidden className="button__icon" />}
             onClick={() => {
+              setOutfitOpen(false);
               onConfigOpenChange(false);
               setChatSettingsOpen((current) => !current);
             }}
@@ -273,7 +321,7 @@ export function DialogStageControls({
             data-active={configOpen ? "true" : "false"}
             icon={<SlidersHorizontal aria-hidden className="button__icon" />}
             onClick={() => {
-              closeChatSettings();
+              closePopovers();
               onConfigOpenChange(!configOpen);
             }}
             tooltip={t("chat.toolbar.config")}
@@ -293,6 +341,16 @@ export function DialogStageControls({
           )}
           <PluginSlot onOpenPluginPage={onOpenPluginPage} slot="chat-dialog-actions" />
         </div>
+        {hasSwitchableOutfits && outfitCatalog ? (
+          <ChatOutfitPopover
+            autoOutfitSwitch={autoOutfitSwitch}
+            onClose={closeOutfitPopover}
+            onCommand={onCommand}
+            open={outfitOpen}
+            outfitCatalog={outfitCatalog}
+            outfits={outfits ?? {}}
+          />
+        ) : null}
         <ChatTurnSettingsPopover
           onEditConversation={
             onEditConversation
@@ -305,12 +363,18 @@ export function DialogStageControls({
           bgmVolume={bgmVolume}
           effectVolume={effectVolume}
           longPressTalk={longPressTalk}
+          memoryMode={memoryMode}
           onBgmVolumeChange={onBgmVolumeChange}
           onEffectVolumeChange={onEffectVolumeChange}
           onCancelBatch={onCancelBatch}
           onClose={closeChatSettings}
           onFlushBatch={onFlushBatch}
           onLongPressTalkChange={onLongPressTalkChange}
+          onMemoryModeChange={
+            memoryMode
+              ? (nextMode) => onCommand({ type: "set-memory-mode", payload: { memoryMode: nextMode } })
+              : undefined
+          }
           onTurnOptionsChange={onTurnOptionsChange}
           open={chatSettingsOpen}
           turnOptions={turnOptions}

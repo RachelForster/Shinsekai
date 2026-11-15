@@ -11,6 +11,10 @@ import yaml
 
 from core.media.asset_tags import tag_contents
 from config.character_assets import get_character_assets
+from config.sprite_groups import (
+    filter_sprite_indices_for_group,
+    has_multiple_sprite_groups,
+)
 
 from ..lookup import AssetCandidate, AssetLookupResult
 from .asset import AssetResolver, ResolvedAsset, asset_candidates
@@ -45,6 +49,17 @@ class SpriteAssetResolver:
         sprites = assets.sprites
         tags = tag_contents(assets.emotion_tags, len(sprites))
         return asset_candidates(sprites, tags=tags)
+
+    def candidates_for_group(
+        self,
+        character: Any,
+        active_group: str | None = None,
+    ) -> tuple[AssetCandidate, ...]:
+        all_candidates = self.candidates(character)
+        if active_group is None or not has_multiple_sprite_groups(character):
+            return all_candidates
+        allowed = set(filter_sprite_indices_for_group(character, active_group))
+        return tuple(c for c in all_candidates if c.index in allowed)
 
     def resolve(
         self,

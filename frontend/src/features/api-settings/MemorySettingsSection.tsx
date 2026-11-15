@@ -37,13 +37,16 @@ function memoryStatusLabel(status: Mem0Status | null, t: ReturnType<typeof useI1
   if (status.status === "error") {
     return t("api.memory.error");
   }
+  const isHybrid = status.engine === "onnx_sqlite_hybrid";
   if (status.status === "ready") {
-    return t("api.memory.setupReady");
+    return t(isHybrid ? "api.memory.hybridSetupReady" : "api.memory.setupReady");
   }
   if (status.status === "loading") {
     return status.modelCached ? t("api.memory.loadingCached") : t("api.memory.downloading");
   }
-  return status.modelCached ? t("api.memory.setupReady") : t("api.memory.setupModelMissing");
+  return status.modelCached
+    ? t(isHybrid ? "api.memory.hybridSetupReady" : "api.memory.setupReady")
+    : t(isHybrid ? "api.memory.hybridSetupModelMissing" : "api.memory.setupModelMissing");
 }
 
 function memoryActionLabel(status: Mem0Status | null, t: ReturnType<typeof useI18n>["t"]) {

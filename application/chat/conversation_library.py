@@ -7,13 +7,19 @@ import json
 import os
 import tempfile
 import threading
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from application.chat.history.paths import resolve_history_path_for_project
 from application.story.prompt_turns import PROMPT_TURN_FILENAME
-from core.chat_history.sqlite_session_store import read_full_raw_messages_readonly
+from core.chat_history.models import MEMORY_MODE_ISOLATED, normalize_memory_mode
+from core.chat_history.sqlite_session_store import (
+    borrow_session_store_for_dir,
+    read_full_raw_messages_readonly,
+    read_session_preferences_readonly,
+)
 from core.chat_history.storage import (
     ACTIVE_HISTORY_FILENAME,
     HISTORY_DB_FILENAME,
@@ -95,6 +101,16 @@ def remember_conversation(state: Any, history_path: Path, payload: dict) -> None
                 "launch": launch,
             },
         )
+    if "memoryMode" in payload or "autoOutfitSwitch" in payload:
+        with borrow_session_store_for_dir(
+            chat_history_session_dir(path),
+            create_if_dir_exists=False,
+        ) as store:
+            if store is not None:
+                if "memoryMode" in payload and str(payload.get("memoryMode") or "").strip():
+                    store.set_memory_mode(normalize_memory_mode(str(payload["memoryMode"])))
+                if "autoOutfitSwitch" in payload and isinstance(payload.get("autoOutfitSwitch"), bool):
+                    store.set_auto_outfit_switch(bool(payload["autoOutfitSwitch"]))
 
 
 def _records(state: Any) -> dict[str, dict]:
@@ -264,18 +280,33 @@ def _details(record: dict) -> dict:
     story_file = directory / STORY_SESSION_FILENAME
     story_path = binding.get("storyPath") or launch.get("storyPath") or ""
     story = bool(story_path) or story_file.is_file()
+    db_file = chat_history_db_path(path)
     modified = max(
         file.stat().st_mtime
-        for file in (active, Path(str(active) + ".tmp"))
+        for file in (active, Path(str(active) + ".tmp"), db_file)
         if file.is_file()
     )
     if story_file.is_file():
         modified = max(modified, story_file.stat().st_mtime)
+    prefs = read_session_preferences_readonly(directory)
+    if db_file.is_file():
+        memory_mode = str(prefs.get("memoryMode") or "")
+        auto_outfit_switch = bool(prefs.get("autoOutfitSwitch", True))
+    else:
+        raw_launch_mode = launch.get("memoryMode")
+        memory_mode = (
+            normalize_memory_mode(str(raw_launch_mode))
+            if isinstance(raw_launch_mode, str) and raw_launch_mode.strip()
+            else (MEMORY_MODE_ISOLATED if story else str(prefs.get("memoryMode") or "shared"))
+        )
+        auto_outfit_switch = bool(launch.get("autoOutfitSwitch", True))
     title = record.get("title") or launch.get("templateName") or ""
     if not title:
         title = " · ".join(characters[:3])
+    conv_id = _id(path)
     return {
-        "id": _id(path),
+        "id": conv_id,
+        "sessionId": conv_id,
         "title": title,
         "characters": characters,
         "preview": turns[-1]["content"][:180] if turns else "",
@@ -285,6 +316,9 @@ def _details(record: dict) -> dict:
         "historyPath": path.as_posix(),
         "hasSettings": bool(launch) and not record.get("requiresCharacterSelection", False),
         "requiresCharacterSelection": bool(record.get("requiresCharacterSelection")),
+        "memoryMode": memory_mode,
+        "autoOutfitSwitch": auto_outfit_switch,
+        "outfits": dict(prefs.get("outfits") or {}),
     }
 
 
@@ -301,6 +335,7 @@ def list_conversations(state: Any) -> list[dict]:
 def conversation_launch_payload(state: Any, conversation_id: str) -> dict:
     record = _record(state, conversation_id)
     path = resolve_history_path_for_project(state, record["historyPath"])
+    details = _details(record)
     launch = record.get("launch")
     if not isinstance(launch, dict):
         # Old records contain the original system prompt, but no launch settings.
@@ -315,7 +350,6 @@ def conversation_launch_payload(state: Any, conversation_id: str) -> dict:
             ),
             "",
         )
-        details = _details(record)
         launch = {
             "templateId": "",
             "templateName": details["title"],
@@ -329,7 +363,13 @@ def conversation_launch_payload(state: Any, conversation_id: str) -> dict:
             "backgroundName": "",
             "mediaSelectionMode": "indexed",
         }
-    return {**launch, "historyPath": path.as_posix(), "resetHistory": False}
+    return {
+        **launch,
+        "memoryMode": details["memoryMode"],
+        "autoOutfitSwitch": details["autoOutfitSwitch"],
+        "historyPath": path.as_posix(),
+        "resetHistory": False,
+    }
 
 
 def conversation_details(state: Any, conversation_id: str) -> dict:
@@ -352,8 +392,11 @@ def saved_conversation_launch(state: Any, history_path: Path) -> dict | None:
     record = _read(_directory(state) / f"{_id(history_path)}.json")
     if not isinstance(record, dict) or not isinstance(record.get("launch"), dict):
         return None
+    details = _details(record)
     return {
         **record["launch"],
+        "memoryMode": details["memoryMode"],
+        "autoOutfitSwitch": details["autoOutfitSwitch"],
         "historyPath": history_path.as_posix(),
         "resetHistory": False,
     }
@@ -368,6 +411,89 @@ def rename_conversation(state: Any, conversation_id: str, title: str) -> dict:
         record["title"] = title
         _write(_directory(state) / f"{conversation_id}.json", record)
         return _details(record)
+
+
+def update_conversation_settings(
+    state: Any,
+    conversation_id: str,
+    payload: Mapping[str, Any],
+) -> dict:
+    if not isinstance(payload, Mapping):
+        raise ValueError("conversation settings payload must be an object")
+    next_mode: str | None = None
+    if "memoryMode" in payload:
+        raw_mode = str(payload.get("memoryMode") or "").strip().lower()
+        if raw_mode not in {"isolated", "shared", "inherit_readonly"}:
+            raise ValueError(
+                "memoryMode must be 'isolated', 'shared', or 'inherit_readonly'"
+            )
+        next_mode = normalize_memory_mode(raw_mode)
+    next_auto_outfit: bool | None = None
+    if "autoOutfitSwitch" in payload:
+        raw_auto = payload.get("autoOutfitSwitch")
+        if not isinstance(raw_auto, bool):
+            raise ValueError("autoOutfitSwitch must be a boolean")
+        next_auto_outfit = raw_auto
+
+    with _metadata_lock:
+        record = _record(state, conversation_id)
+        path = resolve_history_path_for_project(state, record["historyPath"])
+        launch = record.get("launch")
+        launch_dict = dict(launch) if isinstance(launch, dict) else {}
+        if next_mode is not None:
+            launch_dict["memoryMode"] = next_mode
+        if next_auto_outfit is not None:
+            launch_dict["autoOutfitSwitch"] = next_auto_outfit
+        if launch_dict:
+            record["launch"] = launch_dict
+        _write(_directory(state) / f"{conversation_id}.json", record)
+
+        directory = chat_history_session_dir(path)
+        with borrow_session_store_for_dir(
+            directory,
+            create_if_dir_exists=chat_history_db_path(path).is_file(),
+        ) as store:
+            if store is not None:
+                if next_mode is not None:
+                    store.set_memory_mode(next_mode)
+                if next_auto_outfit is not None:
+                    store.set_auto_outfit_switch(next_auto_outfit)
+        details = _details(record)
+
+    active_history = str(getattr(state, "chat_session", {}).get("historyPath") or "").strip()
+    if active_history:
+        try:
+            active_id = _id(resolve_history_path_for_project(state, active_history))
+        except Exception:
+            active_id = ""
+        if active_id == conversation_id:
+            from application.chat.composition import _handle_chat_command
+
+            if next_mode is not None:
+                state.chat_session = {**state.chat_session, "memoryMode": next_mode}
+                try:
+                    _handle_chat_command(
+                        state,
+                        {"type": "set-memory-mode", "payload": {"memoryMode": next_mode}},
+                    )
+                except RuntimeError:
+                    pass
+            if next_auto_outfit is not None:
+                state.chat_session = {
+                    **state.chat_session,
+                    "autoOutfitSwitch": next_auto_outfit,
+                }
+                try:
+                    _handle_chat_command(
+                        state,
+                        {
+                            "type": "set-auto-outfit-switch",
+                            "payload": {"enabled": next_auto_outfit},
+                        },
+                    )
+                except RuntimeError:
+                    pass
+    return details
 
 
 def update_conversation_character(state: Any, old_name: str, new_name: str | None = None) -> None:
