@@ -97,6 +97,8 @@ def test_allowlist_matches_existing_json_http_routes():
      {"name": "Mika", "taskId": "render-1"}, True),
     ("characters.sprites.import_generated", "/api/characters/sprites/import-generated",
      {"name": "Mika", "items": [{"taskId": f"render-{i}", "tagging": "微笑"} for i in range(10)]}, False),
+    ("characters.voice.prepare", "/api/characters/voice/prepare",
+     {"name": "Mika", "query": "Mika 语音合集", "useUvr": "auto", "train": False, "verifySynthesis": True}, True),
 ])
 def test_agent_can_plan_render_and_import_ten_static_sprites(bridge, operation, path, body, asynchronous):
     _, requests, reply = bridge
