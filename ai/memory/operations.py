@@ -2,30 +2,41 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from contextvars import ContextVar, Token
+from dataclasses import dataclass, replace
 import inspect
 import json
 import logging
 import os
+from pathlib import Path
 import threading
 import time
+from typing import Any
 import urllib.error
 import urllib.request
-from collections.abc import Sequence
-from pathlib import Path
-from typing import Any
 
 from ai.memory.constants import MEMORY_STORE_FILENAME
 from ai.memory.deduplication import find_duplicate_memory, semantic_deduplication_threshold
 from ai.memory.engine import (
     HybridMemoryEngine,
     resolve_memory_read_filter,
-    resolve_memory_write_target,
 )
+from ai.memory.orchestrator import is_roleplay_player_persona
 from ai.memory.ports import resolve_registered_memory_repository
+from ai.memory.rule_recall_planner import RuleRecallPlanner
 from ai.memory.runtime import ensure_mem0, peek_mem0
 from core.chat_history.models import rollback_memory_for_timeline
+from core.chat_history.sqlite_session_store import borrow_session_store_by_id
 from core.vector_store.sqlite_hybrid_store import SqliteHybridStore
-from sdk.adapters.memory import MemoryCandidateQuery, MemoryRecord
+from sdk.adapters.memory import (
+    SCOPE_CHAR_CANON,
+    SCOPE_CHAR_CROSS_SAVE,
+    SCOPE_SELF_PUBLIC,
+    MemoryDraft,
+    TurnRecallInput,
+)
+from sdk.adapters.session import MEMORY_MODE_SHARED, normalize_memory_mode
 
 logger = logging.getLogger(__name__)
 _MEMORY_SERVICE_URL_ENV = "SHINSEKAI_MEMORY_SERVICE_URL"
@@ -41,6 +52,71 @@ _service_monitor_lock = threading.Lock()
 _service_monitor_active = False
 _mem0_operation_lock = threading.RLock()
 _SEMANTIC_DEDUPLICATION_SEARCH_LIMIT = 5
+
+
+@dataclass(frozen=True, slots=True)
+class MemoryToolSessionContext:
+    """Implicit session routing context bound during LLM tool execution."""
+
+    session_id: str = ""
+    memory_mode: str = ""
+    player_character: str = ""
+
+
+_active_tool_context: ContextVar[MemoryToolSessionContext] = ContextVar(
+    "shinsekai_memory_tool_context",
+    default=MemoryToolSessionContext(),
+)
+_default_tool_context_lock = threading.RLock()
+_default_tool_context = MemoryToolSessionContext()
+
+
+def bind_memory_tool_context(
+    *,
+    session_id: str = "",
+    memory_mode: str = "",
+    player_character: str = "",
+) -> Token[MemoryToolSessionContext]:
+    """Bind per-contextvar and process-default session metadata for LLM memory tools."""
+    global _default_tool_context
+    ctx = MemoryToolSessionContext(
+        session_id=str(session_id or "").strip(),
+        memory_mode=str(memory_mode or "").strip(),
+        player_character=str(player_character or "").strip(),
+    )
+    with _default_tool_context_lock:
+        _default_tool_context = ctx
+    return _active_tool_context.set(ctx)
+
+
+def reset_memory_tool_context(token: Token[MemoryToolSessionContext] | None = None) -> None:
+    """Clear bound memory tool context."""
+    global _default_tool_context
+    with _default_tool_context_lock:
+        _default_tool_context = MemoryToolSessionContext()
+    if token is not None:
+        try:
+            _active_tool_context.reset(token)
+            return
+        except ValueError:
+            pass
+    _active_tool_context.set(MemoryToolSessionContext())
+
+
+def current_memory_tool_context() -> MemoryToolSessionContext:
+    ctx = _active_tool_context.get()
+    if ctx.session_id or ctx.memory_mode or ctx.player_character:
+        return ctx
+    with _default_tool_context_lock:
+        return _default_tool_context
+
+
+def _memory_request_context(session_id: str | None) -> MemoryToolSessionContext:
+    # Chat tools inherit the bound session. HTTP always supplies its own scope,
+    # including an empty session ID for global memory.
+    if session_id is None:
+        return current_memory_tool_context()
+    return MemoryToolSessionContext(session_id=str(session_id).strip())
 
 
 def _resolve_agent_id(character_name: str | None) -> str:
@@ -209,44 +285,55 @@ def memory_search(
     character_name: str | None = None,
     *,
     limit: int = 10,
+    session_id: str | None = None,
+    memory_mode: str = "",
 ) -> dict[str, Any]:
     q = (query or "").strip()
     if not q:
         return {"error": "query 不能为空"}
-    service_result = _memory_service_request(
-        "search",
-        {"query": q, "characterName": _resolve_agent_id(character_name), "limit": limit},
-    )
+
+    ctx = _memory_request_context(session_id)
+    eff_session_id = ctx.session_id
+    eff_mode = str(memory_mode or ctx.memory_mode).strip()
+    agent_id = _resolve_agent_id(character_name)
+
+    payload: dict[str, Any] = {
+        "query": q,
+        "characterName": agent_id,
+        "limit": limit,
+    }
+    if eff_session_id:
+        payload["sessionId"] = eff_session_id
+    if eff_mode:
+        payload["memoryMode"] = eff_mode
+
+    service_result = _memory_service_request("search", payload)
     if service_result is not None:
         return service_result
     mem = ensure_mem0()
-    agent_id = _resolve_agent_id(character_name)
     try:
         if isinstance(mem, HybridMemoryEngine):
-            with _mem0_operation_lock:
-                q_vec = mem.embedder.embed_query(q)
-                hits = mem.repo.search_candidates(
-                    MemoryCandidateQuery(
-                        scope_filter=resolve_memory_read_filter(agent_id),
-                        query_vectors=(q_vec,),
-                        keyword_query=q,
-                        limit=max(1, int(limit)),
+            with _mem0_operation_lock, borrow_session_store_by_id(eff_session_id) as sess_store:
+                save_repo = getattr(sess_store, "save_memory_repo", None) if sess_store is not None else None
+                resolved_mode = (
+                    normalize_memory_mode(eff_mode)
+                    if eff_mode
+                    else (
+                        sess_store.get_memory_mode()
+                        if sess_store is not None
+                        else MEMORY_MODE_SHARED
                     )
                 )
-            mems = [
-                {
-                    "id": hit.record.id,
-                    "memory": hit.record.detail_text,
-                    "score": max(
-                        0.0,
-                        min(
-                            1.0,
-                            float(hit.vector_score if hit.vector_score > 0 else hit.fts_score),
-                        ),
-                    ),
-                }
-                for hit in hits
-            ]
+                if save_repo is None and (resolved_mode != MEMORY_MODE_SHARED or (eff_session_id and not eff_mode)):
+                    return {"error": "save-scoped memory store unavailable"}
+                mems = mem.orchestrator.search_for_tool(
+                    q,
+                    character_name=agent_id,
+                    session_id=eff_session_id,
+                    memory_mode=resolved_mode,
+                    save_repo=save_repo,
+                    limit=max(1, int(limit)),
+                )
             return {
                 "agent_id": agent_id,
                 "query": q,
@@ -273,93 +360,233 @@ def memory_search(
         return {"error": str(e)}
 
 
+def memory_recall_turn(turn_input: TurnRecallInput) -> dict[str, Any]:
+    """Execute Phase 3 hybrid turn recall (planner + Ebbinghaus + save-mode isolation)."""
+    payload: dict[str, Any] = {
+        "userText": turn_input.user_text,
+        "previousAssistantText": turn_input.previous_assistant_text,
+        "activeCharacterNames": list(turn_input.active_character_names),
+        "sessionId": turn_input.session_id,
+        "memoryMode": turn_input.memory_mode,
+        "source": turn_input.source,
+        "nowTs": turn_input.now_ts,
+        "secondsSinceLastTurn": turn_input.seconds_since_last_turn,
+        "inWindowTurnSeqs": sorted(int(x) for x in turn_input.in_window_turn_seqs),
+        "recentlyInjectedIds": sorted(str(x) for x in turn_input.recently_injected_ids),
+    }
+    service_result = _memory_service_request("recall", payload)
+    if service_result is not None:
+        return service_result
+
+    mem = ensure_mem0()
+    try:
+        if isinstance(mem, HybridMemoryEngine):
+            sid = str(turn_input.session_id or "").strip()
+            with _mem0_operation_lock, borrow_session_store_by_id(sid) as sess_store:
+                save_repo = getattr(sess_store, "save_memory_repo", None) if sess_store is not None else None
+                explicit_mode = str(turn_input.memory_mode or "").strip()
+                resolved_mode = (
+                    sess_store.get_memory_mode()
+                    if sess_store is not None and not explicit_mode
+                    else normalize_memory_mode(explicit_mode or MEMORY_MODE_SHARED)
+                )
+                if save_repo is None and (resolved_mode != MEMORY_MODE_SHARED or (sid and not explicit_mode)):
+                    return {"error": "save-scoped memory store unavailable"}
+                effective_input = replace(turn_input, memory_mode=resolved_mode)
+                block = mem.orchestrator.recall_for_turn(
+                    effective_input,
+                    save_repo=save_repo,
+                )
+            return {
+                "ok": True,
+                "rendered": block.rendered,
+                "recalled_ids": list(block.recalled_ids),
+            }
+
+        planner = RuleRecallPlanner()
+        plan = planner.plan(turn_input)
+        if not plan.should_recall:
+            return {"ok": True, "rendered": "", "recalled_ids": []}
+        agent_id = (
+            turn_input.active_character_names[0]
+            if turn_input.active_character_names
+            else "user"
+        )
+        q_text = plan.query_clauses[0] if plan.query_clauses else turn_input.user_text
+        with _mem0_operation_lock:
+            results = _search_mem0(mem, q_text, filters={"user_id": agent_id}, limit=plan.limit)
+        rows = (
+            results.get("results", [])
+            if isinstance(results, dict)
+            else (results if isinstance(results, list) else [])
+        )
+        recalled_ids: list[str] = []
+        lines: list[str] = []
+        for row in rows:
+            normalized = _memory_row(row)
+            if normalized["id"] and normalized["id"] in turn_input.recently_injected_ids:
+                continue
+            if normalized["memory"]:
+                if normalized["id"]:
+                    recalled_ids.append(normalized["id"])
+                lines.append(f"- {normalized['memory']}")
+        if not lines:
+            return {"ok": True, "rendered": "", "recalled_ids": []}
+        rendered = (
+            "[Shinsekai long-term memory context]\n"
+            "Relevant long-term memories for this turn. Use them only as background; "
+            "do not mention the retrieval process unless the user asks.\n"
+            + "\n".join(lines)
+        )
+        return {"ok": True, "rendered": rendered, "recalled_ids": recalled_ids}
+    except Exception as exc:
+        logger.exception("memory_recall_turn 失败")
+        return {"error": str(exc)}
+
+
 def memory_remember(
     content: str,
     character_name: str | None = None,
     *,
+    gist_text: str = "",
     slot_key: str = "",
     kind: str = "episodic",
-    source_session_id: str = "",
+    topic_tags: Sequence[str] = (),
+    entities: Sequence[str] = (),
+    importance: float = 0.5,
+    pinned: bool = False,
+    event_at: float | None = None,
+    memory_mode: str = "",
+    player_character: str = "",
+    source_session_id: str | None = None,
     source_turn_seq: int | None = None,
 ) -> dict[str, Any]:
     text = (content or "").strip()
     if not text:
         return {"error": "content 不能为空"}
+
+    ctx = _memory_request_context(source_session_id)
+    clean_gist = str(gist_text or "").strip()
     clean_slot = str(slot_key or "").strip()
     clean_kind = str(kind or "episodic").strip() or "episodic"
-    clean_session = str(source_session_id or "").strip()
+    clean_topics = [str(t).strip() for t in topic_tags if str(t).strip()]
+    clean_entities = [str(e).strip() for e in entities if str(e).strip()]
+    clean_imp = float(max(0.0, min(1.0, float(importance))))
+    clean_event = None if event_at is None else float(event_at)
+    clean_session = ctx.session_id
+    clean_mode = str(memory_mode or ctx.memory_mode).strip()
+    clean_persona = str(player_character or ctx.player_character).strip()
     clean_seq = None if source_turn_seq is None else int(source_turn_seq)
+    agent_id = _resolve_agent_id(character_name)
+
     payload: dict[str, Any] = {
         "content": text,
-        "characterName": _resolve_agent_id(character_name),
+        "characterName": agent_id,
     }
+    if clean_gist:
+        payload["gistText"] = clean_gist
     if clean_slot:
         payload["slotKey"] = clean_slot
     if clean_kind != "episodic":
         payload["kind"] = clean_kind
+    if clean_topics:
+        payload["topicTags"] = clean_topics
+    if clean_entities:
+        payload["entities"] = clean_entities
+    if clean_imp != 0.5:
+        payload["importance"] = clean_imp
+    if pinned:
+        payload["pinned"] = True
+    if clean_event is not None:
+        payload["eventAt"] = clean_event
+    if clean_mode:
+        payload["memoryMode"] = clean_mode
+    if clean_persona:
+        payload["playerCharacter"] = clean_persona
     if clean_session:
         payload["sourceSessionId"] = clean_session
     if clean_seq is not None:
         payload["sourceTurnSeq"] = clean_seq
+
     service_result = _memory_service_request("remember", payload)
     if service_result is not None:
         return service_result
     mem = ensure_mem0()
-    agent_id = _resolve_agent_id(character_name)
     try:
         if isinstance(mem, HybridMemoryEngine):
-            with _mem0_operation_lock:
-                q_vec = mem.embedder.embed_query(text)
-                if not clean_slot:
-                    cand_hits = mem.repo.search_candidates(
-                        MemoryCandidateQuery(
-                            scope_filter=resolve_memory_read_filter(agent_id),
-                            query_vectors=(q_vec,),
-                            keyword_query=text,
-                            limit=_SEMANTIC_DEDUPLICATION_SEARCH_LIMIT,
-                        )
-                    )
-                    candidates = [
-                        {
-                            "id": hit.record.id,
-                            "memory": hit.record.detail_text,
-                            "score": max(0.0, min(1.0, float(hit.vector_score))),
-                        }
-                        for hit in cand_hits
-                    ]
-                    duplicate = find_duplicate_memory(
-                        text,
-                        candidates,
-                        threshold=semantic_deduplication_threshold(),
-                    )
-                    if duplicate is not None:
-                        return {
-                            "ok": True,
-                            "duplicate": True,
-                            "duplicate_type": duplicate.match_type,
-                            "similarity": duplicate.similarity,
-                            "existing_memory_id": duplicate.memory_id,
-                            "existing_memory": duplicate.memory,
-                            "agent_id": agent_id,
-                            "content": text,
-                        }
-                scope, owner_id = resolve_memory_write_target(agent_id)
-                mem.repo.upsert(
-                    MemoryRecord(
-                        id="",
-                        scope=scope,
-                        owner_id=owner_id,
-                        detail_text=text,
-                        gist_text=text,
-                        slot_key=clean_slot,
-                        kind=clean_kind,
-                        source_session_id=clean_session,
-                        source_turn_seq=clean_seq,
-                        embedding=q_vec,
+            with _mem0_operation_lock, borrow_session_store_by_id(
+                clean_session,
+                create_if_dir_exists=True,
+            ) as sess_store:
+                save_repo = getattr(sess_store, "save_memory_repo", None) if sess_store is not None else None
+                resolved_mode = (
+                    normalize_memory_mode(clean_mode)
+                    if clean_mode
+                    else (
+                        sess_store.get_memory_mode()
+                        if sess_store is not None
+                        else MEMORY_MODE_SHARED
                     )
                 )
-            return {"ok": True, "duplicate": False, "agent_id": agent_id, "content": text}
+                if save_repo is None and (
+                    resolved_mode != MEMORY_MODE_SHARED
+                    or is_roleplay_player_persona(clean_persona)
+                    or (clean_session and not clean_mode)
+                ):
+                    return {"error": "save-scoped memory store unavailable"}
 
+                is_self = agent_id.casefold() in {"", "user", "__self__"}
+                draft_scope = (
+                    SCOPE_SELF_PUBLIC
+                    if is_self
+                    else (SCOPE_CHAR_CANON if clean_kind == "canon" else SCOPE_CHAR_CROSS_SAVE)
+                )
+                draft = MemoryDraft(
+                    owner_id="__self__" if is_self else agent_id,
+                    detail_text=text,
+                    gist_text=clean_gist or text,
+                    scope=draft_scope,
+                    slot_key=clean_slot,
+                    kind=clean_kind,
+                    topic_tags=tuple(clean_topics),
+                    entities=tuple(clean_entities),
+                    importance=clean_imp,
+                    pinned=bool(pinned),
+                    event_at=clean_event,
+                    source_session_id=clean_session,
+                    source_turn_seq=clean_seq,
+                )
+                report = mem.orchestrator.ingest_drafts(
+                    (draft,),
+                    memory_mode=resolved_mode,
+                    save_repo=save_repo,
+                    player_character=clean_persona,
+                )
+                if report.skipped_duplicates > 0 and not report.added_ids:
+                    return {
+                        "ok": True,
+                        "duplicate": True,
+                        "agent_id": agent_id,
+                        "content": text,
+                    }
+                out: dict[str, Any] = {
+                    "ok": True,
+                    "duplicate": False,
+                    "agent_id": agent_id,
+                    "content": text,
+                }
+                if report.added_ids:
+                    out["id"] = report.added_ids[0]
+                if report.superseded_ids:
+                    out["superseded_ids"] = list(report.superseded_ids)
+                return out
+
+        if (
+            (clean_mode and normalize_memory_mode(clean_mode) != MEMORY_MODE_SHARED)
+            or is_roleplay_player_persona(clean_persona)
+            or (clean_session and not clean_mode)
+        ):
+            return {"error": "save-scoped memory store unavailable"}
         with _mem0_operation_lock:
             candidates = _search_mem0(
                 mem,
@@ -397,7 +624,7 @@ def memory_remember_and_list(
     text = (content or "").strip()
     if not text:
         return {"error": "memory content is required"}
-    result = memory_remember(text, character_name=character_name)
+    result = memory_remember(text, character_name=character_name, source_session_id="")
     if isinstance(result, dict) and result.get("error"):
         return result
     if isinstance(result, dict) and result.get("status") == "loading":
@@ -405,24 +632,49 @@ def memory_remember_and_list(
     return memory_list(character_name)
 
 
-def memory_forget(memory_id: str) -> dict[str, Any]:
+def memory_forget(
+    memory_id: str, *, session_id: str | None = None, memory_mode: str = "",
+) -> dict[str, Any]:
     mid = (memory_id or "").strip()
     if not mid:
-        return {"error": "memory_id 不能为空"}
-    service_result = _memory_service_request("forget", {"memoryId": mid})
+        return {"error": "memory_id is required"}
+    ctx = _memory_request_context(session_id)
+    sid = ctx.session_id
+    mode = str(memory_mode or ctx.memory_mode).strip()
+    payload = {"memoryId": mid}
+    if sid:
+        payload["sessionId"] = sid
+    if mode:
+        payload["memoryMode"] = mode
+    service_result = _memory_service_request("forget", payload)
     if service_result is not None:
         return service_result
     mem = ensure_mem0()
     try:
         with _mem0_operation_lock:
             if isinstance(mem, HybridMemoryEngine):
-                mem.repo.delete(mid)
+                with borrow_session_store_by_id(sid) as store:
+                    save_repo = getattr(store, "save_memory_repo", None)
+                    resolved_mode = (
+                        store.get_memory_mode() if store is not None and not mode
+                        else normalize_memory_mode(mode)
+                    )
+                    if save_repo is None and (sid or resolved_mode != MEMORY_MODE_SHARED):
+                        return {"error": "save-scoped memory store unavailable"}
+                    deleted = save_repo is not None and save_repo.delete(mid)
+                    if not deleted and resolved_mode == MEMORY_MODE_SHARED:
+                        deleted = mem.repo.delete(mid)
             else:
-                mem.delete(mid)
+                if sid or normalize_memory_mode(mode) != MEMORY_MODE_SHARED:
+                    return {"error": "save-scoped memory store unavailable"}
+                result = mem.delete(mid)
+                deleted = result is not False
+        if not deleted:
+            return {"error": "memory not found", "memory_id": mid}
         return {"ok": True, "memory_id": mid}
-    except Exception as e:
-        logger.exception("memory_forget 失败")
-        return {"error": str(e)}
+    except Exception as exc:
+        logger.exception("memory_forget failed")
+        return {"error": str(exc)}
 
 
 def memory_forget_and_list(
@@ -432,7 +684,7 @@ def memory_forget_and_list(
     mid = (memory_id or "").strip()
     if not mid:
         return {"error": "memory id is required"}
-    result = memory_forget(mid)
+    result = memory_forget(mid, session_id="")
     if isinstance(result, dict) and result.get("error"):
         return result
     if isinstance(result, dict) and result.get("status") == "loading":
@@ -506,7 +758,7 @@ def memory_rollback_after_turn(
                     "turn_seq": cutoff,
                     "rolled_back": 0,
                 }
-            transient_store = SqliteHybridStore(db_path, max_pool_size=1)
+            transient_store = SqliteHybridStore(db_path, max_idle_connections=1)
             try:
                 removed = transient_store.rollback_after_turn(sid, cutoff, protected_turn_seqs=protected_turn_seqs)
             finally:

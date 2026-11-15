@@ -9,13 +9,15 @@ import logging
 import os
 import threading
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 from core.chat_history.models import (
     CompactCheckpoint,
+    MEMORY_MODE_ISOLATED,
     MEMORY_MODE_SHARED,
     MemoryMode,
     OutfitState,
@@ -47,6 +49,7 @@ SESSION_SCHEMA_VERSION = "1"
 
 _META_SCHEMA_VERSION = "schema_version"
 _META_MEMORY_MODE = "memory_mode"
+_META_MEMORY_MODE_EXPLICIT = "memory_mode_explicit"
 _META_AUTO_OUTFIT_SWITCH = "auto_outfit_switch"
 _META_LEGACY_MIGRATED = "legacy_migrated"
 _META_LEGACY_ERROR = "legacy_migration_error"
@@ -286,6 +289,8 @@ class SqliteSessionStore:
         self._save_repo = _SessionSaveMemoryRepo(self._store)
         self._closed = False
         self._init_session_schema()
+        if self._db_path is not None and self._session_id:
+            _register_session_db_path(self._session_id, self._db_path)
 
     @property
     def db_path(self) -> Path | None:
@@ -314,10 +319,6 @@ class SqliteSessionStore:
                 conn.execute(
                     "INSERT OR IGNORE INTO session_meta(key, value) VALUES (?, ?)",
                     (_META_SCHEMA_VERSION, SESSION_SCHEMA_VERSION),
-                )
-                conn.execute(
-                    "INSERT OR IGNORE INTO session_meta(key, value) VALUES (?, ?)",
-                    (_META_MEMORY_MODE, MEMORY_MODE_SHARED),
                 )
                 conn.execute(
                     "INSERT OR IGNORE INTO session_meta(key, value) VALUES (?, ?)",
@@ -835,11 +836,27 @@ class SqliteSessionStore:
 
     def get_memory_mode(self) -> MemoryMode:
         raw = self._get_meta(_META_MEMORY_MODE)
+        # Older databases seeded "shared" even when nobody chose a mode.
+        uses_default = raw is None or (
+            raw == MEMORY_MODE_SHARED and self._get_meta(_META_MEMORY_MODE_EXPLICIT) != "1"
+        )
+        if uses_default and self._db_path is not None:
+            session_dir = self._db_path.parent
+            if (session_dir / "story-v2.json").is_file() or (
+                session_dir / "story-prompt-binding.json"
+            ).is_file():
+                return MEMORY_MODE_ISOLATED
         return normalize_memory_mode(raw)
 
     def set_memory_mode(self, mode: MemoryMode) -> None:
         normalized = normalize_memory_mode(mode)
-        self._set_meta(_META_MEMORY_MODE, normalized)
+        with self._write_lock, self._store._borrow_conn() as conn:
+            conn.executemany(
+                "INSERT INTO session_meta(key, value) VALUES (?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                ((_META_MEMORY_MODE, normalized), (_META_MEMORY_MODE_EXPLICIT, "1")),
+            )
+            conn.commit()
 
     def get_auto_outfit_switch(self) -> bool:
         raw = self._get_meta(_META_AUTO_OUTFIT_SWITCH)
@@ -1018,8 +1035,17 @@ class SqliteSessionStore:
 
 _open_stores_lock = threading.RLock()
 _open_stores: dict[str, ConversationSessionPort] = {}
+_known_session_db_paths: dict[str, Path] = {}
 _default_shared_rollback_lock = threading.Lock()
 _default_shared_rollback: Callable[..., int] | None = None
+
+
+def _register_session_db_path(session_id: str, db_path: Path) -> None:
+    sid = str(session_id or "").strip()
+    if not sid:
+        return
+    with _open_stores_lock:
+        _known_session_db_paths[sid] = db_path
 
 
 def set_default_shared_memory_rollback(
@@ -1109,6 +1135,71 @@ def close_all_session_stores() -> None:
         store.close()
 
 
+def _discover_session_db_path(session_id: str) -> Path | None:
+    sid = str(session_id or "").strip()
+    if not sid:
+        return None
+    with _open_stores_lock:
+        known = _known_session_db_paths.get(sid)
+    if known is not None:
+        return known
+    data_dir = Path.cwd() / "data"
+    for root in (data_dir / "chat_history", data_dir / "conversations"):
+        try:
+            resolved_root = root.resolve()
+            for child in root.iterdir():
+                if not child.is_dir() or not child.resolve().is_relative_to(resolved_root):
+                    continue
+                if canonical_session_id_for_dir(child) == sid:
+                    db_path = child / HISTORY_DB_FILENAME
+                    _register_session_db_path(sid, db_path)
+                    return db_path
+        except OSError:
+            continue
+    return None
+
+
+def register_session_db_directory(session_dir: str | Path) -> None:
+    """Register a server-approved save before a separate runtime opens it."""
+    directory = Path(session_dir).resolve()
+    _register_session_db_path(canonical_session_id_for_dir(directory), directory / HISTORY_DB_FILENAME)
+
+
+@contextmanager
+def borrow_session_store_by_id(
+    session_id: str,
+    *,
+    create_if_dir_exists: bool = False,
+) -> Iterator[ConversationSessionPort | None]:
+    """Yield an open or transient ConversationSessionPort for session_id without leaking handles."""
+    sid = str(session_id or "").strip()
+    if not sid:
+        yield None
+        return
+    with _open_stores_lock:
+        for store in _open_stores.values():
+            if getattr(store, "session_id", "") == sid:
+                yield store
+                return
+    db_path = _discover_session_db_path(sid)
+    if db_path is None:
+        yield None
+        return
+    if not db_path.is_file() and not (create_if_dir_exists and db_path.parent.is_dir()):
+        yield None
+        return
+    transient = SqliteSessionStore(
+        db_path,
+        session_id=sid,
+        shared_memory_rollback=get_default_shared_memory_rollback(),
+        max_pool_size=1,
+    )
+    try:
+        yield transient
+    finally:
+        transient.close()
+
+
 def read_full_raw_messages_readonly(
     session_dir: str | Path,
     *,
@@ -1165,6 +1256,7 @@ __all__ = [
     "HISTORY_DB_FILENAME",
     "SESSION_SCHEMA_VERSION",
     "SqliteSessionStore",
+    "borrow_session_store_by_id",
     "canonical_session_id_for_dir",
     "close_all_session_stores",
     "close_session_store_for_dir",

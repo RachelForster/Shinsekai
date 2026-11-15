@@ -13,9 +13,12 @@ from ai.memory.backends.onnx_embedder import OnnxMiniLmEmbedder
 from ai.memory.backends.sqlite_repo import SqliteHybridMemoryRepo
 from ai.memory.constants import EMBEDDING_DIMS, MEMORY_STORE_FILENAME
 from ai.memory.migration import migrate_legacy_memory_qdrant
+from ai.memory.orchestrator import MemoryOrchestrator
 from ai.memory.ports import (
     resolve_registered_embedding_provider,
     resolve_registered_memory_repository,
+    resolve_registered_recall_planner,
+    resolve_registered_retention_policy,
 )
 from core.vector_store.sqlite_hybrid_store import SqliteHybridStore
 from sdk.adapters.memory import (
@@ -90,13 +93,22 @@ class HybridMemoryEngine:
         *,
         embedder: EmbeddingProvider,
         repo: MemoryRepository,
-        vector_store: StaticVectorStorePort,
+        vector_store: StaticVectorStorePort | None = None,
         store: SqliteHybridStore | None = None,
+        orchestrator: MemoryOrchestrator | None = None,
     ) -> None:
         self.embedder = embedder
         self.repo = repo
-        self.vector_store = vector_store
+        self.vector_store = (
+            vector_store if vector_store is not None else InMemoryStaticVectorStore()
+        )
         self.store = store
+        self.orchestrator = orchestrator or MemoryOrchestrator(
+            embedder=embedder,
+            global_repo=repo,
+            retention_policy=resolve_registered_retention_policy(),
+            recall_planner=resolve_registered_recall_planner(),
+        )
 
     @classmethod
     def from_config(cls, config: Mapping[str, Any]) -> HybridMemoryEngine:

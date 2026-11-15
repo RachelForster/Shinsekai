@@ -13,9 +13,13 @@ from application.chat.capabilities.contracts import (
     StartupCapabilityContext,
     TurnContextProvider,
 )
-from core.chat_history.models import rollback_memory_for_timeline
+from core.chat_history.models import is_real_user_turn_message, rollback_memory_for_timeline
 from core.chat_history.sqlite_session_store import set_default_shared_memory_rollback
-from core.chat_history.storage import session_id_for_history_path
+from core.chat_history.storage import (
+    legacy_active_history_branch,
+    peek_open_session_store,
+    session_id_for_history_path,
+)
 
 if TYPE_CHECKING:
     from sdk.hooks import BeforeChatContext, MessageAddedContext
@@ -31,6 +35,20 @@ def is_memory_auto_enabled() -> bool:
         "no",
         "off",
     }
+
+
+def _last_dialogue_turn_at(history_path: str) -> float:
+    store = peek_open_session_store(history_path)
+    if store is None:
+        return 0.0
+    branch = legacy_active_history_branch(history_path)
+    for turn in reversed(store.list_turns(branch_id=branch)):
+        raw = turn.raw_message
+        if not turn.created_at_ms or turn.source == "perception" or not raw.get("content"):
+            continue
+        if is_real_user_turn_message(raw) or (turn.role == "assistant" and not raw.get("tool_calls")):
+            return turn.created_at_ms / 1000.0
+    return 0.0
 
 
 class MemoryTurnContextProvider(BaseTurnContextProvider):
@@ -61,15 +79,31 @@ class MemorySessionCapability(BaseSessionCapability):
     def __init__(self) -> None:
         self._provider: MemoryTurnContextProvider | None = None
         self._hooks: Any | None = None
+        self._tool_ctx_token: Any | None = None
 
     def init_chat_flags(self) -> Mapping[str, Any]:
         return {"memory_enabled": is_memory_auto_enabled()}
 
     def on_llm_ready(self, context: StartupCapabilityContext) -> None:
-        from ai.memory.operations import memory_rollback_count
+        from ai.memory.operations import (
+            bind_memory_tool_context,
+            memory_rollback_count,
+        )
 
         history_arg = str(getattr(context.args, "history", "") or "")
         resolved_session_id = session_id_for_history_path(history_arg) if history_arg else ""
+        player_character = str(getattr(context.args, "player_character", "") or "").strip()
+        resolved_memory_mode = str(getattr(context.args, "memory_mode", "") or "").strip()
+        if not resolved_memory_mode and history_arg:
+            open_store = peek_open_session_store(history_arg)
+            if open_store is not None:
+                resolved_memory_mode = open_store.get_memory_mode()
+
+        self._tool_ctx_token = bind_memory_tool_context(
+            session_id=resolved_session_id,
+            memory_mode=resolved_memory_mode,
+            player_character=player_character,
+        )
 
         if context.hook_dispatcher is None:
             set_default_shared_memory_rollback(memory_rollback_count)
@@ -80,16 +114,24 @@ class MemorySessionCapability(BaseSessionCapability):
 
             installer = install_memory_hooks
 
-        extra_kwargs: dict[str, Any] = {}
+        try:
+            params = inspect.signature(installer).parameters
+        except (TypeError, ValueError):
+            params = {}
+        has_var_kw = any(
+            p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()
+        )
+        candidate_kwargs: dict[str, Any] = {}
         if resolved_session_id:
-            try:
-                params = inspect.signature(installer).parameters
-            except (TypeError, ValueError):
-                params = {}
-            if "session_id" in params or any(
-                p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()
-            ):
-                extra_kwargs["session_id"] = resolved_session_id
+            candidate_kwargs["session_id"] = resolved_session_id
+            candidate_kwargs["last_turn_at"] = lambda: _last_dialogue_turn_at(history_arg)
+        if resolved_memory_mode:
+            candidate_kwargs["memory_mode"] = resolved_memory_mode
+        if player_character:
+            candidate_kwargs["player_character"] = player_character
+        extra_kwargs = {
+            k: v for k, v in candidate_kwargs.items() if has_var_kw or k in params
+        }
 
         hooks = installer(
             context.hook_dispatcher,
@@ -113,6 +155,12 @@ class MemorySessionCapability(BaseSessionCapability):
             )
 
         set_default_shared_memory_rollback(_cascade_rollback)
+
+    def on_shutdown(self) -> None:
+        from ai.memory.operations import reset_memory_tool_context
+
+        reset_memory_tool_context(self._tool_ctx_token)
+        self._tool_ctx_token = None
 
     def turn_context_providers(self) -> Sequence[TurnContextProvider]:
         return (self._provider,) if self._provider is not None else ()

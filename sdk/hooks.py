@@ -49,6 +49,7 @@ class HookRegistration:
     legacy_hook: Callable[[list[dict[str, Any]]], None] | None = None
     weight: float = 1.0
     critical: bool = False
+    priority: int = 100
 
 
 @dataclass(frozen=True)
@@ -196,6 +197,7 @@ class PluginHookDispatcher:
         legacy_hook: Callable[[list[dict[str, Any]]], None] | None = None,
         weight: float = 1.0,
         critical: bool = False,
+        priority: int = 100,
     ) -> None:
         event_key = self._normalize_event(event)
         if not callable(hook):
@@ -208,9 +210,12 @@ class PluginHookDispatcher:
             legacy_hook=legacy_hook,
             weight=float(weight),
             critical=bool(critical),
+            priority=int(priority),
         )
         self._next_order += 1
-        self._hooks[event_key].append(registration)
+        bucket = self._hooks[event_key]
+        bucket.append(registration)
+        bucket.sort(key=lambda item: (item.priority, item.order))
 
     def register_before_compact(
         self,
@@ -218,12 +223,14 @@ class PluginHookDispatcher:
         *,
         label: str = "",
         legacy_hook: Callable[[list[dict[str, Any]]], None] | None = None,
+        priority: int = 100,
     ) -> None:
         self.register(
             PluginHookEvent.BEFORE_COMPACT,
             hook,
             label=label,
             legacy_hook=legacy_hook,
+            priority=priority,
         )
 
     def register_message_added(
@@ -231,16 +238,18 @@ class PluginHookDispatcher:
         hook: Callable[[MessageAddedContext], None],
         *,
         label: str = "",
+        priority: int = 100,
     ) -> None:
-        self.register(PluginHookEvent.MESSAGE_ADDED, hook, label=label)
+        self.register(PluginHookEvent.MESSAGE_ADDED, hook, label=label, priority=priority)
 
     def register_before_chat(
         self,
         hook: Callable[[BeforeChatContext], None],
         *,
         label: str = "",
+        priority: int = 100,
     ) -> None:
-        self.register(PluginHookEvent.BEFORE_CHAT, hook, label=label)
+        self.register(PluginHookEvent.BEFORE_CHAT, hook, label=label, priority=priority)
 
     def register_init_chat(
         self,

@@ -15,7 +15,11 @@ from typing import Any
 
 import numpy as np
 
-from core.vector_store.fts_tokenizer import build_fts_match_query, tokenize_for_fts
+from core.vector_store.fts_tokenizer import (
+    build_fts_match_query,
+    extract_fts_query_terms,
+    tokenize_for_fts,
+)
 from sdk.adapters.memory import (
     SCOPE_CHAR_CANON,
     CandidateHit,
@@ -593,9 +597,10 @@ class SqliteHybridStore:
             if not rows:
                 return ()
             if match_expr:
+                q_terms = extract_fts_query_terms(query.keyword_query)
                 fts_rows = conn.execute(
                     f"""
-                    SELECT f.memory_id, bm25(memories_fts) AS rank_score
+                    SELECT f.memory_id, f.fts_tokens, bm25(memories_fts) AS rank_score
                     FROM memories_fts f
                     JOIN memories m ON m.id = f.memory_id
                     WHERE memories_fts MATCH ? AND {where_sql}
@@ -606,8 +611,16 @@ class SqliteHybridStore:
                 ).fetchall()
                 for row in fts_rows:
                     raw_bm25 = abs(float(row["rank_score"] or 0.0))
-                    # SQLite bm25() returns negative scores (more negative = better match).
-                    fts_scores[str(row["memory_id"])] = raw_bm25 / (1.0 + raw_bm25)
+                    # SQLite bm25() returns negative scores (more negative = better match),
+                    # and clamps IDF to 1e-6 on small tables (e.g. N=1 save_memories).
+                    bm25_norm = raw_bm25 / (1.0 + raw_bm25)
+                    lexical_norm = 0.0
+                    if q_terms:
+                        doc_tokens = set(str(row["fts_tokens"] or "").split())
+                        hit_count = sum(1 for t in q_terms if t in doc_tokens)
+                        if hit_count > 0:
+                            lexical_norm = hit_count / (2.2 + hit_count)
+                    fts_scores[str(row["memory_id"])] = max(bm25_norm, lexical_norm)
 
         q_vecs = [
             vec

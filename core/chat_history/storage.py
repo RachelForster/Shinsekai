@@ -22,6 +22,7 @@ from core.chat_history.sqlite_session_store import (
     peek_open_session_store_for_dir,
     read_full_raw_messages_readonly,
     read_legacy_history_journal,
+    register_session_db_directory,
 )
 from sdk.adapters.session import ConversationSessionPort
 
@@ -75,6 +76,10 @@ def session_id_for_history_path(path: str | Path) -> str:
     if not str(path or "").strip():
         return ""
     return canonical_session_id_for_dir(chat_history_session_dir(path))
+
+
+def register_session_history_path(path: str | Path) -> None:
+    register_session_db_directory(chat_history_session_dir(path))
 
 
 def open_session_store(path: str | Path) -> ConversationSessionPort:

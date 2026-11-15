@@ -18,7 +18,7 @@ from application.chat.templates import (
 )
 from application.chat.history.paths import is_unc_history_path
 from application.chat.runtime.launch_args import CHAT_LAUNCH_CONFIG_ENV
-from core.chat_history.storage import chat_history_session_dir
+from core.chat_history.storage import chat_history_session_dir, register_session_history_path
 from core.media.chat_attachments import CHAT_ATTACHMENTS_ROOT_ENV
 
 
@@ -181,6 +181,8 @@ class ChatLaunchPreparation:
         chat_stream = getattr(state, "chat_stream", None)
         memory_service_base = str(getattr(chat_stream, "http_base", "") or "").strip()
         if memory_service_base:
+            if not is_unc_history_path(history_path):
+                register_session_history_path(history_argument)
             env["SHINSEKAI_MEMORY_SERVICE_URL"] = (
                 f"{memory_service_base.rstrip('/')}/api/memory"
             )
