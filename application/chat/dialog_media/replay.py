@@ -48,6 +48,10 @@ def latest_media_dialogs(
                 kind = "character"
                 if player_name and dialog.name == player_name:
                     kind = "player"
+                elif str(dialog.effect or "").strip().upper() == "LEAVE":
+                    if kind in latest and latest[kind][1].name == dialog.name:
+                        latest.pop(kind)
+                    continue
             latest[kind] = (position, dialog)
 
     return tuple(

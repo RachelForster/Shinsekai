@@ -90,6 +90,13 @@ def _shutdown_bridge_runtime(reason: str) -> None:
     _restart_debug_log(f"bridge runtime shutdown begin reason={reason}")
     with _bridge_state_lock:
         state = _bridge_state
+    if state is not None:
+        try:
+            from application.runtime.tasks import shutdown_background_tasks
+
+            shutdown_background_tasks(state, wait_timeout=5.0)
+        except Exception as exc:
+            _restart_debug_log(f"bridge background task shutdown failed reason={reason} error={exc}")
     services = getattr(state, "services", None)
     if services is not None:
         try:
@@ -152,6 +159,18 @@ def _shutdown_bridge_runtime(reason: str) -> None:
             chat_stream.stop()
         except Exception as exc:
             _restart_debug_log(f"bridge runtime chat stream stop failed reason={reason} error={exc}")
+    try:
+        from application.memory.manage_memories import shutdown_memory_runtime
+
+        shutdown_memory_runtime()
+    except Exception as exc:
+        _restart_debug_log(f"bridge runtime memory shutdown failed reason={reason} error={exc}")
+    try:
+        from application.knowledge.runtime import shutdown_knowledge_runtime
+
+        shutdown_knowledge_runtime()
+    except Exception as exc:
+        _restart_debug_log(f"bridge runtime knowledge shutdown failed reason={reason} error={exc}")
     _restart_debug_log(f"bridge runtime shutdown completed reason={reason}")
 
 

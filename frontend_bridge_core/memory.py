@@ -5,7 +5,7 @@ from typing import Any, Sequence
 
 
 def _check_mem0_before_call() -> dict[str, Any] | None:
-    """Return a dependency error if the complete mem0 runtime is unavailable."""
+    """Return a dependency error if the ONNX memory runtime is unavailable."""
     import importlib.util as _importlib_util
 
     from application.runtime.dependencies import (
@@ -13,14 +13,14 @@ def _check_mem0_before_call() -> dict[str, Any] | None:
     )
     from sdk.exception.types import runtime_dependency_error_from_module
 
-    dependency_error = runtime_dependency_error_for_module("mem0")
+    dependency_error = runtime_dependency_error_for_module("onnxruntime")
     if dependency_error is not None:
         return dependency_error
-    spec = _importlib_util.find_spec("mem0")
+    spec = _importlib_util.find_spec("onnxruntime")
     if spec is not None:
         return None
 
-    return runtime_dependency_error_from_module("mem0")
+    return runtime_dependency_error_from_module("onnxruntime")
 
 
 def _get_mem0_status(*, start_loading: bool = True) -> dict[str, Any]:
