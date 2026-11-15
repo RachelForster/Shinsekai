@@ -73,6 +73,8 @@ class BeforeCompactContext:
     messages: list[dict[str, Any]]
     older_messages: list[dict[str, Any]]
     recent_messages: list[dict[str, Any]]
+    session_id: str = ""
+    up_to_seq: int | None = None
 
 
 @dataclass
@@ -80,6 +82,8 @@ class MessageAddedContext:
     role: str
     message: dict[str, Any]
     messages: list[dict[str, Any]]
+    session_id: str = ""
+    turn_seq: int | None = None
 
 
 @dataclass

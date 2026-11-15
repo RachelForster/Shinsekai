@@ -16,7 +16,7 @@ from application.chat.capabilities import (
     StartupCapabilityContext,
     build_default_session_capabilities,
 )
-from core.chat_history.storage import chat_history_active_path
+from core.chat_history.storage import chat_history_active_path, chat_history_db_path
 
 if TYPE_CHECKING:
     from ai.llm.llm_manager import LLMManager
@@ -63,10 +63,12 @@ def load_chat_config() -> ConfigManager:
 
 
 def chat_history_is_present(history_argument: str) -> bool:
-    """Return whether the active history file contains a serialized message list."""
+    """Return whether the active history file or SQLite session store exists."""
 
     if not str(history_argument or "").strip():
         return False
+    if chat_history_db_path(history_argument).is_file():
+        return True
     active_path = chat_history_active_path(history_argument)
     try:
         return isinstance(json.loads(active_path.read_text(encoding="utf-8")), list)
@@ -206,7 +208,7 @@ def create_chat_startup_context(
     if story_hooks is not None and story_hooks.journal.load() is not None:
         story_hooks.recover_pending()
         # Recovery can restore a reply whose append was interrupted. Reload it
-        # before branches and the UI consume startup history.
+        # before the UI consumes startup history.
         from application.chat.history.state import load_chat_history
         messages = load_chat_history(str(chat_history_active_path(args.history)))
 

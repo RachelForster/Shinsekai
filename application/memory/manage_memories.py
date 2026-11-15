@@ -6,8 +6,9 @@ chunk sizing, adapter selection, progress, and cancellation composition.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any, Callable
 
 
 def check_mem0_status(*, start_loading: bool = True) -> dict[str, Any]:
@@ -58,10 +59,31 @@ def index_media_assets(payload: dict[str, Any]) -> dict[str, Any]:
     return media_asset_index_response(payload)
 
 
-def remember_memory(content: str, *, character_name: str) -> dict[str, Any]:
+def remember_memory(
+    content: str,
+    *,
+    character_name: str,
+    slot_key: str = "",
+    kind: str = "episodic",
+    source_session_id: str = "",
+    source_turn_seq: int | None = None,
+) -> dict[str, Any]:
     from ai.memory.operations import memory_remember
 
-    return memory_remember(content, character_name=character_name)
+    return memory_remember(
+        content,
+        character_name=character_name,
+        slot_key=slot_key,
+        kind=kind,
+        source_session_id=source_session_id,
+        source_turn_seq=source_turn_seq,
+    )
+
+
+def rollback_memories(session_id: str, *, turn_seq: int, protected_turn_seqs: Sequence[int] = ()) -> dict[str, Any]:
+    from ai.memory.operations import memory_rollback_after_turn
+
+    return memory_rollback_after_turn(session_id, turn_seq, protected_turn_seqs=protected_turn_seqs)
 
 
 def forget_memory(memory_id: str) -> dict[str, Any]:

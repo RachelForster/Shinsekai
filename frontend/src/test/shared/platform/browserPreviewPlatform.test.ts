@@ -962,7 +962,7 @@ describe("browser preview platform chat themes", () => {
     expect(task.status).toBe("succeeded");
   });
 
-  it("handles preview chat branch, history, launch, and event commands", async () => {
+  it("handles preview chat history, launch, and event commands", async () => {
     vi.useFakeTimers();
     const platform = createBrowserPreviewPlatform();
     const events: string[] = [];
@@ -980,16 +980,6 @@ describe("browser preview platform chat themes", () => {
     expect((await resolvePreview(platform.chat.command({ type: "skip-speech" }))).status).toBe("idle");
     expect((await resolvePreview(platform.chat.command({ type: "open-history" }))).openedPath).toContain("preview");
     expect((await resolvePreview(platform.chat.command({ type: "copy-history" }))).clipboardText).toContain("Nanami");
-
-    const forked = await resolvePreview(platform.chat.command({ payload: { userIndex: 0 }, type: "fork-history" }));
-    expect(forked.conversationTree?.activeBranchId).toMatch(/^branch-/);
-    const branchId = forked.conversationTree?.activeBranchId ?? "";
-    await resolvePreview(platform.chat.command({ payload: { branchId, label: "Alt route" }, type: "rename-branch" }));
-    const renamed = await resolvePreview(platform.chat.getSnapshot());
-    expect(renamed.conversationTree?.branches.find((branch) => branch.id === branchId)?.label).toBe("Alt route");
-
-    const switchedMain = await resolvePreview(platform.chat.command({ payload: "main", type: "switch-branch" }));
-    expect(switchedMain.conversationTree?.activeBranchId).toBe("main");
 
     const reverted = await resolvePreview(platform.chat.command({ payload: 0, type: "revert-history" }));
     expect(reverted.historyEntries?.at(-1)?.role).toBe("system");

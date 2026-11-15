@@ -671,7 +671,7 @@ class StreamingChatSession(_BaseChatSession):
             shutdown_session=self._shutdown_requested.set,
             translate=self.options.translate,
             create_asr_adapter=self.options.create_asr_adapter,
-            save_history=save_chat_history_and_delete_tmp,
+            save_history=save_runtime_chat_history,
             capability_commands=self.capabilities.command_handlers(),
         )
         self.capabilities.bind_streaming_session(
@@ -709,7 +709,6 @@ class StreamingChatSession(_BaseChatSession):
                 welcome_html=welcome_html,
                 initial_option=initial_option,
                 ready_notification=self.options.translate("main.notify_chat"),
-                publish_branch_tree=self.streaming_bindings.branch_manager.publish_tree,
                 translate=self.options.translate,
                 replay_media=lambda messages: enqueue_latest_media_replay(
                     messages,
@@ -762,7 +761,7 @@ class StreamingChatSession(_BaseChatSession):
             pre_shutdown=pre_shutdown,
             plugin_shutdown=self._shutdown_plugins,
             tts_shutdown=self._tts_shutdown(),
-            save_history=self.streaming_bindings.branch_manager.persist,
+            save_history=lambda: save_runtime_chat_history(self.args.history, self.startup.llm_manager.get_messages()),
             save_background=lambda: save_bg(
                 bg_path=self.ui_updates.current_background_path,
                 bgm_path=self.ui_updates.current_bgm_path,
@@ -806,7 +805,7 @@ class HeadlessChatSession(_BaseChatSession):
         if self.args.history:
 
             def persist_history() -> bool:
-                return save_chat_history_and_delete_tmp(
+                return save_runtime_chat_history(
                     self.args.history,
                     self.startup.llm_manager.get_messages(),
                 )
@@ -822,26 +821,16 @@ class HeadlessChatSession(_BaseChatSession):
         )
 
 
-def save_chat_history_and_delete_tmp(
-    history_argument: str, messages: list[Any]
-) -> bool:
-    """Persist active messages and remove the history manager temporary file."""
+def save_runtime_chat_history(history_argument: str, messages: list[Any]) -> bool:
+    """Export all durable turns without replacing them with the model window."""
 
     if not history_argument:
         return True
-    from ai.llm.history_manager import HistoryManager
     from application.chat.history.state import save_chat_history
     from core.chat_history.storage import chat_history_active_path
 
     history_file = str(chat_history_active_path(history_argument))
-    success = save_chat_history(history_file, messages)
-    if not success:
-        return False
-    try:
-        HistoryManager.delete_tmp(history_file)
-    except Exception as exc:
-        _log_shutdown_error("delete_tmp", exc)
-    return True
+    return save_chat_history(history_file, messages, journaled=True)
 
 
 def _install_interrupt_handlers() -> Callable[[], None]:

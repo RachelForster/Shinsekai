@@ -62,8 +62,10 @@ class SqliteHybridMemoryRepo:
     def record_recall(self, memory_ids: Sequence[str], *, recalled_at: float) -> int:
         return self._store.record_recall(memory_ids, recalled_at=recalled_at)
 
-    def rollback_after_turn(self, session_id: str, turn_seq: int) -> int:
-        return self._store.rollback_after_turn(session_id, turn_seq)
+    def rollback_after_turn(
+        self, session_id: str, turn_seq: int, *, protected_turn_seqs: Sequence[int] = (),
+    ) -> int:
+        return self._store.rollback_after_turn(session_id, turn_seq, protected_turn_seqs=protected_turn_seqs)
 
     def set_pinned(self, memory_id: str, pinned: bool) -> bool:
         return self._store.set_pinned(memory_id, pinned)

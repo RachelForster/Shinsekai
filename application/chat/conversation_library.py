@@ -15,11 +15,16 @@ from application.chat.history.paths import resolve_history_path_for_project
 from application.story.prompt_turns import PROMPT_TURN_FILENAME
 from core.chat_history.storage import (
     ACTIVE_HISTORY_FILENAME,
+    BRANCH_TREE_FILENAME,
+    HISTORY_DB_FILENAME,
     STORY_SESSION_FILENAME,
     chat_history_active_path,
+    chat_history_branch_tree_path,
+    chat_history_db_path,
     chat_history_session_dir,
     chat_history_storage_files,
     prune_chat_history_storage,
+    read_active_chat_history,
 )
 from core.chat_history.text import chat_history_to_turns, parse_assistant_dialog_content
 from core.messaging.dialog_tokens import (
@@ -105,16 +110,30 @@ def _records(state: Any) -> dict[str, dict]:
         ):
             path = Path(value["historyPath"])
             active = chat_history_active_path(path)
-            if active.is_file() or Path(str(active) + ".tmp").is_file():
+            if (
+                active.is_file()
+                or Path(str(active) + ".tmp").is_file()
+                or chat_history_db_path(path).is_file()
+                or chat_history_branch_tree_path(path).is_file()
+            ):
                 records[_id(path)] = value
     root = Path(state.history_dir).resolve()
-    candidates = list(root.glob("*.json")) + list(root.rglob(ACTIVE_HISTORY_FILENAME))
+    candidates = (
+        list(root.glob("*.json"))
+        + list(root.rglob(ACTIVE_HISTORY_FILENAME))
+        + list(root.rglob(HISTORY_DB_FILENAME))
+        + list(root.rglob(BRANCH_TREE_FILENAME))
+    )
     for active in candidates:
         if not active.resolve().is_relative_to(root):
             continue
-        path = active.parent if active.name == ACTIVE_HISTORY_FILENAME else active
+        path = (
+            active.parent
+            if active.name in {ACTIVE_HISTORY_FILENAME, HISTORY_DB_FILENAME, BRANCH_TREE_FILENAME}
+            else active
+        )
         if (
-            active.name != ACTIVE_HISTORY_FILENAME
+            active.name not in {ACTIVE_HISTORY_FILENAME, HISTORY_DB_FILENAME, BRANCH_TREE_FILENAME}
             and chat_history_active_path(path) != active
         ):
             continue  # A migrated legacy alias is already represented by its directory.
@@ -130,23 +149,7 @@ def _record(state: Any, conversation_id: str) -> dict:
 
 
 def _history_messages(active: Path) -> list:
-    """Read incremental recovery data without modifying a running chat's files."""
-    messages = _read(active)
-    messages = messages if isinstance(messages, list) else []
-    temporary = Path(str(active) + ".tmp")
-    try:
-        lines = temporary.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return messages
-    pending = []
-    for line in lines:
-        try:
-            pending.append(json.loads(line.rstrip().rstrip(",")))
-        except ValueError:
-            continue  # A live writer may not have finished the last line yet.
-    if messages and pending and messages[-1] == pending[0]:
-        pending = pending[1:]
-    return messages + pending
+    return read_active_chat_history(active)
 
 
 def recent_character_dialogs(
@@ -166,9 +169,10 @@ def recent_character_dialogs(
             if is_unc_history_path(path):
                 continue
             active = chat_history_active_path(path)
+            db_path = chat_history_db_path(path)
             modified = max(
                 file.stat().st_mtime
-                for file in (active, Path(str(active) + ".tmp"))
+                for file in (active, Path(str(active) + ".tmp"), db_path, chat_history_branch_tree_path(path))
                 if file.is_file()
             )
             candidates.append((modified, active))

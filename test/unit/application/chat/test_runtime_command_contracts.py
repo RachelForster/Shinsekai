@@ -113,12 +113,6 @@ def test_runtime_commands_forward_once_with_stable_ids_and_status(
 def test_invalid_commands_do_not_reach_transport_or_save_config(
     state, command, payload
 ):
-    state.config_manager.config.system_config.react_chat_fork_experimental_enabled = (
-        True
-    )
-    state.config_manager.config.system_config.react_chat_flowchart_experimental_enabled = (
-        True
-    )
     with pytest.raises(ValueError):
         chat._handle_chat_command(state, {"type": command, "payload": payload})
     assert state.chat_stream.commands == []
@@ -133,8 +127,8 @@ def test_invalid_commands_do_not_reach_transport_or_save_config(
         ("rename-branch", {"branchId": "main", "label": "new"}),
     ],
 )
-def test_branch_experiments_are_enforced_before_transport(state, command, payload):
-    with pytest.raises(PermissionError):
+def test_removed_branch_commands_never_reach_transport(state, command, payload):
+    with pytest.raises(ValueError):
         chat._handle_chat_command(state, {"type": command, "payload": payload})
     assert state.chat_stream.commands == []
 

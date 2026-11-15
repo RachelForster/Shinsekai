@@ -1,16 +1,20 @@
-"""Persist story turns and coordinate their branches with chat history."""
+"""Persist story turns and restore story state during chat rollback."""
 
 from __future__ import annotations
 from typing import Any
 from pathlib import Path
 from collections.abc import Callable, Sequence
 import html
-import json
 from core.chat_history.storage import (
     chat_history_active_path,
+    chat_history_db_path,
+    legacy_active_history_branch,
     load_branch_state,
     save_branch_state,
+    session_id_for_history_path,
+    write_active_history_snapshot,
 )
+from core.chat_history.sqlite_session_store import SqliteSessionStore
 from core.messaging.dialog_tokens import (
     SYSTEM_HISTORY_NAMES,
     normalize_character_name,
@@ -114,15 +118,22 @@ class StoryHistoryRecorder:
         if is_unc_history_path(history_path):
             return
         active = chat_history_active_path(history_path)
-        messages: list[Any] = []
-        if active.is_file():
-            loaded = self.history.read(active)
-            if isinstance(loaded, list):
-                messages = loaded
-        messages.extend(new_messages)
-        active.parent.mkdir(parents=True, exist_ok=True)
-        with active.open("w", encoding="utf-8") as file:
-            json.dump(messages, file, ensure_ascii=False, indent=4)
+        db_path = chat_history_db_path(history_path)
+        if db_path.is_file():
+            # The bridge may record a structured story choice while the chat
+            # process owns the session. Release our connection immediately.
+            branch = legacy_active_history_branch(history_path)
+            store = SqliteSessionStore(db_path, session_id=session_id_for_history_path(history_path))
+            try:
+                for message in new_messages:
+                    store.append_raw_message(message, branch_id=branch)
+                messages = store.build_full_raw_messages(branch_id=branch)
+            finally:
+                store.close()
+        else:
+            loaded = self.history.read(active) if active.is_file() else []
+            messages = [*(loaded if isinstance(loaded, list) else []), *new_messages]
+        write_active_history_snapshot(active, messages)
         branch_state = load_branch_state(history_path)
         if branch_state is None:
             return
@@ -186,62 +197,16 @@ class StoryHistoryRecorder:
         return entries
 
 
-class StoryBranchCoordinator:
+class StoryHistoryRollback:
     def __init__(
         self, story: StoryCoordinatorPort, resolve: Callable[[Any, str | Path], Path]
     ) -> None:
         self.story, self.resolve = story, resolve
 
-    def allocate_id(self, state: Any, session: Any) -> str:
-        max_counter = 1
-        history_raw = str(state.chat_session.get("historyPath") or "").strip()
-        if history_raw and (not is_unc_history_path(history_raw)):
-            history_path = self.resolve(state, history_raw)
-            if not is_unc_history_path(history_path):
-                branch_state = load_branch_state(history_path)
-                if branch_state is not None:
-                    try:
-                        max_counter = max(
-                            max_counter, int(branch_state.get("counter") or 1)
-                        )
-                    except (TypeError, ValueError):
-                        pass
-        for branch_id in session.branches:
-            suffix = str(branch_id)[7:] if str(branch_id).startswith("branch-") else ""
-            if suffix.isdigit():
-                max_counter = max(max_counter, int(suffix))
-        candidate = max_counter + 1
-        while f"branch-{candidate}" in session.branches:
-            candidate += 1
-        return f"branch-{candidate}"
-
-    def sync(self, state: Any, command: str, body: dict[str, Any]) -> None:
+    def restore(self, state: Any, user_index: int) -> None:
         session = self.story.session(state)
-        if session is None:
-            return
-        if command == "fork-history":
-            payload = body.get("payload")
-            raw_index = (
-                payload.get("userIndex") if isinstance(payload, dict) else payload
-            )
-            user_index = int(raw_index)
+        if session is not None:
             generation = session.checkpoint_generation_before_user_index(user_index)
-            branch_id = self.allocate_id(state, session)
-            session.fork(branch_id, generation=generation)
-            if isinstance(payload, dict):
-                body["payload"] = {**payload, "branchId": branch_id}
-            else:
-                body["payload"] = {"userIndex": user_index, "branchId": branch_id}
-            return
-        if command == "switch-branch":
-            branch_id = str(body.get("payload") or "").strip()
-            if branch_id in session.branches:
-                session.switch_branch(branch_id)
-            return
-        if command == "revert-history":
-            generation = session.checkpoint_generation_before_user_index(
-                int(body.get("payload"))
-            )
             session.restore_generation(generation)
 
     def publish(self, state: Any) -> None:

@@ -203,6 +203,7 @@ def _latest_history_json(history_dir: str) -> Path | None:
                 for child in (
                     item / ACTIVE_HISTORY_FILENAME,
                     item / BRANCH_TREE_FILENAME,
+                    item / "history.db",
                     item / f"{ACTIVE_HISTORY_FILENAME}.tmp",
                 )
                 if child.is_file()
@@ -212,7 +213,12 @@ def _latest_history_json(history_dir: str) -> Path | None:
         if item.is_dir()
         and any(
             (item / name).is_file()
-            for name in (ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME, f"{ACTIVE_HISTORY_FILENAME}.tmp")
+            for name in (
+                ACTIVE_HISTORY_FILENAME,
+                BRANCH_TREE_FILENAME,
+                "history.db",
+                f"{ACTIVE_HISTORY_FILENAME}.tmp",
+            )
         )
     )
     candidates.extend(

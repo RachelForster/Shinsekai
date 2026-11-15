@@ -111,6 +111,12 @@ def _loading_status_message() -> str:
     return _LOADING_FIRST_MSG
 
 
+def peek_mem0() -> Any | None:
+    """Return the initialized memory engine if ready, without starting loading."""
+    with _lock:
+        return _mem0
+
+
 def start_mem0_loading() -> None:
     """Start hybrid memory engine initialization in a background thread."""
     global _mem0_loading, _loading_started_at, _mem0_load_error

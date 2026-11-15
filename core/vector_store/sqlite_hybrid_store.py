@@ -780,15 +780,18 @@ class SqliteHybridStore:
                 (surviving, str(row["id"])),
             )
 
-    def rollback_after_turn(self, session_id: str, turn_seq: int) -> int:
+    def rollback_after_turn(
+        self, session_id: str, turn_seq: int, *, protected_turn_seqs: Sequence[int] = (),
+    ) -> int:
         sid = str(session_id or "").strip()
         if not sid:
             return 0
         cutoff = int(turn_seq)
+        protected = frozenset(protected_turn_seqs)
         with self._lock, self._borrow_conn() as conn:
             rows = conn.execute(
                 """
-                SELECT id, superseded_by FROM memories
+                SELECT id, superseded_by, source_turn_seq FROM memories
                 WHERE source_session_id = ?
                   AND source_turn_seq IS NOT NULL
                   AND source_turn_seq > ?
@@ -797,6 +800,7 @@ class SqliteHybridStore:
                 """,
                 (sid, cutoff, SCOPE_CHAR_CANON),
             ).fetchall()
+            rows = [row for row in rows if row["source_turn_seq"] not in protected]
             if not rows:
                 return 0
             deleting_map = {

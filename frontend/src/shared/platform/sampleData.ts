@@ -213,8 +213,6 @@ export const sampleConfig: AppConfig = {
     chat_ui_theme_path: "",
     chat_ui_theme_id: DEFAULT_CHAT_THEME_ID,
     chat_ui_runtime_mode: "react",
-    react_chat_fork_experimental_enabled: false,
-    react_chat_flowchart_experimental_enabled: false,
     story_system_enabled: false,
     mirror_auto_detect_china: true,
     mirror_region: "auto",
@@ -340,14 +338,6 @@ export const sampleChatSnapshot: ChatSnapshot = {
   backgroundPath: "",
   characterName: "Nanami",
   dialogText: "欢迎来到新世界。这里是 React 舞台预览，真实聊天事件会从 platform adapter 进入状态机。",
-  experimentalFeatures: {
-    conversationTree: true,
-    forkHistory: true,
-  },
-  conversationTree: {
-    activeBranchId: "main",
-    branches: [{ id: "main", label: "Main", parentId: null }],
-  },
   historyEntries: [
     { id: "history-0", role: "system", text: "旁白: 欢迎来到新世界。" },
     {

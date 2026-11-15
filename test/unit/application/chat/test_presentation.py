@@ -60,7 +60,6 @@ def test_prepare_initial_presentation_restores_media_and_falls_back_to_sprite(
         post_options=Mock(),
         post_notification=Mock(),
     )
-    publish_tree = Mock()
     display_sprite = Mock()
     monkeypatch.setattr(
         presentation,
@@ -85,7 +84,6 @@ def test_prepare_initial_presentation_restores_media_and_falls_back_to_sprite(
         welcome_html="welcome",
         initial_option="start",
         ready_notification="ready",
-        publish_branch_tree=publish_tree,
         translate=lambda key, **_kwargs: key,
     )
 
@@ -101,7 +99,6 @@ def test_prepare_initial_presentation_restores_media_and_falls_back_to_sprite(
     )
     ui.post_options.assert_called_once_with(["start"])
     ui.post_notification.assert_called_once_with("ready")
-    publish_tree.assert_called_once_with()
     display_sprite.assert_called_once_with(
         "sprite.png",
         config=config,
@@ -137,7 +134,6 @@ def test_enabled_initial_sprite_only_falls_back_when_history_restored_no_sprite(
         welcome_html="welcome",
         initial_option="start",
         ready_notification="ready",
-        publish_branch_tree=Mock(),
         translate=lambda key, **_kwargs: key,
     )
     restore.assert_called_once()
@@ -179,7 +175,6 @@ def test_replayed_history_sprite_wins_with_fast_or_slow_worker(monkeypatch, imme
         welcome_html="welcome",
         initial_option="start",
         ready_notification="ready",
-        publish_branch_tree=Mock(),
         translate=lambda key, **_kwargs: key,
         replay_media=lambda source: enqueue_latest_media_replay(
             source, dialog_queue=ReplayQueue(), opencc=SimpleNamespace(convert=lambda value: value)),
@@ -210,7 +205,6 @@ def test_disabled_initial_sprite_skips_custom_and_system_fallback_but_restores_h
         welcome_html="welcome",
         initial_option="start",
         ready_notification="ready",
-        publish_branch_tree=Mock(),
         translate=lambda key, **_kwargs: key,
     )
     restore.assert_called_once()

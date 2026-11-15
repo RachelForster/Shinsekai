@@ -6,19 +6,26 @@ import logging
 import os
 import threading
 import time
+from collections.abc import Sequence
 from typing import Any
 
 from ai.memory.chunking import DEFAULT_DIALOGUE_CHUNK_TOKENS
 from ai.memory.extraction import MemoryExtractor
 from ai.memory.operations import memory_search, memory_service_status
 from ai.memory.queue import MemoryWriteQueue
+from core.chat_history.models import is_compact_summary_message
 from core.chat_history.text import (
     history_payload_to_plain_text,
     parse_assistant_dialog_content,
     strip_local_time_prefix,
 )
 from sdk.chat_init import InitChatContext
-from sdk.hooks import BeforeChatContext, MessageAddedContext, PluginHookDispatcher
+from sdk.hooks import (
+    BeforeChatContext,
+    BeforeCompactContext,
+    MessageAddedContext,
+    PluginHookDispatcher,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +100,7 @@ class MemoryAutoHooks:
         *,
         llm_adapter: Any,
         character_names: list[str] | None = None,
+        session_id: str = "",
         queue: MemoryWriteQueue | None = None,
         search_func=memory_search,
         extract_interval_turns: int = DEFAULT_EXTRACT_INTERVAL_TURNS,
@@ -108,6 +116,7 @@ class MemoryAutoHooks:
         self.llm_adapter = llm_adapter
         self.character_names = [name.strip() for name in (character_names or []) if str(name or "").strip()]
         self._active_character_name = self.character_names[0] if self.character_names else "user"
+        self.session_id = str(session_id or "").strip()
         self.queue = queue if queue is not None else MemoryWriteQueue()
         self.search_func = search_func
         self.extract_interval_turns = max(1, int(extract_interval_turns))
@@ -121,9 +130,13 @@ class MemoryAutoHooks:
         self._monotonic = monotonic_func
         self._lock = threading.RLock()
         self._summary_lock = threading.Lock()
-        self._buffer: list[dict[str, str]] = []
+        self._write_lock = threading.Lock()
+        self._rollback_epoch = 0
+        self._buffer: list[dict[str, Any]] = []
         self._user_turns = 0
         self._last_extract_turn = 0
+        self._last_extracted_seq = 0
+        self._last_seen_seq = 0
         self._last_injected_user = ""
         self._workers: list[threading.Thread] = []
         self._extractor = MemoryExtractor(llm_adapter)
@@ -141,6 +154,7 @@ class MemoryAutoHooks:
             critical=False,
         )
         dispatcher.register_before_chat(self.before_chat, label="memory_auto_before_chat")
+        dispatcher.register_before_compact(self.before_compact, label="memory_auto_before_compact")
         dispatcher.register_message_added(self.message_added, label="memory_auto_message_added")
 
     def init_chat(self, context: InitChatContext) -> None:
@@ -256,6 +270,8 @@ class MemoryAutoHooks:
         if role not in {"user", "assistant"}:
             return
         message = context.message or {}
+        if is_compact_summary_message(message) or message.get("source") == "perception":
+            return
         if role == "assistant" and message.get("tool_calls"):
             return
         raw_content = message.get("content")
@@ -265,8 +281,15 @@ class MemoryAutoHooks:
         )
         if not content:
             return
+        turn_seq = context.turn_seq
+        effective_session = str(context.session_id or self.session_id or "").strip()
         should_extract = False
+        extract_seq: int | None = None
         with self._lock:
+            if effective_session and not self.session_id:
+                self.session_id = effective_session
+            if turn_seq is not None and int(turn_seq) > self._last_seen_seq:
+                self._last_seen_seq = int(turn_seq)
             if role == "user":
                 self._user_turns += 1
                 self._last_injected_user = ""
@@ -274,7 +297,13 @@ class MemoryAutoHooks:
                 speaker_names = _dialog_speaker_names(raw_content)
                 if speaker_names:
                     self._active_character_name = speaker_names[-1]
-            self._buffer.append({"role": role, "content": content})
+            self._buffer.append(
+                {
+                    "role": role,
+                    "content": content,
+                    "turn_seq": None if turn_seq is None else int(turn_seq),
+                }
+            )
             self._buffer = self._buffer[-self.recent_buffer_messages :]
             if (
                 role == "assistant"
@@ -283,29 +312,140 @@ class MemoryAutoHooks:
                 self._last_extract_turn = self._user_turns
                 snapshot = list(self._buffer)
                 turn = self._user_turns
+                epoch = self._rollback_epoch
+                seqs = [int(item["turn_seq"]) for item in snapshot if item.get("turn_seq") is not None]
+                extract_seq = max(seqs) if seqs else (int(turn_seq) if turn_seq is not None else None)
+                if extract_seq is not None and extract_seq > self._last_extracted_seq:
+                    self._last_extracted_seq = extract_seq
                 should_extract = True
             else:
                 snapshot = []
                 turn = self._user_turns
         if should_extract:
-            self._start_extraction(snapshot, source=f"periodic:{turn}")
+            self._start_extraction(
+                snapshot,
+                source=f"periodic:{turn}",
+                session_id=effective_session,
+                turn_seq=extract_seq,
+                epoch=epoch,
+            )
+
+    def before_compact(self, context: BeforeCompactContext) -> None:
+        """Extract unpersisted memories from older_messages before compaction summarizes them."""
+        older = list(context.older_messages or [])
+        if not older:
+            return
+        effective_session = str(context.session_id or self.session_id or "").strip()
+        anchor_seq = context.up_to_seq
+
+        snapshot: list[dict[str, Any]] = []
+        with self._lock:
+            if effective_session and not self.session_id:
+                self.session_id = effective_session
+            if (
+                anchor_seq is not None
+                and self._last_extracted_seq > 0
+                and int(anchor_seq) <= self._last_extracted_seq
+            ):
+                return
+
+            for message in older:
+                if not isinstance(message, dict):
+                    continue
+                role = str(message.get("role") or "")
+                if role not in {"user", "assistant"}:
+                    continue
+                if is_compact_summary_message(message) or message.get("source") == "perception":
+                    continue
+                if role == "assistant" and message.get("tool_calls"):
+                    continue
+                content = _clean_text(
+                    history_payload_to_plain_text([message], user_display_name="user"),
+                    max_chars=20000,
+                )
+                if not content:
+                    continue
+                if role == "assistant":
+                    speaker_names = _dialog_speaker_names(message.get("content"))
+                    if speaker_names:
+                        self._active_character_name = speaker_names[-1]
+                snapshot.append({"role": role, "content": content, "turn_seq": anchor_seq})
+
+            if not snapshot:
+                return
+            if anchor_seq is not None:
+                self._last_extracted_seq = max(self._last_extracted_seq, int(anchor_seq))
+                self._buffer = [
+                    item
+                    for item in self._buffer
+                    if item.get("turn_seq") is not None and int(item["turn_seq"]) > int(anchor_seq)
+                ]
+            else:
+                self._buffer.clear()
+            self._last_extract_turn = self._user_turns
+            epoch = self._rollback_epoch
+
+        self._extract_enqueue_and_flush(
+            snapshot,
+            source=f"before_compact:{anchor_seq if anchor_seq is not None else self._user_turns}",
+            session_id=effective_session,
+            turn_seq=anchor_seq,
+            epoch=epoch,
+        )
+
+    def rollback_after_turn(
+        self, session_id: str, turn_seq: int, *, protected_turn_seqs: Sequence[int] = (),
+    ) -> int:
+        """Synchronize buffered hook state and pending write queue on session revert/reroll."""
+        sid = str(session_id or "").strip()
+        cutoff = max(0, int(turn_seq))
+        with self._write_lock:
+            with self._lock:
+                if not sid or not self.session_id or sid == self.session_id:
+                    self._buffer = [
+                        item
+                        for item in self._buffer
+                        if item.get("turn_seq") is not None and int(item["turn_seq"]) <= cutoff
+                    ]
+                    self._last_extracted_seq = min(self._last_extracted_seq, cutoff)
+                    self._last_seen_seq = min(self._last_seen_seq, cutoff)
+                    self._last_injected_user = ""
+                    self._rollback_epoch += 1
+            return self.queue.rollback_after_turn(
+                sid, cutoff, protected_turn_seqs=protected_turn_seqs
+            )
 
     def shutdown(self, *, wait_timeout: float = 3.0) -> dict[str, Any]:
-        tail_snapshot, tail_turn = self._shutdown_tail_snapshot()
+        tail_snapshot, tail_turn, tail_seq, tail_session, epoch = self._shutdown_tail_snapshot()
         if tail_snapshot:
-            self._extract_enqueue_and_flush(tail_snapshot, source=f"shutdown:{tail_turn}")
+            self._extract_enqueue_and_flush(
+                tail_snapshot,
+                source=f"shutdown:{tail_turn}",
+                session_id=tail_session,
+                turn_seq=tail_seq,
+                epoch=epoch,
+            )
         for worker in self._live_workers():
             worker.join(timeout=max(0.0, wait_timeout))
-        return self.queue.flush()
+        with self._write_lock:
+            return self.queue.flush()
 
     def wait_for_idle(self, timeout: float = 3.0) -> None:
         for worker in self._live_workers():
             worker.join(timeout=timeout)
 
-    def _start_extraction(self, messages: list[dict[str, str]], *, source: str) -> None:
+    def _start_extraction(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        source: str,
+        session_id: str = "",
+        turn_seq: int | None = None,
+        epoch: int,
+    ) -> None:
         worker = threading.Thread(
             target=self._extract_enqueue_and_flush,
-            args=(messages, source),
+            args=(messages, source, session_id, turn_seq, epoch),
             name="memory-auto-extractor",
             daemon=True,
         )
@@ -314,27 +454,46 @@ class MemoryAutoHooks:
             self._workers.append(worker)
         worker.start()
 
-    def _extract_enqueue_and_flush(self, messages: list[dict[str, str]], source: str) -> None:
+    def _extract_enqueue_and_flush(
+        self,
+        messages: list[dict[str, Any]],
+        source: str,
+        session_id: str,
+        turn_seq: int | None,
+        epoch: int,
+    ) -> None:
         with self._summary_lock:
             try:
                 extracted = self._extract_memories(messages)
-                for item in extracted:
-                    self.queue.enqueue(
-                        item["memory"],
-                        character_name=item.get("character_name") or self.primary_character_name,
-                        source=source,
-                        confidence=float(item.get("confidence", 1.0)),
-                    )
-                self.queue.flush()
+                resolved_session = str(session_id or self.session_id or "").strip()
+                with self._write_lock:
+                    with self._lock:
+                        if epoch != self._rollback_epoch:
+                            return
+                    for item in extracted:
+                        self.queue.enqueue(
+                            item["memory"],
+                            character_name=item.get("character_name") or self.primary_character_name,
+                            source=source,
+                            confidence=float(item.get("confidence", 1.0)),
+                            slot_key=str(item.get("slot_key") or ""),
+                            kind=str(item.get("kind") or "episodic"),
+                            source_session_id=resolved_session,
+                            source_turn_seq=turn_seq,
+                        )
+                    self.queue.flush()
             except Exception:
                 logger.exception("automatic memory extraction failed")
 
-    def _shutdown_tail_snapshot(self) -> tuple[list[dict[str, str]], int]:
+    def _shutdown_tail_snapshot(self) -> tuple[list[dict[str, Any]], int, int | None, str, int]:
         with self._lock:
             if not self._buffer or self._user_turns <= self._last_extract_turn:
-                return [], self._user_turns
+                return [], self._user_turns, None, self.session_id, self._rollback_epoch
             self._last_extract_turn = self._user_turns
-            return list(self._buffer), self._user_turns
+            snapshot = list(self._buffer)
+            seqs = [int(item["turn_seq"]) for item in snapshot if item.get("turn_seq") is not None]
+            tail_seq = max(seqs) if seqs else (self._last_seen_seq if self._last_seen_seq > 0 else None)
+            return snapshot, self._user_turns, tail_seq, self.session_id, self._rollback_epoch
 
     def _extract_memories(self, messages: list[dict[str, str]]) -> list[dict[str, Any]]:
         dialogue = "\n".join(
@@ -357,6 +516,8 @@ class MemoryAutoHooks:
             if role == "system":
                 continue
             if role == "user":
+                if is_compact_summary_message(message) or message.get("source") == "perception":
+                    return ""
                 return _clean_text(message.get("content"), max_chars=2000)
             return ""
         return ""
@@ -384,6 +545,7 @@ def install_memory_hooks(
     *,
     llm_adapter: Any,
     character_names: list[str] | None = None,
+    session_id: str = "",
     queue: MemoryWriteQueue | None = None,
 ) -> MemoryAutoHooks | None:
     if dispatcher is None or not _env_enabled("SHINSEKAI_MEMORY_AUTO_ENABLED", True):
@@ -391,6 +553,7 @@ def install_memory_hooks(
     hooks = MemoryAutoHooks(
         llm_adapter=llm_adapter,
         character_names=character_names,
+        session_id=session_id,
         queue=queue,
         extract_interval_turns=_env_int("SHINSEKAI_MEMORY_EXTRACT_INTERVAL_TURNS", DEFAULT_EXTRACT_INTERVAL_TURNS),
         search_limit=_env_int("SHINSEKAI_MEMORY_SEARCH_LIMIT", DEFAULT_SEARCH_LIMIT),

@@ -4,11 +4,29 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import re
+import tempfile
+from collections.abc import Callable, Sequence
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from core.chat_history.sqlite_session_store import (
+    HISTORY_DB_FILENAME,
+    canonical_session_id_for_dir,
+    close_session_store_for_dir,
+    durable_history_messages,
+    legacy_journal_overlap,
+    open_session_store_for_dir,
+    peek_open_session_store_for_dir,
+    read_full_raw_messages_readonly,
+    read_legacy_history_journal,
+)
+from sdk.adapters.session import ConversationSessionPort
+
 ACTIVE_HISTORY_FILENAME = "active.json"
+HISTORY_EXPORT_FILENAME = "shinsekai-chat-export.json"
 BRANCH_TREE_FILENAME = "branches.json"
 STORY_SESSION_FILENAME = "story-v2.json"
 VOICE_ARCHIVE_DIRECTORY = "audio"
@@ -49,11 +67,92 @@ def chat_history_branch_tree_path(path: str | Path) -> Path:
     return chat_history_session_dir(path) / BRANCH_TREE_FILENAME
 
 
-def chat_history_download_path(path: str | Path) -> Path:
+def chat_history_db_path(path: str | Path) -> Path:
+    return chat_history_session_dir(path) / HISTORY_DB_FILENAME
+
+
+def session_id_for_history_path(path: str | Path) -> str:
+    if not str(path or "").strip():
+        return ""
+    return canonical_session_id_for_dir(chat_history_session_dir(path))
+
+
+def open_session_store(path: str | Path) -> ConversationSessionPort:
+    return open_session_store_for_dir(chat_history_session_dir(path))
+
+
+def peek_open_session_store(path: str | Path) -> ConversationSessionPort | None:
+    if not str(path or "").strip():
+        return None
+    return peek_open_session_store_for_dir(chat_history_session_dir(path))
+
+
+def close_session_store(path: str | Path) -> None:
+    if not str(path or "").strip():
+        return
+    close_session_store_for_dir(chat_history_session_dir(path))
+
+
+def legacy_active_history_branch(path: str | Path) -> str:
+    """Resolve the one timeline retained from old conversation-tree saves."""
+    if not str(path or "").strip():
+        return "main"
     tree_path = chat_history_branch_tree_path(path)
-    if tree_path.is_file():
-        return tree_path
-    return chat_history_active_path(path)
+    try:
+        stat = tree_path.stat()
+    except OSError:
+        return "main"
+    return _legacy_active_history_branch(tree_path, stat.st_mtime_ns, stat.st_size)
+
+
+@lru_cache(maxsize=32)
+def _legacy_active_history_branch(tree_path: Path, _mtime: int, _size: int) -> str:
+    state = load_branch_state(tree_path)
+    return str(state["active"]) if state else "main"
+
+
+def chat_history_download_path(path: str | Path) -> Path:
+    return chat_history_session_dir(path) / HISTORY_EXPORT_FILENAME
+
+
+def read_active_chat_history(
+    path: str | Path, *, read_snapshot: Callable[[Path], Any] | None = None,
+) -> list[Any]:
+    """Read the active timeline without migrating or rewriting its files."""
+    active = chat_history_active_path(path)
+    branch = legacy_active_history_branch(path)
+    try:
+        if not active.is_file():
+            legacy = load_branch_state(path)
+            snapshot = legacy["branches"][branch]["messages"] if legacy else []
+        elif read_snapshot is not None:
+            snapshot = read_snapshot(active)
+        else:
+            snapshot = json.loads(active.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        snapshot = []
+    snapshot = snapshot if isinstance(snapshot, list) else []
+    durable = read_full_raw_messages_readonly(chat_history_session_dir(path), branch_id=branch)
+    messages = durable if durable is not None else snapshot
+    try:
+        pending = durable_history_messages(read_legacy_history_journal(Path(str(active) + ".tmp")))
+    except (OSError, ValueError):
+        return messages
+    existing = durable_history_messages(messages)
+    overlap = legacy_journal_overlap(existing, pending, durable_history_messages(snapshot))
+    return messages + pending[overlap:]
+
+
+def write_active_history_snapshot(path: Path, messages: Sequence[Any]) -> None:
+    """Replace the JSON snapshot atomically; SQLite remains the journal."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=".history-snapshot-", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as file:
+            json.dump(messages, file, ensure_ascii=False, indent=4)
+        os.replace(temporary, path)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
 
 
 def chat_history_storage_files(path: str | Path) -> tuple[Path, ...]:
@@ -62,8 +161,12 @@ def chat_history_storage_files(path: str | Path) -> tuple[Path, ...]:
     directory = chat_history_session_dir(candidate)
     files = tuple(directory / name for name in (
         BRANCH_TREE_FILENAME,
+        f"{HISTORY_DB_FILENAME}-shm",
+        f"{HISTORY_DB_FILENAME}-wal",
+        HISTORY_DB_FILENAME,
         f"{ACTIVE_HISTORY_FILENAME}.tmp",
         ACTIVE_HISTORY_FILENAME,
+        HISTORY_EXPORT_FILENAME,
         STORY_SESSION_FILENAME,
     ))
     for audio_dir in _voice_storage_directories(directory):
@@ -114,6 +217,7 @@ def remove_chat_history_storage(path: str | Path) -> None:
     # Legacy aliases are removed last. If branch metadata is locked, the
     # authoritative active history remains intact and the clear is reported as
     # failed instead of leaving a partially-cleared session.
+    close_session_store(path)
     for target in chat_history_storage_files(path):
         target.unlink(missing_ok=True)
     prune_chat_history_storage(path)

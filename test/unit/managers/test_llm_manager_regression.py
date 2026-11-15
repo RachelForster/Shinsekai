@@ -9,6 +9,7 @@ import pytest
 
 from ai.llm.llm_adapter import ClaudeAdapter, DeepSeekAdapter, OpenAIAdapter
 from ai.llm.llm_manager import LLMManager, tool_executor, tool_manager
+from core.chat_history.storage import close_session_store, open_session_store
 from core.messaging.stream_events import STREAM_DIALOG_REPAIR_KEY, STREAM_REASONING_DELTA_KEY
 from sdk.adapters.llm import LLMAdapter
 from sdk.hooks import PluginHookDispatcher
@@ -292,18 +293,24 @@ def test_dialog_repair_is_tool_free_and_persists_only_repaired_answer(stream):
 
 def test_message_journal_and_story_hook_preserve_persistence_ownership(tmp_path):
     history = tmp_path / "history.json"
-    manager = LLMManager(ScriptedAdapter(response("answer")), history_file=str(history))
-    run_chat(manager, stream=False)
-    saved = [json.loads(line.rstrip(",\n")) for line in history.with_suffix(".json.tmp").read_text(encoding="utf-8").splitlines()]
-    assert saved == manager.messages[1:]
-
     intercepted = tmp_path / "story.json"
-    manager = LLMManager(ScriptedAdapter(response("story answer")), history_file=str(intercepted))
-    hook = SimpleNamespace(persist_message=Mock(return_value=True))
-    manager.story_prompt_hooks = hook
-    run_chat(manager, stream=False)
-    assert hook.persist_message.call_count == 2
-    assert not intercepted.with_suffix(".json.tmp").exists()
+    try:
+        manager = LLMManager(ScriptedAdapter(response("answer")), history_file=str(history))
+        run_chat(manager, stream=False)
+        saved = open_session_store(history).build_full_raw_messages(include_system=False)
+        assert saved == manager.messages[1:]
+        assert not history.with_suffix(".json.tmp").exists()
+
+        manager = LLMManager(ScriptedAdapter(response("story answer")), history_file=str(intercepted))
+        hook = SimpleNamespace(persist_message=Mock(return_value=True))
+        manager.story_prompt_hooks = hook
+        run_chat(manager, stream=False)
+        assert hook.persist_message.call_count == 2
+        assert not open_session_store(intercepted).list_turns()
+        assert not intercepted.with_suffix(".json.tmp").exists()
+    finally:
+        close_session_store(history)
+        close_session_store(intercepted)
 
 
 @pytest.mark.parametrize("stream", [False, True])

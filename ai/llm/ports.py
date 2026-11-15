@@ -23,7 +23,7 @@ class ChatHost(Protocol):
 
 
 class MessageJournal(Protocol):
-    def append(self, message: dict[str, Any]) -> None: ...
+    def append(self, message: dict[str, Any]) -> int | None: ...
 
 
 class HistoryCompactor(Protocol):

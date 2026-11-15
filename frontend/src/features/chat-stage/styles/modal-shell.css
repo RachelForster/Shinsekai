@@ -97,12 +97,6 @@
   --chat-stage-modal-surface: var(--history-panel);
 }
 
-.chat-branch-dialog {
-  --chat-stage-modal-accent: var(--branch-accent);
-  --chat-stage-modal-color: var(--branch-text);
-  --chat-stage-modal-surface: var(--branch-panel);
-}
-
 .chat-stage-modal__header {
   display: flex;
   min-width: 0;

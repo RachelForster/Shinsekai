@@ -10,15 +10,21 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
+from ai.memory.constants import MEMORY_STORE_FILENAME
 from ai.memory.deduplication import find_duplicate_memory, semantic_deduplication_threshold
 from ai.memory.engine import (
     HybridMemoryEngine,
     resolve_memory_read_filter,
     resolve_memory_write_target,
 )
-from ai.memory.runtime import ensure_mem0
+from ai.memory.ports import resolve_registered_memory_repository
+from ai.memory.runtime import ensure_mem0, peek_mem0
+from core.chat_history.models import rollback_memory_for_timeline
+from core.vector_store.sqlite_hybrid_store import SqliteHybridStore
 from sdk.adapters.memory import MemoryCandidateQuery, MemoryRecord
 
 logger = logging.getLogger(__name__)
@@ -270,14 +276,32 @@ def memory_search(
 def memory_remember(
     content: str,
     character_name: str | None = None,
+    *,
+    slot_key: str = "",
+    kind: str = "episodic",
+    source_session_id: str = "",
+    source_turn_seq: int | None = None,
 ) -> dict[str, Any]:
     text = (content or "").strip()
     if not text:
         return {"error": "content 不能为空"}
-    service_result = _memory_service_request(
-        "remember",
-        {"content": text, "characterName": _resolve_agent_id(character_name)},
-    )
+    clean_slot = str(slot_key or "").strip()
+    clean_kind = str(kind or "episodic").strip() or "episodic"
+    clean_session = str(source_session_id or "").strip()
+    clean_seq = None if source_turn_seq is None else int(source_turn_seq)
+    payload: dict[str, Any] = {
+        "content": text,
+        "characterName": _resolve_agent_id(character_name),
+    }
+    if clean_slot:
+        payload["slotKey"] = clean_slot
+    if clean_kind != "episodic":
+        payload["kind"] = clean_kind
+    if clean_session:
+        payload["sourceSessionId"] = clean_session
+    if clean_seq is not None:
+        payload["sourceTurnSeq"] = clean_seq
+    service_result = _memory_service_request("remember", payload)
     if service_result is not None:
         return service_result
     mem = ensure_mem0()
@@ -286,38 +310,39 @@ def memory_remember(
         if isinstance(mem, HybridMemoryEngine):
             with _mem0_operation_lock:
                 q_vec = mem.embedder.embed_query(text)
-                cand_hits = mem.repo.search_candidates(
-                    MemoryCandidateQuery(
-                        scope_filter=resolve_memory_read_filter(agent_id),
-                        query_vectors=(q_vec,),
-                        keyword_query=text,
-                        limit=_SEMANTIC_DEDUPLICATION_SEARCH_LIMIT,
+                if not clean_slot:
+                    cand_hits = mem.repo.search_candidates(
+                        MemoryCandidateQuery(
+                            scope_filter=resolve_memory_read_filter(agent_id),
+                            query_vectors=(q_vec,),
+                            keyword_query=text,
+                            limit=_SEMANTIC_DEDUPLICATION_SEARCH_LIMIT,
+                        )
                     )
-                )
-                candidates = [
-                    {
-                        "id": hit.record.id,
-                        "memory": hit.record.detail_text,
-                        "score": max(0.0, min(1.0, float(hit.vector_score))),
-                    }
-                    for hit in cand_hits
-                ]
-                duplicate = find_duplicate_memory(
-                    text,
-                    candidates,
-                    threshold=semantic_deduplication_threshold(),
-                )
-                if duplicate is not None:
-                    return {
-                        "ok": True,
-                        "duplicate": True,
-                        "duplicate_type": duplicate.match_type,
-                        "similarity": duplicate.similarity,
-                        "existing_memory_id": duplicate.memory_id,
-                        "existing_memory": duplicate.memory,
-                        "agent_id": agent_id,
-                        "content": text,
-                    }
+                    candidates = [
+                        {
+                            "id": hit.record.id,
+                            "memory": hit.record.detail_text,
+                            "score": max(0.0, min(1.0, float(hit.vector_score))),
+                        }
+                        for hit in cand_hits
+                    ]
+                    duplicate = find_duplicate_memory(
+                        text,
+                        candidates,
+                        threshold=semantic_deduplication_threshold(),
+                    )
+                    if duplicate is not None:
+                        return {
+                            "ok": True,
+                            "duplicate": True,
+                            "duplicate_type": duplicate.match_type,
+                            "similarity": duplicate.similarity,
+                            "existing_memory_id": duplicate.memory_id,
+                            "existing_memory": duplicate.memory,
+                            "agent_id": agent_id,
+                            "content": text,
+                        }
                 scope, owner_id = resolve_memory_write_target(agent_id)
                 mem.repo.upsert(
                     MemoryRecord(
@@ -326,7 +351,10 @@ def memory_remember(
                         owner_id=owner_id,
                         detail_text=text,
                         gist_text=text,
-                        kind="episodic",
+                        slot_key=clean_slot,
+                        kind=clean_kind,
+                        source_session_id=clean_session,
+                        source_turn_seq=clean_seq,
                         embedding=q_vec,
                     )
                 )
@@ -410,3 +438,98 @@ def memory_forget_and_list(
     if isinstance(result, dict) and result.get("status") == "loading":
         return result
     return memory_list(character_name)
+
+
+def memory_rollback_after_turn(
+    session_id: str,
+    turn_seq: int,
+    *,
+    protected_turn_seqs: Sequence[int] = (),
+) -> dict[str, Any]:
+    """Roll back unpinned memories created after turn_seq and restore superseded slots."""
+    sid = str(session_id or "").strip()
+    cutoff = max(0, int(turn_seq))
+    if not sid:
+        return {"ok": True, "session_id": "", "turn_seq": cutoff, "rolled_back": 0}
+
+    payload: dict[str, Any] = {"sessionId": sid, "turnSeq": cutoff}
+    if protected_turn_seqs:
+        payload["protectedTurnSeqs"] = list(protected_turn_seqs)
+    service_result = _memory_service_request(
+        "rollback",
+        payload,
+        monitor_ready=False,
+    )
+    if service_result is not None:
+        return service_result
+
+    try:
+        with _mem0_operation_lock:
+            loaded = peek_mem0()
+            if isinstance(loaded, HybridMemoryEngine):
+                removed = rollback_memory_for_timeline(loaded.repo.rollback_after_turn, sid, cutoff, protected_turn_seqs)
+                return {
+                    "ok": True,
+                    "session_id": sid,
+                    "turn_seq": cutoff,
+                    "rolled_back": int(removed),
+                }
+            if loaded is not None and hasattr(loaded, "rollback_after_turn"):
+                removed = rollback_memory_for_timeline(loaded.rollback_after_turn, sid, cutoff, protected_turn_seqs)
+                return {
+                    "ok": True,
+                    "session_id": sid,
+                    "turn_seq": cutoff,
+                    "rolled_back": int(removed),
+                }
+
+            registered_repo = resolve_registered_memory_repository()
+            if registered_repo is not None:
+                try:
+                    removed = rollback_memory_for_timeline(registered_repo.rollback_after_turn, sid, cutoff, protected_turn_seqs)
+                finally:
+                    close_fn = getattr(registered_repo, "close", None)
+                    if callable(close_fn):
+                        close_fn()
+                return {
+                    "ok": True,
+                    "session_id": sid,
+                    "turn_seq": cutoff,
+                    "rolled_back": int(removed),
+                }
+
+            db_path = Path.cwd() / "data" / "memory" / MEMORY_STORE_FILENAME
+            if not db_path.is_file():
+                return {
+                    "ok": True,
+                    "session_id": sid,
+                    "turn_seq": cutoff,
+                    "rolled_back": 0,
+                }
+            transient_store = SqliteHybridStore(db_path, max_pool_size=1)
+            try:
+                removed = transient_store.rollback_after_turn(sid, cutoff, protected_turn_seqs=protected_turn_seqs)
+            finally:
+                transient_store.close()
+            return {
+                "ok": True,
+                "session_id": sid,
+                "turn_seq": cutoff,
+                "rolled_back": int(removed),
+            }
+    except Exception as exc:
+        logger.exception("memory_rollback_after_turn 失败")
+        return {"error": str(exc)}
+
+
+def memory_rollback_count(
+    session_id: str, turn_seq: int, *, protected_turn_seqs: Sequence[int] = (),
+) -> int:
+    """Convenience adapter returning integer rolled_back count for session truncation."""
+    res = memory_rollback_after_turn(session_id, turn_seq, protected_turn_seqs=protected_turn_seqs)
+    if not isinstance(res, dict) or res.get("error"):
+        return 0
+    try:
+        return int(res.get("rolled_back") or 0)
+    except (TypeError, ValueError):
+        return 0

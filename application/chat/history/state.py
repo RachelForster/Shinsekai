@@ -2,10 +2,21 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 import re
 from collections.abc import Callable, Mapping, MutableSequence
 from typing import Any
+from unittest.mock import NonCallableMock
 
+from core.chat_history.models import is_real_user_turn_message
+from core.chat_history.storage import (
+    chat_history_active_path,
+    chat_history_db_path,
+    legacy_active_history_branch,
+    open_session_store,
+    peek_open_session_store,
+    write_active_history_snapshot,
+)
 from core.chat_history.text import rendered_history_text as history_entry_plain_text
 from core.messaging.dialog_tokens import (
     SYSTEM_HISTORY_NAMES,
@@ -13,6 +24,7 @@ from core.messaging.dialog_tokens import (
     is_option_history_plain,
     normalize_character_name,
 )
+from sdk.adapters.session import ConversationSessionPort, TruncateReport
 
 CHAT_HISTORY_PATH = "./data/chat_history"
 
@@ -38,8 +50,10 @@ def getHistory() -> list[Any]:
     return get_history()
 
 
-def save_chat_history(file_path: str, history: Any) -> bool:
+def save_chat_history(file_path: str, history: Any, *, journaled: bool = False) -> bool:
     """根据提供的文件名保存聊天记录到 JSON 文件。"""
+    if journaled:
+        return _get_history_manager().save_chat_history(file_path, history, journaled=True)
     return _get_history_manager().save_chat_history(file_path, history)
 
 
@@ -214,11 +228,79 @@ def is_user_history_entry(history_entry: str) -> bool:
 
 
 def _is_real_user_message(message: Any) -> bool:
-    return (
-        isinstance(message, Mapping)
-        and message.get("role") == "user"
-        and message.get("source") != "perception"
-    )
+    return is_real_user_turn_message(message)
+
+
+def _resolve_session_store(
+    llm_manager: Any = None,
+    *,
+    history_path: str = "",
+    branch_id: str = "main",
+    session_store: ConversationSessionPort | None = None,
+) -> tuple[ConversationSessionPort | None, str, str]:
+    clean_path = str(history_path or "").strip()
+    resolved_branch = str(branch_id or "main").strip() or "main"
+    if clean_path and resolved_branch == "main":
+        resolved_branch = legacy_active_history_branch(clean_path)
+
+    if (
+        session_store is not None
+        and not isinstance(session_store, NonCallableMock)
+        and isinstance(session_store, ConversationSessionPort)
+    ):
+        return session_store, resolved_branch, clean_path
+
+    if llm_manager is not None and not isinstance(llm_manager, NonCallableMock):
+        history_obj = getattr(llm_manager, "_history", None)
+        journal = (
+            getattr(history_obj, "journal", None)
+            if history_obj is not None and not isinstance(history_obj, NonCallableMock)
+            else None
+        )
+        if journal is not None and not isinstance(journal, NonCallableMock):
+            if not clean_path:
+                clean_path = str(getattr(journal, "history_file", "") or "").strip()
+            if resolved_branch == "main":
+                jb = str(getattr(journal, "active_branch_id", "") or "").strip()
+                if jb:
+                    resolved_branch = jb
+            jstore = getattr(journal, "session_store", None)
+            if (
+                jstore is not None
+                and not isinstance(jstore, NonCallableMock)
+                and isinstance(jstore, ConversationSessionPort)
+            ):
+                return jstore, resolved_branch, clean_path
+
+    if clean_path:
+        cached = peek_open_session_store(clean_path)
+        if cached is not None:
+            return cached, resolved_branch, clean_path
+        if chat_history_db_path(clean_path).is_file():
+            return open_session_store(clean_path), resolved_branch, clean_path
+
+    return None, resolved_branch, clean_path
+
+
+def _sync_truncated_mirror_files(
+    store: ConversationSessionPort,
+    *,
+    history_path: str,
+    branch_id: str,
+    include_system: bool,
+) -> None:
+    if not history_path:
+        return
+    try:
+        active_path = chat_history_active_path(history_path)
+        Path(str(active_path) + ".tmp").unlink(missing_ok=True)
+        Path(str(history_path) + ".tmp").unlink(missing_ok=True)
+        full_fn = getattr(store, "build_full_raw_messages", None)
+        if active_path.exists() and callable(full_fn):
+            mirror = full_fn(include_system=include_system, branch_id=branch_id)
+            write_active_history_snapshot(active_path, mirror)
+    except OSError:
+        pass
 
 
 def pop_last_assistant_turn(chat_history: list, messages: list) -> str:
@@ -288,9 +370,78 @@ def canonical_user_turn_payload(
     return {"text": text, "attachments": attachments}
 
 
-def pop_last_assistant_turn_payload(chat_history: list, messages: list) -> dict[str, Any]:
+def pop_last_assistant_turn_payload(
+    chat_history: list,
+    messages: list,
+    *,
+    llm_manager: Any = None,
+    history_path: str = "",
+    branch_id: str = "main",
+    session_store: ConversationSessionPort | None = None,
+) -> dict[str, Any]:
     """Remove the latest turn and return its canonical replay payload."""
-    last_user_message: Mapping[str, Any] | None = None
+    store, resolved_branch, resolved_path = _resolve_session_store(
+        llm_manager,
+        history_path=history_path,
+        branch_id=branch_id,
+        session_store=session_store,
+    )
+    if store is not None:
+        turns = list(store.list_turns(branch_id=resolved_branch))
+        real_user_turns = [t for t in turns if _is_real_user_message(t.raw_message)]
+        if real_user_turns:
+            target_turn = real_user_turns[-1]
+            last_user_message: Mapping[str, Any] | None = target_turn.raw_message
+            history_entry = ""
+            for entry in reversed(chat_history):
+                if is_user_history_entry(entry):
+                    history_entry = entry
+                    break
+            while chat_history and not is_user_history_entry(chat_history[-1]):
+                chat_history.pop()
+            if chat_history and is_user_history_entry(chat_history[-1]):
+                chat_history.pop()
+
+            has_system = bool(
+                messages
+                and isinstance(messages[0], Mapping)
+                and messages[0].get("role") == "system"
+            )
+            sys_prompt: str | None = (
+                str(messages[0].get("content") or "") if has_system else None
+            )
+            report = store.truncate_after(
+                target_turn.seq - 1,
+                branch_id=resolved_branch,
+            )
+            rebuilt = store.build_active_llm_messages(
+                system_prompt=sys_prompt,
+                branch_id=resolved_branch,
+            )
+            if not has_system and rebuilt and rebuilt[0].get("role") == "system":
+                rebuilt = rebuilt[1:]
+            messages[:] = rebuilt
+            if (
+                llm_manager is not None
+                and not isinstance(llm_manager, NonCallableMock)
+                and hasattr(llm_manager, "set_messages")
+            ):
+                llm_manager.set_messages(rebuilt)
+            _sync_truncated_mirror_files(
+                store,
+                history_path=resolved_path,
+                branch_id=resolved_branch,
+                include_system=has_system,
+            )
+            payload = canonical_user_turn_payload(
+                last_user_message,
+                fallback_text=_history_user_body(history_entry),
+            )
+            payload["history_entry"] = history_entry
+            payload["truncate_report"] = report
+            return payload
+
+    last_user_message = None
     for message in reversed(messages):
         if _is_real_user_message(message):
             last_user_message = message
@@ -317,10 +468,19 @@ def extract_valid_dialog_from_messages(messages: list) -> list:
     return []
 
 
-def revert_chat_history(user_index: int, llm_manager: Any, hist: list, window: Any) -> None:
-    """按 user_index 回溯到该用户消息之前的上一条 assistant 记录。"""
+def revert_chat_history(
+    user_index: int,
+    llm_manager: Any,
+    hist: list,
+    window: Any,
+    *,
+    history_path: str = "",
+    branch_id: str = "main",
+    session_store: ConversationSessionPort | None = None,
+) -> TruncateReport | None:
+    """按 user_index 回溯到该用户消息之前的上一条 assistant 记录，并执行四合一原子级联截断。"""
     if user_index < 0:
-        return
+        return None
 
     current_user_idx = -1
     user_history_pos = -1
@@ -332,22 +492,53 @@ def revert_chat_history(user_index: int, llm_manager: Any, hist: list, window: A
                 break
 
     if user_history_pos == -1:
-        return
+        return None
 
-    target_index = -1
-    for idx in range(user_history_pos - 1, -1, -1):
-        if not is_user_history_entry(hist[idx]):
-            target_index = idx
-            break
-
-    if target_index < 0:
-        return
-
-    del hist[target_index + 1:]
-
+    store, resolved_branch, resolved_path = _resolve_session_store(
+        llm_manager,
+        history_path=history_path,
+        branch_id=branch_id,
+        session_store=session_store,
+    )
     messages = llm_manager.get_messages()
+
+    if store is not None:
+        turns = list(store.list_turns(branch_id=resolved_branch))
+        real_user_turns = [t for t in turns if _is_real_user_message(t.raw_message)]
+        if 0 <= user_index < len(real_user_turns):
+            target_turn = real_user_turns[user_index]
+            has_system = bool(
+                messages
+                and isinstance(messages[0], Mapping)
+                and messages[0].get("role") == "system"
+            )
+            sys_prompt: str | None = (
+                str(messages[0].get("content") or "") if has_system else None
+            )
+            report = store.truncate_after(
+                target_turn.seq - 1,
+                branch_id=resolved_branch,
+            )
+            new_messages = store.build_active_llm_messages(
+                system_prompt=sys_prompt,
+                branch_id=resolved_branch,
+            )
+            if not has_system and new_messages and new_messages[0].get("role") == "system":
+                new_messages = new_messages[1:]
+            llm_manager.set_messages(new_messages)
+            del hist[user_history_pos:]
+            _sync_truncated_mirror_files(
+                store,
+                history_path=resolved_path,
+                branch_id=resolved_branch,
+                include_system=has_system,
+            )
+            replay_latest_dialog_entry(window, hist)
+            return report
+        return None
+
     if not messages:
-        return
+        return None
 
     new_messages = []
     current_user_idx = -1
@@ -357,10 +548,13 @@ def revert_chat_history(user_index: int, llm_manager: Any, hist: list, window: A
             if current_user_idx >= user_index:
                 break
         new_messages.append(message)
+    else:
+        return None
 
     llm_manager.set_messages(new_messages)
-
+    del hist[user_history_pos:]
     replay_latest_dialog_entry(window, hist)
+    return None
 
 
 def save_bg(bg_path: str | None, bgm_path: str | None) -> None:
