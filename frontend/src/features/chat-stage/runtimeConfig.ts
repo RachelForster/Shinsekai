@@ -88,6 +88,7 @@ export interface ChatStageRuntimeConfig {
   dialogWidthPct: number | null;
   immersiveMode: boolean;
   longPressTalk: boolean;
+  miniAvatarMode: boolean;
   spriteScales: Record<string, number>;
   spriteFramings: Record<string, VisualFraming>;
   spriteOffsetX: number;
@@ -137,6 +138,7 @@ export const defaultChatStageRuntimeConfig: ChatStageRuntimeConfig = {
   dialogWidthPct: null,
   immersiveMode: false,
   longPressTalk: false,
+  miniAvatarMode: false,
   nameText: {
     bold: true,
     color: "#fff6f4",
@@ -365,6 +367,8 @@ export function normalizeChatStageRuntimeConfig(value: unknown): ChatStageRuntim
       typeof parsed.immersiveMode === "boolean" ? parsed.immersiveMode : defaultChatStageRuntimeConfig.immersiveMode,
     longPressTalk:
       typeof parsed.longPressTalk === "boolean" ? parsed.longPressTalk : defaultChatStageRuntimeConfig.longPressTalk,
+    miniAvatarMode:
+      typeof parsed.miniAvatarMode === "boolean" ? parsed.miniAvatarMode : defaultChatStageRuntimeConfig.miniAvatarMode,
     typewriterCps:
       parsed.typewriterCps == null
         ? null

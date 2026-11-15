@@ -2182,6 +2182,7 @@ describe("ChatStagePage", () => {
         dialogWidthPct: null,
         immersiveMode: false,
         longPressTalk: false,
+        miniAvatarMode: false,
         nameText: {
           bold: false,
           boldOverride: true,
