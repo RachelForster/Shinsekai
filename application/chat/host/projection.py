@@ -6,8 +6,18 @@ from pathlib import Path
 from collections.abc import Callable
 import json
 from application.chat.presentation.user_display import sanitize_user_display_name
+from core.chat_history.models import normalize_memory_mode
+from core.chat_history.sqlite_session_store import read_session_preferences_readonly
+from core.chat_history.storage import chat_history_db_path, chat_history_session_dir
 from core.chat_history.text import DEFAULT_USER_DISPLAY_NAME
 from config.character_assets import get_character_assets
+from config.sprite_groups import (
+    allows_default_group_fallback,
+    has_multiple_sprite_groups,
+    list_character_sprite_groups,
+    resolve_default_sprite_group,
+    resolve_effective_sprite_group,
+)
 from application.chat.presentation.character_visual import resolve_character_visual
 
 TRANSPARENT_BACKGROUND_NAME = "透明场景"
@@ -163,6 +173,73 @@ def _chat_theme_payload(state: Any) -> dict[str, Any]:
     }
 
 
+def _chat_session_preferences_patch(state: Any) -> dict[str, Any]:
+    chat_session = getattr(state, "chat_session", {}) or {}
+    history_raw = str(chat_session.get("historyPath") or "").strip()
+    prefs: dict[str, Any] = {}
+    has_saved_prefs = bool(history_raw and chat_history_db_path(history_raw).is_file())
+    if history_raw:
+        try:
+            prefs = read_session_preferences_readonly(
+                chat_history_session_dir(Path(history_raw))
+            )
+        except Exception:
+            prefs = {}
+
+    session_mode = chat_session.get("memoryMode")
+    saved_mode = prefs.get("memoryMode")
+    preferred_mode = saved_mode if has_saved_prefs else session_mode
+    memory_mode = normalize_memory_mode(str(preferred_mode or saved_mode or session_mode or "shared"))
+    session_auto = chat_session.get("autoOutfitSwitch")
+    if not has_saved_prefs and isinstance(session_auto, bool):
+        auto_outfit_switch = session_auto
+    else:
+        saved_auto = prefs.get("autoOutfitSwitch", session_auto)
+        auto_outfit_switch = saved_auto if isinstance(saved_auto, bool) else True
+
+    stored_outfits = prefs.get("outfits")
+    stored_outfits = dict(stored_outfits) if isinstance(stored_outfits, dict) else {}
+
+    config_manager = getattr(state, "config_manager", None)
+    raw_characters = getattr(getattr(config_manager, "config", None), "characters", ()) or ()
+    outfit_catalog: dict[str, dict[str, Any]] = {}
+    resolved_outfits: dict[str, dict[str, Any]] = dict(stored_outfits)
+    for char in raw_characters:
+        cname = str(getattr(char, "name", "") or "").strip()
+        if not cname or not has_multiple_sprite_groups(char):
+            continue
+        groups = list_character_sprite_groups(char)
+        default_group = resolve_default_sprite_group(char)
+        outfit_catalog[cname] = {
+            "groups": groups,
+            "defaultGroup": default_group,
+            "fallbackToDefaultGroup": allows_default_group_fallback(char),
+        }
+        existing = resolved_outfits.get(cname)
+        existing_group = (
+            str(existing.get("activeGroup") or "")
+            if isinstance(existing, dict)
+            else ""
+        )
+        effective_group = resolve_effective_sprite_group(char, existing_group)
+        resolved_outfits[cname] = {
+            "characterName": cname,
+            "activeGroup": effective_group,
+            "locked": bool(existing.get("locked")) if isinstance(existing, dict) else False,
+            "updatedAtMs": int(existing.get("updatedAtMs") or 0) if isinstance(existing, dict) else 0,
+        }
+
+    patch: dict[str, Any] = {
+        "memoryMode": memory_mode,
+        "autoOutfitSwitch": auto_outfit_switch,
+    }
+    if resolved_outfits:
+        patch["outfits"] = resolved_outfits
+    if outfit_catalog:
+        patch["outfitCatalog"] = outfit_catalog
+    return patch
+
+
 class SnapshotProjection:
     def __init__(
         self,
@@ -194,6 +271,7 @@ class SnapshotProjection:
             "chatRuntimeClosing": _chat_runtime_closing(state),
             "turnOptions": _chat_turn_options(state),
         }
+        prefs_patch = _chat_session_preferences_patch(state)
         story_patch = self.story_patch(state)
         mobile_access_info = self.mobile_info(state)
         if mobile_access_info is not None:
@@ -216,6 +294,9 @@ class SnapshotProjection:
                     not str(next_snapshot.get("voiceLanguage") or "").strip()
                 ):
                     next_snapshot["voiceLanguage"] = voice_language
+                for pref_key, pref_val in prefs_patch.items():
+                    if pref_key not in next_snapshot:
+                        next_snapshot[pref_key] = pref_val
                 next_snapshot["historyEntries"] = self.history(state)
                 if message:
                     next_snapshot["dialogText"] = message
@@ -251,6 +332,7 @@ class SnapshotProjection:
             "statusMessage": message,
             "userDisplayName": user_display_name,
             "voiceLanguage": voice_language,
+            **prefs_patch,
             **runtime_state,
             **story_patch,
             **(extra or {}),

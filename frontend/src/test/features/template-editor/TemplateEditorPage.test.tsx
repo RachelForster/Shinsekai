@@ -1128,4 +1128,49 @@ describe("TemplateEditorPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Rain" }));
     expect(systemTemplate).toHaveValue(authoredSystem);
   });
+
+  it("restores and launches memory isolation mode, auto outfit switch, and initial outfits", async () => {
+    mockListCharacters.mockResolvedValue([
+      {
+        color: "#66ccff",
+        default_sprite_group: "默认",
+        name: "Nanami",
+        sprite_groups: ["默认", "校服", "私服"],
+        sprites: [
+          { group: "校服", path: "D:/sprites/school.png" },
+          { group: "私服", path: "D:/sprites/casual.png" },
+        ],
+      },
+    ]);
+    mockGetTemplateSession.mockResolvedValue({
+      ...savedChat,
+      autoOutfitSwitch: false,
+      initialOutfits: { Nanami: "私服" },
+      mediaSelectionMode: "indexed",
+      memoryMode: "inherit_readonly",
+    });
+
+    renderPage();
+    await waitFor(() => expect(screen.getByLabelText("Template name")).toHaveValue("My saved chat"));
+
+    expect(screen.getByRole("checkbox", { name: "Allow automatic outfit switching" })).not.toBeChecked();
+    await clickButton(screen.getByRole("button", { name: "Launch chat" }));
+
+    await waitFor(() =>
+      expect(mockLaunchChat).toHaveBeenCalledWith(
+        expect.objectContaining({
+          autoOutfitSwitch: false,
+          initialOutfits: { Nanami: "私服" },
+          memoryMode: "inherit_readonly",
+        }),
+      ),
+    );
+    expect(mockSaveTemplateSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        autoOutfitSwitch: false,
+        initialOutfits: { Nanami: "私服" },
+        memoryMode: "inherit_readonly",
+      }),
+    );
+  });
 });

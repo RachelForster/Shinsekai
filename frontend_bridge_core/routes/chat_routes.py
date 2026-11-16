@@ -9,6 +9,7 @@ from application.chat.conversation_library import (
     delete_conversation,
     list_conversations,
     rename_conversation,
+    update_conversation_settings,
 )
 
 from application.chat.composition import (
@@ -138,6 +139,16 @@ def _rename_conversation(request: ApiRequest) -> JsonResponse:
     return JsonResponse(rename_conversation(request.state, request.params["conversation_id"], request.body.get("title", "")))
 
 
+def _conversation_settings(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(
+        update_conversation_settings(
+            request.state,
+            request.params["conversation_id"],
+            request.body,
+        )
+    )
+
+
 def _delete_conversation(request: ApiRequest) -> JsonResponse:
     delete_conversation(request.state, request.params["conversation_id"])
     return JsonResponse({"ok": True})
@@ -166,6 +177,8 @@ CHAT_ROUTES = (
           handler=_conversation_launch, body_kind=BodyKind.NONE, name="chat.conversations.launch_payload"),
     Route(methods=frozenset({"POST"}), pattern="/api/chat/conversations/{conversation_id}/rename",
           handler=_rename_conversation, name="chat.conversations.rename"),
+    Route(methods=frozenset({"POST"}), pattern="/api/chat/conversations/{conversation_id}/settings",
+          handler=_conversation_settings, name="chat.conversations.settings"),
     Route(
         methods=frozenset({"GET"}),
         pattern="/api/chat/runtime-status",

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 import inspect
 import os
 from typing import TYPE_CHECKING, Any
@@ -10,13 +10,19 @@ from typing import TYPE_CHECKING, Any
 from application.chat.capabilities.contracts import (
     BaseSessionCapability,
     BaseTurnContextProvider,
+    SessionRuntimeCapabilityContext,
     StartupCapabilityContext,
     TurnContextProvider,
 )
-from core.chat_history.models import is_real_user_turn_message, rollback_memory_for_timeline
+from core.chat_history.models import (
+    is_real_user_turn_message,
+    normalize_memory_mode,
+    rollback_memory_for_timeline,
+)
 from core.chat_history.sqlite_session_store import set_default_shared_memory_rollback
 from core.chat_history.storage import (
     legacy_active_history_branch,
+    open_session_store,
     peek_open_session_store,
     session_id_for_history_path,
 )
@@ -80,6 +86,10 @@ class MemorySessionCapability(BaseSessionCapability):
         self._provider: MemoryTurnContextProvider | None = None
         self._hooks: Any | None = None
         self._tool_ctx_token: Any | None = None
+        self._history_arg: str = ""
+        self._session_id: str = ""
+        self._memory_mode: str = "shared"
+        self._transport: Any | None = None
 
     def init_chat_flags(self) -> Mapping[str, Any]:
         return {"memory_enabled": is_memory_auto_enabled()}
@@ -93,11 +103,21 @@ class MemorySessionCapability(BaseSessionCapability):
         history_arg = str(getattr(context.args, "history", "") or "")
         resolved_session_id = session_id_for_history_path(history_arg) if history_arg else ""
         player_character = str(getattr(context.args, "player_character", "") or "").strip()
-        resolved_memory_mode = str(getattr(context.args, "memory_mode", "") or "").strip()
-        if not resolved_memory_mode and history_arg:
-            open_store = peek_open_session_store(history_arg)
-            if open_store is not None:
-                resolved_memory_mode = open_store.get_memory_mode()
+        raw_arg_mode = str(getattr(context.args, "memory_mode", "") or "").strip()
+        open_store = peek_open_session_store(history_arg) if history_arg else None
+        if raw_arg_mode:
+            resolved_memory_mode = normalize_memory_mode(raw_arg_mode)
+            if history_arg:
+                open_store = open_session_store(history_arg)
+                open_store.set_memory_mode(resolved_memory_mode)
+        elif open_store is not None:
+            resolved_memory_mode = open_store.get_memory_mode()
+        else:
+            resolved_memory_mode = ""
+
+        self._history_arg = history_arg
+        self._session_id = resolved_session_id
+        self._memory_mode = resolved_memory_mode or "shared"
 
         self._tool_ctx_token = bind_memory_tool_context(
             session_id=resolved_session_id,
@@ -127,6 +147,9 @@ class MemorySessionCapability(BaseSessionCapability):
             candidate_kwargs["last_turn_at"] = lambda: _last_dialogue_turn_at(history_arg)
         if resolved_memory_mode:
             candidate_kwargs["memory_mode"] = resolved_memory_mode
+        read_mode_boundary = getattr(open_store, "get_memory_mode_start_seq", None)
+        if callable(read_mode_boundary) and (boundary := read_mode_boundary()) is not None:
+            candidate_kwargs["memory_mode_start_seq"] = boundary
         if player_character:
             candidate_kwargs["player_character"] = player_character
         extra_kwargs = {
@@ -156,11 +179,56 @@ class MemorySessionCapability(BaseSessionCapability):
 
         set_default_shared_memory_rollback(_cascade_rollback)
 
+    def configure_session_runtime(
+        self,
+        context: SessionRuntimeCapabilityContext,
+    ) -> None:
+        self._transport = context.transport
+        if context.mode == "stream" and hasattr(context.transport, "emit"):
+            context.transport.emit(
+                {"type": "memory.mode", "memoryMode": self._memory_mode}
+            )
+
+    def command_handlers(self) -> Mapping[str, Callable[[object], None]]:
+        return {"set-memory-mode": self._handle_set_memory_mode}
+
+    def _handle_set_memory_mode(self, payload: object) -> None:
+        from ai.memory.operations import update_memory_tool_context_mode
+
+        raw = (
+            payload.get("memoryMode")
+            if isinstance(payload, Mapping)
+            else payload
+        )
+        mode_text = str(raw or "").strip().lower()
+        if mode_text not in {"isolated", "shared", "inherit_readonly"}:
+            raise ValueError(
+                "memoryMode must be 'isolated', 'shared', or 'inherit_readonly'"
+            )
+        mode = normalize_memory_mode(mode_text)
+        last_seq = 0
+        if self._history_arg:
+            store = open_session_store(self._history_arg)
+            store.set_memory_mode(mode)
+            read_mode_boundary = getattr(store, "get_memory_mode_start_seq", None)
+            if callable(read_mode_boundary):
+                last_seq = read_mode_boundary() or 0
+        self._memory_mode = mode
+        set_hook_mode = getattr(self._hooks, "set_memory_mode", None)
+        if callable(set_hook_mode):
+            set_hook_mode(mode, up_to_seq=last_seq)
+        elif self._hooks is not None:
+            self._hooks.memory_mode = mode
+        update_memory_tool_context_mode(self._session_id, mode)
+        if self._transport is not None and hasattr(self._transport, "emit"):
+            self._transport.emit({"type": "memory.mode", "memoryMode": mode})
+
     def on_shutdown(self) -> None:
         from ai.memory.operations import reset_memory_tool_context
 
         reset_memory_tool_context(self._tool_ctx_token)
         self._tool_ctx_token = None
+        self._transport = None
 
     def turn_context_providers(self) -> Sequence[TurnContextProvider]:
         return (self._provider,) if self._provider is not None else ()

@@ -143,6 +143,7 @@ class MemoryAutoHooks:
         monotonic_func=time.monotonic,
         clock_func=time.time,
         last_turn_at: Callable[[], float] | None = None,
+        memory_mode_start_seq: int | None = None,
     ) -> None:
         self.llm_adapter = llm_adapter
         self.character_names = [
@@ -175,6 +176,7 @@ class MemoryAutoHooks:
         self._user_turns = 0
         self._last_extract_turn = 0
         self._last_extracted_seq = 0
+        self._memory_mode_start_seq = memory_mode_start_seq
         self._last_seen_seq = 0
         self._last_injected_user = ""
         self._read_last_turn_at = last_turn_at
@@ -442,8 +444,10 @@ class MemoryAutoHooks:
         with self._lock:
             if effective_session and not self.session_id:
                 self.session_id = effective_session
-            if turn_seq is not None and int(turn_seq) > self._last_seen_seq:
-                self._last_seen_seq = int(turn_seq)
+            if turn_seq is not None:
+                if self._memory_mode_start_seq is not None and int(turn_seq) <= self._memory_mode_start_seq:
+                    return
+                self._last_seen_seq = max(self._last_seen_seq, int(turn_seq))
             if role == "user":
                 self._user_turns += 1
                 self._last_injected_user = ""
@@ -532,7 +536,13 @@ class MemoryAutoHooks:
                     speaker_names = _dialog_speaker_names(message.get("content"))
                     if speaker_names:
                         self._active_character_name = speaker_names[-1]
-                msg_seq = message.get("_turn_seq", anchor_seq)
+                msg_seq = message.get("_turn_seq")
+                if self._memory_mode_start_seq is not None and (
+                    msg_seq is None or int(msg_seq) <= self._memory_mode_start_seq
+                ):
+                    continue
+                if msg_seq is None:
+                    msg_seq = anchor_seq
                 snapshot.append(
                     {
                         "role": role,
@@ -562,6 +572,19 @@ class MemoryAutoHooks:
             turn_seq=anchor_seq,
             epoch=epoch,
         )
+
+    def set_memory_mode(self, mode: str, *, up_to_seq: int = 0) -> None:
+        with self._write_lock, self._lock:
+            if mode == self.memory_mode:
+                return
+            self._memory_mode = mode
+            # Older dialogue belongs to the previous memory scope.
+            self._memory_mode_start_seq = max(up_to_seq, self._last_seen_seq, self._memory_mode_start_seq or 0)
+            self._buffer.clear()
+            self._last_extract_turn = self._user_turns
+            self._last_injected_user = ""
+            self._recent_injected_window.clear()
+            self._rollback_epoch += 1
 
     def rollback_after_turn(
         self, session_id: str, turn_seq: int, *, protected_turn_seqs: Sequence[int] = (),
@@ -805,6 +828,7 @@ def install_memory_hooks(
     player_character: str = "",
     queue: MemoryWriteQueue | None = None,
     last_turn_at: Callable[[], float] | None = None,
+    memory_mode_start_seq: int | None = None,
 ) -> MemoryAutoHooks | None:
     if dispatcher is None or not _env_enabled("SHINSEKAI_MEMORY_AUTO_ENABLED", True):
         return None
@@ -816,6 +840,7 @@ def install_memory_hooks(
         player_character=player_character,
         queue=queue,
         last_turn_at=last_turn_at,
+        memory_mode_start_seq=memory_mode_start_seq,
         extract_interval_turns=_env_int(
             "SHINSEKAI_MEMORY_EXTRACT_INTERVAL_TURNS",
             DEFAULT_EXTRACT_INTERVAL_TURNS,

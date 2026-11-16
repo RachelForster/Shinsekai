@@ -437,6 +437,22 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, re
         eventSeq: Math.max(state.eventSeq, event.seq),
         perception: { ...event.perception },
       });
+    case "memory.mode":
+      return withResolvedLayers({
+        ...state,
+        eventSeq: Math.max(state.eventSeq, event.seq),
+        memoryMode: event.memoryMode,
+      });
+    case "outfit.state":
+      return withResolvedLayers({
+        ...state,
+        eventSeq: Math.max(state.eventSeq, event.seq),
+        autoOutfitSwitch: event.autoOutfitSwitch,
+        outfits: Object.fromEntries(Object.entries(event.outfits).map(([key, value]) => [key, { ...value }])),
+        outfitCatalog: Object.fromEntries(
+          Object.entries(event.outfitCatalog).map(([key, value]) => [key, { ...value, groups: [...value.groups] }]),
+        ),
+      });
     case "sprite.reaction": {
       const text = event.text.trim();
       const durationMs = Math.max(800, event.durationMs || 3600);

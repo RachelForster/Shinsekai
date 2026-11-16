@@ -603,4 +603,28 @@ describe("API settings sections", () => {
     expect(onStartDownload).toHaveBeenCalledTimes(1);
     expect(onKindChange).toHaveBeenCalledWith("gptso50");
   });
+
+  it("displays native hybrid memory engine labels when engine is onnx_sqlite_hybrid", async () => {
+    configRepositoryMock.getMemoryStatus.mockResolvedValueOnce({
+      engine: "onnx_sqlite_hybrid",
+      modelCached: false,
+      status: "not_started",
+    });
+
+    const first = renderZh(
+      <MemorySettingsSection draft={{ ...sampleConfig.api_config, memory_auto_enabled: false }} onChange={vi.fn()} />,
+    );
+    expect(await screen.findByText("本地 ONNX 混合记忆引擎已就绪 · 模型尚未下载")).toBeInTheDocument();
+    first.unmount();
+
+    configRepositoryMock.getMemoryStatus.mockResolvedValueOnce({
+      engine: "onnx_sqlite_hybrid",
+      modelCached: true,
+      status: "ready",
+    });
+    renderZh(
+      <MemorySettingsSection draft={{ ...sampleConfig.api_config, memory_auto_enabled: false }} onChange={vi.fn()} />,
+    );
+    expect(await screen.findByText("本地 ONNX 混合记忆引擎已就绪 · 模型已就绪")).toBeInTheDocument();
+  });
 });

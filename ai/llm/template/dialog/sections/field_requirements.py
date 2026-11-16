@@ -22,7 +22,10 @@ def _base_fields(context: DialogTemplateContext) -> dict[str, OutputFieldSpec]:
                 "opt_cg": "",
             },
         ),
-        ("sprite", "r_sprite", True, not context.uses_vibe, {}),
+        (
+            "sprite", "r_full_sprite" if context.uses_full_sprite_ids else "r_sprite",
+            True, not context.uses_vibe, {},
+        ),
         ("vibe", "r_vibe", True, context.uses_vibe, {}),
         (
             "speech",

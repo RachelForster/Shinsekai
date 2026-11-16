@@ -29,6 +29,27 @@ DefaultIfNone = Annotated[T, BeforeValidator(default_if_none)]
 
 COMPACT_TARGET_RATIO_MIN_GAP = 0.05
 
+SELF_PERSONA_NAME = "自设"
+SELF_PERSONA_SPRITE_PREFIX = "__self__"
+DEFAULT_SPRITE_GROUP = "默认"
+
+
+def is_self_persona_name(name: Any) -> bool:
+    """Return True when ``name`` refers to the built-in pinned self-persona slot."""
+    return str(name or "").strip() == SELF_PERSONA_NAME
+
+
+def build_default_self_persona() -> "Character":
+    """Construct the default built-in pinned ``自设`` character entity."""
+    return Character(
+        name=SELF_PERSONA_NAME,
+        color="#94A3B8",
+        sprite_prefix=SELF_PERSONA_SPRITE_PREFIX,
+        is_builtin=True,
+        pinned=True,
+        undeletable=True,
+    )
+
 
 def clamp_compact_target_ratio(compact_threshold: float, compact_target_ratio: float) -> float:
     """Keep compaction target safely below the trigger threshold."""
@@ -105,6 +126,7 @@ class Sprite(BaseModel):
     voice_type: Optional[str] = Field(None, description="语音类型: fallback、preset 或 reference")
     portrait_crop: Optional[PortraitCrop] = None
     mouth_sync: Optional[str] = None
+    group: Optional[str] = Field(default=None, description="服装分组名称；为空或省略时视为默认组")
 
 class ModelSprites(BaseModel):
     """一个模型形象格式（如 l2d / vrm）的模型路径与它自己的资源列表、标签。
@@ -129,6 +151,7 @@ class Character(BaseModel):
     """单个角色配置的实体模型"""
     # 角色基本信息
     name: str = Field(..., description="角色名称")
+    display_name: DefaultIfNone[str] = Field(default="", max_length=24, description="内置自设的显示名")
     color: str = Field(..., description="角色对话框或名字的颜色")
     sprite_prefix: str = Field(..., description="立绘文件名的通用前缀")
     
@@ -144,6 +167,30 @@ class Character(BaseModel):
     sprite_scale: DefaultIfNone[float] = Field(default=1.0, description="立绘的缩放比例 (默认值 1.0)")
     portrait_crop: DefaultIfNone[PortraitCrop] = Field(default_factory=PortraitCrop)
     emotion_tags: DefaultIfNone[str] = Field(default="", description="情绪标签和对应的立绘编号描述")
+    sprite_groups: DefaultIfNone[List[str]] = Field(
+        default_factory=list,
+        description="自定义服装分组名称列表（保序）",
+    )
+    default_sprite_group: DefaultIfNone[str] = Field(
+        default="",
+        description="角色初始默认服装组名称；留空时使用默认组",
+    )
+    fallback_to_default_group: DefaultIfNone[bool] = Field(
+        default=True,
+        description="当前服装组无匹配立绘时是否回退到默认组",
+    )
+    is_builtin: DefaultIfNone[bool] = Field(
+        default=False,
+        description="是否为系统内置人物槽位（如「自设」）",
+    )
+    pinned: DefaultIfNone[bool] = Field(
+        default=False,
+        description="是否在人物列表中置顶显示",
+    )
+    undeletable: DefaultIfNone[bool] = Field(
+        default=False,
+        description="是否禁止删除与重命名",
+    )
     avatar_type: DefaultIfNone[str] = Field(default="static", description="当前选择的形象类型：static 或已注册的模型格式 id")
     avatars: DefaultIfNone[Dict[str, ModelSprites]] = Field(
         default_factory=dict,
@@ -167,6 +214,16 @@ class Character(BaseModel):
                 raise ValueError(f"invalid or duplicate avatar format: {key!r}")
             normalized[format_id] = assets
         return normalized
+
+    @model_validator(mode="after")
+    def _enforce_self_persona_invariants(self):
+        if is_self_persona_name(self.name):
+            self.is_builtin = True
+            self.pinned = True
+            self.undeletable = True
+            if not (self.sprite_prefix or "").strip():
+                self.sprite_prefix = SELF_PERSONA_SPRITE_PREFIX
+        return self
 
     # gpt-sovits 相关的配置
     gpt_model_path: Optional[str] = Field('', description="角色 GPT 模型的路径 (可选)")

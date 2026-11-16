@@ -3,9 +3,50 @@
 from dataclasses import dataclass
 from typing import Any
 from config.character_assets import get_character_assets
+from config.sprite_groups import (
+    filter_sprite_indices_for_group,
+    has_multiple_sprite_groups,
+    resolve_default_sprite_group,
+)
+from core.media.asset_tags import tag_contents
 
 from ...core import Section, TextSection
 from ..context import DialogTemplateContext
+
+
+def _character_sprite_catalog_text(
+    context: DialogTemplateContext,
+    name: str,
+    character: Any,
+) -> str:
+    assets = get_character_assets(
+        character, getattr(character, "avatar_type", "static")
+    )
+    if not has_multiple_sprite_groups(character):
+        return (
+            context.translate(
+                "sprites_count",
+                name=name,
+                n=len(assets.sprites),
+            )
+            + f"{assets.emotion_tags}\n\n"
+        )
+    default_group = resolve_default_sprite_group(character)
+    indices = filter_sprite_indices_for_group(character, default_group)
+    tags = tag_contents(assets.emotion_tags, len(assets.sprites))
+    filtered_tags = ", ".join(
+        f"{idx + 1}:{tags[idx]}" if tags[idx] else f"{idx + 1}:"
+        for idx in indices
+        if 0 <= idx < len(assets.sprites)
+    )
+    return (
+        context.translate(
+            "sprites_count",
+            name=name,
+            n=len(indices),
+        )
+        + f"{filtered_tags}\n\n"
+    )
 
 
 def _profile_node(
@@ -67,14 +108,7 @@ class CharacterSection(Section[DialogTemplateContext]):
             children=tuple(
                 TextSection(
                     f"sprite.{index}",
-                    text=(
-                        context.translate(
-                            "sprites_count",
-                            name=name,
-                            n=len(get_character_assets(character, getattr(character, "avatar_type", "static")).sprites),
-                        )
-                        + f"{get_character_assets(character, getattr(character, 'avatar_type', 'static')).emotion_tags}\n\n"
-                    ),
+                    text=_character_sprite_catalog_text(context, name, character),
                 )
                 for index, (name, character) in enumerate(context.characters)
             ),

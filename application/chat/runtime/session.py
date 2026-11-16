@@ -593,6 +593,7 @@ class StreamingChatSession(_BaseChatSession):
 
     def run(self) -> None:
         from application.chat.history.state import chat_history
+        from application.chat.player_control import resolve_player_display_name
         from application.chat.presentation.updates import StreamingUIUpdateManager
         from application.chat.voice_archive import VoiceArchive
 
@@ -612,6 +613,11 @@ class StreamingChatSession(_BaseChatSession):
             player_name = str(getattr(self.args, "player_character", "") or "")
             if player_name:
                 self.ui_updates.set_player_character(player_name)
+            display_name = resolve_player_display_name(
+                self.config, player_name, getattr(self.args, "user_display_name", ""),
+            )
+            if display_name and display_name != player_name:
+                self.ui_updates.set_user_display_name(display_name)
         self._start_workflow()
         if player_name:
             character = self.config.get_character_by_name(player_name)

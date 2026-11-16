@@ -2,9 +2,22 @@
 
 from dataclasses import dataclass
 
+from config.schema import SELF_PERSONA_NAME, is_self_persona_name
+
 from ...core import Section
 from ...integrations.localization import _target_voice_display_name, translate_template
 from ..context import DialogTemplateContext
+
+
+def format_self_persona_prompt(setting: str) -> str:
+    cleaned = str(setting or "").strip()
+    if not cleaned:
+        return ""
+    return (
+        "【用户自设设定】\n"
+        f"{cleaned}\n"
+        "（以上是当前与你对话的用户本人的背景与偏好设定；请在互动中自然知晓并贴合，不要将「自设」作为独立台词角色输出。）\n\n"
+    )
 
 
 @dataclass(frozen=True)
@@ -15,7 +28,7 @@ class PlayerSection(Section[DialogTemplateContext]):
         name = str(context.player_name or "").strip()
         character = context.player_character
         if not name or character is None:
-            return ""
+            return format_self_persona_prompt(context.self_persona_setting)
 
         setting = str(getattr(character, "character_setting", "") or "").strip()
         if context.uses_vibe:
@@ -62,6 +75,12 @@ def player_runtime_prompt(
 ) -> str:
     """Apply current player options without rewriting an older authored template."""
     if not name:
+        getter = getattr(config, "get_character_by_name", None)
+        self_char = getter(SELF_PERSONA_NAME) if callable(getter) else None
+        if self_char is not None and is_self_persona_name(getattr(self_char, "name", "")):
+            setting = str(getattr(self_char, "character_setting", "") or "").strip()
+            if setting:
+                return format_self_persona_prompt(setting)
         return ""
     character = config.get_character_by_name(name)
     if character is None:

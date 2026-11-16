@@ -22,6 +22,7 @@ from application.characters.sprite.generate_sprites import (
 )
 from application.runtime.state import _jsonify
 from application.runtime.tasks import _update_task
+from config.sprite_groups import sprite_group_of
 from core.sprite.selection import sprite_entry_path
 from core.sprite.transitions import (
     TRANSITION_FRAME_COUNT,
@@ -47,7 +48,11 @@ TRANSITION_PROMPT = (
 
 
 def transition_identity(character, start, end):
-    paths = {sprite_entry_path(sprite) for sprite in character.sprites}
+    groups_by_path = {
+        sprite_entry_path(sprite): sprite_group_of(sprite)
+        for sprite in character.sprites
+    }
+    paths = set(groups_by_path)
     if (
         not isinstance(start, str)
         or not isinstance(end, str)
@@ -56,6 +61,8 @@ def transition_identity(character, start, end):
         or end not in paths
     ):
         raise ValueError("请选择角色立绘库中两张不同的立绘")
+    if groups_by_path.get(start) != groups_by_path.get(end):
+        raise ValueError("跨服装分组的立绘不能直接生成过渡视频，请选择同一服装分组内的两张立绘")
     return {
         "name": character.name,
         "fromPath": start,

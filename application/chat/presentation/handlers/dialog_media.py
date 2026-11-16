@@ -15,8 +15,10 @@ from typing import List
 from application.chat.voice_archive import VoiceArchive
 
 from application.chat.dialog_media import (
+    AssetIdMatch,
     AssetResolver,
     AssetLookupRequest,
+    AssetLookupResult,
     AssetLookupStrategy,
     asset_candidates,
     DefaultTtsGenerationStrategy,
@@ -25,6 +27,11 @@ from application.chat.dialog_media import (
     SpriteAssetResolver,
     TtsGenerationRequest,
     TtsGenerationStrategy,
+)
+from config.sprite_groups import (
+    allows_default_group_fallback,
+    has_multiple_sprite_groups,
+    resolve_default_sprite_group,
 )
 from core.messaging.dialog_tokens import (
     match_bgm_name,
@@ -315,6 +322,7 @@ class CharacterMediaHandler(MessageHandler):
     def handle(self, msg: LLMDialogMessage) -> None:
         rt = get_app_runtime()
         raw_name = str(msg.name or "")
+        replaying = bool(getattr(msg, "_presentation_replay", False))
         _refresh_config(rt)
         name_s = (
             raw_name
@@ -325,7 +333,44 @@ class CharacterMediaHandler(MessageHandler):
         if character_config is None:
             raise ValueError(f"未找到角色配置: {name_s}")
 
-        candidates = self.sprite_resolver.candidates(character_config)
+        if has_multiple_sprite_groups(character_config):
+            outfit_controller = getattr(rt, "outfit_controller", None)
+            if outfit_controller is not None and not replaying:
+                outfit_switched, active_group = (
+                    outfit_controller.apply_streamed_outfit_switch(
+                        character_config,
+                        getattr(msg, "outfit", ""),
+                    )
+                )
+                if not active_group:
+                    active_group = (
+                        outfit_controller.active_group_for(character_config)
+                        or resolve_default_sprite_group(character_config)
+                    )
+            elif outfit_controller is not None:
+                outfit_switched = False
+                active_group = (
+                    outfit_controller.active_group_for(character_config)
+                    or resolve_default_sprite_group(character_config)
+                )
+            else:
+                outfit_switched = False
+                active_group = resolve_default_sprite_group(character_config)
+            candidates_for_group = getattr(
+                self.sprite_resolver, "candidates_for_group", None
+            )
+            candidates = (
+                candidates_for_group(character_config, active_group)
+                if callable(candidates_for_group)
+                else self.sprite_resolver.candidates(character_config)
+            )
+            sprite_scope = f"sprite:{name_s}:{active_group}"
+        else:
+            outfit_switched = False
+            active_group = None
+            candidates = self.sprite_resolver.candidates(character_config)
+            sprite_scope = f"sprite:{name_s}"
+
         current_catalog = tuple(
             (candidate.asset_id, candidate.path, candidate.tags)
             for candidate in candidates
@@ -336,7 +381,7 @@ class CharacterMediaHandler(MessageHandler):
         lookup_result = self.asset_lookup_strategy.lookup(
             _lookup_request(
                 msg,
-                scope=f"sprite:{name_s}",
+                scope=sprite_scope,
                 candidates=candidates,
                 previous_asset_id=self._last_sprite_by_character.get(name_s, ""),
             )
@@ -346,9 +391,54 @@ class CharacterMediaHandler(MessageHandler):
             candidates,
             lookup_result,
         )
+        default_group = resolve_default_sprite_group(character_config) if active_group is not None else None
+        if (
+            not sprite.found
+            and not replaying
+            and default_group is not None
+            and active_group != default_group
+            and str(msg.vibe or "").strip()
+            and allows_default_group_fallback(character_config)
+        ):
+            candidates_for_group = getattr(
+                self.sprite_resolver, "candidates_for_group", None
+            )
+            default_candidates = (
+                candidates_for_group(character_config, default_group)
+                if callable(candidates_for_group)
+                else ()
+            )
+            if default_candidates:
+                fb_result = self.asset_lookup_strategy.lookup(
+                    _lookup_request(
+                        msg,
+                        scope=f"sprite:{name_s}:{default_group}",
+                        candidates=default_candidates,
+                        previous_asset_id=self._last_sprite_by_character.get(
+                            name_s, ""
+                        ),
+                    )
+                )
+                sprite = self.sprite_resolver.resolve(
+                    character_config,
+                    default_candidates,
+                    fb_result,
+                )
+        # The saved group can differ from the group that supplied the old sprite ID.
+        if (
+            not sprite.found and candidates
+            and (outfit_switched or (replaying and active_group is not None))
+        ):
+            sprite = self.sprite_resolver.resolve(
+                character_config,
+                candidates,
+                AssetLookupResult(
+                    matches=(AssetIdMatch(asset_id=candidates[0].asset_id),)
+                ),
+            )
         if sprite.found:
             self._last_sprite_by_character[name_s] = sprite.asset_id
-        if bool(getattr(msg, "_presentation_replay", False)):
+        if replaying:
             rt.presentation_queue.put(
                 PresentationMessage(
                     audio_path="",

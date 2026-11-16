@@ -7,10 +7,12 @@ import { useCharacterMemoryController } from "../../../features/character-editor
 import { I18nProvider } from "../../../shared/i18n/I18nProvider";
 import { ToastProvider } from "../../../shared/ui";
 
+const mockAwakenCharacterMemory = vi.fn();
 const mockDeleteCharacterMemory = vi.fn();
 const mockGetMem0Status = vi.fn();
 const mockInstallMissingRuntimeDependency = vi.fn();
 const mockListCharacterMemories = vi.fn();
+const mockPinCharacterMemory = vi.fn();
 const mockRememberCharacterMemory = vi.fn();
 const mockSearchCharacterMemories = vi.fn();
 
@@ -19,10 +21,12 @@ vi.mock("../../../entities/chat/repository", () => ({
 }));
 
 vi.mock("../../../entities/character/repository", () => ({
+  awakenCharacterMemory: (input: unknown) => mockAwakenCharacterMemory(input),
   deleteCharacterMemory: (name: string, memoryId: string) => mockDeleteCharacterMemory(name, memoryId),
   getMem0Status: () => mockGetMem0Status(),
   listCharacterMemories: (name: string) => mockListCharacterMemories(name),
-  rememberCharacterMemory: (name: string, memory: string) => mockRememberCharacterMemory(name, memory),
+  pinCharacterMemory: (input: unknown) => mockPinCharacterMemory(input),
+  rememberCharacterMemory: (...args: unknown[]) => mockRememberCharacterMemory(...args),
   searchCharacterMemories: (input: { limit?: number; name: string; query: string }) =>
     mockSearchCharacterMemories(input),
 }));
@@ -149,5 +153,53 @@ describe("useCharacterMemoryController", () => {
       { onTaskUpdate: expect.any(Function) },
     );
     expect(mockGetMem0Status).toHaveBeenCalledWith();
+  });
+
+  it("supports adding canon memories, pinning/unpinning, and awakening faded memories", async () => {
+    mockRememberCharacterMemory.mockResolvedValue({
+      agentId: "Mika",
+      count: 1,
+      memories: [{ clarity: "canon", id: "canon-1", memory: "Never eats spicy food", pinned: true }],
+    });
+    mockPinCharacterMemory.mockResolvedValue({
+      agentId: "Mika",
+      count: 1,
+      memories: [{ clarity: "clear", id: "canon-1", memory: "Never eats spicy food", pinned: false, retention: 1 }],
+    });
+    mockAwakenCharacterMemory.mockResolvedValue({
+      agentId: "Mika",
+      count: 1,
+      memories: [{ clarity: "clear", id: "canon-1", memory: "Never eats spicy food", pinned: false, retention: 1 }],
+    });
+
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useCharacterMemoryController({ memoryName: "Mika" }), { wrapper: Wrapper });
+
+    act(() => {
+      result.current.setMemoryInput("Never eats spicy food");
+      result.current.setAddAsCanon(true);
+    });
+    await act(async () => {
+      await result.current.add();
+    });
+    await waitFor(() =>
+      expect(mockRememberCharacterMemory).toHaveBeenCalledWith("Mika", "Never eats spicy food", {
+        kind: "canon",
+        pinned: true,
+      }),
+    );
+    expect(result.current.addAsCanon).toBe(false);
+
+    await act(async () => {
+      await result.current.pinMemory({ memoryId: "canon-1", name: "Mika", pinned: false });
+    });
+    await waitFor(() =>
+      expect(mockPinCharacterMemory).toHaveBeenCalledWith({ memoryId: "canon-1", name: "Mika", pinned: false }),
+    );
+
+    await act(async () => {
+      await result.current.awakenMemory({ memoryId: "canon-1", name: "Mika" });
+    });
+    await waitFor(() => expect(mockAwakenCharacterMemory).toHaveBeenCalledWith({ memoryId: "canon-1", name: "Mika" }));
   });
 });

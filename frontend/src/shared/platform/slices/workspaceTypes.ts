@@ -44,6 +44,8 @@ export interface PlayerCharacterOptions {
 
 export type CharacterPromptMode = "compact" | "full";
 export type MediaSelectionMode = "indexed" | "semantic";
+export type MemoryMode = "isolated" | "shared" | "inherit_readonly";
+export type InitialOutfitValue = string | { activeGroup: string; locked?: boolean };
 
 export interface TemplateSummary extends PlayerCharacterOptions {
   content: string;
@@ -94,6 +96,9 @@ export interface TemplateLaunchSession extends PlayerCharacterOptions {
   maxDialogItems: number;
   maxSpeechChars: number;
   mediaSelectionMode?: MediaSelectionMode;
+  memoryMode?: MemoryMode;
+  autoOutfitSwitch?: boolean;
+  initialOutfits?: Record<string, InitialOutfitValue>;
   roomId: string;
   scenario: string;
   primaryCharacters?: string[];

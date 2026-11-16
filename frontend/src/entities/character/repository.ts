@@ -2,7 +2,10 @@ import { getPlatform } from "../../shared/platform/platform";
 import type { Character } from "../config/types";
 import type {
   CharacterMemoryImportResult,
+  CharacterMemoryRememberOptions,
+  CharacterMemorySearchInput,
   ImageAutoLabelResult,
+  SaveSpriteGroupsInput,
   ShinsekaiPlatform,
   SpriteVoiceType,
   TaskProgressOptions,
@@ -66,20 +69,32 @@ export function getMem0Status() {
   return getPlatform().characters.getMem0Status();
 }
 
-export function listCharacterMemories(name: string) {
-  return getPlatform().characters.listMemories(name);
+export function listCharacterMemories(name: string, options?: { sessionId?: string }) {
+  return options ? getPlatform().characters.listMemories(name, options) : getPlatform().characters.listMemories(name);
 }
 
-export function searchCharacterMemories(input: { limit?: number; name: string; query: string }) {
+export function searchCharacterMemories(input: CharacterMemorySearchInput) {
   return getPlatform().characters.searchMemories(input);
 }
 
-export function rememberCharacterMemory(name: string, content: string) {
-  return getPlatform().characters.remember(name, content);
+export function rememberCharacterMemory(name: string, content: string, options?: CharacterMemoryRememberOptions) {
+  return options
+    ? getPlatform().characters.remember(name, content, options)
+    : getPlatform().characters.remember(name, content);
 }
 
-export function deleteCharacterMemory(name: string, memoryId: string) {
-  return getPlatform().characters.deleteMemory(name, memoryId);
+export function deleteCharacterMemory(name: string, memoryId: string, options?: { sessionId?: string }) {
+  return options
+    ? getPlatform().characters.deleteMemory(name, memoryId, options)
+    : getPlatform().characters.deleteMemory(name, memoryId);
+}
+
+export function pinCharacterMemory(input: { name: string; memoryId: string; pinned: boolean; sessionId?: string }) {
+  return getPlatform().characters.pinMemory(input);
+}
+
+export function awakenCharacterMemory(input: { name: string; memoryId: string; sessionId?: string }) {
+  return getPlatform().characters.awakenMemory(input);
 }
 
 export function previewCharacterMemoryImport(name: string, items: File[]) {
@@ -94,8 +109,21 @@ export function importCharacterMemories(
   return getPlatform().characters.importMemories(name, items, options);
 }
 
-export function uploadCharacterSprites(input: { emotionTags: string; name: string; paths: string[] }) {
+export function uploadCharacterSprites(input: { emotionTags: string; name: string; paths: string[]; group?: string }) {
   return getPlatform().characters.uploadSprites(input);
+}
+
+export function saveCharacterSpriteGroups(input: SaveSpriteGroupsInput) {
+  return getPlatform().characters.saveSpriteGroups(input);
+}
+
+export function autoGroupCharacterSprites(input: {
+  name: string;
+  avatarType?: string;
+  overwriteExisting?: boolean;
+  apply?: boolean;
+}) {
+  return getPlatform().characters.autoGroupSprites(input);
 }
 
 export function autoLabelCharacterSprites(name: string, options?: TaskProgressOptions<ImageAutoLabelResult>) {

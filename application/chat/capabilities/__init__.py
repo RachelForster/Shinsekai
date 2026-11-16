@@ -28,6 +28,13 @@ from application.chat.capabilities.memory import (
     MemoryTurnContextProvider,
     is_memory_auto_enabled,
 )
+from application.chat.capabilities.outfit import (
+    OUTFIT_CONTEXT_MARKER,
+    OutfitBeforeChatProvider,
+    OutfitPersistenceProvider,
+    OutfitRuntimeController,
+    OutfitSessionCapability,
+)
 from application.chat.capabilities.perception import (
     PERCEPTION_CONFIG_KEYS,
     PerceptionSessionCapability,
@@ -56,6 +63,7 @@ def build_default_session_capabilities() -> SessionCapabilitySet:
             KnowledgeSessionCapability(),
             MemorySessionCapability(),
             RelationSessionCapability(),
+            OutfitSessionCapability(),
             PerceptionSessionCapability(),
         ),
         default_turn_providers=(BackgroundTurnContextProvider(),),
@@ -84,6 +92,11 @@ __all__ = [
     "KnowledgeTurnContextProvider",
     "MemorySessionCapability",
     "MemoryTurnContextProvider",
+    "OUTFIT_CONTEXT_MARKER",
+    "OutfitBeforeChatProvider",
+    "OutfitPersistenceProvider",
+    "OutfitRuntimeController",
+    "OutfitSessionCapability",
     "PERCEPTION_CONFIG_KEYS",
     "PerceptionSessionCapability",
     "PerceptionTurnContextProvider",

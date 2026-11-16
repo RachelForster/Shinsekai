@@ -18,12 +18,16 @@ import urllib.request
 
 from ai.memory.constants import MEMORY_STORE_FILENAME
 from ai.memory.deduplication import find_duplicate_memory, semantic_deduplication_threshold
+from ai.memory.ebbinghaus import EbbinghausRetentionPolicy
 from ai.memory.engine import (
     HybridMemoryEngine,
     resolve_memory_read_filter,
 )
 from ai.memory.orchestrator import is_roleplay_player_persona
-from ai.memory.ports import resolve_registered_memory_repository
+from ai.memory.ports import (
+    resolve_registered_memory_repository,
+    resolve_registered_retention_policy,
+)
 from ai.memory.rule_recall_planner import RuleRecallPlanner
 from ai.memory.runtime import ensure_mem0, peek_mem0
 from core.chat_history.models import rollback_memory_for_timeline
@@ -32,8 +36,12 @@ from core.vector_store.sqlite_hybrid_store import SqliteHybridStore
 from sdk.adapters.memory import (
     SCOPE_CHAR_CANON,
     SCOPE_CHAR_CROSS_SAVE,
+    SCOPE_SAVE_ISOLATED,
     SCOPE_SELF_PUBLIC,
     MemoryDraft,
+    MemoryRecord,
+    MemoryScopeFilter,
+    RetentionPolicy,
     TurnRecallInput,
 )
 from sdk.adapters.session import MEMORY_MODE_SHARED, normalize_memory_mode
@@ -103,12 +111,21 @@ def reset_memory_tool_context(token: Token[MemoryToolSessionContext] | None = No
     _active_tool_context.set(MemoryToolSessionContext())
 
 
+def update_memory_tool_context_mode(session_id: str, mode: str) -> None:
+    """Update the mode shared by the chat runtime's command and model threads."""
+    global _default_tool_context
+    with _default_tool_context_lock:
+        if _default_tool_context.session_id == session_id:
+            _default_tool_context = replace(_default_tool_context, memory_mode=mode)
+
+
 def current_memory_tool_context() -> MemoryToolSessionContext:
     ctx = _active_tool_context.get()
-    if ctx.session_id or ctx.memory_mode or ctx.player_character:
-        return ctx
     with _default_tool_context_lock:
-        return _default_tool_context
+        default = _default_tool_context
+    if ctx.session_id == default.session_id and ctx.player_character == default.player_character:
+        return default
+    return ctx if ctx.session_id or ctx.memory_mode or ctx.player_character else default
 
 
 def _memory_request_context(session_id: str | None) -> MemoryToolSessionContext:
@@ -256,19 +273,95 @@ def _start_memory_service_ready_monitor() -> None:
     threading.Thread(target=_monitor, name="memory-service-ready-monitor", daemon=True).start()
 
 
-def memory_list(character_name: str | None = None, *, limit: int = 200) -> dict[str, Any]:
+def _serialize_memory_record(
+    record: MemoryRecord,
+    *,
+    policy: RetentionPolicy,
+    now_ts: float,
+) -> dict[str, Any]:
+    state = policy.evaluate(record, now_ts=now_ts)
+    is_pinned = bool(
+        record.pinned or record.scope == SCOPE_CHAR_CANON or record.kind == "canon"
+    )
+    return {
+        "id": record.id,
+        "memory": record.detail_text,
+        "detail": record.detail_text,
+        "gist": record.gist_text or record.detail_text,
+        "clarity": state.tier,
+        "retention": round(float(state.retention), 4),
+        "kind": record.kind,
+        "pinned": is_pinned,
+        "scope": record.scope,
+        "slotKey": record.slot_key,
+        "topicTags": list(record.topic_tags),
+        "entities": list(record.entities),
+        "importance": round(float(record.importance), 3),
+        "createdAt": float(record.created_at),
+        "eventAt": float(record.event_at) if record.event_at is not None else None,
+        "lastRecalledAt": (
+            float(record.last_recalled_at)
+            if record.last_recalled_at is not None
+            else None
+        ),
+        "recallCount": int(record.recall_count),
+        "sourceSessionId": record.source_session_id,
+    }
+
+
+def memory_list(
+    character_name: str | None = None,
+    *,
+    limit: int = 200,
+    session_id: str = "",
+) -> dict[str, Any]:
     agent_id = _resolve_agent_id(character_name)
-    service_result = _memory_service_request("list", {"name": agent_id, "limit": limit})
+    sid = str(session_id or "").strip()
+    req_payload: dict[str, Any] = {"name": agent_id, "limit": limit}
+    if sid:
+        req_payload["sessionId"] = sid
+    service_result = _memory_service_request("list", req_payload)
     if service_result is not None:
         return service_result
     mem = ensure_mem0()
     if isinstance(mem, HybridMemoryEngine):
-        with _mem0_operation_lock:
-            records = mem.repo.list_by_scope(
-                resolve_memory_read_filter(agent_id),
-                limit=max(1, int(limit)),
+        max_items = max(1, int(limit))
+        read_filter = resolve_memory_read_filter(agent_id)
+        policy = (
+            getattr(mem.orchestrator, "retention_policy", None)
+            or resolve_registered_retention_policy()
+            or EbbinghausRetentionPolicy()
+        )
+        now_ts = time.time()
+        with _mem0_operation_lock, borrow_session_store_by_id(sid) as sess_store:
+            records_by_id: dict[str, MemoryRecord] = {}
+            for rec in mem.repo.list_by_scope(read_filter, limit=max_items):
+                records_by_id[rec.id] = rec
+            save_repo = (
+                getattr(sess_store, "save_memory_repo", None)
+                if sess_store is not None
+                else None
             )
-        memories = [{"id": rec.id, "memory": rec.detail_text} for rec in records]
+            if save_repo is not None:
+                save_filter = MemoryScopeFilter(
+                    scopes=(SCOPE_SAVE_ISOLATED,),
+                    owner_ids=read_filter.owner_ids,
+                    session_id=sid or None,
+                )
+                for rec in save_repo.list_by_scope(save_filter, limit=max_items):
+                    records_by_id[rec.id] = rec
+
+        sorted_records = sorted(
+            records_by_id.values(),
+            key=lambda r: (
+                0 if (r.pinned or r.scope == SCOPE_CHAR_CANON or r.kind == "canon") else 1,
+                -float(r.created_at),
+            ),
+        )[:max_items]
+        memories = [
+            _serialize_memory_record(rec, policy=policy, now_ts=now_ts)
+            for rec in sorted_records
+        ]
         return {"agentId": agent_id, "count": len(memories), "memories": memories}
 
     with _mem0_operation_lock:
@@ -535,11 +628,20 @@ def memory_remember(
                 ):
                     return {"error": "save-scoped memory store unavailable"}
 
-                is_self = agent_id.casefold() in {"", "user", "__self__"}
+                is_self = agent_id.casefold() in {"", "user", "__self__", "自设"}
+                effective_kind = (
+                    "canon"
+                    if (pinned and not is_self and clean_kind == "episodic")
+                    else clean_kind
+                )
                 draft_scope = (
                     SCOPE_SELF_PUBLIC
                     if is_self
-                    else (SCOPE_CHAR_CANON if clean_kind == "canon" else SCOPE_CHAR_CROSS_SAVE)
+                    else (
+                        SCOPE_CHAR_CANON
+                        if (effective_kind == "canon" or pinned)
+                        else SCOPE_CHAR_CROSS_SAVE
+                    )
                 )
                 draft = MemoryDraft(
                     owner_id="__self__" if is_self else agent_id,
@@ -547,7 +649,7 @@ def memory_remember(
                     gist_text=clean_gist or text,
                     scope=draft_scope,
                     slot_key=clean_slot,
-                    kind=clean_kind,
+                    kind=effective_kind,
                     topic_tags=tuple(clean_topics),
                     entities=tuple(clean_entities),
                     importance=clean_imp,
@@ -567,12 +669,16 @@ def memory_remember(
                         "ok": True,
                         "duplicate": True,
                         "agent_id": agent_id,
+                        "scope": draft_scope,
+                        "pinned": bool(pinned),
                         "content": text,
                     }
                 out: dict[str, Any] = {
                     "ok": True,
                     "duplicate": False,
                     "agent_id": agent_id,
+                    "scope": draft_scope,
+                    "pinned": bool(pinned),
                     "content": text,
                 }
                 if report.added_ids:
@@ -620,16 +726,37 @@ def memory_remember(
 def memory_remember_and_list(
     content: str,
     character_name: str | None = None,
+    *,
+    pinned: bool = False,
+    gist_text: str = "",
+    slot_key: str = "",
+    kind: str = "",
+    session_id: str = "",
 ) -> dict[str, Any]:
     text = (content or "").strip()
     if not text:
         return {"error": "memory content is required"}
-    result = memory_remember(text, character_name=character_name, source_session_id="")
+    extra_kwargs: dict[str, Any] = {}
+    if pinned:
+        extra_kwargs["pinned"] = True
+        extra_kwargs["kind"] = kind or "profile"
+    elif kind:
+        extra_kwargs["kind"] = kind
+    if gist_text:
+        extra_kwargs["gist_text"] = gist_text
+    if slot_key:
+        extra_kwargs["slot_key"] = slot_key
+    result = memory_remember(
+        text,
+        character_name=character_name,
+        source_session_id=session_id,
+        **extra_kwargs,
+    )
     if isinstance(result, dict) and result.get("error"):
         return result
     if isinstance(result, dict) and result.get("status") == "loading":
         return result
-    return memory_list(character_name)
+    return memory_list(character_name, **({"session_id": session_id} if session_id else {}))
 
 
 def memory_forget(
@@ -680,16 +807,156 @@ def memory_forget(
 def memory_forget_and_list(
     memory_id: str,
     character_name: str | None = None,
+    *,
+    session_id: str = "",
 ) -> dict[str, Any]:
     mid = (memory_id or "").strip()
     if not mid:
         return {"error": "memory id is required"}
-    result = memory_forget(mid, session_id="")
+    result = memory_forget(mid, session_id=session_id)
     if isinstance(result, dict) and result.get("error"):
         return result
     if isinstance(result, dict) and result.get("status") == "loading":
         return result
-    return memory_list(character_name)
+    return memory_list(character_name, **({"session_id": session_id} if session_id else {}))
+
+
+def _update_repo_pin(repo: Any, memory_id: str, pinned: bool) -> bool:
+    existing = repo.get(memory_id) if hasattr(repo, "get") else None
+    if existing is None:
+        return False
+    if pinned and existing.scope == SCOPE_CHAR_CROSS_SAVE:
+        repo.upsert(replace(existing, pinned=True, scope=SCOPE_CHAR_CANON))
+        return True
+    if not pinned and (existing.scope == SCOPE_CHAR_CANON or existing.kind == "canon"):
+        demoted_scope = (
+            SCOPE_SELF_PUBLIC
+            if existing.owner_id == "__self__"
+            else (
+                SCOPE_SAVE_ISOLATED
+                if existing.scope == SCOPE_SAVE_ISOLATED
+                else SCOPE_CHAR_CROSS_SAVE
+            )
+        )
+        demoted = replace(
+            existing,
+            pinned=False,
+            scope=demoted_scope,
+            kind="profile" if existing.kind == "canon" else existing.kind,
+        )
+        repo.upsert(demoted)
+        return True
+    return bool(repo.set_pinned(memory_id, bool(pinned)))
+
+
+def _memory_mutation_repositories(engine: HybridMemoryEngine, store: Any, sid: str):
+    if not sid:
+        return (engine.repo,)
+    save_repo = getattr(store, "save_memory_repo", None)
+    if save_repo is None:
+        raise ValueError("save-scoped memory store unavailable")
+    if store.get_memory_mode() == MEMORY_MODE_SHARED:
+        return (save_repo, engine.repo)
+    return (save_repo,)
+
+
+def memory_set_pinned(
+    memory_id: str,
+    pinned: bool,
+    *,
+    session_id: str | None = None,
+) -> dict[str, Any]:
+    mid = (memory_id or "").strip()
+    if not mid:
+        return {"error": "memory_id 不能为空"}
+    sid = _memory_request_context(session_id).session_id
+    req_payload: dict[str, Any] = {"memoryId": mid, "pinned": bool(pinned)}
+    if sid:
+        req_payload["sessionId"] = sid
+    service_result = _memory_service_request("pin", req_payload)
+    if service_result is not None:
+        return service_result
+    mem = ensure_mem0()
+    try:
+        updated = False
+        with _mem0_operation_lock, borrow_session_store_by_id(sid) as sess_store:
+            if isinstance(mem, HybridMemoryEngine):
+                updated = any(
+                    _update_repo_pin(repo, mid, pinned)
+                    for repo in _memory_mutation_repositories(mem, sess_store, sid)
+                )
+            elif not sid and hasattr(mem, "set_pinned"):
+                updated = bool(mem.set_pinned(mid, pinned))
+        if not updated:
+            return {"error": "memory not found in a writable scope", "memory_id": mid}
+        return {"ok": True, "memory_id": mid, "pinned": bool(pinned), "updated": True}
+    except Exception as exc:
+        logger.exception("memory_set_pinned 失败")
+        return {"error": str(exc)}
+
+
+def memory_set_pinned_and_list(
+    memory_id: str,
+    pinned: bool,
+    character_name: str | None = None,
+    *,
+    session_id: str = "",
+) -> dict[str, Any]:
+    result = memory_set_pinned(memory_id, pinned, session_id=session_id)
+    if isinstance(result, dict) and result.get("error"):
+        return result
+    if isinstance(result, dict) and result.get("status") == "loading":
+        return result
+    return memory_list(character_name, **({"session_id": session_id} if session_id else {}))
+
+
+def memory_awaken(
+    memory_id: str,
+    *,
+    session_id: str | None = None,
+) -> dict[str, Any]:
+    mid = (memory_id or "").strip()
+    if not mid:
+        return {"error": "memory_id 不能为空"}
+    sid = _memory_request_context(session_id).session_id
+    req_payload: dict[str, Any] = {"memoryId": mid}
+    if sid:
+        req_payload["sessionId"] = sid
+    service_result = _memory_service_request("awaken", req_payload)
+    if service_result is not None:
+        return service_result
+    mem = ensure_mem0()
+    try:
+        awakened = 0
+        now_ts = time.time()
+        with _mem0_operation_lock, borrow_session_store_by_id(sid) as sess_store:
+            if isinstance(mem, HybridMemoryEngine):
+                for repo in _memory_mutation_repositories(mem, sess_store, sid):
+                    awakened = int(repo.record_recall((mid,), recalled_at=now_ts))
+                    if awakened:
+                        break
+            elif not sid and hasattr(mem, "record_recall"):
+                awakened = int(mem.record_recall((mid,), recalled_at=now_ts))
+        if not awakened:
+            return {"error": "memory not found in a writable scope", "memory_id": mid}
+        return {"ok": True, "memory_id": mid, "awakened": awakened}
+    except Exception as exc:
+        logger.exception("memory_awaken 失败")
+        return {"error": str(exc)}
+
+
+def memory_awaken_and_list(
+    memory_id: str,
+    character_name: str | None = None,
+    *,
+    session_id: str = "",
+) -> dict[str, Any]:
+    result = memory_awaken(memory_id, session_id=session_id)
+    if isinstance(result, dict) and result.get("error"):
+        return result
+    if isinstance(result, dict) and result.get("status") == "loading":
+        return result
+    return memory_list(character_name, **({"session_id": session_id} if session_id else {}))
 
 
 def memory_rollback_after_turn(
