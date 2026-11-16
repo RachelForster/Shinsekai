@@ -272,6 +272,34 @@ test("chat stage browser preview supports state-driven interaction flow", async 
   await expect(page.locator(".toast__title").filter({ hasText: "历史已清空" })).toBeVisible();
 });
 
+test("reveals the themed dialog toolbar when hovering the dialog", async ({ page }) => {
+  await page.goto("/#/chat");
+  const dialog = page.locator(".dialog-layer");
+  const toolbar = page.locator('.dialog-toolbar-layer[data-reveal="hover"]');
+  const surface = toolbar.locator(".dialog-stage-controls__surface");
+  await expect(page.getByRole("list", { name: "对话选项" })).toBeVisible();
+  await expect(surface).toHaveCSS("opacity", "0");
+
+  await page.getByRole("list", { name: "对话选项" }).hover();
+  await expect(surface).toHaveCSS("opacity", "1");
+  await page.getByRole("button", { name: "继续", exact: true }).click();
+  await expect(dialog).toBeVisible();
+  await page.mouse.move(10, 100);
+  await expect(surface).toHaveCSS("opacity", "0");
+  await dialog.hover();
+  await expect(surface).toHaveCSS("opacity", "1");
+
+  const lock = toolbar.getByRole("button", { name: "锁定聊天操作", exact: true });
+  await lock.click();
+  await page.mouse.move(10, 100);
+  await expect(toolbar).toHaveAttribute("data-locked", "true");
+  await expect(surface).toHaveCSS("opacity", "1");
+
+  await toolbar.getByRole("button", { name: "解锁聊天操作", exact: true }).click();
+  await page.mouse.click(10, 100);
+  await expect(surface).toHaveCSS("opacity", "0");
+});
+
 async function exportCharacterPackage(request: APIRequestContext, name: string) {
   const result = await requestJson<{ path: string }>(request, "post", "/api/characters/export", { name });
   return path.resolve(projectRoot, result.path);

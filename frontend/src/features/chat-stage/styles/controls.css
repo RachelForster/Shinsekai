@@ -436,7 +436,7 @@
 }
 
 /* Recessed but always present & clickable when unlocked; full strength on hover/focus. */
-.dialog-stage-controls[data-locked="false"]:not(:hover):not(:focus-within) .dialog-stage-controls__surface {
+.dialog-stage-controls:where([data-locked="false"]:not(:hover):not(:focus-within)) .dialog-stage-controls__surface {
   opacity: 0.72;
 }
 
@@ -455,34 +455,27 @@
   opacity: 0;
   pointer-events: none;
   transform: translateY(var(--chat-dialog-toolbar-hidden-y));
+  /* Keep the surface visible briefly while the pointer crosses the gap from the dialog. */
+  transition-delay: 180ms;
 }
 
-.dialog-toolbar-layer[data-reveal="hover"][data-locked="false"]:not(:hover):not(:focus-within)
-  .dialog-stage-controls[data-locked="false"]
-  .dialog-stage-controls__surface {
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(var(--chat-dialog-toolbar-hidden-y));
-}
-
-.dialog-toolbar-layer[data-reveal="hover"]:is(:hover, :focus-within) .dialog-stage-controls,
-.dialog-toolbar-layer[data-reveal="hover"][data-locked="true"] .dialog-stage-controls {
+:is(
+    .dialog-toolbar-layer[data-reveal="hover"]:is(:hover, :focus-within, [data-locked="true"]),
+    .chat-stage:has(> .dialog-stack:hover) > .dialog-toolbar-layer[data-reveal="hover"]
+  )
+  .dialog-stage-controls {
   pointer-events: auto;
 }
 
-.dialog-toolbar-layer[data-reveal="hover"]:is(:hover, :focus-within) .dialog-stage-controls__surface,
-.dialog-toolbar-layer[data-reveal="hover"][data-locked="true"] .dialog-stage-controls__surface {
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateY(0);
-}
-
-.dialog-toolbar-layer[data-reveal="hover"]:is(:hover, :focus-within)
-  .dialog-stage-controls[data-locked="false"]
+:is(
+    .dialog-toolbar-layer[data-reveal="hover"]:is(:hover, :focus-within, [data-locked="true"]),
+    .chat-stage:has(> .dialog-stack:hover) > .dialog-toolbar-layer[data-reveal="hover"]
+  )
   .dialog-stage-controls__surface {
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0);
+  transition-delay: 0ms;
 }
 
 .dialog-stage-controls__rail {
