@@ -83,6 +83,7 @@ def build_perception_messages(
 
     mood_rule = (
         "先判断当前画面与字幕的整体气氛mood（取值：calm/serious/sad/tense/joyful/hyped/unclear，看不准填unclear），"
+        "场景类型scene（story_media=剧情向影视番剧/严肃叙事；casual_media=轻松视频/直播/综艺；combat=激烈战斗；exploration=游戏探索/整备；reading_work=阅读文档/代码/网页；idle=静态菜单/桌面），"
         "再判断画面变化visual_change（none=同镜头无实质新动作；detail=同场景出现新动作/表情/UI变化，digest只写25字内增量细节不重抄背景；"
         "cut=切镜头或新场景，digest写40字内可见人物、动作与环境）。"
     )
@@ -92,7 +93,7 @@ def build_perception_messages(
             "你正和用户一起看共享屏幕，可能是视频、动画、直播或游戏。根据截图描述可见内容，"
             "不要猜测声音、对白或用户的操作。若只是观看，player_busy设为false。"
             f"{mood_rule}"
-            "仅重大剧情转折、强烈情绪高潮或危急险情才给salience 0.85以上，普通新画面或常规对白给0.3~0.55，"
+            "仅重大剧情转折、强烈情绪高潮或危急险情才给salience 0.85以上，有趣笑点、精彩细节或鲜明观点给0.68~0.82，普通新画面或常规对白给0.3~0.55，"
             "0.95以上仅用于画面明确显示正在发生且需要立即提醒的险情，普通高潮和对白不要达到0.95。"
             "重复画面、静止菜单或黑屏低于0.2。屏幕字幕完全由外部OCR提供，digest只写纯画面视觉内容，禁止抄录或自行识别字幕文字。"
             "visual_change为none或全黑无可辨内容时，digest留空；全黑时反应留空且salience设为0。"
@@ -100,7 +101,7 @@ def build_perception_messages(
     else:
         scene_rule = (
             f"{mood_rule}"
-            "salience表示局势戏剧性与值得角色主动开口的重要度（0.0~1.0，仅团灭/击杀Boss/丝血险境/通关/重大剧情转折才给>=0.85，常规探索或普通战斗0.3~0.6，挂机/菜单<=0.2），"
+            "salience表示局势戏剧性与值得角色主动开口的重要度（0.0~1.0，仅团灭/击杀Boss/丝血险境/通关/重大剧情转折才给>=0.85，有趣发现或关键战况0.68~0.82，常规探索或普通战斗0.3~0.6，挂机/菜单<=0.2），"
             "player_busy表示玩家是否正在激烈交火或高压操作。"
         )
 
@@ -136,7 +137,7 @@ def build_perception_messages(
         f"{scene_rule}\n"
         f"{reflex_rule}\n"
         "只输出一行JSON，结束于最后一个右花括号。\n"
-        '{"mood":"calm","visual_change":"detail","digest":"","salience":0.0,"player_busy":false,"reflex":{"sprite_id":null,"bark":null}}'
+        '{"scene":"casual_media","mood":"calm","visual_change":"detail","digest":"","salience":0.0,"player_busy":false,"reflex":{"sprite_id":null,"bark":null}}'
     )
 
     user_lines: list[str] = []

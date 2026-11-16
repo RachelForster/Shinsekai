@@ -2049,5 +2049,584 @@ class TestVisionMemoryAndMoodGate(unittest.TestCase):
                 self.assertTrue(st_ready["modelCached"])
 
 
+class TestSceneAdaptivePerceptionPacing(unittest.TestCase):
+    def test_parser_and_prompt_support_scene_classification_and_aliases(self) -> None:
+        snapshot = RawPerceptionSnapshot(
+            states={},
+            events=(),
+            frame=PerceptionFrame(image_base64="ZmFrZQ=="),
+            revision=1,
+        )
+        system, _user = build_perception_messages(snapshot, previous_digest="")
+        self.assertIn("场景类型scene", system["content"])
+        self.assertIn("0.68~0.82", system["content"])
+        self.assertIn('"scene":"casual_media"', system["content"])
+
+        parsed = parse_perception_decision_json(
+            '{"scene":"story_media","mood":"sad","visual_change":"cut",'
+            '"digest":"雨夜车站里两人沉默告别","salience":0.89,"player_busy":false,'
+            '"reflex":{"sprite_id":2,"bark":"别走……"}}'
+        )
+        self.assertEqual(parsed.scene, "story_media")
+        self.assertEqual(parsed.mood, "sad")
+
+        alias_cases = {
+            "番剧": "story_media",
+            "直播": "casual_media",
+            "boss": "combat",
+            "探索": "exploration",
+            "代码": "reading_work",
+            "挂机": "idle",
+        }
+        for raw_alias, expected_scene in alias_cases.items():
+            res = parse_perception_decision_json(
+                json.dumps(
+                    {
+                        "scene": raw_alias,
+                        "digest": "测试画面",
+                        "salience": 0.4,
+                        "player_busy": False,
+                        "reflex": {"sprite_id": None, "bark": None},
+                    },
+                    ensure_ascii=False,
+                )
+            )
+            self.assertEqual(res.scene, expected_scene)
+
+        truncated = (
+            '{"scene":"combat","mood":"tense","visual_change":"detail",'
+            '"digest":"骑士举盾格挡巨剑","salience":0.79,"player_busy":true'
+        )
+        fallback_parsed = parse_perception_decision_json(truncated)
+        self.assertEqual(fallback_parsed.scene, "combat")
+        self.assertTrue(fallback_parsed.player_busy)
+
+    def test_hybrid_scene_recognition_and_recency_weighted_hysteresis(self) -> None:
+        from core.perception.pacing import (
+            SceneActivitySignals,
+            majority_scene_vote,
+            resolve_effective_scene,
+        )
+
+        # 2 prior story_media votes (weight 2.0) hold steady against 1 noisy casual_media flicker (weight 1.6)
+        votes = [(100.0, "story_media"), (102.0, "story_media"), (104.0, "casual_media")]
+        self.assertEqual(majority_scene_vote(votes, now=105.0), "story_media")
+        # A second consecutive casual_media vote (weight 1.0 + 1.6 = 2.6 > 2.0) switches cleanly
+        votes.append((106.0, "casual_media"))
+        self.assertEqual(majority_scene_vote(votes, now=106.5), "casual_media")
+
+        # Serious dense dialogue overrides casual flicker into story_media
+        self.assertEqual(
+            resolve_effective_scene(
+                SceneActivitySignals(
+                    explicit_scene="casual_media",
+                    mood="sad",
+                    subtitle_count_30s=5,
+                )
+            ),
+            "story_media",
+        )
+        # Game with visual cuts resolves to exploration when not in combat
+        self.assertEqual(
+            resolve_effective_scene(
+                SceneActivitySignals(active_game="elden_ring", visual_cuts_30s=3, mood="calm")
+            ),
+            "exploration",
+        )
+        # Prolonged stillness without fresh subtitles or highlights resolves to idle
+        self.assertEqual(
+            resolve_effective_scene(SceneActivitySignals(static_duration_sec=30.0)),
+            "idle",
+        )
+
+        # Cloud LLM guidance calibrates scene_type and proactive_salience_threshold
+        cache = RPInputCache()
+        applied = cache.apply_cloud_guidance(
+            {"scene_type": "story_media", "proactive_salience_threshold": 0.89}
+        )
+        self.assertEqual(applied["cloud_scene"], "story_media")
+        self.assertEqual(cache.current_scene, "story_media")
+        self.assertGreater(cache.adaptive_pacing(PerceptionConfig()).proactive_salience_threshold, 0.85)
+
+    def test_story_media_suppresses_mid_dialogue_and_holds_climax_until_audio_gap(self) -> None:
+        clock = [200.0]
+        now_wall = time.time()
+        cache = RPInputCache()
+        gk = PerceptionGatekeeper(monotonic_fn=lambda: clock[0])
+        cfg = PerceptionConfig(enabled=True, salience_threshold=0.85, proactive_cooldown_sec=25.0)
+
+        # Moderate beat (0.78) in sad story_media stays below elevated story threshold
+        cache.record_decision(
+            PerceptionDigestResult(
+                scene="story_media",
+                mood="sad",
+                digest="主角低头看着旧怀表",
+                salience=0.78,
+                created_at=now_wall - 16.0,
+            )
+        )
+        self.assertFalse(gk.evaluate(cache, cfg, screen_audio="quiet").allow)
+
+        # Major dramatic twist (0.90) occurred 14s ago (> legacy 8s cutoff, < story_media 22s window)
+        cache.record_decision(
+            PerceptionDigestResult(
+                scene="story_media",
+                mood="sad",
+                digest="信封滑落露出多年前的告别信",
+                salience=0.90,
+                created_at=now_wall - 14.0,
+            )
+        )
+        # Deferred while characters are speaking (`screen_audio="playing"`)
+        verdict_playing = gk.evaluate(cache, cfg, screen_audio="playing")
+        self.assertFalse(verdict_playing.allow)
+        self.assertEqual(verdict_playing.reason, "waiting_for_screen_audio_gap")
+        self.assertEqual(verdict_playing.scene, "story_media")
+
+        # Once dialogue hits a quiet lull 14s later, the climax is still held and admitted!
+        verdict_quiet = gk.evaluate(cache, cfg, screen_audio="quiet")
+        self.assertTrue(verdict_quiet.allow)
+        self.assertEqual(verdict_quiet.reason, "quiet_screen")
+        turn_ctx = cache.take_turn_context(
+            turn_id="story-turn",
+            proactive=True,
+            salience_threshold=cache.adaptive_pacing(cfg).proactive_salience_threshold,
+        )
+        self.assertIn("信封滑落露出多年前的告别信", turn_ctx)
+        self.assertIn("当前处于剧情沉浸阶段", turn_ctx)
+
+    def test_casual_media_lowers_threshold_and_shortens_quiet_audio_interval(self) -> None:
+        clock = [300.0]
+        now_wall = time.time()
+        cache = RPInputCache()
+        gk = PerceptionGatekeeper(monotonic_fn=lambda: clock[0])
+        cfg = PerceptionConfig(enabled=True, salience_threshold=0.85, proactive_cooldown_sec=25.0)
+
+        # Fun 0.72 moment (below raw 0.85, above casual_media's ~0.68 threshold) fires in casual_media!
+        cache.record_decision(
+            PerceptionDigestResult(
+                scene="casual_media",
+                mood="joyful",
+                digest="主播操作失误把箱子推下悬崖",
+                salience=0.72,
+                created_at=now_wall,
+            )
+        )
+        verdict1 = gk.evaluate(cache, cfg, screen_audio="quiet")
+        self.assertTrue(verdict1.allow)
+        self.assertEqual(verdict1.scene, "casual_media")
+        gk.notify_proactive_fired()
+
+        # Quiet-audio interval is ~45.6s instead of hardcoded 120s!
+        cache.record_decision(
+            PerceptionDigestResult(
+                scene="casual_media",
+                mood="joyful",
+                digest="猫咪突然跳上键盘按下大招",
+                salience=0.74,
+                created_at=now_wall + 1.0,
+            )
+        )
+        clock[0] += 30.0
+        self.assertEqual(gk.evaluate(cache, cfg, screen_audio="quiet").reason, "proactive_cooldown")
+        clock[0] += 20.0  # +50s total (< 120s, > 45.6s)
+        self.assertTrue(gk.evaluate(cache, cfg, screen_audio="quiet").allow)
+
+    def test_combat_suppresses_ambient_barks_and_fires_post_combat_breather(self) -> None:
+        from application.perception.reflex_policy import ReflexPolicy
+
+        clock = [500.0]
+        queued: list[str] = []
+        coordinator = PerceptionCoordinator(
+            get_api_config=lambda: SimpleNamespace(
+                perception_enabled=True,
+                perception_salience_threshold=0.85,
+                perception_proactive_cooldown_sec=25.0,
+                perception_reflex_cooldown_sec=15.0,
+            ),
+            resolve_character=lambda: SimpleNamespace(name="Nanami", sprites=[], emotion_tags=""),
+            is_chat_busy=lambda: False,
+            apply_reflex=lambda *_args: None,
+            enqueue_proactive_turn=lambda prompt: queued.append(prompt) or True,
+            gatekeeper=PerceptionGatekeeper(monotonic_fn=lambda: clock[0]),
+        )
+        cache = coordinator.rp_input_cache
+        hooks = PerceptionAutoHooks(
+            rp_input_cache=cache,
+            gatekeeper=coordinator.gatekeeper,
+            proactive_threshold=coordinator.proactive_turn_threshold,
+        )
+        now_wall = time.time()
+
+        # 1) Mid-combat (`player_busy=True`, salience=0.76): TTS suppressed, ambient bark blocked, fast combat bark allowed
+        combat_res = PerceptionDigestResult(
+            scene="combat",
+            mood="tense",
+            visual_change="cut",
+            digest="红龙高高跃起喷出火焰吐息",
+            salience=0.76,
+            player_busy=True,
+            game="action_rpg",
+            created_at=now_wall - 4.0,
+        )
+        cache.record_decision(combat_res, proactive_threshold=0.85)
+        self.assertEqual(
+            coordinator.gatekeeper.evaluate(cache, coordinator.current_config()).reason,
+            "player_busy",
+        )
+
+        combat_pacing = cache.adaptive_pacing(coordinator.current_config(), now=now_wall - 4.0)
+        self.assertFalse(combat_pacing.allow_ambient_reflex)
+        self.assertLess(combat_pacing.reflex_cooldown_sec, 11.0)  # 0.65x of 15s = 9.75s
+
+        policy = ReflexPolicy()
+        refined_ambient = policy.refine_for_context(
+            combat_res,
+            live_screen=True,
+            screen_text="小心火焰！",
+            screen_text_changed=True,
+            config=coordinator.current_config(),
+            now=100.0,
+            reflex_cooldown_sec=combat_pacing.reflex_cooldown_sec,
+            ambient_cooldown_sec=combat_pacing.ambient_reflex_cooldown_sec,
+            allow_ambient=combat_pacing.allow_ambient_reflex,
+        )
+        self.assertEqual(refined_ambient.bark, "")  # No ambient `（正在读：…）` filler during combat!
+
+        # Genuine character bark fires and respects faster 9.75s combat cooldown (fires again at +10.5s < 15s!)
+        emitted_1 = policy.select_emission(
+            ReflexDecision(act=True, bark="快往侧面翻滚！"),
+            character_name="Nanami",
+            expressions={},
+            sprite_count=0,
+            config=coordinator.current_config(),
+            now=100.0,
+            reflex_cooldown_sec=combat_pacing.reflex_cooldown_sec,
+        )
+        emitted_2 = policy.select_emission(
+            ReflexDecision(act=True, bark="稳住，看准它落地硬直！"),
+            character_name="Nanami",
+            expressions={},
+            sprite_count=0,
+            config=coordinator.current_config(),
+            now=110.5,
+            reflex_cooldown_sec=combat_pacing.reflex_cooldown_sec,
+        )
+        self.assertIsNotNone(emitted_1)
+        self.assertIsNotNone(emitted_2)
+
+        # 2) Combat ends (`player_busy: True -> False`, low 0.45 victory frame) -> post_combat_breather triggers!
+        breather_res = PerceptionDigestResult(
+            scene="exploration",
+            mood="calm",
+            visual_change="detail",
+            digest="红龙倒地化作灰烬，角色收剑站在空地喘息",
+            salience=0.45,
+            player_busy=False,
+            game="action_rpg",
+            created_at=now_wall,
+        )
+        cache.record_decision(breather_res, proactive_threshold=0.85)
+        verdict = coordinator.gatekeeper.evaluate(cache, coordinator.current_config())
+        self.assertTrue(verdict.allow)
+        self.assertEqual(verdict.reason, "post_combat_breather")
+        coordinator._maybe_trigger_proactive(coordinator.current_config())
+        self.assertEqual(len(queued), 1)
+        self.assertTrue(hooks.prepare_turn("breather-turn", "perception"))
+        self.assertIn("激烈操作刚告一段落", hooks._turn_context)
+
+    def test_reading_work_highlight_allows_companionship_without_shared_audio_and_slows_ambient_bubbles(self) -> None:
+        from application.perception.reflex_policy import ReflexPolicy
+
+        clock = [700.0]
+        queued: list[str] = []
+        coordinator = PerceptionCoordinator(
+            get_api_config=lambda: SimpleNamespace(
+                perception_salience_threshold=0.85,
+                perception_proactive_cooldown_sec=25.0,
+                perception_reflex_cooldown_sec=10.0,
+            ),
+            resolve_character=lambda: None,
+            is_chat_busy=lambda: False,
+            apply_reflex=lambda *_args: None,
+            enqueue_proactive_turn=lambda prompt: queued.append(prompt) or True,
+            gatekeeper=PerceptionGatekeeper(monotonic_fn=lambda: clock[0]),
+        )
+        coordinator.ingest(
+            {"screenShareActive": True, "source": "screen_share", "screenPlaybackAudio": "unavailable"}
+        )
+        cache = coordinator.rp_input_cache
+        hooks = PerceptionAutoHooks(
+            rp_input_cache=cache,
+            gatekeeper=coordinator.gatekeeper,
+            proactive_threshold=coordinator.proactive_turn_threshold,
+        )
+        now_wall = time.time()
+
+        # User highlights a key theorem on a silent shared PDF (`screen_audio="unavailable"`)
+        cache.record_highlighted_text("拉格朗日中值定理的几何意义推导", captured_at=now_wall)
+        self.assertEqual(cache.current_scene, "reading_work")
+        verdict = coordinator.gatekeeper.evaluate(
+            cache,
+            replace(coordinator.current_config(), enabled=True),
+            screen_audio="unavailable",
+        )
+        self.assertTrue(verdict.allow)
+        self.assertEqual(verdict.reason, "highlight_focus")
+        coordinator._maybe_trigger_proactive(coordinator.current_config())
+        self.assertEqual(len(queued), 1)
+        self.assertTrue(hooks.prepare_turn("hl-turn", "perception"))
+        self.assertIn("拉格朗日中值定理的几何意义推导", hooks._turn_context)
+        self.assertIn("用户刚划选了重点内容", hooks._turn_context)
+
+        # Reading_work slows passive Option B ambient bubbles (2.4x = 24s instead of 10s)
+        rw_pacing = cache.adaptive_pacing(coordinator.current_config(), now=now_wall)
+        self.assertAlmostEqual(rw_pacing.ambient_reflex_cooldown_sec, 24.0, places=1)
+        policy = ReflexPolicy()
+        policy.last_bark_monotonic = 100.0
+        suppressed = policy.refine_for_context(
+            PerceptionDigestResult(scene="reading_work", visual_change="cut", digest="翻到下一页公式"),
+            live_screen=True,
+            screen_text="下一段定理说明",
+            screen_text_changed=True,
+            config=coordinator.current_config(),
+            now=115.0,  # +15s > 10s base cooldown, but < 24s ambient reading_work cooldown!
+            reflex_cooldown_sec=rw_pacing.reflex_cooldown_sec,
+            ambient_cooldown_sec=rw_pacing.ambient_reflex_cooldown_sec,
+            allow_ambient=rw_pacing.allow_ambient_reflex,
+        )
+        self.assertEqual(suppressed.bark, "")
+
+        # Static idle desktop (>= 25s without changes) disables ambient bubbles & stretches proactive cooldown
+        idle_cache = RPInputCache()
+        idle_cache.record_decision(
+            PerceptionDigestResult(
+                scene="idle",
+                visual_change="cut",
+                digest="静止的桌面壁纸",
+                salience=0.1,
+                created_at=now_wall - 40.0,
+            )
+        )
+        idle_pacing = idle_cache.adaptive_pacing(PerceptionConfig(proactive_cooldown_sec=25.0), now=now_wall)
+        self.assertEqual(idle_pacing.scene, "idle")
+        self.assertFalse(idle_pacing.allow_ambient_reflex)
+        self.assertGreater(idle_pacing.proactive_cooldown_sec, 60.0)
+
+    def test_unanswered_proactive_backoff_user_reply_reset_and_rapport_boost(self) -> None:
+        clock = [900.0]
+        cache = RPInputCache()
+        gk = PerceptionGatekeeper(monotonic_fn=lambda: clock[0])
+        hooks = PerceptionAutoHooks(rp_input_cache=cache, gatekeeper=gk)
+        cfg = PerceptionConfig(enabled=True, salience_threshold=0.85, proactive_cooldown_sec=20.0)
+        now_wall = time.time()
+
+        cache.record_decision(
+            PerceptionDigestResult(
+                scene="casual_media",
+                mood="joyful",
+                digest="搞笑集锦片段",
+                salience=0.80,
+                created_at=now_wall,
+            )
+        )
+        base_pacing = cache.adaptive_pacing(cfg, now=now_wall)
+
+        # Simulate 3 unanswered proactive turns -> progressive backoff
+        gk.notify_proactive_fired()
+        gk.notify_proactive_fired()
+        gk.notify_proactive_fired()
+        # Perception-injected user message MUST NOT reset unanswered count
+        hooks.message_added(
+            SimpleNamespace(role="user", message={"role": "user", "source": "perception"})  # type: ignore[arg-type]
+        )
+        unanswered, _ = gk.engagement_state(now=clock[0])
+        self.assertEqual(unanswered, 3)
+
+        backed_off = cache.adaptive_pacing(cfg, now=now_wall, unanswered_proactive_count=unanswered)
+        self.assertAlmostEqual(backed_off.unanswered_backoff_factor, 2.0)
+        self.assertGreater(backed_off.proactive_cooldown_sec, base_pacing.proactive_cooldown_sec * 1.9)
+        self.assertGreater(backed_off.proactive_salience_threshold, base_pacing.proactive_salience_threshold + 0.05)
+
+        # Scene switch (`casual_media -> exploration`) decays unanswered count by 1
+        gk.evaluate(cache, cfg, screen_audio="quiet")  # observes `casual_media`
+        cache.record_decision(
+            PerceptionDigestResult(
+                scene="exploration",
+                mood="calm",
+                digest="切换到游戏森林地图跑图",
+                salience=0.80,
+                game="open_world",
+                created_at=now_wall + 1.0,
+            )
+        )
+        cache.record_decision(
+            PerceptionDigestResult(
+                scene="exploration",
+                mood="calm",
+                digest="沿着河岸继续前进",
+                salience=0.80,
+                game="open_world",
+                created_at=now_wall + 2.0,
+            )
+        )
+        gk.evaluate(cache, cfg)
+        self.assertEqual(gk.engagement_state(now=clock[0])[0], 2)
+
+        # Real user reply resets unanswered count to 0 AND activates warm rapport boost!
+        clock[0] += 10.0
+        hooks.message_added(
+            SimpleNamespace(role="user", message={"role": "user", "content": "哈哈这波太逗了"})  # type: ignore[arg-type]
+        )
+        clock[0] += 12.0  # 12s after user reply (within 3s..90s warm rapport window)
+        unanswered_after, since_user = gk.engagement_state(now=clock[0])
+        self.assertEqual(unanswered_after, 0)
+        rapport_pacing = cache.adaptive_pacing(
+            cfg,
+            now=now_wall + 2.0,
+            unanswered_proactive_count=unanswered_after,
+            seconds_since_user_reply=since_user,
+        )
+        self.assertTrue(rapport_pacing.rapport_boost_active)
+        exp_baseline = cache.adaptive_pacing(cfg, now=now_wall + 2.0)
+        self.assertLess(rapport_pacing.proactive_cooldown_sec, exp_baseline.proactive_cooldown_sec)
+        self.assertLess(rapport_pacing.proactive_salience_threshold, exp_baseline.proactive_salience_threshold)
+
+    def test_rp_context_deduplicates_repeated_clauses_stale_anchors_and_turn_deltas(self) -> None:
+        from ai.memory.rule_recall_planner import _extract_perception_clauses
+
+        now = time.time()
+        cache = RPInputCache()
+
+        # 1) Visual clause-level deduplication: Qwen repeating scene prefix across `detail` frames
+        cache.record_decision(
+            PerceptionDigestResult(
+                visual_change="cut",
+                digest="白发少女站在花田中央，微风吹动长发",
+                salience=0.45,
+                created_at=now - 6.0,
+            )
+        )
+        cache.record_decision(
+            PerceptionDigestResult(
+                visual_change="detail",
+                digest="白发少女站在花田中央，转身露出微笑",
+                salience=0.55,
+                created_at=now - 4.0,
+            )
+        )
+        cache.record_decision(
+            PerceptionDigestResult(
+                visual_change="detail",
+                digest="白发少女站在花田中，抬手遮住阳光",
+                salience=0.60,
+                created_at=now - 2.0,
+            )
+        )
+        cache.record_decision(
+            PerceptionDigestResult(
+                visual_change="detail",
+                digest="白发少女站在花田中央",
+                salience=0.40,
+                created_at=now - 1.0,
+            )
+        )
+        rendered = cache.format_for_rp_context(consume=False, include_recent_events=True)
+        self.assertEqual(rendered.count("白发少女站在花田"), 1)
+        self.assertIn("转身露出微笑", rendered)
+        self.assertIn("抬手遮住阳光", rendered)
+
+        # 2) Episode archive deduplication when `overall_summary` already matches `minute_summary`
+        ep_cache = RPInputCache()
+        ep_cache.commit_summary_job(
+            minute_summary="字幕：两人核对星图数据。画面：书房内翻阅手稿。",
+            overall_summary="字幕：两人核对星图数据。画面：书房内翻阅手稿。",
+            start_ts=now - 180.0,
+            end_ts=now - 65.0,
+        )
+        ep_cache.record_decision(
+            PerceptionDigestResult(visual_change="cut", digest="推开天文台大门", created_at=now - 2.0)
+        )
+        ep_rendered = ep_cache.format_for_rp_context(consume=False, include_recent_events=True)
+        self.assertEqual(ep_rendered.count("两人核对星图数据"), 1)
+        self.assertIn("[总体纪要]", ep_rendered)
+        self.assertNotIn("[分段纪要·", ep_rendered)
+
+        # 3) Consumed `scene_anchor` preserves true origin age & marks static background; omitted on fresh cut
+        anchor_cache = RPInputCache()
+        anchor_cache.record_decision(
+            PerceptionDigestResult(
+                visual_change="cut",
+                digest="篝火旁坐着背插断剑的骑士",
+                salience=0.88,
+                created_at=now - 50.0,
+            )
+        )
+        with patch("core.perception.cache.memory.time.time", return_value=now - 49.0):
+            first_proactive = anchor_cache.take_turn_context(
+                turn_id="p1", proactive=True, salience_threshold=0.85
+            )
+        self.assertIn("篝火旁坐着背插断剑的骑士", first_proactive)
+
+        # Static frames (`visual_change="none"`) keep refreshing `scene_anchor_at = now`
+        anchor_cache.record_decision(
+            PerceptionDigestResult(visual_change="none", digest="", salience=0.0, created_at=now - 1.0)
+        )
+        anchor_cache.record_screen_text("北方的城池已经陷落。", captured_at=now - 0.8)
+        anchor_cache.record_decision(
+            PerceptionDigestResult(visual_change="none", digest="", salience=0.89, created_at=now - 0.5)
+        )
+        second_proactive = anchor_cache.take_turn_context(
+            turn_id="p2", proactive=True, salience_threshold=0.85
+        )
+        self.assertIn("[画面背景·沿用前序场景（约 50 秒前），未变化勿重复提]：篝火旁坐着背插断剑的骑士", second_proactive)
+        self.assertNotIn("当前场景（约 0 秒前）", second_proactive)
+
+        # Fresh `cut` beat in Turn 3 drops the old consumed campfire anchor completely
+        anchor_cache.record_decision(
+            PerceptionDigestResult(
+                visual_change="cut",
+                digest="城门在火光中轰然倒塌",
+                salience=0.92,
+                created_at=now,
+            )
+        )
+        third_proactive = anchor_cache.take_turn_context(
+            turn_id="p3", proactive=True, salience_threshold=0.85
+        )
+        self.assertIn("城门在火光中轰然倒塌", third_proactive)
+        self.assertNotIn("篝火旁坐着背插断剑的骑士", third_proactive)
+
+        # 4) User-turn delta cue (`无新变化` vs `本轮新增动态`)
+        user_cache = RPInputCache()
+        hooks = PerceptionAutoHooks(rp_input_cache=user_cache, gatekeeper=PerceptionGatekeeper())
+        user_cache.record_decision(
+            PerceptionDigestResult(visual_change="cut", digest="桌上放着摔裂的旧怀表", salience=0.6, created_at=now - 10.0)
+        )
+        self.assertTrue(hooks.prepare_turn("u1", "user"))
+
+        # Turn u2 with NO new screen changes marks context as already seen
+        self.assertTrue(hooks.prepare_turn("u2", "user"))
+        self.assertIn("当前屏幕尚无新变化", hooks._turn_context)
+
+        # Turn u3 after a new screen action highlights ONLY the new item as fresh
+        user_cache.record_decision(
+            PerceptionDigestResult(visual_change="detail", digest="主角拾起铜钥匙打开暗门", salience=0.7, created_at=now - 1.0)
+        )
+        self.assertTrue(hooks.prepare_turn("u3", "user"))
+        self.assertIn("本轮新增动态：仅「主角拾起铜钥匙打开暗门」为上次发言后的新变化", hooks._turn_context)
+
+        user_msg = {"role": "user", CHAT_TURN_ID: "u3", "content": "里面有什么？"}
+        hooks.before_chat(SimpleNamespace(messages=[user_msg]))  # type: ignore[arg-type]
+        injected_text = str(user_msg["content"])
+        self.assertNotIn("避免重复：你前几轮刚说过", injected_text)
+        self.assertTrue(injected_text.endswith("\n\n请根据你看到的内容回复。"))
+
+        # Memory recall planner strips meta-instructions and extracts only real scene observations
+        clauses = _extract_perception_clauses(injected_text, max_clauses=3)
+        self.assertIn("主角拾起铜钥匙打开暗门", clauses)
+        self.assertTrue(all("本轮新增动态" not in c and "请根据你看到" not in c for c in clauses))
+
+
 if __name__ == "__main__":
     unittest.main()

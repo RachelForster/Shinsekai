@@ -238,10 +238,12 @@ def build_cloud_summary_messages(
         f'  "overall_summary": "{overall_max_chars}字以内，在既有总体纪要基础上融合本段主线进展，保留核心人物/线索/胜负转折，禁止附带情绪基调标签",\n'
         '  "mood": "calm|serious|sad|tense|joyful|hyped|unclear",\n'
         '  "guidance": {\n'
+        '    "scene_type": "auto|story_media|casual_media|combat|exploration|reading_work|idle",\n'
         '    "scene_pace": "auto|dialogue_heavy|action_heavy|quiet",\n'
         '    "visual_beats_subtitle_heavy": 2,\n'
         '    "visual_beats_visual_heavy": 5,\n'
         '    "notable_salience_floor": 0.85,\n'
+        '    "proactive_salience_threshold": 0.85,\n'
         '    "focus_hint": "给本地视觉模型的简短观察侧重提示（28字以内，无需调整填\\"\\"）"\n'
         "  }\n"
         "}\n"
@@ -250,8 +252,9 @@ def build_cloud_summary_messages(
         f"{minute_max_chars}字以内），做高度归纳提炼而非逐条复述，且不要自带“字幕：”“画面：”“转折：”前缀。\n"
         "2. turning_point 宁缺毋滥：常规剧情推进、普通对话或日常走位探索时必须填 \"\"，严禁硬凑或填写“无明显转折”。\n"
         "3. 只依据提供的观察记录整理，OCR谐音错字可结合上下文轻微修正，禁止主观感叹、情绪基调判断或脑补未出现的信息。\n"
-        "4. guidance用于主动自适应指导后续参数：台词密集的文戏/科普/访谈设 scene_pace=\"dialogue_heavy\"、visual_beats_subtitle_heavy=1~2；"
-        "少台词的探索/战斗设 scene_pace=\"action_heavy\"、visual_beats_visual_heavy=5~6；若琐碎波动过多可上调 notable_salience_floor（0.85~0.92）。无需调整时 guidance 可填 {}。\n"
+        "4. guidance用于主动自适应指导后续参数：结合本段活动判断 scene_type（严肃番剧/剧情演出填 story_media，轻松视频/直播填 casual_media，战斗填 combat，跑图整备填 exploration，看文档代码填 reading_work，长时静止填 idle）；"
+        "台词密集设 scene_pace=\"dialogue_heavy\"、visual_beats_subtitle_heavy=1~2；"
+        "少台词的探索/战斗设 scene_pace=\"action_heavy\"、visual_beats_visual_heavy=5~6；可按场景微调 proactive_salience_threshold（0.60~0.92）与 notable_salience_floor（0.70~0.92）。无需调整时 guidance 可填 {}。\n"
         "5. 只输出一行合法JSON对象，不要包含Markdown代码块。"
     )
 

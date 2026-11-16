@@ -220,14 +220,17 @@ describe("Perception chat-stage state & components", () => {
       const { container, unmount } = render(
         <I18nProvider language="zh_CN">
           <ScreenShareSettingsDialog
+            currentScene="story_media"
             ocrEnabled
             onClose={() => {}}
             onScopeChange={onScopeChange}
+            proactiveEnabled
             scope={{ mode: "bottom" }}
             stream={{} as MediaStream}
           />
         </I18nProvider>,
       );
+      expect(screen.getByText("当前识别场景：剧情沉浸")).toBeVisible();
       fireEvent.click(screen.getByRole("button", { name: "全屏文字" }));
       expect(onScopeChange).toHaveBeenLastCalledWith({ mode: "full" });
       fireEvent.loadedMetadata(container.querySelector("video")!);

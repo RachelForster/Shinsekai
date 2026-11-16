@@ -1241,6 +1241,7 @@ export function ChatStagePage() {
         {historyExport && <HistoryExportDialog result={historyExport} onClose={() => setHistoryExport(undefined)} />}
         {screenSettingsOpen && screenShareStream ? (
           <ScreenShareSettingsDialog
+            currentScene={state.perception?.rpCache?.currentScene}
             ocrEnabled={Boolean(state.perception?.ocrEnabled)}
             onClose={() => setScreenSettingsOpen(false)}
             onScopeChange={changeOcrScope}

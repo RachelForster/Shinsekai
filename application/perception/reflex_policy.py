@@ -112,9 +112,14 @@ class ReflexPolicy:
         screen_text_changed: bool,
         config: PerceptionConfig,
         now: float,
+        reflex_cooldown_sec: float | None = None,
+        ambient_cooldown_sec: float | None = None,
+        allow_ambient: bool = True,
     ) -> ReflexDecision:
         """Apply subtitle-echo check, `unclear` mood silence, and Option B ambient bubbles."""
         reflex = result.reflex
+        eff_reflex_cd = config.reflex_cooldown_sec if reflex_cooldown_sec is None else reflex_cooldown_sec
+        eff_ambient_cd = eff_reflex_cd if ambient_cooldown_sec is None else ambient_cooldown_sec
 
         if live_screen and reflex.bark:
             spoken = comparison_text(reflex.bark)
@@ -128,8 +133,9 @@ class ReflexPolicy:
         if (
             live_screen
             and config.reflex_enabled
+            and allow_ambient
             and not reflex.bark
-            and self.is_bark_cooldown_open(now=now, cooldown_sec=config.reflex_cooldown_sec)
+            and self.is_bark_cooldown_open(now=now, cooldown_sec=eff_ambient_cd)
         ):
             fresh_text = screen_text if screen_text_changed else result.ocr_text
             reading_focus = short_reading_focus(fresh_text)
@@ -159,6 +165,9 @@ class ReflexPolicy:
         sprite_choices: Mapping[int, str] | None = None,
         fallback_bark: str = "",
         now: float,
+        reflex_cooldown_sec: float | None = None,
+        ambient_cooldown_sec: float | None = None,
+        allow_ambient: bool = True,
     ) -> ReflexDecision | None:
         """Resolve final `(sprite, bark)` under cooldown and similarity deduplication."""
         expression = canonical_expression(reflex.expression)
@@ -184,7 +193,13 @@ class ReflexPolicy:
         if sprite_idx is not None and not 0 <= sprite_idx < sprite_count:
             sprite_idx = None
 
-        if not self.is_bark_cooldown_open(now=now, cooldown_sec=config.reflex_cooldown_sec):
+        eff_reflex_cd = config.reflex_cooldown_sec if reflex_cooldown_sec is None else reflex_cooldown_sec
+        eff_ambient_cd = eff_reflex_cd if ambient_cooldown_sec is None else ambient_cooldown_sec
+        ambient_only = sprite_idx is None and is_ambient_reaction_bark(reflex.bark)
+        if ambient_only and not allow_ambient:
+            return None
+        required_cd = eff_ambient_cd if ambient_only else eff_reflex_cd
+        if not self.is_bark_cooldown_open(now=now, cooldown_sec=required_cd):
             return None
 
         if self.last_sprite == (character_name, sprite_idx) and (now - self.last_sprite_monotonic) < 4.0:

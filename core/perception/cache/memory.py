@@ -24,12 +24,23 @@ from core.perception.cache.tracks import (
 )
 from core.perception.models import (
     CachedPerceptionEvent,
+    PerceptionConfig,
     PerceptionDigestResult,
     ReflexDecision,
+    SceneType,
     TextObservationSource,
     VisionEpisode,
     normalize_scene_mood,
+    normalize_scene_type,
     normalize_visual_change,
+)
+from core.perception.pacing import (
+    AdaptivePacingProfile,
+    POST_COMBAT_BREATHER_WINDOW_SEC,
+    SceneActivitySignals,
+    compute_adaptive_pacing,
+    majority_scene_vote,
+    proactive_scene_delivery_hint,
 )
 from core.perception.policy import PerceptionMemoryPolicy
 
@@ -81,6 +92,15 @@ class RPInputCache:
 
         self._current_mood: str = "unclear"
         self._current_mood_at: float = 0.0
+        self._recent_scene_votes: deque[tuple[float, str]] = deque(maxlen=5)
+        self._first_observation_at: float = 0.0
+        self._last_activity_change_at: float = 0.0
+        self._combat_busy_since: float = 0.0
+        self._combat_ended_at: float = 0.0
+        self._combat_peak_salience: float = 0.0
+        self._last_subtitle_at: float = 0.0
+        self._last_highlight_at: float = 0.0
+        self._last_cursor_at: float = 0.0
         self._notable_events: deque[CachedPerceptionEvent] = deque(maxlen=self._max_notable_events)
         self._latest_salience: float = 0.0
         self._player_busy: bool = False
@@ -94,6 +114,115 @@ class RPInputCache:
         self._next_seq += 1
         return self._next_seq
 
+    def _activity_signals_locked(
+        self,
+        *,
+        now: float,
+        unanswered_proactive_count: int = 0,
+        seconds_since_user_reply: float | None = None,
+    ) -> SceneActivitySignals:
+        explicit_scene = majority_scene_vote(self._recent_scene_votes, now=now, window_sec=20.0)
+        subtitle_count_30s = sum(
+            1
+            for item in self._subtitles.items
+            if item.source == "subtitle" and 0.0 <= now - item.timestamp <= 30.0
+        )
+        visual_cuts_30s = sum(
+            1 for beat in self._visual.beats if 0.0 <= now - beat.timestamp <= 30.0
+        )
+        post_combat_sec: float | None = None
+        if (
+            not self._player_busy
+            and self._combat_ended_at > 0.0
+            and 0.0 <= now - self._combat_ended_at <= POST_COMBAT_BREATHER_WINDOW_SEC
+        ):
+            post_combat_sec = now - self._combat_ended_at
+        static_sec = (
+            max(0.0, now - self._last_activity_change_at)
+            if self._last_activity_change_at > 0.0
+            else 0.0
+        )
+        since_sub = max(0.0, now - self._last_subtitle_at) if self._last_subtitle_at > 0.0 else None
+        since_hl = max(0.0, now - self._last_highlight_at) if self._last_highlight_at > 0.0 else None
+        since_cur = max(0.0, now - self._last_cursor_at) if self._last_cursor_at > 0.0 else None
+        return SceneActivitySignals(
+            explicit_scene=explicit_scene,
+            cloud_scene=self.policy.cloud_scene,
+            scene_pace=self.policy.scene_pace,
+            mood=self._current_mood,
+            player_busy=self._player_busy,
+            post_combat_breather_sec=post_combat_sec,
+            combat_peak_salience=self._combat_peak_salience,
+            active_game=self._active_game,
+            subtitle_count_30s=subtitle_count_30s,
+            seconds_since_last_subtitle=since_sub,
+            seconds_since_last_highlight=since_hl,
+            seconds_since_last_cursor=since_cur,
+            visual_cuts_30s=visual_cuts_30s,
+            static_duration_sec=static_sec,
+            unanswered_proactive_count=unanswered_proactive_count,
+            seconds_since_user_reply=seconds_since_user_reply,
+        )
+
+    def _adaptive_pacing_locked(
+        self,
+        config: PerceptionConfig | None = None,
+        *,
+        now: float | None = None,
+        unanswered_proactive_count: int = 0,
+        seconds_since_user_reply: float | None = None,
+    ) -> AdaptivePacingProfile:
+        ts = time.time() if now is None else float(now)
+        signals = self._activity_signals_locked(
+            now=ts,
+            unanswered_proactive_count=unanswered_proactive_count,
+            seconds_since_user_reply=seconds_since_user_reply,
+        )
+        return compute_adaptive_pacing(signals, config or PerceptionConfig(), self.policy)
+
+    def activity_signals(
+        self,
+        *,
+        now: float | None = None,
+        unanswered_proactive_count: int = 0,
+        seconds_since_user_reply: float | None = None,
+    ) -> SceneActivitySignals:
+        ts = time.time() if now is None else float(now)
+        with self._lock:
+            return self._activity_signals_locked(
+                now=ts,
+                unanswered_proactive_count=unanswered_proactive_count,
+                seconds_since_user_reply=seconds_since_user_reply,
+            )
+
+    def adaptive_pacing(
+        self,
+        config: PerceptionConfig | None = None,
+        *,
+        now: float | None = None,
+        unanswered_proactive_count: int = 0,
+        seconds_since_user_reply: float | None = None,
+    ) -> AdaptivePacingProfile:
+        with self._lock:
+            return self._adaptive_pacing_locked(
+                config,
+                now=now,
+                unanswered_proactive_count=unanswered_proactive_count,
+                seconds_since_user_reply=seconds_since_user_reply,
+            )
+
+    @property
+    def current_scene(self) -> SceneType:
+        with self._lock:
+            return self._adaptive_pacing_locked().scene
+
+    def seconds_since_last_subtitle(self, *, now: float | None = None) -> float | None:
+        ts = time.time() if now is None else float(now)
+        with self._lock:
+            if self._last_subtitle_at <= 0.0:
+                return None
+            return max(0.0, ts - self._last_subtitle_at)
+
     def apply_cloud_guidance(self, guidance: Mapping[str, Any] | None) -> dict[str, Any]:
         """Thread-safely apply adaptive parameter adjustments from the Cloud LLM."""
         with self._lock:
@@ -106,6 +235,7 @@ class RPInputCache:
         captured_at: float,
         source: TextObservationSource = "subtitle",
     ) -> bool:
+        clean_raw = str(text or "").strip()
         with self._lock:
             changed = self._subtitles.record_text(
                 text,
@@ -114,8 +244,34 @@ class RPInputCache:
                 on_evict=self._episodes.stage,
                 source=source,
             )
-            if str(text or "").strip():
+            if clean_raw:
                 self._updated_at = max(self._updated_at, captured_at)
+                if self._first_observation_at <= 0.0:
+                    self._first_observation_at = captured_at
+                if changed:
+                    self._last_activity_change_at = max(self._last_activity_change_at, captured_at)
+                    if source == "subtitle":
+                        self._last_subtitle_at = max(self._last_subtitle_at, captured_at)
+                    elif source == "highlight":
+                        self._last_highlight_at = max(self._last_highlight_at, captured_at)
+                        hl_summary = clean_raw[:160]
+                        hl_key = observation_key(hl_summary)
+                        if len(hl_key) >= 6 and (
+                            not self._notable_events
+                            or observation_key(self._notable_events[-1].summary) != hl_key
+                        ):
+                            self._notable_events.append(
+                                CachedPerceptionEvent(
+                                    summary=hl_summary,
+                                    salience=0.72,
+                                    game=self._active_game,
+                                    timestamp=captured_at,
+                                    consumed=False,
+                                    seq=self._alloc_seq(),
+                                )
+                            )
+                    elif source == "cursor":
+                        self._last_cursor_at = max(self._last_cursor_at, captured_at)
             return changed
 
     def record_highlighted_text(self, text: str, *, captured_at: float | None = None) -> bool:
@@ -135,14 +291,29 @@ class RPInputCache:
         raw_digest = str(result.digest or "").strip()
         salience = max(0.0, min(1.0, float(result.salience or 0.0)))
         now = float(result.created_at or time.time())
+        scene_tag = normalize_scene_type(result.scene)
         mood = normalize_scene_mood(result.mood)
         visual_change = normalize_visual_change(result.visual_change, has_digest=bool(raw_digest))
 
         with self._lock:
+            was_busy = self._player_busy
+            now_busy = bool(result.player_busy)
+            if now_busy:
+                if not was_busy:
+                    self._combat_busy_since = now
+                    self._combat_peak_salience = salience
+                else:
+                    self._combat_peak_salience = max(self._combat_peak_salience, salience)
+                self._combat_ended_at = 0.0
+            elif was_busy:
+                self._combat_ended_at = now
+            self._player_busy = now_busy
             self._latest_salience = salience
-            self._player_busy = bool(result.player_busy)
+
             if result.game:
                 self._active_game = str(result.game).strip()[:64]
+            if scene_tag and scene_tag != "auto":
+                self._recent_scene_votes.append((now, scene_tag))
             if mood and mood != "unclear":
                 self._current_mood = mood
                 self._current_mood_at = now
@@ -155,6 +326,12 @@ class RPInputCache:
                 self._last_reflex = replace(result.reflex, bark="")
 
             self._updated_at = max(self._updated_at, now)
+            if self._first_observation_at <= 0.0:
+                self._first_observation_at = now
+            if (visual_change != "none" and raw_digest) or result.ocr_text or now_busy or (was_busy and not now_busy):
+                self._last_activity_change_at = max(self._last_activity_change_at, now)
+            elif self._last_activity_change_at <= 0.0:
+                self._last_activity_change_at = now
             self._last_latency_ms = float(result.latency_ms or 0.0)
             self._digest_count += 1
 
@@ -173,9 +350,21 @@ class RPInputCache:
                 on_evict=self._episodes.stage,
             )
 
+            base_cfg = PerceptionConfig(
+                salience_threshold=(
+                    proactive_threshold
+                    if proactive_threshold is not None
+                    else self.policy.proactive_salience_threshold
+                )
+            )
+            pacing = self._adaptive_pacing_locked(base_cfg, now=now)
             floor = self.policy.notable_salience_floor
             if proactive_threshold is not None:
                 floor = min(floor, proactive_threshold)
+            if pacing.scene != "auto" or pacing.post_combat_breather or pacing.recent_highlight:
+                floor = min(floor, pacing.proactive_salience_threshold)
+            if now_busy:
+                floor = min(floor, max(0.65, base_cfg.salience_threshold - 0.18))
             if salience >= floor:
                 event_summary = cleaned_visual
                 if not event_summary:
@@ -443,15 +632,38 @@ class RPInputCache:
 
             now = time.time()
             if proactive:
-                peak = self.pending_salience(max_age_sec=PROACTIVE_EVENT_MAX_AGE_SEC)
+                pacing = self._adaptive_pacing_locked(now=now)
+                event_max_age = max(PROACTIVE_EVENT_MAX_AGE_SEC, pacing.pending_event_max_age_sec)
+                peak = self.pending_salience(max_age_sec=event_max_age)
                 if peak < salience_threshold:
                     return ""
+                trigger_cutoff = now - event_max_age
+                trigger_event = max(
+                    (
+                        ev
+                        for ev in self._notable_events
+                        if not ev.consumed
+                        and ev.seq > self._consumed_seq
+                        and ev.timestamp >= trigger_cutoff
+                    ),
+                    key=lambda ev: (ev.salience, ev.seq),
+                    default=None,
+                )
                 block, snapshot_seq = self._render_locked(
                     now=now,
-                    max_age_sec=45.0 if salience_threshold else PROACTIVE_EVENT_MAX_AGE_SEC,
+                    max_age_sec=max(16.0, event_max_age) if salience_threshold else event_max_age,
                     include_recent_events=False,
                     pending_only=True,
                 )
+                if block:
+                    if trigger_event is not None and block.count("\n  * ") >= 2:
+                        block = (
+                            f"{block}\n"
+                            f"- 本次触发焦点：{trigger_event.summary[:72]}（聚焦此新变化自然回应一句，切勿逐条复述或重复旧话题）"
+                        )
+                    delivery_hint = proactive_scene_delivery_hint(pacing)
+                    if delivery_hint:
+                        block = f"{block}\n{delivery_hint}"
             elif allow_consumed_context:
                 block, snapshot_seq = self._render_locked(
                     now=now,
@@ -475,20 +687,31 @@ class RPInputCache:
                     self._frozen_turns.popitem(last=False)
             return block
 
-    def has_recent_pending_observations(self) -> bool:
+    def has_recent_pending_observations(self, *, max_age_sec: float | None = None) -> bool:
         with self._lock:
+            now = time.time()
+            effective_age = (
+                max_age_sec
+                if max_age_sec is not None
+                else max(PROACTIVE_EVENT_MAX_AGE_SEC, self._adaptive_pacing_locked(now=now).pending_event_max_age_sec)
+            )
             block, _ = self._render_locked(
-                now=time.time(),
-                max_age_sec=PROACTIVE_EVENT_MAX_AGE_SEC,
+                now=now,
+                max_age_sec=effective_age,
                 include_recent_events=False,
                 pending_only=True,
             )
             return bool(block)
 
     def format_proactive_trigger_prompt(self, *, consume: bool = True) -> str:
+        with self._lock:
+            event_max_age = max(
+                PROACTIVE_EVENT_MAX_AGE_SEC,
+                self._adaptive_pacing_locked().pending_event_max_age_sec,
+            )
         context_block = self.format_for_rp_context(
             consume=consume,
-            max_age_sec=PROACTIVE_EVENT_MAX_AGE_SEC,
+            max_age_sec=event_max_age,
             include_recent_events=False,
             pending_only=True,
         )
@@ -511,6 +734,15 @@ class RPInputCache:
             self.policy.reset_adaptive()
             self._current_mood = "unclear"
             self._current_mood_at = 0.0
+            self._recent_scene_votes.clear()
+            self._first_observation_at = 0.0
+            self._last_activity_change_at = 0.0
+            self._combat_busy_since = 0.0
+            self._combat_ended_at = 0.0
+            self._combat_peak_salience = 0.0
+            self._last_subtitle_at = 0.0
+            self._last_highlight_at = 0.0
+            self._last_cursor_at = 0.0
             self._notable_events.clear()
             self._latest_salience = 0.0
             self._player_busy = False
@@ -541,6 +773,15 @@ class RPInputCache:
             self._subtitles.clear()
             self._current_mood = "unclear"
             self._current_mood_at = 0.0
+            self._recent_scene_votes.clear()
+            self._first_observation_at = 0.0
+            self._last_activity_change_at = 0.0
+            self._combat_busy_since = 0.0
+            self._combat_ended_at = 0.0
+            self._combat_peak_salience = 0.0
+            self._last_subtitle_at = 0.0
+            self._last_highlight_at = 0.0
+            self._last_cursor_at = 0.0
             self._notable_events.clear()
             self._frozen_turns.clear()
             self.mark_consumed()
@@ -548,18 +789,28 @@ class RPInputCache:
     def clear_screen_text(self, *, preserve_highlights: bool = False) -> None:
         with self._lock:
             self._subtitles.clear(preserve_highlights=preserve_highlights)
+            self._last_subtitle_at = 0.0
+            self._last_cursor_at = 0.0
+            if not preserve_highlights:
+                self._last_highlight_at = 0.0
 
     def to_status_dict(self) -> dict[str, Any]:
         with self._lock:
+            pacing = self._adaptive_pacing_locked()
+            event_max_age = max(PROACTIVE_EVENT_MAX_AGE_SEC, pacing.pending_event_max_age_sec)
             return {
                 "currentDigest": self.current_digest,
                 "sceneAnchor": self._visual.scene_anchor,
+                "currentScene": pacing.scene,
                 "currentMood": self._current_mood,
                 "overallSummary": self._episodes.overall_summary,
                 "latestSalience": round(self._latest_salience, 3),
                 "unconsumedPeakSalience": round(
-                    self.pending_salience(max_age_sec=PROACTIVE_EVENT_MAX_AGE_SEC), 3
+                    self.pending_salience(max_age_sec=event_max_age), 3
                 ),
+                "effectiveSalienceThreshold": round(pacing.proactive_salience_threshold, 3),
+                "effectiveProactiveCooldownSec": round(pacing.proactive_cooldown_sec, 1),
+                "effectiveReflexCooldownSec": round(pacing.reflex_cooldown_sec, 1),
                 "playerBusy": self._player_busy,
                 "activeGame": self._active_game,
                 "episodeCount": len(self._episodes.episodes),

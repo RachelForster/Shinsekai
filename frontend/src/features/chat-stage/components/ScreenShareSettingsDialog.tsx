@@ -14,6 +14,15 @@ const playbackAudioLabels = {
   stopped: "chat.perception.audioStopped",
 } as const;
 
+const sceneLabels = {
+  story_media: "chat.perception.scene.story_media",
+  casual_media: "chat.perception.scene.casual_media",
+  combat: "chat.perception.scene.combat",
+  exploration: "chat.perception.scene.exploration",
+  reading_work: "chat.perception.scene.reading_work",
+  idle: "chat.perception.scene.idle",
+} as const;
+
 function previewPoint(event: PointerEvent<HTMLDivElement>): Point {
   const rect = event.currentTarget.getBoundingClientRect();
   return {
@@ -32,6 +41,7 @@ function selectionBetween(start: Point, end: Point): ScreenOcrRegion {
 }
 
 export function ScreenShareSettingsDialog({
+  currentScene,
   ocrEnabled,
   onClose,
   onScopeChange,
@@ -40,6 +50,7 @@ export function ScreenShareSettingsDialog({
   scope,
   stream,
 }: {
+  currentScene?: string;
   ocrEnabled: boolean;
   onClose: () => void;
   onScopeChange: (scope: ScreenOcrScope) => void;
@@ -100,6 +111,8 @@ export function ScreenShareSettingsDialog({
 
   const region = drawing ?? (scope.mode === "region" ? scope.region : null);
   const ratio = aspectRatio ?? 16 / 9;
+  const sceneLabelKey =
+    currentScene && currentScene in sceneLabels ? sceneLabels[currentScene as keyof typeof sceneLabels] : null;
   return (
     <ChatStageModal
       backdropClassName="screen-share-settings-backdrop"
@@ -170,6 +183,11 @@ export function ScreenShareSettingsDialog({
         <p className="screen-share-settings__hint">
           {t(ocrEnabled ? "chat.perception.ocrDragHint" : "chat.perception.ocrDisabledHint")}
         </p>
+        {sceneLabelKey ? (
+          <p className="screen-share-settings__hint">
+            {t("chat.perception.currentScene", { scene: t(sceneLabelKey) })}
+          </p>
+        ) : null}
         {proactiveEnabled ? (
           <p className="screen-share-settings__hint">{t(playbackAudioLabels[playbackAudio])}</p>
         ) : null}
