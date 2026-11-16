@@ -98,7 +98,7 @@ class RPInputCache:
         self._combat_busy_since: float = 0.0
         self._combat_ended_at: float = 0.0
         self._combat_peak_salience: float = 0.0
-        self._last_subtitle_at: float = 0.0
+        self._last_subtitle_observed_at: float = 0.0
         self._last_highlight_at: float = 0.0
         self._last_cursor_at: float = 0.0
         self._notable_events: deque[CachedPerceptionEvent] = deque(maxlen=self._max_notable_events)
@@ -128,7 +128,9 @@ class RPInputCache:
             if item.source == "subtitle" and 0.0 <= now - item.timestamp <= 30.0
         )
         visual_cuts_30s = sum(
-            1 for beat in self._visual.beats if 0.0 <= now - beat.timestamp <= 30.0
+            1
+            for beat in self._visual.beats
+            if beat.kind == "cut" and 0.0 <= now - beat.timestamp <= 30.0
         )
         post_combat_sec: float | None = None
         if (
@@ -142,7 +144,7 @@ class RPInputCache:
             if self._last_activity_change_at > 0.0
             else 0.0
         )
-        since_sub = max(0.0, now - self._last_subtitle_at) if self._last_subtitle_at > 0.0 else None
+        since_sub = self.seconds_since_last_subtitle(now=now)
         since_hl = max(0.0, now - self._last_highlight_at) if self._last_highlight_at > 0.0 else None
         since_cur = max(0.0, now - self._last_cursor_at) if self._last_cursor_at > 0.0 else None
         return SceneActivitySignals(
@@ -217,11 +219,12 @@ class RPInputCache:
             return self._adaptive_pacing_locked().scene
 
     def seconds_since_last_subtitle(self, *, now: float | None = None) -> float | None:
+        """Return the time since OCR last saw a subtitle, including repeat readings."""
         ts = time.time() if now is None else float(now)
         with self._lock:
-            if self._last_subtitle_at <= 0.0:
+            if self._last_subtitle_observed_at <= 0.0:
                 return None
-            return max(0.0, ts - self._last_subtitle_at)
+            return max(0.0, ts - self._last_subtitle_observed_at)
 
     def apply_cloud_guidance(self, guidance: Mapping[str, Any] | None) -> dict[str, Any]:
         """Thread-safely apply adaptive parameter adjustments from the Cloud LLM."""
@@ -248,11 +251,11 @@ class RPInputCache:
                 self._updated_at = max(self._updated_at, captured_at)
                 if self._first_observation_at <= 0.0:
                     self._first_observation_at = captured_at
+                if source == "subtitle" and observation_key(clean_raw):
+                    self._last_subtitle_observed_at = max(self._last_subtitle_observed_at, captured_at)
                 if changed:
                     self._last_activity_change_at = max(self._last_activity_change_at, captured_at)
-                    if source == "subtitle":
-                        self._last_subtitle_at = max(self._last_subtitle_at, captured_at)
-                    elif source == "highlight":
+                    if source == "highlight":
                         self._last_highlight_at = max(self._last_highlight_at, captured_at)
                         hl_summary = clean_raw[:160]
                         hl_key = observation_key(hl_summary)
@@ -328,7 +331,7 @@ class RPInputCache:
             self._updated_at = max(self._updated_at, now)
             if self._first_observation_at <= 0.0:
                 self._first_observation_at = now
-            if (visual_change != "none" and raw_digest) or result.ocr_text or now_busy or (was_busy and not now_busy):
+            if (visual_change != "none" and raw_digest) or now_busy or was_busy:
                 self._last_activity_change_at = max(self._last_activity_change_at, now)
             elif self._last_activity_change_at <= 0.0:
                 self._last_activity_change_at = now
@@ -740,7 +743,7 @@ class RPInputCache:
             self._combat_busy_since = 0.0
             self._combat_ended_at = 0.0
             self._combat_peak_salience = 0.0
-            self._last_subtitle_at = 0.0
+            self._last_subtitle_observed_at = 0.0
             self._last_highlight_at = 0.0
             self._last_cursor_at = 0.0
             self._notable_events.clear()
@@ -779,7 +782,7 @@ class RPInputCache:
             self._combat_busy_since = 0.0
             self._combat_ended_at = 0.0
             self._combat_peak_salience = 0.0
-            self._last_subtitle_at = 0.0
+            self._last_subtitle_observed_at = 0.0
             self._last_highlight_at = 0.0
             self._last_cursor_at = 0.0
             self._notable_events.clear()
@@ -789,14 +792,14 @@ class RPInputCache:
     def clear_screen_text(self, *, preserve_highlights: bool = False) -> None:
         with self._lock:
             self._subtitles.clear(preserve_highlights=preserve_highlights)
-            self._last_subtitle_at = 0.0
+            self._last_subtitle_observed_at = 0.0
             self._last_cursor_at = 0.0
             if not preserve_highlights:
                 self._last_highlight_at = 0.0
 
-    def to_status_dict(self) -> dict[str, Any]:
+    def to_status_dict(self, config: PerceptionConfig | None = None) -> dict[str, Any]:
         with self._lock:
-            pacing = self._adaptive_pacing_locked()
+            pacing = self._adaptive_pacing_locked(config)
             event_max_age = max(PROACTIVE_EVENT_MAX_AGE_SEC, pacing.pending_event_max_age_sec)
             return {
                 "currentDigest": self.current_digest,

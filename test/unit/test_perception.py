@@ -2148,6 +2148,105 @@ class TestSceneAdaptivePerceptionPacing(unittest.TestCase):
         self.assertEqual(cache.current_scene, "story_media")
         self.assertGreater(cache.adaptive_pacing(PerceptionConfig()).proactive_salience_threshold, 0.85)
 
+    def test_game_scene_fallback_counts_cuts_but_not_details(self) -> None:
+        cache = RPInputCache()
+        now = 1000.0
+        for offset, digest in enumerate(("骑士举盾", "地图上标出营地", "生命值降到一半")):
+            cache.record_decision(PerceptionDigestResult(
+                game="action_rpg", mood="tense", visual_change="detail",
+                digest=digest, created_at=now - 6.0 + offset,
+            ))
+
+        self.assertEqual(cache.activity_signals(now=now).visual_cuts_30s, 0)
+        self.assertEqual(cache.adaptive_pacing(now=now).scene, "auto")
+
+        for count, (digest, scene) in enumerate(
+            (("进入森林", "auto"), ("切回黑曜石大厅", "exploration"), ("巨龙出现在雪山上", "combat")),
+            start=1,
+        ):
+            cache.record_decision(PerceptionDigestResult(
+                game="action_rpg", mood="tense", visual_change="cut",
+                digest=digest, created_at=now - 4.0 + count,
+            ))
+            self.assertEqual(cache.activity_signals(now=now).visual_cuts_30s, count)
+            self.assertEqual(cache.adaptive_pacing(now=now).scene, scene)
+
+    def test_status_projects_pacing_from_the_active_configuration(self) -> None:
+        api_config = SimpleNamespace(
+            perception_salience_threshold=0.73,
+            perception_proactive_cooldown_sec=40.0,
+            perception_reflex_cooldown_sec=8.0,
+        )
+        coordinator = PerceptionCoordinator(
+            get_api_config=lambda: api_config,
+            resolve_character=lambda: None,
+            is_chat_busy=lambda: False,
+            apply_reflex=lambda *_args: None,
+            enqueue_proactive_turn=lambda _prompt: False,
+        )
+        coordinator.rp_input_cache.record_decision(PerceptionDigestResult(scene="story_media", mood="sad"))
+
+        status = coordinator.status_snapshot()["rpCache"]
+        self.assertEqual(status["currentScene"], "story_media")
+        self.assertEqual(status["effectiveSalienceThreshold"], 0.76)
+        self.assertEqual(status["effectiveProactiveCooldownSec"], 66.0)
+        self.assertEqual(status["effectiveReflexCooldownSec"], 10.8)
+
+    def test_repeated_ocr_keeps_media_subtitle_gap_closed_without_marking_a_change(self) -> None:
+        for scene, lull in (("story_media", 3.5), ("casual_media", 2.6)):
+            with self.subTest(scene=scene):
+                cache = RPInputCache()
+                gatekeeper = PerceptionGatekeeper()
+                config = PerceptionConfig(enabled=True)
+                now = 1000.0
+                subtitle = "我一直在等你回来。"
+                cache.record_decision(PerceptionDigestResult(
+                    scene=scene, digest="主角在站台放下行李", visual_change="cut",
+                    salience=0.92, ocr_text=subtitle, created_at=now - 5.0,
+                ))
+
+                self.assertFalse(cache.record_screen_text(subtitle, captured_at=now - 0.5))
+                with patch("core.perception.cache.memory.time.time", return_value=now):
+                    verdict = gatekeeper.evaluate(cache, config, screen_audio="unavailable")
+                self.assertEqual(verdict.reason, "waiting_for_subtitle_gap")
+
+                cache.record_decision(PerceptionDigestResult(ocr_text=subtitle, created_at=now))
+                signals = cache.activity_signals(now=now)
+                self.assertEqual(signals.seconds_since_last_subtitle, 0.0)
+                self.assertEqual(signals.static_duration_sec, 5.0)
+                self.assertEqual(signals.subtitle_count_30s, 1)
+
+                cache.record_screen_text("", captured_at=now + 0.5)
+                with patch("core.perception.cache.memory.time.time", return_value=now + lull + 0.1):
+                    verdict = gatekeeper.evaluate(cache, config, screen_audio="unavailable")
+                self.assertTrue(verdict.allow)
+
+    def test_sprite_ambient_suppression_and_cooldown_use_final_bark(self) -> None:
+        from application.perception.reflex_policy import ReflexPolicy
+
+        spoken = "快往侧面翻滚！"
+        fallback = "（看着雨夜车站……）"
+        ambient = "（正在读：出发前的警告）"
+        for bark in ("", "……", spoken, ambient):
+            with self.subTest(bark=bark):
+                policy = ReflexPolicy()
+                options = dict(
+                    character_name="Nanami", expressions={}, sprite_count=1, sprite_choices={1: "好奇"},
+                    config=PerceptionConfig(), fallback_bark=fallback,
+                    reflex_cooldown_sec=10.0, ambient_cooldown_sec=25.0,
+                )
+                opening = policy.select_emission(
+                    ReflexDecision(act=True, bark=spoken), now=100.0, allow_ambient=False, **options,
+                )
+                self.assertIsNotNone(opening)
+                decision = ReflexDecision(act=True, sprite_id=1, bark=bark)
+                self.assertIsNone(policy.select_emission(decision, now=115.0, **options))
+                self.assertIsNone(policy.select_emission(decision, now=130.0, allow_ambient=False, **options))
+                emission = policy.select_emission(decision, now=130.0, **options)
+                self.assertIsNotNone(emission)
+                self.assertEqual(emission.sprite, 0)
+                self.assertEqual(emission.bark, ambient if bark == ambient else fallback)
+
     def test_story_media_suppresses_mid_dialogue_and_holds_climax_until_audio_gap(self) -> None:
         clock = [200.0]
         now_wall = time.time()

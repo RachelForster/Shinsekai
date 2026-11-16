@@ -383,7 +383,7 @@ class PerceptionCoordinator:
             "salienceThreshold": cfg.salience_threshold,
             "lastError": last_error,
             "rawBuffer": self.raw_buffer.stats(),
-            "rpCache": self.rp_input_cache.to_status_dict(),
+            "rpCache": self.rp_input_cache.to_status_dict(cfg),
         }
 
     def _emit_state(self) -> None:

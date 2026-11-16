@@ -193,15 +193,6 @@ class ReflexPolicy:
         if sprite_idx is not None and not 0 <= sprite_idx < sprite_count:
             sprite_idx = None
 
-        eff_reflex_cd = config.reflex_cooldown_sec if reflex_cooldown_sec is None else reflex_cooldown_sec
-        eff_ambient_cd = eff_reflex_cd if ambient_cooldown_sec is None else ambient_cooldown_sec
-        ambient_only = sprite_idx is None and is_ambient_reaction_bark(reflex.bark)
-        if ambient_only and not allow_ambient:
-            return None
-        required_cd = eff_ambient_cd if ambient_only else eff_reflex_cd
-        if not self.is_bark_cooldown_open(now=now, cooldown_sec=required_cd):
-            return None
-
         if self.last_sprite == (character_name, sprite_idx) and (now - self.last_sprite_monotonic) < 4.0:
             sprite_idx = None
 
@@ -215,6 +206,15 @@ class ReflexPolicy:
                 repeated = self._is_repeated_bark(bark, character_name, now)
 
         if not bark or repeated:
+            return None
+
+        ambient = is_ambient_reaction_bark(bark)
+        if ambient and not allow_ambient:
+            return None
+        eff_reflex_cd = config.reflex_cooldown_sec if reflex_cooldown_sec is None else reflex_cooldown_sec
+        eff_ambient_cd = eff_reflex_cd if ambient_cooldown_sec is None else ambient_cooldown_sec
+        required_cd = eff_ambient_cd if ambient else eff_reflex_cd
+        if not self.is_bark_cooldown_open(now=now, cooldown_sec=required_cd):
             return None
 
         self.last_bark_monotonic = now
