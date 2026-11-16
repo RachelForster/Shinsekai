@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from config.character_assets import get_character_assets
 from sdk.types import OutputContractPatch
 
 from ai.llm.template.core.context import TemplateContext
@@ -58,3 +59,10 @@ class DialogTemplateContext(TemplateContext):
     @property
     def uses_vibe(self) -> bool:
         return self.media_selection_mode == "semantic"
+
+    @property
+    def uses_full_sprite_ids(self) -> bool:
+        return any(
+            len(get_character_assets(character).sprites) > 99
+            for _, character in self.characters
+        )

@@ -519,7 +519,7 @@ class OutfitRuntimeController:
             for c in (getattr(getattr(config, "config", None), "characters", ()) or ())
         ]
         lines: list[str] = []
-        any_unlocked = False
+        switch_example: dict[str, str] | None = None
         for cname in target_names:
             if not cname:
                 continue
@@ -532,8 +532,15 @@ class OutfitRuntimeController:
                 char, st.active_group if st is not None else None
             )
             locked = bool(st.locked) if st is not None else False
-            if not locked:
-                any_unlocked = True
+            if auto_switch and not locked and switch_example is None:
+                target_group = next(group for group in groups if group != active_group)
+                media = {"vibe": "平静的表情"} if media_mode == "semantic" else {"sprite": "-1"}
+                switch_example = {
+                    "character_name": cname,
+                    **media,
+                    "speech": "<本句台词>",
+                    "outfit": target_group,
+                }
             lock_desc = "已手动锁定（禁止切换服装）" if locked else "未锁定"
             entry = (
                 f"- {cname}：当前服装分组「{active_group}」（{lock_desc}；"
@@ -559,23 +566,25 @@ class OutfitRuntimeController:
 
         header = [
             OUTFIT_CONTEXT_MARKER,
-            "以下角色拥有多套服装立绘分组，请严格遵守组内立绘隔离规则：",
-            *lines,
+            "以下规则适用于拥有多套服装立绘的角色，也适用于旧存档中的模板。",
         ]
         if media_mode != "semantic":
             header.append(
-                "立绘选择规则：常规对话中，角色的 sprite 字段只能从其【当前服装分组】的可用编号中选择（无需变化填 -1），严禁跨服装分组混用其他服装的编号。"
+                "立绘选择规则：sprite 填写当前分组中的完整编号字符串（可超过两位）。"
+                "无需换图时填 -1；换装当句可以填目标分组的编号，或填 -1 让程序选用目标分组的第一张立绘。"
             )
-        if auto_switch and any_unlocked:
+        if switch_example:
             header.append(
-                "剧情换装规则：仅当未锁定角色在剧情中明确发生换装事件（如起床/入睡换睡衣、出门换校服/私服、洗漱沐浴、或玩家明确要求换装）时，"
-                '可在该角色当句 JSON 中额外附加 `"outfit": "<目标分组名>"` 切换服装；普通情绪、动作或姿态变化严禁输出 `"outfit"` 字段。'
+                "剧情换装规则：已开启自动换装。未锁定的角色完成换装时（剧情明确换装或应玩家要求换装），"
+                '必须在 dialog 数组内该角色当句的 JSON 对象里写入 "outfit"，值为下列可用分组中的准确名称。'
+                "普通台词、情绪或姿态变化时省略该字段。"
             )
+            header.append("换装项示例：" + json.dumps(switch_example, ensure_ascii=False))
         else:
             header.append(
                 '当前已关闭自动换装或服装已锁定：请始终保持当前服装分组，不要输出 `"outfit"` 字段。'
             )
-        return "\n".join(header)
+        return "\n".join([*header, *lines])
 
 
 class OutfitBeforeChatProvider(BaseTurnContextProvider):

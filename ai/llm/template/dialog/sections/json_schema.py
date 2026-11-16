@@ -21,12 +21,16 @@ class JsonSchemaSection(Section[DialogTemplateContext]):
     ) -> tuple[Section[DialogTemplateContext], ...]:
         translate = context.translate
         removed = removed_optional_fields(context)
+        if context.uses_vibe:
+            head = "json_vibe_head_top"
+        elif context.uses_full_sprite_ids:
+            head = "json_full_sprite_head_top"
+        else:
+            head = "json_head_top"
         generated = (
             TextSection(
                 "head",
-                text=translate(
-                    "json_vibe_head_top" if context.uses_vibe else "json_head_top"
-                ),
+                text=translate(head),
             ),
             TextSection(
                 "speech",

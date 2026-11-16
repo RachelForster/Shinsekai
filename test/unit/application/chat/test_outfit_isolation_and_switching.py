@@ -37,6 +37,7 @@ from core.chat_history.sqlite_session_store import (
     open_session_store_for_dir,
 )
 from core.chat_history.storage import close_session_store
+from core.messaging.stream_parser import LlmResponseStreamParser
 from core.perception.models import PerceptionConfig, ReflexDecision
 from core.sprite.transitions import TRANSITION_FRAME_COUNT, valid_transitions
 from sdk.hooks import BeforeChatContext, MessageAddedContext
@@ -161,7 +162,11 @@ def test_pipeline_1_and_2_catalog_scopes_prompt_injection_and_semantic_fallback(
     injected = ctx.messages[-1]["content"]
     assert "当前服装分组「校服」" in injected
     assert "2: 微笑，开心" in injected
-    assert '"outfit"' in injected
+    assert "可超过两位" in injected
+    example_line = next(line for line in injected.splitlines() if line.startswith("换装项示例："))
+    switch_example = json.loads(example_line.removeprefix("换装项示例："))
+    assert switch_example["outfit"] == "睡衣"
+    assert switch_example["sprite"] == "-1"
 
     pres_q: queue.Queue = queue.Queue()
     fake_rt = SimpleNamespace(
@@ -180,14 +185,11 @@ def test_pipeline_1_and_2_catalog_scopes_prompt_injection_and_semantic_fallback(
     )
     handler = CharacterMediaHandler(asset_lookup_strategy=_TagMatchLookupStrategy())
 
-    msg_switch = LLMDialogMessage.model_validate(
-        {
-            "character_name": "Kurisu",
-            "speech": "已经这么晚了，我去换睡衣了。",
-            "vibe": "困倦",
-            "outfit": "睡衣",
-        }
+    response = json.dumps(
+        {"dialog": [{**switch_example, "speech": "已经这么晚了，我去换睡衣了。"}]},
+        ensure_ascii=False,
     )
+    (msg_switch,) = LlmResponseStreamParser().feed(response)
     handler.handle(msg_switch)
     emitted_1 = pres_q.get_nowait()
     assert controller.active_group_for(char) == "睡衣"

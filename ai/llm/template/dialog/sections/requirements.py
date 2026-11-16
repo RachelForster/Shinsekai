@@ -94,7 +94,10 @@ def build_requirement_sections(
         ("r_format", 10, True, None),
         ("r_user_display_name_tool", 15, True, None),
         ("r_cname", 20, True, None),
-        ("r_sprite", 30, not context.uses_vibe, None),
+        (
+            "r_sprite", 30, not context.uses_vibe,
+            "r_full_sprite" if context.uses_full_sprite_ids else None,
+        ),
         ("r_vibe", 30, context.uses_vibe, None),
         (
             "r_non_sprite",
