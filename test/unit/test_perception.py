@@ -2059,6 +2059,7 @@ class TestSceneAdaptivePerceptionPacing(unittest.TestCase):
         )
         system, _user = build_perception_messages(snapshot, previous_digest="")
         self.assertIn("场景类型scene", system["content"])
+        self.assertIn("video_call=正在进行的真人视频通话或会议", system["content"])
         self.assertIn("0.68~0.82", system["content"])
         self.assertIn('"scene":"casual_media"', system["content"])
 
@@ -2073,6 +2074,8 @@ class TestSceneAdaptivePerceptionPacing(unittest.TestCase):
         alias_cases = {
             "番剧": "story_media",
             "直播": "casual_media",
+            "视频会议": "video_call",
+            "video call": "video_call",
             "boss": "combat",
             "探索": "exploration",
             "代码": "reading_work",
@@ -2330,6 +2333,62 @@ class TestSceneAdaptivePerceptionPacing(unittest.TestCase):
         self.assertEqual(gk.evaluate(cache, cfg, screen_audio="quiet").reason, "proactive_cooldown")
         clock[0] += 20.0  # +50s total (< 120s, > 45.6s)
         self.assertTrue(gk.evaluate(cache, cfg, screen_audio="quiet").allow)
+
+    def test_video_call_raises_the_threshold_even_when_audio_appears_stopped(self) -> None:
+        coordinator = PerceptionCoordinator(
+            get_api_config=lambda: SimpleNamespace(perception_enabled=True, perception_salience_threshold=0.50),
+            resolve_character=lambda: None,
+            is_chat_busy=lambda: False,
+            apply_reflex=lambda *_args: None,
+            enqueue_proactive_turn=lambda _prompt: False,
+        )
+        coordinator.ingest({"screenShareActive": True, "source": "screen_share", "screenPlaybackAudio": "stopped"})
+        cfg = coordinator.current_config()
+        gatekeeper = coordinator.gatekeeper
+        moderate = PerceptionDigestResult(
+            scene="video_call", digest="新参与者打开摄像头", salience=0.60,
+        )
+        call_cache = coordinator.rp_input_cache
+        call_cache.record_decision(moderate, proactive_threshold=cfg.salience_threshold)
+        media_cache = RPInputCache()
+        media_cache.record_decision(replace(moderate, scene="casual_media"), proactive_threshold=cfg.salience_threshold)
+
+        call = call_cache.adaptive_pacing(cfg)
+        media = media_cache.adaptive_pacing(cfg)
+        self.assertEqual(call.scene, "video_call")
+        self.assertAlmostEqual(call.proactive_salience_threshold, 0.65)
+        self.assertAlmostEqual(media.proactive_salience_threshold, 0.35)
+        self.assertEqual(call.proactive_cooldown_sec, media.proactive_cooldown_sec)
+        self.assertEqual(call.require_subtitle_lull_without_audio_sec, media.require_subtitle_lull_without_audio_sec)
+
+        for audio in ("quiet", "unavailable", "stopped"):
+            with self.subTest(audio=audio):
+                verdict = gatekeeper.evaluate(call_cache, cfg, screen_audio=audio)
+                self.assertEqual(verdict.reason, "below_salience_threshold")
+                self.assertTrue(gatekeeper.evaluate(media_cache, cfg, screen_audio=audio).allow)
+        self.assertIsNone(coordinator.proactive_turn_threshold())
+
+        call_cache.record_decision(
+            replace(moderate, digest="通话中展示了值得提醒的异常画面", salience=0.70),
+            proactive_threshold=call.proactive_salience_threshold,
+        )
+        self.assertEqual(
+            gatekeeper.evaluate(call_cache, cfg, screen_audio="playing").reason,
+            "waiting_for_screen_audio_gap",
+        )
+        self.assertTrue(gatekeeper.evaluate(call_cache, cfg, screen_audio="stopped").allow)
+        self.assertEqual(coordinator.proactive_turn_threshold(), call.proactive_salience_threshold)
+
+    def test_live_video_call_tag_takes_precedence_over_stillness_and_cursor_text(self) -> None:
+        from core.perception.pacing import SceneActivitySignals, resolve_effective_scene
+
+        signals = SceneActivitySignals(
+            explicit_scene="video_call", seconds_since_last_cursor=1.0, static_duration_sec=30.0,
+        )
+        self.assertEqual(resolve_effective_scene(signals), "video_call")
+        self.assertEqual(
+            resolve_effective_scene(SceneActivitySignals(cloud_scene="video_call")), "auto",
+        )
 
     def test_combat_suppresses_ambient_barks_and_fires_post_combat_breather(self) -> None:
         from application.perception.reflex_policy import ReflexPolicy

@@ -13,6 +13,7 @@ export const perceptionZhCNMessages = {
   "chat.perception.currentScene": "当前识别场景：{scene}",
   "chat.perception.scene.story_media": "剧情沉浸",
   "chat.perception.scene.casual_media": "轻松内容",
+  "chat.perception.scene.video_call": "视频通话",
   "chat.perception.scene.combat": "激烈操作",
   "chat.perception.scene.exploration": "游戏探索",
   "chat.perception.scene.reading_work": "阅读与办公",

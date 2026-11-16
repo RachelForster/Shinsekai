@@ -83,7 +83,9 @@ def build_perception_messages(
 
     mood_rule = (
         "先判断当前画面与字幕的整体气氛mood（取值：calm/serious/sad/tense/joyful/hyped/unclear，看不准填unclear），"
-        "场景类型scene（story_media=剧情向影视番剧/严肃叙事；casual_media=轻松视频/直播/综艺；combat=激烈战斗；exploration=游戏探索/整备；reading_work=阅读文档/代码/网页；idle=静态菜单/桌面），"
+        "场景类型scene（story_media=剧情向影视番剧/严肃叙事；casual_media=轻松视频/直播/综艺；"
+        "video_call=正在进行的真人视频通话或会议，须有明确的参会人画面、通话控件等会议界面线索，仅看到真人或播放器不算；"
+        "combat=激烈战斗；exploration=游戏探索/整备；reading_work=阅读文档/代码/网页；idle=静态菜单/桌面），"
         "再判断画面变化visual_change（none=同镜头无实质新动作；detail=同场景出现新动作/表情/UI变化，digest只写25字内增量细节不重抄背景；"
         "cut=切镜头或新场景，digest写40字内可见人物、动作与环境）。"
     )

@@ -16,6 +16,7 @@ export const perceptionJaMessages: Record<PerceptionMessageKey, string> = {
   "chat.perception.currentScene": "現在の認識シーン：{scene}",
   "chat.perception.scene.story_media": "ストーリー鑑賞",
   "chat.perception.scene.casual_media": "カジュアル動画",
+  "chat.perception.scene.video_call": "ビデオ通話",
   "chat.perception.scene.combat": "激しい操作・戦闘",
   "chat.perception.scene.exploration": "ゲーム探索",
   "chat.perception.scene.reading_work": "読書・作業",

@@ -165,7 +165,9 @@ class PerceptionGatekeeper:
                 )
 
         threshold = pacing.proactive_salience_threshold
-        if not playback_stopped and (effective_salience <= 0.0 or effective_salience < threshold):
+        if (pacing.scene == "video_call" or not playback_stopped) and (
+            effective_salience <= 0.0 or effective_salience < threshold
+        ):
             return GatekeeperVerdict(
                 False,
                 "below_salience_threshold",

@@ -126,6 +126,9 @@ def resolve_effective_scene(signals: SceneActivitySignals) -> SceneType:
     ):
         return "combat"
 
+    if explicit == "video_call":
+        return "video_call"
+
     recent_hl = (
         signals.seconds_since_last_highlight is not None
         and 0.0 <= signals.seconds_since_last_highlight <= 20.0
@@ -171,7 +174,8 @@ def resolve_effective_scene(signals: SceneActivitySignals) -> SceneType:
             return "story_media"
         return "casual_media"
 
-    if cloud != "auto":
+    # A cloud summary can outlast a call; require current visual recognition for this scene.
+    if cloud not in {"auto", "video_call"}:
         return cloud  # type: ignore[return-value]
 
     if pace == "dialogue_heavy":
@@ -248,9 +252,11 @@ def compute_adaptive_pacing(
         reflex_cd_mult = 1.35
         ambient_reflex_mult = 1.85
         allow_ambient = True
-    elif scene == "casual_media":
+    elif scene in {"casual_media", "video_call"}:
         lively_mood = mood in {"joyful", "hyped"}
         salience_delta = -0.17 if lively_mood else -0.15
+        if scene == "video_call":
+            salience_delta = 0.15
         proactive_cd_mult = 0.80
         quiet_cd_mult = 0.38
         event_max_age = 16.0

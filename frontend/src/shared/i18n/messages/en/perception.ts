@@ -16,6 +16,7 @@ export const perceptionEnMessages: Record<PerceptionMessageKey, string> = {
   "chat.perception.currentScene": "Recognized scene: {scene}",
   "chat.perception.scene.story_media": "Story / Drama",
   "chat.perception.scene.casual_media": "Casual Media",
+  "chat.perception.scene.video_call": "Video Call",
   "chat.perception.scene.combat": "Intense Action",
   "chat.perception.scene.exploration": "Game Exploration",
   "chat.perception.scene.reading_work": "Reading & Work",

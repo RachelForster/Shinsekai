@@ -17,6 +17,7 @@ const playbackAudioLabels = {
 const sceneLabels = {
   story_media: "chat.perception.scene.story_media",
   casual_media: "chat.perception.scene.casual_media",
+  video_call: "chat.perception.scene.video_call",
   combat: "chat.perception.scene.combat",
   exploration: "chat.perception.scene.exploration",
   reading_work: "chat.perception.scene.reading_work",

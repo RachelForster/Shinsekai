@@ -1070,7 +1070,7 @@ class PerceptionCoordinator:
             )
             if not verdict.allow:
                 return None
-            if verdict.reason == "playback_stopped":
+            if verdict.reason == "playback_stopped" and verdict.scene != "video_call":
                 return 0.0
             if self.rp_input_cache.player_busy:
                 return max(cfg.salience_threshold, URGENT_SCREEN_SALIENCE)
