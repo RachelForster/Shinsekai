@@ -6,6 +6,7 @@ from collections.abc import Mapping
 import math
 import time
 
+from ai.memory.metadata_tags import unpack_system_tags
 from ai.memory.temporal import format_event_date_tag
 from sdk.adapters.memory import (
     SCOPE_CHAR_CANON,
@@ -18,13 +19,68 @@ SECONDS_PER_DAY = 86_400.0
 DEFAULT_CLEAR_THRESHOLD = 0.50
 DEFAULT_FADED_THRESHOLD = 0.15
 DEFAULT_MAX_OFFLINE_GAP_SECONDS = 7.0 * SECONDS_PER_DAY
+DEFAULT_FORESIGHT_GRACE_SECONDS = SECONDS_PER_DAY
+DEFAULT_OVERDUE_DECAY_MULTIPLIER = 3.5
 
 DEFAULT_KIND_BASE_DAYS: dict[str, float] = {
     "episodic": 4.5,
     "promise": 8.0,
     "profile": 14.0,
+    "visual": 14.0,
+    "relational": 21.0,
+    "scene": 30.0,
+    "retraction": 0.0,
     "canon": float("inf"),
 }
+
+
+def is_foresight_expired(
+    record: MemoryRecord,
+    *,
+    now_ts: float,
+    grace_seconds: float = DEFAULT_FORESIGHT_GRACE_SECONDS,
+) -> bool:
+    """Return True when a foresight-bounded memory or dated promise is past its validity window."""
+    meta = unpack_system_tags(record.topic_tags)
+    grace = max(0.0, float(grace_seconds))
+    if meta.valid_until is not None:
+        return float(now_ts) > float(meta.valid_until) + grace
+    if str(record.kind or "").strip().lower() == "promise" and record.event_at is not None:
+        return float(now_ts) > float(record.event_at) + grace
+    return False
+
+
+def _format_tier_text(
+    *,
+    kind_key: str,
+    tier: ClarityTier,
+    date_suffix: str,
+    detail: str,
+    gist: str,
+) -> str:
+    if kind_key == "relational":
+        if tier == "clear":
+            return f"[心境与关系{date_suffix}] {detail}"
+        if tier == "faded":
+            return f"[过往心绪·印象模糊{date_suffix}] {gist}"
+        return f"[唤醒的过往心绪{date_suffix}] {gist}"
+    if kind_key == "scene":
+        if tier == "clear":
+            return f"[阶段回忆{date_suffix}] {detail}"
+        if tier == "faded":
+            return f"[较久远·阶段印象{date_suffix}] {gist}"
+        return f"[唤醒的阶段回忆{date_suffix}] {gist}"
+    if kind_key == "visual":
+        if tier == "clear":
+            return f"[视觉记忆{date_suffix}] {detail}"
+        if tier == "faded":
+            return f"[模糊画面印象{date_suffix}] {gist}"
+        return f"[唤醒的画面记忆{date_suffix}] {gist}"
+    if tier == "clear":
+        return f"[清晰{date_suffix}] {detail}"
+    if tier == "faded":
+        return f"[较久远·印象模糊{date_suffix}] {gist}"
+    return f"[唤醒的久远记忆{date_suffix}] {gist}"
 
 
 class EbbinghausRetentionPolicy:
@@ -60,9 +116,13 @@ class EbbinghausRetentionPolicy:
         if record.pinned or record.scope == SCOPE_CHAR_CANON or record.kind == "canon":
             return float("inf")
         kind_key = str(record.kind or "episodic").strip().lower()
+        if kind_key == "retraction":
+            return 0.0
         base_days = self._kind_base_days.get(kind_key, self._kind_base_days["episodic"])
         if math.isinf(base_days):
             return float("inf")
+        if base_days <= 0.0:
+            return 0.0
         s0 = max(0.25, float(base_days)) * SECONDS_PER_DAY
         n_recall = max(0, int(record.recall_count or 0))
         importance = max(0.0, min(1.0, float(record.importance)))
@@ -77,21 +137,32 @@ class EbbinghausRetentionPolicy:
         now_ts: float,
         offline_gap_seconds: float = 0.0,
     ) -> float:
-        """Compute elapsed decay time, discounting single-session idle gaps beyond 7 days."""
+        """Compute elapsed decay time, discounting single-session idle gaps and applying foresight TTL."""
         anchor_ts = max(
             float(record.created_at or 0.0),
             float(record.last_recalled_at or 0.0),
         )
         if anchor_ts <= 0.0:
-            return 0.0
-        raw_elapsed = max(0.0, float(now_ts) - anchor_ts)
-        gap = max(0.0, float(offline_gap_seconds or 0.0))
-        if self.max_offline_gap_seconds > 0.0 and gap > self.max_offline_gap_seconds:
-            applicable_gap = min(raw_elapsed, gap)
-            if applicable_gap > self.max_offline_gap_seconds:
-                excess_idle = applicable_gap - self.max_offline_gap_seconds
-                return max(0.0, raw_elapsed - excess_idle)
-        return raw_elapsed
+            base_elapsed = 0.0
+        else:
+            raw_elapsed = max(0.0, float(now_ts) - anchor_ts)
+            gap = max(0.0, float(offline_gap_seconds or 0.0))
+            base_elapsed = raw_elapsed
+            if self.max_offline_gap_seconds > 0.0 and gap > self.max_offline_gap_seconds:
+                applicable_gap = min(raw_elapsed, gap)
+                if applicable_gap > self.max_offline_gap_seconds:
+                    excess_idle = applicable_gap - self.max_offline_gap_seconds
+                    base_elapsed = max(0.0, raw_elapsed - excess_idle)
+
+        meta = unpack_system_tags(record.topic_tags)
+        if meta.valid_until is not None:
+            if float(now_ts) <= float(meta.valid_until):
+                # Keep upcoming foresight items crisp until their target deadline arrives.
+                return base_elapsed * 0.35
+            overdue = float(now_ts) - (float(meta.valid_until) + DEFAULT_FORESIGHT_GRACE_SECONDS)
+            if overdue > 0.0:
+                return base_elapsed + overdue * DEFAULT_OVERDUE_DECAY_MULTIPLIER
+        return base_elapsed
 
     def evaluate(
         self,
@@ -101,6 +172,16 @@ class EbbinghausRetentionPolicy:
         offline_gap_seconds: float = 0.0,
     ) -> RetentionState:
         """Evaluate retention score and format dual-granularity presentation text."""
+        kind_key = str(record.kind or "episodic").strip().lower()
+        if kind_key == "retraction" and not (
+            record.pinned or record.scope == SCOPE_CHAR_CANON
+        ):
+            return RetentionState(
+                retention=0.0,
+                tier="dormant",
+                rendered_text="",
+            )
+
         effective_now = float(now_ts) if now_ts > 0.0 else time.time()
         date_tag = format_event_date_tag(record.event_at, now_ts=effective_now)
         date_suffix = f"·{date_tag}" if date_tag else ""
@@ -115,8 +196,10 @@ class EbbinghausRetentionPolicy:
             )
 
         stability = self.stability_seconds(record)
-        if math.isinf(stability) or stability <= 0.0:
+        if math.isinf(stability):
             retention = 1.0
+        elif stability <= 0.0:
+            retention = 0.0
         else:
             elapsed = self.effective_elapsed_seconds(
                 record,
@@ -129,14 +212,18 @@ class EbbinghausRetentionPolicy:
         tier: ClarityTier
         if retention >= self.clear_threshold:
             tier = "clear"
-            rendered = f"[清晰{date_suffix}] {detail}"
         elif retention >= self.faded_threshold:
             tier = "faded"
-            rendered = f"[较久远·印象模糊{date_suffix}] {gist}"
         else:
             tier = "dormant"
-            rendered = f"[唤醒的久远记忆{date_suffix}] {gist}"
 
+        rendered = _format_tier_text(
+            kind_key=kind_key,
+            tier=tier,
+            date_suffix=date_suffix,
+            detail=detail,
+            gist=gist,
+        )
         return RetentionState(
             retention=retention,
             tier=tier,
@@ -147,8 +234,11 @@ class EbbinghausRetentionPolicy:
 __all__ = [
     "DEFAULT_CLEAR_THRESHOLD",
     "DEFAULT_FADED_THRESHOLD",
+    "DEFAULT_FORESIGHT_GRACE_SECONDS",
     "DEFAULT_KIND_BASE_DAYS",
     "DEFAULT_MAX_OFFLINE_GAP_SECONDS",
+    "DEFAULT_OVERDUE_DECAY_MULTIPLIER",
     "EbbinghausRetentionPolicy",
     "SECONDS_PER_DAY",
+    "is_foresight_expired",
 ]

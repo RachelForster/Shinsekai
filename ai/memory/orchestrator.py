@@ -10,7 +10,9 @@ from typing import Any
 import numpy as np
 
 from ai.memory.deduplication import find_duplicate_memory, semantic_deduplication_threshold
-from ai.memory.ebbinghaus import EbbinghausRetentionPolicy
+from ai.memory.ebbinghaus import EbbinghausRetentionPolicy, is_foresight_expired
+from ai.memory.graph_ppr import DEFAULT_MAX_GRAPH_RECORDS, run_scoped_bipartite_ppr
+from ai.memory.metadata_tags import pack_system_tags, unpack_system_tags
 from ai.memory.rule_recall_planner import RuleRecallPlanner
 from sdk.adapters.memory import (
     SCOPE_CHAR_CANON,
@@ -346,7 +348,7 @@ class MemoryOrchestrator:
             return MemoryContextBlock(rendered="", recalled_ids=())
 
         candidate_limit = max(int(plan.limit) * 4, 24)
-        collected: dict[tuple[int, str], tuple[MemoryRepository, CandidateHit, bool, bool, bool]] = {}
+        collected: dict[tuple[int, str], tuple[MemoryRepository, CandidateHit, bool, float, bool]] = {}
 
         for repo, scope_filter in targets:
             hits = repo.search_candidates(
@@ -361,8 +363,10 @@ class MemoryOrchestrator:
                 scope_filter.event_from is not None or scope_filter.event_to is not None
             )
             for hit in hits:
+                if str(hit.record.kind or "").strip().lower() == "retraction":
+                    continue
                 key = (id(repo), hit.record.id)
-                collected[key] = (repo, hit, is_temporal, False, False)
+                collected[key] = (repo, hit, is_temporal, 0.0, False)
 
         # If a time-bounded query found nothing, also check timeless/unbounded memories softly
         if has_time_window and not collected:
@@ -382,10 +386,12 @@ class MemoryOrchestrator:
                         limit=candidate_limit,
                     )
                 ):
-                    collected[(id(repo), hit.record.id)] = (repo, hit, False, False, False)
+                    if str(hit.record.kind or "").strip().lower() == "retraction":
+                        continue
+                    collected[(id(repo), hit.record.id)] = (repo, hit, False, 0.0, False)
 
         # On >4h session wakeup, proactively surface dynamic promises / high-importance recent items
-        # (never seed static canon lore without genuine query relevance).
+        # that are still within their foresight validity window (never seed static canon lore).
         if plan.is_session_wakeup:
             wakeup_targets = self._build_read_targets(
                 memory_mode=turn_input.memory_mode,
@@ -398,32 +404,39 @@ class MemoryOrchestrator:
                 for rec in repo.list_by_scope(scope_filter, limit=8):
                     if _is_canon_memory(rec):
                         continue
+                    if str(rec.kind or "").strip().lower() == "retraction":
+                        continue
+                    if is_foresight_expired(rec, now_ts=now_ts):
+                        continue
                     key = (id(repo), rec.id)
                     if key in collected:
-                        existing_repo, existing_hit, is_temp, _is_hop, _ = collected[key]
+                        existing_repo, existing_hit, is_temp, assoc_rel, _ = collected[key]
                         if rec.kind == "promise" or rec.importance >= 0.75:
-                            collected[key] = (existing_repo, existing_hit, is_temp, False, True)
+                            collected[key] = (existing_repo, existing_hit, is_temp, assoc_rel, True)
                         continue
                     if rec.kind == "promise" or rec.importance >= 0.75:
                         collected[key] = (
                             repo,
                             CandidateHit(record=rec, vector_score=0.0, fts_score=0.0),
                             False,
-                            False,
+                            0.0,
                             True,
                         )
 
-        # 1-hop entity expansion strictly within the exact same scope filters (zero telepathy!)
+        # HippoRAG 2 multi-hop bipartite Personalized PageRank strictly per isolated `(repo, owner)`
+        # subgraph (zero cross-character or cross-save telepathy), with 1-hop fallback for custom repos.
+        seed_weights_by_repo_owner: dict[tuple[int, str], dict[str, float]] = {}
         seed_entities: list[str] = []
-        for _repo, hit, is_temp, _is_hop, _is_wake in collected.values():
-            if (
-                hit.vector_score >= 0.42
-                or hit.fts_score >= 0.50
-                or is_temp
-            ) and hit.record.entities:
-                seed_entities.extend(hit.record.entities)
-        dedup_entities = tuple(dict.fromkeys(e for e in seed_entities if e))
-        if dedup_entities:
+        for repo, hit, is_temp, _assoc_rel, _is_wake in collected.values():
+            raw_seed_rel = max(float(hit.vector_score), min(1.0, float(hit.fts_score) * 1.15))
+            if hit.vector_score >= 0.42 or hit.fts_score >= 0.50 or is_temp:
+                ro_key = (id(repo), hit.record.owner_id.casefold())
+                bucket = seed_weights_by_repo_owner.setdefault(ro_key, {})
+                bucket[hit.record.id] = max(bucket.get(hit.record.id, 0.0), max(0.42, raw_seed_rel))
+                if hit.record.entities:
+                    seed_entities.extend(hit.record.entities)
+
+        if seed_weights_by_repo_owner:
             hop_targets = self._build_read_targets(
                 memory_mode=turn_input.memory_mode,
                 active_character_names=turn_input.active_character_names,
@@ -431,34 +444,85 @@ class MemoryOrchestrator:
                 save_repo=eff_save_repo,
                 include_self_public=True,
             )
+            dedup_entities = tuple(dict.fromkeys(e for e in seed_entities if e))
             for repo, scope_filter in hop_targets:
-                for hop_rec in repo.expand_entities(dedup_entities, scope_filter, limit=6):
-                    key = (id(repo), hop_rec.id)
-                    if key in collected:
-                        ex_repo, ex_hit, ex_temp, _ex_hop, ex_wake = collected[key]
-                        collected[key] = (ex_repo, ex_hit, ex_temp, True, ex_wake)
-                    else:
-                        hop_vec_score = _max_cosine_against_queries(hop_rec.embedding, q_vecs)
-                        collected[key] = (
-                            repo,
-                            CandidateHit(
-                                record=hop_rec,
-                                vector_score=hop_vec_score,
-                                fts_score=0.0,
-                            ),
-                            False,
-                            True,
-                            False,
-                        )
+                scope_records = repo.list_by_scope(
+                    scope_filter,
+                    limit=DEFAULT_MAX_GRAPH_RECORDS,
+                )
+                records_by_owner: dict[str, list[MemoryRecord]] = {}
+                for s_rec in scope_records:
+                    records_by_owner.setdefault(s_rec.owner_id.casefold(), []).append(s_rec)
+
+                ran_any_graph = False
+                for owner_key, owner_records in records_by_owner.items():
+                    owner_seeds = seed_weights_by_repo_owner.get((id(repo), owner_key))
+                    if not owner_seeds:
+                        continue
+                    ppr_hits, had_concepts = run_scoped_bipartite_ppr(
+                        owner_records,
+                        seed_weights=owner_seeds,
+                        limit=max(6, int(plan.limit)),
+                    )
+                    ran_any_graph = ran_any_graph or had_concepts
+                    for ppr_hit in ppr_hits:
+                        hop_rec = ppr_hit.record
+                        key = (id(repo), hop_rec.id)
+                        if key in collected:
+                            ex_repo, ex_hit, ex_temp, ex_assoc, ex_wake = collected[key]
+                            collected[key] = (
+                                ex_repo,
+                                ex_hit,
+                                ex_temp,
+                                max(ex_assoc, ppr_hit.calibrated_relevance),
+                                ex_wake,
+                            )
+                        else:
+                            hop_vec_score = _max_cosine_against_queries(hop_rec.embedding, q_vecs)
+                            collected[key] = (
+                                repo,
+                                CandidateHit(
+                                    record=hop_rec,
+                                    vector_score=hop_vec_score,
+                                    fts_score=0.0,
+                                ),
+                                False,
+                                ppr_hit.calibrated_relevance,
+                                False,
+                            )
+
+                if not ran_any_graph and dedup_entities:
+                    for hop_rec in repo.expand_entities(dedup_entities, scope_filter, limit=6):
+                        if str(hop_rec.kind or "").strip().lower() == "retraction":
+                            continue
+                        key = (id(repo), hop_rec.id)
+                        if key in collected:
+                            ex_repo, ex_hit, ex_temp, ex_assoc, ex_wake = collected[key]
+                            collected[key] = (ex_repo, ex_hit, ex_temp, max(ex_assoc, 0.44), ex_wake)
+                        else:
+                            hop_vec_score = _max_cosine_against_queries(hop_rec.embedding, q_vecs)
+                            collected[key] = (
+                                repo,
+                                CandidateHit(
+                                    record=hop_rec,
+                                    vector_score=hop_vec_score,
+                                    fts_score=0.0,
+                                ),
+                                False,
+                                0.44,
+                                False,
+                            )
 
         active_scored: list[_ScoredCandidate] = []
         dormant_scored: list[_ScoredCandidate] = []
         sid = str(turn_input.session_id or "").strip()
         offline_gap = float(turn_input.seconds_since_last_turn or 0.0)
 
-        for repo, hit, is_temporal_hit, is_entity_hop, is_wakeup_seed in collected.values():
+        for repo, hit, is_temporal_hit, assoc_relevance, is_wakeup_seed in collected.values():
             rec = hit.record
             if rec.superseded_by is not None:
+                continue
+            if str(rec.kind or "").strip().lower() == "retraction":
                 continue
             if rec.id in turn_input.recently_injected_ids:
                 continue
@@ -485,8 +549,8 @@ class MemoryOrchestrator:
                     relevance = max(relevance + 0.22, 0.45)
                 if is_wakeup_seed:
                     relevance = max(relevance, 0.56)
-                if is_entity_hop:
-                    relevance = max(relevance, 0.44)
+                if assoc_relevance > 0.0:
+                    relevance = max(relevance, assoc_relevance)
             elif is_temporal_hit and raw_relevance > 0.0:
                 relevance = min(1.0, raw_relevance + 0.15)
 
@@ -692,12 +756,15 @@ class MemoryOrchestrator:
                 ):
                     raw_hits[(id(repo), hit.record.id)] = (repo, hit)
 
-        rows: list[tuple[float, MemoryRepository, MemoryRecord, RetentionState, float]] = []
+        rows: list[tuple[float, MemoryRepository, MemoryRecord, RetentionState, float, float]] = []
         for repo, hit in raw_hits.values():
             rec = hit.record
             if rec.superseded_by is not None:
                 continue
+            if str(rec.kind or "").strip().lower() == "retraction":
+                continue
             ret_state = self._evaluate_retention(rec, now_ts=eff_now)
+            vec_score = max(0.0, min(1.0, float(hit.vector_score)))
             raw_score = max(
                 0.0,
                 min(
@@ -729,14 +796,14 @@ class MemoryOrchestrator:
             ):
                 continue
             rank = 0.75 * max(hit.vector_score, hit.fts_score) + 0.25 * ret_state.retention
-            rows.append((rank, repo, rec, ret_state, raw_score))
+            rows.append((rank, repo, rec, ret_state, raw_score, vec_score))
 
         rows.sort(key=lambda item: (item[0], item[4], item[2].created_at), reverse=True)
         chosen = rows[:bounded_limit]
 
         by_repo: dict[int, tuple[MemoryRepository, list[str]]] = {}
         out: list[dict[str, Any]] = []
-        for _rank, repo, rec, ret_state, raw_score in chosen:
+        for _rank, repo, rec, ret_state, raw_score, vec_score in chosen:
             rid = id(repo)
             if rid not in by_repo:
                 by_repo[rid] = (repo, [])
@@ -746,18 +813,27 @@ class MemoryOrchestrator:
                 if ret_state.tier in {"canon", "clear"}
                 else (rec.gist_text or rec.detail_text)
             )
-            out.append(
-                {
-                    "id": rec.id,
-                    "memory": memory_text,
-                    "detail": rec.detail_text,
-                    "gist": rec.gist_text or rec.detail_text,
-                    "clarity": ret_state.tier,
-                    "retention": round(ret_state.retention, 4),
-                    "rendered": ret_state.rendered_text,
-                    "score": raw_score,
-                }
-            )
+            meta = unpack_system_tags(rec.topic_tags)
+            row_payload: dict[str, Any] = {
+                "id": rec.id,
+                "memory": memory_text,
+                "detail": rec.detail_text,
+                "gist": rec.gist_text or rec.detail_text,
+                "kind": rec.kind,
+                "slotKey": rec.slot_key,
+                "clarity": ret_state.tier,
+                "retention": round(ret_state.retention, 4),
+                "rendered": ret_state.rendered_text,
+                "score": raw_score,
+                "vectorScore": round(vec_score, 4),
+                "topicTags": list(meta.public_tags),
+                "entities": list(rec.entities),
+            }
+            if meta.visual_ref:
+                row_payload["visualRef"] = meta.visual_ref
+            if meta.valid_until is not None:
+                row_payload["validUntil"] = float(meta.valid_until)
+            out.append(row_payload)
         for repo_obj, ids in by_repo.values():
             if repo_obj is not self.global_repo or normalize_memory_mode(memory_mode) == MEMORY_MODE_SHARED:
                 repo_obj.record_recall(ids, recalled_at=eff_now)
@@ -795,6 +871,14 @@ class MemoryOrchestrator:
             detail = texts[idx]
             gist = str(draft.gist_text or "").strip() or detail
             slot_key = str(draft.slot_key or "").strip()
+            kind_norm = str(draft.kind or "episodic").strip() or "episodic"
+            meta = unpack_system_tags(draft.topic_tags)
+            stored_tags = pack_system_tags(
+                meta.public_tags,
+                valid_until=meta.valid_until,
+                visual_ref=meta.visual_ref,
+                consolidated_seq=meta.consolidated_seq,
+            )
             vec = embeddings[idx]
             target_repo, scope, owner_id = self.resolve_write_target(
                 draft,
@@ -802,16 +886,43 @@ class MemoryOrchestrator:
                 save_repo=save_repo,
                 player_character=player_character,
             )
+            clean_session_id = str(draft.source_session_id or "").strip()
 
             read_filter = MemoryScopeFilter(
                 scopes=(scope,),
                 owner_ids=(owner_id,),
                 session_id=(
-                    str(draft.source_session_id or "").strip() or None
-                    if scope == SCOPE_SAVE_ISOLATED and draft.source_session_id
+                    clean_session_id or None
+                    if scope == SCOPE_SAVE_ISOLATED and clean_session_id
                     else None
                 ),
             )
+
+            # Validate any explicit cross-slot `supersedes_ids` strictly within `(scope, owner_id)`
+            valid_explicit_targets: list[MemoryRecord] = []
+            explicit_id_set: set[str] = set()
+            for raw_old_id in meta.supersedes_ids:
+                old_rec = target_repo.get(raw_old_id)
+                if old_rec is None or old_rec.superseded_by is not None:
+                    continue
+                if old_rec.scope != scope or old_rec.owner_id != owner_id:
+                    continue
+                if (
+                    scope == SCOPE_SAVE_ISOLATED
+                    and clean_session_id
+                    and old_rec.source_session_id
+                    and old_rec.source_session_id != clean_session_id
+                ):
+                    continue
+                if _is_canon_memory(old_rec):
+                    continue
+                if old_rec.id not in explicit_id_set:
+                    explicit_id_set.add(old_rec.id)
+                    valid_explicit_targets.append(old_rec)
+
+            if kind_norm.lower() == "retraction" and not valid_explicit_targets:
+                skipped_duplicates += 1
+                continue
 
             if slot_key:
                 existing_slot_records = [
@@ -820,7 +931,7 @@ class MemoryOrchestrator:
                     if rec.slot_key == slot_key and rec.superseded_by is None
                 ]
                 # Skip no-op rewrite if the active slot already has identical detail_text
-                if any(
+                if not valid_explicit_targets and any(
                     " ".join(rec.detail_text.casefold().split())
                     == " ".join(detail.casefold().split())
                     for rec in existing_slot_records
@@ -830,26 +941,28 @@ class MemoryOrchestrator:
                 prior_ids = [rec.id for rec in existing_slot_records]
             else:
                 prior_ids = []
-                cand_hits = target_repo.search_candidates(
-                    MemoryCandidateQuery(
-                        scope_filter=read_filter,
-                        query_vectors=(vec,),
-                        keyword_query=detail,
-                        limit=5,
+                if not valid_explicit_targets and kind_norm.lower() != "retraction":
+                    cand_hits = target_repo.search_candidates(
+                        MemoryCandidateQuery(
+                            scope_filter=read_filter,
+                            query_vectors=(vec,),
+                            keyword_query=detail,
+                            limit=5,
+                        )
                     )
-                )
-                candidates = [
-                    {
-                        "id": hit.record.id,
-                        "memory": hit.record.detail_text,
-                        "score": max(0.0, min(1.0, float(hit.vector_score))),
-                    }
-                    for hit in cand_hits
-                ]
-                dup = find_duplicate_memory(detail, candidates, threshold=threshold)
-                if dup is not None:
-                    skipped_duplicates += 1
-                    continue
+                    candidates = [
+                        {
+                            "id": hit.record.id,
+                            "memory": hit.record.detail_text,
+                            "score": max(0.0, min(1.0, float(hit.vector_score))),
+                        }
+                        for hit in cand_hits
+                        if str(hit.record.kind or "").strip().lower() != "retraction"
+                    ]
+                    dup = find_duplicate_memory(detail, candidates, threshold=threshold)
+                    if dup is not None:
+                        skipped_duplicates += 1
+                        continue
 
             new_id = target_repo.upsert(
                 MemoryRecord(
@@ -859,15 +972,17 @@ class MemoryOrchestrator:
                     detail_text=detail,
                     gist_text=gist,
                     slot_key=slot_key,
-                    kind=str(draft.kind or "episodic").strip() or "episodic",
-                    topic_tags=tuple(draft.topic_tags),
+                    kind=kind_norm,
+                    topic_tags=stored_tags,
                     entities=tuple(draft.entities),
                     importance=float(max(0.0, min(1.0, float(draft.importance)))),
-                    pinned=bool(draft.pinned or scope == SCOPE_CHAR_CANON or draft.kind == "canon"),
+                    pinned=bool(
+                        draft.pinned or scope == SCOPE_CHAR_CANON or kind_norm == "canon"
+                    ),
                     created_at=eff_now,
                     event_at=draft.event_at,
                     last_recalled_at=eff_now,
-                    source_session_id=str(draft.source_session_id or "").strip(),
+                    source_session_id=clean_session_id,
                     source_turn_seq=(
                         None if draft.source_turn_seq is None else int(draft.source_turn_seq)
                     ),
@@ -876,6 +991,20 @@ class MemoryOrchestrator:
             )
             added_ids.append(new_id)
             superseded_ids.extend(prior_ids)
+
+            prior_id_set = set(prior_ids)
+            for old_rec in valid_explicit_targets:
+                if old_rec.id == new_id or old_rec.id in prior_id_set:
+                    continue
+                target_repo.upsert(
+                    replace(
+                        old_rec,
+                        superseded_by=new_id,
+                        embedding=None,
+                    )
+                )
+                prior_id_set.add(old_rec.id)
+                superseded_ids.append(old_rec.id)
 
         return IngestReport(
             added_ids=tuple(added_ids),
