@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import {
@@ -161,6 +161,7 @@ export function ChatStagePage() {
   const historyReplayGenerationRef = useRef(0);
   const [conversationEditorOpen, setConversationEditorOpen] = useState(false);
   const [dialogControlsLocked, setDialogControlsLocked] = useState(false);
+  const dialogToolbarLayerRef = useRef<HTMLDivElement>(null);
   const [runtimeConfig, setRuntimeConfig] = useState(readChatStageRuntimeConfig);
   const [attachmentUploadPending, setAttachmentUploadPending] = useState(false);
   const mainThemeColor = useMainThemeColor();
@@ -908,6 +909,37 @@ export function ChatStagePage() {
   }, [screenSharing]);
 
   const dialogSurfaceVisible = Boolean(activeReplay) || viewModel.layers.dialog || viewModel.layers.options;
+  useLayoutEffect(() => {
+    const toolbar = dialogToolbarLayerRef.current;
+    const stage = toolbar?.parentElement;
+    if (
+      !toolbar ||
+      !stage ||
+      !dialogSurfaceVisible ||
+      miniAvatarActive ||
+      activeReplay ||
+      dialogToolbarPlacement !== "input"
+    ) {
+      return;
+    }
+
+    // The toolbar grows upward from the input when its buttons wrap.
+    const updateClearance = () => {
+      const { height } = toolbar.getBoundingClientRect();
+      stage.style.setProperty(
+        "--chat-dialog-toolbar-clearance",
+        `calc(var(--chat-dialog-toolbar-layer-bottom) + ${height}px + var(--chat-dialog-toolbar-gap))`,
+      );
+    };
+    updateClearance();
+    const observer = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(updateClearance);
+    observer?.observe(toolbar);
+    return () => {
+      observer?.disconnect();
+      stage.style.removeProperty("--chat-dialog-toolbar-clearance");
+    };
+  }, [activeReplay, dialogSurfaceVisible, dialogToolbarPlacement, miniAvatarActive, runtimeConfig.windowScale]);
+
   const dialogToolbar = activeReplay ? (
     <ReplayControls
       replay={activeReplay}
@@ -1097,6 +1129,7 @@ export function ChatStagePage() {
             data-placement={activeReplay ? "input" : dialogToolbarPlacement}
             data-reveal={dialogToolbarReveal}
             hidden={!dialogSurfaceVisible}
+            ref={dialogToolbarLayerRef}
           >
             {dialogToolbar}
           </div>

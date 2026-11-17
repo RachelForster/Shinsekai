@@ -273,7 +273,7 @@ test("chat stage browser preview supports state-driven interaction flow", async 
 });
 
 test("reveals the themed dialog toolbar when hovering the dialog", async ({ page }) => {
-  await page.goto("/#/chat");
+  await page.goto("/#/chat", { waitUntil: "domcontentloaded" });
   const dialog = page.locator(".dialog-layer");
   const toolbar = page.locator('.dialog-toolbar-layer[data-reveal="hover"]');
   const surface = toolbar.locator(".dialog-stage-controls__surface");
@@ -298,6 +298,43 @@ test("reveals the themed dialog toolbar when hovering the dialog", async ({ page
   await toolbar.getByRole("button", { name: "解锁聊天操作", exact: true }).click();
   await page.mouse.click(10, 100);
   await expect(surface).toHaveCSS("opacity", "0");
+});
+
+test("keeps every hover dialog action visible and clickable after resizing the window", async ({ page }) => {
+  await page.goto("/#/chat", { waitUntil: "domcontentloaded" });
+  const options = page.getByRole("list", { name: "对话选项" });
+  const toolbar = page.getByRole("toolbar", { name: "聊天舞台操作" });
+  const surface = page.locator(".dialog-stage-controls__surface");
+  await expect(options).toBeVisible();
+  await expect(toolbar.getByRole("button", { name: "关闭聊天" })).toBeAttached();
+  const actionCount = await toolbar.getByRole("button").count();
+
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.mouse.move(8, 102);
+  await expect(surface).toHaveCSS("opacity", "0");
+  await options.hover();
+  await expect(surface).toHaveCSS("opacity", "1");
+
+  const layout = await toolbar.getByRole("button").evaluateAll((buttons) => {
+    const bounds = buttons.map((button) => button.getBoundingClientRect());
+    return {
+      rows: new Set(bounds.map((rect) => Math.round(rect.top))).size,
+      inViewport: bounds.every(
+        (rect) =>
+          rect.left >= 0 && rect.right <= window.innerWidth && rect.top >= 0 && rect.bottom <= window.innerHeight,
+      ),
+      clickable: bounds.every(
+        (rect, index) =>
+          document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)?.closest("button") ===
+          buttons[index],
+      ),
+    };
+  });
+  expect(actionCount).toBeGreaterThan(5);
+  await expect(toolbar.getByRole("button")).toHaveCount(actionCount);
+  expect(layout.rows).toBeGreaterThan(1);
+  expect(layout.inViewport).toBe(true);
+  expect(layout.clickable).toBe(true);
 });
 
 async function exportCharacterPackage(request: APIRequestContext, name: string) {

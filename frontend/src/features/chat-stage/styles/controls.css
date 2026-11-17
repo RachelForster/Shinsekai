@@ -481,15 +481,19 @@
 .dialog-stage-controls__rail {
   display: flex;
   min-width: 0;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: 4px;
-  white-space: nowrap;
 }
 
 .dialog-stage-controls__rail > [data-plugin-slot="chat-dialog-actions"] {
   display: contents;
+}
+
+.dialog-stage-controls__rail .button__label {
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .dialog-stage-controls__chat-settings {
@@ -745,7 +749,6 @@
 }
 
 .dialog-stage-controls__button .button__label {
-  max-width: 84px;
   color: inherit;
   font-size: 11px;
   font-weight: 600;
