@@ -251,7 +251,8 @@ class CharacterUseCase:
                 raise ValueError("自设显示名无效，请使用 24 个字符以内的名称")
             body = {**body, "display_name": display_name}
         validate_character_payload(body, allow_remote_voice_paths=self._uses_remote_gpt_sovits())
-        character = Character.model_validate(body)
+        # History grants are written only when the host retires a validated state.
+        character = Character.model_validate({key: value for key, value in body.items() if key != "avatar_state_history"})
         saved_name = character.name.strip()
         message, _names = self._state.character_manager.add_character(
             saved_name,

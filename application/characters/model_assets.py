@@ -6,13 +6,36 @@ import json
 import shutil
 import tempfile
 import uuid
+from collections.abc import Iterable
 from pathlib import Path
 
-from config.schema import ModelSprites, Sprite
+from application.characters.model_files import owned_model_file
+from config.schema import Character, ModelSprites, Sprite
+from config.sprite_files import sprite_field
 from core.media.asset_import import PendingAssetBatch
 from core.media.avatar.registry import adapter_for
-from core.media.avatar.state_dependencies import index_path, write_state_index
-from sdk.path_utils import safe_child_path
+from core.media.avatar.state_dependencies import index_path, indexed_state_files, write_state_index
+from sdk.path_utils import safe_child_path, safe_existing_file_path
+
+
+def _retired_state_paths(
+    project_root: Path, character: Character, kind: str, paths: Iterable[str | Path],
+) -> tuple[str, ...]:
+    """Keep the existing grants for valid states, even after they leave the preset list."""
+    retained: list[str] = []
+    try:
+        model = owned_model_file(project_root, character.sprite_prefix, kind, character.avatars[kind].model_path)
+    except (ValueError, OSError):
+        return ()
+    for path in paths:
+        try:
+            saved = safe_existing_file_path(path, roots=[model.parent])
+            indexed_state_files(model, saved, kind)
+        except (ValueError, OSError, KeyError):
+            # A broken legacy preset can still be removed from the list.
+            continue
+        retained.append(saved.relative_to(model.parent).as_posix())
+    return tuple(retained)
 
 
 def import_model_states(use_case, body: dict) -> dict:
@@ -130,14 +153,18 @@ def save_model_state(use_case, body: dict) -> dict:
             from core.media.asset_tags import numbered_tags, tag_contents
             tags = tag_contents(bank.emotion_tags, len(bank.sprites))
             sprite = Sprite(path=target) if index == -1 else bank.sprites[index].model_copy(update={"path": target})
+            retired = ()
             if index == -1:
                 bank.sprites.append(sprite)
                 tags.append(str(body["tags"]))
             else:
+                retired = _retired_state_paths(
+                    use_case._resource_paths.project_root, character, kind, [bank.sprites[index].path],
+                )
                 bank.sprites[index] = sprite
                 tags[index] = str(body["tags"])
             bank.emotion_tags = numbered_tags("立绘", tags)
-            use_case._state.character_manager.save_avatar_bank(name, kind, bank)
+            use_case._state.character_manager.save_avatar_bank(name, kind, bank, retired_states=retired)
         except Exception:
             target.unlink(missing_ok=True)
             index_path(target).unlink(missing_ok=True)
@@ -159,21 +186,20 @@ def delete_model_states(use_case, body: dict) -> dict:
         if current is None or not current.model_path or current.model_path != body["model_path"]:
             raise ValueError("Model changed; refresh and retry")
         bank = current.model_copy(deep=True)
-        removed = set()
+        removed: dict[int, str] = {}
         for target in targets:
             if not isinstance(target, dict):
                 raise ValueError("Invalid model preset selection")
             index = target.get("sprite_index")
             if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < len(bank.sprites):
                 raise ValueError("State changed; refresh and retry")
-            sprite = bank.sprites[index]
-            path = sprite.get("path") if isinstance(sprite, dict) else sprite.path
-            if str(path) != target.get("path") or index in removed:
+            path = str(sprite_field(bank.sprites[index], "path") or "")
+            if path != target.get("path") or index in removed:
                 raise ValueError("State changed; refresh and retry")
-            removed.add(index)
+            removed[index] = path
+        retired = _retired_state_paths(use_case._resource_paths.project_root, character, kind, removed.values())
         tags = tag_contents(bank.emotion_tags, len(bank.sprites))
         bank.sprites = [sprite for i, sprite in enumerate(bank.sprites) if i not in removed]
         bank.emotion_tags = numbered_tags("立绘", [tag for i, tag in enumerate(tags) if i not in removed])
-        # Removing a preset only changes the bank, since its files may be shared.
-        use_case._state.character_manager.save_avatar_bank(name, kind, bank)
+        use_case._state.character_manager.save_avatar_bank(name, kind, bank, retired_states=retired)
     return use_case._after_reload(name)

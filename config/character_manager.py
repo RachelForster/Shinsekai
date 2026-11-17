@@ -80,7 +80,10 @@ class CharacterManager:
         """保存角色配置的便捷方法"""
         self._config_manager.save_characters_config()
 
-    def save_avatar_bank(self, name: str, avatar_type: str, bank: ModelSprites, *, activate: bool = False) -> None:
+    def save_avatar_bank(
+        self, name: str, avatar_type: str, bank: ModelSprites, *,
+        activate: bool = False, retired_states: tuple[str, ...] = (),
+    ) -> None:
         """Persist one validated bank without replacing other types or static assets."""
         character = self._config_manager.get_character_by_name(name)
         if character is None:
@@ -89,7 +92,19 @@ class CharacterManager:
                               avatars={avatar_type: bank}).avatars
         previous = character.avatars
         previous_type = character.avatar_type
+        previous_history = character.avatar_state_history
+        old_bank = previous.get(avatar_type)
+        if retired_states:
+            # Publish historical grants before pulling live presets out of the list.
+            old_states = previous_history.get(bank.model_path, ())
+            character.avatar_state_history = {
+                **previous_history, bank.model_path: list(dict.fromkeys((*old_states, *retired_states))),
+            }
         character.avatars = {**previous, **validated}
+        if old_bank is not None and old_bank.model_path != bank.model_path:
+            character.avatar_state_history = {
+                model: paths for model, paths in character.avatar_state_history.items() if model != old_bank.model_path
+            }
         if activate:
             character.avatar_type = avatar_type
         try:
@@ -97,6 +112,7 @@ class CharacterManager:
         except Exception:
             character.avatars = previous
             character.avatar_type = previous_type
+            character.avatar_state_history = previous_history
             raise
 
     def save_characters_to_file(self) -> str:
