@@ -8,6 +8,7 @@ import re
 from typing import Any, Literal
 
 from config.perception import DEFAULT_SALIENCE_THRESHOLD
+from core.perception.models import SceneType, normalize_scene_type
 
 ScenePace = Literal["auto", "dialogue_heavy", "action_heavy", "quiet"]
 _VALID_SCENE_PACES: frozenset[str] = frozenset({"auto", "dialogue_heavy", "action_heavy", "quiet"})
@@ -83,6 +84,7 @@ class PerceptionMemoryPolicy:
 
     # 6) Active Cloud-LLM runtime guidance
     scene_pace: ScenePace = "auto"
+    cloud_scene: SceneType = "auto"
     focus_hint: str = ""
 
     _baseline: dict[str, Any] = field(default_factory=dict, init=False, repr=False)
@@ -126,13 +128,19 @@ class PerceptionMemoryPolicy:
         )
         pace = str(self.scene_pace or "auto").strip().lower()
         self.scene_pace = pace if pace in _VALID_SCENE_PACES else "auto"  # type: ignore[assignment]
+        norm_cloud_scene = normalize_scene_type(self.cloud_scene)
+        self.cloud_scene = norm_cloud_scene if norm_cloud_scene else "auto"  # type: ignore[assignment]
         self.focus_hint = _sanitize_focus_hint(self.focus_hint)
 
     def visual_beat_budget(self, live_subtitle_count: int) -> int:
         """Compute how many incremental visual beats to inject alongside live subtitles."""
-        if self.scene_pace == "dialogue_heavy" or live_subtitle_count >= self.subtitle_heavy_threshold:
+        if (
+            self.scene_pace == "dialogue_heavy"
+            or self.cloud_scene == "story_media"
+            or live_subtitle_count >= self.subtitle_heavy_threshold
+        ):
             return self.visual_beats_subtitle_heavy
-        if self.scene_pace == "quiet":
+        if self.scene_pace == "quiet" or self.cloud_scene in {"reading_work", "idle"}:
             return max(1, min(3, self.visual_beats_visual_heavy))
         return self.visual_beats_visual_heavy
 
@@ -188,6 +196,13 @@ class PerceptionMemoryPolicy:
                 self.scene_pace = raw_pace  # type: ignore[assignment]
                 applied["scene_pace"] = self.scene_pace
 
+        raw_scene_val = guidance.get("scene_type", guidance.get("cloud_scene"))
+        if raw_scene_val is not None:
+            norm_scene = normalize_scene_type(raw_scene_val)
+            if norm_scene:
+                self.cloud_scene = norm_scene  # type: ignore[assignment]
+                applied["cloud_scene"] = self.cloud_scene
+
         if "focus_hint" in guidance and guidance["focus_hint"] is not None:
             self.focus_hint = _sanitize_focus_hint(guidance["focus_hint"])
             applied["focus_hint"] = self.focus_hint
@@ -208,7 +223,9 @@ class PerceptionMemoryPolicy:
             "visual_beats_subtitle_heavy": self.visual_beats_subtitle_heavy,
             "visual_beats_visual_heavy": self.visual_beats_visual_heavy,
             "notable_salience_floor": round(self.notable_salience_floor, 3),
+            "proactive_salience_threshold": round(self.proactive_salience_threshold, 3),
             "scene_pace": self.scene_pace,
+            "cloud_scene": self.cloud_scene,
             "focus_hint": self.focus_hint,
         }
 
@@ -244,6 +261,7 @@ class PerceptionMemoryPolicy:
             "screen_audio_silence_rms": self.screen_audio_silence_rms,
             "screen_audio_quiet_ratio": self.screen_audio_quiet_ratio,
             "scene_pace": self.scene_pace,
+            "cloud_scene": self.cloud_scene,
             "focus_hint": self.focus_hint,
         }
 

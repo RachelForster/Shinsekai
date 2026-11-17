@@ -100,10 +100,9 @@ class PerceptionAutoHooks:
     def message_added(self, context: MessageAddedContext) -> None:
         role = str(context.role or "")
         message: dict[str, Any] = context.message or {}
-        if role == "assistant" or (
-            role == "user" and message.get("source") != "perception"
-        ):
-            self.gatekeeper.notify_conversation_activity()
+        is_real_user = role == "user" and message.get("source") != "perception"
+        if role == "assistant" or is_real_user:
+            self.gatekeeper.notify_conversation_activity(from_user=is_real_user)
 
 
 def install_perception_hooks(

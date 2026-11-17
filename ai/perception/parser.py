@@ -10,6 +10,7 @@ from core.perception.models import (
     PerceptionDigestResult,
     ReflexDecision,
     normalize_scene_mood,
+    normalize_scene_type,
     normalize_visual_change,
 )
 
@@ -85,6 +86,7 @@ def parse_perception_decision_json(
 
     if parsed is None:
         early = try_extract_early_reflex(cleaned) or ReflexDecision()
+        scene_match = re.search(r'"scene"\s*:\s*"([^"]*)"', cleaned)
         mood_match = re.search(r'"mood"\s*:\s*"([^"]*)"', cleaned)
         change_match = re.search(r'"visual_change"\s*:\s*"([^"]*)"', cleaned)
         salience_match = re.search(r'"salience"\s*:\s*([0-9]*\.?[0-9]+)', cleaned)
@@ -108,6 +110,7 @@ def parse_perception_decision_json(
             digest=digest_val[:160],
             game=game,
             latency_ms=latency_ms,
+            scene=normalize_scene_type(scene_match.group(1) if scene_match else ""),
             mood=normalize_scene_mood(mood_match.group(1) if mood_match else ""),
             visual_change=visual_change,
         )
@@ -121,6 +124,7 @@ def parse_perception_decision_json(
         salience = 0.0
     player_busy = bool(fields.get("player_busy", False))
     digest = str(fields.get("digest") or "").strip()[:160]
+    scene = normalize_scene_type(fields.get("scene"))
     mood = normalize_scene_mood(fields.get("mood"))
     explicit_change = fields.get("visual_change")
     visual_change = (
@@ -154,6 +158,7 @@ def parse_perception_decision_json(
         digest=digest,
         game=game,
         latency_ms=latency_ms,
+        scene=scene,
         mood=mood,
         visual_change=visual_change,
     )

@@ -150,4 +150,17 @@ describe("chat stage immersive styles", () => {
     expect(optionButtonBlock).toContain("white-space: normal;");
     expect(miniAvatarCss).toContain("::-webkit-scrollbar-button");
   });
+
+  it("keeps dialog stage controls on a single row with horizontal width adaptation", () => {
+    const railBlock = controlsCss.split(".dialog-stage-controls__rail {")[1]?.split("}")[0] ?? "";
+    const attachedToolbarBlock = dialogLayerCss.split(".dialog-layer__toolbar {")[1]?.split("}")[0] ?? "";
+    const detachedToolbarBlock = dialogLayerCss.split(".dialog-toolbar-layer {")[1]?.split("}")[0] ?? "";
+
+    expect(railBlock).toContain("flex-wrap: nowrap;");
+    expect(railBlock).toContain("white-space: nowrap;");
+    expect(attachedToolbarBlock).toContain("width: fit-content;");
+    expect(detachedToolbarBlock).toContain("width: fit-content;");
+    expect(controlsCss).toContain('.dialog-stage-controls[data-density="tight"]');
+    expect(controlsCss).toContain('.dialog-stage-controls[data-density="compact"]');
+  });
 });

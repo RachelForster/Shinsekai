@@ -93,6 +93,9 @@ def _wait_for_task(
 
 def _patch_runtime(monkeypatch, *, mode: str = "react") -> dict[str, Any]:
     source_snapshot = {
+        "backgroundPath": "stale-bg.png",
+        "bgmPath": "stale-bgm.mp3",
+        "cgPath": "stale-cg.png",
         "chatProcessRunning": False,
         "dialogText": "preserved dialog",
         "inputDraft": "preserved draft",
@@ -217,6 +220,9 @@ def test_chat_init_deduplicates_and_waits_for_explicit_completion(monkeypatch):
 
     assert state.chat_stream.create_session_calls == [
         {
+            "backgroundPath": "",
+            "bgmPath": "",
+            "cgPath": "",
             "chatProcessRunning": False,
             "dialogText": "preserved dialog",
             "inputDraft": "preserved draft",
@@ -225,6 +231,7 @@ def test_chat_init_deduplicates_and_waits_for_explicit_completion(monkeypatch):
             "status": "idle",
         }
     ]
+    assert runtime["sourceSnapshot"]["backgroundPath"] == "stale-bg.png"
     assert runtime["sourceSnapshot"]["sprites"] == [
         {"id": "stale", "label": "Stale", "path": "stale.png"}
     ]

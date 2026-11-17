@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import {
@@ -28,7 +28,12 @@ import { ChatConfigDialog } from "./components/ChatConfigDialog";
 import { DialogStageControls } from "./components/DialogStageControls";
 import { HistoryDialog } from "./components/HistoryDialog";
 import { HistoryExportDialog } from "./replay/HistoryExportDialog";
-import { saveHistoryExport, type HistoryExportFormat, type HistoryExportResult } from "./replay/historyExport";
+import {
+  saveCgAsset,
+  saveHistoryExport,
+  type HistoryExportFormat,
+  type HistoryExportResult,
+} from "./replay/historyExport";
 import { ReplayControls, type ActiveReplay } from "./replay/ReplayControls";
 import { useReplayCapture } from "./replay/useReplayCapture";
 import { InputLayer } from "./components/InputLayer";
@@ -54,7 +59,7 @@ import { TopStageTools } from "./components/TopStageTools";
 import { StoryDebugPanel } from "./components/StoryDebugPanel";
 import "./chat-stage.css";
 import { buildChatStageViewModel, chatStageReducer, emptyChatState } from "./chatState";
-import { isRemoteMobileAccessPage, layerClassName } from "./chatStageUtils";
+import { isRemoteMobileAccessPage, layerClassName, stageAssetUrl } from "./chatStageUtils";
 import { useChatStageCommands } from "./hooks/useChatStageCommands";
 import { useChatStageEvents } from "./hooks/useChatStageEvents";
 import { useChatStageKeyboardShortcuts } from "./hooks/useChatStageKeyboardShortcuts";
@@ -161,6 +166,7 @@ export function ChatStagePage() {
   const historyReplayGenerationRef = useRef(0);
   const [conversationEditorOpen, setConversationEditorOpen] = useState(false);
   const [dialogControlsLocked, setDialogControlsLocked] = useState(false);
+  const dialogToolbarLayerRef = useRef<HTMLDivElement>(null);
   const [runtimeConfig, setRuntimeConfig] = useState(readChatStageRuntimeConfig);
   const [attachmentUploadPending, setAttachmentUploadPending] = useState(false);
   const mainThemeColor = useMainThemeColor();
@@ -175,6 +181,7 @@ export function ChatStagePage() {
   const locallyDismissedPresentationRef = useRef<string | null>(null);
   const { showToast } = useToast();
   const { t } = useI18n();
+  const [savingCg, setSavingCg] = useState(false);
   const [historyExport, setHistoryExport] = useState<HistoryExportResult>();
   const exportHistory = useCallback(async (blob: Blob, format: HistoryExportFormat) => {
     setHistoryExport(await saveHistoryExport(blob, format));
@@ -294,7 +301,11 @@ export function ChatStagePage() {
     confirmClearHistory ||
     confirmRevertUserIndex != null;
   const clickThroughEnabled =
-    standaloneDesktopWindow && transparentBackground && !modalOpen && !(miniAvatarActive && miniInputPinned);
+    standaloneDesktopWindow &&
+    transparentBackground &&
+    !viewModel.layers.cg &&
+    !modalOpen &&
+    !(miniAvatarActive && miniInputPinned);
   const dialogToolbarPlacement =
     typeof themeStyle["--chat-dialog-toolbar-placement"] === "string"
       ? themeStyle["--chat-dialog-toolbar-placement"]
@@ -771,9 +782,41 @@ export function ChatStagePage() {
     setRuntimeConfig((current) => ({ ...current, auto: !current.auto }));
   }, []);
 
+  const exitCg = useCallback(() => {
+    dispatch({ type: "dismissCg" });
+    if (!state.sessionClosedReason && !activeReplay && !state.replay) {
+      void sendCommand({ type: "dismiss-cg" });
+    }
+  }, [activeReplay, sendCommand, state.replay, state.sessionClosedReason]);
+
+  const saveCg = useCallback(async () => {
+    const cgUrl = stageAssetUrl(viewModel.cgPath);
+    if (!cgUrl || savingCg) {
+      return;
+    }
+    setSavingCg(true);
+    try {
+      const saved = await saveCgAsset(cgUrl);
+      showToast({
+        kind: "success",
+        message: saved.path ?? saved.name,
+        title: t("chat.cg.saved"),
+      });
+    } catch (error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : undefined,
+        title: t("chat.cg.saveFailed"),
+      });
+    } finally {
+      setSavingCg(false);
+    }
+  }, [savingCg, showToast, t, viewModel.cgPath]);
+
   useChatStageKeyboardShortcuts({
     disabled: modalOpen,
     onAdvance: advanceDialog,
+    onExitCg: viewModel.layers.cg && !miniAvatarActive ? exitCg : undefined,
     onToggleAuto: toggleAuto,
   });
 
@@ -908,6 +951,37 @@ export function ChatStagePage() {
   }, [screenSharing]);
 
   const dialogSurfaceVisible = Boolean(activeReplay) || viewModel.layers.dialog || viewModel.layers.options;
+  useLayoutEffect(() => {
+    const toolbar = dialogToolbarLayerRef.current;
+    const stage = toolbar?.parentElement;
+    if (
+      !toolbar ||
+      !stage ||
+      !dialogSurfaceVisible ||
+      miniAvatarActive ||
+      activeReplay ||
+      dialogToolbarPlacement !== "input"
+    ) {
+      return;
+    }
+
+    // Keep the dialog stack clear of the detached input toolbar.
+    const updateClearance = () => {
+      const { height } = toolbar.getBoundingClientRect();
+      stage.style.setProperty(
+        "--chat-dialog-toolbar-clearance",
+        `calc(var(--chat-dialog-toolbar-layer-bottom) + ${height}px + var(--chat-dialog-toolbar-gap))`,
+      );
+    };
+    updateClearance();
+    const observer = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(updateClearance);
+    observer?.observe(toolbar);
+    return () => {
+      observer?.disconnect();
+      stage.style.removeProperty("--chat-dialog-toolbar-clearance");
+    };
+  }, [activeReplay, dialogSurfaceVisible, dialogToolbarPlacement, miniAvatarActive, runtimeConfig.windowScale]);
+
   const dialogToolbar = activeReplay ? (
     <ReplayControls
       replay={activeReplay}
@@ -1012,7 +1086,14 @@ export function ChatStagePage() {
           commands={state.audioCommands}
           onPlaybackSignal={handlePlaybackSignal}
         />
-        <CgLayer hidden={!viewModel.layers.cg || miniAvatarActive} path={viewModel.cgPath} />
+        <CgLayer
+          hidden={!viewModel.layers.cg || miniAvatarActive}
+          onExit={exitCg}
+          onSave={() => void saveCg()}
+          path={viewModel.cgPath}
+          saving={savingCg}
+          standaloneDesktopWindow={standaloneDesktopWindow}
+        />
         {!miniAvatarActive ? <EffectImageLayer effect={state.effectImage} /> : null}
         <SpriteLayer
           hidden={!viewModel.layers.sprites || miniAvatarActive}
@@ -1097,6 +1178,7 @@ export function ChatStagePage() {
             data-placement={activeReplay ? "input" : dialogToolbarPlacement}
             data-reveal={dialogToolbarReveal}
             hidden={!dialogSurfaceVisible}
+            ref={dialogToolbarLayerRef}
           >
             {dialogToolbar}
           </div>
@@ -1245,6 +1327,7 @@ export function ChatStagePage() {
         {historyExport && <HistoryExportDialog result={historyExport} onClose={() => setHistoryExport(undefined)} />}
         {screenSettingsOpen && screenShareStream ? (
           <ScreenShareSettingsDialog
+            currentScene={state.perception?.rpCache?.currentScene}
             ocrEnabled={Boolean(state.perception?.ocrEnabled)}
             onClose={() => setScreenSettingsOpen(false)}
             onScopeChange={changeOcrScope}

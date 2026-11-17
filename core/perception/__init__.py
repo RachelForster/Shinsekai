@@ -10,11 +10,20 @@ from core.perception.models import (
     PerceptionFrame,
     RawPerceptionSnapshot,
     ReflexDecision,
+    SceneType,
+    normalize_scene_type,
+)
+from core.perception.pacing import (
+    AdaptivePacingProfile,
+    SceneActivitySignals,
+    compute_adaptive_pacing,
+    resolve_effective_scene,
 )
 from core.perception.policy import PerceptionMemoryPolicy, VisionMemoryPolicy
 from core.perception.raw_buffer import PerceptionRawBuffer
 
 __all__ = [
+    "AdaptivePacingProfile",
     "CachedPerceptionEvent",
     "GatekeeperVerdict",
     "PERCEPTION_CONTEXT_MARKER",
@@ -28,5 +37,10 @@ __all__ = [
     "RPInputCache",
     "RawPerceptionSnapshot",
     "ReflexDecision",
+    "SceneActivitySignals",
+    "SceneType",
     "VisionMemoryPolicy",
+    "compute_adaptive_pacing",
+    "normalize_scene_type",
+    "resolve_effective_scene",
 ]

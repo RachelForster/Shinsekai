@@ -35,7 +35,12 @@ function buildChatViewerWebSocketUrl(wsUrl: string, sessionId: string, authToken
 }
 
 function isRealtimeChatCommand(command: ChatCommand): command is ChatUpstreamCommand {
-  return command.type !== "copy-history" && command.type !== "open-history";
+  return (
+    command.type !== "copy-history" &&
+    command.type !== "dismiss-cg" &&
+    command.type !== "dismiss-plugin-page" &&
+    command.type !== "open-history"
+  );
 }
 
 function makeChatCommandId() {

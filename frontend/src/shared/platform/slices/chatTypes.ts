@@ -402,6 +402,7 @@ export interface ChatCommand {
     | "clear-history"
     | "copy-history"
     | "dialog-advance"
+    | "dismiss-cg"
     | "dismiss-plugin-page"
     | "flush-input-batch"
     | "open-history"
@@ -422,7 +423,7 @@ export interface ChatCommand {
 }
 
 export type ChatRealtimeCommandType =
-  | Exclude<ChatCommand["type"], "copy-history" | "dismiss-plugin-page" | "open-history">
+  | Exclude<ChatCommand["type"], "copy-history" | "dismiss-cg" | "dismiss-plugin-page" | "open-history">
   | "revert-history";
 
 /** 上行命令（React→server，WebSocket），沿用并扩展 ChatCommand。 */

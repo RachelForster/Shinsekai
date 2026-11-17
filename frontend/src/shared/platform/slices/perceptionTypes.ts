@@ -8,6 +8,11 @@ export interface PerceptionRawBufferStats {
 
 export interface PerceptionRpCacheStatus {
   currentDigest: string;
+  currentScene?: string;
+  currentMood?: string;
+  effectiveSalienceThreshold?: number;
+  effectiveProactiveCooldownSec?: number;
+  effectiveReflexCooldownSec?: number;
   recentDigestCount: number;
   unconsumedEventCount: number;
   totalNotableEvents: number;

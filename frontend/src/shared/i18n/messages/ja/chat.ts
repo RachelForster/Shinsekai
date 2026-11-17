@@ -439,4 +439,12 @@ export const chatJaMessages: Record<ChatMessageKey, string> = {
   "launch.initialOutfits": "初期衣装グループ",
   "launch.initialOutfitDefault": "キャラ既定の衣装に従う",
   "launch.autoOutfitSwitch": "展開に応じた自動着替えを許可",
+  "chat.cg.controlsLabel": "CG 操作",
+  "chat.cg.save": "保存",
+  "chat.cg.saveLabel": "CG を保存",
+  "chat.cg.saving": "保存中…",
+  "chat.cg.saved": "CG を保存しました",
+  "chat.cg.saveFailed": "CG の保存に失敗しました",
+  "chat.cg.exit": "閉じる",
+  "chat.cg.exitLabel": "CG を閉じる",
 };

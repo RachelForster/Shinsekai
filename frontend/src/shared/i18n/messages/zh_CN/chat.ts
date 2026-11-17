@@ -429,6 +429,14 @@ export const chatZhCNMessages = {
   "launch.initialOutfits": "初始服装组",
   "launch.initialOutfitDefault": "跟随角色默认服装",
   "launch.autoOutfitSwitch": "允许随剧情自动换装",
+  "chat.cg.controlsLabel": "CG 画面操作",
+  "chat.cg.save": "保存",
+  "chat.cg.saveLabel": "保存 CG",
+  "chat.cg.saving": "保存中…",
+  "chat.cg.saved": "CG 已保存",
+  "chat.cg.saveFailed": "保存 CG 失败",
+  "chat.cg.exit": "退出",
+  "chat.cg.exitLabel": "退出 CG",
 } satisfies Record<string, string>;
 
 export type ChatMessageKey = keyof typeof chatZhCNMessages;

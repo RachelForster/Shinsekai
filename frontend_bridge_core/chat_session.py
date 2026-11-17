@@ -160,10 +160,16 @@ def _complete_chat_launch(
     state.chat_session = {
         **state.chat_session,
         **session_base,
-        "sessionId": (
-            str(stream_info.get("sessionId") or "") if use_react_runtime else ""
-        ),
+        "sessionId": "",
     }
+    initial_background_path = str(
+        _chat_snapshot(state, "idle", "").get("backgroundPath") or ""
+    )
+    if use_react_runtime:
+        state.chat_session = {
+            **state.chat_session,
+            "sessionId": str(stream_info.get("sessionId") or ""),
+        }
     if (
         use_react_runtime
         and stream_info.get("sessionId")
@@ -172,7 +178,9 @@ def _complete_chat_launch(
         state.chat_stream.update_session_snapshot(
             str(stream_info["sessionId"]),
             {
-                "backgroundPath": _chat_snapshot(state).get("backgroundPath", ""),
+                "backgroundPath": initial_background_path,
+                "bgmPath": "",
+                "cgPath": "",
                 "characterName": session_base["characterName"],
                 "dialogText": "",
                 "historyPath": session_base["historyPath"],

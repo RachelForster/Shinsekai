@@ -248,6 +248,7 @@ describe("TemplateEditorPage", () => {
     }));
     renderPage({ createOnly: true, conversationTitle: "Evening walk" });
     await waitFor(() => expect(screen.getByLabelText("Template name")).toHaveValue("My saved chat"));
+    expect(screen.getByLabelText("Background")).toHaveValue("透明场景");
     expect(screen.getByRole("checkbox", { name: "Smart sprite matching" })).not.toBeChecked();
     expect(mockGetMemoryStatus).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "Quick restart" })).not.toBeInTheDocument();
@@ -256,6 +257,7 @@ describe("TemplateEditorPage", () => {
     await waitFor(() =>
       expect(mockLaunchChat).toHaveBeenCalledWith(
         expect.objectContaining({
+          backgroundName: "透明场景",
           resetHistory: true,
           historyPath: "",
           conversationTitle: "Evening walk",
@@ -265,7 +267,39 @@ describe("TemplateEditorPage", () => {
         }),
       ),
     );
-    expect(mockGenerateTemplate).toHaveBeenCalledWith(expect.objectContaining({ mediaSelectionMode: "indexed" }));
+    expect(mockGenerateTemplate).toHaveBeenCalledWith(
+      expect.objectContaining({ backgroundName: "透明场景", mediaSelectionMode: "indexed" }),
+    );
+  });
+
+  it("resets remembered background to transparent when creating a new indexed chat", async () => {
+    mockGetTemplateSession.mockResolvedValue({ ...savedChat, mediaSelectionMode: "indexed" });
+    mockGenerateTemplate.mockImplementation(async (input) => ({
+      ...template,
+      name: input.name,
+      scenario: input.scenario,
+      system: "Transparent background instructions",
+      mediaSelectionMode: input.mediaSelectionMode,
+    }));
+    renderPage({ createOnly: true, conversationTitle: "Fresh scene" });
+    await waitFor(() => expect(screen.getByLabelText("Template name")).toHaveValue("My saved chat"));
+    expect(screen.getByLabelText("Background")).toHaveValue("透明场景");
+
+    await clickButton(screen.getByRole("button", { name: "Create and start" }));
+    await waitFor(() =>
+      expect(mockLaunchChat).toHaveBeenCalledWith(
+        expect.objectContaining({
+          backgroundName: "透明场景",
+          conversationTitle: "Fresh scene",
+          historyPath: "",
+          resetHistory: true,
+          system: "Transparent background instructions",
+        }),
+      ),
+    );
+    expect(mockGenerateTemplate).toHaveBeenCalledWith(
+      expect.objectContaining({ backgroundName: "透明场景", name: "My saved chat" }),
+    );
   });
 
   it.each(["success", "failure", "mobile"])(

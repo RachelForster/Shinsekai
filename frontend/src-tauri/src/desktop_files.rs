@@ -46,6 +46,12 @@ pub(crate) fn desktop_files_save_history_export(
 fn save_history_export(directory: &Path, bytes: &[u8]) -> io::Result<(PathBuf, String)> {
     let extension = if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
         "png"
+    } else if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
+        "jpg"
+    } else if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        "webp"
+    } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        "gif"
     } else if bytes.get(4..8) == Some(b"ftyp") {
         "mp4"
     } else if bytes.starts_with(b"\x1a\x45\xdf\xa3") {

@@ -443,4 +443,12 @@ export const chatEnMessages: Record<ChatMessageKey, string> = {
   "launch.initialOutfits": "Initial outfits",
   "launch.initialOutfitDefault": "Follow character default",
   "launch.autoOutfitSwitch": "Allow automatic outfit switching",
+  "chat.cg.controlsLabel": "CG controls",
+  "chat.cg.save": "Save",
+  "chat.cg.saveLabel": "Save CG",
+  "chat.cg.saving": "Saving…",
+  "chat.cg.saved": "CG saved",
+  "chat.cg.saveFailed": "Failed to save CG",
+  "chat.cg.exit": "Exit",
+  "chat.cg.exitLabel": "Exit CG",
 };

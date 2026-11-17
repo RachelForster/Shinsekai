@@ -93,11 +93,12 @@ def prepare_initial_presentation(
         resolved_sprite_path = str(resource_path("assets/system/picture/shinsekai.png"))
 
     _persist_selected_background(config, assets)
-    if assets.background_sprites:
-        try:
-            ui_updates.post_background(_asset_path(assets.background_sprites[0]))
-        except Exception:
-            pass
+    try:
+        ui_updates.post_background(
+            _asset_path(assets.background_sprites[0]) if assets.background_sprites else ""
+        )
+    except Exception:
+        pass
     ui_updates.switch_bgm(assets.bgm_paths[0] if assets.bgm_paths else "")
 
     restored_sprite = False

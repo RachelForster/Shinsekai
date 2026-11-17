@@ -8,12 +8,92 @@ export interface HistoryShareMessage {
 }
 
 export type HistoryExportFormat = "png" | "mp4" | "webm";
+export type CgExportFormat = "png" | "jpg" | "webp" | "gif" | "mp4" | "webm";
 
 export interface HistoryExportResult {
   name: string;
   path?: string;
   previewUrl?: string;
   format: HistoryExportFormat;
+}
+
+function inferCgExportFormat(url: string, mimeType: string): CgExportFormat {
+  const mime = mimeType.toLowerCase();
+  if (mime.includes("png")) return "png";
+  if (mime.includes("jpeg") || mime.includes("jpg")) return "jpg";
+  if (mime.includes("webp")) return "webp";
+  if (mime.includes("gif")) return "gif";
+  if (mime.includes("mp4")) return "mp4";
+  if (mime.includes("webm")) return "webm";
+  try {
+    const parsed = new URL(url, typeof window !== "undefined" ? window.location.href : "http://localhost");
+    const candidate = `${parsed.searchParams.get("path") ?? ""} ${parsed.pathname}`.toLowerCase();
+    const match = candidate.match(/\.(png|jpe?g|webp|gif|mp4|webm)(?:$|\s|\?)/);
+    if (match) {
+      return match[1] === "jpeg" ? "jpg" : (match[1] as CgExportFormat);
+    }
+  } catch {
+    // Fall back to PNG when URL parsing fails.
+  }
+  return "png";
+}
+
+async function convertImageBlobToPng(blob: Blob): Promise<Blob> {
+  const objectUrl = URL.createObjectURL(blob);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const element = new Image();
+      element.onload = () => resolve(element);
+      element.onerror = () => reject(new Error("Image decode failed"));
+      element.src = objectUrl;
+    });
+    const canvas = document.createElement("canvas");
+    canvas.width = img.naturalWidth || img.width || 1;
+    canvas.height = img.naturalHeight || img.height || 1;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas is unavailable");
+    ctx.drawImage(img, 0, 0);
+    return await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((png) => (png ? resolve(png) : reject(new Error("PNG encoding failed"))), "image/png");
+    });
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+export async function saveCgAsset(url: string): Promise<{ name: string; path?: string }> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  const blob = await response.blob();
+  const format = inferCgExportFormat(url, blob.type || response.headers.get("content-type") || "");
+  if (isTauriDesktop()) {
+    try {
+      const { name, path } = await saveDesktopHistoryExport(blob);
+      return { name, path };
+    } catch (error) {
+      if (
+        (format === "jpg" || format === "webp" || format === "gif") &&
+        String(error).toLowerCase().includes("unsupported")
+      ) {
+        const pngBlob = await convertImageBlobToPng(blob);
+        const { name, path } = await saveDesktopHistoryExport(pngBlob);
+        return { name, path };
+      }
+      throw error;
+    }
+  }
+  const name = `shinsekai-cg-${new Date().toISOString().replace(/[:.]/g, "-")}.${format}`;
+  const downloadUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = downloadUrl;
+  link.download = name;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 30_000);
+  return { name };
 }
 
 export async function saveHistoryExport(blob: Blob, format: HistoryExportFormat): Promise<HistoryExportResult> {

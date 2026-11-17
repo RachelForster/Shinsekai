@@ -256,8 +256,108 @@ class ReflexDecision:
         return cls(act=bool(bark or sprite is not None or expression), sprite=sprite, bark=bark, expression=expression)
 
 
+SCENE_TYPES = (
+    "auto",
+    "story_media",
+    "casual_media",
+    "video_call",
+    "combat",
+    "exploration",
+    "reading_work",
+    "idle",
+)
+SceneType = Literal[
+    "auto",
+    "story_media",
+    "casual_media",
+    "video_call",
+    "combat",
+    "exploration",
+    "reading_work",
+    "idle",
+]
 SCENE_MOODS = ("calm", "serious", "sad", "tense", "joyful", "hyped", "unclear")
 VISUAL_CHANGES = ("none", "detail", "cut")
+
+
+def normalize_scene_type(raw: Any) -> str:
+    value = str(raw or "").strip().casefold().replace("-", "_").replace(" ", "_")
+    if not value:
+        return ""
+    alias_map = {
+        "auto": "auto",
+        "story": "story_media",
+        "drama": "story_media",
+        "movie": "story_media",
+        "anime": "story_media",
+        "cutscene": "story_media",
+        "narrative": "story_media",
+        "dialogue": "story_media",
+        "剧情": "story_media",
+        "看剧": "story_media",
+        "番剧": "story_media",
+        "动画": "story_media",
+        "动漫": "story_media",
+        "电影": "story_media",
+        "影视": "story_media",
+        "过场": "story_media",
+        "casual": "casual_media",
+        "video": "casual_media",
+        "stream": "casual_media",
+        "livestream": "casual_media",
+        "variety": "casual_media",
+        "vlog": "casual_media",
+        "comedy": "casual_media",
+        "talk": "casual_media",
+        "轻松视频": "casual_media",
+        "直播": "casual_media",
+        "综艺": "casual_media",
+        "视频": "casual_media",
+        "video_meeting": "video_call",
+        "视频通话": "video_call",
+        "视频会议": "video_call",
+        "battle": "combat",
+        "boss": "combat",
+        "fight": "combat",
+        "action": "combat",
+        "战斗": "combat",
+        "交火": "combat",
+        "explore": "exploration",
+        "gameplay": "exploration",
+        "game": "exploration",
+        "puzzle": "exploration",
+        "strategy": "exploration",
+        "menu": "exploration",
+        "探索": "exploration",
+        "游戏": "exploration",
+        "整备": "exploration",
+        "reading": "reading_work",
+        "work": "reading_work",
+        "coding": "reading_work",
+        "code": "reading_work",
+        "document": "reading_work",
+        "doc": "reading_work",
+        "web": "reading_work",
+        "browser": "reading_work",
+        "article": "reading_work",
+        "阅读": "reading_work",
+        "办公": "reading_work",
+        "代码": "reading_work",
+        "写代码": "reading_work",
+        "文档": "reading_work",
+        "网页": "reading_work",
+        "static": "idle",
+        "pause": "idle",
+        "paused": "idle",
+        "loading": "idle",
+        "desktop": "idle",
+        "afk": "idle",
+        "静止": "idle",
+        "挂机": "idle",
+        "暂停": "idle",
+    }
+    mapped = alias_map.get(value, value)
+    return mapped if mapped in SCENE_TYPES else ""
 
 
 def normalize_scene_mood(raw: Any) -> str:
@@ -322,6 +422,7 @@ class PerceptionDigestResult:
     latency_ms: float = 0.0
     created_at: float = field(default_factory=time.time)
     ocr_text: str = ""
+    scene: str = ""
     mood: str = ""
     visual_change: str = ""
     screen_text: str = ""

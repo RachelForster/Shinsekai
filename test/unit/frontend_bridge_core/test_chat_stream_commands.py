@@ -400,6 +400,31 @@ class ChatStreamCommandTests(unittest.TestCase):
                 },
             )
 
+    def test_handle_chat_command_dismisses_cg_overlay(self):
+        chat_stream = _StubChatStream()
+        chat_stream.snapshot["cgPath"] = "http://127.0.0.1:8787/api/media?path=cache/0.png"
+        state = SimpleNamespace(
+            chat_session={"sessionId": "session-1"},
+            chat_stream=chat_stream,
+        )
+
+        snapshot = _handle_chat_command(
+            state,
+            {
+                "type": "dismiss-cg",
+            },
+        )
+
+        self.assertEqual(snapshot["status"], "idle")
+        self.assertIsNone(chat_stream.command)
+        self.assertEqual(
+            chat_stream.published_event,
+            {
+                "type": "cg.hide",
+            },
+        )
+        self.assertEqual(snapshot["cgPath"], "")
+
     def test_handle_chat_command_updates_and_persists_turn_options(self):
         chat_stream = _StubChatStream()
         config_manager = _config_manager_with_chat_experiments()
