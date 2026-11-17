@@ -211,6 +211,7 @@ export function TemplateEditorPage({
   const lastAutoScenarioRef = useRef("");
   const suppressNextAutoGenerateRef = useRef(false);
   const deferredLaunchRef = useRef<boolean | null>(null);
+  const restoredSessionBackgroundRef = useRef<string | null>(null);
 
   const selected = useMemo(
     () => (isCreating ? undefined : (templates.find((template) => template.id === selectedId) ?? templates[0])),
@@ -281,7 +282,10 @@ export function TemplateEditorPage({
     setCharacterPromptMode(restoredMode);
     setPrimaryCharacters(restoredPrimaryCharacters);
     setMediaSelectionMode(restoredMediaSelectionMode);
-    setSelectedBackground(launchSession.background || TRANSPARENT_BACKGROUND_NAME);
+    const sessionBackground = launchSession.background || TRANSPARENT_BACKGROUND_NAME;
+    const restoredBackground = createOnly ? TRANSPARENT_BACKGROUND_NAME : sessionBackground;
+    restoredSessionBackgroundRef.current = sessionBackground !== restoredBackground ? sessionBackground : null;
+    setSelectedBackground(restoredBackground);
     setSelectedEffects(Array.isArray(launchSession.effectNames) ? launchSession.effectNames : []);
     setVoiceLanguage(launchSession.voiceLanguage || "ja");
     setUseEffectPrompt(launchSession.useEffect ?? true);
@@ -367,6 +371,9 @@ export function TemplateEditorPage({
   }, [characters, selectedCharacters, sessionRestored]);
 
   const updateDraft = (patch: Partial<TemplateSummary>) => {
+    if (patch.system !== undefined) {
+      restoredSessionBackgroundRef.current = null;
+    }
     setDraft((current) => {
       const next = { ...current, ...patch };
       const scenario = String(next.scenario ?? "");
@@ -568,6 +575,7 @@ export function TemplateEditorPage({
         updateSelectedCharacters(resolvedCharacters, { preservePromptMode: true });
       }
       const normalized = normalizeTemplateSummary(template);
+      restoredSessionBackgroundRef.current = null;
       setIsCreating(true);
       setSessionDraftActive(true);
       setDraft(normalized);
@@ -816,6 +824,7 @@ export function TemplateEditorPage({
     if (!nextId) {
       return;
     }
+    restoredSessionBackgroundRef.current = null;
     setSessionDraftActive(false);
     setIsCreating(false);
     setSelectedId(nextId);
@@ -864,9 +873,14 @@ export function TemplateEditorPage({
       setPrimaryCharacterDialogOpen(true);
       return;
     }
-    // A new chat may reuse a semantic template while defaulting to indexed
-    // selection. Regenerate its instructions before starting that chat.
-    if (draft.mediaSelectionMode !== mediaSelectionMode) {
+    // A new chat may reuse a semantic or background-bound session draft while
+    // defaulting to indexed selection and a transparent background. Regenerate
+    // its instructions before starting that chat.
+    if (
+      draft.mediaSelectionMode !== mediaSelectionMode ||
+      (restoredSessionBackgroundRef.current !== null && restoredSessionBackgroundRef.current !== selectedBackground)
+    ) {
+      restoredSessionBackgroundRef.current = null;
       deferredLaunchRef.current = resetHistory;
       generateMutation.mutate({ input: generationInput(), silent: true });
       return;

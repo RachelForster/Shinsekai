@@ -149,6 +149,9 @@ class ChatRuntimeModeTests(unittest.TestCase):
 
     def test_stream_initial_snapshot_drops_previous_session_sprites(self):
         previous = {
+            "backgroundPath": "old-bg.png",
+            "bgmPath": "old-bgm.mp3",
+            "cgPath": "old-cg.png",
             "characterName": "七海千秋",
             "dialogText": "keep dialog",
             "inputDraft": "keep draft",
@@ -161,11 +164,15 @@ class ChatRuntimeModeTests(unittest.TestCase):
 
         initial = _chat_stream_initial_snapshot(previous)
 
+        self.assertEqual(initial["backgroundPath"], "")
+        self.assertEqual(initial["bgmPath"], "")
+        self.assertEqual(initial["cgPath"], "")
         self.assertEqual(initial["sprites"], [])
         self.assertEqual(initial["characterName"], "七海千秋")
         self.assertEqual(initial["dialogText"], "keep dialog")
         self.assertEqual(initial["inputDraft"], "keep draft")
         self.assertEqual(initial["options"], ["keep option"])
+        self.assertEqual(previous["backgroundPath"], "old-bg.png")
         self.assertEqual(
             previous["sprites"],
             [{"id": "江之岛盾子-0", "label": "江之岛盾子", "path": "junko.png"}],
@@ -1023,6 +1030,56 @@ class ChatRuntimeModeTests(unittest.TestCase):
         self.assertEqual(chat_stream.deleted_sessions, ["session-1"])
         self.assertEqual(handler.server.state.chat_session.get("sessionId"), "")
         close_chat.assert_called_once()
+
+    def test_launch_chat_with_init_stream_clears_previous_background_when_transparent(self):
+        from frontend_bridge_core.chat_session import launch_chat
+
+        chat_stream = _ChatStreamStub()
+        stream_info = chat_stream.create_session({"backgroundPath": "stale-room.png"})
+        config_manager = _ConfigManager()
+
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp_dir:
+            root = Path(tmp_dir)
+            history_dir = root / "history"
+            history_dir.mkdir()
+            template_dir = root / "templates"
+            template_dir.mkdir()
+            state = SimpleNamespace(
+                resource_urls=UnconfiguredResourceUrls(),
+                chat_runtime_closing=False,
+                chat_session={"backgroundName": "旧房间"},
+                chat_stream=chat_stream,
+                config_manager=config_manager,
+                history_dir=str(history_dir),
+                mobile_access_service=None,
+                template_dir_path=str(template_dir),
+            )
+            body = {
+                "backgroundName": "透明场景",
+                "resetHistory": True,
+                "scenario": "scene",
+                "system": "system",
+                "templateId": "fresh-chat",
+                "templateName": "Fresh Chat",
+            }
+            with (
+                patch(
+                    "frontend_bridge_core.chat_session._chat_process_running",
+                    return_value=False,
+                ),
+                patch(
+                    "frontend_bridge_core.chat_session._repair_template_parts_from_session_if_needed",
+                    side_effect=lambda _state, scenario, system: (scenario, system),
+                ),
+                patch(
+                    "frontend_bridge_core.chat_session._launch_runtime_chat",
+                    return_value="聊天进程已启动！PID: 12345",
+                ),
+            ):
+                snapshot = launch_chat(state, body, init_stream_info=stream_info)
+
+        self.assertEqual(snapshot["backgroundPath"], "")
+        self.assertEqual(chat_stream.get_snapshot("session-1")["backgroundPath"], "")
 
 
 if __name__ == "__main__":

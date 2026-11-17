@@ -210,3 +210,37 @@ def test_disabled_initial_sprite_skips_custom_and_system_fallback_but_restores_h
     restore.assert_called_once()
     display.assert_not_called()
     ui.post_notification.assert_called_once_with("ready")
+
+
+def test_prepare_initial_presentation_clears_background_when_transparent(monkeypatch) -> None:
+    config = _Config()
+    config.config.system_config.background_path = "stale.png"
+    config.config.system_config.bgm_path = "stale.mp3"
+    ui = SimpleNamespace(
+        post_background=Mock(),
+        switch_bgm=Mock(),
+        post_dialog_html=Mock(),
+        post_options=Mock(),
+        post_notification=Mock(),
+    )
+    monkeypatch.setattr(presentation, "restore_session_presentation", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(presentation, "display_initial_sprite", Mock())
+    monkeypatch.setattr(presentation, "get_history", lambda: [])
+
+    presentation.prepare_initial_presentation(
+        messages=[],
+        config=config,
+        ui_updates=ui,
+        presentation_queue=object(),
+        assets=presentation.ChatPresentationAssets([], [], True),
+        initial_sprite_path="",
+        welcome_html="welcome",
+        initial_option="start",
+        ready_notification="ready",
+        translate=lambda key, **_kwargs: key,
+    )
+
+    assert config.config.system_config.background_path == ""
+    assert config.config.system_config.bgm_path == ""
+    ui.post_background.assert_called_once_with("")
+    ui.switch_bgm.assert_called_once_with("")

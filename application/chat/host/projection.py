@@ -144,12 +144,15 @@ def _chat_user_display_name_from_snapshot(
 
 
 def _chat_stream_initial_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
-    """Create a stream snapshot without carrying sprites from a previous session.
+    """Create a stream snapshot without carrying stage media from a previous session.
 
     The runtime producer is authoritative for the initial or history-restored
-    sprite and will publish it before chat initialization completes.
+    stage media and will publish it before chat initialization completes.
     """
     initial = dict(snapshot)
+    initial["backgroundPath"] = ""
+    initial["bgmPath"] = ""
+    initial["cgPath"] = ""
     initial["sprites"] = []
     return initial
 
