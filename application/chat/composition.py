@@ -317,6 +317,9 @@ for command, handler in {
     "perception-ingest": forward_current,
     "perception-clear": forward_current,
     "perception-config-sync": forward_current,
+    "set-memory-mode": forward_current,
+    "set-character-outfit": forward_current,
+    "set-auto-outfit-switch": forward_current,
     "reroll": reroll,
     "revert-history": _history_revert.revert,
 }.items():

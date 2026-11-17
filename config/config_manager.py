@@ -12,7 +12,9 @@ from config.schema import (
     SystemConfig,
     Background,
     Effect,
+    build_default_self_persona,
     clamp_compact_target_ratio,
+    is_self_persona_name,
 )
 from config.tts_provider_config import (
     default_tts_work_path,
@@ -430,12 +432,39 @@ class ConfigManager:
 
         return tuple(self.config.effect_list)
 
+    def list_characters_catalog(self) -> List[Character]:
+        """返回面向界面的完整人物目录（始终将内置「自设」槽位置顶，不破坏原始未保存列表）。"""
+        self_char: Optional[Character] = None
+        others: List[Character] = []
+        for char in self.config.characters:
+            if is_self_persona_name(char.name) and self_char is None:
+                self_char = char
+            else:
+                others.append(char)
+        if self_char is None:
+            self_char = build_default_self_persona()
+        return [self_char, *others]
+
+    def ensure_self_persona_persisted(self) -> Character:
+        """确保「自设」存在于内存 ``config.characters`` 首位，供编辑或立绘变更持久化使用。"""
+        for idx, char in enumerate(self.config.characters):
+            if is_self_persona_name(char.name):
+                if idx != 0:
+                    self.config.characters.pop(idx)
+                    self.config.characters.insert(0, char)
+                return char
+        created = build_default_self_persona()
+        self.config.characters.insert(0, created)
+        return created
+
     def get_character_by_name(self, name: str) -> Optional[Character]:
         """根据角色名称获取角色配置实体"""
         name_key = character_name_key(name)
         for char in self.config.characters:
             if character_name_key(char.name) == name_key:
                 return char
+        if is_self_persona_name(name):
+            return build_default_self_persona()
         return None
 
     def get_llm_api_config(self):

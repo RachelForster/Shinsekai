@@ -150,6 +150,11 @@ export function createChatHttpPlatform(transport: HttpTransport): ChatPlatform {
         method: "POST",
         body: JSON.stringify({ title }),
       }),
+    updateConversationSettings: (id, input) =>
+      requestJson(`/api/chat/conversations/${encodePath(id)}/settings`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
     getRuntimeStatus: () => requestJson<ChatRuntimeProcessState>("/api/chat/runtime-status"),
     getSnapshot: (options) => requestJson<ChatSnapshot>(chatSnapshotPath(options?.claimRenderer)),
     getTheme: () => requestJson<ChatThemePayload>("/api/chat/theme"),

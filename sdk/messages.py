@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 from typing import Any, Optional, Union
 
 
@@ -51,6 +51,11 @@ class LLMDialogMessage(BaseModel):
         "", description="可选的翻译文本，如果存在则用于 TTS"
     )
     effect: Optional[str] = Field("", description="特效名称")
+    outfit: Optional[str] = Field(
+        "",
+        validation_alias=AliasChoices("outfit", "sprite_group"),
+        description="可选的服装分组名称；仅当剧情发生换装时输出",
+    )
     dialog_id: str = Field("", exclude=True, repr=False, description="Durable history dialog identity")
     turn_id: Optional[int] = Field(
         None,

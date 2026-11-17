@@ -318,6 +318,7 @@ def test_check_mem0_status_exposes_cache_state_while_loading(monkeypatch):
 
         assert runtime.check_mem0_status() == {
             "status": "loading",
+            "engine": "onnx_sqlite_hybrid",
             "modelCached": cached,
             "task": task,
         }

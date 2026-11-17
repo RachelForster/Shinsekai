@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
+  awakenCharacterMemory,
   deleteCharacterMemory,
   getMem0Status,
   listCharacterMemories,
+  pinCharacterMemory,
   rememberCharacterMemory,
   searchCharacterMemories,
 } from "../../entities/character/repository";
@@ -26,6 +28,7 @@ export function useCharacterMemoryController({ memoryName }: UseCharacterMemoryC
   const { showToast } = useToast();
   const { t } = useI18n();
   const [memoryInput, setMemoryInput] = useState("");
+  const [addAsCanon, setAddAsCanon] = useState(false);
   const [memoryDepOpen, setMemoryDepOpen] = useState(false);
   const [memoryDepInstalling, setMemoryDepInstalling] = useState(false);
   const [memoryDepTask, setMemoryDepTask] = useState<TaskSnapshot | null>(null);
@@ -98,6 +101,7 @@ export function useCharacterMemoryController({ memoryName }: UseCharacterMemoryC
   }, [memoryPage, visibleData]);
 
   useEffect(() => {
+    setAddAsCanon(false);
     setSearchInput("");
     setActiveSearchQuery("");
     setSearchData(null);
@@ -188,8 +192,22 @@ export function useCharacterMemoryController({ memoryName }: UseCharacterMemoryC
     }
   };
 
+  const syncUpdatedListIntoSearch = (result: Awaited<ReturnType<typeof listCharacterMemories>>) => {
+    setSearchData((current) => {
+      if (!current) {
+        return current;
+      }
+      const byId = new Map(result.memories.map((item) => [item.id, item]));
+      const memories = current.memories.map((item) => byId.get(item.id) ?? item);
+      return { ...current, memories };
+    });
+  };
+
   const addMutation = useMutation({
-    mutationFn: () => rememberCharacterMemory(memoryName, memoryInput),
+    mutationFn: () =>
+      addAsCanon
+        ? rememberCharacterMemory(memoryName, memoryInput, { kind: "canon", pinned: true })
+        : rememberCharacterMemory(memoryName, memoryInput),
     onError(error) {
       showToast({
         kind: "error",
@@ -199,12 +217,44 @@ export function useCharacterMemoryController({ memoryName }: UseCharacterMemoryC
     },
     onSuccess(result) {
       setMemoryInput("");
+      setAddAsCanon(false);
       setSearchInput("");
       setActiveSearchQuery("");
       setSearchData(null);
       setMemoryPage(1);
       queryClient.setQueryData(memoryQueryKey(memoryName), result);
       showToast({ kind: "success", title: t("character.memory.add") });
+    },
+  });
+
+  const pinMutation = useMutation({
+    mutationFn: ({ memoryId, name, pinned }: { memoryId: string; name: string; pinned: boolean }) =>
+      pinCharacterMemory({ memoryId, name, pinned }),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("character.memory.error"),
+        title: t("character.memory.pin"),
+      });
+    },
+    onSuccess(result, variables) {
+      queryClient.setQueryData(memoryQueryKey(variables.name), result);
+      syncUpdatedListIntoSearch(result);
+    },
+  });
+
+  const awakenMutation = useMutation({
+    mutationFn: ({ memoryId, name }: { memoryId: string; name: string }) => awakenCharacterMemory({ memoryId, name }),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("character.memory.error"),
+        title: t("character.memory.awaken"),
+      });
+    },
+    onSuccess(result, variables) {
+      queryClient.setQueryData(memoryQueryKey(variables.name), result);
+      syncUpdatedListIntoSearch(result);
     },
   });
 
@@ -270,6 +320,16 @@ export function useCharacterMemoryController({ memoryName }: UseCharacterMemoryC
     deleteMutation.mutate(input);
   };
 
+  const pinMemory = async (input: { memoryId: string; name: string; pinned: boolean }) => {
+    if (!(await ensureReady())) return;
+    pinMutation.mutate(input);
+  };
+
+  const awakenMemory = async (input: { memoryId: string; name: string }) => {
+    if (!(await ensureReady())) return;
+    awakenMutation.mutate(input);
+  };
+
   const clearSearch = () => {
     setSearchInput("");
     setActiveSearchQuery("");
@@ -279,7 +339,10 @@ export function useCharacterMemoryController({ memoryName }: UseCharacterMemoryC
 
   return {
     add,
+    addAsCanon,
     addPending: addMutation.isPending,
+    awakenMemory,
+    awakenPending: awakenMutation.isPending,
     closeDependencyDialog: () => {
       if (!memoryDepInstalling) {
         setMemoryDepOpen(false);
@@ -310,10 +373,13 @@ export function useCharacterMemoryController({ memoryName }: UseCharacterMemoryC
     memoryInput,
     memoryPage,
     memoryTotalPages,
+    pinMemory,
+    pinPending: pinMutation.isPending,
     refresh,
     search: () => runSearch(searchInput),
     searchInput,
     searchPending: searchMutation.isPending,
+    setAddAsCanon,
     setMemoryInput,
     setMemoryPage,
     setSearchInput,

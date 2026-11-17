@@ -5,12 +5,15 @@ from config.schema import Character
 
 
 class CharacterConfig:
-    def __init__(self, name, color, sprite_prefix, gpt_model_path=None, sovits_model_path=None, refer_audio_path=None, prompt_text=None, prompt_lang=None, sprites=[], emotion_tags="", sprite_scale=1.0, character_setting="", speech_speed=1.0, speech_volume=1.0, pronunciation_map=None, character_brief="", avatar_type="static", avatars=None, portrait_crop=None, sprite_transitions=None, relation_graph=None):
+    def __init__(self, name, color, sprite_prefix, gpt_model_path=None, sovits_model_path=None, refer_audio_path=None, prompt_text=None, prompt_lang=None, sprites=[], emotion_tags="", sprite_scale=1.0, character_setting="", speech_speed=1.0, speech_volume=1.0, pronunciation_map=None, character_brief="", avatar_type="static", avatars=None, portrait_crop=None, sprite_transitions=None, relation_graph=None, sprite_groups=None, default_sprite_group="", fallback_to_default_group=True):
         # 角色基本信息
         self.name = name
         self.color = color
         self.sprite_prefix = sprite_prefix
         self.sprites = sprites
+        self.sprite_groups = list(sprite_groups or [])
+        self.default_sprite_group = "" if default_sprite_group is None else str(default_sprite_group)
+        self.fallback_to_default_group = True if fallback_to_default_group is None else bool(fallback_to_default_group)
         self.character_brief = "" if character_brief is None else character_brief
         self.relation_graph = relation_graph or {}
         self.character_setting = character_setting
@@ -89,5 +92,8 @@ class CharacterConfig:
                 avatar_type=char_data.get("avatar_type", "static"),
                 avatars=char_data.get("avatars"),
                 sprite_transitions=char_data.get("sprite_transitions"),
+                sprite_groups=char_data.get("sprite_groups"),
+                default_sprite_group=char_data.get("default_sprite_group", ""),
+                fallback_to_default_group=char_data.get("fallback_to_default_group", True),
             )
         return character

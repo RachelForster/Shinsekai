@@ -536,6 +536,10 @@ def _template_session_to_frontend(raw: dict[str, Any] | None) -> dict[str, Any] 
     payload["playerCharacter"] = str(raw.get("player_character") or "")
     payload["readPlayerSpeech"] = bool(raw.get("read_player_speech", False))
     payload["allowPlayerDialogue"] = bool(raw.get("allow_player_dialogue", True))
+    if isinstance(auto_switch := raw.get("auto_outfit_switch"), bool):
+        payload["autoOutfitSwitch"] = auto_switch
+    if isinstance(initial_outfits := raw.get("initial_outfits"), dict):
+        payload["initialOutfits"] = initial_outfits
     return payload
 
 
@@ -705,6 +709,10 @@ def _save_template_session_payload(state: BridgeState, payload: dict[str, Any]) 
             else "indexed"
         ),
     }
+    if isinstance(auto_switch := payload.get("autoOutfitSwitch"), bool):
+        data["auto_outfit_switch"] = auto_switch
+    if isinstance(initial_outfits := payload.get("initialOutfits"), dict):
+        data["initial_outfits"] = initial_outfits
     save_template_session(state.template_dir_path, data)
     loaded = _load_template_session_payload(state)
     if loaded is None:

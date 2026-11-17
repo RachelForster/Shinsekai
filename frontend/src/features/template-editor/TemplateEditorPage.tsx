@@ -41,7 +41,9 @@ import { platformErrorCode } from "../../shared/platform/errors";
 import type {
   CharacterPromptMode,
   ChatSnapshot,
+  InitialOutfitValue,
   MediaSelectionMode,
+  MemoryMode,
   MobileAccessInfo,
   TemplateLaunchSession,
 } from "../../shared/platform/types";
@@ -79,6 +81,34 @@ import { SemanticMediaSwitch } from "./SemanticMediaSwitch";
 import "./TemplateEditorPage.css";
 
 const voiceLanguages = templateVoiceLanguages;
+
+function characterOutfitGroups(character: {
+  default_sprite_group?: string | null;
+  sprite_groups?: string[] | null;
+  sprites?: Array<{ group?: string | null }> | null;
+}): string[] {
+  const seen = new Set<string>(["默认"]);
+  const ordered = ["默认"];
+  const push = (raw?: string | null) => {
+    const trimmed = String(raw ?? "").trim() || "默认";
+    if (!seen.has(trimmed)) {
+      seen.add(trimmed);
+      ordered.push(trimmed);
+    }
+  };
+  for (const group of character.sprite_groups ?? []) {
+    push(group);
+  }
+  if (character.default_sprite_group) {
+    push(character.default_sprite_group);
+  }
+  for (const sprite of character.sprites ?? []) {
+    if (sprite.group) {
+      push(sprite.group);
+    }
+  }
+  return ordered;
+}
 
 export function TemplateEditorPage({
   createOnly = false,
@@ -169,6 +199,9 @@ export function TemplateEditorPage({
   const [maxDialogItems, setMaxDialogItems] = useState(0);
   const [initSpritePath, setInitSpritePath] = useState("");
   const [showInitialSprite, setShowInitialSprite] = useState(true);
+  const [memoryMode, setMemoryMode] = useState<MemoryMode>("isolated");
+  const [autoOutfitSwitch, setAutoOutfitSwitch] = useState(true);
+  const [initialOutfits, setInitialOutfits] = useState<Record<string, string>>({});
   const [historyPath, setHistoryPath] = useState("");
   const [roomId, setRoomId] = useState("");
   const [systemExpanded, setSystemExpanded] = useState(false);
@@ -262,6 +295,18 @@ export function TemplateEditorPage({
     setMaxDialogItems(Number(launchSession.maxDialogItems) || 0);
     setInitSpritePath(launchSession.initSpritePath || "");
     setShowInitialSprite(launchSession.showInitialSprite ?? true);
+    setMemoryMode(launchSession.memoryMode ?? "isolated");
+    setAutoOutfitSwitch(launchSession.autoOutfitSwitch ?? true);
+    if (launchSession.initialOutfits && typeof launchSession.initialOutfits === "object") {
+      const restoredOutfits: Record<string, string> = {};
+      for (const [charName, rawOutfit] of Object.entries(launchSession.initialOutfits)) {
+        const group = typeof rawOutfit === "string" ? rawOutfit.trim() : String(rawOutfit?.activeGroup ?? "").trim();
+        if (charName && group) {
+          restoredOutfits[charName] = group;
+        }
+      }
+      setInitialOutfits(restoredOutfits);
+    }
     setHistoryPath(launchSession.historyPath || "");
     setRoomId(launchSession.roomId || "");
     const matchingTemplate = templates.find((template) => template.id === launchSession.templateFileDropdown);
@@ -679,11 +724,21 @@ export function TemplateEditorPage({
       ...buildTemplateSummary(draft),
       ...templatePlayerOptions,
     };
+    const filteredInitialOutfits: Record<string, InitialOutfitValue> = {};
+    for (const character of selectedCharacterRecords) {
+      const chosen = initialOutfits[character.name]?.trim();
+      if (chosen && characterOutfitGroups(character).includes(chosen)) {
+        filteredInitialOutfits[character.name] = chosen;
+      }
+    }
     const session: TemplateLaunchSession = buildTemplateLaunchSession({
+      autoOutfitSwitch,
       backgroundName: selectedBackground,
       characterPromptMode: characterPromptMode ?? "full",
       draft,
       effectNames: selectedEffects,
+      initialOutfits: filteredInitialOutfits,
+      memoryMode,
       mobileAccessEnabled,
       mediaSelectionMode,
       options: templateOptionsState,
@@ -1088,6 +1143,67 @@ export function TemplateEditorPage({
           </div>
 
           <div className="template-runtime-fields">
+            <label className="template-side-field">
+              <span className="template-side-field__label">{t("chat.memoryMode.label")}</span>
+              <Select
+                aria-label={t("chat.memoryMode.label")}
+                onChange={(event) => setMemoryMode(event.target.value as MemoryMode)}
+                value={memoryMode}
+              >
+                <option value="isolated">{t("chat.memoryMode.isolated")}</option>
+                <option value="shared">{t("chat.memoryMode.shared")}</option>
+                <option value="inherit_readonly">{t("chat.memoryMode.inheritReadonly")}</option>
+              </Select>
+              <span className="template-options-panel__hint">
+                {t(
+                  memoryMode === "shared"
+                    ? "chat.memoryMode.sharedHint"
+                    : memoryMode === "inherit_readonly"
+                      ? "chat.memoryMode.inheritReadonlyHint"
+                      : "chat.memoryMode.isolatedHint",
+                )}
+              </span>
+            </label>
+            <label className="template-toggle-row">
+              <span>{t("launch.autoOutfitSwitch")}</span>
+              <Switch
+                aria-label={t("launch.autoOutfitSwitch")}
+                checked={autoOutfitSwitch}
+                onChange={(event) => setAutoOutfitSwitch(event.currentTarget.checked)}
+              />
+            </label>
+            {selectedCharacterRecords
+              .map((character) => ({ character, groups: characterOutfitGroups(character) }))
+              .filter(({ groups }) => groups.length > 1)
+              .map(({ character, groups }) => (
+                <label className="template-side-field" key={character.name}>
+                  <span className="template-side-field__label">
+                    {t("launch.initialOutfits")} · {character.name}
+                  </span>
+                  <Select
+                    aria-label={`${t("launch.initialOutfits")} · ${character.name}`}
+                    onChange={(event) =>
+                      setInitialOutfits((current) => {
+                        const next = { ...current };
+                        if (event.target.value) {
+                          next[character.name] = event.target.value;
+                        } else {
+                          delete next[character.name];
+                        }
+                        return next;
+                      })
+                    }
+                    value={initialOutfits[character.name] ?? ""}
+                  >
+                    <option value="">{t("launch.initialOutfitDefault")}</option>
+                    {groups.map((group) => (
+                      <option key={group} value={group}>
+                        {group}
+                      </option>
+                    ))}
+                  </Select>
+                </label>
+              ))}
             <div className="template-side-field">
               <div className="template-sprite-heading">
                 <label className="template-side-field__label" htmlFor="template-initial-sprite">

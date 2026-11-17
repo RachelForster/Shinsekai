@@ -9,6 +9,7 @@ import type {
   ChatResumeOverrides,
   ChatRuntimeProcessState,
   ChatSnapshot,
+  MemoryMode,
   RuntimeDependencyInstallInput,
   RuntimeDependencyInstallResult,
   TaskProgressOptions,
@@ -31,6 +32,10 @@ export const reconfigureConversation = (
   options?: TaskProgressOptions<ChatSnapshot>,
 ) => getPlatform().chat.reconfigureConversation(id, payload, options);
 export const renameConversation = (id: string, title: string) => getPlatform().chat.renameConversation(id, title);
+export const updateConversationSettings = (
+  id: string,
+  input: { memoryMode?: MemoryMode; autoOutfitSwitch?: boolean },
+) => getPlatform().chat.updateConversationSettings(id, input);
 export const deleteConversation = (id: string) => getPlatform().chat.deleteConversation(id);
 
 export async function getConversationSession(id: string): Promise<TemplateLaunchSession> {
@@ -57,6 +62,9 @@ export async function getConversationSession(id: string): Promise<TemplateLaunch
     initSpritePath: payload.initSpritePath ?? "",
     showInitialSprite: payload.showInitialSprite ?? true,
     mediaSelectionMode: payload.mediaSelectionMode ?? "indexed",
+    memoryMode: payload.memoryMode ?? options.memoryMode,
+    autoOutfitSwitch: payload.autoOutfitSwitch ?? options.autoOutfitSwitch,
+    initialOutfits: payload.initialOutfits ?? options.initialOutfits,
     roomId: payload.roomId ?? "",
     scenario: payload.scenario ?? "",
     system: payload.system ?? "",

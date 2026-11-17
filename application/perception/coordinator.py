@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import replace
 import logging
 import threading
@@ -29,6 +29,10 @@ from application.perception.reflex_policy import (
     short_reading_focus,
 )
 from config.character_assets import get_character_assets
+from config.sprite_groups import (
+    filter_sprite_indices_for_group,
+    has_multiple_sprite_groups,
+)
 from core.perception.cache import (
     PROACTIVE_EVENT_MAX_AGE_SEC,
     PROACTIVE_TURN_INSTRUCTION,
@@ -73,9 +77,11 @@ class PerceptionCoordinator:
         decision_client: PerceptionDecisionClient | None = None,
         cloud_complete: CloudTextCompletionFn | None = None,
         cursor_probe: CursorProbe | None = None,
+        resolve_active_sprite_group: Callable[[Any], str | None] | None = None,
     ) -> None:
         self._get_api_config = get_api_config
         self._resolve_character = resolve_character
+        self._resolve_active_sprite_group = resolve_active_sprite_group
         self._is_chat_busy = is_chat_busy
         self._apply_reflex = apply_reflex
         self._enqueue_proactive_turn = enqueue_proactive_turn
@@ -392,6 +398,16 @@ class PerceptionCoordinator:
         except Exception:
             logger.debug("failed to publish perception state", exc_info=True)
 
+    def _allowed_sprite_indices_for(self, character: Any | None) -> frozenset[int] | None:
+        if character is None or not has_multiple_sprite_groups(character):
+            return None
+        active_group = (
+            self._resolve_active_sprite_group(character)
+            if callable(self._resolve_active_sprite_group)
+            else None
+        )
+        return frozenset(filter_sprite_indices_for_group(character, active_group))
+
     def _character_prompt_metadata(self) -> tuple[str, str, dict[str, tuple[int, ...]], dict[int, str], int]:
         character = self._resolve_character()
         if character is None:
@@ -410,7 +426,20 @@ class PerceptionCoordinator:
             sprites = getattr(character, "sprites", None) or []
             emotion_tags = str(getattr(character, "emotion_tags", "") or "")
         expressions = expression_sprite_candidates(sprites, emotion_tags)
-        return name, brief, expressions, sprite_prompt_choices(sprites, emotion_tags, expressions), len(sprites)
+        choices = sprite_prompt_choices(sprites, emotion_tags, expressions)
+        allowed = self._allowed_sprite_indices_for(character)
+        if allowed is not None:
+            expressions = {
+                expr: filtered
+                for expr, idxs in expressions.items()
+                if (filtered := tuple(i for i in idxs if i in allowed))
+            }
+            choices = {
+                sid: label
+                for sid, label in choices.items()
+                if (sid - 1) in allowed
+            }
+        return name, brief, expressions, choices, len(sprites)
 
     def _pacing_for_decision(
         self,
@@ -446,6 +475,7 @@ class PerceptionCoordinator:
         sprite_count: int,
         config: PerceptionConfig,
         sprite_choices: Mapping[int, str] | None = None,
+        allowed_indices: Collection[int] | None = None,
         fallback_bark: str = "",
         now_mono: float | None = None,
         reflex_cooldown_sec: float | None = None,
@@ -457,6 +487,8 @@ class PerceptionCoordinator:
         if self._is_chat_busy():
             logger.debug("Perception reaction skipped while chat is busy")
             return None
+        if allowed_indices is None:
+            allowed_indices = self._allowed_sprite_indices_for(self._resolve_character())
         now = time.monotonic() if now_mono is None else float(now_mono)
         with self._lock:
             emitted = self._reflex_policy.select_emission(
@@ -466,6 +498,7 @@ class PerceptionCoordinator:
                 sprite_count=sprite_count,
                 config=config,
                 sprite_choices=sprite_choices,
+                allowed_indices=allowed_indices,
                 fallback_bark=fallback_bark,
                 now=now,
                 reflex_cooldown_sec=reflex_cooldown_sec,

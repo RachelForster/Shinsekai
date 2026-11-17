@@ -1,11 +1,13 @@
 import type { HttpTransport } from "../httpTransport";
 import type {
+  AutoGroupSpritesResult,
   AvatarRuntimesPlatform,
   AvatarRuntimeStatus,
   Character,
   CharacterBriefBatchResult,
   CharacterBriefResult,
   CharacterMemory,
+  CharacterMemoryClarity,
   CharacterMemoryImportPreview,
   CharacterMemoryImportResult,
   CharacterMemoryList,
@@ -24,13 +26,55 @@ import type {
 } from "./characterTypes";
 import type { ImageAutoLabelResult, TaskSnapshot } from "./taskTypes";
 
+const VALID_CLARITY_TIERS = new Set<CharacterMemoryClarity>(["canon", "clear", "faded", "dormant"]);
+
 function normalizeCharacterMemoryRow(row: unknown): CharacterMemory {
   if (row && typeof row === "object") {
     const record = row as Record<string, unknown>;
-    return {
+    const normalized: CharacterMemory = {
       id: String(record.id ?? ""),
-      memory: String(record.memory ?? record.content ?? record.text ?? ""),
+      memory: String(record.memory ?? record.content ?? record.text ?? record.gist ?? record.detail ?? ""),
     };
+    if (typeof record.detail === "string") normalized.detail = record.detail;
+    if (typeof record.gist === "string") normalized.gist = record.gist;
+    if (typeof record.clarity === "string" && VALID_CLARITY_TIERS.has(record.clarity as CharacterMemoryClarity)) {
+      normalized.clarity = record.clarity as CharacterMemoryClarity;
+    }
+    if (typeof record.retention === "number" && Number.isFinite(record.retention)) {
+      normalized.retention = record.retention;
+    }
+    if (typeof record.kind === "string") normalized.kind = record.kind;
+    if (typeof record.pinned === "boolean") normalized.pinned = record.pinned;
+    if (typeof record.scope === "string") normalized.scope = record.scope;
+    const slotKey = record.slotKey ?? record.slot_key;
+    if (typeof slotKey === "string") normalized.slotKey = slotKey;
+    const topicTags = record.topicTags ?? record.topic_tags;
+    if (Array.isArray(topicTags)) {
+      normalized.topicTags = topicTags.map((item) => String(item ?? "")).filter(Boolean);
+    }
+    if (Array.isArray(record.entities)) {
+      normalized.entities = record.entities.map((item) => String(item ?? "")).filter(Boolean);
+    }
+    if (typeof record.importance === "number" && Number.isFinite(record.importance)) {
+      normalized.importance = record.importance;
+    }
+    const createdAt = record.createdAt ?? record.created_at;
+    if (typeof createdAt === "number" && Number.isFinite(createdAt)) normalized.createdAt = createdAt;
+    const eventAt = record.eventAt ?? record.event_at;
+    if (eventAt === null || (typeof eventAt === "number" && Number.isFinite(eventAt))) {
+      normalized.eventAt = eventAt;
+    }
+    const lastRecalledAt = record.lastRecalledAt ?? record.last_recalled_at;
+    if (typeof lastRecalledAt === "number" && Number.isFinite(lastRecalledAt)) {
+      normalized.lastRecalledAt = lastRecalledAt;
+    }
+    const recallCount = record.recallCount ?? record.recall_count;
+    if (typeof recallCount === "number" && Number.isFinite(recallCount)) {
+      normalized.recallCount = recallCount;
+    }
+    const sourceSessionId = record.sourceSessionId ?? record.source_session_id;
+    if (typeof sourceSessionId === "string") normalized.sourceSessionId = sourceSessionId;
+    return normalized;
   }
   return { id: "", memory: String(row ?? "") };
 }
@@ -217,11 +261,33 @@ export function createCharactersHttpPlatform(transport: HttpTransport): Characte
     delete: async (name) => {
       await requestJson(`/api/characters/${encodePath(name)}`, { method: "DELETE" });
     },
-    deleteMemory: (name, memoryId) =>
-      requestJson<CharacterMemoryList>("/api/characters/memories/delete", {
-        body: JSON.stringify({ memoryId, name }),
+    deleteMemory: async (name, memoryId, options) => {
+      const payload: Record<string, unknown> = { memoryId, name };
+      if (options?.sessionId !== undefined) payload.sessionId = options.sessionId;
+      const result = await requestJson<unknown>("/api/characters/memories/delete", {
+        body: JSON.stringify(payload),
         method: "POST",
-      }),
+      });
+      return normalizeCharacterMemoryList(result, name);
+    },
+    pinMemory: async ({ memoryId, name, pinned, sessionId }) => {
+      const payload: Record<string, unknown> = { memoryId, name, pinned };
+      if (sessionId !== undefined) payload.sessionId = sessionId;
+      const result = await requestJson<unknown>("/api/characters/memories/pin", {
+        body: JSON.stringify(payload),
+        method: "POST",
+      });
+      return normalizeCharacterMemoryList(result, name);
+    },
+    awakenMemory: async ({ memoryId, name, sessionId }) => {
+      const payload: Record<string, unknown> = { memoryId, name };
+      if (sessionId !== undefined) payload.sessionId = sessionId;
+      const result = await requestJson<unknown>("/api/characters/memories/awaken", {
+        body: JSON.stringify(payload),
+        method: "POST",
+      });
+      return normalizeCharacterMemoryList(result, name);
+    },
     deleteSpriteVoice: (name, spriteIndex) =>
       requestJson<Character>("/api/characters/sprite-voice/delete", {
         body: JSON.stringify({ name, spriteIndex }),
@@ -276,29 +342,44 @@ export function createCharactersHttpPlatform(transport: HttpTransport): Characte
     },
     list: () => requestJson<Character[]>("/api/characters"),
     revision: () => requestJson<string>("/api/characters?view=revision"),
-    listMemories: (name) =>
-      requestJson<CharacterMemoryList>("/api/characters/memories/list", {
-        body: JSON.stringify({ name }),
+    listMemories: async (name, options) => {
+      const payload: Record<string, unknown> = { name };
+      if (options?.sessionId !== undefined) payload.sessionId = options.sessionId;
+      const result = await requestJson<unknown>("/api/characters/memories/list", {
+        body: JSON.stringify(payload),
         method: "POST",
-      }),
+      });
+      return normalizeCharacterMemoryList(result, name);
+    },
     previewMemoryImport: (name, items) => {
       return uploadFiles<CharacterMemoryImportPreview>(
         `/api/characters/memories/import-preview-upload?name=${encodeURIComponent(name)}`,
         items,
       );
     },
-    searchMemories: async ({ limit = 200, name, query }) => {
+    searchMemories: async ({ limit = 200, memoryMode, name, query, sessionId }) => {
+      const payload: Record<string, unknown> = { characterName: name, limit, query };
+      if (sessionId !== undefined) payload.sessionId = sessionId;
+      if (memoryMode !== undefined) payload.memoryMode = memoryMode;
       const result = await requestJson<unknown>("/api/memory/search", {
-        body: JSON.stringify({ characterName: name, limit, query }),
+        body: JSON.stringify(payload),
         method: "POST",
       });
       return normalizeCharacterMemoryList(result, name);
     },
-    remember: (name, content) =>
-      requestJson<CharacterMemoryList>("/api/characters/memories/add", {
-        body: JSON.stringify({ content, name }),
+    remember: async (name, content, options) => {
+      const payload: Record<string, unknown> = { content, name };
+      if (options?.pinned !== undefined) payload.pinned = options.pinned;
+      if (options?.gistText !== undefined) payload.gistText = options.gistText;
+      if (options?.slotKey !== undefined) payload.slotKey = options.slotKey;
+      if (options?.kind !== undefined) payload.kind = options.kind;
+      if (options?.sessionId !== undefined) payload.sessionId = options.sessionId;
+      const result = await requestJson<unknown>("/api/characters/memories/add", {
+        body: JSON.stringify(payload),
         method: "POST",
-      }),
+      });
+      return normalizeCharacterMemoryList(result, name);
+    },
     save: (character, originalName) =>
       requestJson<Character>("/api/characters", {
         body: JSON.stringify({ character, originalName }),
@@ -312,6 +393,16 @@ export function createCharactersHttpPlatform(transport: HttpTransport): Characte
     saveSpriteScale: (name, scale) =>
       requestJson<Character>("/api/characters/sprite-scale", {
         body: JSON.stringify({ name, scale }),
+        method: "POST",
+      }),
+    saveSpriteGroups: (input) =>
+      requestJson<Character>("/api/characters/sprites/groups", {
+        body: JSON.stringify(input),
+        method: "POST",
+      }),
+    autoGroupSprites: (input) =>
+      requestJson<AutoGroupSpritesResult>("/api/characters/sprites/auto-group", {
+        body: JSON.stringify(input),
         method: "POST",
       }),
     saveSpriteVoiceText: (name, spriteIndex, voiceText) =>

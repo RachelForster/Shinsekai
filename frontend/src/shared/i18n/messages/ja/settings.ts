@@ -275,4 +275,6 @@ export const settingsJaMessages: Record<SettingsMessageKey, string> = {
   "api.nav.perception": "リアルタイム反応",
   "api.nav.t2i": "画像生成",
   "api.nav.asr": "音声入力",
+  "api.memory.hybridSetupReady": "ローカル ONNX ハイブリッド記憶エンジン準備完了 · モデル準備完了",
+  "api.memory.hybridSetupModelMissing": "ローカル ONNX ハイブリッド記憶エンジン準備完了 · モデル未ダウンロード",
 };

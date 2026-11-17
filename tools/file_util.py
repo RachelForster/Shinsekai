@@ -156,6 +156,9 @@ def export_character(character_configs: list[CharacterConfig], output_path: str,
                 'portrait_crop': getattr(config, 'portrait_crop', None),
                 'sprites': config.sprites,
                 'emotion_tags': config.emotion_tags,
+                'sprite_groups': list(getattr(config, 'sprite_groups', None) or []),
+                'default_sprite_group': getattr(config, 'default_sprite_group', '') or '',
+                'fallback_to_default_group': bool(getattr(config, 'fallback_to_default_group', True)),
                 'avatar_type': getattr(config, 'avatar_type', 'static') or 'static',
                 'avatars': deepcopy(getattr(config, 'avatars', None) or {}),
                 'sprite_transitions': [],
@@ -231,9 +234,11 @@ def export_character(character_configs: list[CharacterConfig], output_path: str,
                         sprite_data['mouth_sync'] = checked.relative_to(base).as_posix()
                     else:
                         sprite_data.pop('mouth_sync', None)
-                # 清理 voice_type 的 None 值，避免 YAML 中多余的 null
+                # 清理 voice_type / group 的 None 值，避免 YAML 中多余的 null
                 if 'voice_type' in sprite_data and sprite_data['voice_type'] is None:
                     del sprite_data['voice_type']
+                if 'group' in sprite_data and not sprite_data['group']:
+                    del sprite_data['group']
                 normalized_sprites.append(sprite_data)
             if isinstance(sprites, list):
                 char_data['sprites'] = normalized_sprites
@@ -450,9 +455,11 @@ def import_character(input_path: str) -> list[CharacterConfig]:
                     parsed = adapter.parse_state(model, json.loads(saved.read_text(encoding='utf-8')))
                     write_state_index(adapter, model, saved, parsed)
 
-        # 读取现有配置，用于检测冲突
-        existing_names = set()
-        existing_sprite_prefixes = set()
+        # 读取现有配置，用于检测冲突（始终预留内置「自设」槽位与前缀）
+        from config.schema import SELF_PERSONA_NAME, SELF_PERSONA_SPRITE_PREFIX
+
+        existing_names = {SELF_PERSONA_NAME}
+        existing_sprite_prefixes = {SELF_PERSONA_SPRITE_PREFIX}
         
         if CHARACTERS_CONFIG_PATH.exists():
             with open(CHARACTERS_CONFIG_PATH, 'r', encoding='utf-8') as f:
@@ -466,6 +473,8 @@ def import_character(input_path: str) -> list[CharacterConfig]:
         imported_sprite_prefixes = set(existing_sprite_prefixes)
 
         for char_data in yaml_data:
+            for reserved_flag in ('is_builtin', 'pinned', 'undeletable'):
+                char_data.pop(reserved_flag, None)
             original_name = char_data.get('name', '')
             original_sprite_prefix = _safe_package_name(
                 char_data.get('sprite_prefix', ''), "sprite_prefix"

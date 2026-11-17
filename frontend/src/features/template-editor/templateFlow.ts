@@ -5,7 +5,9 @@ import { normalizePlayerOptions } from "../../shared/playerCharacterOptions";
 import type {
   ChatLaunchPayload,
   ChatSnapshot,
+  InitialOutfitValue,
   MediaSelectionMode,
+  MemoryMode,
   PlayerCharacterOptions,
   TemplateGenerateInput,
   TemplateLaunchSession,
@@ -148,9 +150,12 @@ export function buildTemplateGenerateInput(input: TemplateGenerationOptions): Te
 }
 
 type TemplateSessionOptions = PlayerCharacterOptions & {
+  autoOutfitSwitch?: boolean;
   backgroundName: string;
   draft: TemplateSummary;
   effectNames?: string[];
+  initialOutfits?: Record<string, InitialOutfitValue>;
+  memoryMode?: MemoryMode;
   mobileAccessEnabled: boolean;
   options: TemplateFlowOptions;
   runtime: TemplateRuntimeOptions;
@@ -162,18 +167,23 @@ type TemplateSessionOptions = PlayerCharacterOptions & {
 };
 
 export function buildTemplateLaunchSession(input: TemplateSessionOptions): TemplateLaunchSession {
+  const initialOutfits =
+    input.initialOutfits && Object.keys(input.initialOutfits).length > 0 ? { ...input.initialOutfits } : undefined;
   return {
+    ...(input.autoOutfitSwitch !== undefined ? { autoOutfitSwitch: input.autoOutfitSwitch } : {}),
     background: input.backgroundName,
     characterPromptMode: input.characterPromptMode,
     enableMobileAccess: input.mobileAccessEnabled,
     effectNames: input.effectNames ?? [],
     filenameStub: input.draft.name.trim(),
     historyPath: input.runtime.historyPath.trim(),
+    ...(initialOutfits ? { initialOutfits } : {}),
     initSpritePath: input.runtime.initSpritePath.trim(),
     showInitialSprite: input.runtime.showInitialSprite ?? true,
     maxDialogItems: input.runtime.maxDialogItems,
     maxSpeechChars: input.runtime.maxSpeechChars,
     mediaSelectionMode: input.mediaSelectionMode,
+    ...(input.memoryMode ? { memoryMode: input.memoryMode } : {}),
     roomId: input.runtime.roomId.trim(),
     scenario: String(input.draft.scenario ?? ""),
     primaryCharacters: input.primaryCharacters,
@@ -193,8 +203,11 @@ export function buildTemplateLaunchSession(input: TemplateSessionOptions): Templ
 }
 
 export function buildChatLaunchPayload(input: {
+  autoOutfitSwitch?: boolean;
   backgroundName: string;
   effectNames?: string[];
+  initialOutfits?: Record<string, InitialOutfitValue>;
+  memoryMode?: MemoryMode;
   mobileAccessEnabled: boolean;
   resetHistory: boolean;
   runtime: Pick<TemplateRuntimeOptions, "historyPath" | "initSpritePath" | "showInitialSprite" | "roomId">;
@@ -203,15 +216,20 @@ export function buildChatLaunchPayload(input: {
   useCg: boolean;
   mediaSelectionMode: MediaSelectionMode;
 }): ChatLaunchPayload {
+  const initialOutfits =
+    input.initialOutfits && Object.keys(input.initialOutfits).length > 0 ? { ...input.initialOutfits } : undefined;
   return {
+    ...(input.autoOutfitSwitch !== undefined ? { autoOutfitSwitch: input.autoOutfitSwitch } : {}),
     backgroundName: input.backgroundName,
     characters: input.selectedCharacters,
     enableMobileAccess: input.mobileAccessEnabled,
     effectNames: input.effectNames?.length ? input.effectNames : undefined,
     historyPath: input.runtime.historyPath.trim(),
+    ...(initialOutfits ? { initialOutfits } : {}),
     initSpritePath: input.runtime.initSpritePath.trim(),
     showInitialSprite: input.runtime.showInitialSprite ?? true,
     mediaSelectionMode: input.mediaSelectionMode,
+    ...(input.memoryMode ? { memoryMode: input.memoryMode } : {}),
     resetHistory: input.resetHistory,
     roomId: input.runtime.roomId.trim(),
     scenario: String(input.template.scenario ?? ""),
@@ -227,8 +245,13 @@ export function synchronizeChatLaunchPayloadWithSession(
   session: TemplateLaunchSession,
 ): ChatLaunchPayload {
   const effectNames = Array.isArray(session.effectNames) ? session.effectNames : [];
+  const initialOutfits =
+    session.initialOutfits && Object.keys(session.initialOutfits).length > 0
+      ? { ...session.initialOutfits }
+      : undefined;
   return {
     ...payload,
+    ...(session.autoOutfitSwitch !== undefined ? { autoOutfitSwitch: session.autoOutfitSwitch } : {}),
     backgroundName: session.background,
     characterPromptMode: session.characterPromptMode,
     characters: session.selectedCharacters,
@@ -237,9 +260,11 @@ export function synchronizeChatLaunchPayloadWithSession(
     enableMobileAccess: session.enableMobileAccess,
     effectNames: effectNames.length ? effectNames : undefined,
     historyPath: session.historyPath.trim(),
+    ...(initialOutfits ? { initialOutfits } : {}),
     initSpritePath: session.initSpritePath.trim(),
     showInitialSprite: session.showInitialSprite ?? true,
     mediaSelectionMode: session.mediaSelectionMode ?? "indexed",
+    ...(session.memoryMode ? { memoryMode: session.memoryMode } : {}),
     roomId: session.roomId.trim(),
     scenario: session.scenario,
     system: session.system,

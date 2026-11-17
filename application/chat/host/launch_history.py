@@ -19,6 +19,7 @@ from application.chat.templates import (
 from core.chat_history.storage import (
     ACTIVE_HISTORY_FILENAME,
     BRANCH_TREE_FILENAME,
+    chat_history_db_path,
 )
 
 
@@ -107,3 +108,20 @@ def persist_confirmed_history_path(state: Any, history_path: str | Path) -> bool
     except OSError:
         return False
     return True
+
+
+def resume_template_outfit_preferences(
+    session: dict[str, Any], history_path: Path,
+) -> dict[str, Any]:
+    """Use template outfit choices only for the save linked to that template."""
+    has_link = bool(str(session.get("historyPath") or "").strip())
+    auto_switch = session.get("autoOutfitSwitch")
+    initial_outfits = session.get("initialOutfits")
+    return {
+        "autoOutfitSwitch": (
+            auto_switch
+            if has_link and isinstance(auto_switch, bool) and not chat_history_db_path(history_path).is_file()
+            else None
+        ),
+        "initialOutfits": initial_outfits if has_link and isinstance(initial_outfits, dict) else {},
+    }

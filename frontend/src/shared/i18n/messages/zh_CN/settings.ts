@@ -256,6 +256,8 @@ export const settingsZhCNMessages = {
   "api.nav.perception": "实时反应",
   "api.nav.t2i": "图像生成",
   "api.nav.asr": "语音输入",
+  "api.memory.hybridSetupReady": "本地 ONNX 混合记忆引擎已就绪 · 模型已就绪",
+  "api.memory.hybridSetupModelMissing": "本地 ONNX 混合记忆引擎已就绪 · 模型尚未下载",
 } satisfies Record<string, string>;
 
 export type SettingsMessageKey = keyof typeof settingsZhCNMessages;

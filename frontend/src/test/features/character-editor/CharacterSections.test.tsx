@@ -108,8 +108,6 @@ describe("Character editor sections", () => {
   });
 
   it("edits sprite preview metadata and routes sprite actions", () => {
-    const onScaleChange = vi.fn();
-    const onScaleWheel = vi.fn();
     const onSelectSprite = vi.fn();
     const onSpriteTagChange = vi.fn();
     const onSpriteVoiceTextBlur = vi.fn();
@@ -117,9 +115,7 @@ describe("Character editor sections", () => {
     const actions = {
       onClearSprites: vi.fn(),
       onOpenBulkTags: vi.fn(),
-      onPendingSpritePathsChange: vi.fn(),
       onPendingVoicePathChange: vi.fn(),
-      onSaveScale: vi.fn(),
       onSaveTags: vi.fn(),
       onSpriteDelete: vi.fn(),
       onSpriteUpload: vi.fn(),
@@ -131,14 +127,11 @@ describe("Character editor sections", () => {
       <CharacterSpritesSection
         draft={characterDraft}
         emotionTagsPending={false}
-        onScaleChange={onScaleChange}
-        onScaleWheel={onScaleWheel}
         onSelectSprite={onSelectSprite}
         onSpriteTagChange={onSpriteTagChange}
         onSpriteVoiceTextBlur={onSpriteVoiceTextBlur}
         onSpriteVoiceTextChange={onSpriteVoiceTextChange}
         onSpriteVoiceTypeChange={vi.fn()}
-        pendingSpritePaths={["/tmp/new.webp"]}
         pendingVoicePath="/tmp/new.wav"
         selectedSprite={characterDraft.sprites[0]}
         selectedSpriteIndex={0}
@@ -153,7 +146,6 @@ describe("Character editor sections", () => {
             title: "Sprite01.webp",
           },
         ]}
-        spriteScalePending={false}
         spriteUploadPending={false}
         voiceDeletePending={false}
         voiceUploadPending={false}
@@ -161,8 +153,6 @@ describe("Character editor sections", () => {
       />,
     );
 
-    fireEvent.wheel(screen.getByDisplayValue("1").closest(".character-scale-control")!);
-    fireEvent.change(screen.getByDisplayValue("1"), { target: { value: "1.25" } });
     fireEvent.click(screen.getByRole("button", { name: /Sprite01.webp/ }));
     fireEvent.change(screen.getByDisplayValue("happy"), { target: { value: "smile" } });
     fireEvent.click(screen.getByRole("button", { name: "Upload tags" }));
@@ -174,8 +164,6 @@ describe("Character editor sections", () => {
     fireEvent.click(screen.getByRole("button", { name: "Batch tags" }));
     fireEvent.click(screen.getByRole("button", { name: "Delete all sprites" }));
 
-    expect(onScaleWheel).toHaveBeenCalledTimes(1);
-    expect(onScaleChange).toHaveBeenCalledWith("sprite_scale", 1.25);
     expect(onSelectSprite).toHaveBeenCalledWith(0);
     expect(onSpriteTagChange).toHaveBeenCalledWith("smile");
     expect(actions.onSaveTags).toHaveBeenCalledTimes(1);

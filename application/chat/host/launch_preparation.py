@@ -69,8 +69,11 @@ class ChatLaunchPreparation:
             read_speech=read_player_speech,
             media_selection_mode=media_selection_mode,
         )
+        effective_system = system_template or ""
+        if player_rules and player_rules.strip() not in effective_system:
+            effective_system = effective_system + "\n" + player_rules
         template = _compose_runtime_template(
-            (system_template or "") + ("\n" + player_rules if player_rules else ""),
+            effective_system,
             effective_user_scenario,
             effect_context,
         )
@@ -137,11 +140,28 @@ class ChatLaunchPreparation:
             launch_config["primary_characters"] = json.dumps(
                 list(primary_character_names), ensure_ascii=False
             )
+        user_display_name = str(chat_session.get("userDisplayName") or "").strip()
+        if user_display_name:
+            launch_config["user_display_name"] = user_display_name
         if player_name:
             launch_config["player_character"] = player_name
             launch_config["read_player_speech"] = read_player_speech
             launch_config["allow_player_dialogue"] = bool(
                 chat_session.get("allowPlayerDialogue", True)
+            )
+        memory_mode = str(chat_session.get("memoryMode") or "").strip()
+        if memory_mode:
+            launch_config["memory_mode"] = memory_mode
+        if "autoOutfitSwitch" in chat_session and isinstance(
+            chat_session.get("autoOutfitSwitch"), bool
+        ):
+            launch_config["auto_outfit_switch"] = bool(
+                chat_session["autoOutfitSwitch"]
+            )
+        initial_outfits = chat_session.get("initialOutfits")
+        if isinstance(initial_outfits, dict) and initial_outfits:
+            launch_config["initial_outfits"] = json.dumps(
+                initial_outfits, ensure_ascii=False
             )
         if stream_endpoint:
             launch_config["stream_endpoint"] = stream_endpoint

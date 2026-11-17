@@ -12,6 +12,7 @@ from application.chat.history.state import (
     pop_last_assistant_turn_payload,
     revert_chat_history,
 )
+from application.runtime.context import try_get_app_runtime
 from core.chat_history.storage import (
     chat_history_active_path,
     remove_chat_history_storage,
@@ -332,6 +333,7 @@ class ChatCommandDispatcher:
             reroll_attachments = list(self.last_user_message.get("attachments") or [])
         self.bindings.ui.clear_options()
         self.bindings.ui.sync_history()
+        self._resync_session_outfits()
         if (reroll_text or reroll_attachments) and self.bindings.can_submit_text():
             self.bindings.submit_text(
                 reroll_text,
@@ -353,6 +355,7 @@ class ChatCommandDispatcher:
         clear_chat_history(history_target, self.presentation_queue, self.llm_manager)
         self.bindings.ui.clear_options()
         self.bindings.ui.sync_history()
+        self._resync_session_outfits()
 
     def _change_voice_language(self, payload: object) -> None:
         voice_language = str(payload or "").strip().lower()
@@ -396,3 +399,12 @@ class ChatCommandDispatcher:
             self.bindings.persist_history(messages)
         self.bindings.ui.clear_options()
         self.bindings.ui.sync_history()
+        self._resync_session_outfits()
+
+    @staticmethod
+    def _resync_session_outfits() -> None:
+        rt = try_get_app_runtime()
+        controller = getattr(rt, "outfit_controller", None) if rt is not None else None
+        resync = getattr(controller, "resync_from_session_store", None)
+        if callable(resync):
+            resync()

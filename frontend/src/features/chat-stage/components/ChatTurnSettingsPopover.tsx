@@ -2,16 +2,27 @@ import { useEffect, useState } from "react";
 import { Play, X } from "lucide-react";
 
 import { useI18n } from "../../../shared/i18n";
-import type { ChatTurnOptions, ChatTurnState } from "../../../shared/platform/types";
+import type { ChatTurnOptions, ChatTurnState, MemoryMode } from "../../../shared/platform/types";
 import { Button, IconButton, Switch } from "../../../shared/ui";
+
+const MEMORY_MODE_ITEMS: ReadonlyArray<{
+  value: MemoryMode;
+  labelKey: "chat.memoryMode.isolated" | "chat.memoryMode.shared" | "chat.memoryMode.inheritReadonly";
+}> = [
+  { value: "isolated", labelKey: "chat.memoryMode.isolated" },
+  { value: "shared", labelKey: "chat.memoryMode.shared" },
+  { value: "inherit_readonly", labelKey: "chat.memoryMode.inheritReadonly" },
+];
 
 export function ChatTurnSettingsPopover({
   bgmVolume,
   effectVolume,
   longPressTalk,
+  memoryMode,
   onBgmVolumeChange,
   onEffectVolumeChange,
   onLongPressTalkChange,
+  onMemoryModeChange,
   onCancelBatch,
   onClose,
   onEditConversation,
@@ -24,9 +35,11 @@ export function ChatTurnSettingsPopover({
   bgmVolume: number;
   effectVolume: number;
   longPressTalk: boolean;
+  memoryMode?: MemoryMode;
   onBgmVolumeChange: (value: number) => void;
   onEffectVolumeChange: (value: number) => void;
   onLongPressTalkChange: (value: boolean) => void;
+  onMemoryModeChange?: (mode: MemoryMode) => void;
   onCancelBatch: () => void;
   onClose: () => void;
   onEditConversation?: () => void;
@@ -129,6 +142,28 @@ export function ChatTurnSettingsPopover({
             value={effectVolume}
           />
         </label>
+        {memoryMode && onMemoryModeChange ? (
+          <div className="dialog-stage-controls__chat-setting dialog-stage-controls__chat-slider">
+            <span className="dialog-stage-controls__chat-slider-label">{t("chat.memoryMode.label")}</span>
+            <div className="dialog-stage-controls__pill-row" role="group" aria-label={t("chat.memoryMode.label")}>
+              {MEMORY_MODE_ITEMS.map((item) => {
+                const active = memoryMode === item.value;
+                return (
+                  <button
+                    aria-pressed={active}
+                    className="dialog-stage-controls__pill"
+                    data-active={active ? "true" : "false"}
+                    key={item.value}
+                    onClick={() => onMemoryModeChange(item.value)}
+                    type="button"
+                  >
+                    {t(item.labelKey)}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
       </div>
       {turnOptions.batchEnabled && turnState.pendingCount > 0 ? (
         <div className="dialog-stage-controls__batch-row">

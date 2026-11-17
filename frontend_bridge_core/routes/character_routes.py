@@ -51,7 +51,12 @@ from frontend_bridge_core.tools import _local_file_access_roots
 def _list_characters(request: ApiRequest) -> JsonResponse:
     if (request.query.get("view") or [""])[0] == "revision":
         return JsonResponse(request.state.config_manager.characters_revision)
-    characters = request.state.config_manager.config.characters
+    catalog_fn = getattr(request.state.config_manager, "list_characters_catalog", None)
+    characters = (
+        catalog_fn()
+        if callable(catalog_fn)
+        else request.state.config_manager.config.characters
+    )
 
     def name(character):
         return character.get("name", "") if isinstance(character, dict) else character.name
@@ -126,6 +131,26 @@ def _upload_character_sprites_route(request: ApiRequest) -> JsonResponse:
         _execute_character_request(
             request.state,
             CharacterOperation.UPLOAD_SPRITES,
+            request.body,
+        )
+    )
+
+
+def _save_character_sprite_groups_route(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(
+        _execute_character_request(
+            request.state,
+            CharacterOperation.SAVE_SPRITE_GROUPS,
+            request.body,
+        )
+    )
+
+
+def _auto_group_character_sprites_route(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(
+        _execute_character_request(
+            request.state,
+            CharacterOperation.AUTO_GROUP_SPRITES,
             request.body,
         )
     )
@@ -435,6 +460,18 @@ CHARACTER_ROUTES = (
         pattern="/api/characters/sprites/upload",
         handler=_upload_character_sprites_route,
         name="characters.sprites.upload",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/characters/sprites/groups",
+        handler=_save_character_sprite_groups_route,
+        name="characters.sprites.groups.save",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/characters/sprites/auto-group",
+        handler=_auto_group_character_sprites_route,
+        name="characters.sprites.auto_group",
     ),
     Route(
         methods=frozenset({"POST"}),

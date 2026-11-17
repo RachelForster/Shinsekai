@@ -5,6 +5,7 @@ import { charactersQueryKey, saveCharacter } from "../../entities/character/repo
 import { applyPortraitCrop } from "../../shared/components/Portrait";
 import { PortraitCropDialog } from "../../shared/components/PortraitCropDialog";
 import { useI18n } from "../../shared/i18n";
+import { getCharacterDisplayName } from "../../shared/playerCharacterOptions";
 import type { Character } from "../../shared/platform/types";
 import { Button, Dialog, Select, Switch } from "../../shared/ui";
 
@@ -67,7 +68,7 @@ export function PlayerCharacterSettings({
               <option value="">{t("player.none")}</option>
               {characters.map((item) => (
                 <option key={item.name} value={item.name}>
-                  {item.name}
+                  {getCharacterDisplayName(item)}
                 </option>
               ))}
             </Select>

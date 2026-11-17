@@ -121,6 +121,7 @@ class PerceptionSessionCapability(BaseSessionCapability):
                 getattr(context.config, "config", None), "api_config", None
             ),
             resolve_character=self._resolve_perception_character,
+            resolve_active_sprite_group=self._resolve_active_sprite_group,
             is_chat_busy=self._is_chat_busy_for_perception,
             apply_reflex=self._apply_perception_reflex,
             enqueue_proactive_turn=self._enqueue_proactive_perception_turn,
@@ -246,6 +247,18 @@ class PerceptionSessionCapability(BaseSessionCapability):
             if name and name != player_name:
                 return char
         return None
+
+    def _resolve_active_sprite_group(self, character: Any) -> str | None:
+        ctx = self._context
+        if ctx is None:
+            return None
+        controller = getattr(getattr(ctx, "app_runtime", None), "outfit_controller", None)
+        if controller is None:
+            return None
+        active_group_for = getattr(controller, "active_group_for", None)
+        if not callable(active_group_for):
+            return None
+        return active_group_for(character)
 
     def _is_chat_busy_for_perception(self) -> bool:
         ctx = self._context

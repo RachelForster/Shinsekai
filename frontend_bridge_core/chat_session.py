@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from application.chat.presentation.user_display import sanitize_user_display_name
+from application.chat.player_control import resolve_player, resolve_player_display_name
 from application.chat.build_effect_context import build_effect_context
 from application.chat.conversation_library import (
     remember_conversation,
@@ -17,6 +17,7 @@ from application.chat.host.launch_history import (
     persist_confirmed_history_path,
     plan_chat_history_launch,
     resolve_chat_history_path,
+    resume_template_outfit_preferences,
 )
 from application.chat.host.mobile_access import configure_mobile_access
 from application.chat.host.projection import (
@@ -280,15 +281,22 @@ def _launch_chat_locked(
         state,
         body.get("characters") or [],
     )
-    from application.chat.player_control import resolve_player
+    from config.schema import is_self_persona_name
     player_character = resolve_player(state.config_manager, characters, body.get("playerCharacter"))
+    if not is_self_persona_name(player_character) and any(
+        not is_self_persona_name(name) for name in characters
+    ):
+        characters = [name for name in characters if not is_self_persona_name(name)]
     primary_characters = _resolve_launch_primary_characters(
         state,
         body,
         characters,
         player_character,
     )
-    first_character = next((name for name in characters if name != player_character), "")
+    first_character = next(
+        (name for name in characters if name != player_character and not is_self_persona_name(name)),
+        "",
+    )
     init_sprite_path = initial_sprite_path_for_characters(
         state.config_manager,
         str(body.get("initSpritePath") or ""),
@@ -327,7 +335,13 @@ def _launch_chat_locked(
     )
     if start_fresh_history:
         clear_story_session(state)
-    user_display_name = player_character or sanitize_user_display_name(body.get("userDisplayName"))
+    user_display_name = resolve_player_display_name(
+        state.config_manager, player_character, body.get("userDisplayName"),
+    )
+    raw_memory_mode = str(body.get("memoryMode") or "").strip()
+    if not raw_memory_mode and body.get("storyPath"):
+        raw_memory_mode = "isolated"
+    raw_initial_outfits = body.get("initialOutfits")
     session_base = {
         "playerCharacter": player_character,
         "readPlayerSpeech": bool(body.get("readPlayerSpeech", False)),
@@ -342,6 +356,17 @@ def _launch_chat_locked(
             state.config_manager.config.system_config.voice_language or "ja"
         ),
         "workflowPath": str(body.get("workflowPath") or ""),
+        "memoryMode": raw_memory_mode,
+        "autoOutfitSwitch": (
+            bool(body["autoOutfitSwitch"])
+            if isinstance(body.get("autoOutfitSwitch"), bool)
+            else None
+        ),
+        "initialOutfits": (
+            dict(raw_initial_outfits)
+            if isinstance(raw_initial_outfits, dict)
+            else {}
+        ),
     }
     release_unbound_story_session(state, session_base["historyPath"])
     state.chat_session = {**state.chat_session, **session_base}
@@ -510,7 +535,6 @@ def _resume_last_chat_locked(
     )
     requested_media_mode = session.get("mediaSelectionMode")
     media_selection_mode = _usable_media_selection_mode(requested_media_mode)
-    from application.chat.player_control import resolve_player
     player_character = resolve_player(state.config_manager, selected_characters, session.get("playerCharacter"))
     primary_characters = _resolve_launch_primary_characters(
         state,
@@ -530,7 +554,9 @@ def _resume_last_chat_locked(
         or ""
     )
     selected_bg = str(session.get("background") or TRANSPARENT_BACKGROUND_NAME)
-    user_display_name = player_character or sanitize_user_display_name(session.get("userDisplayName"))
+    user_display_name = resolve_player_display_name(
+        state.config_manager, player_character, session.get("userDisplayName"),
+    )
     session_base = {
         "backgroundName": selected_bg,
         "playerCharacter": player_character,
@@ -547,6 +573,8 @@ def _resume_last_chat_locked(
             or "ja"
         ),
         "workflowPath": str(session.get("workflowPath") or ""),
+        "memoryMode": str(session.get("memoryMode") or "").strip(),
+        **resume_template_outfit_preferences(session, history_path),
     }
     release_unbound_story_session(state, session_base["historyPath"])
     if _chat_process_running():

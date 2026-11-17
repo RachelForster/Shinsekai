@@ -5,6 +5,10 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
+from config.sprite_groups import (
+    has_multiple_sprite_groups,
+    list_character_sprite_groups,
+)
 from core.media.asset_tags import tag_contents
 
 from .lookup import AssetCatalog
@@ -28,12 +32,23 @@ def build_session_asset_catalogs(
         if not name or key in seen_names:
             continue
         seen_names.add(key)
-        catalogs.append(
-            AssetCatalog(
-                scope=f"sprite:{name}",
-                candidates=sprite_resolver.candidates(character),
+        if has_multiple_sprite_groups(character):
+            for group_name in list_character_sprite_groups(character):
+                catalogs.append(
+                    AssetCatalog(
+                        scope=f"sprite:{name}:{group_name}",
+                        candidates=sprite_resolver.candidates_for_group(
+                            character, group_name
+                        ),
+                    )
+                )
+        else:
+            catalogs.append(
+                AssetCatalog(
+                    scope=f"sprite:{name}",
+                    candidates=sprite_resolver.candidates(character),
+                )
             )
-        )
 
     if background is None:
         return tuple(catalogs)

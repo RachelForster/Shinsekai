@@ -923,6 +923,7 @@ export function ChatStagePage() {
       onEditConversation={() => setConversationEditorOpen(true)}
       asrEnabled={viewModel.asrEnabled}
       auto={runtimeConfig.auto}
+      autoOutfitSwitch={state.autoOutfitSwitch ?? true}
       bgmVolume={runtimeConfig.bgmVolume}
       effectVolume={runtimeConfig.effectVolume}
       closeLabel={t(standaloneDesktopWindow ? "desktop.titlebar.close" : "chat.toolbar.close")}
@@ -931,6 +932,7 @@ export function ChatStagePage() {
       hideCloseButton={standaloneDesktopWindow}
       longPressTalk={runtimeConfig.longPressTalk}
       locked={dialogControlsLocked}
+      memoryMode={state.memoryMode}
       onAutoChange={(auto) => setRuntimeConfig((current) => ({ ...current, auto }))}
       onBgmVolumeChange={updateRuntimeBgmVolume}
       onEffectVolumeChange={updateRuntimeEffectVolume}
@@ -946,6 +948,8 @@ export function ChatStagePage() {
       onOpenScreenSettings={() => setScreenSettingsOpen(true)}
       onToggleScreenShare={isRemoteMobileAccessPage() ? undefined : toggleScreenShare}
       onTurnOptionsChange={updateTurnOptions}
+      outfitCatalog={state.outfitCatalog}
+      outfits={state.outfits}
       screenShareStarting={screenShareStarting}
       screenSharing={screenSharing}
       showAsrControl={!viewModel.layers.input}
