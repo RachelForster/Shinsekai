@@ -6,23 +6,20 @@
 
 # Shinsekai
 
-A desktop assistant for **visual-novel / otome / story-driven RPG** play: let a large language model drive character dialogue, **keep sprites in sync with emotion**, and plug in **speech synthesis**, **speech recognition**, and extensions like **vision and tools**—configure everything in the local Settings app while the chat window stays focused on the scene.
+An open-source desktop companion and interactive performance platform for **visual-novel / otome / story-driven RPG** play: let large language models drive character dialogue and story staging with **multi-format visuals (static/animated sprites, MMD, Live2D)**, **outfit groups and emotion sync**, **speech synthesis and lip-sync**, **long-term memory and knowledge retrieval**, **real-time screen perception**, a **built-in desktop agent**, and **plugin / MCP extensions**—managed centrally in the React / Tauri Settings app while the chat stage stays focused on immersion.
 
 ---
 
 ## Why Shinsekai
 
-- **One pipeline for performance**: templates, session history, sprite swaps and moods, TTS/ASR, and input plumbing are wired so you spend less time context-switching between tools.  
-- **Two-window design**: the React/Tauri **Settings** app holds API, characters, and plugins; the **chat** window stays focused on dialogue and stage direction.
-- **Swap models and engines**: connect mainstream LLMs and OpenAI-compatible endpoints under **API settings**; **TTS** spans GPT-SoVITS, Genie TTS, CosyVoice, and lighter stacks without a discrete GPU; **image gen** can target ComfyUI-style backends on the same page.  
-- **Listen and speak**: optional mic **ASR** (e.g. Vosk; more via **plugins**) and line **TTS**, or turn synthesis off and rely on per-sprite bundled audio only.  
-- **More than plain chat**: built-in / plugin **LLM tools** plus **MCP** bring search, automation, and other services into the same turn.  
-- **Long-term memory**: store, retrieve, and manage character-scoped memories across sessions so relationships, story progress, and important events carry naturally into later conversations.
-- **Custom chat themes**: manage and visually edit chat themes, including upload, clone, switch, and customization flows for dialog frames, nameplates, fonts, colors, and stage styling.
-- **100+ character packs**: choose from more than 100 ready-to-import character packs, or create, import, and export your own `.char` packages.
-- **Plugin extensibility**: the **plugin SDK** adds adapters, settings pages, chat controls, and additional LLM, TTS, ASR, T2I, and tool capabilities.
-- **Local-first data**: defaults live under **`data/`** (`api.yaml`, `system_config.yaml`, characters, history)—easy to back up or fork for your own project.  
-- **Source available**: start from git or a [release bundle](https://github.com/RachelForster/Shinsekai/releases); optional plugins are listed in [Shinsekai-Plugin-Registry](https://github.com/RachelForster/Shinsekai-Plugin-Registry).
+- **Fast setup & full visual-novel staging**: a **5-step onboarding wizard** gets LLM, voice, and characters running quickly; dialogue automatically switches **backgrounds & BGM**, presents **branching choices & live affinity/stat changes**, triggers **sound & visual effects**, and can generate **custom CGs on the fly** via **ComfyUI**.
+- **Screen-aware companion & desktop pet**: **real-time screen sharing + local RapidOCR** lets characters react to gameplay, watch videos/anime with subtitle awareness, and adapt pacing for video calls, reading, or idle moments; supports **LAN mobile QR companion** and a draggable, edge-docking **circular mini-avatar mode** (with global input shortcut).
+- **Static, transparent video, and 3D / 2D avatars**: supports images, **MP4 / WebM** transparent animated sprites, built-in **MMD (PMX)** models with auto breathing, breeze, gaze, and VPD / VMD motions, and experimental **Live2D** support—plus **lip-sync & speaking blinks** and **outfit groups with story-driven auto-switching**.
+- **Full expression sets & matting studio**: built-in LLM prompt planning, T2I generation, optional **MiniMax H3** image-to-video (generate expressive sprite sets from a single reference, 22-frame directional transitions, and transparent animated sprites), and **ToonOut / ISNet** matting.
+- **One-sentence character creation & AI branching story canvas**: ask the built-in **desktop agent (Pi runtime)** to research info, draft character bios, generate/import sprites, and prepare voices end-to-end; use **Story Mode** to turn a premise into an editable **branching node canvas**, run **multi-character ensemble scenes**, and export replays as **MP4 / WebM videos**.
+- **Everyday assistant & system tray reminders**: the desktop agent can search guides online (via browser plugins), read/write local files, organize folders, and save notes into your knowledge base; desktop builds support **system tray residency, autostart, and scheduled character voice reminders**.
+- **Structured long-term memory, worldbooks & relationships**: powered by a local **SQLite + FTS5 + ONNX** hybrid engine with **Ebbinghaus retention decay**, **per-save memory isolation**, a built-in **self-persona**, **character relationship graphs**, and a separate **knowledge base (RAG)** for worldbooks and TXT lore imports.
+- **Themes, voice & plugin ecosystem**: includes **5 built-in Galgame chat themes** (plus a **visual theme customizer**), community character packs, **GPT-SoVITS / Genie TTS / CosyVoice**, **Vosk / Whisper**, **plugin SDK**, and **MCP (SSE / stdio)**, with local-first data under `data/`.
 
 ---
 
@@ -41,15 +38,16 @@ A desktop assistant for **visual-novel / otome / story-driven RPG** play: let a 
 
 | Area | What you get |
 |------|----------------|
-| **Characters & templates** | Create / import-export character packs (`.char`); AI-assisted bios; **chat templates** for multi-character setups; **history** load/save, rewind, and archives. |
-| **Sprites & staging** | Multi-image sprite sets; **0–3×** scale; per-image **emotion tags** tied to dialog mood commands; template-dependent CG / effect fields. |
-| **Voice** | **TTS**: GPT-SoVITS, Genie TTS, CosyVoice, etc.—pick an engine under **API settings** and point at your server paths/URLs; choose “off” to play **per-sprite line audio** only. **ASR**: mic recognition defaults to **Vosk**; Whisper-class engines via **plugins**. |
-| **LLM & tools** | Configure provider, **model id**, keys, and base URL under **API settings**; **streaming** and **tool calls**; tools from built-in / plugin **`@tool`** plus **MCP** (`data/config/mcp.yaml`). |
-| **Text-to-image (T2I)** | **API settings** for **ComfyUI** (endpoint, workflow, node ids); other **T2I adapters** can be added via plugins. |
-| **Settings & system** | **React/Tauri** Settings for **API** (`data/config/api.yaml`) and **system** (`data/config/system_config.yaml`): UI language, ASR backend, theme tint, font size, and more. |
-| **Plugins** | `data/config/plugins.yaml` manifest; **Plugins** tab to discover/install and toggle; extends LLM/TTS/ASR/T2I, tools, **Settings / Tools / chat** surfaces. |
-| **MCP** | **Plugins → MCP** or YAML to attach SSE/stdio servers; tools registered into the in-process LLM tool list. |
-| **Vision & other extensions** | Vision, theme editors, etc. ship as **official or community plugins** (see `plugins/`); capabilities vary by package README. |
+| **Onboarding & desktop tray** | **5-step guided setup** (API / plugins / characters / backgrounds); unified React / Tauri Settings app with **system tray minimization**, OS autostart, and **scheduled character voice reminders**. |
+| **Characters, relations & self-persona** | Create / import-export character packs (`.char`), AI-assisted bios & translation, or one-sentence agent creation; visual **character relationship graphs** with affinity (-10 to +10) injected into dialogue context; built-in **self-persona** for global player identity. |
+| **Sprites, outfits & dynamic models** | Images, MP4 / WebM transparent video, **MMD (PMX + VPD/VMD)**, and experimental **Live2D**; unified full / half / close-up framing; **outfit groups** (smart auto-grouping, manual switch/lock, story auto-switching); **lip-sync & speaking blinks**; smooth crossfade fallback without transition clips. |
+| **AI sprite studio** | Centered workspace: LLM prompt & Chinese tag planning, reference-preserving T2I (generate multi-expression sprite sets from one image), optional **MiniMax H3** frame picking / transparent animation / 22-frame directional transitions (with chat-history recommendations) and ToonOut / ISNet matting. |
+| **Stage, replay & mini avatar** | Auto-switching **backgrounds, BGM & SFX/visual effects**, **branching options & affinity/stat updates**, and live **ComfyUI CG generation**; single-timeline compaction & 4-in-1 revert cascade; multi-select history **stage replay** (with optional voice completion), **copy / PNG screenshot / MP4·WebM video recording**; **circular mini-avatar widget** and **LAN mobile QR access**. |
+| **AI story & node canvas** | Turn a premise and cast into a playable story with a visual **branching node graph** (drag-and-drop editing + LLM-assisted graph revisions), **multi-character scenes**, deterministic path validation, and versioned saves. |
+| **Long-term memory & worldbooks** | Local **SQLite + FTS5 + ONNX** hybrid engine (zero PyTorch memory dependency); canon facts & Ebbinghaus retention decay, 3 save-isolation modes, and TXT/JSON history extraction; separate **knowledge manager** for worldbook/TXT imports with per-character bindings. |
+| **Screen perception & desktop agent** | **Screen sharing + local RapidOCR** (subtitles / full screen / region) and shared-audio detection across 7 adaptive scenes (gaming, co-watching, video calls, reading, idle, etc.); **desktop agent (Pi runtime)** supporting web lookup, local file/folder tools, character setup, diagnostics, and plugin skills. |
+| **Voice (TTS / ASR)** | **TTS**: GPT-SoVITS, Genie TTS, CosyVoice, etc., with optional voice archiving, per-sprite line audio fallback, and `characters.voice.prepare` automated voice pipeline; **ASR**: Vosk / Whisper with F8 hold-to-talk. |
+| **Themes, plugins & MCP** | **5 built-in Galgame themes** and **visual theme customizer**; **ComfyUI** & T2I plugins; `data/config/plugins.yaml` + **Plugin Manager** ([Shinsekai-Plugin-Registry](https://github.com/RachelForster/Shinsekai-Plugin-Registry)); **MCP (SSE / stdio)** external tool integration. |
 
 ---
 
@@ -64,11 +62,11 @@ git clone https://github.com/RachelForster/Shinsekai
 cd Shinsekai
 ```
 
-**Bundle:** download and extract from [Releases](https://github.com/RachelForster/Shinsekai/releases) (`install.bat` / `start.bat` included).
+**Bundle:** download and extract from [Releases](https://github.com/RachelForster/Shinsekai/releases) (`install.bat` / `start-react.bat` included).
 
 ### 2. Install dependencies
 
-Bundle users: run `install.bat`.
+Bundle users: run `install.bat` (Windows) or `install.command` (macOS).
 
 Developers (Python 3.10 recommended):
 
@@ -88,25 +86,34 @@ Bundle: `start-react.bat`. From source, use the platform launch script:
 ./start-react.sh
 ```
 
-Windows and macOS provide `start-react.bat` and `start-react.command`. The retired Qt
-settings and chat windows are no longer available.
+Windows and macOS provide `start-react.bat` and `start-react.command`. Source builds require building the React frontend once (`cd frontend && pnpm install && pnpm build`). The retired Qt settings and chat windows are no longer available.
+
+For Tauri desktop development:
+
+```bash
+cd frontend
+pnpm install
+pnpm tauri:dev
+```
+
+Before releasing, update the root `VERSION` file and run `pnpm sync:version` inside `frontend/` to sync `package.json`, Tauri Cargo manifests, and `runtime_manifest.json`.
 
 ### 4. First conversation
 
-1. Open **API settings**, configure your LLM (e.g. DeepSeek or any OpenAI-compatible endpoint), and save.  
-2. Under **Character management**, import a pack (example: [nanami.char](https://github.com/RachelForster/Shinsekai/releases/download/v1.0.4/nanami.char); more packs at [Community Resources](https://rachelforster.github.io/Shinsekai/resources.html)).  
-3. Open **Chat template**, select the character, and generate a template.  
-4. Click **Start chat**; send messages in the main window and watch sprites and replies.
+1. Open **API settings**, configure your LLM (e.g. DeepSeek or any OpenAI-compatible endpoint), test the connection, and save.  
+2. Under **Character management**, import a pack (example: [nanami.char](https://github.com/RachelForster/Shinsekai/releases/download/v1.0.4/nanami.char); more packs at [Community Resources](https://rachelforster.github.io/Shinsekai/resources.html)), or open the **Assistant** in the bottom-left sidebar to help create one.  
+3. Open **Chat template**, select characters (plus optional player character and initial outfits), and generate a template.  
+4. Click **Start chat**; send messages on the stage and watch sprites, models, and voices respond.
 
 ### Optional: spoken lines
 
-For synthesized dialogue audio, deploy [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS). On weaker hardware or without a dedicated GPU, prefer **Genie TTS** or similar in API settings.
+For synthesized dialogue audio, use **API settings → Voice** to download the recommended **GPT-SoVITS** or lightweight **Genie TTS** bundle (or deploy [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) manually), or let the desktop assistant prepare character voice references automatically.
 
 ---
 
 ## Plugin system
 
-List plugins in **`data/config/plugins.yaml`**; source lives under **`plugins/<package>/`**. The host merges **LLM / TTS / ASR / T2I** adapters, **tools**, and contributions to **Settings**, the **tools area**, and the **chat window**.
+List plugins in **`data/config/plugins.yaml`**; source lives under **`plugins/<package>/`**. The host merges **LLM / TTS / ASR / T2I** adapters, **tools**, and contributions to **Settings**, the **tools area**, the **chat workspace**, and the **chat stage**.
 
 - **UI**: Settings → **Plugins** — enable/disable, discover & download from the index, run `pip install -r requirements.txt` with the same interpreter as the app.  
 - **Index:** [Shinsekai-Plugin-Registry](https://github.com/RachelForster/Shinsekai-Plugin-Registry)  
@@ -132,8 +139,9 @@ Independent of the plugin system: you can wire external capabilities through YAM
 ## Docs & links
 
 | Topic | Link |
-|------|------|
+|-------|------|
 | Chinese README | [README.md](https://github.com/RachelForster/Shinsekai/blob/main/README.md) |
+| Changelog & latest release notes | [CHANGELOG.md](../CHANGELOG.md) · [2.7.0 Release notes](releases/2.7.0.md) |
 | GUI user guide (Chinese, non-technical) | [GUI_USER_GUIDE_zh-CN.md](GUI_USER_GUIDE_zh-CN.md) |
 | Chat UI theme guide (Chinese) | [CHAT_UI_THEME_GUIDE_zh-CN.md](CHAT_UI_THEME_GUIDE_zh-CN.md) |
 | Plugin developer guide | [PLUGIN_DEVELOPER_GUIDE.md](PLUGIN_DEVELOPER_GUIDE.md) |
