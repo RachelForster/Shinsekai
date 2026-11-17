@@ -49,6 +49,7 @@ from application.chat.host.launch_history import persist_confirmed_history_path
 from sdk.chat_lifecycle import ChatProcessContext, ChatSessionContext
 from application.chat.host.commands import (
     ChatCommandRouter,
+    dismiss_cg,
     dismiss_plugin_page,
     forward_current,
     voice_archive_command,
@@ -291,6 +292,7 @@ _history_revert = HistoryRevertCommand(
 for command, handler in {
     "copy-history": _history_commands.copy_history,
     "open-history": _history_commands.open_history,
+    "dismiss-cg": dismiss_cg,
     "dismiss-plugin-page": dismiss_plugin_page,
 }.items():
     _command_router.register(command, handler, runtime=False)

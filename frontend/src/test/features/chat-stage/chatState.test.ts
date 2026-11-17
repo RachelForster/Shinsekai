@@ -843,6 +843,11 @@ describe("chatStageReducer", () => {
     expect(cgState.layers.cg).toBe(true);
     expect(cgState.layers.sprites).toBe(false);
 
+    const dismissedCgState = chatStageReducer(cgState, { type: "dismissCg" });
+    expect(dismissedCgState.cgPath).toBeUndefined();
+    expect(dismissedCgState.layers.cg).toBe(false);
+    expect(dismissedCgState.layers.sprites).toBe(true);
+
     const closedState = chatStageReducer(cgState, {
       event: {
         reason: "Closed",

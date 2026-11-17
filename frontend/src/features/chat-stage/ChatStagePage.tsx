@@ -28,7 +28,12 @@ import { ChatConfigDialog } from "./components/ChatConfigDialog";
 import { DialogStageControls } from "./components/DialogStageControls";
 import { HistoryDialog } from "./components/HistoryDialog";
 import { HistoryExportDialog } from "./replay/HistoryExportDialog";
-import { saveHistoryExport, type HistoryExportFormat, type HistoryExportResult } from "./replay/historyExport";
+import {
+  saveCgAsset,
+  saveHistoryExport,
+  type HistoryExportFormat,
+  type HistoryExportResult,
+} from "./replay/historyExport";
 import { ReplayControls, type ActiveReplay } from "./replay/ReplayControls";
 import { useReplayCapture } from "./replay/useReplayCapture";
 import { InputLayer } from "./components/InputLayer";
@@ -54,7 +59,7 @@ import { TopStageTools } from "./components/TopStageTools";
 import { StoryDebugPanel } from "./components/StoryDebugPanel";
 import "./chat-stage.css";
 import { buildChatStageViewModel, chatStageReducer, emptyChatState } from "./chatState";
-import { isRemoteMobileAccessPage, layerClassName } from "./chatStageUtils";
+import { isRemoteMobileAccessPage, layerClassName, stageAssetUrl } from "./chatStageUtils";
 import { useChatStageCommands } from "./hooks/useChatStageCommands";
 import { useChatStageEvents } from "./hooks/useChatStageEvents";
 import { useChatStageKeyboardShortcuts } from "./hooks/useChatStageKeyboardShortcuts";
@@ -176,6 +181,7 @@ export function ChatStagePage() {
   const locallyDismissedPresentationRef = useRef<string | null>(null);
   const { showToast } = useToast();
   const { t } = useI18n();
+  const [savingCg, setSavingCg] = useState(false);
   const [historyExport, setHistoryExport] = useState<HistoryExportResult>();
   const exportHistory = useCallback(async (blob: Blob, format: HistoryExportFormat) => {
     setHistoryExport(await saveHistoryExport(blob, format));
@@ -295,7 +301,11 @@ export function ChatStagePage() {
     confirmClearHistory ||
     confirmRevertUserIndex != null;
   const clickThroughEnabled =
-    standaloneDesktopWindow && transparentBackground && !modalOpen && !(miniAvatarActive && miniInputPinned);
+    standaloneDesktopWindow &&
+    transparentBackground &&
+    !viewModel.layers.cg &&
+    !modalOpen &&
+    !(miniAvatarActive && miniInputPinned);
   const dialogToolbarPlacement =
     typeof themeStyle["--chat-dialog-toolbar-placement"] === "string"
       ? themeStyle["--chat-dialog-toolbar-placement"]
@@ -772,9 +782,41 @@ export function ChatStagePage() {
     setRuntimeConfig((current) => ({ ...current, auto: !current.auto }));
   }, []);
 
+  const exitCg = useCallback(() => {
+    dispatch({ type: "dismissCg" });
+    if (!state.sessionClosedReason && !activeReplay && !state.replay) {
+      void sendCommand({ type: "dismiss-cg" });
+    }
+  }, [activeReplay, sendCommand, state.replay, state.sessionClosedReason]);
+
+  const saveCg = useCallback(async () => {
+    const cgUrl = stageAssetUrl(viewModel.cgPath);
+    if (!cgUrl || savingCg) {
+      return;
+    }
+    setSavingCg(true);
+    try {
+      const saved = await saveCgAsset(cgUrl);
+      showToast({
+        kind: "success",
+        message: saved.path ?? saved.name,
+        title: t("chat.cg.saved"),
+      });
+    } catch (error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : undefined,
+        title: t("chat.cg.saveFailed"),
+      });
+    } finally {
+      setSavingCg(false);
+    }
+  }, [savingCg, showToast, t, viewModel.cgPath]);
+
   useChatStageKeyboardShortcuts({
     disabled: modalOpen,
     onAdvance: advanceDialog,
+    onExitCg: viewModel.layers.cg && !miniAvatarActive ? exitCg : undefined,
     onToggleAuto: toggleAuto,
   });
 
@@ -1044,7 +1086,14 @@ export function ChatStagePage() {
           commands={state.audioCommands}
           onPlaybackSignal={handlePlaybackSignal}
         />
-        <CgLayer hidden={!viewModel.layers.cg || miniAvatarActive} path={viewModel.cgPath} />
+        <CgLayer
+          hidden={!viewModel.layers.cg || miniAvatarActive}
+          onExit={exitCg}
+          onSave={() => void saveCg()}
+          path={viewModel.cgPath}
+          saving={savingCg}
+          standaloneDesktopWindow={standaloneDesktopWindow}
+        />
         {!miniAvatarActive ? <EffectImageLayer effect={state.effectImage} /> : null}
         <SpriteLayer
           hidden={!viewModel.layers.sprites || miniAvatarActive}

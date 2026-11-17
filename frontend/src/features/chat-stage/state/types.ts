@@ -157,4 +157,5 @@ export type ChatStageAction =
   | { type: "setDraft"; text: string }
   | { type: "setTurnOptions"; options: ChatTurnOptions }
   | { type: "setStatus"; status: ChatRuntimeStatus }
+  | { type: "dismissCg" }
   | { type: "error"; message: string };

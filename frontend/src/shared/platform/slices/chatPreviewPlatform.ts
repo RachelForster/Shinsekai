@@ -31,7 +31,12 @@ function browserPreviewChatPayload(payload: unknown) {
 }
 
 function isPreviewRealtimeCommand(command: { type: string }) {
-  return command.type !== "copy-history" && command.type !== "dismiss-plugin-page" && command.type !== "open-history";
+  return (
+    command.type !== "copy-history" &&
+    command.type !== "dismiss-cg" &&
+    command.type !== "dismiss-plugin-page" &&
+    command.type !== "open-history"
+  );
 }
 
 export function createChatPreviewPlatform(ctx: BrowserPreviewContext): ChatPlatform {
@@ -206,6 +211,13 @@ export function createChatPreviewPlatform(ctx: BrowserPreviewContext): ChatPlatf
           notificationText: "",
           sessionClosedReason: "",
         });
+      }
+      if (command.type === "dismiss-cg") {
+        setChat({
+          ...getChat(),
+          cgPath: "",
+        });
+        emitChat();
       }
       if (command.type === "dismiss-plugin-page") {
         const payload = command.payload as { pluginId?: unknown; presentationId?: unknown } | undefined;

@@ -230,6 +230,14 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
         sessionClosedReason: undefined,
         status: action.status,
       });
+    case "dismissCg":
+      if (!state.cgPath) {
+        return state;
+      }
+      return withResolvedLayers({
+        ...state,
+        cgPath: undefined,
+      });
     case "error":
       return withResolvedLayers({
         ...state,
