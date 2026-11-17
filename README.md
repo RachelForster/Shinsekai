@@ -6,27 +6,25 @@
 
 # 新世界（Shinsekai）
 
-面向 **Galgame / 乙女 / 剧情向 RPG** 的桌面助手：用大语言模型驱动角色对白，**立绘与情绪联动**，并可接入 **语音合成**、**语音识别** 与 **视觉、工具** 等扩展——一切在本地 Settings 里配置，聊天窗口专注演出。
+面向 **Galgame / 乙女 / 剧情向 RPG** 的开源桌面伙伴与交互演出平台：由大语言模型驱动角色对白与剧情演出，结合 **多形态形象（静态 / 动态立绘、MMD、Live2D）**、**服装分组与情绪联动**、**语音合成与口型同步**、**长期记忆与资料检索**、**实时屏幕感知**、**桌面智能助手** 与 **插件 / MCP 扩展**——在统一的 React / Tauri 设置中心集中管理一切，让聊天舞台专注沉浸演出。
 
 ---
 
-## 为什么用它
+## 核心亮点
 
-- **角色演出一条龙**：聊天模板、会话历史、立绘切图与情绪、TTS/ASR 与输入管线在同一套工作流里衔接，减少到处换工具。  
-- **双窗分工**：**React 设置中心**（`webui_react.py` / `start.bat` / `start-react.*`）集中管 API、角色、背景、模板、小工具、插件与 MCP；**聊天主窗**专责对白与演出，思路清晰。  
-- **多模型、可换引擎**：在 **API 设定** 对接常见 LLM 与 OpenAI 兼容端点；**TTS** 含 GPT-SoVITS、Genie TTS 等，无独显也可选轻量方案；**文生图**可接 ComfyUI 等工作流（同页配置）。  
-- **听懂与说出口**：麦克风 **ASR**（如 Vosk；更多后端可装**插件**）与台词 **TTS** 可选开关，适配「只打字」「只朗读立绘音频」等多种玩法。  
-- **模型不仅会聊天**：内置/插件 **LLM 工具**（如角色与世界书相关能力）+ **MCP** 接入外部服务，把检索、自动化等能力收进同一次对话。  
-- **长期记忆**：按角色沉淀、检索和管理跨会话记忆，让人物关系、剧情进度与重要事件在后续对话中自然延续。
-- **自定义聊天皮肤**：内置聊天主题管理与可视化编辑，支持上传、复制、切换和调整对话框、姓名框、字体、颜色及舞台样式。
-- **100+ 角色包**：提供超过 100 个可直接导入的角色包，快速扩充角色阵容；也支持自行制作、导入和导出 `.char` 包。
-- **插件扩展**：**插件 SDK** 可扩展适配器、设置页与聊天栏控件，并通过插件继续增加 LLM、TTS、ASR、T2I 和工具能力。
-- **数据在本地、可备份**：配置与资源默认落在项目 **`data/`** 下（`api.yaml`、`system_config.yaml`、角色与历史等），便于打包备份与二次开发。  
-- **公开源码**：源码与 [发行版整合包](https://github.com/RachelForster/Shinsekai/releases) 任选；社区插件索引见 [Shinsekai-Plugin-Registry](https://github.com/RachelForster/Shinsekai-Plugin-Registry)。
+- **全链路角色演出**：聊天模板、单时间线会话、立绘 / 动态模型、服装分组、表情情绪指令、BGM / CG / 特效与 TTS / ASR 在同一工作流中打通，开箱即可演绎完整剧情。
+- **多形态舞台与桌面挂件**：**React / Tauri 设置中心**集中管理配置、角色、剧本与插件；**聊天舞台**专注对白演出，支持 **局域网手机扫码伴聊**，也可一键切换为可拖动贴边的 **圆形小图标桌面挂件**（支持全局快捷键唤起输入）。
+- **静态、透明视频与 3D / 2D 动态形象**：除图片与 **MP4 / WebM** 透明动态立绘外，内置 **MMD（PMX）** 模型与自动呼吸、微风、视线及 VPD / VMD 动作支持，并提供实验性 **Live2D** 接入；支持 **口型同步与说话眨眼**、**多套服装分组与自动随剧情换装**。
+- **立绘智能生成与加工工作区**：内置 LLM 提示词规划、T2I 生图、可选 **MiniMax H3** 图生视频（22 帧单向过渡与透明动态立绘）以及 **ToonOut / ISNet** 自动抠图，形成从立绘生成到入库的完整流水线。
+- **可控的长期记忆与人物关系**：基于本地 **SQLite + FTS5 + ONNX** 混合检索引擎，支持 **艾宾浩斯遗忘曲线**（固有设定永不遗忘、动态记忆衰减与唤醒）、**按存档隔离记忆**（存档独立 / 角色互通 / 继承只读）、**内置玩家「自设」**、**人物关系图谱** 以及独立存储的 **角色资料库（RAG）**。
+- **看屏幕、陪游戏、能动手**：支持 **实时屏幕感知与本地 OCR**，可根据剧情、视频通话、战斗、阅读等场景自适应调节主动发言节奏；内置 **桌面智能助手（Pi 运行时）**，能直接辅助创建人物、生成立绘、自动准备角色语音、排查故障与开发插件。
+- **多模型、语音与插件生态**：自由对接主流 LLM、OpenAI 兼容接口、**GPT-SoVITS / Genie TTS / CosyVoice**、**Vosk / Whisper** 与 **ComfyUI**；支持 **可视化聊天主题编辑**、**100+ 社区角色包**、**插件 SDK** 与 **MCP（SSE / stdio）**。
+- **本地优先、可备份**：配置、角色、记忆、历史记录与资料默认保存在本地 **`data/`** 下（`api.yaml`、`system_config.yaml`、`history.db` 等），方便迁移、备份与二次开发；提供源码与 [发行版整合包](https://github.com/RachelForster/Shinsekai/releases)。
 
 ---
 
 ## 效果预览
+
 ![演出示例](assets/present_example.png)
 
 [![](https://img.shields.io/badge/Bilibili-完整效果展示Ⅰ-00A1D6?logo=bilibili&logoColor=white)](https://www.bilibili.com/video/BV1V4H7z5Ez7/)
@@ -40,17 +38,19 @@
 
 | 模块 | 说明 |
 |------|------|
-| **角色与模板** | 创建 / 导入导出角色包（`.char`）；AI 辅助生成设定与背景；**聊天模板**一键套用多角色与世界书；会话 **历史** 读写、回溯与存档。 |
-| **立绘与演出** | 多张三宣图 / 立绘管理；**0–3 倍**缩放；为每张图打 **情绪标签**，对白中的情绪指令与立绘切换联动；可选 CG / 特效字段（视模板与管线）。 |
-| **语音** | **TTS**：GPT-SoVITS、Genie TTS、CosyVoice 等（**API 设定**中选引擎并填服务路径/URL）；选「不使用」时可仅播放 **立绘绑定的台词音频**。**ASR**：麦克风识别默认可走 **Vosk**；Whisper 类等可通过 **插件** 注册。 |
-| **LLM 与工具** | **API 设定**中配置供应商、**模型 ID**、Key、Base URL；支持 **流式**输出与 **工具调用**；工具来源包括内置/插件 **`@tool`** 与 **MCP**（`data/config/mcp.yaml`）。 |
-| **文生图（T2I）** | 在 **API 设定**中配置 **ComfyUI** 等服务端地址、工作流与节点 ID；可按需接入其他 **T2I 适配器**（插件注册）。 |
-| **设置与系统集成** | **React 设置中心**通过本地 Python bridge 管理 **API**（`data/config/api.yaml`）与 **系统**（`data/config/system_config.yaml`）：界面语言、语音识别后端、主题色、字体等；配置读写仍留在 Python 层。 |
-| **插件与小工具** | `data/config/plugins.yaml` 清单加载；**插件**页发现/安装、启用禁用；**小工具**页提供立绘提示词、批量生成、裁剪和抠图流程；插件可扩展 LLM/TTS/ASR/T2I、工具与 React **Settings / 工具箱 / 聊天窗** 入口。 |
-| **MCP** | **插件 → MCP** 子页或 YAML 连接远端/本机 MCP Server（SSE / stdio），工具并入当前进程的 LLM 工具列表。 |
-| **视觉与其它扩展** | 视觉理解、主题编辑等能力可通过 **官方或社区插件** 启用（如仓库内 `plugins/` 示例）；具体能力以各插件说明为准。 |
+| **角色、关系与自设** | 创建 / 导入导出角色包（`.char`），AI 辅助生成设定、简介与翻译；可视化 **人物关系图谱** 与好感度（-10 ~ 10）注入对话上下文；内置全局 **「自设」** 作为玩家默认背景或可选主控。 |
+| **立绘、服装与动态模型** | 支持图片、MP4 / WebM 透明视频、**MMD（PMX + VPD/VMD）** 与实验性 **Live2D**；统一全身 / 半身 / 特写取景；**服装分组**（一键智能归组、手动切换 / 锁定、随剧情自动换装）；**口型同步与说话眨眼**；无过渡视频时自动淡入淡出。 |
+| **立绘智能生成** | 独立居中工作区：LLM 规划提示词与中文标签、参考图保持取景与比例、可选 **MiniMax H3** 静态选帧 / 透明动态 / 22 帧单向过渡（支持聊天记录推荐）与 ToonOut / ISNet 抠图。 |
+| **舞台、回放与桌面挂件** | **单时间线对话**、非破坏性上下文压缩与 4 合 1 回溯级联；支持多选历史消息进行 **舞台剧情回放**（可选边播边补全语音）、**复制 / 导出长截图 / 录制视频**；支持 **小图标桌面挂件** 与 **手机局域网扫码连接**。 |
+| **长期记忆与资料检索** | 本地 **SQLite + FTS5 + ONNX** 混合引擎（零 PyTorch 重依赖）；支持固有设定与艾宾浩斯记忆衰减、3 种存档隔离模式与文本 / JSON 历史提取；独立 **资料管理**（TXT 导入与按角色绑定检索）。 |
+| **实时感知与剧情模式** | **屏幕共享 + 本地 RapidOCR**（字幕 / 全屏 / 框选）与共享音频检测，按场景自适应发言阈值与冷却，支持游戏 / 插件状态接入；内置 **AI 剧情创作与演绎模式**。 |
+| **语音（TTS / ASR）** | **TTS**：GPT-SoVITS、Genie TTS、CosyVoice 等，支持语音存档与仅播放立绘绑定音频，并提供 `characters.voice.prepare` 自动化语音准备流程；**ASR**：Vosk / Whisper，支持 F8 按住说话。 |
+| **LLM、智能助手与 MCP** | 对接主流 LLM 与 OpenAI 兼容端点；内置 **桌面智能助手**（Pi 运行时）按需加载人物创建、故障排查与插件开发技能；支持内置 / 插件 `@tool` 与 **MCP（SSE / stdio）** 接入外部工具。 |
+| **文生图（T2I）与主题** | 配置 **ComfyUI**（含连接检测与整合包指引）及其他 T2I 插件；内置多款聊天皮肤、**可视化主题编辑器**、实时预览与独立音效 / BGM / CG 管理。 |
+| **插件系统** | 通过 `data/config/plugins.yaml` 与图形化 **插件市场**（索引：[Shinsekai-Plugin-Registry](https://github.com/RachelForster/Shinsekai-Plugin-Registry)）发现安装；可扩展 LLM / TTS / ASR / T2I 适配器、工具与设置页 / 聊天工作区 / 舞台入口。 |
 
 ---
+
 ## 快速开始（约 5 分钟）
 
 ### 1. 获取程序
@@ -103,7 +103,7 @@ Linux 源码用户也可以运行 `./scripts/install-linux.sh`。如果已激活
 | macOS | 双击 `start-react.command` |
 | Linux | 运行 `./start-react.sh` |
 
-`start-react.*` 会启动本地 Python HTTP bridge，托管 React 设置中心，并自动打开浏览器。React 设置中心用于管理 API、角色、背景、聊天模板、小工具、插件和 MCP。
+`start-react.*` 会启动本地 Python HTTP bridge，托管 React 设置中心，并自动打开浏览器。React 设置中心用于管理 API、角色、背景、特效、聊天模板、小工具、插件和 MCP。
 
 源码用户如果没有运行安装脚本，需要先安装前端依赖并构建 React 前端：
 
@@ -118,7 +118,7 @@ cd ..
 
 ### Tauri 桌面端开发
 
-需要调试正式桌面壳、窗口控制或官方 updater 时，在 `frontend/` 下启动 Tauri dev：
+需要调试正式桌面壳、窗口控制、小图标模式或官方 updater 时，在 `frontend/` 下启动 Tauri dev：
 
 ```bash
 cd frontend
@@ -162,28 +162,28 @@ pnpm sync:version
 
 ### 4. 第一次对话
 
-1. 在 **API 设定** 中填写 LLM（例如 DeepSeek / OpenAI 兼容端点），保存。  
-2. 在 **角色管理** 导入角色包（示例：[nanami.char](https://github.com/RachelForster/Shinsekai/releases/download/v1.0.4/nanami.char)；更多角色包见 [社区资源](https://rachelforster.github.io/Shinsekai/resources.html)）。  
-3. 打开 **聊天模板**，勾选角色并生成模板。  
-4. **启动聊天**，即可在主窗口发消息、看立绘与回复。
+1. 在 **API 设定** 中填写 LLM（例如 DeepSeek / OpenAI 兼容端点），保存并点击连通检测确认可用。  
+2. 在 **角色管理** 导入角色包（示例：[nanami.char](https://github.com/RachelForster/Shinsekai/releases/download/v1.0.4/nanami.char)；更多角色包见 [社区资源](https://rachelforster.github.io/Shinsekai/resources.html)），也可直接在右下角打开 **助手** 请它协助创建或配置角色。  
+3. 打开 **聊天模板**，勾选角色（可选设置主控人物与服装组）并生成模板。  
+4. **新建或启动聊天**，即可在舞台中发送消息、体验立绘 / 模型联动与语音演出。
 
 ### 可选：让角色开口说话
 
-需要台词语音合成时，可部署 [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS)；机器较弱或无独显时，可在 API 设定中改用 **Genie TTS** 等方案。
+需要台词语音合成时，可在 **API 设定 → 语音模块** 一键下载推荐的 **GPT-SoVITS** 或轻量 **Genie TTS** 整合包（也可自行部署 [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS)），或借助桌面智能助手的自动语音准备流程为角色匹配/制备参考声音。
 
 ---
 
 ## 配置 LLM（简要）
 
-1. 顶部进入 **API 设定**。  
-2. 选择供应商，填写 **模型 ID**、**API Key**、**Base URL**（部分供应商会自动填默认地址）。  
-3. 保存后回到聊天流程即可使用。
+1. 顶部进入 **AI 服务设置（API 设定）**。  
+2. 选择服务商，填写 **模型 ID**、**API Key**、**基础网址**（部分服务商会自动填充默认地址）。  
+3. 保存后回到聊天流程即可使用；**视觉理解** 默认跟随当前 LLM 服务商，也可单独切换。
 
 ---
 
 ## 插件系统
 
-用 **`data/config/plugins.yaml`** 登记插件；源码放在 **`plugins/<包名>/`**。宿主会合并 **LLM / TTS / ASR / T2I** 适配器、**工具**、**Settings / 工具箱 / 聊天窗** 等贡献。
+用 **`data/config/plugins.yaml`** 登记插件；源码放在 **`plugins/<包名>/`**。宿主会合并 **LLM / TTS / ASR / T2I** 适配器、**工具**，以及 **Settings / 工具箱 / 聊天工作区 / 聊天舞台** 等扩展入口。
 
 - **图形界面**：Settings → **插件**：启用/禁用、从索引发现与下载、`pip install` 依赖（与当前解释器一致）。  
 - **索引仓库**：[Shinsekai-Plugin-Registry](https://github.com/RachelForster/Shinsekai-Plugin-Registry)  
@@ -211,9 +211,14 @@ pnpm sync:version
 | 内容 | 链接 |
 |------|------|
 | **项目主页（GitHub Pages）** | [rachelforster.github.io/Shinsekai](https://rachelforster.github.io/Shinsekai/) |
+| **更新日志与最新版本说明** | [CHANGELOG.md](CHANGELOG.md) · [2.7.0 Release notes](docs/releases/2.7.0.md) |
 | **图形界面使用指南（新手）** | [docs/GUI_USER_GUIDE_zh-CN.md](docs/GUI_USER_GUIDE_zh-CN.md) |
 | 立绘智能生成与 MiniMax H3 接入 | [docs/CHARACTER_SPRITE_GENERATION_zh-CN.md](docs/CHARACTER_SPRITE_GENERATION_zh-CN.md) |
+| ComfyUI 连接指南 | [docs/COMFYUI_SETUP_zh-CN.md](docs/COMFYUI_SETUP_zh-CN.md) |
+| MMD 与 Live2D 接入指南 | [docs/MMD_INTEGRATION_zh-CN.md](docs/MMD_INTEGRATION_zh-CN.md) · [docs/LIVE2D_INTEGRATION_zh-CN.md](docs/LIVE2D_INTEGRATION_zh-CN.md) |
 | 聊天皮肤定义与制作指南 | [docs/CHAT_UI_THEME_GUIDE_zh-CN.md](docs/CHAT_UI_THEME_GUIDE_zh-CN.md) |
+| 剧情回放与导出说明 | [docs/CHAT_REPLAY_CUJ_zh-CN.md](docs/CHAT_REPLAY_CUJ_zh-CN.md) |
+| 桌面智能助手与剧情模式说明 | [docs/AGENT_APP_INTEGRATION_zh-CN.md](docs/AGENT_APP_INTEGRATION_zh-CN.md) · [docs/STORY_MODE_WORKSPACE_zh-CN.md](docs/STORY_MODE_WORKSPACE_zh-CN.md) |
 | 英文说明 | [docs/README_EN.md](docs/README_EN.md) |
 | 插件开发者指南 | [docs/PLUGIN_DEVELOPER_GUIDE.md](docs/PLUGIN_DEVELOPER_GUIDE.md) |
 | 本仓库 | [github.com/RachelForster/Shinsekai](https://github.com/RachelForster/Shinsekai) |
