@@ -446,13 +446,14 @@ describe("sprite generator", () => {
   it("guides planning, generation and saving while keeping settings visible", async () => {
     mount();
     const steps = screen.getByRole("list", { name: "Sprite generation steps" });
+    const guideToggle = screen.getByRole("button", { name: "Models & workflows" });
     expect(steps.querySelector('[aria-current="step"]')).toHaveTextContent("Set up & plan");
     expect(screen.getByRole("button", { name: "Add to collection (0)" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Models & workflows" })).toHaveAttribute("aria-expanded", "true");
+    expect(guideToggle).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByLabelText("Remove background automatically").closest("label")).toHaveClass("switch");
     await makePlan();
     expect(steps.querySelector('[aria-current="step"]')).toHaveTextContent("Generate & review");
-    expect(screen.getByRole("button", { name: "Models & workflows" })).toHaveAttribute("aria-expanded", "false");
+    await waitFor(() => expect(guideToggle).toHaveAttribute("aria-expanded", "false"));
     expect(screen.queryByRole("button", { name: "Open workflow folder" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Choose reference image" })).toBeVisible();
     expect(screen.getByLabelText("Sprite 1 Tags")).toBeVisible();
@@ -463,7 +464,7 @@ describe("sprite generator", () => {
     await drawAll();
     expect(steps.querySelector('[aria-current="step"]')).toHaveTextContent("Save to character");
     expect(screen.getByText("2 ready · 0 pending")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Models & workflows" }));
+    fireEvent.click(guideToggle);
     expect(screen.getByRole("button", { name: "Open workflow folder" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Add to collection (2)" })).toBeEnabled();
   });
