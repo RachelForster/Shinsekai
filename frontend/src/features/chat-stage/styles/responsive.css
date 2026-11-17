@@ -4,6 +4,7 @@
     --stage-input-height: 112px;
     --stage-safe-x: 12px;
     --stage-safe-top: 12px;
+    --chat-dialog-toolbar-layer-max-width: calc(100vw - 24px);
     --chat-input-grid-template-columns: minmax(0, 1fr) 38px 38px 46px;
     --chat-input-resolved-width: min(var(--chat-input-max-width), calc(100vw - 24px));
     --chat-send-label-display: none;
@@ -37,16 +38,8 @@
     max-width: 100%;
   }
 
-  .dialog-stage-controls__rail {
-    justify-content: flex-start;
-  }
-
   .dialog-stage-controls__surface {
     max-width: 100%;
-  }
-
-  .dialog-stage-controls__button.button {
-    padding: 0 9px;
   }
 
   .input-layer {

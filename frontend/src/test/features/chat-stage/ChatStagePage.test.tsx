@@ -2984,4 +2984,44 @@ describe("ChatStagePage", () => {
 
     expect(topTools).toHaveAttribute("data-visible", "false");
   });
+
+  it("adapts single-row dialog controls density across stage widths", async () => {
+    const { container } = renderPage();
+    await screen.findByText("Ready");
+
+    const stage = container.querySelector(".chat-stage") as HTMLElement;
+    const controls = container.querySelector(".dialog-stage-controls") as HTMLElement;
+    const rail = container.querySelector(".dialog-stage-controls__rail") as HTMLElement;
+
+    let stageWidth = 1280;
+    Object.defineProperty(stage, "clientWidth", { configurable: true, get: () => stageWidth });
+    Object.defineProperty(rail, "scrollWidth", {
+      configurable: true,
+      get: () => (controls.dataset.density === "tight" ? 600 : 740),
+    });
+
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(controls).toHaveAttribute("data-density", "full");
+
+    stageWidth = 700;
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(controls).toHaveAttribute("data-density", "tight");
+
+    stageWidth = 360;
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(controls).toHaveAttribute("data-density", "compact");
+    expect(within(controls).getByRole("button", { name: "Open history" })).toBeInTheDocument();
+
+    stageWidth = 1280;
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(controls).toHaveAttribute("data-density", "full");
+  });
 });

@@ -480,11 +480,13 @@
 
 .dialog-stage-controls__rail {
   display: flex;
+  max-width: 100%;
   min-width: 0;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: flex-end;
   gap: 4px;
+  white-space: nowrap;
 }
 
 .dialog-stage-controls__rail > [data-plugin-slot="chat-dialog-actions"] {
@@ -492,8 +494,7 @@
 }
 
 .dialog-stage-controls__rail .button__label {
-  overflow-wrap: anywhere;
-  white-space: normal;
+  white-space: nowrap;
 }
 
 .dialog-stage-controls__chat-settings {
@@ -725,6 +726,7 @@
 
 .dialog-stage-controls__button.button {
   flex: 0 0 auto;
+  height: 30px;
   min-height: 30px;
   min-width: 0;
   padding: 0 10px;
@@ -753,6 +755,75 @@
   font-size: 11px;
   font-weight: 600;
   line-height: 1.2;
+}
+
+.dialog-stage-controls[data-density="tight"] .dialog-stage-controls__surface {
+  padding: 4px 5px;
+}
+
+.dialog-stage-controls[data-density="tight"] .dialog-stage-controls__rail {
+  gap: 2px;
+}
+
+.dialog-stage-controls[data-density="tight"] .dialog-stage-controls__button.button {
+  padding: 0 7px;
+  gap: 3px;
+}
+
+.dialog-stage-controls[data-density="tight"] .dialog-stage-controls__button .button__label {
+  font-size: 10.5px;
+}
+
+.dialog-stage-controls[data-density="compact"] {
+  justify-content: center;
+}
+
+.dialog-stage-controls[data-density="compact"] .dialog-stage-controls__surface {
+  padding: 4px 5px;
+}
+
+.dialog-stage-controls[data-density="compact"] .dialog-stage-controls__rail {
+  gap: 2px;
+  justify-content: center;
+}
+
+.dialog-stage-controls[data-density="compact"] .dialog-stage-controls__button.button {
+  flex: 0 1 28px;
+  min-width: 18px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0 5px;
+  gap: 0;
+}
+
+.dialog-stage-controls[data-density="compact"] .dialog-stage-controls__button .button__icon {
+  flex: 0 1 13px;
+  width: min(13px, 100%);
+  min-width: 10px;
+  height: 13px;
+}
+
+.dialog-stage-controls[data-density="compact"]
+  .dialog-stage-controls__rail
+  .button:has(.button__icon, svg)
+  .button__label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+  pointer-events: none;
+}
+
+.dialog-stage-controls[data-density="compact"] .dialog-stage-controls__chat-settings {
+  right: auto;
+  left: 50%;
+  transform: translateX(-50%);
 }
 
 .dialog-stage-controls__button[data-active="true"] {

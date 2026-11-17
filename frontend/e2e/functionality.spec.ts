@@ -300,8 +300,9 @@ test("reveals the themed dialog toolbar when hovering the dialog", async ({ page
   await expect(surface).toHaveCSS("opacity", "0");
 });
 
-test("keeps every hover dialog action visible and clickable after resizing the window", async ({ page }) => {
+test("keeps every hover dialog action visible and clickable on a single row across window widths", async ({ page }) => {
   await page.goto("/#/chat", { waitUntil: "domcontentloaded" });
+  const controls = page.locator(".dialog-stage-controls");
   const options = page.getByRole("list", { name: "对话选项" });
   const toolbar = page.getByRole("toolbar", { name: "聊天舞台操作" });
   const surface = page.locator(".dialog-stage-controls__surface");
@@ -309,32 +310,47 @@ test("keeps every hover dialog action visible and clickable after resizing the w
   await expect(toolbar.getByRole("button", { name: "关闭聊天" })).toBeAttached();
   const actionCount = await toolbar.getByRole("button").count();
 
+  const readLayout = () =>
+    toolbar.getByRole("button").evaluateAll((buttons) => {
+      const bounds = buttons.map((button) => button.getBoundingClientRect());
+      return {
+        rows: new Set(bounds.map((rect) => Math.round(rect.top))).size,
+        inViewport: bounds.every(
+          (rect) =>
+            rect.left >= 0 && rect.right <= window.innerWidth && rect.top >= 0 && rect.bottom <= window.innerHeight,
+        ),
+        clickable: bounds.every(
+          (rect, index) =>
+            document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)?.closest("button") ===
+            buttons[index],
+        ),
+      };
+    });
+
+  await options.hover();
+  await expect(surface).toHaveCSS("opacity", "1");
+  await expect(controls).toHaveAttribute("data-density", "full");
+  const desktopLayout = await readLayout();
+  const desktopSurfaceWidth = (await surface.boundingBox())?.width ?? 0;
+  expect(desktopLayout.rows).toBe(1);
+  expect(desktopLayout.inViewport).toBe(true);
+  expect(desktopLayout.clickable).toBe(true);
+
   await page.setViewportSize({ width: 320, height: 720 });
   await page.mouse.move(8, 102);
   await expect(surface).toHaveCSS("opacity", "0");
   await options.hover();
   await expect(surface).toHaveCSS("opacity", "1");
+  await expect(controls).toHaveAttribute("data-density", "compact");
 
-  const layout = await toolbar.getByRole("button").evaluateAll((buttons) => {
-    const bounds = buttons.map((button) => button.getBoundingClientRect());
-    return {
-      rows: new Set(bounds.map((rect) => Math.round(rect.top))).size,
-      inViewport: bounds.every(
-        (rect) =>
-          rect.left >= 0 && rect.right <= window.innerWidth && rect.top >= 0 && rect.bottom <= window.innerHeight,
-      ),
-      clickable: bounds.every(
-        (rect, index) =>
-          document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)?.closest("button") ===
-          buttons[index],
-      ),
-    };
-  });
+  const narrowLayout = await readLayout();
+  const narrowSurfaceWidth = (await surface.boundingBox())?.width ?? 0;
   expect(actionCount).toBeGreaterThan(5);
   await expect(toolbar.getByRole("button")).toHaveCount(actionCount);
-  expect(layout.rows).toBeGreaterThan(1);
-  expect(layout.inViewport).toBe(true);
-  expect(layout.clickable).toBe(true);
+  expect(narrowSurfaceWidth).toBeLessThan(desktopSurfaceWidth);
+  expect(narrowLayout.rows).toBe(1);
+  expect(narrowLayout.inViewport).toBe(true);
+  expect(narrowLayout.clickable).toBe(true);
 });
 
 async function exportCharacterPackage(request: APIRequestContext, name: string) {

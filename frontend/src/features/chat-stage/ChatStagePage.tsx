@@ -923,7 +923,7 @@ export function ChatStagePage() {
       return;
     }
 
-    // The toolbar grows upward from the input when its buttons wrap.
+    // Keep the dialog stack clear of the detached input toolbar.
     const updateClearance = () => {
       const { height } = toolbar.getBoundingClientRect();
       stage.style.setProperty(

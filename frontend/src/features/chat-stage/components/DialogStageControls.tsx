@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type MouseEvent,
@@ -37,6 +38,46 @@ import { ThemeFrame, ToolbarButton } from "../../../shared/ui";
 import { useDismissableLayer } from "../hooks/useDismissableLayer";
 import { ChatOutfitPopover } from "./ChatOutfitPopover";
 import { ChatTurnSettingsPopover } from "./ChatTurnSettingsPopover";
+
+type DialogControlsDensity = "full" | "tight" | "compact";
+
+function surfaceHorizontalChrome(surface: HTMLElement): number {
+  const style = window.getComputedStyle(surface);
+  return (
+    (Number.parseFloat(style.paddingLeft) || 0) +
+    (Number.parseFloat(style.paddingRight) || 0) +
+    (Number.parseFloat(style.borderLeftWidth) || 0) +
+    (Number.parseFloat(style.borderRightWidth) || 0)
+  );
+}
+
+function resolveToolbarAvailableWidth(root: HTMLElement): number {
+  const container = root.closest<HTMLElement>(".dialog-toolbar-layer, .dialog-layer__toolbar") ?? root.parentElement;
+  const paddingX = container
+    ? (() => {
+        const style = window.getComputedStyle(container);
+        return (Number.parseFloat(style.paddingLeft) || 0) + (Number.parseFloat(style.paddingRight) || 0);
+      })()
+    : 0;
+  if (container) {
+    const maxWidth = Number.parseFloat(window.getComputedStyle(container).maxWidth);
+    if (Number.isFinite(maxWidth) && maxWidth > 0) {
+      return Math.max(0, maxWidth - paddingX);
+    }
+  }
+  const stage = root.closest<HTMLElement>(".chat-stage");
+  if (stage && stage.clientWidth > 0) {
+    const stageStyle = window.getComputedStyle(stage);
+    const safeX =
+      Number.parseFloat(stageStyle.getPropertyValue("--stage-safe-x")) || (stage.clientWidth <= 860 ? 12 : 24);
+    const scale = Number.parseFloat(stageStyle.getPropertyValue("--chat-toolbar-runtime-scale")) || 1;
+    return Math.max(0, (stage.clientWidth - 2 * safeX) / Math.max(0.5, scale) - paddingX);
+  }
+  if (container && container.clientWidth > 0) {
+    return Math.max(0, container.clientWidth - paddingX);
+  }
+  return root.clientWidth;
+}
 
 export function DialogStageControls({
   asrEnabled,
@@ -115,6 +156,56 @@ export function DialogStageControls({
   const [chatSettingsOpen, setChatSettingsOpen] = useState(false);
   const [outfitOpen, setOutfitOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const surfaceRef = useRef<HTMLDivElement | null>(null);
+  const railRef = useRef<HTMLDivElement | null>(null);
+  const metricsRef = useRef<{
+    density: DialogControlsDensity;
+    fullWidth: number;
+    signature: string;
+    tightWidth: number;
+  }>({
+    density: "full",
+    fullWidth: 0,
+    signature: "",
+    tightWidth: 0,
+  });
+  const syncDensity = useCallback((forceRemeasure = false) => {
+    const root = rootRef.current;
+    const surface = surfaceRef.current;
+    const rail = railRef.current;
+    if (!root || !surface || !rail) {
+      return;
+    }
+    const signature = `${rail.childElementCount}:${rail.textContent ?? ""}`;
+    if (forceRemeasure || metricsRef.current.signature !== signature || metricsRef.current.fullWidth === 0) {
+      root.dataset.density = "full";
+      const rawFull = rail.scrollWidth;
+      const fullWidth = rawFull > 0 ? Math.ceil(rawFull + surfaceHorizontalChrome(surface)) : 0;
+      let tightWidth = 0;
+      if (fullWidth > 0) {
+        root.dataset.density = "tight";
+        tightWidth = Math.ceil(rail.scrollWidth + surfaceHorizontalChrome(surface));
+      }
+      metricsRef.current.signature = signature;
+      metricsRef.current.fullWidth = fullWidth;
+      metricsRef.current.tightWidth = tightWidth;
+    }
+
+    const availableWidth = resolveToolbarAvailableWidth(root);
+    const { fullWidth, tightWidth } = metricsRef.current;
+    let nextDensity: DialogControlsDensity = "full";
+    if (availableWidth > 0 && fullWidth > 0) {
+      if (fullWidth <= availableWidth) {
+        nextDensity = "full";
+      } else if (tightWidth <= availableWidth) {
+        nextDensity = "tight";
+      } else {
+        nextDensity = "compact";
+      }
+    }
+    metricsRef.current.density = nextDensity;
+    root.dataset.density = nextDensity;
+  }, []);
   const closeChatSettings = useCallback(() => setChatSettingsOpen(false), []);
   const closeOutfitPopover = useCallback(() => setOutfitOpen(false), []);
   const closePopovers = useCallback(() => {
@@ -134,6 +225,58 @@ export function DialogStageControls({
     }
   }, [hidden]);
 
+  useLayoutEffect(() => {
+    if (!hidden) {
+      syncDensity();
+    }
+  });
+
+  useLayoutEffect(() => {
+    if (hidden) {
+      return;
+    }
+    const root = rootRef.current;
+    const rail = railRef.current;
+    if (!root || !rail) {
+      return;
+    }
+    let cancelled = false;
+    const handleResize = () => {
+      if (!cancelled) {
+        syncDensity(false);
+      }
+    };
+    const observeTarget =
+      root.closest<HTMLElement>(".chat-stage") ??
+      root.closest<HTMLElement>(".dialog-toolbar-layer, .dialog-layer__toolbar") ??
+      root.parentElement;
+    const resizeObserver = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(handleResize);
+    if (observeTarget) {
+      resizeObserver?.observe(observeTarget);
+    }
+    const mutationObserver =
+      typeof MutationObserver === "undefined"
+        ? undefined
+        : new MutationObserver(() => {
+            if (!cancelled) {
+              syncDensity(true);
+            }
+          });
+    mutationObserver?.observe(rail, { characterData: true, childList: true, subtree: true });
+    window.addEventListener("resize", handleResize);
+    void document.fonts?.ready?.then(() => {
+      if (!cancelled) {
+        syncDensity(true);
+      }
+    });
+    return () => {
+      cancelled = true;
+      resizeObserver?.disconnect();
+      mutationObserver?.disconnect();
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [hidden, syncDensity]);
+
   const stopDialogActionPropagation = (event: MouseEvent<HTMLDivElement>) => {
     event.stopPropagation();
   };
@@ -152,14 +295,20 @@ export function DialogStageControls({
     <div
       className="dialog-stage-controls"
       data-chat-stage-hitbox="true"
+      data-density={metricsRef.current.density}
       data-locked={locked ? "true" : "false"}
       onClick={stopDialogActionPropagation}
       onPointerDown={stopDialogPointerPropagation}
       ref={rootRef}
     >
-      <div className="dialog-stage-controls__surface">
+      <div className="dialog-stage-controls__surface" ref={surfaceRef}>
         <ThemeFrame prefix="chat-toolbar" />
-        <div aria-label={t("chat.actionBar.title")} className="dialog-stage-controls__rail" role="toolbar">
+        <div
+          aria-label={t("chat.actionBar.title")}
+          className="dialog-stage-controls__rail"
+          ref={railRef}
+          role="toolbar"
+        >
           <ToolbarButton
             aria-label={lockLabel}
             aria-pressed={locked}

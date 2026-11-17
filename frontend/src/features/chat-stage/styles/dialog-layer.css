@@ -63,16 +63,15 @@
 .dialog-layer__toolbar {
   position: absolute;
   top: calc(100% + var(--chat-dialog-toolbar-gap));
-  right: 0;
-  left: 0;
+  left: 50%;
   z-index: 3;
   display: flex;
+  width: fit-content;
+  min-width: min(calc(100% * var(--chat-dialog-runtime-scale, 1)), var(--chat-dialog-toolbar-available-width));
   max-width: var(--chat-dialog-toolbar-available-width);
-  min-width: 0;
   justify-content: center;
-  margin-inline: auto;
   pointer-events: none;
-  transform: scale(var(--chat-dialog-runtime-inverse-scale));
+  transform: translateX(-50%) scale(var(--chat-dialog-runtime-inverse-scale));
   transform-origin: bottom center;
 }
 
@@ -82,8 +81,16 @@
   bottom: var(--chat-dialog-toolbar-layer-bottom);
   z-index: 6;
   display: flex;
-  width: var(--chat-dialog-toolbar-layer-width);
-  max-width: min(var(--chat-dialog-toolbar-layer-max-width), var(--chat-dialog-toolbar-available-width));
+  width: fit-content;
+  min-width: min(
+    var(--chat-dialog-toolbar-layer-width),
+    calc(var(--chat-dialog-toolbar-layer-max-width) / var(--chat-toolbar-runtime-scale, 1)),
+    var(--chat-dialog-toolbar-available-width)
+  );
+  max-width: min(
+    calc(var(--chat-dialog-toolbar-layer-max-width) / var(--chat-toolbar-runtime-scale, 1)),
+    var(--chat-dialog-toolbar-available-width)
+  );
   min-height: var(--chat-dialog-toolbar-reserved-height);
   align-items: flex-end;
   justify-content: center;

@@ -5,6 +5,7 @@
 .chat-stage[data-replaying="true"] .dialog-toolbar-layer:has(.chat-replay-player) {
   bottom: var(--chat-replay-bar-bottom);
   width: var(--chat-input-resolved-width);
+  min-width: 0;
   max-width: none;
   padding: 0;
   transform: translateX(-50%) scale(var(--chat-ui-window-scale));
