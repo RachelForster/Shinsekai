@@ -20,11 +20,13 @@ export function ModelStateDialog({
   character,
   index,
   onClose,
+  onDelete,
   onSaved,
 }: {
   character: Character;
   index: number;
   onClose: () => void;
+  onDelete?: () => void;
   onSaved: (character: Character) => void;
 }) {
   const { t } = useI18n();
@@ -153,6 +155,11 @@ export function ModelStateDialog({
       className="model-state-dialog"
       footer={
         <>
+          {onDelete && (
+            <Button disabled={pending} variant="danger" onClick={onDelete}>
+              {t("character.avatar.deleteCurrentPreset")}
+            </Button>
+          )}
           <Button disabled={pending} onClick={onClose}>
             {t("common.cancel")}
           </Button>

@@ -340,6 +340,52 @@ def execute(use_case, operation, **body):
     return use_case.execute(CharacterRequest(operation, body))
 
 
+def test_model_preset_batch_deletion_preserves_files_and_other_tags(harness):
+    from core.media.asset_tags import tag_contents
+
+    state, use_case, entry = harness
+    imported = execute(use_case, CharacterOperation.IMPORT_MODEL, name="Haru", avatar_type="l2d", source_path=str(entry))
+    model = imported["avatars"]["l2d"]["model_path"]
+    shared = dict(name="Haru", avatar_type="l2d", model_path=model)
+    for label in ("neutral", "wave", "smile"):
+        updated = execute(
+            use_case, CharacterOperation.SAVE_MODEL_STATE, **shared, path="", sprite_index=-1, tags=label,
+            state={"parameters": {}, "expressions": [], "motion": ""},
+        )
+    bank = updated["avatars"]["l2d"]
+    paths = [sprite["path"] for sprite in bank["sprites"]]
+    first = {"sprite_index": 0, "path": paths[0]}
+    with pytest.raises(ValueError, match="State changed"):
+        execute(use_case, CharacterOperation.DELETE_MODEL_STATES, **shared,
+                states=[first, {"sprite_index": 2, "path": paths[1]}])
+    assert len(state.config_manager.get_character_by_name("Haru").avatars["l2d"].sprites) == 3
+
+    result = execute(use_case, CharacterOperation.DELETE_MODEL_STATES, **shared,
+                     states=[first, {"sprite_index": 2, "path": paths[2]}])
+    retained = result["avatars"]["l2d"]
+    assert [sprite["path"] for sprite in retained["sprites"]] == [paths[1]]
+    assert tag_contents(retained["emotion_tags"], 1) == ["wave"]
+    assert Path(model).is_file() and all(Path(path).is_file() for path in paths)
+
+
+def test_deleting_mmd_motion_preset_keeps_the_vmd_and_other_preset(harness):
+    state, use_case, body = _mmd_batch(harness)
+    bank = execute(use_case, CharacterOperation.IMPORT_MODEL_STATES, **body)["avatars"]["mmd"]
+    pose, motion = bank["sprites"]
+    model = Path(bank["model_path"])
+    motion_state = Path(motion["path"])
+    vmd = model.parent / json.loads(motion_state.read_text(encoding="utf-8"))["motion"]
+
+    result = execute(
+        use_case, CharacterOperation.DELETE_MODEL_STATES, name=body["name"],
+        avatar_type="mmd", model_path=str(model), states=[{"sprite_index": 1, "path": str(motion_state)}],
+    )
+
+    assert result["avatars"]["mmd"]["sprites"] == [pose]
+    assert vmd.read_bytes() == Path(body["source_paths"][1]).read_bytes()
+    assert model_file(state, str(model), Path(pose["path"]).relative_to(model.parent).as_posix()).is_file()
+
+
 def test_import_save_overwrite_and_authorized_files(harness):
     state, use_case, entry = harness
     imported = execute(use_case, CharacterOperation.IMPORT_MODEL, name="Haru", avatar_type="l2d", source_path=str(entry))

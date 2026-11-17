@@ -1,3 +1,23 @@
+.model-state-editor__gallery,
+.model-state-editor__delete-list {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+  gap: var(--space-3);
+}
+
+.model-state-editor__delete-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.model-state-editor__delete-list label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .model-state-editor__preview {
   height: 400px;
   width: 100%;

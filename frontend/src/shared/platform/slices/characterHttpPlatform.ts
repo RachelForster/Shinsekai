@@ -249,6 +249,8 @@ export function createCharactersHttpPlatform(transport: HttpTransport): Characte
       });
       return waitForTask(task);
     },
+    deleteModelStates: (input) =>
+      requestJson<Character>("/api/characters/model/states/delete", { body: JSON.stringify(input), method: "POST" }),
     saveModelState: (input) =>
       requestJson<Character>("/api/characters/model/state", { body: JSON.stringify(input), method: "POST" }),
     autoLabelSprites: async (name, options) => {

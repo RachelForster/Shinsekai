@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 class CharacterOperation(str, Enum):
     IMPORT_MODEL = "import-model"
     IMPORT_MODEL_STATES = "import-model-states"
+    DELETE_MODEL_STATES = "delete-model-states"
     SAVE_MODEL_STATE = "save-model-state"
     SAVE = "save"
     BIND_VOICE = "bind-voice"
@@ -119,10 +120,16 @@ class CharacterUseCase:
         )
 
     def execute(self, request: CharacterRequest) -> Any:
-        from application.characters.model_assets import import_model, import_model_states, save_model_state
+        from application.characters.model_assets import (
+            delete_model_states,
+            import_model,
+            import_model_states,
+            save_model_state,
+        )
         handlers = {
             CharacterOperation.IMPORT_MODEL: lambda body: import_model(self, body),
             CharacterOperation.IMPORT_MODEL_STATES: lambda body: import_model_states(self, body),
+            CharacterOperation.DELETE_MODEL_STATES: lambda body: delete_model_states(self, body),
             CharacterOperation.SAVE_MODEL_STATE: lambda body: save_model_state(self, body),
             CharacterOperation.SAVE: self._save,
             CharacterOperation.BIND_VOICE: self._bind_voice,

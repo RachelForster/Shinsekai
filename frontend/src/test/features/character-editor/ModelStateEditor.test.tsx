@@ -24,6 +24,7 @@ let character: Character;
 const importModel = vi.fn();
 const importModelStates = vi.fn();
 const saveModelState = vi.fn();
+const deleteModelStates = vi.fn();
 const modelUrl = vi.fn((_model: string, path: string) => `http://localhost/api/avatar/file?path=${path}`);
 const fetchState = vi.fn();
 
@@ -86,7 +87,7 @@ beforeEach(() => {
     }),
   });
   window.__SHINSEKAI_IPC__ = {
-    characters: { importModel, importModelStates, saveModelState },
+    characters: { importModel, importModelStates, saveModelState, deleteModelStates },
     files: { modelUrl },
   } as unknown as ShinsekaiPlatform;
   pickPath.mockResolvedValue(["C:/models/haru.model3.json"]);
@@ -400,6 +401,60 @@ describe("ModelStateEditor shared controls and repositories", () => {
     await waitFor(() => expect(session.apply).toHaveBeenCalledWith(neutral, "restore", expect.any(AbortSignal)));
     expect(screen.queryByRole("button", { name: "Change angle" })).not.toBeInTheDocument();
     expect(saveModelState).not.toHaveBeenCalled();
+  });
+
+  it("deletes checked Live2D presets after confirmation and selects the remaining item", async () => {
+    character.avatars.l2d = {
+      model_path: "/models/haru.model3.json",
+      sprites: [{ path: "/models/first.json" }, { path: "/models/middle.json" }, { path: "/models/last.json" }],
+      emotion_tags: "Sprite 1: first\nSprite 2: middle\nSprite 3: last\n",
+    };
+    const result = structuredClone(character);
+    result.avatars.l2d.sprites = [result.avatars.l2d.sprites[1]];
+    result.avatars.l2d.emotion_tags = "Sprite 1: middle\n";
+    deleteModelStates.mockResolvedValueOnce(result);
+    const { onSaved } = view();
+    fireEvent.click(screen.getByRole("button", { name: "Delete selected presets" }));
+    const group = screen.getByRole("group", { name: "Choose presets to delete" });
+    fireEvent.click(within(group).getByRole("checkbox", { name: /first/ }));
+    fireEvent.click(within(group).getByRole("checkbox", { name: /last/ }));
+    fireEvent.click(within(group).getByRole("button", { name: "Delete selected presets" }));
+    const confirm = screen.getByRole("dialog", { name: "Delete presets" });
+    expect(confirm).toHaveTextContent("2 selected presets");
+    expect(deleteModelStates).not.toHaveBeenCalled();
+    fireEvent.click(within(confirm).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith(result));
+    expect(deleteModelStates).toHaveBeenCalledWith({
+      name: character.name,
+      avatar_type: "l2d",
+      model_path: "/models/haru.model3.json",
+      states: [
+        { sprite_index: 0, path: "/models/first.json" },
+        { sprite_index: 2, path: "/models/last.json" },
+      ],
+    });
+    expect(screen.getByRole("button", { name: /middle Model state/ })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("opens the same single-preset confirmation from the inspector and edit preview", async () => {
+    character.avatars.l2d = {
+      model_path: "/models/haru.model3.json",
+      sprites: [{ path: "/models/first.json" }],
+      emotion_tags: "Sprite 1: first\n",
+    };
+    view();
+    fireEvent.click(screen.getByRole("button", { name: "Delete this preset" }));
+    const confirm = () => screen.getByRole("dialog", { name: "Delete presets" });
+    expect(confirm()).toHaveTextContent("first");
+    fireEvent.click(within(confirm()).getByRole("button", { name: "Cancel" }));
+    expect(deleteModelStates).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Edit state" }));
+    const editor = screen.getByRole("dialog", { name: "Edit state" });
+    fireEvent.click(within(editor).getByRole("button", { name: "Delete this preset" }));
+    expect(confirm()).toHaveTextContent("first");
+    fireEvent.click(within(confirm()).getByRole("button", { name: "Cancel" }));
+    expect(editor).toBeInTheDocument();
+    expect(deleteModelStates).not.toHaveBeenCalled();
   });
 
   it("creates a neutral state only after New, saves it and selects the appended gallery item", async () => {

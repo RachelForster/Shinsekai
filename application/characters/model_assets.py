@@ -143,3 +143,37 @@ def save_model_state(use_case, body: dict) -> dict:
             index_path(target).unlink(missing_ok=True)
             raise
     return use_case._after_reload(name)
+
+
+def delete_model_states(use_case, body: dict) -> dict:
+    from core.media.asset_tags import numbered_tags, tag_contents
+
+    name, kind = str(body["name"]), str(body["avatar_type"]).strip().lower()
+    targets = body["states"]
+    if not isinstance(targets, list) or not targets:
+        raise ValueError("Select at least one model preset")
+    adapter_for(kind)
+    with use_case._mutation_lock:
+        character = use_case._character(name)
+        current = character.avatars.get(kind)
+        if current is None or not current.model_path or current.model_path != body["model_path"]:
+            raise ValueError("Model changed; refresh and retry")
+        bank = current.model_copy(deep=True)
+        removed = set()
+        for target in targets:
+            if not isinstance(target, dict):
+                raise ValueError("Invalid model preset selection")
+            index = target.get("sprite_index")
+            if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < len(bank.sprites):
+                raise ValueError("State changed; refresh and retry")
+            sprite = bank.sprites[index]
+            path = sprite.get("path") if isinstance(sprite, dict) else sprite.path
+            if str(path) != target.get("path") or index in removed:
+                raise ValueError("State changed; refresh and retry")
+            removed.add(index)
+        tags = tag_contents(bank.emotion_tags, len(bank.sprites))
+        bank.sprites = [sprite for i, sprite in enumerate(bank.sprites) if i not in removed]
+        bank.emotion_tags = numbered_tags("立绘", [tag for i, tag in enumerate(tags) if i not in removed])
+        # Removing a preset only changes the bank, since its files may be shared.
+        use_case._state.character_manager.save_avatar_bank(name, kind, bank)
+    return use_case._after_reload(name)

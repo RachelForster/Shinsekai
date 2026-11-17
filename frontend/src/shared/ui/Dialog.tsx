@@ -163,6 +163,7 @@ interface AlertDialogProps {
   onConfirm: () => void;
   open: boolean;
   title: string;
+  trapFocus?: boolean;
 }
 
 export function AlertDialog({
@@ -176,6 +177,7 @@ export function AlertDialog({
   onConfirm,
   open,
   title,
+  trapFocus,
 }: AlertDialogProps) {
   return (
     <Dialog
@@ -194,6 +196,7 @@ export function AlertDialog({
       onClose={onCancel}
       open={open}
       title={title}
+      trapFocus={trapFocus}
     >
       {body}
     </Dialog>
