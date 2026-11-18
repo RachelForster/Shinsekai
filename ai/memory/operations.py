@@ -338,26 +338,47 @@ def _serialize_memory_record(
     }
 
 
+def _count_repo_memories(repo: Any, scope_filter: MemoryScopeFilter) -> int | None:
+    counter = getattr(repo, "count_memories", None)
+    if not callable(counter):
+        return None
+    try:
+        return int(counter(scope_filter))
+    except Exception:
+        logger.debug("count_memories failed", exc_info=True)
+        return None
+
+
 def memory_list(
     character_name: str | None = None,
     *,
     limit: int = 200,
+    offset: int = 0,
     session_id: str = "",
 ) -> dict[str, Any]:
+    """List one window of memories ordered pinned-first, newest-first.
+
+    The result carries ``total`` (all matching memories, when the backend can count
+    them) plus ``offset``/``limit`` so callers can page through large stores.
+    """
     bound_ctx = current_memory_tool_context()
     agent_id = _resolve_agent_id(
         character_name, self_persona_name=bound_ctx.self_persona_name
     )
     sid = str(session_id or "").strip()
-    req_payload: dict[str, Any] = {"name": agent_id, "limit": limit}
+    max_items = max(1, int(limit))
+    start = max(0, int(offset or 0))
+    req_payload: dict[str, Any] = {"name": agent_id, "limit": max_items}
+    if start:
+        req_payload["offset"] = start
     if sid:
         req_payload["sessionId"] = sid
     service_result = _memory_service_request("list", req_payload)
     if service_result is not None:
         return service_result
     mem = ensure_mem0()
+    fetch_limit = start + max_items
     if isinstance(mem, HybridMemoryEngine):
-        max_items = max(1, int(limit))
         read_filter = resolve_memory_read_filter(agent_id)
         policy = (
             getattr(mem.orchestrator, "retention_policy", None)
@@ -365,10 +386,15 @@ def memory_list(
             or EbbinghausRetentionPolicy()
         )
         now_ts = time.time()
+        total: int | None = 0
         with _mem0_operation_lock, borrow_session_store_by_id(sid) as sess_store:
             records_by_id: dict[str, MemoryRecord] = {}
-            for rec in mem.repo.list_by_scope(read_filter, limit=max_items):
+            # Each repo returns its own top ``offset + limit`` rows; merging those and
+            # slicing yields the exact requested window of the combined ordering.
+            for rec in mem.repo.list_by_scope(read_filter, limit=fetch_limit):
                 records_by_id[rec.id] = rec
+            repo_total = _count_repo_memories(mem.repo, read_filter)
+            total = None if repo_total is None else repo_total
             save_repo = (
                 getattr(sess_store, "save_memory_repo", None)
                 if sess_store is not None
@@ -380,29 +406,87 @@ def memory_list(
                     owner_ids=read_filter.owner_ids,
                     session_id=sid or None,
                 )
-                for rec in save_repo.list_by_scope(save_filter, limit=max_items):
+                for rec in save_repo.list_by_scope(save_filter, limit=fetch_limit):
                     records_by_id[rec.id] = rec
+                save_total = _count_repo_memories(save_repo, save_filter)
+                total = None if total is None or save_total is None else total + save_total
 
+        # Mirror the repository ORDER BY (pinned first, newest first) so windows stay
+        # consistent across offsets.
         sorted_records = sorted(
             records_by_id.values(),
-            key=lambda r: (
-                0 if (r.pinned or r.scope == SCOPE_CHAR_CANON or r.kind == "canon") else 1,
-                -float(r.created_at),
-            ),
-        )[:max_items]
+            key=lambda r: (0 if r.pinned else 1, -float(r.created_at)),
+        )
+        window = sorted_records[start:start + max_items]
         memories = [
             _serialize_memory_record(rec, policy=policy, now_ts=now_ts)
-            for rec in sorted_records
+            for rec in window
         ]
-        return {"agentId": agent_id, "count": len(memories), "memories": memories}
+        if total is None:
+            # Backend cannot count: report what we know (a lower bound when the window is full).
+            total = start + len(memories) + (1 if len(sorted_records) > start + max_items else 0)
+        return {
+            "agentId": agent_id,
+            "count": len(memories),
+            "memories": memories,
+            "total": int(total),
+            "offset": start,
+            "limit": max_items,
+        }
 
     with _mem0_operation_lock:
         parameters = inspect.signature(mem.get_all).parameters
-        pagination = {"top_k": limit} if "top_k" in parameters else {"limit": limit}
+        pagination = {"top_k": fetch_limit} if "top_k" in parameters else {"limit": fetch_limit}
         raw = mem.get_all(filters={"user_id": agent_id}, **pagination)
     rows = raw.get("results", []) if isinstance(raw, dict) else (raw if isinstance(raw, list) else [])
-    memories = [_memory_row(row) for row in rows]
-    return {"agentId": agent_id, "count": len(memories), "memories": memories}
+    memories = [_memory_row(row) for row in rows][start:start + max_items]
+    result: dict[str, Any] = {"agentId": agent_id, "count": len(memories), "memories": memories}
+    if start:
+        result["offset"] = start
+    if len(rows) < fetch_limit:
+        # Fewer rows than requested means we saw everything.
+        result["total"] = len(rows)
+    return result
+
+
+def memory_list_all(
+    character_name: str | None = None,
+    *,
+    session_id: str = "",
+    batch_size: int = 500,
+    max_items: int = 100_000,
+) -> dict[str, Any]:
+    """Collect every memory for a character by paging through ``memory_list``."""
+    size = max(1, int(batch_size))
+    collected: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    bound_ctx = current_memory_tool_context()
+    agent_id = _resolve_agent_id(
+        character_name, self_persona_name=bound_ctx.self_persona_name
+    )
+    offset = 0
+    extra = {"session_id": session_id} if session_id else {}
+    while offset < max_items:
+        page = memory_list(character_name, limit=size, offset=offset, **extra)
+        if not isinstance(page, dict) or page.get("error") or page.get("status") == "loading":
+            return page
+        if offset > 0 and page.get("offset") != offset:
+            # Legacy backends ignore offset; stop instead of re-reading the first window.
+            break
+        agent_id = str(page.get("agentId") or agent_id)
+        rows = page.get("memories") or []
+        for row in rows:
+            key = str(row.get("id") or "") if isinstance(row, dict) else ""
+            if key and key in seen:
+                continue
+            if key:
+                seen.add(key)
+            collected.append(row)
+        total = page.get("total")
+        offset += len(rows)
+        if len(rows) < size or (isinstance(total, int) and offset >= total):
+            break
+    return {"agentId": agent_id, "count": len(collected), "total": len(collected), "memories": collected}
 
 
 def memory_search(
@@ -866,6 +950,43 @@ def memory_forget_and_list(
     if isinstance(result, dict) and result.get("status") == "loading":
         return result
     return memory_list(character_name, **({"session_id": session_id} if session_id else {}))
+
+
+def memory_forget_many_and_list(
+    memory_ids: Sequence[str],
+    character_name: str | None = None,
+    *,
+    session_id: str = "",
+) -> dict[str, Any]:
+    """Delete several memories, then return the refreshed list once.
+
+    Individual failures do not abort the batch; they are reported in ``failed``.
+    """
+    seen: set[str] = set()
+    ids: list[str] = []
+    for raw in memory_ids or ():
+        mid = str(raw or "").strip()
+        if mid and mid not in seen:
+            seen.add(mid)
+            ids.append(mid)
+    if not ids:
+        return {"error": "memory ids are required"}
+    deleted: list[str] = []
+    failed: list[dict[str, str]] = []
+    for mid in ids:
+        result = memory_forget(mid, session_id=session_id)
+        if isinstance(result, dict) and result.get("status") == "loading":
+            return result
+        if isinstance(result, dict) and result.get("error"):
+            failed.append({"memoryId": mid, "error": str(result.get("error"))})
+            continue
+        deleted.append(mid)
+    if not deleted and failed:
+        return {"error": failed[0]["error"], "failed": failed}
+    listed = memory_list(character_name, **({"session_id": session_id} if session_id else {}))
+    if isinstance(listed, dict) and not listed.get("error"):
+        listed = {**listed, "deleted": deleted, "failed": failed}
+    return listed
 
 
 def _update_repo_pin(repo: Any, memory_id: str, pinned: bool) -> bool:

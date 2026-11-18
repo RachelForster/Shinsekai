@@ -62,10 +62,69 @@ fn save_history_export(directory: &Path, bytes: &[u8]) -> io::Result<(PathBuf, S
             "unsupported history export",
         ));
     };
+    write_unique_export(directory, "shinsekai", extension, bytes)
+}
+
+#[tauri::command(async)]
+pub(crate) fn desktop_files_save_text_export(
+    app: AppHandle,
+    name: String,
+    text: String,
+) -> Result<DesktopHistoryExport, String> {
+    let downloads = app
+        .path()
+        .download_dir()
+        .map_err(|error| error.to_string())?;
+    let (path, name) = save_text_export(&downloads.join("Shinsekai"), &name, &text)
+        .map_err(|error| error.to_string())?;
+    Ok(DesktopHistoryExport {
+        opened: false,
+        path: desktop_display_path(&path),
+        name,
+    })
+}
+
+fn sanitize_export_stem(name: &str) -> String {
+    let cleaned: String = name
+        .chars()
+        .map(|ch| {
+            if ch.is_control() || matches!(ch, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*')
+            {
+                '_'
+            } else {
+                ch
+            }
+        })
+        .collect();
+    let trimmed = cleaned.trim().trim_matches('.').trim();
+    let stem: String = trimmed.chars().take(80).collect();
+    if stem.is_empty() {
+        "shinsekai".to_string()
+    } else {
+        stem
+    }
+}
+
+fn save_text_export(directory: &Path, name: &str, text: &str) -> io::Result<(PathBuf, String)> {
+    let stem = name.trim().strip_suffix(".txt").unwrap_or(name.trim());
+    let stem = sanitize_export_stem(stem);
+    // Prefix a UTF-8 BOM so legacy Windows editors detect the encoding correctly.
+    let mut bytes = Vec::with_capacity(text.len() + 3);
+    bytes.extend_from_slice(b"\xEF\xBB\xBF");
+    bytes.extend_from_slice(text.as_bytes());
+    write_unique_export(directory, &stem, "txt", &bytes)
+}
+
+fn write_unique_export(
+    directory: &Path,
+    stem: &str,
+    extension: &str,
+    bytes: &[u8],
+) -> io::Result<(PathBuf, String)> {
     fs::create_dir_all(directory)?;
     let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S-%3f");
     for index in 0.. {
-        let name = format!("shinsekai-{timestamp}-{index}.{extension}");
+        let name = format!("{stem}-{timestamp}-{index}.{extension}");
         let path = directory.join(&name);
         let mut file = match fs::OpenOptions::new()
             .write(true)
@@ -444,6 +503,24 @@ mod tests {
             fs::remove_file(second).unwrap();
         }
         assert!(save_history_export(&directory, b"arbitrary file").is_err());
+        fs::remove_dir(directory).unwrap();
+    }
+
+    #[test]
+    fn text_exports_sanitize_names_and_write_utf8_with_bom() {
+        let directory = unique_temp_dir("text-export");
+        let (path, name) =
+            save_text_export(&directory, "Mika/记忆:*.txt", "第一条\n第二条").unwrap();
+        assert_eq!(path, directory.join(&name));
+        assert!(name.starts_with("Mika_记忆__-"));
+        assert_eq!(path.extension().unwrap(), "txt");
+        let bytes = fs::read(&path).unwrap();
+        assert_eq!(&bytes[..3], b"\xEF\xBB\xBF");
+        assert_eq!(std::str::from_utf8(&bytes[3..]).unwrap(), "第一条\n第二条");
+        let (fallback, fallback_name) = save_text_export(&directory, " .. ", "x").unwrap();
+        assert!(fallback_name.starts_with("shinsekai-"));
+        fs::remove_file(path).unwrap();
+        fs::remove_file(fallback).unwrap();
         fs::remove_dir(directory).unwrap();
     }
 

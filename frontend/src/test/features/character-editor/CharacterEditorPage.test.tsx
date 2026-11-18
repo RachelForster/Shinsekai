@@ -25,10 +25,12 @@ const mockUploadCharacterSprites = vi.fn();
 const mockUploadSpriteVoice = vi.fn();
 const mockDeleteAllCharacterSprites = vi.fn();
 const mockDeleteCharacter = vi.fn();
+const mockDeleteCharacterMemories = vi.fn();
 const mockDeleteCharacterMemory = vi.fn();
 const mockDeleteCharacterSprite = vi.fn();
 const mockDeleteSpriteVoice = vi.fn();
 const mockExportCharacter = vi.fn();
+const mockExportCharacterMemories = vi.fn();
 const mockGenerateCharacterSetting = vi.fn();
 const mockGetMem0Status = vi.fn();
 const mockImportCharacters = vi.fn();
@@ -129,10 +131,12 @@ vi.mock("../../../entities/character/repository", () => ({
   importGeneratedCharacterSprites: (...args: unknown[]) => mockImportGeneratedCharacterSprites(...args),
   deleteAllCharacterSprites: (name: string) => mockDeleteAllCharacterSprites(name),
   deleteCharacter: (name: string) => mockDeleteCharacter(name),
+  deleteCharacterMemories: (name: string, memoryIds: string[]) => mockDeleteCharacterMemories(name, memoryIds),
   deleteCharacterMemory: (name: string, memoryId: string) => mockDeleteCharacterMemory(name, memoryId),
   deleteCharacterSprite: (name: string, index: number) => mockDeleteCharacterSprite(name, index),
   deleteSpriteVoice: (name: string, index: number) => mockDeleteSpriteVoice(name, index),
   exportCharacter: (name: string) => mockExportCharacter(name),
+  exportCharacterMemories: (input: unknown) => mockExportCharacterMemories(input),
   generateCharacterSetting: (input: unknown) => mockGenerateCharacterSetting(input),
   getMem0Status: () => mockGetMem0Status(),
   importCharacters: (paths: string[]) => mockImportCharacters(paths),
@@ -271,6 +275,7 @@ describe("CharacterEditorPage", () => {
       sprites: [],
     }));
     mockDeleteCharacter.mockResolvedValue(undefined);
+    mockDeleteCharacterMemories.mockImplementation(async () => ({ agentId: "Mika", count: 0, memories: [] }));
     mockDeleteCharacterMemory.mockImplementation(async () => ({ count: 0, memories: [] }));
     mockDeleteCharacterSprite.mockImplementation(async (name: string, index: number) => ({
       ...structuredClone(character),
@@ -292,6 +297,7 @@ describe("CharacterEditorPage", () => {
       ],
     }));
     mockExportCharacter.mockResolvedValue("D:/exports/Mika.char");
+    mockExportCharacterMemories.mockResolvedValue({ agentId: "Mika", count: 0, text: "" });
     mockGenerateCharacterSetting.mockResolvedValue({
       characterSetting: "Generated setting.",
       message: "Generated",
@@ -1408,5 +1414,41 @@ describe("CharacterEditorPage", () => {
       });
     });
     await waitFor(() => expect(screen.getByRole("button", { name: "AI write" })).toBeEnabled());
+  });
+
+  it("confirms and executes batch memory deletion through CharacterMemoryPanel", async () => {
+    mockListCharacterMemories.mockResolvedValue({
+      agentId: "Mika",
+      count: 2,
+      memories: [
+        { id: "memory-1", memory: "Likes tea" },
+        { id: "memory-2", memory: "Dislikes thunder" },
+      ],
+      total: 2,
+    });
+    mockDeleteCharacterMemories.mockResolvedValue({
+      agentId: "Mika",
+      count: 0,
+      deleted: ["memory-1", "memory-2"],
+      failed: [],
+      memories: [],
+      total: 0,
+    });
+
+    renderPage();
+    await waitForCharacterLoaded();
+
+    const memorySection = document.getElementById("character-memory") as HTMLElement;
+    fireEvent.click(within(memorySection).getByRole("button", { name: "Refresh" }));
+    expect(await within(memorySection).findByText("Likes tea")).toBeInTheDocument();
+
+    fireEvent.click(within(memorySection).getByRole("checkbox", { name: "Select page" }));
+    fireEvent.click(within(memorySection).getByRole("button", { name: "Delete selected (2)" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Delete memories" });
+    expect(within(dialog).getByText(/Delete 2 selected memories from “Mika”/)).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+
+    await waitFor(() => expect(mockDeleteCharacterMemories).toHaveBeenCalledWith("Mika", ["memory-1", "memory-2"]));
   });
 });

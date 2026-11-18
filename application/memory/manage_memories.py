@@ -56,14 +56,144 @@ def list_memories(
     character_name: str,
     *,
     session_id: str = "",
+    limit: int | None = None,
+    offset: int = 0,
     config_manager: Any = None,
 ) -> dict[str, Any]:
     from ai.memory.operations import memory_list
 
     owner = resolve_memory_owner_name(character_name, config_manager=config_manager)
+    extra: dict[str, Any] = {}
     if session_id:
-        return memory_list(owner, session_id=session_id)
-    return memory_list(owner)
+        extra["session_id"] = session_id
+    if limit is not None:
+        extra["limit"] = limit
+    if offset:
+        extra["offset"] = offset
+    return memory_list(owner, **extra)
+
+
+_DEFAULT_EXPORT_LABELS: dict[str, str] = {
+    "header": "Character memories",
+    "exportedAt": "Exported at",
+    "total": "Entries",
+    "canon": "Canon",
+    "detail": "Detail",
+    "createdAt": "Created at",
+}
+
+
+def _format_export_timestamp(value: Any) -> str:
+    try:
+        ts = float(value)
+    except (TypeError, ValueError):
+        return ""
+    if ts <= 0:
+        return ""
+    if ts > 1e12:  # milliseconds
+        ts /= 1000.0
+    from datetime import datetime
+
+    try:
+        return datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
+    except (OverflowError, OSError, ValueError):
+        return ""
+
+
+def _resolve_export_display_name(
+    character_name: str,
+    agent_id: str,
+    *,
+    config_manager: Any = None,
+) -> str:
+    from config.schema import SELF_PERSONA_ID, is_self_persona
+
+    cleaned = str(character_name or "").strip()
+    if config_manager is not None and (not cleaned or cleaned == SELF_PERSONA_ID):
+        characters = getattr(getattr(config_manager, "config", None), "characters", None)
+        if characters:
+            for char in characters:
+                if is_self_persona(char):
+                    display_name = str(getattr(char, "name", "") or "").strip()
+                    if display_name:
+                        return display_name
+    return character_name or agent_id
+
+
+def format_memories_text(
+    character_name: str,
+    memories: Sequence[dict[str, Any]],
+    *,
+    labels: dict[str, str] | None = None,
+    now: Any = None,
+) -> str:
+    """Render memories as a numbered, human-readable plain-text document."""
+    from datetime import datetime
+
+    lab = {**_DEFAULT_EXPORT_LABELS, **{k: str(v) for k, v in (labels or {}).items() if v}}
+    stamp = (now or datetime.now()).strftime("%Y-%m-%d %H:%M:%S")
+    lines = [
+        f"# {lab['header']}: {character_name}",
+        f"# {lab['exportedAt']}: {stamp}",
+        f"# {lab['total']}: {len(memories)}",
+        "",
+    ]
+    for index, memory in enumerate(memories, start=1):
+        text = str(memory.get("memory") or "").strip()
+        gist = str(memory.get("gist") or "").strip()
+        detail = str(memory.get("detail") or "").strip() or (text if gist else "")
+        headline = gist or text
+        canon = bool(
+            memory.get("pinned") or memory.get("clarity") == "canon" or memory.get("kind") == "canon"
+        )
+        lines.append(f"{index}. {'[' + lab['canon'] + '] ' if canon else ''}{headline}")
+        if detail and detail != headline:
+            indented = detail.replace("\r\n", "\n").replace("\n", "\n   ")
+            lines.append(f"   {lab['detail']}: {indented}")
+        created = _format_export_timestamp(memory.get("createdAt", memory.get("created_at")))
+        if created:
+            lines.append(f"   {lab['createdAt']}: {created}")
+        memory_id = str(memory.get("id") or "").strip()
+        if memory_id:
+            lines.append(f"   ID: {memory_id}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def export_memories_text(
+    character_name: str,
+    *,
+    session_id: str = "",
+    memory_ids: Sequence[str] | None = None,
+    labels: dict[str, str] | None = None,
+    config_manager: Any = None,
+) -> dict[str, Any]:
+    """Collect all (or the selected) memories of a character and render them as text."""
+    from ai.memory.operations import memory_list_all
+
+    owner = resolve_memory_owner_name(character_name, config_manager=config_manager)
+    listed = (
+        memory_list_all(owner, session_id=session_id)
+        if session_id
+        else memory_list_all(owner)
+    )
+    if not isinstance(listed, dict) or listed.get("error") or listed.get("status") == "loading":
+        return listed
+    memories = [row for row in listed.get("memories") or [] if isinstance(row, dict)]
+    if memory_ids:
+        wanted = {str(item).strip() for item in memory_ids if str(item or "").strip()}
+        memories = [row for row in memories if str(row.get("id") or "") in wanted]
+    agent_id = str(listed.get("agentId") or owner)
+    display_name = _resolve_export_display_name(
+        character_name,
+        agent_id,
+        config_manager=config_manager,
+    )
+    return {
+        "agentId": agent_id,
+        "count": len(memories),
+        "text": format_memories_text(display_name, memories, labels=labels),
+    }
 
 
 def search_memories(
@@ -256,6 +386,21 @@ def forget_and_list(
     if session_id:
         return memory_forget_and_list(memory_id, character_name=owner, session_id=session_id)
     return memory_forget_and_list(memory_id, character_name=owner)
+
+
+def forget_many_and_list(
+    memory_ids: Sequence[str],
+    *,
+    character_name: str,
+    session_id: str = "",
+    config_manager: Any = None,
+) -> dict[str, Any]:
+    from ai.memory.operations import memory_forget_many_and_list
+
+    owner = resolve_memory_owner_name(character_name, config_manager=config_manager)
+    if session_id:
+        return memory_forget_many_and_list(memory_ids, character_name=owner, session_id=session_id)
+    return memory_forget_many_and_list(memory_ids, character_name=owner)
 
 
 def pin_memory(memory_id: str, *, pinned: bool, session_id: str = "") -> dict[str, Any]:

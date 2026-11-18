@@ -224,6 +224,64 @@
   background: var(--color-surface-raised);
 }
 
+.memory-row--selectable {
+  grid-template-columns: 30px 32px minmax(0, 1fr) auto;
+}
+
+.memory-row--selected {
+  border-color: var(--color-accent-border-strong, var(--color-accent-primary));
+  background: var(--color-accent-bg, var(--color-surface-raised));
+}
+
+.memory-row__select {
+  display: grid;
+  place-items: center;
+}
+
+.memory-select {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--color-text-primary);
+}
+
+.memory-select input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--color-accent-primary);
+  cursor: pointer;
+}
+
+.memory-select input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+}
+
+.memory-bulk-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: 1px dashed var(--color-border);
+}
+
+.memory-bulk-bar__group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.memory-bulk-bar__count {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
 .memory-search-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
@@ -641,6 +699,7 @@
   .character-page__top-grid,
   .asset-gallery-layout,
   .memory-row,
+  .memory-row--selectable,
   .memory-search-row,
   .memory-add-row {
     grid-template-columns: minmax(0, 1fr);

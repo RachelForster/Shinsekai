@@ -761,3 +761,38 @@ def test_sqlite_hybrid_store_bounds_connections_across_short_lived_threads_and_c
         sidecar = Path(f"{db_path}{suffix}")
         if sidecar.exists():
             sidecar.unlink()
+
+
+
+def test_repository_contract_count_memories_matches_scope_filter(memory_repo: MemoryRepository):
+    embedder = DeterministicHashEmbedder(dimensions=64)
+    for index in range(5):
+        memory_repo.upsert(
+            MemoryRecord(
+                id=f"alice-{index}",
+                scope=SCOPE_CHAR_CROSS_SAVE,
+                owner_id="Alice",
+                detail_text=f"Alice memory {index}",
+                gist_text=f"Alice memory {index}",
+                created_at=100.0 + index,
+                embedding=embedder.embed_query(f"Alice memory {index}"),
+            )
+        )
+    memory_repo.upsert(
+        MemoryRecord(
+            id="bob-0",
+            scope=SCOPE_CHAR_CROSS_SAVE,
+            owner_id="Bob",
+            detail_text="Bob memory",
+            gist_text="Bob memory",
+            created_at=200.0,
+            embedding=embedder.embed_query("Bob memory"),
+        )
+    )
+    alice = MemoryScopeFilter(scopes=(SCOPE_CHAR_CROSS_SAVE,), owner_ids=("Alice",))
+
+    assert memory_repo.count_memories(alice) == 5
+    assert len(memory_repo.list_by_scope(alice, limit=3)) == 3
+    assert memory_repo.count_memories(
+        MemoryScopeFilter(scopes=(SCOPE_CHAR_CROSS_SAVE,), owner_ids=("Nobody",))
+    ) == 0

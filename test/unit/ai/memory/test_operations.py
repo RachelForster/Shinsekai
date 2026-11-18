@@ -103,6 +103,7 @@ def test_memory_list_normalizes_rows(monkeypatch):
             {"id": "2", "memory": "likes books"},
             {"id": "", "memory": "loose row"},
         ],
+        "total": 3,
     }
 
 
@@ -205,6 +206,52 @@ def test_memory_forget_and_list_rejects_empty_id():
     assert operations.memory_forget_and_list("  ", character_name="Alice") == {
         "error": "memory id is required"
     }
+
+
+def test_memory_forget_many_and_list_rejects_empty_ids():
+    assert operations.memory_forget_many_and_list(["", "  "], character_name="Alice") == {
+        "error": "memory ids are required"
+    }
+
+
+def test_memory_forget_many_and_list_dedupes_and_reports_failures(monkeypatch):
+    forgotten: list[str] = []
+
+    def fake_forget(memory_id, *, session_id=None, memory_mode=""):
+        forgotten.append(memory_id)
+        if memory_id == "missing":
+            return {"error": "memory not found", "memory_id": memory_id}
+        return {"ok": True, "memory_id": memory_id}
+
+    list_calls: list[tuple] = []
+
+    def fake_list(character_name=None, **kwargs):
+        list_calls.append((character_name, kwargs))
+        return {"agentId": character_name, "count": 1, "memories": [{"id": "keep", "memory": "x"}]}
+
+    monkeypatch.setattr(operations, "memory_forget", fake_forget)
+    monkeypatch.setattr(operations, "memory_list", fake_list)
+
+    result = operations.memory_forget_many_and_list(["a", "b", "a", "missing"], character_name="Alice")
+
+    assert forgotten == ["a", "b", "missing"]
+    assert list_calls == [("Alice", {})]
+    assert result["deleted"] == ["a", "b"]
+    assert result["failed"] == [{"memoryId": "missing", "error": "memory not found"}]
+    assert result["memories"] == [{"id": "keep", "memory": "x"}]
+
+
+def test_memory_forget_many_and_list_returns_error_when_all_fail(monkeypatch):
+    monkeypatch.setattr(
+        operations,
+        "memory_forget",
+        lambda memory_id, **_kwargs: {"error": "memory not found", "memory_id": memory_id},
+    )
+    monkeypatch.setattr(operations, "memory_list", lambda *_a, **_k: {"memories": []})
+
+    result = operations.memory_forget_many_and_list(["x"], character_name="Alice")
+
+    assert result["error"] == "memory not found"
 
 
 class _FakeHttpResponse:
@@ -379,3 +426,55 @@ def test_memory_remember_and_list_preserves_loading_result(monkeypatch):
         "status": "loading",
         "message": "loading",
     }
+
+
+def test_memory_list_all_pages_until_total(monkeypatch):
+    rows = [{"id": f"m{i}", "memory": f"memory {i}"} for i in range(7)]
+    calls: list[tuple[int, int]] = []
+
+    def fake_list(character_name=None, *, limit=200, offset=0, **_kwargs):
+        calls.append((offset, limit))
+        window = rows[offset:offset + limit]
+        return {
+            "agentId": character_name,
+            "count": len(window),
+            "memories": window,
+            "total": len(rows),
+            "offset": offset,
+        }
+
+    monkeypatch.setattr(operations, "memory_list", fake_list)
+
+    result = operations.memory_list_all("Alice", batch_size=3)
+
+    assert calls == [(0, 3), (3, 3), (6, 3)]
+    assert [row["id"] for row in result["memories"]] == [f"m{i}" for i in range(7)]
+    assert result["total"] == 7
+
+
+def test_memory_list_all_stops_when_backend_ignores_offset(monkeypatch):
+    rows = [{"id": f"m{i}", "memory": "x"} for i in range(3)]
+    monkeypatch.setattr(
+        operations,
+        "memory_list",
+        lambda *_a, **_k: {"agentId": "Alice", "count": 3, "memories": rows},
+    )
+
+    result = operations.memory_list_all("Alice", batch_size=3)
+
+    assert [row["id"] for row in result["memories"]] == ["m0", "m1", "m2"]
+
+
+def test_memory_list_mem0_fallback_windows_rows(monkeypatch):
+    class _Mem:
+        def get_all(self, *, filters, limit):
+            return {"results": [{"id": str(i), "memory": f"m{i}"} for i in range(min(limit, 5))]}
+
+    monkeypatch.delenv("SHINSEKAI_MEMORY_SERVICE_URL", raising=False)
+    monkeypatch.setattr(operations, "ensure_mem0", lambda: _Mem())
+
+    result = operations.memory_list("Alice", limit=2, offset=2)
+
+    assert [row["id"] for row in result["memories"]] == ["2", "3"]
+    assert result["offset"] == 2
+    assert "total" not in result  # backend returned a full window, total unknown

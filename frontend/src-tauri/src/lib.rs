@@ -118,6 +118,7 @@ pub fn run() {
             state::desktop_project_root_select,
             state::desktop_files_browse,
             desktop_files::desktop_files_save_history_export,
+            desktop_files::desktop_files_save_text_export,
             state::desktop_restart_debug_log,
             bridge::desktop_app_restart,
             runtime_commands::desktop_bridge_restart,

@@ -42,6 +42,8 @@ def test_memory_route_contracts_remain_stable() -> None:
         ("POST", "/api/characters/memories/add"),
         ("POST", "/api/characters/memories/awaken"),
         ("POST", "/api/characters/memories/delete"),
+        ("POST", "/api/characters/memories/delete-batch"),
+        ("POST", "/api/characters/memories/export"),
         ("POST", "/api/characters/memories/list"),
         ("POST", "/api/characters/memories/pin"),
         ("POST", "/api/characters/memories/status"),
@@ -168,3 +170,90 @@ def test_dialog_formats_endpoint_returns_bare_array() -> None:
     finally:
         _reset_for_tests()
         configure_builtin_dialog_formats()
+
+
+def test_character_memory_delete_batch_forwards_ids(monkeypatch) -> None:
+    received: list[tuple[str, list[str], dict]] = []
+    monkeypatch.setattr(
+        "frontend_bridge_core.routes.memory_routes._delete_character_memories",
+        lambda name, ids, **extra: (
+            received.append((name, ids, extra)) or {"agentId": name, "count": 0, "memories": []}
+        ),
+    )
+    router = Router(list(MEMORY_ROUTES))
+    request = _request(
+        router,
+        object(),
+        "POST",
+        "/api/characters/memories/delete-batch",
+        {"name": "Alice", "memoryIds": ["m1", " ", "m2"], "sessionId": "s1"},
+    )
+    matched = router.match(request.method, request.path)
+    assert matched is not None
+
+    response = matched.route.handler(request)
+
+    assert isinstance(response, JsonResponse)
+    assert received == [("Alice", ["m1", "m2"], {"session_id": "s1"})]
+
+
+def test_character_memory_delete_batch_rejects_invalid_ids() -> None:
+    import pytest
+
+    router = Router(list(MEMORY_ROUTES))
+    for body in ({"name": "Alice", "memoryIds": "m1"}, {"name": "Alice", "memoryIds": []}):
+        request = _request(router, object(), "POST", "/api/characters/memories/delete-batch", body)
+        matched = router.match(request.method, request.path)
+        assert matched is not None
+        with pytest.raises(ValueError):
+            matched.route.handler(request)
+
+
+def test_character_memory_list_forwards_window(monkeypatch) -> None:
+    received: list[tuple[str, dict]] = []
+    monkeypatch.setattr(
+        "frontend_bridge_core.routes.memory_routes._list_character_memories",
+        lambda name, **extra: received.append((name, extra)) or {"memories": []},
+    )
+    router = Router(list(MEMORY_ROUTES))
+    for body in (
+        {"name": "Alice"},
+        {"name": "Alice", "offset": 200, "limit": 200},
+        {"name": "Alice", "offset": 0, "limit": 5000, "sessionId": "s1"},
+    ):
+        request = _request(router, object(), "POST", "/api/characters/memories/list", body)
+        matched = router.match(request.method, request.path)
+        assert matched is not None
+        matched.route.handler(request)
+
+    assert received == [
+        ("Alice", {}),
+        ("Alice", {"limit": 200, "offset": 200}),
+        ("Alice", {"limit": 1000, "session_id": "s1"}),
+    ]
+
+
+def test_character_memory_export_forwards_selection_and_labels(monkeypatch) -> None:
+    received: list[tuple[str, dict]] = []
+    monkeypatch.setattr(
+        "frontend_bridge_core.routes.memory_routes._export_character_memories",
+        lambda name, **extra: received.append((name, extra)) or {"text": "x", "count": 1},
+    )
+    router = Router(list(MEMORY_ROUTES))
+    request = _request(
+        router,
+        object(),
+        "POST",
+        "/api/characters/memories/export",
+        {"name": "Alice", "memoryIds": ["m1", ""], "labels": {"header": "H"}},
+    )
+    matched = router.match(request.method, request.path)
+    assert matched is not None
+
+    response = matched.route.handler(request)
+
+    assert isinstance(response, JsonResponse)
+    assert response.data == {"text": "x", "count": 1}
+    assert received == [
+        ("Alice", {"session_id": "", "memory_ids": ["m1"], "labels": {"header": "H"}}),
+    ]

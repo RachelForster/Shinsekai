@@ -183,6 +183,9 @@ class _SessionSaveMemoryRepo:
     ) -> Sequence[MemoryRecord]:
         return self._store.list_by_scope(scope_filter, limit=limit)
 
+    def count_memories(self, scope_filter: MemoryScopeFilter) -> int:
+        return self._store.count_memories(scope_filter)
+
     def record_recall(self, memory_ids: Sequence[str], *, recalled_at: float) -> int:
         return self._store.record_recall(memory_ids, recalled_at=recalled_at)
 

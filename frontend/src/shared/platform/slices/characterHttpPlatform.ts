@@ -87,11 +87,14 @@ function normalizeCharacterMemoryList(payload: unknown, fallbackAgentId: string)
       ? record.results
       : [];
   const memories = rawMemories.map(normalizeCharacterMemoryRow);
-  return {
+  const result: CharacterMemoryList = {
     agentId: String(record.agentId ?? record.agent_id ?? (fallbackAgentId || "user")),
     count: typeof record.count === "number" ? record.count : memories.length,
     memories,
   };
+  if (typeof record.total === "number" && Number.isFinite(record.total)) result.total = record.total;
+  if (typeof record.offset === "number" && Number.isFinite(record.offset)) result.offset = record.offset;
+  return result;
 }
 
 export function createCharacterRelationHttpPlatform(transport: HttpTransport): CharacterRelationPlatform {
@@ -270,6 +273,15 @@ export function createCharactersHttpPlatform(transport: HttpTransport): Characte
       });
       return normalizeCharacterMemoryList(result, name);
     },
+    deleteMemories: async (name, memoryIds, options) => {
+      const payload: Record<string, unknown> = { memoryIds, name };
+      if (options?.sessionId !== undefined) payload.sessionId = options.sessionId;
+      const result = await requestJson<unknown>("/api/characters/memories/delete-batch", {
+        body: JSON.stringify(payload),
+        method: "POST",
+      });
+      return normalizeCharacterMemoryList(result, name);
+    },
     pinMemory: async ({ memoryId, name, pinned, sessionId }) => {
       const payload: Record<string, unknown> = { memoryId, name, pinned };
       if (sessionId !== undefined) payload.sessionId = sessionId;
@@ -345,11 +357,28 @@ export function createCharactersHttpPlatform(transport: HttpTransport): Characte
     listMemories: async (name, options) => {
       const payload: Record<string, unknown> = { name };
       if (options?.sessionId !== undefined) payload.sessionId = options.sessionId;
+      if (options?.offset !== undefined) payload.offset = options.offset;
+      if (options?.limit !== undefined) payload.limit = options.limit;
       const result = await requestJson<unknown>("/api/characters/memories/list", {
         body: JSON.stringify(payload),
         method: "POST",
       });
       return normalizeCharacterMemoryList(result, name);
+    },
+    exportMemories: async ({ labels, memoryIds, name, sessionId }) => {
+      const payload: Record<string, unknown> = { name };
+      if (memoryIds?.length) payload.memoryIds = memoryIds;
+      if (labels) payload.labels = labels;
+      if (sessionId !== undefined) payload.sessionId = sessionId;
+      const result = await requestJson<Record<string, unknown>>("/api/characters/memories/export", {
+        body: JSON.stringify(payload),
+        method: "POST",
+      });
+      return {
+        agentId: String(result?.agentId ?? name),
+        count: typeof result?.count === "number" ? result.count : 0,
+        text: typeof result?.text === "string" ? result.text : "",
+      };
     },
     previewMemoryImport: (name, items) => {
       return uploadFiles<CharacterMemoryImportPreview>(
