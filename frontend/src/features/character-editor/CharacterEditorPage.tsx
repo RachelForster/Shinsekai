@@ -868,6 +868,10 @@ export function CharacterEditorPage() {
       await memoryController.deleteMemory({ memoryId: target.memoryId, name: target.characterName });
       return;
     }
+    if (target.kind === "memory-batch") {
+      await memoryController.deleteMemories({ memoryIds: target.memoryIds, name: target.characterName });
+      return;
+    }
     if (target.kind === "sprite") {
       spriteDeleteMutation.mutate({ draft: structuredClone(draft), index: target.index, name: target.characterName });
       return;
@@ -887,21 +891,26 @@ export function CharacterEditorPage() {
                 memory: pendingResourceDelete.memory,
                 name: pendingResourceDelete.characterName,
               })
-            : pendingResourceDelete.kind === "sprite"
-              ? t("character.sprite.deleteConfirmBody", {
-                  filename: pendingResourceDelete.filename,
-                  index: pendingResourceDelete.index + 1,
+            : pendingResourceDelete.kind === "memory-batch"
+              ? t("character.memory.batchDeleteConfirmBody", {
+                  count: pendingResourceDelete.memoryIds.length,
                   name: pendingResourceDelete.characterName,
                 })
-              : pendingResourceDelete.kind === "all-sprites"
-                ? t("character.sprite.clearConfirmBody", {
-                    count: pendingResourceDelete.count,
-                    name: pendingResourceDelete.characterName,
-                  })
-                : t("character.sprite.deleteVoiceConfirmBody", {
+              : pendingResourceDelete.kind === "sprite"
+                ? t("character.sprite.deleteConfirmBody", {
                     filename: pendingResourceDelete.filename,
                     index: pendingResourceDelete.index + 1,
-                  }),
+                    name: pendingResourceDelete.characterName,
+                  })
+                : pendingResourceDelete.kind === "all-sprites"
+                  ? t("character.sprite.clearConfirmBody", {
+                      count: pendingResourceDelete.count,
+                      name: pendingResourceDelete.characterName,
+                    })
+                  : t("character.sprite.deleteVoiceConfirmBody", {
+                      filename: pendingResourceDelete.filename,
+                      index: pendingResourceDelete.index + 1,
+                    }),
         confirmLabel:
           pendingResourceDelete.kind === "sprite" || pendingResourceDelete.kind === "sprite-voice"
             ? t("common.remove")
@@ -909,11 +918,13 @@ export function CharacterEditorPage() {
         title:
           pendingResourceDelete.kind === "memory"
             ? t("character.memory.delete")
-            : pendingResourceDelete.kind === "all-sprites"
-              ? t("character.sprite.clear")
-              : pendingResourceDelete.kind === "sprite-voice"
-                ? t("character.sprite.deleteVoice")
-                : t("common.remove"),
+            : pendingResourceDelete.kind === "memory-batch"
+              ? t("character.memory.batchDeleteTitle")
+              : pendingResourceDelete.kind === "all-sprites"
+                ? t("character.sprite.clear")
+                : pendingResourceDelete.kind === "sprite-voice"
+                  ? t("character.sprite.deleteVoice")
+                  : t("common.remove"),
       }
     : null;
 
@@ -1111,6 +1122,17 @@ export function CharacterEditorPage() {
       kind: "memory",
       memory: memory.memory,
       memoryId: memory.id,
+    });
+  };
+
+  const requestMemoryBatchDelete = (memoryIds: string[]) => {
+    if (!memoryName || memoryIds.length === 0) {
+      return;
+    }
+    setPendingResourceDelete({
+      characterName: memoryName,
+      kind: "memory-batch",
+      memoryIds,
     });
   };
 
@@ -1339,6 +1361,17 @@ export function CharacterEditorPage() {
           pinPending={memoryController.pinPending}
           searchInput={memoryController.searchInput}
           searchPending={memoryController.searchPending}
+          deleteManyPending={memoryController.deleteManyPending}
+          exportPending={memoryController.exportPending}
+          onClearSelection={memoryController.clearSelection}
+          onDeleteSelected={requestMemoryBatchDelete}
+          onExportMemories={() => void memoryController.exportMemories()}
+          onSelectAll={memoryController.selectAllVisible}
+          onSetManySelected={memoryController.setManySelected}
+          onToggleSelected={memoryController.toggleSelected}
+          selectedIds={memoryController.selectedIds}
+          totalCount={memoryController.totalVisibleCount}
+          loadedCount={memoryController.loadedCount}
         />
 
         <CharacterRelationSection

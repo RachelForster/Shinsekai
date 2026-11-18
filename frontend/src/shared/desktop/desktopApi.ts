@@ -210,6 +210,11 @@ export async function saveDesktopHistoryExport(blob: Blob) {
   );
 }
 
+export async function saveDesktopTextExport(name: string, text: string) {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<{ name: string; path: string; opened: boolean }>("desktop_files_save_text_export", { name, text });
+}
+
 export interface DesktopNativePickOptions {
   defaultPath?: string;
   extensions?: string[];

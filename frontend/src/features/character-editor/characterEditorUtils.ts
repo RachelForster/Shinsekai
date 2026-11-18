@@ -17,7 +17,8 @@ export type CharacterResourceDeleteTarget =
   | { characterName: string; index: number; kind: "sprite"; filename: string }
   | { characterName: string; count: number; kind: "all-sprites" }
   | { characterName: string; index: number; kind: "sprite-voice"; filename: string }
-  | { characterName: string; kind: "memory"; memory: string; memoryId: string };
+  | { characterName: string; kind: "memory"; memory: string; memoryId: string }
+  | { characterName: string; kind: "memory-batch"; memoryIds: string[] };
 
 export function createCharacter(): Character {
   return {

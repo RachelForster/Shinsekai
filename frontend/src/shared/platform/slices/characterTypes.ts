@@ -172,6 +172,29 @@ export interface CharacterMemoryList {
   agentId: string;
   count: number;
   memories: CharacterMemory[];
+  /** Total memories available on the backend (list endpoint only). */
+  total?: number;
+  /** Offset of this window within the full ordered list (list endpoint only). */
+  offset?: number;
+}
+
+export interface CharacterMemoryListOptions {
+  sessionId?: string;
+  offset?: number;
+  limit?: number;
+}
+
+export interface CharacterMemoryExportInput {
+  name: string;
+  memoryIds?: string[];
+  labels?: Record<string, string>;
+  sessionId?: string;
+}
+
+export interface CharacterMemoryExportResult {
+  agentId: string;
+  count: number;
+  text: string;
 }
 
 export interface CharacterMemoryImportFilePreview {
@@ -514,6 +537,7 @@ export interface CharactersPlatform {
   ) => Promise<GeneratedCharacterSprite>;
   delete: (name: string) => Promise<void>;
   deleteMemory: (name: string, memoryId: string, options?: { sessionId?: string }) => Promise<CharacterMemoryList>;
+  deleteMemories: (name: string, memoryIds: string[], options?: { sessionId?: string }) => Promise<CharacterMemoryList>;
   pinMemory: (input: {
     name: string;
     memoryId: string;
@@ -535,7 +559,8 @@ export interface CharactersPlatform {
     items: File[],
     options?: TaskProgressOptions<CharacterMemoryImportResult>,
   ) => Promise<CharacterMemoryImportResult>;
-  listMemories: (name: string, options?: { sessionId?: string }) => Promise<CharacterMemoryList>;
+  listMemories: (name: string, options?: CharacterMemoryListOptions) => Promise<CharacterMemoryList>;
+  exportMemories: (input: CharacterMemoryExportInput) => Promise<CharacterMemoryExportResult>;
   previewMemoryImport: (name: string, items: File[]) => Promise<CharacterMemoryImportPreview>;
   remember: (name: string, content: string, options?: CharacterMemoryRememberOptions) => Promise<CharacterMemoryList>;
   searchMemories: (input: CharacterMemorySearchInput) => Promise<CharacterMemoryList>;

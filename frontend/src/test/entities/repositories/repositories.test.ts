@@ -329,6 +329,8 @@ describe("entity repositories", () => {
         delete: vi.fn().mockResolvedValue(undefined),
         deleteAllSprites: vi.fn().mockResolvedValue(character),
         deleteMemory: vi.fn().mockResolvedValue({ agentId: "Nanami", count: 0, memories: [] }),
+        deleteMemories: vi.fn().mockResolvedValue({ agentId: "Nanami", count: 0, memories: [] }),
+        exportMemories: vi.fn().mockResolvedValue({ agentId: "Nanami", count: 0, text: "" }),
         pinMemory: vi.fn().mockResolvedValue({ agentId: "Nanami", count: 0, memories: [] }),
         awakenMemory: vi.fn().mockResolvedValue({ agentId: "Nanami", count: 0, memories: [] }),
         deleteSprite: vi.fn().mockResolvedValue(character),
@@ -422,6 +424,9 @@ describe("entity repositories", () => {
     await characters.searchCharacterMemories({ name: "Nanami", query: "tea" });
     await characters.rememberCharacterMemory("Nanami", "likes tea");
     await characters.deleteCharacterMemory("Nanami", "memory-1");
+    await characters.deleteCharacterMemories("Nanami", ["memory-1", "memory-2"]);
+    await characters.exportCharacterMemories({ name: "Nanami", memoryIds: ["memory-1"] });
+    await characters.listCharacterMemories("Nanami", { offset: 200, limit: 200 });
     const historyFile = new File(["User: hello"], "history.json");
     await characters.previewCharacterMemoryImport("Nanami", [historyFile]);
     await characters.importCharacterMemories("Nanami", [historyFile]);
@@ -436,6 +441,9 @@ describe("entity repositories", () => {
     await characters.autoLabelCharacterSprites("Nanami");
 
     expect(platform.backgrounds.save).toHaveBeenCalledWith(background, "Old Room");
+    expect(platform.characters.deleteMemories).toHaveBeenCalledWith("Nanami", ["memory-1", "memory-2"]);
+    expect(platform.characters.exportMemories).toHaveBeenCalledWith({ name: "Nanami", memoryIds: ["memory-1"] });
+    expect(platform.characters.listMemories).toHaveBeenCalledWith("Nanami", { offset: 200, limit: 200 });
     expect(platform.backgrounds.autoLabelImages).toHaveBeenCalledWith("Room", undefined);
     expect(platform.backgrounds.deleteImage).toHaveBeenCalledWith("Room", 1);
     expect(platform.backgrounds.uploadImages).toHaveBeenCalledWith({
