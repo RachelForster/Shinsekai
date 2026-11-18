@@ -13,8 +13,8 @@ from typing import Any
 
 import numpy as np
 
-from ai.memory.config import resolve_safe_snapshot_file, validate_onnx_model_file
 from ai.memory.constants import EMBEDDING_DIMS, ONNX_MODEL_CANDIDATES
+from ai.memory.onnx_validation import resolve_safe_snapshot_file, validate_onnx_model_file
 from sdk.adapters.memory import ReadinessStatus
 
 _SP_SPACE = "\u2581"
