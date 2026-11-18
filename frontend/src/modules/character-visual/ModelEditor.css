@@ -1,4 +1,4 @@
-.mmd-editor {
+.model-editor {
   display: grid;
   min-width: 0;
   gap: var(--space-3);
@@ -8,7 +8,7 @@
   border-radius: var(--radius-control);
 }
 
-.mmd-editor__morph {
+.model-editor__slider {
   width: 100%;
   accent-color: var(--color-accent-primary);
 }

@@ -1,0 +1,64 @@
+[
+  {
+    "name": "neutral",
+    "valid": true,
+    "state": { "expressions": {}, "bones": {}, "motion": "" }
+  },
+  {
+    "name": "camera and expression bindings",
+    "valid": true,
+    "state": {
+      "expressions": {},
+      "bones": {},
+      "motion": "",
+      "camera": { "yaw": 25, "pitch": 0, "zoom": 1.5, "panX": 0, "panY": -0.2 },
+      "mouthExpression": "",
+      "blinkExpression": "blinkLeft+blinkRight"
+    }
+  },
+  {
+    "name": "invalid camera zoom",
+    "valid": false,
+    "state": {
+      "expressions": {},
+      "bones": {},
+      "motion": "",
+      "camera": { "yaw": 0, "pitch": 0, "zoom": 0, "panX": 0, "panY": 0 }
+    }
+  },
+  {
+    "name": "expression and pose",
+    "valid": true,
+    "state": { "expressions": { "happy": 0.7 }, "bones": { "head": [0, 0, 0, 1] }, "motion": "" }
+  },
+  {
+    "name": "weight outside range",
+    "valid": false,
+    "state": { "expressions": { "happy": 1.2 }, "bones": {}, "motion": "" }
+  },
+  {
+    "name": "unnormalized bone",
+    "valid": false,
+    "state": { "expressions": {}, "bones": { "head": [0, 0, 0, 0] }, "motion": "" }
+  },
+  {
+    "name": "encoded traversal",
+    "valid": false,
+    "state": { "expressions": {}, "bones": {}, "motion": "%2e%2e/out.vrma" }
+  },
+  {
+    "name": "empty path component",
+    "valid": false,
+    "state": { "expressions": {}, "bones": {}, "motion": "motions//nod.vrma" }
+  },
+  {
+    "name": "control character in motion path",
+    "valid": false,
+    "state": { "expressions": {}, "bones": {}, "motion": "motions/\u000anod.vrma" }
+  },
+  {
+    "name": "unknown field",
+    "valid": false,
+    "state": { "expressions": {}, "bones": {}, "motion": "", "extra": 1 }
+  }
+]

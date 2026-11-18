@@ -131,6 +131,16 @@ export const characterEnMessages: Record<CharacterMessageKey, string> = {
   "character.avatar.presetImportHint":
     "Up to 100 files. Filenames become tags; the current preview's camera and mouth/blink bindings are preserved. VPD holds a pose; VMD plays once and holds its last frame.",
   "character.avatar.playPreset": "Play preset",
+  "character.avatar.annotate": "AI label current preview",
+  "character.avatar.captureFailed": "Could not capture preview",
+  "character.avatar.armsDown": "Lower both arms",
+  "character.avatar.vrm.searchExpression": "Search expressions",
+  "character.avatar.vrm.mouthExpression": "Mouth expression",
+  "character.avatar.vrm.blinkExpression": "Blink expression",
+  "character.avatar.vrm.noMouth": "No mouth binding is active. You can select one below.",
+  "character.avatar.vrm.noBlink": "No blink binding is active. You can select one below.",
+  "character.avatar.vrm.presetImportHint":
+    "Select up to 100 VRMA files. Each animation becomes a state using the current VRM expressions and pose; the filename becomes its tag.",
   "character.avatar.clearMotion": "Remove motion reference",
   "character.avatar.state": "Model state",
   "character.avatar.newState": "New state",

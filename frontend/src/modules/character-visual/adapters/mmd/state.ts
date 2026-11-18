@@ -1,45 +1,13 @@
+import { defaultCamera, parseCamera, type ModelCamera } from "../../modelCamera";
+export { defaultCamera };
+export type MmdCameraState = ModelCamera;
+
 export interface MmdState {
   morphs: Record<string, number>;
   mouthMorph: string;
   blinkMorph: string;
   camera: MmdCameraState;
   motion?: string;
-}
-
-export interface MmdCameraState {
-  yaw: number;
-  pitch: number;
-  zoom: number;
-  panX: number;
-  panY: number;
-}
-
-export const cameraLimits = {
-  yaw: { min: -180, max: 180, step: 1 },
-  pitch: { min: -80, max: 80, step: 1 },
-  zoom: { min: 0.25, max: 4, step: 0.05 },
-  panX: { min: -1, max: 1, step: 0.01 },
-  panY: { min: -1, max: 1, step: 0.01 },
-} satisfies Record<keyof MmdCameraState, { min: number; max: number; step: number }>;
-
-export const defaultCamera = (): MmdCameraState => ({ yaw: 0, pitch: 0, zoom: 1, panX: 0, panY: 0 });
-
-function parseCamera(value: unknown): MmdCameraState {
-  // Existing PMX states predate camera controls and use the new eye-level view.
-  if (value === undefined) return defaultCamera();
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid MMD camera");
-  const input = value as Record<string, unknown>;
-  const keys = Object.keys(cameraLimits) as Array<keyof MmdCameraState>;
-  if (Object.keys(input).sort().join() !== keys.slice().sort().join()) throw new Error("Invalid MMD camera fields");
-  const result = defaultCamera();
-  for (const key of keys) {
-    const number = input[key];
-    const limits = cameraLimits[key];
-    if (typeof number !== "number" || !Number.isFinite(number) || number < limits.min || number > limits.max)
-      throw new Error(`Invalid MMD camera ${key}`);
-    result[key] = number;
-  }
-  return result;
 }
 
 export interface MmdMorphControl {

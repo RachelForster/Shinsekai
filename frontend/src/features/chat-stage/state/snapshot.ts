@@ -1,7 +1,7 @@
 import type { ChatSnapshot } from "../../../shared/platform/types";
 import { emptyChatState } from "./initialState";
 import { withResolvedLayers } from "./layers";
-import { normalizeChatStageSprites } from "./sprites";
+import { chatStageSpriteCharacterName, normalizeChatStageSprites } from "./sprites";
 import type { ChatAudioCommand, ChatStageState } from "./types";
 
 export function snapshotEventSeq(snapshot: ChatSnapshot) {
@@ -134,7 +134,27 @@ export function hydrateFromSnapshot(state: ChatStageState, snapshot: ChatSnapsho
       ...presentation,
       payload: { ...presentation.payload },
     })),
-    sprites: normalizeChatStageSprites(snapshot.sprites.map((sprite) => ({ ...sprite, applyMode: "restore" }))),
+    sprites: normalizeChatStageSprites(
+      snapshot.sprites.map((sprite) => {
+        const previous = state.sprites.find(
+          (item) => chatStageSpriteCharacterName(item) === chatStageSpriteCharacterName(sprite),
+        );
+        const continuing =
+          previous &&
+          snapshot.sessionId &&
+          state.sessionId === snapshot.sessionId &&
+          (state.transportState === "connected" || state.transportState === "polling") &&
+          !state.replay &&
+          !snapshot.replay &&
+          previous.avatarType !== "static" &&
+          previous.avatarType === sprite.avatarType &&
+          previous.modelUrl === sprite.modelUrl &&
+          previous.path === sprite.path;
+        return continuing
+          ? { ...sprite, applyMode: previous.applyMode, stateSequence: previous.stateSequence }
+          : { ...sprite, applyMode: "restore" as const };
+      }),
+    ),
     stats: (snapshot.stats ?? []).map((stat) => ({ ...stat })),
     toolConfirmation: snapshot.toolConfirmation ? { ...snapshot.toolConfirmation } : null,
     turnOptions: { ...emptyChatState.turnOptions, ...snapshot.turnOptions },

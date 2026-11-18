@@ -5,6 +5,7 @@ from copy import deepcopy
 import json
 import os
 import shutil
+import struct
 import tempfile
 import zipfile
 from pathlib import Path
@@ -112,7 +113,7 @@ BASIC_CHAR = {
 # ── Import tests ────────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("relative_root", [True, False])
-@pytest.mark.parametrize("kind", ["l2d", "mmd"])
+@pytest.mark.parametrize("kind", ["l2d", "mmd", "vrm"])
 def test_bundled_avatar_import_serve_and_reexport(tmp_path, monkeypatch, relative_root, kind):
     from application.characters.model_files import model_file
     from core.media.avatar.registry import configure_builtin_formats
@@ -136,6 +137,14 @@ def test_bundled_avatar_import_serve_and_reexport(tmp_path, monkeypatch, relativ
             model.write_bytes(pmx_bytes("texture.png"))
             (package_dir / "wave.vmd").write_bytes(vmd_bytes())
             value = {"morphs": {}, "mouthMorph": "", "blinkMorph": "", "motion": "wave.vmd"}
+        if kind == "vrm":
+            model = package_dir / "sample.vrm"
+            for target, extension in ((model, "VRMC_vrm"), (package_dir / "wave.vrma", "VRMC_vrm_animation")):
+                document = {"asset": {"version": "2.0"}, "extensions": {extension: {}}}
+                payload = json.dumps(document).encode("utf-8")
+                payload += b" " * (-len(payload) % 4)
+                target.write_bytes(struct.pack("<4sIIII", b"glTF", 2, 20 + len(payload), len(payload), 0x4E4F534A) + payload)
+            value = {"expressions": {"happy": 0.5}, "bones": {}, "motion": "wave.vrma"}
         state_file = package_dir / "smile.json"
         state_file.write_text(json.dumps(value))
         voice = package_dir / "smile.wav"
@@ -169,6 +178,8 @@ def test_bundled_avatar_import_serve_and_reexport(tmp_path, monkeypatch, relativ
         assert model_file(state, bank["model_path"], "smile.json").read_bytes() == state_file.read_bytes()
         if kind == "mmd":
             assert model_file(state, bank["model_path"], "wave.vmd").read_bytes() == (package_dir / "wave.vmd").read_bytes()
+        if kind == "vrm":
+            assert model_file(state, bank["model_path"], "wave.vrma").read_bytes() == (package_dir / "wave.vrma").read_bytes()
         monkeypatch.chdir(destination)
         reexport = tmp_path / "reexport.char"
         expected = deepcopy(imported.avatars)

@@ -43,6 +43,10 @@ export default defineConfig({
           if (has("/@babylonjs/") || has("/babylon-mmd/")) {
             return "mmd-vendor";
           }
+          // The VRM renderer is loaded only when a VRM avatar is present.
+          if (has("/three/") || has("/@pixiv/") || has("/three@")) {
+            return "vrm-vendor";
+          }
 
           if (
             has("/react/") ||
