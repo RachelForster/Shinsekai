@@ -124,6 +124,16 @@ export const characterZhCNMessages = {
   "character.avatar.presetImportHint":
     "一次最多 100 个文件，使用文件名作为标签，沿用当前预览的镜头和口型/眨眼绑定。VPD 保持姿势；VMD 播放一次后保持最后一帧。",
   "character.avatar.playPreset": "播放预设",
+  "character.avatar.annotate": "AI 标注当前预览",
+  "character.avatar.captureFailed": "截图失败",
+  "character.avatar.armsDown": "双臂放下",
+  "character.avatar.vrm.searchExpression": "搜索表情",
+  "character.avatar.vrm.mouthExpression": "口型表情",
+  "character.avatar.vrm.blinkExpression": "眨眼表情",
+  "character.avatar.vrm.noMouth": "模型当前没有口型绑定，可以在下方选择。",
+  "character.avatar.vrm.noBlink": "模型当前没有眨眼绑定，可以在下方选择。",
+  "character.avatar.vrm.presetImportHint":
+    "最多选择 100 个 VRMA 动作。每个动作会沿用当前 VRM 表情和姿态创建一个状态，并以文件名作为标签。",
   "character.avatar.clearMotion": "移除动作引用",
   "character.avatar.state": "模型状态",
   "character.avatar.newState": "新建状态",

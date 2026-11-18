@@ -1,5 +1,6 @@
 import type { ComponentType } from "react";
 import type { SpriteTransitionMedia } from "../../shared/assets/spriteTransition";
+import type { MessageKey } from "../../shared/i18n/messages";
 
 /** 状态应用模式：play 播放动作、restore 恢复快照、edit 编辑预览。 */
 export type ApplyMode = "play" | "restore" | "edit";
@@ -31,7 +32,9 @@ export interface AvatarSession<S, C> {
   /** Actual bindings available on this loaded model, within the format's capabilities. */
   readonly capabilities: AvatarCapabilities;
   readonly controls: C;
-  apply(state: S, mode: ApplyMode, signal: AbortSignal): Promise<void>;
+  /** Preserve live state requests in arrival order for queued animation players. */
+  readonly motionPlayback?: "queued";
+  apply(state: S, mode: ApplyMode, signal: AbortSignal, options?: { restartMotion?: boolean }): Promise<void>;
   readState(): S;
   setMouthOpen(value: number): void;
   /** Optional speech overlays, independent of whether this model has a mouth binding. */
@@ -62,6 +65,8 @@ export interface AvatarFormat<S, C> {
   modelExtensions?: string[];
   /** Optional external preset filters; shared UI can offer batch import. */
   stateExtensions?: string[];
+  /** Format-specific help for the shared preset picker. */
+  presetImportHintKey?: MessageKey;
   /** Optional user-installed runtime; compilation stays format-local and is lazy. */
   runtime?: {
     name: string;

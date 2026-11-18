@@ -1,4 +1,5 @@
 import json
+import struct
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -658,3 +659,52 @@ def test_new_format_reuses_import_startup_events_and_snapshot(harness, monkeypat
         assert initial[0][key] == restored[key]
     relative_state = Path(saved_path).relative_to(Path(model).parent).as_posix()
     assert json.loads(model_file(state, model, relative_state).read_text()) == {"pose": [1, 2, 3]}
+
+
+def test_vrm_import_vrma_batch_and_scoped_file_access(harness):
+    from urllib.parse import parse_qs, urlsplit
+
+    from application.chat.presentation.character_visual import resolve_character_visual
+    from application.runtime.event_sink import fold_event_into_snapshot, make_empty_chat_snapshot
+    from frontend_bridge_core.resource_urls import BridgeResourceUrls
+
+    state, use_case, entry = harness
+
+    def glb(path, extension):
+        body = json.dumps({"asset": {"version": "2.0"}, "extensions": {extension: {}}}).encode("utf-8")
+        body += b" " * (-len(body) % 4)
+        path.write_bytes(
+            struct.pack("<4sIIII", b"glTF", 2, 20 + len(body), len(body), 0x4E4F534A) + body
+        )
+        return path
+
+    source = glb(entry.with_name("character.vrm"), "VRMC_vrm")
+    animation = glb(entry.with_name("nod.vrma"), "VRMC_vrm_animation")
+    imported = execute(
+        use_case, CharacterOperation.IMPORT_MODEL,
+        name="Haru", avatar_type="vrm", source_path=str(source),
+    )
+    model = imported["avatars"]["vrm"]["model_path"]
+    base = {"expressions": {"happy": 0.5}, "bones": {}, "motion": ""}
+    result = execute(
+        use_case, CharacterOperation.IMPORT_MODEL_STATES,
+        name="Haru", avatar_type="vrm", model_path=model,
+        source_paths=[str(animation)], state=base,
+    )
+    saved = Path(result["avatars"]["vrm"]["sprites"][0]["path"])
+    value = json.loads(saved.read_text(encoding="utf-8"))
+    assert value["expressions"] == base["expressions"]
+    assert value["motion"].endswith("/preset.vrma")
+    assert model_file(state, model, Path(model).name) == Path(model)
+    assert model_file(state, model, saved.relative_to(Path(model).parent).as_posix()) == saved
+    assert model_file(state, model, value["motion"]).read_bytes() == animation.read_bytes()
+    with pytest.raises(PermissionError):
+        model_file(state, model, "nod.vrma")
+    character = state.config_manager.get_character_by_name("Haru")
+    visual = resolve_character_visual(character, 0, BridgeResourceUrls("http://127.0.0.1:8787"))
+    event = {"type": "sprite.show", "id": "Haru", **visual.event_fields()}
+    snapshot = fold_event_into_snapshot(make_empty_chat_snapshot(), event)
+    assert snapshot["sprites"][0]["avatarType"] == "vrm"
+    query = parse_qs(urlsplit(snapshot["sprites"][0]["path"]).query)
+    assert model_file(state, query["model_path"][0], query["path"][0]).read_bytes() == saved.read_bytes()
+    assert model_file(state, model, value["motion"]).read_bytes() == animation.read_bytes()

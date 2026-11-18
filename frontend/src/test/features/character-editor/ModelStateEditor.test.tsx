@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Character } from "../../../entities/config/types";
 import type { AvatarSession } from "../../../modules/character-visual/contracts";
 import l2dFormat from "../../../modules/character-visual/adapters/l2d/format";
+import vrmFormat from "../../../modules/character-visual/adapters/vrm/format";
 import { clearRegisteredAvatarFormats, registerAvatarFormat } from "../../../modules/character-visual/registry";
 import { ModelStateEditor } from "../../../features/character-editor/ModelStateEditor";
 import { I18nProvider } from "../../../shared/i18n";
@@ -111,6 +112,34 @@ afterEach(() => {
 });
 
 describe("ModelStateEditor shared controls and repositories", () => {
+  it("offers VRMA import with VRM-specific guidance and preserves the preview state", async () => {
+    clearRegisteredAvatarFormats();
+    registerAvatarFormat({
+      ...vrmFormat,
+      load: async () => ({ create: async () => session, Editor: () => null }),
+    });
+    character.avatar_type = "vrm";
+    character.avatars = { vrm: { model_path: "C:/models/haru.vrm", sprites: [], emotion_tags: "" } };
+    const base = { expressions: { happy: 0.5 }, bones: {}, motion: "" };
+    state = base;
+    importModelStates.mockResolvedValue(character);
+    pickPath.mockResolvedValue(["C:/motions/nod.vrma"]);
+    view();
+    await waitFor(() => expect(screen.getByText(/Each animation becomes a state/)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Pose / motion files (multiple selection)" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Import presets in batch" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Import presets in batch" }));
+    await waitFor(() => expect(importModelStates).toHaveBeenCalled());
+    expect(pickPath).toHaveBeenCalledWith(expect.objectContaining({ extensions: [".vrma"] }));
+    expect(importModelStates).toHaveBeenCalledWith(
+      expect.objectContaining({
+        avatar_type: "vrm",
+        source_paths: ["C:/motions/nod.vrma"],
+        state: base,
+      }),
+    );
+  });
+
   it("batch imports opaque presets through shared multiple selection and preserves preview state", async () => {
     clearRegisteredAvatarFormats();
     registerAvatarFormat({
@@ -157,7 +186,7 @@ describe("ModelStateEditor shared controls and repositories", () => {
     const before = vi.mocked(session.apply).mock.calls.length;
     fireEvent.click(screen.getByRole("button", { name: "Play preset" }));
     await waitFor(() => expect(vi.mocked(session.apply).mock.calls.length).toBeGreaterThan(before));
-    expect(session.apply).toHaveBeenLastCalledWith(neutral, "play", expect.any(AbortSignal));
+    expect(session.apply).toHaveBeenLastCalledWith(neutral, "play", expect.any(AbortSignal), { restartMotion: true });
     expect(session.dispose).not.toHaveBeenCalled();
   });
   it("selects, imports and edits an opaque format without any Live2D registration", async () => {

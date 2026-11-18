@@ -63,6 +63,39 @@ afterEach(() => {
 });
 
 describe("CharacterVisual", () => {
+  it("preserves queued state requests when the next sentence arrives before a fetch completes", async () => {
+    const instance = { ...session(), motionPlayback: "queued" as const };
+    register(vi.fn().mockResolvedValue(instance));
+    const first = deferred<{ ok: boolean; json: () => Promise<unknown> }>();
+    const fetch = vi
+      .fn()
+      .mockReturnValueOnce(first.promise)
+      .mockResolvedValue({ ok: true, json: async () => ({ second: true }) });
+    vi.stubGlobal("fetch", fetch);
+    const view = render(<CharacterVisual {...props} />);
+    await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+    view.rerender(<CharacterVisual {...props} asset={{ ...asset, url: "/second.json" }} stateSequence={2} />);
+    expect(fetch.mock.calls[0][1].signal.aborted).toBe(false);
+    expect(fetch).toHaveBeenCalledOnce();
+    await act(async () => first.resolve({ ok: true, json: async () => ({ first: true }) }));
+    await waitFor(() => expect(instance.apply).toHaveBeenCalledTimes(2));
+    expect(instance.apply.mock.calls.map((call) => call[0])).toEqual([{ first: true }, { second: true }]);
+  });
+
+  it("aborts queued state loads when their model is unmounted", async () => {
+    const instance = { ...session(), motionPlayback: "queued" as const };
+    register(vi.fn().mockResolvedValue(instance));
+    const response = deferred<{ ok: boolean; json: () => Promise<unknown> }>();
+    const fetch = vi.fn().mockReturnValue(response.promise);
+    vi.stubGlobal("fetch", fetch);
+    const view = render(<CharacterVisual {...props} />);
+    await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+    view.unmount();
+    expect(fetch.mock.calls[0][1].signal.aborted).toBe(true);
+    await act(async () => response.resolve({ ok: true, json: async () => ({ late: true }) }));
+    expect(instance.apply).not.toHaveBeenCalled();
+  });
+
   it("routes transient attention without reloading the model or pose and clears it in edit mode", async () => {
     const instance = session();
     const create = register(vi.fn().mockResolvedValue(instance));
@@ -427,5 +460,39 @@ describe("CharacterVisual", () => {
     expect(screen.getByTestId("model-container")).toBe(container);
     view.unmount();
     expect(instance.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("keeps a live motion through redundant snapshots but restores after reconnect", async () => {
+    const instance = session();
+    register(vi.fn().mockResolvedValue(instance));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, json: async () => ({}) })),
+    );
+    const sprite = { id: "Alice", label: "Alice", path: "/1.json", avatarType: "demo", modelUrl: "/alice.model" };
+    let state = {
+      ...emptyChatState,
+      sessionId: "chat-one",
+      transportState: "connected" as const,
+      eventSeq: 3,
+      sprites: [{ ...sprite, applyMode: "play" as const, stateSequence: 3 }],
+    };
+    const view = render(<SpriteLayer hidden={false} runtimeScaleForSprite={() => 1} sprites={state.sprites} />);
+    await waitFor(() => expect(instance.apply).toHaveBeenCalledOnce());
+    const snapshot = { ...emptyChatState, sessionId: "chat-one", effectImage: null, eventSeq: 4, sprites: [sprite] };
+    const continued = chatStageReducer(state, { type: "hydrate", snapshot });
+    expect(continued.sprites[0].applyMode).toBe("play");
+    expect(continued.sprites[0].stateSequence).toBe(3);
+    view.rerender(<SpriteLayer hidden={false} runtimeScaleForSprite={() => 1} sprites={continued.sprites} />);
+    await act(async () => {});
+    expect(instance.apply).toHaveBeenCalledOnce();
+    const reconnected = chatStageReducer(
+      { ...continued, transportState: "reconnecting" },
+      { type: "hydrate", snapshot: { ...snapshot, eventSeq: 5 } },
+    );
+    expect(reconnected.sprites[0].applyMode).toBe("restore");
+    view.rerender(<SpriteLayer hidden={false} runtimeScaleForSprite={() => 1} sprites={reconnected.sprites} />);
+    await waitFor(() => expect(instance.apply).toHaveBeenCalledTimes(2));
+    expect(instance.apply.mock.calls[1][1]).toBe("restore");
   });
 });

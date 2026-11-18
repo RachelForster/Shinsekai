@@ -187,7 +187,9 @@ export function ModelStateEditor({
                     />
                   </span>
                 </label>
-                <p className="field-row__hint">{t("character.avatar.presetImportHint")}</p>
+                <p className="field-row__hint">
+                  {t(format.presetImportHintKey ?? "character.avatar.presetImportHint")}
+                </p>
                 <AsyncButton
                   loading={pending}
                   disabled={pending || !ready || !presets.length || presets.length > 100}
@@ -230,6 +232,7 @@ export function ModelStateEditor({
                       }}
                       mode={previewSequence ? "play" : "restore"}
                       stateSequence={previewSequence}
+                      restartMotion={Boolean(previewSequence)}
                       onReady={onPreviewReady}
                       hitbox={false}
                       onImageError={() => {}}

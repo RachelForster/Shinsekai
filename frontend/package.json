@@ -36,6 +36,8 @@
   },
   "dependencies": {
     "@babylonjs/core": "^9.28.0",
+    "@pixiv/three-vrm": "^3.5.5",
+    "@pixiv/three-vrm-animation": "^3.5.5",
     "@tanstack/react-query": "^5.80.0",
     "@tauri-apps/api": "^2.11.0",
     "@tauri-apps/plugin-dialog": "^2.4.0",
@@ -46,7 +48,8 @@
     "react-dom": "^18.3.1",
     "react-markdown": "^10.1.0",
     "react-router-dom": "^6.26.2",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "three": "^0.186.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
@@ -55,6 +58,7 @@
     "@testing-library/react": "^15.0.7",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "@types/three": "^0.186.0",
     "@vitejs/plugin-react": "^4.3.3",
     "@vitest/coverage-v8": "^2.1.9",
     "husky": "^9.1.7",

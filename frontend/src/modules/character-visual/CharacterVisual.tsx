@@ -26,6 +26,7 @@ export interface CharacterVisualProps {
   voiceCharacterName?: string;
   attention?: AvatarAttention;
   stateSequence?: number;
+  restartMotion?: boolean;
   /** Non-destructive, format-independent framing; omitted means the original view. */
   framing?: VisualFraming;
   /** Temporary preview access, never persisted as character data. */
@@ -99,6 +100,7 @@ function ModelVisual({
   voiceCharacterName,
   attention = "idle",
   stateSequence,
+  restartMotion,
   framing,
   onReady,
 }: CharacterVisualProps & { avatarType: string }) {
@@ -110,6 +112,17 @@ function ModelVisual({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [session, setSession] = useState<AvatarSession<unknown, unknown> | null>(null);
   const [error, setError] = useState("");
+  const stateRequests = useRef({ epoch: 0, tail: Promise.resolve(), controllers: new Set<AbortController>() });
+
+  useEffect(() => {
+    const requests = stateRequests.current;
+    return () => {
+      requests.epoch++;
+      requests.tail = Promise.resolve();
+      requests.controllers.forEach((controller) => controller.abort());
+      requests.controllers.clear();
+    };
+  }, [session]);
 
   useEffect(() => {
     if (session && voiceCharacterName && mode !== "edit") return bindAvatarVoice(voiceCharacterName, session);
@@ -194,24 +207,42 @@ function ModelVisual({
       return () => onReady?.(null);
     }
     const controller = new AbortController();
+    const requests = stateRequests.current;
+    const queued = session.motionPlayback === "queued" && mode === "play" && !restartMotion;
+    if (!queued) {
+      requests.epoch++;
+      requests.tail = Promise.resolve();
+      requests.controllers.forEach((pending) => pending.abort());
+      requests.controllers.clear();
+    }
+    const epoch = requests.epoch;
+    if (queued) requests.controllers.add(controller);
     setError("");
     const apply = async () => {
+      if (requests.epoch !== epoch || controller.signal.aborted) return;
+      if (queued) setError("");
       const response = await fetch(asset.url, { signal: controller.signal });
       if (!response.ok) throw new Error(`Avatar state request failed: ${response.status}`);
       const state: unknown = await response.json();
       // Some transports cannot abort an already buffered response.
-      if (controller.signal.aborted) return;
-      await session.apply(state, mode, controller.signal);
-      if (!controller.signal.aborted) onReady?.(session);
+      if (controller.signal.aborted || requests.epoch !== epoch) return;
+      if (restartMotion) await session.apply(state, mode, controller.signal, { restartMotion: true });
+      else await session.apply(state, mode, controller.signal);
+      if (!controller.signal.aborted && requests.epoch === epoch) onReady?.(session);
     };
-    void apply().catch((err) => {
-      if (!controller.signal.aborted) setError(err instanceof Error ? err.message : String(err));
-    });
+    const result = queued ? requests.tail.then(apply) : apply();
+    if (queued) requests.tail = result.catch(() => {});
+    void result
+      .catch((err) => {
+        if (!controller.signal.aborted && requests.epoch === epoch)
+          setError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => requests.controllers.delete(controller));
     return () => {
-      controller.abort();
+      if (!queued) controller.abort();
       onReady?.(null);
     };
-  }, [session, asset.url, mode, stateSequence, onReady]);
+  }, [session, asset.url, mode, stateSequence, restartMotion, onReady]);
 
   return (
     <div

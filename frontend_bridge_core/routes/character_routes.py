@@ -37,7 +37,7 @@ from frontend_bridge_core.characters import (
     _save_sprite_scale,
     _translate_character_fields,
 )
-from frontend_bridge_core.image_annotations import run_character_sprite_auto_label
+from frontend_bridge_core.image_annotations import run_character_sprite_auto_label, run_model_preview_annotation
 from frontend_bridge_core.routes.router import (
     ApiRequest,
     BodyKind,
@@ -221,6 +221,21 @@ def _delete_character_route(request: ApiRequest) -> JsonResponse:
             CharacterOperation.DELETE,
             {"name": request.params["name"]},
         )
+    )
+
+
+def _annotate_model_preview(request: ApiRequest) -> TaskResponse:
+    if request.uploads is None or len(request.uploads.paths) != 1:
+        raise ValueError("Select one preview image")
+    name = request.params["name"]
+    kind = (request.query.get("avatar_type") or [""])[0]
+    model = (request.query.get("model_path") or [""])[0]
+    if not kind or not model:
+        raise ValueError("Model format and path are required")
+    preview = request.uploads.paths[0]
+    return TaskResponse(
+        kind="character-model-annotation", title="Annotate model preview", message="Preview annotation queued",
+        worker=lambda task_id: run_model_preview_annotation(request.state, task_id, name, kind, model, preview),
     )
 
 
@@ -479,6 +494,8 @@ CHARACTER_ROUTES = (
         handler=_auto_label_character_sprites,
         name="characters.sprites.auto_label",
     ),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/{name}/model/annotate",
+          handler=_annotate_model_preview, body_kind=BodyKind.MULTIPART, name="characters.model.annotate"),
     Route(
         methods=frozenset({"POST"}),
         pattern="/api/characters/emotion-tags",

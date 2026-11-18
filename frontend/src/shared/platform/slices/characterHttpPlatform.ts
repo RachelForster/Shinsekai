@@ -251,6 +251,16 @@ export function createCharactersHttpPlatform(transport: HttpTransport): Characte
     },
     saveModelState: (input) =>
       requestJson<Character>("/api/characters/model/state", { body: JSON.stringify(input), method: "POST" }),
+    async annotateModelPreview({ name, avatarType, modelPath, file }, options) {
+      const query = new URLSearchParams({ avatar_type: avatarType, model_path: modelPath });
+      const task = await uploadFiles<TaskSnapshot<{ tags: string }>>(
+        `/api/characters/${encodePath(name)}/model/annotate?${query}`,
+        [file],
+      );
+      return waitForTask(task, options);
+    },
+    cancelModelPreviewAnnotation: (taskId) =>
+      requestJson(`/api/tasks/${encodePath(taskId)}/cancel`, { method: "POST" }),
     autoLabelSprites: async (name, options) => {
       const task = await requestJson<TaskSnapshot<ImageAutoLabelResult>>("/api/characters/sprites/auto-label", {
         body: JSON.stringify({ name }),

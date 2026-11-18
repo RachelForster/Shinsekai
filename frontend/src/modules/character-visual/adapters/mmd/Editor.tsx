@@ -2,15 +2,9 @@ import { useState } from "react";
 import type { AvatarEditorProps } from "../../contracts";
 import { useI18n } from "../../../../shared/i18n";
 import { Button, PathDisplay, Select, TextInput } from "../../../../shared/ui";
-import {
-  cameraLimits,
-  defaultCamera,
-  neutralState,
-  type MmdCameraState,
-  type MmdControls,
-  type MmdState,
-} from "./state";
-import "./Editor.css";
+import { ModelCameraControls } from "../../ModelCameraControls";
+import { neutralState, type MmdControls, type MmdState } from "./state";
+import "../../ModelEditor.css";
 
 export function Editor({ session, value, onChange }: AvatarEditorProps<MmdState, MmdControls>) {
   const { t } = useI18n();
@@ -20,7 +14,7 @@ export function Editor({ session, value, onChange }: AvatarEditorProps<MmdState,
     `${item.name} ${item.englishName}`.toLocaleLowerCase().includes(search.toLocaleLowerCase()),
   );
   return (
-    <fieldset className="mmd-editor">
+    <fieldset className="model-editor">
       <legend>MMD / PMX</legend>
       {value.motion && (
         <div className="field-row field-row--stack">
@@ -30,33 +24,7 @@ export function Editor({ session, value, onChange }: AvatarEditorProps<MmdState,
           </Button>
         </div>
       )}
-      <fieldset className="mmd-editor">
-        <legend>{t("character.avatar.mmd.camera")}</legend>
-        {(Object.keys(cameraLimits) as Array<keyof MmdCameraState>).map((key) => (
-          <label key={key} className="field-row field-row--stack">
-            <span className="field-row__label">
-              {t(`character.avatar.mmd.camera.${key}`)}:{" "}
-              {value.camera[key].toFixed(key === "yaw" || key === "pitch" ? 0 : 2)}
-              {key === "yaw" || key === "pitch" ? "°" : key === "zoom" ? "×" : ""}
-            </span>
-            <span className="field-row__control">
-              <input
-                className="mmd-editor__morph"
-                type="range"
-                aria-label={t(`character.avatar.mmd.camera.${key}`)}
-                {...cameraLimits[key]}
-                value={value.camera[key]}
-                onChange={(event) =>
-                  onChange({ ...value, camera: { ...value.camera, [key]: Number(event.target.value) } })
-                }
-              />
-            </span>
-          </label>
-        ))}
-        <Button onClick={() => onChange({ ...value, camera: defaultCamera() })} variant="ghost">
-          {t("character.avatar.mmd.resetCamera")}
-        </Button>
-      </fieldset>
+      <ModelCameraControls value={value.camera} onChange={(camera) => onChange({ ...value, camera })} />
       {!session.capabilities.mouth && <p role="status">{t("character.avatar.mmd.noMouth")}</p>}
       {!session.capabilities.blink && <p role="status">{t("character.avatar.mmd.noBlink")}</p>}
       <Button
@@ -98,7 +66,7 @@ export function Editor({ session, value, onChange }: AvatarEditorProps<MmdState,
           </span>
           <span className="field-row__control">
             <input
-              className="mmd-editor__morph"
+              className="model-editor__slider"
               type="range"
               aria-label={morph.name}
               min={0}
