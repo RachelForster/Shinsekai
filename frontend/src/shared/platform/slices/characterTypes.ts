@@ -181,6 +181,16 @@ export interface CharacterMemoryList {
   offset?: number;
 }
 
+export interface CharacterMemoryDeleteFailure {
+  memoryId: string;
+  error: string;
+}
+
+export interface CharacterMemoryBatchDeleteResult extends CharacterMemoryList {
+  deleted?: string[];
+  failed?: CharacterMemoryDeleteFailure[];
+}
+
 export interface CharacterMemoryListOptions {
   sessionId?: string;
   offset?: number;
@@ -540,7 +550,11 @@ export interface CharactersPlatform {
   ) => Promise<GeneratedCharacterSprite>;
   delete: (name: string) => Promise<void>;
   deleteMemory: (name: string, memoryId: string, options?: { sessionId?: string }) => Promise<CharacterMemoryList>;
-  deleteMemories: (name: string, memoryIds: string[], options?: { sessionId?: string }) => Promise<CharacterMemoryList>;
+  deleteMemories: (
+    name: string,
+    memoryIds: string[],
+    options?: { sessionId?: string },
+  ) => Promise<CharacterMemoryBatchDeleteResult>;
   pinMemory: (input: {
     name: string;
     memoryId: string;

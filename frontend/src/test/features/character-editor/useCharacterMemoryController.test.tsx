@@ -129,6 +129,64 @@ describe("useCharacterMemoryController", () => {
     expect(result.current.selectedIds.size).toBe(0);
   });
 
+  it("keeps failed memories selected and visible in search results on partial batch delete", async () => {
+    mockSearchCharacterMemories.mockResolvedValue({
+      agentId: "Mika",
+      count: 2,
+      memories: [
+        { id: "m1", memory: "One" },
+        { id: "m2", memory: "Two" },
+      ],
+    });
+    mockDeleteCharacterMemories.mockResolvedValue({
+      agentId: "Mika",
+      count: 1,
+      deleted: ["m1"],
+      failed: [{ error: "locked", memoryId: "m2" }],
+      memories: [{ id: "m2", memory: "Two" }],
+      offset: 0,
+      total: 1,
+    });
+    mockListCharacterMemories.mockResolvedValue({
+      agentId: "Mika",
+      count: 1,
+      memories: [{ id: "m2", memory: "Two" }],
+      offset: 0,
+      total: 1,
+    });
+    const { client, Wrapper } = createWrapper();
+    const setQueryDataSpy = vi.spyOn(client, "setQueryData");
+    const { result } = renderHook(() => useCharacterMemoryController({ memoryName: "Mika" }), { wrapper: Wrapper });
+
+    act(() => result.current.setSearchInput("One"));
+    await act(async () => {
+      await result.current.search();
+    });
+    expect(result.current.data?.memories.map((memory) => memory.id)).toEqual(["m1", "m2"]);
+
+    act(() => result.current.selectAllVisible());
+    expect(Array.from(result.current.selectedIds)).toEqual(["m1", "m2"]);
+
+    await act(async () => {
+      await result.current.deleteMemories({ memoryIds: ["m1", "m2"], name: "Mika" });
+    });
+
+    expect(Array.from(result.current.selectedIds)).toEqual(["m2"]);
+    expect(result.current.data?.memories).toEqual([{ id: "m2", memory: "Two" }]);
+    const expectedCachedWindow = {
+      agentId: "Mika",
+      count: 1,
+      memories: [{ id: "m2", memory: "Two" }],
+      offset: 0,
+      total: 1,
+    };
+    expect(setQueryDataSpy).toHaveBeenCalledWith(["character-memories", "Mika", 0], expectedCachedWindow);
+    const cachedWindow = client.getQueryData<Record<string, unknown>>(["character-memories", "Mika", 0]);
+    expect(cachedWindow).toEqual(expectedCachedWindow);
+    expect(cachedWindow).not.toHaveProperty("deleted");
+    expect(cachedWindow).not.toHaveProperty("failed");
+  });
+
   it("does not add memory when mem0 status check fails", async () => {
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     mockGetMem0Status.mockRejectedValue(new Error("bridge unavailable"));
