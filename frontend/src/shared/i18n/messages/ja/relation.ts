@@ -6,6 +6,7 @@ export const relationJaMessages: Record<RelationMessageKey, string> = {
   "relation.invalidPerson": "人物名は200文字以内で、新規識別子は重複できません。",
   "relation.tableSource": "始点",
   "relation.tableTarget": "終点",
+  "relation.swapEndpoints": "始点と終点を入れ替える",
   "relation.tableRelation": "関係",
   "relation.color": "色",
   "relation.addRow": "関係を追加",

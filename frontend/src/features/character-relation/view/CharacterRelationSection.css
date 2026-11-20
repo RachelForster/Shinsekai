@@ -127,7 +127,7 @@
 }
 .relation-row {
   display: grid;
-  grid-template-columns: 32px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.5fr) minmax(76px, 0.45fr);
+  grid-template-columns: 32px minmax(0, 1fr) 28px minmax(0, 1fr) minmax(0, 1.5fr) minmax(76px, 0.45fr);
   align-items: start;
   gap: var(--space-2);
 }
@@ -139,6 +139,21 @@
 .relation-row__label {
   color: var(--color-text-muted);
   font-size: 13px;
+}
+.relation-row__swap {
+  align-self: center;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 36px;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+.relation-row__swap:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 .relation-row__field .textarea {
   height: 36px;
@@ -167,7 +182,7 @@
 }
 @media (max-width: 800px) {
   .relation-row {
-    grid-template-columns: 24px minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.5fr) minmax(56px, 0.6fr);
+    grid-template-columns: 24px minmax(0, 1fr) 28px minmax(0, 1fr) minmax(0, 1.5fr) minmax(56px, 0.6fr);
   }
 }
 

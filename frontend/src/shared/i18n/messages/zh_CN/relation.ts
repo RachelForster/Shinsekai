@@ -4,6 +4,7 @@ export const relationZhCNMessages = {
   "relation.invalidPerson": "人物名称最多 200 字，新人物标识不能重复。",
   "relation.tableSource": "源头",
   "relation.tableTarget": "目标",
+  "relation.swapEndpoints": "交换源头和目标",
   "relation.tableRelation": "关系",
   "relation.color": "颜色",
   "relation.addRow": "新增关系",
