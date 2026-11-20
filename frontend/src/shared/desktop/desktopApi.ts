@@ -148,11 +148,38 @@ export interface TauriStandaloneHttpResponse {
   bodyBase64: string;
 }
 
+let tauriNativeHttpUnsupported = false;
+
 export function hasTauriNativeHttp(): boolean {
-  if (typeof window === "undefined") {
+  if (typeof window === "undefined" || tauriNativeHttpUnsupported) {
     return false;
   }
   return Boolean(window.__TAURI_INTERNALS__);
+}
+
+export function markTauriNativeHttpUnsupported(): void {
+  tauriNativeHttpUnsupported = true;
+}
+
+export function resetTauriNativeHttpStateForTests(): void {
+  tauriNativeHttpUnsupported = false;
+}
+
+export function isUnknownTauriCommandError(error: unknown): boolean {
+  const message = (error instanceof Error ? error.message : String(error ?? "")).toLowerCase();
+  if (!message) {
+    return false;
+  }
+  if (message.includes("unknown command") || message.includes("not allowed by acl")) {
+    return true;
+  }
+  return (
+    message.includes("standalone_http_request") &&
+    (message.includes("not found") ||
+      message.includes("not registered") ||
+      message.includes("unimplemented") ||
+      message.includes("not allowed"))
+  );
 }
 
 export async function invokeTauriStandaloneHttp(

@@ -1,6 +1,7 @@
 import type { Character } from "../../slices/characterTypes";
 import type { ChatStat } from "../../slices/chatTypes";
 import type { Background } from "../../slices/workspaceTypes";
+import { isVfsPath } from "../storage/vfsBlobRegistry";
 import { importCharPackage } from "./charPackageCodec";
 
 // Bundled via Vite static URL imports so paths resolve cleanly under relative subpaths (e.g. /toy/<slug>/)
@@ -160,23 +161,35 @@ export function upgradeStarterPresetsInPlace(characters: Character[], background
 
   const hoshina = characters.find((c) => c.sprite_prefix === "starter_hoshina");
   if (hoshina) {
+    const baseCount = starterChar.sprites.length;
     const spritesMismatch =
-      hoshina.sprites.length !== starterChar.sprites.length ||
-      starterChar.sprites.some((target, idx) => hoshina.sprites[idx]?.path !== target.path);
+      hoshina.sprites.length < baseCount ||
+      starterChar.sprites.some((target, idx) => {
+        const current = hoshina.sprites[idx];
+        return !current || (!isVfsPath(current.path) && current.path !== target.path);
+      });
     const needsUpgrade = spritesMismatch || hoshina.color === "#7dd3fc";
 
     if (needsUpgrade) {
       const previousSprites = hoshina.sprites ?? [];
-      hoshina.sprites = starterChar.sprites.map((target, idx) => {
+      const upgradedBase = starterChar.sprites.map((target, idx) => {
         const prev = previousSprites[idx];
         return {
           ...target,
+          ...(prev && isVfsPath(prev.path) ? { path: prev.path } : {}),
+          ...(prev?.group !== undefined ? { group: prev.group } : {}),
           ...(prev?.voice_path ? { voice_path: prev.voice_path } : {}),
           ...(prev?.voice_text ? { voice_text: prev.voice_text } : {}),
           ...(prev?.voice_type ? { voice_type: prev.voice_type } : {}),
         };
       });
-      hoshina.emotion_tags = starterChar.emotion_tags;
+      const customAppended = previousSprites.slice(baseCount);
+      hoshina.sprites = [...upgradedBase, ...customAppended];
+      const existingExtraTags = (hoshina.emotion_tags || "").split(/\r?\n/).filter(Boolean).slice(baseCount);
+      const baseTagLines = starterChar.emotion_tags.split(/\r?\n/).filter(Boolean);
+      hoshina.emotion_tags = existingExtraTags.length
+        ? [...baseTagLines, ...existingExtraTags].join("\n")
+        : starterChar.emotion_tags;
       hoshina.color = starterChar.color;
       hoshina.portrait_crop = { ...STARTER_HOSHINA_PORTRAIT_CROP };
       hoshina.character_setting = starterChar.character_setting;
@@ -194,10 +207,17 @@ export function upgradeStarterPresetsInPlace(characters: Character[], background
   if (!observatory) {
     backgrounds.push(starterBg);
     mutated = true;
-  } else if (observatory.sprites?.[0]?.path !== BUNDLED_STARTER_BG_URL) {
-    observatory.sprites = starterBg.sprites.map((item) => ({ ...item }));
-    observatory.bg_tags = starterBg.bg_tags;
-    mutated = true;
+  } else {
+    const firstPath = observatory.sprites?.[0]?.path ?? "";
+    if (!isVfsPath(firstPath) && firstPath !== BUNDLED_STARTER_BG_URL) {
+      const extraSprites = (observatory.sprites ?? []).slice(1);
+      const extraBgTags = (observatory.bg_tags || "").split(/\r?\n/).filter(Boolean).slice(1);
+      observatory.sprites = [...starterBg.sprites.map((item) => ({ ...item })), ...extraSprites];
+      observatory.bg_tags = extraBgTags.length
+        ? `${starterBg.bg_tags.trimEnd()}\n${extraBgTags.join("\n")}\n`
+        : starterBg.bg_tags;
+      mutated = true;
+    }
   }
 
   return mutated;

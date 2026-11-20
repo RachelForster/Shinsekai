@@ -155,12 +155,17 @@ export async function autoCompactIfNeeded(input: AutoCompactInput): Promise<Auto
     signal,
   } = input;
 
+  if (signal?.aborted) {
+    return { compacted: false, checkpoint: null };
+  }
+
   const view = sessionStore.buildActiveLlmMessages(sessionId, systemPrompt, { branchId });
   const currentTokens = Math.max(lastUsageTokens ?? 0, estimateMessagesTokens(view.messages));
   if (!needsCompaction(currentTokens, apiConfig)) {
     return { compacted: false, checkpoint: view.checkpoint };
   }
 
+  const expectedRevision = sessionStore.getBranchRevision(sessionId, branchId);
   const allTurns = sessionStore.listTurns(sessionId, branchId);
   const nonOptionTurns = allTurns.filter((node) => node.role !== "options");
   const { recentMessagesCount, targetSummaryTokens } = getCompactionLimits(apiConfig);
@@ -177,7 +182,9 @@ export async function autoCompactIfNeeded(input: AutoCompactInput): Promise<Auto
     return { compacted: false, checkpoint: view.checkpoint };
   }
 
-  const upToSeq = turnsToSummarize[turnsToSummarize.length - 1].seq;
+  const anchorTurn = turnsToSummarize[turnsToSummarize.length - 1];
+  const upToSeq = anchorTurn.seq;
+  const expectedTurnId = anchorTurn.turnId;
   const transcriptLines = turnsToSummarize.map((node) => {
     const label = node.speaker ? node.speaker : node.role === "user" ? "玩家" : "旁白";
     return `${label}: ${node.plainText || node.rawMessage.content}`;
@@ -216,6 +223,10 @@ export async function autoCompactIfNeeded(input: AutoCompactInput): Promise<Auto
       httpClient,
     );
 
+    if (signal?.aborted) {
+      return { compacted: false, checkpoint: null };
+    }
+
     const cappedSummary = binarySearchCapSummary(result.content, targetSummaryTokens);
     if (!cappedSummary) {
       return { compacted: false, checkpoint: view.checkpoint };
@@ -227,9 +238,14 @@ export async function autoCompactIfNeeded(input: AutoCompactInput): Promise<Auto
         upToSeq,
         rollingSummary: cappedSummary,
         tokenEstimate: estimateTextTokens(cappedSummary),
+        expectedRevision,
+        expectedTurnId,
       },
       branchId,
     );
+    if (!saved) {
+      return { compacted: false, checkpoint: null };
+    }
     return { compacted: true, checkpoint: saved };
   } catch (error) {
     // Non-destructive failure rule: never overwrite checkpoints or delete TurnNodes on network failure

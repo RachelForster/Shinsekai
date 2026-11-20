@@ -12,6 +12,7 @@ interface HydratedVfsEntry {
 }
 
 const vfsCache = new Map<string, HydratedVfsEntry>();
+const objectUrlToVfsPath = new Map<string, string>();
 let hydratePromise: Promise<void> | null = null;
 let syntheticUrlCounter = 0;
 
@@ -107,14 +108,16 @@ export async function hydrateVfsBlobs(): Promise<void> {
       if (vfsCache.has(record.path)) continue;
       const mimeType = record.mimeType || record.blob.type || guessMimeTypeFromPath(record.path);
       const typedBlob = toSafeBlob(record.blob, mimeType);
+      const objectUrl = createObjectUrlSafe(typedBlob);
       vfsCache.set(record.path, {
         path: record.path,
         blob: typedBlob,
-        objectUrl: createObjectUrlSafe(typedBlob),
+        objectUrl,
         mimeType,
         size: record.size ?? typedBlob.size,
         updatedAtMs: record.updatedAtMs ?? Date.now(),
       });
+      objectUrlToVfsPath.set(objectUrl, record.path);
     }
   })();
   return hydratePromise;
@@ -146,6 +149,7 @@ export async function putVfsBlob(
     size: blob.size,
     updatedAtMs,
   });
+  objectUrlToVfsPath.set(objectUrl, path);
 
   if (options?.persist !== false) {
     await idbPut<VfsBlobRecord>("vfs_blobs", {
@@ -196,6 +200,20 @@ export function resolveVfsUrl(pathOrUrl: string): string {
   }
 }
 
+export function unresolveVfsUrl(urlOrPath: string): string {
+  if (!urlOrPath) return "";
+  const mapped = objectUrlToVfsPath.get(urlOrPath);
+  if (mapped) {
+    return mapped;
+  }
+  for (const [path, entry] of vfsCache.entries()) {
+    if (entry.objectUrl === urlOrPath) {
+      return path;
+    }
+  }
+  return urlOrPath;
+}
+
 export function listVfsEntries(prefix?: string): Array<{
   path: string;
   size: number;
@@ -225,6 +243,50 @@ export function listVfsPaths(prefix?: string): string[] {
   return listVfsEntries(prefix).map((item) => item.path);
 }
 
+export async function deleteVfsPath(rawPath: string): Promise<void> {
+  if (!rawPath) return;
+  let path: string;
+  try {
+    path = normalizeVfsPath(rawPath);
+  } catch {
+    return;
+  }
+  const existing = vfsCache.get(path);
+  if (existing) {
+    revokeObjectUrlSafe(existing.objectUrl);
+    vfsCache.delete(path);
+  }
+  for (const [url, mappedPath] of objectUrlToVfsPath.entries()) {
+    if (mappedPath === path) {
+      objectUrlToVfsPath.delete(url);
+    }
+  }
+  await idbDeleteMany("vfs_blobs", [path]);
+}
+
+export async function relocateVfsBlob(sourcePath: string, targetPath: string): Promise<string> {
+  if (!sourcePath || !isVfsPath(sourcePath)) {
+    return sourcePath;
+  }
+  const normalizedSource = normalizeVfsPath(sourcePath);
+  const normalizedTarget = normalizeVfsPath(targetPath);
+  if (normalizedSource === normalizedTarget) {
+    return normalizedSource;
+  }
+  const blob = await getVfsBlobAsync(normalizedSource);
+  if (!blob) {
+    throw new Error(`未找到上传资源: ${sourcePath}`);
+  }
+  await putVfsBlob(normalizedTarget, blob, {
+    mimeType: blob.type || guessMimeTypeFromPath(normalizedTarget),
+    persist: true,
+  });
+  if (normalizedSource.startsWith(`${VFS_SCHEME}uploads/`)) {
+    await deleteVfsPath(normalizedSource);
+  }
+  return normalizedTarget;
+}
+
 export async function deleteVfsPrefix(prefix: string): Promise<number> {
   const normalizedPrefix = normalizeVfsPath(prefix);
   const keysToDelete: string[] = [];
@@ -233,6 +295,11 @@ export async function deleteVfsPrefix(prefix: string): Promise<number> {
       revokeObjectUrlSafe(entry.objectUrl);
       vfsCache.delete(key);
       keysToDelete.push(key);
+    }
+  }
+  for (const [url, mappedPath] of objectUrlToVfsPath.entries()) {
+    if (mappedPath === normalizedPrefix || mappedPath.startsWith(`${normalizedPrefix}/`)) {
+      objectUrlToVfsPath.delete(url);
     }
   }
   await idbDeleteMany("vfs_blobs", keysToDelete);
@@ -265,5 +332,6 @@ export function resetVfsRegistryForTests(): void {
     revokeObjectUrlSafe(entry.objectUrl);
   }
   vfsCache.clear();
+  objectUrlToVfsPath.clear();
   hydratePromise = null;
 }

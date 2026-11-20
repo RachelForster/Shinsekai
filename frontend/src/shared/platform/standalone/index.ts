@@ -1,3 +1,4 @@
+import { numberedTags, tagContents } from "../../assets/assetText";
 import { createAgentPreviewPlatform } from "../agentPreviewPlatform";
 import { createChatPreviewPlatform } from "../slices/chatPreviewPlatform";
 import { createKnowledgePreviewPlatform } from "../slices/knowledgePreviewPlatform";
@@ -41,9 +42,11 @@ import type {
   ChatStageEvent,
 } from "../slices/chatTypes";
 import type { ApiConfig, AppConfig, SystemConfig } from "../slices/configTypes";
-import type { TemplateSummary } from "../slices/workspaceTypes";
+import type { TemplateLaunchSession, TemplateSummary } from "../slices/workspaceTypes";
 import type { ShinsekaiPlatform } from "../types";
-import type { RuntimeTarget } from "../runtimeTarget";
+import { getPlatform } from "../platform";
+import { isStandaloneRuntimeActive, type RuntimeTarget } from "../runtimeTarget";
+import { sampleConfig } from "../sampleData";
 import { buildStandaloneAdapterCatalog, resolveLlmAdapter } from "./ai/adapters/registry";
 import { getLlmProviderPreset } from "./ai/adapters/llm/presets";
 import { standaloneHttpJson, standaloneHttpRequest } from "./ai/httpClient";
@@ -55,19 +58,27 @@ import {
   upgradeStarterPresetsInPlace,
 } from "./packages/presetLoader";
 import { getKvConfig, setKvConfig } from "./storage/indexedDbStore";
-import { StandaloneSessionStore, type StandaloneSessionRecord } from "./storage/sessionStore";
+import {
+  generateSecureRandomToken,
+  StandaloneSessionStore,
+  type StandaloneSessionRecord,
+} from "./storage/sessionStore";
 import {
   getVfsBlobAsync,
   hydrateVfsBlobs,
   isVfsPath,
+  normalizeVfsPath,
   putVfsBlob,
+  relocateVfsBlob,
   resolveVfsUrl,
   stageUploadedFiles,
+  VFS_SCHEME,
 } from "./storage/vfsBlobRegistry";
 import { ToyCloudCheckpointBridge } from "./toy/toySdkBridge";
 
 const KV_APP_CONFIG = "app_config";
 const KV_TEMPLATES = "templates";
+const KV_TEMPLATE_SESSION = "template_session";
 const KV_ACTIVE_SESSION_ID = "active_session_id";
 const KV_ACTIVE_THEME_ID = "active_theme_id";
 
@@ -144,15 +155,34 @@ export async function syncCharacterFromRemotePc(input: {
     throw new Error(`下载角色包失败 (HTTP ${downloadResp.status})`);
   }
 
-  await hydrateVfsBlobs();
-  const savedConfig = await getKvConfig<AppConfig>(KV_APP_CONFIG);
-  const existingChars = Array.isArray(savedConfig?.characters) ? savedConfig.characters : [];
-  const imported = await importCharPackage(downloadResp.body, existingChars);
+  const safeCopy = new Uint8Array(downloadResp.body.byteLength);
+  safeCopy.set(downloadResp.body);
+  const packageFile: File =
+    typeof File !== "undefined"
+      ? new File([safeCopy], `${sanitizeVfsFileName(input.characterName || "character")}.char`, {
+          type: "application/zip",
+        })
+      : (new Blob([safeCopy], { type: "application/zip" }) as unknown as File);
 
-  if (savedConfig) {
-    savedConfig.characters = [...existingChars, ...imported];
-    await setKvConfig(KV_APP_CONFIG, savedConfig);
+  if (isStandaloneRuntimeActive()) {
+    return await getPlatform().characters.import([packageFile]);
   }
+
+  await hydrateVfsBlobs();
+  let savedConfig = await getKvConfig<AppConfig>(KV_APP_CONFIG);
+  if (!savedConfig) {
+    const presets = await loadBundledPresets([]);
+    savedConfig = {
+      ...clone(sampleConfig),
+      api_config: defaultStandaloneApiConfig(sampleConfig.api_config),
+      characters: presets.characters,
+      background_list: presets.backgrounds,
+    };
+  }
+  const existingChars = Array.isArray(savedConfig.characters) ? savedConfig.characters : [];
+  const imported = await importCharPackage(packageFile, existingChars);
+  savedConfig.characters = [...existingChars, ...imported];
+  await setKvConfig(KV_APP_CONFIG, savedConfig);
   return imported;
 }
 
@@ -228,6 +258,56 @@ function extractCommandText(payload: unknown): string {
   return [text, labels.join(" ")].filter(Boolean).join("\n");
 }
 
+function sanitizeVfsFileName(raw: string): string {
+  const clean = raw.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, "_").trim();
+  return clean || "asset.bin";
+}
+
+function extractAssetFileName(rawPath: string): string {
+  const clean = rawPath.replace(/\\/g, "/").split(/[?#]/)[0];
+  const base = sanitizeVfsFileName(clean.split("/").filter(Boolean).pop() || "asset.bin");
+  return base.replace(/^\d{13}-\d+-/, "") || base;
+}
+
+function allocateUniqueVfsPath(targetDirVfsPrefix: string, fileName: string, usedPaths: Set<string>): string {
+  const cleanPrefix = targetDirVfsPrefix.replace(/\/+$/, "");
+  const dotIdx = fileName.lastIndexOf(".");
+  const stem = dotIdx > 0 ? fileName.slice(0, dotIdx) : fileName;
+  const ext = dotIdx > 0 ? fileName.slice(dotIdx) : "";
+  let candidate = `${cleanPrefix}/${fileName}`;
+  let counter = 1;
+  while (usedPaths.has(candidate)) {
+    candidate = `${cleanPrefix}/${stem}-${counter}${ext}`;
+    counter += 1;
+  }
+  usedPaths.add(candidate);
+  return candidate;
+}
+
+async function relocatePathsList(
+  rawPaths: string[],
+  targetDirVfsPrefix: string,
+  existingPaths: string[] = [],
+): Promise<string[]> {
+  const usedPaths = new Set(existingPaths);
+  const relocated: string[] = [];
+  for (const rawPath of rawPaths) {
+    if (!rawPath || !isVfsPath(rawPath)) {
+      relocated.push(rawPath);
+      continue;
+    }
+    const normalized = normalizeVfsPath(rawPath);
+    if (!normalized.startsWith(`${VFS_SCHEME}uploads/`)) {
+      usedPaths.add(normalized);
+      relocated.push(normalized);
+      continue;
+    }
+    const targetPath = allocateUniqueVfsPath(targetDirVfsPrefix, extractAssetFileName(normalized), usedPaths);
+    relocated.push(await relocateVfsBlob(normalized, targetPath));
+  }
+  return relocated;
+}
+
 export function createStandalonePlatform(options?: { target?: RuntimeTarget }): ShinsekaiPlatform {
   const target: RuntimeTarget = options?.target ?? "web";
   const ctx = createBrowserPreviewContext();
@@ -242,7 +322,9 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
   let latestUserInputDraft = "";
 
   const baseCharacters = createCharactersPreviewPlatform(ctx);
+  const baseRelation = createCharacterRelationPreviewPlatform(ctx);
   const baseBackgrounds = createBackgroundsPreviewPlatform(ctx);
+  const baseEffects = createEffectsPreviewPlatform(ctx);
   const baseChat = createChatPreviewPlatform(ctx);
   const baseConfig = createConfigPreviewPlatform(ctx);
   const baseTemplates = createTemplatesPreviewPlatform(ctx);
@@ -256,9 +338,51 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
     return baseFiles.fileUrl(path);
   };
 
-  const emitStageEvent = (event: ChatStageEvent) => {
+  const nextSeq = () => ctx.nextChatEventSeq();
+
+  const emitStandaloneChat = () => {
+    const seq = nextSeq();
+    const stampedTs = Date.now();
+    const updated: ChatSnapshot = {
+      ...ctx.getChat(),
+      eventSeq: seq,
+      serverTimeMs: stampedTs,
+    };
+    ctx.setChat(updated);
+    const snapshot = clone(updated);
+    for (const listener of ctx.chatListeners) {
+      listener(clone(snapshot));
+    }
+    const event: ChatStageEvent = {
+      v: 1,
+      seq,
+      ts: stampedTs,
+      type: "snapshot",
+      snapshot,
+    };
     for (const listener of ctx.chatEventListeners) {
       listener(clone(event));
+    }
+  };
+
+  const emitStageEvent = (event: ChatStageEvent) => {
+    const seq = event.seq > 0 ? event.seq : nextSeq();
+    const stampedTs = event.ts || Date.now();
+    const currentChat = ctx.getChat();
+    if ((currentChat.eventSeq ?? 0) < seq) {
+      ctx.setChat({
+        ...currentChat,
+        eventSeq: seq,
+        serverTimeMs: stampedTs,
+      });
+    }
+    const stamped = clone({
+      ...event,
+      seq,
+      ts: stampedTs,
+    });
+    for (const listener of ctx.chatEventListeners) {
+      listener(stamped);
     }
   };
 
@@ -271,13 +395,18 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
     await setKvConfig(KV_TEMPLATES, clone(ctx.getTemplates()));
   };
 
+  const persistTemplateSession = async () => {
+    await setKvConfig(KV_TEMPLATE_SESSION, clone(ctx.getTemplateSession()));
+  };
+
   const turnDriver = new StandaloneChatTurnDriver({
     getApiConfig: () => ctx.config.api_config,
     getCharacters: () => ctx.config.characters,
     getChat: () => ctx.getChat(),
     setChat: (next) => ctx.setChat(next),
-    emitChat: () => ctx.emitChat(),
+    emitChat: emitStandaloneChat,
     emitStageEvent,
+    nextEventSeq: nextSeq,
     sessionStore,
     httpClient: standaloneHttpRequest,
     resolveFileUrl: resolveStandaloneFileUrl,
@@ -327,9 +456,10 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
     initPromise = (async () => {
       await Promise.all([hydrateVfsBlobs(), sessionStore.hydrate()]);
 
-      const [savedConfig, savedTemplates, savedSessionId, savedThemeId] = await Promise.all([
+      const [savedConfig, savedTemplates, savedTemplateSession, savedSessionId, savedThemeId] = await Promise.all([
         getKvConfig<AppConfig>(KV_APP_CONFIG),
         getKvConfig<TemplateSummary[]>(KV_TEMPLATES),
+        getKvConfig<TemplateLaunchSession | null>(KV_TEMPLATE_SESSION),
         getKvConfig<string>(KV_ACTIVE_SESSION_ID),
         getKvConfig<string>(KV_ACTIVE_THEME_ID),
       ]);
@@ -380,6 +510,9 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
         await persistAppConfig();
       }
 
+      if (savedTemplateSession) {
+        ctx.setTemplateSession(savedTemplateSession);
+      }
       if (Array.isArray(savedTemplates) && savedTemplates.length) {
         ctx.setTemplates(savedTemplates);
       } else {
@@ -396,37 +529,39 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
             },
           ]);
         }
-        ctx.setTemplateSession({
-          allowPlayerDialogue: false,
-          autoOutfitSwitch: true,
-          background: starterBg,
-          characterPromptMode: "compact",
-          effectNames: [],
-          filenameStub: "starter",
-          historyPath: "./data/history/starter.json",
-          initSpritePath: "",
-          maxDialogItems: 4,
-          maxSpeechChars: 120,
-          mediaSelectionMode: "indexed",
-          memoryMode: "isolated",
-          playerCharacter: "旅人",
-          primaryCharacters: [starterChar],
-          readPlayerSpeech: false,
-          roomId: "",
-          scenario: "",
-          selectedCharacters: [starterChar],
-          showInitialSprite: true,
-          system: "",
-          templateFileDropdown: "",
-          useCg: false,
-          useChoice: true,
-          useCot: false,
-          useEffect: false,
-          useNarration: true,
-          useStat: true,
-          useTranslation: false,
-          voiceLanguage: "Chinese",
-        });
+        if (!savedTemplateSession) {
+          ctx.setTemplateSession({
+            allowPlayerDialogue: false,
+            autoOutfitSwitch: true,
+            background: starterBg,
+            characterPromptMode: "compact",
+            effectNames: [],
+            filenameStub: "starter",
+            historyPath: "./data/history/starter.json",
+            initSpritePath: "",
+            maxDialogItems: 4,
+            maxSpeechChars: 120,
+            mediaSelectionMode: "indexed",
+            memoryMode: "isolated",
+            playerCharacter: "旅人",
+            primaryCharacters: [starterChar],
+            readPlayerSpeech: false,
+            roomId: "",
+            scenario: "",
+            selectedCharacters: [starterChar],
+            showInitialSprite: true,
+            system: "",
+            templateFileDropdown: "",
+            useCg: false,
+            useChoice: true,
+            useCot: false,
+            useEffect: false,
+            useNarration: true,
+            useStat: true,
+            useTranslation: false,
+            voiceLanguage: "Chinese",
+          });
+        }
       }
 
       if (savedThemeId) {
@@ -491,8 +626,32 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
         revertUserIndex: node.revertUserIndex,
       }));
 
+    const resolveSnapshotSprite = (sp: ChatSprite): ChatSprite => {
+      const matchedChar = selectedChars.find((c) => c.name === sp.label || c.name === sp.identityKey);
+      return {
+        ...sp,
+        path: resolveStandaloneFileUrl(sp.path),
+        mouthSync: sp.mouthSync ? resolveStandaloneFileUrl(sp.mouthSync) : undefined,
+        modelUrl: sp.modelUrl ? resolveStandaloneFileUrl(sp.modelUrl) : "",
+        ...(sp.transitions?.length
+          ? {
+              transitions: sp.transitions.map((tr) => ({
+                ...tr,
+                fromUrl: resolveStandaloneFileUrl(tr.fromUrl),
+                url: resolveStandaloneFileUrl(tr.url),
+              })),
+            }
+          : {}),
+        ...(matchedChar?.sprite_prefix === "starter_hoshina"
+          ? { portraitCrop: matchedChar.portrait_crop ?? sp.portraitCrop }
+          : {}),
+      };
+    };
+
     const nextSnapshot: ChatSnapshot = {
       ...ctx.getChat(),
+      eventSeq: nextSeq(),
+      serverTimeMs: Date.now(),
       sessionId: session.sessionId,
       historyPath: session.historyPath,
       chatProcessRunning: running,
@@ -502,20 +661,12 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
         (lastStageTurn?.stageSnapshot?.backgroundPath
           ? resolveStandaloneFileUrl(lastStageTurn.stageSnapshot.backgroundPath)
           : "") || bgUrl,
-      bgmPath: lastStageTurn?.stageSnapshot?.bgmPath || "",
-      cgPath: lastStageTurn?.stageSnapshot?.cgPath || "",
+      bgmPath: lastStageTurn?.stageSnapshot?.bgmPath
+        ? resolveStandaloneFileUrl(lastStageTurn.stageSnapshot.bgmPath)
+        : "",
+      cgPath: lastStageTurn?.stageSnapshot?.cgPath ? resolveStandaloneFileUrl(lastStageTurn.stageSnapshot.cgPath) : "",
       sprites: lastStageTurn?.stageSnapshot?.sprites?.length
-        ? lastStageTurn.stageSnapshot.sprites.map((sp) => {
-            const matchedChar = selectedChars.find((c) => c.name === sp.label || c.name === sp.identityKey);
-            return {
-              ...sp,
-              path: resolveStandaloneFileUrl(sp.path),
-              mouthSync: sp.mouthSync ? resolveStandaloneFileUrl(sp.mouthSync) : undefined,
-              ...(matchedChar?.sprite_prefix === "starter_hoshina"
-                ? { portraitCrop: matchedChar.portrait_crop ?? sp.portraitCrop }
-                : {}),
-            };
-          })
+        ? lastStageTurn.stageSnapshot.sprites.map(resolveSnapshotSprite)
         : initialSprites,
       stats: lastStageTurn?.stageSnapshot?.stats?.length ? lastStageTurn.stageSnapshot.stats : session.stats,
       outfits: session.outfits,
@@ -535,6 +686,7 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
 
   const launchOrCreateStarterSession = async (payload?: ChatLaunchPayload): Promise<ChatSnapshot> => {
     await ensureInitialized();
+    turnDriver.cancelActiveTurn();
     const charName = payload?.characters?.[0] || ctx.config.characters[0]?.name || "星奈";
     const bgName = payload?.backgroundName || ctx.config.background_list[0]?.name || "星海观测台";
     const effectivePayload: ChatLaunchPayload = payload ?? {
@@ -552,19 +704,33 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
 
     const selectedChars = ctx.config.characters.filter((c) => effectivePayload.characters.includes(c.name));
     const outfits = buildOutfitStateMap(selectedChars, effectivePayload.initialOutfits);
-    const existing = effectivePayload.resetHistory
-      ? undefined
-      : sessionStore.getSessionByHistoryPath(effectivePayload.historyPath);
-
-    let session: StandaloneSessionRecord;
-    if (existing && effectivePayload.resetHistory) {
-      await sessionStore.deleteSession(existing.sessionId);
+    const requestedHistoryPath = effectivePayload.historyPath || "./data/history/starter.json";
+    let targetHistoryPath = requestedHistoryPath;
+    if (effectivePayload.resetHistory) {
+      const historyBase = requestedHistoryPath.toLowerCase().endsWith(".json")
+        ? requestedHistoryPath.slice(0, -".json".length)
+        : requestedHistoryPath;
+      targetHistoryPath = `${historyBase}-restart-${Date.now()}-${generateSecureRandomToken(3)}.json`;
+      const currentTemplateSession = ctx.getTemplateSession();
+      if (currentTemplateSession) {
+        ctx.setTemplateSession({
+          ...currentTemplateSession,
+          historyPath: targetHistoryPath,
+        });
+        await persistTemplateSession();
+      }
     }
 
-    session = await sessionStore.ensureSession({
-      historyPath: effectivePayload.historyPath,
+    const sessionPayload: ChatLaunchPayload = {
+      ...effectivePayload,
+      historyPath: targetHistoryPath,
+      resetHistory: false,
+    };
+
+    const session = await sessionStore.ensureSession({
+      historyPath: targetHistoryPath,
       title: effectivePayload.conversationTitle || `${charName}的对话`,
-      payload: effectivePayload,
+      payload: sessionPayload,
       outfits,
     });
 
@@ -657,8 +823,8 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
         activePlayback: null,
       };
       ctx.setChat(closedSnapshot);
-      ctx.emitChat();
-      return clone(closedSnapshot);
+      emitStandaloneChat();
+      return clone(ctx.getChat());
     },
     async getRuntimeStatus() {
       await ensureInitialized();
@@ -727,10 +893,26 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
           createdAt: node.createdAtMs,
           frame: node.stageSnapshot
             ? {
-                backgroundPath: node.stageSnapshot.backgroundPath,
-                bgmPath: node.stageSnapshot.bgmPath,
-                cgPath: node.stageSnapshot.cgPath,
-                sprites: node.stageSnapshot.sprites,
+                backgroundPath: node.stageSnapshot.backgroundPath
+                  ? resolveStandaloneFileUrl(node.stageSnapshot.backgroundPath)
+                  : "",
+                bgmPath: node.stageSnapshot.bgmPath ? resolveStandaloneFileUrl(node.stageSnapshot.bgmPath) : "",
+                cgPath: node.stageSnapshot.cgPath ? resolveStandaloneFileUrl(node.stageSnapshot.cgPath) : "",
+                sprites: (node.stageSnapshot.sprites ?? []).map((sp) => ({
+                  ...sp,
+                  path: resolveStandaloneFileUrl(sp.path),
+                  mouthSync: sp.mouthSync ? resolveStandaloneFileUrl(sp.mouthSync) : undefined,
+                  modelUrl: sp.modelUrl ? resolveStandaloneFileUrl(sp.modelUrl) : "",
+                  ...(sp.transitions?.length
+                    ? {
+                        transitions: sp.transitions.map((tr) => ({
+                          ...tr,
+                          fromUrl: resolveStandaloneFileUrl(tr.fromUrl),
+                          url: resolveStandaloneFileUrl(tr.url),
+                        })),
+                      }
+                    : {}),
+                })),
                 stats: node.stageSnapshot.stats,
               }
             : null,
@@ -828,8 +1010,8 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
           break;
         case "dismiss-cg":
           ctx.setChat({ ...ctx.getChat(), cgPath: "" });
-          ctx.emitChat();
-          emitStageEvent({ v: 1, seq: Date.now(), ts: Date.now(), type: "cg.hide" });
+          emitStandaloneChat();
+          emitStageEvent({ v: 1, seq: nextSeq(), ts: Date.now(), type: "cg.hide" });
           break;
         case "clear-history": {
           if (!session) break;
@@ -845,9 +1027,10 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
             await turnDriver.seedInitialPrologue(session.sessionId, lead);
           }
           const nextSnap = applySessionToSnapshot(sessionStore.getSession(session.sessionId)!, true);
+          emitStandaloneChat();
           emitStageEvent({
             v: 1,
-            seq: Date.now(),
+            seq: nextSeq(),
             ts: Date.now(),
             type: "history.replace",
             entries: nextSnap.historyEntries ?? [],
@@ -864,15 +1047,15 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
             const nextSnap = applySessionToSnapshot(updatedSession, true);
             nextSnap.inputDraft = res.revertedUserText || latestUserInputDraft;
             ctx.setChat(nextSnap);
-            ctx.emitChat();
+            emitStandaloneChat();
             emitStageEvent({
               v: 1,
-              seq: Date.now(),
+              seq: nextSeq(),
               ts: Date.now(),
               type: "history.replace",
               entries: nextSnap.historyEntries ?? [],
             });
-            return { ...clone(nextSnap) };
+            return clone(ctx.getChat());
           }
           break;
         }
@@ -885,6 +1068,7 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
             await sessionStore.truncateAfter(session.sessionId, lastUser.seq - 1);
             const refreshed = sessionStore.getSession(session.sessionId)!;
             applySessionToSnapshot(refreshed, true);
+            emitStandaloneChat();
             void turnDriver.runTurn({ session: refreshed, userText: lastUser.plainText });
           }
           break;
@@ -905,7 +1089,7 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
           await sessionStore.updateSessionMeta(session.sessionId, { outfits: nextOutfits });
           const nextChat = applySessionToSnapshot(sessionStore.getSession(session.sessionId)!, true);
           ctx.setChat(nextChat);
-          ctx.emitChat();
+          emitStandaloneChat();
           break;
         }
         case "set-auto-outfit-switch": {
@@ -913,7 +1097,7 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
           const enabled = Boolean((command.payload as { enabled?: boolean } | undefined)?.enabled);
           await sessionStore.updateSessionMeta(session.sessionId, { autoOutfitSwitch: enabled });
           ctx.setChat({ ...ctx.getChat(), autoOutfitSwitch: enabled });
-          ctx.emitChat();
+          emitStandaloneChat();
           break;
         }
         case "open-history": {
@@ -936,10 +1120,113 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
   return {
     agent: createAgentPreviewPlatform(),
     avatarRuntimes: createAvatarRuntimesPreviewPlatform(),
-    characterRelation: createCharacterRelationPreviewPlatform(ctx),
+    characterRelation: {
+      async getRelationGraph(owner) {
+        await ensureInitialized();
+        return baseRelation.getRelationGraph(owner);
+      },
+      async applyRelationChanges(owner, operations) {
+        await ensureInitialized();
+        const updated = await baseRelation.applyRelationChanges(owner, operations);
+        await persistAppConfig();
+        return updated;
+      },
+    },
     modelAssets: createModelAssetsPreviewPlatform(ctx),
     musicCover: createMusicCoverPreviewPlatform(ctx),
-    effects: createEffectsPreviewPlatform(ctx),
+    effects: {
+      async list() {
+        await ensureInitialized();
+        return clone(ctx.config.effect_list);
+      },
+      async save(effect, originalName) {
+        await ensureInitialized();
+        const saved = await baseEffects.save(effect, originalName);
+        await persistAppConfig();
+        return saved;
+      },
+      async delete(name) {
+        await ensureInitialized();
+        await baseEffects.delete(name);
+        await persistAppConfig();
+      },
+      async export(name) {
+        await ensureInitialized();
+        return baseEffects.export(name);
+      },
+      async import(items) {
+        await ensureInitialized();
+        const imported = await baseEffects.import(items);
+        await persistAppConfig();
+        return imported;
+      },
+      async uploadAudio(input) {
+        await ensureInitialized();
+        const existing = ctx.config.effect_list.find((e) => e.name === input.name)?.audio_list ?? [];
+        const relocated = await relocatePathsList(
+          input.paths,
+          `vfs://effects/${sanitizeVfsFileName(input.name)}/audio`,
+          existing,
+        );
+        const res = await baseEffects.uploadAudio({ ...input, paths: relocated });
+        await persistAppConfig();
+        return res;
+      },
+      async uploadImages(input) {
+        await ensureInitialized();
+        const existing = ctx.config.effect_list.find((e) => e.name === input.name)?.image_list ?? [];
+        const relocated = await relocatePathsList(
+          input.paths,
+          `vfs://effects/${sanitizeVfsFileName(input.name)}/images`,
+          existing,
+        );
+        const res = await baseEffects.uploadImages({ ...input, paths: relocated });
+        await persistAppConfig();
+        return res;
+      },
+      async uploadImageAudio(input) {
+        await ensureInitialized();
+        const existing = ctx.config.effect_list.find((e) => e.name === input.name)?.image_audio_list ?? [];
+        const [relocatedPath] = await relocatePathsList(
+          [input.path],
+          `vfs://effects/${sanitizeVfsFileName(input.name)}/image-audio`,
+          existing,
+        );
+        const res = await baseEffects.uploadImageAudio({ ...input, path: relocatedPath });
+        await persistAppConfig();
+        return res;
+      },
+      async deleteAudio(name, index) {
+        await ensureInitialized();
+        const res = await baseEffects.deleteAudio(name, index);
+        await persistAppConfig();
+        return res;
+      },
+      async deleteAllAudio(name) {
+        await ensureInitialized();
+        const res = await baseEffects.deleteAllAudio(name);
+        await persistAppConfig();
+        return res;
+      },
+      async deleteImage(name, index) {
+        await ensureInitialized();
+        const res = await baseEffects.deleteImage(name, index);
+        await persistAppConfig();
+        return res;
+      },
+      async saveAudioTags(input) {
+        await ensureInitialized();
+        const res = await baseEffects.saveAudioTags(input);
+        await persistAppConfig();
+        return res;
+      },
+      async saveImageTags(input) {
+        await ensureInitialized();
+        const res = await baseEffects.saveImageTags(input);
+        await persistAppConfig();
+        return res;
+      },
+    },
     knowledge: createKnowledgePreviewPlatform(ctx),
     logs: createLogsPreviewPlatform(),
     mcp: createMcpPreviewPlatform(),
@@ -1000,7 +1287,16 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
       },
       async save(character, originalName) {
         await ensureInitialized();
-        const saved = await baseCharacters.save(character, originalName);
+        let nextCharacter = character;
+        if (character.refer_audio_path && isVfsPath(character.refer_audio_path)) {
+          const prefix = sanitizeVfsFileName(character.sprite_prefix || character.name || "character");
+          const [relocatedRefer] = await relocatePathsList(
+            [character.refer_audio_path],
+            `vfs://characters/${prefix}/models`,
+          );
+          nextCharacter = { ...character, refer_audio_path: relocatedRefer };
+        }
+        const saved = await baseCharacters.save(nextCharacter, originalName);
         await persistAppConfig();
         return saved;
       },
@@ -1011,22 +1307,62 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
       },
       async uploadSprites(input) {
         await ensureInitialized();
-        const beforeCount = ctx.config.characters.find((c) => c.name === input.name)?.sprites.length ?? 0;
-        const result = await baseCharacters.uploadSprites(input);
-        if (input.group) {
-          const targetChar = ctx.config.characters.find((c) => c.name === input.name);
-          if (targetChar) {
-            for (let i = beforeCount; i < targetChar.sprites.length; i += 1) {
-              targetChar.sprites[i] = { ...targetChar.sprites[i], group: input.group };
-            }
+        const targetChar = ctx.config.characters.find((c) => c.name === input.name);
+        if (!targetChar) {
+          throw new Error(`角色不存在：${input.name}`);
+        }
+        const prefix = sanitizeVfsFileName(targetChar.sprite_prefix || targetChar.name || "character");
+        const existingPaths = targetChar.sprites.map((sp) => sp.path);
+        const uploadedPaths = await relocatePathsList(input.paths, `vfs://characters/${prefix}/sprites`, existingPaths);
+        const start = targetChar.sprites.length;
+        const groupName = input.group?.trim();
+        const targetGroup = !groupName || groupName === "默认" ? undefined : groupName;
+        const nextSprites = uploadedPaths.map((path) => ({
+          path,
+          ...(targetGroup ? { group: targetGroup } : {}),
+        }));
+        targetChar.sprites = [...targetChar.sprites, ...nextSprites];
+        if (targetGroup) {
+          const currentGroups = targetChar.sprite_groups ?? ["默认"];
+          if (!currentGroups.includes(targetGroup)) {
+            targetChar.sprite_groups = [...currentGroups, targetGroup];
           }
         }
+        const existingTags = tagContents(input.emotionTags || targetChar.emotion_tags, start);
+        const extraTags = uploadedPaths.map(() => "");
+        targetChar.emotion_tags = numberedTags("立绘", [...existingTags, ...extraTags]);
         await persistAppConfig();
-        return clone(ctx.config.characters.find((c) => c.name === input.name) ?? result);
+        return clone(targetChar);
       },
       async uploadSpriteVoice(input) {
         await ensureInitialized();
-        const res = await baseCharacters.uploadSpriteVoice(input);
+        const targetChar = ctx.config.characters.find((c) => c.name === input.name);
+        const prefix = sanitizeVfsFileName(targetChar?.sprite_prefix || input.name || "character");
+        const existingVoices = (targetChar?.sprites ?? []).map((s) => s.voice_path ?? "").filter(Boolean);
+        const [voicePath] = input.voicePath
+          ? await relocatePathsList([input.voicePath], `vfs://characters/${prefix}/speech`, existingVoices)
+          : [input.voicePath];
+        const res = await baseCharacters.uploadSpriteVoice({ ...input, voicePath });
+        await persistAppConfig();
+        return res;
+      },
+      async autoGroupSprites(input) {
+        await ensureInitialized();
+        const res = await baseCharacters.autoGroupSprites(input);
+        if (input.apply) {
+          await persistAppConfig();
+        }
+        return res;
+      },
+      async autoLabelSprites(name) {
+        await ensureInitialized();
+        const res = await baseCharacters.autoLabelSprites(name);
+        await persistAppConfig();
+        return res;
+      },
+      async importGeneratedSprites(input) {
+        await ensureInitialized();
+        const res = await baseCharacters.importGeneratedSprites(input);
         await persistAppConfig();
         return res;
       },
@@ -1082,7 +1418,7 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
         await ensureInitialized();
         const importedAll: Character[] = [];
         for (const item of items) {
-          if (item instanceof File) {
+          if (item instanceof Blob) {
             const parsed = await importCharPackage(item, [...ctx.config.characters, ...importedAll]);
             importedAll.push(...parsed);
           } else if (typeof item === "string" && isVfsPath(item)) {
@@ -1179,15 +1515,35 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
         await baseBackgrounds.delete(name);
         await persistAppConfig();
       },
+      async import(items) {
+        await ensureInitialized();
+        const imported = await baseBackgrounds.import(items);
+        await persistAppConfig();
+        return imported;
+      },
+      async autoLabelImages(name) {
+        await ensureInitialized();
+        const res = await baseBackgrounds.autoLabelImages(name);
+        await persistAppConfig();
+        return res;
+      },
       async uploadImages(input) {
         await ensureInitialized();
-        const res = await baseBackgrounds.uploadImages(input);
+        const bg = ctx.config.background_list.find((b) => b.name === input.name);
+        const prefix = sanitizeVfsFileName(bg?.sprite_prefix || input.name || "background");
+        const existing = (bg?.sprites ?? []).map((s) => s.path);
+        const relocated = await relocatePathsList(input.paths, `vfs://backgrounds/${prefix}/images`, existing);
+        const res = await baseBackgrounds.uploadImages({ ...input, paths: relocated });
         await persistAppConfig();
         return res;
       },
       async uploadBgm(input) {
         await ensureInitialized();
-        const res = await baseBackgrounds.uploadBgm(input);
+        const bg = ctx.config.background_list.find((b) => b.name === input.name);
+        const prefix = sanitizeVfsFileName(bg?.sprite_prefix || input.name || "background");
+        const existing = bg?.bgm_list ?? [];
+        const relocated = await relocatePathsList(input.paths, `vfs://backgrounds/${prefix}/bgm`, existing);
+        const res = await baseBackgrounds.uploadBgm({ ...input, paths: relocated });
         await persistAppConfig();
         return res;
       },
@@ -1197,9 +1553,33 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
         await persistAppConfig();
         return res;
       },
+      async deleteAllImages(name) {
+        await ensureInitialized();
+        const res = await baseBackgrounds.deleteAllImages(name);
+        await persistAppConfig();
+        return res;
+      },
       async deleteBgm(name, idx) {
         await ensureInitialized();
         const res = await baseBackgrounds.deleteBgm(name, idx);
+        await persistAppConfig();
+        return res;
+      },
+      async deleteAllBgm(name) {
+        await ensureInitialized();
+        const res = await baseBackgrounds.deleteAllBgm(name);
+        await persistAppConfig();
+        return res;
+      },
+      async saveImageTags(input) {
+        await ensureInitialized();
+        const res = await baseBackgrounds.saveImageTags(input);
+        await persistAppConfig();
+        return res;
+      },
+      async saveBgmTags(input) {
+        await ensureInitialized();
+        const res = await baseBackgrounds.saveBgmTags(input);
         await persistAppConfig();
         return res;
       },
@@ -1219,6 +1599,12 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
       async getSession() {
         await ensureInitialized();
         return baseTemplates.getSession();
+      },
+      async saveSession(session) {
+        await ensureInitialized();
+        const res = await baseTemplates.saveSession(session);
+        await persistTemplateSession();
+        return res;
       },
     },
     chat: chatPlatform,

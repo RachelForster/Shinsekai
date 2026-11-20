@@ -6,7 +6,8 @@ import type {
   ChatStat,
   ConversationSummary,
 } from "../../slices/chatTypes";
-import { idbDelete, idbDeleteMany, idbGetAll, idbPut, idbPutMany } from "./indexedDbStore";
+import { idbBatchWrite, idbGetAll, idbPut, type IdbBatchOp } from "./indexedDbStore";
+import { unresolveVfsUrl } from "./vfsBlobRegistry";
 
 export interface StandaloneRawMessage {
   role: "system" | "user" | "assistant";
@@ -126,6 +127,54 @@ function cloneDeep<T>(value: T): T {
   return structuredClone(value);
 }
 
+let fallbackTokenCounter = 0;
+
+export function generateSecureRandomToken(byteLength = 6): string {
+  const cryptoObj = globalThis.crypto;
+  if (cryptoObj && typeof cryptoObj.getRandomValues === "function") {
+    const bytes = new Uint8Array(Math.max(1, byteLength));
+    cryptoObj.getRandomValues(bytes);
+    return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  }
+  if (cryptoObj && typeof cryptoObj.randomUUID === "function") {
+    return cryptoObj
+      .randomUUID()
+      .replace(/-/g, "")
+      .slice(0, byteLength * 2);
+  }
+  fallbackTokenCounter += 1;
+  return `${Date.now().toString(16)}${fallbackTokenCounter.toString(16)}`;
+}
+
+export function normalizeStageSnapshotForStorage(
+  snapshot: StandaloneStageSnapshot | null | undefined,
+): StandaloneStageSnapshot | null | undefined {
+  if (snapshot === undefined || snapshot === null) {
+    return snapshot;
+  }
+  return {
+    ...cloneDeep(snapshot),
+    backgroundPath: snapshot.backgroundPath ? unresolveVfsUrl(snapshot.backgroundPath) : "",
+    bgmPath: snapshot.bgmPath ? unresolveVfsUrl(snapshot.bgmPath) : "",
+    cgPath: snapshot.cgPath ? unresolveVfsUrl(snapshot.cgPath) : "",
+    sprites: (snapshot.sprites ?? []).map((sprite) => ({
+      ...cloneDeep(sprite),
+      path: unresolveVfsUrl(sprite.path),
+      ...(sprite.mouthSync ? { mouthSync: unresolveVfsUrl(sprite.mouthSync) } : {}),
+      ...(sprite.modelUrl ? { modelUrl: unresolveVfsUrl(sprite.modelUrl) } : { modelUrl: "" }),
+      ...(sprite.transitions?.length
+        ? {
+            transitions: sprite.transitions.map((tr) => ({
+              ...tr,
+              fromUrl: unresolveVfsUrl(tr.fromUrl),
+              url: unresolveVfsUrl(tr.url),
+            })),
+          }
+        : {}),
+    })),
+  };
+}
+
 /**
  * 1:1 TypeScript port of Shinsekai's non-destructive single-timeline session store
  * (`core/chat_history/in_memory.py` + `models.py`):
@@ -139,11 +188,21 @@ export class StandaloneSessionStore {
   private sessions = new Map<string, StandaloneSessionRecord>();
   private turnsBySessionBranch = new Map<string, TurnNode[]>();
   private checkpointsBySessionBranch = new Map<string, CompactCheckpoint[]>();
+  private branchRevisions = new Map<string, number>();
   private hydrated = false;
   private hydratePromise: Promise<void> | null = null;
 
   private branchMapKey(sessionId: string, branchId: string): string {
     return `${sessionId}::${branchId}`;
+  }
+
+  private bumpBranchRevision(bKey: string): void {
+    this.branchRevisions.set(bKey, (this.branchRevisions.get(bKey) ?? 0) + 1);
+  }
+
+  getBranchRevision(sessionId: string, branchId?: string): number {
+    const targetBranch = this.resolveBranchId(sessionId, branchId);
+    return this.branchRevisions.get(this.branchMapKey(sessionId, targetBranch)) ?? 0;
   }
 
   async hydrate(): Promise<void> {
@@ -270,7 +329,7 @@ export class StandaloneSessionStore {
       return cloneDeep(updated);
     }
 
-    const sessionId = input.sessionId || `session-${now}-${Math.random().toString(36).slice(2, 8)}`;
+    const sessionId = input.sessionId || `session-${now}-${generateSecureRandomToken(6)}`;
     const mainBranch: StandaloneBranchInfo = {
       branchId: "main",
       label: "主线",
@@ -331,27 +390,23 @@ export class StandaloneSessionStore {
     const existing = this.sessions.get(sessionId);
     if (!existing) return;
     const branchIds = Object.keys(existing.branches);
-    const nodeKeys: string[] = [];
-    const cpKeys: string[] = [];
+    const ops: IdbBatchOp[] = [{ type: "delete", storeName: "sessions", key: sessionId }];
 
     for (const branchId of branchIds) {
       const bKey = this.branchMapKey(sessionId, branchId);
       for (const node of this.turnsBySessionBranch.get(bKey) ?? []) {
-        nodeKeys.push(node.nodeKey);
+        ops.push({ type: "delete", storeName: "turn_nodes", key: node.nodeKey });
       }
       for (const cp of this.checkpointsBySessionBranch.get(bKey) ?? []) {
-        cpKeys.push(cp.checkpointKey);
+        ops.push({ type: "delete", storeName: "compact_checkpoints", key: cp.checkpointKey });
       }
       this.turnsBySessionBranch.delete(bKey);
       this.checkpointsBySessionBranch.delete(bKey);
+      this.bumpBranchRevision(bKey);
     }
 
     this.sessions.delete(sessionId);
-    await Promise.all([
-      idbDelete("sessions", sessionId),
-      idbDeleteMany("turn_nodes", nodeKeys),
-      idbDeleteMany("compact_checkpoints", cpKeys),
-    ]);
+    await idbBatchWrite(ops);
   }
 
   private resolveBranchId(sessionId: string, branchId?: string): string {
@@ -373,8 +428,11 @@ export class StandaloneSessionStore {
 
   getLatestCheckpoint(sessionId: string, branchId?: string, maxSeq?: number): CompactCheckpoint | null {
     const targetBranch = this.resolveBranchId(sessionId, branchId);
-    const list = this.checkpointsBySessionBranch.get(this.branchMapKey(sessionId, targetBranch)) ?? [];
-    const ceiling = maxSeq ?? Number.POSITIVE_INFINITY;
+    const bKey = this.branchMapKey(sessionId, targetBranch);
+    const list = this.checkpointsBySessionBranch.get(bKey) ?? [];
+    const turns = this.turnsBySessionBranch.get(bKey) ?? [];
+    const maxTurnSeq = turns.length ? turns[turns.length - 1].seq : 0;
+    const ceiling = Math.min(maxSeq ?? Number.POSITIVE_INFINITY, maxTurnSeq);
     let best: CompactCheckpoint | null = null;
     for (const cp of list) {
       if (cp.upToSeq <= ceiling && (!best || cp.upToSeq >= best.upToSeq)) {
@@ -403,6 +461,7 @@ export class StandaloneSessionStore {
 
     const speakerPrefix = input.speaker && input.role === "assistant" ? `【${input.speaker}】` : "";
     const rawContent = input.rawContent ?? `${speakerPrefix}${input.plainText}`;
+    const normalizedStage = normalizeStageSnapshotForStorage(input.stageSnapshot);
 
     const node: TurnNode = {
       nodeKey: makeNodeKey(sessionId, targetBranch, nextSeq),
@@ -424,15 +483,15 @@ export class StandaloneSessionStore {
       voiceId: input.voiceId,
       voiceUrl: input.voiceUrl,
       outfitSnapshot: input.outfitSnapshot ? cloneDeep(input.outfitSnapshot) : undefined,
-      stageSnapshot: input.stageSnapshot !== undefined ? cloneDeep(input.stageSnapshot) : undefined,
+      stageSnapshot: normalizedStage,
       revertUserIndex: input.role === "user" ? userTurnCountBefore : undefined,
       createdAtMs: now,
     };
 
     list.push(node);
     this.turnsBySessionBranch.set(bKey, list);
-    await idbPut("turn_nodes", node);
 
+    const ops: IdbBatchOp[] = [{ type: "put", storeName: "turn_nodes", record: node }];
     const session = this.sessions.get(sessionId);
     if (session) {
       session.updatedAtMs = now;
@@ -442,11 +501,12 @@ export class StandaloneSessionStore {
       if (input.outfitSnapshot) {
         session.outfits = cloneDeep(input.outfitSnapshot);
       }
-      if (input.stageSnapshot?.stats) {
-        session.stats = cloneDeep(input.stageSnapshot.stats);
+      if (normalizedStage?.stats) {
+        session.stats = cloneDeep(normalizedStage.stats);
       }
-      await idbPut("sessions", session);
+      ops.push({ type: "put", storeName: "sessions", record: session });
     }
+    await idbBatchWrite(ops);
 
     return cloneDeep(node);
   }
@@ -471,11 +531,28 @@ export class StandaloneSessionStore {
       upToSeq: number;
       rollingSummary: string;
       tokenEstimate?: number;
+      expectedRevision?: number;
+      expectedTurnId?: string;
     },
     branchId?: string,
-  ): Promise<CompactCheckpoint> {
+  ): Promise<CompactCheckpoint | null> {
+    if (!this.sessions.has(sessionId)) {
+      return null;
+    }
     const targetBranch = this.resolveBranchId(sessionId, branchId);
     const bKey = this.branchMapKey(sessionId, targetBranch);
+    if (input.expectedRevision !== undefined && (this.branchRevisions.get(bKey) ?? 0) !== input.expectedRevision) {
+      return null;
+    }
+    const turns = this.turnsBySessionBranch.get(bKey) ?? [];
+    const anchorTurn = turns.find((node) => node.seq === input.upToSeq);
+    if (!anchorTurn) {
+      return null;
+    }
+    if (input.expectedTurnId && anchorTurn.turnId !== input.expectedTurnId) {
+      return null;
+    }
+
     const list = this.checkpointsBySessionBranch.get(bKey) ?? [];
     const now = Date.now();
     const checkpointKey = makeCheckpointKey(sessionId, targetBranch, input.upToSeq);
@@ -560,6 +637,7 @@ export class StandaloneSessionStore {
   async truncateAfter(sessionId: string, cutoffSeq: number, branchId?: string): Promise<TruncateResult> {
     const targetBranch = this.resolveBranchId(sessionId, branchId);
     const bKey = this.branchMapKey(sessionId, targetBranch);
+    this.bumpBranchRevision(bKey);
 
     const currentTurns = this.turnsBySessionBranch.get(bKey) ?? [];
     const keptTurns: TurnNode[] = [];
@@ -585,11 +663,6 @@ export class StandaloneSessionStore {
     }
     this.checkpointsBySessionBranch.set(bKey, keptCheckpoints);
 
-    await Promise.all([
-      idbDeleteMany("turn_nodes", removedTurnKeys),
-      idbDeleteMany("compact_checkpoints", removedCheckpointKeys),
-    ]);
-
     const survivingLastTurn = keptTurns.length ? cloneDeep(keptTurns[keptTurns.length - 1]) : null;
     const activeCheckpoint = keptCheckpoints.length ? cloneDeep(keptCheckpoints[keptCheckpoints.length - 1]) : null;
 
@@ -605,6 +678,15 @@ export class StandaloneSessionStore {
       if (restoredOutfits && restoredStage !== undefined) break;
     }
 
+    const ops: IdbBatchOp[] = [
+      ...removedTurnKeys.map<IdbBatchOp>((key) => ({ type: "delete", storeName: "turn_nodes", key })),
+      ...removedCheckpointKeys.map<IdbBatchOp>((key) => ({
+        type: "delete",
+        storeName: "compact_checkpoints",
+        key,
+      })),
+    ];
+
     const session = this.sessions.get(sessionId);
     if (session) {
       session.updatedAtMs = Date.now();
@@ -615,8 +697,10 @@ export class StandaloneSessionStore {
       if (restoredStage?.stats) {
         session.stats = cloneDeep(restoredStage.stats);
       }
-      await idbPut("sessions", session);
+      ops.push({ type: "put", storeName: "sessions", record: session });
     }
+
+    await idbBatchWrite(ops);
 
     return {
       removedTurnCount: removedTurnKeys.length,
@@ -711,11 +795,12 @@ export class StandaloneSessionStore {
     }
     session.updatedAtMs = now;
 
-    await Promise.all([
-      idbPut("sessions", session),
-      idbPutMany("turn_nodes", clonedTurns),
-      idbPutMany("compact_checkpoints", clonedCheckpoints),
-    ]);
+    const ops: IdbBatchOp[] = [
+      { type: "put", storeName: "sessions", record: session },
+      ...clonedTurns.map<IdbBatchOp>((record) => ({ type: "put", storeName: "turn_nodes", record })),
+      ...clonedCheckpoints.map<IdbBatchOp>((record) => ({ type: "put", storeName: "compact_checkpoints", record })),
+    ];
+    await idbBatchWrite(ops);
 
     return cloneDeep(branchInfo);
   }

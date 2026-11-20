@@ -13,6 +13,7 @@ import type { StandaloneSessionRecord, StandaloneSessionStore } from "../storage
 import { getVfsBlobAsync, resolveVfsUrl } from "../storage/vfsBlobRegistry";
 import { autoCompactIfNeeded, getCompactionLimits, trimMessagesToBudget } from "./compactManager";
 import { resolveLlmAdapter, resolveTtsAdapter } from "./adapters/registry";
+import { stopBrowserSpeechSynthesis } from "./adapters/tts/browserSpeechAdapter";
 import { getLlmProviderPreset } from "./adapters/llm/presets";
 import { parseStandaloneDialogOutput } from "./dialogOutputParser";
 import { buildStandaloneDialogSystemPrompt } from "./dialogPromptBuilder";
@@ -25,6 +26,7 @@ export interface ChatTurnDriverContext {
   setChat: (next: ChatSnapshot) => void;
   emitChat: () => void;
   emitStageEvent: (event: ChatStageEvent) => void;
+  nextEventSeq?: () => number;
   sessionStore: StandaloneSessionStore;
   httpClient: StandaloneHttpClient;
   resolveFileUrl: (path: string) => string;
@@ -33,12 +35,18 @@ export interface ChatTurnDriverContext {
 
 export class StandaloneChatTurnDriver {
   private activeAbort: AbortController | null = null;
+  private compactionAbort: AbortController | null = null;
   private activePlaybackId: string | null = null;
   private pendingAdvanceResolvers: Array<(reason: "advance" | "playback" | "skip") => void> = [];
   private activeBlobAudioUrls: string[] = [];
   private playbackSeq = 0;
+  private localEventSeq = 0;
 
   constructor(private readonly ctx: ChatTurnDriverContext) {}
+
+  private nextSeq(): number {
+    return this.ctx.nextEventSeq ? this.ctx.nextEventSeq() : (this.localEventSeq += 1);
+  }
 
   private resolveAllPendingAdvances(reason: "advance" | "playback" | "skip") {
     const callbacks = this.pendingAdvanceResolvers.splice(0);
@@ -87,10 +95,11 @@ export class StandaloneChatTurnDriver {
 
   handleDialogAdvance() {
     if (this.pendingAdvanceResolvers.length > 0) {
+      stopBrowserSpeechSynthesis();
       if (this.activePlaybackId) {
         this.ctx.emitStageEvent({
           v: 1,
-          seq: Date.now(),
+          seq: this.nextSeq(),
           ts: Date.now(),
           type: "tts.skip",
           playbackId: this.activePlaybackId,
@@ -101,9 +110,10 @@ export class StandaloneChatTurnDriver {
   }
 
   handleSkipSpeech() {
+    stopBrowserSpeechSynthesis();
     this.ctx.emitStageEvent({
       v: 1,
-      seq: Date.now(),
+      seq: this.nextSeq(),
       ts: Date.now(),
       type: "tts.skip",
       playbackId: this.activePlaybackId ?? undefined,
@@ -114,6 +124,9 @@ export class StandaloneChatTurnDriver {
   cancelActiveTurn() {
     this.activeAbort?.abort();
     this.activeAbort = null;
+    this.compactionAbort?.abort();
+    this.compactionAbort = null;
+    stopBrowserSpeechSynthesis();
     this.resolveAllPendingAdvances("skip");
     for (const url of this.activeBlobAudioUrls.splice(0)) {
       if (url.startsWith("blob:") && typeof URL !== "undefined" && typeof URL.revokeObjectURL === "function") {
@@ -219,7 +232,7 @@ export class StandaloneChatTurnDriver {
     this.ctx.emitChat();
     this.ctx.emitStageEvent({
       v: 1,
-      seq: Date.now(),
+      seq: this.nextSeq(),
       ts: Date.now(),
       type: "sprite.show",
       characterName: character.name,
@@ -315,8 +328,8 @@ export class StandaloneChatTurnDriver {
       busyText: "思考回复中...",
     });
     this.ctx.emitChat();
-    this.ctx.emitStageEvent({ v: 1, seq: Date.now(), ts: Date.now(), type: "options.clear" });
-    this.ctx.emitStageEvent({ v: 1, seq: Date.now(), ts: Date.now(), type: "status.change", status: "generating" });
+    this.ctx.emitStageEvent({ v: 1, seq: this.nextSeq(), ts: Date.now(), type: "options.clear" });
+    this.ctx.emitStageEvent({ v: 1, seq: this.nextSeq(), ts: Date.now(), type: "status.change", status: "generating" });
 
     // Record player's turn into non-destructive timeline
     await this.ctx.sessionStore.appendTurn(session.sessionId, {
@@ -391,7 +404,7 @@ export class StandaloneChatTurnDriver {
           this.ctx.emitChat();
           this.ctx.emitStageEvent({
             v: 1,
-            seq: Date.now(),
+            seq: this.nextSeq(),
             ts: Date.now(),
             type: "stats.update",
             stats: nextStats,
@@ -459,7 +472,7 @@ export class StandaloneChatTurnDriver {
         this.ctx.emitChat();
         this.ctx.emitStageEvent({
           v: 1,
-          seq: Date.now(),
+          seq: this.nextSeq(),
           ts: Date.now(),
           type: "dialog.end",
           speaker: speakerDisplay,
@@ -487,7 +500,7 @@ export class StandaloneChatTurnDriver {
         if (playbackId && ttsUrl) {
           this.ctx.emitStageEvent({
             v: 1,
-            seq: Date.now(),
+            seq: this.nextSeq(),
             ts: Date.now(),
             type: "tts.play",
             url: ttsUrl,
@@ -523,17 +536,20 @@ export class StandaloneChatTurnDriver {
       if (nextOptions.length) {
         this.ctx.emitStageEvent({
           v: 1,
-          seq: Date.now(),
+          seq: this.nextSeq(),
           ts: Date.now(),
           type: "options.show",
           options: nextOptions,
         });
       }
-      this.ctx.emitStageEvent({ v: 1, seq: Date.now(), ts: Date.now(), type: "reply.finished" });
-      this.ctx.emitStageEvent({ v: 1, seq: Date.now(), ts: Date.now(), type: "status.change", status: "idle" });
+      this.ctx.emitStageEvent({ v: 1, seq: this.nextSeq(), ts: Date.now(), type: "reply.finished" });
+      this.ctx.emitStageEvent({ v: 1, seq: this.nextSeq(), ts: Date.now(), type: "status.change", status: "idle" });
 
       this.ctx.onProgressCheckpoint?.();
 
+      this.compactionAbort?.abort();
+      const compactCtrl = new AbortController();
+      this.compactionAbort = compactCtrl;
       void autoCompactIfNeeded({
         sessionId: session.sessionId,
         systemPrompt,
@@ -545,6 +561,11 @@ export class StandaloneChatTurnDriver {
         baseUrl,
         model,
         lastUsageTokens: llmResult.usageTokens,
+        signal: compactCtrl.signal,
+      }).finally(() => {
+        if (this.compactionAbort === compactCtrl) {
+          this.compactionAbort = null;
+        }
       });
     } catch (error) {
       if (abort.signal.aborted) return;
@@ -558,7 +579,7 @@ export class StandaloneChatTurnDriver {
         notificationText: `对话请求失败：${errMsg}`,
       });
       this.ctx.emitChat();
-      this.ctx.emitStageEvent({ v: 1, seq: Date.now(), ts: Date.now(), type: "status.change", status: "error" });
+      this.ctx.emitStageEvent({ v: 1, seq: this.nextSeq(), ts: Date.now(), type: "status.change", status: "error" });
     }
   }
 
@@ -585,7 +606,7 @@ export class StandaloneChatTurnDriver {
     this.ctx.emitChat();
     this.ctx.emitStageEvent({
       v: 1,
-      seq: Date.now(),
+      seq: this.nextSeq(),
       ts: Date.now(),
       type: "stats.update",
       stats: step.stats,
@@ -609,7 +630,7 @@ export class StandaloneChatTurnDriver {
       this.ctx.emitChat();
       this.ctx.emitStageEvent({
         v: 1,
-        seq: Date.now(),
+        seq: this.nextSeq(),
         ts: Date.now(),
         type: "dialog.end",
         speaker: speakerDisplay,
@@ -657,13 +678,13 @@ export class StandaloneChatTurnDriver {
     this.ctx.emitChat();
     this.ctx.emitStageEvent({
       v: 1,
-      seq: Date.now(),
+      seq: this.nextSeq(),
       ts: Date.now(),
       type: "options.show",
       options: step.options,
     });
-    this.ctx.emitStageEvent({ v: 1, seq: Date.now(), ts: Date.now(), type: "reply.finished" });
-    this.ctx.emitStageEvent({ v: 1, seq: Date.now(), ts: Date.now(), type: "status.change", status: "idle" });
+    this.ctx.emitStageEvent({ v: 1, seq: this.nextSeq(), ts: Date.now(), type: "reply.finished" });
+    this.ctx.emitStageEvent({ v: 1, seq: this.nextSeq(), ts: Date.now(), type: "status.change", status: "idle" });
     this.ctx.onProgressCheckpoint?.();
   }
 

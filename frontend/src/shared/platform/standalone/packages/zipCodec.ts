@@ -45,27 +45,55 @@ export function sanitizeZipMemberPath(rawPath: string): string {
   return parts.join("/");
 }
 
+export interface UnzipLimits {
+  maxArchiveBytes: number;
+  maxEntries: number;
+  maxEntryBytes: number;
+  maxTotalUncompressedBytes: number;
+  maxCompressionRatio: number;
+}
+
+export const DEFAULT_UNZIP_LIMITS: Readonly<UnzipLimits> = {
+  maxArchiveBytes: 128 * 1024 * 1024, // 128 MiB
+  maxEntries: 512,
+  maxEntryBytes: 64 * 1024 * 1024, // 64 MiB
+  maxTotalUncompressedBytes: 256 * 1024 * 1024, // 256 MiB
+  maxCompressionRatio: 200,
+};
+
 async function runStreamTransform(
   bytes: Uint8Array,
   stream: TransformStream<Uint8Array, Uint8Array>,
+  maxOutputBytes?: number,
 ): Promise<Uint8Array> {
   const writer = stream.writable.getWriter();
   const safeCopy = new Uint8Array(bytes.byteLength);
   safeCopy.set(bytes);
   const writePromise = writer.write(safeCopy).then(() => writer.close());
+  writePromise.catch(() => {
+    // Handled if reader aborts early due to size bounds
+  });
 
   const reader = stream.readable.getReader();
   const chunks: Uint8Array[] = [];
   let totalLength = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    if (value) {
-      chunks.push(value);
-      totalLength += value.byteLength;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        totalLength += value.byteLength;
+        if (maxOutputBytes !== undefined && totalLength > maxOutputBytes) {
+          await Promise.allSettled([reader.cancel(), writer.abort()]);
+          throw new Error(`ZIP entry exceeds maximum uncompressed size (${maxOutputBytes} bytes).`);
+        }
+        chunks.push(value);
+      }
     }
+    await writePromise;
+  } finally {
+    reader.releaseLock();
   }
-  await writePromise;
 
   const out = new Uint8Array(totalLength);
   let offset = 0;
@@ -94,13 +122,14 @@ async function deflateRawIfBeneficial(bytes: Uint8Array): Promise<{ method: 0 | 
   return { method: 0, payload: bytes };
 }
 
-async function inflateRaw(bytes: Uint8Array): Promise<Uint8Array> {
+async function inflateRaw(bytes: Uint8Array, maxOutputBytes?: number): Promise<Uint8Array> {
   if (typeof DecompressionStream === "undefined") {
     throw new Error("Current runtime does not support deflate-raw ZIP decompression.");
   }
   return runStreamTransform(
     bytes,
     new DecompressionStream("deflate-raw") as unknown as TransformStream<Uint8Array, Uint8Array>,
+    maxOutputBytes,
   );
 }
 
@@ -112,10 +141,17 @@ function readUint32(view: DataView, offset: number): number {
   return view.getUint32(offset, true);
 }
 
-export async function unzipEntries(input: Uint8Array | ArrayBuffer): Promise<Map<string, Uint8Array>> {
+export async function unzipEntries(
+  input: Uint8Array | ArrayBuffer,
+  limits?: Partial<UnzipLimits>,
+): Promise<Map<string, Uint8Array>> {
+  const cfg: UnzipLimits = { ...DEFAULT_UNZIP_LIMITS, ...limits };
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
   if (bytes.byteLength < 22) {
     throw new Error("Invalid ZIP archive: file too small.");
+  }
+  if (bytes.byteLength > cfg.maxArchiveBytes) {
+    throw new Error(`ZIP archive exceeds maximum size (${cfg.maxArchiveBytes} bytes).`);
   }
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 
@@ -133,8 +169,12 @@ export async function unzipEntries(input: Uint8Array | ArrayBuffer): Promise<Map
   }
 
   const entryCount = readUint16(view, eocdOffset + 10);
+  if (entryCount > cfg.maxEntries) {
+    throw new Error(`ZIP archive exceeds maximum entry count (${cfg.maxEntries}).`);
+  }
   const cdOffset = readUint32(view, eocdOffset + 16);
   const results = new Map<string, Uint8Array>();
+  let totalUncompressedBytes = 0;
 
   let cursor = cdOffset;
   for (let idx = 0; idx < entryCount; idx += 1) {
@@ -149,6 +189,9 @@ export async function unzipEntries(input: Uint8Array | ArrayBuffer): Promise<Map
     const commentLen = readUint16(view, cursor + 32);
     const localHeaderOffset = readUint32(view, cursor + 42);
 
+    if (cursor + 46 + nameLen + extraLen + commentLen > bytes.byteLength) {
+      throw new Error("Invalid ZIP archive: truncated Central Directory entry.");
+    }
     const rawName = textDecoder.decode(bytes.subarray(cursor + 46, cursor + 46 + nameLen));
     cursor += 46 + nameLen + extraLen + commentLen;
 
@@ -156,6 +199,19 @@ export async function unzipEntries(input: Uint8Array | ArrayBuffer): Promise<Map
     const safePath = sanitizeZipMemberPath(rawName);
     if (!safePath || isDir) {
       continue;
+    }
+
+    if (uncompressedSize > cfg.maxEntryBytes) {
+      throw new Error(`ZIP entry ${safePath} exceeds maxEntryBytes (${cfg.maxEntryBytes}).`);
+    }
+    if (totalUncompressedBytes + uncompressedSize > cfg.maxTotalUncompressedBytes) {
+      throw new Error(`ZIP archive total uncompressed size exceeds limit (${cfg.maxTotalUncompressedBytes}).`);
+    }
+    if (method === 8 && compressedSize === 0 && uncompressedSize > 0) {
+      throw new Error(`Corrupt ZIP entry compressed size for ${safePath}.`);
+    }
+    if (uncompressedSize > 65536 && compressedSize > 0 && uncompressedSize / compressedSize > cfg.maxCompressionRatio) {
+      throw new Error(`ZIP entry ${safePath} exceeds max compression ratio (${cfg.maxCompressionRatio}x).`);
     }
 
     if (localHeaderOffset + 30 > bytes.byteLength || readUint32(view, localHeaderOffset) !== 0x04034b50) {
@@ -169,20 +225,35 @@ export async function unzipEntries(input: Uint8Array | ArrayBuffer): Promise<Map
       throw new Error(`Truncated ZIP entry payload: ${safePath}`);
     }
 
+    const maxAllowedForEntry = Math.min(cfg.maxEntryBytes, cfg.maxTotalUncompressedBytes - totalUncompressedBytes);
     const compressedSlice = bytes.subarray(dataStart, dataEnd);
     let outputBytes: Uint8Array;
     if (method === 0) {
+      if (compressedSlice.byteLength > maxAllowedForEntry) {
+        throw new Error(`ZIP entry ${safePath} exceeds maximum uncompressed size (${maxAllowedForEntry} bytes).`);
+      }
       outputBytes = compressedSlice.slice();
     } else if (method === 8) {
-      outputBytes = await inflateRaw(compressedSlice);
+      outputBytes = await inflateRaw(compressedSlice, maxAllowedForEntry);
     } else {
       throw new Error(`Unsupported ZIP compression method ${method} for entry: ${safePath}`);
     }
 
+    if (outputBytes.byteLength > maxAllowedForEntry) {
+      throw new Error(`ZIP entry ${safePath} exceeds maximum uncompressed size (${maxAllowedForEntry} bytes).`);
+    }
+    if (
+      outputBytes.byteLength > 65536 &&
+      compressedSize > 0 &&
+      outputBytes.byteLength / compressedSize > cfg.maxCompressionRatio
+    ) {
+      throw new Error(`ZIP entry ${safePath} exceeds max compression ratio (${cfg.maxCompressionRatio}x).`);
+    }
     if (uncompressedSize > 0 && outputBytes.byteLength !== uncompressedSize) {
       throw new Error(`ZIP entry size mismatch for ${safePath}`);
     }
 
+    totalUncompressedBytes += outputBytes.byteLength;
     results.set(safePath, outputBytes);
   }
 

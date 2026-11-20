@@ -255,6 +255,58 @@ export async function idbDeleteMany(storeName: StandaloneStoreName, keys: string
   });
 }
 
+export type IdbBatchOp =
+  | { type: "put"; storeName: StandaloneStoreName; record: object }
+  | { type: "delete"; storeName: StandaloneStoreName; key: string };
+
+export async function idbBatchWrite(ops: IdbBatchOp[]): Promise<void> {
+  if (!ops.length) {
+    return;
+  }
+  const storeNames: StandaloneStoreName[] = [];
+  for (const op of ops) {
+    if (!storeNames.includes(op.storeName)) {
+      storeNames.push(op.storeName);
+    }
+    if (op.type === "put") {
+      const keyField = keyPathForStore(op.storeName);
+      const recordKey = String((op.record as Record<string, unknown>)[keyField] ?? "");
+      if (recordKey) {
+        getMemoryMap(op.storeName).set(recordKey, op.record);
+      }
+    } else {
+      getMemoryMap(op.storeName).delete(op.key);
+    }
+  }
+
+  const db = await openStandaloneDb();
+  if (!db) {
+    return;
+  }
+  await new Promise<void>((resolve) => {
+    try {
+      const tx = db.transaction(storeNames, "readwrite");
+      const stores = new Map<StandaloneStoreName, IDBObjectStore>(
+        storeNames.map((name) => [name, tx.objectStore(name)]),
+      );
+      for (const op of ops) {
+        const store = stores.get(op.storeName);
+        if (!store) continue;
+        if (op.type === "put") {
+          store.put(op.record);
+        } else {
+          store.delete(op.key);
+        }
+      }
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+      tx.onabort = () => resolve();
+    } catch {
+      resolve();
+    }
+  });
+}
+
 export async function getKvConfig<T>(key: string): Promise<T | undefined> {
   const rec = await idbGet<KvConfigRecord>("kv_config", key);
   return rec ? (rec.value as T) : undefined;

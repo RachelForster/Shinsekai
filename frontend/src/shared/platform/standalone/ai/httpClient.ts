@@ -1,4 +1,9 @@
-import { hasTauriNativeHttp, invokeTauriStandaloneHttp } from "../../../desktop/desktopApi";
+import {
+  hasTauriNativeHttp,
+  invokeTauriStandaloneHttp,
+  isUnknownTauriCommandError,
+  markTauriNativeHttpUnsupported,
+} from "../../../desktop/desktopApi";
 
 export interface StandaloneHttpRequest {
   url: string;
@@ -86,18 +91,26 @@ export async function standaloneHttpRequest(request: StandaloneHttpRequest): Pro
       bodyBase64 = bytesToBase64(request.body);
     }
 
-    const nativeResp = await invokeTauriStandaloneHttp({
-      url: request.url,
-      method,
-      headers: request.headers,
-      bodyBase64,
-      timeoutMs,
-    });
-    const normalizedHeaders: Record<string, string> = {};
-    for (const [k, v] of Object.entries(nativeResp.headers ?? {})) {
-      normalizedHeaders[k.toLowerCase()] = v;
+    try {
+      const nativeResp = await invokeTauriStandaloneHttp({
+        url: request.url,
+        method,
+        headers: request.headers,
+        bodyBase64,
+        timeoutMs,
+      });
+      const normalizedHeaders: Record<string, string> = {};
+      for (const [k, v] of Object.entries(nativeResp.headers ?? {})) {
+        normalizedHeaders[k.toLowerCase()] = v;
+      }
+      return buildResponse(nativeResp.status, normalizedHeaders, base64ToBytes(nativeResp.bodyBase64 ?? ""));
+    } catch (error) {
+      if (!isUnknownTauriCommandError(error)) {
+        throw error;
+      }
+      // Fall back to standard fetch when running inside a Tauri shell without standalone_http_request registered.
+      markTauriNativeHttpUnsupported();
     }
-    return buildResponse(nativeResp.status, normalizedHeaders, base64ToBytes(nativeResp.bodyBase64 ?? ""));
   }
 
   const controller = new AbortController();
