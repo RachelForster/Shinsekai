@@ -61,10 +61,11 @@ node_modules/
 /frontend/.vite
 /frontend/dist
 /frontend/dist-toy
+/dist-mobile
 /frontend/coverage
 /frontend/playwright-report
 /frontend/test-results
-/frontend/src-tauri/gen
+/frontend/src-tauri/gen/schemas
 /frontend/src-tauri/resources/*
 !/frontend/src-tauri/resources/.gitkeep
 /frontend/src-tauri/target

@@ -2,6 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "chat",
   "description": "Default permissions for the desktop chat stage window.",
+  "platforms": ["linux", "macOS", "windows"],
   "windows": ["chat"],
   "permissions": ["core:default", "dialog:default"]
 }

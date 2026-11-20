@@ -1,8 +1,11 @@
 import {
+  cancelTauriStandaloneHttp,
   hasTauriNativeHttp,
   invokeTauriStandaloneHttp,
+  isAbortTauriHttpError,
   isUnknownTauriCommandError,
   markTauriNativeHttpUnsupported,
+  type TauriStandaloneHttpResponse,
 } from "../../../desktop/desktopApi";
 
 export interface StandaloneHttpRequest {
@@ -25,6 +28,21 @@ export interface StandaloneHttpResponse {
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder("utf-8", { fatal: false });
+let nativeRequestSeq = 0;
+
+function nextNativeRequestId(): string {
+  nativeRequestSeq += 1;
+  return `tauri-http-${Date.now()}-${nativeRequestSeq}`;
+}
+
+function createAbortError(): Error {
+  if (typeof DOMException === "function") {
+    return new DOMException("The operation was aborted.", "AbortError");
+  }
+  const error = new Error("The operation was aborted.");
+  error.name = "AbortError";
+  return error;
+}
 
 export function bytesToBase64(bytes: Uint8Array): string {
   const chunkSize = 0x4000;
@@ -80,7 +98,7 @@ export async function standaloneHttpRequest(request: StandaloneHttpRequest): Pro
   const timeoutMs = request.timeoutMs ?? 60_000;
 
   if (request.signal?.aborted) {
-    throw new DOMException("The operation was aborted.", "AbortError");
+    throw createAbortError();
   }
 
   if (hasTauriNativeHttp()) {
@@ -91,13 +109,55 @@ export async function standaloneHttpRequest(request: StandaloneHttpRequest): Pro
       bodyBase64 = bytesToBase64(request.body);
     }
 
+    const requestId = nextNativeRequestId();
+    let timedOut = false;
+    let settled = false;
+    let onAbort: (() => void) | null = null;
+    let timerId: ReturnType<typeof globalThis.setTimeout> | null = null;
+
     try {
-      const nativeResp = await invokeTauriStandaloneHttp({
-        url: request.url,
-        method,
-        headers: request.headers,
-        bodyBase64,
-        timeoutMs,
+      const nativeResp = await new Promise<TauriStandaloneHttpResponse>((resolve, reject) => {
+        onAbort = () => {
+          if (settled) return;
+          settled = true;
+          void cancelTauriStandaloneHttp(requestId);
+          reject(createAbortError());
+        };
+        request.signal?.addEventListener("abort", onAbort, { once: true });
+
+        if (timeoutMs > 0) {
+          timerId = globalThis.setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            timedOut = true;
+            void cancelTauriStandaloneHttp(requestId);
+            reject(new Error(`请求超时 (${timeoutMs}ms): ${request.url}`));
+          }, timeoutMs);
+        }
+
+        invokeTauriStandaloneHttp({
+          requestId,
+          url: request.url,
+          method,
+          headers: request.headers,
+          bodyBase64,
+          timeoutMs,
+        }).then(
+          (resp) => {
+            if (settled) return;
+            settled = true;
+            resolve(resp);
+          },
+          (err) => {
+            if (settled) return;
+            settled = true;
+            if (request.signal?.aborted || isAbortTauriHttpError(err)) {
+              reject(createAbortError());
+              return;
+            }
+            reject(err);
+          },
+        );
       });
       const normalizedHeaders: Record<string, string> = {};
       for (const [k, v] of Object.entries(nativeResp.headers ?? {})) {
@@ -105,11 +165,24 @@ export async function standaloneHttpRequest(request: StandaloneHttpRequest): Pro
       }
       return buildResponse(nativeResp.status, normalizedHeaders, base64ToBytes(nativeResp.bodyBase64 ?? ""));
     } catch (error) {
+      if (timedOut) {
+        throw error;
+      }
+      if (request.signal?.aborted || isAbortTauriHttpError(error)) {
+        throw createAbortError();
+      }
       if (!isUnknownTauriCommandError(error)) {
         throw error;
       }
       // Fall back to standard fetch when running inside a Tauri shell without standalone_http_request registered.
       markTauriNativeHttpUnsupported();
+    } finally {
+      if (timerId !== null) {
+        globalThis.clearTimeout(timerId);
+      }
+      if (onAbort) {
+        request.signal?.removeEventListener("abort", onAbort);
+      }
     }
   }
 
