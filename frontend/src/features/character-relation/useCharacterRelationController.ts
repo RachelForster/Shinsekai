@@ -19,6 +19,7 @@ export interface CharacterRelationController {
   /** True only when the changes have been saved; false on failure or a concurrent save. */
   save: (operations: RelationRequest[]) => Promise<boolean>;
   reload: () => Promise<void>;
+  clean: () => Promise<void>;
 }
 
 function saveErrorMessage(error: unknown): string {
@@ -62,9 +63,17 @@ export function useCharacterRelationController(owner: string): CharacterRelation
   async function reload(): Promise<void> {
     saveMutation.reset();
     try {
+      await query.refetch();
+    } finally {
+      await queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+    }
+  }
+
+  async function clean(): Promise<void> {
+    saveMutation.reset();
+    try {
       const result = await query.refetch();
       if (result.isError || !result.data) return;
-
       const graph = result.data;
       const retainedEdges = graph.edges.filter((edge) => edge.source === graph.owner || edge.target === graph.owner);
       const connected = new Set(retainedEdges.flatMap((edge) => [edge.source, edge.target]));
@@ -91,5 +100,6 @@ export function useCharacterRelationController(owner: string): CharacterRelation
     saveError: saveErrorMessage(saveMutation.error),
     save,
     reload,
+    clean,
   };
 }

@@ -52,5 +52,8 @@ export const relationJaMessages: Record<RelationMessageKey, string> = {
   "relation.target": "終点の人物",
   "relation.nodeName": "人物名",
   "relation.edgeExists": "この方向の関係は既にあります。グラフから編集してください。",
+  "relation.cleanLegacy": "古いデータを整理",
+  "relation.cleanLegacyWarning":
+    "孤立したノードと、現在のキャラクターを含まない関係の辺を削除します。この操作は取り消せません。",
   "relation.reload": "再読み込み",
 };

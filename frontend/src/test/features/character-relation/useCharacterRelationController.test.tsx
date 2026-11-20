@@ -7,21 +7,38 @@ import { useCharacterRelationController } from "../../../features/character-rela
 import type { CharacterRelationGraph, RelationRequest } from "../../../shared/platform/types";
 
 describe("useCharacterRelationController", () => {
-  it("cleans unrelated edges and isolated nodes when reloading", async () => {
+  it("reloads the latest graph", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    const { result, unmount } = renderHook(() => useCharacterRelationController("A"), { wrapper });
+    await waitFor(() => expect(result.current.data?.nodes).toEqual([{ key: "A" }]));
+
+    const latest = await state.api!.applyRelationChanges("A", [
+      { op: "add_node", node: { key: "B" } },
+      { op: "add_node", node: { key: "C" } },
+      { op: "upsert_edge", edge: { source: "B", target: "C", temperature: 0, content: "other" } },
+    ]);
+    await act(async () => result.current.reload());
+    await waitFor(() => expect(result.current.data).toEqual(latest));
+    unmount();
+    client.clear();
+  });
+
+  it("cleans unrelated edges and isolated nodes", async () => {
     await state.api!.applyRelationChanges("A", [
       ...["B", "C", "D"].map((key): RelationRequest => ({ op: "add_node", node: { key } })),
       { op: "upsert_edge", edge: { source: "B", target: "A", temperature: 1, content: "friend" } },
       { op: "upsert_edge", edge: { source: "B", target: "C", temperature: 0, content: "other" } },
     ]);
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
-    const invalidate = vi.spyOn(client, "invalidateQueries");
     const wrapper = ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
     );
     const { result, unmount } = renderHook(() => useCharacterRelationController("A"), { wrapper });
     await waitFor(() => expect(result.current.data).toBeDefined());
-    await act(async () => result.current.reload());
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["characters"] });
+    await act(async () => result.current.clean());
     const graph = await state.api!.getRelationGraph("A");
     expect(graph.nodes.map((node) => node.key)).toEqual(["A", "B"]);
     expect(graph.edges).toEqual([{ source: "B", target: "A", temperature: 1, content: "friend" }]);
