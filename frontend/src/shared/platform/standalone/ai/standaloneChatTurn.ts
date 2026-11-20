@@ -1,3 +1,4 @@
+import { tagContents } from "../../../assets/assetText";
 import type { Character } from "../../slices/characterTypes";
 import type {
   CharacterOutfitState,
@@ -7,7 +8,8 @@ import type {
   ChatStageEvent,
   ChatStat,
 } from "../../slices/chatTypes";
-import type { ApiConfig } from "../../slices/configTypes";
+import type { ApiConfig, SystemConfig } from "../../slices/configTypes";
+import type { Background, Effect } from "../../slices/workspaceTypes";
 import { advancePrologueStep, createInitialPrologueState } from "../packages/presetLoader";
 import type { StandaloneSessionRecord, StandaloneSessionStore } from "../storage/sessionStore";
 import { getVfsBlobAsync, resolveVfsUrl } from "../storage/vfsBlobRegistry";
@@ -22,6 +24,9 @@ import type { StandaloneHttpClient } from "./httpClient";
 export interface ChatTurnDriverContext {
   getApiConfig: () => ApiConfig;
   getCharacters: () => Character[];
+  getBackgrounds?: () => Background[];
+  getEffects?: () => Effect[];
+  getSystemConfig?: () => Partial<SystemConfig>;
   getChat: () => ChatSnapshot;
   setChat: (next: ChatSnapshot) => void;
   emitChat: () => void;
@@ -31,6 +36,40 @@ export interface ChatTurnDriverContext {
   httpClient: StandaloneHttpClient;
   resolveFileUrl: (path: string) => string;
   onProgressCheckpoint?: () => void;
+}
+
+function matchSemanticTagIndex(
+  tagsText: string,
+  itemCount: number,
+  rawQuery: string,
+  allowedIndices?: Set<number>,
+): number {
+  const query = rawQuery.trim().toLowerCase();
+  if (!query || itemCount <= 0) return -1;
+  const tags = tagContents(tagsText, itemCount);
+  const tokens = query
+    .split(/[\s,，、/;；]+/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+  let bestIdx = -1;
+  let bestScore = 0;
+
+  for (let i = 0; i < itemCount; i += 1) {
+    if (allowedIndices && !allowedIndices.has(i)) continue;
+    const tag = (tags[i] || "").toLowerCase();
+    if (!tag) continue;
+    let score = tag.includes(query) ? 10 : 0;
+    for (const token of tokens) {
+      if (tag.includes(token)) {
+        score += 1;
+      }
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestIdx = i;
+    }
+  }
+  return bestIdx;
 }
 
 export class StandaloneChatTurnDriver {
@@ -142,35 +181,58 @@ export class StandaloneChatTurnDriver {
   private resolveCharacterSprite(
     character: Character,
     requestedSprite: number | string | undefined,
+    requestedVibe: string | undefined,
     outfits: Record<string, CharacterOutfitState>,
   ): {
     url: string;
     mouthSync?: string;
     portraitCrop?: ChatSprite["portraitCrop"];
     transitions?: ChatSprite["transitions"];
-  } {
+  } | null {
+    if (requestedSprite === -1 || (typeof requestedSprite === "string" && requestedSprite.trim() === "-1")) {
+      return null;
+    }
+
     const sprites = character.sprites ?? [];
     if (!sprites.length) {
       return { url: "" };
     }
 
     const activeGroup = outfits[character.name]?.activeGroup || character.default_sprite_group || "";
-    const groupMatches = activeGroup ? sprites.filter((item) => item.group === activeGroup) : sprites;
-    const pool = groupMatches.length ? groupMatches : sprites;
+    const groupIndices = new Set<number>();
+    sprites.forEach((item, idx) => {
+      if (!activeGroup || item.group === activeGroup) {
+        groupIndices.add(idx);
+      }
+    });
+    const pool = groupIndices.size ? sprites.filter((_, idx) => groupIndices.has(idx)) : sprites;
 
     let selected = pool[0];
-    if (typeof requestedSprite === "number" && Number.isFinite(requestedSprite)) {
-      const idx = Math.max(0, Math.min(sprites.length - 1, Math.round(requestedSprite) - 1));
+    const numericSprite =
+      typeof requestedSprite === "number" && Number.isFinite(requestedSprite)
+        ? requestedSprite
+        : typeof requestedSprite === "string" && /^\d+$/.test(requestedSprite.trim())
+          ? Number(requestedSprite.trim())
+          : undefined;
+
+    if (numericSprite !== undefined) {
+      const idx = Math.max(0, Math.min(sprites.length - 1, Math.round(numericSprite) - 1));
       const direct = sprites[idx];
       if (!activeGroup || direct.group === activeGroup || character.fallback_to_default_group !== false) {
         selected = direct;
       }
-    } else if (typeof requestedSprite === "string" && requestedSprite.trim()) {
-      const query = requestedSprite.trim().toLowerCase();
-      const tagLines = (character.emotion_tags || "").split(/\r?\n/);
-      const matchedIdx = tagLines.findIndex((line) => line.toLowerCase().includes(query));
-      if (matchedIdx >= 0 && sprites[matchedIdx]) {
-        selected = sprites[matchedIdx];
+    } else {
+      const query = (requestedVibe || (typeof requestedSprite === "string" ? requestedSprite : "")).trim();
+      if (query) {
+        const matchedIdx = matchSemanticTagIndex(
+          character.emotion_tags || "",
+          sprites.length,
+          query,
+          groupIndices.size && character.fallback_to_default_group === false ? groupIndices : undefined,
+        );
+        if (matchedIdx >= 0 && sprites[matchedIdx]) {
+          selected = sprites[matchedIdx];
+        }
       }
     }
 
@@ -194,12 +256,13 @@ export class StandaloneChatTurnDriver {
   private updateStageSprite(
     character: Character,
     requestedSprite: number | string | undefined,
+    requestedVibe: string | undefined,
     outfits: Record<string, CharacterOutfitState>,
   ) {
     const current = this.ctx.getChat();
-    const resolved = this.resolveCharacterSprite(character, requestedSprite, outfits);
+    const resolved = this.resolveCharacterSprite(character, requestedSprite, requestedVibe, outfits);
+    if (!resolved || !resolved.url) return;
     const url = resolved.url;
-    if (!url) return;
 
     const existingIdx = current.sprites.findIndex(
       (s) => s.label === character.name || s.identityKey === character.name,
@@ -244,6 +307,95 @@ export class StandaloneChatTurnDriver {
       mouthSync: nextSprite.mouthSync,
       portraitCrop: nextSprite.portraitCrop,
       transitions: nextSprite.transitions,
+    });
+  }
+
+  private removeStageSprite(characterName: string) {
+    const current = this.ctx.getChat();
+    const nextSprites = current.sprites.filter((s) => s.label !== characterName && s.identityKey !== characterName);
+    if (nextSprites.length === current.sprites.length) return;
+    this.ctx.setChat({
+      ...current,
+      sprites: nextSprites,
+    });
+    this.ctx.emitChat();
+    this.ctx.emitStageEvent({
+      v: 1,
+      seq: this.nextSeq(),
+      ts: Date.now(),
+      type: "sprite.remove",
+      characterName,
+    });
+  }
+
+  private resolveActiveBackground(session: StandaloneSessionRecord): Background | undefined {
+    const backgrounds = this.ctx.getBackgrounds?.() ?? [];
+    if (!backgrounds.length) return undefined;
+    const targetName = (session.payload.backgroundName || "").trim().toLowerCase();
+    return (
+      (targetName ? backgrounds.find((b) => b.name.trim().toLowerCase() === targetName) : undefined) ?? backgrounds[0]
+    );
+  }
+
+  private applySceneChange(session: StandaloneSessionRecord, sprite?: number | string, vibe?: string) {
+    const background = this.resolveActiveBackground(session);
+    const items = background?.sprites ?? [];
+    if (!items.length) return;
+
+    let idx = -1;
+    if (typeof sprite === "number" && Number.isFinite(sprite)) {
+      idx = Math.max(0, Math.min(items.length - 1, Math.round(sprite) - 1));
+    } else if (typeof sprite === "string" && /^\d+$/.test(sprite.trim())) {
+      idx = Math.max(0, Math.min(items.length - 1, Number(sprite.trim()) - 1));
+    } else if (vibe || typeof sprite === "string") {
+      idx = matchSemanticTagIndex(background?.bg_tags || "", items.length, vibe || String(sprite ?? ""));
+    }
+    if (idx < 0 || !items[idx]) return;
+
+    const url = this.ctx.resolveFileUrl(items[idx].path);
+    if (!url) return;
+    this.ctx.setChat({
+      ...this.ctx.getChat(),
+      backgroundPath: url,
+    });
+    this.ctx.emitChat();
+    this.ctx.emitStageEvent({
+      v: 1,
+      seq: this.nextSeq(),
+      ts: Date.now(),
+      type: "background.change",
+      url,
+    });
+  }
+
+  private applyBgmChange(session: StandaloneSessionRecord, sprite?: number | string, vibe?: string) {
+    const background = this.resolveActiveBackground(session);
+    const items = background?.bgm_list ?? [];
+    if (!items.length) return;
+
+    let idx = -1;
+    if (typeof sprite === "number" && Number.isFinite(sprite)) {
+      idx = Math.max(0, Math.min(items.length - 1, Math.round(sprite) - 1));
+    } else if (typeof sprite === "string" && /^\d+$/.test(sprite.trim())) {
+      idx = Math.max(0, Math.min(items.length - 1, Number(sprite.trim()) - 1));
+    } else if (vibe || typeof sprite === "string") {
+      idx = matchSemanticTagIndex(background?.bgm_tags || "", items.length, vibe || String(sprite ?? ""));
+    }
+    if (idx < 0 || !items[idx]) return;
+
+    const url = this.ctx.resolveFileUrl(items[idx]);
+    if (!url) return;
+    this.ctx.setChat({
+      ...this.ctx.getChat(),
+      bgmPath: url,
+    });
+    this.ctx.emitChat();
+    this.ctx.emitStageEvent({
+      v: 1,
+      seq: this.nextSeq(),
+      ts: Date.now(),
+      type: "bgm.change",
+      url,
     });
   }
 
@@ -363,6 +515,9 @@ export class StandaloneChatTurnDriver {
     try {
       const systemPrompt = buildStandaloneDialogSystemPrompt({
         characters: activeCharacters.length ? activeCharacters : characters.slice(0, 1),
+        backgrounds: this.ctx.getBackgrounds?.(),
+        effects: this.ctx.getEffects?.(),
+        systemConfig: this.ctx.getSystemConfig?.(),
         payload: session.payload,
         outfits: session.outfits,
         stats: this.ctx.getChat().stats,
@@ -414,13 +569,47 @@ export class StandaloneChatTurnDriver {
         }
       }
 
-      const speechItems = parsedItems.filter(
-        (item): item is Extract<typeof item, { kind: "speech" }> => item.kind === "speech",
-      );
+      const stageItems = parsedItems.filter((item) => item.kind !== "stat" && item.kind !== "choice");
+      const speechIndices = stageItems
+        .map((item, idx) => (item.kind === "speech" ? idx : -1))
+        .filter((idx) => idx >= 0);
+      const lastSpeechStageIdx = speechIndices.length ? speechIndices[speechIndices.length - 1] : -1;
 
-      for (let i = 0; i < speechItems.length; i += 1) {
+      for (let i = 0; i < stageItems.length; i += 1) {
         if (abort.signal.aborted) return;
-        const seg = speechItems[i];
+        const item = stageItems[i];
+        if (item.kind === "scene") {
+          this.applySceneChange(latestSession, item.sprite, item.vibe);
+          continue;
+        }
+        if (item.kind === "bgm") {
+          this.applyBgmChange(latestSession, item.sprite, item.vibe);
+          continue;
+        }
+        if (item.kind === "portrait") {
+          const targetChar = characters.find((c) => c.name === item.characterName);
+          if (targetChar) {
+            if (item.outfit && latestSession.autoOutfitSwitch && !outfits[targetChar.name]?.locked) {
+              if (targetChar.sprite_groups?.includes(item.outfit)) {
+                outfits[targetChar.name] = {
+                  characterName: targetChar.name,
+                  activeGroup: item.outfit,
+                  locked: false,
+                  updatedAtMs: Date.now(),
+                };
+              }
+            }
+            this.updateStageSprite(targetChar, item.sprite, item.vibe, outfits);
+            if (item.leave) {
+              this.removeStageSprite(targetChar.name);
+            }
+          }
+          continue;
+        }
+        if (item.kind !== "speech") {
+          continue;
+        }
+        const seg = item;
         const targetChar =
           characters.find((c) => c.name === seg.characterName) ?? (seg.isNarration ? undefined : primaryChar);
 
@@ -436,7 +625,7 @@ export class StandaloneChatTurnDriver {
         }
 
         if (targetChar && !seg.isNarration) {
-          this.updateStageSprite(targetChar, seg.sprite, outfits);
+          this.updateStageSprite(targetChar, seg.sprite, seg.vibe, outfits);
         }
 
         const displayText = seg.translate ? `${seg.speech}\n${seg.translate}` : seg.speech;
@@ -509,9 +698,13 @@ export class StandaloneChatTurnDriver {
             volume: targetChar?.speech_volume ?? 1.0,
           });
           await this.waitForPlaybackOrAdvance(playbackId, 30_000, abort.signal);
-        } else if (i < speechItems.length - 1) {
+        } else if (i < lastSpeechStageIdx) {
           const paceMs = Math.min(4200, Math.max(1600, displayText.length * 85));
           await this.waitForPlaybackOrAdvance(null, paceMs, abort.signal);
+        }
+
+        if (seg.leave && targetChar && !seg.isNarration) {
+          this.removeStageSprite(targetChar.name);
         }
       }
 
@@ -616,7 +809,7 @@ export class StandaloneChatTurnDriver {
       if (signal.aborted) return;
       const seg = step.segments[i];
       if (primaryChar && !seg.narration) {
-        this.updateStageSprite(primaryChar, seg.spriteIndex + 1, session.outfits);
+        this.updateStageSprite(primaryChar, seg.spriteIndex + 1, undefined, session.outfits);
       }
       const speakerDisplay = seg.narration ? "" : seg.speaker;
       this.ctx.setChat({

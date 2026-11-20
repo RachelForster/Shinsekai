@@ -52,6 +52,7 @@ import { getLlmProviderPreset } from "./ai/adapters/llm/presets";
 import { standaloneHttpJson, standaloneHttpRequest } from "./ai/httpClient";
 import { StandaloneChatTurnDriver } from "./ai/standaloneChatTurn";
 import { exportCharPackage, importCharPackage, refreshCharacterMouthManifestUrls } from "./packages/charPackageCodec";
+import { characterNameKey, generateStandaloneTemplateSummary } from "./ai/templateGenerator";
 import {
   loadBundledPresets,
   resolveBundledStarterAssetUrl,
@@ -402,6 +403,9 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
   const turnDriver = new StandaloneChatTurnDriver({
     getApiConfig: () => ctx.config.api_config,
     getCharacters: () => ctx.config.characters,
+    getBackgrounds: () => ctx.config.background_list,
+    getEffects: () => ctx.config.effect_list,
+    getSystemConfig: () => ctx.config.system_config,
     getChat: () => ctx.getChat(),
     setChat: (next) => ctx.setChat(next),
     emitChat: emitStandaloneChat,
@@ -520,12 +524,33 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
         const starterBg = ctx.config.background_list[0]?.name ?? "星海观测台";
         const currentTemplates = ctx.getTemplates();
         if (currentTemplates.length) {
+          const starterScenario = "在星海观测台展开温柔又轻松的互动对话。";
+          let starterSystem = currentTemplates[0].system ?? "";
+          let starterContent = currentTemplates[0].content ?? "";
+          try {
+            const generated = generateStandaloneTemplateSummary(
+              {
+                name: `${starterChar} 的观测台`,
+                scenario: starterScenario,
+                characters: ctx.config.characters.length ? [starterChar] : [],
+                backgroundName: starterBg,
+                voiceLanguage: ctx.config.system_config.voice_language,
+              },
+              ctx.config,
+            );
+            starterSystem = generated.system ?? "";
+            starterContent = generated.content;
+          } catch {
+            // Fall back to existing starter system prompt when cast is unavailable.
+          }
           ctx.setTemplates([
             {
               ...currentTemplates[0],
               id: currentTemplates[0].id || "starter-template",
               name: `${starterChar} 的观测台`,
-              scenario: "在星海观测台展开温柔又轻松的互动对话。",
+              scenario: starterScenario,
+              system: starterSystem,
+              content: starterContent,
             },
           ]);
         }
@@ -1117,6 +1142,32 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
     },
   };
 
+  async function generateCharacterBrief(input: { name: string; setting: string }) {
+    await ensureInitialized();
+    const provider = ctx.config.api_config.llm_provider || "硅基流动";
+    const key = (ctx.config.api_config.llm_api_key?.[provider] ?? "").trim();
+    if (!key && provider !== "Ollama") {
+      return baseCharacters.generateBrief(input);
+    }
+    const preset = getLlmProviderPreset(provider);
+    const adapter = resolveLlmAdapter(provider);
+    const res = await adapter.complete(
+      {
+        provider,
+        apiKey: key,
+        baseUrl: ctx.config.api_config.llm_base_urls?.[provider] || preset.defaultBaseUrl,
+        model: ctx.config.api_config.llm_model?.[provider] || preset.defaultModel,
+        messages: [
+          { role: "system", content: "根据角色名称与设定，用2句话凝练一段中文人物简介。" },
+          { role: "user", content: `角色：${input.name}\n设定：${input.setting}` },
+        ],
+        maxTokens: 256,
+      },
+      standaloneHttpRequest,
+    );
+    return { characterBrief: res.content.trim(), message: "生成成功" };
+  }
+
   return {
     agent: createAgentPreviewPlatform(),
     avatarRuntimes: createAvatarRuntimesPreviewPlatform(),
@@ -1443,30 +1494,41 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
         await putVfsBlob(exportVfsPath, blob, { mimeType: "application/zip", persist: false });
         return exportVfsPath;
       },
-      async generateBrief(input) {
+      async ensureBriefs(names) {
         await ensureInitialized();
-        const provider = ctx.config.api_config.llm_provider || "硅基流动";
-        const key = (ctx.config.api_config.llm_api_key?.[provider] ?? "").trim();
-        if (!key && provider !== "Ollama") {
-          return baseCharacters.generateBrief(input);
+        const selected: (typeof ctx.config.characters)[number][] = [];
+        const generatedNames: string[] = [];
+        const seen = new Set<string>();
+        let changed = false;
+        for (const rawName of names) {
+          const key = characterNameKey(String(rawName ?? ""));
+          if (!key || seen.has(key)) continue;
+          seen.add(key);
+          const char = ctx.config.characters.find((c) => characterNameKey(c.name) === key);
+          if (!char) continue;
+          if (!char.character_brief?.trim()) {
+            const briefResult = await generateCharacterBrief({
+              name: char.name,
+              setting: char.character_setting,
+            });
+            if (briefResult.characterBrief?.trim()) {
+              char.character_brief = briefResult.characterBrief.trim();
+              generatedNames.push(char.name);
+              changed = true;
+            }
+          }
+          selected.push(char);
         }
-        const preset = getLlmProviderPreset(provider);
-        const adapter = resolveLlmAdapter(provider);
-        const res = await adapter.complete(
-          {
-            provider,
-            apiKey: key,
-            baseUrl: ctx.config.api_config.llm_base_urls?.[provider] || preset.defaultBaseUrl,
-            model: ctx.config.api_config.llm_model?.[provider] || preset.defaultModel,
-            messages: [
-              { role: "system", content: "根据角色名称与设定，用2句话凝练一段中文人物简介。" },
-              { role: "user", content: `角色：${input.name}\n设定：${input.setting}` },
-            ],
-            maxTokens: 256,
-          },
-          standaloneHttpRequest,
-        );
-        return { characterBrief: res.content.trim(), message: "生成成功" };
+        if (changed) {
+          await persistAppConfig();
+        }
+        return {
+          characters: clone(selected),
+          generatedNames,
+        };
+      },
+      async generateBrief(input) {
+        return generateCharacterBrief(input);
       },
       async generateSetting(input) {
         await ensureInitialized();
@@ -1586,6 +1648,15 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
     },
     templates: {
       ...baseTemplates,
+      async generate(input) {
+        await ensureInitialized();
+        const nextVoice = input.voiceLanguage?.trim();
+        if (nextVoice && nextVoice !== ctx.config.system_config.voice_language) {
+          ctx.config.system_config.voice_language = nextVoice;
+          await persistAppConfig();
+        }
+        return generateStandaloneTemplateSummary(input, ctx.config);
+      },
       async list() {
         await ensureInitialized();
         return clone(ctx.getTemplates());
