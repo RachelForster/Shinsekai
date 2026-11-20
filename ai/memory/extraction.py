@@ -10,7 +10,8 @@ import re
 from typing import Any
 
 from ai.memory.chunking import DEFAULT_DIALOGUE_CHUNK_TOKENS, chunk_plain_dialogue
-from ai.memory.temporal import resolve_event_timestamp
+from ai.memory.metadata_tags import pack_system_tags
+from ai.memory.temporal import resolve_event_timestamp, resolve_valid_until_timestamp
 from ai.memory.token_estimator import estimate_message_tokens
 from core.chat_history.text import history_payload_to_plain_text
 from sdk.adapters.memory import (
@@ -31,7 +32,9 @@ _SYSTEM_PROMPT = (
     "You extract durable long-term memories from roleplay chat. "
     "Return only JSON. Do not include prose."
 )
-_DIALOGUE_KINDS = frozenset({"profile", "episodic", "promise"})
+_DIALOGUE_KINDS = frozenset(
+    {"profile", "episodic", "promise", "relational", "scene", "visual", "retraction"}
+)
 _SELF_NAMES = frozenset({"user", "__self__", "你", "自设", "player", "human"})
 
 
@@ -143,15 +146,25 @@ def build_structured_extraction_prompt(
         f"Current local timestamp: {anchor}\n"
         f"Active characters in scene: [{chars_desc}] (default character_name: {default_char!r}; "
         "use 'user' ONLY for durable public facts about the human player).\n"
-        "Keep only durable facts, preferences, relationships, promises, significant events, or state updates.\n"
-        "Ignore filler, temporary emotions, system narration, and duplicates.\n"
-        "For mutable attributes/preferences (e.g. favorite drink, occupation, current goal), set a stable "
-        "`slot_key` like 'profile:favorite_drink' so updates supersede outdated facts.\n"
-        "Resolve relative dates ('明天', '昨天', '下周') against the current local timestamp into YYYY-MM-DD in `event_time`.\n"
+        "Keep only durable facts, preferences, relationship/attitude shifts, promises, shared visual moments, "
+        "significant events, or explicit corrections.\n"
+        "Ignore filler, fleeting chatter, boilerplate system narration, and duplicates.\n"
+        "Memory `kind` rules:\n"
+        "- 'profile': stable attributes, preferences, habits, or status updates (set a stable `slot_key` like "
+        "'profile:favorite_drink' so updates supersede outdated values).\n"
+        "- 'episodic': memorable plot events or shared experiences.\n"
+        "- 'promise': commitments, plans, or upcoming appointments (set `valid_until` to the target YYYY-MM-DD when bounded).\n"
+        "- 'relational': meaningful Event -> Belief -> Consequence shifts in a character's trust, affection, "
+        "guardedness, or subjective impression toward the user/others.\n"
+        "- 'visual': concrete visual memories from shared images/photos/screenshots or screen/game companion "
+        "observations (capture subjects, visual details, emotional reaction, and game/subject `entities`).\n"
+        "- 'retraction': ONLY when the user explicitly negates/retracts an earlier wrong statement without a replacement.\n"
+        "Resolve relative dates ('明天', '昨天', '下周') against the current local timestamp into YYYY-MM-DD in `event_time` "
+        "(and optional `valid_until` for time-bounded promises or temporary states).\n"
         "Return JSON array only, each item shaped like:\n"
         '[{"character_name":"Name","detail":"exact concrete memory","gist":"brief vague impression (<=25 chars)",'
-        '"kind":"episodic|profile|promise","slot_key":"","topics":["tag"],"entities":["Entity"],'
-        '"importance":0.7,"event_time":"YYYY-MM-DD or null"}]\n\n'
+        '"kind":"episodic|profile|promise|relational|visual|retraction","slot_key":"","topics":["tag"],'
+        '"entities":["Entity"],"importance":0.7,"event_time":"YYYY-MM-DD or null","valid_until":"YYYY-MM-DD or null"}]\n\n'
         f"Dialogue:\n{clean_text(dialogue)}"
     )
 
@@ -318,6 +331,29 @@ def parse_memory_drafts(
             if raw_event_time not in {None, "", "null", "None"}
             else None
         )
+        raw_valid_until = (
+            row.get("valid_until")
+            or row.get("validUntil")
+            or row.get("expires_at")
+        )
+        valid_until = (
+            resolve_valid_until_timestamp(raw_valid_until, anchor_iso=now_iso)
+            if raw_valid_until not in {None, "", "null", "None"}
+            else None
+        )
+        raw_visual_ref = clean_text(
+            row.get("visual_ref") or row.get("visualRef"),
+            max_chars=512,
+        )
+        packed_topics = (
+            pack_system_tags(
+                topics,
+                valid_until=valid_until,
+                visual_ref=raw_visual_ref,
+            )
+            if (valid_until is not None or raw_visual_ref)
+            else topics
+        )
 
         raw_speaker = clean_text(
             row.get("character_name") or row.get("characterName") or row.get("owner_id"),
@@ -337,7 +373,7 @@ def parse_memory_drafts(
                 scope=scope,
                 slot_key=slot_key,
                 kind=kind,
-                topic_tags=topics,
+                topic_tags=packed_topics,
                 entities=entities,
                 importance=importance,
                 pinned=False,

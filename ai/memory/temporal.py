@@ -300,6 +300,61 @@ def resolve_event_timestamp(
     return None
 
 
+def resolve_valid_until_timestamp(
+    raw_value: Any,
+    *,
+    anchor_ts: float | None = None,
+    anchor_iso: str = "",
+) -> float | None:
+    """Resolve an extracted foresight expiration (`valid_until`) to end-of-period epoch seconds."""
+    if raw_value is None or isinstance(raw_value, bool):
+        return None
+    if isinstance(raw_value, (int, float)):
+        return parse_iso_or_epoch(raw_value)
+
+    text = str(raw_value or "").strip()
+    if not text or text.lower() in {"null", "none"}:
+        return None
+    try:
+        num = float(text)
+        if num > 0:
+            return num / 1000.0 if num > 1e11 else num
+    except ValueError:
+        pass
+
+    effective_anchor = anchor_ts
+    if effective_anchor is None or effective_anchor <= 0:
+        effective_anchor = parse_iso_or_epoch(anchor_iso) or time.time()
+    anchor_dt = datetime.fromtimestamp(effective_anchor)
+
+    # Full ISO datetime with explicit clock time (e.g. 2026-11-22T20:00:00+08:00)
+    if "T" in text or ":" in text:
+        normalized = text.replace("Z", "+00:00")
+        try:
+            return datetime.fromisoformat(normalized).timestamp()
+        except ValueError:
+            pass
+
+    # Date-only or relative range ("2026-11-22", "明天", "下周", "三天后") -> end of period (23:59:59)
+    _start_ts, end_ts = parse_query_time_range(text, now_ts=effective_anchor)
+    if end_ts is not None:
+        return end_ts
+
+    match_full = _ISO_FULL_DATE_RE.search(text)
+    if match_full:
+        try:
+            target = datetime(
+                int(match_full.group("year")),
+                int(match_full.group("month")),
+                int(match_full.group("day")),
+                tzinfo=anchor_dt.tzinfo,
+            )
+            return _day_bounds(target)[1]
+        except ValueError:
+            return None
+    return None
+
+
 def format_event_date_tag(
     event_at: float | None,
     *,
@@ -320,4 +375,5 @@ __all__ = [
     "parse_iso_or_epoch",
     "parse_query_time_range",
     "resolve_event_timestamp",
+    "resolve_valid_until_timestamp",
 ]

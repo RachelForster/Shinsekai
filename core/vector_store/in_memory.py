@@ -196,7 +196,9 @@ class InMemoryMemoryRepository:
                             (
                                 rec.detail_text,
                                 rec.gist_text,
-                                " ".join(rec.topic_tags),
+                                " ".join(
+                                    t for t in rec.topic_tags if not t.startswith("__sys:")
+                                ),
                                 " ".join(rec.entities),
                             )
                         )

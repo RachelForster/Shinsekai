@@ -65,6 +65,9 @@ class PerceptionAutoHooks:
         user = next((msg for msg in reversed(context.messages) if msg.get("role") == "user"), None)
         for message in context.messages:
             if message is not user and message.get("role") == "user" and message.get("source") == "perception":
+                raw_prev = str(message.get("content") or "")
+                if PERCEPTION_CONTEXT_MARKER in raw_prev:
+                    message.setdefault("_perception_digest", raw_prev)
                 message["content"] = "[角色根据当时的画面主动回应。]"
         if user is None:
             return

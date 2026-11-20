@@ -19,6 +19,7 @@ import urllib.request
 from ai.memory.constants import MEMORY_STORE_FILENAME
 from ai.memory.deduplication import find_duplicate_memory, semantic_deduplication_threshold
 from ai.memory.ebbinghaus import EbbinghausRetentionPolicy
+from ai.memory.metadata_tags import unpack_system_tags
 from ai.memory.engine import (
     HybridMemoryEngine,
     resolve_memory_read_filter,
@@ -178,6 +179,17 @@ def _memory_service_timeout_sec() -> float:
     return timeout
 
 
+def is_memory_backend_ready() -> bool:
+    """Return True when either the HTTP bridge or an initialized/patched local engine is active."""
+    if _memory_service_url():
+        return True
+    if peek_mem0() is not None:
+        return True
+    from ai.memory import runtime as _rt
+
+    return ensure_mem0 is not _rt.ensure_mem0
+
+
 def _memory_service_request(
     endpoint: str,
     payload: dict[str, Any],
@@ -283,7 +295,8 @@ def _serialize_memory_record(
     is_pinned = bool(
         record.pinned or record.scope == SCOPE_CHAR_CANON or record.kind == "canon"
     )
-    return {
+    meta = unpack_system_tags(record.topic_tags)
+    payload: dict[str, Any] = {
         "id": record.id,
         "memory": record.detail_text,
         "detail": record.detail_text,
@@ -294,7 +307,7 @@ def _serialize_memory_record(
         "pinned": is_pinned,
         "scope": record.scope,
         "slotKey": record.slot_key,
-        "topicTags": list(record.topic_tags),
+        "topicTags": list(meta.public_tags),
         "entities": list(record.entities),
         "importance": round(float(record.importance), 3),
         "createdAt": float(record.created_at),
@@ -307,6 +320,13 @@ def _serialize_memory_record(
         "recallCount": int(record.recall_count),
         "sourceSessionId": record.source_session_id,
     }
+    if meta.visual_ref:
+        payload["visualRef"] = meta.visual_ref
+    if meta.valid_until is not None:
+        payload["validUntil"] = float(meta.valid_until)
+    if meta.consolidated_seq is not None:
+        payload["consolidatedSeq"] = int(meta.consolidated_seq)
+    return payload
 
 
 def memory_list(
@@ -352,7 +372,11 @@ def memory_list(
                     records_by_id[rec.id] = rec
 
         sorted_records = sorted(
-            records_by_id.values(),
+            (
+                r
+                for r in records_by_id.values()
+                if str(r.kind or "").strip().lower() != "retraction"
+            ),
             key=lambda r: (
                 0 if (r.pinned or r.scope == SCOPE_CHAR_CANON or r.kind == "canon") else 1,
                 -float(r.created_at),
