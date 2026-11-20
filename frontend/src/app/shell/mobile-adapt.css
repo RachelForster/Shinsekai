@@ -102,10 +102,32 @@
     );
 
     --m3-primary: light-dark(
-      color-mix(in oklab, var(--theme-accent) 94%, #c45472),
-      color-mix(in oklab, var(--theme-accent) 78%, #ffffff)
+      color-mix(in oklab, var(--theme-accent) 84%, #ffffff),
+      color-mix(in oklab, var(--theme-accent) 72%, #ffffff)
     );
     --m3-on-primary: light-dark(#ffffff, color-mix(in oklab, var(--theme-accent) 18%, #171013));
+    --m3-primary-container: light-dark(
+      color-mix(in oklab, var(--theme-accent) 16%, #ffffff),
+      color-mix(in oklab, var(--theme-accent) 24%, #201d20)
+    );
+    --m3-primary-container-hover: light-dark(
+      color-mix(in oklab, var(--theme-accent) 23%, #ffffff),
+      color-mix(in oklab, var(--theme-accent) 32%, #242024)
+    );
+    --m3-primary-container-border: light-dark(
+      color-mix(in oklab, var(--theme-accent) 34%, #ffffff),
+      color-mix(in oklab, var(--theme-accent) 42%, rgb(255 255 255 / 0.14))
+    );
+    --m3-on-primary-container: var(--m3-on-secondary-container);
+    --m3-switch-checked-bg: light-dark(
+      color-mix(in oklab, var(--theme-accent) 46%, #ffffff),
+      color-mix(in oklab, var(--theme-accent) 46%, #221d20)
+    );
+    --m3-switch-checked-border: light-dark(
+      color-mix(in oklab, var(--theme-accent) 54%, #ffffff),
+      color-mix(in oklab, var(--theme-accent) 56%, rgb(255 255 255 / 0.16))
+    );
+    --m3-switch-checked-thumb: light-dark(#ffffff, color-mix(in oklab, var(--theme-accent) 18%, #ffffff));
     --m3-secondary-container: light-dark(
       color-mix(in oklab, var(--theme-accent) 14%, #ffffff),
       color-mix(in oklab, var(--theme-accent) 22%, #201d20)
@@ -144,9 +166,7 @@
     --m3-elevation-3:
       0 6px 16px light-dark(rgb(0 0 0 / 0.05), rgb(0 0 0 / 0.38)),
       0 16px 36px light-dark(rgb(0 0 0 / 0.08), rgb(0 0 0 / 0.48));
-    --m3-primary-shadow:
-      0 1px 2px light-dark(rgb(0 0 0 / 0.05), rgb(0 0 0 / 0.28)),
-      0 4px 12px color-mix(in oklab, var(--m3-primary) 24%, transparent);
+    --m3-primary-shadow: 0 1px 2px light-dark(rgb(0 0 0 / 0.025), rgb(0 0 0 / 0.2));
     --m3-easing: cubic-bezier(0.2, 0, 0, 1);
   }
 
@@ -238,10 +258,10 @@
     height: 36px;
     padding: 0 14px;
     gap: 6px;
-    border: 1px solid transparent;
+    border: 1px solid var(--m3-primary-container-border);
     border-radius: var(--m3-shape-full);
-    color: var(--m3-on-primary);
-    background: var(--m3-primary);
+    color: var(--m3-on-primary-container);
+    background: var(--m3-primary-container);
     box-shadow: var(--m3-primary-shadow);
     font-size: var(--text-base);
     font-weight: 600;
@@ -249,10 +269,12 @@
     -webkit-tap-highlight-color: transparent;
     transition:
       background-color 150ms var(--m3-easing),
+      border-color 150ms var(--m3-easing),
       transform 120ms var(--m3-easing);
   }
 
   .m3-top-app-bar__action.button:active:not(:disabled) {
+    background: var(--m3-primary-container-hover);
     transform: scale(0.97);
   }
 
@@ -428,7 +450,7 @@
     display: none;
   }
 
-  .app-shell .page__header + * {
+  .app-shell :is(.page__header, .logs-header) + * {
     margin-top: 0;
   }
 
@@ -668,10 +690,15 @@
   .app-shell .button--primary:hover:not(:disabled),
   .dialog .button--primary,
   .dialog .button--primary:hover:not(:disabled) {
-    border-color: transparent;
-    color: var(--m3-on-primary);
-    background: var(--m3-primary);
+    border-color: var(--m3-primary-container-border);
+    color: var(--m3-on-primary-container);
+    background: var(--m3-primary-container);
     box-shadow: var(--m3-primary-shadow);
+  }
+
+  .app-shell .button--primary:active:not(:disabled),
+  .dialog .button--primary:active:not(:disabled) {
+    background: var(--m3-primary-container-hover);
   }
 
   .app-shell .button--primary:disabled,
@@ -871,8 +898,8 @@
 
   .app-shell .switch__input:checked + .switch__track,
   .dialog .switch__input:checked + .switch__track {
-    border-color: var(--m3-primary);
-    background: var(--m3-primary);
+    border-color: var(--m3-switch-checked-border);
+    background: var(--m3-switch-checked-bg);
   }
 
   .app-shell .switch__input:checked + .switch__track > .switch__thumb,
@@ -882,8 +909,8 @@
     width: 24px;
     height: 24px;
     transform: translateX(20px);
-    background: var(--m3-on-primary);
-    box-shadow: 0 1px 3px rgb(0 0 0 / 0.16);
+    background: var(--m3-switch-checked-thumb);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.1);
   }
 
   .app-shell .switch__label,
@@ -1034,6 +1061,32 @@
     flex: 1 1 auto;
   }
 
+  .app-shell .conversation-card__actions .button--primary,
+  .app-shell .conversation-card__actions .button--primary:hover:not(:disabled) {
+    border-color: var(--m3-card-border);
+    color: var(--color-text-primary);
+    background: var(--m3-surface-container-high);
+    box-shadow: 0 1px 2px light-dark(rgb(0 0 0 / 0.025), rgb(0 0 0 / 0.18));
+  }
+
+  .app-shell .conversation-card__actions .button--primary:active:not(:disabled) {
+    border-color: var(--m3-primary-container-border);
+    color: var(--m3-on-primary-container);
+    background: var(--m3-primary-container);
+  }
+
+  .app-shell .conversation-type-badge:not(.conversation-type-badge--story) {
+    border-color: var(--m3-card-border);
+    color: var(--color-text-muted);
+    background: var(--m3-inner-bg);
+  }
+
+  .app-shell .conversation-type-badge--story {
+    border-color: var(--m3-primary-container-border);
+    color: var(--m3-on-secondary-container);
+    background: var(--m3-secondary-container);
+  }
+
   .app-shell .conversation-library__active {
     padding: var(--mobile-card-padding);
     gap: var(--mobile-space-3);
@@ -1100,7 +1153,7 @@
 
   .app-shell .effect-page__content {
     gap: var(--mobile-section-gap);
-    margin-top: var(--mobile-space-2);
+    margin-top: 0;
   }
 
   .app-shell .effect-audio-list__header {

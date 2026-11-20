@@ -81,14 +81,40 @@
   );
 
   --m3-primary: light-dark(
-    color-mix(in oklab, var(--theme-accent) 94%, #c45472),
-    color-mix(in oklab, var(--theme-accent) 78%, #ffffff)
+    color-mix(in oklab, var(--theme-accent) 84%, #ffffff),
+    color-mix(in oklab, var(--theme-accent) 72%, #ffffff)
   );
   --m3-primary-hover: light-dark(
-    color-mix(in oklab, var(--m3-primary) 90%, #1a0b10),
-    color-mix(in oklab, var(--m3-primary) 88%, #ffffff)
+    color-mix(in oklab, var(--theme-accent) 92%, #ffffff),
+    color-mix(in oklab, var(--theme-accent) 80%, #ffffff)
   );
   --m3-on-primary: light-dark(#ffffff, color-mix(in oklab, var(--theme-accent) 18%, #171013));
+  --m3-primary-container: light-dark(
+    color-mix(in oklab, var(--theme-accent) 16%, #ffffff),
+    color-mix(in oklab, var(--theme-accent) 24%, #201d20)
+  );
+  --m3-primary-container-hover: light-dark(
+    color-mix(in oklab, var(--theme-accent) 23%, #ffffff),
+    color-mix(in oklab, var(--theme-accent) 32%, #242024)
+  );
+  --m3-primary-container-border: light-dark(
+    color-mix(in oklab, var(--theme-accent) 34%, #ffffff),
+    color-mix(in oklab, var(--theme-accent) 42%, rgb(255 255 255 / 0.14))
+  );
+  --m3-primary-container-border-hover: light-dark(
+    color-mix(in oklab, var(--theme-accent) 46%, #ffffff),
+    color-mix(in oklab, var(--theme-accent) 54%, rgb(255 255 255 / 0.18))
+  );
+  --m3-on-primary-container: var(--m3-on-secondary-container);
+  --m3-switch-checked-bg: light-dark(
+    color-mix(in oklab, var(--theme-accent) 46%, #ffffff),
+    color-mix(in oklab, var(--theme-accent) 46%, #221d20)
+  );
+  --m3-switch-checked-border: light-dark(
+    color-mix(in oklab, var(--theme-accent) 54%, #ffffff),
+    color-mix(in oklab, var(--theme-accent) 56%, rgb(255 255 255 / 0.16))
+  );
+  --m3-switch-checked-thumb: light-dark(#ffffff, color-mix(in oklab, var(--theme-accent) 18%, #ffffff));
   --m3-secondary-container: light-dark(
     color-mix(in oklab, var(--theme-accent) 14%, #ffffff),
     color-mix(in oklab, var(--theme-accent) 22%, #201d20)
@@ -109,12 +135,10 @@
   --m3-elevation-3:
     0 8px 20px light-dark(rgb(0 0 0 / 0.06), rgb(0 0 0 / 0.4)),
     0 24px 48px light-dark(rgb(0 0 0 / 0.1), rgb(0 0 0 / 0.52));
-  --m3-primary-shadow:
-    0 1px 2px light-dark(rgb(0 0 0 / 0.06), rgb(0 0 0 / 0.28)),
-    0 4px 12px color-mix(in oklab, var(--m3-primary) 24%, transparent);
+  --m3-primary-shadow: 0 1px 2px light-dark(rgb(0 0 0 / 0.025), rgb(0 0 0 / 0.2));
   --m3-primary-shadow-hover:
-    0 2px 4px light-dark(rgb(0 0 0 / 0.08), rgb(0 0 0 / 0.34)),
-    0 6px 18px color-mix(in oklab, var(--m3-primary) 32%, transparent);
+    0 2px 6px light-dark(rgb(0 0 0 / 0.04), rgb(0 0 0 / 0.28)),
+    0 4px 12px light-dark(color-mix(in oklab, var(--theme-accent) 10%, transparent), rgb(0 0 0 / 0.24));
 
   /* Unify Semantic Theme Tokens Across Light & Dark Desktop UI */
   --color-text-primary: light-dark(color-mix(in oklab, var(--theme-accent) 8%, #1f1d1e), #f4f3f5);
@@ -299,6 +323,31 @@
 
   /* ── Page Title & Floating Capsule Section Quick-Nav ── */
 
+  .app-shell :is(.page__header, .logs-header) {
+    grid-template-columns: max-content minmax(0, 1fr);
+  }
+
+  .app-shell .page__header > .page__actions {
+    position: relative;
+    z-index: 5;
+  }
+
+  .app-shell :is(.character-page__select, .background-page__group-select, .effect-page__group-select) {
+    width: clamp(136px, 14vw, 204px);
+    min-width: 132px;
+  }
+
+  .app-shell
+    :is(.character-page__toolbar-group--primary, .background-page__package-actions, .effect-page__package-actions) {
+    gap: 6px;
+  }
+
+  .app-shell .page__actions {
+    flex-wrap: wrap;
+    row-gap: 8px;
+    overflow: visible;
+  }
+
   .app-shell .page__title,
   .app-shell .conversation-library__header h1,
   .app-shell .conversation-setup__title,
@@ -429,6 +478,38 @@
     border: 1px solid var(--m3-inner-border);
     border-radius: var(--m3-shape-md);
     background: var(--m3-inner-bg);
+  }
+
+  .app-shell .conversation-card__actions .button--primary {
+    border-color: var(--m3-card-border);
+    color: var(--color-text-primary);
+    background: var(--m3-surface-container-high);
+    box-shadow: 0 1px 2px light-dark(rgb(0 0 0 / 0.025), rgb(0 0 0 / 0.18));
+  }
+
+  .app-shell .conversation-card:hover .conversation-card__actions .button--primary:not(:disabled) {
+    border-color: var(--m3-primary-container-border);
+    color: var(--m3-on-primary-container);
+    background: var(--m3-primary-container);
+  }
+
+  .app-shell .conversation-card__actions .button--primary:hover:not(:disabled) {
+    border-color: var(--m3-primary-container-border-hover);
+    color: var(--m3-on-primary-container);
+    background: var(--m3-primary-container-hover);
+    box-shadow: var(--m3-primary-shadow-hover);
+  }
+
+  .app-shell .conversation-type-badge:not(.conversation-type-badge--story) {
+    border-color: var(--m3-card-border);
+    color: var(--color-text-secondary);
+    background: var(--m3-inner-bg);
+  }
+
+  .app-shell .conversation-type-badge--story {
+    border-color: var(--m3-primary-container-border);
+    color: var(--m3-on-secondary-container);
+    background: var(--m3-secondary-container);
   }
 
   .app-shell .conversation-library__empty img {
@@ -690,16 +771,16 @@
   }
 
   :is(.app-shell, .dialog, .desktop-runtime) .button--primary {
-    border-color: transparent;
-    color: var(--m3-on-primary);
-    background: var(--m3-primary);
+    border-color: var(--m3-primary-container-border);
+    color: var(--m3-on-primary-container);
+    background: var(--m3-primary-container);
     box-shadow: var(--m3-primary-shadow);
   }
 
   :is(.app-shell, .dialog, .desktop-runtime) .button--primary:hover:not(:disabled) {
-    border-color: transparent;
-    color: var(--m3-on-primary);
-    background: var(--m3-primary-hover);
+    border-color: var(--m3-primary-container-border-hover);
+    color: var(--m3-on-primary-container);
+    background: var(--m3-primary-container-hover);
     box-shadow: var(--m3-primary-shadow-hover);
     transform: translateY(-1px);
   }
@@ -767,8 +848,68 @@
     padding-inline: 0;
   }
 
-  .app-shell .character-page__toolbar-group--links .button {
+  .app-shell
+    :is(.character-page__toolbar-group--links, .background-page__resource-actions, .effect-page__resource-actions)
+    .button {
     padding-inline: 12px;
+  }
+
+  .app-shell .page__header .button.button--header-icon {
+    position: relative;
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    min-height: 36px;
+    padding: 0;
+    gap: 0;
+    overflow: visible;
+    border-radius: var(--m3-shape-full);
+  }
+
+  .app-shell .page__header .button.button--header-icon > .button__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .app-shell .page__header .button.button--header-icon > :is(.button__icon, .button__spinner) {
+    width: 17px;
+    height: 17px;
+  }
+
+  .app-shell .page__header .button.button--header-icon[data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    top: calc(100% + 7px);
+    left: 50%;
+    z-index: 30;
+    padding: 4px 9px;
+    border: 1px solid var(--color-tooltip-border);
+    border-radius: 8px;
+    color: var(--color-tooltip-text);
+    background: var(--color-tooltip-bg);
+    box-shadow: var(--m3-elevation-2);
+    font-size: 12px;
+    font-weight: 560;
+    line-height: 1.3;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transform: translate(-50%, -3px);
+    transition:
+      opacity 130ms var(--m3-easing),
+      transform 130ms var(--m3-easing);
+  }
+
+  .app-shell .page__header .button.button--header-icon[data-tooltip]:is(:hover, :focus-visible)::after {
+    opacity: 1;
+    transform: translate(-50%, 0);
   }
 
   :is(.app-shell, .dialog) .icon-button {
@@ -937,7 +1078,7 @@
       border-color 180ms var(--m3-easing);
   }
 
-  :is(.app-shell, .dialog) .switch:hover:not(.switch--disabled) .switch__track {
+  :is(.app-shell, .dialog) .switch:hover:not(.switch--disabled) .switch__input:not(:checked) + .switch__track {
     border-color: color-mix(in oklab, var(--m3-primary) 45%, var(--m3-field-border));
   }
 
@@ -958,8 +1099,8 @@
   }
 
   :is(.app-shell, .dialog) .switch__input:checked + .switch__track {
-    border-color: var(--m3-primary);
-    background: var(--m3-primary);
+    border-color: var(--m3-switch-checked-border);
+    background: var(--m3-switch-checked-bg);
   }
 
   :is(.app-shell, .dialog) .switch__input:checked + .switch__track > .switch__thumb {
@@ -968,8 +1109,8 @@
     width: 20px;
     height: 20px;
     transform: translateX(18px);
-    background: var(--m3-on-primary);
-    box-shadow: 0 1px 3px rgb(0 0 0 / 0.18);
+    background: var(--m3-switch-checked-thumb);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.1);
   }
 
   :is(.app-shell, .dialog) .switch__label {
@@ -1042,6 +1183,8 @@
   /* ── Logs Page Harmonization (Overrides Boxy 7px / Pink Defaults) ── */
 
   .app-shell .logs-page {
+    --logs-content-max-width: var(--settings-content-max-width);
+    gap: var(--space-5);
     --logs-badge-border-radius: var(--m3-shape-full);
     --logs-detail-border-radius: var(--m3-shape-md);
     --logs-panel-border-radius: var(--m3-shape-card-desktop);
@@ -1054,6 +1197,30 @@
     --logs-file-meta-color: var(--color-text-muted);
     --logs-file-active-meta-color: var(--m3-on-secondary-container);
     --logs-toolbar-background: color-mix(in oklab, var(--m3-card-bg) 90%, transparent);
+  }
+
+  .app-shell .logs-header {
+    min-height: 52px;
+    gap: var(--space-4);
+    margin: calc(-1 * var(--settings-page-gutter)) calc(-1 * var(--settings-page-gutter)) 8px;
+    padding: 12px var(--settings-page-gutter);
+    border-bottom: 0;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .app-shell .logs-header + * {
+    margin-top: var(--page-header-safe-gap);
+  }
+
+  .app-shell .logs-sidebar {
+    top: 88px;
+  }
+
+  .app-shell :is(.logs-section-title, .logs-source__text strong) {
+    color: var(--color-text-primary);
   }
 
   .app-shell .logs-page :is(.logs-toolbar, .logs-sidebar, .logs-viewer) {
@@ -1079,16 +1246,16 @@
   }
 
   .app-shell .logs-page .button--primary {
-    border-color: transparent;
-    color: var(--m3-on-primary);
-    background: var(--m3-primary);
+    border-color: var(--m3-primary-container-border);
+    color: var(--m3-on-primary-container);
+    background: var(--m3-primary-container);
     box-shadow: var(--m3-primary-shadow);
   }
 
   .app-shell .logs-page .button--primary:hover:not(:disabled) {
-    border-color: transparent;
-    color: var(--m3-on-primary);
-    background: var(--m3-primary-hover);
+    border-color: var(--m3-primary-container-border-hover);
+    color: var(--m3-on-primary-container);
+    background: var(--m3-primary-container-hover);
     box-shadow: var(--m3-primary-shadow-hover);
   }
 
@@ -1116,11 +1283,12 @@
   }
 
   .app-shell .logs-page .switch__input:checked + .switch__track {
-    border-color: var(--m3-primary);
-    background: var(--m3-primary);
+    border-color: var(--m3-switch-checked-border);
+    background: var(--m3-switch-checked-bg);
   }
 
   .app-shell .logs-page .switch__input:checked + .switch__track > .switch__thumb {
-    background: var(--m3-on-primary);
+    background: var(--m3-switch-checked-thumb);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.1);
   }
 }

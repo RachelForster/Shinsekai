@@ -490,13 +490,11 @@ export function LogsPage() {
 
   return (
     <div className="page logs-page">
-      <header className="logs-header">
+      <header className="page__header logs-header">
         <div className="logs-header__copy">
-          <p className="logs-header__eyebrow">SYSTEM LOG</p>
-          <h1 className="logs-header__title">运行日志</h1>
-          <p className="logs-header__description">查看运行日志，按结构化字段筛选，并导出诊断包。</p>
+          <h1 className="page__title logs-header__title">运行日志</h1>
         </div>
-        <div className="logs-header__actions">
+        <div className="page__actions logs-header__actions">
           <Button icon={<Upload aria-hidden className="button__icon" />} onClick={() => inputRef.current?.click()}>
             导入
           </Button>
@@ -504,7 +502,6 @@ export function LogsPage() {
             icon={<Archive aria-hidden className="button__icon" />}
             loading={diagnosticsMutation.isPending}
             onClick={() => diagnosticsMutation.mutate()}
-            variant="ghost"
           >
             诊断包
           </AsyncButton>

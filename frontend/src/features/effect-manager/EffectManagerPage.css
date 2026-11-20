@@ -1,54 +1,38 @@
-.effect-page {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-lg);
-}
-
 .effect-page__header {
-  display: flex;
-  align-items: flex-start;
-  flex-wrap: wrap;
-  gap: var(--spacing-md);
-  justify-content: space-between;
+  align-items: center;
 }
 
 .effect-page__heading {
-  flex: 1 1 auto;
   min-width: 0;
 }
 
 .effect-page__primary-actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--spacing-md);
+  min-width: 0;
+  justify-content: flex-end;
 }
 
 .effect-page__group-select {
-  position: relative;
+  width: 220px;
+  min-width: 180px;
+  flex: 0 0 auto;
 }
 
-.effect-page__group-select select {
-  min-width: 160px;
+.effect-page__package-actions,
+.effect-page__resource-actions {
+  display: flex;
+  min-width: 0;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .effect-page__resource-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-}
-
-.effect-page__package-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
+  justify-content: flex-start;
 }
 
 .effect-page__content {
-  display: flex;
-  flex-direction: column;
-  gap: 48px;
-  margin-top: 48px;
+  gap: var(--space-4);
 }
 
 /* Audio list */
@@ -129,14 +113,6 @@
 
 .effect-audio-list__preview {
   min-width: 0;
-}
-
-.effect-page .form-grid--two {
-  max-width: 520px;
-}
-
-.effect-page .field-row__control .input {
-  max-width: 240px;
 }
 
 .effect-image-list {
@@ -231,20 +207,25 @@
   margin: 0 0 4px;
 }
 
+.effect-page #effect-info .field-row {
+  grid-template-columns: minmax(84px, auto) minmax(0, 1fr);
+}
 .effect-color-control {
-  gap: 2px;
+  align-items: center;
+  gap: var(--space-2);
 }
 .effect-color-control .input {
   min-width: 88px;
+  max-width: 140px;
 }
 .effect-color-control .button {
   flex: 0 0 auto;
-  padding: 0 4px;
+  white-space: nowrap;
 }
 .effect-color-control .swatch {
-  width: 16px;
-  height: 16px;
-  border-radius: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
   border: 1px solid var(--color-border);
   flex-shrink: 0;
 }

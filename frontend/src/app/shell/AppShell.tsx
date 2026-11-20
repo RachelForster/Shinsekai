@@ -1,4 +1,4 @@
-import { lazy, Suspense, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 import { FeatureHighlightsPrompt } from "../../features/release-highlights/FeatureHighlightsPrompt";
@@ -57,6 +57,13 @@ export function AppShell() {
     checkComplete: false,
     open: false,
   });
+
+  useEffect(() => {
+    if (outletRef.current) {
+      outletRef.current.scrollTop = 0;
+      outletRef.current.scrollLeft = 0;
+    }
+  }, [location.pathname]);
 
   return (
     <div className="app-shell">
