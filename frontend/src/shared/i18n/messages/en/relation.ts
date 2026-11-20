@@ -8,8 +8,9 @@ export const relationEnMessages: Record<RelationMessageKey, string> = {
   "relation.tableTarget": "Target",
   "relation.tableRelation": "Relationship",
   "relation.color": "Color",
-  "relation.addRow": "Add row",
+  "relation.addRow": "Add relationship",
   "relation.saveTable": "Save table",
+  "relation.cancelChanges": "Discard changes",
   "relation.autoColor": "Auto",
   "relation.tableHint":
     "Choose source and target on each row. Selecting a graph node shows only its outgoing relationships.",

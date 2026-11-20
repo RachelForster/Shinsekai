@@ -66,15 +66,31 @@ function relationshipHasChanged(previous: RelationEdge | undefined, next: Relati
 }
 
 export function tableOperations(rows: RelationRow[], nodes: readonly RelationNode[]): RelationRequest[] {
+  const nodeAdditions: RelationRequest[] = [];
   const edgeRemovals: RelationRequest[] = [];
   const edgeUpdates: RelationRequest[] = [];
   const nodeKeys = new Set(nodes.map((node) => node.key));
+  const canonical = new Map(nodes.map((node) => [node.key.trim().toLowerCase(), node.key]));
   const seenPairs = new Set<string>();
 
-  for (const row of rows) {
+  for (const original of rows) {
+    const row = { ...original };
     if (isEmptyRelationshipRow(row)) {
       if (row.edge) edgeRemovals.push({ op: "delete_edge", source: row.edge.source, target: row.edge.target });
       continue;
+    }
+
+    for (const field of ["source", "target"] as const) {
+      const name = row[field].trim();
+      if (!name || name.length > 200) throw new Error("invalidEndpoints");
+      const normalized = name.toLowerCase();
+      const existing = canonical.get(normalized);
+      row[field] = existing ?? name;
+      if (!existing) {
+        canonical.set(normalized, name);
+        nodeKeys.add(name);
+        nodeAdditions.push({ op: "add_node", node: { key: name } });
+      }
     }
 
     const edge = convertRowToEdge(row, nodeKeys, seenPairs);
@@ -84,7 +100,7 @@ export function tableOperations(rows: RelationRow[], nodes: readonly RelationNod
     if (relationshipHasChanged(row.edge, edge)) edgeUpdates.push({ op: "upsert_edge", edge });
   }
 
-  const operations = [...edgeRemovals, ...edgeUpdates];
+  const operations = [...nodeAdditions, ...edgeRemovals, ...edgeUpdates];
   if (operations.length > 1000) throw new Error("tooManyChanges");
   return operations;
 }

@@ -51,9 +51,12 @@ describe("tableOperations", () => {
     expect(() => tableOperations(rows, nodes)).toThrow("duplicateEdge");
   });
 
-  it("validates endpoints against the graph nodes", () => {
+  it("creates missing endpoints before saving the relationship", () => {
     const rows = createRows({ target: "Missing" });
-    expect(() => tableOperations(rows, nodes)).toThrow("invalidEndpoints");
+    expect(tableOperations(rows, nodes)).toEqual([
+      { op: "add_node", node: { key: "Missing" } },
+      { op: "upsert_edge", edge: { source: "A", target: "Missing", content: "Friends", temperature: 8 } },
+    ]);
     expect(tableOperations(rows, [...nodes, { key: "Missing" }])).toEqual([
       { op: "upsert_edge", edge: { source: "A", target: "Missing", content: "Friends", temperature: 8 } },
     ]);

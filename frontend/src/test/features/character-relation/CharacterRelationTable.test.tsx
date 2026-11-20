@@ -3,6 +3,18 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 describe("CharacterRelationTable", () => {
+  it("offers library characters and saves a typed person with the relationship", async () => {
+    renderRelationSection();
+    const source = await screen.findByRole("combobox", { name: "Source 1" });
+    fireEvent.focus(source);
+    fireEvent.click(await screen.findByRole("option", { name: "B" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Target 1" }), { target: { value: "New person" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeDisabled());
+    const graph = await state.api!.getRelationGraph("A");
+    expect(graph.nodes).toEqual(expect.arrayContaining([{ key: "B" }, { key: "New person" }]));
+    expect(graph.edges).toContainEqual(expect.objectContaining({ source: "B", target: "New person" }));
+  });
   it("saves a directed relationship in the current owner graph", async () => {
     await seedRelationNode("A", { key: "B" });
     renderRelationSection();
@@ -26,7 +38,7 @@ describe("CharacterRelationTable", () => {
     ]);
     renderRelationSection();
     fireEvent.click(await screen.findByRole("button", { name: "Delete relationship 1" }));
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
     expect(screen.getByLabelText("Source 1")).toHaveValue("A");
     expect(screen.getByLabelText("Relationship 1")).toHaveValue("Friends");
   });
