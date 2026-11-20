@@ -186,11 +186,27 @@
   background: var(--color-surface);
   text-align: left;
   cursor: pointer;
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    background 180ms ease;
 }
 
 .t2i-mode:hover:not(:disabled) {
   border-color: var(--color-border-hover);
   background: var(--color-surface-hover);
+}
+
+.t2i-mode:active:not(:disabled) {
+  transform: translateY(1px) scale(0.99);
+  box-shadow: inset 0 2px 4px var(--color-shadow);
+  transition-duration: 80ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t2i-mode {
+    transition: none;
+  }
 }
 
 .t2i-mode:disabled {

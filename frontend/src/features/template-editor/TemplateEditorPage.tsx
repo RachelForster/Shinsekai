@@ -1003,10 +1003,10 @@ export function TemplateEditorPage({
           <div className="template-options-panel__header">
             <h2 className="template-options-panel__title">{t("template.section.generate")}</h2>
             <AsyncButton
-              className="template-generate-button"
-              disabled={!sessionRestored}
+              className={`template-generate-button${generateMutation.isPending && generateMutation.variables?.silent ? " template-generate-button--auto" : ""}`}
+              disabled={!sessionRestored || generateMutation.isPending}
               icon={<Sparkles aria-hidden className="button__icon" />}
-              loading={generateMutation.isPending}
+              loading={generateMutation.isPending && !generateMutation.variables?.silent}
               onClick={handleGenerateTemplate}
               variant="primary"
             >

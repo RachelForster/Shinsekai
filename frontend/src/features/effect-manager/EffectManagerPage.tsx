@@ -654,7 +654,7 @@ export function EffectManagerPage() {
               </Button>
             </div>
           </div>
-          <div className="form-grid form-grid--two">
+          <div className="form-grid form-grid--two effect-info-grid">
             <label className="field-row">
               <span className="field-row__label">{t("effect.field.name")}</span>
               <span className="field-row__control">

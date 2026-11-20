@@ -68,6 +68,53 @@
 .agent-drawer__close:hover {
   background: var(--color-surface-hover);
 }
+
+.agent-drawer .button {
+  border-radius: 999px;
+  border-color: var(--color-accent-border);
+  color: light-dark(var(--color-accent-secondary), var(--color-text-primary));
+  background: light-dark(
+    var(--color-accent-bg-hover),
+    color-mix(in oklch, var(--theme-accent) 22%, var(--color-bg-panel))
+  );
+  box-shadow:
+    inset 0 1px 0 var(--color-surface-raised),
+    0 3px 9px var(--color-shadow);
+  transition:
+    background 180ms ease,
+    transform 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.agent-drawer .button:hover:not(:disabled) {
+  background: var(--color-accent-bg-intense);
+  transform: none;
+}
+
+.agent-drawer__close,
+.agent-tab button {
+  border-radius: 999px;
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    background 180ms ease;
+}
+
+.agent-drawer .button:active:not(:disabled),
+.agent-drawer__close:active,
+.agent-tab button:active:not(:disabled) {
+  transform: translateY(1px) scale(0.985);
+  box-shadow: inset 0 2px 4px var(--color-shadow);
+  transition-duration: 80ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-drawer .button,
+  .agent-drawer__close,
+  .agent-tab button {
+    transition: none;
+  }
+}
 .agent-panel {
   display: flex;
   min-width: 0;
@@ -145,7 +192,7 @@
 .agent-tab button {
   padding: 8px 10px;
   border: 0;
-  border-radius: var(--radius-control);
+  border-radius: 999px;
   color: var(--color-text-muted);
   background: transparent;
   font: inherit;

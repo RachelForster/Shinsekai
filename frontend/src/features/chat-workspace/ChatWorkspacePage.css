@@ -21,6 +21,24 @@
 .conversation-create-dialog {
   width: min(560px, calc(100vw - 32px));
 }
+.conversation-create-dialog .button,
+.conversation-create-dialog .icon-button {
+  border-radius: 999px;
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease;
+}
+.conversation-create-dialog .button:active:not(:disabled),
+.conversation-create-dialog .icon-button:active:not(:disabled) {
+  transform: translateY(1px) scale(0.985);
+  box-shadow: inset 0 2px 4px var(--color-shadow);
+}
+@media (prefers-reduced-motion: reduce) {
+  .conversation-create-dialog .button,
+  .conversation-create-dialog .icon-button {
+    transition: none;
+  }
+}
 .conversation-create__types {
   display: grid;
   gap: var(--space-3);

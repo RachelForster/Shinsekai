@@ -173,6 +173,11 @@
   flex: 0 0 116px;
 }
 
+.template-generate-button--auto:disabled {
+  opacity: 1;
+  cursor: wait;
+}
+
 .template-options-panel__hint {
   margin: 0;
   border: 1px solid var(--color-info-border);
@@ -215,12 +220,25 @@
   min-height: 29px;
   padding: 0 6px;
   border: 1px solid var(--color-border);
-  border-radius: 4px;
+  border-radius: 999px;
   color: var(--color-text-muted);
   background: var(--color-bg-input);
   cursor: pointer;
   font: inherit;
   font-size: 12px;
+  transition:
+    transform 180ms ease,
+    background 180ms ease;
+}
+
+.template-language-segment:active {
+  transform: translateY(1px) scale(0.985);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .template-language-segment {
+    transition: none;
+  }
 }
 
 .template-language-segment:hover {

@@ -135,6 +135,10 @@
   max-width: 520px;
 }
 
+.effect-page .effect-info-grid {
+  max-width: none;
+}
+
 .effect-page .field-row__control .input {
   max-width: 240px;
 }
@@ -232,19 +236,21 @@
 }
 
 .effect-color-control {
-  gap: 2px;
+  gap: var(--space-2);
+  flex-wrap: wrap;
 }
 .effect-color-control .input {
-  min-width: 88px;
+  min-width: 96px;
 }
 .effect-color-control .button {
   flex: 0 0 auto;
-  padding: 0 4px;
+  max-width: none;
+  padding: 7px 14px;
 }
 .effect-color-control .swatch {
-  width: 16px;
-  height: 16px;
-  border-radius: 2px;
+  width: 28px;
+  height: 24px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--color-border);
   flex-shrink: 0;
 }
