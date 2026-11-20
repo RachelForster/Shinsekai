@@ -6,8 +6,8 @@ describe("CharacterRelationSection", () => {
   it("renders the relationship fields", async () => {
     await seedRelationNode("A", { key: "Innkeeper" });
     renderRelationSection();
-    expect(await screen.findByRole("combobox", { name: "Source 1" })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "Target 1" })).toBeInTheDocument();
+    expect(await screen.findByRole("textbox", { name: "Source 1" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Target 1" })).toBeInTheDocument();
     expect(screen.getByLabelText("Relationship 1")).toBeInTheDocument();
     expect(screen.getByLabelText("Affection 1")).toBeInTheDocument();
   });
@@ -22,6 +22,6 @@ describe("CharacterRelationSection", () => {
 
   it("hides the relationship table when the owner name is empty", () => {
     renderRelationSection("");
-    expect(screen.queryByRole("combobox", { name: "Source 1" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Source 1" })).not.toBeInTheDocument();
   });
 });
