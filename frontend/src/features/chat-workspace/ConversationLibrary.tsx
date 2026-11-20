@@ -1,7 +1,7 @@
 import { isTauriDesktop } from "../../shared/desktop/desktopApi";
 import { useSearchParams } from "react-router-dom";
 import { runPluginSlotContribution, listPluginSlotContributions } from "../../entities/plugin/repository";
-import { useEffect, useId, useRef, useState } from "react";
+import { type MouseEvent as ReactMouseEvent, useEffect, useId, useRef, useState } from "react";
 import { Pencil, Settings, Trash2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { charactersQueryKey, listCharacters } from "../../entities/character/repository";
@@ -186,8 +186,32 @@ export function ConversationLibrary({
           const character = characters.data?.find((entry) => item.characters.includes(entry.name));
           const sprite = character?.sprites[0]?.path;
           const name = item.title || t("conversation.untitled");
+          const isStoryDirect = item.kind === "story" && !item.requiresCharacterSelection;
+          const canTapCard = !isStoryDirect && !runtimeLaunchDisabled && !init.initializationPending;
+          const handleMobileCardTap = (event: ReactMouseEvent<HTMLElement>) => {
+            if (!canTapCard) return;
+            const target = event.target instanceof Element ? event.target : null;
+            if (target?.closest(".conversation-card__actions")) return;
+            if (
+              typeof window === "undefined" ||
+              typeof window.matchMedia !== "function" ||
+              !window.matchMedia("(max-width: 760px)").matches
+            ) {
+              return;
+            }
+            if (item.hasSettings) {
+              void launch(item.id);
+            } else {
+              onEdit(item.id, item.kind);
+            }
+          };
           return (
-            <article className="conversation-card" key={item.id}>
+            <article
+              className="conversation-card"
+              data-mobile-clickable={canTapCard ? "true" : undefined}
+              key={item.id}
+              onClick={handleMobileCardTap}
+            >
               <Portrait
                 active={false}
                 alt=""

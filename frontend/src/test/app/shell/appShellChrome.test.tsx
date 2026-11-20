@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -108,5 +108,54 @@ describe("app shell chrome", () => {
 
     expect(screen.getByText("正在同步")).toBeInTheDocument();
     expect(screen.getByText("v0.3.0")).toBeInTheDocument();
+  });
+
+  it("keeps the mobile bottom nav visible when toggling checkboxes or selects and hides only for text inputs", () => {
+    const originalInnerWidth = Object.getOwnPropertyDescriptor(window, "innerWidth");
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390, writable: true });
+
+    try {
+      renderWithI18n(
+        <>
+          <SidebarNav onAssistantToggle={vi.fn()} assistantOpen={false} />
+          <input aria-label="夜间模式" type="checkbox" />
+          <select aria-label="语言">
+            <option value="zh_CN">中文</option>
+          </select>
+          <input aria-label="接口地址" type="text" />
+        </>,
+      );
+
+      const bottomNav = screen.getByRole("navigation", { name: "移动端底部导航" });
+      const darkModeCheckbox = screen.getByRole("checkbox", { name: "夜间模式" });
+      const languageSelect = screen.getByRole("combobox", { name: "语言" });
+      const apiInput = screen.getByRole("textbox", { name: "接口地址" });
+
+      expect(bottomNav).toHaveAttribute("data-keyboard-open", "false");
+
+      act(() => {
+        darkModeCheckbox.focus();
+      });
+      expect(bottomNav).toHaveAttribute("data-keyboard-open", "false");
+
+      act(() => {
+        languageSelect.focus();
+      });
+      expect(bottomNav).toHaveAttribute("data-keyboard-open", "false");
+
+      act(() => {
+        apiInput.focus();
+      });
+      expect(bottomNav).toHaveAttribute("data-keyboard-open", "true");
+
+      act(() => {
+        apiInput.blur();
+      });
+      expect(bottomNav).toHaveAttribute("data-keyboard-open", "false");
+    } finally {
+      if (originalInnerWidth) {
+        Object.defineProperty(window, "innerWidth", originalInnerWidth);
+      }
+    }
   });
 });

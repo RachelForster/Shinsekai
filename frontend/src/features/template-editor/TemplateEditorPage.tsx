@@ -1127,7 +1127,11 @@ export function TemplateEditorPage({
               }}
             />
             {templateOptions.map((option) => (
-              <label className="template-toggle-row" key={option.key}>
+              <label
+                className="template-toggle-row"
+                data-standalone-gpu={option.key === "cg" ? "true" : undefined}
+                key={option.key}
+              >
                 <span>{option.label}</span>
                 <Switch checked={option.value} onChange={(e) => option.setValue(e.target.checked)} />
               </label>
@@ -1157,7 +1161,7 @@ export function TemplateEditorPage({
           </div>
 
           <div className="template-runtime-fields">
-            <label className="template-side-field">
+            <label className="template-side-field" data-standalone-gpu="true">
               <span className="template-side-field__label">{t("chat.memoryMode.label")}</span>
               <Select
                 aria-label={t("chat.memoryMode.label")}

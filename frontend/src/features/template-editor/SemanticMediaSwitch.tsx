@@ -108,7 +108,7 @@ export function SemanticMediaSwitch({ checked, onChange }: SemanticMediaSwitchPr
   }, [checked]);
 
   return (
-    <label className="template-toggle-row" title={t("template.semanticMedia.hint")}>
+    <label className="template-toggle-row" data-standalone-gpu="true" title={t("template.semanticMedia.hint")}>
       <span>{pending ? t("template.semanticMedia.preparing") : t("template.semanticMedia.label")}</span>
       <Switch
         aria-busy={pending}
