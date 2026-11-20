@@ -89,10 +89,10 @@ describe("convertGraphToRows", () => {
       edges: [],
     };
     expect(convertGraphToRows(graph)).toHaveLength(1);
-    expect(tableOperations(convertGraphToRows(graph), graph.nodes)).toEqual([]);
+    expect(tableOperations(convertGraphToRows(graph), graph.nodes, graph.owner)).toEqual([]);
     graph.edges = [{ source: "A", target: "B", content: "Friends", temperature: 8 }];
     expect(convertGraphToRows(graph)).toHaveLength(2);
-    expect(tableOperations(convertGraphToRows(graph), graph.nodes)).toEqual([]);
+    expect(tableOperations(convertGraphToRows(graph), graph.nodes, graph.owner)).toEqual([]);
   });
 
   it("preserves multiline relationship text in the editable row", () => {

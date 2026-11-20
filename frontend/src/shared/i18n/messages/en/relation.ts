@@ -6,6 +6,7 @@ export const relationEnMessages: Record<RelationMessageKey, string> = {
   "relation.invalidPerson": "Person names must be at most 200 characters and new identifiers must be unique.",
   "relation.tableSource": "Source",
   "relation.tableTarget": "Target",
+  "relation.swapEndpoints": "Swap source and target",
   "relation.tableRelation": "Relationship",
   "relation.color": "Color",
   "relation.addRow": "Add relationship",

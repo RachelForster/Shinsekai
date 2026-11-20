@@ -6,22 +6,25 @@ describe("CharacterRelationTable", () => {
   it("offers library characters and saves a typed person with the relationship", async () => {
     renderRelationSection();
     const source = await screen.findByRole("combobox", { name: "Source 1" });
-    fireEvent.focus(source);
+    expect(source).toHaveValue("A");
+    expect(source).toBeDisabled();
+    fireEvent.focus(screen.getByRole("combobox", { name: "Target 1" }));
     fireEvent.click(await screen.findByRole("option", { name: "B" }));
     fireEvent.change(screen.getByRole("combobox", { name: "Target 1" }), { target: { value: "New person" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeDisabled());
     const graph = await state.api!.getRelationGraph("A");
-    expect(graph.nodes).toEqual(expect.arrayContaining([{ key: "B" }, { key: "New person" }]));
-    expect(graph.edges).toContainEqual(expect.objectContaining({ source: "B", target: "New person" }));
+    expect(graph.nodes).toEqual(expect.arrayContaining([{ key: "A" }, { key: "New person" }]));
+    expect(graph.edges).toContainEqual(expect.objectContaining({ source: "A", target: "New person" }));
   });
   it("saves a directed relationship in the current owner graph", async () => {
     await seedRelationNode("A", { key: "B" });
     renderRelationSection();
     await screen.findByLabelText("Source 1");
-    expect(screen.getByLabelText("Source 1")).toBeEnabled();
+    expect(screen.getByLabelText("Source 1")).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Swap source and target 1" }));
     fireEvent.change(screen.getByLabelText("Source 1"), { target: { value: "B" } });
-    fireEvent.change(screen.getByLabelText("Target 1"), { target: { value: "A" } });
+    expect(screen.getByLabelText("Target 1")).toBeDisabled();
     fireEvent.change(screen.getByLabelText("Relationship 1"), { target: { value: "Avoids me" } });
     fireEvent.change(screen.getByRole("spinbutton", { name: /1$/ }), { target: { value: "-2" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -76,7 +79,7 @@ describe("CharacterRelationTable", () => {
   it("retains relationship text after a failed save", async () => {
     await seedRelationNode("A", { key: "B" });
     renderRelationSection();
-    fireEvent.change(await screen.findByLabelText("Source 1"), { target: { value: "A" } });
+    await screen.findByLabelText("Source 1");
     fireEvent.change(screen.getByLabelText("Target 1"), { target: { value: "B" } });
     fireEvent.change(screen.getByLabelText("Relationship 1"), { target: { value: "Draft" } });
     vi.spyOn(state.api!, "applyRelationChanges").mockRejectedValueOnce(new Error("Unable to save graph"));
@@ -84,5 +87,18 @@ describe("CharacterRelationTable", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Unable to save graph");
     expect(screen.getByLabelText("Relationship 1")).toHaveValue("Draft");
     expect(screen.getByRole("button", { name: "Reload" })).toBeDisabled();
+  });
+
+  it("defaults new rows to the owner and swaps endpoints", async () => {
+    renderRelationSection();
+    await screen.findByLabelText("Source 1");
+    fireEvent.click(screen.getByRole("button", { name: "Add relationship" }));
+    expect(screen.getByLabelText("Source 2")).toHaveValue("A");
+    expect(screen.getByLabelText("Source 2")).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Target 2"), { target: { value: "B" } });
+    fireEvent.click(screen.getByRole("button", { name: "Swap source and target 2" }));
+    expect(screen.getByLabelText("Source 2")).toHaveValue("B");
+    expect(screen.getByLabelText("Target 2")).toHaveValue("A");
+    expect(screen.getByLabelText("Target 2")).toBeDisabled();
   });
 });

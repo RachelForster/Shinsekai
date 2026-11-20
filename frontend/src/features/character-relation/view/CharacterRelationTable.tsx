@@ -1,5 +1,5 @@
-import { Save, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { ArrowLeftRight, Save, Trash2 } from "lucide-react";
+import { Fragment, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import { charactersQueryKey, listCharacters } from "../../../entities/character/repository";
@@ -55,7 +55,11 @@ export function CharacterRelationTable({
     new Set([...graph.nodes.map((node) => node.key), ...characters.map((person) => person.name)]),
   );
   const changeRowField = (index: number, field: EditableRelationField, value: string) => {
-    setRows((previous) => previous.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
+    setRows((previous) =>
+      previous.map((row, i) =>
+        i === index ? { ...row, ...(!row.source && !row.target ? { source: graph.owner } : {}), [field]: value } : row,
+      ),
+    );
     setDirty(true);
     onDirty(true);
     setError("");
@@ -67,11 +71,20 @@ export function CharacterRelationTable({
     onDirty(true);
     setError("");
   };
-  const addRelationshipRow = (): void => setRows((previous) => [...previous, emptyRelationRow()]);
+  const addRelationshipRow = (): void => setRows((previous) => [...previous, emptyRelationRow(graph.owner)]);
+
+  const swapEndpoints = (index: number) => {
+    setRows((previous) =>
+      previous.map((row, i) => (i === index ? { ...row, source: row.target, target: row.source } : row)),
+    );
+    setDirty(true);
+    onDirty(true);
+    setError("");
+  };
 
   const saveRelationshipChanges = async (): Promise<void> => {
     try {
-      const operations = tableOperations(rows, graph.nodes);
+      const operations = tableOperations(rows, graph.nodes, graph.owner);
       if (!operations.length || (await save(operations))) {
         setDirty(false);
         onDirty(false);
@@ -123,7 +136,9 @@ export function CharacterRelationTable({
       <div className="relation-rows" aria-label={t("relation.editTab")}>
         <div className="relation-row relation-row--header" aria-hidden="true">
           <span />
-          {columns.map((column) => (
+          <span className="relation-row__label">{columns[0]}</span>
+          <span />
+          {columns.slice(1).map((column) => (
             <span className="relation-row__label" key={column}>
               {column}
             </span>
@@ -144,15 +159,35 @@ export function CharacterRelationTable({
               </button>
             </div>
             {(["source", "target"] as const).map((field, column) => (
-              <div className="relation-row__field" key={field}>
-                <RelationPersonSelect
-                  label={`${columns[column]} ${index + 1}`}
-                  value={row[field]}
-                  disabled={pending}
-                  options={people}
-                  onChange={(value) => changeRowField(index, field, value)}
-                />
-              </div>
+              <Fragment key={field}>
+                {column === 1 && (
+                  <button
+                    type="button"
+                    className="relation-row__swap"
+                    disabled={pending || (!row.source && !row.target)}
+                    aria-label={`${t("relation.swapEndpoints")} ${index + 1}`}
+                    title={t("relation.swapEndpoints")}
+                    onClick={() => swapEndpoints(index)}
+                  >
+                    <ArrowLeftRight size={16} aria-hidden="true" />
+                  </button>
+                )}
+                <div className="relation-row__field" key={field}>
+                  <RelationPersonSelect
+                    label={`${columns[column]} ${index + 1}`}
+                    value={field === "source" && !row.source && !row.target ? graph.owner : row[field]}
+                    disabled={
+                      pending || row[field] === graph.owner || (field === "source" && !row.source && !row.target)
+                    }
+                    options={
+                      row.source !== graph.owner && row.target !== graph.owner && (row.source || row.target)
+                        ? people
+                        : people.filter((person) => person.trim().toLowerCase() !== graph.owner.trim().toLowerCase())
+                    }
+                    onChange={(value) => changeRowField(index, field, value)}
+                  />
+                </div>
+              </Fragment>
             ))}
             <label className="relation-row__field relation-row__description">
               <TextArea
