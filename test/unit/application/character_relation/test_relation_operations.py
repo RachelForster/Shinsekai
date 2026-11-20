@@ -60,11 +60,25 @@ def test_query_uninitialized_graph_returns_owner_node(service):
     }
 
 
-def rename_owner(service, new_name):
+def save_test_character(service, name, *, edit_as_name=None, relation_graph=None):
+    character = service.config.get_character_by_name("chuchu")
     return service.character_manager.add_character(
-        new_name, "#fff", "chuchu", "", "", "", "", "", "",
-        edit_as_name="chuchu",
+        name=name,
+        color=character.color,
+        sprite_prefix=character.sprite_prefix,
+        gpt_model_path=character.gpt_model_path,
+        sovits_model_path=character.sovits_model_path,
+        refer_audio_path=character.refer_audio_path,
+        prompt_text=character.prompt_text,
+        prompt_lang=character.prompt_lang,
+        character_setting=character.character_setting,
+        edit_as_name=edit_as_name,
+        relation_graph=relation_graph,
     )
+
+
+def rename_owner(service, new_name):
+    return save_test_character(service, new_name, edit_as_name="chuchu")
 
 
 @pytest.mark.parametrize("new_name", ["Renamed", "CHUCHU"])
@@ -90,6 +104,45 @@ def test_rename_owner_migrates_graph(service, initialized_graph, new_name):
     }
     with pytest.raises(ValueError, match="Cannot delete the owner node"):
         apply(service, {"op": "delete_node", "key": new_name}, owner=new_name)
+
+
+def test_rename_collision_in_another_graph_changes_nothing(service, initialized_graph):
+    apply(service, add_node("chuchu"), add_node("Renamed"), owner="pareo")
+    before = [character.model_dump(mode="json") for character in service.config.config.characters]
+    saved = service.config._CHARACTERS_CONFIG_PATH.read_bytes()
+    with pytest.raises(ValueError, match="unique"):
+        rename_owner(service, "Renamed")
+    assert [character.model_dump(mode="json") for character in service.config.config.characters] == before
+    assert service.config._CHARACTERS_CONFIG_PATH.read_bytes() == saved
+
+
+def test_update_explicit_relation_graph_replaces_existing(service, initialized_graph):
+    graph = {"nodes": [{"key": "chuchu"}, {"key": "New"}], "edges": []}
+    save_test_character(service, "chuchu", edit_as_name="chuchu", relation_graph=graph)
+    assert service.get_relation_graph("chuchu") == graph | {"owner": "chuchu"}
+
+
+def test_save_request_with_old_graph_renames_all_current_graphs(service, initialized_graph, monkeypatch, tmp_path):
+    apply(service, add_node("chuchu"), upsert_edge("pareo", "chuchu"), owner="pareo")
+    config = service.config
+    config.config.api_config = SimpleNamespace(tts_provider="none")
+    monkeypatch.setattr(config, "reload", lambda: None)
+    monkeypatch.setattr("application.knowledge.manage_knowledge.rename_character_bindings", lambda *args: None)
+    monkeypatch.setattr("application.chat.templates._rename_template_session_character", lambda *args: None)
+    monkeypatch.setattr("application.chat.conversation_library.update_conversation_character", lambda *args: None)
+    state = SimpleNamespace(config_manager=config, character_manager=service.character_manager, project_root_dir=tmp_path)
+    character = config.get_character_by_name("chuchu").model_dump(mode="json")
+    character.update(name="Renamed", relation_graph={"nodes": [{"key": "chuchu"}], "edges": []})
+    result = CharacterUseCase(state).execute(CharacterRequest(
+        CharacterOperation.SAVE, {"originalName": "chuchu", "character": character},
+    ))
+    assert result["name"] == "Renamed"
+    assert {node["key"] for node in result["relation_graph"]["nodes"]} == {"Renamed", "pareo", "lock"}
+    assert result["relation_graph"]["edges"][0]["source"] == "Renamed"
+    assert service.get_relation_graph("pareo")["edges"][0]["target"] == "Renamed"
+    saved = yaml.safe_load(config._CHARACTERS_CONFIG_PATH.read_text(encoding="utf-8"))
+    other = next(item for item in saved if item["name"] == "pareo")
+    assert other["relation_graph"]["edges"][0]["target"] == "Renamed"
 
 
 def test_empty_graph_returns_new_owner_node(service):

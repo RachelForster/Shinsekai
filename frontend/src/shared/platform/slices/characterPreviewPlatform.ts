@@ -542,19 +542,24 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
           edges: [],
         },
       );
+      const migratedGraphs = new Map<number, NonNullable<Character["relation_graph"]>>();
       if (index >= 0 && originalName && originalName !== character.name) {
-        relationGraph.nodes = relationGraph.nodes.map((node) => ({
-          ...node,
-          key: node.key === originalName ? character.name : node.key,
-        }));
-        if (new Set(relationGraph.nodes.map((node) => identity(node.key))).size !== relationGraph.nodes.length) {
-          throw new Error("Node keys must be unique");
+        for (const [characterIndex, existing] of config.characters.entries()) {
+          const graph = clone(existing.relation_graph ?? { nodes: [], edges: [] });
+          graph.nodes = graph.nodes.map((node) => ({
+            ...node,
+            key: identity(node.key) === identity(originalName) ? character.name : node.key,
+          }));
+          if (new Set(graph.nodes.map((node) => identity(node.key))).size !== graph.nodes.length) {
+            throw new Error("Node keys must be unique");
+          }
+          graph.edges = graph.edges.map((edge) => ({
+            ...edge,
+            source: identity(edge.source) === identity(originalName) ? character.name : edge.source,
+            target: identity(edge.target) === identity(originalName) ? character.name : edge.target,
+          }));
+          migratedGraphs.set(characterIndex, graph);
         }
-        relationGraph.edges = relationGraph.edges.map((edge) => ({
-          ...edge,
-          source: edge.source === originalName ? character.name : edge.source,
-          target: edge.target === originalName ? character.name : edge.target,
-        }));
       }
       const savedCharacter = {
         ...clone(character),
@@ -582,8 +587,11 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
               }))
             : [],
         character_setting: character.character_setting.trim(),
-        relation_graph: relationGraph,
+        relation_graph: migratedGraphs.get(index) ?? relationGraph,
       };
+      for (const [characterIndex, graph] of migratedGraphs) {
+        if (characterIndex !== index) config.characters[characterIndex].relation_graph = graph;
+      }
       if (index >= 0) {
         config.characters[index] = savedCharacter;
       } else {
