@@ -5,12 +5,14 @@ import { describe, expect, it, vi } from "vitest";
 describe("CharacterRelationTable", () => {
   it("offers library characters and saves a typed person with the relationship", async () => {
     renderRelationSection();
-    const source = await screen.findByRole("combobox", { name: "Source 1" });
+    const source = await screen.findByRole("textbox", { name: "Source 1" });
     expect(source).toHaveValue("A");
     expect(source).toBeDisabled();
-    fireEvent.focus(screen.getByRole("combobox", { name: "Target 1" }));
-    fireEvent.click(await screen.findByRole("option", { name: "B" }));
-    fireEvent.change(screen.getByRole("combobox", { name: "Target 1" }), { target: { value: "New person" } });
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Target 1 ▾" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("combobox", { name: "Target 1 ▾" }));
+    expect(await screen.findAllByRole("option")).toHaveLength(2);
+    fireEvent.click(screen.getByRole("option", { name: "B" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Target 1" }), { target: { value: "New person" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeDisabled());
     const graph = await state.api!.getRelationGraph("A");
