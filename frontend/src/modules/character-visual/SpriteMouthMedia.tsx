@@ -20,8 +20,11 @@ const pictures = new Map<string, Promise<HTMLImageElement>>();
 function loadProfile(path: string) {
   let cached = profiles.get(path);
   if (!cached) {
-    const requestUrl = new URL(path, window.location.href);
-    if (requestUrl.pathname === "/api/media") requestUrl.pathname = "/api/characters/sprites/mouth/profile";
+    const isDirectResource = /^(?:blob:|data:)/i.test(path);
+    const requestUrl = isDirectResource ? new URL(path) : new URL(path, window.location.href);
+    if (!isDirectResource && requestUrl.pathname === "/api/media") {
+      requestUrl.pathname = "/api/characters/sprites/mouth/profile";
+    }
     cached = fetch(requestUrl.toString())
       .then(async (response) => {
         if (!response.ok) throw new Error("Mouth profile unavailable");

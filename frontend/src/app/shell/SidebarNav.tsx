@@ -5,6 +5,7 @@ import {
   FileImage,
   Gamepad2,
   Github,
+  KeyRound,
   LayoutTemplate,
   MessageCircle,
   Plug,
@@ -16,8 +17,10 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { openExternal } from "../../entities/files/repository";
+import { RuntimeModeDialog } from "../../features/runtime-mode/RuntimeModeDialog";
 import type { FrontendLanguage, MessageKey } from "../../shared/i18n";
 import { useI18n } from "../../shared/i18n";
+import { canConnectRemotePc, isRemotePcActive, isStandaloneRuntimeActive } from "../../shared/platform/runtimeTarget";
 import { useAppUpdateInfo } from "./useAppUpdateInfo";
 
 const GITHUB_REPO_URL = "https://github.com/RachelForster/Shinsekai";
@@ -139,7 +142,18 @@ function opensVirtualKeyboard(el: Element | null): boolean {
 export function SidebarNav({ onAssistantToggle, assistantOpen }: SidebarNavProps) {
   const { language, t } = useI18n();
   const location = useLocation();
+  const standaloneActive = isStandaloneRuntimeActive();
+  const showRuntimeModeControl = standaloneActive || isRemotePcActive() || canConnectRemotePc();
+  const [runtimeDialogOpen, setRuntimeDialogOpen] = useState(false);
   const [keyboardOpen, setKeyboardOpen] = useState(false);
+
+  const visibleSettingsLinks = standaloneActive
+    ? settingsLinks.filter((link) => link.to !== "/settings/onboarding")
+    : settingsLinks;
+  const visibleExtensionLinks = standaloneActive ? [] : extensionLinks;
+  const visibleMaintenanceLinks = standaloneActive
+    ? maintenanceLinks.filter((link) => link.to !== "/settings/logs")
+    : maintenanceLinks;
 
   useEffect(() => {
     if (typeof document === "undefined" || typeof window === "undefined") {
@@ -228,7 +242,7 @@ export function SidebarNav({ onAssistantToggle, assistantOpen }: SidebarNavProps
         </button>
         <nav aria-label={t("nav.settingsCenter")} className="sidebar__nav">
           <div className="sidebar__section-label">{t("nav.groupSettings")}</div>
-          {settingsLinks.map((link) => {
+          {visibleSettingsLinks.map((link) => {
             const Icon = link.icon;
             const label = sidebarLinkLabel(link, language, t);
             return (
@@ -238,19 +252,23 @@ export function SidebarNav({ onAssistantToggle, assistantOpen }: SidebarNavProps
               </NavLink>
             );
           })}
-          <div className="sidebar__section-label">{t("nav.groupExtensions")}</div>
-          {extensionLinks.map((link) => {
-            const Icon = link.icon;
-            const label = sidebarLinkLabel(link, language, t);
-            return (
-              <NavLink className="sidebar__link" key={link.to} title={label} to={link.to}>
-                <Icon aria-hidden className="sidebar__icon" />
-                <span className="sidebar__link-label">{label}</span>
-              </NavLink>
-            );
-          })}
+          {visibleExtensionLinks.length > 0 ? (
+            <>
+              <div className="sidebar__section-label">{t("nav.groupExtensions")}</div>
+              {visibleExtensionLinks.map((link) => {
+                const Icon = link.icon;
+                const label = sidebarLinkLabel(link, language, t);
+                return (
+                  <NavLink className="sidebar__link" key={link.to} title={label} to={link.to}>
+                    <Icon aria-hidden className="sidebar__icon" />
+                    <span className="sidebar__link-label">{label}</span>
+                  </NavLink>
+                );
+              })}
+            </>
+          ) : null}
           <div className="sidebar__section-label">{t("nav.groupMaintenance")}</div>
-          {maintenanceLinks.map((link) => {
+          {visibleMaintenanceLinks.map((link) => {
             const Icon = link.icon;
             const label = sidebarLinkLabel(link, language, t);
             return (
@@ -263,6 +281,17 @@ export function SidebarNav({ onAssistantToggle, assistantOpen }: SidebarNavProps
         </nav>
         <div className="sidebar__spacer" />
         <nav aria-label={t("nav.secondary")} className="sidebar__nav sidebar__nav--secondary">
+          {showRuntimeModeControl ? (
+            <button
+              className="sidebar__link sidebar__link--button"
+              onClick={() => setRuntimeDialogOpen(true)}
+              title="AI / 跨端配置"
+              type="button"
+            >
+              <KeyRound aria-hidden className="sidebar__icon" />
+              <span className="sidebar__link-label">AI / 跨端配置</span>
+            </button>
+          ) : null}
           <button
             aria-pressed={assistantOpen}
             className="sidebar__link sidebar__link--button"
@@ -326,6 +355,9 @@ export function SidebarNav({ onAssistantToggle, assistantOpen }: SidebarNavProps
           <span>系统</span>
         </NavLink>
       </nav>
+      {runtimeDialogOpen ? (
+        <RuntimeModeDialog onClose={() => setRuntimeDialogOpen(false)} open={runtimeDialogOpen} />
+      ) : null}
     </>
   );
 }

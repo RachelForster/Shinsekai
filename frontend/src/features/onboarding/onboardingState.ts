@@ -1,8 +1,11 @@
+import { getRuntimeTarget, isStandaloneRuntimeActive } from "../../shared/platform/runtimeTarget";
+
 const ONBOARDING_SEEN_KEY = "shinsekai-onboarding-seen";
 const FIRST_INSTALL_BASELINE_PENDING_KEY = "shinsekai-first-install-baseline-pending";
 
 const ONBOARDING_PATH = "/settings/onboarding";
 const TEMPLATE_PATH = "/settings/templates";
+const TOY_STAGE_PATH = "/chat";
 
 function readStorage(storage: Storage | undefined, key: string) {
   try {
@@ -25,6 +28,12 @@ function getLocalStorage() {
 }
 
 export function getInitialSettingsPath() {
+  if (getRuntimeTarget() === "toy") {
+    return TOY_STAGE_PATH;
+  }
+  if (isStandaloneRuntimeActive()) {
+    return TEMPLATE_PATH;
+  }
   const localStorage = getLocalStorage();
   if (hasSeenOnboarding()) {
     return TEMPLATE_PATH;
