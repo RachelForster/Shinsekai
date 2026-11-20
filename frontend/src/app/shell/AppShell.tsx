@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 import { FeatureHighlightsPrompt } from "../../features/release-highlights/FeatureHighlightsPrompt";
+import { isStandaloneRuntimeActive, RUNTIME_MODE_CHANGE_EVENT } from "../../shared/platform/runtimeTarget";
 import { MobileTopAppBar } from "./MobileTopAppBar";
 import { SidebarNav } from "./SidebarNav";
 import { StartupUpdatePrompt, type StartupUpdatePromptState } from "./StartupUpdatePrompt";
@@ -51,12 +52,23 @@ export function AppShell() {
   const location = useLocation();
   const outletRef = useRef<HTMLElement | null>(null);
   const mobileSubnav = resolveMobileSubnav(location.pathname);
+  const [standalone, setStandalone] = useState(() => isStandaloneRuntimeActive());
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [assistantMounted, setAssistantMounted] = useState(false);
   const [startupUpdateState, setStartupUpdateState] = useState<StartupUpdatePromptState>({
     checkComplete: false,
     open: false,
   });
+
+  useEffect(() => {
+    const updateStandalone = () => setStandalone(isStandaloneRuntimeActive());
+    window.addEventListener(RUNTIME_MODE_CHANGE_EVENT, updateStandalone);
+    window.addEventListener("storage", updateStandalone);
+    return () => {
+      window.removeEventListener(RUNTIME_MODE_CHANGE_EVENT, updateStandalone);
+      window.removeEventListener("storage", updateStandalone);
+    };
+  }, []);
 
   useEffect(() => {
     if (outletRef.current) {
@@ -66,7 +78,7 @@ export function AppShell() {
   }, [location.pathname]);
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-standalone={standalone ? "true" : "false"}>
       <SidebarNav
         onAssistantToggle={() => {
           setAssistantMounted(true);

@@ -1,5 +1,6 @@
 coverage
 dist
+dist-toy
 .vite
 node_modules
 vendor/cubism-framework
