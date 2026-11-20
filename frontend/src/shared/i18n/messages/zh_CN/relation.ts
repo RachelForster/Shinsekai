@@ -48,6 +48,8 @@ export const relationZhCNMessages = {
   "relation.target": "终点人物",
   "relation.nodeName": "人物名称",
   "relation.edgeExists": "此方向的关系已存在，请从图谱中编辑。",
+  "relation.cleanLegacy": "清理旧数据",
+  "relation.cleanLegacyWarning": "该操作会删除图谱的孤立节点和不包含当前角色的关系边，操作不可逆。",
   "relation.reload": "重新加载",
 } satisfies Record<string, string>;
 

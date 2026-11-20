@@ -53,5 +53,8 @@ export const relationEnMessages: Record<RelationMessageKey, string> = {
   "relation.target": "To",
   "relation.nodeName": "Name",
   "relation.edgeExists": "This connection already exists. Edit it from the graph.",
+  "relation.cleanLegacy": "Clean up old data",
+  "relation.cleanLegacyWarning":
+    "This will delete isolated nodes and relationship edges that do not include the current character. This action cannot be undone.",
   "relation.reload": "Reload",
 };

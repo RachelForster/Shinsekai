@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 import { useI18n } from "../../../shared/i18n";
-import { Button } from "../../../shared/ui";
+import { Button, Dialog } from "../../../shared/ui";
 import { CharacterGraphView } from "./CharacterGraphView";
 import { CharacterRelationTable } from "./CharacterRelationTable";
 import { useCharacterRelationController } from "../useCharacterRelationController";
@@ -31,9 +31,11 @@ function RelationEditor({ owner }: RelationEditorProps) {
     saveError,
     save,
     reload,
+    clean,
   } = useCharacterRelationController(owner);
   const [tab, setTab] = useState<"edit" | "graph">("edit");
   const [tableDirty, setTableDirty] = useState(false);
+  const [cleanDialogOpen, setCleanDialogOpen] = useState(false);
   const [actionsContainer, setActionsContainer] = useState<HTMLDivElement | null>(null);
   const [saveContainer, setSaveContainer] = useState<HTMLDivElement | null>(null);
   return (
@@ -65,13 +67,46 @@ function RelationEditor({ owner }: RelationEditorProps) {
           )}
         </div>
         <div className="page__actions">
-          <Button disabled={!owner || savePending || tableDirty || isFetching} onClick={() => void reload()}>
+          <Button disabled={!graph || savePending || tableDirty || isFetching} onClick={() => setCleanDialogOpen(true)}>
+            {t("relation.cleanLegacy")}
+          </Button>
+          <Button
+            disabled={!owner || savePending || tableDirty || isFetching}
+            onClick={() => void reload()}
+          >
             {t("relation.reload")}
           </Button>
           <div className="relation-action-slot" ref={setActionsContainer} />
           <div className="relation-action-slot" ref={setSaveContainer} />
         </div>
       </div>
+      <Dialog
+        open={cleanDialogOpen}
+        title={t("relation.cleanLegacy")}
+        closeLabel={t("common.cancel")}
+        dismissible={!savePending && !isFetching}
+        trapFocus
+        onClose={() => setCleanDialogOpen(false)}
+        footer={
+          <>
+            <Button
+              variant="primary"
+              disabled={savePending || isFetching}
+              onClick={() => {
+                setCleanDialogOpen(false);
+                void clean();
+              }}
+            >
+              {t("common.confirm")}
+            </Button>
+            <Button disabled={savePending || isFetching} onClick={() => setCleanDialogOpen(false)}>
+              {t("common.cancel")}
+            </Button>
+          </>
+        }
+      >
+        <p>{t("relation.cleanLegacyWarning")}</p>
+      </Dialog>
       {!owner && <p>{t("relation.saveFirst")}</p>}
       {owner && isLoading && <p role="status">{t("relation.loading")}</p>}
       {loadError && <p role="alert">{loadError}</p>}
