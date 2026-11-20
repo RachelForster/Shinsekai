@@ -7,7 +7,9 @@ import type {
   CharacterBriefBatchResult,
   CharacterBriefResult,
   CharacterMemory,
+  CharacterMemoryBatchDeleteResult,
   CharacterMemoryClarity,
+  CharacterMemoryDeleteFailure,
   CharacterMemoryImportPreview,
   CharacterMemoryImportResult,
   CharacterMemoryList,
@@ -94,6 +96,33 @@ function normalizeCharacterMemoryList(payload: unknown, fallbackAgentId: string)
   };
   if (typeof record.total === "number" && Number.isFinite(record.total)) result.total = record.total;
   if (typeof record.offset === "number" && Number.isFinite(record.offset)) result.offset = record.offset;
+  return result;
+}
+
+function normalizeCharacterMemoryBatchDeleteResult(
+  payload: unknown,
+  fallbackAgentId: string,
+): CharacterMemoryBatchDeleteResult {
+  const result: CharacterMemoryBatchDeleteResult = normalizeCharacterMemoryList(payload, fallbackAgentId);
+  const record = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {};
+  if (Array.isArray(record.deleted)) {
+    result.deleted = record.deleted.map((item) => String(item ?? "").trim()).filter(Boolean);
+  }
+  if (Array.isArray(record.failed)) {
+    result.failed = record.failed.map((entry): CharacterMemoryDeleteFailure => {
+      if (entry && typeof entry === "object") {
+        const obj = entry as Record<string, unknown>;
+        return {
+          memoryId: String(obj.memoryId ?? obj.memory_id ?? "").trim(),
+          error: String(obj.error ?? ""),
+        };
+      }
+      return {
+        memoryId: "",
+        error: String(entry ?? ""),
+      };
+    });
+  }
   return result;
 }
 
@@ -280,7 +309,7 @@ export function createCharactersHttpPlatform(transport: HttpTransport): Characte
         body: JSON.stringify(payload),
         method: "POST",
       });
-      return normalizeCharacterMemoryList(result, name);
+      return normalizeCharacterMemoryBatchDeleteResult(result, name);
     },
     pinMemory: async ({ memoryId, name, pinned, sessionId }) => {
       const payload: Record<string, unknown> = { memoryId, name, pinned };

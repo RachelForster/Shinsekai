@@ -305,12 +305,18 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
     },
     async deleteMemories(name, memoryIds) {
       const agentId = name || "user";
-      const targets = new Set(memoryIds);
       const current = characterMemories.get(agentId) ?? { agentId, count: 0, memories: [] };
+      const existingIds = new Set(current.memories.map((memory) => memory.id));
+      const uniqueIds = Array.from(new Set(memoryIds.map((id) => id.trim()).filter(Boolean)));
+      const deleted = uniqueIds.filter((id) => existingIds.has(id));
+      const failed = uniqueIds
+        .filter((id) => !existingIds.has(id))
+        .map((memoryId) => ({ memoryId, error: "memory not found" }));
+      const targets = new Set(deleted);
       const memories = current.memories.filter((memory) => !targets.has(memory.id));
       const next = { agentId, count: memories.length, memories };
       characterMemories.set(agentId, next);
-      return delay(next);
+      return delay({ ...next, deleted, failed });
     },
     async pinMemory({ memoryId, name, pinned }) {
       const agentId = name || "user";

@@ -872,6 +872,41 @@ describe("http platform", () => {
     });
   });
 
+  it("preserves deleted and failed fields when normalizing batch memory delete results", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      await mockJsonResponse({
+        agentId: "Nanami",
+        count: 1,
+        deleted: ["mem-1"],
+        failed: [{ error: "memory not found", memoryId: "mem-2" }],
+        memories: [{ id: "mem-2", memory: "likes coffee" }],
+        offset: 0,
+        total: 1,
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    const result = await platform.characters.deleteMemories("Nanami", ["mem-1", "mem-2"], { sessionId: "s1" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/characters/memories/delete-batch",
+      expect.objectContaining({
+        body: JSON.stringify({ memoryIds: ["mem-1", "mem-2"], name: "Nanami", sessionId: "s1" }),
+        method: "POST",
+      }),
+    );
+    expect(result).toEqual({
+      agentId: "Nanami",
+      count: 1,
+      deleted: ["mem-1"],
+      failed: [{ error: "memory not found", memoryId: "mem-2" }],
+      memories: [{ id: "mem-2", memory: "likes coffee" }],
+      offset: 0,
+      total: 1,
+    });
+  });
+
   it("previews and imports uploaded character memory files with task polling", async () => {
     vi.useFakeTimers();
     const preview = {

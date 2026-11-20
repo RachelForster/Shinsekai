@@ -230,10 +230,19 @@ export function useCharacterMemoryController({ memoryName }: UseCharacterMemoryC
    * refetch any other cached window so the visible page reflects the change.
    */
   const applyListMutationResult = (name: string, result: CharacterMemoryList) => {
-    queryClient.setQueryData(memoryQueryKey(name, 0), result);
+    const cached: CharacterMemoryList = {
+      agentId: result.agentId,
+      count: result.count,
+      memories: result.memories,
+    };
+    if (result.total !== undefined) cached.total = result.total;
+    if (result.offset !== undefined) cached.offset = result.offset;
+    queryClient.setQueryData(memoryQueryKey(name, 0), cached);
     void queryClient.invalidateQueries({
-      predicate: (cached) =>
-        cached.queryKey[0] === memoryQueryRoot(name)[0] && cached.queryKey[1] === name && cached.queryKey[2] !== 0,
+      predicate: (cachedEntry) =>
+        cachedEntry.queryKey[0] === memoryQueryRoot(name)[0] &&
+        cachedEntry.queryKey[1] === name &&
+        cachedEntry.queryKey[2] !== 0,
       queryKey: memoryQueryRoot(name),
     });
     setListEnabledFor(name);
@@ -421,10 +430,9 @@ export function useCharacterMemoryController({ memoryName }: UseCharacterMemoryC
     },
     onSuccess(result, variables) {
       applyListMutationResult(variables.name, result);
-      const raw = result as CharacterMemoryList & { deleted?: unknown; failed?: unknown };
       // Prefer the backend's explicit report; the returned window may not contain every id.
-      const reportedDeleted = Array.isArray(raw.deleted) ? raw.deleted.map(String) : null;
-      const failedCount = Array.isArray(raw.failed) ? raw.failed.length : 0;
+      const reportedDeleted = Array.isArray(result.deleted) ? result.deleted : null;
+      const failedCount = Array.isArray(result.failed) ? result.failed.length : 0;
       const removedIds = new Set(reportedDeleted ?? variables.memoryIds);
       setSearchData((current) => {
         if (!current) {
