@@ -145,7 +145,8 @@ def test_recovery_cleans_interrupted_batch_under_replaced_model(harness, monkeyp
     assert Path(replacement["avatars"]["mmd"]["model_path"]).is_file()
 
 
-def test_recovery_protects_motion_references_after_all_batch_states_are_overwritten(harness, monkeypatch):
+@pytest.mark.parametrize("operation", ["delete", "overwrite"])
+def test_recovery_preserves_batch_after_its_original_presets_leave_the_list(harness, monkeypatch, operation):
     from application.characters.import_recovery import recover_model_imports
     from core.media.asset_import import PendingAssetBatch, PENDING_MARKER
 
@@ -157,16 +158,23 @@ def test_recovery_protects_motion_references_after_all_batch_states_are_overwrit
             execute(use_case, CharacterOperation.IMPORT_MODEL_STATES, **body)
     state.config_manager.reload()
     bank = state.config_manager.get_character_by_name("Haru").avatars["mmd"]
-    batch = next(Path(body["model_path"]).parent.rglob(PENDING_MARKER)).parent
-    for index, sprite in enumerate(list(bank.sprites)):
-        saved = Path(sprite["path"])
-        execute(use_case, CharacterOperation.SAVE_MODEL_STATE, name="Haru", avatar_type="mmd",
-                model_path=body["model_path"], sprite_index=index, path=str(saved),
-                state=json.loads(saved.read_text()), tags="edited")
+    model = Path(body["model_path"])
+    batch = next(model.parent.rglob(PENDING_MARKER)).parent
+    paths = [Path(sprite["path"]) for sprite in bank.sprites]
+    if operation == "delete":
+        execute(use_case, CharacterOperation.DELETE_MODEL_STATES, name="Haru", avatar_type="mmd",
+                model_path=str(model), states=[{"sprite_index": i, "path": str(path)} for i, path in enumerate(paths)])
+    else:
+        for index, saved in enumerate(paths):
+            execute(use_case, CharacterOperation.SAVE_MODEL_STATE, name="Haru", avatar_type="mmd",
+                    model_path=str(model), sprite_index=index, path=str(saved),
+                    state=json.loads(saved.read_text()), tags="edited")
     recover_model_imports(state)
     assert batch.exists()
     assert len(list(batch.rglob("preset.*"))) == 2
     assert not (batch / PENDING_MARKER).exists()
+    for path in paths:
+        assert model_file(state, str(model), path.relative_to(model.parent).as_posix()) == path
 
 
 def test_startup_recovery_defers_when_durable_config_cannot_be_read(harness, monkeypatch):
@@ -340,6 +348,69 @@ def execute(use_case, operation, **body):
     return use_case.execute(CharacterRequest(operation, body))
 
 
+def test_model_preset_batch_deletion_preserves_files_and_other_tags(harness):
+    from core.media.asset_tags import tag_contents
+
+    state, use_case, entry = harness
+    imported = execute(use_case, CharacterOperation.IMPORT_MODEL, name="Haru", avatar_type="l2d", source_path=str(entry))
+    model = imported["avatars"]["l2d"]["model_path"]
+    shared = dict(name="Haru", avatar_type="l2d", model_path=model)
+    for label in ("neutral", "wave", "smile"):
+        updated = execute(
+            use_case, CharacterOperation.SAVE_MODEL_STATE, **shared, path="", sprite_index=-1, tags=label,
+            state={"parameters": {}, "expressions": [], "motion": ""},
+        )
+    bank = updated["avatars"]["l2d"]
+    paths = [sprite["path"] for sprite in bank["sprites"]]
+    first = {"sprite_index": 0, "path": paths[0]}
+    with pytest.raises(ValueError, match="State changed"):
+        execute(use_case, CharacterOperation.DELETE_MODEL_STATES, **shared,
+                states=[first, {"sprite_index": 2, "path": paths[1]}])
+    assert len(state.config_manager.get_character_by_name("Haru").avatars["l2d"].sprites) == 3
+
+    result = execute(use_case, CharacterOperation.DELETE_MODEL_STATES, **shared,
+                     states=[first, {"sprite_index": 2, "path": paths[2]}])
+    retained = result["avatars"]["l2d"]
+    assert [sprite["path"] for sprite in retained["sprites"]] == [paths[1]]
+    assert tag_contents(retained["emotion_tags"], 1) == ["wave"]
+    assert Path(model).is_file() and all(Path(path).is_file() for path in paths)
+
+
+def test_deleting_mmd_motion_preset_keeps_saved_replay_urls_readable(harness):
+    from urllib.parse import parse_qs, urlsplit
+
+    from application.chat.history.replay_store import portable_urls
+    from application.chat.presentation.character_visual import resolve_character_visual
+    from frontend_bridge_core.resource_urls import BridgeResourceUrls
+
+    state, use_case, body = _mmd_batch(harness)
+    bank = execute(use_case, CharacterOperation.IMPORT_MODEL_STATES, **body)["avatars"]["mmd"]
+    pose, motion = bank["sprites"]
+    model = Path(bank["model_path"])
+    motion_state = Path(motion["path"])
+    original = motion_state.read_bytes()
+    motion_path = json.loads(original)["motion"]
+    character = state.config_manager.get_character_by_name("Haru")
+    visual = resolve_character_visual(character, 1, BridgeResourceUrls("http://127.0.0.1:8787"))
+    frame = portable_urls(visual.snapshot_fields())
+
+    result = execute(
+        use_case, CharacterOperation.DELETE_MODEL_STATES, name=body["name"],
+        avatar_type="mmd", model_path=str(model), states=[{"sprite_index": 1, "path": str(motion_state)}],
+    )
+
+    assert result["avatars"]["mmd"]["sprites"] == [pose]
+    query = parse_qs(urlsplit(frame["path"]).query)
+    assert model_file(state, query["model_path"][0], query["path"][0]).read_bytes() == original
+    assert model_file(state, str(model), motion_path).read_bytes() == Path(body["source_paths"][1]).read_bytes()
+    assert model_file(state, str(model), Path(pose["path"]).relative_to(model.parent).as_posix()).is_file()
+    (model.parent / motion_path).write_bytes(b"changed since recording")
+    with pytest.raises(PermissionError):
+        model_file(state, str(model), motion_path)
+    with pytest.raises(PermissionError):
+        model_file(state, str(model), query["path"][0])
+
+
 def test_import_save_overwrite_and_authorized_files(harness):
     state, use_case, entry = harness
     imported = execute(use_case, CharacterOperation.IMPORT_MODEL, name="Haru", avatar_type="l2d", source_path=str(entry))
@@ -359,12 +430,42 @@ def test_import_save_overwrite_and_authorized_files(harness):
     overwrite = execute(use_case, CharacterOperation.SAVE_MODEL_STATE, **{**body, "sprite_index": 0, "path": path, "tags": "updated"})
     assert overwrite["avatars"]["l2d"]["sprites"][0]["voice_path"] == str(voice)
     assert overwrite["sprites"] == []
+    assert overwrite["avatars"]["l2d"]["sprites"][0]["path"] != path
+    assert model_file(state, model, Path(path).relative_to(Path(model).parent).as_posix()) == Path(path)
     assert model_file(state, model, "texture.png").name == "texture.png"
     with pytest.raises(PermissionError): model_file(state, model, "unlisted.json")
     with pytest.raises((ValueError, PermissionError)): model_file(state, model, "../characters.json")
     with pytest.raises(PermissionError): model_file(state, str(entry), "texture.png")
     with pytest.raises(ValueError): execute(use_case, CharacterOperation.SAVE_MODEL_STATE, **{**body, "model_path": "changed"})
     with pytest.raises(ValueError): execute(use_case, CharacterOperation.SAVE_MODEL_STATE, **{**body, "sprite_index": 0, "path": path})
+
+
+def test_character_edits_cannot_replace_history_grants(harness):
+    from core.media.avatar.registry import adapter_for
+    from core.media.avatar.state_dependencies import write_state_index
+
+    state, use_case, entry = harness
+    state.config_manager.config.api_config = SimpleNamespace()
+    imported = execute(use_case, CharacterOperation.IMPORT_MODEL, name="Haru", avatar_type="l2d", source_path=str(entry))
+    model = Path(imported["avatars"]["l2d"]["model_path"])
+    body = {"name": "Haru", "avatar_type": "l2d", "model_path": str(model)}
+    preset = {"parameters": {}, "expressions": [], "motion": ""}
+    saved = execute(use_case, CharacterOperation.SAVE_MODEL_STATE, **body, path="", sprite_index=-1, tags="old", state=preset)
+    old_path = Path(saved["avatars"]["l2d"]["sprites"][0]["path"])
+    execute(use_case, CharacterOperation.DELETE_MODEL_STATES, **body, states=[{"sprite_index": 0, "path": str(old_path)}])
+    unlisted = model.parent / "unlisted.json"
+    unlisted.write_bytes(old_path.read_bytes())
+    write_state_index(adapter_for("l2d"), model, unlisted, preset)
+
+    character = state.config_manager.get_character_by_name("Haru").model_dump(mode="json")
+    changed = {**character, "character_setting": "updated", "avatar_state_history": {str(model): [unlisted.name]}}
+    execute(use_case, CharacterOperation.SAVE, character=changed)
+
+    stored = state.config_manager.get_character_by_name("Haru")
+    assert stored.character_setting == "updated"
+    assert model_file(state, str(model), old_path.relative_to(model.parent).as_posix()) == old_path
+    with pytest.raises(PermissionError):
+        model_file(state, str(model), unlisted.name)
 
 
 def test_pmx_import_state_and_protected_texture_route(harness):
@@ -472,10 +573,18 @@ def test_replacement_excludes_old_states_but_preserves_files(harness):
     model = first["avatars"]["l2d"]["model_path"]
     saved = execute(use_case, CharacterOperation.SAVE_MODEL_STATE, name="Haru", avatar_type="l2d", model_path=model,
                     sprite_index=-1, path="", state={"parameters": {}, "expressions": [], "motion": ""}, tags="old")
+    old_state = Path(saved["avatars"]["l2d"]["sprites"][0]["path"])
+    execute(use_case, CharacterOperation.DELETE_MODEL_STATES, name="Haru", avatar_type="l2d", model_path=model,
+            states=[{"sprite_index": 0, "path": str(old_state)}])
+    old_relative = old_state.relative_to(Path(model).parent).as_posix()
+    assert model_file(state, model, old_relative) == old_state
     replacement = execute(use_case, CharacterOperation.IMPORT_MODEL, name="Haru", avatar_type="l2d", source_path=str(entry))
     assert replacement["avatars"]["l2d"]["sprites"] == []
     assert replacement["avatars"]["l2d"]["emotion_tags"] == ""
-    assert Path(saved["avatars"]["l2d"]["sprites"][0]["path"]).is_file()
+    assert old_state.is_file()
+    assert model not in state.config_manager.get_character_by_name("Haru").avatar_state_history
+    with pytest.raises(PermissionError, match="Model is not configured"):
+        model_file(state, model, old_relative)
     assert Path(model).is_file()
     new_model = replacement["avatars"]["l2d"]["model_path"]
     assert model_file(state, new_model, "texture.png").is_file()
@@ -522,7 +631,7 @@ def test_static_cleanup_preserves_imported_models_and_saved_states(harness, monk
     assert model_file(state, model, saved.relative_to(Path(model).parent).as_posix()) == saved
 
 
-@pytest.mark.parametrize("operation", ["import", "replace", "append", "overwrite"])
+@pytest.mark.parametrize("operation", ["import", "replace", "append", "overwrite", "delete"])
 @pytest.mark.parametrize("failure", ["serialize", "flush", "replace"])
 def test_real_persistence_failure_rolls_back_files_and_bank(harness, monkeypatch, operation, failure):
     """Exercise the real YAML commit, not a fake save method that already raises."""
@@ -558,6 +667,9 @@ def test_real_persistence_failure_rolls_back_files_and_bank(harness, monkeypatch
     with pytest.raises(OSError, match="simulated disk write failure"):
         if operation in {"import", "replace"}:
             execute(use_case, CharacterOperation.IMPORT_MODEL, name="Haru", avatar_type="l2d", source_path=str(entry))
+        elif operation == "delete":
+            execute(use_case, CharacterOperation.DELETE_MODEL_STATES, name="Haru", avatar_type="l2d", model_path=model,
+                    states=[{"sprite_index": 0, "path": saved["avatars"]["l2d"]["sprites"][0]["path"]}])
         else:
             execute(use_case, CharacterOperation.SAVE_MODEL_STATE, name="Haru", avatar_type="l2d", model_path=model,
                     sprite_index=0 if operation == "overwrite" else -1,

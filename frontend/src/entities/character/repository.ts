@@ -45,6 +45,10 @@ export function importCharacterModelStates(input: Parameters<ShinsekaiPlatform["
   return getPlatform().characters.importModelStates(input);
 }
 
+export function deleteCharacterModelStates(input: Parameters<ShinsekaiPlatform["characters"]["deleteModelStates"]>[0]) {
+  return getPlatform().characters.deleteModelStates(input);
+}
+
 export function saveCharacterModelState(input: Parameters<ShinsekaiPlatform["characters"]["saveModelState"]>[0]) {
   return getPlatform().characters.saveModelState(input);
 }
