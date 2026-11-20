@@ -78,6 +78,7 @@ describe("ECharts force layout", () => {
     const series = graphSeries({
       graph,
       positions: { A: { x: -400, y: 0 }, B: { x: 0, y: 0 }, C: { x: 400, y: 0 } },
+      labelPositions: { A: { x: -400, y: 0 }, B: { x: 0, y: 0 }, C: { x: 400, y: 0 } },
       activeNodeKey: "A",
       selectedNodeKey: "A",
       fixedKeys: new Set(["A"]),
@@ -112,6 +113,7 @@ describe("ECharts force layout", () => {
     const series = graphSeries({
       graph: graph,
       positions: { A: { x: -400, y: 0 }, B: { x: 400, y: 0 } },
+      labelPositions: { A: { x: -400, y: 0 }, B: { x: 400, y: 0 } },
       activeNodeKey: "",
       emptyRelationLabel: "",
       textColor: "#fff",
@@ -146,6 +148,7 @@ describe("ECharts force layout", () => {
     const series = graphSeries({
       graph: graph,
       positions: positions,
+      labelPositions: positions,
       activeNodeKey: "",
       emptyRelationLabel: "",
       textColor: "#fff",
@@ -183,6 +186,7 @@ describe("ECharts force layout", () => {
     const series = graphSeries({
       graph: graph,
       positions: { A: { x: 0, y: 0 }, B: { x: 200, y: 100 } },
+      labelPositions: { A: { x: 0, y: 0 }, B: { x: 200, y: 100 } },
       activeNodeKey: "",
       emptyRelationLabel: "",
       textColor: "#fff",
@@ -213,6 +217,7 @@ describe("ECharts force layout", () => {
     const series = graphSeries({
       graph: graph,
       positions: positions,
+      labelPositions: positions,
       activeNodeKey: "",
       emptyRelationLabel: "",
       textColor: "#fff",
@@ -265,6 +270,7 @@ describe("ECharts force layout", () => {
           graphSeries({
             graph: graph,
             positions: { A: { x: 0, y: 0 } },
+            labelPositions: { A: { x: 0, y: 0 } },
             activeNodeKey: "",
             emptyRelationLabel: "",
             textColor: "#fff",
@@ -293,6 +299,7 @@ describe("ECharts force layout", () => {
     const series = graphSeries({
       graph: graph,
       positions: positions,
+      labelPositions: positions,
       activeNodeKey: "",
       emptyRelationLabel: "",
       textColor: "#fff",
@@ -325,6 +332,7 @@ describe("ECharts force layout", () => {
       const held = graphSeries({
         graph: graph,
         positions: positions,
+        labelPositions: positions,
         activeNodeKey: "",
         emptyRelationLabel: "",
         textColor: "#fff",
@@ -336,6 +344,7 @@ describe("ECharts force layout", () => {
       const released = graphSeries({
         graph: graph,
         positions: positions,
+        labelPositions: positions,
         activeNodeKey: "",
         emptyRelationLabel: "",
         textColor: "#fff",
