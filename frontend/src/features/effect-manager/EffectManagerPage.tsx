@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, ExternalLink, Music, Palette, Plus, Save, Trash2, Upload } from "lucide-react";
+import { ExternalLink, FolderInput, FolderOutput, Music, Palette, Plus, Save, Trash2, Upload } from "lucide-react";
 
 import { DEFAULT_CHARACTER_COLOR } from "../../shared/constants";
 
@@ -30,6 +30,7 @@ import {
   AsyncButton,
   Button,
   EmptyState,
+  PageSectionNav,
   PathPickerDialog,
   Select,
   TextInput,
@@ -535,13 +536,17 @@ export function EffectManagerPage() {
   const allImagesSelected = draft.image_list.length > 0 && selectedImageIndexes.length === draft.image_list.length;
 
   const canDeleteSelected = currentEffectName && selectedAudioIndexes.length > 0;
+  const effectSectionNavItems = [
+    { id: "effect-info", label: t("effect.section.info") },
+    { id: "effect-images", label: t("effect.section.image") },
+    { id: "effect-audio", label: t("effect.section.audio") },
+  ];
 
   return (
     <div className="page effect-page">
       <header className="page__header effect-page__header">
         <div className="effect-page__heading">
           <h1 className="page__title">{t("effect.title")}</h1>
-          <p className="page__description">{t("effect.description")}</p>
         </div>
         <div className="page__actions effect-page__primary-actions">
           <div className="effect-page__resource-actions">
@@ -580,15 +585,27 @@ export function EffectManagerPage() {
             </Select>
           </label>
           <div className="effect-page__package-actions">
+            <Button
+              className="button--header-icon"
+              data-tooltip={t("common.new")}
+              icon={<Plus aria-hidden className="button__icon" />}
+              onClick={() => saveDraft(true)}
+            >
+              {t("common.new")}
+            </Button>
             <AsyncButton
-              icon={<Upload aria-hidden className="button__icon" />}
+              className="button--header-icon"
+              data-tooltip={t("common.import")}
+              icon={<FolderInput aria-hidden className="button__icon" />}
               loading={importMutation.isPending}
               onClick={() => setImportPickerOpen(true)}
             >
               {t("common.import")}
             </AsyncButton>
             <AsyncButton
-              icon={<Download aria-hidden className="button__icon" />}
+              className="button--header-icon"
+              data-tooltip={t("common.export")}
+              icon={<FolderOutput aria-hidden className="button__icon" />}
               loading={exportMutation.isPending}
               onClick={() => {
                 if (!currentEffectName) {
@@ -601,23 +618,20 @@ export function EffectManagerPage() {
                 }
                 exportMutation.mutate(currentEffectName);
               }}
-              variant="ghost"
             >
               {t("common.export")}
             </AsyncButton>
+            <AsyncButton
+              icon={<Save aria-hidden className="button__icon" />}
+              loading={saveMutation.isPending}
+              onClick={() => saveDraft()}
+              variant="primary"
+            >
+              {t("common.save")}
+            </AsyncButton>
           </div>
-          <Button icon={<Plus aria-hidden className="button__icon" />} onClick={() => saveDraft(true)}>
-            {t("common.new")}
-          </Button>
-          <AsyncButton
-            icon={<Save aria-hidden className="button__icon" />}
-            loading={saveMutation.isPending}
-            onClick={() => saveDraft()}
-            variant="primary"
-          >
-            {t("common.save")}
-          </AsyncButton>
         </div>
+        <PageSectionNav ariaLabel={t("effect.title")} items={effectSectionNavItems} />
         <PathPickerDialog
           acceptedExtensions={[".ef"]}
           multiple
@@ -631,10 +645,10 @@ export function EffectManagerPage() {
 
       <section className="settings-grid effect-page__content">
         {/* Info section */}
-        <section className="section">
+        <section className="section page-section-anchor" id="effect-info">
           <div className="section__header">
             <h2 className="section__title">{t("effect.section.info")}</h2>
-            <div className="page__actions">
+            <div className="section__actions">
               <Button
                 icon={<Trash2 aria-hidden className="button__icon" />}
                 onClick={() => {
@@ -692,10 +706,10 @@ export function EffectManagerPage() {
           </div>
         </section>
 
-        <section className="section">
+        <section className="section page-section-anchor" id="effect-images">
           <div className="section__header">
             <h2 className="section__title">{t("effect.section.image")}</h2>
-            <div className="page__actions">
+            <div className="section__actions">
               <label className="effect-image-batch-select">
                 <input
                   checked={allImagesSelected}
@@ -793,10 +807,10 @@ export function EffectManagerPage() {
         </section>
 
         {/* Audio section */}
-        <section className="section">
+        <section className="section page-section-anchor" id="effect-audio">
           <div className="section__header">
             <h2 className="section__title">{t("effect.section.audio")}</h2>
-            <div className="page__actions">
+            <div className="section__actions">
               <AsyncButton
                 icon={<Upload aria-hidden className="button__icon" />}
                 loading={saveMutation.isPending || audioUploadMutation.isPending}
