@@ -2,6 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Default permissions for Shinsekai desktop windows.",
+  "platforms": ["linux", "macOS", "windows"],
   "windows": ["main"],
   "permissions": ["core:default", "dialog:default", "updater:default"]
 }

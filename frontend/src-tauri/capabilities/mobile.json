@@ -1,0 +1,7 @@
+{
+  "identifier": "mobile-default",
+  "description": "Default permissions for Shinsekai mobile shell.",
+  "platforms": ["android", "iOS"],
+  "windows": ["main"],
+  "permissions": ["core:default", "dialog:default", "notification:default"]
+}

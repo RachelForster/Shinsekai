@@ -1,6 +1,18 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, KeyRound, Laptop, PlugZap, Sparkles, Upload } from "lucide-react";
+import {
+  Download,
+  ImageUp,
+  KeyRound,
+  Laptop,
+  PlugZap,
+  QrCode,
+  RefreshCw,
+  ScanLine,
+  Sparkles,
+  Upload,
+  X,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import {
@@ -32,6 +44,11 @@ import {
   listRegisteredTtsAdapters,
 } from "../../shared/platform/standalone/ai/adapters/registry";
 import { Button, Dialog, Select, TextInput, useToast } from "../../shared/ui";
+import {
+  decodeQrFromImageFile,
+  decodeQrFromVideoFrame,
+  parseRemoteBridgeQrPayload,
+} from "./remoteQrScanner";
 import "./RuntimeModeDialog.css";
 
 interface RuntimeModeDialogProps {
@@ -85,6 +102,15 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
   const [remoteStatusMsg, setRemoteStatusMsg] = useState("");
   const [remoteCharacters, setRemoteCharacters] = useState<Character[]>([]);
   const [syncingCharName, setSyncingCharName] = useState<string | null>(null);
+  const [scanningQr, setScanningQr] = useState(false);
+  const [cameraFacing, setCameraFacing] = useState<"environment" | "user">("environment");
+  const [qrErrorMsg, setQrErrorMsg] = useState("");
+  const [decodingQrImage, setDecodingQrImage] = useState(false);
+  const [manualExpanded, setManualExpanded] = useState(Boolean(initialBridge.url));
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const qrFileInputRef = useRef<HTMLInputElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const applyQrHandlerRef = useRef<(rawText: string) => Promise<void>>(async () => {});
 
   // Character import state
   const charFileInputRef = useRef<HTMLInputElement>(null);
@@ -327,6 +353,187 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
     });
   };
 
+  const applyScannedQrPayload = async (rawText: string) => {
+    let parsed: { url: string; token: string };
+    try {
+      parsed = parseRemoteBridgeQrPayload(rawText);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      setQrErrorMsg(msg);
+      showToast({
+        kind: "error",
+        title: "二维码无效",
+        message: msg,
+      });
+      return;
+    }
+
+    const { url, token } = parsed;
+    setRemoteUrl(url);
+    setRemoteToken(token);
+    setQrErrorMsg("");
+    setTestingRemote(true);
+    setRemoteStatusMsg("");
+    try {
+      const result = await testRemotePcBridge({
+        bridgeUrl: url,
+        token,
+      });
+      const remoteChars = await listRemotePcCharacters({
+        bridgeUrl: url,
+        token,
+      });
+      setRemoteCharacters(remoteChars);
+      setRemoteStatusMsg(result.message);
+      setConnectionMode("remote-pc");
+      saveRemoteBridgeConfig({
+        mode: "remote-pc",
+        url,
+        token,
+      });
+      resetPlatformForModeSwitch();
+      await queryClient.invalidateQueries();
+      showToast({
+        kind: "success",
+        title: "扫码连接成功",
+        message: `${result.message}，已自动切换至电脑端满血模式。`,
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      setManualExpanded(true);
+      setRemoteStatusMsg(msg);
+      showToast({
+        kind: "error",
+        title: "无法连接电脑端",
+        message: `${msg}（已自动填入扫码地址，可检查电脑防火墙后重测）`,
+      });
+    } finally {
+      setTestingRemote(false);
+    }
+  };
+
+  applyQrHandlerRef.current = applyScannedQrPayload;
+
+  useEffect(() => {
+    const stopActiveStream = () => {
+      if (streamRef.current) {
+        for (const track of streamRef.current.getTracks()) {
+          track.stop();
+        }
+        streamRef.current = null;
+      }
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+    };
+
+    if (!open || activeTab !== "remote" || !scanningQr) {
+      stopActiveStream();
+      return;
+    }
+
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      setScanningQr(false);
+      setQrErrorMsg("当前环境不支持实时调用摄像头，请点击「相册识别二维码」选择电脑端二维码截图。");
+      return;
+    }
+
+    let cancelled = false;
+    let pollTimer: number | undefined;
+    let inFlight = false;
+    const workCanvas = document.createElement("canvas");
+
+    void (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            facingMode: { ideal: cameraFacing },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+        });
+        if (cancelled) {
+          for (const track of stream.getTracks()) {
+            track.stop();
+          }
+          return;
+        }
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play().catch(() => {});
+        }
+        pollTimer = window.setInterval(() => {
+          if (cancelled || inFlight || !videoRef.current) {
+            return;
+          }
+          inFlight = true;
+          void decodeQrFromVideoFrame(videoRef.current, workCanvas)
+            .then((decoded) => {
+              if (decoded && !cancelled) {
+                cancelled = true;
+                if (pollTimer !== undefined) {
+                  window.clearInterval(pollTimer);
+                }
+                stopActiveStream();
+                setScanningQr(false);
+                void applyQrHandlerRef.current(decoded);
+              }
+            })
+            .finally(() => {
+              inFlight = false;
+            });
+        }, 200);
+      } catch {
+        if (!cancelled) {
+          setScanningQr(false);
+          setQrErrorMsg("无法开启摄像头（请授予相机权限，或点击「相册识别二维码」选择电脑端二维码截图）");
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (pollTimer !== undefined) {
+        window.clearInterval(pollTimer);
+      }
+      stopActiveStream();
+    };
+  }, [open, activeTab, scanningQr, cameraFacing]);
+
+  const handleQrImageUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setDecodingQrImage(true);
+    setQrErrorMsg("");
+    try {
+      const decoded = await decodeQrFromImageFile(file);
+      if (!decoded) {
+        const msg = "未在图片中识别到二维码，请确保二维码清晰完整";
+        setQrErrorMsg(msg);
+        showToast({
+          kind: "error",
+          title: "未识别到二维码",
+          message: msg,
+        });
+        return;
+      }
+      await applyScannedQrPayload(decoded);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      setQrErrorMsg(msg);
+      showToast({
+        kind: "error",
+        title: "识别二维码失败",
+        message: msg,
+      });
+    } finally {
+      setDecodingQrImage(false);
+    }
+  };
+
   const handleSyncCharacterFromPc = async (name: string) => {
     setSyncingCharName(name);
     try {
@@ -361,6 +568,11 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
   const selectedTtsNeedsCorsProxy =
     (target === "toy" || target === "web") && selectedTtsAdapter?.browserCors === "proxy-only";
 
+  const handleCloseDialog = () => {
+    setScanningQr(false);
+    onClose();
+  };
+
   return (
     <Dialog
       bodyClassName="runtime-mode-dialog__body"
@@ -370,19 +582,19 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
         <div className="runtime-mode-dialog__footer">
           <Button
             onClick={() => {
-              onClose();
+              handleCloseDialog();
               navigate("/settings/api");
             }}
             type="button"
           >
             完整设置工作台
           </Button>
-          <Button onClick={onClose} type="button" variant="primary">
+          <Button onClick={handleCloseDialog} type="button" variant="primary">
             完成
           </Button>
         </div>
       }
-      onClose={onClose}
+      onClose={handleCloseDialog}
       open={open}
       title="AI / 语音与跨端运行配置"
     >
@@ -391,7 +603,10 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
           aria-selected={activeTab === "keys"}
           className="runtime-mode-dialog__tab"
           data-active={activeTab === "keys" ? "true" : "false"}
-          onClick={() => setActiveTab("keys")}
+          onClick={() => {
+            setScanningQr(false);
+            setActiveTab("keys");
+          }}
           role="tab"
           type="button"
         >
@@ -402,7 +617,10 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
           aria-selected={activeTab === "characters"}
           className="runtime-mode-dialog__tab"
           data-active={activeTab === "characters" ? "true" : "false"}
-          onClick={() => setActiveTab("characters")}
+          onClick={() => {
+            setScanningQr(false);
+            setActiveTab("characters");
+          }}
           role="tab"
           type="button"
         >
@@ -640,57 +858,154 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
           <p className="runtime-mode-dialog__hint">
             {remoteActive
               ? "当前已连接电脑端满血后端，正直接使用电脑的本地 GPT-SoVITS、记忆库与全部角色。"
-              : "连接局域网或异地组网中运行的新世界电脑端，可一键热切换至满血后端或将电脑角色离线缓存到手机。"}
+              : "在电脑端开启「手机访问」弹出连接二维码后，直接用手机扫码即可自动填入地址与认证 Token 并一键连接，无需手动输入。"}
           </p>
 
-          <div className="runtime-mode-dialog__grid">
-            <label className="runtime-mode-dialog__field runtime-mode-dialog__field--full">
-              <span>电脑端 Shinsekai 地址</span>
-              <TextInput
-                onChange={(e) => setRemoteUrl(e.target.value)}
-                placeholder="http://192.168.1.100:8787"
-                value={remoteUrl}
-              />
-            </label>
-            <label className="runtime-mode-dialog__field runtime-mode-dialog__field--full">
-              <span>Bridge 访问 Token（如电脑端已开启认证则填写）</span>
-              <TextInput
-                autoComplete="off"
-                onChange={(e) => setRemoteToken(e.target.value)}
-                placeholder="留空表示无 Token"
-                type="password"
-                value={remoteToken}
-              />
-            </label>
+          <input
+            accept="image/*"
+            className="runtime-mode-dialog__file-input"
+            onChange={(e) => void handleQrImageUpload(e)}
+            ref={qrFileInputRef}
+            type="file"
+          />
+
+          <div className="runtime-mode-dialog__qr-card">
+            <div className="runtime-mode-dialog__qr-cta">
+              <Button
+                icon={<QrCode aria-hidden className="button__icon" />}
+                onClick={() => {
+                  setQrErrorMsg("");
+                  setScanningQr((prev) => !prev);
+                }}
+                type="button"
+                variant="primary"
+              >
+                {scanningQr ? "关闭扫码镜头" : "扫描电脑二维码"}
+              </Button>
+              <Button
+                disabled={decodingQrImage}
+                icon={<ImageUp aria-hidden className="button__icon" />}
+                onClick={() => qrFileInputRef.current?.click()}
+                type="button"
+              >
+                {decodingQrImage ? "识别图片中..." : "相册识别二维码"}
+              </Button>
+            </div>
+
+            {scanningQr ? (
+              <div className="runtime-mode-dialog__qr-scanner">
+                <div className="runtime-mode-dialog__qr-viewport">
+                  <video
+                    autoPlay
+                    className="runtime-mode-dialog__qr-video"
+                    muted
+                    playsInline
+                    ref={videoRef}
+                  />
+                  <div aria-hidden className="runtime-mode-dialog__qr-reticle">
+                    <ScanLine
+                      aria-hidden
+                      className="runtime-mode-dialog__qr-scan-icon"
+                      size={20}
+                    />
+                  </div>
+                </div>
+                <p className="runtime-mode-dialog__qr-caption">
+                  将取景框对准电脑屏幕上的「手机访问」二维码
+                </p>
+                <div className="runtime-mode-dialog__qr-toolbar">
+                  <Button
+                    icon={<RefreshCw aria-hidden className="button__icon" />}
+                    onClick={() =>
+                      setCameraFacing((prev) => (prev === "environment" ? "user" : "environment"))
+                    }
+                    type="button"
+                  >
+                    切换镜头
+                  </Button>
+                  <Button
+                    icon={<X aria-hidden className="button__icon" />}
+                    onClick={() => setScanningQr(false)}
+                    type="button"
+                  >
+                    取消
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
+            {qrErrorMsg ? <p className="runtime-mode-dialog__warn">{qrErrorMsg}</p> : null}
           </div>
+
+          {remoteUrl || remoteActive ? (
+            <div className="runtime-mode-dialog__paired-pill">
+              <span>
+                {remoteActive ? "已连电脑端：" : "已配对地址："}
+                <code>{remoteUrl || "未配置"}</code>
+              </span>
+              {connectionMode === "remote-pc" || remoteActive ? (
+                <Button onClick={() => void handleApplyConnectionMode("standalone")} type="button">
+                  切回手机独立模式
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
 
           {remoteStatusMsg ? <p className="runtime-mode-dialog__hint">{remoteStatusMsg}</p> : null}
 
-          <div className="runtime-mode-dialog__actions">
-            <Button
-              disabled={testingRemote}
-              icon={<PlugZap aria-hidden className="button__icon" />}
-              onClick={() => void handleTestRemoteBridge()}
-              type="button"
-            >
-              {testingRemote ? "测试中..." : "测试并拉取角色清单"}
-            </Button>
-            {connectionMode === "remote-pc" || remoteActive ? (
+          <details
+            className="runtime-mode-dialog__manual"
+            onToggle={(e) => setManualExpanded(e.currentTarget.open)}
+            open={manualExpanded}
+          >
+            <summary>手动填写或查看连接参数（备用）</summary>
+            <div className="runtime-mode-dialog__grid">
+              <label className="runtime-mode-dialog__field runtime-mode-dialog__field--full">
+                <span>电脑端 Shinsekai 地址</span>
+                <TextInput
+                  onChange={(e) => setRemoteUrl(e.target.value)}
+                  placeholder="http://192.168.1.100:8787"
+                  value={remoteUrl}
+                />
+              </label>
+              <label className="runtime-mode-dialog__field runtime-mode-dialog__field--full">
+                <span>Bridge 访问 Token（如电脑端已开启认证则填写）</span>
+                <TextInput
+                  autoComplete="off"
+                  onChange={(e) => setRemoteToken(e.target.value)}
+                  placeholder="留空表示无 Token"
+                  type="password"
+                  value={remoteToken}
+                />
+              </label>
+            </div>
+
+            <div className="runtime-mode-dialog__actions" style={{ marginTop: "10px" }}>
               <Button
-                onClick={() => void handleApplyConnectionMode("standalone")}
+                disabled={testingRemote}
+                icon={<PlugZap aria-hidden className="button__icon" />}
+                onClick={() => void handleTestRemoteBridge()}
                 type="button"
               >
-                切回手机独立模式
+                {testingRemote ? "测试中..." : "测试并拉取角色清单"}
               </Button>
-            ) : null}
-            <Button
-              onClick={() => void handleApplyConnectionMode("remote-pc")}
-              type="button"
-              variant="primary"
-            >
-              连接电脑端满血模式
-            </Button>
-          </div>
+              {connectionMode === "remote-pc" || remoteActive ? (
+                <Button
+                  onClick={() => void handleApplyConnectionMode("standalone")}
+                  type="button"
+                >
+                  切回手机独立模式
+                </Button>
+              ) : null}
+              <Button
+                onClick={() => void handleApplyConnectionMode("remote-pc")}
+                type="button"
+                variant="primary"
+              >
+                连接电脑端满血模式
+              </Button>
+            </div>
+          </details>
 
           {remoteCharacters.length > 0 ? (
             <div className="runtime-mode-dialog__char-list">

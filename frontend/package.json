@@ -14,7 +14,7 @@
     "build:toy": "node scripts/build-toy.mjs",
     "build:mobile": "tsc -b && vite build --mode mobile",
     "tauri:android:init": "tauri android init",
-    "tauri:android:build": "tauri android build --config src-tauri/tauri.mobile.conf.json",
+    "tauri:android:build": "tauri android build --apk --target aarch64 --config src-tauri/tauri.mobile.conf.json",
     "sync:version": "node scripts/sync-version.mjs",
     "prepare:runtime": "node scripts/prepare-runtime.mjs",
     "prepare:l2d": "node scripts/prepare-l2d.mjs",
