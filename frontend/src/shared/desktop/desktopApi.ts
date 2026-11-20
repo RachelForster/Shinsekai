@@ -134,8 +134,43 @@ const desktopMiniAvatarInputShortcutEvent = "shinsekai:mini-avatar-input-shortcu
 const desktopUpdateProgressEvent = "shinsekai:update-progress";
 const desktopRuntimeProgressEvent = "shinsekai:runtime-progress";
 
+export interface TauriStandaloneHttpRequest {
+  url: string;
+  method: string;
+  headers?: Record<string, string>;
+  bodyBase64?: string;
+  timeoutMs?: number;
+}
+
+export interface TauriStandaloneHttpResponse {
+  status: number;
+  headers: Record<string, string>;
+  bodyBase64: string;
+}
+
+export function hasTauriNativeHttp(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  return Boolean(window.__TAURI_INTERNALS__);
+}
+
+export async function invokeTauriStandaloneHttp(
+  request: TauriStandaloneHttpRequest,
+): Promise<TauriStandaloneHttpResponse> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<TauriStandaloneHttpResponse>("standalone_http_request", { request });
+}
+
 function detectTauriDesktopEnvironment() {
   if (typeof window === "undefined") {
+    return false;
+  }
+  const explicitTarget = import.meta.env.VITE_SHINSEKAI_TARGET?.trim().toLowerCase();
+  if (explicitTarget === "mobile" || explicitTarget === "toy") {
+    return false;
+  }
+  if (typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent ?? "")) {
     return false;
   }
   return (

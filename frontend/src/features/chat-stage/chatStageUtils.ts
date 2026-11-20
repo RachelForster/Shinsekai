@@ -2,6 +2,7 @@ import type { SyntheticEvent } from "react";
 
 import { fileUrl } from "../../entities/files/repository";
 import type { MessageKey } from "../../shared/i18n";
+import { isStandaloneRuntimeActive } from "../../shared/platform/runtimeTarget";
 import type { ChatTransportMode, ChatTransportState } from "../../shared/platform/types";
 
 interface ChatStagePageLocation {
@@ -83,7 +84,10 @@ export function stageAssetUrl(path?: string) {
       // Fall through to the existing path handling.
     }
   }
-  if (/^(?:https?:|data:|blob:|\/assets\/)/i.test(path)) {
+  if (/^(?:https?:|data:|blob:)/i.test(path)) {
+    return path;
+  }
+  if (/^\/assets\//i.test(path) && !isStandaloneRuntimeActive()) {
     return path;
   }
   return fileUrl(path);

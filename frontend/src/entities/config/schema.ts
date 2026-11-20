@@ -8,6 +8,9 @@ export const llmProviderOptions = [
   { label: "Claude", value: "Claude" },
   { label: "豆包", value: "豆包" },
   { label: "通义千问", value: "通义千问" },
+  { label: "硅基流动", value: "硅基流动" },
+  { label: "Moonshot", value: "Moonshot" },
+  { label: "OpenRouter", value: "OpenRouter" },
   { label: "Ollama", value: "Ollama" },
 ] as const;
 
@@ -18,6 +21,9 @@ export const llmDefaultBaseUrls: Record<string, string> = {
   Gemini: "https://generativelanguage.googleapis.com/v1beta/openai",
   豆包: "https://ark.cn-beijing.volces.com/api/v3",
   通义千问: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  硅基流动: "https://api.siliconflow.cn/v1",
+  Moonshot: "https://api.moonshot.cn/v1",
+  OpenRouter: "https://openrouter.ai/api/v1",
   Ollama: "http://127.0.0.1:11434/v1",
 };
 

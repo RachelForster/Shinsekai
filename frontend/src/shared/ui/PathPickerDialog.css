@@ -279,3 +279,28 @@
     padding: 0 var(--space-2);
   }
 }
+
+.path-picker--standalone {
+  height: auto;
+  min-height: 220px;
+}
+
+.path-picker__standalone-box {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-input);
+}
+
+.path-picker__standalone-note {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.path-picker__standalone-input {
+  display: none;
+}

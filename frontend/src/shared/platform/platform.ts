@@ -1,5 +1,12 @@
 import { createBrowserPreviewPlatform } from "./browserPreviewPlatform";
 import { createHttpPlatform } from "./httpPlatform";
+import {
+  getRemoteBridgeConfig,
+  getRuntimeTarget,
+  isRemotePcActive,
+  isStandaloneRuntimeActive,
+} from "./runtimeTarget";
+import { createStandalonePlatform } from "./standalone";
 import type { ShinsekaiPlatform } from "./types";
 
 declare global {
@@ -9,6 +16,21 @@ declare global {
 }
 
 let platform: ShinsekaiPlatform | null = null;
+const modeChangeListeners = new Set<() => void>();
+
+export function onPlatformModeChange(listener: () => void): () => void {
+  modeChangeListeners.add(listener);
+  return () => {
+    modeChangeListeners.delete(listener);
+  };
+}
+
+export function resetPlatformForModeSwitch(): void {
+  platform = null;
+  for (const listener of modeChangeListeners) {
+    listener();
+  }
+}
 
 function bridgeBaseFromUrl() {
   const value = new URLSearchParams(window.location.search).get("shinsekai_bridge")?.trim();
@@ -30,14 +52,34 @@ export function resolvePlatformHttpUrl(pathOrUrl: string): string {
   }
   const desktopBridge = bridgeBaseFromUrl();
   const httpBase = import.meta.env.VITE_SHINSEKAI_API_BASE?.trim();
+  const explicitBase = desktopBridge || httpBase;
+  if (explicitBase) {
+    try {
+      return new URL(pathOrUrl, explicitBase).toString();
+    } catch {
+      return pathOrUrl;
+    }
+  }
+  if (isRemotePcActive()) {
+    const remote = getRemoteBridgeConfig();
+    if (remote.url) {
+      try {
+        return new URL(pathOrUrl, remote.url).toString();
+      } catch {
+        return pathOrUrl;
+      }
+    }
+  }
+  if (isStandaloneRuntimeActive()) {
+    return pathOrUrl;
+  }
   const sameOriginBridge =
     !import.meta.env.DEV && /^https?:$/.test(window.location.protocol) ? window.location.origin : "";
-  const baseUrl = desktopBridge || httpBase || sameOriginBridge;
-  if (!baseUrl) {
+  if (!sameOriginBridge) {
     return pathOrUrl;
   }
   try {
-    return new URL(pathOrUrl, baseUrl).toString();
+    return new URL(pathOrUrl, sameOriginBridge).toString();
   } catch {
     return pathOrUrl;
   }
@@ -49,17 +91,28 @@ export function getPlatform(): ShinsekaiPlatform {
     const httpToken = import.meta.env.VITE_SHINSEKAI_BRIDGE_TOKEN?.trim() ?? "";
     const desktopBridge = bridgeBaseFromUrl();
     const desktopBridgeToken = bridgeTokenFromUrl();
+    const target = getRuntimeTarget();
+    const remote = getRemoteBridgeConfig();
     const sameOriginBridge =
       !import.meta.env.DEV && /^https?:$/.test(window.location.protocol) ? window.location.origin : "";
-    platform =
-      window.__SHINSEKAI_IPC__ ??
-      (desktopBridge
-        ? createBridgeHttpPlatform(desktopBridge, desktopBridgeToken)
-        : httpBase
-          ? createBridgeHttpPlatform(httpBase, httpToken)
-          : sameOriginBridge
-            ? createBridgeHttpPlatform(sameOriginBridge, desktopBridgeToken)
-            : createBrowserPreviewPlatform());
+
+    if (window.__SHINSEKAI_IPC__) {
+      platform = window.__SHINSEKAI_IPC__;
+    } else if (desktopBridge) {
+      platform = createBridgeHttpPlatform(desktopBridge, desktopBridgeToken);
+    } else if (httpBase) {
+      platform = createBridgeHttpPlatform(httpBase, httpToken);
+    } else if (target === "toy") {
+      platform = createStandalonePlatform({ target: "toy" });
+    } else if (isRemotePcActive() && remote.url) {
+      platform = createBridgeHttpPlatform(remote.url, remote.token);
+    } else if (isStandaloneRuntimeActive()) {
+      platform = createStandalonePlatform({ target });
+    } else if (sameOriginBridge) {
+      platform = createBridgeHttpPlatform(sameOriginBridge, desktopBridgeToken);
+    } else {
+      platform = createBrowserPreviewPlatform();
+    }
   }
   return platform;
 }

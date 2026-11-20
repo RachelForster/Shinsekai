@@ -13,8 +13,19 @@ function modulePath(path: string) {
   return new URL(path, import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
 }
 
-export default defineConfig({
-  plugins: [react()],
+export default defineConfig(({ mode }) => {
+  const isMobile = mode === "mobile";
+  return {
+    ...(isMobile
+      ? {
+          base: "./",
+          define: {
+            "import.meta.env.VITE_SHINSEKAI_TARGET": JSON.stringify("mobile"),
+            "import.meta.env.VITE_SHINSEKAI_STANDALONE": JSON.stringify("true"),
+          },
+        }
+      : {}),
+    plugins: [react()],
   resolve: {
     alias: {
       "@tanstack/react-query": modulePath("./node_modules/@tanstack/react-query"),
@@ -69,7 +80,7 @@ export default defineConfig({
   },
   server: {
     fs: {
-      allow: [modulePath("."), modulePath("../assets/chat_ui_themes"), modulePath("../assets/present_example.png")],
+      allow: [modulePath("."), modulePath("../assets")],
     },
     host: "127.0.0.1",
     port: 5173,
@@ -98,4 +109,5 @@ export default defineConfig({
       },
     },
   },
+  };
 });
