@@ -10,6 +10,7 @@ from typing import Any
 
 from config.character_ops.relations import (
     parse_relation_graph,
+    rename_references_in_other_graphs,
     rename_relation_graph_owner,
 )
 from config.character_ops.target import (
@@ -212,7 +213,7 @@ def save_character_patch(
             if key == "display_name" and not is_self_persona_name(raw_name):
                 continue
             merged[key] = _normalize_patch_value(key, value)
-        if existing.name != raw_name and "relation_graph" not in patch:
+        if existing.name != raw_name:
             merged["relation_graph"] = rename_relation_graph_owner(
                 existing.relation_graph, existing.name, raw_name
             )
@@ -232,7 +233,15 @@ def save_character_patch(
             )
         validated = Character.model_validate(merged)
         renamed_from = existing.name if existing.name != validated.name else None
+        renamed_others = []
+        if renamed_from:
+            renamed_others = rename_references_in_other_graphs(
+                target.list_all(), renamed_id=existing.id,
+                old_name=renamed_from, new_name=validated.name,
+            )
         target.save_character(validated)
+        for other in renamed_others:
+            target.save_character(other)
         return validated, renamed_from, False
 
     merged = {
