@@ -529,6 +529,7 @@ pub fn run() {
             desktop_take_plugin_chat_wake,
             desktop_open_external_url,
             standalone_http::standalone_http_request,
+            standalone_http::standalone_http_cancel,
             #[cfg(desktop)]
             desktop_update_check,
             #[cfg(desktop)]

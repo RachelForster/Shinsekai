@@ -9,7 +9,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 import { chatStageReducer, emptyChatState } from "../../../../features/chat-stage/chatState";
-import { resetTauriNativeHttpStateForTests } from "../../../../shared/desktop/desktopApi";
+import { hasTauriNativeHttp, resetTauriNativeHttpStateForTests } from "../../../../shared/desktop/desktopApi";
 import { getPlatform, resetPlatformForModeSwitch } from "../../../../shared/platform/platform";
 import { saveRemoteBridgeConfig } from "../../../../shared/platform/runtimeTarget";
 import { sampleConfig } from "../../../../shared/platform/sampleData";
@@ -19,7 +19,7 @@ import { createStandalonePlatform, syncCharacterFromRemotePc } from "../../../..
 import type { StandaloneLlmAdapter } from "../../../../shared/platform/standalone/ai/adapters/types";
 import { browserSpeechTtsAdapter } from "../../../../shared/platform/standalone/ai/adapters/tts/browserSpeechAdapter";
 import { autoCompactIfNeeded } from "../../../../shared/platform/standalone/ai/compactManager";
-import { standaloneHttpRequest } from "../../../../shared/platform/standalone/ai/httpClient";
+import { bytesToBase64, standaloneHttpRequest } from "../../../../shared/platform/standalone/ai/httpClient";
 import { StandaloneChatTurnDriver } from "../../../../shared/platform/standalone/ai/standaloneChatTurn";
 import { exportCharPackage } from "../../../../shared/platform/standalone/packages/charPackageCodec";
 import { unzipEntries, zipEntries } from "../../../../shared/platform/standalone/packages/zipCodec";
@@ -569,5 +569,152 @@ describe("standalone PR #435 review fixes", () => {
     expect(rehydrated.getLatestCheckpoint(session.sessionId)).toBeNull();
     const active = rehydrated.buildActiveLlmMessages(session.sessionId, "SYS");
     expect(active.messages.some((m) => m.content.includes("不应该被使用的未来摘要"))).toBe(false);
+  });
+
+  it("propagates AbortSignal to standalone_http_cancel in Tauri native HTTP without disabling native transport", async () => {
+    (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {};
+    const fetchMock = vi.fn();
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    let capturedRequestId = "";
+    let rejectInFlight!: (reason?: unknown) => void;
+    const cancelCalls: string[] = [];
+
+    tauriMocks.invoke.mockImplementation(async (cmd: string, rawArgs?: Record<string, unknown>) => {
+      if (cmd === "standalone_http_request") {
+        const req = (rawArgs?.request ?? {}) as { requestId?: string };
+        capturedRequestId = req.requestId ?? "";
+        return await new Promise((_resolve, reject) => {
+          rejectInFlight = reject;
+        });
+      }
+      if (cmd === "standalone_http_cancel") {
+        const requestId = String(rawArgs?.requestId ?? "");
+        cancelCalls.push(requestId);
+        rejectInFlight?.(new Error("HTTP_ABORTED: The operation was aborted."));
+        return true;
+      }
+      throw new Error(`Unexpected invoke: ${cmd}`);
+    });
+
+    const controller = new AbortController();
+    const reqPromise = standaloneHttpRequest({
+      url: "https://api.openai.com/v1/chat/completions",
+      method: "POST",
+      body: "{}",
+      signal: controller.signal,
+    });
+
+    await vi.waitFor(() => expect(capturedRequestId).toMatch(/^tauri-http-/));
+    controller.abort();
+
+    await expect(reqPromise).rejects.toMatchObject({ name: "AbortError" });
+    expect(cancelCalls).toEqual([capturedRequestId]);
+    expect(hasTauriNativeHttp()).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("cancels prior in-flight Tauri native LLM request when StandaloneChatTurnDriver starts a new turn / reroll", async () => {
+    (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {};
+    const issuedRequestIds: string[] = [];
+    const cancelledRequestIds: string[] = [];
+    const pendingById = new Map<string, { reject: (err: unknown) => void }>();
+
+    const replyBodyBase64 = bytesToBase64(
+      new TextEncoder().encode(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  dialog: [
+                    { character_name: sampleConfig.characters[0].name, sprite: "01", speech: "这是重掷后的最新回复。" },
+                  ],
+                }),
+              },
+            },
+          ],
+        }),
+      ),
+    );
+
+    tauriMocks.invoke.mockImplementation(async (cmd: string, rawArgs?: Record<string, unknown>) => {
+      if (cmd === "standalone_http_request") {
+        const req = (rawArgs?.request ?? {}) as { requestId?: string };
+        const reqId = req.requestId ?? "";
+        issuedRequestIds.push(reqId);
+        if (issuedRequestIds.length === 1) {
+          return await new Promise((_resolve, reject) => {
+            pendingById.set(reqId, { reject });
+          });
+        }
+        return {
+          status: 200,
+          headers: { "content-type": "application/json" },
+          bodyBase64: replyBodyBase64,
+        };
+      }
+      if (cmd === "standalone_http_cancel") {
+        const reqId = String(rawArgs?.requestId ?? "");
+        cancelledRequestIds.push(reqId);
+        pendingById.get(reqId)?.reject(new Error("HTTP_ABORTED: The operation was aborted."));
+        pendingById.delete(reqId);
+        return true;
+      }
+      throw new Error(`Unexpected invoke: ${cmd}`);
+    });
+
+    const store = new StandaloneSessionStore();
+    await store.hydrate();
+    const primaryChar = sampleConfig.characters[0];
+    const session = await store.ensureSession({
+      historyPath: "./data/history/cancel-reroll.json",
+      title: "原生请求取消测试",
+      payload: {
+        templateId: "tpl-cancel",
+        characters: [primaryChar.name],
+        backgroundName: sampleConfig.background_list[0]?.name ?? "",
+        historyPath: "./data/history/cancel-reroll.json",
+      },
+    });
+
+    let chatSnapshot = {
+      status: "idle" as const,
+      dialogText: "",
+      inputDraft: "",
+      options: [],
+      sprites: [],
+      stats: [],
+    };
+    const driver = new StandaloneChatTurnDriver({
+      getApiConfig: () => ({
+        ...sampleConfig.api_config,
+        llm_provider: "ChatGPT",
+        llm_api_key: { ChatGPT: "sk-test-token" },
+        llm_base_urls: { ChatGPT: "https://api.openai.com/v1" },
+        llm_model: { ChatGPT: "gpt-4o-mini" },
+        tts_provider: "none",
+      }),
+      getCharacters: () => [primaryChar],
+      getChat: () => chatSnapshot,
+      setChat: (next) => {
+        chatSnapshot = next as typeof chatSnapshot;
+      },
+      emitChat: () => {},
+      emitStageEvent: () => {},
+      sessionStore: store,
+      httpClient: standaloneHttpRequest,
+      resolveFileUrl: (p) => p,
+    });
+
+    const firstTurn = driver.runTurn({ session, userText: "第一轮提问" });
+    await vi.waitFor(() => expect(issuedRequestIds).toHaveLength(1));
+
+    const secondTurn = driver.runTurn({ session, userText: "第二轮重掷" });
+    await Promise.all([firstTurn, secondTurn]);
+
+    expect(issuedRequestIds).toHaveLength(2);
+    expect(cancelledRequestIds).toEqual([issuedRequestIds[0]]);
+    expect(chatSnapshot.dialogText).toContain("这是重掷后的最新回复。");
   });
 });

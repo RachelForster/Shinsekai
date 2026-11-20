@@ -25,14 +25,140 @@ declare global {
   }
 }
 
-const LOOPBACK_HOST_SET = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
 const INVALID_QR_ERROR = "二维码中未包含有效的新世界电脑端连接地址。";
-const LOOPBACK_QR_ERROR =
-  "该二维码是本机回环地址 (127.0.0.1)，手机无法访问；请扫描电脑端开启「手机访问」后弹出的局域网二维码。";
+const LOOPBACK_QR_ERROR = "该二维码是本机回环地址，手机无法访问；请扫描电脑端开启「手机访问」后弹出的局域网二维码。";
 
 let cachedDetector: BarcodeDetectorInstance | null = null;
 let cachedDetectorCtor: BarcodeDetectorConstructor | undefined;
 let detectorSupportPromise: Promise<boolean> | null = null;
+
+function parseIpv4Octets(host: string): [number, number, number, number] | null {
+  const parts = host.split(".");
+  if (parts.length !== 4) {
+    return null;
+  }
+  const octets: number[] = [];
+  for (const part of parts) {
+    if (!/^(?:0|[1-9]\d{0,2})$/.test(part)) {
+      return null;
+    }
+    const val = Number(part);
+    if (!Number.isInteger(val) || val < 0 || val > 255) {
+      return null;
+    }
+    octets.push(val);
+  }
+  return [octets[0], octets[1], octets[2], octets[3]];
+}
+
+function isLoopbackOrUnspecifiedIpv4(octets: [number, number, number, number]): boolean {
+  const [a, b, c, d] = octets;
+  return a === 127 || (a === 0 && b === 0 && c === 0 && d === 0);
+}
+
+function parseIpv6GroupSlice(parts: string[]): number[] | null {
+  const hextets: number[] = [];
+  for (let i = 0; i < parts.length; i += 1) {
+    const part = parts[i];
+    if (!part) {
+      return null;
+    }
+    if (part.includes(".")) {
+      if (i !== parts.length - 1) {
+        return null;
+      }
+      const ipv4 = parseIpv4Octets(part);
+      if (!ipv4) {
+        return null;
+      }
+      hextets.push((ipv4[0] << 8) | ipv4[1], (ipv4[2] << 8) | ipv4[3]);
+      continue;
+    }
+    if (!/^[0-9a-f]{1,4}$/i.test(part)) {
+      return null;
+    }
+    hextets.push(parseInt(part, 16));
+  }
+  return hextets;
+}
+
+function parseIpv6Hextets(host: string): number[] | null {
+  if (!host.includes(":")) {
+    return null;
+  }
+  const doubleColonParts = host.split("::");
+  if (doubleColonParts.length > 2) {
+    return null;
+  }
+
+  if (doubleColonParts.length === 1) {
+    const hextets = parseIpv6GroupSlice(host.split(":"));
+    return hextets && hextets.length === 8 ? hextets : null;
+  }
+
+  const [leftRaw, rightRaw] = doubleColonParts;
+  const left = leftRaw ? parseIpv6GroupSlice(leftRaw.split(":")) : [];
+  const right = rightRaw ? parseIpv6GroupSlice(rightRaw.split(":")) : [];
+  if (!left || !right) {
+    return null;
+  }
+  const zeroCount = 8 - (left.length + right.length);
+  if (zeroCount < 1) {
+    return null;
+  }
+  return [...left, ...Array<number>(zeroCount).fill(0), ...right];
+}
+
+export function isLoopbackHostname(rawHostname: string): boolean {
+  let host = rawHostname.trim().toLowerCase();
+  if (host.startsWith("[") && host.endsWith("]")) {
+    host = host.slice(1, -1);
+  }
+  const zoneIdx = host.indexOf("%");
+  if (zoneIdx >= 0) {
+    host = host.slice(0, zoneIdx);
+  }
+  host = host.replace(/\.+$/, "");
+  if (!host) {
+    return false;
+  }
+  if (host === "localhost" || host.endsWith(".localhost")) {
+    return true;
+  }
+
+  const ipv4 = parseIpv4Octets(host);
+  if (ipv4) {
+    return isLoopbackOrUnspecifiedIpv4(ipv4);
+  }
+
+  const hextets = parseIpv6Hextets(host);
+  if (!hextets) {
+    return false;
+  }
+
+  const isPrefixZero = (endExclusive: number) => hextets.slice(0, endExclusive).every((h) => h === 0);
+  // :: (unspecified) and ::1 (IPv6 loopback)
+  if (isPrefixZero(7) && (hextets[7] === 0 || hextets[7] === 1)) {
+    return true;
+  }
+
+  // IPv4-mapped (::ffff:0:0/96), IPv4-translated (::ffff:0:0:0/96), and IPv4-compatible (::/96)
+  const isEmbeddedIpv4 =
+    (isPrefixZero(5) && hextets[5] === 0xffff) ||
+    (isPrefixZero(4) && hextets[4] === 0xffff && hextets[5] === 0) ||
+    isPrefixZero(6);
+  if (isEmbeddedIpv4) {
+    const embedded: [number, number, number, number] = [
+      (hextets[6] >> 8) & 0xff,
+      hextets[6] & 0xff,
+      (hextets[7] >> 8) & 0xff,
+      hextets[7] & 0xff,
+    ];
+    return isLoopbackOrUnspecifiedIpv4(embedded);
+  }
+
+  return false;
+}
 
 function validateNonLoopbackHttpUrl(rawUrl: string): URL {
   let parsed: URL;
@@ -48,7 +174,7 @@ function validateNonLoopbackHttpUrl(rawUrl: string): URL {
   if (!hostname) {
     throw new Error(INVALID_QR_ERROR);
   }
-  if (LOOPBACK_HOST_SET.has(hostname)) {
+  if (isLoopbackHostname(hostname)) {
     throw new Error(LOOPBACK_QR_ERROR);
   }
   return parsed;
@@ -56,7 +182,7 @@ function validateNonLoopbackHttpUrl(rawUrl: string): URL {
 
 function normalizeHttpCandidate(rawUrl: string): string {
   const trimmed = rawUrl.trim();
-  if (/^[a-z0-9.-]+:\d{2,5}(?:\/.*)?$/i.test(trimmed)) {
+  if (/^(?:[a-z0-9.-]+|\[[0-9a-f:.]+\]):\d{2,5}(?:\/.*)?$/i.test(trimmed)) {
     return `http://${trimmed}`;
   }
   return trimmed;
