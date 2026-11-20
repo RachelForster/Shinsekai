@@ -199,18 +199,12 @@ export function MobileTopAppBar({ outletRef }: { outletRef: RefObject<HTMLElemen
       return;
     }
     const rawLabel =
-      config.conciseLabel ??
-      (target.querySelector(".button__label")?.textContent ?? target.textContent ?? "").trim();
+      config.conciseLabel ?? (target.querySelector(".button__label")?.textContent ?? target.textContent ?? "").trim();
     const loading = Boolean(target.querySelector(".button__spinner"));
     const disabled = target.disabled;
 
     setActionState((prev) => {
-      if (
-        prev.present &&
-        prev.disabled === disabled &&
-        prev.loading === loading &&
-        prev.label === rawLabel
-      ) {
+      if (prev.present && prev.disabled === disabled && prev.loading === loading && prev.label === rawLabel) {
         return prev;
       }
       return {

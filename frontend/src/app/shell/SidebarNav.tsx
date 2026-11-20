@@ -190,8 +190,7 @@ export function SidebarNav({ onAssistantToggle, assistantOpen }: SidebarNavProps
     location.pathname.startsWith("/settings/launch") ||
     location.pathname.startsWith("/settings/stories");
   const decorateActive =
-    location.pathname.startsWith("/settings/backgrounds") ||
-    location.pathname.startsWith("/settings/effects");
+    location.pathname.startsWith("/settings/backgrounds") || location.pathname.startsWith("/settings/effects");
   const systemActive =
     location.pathname.startsWith("/settings/system") ||
     location.pathname.startsWith("/settings/logs") ||

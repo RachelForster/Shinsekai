@@ -38,62 +38,32 @@
     color-mix(in oklab, var(--theme-accent) 4%, #ffffff),
     color-mix(in oklab, var(--theme-accent) 1.2%, #161618)
   );
-  --m3-card-bg: light-dark(
-    #ffffff,
-    color-mix(in oklab, var(--theme-accent) 1.5%, #1b1b1d)
-  );
-  --m3-card-border: light-dark(
-    color-mix(in oklab, var(--theme-accent) 18%, #ffffff),
-    rgb(255 255 255 / 0.085)
-  );
-  --m3-card-border-hover: light-dark(
-    color-mix(in oklab, var(--theme-accent) 30%, #ffffff),
-    rgb(255 255 255 / 0.16)
-  );
-  --m3-card-highlight: light-dark(
-    inset 0 1px 0 rgb(255 255 255 / 0.85),
-    inset 0 1px 0 rgb(255 255 255 / 0.055)
-  );
+  --m3-card-bg: light-dark(#ffffff, color-mix(in oklab, var(--theme-accent) 1.5%, #1b1b1d));
+  --m3-card-border: light-dark(color-mix(in oklab, var(--theme-accent) 18%, #ffffff), rgb(255 255 255 / 0.085));
+  --m3-card-border-hover: light-dark(color-mix(in oklab, var(--theme-accent) 30%, #ffffff), rgb(255 255 255 / 0.16));
+  --m3-card-highlight: light-dark(inset 0 1px 0 rgb(255 255 255 / 0.85), inset 0 1px 0 rgb(255 255 255 / 0.055));
   --m3-card-shadow:
     0 1px 2px light-dark(rgb(0 0 0 / 0.025), rgb(0 0 0 / 0.24)),
-    0 8px 24px -4px light-dark(
-      color-mix(in oklab, var(--theme-accent) 9%, rgb(15 18 28 / 0.035)),
-      rgb(0 0 0 / 0.34)
-    ),
+    0 8px 24px -4px light-dark(color-mix(in oklab, var(--theme-accent) 9%, rgb(15 18 28 / 0.035)), rgb(0 0 0 / 0.34)),
     var(--m3-card-highlight);
   --m3-card-shadow-hover:
     0 2px 6px light-dark(rgb(0 0 0 / 0.04), rgb(0 0 0 / 0.3)),
-    0 14px 32px -6px light-dark(
-      color-mix(in oklab, var(--theme-accent) 14%, rgb(15 18 28 / 0.055)),
-      rgb(0 0 0 / 0.44)
-    ),
+    0 14px 32px -6px light-dark(color-mix(in oklab, var(--theme-accent) 14%, rgb(15 18 28 / 0.055)), rgb(0 0 0 / 0.44)),
     var(--m3-card-highlight);
 
   --m3-inner-bg: light-dark(
     color-mix(in oklab, var(--theme-accent) 4.5%, #ffffff),
     color-mix(in oklab, var(--theme-accent) 2%, #232326)
   );
-  --m3-inner-border: light-dark(
-    color-mix(in oklab, var(--theme-accent) 20%, #ffffff),
-    rgb(255 255 255 / 0.1)
-  );
+  --m3-inner-border: light-dark(color-mix(in oklab, var(--theme-accent) 20%, #ffffff), rgb(255 255 255 / 0.1));
 
   --m3-field-bg: light-dark(
     color-mix(in oklab, var(--theme-accent) 2%, #ffffff),
     color-mix(in oklab, var(--theme-accent) 1%, #141416)
   );
-  --m3-field-border: light-dark(
-    color-mix(in oklab, var(--theme-accent) 28%, #ffffff),
-    rgb(255 255 255 / 0.14)
-  );
-  --m3-field-focus-bg: light-dark(
-    #ffffff,
-    color-mix(in oklab, var(--theme-accent) 2%, #19191c)
-  );
-  --m3-inner-button-bg: light-dark(
-    #ffffff,
-    color-mix(in oklab, var(--theme-accent) 3%, #2f2f34)
-  );
+  --m3-field-border: light-dark(color-mix(in oklab, var(--theme-accent) 28%, #ffffff), rgb(255 255 255 / 0.14));
+  --m3-field-focus-bg: light-dark(#ffffff, color-mix(in oklab, var(--theme-accent) 2%, #19191c));
+  --m3-inner-button-bg: light-dark(#ffffff, color-mix(in oklab, var(--theme-accent) 3%, #2f2f34));
 
   /* Material 3 Tonal Surfaces & Radiant Accent Roles */
   --m3-surface-container-low: var(--m3-card-bg);
@@ -118,10 +88,7 @@
     color-mix(in oklab, var(--m3-primary) 90%, #1a0b10),
     color-mix(in oklab, var(--m3-primary) 88%, #ffffff)
   );
-  --m3-on-primary: light-dark(
-    #ffffff,
-    color-mix(in oklab, var(--theme-accent) 18%, #171013)
-  );
+  --m3-on-primary: light-dark(#ffffff, color-mix(in oklab, var(--theme-accent) 18%, #171013));
   --m3-secondary-container: light-dark(
     color-mix(in oklab, var(--theme-accent) 14%, #ffffff),
     color-mix(in oklab, var(--theme-accent) 22%, #201d20)
@@ -150,18 +117,9 @@
     0 6px 18px color-mix(in oklab, var(--m3-primary) 32%, transparent);
 
   /* Unify Semantic Theme Tokens Across Light & Dark Desktop UI */
-  --color-text-primary: light-dark(
-    color-mix(in oklab, var(--theme-accent) 8%, #1f1d1e),
-    #f4f3f5
-  );
-  --color-text-secondary: light-dark(
-    color-mix(in oklab, var(--theme-accent) 10%, #4a4648),
-    #c8c5cc
-  );
-  --color-text-muted: light-dark(
-    color-mix(in oklab, var(--theme-accent) 12%, #6e6a6c),
-    #a3a0a6
-  );
+  --color-text-primary: light-dark(color-mix(in oklab, var(--theme-accent) 8%, #1f1d1e), #f4f3f5);
+  --color-text-secondary: light-dark(color-mix(in oklab, var(--theme-accent) 10%, #4a4648), #c8c5cc);
+  --color-text-muted: light-dark(color-mix(in oklab, var(--theme-accent) 12%, #6e6a6c), #a3a0a6);
   --color-text-subtle: light-dark(#8b8689, #7d7a82);
 
   --color-bg-app: var(--m3-bg-canvas);
@@ -171,10 +129,7 @@
   --color-bg-input: var(--m3-field-bg);
 
   --color-border: var(--m3-card-border);
-  --color-border-subtle: light-dark(
-    color-mix(in oklab, var(--theme-accent) 12%, #ffffff),
-    rgb(255 255 255 / 0.06)
-  );
+  --color-border-subtle: light-dark(color-mix(in oklab, var(--theme-accent) 12%, #ffffff), rgb(255 255 255 / 0.06));
   --color-border-hover: var(--m3-field-border);
 
   --color-control-surface: var(--m3-inner-bg);
@@ -187,10 +142,7 @@
   --color-surface: var(--m3-card-bg);
   --color-surface-raised: var(--m3-card-bg);
   --color-surface-muted: var(--m3-inner-bg);
-  --color-surface-hover: light-dark(
-    color-mix(in oklab, var(--theme-accent) 5%, #ffffff),
-    rgb(255 255 255 / 0.05)
-  );
+  --color-surface-hover: light-dark(color-mix(in oklab, var(--theme-accent) 5%, #ffffff), rgb(255 255 255 / 0.05));
   --color-btn-surface: var(--m3-surface-container-high);
   --color-btn-surface-hover: var(--m3-surface-container-highest);
 
@@ -446,20 +398,16 @@
     border-color: color-mix(in oklab, var(--m3-card-border-hover) 65%, var(--m3-card-border));
   }
 
-  .app-shell :is(
-      .conversation-card,
-      .plugin-card,
-      .plugin-market-card,
-      .story-library-card,
-      .chat-theme-picker__card
-    ):hover,
+  .app-shell
+    :is(.conversation-card, .plugin-card, .plugin-market-card, .story-library-card, .chat-theme-picker__card):hover,
   .dialog .chat-theme-picker__card:hover {
     border-color: var(--m3-card-border-hover);
     box-shadow: var(--m3-card-shadow-hover);
     transform: translateY(-1px);
   }
 
-  .app-shell :is(
+  .app-shell
+    :is(
       .section__title,
       .section-toggle,
       .schema-section__summary,
@@ -665,7 +613,8 @@
   }
 
   /* Tier 2 Nested Containers ("框内框") */
-  .app-shell :is(
+  .app-shell
+    :is(
       .sprite-group-panel,
       .asset-inspector,
       .entity-list,
@@ -757,20 +706,13 @@
 
   :is(.app-shell, .dialog, .desktop-runtime) .button--primary:disabled {
     border-color: var(--m3-card-border);
-    color: light-dark(
-      color-mix(in oklab, var(--theme-accent) 42%, #a8a2a5),
-      rgb(255 255 255 / 0.36)
-    );
-    background: light-dark(
-      color-mix(in oklab, var(--theme-accent) 6%, #ffffff),
-      rgb(255 255 255 / 0.07)
-    );
+    color: light-dark(color-mix(in oklab, var(--theme-accent) 42%, #a8a2a5), rgb(255 255 255 / 0.36));
+    background: light-dark(color-mix(in oklab, var(--theme-accent) 6%, #ffffff), rgb(255 255 255 / 0.07));
     box-shadow: none;
     opacity: 1;
   }
 
-  :is(.app-shell, .dialog, .desktop-runtime)
-    .button:not(.button--primary):not(.button--danger):not(.button--ghost) {
+  :is(.app-shell, .dialog, .desktop-runtime) .button:not(.button--primary):not(.button--danger):not(.button--ghost) {
     border-color: var(--m3-card-border);
     color: var(--color-text-primary);
     background: var(--m3-surface-container-high);
@@ -920,10 +862,8 @@
     border-color: color-mix(in oklab, var(--m3-primary) 40%, var(--m3-field-border));
   }
 
-  :is(.app-shell, .dialog, .desktop-runtime)
-    :is(.input, .select, .textarea):focus,
-  :is(.app-shell, .dialog, .desktop-runtime)
-    .custom-select__button:is(:focus-visible, [aria-expanded="true"]) {
+  :is(.app-shell, .dialog, .desktop-runtime) :is(.input, .select, .textarea):focus,
+  :is(.app-shell, .dialog, .desktop-runtime) .custom-select__button:is(:focus-visible, [aria-expanded="true"]) {
     background: var(--m3-field-focus-bg);
     border-color: var(--m3-primary);
     box-shadow: 0 0 0 3px color-mix(in oklab, var(--m3-primary) 16%, transparent);
@@ -991,10 +931,7 @@
     height: 26px;
     border: 1px solid var(--m3-field-border);
     border-radius: var(--m3-shape-full);
-    background: light-dark(
-      color-mix(in oklab, var(--theme-accent) 10%, #ffffff),
-      rgb(255 255 255 / 0.12)
-    );
+    background: light-dark(color-mix(in oklab, var(--theme-accent) 10%, #ffffff), rgb(255 255 255 / 0.12));
     transition:
       background-color 180ms var(--m3-easing),
       border-color 180ms var(--m3-easing);
@@ -1171,10 +1108,7 @@
 
   .app-shell .logs-page .switch__track {
     border-color: var(--m3-field-border);
-    background: light-dark(
-      color-mix(in oklab, var(--theme-accent) 10%, #ffffff),
-      rgb(255 255 255 / 0.12)
-    );
+    background: light-dark(color-mix(in oklab, var(--theme-accent) 10%, #ffffff), rgb(255 255 255 / 0.12));
   }
 
   .app-shell .logs-page .switch__thumb {
