@@ -1,0 +1,1192 @@
+/* Desktop Material 3 Flagship Adaptation — Unified Pure White / Velvet Graphite OKLAB Palette,
+   Stadium Pill Buttons, Outlined Inputs, Expanding-Thumb M3 Switches & Elevated 18px Cards.
+   (Scoping to :is(.app-shell, .dialog, .desktop-runtime, ...) keeps .chat-stage intact.) */
+
+:root {
+  /* Shared Material 3 Shape & Motion Scale */
+  --m3-shape-xs: 4px;
+  --m3-shape-sm: 8px;
+  --m3-shape-md: 12px;
+  --m3-shape-lg: 16px;
+  --m3-shape-card-desktop: 18px;
+  --m3-shape-xl: 24px;
+  --m3-shape-full: 9999px;
+  --m3-easing: cubic-bezier(0.2, 0, 0, 1);
+
+  --radius-control: var(--m3-shape-md);
+  --radius-panel: var(--m3-shape-card-desktop);
+  --radius-toast: 14px;
+
+  /* Compatibility aliases for legacy page stylesheets (EffectManager / TemplateEditor) */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-full: 9999px;
+  --spacing-xs: 6px;
+  --spacing-sm: 10px;
+  --spacing-md: 14px;
+  --spacing-lg: 20px;
+  --font-size-xs: 12px;
+  --font-size-sm: 13px;
+  --font-weight-semibold: 600;
+
+  /* Pure White / Velvet Graphite 3-Tier OKLAB Palette (Matches Mobile M3 UI) */
+  --m3-bg-canvas: light-dark(
+    color-mix(in oklab, var(--theme-accent) 7.5%, #ffffff),
+    color-mix(in oklab, var(--theme-accent) 1%, #111112)
+  );
+  --m3-sidebar-bg: light-dark(
+    color-mix(in oklab, var(--theme-accent) 4%, #ffffff),
+    color-mix(in oklab, var(--theme-accent) 1.2%, #161618)
+  );
+  --m3-card-bg: light-dark(
+    #ffffff,
+    color-mix(in oklab, var(--theme-accent) 1.5%, #1b1b1d)
+  );
+  --m3-card-border: light-dark(
+    color-mix(in oklab, var(--theme-accent) 18%, #ffffff),
+    rgb(255 255 255 / 0.085)
+  );
+  --m3-card-border-hover: light-dark(
+    color-mix(in oklab, var(--theme-accent) 30%, #ffffff),
+    rgb(255 255 255 / 0.16)
+  );
+  --m3-card-highlight: light-dark(
+    inset 0 1px 0 rgb(255 255 255 / 0.85),
+    inset 0 1px 0 rgb(255 255 255 / 0.055)
+  );
+  --m3-card-shadow:
+    0 1px 2px light-dark(rgb(0 0 0 / 0.025), rgb(0 0 0 / 0.24)),
+    0 8px 24px -4px light-dark(
+      color-mix(in oklab, var(--theme-accent) 9%, rgb(15 18 28 / 0.035)),
+      rgb(0 0 0 / 0.34)
+    ),
+    var(--m3-card-highlight);
+  --m3-card-shadow-hover:
+    0 2px 6px light-dark(rgb(0 0 0 / 0.04), rgb(0 0 0 / 0.3)),
+    0 14px 32px -6px light-dark(
+      color-mix(in oklab, var(--theme-accent) 14%, rgb(15 18 28 / 0.055)),
+      rgb(0 0 0 / 0.44)
+    ),
+    var(--m3-card-highlight);
+
+  --m3-inner-bg: light-dark(
+    color-mix(in oklab, var(--theme-accent) 4.5%, #ffffff),
+    color-mix(in oklab, var(--theme-accent) 2%, #232326)
+  );
+  --m3-inner-border: light-dark(
+    color-mix(in oklab, var(--theme-accent) 20%, #ffffff),
+    rgb(255 255 255 / 0.1)
+  );
+
+  --m3-field-bg: light-dark(
+    color-mix(in oklab, var(--theme-accent) 2%, #ffffff),
+    color-mix(in oklab, var(--theme-accent) 1%, #141416)
+  );
+  --m3-field-border: light-dark(
+    color-mix(in oklab, var(--theme-accent) 28%, #ffffff),
+    rgb(255 255 255 / 0.14)
+  );
+  --m3-field-focus-bg: light-dark(
+    #ffffff,
+    color-mix(in oklab, var(--theme-accent) 2%, #19191c)
+  );
+  --m3-inner-button-bg: light-dark(
+    #ffffff,
+    color-mix(in oklab, var(--theme-accent) 3%, #2f2f34)
+  );
+
+  /* Material 3 Tonal Surfaces & Radiant Accent Roles */
+  --m3-surface-container-low: var(--m3-card-bg);
+  --m3-surface-container: light-dark(
+    color-mix(in oklab, var(--theme-accent) 3%, #ffffff),
+    color-mix(in oklab, var(--theme-accent) 1.5%, #1d1d20)
+  );
+  --m3-surface-container-high: light-dark(
+    color-mix(in oklab, var(--theme-accent) 4%, #ffffff),
+    color-mix(in oklab, var(--theme-accent) 2.5%, #28282c)
+  );
+  --m3-surface-container-highest: light-dark(
+    color-mix(in oklab, var(--theme-accent) 7.5%, #ffffff),
+    color-mix(in oklab, var(--theme-accent) 3%, #303036)
+  );
+
+  --m3-primary: light-dark(
+    color-mix(in oklab, var(--theme-accent) 94%, #c45472),
+    color-mix(in oklab, var(--theme-accent) 78%, #ffffff)
+  );
+  --m3-primary-hover: light-dark(
+    color-mix(in oklab, var(--m3-primary) 90%, #1a0b10),
+    color-mix(in oklab, var(--m3-primary) 88%, #ffffff)
+  );
+  --m3-on-primary: light-dark(
+    #ffffff,
+    color-mix(in oklab, var(--theme-accent) 18%, #171013)
+  );
+  --m3-secondary-container: light-dark(
+    color-mix(in oklab, var(--theme-accent) 14%, #ffffff),
+    color-mix(in oklab, var(--theme-accent) 22%, #201d20)
+  );
+  --m3-on-secondary-container: light-dark(
+    color-mix(in oklab, var(--theme-accent) 75%, #3b1724),
+    color-mix(in oklab, var(--theme-accent) 30%, #ffffff)
+  );
+
+  --m3-outline: var(--m3-field-border);
+  --m3-outline-variant: var(--m3-card-border);
+
+  /* Elevation & Primary Glow Shadows */
+  --m3-elevation-1: var(--m3-card-shadow);
+  --m3-elevation-2:
+    0 4px 10px light-dark(rgb(0 0 0 / 0.04), rgb(0 0 0 / 0.32)),
+    0 12px 28px light-dark(rgb(0 0 0 / 0.06), rgb(0 0 0 / 0.42));
+  --m3-elevation-3:
+    0 8px 20px light-dark(rgb(0 0 0 / 0.06), rgb(0 0 0 / 0.4)),
+    0 24px 48px light-dark(rgb(0 0 0 / 0.1), rgb(0 0 0 / 0.52));
+  --m3-primary-shadow:
+    0 1px 2px light-dark(rgb(0 0 0 / 0.06), rgb(0 0 0 / 0.28)),
+    0 4px 12px color-mix(in oklab, var(--m3-primary) 24%, transparent);
+  --m3-primary-shadow-hover:
+    0 2px 4px light-dark(rgb(0 0 0 / 0.08), rgb(0 0 0 / 0.34)),
+    0 6px 18px color-mix(in oklab, var(--m3-primary) 32%, transparent);
+
+  /* Unify Semantic Theme Tokens Across Light & Dark Desktop UI */
+  --color-text-primary: light-dark(
+    color-mix(in oklab, var(--theme-accent) 8%, #1f1d1e),
+    #f4f3f5
+  );
+  --color-text-secondary: light-dark(
+    color-mix(in oklab, var(--theme-accent) 10%, #4a4648),
+    #c8c5cc
+  );
+  --color-text-muted: light-dark(
+    color-mix(in oklab, var(--theme-accent) 12%, #6e6a6c),
+    #a3a0a6
+  );
+  --color-text-subtle: light-dark(#8b8689, #7d7a82);
+
+  --color-bg-app: var(--m3-bg-canvas);
+  --color-bg-panel: var(--m3-card-bg);
+  --color-bg-elevated: var(--m3-inner-bg);
+  --color-bg-sidebar: var(--m3-sidebar-bg);
+  --color-bg-input: var(--m3-field-bg);
+
+  --color-border: var(--m3-card-border);
+  --color-border-subtle: light-dark(
+    color-mix(in oklab, var(--theme-accent) 12%, #ffffff),
+    rgb(255 255 255 / 0.06)
+  );
+  --color-border-hover: var(--m3-field-border);
+
+  --color-control-surface: var(--m3-inner-bg);
+  --color-control-active: var(--m3-secondary-container);
+  --color-control-hover: var(--m3-surface-container-high);
+
+  --color-accent: var(--m3-primary);
+  --color-accent-primary: var(--m3-primary);
+
+  --color-surface: var(--m3-card-bg);
+  --color-surface-raised: var(--m3-card-bg);
+  --color-surface-muted: var(--m3-inner-bg);
+  --color-surface-hover: light-dark(
+    color-mix(in oklab, var(--theme-accent) 5%, #ffffff),
+    rgb(255 255 255 / 0.05)
+  );
+  --color-btn-surface: var(--m3-surface-container-high);
+  --color-btn-surface-hover: var(--m3-surface-container-highest);
+
+  --focus-ring: 0 0 0 3px color-mix(in oklab, var(--m3-primary) 18%, transparent);
+  scrollbar-color: light-dark(rgb(0 0 0 / 0.2), rgb(255 255 255 / 0.2)) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: light-dark(rgb(0 0 0 / 0.18), rgb(255 255 255 / 0.2));
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: light-dark(rgb(0 0 0 / 0.32), rgb(255 255 255 / 0.34));
+}
+
+@media (min-width: 761px) {
+  /* ── Desktop Frame, Custom Titlebar & Capsule Sidebar Navigation ── */
+
+  .desktop-frame {
+    border-color: var(--m3-card-border);
+    background: var(--m3-bg-canvas);
+    box-shadow: none;
+  }
+
+  .desktop-frame::after {
+    border-color: light-dark(rgb(0 0 0 / 0.05), rgb(255 255 255 / 0.06));
+  }
+
+  .desktop-titlebar {
+    border-bottom: 1px solid var(--m3-card-border);
+    background: var(--m3-sidebar-bg);
+  }
+
+  .desktop-titlebar__button {
+    width: 34px;
+    height: 28px;
+    border-radius: var(--m3-shape-full);
+    transition:
+      background-color 140ms var(--m3-easing),
+      border-color 140ms var(--m3-easing),
+      color 140ms var(--m3-easing);
+  }
+
+  .desktop-titlebar__button:hover {
+    border-color: transparent;
+    background: var(--m3-surface-container-high);
+  }
+
+  .app-shell {
+    --shell-sidebar-width: 232px;
+    background: var(--m3-bg-canvas);
+  }
+
+  .app-shell .sidebar {
+    border-right: 1px solid var(--m3-card-border);
+    background: var(--m3-sidebar-bg);
+  }
+
+  .app-shell .sidebar__brand {
+    padding: 0 18px;
+    border-bottom: 1px solid var(--m3-card-border);
+  }
+
+  .app-shell .sidebar__brand-mark {
+    width: 34px;
+    height: 34px;
+    border-color: transparent;
+    border-radius: 10px;
+    color: var(--m3-on-secondary-container);
+    background: var(--m3-secondary-container);
+  }
+
+  .app-shell .sidebar__brand-title {
+    color: var(--color-text-primary);
+    letter-spacing: -0.015em;
+  }
+
+  .app-shell .sidebar__github {
+    margin: 12px 12px 8px;
+    padding: 11px 13px;
+    border: 1px solid var(--m3-card-border);
+    border-radius: 14px;
+    background: var(--m3-card-bg);
+    box-shadow: var(--m3-card-shadow);
+    transition:
+      background-color 160ms var(--m3-easing),
+      border-color 160ms var(--m3-easing),
+      box-shadow 160ms var(--m3-easing),
+      transform 160ms var(--m3-easing);
+  }
+
+  .app-shell .sidebar__github:hover {
+    border-color: var(--m3-card-border-hover);
+    background: var(--m3-card-bg);
+    box-shadow: var(--m3-card-shadow-hover);
+    transform: translateY(-1px);
+  }
+
+  .app-shell .sidebar__nav {
+    gap: 4px;
+    padding: 4px 12px 14px;
+  }
+
+  .app-shell .sidebar__link {
+    min-height: 38px;
+    padding: 0 14px;
+    border-color: transparent;
+    border-radius: var(--m3-shape-full);
+    font-weight: 520;
+    transition:
+      background-color 150ms var(--m3-easing),
+      color 150ms var(--m3-easing);
+  }
+
+  .app-shell .sidebar__link:hover {
+    border-color: transparent;
+    color: var(--color-text-primary);
+    background: var(--m3-surface-container-high);
+  }
+
+  .app-shell .sidebar__link.active,
+  .app-shell .sidebar__link[aria-pressed="true"] {
+    border-color: transparent;
+    color: var(--m3-on-secondary-container);
+    background: var(--m3-secondary-container);
+    font-weight: 650;
+  }
+
+  .app-shell .content-outlet {
+    background: var(--m3-bg-canvas);
+  }
+
+  .app-shell .tools-drawer,
+  .app-shell .agent-drawer {
+    border-left: 1px solid var(--m3-card-border);
+    background: var(--m3-card-bg);
+    box-shadow: var(--m3-elevation-3);
+  }
+
+  .app-shell .tools-drawer__close,
+  .app-shell .agent-drawer__close {
+    border-radius: var(--m3-shape-full);
+  }
+
+  /* ── Page Title & Floating Capsule Section Quick-Nav ── */
+
+  .app-shell .page__title,
+  .app-shell .conversation-library__header h1,
+  .app-shell .conversation-setup__title,
+  .app-shell .logs-header__title {
+    color: var(--color-text-primary);
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  .app-shell .page-section-nav {
+    gap: 2px;
+    padding: 4px;
+    border: 1px solid var(--m3-card-border);
+    border-radius: var(--m3-shape-full);
+    background: var(--m3-card-bg);
+    box-shadow: var(--m3-card-shadow);
+  }
+
+  .app-shell .page-section-nav__item {
+    min-height: 30px;
+    padding: 0 11px;
+    border: 0;
+    border-radius: var(--m3-shape-full);
+    font-size: 12px;
+    font-weight: 600;
+    transition:
+      background-color 150ms var(--m3-easing),
+      color 150ms var(--m3-easing);
+  }
+
+  .app-shell .section__header {
+    flex-wrap: wrap;
+    gap: 10px 16px;
+    margin-bottom: 14px;
+  }
+
+  .app-shell .section__header > :first-child {
+    flex: 1 1 auto;
+    min-width: max-content;
+  }
+
+  .app-shell .section__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .app-shell .section__actions .button {
+    flex: 0 0 auto;
+    min-height: 34px;
+    padding: 0 13px;
+    font-size: 13px;
+  }
+
+  .app-shell .page-section-nav__item:hover,
+  .app-shell .page-section-nav__item:focus-visible {
+    border-color: transparent;
+    color: var(--m3-on-secondary-container);
+    background: var(--m3-secondary-container);
+    transform: none;
+  }
+
+  /* ── Elevated Flagship Cards (Tier 1) & Clean Nested Containers (Tier 2) ── */
+
+  .app-shell .section,
+  .app-shell .conversation-card,
+  .app-shell .plugin-card,
+  .app-shell .plugin-market-card,
+  .app-shell .expansion-panel,
+  .app-shell .expansion-flow__hero,
+  .app-shell .story-library-card,
+  .app-shell .chat-theme-picker__card,
+  .dialog .chat-theme-picker__card,
+  .desktop-runtime__panel {
+    border: 1px solid var(--m3-card-border);
+    border-radius: var(--m3-shape-card-desktop);
+    background: var(--m3-card-bg);
+    box-shadow: var(--m3-card-shadow);
+    transition:
+      border-color 180ms var(--m3-easing),
+      box-shadow 180ms var(--m3-easing),
+      transform 180ms var(--m3-easing);
+  }
+
+  .app-shell .section {
+    padding: 22px 24px;
+  }
+
+  .app-shell .section:last-child {
+    border-bottom-color: var(--m3-card-border);
+  }
+
+  .app-shell .section:hover {
+    border-color: color-mix(in oklab, var(--m3-card-border-hover) 65%, var(--m3-card-border));
+  }
+
+  .app-shell :is(
+      .conversation-card,
+      .plugin-card,
+      .plugin-market-card,
+      .story-library-card,
+      .chat-theme-picker__card
+    ):hover,
+  .dialog .chat-theme-picker__card:hover {
+    border-color: var(--m3-card-border-hover);
+    box-shadow: var(--m3-card-shadow-hover);
+    transform: translateY(-1px);
+  }
+
+  .app-shell :is(
+      .section__title,
+      .section-toggle,
+      .schema-section__summary,
+      .plugin-card__title strong,
+      .plugin-market-card__title-row h3,
+      .plugin-catalog-identity__name,
+      .template-options-panel__title
+    ) {
+    color: var(--color-text-primary);
+    font-weight: 650;
+    letter-spacing: -0.01em;
+  }
+
+  .app-shell .conversation-card {
+    padding: 18px 20px;
+  }
+
+  .app-shell .conversation-card__avatar {
+    border: 1px solid var(--m3-inner-border);
+    border-radius: var(--m3-shape-md);
+    background: var(--m3-inner-bg);
+  }
+
+  .app-shell .conversation-library__empty img {
+    border: 1px solid var(--m3-card-border);
+    box-shadow: var(--m3-card-shadow);
+    background: #ffffff;
+  }
+
+  .app-shell .conversation-library__active {
+    padding: 20px 24px;
+    border: 1px solid color-mix(in oklab, var(--m3-primary) 26%, var(--m3-card-border));
+    border-radius: var(--m3-shape-card-desktop);
+    color: var(--m3-on-secondary-container);
+    background: linear-gradient(
+      135deg,
+      var(--m3-secondary-container),
+      color-mix(in oklab, var(--m3-secondary-container) 38%, var(--m3-card-bg))
+    );
+    box-shadow: var(--m3-card-shadow);
+  }
+
+  .app-shell .conversation-library__active h2 {
+    color: var(--color-text-primary);
+  }
+
+  .app-shell .conversation-create__type {
+    border-color: var(--m3-inner-border);
+    border-radius: 14px;
+    background: var(--m3-inner-bg);
+    transition:
+      border-color 150ms var(--m3-easing),
+      background-color 150ms var(--m3-easing);
+  }
+
+  .app-shell .conversation-create__type.is-selected,
+  .app-shell .conversation-create__type:focus-within {
+    border-color: var(--m3-primary);
+    background: color-mix(in oklab, var(--m3-secondary-container) 55%, var(--m3-card-bg));
+  }
+
+  /* Template Workbench Card */
+  .app-shell .template-page {
+    min-height: auto;
+    overflow: hidden;
+    border: 1px solid var(--m3-card-border);
+    border-radius: var(--m3-shape-card-desktop);
+    background: var(--m3-card-bg);
+    box-shadow: var(--m3-card-shadow);
+  }
+
+  .app-shell .template-page__topbar {
+    border-bottom: 1px solid var(--m3-card-border);
+    background: var(--m3-card-bg);
+  }
+
+  .app-shell .template-workbench {
+    height: auto;
+    min-height: 460px;
+    border-bottom: 0;
+  }
+
+  .app-shell .template-workbench__main {
+    padding: 22px 24px;
+    background: var(--m3-card-bg);
+  }
+
+  .app-shell .template-options-panel {
+    padding: 18px 22px;
+    border-left: 1px solid var(--m3-inner-border);
+    background: var(--m3-inner-bg);
+  }
+
+  .app-shell .template-page__footer {
+    border-top: 1px solid var(--m3-card-border);
+    border-bottom: 0;
+    background: color-mix(in oklab, var(--m3-card-bg) 88%, var(--m3-inner-bg));
+    backdrop-filter: blur(12px);
+  }
+
+  .app-shell .template-language-segment {
+    min-height: 30px;
+    border-color: var(--m3-card-border);
+    border-radius: var(--m3-shape-full);
+    background: var(--m3-card-bg);
+    font-weight: 560;
+    transition:
+      background-color 150ms var(--m3-easing),
+      border-color 150ms var(--m3-easing),
+      color 150ms var(--m3-easing);
+  }
+
+  .app-shell .template-language-segment--active {
+    border-color: transparent;
+    color: var(--m3-on-secondary-container);
+    background: var(--m3-secondary-container);
+    font-weight: 650;
+  }
+
+  .app-shell .template-system-toggle {
+    border-color: var(--m3-inner-border);
+    border-radius: var(--m3-shape-md);
+    color: var(--color-text-primary);
+    background: var(--m3-inner-bg);
+  }
+
+  /* Plugin Page & Marketplace Cards (removes dark pink contamination) */
+  :root[data-color-scheme="dark"] .app-shell .plugin-page {
+    --plugin-market-dark-surface-muted: var(--m3-inner-bg);
+    --plugin-market-dark-surface-tinted: var(--m3-secondary-container);
+    --plugin-market-dark-border-muted: var(--m3-inner-border);
+  }
+
+  .app-shell .plugin-list-controls {
+    padding: 10px 14px;
+    border: 1px solid var(--m3-card-border);
+    border-radius: 14px;
+    background: color-mix(in oklab, var(--m3-card-bg) 90%, transparent);
+    box-shadow: var(--m3-card-shadow);
+  }
+
+  .app-shell .plugin-card,
+  .app-shell .plugin-market-card {
+    padding: 18px 20px;
+  }
+
+  .app-shell .plugin-page__tabs {
+    gap: 3px;
+    padding: 3px;
+    border: 1px solid var(--m3-card-border);
+    border-radius: var(--m3-shape-full);
+    background: var(--m3-card-bg);
+    box-shadow: var(--m3-card-shadow);
+  }
+
+  .app-shell .plugin-page__tabs .segmented-tabs__tab {
+    min-height: 30px;
+    padding: 0 13px;
+    border-bottom: 0;
+    border-radius: var(--m3-shape-full);
+    color: var(--color-text-muted);
+    font-size: 13px;
+    font-weight: 560;
+    transition:
+      background-color 150ms var(--m3-easing),
+      color 150ms var(--m3-easing);
+  }
+
+  .app-shell .plugin-page__tabs .segmented-tabs__tab:hover {
+    color: var(--color-text-primary);
+    background: var(--m3-surface-container-high);
+  }
+
+  .app-shell .plugin-page__tabs .segmented-tabs__tab[aria-selected="true"] {
+    color: var(--m3-on-secondary-container);
+    background: var(--m3-secondary-container);
+    font-weight: 650;
+  }
+
+  .app-shell .plugin-card__actions .button {
+    min-height: 34px;
+  }
+
+  .app-shell .plugin-card__actions .button--ghost {
+    border-color: var(--m3-card-border);
+    color: var(--color-text-secondary);
+    background: var(--m3-surface-container-high);
+    box-shadow: 0 1px 2px light-dark(rgb(0 0 0 / 0.025), rgb(0 0 0 / 0.18));
+  }
+
+  .app-shell .plugin-card__actions .button--ghost:hover:not(:disabled) {
+    border-color: var(--m3-field-border);
+    color: var(--color-text-primary);
+    background: var(--m3-surface-container-highest);
+  }
+
+  .app-shell .plugin-card__logo,
+  .app-shell .plugin-market-card__logo {
+    border-color: var(--m3-inner-border);
+    border-radius: 14px;
+    color: var(--m3-on-secondary-container);
+    background: var(--m3-secondary-container);
+  }
+
+  /* Tier 2 Nested Containers ("框内框") */
+  .app-shell :is(
+      .sprite-group-panel,
+      .asset-inspector,
+      .entity-list,
+      .image-asset-card,
+      .perception-settings__service,
+      .perception-settings__toggle,
+      .desktop-runtime-settings__candidate,
+      .template-stack-field--system,
+      .effect-audio-list,
+      .effect-image-list,
+      .background-bgm-panel,
+      .memory-row,
+      .knowledge-row,
+      .asset-row,
+      .character-self-persona-banner,
+      .chat-theme-customizer__source-bar,
+      .onboarding-task-panel,
+      .tool-group
+    ),
+  .dialog :is(.plugin-publisher-scan, .project-root-prompt__choice) {
+    border: 1px solid var(--m3-inner-border);
+    border-radius: var(--m3-shape-md);
+    background: var(--m3-inner-bg);
+  }
+
+  .app-shell .image-asset-card {
+    transition:
+      border-color 150ms var(--m3-easing),
+      background-color 150ms var(--m3-easing),
+      box-shadow 150ms var(--m3-easing);
+  }
+
+  .app-shell .image-asset-card:hover {
+    border-color: var(--m3-field-border);
+    background: var(--m3-card-bg);
+    box-shadow: 0 4px 12px light-dark(rgb(0 0 0 / 0.045), rgb(0 0 0 / 0.24));
+  }
+
+  .app-shell .image-asset-card[aria-selected="true"] {
+    border-color: var(--m3-primary);
+    background: color-mix(in oklab, var(--m3-secondary-container) 60%, var(--m3-card-bg));
+  }
+
+  .app-shell .entity-list {
+    overflow: hidden;
+  }
+
+  .app-shell .entity-list__item[aria-selected="true"] {
+    color: var(--m3-on-secondary-container);
+    background: var(--m3-secondary-container);
+  }
+
+  /* ── Desktop Stadium Pill Buttons & Circular IconButtons ── */
+
+  :is(.app-shell, .dialog, .desktop-runtime) .button {
+    min-height: 36px;
+    padding: 0 16px;
+    gap: 7px;
+    border-radius: var(--m3-shape-full);
+    font-size: 13.5px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    transition:
+      background-color 150ms var(--m3-easing),
+      border-color 150ms var(--m3-easing),
+      box-shadow 150ms var(--m3-easing),
+      color 150ms var(--m3-easing),
+      transform 140ms var(--m3-easing);
+  }
+
+  :is(.app-shell, .dialog, .desktop-runtime) .button:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+
+  :is(.app-shell, .dialog, .desktop-runtime) .button--primary {
+    border-color: transparent;
+    color: var(--m3-on-primary);
+    background: var(--m3-primary);
+    box-shadow: var(--m3-primary-shadow);
+  }
+
+  :is(.app-shell, .dialog, .desktop-runtime) .button--primary:hover:not(:disabled) {
+    border-color: transparent;
+    color: var(--m3-on-primary);
+    background: var(--m3-primary-hover);
+    box-shadow: var(--m3-primary-shadow-hover);
+    transform: translateY(-1px);
+  }
+
+  :is(.app-shell, .dialog, .desktop-runtime) .button--primary:disabled {
+    border-color: var(--m3-card-border);
+    color: light-dark(
+      color-mix(in oklab, var(--theme-accent) 42%, #a8a2a5),
+      rgb(255 255 255 / 0.36)
+    );
+    background: light-dark(
+      color-mix(in oklab, var(--theme-accent) 6%, #ffffff),
+      rgb(255 255 255 / 0.07)
+    );
+    box-shadow: none;
+    opacity: 1;
+  }
+
+  :is(.app-shell, .dialog, .desktop-runtime)
+    .button:not(.button--primary):not(.button--danger):not(.button--ghost) {
+    border-color: var(--m3-card-border);
+    color: var(--color-text-primary);
+    background: var(--m3-surface-container-high);
+    box-shadow: 0 1px 2px light-dark(rgb(0 0 0 / 0.025), rgb(0 0 0 / 0.18));
+  }
+
+  :is(.app-shell, .dialog, .desktop-runtime)
+    .button:not(.button--primary):not(.button--danger):not(.button--ghost):hover:not(:disabled) {
+    border-color: var(--m3-field-border);
+    color: var(--color-text-primary);
+    background: var(--m3-surface-container-highest);
+    transform: translateY(-1px);
+  }
+
+  .app-shell
+    :is(
+      .asset-inspector,
+      .sprite-group-panel,
+      .template-options-panel,
+      .background-bgm-panel,
+      .effect-audio-list,
+      .effect-image-list,
+      .tool-group
+    )
+    .button:not(.button--primary):not(.button--danger):not(.button--ghost) {
+    background: var(--m3-inner-button-bg);
+  }
+
+  .app-shell
+    :is(
+      .asset-inspector,
+      .sprite-group-panel,
+      .template-options-panel,
+      .background-bgm-panel,
+      .effect-audio-list,
+      .effect-image-list,
+      .tool-group
+    )
+    .button:not(.button--primary):not(.button--danger):not(.button--ghost):hover:not(:disabled) {
+    background: var(--m3-surface-container-highest);
+  }
+
+  :is(.app-shell, .dialog, .desktop-runtime) .button--danger,
+  :is(.app-shell, .dialog, .desktop-runtime) .button--ghost {
+    border-radius: var(--m3-shape-full);
+  }
+
+  .app-shell .plugin-list-controls__pager .button {
+    width: 32px;
+    height: 32px;
+    min-height: 32px;
+    padding-inline: 0;
+  }
+
+  .app-shell .character-page__toolbar-group--links .button {
+    padding-inline: 12px;
+  }
+
+  :is(.app-shell, .dialog) .icon-button {
+    width: 34px;
+    height: 34px;
+    border-color: var(--m3-card-border);
+    border-radius: var(--m3-shape-full);
+    background: var(--m3-surface-container-high);
+    transition:
+      background-color 150ms var(--m3-easing),
+      border-color 150ms var(--m3-easing),
+      transform 120ms var(--m3-easing);
+  }
+
+  :is(.app-shell, .dialog) .icon-button:hover:not(:disabled) {
+    border-color: var(--m3-field-border);
+    background: var(--m3-surface-container-highest);
+  }
+
+  .app-shell
+    :is(
+      .asset-inspector,
+      .sprite-group-panel,
+      .template-options-panel,
+      .background-bgm-panel,
+      .effect-audio-list,
+      .effect-image-list,
+      .tool-group
+    )
+    .icon-button {
+    background: var(--m3-inner-button-bg);
+  }
+
+  /* ── Desktop Outlined Inputs, Textareas & Exposed Dropdown Menus ── */
+
+  :is(.app-shell, .dialog, .desktop-runtime) :is(.input, .select, .custom-select__button) {
+    min-height: 38px;
+    padding: 7px 13px;
+    border: 1px solid var(--m3-field-border);
+    border-radius: var(--m3-shape-md);
+    background: var(--m3-field-bg);
+    font-size: 13.5px;
+    transition:
+      background-color 150ms var(--m3-easing),
+      border-color 150ms var(--m3-easing),
+      box-shadow 150ms var(--m3-easing);
+  }
+
+  .app-shell .plugin-list-controls__search .input,
+  .app-shell .plugin-catalog-sort .custom-select__button {
+    padding-left: 34px;
+  }
+
+  :is(.app-shell, .dialog) .select {
+    padding-right: 34px;
+    background-position:
+      calc(100% - 17px) calc(50% - 1px),
+      calc(100% - 12px) calc(50% - 1px);
+  }
+
+  :is(.app-shell, .dialog) .textarea {
+    padding: 10px 13px;
+    border: 1px solid var(--m3-field-border);
+    border-radius: var(--m3-shape-md);
+    background: var(--m3-field-bg);
+    font-size: 13.5px;
+    transition:
+      background-color 150ms var(--m3-easing),
+      border-color 150ms var(--m3-easing),
+      box-shadow 150ms var(--m3-easing);
+  }
+
+  .app-shell
+    :is(
+      .asset-inspector,
+      .template-options-panel,
+      .template-stack-field--system,
+      .sprite-group-panel,
+      .effect-audio-row,
+      .effect-image-row,
+      .chat-theme-customizer__source-bar,
+      .onboarding-task-panel,
+      .tool-group
+    )
+    :is(.input, .select, .textarea, .custom-select__button) {
+    background: var(--m3-field-focus-bg);
+  }
+
+  :is(.app-shell, .dialog, .desktop-runtime)
+    :is(.input, .select, .textarea, .custom-select__button):hover:not(:disabled) {
+    border-color: color-mix(in oklab, var(--m3-primary) 40%, var(--m3-field-border));
+  }
+
+  :is(.app-shell, .dialog, .desktop-runtime)
+    :is(.input, .select, .textarea):focus,
+  :is(.app-shell, .dialog, .desktop-runtime)
+    .custom-select__button:is(:focus-visible, [aria-expanded="true"]) {
+    background: var(--m3-field-focus-bg);
+    border-color: var(--m3-primary);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--m3-primary) 16%, transparent);
+    outline: none;
+  }
+
+  :is(.app-shell, .dialog) :is(.input, .select, .textarea, .custom-select__button):disabled {
+    border-color: var(--m3-card-border);
+    background: var(--m3-inner-bg);
+    opacity: 0.72;
+  }
+
+  :is(.app-shell, .dialog) input[type="color"].input {
+    width: 64px;
+    min-width: 64px;
+    padding: 4px 5px;
+    cursor: pointer;
+  }
+
+  :is(.app-shell, .dialog) input[type="color"].input::-webkit-color-swatch-wrapper {
+    padding: 0;
+  }
+
+  :is(.app-shell, .dialog) input[type="color"].input::-webkit-color-swatch {
+    border: 0;
+    border-radius: 7px;
+  }
+
+  .custom-select__menu,
+  .editable-combo__menu,
+  .app-shell .knowledge-picker__dropdown {
+    padding: 6px;
+    border: 1px solid var(--m3-card-border);
+    border-radius: 14px;
+    background: var(--m3-card-bg);
+    box-shadow: var(--m3-elevation-2);
+  }
+
+  .custom-select__option,
+  .editable-combo__option {
+    padding: 8px 11px;
+    border-radius: var(--m3-shape-sm);
+    font-size: 13.5px;
+    transition:
+      background-color 120ms var(--m3-easing),
+      color 120ms var(--m3-easing);
+  }
+
+  .custom-select__option[aria-selected="true"],
+  .editable-combo__option[aria-selected="true"] {
+    color: var(--m3-on-secondary-container);
+    background: var(--m3-secondary-container);
+    font-weight: 600;
+  }
+
+  /* ── Desktop-Proportioned M3 Expanding-Thumb Switch (44px x 26px) ── */
+
+  :is(.app-shell, .dialog) .switch {
+    gap: 10px;
+  }
+
+  :is(.app-shell, .dialog) .switch__track {
+    box-sizing: border-box;
+    width: 44px;
+    height: 26px;
+    border: 1px solid var(--m3-field-border);
+    border-radius: var(--m3-shape-full);
+    background: light-dark(
+      color-mix(in oklab, var(--theme-accent) 10%, #ffffff),
+      rgb(255 255 255 / 0.12)
+    );
+    transition:
+      background-color 180ms var(--m3-easing),
+      border-color 180ms var(--m3-easing);
+  }
+
+  :is(.app-shell, .dialog) .switch:hover:not(.switch--disabled) .switch__track {
+    border-color: color-mix(in oklab, var(--m3-primary) 45%, var(--m3-field-border));
+  }
+
+  :is(.app-shell, .dialog) .switch__thumb {
+    top: 4px;
+    left: 4px;
+    width: 16px;
+    height: 16px;
+    background: light-dark(#ffffff, rgb(255 255 255 / 0.8));
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.16);
+    transition:
+      transform 180ms var(--m3-easing),
+      width 180ms var(--m3-easing),
+      height 180ms var(--m3-easing),
+      top 180ms var(--m3-easing),
+      left 180ms var(--m3-easing),
+      background-color 150ms ease;
+  }
+
+  :is(.app-shell, .dialog) .switch__input:checked + .switch__track {
+    border-color: var(--m3-primary);
+    background: var(--m3-primary);
+  }
+
+  :is(.app-shell, .dialog) .switch__input:checked + .switch__track > .switch__thumb {
+    top: 2px;
+    left: 2px;
+    width: 20px;
+    height: 20px;
+    transform: translateX(18px);
+    background: var(--m3-on-primary);
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.18);
+  }
+
+  :is(.app-shell, .dialog) .switch__label {
+    opacity: 0.94;
+    font-size: 13.5px;
+  }
+
+  /* ── Segmented Tabs, Centered Modal Dialogs & Toasts ── */
+
+  :is(.app-shell, .dialog) .segmented-tabs--pills .segmented-tabs__tab {
+    min-height: 34px;
+    padding: 0 15px;
+    border-color: var(--m3-card-border);
+    border-radius: var(--m3-shape-full);
+    background: var(--m3-surface-container-high);
+    font-weight: 560;
+    transition:
+      background-color 150ms var(--m3-easing),
+      border-color 150ms var(--m3-easing),
+      color 150ms var(--m3-easing);
+  }
+
+  :is(.app-shell, .dialog) .segmented-tabs--pills .segmented-tabs__tab[aria-selected="true"] {
+    border-color: transparent;
+    color: var(--m3-on-secondary-container);
+    background: var(--m3-secondary-container);
+    font-weight: 650;
+  }
+
+  .dialog-backdrop {
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+
+  .dialog {
+    border: 1px solid var(--m3-card-border);
+    border-radius: var(--m3-shape-xl);
+    background: var(--m3-card-bg);
+    box-shadow: var(--m3-elevation-3);
+  }
+
+  .dialog__header {
+    padding: 18px 22px 14px;
+    border-bottom: 1px solid var(--m3-card-border);
+  }
+
+  .dialog__title {
+    color: var(--color-text-primary);
+    font-size: 17px;
+    font-weight: 680;
+    letter-spacing: -0.01em;
+  }
+
+  .dialog__body {
+    padding: 18px 22px;
+  }
+
+  .dialog__footer {
+    padding: 14px 22px 18px;
+    border-top: 1px solid var(--m3-card-border);
+  }
+
+  .toast {
+    border: 1px solid var(--m3-card-border);
+    border-radius: var(--radius-toast);
+    background: var(--m3-card-bg);
+    box-shadow: var(--m3-elevation-2);
+  }
+
+  /* ── Logs Page Harmonization (Overrides Boxy 7px / Pink Defaults) ── */
+
+  .app-shell .logs-page {
+    --logs-badge-border-radius: var(--m3-shape-full);
+    --logs-detail-border-radius: var(--m3-shape-md);
+    --logs-panel-border-radius: var(--m3-shape-card-desktop);
+    --logs-panel-box-shadow: var(--m3-card-shadow);
+    --logs-file-color: var(--color-text-primary);
+    --logs-file-hover-color: var(--color-text-primary);
+    --logs-file-active-color: var(--m3-on-secondary-container);
+    --logs-file-active-background: var(--m3-secondary-container);
+    --logs-file-active-border-color: transparent;
+    --logs-file-meta-color: var(--color-text-muted);
+    --logs-file-active-meta-color: var(--m3-on-secondary-container);
+    --logs-toolbar-background: color-mix(in oklab, var(--m3-card-bg) 90%, transparent);
+  }
+
+  .app-shell .logs-page :is(.logs-toolbar, .logs-sidebar, .logs-viewer) {
+    border-color: var(--m3-card-border);
+    border-radius: var(--m3-shape-card-desktop);
+    background: var(--m3-card-bg);
+    box-shadow: var(--m3-card-shadow);
+  }
+
+  .app-shell .logs-page .button {
+    min-height: 36px;
+    border-color: var(--m3-card-border);
+    border-radius: var(--m3-shape-full);
+    color: var(--color-text-primary);
+    background: var(--m3-surface-container-high);
+    box-shadow: 0 1px 2px light-dark(rgb(0 0 0 / 0.025), rgb(0 0 0 / 0.18));
+  }
+
+  .app-shell .logs-page .button:hover:not(:disabled) {
+    border-color: var(--m3-field-border);
+    color: var(--color-text-primary);
+    background: var(--m3-surface-container-highest);
+  }
+
+  .app-shell .logs-page .button--primary {
+    border-color: transparent;
+    color: var(--m3-on-primary);
+    background: var(--m3-primary);
+    box-shadow: var(--m3-primary-shadow);
+  }
+
+  .app-shell .logs-page .button--primary:hover:not(:disabled) {
+    border-color: transparent;
+    color: var(--m3-on-primary);
+    background: var(--m3-primary-hover);
+    box-shadow: var(--m3-primary-shadow-hover);
+  }
+
+  .app-shell .logs-page :is(.input, .select) {
+    min-height: 38px;
+    border-color: var(--m3-field-border);
+    border-radius: var(--m3-shape-md);
+    color: var(--color-text-primary);
+    background-color: var(--m3-field-bg);
+  }
+
+  .app-shell .logs-page :is(.input, .select):focus {
+    border-color: var(--m3-primary);
+    background-color: var(--m3-field-focus-bg);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--m3-primary) 16%, transparent);
+  }
+
+  .app-shell .logs-page .switch__track {
+    border-color: var(--m3-field-border);
+    background: light-dark(
+      color-mix(in oklab, var(--theme-accent) 10%, #ffffff),
+      rgb(255 255 255 / 0.12)
+    );
+  }
+
+  .app-shell .logs-page .switch__thumb {
+    background: light-dark(#ffffff, rgb(255 255 255 / 0.8));
+  }
+
+  .app-shell .logs-page .switch__input:checked + .switch__track {
+    border-color: var(--m3-primary);
+    background: var(--m3-primary);
+  }
+
+  .app-shell .logs-page .switch__input:checked + .switch__track > .switch__thumb {
+    background: var(--m3-on-primary);
+  }
+}
