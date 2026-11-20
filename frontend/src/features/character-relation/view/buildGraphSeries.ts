@@ -5,7 +5,7 @@ import { composeGraphNode } from "./composingGraphNode";
 import type { Positions } from "../model/graphLayout";
 import { measureEdgeLengths, relationEdgeId, type EdgeLengths } from "../model/graphLayout";
 import type { GraphTheme } from "../model/graphTheme";
-import { normalizeRelationName } from "../model/relationSelection";
+import { normalizeRelationName } from "../model/relationUitl";
 
 export interface GraphSeriesOptions {
   graph: CharacterRelationGraph;

@@ -20,7 +20,7 @@ describe("CharacterGraphView", () => {
     const element = (graph: CharacterRelationGraph) => (
       <QueryClientProvider client={client}>
         <I18nProvider language="en">
-          <CharacterGraphView graph={graph} active={false} disabled={false} />
+          <CharacterGraphView graph={graph} active={false} disabled={false} actionsContainer={null} />
         </I18nProvider>
       </QueryClientProvider>
     );
@@ -38,7 +38,20 @@ describe("CharacterGraphView", () => {
     ]);
     renderRelationSection();
     fireEvent.click(await screen.findByRole("tab", { name: "Relationship graph" }));
-    fireEvent.change(screen.getByLabelText("Select person"), { target: { value: "B" } });
+    act(() =>
+      state.chart!.trigger("click", {
+        type: "click",
+        componentType: "series",
+        componentSubType: "graph",
+        componentIndex: 0,
+        name: "B",
+        data: {},
+        value: 0,
+        $vars: [],
+        dataType: "node",
+        dataIndex: 1,
+      }),
+    );
     const links = (state.chart!.getOption().series as { links: { source: string; label: { show: boolean } }[] }[])[0]
       .links;
     expect(links.filter((link) => link.label.show).map((link) => link.source)).toEqual(["B"]);
@@ -205,7 +218,20 @@ describe("CharacterGraphView", () => {
     fireEvent.click(await screen.findByRole("tab", { name: "Relationship graph" }));
     const chart = state.chart!;
     act(() => chart.setOption({ series: [{ id: "relationships", zoom: 2, center: [0, 0] }] }));
-    fireEvent.change(screen.getByRole("combobox", { name: "Select person" }), { target: { value: "A" } });
+    act(() =>
+      chart.trigger("click", {
+        type: "click",
+        componentType: "series",
+        componentSubType: "graph",
+        componentIndex: 0,
+        name: "A",
+        data: {},
+        value: 0,
+        $vars: [],
+        dataType: "node",
+        dataIndex: 0,
+      }),
+    );
     expect((chart.getOption().series as { zoom: number }[])[0].zoom).toBe(2);
   });
 

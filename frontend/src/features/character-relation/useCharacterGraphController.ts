@@ -6,7 +6,7 @@ import {
   activeGraphNode,
 } from "./model/graphSelection";
 import { useQuery } from "@tanstack/react-query";
-import type { ChangeEvent, KeyboardEvent, MouseEvent, PointerEvent as ReactPointerEvent } from "react";
+import type { KeyboardEvent, MouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import { charactersQueryKey, listCharacters } from "../../entities/character/repository";
 import { useI18n } from "../../shared/i18n";
@@ -185,12 +185,6 @@ export function useCharacterGraphController({ graph, disabled, active }: Charact
     fitGraph();
   };
 
-  const handlePersonSelection = (e: ChangeEvent<HTMLSelectElement>): void => {
-    hoverGraphNode(selection.current, "");
-    setSelected(e.target.value);
-    renderGraph();
-  };
-
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
     suppressNextClick.current = false;
     const chart = chartInstance.current;
@@ -266,12 +260,10 @@ export function useCharacterGraphController({ graph, disabled, active }: Charact
 
   return {
     t,
-    selected: selection.current.selectedKey,
     container,
     fitGraph,
     resetLayout,
     handleKeyDown,
-    handlePersonSelection,
     handlePointerDown,
     handlePointerMove,
     handlePointerUp,
