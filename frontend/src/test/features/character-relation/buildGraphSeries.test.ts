@@ -4,6 +4,31 @@ import { graphSeries } from "../../../features/character-relation/view/buildGrap
 import type { CharacterRelationGraph } from "../../../shared/platform/types";
 
 describe("graphSeries", () => {
+  it("uses the selected owner's separately supplied relationship group", () => {
+    const edge = { source: "A", target: "B", content: "A view", temperature: 0 };
+    const positions = { A: { x: 0, y: 0 }, B: { x: 100, y: 0 } };
+    const series = graphSeries(
+      {
+        graph: { owner: "A", nodes: [{ key: "A" }, { key: "B" }], edges: [] },
+        positions,
+        labelPositions: positions,
+        activeNodeKey: "B",
+        emptyRelationLabel: "",
+        textColor: "#fff",
+        backgroundColor: "#000",
+      },
+      [
+        { owner: "A", nodes: [], edges: [edge] },
+        { owner: "B", nodes: [], edges: [{ ...edge, content: "B view" }] },
+      ],
+    );
+    const links = series.links as Array<{ id: string; label: { show: boolean; formatter: () => string } }>;
+    expect(links[0].id).not.toBe(links[1].id);
+    expect(links[0].label.show).toBe(false);
+    expect(links[1].label.show).toBe(true);
+    expect(links[1].label.formatter()).toBe("B view");
+  });
+
   it("uses the selected character color for its node border", () => {
     const graph: CharacterRelationGraph = {
       owner: "A",
@@ -13,6 +38,7 @@ describe("graphSeries", () => {
     const series = graphSeries({
       graph: graph,
       positions: { A: { x: 0, y: 0 }, B: { x: 100, y: 0 } },
+      labelPositions: { A: { x: 0, y: 0 }, B: { x: 100, y: 0 } },
       activeNodeKey: "A",
       emptyRelationLabel: "",
       textColor: "#fff",
@@ -34,6 +60,7 @@ describe("graphSeries", () => {
     const series = graphSeries({
       graph: graph,
       positions: { A: { x: 0, y: 0 } },
+      labelPositions: { A: { x: 0, y: 0 } },
       activeNodeKey: "",
       emptyRelationLabel: "",
       textColor: "#fff",
@@ -47,6 +74,7 @@ describe("graphSeries", () => {
     const series = graphSeries({
       graph: { owner: "A", nodes: [{ key: "A" }, { key: "B" }], edges: [] },
       positions: { A: { x: 0, y: 0 }, B: { x: 100, y: 0 } },
+      labelPositions: { A: { x: 0, y: 0 }, B: { x: 100, y: 0 } },
       activeNodeKey: "B",
       selectedNodeKey: "",
       emptyRelationLabel: "",
@@ -73,6 +101,7 @@ describe("graphSeries", () => {
     const series = graphSeries({
       graph: graph,
       positions: { A: { x: 0, y: 0 }, B: { x: 100, y: 0 }, C: { x: 200, y: 0 } },
+      labelPositions: { A: { x: 0, y: 0 }, B: { x: 100, y: 0 }, C: { x: 200, y: 0 } },
       activeNodeKey: "B",
       emptyRelationLabel: "",
       textColor: "#fff",
@@ -83,7 +112,7 @@ describe("graphSeries", () => {
       { source: "B", target: "A", show: true },
       { source: "B", target: "C", show: true },
     ]);
-    expect(series.links?.[0].lineStyle?.opacity).toBe(0.45);
+    expect(series.links?.[0].lineStyle?.opacity).toBe(0.1);
     expect(series.links?.[1].lineStyle?.opacity).toBe(1);
   });
 
@@ -98,6 +127,7 @@ describe("graphSeries", () => {
         ],
       },
       positions: { A: { x: 0, y: 0 }, B: { x: 100, y: 0 }, C: { x: 200, y: 0 } },
+      labelPositions: { A: { x: 0, y: 0 }, B: { x: 100, y: 0 }, C: { x: 200, y: 0 } },
       activeNodeKey: "",
       selectedNodeKey: "",
       emptyRelationLabel: "",
@@ -120,6 +150,7 @@ describe("graphSeries", () => {
     const series = graphSeries({
       graph: graph,
       positions: { A: { x: 0, y: 0 }, B: { x: 100, y: 0 } },
+      labelPositions: { A: { x: 0, y: 0 }, B: { x: 100, y: 0 } },
       activeNodeKey: "A",
       emptyRelationLabel: "",
       textColor: "#fff",

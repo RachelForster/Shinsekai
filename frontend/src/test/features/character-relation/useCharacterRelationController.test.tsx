@@ -14,12 +14,14 @@ describe("useCharacterRelationController", () => {
       { op: "upsert_edge", edge: { source: "B", target: "C", temperature: 0, content: "other" } },
     ]);
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    const invalidate = vi.spyOn(client, "invalidateQueries");
     const wrapper = ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
     );
     const { result, unmount } = renderHook(() => useCharacterRelationController("A"), { wrapper });
     await waitFor(() => expect(result.current.data).toBeDefined());
     await act(async () => result.current.reload());
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["characters"] });
     const graph = await state.api!.getRelationGraph("A");
     expect(graph.nodes.map((node) => node.key)).toEqual(["A", "B"]);
     expect(graph.edges).toEqual([{ source: "B", target: "A", temperature: 1, content: "friend" }]);

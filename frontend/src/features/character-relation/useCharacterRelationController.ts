@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef } from "react";
+import { charactersQueryKey } from "../../entities/character/repository";
 
 import {
   applyCharacterRelationChanges,
@@ -60,21 +61,25 @@ export function useCharacterRelationController(owner: string): CharacterRelation
 
   async function reload(): Promise<void> {
     saveMutation.reset();
-    const result = await query.refetch();
-    if (result.isError || !result.data) return;
+    try {
+      const result = await query.refetch();
+      if (result.isError || !result.data) return;
 
-    const graph = result.data;
-    const retainedEdges = graph.edges.filter((edge) => edge.source === graph.owner || edge.target === graph.owner);
-    const connected = new Set(retainedEdges.flatMap((edge) => [edge.source, edge.target]));
-    const operations: RelationRequest[] = [
-      ...graph.edges
-        .filter((edge) => edge.source !== graph.owner && edge.target !== graph.owner)
-        .map((edge): RelationRequest => ({ op: "delete_edge", source: edge.source, target: edge.target })),
-      ...graph.nodes
-        .filter((node) => node.key !== graph.owner && !connected.has(node.key))
-        .map((node): RelationRequest => ({ op: "delete_node", key: node.key })),
-    ];
-    if (operations.length) await save(operations);
+      const graph = result.data;
+      const retainedEdges = graph.edges.filter((edge) => edge.source === graph.owner || edge.target === graph.owner);
+      const connected = new Set(retainedEdges.flatMap((edge) => [edge.source, edge.target]));
+      const operations: RelationRequest[] = [
+        ...graph.edges
+          .filter((edge) => edge.source !== graph.owner && edge.target !== graph.owner)
+          .map((edge): RelationRequest => ({ op: "delete_edge", source: edge.source, target: edge.target })),
+        ...graph.nodes
+          .filter((node) => node.key !== graph.owner && !connected.has(node.key))
+          .map((node): RelationRequest => ({ op: "delete_node", key: node.key })),
+      ];
+      if (operations.length) await save(operations);
+    } finally {
+      await queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+    }
   }
 
   return {

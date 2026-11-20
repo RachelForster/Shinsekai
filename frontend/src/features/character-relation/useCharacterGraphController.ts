@@ -7,10 +7,11 @@ import {
 } from "./model/graphSelection";
 import { useQuery } from "@tanstack/react-query";
 import type { KeyboardEvent, MouseEvent, PointerEvent as ReactPointerEvent } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { charactersQueryKey, listCharacters } from "../../entities/character/repository";
 import { useI18n } from "../../shared/i18n";
 import type { CharacterRelationGraph } from "../../shared/platform/types";
+import { connectedGraph } from "./view/connectedGraph";
 import { graphSeries } from "./view/buildGraphSeries";
 import { usePreparingGraphAvatars } from "./preparingGraphAvatars";
 import { readGraphPositions, installGraphBounds, moveGraphNode } from "./model/manageGraphLayout";
@@ -34,9 +35,14 @@ interface CharacterGraphControllerProps {
   active: boolean;
 }
 
-export function useCharacterGraphController({ graph, disabled, active }: CharacterGraphControllerProps) {
+export function useCharacterGraphController({ graph: personalGraph, disabled, active }: CharacterGraphControllerProps) {
   const { t } = useI18n();
   const { data: characters } = useQuery({ queryKey: charactersQueryKey, queryFn: listCharacters, retry: false });
+  const parsed = useMemo(() => connectedGraph(personalGraph, characters ?? []), [personalGraph, characters]);
+  const graph = useMemo(
+    () => ({ owner: personalGraph.owner, nodes: parsed.nodes, edges: parsed.edges }),
+    [parsed, personalGraph.owner],
+  );
   const container = useRef<HTMLDivElement>(null);
   const chartInstance = useRef<GraphChartModel>();
   const theme = useRef<GraphTheme>();
@@ -49,8 +55,8 @@ export function useCharacterGraphController({ graph, disabled, active }: Charact
   };
   const avatars = usePreparingGraphAvatars(graph.nodes, characters);
   const layout = useRef(createGraphLayout(graph, readPositions(graph.owner)));
-  const latestState = useRef({ graph, t, characters, avatars });
-  latestState.current = { graph, t, characters, avatars };
+  const latestState = useRef({ graph, t, characters, avatars, parsed });
+  latestState.current = { graph, t, characters, avatars, parsed };
   const dragState = useRef<GraphDragModel | null>(null);
   const suppressNextClick = useRef(false);
   const renderGraph = () => {
@@ -59,22 +65,26 @@ export function useCharacterGraphController({ graph, disabled, active }: Charact
     const activeDrag = dragState.current;
     const simulating = Boolean(activeDrag?.moved);
     const palette = theme.current ?? (theme.current = readGraphTheme(container.current));
-    const series = graphSeries({
-      graph: latestState.current.graph,
-      positions: layout.current.defaults,
-      activeNodeKey: activeGraphNode(selection.current),
-      emptyRelationLabel: latestState.current.t("relation.noEntry"),
-      textColor: palette.text,
-      backgroundColor: palette.background,
-      fixedKeys: new Set(
-        activeDrag?.moved ? [activeDrag.key] : latestState.current.graph.nodes.map((node) => node.key),
-      ),
-      theme: palette,
-      edgeLengths: layout.current.edgeLengths,
-      characters: latestState.current.characters,
-      avatars: latestState.current.avatars,
-      selectedNodeKey: selection.current.selectedKey,
-    });
+    const series = graphSeries(
+      {
+        graph: latestState.current.graph,
+        positions: layout.current.defaults,
+        labelPositions: layout.current.positions,
+        activeNodeKey: activeGraphNode(selection.current),
+        emptyRelationLabel: latestState.current.t("relation.noEntry"),
+        textColor: palette.text,
+        backgroundColor: palette.background,
+        fixedKeys: new Set(
+          activeDrag?.moved ? [activeDrag.key] : latestState.current.graph.nodes.map((node) => node.key),
+        ),
+        theme: palette,
+        edgeLengths: layout.current.edgeLengths,
+        characters: latestState.current.characters,
+        avatars: latestState.current.avatars,
+        selectedNodeKey: selection.current.selectedKey,
+      },
+      latestState.current.parsed.graphs,
+    );
     renderGraphChart(chart, series, layout.current.positions, simulating);
   };
   const clearSelection = () => {
@@ -164,7 +174,7 @@ export function useCharacterGraphController({ graph, disabled, active }: Charact
     if (selection.current.selectedKey && !graph.nodes.some((node) => node.key === selection.current.selectedKey))
       clearSelection();
     renderGraph();
-  }, [graph, t, characters, avatars]);
+  }, [graph, parsed, t, characters, avatars]);
   useEffect(() => {
     if (active) {
       resizeChart();
@@ -221,8 +231,14 @@ export function useCharacterGraphController({ graph, disabled, active }: Charact
     const { starting } = movement;
     const point = graphDragPosition(chart, activeDrag, pixel);
     syncPositions();
+    const previous = layout.current.positions[activeDrag.key];
+    const changedSide = graph.edges.some((edge) => {
+      const otherKey = edge.source === activeDrag.key ? edge.target : edge.target === activeDrag.key ? edge.source : "";
+      const other = layout.current.positions[otherKey];
+      return other && previous && previous.x <= other.x !== point.x <= other.x;
+    });
     layout.current.positions[activeDrag.key] = point;
-    if (starting) renderGraph();
+    if (starting || changedSide) renderGraph();
     moveGraphNode(chart, activeDrag.key, layout.current.positions[activeDrag.key]);
   };
 

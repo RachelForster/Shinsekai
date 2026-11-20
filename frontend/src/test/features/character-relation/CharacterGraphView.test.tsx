@@ -1,5 +1,5 @@
 import { state, renderRelationSection, seedRelationNode } from "./relationTestSetup";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 import { readGraphPositions } from "../../../features/character-relation/model/manageGraphLayout";
@@ -31,13 +31,19 @@ describe("CharacterGraphView", () => {
     expect(readGraphPositions(state.chart!)).toEqual(savedB);
   });
 
-  it("shows outgoing relationships of the person selected in the graph", async () => {
+  it("shows relationships from the selected person's graph", async () => {
     await seedRelationNode("A", { key: "B" });
-    await state.api!.applyRelationChanges("A", [
+    await seedRelationNode("B", { key: "A" });
+    await state.api!.applyRelationChanges("B", [
       { op: "upsert_edge", edge: { source: "B", target: "A", temperature: 7, content: "Friends" } },
     ]);
+    state.listCharacters.mockImplementation(() => state.platform!.characters.list());
     renderRelationSection();
     fireEvent.click(await screen.findByRole("tab", { name: "Relationship graph" }));
+    await waitFor(() => {
+      const series = (state.chart!.getOption().series as { links: { source: string }[] }[])[0];
+      expect(series.links.some((link) => link.source === "B")).toBe(true);
+    });
     act(() =>
       state.chart!.trigger("click", {
         type: "click",
@@ -92,7 +98,7 @@ describe("CharacterGraphView", () => {
     fireEvent.pointerUp(canvas);
   });
 
-  it("shows outgoing relationship labels while hovering over a node", async () => {
+  it("shows the hovered person's graph labels in both directions", async () => {
     await seedRelationNode("A", { key: "B" });
     await state.api!.applyRelationChanges("A", [
       { op: "upsert_edge", edge: { source: "A", target: "B", temperature: 7, content: "Friends" } },
@@ -116,7 +122,7 @@ describe("CharacterGraphView", () => {
       }),
     );
     const links = (chart.getOption().series as { links: { source: string; label: { show: boolean } }[] }[])[0].links;
-    expect(links.filter((link) => link.label.show).map((link) => link.source)).toEqual(["A"]);
+    expect(links.filter((link) => link.label.show).map((link) => link.source)).toEqual(["A", "B"]);
   });
 
   it.each(["Reset layout", "Fit graph"])("keeps node positions stable on hover after %s", async (action) => {

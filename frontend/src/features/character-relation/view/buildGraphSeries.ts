@@ -10,6 +10,7 @@ import { normalizeRelationName } from "../model/relationUitl";
 export interface GraphSeriesOptions {
   graph: CharacterRelationGraph;
   positions: Positions;
+  labelPositions: Positions;
   activeNodeKey: string;
   emptyRelationLabel: string;
   textColor: string;
@@ -22,24 +23,31 @@ export interface GraphSeriesOptions {
   selectedNodeKey?: string;
 }
 
-export function graphSeries({
-  graph,
-  positions,
-  activeNodeKey,
-  emptyRelationLabel,
-  textColor,
-  backgroundColor,
-  fixedKeys = new Set(),
-  theme = { accent: textColor, selected: backgroundColor, muted: textColor },
-  edgeLengths = measureEdgeLengths(graph, positions),
-  characters = [],
-  avatars = new Map(),
-  selectedNodeKey = activeNodeKey,
-}: GraphSeriesOptions): GraphSeriesOption {
+export function graphSeries(
+  {
+    graph,
+    positions,
+    labelPositions,
+    activeNodeKey,
+    emptyRelationLabel,
+    textColor,
+    backgroundColor,
+    fixedKeys = new Set(),
+    theme = { accent: textColor, selected: backgroundColor, muted: textColor },
+    edgeLengths = measureEdgeLengths(graph, positions),
+    characters = [],
+    avatars = new Map(),
+    selectedNodeKey = activeNodeKey,
+  }: GraphSeriesOptions,
+  graphs?: readonly CharacterRelationGraph[],
+): GraphSeriesOption {
   const characterColors = new Map(
     characters.map((character) => [normalizeRelationName(character.name), character.color]),
   );
-  const lengths = graph.edges.map((edge) => edgeLengths[relationEdgeId(edge.source, edge.target)] ?? 40);
+  const renderEdges = graphs
+    ? graphs.flatMap((group) => group.edges.map((edge) => ({ owner: group.owner, edge })))
+    : graph.edges.map((edge) => ({ owner: undefined, edge }));
+  const lengths = renderEdges.map(({ edge }) => edgeLengths[relationEdgeId(edge.source, edge.target)] ?? 40);
   return {
     id: "relationships",
     type: "graph",
@@ -80,20 +88,27 @@ export function graphSeries({
         avatars,
       }),
     ),
-    links: graph.edges.map((edge) => {
-      const visible = edge.source === activeNodeKey;
+    links: renderEdges.map(({ edge, owner }) => {
+      const visible = owner
+        ? normalizeRelationName(owner) === normalizeRelationName(activeNodeKey)
+        : edge.source === activeNodeKey;
       const relationText = edge.content.trim() || emptyRelationLabel;
+      const source = labelPositions[edge.source];
+      const target = labelPositions[edge.target];
       return {
-        id: relationEdgeId(edge.source, edge.target),
+        id: JSON.stringify([owner ?? "", edge.source, edge.target]),
         source: edge.source,
         target: edge.target,
         // ECharts maps larger edge values to shorter springs.
         value: -(edgeLengths[relationEdgeId(edge.source, edge.target)] ?? 40),
-        symbol: ["none", visible ? "arrow" : "none"],
-        symbolSize: 10,
+        symbol: [
+          "path://M5,0 Q6,0 6,1 Q6,1.5 5.5,2 L1.5,9.5 Q1,10.5 0,10 Q-1,9.5 -0.5,8.5 L4,0.5 Q4.3,0 5,0 Z",
+          "path://M5,0 Q6,0 6,1 Q6,1.5 5.5,2 L1.5,9.5 Q1,10.5 0,10 Q-1,9.5 -0.5,8.5 L4,0.5 Q4.3,0 5,0 Z",
+        ],
+        symbolSize: 15,
         lineStyle: {
           color: visible ? theme.accent : theme.muted,
-          opacity: visible ? 1 : 0.45,
+          opacity: visible ? 1 : activeNodeKey ? 0.1 : 0.45,
           width: visible ? 2 : 1.5,
           curveness: 0,
         },
@@ -102,7 +117,8 @@ export function graphSeries({
           formatter: () => (relationText.length > 64 ? relationText.slice(0, 64) + "…" : relationText),
           color: textColor,
           backgroundColor: "transparent",
-          padding: 0,
+          position: (source?.x ?? 0) <= (target?.x ?? 0) ? "insideMiddleTop" : "insideMiddleBottom",
+          distance: 8,
         },
       };
     }),
