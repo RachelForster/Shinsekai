@@ -30,9 +30,23 @@ describe("shared sprite framing controls", () => {
     );
     const position = screen.getByRole("slider", { name: "Vertical framing position: Alice" });
     expect(position).not.toBeDisabled();
+    expect(position).toHaveAttribute("min", "-100");
+    expect(position).toHaveAttribute("max", "100");
     fireEvent.change(position, { target: { value: "75" } });
     expect(onChange).toHaveBeenLastCalledWith({ heightRatio: 0.5, verticalPosition: 0.75 });
+    fireEvent.change(position, { target: { value: "-50" } });
+    expect(onChange).toHaveBeenLastCalledWith({ heightRatio: 0.5, verticalPosition: -0.5 });
     fireEvent.change(screen.getByRole("slider", { name: "Visible height ratio: Alice" }), { target: { value: "40" } });
     expect(onChange).toHaveBeenLastCalledWith({ heightRatio: 0.4, verticalPosition: 0.25 });
+  });
+  it("displays negative vertical position percentages and clears preset active state", () => {
+    const onChange = vi.fn();
+    render(
+      <I18nProvider language="en">
+        <SpriteFramingControl label="Alice" value={{ heightRatio: 0.5, verticalPosition: -0.5 }} onChange={onChange} />
+      </I18nProvider>,
+    );
+    expect(screen.getByText("-50%")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Half view" })).toHaveAttribute("aria-pressed", "false");
   });
 });

@@ -1110,7 +1110,11 @@
     border: 1px solid var(--m3-card-border);
     background: var(--m3-card-bg);
     box-shadow: var(--m3-card-shadow);
-    overflow: hidden;
+    overflow: visible;
+  }
+
+  .app-shell .template-page__topbar {
+    border-radius: var(--m3-shape-lg) var(--m3-shape-lg) 0 0;
   }
 
   .app-shell .template-workbench__main {
@@ -1135,18 +1139,21 @@
     min-height: 40px;
   }
 
-  .app-shell .template-toggle-row span {
+  .app-shell .template-toggle-row > span {
     font-size: var(--text-md);
     white-space: normal;
   }
 
   .app-shell .template-page__footer {
-    position: static;
+    position: sticky;
+    bottom: 0;
+    z-index: 12;
     padding: var(--mobile-card-padding);
     gap: var(--mobile-space-2);
     background: var(--m3-surface-container);
     border-top: 1px solid var(--m3-card-border);
     border-bottom: 0;
+    border-radius: 0 0 var(--m3-shape-lg) var(--m3-shape-lg);
   }
 
   /* ── Decorate ("装扮"), Character & Logs Overflow/Stacking Fixes ── */

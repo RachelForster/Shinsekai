@@ -163,6 +163,16 @@ class CharacterManager:
             raise
 
 
+    @staticmethod
+    def _clamp_portrait_sprite_index(value: Any, sprite_count: int) -> int:
+        try:
+            index = int(value or 0)
+        except (TypeError, ValueError):
+            index = 0
+        if sprite_count <= 0:
+            return 0
+        return max(0, min(index, sprite_count - 1))
+
     def _resolve_mutable_character(self, name: str) -> Optional[Character]:
         if is_self_persona_name(name):
             return self._config_manager.ensure_self_persona_persisted()
@@ -180,6 +190,7 @@ class CharacterManager:
                      avatar_type: Optional[str] = None,
                      avatars: Optional[Dict[str, Union[ModelSprites, dict]]] = None,
                      portrait_crop=None,
+                     portrait_sprite_index: Optional[int] = None,
                      sprite_portrait_crops: Optional[dict[int, object]] = None,
                      relation_graph: Optional[Union[RelationGraph, dict]] = None,
                      sprite_groups: Optional[List[str]] = None,
@@ -280,6 +291,10 @@ class CharacterManager:
                     target.emotion_tags = emotion_tags
                 if portrait_crop is not None:
                     target.portrait_crop = portrait_crop
+                if portrait_sprite_index is not None:
+                    target.portrait_sprite_index = self._clamp_portrait_sprite_index(
+                        portrait_sprite_index, len(target.sprites),
+                    )
                 for index, crop in (sprite_portrait_crops or {}).items():
                     if 0 <= index < len(target.sprites):
                         sprite = target.sprites[index]
@@ -334,6 +349,11 @@ class CharacterManager:
                 speech_volume=speech_volume,
                 pronunciation_map=pronunciation_map or {},
                 portrait_crop=portrait_crop,
+                portrait_sprite_index=(
+                    0
+                    if portrait_sprite_index is None
+                    else self._clamp_portrait_sprite_index(portrait_sprite_index, 0)
+                ),
                 avatar_type=avatar_fields.avatar_type,
                 avatars=avatar_fields.avatars,
                 relation_graph=relation_graph,
@@ -364,6 +384,10 @@ class CharacterManager:
                 existing_character.emotion_tags = emotion_tags
             if portrait_crop is not None:
                 existing_character.portrait_crop = portrait_crop
+            if portrait_sprite_index is not None:
+                existing_character.portrait_sprite_index = self._clamp_portrait_sprite_index(
+                    portrait_sprite_index, len(existing_character.sprites),
+                )
             for index, crop in (sprite_portrait_crops or {}).items():
                 if 0 <= index < len(existing_character.sprites):
                     sprite = existing_character.sprites[index]
@@ -628,6 +652,7 @@ class CharacterManager:
         # 清空角色属性
         character.sprites = []
         character.emotion_tags = ""
+        character.portrait_sprite_index = 0
         
         self._config_manager.save_characters_config()
         
@@ -668,6 +693,12 @@ class CharacterManager:
         
         # 从列表中移除
         character.sprites.pop(sprite_index)
+        current_portrait_index = int(getattr(character, "portrait_sprite_index", 0) or 0)
+        if sprite_index < current_portrait_index:
+            current_portrait_index -= 1
+        character.portrait_sprite_index = self._clamp_portrait_sprite_index(
+            current_portrait_index, len(character.sprites),
+        )
         
         # 更新情绪标签
         emotion_tags = ""

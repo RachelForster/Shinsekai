@@ -42,7 +42,7 @@ import type {
   ChatStageEvent,
 } from "../slices/chatTypes";
 import type { ApiConfig, AppConfig, SystemConfig } from "../slices/configTypes";
-import type { TemplateLaunchSession, TemplateSummary } from "../slices/workspaceTypes";
+import type { TemplateLaunchSession, TemplateSummary, UserPromptPresetLibrary } from "../slices/workspaceTypes";
 import type { ShinsekaiPlatform } from "../types";
 import { getPlatform } from "../platform";
 import { isStandaloneRuntimeActive, type RuntimeTarget } from "../runtimeTarget";
@@ -80,6 +80,7 @@ import { ToyCloudCheckpointBridge } from "./toy/toySdkBridge";
 const KV_APP_CONFIG = "app_config";
 const KV_TEMPLATES = "templates";
 const KV_TEMPLATE_SESSION = "template_session";
+const KV_USER_PROMPT_PRESETS = "user_prompt_presets";
 const KV_ACTIVE_SESSION_ID = "active_session_id";
 const KV_ACTIVE_THEME_ID = "active_theme_id";
 
@@ -400,6 +401,10 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
     await setKvConfig(KV_TEMPLATE_SESSION, clone(ctx.getTemplateSession()));
   };
 
+  const persistUserPromptPresets = async () => {
+    await setKvConfig(KV_USER_PROMPT_PRESETS, clone(ctx.getUserPromptPresets()));
+  };
+
   const turnDriver = new StandaloneChatTurnDriver({
     getApiConfig: () => ctx.config.api_config,
     getCharacters: () => ctx.config.characters,
@@ -460,13 +465,15 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
     initPromise = (async () => {
       await Promise.all([hydrateVfsBlobs(), sessionStore.hydrate()]);
 
-      const [savedConfig, savedTemplates, savedTemplateSession, savedSessionId, savedThemeId] = await Promise.all([
-        getKvConfig<AppConfig>(KV_APP_CONFIG),
-        getKvConfig<TemplateSummary[]>(KV_TEMPLATES),
-        getKvConfig<TemplateLaunchSession | null>(KV_TEMPLATE_SESSION),
-        getKvConfig<string>(KV_ACTIVE_SESSION_ID),
-        getKvConfig<string>(KV_ACTIVE_THEME_ID),
-      ]);
+      const [savedConfig, savedTemplates, savedTemplateSession, savedUserPromptPresets, savedSessionId, savedThemeId] =
+        await Promise.all([
+          getKvConfig<AppConfig>(KV_APP_CONFIG),
+          getKvConfig<TemplateSummary[]>(KV_TEMPLATES),
+          getKvConfig<TemplateLaunchSession | null>(KV_TEMPLATE_SESSION),
+          getKvConfig<UserPromptPresetLibrary | null>(KV_USER_PROMPT_PRESETS),
+          getKvConfig<string>(KV_ACTIVE_SESSION_ID),
+          getKvConfig<string>(KV_ACTIVE_THEME_ID),
+        ]);
 
       if (savedConfig) {
         const mergedApi: ApiConfig = {
@@ -514,6 +521,12 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
         await persistAppConfig();
       }
 
+      if (savedUserPromptPresets && typeof savedUserPromptPresets === "object") {
+        ctx.setUserPromptPresets({
+          groups: Array.isArray(savedUserPromptPresets.groups) ? savedUserPromptPresets.groups : [],
+          presets: Array.isArray(savedUserPromptPresets.presets) ? savedUserPromptPresets.presets : [],
+        });
+      }
       if (savedTemplateSession) {
         ctx.setTemplateSession(savedTemplateSession);
       }
@@ -1665,6 +1678,16 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
         await ensureInitialized();
         const res = await baseTemplates.save(template);
         await persistTemplates();
+        return res;
+      },
+      async getPresets() {
+        await ensureInitialized();
+        return baseTemplates.getPresets();
+      },
+      async savePresets(library) {
+        await ensureInitialized();
+        const res = await baseTemplates.savePresets(library);
+        await persistUserPromptPresets();
         return res;
       },
       async getSession() {

@@ -11,12 +11,14 @@ import { buildDefaultTemplateScenario } from "../../../features/template-editor/
 import { I18nProvider, translateMessage } from "../../../shared/i18n/I18nProvider";
 import { PlatformRequestError } from "../../../shared/platform/errors";
 import { sampleConfig } from "../../../shared/platform/sampleData";
-import type { TemplateLaunchSession } from "../../../shared/platform/types";
+import type { TemplateLaunchSession, UserPromptPresetLibrary } from "../../../shared/platform/types";
 import { ToastProvider } from "../../../shared/ui";
 
 const mockListBackgrounds = vi.fn();
 const mockListCharacters = vi.fn();
 const mockEnsureCharacterBriefs = vi.fn();
+const mockSaveCharacter = vi.fn();
+const mockUploadCharacterSprites = vi.fn();
 const mockLaunchChat = vi.fn();
 const mockReconfigureConversation = vi.fn();
 const mockGetChatSnapshot = vi.fn();
@@ -32,6 +34,8 @@ const mockListTemplates = vi.fn();
 const mockRefreshRuntimeStatus = vi.fn();
 const mockSaveTemplate = vi.fn();
 const mockSaveTemplateSession = vi.fn();
+const mockGetUserPromptPresets = vi.fn();
+const mockSaveUserPromptPresets = vi.fn();
 const mockShowChatSurface = vi.fn();
 const mockUpdateRuntimeStatusFromSnapshot = vi.fn();
 const mockUseChatLaunchGuard = vi.fn();
@@ -45,7 +49,41 @@ vi.mock("../../../entities/character/repository", () => ({
   charactersQueryKey: ["characters"],
   ensureCharacterBriefs: (names: string[]) => mockEnsureCharacterBriefs(names),
   listCharacters: () => mockListCharacters(),
+  saveCharacter: (character: unknown, originalName?: string) => mockSaveCharacter(character, originalName),
+  uploadCharacterSprites: (input: unknown) => mockUploadCharacterSprites(input),
 }));
+
+const avatarPickerState = { path: "D:/avatars/self.png" };
+vi.mock("../../../shared/ui", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../shared/ui")>();
+  return {
+    ...actual,
+    PathPickerDialog: ({
+      onClose,
+      onSelect,
+      open,
+      title,
+    }: {
+      onClose: () => void;
+      onSelect: (path: string) => void;
+      open: boolean;
+      title: string;
+    }) =>
+      open ? (
+        <div aria-label={title} role="dialog">
+          <button
+            onClick={() => {
+              onSelect(avatarPickerState.path);
+              onClose();
+            }}
+            type="button"
+          >
+            Choose mocked avatar
+          </button>
+        </div>
+      ) : null,
+  };
+});
 
 vi.mock("../../../entities/chat/repository", () => ({
   chatQueryKey: ["chat"],
@@ -71,10 +109,13 @@ vi.mock("../../../entities/config/repository", () => ({
 vi.mock("../../../entities/template/repository", () => ({
   generateTemplate: (input: unknown) => mockGenerateTemplate(input),
   getTemplateSession: () => mockGetTemplateSession(),
+  getUserPromptPresets: () => mockGetUserPromptPresets(),
   listTemplates: () => mockListTemplates(),
   saveTemplate: (input: unknown) => mockSaveTemplate(input),
   saveTemplateSession: (input: unknown) => mockSaveTemplateSession(input),
+  saveUserPromptPresets: (library: unknown) => mockSaveUserPromptPresets(library),
   templatesQueryKey: ["templates"],
+  userPromptPresetsQueryKey: ["templates", "presets"],
 }));
 
 vi.mock("../../../entities/effect/repository", () => ({
@@ -135,6 +176,21 @@ async function clickButton(button: HTMLElement) {
   });
 }
 
+async function openCharactersDialog() {
+  await clickButton(screen.getByRole("button", { name: "Edit characters" }));
+  return screen.findByRole("dialog", { name: "Select & configure characters" });
+}
+
+async function openPresetPromptsDialog() {
+  await clickButton(screen.getByRole("button", { name: "Edit preset prompts" }));
+  return screen.findByRole("dialog", { name: "Edit preset prompts" });
+}
+
+async function openSystemPromptDialog() {
+  await clickButton(screen.getByRole("button", { name: "Edit system prompt" }));
+  return screen.findByRole("dialog", { name: "Edit system prompt & generation rules" });
+}
+
 describe("TemplateEditorPage", () => {
   const savedChat = {
     filenameStub: "My saved chat",
@@ -162,6 +218,8 @@ describe("TemplateEditorPage", () => {
     });
     mockListTemplates.mockResolvedValue([template]);
     mockGetTemplateSession.mockResolvedValue(null);
+    mockGetUserPromptPresets.mockResolvedValue({ groups: [], presets: [] });
+    mockSaveUserPromptPresets.mockImplementation(async (library: UserPromptPresetLibrary) => library);
     mockGetAppConfig.mockResolvedValue(structuredClone(sampleConfig));
     mockGetMemoryStatus.mockResolvedValue({ modelCached: true, status: "ready" });
     mockListCharacters.mockResolvedValue([
@@ -169,6 +227,13 @@ describe("TemplateEditorPage", () => {
       { color: "#ff99aa", name: "Mika" },
     ]);
     mockEnsureCharacterBriefs.mockResolvedValue({ characters: [], generatedNames: [] });
+    mockSaveCharacter.mockImplementation(async (character) => character);
+    mockUploadCharacterSprites.mockImplementation(async (input: { name: string; paths: string[] }) => ({
+      color: "#66ccff",
+      emotion_tags: "",
+      name: input.name,
+      sprites: input.paths.map((path) => ({ path })),
+    }));
     mockListBackgrounds.mockResolvedValue([{ name: "默认房间" }]);
     mockListEffects.mockResolvedValue([]);
     mockSaveTemplate.mockImplementation(async (input) => ({ ...template, ...(input as object), id: "opening" }));
@@ -199,6 +264,29 @@ describe("TemplateEditorPage", () => {
       for (const client of queryClients) client.clear();
       queryClients.clear();
     });
+  });
+
+  it("renders summary bars, direct user prompt textarea, and prompt-unrelated right sidebar controls", async () => {
+    mockListEffects.mockResolvedValue([{ color: "#4455aa", name: "Rain" }]);
+    renderPage();
+    await screen.findByDisplayValue("Opening");
+
+    expect(document.querySelectorAll("textarea").length).toBe(1);
+    expect(screen.getByLabelText("User prompt")).toHaveValue("Morning scene");
+    expect(screen.getByText("No characters selected. Click Edit to choose cast members.")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Nanami" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Mika" })).not.toBeInTheDocument();
+    expect(screen.getByText("No presets")).toBeVisible();
+    expect(screen.getByText("Auto-sync")).toBeVisible();
+
+    const sidebar = document.querySelector(".template-options-panel") as HTMLElement;
+    expect(within(sidebar).getByText("Stage & runtime settings")).toBeVisible();
+    expect(within(sidebar).getByRole("button", { name: "Rain" })).toBeVisible();
+    expect(within(sidebar).getByRole("checkbox", { name: "Use ComfyUI" })).toBeVisible();
+    expect(within(sidebar).getByText("Use ComfyUI")).toHaveClass("template-side-field__label");
+    expect(within(sidebar).getByText("Allow automatic outfit switching")).toHaveClass("template-side-field__label");
+    expect(within(sidebar).queryByRole("checkbox", { name: "Smart sprite matching" })).not.toBeInTheDocument();
+    expect(within(sidebar).queryByRole("button", { name: /Generate|Regenerate/ })).not.toBeInTheDocument();
   });
 
   it("defaults initial sprites to visible and saves a disabled switch when launching", async () => {
@@ -249,7 +337,7 @@ describe("TemplateEditorPage", () => {
     renderPage({ createOnly: true, conversationTitle: "Evening walk" });
     await waitFor(() => expect(screen.getByLabelText("Template name")).toHaveValue("My saved chat"));
     expect(screen.getByLabelText("Background")).toHaveValue("透明场景");
-    expect(screen.getByRole("checkbox", { name: "Smart sprite matching" })).not.toBeChecked();
+    expect(screen.getByText("Indexed sprites")).toBeVisible();
     expect(mockGetMemoryStatus).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "Quick restart" })).not.toBeInTheDocument();
     expect(screen.queryByDisplayValue("D:/history/chosen")).not.toBeInTheDocument();
@@ -379,8 +467,6 @@ describe("TemplateEditorPage", () => {
       renderPage({ createOnly: true, conversationTitle: "Evening walk" }, () => {
         if (clicked || screen.queryByLabelText<HTMLInputElement>("Template name")?.value !== "My saved chat") return;
         clicked = true;
-        // Commit-phase click deterministically exercises the interval before
-        // React Query refreshes its mutation callbacks in passive effects.
         fireEvent.click(screen.getByRole("button", { name: "Create and start" }));
       });
       await waitFor(() =>
@@ -421,10 +507,12 @@ describe("TemplateEditorPage", () => {
 
     await screen.findByDisplayValue("Opening");
 
-    expect(screen.getByRole("checkbox", { name: "Smart sprite matching" })).not.toBeChecked();
     expect(mockGetMemoryStatus).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("checkbox", { name: "Smart sprite matching" }));
-    await waitFor(() => expect(screen.getByRole("checkbox", { name: "Smart sprite matching" })).toBeChecked());
+    const systemDialog = await openSystemPromptDialog();
+    const toggle = within(systemDialog).getByRole("checkbox", { name: "Smart sprite matching" });
+    expect(toggle).not.toBeChecked();
+    fireEvent.click(toggle);
+    await waitFor(() => expect(toggle).toBeChecked());
     expect(mockGetMemoryStatus).toHaveBeenCalledWith({ startLoading: true });
   });
 
@@ -433,7 +521,7 @@ describe("TemplateEditorPage", () => {
     mockGetConversationSession.mockResolvedValue(savedChat);
     mockReconfigureConversation.mockResolvedValue({ status: "idle", historyPath: savedChat.historyPath });
     renderPage({ conversationId: "chosen", onApplied: vi.fn() });
-    expect(await screen.findByDisplayValue("Saved scene")).toBeVisible();
+    await screen.findByText("Nanami");
     const button = screen.getByRole("button", { name: "Apply and continue" });
     expect(button).toBeEnabled();
     await clickButton(button);
@@ -454,7 +542,7 @@ describe("TemplateEditorPage", () => {
       updateRuntimeStatusFromSnapshot: mockUpdateRuntimeStatusFromSnapshot,
     });
     renderPage({ conversationId: "chosen" });
-    await screen.findByDisplayValue("Saved scene");
+    await screen.findByText("Nanami");
     const button = screen.getByRole("button", { name: "Apply and continue" });
     expect(button).toBeDisabled();
     fireEvent.click(button);
@@ -471,12 +559,14 @@ describe("TemplateEditorPage", () => {
     });
     const onApplied = vi.fn();
     renderPage({ conversationId: "chosen", onApplied });
-    await screen.findByDisplayValue("Saved scene");
+    await screen.findByText("Nanami");
     expect(mockGetConversationSession).toHaveBeenCalledWith("chosen");
     expect(mockGetTemplateSession).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
     expect(mockReconfigureConversation).not.toHaveBeenCalled();
-    fireEvent.change(screen.getByDisplayValue("Saved scene"), { target: { value: "Edited scene" } });
+
+    fireEvent.change(screen.getByLabelText("User prompt"), { target: { value: "Edited scene" } });
+
     await clickButton(screen.getByRole("button", { name: "Apply and continue" }));
     await waitFor(() =>
       expect(mockReconfigureConversation).toHaveBeenCalledWith(
@@ -495,13 +585,13 @@ describe("TemplateEditorPage", () => {
     expect(mockShowChatSurface).not.toHaveBeenCalled();
   });
 
-  it("saves edited scenario text and generates with selected characters", async () => {
+  it("saves edited scenario text and generates with selected characters via dialogs", async () => {
     renderPage();
 
     expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
-    fireEvent.change(screen.getByDisplayValue("Morning scene"), { target: { value: "Updated scene" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.change(screen.getByLabelText("User prompt"), { target: { value: "Updated scene" } });
 
+    await clickButton(screen.getByRole("button", { name: "Save" }));
     await waitFor(() =>
       expect(mockSaveTemplate).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -513,11 +603,14 @@ describe("TemplateEditorPage", () => {
       ),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Select all characters" }));
-    expect(screen.getByRole("button", { name: "Nanami" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByRole("button", { name: "Mika" })).toHaveAttribute("aria-pressed", "true");
+    const charDialog = await openCharactersDialog();
+    await clickButton(within(charDialog).getByRole("button", { name: "Select all characters" }));
+    await clickButton(within(charDialog).getByRole("button", { name: "Confirm" }));
+    expect(screen.getByText("Nanami")).toBeVisible();
+    expect(screen.getByText("Mika")).toBeVisible();
 
-    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+    const sysDialog = await openSystemPromptDialog();
+    await clickButton(within(sysDialog).getByRole("button", { name: "Regenerate" }));
 
     await waitFor(() =>
       expect(mockGenerateTemplate).toHaveBeenCalledWith(
@@ -528,20 +621,25 @@ describe("TemplateEditorPage", () => {
         }),
       ),
     );
-    expect(await screen.findByDisplayValue("Generated scenario")).toBeInTheDocument();
+    expect(await within(sysDialog).findByDisplayValue("Generated system")).toBeInTheDocument();
   });
 
-  it("shows an options heading and enables vibe generation after mem0 is ready", async () => {
+  it("shows prompt rules in SystemPromptDialog and enables vibe generation after mem0 is ready", async () => {
     renderPage();
-
-    expect(await screen.findByText("Prompt options")).toHaveClass("template-side-field__label");
     expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("checkbox", { name: "Smart sprite matching" }));
+
+    const charDialog = await openCharactersDialog();
+    await clickButton(within(charDialog).getByRole("button", { name: "Select all characters" }));
+    await clickButton(within(charDialog).getByRole("button", { name: "Confirm" }));
+
+    const sysDialog = await openSystemPromptDialog();
+    expect(within(sysDialog).getByText("Prompt generation rules")).toBeVisible();
+    const smartSwitch = within(sysDialog).getByRole("checkbox", { name: "Smart sprite matching" });
+    fireEvent.click(smartSwitch);
 
     await waitFor(() => expect(mockGetMemoryStatus).toHaveBeenCalledWith({ startLoading: true }));
-    await waitFor(() => expect(screen.getByRole("checkbox", { name: "Smart sprite matching" })).toBeChecked());
-    fireEvent.click(screen.getByRole("button", { name: "Select all characters" }));
-    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+    await waitFor(() => expect(smartSwitch).toBeChecked());
+    await clickButton(within(sysDialog).getByRole("button", { name: "Regenerate" }));
 
     await waitFor(() =>
       expect(mockGenerateTemplate).toHaveBeenCalledWith(expect.objectContaining({ mediaSelectionMode: "semantic" })),
@@ -557,9 +655,10 @@ describe("TemplateEditorPage", () => {
     });
     vi.spyOn(window, "confirm").mockReturnValue(false);
     renderPage();
-    const toggle = await screen.findByRole("checkbox", { name: "Smart sprite matching" });
     await waitFor(() => expect(window.confirm).toHaveBeenCalled());
-    await waitFor(() => expect(toggle).not.toBeChecked());
+    await waitFor(() => expect(screen.getByText("Indexed sprites")).toBeVisible());
+    const sysDialog = await openSystemPromptDialog();
+    expect(within(sysDialog).getByRole("checkbox", { name: "Smart sprite matching" })).not.toBeChecked();
   });
 
   it.each([4, 5])(
@@ -574,50 +673,52 @@ describe("TemplateEditorPage", () => {
       mockListCharacters.mockResolvedValue(cast);
       renderPage();
       await screen.findByDisplayValue("Opening");
-      fireEvent.click(screen.getByRole("button", { name: "Select all characters" }));
-      fireEvent.click(screen.getByRole("button", { name: "Player character" }));
-      const playerDialog = screen.getByRole("dialog", { name: "Player character" });
-      const playerSelect = within(playerDialog).getByRole("combobox", { name: "Player character" });
+
+      const charDialog = await openCharactersDialog();
+      await clickButton(within(charDialog).getByRole("button", { name: "Select all characters" }));
+
+      const playerSelect = within(charDialog).getByRole("combobox", { name: "Player character" });
       fireEvent.keyDown(playerSelect, { key: "ArrowDown" });
       fireEvent.keyDown(playerSelect, { key: "ArrowDown" });
       fireEvent.keyDown(playerSelect, { key: "Enter" });
       await waitFor(() => expect(playerSelect).toHaveTextContent("Character 1"));
-      const aiDialogue = within(playerDialog).getByRole("checkbox", { name: "Allow AI to write player dialogue" });
+      const aiDialogue = within(charDialog).getByRole("checkbox", { name: "Allow AI to write player dialogue" });
       expect(aiDialogue).toBeChecked();
       fireEvent.click(aiDialogue);
-      fireEvent.click(within(playerDialog).getByRole("checkbox", { name: "Read player dialogue aloud" }));
-      fireEvent.click(within(playerDialog).getByRole("button", { name: "Confirm" }));
-      expect(screen.queryByRole("dialog", { name: "Player character" })).not.toBeInTheDocument();
-      const playerControls = screen.getByRole("button", { name: "Player character" }).parentElement!;
-      expect(within(playerControls).getByText("Character 1")).toBeInTheDocument();
+      fireEvent.click(within(charDialog).getByRole("checkbox", { name: "Read player dialogue aloud" }));
 
-      const roleStatus = screen.getByText(
-        count === 5 ? "4 selected · roles need to be set" : "3 selected · all are primary",
-      );
-      fireEvent.click(
-        within(roleStatus.parentElement!).getByRole("button", {
+      expect(
+        within(charDialog).getByText(
+          count === 5 ? "4 selected · roles need to be set" : "3 selected · all are primary",
+        ),
+      ).toBeVisible();
+      await clickButton(
+        within(charDialog).getByRole("button", {
           name: count === 5 ? "Choose primary characters" : "Change",
         }),
       );
-      const rolesDialog = screen.getByRole("dialog", { name: "Choose primary characters" });
-      expect(within(rolesDialog).queryByRole("button", { name: /Character 1/ })).not.toBeInTheDocument();
+      expect(within(charDialog).queryByRole("button", { name: /Character 1.*Primary/ })).not.toBeInTheDocument();
+
+      // Deselect everything after Character 2 in the primary character picker (first match in grid after role header)
       for (const character of cast.slice(2)) {
-        const button = within(rolesDialog).getByRole("button", { name: new RegExp(character.name) });
-        if (button.getAttribute("aria-pressed") === "true") fireEvent.click(button);
+        const primaryCards = within(charDialog).getAllByRole("button", { name: new RegExp(`^${character.name}`) });
+        const roleCard = primaryCards.find((btn) => btn.className.includes("primary-character-dialog__card"));
+        if (roleCard && roleCard.getAttribute("aria-pressed") === "true") {
+          fireEvent.click(roleCard);
+        }
       }
-      fireEvent.click(within(rolesDialog).getByRole("button", { name: "Apply roles" }));
+      await clickButton(within(charDialog).getByRole("button", { name: "Apply roles" }));
+      await clickButton(within(charDialog).getByRole("button", { name: "Confirm" }));
+
       await waitFor(() =>
         expect(mockEnsureCharacterBriefs).toHaveBeenCalledWith(cast.slice(2).map(({ name }) => name)),
       );
       expect(await screen.findByText(`1 primary · ${count - 2} supporting`)).toBeInTheDocument();
 
-      fireEvent.click(screen.getByRole("button", { name: "Player character" }));
-      const restoredPlayerDialog = screen.getByRole("dialog", { name: "Player character" });
-      expect(within(restoredPlayerDialog).getByRole("combobox")).toHaveTextContent("Character 1");
-      expect(
-        within(restoredPlayerDialog).getByRole("checkbox", { name: "Allow AI to write player dialogue" }),
-      ).not.toBeChecked();
-      expect(within(restoredPlayerDialog).getByRole("checkbox", { name: "Read player dialogue aloud" })).toBeChecked();
+      const reopened = await openCharactersDialog();
+      expect(within(reopened).getByRole("combobox", { name: "Player character" })).toHaveTextContent("Character 1");
+      expect(within(reopened).getByRole("checkbox", { name: "Allow AI to write player dialogue" })).not.toBeChecked();
+      expect(within(reopened).getByRole("checkbox", { name: "Read player dialogue aloud" })).toBeChecked();
     },
   );
 
@@ -633,14 +734,13 @@ describe("TemplateEditorPage", () => {
       mockListCharacters.mockResolvedValue([{ name: "Nanami", color: "#66ccff", sprites: [] }]);
       renderPage();
       await waitFor(() => expect(screen.getByLabelText("Template name")).toHaveValue("My saved chat"));
-      await clickButton(screen.getByRole("button", { name: "Player character" }));
-      const dialog = screen.getByRole("dialog", { name: "Player character" });
-      const toggle = within(dialog).getByRole("checkbox", { name: "Allow AI to write player dialogue" });
+      const charDialog = await openCharactersDialog();
+      const toggle = within(charDialog).getByRole("checkbox", { name: "Allow AI to write player dialogue" });
       const expectedInitial = savedMode ?? true;
       if (expectedInitial) expect(toggle).toBeChecked();
       else expect(toggle).not.toBeChecked();
       await clickButton(toggle);
-      await clickButton(within(dialog).getByRole("button", { name: "Confirm" }));
+      await clickButton(within(charDialog).getByRole("button", { name: "Confirm" }));
       await waitFor(() =>
         expect(mockGenerateTemplate).toHaveBeenCalledWith(
           expect.objectContaining({ playerCharacter: "Nanami", allowPlayerDialogue: !expectedInitial }),
@@ -680,12 +780,15 @@ describe("TemplateEditorPage", () => {
     renderPage();
 
     expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Select all characters" }));
+    const charDialog = await openCharactersDialog();
+    await clickButton(within(charDialog).getByRole("button", { name: "Select all characters" }));
+    await clickButton(within(charDialog).getByRole("button", { name: "Confirm" }));
 
     expect(await screen.findByText("6 selected · roles need to be set")).toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: "Choose primary characters" })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+    const sysDialog = await openSystemPromptDialog();
+    await clickButton(within(sysDialog).getByRole("button", { name: "Regenerate" }));
     const dialog = await screen.findByRole("dialog", { name: "Choose primary characters" });
     fireEvent.click(within(dialog).getByRole("button", { name: /Character 2/ }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Apply roles" }));
@@ -698,18 +801,11 @@ describe("TemplateEditorPage", () => {
         "Character 6",
       ]),
     );
-    await waitFor(() =>
-      expect(mockGenerateTemplate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          characterPromptMode: "compact",
-          characters: largeCast.map((character) => character.name),
-          primaryCharacters: ["Character 1", "Character 2"],
-        }),
-      ),
-    );
-    expect(screen.getByText("2 primary · 4 supporting")).toBeInTheDocument();
+    expect(await screen.findByText("2 primary · 4 supporting")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Character 6" }));
+    const charDialog2 = await openCharactersDialog();
+    fireEvent.click(within(charDialog2).getByRole("button", { name: "Character 6" }));
+    await clickButton(within(charDialog2).getByRole("button", { name: "Confirm" }));
     expect(await screen.findByText("2 primary · 3 supporting")).toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: "Choose primary characters" })).not.toBeInTheDocument();
   });
@@ -724,7 +820,10 @@ describe("TemplateEditorPage", () => {
     renderPage();
 
     expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Select all characters" }));
+    const charDialog = await openCharactersDialog();
+    await clickButton(within(charDialog).getByRole("button", { name: "Select all characters" }));
+    await clickButton(within(charDialog).getByRole("button", { name: "Confirm" }));
+
     await clickButton(screen.getByRole("button", { name: "Launch chat" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Choose primary characters" });
@@ -735,8 +834,8 @@ describe("TemplateEditorPage", () => {
     await waitFor(() => expect(mockLaunchChat).toHaveBeenCalledTimes(1));
   });
 
-  it("auto-generates only when character selection changes and puts the default RPG brief in scenario", async () => {
-    mockGenerateTemplate.mockImplementationOnce(async (input) => ({
+  it("auto-generates when character selection or prompt settings change and puts the default RPG brief in scenario", async () => {
+    mockGenerateTemplate.mockImplementation(async (input) => ({
       ...template,
       generationMessage: "generated",
       name: "Generated",
@@ -746,8 +845,12 @@ describe("TemplateEditorPage", () => {
     renderPage();
 
     expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
-    fireEvent.change(screen.getByDisplayValue("Morning scene"), { target: { value: "" } });
-    fireEvent.click(screen.getByRole("button", { name: "Nanami" }));
+    fireEvent.change(screen.getByLabelText("User prompt"), { target: { value: "" } });
+
+    const charDialog = await openCharactersDialog();
+    await clickButton(within(charDialog).getByRole("button", { name: "Nanami" }));
+    await clickButton(within(charDialog).getByRole("button", { name: "Confirm" }));
+
     fireEvent.change(screen.getByLabelText("Template name"), { target: { value: "Renamed before generation" } });
     const defaultScenario = buildDefaultTemplateScenario(
       ["Nanami"],
@@ -763,14 +866,12 @@ describe("TemplateEditorPage", () => {
         }),
       ),
     );
-    expect(screen.getByDisplayValue(defaultScenario)).toBeInTheDocument();
-    const callsAfterCharacterChange = mockGenerateTemplate.mock.calls.length;
+    expect(screen.getByLabelText("User prompt")).toHaveValue(defaultScenario);
 
-    fireEvent.change(screen.getByLabelText("Background"), { target: { value: "默认房间" } });
-    fireEvent.click(screen.getByLabelText("LLM translation"));
-    await new Promise((resolve) => window.setTimeout(resolve, 260));
-
-    expect(mockGenerateTemplate).toHaveBeenCalledTimes(callsAfterCharacterChange);
+    // Changing Use ComfyUI on the right sidebar auto-syncs when not manually edited
+    const callsBeforeCg = mockGenerateTemplate.mock.calls.length;
+    await clickButton(screen.getByRole("checkbox", { name: "Use ComfyUI" }));
+    await waitFor(() => expect(mockGenerateTemplate).toHaveBeenCalledTimes(callsBeforeCg + 1));
   });
 
   it("uses the server-resolved characters for the restored session and launch payload", async () => {
@@ -820,14 +921,15 @@ describe("TemplateEditorPage", () => {
       renderPage();
     });
 
-    expect(await screen.findByDisplayValue("Restored scene")).toBeInTheDocument();
-    await clickButton(screen.getByRole("button", { name: "Generate" }));
+    expect(await screen.findByText("Nanami")).toBeInTheDocument();
+    const sysDialog = await openSystemPromptDialog();
+    await clickButton(within(sysDialog).getByRole("button", { name: "Regenerate" }));
 
     await waitFor(() =>
       expect(mockGenerateTemplate).toHaveBeenCalledWith(expect.objectContaining({ characters: ["Deleted", "Nanami"] })),
     );
-    await clickButton(screen.getByRole("button", { name: "System template" }));
-    expect(await screen.findByDisplayValue("Generated system")).toBeInTheDocument();
+    expect(await within(sysDialog).findByDisplayValue("Generated system")).toBeInTheDocument();
+    await clickButton(within(sysDialog).getByRole("button", { name: "Confirm" }));
     expect(mockGenerateTemplate).toHaveBeenCalledTimes(1);
 
     await clickButton(screen.getByRole("button", { name: "Quick restart" }));
@@ -881,13 +983,13 @@ describe("TemplateEditorPage", () => {
 
     renderPage();
 
-    expect(await screen.findByDisplayValue("Restored scene")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "System template" }));
-    expect(await screen.findByDisplayValue("Restored system")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+    expect(await screen.findByText(/Deleted/)).toBeInTheDocument();
+    const sysDialog = await openSystemPromptDialog();
+    expect(await within(sysDialog).findByDisplayValue("Restored system")).toBeInTheDocument();
+    await clickButton(within(sysDialog).getByRole("button", { name: "Regenerate" }));
 
     expect(await screen.findByText("Choose at least one character.")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("Restored system")).toBeInTheDocument();
+    expect(within(sysDialog).getByDisplayValue("Restored system")).toBeInTheDocument();
   });
 
   it("launches restored sessions only after quick restart confirmation", async () => {
@@ -1072,7 +1174,7 @@ describe("TemplateEditorPage", () => {
     await waitFor(() => expect(mockListTemplates).toHaveBeenCalledTimes(callsBeforeRetry + 1));
   });
 
-  it("persists selected effects and handles runtime dependency installs", async () => {
+  it("persists selected effects, dialog number settings, and handles runtime dependency installs", async () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
     mockListEffects.mockResolvedValue([
       {
@@ -1102,8 +1204,11 @@ describe("TemplateEditorPage", () => {
       expect(mockSaveSystemConfig).toHaveBeenCalledWith(expect.objectContaining({ voice_language: "en" })),
     );
 
-    fireEvent.change(screen.getByLabelText("Max speech chars"), { target: { value: "80" } });
-    fireEvent.change(screen.getByLabelText("Max dialog items"), { target: { value: "6" } });
+    const sysDialog = await openSystemPromptDialog();
+    fireEvent.change(within(sysDialog).getByLabelText("Max speech chars"), { target: { value: "80" } });
+    fireEvent.change(within(sysDialog).getByLabelText("Max dialog items"), { target: { value: "6" } });
+    await clickButton(within(sysDialog).getByRole("button", { name: "Confirm" }));
+
     fireEvent.change(screen.getByLabelText("Initial sprite"), { target: { value: "D:/sprites/init.png" } });
     fireEvent.change(screen.getByLabelText("History file"), { target: { value: "D:/history/log.json" } });
     await clickButton(screen.getByRole("button", { name: "Launch chat" }));
@@ -1151,15 +1256,13 @@ describe("TemplateEditorPage", () => {
     renderPage();
 
     expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "System template" }));
-    const systemTemplate = screen.getByDisplayValue(/System rules/) as HTMLTextAreaElement;
     const authoredSystem = (await mockListTemplates.mock.results[0].value)[0].system;
-    expect(systemTemplate).toHaveValue(authoredSystem);
 
     fireEvent.click(screen.getByRole("button", { name: "Rain" }));
-    expect(systemTemplate).toHaveValue(authoredSystem);
-
     fireEvent.click(screen.getByRole("button", { name: "Rain" }));
+
+    const sysDialog = await openSystemPromptDialog();
+    const systemTemplate = within(sysDialog).getByDisplayValue(/System rules/) as HTMLTextAreaElement;
     expect(systemTemplate).toHaveValue(authoredSystem);
   });
 
@@ -1205,6 +1308,352 @@ describe("TemplateEditorPage", () => {
         initialOutfits: { Nanami: "私服" },
         memoryMode: "inherit_readonly",
       }),
+    );
+  });
+
+  it("discards character selection changes when cancelling CharacterConfigDialog", async () => {
+    renderPage();
+    await screen.findByDisplayValue("Opening");
+
+    const charDialog = await openCharactersDialog();
+    await clickButton(within(charDialog).getByRole("button", { name: "Nanami" }));
+    expect(within(charDialog).getByRole("button", { name: "Nanami" })).toHaveAttribute("aria-pressed", "true");
+    await clickButton(within(charDialog).getByRole("button", { name: "Cancel" }));
+
+    expect(screen.getByText("No characters selected. Click Edit to choose cast members.")).toBeVisible();
+    expect(screen.queryByText("Nanami")).not.toBeInTheDocument();
+  });
+
+  it("creates grouped presets, manages groups, appends non-destructively, removes with ×, and reorders via drag-and-drop", async () => {
+    let storedLibrary: UserPromptPresetLibrary = {
+      groups: ["Style"],
+      presets: [
+        { id: "p-tone", name: "Light Novel", group: "Style", color: "#5b8def", content: "Use light novel pacing." },
+        { id: "p-rule", name: "No Autoplay", group: "", color: "#e879a8", content: "Never speak for player." },
+      ],
+    };
+    mockGetUserPromptPresets.mockImplementation(async () => structuredClone(storedLibrary));
+    mockSaveUserPromptPresets.mockImplementation(async (next: UserPromptPresetLibrary) => {
+      storedLibrary = structuredClone(next);
+      return structuredClone(storedLibrary);
+    });
+
+    renderPage({ createOnly: true });
+    await screen.findByDisplayValue("Opening");
+
+    // 1. Open Preset Prompts dialog, create a new preset under a brand-new group
+    const presetDialog = await openPresetPromptsDialog();
+    expect(within(presetDialog).queryByLabelText("Base user prompt")).not.toBeInTheDocument();
+    await clickButton(within(presetDialog).getByRole("button", { name: "New preset" }));
+    fireEvent.change(within(presetDialog).getByLabelText("Preset name"), { target: { value: "Slow Burn" } });
+    fireEvent.click(within(presetDialog).getByRole("combobox", { name: "Group" }));
+    fireEvent.click(screen.getByRole("option", { name: "+ New group…" }));
+    fireEvent.change(within(presetDialog).getByLabelText("Enter new group name"), { target: { value: "Pacing" } });
+    fireEvent.change(within(presetDialog).getByLabelText("Preset text to append"), {
+      target: { value: "Advance the plot gently." },
+    });
+    await clickButton(within(presetDialog).getByRole("button", { name: "Save preset" }));
+
+    await waitFor(() => expect(mockSaveUserPromptPresets).toHaveBeenCalled());
+    // Newly created preset is auto-selected and new group tab appears
+    expect(within(presetDialog).getByRole("tab", { name: /Pacing/ })).toBeVisible();
+    expect(within(presetDialog).getByRole("button", { name: "Slow Burn" })).toHaveAttribute("aria-pressed", "true");
+
+    // 2. Also select "Light Novel" and "No Autoplay"
+    await clickButton(within(presetDialog).getByRole("button", { name: "Light Novel" }));
+    await clickButton(within(presetDialog).getByRole("button", { name: "No Autoplay" }));
+
+    // Main-page base User prompt textarea remains untouched
+    const baseTextarea = screen.getByLabelText("User prompt") as HTMLTextAreaElement;
+    expect(baseTextarea).toHaveValue("Morning scene");
+
+    // Remove "No Autoplay" using × button in the append order strip
+    await clickButton(within(presetDialog).getByRole("button", { name: "Remove preset No Autoplay" }));
+    expect(within(presetDialog).getByRole("button", { name: "No Autoplay" })).toHaveAttribute("aria-pressed", "false");
+
+    // Drag-and-drop "Light Novel" onto "Slow Burn" to swap order -> ["p-tone", createdId]
+    const orderList = within(presetDialog).getByRole("list", { name: /Append order/ });
+    const orderItems = within(orderList).getAllByRole("listitem");
+    expect(orderItems).toHaveLength(2);
+    const createdId = orderItems[0].getAttribute("data-preset-id")!;
+    expect(orderItems[1].getAttribute("data-preset-id")).toBe("p-tone");
+
+    fireEvent.dragStart(orderItems[1], { dataTransfer: { effectAllowed: "move", setData: vi.fn() } });
+    fireEvent.dragOver(orderItems[0], { dataTransfer: { dropEffect: "move" } });
+    fireEvent.drop(orderItems[0], { dataTransfer: { getData: () => "p-tone" } });
+    fireEvent.dragEnd(orderItems[1]);
+
+    const reorderedItems = within(orderList).getAllByRole("listitem");
+    expect(reorderedItems.map((el) => el.getAttribute("data-preset-id"))).toEqual(["p-tone", createdId]);
+
+    // Rename group "Pacing" -> "Tempo", then delete group "Style" (moves Light Novel to Ungrouped)
+    await clickButton(within(presetDialog).getByRole("button", { name: "Manage groups" }));
+    const groupList = presetDialog.querySelector(".template-preset-group-list") as HTMLElement;
+    const pacingRow = within(groupList)
+      .getByText(/Pacing \(1\)/)
+      .closest("li")!;
+    await clickButton(within(pacingRow).getByRole("button", { name: "Rename" }));
+    fireEvent.change(within(groupList).getByLabelText("Pacing"), { target: { value: "Tempo" } });
+    await clickButton(within(groupList).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(within(presetDialog).getByRole("tab", { name: /Tempo/ })).toBeVisible());
+
+    const styleRow = within(groupList)
+      .getByText(/Style \(1\)/)
+      .closest("li")!;
+    await clickButton(within(styleRow).getByRole("button", { name: "Delete group" }));
+    await waitFor(() => expect(storedLibrary.presets.find((p) => p.id === "p-tone")?.group).toBe(""));
+    await clickButton(within(presetDialog).getByRole("button", { name: "Done managing groups" }));
+
+    // Check composed preview before confirming
+    await clickButton(within(presetDialog).getByRole("button", { name: /Preview composed prompt/ }));
+    expect(
+      within(presetDialog).getByText("Morning scene\n\nUse light novel pacing.\n\nAdvance the plot gently.", {
+        normalizer: (s) => s,
+      }),
+    ).toBeVisible();
+
+    await clickButton(within(presetDialog).getByRole("button", { name: "Confirm" }));
+
+    // Outer Preset Prompts bar displays selected preset chips and User Prompt card hints append count
+    const presetPromptsBar = document.querySelector('[data-section="preset-prompts"]') as HTMLElement;
+    const userPromptCard = document.querySelector('[data-section="user-prompt"]') as HTMLElement;
+    expect(within(presetPromptsBar).getByText("2 selected")).toBeVisible();
+    expect(within(presetPromptsBar).getByText("Light Novel")).toBeVisible();
+    expect(within(presetPromptsBar).getByText("Slow Burn")).toBeVisible();
+    expect(within(presetPromptsBar).queryByText(/Use light novel pacing/)).not.toBeInTheDocument();
+    expect(within(userPromptCard).getByText("+2 presets appended")).toBeVisible();
+    expect(baseTextarea).toHaveValue("Morning scene");
+
+    // Opening and cancelling discards unconfirmed preset edits
+    const reopened = await openPresetPromptsDialog();
+    await clickButton(within(reopened).getByRole("button", { name: "Clear presets" }));
+    await clickButton(within(reopened).getByRole("button", { name: "Cancel" }));
+    expect(within(presetPromptsBar).getByText("Light Novel")).toBeVisible();
+
+    // Launching forwards composed scenario and preset metadata
+    await clickButton(screen.getByRole("button", { name: "Create and start" }));
+    await waitFor(() =>
+      expect(mockLaunchChat).toHaveBeenCalledWith(
+        expect.objectContaining({
+          scenario: "Morning scene\n\nUse light novel pacing.\n\nAdvance the plot gently.",
+          editorSession: expect.objectContaining({
+            baseScenario: "Morning scene",
+            selectedPresetIds: ["p-tone", createdId],
+          }),
+        }),
+      ),
+    );
+  });
+
+  it("retains deleted preset snapshot when editing an existing conversation", async () => {
+    mockGetUserPromptPresets.mockResolvedValue({ groups: [], presets: [] });
+    mockGetConversationSession.mockResolvedValue({
+      ...savedChat,
+      baseScenario: "Saved base",
+      scenario: "Saved base\n\nDeleted preset text",
+      selectedPresetIds: ["p-deleted"],
+      appliedPresets: [{ id: "p-deleted", name: "Old Preset", content: "Deleted preset text" }],
+    });
+    mockReconfigureConversation.mockResolvedValue({ status: "idle", historyPath: savedChat.historyPath });
+
+    renderPage({ conversationId: "chosen", onApplied: vi.fn() });
+
+    const presetPromptsBar = document.querySelector('[data-section="preset-prompts"]') as HTMLElement;
+    expect(await within(presetPromptsBar).findByText("Old Preset")).toBeVisible();
+    expect(within(presetPromptsBar).getByText("Deleted")).toBeVisible();
+
+    await clickButton(screen.getByRole("button", { name: "Apply and continue" }));
+    await waitFor(() =>
+      expect(mockReconfigureConversation).toHaveBeenCalledWith(
+        "chosen",
+        expect.objectContaining({
+          scenario: "Saved base\n\nDeleted preset text",
+        }),
+      ),
+    );
+  });
+
+  it("protects manually edited system prompt from auto-sync until Regenerate is clicked", async () => {
+    mockGenerateTemplate.mockResolvedValue({
+      ...template,
+      generationMessage: "generated",
+      name: "Generated",
+      scenario: "Morning scene",
+      system: "Regenerated system text",
+    });
+    renderPage();
+    await screen.findByDisplayValue("Opening");
+
+    // Select a character first so auto-sync is eligible
+    const charDialog = await openCharactersDialog();
+    await clickButton(within(charDialog).getByRole("button", { name: "Nanami" }));
+    await clickButton(within(charDialog).getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(mockGenerateTemplate).toHaveBeenCalledTimes(1));
+
+    // Edit system prompt manually inside SystemPromptDialog
+    const sysDialog = await openSystemPromptDialog();
+    const sysArea = within(sysDialog).getByLabelText("System template");
+    fireEvent.change(sysArea, { target: { value: "My handcrafted system prompt" } });
+    expect(within(sysDialog).getByText("Manually edited")).toBeVisible();
+    await clickButton(within(sysDialog).getByRole("button", { name: "Confirm" }));
+
+    const systemBar = document.querySelector('[data-section="system-prompt"]') as HTMLElement;
+    expect(within(systemBar).getByText("Manually edited")).toBeVisible();
+
+    // Changing Use ComfyUI on the right sidebar must NOT overwrite manual system prompt
+    const callsBefore = mockGenerateTemplate.mock.calls.length;
+    await clickButton(screen.getByRole("checkbox", { name: "Use ComfyUI" }));
+    await new Promise((resolve) => window.setTimeout(resolve, 240));
+    expect(mockGenerateTemplate).toHaveBeenCalledTimes(callsBefore);
+    expect(within(systemBar).getByText("Manually edited · config changed")).toBeVisible();
+
+    // Opening dialog still shows handcrafted text; clicking Regenerate rebuilds and resets Auto-sync
+    const sysDialog2 = await openSystemPromptDialog();
+    expect(within(sysDialog2).getByDisplayValue("My handcrafted system prompt")).toBeVisible();
+    await clickButton(within(sysDialog2).getByRole("button", { name: "Regenerate" }));
+    await waitFor(() => expect(within(sysDialog2).getByDisplayValue("Regenerated system text")).toBeVisible());
+    expect(within(sysDialog2).getByText("Auto-sync")).toBeVisible();
+    await clickButton(within(sysDialog2).getByRole("button", { name: "Confirm" }));
+
+    expect(within(systemBar).getByText("Auto-sync")).toBeVisible();
+  });
+
+  it("does not auto-pop role picker above 4 characters and preserves compact/full roles when adding a 6th character", async () => {
+    const largeCast = Array.from({ length: 6 }, (_, index) => ({
+      character_brief: "Existing brief",
+      color: "#66ccff",
+      name: `Character ${index + 1}`,
+    }));
+    mockListCharacters.mockResolvedValue(largeCast);
+    renderPage();
+    await screen.findByDisplayValue("Opening");
+
+    // Select 5 characters in CharacterConfigDialog -> inline role picker does NOT auto-open
+    const charDialog = await openCharactersDialog();
+    for (const character of largeCast.slice(0, 5)) {
+      await clickButton(within(charDialog).getByRole("button", { name: character.name }));
+    }
+    expect(within(charDialog).getByText("5 selected · roles need to be set")).toBeVisible();
+    expect(charDialog.querySelector(".primary-character-dialog__grid")).not.toBeInTheDocument();
+
+    // Open inline role picker manually, toggle Character 2 off -> leaves 3 primary, stays open until Apply roles / Confirm
+    await clickButton(within(charDialog).getByRole("button", { name: "Choose primary characters" }));
+    expect(charDialog.querySelector(".primary-character-dialog__grid")).toBeInTheDocument();
+    const char2RoleCard = within(charDialog)
+      .getAllByRole("button", { name: /^Character 2/ })
+      .find((btn) => btn.className.includes("primary-character-dialog__card"))!;
+    fireEvent.click(char2RoleCard);
+    expect(charDialog.querySelector(".primary-character-dialog__grid")).toBeInTheDocument();
+    await clickButton(within(charDialog).getByRole("button", { name: "Apply roles" }));
+    await clickButton(within(charDialog).getByRole("button", { name: "Confirm" }));
+
+    expect(await screen.findByText("3 primary · 2 supporting")).toBeVisible();
+
+    // Reopen and add a 6th character -> preserves compact mode without auto-opening role picker
+    const charDialog2 = await openCharactersDialog();
+    await clickButton(within(charDialog2).getByRole("button", { name: "Character 6" }));
+    expect(within(charDialog2).getByText("3 primary · 3 supporting")).toBeVisible();
+    expect(charDialog2.querySelector(".primary-character-dialog__grid")).not.toBeInTheDocument();
+
+    // Confirm generates missing supporting brief for newly added Character 6 and launches directly
+    await clickButton(within(charDialog2).getByRole("button", { name: "Confirm" }));
+    await waitFor(() =>
+      expect(mockEnsureCharacterBriefs).toHaveBeenCalledWith(expect.arrayContaining(["Character 6"])),
+    );
+    expect(await screen.findByText("3 primary · 3 supporting")).toBeVisible();
+
+    await clickButton(screen.getByRole("button", { name: "Launch chat" }));
+    expect(screen.queryByRole("dialog", { name: "Choose primary characters" })).not.toBeInTheDocument();
+    await waitFor(() => expect(mockLaunchChat).toHaveBeenCalledTimes(1));
+
+    // Switch to "Use all as primary" on 5 characters, then add 6th -> stays full mode
+    const charDialog3 = await openCharactersDialog();
+    await clickButton(within(charDialog3).getByRole("button", { name: "Character 6" }));
+    await clickButton(within(charDialog3).getByRole("button", { name: "Use all as primary" }));
+    await clickButton(within(charDialog3).getByRole("button", { name: "Character 6" }));
+    expect(within(charDialog3).getByText("6 selected · all are primary")).toBeVisible();
+    expect(charDialog3.querySelector(".primary-character-dialog__grid")).not.toBeInTheDocument();
+    await clickButton(within(charDialog3).getByRole("button", { name: "Confirm" }));
+    expect(await screen.findByText("6 selected · all are primary")).toBeVisible();
+  });
+
+  it("allows selecting built-in self persona, uploading a player avatar, and switching player avatar sprites", async () => {
+    let catalog: Array<{
+      color: string;
+      emotion_tags: string;
+      is_builtin?: boolean;
+      name: string;
+      portrait_sprite_index?: number;
+      sprite_prefix: string;
+      sprites: Array<{ path: string }>;
+    }> = [
+      {
+        color: "#8ea8ff",
+        emotion_tags: "",
+        is_builtin: true,
+        name: "自设",
+        sprite_prefix: "__self__",
+        sprites: [],
+      },
+      {
+        color: "#66ccff",
+        emotion_tags: "立绘 1：微笑\n立绘 2：惊讶\n",
+        name: "Nanami",
+        portrait_sprite_index: 0,
+        sprite_prefix: "nanami",
+        sprites: [{ path: "D:/sprites/n1.png" }, { path: "D:/sprites/n2.png" }],
+      },
+    ];
+    mockListCharacters.mockImplementation(async () => structuredClone(catalog));
+    mockSaveCharacter.mockImplementation(async (next: (typeof catalog)[number]) => {
+      catalog = catalog.map((item) => (item.name === next.name ? { ...item, ...next } : item));
+      return structuredClone(catalog.find((item) => item.name === next.name) ?? next);
+    });
+    mockUploadCharacterSprites.mockImplementation(async ({ name, paths }: { name: string; paths: string[] }) => {
+      catalog = catalog.map((item) =>
+        item.name === name ? { ...item, sprites: [...item.sprites, ...paths.map((path) => ({ path }))] } : item,
+      );
+      return structuredClone(catalog.find((item) => item.name === name)!);
+    });
+
+    renderPage();
+    await screen.findByDisplayValue("Opening");
+
+    const charDialog = await openCharactersDialog();
+    // Self persona is directly selectable in Player character even before selecting any NPCs
+    const playerSelect = within(charDialog).getByRole("combobox", { name: "Player character" });
+    fireEvent.click(playerSelect);
+    fireEvent.click(screen.getByRole("option", { name: "自设" }));
+    expect(within(charDialog).getByRole("button", { name: "自设" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(charDialog).getByRole("button", { name: "Adjust player portrait" })).toBeDisabled();
+
+    // Upload an avatar image for self persona
+    await clickButton(within(charDialog).getByRole("button", { name: "Upload avatar" }));
+    const uploadDialog = await screen.findByRole("dialog", { name: "Upload avatar" });
+    await clickButton(within(uploadDialog).getByRole("button", { name: "Choose mocked avatar" }));
+
+    await waitFor(() =>
+      expect(mockUploadCharacterSprites).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "自设", paths: ["D:/avatars/self.png"] }),
+      ),
+    );
+    await waitFor(() =>
+      expect(within(charDialog).getByRole("button", { name: "Adjust player portrait" })).toBeEnabled(),
+    );
+
+    // Select Nanami and switch player to Nanami -> shows Player avatar combobox for multiple sprites
+    await clickButton(within(charDialog).getByRole("button", { name: "Nanami" }));
+    fireEvent.click(within(charDialog).getByRole("combobox", { name: "Player character" }));
+    fireEvent.click(screen.getByRole("option", { name: "Nanami" }));
+
+    const avatarSelect = within(charDialog).getByRole("combobox", { name: "Player avatar" });
+    fireEvent.click(avatarSelect);
+    fireEvent.click(screen.getByRole("option", { name: /n2\.png/ }));
+    await waitFor(() =>
+      expect(mockSaveCharacter).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "Nanami", portrait_sprite_index: 1 }),
+        "Nanami",
+      ),
     );
   });
 });

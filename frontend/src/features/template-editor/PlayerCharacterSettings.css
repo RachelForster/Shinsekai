@@ -1,0 +1,138 @@
+.player-character-fields {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.player-character-fields__select-field {
+  display: grid;
+  gap: 6px;
+}
+
+.player-character-fields__label {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 560;
+  line-height: 1.35;
+}
+
+.player-character-fields__avatar-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-app);
+}
+
+.player-character-fields__portrait-btn {
+  position: relative;
+  flex: 0 0 64px;
+  width: 64px;
+  height: 64px;
+  padding: 0;
+  border: 1px solid var(--color-border-hover);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.player-character-fields__portrait-btn:hover:not(:disabled) {
+  border-color: var(--color-accent-primary);
+}
+
+.player-character-fields__portrait-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.player-character-fields__portrait-btn:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.player-character-fields__avatar-main {
+  display: grid;
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 8px;
+}
+
+.player-character-fields__hint {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.player-character-fields__sprite-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.player-character-fields__avatar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.player-character-fields__status {
+  margin: 0;
+  color: var(--color-accent-primary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.player-character-fields__toggles {
+  display: grid;
+  gap: 8px;
+}
+
+.player-character-fields__option-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-app);
+}
+
+.player-character-fields__option-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  cursor: pointer;
+}
+
+.player-character-fields__option-copy strong {
+  color: var(--color-text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.player-character-fields__option-copy span {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+@media (max-width: 560px) {
+  .player-character-fields__avatar-card {
+    flex-direction: column;
+  }
+
+  .player-character-fields__sprite-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

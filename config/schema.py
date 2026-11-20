@@ -166,6 +166,11 @@ class Character(BaseModel):
     character_setting: DefaultIfNone[str] = Field(default="", description="角色背景、性格和语言习惯的详细描述")
     sprite_scale: DefaultIfNone[float] = Field(default=1.0, description="立绘的缩放比例 (默认值 1.0)")
     portrait_crop: DefaultIfNone[PortraitCrop] = Field(default_factory=PortraitCrop)
+    portrait_sprite_index: DefaultIfNone[int] = Field(
+        default=0,
+        ge=0,
+        description="角色作为主控人物时的默认头像立绘索引",
+    )
     emotion_tags: DefaultIfNone[str] = Field(default="", description="情绪标签和对应的立绘编号描述")
     sprite_groups: DefaultIfNone[List[str]] = Field(
         default_factory=list,
