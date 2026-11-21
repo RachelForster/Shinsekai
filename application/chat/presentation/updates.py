@@ -64,7 +64,17 @@ def get_character_by_name(name: str):
     if catalog is not None:
         get_by_name = getattr(catalog, "get_by_name", None)
         if callable(get_by_name):
-            return get_by_name(name)
+            found = get_by_name(name)
+            if found is not None:
+                return found
+        folded = str(name or "").strip().casefold()
+        list_all = getattr(catalog, "list_all", None)
+        if folded and callable(list_all):
+            for character in list_all():
+                if str(getattr(character, "name", "")).strip().casefold() == folded:
+                    return character
+        if callable(get_by_name) or callable(list_all):
+            return None
     try:
         return _get_config_manager().get_character_by_name(name)
     except ModuleNotFoundError:

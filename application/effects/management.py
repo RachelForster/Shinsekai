@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+import contextlib
 from dataclasses import dataclass
 from enum import Enum
 import os
@@ -161,7 +162,7 @@ class EffectUseCase:
         )
         if original_name:
             original = self._effect_by_name(original_name)
-            body.setdefault("id", original.id)
+            body["id"] = original.id
             remaining = [
                 effect
                 for effect in existing_effects
@@ -452,9 +453,12 @@ class EffectUseCase:
                 created_dirs.extend(staged.created_dirs)
                 imported.extend(staged.effects)
             if self.effects is not None:
-                for effect in imported:
-                    self._effect_dir(effect.name).mkdir(parents=True, exist_ok=True)
-                    self.effects.put(effect.id, effect)
+                atomic = getattr(self.effects, "atomic", None)
+                with atomic() if callable(atomic) else contextlib.nullcontext():
+                    for effect in imported:
+                        self._effect_dir(effect.name).mkdir(parents=True, exist_ok=True)
+                        self.effects.put(effect.id, effect)
+                committed = True
                 self._sync_config_manager()
                 return imported
             for effect in imported:

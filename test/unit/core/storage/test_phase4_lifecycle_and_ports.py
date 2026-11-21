@@ -341,3 +341,94 @@ def test_narrow_ports_operate_without_instantiating_config_manager(
         assert created_calls[0]["api_key"] == "sk-port"
     finally:
         stores.close()
+
+
+def test_phase4_review_regressions_timeout_ownership_rename_id_and_unicode_catalog(
+    tmp_path: Path,
+) -> None:
+    from application.chat.presentation import updates as presentation_updates
+
+    # 1. Timed-out agent.close() retains AgentStore open and detached from StorageHub
+    stores = build_app_stores(tmp_path / "svc", bind_globals=False)
+    agent_store = AgentStore(tmp_path / "svc" / "data" / "agent" / "agent.sqlite")
+    stores.hub.register_or_replace(agent_store)
+    plugin_closed: list[bool] = []
+
+    class _TimeoutAgent:
+        def close(self) -> None:
+            raise RuntimeError("SESSION_BUSY")
+
+    class _PluginTools:
+        def close(self) -> None:
+            plugin_closed.append(True)
+
+    services = ApplicationServices(
+        agent=_TimeoutAgent(),
+        plugin_tools=_PluginTools(),
+        stores=stores,
+    )
+    try:
+        with pytest.raises(RuntimeError, match="SESSION_BUSY"):
+            services.close()
+        assert plugin_closed == [True]
+        assert stores.main_db.status().healthy is False
+        assert agent_store.status().healthy is True
+        assert stores.hub.get_backend("db.agent") is None
+    finally:
+        agent_store.close()
+        stores.close()
+
+    # 2. EffectUseCase rename overwrites foreign payload id with original.id
+    fx_root = tmp_path / "fx"
+    stores_fx = build_app_stores(fx_root, bind_globals=False)
+    try:
+        uc = EffectUseCase(
+            None,
+            effects=stores_fx.effects,
+            project_root=fx_root,
+            local_file_access_roots=[fx_root],
+        )
+        saved = uc.execute(
+            EffectRequest(
+                EffectOperation.SAVE,
+                {"name": "Bell", "color": "#abcdef", "prompt_text": "ring"},
+            )
+        )
+        renamed = uc.execute(
+            EffectRequest(
+                EffectOperation.SAVE,
+                {
+                    "originalName": "Bell",
+                    "effect": {
+                        "id": "foreign-id",
+                        "name": "Chime",
+                        "color": "#112233",
+                        "prompt_text": "ring",
+                    },
+                },
+            )
+        )
+        assert renamed.id == saved.id
+        assert renamed.name == "Chime"
+        all_effects = list(stores_fx.effects.list_all())
+        assert len(all_effects) == 1
+        assert all_effects[0].id == saved.id
+    finally:
+        stores_fx.close()
+
+    # 3. Presentation lookup falls back to Unicode casefold scan on ASCII-only catalog stubs
+    ake = Character(id="c-ake", name="Åke", color="#123456", sprite_prefix="ake")
+
+    class _AsciiOnlyCatalogStub:
+        def get_by_name(self, _name: str):
+            return None
+
+        def list_all(self):
+            return [ake]
+
+    presentation_updates.bind_presentation_character_catalog(_AsciiOnlyCatalogStub())
+    try:
+        assert presentation_updates.get_character_by_name("åke") == ake
+        assert presentation_updates.get_character_by_name("missing") is None
+    finally:
+        presentation_updates.bind_presentation_character_catalog(None)

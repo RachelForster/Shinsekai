@@ -22,6 +22,8 @@ class ApplicationServices:
     stores: AppStores | None = field(default=None, kw_only=True)
     _closed: bool = field(default=False, init=False, repr=False)
     _runtimes_closed: bool = field(default=False, init=False, repr=False)
+    _agent_closed: bool = field(default=False, init=False, repr=False)
+    _plugin_tools_closed: bool = field(default=False, init=False, repr=False)
     _lock: threading.RLock = field(
         default_factory=threading.RLock, init=False, repr=False
     )
@@ -36,6 +38,7 @@ class ApplicationServices:
                 raise RuntimeError("Application services are closed")
             if self.agent is None:
                 self.agent = AgentRuntime(config_manager, root, tools=tools)
+                self._agent_closed = False
             if self.stores is not None:
                 bind_hub = getattr(self.agent, "bind_storage_hub", None)
                 if callable(bind_hub):
@@ -50,6 +53,7 @@ class ApplicationServices:
                 raise RuntimeError("Application services are closed")
             if self.plugin_tools is None:
                 self.plugin_tools = PluginToolService()
+                self._plugin_tools_closed = False
             return self.plugin_tools
 
     def close_runtimes(self) -> None:
@@ -58,20 +62,49 @@ class ApplicationServices:
             self._closed = True
             if self._runtimes_closed:
                 return
-            self._runtimes_closed = True
-            agent, plugin_tools = self.agent, self.plugin_tools
+            agent = self.agent if not self._agent_closed else None
+            plugin_tools = self.plugin_tools if not self._plugin_tools_closed else None
+        first_error: Exception | None = None
         # In-flight HTTP tools must be able to settle without this registry lock.
         if agent is not None:
-            agent.close()
+            try:
+                agent.close()
+            except Exception as exc:
+                first_error = exc
+            else:
+                with self._lock:
+                    self._agent_closed = True
         if plugin_tools is not None:
-            plugin_tools.close()
+            try:
+                plugin_tools.close()
+            except Exception as exc:
+                if first_error is None:
+                    first_error = exc
+            else:
+                with self._lock:
+                    self._plugin_tools_closed = True
+        with self._lock:
+            self._runtimes_closed = (
+                (self.agent is None or self._agent_closed)
+                and (self.plugin_tools is None or self._plugin_tools_closed)
+            )
+        if first_error is not None:
+            raise first_error
 
     def close(self) -> None:
-        self.close_runtimes()
+        runtime_error: Exception | None = None
+        try:
+            self.close_runtimes()
+        except Exception as exc:
+            runtime_error = exc
         with self._lock:
             stores = self.stores
             self.stores = None
+            agent_retained = self.agent is not None and not self._agent_closed
         if stores is not None:
+            if agent_retained:
+                with contextlib.suppress(Exception):
+                    stores.hub.unregister("db.agent")
             with contextlib.suppress(Exception):
                 from application.memory.manage_memories import shutdown_memory_runtime
 
@@ -85,3 +118,5 @@ class ApplicationServices:
 
                 close_all_session_stores()
             stores.close()
+        if runtime_error is not None:
+            raise runtime_error
