@@ -25,8 +25,10 @@ from config.models import (
     McpConfig,
     SystemConfig,
     UiRuntimeState,
+    UserPromptPresetLibrary,
     normalize_api_config_dict,
     normalize_system_config_dict,
+    normalize_user_prompt_presets_dict,
 )
 from core.knowledge.bindings import bind_knowledge_binding_store
 from core.storage.codecs import PydanticJsonCodec, PydanticYamlCodec
@@ -67,6 +69,7 @@ class AppStores:
     api_settings: FileDocumentStore[ApiConfig]
     system_settings: FileDocumentStore[SystemConfig]
     mcp_settings: FileDocumentStore[McpConfig]
+    prompt_presets: FileDocumentStore[UserPromptPresetLibrary]
     ui_state: FileDocumentStore[UiRuntimeState]
     main_db: SqliteEngine
     characters: SqliteCharacterCatalog
@@ -194,6 +197,17 @@ def build_app_stores(
             PydanticYamlCodec(McpConfig),
         )
     )
+    prompt_presets = hub.register(
+        FileDocumentStore(
+            "settings.prompt_presets",
+            layout.config_file("user_prompt_presets.json"),
+            PydanticJsonCodec(
+                UserPromptPresetLibrary,
+                pre_decode=normalize_user_prompt_presets_dict,
+                exclude_none=True,
+            ),
+        )
+    )
     ui_state = hub.register(
         FileDocumentStore(
             "state.ui",
@@ -242,6 +256,7 @@ def build_app_stores(
         api_settings=api_settings,
         system_settings=system_settings,
         mcp_settings=mcp_settings,
+        prompt_presets=prompt_presets,
         ui_state=ui_state,
         main_db=main_db,
         characters=characters,

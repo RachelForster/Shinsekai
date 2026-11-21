@@ -244,6 +244,7 @@ config/
     api_settings.py             # ApiConfig 及领域分组模型
     system_settings.py          # SystemConfig（移出窗口坐标与环境变量副作用）
     mcp_settings.py             # McpConfig
+    prompt_presets.py           # UserPromptPreset / UserPromptPresetLibrary
     ui_state.py                 # UiRuntimeState（窗口几何 + 模板页上次启动快照）
     character.py                # Character / CharacterSummary / Sprite / ModelSprites / SpriteTransition / RelationGraph
     media_catalog.py            # Background / Effect
@@ -275,6 +276,7 @@ data/
     system_config.yaml            # 语言 / 字号 / 主题 / ASR / 代理镜像 / 翻唱流水线配置
     mcp.yaml                      # MCP Server 配置（由直接覆写升级为原子写）
     plugins.yaml                  # 插件启用清单
+    user_prompt_presets.json      # 用户预设提示词库（FileDocumentStore[UserPromptPresetLibrary] 托管）
     legacy_backup/                # [自动生成] 升级迁移完成后旧数据文件的无损时间戳归档目录
       <YYYYMMDD_HHMMSS>/
   state/                          # [高频 UI 运行态：从正式配置剥离]
