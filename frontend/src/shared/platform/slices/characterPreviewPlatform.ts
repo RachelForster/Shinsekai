@@ -303,6 +303,21 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
       characterMemories.set(agentId, next);
       return delay(next);
     },
+    async deleteMemories(name, memoryIds) {
+      const agentId = name || "user";
+      const current = characterMemories.get(agentId) ?? { agentId, count: 0, memories: [] };
+      const existingIds = new Set(current.memories.map((memory) => memory.id));
+      const uniqueIds = Array.from(new Set(memoryIds.map((id) => id.trim()).filter(Boolean)));
+      const deleted = uniqueIds.filter((id) => existingIds.has(id));
+      const failed = uniqueIds
+        .filter((id) => !existingIds.has(id))
+        .map((memoryId) => ({ memoryId, error: "memory not found" }));
+      const targets = new Set(deleted);
+      const memories = current.memories.filter((memory) => !targets.has(memory.id));
+      const next = { agentId, count: memories.length, memories };
+      characterMemories.set(agentId, next);
+      return delay({ ...next, deleted, failed });
+    },
     async pinMemory({ memoryId, name, pinned }) {
       const agentId = name || "user";
       const current = await this.listMemories(agentId);
@@ -486,7 +501,7 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
     },
     list: () => delay(config.characters),
     revision: () => delay(JSON.stringify(config.characters)),
-    async listMemories(name) {
+    async listMemories(name, options) {
       const agentId = name || "user";
       const existing = characterMemories.get(agentId) ?? {
         agentId,
@@ -494,7 +509,26 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
         memories: [{ id: `${agentId}-preview`, memory: "浏览器预览记忆。" }],
       };
       characterMemories.set(agentId, existing);
-      return delay(existing);
+      if (options?.offset === undefined && options?.limit === undefined) {
+        return delay(existing);
+      }
+      const offset = Math.max(0, options?.offset ?? 0);
+      const limit = Math.max(1, options?.limit ?? 200);
+      const memories = existing.memories.slice(offset, offset + limit);
+      return delay({ agentId, count: memories.length, memories, offset, total: existing.memories.length });
+    },
+    async exportMemories({ memoryIds, name }) {
+      const agentId = name || "user";
+      const existing = await this.listMemories(agentId);
+      const wanted = memoryIds?.length ? new Set(memoryIds) : null;
+      const memories = wanted ? existing.memories.filter((memory) => wanted.has(memory.id)) : existing.memories;
+      const text = [
+        `# ${agentId}`,
+        `# ${memories.length}`,
+        "",
+        ...memories.map((m, i) => `${i + 1}. ${m.gist?.trim() || m.memory}`),
+      ].join("\n");
+      return delay({ agentId, count: memories.length, text });
     },
     previewMemoryImport: (_name, items) => previewMemoryImport(items),
     async searchMemories({ limit = 200, name, query }) {

@@ -508,6 +508,7 @@ pub fn run() {
             desktop_project_root_select,
             desktop_files_browse,
             desktop_files::desktop_files_save_history_export,
+            desktop_files::desktop_files_save_text_export,
             desktop_restart_debug_log,
             desktop_app_restart,
             desktop_bridge_restart,

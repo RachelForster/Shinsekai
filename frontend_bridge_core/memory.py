@@ -41,7 +41,13 @@ def _raise_memory_error(result: dict[str, Any]) -> None:
         raise RuntimeError(str(result["error"]))
 
 
-def _list_character_memories(name: str, *, session_id: str = "") -> dict[str, Any]:
+def _list_character_memories(
+    name: str,
+    *,
+    session_id: str = "",
+    limit: int | None = None,
+    offset: int = 0,
+) -> dict[str, Any]:
     dep_error = _check_mem0_before_call()
     if dep_error is not None:
         return dep_error
@@ -49,12 +55,44 @@ def _list_character_memories(name: str, *, session_id: str = "") -> dict[str, An
     from sdk.tool_registry import ToolNotReady
     from application.memory.manage_memories import list_memories
 
+    extra: dict[str, Any] = {}
+    if session_id:
+        extra["session_id"] = session_id
+    if limit is not None:
+        extra["limit"] = limit
+    if offset:
+        extra["offset"] = offset
     try:
-        if session_id:
-            return list_memories(name, session_id=session_id)
-        return list_memories(name)
+        return list_memories(name, **extra)
     except ToolNotReady as exc:
         return {"status": "loading", "message": exc.message}
+
+
+def _export_character_memories(
+    name: str,
+    *,
+    session_id: str = "",
+    memory_ids: list[str] | None = None,
+    labels: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    dep_error = _check_mem0_before_call()
+    if dep_error is not None:
+        return dep_error
+
+    from sdk.tool_registry import ToolNotReady
+    from application.memory.manage_memories import export_memories_text
+
+    try:
+        result = export_memories_text(
+            name,
+            session_id=session_id,
+            memory_ids=memory_ids,
+            labels=labels,
+        )
+    except ToolNotReady as exc:
+        return {"status": "loading", "message": exc.message}
+    _raise_memory_error(result)
+    return result
 
 
 def _memory_tool_search(
@@ -269,6 +307,31 @@ def _delete_character_memory(name: str, memory_id: str, *, session_id: str = "")
             forget_and_list(memory_id, character_name=name, session_id=session_id)
             if session_id
             else forget_and_list(memory_id, character_name=name)
+        )
+    except ToolNotReady as exc:
+        return {"status": "loading", "message": exc.message}
+    _raise_memory_error(result)
+    return result
+
+
+def _delete_character_memories(
+    name: str,
+    memory_ids: list[str],
+    *,
+    session_id: str = "",
+) -> dict[str, Any]:
+    dep_error = _check_mem0_before_call()
+    if dep_error is not None:
+        return dep_error
+
+    from sdk.tool_registry import ToolNotReady
+    from application.memory.manage_memories import forget_many_and_list
+
+    try:
+        result = (
+            forget_many_and_list(memory_ids, character_name=name, session_id=session_id)
+            if session_id
+            else forget_many_and_list(memory_ids, character_name=name)
         )
     except ToolNotReady as exc:
         return {"status": "loading", "message": exc.message}

@@ -1,14 +1,16 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Brain,
   ChevronLeft,
   ChevronRight,
   Download,
+  FileText,
   Pin,
   PinOff,
   RefreshCw,
   Search,
   Sparkles,
+  Trash2,
   Upload,
   X,
 } from "lucide-react";
@@ -54,6 +56,55 @@ interface CharacterMemorySectionProps {
   pinPending?: boolean;
   searchInput: string;
   searchPending: boolean;
+  /** Multi-select support. When `onToggleSelected` is omitted the selection UI is hidden. */
+  selectedIds?: ReadonlySet<string>;
+  totalCount?: number;
+  /** Memories currently loaded client-side (one backend window, or all search results). */
+  loadedCount?: number;
+  deleteManyPending?: boolean;
+  exportPending?: boolean;
+  onToggleSelected?: (memoryId: string, selected: boolean) => void;
+  onSetManySelected?: (memoryIds: string[], selected: boolean) => void;
+  onSelectAll?: () => void;
+  onClearSelection?: () => void;
+  onDeleteSelected?: (memoryIds: string[]) => void;
+  onExportMemories?: () => void;
+}
+
+const EMPTY_SELECTION: ReadonlySet<string> = new Set();
+
+function SelectAllCheckbox({
+  checked,
+  disabled,
+  indeterminate,
+  label,
+  onChange,
+}: {
+  checked: boolean;
+  disabled?: boolean;
+  indeterminate: boolean;
+  label: string;
+  onChange: (checked: boolean) => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (ref.current) {
+      ref.current.indeterminate = indeterminate;
+    }
+  }, [indeterminate]);
+  return (
+    <label className="memory-select memory-bulk-bar__page-toggle">
+      <input
+        aria-label={label}
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.currentTarget.checked)}
+        ref={ref}
+        type="checkbox"
+      />
+      <span>{label}</span>
+    </label>
+  );
 }
 
 function isCanonMemory(memory: CharacterMemory): boolean {
@@ -104,11 +155,30 @@ export function CharacterMemorySection({
   pinPending = false,
   searchInput,
   searchPending,
+  selectedIds = EMPTY_SELECTION,
+  totalCount,
+  loadedCount,
+  deleteManyPending = false,
+  exportPending = false,
+  onToggleSelected,
+  onSetManySelected,
+  onSelectAll,
+  onClearSelection,
+  onDeleteSelected,
+  onExportMemories,
 }: CharacterMemorySectionProps) {
   const { t } = useI18n();
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
   const memories = data?.memories ?? [];
   const hasMemoryRows = memories.length > 0;
+  const selectable = Boolean(onToggleSelected);
+  const pageIds = memories.map((memory) => memory.id).filter(Boolean);
+  const pageSelectedCount = pageIds.filter((memoryId) => selectedIds.has(memoryId)).length;
+  const allPageSelected = pageIds.length > 0 && pageSelectedCount === pageIds.length;
+  const selectedCount = selectedIds.size;
+  const visibleTotal = totalCount ?? data?.total ?? memories.length;
+  const loadedTotal = loadedCount ?? memories.length;
+  const bulkBusy = deleteManyPending || deletePending;
   const hasRichMetadata = memories.some(
     (memory) =>
       memory.clarity !== undefined ||
@@ -142,8 +212,25 @@ export function CharacterMemorySection({
       (clarity === "faded" || clarity === "dormant" || (retentionPct !== null && retentionPct < 85)),
     );
 
+    const selected = Boolean(memory.id && selectedIds.has(memory.id));
+
     return (
-      <div className="memory-row" data-clarity={clarity} key={memory.id || memory.memory}>
+      <div
+        className={`memory-row${selectable ? " memory-row--selectable" : ""}${selected ? " memory-row--selected" : ""}`}
+        data-clarity={clarity}
+        key={memory.id || memory.memory}
+      >
+        {selectable ? (
+          <label className="memory-select memory-row__select">
+            <input
+              aria-label={`${t("character.memory.select")}: ${headline}`}
+              checked={selected}
+              disabled={!memory.id || bulkBusy}
+              onChange={(event) => onToggleSelected?.(memory.id, event.currentTarget.checked)}
+              type="checkbox"
+            />
+          </label>
+        ) : null}
         {canon ? <Pin aria-hidden className="asset-row__icon" /> : <Brain aria-hidden className="asset-row__icon" />}
         <div className="memory-row__content">
           <strong>{headline}</strong>
@@ -225,7 +312,9 @@ export function CharacterMemorySection({
       <div className="section__header">
         <h2 className="section__title">{t("character.memory.section")}</h2>
         <div className="page__actions">
-          <span className="entity-list__meta">{data ? t("character.memory.count", { count: data.count }) : ""}</span>
+          <span className="entity-list__meta">
+            {data ? t("character.memory.count", { count: totalCount ?? data.total ?? data.count }) : ""}
+          </span>
           <AsyncButton
             disabled={!memoryName || Boolean(depError) || depInstalling || isChecking}
             icon={<Upload aria-hidden className="button__icon" />}
@@ -235,6 +324,19 @@ export function CharacterMemorySection({
           >
             {t("character.memory.import")}
           </AsyncButton>
+          {onExportMemories ? (
+            <AsyncButton
+              disabled={!memoryName || Boolean(depError) || isChecking || visibleTotal === 0}
+              icon={<FileText aria-hidden className="button__icon" />}
+              loading={exportPending}
+              onClick={onExportMemories}
+              variant="ghost"
+            >
+              {selectedCount > 0
+                ? t("character.memory.exportSelectedTxt", { count: selectedCount })
+                : t("character.memory.exportTxt")}
+            </AsyncButton>
+          ) : null}
           <Button
             disabled={!memoryName || isFetching || depInstalling || isChecking}
             icon={<RefreshCw aria-hidden className="button__icon" />}
@@ -313,6 +415,47 @@ export function CharacterMemorySection({
       {memoryName && isFetched && !isLoading && !isError && !depError && !hasMemoryRows ? (
         <EmptyState title={activeSearchQuery ? t("character.memory.searchEmpty") : t("character.memory.empty")} />
       ) : null}
+      {hasMemoryRows && selectable ? (
+        <div className="memory-bulk-bar" role="toolbar" aria-label={t("character.memory.select")}>
+          <div className="memory-bulk-bar__group">
+            <SelectAllCheckbox
+              checked={allPageSelected}
+              disabled={pageIds.length === 0 || bulkBusy}
+              indeterminate={pageSelectedCount > 0 && !allPageSelected}
+              label={t("character.memory.selectPage")}
+              onChange={(checked) => onSetManySelected?.(pageIds, checked)}
+            />
+            {onSelectAll && loadedTotal > pageIds.length ? (
+              <Button disabled={bulkBusy} onClick={onSelectAll} variant="ghost">
+                {t("character.memory.selectAll", { count: loadedTotal })}
+              </Button>
+            ) : null}
+            {selectedCount > 0 ? (
+              <>
+                <span className="inline-status memory-bulk-bar__count">
+                  {t("character.memory.selectedCount", { count: selectedCount })}
+                </span>
+                {onClearSelection ? (
+                  <Button disabled={bulkBusy} onClick={onClearSelection} variant="ghost">
+                    {t("character.memory.clearSelection")}
+                  </Button>
+                ) : null}
+              </>
+            ) : null}
+          </div>
+          {onDeleteSelected ? (
+            <AsyncButton
+              disabled={selectedCount === 0 || Boolean(depError) || isChecking}
+              icon={<Trash2 aria-hidden className="button__icon" />}
+              loading={deleteManyPending}
+              onClick={() => onDeleteSelected(Array.from(selectedIds))}
+              variant="danger"
+            >
+              {t("character.memory.deleteSelected", { count: selectedCount })}
+            </AsyncButton>
+          ) : null}
+        </div>
+      ) : null}
       {hasMemoryRows ? (
         <div className="memory-table">
           {hasRichMetadata ? (
@@ -335,7 +478,7 @@ export function CharacterMemorySection({
           )}
         </div>
       ) : null}
-      {hasMemoryRows ? (
+      {hasMemoryRows || (Boolean(memoryName) && !depError && memoryTotalPages > 1) ? (
         <div className="memory-pagination" aria-label={t("character.memory.pagination")}>
           <Button
             disabled={memoryPage <= 1}

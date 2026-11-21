@@ -309,23 +309,44 @@ def _serialize_memory_record(
     }
 
 
+def _count_repo_memories(repo: Any, scope_filter: MemoryScopeFilter) -> int | None:
+    counter = getattr(repo, "count_memories", None)
+    if not callable(counter):
+        return None
+    try:
+        return int(counter(scope_filter))
+    except Exception:
+        logger.debug("count_memories failed", exc_info=True)
+        return None
+
+
 def memory_list(
     character_name: str | None = None,
     *,
     limit: int = 200,
+    offset: int = 0,
     session_id: str = "",
 ) -> dict[str, Any]:
+    """List one window of memories ordered pinned-first, newest-first.
+
+    The result carries ``total`` (all matching memories, when the backend can count
+    them) plus ``offset``/``limit`` so callers can page through large stores.
+    """
     agent_id = _resolve_agent_id(character_name)
     sid = str(session_id or "").strip()
-    req_payload: dict[str, Any] = {"name": agent_id, "limit": limit}
+    max_items = max(1, int(limit))
+    start = max(0, int(offset or 0))
+    req_payload: dict[str, Any] = {"name": agent_id, "limit": max_items}
+    if start:
+        req_payload["offset"] = start
     if sid:
         req_payload["sessionId"] = sid
     service_result = _memory_service_request("list", req_payload)
     if service_result is not None:
         return service_result
     mem = ensure_mem0()
+    fetch_limit = start + max_items
     if isinstance(mem, HybridMemoryEngine):
-        max_items = max(1, int(limit))
         read_filter = resolve_memory_read_filter(agent_id)
         policy = (
             getattr(mem.orchestrator, "retention_policy", None)
@@ -335,42 +356,240 @@ def memory_list(
         now_ts = time.time()
         with _mem0_operation_lock, borrow_session_store_by_id(sid) as sess_store:
             records_by_id: dict[str, MemoryRecord] = {}
-            for rec in mem.repo.list_by_scope(read_filter, limit=max_items):
-                records_by_id[rec.id] = rec
             save_repo = (
                 getattr(sess_store, "save_memory_repo", None)
                 if sess_store is not None
                 else None
             )
-            if save_repo is not None:
-                save_filter = MemoryScopeFilter(
+            save_filter = (
+                MemoryScopeFilter(
                     scopes=(SCOPE_SAVE_ISOLATED,),
                     owner_ids=read_filter.owner_ids,
                     session_id=sid or None,
                 )
-                for rec in save_repo.list_by_scope(save_filter, limit=max_items):
+                if save_repo is not None
+                else None
+            )
+            repo_total = _count_repo_memories(mem.repo, read_filter)
+            save_total = (
+                _count_repo_memories(save_repo, save_filter)
+                if save_repo is not None and save_filter is not None
+                else 0
+            )
+            total: int | None = (
+                None
+                if repo_total is None or save_total is None
+                else repo_total + save_total
+            )
+            repo_fetch_limit = fetch_limit if total is not None else fetch_limit + 1
+            # Each repo returns its own top ``offset + limit`` rows (plus one lookahead
+            # row when counting is unsupported); merging and slicing yields the window.
+            for rec in mem.repo.list_by_scope(read_filter, limit=repo_fetch_limit):
+                records_by_id[rec.id] = rec
+            if save_repo is not None and save_filter is not None:
+                for rec in save_repo.list_by_scope(save_filter, limit=repo_fetch_limit):
                     records_by_id[rec.id] = rec
 
+        # Mirror the repository ORDER BY (pinned first, newest first) so windows stay
+        # consistent across offsets.
         sorted_records = sorted(
             records_by_id.values(),
-            key=lambda r: (
-                0 if (r.pinned or r.scope == SCOPE_CHAR_CANON or r.kind == "canon") else 1,
-                -float(r.created_at),
-            ),
-        )[:max_items]
+            key=lambda r: (0 if r.pinned else 1, -float(r.created_at)),
+        )
+        window = sorted_records[start:start + max_items]
         memories = [
             _serialize_memory_record(rec, policy=policy, now_ts=now_ts)
-            for rec in sorted_records
+            for rec in window
         ]
-        return {"agentId": agent_id, "count": len(memories), "memories": memories}
+        if total is None:
+            # Backend cannot count: report what we know (a lower bound when the window is full).
+            total = start + len(memories) + (1 if len(sorted_records) > start + max_items else 0)
+        return {
+            "agentId": agent_id,
+            "count": len(memories),
+            "memories": memories,
+            "total": int(total),
+            "offset": start,
+            "limit": max_items,
+        }
 
     with _mem0_operation_lock:
         parameters = inspect.signature(mem.get_all).parameters
-        pagination = {"top_k": limit} if "top_k" in parameters else {"limit": limit}
+        pagination = {"top_k": fetch_limit} if "top_k" in parameters else {"limit": fetch_limit}
         raw = mem.get_all(filters={"user_id": agent_id}, **pagination)
     rows = raw.get("results", []) if isinstance(raw, dict) else (raw if isinstance(raw, list) else [])
-    memories = [_memory_row(row) for row in rows]
-    return {"agentId": agent_id, "count": len(memories), "memories": memories}
+    memories = [_memory_row(row) for row in rows][start:start + max_items]
+    result: dict[str, Any] = {"agentId": agent_id, "count": len(memories), "memories": memories}
+    if start:
+        result["offset"] = start
+    if len(rows) < fetch_limit:
+        # Fewer rows than requested means we saw everything.
+        result["total"] = len(rows)
+    return result
+
+
+_DEFAULT_MEMORY_LIST = memory_list
+
+
+def _list_all_repo_memories(
+    repo: Any,
+    scope_filter: MemoryScopeFilter,
+    *,
+    batch_size: int,
+    bound: int | None,
+) -> tuple[Sequence[MemoryRecord], int | None]:
+    counted = _count_repo_memories(repo, scope_filter)
+    if counted is not None:
+        if counted <= 0:
+            return (), 0
+        target = counted if bound is None else min(counted, bound)
+        return repo.list_by_scope(scope_filter, limit=target), counted
+    if bound is not None:
+        rows = repo.list_by_scope(scope_filter, limit=bound + 1)
+        return rows, (len(rows) if len(rows) <= bound else None)
+    probe = max(1, batch_size)
+    while True:
+        rows = repo.list_by_scope(scope_filter, limit=probe)
+        if len(rows) < probe:
+            return rows, len(rows)
+        probe *= 2
+
+
+def memory_list_all(
+    character_name: str | None = None,
+    *,
+    session_id: str = "",
+    batch_size: int = 500,
+    max_items: int | None = None,
+) -> dict[str, Any]:
+    """Collect every memory for a character consistently, paging if needed."""
+    size = max(1, int(batch_size))
+    bound = None if max_items is None else max(1, int(max_items))
+    agent_id = _resolve_agent_id(character_name)
+    sid = str(session_id or "").strip()
+
+    if memory_list is _DEFAULT_MEMORY_LIST and not _memory_service_url():
+        mem = ensure_mem0()
+        if isinstance(mem, HybridMemoryEngine):
+            read_filter = resolve_memory_read_filter(agent_id)
+            policy = (
+                getattr(mem.orchestrator, "retention_policy", None)
+                or resolve_registered_retention_policy()
+                or EbbinghausRetentionPolicy()
+            )
+            now_ts = time.time()
+            with _mem0_operation_lock, borrow_session_store_by_id(sid) as sess_store:
+                records_by_id: dict[str, MemoryRecord] = {}
+                repo_rows, repo_total = _list_all_repo_memories(
+                    mem.repo,
+                    read_filter,
+                    batch_size=size,
+                    bound=bound,
+                )
+                for rec in repo_rows:
+                    records_by_id[rec.id] = rec
+                total: int | None = repo_total
+                save_repo = (
+                    getattr(sess_store, "save_memory_repo", None)
+                    if sess_store is not None
+                    else None
+                )
+                if save_repo is not None:
+                    save_filter = MemoryScopeFilter(
+                        scopes=(SCOPE_SAVE_ISOLATED,),
+                        owner_ids=read_filter.owner_ids,
+                        session_id=sid or None,
+                    )
+                    save_rows, save_total = _list_all_repo_memories(
+                        save_repo,
+                        save_filter,
+                        batch_size=size,
+                        bound=bound,
+                    )
+                    for rec in save_rows:
+                        records_by_id[rec.id] = rec
+                    total = (
+                        None
+                        if total is None or save_total is None
+                        else total + save_total
+                    )
+
+            sorted_records = sorted(
+                records_by_id.values(),
+                key=lambda r: (0 if r.pinned else 1, -float(r.created_at)),
+            )
+            selected_records = (
+                sorted_records if bound is None else sorted_records[:bound]
+            )
+            memories = [
+                _serialize_memory_record(rec, policy=policy, now_ts=now_ts)
+                for rec in selected_records
+            ]
+            if bound is None:
+                result_total = len(memories)
+            elif total is not None:
+                result_total = max(len(memories), int(total))
+            else:
+                result_total = len(memories) + (
+                    1 if len(sorted_records) > bound else 0
+                )
+            return {
+                "agentId": agent_id,
+                "count": len(memories),
+                "total": int(result_total),
+                "memories": memories,
+            }
+
+    collected: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    offset = 0
+    known_total: int | None = None
+    extra = {"session_id": session_id} if session_id else {}
+    with _mem0_operation_lock:
+        while bound is None or len(collected) < bound:
+            req_size = size if bound is None else min(size, bound - len(collected))
+            page = memory_list(character_name, limit=req_size, offset=offset, **extra)
+            if not isinstance(page, dict) or page.get("error") or page.get("status") == "loading":
+                return page
+            if offset > 0 and page.get("offset") != offset:
+                # Legacy backends ignore offset; stop instead of re-reading the first window.
+                break
+            agent_id = str(page.get("agentId") or agent_id)
+            rows = page.get("memories") or []
+            if isinstance(page.get("total"), int):
+                known_total = page["total"]
+            added_in_page = 0
+            all_rows_had_ids = bool(rows)
+            for row in rows:
+                key = str(row.get("id") or "") if isinstance(row, dict) else ""
+                if not key:
+                    all_rows_had_ids = False
+                if key and key in seen:
+                    continue
+                if key:
+                    seen.add(key)
+                collected.append(row)
+                added_in_page += 1
+                if bound is not None and len(collected) >= bound:
+                    break
+            offset += len(rows)
+            if (
+                len(rows) < req_size
+                or (isinstance(known_total, int) and offset >= known_total)
+                or (added_in_page == 0 and all_rows_had_ids)
+            ):
+                break
+    result_total = (
+        max(len(collected), known_total)
+        if bound is not None and isinstance(known_total, int)
+        else len(collected)
+    )
+    return {
+        "agentId": agent_id,
+        "count": len(collected),
+        "total": int(result_total),
+        "memories": collected,
+    }
 
 
 def memory_search(
@@ -819,6 +1038,43 @@ def memory_forget_and_list(
     if isinstance(result, dict) and result.get("status") == "loading":
         return result
     return memory_list(character_name, **({"session_id": session_id} if session_id else {}))
+
+
+def memory_forget_many_and_list(
+    memory_ids: Sequence[str],
+    character_name: str | None = None,
+    *,
+    session_id: str = "",
+) -> dict[str, Any]:
+    """Delete several memories, then return the refreshed list once.
+
+    Individual failures do not abort the batch; they are reported in ``failed``.
+    """
+    seen: set[str] = set()
+    ids: list[str] = []
+    for raw in memory_ids or ():
+        mid = str(raw or "").strip()
+        if mid and mid not in seen:
+            seen.add(mid)
+            ids.append(mid)
+    if not ids:
+        return {"error": "memory ids are required"}
+    deleted: list[str] = []
+    failed: list[dict[str, str]] = []
+    for mid in ids:
+        result = memory_forget(mid, session_id=session_id)
+        if isinstance(result, dict) and result.get("status") == "loading":
+            return result
+        if isinstance(result, dict) and result.get("error"):
+            failed.append({"memoryId": mid, "error": str(result.get("error"))})
+            continue
+        deleted.append(mid)
+    if not deleted and failed:
+        return {"error": failed[0]["error"], "failed": failed}
+    listed = memory_list(character_name, **({"session_id": session_id} if session_id else {}))
+    if isinstance(listed, dict) and not listed.get("error"):
+        listed = {**listed, "deleted": deleted, "failed": failed}
+    return listed
 
 
 def _update_repo_pin(repo: Any, memory_id: str, pinned: bool) -> bool:
