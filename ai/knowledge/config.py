@@ -129,7 +129,7 @@ class HybridKnowledgeStore:
             db_path = db_path / KNOWLEDGE_STORE_FILENAME
 
         embedder = get_shared_onnx_embedder(snapshot_path, dimensions=dims)
-        store = SqliteHybridStore(db_path)
+        store = SqliteHybridStore(db_path, name="db.knowledge")
 
         legacy_qdrant = str(vs_cfg.get("legacy_qdrant_path") or "").strip()
         qdrant_dir = (

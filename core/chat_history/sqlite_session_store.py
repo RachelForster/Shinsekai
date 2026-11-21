@@ -41,6 +41,7 @@ from sdk.adapters.memory import (
     MemoryScopeFilter,
 )
 from sdk.adapters.session import ConversationSessionPort
+from sdk.adapters.storage import BackendKind, BackendStatus
 
 logger = logging.getLogger(__name__)
 
@@ -264,6 +265,7 @@ class SqliteSessionStore:
         session_id: str | None = None,
         shared_memory_rollback: Callable[..., int] | None = None,
         max_pool_size: int = 4,
+        name: str | None = None,
     ) -> None:
         raw_str = str(db_path)
         if raw_str == ":memory:":
@@ -281,17 +283,50 @@ class SqliteSessionStore:
             )
 
         self._session_id = resolved_session_id
+        custom_name = str(name).strip() if name is not None else ""
+        self._name = custom_name or f"db.session.{self._session_id[:12]}"
         self._shared_memory_rollback = shared_memory_rollback
         self._write_lock = threading.RLock()
         self._store = SqliteHybridStore(
             ":memory:" if self._db_path is None else self._db_path,
             max_idle_connections=max_pool_size,
+            name=f"{self._name}.hybrid",
         )
         self._save_repo = _SessionSaveMemoryRepo(self._store)
         self._closed = False
         self._init_session_schema()
         if self._db_path is not None and self._session_id:
             _register_session_db_path(self._session_id, self._db_path)
+
+    @property
+    def name(self) -> str:
+        """Logical backend identifier for ``StorageHub`` registration."""
+        return self._name
+
+    def status(self) -> BackendStatus:
+        """Return session DB health and schema version."""
+        with self._write_lock:
+            closed = self._closed
+        kind: BackendKind = "memory" if self._db_path is None else "sqlite"
+        location = ":memory:" if self._db_path is None else str(self._db_path)
+        if closed:
+            return BackendStatus(
+                name=self._name,
+                kind=kind,
+                location=location,
+                healthy=False,
+                schema_version=int(SESSION_SCHEMA_VERSION),
+                detail="closed",
+            )
+        inner = self._store.status()
+        return BackendStatus(
+            name=self._name,
+            kind=kind,
+            location=location,
+            healthy=inner.healthy,
+            schema_version=int(SESSION_SCHEMA_VERSION),
+            detail=inner.detail,
+        )
 
     @property
     def db_path(self) -> Path | None:

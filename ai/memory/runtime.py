@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import importlib.util
 import logging
 import os
@@ -10,6 +11,7 @@ import time
 from typing import Any
 
 from core.model_assets.service import download_model_asset
+from sdk.adapters.storage import ManagedBackend
 from sdk.exception.types import (
     download_error_from_exception,
     runtime_dependency_error_from_exception,
@@ -49,7 +51,22 @@ _mem0_load_error: BaseException | None = None
 _mem0_loading = False
 _loading_started_at: float = 0.0
 _runtime_generation: int = 0
+_store_observer: Callable[[ManagedBackend | None], None] | None = None
 _lock = threading.Lock()
+
+
+def set_memory_store_observer(
+    observer: Callable[[ManagedBackend | None], None] | None,
+) -> None:
+    """Register or clear a lifecycle observer receiving ``SqliteHybridStore`` updates."""
+    with _lock:
+        global _store_observer
+        _store_observer = observer
+        instance = _mem0
+    if observer is not None and instance is not None:
+        backend = getattr(instance, "store", None)
+        if isinstance(backend, ManagedBackend):
+            observer(backend)
 
 _LOADING_FIRST_MSG = (
     "记忆系统正在后台初始化（ONNX embedding + 混合检索库），首次约需 1-3 分钟，后续约 1-3 秒。"
@@ -174,9 +191,11 @@ def start_mem0_loading() -> None:
                 progress=0.96,
             )
             mem = _create_mem0_instance(HybridMemoryEngine, snapshot_path)
+            observer = None
             with _lock:
                 if _runtime_generation == load_generation:
                     _mem0 = mem
+                    observer = _store_observer
                     published = True
             if not published:
                 if hasattr(mem, "close"):
@@ -185,6 +204,13 @@ def start_mem0_loading() -> None:
                     except Exception:
                         pass
                 return
+            if observer is not None:
+                backend = getattr(mem, "store", None)
+                if isinstance(backend, ManagedBackend):
+                    try:
+                        observer(backend)
+                    except Exception:
+                        logger.exception("Memory store observer registration failed")
             set_mem0_task(
                 phase="completed",
                 status="succeeded",
@@ -375,10 +401,16 @@ def shutdown_memory_runtime() -> None:
     with _lock:
         _runtime_generation += 1
         instance = _mem0
+        observer = _store_observer
         _mem0 = None
         _mem0_loading = False
         _mem0_load_error = None
         _loading_started_at = 0.0
+    if observer is not None:
+        try:
+            observer(None)
+        except Exception:
+            logger.exception("Memory store observer cleanup failed")
     if instance is not None and hasattr(instance, "close"):
         try:
             instance.close()

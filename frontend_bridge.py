@@ -98,7 +98,13 @@ def _shutdown_bridge_runtime(reason: str) -> None:
         except Exception as exc:
             _restart_debug_log(f"bridge background task shutdown failed reason={reason} error={exc}")
     services = getattr(state, "services", None)
-    if services is not None:
+    close_runtimes = getattr(services, "close_runtimes", None)
+    if callable(close_runtimes):
+        try:
+            close_runtimes()
+        except Exception as exc:
+            _restart_debug_log(f"bridge runtime Agent shutdown failed reason={reason} error={exc}")
+    elif services is not None:
         try:
             services.close()
         except Exception as exc:
@@ -171,6 +177,17 @@ def _shutdown_bridge_runtime(reason: str) -> None:
         shutdown_knowledge_runtime()
     except Exception as exc:
         _restart_debug_log(f"bridge runtime knowledge shutdown failed reason={reason} error={exc}")
+    try:
+        from core.chat_history.sqlite_session_store import close_all_session_stores
+
+        close_all_session_stores()
+    except Exception as exc:
+        _restart_debug_log(f"bridge runtime session store shutdown failed reason={reason} error={exc}")
+    if services is not None and callable(close_runtimes):
+        try:
+            services.close()
+        except Exception as exc:
+            _restart_debug_log(f"bridge runtime stores shutdown failed reason={reason} error={exc}")
     _restart_debug_log(f"bridge runtime shutdown completed reason={reason}")
 
 

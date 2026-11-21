@@ -461,8 +461,8 @@ CREATE TABLE IF NOT EXISTS reminder_heartbeat (
 - 改造 `application/characters/management.py` 等 UseCase：角色重命名简化为单行 `name` 更新，删除跨 4 套存储手打级联补丁代码，删除写入后的全量 `config_manager.reload()`。
 
 ### 阶段 4：全生命周期并网与调用方去单例化
-- 为 `SqliteHybridStore` 与 `AgentStore` 补齐 `ManagedBackend` 适配并注册进 `StorageHub`，统一接入 `ApplicationServices.close()` 与 `frontend_bridge.py` 退出关停流程。
-- 逐步将业务 UseCase 与 AI 工具（`ai/tools/character_tools.py` 等）改为直接通过构造参数注入所需窄 Port（`ReadableDocument` / `CharacterCatalogPort`），最终仅在兼容层保留旧门面。
+- 为 `SqliteHybridStore`、`AgentStore` 与 `SqliteSessionStore` 补齐 `ManagedBackend`（`name` / `status()` / 幂等 `close()`）适配并接入 `StorageHub`（含 `register_or_replace` / `unregister` 生命周期观察器），统一接入 `ApplicationServices.close_runtimes()` / `ApplicationServices.close()` 与 `frontend_bridge.py` 退出关停流程。
+- 将 `ai/tools/character_tools.py`（`CharacterToolHandler`）、`ai/memory/config.py`、`application/effects/management.py`（`EffectUseCase`）、`application/characters/management.py`、`application/backgrounds/management.py`、`application/story/`（`CatalogCharacterLibrary`、`ConfigStoryAuthorModel`、`ConfigSceneModel`）、`application/localization/field_translation.py` 与 `application/chat/presentation/updates.py` 改造为优先消费窄 Port（`ReadableDocument` / `CharacterCatalogPort` / `EffectCatalogPort`），仅在边界保留旧门面兼容。
 
 ---
 

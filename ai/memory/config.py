@@ -14,7 +14,11 @@ from typing import Any
 import numpy as np
 
 from config.config_manager import ConfigManager
+from config.llm_defaults import extract_llm_api_credentials
+from config.models import ApiConfig
 from core.model_assets.service import ModelAssetSpec, find_cached_huggingface_snapshot
+from core.storage.layout import StorageLayout
+from sdk.adapters.storage import ReadableDocument
 
 from ai.memory.constants import (
     EMBEDDING_DIMS,
@@ -629,22 +633,62 @@ EMBEDDING_MODEL_ASSET = ModelAssetSpec(
 )
 
 
-def memory_store_db_path() -> Path:
+_DEFAULT_CONFIG_MANAGER = ConfigManager
+_memory_bindings_lock = threading.RLock()
+_bound_api_settings: ReadableDocument[ApiConfig] | None = None
+_bound_layout: StorageLayout | None = None
+
+
+def bind_memory_api_settings(
+    api_settings: ReadableDocument[ApiConfig] | None,
+    *,
+    layout: StorageLayout | None = None,
+) -> None:
+    """Bind or clear narrow ``ReadableDocument[ApiConfig]`` and ``StorageLayout`` ports."""
+    with _memory_bindings_lock:
+        global _bound_api_settings, _bound_layout
+        _bound_api_settings = api_settings
+        _bound_layout = layout
+
+
+def memory_store_db_path(layout: StorageLayout | None = None) -> Path:
     """Return the path to the unified SQLite hybrid memory store."""
-    root = Path.cwd() / "data" / "memory"
+    with _memory_bindings_lock:
+        resolved_layout = layout or _bound_layout
+    base = resolved_layout.data_dir if resolved_layout is not None else (Path.cwd() / "data")
+    root = base / "memory"
     root.mkdir(parents=True, exist_ok=True)
     return root / MEMORY_STORE_FILENAME
 
 
-def legacy_memory_qdrant_path() -> Path:
+def legacy_memory_qdrant_path(layout: StorageLayout | None = None) -> Path:
     """Return the legacy local Qdrant directory path (if present for migration)."""
-    return Path.cwd() / "data" / "memory" / "qdrant"
+    with _memory_bindings_lock:
+        resolved_layout = layout or _bound_layout
+    base = resolved_layout.data_dir if resolved_layout is not None else (Path.cwd() / "data")
+    return base / "memory" / "qdrant"
 
 
-def build_memory_engine_config() -> dict[str, Any]:
+def build_memory_engine_config(
+    *,
+    api_settings: ReadableDocument[ApiConfig] | None = None,
+    layout: StorageLayout | None = None,
+) -> dict[str, Any]:
     """Build the hybrid memory engine configuration from Shinsekai's settings."""
-    cfg = ConfigManager()
-    provider, model, base_url, api_key = cfg.get_llm_api_config()
+    with _memory_bindings_lock:
+        bound_settings = _bound_api_settings
+        bound_layout = _bound_layout
+    active_settings = (
+        api_settings
+        if api_settings is not None
+        else (bound_settings if ConfigManager is _DEFAULT_CONFIG_MANAGER else None)
+    )
+    resolved_layout = layout or bound_layout
+    if active_settings is not None:
+        provider, model, base_url, api_key = extract_llm_api_credentials(active_settings.get())
+    else:
+        cfg = ConfigManager()
+        provider, model, base_url, api_key = cfg.get_llm_api_config()
     provider_lower = (provider or "").strip().lower()
 
     openai_like = {"deepseek", "chatgpt", "gemini", "豆包", "通义千问"}
@@ -682,13 +726,15 @@ def build_memory_engine_config() -> dict[str, Any]:
             },
         }
 
-    db_path = memory_store_db_path()
+    db_path = memory_store_db_path(layout=resolved_layout)
+    qdrant_path = legacy_memory_qdrant_path(layout=resolved_layout)
+    history_base = resolved_layout.data_dir if resolved_layout is not None else (Path.cwd() / "data")
     return {
         "vector_store": {
             "provider": "sqlite_hybrid",
             "config": {
                 "path": db_path.as_posix(),
-                "legacy_qdrant_path": legacy_memory_qdrant_path().as_posix(),
+                "legacy_qdrant_path": qdrant_path.as_posix(),
                 "collection_name": VECTOR_COLLECTION,
                 "embedding_model_dims": EMBEDDING_DIMS,
             },
@@ -701,7 +747,7 @@ def build_memory_engine_config() -> dict[str, Any]:
                 "embedding_dims": EMBEDDING_DIMS,
             },
         },
-        "history_db_path": str(Path.cwd() / "data" / "memory" / "mem0_history.db"),
+        "history_db_path": str(history_base / "memory" / "mem0_history.db"),
     }
 
 

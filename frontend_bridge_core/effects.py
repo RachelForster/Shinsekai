@@ -18,13 +18,16 @@ from .tools import _local_file_access_roots
 
 
 class EffectConfigAdapter:
-    """Adapt the concrete config manager to the narrow application reader."""
+    """Adapt an ``EffectCatalogPort`` or legacy config manager to the reader port."""
 
-    def __init__(self, config_manager: Any) -> None:
-        self._config_manager = config_manager
+    def __init__(self, source: Any) -> None:
+        self._source = source
 
     def list_effects(self) -> Sequence[Any]:
-        config = getattr(self._config_manager, "config", None)
+        catalog_list = getattr(self._source, "list_all", None)
+        if callable(catalog_list):
+            return tuple(catalog_list() or ())
+        config = getattr(self._source, "config", None)
         return tuple(getattr(config, "effect_list", ()) or ())
 
 
@@ -51,8 +54,10 @@ def effect_use_case(
 
     roots = (*_local_file_access_roots(state), *additional_file_roots)
     project_root = str(getattr(state, "project_root_dir", "") or "").strip() or None
+    stores = getattr(state, "stores", None)
     return EffectUseCase(
-        state.config_manager,
+        getattr(state, "config_manager", None),
+        effects=getattr(stores, "effects", None),
         local_file_access_roots=roots,
         project_root=project_root,
     )
