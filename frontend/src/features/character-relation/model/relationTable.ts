@@ -24,7 +24,6 @@ export function convertGraphToRows(graph: CharacterRelationGraph): RelationRow[]
   return Array.from({ length: graph.edges.length + 1 }, (_, i) => {
     const edge = graph.edges[i];
     return {
-      ...emptyRelationRow(graph.owner),
       edge,
       source: edge?.source ?? graph.owner,
       target: edge?.target ?? "",

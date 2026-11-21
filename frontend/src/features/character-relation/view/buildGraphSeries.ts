@@ -39,14 +39,12 @@ export function graphSeries(
     avatars = new Map(),
     selectedNodeKey = activeNodeKey,
   }: GraphSeriesOptions,
-  graphs?: readonly CharacterRelationGraph[],
+  graphs: readonly CharacterRelationGraph[],
 ): GraphSeriesOption {
   const characterColors = new Map(
     characters.map((character) => [normalizeRelationName(character.name), character.color]),
   );
-  const renderEdges = graphs
-    ? graphs.flatMap((group) => group.edges.map((edge) => ({ owner: group.owner, edge })))
-    : graph.edges.map((edge) => ({ owner: undefined, edge }));
+  const renderEdges = graphs.flatMap((group) => group.edges.map((edge) => ({ owner: group.owner, edge })));
   const lengths = renderEdges.map(({ edge }) => edgeLengths[relationEdgeId(edge.source, edge.target)] ?? 40);
   return {
     id: "relationships",
@@ -89,14 +87,12 @@ export function graphSeries(
       }),
     ),
     links: renderEdges.map(({ edge, owner }) => {
-      const visible = owner
-        ? normalizeRelationName(owner) === normalizeRelationName(activeNodeKey)
-        : edge.source === activeNodeKey;
+      const visible = normalizeRelationName(owner) === normalizeRelationName(activeNodeKey);
       const relationText = edge.content.trim() || emptyRelationLabel;
       const source = labelPositions[edge.source];
       const target = labelPositions[edge.target];
       return {
-        id: JSON.stringify([owner ?? "", edge.source, edge.target]),
+        id: JSON.stringify([owner, edge.source, edge.target]),
         source: edge.source,
         target: edge.target,
         // ECharts maps larger edge values to shorter springs.

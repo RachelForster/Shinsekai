@@ -3,6 +3,46 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 describe("CharacterRelationTable", () => {
+  it("opens the person picker on focus and ArrowDown, and closes it on Escape", async () => {
+    renderRelationSection();
+    const input = await screen.findByRole("textbox", { name: "Target 1" });
+    const picker = screen.getByRole("combobox", { name: "Target 1 ▾" });
+    await waitFor(() => expect(picker).toBeEnabled());
+    fireEvent.focus(input);
+    expect(picker).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("option", { name: "B" })).toBeInTheDocument();
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(picker).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(picker).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(screen.getByRole("option", { name: "B" }));
+    expect(input).toHaveValue("B");
+    expect(picker).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("places the person picker above the input near the bottom of the viewport", async () => {
+    renderRelationSection();
+    const input = await screen.findByRole("textbox", { name: "Target 1" });
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Target 1 ▾" })).toBeEnabled());
+    const root = input.parentElement!;
+    const bottom = window.innerHeight - 10;
+    vi.spyOn(root, "getBoundingClientRect").mockReturnValue({
+      x: 20,
+      y: bottom - 30,
+      left: 20,
+      right: 220,
+      top: bottom - 30,
+      bottom,
+      width: 200,
+      height: 30,
+      toJSON: () => ({}),
+    });
+    fireEvent.focus(input);
+    const list = screen.getByRole("listbox");
+    expect(parseFloat(list.style.top)).toBeLessThan(bottom - 30);
+  });
+
   it("offers library characters and saves a typed person with the relationship", async () => {
     renderRelationSection();
     const source = await screen.findByRole("textbox", { name: "Source 1" });
