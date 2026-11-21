@@ -204,7 +204,7 @@ export const chatJaMessages: Record<ChatMessageKey, string> = {
   "chat.config.spriteScale": "立ち絵表示倍率",
   "chat.config.spriteFraming": "立ち絵のフレーミング",
   "chat.config.spriteFramingHint":
-    "キャラクターごとに端末上で記憶し、画像とすべてのモデル形式に適用します。表示高さが小さいほど近景になり、上下位置は上端から下端へ移動します。元のファイルは変更しません。",
+    "キャラクターごとに端末上で記憶し、画像とすべてのモデル形式に適用します。表示高さが小さいほど近景になり、上下位置は -100% から 100% の範囲で調整できます。元のファイルは変更しません。",
   "chat.config.spriteHeightRatio": "表示する高さの割合",
   "chat.config.spriteFramePosition": "上下の表示位置",
   "chat.config.spriteFrameFull": "全身",

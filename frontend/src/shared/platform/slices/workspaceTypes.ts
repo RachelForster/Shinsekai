@@ -47,7 +47,30 @@ export type MediaSelectionMode = "indexed" | "semantic";
 export type MemoryMode = "isolated" | "shared" | "inherit_readonly";
 export type InitialOutfitValue = string | { activeGroup: string; locked?: boolean };
 
+export interface UserPromptPreset {
+  id: string;
+  name: string;
+  group: string;
+  color?: string;
+  content: string;
+}
+
+export interface AppliedUserPromptPreset {
+  id: string;
+  name: string;
+  group?: string;
+  color?: string;
+  content: string;
+}
+
+export interface UserPromptPresetLibrary {
+  groups: string[];
+  presets: UserPromptPreset[];
+}
+
 export interface TemplateSummary extends PlayerCharacterOptions {
+  appliedPresets?: AppliedUserPromptPreset[];
+  baseScenario?: string;
   content: string;
   generationMessage?: string;
   id: string;
@@ -55,6 +78,7 @@ export interface TemplateSummary extends PlayerCharacterOptions {
   path: string;
   mediaSelectionMode?: MediaSelectionMode;
   scenario?: string;
+  selectedPresetIds?: string[];
   system?: string;
   updatedAt: string;
 }
@@ -85,7 +109,9 @@ export interface TemplateGenerateInput extends PlayerCharacterOptions {
 }
 
 export interface TemplateLaunchSession extends PlayerCharacterOptions {
+  appliedPresets?: AppliedUserPromptPreset[];
   background: string;
+  baseScenario?: string;
   characterPromptMode?: CharacterPromptMode;
   enableMobileAccess?: boolean;
   effectNames: string[];
@@ -101,9 +127,11 @@ export interface TemplateLaunchSession extends PlayerCharacterOptions {
   initialOutfits?: Record<string, InitialOutfitValue>;
   roomId: string;
   scenario: string;
+  selectedPresetIds?: string[];
   primaryCharacters?: string[];
   selectedCharacters: string[];
   system: string;
+  systemManuallyEdited?: boolean;
   templateFileDropdown: string;
   useCg: boolean;
   useChoice: boolean;
@@ -166,9 +194,11 @@ export interface EffectsPlatform {
 
 export interface TemplatesPlatform {
   generate: (input: TemplateGenerateInput) => Promise<TemplateGenerationResult>;
+  getPresets: () => Promise<UserPromptPresetLibrary>;
   getSession: () => Promise<TemplateLaunchSession | null>;
   list: () => Promise<TemplateSummary[]>;
   save: (template: TemplateSummary) => Promise<TemplateSummary>;
+  savePresets: (library: UserPromptPresetLibrary) => Promise<UserPromptPresetLibrary>;
   saveSession: (session: TemplateLaunchSession) => Promise<TemplateLaunchSession>;
 }
 

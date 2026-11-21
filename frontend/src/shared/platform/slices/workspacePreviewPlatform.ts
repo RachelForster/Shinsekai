@@ -476,7 +476,15 @@ export function createTasksPreviewPlatform(): TasksPlatform {
 }
 
 export function createTemplatesPreviewPlatform(ctx: BrowserPreviewContext): TemplatesPlatform {
-  const { config, getTemplates, getTemplateSession, setTemplates, setTemplateSession } = ctx;
+  const {
+    config,
+    getTemplates,
+    getTemplateSession,
+    getUserPromptPresets,
+    setTemplates,
+    setTemplateSession,
+    setUserPromptPresets,
+  } = ctx;
 
   return {
     async generate(input) {
@@ -500,6 +508,7 @@ export function createTemplatesPreviewPlatform(ctx: BrowserPreviewContext): Temp
       };
       return delay(template, 600);
     },
+    getPresets: () => delay(getUserPromptPresets()),
     getSession: () => delay(getTemplateSession()),
     list: () => delay(getTemplates()),
     async save(template) {
@@ -516,6 +525,11 @@ export function createTemplatesPreviewPlatform(ctx: BrowserPreviewContext): Temp
       }
       setTemplates(next);
       return delay(saved);
+    },
+    async savePresets(library) {
+      const next = clone(library);
+      setUserPromptPresets(next);
+      return delay(next);
     },
     async saveSession(session) {
       const next = clone(session);

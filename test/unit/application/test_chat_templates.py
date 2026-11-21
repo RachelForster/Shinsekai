@@ -12,13 +12,17 @@ from application.chat.templates import (
     _generate_template_summary,
     _has_untranslated_template_keys,
     _history_id_from_scenario,
+    _list_templates,
     _load_template_session_payload,
+    _load_user_prompt_presets,
     _parse_stored_template,
     _parse_stored_template_metadata,
     _rename_template_session_character,
+    _save_template_summary,
     _scenario_from_template_like,
     _safe_session_int,
     _save_template_session_payload,
+    _save_user_prompt_presets,
     _template_session_to_frontend,
 )
 from ai.llm.template_generator import NoValidCharactersError, TemplateGenerator
@@ -544,3 +548,104 @@ def test_runtime_catalog_projects_types_and_does_not_modify_authored_template(mo
         "\nSCENARIO\nREMINDER\n"
     )
     assert _compose_runtime_template(authored, "SCENARIO") == authored + "\nSCENARIO\nREMINDER\n"
+
+
+def test_user_prompt_presets_normalize_and_round_trip(tmp_path):
+    template_dir = tmp_path / "data" / "character_templates"
+    template_dir.mkdir(parents=True)
+    state = SimpleNamespace(template_dir_path=str(template_dir))
+
+    assert _load_user_prompt_presets(state) == {"groups": [], "presets": []}
+
+    saved = _save_user_prompt_presets(
+        state,
+        {
+            "groups": ["  Style ", "Style", ""],
+            "presets": [
+                {
+                    "id": "p1",
+                    "name": "  Light Novel  ",
+                    "group": "Style",
+                    "color": "#5b8def",
+                    "content": "Line 1\r\nLine 2",
+                },
+                {
+                    "id": "p2",
+                    "name": "No Autoplay",
+                    "group": "Rules",
+                    "content": "Never speak for player.",
+                },
+                {"id": "p1", "name": "Duplicate", "group": "", "content": "ignored"},
+                {"id": "", "name": "Invalid", "group": "", "content": "ignored"},
+            ],
+        },
+    )
+
+    assert saved == {
+        "groups": ["Style", "Rules"],
+        "presets": [
+            {
+                "id": "p1",
+                "name": "Light Novel",
+                "group": "Style",
+                "color": "#5b8def",
+                "content": "Line 1\nLine 2",
+            },
+            {
+                "id": "p2",
+                "name": "No Autoplay",
+                "group": "Rules",
+                "content": "Never speak for player.",
+            },
+        ],
+    }
+    assert _load_user_prompt_presets(state) == saved
+
+
+def test_template_summary_and_session_round_trip_user_prompt_presets(tmp_path, monkeypatch):
+    template_dir = tmp_path / "data" / "character_templates"
+    template_dir.mkdir(parents=True)
+    state = SimpleNamespace(
+        config_manager=SimpleNamespace(config=SimpleNamespace(characters=[]), get_character_by_name=lambda _n: None),
+        template_dir_path=str(template_dir),
+    )
+
+    saved = _save_template_summary(
+        state,
+        {
+            "name": "WithPresets",
+            "baseScenario": "Base scene",
+            "scenario": "Base scene\n\nExtra rule",
+            "system": "System rules",
+            "selectedPresetIds": ["p1"],
+            "appliedPresets": [{"id": "p1", "name": "Tone", "group": "Style", "content": "Extra rule"}],
+        },
+    )
+    assert saved["baseScenario"] == "Base scene"
+    assert saved["selectedPresetIds"] == ["p1"]
+    assert saved["appliedPresets"] == [{"id": "p1", "name": "Tone", "group": "Style", "content": "Extra rule"}]
+    assert _list_templates(state)[0]["selectedPresetIds"] == ["p1"]
+
+    stored = {}
+    storage_module = ModuleType("application.chat.history.session_store")
+    storage_module.load_template_session = lambda _path: dict(stored)
+    storage_module.save_template_session = lambda _path, data: stored.update(data)
+    monkeypatch.setitem(sys.modules, "application.chat.history.session_store", storage_module)
+
+    restored_session = _save_template_session_payload(
+        state,
+        {
+            "baseScenario": "Base scene",
+            "scenario": "Base scene\n\nExtra rule",
+            "selectedPresetIds": ["p1"],
+            "appliedPresets": [{"id": "p1", "name": "Tone", "content": "Extra rule"}],
+            "selectedCharacters": [],
+            "system": "Manual system",
+            "systemManuallyEdited": True,
+        },
+    )
+    assert restored_session["baseScenario"] == "Base scene"
+    assert restored_session["selectedPresetIds"] == ["p1"]
+    assert restored_session["appliedPresets"] == [{"id": "p1", "name": "Tone", "content": "Extra rule"}]
+    assert restored_session["systemManuallyEdited"] is True
+

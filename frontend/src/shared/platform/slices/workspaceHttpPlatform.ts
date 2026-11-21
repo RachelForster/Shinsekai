@@ -25,6 +25,7 @@ import type {
   TemplatesPlatform,
   TemplateSummary,
   ToolsPlatform,
+  UserPromptPresetLibrary,
 } from "./workspaceTypes";
 
 export function createBackgroundsHttpPlatform(transport: HttpTransport): BackgroundsPlatform {
@@ -295,11 +296,17 @@ export function createTemplatesHttpPlatform(transport: HttpTransport): Templates
         body: JSON.stringify(input),
         method: "POST",
       }),
+    getPresets: () => requestJson<UserPromptPresetLibrary>("/api/templates/presets"),
     getSession: () => requestJson<TemplateLaunchSession | null>("/api/templates/session"),
     list: () => requestJson<TemplateSummary[]>("/api/templates"),
     save: (template) =>
       requestJson<TemplateSummary>("/api/templates", {
         body: JSON.stringify({ template }),
+        method: "POST",
+      }),
+    savePresets: (library) =>
+      requestJson<UserPromptPresetLibrary>("/api/templates/presets", {
+        body: JSON.stringify(library),
         method: "POST",
       }),
     saveSession: (session) =>

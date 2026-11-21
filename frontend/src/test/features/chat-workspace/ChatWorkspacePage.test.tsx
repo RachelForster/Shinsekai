@@ -70,7 +70,13 @@ describe("chat workspace", () => {
     expect(await screen.findByTestId(kind === "Normal chat" ? "normal-editor" : "story-editor")).toHaveTextContent(
       "Evening walk",
     );
-    expect(screen.getByLabelText("Chat title (optional)")).toHaveValue("Evening walk");
+    const header = document.querySelector(".conversation-setup__header") as HTMLElement;
+    expect(within(header).getByLabelText("Chat title (optional)")).toHaveValue("Evening walk");
+    if (kind === "Normal chat") {
+      expect(document.querySelector(".chat-workspace")).toHaveClass("chat-workspace--normal-editor");
+    } else {
+      expect(document.querySelector(".chat-workspace")).not.toHaveClass("chat-workspace--normal-editor");
+    }
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
   });

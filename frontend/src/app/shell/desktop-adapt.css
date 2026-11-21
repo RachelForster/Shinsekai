@@ -553,7 +553,7 @@
   /* Template Workbench Card */
   .app-shell .template-page {
     min-height: auto;
-    overflow: hidden;
+    overflow: visible;
     border: 1px solid var(--m3-card-border);
     border-radius: var(--m3-shape-card-desktop);
     background: var(--m3-card-bg);
@@ -562,12 +562,14 @@
 
   .app-shell .template-page__topbar {
     border-bottom: 1px solid var(--m3-card-border);
+    border-radius: var(--m3-shape-card-desktop) var(--m3-shape-card-desktop) 0 0;
     background: var(--m3-card-bg);
   }
 
   .app-shell .template-workbench {
+    flex: 1 1 auto;
     height: auto;
-    min-height: 460px;
+    min-height: 360px;
     border-bottom: 0;
   }
 
@@ -585,6 +587,7 @@
   .app-shell .template-page__footer {
     border-top: 1px solid var(--m3-card-border);
     border-bottom: 0;
+    border-radius: 0 0 var(--m3-shape-card-desktop) var(--m3-shape-card-desktop);
     background: color-mix(in oklab, var(--m3-card-bg) 88%, var(--m3-inner-bg));
     backdrop-filter: blur(12px);
   }
@@ -1290,5 +1293,35 @@
   .app-shell .logs-page .switch__input:checked + .switch__track > .switch__thumb {
     background: var(--m3-switch-checked-thumb);
     box-shadow: 0 1px 2px rgb(0 0 0 / 0.1);
+  }
+}
+
+@media (min-width: 1041px) {
+  .app-shell .template-page {
+    height: 100%;
+    min-height: 500px;
+  }
+
+  .app-shell .chat-workspace--normal-editor .template-page {
+    height: auto;
+    flex: 1 1 0;
+    min-height: 0;
+  }
+
+  .app-shell .template-workbench {
+    flex: 1 1 0;
+    height: auto;
+    min-height: 0;
+    border-bottom: 0;
+  }
+
+  .app-shell .conversation-editor-dialog .template-page {
+    height: auto;
+    min-height: 0;
+  }
+
+  .app-shell .conversation-editor-dialog .template-workbench {
+    flex: 0 1 auto;
+    height: max(320px, calc(100dvh - 330px));
   }
 }

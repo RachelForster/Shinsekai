@@ -263,6 +263,9 @@ class CharacterUseCase:
             emotion_tags=str(character.emotion_tags or ""),
             character_brief=str(character.character_brief or "").strip(),
             portrait_crop=character.portrait_crop if "portrait_crop" in body else None,
+            portrait_sprite_index=(
+                character.portrait_sprite_index if "portrait_sprite_index" in body else None
+            ),
             sprite_portrait_crops={
                 index: (item.get("portrait_crop") and PortraitCrop.model_validate(item["portrait_crop"]))
                 for index, item in enumerate(body.get("sprites", []))

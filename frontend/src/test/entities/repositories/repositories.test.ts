@@ -72,9 +72,11 @@ describe("entity repositories", () => {
       },
       templates: {
         generate: vi.fn().mockResolvedValue(template),
+        getPresets: vi.fn().mockResolvedValue({ groups: [], presets: [] }),
         getSession: vi.fn().mockResolvedValue(null),
         list: vi.fn().mockResolvedValue(sampleTemplates),
         save: vi.fn().mockResolvedValue(template),
+        savePresets: vi.fn().mockResolvedValue({ groups: [], presets: [] }),
         saveSession: vi.fn().mockResolvedValue({ characterNames: ["Nanami"], templateId: "default" }),
       },
     };
@@ -110,6 +112,8 @@ describe("entity repositories", () => {
     });
     await files.openExternal("https://example.test");
     await templates.listTemplates();
+    await templates.getUserPromptPresets();
+    await templates.saveUserPromptPresets({ groups: ["Style"], presets: [] });
     await templates.saveTemplate(template);
     await templates.generateTemplate({
       backgroundName: "默认房间",
