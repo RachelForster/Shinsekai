@@ -1,631 +1,114 @@
+"""Backwards-compatible facade delegating package export/import to ``core/packaging``."""
+
+from __future__ import annotations
+
 import os
-import shutil
-import zipfile
-import yaml
-import json
-import re
-from pathlib import Path, PurePosixPath
-from config.character_config import CharacterConfig
-from config.schema import Background
-from config.config_manager import ConfigManager
-from typing import List
+from pathlib import Path
 import platform
-import subprocess
+import subprocess  # noqa: F401 - kept for legacy test monkeypatches
 import tempfile
-from copy import deepcopy
+from typing import List
 
-# 定义项目的基础数据路径
-BASE_DATA_PATH = Path('./data')
-SPRITE_DIR = BASE_DATA_PATH / 'sprite'
-SPEECH_DIR = BASE_DATA_PATH / 'speech'
-MODEL_DIR = BASE_DATA_PATH / 'models'
-CONFIG_DIR = BASE_DATA_PATH / 'config'
-CHARACTERS_CONFIG_PATH = CONFIG_DIR / 'characters.yaml'
-BACKGROUND_CONFIG_PATH = CONFIG_DIR / 'background.yaml'
-BACKGROUND_UPLOAD_DIR = BASE_DATA_PATH / 'backgrounds'
-BGM_UPLOAD_DIR = BASE_DATA_PATH / 'bgm'
+import yaml
 
-_WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:")
+from config.character_config import CharacterConfig
+from config.schema import Background, Character, SELF_PERSONA_NAME, SELF_PERSONA_SPRITE_PREFIX
+from core.packaging.background_package import (
+    export_background_package,
+    stage_background_package_import,
+)
+from core.packaging.character_package import (
+    export_character_package,
+    stage_character_package_import,
+)
+from core.packaging.zip_io import (
+    resolve_name_conflict as _resolve_name_conflict,
+    resolve_sprite_prefix_conflict as _resolve_sprite_prefix_conflict,
+    rollback_staged_assets,
+)
+
+# Project base data path globals (tests monkeypatch these attributes directly).
+BASE_DATA_PATH = Path("./data")
+SPRITE_DIR = BASE_DATA_PATH / "sprite"
+SPEECH_DIR = BASE_DATA_PATH / "speech"
+MODEL_DIR = BASE_DATA_PATH / "models"
+CONFIG_DIR = BASE_DATA_PATH / "config"
+CHARACTERS_CONFIG_PATH = CONFIG_DIR / "characters.yaml"
+BACKGROUND_CONFIG_PATH = CONFIG_DIR / "background.yaml"
+BACKGROUND_UPLOAD_DIR = BASE_DATA_PATH / "backgrounds"
+BGM_UPLOAD_DIR = BASE_DATA_PATH / "bgm"
 
 
 def _open_export_folder(output_path: str | os.PathLike) -> bool:
     folder_path = Path(output_path).parent.resolve()
-
     try:
         system = platform.system()
-        if system == 'Windows':
+        if system == "Windows":
             os.startfile(folder_path)  # type: ignore[attr-defined]
-        elif system == 'Darwin':  # macOS
-            subprocess.run(['open', str(folder_path)], check=True, timeout=10)
-        elif system == 'Linux':
-            subprocess.run(['xdg-open', str(folder_path)], check=True, timeout=10)
+        elif system == "Darwin":
+            subprocess.run(["open", str(folder_path)], check=True, timeout=10)
+        elif system == "Linux":
+            subprocess.run(["xdg-open", str(folder_path)], check=True, timeout=10)
         else:
             return False
         return True
-    except Exception as e:
-        print(f"Failed to open export folder {folder_path}: {e}")
+    except Exception as exc:
+        print(f"Failed to open export folder {folder_path}: {exc}")
         return False
 
 
-def _safe_package_relpath(path: str | os.PathLike | None, field_name: str) -> Path:
-    """Interpret package paths written on Windows or POSIX as safe relative paths."""
-    raw = str(path or "").replace("\\", "/").strip()
-    while raw.startswith("./"):
-        raw = raw[2:]
-    if not raw:
-        raise ValueError(f"{field_name} must not be empty")
-    if "\x00" in raw or raw.startswith("/") or _WINDOWS_DRIVE_RE.match(raw):
-        raise ValueError(f"{field_name} must be a relative package path: {path!r}")
-    if any(part in ("", ".", "..") for part in raw.split("/")):
-        raise ValueError(f"{field_name} contains an unsafe path component: {path!r}")
-    rel = PurePosixPath(raw)
-    return Path(*rel.parts)
-
-
-def _safe_package_basename(path: str | os.PathLike | None, field_name: str) -> str:
-    return _safe_package_relpath(path, field_name).name
-
-
-def _safe_package_basename_or_legacy_absolute(
-    path: str | os.PathLike | None, field_name: str
-) -> str:
-    """Return a safe package filename, accepting old host-absolute YAML paths."""
-    raw = str(path or "").replace("\\", "/").strip()
-    if not raw:
-        raise ValueError(f"{field_name} must not be empty")
-    if "\x00" in raw:
-        raise ValueError(f"{field_name} contains an unsafe path component: {path!r}")
-
-    has_windows_drive = _WINDOWS_DRIVE_RE.match(raw)
-    is_legacy_absolute = raw.startswith("/") or (
-        has_windows_drive and raw[2:3] == "/"
+def export_character(
+    character_configs: list[CharacterConfig | Character],
+    output_path: str,
+    open_folder: bool = True,
+) -> None:
+    """Export character configs and media into a ``.cha`` / ``.char`` package."""
+    export_character_package(
+        character_configs,
+        output_path,
+        sprite_dir=Path(SPRITE_DIR),
+        speech_dir=Path(SPEECH_DIR),
+        model_dir=Path(MODEL_DIR),
     )
-    if not is_legacy_absolute:
-        return _safe_package_basename(raw, field_name)
+    if open_folder:
+        _open_export_folder(output_path)
+    print(f"人物成功导出到: {output_path}")
 
-    tail = raw[3:] if has_windows_drive else raw
-    parts = tail.lstrip("/").split("/")
-    if not parts or any(part in ("", ".", "..") for part in parts):
-        raise ValueError(f"{field_name} contains an unsafe path component: {path!r}")
-    return _safe_package_name(parts[-1], field_name)
-
-
-def _safe_package_name(value: str | os.PathLike | None, field_name: str) -> str:
-    raw = str(value or "").replace("\\", "/").strip()
-    if not raw:
-        return ""
-    if (
-        "\x00" in raw
-        or "/" in raw
-        or raw in (".", "..")
-        or _WINDOWS_DRIVE_RE.match(raw)
-    ):
-        raise ValueError(f"{field_name} must be a plain package name: {value!r}")
-    return raw
-
-
-def _safe_extract_zip(zf: zipfile.ZipFile, target_dir: Path) -> None:
-    for info in zf.infolist():
-        member = str(info.filename or "").replace("\\", "/").rstrip("/")
-        if member:
-            _safe_package_relpath(member, "zip member")
-    zf.extractall(target_dir)
-
-
-def _sanitize_background_package_paths(bg_data: dict) -> None:
-    sprites = bg_data.get('sprites') or []
-    if isinstance(sprites, list):
-        for sprite_entry in sprites:
-            if isinstance(sprite_entry, dict) and sprite_entry.get('path'):
-                sprite_entry['path'] = _safe_package_basename_or_legacy_absolute(
-                    sprite_entry['path'], "background sprite path"
-                )
-
-    bgm_list = bg_data.get('bgm_list')
-    if isinstance(bgm_list, list):
-        bg_data['bgm_list'] = [
-            _safe_package_basename_or_legacy_absolute(path, "background bgm path")
-            for path in bgm_list
-        ]
-
-def export_character(character_configs: list[CharacterConfig], output_path: str, open_folder: bool = True):
-    """
-    将人物配置及其依赖文件打包成一个 .cha 文件。
-    
-    Args:
-        character_configs (list[CharacterConfig]): 要导出的 CharacterConfig 对象列表。
-        output_path (str): 导出的 .cha 文件路径。
-        open_folder (bool): 导出后是否打开输出目录。
-    """
-    temp_dir = Path(f'./temp_export_{os.getpid()}')
-    temp_dir.mkdir(exist_ok=True)
-    
-    try:
-        manifest_data = {'original_paths': {}}
-        character_data_list = []
-
-        for config in character_configs:
-            # 准备要写入YAML的配置数据
-            char_data = {
-                'name': config.name,
-                'color': config.color,
-                'sprite_prefix': config.sprite_prefix,
-                'prompt_text': config.prompt_text,
-                'prompt_lang': config.prompt_lang,
-                'sprite_scale': config.sprite_scale,
-                'portrait_crop': getattr(config, 'portrait_crop', None),
-                'portrait_sprite_index': max(0, int(getattr(config, 'portrait_sprite_index', 0) or 0)),
-                'sprites': config.sprites,
-                'emotion_tags': config.emotion_tags,
-                'sprite_groups': list(getattr(config, 'sprite_groups', None) or []),
-                'default_sprite_group': getattr(config, 'default_sprite_group', '') or '',
-                'fallback_to_default_group': bool(getattr(config, 'fallback_to_default_group', True)),
-                'avatar_type': getattr(config, 'avatar_type', 'static') or 'static',
-                'avatars': deepcopy(getattr(config, 'avatars', None) or {}),
-                'sprite_transitions': [],
-                'character_brief': getattr(config, 'character_brief', '') or '',
-                'relation_graph': getattr(config, 'relation_graph', None) or {},
-                'character_setting': config.character_setting,
-                'speech_speed': getattr(config, 'speech_speed', 1.0),
-                'speech_volume': getattr(config, 'speech_volume', 1.0),
-                'pronunciation_map': getattr(config, 'pronunciation_map', None) or {},
-            }
-
-            # 处理绝对路径的模型和参考音频
-            model_paths = {
-                'gpt_model_path': config.gpt_model_path,
-                'sovits_model_path': config.sovits_model_path,
-                'refer_audio_path': config.refer_audio_path
-            }
-
-            for key, abs_path in model_paths.items():
-                if abs_path and os.path.exists(abs_path):
-                    file_path = Path(abs_path)
-                    new_relative_path = Path('models') / file_path.name
-
-                    # 将模型的原始绝对路径记录到清单中
-                    manifest_data['original_paths'][file_path.name] = str(file_path)
-
-                    # 将模型文件复制到临时目录
-                    destination_path = temp_dir / new_relative_path
-                    destination_path.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(file_path, destination_path)
-
-                    # 更新YAML数据中的路径为相对路径
-                    char_data[key] = str(new_relative_path)
-                else:
-                    char_data[key] = None
-
-            # 处理立绘文件
-            if config.sprite_prefix:
-                sprite_source_dir = SPRITE_DIR / config.sprite_prefix
-                if sprite_source_dir.is_dir():
-                    from core.media.asset_import import ignore_pending_batches
-                    shutil.copytree(sprite_source_dir, temp_dir / 'sprites' / config.sprite_prefix,
-                                    dirs_exist_ok=True, ignore=ignore_pending_batches)
-
-            # 重写 sprite/voice path 为仅文件名（导入时按文件名匹配重建路径）
-            sprites = char_data.get('sprites') or []
-            normalized_sprites = []
-            for s in sprites if isinstance(sprites, list) else []:
-                # 统一转为 dict（Pydantic Sprite 对象需显式转换，否则 yaml.dump 可能丢失数据）
-                if hasattr(s, 'model_dump'):
-                    sprite_data = s.model_dump()
-                elif isinstance(s, dict):
-                    sprite_data = dict(s)
-                else:
-                    sprite_data = {"path": str(getattr(s, "path", ""))}
-                if sprite_data.get('path'):
-                    sprite_data['path'] = _safe_package_basename_or_legacy_absolute(
-                        sprite_data['path'], "sprite path"
-                    )
-                else:
-                    sprite_data['path'] = ""
-                if sprite_data.get('voice_path'):
-                    sprite_data['voice_path'] = _safe_package_basename_or_legacy_absolute(
-                        sprite_data['voice_path'], "voice_path"
-                    )
-                if sprite_data.get('mouth_sync'):
-                    from core.sprite.mouth.manifest import valid_mouth_sync
-                    from sdk.path_utils import safe_existing_file_path
-                    mouth = valid_mouth_sync(s)
-                    if mouth:
-                        base = (SPRITE_DIR / config.sprite_prefix).resolve()
-                        checked = safe_existing_file_path(mouth, roots=[base])
-                        sprite_data['mouth_sync'] = checked.relative_to(base).as_posix()
-                    else:
-                        sprite_data.pop('mouth_sync', None)
-                # 清理 voice_type / group 的 None 值，避免 YAML 中多余的 null
-                if 'voice_type' in sprite_data and sprite_data['voice_type'] is None:
-                    del sprite_data['voice_type']
-                if 'group' in sprite_data and not sprite_data['group']:
-                    del sprite_data['group']
-                normalized_sprites.append(sprite_data)
-            if isinstance(sprites, list):
-                char_data['sprites'] = normalized_sprites
-
-            # Transition endpoints use the same portable names as regular sprites.
-            from core.sprite.transitions import field, valid_transitions
-            from sdk.path_utils import safe_existing_file_path
-            for edge in valid_transitions(config):
-                clip = safe_existing_file_path(field(edge, 'path'), roots=[SPRITE_DIR / config.sprite_prefix])
-                relative = Path('transitions') / clip.name
-                destination = temp_dir / 'sprites' / config.sprite_prefix / relative
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(clip, destination)
-                char_data['sprite_transitions'].append({
-                    **dict(edge), 'path': relative.as_posix(),
-                    'from_path': _safe_package_basename_or_legacy_absolute(field(edge, 'from_path'), 'transition source'),
-                    'to_path': _safe_package_basename_or_legacy_absolute(field(edge, 'to_path'), 'transition target'),
-                })
-
-            # Preserve package-relative model dependencies and state/voice paths.
-            from core.media.avatar.registry import adapter_for, is_registered_format
-            from sdk.path_utils import safe_existing_file_path
-            for kind, bank in char_data.get('avatars', {}).items():
-                if not bank.get('model_path') or not is_registered_format(kind):
-                    continue
-                if not Path(bank['model_path']).is_file():
-                    continue  # Metadata from unavailable/older configurations remains intact.
-                source_root = SPRITE_DIR / config.sprite_prefix
-                model = safe_existing_file_path(bank['model_path'], roots=[source_root])
-                adapter = adapter_for(kind)
-                files = set(adapter.inspect(model).files)
-                for sprite in bank.get('sprites', []):
-                    state_file = safe_existing_file_path(sprite['path'], roots=[model.parent])
-                    state = adapter.parse_state(model, json.loads(state_file.read_text(encoding='utf-8')))
-                    files.add(state_file)
-                    files.update(adapter.state_files(model, state))
-                    if sprite.get('voice_path'):
-                        voice = safe_existing_file_path(sprite['voice_path'], roots=[
-                            SPEECH_DIR / config.sprite_prefix, model.parent,
-                            source_root / 'avatar-voices' / kind,
-                        ])
-                        relative_voice = Path('avatar-voices') / kind / voice.name
-                        destination = temp_dir / 'sprites' / config.sprite_prefix / relative_voice
-                        destination.parent.mkdir(parents=True, exist_ok=True)
-                        shutil.copy2(voice, destination)
-                        sprite['voice_path'] = relative_voice.as_posix()
-                    sprite['path'] = state_file.relative_to(source_root.resolve()).as_posix()
-                for file in files:
-                    checked = safe_existing_file_path(file, roots=[source_root])
-                    destination = temp_dir / 'sprites' / config.sprite_prefix / checked.relative_to(source_root.resolve())
-                    destination.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(checked, destination)
-                bank['model_path'] = model.relative_to(source_root.resolve()).as_posix()
-
-            # 复制语音文件
-            if config.sprite_prefix:
-                voice_src_dir = SPEECH_DIR / config.sprite_prefix
-                if voice_src_dir.is_dir():
-                    shutil.copytree(voice_src_dir, temp_dir / 'speech' / config.sprite_prefix, dirs_exist_ok=True)
-
-            character_data_list.append(char_data)
-
-        # 将配置数据和清单写入临时文件
-        with open(temp_dir / 'character.yaml', 'w', encoding='utf-8') as f:
-            yaml.dump(character_data_list, f, allow_unicode=True, sort_keys=False)
-        
-        with open(temp_dir / 'manifest.json', 'w', encoding='utf-8') as f:
-            json.dump(manifest_data, f, indent=4)
-            
-        # 打包成 .cha 文件
-        with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-            for file_path in temp_dir.rglob('*'):
-                if file_path.is_file():
-                    # 计算文件在zip中的相对路径
-                    arcname = file_path.relative_to(temp_dir)
-                    zf.write(file_path, arcname)
-        
-        if open_folder:
-            _open_export_folder(output_path)
-
-        print(f"人物成功导出到: {output_path}")
-
-    finally:
-        # 清理临时目录
-        shutil.rmtree(temp_dir)
-
-def _resolve_name_conflict(name: str, existing_names: set) -> str:
-    """
-    解决名称冲突，如果名称已存在则添加(1)、(2)等后缀。
-    
-    Args:
-        name (str): 原始名称
-        existing_names (set): 已存在的名称集合
-        
-    Returns:
-        str: 解决冲突后的名称
-    """
-    if name not in existing_names:
-        return name
-    
-    counter = 1
-    new_name = f"{name}（{counter}）"
-    while new_name in existing_names:
-        counter += 1
-        new_name = f"{name}（{counter}）"
-    
-    return new_name
-
-def _resolve_sprite_prefix_conflict(sprite_prefix: str, existing_prefixes: set) -> str:
-    """
-    解决sprite_prefix冲突，如果前缀已存在则添加1、2等后缀。
-    
-    Args:
-        sprite_prefix (str): 原始sprite_prefix
-        existing_prefixes (set): 已存在的sprite_prefix集合
-        
-    Returns:
-        str: 解决冲突后的sprite_prefix
-    """
-    if sprite_prefix not in existing_prefixes:
-        return sprite_prefix
-    
-    counter = 1
-    new_prefix = f"{sprite_prefix}{counter}"
-    while new_prefix in existing_prefixes:
-        counter += 1
-        new_prefix = f"{sprite_prefix}{counter}"
-    
-    return new_prefix
 
 def import_character(input_path: str) -> list[CharacterConfig]:
-    """
-    从 .cha 文件导入人物配置及其依赖文件，并将配置追加入 characters.yaml。
-    检测名称和sprite_prefix冲突，自动添加后缀解决冲突。
-    
-    Args:
-        input_path (str): 要导入的 .cha 文件路径。
-        
-    Returns:
-        list[CharacterConfig]: 导入的 CharacterConfig 对象列表。
-    """
-    if not os.path.exists(input_path):
-        raise FileNotFoundError(f"文件未找到: {input_path}")
-        
-    temp_dir = Path(f'./temp_import_{os.getpid()}')
-    temp_dir.mkdir(exist_ok=True)
-    
-    imported_configs = []
+    """Import a character package, resolve conflicts, and append to legacy YAML when used directly."""
+    existing_names: set[str] = {SELF_PERSONA_NAME}
+    existing_prefixes: set[str] = {SELF_PERSONA_SPRITE_PREFIX}
+    existing_data: list[dict] = []
+    if CHARACTERS_CONFIG_PATH.exists():
+        with open(CHARACTERS_CONFIG_PATH, "r", encoding="utf-8") as handle:
+            existing_data = yaml.safe_load(handle) or []
+            for config in existing_data:
+                if isinstance(config, dict):
+                    if config.get("name"):
+                        existing_names.add(str(config["name"]))
+                    if config.get("sprite_prefix"):
+                        existing_prefixes.add(str(config["sprite_prefix"]))
 
+    staged = stage_character_package_import(
+        input_path,
+        existing_names=existing_names,
+        existing_prefixes=existing_prefixes,
+        sprite_dir=Path(SPRITE_DIR),
+        speech_dir=Path(SPEECH_DIR),
+        model_dir=Path(MODEL_DIR),
+        cwd_base=Path.cwd(),
+    )
     try:
-        # 解压 .cha 文件到临时目录
-        with zipfile.ZipFile(input_path, 'r') as zf:
-            _safe_extract_zip(zf, temp_dir)
-
-        # 读取YAML配置文件
-        with open(temp_dir / 'character.yaml', 'r', encoding='utf-8') as f:
-            yaml_data = yaml.safe_load(f)
-
-        if not yaml_data:
-            raise ValueError("YAML配置文件为空或格式错误。")
-        if not isinstance(yaml_data, list) or not all(
-            isinstance(char_data, dict) for char_data in yaml_data
-        ):
-            raise ValueError("YAML人物配置必须是对象列表。")
-
-        # Validate every package entry before copying any assets or changing config.
-        for char_data in yaml_data:
-            CharacterConfig.parse_dic(char_data=dict(char_data))
-
-        # Revalidate bundled model states before publishing any character.
-        # Never trust dependency indexes supplied by an external .char file.
-        from core.media.avatar.registry import adapter_for, is_registered_format
-        from core.media.avatar.state_dependencies import write_state_index
-        from sdk.path_utils import safe_existing_file_path
-        for char_data in yaml_data:
-            prefix = _safe_package_name(char_data.get('sprite_prefix', ''), "sprite_prefix")
-            package_root = temp_dir / 'sprites' / prefix
-            for sprite in char_data.get('sprites') or []:
-                if isinstance(sprite, dict) and sprite.get('mouth_sync'):
-                    relative = _safe_package_relpath(sprite['mouth_sync'], 'mouth sync')
-                    if relative.parts[0] != 'mouth-sync' or relative.name != 'manifest.json':
-                        raise ValueError('Invalid mouth sync bundle path')
-                    from core.sprite.mouth.manifest import read_manifest
-                    read_manifest(safe_existing_file_path(relative, roots=[package_root]))
-            for edge in char_data.get('sprite_transitions') or []:
-                relative = _safe_package_relpath(edge['path'], 'transition clip')
-                if relative.parts[0] != 'transitions' or relative.suffix.lower() != '.webm':
-                    raise ValueError('Invalid transition clip path')
-                checked_clip = safe_existing_file_path(relative, roots=[package_root])
-                from core.media.alpha_video import verify_alpha_video
-                expected_frames = edge.get('frame_count', 5)
-                if expected_frames not in {5, 22} or verify_alpha_video(checked_clip) != expected_frames:
-                    raise ValueError('Transition clip frame count does not match its metadata')
-                for key in ('from_path', 'to_path'):
-                    _safe_package_basename(edge[key], 'transition endpoint')
-            for kind, bank in (char_data.get('avatars') or {}).items():
-                if not is_registered_format(kind) or not bank.get('model_path'):
-                    continue
-                try:
-                    relative = _safe_package_relpath(bank['model_path'], 'avatar model')
-                except ValueError:
-                    continue  # Preserve unbundled legacy metadata.
-                if not (package_root / relative).is_file():
-                    continue
-                model = safe_existing_file_path(relative, roots=[package_root])
-                adapter = adapter_for(kind)
-                adapter.inspect(model)
-                from core.media.asset_import import PENDING_MARKER
-                if any(model.parent.rglob(PENDING_MARKER)):
-                    raise ValueError("Character package contains an uncommitted avatar import")
-                for sprite in bank.get('sprites', []):
-                    saved = safe_existing_file_path(sprite['path'], roots=[package_root])
-                    saved = safe_existing_file_path(saved, roots=[model.parent])
-                    parsed = adapter.parse_state(model, json.loads(saved.read_text(encoding='utf-8')))
-                    write_state_index(adapter, model, saved, parsed)
-
-        # 读取现有配置，用于检测冲突（始终预留内置「自设」槽位与前缀）
-        from config.schema import SELF_PERSONA_NAME, SELF_PERSONA_SPRITE_PREFIX
-
-        existing_names = {SELF_PERSONA_NAME}
-        existing_sprite_prefixes = {SELF_PERSONA_SPRITE_PREFIX}
-        
-        if CHARACTERS_CONFIG_PATH.exists():
-            with open(CHARACTERS_CONFIG_PATH, 'r', encoding='utf-8') as f:
-                existing_configs = yaml.safe_load(f) or []
-                for config in existing_configs:
-                    existing_names.add(config.get('name', ''))
-                    existing_sprite_prefixes.add(config.get('sprite_prefix', ''))
-        
-        # 记录本次导入中已使用的名称和sprite_prefix，避免内部冲突
-        imported_names = set(existing_names)
-        imported_sprite_prefixes = set(existing_sprite_prefixes)
-
-        for char_data in yaml_data:
-            for reserved_flag in ('is_builtin', 'pinned', 'undeletable'):
-                char_data.pop(reserved_flag, None)
-            original_name = char_data.get('name', '')
-            original_sprite_prefix = _safe_package_name(
-                char_data.get('sprite_prefix', ''), "sprite_prefix"
-            )
-            
-            # 解决名称冲突
-            new_name = _resolve_name_conflict(original_name, imported_names)
-            char_data['name'] = new_name
-            if char_data.get('relation_graph'):
-                from config.character_manager import CharacterManager
-                graph = CharacterManager.parse_relation_graph(char_data['relation_graph'])
-                char_data['relation_graph'] = CharacterManager._rename_relation_graph_owner(
-                    graph, original_name, new_name
-                ).model_dump(mode="json", exclude_none=True)
-            imported_names.add(new_name)
-            
-            # 解决sprite_prefix冲突
-            new_sprite_prefix = _resolve_sprite_prefix_conflict(original_sprite_prefix, imported_sprite_prefixes)
-            char_data['sprite_prefix'] = new_sprite_prefix
-            imported_sprite_prefixes.add(new_sprite_prefix)
-            
-            # 如果名称或sprite_prefix被修改，打印提示信息
-            if new_name != original_name or new_sprite_prefix != original_sprite_prefix:
-                print(f"检测到冲突，已将 '{original_name}' ({original_sprite_prefix}) 重命名为 '{new_name}' ({new_sprite_prefix})")
-            
-            sprites = char_data.get('sprites') or []
-            dest_sprite_dir = SPRITE_DIR / new_sprite_prefix
-            dest_speech_dir = SPEECH_DIR / new_sprite_prefix
-
-            # 恢复立绘文件（使用新的sprite_prefix）
-            if new_sprite_prefix:
-                source_sprite_dir = temp_dir / 'sprites' / original_sprite_prefix
-                if source_sprite_dir.is_dir():
-                    shutil.copytree(source_sprite_dir, dest_sprite_dir, dirs_exist_ok=True)
-
-            # 修复 sprite path：指向导入机器上的实际路径；无 prefix 时至少去掉宿主机路径。
-            for s in sprites:
-                if isinstance(s, dict):
-                    filename = _safe_package_basename_or_legacy_absolute(
-                        s.get('path', ''), "sprite path"
-                    )
-                    if new_sprite_prefix:
-                        new_path = dest_sprite_dir / filename
-                        try:
-                            s['path'] = str(new_path.relative_to(Path.cwd()))
-                        except ValueError:
-                            s['path'] = new_path.as_posix()
-                    else:
-                        s['path'] = filename
-
-            if new_sprite_prefix:
-                # 恢复语音文件（使用新的sprite_prefix）
-                source_speech_dir = temp_dir / 'speech' / original_sprite_prefix
-                if source_speech_dir.is_dir():
-                    shutil.copytree(source_speech_dir, dest_speech_dir, dirs_exist_ok=True)
-
-                # 恢复语音文件
-                source_speech_dir = temp_dir / 'speech' / original_sprite_prefix
-                if source_speech_dir.is_dir():
-                    shutil.copytree(source_speech_dir, SPEECH_DIR / new_sprite_prefix, dirs_exist_ok=True)
-
-            # 修复 voice_path：指向 SPEECH_DIR；无 prefix 时至少去掉宿主机路径。
-            for s in sprites:
-                if isinstance(s, dict) and s.get('voice_path'):
-                    filename = _safe_package_basename_or_legacy_absolute(
-                        s['voice_path'], "voice_path"
-                    )
-                    if new_sprite_prefix:
-                        new_vp = dest_speech_dir / filename
-                        try:
-                            s['voice_path'] = str(new_vp.relative_to(Path.cwd()))
-                        except ValueError:
-                            s['voice_path'] = new_vp.as_posix()
-                    else:
-                        s['voice_path'] = filename
-                    voice_type = str(s.get('voice_type') or '').strip().lower()
-                    if voice_type:
-                        if voice_type not in {'fallback', 'preset', 'reference'}:
-                            raise ValueError(f"voice_type must be fallback, preset, or reference: {voice_type!r}")
-                        s['voice_type'] = voice_type
-                    else:
-                        s['voice_type'] = 'reference' if str(s.get('voice_text') or '').strip() else 'fallback'
-
-            for sprite in sprites:
-                if isinstance(sprite, dict) and sprite.get('mouth_sync'):
-                    relative = _safe_package_relpath(sprite['mouth_sync'], 'mouth sync')
-                    sprite['mouth_sync'] = (dest_sprite_dir / relative).resolve().as_posix()
-            
-            # 恢复模型文件并更新路径
-            model_paths = {
-                'gpt_model_path': char_data.get('gpt_model_path'),
-                'sovits_model_path': char_data.get('sovits_model_path'),
-                'refer_audio_path': char_data.get('refer_audio_path')
-            }
-            
-            for key, path in model_paths.items():
-                if path:  # 确保路径不为空
-                    source_model_path = temp_dir / _safe_package_relpath(path, key)
-                    dest_model_dir = MODEL_DIR / new_sprite_prefix
-                    dest_model_dir.mkdir(parents=True, exist_ok=True)
-                    dest_model_path = dest_model_dir / _safe_package_basename(path, key)
-                    if source_model_path.exists():  # 确保源文件存在
-                        shutil.copy2(source_model_path, dest_model_path)
-                        char_data[key] = dest_model_path.as_posix()  # 更新为相对路径
-                    else:
-                        char_data[key] = None
-
-            for edge in char_data.get('sprite_transitions') or []:
-                edge['path'] = (dest_sprite_dir / _safe_package_relpath(edge['path'], 'transition clip')).resolve().as_posix()
-                for key in ('from_path', 'to_path'):
-                    endpoint = dest_sprite_dir / _safe_package_basename(edge[key], 'transition endpoint')
-                    try:
-                        edge[key] = str(endpoint.relative_to(Path.cwd()))
-                    except ValueError:
-                        edge[key] = endpoint.as_posix()
-
-            # 将更新后的数据创建为 CharacterConfig 对象
-            for kind, bank in char_data.get('avatars', {}).items():
-                model_text = bank.get('model_path', '')
-                if not model_text or not new_sprite_prefix:
-                    continue
-                # Only rebase entries actually present in this package; legacy unknown
-                # banks may contain metadata with no bundled files.
-                try:
-                    model_relative = _safe_package_relpath(model_text, 'avatar model')
-                except ValueError:
-                    continue
-                if not (source_sprite_dir / model_relative).is_file():
-                    continue
-                # Stored paths have one unambiguous base even with a relative SPRITE_DIR.
-                bank['model_path'] = (dest_sprite_dir / model_relative).resolve().as_posix()
-                for sprite in bank.get('sprites', []):
-                    sprite['path'] = (dest_sprite_dir / _safe_package_relpath(sprite['path'], 'avatar state')).resolve().as_posix()
-                    if sprite.get('voice_path'):
-                        sprite['voice_path'] = (dest_sprite_dir / _safe_package_relpath(sprite['voice_path'], 'avatar voice')).resolve().as_posix()
-            imported_configs.append(CharacterConfig.parse_dic(char_data=char_data))
-        
-        # 将配置追加到 characters.yaml
+        imported_configs = [CharacterConfig.parse_dic(dict(raw)) for raw in staged.raw_dicts]
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        
-        existing_data = []
+        latest_data: list[dict] = []
         if CHARACTERS_CONFIG_PATH.exists():
-            with open(CHARACTERS_CONFIG_PATH, 'r', encoding='utf-8') as f:
-                existing_data = yaml.safe_load(f) or []
+            with open(CHARACTERS_CONFIG_PATH, "r", encoding="utf-8") as handle:
+                latest_data = yaml.safe_load(handle) or []
+        latest_data.extend(dict(config.__dict__) for config in imported_configs)
 
-        # 将导入的配置转换为字典格式并追加
-        new_data_list = [config.__dict__ for config in imported_configs]
-        existing_data.extend(new_data_list)
-        
-        temp_config_path = None
+        temp_config_path: Path | None = None
         try:
             with tempfile.NamedTemporaryFile(
                 "w",
@@ -634,9 +117,9 @@ def import_character(input_path: str) -> list[CharacterConfig]:
                 encoding="utf-8",
                 prefix="characters-",
                 suffix=".yaml.tmp",
-            ) as f:
-                temp_config_path = Path(f.name)
-                yaml.dump(existing_data, f, allow_unicode=True, sort_keys=False)
+            ) as handle:
+                temp_config_path = Path(handle.name)
+                yaml.safe_dump(latest_data, handle, allow_unicode=True, sort_keys=False)
             os.replace(temp_config_path, CHARACTERS_CONFIG_PATH)
             temp_config_path = None
         finally:
@@ -645,180 +128,59 @@ def import_character(input_path: str) -> list[CharacterConfig]:
 
         print(f"人物成功从 {input_path} 导入，并已将配置追加到 {CHARACTERS_CONFIG_PATH}。")
         return imported_configs
-
-    finally:
-        # 清理临时目录
-        shutil.rmtree(temp_dir)
-
-# ---------------------------------------------
+    except BaseException:
+        rollback_staged_assets(staged.created_dirs)
+        raise
 
 
 def export_background(
     background_configs: List[Background],
-    output_path: str = './output/background.bg',
+    output_path: str = "./output/background.bg",
     open_folder: bool = True,
-):
-    """
-    将背景配置及其依赖文件（图片和音乐）打包成一个 .bg 文件。
-    
-    Args:
-        background_configs (List[Background]): 要导出的 Background 对象列表。
-        output_path (str): 导出的 .bg 文件路径 (默认路径为 ./output/background.bg)。
-        open_folder (bool): 导出后是否打开输出目录。
-    """
-    Path('./output').mkdir(exist_ok=True) # 确保输出目录存在
-    temp_dir = Path(f'./temp_export_bg_{os.getpid()}')
-    temp_dir.mkdir(exist_ok=True)
-    
-    try:
-        background_data_list = []
+) -> None:
+    """Export background configs and bundled media into a ``.bg`` package."""
+    Path("./output").mkdir(exist_ok=True)
+    export_background_package(
+        background_configs,
+        output_path,
+        background_upload_dir=Path(BACKGROUND_UPLOAD_DIR),
+        bgm_upload_dir=Path(BGM_UPLOAD_DIR),
+    )
+    if open_folder:
+        _open_export_folder(output_path)
+    print(f"背景包成功导出到: {output_path}")
 
-        for config in background_configs:
-            # 准备要写入YAML的配置数据 (转换为字典，排除 FilePath 类型)
-            bg_data = config.model_dump(
-                exclude_none=True, 
-                mode='json' # 确保 FilePath/HttpUrl 被转换为字符串
-            )
-            
-            # 处理背景图片文件 (sprites)
-            if config.sprite_prefix:
-                # 复制图片文件
-                sprite_source_dir = Path(BACKGROUND_UPLOAD_DIR) / config.sprite_prefix
-                if sprite_source_dir.is_dir():
-                    shutil.copytree(sprite_source_dir, temp_dir / 'sprites' / config.sprite_prefix, dirs_exist_ok=True)
-                
-                # 复制背景音乐文件 (bgm_list)
-                bgm_source_dir = Path(BGM_UPLOAD_DIR) / config.sprite_prefix
-                if bgm_source_dir.is_dir():
-                    shutil.copytree(bgm_source_dir, temp_dir / 'bgm' / config.sprite_prefix, dirs_exist_ok=True)
-                    
-            _sanitize_background_package_paths(bg_data)
-            
-            background_data_list.append(bg_data)
 
-        # 将配置数据写入临时文件
-        with open(temp_dir / 'background.yaml', 'w', encoding='utf-8') as f:
-            yaml.dump(background_data_list, f, allow_unicode=True, sort_keys=False)
-        
-        # 打包成 .bg 文件
-        with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-            for file_path in temp_dir.rglob('*'):
-                if file_path.is_file():
-                    # 计算文件在zip中的相对路径
-                    arcname = file_path.relative_to(temp_dir)
-                    zf.write(file_path, arcname)
-        
-        if open_folder:
-            _open_export_folder(output_path)
+def import_background(
+    input_path: str,
+    existing_configs: List[Background],
+) -> List[Background]:
+    """Import a ``.bg`` archive and return new ``Background`` models with conflict resolution."""
+    staged = stage_background_package_import(
+        input_path,
+        existing_configs=existing_configs,
+        background_upload_dir=Path(BACKGROUND_UPLOAD_DIR),
+        bgm_upload_dir=Path(BGM_UPLOAD_DIR),
+    )
+    print(f"背景包成功从 {input_path} 导入。")
+    return staged.backgrounds
 
-        print(f"背景包成功导出到: {output_path}")
 
-    finally:
-        # 清理临时目录
-        shutil.rmtree(temp_dir)
-
-def import_background(input_path: str, existing_configs: List[Background]) -> List[Background]:
-    """
-    从 .bg 文件导入背景配置及其依赖文件，并将配置合并到现有列表中。
-    检测名称和sprite_prefix冲突，自动添加后缀解决冲突。
-    
-    Args:
-        input_path (str): 要导入的 .bg 文件路径。
-        existing_configs (List[Background]): 当前已有的 Background 配置列表。
-        
-    Returns:
-        List[Background]: 导入的 Background 对象列表。
-    """
-    if not os.path.exists(input_path):
-        raise FileNotFoundError(f"文件未找到: {input_path}")
-        
-    temp_dir = Path(f'./temp_import_bg_{os.getpid()}')
-    temp_dir.mkdir(exist_ok=True)
-    
-    imported_configs = []
-
-    try:
-        # 解压 .bg 文件到临时目录
-        with zipfile.ZipFile(input_path, 'r') as zf:
-            _safe_extract_zip(zf, temp_dir)
-
-        # 读取YAML配置文件
-        with open(temp_dir / 'background.yaml', 'r', encoding='utf-8') as f:
-            yaml_data = yaml.safe_load(f)
-
-        if not yaml_data:
-            raise ValueError("背景配置 YAML 文件为空或格式错误。")
-
-        # 读取现有配置，用于检测冲突
-        existing_names = {config.name for config in existing_configs}
-        existing_sprite_prefixes = {config.sprite_prefix for config in existing_configs}
-        
-        # 记录本次导入中已使用的名称和sprite_prefix，避免内部冲突
-        imported_names = set(existing_names)
-        imported_sprite_prefixes = set(existing_sprite_prefixes)
-
-        for bg_data in yaml_data:
-            original_name = bg_data.get('name', '')
-            original_sprite_prefix = _safe_package_name(
-                bg_data.get('sprite_prefix', ''), "background sprite_prefix"
-            )
-            
-            # 解决名称冲突
-            new_name = _resolve_name_conflict(original_name, imported_names)
-            bg_data['name'] = new_name
-            imported_names.add(new_name)
-            
-            # 解决sprite_prefix冲突
-            new_sprite_prefix = _resolve_sprite_prefix_conflict(original_sprite_prefix, imported_sprite_prefixes)
-            bg_data['sprite_prefix'] = new_sprite_prefix
-            imported_sprite_prefixes.add(new_sprite_prefix)
-            
-            # 如果名称或sprite_prefix被修改，打印提示信息
-            if new_name != original_name or new_sprite_prefix != original_sprite_prefix:
-                print(f"检测到背景冲突，已将 '{original_name}' ({original_sprite_prefix}) 重命名为 '{new_name}' ({new_sprite_prefix})")
-            
-            # 恢复背景图片文件（使用新的sprite_prefix）
-            if new_sprite_prefix:
-                # 恢复图片
-                source_sprite_dir = temp_dir / 'sprites' / original_sprite_prefix
-                dest_sprite_dir = Path(BACKGROUND_UPLOAD_DIR) / new_sprite_prefix
-                if source_sprite_dir.is_dir():
-                    shutil.copytree(source_sprite_dir, dest_sprite_dir, dirs_exist_ok=True)
-
-                # 恢复音乐文件
-                source_bgm_dir = temp_dir / 'bgm' / original_sprite_prefix
-                dest_bgm_dir = Path(BGM_UPLOAD_DIR) / new_sprite_prefix
-                if source_bgm_dir.is_dir():
-                    shutil.copytree(source_bgm_dir, dest_bgm_dir, dirs_exist_ok=True)
-            # 更新 sprites 中的路径
-            if 'sprites' in bg_data:
-                for sprite_entry in bg_data['sprites']:
-                    # 路径是相对路径，需要重新构建新的绝对或相对路径
-                    if 'path' in sprite_entry:
-                        # 假设 path 存储的是文件名或相对于原始前缀的路径
-                        filename = _safe_package_basename_or_legacy_absolute(
-                            sprite_entry['path'], "background sprite path"
-                        )
-                        new_path = Path(BACKGROUND_UPLOAD_DIR) / new_sprite_prefix / filename
-                        sprite_entry['path'] = new_path.as_posix()
-
-            # 更新 bgm_list 中的路径
-            if 'bgm_list' in bg_data:
-                new_bgm_list = []
-                for path in bg_data['bgm_list']:
-                    filename = _safe_package_basename_or_legacy_absolute(path, "background bgm path")
-                    new_path = Path(BGM_UPLOAD_DIR) / new_sprite_prefix / filename
-                    new_bgm_list.append(new_path.as_posix())
-                bg_data['bgm_list'] = new_bgm_list
-                
-            # 将更新后的数据创建为 Background 对象
-            # 注意：这里需要一个从字典创建 Background 实例的方法，假设 Pydantic 的 Background() 可用
-            imported_configs.append(Background.model_validate(bg_data))
-        
-        # 导入后，调用方需要将这些 imported_configs 合并到 ConfigManager 的配置中并保存。
-        print(f"背景包成功从 {input_path} 导入。")
-        return imported_configs
-
-    finally:
-        # 清理临时目录
-        shutil.rmtree(temp_dir)
+__all__ = [
+    "BACKGROUND_CONFIG_PATH",
+    "BACKGROUND_UPLOAD_DIR",
+    "BASE_DATA_PATH",
+    "BGM_UPLOAD_DIR",
+    "CHARACTERS_CONFIG_PATH",
+    "CONFIG_DIR",
+    "MODEL_DIR",
+    "SPEECH_DIR",
+    "SPRITE_DIR",
+    "_open_export_folder",
+    "_resolve_name_conflict",
+    "_resolve_sprite_prefix_conflict",
+    "export_background",
+    "export_character",
+    "import_background",
+    "import_character",
+]

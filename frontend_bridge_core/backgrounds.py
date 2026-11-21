@@ -57,9 +57,15 @@ def _translate_background_fields(state: BridgeState, payload: dict[str, Any]) ->
         bgm_row_tags = [str(item or "") for item in row_tag_payload]
     else:
         bgm_row_tags = [_tag_content(line) for line in str(payload.get("bgmTags") or "").splitlines()]
-    ui_language = str(getattr(state.config_manager.config.system_config, "ui_language", "") or "")
+    stores = getattr(state, "stores", None)
+    if stores is not None:
+        ui_language = str(getattr(stores.system_settings.get(), "ui_language", "") or "")
+        api_source: Any = stores.api_settings
+    else:
+        ui_language = str(getattr(state.config_manager.config.system_config, "ui_language", "") or "")
+        api_source = state.config_manager
     error, name, bg_tags, bgm_tags, bgm_row_tags = translate_background_fields(
-        state.config_manager,
+        api_source,
         ui_language,
         str(payload.get("name") or ""),
         str(payload.get("bgTags") or ""),

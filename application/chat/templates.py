@@ -2,15 +2,19 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
-import tempfile
 import threading
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
 from config.config_manager import character_name_key
+from config.models import (
+    UserPromptPresetLibrary,
+    normalize_applied_presets_list,
+    normalize_user_prompt_presets_dict,
+)
 from core.chat_history.storage import ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME
+from core.storage import FileDocumentStore, PydanticJsonCodec
 from application.chat.presentation.initial_sprite import (
     initial_sprite_path_for_characters,
 )
@@ -34,6 +38,7 @@ from ai.llm.template_generator import (
 )
 
 from application.runtime.state import BridgeState
+from sdk.adapters.storage import DocumentStore
 from sdk.lang import normalize_lang
 from sdk.path_utils import safe_child_path, safe_filename
 
@@ -44,7 +49,9 @@ TEMP_SPLIT_META = "_temp_split.json"
 DEFAULT_EMPTY_SCENARIO = "你扮演一个RPG系统。"
 _default_translate_template = translate_template
 _default_json_format_reminder = json_format_reminder
-_presets_lock = threading.RLock()
+_fallback_presets_lock = threading.Lock()
+_fallback_preset_stores: dict[Path, FileDocumentStore[UserPromptPresetLibrary]] = {}
+_MAX_FALLBACK_PRESET_STORES = 16
 
 
 def _template_dir(state: BridgeState) -> Path:
@@ -54,91 +61,53 @@ def _template_dir(state: BridgeState) -> Path:
 
 
 def _user_prompt_presets_file(state: BridgeState) -> Path:
-    root = Path(state.template_dir_path).resolve().parent
+    root = Path(state.template_dir_path).resolve(strict=False).parent
     return root / "config" / "user_prompt_presets.json"
 
 
+def _prompt_preset_store(
+    state: BridgeState,
+) -> DocumentStore[UserPromptPresetLibrary]:
+    stores = getattr(state, "stores", None)
+    managed = getattr(stores, "prompt_presets", None) if stores is not None else None
+    if managed is not None:
+        return managed
+    path = _user_prompt_presets_file(state).resolve(strict=False)
+    with _fallback_presets_lock:
+        cached = _fallback_preset_stores.get(path)
+        if cached is not None:
+            return cached
+        if len(_fallback_preset_stores) >= _MAX_FALLBACK_PRESET_STORES:
+            oldest_key = next(iter(_fallback_preset_stores))
+            _fallback_preset_stores.pop(oldest_key, None)
+        created = FileDocumentStore(
+            "settings.prompt_presets",
+            path,
+            PydanticJsonCodec(
+                UserPromptPresetLibrary,
+                pre_decode=normalize_user_prompt_presets_dict,
+                exclude_none=True,
+            ),
+        )
+        _fallback_preset_stores[path] = created
+        return created
+
+
 def _normalize_applied_presets(raw: Any) -> list[dict[str, Any]]:
-    if not isinstance(raw, list):
-        return []
-    items: list[dict[str, Any]] = []
-    seen_ids: set[str] = set()
-    for entry in raw:
-        if not isinstance(entry, Mapping):
-            continue
-        preset_id = str(entry.get("id") or "").strip()[:128]
-        if not preset_id or preset_id in seen_ids:
-            continue
-        seen_ids.add(preset_id)
-        name = str(entry.get("name") or "").strip()[:64]
-        group = str(entry.get("group") or "").strip()[:64]
-        color = str(entry.get("color") or "").strip()[:32]
-        content = str(entry.get("content") or "").replace("\r\n", "\n")
-        item: dict[str, Any] = {
-            "id": preset_id,
-            "name": name or preset_id,
-            "content": content,
-        }
-        if group:
-            item["group"] = group
-        if color:
-            item["color"] = color
-        items.append(item)
-    return items
+    return normalize_applied_presets_list(raw)
 
 
 def _normalize_user_prompt_presets(raw: Any) -> dict[str, Any]:
-    data = raw if isinstance(raw, Mapping) else {}
-    groups: list[str] = []
-    seen_groups: set[str] = set()
-    raw_groups = data.get("groups")
-    if isinstance(raw_groups, list):
-        for item in raw_groups:
-            group = str(item or "").strip()[:64]
-            if group and group not in seen_groups:
-                seen_groups.add(group)
-                groups.append(group)
-
-    presets: list[dict[str, Any]] = []
-    seen_ids: set[str] = set()
-    raw_presets = data.get("presets")
-    if isinstance(raw_presets, list):
-        for entry in raw_presets:
-            if not isinstance(entry, Mapping):
-                continue
-            preset_id = str(entry.get("id") or "").strip()[:128]
-            name = str(entry.get("name") or "").strip()[:64]
-            if not preset_id or not name or preset_id in seen_ids:
-                continue
-            seen_ids.add(preset_id)
-            group = str(entry.get("group") or "").strip()[:64]
-            if group and group not in seen_groups:
-                seen_groups.add(group)
-                groups.append(group)
-            color = str(entry.get("color") or "").strip()[:32]
-            content = str(entry.get("content") or "").replace("\r\n", "\n")
-            preset: dict[str, Any] = {
-                "id": preset_id,
-                "name": name,
-                "group": group,
-                "content": content,
-            }
-            if color:
-                preset["color"] = color
-            presets.append(preset)
-    return {"groups": groups, "presets": presets}
+    return normalize_user_prompt_presets_dict(raw)
 
 
 def _load_user_prompt_presets(state: BridgeState) -> dict[str, Any]:
-    path = _user_prompt_presets_file(state)
-    with _presets_lock:
-        if not path.is_file():
-            return {"groups": [], "presets": []}
-        try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return {"groups": [], "presets": []}
-        return _normalize_user_prompt_presets(raw)
+    store = _prompt_preset_store(state)
+    try:
+        library = store.get()
+    except (OSError, ValueError):
+        return {"groups": [], "presets": []}
+    return library.to_payload()
 
 
 def _save_user_prompt_presets(
@@ -147,24 +116,10 @@ def _save_user_prompt_presets(
     source = payload.get("library", payload) if isinstance(payload, Mapping) else {}
     if not isinstance(source, Mapping):
         raise ValueError("preset library payload must be an object")
-    normalized = _normalize_user_prompt_presets(source)
-    path = _user_prompt_presets_file(state)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with _presets_lock:
-        temporary: Path | None = None
-        try:
-            with tempfile.NamedTemporaryFile(
-                mode="w", encoding="utf-8", dir=path.parent, delete=False
-            ) as handle:
-                temporary = Path(handle.name)
-                json.dump(normalized, handle, ensure_ascii=False, indent=2)
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(temporary, path)
-        finally:
-            if temporary is not None:
-                temporary.unlink(missing_ok=True)
-    return normalized
+    library = UserPromptPresetLibrary.model_validate(source)
+    store = _prompt_preset_store(state)
+    store.save(library)
+    return library.to_payload()
 
 
 def _template_id(path: Path) -> str:

@@ -44,6 +44,11 @@ from core.messaging.dialog_tokens import (
 _metadata_lock = threading.RLock()
 
 
+def _conversation_store(state: Any) -> Any | None:
+    stores = getattr(state, "stores", None)
+    return getattr(stores, "conversations", None) if stores is not None else None
+
+
 def _directory(state: Any) -> Path:
     return Path(state.template_dir_path).resolve().parent / "config" / "conversations"
 
@@ -88,21 +93,49 @@ def remember_conversation(state: Any, history_path: Path, payload: dict) -> None
             file.write("[]")
     except FileExistsError:
         pass
-    target = _directory(state) / f"{_id(path)}.json"
+    conv_id = _id(path)
+    store = _conversation_store(state)
     with _metadata_lock:
-        previous = _read(target)
-        previous = previous if isinstance(previous, dict) else {}
-        launch = {**payload, "historyPath": path.as_posix(), "resetHistory": False}
-        _write(
-            target,
-            {
-                "historyPath": path.as_posix(),
-                "title": previous.get("title") or str(payload.get("conversationTitle") or "").strip()[:120],
-                "createdAt": previous.get("createdAt")
-                or datetime.now(timezone.utc).isoformat(),
-                "launch": launch,
-            },
-        )
+        if store is not None:
+            from core.storage.stores.conversation_store import ConversationRecord
+
+            existing_rec = store.get(conv_id)
+            title = (
+                (existing_rec.title if existing_rec is not None else "")
+                or str(payload.get("conversationTitle") or "").strip()[:120]
+            )
+            created_at = (
+                existing_rec.created_at
+                if existing_rec is not None and existing_rec.created_at
+                else datetime.now(timezone.utc).isoformat()
+            )
+            launch = {**payload, "historyPath": path.as_posix(), "resetHistory": False}
+            store.put(
+                conv_id,
+                ConversationRecord(
+                    id=conv_id,
+                    history_path=path.as_posix(),
+                    title=title,
+                    created_at=created_at,
+                    launch=launch,
+                    requires_character_selection=False,
+                ),
+            )
+        else:
+            target = _directory(state) / f"{conv_id}.json"
+            previous = _read(target)
+            previous = previous if isinstance(previous, dict) else {}
+            launch = {**payload, "historyPath": path.as_posix(), "resetHistory": False}
+            _write(
+                target,
+                {
+                    "historyPath": path.as_posix(),
+                    "title": previous.get("title") or str(payload.get("conversationTitle") or "").strip()[:120],
+                    "createdAt": previous.get("createdAt")
+                    or datetime.now(timezone.utc).isoformat(),
+                    "launch": launch,
+                },
+            )
     if "memoryMode" in payload or "autoOutfitSwitch" in payload:
         with borrow_session_store_for_dir(
             chat_history_session_dir(path),
@@ -116,15 +149,13 @@ def remember_conversation(state: Any, history_path: Path, payload: dict) -> None
 
 
 def _records(state: Any) -> dict[str, dict]:
-    records = {}
-    for file in _directory(state).glob("*.json"):
-        value = _read(file)
-        if (
-            isinstance(value, dict)
-            and isinstance(value.get("historyPath"), str)
-            and value["historyPath"]
-        ):
-            path = Path(value["historyPath"])
+    records: dict[str, dict] = {}
+    store = _conversation_store(state)
+    if store is not None:
+        for rec in store.list_all():
+            if not rec.history_path:
+                continue
+            path = Path(rec.history_path)
             active = chat_history_active_path(path)
             if (
                 active.is_file()
@@ -132,7 +163,24 @@ def _records(state: Any) -> dict[str, dict]:
                 or chat_history_db_path(path).is_file()
                 or chat_history_branch_tree_path(path).is_file()
             ):
-                records[_id(path)] = value
+                records[_id(path)] = rec.to_legacy_dict()
+    else:
+        for file in _directory(state).glob("*.json"):
+            value = _read(file)
+            if (
+                isinstance(value, dict)
+                and isinstance(value.get("historyPath"), str)
+                and value["historyPath"]
+            ):
+                path = Path(value["historyPath"])
+                active = chat_history_active_path(path)
+                if (
+                    active.is_file()
+                    or Path(str(active) + ".tmp").is_file()
+                    or chat_history_db_path(path).is_file()
+                    or chat_history_branch_tree_path(path).is_file()
+                ):
+                    records[_id(path)] = value
     root = Path(state.history_dir).resolve()
     candidates = (
         list(root.glob("*.json"))
@@ -370,7 +418,12 @@ def current_conversation(state: Any) -> dict | None:
 
 
 def saved_conversation_launch(state: Any, history_path: Path) -> dict | None:
-    record = _read(_directory(state) / f"{_id(history_path)}.json")
+    store = _conversation_store(state)
+    if store is not None:
+        rec = store.get(_id(history_path))
+        record = rec.to_legacy_dict() if rec is not None else None
+    else:
+        record = _read(_directory(state) / f"{_id(history_path)}.json")
     if not isinstance(record, dict) or not isinstance(record.get("launch"), dict):
         return None
     details = _details(record)
@@ -387,10 +440,16 @@ def rename_conversation(state: Any, conversation_id: str, title: str) -> dict:
     title = str(title).strip()
     if not title or len(title) > 120:
         raise ValueError("conversation title must contain 1–120 characters")
+    store = _conversation_store(state)
     with _metadata_lock:
         record = _record(state, conversation_id)
         record["title"] = title
-        _write(_directory(state) / f"{conversation_id}.json", record)
+        if store is not None:
+            from core.storage.stores.conversation_store import ConversationRecord
+
+            store.put(conversation_id, ConversationRecord.from_legacy_dict(conversation_id, record))
+        else:
+            _write(_directory(state) / f"{conversation_id}.json", record)
         return _details(record)
 
 
@@ -427,7 +486,16 @@ def update_conversation_settings(
             launch_dict["autoOutfitSwitch"] = next_auto_outfit
         if launch_dict:
             record["launch"] = launch_dict
-        _write(_directory(state) / f"{conversation_id}.json", record)
+        store_obj = _conversation_store(state)
+        if store_obj is not None:
+            from core.storage.stores.conversation_store import ConversationRecord
+
+            store_obj.put(
+                conversation_id,
+                ConversationRecord.from_legacy_dict(conversation_id, record),
+            )
+        else:
+            _write(_directory(state) / f"{conversation_id}.json", record)
 
         directory = chat_history_session_dir(path)
         with borrow_session_store_for_dir(
@@ -479,31 +547,46 @@ def update_conversation_settings(
 
 def update_conversation_character(state: Any, old_name: str, new_name: str | None = None) -> None:
     """Migrate renamed cast references; require editing after a cast member is deleted."""
+    store = _conversation_store(state)
     with _metadata_lock:
+        if store is not None:
+            from core.storage.stores.conversation_store import ConversationRecord
+
+            for rec in store.list_all():
+                record = rec.to_legacy_dict()
+                if not isinstance(record.get("launch"), dict):
+                    continue
+                if _rewrite_launch_cast_reference(record, old_name, new_name):
+                    store.put(rec.id, ConversationRecord.from_legacy_dict(rec.id, record))
+            return
         for target in _directory(state).glob("*.json"):
             record = _read(target)
             if not isinstance(record, dict) or not isinstance(record.get("launch"), dict):
                 continue
-            launch = record["launch"]
-            editor = launch.get("editorSession")
-            changed = False
-            for settings, keys in ((launch, ("characters", "primaryCharacters")), (editor, ("selectedCharacters", "primaryCharacters"))):
-                if not isinstance(settings, dict):
-                    continue
-                if settings.get("playerCharacter") == old_name:
-                    settings["playerCharacter"] = new_name or ""
-                    changed = True
-                for key in keys:
-                    names = settings.get(key)
-                    if not isinstance(names, list) or old_name not in names:
-                        continue
-                    changed = True
-                    if new_name is not None:
-                        settings[key] = list(dict.fromkeys(new_name if name == old_name else name for name in names))
-            if changed:
-                if new_name is None:
-                    record["requiresCharacterSelection"] = True
+            if _rewrite_launch_cast_reference(record, old_name, new_name):
                 _write(target, record)
+
+
+def _rewrite_launch_cast_reference(record: dict, old_name: str, new_name: str | None) -> bool:
+    launch = record["launch"]
+    editor = launch.get("editorSession")
+    changed = False
+    for settings, keys in ((launch, ("characters", "primaryCharacters")), (editor, ("selectedCharacters", "primaryCharacters"))):
+        if not isinstance(settings, dict):
+            continue
+        if settings.get("playerCharacter") == old_name:
+            settings["playerCharacter"] = new_name or ""
+            changed = True
+        for key in keys:
+            names = settings.get(key)
+            if not isinstance(names, list) or old_name not in names:
+                continue
+            changed = True
+            if new_name is not None:
+                settings[key] = list(dict.fromkeys(new_name if name == old_name else name for name in names))
+    if changed and new_name is None:
+        record["requiresCharacterSelection"] = True
+    return changed
 
 
 def delete_conversation(state: Any, conversation_id: str) -> None:
@@ -541,3 +624,6 @@ def _delete_conversation_files(state: Any, path: Path) -> None:
     for file in _conversation_storage_files(state, path):
         file.unlink(missing_ok=True)
     prune_chat_history_storage(path)
+    store = _conversation_store(state)
+    if store is not None:
+        store.delete(_id(path))

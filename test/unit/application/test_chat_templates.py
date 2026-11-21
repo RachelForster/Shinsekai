@@ -649,3 +649,81 @@ def test_template_summary_and_session_round_trip_user_prompt_presets(tmp_path, m
     assert restored_session["appliedPresets"] == [{"id": "p1", "name": "Tone", "content": "Extra rule"}]
     assert restored_session["systemManuallyEdited"] is True
 
+
+def test_user_prompt_presets_use_app_stores_document_store_and_in_memory_port(tmp_path):
+    from application.runtime.stores import build_app_stores
+    from config.models import UserPromptPresetLibrary
+    from core.storage import InMemoryDocumentStore
+    from sdk.adapters.storage import DocumentStore
+
+    stores = build_app_stores(tmp_path, bind_globals=False)
+    try:
+        assert isinstance(stores.prompt_presets, DocumentStore)
+        assert stores.hub.get_backend("settings.prompt_presets") is stores.prompt_presets
+        initial_status = stores.prompt_presets.status()
+        assert initial_status.healthy is True
+        assert initial_status.kind == "json"
+        assert initial_status.detail == "default"
+        initial_rev = stores.prompt_presets.revision
+
+        template_dir = tmp_path / "data" / "character_templates"
+        state = SimpleNamespace(template_dir_path=str(template_dir), stores=stores)
+
+        saved = _save_user_prompt_presets(
+            state,
+            {
+                "library": {
+                    "groups": ["Style"],
+                    "presets": [
+                        {
+                            "id": "p1",
+                            "name": "Cinematic",
+                            "group": "Style",
+                            "color": "#5b8def",
+                            "content": "Line 1\r\nLine 2",
+                        }
+                    ],
+                }
+            },
+        )
+        preset_file = tmp_path / "data" / "config" / "user_prompt_presets.json"
+        assert preset_file.is_file()
+        assert stores.prompt_presets.revision != initial_rev
+        assert stores.prompt_presets.status().detail == "exists"
+        assert _load_user_prompt_presets(state) == saved
+        assert saved == {
+            "groups": ["Style"],
+            "presets": [
+                {
+                    "id": "p1",
+                    "name": "Cinematic",
+                    "group": "Style",
+                    "color": "#5b8def",
+                    "content": "Line 1\nLine 2",
+                }
+            ],
+        }
+
+        preset_file.write_text("{bad json", encoding="utf-8")
+        assert _load_user_prompt_presets(state) == {"groups": [], "presets": []}
+        assert stores.prompt_presets.status().healthy is False
+    finally:
+        stores.close()
+
+    mem_store = InMemoryDocumentStore("settings.prompt_presets", UserPromptPresetLibrary)
+    mem_state = SimpleNamespace(
+        template_dir_path="unused",
+        stores=SimpleNamespace(prompt_presets=mem_store),
+    )
+    assert _load_user_prompt_presets(mem_state) == {"groups": [], "presets": []}
+    mem_saved = _save_user_prompt_presets(
+        mem_state,
+        {
+            "groups": ["Tone"],
+            "presets": [{"id": "p2", "name": "Warm", "group": "Tone", "content": "Be kind"}],
+        },
+    )
+    assert _load_user_prompt_presets(mem_state) == mem_saved
+    with pytest.raises(ValueError, match="preset library payload must be an object"):
+        _save_user_prompt_presets(mem_state, {"library": "bad"})
+

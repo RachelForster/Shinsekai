@@ -195,7 +195,7 @@ class BackgroundManager:
             dest_path = os.path.join(bg_dir, filename)
             shutil.copyfile(file.name, dest_path)
             
-            new_sprite_data = {"path": dest_path}
+            new_sprite_data = Sprite(path=dest_path)
             # Background 模型中的 Sprite 没有 voice_path/voice_text, 保持简单
             background.sprites.append(new_sprite_data)
             

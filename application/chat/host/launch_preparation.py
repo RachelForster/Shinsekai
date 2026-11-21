@@ -77,7 +77,9 @@ class ChatLaunchPreparation:
             effective_system,
             user_scenario,
             effect_context,
-            locale=resolve_template_locale(state.config_manager),
+            locale=resolve_template_locale(
+                getattr(state, "stores", None) or state.config_manager
+            ),
         )
         template_dir = _template_dir(state)
         (template_dir / "_temp.txt").write_text(template, encoding="utf-8")
