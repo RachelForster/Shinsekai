@@ -4,6 +4,21 @@ from datetime import date, datetime, time, timedelta
 
 
 def migrate_bedtime(store, *, bedtime_time, last_delivered_date=None, title, message):
+    unified = getattr(store, "_unified", None)
+    if unified is not None:
+        return unified.migrate_bedtime(
+            bedtime_time=bedtime_time,
+            last_delivered_date=last_delivered_date,
+            title=title,
+            message=message,
+        )
+    if hasattr(store, "migrate_bedtime"):
+        return store.migrate_bedtime(
+            bedtime_time=bedtime_time,
+            last_delivered_date=last_delivered_date,
+            title=title,
+            message=message,
+        )
     if not isinstance(bedtime_time, str) or len(bedtime_time) != 5:
         raise ValueError("Invalid legacy bedtime")
     scheduled_time = time.fromisoformat(bedtime_time)
@@ -26,10 +41,12 @@ def migrate_bedtime(store, *, bedtime_time, last_delivered_date=None, title, mes
         db.execute("CREATE TABLE IF NOT EXISTS migrations (name TEXT PRIMARY KEY)")
         if db.execute("SELECT 1 FROM migrations WHERE name='native-bedtime'").fetchone():
             return {"ok": True}
-        db.execute("""INSERT INTO reminders
+        db.execute(
+            """INSERT INTO reminders
             (id,character_name,title,message,due_at,recurrence,created_at,updated_at)
             VALUES ('legacy-bedtime','*',?,?,?,'daily',?,?)""",
-            (title, message, due.timestamp(), now, now))
+            (title, message, due.timestamp(), now, now),
+        )
         # Kept independently of the reminder: deleting it must not reimport it
         # after a crash between the database commit and the native settings save.
         db.execute("INSERT INTO migrations VALUES ('native-bedtime')")

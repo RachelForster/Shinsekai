@@ -54,8 +54,15 @@ def parse_background_request(
 class BackgroundUseCase:
     """Single application entry point for background resource mutations."""
 
-    def __init__(self, state: Any, *, file_access_roots: Iterable[Path] = ()):
+    def __init__(
+        self,
+        state: Any,
+        *,
+        file_access_roots: Iterable[Path] = (),
+        backgrounds: Any | None = None,
+    ):
         self._state = state
+        self._backgrounds = backgrounds or getattr(getattr(state, "stores", None), "backgrounds", None)
         project_root = Path(getattr(state, "project_root_dir", "") or Path.cwd())
         self._resource_paths = MediaResourcePaths(
             project_root,
@@ -78,13 +85,23 @@ class BackgroundUseCase:
         return handlers[request.operation](request.payload)
 
     def _background(self, name: str) -> Any:
-        background = self._state.config_manager.get_background_by_name(name)
+        if self._backgrounds is not None:
+            background = self._backgrounds.get_by_name(name)
+        else:
+            background = self._state.config_manager.get_background_by_name(name)
         if background is None:
             raise KeyError(f"background not found: {name}")
         return background
 
+    def _refresh_backgrounds_catalog(self) -> None:
+        refresh = getattr(self._state.config_manager, "refresh_backgrounds", None)
+        if callable(refresh):
+            refresh()
+        else:
+            self._state.config_manager.reload()
+
     def _after_reload(self, name: str) -> dict[str, Any]:
-        self._state.config_manager.reload()
+        self._refresh_backgrounds_catalog()
         return _jsonify(self._background(name))
 
     def _files(self, raw_paths: Any) -> list[Any]:
@@ -112,7 +129,7 @@ class BackgroundUseCase:
         )
         if message.startswith("名称") or "重复" in message or message.startswith("找不到"):
             raise RuntimeError(message)
-        self._state.config_manager.reload()
+        self._refresh_backgrounds_catalog()
         saved = self._state.config_manager.get_background_by_name(name)
         if saved is None:
             raise RuntimeError(message)
@@ -183,19 +200,62 @@ class BackgroundUseCase:
 
     def _import_packages(self, payload: dict[str, Any]) -> list[dict[str, Any]]:
         files = self._files(payload.get("paths") or [])
-        from tools.file_util import import_background
+        from core.packaging.background_package import stage_background_package_import
+        from core.packaging.zip_io import rollback_staged_assets
+        from tools import file_util
 
-        existing = self._state.config_manager.config.background_list
+        stores = getattr(self._state, "stores", None)
+        project_root = self._resource_paths.project_root
+        default_data = Path("./data")
+        bg_upload_dir = (
+            Path(file_util.BACKGROUND_UPLOAD_DIR)
+            if file_util.BACKGROUND_UPLOAD_DIR != default_data / "backgrounds"
+            else (stores.layout.media_dir("backgrounds") if stores is not None else project_root / "data" / "backgrounds")
+        )
+        bgm_upload_dir = (
+            Path(file_util.BGM_UPLOAD_DIR)
+            if file_util.BGM_UPLOAD_DIR != default_data / "bgm"
+            else (stores.layout.media_dir("bgm") if stores is not None else project_root / "data" / "bgm")
+        )
+
+        existing = list(
+            stores.backgrounds.list_all()
+            if stores is not None
+            else self._state.config_manager.config.background_list
+        )
         imported = []
-        for item in files:
-            batch = import_background(item.name, existing)
-            imported.extend(batch)
-            for background in batch:
-                if background not in existing:
-                    existing.append(background)
-        self._state.config_manager.save_background_config()
-        self._state.config_manager.reload()
-        return [_jsonify(item) for item in imported]
+        created_dirs: list[Path] = []
+        committed = False
+        try:
+            for item in files:
+                staged = stage_background_package_import(
+                    item.name,
+                    existing_configs=[*existing, *imported],
+                    background_upload_dir=bg_upload_dir,
+                    bgm_upload_dir=bgm_upload_dir,
+                )
+                created_dirs.extend(staged.created_dirs)
+                imported.extend(staged.backgrounds)
+
+            if stores is not None:
+                with stores.main_db.atomic():
+                    for bg in imported:
+                        stores.backgrounds.put(bg.id, bg)
+                committed = True
+                self._refresh_backgrounds_catalog()
+            else:
+                target_list = self._state.config_manager.config.background_list
+                for background in imported:
+                    if background not in target_list:
+                        target_list.append(background)
+                self._state.config_manager.save_background_config()
+                committed = True
+                self._refresh_backgrounds_catalog()
+            return [_jsonify(item) for item in imported]
+        except BaseException:
+            if not committed:
+                rollback_staged_assets(created_dirs)
+            raise
 
     def _export_package(self, payload: dict[str, Any]) -> BackgroundExportResult:
         name = str(payload.get("name") or "")

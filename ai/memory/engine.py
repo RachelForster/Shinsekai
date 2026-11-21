@@ -130,7 +130,7 @@ class HybridMemoryEngine:
             db_path = db_path / MEMORY_STORE_FILENAME
 
         embedder = get_shared_onnx_embedder(snapshot_path, dimensions=dims)
-        store = SqliteHybridStore(db_path)
+        store = SqliteHybridStore(db_path, name="db.memory")
         registered_repo = resolve_registered_memory_repository()
         repo: MemoryRepository = (
             registered_repo if registered_repo is not None else SqliteHybridMemoryRepo(store)

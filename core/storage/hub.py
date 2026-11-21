@@ -33,6 +33,23 @@ class StorageHub:
             self._backends[backend_name] = backend
             return backend
 
+    def register_or_replace(self, backend: B) -> B:
+        """Register or refresh a dynamically started backend at the end of close order."""
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("Cannot register backend after StorageHub is closed")
+            backend_name = str(getattr(backend, "name", "") or "").strip()
+            if not backend_name:
+                raise ValueError("Backend name must not be empty")
+            self._backends.pop(backend_name, None)
+            self._backends[backend_name] = backend
+            return backend
+
+    def unregister(self, name: str) -> ManagedBackend | None:
+        """Detach a dynamic backend without closing it or mutating other registrations."""
+        with self._lock:
+            return self._backends.pop(str(name or "").strip(), None)
+
     def get_backend(self, name: str) -> ManagedBackend | None:
         with self._lock:
             return self._backends.get(name)

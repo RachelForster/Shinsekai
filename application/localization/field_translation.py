@@ -6,7 +6,7 @@ import json
 import re
 from typing import Any, Tuple
 
-from config.config_manager import ConfigManager
+from config.llm_defaults import resolve_llm_api_credentials, resolve_llm_factory_kwargs
 from sdk.lang import normalize_lang
 
 
@@ -31,14 +31,15 @@ def _parse_json_object(text: str) -> dict[str, Any]:
     return json.loads(t[i : j + 1])
 
 
-def _llm_one_shot(config: ConfigManager, system: str, user: str) -> str:
-    llm_provider, llm_model, llm_base_url, api_key = config.get_llm_api_config()
+def _llm_one_shot(config: Any, system: str, user: str) -> str:
+    llm_provider, llm_model, llm_base_url, api_key = resolve_llm_api_credentials(config)
     if not llm_provider or not api_key or not llm_model:
         raise ValueError("llm_incomplete")
     from ai.llm.llm_manager import LLMAdapterFactory, LLMManager
 
     llm_adapter = LLMAdapterFactory.create_adapter(
-        **config.merged_llm_factory_kwargs(
+        **resolve_llm_factory_kwargs(
+            config,
             llm_provider,
             {
                 "llm_provider": llm_provider,
@@ -55,7 +56,7 @@ def _llm_one_shot(config: ConfigManager, system: str, user: str) -> str:
 
 
 def translate_character_name_and_tags(
-    config: ConfigManager,
+    config: Any,
     ui_lang_code: str,
     name: str,
     emotion_block: str,
@@ -105,7 +106,7 @@ def translate_character_name_and_tags(
 
 
 def translate_background_fields(
-    config: ConfigManager,
+    config: Any,
     ui_lang_code: str,
     bg_name: str,
     bg_info: str,
