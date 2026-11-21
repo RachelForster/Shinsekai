@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+import contextlib
 from dataclasses import dataclass
 import os
 from pathlib import Path
 from typing import Any
 
+from ai.memory.config import bind_memory_api_settings
+from ai.memory.runtime import set_memory_store_observer
+from ai.tools.character_tools import bind_character_tool_catalog
+from application.chat.presentation.updates import bind_presentation_character_catalog
+from application.knowledge.runtime import set_knowledge_store_observer
 from application.reminders import ReminderStore
 from config.backend_port import ConfigBackendPort
 from config.config_manager import ConfigManager
@@ -36,6 +42,7 @@ from core.storage.stores import (
     SqliteEffectCatalog,
     SqliteKnowledgeBindingStore,
 )
+from sdk.adapters.storage import ManagedBackend
 
 
 class _SystemConfigYamlCodec(PydanticYamlCodec[SystemConfig]):
@@ -74,6 +81,11 @@ class AppStores:
     def close(self) -> None:
         """Unbind compatibility singletons if owned and close all storage backends."""
         if self.bound_globals:
+            set_memory_store_observer(None)
+            set_knowledge_store_observer(None)
+            bind_character_tool_catalog(None)
+            bind_memory_api_settings(None)
+            bind_presentation_character_catalog(None)
             ConfigManager.unbind_backend(self.layout.project_root)
             bind_knowledge_binding_store(None)
             self.bound_globals = False
@@ -137,6 +149,17 @@ class AppStoresConfigBackend:
 
     def save_effects(self, items: Sequence[Effect]) -> str:
         return self._stores.effects.replace_all(items)
+
+
+def _hub_backend_observer(hub: StorageHub, logical_name: str):
+    def _observe(backend: ManagedBackend | None) -> None:
+        if backend is None:
+            hub.unregister(logical_name)
+            return
+        with contextlib.suppress(RuntimeError):
+            hub.register_or_replace(backend)
+
+    return _observe
 
 
 def build_app_stores(
@@ -235,6 +258,11 @@ def build_app_stores(
         backend: ConfigBackendPort = AppStoresConfigBackend(stores)
         ConfigManager.bind_backend(layout.project_root, backend)
         bind_knowledge_binding_store(knowledge_bindings, project_root=layout.project_root)
+        bind_character_tool_catalog(characters)
+        bind_memory_api_settings(api_settings, layout=layout)
+        bind_presentation_character_catalog(characters)
+        set_memory_store_observer(_hub_backend_observer(hub, "db.memory"))
+        set_knowledge_store_observer(_hub_backend_observer(hub, "db.knowledge"))
 
     return stores
 

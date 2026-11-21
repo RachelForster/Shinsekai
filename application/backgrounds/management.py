@@ -54,8 +54,15 @@ def parse_background_request(
 class BackgroundUseCase:
     """Single application entry point for background resource mutations."""
 
-    def __init__(self, state: Any, *, file_access_roots: Iterable[Path] = ()):
+    def __init__(
+        self,
+        state: Any,
+        *,
+        file_access_roots: Iterable[Path] = (),
+        backgrounds: Any | None = None,
+    ):
         self._state = state
+        self._backgrounds = backgrounds or getattr(getattr(state, "stores", None), "backgrounds", None)
         project_root = Path(getattr(state, "project_root_dir", "") or Path.cwd())
         self._resource_paths = MediaResourcePaths(
             project_root,
@@ -78,7 +85,10 @@ class BackgroundUseCase:
         return handlers[request.operation](request.payload)
 
     def _background(self, name: str) -> Any:
-        background = self._state.config_manager.get_background_by_name(name)
+        if self._backgrounds is not None:
+            background = self._backgrounds.get_by_name(name)
+        else:
+            background = self._state.config_manager.get_background_by_name(name)
         if background is None:
             raise KeyError(f"background not found: {name}")
         return background

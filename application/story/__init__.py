@@ -14,6 +14,7 @@ from .coordinator import (
 from .characters import (
     ActorContext,
     CastChangeRequestError,
+    CatalogCharacterLibrary,
     CharacterImportTokenStore,
     CharacterLoadPhase,
     CharacterProfile,
@@ -85,6 +86,7 @@ __all__ = [
     "story_snapshot_patch",
     "ActorContext",
     "CastChangeRequestError",
+    "CatalogCharacterLibrary",
     "CharacterImportTokenStore",
     "CharacterLoadPhase",
     "CharacterProfile",

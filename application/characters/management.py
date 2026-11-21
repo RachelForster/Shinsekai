@@ -110,8 +110,15 @@ class CharacterUseCase:
     """Single application entry point for character resource mutations."""
     _mutation_lock = RLock()
 
-    def __init__(self, state: Any, *, file_access_roots: Iterable[Path] = ()):
+    def __init__(
+        self,
+        state: Any,
+        *,
+        file_access_roots: Iterable[Path] = (),
+        characters: Any | None = None,
+    ):
         self._state = state
+        self._characters = characters or getattr(getattr(state, "stores", None), "characters", None)
         project_root = Path(getattr(state, "project_root_dir", "") or Path.cwd())
         self._resource_paths = MediaResourcePaths(
             project_root,
@@ -146,7 +153,10 @@ class CharacterUseCase:
             return handlers[request.operation](request.payload)
 
     def _character(self, name: str) -> Any:
-        character = self._state.config_manager.get_character_by_name(name)
+        if self._characters is not None:
+            character = self._characters.get_by_name(name)
+        else:
+            character = self._state.config_manager.get_character_by_name(name)
         if character is None:
             raise KeyError(f"character not found: {name}")
         return character

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import importlib
 import importlib.util
 import logging
@@ -11,6 +12,7 @@ from typing import Any
 
 from core.knowledge.catalog import reset_knowledge_catalog
 from core.model_assets.service import download_model_asset
+from sdk.adapters.storage import ManagedBackend
 from sdk.exception.types import (
     download_error_from_exception,
     runtime_dependency_error_from_exception,
@@ -38,7 +40,22 @@ _mem0: Any = None
 _mem0_load_error: BaseException | None = None
 _mem0_loading = False
 _runtime_generation: int = 0
+_store_observer: Callable[[ManagedBackend | None], None] | None = None
 _lock = threading.Lock()
+
+
+def set_knowledge_store_observer(
+    observer: Callable[[ManagedBackend | None], None] | None,
+) -> None:
+    """Register or clear a lifecycle observer receiving the knowledge store backend."""
+    with _lock:
+        global _store_observer
+        _store_observer = observer
+        instance = _mem0
+    if observer is not None and instance is not None:
+        backend = getattr(instance, "store", None)
+        if isinstance(backend, ManagedBackend):
+            observer(backend)
 
 
 def _preload_embedding_model() -> str:
@@ -137,6 +154,7 @@ def start_mem0_loading(*, retry: bool = False) -> None:
                 message="Initializing knowledge.",
             )
             store = create_knowledge_mem0(HybridKnowledgeStore, snapshot_path)
+            observer = None
             with _lock:
                 if _runtime_generation == load_generation:
                     set_mem0_task(
@@ -144,7 +162,15 @@ def start_mem0_loading(*, retry: bool = False) -> None:
                         message="Knowledge is ready.",
                     )
                     _mem0 = store
+                    observer = _store_observer
                     published = True
+            if observer is not None and published:
+                backend = getattr(store, "store", None)
+                if isinstance(backend, ManagedBackend):
+                    try:
+                        observer(backend)
+                    except Exception:
+                        logger.exception("Knowledge store observer registration failed")
             if not published and hasattr(store, "close"):
                 try:
                     store.close()
@@ -244,9 +270,15 @@ def shutdown_knowledge_runtime() -> None:
     with _lock:
         _runtime_generation += 1
         instance = _mem0
+        observer = _store_observer
         _mem0 = None
         _mem0_loading = False
         _mem0_load_error = None
+    if observer is not None:
+        try:
+            observer(None)
+        except Exception:
+            logger.exception("Knowledge store observer cleanup failed")
     if instance is not None and hasattr(instance, "close"):
         try:
             instance.close()

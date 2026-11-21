@@ -10,6 +10,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
+from sdk.adapters.storage import BackendStatus
+
 
 def encode(value: object) -> str:
     return json.dumps(
@@ -28,10 +30,12 @@ class AgentStore:
     and commits snapshots, events and deduplication records in one transaction.
     """
 
-    def __init__(self, path: str | Path) -> None:
+    def __init__(self, path: str | Path, *, name: str = "db.agent") -> None:
         self.path = Path(path).resolve()
+        self._name = str(name or "db.agent").strip() or "db.agent"
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
+        self._closed = False
         self._lease = self.path.with_suffix(self.path.suffix + ".owner").open("a+b")
         try:
             self._lease.seek(0, 2)
@@ -213,7 +217,55 @@ class AgentStore:
                 "SELECT * FROM tool_calls WHERE task_id=? ORDER BY rowid", (task_id,)
             ).fetchall()
 
+    @property
+    def name(self) -> str:
+        """Logical backend identifier for ``StorageHub`` registration."""
+        return self._name
+
+    @property
+    def is_closed(self) -> bool:
+        with self._lock:
+            return self._closed
+
+    def status(self) -> BackendStatus:
+        """Return health, database location, and user_version."""
+        with self._lock:
+            if self._closed:
+                return BackendStatus(
+                    name=self._name,
+                    kind="sqlite",
+                    location=str(self.path),
+                    healthy=False,
+                    schema_version=1,
+                    detail="closed",
+                )
+            try:
+                row = self.connection.execute("PRAGMA user_version").fetchone()
+                version = int(row[0]) if row is not None else 1
+                return BackendStatus(
+                    name=self._name,
+                    kind="sqlite",
+                    location=str(self.path),
+                    healthy=True,
+                    schema_version=version,
+                    detail="lease=held",
+                )
+            except Exception as exc:
+                return BackendStatus(
+                    name=self._name,
+                    kind="sqlite",
+                    location=str(self.path),
+                    healthy=False,
+                    schema_version=1,
+                    detail=f"{type(exc).__name__}: {exc}",
+                )
+
     def close(self) -> None:
         with self._lock:
-            self.connection.close()
-            self._lease.close()
+            if self._closed:
+                return
+            self._closed = True
+            try:
+                self.connection.close()
+            finally:
+                self._lease.close()

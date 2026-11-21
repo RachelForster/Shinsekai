@@ -29,6 +29,7 @@ from sdk.adapters.memory import (
     VectorSliceEntry,
     VectorSliceHit,
 )
+from sdk.adapters.storage import BackendKind, BackendStatus
 
 
 def normalize_vector(vector: Any) -> np.ndarray | None:
@@ -169,6 +170,7 @@ class SqliteHybridStore:
         db_path: str | Path = ":memory:",
         *,
         max_idle_connections: int = 4,
+        name: str | None = None,
     ) -> None:
         self._is_memory = str(db_path) == ":memory:"
         if self._is_memory:
@@ -181,6 +183,10 @@ class SqliteHybridStore:
             self._db_target = str(resolved)
             self._use_uri = False
             self._path = resolved
+        custom_name = str(name).strip() if name is not None else ""
+        self._name = custom_name or (
+            "db.hybrid.memory" if self._is_memory else f"db.hybrid.{self._path.stem}"
+        )
 
         self._lock = threading.RLock()
         self._local = threading.local()
@@ -200,8 +206,47 @@ class SqliteHybridStore:
             conn.commit()
 
     @property
+    def name(self) -> str:
+        """Logical backend identifier for ``StorageHub`` registration."""
+        return self._name
+
+    @property
     def db_path(self) -> Path | None:
         return self._path
+
+    def status(self) -> BackendStatus:
+        """Return health, location, and connection-pool telemetry."""
+        kind: BackendKind = "memory" if self._is_memory else "sqlite"
+        location = ":memory:" if self._path is None else str(self._path)
+        if self.is_closed:
+            return BackendStatus(
+                name=self._name,
+                kind=kind,
+                location=location,
+                healthy=False,
+                schema_version=1,
+                detail="closed",
+            )
+        try:
+            with self._borrow_conn() as conn:
+                conn.execute("SELECT 1").fetchone()
+            return BackendStatus(
+                name=self._name,
+                kind=kind,
+                location=location,
+                healthy=True,
+                schema_version=1,
+                detail=f"idle={self.idle_connection_count},active={self.active_connection_count}",
+            )
+        except Exception as exc:
+            return BackendStatus(
+                name=self._name,
+                kind=kind,
+                location=location,
+                healthy=False,
+                schema_version=1,
+                detail=f"{type(exc).__name__}: {exc}",
+            )
 
     @property
     def idle_connection_count(self) -> int:

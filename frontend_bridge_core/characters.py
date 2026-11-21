@@ -97,9 +97,15 @@ def _translate_character_fields(state: BridgeState, payload: dict[str, Any]) -> 
         translate_character_name_and_tags,
     )
 
-    ui_language = str(getattr(state.config_manager.config.system_config, "ui_language", "") or "")
+    stores = getattr(state, "stores", None)
+    if stores is not None:
+        ui_language = str(getattr(stores.system_settings.get(), "ui_language", "") or "")
+        api_source: Any = stores.api_settings
+    else:
+        ui_language = str(getattr(state.config_manager.config.system_config, "ui_language", "") or "")
+        api_source = state.config_manager
     error, name, emotion_tags, character_setting = translate_character_name_and_tags(
-        state.config_manager,
+        api_source,
         ui_language,
         str(payload.get("name") or ""),
         str(payload.get("emotionTags") or ""),

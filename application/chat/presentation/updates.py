@@ -37,7 +37,16 @@ SOUND_EFFECTS_PATH = {
 IMAGE_EFFECT_DURATION_MS = 8_800
 
 _config_manager = None
+_catalog_lock = threading.RLock()
+_bound_character_catalog: Any = None
 logger = logging.getLogger(__name__)
+
+
+def bind_presentation_character_catalog(catalog: Any | None) -> None:
+    """Bind or clear a narrow ``CharacterCatalogPort`` for presentation lookups."""
+    with _catalog_lock:
+        global _bound_character_catalog
+        _bound_character_catalog = catalog
 
 
 def _get_config_manager():
@@ -50,6 +59,12 @@ def _get_config_manager():
 
 
 def get_character_by_name(name: str):
+    with _catalog_lock:
+        catalog = _bound_character_catalog
+    if catalog is not None:
+        get_by_name = getattr(catalog, "get_by_name", None)
+        if callable(get_by_name):
+            return get_by_name(name)
     try:
         return _get_config_manager().get_character_by_name(name)
     except ModuleNotFoundError:

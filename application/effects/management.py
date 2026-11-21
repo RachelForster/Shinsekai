@@ -18,6 +18,7 @@ from core.packaging.effect_package import (
     validate_effect_storage_name,
 )
 from core.packaging.zip_io import rollback_staged_assets
+from core.storage.stores import EffectCatalogPort
 from sdk.path_utils import (
     safe_child_path,
     safe_existing_file_path,
@@ -60,12 +61,16 @@ class EffectUseCase:
 
     def __init__(
         self,
-        config_manager: Any,
+        config_manager: Any = None,
         *,
+        effects: EffectCatalogPort | None = None,
         local_file_access_roots: Sequence[str | os.PathLike[str]] = (),
         project_root: str | os.PathLike[str] | None = None,
     ) -> None:
+        if config_manager is None and effects is None:
+            raise ValueError("either config_manager or effects must be provided")
         self.config_manager = config_manager
+        self.effects = effects
         self.project_root = Path(project_root or Path.cwd()).resolve(strict=False)
         self.local_file_access_roots = tuple(
             Path(root).resolve(strict=False) for root in local_file_access_roots
@@ -104,18 +109,40 @@ class EffectUseCase:
         return candidate
 
     def _effect_by_name(self, name: str) -> Any:
-        effect = self.config_manager.get_effect_by_name(name)
+        if self.effects is not None:
+            effect = self.effects.get_by_name(name)
+        else:
+            effect = self.config_manager.get_effect_by_name(name)
         if effect is None:
             raise KeyError(f"effect not found: {name}")
         return effect
 
-    def _effect_after_reload(self, name: str) -> Any:
+    def _sync_config_manager(self) -> None:
+        if self.config_manager is None:
+            return
         refresh = getattr(self.config_manager, "refresh_effects", None)
         if callable(refresh):
             refresh()
         else:
             self.config_manager.reload()
+
+    def _effect_after_reload(self, name: str) -> Any:
+        self._sync_config_manager()
         return self._effect_by_name(name)
+
+    def _save_updated_effect(self, effect: Effect, **updates: Any) -> Effect:
+        if self.effects is not None:
+            updated = effect.model_copy(update=updates) if hasattr(effect, "model_copy") else effect
+            if not hasattr(effect, "model_copy"):
+                for field, value in updates.items():
+                    setattr(effect, field, value)
+            self.effects.put(updated.id, updated)
+            self._sync_config_manager()
+            return self._effect_by_name(updated.name)
+        for field, value in updates.items():
+            setattr(effect, field, value)
+        self.config_manager.save_effect_config()
+        return self._effect_after_reload(effect.name)
 
     def _save(self, payload: dict[str, Any]) -> Effect:
         raw_body = payload.get("effect", payload)
@@ -127,12 +154,17 @@ class EffectUseCase:
         if original_name:
             validate_effect_storage_name(original_name)
 
-        effect_list = self.config_manager.config.effect_list
+        existing_effects = (
+            list(self.effects.list_all())
+            if self.effects is not None
+            else self.config_manager.config.effect_list
+        )
         if original_name:
             original = self._effect_by_name(original_name)
+            body.setdefault("id", original.id)
             remaining = [
                 effect
-                for effect in effect_list
+                for effect in existing_effects
                 if effect.name.lower() != original_name.lower()
             ]
             existing_names = {effect.name.lower() for effect in remaining}
@@ -159,16 +191,31 @@ class EffectUseCase:
                     )
                 updated = Effect.model_validate(body)
                 self._move_effect_dir(old_dir, new_dir)
-            effect_list[:] = remaining
-            effect_list.append(updated)
+            if self.effects is not None:
+                self.effects.put(updated.id, updated)
+                self._effect_dir(updated.name).mkdir(parents=True, exist_ok=True)
+                self._sync_config_manager()
+                return self._effect_by_name(updated.name)
+            existing_effects[:] = [*remaining, updated]
         else:
+            existing_match = next(
+                (eff for eff in existing_effects if eff.name.lower() == name.lower()),
+                None,
+            )
+            if existing_match is not None and "id" not in body:
+                body["id"] = existing_match.id
             updated = Effect.model_validate(body)
-            effect_list[:] = [
+            if self.effects is not None:
+                self.effects.put(updated.id, updated)
+                self._effect_dir(updated.name).mkdir(parents=True, exist_ok=True)
+                self._sync_config_manager()
+                return self._effect_by_name(updated.name)
+            existing_effects[:] = [
                 effect
-                for effect in effect_list
+                for effect in existing_effects
                 if effect.name.lower() != updated.name.lower()
             ]
-            effect_list.append(updated)
+            existing_effects.append(updated)
 
         self.config_manager.save_effect_config()
         self._effect_dir(updated.name).mkdir(parents=True, exist_ok=True)
@@ -176,15 +223,20 @@ class EffectUseCase:
 
     def _delete(self, payload: dict[str, Any]) -> dict[str, Any]:
         name = validate_effect_storage_name(str(payload.get("name") or ""))
-        effect_list = self.config_manager.config.effect_list
-        match = next(
-            (effect for effect in effect_list if effect.name.lower() == name.lower()),
-            None,
-        )
-        if match is None:
-            raise KeyError(f"effect not found: {name}")
-        effect_list.remove(match)
-        self.config_manager.save_effect_config()
+        if self.effects is not None:
+            match = self._effect_by_name(name)
+            self.effects.delete(match.id)
+            self._sync_config_manager()
+        else:
+            effect_list = self.config_manager.config.effect_list
+            match = next(
+                (effect for effect in effect_list if effect.name.lower() == name.lower()),
+                None,
+            )
+            if match is None:
+                raise KeyError(f"effect not found: {name}")
+            effect_list.remove(match)
+            self.config_manager.save_effect_config()
         effect_dir = self._effect_dir(match.name)
         if effect_dir.is_dir():
             shutil.rmtree(effect_dir, ignore_errors=True)
@@ -221,10 +273,11 @@ class EffectUseCase:
                 audio_list.append(destination_text)
                 tags.append("")
 
-        effect.audio_list = audio_list
-        effect.audio_tags = numbered_tags("特效", tags)
-        self.config_manager.save_effect_config()
-        return self._effect_after_reload(name)
+        return self._save_updated_effect(
+            effect,
+            audio_list=audio_list,
+            audio_tags=numbered_tags("特效", tags),
+        )
 
     def _delete_audio(self, payload: dict[str, Any]) -> Effect:
         name = validate_effect_storage_name(str(payload.get("name") or "").strip())
@@ -241,29 +294,26 @@ class EffectUseCase:
             tag_lines.pop()
         if index < len(tag_lines):
             tag_lines.pop(index)
-        effect.audio_list = audio_list
-        effect.audio_tags = "".join(
-            f"特效 {position + 1}：{_tag_text(line)}\n"
-            for position, line in enumerate(tag_lines)
+        return self._save_updated_effect(
+            effect,
+            audio_list=audio_list,
+            audio_tags="".join(
+                f"特效 {position + 1}：{_tag_text(line)}\n"
+                for position, line in enumerate(tag_lines)
+            ),
         )
-        self.config_manager.save_effect_config()
-        return self._effect_after_reload(name)
 
     def _delete_all_audio(self, payload: dict[str, Any]) -> Effect:
         name = validate_effect_storage_name(str(payload.get("name") or "").strip())
         effect = self._effect_by_name(name)
         for path in effect.audio_list or ():
             self._unlink_managed_file(name, str(path))
-        effect.audio_list = []
-        effect.audio_tags = ""
-        self.config_manager.save_effect_config()
-        return self._effect_after_reload(name)
+        return self._save_updated_effect(effect, audio_list=[], audio_tags="")
 
     def _save_audio_tags(self, payload: dict[str, Any]) -> Effect:
         name = validate_effect_storage_name(str(payload.get("name") or "").strip())
         effect = self._effect_by_name(name)
         new_tags = str(payload.get("audioTags") or "")
-        effect.audio_tags = new_tags
         lines = new_tags.splitlines()
         missing = [
             str(index + 1)
@@ -275,8 +325,7 @@ class EffectUseCase:
                 f"[Effect] 警告：特效方案 '{name}' 的第 {', '.join(missing)} 个音频"
                 "未输入提示词，将无法通过关键词触发。"
             )
-        self.config_manager.save_effect_config()
-        return self._effect_after_reload(name)
+        return self._save_updated_effect(effect, audio_tags=new_tags)
 
     def _upload_images(self, payload: dict[str, Any]) -> Effect:
         name = validate_effect_storage_name(str(payload.get("name") or "").strip())
@@ -312,11 +361,12 @@ class EffectUseCase:
             image_audio_list.append("")
             tags.append("")
 
-        effect.image_list = image_list
-        effect.image_audio_list = image_audio_list
-        effect.image_tags = numbered_tags("图片", tags)
-        self.config_manager.save_effect_config()
-        return self._effect_after_reload(name)
+        return self._save_updated_effect(
+            effect,
+            image_list=image_list,
+            image_audio_list=image_audio_list,
+            image_tags=numbered_tags("图片", tags),
+        )
 
     def _delete_image(self, payload: dict[str, Any]) -> Effect:
         name = validate_effect_storage_name(str(payload.get("name") or "").strip())
@@ -335,21 +385,20 @@ class EffectUseCase:
             tag_lines.pop()
         if index < len(tag_lines):
             tag_lines.pop(index)
-        effect.image_list = image_list
-        effect.image_audio_list = image_audio_list
-        effect.image_tags = "".join(
-            f"图片 {position + 1}：{_tag_text(line)}\n"
-            for position, line in enumerate(tag_lines)
+        return self._save_updated_effect(
+            effect,
+            image_list=image_list,
+            image_audio_list=image_audio_list,
+            image_tags="".join(
+                f"图片 {position + 1}：{_tag_text(line)}\n"
+                for position, line in enumerate(tag_lines)
+            ),
         )
-        self.config_manager.save_effect_config()
-        return self._effect_after_reload(name)
 
     def _save_image_tags(self, payload: dict[str, Any]) -> Effect:
         name = validate_effect_storage_name(str(payload.get("name") or "").strip())
         effect = self._effect_by_name(name)
-        effect.image_tags = str(payload.get("imageTags") or "")
-        self.config_manager.save_effect_config()
-        return self._effect_after_reload(name)
+        return self._save_updated_effect(effect, image_tags=str(payload.get("imageTags") or ""))
 
     def _upload_image_audio(self, payload: dict[str, Any]) -> Effect:
         name = validate_effect_storage_name(str(payload.get("name") or "").strip())
@@ -374,15 +423,17 @@ class EffectUseCase:
         image_audio_list.extend("" for _ in range(len(image_list) - len(image_audio_list)))
         self._unlink_managed_file(name, image_audio_list[index])
         image_audio_list[index] = destination.as_posix()
-        effect.image_audio_list = image_audio_list
-        self.config_manager.save_effect_config()
-        return self._effect_after_reload(name)
+        return self._save_updated_effect(effect, image_audio_list=image_audio_list)
 
     def _import(self, payload: dict[str, Any]) -> list[Effect]:
         paths = payload.get("paths") or []
         if not isinstance(paths, Sequence) or isinstance(paths, (str, bytes, bytearray)):
             raise ValueError("paths must be a list")
-        existing = self.config_manager.config.effect_list
+        existing = (
+            list(self.effects.list_all())
+            if self.effects is not None
+            else self.config_manager.config.effect_list
+        )
         imported: list[Effect] = []
         created_dirs: list[Path] = []
         committed = False
@@ -400,17 +451,19 @@ class EffectUseCase:
                 )
                 created_dirs.extend(staged.created_dirs)
                 imported.extend(staged.effects)
+            if self.effects is not None:
+                for effect in imported:
+                    self._effect_dir(effect.name).mkdir(parents=True, exist_ok=True)
+                    self.effects.put(effect.id, effect)
+                self._sync_config_manager()
+                return imported
             for effect in imported:
                 if effect not in existing:
                     existing.append(effect)
                 self._effect_dir(effect.name).mkdir(parents=True, exist_ok=True)
             self.config_manager.save_effect_config()
             committed = True
-            refresh = getattr(self.config_manager, "refresh_effects", None)
-            if callable(refresh):
-                refresh()
-            else:
-                self.config_manager.reload()
+            self._sync_config_manager()
             return imported
         except BaseException:
             if not committed:

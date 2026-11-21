@@ -16,7 +16,11 @@ import yaml
 
 from config.backend_port import ConfigBackendPort
 from config.feature_flags import FeatureFlagConfigManager
-from config.llm_defaults import resolve_llm_base_url
+from config.llm_defaults import (
+    extract_llm_api_credentials,
+    merge_llm_factory_kwargs,
+    resolve_llm_base_url,
+)
 from config.mirror_env import apply_mirror_environment
 from config.network_proxy import apply_network_proxy_environment
 from config.schema import (
@@ -535,11 +539,7 @@ class ConfigManager:
         return None
 
     def get_llm_api_config(self):
-        llm_provider = self.config.api_config.llm_provider
-        api_key = self.config.api_config.llm_api_key.get(llm_provider, "")
-        model = self.config.api_config.llm_model.get(llm_provider, "")
-        base_url = resolve_llm_base_url(self.config.api_config, llm_provider)
-        return llm_provider, model, base_url, api_key
+        return extract_llm_api_credentials(self.config.api_config)
 
     def get_gpt_sovits_config(self):
         provider = normalize_tts_provider(self.config.api_config.tts_provider)
@@ -589,9 +589,9 @@ class ConfigManager:
         self.config.api_config = ac
 
     def merged_llm_factory_kwargs(self, llm_provider: str, base_kwargs: Dict[str, Any]) -> Dict[str, Any]:
-        out = dict(base_kwargs)
-        out.update(self.get_adapter_extra_config("llm", llm_provider))
-        return out
+        if self._config is None:
+            return dict(base_kwargs)
+        return merge_llm_factory_kwargs(self.config.api_config, llm_provider, base_kwargs)
 
     def merged_tts_factory_kwargs(self, adapter_name: str, base_kwargs: Dict[str, Any]) -> Dict[str, Any]:
         slug = (adapter_name or "").strip().lower()
