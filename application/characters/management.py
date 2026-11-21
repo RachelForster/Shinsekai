@@ -679,6 +679,22 @@ class CharacterUseCase:
         else:
             self._state.config_manager.save_characters_config()
 
+    def _update_character_fields(self, name: str, **updates: Any) -> dict[str, Any]:
+        character = self._character(name)
+        char_id = getattr(character, "id", None)
+        patch_fn = (
+            getattr(self._characters, "patch", None)
+            if self._characters is not None
+            else None
+        )
+        if self._characters is not None and char_id and callable(patch_fn):
+            patch_fn(char_id, lambda current: current.model_copy(update=updates))
+        else:
+            for field, value in updates.items():
+                setattr(character, field, value)
+            self._persist_character(character)
+        return self._after_reload(name)
+
     def _save_emotion_tags(self, payload: dict[str, Any]) -> dict[str, Any]:
         name = str(payload.get("name") or "").strip()
         if not name:
@@ -686,17 +702,11 @@ class CharacterUseCase:
         emotion_tags = str(payload.get("emotionTags") or "")
         if not emotion_tags:
             raise ValueError("emotion tags are required")
-        character = self._character(name)
-        character.emotion_tags = emotion_tags
-        self._persist_character(character)
-        return self._after_reload(name)
+        return self._update_character_fields(name, emotion_tags=emotion_tags)
 
     def _save_sprite_scale(self, payload: dict[str, Any]) -> dict[str, Any]:
         name = str(payload.get("name") or "").strip()
         if not name:
             raise ValueError("character name is required")
         scale = float(payload.get("scale") or 0)
-        character = self._character(name)
-        character.sprite_scale = scale
-        self._persist_character(character)
-        return self._after_reload(name)
+        return self._update_character_fields(name, sprite_scale=scale)

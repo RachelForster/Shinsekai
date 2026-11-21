@@ -379,7 +379,10 @@ def _read_split_meta(template_dir: Path) -> tuple[str, str] | None:
         scenario = ""
     if not isinstance(system, str):
         system = ""
-    if scenario.strip() or system.strip():
+    default_scenario = data.get("defaultScenario") is True
+    if default_scenario:
+        scenario = ""
+    if default_scenario or scenario.strip() or system.strip():
         return scenario, system
     return None
 

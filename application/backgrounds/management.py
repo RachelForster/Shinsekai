@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+from threading import RLock
 from types import SimpleNamespace
 from typing import Any, Iterable
 
@@ -56,6 +57,8 @@ def parse_background_request(
 class BackgroundUseCase:
     """Single application entry point for background resource mutations."""
 
+    _mutation_lock = RLock()
+
     def __init__(
         self,
         state: Any,
@@ -86,7 +89,8 @@ class BackgroundUseCase:
             BackgroundOperation.IMPORT: self._import_packages,
             BackgroundOperation.EXPORT: self._export_package,
         }
-        return handlers[request.operation](request.payload)
+        with self._mutation_lock:
+            return handlers[request.operation](request.payload)
 
     def _background(self, name: str) -> Any:
         if self._backgrounds is not None:
@@ -145,23 +149,33 @@ class BackgroundUseCase:
         else:
             self._state.config_manager.save_background_config()
 
+    def _update_background_fields(self, name: str, **updates: Any) -> dict[str, Any]:
+        background = self._background(name)
+        bg_id = getattr(background, "id", None)
+        patch_fn = (
+            getattr(self._backgrounds, "patch", None)
+            if self._backgrounds is not None
+            else None
+        )
+        if self._backgrounds is not None and bg_id and callable(patch_fn):
+            patch_fn(bg_id, lambda current: current.model_copy(update=updates))
+        else:
+            for field, value in updates.items():
+                setattr(background, field, value)
+            self._persist_background(background)
+        return self._after_reload(name)
+
     def _save_image_tags(self, payload: dict[str, Any]) -> dict[str, Any]:
         name = str(payload.get("name") or "").strip()
         if not name:
             raise ValueError("background name is required")
-        background = self._background(name)
-        background.bg_tags = str(payload.get("bgTags") or "")
-        self._persist_background(background)
-        return self._after_reload(name)
+        return self._update_background_fields(name, bg_tags=str(payload.get("bgTags") or ""))
 
     def _save_bgm_tags(self, payload: dict[str, Any]) -> dict[str, Any]:
         name = str(payload.get("name") or "").strip()
         if not name:
             raise ValueError("background name is required")
-        background = self._background(name)
-        background.bgm_tags = str(payload.get("bgmTags") or "")
-        self._persist_background(background)
-        return self._after_reload(name)
+        return self._update_background_fields(name, bgm_tags=str(payload.get("bgmTags") or ""))
 
     def _delete(self, payload: dict[str, Any]) -> dict[str, Any]:
         name = str(payload.get("name") or "").strip()

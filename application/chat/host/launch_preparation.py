@@ -13,7 +13,6 @@ from ai.llm.template.integrations.localization import resolve_template_locale
 from application.chat.templates import (
     TEMP_SPLIT_META,
     _compose_runtime_template,
-    _effective_user_scenario,
     _history_id_from_scenario,
     _template_dir,
 )
@@ -57,7 +56,7 @@ class ChatLaunchPreparation:
         media_selection_mode: str = "indexed",
         use_current_template_for_history: bool = False,
     ) -> LaunchPlan | LaunchRejected:
-        effective_user_scenario = _effective_user_scenario(user_scenario)
+        raw_user_scenario = (user_scenario or "").strip()
         chat_session = getattr(state, "chat_session", {}) or {}
         player_name = str(chat_session.get("playerCharacter") or "")
         read_player_speech = bool(chat_session.get("readPlayerSpeech", False))
@@ -85,7 +84,11 @@ class ChatLaunchPreparation:
         (template_dir / "_temp.txt").write_text(template, encoding="utf-8")
         (template_dir / TEMP_SPLIT_META).write_text(
             json.dumps(
-                {"scenario": effective_user_scenario, "system": system_template},
+                {
+                    "scenario": raw_user_scenario,
+                    "system": system_template,
+                    "defaultScenario": not bool(raw_user_scenario),
+                },
                 ensure_ascii=False,
                 indent=2,
             ),

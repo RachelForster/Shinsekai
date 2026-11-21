@@ -727,3 +727,89 @@ def test_user_prompt_presets_use_app_stores_document_store_and_in_memory_port(tm
     with pytest.raises(ValueError, match="preset library payload must be an object"):
         _save_user_prompt_presets(mem_state, {"library": "bad"})
 
+
+def test_empty_scenario_split_meta_resumes_in_updated_ui_language(tmp_path):
+    import json
+    from application.chat.host.launch_preparation import ChatLaunchPreparation
+    from application.chat.templates import TEMP_SPLIT_META, _resume_template_parts
+    from config.schema import SystemConfig
+
+    project_root = tmp_path / "project"
+    template_dir = project_root / "data" / "character_templates"
+    history_dir = project_root / "data" / "chat_history"
+    main_py = project_root / "main.py"
+    template_dir.mkdir(parents=True)
+    history_dir.mkdir(parents=True)
+    main_py.write_text("# stub\n", encoding="utf-8")
+
+    sys_config = SystemConfig(ui_language="zh_CN")
+    config_manager = SimpleNamespace(
+        config=SimpleNamespace(
+            system_config=sys_config,
+            api_config=SimpleNamespace(tts_provider="gpt-sovits"),
+        ),
+        get_character_by_name=lambda _name: None,
+        save_system_config=lambda: None,
+    )
+    state = SimpleNamespace(
+        config_manager=config_manager,
+        template_dir_path=str(template_dir),
+        history_dir=str(history_dir),
+        chat_session={},
+    )
+    prep = ChatLaunchPreparation(
+        project_root=lambda: project_root,
+        app_root=lambda _s: project_root,
+        exe_candidates=lambda _s: [],
+        main_py=lambda: main_py,
+    )
+
+    prep.prepare(
+        state,
+        history_file=str(history_dir / "h1.json"),
+        init_sprite_path="",
+        room_id="",
+        selected_bg="",
+        system_template="",
+        use_cg=False,
+        user_scenario="",
+    )
+    assert "你扮演一个RPG系统。" in (template_dir / "_temp.txt").read_text(encoding="utf-8")
+    split_meta = json.loads((template_dir / TEMP_SPLIT_META).read_text(encoding="utf-8"))
+    assert split_meta == {"scenario": "", "system": "", "defaultScenario": True}
+
+    resumed = _resume_template_parts(state)
+    assert resumed == ("", "", "_temp.txt")
+
+    config_manager.config.system_config.ui_language = "en"
+    prep.prepare(
+        state,
+        history_file=str(history_dir / "h1.json"),
+        init_sprite_path="",
+        room_id="",
+        selected_bg="",
+        system_template=resumed[1],
+        use_cg=False,
+        user_scenario=resumed[0],
+    )
+    resumed_en = (template_dir / "_temp.txt").read_text(encoding="utf-8")
+    assert "You act as an RPG system." in resumed_en
+    assert "你扮演一个RPG系统。" not in resumed_en
+
+    config_manager.config.system_config.ui_language = "ja"
+    resumed_again = _resume_template_parts(state)
+    assert resumed_again == ("", "", "_temp.txt")
+    prep.prepare(
+        state,
+        history_file=str(history_dir / "h1.json"),
+        init_sprite_path="",
+        room_id="",
+        selected_bg="",
+        system_template=resumed_again[1],
+        use_cg=False,
+        user_scenario=resumed_again[0],
+    )
+    resumed_ja = (template_dir / "_temp.txt").read_text(encoding="utf-8")
+    assert "あなたはRPGシステムとして振る舞います。" in resumed_ja
+    assert "你扮演一个RPG系统。" not in resumed_ja
+
