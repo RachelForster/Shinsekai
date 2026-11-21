@@ -337,6 +337,9 @@ export const storyJaMessages: Record<StoryMessageKey, string> = {
   "template.presets.toastSaved": "プリセットを保存しました",
   "template.presets.toastDeleted": "プリセットを削除しました",
   "template.presets.saveFailed": "プリセットの保存に失敗しました",
+  "template.presets.loading": "プリセットライブラリを読み込み中…",
+  "template.presets.loadFailed":
+    "プリセットの読み込みに失敗しました。既存のプリセット上書きを防ぐため編集を無効化しています。",
   "template.systemDialog.title": "システムプロンプトと生成ルールを編集",
   "template.systemDialog.regenerate": "再生成",
   "template.systemDialog.rulesTitle": "プロンプト生成ルール",

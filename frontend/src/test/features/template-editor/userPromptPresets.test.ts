@@ -47,24 +47,27 @@ describe("userPromptPresets helpers", () => {
     );
   });
 
-  it("falls back to applied snapshots when a preset was deleted globally", () => {
+  it("prefers saved applied snapshots over edited live presets and tracks deleted status accurately", () => {
     const library = {
-      groups: ["Tone"],
-      presets: [{ id: "p1", name: "Live Tone", group: "Tone", color: "#5b8def", content: "Updated live text" }],
+      groups: ["Tone", "Rules"],
+      presets: [
+        { id: "p1", name: "Live Tone", group: "Tone", color: "#5b8def", content: "Updated live text" },
+        { id: "p3", name: "Fresh Rule", group: "Rules", color: "#46b98b", content: "Newly added text" },
+      ],
     };
     const fallback = [
       { id: "p1", name: "Old Tone", group: "Tone", content: "Old text" },
       { id: "p2", name: "Deleted Rule", group: "Rules", content: "Snapshot text" },
     ];
 
-    const resolved = resolveSelectedPresets(["p1", "p2", "missing"], library, fallback);
+    const resolved = resolveSelectedPresets(["p1", "p2", "p3", "missing"], library, fallback);
     expect(resolved).toEqual([
       {
         id: "p1",
-        name: "Live Tone",
+        name: "Old Tone",
         group: "Tone",
         color: "#5b8def",
-        content: "Updated live text",
+        content: "Old text",
         isDeleted: false,
       },
       {
@@ -74,11 +77,25 @@ describe("userPromptPresets helpers", () => {
         content: "Snapshot text",
         isDeleted: true,
       },
+      {
+        id: "p3",
+        name: "Fresh Rule",
+        group: "Rules",
+        color: "#46b98b",
+        content: "Newly added text",
+        isDeleted: false,
+      },
     ]);
     expect(toAppliedPresets(resolved)).toEqual([
-      { id: "p1", name: "Live Tone", group: "Tone", color: "#5b8def", content: "Updated live text" },
+      { id: "p1", name: "Old Tone", group: "Tone", color: "#5b8def", content: "Old text" },
       { id: "p2", name: "Deleted Rule", group: "Rules", content: "Snapshot text" },
+      { id: "p3", name: "Fresh Rule", group: "Rules", color: "#46b98b", content: "Newly added text" },
     ]);
+
+    const whilePending = resolveSelectedPresets(["p1", "p2"], { groups: [], presets: [] }, fallback, {
+      libraryLoaded: false,
+    });
+    expect(whilePending.every((item) => item.isDeleted === false)).toBe(true);
   });
 
   it("reorders preset ids cleanly by index and by id", () => {

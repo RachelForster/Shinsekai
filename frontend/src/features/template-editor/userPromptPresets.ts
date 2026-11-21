@@ -73,7 +73,9 @@ export function resolveSelectedPresets(
   selectedIds: readonly string[],
   library: UserPromptPresetLibrary,
   snapshotFallback: readonly AppliedUserPromptPreset[] = [],
+  options?: { libraryLoaded?: boolean },
 ): ResolvedUserPromptPreset[] {
+  const libraryLoaded = options?.libraryLoaded ?? true;
   const byId = new Map(library.presets.map((preset) => [preset.id, preset]));
   const fallbackById = new Map(snapshotFallback.map((preset) => [preset.id, preset]));
   const resolved: ResolvedUserPromptPreset[] = [];
@@ -85,6 +87,21 @@ export function resolveSelectedPresets(
     }
     seen.add(id);
     const live = byId.get(id);
+    const snapshot = fallbackById.get(id);
+    // Prefer saved snapshots on existing templates/sessions so editing a global
+    // preset later does not silently rewrite prior conversation prompts.
+    if (snapshot) {
+      const color = snapshot.color || live?.color;
+      resolved.push({
+        id: snapshot.id,
+        name: snapshot.name,
+        group: snapshot.group ?? live?.group ?? "",
+        ...(color ? { color } : {}),
+        content: snapshot.content,
+        isDeleted: libraryLoaded ? !live : false,
+      });
+      continue;
+    }
     if (live) {
       resolved.push({
         id: live.id,
@@ -93,18 +110,6 @@ export function resolveSelectedPresets(
         ...(live.color ? { color: live.color } : {}),
         content: live.content,
         isDeleted: false,
-      });
-      continue;
-    }
-    const snapshot = fallbackById.get(id);
-    if (snapshot) {
-      resolved.push({
-        id: snapshot.id,
-        name: snapshot.name,
-        group: snapshot.group ?? "",
-        ...(snapshot.color ? { color: snapshot.color } : {}),
-        content: snapshot.content,
-        isDeleted: true,
       });
     }
   }

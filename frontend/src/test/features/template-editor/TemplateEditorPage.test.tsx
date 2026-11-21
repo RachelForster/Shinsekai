@@ -1656,4 +1656,76 @@ describe("TemplateEditorPage", () => {
       ),
     );
   });
+
+  it("preserves saved preset snapshot when global preset with the same ID was edited, unless refreshed in dialog", async () => {
+    mockGetUserPromptPresets.mockResolvedValue({
+      groups: ["Style"],
+      presets: [{ id: "p-tone", name: "Light Novel v2", group: "Style", content: "Global v2 text" }],
+    });
+    mockGetConversationSession.mockResolvedValue({
+      ...savedChat,
+      baseScenario: "Saved base",
+      scenario: "Saved base\n\nSaved v1 text",
+      selectedPresetIds: ["p-tone"],
+      appliedPresets: [{ id: "p-tone", name: "Light Novel v1", group: "Style", content: "Saved v1 text" }],
+    });
+    mockReconfigureConversation.mockResolvedValue({ status: "idle", historyPath: savedChat.historyPath });
+
+    renderPage({ conversationId: "chosen", onApplied: vi.fn() });
+
+    const presetPromptsBar = document.querySelector('[data-section="preset-prompts"]') as HTMLElement;
+    expect(await within(presetPromptsBar).findByText("Light Novel v1")).toBeVisible();
+    expect(within(presetPromptsBar).queryByText("Deleted")).not.toBeInTheDocument();
+
+    await clickButton(screen.getByRole("button", { name: "Apply and continue" }));
+    await waitFor(() =>
+      expect(mockReconfigureConversation).toHaveBeenCalledWith(
+        "chosen",
+        expect.objectContaining({
+          scenario: "Saved base\n\nSaved v1 text",
+          editorSession: expect.objectContaining({
+            appliedPresets: [{ id: "p-tone", name: "Light Novel v1", group: "Style", content: "Saved v1 text" }],
+          }),
+        }),
+      ),
+    );
+
+    mockReconfigureConversation.mockClear();
+    const dialog = await openPresetPromptsDialog();
+    await clickButton(within(dialog).getByRole("button", { name: "Light Novel v2" }));
+    await clickButton(within(dialog).getByRole("button", { name: "Light Novel v2" }));
+    await clickButton(within(dialog).getByRole("button", { name: "Confirm" }));
+
+    expect(within(presetPromptsBar).getByText("Light Novel v2")).toBeVisible();
+    await clickButton(screen.getByRole("button", { name: "Apply and continue" }));
+    await waitFor(() =>
+      expect(mockReconfigureConversation).toHaveBeenCalledWith(
+        "chosen",
+        expect.objectContaining({
+          scenario: "Saved base\n\nGlobal v2 text",
+          editorSession: expect.objectContaining({
+            appliedPresets: [{ id: "p-tone", name: "Light Novel v2", group: "Style", content: "Global v2 text" }],
+          }),
+        }),
+      ),
+    );
+  });
+
+  it("disables preset library editing while presets query is pending or failed so existing presets cannot be overwritten", async () => {
+    mockGetUserPromptPresets.mockRejectedValue(new Error("Preset store offline"));
+
+    renderPage({ createOnly: true });
+    expect(await screen.findByText("Preset store offline")).toBeVisible();
+
+    const dialog = await openPresetPromptsDialog();
+    expect(
+      within(dialog).getByText(
+        "Failed to load preset library. Editing is disabled to prevent overwriting saved presets.",
+      ),
+    ).toBeVisible();
+    expect(within(dialog).getByRole("button", { name: "New preset" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Manage groups" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Confirm" })).toBeDisabled();
+    expect(mockSaveUserPromptPresets).not.toHaveBeenCalled();
+  });
 });

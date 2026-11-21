@@ -39,7 +39,11 @@ interface UserPromptPresetsDialogProps {
   selectedPresetIds: string[];
   appliedPresets: AppliedUserPromptPreset[];
   library: UserPromptPresetLibrary;
+  libraryReady?: boolean;
+  libraryLoading?: boolean;
+  libraryError?: string;
   savingLibrary?: boolean;
+  onRetryLibrary?: () => void;
   onSaveLibrary: (nextLibrary: UserPromptPresetLibrary) => Promise<UserPromptPresetLibrary>;
   onClose: () => void;
   onConfirm: (next: UserPromptCommit) => void;
@@ -55,13 +59,19 @@ export function UserPromptPresetsDialog({
   selectedPresetIds,
   appliedPresets,
   library,
+  libraryReady = true,
+  libraryLoading = false,
+  libraryError = "",
   savingLibrary = false,
+  onRetryLibrary,
   onSaveLibrary,
   onClose,
   onConfirm,
 }: UserPromptPresetsDialogProps) {
   const { t } = useI18n();
   const { showToast } = useToast();
+  const effectiveLibraryReady = libraryReady && !libraryLoading && !libraryError;
+  const mutationDisabled = savingLibrary || !effectiveLibraryReady;
 
   const [draftSelectedIds, setDraftSelectedIds] = useState<string[]>([]);
   const [draftSnapshots, setDraftSnapshots] = useState<AppliedUserPromptPreset[]>([]);
@@ -116,8 +126,11 @@ export function UserPromptPresetsDialog({
   const normalizedLibrary = useMemo(() => normalizeUserPromptPresetLibrary(library), [library]);
 
   const resolvedSelected = useMemo(
-    () => resolveSelectedPresets(draftSelectedIds, normalizedLibrary, draftSnapshots),
-    [draftSelectedIds, draftSnapshots, normalizedLibrary],
+    () =>
+      resolveSelectedPresets(draftSelectedIds, normalizedLibrary, draftSnapshots, {
+        libraryLoaded: effectiveLibraryReady,
+      }),
+    [draftSelectedIds, draftSnapshots, effectiveLibraryReady, normalizedLibrary],
   );
   const selectedIdSet = useMemo(() => new Set(draftSelectedIds), [draftSelectedIds]);
 
@@ -153,9 +166,11 @@ export function UserPromptPresetsDialog({
     setDraftSelectedIds((current) =>
       current.includes(presetId) ? current.filter((id) => id !== presetId) : [...current, presetId],
     );
+    setDraftSnapshots((current) => current.filter((item) => item.id !== presetId));
   };
 
   const openCreatePreset = () => {
+    if (!effectiveLibraryReady) return;
     setManageGroupsOpen(false);
     setPresetEditorMode("create");
     setEditingPresetId("");
@@ -168,6 +183,7 @@ export function UserPromptPresetsDialog({
   };
 
   const openEditPreset = (preset: UserPromptPreset) => {
+    if (!effectiveLibraryReady) return;
     setManageGroupsOpen(false);
     setPresetEditorMode("edit");
     setEditingPresetId(preset.id);
@@ -180,6 +196,7 @@ export function UserPromptPresetsDialog({
   };
 
   const handleSavePreset = async () => {
+    if (!effectiveLibraryReady) return;
     const trimmedName = formName.trim();
     const trimmedContent = formContent.trim();
     const targetGroup = formGroupChoice === NEW_GROUP_SENTINEL ? formNewGroup.trim() : formGroupChoice.trim();
@@ -243,6 +260,8 @@ export function UserPromptPresetsDialog({
       await onSaveLibrary(normalizeUserPromptPresetLibrary({ groups: nextGroups, presets: nextPresets }));
       if (presetEditorMode === "create" && savedId) {
         setDraftSelectedIds((current) => (current.includes(savedId) ? current : [...current, savedId]));
+      } else if (presetEditorMode === "edit" && editingPresetId) {
+        setDraftSnapshots((current) => current.filter((item) => item.id !== editingPresetId));
       }
       setPresetEditorMode("none");
       setEditingPresetId("");
@@ -254,6 +273,7 @@ export function UserPromptPresetsDialog({
   };
 
   const handleDeletePreset = async (preset: UserPromptPreset) => {
+    if (!effectiveLibraryReady) return;
     if (!window.confirm(t("template.presets.deleteConfirm", { name: preset.name }))) {
       return;
     }
@@ -271,6 +291,7 @@ export function UserPromptPresetsDialog({
   };
 
   const handleAddGroup = async () => {
+    if (!effectiveLibraryReady) return;
     const trimmed = newGroupInput.trim();
     if (!trimmed) {
       setGroupError(t("template.presets.groupValidationRequired"));
@@ -295,6 +316,7 @@ export function UserPromptPresetsDialog({
   };
 
   const handleConfirmRenameGroup = async (oldGroup: string) => {
+    if (!effectiveLibraryReady) return;
     const trimmed = renameGroupValue.trim();
     if (!trimmed) {
       setGroupError(t("template.presets.groupValidationRequired"));
@@ -313,6 +335,9 @@ export function UserPromptPresetsDialog({
     );
     try {
       await onSaveLibrary(normalizeUserPromptPresetLibrary({ groups: nextGroups, presets: nextPresets }));
+      setDraftSnapshots((current) =>
+        current.map((item) => (item.group === oldGroup ? { ...item, group: trimmed } : item)),
+      );
       if (activeGroup === oldGroup) {
         setActiveGroup(trimmed);
       }
@@ -325,12 +350,14 @@ export function UserPromptPresetsDialog({
   };
 
   const handleDeleteGroup = async (groupName: string) => {
+    if (!effectiveLibraryReady) return;
     const nextGroups = normalizedLibrary.groups.filter((group) => group !== groupName);
     const nextPresets = normalizedLibrary.presets.map((preset) =>
       preset.group === groupName ? { ...preset, group: "" } : preset,
     );
     try {
       await onSaveLibrary(normalizeUserPromptPresetLibrary({ groups: nextGroups, presets: nextPresets }));
+      setDraftSnapshots((current) => current.map((item) => (item.group === groupName ? { ...item, group: "" } : item)));
       if (activeGroup === groupName) {
         setActiveGroup(GROUP_ALL);
       }
@@ -341,6 +368,7 @@ export function UserPromptPresetsDialog({
   };
 
   const handleMoveGroup = async (index: number, delta: number) => {
+    if (!effectiveLibraryReady) return;
     const nextGroups = reorderPresetIds(normalizedLibrary.groups, index, index + delta);
     try {
       await onSaveLibrary(normalizeUserPromptPresetLibrary({ groups: nextGroups, presets: normalizedLibrary.presets }));
@@ -368,7 +396,7 @@ export function UserPromptPresetsDialog({
             {t("common.cancel")}
           </Button>
           <Button
-            disabled={savingLibrary}
+            disabled={mutationDisabled}
             icon={<Check aria-hidden className="button__icon" />}
             onClick={handleConfirm}
             variant="primary"
@@ -386,7 +414,7 @@ export function UserPromptPresetsDialog({
           <h3 className="template-dialog-subsection__title">{t("template.presets.sectionTitle")}</h3>
           <div className="template-dialog-toolbar__actions">
             <Button
-              disabled={savingLibrary}
+              disabled={mutationDisabled}
               icon={<Plus aria-hidden className="button__icon" />}
               onClick={openCreatePreset}
               variant="ghost"
@@ -394,7 +422,7 @@ export function UserPromptPresetsDialog({
               {t("template.presets.newPreset")}
             </Button>
             <Button
-              disabled={savingLibrary}
+              disabled={mutationDisabled}
               icon={<FolderCog aria-hidden className="button__icon" />}
               onClick={() => {
                 setPresetEditorMode("none");
@@ -636,7 +664,18 @@ export function UserPromptPresetsDialog({
         ) : null}
 
         <div aria-label={t("template.presets.sectionTitle")} className="template-dialog-chip-grid" role="group">
-          {visiblePresets.length === 0 ? (
+          {libraryLoading ? (
+            <p className="template-dialog-empty">{t("template.presets.loading")}</p>
+          ) : libraryError ? (
+            <div className="template-dialog-empty">
+              <p className="field-error">{libraryError}</p>
+              {onRetryLibrary ? (
+                <Button onClick={onRetryLibrary} variant="ghost">
+                  {t("common.retry")}
+                </Button>
+              ) : null}
+            </div>
+          ) : visiblePresets.length === 0 ? (
             <p className="template-dialog-empty">{t("template.presets.empty")}</p>
           ) : (
             visiblePresets.map((preset) => {
@@ -659,6 +698,7 @@ export function UserPromptPresetsDialog({
                   <button
                     aria-label={`${t("template.presets.editPreset")} ${preset.name}`}
                     className="template-preset-edit-btn"
+                    disabled={mutationDisabled}
                     onClick={() => openEditPreset(preset)}
                     title={t("template.presets.editPreset")}
                     type="button"
@@ -675,7 +715,13 @@ export function UserPromptPresetsDialog({
           <div className="template-preset-order-box">
             <div className="template-preset-order-box__header">
               <span className="template-panel__label">{t("template.presets.orderLabel")}</span>
-              <Button onClick={() => setDraftSelectedIds([])} variant="ghost">
+              <Button
+                onClick={() => {
+                  setDraftSelectedIds([]);
+                  setDraftSnapshots([]);
+                }}
+                variant="ghost"
+              >
                 {t("template.presets.clearSelected")}
               </Button>
             </div>
@@ -753,7 +799,10 @@ export function UserPromptPresetsDialog({
                       <button
                         aria-label={t("template.presets.removeSelected", { name: preset.name })}
                         className="template-preset-order-item__btn template-preset-order-item__remove"
-                        onClick={() => setDraftSelectedIds((current) => current.filter((id) => id !== preset.id))}
+                        onClick={() => {
+                          setDraftSelectedIds((current) => current.filter((id) => id !== preset.id));
+                          setDraftSnapshots((current) => current.filter((item) => item.id !== preset.id));
+                        }}
                         type="button"
                       >
                         <X aria-hidden size={13} />

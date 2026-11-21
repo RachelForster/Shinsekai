@@ -329,6 +329,8 @@ export const storyZhCNMessages = {
   "template.presets.toastSaved": "预设已保存",
   "template.presets.toastDeleted": "预设已删除",
   "template.presets.saveFailed": "预设保存失败",
+  "template.presets.loading": "正在加载预设库…",
+  "template.presets.loadFailed": "预设库加载失败，为避免覆盖已有预设已暂停编辑。",
   "template.systemDialog.title": "编辑系统提示词与生成规则",
   "template.systemDialog.regenerate": "重新生成",
   "template.systemDialog.rulesTitle": "提示词生成规则",

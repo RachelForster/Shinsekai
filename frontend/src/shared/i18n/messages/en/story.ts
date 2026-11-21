@@ -341,6 +341,9 @@ export const storyEnMessages: Record<StoryMessageKey, string> = {
   "template.presets.toastSaved": "Preset saved",
   "template.presets.toastDeleted": "Preset deleted",
   "template.presets.saveFailed": "Failed to save preset",
+  "template.presets.loading": "Loading preset library…",
+  "template.presets.loadFailed":
+    "Failed to load preset library. Editing is disabled to prevent overwriting saved presets.",
   "template.systemDialog.title": "Edit system prompt & generation rules",
   "template.systemDialog.regenerate": "Regenerate",
   "template.systemDialog.rulesTitle": "Prompt generation rules",
