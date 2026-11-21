@@ -12,7 +12,7 @@ import type { CharacterMemoryImportPreview } from "./characterTypes";
 import type { ChatLaunchPayload, ChatSnapshot, ChatStageEvent, ConversationSummary } from "./chatTypes";
 import type { AppConfig } from "./configTypes";
 import type { TaskProgressOptions, TaskSnapshot } from "./taskTypes";
-import type { TemplateLaunchSession, TemplateSummary } from "./workspaceTypes";
+import type { TemplateLaunchSession, TemplateSummary, UserPromptPresetLibrary } from "./workspaceTypes";
 
 const bundledChatThemeAssets = import.meta.glob<string>(
   "../../../../../assets/chat_ui_themes/**/*.{gif,jpeg,jpg,mp3,ogg,otf,png,svg,ttf,wav,webp,woff,woff2}",
@@ -170,6 +170,8 @@ export interface BrowserPreviewContext {
   setTemplates: (next: TemplateSummary[]) => void;
   getTemplateSession: () => TemplateLaunchSession | null;
   setTemplateSession: (next: TemplateLaunchSession | null) => void;
+  getUserPromptPresets: () => UserPromptPresetLibrary;
+  setUserPromptPresets: (next: UserPromptPresetLibrary) => void;
   cachedModelAssets: Set<string>;
   knowledgeData: Map<string, KnowledgePreviewRecord>;
   getActiveThemeId: () => string;
@@ -189,6 +191,7 @@ export function createBrowserPreviewContext(): BrowserPreviewContext {
   const conversations = new Map<string, { summary: ConversationSummary; payload: ChatLaunchPayload }>();
   let activeThemeId = DEFAULT_CHAT_THEME_ID;
   let templateSession: TemplateLaunchSession | null = null;
+  let userPromptPresets: UserPromptPresetLibrary = { groups: [], presets: [] };
   const cachedModelAssets = new Set<string>();
   const knowledgeData = new Map<string, KnowledgePreviewRecord>();
   knowledgeData.set("preview-knowledge", {
@@ -301,6 +304,10 @@ export function createBrowserPreviewContext(): BrowserPreviewContext {
     getTemplateSession: () => templateSession,
     setTemplateSession: (next) => {
       templateSession = next;
+    },
+    getUserPromptPresets: () => userPromptPresets,
+    setUserPromptPresets: (next) => {
+      userPromptPresets = next;
     },
     cachedModelAssets,
     knowledgeData,

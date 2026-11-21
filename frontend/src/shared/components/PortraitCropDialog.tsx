@@ -10,6 +10,7 @@ export interface PortraitCropDialogProps {
   character: Character | null;
   open: boolean;
   initialSpriteIndex?: number;
+  saveSelectedAsDefaultPortrait?: boolean;
   title?: string;
   saving?: boolean;
   error?: string;
@@ -21,6 +22,7 @@ export function PortraitCropDialog({
   character,
   open,
   initialSpriteIndex = 0,
+  saveSelectedAsDefaultPortrait = false,
   title,
   saving = false,
   error,
@@ -80,7 +82,8 @@ export function PortraitCropDialog({
             disabled={saving || !editing}
             onClick={() => {
               if (editing) {
-                void onSave(editing);
+                const payload = saveSelectedAsDefaultPortrait ? { ...editing, portrait_sprite_index: index } : editing;
+                void onSave(payload);
               }
             }}
             variant="primary"

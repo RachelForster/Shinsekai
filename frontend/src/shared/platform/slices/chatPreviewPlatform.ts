@@ -658,15 +658,19 @@ export function createChatPreviewPlatform(ctx: BrowserPreviewContext): ChatPlatf
       const historyPath = payload.resetHistory
         ? `${historyBase}-quick-restart-${(previewHistoryCounter += 1)}`
         : requestedHistoryPath;
+      const playerIndex = player?.sprites?.length
+        ? Math.min(Math.max(0, player.portrait_sprite_index ?? 0), player.sprites.length - 1)
+        : 0;
+      const playerSprite = player?.sprites?.[playerIndex];
       const next: ChatSnapshot = {
         ...chat,
         backgroundPath: background?.sprites[0]?.path,
         userDisplayName: player?.name || "你",
-        playerPortrait: player?.sprites[0]
+        playerPortrait: playerSprite
           ? {
               characterName: player.name,
-              url: player.sprites[0].path,
-              crop: player.sprites[0].portrait_crop ?? player.portrait_crop ?? { x: 0.5, y: 0.2, zoom: 1 },
+              url: playerSprite.path,
+              crop: playerSprite.portrait_crop ?? player.portrait_crop ?? { x: 0.5, y: 0.2, zoom: 1 },
             }
           : null,
         characterName: character?.name,
@@ -775,17 +779,21 @@ export function createChatPreviewPlatform(ctx: BrowserPreviewContext): ChatPlatf
       );
       const background = config.background_list.find((item) => item.name === templateSession?.background);
       const historyPath = templateSession?.historyPath || chat.historyPath || "./data/chat_history/preview";
+      const playerIndex = player?.sprites?.length
+        ? Math.min(Math.max(0, player.portrait_sprite_index ?? 0), player.sprites.length - 1)
+        : 0;
+      const playerSprite = player?.sprites?.[playerIndex];
       const next: ChatSnapshot = {
         ...chat,
         backgroundPath: background?.sprites[0]?.path ?? chat.backgroundPath,
         userDisplayName: player?.name || "你",
-        playerPortrait: player?.sprites[0]
-          ? chat.playerPortrait?.characterName === player.name
+        playerPortrait: playerSprite
+          ? chat.playerPortrait?.characterName === player.name && chat.playerPortrait.url === playerSprite.path
             ? chat.playerPortrait
             : {
                 characterName: player.name,
-                url: player.sprites[0].path,
-                crop: player.sprites[0].portrait_crop ?? player.portrait_crop ?? { x: 0.5, y: 0.2, zoom: 1 },
+                url: playerSprite.path,
+                crop: playerSprite.portrait_crop ?? player.portrait_crop ?? { x: 0.5, y: 0.2, zoom: 1 },
               }
           : null,
         characterName: character?.name ?? chat.characterName,

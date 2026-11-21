@@ -5,13 +5,7 @@
   --font-settings: "Segoe UI", "Microsoft YaHei", "Microsoft Yahei", "微软雅黑", Arial, sans-serif;
   --font-chat: "Microsoft YaHei", "SimHei", Arial, sans-serif;
 
-  /* ── Font sizes ── */
-  --text-xs: 11px;
-  --text-sm: 12px;
-  --text-base: 13px;
-  --text-md: 14px;
-  --text-lg: 15px;
-  --text-xl: 18px;
+  /* Font-size tokens (--text-*, --desktop-text-*, --mobile-text-*) live in tokens.css alongside spacing tokens. */
 
   /* ── Font weights ── */
   --font-normal: 400;

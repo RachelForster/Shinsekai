@@ -36,6 +36,8 @@ describe("chat stage runtime config", () => {
       spriteFramings: {
         " character:mio ": { heightRatio: 0.5, verticalPosition: 0.25 },
         "character:ren": { heightRatio: -2, verticalPosition: 4 },
+        "character:yui": { heightRatio: 0.5, verticalPosition: -0.4 },
+        "character:sora": { heightRatio: 0.5, verticalPosition: -3 },
         bad: null,
         invalid: "bad",
         "": { heightRatio: 0.3 },
@@ -44,6 +46,8 @@ describe("chat stage runtime config", () => {
     expect(config.spriteFramings).toEqual({
       "character:mio": { heightRatio: 0.5, verticalPosition: 0.25 },
       "character:ren": { heightRatio: 0.2, verticalPosition: 1 },
+      "character:yui": { heightRatio: 0.5, verticalPosition: -0.4 },
+      "character:sora": { heightRatio: 0.5, verticalPosition: -1 },
     });
     writeChatStageRuntimeConfig(config);
     expect(readChatStageRuntimeConfig().spriteFramings).toEqual(config.spriteFramings);

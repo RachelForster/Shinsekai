@@ -2807,11 +2807,14 @@ describe("http platform", () => {
     expect(openMock).toHaveBeenCalledWith("https://example.test/community", "_blank", "noopener,noreferrer");
   });
 
-  it("maps template list, generate, and save endpoints", async () => {
+  it("maps template list, generate, presets, and save endpoints", async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith("/api/templates") && !init?.method) {
         return mockJsonResponse(sampleTemplates);
+      }
+      if (url.endsWith("/api/templates/presets")) {
+        return mockJsonResponse({ groups: ["Tone"], presets: [] });
       }
       return mockJsonResponse(sampleTemplates[0]);
     });
@@ -2826,11 +2829,15 @@ describe("http platform", () => {
       scenario: "scene",
     });
     await platform.templates.save({ ...sampleTemplates[0], name: "Custom" });
+    await platform.templates.getPresets();
+    await platform.templates.savePresets({ groups: ["Tone"], presets: [] });
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       "http://127.0.0.1:8787/api/templates",
       "http://127.0.0.1:8787/api/templates/generate",
       "http://127.0.0.1:8787/api/templates",
+      "http://127.0.0.1:8787/api/templates/presets",
+      "http://127.0.0.1:8787/api/templates/presets",
     ]);
     expect(fetchMock.mock.calls[1][1]).toEqual(
       expect.objectContaining({

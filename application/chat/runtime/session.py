@@ -622,7 +622,9 @@ class StreamingChatSession(_BaseChatSession):
         if player_name:
             character = self.config.get_character_by_name(player_name)
             if character is not None and character.sprites:
-                self.ui_updates.update_player_portrait(player_name, 0)
+                raw_idx = int(getattr(character, "portrait_sprite_index", 0) or 0)
+                sprite_idx = raw_idx if 0 <= raw_idx < len(character.sprites) else 0
+                self.ui_updates.update_player_portrait(player_name, sprite_idx)
         self._present_initial_ui()
         self.capabilities.on_session_ready()
         self.initialization.complete()

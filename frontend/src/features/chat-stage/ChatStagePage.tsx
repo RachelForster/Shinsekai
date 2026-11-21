@@ -21,6 +21,12 @@ import type { ChatAttachmentInput, ChatOption, ChatSendPayload, ChatTurnOptions 
 import { normalizeThemeColor } from "../../shared/theme/appTheme";
 import { DEFAULT_TYPEWRITER_CPS } from "../../shared/theme/chatTheme";
 import { AlertDialog, useToast } from "../../shared/ui";
+import {
+  getRuntimeTarget,
+  isStandaloneRuntimeActive,
+  RUNTIME_MODE_CHANGE_EVENT,
+} from "../../shared/platform/runtimeTarget";
+import { RuntimeModeDialog } from "../runtime-mode/RuntimeModeDialog";
 import { closeChatRuntime } from "../chat-startup/runtimeState";
 import { ChatSoundPlayer, type ChatSoundPlayerHandle } from "./audio/ChatSoundPlayer";
 import type { VoicePlaybackSignal } from "./audio/soundPlayer";
@@ -165,6 +171,7 @@ export function ChatStagePage() {
   const soundPlayerRef = useRef<ChatSoundPlayerHandle>(null);
   const historyReplayGenerationRef = useRef(0);
   const [conversationEditorOpen, setConversationEditorOpen] = useState(false);
+  const [runtimeModeOpen, setRuntimeModeOpen] = useState(false);
   const [dialogControlsLocked, setDialogControlsLocked] = useState(false);
   const dialogToolbarLayerRef = useRef<HTMLDivElement>(null);
   const [runtimeConfig, setRuntimeConfig] = useState(readChatStageRuntimeConfig);
@@ -275,6 +282,16 @@ export function ChatStagePage() {
   const viewModel = useMemo(() => buildChatStageViewModel(state), [state]);
   const { recentInputs, rememberInput } = useRecentUserInputs();
   const remoteMobileAccess = isRemoteMobileAccessPage();
+  const [standalone, setStandalone] = useState(() => isStandaloneRuntimeActive());
+  useEffect(() => {
+    const updateStandalone = () => setStandalone(isStandaloneRuntimeActive());
+    window.addEventListener(RUNTIME_MODE_CHANGE_EVENT, updateStandalone);
+    window.addEventListener("storage", updateStandalone);
+    return () => {
+      window.removeEventListener(RUNTIME_MODE_CHANGE_EVENT, updateStandalone);
+      window.removeEventListener("storage", updateStandalone);
+    };
+  }, []);
   const stageSprites = useMemo(
     () => (remoteMobileAccess ? limitChatStageSpritesToSlots(viewModel.sprites, 1) : viewModel.sprites),
     [remoteMobileAccess, viewModel.sprites],
@@ -1020,13 +1037,13 @@ export function ChatStagePage() {
       onOpenHistory={openHistoryDialog}
       onOpenPluginPage={openPluginPage}
       onOpenScreenSettings={() => setScreenSettingsOpen(true)}
-      onToggleScreenShare={isRemoteMobileAccessPage() ? undefined : toggleScreenShare}
+      onToggleScreenShare={isRemoteMobileAccessPage() || standalone ? undefined : toggleScreenShare}
       onTurnOptionsChange={updateTurnOptions}
       outfitCatalog={state.outfitCatalog}
       outfits={state.outfits}
       screenShareStarting={screenShareStarting}
       screenSharing={screenSharing}
-      showAsrControl={!viewModel.layers.input}
+      showAsrControl={!viewModel.layers.input && !standalone}
       turnOptions={state.turnOptions}
       turnState={state.turnState}
     />
@@ -1039,6 +1056,7 @@ export function ChatStagePage() {
         ref={stageRef}
         className="chat-stage"
         data-mini-avatar={miniAvatarActive ? "true" : "false"}
+        data-standalone={standalone ? "true" : "false"}
         data-replaying={activeReplay || state.replay ? "true" : undefined}
         data-replay-recording={capturingReplay ? "true" : undefined}
         data-background={transparentBackground ? "transparent" : "media"}
@@ -1060,6 +1078,12 @@ export function ChatStagePage() {
           onCloseDesktopWindow={closeSurface}
           onEnterMiniAvatar={remoteMobileAccess ? undefined : enterMiniAvatarMode}
           onOpenPluginPage={openPluginPage}
+          onOpenRuntimeMode={!isTauriDesktop() ? () => setRuntimeModeOpen(true) : undefined}
+          onOpenWorkspace={
+            !isTauriDesktop()
+              ? () => navigate(getRuntimeTarget() === "toy" ? "/settings/characters" : "/settings/templates")
+              : undefined
+          }
           onThemePickerOpenChange={setThemePickerOpen}
           onTokenUsageOpenChange={setTokenUsageOpen}
           standaloneDesktopWindow={standaloneDesktopWindow}
@@ -1446,6 +1470,7 @@ export function ChatStagePage() {
         open={confirmRevertUserIndex != null}
         title={t("chat.history.revertConfirmTitle")}
       />
+      {runtimeModeOpen ? <RuntimeModeDialog onClose={() => setRuntimeModeOpen(false)} open={runtimeModeOpen} /> : null}
     </>
   );
 }

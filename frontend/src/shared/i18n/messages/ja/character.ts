@@ -12,6 +12,10 @@ export const characterJaMessages: Record<CharacterMessageKey, string> = {
   "player.speechHint":
     "AI が生成した台詞を含む主控人物の音声を制御します。無効でも台詞は表示されます。行動や心理描写は読み上げません。",
   "player.adjust": "主控人物の顔画像を調整",
+  "player.uploadAvatar": "アイコンを追加",
+  "player.avatarLabel": "主控アイコン",
+  "player.noSpritesHint": "顔画像がまだありません。「アイコンを追加」から画像を選択してください。",
+  "player.avatarUploaded": "主控アイコンを更新しました",
   "player.reset": "切り抜きをリセット",
   "player.sprite": "表情の立ち絵",
   "player.dragHint": "ドラッグかスライダーで顔の位置を調整します。立ち絵を切り替える前に保存してください。",

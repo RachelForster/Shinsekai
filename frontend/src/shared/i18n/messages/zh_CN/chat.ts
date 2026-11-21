@@ -198,7 +198,7 @@ export const chatZhCNMessages = {
   "chat.config.spriteScale": "立绘显示缩放",
   "chat.config.spriteFraming": "立绘取景",
   "chat.config.spriteFramingHint":
-    "按角色记住本机取景，静态立绘和所有模型格式通用。显示高度越小，画面越近；上下位置从顶部到下方调整，不会修改原文件。",
+    "按角色记住本机取景，静态立绘和所有模型格式通用。显示高度越小，画面越近；上下位置可在 -100% 到 100% 之间调节，不会修改原文件。",
   "chat.config.spriteHeightRatio": "显示高度比例",
   "chat.config.spriteFramePosition": "上下取景位置",
   "chat.config.spriteFrameFull": "全身",

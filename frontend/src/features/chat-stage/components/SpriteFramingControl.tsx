@@ -1,6 +1,7 @@
 import {
   defaultVisualFraming,
   normalizeVisualFraming,
+  visualFramingMinPosition,
   visualFramingMinRatio,
   type VisualFraming,
 } from "../../../modules/character-visual";
@@ -25,6 +26,7 @@ export function SpriteFramingControl({
 }) {
   const { t } = useI18n();
   const framing = normalizeVisualFraming(value);
+  const positionPercent = Math.round(framing.verticalPosition * 100) || 0;
   return (
     <div
       className="chat-config-dialog__sprite-framing"
@@ -70,17 +72,17 @@ export function SpriteFramingControl({
             aria-label={`${t("chat.config.spriteFramePosition")}: ${label}`}
             className="chat-config-dialog__range"
             type="range"
-            min={0}
+            min={visualFramingMinPosition * 100}
             max={100}
             step={1}
             disabled={framing.heightRatio === 1}
-            value={Math.round(framing.verticalPosition * 100)}
+            value={positionPercent}
             onChange={(event) =>
               onChange(normalizeVisualFraming({ ...framing, verticalPosition: Number(event.target.value) / 100 }))
             }
           />
           <span className="chat-config-dialog__range-value">
-            {t("chat.config.scaleValue", { value: Math.round(framing.verticalPosition * 100) })}
+            {t("chat.config.scaleValue", { value: positionPercent })}
           </span>
         </span>
       </label>

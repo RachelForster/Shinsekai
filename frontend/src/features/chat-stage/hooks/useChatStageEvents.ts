@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch } from "react";
 
 import { getChatSnapshot, subscribeChatEvents } from "../../../entities/chat/repository";
+import { onPlatformModeChange } from "../../../shared/platform/platform";
 import type { ChatSnapshot } from "../../../shared/platform/types";
-import type { ChatStageAction } from "../chatState";
+import { emptyChatState, type ChatStageAction } from "../chatState";
 
 export function useChatStageEvents({
   dispatch,
@@ -33,6 +34,20 @@ export function useChatStageEvents({
     },
     [dispatch],
   );
+
+  useEffect(() => {
+    return onPlatformModeChange(() => {
+      // Unsubscribe from the previous platform and reset sequence state before rebinding.
+      cancelRef.current?.();
+      eventSeqRef.current = 0;
+      dispatch({
+        type: "replaceSession",
+        snapshot: { ...emptyChatState, effectImage: null, eventSeq: 0 },
+        receivedAt: performance.now(),
+      });
+      setSubscriptionRevision((revision) => revision + 1);
+    });
+  }, [dispatch]);
 
   useEffect(() => {
     let mounted = true;

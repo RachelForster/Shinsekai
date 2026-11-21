@@ -8,6 +8,7 @@ import { ChatThemeProvider } from "../../features/chat-stage/theme/ChatThemeProv
 import { queryClient } from "../../shared/async/queryClient";
 import { AppStateProvider, useAppState } from "../../shared/app-state/AppState";
 import { I18nProvider } from "../../shared/i18n";
+import { onPlatformModeChange } from "../../shared/platform/platform";
 import { applyThemeColor } from "../../shared/theme/appTheme";
 import { FileBrowserProvider, ToastProvider } from "../../shared/ui";
 
@@ -24,6 +25,13 @@ export function AppRuntimeProviders({ children }: { children: ReactNode }) {
   useEffect(() => {
     applyThemeColor(configQuery.data?.system_config?.theme_color);
   }, [configQuery.data?.system_config?.theme_color]);
+
+  useEffect(() => {
+    return onPlatformModeChange(() => {
+      queryClient.clear();
+      void queryClient.invalidateQueries();
+    });
+  }, []);
 
   return (
     <FileBrowserProvider browse={browseFiles}>

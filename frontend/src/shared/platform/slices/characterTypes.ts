@@ -91,6 +91,7 @@ export interface Character {
   display_name?: string;
   sprite_transitions?: SpriteTransition[];
   portrait_crop?: PortraitCrop;
+  portrait_sprite_index?: number;
   name: string;
   color: string;
   sprite_prefix: string;

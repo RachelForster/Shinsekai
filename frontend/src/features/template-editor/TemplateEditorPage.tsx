@@ -1,14 +1,11 @@
-import { CharacterPicker } from "./CharacterPicker";
-import { PlayerCharacterSettings } from "./PlayerCharacterSettings";
-import { resolveConversationTitle } from "../../entities/chat/conversationTitle";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { updateCharacterRoles } from "./characterRoles";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Play, RotateCw, Save, Sparkles } from "lucide-react";
+import { Pencil, Play, RotateCcw, RotateCw, Save } from "lucide-react";
 
 import { backgroundsQueryKey, listBackgrounds } from "../../entities/background/repository";
 import { charactersQueryKey, ensureCharacterBriefs, listCharacters } from "../../entities/character/repository";
+import { resolveConversationTitle } from "../../entities/chat/conversationTitle";
 import { effectsQueryKey, listEffects } from "../../entities/effect/repository";
 import {
   conversationsQueryKey,
@@ -27,14 +24,22 @@ import { configQueryKey, getAppConfig, saveSystemConfig } from "../../entities/c
 import {
   generateTemplate,
   getTemplateSession,
+  getUserPromptPresets,
   listTemplates,
   saveTemplate,
   saveTemplateSession,
+  saveUserPromptPresets,
   templatesQueryKey,
+  userPromptPresetsQueryKey,
   type TemplateSummary,
+  type UserPromptPresetLibrary,
 } from "../../entities/template/repository";
 import { TRANSPARENT_BACKGROUND_NAME } from "../../shared/constants";
-import { DEFAULT_PLAYER_OPTIONS, normalizePlayerOptions } from "../../shared/playerCharacterOptions";
+import {
+  DEFAULT_PLAYER_OPTIONS,
+  getCharacterDisplayName,
+  normalizePlayerOptions,
+} from "../../shared/playerCharacterOptions";
 import { showChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";
 import { platformErrorCode } from "../../shared/platform/errors";
@@ -53,7 +58,6 @@ import {
   Button,
   EmptyState,
   FilePicker,
-  NumberInput,
   QueryErrorState,
   Select,
   Switch,
@@ -75,12 +79,21 @@ import {
   templateGenerationKey,
   templateVoiceLanguages,
 } from "./templateFlow";
-import { CharacterRoleStatus } from "./CharacterRoleStatus";
+import { CharacterConfigDialog, type CharacterConfigCommit } from "./CharacterConfigDialog";
 import { PrimaryCharacterDialog } from "./PrimaryCharacterDialog";
-import { SemanticMediaSwitch } from "./SemanticMediaSwitch";
+import { useSemanticMediaController } from "./SemanticMediaSwitch";
+import { SystemPromptDialog, type SystemPromptCommit, type SystemPromptRulesDraft } from "./SystemPromptDialog";
+import { UserPromptPresetsDialog, type UserPromptCommit } from "./UserPromptPresetsDialog";
+import {
+  composeScenarioWithPresets,
+  normalizeUserPromptPresetLibrary,
+  resolveSelectedPresets,
+  toAppliedPresets,
+} from "./userPromptPresets";
 import "./TemplateEditorPage.css";
 
 const voiceLanguages = templateVoiceLanguages;
+const MAX_VISIBLE_PRESET_CHIPS = 6;
 
 function characterOutfitGroups(character: {
   default_sprite_group?: string | null;
@@ -110,6 +123,36 @@ function characterOutfitGroups(character: {
   return ordered;
 }
 
+function buildSystemSyncKey(input: {
+  characterKey: string;
+  backgroundName: string;
+  voiceLanguage: string;
+  useCg: boolean;
+  useEffect: boolean;
+  useTranslation: boolean;
+  useCot: boolean;
+  useChoice: boolean;
+  useNarration: boolean;
+  useStat: boolean;
+  maxSpeechChars: number;
+  maxDialogItems: number;
+}) {
+  return [
+    input.characterKey,
+    input.backgroundName,
+    input.voiceLanguage,
+    input.useCg,
+    input.useEffect,
+    input.useTranslation,
+    input.useCot,
+    input.useChoice,
+    input.useNarration,
+    input.useStat,
+    input.maxSpeechChars,
+    input.maxDialogItems,
+  ].join("\n::");
+}
+
 export function TemplateEditorPage({
   createOnly = false,
   conversationId,
@@ -131,6 +174,7 @@ export function TemplateEditorPage({
   const { showToast } = useToast();
   const { t } = useI18n();
   const templatesQuery = useQuery({ queryFn: listTemplates, queryKey: templatesQueryKey });
+  const presetsQuery = useQuery({ queryFn: getUserPromptPresets, queryKey: userPromptPresetsQueryKey });
   const sessionQuery = useQuery({
     queryFn: () => (conversationId ? getConversationSession(conversationId) : getTemplateSession()),
     queryKey: conversationId
@@ -153,6 +197,7 @@ export function TemplateEditorPage({
     runChatInitialization,
   } = initializationService ?? localInitialization;
   useEffect(() => onPendingChange?.(initializationPending), [initializationPending, onPendingChange]);
+
   const templates = templatesQuery.data ?? [];
   const isLoading = templatesQuery.isLoading;
   const launchSession = sessionQuery.data;
@@ -161,6 +206,9 @@ export function TemplateEditorPage({
   const characters = charactersQuery.data ?? [];
   const backgrounds = backgroundsQuery.data ?? [];
   const effects = Array.isArray(effectsQuery.data) ? effectsQuery.data : [];
+  const presetsLibrary = useMemo(() => normalizeUserPromptPresetLibrary(presetsQuery.data), [presetsQuery.data]);
+  const presetsLibraryReady = presetsQuery.isSuccess;
+
   const [selectedId, setSelectedId] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [sessionDraftActive, setSessionDraftActive] = useState(false);
@@ -179,10 +227,15 @@ export function TemplateEditorPage({
     ...playerOptions,
     readPlayerSpeech: Boolean(effectivePlayerCharacter && readPlayerSpeech),
   };
+
   const [mediaSelectionMode, setMediaSelectionMode] = useState<MediaSelectionMode>("indexed");
   const [primaryCharacterDialogOpen, setPrimaryCharacterDialogOpen] = useState(false);
-  const [playerCharacterDialogOpen, setPlayerCharacterDialogOpen] = useState(false);
+  const [characterDialogOpen, setCharacterDialogOpen] = useState(false);
+  const [userPromptDialogOpen, setUserPromptDialogOpen] = useState(false);
+  const [systemPromptDialogOpen, setSystemPromptDialogOpen] = useState(false);
+  const [characterDialogError, setCharacterDialogError] = useState("");
   const [launchReadyAfterRoleGeneration, setLaunchReadyAfterRoleGeneration] = useState<boolean | null>(null);
+
   const [selectedBackground, setSelectedBackground] = useState(TRANSPARENT_BACKGROUND_NAME);
   const [selectedEffects, setSelectedEffects] = useState<string[]>([]);
   const [voiceLanguage, setVoiceLanguage] = useState("ja");
@@ -204,14 +257,26 @@ export function TemplateEditorPage({
   const [initialOutfits, setInitialOutfits] = useState<Record<string, string>>({});
   const [historyPath, setHistoryPath] = useState("");
   const [roomId, setRoomId] = useState("");
-  const [systemExpanded, setSystemExpanded] = useState(false);
   const [quickRestartOpen, setQuickRestartOpen] = useState(false);
+  const [systemManuallyEdited, setSystemManuallyEdited] = useState(false);
+  const [manualBaseKey, setManualBaseKey] = useState("");
+
   const autoGenerateReadyRef = useRef(false);
-  const lastAutoGeneratedCharactersRef = useRef("");
+  const lastAutoGeneratedKeyRef = useRef("");
   const lastAutoScenarioRef = useRef("");
   const suppressNextAutoGenerateRef = useRef(false);
   const deferredLaunchRef = useRef<boolean | null>(null);
   const restoredSessionBackgroundRef = useRef<string | null>(null);
+
+  // Keep mem0 validation active on restore even before opening SystemPromptDialog.
+  useSemanticMediaController({
+    checked: mediaSelectionMode === "semantic",
+    onChange: (enabled) => {
+      const mode: MediaSelectionMode = enabled ? "semantic" : "indexed";
+      setMediaSelectionMode(mode);
+      setDraft((current) => ({ ...current, mediaSelectionMode: mode }));
+    },
+  });
 
   const selected = useMemo(
     () => (isCreating ? undefined : (templates.find((template) => template.id === selectedId) ?? templates[0])),
@@ -226,22 +291,99 @@ export function TemplateEditorPage({
     () => characters.filter((character) => selectedCharacterNames.has(character.name)),
     [characters, selectedCharacterNames],
   );
-  const selectedEffectNames = useMemo(() => new Set(selectedEffects), [selectedEffects]);
-  const failedQuery = [templatesQuery, sessionQuery, configQuery, charactersQuery, backgroundsQuery, effectsQuery].find(
-    (query) => query.isError,
+  const characterByName = useMemo(
+    () => new Map(characters.map((character) => [character.name, character])),
+    [characters],
   );
+  const selectedEffectNames = useMemo(() => new Set(selectedEffects), [selectedEffects]);
+  const failedQuery = [
+    templatesQuery,
+    presetsQuery,
+    sessionQuery,
+    configQuery,
+    charactersQuery,
+    backgroundsQuery,
+    effectsQuery,
+  ].find((query) => query.isError);
   const templateSelectValue = !isCreating && !sessionDraftActive ? selectedId || selected?.id || "" : "";
+
+  const baseScenario = draft.baseScenario ?? draft.scenario ?? "";
+  const resolvedSelectedPresets = useMemo(
+    () =>
+      resolveSelectedPresets(draft.selectedPresetIds ?? [], presetsLibrary, draft.appliedPresets ?? [], {
+        libraryLoaded: presetsLibraryReady,
+      }),
+    [draft.appliedPresets, draft.selectedPresetIds, presetsLibrary, presetsLibraryReady],
+  );
+  const composedScenario = useMemo(
+    () => composeScenarioWithPresets(baseScenario, resolvedSelectedPresets),
+    [baseScenario, resolvedSelectedPresets],
+  );
+  const appliedPresetsSnapshot = useMemo(() => toAppliedPresets(resolvedSelectedPresets), [resolvedSelectedPresets]);
+  const effectiveSelectedPresetIds =
+    presetsLibraryReady || (draft.appliedPresets?.length ?? 0) > 0
+      ? resolvedSelectedPresets.map((item) => item.id)
+      : (draft.selectedPresetIds ?? []);
+
+  const selectedCharactersKey = selectedCharacters.join("\n");
+  const generationCharactersKey = templateGenerationKey({
+    characters: selectedCharacters,
+    characterPromptMode,
+    primaryCharacters,
+    mediaSelectionMode,
+    ...playerOptions,
+  });
+  const fullSystemSyncKey = buildSystemSyncKey({
+    characterKey: generationCharactersKey,
+    backgroundName: selectedBackground,
+    voiceLanguage,
+    useCg,
+    useEffect: useEffectPrompt,
+    useTranslation,
+    useCot,
+    useChoice,
+    useNarration,
+    useStat,
+    maxSpeechChars,
+    maxDialogItems,
+  });
 
   useEffect(() => {
     if (selected && !sessionDraftActive) {
       setSelectedId(selected.id);
       const normalized = normalizeTemplateSummary(structuredClone(selected));
-      setDraft(normalized);
-      setMediaSelectionMode(createOnly ? "indexed" : (selected.mediaSelectionMode ?? "indexed"));
+      const nextMediaMode = createOnly ? "indexed" : (selected.mediaSelectionMode ?? "indexed");
       const savedPlayer = normalizePlayerOptions(selected);
+      const charKey = templateGenerationKey({
+        characters: selectedCharacters,
+        characterPromptMode,
+        primaryCharacters,
+        mediaSelectionMode: nextMediaMode,
+        playerCharacter: selectedCharacters.includes(savedPlayer.playerCharacter) ? savedPlayer.playerCharacter : "",
+        readPlayerSpeech: savedPlayer.readPlayerSpeech,
+        allowPlayerDialogue: savedPlayer.allowPlayerDialogue,
+      });
+      lastAutoGeneratedKeyRef.current = buildSystemSyncKey({
+        characterKey: charKey,
+        backgroundName: selectedBackground,
+        voiceLanguage,
+        useCg,
+        useEffect: useEffectPrompt,
+        useTranslation,
+        useCot,
+        useChoice,
+        useNarration,
+        useStat,
+        maxSpeechChars,
+        maxDialogItems,
+      });
+      setDraft(normalized);
+      setMediaSelectionMode(nextMediaMode);
       setPlayerCharacter(savedPlayer.playerCharacter);
       setReadPlayerSpeech(Boolean(savedPlayer.playerCharacter && savedPlayer.readPlayerSpeech));
       setAllowPlayerDialogue(savedPlayer.allowPlayerDialogue);
+      setSystemManuallyEdited(false);
+      setManualBaseKey("");
       setNameError("");
     }
   }, [createOnly, selected, sessionDraftActive]);
@@ -267,13 +409,49 @@ export function TemplateEditorPage({
           : [];
     const restoredMediaSelectionMode = createOnly ? "indexed" : (launchSession.mediaSelectionMode ?? "indexed");
     const restoredPlayer = normalizePlayerOptions(launchSession);
-    lastAutoGeneratedCharactersRef.current = templateGenerationKey({
+    const sessionBackground = launchSession.background || TRANSPARENT_BACKGROUND_NAME;
+    const restoredBackground = createOnly ? TRANSPARENT_BACKGROUND_NAME : sessionBackground;
+    restoredSessionBackgroundRef.current = sessionBackground !== restoredBackground ? sessionBackground : null;
+
+    const restoredEffects = Array.isArray(launchSession.effectNames) ? launchSession.effectNames : [];
+    const restoredVoiceLanguage = launchSession.voiceLanguage || "ja";
+    const restoredUseEffect = launchSession.useEffect ?? true;
+    const restoredUseTranslation = launchSession.useTranslation ?? true;
+    const restoredUseCg = launchSession.useCg ?? false;
+    const restoredUseCot = launchSession.useCot ?? false;
+    const restoredUseChoice = launchSession.useChoice ?? true;
+    const restoredUseNarration = launchSession.useNarration ?? true;
+    const restoredUseStat = launchSession.useStat ?? true;
+    const restoredMaxSpeech = Number(launchSession.maxSpeechChars) || 0;
+    const restoredMaxDialog = Number(launchSession.maxDialogItems) || 0;
+
+    const restoredCharKey = templateGenerationKey({
       characters: restoredCharacters,
       characterPromptMode: restoredMode,
       primaryCharacters: restoredPrimaryCharacters,
       mediaSelectionMode: restoredMediaSelectionMode,
       ...restoredPlayer,
     });
+    const restoredSyncKey = buildSystemSyncKey({
+      characterKey: restoredCharKey,
+      backgroundName: restoredBackground,
+      voiceLanguage: restoredVoiceLanguage,
+      useCg: restoredUseCg,
+      useEffect: restoredUseEffect,
+      useTranslation: restoredUseTranslation,
+      useCot: restoredUseCot,
+      useChoice: restoredUseChoice,
+      useNarration: restoredUseNarration,
+      useStat: restoredUseStat,
+      maxSpeechChars: restoredMaxSpeech,
+      maxDialogItems: restoredMaxDialog,
+    });
+    lastAutoGeneratedKeyRef.current = restoredSyncKey;
+
+    const restoredManuallyEdited = Boolean(launchSession.systemManuallyEdited);
+    setSystemManuallyEdited(restoredManuallyEdited);
+    setManualBaseKey(restoredManuallyEdited ? restoredSyncKey : "");
+
     setSessionDraftActive(true);
     setSelectedCharacters(restoredCharacters);
     setPlayerCharacter(restoredPlayer.playerCharacter);
@@ -282,21 +460,18 @@ export function TemplateEditorPage({
     setCharacterPromptMode(restoredMode);
     setPrimaryCharacters(restoredPrimaryCharacters);
     setMediaSelectionMode(restoredMediaSelectionMode);
-    const sessionBackground = launchSession.background || TRANSPARENT_BACKGROUND_NAME;
-    const restoredBackground = createOnly ? TRANSPARENT_BACKGROUND_NAME : sessionBackground;
-    restoredSessionBackgroundRef.current = sessionBackground !== restoredBackground ? sessionBackground : null;
     setSelectedBackground(restoredBackground);
-    setSelectedEffects(Array.isArray(launchSession.effectNames) ? launchSession.effectNames : []);
-    setVoiceLanguage(launchSession.voiceLanguage || "ja");
-    setUseEffectPrompt(launchSession.useEffect ?? true);
-    setUseTranslation(launchSession.useTranslation ?? true);
-    setUseCg(launchSession.useCg ?? false);
-    setUseCot(launchSession.useCot ?? false);
-    setUseChoice(launchSession.useChoice ?? true);
-    setUseNarration(launchSession.useNarration ?? true);
-    setUseStat(launchSession.useStat ?? true);
-    setMaxSpeechChars(Number(launchSession.maxSpeechChars) || 0);
-    setMaxDialogItems(Number(launchSession.maxDialogItems) || 0);
+    setSelectedEffects(restoredEffects);
+    setVoiceLanguage(restoredVoiceLanguage);
+    setUseEffectPrompt(restoredUseEffect);
+    setUseTranslation(restoredUseTranslation);
+    setUseCg(restoredUseCg);
+    setUseCot(restoredUseCot);
+    setUseChoice(restoredUseChoice);
+    setUseNarration(restoredUseNarration);
+    setUseStat(restoredUseStat);
+    setMaxSpeechChars(restoredMaxSpeech);
+    setMaxDialogItems(restoredMaxDialog);
     setInitSpritePath(launchSession.initSpritePath || "");
     setShowInitialSprite(launchSession.showInitialSprite ?? true);
     setMemoryMode(launchSession.memoryMode ?? "isolated");
@@ -315,8 +490,16 @@ export function TemplateEditorPage({
     setRoomId(launchSession.roomId || "");
     const matchingTemplate = templates.find((template) => template.id === launchSession.templateFileDropdown);
     setSelectedId(matchingTemplate?.id ?? "");
+    const restoredSelectedPresetIds = Array.isArray(launchSession.selectedPresetIds)
+      ? launchSession.selectedPresetIds
+      : [];
+    const restoredAppliedPresets = Array.isArray(launchSession.appliedPresets) ? launchSession.appliedPresets : [];
+    const restoredBaseScenario =
+      launchSession.baseScenario !== undefined ? launchSession.baseScenario : launchSession.scenario;
     setDraft(
       normalizeTemplateSummary({
+        appliedPresets: restoredAppliedPresets,
+        baseScenario: restoredBaseScenario,
         content: composeTemplateContent(launchSession.scenario, launchSession.system),
         id: matchingTemplate?.id ?? "",
         name: launchSession.filenameStub || matchingTemplate?.name || t("template.defaultName"),
@@ -324,6 +507,7 @@ export function TemplateEditorPage({
         mediaSelectionMode: launchSession.mediaSelectionMode ?? "indexed",
         ...restoredPlayer,
         scenario: launchSession.scenario,
+        selectedPresetIds: restoredSelectedPresetIds,
         system: launchSession.system,
         updatedAt: matchingTemplate?.updatedAt ?? "",
       }),
@@ -376,9 +560,23 @@ export function TemplateEditorPage({
     }
     setDraft((current) => {
       const next = { ...current, ...patch };
-      const scenario = String(next.scenario ?? "");
+      const nextBase = String(next.baseScenario ?? next.scenario ?? "");
+      const nextIds = next.selectedPresetIds ?? [];
+      const nextApplied = next.appliedPresets ?? [];
+      const resolved = resolveSelectedPresets(nextIds, presetsLibrary, nextApplied, {
+        libraryLoaded: presetsLibraryReady,
+      });
+      const nextScenario =
+        patch.scenario !== undefined && patch.baseScenario === undefined
+          ? String(patch.scenario)
+          : composeScenarioWithPresets(nextBase, resolved);
       const system = String(next.system ?? "");
-      return { ...next, content: composeTemplateContent(scenario, system) };
+      return {
+        ...next,
+        baseScenario: nextBase,
+        scenario: nextScenario,
+        content: composeTemplateContent(nextScenario, system),
+      };
     });
   };
 
@@ -409,28 +607,19 @@ export function TemplateEditorPage({
     roomId,
     voiceLanguage,
   };
-  const selectedCharactersKey = selectedCharacters.join("\n");
-  const generationCharactersKey = templateGenerationKey({
-    characters: selectedCharacters,
-    characterPromptMode,
-    primaryCharacters,
-    mediaSelectionMode,
-    ...playerOptions,
-  });
 
-  const scenarioForSelectedCharacters = () => {
-    const currentScenario = String(draft.scenario ?? "");
-    const defaultScenario = buildDefaultTemplateScenario(selectedCharacters, t("template.defaultScenario"));
+  const scenarioForSelectedCharacters = (nextCharacters = selectedCharacters, currentBase = baseScenario) => {
+    const defaultScenario = buildDefaultTemplateScenario(nextCharacters, t("template.defaultScenario"));
     if (!defaultScenario) {
-      if (currentScenario === lastAutoScenarioRef.current) {
+      if (currentBase === lastAutoScenarioRef.current) {
         return "";
       }
-      return currentScenario;
+      return currentBase;
     }
-    if (!currentScenario.trim() || currentScenario === lastAutoScenarioRef.current) {
+    if (!currentBase.trim() || currentBase === lastAutoScenarioRef.current) {
       return defaultScenario;
     }
-    return currentScenario;
+    return currentBase;
   };
 
   const handleRuntimeDependencyError = async (snapshot: ChatSnapshot) => {
@@ -465,13 +654,21 @@ export function TemplateEditorPage({
     return true;
   };
 
+  const effectiveSummaryDraft = () => ({
+    ...draft,
+    appliedPresets: appliedPresetsSnapshot,
+    baseScenario,
+    scenario: composedScenario,
+    selectedPresetIds: effectiveSelectedPresetIds,
+  });
+
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!validateName()) {
         throw new Error(t("template.validation.nameRequired"));
       }
       return saveTemplate({
-        ...buildTemplateSummary(draft),
+        ...buildTemplateSummary(effectiveSummaryDraft()),
         ...templatePlayerOptions,
       });
     },
@@ -490,6 +687,20 @@ export function TemplateEditorPage({
       setDraft(normalized);
       setSelectedId(normalized.id);
       showToast({ kind: "success", title: t("template.toast.saved") });
+    },
+  });
+
+  const savePresetsMutation = useMutation({
+    mutationFn: async (library: UserPromptPresetLibrary) => {
+      if (!presetsQuery.isSuccess) {
+        throw new Error(
+          presetsQuery.error instanceof Error ? presetsQuery.error.message : t("template.presets.loadFailed"),
+        );
+      }
+      return saveUserPromptPresets(library);
+    },
+    onSuccess(saved) {
+      queryClient.setQueryData(userPromptPresetsQueryKey, saved);
     },
   });
 
@@ -514,30 +725,101 @@ export function TemplateEditorPage({
     mutationFn: ensureCharacterBriefs,
   });
 
-  const generationInput = (scenario = scenarioForSelectedCharacters()) =>
-    buildTemplateGenerateInput({
+  const generationInput = (
+    nextBaseScenario = scenarioForSelectedCharacters(),
+    overrides?: Partial<SystemPromptRulesDraft>,
+  ) => {
+    const nextScenario = composeScenarioWithPresets(nextBaseScenario, resolvedSelectedPresets);
+    const effectiveMode = overrides?.mediaSelectionMode ?? mediaSelectionMode;
+    const effectiveOptions = {
+      useCg,
+      useChoice: overrides?.useChoice ?? useChoice,
+      useCot: overrides?.useCot ?? useCot,
+      useEffect: overrides?.useEffectPrompt ?? useEffectPrompt,
+      useNarration: overrides?.useNarration ?? useNarration,
+      useStat: overrides?.useStat ?? useStat,
+      useTranslation: overrides?.useTranslation ?? useTranslation,
+    };
+    const effectiveRuntime = {
+      ...runtimeOptionsState,
+      maxDialogItems: overrides?.maxDialogItems ?? maxDialogItems,
+      maxSpeechChars: overrides?.maxSpeechChars ?? maxSpeechChars,
+    };
+    return buildTemplateGenerateInput({
       backgroundName: selectedBackground,
       characterPromptMode: characterPromptMode ?? "full",
-      draft: { ...draft, scenario },
+      draft: { ...draft, scenario: nextScenario },
       effectNames: selectedEffects,
-      mediaSelectionMode,
-      options: templateOptionsState,
-      runtime: runtimeOptionsState,
+      mediaSelectionMode: effectiveMode,
+      options: effectiveOptions,
+      runtime: effectiveRuntime,
       primaryCharacters: characterPromptMode === "compact" ? primaryCharacters : selectedCharacters,
       ...playerOptions,
       selectedCharacters,
     });
+  };
   const latestGenerationInput = useRef(generationInput);
   useLayoutEffect(() => {
     latestGenerationInput.current = generationInput;
   });
 
+  const applyResolvedCharactersFromGeneration = (resolvedCharacters: string[]) => {
+    const resolvedCharactersKey = resolvedCharacters.join("\n");
+    if (resolvedCharactersKey === selectedCharactersKey) {
+      return;
+    }
+    suppressNextAutoGenerateRef.current = true;
+    const resolvedPrimary = primaryCharacters.filter((name) => resolvedCharacters.includes(name));
+    const nextCharKey = templateGenerationKey({
+      characters: resolvedCharacters,
+      characterPromptMode: characterPromptMode ?? "full",
+      primaryCharacters: resolvedPrimary,
+      mediaSelectionMode,
+      ...playerOptions,
+      playerCharacter: resolvedCharacters.includes(playerCharacter) ? playerCharacter : "",
+    });
+    lastAutoGeneratedKeyRef.current = buildSystemSyncKey({
+      characterKey: nextCharKey,
+      backgroundName: selectedBackground,
+      voiceLanguage,
+      useCg,
+      useEffect: useEffectPrompt,
+      useTranslation,
+      useCot,
+      useChoice,
+      useNarration,
+      useStat,
+      maxSpeechChars,
+      maxDialogItems,
+    });
+    setPrimaryCharacters(resolvedPrimary);
+    setSelectedCharacters(resolvedCharacters);
+    setInitSpritePath((path) =>
+      compatibleInitialSpritePath({
+        characters,
+        path,
+        preserveUnknown: false,
+        selectedCharacters: resolvedCharacters,
+      }),
+    );
+  };
+
   const generateMutation = useMutation({
     // Mutation callbacks are refreshed in a passive effect. Pass the visible
     // form as variables so a click immediately after restoration cannot use
     // the previous render's draft.
-    mutationFn: ({ input }: { input: ReturnType<typeof buildTemplateGenerateInput>; silent?: boolean }) =>
-      generateTemplate(input),
+    mutationFn: ({
+      input,
+    }: {
+      input: ReturnType<typeof buildTemplateGenerateInput>;
+      silent?: boolean;
+      previewOnly?: boolean;
+      meta?: {
+        baseScenario: string;
+        selectedPresetIds: string[];
+        appliedPresets: ReturnType<typeof toAppliedPresets>;
+      };
+    }) => generateTemplate(input),
     onError(error, options) {
       const wasPreparingLaunch = deferredLaunchRef.current !== null;
       deferredLaunchRef.current = null;
@@ -556,25 +838,22 @@ export function TemplateEditorPage({
       });
     },
     onSuccess(template, options) {
-      const resolvedCharacters = Array.isArray(template.resolvedCharacters)
-        ? template.resolvedCharacters
-        : selectedCharacters;
-      const resolvedCharactersKey = resolvedCharacters.join("\n");
-      if (resolvedCharactersKey !== selectedCharactersKey) {
-        suppressNextAutoGenerateRef.current = true;
-        const resolvedPrimary = primaryCharacters.filter((name) => resolvedCharacters.includes(name));
-        lastAutoGeneratedCharactersRef.current = templateGenerationKey({
-          characters: resolvedCharacters,
-          characterPromptMode: characterPromptMode ?? "full",
-          primaryCharacters: resolvedPrimary,
-          mediaSelectionMode,
-          ...playerOptions,
-          playerCharacter: resolvedCharacters.includes(playerCharacter) ? playerCharacter : "",
-        });
-        setPrimaryCharacters(resolvedPrimary);
-        updateSelectedCharacters(resolvedCharacters, { preservePromptMode: true });
+      if (Array.isArray(template.resolvedCharacters)) {
+        applyResolvedCharactersFromGeneration(template.resolvedCharacters);
       }
-      const normalized = normalizeTemplateSummary(template);
+      if (options?.previewOnly) {
+        if (!options?.silent) {
+          showToast({ kind: "success", message: template.generationMessage, title: t("template.toast.generated") });
+        }
+        return;
+      }
+      const normalized = normalizeTemplateSummary({
+        ...template,
+        appliedPresets: options.meta?.appliedPresets ?? [],
+        baseScenario: options.meta?.baseScenario ?? template.scenario ?? options.input.scenario ?? "",
+        scenario: template.scenario || options.input.scenario || "",
+        selectedPresetIds: options.meta?.selectedPresetIds ?? [],
+      });
       restoredSessionBackgroundRef.current = null;
       setIsCreating(true);
       setSessionDraftActive(true);
@@ -604,40 +883,39 @@ export function TemplateEditorPage({
     if (generateMutation.isPending) {
       return;
     }
+    if (selectedCharacters.length === 0) {
+      return;
+    }
     if (selectedCharacters.length > 4 && !characterPromptMode) {
       return;
     }
-    if (generationCharactersKey === lastAutoGeneratedCharactersRef.current) {
+    if (fullSystemSyncKey === lastAutoGeneratedKeyRef.current) {
       return;
     }
-    lastAutoGeneratedCharactersRef.current = generationCharactersKey;
-    const scenario = scenarioForSelectedCharacters();
-    if (scenario !== draft.scenario) {
-      lastAutoScenarioRef.current = scenario;
-      updateDraft({ scenario });
+    const nextBase = scenarioForSelectedCharacters();
+    if (nextBase !== baseScenario) {
+      lastAutoScenarioRef.current = nextBase;
+      updateDraft({ baseScenario: nextBase });
     }
-    const timer = window.setTimeout(
-      () => generateMutation.mutate({ input: latestGenerationInput.current(scenario), silent: true }),
-      160,
-    );
+    if (systemManuallyEdited) {
+      return;
+    }
+    const scheduledKey = fullSystemSyncKey;
+    const presetMeta = {
+      appliedPresets: appliedPresetsSnapshot,
+      baseScenario: nextBase,
+      selectedPresetIds: effectiveSelectedPresetIds,
+    };
+    const timer = window.setTimeout(() => {
+      lastAutoGeneratedKeyRef.current = scheduledKey;
+      generateMutation.mutate({
+        input: latestGenerationInput.current(nextBase),
+        meta: presetMeta,
+        silent: true,
+      });
+    }, 160);
     return () => window.clearTimeout(timer);
-  }, [
-    generationCharactersKey,
-    selectedBackground,
-    selectedEffects,
-    voiceLanguage,
-    useEffectPrompt,
-    useTranslation,
-    useCg,
-    useCot,
-    useChoice,
-    useNarration,
-    useStat,
-    maxSpeechChars,
-    maxDialogItems,
-    mediaSelectionMode,
-    sessionRestored,
-  ]);
+  }, [fullSystemSyncKey, sessionRestored, systemManuallyEdited, selectedCharacters.length, characterPromptMode]);
 
   const launchMutation = useMutation({
     mutationFn: async ({
@@ -728,8 +1006,9 @@ export function TemplateEditorPage({
   });
 
   const launchCurrentDraft = (resetHistory: boolean) => {
+    const summaryDraft = effectiveSummaryDraft();
     const template = {
-      ...buildTemplateSummary(draft),
+      ...buildTemplateSummary(summaryDraft),
       ...templatePlayerOptions,
     };
     const filteredInitialOutfits: Record<string, InitialOutfitValue> = {};
@@ -740,10 +1019,12 @@ export function TemplateEditorPage({
       }
     }
     const session: TemplateLaunchSession = buildTemplateLaunchSession({
+      appliedPresets: appliedPresetsSnapshot,
       autoOutfitSwitch,
       backgroundName: selectedBackground,
+      baseScenario,
       characterPromptMode: characterPromptMode ?? "full",
-      draft,
+      draft: summaryDraft,
       effectNames: selectedEffects,
       initialOutfits: filteredInitialOutfits,
       memoryMode,
@@ -754,7 +1035,9 @@ export function TemplateEditorPage({
       ...playerOptions,
       runtime: createOnly ? { ...runtimeOptionsState, historyPath: "" } : runtimeOptionsState,
       selectedCharacters,
+      selectedPresetIds: effectiveSelectedPresetIds,
       selectedTemplateId: selectedId,
+      systemManuallyEdited,
     });
     launchMutation.mutate({ resetHistory, template, session });
   };
@@ -768,21 +1051,53 @@ export function TemplateEditorPage({
     launchCurrentDraft(resetHistory);
   }, [launchReadyAfterRoleGeneration]);
 
-  const updateSelectedCharacters = (next: string[], options?: { preservePromptMode?: boolean }) => {
-    setSelectedCharacters(next);
-    if (!options?.preservePromptMode) {
-      const roles = updateCharacterRoles(selectedCharacters, next, primaryCharacters, characterPromptMode);
-      setCharacterPromptMode(roles.mode);
-      setPrimaryCharacters(roles.primary);
+  const confirmCharacterConfig = async (next: CharacterConfigCommit) => {
+    setCharacterDialogError("");
+    const effectivePlayer = next.selectedCharacters.includes(next.playerCharacter) ? next.playerCharacter : "";
+    let resolvedMode = next.characterPromptMode;
+    let resolvedPrimary = next.primaryCharacters;
+
+    if (resolvedMode === "compact") {
+      const secondary = next.selectedCharacters.filter(
+        (name) => name !== effectivePlayer && !resolvedPrimary.includes(name),
+      );
+      try {
+        const result = await ensureBriefsMutation.mutateAsync(secondary);
+        if (result.characters.length) {
+          const updated = new Map(result.characters.map((character) => [character.name, character]));
+          queryClient.setQueryData(charactersQueryKey, (current: typeof characters = []) =>
+            current.map((character) => updated.get(character.name) ?? character),
+          );
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : t("character.error.aiFallback");
+        setCharacterDialogError(message);
+        showToast({
+          kind: "error",
+          message,
+          title: t("template.primaryCharacters.title"),
+        });
+        return;
+      }
+    } else if (resolvedMode === "full") {
+      resolvedPrimary = next.selectedCharacters;
     }
+
+    setSelectedCharacters(next.selectedCharacters);
+    setCharacterPromptMode(resolvedMode);
+    setPrimaryCharacters(resolvedPrimary);
+    setPlayerCharacter(effectivePlayer);
+    setReadPlayerSpeech(Boolean(effectivePlayer && next.readPlayerSpeech));
+    setAllowPlayerDialogue(next.allowPlayerDialogue);
     setInitSpritePath((path) =>
       compatibleInitialSpritePath({
         characters,
         path,
         preserveUnknown: false,
-        selectedCharacters: next,
+        selectedCharacters: next.selectedCharacters,
       }),
     );
+    setCharacterDialogOpen(false);
   };
 
   const useAllCharactersAsPrimary = () => {
@@ -838,33 +1153,106 @@ export function TemplateEditorPage({
     voiceLanguageMutation.mutate(nextLanguage);
   };
 
-  const handleGenerateTemplate = () => {
-    if (!selectedBackground) {
-      showToast({
-        kind: "error",
-        message: t("template.validation.backgroundRequired"),
-        title: t("template.mode.generate"),
-      });
-      return;
+  const handleRegenerateFromDialog = useCallback(
+    async (rules: SystemPromptRulesDraft, options: { silent: boolean }): Promise<string | null> => {
+      if (!selectedBackground) {
+        if (!options.silent) {
+          showToast({
+            kind: "error",
+            message: t("template.validation.backgroundRequired"),
+            title: t("template.mode.generate"),
+          });
+        }
+        return null;
+      }
+      if (!selectedCharacters.length) {
+        if (!options.silent) {
+          showToast({
+            kind: "error",
+            message: t("template.validation.charactersRequired"),
+            title: t("template.mode.generate"),
+          });
+        }
+        return null;
+      }
+      if (selectedCharacters.length > 4 && !characterPromptMode) {
+        if (!options.silent) {
+          setPrimaryCharacterDialogOpen(true);
+        }
+        return null;
+      }
+      const nextBase = scenarioForSelectedCharacters();
+      if (nextBase !== baseScenario) {
+        lastAutoScenarioRef.current = nextBase;
+        updateDraft({ baseScenario: nextBase });
+      }
+      try {
+        const result = await generateMutation.mutateAsync({
+          input: latestGenerationInput.current(nextBase, rules),
+          silent: options.silent,
+          previewOnly: true,
+        });
+        return result.system ?? "";
+      } catch {
+        return null;
+      }
+    },
+    [baseScenario, characterPromptMode, selectedBackground, selectedCharacters.length, showToast, t],
+  );
+
+  const handleConfirmUserPrompt = (commit: UserPromptCommit) => {
+    setSessionDraftActive(true);
+    updateDraft({
+      appliedPresets: commit.appliedPresets,
+      selectedPresetIds: commit.selectedPresetIds,
+    });
+    setUserPromptDialogOpen(false);
+  };
+
+  const handleConfirmSystemPrompt = (commit: SystemPromptCommit) => {
+    const nextCharKey = templateGenerationKey({
+      characters: selectedCharacters,
+      characterPromptMode,
+      primaryCharacters,
+      mediaSelectionMode: commit.mediaSelectionMode,
+      ...playerOptions,
+    });
+    const nextSyncKey = buildSystemSyncKey({
+      characterKey: nextCharKey,
+      backgroundName: selectedBackground,
+      voiceLanguage,
+      useCg,
+      useEffect: commit.useEffectPrompt,
+      useTranslation: commit.useTranslation,
+      useCot: commit.useCot,
+      useChoice: commit.useChoice,
+      useNarration: commit.useNarration,
+      useStat: commit.useStat,
+      maxSpeechChars: commit.maxSpeechChars,
+      maxDialogItems: commit.maxDialogItems,
+    });
+
+    // Prevent redundant immediate auto-generation after confirming inside dialog.
+    lastAutoGeneratedKeyRef.current = nextSyncKey;
+    if (commit.system !== (draft.system ?? "")) {
+      setSessionDraftActive(true);
     }
-    if (!selectedCharacters.length) {
-      showToast({
-        kind: "error",
-        message: t("template.validation.charactersRequired"),
-        title: t("template.mode.generate"),
-      });
-      return;
-    }
-    if (selectedCharacters.length > 4 && !characterPromptMode) {
-      setPrimaryCharacterDialogOpen(true);
-      return;
-    }
-    const scenario = scenarioForSelectedCharacters();
-    if (scenario !== draft.scenario) {
-      lastAutoScenarioRef.current = scenario;
-      updateDraft({ scenario });
-    }
-    generateMutation.mutate({ input: generationInput(scenario), silent: false });
+    setMediaSelectionMode(commit.mediaSelectionMode);
+    setUseEffectPrompt(commit.useEffectPrompt);
+    setUseTranslation(commit.useTranslation);
+    setUseCot(commit.useCot);
+    setUseChoice(commit.useChoice);
+    setUseNarration(commit.useNarration);
+    setUseStat(commit.useStat);
+    setMaxSpeechChars(commit.maxSpeechChars);
+    setMaxDialogItems(commit.maxDialogItems);
+    setSystemManuallyEdited(commit.systemManuallyEdited);
+    setManualBaseKey(commit.systemManuallyEdited ? nextSyncKey : "");
+    updateDraft({
+      mediaSelectionMode: commit.mediaSelectionMode,
+      system: commit.system,
+    });
+    setSystemPromptDialogOpen(false);
   };
 
   const handleLaunch = (resetHistory: boolean) => {
@@ -877,31 +1265,65 @@ export function TemplateEditorPage({
     // defaulting to indexed selection and a transparent background. Regenerate
     // its instructions before starting that chat.
     if (
-      draft.mediaSelectionMode !== mediaSelectionMode ||
-      (restoredSessionBackgroundRef.current !== null && restoredSessionBackgroundRef.current !== selectedBackground)
+      !systemManuallyEdited &&
+      (draft.mediaSelectionMode !== mediaSelectionMode ||
+        (restoredSessionBackgroundRef.current !== null && restoredSessionBackgroundRef.current !== selectedBackground))
     ) {
       restoredSessionBackgroundRef.current = null;
       deferredLaunchRef.current = resetHistory;
-      generateMutation.mutate({ input: generationInput(), silent: true });
+      const nextBase = scenarioForSelectedCharacters();
+      generateMutation.mutate({
+        input: generationInput(nextBase),
+        meta: {
+          appliedPresets: appliedPresetsSnapshot,
+          baseScenario: nextBase,
+          selectedPresetIds: effectiveSelectedPresetIds,
+        },
+        silent: true,
+      });
       return;
     }
     launchCurrentDraft(resetHistory);
   };
 
-  const templateOptions = [
-    { key: "effect", label: t("template.field.useEffect"), setValue: setUseEffectPrompt, value: useEffectPrompt },
-    {
-      key: "translation",
-      label: t("template.field.useTranslation"),
-      setValue: setUseTranslation,
-      value: useTranslation,
-    },
-    { key: "cg", label: t("template.field.useCg"), setValue: setUseCg, value: useCg },
-    { key: "cot", label: t("template.field.useCot"), setValue: setUseCot, value: useCot },
-    { key: "choice", label: t("template.field.useChoice"), setValue: setUseChoice, value: useChoice },
-    { key: "narration", label: t("template.field.useNarration"), setValue: setUseNarration, value: useNarration },
-    { key: "stat", label: t("template.field.useStat"), setValue: setUseStat, value: useStat },
-  ];
+  const npcCount = selectedCharacters.filter((name) => name !== effectivePlayerCharacter).length;
+  const primaryCount =
+    characterPromptMode === "full"
+      ? npcCount
+      : primaryCharacters.filter((name) => name !== effectivePlayerCharacter).length;
+  const showRoleSummary = npcCount > 4 || (npcCount > 0 && Boolean(effectivePlayerCharacter));
+  const roleSummaryText =
+    characterPromptMode === "full"
+      ? t("template.primaryCharacters.statusFull", { count: npcCount })
+      : characterPromptMode === "compact"
+        ? t("template.primaryCharacters.statusCompact", {
+            primary: Math.min(primaryCount, npcCount),
+            secondary: Math.max(0, npcCount - Math.min(primaryCount, npcCount)),
+          })
+        : t("template.primaryCharacters.statusPending", { count: npcCount });
+
+  const defaultScenarioText = buildDefaultTemplateScenario(selectedCharacters, t("template.defaultScenario"));
+  const scenarioStatusKey = !baseScenario.trim()
+    ? "template.bar.scenarioEmpty"
+    : defaultScenarioText && baseScenario === defaultScenarioText
+      ? "template.bar.scenarioDefault"
+      : "template.bar.scenarioCustom";
+
+  const visiblePresetChips = resolvedSelectedPresets.slice(0, MAX_VISIBLE_PRESET_CHIPS);
+  const hiddenPresetCount = Math.max(0, resolvedSelectedPresets.length - visiblePresetChips.length);
+
+  const systemConfigStale = systemManuallyEdited && fullSystemSyncKey !== manualBaseKey;
+  const enabledRulesCount = [useEffectPrompt, useTranslation, useCot, useChoice, useNarration, useStat].filter(
+    Boolean,
+  ).length;
+  const systemStatusPill = systemManuallyEdited
+    ? {
+        className: systemConfigStale ? "is-warning" : "is-manual",
+        label: t(systemConfigStale ? "template.bar.systemManualStale" : "template.bar.systemManual"),
+      }
+    : selectedCharacters.length === 0 && !String(draft.system ?? "").trim()
+      ? { className: "is-pending", label: t("template.bar.systemPendingCharacters") }
+      : { className: "is-auto", label: t("template.bar.systemAuto") };
 
   return (
     <div className="page template-page">
@@ -970,117 +1392,188 @@ export function TemplateEditorPage({
 
       <div className="template-workbench">
         <section className="template-workbench__main">
-          <section className="template-panel template-panel--characters">
-            <div className="template-character-picker">
-              <CharacterPicker
-                characters={characters}
-                selected={selectedCharacters}
-                onChange={updateSelectedCharacters}
-                onConfigurePlayer={() => setPlayerCharacterDialogOpen(true)}
-                playerCharacter={effectivePlayerCharacter}
-              />
-
-              <CharacterRoleStatus
-                hasPlayerCharacter={Boolean(effectivePlayerCharacter)}
-                mode={characterPromptMode}
-                onConfigure={() => setPrimaryCharacterDialogOpen(true)}
-                onUseAll={useAllCharactersAsPrimary}
-                primaryCount={
-                  characterPromptMode === "full"
-                    ? selectedCharacters.filter((name) => name !== effectivePlayerCharacter).length
-                    : primaryCharacters.filter((name) => name !== effectivePlayerCharacter).length
-                }
-                selectedCount={selectedCharacters.filter((name) => name !== effectivePlayerCharacter).length}
-              />
-
-              <PlayerCharacterSettings
-                characters={selectedCharacterRecords}
-                selected={effectivePlayerCharacter}
-                onSelect={setPlayerCharacter}
-                readSpeech={readPlayerSpeech}
-                onReadSpeech={setReadPlayerSpeech}
-                allowDialogue={allowPlayerDialogue}
-                onAllowDialogue={setAllowPlayerDialogue}
-                open={playerCharacterDialogOpen}
-                onClose={() => setPlayerCharacterDialogOpen(false)}
-              />
-
-              {effects.length > 0 ? (
-                <div className="template-effect-section">
-                  <span className="template-effect-section__label">{t("template.field.effectName")}</span>
-                  <div aria-label={t("template.field.effectName")} className="template-character-grid" role="group">
-                    {effects.map((effect) => {
-                      const isSelected = selectedEffectNames.has(effect.name);
-                      return (
-                        <button
-                          aria-pressed={isSelected}
-                          className={`template-character-card${isSelected ? " template-character-card--selected" : ""}`}
-                          key={effect.name}
-                          onClick={() => toggleEffect(effect.name, !isSelected)}
-                          style={{ "--template-character-color": effect.color || "#5b8def" } as CSSProperties}
-                          title={effect.name}
-                          type="button"
-                        >
-                          <span aria-hidden className="template-character-card__dot" />
-                          <span className="template-character-card__name">{effect.name}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
+          {/* Bar 1: Selected Characters */}
+          <section className="template-summary-bar" data-section="characters">
+            <div className="template-summary-bar__header">
+              <div className="template-summary-bar__title-group">
+                <span className="template-panel__label">{t("template.field.characters")}</span>
+                {showRoleSummary ? <span className="template-summary-pill">{roleSummaryText}</span> : null}
+              </div>
+              <Button
+                aria-label={t("template.bar.editCharacters")}
+                icon={<Pencil aria-hidden className="button__icon" />}
+                onClick={() => {
+                  setCharacterDialogError("");
+                  setCharacterDialogOpen(true);
+                }}
+                variant="ghost"
+              >
+                {t("template.mode.edit")}
+              </Button>
+            </div>
+            <div className="template-summary-bar__body">
+              {selectedCharacters.length === 0 ? (
+                <span className="template-summary-bar__empty">{t("template.bar.charactersEmpty")}</span>
+              ) : (
+                <div className="template-summary-chips" role="list">
+                  {selectedCharacters.map((name) => {
+                    const character = characterByName.get(name);
+                    const isPlayer = name === effectivePlayerCharacter;
+                    return (
+                      <span
+                        className={`template-summary-chip${!character ? " is-unavailable" : ""}`}
+                        key={name}
+                        role="listitem"
+                        style={
+                          {
+                            "--template-character-color": character?.color || "#5b8def",
+                          } as CSSProperties
+                        }
+                      >
+                        <span aria-hidden className="template-character-card__dot" />
+                        <span className="template-summary-chip__name">
+                          {character
+                            ? getCharacterDisplayName(character)
+                            : t("template.character.unavailable", { name })}
+                        </span>
+                        {isPlayer ? (
+                          <span className="template-summary-chip__badge">{t("template.bar.playerBadge")}</span>
+                        ) : null}
+                      </span>
+                    );
+                  })}
                 </div>
-              ) : null}
+              )}
             </div>
           </section>
 
-          <section className="template-panel template-panel--scenario">
-            <label className="template-stack-field">
-              <span className="template-panel__label">{t("template.field.scenario")}</span>
-              <TextArea
-                className="template-scenario-textarea"
-                onChange={(event) => updateDraft({ scenario: event.target.value })}
-                rows={7}
-                value={draft.scenario ?? ""}
-              />
-            </label>
+          {/* Bar 2: Preset Prompts */}
+          <section className="template-summary-bar" data-section="preset-prompts">
+            <div className="template-summary-bar__header">
+              <div className="template-summary-bar__title-group">
+                <span className="template-panel__label">{t("template.bar.presetPrompts")}</span>
+                {resolvedSelectedPresets.length > 0 ? (
+                  <span className="template-summary-pill">
+                    {t("template.bar.presetsSelectedCount", { count: resolvedSelectedPresets.length })}
+                  </span>
+                ) : null}
+              </div>
+              <Button
+                aria-label={t("template.bar.editPresetPrompts")}
+                icon={<Pencil aria-hidden className="button__icon" />}
+                onClick={() => setUserPromptDialogOpen(true)}
+                variant="ghost"
+              >
+                {t("template.mode.edit")}
+              </Button>
+            </div>
+            <div className="template-summary-bar__body">
+              {resolvedSelectedPresets.length === 0 ? (
+                <span className="template-summary-bar__empty">{t("template.bar.noPresets")}</span>
+              ) : (
+                <div className="template-summary-chips" role="list">
+                  {visiblePresetChips.map((preset) => (
+                    <span
+                      className={`template-summary-chip${preset.isDeleted ? " is-unavailable" : ""}`}
+                      key={preset.id}
+                      role="listitem"
+                      style={
+                        {
+                          "--template-character-color": preset.color || "#5b8def",
+                        } as CSSProperties
+                      }
+                    >
+                      <span aria-hidden className="template-character-card__dot" />
+                      <span className="template-summary-chip__name">{preset.name}</span>
+                      {preset.isDeleted ? (
+                        <span className="template-summary-chip__badge">{t("template.presets.deletedBadge")}</span>
+                      ) : null}
+                    </span>
+                  ))}
+                  {hiddenPresetCount > 0 ? (
+                    <span className="template-summary-pill">
+                      {t("template.bar.moreItems", { count: hiddenPresetCount })}
+                    </span>
+                  ) : null}
+                </div>
+              )}
+            </div>
           </section>
 
-          <section className={`template-panel template-panel--system${systemExpanded ? " is-expanded" : ""}`}>
-            <button
-              aria-expanded={systemExpanded}
-              className="template-system-toggle"
-              onClick={() => setSystemExpanded((current) => !current)}
-              type="button"
-            >
-              <span>{t("template.section.system")}</span>
-              <span aria-hidden className="section-toggle__indicator" />
-            </button>
-            {systemExpanded ? (
-              <label className="template-stack-field template-stack-field--system">
-                <span className="template-panel__label">{t("template.field.system")}</span>
-                <TextArea
-                  className="template-system-textarea"
-                  onChange={(event) => updateDraft({ system: event.target.value })}
-                  rows={12}
-                  value={draft.system ?? ""}
-                />
-              </label>
-            ) : null}
+          {/* Bar 3: System Prompt & Generation Rules */}
+          <section className="template-summary-bar" data-section="system-prompt">
+            <div className="template-summary-bar__header">
+              <div className="template-summary-bar__title-group">
+                <span className="template-panel__label">{t("template.bar.systemPrompt")}</span>
+                <span className={`template-status-pill ${systemStatusPill.className}`}>{systemStatusPill.label}</span>
+              </div>
+              <Button
+                aria-label={t("template.bar.editSystemPrompt")}
+                icon={<Pencil aria-hidden className="button__icon" />}
+                onClick={() => setSystemPromptDialogOpen(true)}
+                variant="ghost"
+              >
+                {t("template.mode.edit")}
+              </Button>
+            </div>
+            <div className="template-summary-bar__body">
+              <div className="template-summary-chips">
+                <span className="template-summary-pill">
+                  {t(mediaSelectionMode === "semantic" ? "template.semanticMedia.label" : "template.bar.mediaIndexed")}
+                </span>
+                <span className="template-summary-pill">
+                  {t("template.bar.rulesEnabledCount", { count: enabledRulesCount })}
+                </span>
+              </div>
+            </div>
+          </section>
+
+          {/* User Prompt: Direct Editable Input */}
+          <section className="template-user-prompt-card" data-section="user-prompt">
+            <div className="template-summary-bar__header">
+              <div className="template-summary-bar__title-group">
+                <label className="template-panel__label" htmlFor="template-user-prompt">
+                  {t("template.bar.userPrompt")}
+                </label>
+                <span className="template-summary-pill">{t(scenarioStatusKey)}</span>
+                {resolvedSelectedPresets.length > 0 ? (
+                  <span className="template-summary-pill">
+                    {t("template.bar.presetsAppendHint", { count: resolvedSelectedPresets.length })}
+                  </span>
+                ) : null}
+              </div>
+              <Button
+                icon={<RotateCcw aria-hidden className="button__icon" />}
+                onClick={() => {
+                  const fallback =
+                    buildDefaultTemplateScenario(selectedCharacters, t("template.defaultScenario")) ||
+                    t("template.defaultScenario");
+                  setSessionDraftActive(true);
+                  updateDraft({ baseScenario: fallback });
+                }}
+                variant="ghost"
+              >
+                {t("template.presets.restoreDefaultScenario")}
+              </Button>
+            </div>
+            <TextArea
+              className="template-scenario-textarea"
+              id="template-user-prompt"
+              onChange={(event) => {
+                setSessionDraftActive(true);
+                updateDraft({ baseScenario: event.target.value });
+              }}
+              placeholder={t("template.presets.basePromptPlaceholder")}
+              rows={6}
+              value={baseScenario}
+            />
           </section>
         </section>
 
+        {/* Right Sidebar: Prompt-unrelated Stage & Runtime Settings */}
         <aside className="template-options-panel">
           <div className="template-options-panel__header">
-            <h2 className="template-options-panel__title">{t("template.section.generate")}</h2>
-            <AsyncButton
-              className="template-generate-button"
-              disabled={!sessionRestored}
-              icon={<Sparkles aria-hidden className="button__icon" />}
-              loading={generateMutation.isPending}
-              onClick={handleGenerateTemplate}
-              variant="primary"
-            >
-              {t("template.mode.generate")}
-            </AsyncButton>
+            <h2 className="template-options-panel__title">{t("template.section.stageRuntime")}</h2>
           </div>
 
           <label className="template-side-field">
@@ -1093,6 +1586,40 @@ export function TemplateEditorPage({
               ))}
             </Select>
           </label>
+
+          {effects.length > 0 ? (
+            <div className="template-side-field template-effect-section">
+              <span className="template-side-field__label">{t("template.field.effectName")}</span>
+              <div aria-label={t("template.field.effectName")} className="template-effect-grid" role="group">
+                {effects.map((effect) => {
+                  const isSelected = selectedEffectNames.has(effect.name);
+                  return (
+                    <button
+                      aria-pressed={isSelected}
+                      className={`template-character-card${isSelected ? " template-character-card--selected" : ""}`}
+                      key={effect.name}
+                      onClick={() => toggleEffect(effect.name, !isSelected)}
+                      style={{ "--template-character-color": effect.color || "#5b8def" } as CSSProperties}
+                      title={effect.name}
+                      type="button"
+                    >
+                      <span aria-hidden className="template-character-card__dot" />
+                      <span className="template-character-card__name">{effect.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="template-side-field" data-standalone-gpu="true">
+            <div className="template-sprite-heading">
+              <label className="template-side-field__label" htmlFor="template-use-cg">
+                {t("template.field.useCg")}
+              </label>
+              <Switch checked={useCg} id="template-use-cg" onChange={(event) => setUseCg(event.target.checked)} />
+            </div>
+          </div>
 
           <div className="template-side-field">
             <span className="template-side-field__label">{t("template.field.voiceLanguage")}</span>
@@ -1113,51 +1640,8 @@ export function TemplateEditorPage({
             </div>
           </div>
 
-          <span className="template-side-field__label">{t("template.section.options")}</span>
-
-          <p className="template-options-panel__hint">{t("template.optionHelp")}</p>
-
-          <div className="template-option-list">
-            <SemanticMediaSwitch
-              checked={mediaSelectionMode === "semantic"}
-              onChange={(enabled) => {
-                const mode = enabled ? "semantic" : "indexed";
-                setMediaSelectionMode(mode);
-                setDraft((current) => ({ ...current, mediaSelectionMode: mode }));
-              }}
-            />
-            {templateOptions.map((option) => (
-              <label className="template-toggle-row" key={option.key}>
-                <span>{option.label}</span>
-                <Switch checked={option.value} onChange={(e) => option.setValue(e.target.checked)} />
-              </label>
-            ))}
-          </div>
-
-          <div className="template-number-grid">
-            <label className="template-side-field">
-              <span className="template-side-field__label">{t("template.field.maxSpeechChars")}</span>
-              <NumberInput
-                max={500000}
-                min={0}
-                onChange={(event) => setMaxSpeechChars(Number.parseInt(event.target.value, 10) || 0)}
-                step={10}
-                value={maxSpeechChars}
-              />
-            </label>
-            <label className="template-side-field">
-              <span className="template-side-field__label">{t("template.field.maxDialogItems")}</span>
-              <NumberInput
-                max={500}
-                min={0}
-                onChange={(event) => setMaxDialogItems(Number.parseInt(event.target.value, 10) || 0)}
-                value={maxDialogItems}
-              />
-            </label>
-          </div>
-
           <div className="template-runtime-fields">
-            <label className="template-side-field">
+            <label className="template-side-field" data-standalone-gpu="true">
               <span className="template-side-field__label">{t("chat.memoryMode.label")}</span>
               <Select
                 aria-label={t("chat.memoryMode.label")}
@@ -1178,14 +1662,19 @@ export function TemplateEditorPage({
                 )}
               </span>
             </label>
-            <label className="template-toggle-row">
-              <span>{t("launch.autoOutfitSwitch")}</span>
-              <Switch
-                aria-label={t("launch.autoOutfitSwitch")}
-                checked={autoOutfitSwitch}
-                onChange={(event) => setAutoOutfitSwitch(event.currentTarget.checked)}
-              />
-            </label>
+            <div className="template-side-field">
+              <div className="template-sprite-heading">
+                <label className="template-side-field__label" htmlFor="template-auto-outfit-switch">
+                  {t("launch.autoOutfitSwitch")}
+                </label>
+                <Switch
+                  aria-label={t("launch.autoOutfitSwitch")}
+                  checked={autoOutfitSwitch}
+                  id="template-auto-outfit-switch"
+                  onChange={(event) => setAutoOutfitSwitch(event.currentTarget.checked)}
+                />
+              </div>
+            </div>
             {selectedCharacterRecords
               .map((character) => ({ character, groups: characterOutfitGroups(character) }))
               .filter(({ groups }) => groups.length > 1)
@@ -1252,7 +1741,9 @@ export function TemplateEditorPage({
         </aside>
       </div>
 
-      <footer className="template-page__footer">
+      <footer
+        className={`template-page__footer${createOnly || conversationId ? " template-page__footer--single" : ""}`}
+      >
         <AsyncButton
           disabled={
             !sessionRestored || runtimeClosing || (!conversationId && runtimeLaunchDisabled) || initializationPending
@@ -1281,6 +1772,60 @@ export function TemplateEditorPage({
           </Button>
         )}
       </footer>
+
+      <CharacterConfigDialog
+        allowPlayerDialogue={allowPlayerDialogue}
+        characterPromptMode={characterPromptMode}
+        characters={characters}
+        error={characterDialogError}
+        onClose={() => setCharacterDialogOpen(false)}
+        onConfirm={confirmCharacterConfig}
+        open={characterDialogOpen}
+        pending={ensureBriefsMutation.isPending}
+        playerCharacter={effectivePlayerCharacter}
+        primaryCharacters={primaryCharacters}
+        readPlayerSpeech={readPlayerSpeech}
+        selectedCharacters={selectedCharacters}
+      />
+
+      <UserPromptPresetsDialog
+        appliedPresets={appliedPresetsSnapshot}
+        baseScenario={baseScenario}
+        library={presetsLibrary}
+        libraryError={presetsQuery.isError ? t("template.presets.loadFailed") : ""}
+        libraryLoading={presetsQuery.isPending}
+        libraryReady={presetsLibraryReady}
+        onClose={() => setUserPromptDialogOpen(false)}
+        onConfirm={handleConfirmUserPrompt}
+        onRetryLibrary={() => void presetsQuery.refetch()}
+        onSaveLibrary={(nextLibrary) => savePresetsMutation.mutateAsync(nextLibrary)}
+        open={userPromptDialogOpen}
+        savingLibrary={savePresetsMutation.isPending}
+        selectedPresetIds={draft.selectedPresetIds ?? []}
+      />
+
+      <SystemPromptDialog
+        canAutoSync={selectedCharacters.length > 0 && (selectedCharacters.length <= 4 || Boolean(characterPromptMode))}
+        generating={generateMutation.isPending}
+        onClose={() => setSystemPromptDialogOpen(false)}
+        onConfirm={handleConfirmSystemPrompt}
+        onRegenerate={handleRegenerateFromDialog}
+        open={systemPromptDialogOpen}
+        rules={{
+          maxDialogItems,
+          maxSpeechChars,
+          mediaSelectionMode,
+          useChoice,
+          useCot,
+          useEffectPrompt,
+          useNarration,
+          useStat,
+          useTranslation,
+        }}
+        systemConfigStale={systemConfigStale}
+        systemManuallyEdited={systemManuallyEdited}
+        systemText={draft.system ?? ""}
+      />
 
       <AlertDialog
         body={t("template.quickRestart.body")}

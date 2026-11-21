@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import tempfile
+import threading
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -33,12 +37,127 @@ MARK_SYSTEM = "<<<EASYAI_SYSTEM_TEMPLATE>>>"
 MARK_METADATA = "<<<EASYAI_TEMPLATE_METADATA>>>"
 TEMP_SPLIT_META = "_temp_split.json"
 DEFAULT_EMPTY_SCENARIO = "你扮演一个RPG系统。"
+_presets_lock = threading.RLock()
 
 
 def _template_dir(state: BridgeState) -> Path:
     path = Path(state.template_dir_path)
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def _user_prompt_presets_file(state: BridgeState) -> Path:
+    root = Path(state.template_dir_path).resolve().parent
+    return root / "config" / "user_prompt_presets.json"
+
+
+def _normalize_applied_presets(raw: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw, list):
+        return []
+    items: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for entry in raw:
+        if not isinstance(entry, Mapping):
+            continue
+        preset_id = str(entry.get("id") or "").strip()[:128]
+        if not preset_id or preset_id in seen_ids:
+            continue
+        seen_ids.add(preset_id)
+        name = str(entry.get("name") or "").strip()[:64]
+        group = str(entry.get("group") or "").strip()[:64]
+        color = str(entry.get("color") or "").strip()[:32]
+        content = str(entry.get("content") or "").replace("\r\n", "\n")
+        item: dict[str, Any] = {
+            "id": preset_id,
+            "name": name or preset_id,
+            "content": content,
+        }
+        if group:
+            item["group"] = group
+        if color:
+            item["color"] = color
+        items.append(item)
+    return items
+
+
+def _normalize_user_prompt_presets(raw: Any) -> dict[str, Any]:
+    data = raw if isinstance(raw, Mapping) else {}
+    groups: list[str] = []
+    seen_groups: set[str] = set()
+    raw_groups = data.get("groups")
+    if isinstance(raw_groups, list):
+        for item in raw_groups:
+            group = str(item or "").strip()[:64]
+            if group and group not in seen_groups:
+                seen_groups.add(group)
+                groups.append(group)
+
+    presets: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    raw_presets = data.get("presets")
+    if isinstance(raw_presets, list):
+        for entry in raw_presets:
+            if not isinstance(entry, Mapping):
+                continue
+            preset_id = str(entry.get("id") or "").strip()[:128]
+            name = str(entry.get("name") or "").strip()[:64]
+            if not preset_id or not name or preset_id in seen_ids:
+                continue
+            seen_ids.add(preset_id)
+            group = str(entry.get("group") or "").strip()[:64]
+            if group and group not in seen_groups:
+                seen_groups.add(group)
+                groups.append(group)
+            color = str(entry.get("color") or "").strip()[:32]
+            content = str(entry.get("content") or "").replace("\r\n", "\n")
+            preset: dict[str, Any] = {
+                "id": preset_id,
+                "name": name,
+                "group": group,
+                "content": content,
+            }
+            if color:
+                preset["color"] = color
+            presets.append(preset)
+    return {"groups": groups, "presets": presets}
+
+
+def _load_user_prompt_presets(state: BridgeState) -> dict[str, Any]:
+    path = _user_prompt_presets_file(state)
+    with _presets_lock:
+        if not path.is_file():
+            return {"groups": [], "presets": []}
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {"groups": [], "presets": []}
+        return _normalize_user_prompt_presets(raw)
+
+
+def _save_user_prompt_presets(
+    state: BridgeState, payload: dict[str, Any]
+) -> dict[str, Any]:
+    source = payload.get("library", payload) if isinstance(payload, Mapping) else {}
+    if not isinstance(source, Mapping):
+        raise ValueError("preset library payload must be an object")
+    normalized = _normalize_user_prompt_presets(source)
+    path = _user_prompt_presets_file(state)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with _presets_lock:
+        temporary: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=path.parent, delete=False
+            ) as handle:
+                temporary = Path(handle.name)
+                json.dump(normalized, handle, ensure_ascii=False, indent=2)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, path)
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+    return normalized
 
 
 def _template_id(path: Path) -> str:
@@ -61,6 +180,9 @@ def _compose_stored_template(
     player_character: str = "",
     read_player_speech: bool = False,
     allow_player_dialogue: bool = True,
+    base_scenario: str | None = None,
+    selected_preset_ids: list[str] | None = None,
+    applied_presets: list[dict[str, Any]] | None = None,
 ) -> str:
     a = (scenario or "").replace("\r\n", "\n").rstrip()
     b = (system or "").replace("\r\n", "\n").rstrip()
@@ -76,6 +198,20 @@ def _compose_stored_template(
                 "allowPlayerDialogue": bool(allow_player_dialogue),
             }
         )
+    preset_ids = _session_string_list(selected_preset_ids)
+    normalized_applied = _normalize_applied_presets(applied_presets)
+    normalized_base = (
+        str(base_scenario).replace("\r\n", "\n").rstrip()
+        if base_scenario is not None
+        else None
+    )
+    if preset_ids or (normalized_base is not None and normalized_base != a):
+        metadata_fields["baseScenario"] = (
+            normalized_base if normalized_base is not None else a
+        )
+        metadata_fields["selectedPresetIds"] = preset_ids
+        if normalized_applied:
+            metadata_fields["appliedPresets"] = normalized_applied
     metadata = json.dumps(
         metadata_fields,
         ensure_ascii=False,
@@ -101,7 +237,7 @@ def _parse_stored_template_metadata(raw: str) -> dict[str, Any]:
         parsed = {}
     metadata = parsed if isinstance(parsed, dict) else {}
     player_character = str(metadata.get("playerCharacter") or "").strip()
-    return {
+    result: dict[str, Any] = {
         "mediaSelectionMode": _normalize_media_selection_mode(
             metadata.get("mediaSelectionMode")
         ),
@@ -111,6 +247,17 @@ def _parse_stored_template_metadata(raw: str) -> dict[str, Any]:
             metadata.get("readPlayerSpeech", False) and player_character
         ),
     }
+    if "baseScenario" in metadata:
+        result["baseScenario"] = str(metadata.get("baseScenario") or "").replace(
+            "\r\n", "\n"
+        )
+    preset_ids = _session_string_list(metadata.get("selectedPresetIds"))
+    if preset_ids or "selectedPresetIds" in metadata:
+        result["selectedPresetIds"] = preset_ids
+    applied_presets = _normalize_applied_presets(metadata.get("appliedPresets"))
+    if applied_presets:
+        result["appliedPresets"] = applied_presets
+    return result
 
 
 def _parse_stored_template(raw: str) -> tuple[str, str]:
@@ -304,21 +451,26 @@ def _list_templates(state: BridgeState) -> list[dict[str, Any]]:
             continue
         scenario, system = _parse_stored_template(raw)
         metadata = _parse_stored_template_metadata(raw)
-        rows.append(
-            {
-                "content": _compose_for_llm(scenario, system),
-                "id": _template_id(path),
-                "name": path.stem,
-                "path": path.as_posix(),
-                "scenario": scenario,
-                "system": system,
-                "mediaSelectionMode": metadata["mediaSelectionMode"],
-                "playerCharacter": metadata["playerCharacter"],
-                "readPlayerSpeech": metadata["readPlayerSpeech"],
-                "allowPlayerDialogue": metadata["allowPlayerDialogue"],
-                "updatedAt": str(int(path.stat().st_mtime)),
-            }
-        )
+        row: dict[str, Any] = {
+            "content": _compose_for_llm(scenario, system),
+            "id": _template_id(path),
+            "name": path.stem,
+            "path": path.as_posix(),
+            "scenario": scenario,
+            "system": system,
+            "mediaSelectionMode": metadata["mediaSelectionMode"],
+            "playerCharacter": metadata["playerCharacter"],
+            "readPlayerSpeech": metadata["readPlayerSpeech"],
+            "allowPlayerDialogue": metadata["allowPlayerDialogue"],
+            "updatedAt": str(int(path.stat().st_mtime)),
+        }
+        if "baseScenario" in metadata:
+            row["baseScenario"] = metadata["baseScenario"]
+        if "selectedPresetIds" in metadata:
+            row["selectedPresetIds"] = metadata["selectedPresetIds"]
+        if "appliedPresets" in metadata:
+            row["appliedPresets"] = metadata["appliedPresets"]
+        rows.append(row)
     return rows
 
 
@@ -335,6 +487,21 @@ def _save_template_summary(state: BridgeState, payload: dict[str, Any]) -> dict[
         template.get("mediaSelectionMode")
     )
     file_name = safe_filename(name, default_suffix=".txt")
+    base_scenario = (
+        str(template.get("baseScenario") or "")
+        if "baseScenario" in template
+        else None
+    )
+    selected_preset_ids = (
+        template.get("selectedPresetIds")
+        if isinstance(template.get("selectedPresetIds"), list)
+        else None
+    )
+    applied_presets = (
+        template.get("appliedPresets")
+        if isinstance(template.get("appliedPresets"), list)
+        else None
+    )
     safe_child_path(_template_dir(state), file_name).write_text(
         _compose_stored_template(
             scenario,
@@ -343,6 +510,9 @@ def _save_template_summary(state: BridgeState, payload: dict[str, Any]) -> dict[
             player_character=str(template.get("playerCharacter") or ""),
             read_player_speech=bool(template.get("readPlayerSpeech", False)),
             allow_player_dialogue=bool(template.get("allowPlayerDialogue", True)),
+            base_scenario=base_scenario,
+            selected_preset_ids=selected_preset_ids,
+            applied_presets=applied_presets,
         ),
         encoding="utf-8",
     )
@@ -540,6 +710,18 @@ def _template_session_to_frontend(raw: dict[str, Any] | None) -> dict[str, Any] 
         payload["autoOutfitSwitch"] = auto_switch
     if isinstance(initial_outfits := raw.get("initial_outfits"), dict):
         payload["initialOutfits"] = initial_outfits
+    if "base_scenario" in raw:
+        payload["baseScenario"] = str(raw.get("base_scenario") or "")
+    if "selected_preset_ids" in raw:
+        payload["selectedPresetIds"] = _session_string_list(
+            raw.get("selected_preset_ids")
+        )
+    if "applied_presets" in raw:
+        applied_presets = _normalize_applied_presets(raw.get("applied_presets"))
+        if applied_presets:
+            payload["appliedPresets"] = applied_presets
+    if isinstance(system_manually_edited := raw.get("system_manually_edited"), bool):
+        payload["systemManuallyEdited"] = system_manually_edited
     return payload
 
 
@@ -713,6 +895,20 @@ def _save_template_session_payload(state: BridgeState, payload: dict[str, Any]) 
         data["auto_outfit_switch"] = auto_switch
     if isinstance(initial_outfits := payload.get("initialOutfits"), dict):
         data["initial_outfits"] = initial_outfits
+    if "baseScenario" in payload:
+        data["base_scenario"] = str(payload.get("baseScenario") or "")
+    if "selectedPresetIds" in payload:
+        data["selected_preset_ids"] = _session_string_list(
+            payload.get("selectedPresetIds")
+        )
+    if "appliedPresets" in payload:
+        data["applied_presets"] = _normalize_applied_presets(
+            payload.get("appliedPresets")
+        )
+    if isinstance(
+        system_manually_edited := payload.get("systemManuallyEdited"), bool
+    ):
+        data["system_manually_edited"] = system_manually_edited
     save_template_session(state.template_dir_path, data)
     loaded = _load_template_session_payload(state)
     if loaded is None:

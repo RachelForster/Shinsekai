@@ -11,6 +11,8 @@
     "serve:bundle": "python ../webui_react.py",
     "serve:bundle:conda": "conda run -n shinsekai python ../webui_react.py",
     "build": "tsc -b && vite build",
+    "build:toy": "node scripts/build-toy.mjs",
+    "build:mobile": "tsc -b && vite build --mode mobile",
     "sync:version": "node scripts/sync-version.mjs",
     "prepare:runtime": "node scripts/prepare-runtime.mjs",
     "prepare:l2d": "node scripts/prepare-l2d.mjs",
