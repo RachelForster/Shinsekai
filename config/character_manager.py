@@ -564,13 +564,13 @@ class CharacterManager:
                 updates["mouth_sync"] = sprite_mouths[i]
             if replacements is None and stored_upload_group is not None:
                 updates["group"] = stored_upload_group
-            new_sprite_data = updates
+            new_sprite_data: Union[Sprite, dict] = Sprite.model_validate(updates)
             if replacements is not None:
                 original = original_sprites[replacements[i][0]]
                 new_sprite_data = (
                     original.model_copy(update=updates)
                     if isinstance(original, Sprite)
-                    else {**original, **updates}
+                    else Sprite.model_validate({**original, **updates})
                 )
             new_sprites.append(new_sprite_data)
             

@@ -48,7 +48,9 @@ from core.sprite.transitions import valid_transitions
 from tools import file_util
 
 
-RESERVED_CHARACTER_FIELDS = frozenset({"display_name", "is_builtin", "pinned", "undeletable"})
+RESERVED_CHARACTER_FIELDS = frozenset({"id", "display_name", "is_builtin", "pinned", "undeletable"})
+RESERVED_BACKGROUND_FIELDS = frozenset({"id"})
+RESERVED_EFFECT_FIELDS = frozenset({"id"})
 
 
 @pytest.fixture(autouse=True)
@@ -394,7 +396,7 @@ def test_schema_field_sets_match_roundtrip_contract_expectations() -> None:
         "frame_count",
         "h3_resolution",
     }
-    assert set(Background.model_fields) == {
+    assert set(Background.model_fields) - RESERVED_BACKGROUND_FIELDS == {
         "name",
         "sprite_prefix",
         "sprites",
@@ -402,7 +404,7 @@ def test_schema_field_sets_match_roundtrip_contract_expectations() -> None:
         "bgm_list",
         "bgm_tags",
     }
-    assert set(Effect.model_fields) == {
+    assert set(Effect.model_fields) - RESERVED_EFFECT_FIELDS == {
         "name",
         "color",
         "prompt_text",
@@ -694,7 +696,7 @@ def test_background_use_case_export_import_preserves_every_field_and_conflict_co
             "bgm_list": [str(theme_mp3)],
             "bgm_tags": "音乐 1：放学后的铃声\n",
         }
-        assert set(bg_payload) == set(Background.model_fields)
+        assert set(bg_payload) == set(Background.model_fields) - RESERVED_BACKGROUND_FIELDS
 
         expected_room = room_png.read_bytes()
         expected_sunset = sunset_png.read_bytes()
@@ -804,7 +806,7 @@ def test_effect_use_case_export_import_preserves_every_field_and_conflict_copy(
         "image_tags": "图片 1：金色星芒\n",
         "image_audio_list": [str(fx_image_audio)],
     }
-    assert set(effect_payload) == set(Effect.model_fields)
+    assert set(effect_payload) == set(Effect.model_fields) - RESERVED_EFFECT_FIELDS
 
     expected_audio = fx_audio.read_bytes()
     expected_image = fx_image.read_bytes()

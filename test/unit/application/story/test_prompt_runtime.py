@@ -367,7 +367,7 @@ def test_story_launch_inherits_normal_workflow_and_template_options_without_savi
             "max_dialog_items": 6,
         },
     )
-    path = tmp_path / "data/config/template_tab_last_launch.json"
+    path = tmp_path / "data/state/ui_state.json"
     before = path.read_bytes()
     route = next(item for item in STORY_ROUTES if item.name == "story.launch-payload")
     launch = route.handler(

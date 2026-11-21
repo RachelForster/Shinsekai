@@ -129,7 +129,7 @@ def save_model_state(use_case, body: dict) -> dict:
             write_state_index(adapter_for(kind), model, target, state)
             from core.media.asset_tags import numbered_tags, tag_contents
             tags = tag_contents(bank.emotion_tags, len(bank.sprites))
-            sprite = Sprite(path=target) if index == -1 else bank.sprites[index].model_copy(update={"path": target})
+            sprite = Sprite(path=target) if index == -1 else bank.sprites[index].model_copy(update={"path": str(target)})
             if index == -1:
                 bank.sprites.append(sprite)
                 tags.append(str(body["tags"]))

@@ -553,7 +553,7 @@ def test_real_persistence_failure_rolls_back_files_and_bank(harness, monkeypatch
         if failure == "serialize":
             args[1].write("partial YAML")
         raise OSError("simulated disk write failure")
-    target = {"serialize": "yaml.dump", "flush": "os.fsync", "replace": "os.replace"}[failure]
+    target = {"serialize": "yaml.dump", "flush": "os.fsync", "replace": "durable_rename"}[failure]
     monkeypatch.setattr(f"config.config_manager.{target}", fail)
     with pytest.raises(OSError, match="simulated disk write failure"):
         if operation in {"import", "replace"}:
