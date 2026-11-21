@@ -1,6 +1,8 @@
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from application.backgrounds import (
     BackgroundExportResult,
     BackgroundOperation,
@@ -92,3 +94,39 @@ def test_export_returns_transport_neutral_path_result(tmp_path, monkeypatch):
 
     assert result == BackgroundExportResult(path="output/Room.bg")
     assert exported == [(tmp_path / "output" / "Room.bg").as_posix()]
+
+
+def test_save_image_and_bgm_tags_persist_without_localized_prefix_parsing(tmp_path):
+    use_case, config_manager = make_use_case(tmp_path)
+
+    img_res = use_case.execute(
+        parse_background_request(
+            BackgroundOperation.SAVE_IMAGE_TAGS,
+            {"name": "Room", "bgTags": "场景 1：大厅\n"},
+        )
+    )
+    bgm_res = use_case.execute(
+        parse_background_request(
+            BackgroundOperation.SAVE_BGM_TAGS,
+            {"name": "Room", "bgmTags": "音乐 1：舒缓钢琴\n"},
+        )
+    )
+
+    assert img_res["bg_tags"] == "场景 1：大厅\n"
+    assert bgm_res["bgm_tags"] == "音乐 1：舒缓钢琴\n"
+    assert config_manager.events == ["save-config", "reload", "save-config", "reload"]
+
+    with pytest.raises(ValueError, match="background name is required"):
+        use_case.execute(
+            parse_background_request(
+                BackgroundOperation.SAVE_IMAGE_TAGS,
+                {"name": "   ", "bgTags": "tag"},
+            )
+        )
+    with pytest.raises(KeyError, match="background not found"):
+        use_case.execute(
+            parse_background_request(
+                BackgroundOperation.SAVE_BGM_TAGS,
+                {"name": "Missing", "bgmTags": "tag"},
+            )
+        )

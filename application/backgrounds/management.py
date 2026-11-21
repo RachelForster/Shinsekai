@@ -18,6 +18,8 @@ from application.runtime.state import _jsonify
 
 class BackgroundOperation(str, Enum):
     SAVE = "save"
+    SAVE_IMAGE_TAGS = "save-image-tags"
+    SAVE_BGM_TAGS = "save-bgm-tags"
     DELETE = "delete"
     UPLOAD_IMAGES = "upload-images"
     UPLOAD_BGM = "upload-bgm"
@@ -65,6 +67,8 @@ class BackgroundUseCase:
     def execute(self, request: BackgroundRequest) -> Any:
         handlers = {
             BackgroundOperation.SAVE: self._save,
+            BackgroundOperation.SAVE_IMAGE_TAGS: self._save_image_tags,
+            BackgroundOperation.SAVE_BGM_TAGS: self._save_bgm_tags,
             BackgroundOperation.DELETE: self._delete,
             BackgroundOperation.UPLOAD_IMAGES: self._upload_images,
             BackgroundOperation.UPLOAD_BGM: self._upload_bgm,
@@ -117,6 +121,24 @@ class BackgroundUseCase:
         if saved is None:
             raise RuntimeError(message)
         return _jsonify(saved)
+
+    def _save_image_tags(self, payload: dict[str, Any]) -> dict[str, Any]:
+        name = str(payload.get("name") or "").strip()
+        if not name:
+            raise ValueError("background name is required")
+        background = self._background(name)
+        background.bg_tags = str(payload.get("bgTags") or "")
+        self._state.config_manager.save_background_config()
+        return self._after_reload(name)
+
+    def _save_bgm_tags(self, payload: dict[str, Any]) -> dict[str, Any]:
+        name = str(payload.get("name") or "").strip()
+        if not name:
+            raise ValueError("background name is required")
+        background = self._background(name)
+        background.bgm_tags = str(payload.get("bgmTags") or "")
+        self._state.config_manager.save_background_config()
+        return self._after_reload(name)
 
     def _delete(self, payload: dict[str, Any]) -> dict[str, Any]:
         name = str(payload.get("name") or "").strip()

@@ -23,6 +23,8 @@ class CharacterOperation(str, Enum):
     IMPORT_MODEL_STATES = "import-model-states"
     SAVE_MODEL_STATE = "save-model-state"
     SAVE = "save"
+    SAVE_EMOTION_TAGS = "save-emotion-tags"
+    SAVE_SPRITE_SCALE = "save-sprite-scale"
     BIND_VOICE = "bind-voice"
     DELETE = "delete"
     UPLOAD_SPRITES = "upload-sprites"
@@ -125,6 +127,8 @@ class CharacterUseCase:
             CharacterOperation.IMPORT_MODEL_STATES: lambda body: import_model_states(self, body),
             CharacterOperation.SAVE_MODEL_STATE: lambda body: save_model_state(self, body),
             CharacterOperation.SAVE: self._save,
+            CharacterOperation.SAVE_EMOTION_TAGS: self._save_emotion_tags,
+            CharacterOperation.SAVE_SPRITE_SCALE: self._save_sprite_scale,
             CharacterOperation.BIND_VOICE: self._bind_voice,
             CharacterOperation.DELETE: self._delete,
             CharacterOperation.UPLOAD_SPRITES: self._upload_sprites,
@@ -587,3 +591,25 @@ class CharacterUseCase:
         output, relative = self._resource_paths.export_target(name, ".char")
         export_character([config], output.as_posix(), open_folder=False)
         return CharacterExportResult(path=relative)
+
+    def _save_emotion_tags(self, payload: dict[str, Any]) -> dict[str, Any]:
+        name = str(payload.get("name") or "").strip()
+        if not name:
+            raise ValueError("character name is required")
+        emotion_tags = str(payload.get("emotionTags") or "")
+        if not emotion_tags:
+            raise ValueError("emotion tags are required")
+        character = self._character(name)
+        character.emotion_tags = emotion_tags
+        self._state.config_manager.save_characters_config()
+        return self._after_reload(name)
+
+    def _save_sprite_scale(self, payload: dict[str, Any]) -> dict[str, Any]:
+        name = str(payload.get("name") or "").strip()
+        if not name:
+            raise ValueError("character name is required")
+        scale = float(payload.get("scale") or 0)
+        character = self._character(name)
+        character.sprite_scale = scale
+        self._state.config_manager.save_characters_config()
+        return self._after_reload(name)

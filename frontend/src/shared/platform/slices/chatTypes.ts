@@ -321,6 +321,7 @@ export interface ChatSnapshot {
   historyPath?: string;
   inputDraft: string;
   initTask?: TaskSnapshot;
+  isSystemDialog?: boolean;
   loopingEffects?: Array<{
     key: string;
     seq: number;
@@ -363,6 +364,7 @@ export type ChatPresentation = Partial<
     | "characterName"
     | "dialogHtml"
     | "dialogText"
+    | "isSystemDialog"
     | "options"
     | "systemMessageText"
     | "playerPortrait"
