@@ -27,6 +27,12 @@ from config.models.common import (
 )
 from config.models.mcp_settings import McpConfig
 from config.models.media_catalog import Background, Effect
+from config.models.prompt_presets import (
+    UserPromptPreset,
+    UserPromptPresetLibrary,
+    normalize_applied_presets_list,
+    normalize_user_prompt_presets_dict,
+)
 from config.models.system_settings import SystemConfig, normalize_system_config_dict
 from config.models.ui_state import UiRuntimeState
 
@@ -53,10 +59,14 @@ __all__ = [
     "SpriteTransition",
     "SystemConfig",
     "UiRuntimeState",
+    "UserPromptPreset",
+    "UserPromptPresetLibrary",
     "build_default_self_persona",
     "clamp_compact_target_ratio",
     "default_if_none",
     "is_self_persona_name",
     "normalize_api_config_dict",
+    "normalize_applied_presets_list",
     "normalize_system_config_dict",
+    "normalize_user_prompt_presets_dict",
 ]
