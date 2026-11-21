@@ -1,13 +1,10 @@
+import { DEFAULT_SPRITE_GROUP } from "../../../constants";
 import type { Character } from "../../slices/characterTypes";
 import type { CharacterOutfitState, ChatLaunchPayload, ChatStat } from "../../slices/chatTypes";
 import type { SystemConfig } from "../../slices/configTypes";
 import type { Background, Effect } from "../../slices/workspaceTypes";
 import { createStandaloneTemplateTranslator } from "./standaloneTemplateLocales";
-import {
-  DEFAULT_EMPTY_SCENARIO,
-  buildStandaloneEffectCatalogBlock,
-  generateStandaloneDialogSystemTemplate,
-} from "./templateGenerator";
+import { buildStandaloneEffectCatalogBlock, generateStandaloneDialogSystemTemplate } from "./templateGenerator";
 
 export interface StandalonePromptContext {
   characters: Character[];
@@ -26,29 +23,32 @@ function buildRuntimeStateSupplement(
   stats: ChatStat[] | undefined,
   userDisplayName: string | undefined,
   playerCharacter: string | undefined,
+  t: ReturnType<typeof createStandaloneTemplateTranslator>,
 ): string {
   const lines: string[] = [];
   const activePlayer = userDisplayName || playerCharacter || "";
   if (activePlayer) {
-    lines.push(`【当前主控称呼】${activePlayer}`);
+    lines.push(t("standalone_player_address", { name: activePlayer }));
   }
   if (outfits) {
     const outfitLines: string[] = [];
     for (const char of characters) {
       const state = outfits[char.name];
       if (!state?.activeGroup) continue;
-      const defaultGroup = char.default_sprite_group || "默认";
+      const defaultGroup = char.default_sprite_group || DEFAULT_SPRITE_GROUP;
       if (state.activeGroup !== defaultGroup || state.locked || (char.sprite_groups?.length ?? 0) > 1) {
-        outfitLines.push(`${char.name}: ${state.activeGroup}${state.locked ? "（已锁定，请勿更换）" : ""}`);
+        outfitLines.push(`${char.name}: ${state.activeGroup}${state.locked ? t("standalone_outfit_locked") : ""}`);
       }
     }
     if (outfitLines.length) {
-      lines.push(`【当前服装状态】${outfitLines.join("；")}`);
+      lines.push(t("standalone_outfits_state", { lines: outfitLines.join(t("list_sep_semi")) }));
     }
   }
   if (stats?.length) {
-    const statSummary = stats.map((s) => `${s.label}: ${s.value}${s.max !== undefined ? `/${s.max}` : ""}`).join("，");
-    lines.push(`【当前舞台数值】${statSummary}`);
+    const statSummary = stats
+      .map((s) => `${s.label}: ${s.value}${s.max !== undefined ? `/${s.max}` : ""}`)
+      .join(t("list_sep_comma"));
+    lines.push(t("standalone_stats_state", { lines: statSummary }));
   }
   return lines.join("\n");
 }
@@ -99,7 +99,7 @@ export function buildStandaloneDialogSystemPrompt(ctx: StandalonePromptContext):
       });
       systemTemplate = generated.system.trimEnd();
     } else {
-      systemTemplate = '请严格依据场景设定，用 JSON `{ "dialog": [...] }` 格式驱动交互对话。';
+      systemTemplate = t("standalone_fallback_system_prompt");
     }
   }
 
@@ -114,8 +114,9 @@ export function buildStandaloneDialogSystemPrompt(ctx: StandalonePromptContext):
     stats,
     userDisplayName,
     payload.playerCharacter,
+    t,
   );
-  const userScenario = (payload.scenario ?? "").trim() || DEFAULT_EMPTY_SCENARIO;
+  const userScenario = (payload.scenario ?? "").trim() || t("default_empty_scenario");
   const jsonReminder = t("closing_json_reminder").trim();
 
   return [systemTemplate, effectBlock, runtimeState, userScenario, jsonReminder].filter(Boolean).join("\n");

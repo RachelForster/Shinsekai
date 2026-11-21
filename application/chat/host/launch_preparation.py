@@ -9,6 +9,7 @@ import os
 import sys
 from application.chat.host.ports import LaunchPlan, LaunchRejected
 from application.chat.build_effect_context import SelectedEffectContext
+from ai.llm.template.integrations.localization import resolve_template_locale
 from application.chat.templates import (
     TEMP_SPLIT_META,
     _compose_runtime_template,
@@ -74,8 +75,9 @@ class ChatLaunchPreparation:
             effective_system = effective_system + "\n" + player_rules
         template = _compose_runtime_template(
             effective_system,
-            effective_user_scenario,
+            user_scenario,
             effect_context,
+            locale=resolve_template_locale(state.config_manager),
         )
         template_dir = _template_dir(state)
         (template_dir / "_temp.txt").write_text(template, encoding="utf-8")

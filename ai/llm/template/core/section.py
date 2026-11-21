@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Callable, Generic, TypeVar, final
+from typing import Any, Callable, Generic, TypeVar, final
 
 from .context import TemplateContext
 
@@ -68,3 +69,20 @@ class TextSection(Section[ContextT]):
 
     def _render_self(self, context: ContextT) -> str:
         return self.text(context) if callable(self.text) else self.text
+
+
+@dataclass(frozen=True)
+class I18nSection(Section[ContextT]):
+    """Section that renders a localized PromptCatalog key using context.tr."""
+
+    key: str = field(default="", kw_only=True)
+    params: Mapping[str, Any] | Callable[[ContextT], Mapping[str, Any]] = field(
+        default_factory=dict,
+        kw_only=True,
+    )
+
+    def _render_self(self, context: ContextT) -> str:
+        if not self.key:
+            return ""
+        resolved = self.params(context) if callable(self.params) else self.params
+        return context.tr(self.key, **dict(resolved))

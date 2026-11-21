@@ -172,14 +172,10 @@ function characterSpriteCatalogText(
   return `${t("sprites_count", { name: character.name, n: indices.length })}${filteredTags}\n\n`;
 }
 
-function formatSelfPersonaPrompt(setting: string): string {
+function formatSelfPersonaPrompt(setting: string, t: ReturnType<typeof createStandaloneTemplateTranslator>): string {
   const cleaned = setting.trim();
   if (!cleaned) return "";
-  return (
-    "【用户自设设定】\n" +
-    `${cleaned}\n` +
-    "（以上是当前与你对话的用户本人的背景与偏好设定；请在互动中自然知晓并贴合，不要将「自设」作为独立台词角色输出。）\n\n"
-  );
+  return t("self_persona_block", { setting: cleaned });
 }
 
 function cleanInlineText(value: unknown): string {
@@ -383,7 +379,7 @@ export function generateStandaloneDialogSystemTemplate(options: GenerateTemplate
 
   // 4. Player section
   if (!playerCharacter || !playerObj) {
-    const persona = formatSelfPersonaPrompt(selfPersonaSetting);
+    const persona = formatSelfPersonaPrompt(selfPersonaSetting, t);
     if (persona) parts.push(persona);
   } else {
     const setting = String(playerObj.character_setting ?? "").trim();

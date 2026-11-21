@@ -20,9 +20,11 @@ def _background_text(context: UserPromptContext) -> str:
     if not context.background:
         return ""
     return (
-        "[当前显示背景]\n"
+        context.tr("session.user_background_open")
+        + "\n"
         + json.dumps(dict(context.background), ensure_ascii=False)
-        + "\n[/当前显示背景]"
+        + "\n"
+        + context.tr("session.user_background_close")
     )
 
 

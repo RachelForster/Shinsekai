@@ -40,7 +40,7 @@ def test_guidance_preserves_existing_output(case):
 
 def test_system_prompts_preserve_existing_instructions():
     assert (
-        build_story_author_system_section().render(TemplateContext())
+        build_story_author_system_section().render(TemplateContext(locale="en"))
         == FIXTURE["authorSystem"]
     )
     assert AUTHOR_COMPILER_TEMPLATE == FIXTURE["authorSystem"]
@@ -99,3 +99,41 @@ def test_story_templates_do_not_depend_on_session_or_application_services():
                 in {"application", "core", "config", "frontend_bridge_core"}
                 for module in modules
             ), path
+
+
+@pytest.mark.parametrize(
+    ("locale", "author_marker", "assessment_marker", "guidance_marker", "title_key"),
+    [
+        ("zh_CN", "Shinsekai 的剧情编译作者", "你只判断已发生的对话", "【当前剧本进度】", "当前剧情"),
+        ("en", "Shinsekai's story compiler author", "You only determine whether", "[Current Story Progress]", "current_node"),
+        ("ja", "Shinsekai のストーリーコンパイラ作者", "あなたはこれまでの会話が", "【現在のシナリオ進行】", "現在の展開"),
+    ],
+)
+def test_story_prompts_switch_across_supported_locales(
+    locale,
+    author_marker,
+    assessment_marker,
+    guidance_marker,
+    title_key,
+):
+    ctx = TemplateContext(locale=locale)
+    author_text = build_story_author_system_section().render(ctx)
+    assessment_text = build_story_assessment_system_section().render(ctx)
+    guidance_text = build_story_guidance_section().render(
+        StoryGuidanceContext(
+            "Gate",
+            "Investigate",
+            1,
+            3,
+            transitions=(StoryGuidanceTransition("Enter", "Hall"),),
+            background="Old Building",
+            locale=locale,
+        )
+    )
+    assert author_marker in author_text
+    assert "responseSchema" in author_text
+    assert assessment_marker in assessment_text
+    assert '{"nextNodeId": null}' in assessment_text
+    assert guidance_marker in guidance_text
+    parsed_state = json.loads(guidance_text.split("\n")[-1])
+    assert parsed_state[title_key] == "Gate"

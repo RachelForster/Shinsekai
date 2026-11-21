@@ -1,15 +1,45 @@
 """Shared template translation and language compatibility helpers."""
 
-from i18n import tr
-from sdk.lang import normalize_lang
+from __future__ import annotations
+
+from typing import Any
+
+from i18n import current_language
+from sdk.lang import LocaleCode, normalize_lang
+
+from ..core.catalog import PROMPT_CATALOG
 
 # 与配置中的背景名一致，勿翻译（UI 默认选此项；旧名「透明背景」仍识别）
 TRANSPARENT_BG = "透明场景"
 _TRANSPARENT_ALIAS = "透明背景"
 
 
-def translate_template(key: str, **kwargs) -> str:
-    return tr(f"template_gen.{key}", **kwargs)
+def resolve_template_locale(config_manager: Any = None) -> LocaleCode:
+    """Resolve prompt locale from SystemConfig.ui_language, falling back to active i18n language."""
+    try:
+        cfg = getattr(config_manager, "config", None)
+        sys_cfg = getattr(cfg, "system_config", None)
+        ui_lang = getattr(sys_cfg, "ui_language", None)
+        if ui_lang:
+            return normalize_lang(str(ui_lang))
+    except Exception:
+        pass
+    return normalize_lang(current_language())
+
+
+def translate_template(
+    key: str,
+    *,
+    config_manager: Any = None,
+    locale: str | None = None,
+    **kwargs: Any,
+) -> str:
+    effective_locale = (
+        normalize_lang(locale)
+        if locale
+        else resolve_template_locale(config_manager)
+    )
+    return PROMPT_CATALOG.translate(f"dialog.{key}", locale=effective_locale, **kwargs)
 
 
 def is_transparent_background(name: str | None) -> bool:

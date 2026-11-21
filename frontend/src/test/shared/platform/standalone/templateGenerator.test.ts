@@ -585,4 +585,87 @@ describe("standalone template generation & dialog protocol", () => {
     expect(events.some((e) => e.type === "sprite.show" && e.characterName === "星奈")).toBe(false);
     expect(events.some((e) => e.type === "sprite.remove" && e.characterName === "米娜")).toBe(true);
   });
+
+  it("switches self-persona and runtime state supplements together with ui_language across zh_CN, en, and ja", () => {
+    const heroine = makeCharacter({
+      name: "星奈",
+      character_setting: "Observatory senpai.",
+      sprite_groups: ["默认", "礼服"],
+      default_sprite_group: "默认",
+    });
+    const selfPersona = makeCharacter({
+      name: "自设",
+      character_setting: "Traveler carrying a pocket watch.",
+    });
+
+    const cases = [
+      {
+        ui_language: "zh_CN",
+        personaHeader: "【用户自设设定】",
+        playerMarker: "【当前主控称呼】旅人",
+        outfitMarker: "【当前服装状态】星奈: 礼服（已锁定，请勿更换）",
+        statsMarker: "【当前舞台数值】HP: 80/100，MP: 40",
+        emptyScenario: "你扮演一个RPG系统。",
+        fallbackPrompt: '请严格依据场景设定，用 JSON `{ "dialog": [...] }` 格式驱动交互对话。',
+      },
+      {
+        ui_language: "en",
+        personaHeader: "[User Persona]",
+        playerMarker: "[Current Player] 旅人",
+        outfitMarker: "[Current Outfit State] 星奈: 礼服 (locked, do not change)",
+        statsMarker: "[Current Stage Stats] HP: 80/100, MP: 40",
+        emptyScenario: "You act as an RPG system.",
+        fallbackPrompt:
+          'Strictly follow the scenario setting and drive the interactive dialogue in JSON `{ "dialog": [...] }` format.',
+      },
+      {
+        ui_language: "ja",
+        personaHeader: "【ユーザー自設設定】",
+        playerMarker: "【現在の主控呼称】旅人",
+        outfitMarker: "【現在の衣装状態】星奈: 礼服（ロック中・変更不可）",
+        statsMarker: "【現在の舞台ステータス】HP: 80/100、MP: 40",
+        emptyScenario: "あなたはRPGシステムとして振る舞います。",
+        fallbackPrompt: 'シナリオ設定に厳密に従い、JSON `{ "dialog": [...] }` 形式で対話を進行してください。',
+      },
+    ] as const;
+
+    for (const c of cases) {
+      const prompt = buildStandaloneDialogSystemPrompt({
+        characters: [heroine, selfPersona],
+        systemConfig: { ui_language: c.ui_language, voice_language: "ja" },
+        payload: {
+          templateId: `tpl-${c.ui_language}`,
+          characters: ["星奈"],
+          backgroundName: "",
+          historyPath: `./data/history/${c.ui_language}.json`,
+          scenario: "",
+        },
+        userDisplayName: "旅人",
+        outfits: { 星奈: { characterName: "星奈", activeGroup: "礼服", locked: true, updatedAtMs: 1 } },
+        stats: [
+          { icon: "heart", label: "HP", value: 80, max: 100 },
+          { icon: "zap", label: "MP", value: 40 },
+        ],
+      });
+      expect(prompt).toContain(c.personaHeader);
+      expect(prompt).toContain(c.playerMarker);
+      expect(prompt).toContain(c.outfitMarker);
+      expect(prompt).toContain(c.statsMarker);
+      expect(prompt).toContain(c.emptyScenario);
+
+      const fallback = buildStandaloneDialogSystemPrompt({
+        characters: [],
+        systemConfig: { ui_language: c.ui_language },
+        payload: {
+          templateId: `tpl-fallback-${c.ui_language}`,
+          characters: [],
+          backgroundName: "",
+          historyPath: `./data/history/fallback-${c.ui_language}.json`,
+          scenario: "",
+        },
+      });
+      expect(fallback).toContain(c.fallbackPrompt);
+      expect(fallback).toContain(c.emptyScenario);
+    }
+  });
 });
