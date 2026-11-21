@@ -27,6 +27,18 @@ from sdk.adapters.session import (
     TruncateReport,
     TurnNode,
 )
+from sdk.adapters.storage import (
+    BackendKind,
+    BackendStatus,
+    CatalogStore,
+    Codec,
+    DocumentStore,
+    ManagedBackend,
+    Migratable,
+    ReadableCatalog,
+    ReadableDocument,
+    UnitOfWork,
+)
 from sdk.llm_response import ChatResponse, ResponseCodec, ResponseDelta
 from sdk.adapters.t2i import T2IAdapter
 from sdk.adapters.tts import TTSAdapter
@@ -40,7 +52,14 @@ from sdk.adapters.vision import (
 __all__ = [
     "ASRAdapter",
     "AvatarFormatContribution",
+    "BackendKind",
+    "BackendStatus",
+    "CatalogStore",
+    "Codec",
+    "DocumentStore",
     "LLMAdapter",
+    "ManagedBackend",
+    "Migratable",
     "CompactCheckpoint",
     "ConversationSessionPort",
     "EmbeddingProvider",
@@ -49,12 +68,15 @@ __all__ = [
     "MemoryRepository",
     "MemoryRepositoryContribution",
     "OutfitState",
+    "ReadableCatalog",
+    "ReadableDocument",
     "RecallPlanner",
     "RetentionPolicy",
     "SessionStoreContribution",
     "StaticVectorStorePort",
     "TruncateReport",
     "TurnNode",
+    "UnitOfWork",
     "ChatResponse",
     "ResponseCodec",
     "ResponseDelta",

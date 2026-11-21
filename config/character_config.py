@@ -5,12 +5,12 @@ from config.schema import Character
 
 
 class CharacterConfig:
-    def __init__(self, name, color, sprite_prefix, gpt_model_path=None, sovits_model_path=None, refer_audio_path=None, prompt_text=None, prompt_lang=None, sprites=[], emotion_tags="", sprite_scale=1.0, character_setting="", speech_speed=1.0, speech_volume=1.0, pronunciation_map=None, character_brief="", avatar_type="static", avatars=None, portrait_crop=None, sprite_transitions=None, relation_graph=None, sprite_groups=None, default_sprite_group="", fallback_to_default_group=True):
+    def __init__(self, name, color, sprite_prefix, gpt_model_path=None, sovits_model_path=None, refer_audio_path=None, prompt_text=None, prompt_lang=None, sprites=[], emotion_tags="", sprite_scale=1.0, character_setting="", speech_speed=1.0, speech_volume=1.0, pronunciation_map=None, character_brief="", avatar_type="static", avatars=None, portrait_crop=None, sprite_transitions=None, relation_graph=None, sprite_groups=None, default_sprite_group="", fallback_to_default_group=True, portrait_sprite_index=0):
         # 角色基本信息
         self.name = name
         self.color = color
         self.sprite_prefix = sprite_prefix
-        self.sprites = sprites
+        self.sprites = list(sprites or [])
         self.sprite_groups = list(sprite_groups or [])
         self.default_sprite_group = "" if default_sprite_group is None else str(default_sprite_group)
         self.fallback_to_default_group = True if fallback_to_default_group is None else bool(fallback_to_default_group)
@@ -19,6 +19,9 @@ class CharacterConfig:
         self.character_setting = character_setting
         self.sprite_scale = sprite_scale
         self.portrait_crop = portrait_crop
+        self.portrait_sprite_index = (
+            0 if portrait_sprite_index is None else max(0, int(portrait_sprite_index))
+        )
         self.emotion_tags = emotion_tags
         self.speech_speed = speech_speed
         self.speech_volume = speech_volume
@@ -89,6 +92,7 @@ class CharacterConfig:
                 speech_volume=char_data.get("speech_volume", 1.0),
                 pronunciation_map=char_data.get("pronunciation_map", None),
                 portrait_crop=char_data.get("portrait_crop"),
+                portrait_sprite_index=char_data.get("portrait_sprite_index", 0),
                 avatar_type=char_data.get("avatar_type", "static"),
                 avatars=char_data.get("avatars"),
                 sprite_transitions=char_data.get("sprite_transitions"),
