@@ -674,9 +674,10 @@ def export_background(
         background_data_list = []
 
         for config in background_configs:
-            # 准备要写入YAML的配置数据 (转换为字典，排除 FilePath 类型)
+            # 准备要写入YAML的配置数据 (转换为字典，排除本地稳定主键与 FilePath 类型)
             bg_data = config.model_dump(
-                exclude_none=True, 
+                exclude={"id"},
+                exclude_none=True,
                 mode='json' # 确保 FilePath/HttpUrl 被转换为字符串
             )
             
@@ -811,6 +812,8 @@ def import_background(input_path: str, existing_configs: List[Background]) -> Li
                     new_bgm_list.append(new_path.as_posix())
                 bg_data['bgm_list'] = new_bgm_list
                 
+            # 清除包内可能携带的旧本地稳定 ID，保证每次导入生成全新本地主键
+            bg_data.pop("id", None)
             # 将更新后的数据创建为 Background 对象
             # 注意：这里需要一个从字典创建 Background 实例的方法，假设 Pydantic 的 Background() 可用
             imported_configs.append(Background.model_validate(bg_data))
