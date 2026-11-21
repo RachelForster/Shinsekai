@@ -204,12 +204,7 @@
   min-width: 0;
   margin-right: calc(31px + var(--space-1));
 }
-.relation-person-select__picker {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-.relation-person-select__picker .custom-select__button {
+.relation-person-select__button {
   position: absolute;
   right: 0;
   top: 0;
@@ -219,12 +214,7 @@
   justify-content: center;
   padding: 0;
   background: var(--color-border);
-  pointer-events: auto;
 }
-.relation-person-select__picker .custom-select__button:hover:not(:disabled) {
+.relation-person-select__button:hover:not(:disabled) {
   background: var(--color-control-hover);
-}
-.relation-person-select__picker .custom-select__value,
-.relation-person-select__picker .custom-select__placeholder {
-  display: none;
 }

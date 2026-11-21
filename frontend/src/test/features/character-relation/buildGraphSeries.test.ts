@@ -35,16 +35,19 @@ describe("graphSeries", () => {
       nodes: [{ key: "A" }, { key: "B" }],
       edges: [],
     };
-    const series = graphSeries({
-      graph: graph,
-      positions: { A: { x: 0, y: 0 }, B: { x: 100, y: 0 } },
-      labelPositions: { A: { x: 0, y: 0 }, B: { x: 100, y: 0 } },
-      activeNodeKey: "A",
-      emptyRelationLabel: "",
-      textColor: "#fff",
-      backgroundColor: "#000",
-      characters: [{ name: " a ", color: "#123abc" }],
-    });
+    const series = graphSeries(
+      {
+        graph: graph,
+        positions: { A: { x: 0, y: 0 }, B: { x: 100, y: 0 } },
+        labelPositions: { A: { x: 0, y: 0 }, B: { x: 100, y: 0 } },
+        activeNodeKey: "A",
+        emptyRelationLabel: "",
+        textColor: "#fff",
+        backgroundColor: "#000",
+        characters: [{ name: " a ", color: "#123abc" }],
+      },
+      [graph],
+    );
     expect(series.data).toMatchObject([
       { itemStyle: { borderColor: "#123abc" } },
       { itemStyle: { borderColor: "#fff" } },
@@ -57,38 +60,44 @@ describe("graphSeries", () => {
       nodes: [{ key: "A" }],
       edges: [],
     };
-    const series = graphSeries({
-      graph: graph,
-      positions: { A: { x: 0, y: 0 } },
-      labelPositions: { A: { x: 0, y: 0 } },
-      activeNodeKey: "",
-      emptyRelationLabel: "",
-      textColor: "#fff",
-      backgroundColor: "#000",
-      characters: [{ name: "A", color: "#123abc" }],
-    });
+    const series = graphSeries(
+      {
+        graph: graph,
+        positions: { A: { x: 0, y: 0 } },
+        labelPositions: { A: { x: 0, y: 0 } },
+        activeNodeKey: "",
+        emptyRelationLabel: "",
+        textColor: "#fff",
+        backgroundColor: "#000",
+        characters: [{ name: "A", color: "#123abc" }],
+      },
+      [graph],
+    );
     expect(series.data).toMatchObject([{ itemStyle: { borderColor: "#fff" } }]);
   });
 
   it("shows the hovered character color without requiring selection", () => {
-    const series = graphSeries({
-      graph: { owner: "A", nodes: [{ key: "A" }, { key: "B" }], edges: [] },
-      positions: { A: { x: 0, y: 0 }, B: { x: 100, y: 0 } },
-      labelPositions: { A: { x: 0, y: 0 }, B: { x: 100, y: 0 } },
-      activeNodeKey: "B",
-      selectedNodeKey: "",
-      emptyRelationLabel: "",
-      textColor: "#fff",
-      backgroundColor: "#000",
-      characters: [{ name: "B", color: "#123abc" }],
-    });
+    const series = graphSeries(
+      {
+        graph: { owner: "A", nodes: [{ key: "A" }, { key: "B" }], edges: [] },
+        positions: { A: { x: 0, y: 0 }, B: { x: 100, y: 0 } },
+        labelPositions: { A: { x: 0, y: 0 }, B: { x: 100, y: 0 } },
+        activeNodeKey: "B",
+        selectedNodeKey: "",
+        emptyRelationLabel: "",
+        textColor: "#fff",
+        backgroundColor: "#000",
+        characters: [{ name: "B", color: "#123abc" }],
+      },
+      [{ owner: "A", nodes: [{ key: "A" }, { key: "B" }], edges: [] }],
+    );
     expect(series.data).toMatchObject([
       { itemStyle: { borderColor: "#fff" } },
       { itemStyle: { borderColor: "#123abc" } },
     ]);
   });
 
-  it("keeps all edges while highlighting outgoing relationships of the active node", () => {
+  it("keeps all edges while highlighting the active owner’s relationships", () => {
     const graph: CharacterRelationGraph = {
       owner: "A",
       nodes: [{ key: "A" }, { key: "B" }, { key: "C" }],
@@ -98,15 +107,21 @@ describe("graphSeries", () => {
         { source: "B", target: "C", temperature: 3, content: "B to C" },
       ],
     };
-    const series = graphSeries({
-      graph: graph,
-      positions: { A: { x: 0, y: 0 }, B: { x: 100, y: 0 }, C: { x: 200, y: 0 } },
-      labelPositions: { A: { x: 0, y: 0 }, B: { x: 100, y: 0 }, C: { x: 200, y: 0 } },
-      activeNodeKey: "B",
-      emptyRelationLabel: "",
-      textColor: "#fff",
-      backgroundColor: "#000",
-    });
+    const series = graphSeries(
+      {
+        graph: graph,
+        positions: { A: { x: 0, y: 0 }, B: { x: 100, y: 0 }, C: { x: 200, y: 0 } },
+        labelPositions: { A: { x: 0, y: 0 }, B: { x: 100, y: 0 }, C: { x: 200, y: 0 } },
+        activeNodeKey: "B",
+        emptyRelationLabel: "",
+        textColor: "#fff",
+        backgroundColor: "#000",
+      },
+      [
+        { ...graph, edges: [graph.edges[0]] },
+        { ...graph, owner: "B", edges: graph.edges.slice(1) },
+      ],
+    );
     expect(series.links?.map(({ source, target, label }) => ({ source, target, show: label?.show }))).toEqual([
       { source: "A", target: "B", show: false },
       { source: "B", target: "A", show: true },
@@ -117,23 +132,35 @@ describe("graphSeries", () => {
   });
 
   it("shows all edges dimly when no node is active", () => {
-    const series = graphSeries({
-      graph: {
-        owner: "A",
-        nodes: [{ key: "A" }, { key: "B" }, { key: "C" }],
-        edges: [
-          { source: "A", target: "B", temperature: 0, content: "first" },
-          { source: "B", target: "C", temperature: 0, content: "second" },
-        ],
+    const series = graphSeries(
+      {
+        graph: {
+          owner: "A",
+          nodes: [{ key: "A" }, { key: "B" }, { key: "C" }],
+          edges: [
+            { source: "A", target: "B", temperature: 0, content: "first" },
+            { source: "B", target: "C", temperature: 0, content: "second" },
+          ],
+        },
+        positions: { A: { x: 0, y: 0 }, B: { x: 100, y: 0 }, C: { x: 200, y: 0 } },
+        labelPositions: { A: { x: 0, y: 0 }, B: { x: 100, y: 0 }, C: { x: 200, y: 0 } },
+        activeNodeKey: "",
+        selectedNodeKey: "",
+        emptyRelationLabel: "",
+        textColor: "#fff",
+        backgroundColor: "#000",
       },
-      positions: { A: { x: 0, y: 0 }, B: { x: 100, y: 0 }, C: { x: 200, y: 0 } },
-      labelPositions: { A: { x: 0, y: 0 }, B: { x: 100, y: 0 }, C: { x: 200, y: 0 } },
-      activeNodeKey: "",
-      selectedNodeKey: "",
-      emptyRelationLabel: "",
-      textColor: "#fff",
-      backgroundColor: "#000",
-    });
+      [
+        {
+          owner: "A",
+          nodes: [{ key: "A" }, { key: "B" }, { key: "C" }],
+          edges: [
+            { source: "A", target: "B", temperature: 0, content: "first" },
+            { source: "B", target: "C", temperature: 0, content: "second" },
+          ],
+        },
+      ],
+    );
     expect(series.links).toHaveLength(2);
     expect(series.links?.map((edge) => [edge.label?.show, edge.lineStyle?.opacity])).toEqual([
       [false, 0.45],
@@ -147,15 +174,18 @@ describe("graphSeries", () => {
       nodes: [{ key: "A" }, { key: "B" }],
       edges: [{ source: "A", target: "B", temperature: 8, content: "Friends" }],
     };
-    const series = graphSeries({
-      graph: graph,
-      positions: { A: { x: 0, y: 0 }, B: { x: 100, y: 0 } },
-      labelPositions: { A: { x: 0, y: 0 }, B: { x: 100, y: 0 } },
-      activeNodeKey: "A",
-      emptyRelationLabel: "",
-      textColor: "#fff",
-      backgroundColor: "#000",
-    });
+    const series = graphSeries(
+      {
+        graph: graph,
+        positions: { A: { x: 0, y: 0 }, B: { x: 100, y: 0 } },
+        labelPositions: { A: { x: 0, y: 0 }, B: { x: 100, y: 0 } },
+        activeNodeKey: "A",
+        emptyRelationLabel: "",
+        textColor: "#fff",
+        backgroundColor: "#000",
+      },
+      [graph],
+    );
     expect(series.links?.[0].lineStyle?.color).toBe("#fff");
   });
 });
