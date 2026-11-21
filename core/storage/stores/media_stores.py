@@ -86,6 +86,10 @@ class SqliteBackgroundCatalog:
     def close(self) -> None:
         self._store.close()
 
+    def atomic(self):
+        """Return a transaction context manager over the shared SQLite engine."""
+        return self._engine.atomic()
+
     def get(self, key: str) -> Background | None:
         return self._store.get(key)
 
@@ -93,7 +97,14 @@ class SqliteBackgroundCatalog:
         cleaned = str(name or "").strip()
         if not cleaned:
             return None
-        return self._store.get_by_column("name", cleaned)
+        found = self._store.get_by_column("name", cleaned)
+        if found is not None:
+            return found
+        target_cf = cleaned.casefold()
+        for candidate in self.list_all():
+            if candidate.name.strip().casefold() == target_cf:
+                return candidate
+        return None
 
     def list_all(self) -> tuple[Background, ...]:
         return self._store.list_all()
@@ -110,7 +121,7 @@ class SqliteBackgroundCatalog:
     def replace_all(self, items: Sequence[Background]) -> str:
         with self._engine.write_connection() as connection:
             existing_rows = connection.execute(
-                "SELECT id, name, sort_order, payload_json FROM backgrounds"
+                "SELECT id, name, sort_order, payload_json, updated_at FROM backgrounds"
             ).fetchall()
             existing_by_id = {str(row["id"]): row for row in existing_rows}
             existing_id_by_name = {
@@ -149,7 +160,11 @@ class SqliteBackgroundCatalog:
             if not removed_ids and not updates and not inserts:
                 return _current_table_revision(connection, "backgrounds")
 
-            now = time.time()
+            max_existing_ts = max(
+                (float(row["updated_at"]) for row in existing_rows if row["updated_at"] is not None),
+                default=0.0,
+            )
+            now = max(time.time(), max_existing_ts + 1e-3)
             for removed_id in removed_ids:
                 connection.execute("DELETE FROM backgrounds WHERE id = ?", (removed_id,))
             for _sort_order, item, _payload in updates:
@@ -216,6 +231,10 @@ class SqliteEffectCatalog:
     def close(self) -> None:
         self._store.close()
 
+    def atomic(self):
+        """Return a transaction context manager over the shared SQLite engine."""
+        return self._engine.atomic()
+
     def get(self, key: str) -> Effect | None:
         return self._store.get(key)
 
@@ -223,7 +242,14 @@ class SqliteEffectCatalog:
         cleaned = str(name or "").strip()
         if not cleaned:
             return None
-        return self._store.get_by_column("name", cleaned)
+        found = self._store.get_by_column("name", cleaned)
+        if found is not None:
+            return found
+        target_cf = cleaned.casefold()
+        for candidate in self.list_all():
+            if candidate.name.strip().casefold() == target_cf:
+                return candidate
+        return None
 
     def list_all(self) -> tuple[Effect, ...]:
         return self._store.list_all()
@@ -240,7 +266,7 @@ class SqliteEffectCatalog:
     def replace_all(self, items: Sequence[Effect]) -> str:
         with self._engine.write_connection() as connection:
             existing_rows = connection.execute(
-                "SELECT id, name, sort_order, payload_json FROM effects"
+                "SELECT id, name, sort_order, payload_json, updated_at FROM effects"
             ).fetchall()
             existing_by_id = {str(row["id"]): row for row in existing_rows}
             existing_id_by_name = {
@@ -278,7 +304,11 @@ class SqliteEffectCatalog:
             if not removed_ids and not updates and not inserts:
                 return _current_table_revision(connection, "effects")
 
-            now = time.time()
+            max_existing_ts = max(
+                (float(row["updated_at"]) for row in existing_rows if row["updated_at"] is not None),
+                default=0.0,
+            )
+            now = max(time.time(), max_existing_ts + 1e-3)
             for removed_id in removed_ids:
                 connection.execute("DELETE FROM effects WHERE id = ?", (removed_id,))
             for _sort_order, item, _payload in updates:

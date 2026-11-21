@@ -442,3 +442,100 @@ def test_config_manager_and_conversation_store_round_trip(
     finally:
         ConfigManager._instance = prev_instance
         stores.close()
+
+
+def test_geometry_migration_retry_unicode_lookup_and_postcommit_import_safety(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import zipfile
+
+    from application.characters.management import (
+        CharacterOperation,
+        CharacterUseCase,
+        parse_character_request,
+    )
+    from core.storage.file_store import FileDocumentStore
+
+    # 1. Simulate ui_state_store.update failure before retry
+    ws = tmp_path / "geom-retry"
+    _create_legacy_workspace(ws)
+    original_update = FileDocumentStore.update
+    failed_once = False
+
+    def fail_ui_update(self, mutator):
+        nonlocal failed_once
+        if self.name == "state.ui" and not failed_once:
+            failed_once = True
+            raise OSError("disk full before ui_state write")
+        return original_update(self, mutator)
+
+    monkeypatch.setattr(FileDocumentStore, "update", fail_ui_update)
+    with pytest.raises(OSError, match="disk full before ui_state write"):
+        build_app_stores(ws, bind_globals=False)
+
+    # Legacy YAML must still keep chat_window_geometry_b64 so retry recovers it
+    sys_after_abort = yaml.safe_load(
+        (ws / "data" / "config" / "system_config.yaml").read_text(encoding="utf-8")
+    )
+    assert sys_after_abort["chat_window_geometry_b64"] == "Z2VvbQ=="
+
+    stores = build_app_stores(ws, bind_globals=False)
+    try:
+        assert stores.ui_state.get().chat_window_geometry_b64 == "Z2VvbQ=="
+        sys_after_retry = yaml.safe_load(
+            (ws / "data" / "config" / "system_config.yaml").read_text(encoding="utf-8")
+        )
+        assert "chat_window_geometry_b64" not in sys_after_retry
+
+        # 2. Non-ASCII Unicode casefold lookup across all three catalogs
+        ake_char = Character(name="Åke", color="#123456", sprite_prefix="ake")
+        ake_bg = Background(name="ÅkeRoom", sprite_prefix="ake_bg")
+        ake_ef = Effect(name="ÅkeFx")
+        stores.characters.put(ake_char.id, ake_char)
+        stores.backgrounds.put(ake_bg.id, ake_bg)
+        stores.effects.put(ake_ef.id, ake_ef)
+        assert stores.characters.get_by_name("åke") is not None
+        assert stores.backgrounds.get_by_name("åkeroom") is not None
+        assert stores.effects.get_by_name("åkefx") is not None
+
+        # 3. Post-commit refresh error must NOT roll back staged character assets
+        archive = tmp_path / "alice_pkg.char"
+        with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr(
+                "character.yaml",
+                yaml.safe_dump(
+                    [
+                        {
+                            "name": "PostCommitChar",
+                            "color": "#abcdef",
+                            "sprite_prefix": "post_commit_c",
+                            "sprites": [{"path": "sprites/post_commit_c/hi.png"}],
+                        }
+                    ],
+                    allow_unicode=True,
+                ),
+            )
+            zf.writestr("sprites/post_commit_c/hi.png", b"PNGDATA")
+
+        class _BrokenRefreshCfg:
+            def refresh_characters(self):
+                raise RuntimeError("refresh exploded after commit")
+
+        fake_state = SimpleNamespace(
+            project_root_dir=str(ws),
+            config_manager=_BrokenRefreshCfg(),
+            stores=stores,
+        )
+        uc = CharacterUseCase(fake_state, file_access_roots=[tmp_path])
+        with pytest.raises(RuntimeError, match="refresh exploded after commit"):
+            uc.execute(
+                parse_character_request(
+                    CharacterOperation.IMPORT,
+                    {"paths": [str(archive)]},
+                )
+            )
+        imported = stores.characters.get_by_name("PostCommitChar")
+        assert imported is not None
+        assert Path(imported.sprites[0].path).is_file()
+    finally:
+        stores.close()

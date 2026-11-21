@@ -385,6 +385,7 @@ class EffectUseCase:
         existing = self.config_manager.config.effect_list
         imported: list[Effect] = []
         created_dirs: list[Path] = []
+        committed = False
         try:
             for raw_path in paths:
                 archive = safe_existing_file_path(
@@ -404,6 +405,7 @@ class EffectUseCase:
                     existing.append(effect)
                 self._effect_dir(effect.name).mkdir(parents=True, exist_ok=True)
             self.config_manager.save_effect_config()
+            committed = True
             refresh = getattr(self.config_manager, "refresh_effects", None)
             if callable(refresh):
                 refresh()
@@ -411,7 +413,8 @@ class EffectUseCase:
                 self.config_manager.reload()
             return imported
         except BaseException:
-            rollback_staged_assets(created_dirs)
+            if not committed:
+                rollback_staged_assets(created_dirs)
             raise
 
     def _export(self, payload: dict[str, Any]) -> EffectExportResult:

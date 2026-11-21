@@ -613,6 +613,7 @@ class CharacterUseCase:
 
         imported = []
         created_dirs: list[Path] = []
+        committed = False
         try:
             for item in files:
                 staged = stage_character_package_import(
@@ -634,16 +635,19 @@ class CharacterUseCase:
                 with stores.main_db.atomic():
                     for char in imported:
                         stores.characters.put(char.id, char)
+                committed = True
                 self._refresh_characters_catalog()
             else:
                 chars = getattr(self._state.config_manager.config, "characters", None)
                 if isinstance(chars, list):
                     chars.extend(imported)
                 self._state.config_manager.save_characters_config()
+                committed = True
                 self._refresh_characters_catalog()
             return [_jsonify(char) for char in imported]
         except BaseException:
-            rollback_staged_assets(created_dirs)
+            if not committed:
+                rollback_staged_assets(created_dirs)
             raise
 
     def _export_package(self, payload: dict[str, Any]) -> CharacterExportResult:

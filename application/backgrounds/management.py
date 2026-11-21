@@ -215,6 +215,7 @@ class BackgroundUseCase:
         )
         imported = []
         created_dirs: list[Path] = []
+        committed = False
         try:
             for item in files:
                 staged = stage_background_package_import(
@@ -230,6 +231,7 @@ class BackgroundUseCase:
                 with stores.main_db.atomic():
                     for bg in imported:
                         stores.backgrounds.put(bg.id, bg)
+                committed = True
                 self._refresh_backgrounds_catalog()
             else:
                 target_list = self._state.config_manager.config.background_list
@@ -237,10 +239,12 @@ class BackgroundUseCase:
                     if background not in target_list:
                         target_list.append(background)
                 self._state.config_manager.save_background_config()
+                committed = True
                 self._refresh_backgrounds_catalog()
             return [_jsonify(item) for item in imported]
         except BaseException:
-            rollback_staged_assets(created_dirs)
+            if not committed:
+                rollback_staged_assets(created_dirs)
             raise
 
     def _export_package(self, payload: dict[str, Any]) -> BackgroundExportResult:

@@ -727,20 +727,22 @@ class LegacyDataMigrator:
     def _relocate_state_and_cache(self) -> None:
         sys_yaml = self._layout.config_file("system_config.yaml")
         extracted_geometry = ""
+        system_rewrite: dict[str, Any] | None = None
         if sys_yaml.is_file():
             try:
                 raw_sys = yaml.safe_load(sys_yaml.read_text(encoding="utf-8"))
                 if isinstance(raw_sys, dict) and str(raw_sys.get("chat_window_geometry_b64") or "").strip():
                     extracted_geometry = str(raw_sys["chat_window_geometry_b64"])
-                    cleaned_model = self._system_store.get()
-                    cleaned_model.chat_window_geometry_b64 = ""
-                    # Rewrite system_config.yaml excluding chat_window_geometry_b64.
-                    raw_sys.pop("chat_window_geometry_b64", None)
-                    model = SystemConfig.model_validate(raw_sys)
-                    payload = model.model_dump(mode="json", by_alias=True, exclude={"chat_window_geometry_b64"})
-                    self._atomic_write_yaml(sys_yaml, payload)
+                    cleaned_raw = dict(raw_sys)
+                    cleaned_raw.pop("chat_window_geometry_b64", None)
+                    model = SystemConfig.model_validate(cleaned_raw)
+                    system_rewrite = model.model_dump(
+                        mode="json",
+                        by_alias=True,
+                        exclude={"chat_window_geometry_b64"},
+                    )
             except Exception:
-                logger.warning("Could not strip legacy chat_window_geometry_b64 cleanly", exc_info=True)
+                logger.warning("Could not parse legacy chat_window_geometry_b64 cleanly", exc_info=True)
 
         legacy_template_json = self._layout.config_file("template_tab_last_launch.json")
         extracted_template: dict[str, Any] | None = None
@@ -768,6 +770,12 @@ class LegacyDataMigrator:
                 )
 
             self._ui_state_store.update(_merge_ui_state)
+
+        if system_rewrite is not None:
+            try:
+                self._atomic_write_yaml(sys_yaml, system_rewrite)
+            except Exception:
+                logger.warning("Could not strip legacy chat_window_geometry_b64 cleanly", exc_info=True)
 
         for cache_name in ("plugin_registry_downloads.json", "llm_model_capabilities.json"):
             src_cache = self._layout.config_file(cache_name)

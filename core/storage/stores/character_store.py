@@ -146,6 +146,10 @@ class SqliteCharacterCatalog:
     def close(self) -> None:
         self._store.close()
 
+    def atomic(self):
+        """Return a transaction context manager over the shared SQLite engine."""
+        return self._engine.atomic()
+
     def get(self, key: str) -> Character | None:
         return self._store.get(key)
 
@@ -156,6 +160,10 @@ class SqliteCharacterCatalog:
         found = self._store.get_by_column("name", cleaned)
         if found is not None:
             return found
+        target_cf = cleaned.casefold()
+        for candidate in self.list_all():
+            if candidate.name.strip().casefold() == target_cf:
+                return candidate
         if is_self_persona_name(cleaned):
             return build_default_self_persona()
         return None
@@ -251,7 +259,7 @@ class SqliteCharacterCatalog:
         """Synchronize the catalog list while only updating rows whose content or order changed."""
         with self._engine.write_connection() as connection:
             existing_rows = connection.execute(
-                "SELECT id, name, sprite_prefix, sort_order, payload_json FROM characters"
+                "SELECT id, name, sprite_prefix, sort_order, payload_json, updated_at FROM characters"
             ).fetchall()
             existing_by_id = {str(row["id"]): row for row in existing_rows}
             existing_id_by_name = {
@@ -312,7 +320,11 @@ class SqliteCharacterCatalog:
             if not removed_ids and not changed_updates and not new_inserts:
                 return self._current_revision_locked(connection)
 
-            now = time.time()
+            max_existing_ts = max(
+                (float(row["updated_at"]) for row in existing_rows if row["updated_at"] is not None),
+                default=0.0,
+            )
+            now = max(time.time(), max_existing_ts + 1e-3)
             # 1) Remove deleted characters first (fires legitimate ON DELETE CASCADE).
             for removed_id in removed_ids:
                 connection.execute("DELETE FROM characters WHERE id = ?", (removed_id,))
