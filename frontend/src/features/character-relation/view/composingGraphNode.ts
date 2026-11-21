@@ -1,7 +1,7 @@
 import type { RelationNode } from "../../../shared/platform/types";
 import type { Point } from "../model/graphLayout";
 import type { GraphTheme } from "../model/graphTheme";
-import { normalizeRelationName } from "../model/relationSelection";
+import { normalizeRelationName } from "../model/relationUitl";
 
 const cache = new WeakMap<HTMLCanvasElement, Map<string, string>>();
 

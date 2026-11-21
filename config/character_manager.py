@@ -270,7 +270,13 @@ class CharacterManager:
                 )
                 if taken is not None and taken is not target:
                     return f"名称「{name}」已与其他角色重复！", [c.name for c in characters]
-                target.relation_graph = self._rename_relation_graph_owner(target.relation_graph, target.name, name)
+                renamed_graphs = []
+                if target.name != name:
+                    for character in characters:
+                        updated_graph = self._rename_relation_graph_owner(
+                            character.relation_graph, target.name, name
+                        )
+                        renamed_graphs.append((character, updated_graph))
                 target.name = name
                 if is_self_persona_name(name) and display_name is not None:
                     target.display_name = display_name
@@ -316,7 +322,10 @@ class CharacterManager:
                     target.avatar_type = avatar_fields.avatar_type
                 if avatars is not None:
                     target.avatars = avatar_fields.avatars
-                if relation_graph is not None:
+                if renamed_graphs:
+                    for character, updated_graph in renamed_graphs:
+                        character.relation_graph = updated_graph
+                elif relation_graph is not None:
                     target.relation_graph = self.parse_relation_graph(relation_graph)
                 self._save_characters_config()
                 return "人物已更新！", [c.name for c in characters]
@@ -411,7 +420,6 @@ class CharacterManager:
                 existing_character.avatars = avatar_fields.avatars
             if relation_graph is not None:
                 existing_character.relation_graph = self.parse_relation_graph(relation_graph)
-
             self._save_characters_config()
             return "人物已更新！", [c.name for c in characters]
 
@@ -968,11 +976,11 @@ class CharacterManager:
         """迁移自身图谱中的名称引用。"""
         value = graph.model_dump(mode="json")
         for node in value["nodes"]:
-            if node["key"] == old_name:
+            if node["key"].strip().lower() == old_name.strip().lower():
                 node["key"] = new_name
         for edge in value["edges"]:
             for endpoint in ("source", "target"):
-                if edge[endpoint] == old_name:
+                if edge[endpoint].strip().lower() == old_name.strip().lower():
                     edge[endpoint] = new_name
         return RelationGraph.model_validate(value)
 

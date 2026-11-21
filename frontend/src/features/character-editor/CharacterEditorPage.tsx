@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { configQueryKey, getAppConfig } from "../../entities/config/repository";
 import { templatesQueryKey } from "../../entities/template/repository";
+import { relationQueryKey } from "../../entities/character-relation/repository";
 import {
   charactersQueryKey,
   autoLabelCharacterSprites,
@@ -199,6 +200,8 @@ export function CharacterEditorPage() {
       setDraft(structuredClone(character));
       setPronunciationText(pronunciationMapToText(character.pronunciation_map));
       if (variables.originalName && variables.originalName !== character.name) {
+        void queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+        void queryClient.invalidateQueries({ queryKey: relationQueryKey });
         void queryClient.invalidateQueries({ queryKey: ["knowledge", "binding-names"] });
         queryClient.setQueryData<TemplateLaunchSession | null>([...templatesQueryKey, "session"], (current) =>
           current

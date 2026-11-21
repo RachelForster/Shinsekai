@@ -4,7 +4,7 @@ import { fileUrl } from "../../entities/files/repository";
 import { isVideoMedia } from "../../shared/assets/visualMedia";
 import { defaultPortraitCrop } from "../../shared/components/Portrait";
 import type { Character, RelationNode } from "../../shared/platform/types";
-import { normalizeRelationName } from "./model/relationSelection";
+import { normalizeRelationName } from "./model/relationUitl";
 
 export function usePreparingGraphAvatars(nodes: RelationNode[], characters: Character[] | undefined) {
   const [avatars, setAvatars] = useState<Map<string, HTMLCanvasElement>>(new Map());
