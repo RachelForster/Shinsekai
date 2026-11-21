@@ -151,8 +151,15 @@ class CharacterUseCase:
             raise KeyError(f"character not found: {name}")
         return character
 
+    def _refresh_characters_catalog(self) -> None:
+        refresh = getattr(self._state.config_manager, "refresh_characters", None)
+        if callable(refresh):
+            refresh()
+        else:
+            self._state.config_manager.reload()
+
     def _after_reload(self, name: str) -> dict[str, Any]:
-        self._state.config_manager.reload()
+        self._refresh_characters_catalog()
         return _jsonify(self._character(name))
 
     def _file(self, raw: Any, *, field: str) -> Path:
@@ -300,19 +307,23 @@ class CharacterUseCase:
             or message.startswith("保存失败")
         ):
             raise RuntimeError(message)
-        self._state.config_manager.reload()
+        self._refresh_characters_catalog()
         if original_name and original_name != saved_name:
-            from application.knowledge.manage_knowledge import rename_character_bindings
             from application.chat.templates import _rename_template_session_character
             from application.chat.conversation_library import update_conversation_character
 
-            try:
-                rename_character_bindings(original_name, saved_name)
-            except sqlite3.Error:
-                logger.exception(
-                    "Character rename succeeded but knowledge bindings could not be migrated: %s -> %s",
-                    original_name, saved_name,
-                )
+            # When unified AppStores is active, character_knowledge_bindings references immutable
+            # character.id with ON DELETE CASCADE, so renames require zero binding cascade SQL.
+            if getattr(self._state, "stores", None) is None:
+                from application.knowledge.manage_knowledge import rename_character_bindings
+
+                try:
+                    rename_character_bindings(original_name, saved_name)
+                except sqlite3.Error:
+                    logger.exception(
+                        "Character rename succeeded but knowledge bindings could not be migrated: %s -> %s",
+                        original_name, saved_name,
+                    )
             try:
                 _rename_template_session_character(self._state, original_name, saved_name)
             except OSError:
@@ -326,7 +337,7 @@ class CharacterUseCase:
         name = str(payload.get("name") or "").strip()
         if not name:
             raise ValueError("character name is required")
-        self._state.config_manager.reload()
+        self._refresh_characters_catalog()
         latest = self._character(name)
         merged = dict(_jsonify(latest))
         merged.update(
@@ -353,14 +364,15 @@ class CharacterUseCase:
         existed = existing is not None
         message, names = self._state.character_manager.delete_character(name)
         if existed and self._state.config_manager.get_character_by_name(name) is None:
-            from application.knowledge.manage_knowledge import clear_character_bindings
+            if getattr(self._state, "stores", None) is None:
+                from application.knowledge.manage_knowledge import clear_character_bindings
 
-            try:
-                clear_character_bindings(name)
-            except sqlite3.Error:
-                logger.exception(
-                    "Character deletion succeeded but knowledge bindings could not be cleared: %s", name,
-                )
+                try:
+                    clear_character_bindings(name)
+                except sqlite3.Error:
+                    logger.exception(
+                        "Character deletion succeeded but knowledge bindings could not be cleared: %s", name,
+                    )
             update_conversation_character(self._state, name)
         return {"message": message, "names": names}
 
@@ -568,22 +580,81 @@ class CharacterUseCase:
 
     def _import_packages(self, payload: dict[str, Any]) -> list[dict[str, Any]]:
         files = self._files(payload.get("paths") or [])
-        from tools.file_util import import_character
+        from core.packaging.character_package import stage_character_package_import
+        from core.packaging.zip_io import rollback_staged_assets
+        from tools import file_util
+
+        stores = getattr(self._state, "stores", None)
+        project_root = self._resource_paths.project_root
+        default_data = Path("./data")
+        sprite_dir = (
+            Path(file_util.SPRITE_DIR)
+            if file_util.SPRITE_DIR != default_data / "sprite"
+            else (stores.layout.media_dir("sprite") if stores is not None else project_root / "data" / "sprite")
+        )
+        speech_dir = (
+            Path(file_util.SPEECH_DIR)
+            if file_util.SPEECH_DIR != default_data / "speech"
+            else (stores.layout.media_dir("speech") if stores is not None else project_root / "data" / "speech")
+        )
+        model_dir = (
+            Path(file_util.MODEL_DIR)
+            if file_util.MODEL_DIR != default_data / "models"
+            else (stores.layout.media_dir("models") if stores is not None else project_root / "data" / "models")
+        )
+
+        existing_source = (
+            stores.characters.list_all()
+            if stores is not None
+            else (getattr(getattr(self._state.config_manager, "config", None), "characters", None) or ())
+        )
+        existing_names = {c.name for c in existing_source if getattr(c, "name", "")}
+        existing_prefixes = {c.sprite_prefix for c in existing_source if getattr(c, "sprite_prefix", "")}
 
         imported = []
-        for item in files:
-            imported.extend(import_character(item.name))
-        self._state.config_manager.reload()
-        return [dict(item.__dict__) for item in imported]
+        created_dirs: list[Path] = []
+        committed = False
+        try:
+            for item in files:
+                staged = stage_character_package_import(
+                    item.name,
+                    existing_names=existing_names,
+                    existing_prefixes=existing_prefixes,
+                    sprite_dir=sprite_dir,
+                    speech_dir=speech_dir,
+                    model_dir=model_dir,
+                    cwd_base=Path.cwd(),
+                )
+                created_dirs.extend(staged.created_dirs)
+                imported.extend(staged.characters)
+                for char in staged.characters:
+                    existing_names.add(char.name)
+                    existing_prefixes.add(char.sprite_prefix)
+
+            if stores is not None:
+                with stores.main_db.atomic():
+                    for char in imported:
+                        stores.characters.put(char.id, char)
+                committed = True
+                self._refresh_characters_catalog()
+            else:
+                chars = getattr(self._state.config_manager.config, "characters", None)
+                if isinstance(chars, list):
+                    chars.extend(imported)
+                self._state.config_manager.save_characters_config()
+                committed = True
+                self._refresh_characters_catalog()
+            return [_jsonify(char) for char in imported]
+        except BaseException:
+            if not committed:
+                rollback_staged_assets(created_dirs)
+            raise
 
     def _export_package(self, payload: dict[str, Any]) -> CharacterExportResult:
         name = str(payload.get("name") or "")
         character = self._character(name)
-        from config.character_config import CharacterConfig
         from tools.file_util import export_character
 
-        data = character.model_dump(mode="json") if hasattr(character, "model_dump") else dict(character)
-        config = CharacterConfig.parse_dic(data)
         output, relative = self._resource_paths.export_target(name, ".char")
-        export_character([config], output.as_posix(), open_folder=False)
+        export_character([character], output.as_posix(), open_folder=False)
         return CharacterExportResult(path=relative)

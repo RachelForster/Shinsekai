@@ -27,7 +27,24 @@ logger = logging.getLogger(__name__)
 RELATION_CONTEXT_MARKER = "[Shinsekai character relation context]"
 
 
-def _character_config_mtime_ns(config: Any) -> int | None:
+def _character_config_mtime_ns(config: Any) -> int | str | None:
+    backend = getattr(config, "active_backend", None)
+    if backend is not None:
+        return getattr(backend, "characters_revision", None)
+    has_custom = getattr(config, "_has_custom_yaml_paths", None)
+    custom_override = callable(has_custom) and has_custom()
+    if not custom_override:
+        main_db = Path("data/shinsekai.db")
+        wal = Path("data/shinsekai.db-wal")
+        mtimes: list[int] = []
+        for candidate in (main_db, wal):
+            try:
+                if candidate.is_file():
+                    mtimes.append(candidate.stat().st_mtime_ns)
+            except OSError:
+                continue
+        if mtimes:
+            return max(mtimes)
     raw_path = getattr(config, "_CHARACTERS_CONFIG_PATH", None)
     if not raw_path:
         return None
@@ -163,7 +180,9 @@ class RelationTurnContextProvider(BaseTurnContextProvider):
         self._last_mtime_ns = _character_config_mtime_ns(config)
 
     def _refresh_if_modified(self) -> None:
-        refresh = getattr(self.config, "refresh_media_catalogs", None)
+        refresh = getattr(self.config, "refresh_characters", None) or getattr(
+            self.config, "refresh_media_catalogs", None
+        )
         if not callable(refresh):
             return
         current_mtime_ns = _character_config_mtime_ns(self.config)
