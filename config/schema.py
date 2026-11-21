@@ -23,12 +23,16 @@ from config.models import (  # noqa: F401
     SpriteTransition,
     SystemConfig,
     UiRuntimeState,
+    UserPromptPreset,
+    UserPromptPresetLibrary,
     build_default_self_persona,
     clamp_compact_target_ratio,
     default_if_none,
     is_self_persona_name,
     normalize_api_config_dict,
+    normalize_applied_presets_list,
     normalize_system_config_dict,
+    normalize_user_prompt_presets_dict,
 )
 
 __all__ = [
@@ -54,10 +58,14 @@ __all__ = [
     "SpriteTransition",
     "SystemConfig",
     "UiRuntimeState",
+    "UserPromptPreset",
+    "UserPromptPresetLibrary",
     "build_default_self_persona",
     "clamp_compact_target_ratio",
     "default_if_none",
     "is_self_persona_name",
     "normalize_api_config_dict",
+    "normalize_applied_presets_list",
     "normalize_system_config_dict",
+    "normalize_user_prompt_presets_dict",
 ]
