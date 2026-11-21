@@ -14,8 +14,45 @@ from urllib.parse import urlparse
 
 from application.media.resource_paths import MediaResourcePaths
 from application.runtime.state import _jsonify
+from config.character_manager import CharacterManager
+from config.character_ops import (
+    CharacterProfileError,
+    delete_all_character_sprites,
+    delete_character_and_assets,
+    delete_character_sprite_voice,
+    delete_single_character_sprite,
+    save_character_patch,
+    save_character_sprite_groups,
+    upload_character_sprite_voice,
+    upload_character_sprites,
+)
 
 logger = logging.getLogger(__name__)
+
+
+class _CatalogCharacterTarget:
+    """Adapt ``CharacterCatalogPort`` to ``CharacterPersistenceTarget``."""
+
+    def __init__(self, catalog: Any) -> None:
+        self._catalog = catalog
+
+    def get_by_id(self, char_id: str) -> Any | None:
+        return self._catalog.get(char_id)
+
+    def get_by_name(self, name: str) -> Any | None:
+        return self._catalog.get_by_name(name)
+
+    def list_all(self) -> Any:
+        return self._catalog.list_all()
+
+    def ensure_self_persona(self) -> Any:
+        return self._catalog.ensure_self_persona()
+
+    def save_character(self, character: Any) -> None:
+        self._catalog.put(character.id, character)
+
+    def delete_character_record(self, character: Any) -> bool:
+        return bool(self._catalog.delete(character.id))
 
 
 class CharacterOperation(str, Enum):
@@ -156,6 +193,18 @@ class CharacterUseCase:
         with self._mutation_lock:
             return handlers[request.operation](request.payload)
 
+    def _catalog_target(self) -> _CatalogCharacterTarget | None:
+        if self._characters is None:
+            return None
+        return _CatalogCharacterTarget(self._characters)
+
+    def _media_dir(self, category: str) -> Path:
+        stores = getattr(self._state, "stores", None)
+        layout = getattr(stores, "layout", None) if stores is not None else None
+        if layout is not None:
+            return Path(layout.media_dir(category))
+        return self._resource_paths.project_root / "data" / category
+
     def _character(self, name: str) -> Any:
         if self._characters is not None:
             character = self._characters.get_by_name(name)
@@ -166,11 +215,14 @@ class CharacterUseCase:
         return character
 
     def _refresh_characters_catalog(self) -> None:
-        refresh = getattr(self._state.config_manager, "refresh_characters", None)
+        config_manager = getattr(self._state, "config_manager", None)
+        if config_manager is None:
+            return
+        refresh = getattr(config_manager, "refresh_characters", None)
         if callable(refresh):
             refresh()
         else:
-            self._state.config_manager.reload()
+            config_manager.reload()
 
     def _after_reload(self, name: str) -> dict[str, Any]:
         self._refresh_characters_catalog()
@@ -194,7 +246,13 @@ class CharacterUseCase:
         return bool(host and host not in {"127.0.0.1", "localhost", "0.0.0.0", "::1"})
 
     def _uses_remote_gpt_sovits(self) -> bool:
-        api_config = self._state.config_manager.config.api_config
+        config_manager = getattr(self._state, "config_manager", None)
+        api_config = getattr(getattr(config_manager, "config", None), "api_config", None)
+        if api_config is None:
+            stores = getattr(self._state, "stores", None)
+            api_config = stores.api_settings.get() if stores is not None else None
+        if api_config is None:
+            return False
         provider = str(getattr(api_config, "tts_provider", "") or "").strip().lower()
         return provider == "kaggle-gpt-sovits" or (
             provider == "gpt-sovits" and self._is_remote_url(str(getattr(api_config, "gpt_sovits_url", "") or ""))
@@ -248,11 +306,12 @@ class CharacterUseCase:
         body = payload.get("character", payload)
         if not isinstance(body, dict):
             raise ValueError("character payload must be an object")
-        original_name = str(payload.get("originalName") or body.get("name") or "").strip()
+        explicit_original_name = str(payload.get("originalName") or "").strip()
+        target_id = str(payload.get("id") or body.get("id") or "").strip()
         target_name = str(body.get("name") or "").strip()
-        if original_name and is_self_persona_name(original_name) and not is_self_persona_name(target_name):
+        if explicit_original_name and is_self_persona_name(explicit_original_name) and not is_self_persona_name(target_name):
             raise ValueError("内置「自设」人物不可重命名")
-        if original_name and not is_self_persona_name(original_name) and is_self_persona_name(target_name):
+        if explicit_original_name and not is_self_persona_name(explicit_original_name) and is_self_persona_name(target_name):
             raise ValueError("不能将其他角色重命名为「自设」")
         if is_self_persona_name(target_name) and not str(body.get("sprite_prefix") or "").strip():
             body = {**body, "sprite_prefix": SELF_PERSONA_SPRITE_PREFIX}
@@ -264,65 +323,137 @@ class CharacterUseCase:
             if raw_name and not display_name:
                 raise ValueError("自设显示名无效，请使用 24 个字符以内的名称")
             body = {**body, "display_name": display_name}
-        validate_character_payload(body, allow_remote_voice_paths=self._uses_remote_gpt_sovits())
-        character = Character.model_validate(body)
-        saved_name = character.name.strip()
-        message, _names = self._state.character_manager.add_character(
-            saved_name,
-            str(character.color or "").strip() or "#d07d7d",
-            character.sprite_prefix.strip() or "temp",
-            str(character.gpt_model_path or "").strip(),
-            str(character.sovits_model_path or "").strip(),
-            str(character.refer_audio_path or "").strip(),
-            str(character.prompt_text or "").strip(),
-            str(character.prompt_lang or "").strip(),
-            str(character.character_setting or "").strip(),
-            speech_speed=character.speech_speed,
-            speech_volume=character.speech_volume,
-            pronunciation_map=character.pronunciation_map,
-            edit_as_name=original_name,
-            emotion_tags=str(character.emotion_tags or ""),
-            character_brief=str(character.character_brief or "").strip(),
-            portrait_crop=character.portrait_crop if "portrait_crop" in body else None,
-            portrait_sprite_index=(
-                character.portrait_sprite_index if "portrait_sprite_index" in body else None
-            ),
-            sprite_portrait_crops={
-                index: (item.get("portrait_crop") and PortraitCrop.model_validate(item["portrait_crop"]))
-                for index, item in enumerate(body.get("sprites", []))
-                if isinstance(item, dict) and "portrait_crop" in item
-            },
-            sprite_group_map={
-                index: item.get("group")
-                for index, item in enumerate(body.get("sprites", []))
-                if isinstance(item, dict) and "group" in item
-            } or None,
-            sprite_groups=character.sprite_groups if "sprite_groups" in body else None,
-            default_sprite_group=character.default_sprite_group if "default_sprite_group" in body else None,
-            fallback_to_default_group=(
-                character.fallback_to_default_group if "fallback_to_default_group" in body else None
-            ),
-            # Preserve stored banks when older clients omit the new fields.
-            avatar_type=character.avatar_type if "avatar_type" in body else None,
-            avatars=character.avatars if "avatars" in body else None,
-            relation_graph=character.relation_graph if "relation_graph" in body else None,
-            **(
-                {"display_name": character.display_name}
-                if is_self_persona_name(saved_name) and "display_name" in body
-                else {}
-            ),
+
+        target = self._catalog_target()
+        mgr = getattr(self._state, "character_manager", None)
+        existing = None
+        if target is not None:
+            existing = (target.get_by_id(target_id) if target_id else None) or (
+                target.get_by_name(explicit_original_name) if explicit_original_name else None
+            )
+        elif isinstance(mgr, CharacterManager):
+            mgr_target = mgr._target()
+            existing = (mgr_target.get_by_id(target_id) if target_id else None) or (
+                mgr_target.get_by_name(explicit_original_name) if explicit_original_name else None
+            )
+
+        validation_body = (
+            {
+                "sprite_prefix": getattr(existing, "sprite_prefix", ""),
+                "gpt_model_path": getattr(existing, "gpt_model_path", ""),
+                "sovits_model_path": getattr(existing, "sovits_model_path", ""),
+                "refer_audio_path": getattr(existing, "refer_audio_path", ""),
+                **body,
+            }
+            if existing is not None
+            else body
         )
-        if (
-            message.startswith("名称不能为空")
-            or "已与其他角色重复" in message
-            or "不可重命名" in message
-            or "不能将其他角色重命名" in message
-            or "占用" in message
-            or message.startswith("保存失败")
-        ):
-            raise RuntimeError(message)
+        validate_character_payload(
+            validation_body, allow_remote_voice_paths=self._uses_remote_gpt_sovits()
+        )
+
+        patch_body = dict(body)
+        if existing is None:
+            if not str(patch_body.get("color") or "").strip():
+                patch_body["color"] = "#d07d7d"
+            if not str(patch_body.get("sprite_prefix") or "").strip():
+                patch_body["sprite_prefix"] = "temp"
+        elif "color" in patch_body and not str(patch_body.get("color") or "").strip():
+            patch_body["color"] = "#d07d7d"
+
+        renamed_from: str | None = None
+        saved_obj: Any = None
+        if target is not None:
+            try:
+                saved_obj, renamed_from, _created = save_character_patch(
+                    target,
+                    patch_body,
+                    original_name=explicit_original_name or None,
+                    target_id=target_id or None,
+                )
+            except CharacterProfileError as exc:
+                raise RuntimeError(str(exc)) from exc
+            saved_name = saved_obj.name.strip()
+        elif isinstance(mgr, CharacterManager) and "add_character" not in getattr(mgr, "__dict__", {}):
+            try:
+                saved_obj, renamed_from, _created = mgr.save_character_patch(
+                    patch_body,
+                    original_name=explicit_original_name or None,
+                    target_id=target_id or None,
+                )
+            except CharacterProfileError as exc:
+                raise RuntimeError(str(exc)) from exc
+            saved_name = saved_obj.name.strip()
+        else:
+            legacy_body = {
+                "color": "#d07d7d",
+                "sprite_prefix": "temp",
+                **patch_body,
+            }
+            character = Character.model_validate(legacy_body)
+            saved_name = character.name.strip()
+            original_name = explicit_original_name or saved_name
+            message, _names = mgr.add_character(
+                saved_name,
+                str(character.color or "").strip() or "#d07d7d",
+                character.sprite_prefix.strip() or "temp",
+                str(character.gpt_model_path or "").strip(),
+                str(character.sovits_model_path or "").strip(),
+                str(character.refer_audio_path or "").strip(),
+                str(character.prompt_text or "").strip(),
+                str(character.prompt_lang or "").strip(),
+                str(character.character_setting or "").strip(),
+                speech_speed=character.speech_speed,
+                speech_volume=character.speech_volume,
+                pronunciation_map=character.pronunciation_map,
+                edit_as_name=original_name,
+                emotion_tags=str(character.emotion_tags or ""),
+                character_brief=str(character.character_brief or "").strip(),
+                portrait_crop=character.portrait_crop if "portrait_crop" in body else None,
+                portrait_sprite_index=(
+                    character.portrait_sprite_index if "portrait_sprite_index" in body else None
+                ),
+                sprite_portrait_crops={
+                    index: (item.get("portrait_crop") and PortraitCrop.model_validate(item["portrait_crop"]))
+                    for index, item in enumerate(body.get("sprites", []))
+                    if isinstance(item, dict) and "portrait_crop" in item
+                },
+                sprite_group_map={
+                    index: item.get("group")
+                    for index, item in enumerate(body.get("sprites", []))
+                    if isinstance(item, dict) and "group" in item
+                } or None,
+                sprite_groups=character.sprite_groups if "sprite_groups" in body else None,
+                default_sprite_group=character.default_sprite_group if "default_sprite_group" in body else None,
+                fallback_to_default_group=(
+                    character.fallback_to_default_group if "fallback_to_default_group" in body else None
+                ),
+                # Preserve stored banks when older clients omit the new fields.
+                avatar_type=character.avatar_type if "avatar_type" in body else None,
+                avatars=character.avatars if "avatars" in body else None,
+                relation_graph=character.relation_graph if "relation_graph" in body else None,
+                **(
+                    {"display_name": character.display_name}
+                    if is_self_persona_name(saved_name) and "display_name" in body
+                    else {}
+                ),
+            )
+            if (
+                message.startswith("名称不能为空")
+                or "已与其他角色重复" in message
+                or "不可重命名" in message
+                or "不能将其他角色重命名" in message
+                or "占用" in message
+                or message.startswith("保存失败")
+            ):
+                raise RuntimeError(message)
+            saved_obj = character
+
         self._refresh_characters_catalog()
-        if original_name and original_name != saved_name:
+        effective_rename_from = renamed_from or (
+            explicit_original_name if explicit_original_name and explicit_original_name != saved_name else None
+        )
+        if effective_rename_from and effective_rename_from != saved_name:
             from application.chat.templates import _rename_template_session_character
             from application.chat.conversation_library import update_conversation_character
 
@@ -332,19 +463,24 @@ class CharacterUseCase:
                 from application.knowledge.manage_knowledge import rename_character_bindings
 
                 try:
-                    rename_character_bindings(original_name, saved_name)
+                    rename_character_bindings(effective_rename_from, saved_name)
                 except sqlite3.Error:
                     logger.exception(
                         "Character rename succeeded but knowledge bindings could not be migrated: %s -> %s",
-                        original_name, saved_name,
+                        effective_rename_from, saved_name,
                     )
-            try:
-                _rename_template_session_character(self._state, original_name, saved_name)
-            except OSError:
-                pass
-            update_conversation_character(self._state, original_name, saved_name)
-        saved = self._state.config_manager.get_character_by_name(saved_name)
-        return _jsonify(saved or character)
+            if getattr(self._state, "template_dir_path", None):
+                try:
+                    _rename_template_session_character(self._state, effective_rename_from, saved_name)
+                except OSError:
+                    pass
+            update_conversation_character(self._state, effective_rename_from, saved_name)
+
+        if target is not None:
+            latest_saved = target.get_by_name(saved_name) or saved_obj
+        else:
+            latest_saved = self._state.config_manager.get_character_by_name(saved_name) or saved_obj
+        return _jsonify(latest_saved)
 
     def _bind_voice(self, payload: dict[str, Any]) -> dict[str, Any]:
         """Atomically reload and update only voice-binding fields under ``_mutation_lock``."""
@@ -363,7 +499,10 @@ class CharacterUseCase:
                 "prompt_lang": str(payload.get("prompt_lang") or "").strip(),
             }
         )
-        return self._save({"originalName": name, "character": merged})
+        req: dict[str, Any] = {"originalName": name, "character": merged}
+        if getattr(latest, "id", None):
+            req["id"] = latest.id
+        return self._save(req)
 
     def _delete(self, payload: dict[str, Any]) -> dict[str, Any]:
         from application.chat.conversation_library import update_conversation_character
@@ -372,6 +511,25 @@ class CharacterUseCase:
         name = str(payload.get("name") or "").strip()
         if is_self_persona_name(name):
             raise ValueError("内置「自设」人物不可删除")
+
+        target = self._catalog_target()
+        if target is not None:
+            existing = target.get_by_name(name)
+            if existing is not None and getattr(existing, "undeletable", False):
+                raise ValueError(f"内置人物「{existing.name}」不可删除")
+            existed = existing is not None
+            message, names = delete_character_and_assets(
+                target,
+                name,
+                upload_dir=self._media_dir("sprite"),
+                voice_dir=self._media_dir("speech"),
+                model_dir=self._media_dir("models"),
+            )
+            self._refresh_characters_catalog()
+            if existed and target.get_by_name(name) is None:
+                update_conversation_character(self._state, name)
+            return {"message": message, "names": names}
+
         existing = self._state.config_manager.get_character_by_name(name)
         if existing is not None and getattr(existing, "undeletable", False):
             raise ValueError(f"内置人物「{existing.name}」不可删除")
@@ -396,12 +554,25 @@ class CharacterUseCase:
         upload_kwargs: dict[str, Any] = {}
         if group is not None and str(group).strip():
             upload_kwargs["group"] = str(group).strip()
-        message, _paths, _tags = self._state.character_manager.upload_sprites(
-            name,
-            self._files(payload.get("paths") or []),
-            str(payload.get("emotionTags") or ""),
-            **upload_kwargs,
-        )
+        files = self._files(payload.get("paths") or [])
+        emotion_tags = str(payload.get("emotionTags") or "")
+        target = self._catalog_target()
+        if target is not None:
+            message, _paths, _tags = upload_character_sprites(
+                target,
+                name,
+                files,
+                emotion_tags,
+                upload_dir=self._media_dir("sprite"),
+                **upload_kwargs,
+            )
+        else:
+            message, _paths, _tags = self._state.character_manager.upload_sprites(
+                name,
+                files,
+                emotion_tags,
+                **upload_kwargs,
+            )
         if message.startswith("找不到") or message.startswith("请选择") or message.startswith("请先"):
             raise RuntimeError(message)
         return self._after_reload(name)
@@ -419,41 +590,45 @@ class CharacterUseCase:
             }
         raw_groups = payload.get("spriteGroups")
         sprite_groups = [str(g) for g in raw_groups] if isinstance(raw_groups, list) else None
-        self._state.character_manager.save_sprite_groups(
-            name,
-            sprite_groups=sprite_groups,
-            default_sprite_group=(
+        group_kwargs = {
+            "sprite_groups": sprite_groups,
+            "default_sprite_group": (
                 str(payload["defaultSpriteGroup"])
                 if "defaultSpriteGroup" in payload and payload["defaultSpriteGroup"] is not None
                 else None
             ),
-            fallback_to_default_group=(
+            "fallback_to_default_group": (
                 bool(payload["fallbackToDefaultGroup"])
                 if "fallbackToDefaultGroup" in payload and payload["fallbackToDefaultGroup"] is not None
                 else None
             ),
-            assignments=assignments,
-            rename_from=(
+            "assignments": assignments,
+            "rename_from": (
                 str(payload["renameFrom"])
                 if payload.get("renameFrom") is not None
                 else None
             ),
-            rename_to=(
+            "rename_to": (
                 str(payload["renameTo"])
                 if payload.get("renameTo") is not None
                 else None
             ),
-            delete_group=(
+            "delete_group": (
                 str(payload["deleteGroup"])
                 if payload.get("deleteGroup") is not None
                 else None
             ),
-            avatar_type=(
+            "avatar_type": (
                 str(payload["avatarType"])
                 if payload.get("avatarType") is not None
                 else None
             ),
-        )
+        }
+        target = self._catalog_target()
+        if target is not None:
+            save_character_sprite_groups(target, name, **group_kwargs)
+        else:
+            self._state.character_manager.save_sprite_groups(name, **group_kwargs)
         return self._after_reload(name)
 
     def _auto_group_sprites(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -481,12 +656,16 @@ class CharacterUseCase:
                 int(k): str(v)
                 for k, v in dict(analysis["assignments"]).items()
             }
-            self._state.character_manager.save_sprite_groups(
-                name,
-                sprite_groups=list(analysis.get("spriteGroups") or []),
-                assignments=assignments,
-                avatar_type=avatar_type,
-            )
+            group_kwargs = {
+                "sprite_groups": list(analysis.get("spriteGroups") or []),
+                "assignments": assignments,
+                "avatar_type": avatar_type,
+            }
+            target = self._catalog_target()
+            if target is not None:
+                save_character_sprite_groups(target, name, **group_kwargs)
+            else:
+                self._state.character_manager.save_sprite_groups(name, **group_kwargs)
             updated_char = self._after_reload(name)
         return {
             **analysis,
@@ -496,17 +675,28 @@ class CharacterUseCase:
 
     def _delete_sprite(self, payload: dict[str, Any]) -> dict[str, Any]:
         name = str(payload.get("name") or "").strip()
-        message, _paths, _tags = self._state.character_manager.delete_single_sprite(
-            name,
-            int(payload.get("spriteIndex") or 0),
-        )
+        index = int(payload.get("spriteIndex") or 0)
+        target = self._catalog_target()
+        if target is not None:
+            message, _paths, _tags = delete_single_character_sprite(target, name, index)
+        else:
+            message, _paths, _tags = self._state.character_manager.delete_single_sprite(name, index)
         if message.startswith("找不到") or message.startswith("立绘不存在") or message.startswith("请先"):
             raise RuntimeError(message)
         return self._after_reload(name)
 
     def _delete_all_sprites(self, payload: dict[str, Any]) -> dict[str, Any]:
         name = str(payload.get("name") or "").strip()
-        message, _paths, _tags = self._state.character_manager.delete_all_sprites(name)
+        target = self._catalog_target()
+        if target is not None:
+            message, _paths, _tags = delete_all_character_sprites(
+                target,
+                name,
+                upload_dir=self._media_dir("sprite"),
+                voice_dir=self._media_dir("speech"),
+            )
+        else:
+            message, _paths, _tags = self._state.character_manager.delete_all_sprites(name)
         if message.startswith("找不到") or message.startswith("请先"):
             raise RuntimeError(message)
         return self._after_reload(name)
@@ -529,13 +719,25 @@ class CharacterUseCase:
         voice_path = self._file(raw_voice_path, field="voice path")
         if voice_type == "reference":
             self._validate_reference_audio(str(voice_path))
-        message, _path = self._state.character_manager.upload_voice(
-            name,
-            sprite_index,
-            str(voice_path),
-            voice_text,
-            voice_type,
-        )
+        target = self._catalog_target()
+        if target is not None:
+            message, _path = upload_character_sprite_voice(
+                target,
+                name,
+                sprite_index,
+                str(voice_path),
+                voice_text,
+                voice_type,
+                voice_dir=self._media_dir("speech"),
+            )
+        else:
+            message, _path = self._state.character_manager.upload_voice(
+                name,
+                sprite_index,
+                str(voice_path),
+                voice_text,
+                voice_type,
+            )
         if (
             message.startswith("找不到")
             or message.startswith("立绘不存在")
@@ -560,7 +762,11 @@ class CharacterUseCase:
                 voice_path = self._sprite_voice_path(sprite)
                 if voice_path and Path(voice_path).is_file():
                     self._validate_sprite_voice_duration(voice_path, voice_text)
-        message = self._state.character_manager.save_sprite_voice_text(name, sprite_index, voice_text)
+        target = self._catalog_target()
+        if target is not None:
+            message = save_character_sprite_voice_text(target, name, sprite_index, voice_text)
+        else:
+            message = self._state.character_manager.save_sprite_voice_text(name, sprite_index, voice_text)
         if message.startswith("找不到") or message.startswith("立绘不存在") or message.startswith("请先"):
             raise RuntimeError(message)
         return self._after_reload(name)
@@ -577,17 +783,23 @@ class CharacterUseCase:
                 if not Path(voice_path).is_file():
                     raise ValueError("reference audio file does not exist")
                 self._validate_reference_audio(voice_path)
-        message = self._state.character_manager.save_sprite_voice_type(name, sprite_index, voice_type)
+        target = self._catalog_target()
+        if target is not None:
+            message = save_character_sprite_voice_type(target, name, sprite_index, voice_type)
+        else:
+            message = self._state.character_manager.save_sprite_voice_type(name, sprite_index, voice_type)
         if message.startswith("找不到") or message.startswith("立绘不存在") or message.startswith("请先"):
             raise RuntimeError(message)
         return self._after_reload(name)
 
     def _delete_sprite_voice(self, payload: dict[str, Any]) -> dict[str, Any]:
         name = str(payload.get("name") or "").strip()
-        message = self._state.character_manager.delete_sprite_voice(
-            name,
-            int(payload.get("spriteIndex") or 0),
-        )
+        sprite_index = int(payload.get("spriteIndex") or 0)
+        target = self._catalog_target()
+        if target is not None:
+            message = delete_character_sprite_voice(target, name, sprite_index)
+        else:
+            message = self._state.character_manager.delete_sprite_voice(name, sprite_index)
         if message.startswith("找不到") or message.startswith("立绘不存在") or message.startswith("请先"):
             raise RuntimeError(message)
         return self._after_reload(name)

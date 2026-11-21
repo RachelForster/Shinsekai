@@ -48,9 +48,11 @@ describe("charPackageCodec", () => {
     await putVfsBlob(referPath, wavBytes, { mimeType: "audio/wav" });
 
     const original: Character = {
+      id: "local-secret-id",
       name: "星奈",
       color: "#7dd3fc",
       sprite_prefix: "hoshina",
+      portrait_sprite_index: 0,
       sprites: [{ path: spritePath, group: "常服", mouth_sync: mouthManifestPath }],
       sprite_groups: ["常服"],
       default_sprite_group: "常服",
@@ -80,6 +82,8 @@ describe("charPackageCodec", () => {
     expect(imported).toHaveLength(1);
 
     const dup = imported[0];
+    expect(dup.id).toBeUndefined();
+    expect(dup.portrait_sprite_index).toBe(0);
     expect(dup.name).toBe("星奈（1）");
     expect(dup.sprite_prefix).toBe("hoshina1");
     expect(dup.character_setting).toContain("第一行设定");

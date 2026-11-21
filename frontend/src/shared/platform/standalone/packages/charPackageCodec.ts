@@ -11,8 +11,27 @@ import { parseYaml, stringifyCharacterYaml } from "./characterYamlCodec";
 import { unzipEntries, zipEntries } from "./zipCodec";
 
 const DEFAULT_CHARACTER_COLOR = "#5b8def";
+const RESERVED_CHARACTER_PACKAGE_KEYS = new Set([
+  "id",
+  "display_name",
+  "is_builtin",
+  "pinned",
+  "undeletable",
+  "__proto__",
+  "constructor",
+  "prototype",
+]);
 const textDecoder = new TextDecoder("utf-8", { fatal: false });
 const textEncoder = new TextEncoder();
+
+function passthroughCharacterFields(source: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (RESERVED_CHARACTER_PACKAGE_KEYS.has(key) || value === undefined) continue;
+    result[key] = value;
+  }
+  return result;
+}
 
 function baseName(pathOrUrl: string): string {
   const clean = pathOrUrl.replace(/\\/g, "/").split("?")[0].split("#")[0];
@@ -452,9 +471,11 @@ export async function importCharPackage(
     }
 
     const character: Character = {
+      ...(passthroughCharacterFields(raw) as Partial<Character>),
       name: newName,
       color: String(raw.color ?? DEFAULT_CHARACTER_COLOR).trim() || DEFAULT_CHARACTER_COLOR,
       sprite_prefix: newPrefix,
+      portrait_sprite_index: typeof raw.portrait_sprite_index === "number" ? raw.portrait_sprite_index : 0,
       sprites: nextSprites,
       sprite_scale: typeof raw.sprite_scale === "number" ? raw.sprite_scale : 1,
       emotion_tags: String(raw.emotion_tags ?? ""),
@@ -604,12 +625,14 @@ export async function exportCharPackage(
   }
 
   const yamlObj: Record<string, unknown> = {
+    ...passthroughCharacterFields(character as unknown as Record<string, unknown>),
     name: character.name,
     color: character.color || DEFAULT_CHARACTER_COLOR,
     sprite_prefix: prefix,
     prompt_text: character.prompt_text ?? "",
     prompt_lang: character.prompt_lang ?? "",
     sprite_scale: character.sprite_scale ?? 1,
+    portrait_sprite_index: character.portrait_sprite_index ?? 0,
     portrait_crop: character.portrait_crop ?? null,
     sprites: exportedSprites,
     emotion_tags: character.emotion_tags ?? "",
