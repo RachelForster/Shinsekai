@@ -11,12 +11,14 @@ if TYPE_CHECKING:
     from application.agent.execute_host_tool import AgentHostTool
     from application.agent.runtime import AgentRuntime
     from application.plugins.tools import PluginToolService
+    from application.runtime.stores import AppStores
 
 
 @dataclass
 class ApplicationServices:
     agent: AgentRuntime | None = field(default=None, kw_only=True)
     plugin_tools: PluginToolService | None = field(default=None, kw_only=True)
+    stores: AppStores | None = field(default=None, kw_only=True)
     _closed: bool = field(default=False, init=False, repr=False)
     _lock: threading.RLock = field(
         default_factory=threading.RLock, init=False, repr=False
@@ -47,9 +49,11 @@ class ApplicationServices:
     def close(self) -> None:
         with self._lock:
             self._closed = True
-            agent, plugin_tools = self.agent, self.plugin_tools
+            agent, plugin_tools, stores = self.agent, self.plugin_tools, self.stores
         # In-flight HTTP tools must be able to settle without this registry lock.
         if agent is not None:
             agent.close()
         if plugin_tools is not None:
             plugin_tools.close()
+        if stores is not None:
+            stores.close()

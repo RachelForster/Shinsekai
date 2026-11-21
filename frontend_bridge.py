@@ -439,6 +439,9 @@ def run(
     os.environ["SHINSEKAI_MEMORY_SERVICE_OWNER"] = "1"
     os.environ["SHINSEKAI_KNOWLEDGE_SERVICE_OWNER"] = "1"
 
+    from application.runtime.services import ApplicationServices
+    from application.runtime.state import BridgeState
+    from application.runtime.stores import build_app_stores
     from config.background_manager import BackgroundManager
     from config.character_manager import CharacterManager
     from config.config_manager import ConfigManager
@@ -448,9 +451,9 @@ def run(
     from frontend_bridge_core.chat_stream import ChatStreamService
     from frontend_bridge_core.routes.api import FrontendBridgeHandler
     from frontend_bridge_core.transport.mobile_access import MobileAccessTransport
-    from application.runtime.state import BridgeState
     from frontend_bridge_core.static import _schedule_browser_open
 
+    stores = build_app_stores(resolved_project_root)
     config_manager = ConfigManager()
     init_i18n(config_manager.config.system_config.ui_language)
     bridge_auth_token = (
@@ -466,6 +469,8 @@ def run(
         character_manager=CharacterManager(),
         background_manager=BackgroundManager(),
         template_generator=TemplateGenerator(),
+        stores=stores,
+        services=ApplicationServices(stores=stores),
         frontend_dist_dir=resolved_frontend_dist,
         app_root_dir=resolved_app_root,
         project_root_dir=resolved_project_root,
@@ -639,6 +644,7 @@ def check_runtime(
     apply_mirror_environment_from_system_config()
     _check_runtime_requirements(repo_root, requirements_file, profile)
 
+    from application.runtime.stores import build_app_stores
     from config.background_manager import BackgroundManager
     from config.character_manager import CharacterManager
     from config.config_manager import ConfigManager
@@ -649,11 +655,15 @@ def check_runtime(
     from frontend_bridge_core.routes.api import FrontendBridgeHandler  # noqa: F401
     from frontend_bridge_core.static import _frontend_dist_root  # noqa: F401
 
-    config_manager = ConfigManager()
-    init_i18n(config_manager.config.system_config.ui_language)
-    CharacterManager()
-    BackgroundManager()
-    TemplateGenerator()
+    stores = build_app_stores(resolved_project_root)
+    try:
+        config_manager = ConfigManager()
+        init_i18n(config_manager.config.system_config.ui_language)
+        CharacterManager()
+        BackgroundManager()
+        TemplateGenerator()
+    finally:
+        stores.close()
 
 
 def runtime_check_report(

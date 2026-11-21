@@ -56,8 +56,24 @@ class MissingLlmProviderError(RuntimeError):
 
 def load_chat_config() -> ConfigManager:
     """Load chat configuration without exposing its concrete constructor to main."""
+    import atexit
 
     from config.config_manager import ConfigManager
+    from core.storage.layout import StorageLayout
+
+    layout = StorageLayout.from_env()
+    existing_manager = ConfigManager._instance
+    if (
+        (existing_manager is None or existing_manager.active_backend is None)
+        and (
+            layout.main_db_path.is_file()
+            or layout.config_file("characters.yaml").is_file()
+        )
+    ):
+        from application.runtime.stores import build_app_stores
+
+        stores = build_app_stores(layout.project_root)
+        atexit.register(stores.close)
 
     return ConfigManager()
 

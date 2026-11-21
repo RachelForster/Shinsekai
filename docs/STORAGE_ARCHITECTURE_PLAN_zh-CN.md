@@ -222,6 +222,13 @@ core/
     migrations/
       __init__.py
       main_db.py                # shinsekai.db DDL 迁移 + 存量 YAML/小库首次自动导入器
+    stores/                     # [新增] 基于通用存储原语封装的领域仓储（置于 core 遵循严格分层 DAG）
+      __init__.py
+      character_store.py        # SqliteCharacterCatalog（实现 CharacterCatalogPort，含自设置顶兜底与 revision 控制）
+      media_stores.py           # SqliteBackgroundCatalog / SqliteEffectCatalog
+      conversation_store.py     # SqliteConversationStore
+      knowledge_binding_store.py # SqliteKnowledgeBindingStore
+      reminder_store.py         # UnifiedReminderStore
 
   packaging/                    # [新增] 统一资产包导入/导出层（替代 tools/file_util.py 与 config/character_config.py）
     __init__.py
@@ -233,19 +240,18 @@ core/
 config/
   models/                       # [新增] 拆分原 642 行 config/schema.py，纯内存 Pydantic 模型（零磁盘 I/O）
     __init__.py
+    common.py
     api_settings.py             # ApiConfig 及领域分组模型
     system_settings.py          # SystemConfig（移出窗口坐标与环境变量副作用）
-    mcp_settings.py             # McpConfig / McpServerConfig
+    mcp_settings.py             # McpConfig
     ui_state.py                 # UiRuntimeState（窗口几何 + 模板页上次启动快照）
     character.py                # Character / CharacterSummary / Sprite / ModelSprites / SpriteTransition / RelationGraph
     media_catalog.py            # Background / Effect
-  stores/                       # [新增] 基于通用存储原语封装的领域仓储
-    __init__.py
-    character_store.py          # SqliteCharacterCatalog（实现 CharacterCatalogPort，含自设置顶兜底与 revision 控制）
-    media_stores.py             # SqliteBackgroundCatalog / SqliteEffectCatalog
+    app_config.py
+  backend_port.py               # [新增] ConfigBackendPort 纯协议（零 core/application 依赖）
   schema.py                     # [保留兼容] 从 config/models/* 重导出符号，保证现有 import 不断裂
   character_config.py           # [退役/薄兼容] 废弃手写中间类，由 Character / 兼容包装器替代
-  config_manager.py             # [大幅瘦身] 退化为 <120 行薄门面（Facade），内部委托给 AppStores
+  config_manager.py             # [薄门面] 优先委托给 ConfigBackendPort（AppStores），保留 YAML 回退兼容
 
 tools/
   file_util.py                  # [薄兼容包装] 原 export/import_character、background 委托至 core/packaging/

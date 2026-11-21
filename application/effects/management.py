@@ -6,16 +6,18 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
 import os
-from pathlib import Path, PurePosixPath, PureWindowsPath
+from pathlib import Path, PureWindowsPath
 import shutil
-import tempfile
 from typing import Any, TypeAlias
-import zipfile
-
-import yaml
 
 from config.schema import Effect
 from core.media.asset_tags import numbered_tags, tag_content as _tag_text, tag_contents
+from core.packaging.effect_package import (
+    export_effect_package,
+    stage_effect_package_import,
+    validate_effect_storage_name,
+)
+from core.packaging.zip_io import rollback_staged_assets
 from sdk.path_utils import (
     safe_child_path,
     safe_existing_file_path,
@@ -108,7 +110,11 @@ class EffectUseCase:
         return effect
 
     def _effect_after_reload(self, name: str) -> Any:
-        self.config_manager.reload()
+        refresh = getattr(self.config_manager, "refresh_effects", None)
+        if callable(refresh):
+            refresh()
+        else:
+            self.config_manager.reload()
         return self._effect_by_name(name)
 
     def _save(self, payload: dict[str, Any]) -> Effect:
@@ -378,21 +384,35 @@ class EffectUseCase:
             raise ValueError("paths must be a list")
         existing = self.config_manager.config.effect_list
         imported: list[Effect] = []
-        for raw_path in paths:
-            archive = safe_existing_file_path(
-                str(raw_path),
-                roots=self.local_file_access_roots,
-                field="effect package path",
-            )
-            batch = self._import_package(archive, existing)
-            imported.extend(batch)
-            for effect in batch:
+        created_dirs: list[Path] = []
+        try:
+            for raw_path in paths:
+                archive = safe_existing_file_path(
+                    str(raw_path),
+                    roots=self.local_file_access_roots,
+                    field="effect package path",
+                )
+                staged = stage_effect_package_import(
+                    archive,
+                    existing_effects=[*existing, *imported],
+                    effect_root=self.effect_root,
+                )
+                created_dirs.extend(staged.created_dirs)
+                imported.extend(staged.effects)
+            for effect in imported:
                 if effect not in existing:
                     existing.append(effect)
                 self._effect_dir(effect.name).mkdir(parents=True, exist_ok=True)
-        self.config_manager.save_effect_config()
-        self.config_manager.reload()
-        return imported
+            self.config_manager.save_effect_config()
+            refresh = getattr(self.config_manager, "refresh_effects", None)
+            if callable(refresh):
+                refresh()
+            else:
+                self.config_manager.reload()
+            return imported
+        except BaseException:
+            rollback_staged_assets(created_dirs)
+            raise
 
     def _export(self, payload: dict[str, Any]) -> EffectExportResult:
         name = validate_effect_storage_name(str(payload.get("name") or ""))
@@ -400,163 +420,14 @@ class EffectUseCase:
         output_root = safe_project_path("output", root=self.project_root)
         output_root.mkdir(parents=True, exist_ok=True)
         output = safe_child_path(output_root, safe_filename(f"{name}.ef"))
-        self._export_package(effect, output)
+        export_effect_package(
+            effect,
+            output,
+            effect_root=self.effect_root,
+            project_root=self.project_root,
+            local_file_access_roots=self.local_file_access_roots,
+        )
         return EffectExportResult(output.relative_to(self.project_root).as_posix())
-
-    def _import_package(self, archive: Path, existing: Sequence[Any]) -> list[Effect]:
-        with tempfile.TemporaryDirectory(prefix="shinsekai-effect-import-") as raw_temp:
-            temp_dir = Path(raw_temp)
-            with zipfile.ZipFile(archive, "r") as package:
-                _safe_extract(package, temp_dir)
-            yaml_path = temp_dir / "effect.yaml"
-            with yaml_path.open("r", encoding="utf-8") as file:
-                yaml_data = yaml.safe_load(file)
-            if not yaml_data:
-                raise ValueError("特效配置 YAML 文件为空或格式错误。")
-            entries = yaml_data if isinstance(yaml_data, list) else [yaml_data]
-            existing_names = {effect.name.lower() for effect in existing}
-            imported: list[Effect] = []
-            audio_source_dir = temp_dir / "audio"
-            image_source_dir = temp_dir / "images"
-            image_audio_source_dir = temp_dir / "image-audio"
-            for entry in entries:
-                if not isinstance(entry, Mapping):
-                    continue
-                item = dict(entry)
-                original_name = validate_effect_storage_name(item.get("name", ""))
-                name = original_name
-                counter = 1
-                while name.lower() in existing_names:
-                    name = f"{original_name}_{counter}"
-                    counter += 1
-                existing_names.add(name.lower())
-                item["name"] = name
-                item.pop("id", None)
-                effect_dir = self._effect_dir(name)
-                effect_dir.mkdir(parents=True, exist_ok=True)
-                audio_list = []
-                for raw_audio_path in item.get("audio_list") or ():
-                    filename = safe_filename(
-                        PurePosixPath(str(raw_audio_path).replace("\\", "/")).name
-                    )
-                    source = safe_child_path(audio_source_dir, filename)
-                    if source.is_file():
-                        destination = self._available_destination(effect_dir, filename)
-                        shutil.copy2(source, destination)
-                        audio_list.append(destination.as_posix())
-                    else:
-                        audio_list.append(str(raw_audio_path))
-                item["audio_list"] = audio_list
-                item["image_list"] = self._import_asset_paths(
-                    item.get("image_list"), image_source_dir, effect_dir
-                )
-                item["image_audio_list"] = self._import_asset_paths(
-                    item.get("image_audio_list"), image_audio_source_dir, effect_dir
-                )
-                imported.append(Effect.model_validate(item))
-            return imported
-
-    def _export_package(self, effect: Effect, output: Path) -> None:
-        effect_data = effect.model_dump(exclude={"id"}, exclude_none=True, mode="json")
-        packaged_audio: list[tuple[Path, str]] = []
-        packaged_names: set[str] = set()
-        exported_audio_list: list[str] = []
-        for raw_audio_path in effect.audio_list or ():
-            audio_file = self._export_asset_file(effect.name, str(raw_audio_path))
-            package_name = self._available_package_filename(
-                audio_file.name,
-                packaged_names,
-            )
-            packaged_names.add(package_name.casefold())
-            packaged_audio.append((audio_file, package_name))
-            exported_audio_list.append(f"audio/{package_name}")
-        effect_data["audio_list"] = exported_audio_list
-        packaged_images, exported_image_list = self._export_asset_paths(
-            effect.name,
-            effect.image_list or (),
-            "images",
-        )
-        packaged_image_audio, exported_image_audio_list = self._export_asset_paths(
-            effect.name,
-            effect.image_audio_list or (),
-            "image-audio",
-            allow_empty=True,
-        )
-        effect_data["image_list"] = exported_image_list
-        effect_data["image_audio_list"] = exported_image_audio_list
-
-        with tempfile.TemporaryDirectory(prefix="shinsekai-effect-export-") as raw_temp:
-            temp_dir = Path(raw_temp)
-            yaml_path = temp_dir / "effect.yaml"
-            with yaml_path.open("w", encoding="utf-8") as file:
-                yaml.safe_dump(
-                    [effect_data],
-                    file,
-                    allow_unicode=True,
-                    default_flow_style=False,
-                )
-            with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as package:
-                package.write(yaml_path, "effect.yaml")
-                for audio_file, package_name in packaged_audio:
-                    package.write(audio_file, f"audio/{package_name}")
-                for asset_file, package_path in (*packaged_images, *packaged_image_audio):
-                    package.write(asset_file, package_path)
-
-    def _import_asset_paths(
-        self,
-        raw_paths: Any,
-        source_dir: Path,
-        effect_dir: Path,
-    ) -> list[str]:
-        imported: list[str] = []
-        for raw_path in raw_paths or ():
-            if not raw_path:
-                imported.append("")
-                continue
-            filename = safe_filename(
-                PurePosixPath(str(raw_path).replace("\\", "/")).name
-            )
-            source = safe_child_path(source_dir, filename)
-            if source.is_file():
-                destination = self._available_destination(effect_dir, filename)
-                shutil.copy2(source, destination)
-                imported.append(destination.as_posix())
-            else:
-                imported.append(str(raw_path))
-        return imported
-
-    def _export_asset_paths(
-        self,
-        effect_name: str,
-        raw_paths: Sequence[str],
-        directory: str,
-        *,
-        allow_empty: bool = False,
-    ) -> tuple[list[tuple[Path, str]], list[str]]:
-        packaged: list[tuple[Path, str]] = []
-        exported: list[str] = []
-        used_names: set[str] = set()
-        for raw_path in raw_paths:
-            if not raw_path and allow_empty:
-                exported.append("")
-                continue
-            asset_file = self._export_asset_file(effect_name, str(raw_path))
-            package_name = self._available_package_filename(asset_file.name, used_names)
-            used_names.add(package_name.casefold())
-            package_path = f"{directory}/{package_name}"
-            packaged.append((asset_file, package_path))
-            exported.append(package_path)
-        return packaged, exported
-
-    def _export_asset_file(self, effect_name: str, raw_path: str) -> Path:
-        managed_file = self._managed_file(effect_name, raw_path)
-        if managed_file is not None:
-            return managed_file
-        return safe_existing_file_path(
-            self._configured_path(raw_path),
-            roots=self.local_file_access_roots,
-            field="effect asset path",
-        )
 
     def _managed_file(self, effect_name: str, raw_path: str) -> Path | None:
         if not raw_path:
@@ -591,17 +462,6 @@ class EffectUseCase:
             destination = directory / f"{stem}_{counter}{suffix}"
             counter += 1
         return destination
-
-    @staticmethod
-    def _available_package_filename(filename: str, used_names: set[str]) -> str:
-        candidate = safe_filename(filename)
-        stem = Path(candidate).stem
-        suffix = Path(candidate).suffix
-        counter = 1
-        while candidate.casefold() in used_names:
-            candidate = f"{stem}_{counter}{suffix}"
-            counter += 1
-        return candidate
 
     def _renamed_asset_paths(
         self,
@@ -643,34 +503,3 @@ class EffectUseCase:
                 if item.is_file():
                     shutil.copy2(item, safe_child_path(new_dir, item.name))
             shutil.rmtree(old_dir, ignore_errors=True)
-
-
-def validate_effect_storage_name(name: Any) -> str:
-    """Ensure an effect name addresses exactly one managed directory."""
-
-    value = str(name or "").strip()
-    if not value:
-        raise ValueError("effect name is required")
-    if "\x00" in value:
-        raise ValueError("effect name contains an invalid character")
-    if "/" in value or "\\" in value:
-        raise ValueError("effect name must not contain path separators")
-    path = Path(value)
-    windows_path = PureWindowsPath(value)
-    if path.is_absolute() or windows_path.is_absolute() or windows_path.drive:
-        raise ValueError("effect name must not be an absolute path")
-    if value in {".", ".."} or any(part in {".", ".."} for part in path.parts):
-        raise ValueError("effect name must not contain relative path segments")
-    return value
-
-
-def _safe_extract(package: zipfile.ZipFile, target_dir: Path) -> None:
-    for info in package.infolist():
-        member = str(info.filename or "").replace("\\", "/").rstrip("/")
-        if not member:
-            continue
-        path = PurePosixPath(member)
-        if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
-            raise ValueError(f"zip member contains an unsafe path: {info.filename!r}")
-        safe_child_path(target_dir, Path(*path.parts))
-    package.extractall(target_dir)
