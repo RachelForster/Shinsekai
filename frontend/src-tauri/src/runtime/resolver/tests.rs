@@ -1,9 +1,16 @@
 use super::*;
 use crate::runtime::python_probe::PythonKind;
-use std::{fs, path::PathBuf, time::SystemTime};
+use std::{
+    fs,
+    path::PathBuf,
+    sync::atomic::{AtomicU64, Ordering},
+    time::SystemTime,
+};
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
+
+static NEXT_TEMP_DIR_ID: AtomicU64 = AtomicU64::new(0);
 
 fn python_install(kind: PythonKind) -> PythonInstall {
     PythonInstall {
@@ -200,11 +207,15 @@ fn bridge_check_uses_requested_profile() {
 }
 
 fn unique_temp_dir(name: &str) -> PathBuf {
+    let seq = NEXT_TEMP_DIR_ID.fetch_add(1, Ordering::Relaxed);
     let nonce = SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    std::env::temp_dir().join(format!("shinsekai-{name}-{nonce}"))
+    std::env::temp_dir().join(format!(
+        "shinsekai-{name}-{}-{seq}-{nonce}",
+        std::process::id()
+    ))
 }
 
 fn runtime_candidate_with_actions(

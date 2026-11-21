@@ -4,10 +4,14 @@ use std::env;
 use std::ffi::OsString;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
-use std::sync::Mutex;
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Mutex,
+};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 static PYTORCH_WHEEL_ENV_LOCK: Mutex<()> = Mutex::new(());
+static NEXT_TEMP_DIR_ID: AtomicU64 = AtomicU64::new(0);
 
 struct EnvRestore {
     name: &'static str,
@@ -599,11 +603,15 @@ fn safe_component_rejects_parent_directory_components() {
 }
 
 fn unique_temp_dir(name: &str) -> PathBuf {
+    let seq = NEXT_TEMP_DIR_ID.fetch_add(1, Ordering::Relaxed);
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    std::env::temp_dir().join(format!("shinsekai-{name}-{nonce}"))
+    std::env::temp_dir().join(format!(
+        "shinsekai-{name}-{}-{seq}-{nonce}",
+        std::process::id()
+    ))
 }
 
 #[cfg(unix)]
