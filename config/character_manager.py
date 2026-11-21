@@ -94,9 +94,10 @@ class CharacterManager:
             character.avatar_type = avatar_type
         try:
             self._save_characters_config()
-        except Exception:
-            character.avatars = previous
-            character.avatar_type = previous_type
+        except Exception as exc:
+            if not getattr(exc, "published", False):
+                character.avatars = previous
+                character.avatar_type = previous_type
             raise
 
     def save_characters_to_file(self) -> str:

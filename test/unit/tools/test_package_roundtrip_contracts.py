@@ -612,6 +612,7 @@ def test_character_use_case_export_import_preserves_every_field_and_conflict_cop
         char2 = dst_cfg.config.characters[1]
         assert char2.name != "Alice"
         assert char2.sprite_prefix != "alice"
+        assert char1.id and char2.id and char1.id != char2.id
         _assert_character_preserved(
             char2,
             expected_name=char2.name,
@@ -770,6 +771,7 @@ def test_background_use_case_export_import_preserves_every_field_and_conflict_co
         bg2 = dst_cfg.config.background_list[1]
         assert bg2.name != "Classroom"
         assert bg2.sprite_prefix != "classroom"
+        assert dst_cfg.config.background_list[0].id and bg2.id and dst_cfg.config.background_list[0].id != bg2.id
         _assert_bg_preserved(
             bg2,
             expected_name=bg2.name,
@@ -856,4 +858,5 @@ def test_effect_use_case_export_import_preserves_every_field_and_conflict_copy(
     assert len(dst_cfg.config.effect_list) == 2
     fx2 = dst_cfg.config.effect_list[1]
     assert fx2.name == "Spark_1"
+    assert dst_cfg.config.effect_list[0].id and fx2.id and dst_cfg.config.effect_list[0].id != fx2.id
     _assert_effect_preserved(fx2, expected_name="Spark_1")

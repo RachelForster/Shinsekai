@@ -60,7 +60,12 @@ def import_model_states(use_case, body: dict) -> dict:
             old_count = len(bank.sprites) - len(sources)
             tags = tag_contents(bank.emotion_tags, old_count)
             bank.emotion_tags = numbered_tags("立绘", [*tags, *tags_to_add])
-            use_case._state.character_manager.save_avatar_bank(name, kind, bank)
+            try:
+                use_case._state.character_manager.save_avatar_bank(name, kind, bank)
+            except Exception as exc:
+                if getattr(exc, "published", False):
+                    transaction.preserve()
+                raise
             transaction.commit()
     return use_case._after_reload(name)
 
@@ -96,8 +101,8 @@ def import_model(use_case, body: dict) -> dict:
             try:
                 shutil.copytree(staged, final)
                 use_case._state.character_manager.save_avatar_bank(name, kind, bank, activate=True)
-            except Exception:
-                if final.exists():
+            except Exception as exc:
+                if not getattr(exc, "published", False) and final.exists():
                     shutil.rmtree(final)
                 raise
     return use_case._after_reload(name)
@@ -138,8 +143,9 @@ def save_model_state(use_case, body: dict) -> dict:
                 tags[index] = str(body["tags"])
             bank.emotion_tags = numbered_tags("立绘", tags)
             use_case._state.character_manager.save_avatar_bank(name, kind, bank)
-        except Exception:
-            target.unlink(missing_ok=True)
-            index_path(target).unlink(missing_ok=True)
+        except Exception as exc:
+            if not getattr(exc, "published", False):
+                target.unlink(missing_ok=True)
+                index_path(target).unlink(missing_ok=True)
             raise
     return use_case._after_reload(name)

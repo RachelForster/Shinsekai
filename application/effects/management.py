@@ -431,6 +431,7 @@ class EffectUseCase:
                     counter += 1
                 existing_names.add(name.lower())
                 item["name"] = name
+                item.pop("id", None)
                 effect_dir = self._effect_dir(name)
                 effect_dir.mkdir(parents=True, exist_ok=True)
                 audio_list = []
@@ -456,7 +457,7 @@ class EffectUseCase:
             return imported
 
     def _export_package(self, effect: Effect, output: Path) -> None:
-        effect_data = effect.model_dump(exclude_none=True, mode="json")
+        effect_data = effect.model_dump(exclude={"id"}, exclude_none=True, mode="json")
         packaged_audio: list[tuple[Path, str]] = []
         packaged_names: set[str] = set()
         exported_audio_list: list[str] = []

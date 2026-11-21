@@ -28,6 +28,13 @@ from ai.memory.tasks import current_mem0_task, set_mem0_task
 
 logger = logging.getLogger(__name__)
 _REQUIRED_RUNTIME_MODULE = "onnxruntime"
+_SAFE_LLM_PROVIDER_NAMES = {
+    "openai": "openai",
+    "anthropic": "anthropic",
+}
+_SAFE_EMBEDDER_PROVIDER_NAMES = {
+    "onnxruntime": "onnxruntime",
+}
 
 
 def _configure_mem0_environment() -> None:
@@ -85,10 +92,18 @@ def _module_is_available(module_name: str) -> bool:
 
 def _create_mem0_instance(engine_type: Any, snapshot_path: str) -> Any:
     config = build_mem0_config()
+    llm_provider_log = _SAFE_LLM_PROVIDER_NAMES.get(
+        str(config.get("llm", {}).get("provider", "")),
+        "other",
+    )
+    embedder_provider_log = _SAFE_EMBEDDER_PROVIDER_NAMES.get(
+        str(config.get("embedder", {}).get("provider", "")),
+        "other",
+    )
     logger.info(
         "混合记忆引擎后台初始化: llm.provider=%s embedder.provider=%s",
-        config["llm"]["provider"],
-        config["embedder"]["provider"],
+        llm_provider_log,
+        embedder_provider_log,
     )
     config["embedder"]["config"]["model"] = snapshot_path
     return engine_type.from_config(config)

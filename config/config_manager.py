@@ -470,7 +470,14 @@ class ConfigManager:
                 yaml.dump(data, handle, Dumper=yaml.SafeDumper, allow_unicode=True, default_flow_style=False, sort_keys=False)
                 handle.flush()
                 os.fsync(handle.fileno())
-            durable_rename(temporary_path, file_path, replace=True)
+            try:
+                durable_rename(temporary_path, file_path, replace=True)
+            except OSError as exc:
+                if not temporary_path.exists():
+                    # On POSIX, os.replace can publish the file before directory fsync fails.
+                    setattr(exc, "published", True)
+                    temporary_path = None
+                raise
             temporary_path = None
         finally:
             if temporary_path is not None:
