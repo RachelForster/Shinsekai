@@ -1,4 +1,5 @@
 import type { Character } from "../../entities/config/types";
+import { suggestUniqueSpritePrefix } from "../../shared/assets/spritePrefix";
 import { DEFAULT_CHARACTER_COLOR } from "../../shared/constants";
 import { SELF_PERSONA_NAME } from "../../shared/playerCharacterOptions";
 
@@ -19,7 +20,7 @@ export type CharacterResourceDeleteTarget =
   | { characterName: string; index: number; kind: "sprite-voice"; filename: string }
   | { characterName: string; kind: "memory"; memory: string; memoryId: string };
 
-export function createCharacter(): Character {
+export function createCharacter(existingPrefixes: Iterable<string> = []): Character {
   return {
     avatar_type: "static",
     avatars: {},
@@ -32,7 +33,7 @@ export function createCharacter(): Character {
     pronunciation_map: {},
     speech_speed: 1,
     speech_volume: 1,
-    sprite_prefix: "temp",
+    sprite_prefix: suggestUniqueSpritePrefix("", existingPrefixes, "char"),
     sprite_scale: 1,
     sprites: [],
   };
@@ -111,7 +112,8 @@ export function upsertCatalogCharacter(current: Character[], character: Characte
   const next: Character[] = [];
   let replaced = false;
   for (const item of current) {
-    if (targetNames.has(item.name)) {
+    const matchedById = Boolean(character.id && item.id && item.id === character.id);
+    if (matchedById || targetNames.has(item.name)) {
       if (!replaced) {
         next.push(character);
         replaced = true;
@@ -126,4 +128,84 @@ export function upsertCatalogCharacter(current: Character[], character: Characte
   const pinnedItems = next.filter((item) => item.pinned || isSelfPersonaCharacter(item));
   const regularItems = next.filter((item) => !(item.pinned || isSelfPersonaCharacter(item)));
   return [...pinnedItems, ...regularItems];
+}
+
+export function buildNewCharacterPayload(
+  draft: Character,
+  pronunciationMap: Record<string, string>,
+  identity: Pick<Character, "name" | "sprite_prefix">,
+): Character {
+  const { id: _omittedId, ...rest } = draft;
+  return {
+    ...rest,
+    ...(draft.display_name !== undefined ? { display_name: draft.display_name.trim() } : {}),
+    character_setting: draft.character_setting.trim(),
+    color: draft.color.trim() || DEFAULT_CHARACTER_COLOR,
+    gpt_model_path: draft.gpt_model_path?.trim() || "",
+    name: identity.name.trim(),
+    prompt_lang: draft.prompt_lang?.trim() || "",
+    prompt_text: draft.prompt_text?.trim() || "",
+    pronunciation_map: pronunciationMap,
+    refer_audio_path: draft.refer_audio_path?.trim() || "",
+    sovits_model_path: draft.sovits_model_path?.trim() || "",
+    sprite_prefix: identity.sprite_prefix.trim(),
+  };
+}
+
+export function buildCommittedCharacterPayload(
+  draft: Character,
+  pronunciationMap: Record<string, string>,
+  baseCharacter: Character,
+  identityOverride?: Partial<Pick<Character, "name" | "sprite_prefix">>,
+): Character {
+  const { relation_graph: _omittedRelationGraph, ...persistedBase } = baseCharacter;
+  return {
+    ...persistedBase,
+    ...(baseCharacter.id ? { id: baseCharacter.id } : {}),
+    ...(draft.display_name !== undefined ? { display_name: draft.display_name.trim() } : {}),
+    avatar_type: draft.avatar_type ?? baseCharacter.avatar_type ?? "static",
+    avatars: {
+      ...draft.avatars,
+      ...baseCharacter.avatars,
+    },
+    character_brief: draft.character_brief ?? "",
+    character_setting: draft.character_setting.trim(),
+    color: draft.color.trim() || DEFAULT_CHARACTER_COLOR,
+    emotion_tags: draft.emotion_tags ?? "",
+    gpt_model_path: draft.gpt_model_path?.trim() || "",
+    name: (identityOverride?.name ?? baseCharacter.name).trim(),
+    prompt_lang: draft.prompt_lang?.trim() || "",
+    prompt_text: draft.prompt_text?.trim() || "",
+    pronunciation_map: pronunciationMap,
+    refer_audio_path: draft.refer_audio_path?.trim() || "",
+    sovits_model_path: draft.sovits_model_path?.trim() || "",
+    speech_speed: draft.speech_speed ?? baseCharacter.speech_speed ?? 1,
+    speech_volume: draft.speech_volume ?? baseCharacter.speech_volume ?? 1,
+    sprite_prefix: (identityOverride?.sprite_prefix ?? baseCharacter.sprite_prefix).trim(),
+    sprite_scale: draft.sprite_scale ?? baseCharacter.sprite_scale ?? 1,
+  };
+}
+
+export function serializeCharacterNonIdentity(character: Character, pronunciationMap?: Record<string, string>): string {
+  const mapSource = pronunciationMap ?? character.pronunciation_map ?? {};
+  const sortedMap = Object.keys(mapSource)
+    .sort()
+    .map((key) => [key, mapSource[key]] as const);
+  return JSON.stringify({
+    avatar_type: character.avatar_type ?? "static",
+    character_brief: character.character_brief ?? "",
+    character_setting: (character.character_setting ?? "").trim(),
+    color: (character.color ?? "").trim() || DEFAULT_CHARACTER_COLOR,
+    display_name: (character.display_name ?? "").trim(),
+    emotion_tags: character.emotion_tags ?? "",
+    gpt_model_path: character.gpt_model_path?.trim() || "",
+    prompt_lang: character.prompt_lang?.trim() || "",
+    prompt_text: character.prompt_text?.trim() || "",
+    pronunciation_map: sortedMap,
+    refer_audio_path: character.refer_audio_path?.trim() || "",
+    sovits_model_path: character.sovits_model_path?.trim() || "",
+    speech_speed: character.speech_speed ?? 1,
+    speech_volume: character.speech_volume ?? 1,
+    sprite_scale: character.sprite_scale ?? 1,
+  });
 }

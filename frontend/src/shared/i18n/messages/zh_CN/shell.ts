@@ -105,6 +105,7 @@ export const shellZhCNMessages = {
   "common.chooseFolder": "选择文件夹",
   "common.close": "关闭",
   "common.confirm": "确定",
+  "common.create": "创建",
   "common.delete": "删除",
   "common.deleteFailed": "删除失败",
   "common.description": "说明",
@@ -180,6 +181,18 @@ export const shellZhCNMessages = {
   "mobileAccess.title": "手机访问已开启",
   "mobileAccess.launchHint": "下次新建或继续聊天时生效，启动后显示二维码；不会立即切换当前聊天。",
   "top.chatStage": "聊天舞台",
+  "autosave.idle": "自动保存",
+  "autosave.pending": "待保存…",
+  "autosave.saving": "保存中…",
+  "autosave.saved": "已自动保存",
+  "autosave.failed": "自动保存失败",
+  "identity.confirm": "确认",
+  "identity.cancel": "取消",
+  "identity.pendingBadge": "名称/目录待确认",
+  "identity.shortcutHint": "按 Enter 确认，Esc 取消",
+  "identity.error.duplicateName": "名称「{name}」已存在。",
+  "identity.error.duplicatePrefix": "目录名「{prefix}」已被使用。",
+  "identity.error.invalidEffectName": "方案名称包含非法路径字符。",
 } satisfies Record<string, string>;
 
 export type ShellMessageKey = keyof typeof shellZhCNMessages;

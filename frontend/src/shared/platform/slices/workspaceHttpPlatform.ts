@@ -75,7 +75,11 @@ export function createBackgroundsHttpPlatform(transport: HttpTransport): Backgro
     list: () => requestJson<Background[]>("/api/backgrounds"),
     save: (background, originalName) =>
       requestJson<Background>("/api/backgrounds", {
-        body: JSON.stringify({ background, originalName }),
+        body: JSON.stringify({
+          ...(background.id ? { id: background.id } : {}),
+          background,
+          originalName,
+        }),
         method: "POST",
       }),
     saveBgmTags: (input) =>
@@ -141,7 +145,11 @@ export function createEffectsHttpPlatform(transport: HttpTransport): EffectsPlat
     list: () => requestJson<Effect[]>("/api/effects"),
     save: (effect, originalName) =>
       requestJson<Effect>("/api/effects", {
-        body: JSON.stringify({ effect, originalName }),
+        body: JSON.stringify({
+          ...(effect.id ? { id: effect.id } : {}),
+          effect,
+          originalName,
+        }),
         method: "POST",
       }),
     saveAudioTags: (input) =>
