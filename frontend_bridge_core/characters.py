@@ -49,11 +49,13 @@ def _generate_character_setting(state: BridgeState, payload: dict[str, Any]) -> 
 
     name = str(payload.get("name") or "").strip()
     setting = str(payload.get("setting") or "")
+    stores = getattr(state, "stores", None)
     result = generate_character(
         state.character_manager,
         state.config_manager,
         name,
         setting,
+        characters=getattr(stores, "characters", None) if stores is not None else None,
     )
     return {
         "characterBrief": result.character_brief,
@@ -82,9 +84,11 @@ def _ensure_character_briefs(state: BridgeState, payload: dict[str, Any]) -> dic
     names = payload.get("names")
     if not isinstance(names, list):
         raise ValueError("names must be a list")
+    stores = getattr(state, "stores", None)
     characters, generated_names = ensure_character_briefs(
         state.config_manager,
         names,
+        characters=getattr(stores, "characters", None) if stores is not None else None,
     )
     return {
         "characters": [_jsonify(character) for character in characters],

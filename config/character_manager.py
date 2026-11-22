@@ -1,1115 +1,228 @@
-import os
-import shutil
-import hashlib
-import re
-from uuid import uuid4
-from pathlib import Path
-from typing import List, Dict, Any, Tuple, Optional, Union
-from copy import deepcopy
-from collections.abc import Mapping
-from config.schema import (
-    Character,
-    DEFAULT_SPRITE_GROUP,
-    ModelSprites,
-    RelationGraph,
-    SELF_PERSONA_NAME,
-    SELF_PERSONA_SPRITE_PREFIX,
-    Sprite,
-    SpriteTransition,
-    is_self_persona_name,
+"""Thin compatibility facade delegating character mutations to ``config.character_ops``."""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Mapping
+from typing import Any, List, Optional, Tuple, Union
+
+from config.character_ops import (
+    CharacterProfileError, ConfigManagerCharacterTarget, clamp_portrait_sprite_index,
+    delete_all_character_sprites, delete_character_and_assets, delete_character_sprite_voice,
+    delete_single_character_sprite, get_character_sprite_voice, parse_relation_graph,
+    rename_relation_graph_owner, resolve_mutable_character, save_character_avatar_bank,
+    save_character_emotion_tags_op, save_character_patch, save_character_sprite_groups,
+    save_character_sprite_mouths, save_character_sprite_scale_op, save_character_sprite_transitions,
+    save_character_sprite_voice_text, save_character_sprite_voice_type, update_character_relation_graph,
+    upload_character_sprite_voice, upload_character_sprites, voice_filename_for_sprite,
 )
 from config.config_manager import ConfigManager
-from config.sprite_files import sprite_field, sprite_fingerprint
-from config.sprite_groups import (
-    normalize_sprite_group,
-    normalize_sprite_group_list,
-    set_sprite_group_value,
-    sprite_group_of,
-)
-from config.sprite_mouth import read_manifest
-import yaml
+from config.schema import Character, ModelSprites, RelationGraph, Sprite
 
 UPLOAD_DIR = "data/sprite"
 VOICE_DIR = "data/speech"
 MODEL_DIR = "data/models"
-CHARACTER_CONFIG_PATH = ConfigManager._CHARACTERS_CONFIG_PATH 
-
-
-def _voice_filename_for_sprite(sprite_data: Union[Sprite, dict], sprite_index: int, file_ext: str) -> str:
-    sprite_path = str(sprite_field(sprite_data, "path", "") or "")
-    sprite_stem = Path(sprite_path).stem
-    safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", sprite_stem).strip("._-")
-    if not safe_stem:
-        safe_stem = f"sprite_{sprite_index:02d}"
-    digest_source = sprite_path or safe_stem or str(sprite_index)
-    digest = hashlib.sha1(digest_source.encode("utf-8")).hexdigest()[:10]
-    return f"voice_{safe_stem}_{digest}{file_ext}"
-
-
-def _is_path_inside_directory(path: str, directory: str) -> bool:
-    try:
-        Path(path).resolve(strict=False).relative_to(Path(directory).resolve(strict=False))
-        return True
-    except (OSError, ValueError):
-        return False
+CHARACTER_CONFIG_PATH = ConfigManager._CHARACTERS_CONFIG_PATH
+_voice_filename_for_sprite = voice_filename_for_sprite
 
 
 class CharacterManager:
-    """
-    负责角色配置、立绘和语音资源的管理。
-    内部使用 ConfigManager 来持久化数据。
-    """
+    """Compatibility facade over ``ConfigManager`` and ``config.character_ops``."""
 
     _config_manager: ConfigManager
-    
-    def __init__(self):
-        """初始化 CharacterManager，获取 ConfigManager 单例。"""
+
+    def __init__(self) -> None:
         self._config_manager = ConfigManager()
 
+    def _target(self) -> ConfigManagerCharacterTarget:
+        return ConfigManagerCharacterTarget(
+            self._config_manager, save_fn=self._save_characters_config,
+            custom_save="_save_characters_config" in getattr(self, "__dict__", {}),
+        )
+
     def _get_characters(self) -> List[Character]:
-        """获取当前的 Character 列表"""
         try:
             return self._config_manager.config.characters
         except Exception:
-            # 如果配置未加载或失败，返回空列表
             return []
-    def get_character_name_list(self):
+
+    def get_character_name_list(self) -> List[str]:
         return [c.name for c in self._config_manager.config.characters]
 
     def _save_characters_config(self) -> None:
-        """保存角色配置的便捷方法"""
         self._config_manager.save_characters_config()
 
     def save_avatar_bank(self, name: str, avatar_type: str, bank: ModelSprites, *, activate: bool = False) -> None:
-        """Persist one validated bank without replacing other types or static assets."""
-        character = self._config_manager.get_character_by_name(name)
-        if character is None:
-            raise KeyError(name)
-        validated = Character(name=name, color=character.color, sprite_prefix=character.sprite_prefix,
-                              avatars={avatar_type: bank}).avatars
-        previous = character.avatars
-        previous_type = character.avatar_type
-        character.avatars = {**previous, **validated}
-        if activate:
-            character.avatar_type = avatar_type
-        try:
-            self._save_characters_config()
-        except Exception as exc:
-            if not getattr(exc, "published", False):
-                character.avatars = previous
-                character.avatar_type = previous_type
-            raise
+        save_character_avatar_bank(self._target(), name, avatar_type, bank, activate=activate)
 
     def save_characters_to_file(self) -> str:
-        """
-        保存所有角色配置到文件。
-        
-        Returns:
-            str: 操作结果消息。
-        """
         try:
             self._save_characters_config()
             return f"人物设定已保存到 {CHARACTER_CONFIG_PATH}！"
-        except Exception as e:
-            return f"保存失败: {str(e)}"
+        except Exception as exc:
+            return f"保存失败: {exc}"
 
     def save_sprite_mouths(self, name: str, results: list[tuple[int, str, str | None]]) -> None:
-        character = self._config_manager.get_character_by_name(name)
-        if character is None:
-            raise ValueError("角色不存在")
-        previous = list(character.sprites)
-        try:
-            for index, source, path in results:
-                if not 0 <= index < len(character.sprites) or str(sprite_field(character.sprites[index], "path")) != source:
-                    raise ValueError("立绘列表已变化，请重新选择")
-                if path and read_manifest(path)["sourceFingerprint"] != sprite_fingerprint(source):
-                    raise ValueError("来源立绘已变化，请重新制作口型")
-                sprite = character.sprites[index]
-                character.sprites[index] = {**sprite, "mouth_sync": path} if isinstance(sprite, dict) else sprite.model_copy(update={"mouth_sync": path})
-            self._save_characters_config()
-        except Exception:
-            character.sprites = previous
-            raise
+        save_character_sprite_mouths(self._target(), name, results)
 
-    def save_sprite_transitions(self, name: str, results: list[dict]) -> None:
-        """Copy approved clips, replace directed edges atomically, and retain originals."""
-        from sdk.path_utils import safe_child_path
-
-        character = self._config_manager.get_character_by_name(name)
-        if character is None:
-            raise KeyError(name)
-        directory = safe_child_path(Path(UPLOAD_DIR), f"{character.sprite_prefix}/transitions")
-        directory.mkdir(parents=True, exist_ok=True)
-        previous = character.sprite_transitions
-        edges = {(edge.from_path, edge.to_path): edge for edge in previous}
-        copied = []
-        try:
-            for result in results:
-                destination = directory / f"{uuid4().hex}.webm"
-                copied.append(destination)
-                shutil.copyfile(result["path"], destination)
-                edge = SpriteTransition(
-                    from_path=result["fromPath"], to_path=result["toPath"], path=destination.as_posix(),
-                    from_fingerprint=result["fromFingerprint"], to_fingerprint=result["toFingerprint"],
-                    frame_count=result["frameCount"],
-                    h3_resolution=result.get("h3Resolution", "workflow"),
-                )
-                edges[(edge.from_path, edge.to_path)] = edge
-            character.sprite_transitions = list(edges.values())
-            self._save_characters_config()
-        except Exception:
-            character.sprite_transitions = previous
-            for path in copied:
-                path.unlink(missing_ok=True)
-            raise
-
+    def save_sprite_transitions(self, name: str, results: list[dict[str, Any]]) -> None:
+        save_character_sprite_transitions(self._target(), name, results, upload_dir=UPLOAD_DIR)
 
     @staticmethod
     def _clamp_portrait_sprite_index(value: Any, sprite_count: int) -> int:
-        try:
-            index = int(value or 0)
-        except (TypeError, ValueError):
-            index = 0
-        if sprite_count <= 0:
-            return 0
-        return max(0, min(index, sprite_count - 1))
+        return clamp_portrait_sprite_index(value, sprite_count)
 
     def _resolve_mutable_character(self, name: str) -> Optional[Character]:
-        if is_self_persona_name(name):
-            return self._config_manager.ensure_self_persona_persisted()
-        return self._config_manager.get_character_by_name(name)
+        return resolve_mutable_character(self._target(), name)
 
-    def add_character(self, name: str, color: str, sprite_prefix: str, gpt_model_path: str,
-                     sovits_model_path: str, refer_audio_path: str, prompt_text: str,
-                     prompt_lang: str, character_setting: str,
-                     speech_speed: float = 1.0,
-                     speech_volume: float = 1.0,
-                     pronunciation_map: dict = None,
-                     edit_as_name: Optional[str] = None,
-                     emotion_tags: Optional[str] = None,
-                     character_brief: Optional[str] = None,
-                     avatar_type: Optional[str] = None,
-                     avatars: Optional[Dict[str, Union[ModelSprites, dict]]] = None,
-                     portrait_crop=None,
-                     portrait_sprite_index: Optional[int] = None,
-                     sprite_portrait_crops: Optional[dict[int, object]] = None,
-                     relation_graph: Optional[Union[RelationGraph, dict]] = None,
-                     sprite_groups: Optional[List[str]] = None,
-                     default_sprite_group: Optional[str] = None,
-                     fallback_to_default_group: Optional[bool] = None,
-                     sprite_group_map: Optional[dict[int, Optional[str]]] = None,
-                     display_name: Optional[str] = None) -> Tuple[str, List[str]]:
-        """
-        添加或更新角色配置。
-
-        若 edit_as_name 为当前列表中已存在的名字（如 UI 下拉当前选中项），
-        则按该条记录做更新；名称栏改为新名字时视为重命名，不会新建另一条角色。
-        省略 avatar_type / avatars 的旧调用会保留现有形象配置；显式 static / {} 会重置它们。
-
-        Returns:
-            Tuple[str, List[str]]: (操作结果消息, 当前所有角色名称列表)
-        """
-        current_names = [c.name for c in self._get_characters()]
-        if not name:
-            return "名称不能为空！", current_names
-
-        trimmed_edit_as = str(edit_as_name).strip() if edit_as_name else ""
-        if trimmed_edit_as and is_self_persona_name(trimmed_edit_as) and not is_self_persona_name(name):
-            return "内置「自设」人物不可重命名！", current_names
-        if trimmed_edit_as and not is_self_persona_name(trimmed_edit_as) and is_self_persona_name(name):
-            return "不能将其他角色重命名为「自设」！", current_names
-
-        if is_self_persona_name(name) and not (sprite_prefix or "").strip():
-            sprite_prefix = SELF_PERSONA_SPRITE_PREFIX
-
-        characters = self._config_manager.config.characters
-
-        # check sprite_prefix collision (unique per-character upload directory)
-        _prefix = (sprite_prefix or "").strip()
-        if _prefix:
-            if _prefix == SELF_PERSONA_SPRITE_PREFIX and not is_self_persona_name(trimmed_edit_as or name):
-                return (
-                    f"立绘目录名「{_prefix}」已被系统角色「{SELF_PERSONA_NAME}」占用！",
-                    current_names,
-                )
-            for c in characters:
-                _c_prefix = (c.sprite_prefix or "").strip()
-                if not _c_prefix or _prefix != _c_prefix:
-                    continue
-                # editing: new prefix must not collide with *other* characters
-                if trimmed_edit_as:
-                    if c.name != trimmed_edit_as:
-                        return (
-                            f"立绘目录名「{_prefix}」已被角色「{c.name}」占用！",
-                            current_names,
-                        )
-                elif not (is_self_persona_name(name) and is_self_persona_name(c.name)):
-                    return (
-                        f"立绘目录名「{_prefix}」已被角色「{c.name}」占用！",
-                        current_names,
-                    )
-
-        avatar_fields = Character(
-            name=name, color=color, sprite_prefix=sprite_prefix,
-            avatar_type=avatar_type, avatars=avatars,
-        )
-
-        if trimmed_edit_as:
-            target = (
-                self._config_manager.ensure_self_persona_persisted()
-                if is_self_persona_name(trimmed_edit_as)
-                else self._config_manager.get_character_by_name(trimmed_edit_as)
-            )
-            if target is not None:
-                if getattr(target, "undeletable", False) and target.name != name:
-                    return f"内置角色「{target.name}」不可重命名！", [c.name for c in characters]
-                taken = (
-                    None
-                    if is_self_persona_name(name) and is_self_persona_name(target.name)
-                    else self._config_manager.get_character_by_name(name)
-                )
-                if taken is not None and taken is not target:
-                    return f"名称「{name}」已与其他角色重复！", [c.name for c in characters]
-                target.relation_graph = self._rename_relation_graph_owner(target.relation_graph, target.name, name)
-                target.name = name
-                if is_self_persona_name(name) and display_name is not None:
-                    target.display_name = display_name
-                target.color = color
-                target.sprite_prefix = sprite_prefix
-                target.gpt_model_path = gpt_model_path
-                target.sovits_model_path = sovits_model_path
-                target.prompt_text = prompt_text
-                target.prompt_lang = prompt_lang
-                target.refer_audio_path = refer_audio_path
-                if character_brief is not None:
-                    target.character_brief = character_brief
-                target.character_setting = character_setting
-                target.speech_speed = speech_speed
-                target.speech_volume = speech_volume
-                if pronunciation_map is not None:
-                    target.pronunciation_map = pronunciation_map
-                if emotion_tags is not None:
-                    target.emotion_tags = emotion_tags
-                if portrait_crop is not None:
-                    target.portrait_crop = portrait_crop
-                if portrait_sprite_index is not None:
-                    target.portrait_sprite_index = self._clamp_portrait_sprite_index(
-                        portrait_sprite_index, len(target.sprites),
-                    )
-                for index, crop in (sprite_portrait_crops or {}).items():
-                    if 0 <= index < len(target.sprites):
-                        sprite = target.sprites[index]
-                        if isinstance(sprite, dict):
-                            sprite["portrait_crop"] = crop.model_dump() if crop else None
-                        else:
-                            sprite.portrait_crop = crop
-                for index, group_val in (sprite_group_map or {}).items():
-                    if 0 <= index < len(target.sprites):
-                        target.sprites[index] = set_sprite_group_value(target.sprites[index], group_val)
-                if sprite_groups is not None:
-                    target.sprite_groups = normalize_sprite_group_list(sprite_groups)
-                if default_sprite_group is not None:
-                    target.default_sprite_group = str(default_sprite_group).strip()
-                if fallback_to_default_group is not None:
-                    target.fallback_to_default_group = bool(fallback_to_default_group)
-                if avatar_type is not None:
-                    target.avatar_type = avatar_fields.avatar_type
-                if avatars is not None:
-                    target.avatars = avatar_fields.avatars
-                if relation_graph is not None:
-                    target.relation_graph = self.parse_relation_graph(relation_graph)
-                self._save_characters_config()
-                return "人物已更新！", [c.name for c in characters]
-
-        existing_character: Optional[Character] = (
-            self._config_manager.ensure_self_persona_persisted()
-            if is_self_persona_name(name)
-            else self._config_manager.get_character_by_name(name)
-        )
-        
-        if existing_character is None:
-            # 创建新的 Character 实例
-            new_character = Character(
-                name=name,
-                color=color,
-                sprite_prefix=sprite_prefix,
-                gpt_model_path=gpt_model_path,
-                sovits_model_path=sovits_model_path,
-                refer_audio_path=refer_audio_path,
-                prompt_text=prompt_text,
-                prompt_lang=prompt_lang,
-                sprites=[],
-                sprite_scale=1.0,
-                emotion_tags=emotion_tags or "",
-                sprite_groups=normalize_sprite_group_list(sprite_groups),
-                default_sprite_group=str(default_sprite_group or "").strip(),
-                fallback_to_default_group=True if fallback_to_default_group is None else bool(fallback_to_default_group),
-                character_brief=character_brief or "",
-                character_setting=character_setting,
-                speech_speed=speech_speed,
-                speech_volume=speech_volume,
-                pronunciation_map=pronunciation_map or {},
-                portrait_crop=portrait_crop,
-                portrait_sprite_index=(
-                    0
-                    if portrait_sprite_index is None
-                    else self._clamp_portrait_sprite_index(portrait_sprite_index, 0)
-                ),
-                avatar_type=avatar_fields.avatar_type,
-                avatars=avatar_fields.avatars,
-                relation_graph=relation_graph,
-            )
-            characters.append(new_character)
-            self._save_characters_config()
-            return "人物已添加！", [c.name for c in characters]
-        else:
-            # 更新现有 Character 实例的属性
-            existing_character.name = name
-            if is_self_persona_name(name) and display_name is not None:
-                existing_character.display_name = display_name
-            existing_character.color = color
-            existing_character.sprite_prefix = sprite_prefix
-            existing_character.gpt_model_path = gpt_model_path
-            existing_character.sovits_model_path = sovits_model_path
-            existing_character.prompt_text = prompt_text
-            existing_character.prompt_lang = prompt_lang
-            existing_character.refer_audio_path = refer_audio_path
-            if character_brief is not None:
-                existing_character.character_brief = character_brief
-            existing_character.character_setting = character_setting
-            existing_character.speech_speed = speech_speed
-            existing_character.speech_volume = speech_volume
-            if pronunciation_map is not None:
-                existing_character.pronunciation_map = pronunciation_map
-            if emotion_tags is not None:
-                existing_character.emotion_tags = emotion_tags
-            if portrait_crop is not None:
-                existing_character.portrait_crop = portrait_crop
-            if portrait_sprite_index is not None:
-                existing_character.portrait_sprite_index = self._clamp_portrait_sprite_index(
-                    portrait_sprite_index, len(existing_character.sprites),
-                )
-            for index, crop in (sprite_portrait_crops or {}).items():
-                if 0 <= index < len(existing_character.sprites):
-                    sprite = existing_character.sprites[index]
-                    if isinstance(sprite, dict):
-                        sprite["portrait_crop"] = crop.model_dump() if crop else None
-                    else:
-                        sprite.portrait_crop = crop
-            for index, group_val in (sprite_group_map or {}).items():
-                if 0 <= index < len(existing_character.sprites):
-                    existing_character.sprites[index] = set_sprite_group_value(existing_character.sprites[index], group_val)
-            if sprite_groups is not None:
-                existing_character.sprite_groups = normalize_sprite_group_list(sprite_groups)
-            if default_sprite_group is not None:
-                existing_character.default_sprite_group = str(default_sprite_group).strip()
-            if fallback_to_default_group is not None:
-                existing_character.fallback_to_default_group = bool(fallback_to_default_group)
-            if avatar_type is not None:
-                existing_character.avatar_type = avatar_fields.avatar_type
-            if avatars is not None:
-                existing_character.avatars = avatar_fields.avatars
-            if relation_graph is not None:
-                existing_character.relation_graph = self.parse_relation_graph(relation_graph)
-
-            self._save_characters_config()
-            return "人物已更新！", [c.name for c in characters]
-
-
-    def delete_character(self, name: str) -> Tuple[str, List[str]]:
-        """
-        删除角色及其相关文件。
-        
-        Returns:
-            Tuple[str, List[str]]: (操作结果消息, 当前所有角色名称列表)
-        """
-        characters = self._config_manager.config.characters
-        current_names = [c.name for c in characters]
-        
-        if not name or name == "新角色":
-            return "请选择要删除的角色！", current_names
-
-        if is_self_persona_name(name):
-            return "内置「自设」人物不可删除！", current_names
-        
-        character_to_delete: Optional[Character] = self._config_manager.get_character_by_name(name)
-        
-        if character_to_delete is None:
-            return f"找不到角色: {name}", current_names
-
-        if getattr(character_to_delete, "undeletable", False):
-            return f"内置角色「{character_to_delete.name}」不可删除！", current_names
-        
-        # 移除角色
-        try:
-            characters.remove(character_to_delete)
-        except ValueError:
-            return f"找不到角色: {name}", current_names
-            
-        self._save_characters_config()
-        new_names = [c.name for c in characters]
-
-        sprite_prefix = character_to_delete.sprite_prefix
-        if not sprite_prefix:
-            return "已删除角色", new_names
-        
-        # 删除相关目录
-        for base_dir in [UPLOAD_DIR, VOICE_DIR, MODEL_DIR]:
-            char_dir = os.path.join(base_dir, sprite_prefix)
-            if os.path.exists(char_dir):
-                shutil.rmtree(char_dir)
-        
-        return f"角色 {name} 已删除！", new_names
-
-
-    def update_character_options(self):
-        """
-        返回用于 Gradio CheckboxGroup 的选项列表。
-        
-        Returns:
-            gr.CheckboxGroup: Gradio 组件的配置（假设）或选项列表。
-        """
-        try:
-            import gradio as gr 
-            choices = [c.name for c in self._get_characters()]
-            return gr.CheckboxGroup(choices=choices)
-        except ImportError:
-            return [c.name for c in self._get_characters()]
-
-
-    def upload_sprites(
+    def save_character_patch(
         self,
-        character_name: str,
-        sprite_files: List[Any],
-        emotion_tags: str,
+        patch: Mapping[str, Any],
         *,
-        sprite_tags: Optional[List[str]] = None,
-        sprite_mouths: Optional[List[Optional[str]]] = None,
-        replace_index: Optional[int] = None,
-        expected_path: Optional[str] = None,
-        replacements: Optional[List[Tuple[int, str]]] = None,
-        group: Optional[str] = None,
-    ) -> Tuple[str, List[str], str]:
-        """
-        上传立绘文件并更新角色的立绘列表和情绪标签。
-
-        Returns:
-            Tuple[str, List[str], str]: (操作结果消息, 所有立绘路径列表, 更新后的情绪标签文本)
-        """
-        if not character_name:
-            return "请先选择或创建角色！", [], ''
-        
-        if not sprite_files:
-            return "请选择要上传的图片！", [], ''
-
-        if sprite_tags is not None and len(sprite_tags) != len(sprite_files):
-            raise ValueError("Each sprite requires one tag entry")
-        if sprite_mouths is not None:
-            if len(sprite_mouths) != len(sprite_files):
-                raise ValueError("每张生成结果需要一个口型条目")
-            for file, manifest in zip(sprite_files, sprite_mouths):
-                if manifest and read_manifest(manifest)["sourceFingerprint"] != sprite_fingerprint(file.name):
-                    raise ValueError("动态立绘已变化，请重新匹配口型")
-        
-        character: Optional[Character] = self._resolve_mutable_character(character_name)
-        if not character:
-            return f"找不到角色: {character_name}", [], ''
-        
-        char_dir = os.path.join(UPLOAD_DIR, character.sprite_prefix)
-        Path(char_dir).mkdir(parents=True, exist_ok=True)
-        
-        if character.sprites is None:
-            character.sprites = []
-
-        num_existing_sprites = len(character.sprites)
-        if replace_index is not None:
-            if replacements is not None or len(sprite_files) != 1:
-                raise ValueError("请选择一张有效的原立绘进行替换")
-            replacements = [(replace_index, expected_path)]
-        if replacements is not None and len(replacements) != len(sprite_files):
-            raise ValueError("每张生成结果需要一个替换目标")
-        seen_targets = set()
-        for index, path in replacements or []:
-            if (
-                isinstance(index, bool)
-                or not isinstance(index, int)
-                or not 0 <= index < num_existing_sprites
-            ):
-                raise ValueError("请选择一张有效的原立绘进行替换")
-            if index in seen_targets:
-                raise ValueError("同一原立绘只能选择一个结果替换")
-            seen_targets.add(index)
-            if path != sprite_field(character.sprites[index], "path", ""):
-                raise ValueError("原立绘已改变或尚未保存，请刷新角色后重新选择")
-        emotion_tags_to_add = ''
-        original_sprites = character.sprites
-        original_tags = character.emotion_tags
-        original_groups = list(character.sprite_groups or [])
-        new_sprites = []
-        cleaned_upload_group = str(group or "").strip()
-        stored_upload_group = (
-            None
-            if not cleaned_upload_group or cleaned_upload_group == DEFAULT_SPRITE_GROUP
-            else cleaned_upload_group
+        original_name: Optional[str] = None,
+        target_id: Optional[str] = None,
+        sprite_portrait_crops: Optional[Mapping[int, Any]] = None,
+        sprite_group_map: Optional[Mapping[int, Optional[str]]] = None,
+    ) -> tuple[Character, str | None, bool]:
+        """Validate and apply a partial or full character patch without per-field parameters."""
+        return save_character_patch(
+            self._target(), patch, original_name=original_name, target_id=target_id,
+            sprite_portrait_crops=sprite_portrait_crops, sprite_group_map=sprite_group_map,
         )
-        
-        for i, file in enumerate(sprite_files):
-            filename = os.path.basename(file.name)
-            if replacements is not None:
-                filename = f"{uuid4().hex}{Path(filename).suffix}"
-            dest_path = os.path.join(char_dir, filename)
-            shutil.copyfile(file.name, dest_path)
-            
-            updates: Dict[str, Any] = {"path": dest_path}
-            if sprite_mouths is not None:
-                updates["mouth_sync"] = sprite_mouths[i]
-            if replacements is None and stored_upload_group is not None:
-                updates["group"] = stored_upload_group
-            new_sprite_data: Union[Sprite, dict] = Sprite.model_validate(updates)
-            if replacements is not None:
-                original = original_sprites[replacements[i][0]]
-                new_sprite_data = (
-                    original.model_copy(update=updates)
-                    if isinstance(original, Sprite)
-                    else Sprite.model_validate({**original, **updates})
-                )
-            new_sprites.append(new_sprite_data)
-            
-            tag = sprite_tags[i] if sprite_tags is not None else ""
-            emotion_tags_to_add += f'立绘 {num_existing_sprites + i + 1}：{tag}\n'
-            
-        current_emotion_tags = character.emotion_tags if character.emotion_tags else ""
-        character.sprites = original_sprites + new_sprites
-        if replacements is not None:
-            character.sprites = list(original_sprites)
-            for (index, _), sprite in zip(replacements, new_sprites):
-                character.sprites[index] = sprite
-        elif stored_upload_group is not None and stored_upload_group not in character.sprite_groups:
-            character.sprite_groups = normalize_sprite_group_list([*character.sprite_groups, stored_upload_group])
-        if current_emotion_tags and not current_emotion_tags.endswith("\n"):
-            current_emotion_tags += "\n"
-        if replacements is not None:
-            from sdk.asset_tags import numbered_tags, tag_contents
-            tags = tag_contents(original_tags, num_existing_sprites)
-            if sprite_tags is not None:
-                for (index, _), tag in zip(replacements, sprite_tags):
-                    tags[index] = tag
-            character.emotion_tags = numbered_tags("立绘", tags)
-        elif sprite_tags is not None:
-            from sdk.asset_tags import numbered_tags, tag_contents
-            character.emotion_tags = numbered_tags("立绘", tag_contents(current_emotion_tags, num_existing_sprites) + sprite_tags)
-        else:
-            character.emotion_tags = current_emotion_tags + emotion_tags_to_add
 
-        try:
-            self._config_manager.save_characters_config()
-        except Exception:
-            character.sprites = original_sprites
-            character.emotion_tags = original_tags
-            character.sprite_groups = original_groups
-            raise
-
-        all_sprite_paths = [s.path if isinstance(s, Sprite) else s.get('path', '') for s in character.sprites]
-        return f"成功为 {character_name} 上传 {len(sprite_files)} 张立绘！", all_sprite_paths, character.emotion_tags
-
-
-    def delete_all_sprites(self, character_name: str) -> Tuple[str, List[str], str]:
-        """
-        删除角色的所有立绘及其语音文件。
-        
-        Returns:
-            Tuple[str, List[str], str]: (操作结果消息, 空立绘路径列表, 空情绪标签文本)
-        """
-        if not character_name:
-            return "请先选择角色！", [], ""
-        
-        character: Optional[Character] = self._config_manager.get_character_by_name(character_name)
-        if not character:
-            return f"找不到角色: {character_name}", [], ""
-        
-        # Static assets share this root with independently managed model banks.
-        # Validate the root before removing children; preserve model/package voices.
-        from sdk.path_utils import safe_child_path
-        char_dir = safe_child_path(Path(UPLOAD_DIR), character.sprite_prefix)
-        char_voice_dir = safe_child_path(Path(VOICE_DIR), character.sprite_prefix)
-        if char_dir == Path(UPLOAD_DIR).resolve() or char_voice_dir == Path(VOICE_DIR).resolve():
-            raise PermissionError("Character asset directory must not be the shared root")
-        if char_dir.is_dir():
-            for child in char_dir.iterdir():
-                if child.name.lower() in {"avatars", "avatar-voices"}:
-                    continue
-                if child.is_dir() and not child.is_symlink():
-                    checked = safe_child_path(char_dir, child.name)
-                    shutil.rmtree(checked)
-                else:
-                    child.unlink()
-            if not any(char_dir.iterdir()):
-                char_dir.rmdir()
-
-        # 删除语音目录
-        if os.path.exists(char_voice_dir):
-            shutil.rmtree(char_voice_dir)
-        
-        # 清空角色属性
-        character.sprites = []
-        character.emotion_tags = ""
-        character.portrait_sprite_index = 0
-        
-        self._config_manager.save_characters_config()
-        
-        return f"已删除 {character_name} 的所有立绘！", [], ""
-
-
-    def delete_single_sprite(self, character_name: str, sprite_index: int) -> Tuple[str, List[str], str]:
-        """
-        删除角色的指定立绘及其语音文件。
-        
-        Returns:
-            Tuple[str, List[str], str]: (操作结果消息, 剩余立绘路径列表, 更新后的情绪标签文本)
-        """
-        if not character_name:
-            return "请先选择角色！", [], ""
-        
-        character: Optional[Character] = self._config_manager.get_character_by_name(character_name)
-        if not character:
-            return f"找不到角色: {character_name}", [], ""
-        
-        # 索引检查
-        if not character.sprites or sprite_index < 0 or sprite_index >= len(character.sprites):
-            remaining_paths = [s.path if isinstance(s, Sprite) else s.get('path', '') for s in character.sprites]
-            return "立绘不存在！", remaining_paths, character.emotion_tags
-        
-        sprite_data: Union[Sprite, dict] = character.sprites[sprite_index]
-        
-        # 获取路径
-        sprite_path = sprite_data.path if isinstance(sprite_data, Sprite) else sprite_data.get("path", "")
-        voice_path = sprite_data.voice_path if isinstance(sprite_data, Sprite) else sprite_data.get("voice_path", "")
-
-        # 删除文件
-        if sprite_path and os.path.exists(sprite_path) and os.path.isfile(sprite_path):
-            os.remove(sprite_path)
-            
-        if voice_path and os.path.exists(voice_path) and os.path.isfile(voice_path):
-            os.remove(voice_path)
-        
-        # 从列表中移除
-        character.sprites.pop(sprite_index)
-        current_portrait_index = int(getattr(character, "portrait_sprite_index", 0) or 0)
-        if sprite_index < current_portrait_index:
-            current_portrait_index -= 1
-        character.portrait_sprite_index = self._clamp_portrait_sprite_index(
-            current_portrait_index, len(character.sprites),
-        )
-        
-        # 更新情绪标签
-        emotion_tags = ""
-        original_tags_list = character.emotion_tags.strip().split('\n') if character.emotion_tags else []
-        
-        if sprite_index < len(original_tags_list):
-            original_tags_list.pop(sprite_index)
-        
-        for i, line in enumerate(original_tags_list):
-            parts = line.split('：') if '：' in line else line.split(':')
-            current_tag = parts[-1].strip() if len(parts) > 1 else ""
-            emotion_tags += f'立绘 {i+1}：{current_tag}\n'
-            
-        character.emotion_tags = emotion_tags
-        
-        self._config_manager.save_characters_config()
-        
-        remaining_sprite_paths = [s.path if isinstance(s, Sprite) else s.get('path', '') for s in character.sprites]
-        return f"已删除 {character_name} 的第 {sprite_index+1} 张立绘！", remaining_sprite_paths, emotion_tags
-
-
-    def upload_emotion_tags(self, character_name: str, emotion_tags: str) -> str:
-        """
-        上传/更新角色的情绪标签文本。
-        
-        Returns:
-            str: 操作结果消息。
-        """
-        if not character_name:
-            return "请先选择或创建角色！"
-        
-        if not emotion_tags: # 假设原始代码中的 emotion_inputs 应该被 emotion_tags 取代
-            return "请输入情绪标注！"
-        
-        character: Optional[Character] = self._config_manager.get_character_by_name(character_name)
-        if not character:
-            return f"找不到角色: {character_name}"
-        
-        try:
-            character.emotion_tags = emotion_tags
-            self._config_manager.save_characters_config()
-            return "标注成功！"
-        except Exception as e:
-            return f"标注出错了：{e}"
-
-
-    def upload_voice(self, character_name: str, sprite_index: int, voice_file: str, voice_text: str, voice_type: str = "") -> Tuple[str, Optional[str]]:
-        """
-        为指定立绘上传语音文件。
-        
-        Returns:
-            Tuple[str, Optional[str]]: (操作结果消息, 语音文件路径或 None)
-        """
-        if not character_name:
-            return "请先选择角色！", None
-        
-        character: Optional[Character] = self._config_manager.get_character_by_name(character_name)
-        if not character:
-            return f"找不到角色: {character_name}", None
-        
-        if not character.sprites or sprite_index < 0 or sprite_index >= len(character.sprites):
-            return "立绘不存在！", None
-        
-        sprite_data: Union[Sprite, dict] = character.sprites[sprite_index]
-        original_voice_path = str(sprite_field(sprite_data, "voice_path", "") or "")
-        
-        if (not voice_file) and (not original_voice_path):
-            return "请选择语音文件！", None
-        
-        voice_char_dir = os.path.join(VOICE_DIR, character.sprite_prefix)
-        Path(voice_char_dir).mkdir(parents=True, exist_ok=True)
-        
-        file_ext = Path(voice_file).suffix
-        voice_filename = _voice_filename_for_sprite(sprite_data, sprite_index, file_ext)
-        voice_path = os.path.join(voice_char_dir, voice_filename)
-        shutil.copyfile(voice_file, voice_path)
-        
-        # 更新角色数据
-        if isinstance(sprite_data, Sprite):
-            sprite_data.voice_path = voice_path
-            sprite_data.voice_text = voice_text
-            if voice_type:
-                sprite_data.voice_type = voice_type
-        else:
-            character.sprites[sprite_index]["voice_path"] = voice_path
-            character.sprites[sprite_index]["voice_text"] = voice_text
-            if voice_type:
-                character.sprites[sprite_index]["voice_type"] = voice_type
-            
-        self._config_manager.save_characters_config()
-
-        if (
-            original_voice_path
-            and os.path.abspath(original_voice_path) != os.path.abspath(voice_path)
-            and _is_path_inside_directory(original_voice_path, voice_char_dir)
-        ):
-            try:
-                if os.path.isfile(original_voice_path):
-                    os.remove(original_voice_path)
-            except OSError:
-                pass
-        
-        return f"语音已上传到立绘 {sprite_index+1}！", voice_path
-
-
-    def get_sprite_voice(self, character_name: str, sprite_index: int) -> Tuple[Optional[str], str]:
-        """
-        获取指定立绘的语音路径和文本。
-        
-        Returns:
-            Tuple[Optional[str], str]: (语音文件路径或 None, 语音文本内容)
-        """
-        if not character_name or sprite_index is None:
-            return None, ""
-        
-        character: Optional[Character] = self._config_manager.get_character_by_name(character_name)
-        
-        if not character or not character.sprites or sprite_index < 0 or sprite_index >= len(character.sprites):
-            return None, ""
-        
-        sprite_data: Union[Sprite, dict] = character.sprites[sprite_index]
-        
-        if isinstance(sprite_data, Sprite):
-            voice_path = sprite_data.voice_path
-            voice_text = sprite_data.voice_text if sprite_data.voice_text else ""
-        else:
-            voice_path = sprite_data.get("voice_path", None)
-            voice_text = sprite_data.get("voice_text", "")
-
-        return voice_path, voice_text
-
-    def save_sprite_voice_text(self, character_name: str, sprite_index: int, voice_text: str) -> str:
-        """单独保存立绘的语音文字，不需要重新上传音频。"""
-        if not character_name:
-            return "请先选择角色！"
-        character = self._config_manager.get_character_by_name(character_name)
-        if not character:
-            return f"找不到角色: {character_name}"
-        if not character.sprites or sprite_index < 0 or sprite_index >= len(character.sprites):
-            return "立绘不存在！"
-
-        sprite_data = character.sprites[sprite_index]
-        if isinstance(sprite_data, Sprite):
-            sprite_data.voice_text = voice_text if voice_text else None
-        else:
-            sprite_data["voice_text"] = voice_text if voice_text else None
-
-        self._config_manager.save_characters_config()
-        return "语音文字已保存"
-
-    def save_sprite_voice_type(self, character_name: str, sprite_index: int, voice_type: str) -> str:
-        """单独保存立绘的语音类型（preset/reference），不需要重新上传音频。"""
-        if not character_name:
-            return "请先选择角色！"
-        character = self._config_manager.get_character_by_name(character_name)
-        if not character:
-            return f"找不到角色: {character_name}"
-        if not character.sprites or sprite_index < 0 or sprite_index >= len(character.sprites):
-            return "立绘不存在！"
-
-        sprite_data = character.sprites[sprite_index]
-        if isinstance(sprite_data, Sprite):
-            sprite_data.voice_type = voice_type if voice_type else None
-        else:
-            sprite_data["voice_type"] = voice_type if voice_type else None
-
-        self._config_manager.save_characters_config()
-        return "语音类型已保存"
-
-    def delete_sprite_voice(self, character_name: str, sprite_index: int) -> str:
-        """删除指定立绘的语音文件和引用。"""
-        if not character_name:
-            return "请先选择角色！"
-        character = self._config_manager.get_character_by_name(character_name)
-        if not character:
-            return f"找不到角色: {character_name}"
-        if not character.sprites or sprite_index < 0 or sprite_index >= len(character.sprites):
-            return "立绘不存在！"
-
-        sprite_data = character.sprites[sprite_index]
-        if isinstance(sprite_data, Sprite):
-            voice_path = sprite_data.voice_path
-            sprite_data.voice_path = None
-            sprite_data.voice_text = None
-        else:
-            voice_path = sprite_data.get("voice_path", None)
-            sprite_data["voice_path"] = None
-            sprite_data["voice_text"] = None
-
-        self._config_manager.save_characters_config()
-
-        if voice_path and os.path.isfile(voice_path):
-            try:
-                os.remove(voice_path)
-            except OSError:
-                pass
-
-        return f"已删除立绘 {sprite_index + 1} 的语音"
-
-    def get_character_sprites(self, character_name: str) -> Tuple[List[str], str, List[Any]]:
-        """
-        获取指定角色的所有立绘路径和情绪标签。
-        
-        Returns:
-            Tuple[List[str], str, List[Any]]: (立绘路径列表, 情绪标签文本, 额外的返回列表 (始终为空))
-        """
-        if not character_name:
-            return [], "", []
-        
-        character: Optional[Character] = self._config_manager.get_character_by_name(character_name)
-        
-        if not character:
-            return [], "", []
-
-        sprite_paths = [s.path if isinstance(s, Sprite) else s.get('path', '') for s in character.sprites if s]
-        emotion_tags = character.emotion_tags if character.emotion_tags else ""
-        
-        return sprite_paths, emotion_tags, []
-
-
-    def save_sprite_scale(self, name: str, scale: float) -> str:
-        """
-        保存角色的立绘缩放比例。
-        
-        Returns:
-            str: 操作结果消息。
-        """
-        if not name:
-            return "名称不能为空！", [c.name for c in self._get_characters()]
-            
-        character: Optional[Character] = self._config_manager.get_character_by_name(name)
-
-        if character:
-            character.sprite_scale = scale
-            self._config_manager.save_characters_config()
-            return "保存立绘缩放倍率成功"
-        
-        return f"找不到角色: {name}"
-
-
-    def load_characters_from_file(self) -> Tuple[str, List[List[str]]]:
-        """
-        重新加载人物设定文件。
-        
-        Returns:
-            Tuple[str, List[List[str]]]: (操作结果消息, 角色信息列表: [[name, color, prompt_lang], ...])
-        """
-        try:
-            self._config_manager.reload()
-            characters = self._config_manager.config.characters
-            
-            char_info_list = [[c.name, c.color, c.prompt_lang if c.prompt_lang else ""] for c in characters]
-            return "人物设定已加载！", char_info_list
-        except Exception as e:
-            try:
-                 characters = self._config_manager.config.characters
-                 char_info_list = [[c.name, c.color, c.prompt_lang if c.prompt_lang else ""] for c in characters]
-            except:
-                 char_info_list = []
-                 
-            return f"加载失败: {str(e)}", char_info_list
-
-
-    @staticmethod
-    def _rename_relation_graph_owner(graph: RelationGraph, old_name: str, new_name: str) -> RelationGraph:
-        """迁移自身图谱中的名称引用。"""
-        value = graph.model_dump(mode="json")
-        for node in value["nodes"]:
-            if node["key"] == old_name:
-                node["key"] = new_name
-        for edge in value["edges"]:
-            for endpoint in ("source", "target"):
-                if edge[endpoint] == old_name:
-                    edge[endpoint] = new_name
-        return RelationGraph.model_validate(value)
-
-    @staticmethod
-    def parse_relation_graph(data: Optional[Union[RelationGraph, Mapping[str, Any]]] = None) -> RelationGraph:
-        """解析关系图谱；缺失时返回独立空图。"""
-        if isinstance(data, RelationGraph):
-            data = data.model_dump(mode="json")
-        graph = RelationGraph.model_validate(deepcopy(data) if data is not None else {})
-        return graph
-
-    def save_sprite_groups(
+    def add_character(
         self,
         name: str,
-        *,
+        color: str,
+        sprite_prefix: str,
+        gpt_model_path: str = "",
+        sovits_model_path: str = "",
+        refer_audio_path: str = "",
+        prompt_text: str = "",
+        prompt_lang: str = "",
+        character_setting: str = "",
+        speech_speed: float = 1.0,
+        speech_volume: float = 1.0,
+        pronunciation_map: Optional[dict[str, str]] = None,
+        edit_as_name: Optional[str] = None,
+        emotion_tags: Optional[str] = None,
+        character_brief: Optional[str] = None,
+        avatar_type: Optional[str] = None,
+        avatars: Optional[dict[str, Union[ModelSprites, dict[str, Any]]]] = None,
+        portrait_crop: Any = None,
+        portrait_sprite_index: Optional[int] = None,
+        sprite_portrait_crops: Optional[dict[int, Any]] = None,
+        relation_graph: Optional[Union[RelationGraph, dict[str, Any]]] = None,
         sprite_groups: Optional[List[str]] = None,
         default_sprite_group: Optional[str] = None,
         fallback_to_default_group: Optional[bool] = None,
-        assignments: Optional[Dict[int, Optional[str]]] = None,
-        rename_from: Optional[str] = None,
-        rename_to: Optional[str] = None,
-        delete_group: Optional[str] = None,
-        avatar_type: Optional[str] = None,
-    ) -> Character:
-        """原子保存立绘服装分组配置、批量移组、重命名与删除分组（保留原始全局立绘下标不变）。"""
-        if not name or not str(name).strip():
-            raise ValueError("角色名称不能为空")
-        character = self._resolve_mutable_character(str(name).strip())
-        if character is None:
-            raise KeyError(f"找不到角色: {name}")
-
-        target_avatar = (
-            str(character.avatar_type or "static").strip().lower()
-            if avatar_type is None
-            else str(avatar_type or "static").strip().lower()
-        ) or "static"
-
-        prev_sprites = list(character.sprites)
-        prev_avatars = deepcopy(character.avatars)
-        prev_groups = list(character.sprite_groups or [])
-        prev_default = character.default_sprite_group
-        prev_fallback = character.fallback_to_default_group
-
-        if target_avatar == "static":
-            bank_sprites = list(character.sprites or [])
-        else:
-            if target_avatar not in character.avatars:
-                raise KeyError(f"未知形象类型: {target_avatar}")
-            bank_sprites = list(character.avatars[target_avatar].sprites or [])
-
-        next_groups = normalize_sprite_group_list(
-            sprite_groups if sprite_groups is not None else character.sprite_groups
-        )
-        next_default = (
-            str(default_sprite_group).strip()
-            if default_sprite_group is not None
-            else str(character.default_sprite_group or "").strip()
-        )
-        next_fallback = (
-            bool(fallback_to_default_group)
-            if fallback_to_default_group is not None
-            else bool(character.fallback_to_default_group)
-        )
-
-        if rename_from is not None and rename_to is not None:
-            src = normalize_sprite_group(rename_from)
-            dst = normalize_sprite_group(rename_to)
-            if src == DEFAULT_SPRITE_GROUP:
-                raise ValueError("默认分组不可重命名")
-            if src != dst:
-                bank_sprites = [
-                    set_sprite_group_value(sp, dst) if sprite_group_of(sp) == src else sp
-                    for sp in bank_sprites
-                ]
-                next_groups = normalize_sprite_group_list(
-                    [dst if g == src else g for g in [*next_groups, dst]]
-                )
-                if next_default and normalize_sprite_group(next_default) == src:
-                    next_default = "" if dst == DEFAULT_SPRITE_GROUP else dst
-
-        if delete_group is not None:
-            removed = normalize_sprite_group(delete_group)
-            if removed == DEFAULT_SPRITE_GROUP:
-                raise ValueError("默认分组不可删除")
-            bank_sprites = [
-                set_sprite_group_value(sp, None) if sprite_group_of(sp) == removed else sp
-                for sp in bank_sprites
-            ]
-            next_groups = [g for g in next_groups if g != removed]
-            if next_default and normalize_sprite_group(next_default) == removed:
-                next_default = ""
-
-        if assignments:
-            added_groups: List[str] = []
-            for raw_idx, group_val in assignments.items():
-                idx = int(raw_idx)
-                if not 0 <= idx < len(bank_sprites):
-                    raise ValueError(f"立绘编号越界: {idx}")
-                bank_sprites[idx] = set_sprite_group_value(bank_sprites[idx], group_val)
-                norm = normalize_sprite_group(group_val)
-                if norm != DEFAULT_SPRITE_GROUP and norm not in next_groups and norm not in added_groups:
-                    added_groups.append(norm)
-            if added_groups:
-                next_groups = normalize_sprite_group_list([*next_groups, *added_groups])
-
-        if next_default and normalize_sprite_group(next_default) == DEFAULT_SPRITE_GROUP:
-            next_default = DEFAULT_SPRITE_GROUP
-
+        sprite_group_map: Optional[dict[int, Optional[str]]] = None,
+        display_name: Optional[str] = None,
+        **extra_fields: Any,
+    ) -> Tuple[str, List[str]]:
+        """Legacy positional/keyword upsert wrapper retained for compatibility."""
+        patch: dict[str, Any] = {
+            **extra_fields, "name": name, "color": color, "sprite_prefix": sprite_prefix,
+            "gpt_model_path": gpt_model_path, "sovits_model_path": sovits_model_path,
+            "refer_audio_path": refer_audio_path, "prompt_text": prompt_text,
+            "prompt_lang": prompt_lang, "character_setting": character_setting,
+            "speech_speed": speech_speed, "speech_volume": speech_volume,
+        }
+        optional = {
+            "pronunciation_map": pronunciation_map, "emotion_tags": emotion_tags,
+            "character_brief": character_brief, "avatar_type": avatar_type, "avatars": avatars,
+            "portrait_crop": portrait_crop, "portrait_sprite_index": portrait_sprite_index,
+            "relation_graph": relation_graph, "sprite_groups": sprite_groups,
+            "default_sprite_group": default_sprite_group,
+            "fallback_to_default_group": fallback_to_default_group, "display_name": display_name,
+        }
+        for key, value in optional.items():
+            if value is not None:
+                patch[key] = value
         try:
-            if target_avatar == "static":
-                character.sprites = bank_sprites
-            else:
-                character.avatars[target_avatar].sprites = bank_sprites
-            character.sprite_groups = next_groups
-            character.default_sprite_group = next_default
-            character.fallback_to_default_group = next_fallback
-            self._save_characters_config()
-        except Exception:
-            character.sprites = prev_sprites
-            character.avatars = prev_avatars
-            character.sprite_groups = prev_groups
-            character.default_sprite_group = prev_default
-            character.fallback_to_default_group = prev_fallback
-            raise
-        return character
+            _saved, _renamed, created = self.save_character_patch(
+                patch, original_name=edit_as_name,
+                sprite_portrait_crops=sprite_portrait_crops, sprite_group_map=sprite_group_map,
+            )
+        except CharacterProfileError as exc:
+            return str(exc), [c.name for c in self._get_characters()]
+        return ("人物已添加！" if created else "人物已更新！", [c.name for c in self._get_characters()])
 
-    def update_relation_graph(self, char_name: str, mutate) -> RelationGraph:
-        """修改并校验图谱，然后保存角色配置。"""
-        character = self._config_manager.get_character_by_name(char_name)
-        if character is None:
-            raise ValueError(f"Character not found: {char_name}")
-        graph = character.relation_graph
-        updated = self.parse_relation_graph(mutate(graph.model_dump(mode="json")))
-        character.relation_graph = updated
+    def delete_character(self, name: str) -> Tuple[str, List[str]]:
+        return delete_character_and_assets(self._target(), name, upload_dir=UPLOAD_DIR, voice_dir=VOICE_DIR, model_dir=MODEL_DIR)
+
+    def update_character_options(self) -> Any:
         try:
-            self._save_characters_config()
-        except Exception:
-            character.relation_graph = graph
-            raise
-        return updated.model_copy(deep=True)
+            import gradio as gr
+            return gr.CheckboxGroup(choices=[c.name for c in self._get_characters()])
+        except ImportError:
+            return [c.name for c in self._get_characters()]
+
+    def upload_sprites(self, character_name: str, sprite_files: List[Any], emotion_tags: str, **kwargs: Any) -> Tuple[str, List[str], str]:
+        return upload_character_sprites(self._target(), character_name, sprite_files, emotion_tags, upload_dir=UPLOAD_DIR, **kwargs)
+
+    def delete_all_sprites(self, character_name: str) -> Tuple[str, List[str], str]:
+        return delete_all_character_sprites(self._target(), character_name, upload_dir=UPLOAD_DIR, voice_dir=VOICE_DIR)
+
+    def delete_single_sprite(self, character_name: str, sprite_index: int) -> Tuple[str, List[str], str]:
+        return delete_single_character_sprite(self._target(), character_name, sprite_index)
+
+    def upload_emotion_tags(self, character_name: str, emotion_tags: str) -> str:
+        try:
+            save_character_emotion_tags_op(self._target(), character_name, emotion_tags)
+            return "标注成功！"
+        except CharacterProfileError as exc:
+            return str(exc)
+        except Exception as exc:
+            return f"标注出错了：{exc}"
+
+    def upload_voice(self, character_name: str, sprite_index: int, voice_file: str, voice_text: str, voice_type: str = "") -> Tuple[str, Optional[str]]:
+        return upload_character_sprite_voice(self._target(), character_name, sprite_index, voice_file, voice_text, voice_type, voice_dir=VOICE_DIR)
+
+    def get_sprite_voice(self, character_name: str, sprite_index: int) -> Tuple[Optional[str], str]:
+        return get_character_sprite_voice(self._target(), character_name, sprite_index)
+
+    def save_sprite_voice_text(self, character_name: str, sprite_index: int, voice_text: str) -> str:
+        return save_character_sprite_voice_text(self._target(), character_name, sprite_index, voice_text)
+
+    def save_sprite_voice_type(self, character_name: str, sprite_index: int, voice_type: str) -> str:
+        return save_character_sprite_voice_type(self._target(), character_name, sprite_index, voice_type)
+
+    def delete_sprite_voice(self, character_name: str, sprite_index: int) -> str:
+        return delete_character_sprite_voice(self._target(), character_name, sprite_index)
+
+    def get_character_sprites(self, character_name: str) -> Tuple[List[str], str, List[Any]]:
+        character = self._config_manager.get_character_by_name(character_name) if character_name else None
+        if not character:
+            return [], "", []
+        paths = [s.path if isinstance(s, Sprite) else s.get("path", "") for s in (character.sprites or []) if s]
+        return paths, character.emotion_tags or "", []
+
+    def save_sprite_scale(self, name: str, scale: float) -> Any:
+        if not name:
+            return "名称不能为空！", [c.name for c in self._get_characters()]
+        try:
+            save_character_sprite_scale_op(self._target(), name, scale)
+            return "保存立绘缩放倍率成功"
+        except CharacterProfileError as exc:
+            return str(exc)
+
+    def load_characters_from_file(self) -> Tuple[str, List[List[str]]]:
+        try:
+            self._config_manager.reload()
+            return "人物设定已加载！", [[c.name, c.color, c.prompt_lang or ""] for c in self._get_characters()]
+        except Exception as exc:
+            return f"加载失败: {exc}", [[c.name, c.color, c.prompt_lang or ""] for c in self._get_characters()]
+
+    @staticmethod
+    def _rename_relation_graph_owner(graph: RelationGraph, old_name: str, new_name: str) -> RelationGraph:
+        return rename_relation_graph_owner(graph, old_name, new_name)
+
+    @staticmethod
+    def parse_relation_graph(data: Optional[Union[RelationGraph, Mapping[str, Any]]] = None) -> RelationGraph:
+        return parse_relation_graph(data)
+
+    def save_sprite_groups(self, name: str, **kwargs: Any) -> Character:
+        return save_character_sprite_groups(self._target(), name, **kwargs)
+
+    def update_relation_graph(self, char_name: str, mutate: Callable[[dict[str, Any]], Any]) -> RelationGraph:
+        return update_character_relation_graph(self._target(), char_name, mutate)

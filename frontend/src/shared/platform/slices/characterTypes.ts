@@ -82,6 +82,7 @@ export interface AvatarRuntimeImport {
 }
 
 export interface Character {
+  id?: string;
   sprite_groups?: string[];
   default_sprite_group?: string | null;
   fallback_to_default_group?: boolean;

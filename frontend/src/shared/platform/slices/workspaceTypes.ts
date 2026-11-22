@@ -2,6 +2,7 @@ import type { Sprite } from "./characterTypes";
 import type { ImageAutoLabelResult, TaskProgressOptions } from "./taskTypes";
 
 export interface Background {
+  id?: string;
   name: string;
   sprite_prefix: string;
   sprites: Sprite[];
@@ -26,6 +27,7 @@ export interface BackgroundTranslateInput {
 }
 
 export interface Effect {
+  id?: string;
   name: string;
   color: string;
   prompt_text: string;

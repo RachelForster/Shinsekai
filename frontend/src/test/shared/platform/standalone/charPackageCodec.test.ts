@@ -47,10 +47,14 @@ describe("charPackageCodec", () => {
     );
     await putVfsBlob(referPath, wavBytes, { mimeType: "audio/wav" });
 
-    const original: Character = {
+    const original: Character & Record<string, unknown> = {
+      id: "local-secret-id",
       name: "星奈",
       color: "#7dd3fc",
       sprite_prefix: "hoshina",
+      portrait_sprite_index: 0,
+      custom_extension_note: "keep-across-roundtrip",
+      custom_extension_rank: 7,
       sprites: [{ path: spritePath, group: "常服", mouth_sync: mouthManifestPath }],
       sprite_groups: ["常服"],
       default_sprite_group: "常服",
@@ -80,12 +84,24 @@ describe("charPackageCodec", () => {
     expect(imported).toHaveLength(1);
 
     const dup = imported[0];
+    expect(dup.id).toBeUndefined();
+    expect(dup.portrait_sprite_index).toBe(0);
+    expect((dup as unknown as Record<string, unknown>).custom_extension_note).toBe("keep-across-roundtrip");
+    expect((dup as unknown as Record<string, unknown>).custom_extension_rank).toBe(7);
     expect(dup.name).toBe("星奈（1）");
     expect(dup.sprite_prefix).toBe("hoshina1");
     expect(dup.character_setting).toContain("第一行设定");
     expect(dup.character_setting).toContain("第二行说话习惯");
     expect(dup.refer_audio_path).toMatch(/^vfs:\/\/characters\/hoshina1\/models\/ref\.wav$/);
     expect(getVfsBlob(dup.refer_audio_path!)).toBeDefined();
+
+    // Verify import -> export -> import round-trip preserves non-reserved extension scalars
+    const reExported = await exportCharPackage(dup, { triggerDownload: false });
+    const reImported = await importCharPackage(reExported.blob, []);
+    expect(reImported).toHaveLength(1);
+    expect(reImported[0].id).toBeUndefined();
+    expect((reImported[0] as unknown as Record<string, unknown>).custom_extension_note).toBe("keep-across-roundtrip");
+    expect((reImported[0] as unknown as Record<string, unknown>).custom_extension_rank).toBe(7);
 
     const importedSprite = dup.sprites[0];
     expect(resolveVfsUrl(importedSprite.path)).toMatch(/^blob:/);

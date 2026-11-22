@@ -135,17 +135,38 @@ class AppStoresConfigBackend:
     def save_characters(self, items: Sequence[Character]) -> str:
         return self._stores.characters.replace_all(items)
 
+    def get_character_by_id(self, char_id: str) -> Character | None:
+        return self._stores.characters.get(char_id)
+
     def get_character_by_name(self, name: str) -> Character | None:
         return self._stores.characters.get_by_name(name)
 
     def ensure_self_persona(self) -> Character:
         return self._stores.characters.ensure_self_persona()
 
+    def put_character(self, character: Character) -> None:
+        self._stores.characters.put(character.id, character)
+
+    def delete_character(self, char_id: str) -> bool:
+        return bool(self._stores.characters.delete(char_id))
+
     def list_backgrounds(self) -> list[Background]:
         return list(self._stores.backgrounds.list_all())
 
     def save_backgrounds(self, items: Sequence[Background]) -> str:
         return self._stores.backgrounds.replace_all(items)
+
+    def get_background_by_id(self, bg_id: str) -> Background | None:
+        return self._stores.backgrounds.get(bg_id)
+
+    def get_background_by_name(self, name: str) -> Background | None:
+        return self._stores.backgrounds.get_by_name(name)
+
+    def put_background(self, background: Background) -> None:
+        self._stores.backgrounds.put(background.id, background)
+
+    def delete_background(self, bg_id: str) -> bool:
+        return bool(self._stores.backgrounds.delete(bg_id))
 
     def list_effects(self) -> list[Effect]:
         return list(self._stores.effects.list_all())

@@ -8,11 +8,20 @@ import tempfile
 import uuid
 from pathlib import Path
 
+from config.character_ops import save_character_avatar_bank
 from config.schema import ModelSprites, Sprite
 from core.media.asset_import import PendingAssetBatch
 from core.media.avatar.registry import adapter_for
 from core.media.avatar.state_dependencies import index_path, write_state_index
 from sdk.path_utils import safe_child_path
+
+
+def _save_avatar_bank(use_case, name: str, kind: str, bank: ModelSprites, *, activate: bool = False) -> None:
+    target = use_case._catalog_target() if hasattr(use_case, "_catalog_target") else None
+    if target is not None:
+        save_character_avatar_bank(target, name, kind, bank, activate=activate)
+    else:
+        use_case._state.character_manager.save_avatar_bank(name, kind, bank, activate=activate)
 
 
 def import_model_states(use_case, body: dict) -> dict:
@@ -61,7 +70,7 @@ def import_model_states(use_case, body: dict) -> dict:
             tags = tag_contents(bank.emotion_tags, old_count)
             bank.emotion_tags = numbered_tags("立绘", [*tags, *tags_to_add])
             try:
-                use_case._state.character_manager.save_avatar_bank(name, kind, bank)
+                _save_avatar_bank(use_case, name, kind, bank)
             except Exception as exc:
                 if getattr(exc, "published", False):
                     transaction.preserve()
@@ -80,7 +89,11 @@ def import_model(use_case, body: dict) -> dict:
     # Each dependency is separately checked against the input grant.
     for file in files.files:
         use_case._file(str(file), field="model dependency")
-    root = safe_child_path(use_case._resource_paths.project_root, "data/sprite")
+    root = (
+        use_case._media_dir("sprite")
+        if hasattr(use_case, "_media_dir")
+        else safe_child_path(use_case._resource_paths.project_root, "data/sprite")
+    )
     parent = safe_child_path(root, f"{character.sprite_prefix}/avatars/{kind}")
     parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".import-", dir=parent) as directory:
@@ -100,7 +113,7 @@ def import_model(use_case, body: dict) -> dict:
             bank = ModelSprites(model_path=str(final / files.entry.name))
             try:
                 shutil.copytree(staged, final)
-                use_case._state.character_manager.save_avatar_bank(name, kind, bank, activate=True)
+                _save_avatar_bank(use_case, name, kind, bank, activate=True)
             except Exception as exc:
                 if not getattr(exc, "published", False) and final.exists():
                     shutil.rmtree(final)
@@ -142,7 +155,7 @@ def save_model_state(use_case, body: dict) -> dict:
                 bank.sprites[index] = sprite
                 tags[index] = str(body["tags"])
             bank.emotion_tags = numbered_tags("立绘", tags)
-            use_case._state.character_manager.save_avatar_bank(name, kind, bank)
+            _save_avatar_bank(use_case, name, kind, bank)
         except Exception as exc:
             if not getattr(exc, "published", False):
                 target.unlink(missing_ok=True)

@@ -272,7 +272,7 @@ describe("TemplateEditorPage", () => {
     await screen.findByDisplayValue("Opening");
 
     expect(document.querySelectorAll("textarea").length).toBe(1);
-    expect(screen.getByLabelText("User prompt")).toHaveValue("Morning scene");
+    await waitFor(() => expect(screen.getByLabelText("User prompt")).toHaveValue("Morning scene"));
     expect(screen.getByText("No characters selected. Click Edit to choose cast members.")).toBeVisible();
     expect(screen.queryByRole("button", { name: "Nanami" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Mika" })).not.toBeInTheDocument();
@@ -281,7 +281,7 @@ describe("TemplateEditorPage", () => {
 
     const sidebar = document.querySelector(".template-options-panel") as HTMLElement;
     expect(within(sidebar).getByText("Stage & runtime settings")).toBeVisible();
-    expect(within(sidebar).getByRole("button", { name: "Rain" })).toBeVisible();
+    expect(await within(sidebar).findByRole("button", { name: "Rain" })).toBeVisible();
     expect(within(sidebar).getByRole("checkbox", { name: "Use ComfyUI" })).toBeVisible();
     expect(within(sidebar).getByText("Use ComfyUI")).toHaveClass("template-side-field__label");
     expect(within(sidebar).getByText("Allow automatic outfit switching")).toHaveClass("template-side-field__label");

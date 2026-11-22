@@ -1,8 +1,16 @@
 """Use cases for reading and editing owner-scoped relationship graphs."""
+from __future__ import annotations
+
 from copy import deepcopy
-from application.characters.management import CharacterUseCase
+from typing import Any
+
+from application.characters.management import CharacterUseCase, _CatalogCharacterTarget
 from config.character_manager import CharacterManager
-from config.schema import RelationGraph, RelationNode, RelationEdge
+from config.character_ops.relations import (
+    parse_relation_graph,
+    update_character_relation_graph,
+)
+from config.schema import RelationEdge, RelationGraph, RelationNode
 
 def _add_node(graph, node):
     node = RelationNode.model_validate(node).model_dump(exclude_none=True)
@@ -59,27 +67,41 @@ def apply_relation_operations(graph, requests):
 
 
 class CharacterRelationUseCase:
-    def __init__(self, config, character_manager=None):
+    def __init__(self, config, character_manager=None, *, characters: Any = None):
         self.config = config
-        self.character_manager = character_manager if character_manager is not None else CharacterManager()
+        self._characters = characters
+        if character_manager is None and characters is None:
+            self.character_manager = CharacterManager()
+        else:
+            self.character_manager = character_manager
+
+    def _get_character(self, name: str):
+        if self._characters is not None:
+            return self._characters.get_by_name(name)
+        return self.config.get_character_by_name(name)
 
     def _resolve_relation_owner(self, name):
         if not isinstance(name, str) or not name.strip():
             raise ValueError("Owner is required")
-        character = self.config.get_character_by_name(name)
+        character = self._get_character(name)
         if character is None:
             raise ValueError(f"Character not found: {name}")
         return character.name
 
     def get_relation_graph(self, owner):
         owner = self._resolve_relation_owner(owner)
-        character = self.config.get_character_by_name(owner)
-        graph = self.character_manager.parse_relation_graph(character.relation_graph).model_dump(mode="json", exclude_none=True)
+        character = self._get_character(owner)
+        parser = (
+            self.character_manager.parse_relation_graph
+            if self.character_manager is not None
+            else parse_relation_graph
+        )
+        graph = parser(character.relation_graph).model_dump(mode="json", exclude_none=True)
         if not graph["nodes"]:
             graph["nodes"] = [{"key": owner}]
         return graph | {"owner": owner}
 
-    def apply_relation_changes(self, owner,operations):
+    def apply_relation_changes(self, owner, operations):
         with CharacterUseCase._mutation_lock:
             owner = self._resolve_relation_owner(owner)
 
@@ -90,9 +112,15 @@ class CharacterRelationUseCase:
                 updated.pop("owner")
                 return updated
 
-            graph = self.character_manager.update_relation_graph(owner,mutate)
+            if self._characters is not None:
+                graph = update_character_relation_graph(_CatalogCharacterTarget(self._characters), owner, mutate)
+                refresh = getattr(self.config, "refresh_characters", None)
+                if callable(refresh):
+                    refresh()
+            else:
+                graph = self.character_manager.update_relation_graph(owner, mutate)
             return graph.model_dump(mode="json", exclude_none=True) | {"owner": owner}
 
 
-def build_relation_use_case(config):
-    return CharacterRelationUseCase(config)
+def build_relation_use_case(config, *, characters: Any = None):
+    return CharacterRelationUseCase(config, characters=characters)

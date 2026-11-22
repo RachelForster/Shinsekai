@@ -722,14 +722,42 @@ def import_generated_sprites(state, payload):
                             if manifest
                             else None
                         )
-                state.character_manager.upload_sprites(
-                name,
-                files,
-                character.emotion_tags,
-                sprite_tags=tags,
-                **({"replacements": replacements} if replacements else {}),
-                **({"sprite_mouths": mouths} if mouths else {}),
-            )
+                stores = getattr(state, "stores", None)
+                characters_catalog = getattr(stores, "characters", None) if stores is not None else None
+                if characters_catalog is not None:
+                    from application.characters.management import _CatalogCharacterTarget
+                    from config import character_manager as cm_mod
+                    from config.character_ops import upload_character_sprites
+
+                    layout = getattr(stores, "layout", None)
+                    upload_dir = (
+                        Path(cm_mod.UPLOAD_DIR)
+                        if cm_mod.UPLOAD_DIR != "data/sprite"
+                        else (
+                            Path(layout.media_dir("sprite"))
+                            if layout is not None
+                            else Path(state.project_root_dir) / "data/sprite"
+                        )
+                    )
+                    upload_character_sprites(
+                        _CatalogCharacterTarget(characters_catalog),
+                        name,
+                        files,
+                        character.emotion_tags,
+                        upload_dir=upload_dir,
+                        sprite_tags=tags,
+                        **({"replacements": replacements} if replacements else {}),
+                        **({"sprite_mouths": mouths} if mouths else {}),
+                    )
+                else:
+                    state.character_manager.upload_sprites(
+                        name,
+                        files,
+                        character.emotion_tags,
+                        sprite_tags=tags,
+                        **({"replacements": replacements} if replacements else {}),
+                        **({"sprite_mouths": mouths} if mouths else {}),
+                    )
             except Exception:
                 for manifest in mouths:
                     if manifest:
@@ -737,5 +765,14 @@ def import_generated_sprites(state, payload):
                 raise
             for task in tasks:
                 task["result"] = {**task["result"], "imported": True}
+    stores = getattr(state, "stores", None)
+    characters_catalog = getattr(stores, "characters", None) if stores is not None else None
+    if characters_catalog is not None:
+        refresh = getattr(state.config_manager, "refresh_characters", None)
+        if callable(refresh):
+            refresh()
+        else:
+            state.config_manager.reload()
+        return _jsonify(characters_catalog.get_by_name(name))
     state.config_manager.reload()
     return _jsonify(state.config_manager.get_character_by_name(name))

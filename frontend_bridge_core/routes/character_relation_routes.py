@@ -14,8 +14,10 @@ from frontend_bridge_core.routes.router import (
 
 
 def get_relation_use_case(request: ApiRequest) -> CharacterRelationUseCase:
+    stores = getattr(request.state, "stores", None)
     return build_relation_use_case(
         request.state.config_manager,
+        characters=getattr(stores, "characters", None) if stores is not None else None,
     )
 
 
