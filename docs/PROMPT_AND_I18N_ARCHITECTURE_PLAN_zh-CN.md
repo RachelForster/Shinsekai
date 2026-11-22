@@ -215,17 +215,16 @@ ai/llm/template/
       story.yaml              # author, assessment, guidance, scene
       extraction.yaml         # memory, knowledge
       perception.yaml         # voice_style, vlm_decision, cloud_summary, rp_context, proactive_turn
-      generation.yaml         # character_brief, field_translation, sprite_plan, media_annotation
-      tools.yaml              # ai/tools/*.py 内置 @tool 描述与参数说明
-    en/                       # 同构 7 个 YAML 文件
-    ja/                       # 同构 7 个 YAML 文件
+      generation.yaml         # vision, character_brief, field_translation, sprite_plan, media_annotation
+    en/                       # 同构 6 个 YAML 文件
+    ja/                       # 同构 6 个 YAML 文件
   dialog/                     # 原有 DialogTemplateSection 与各子 section（补全 player/field_requirements 本地化）
   prompts/                    # RuntimePromptSection, UserPromptSection (背景块标签与键值走 catalog)
   story/                      # author.py, assessment.py, guidance.py, scene.py (全面改用 I18nSection + PromptSpec)
   session/                    # reminder.py, compact.py, dialog_repair.py, context_blocks.py
   extraction/                 # memory.py, knowledge.py
   perception/                 # voice_style.py, decision.py, cloud_summary.py, rp_context.py
-  generation/                 # character_brief.py, field_translation.py, sprite_plan.py, media_annotation.py
+  generation/                 # vision.py, character_brief.py, field_translation.py, sprite_plan.py, media_annotation.py
   integrations/               # characters.py, localization.py, tools.py (配置与工具注册表适配层)
 ```
 
@@ -242,7 +241,7 @@ ai/llm/template/
 | **L2 指令三语 + 保源语种** | 指令跟随 `ui_language`，输出保留源语言/目标参数语言 | `ai/memory/extraction.py`、`ai/knowledge/extraction.py`、`application/localization/field_translation.py`、`ai/vision/service.py` | `catalog/<loc>/extraction.yaml` & `generation.yaml` | 记忆提取去掉英文中夹杂 `'明天'` 的写法，改为按 locale 举本地相对时间例子，并明确保留源对话语种 |
 | **L3 契约锁语种 / 分级校准** | 纳管进 `Section` + YAML，但显式 `fixed_locale` 或锁定输出字段语种 | `application/media/{sprite_tags,auto_annotation}.py`、`application/characters/sprite/{generate_sprites,animate_sprites,mouth_sync,transition_sprites}.py` | `catalog/<loc>/generation.yaml` & `template/generation/` | 1) `normalize_sprite_tags` 使用正则 `r"[\u3400-\u9fff]{1,8}"` 强校验中文词，未放开多语前 `CHARACTER_PROMPT` 与立绘标签说明设 `fixed_locale="zh_CN"`；<br>2) `BACKGROUND_PROMPT` 与 ComfyUI/H3 动作视频 `prompt` 字段固定产出英文短语；<br>3) `sprite/generate_sprites.py` 规则说明可三语，但保留 `prompt` 字段必须为英文短语的硬约束 |
 | **L3 小模型专项** | 先纳管进 `Section` + `perception.yaml`，分语言验证后启用 | `ai/perception/prompts.py`（`Qwen3-VL-2B-Instruct`） | `catalog/<loc>/perception.yaml` & `template/perception/decision.py` | 重构 200 行 `if/else` 为清晰 `Section` 树；结构化 JSON 判分提示需经小模型评测校准后再对 `en`/`ja` 解锁，或独立配置 `perception_prompt_locale` |
-| **L4 工具与协议哨兵** | 工具描述按需解析；注入标记采用语言无关协议头 | `ai/tools/*.py` (`@tool`)、`ai/memory/hooks.py`、`application/knowledge/hooks.py`、`application/chat/capabilities/{outfit,relation}.py` | `catalog/<loc>/tools.yaml` & `session.yaml` | 1) `sdk/tool_registry.py` 的 `@tool` 新增 `description_key`；<br>2) 注入消息统一用固定 ASCII 协议前缀（如 `[Shinsekai:memory]`、`[Shinsekai:outfit]`），去重器同时兼容历史中文/旧英文前缀 |
+| **L4 工具与协议哨兵** | `@tool` 保持代码内联；注入标记采用语言无关协议头 | `ai/tools/*.py` (`@tool`)、`ai/memory/hooks.py`、`application/knowledge/hooks.py`、`application/chat/capabilities/{outfit,relation}.py` | `catalog/<loc>/session.yaml` | 1) 经架构复核确认，`@tool(description=...)` 保持内联在工具函数旁作为面向开发者的自解释契约注释，不外提 `tools.yaml`；<br>2) 注入消息统一用固定 ASCII 协议前缀（如 `[Shinsekai:memory]`、`[Shinsekai:outfit]`），去重器同时兼容历史中文/旧英文前缀 |
 
 ---
 
@@ -301,7 +300,7 @@ ai/llm/template/
 为避免重构后新增代码再次随手写入硬编码中文或漏翻 key，建立三道快速可执行的单测门禁：
 
 1. **Prompt Catalog 完整性与安全守卫（`test/unit/ai/llm/template/test_catalog_integrity.py`）**
-   - 校验 `zh_CN`、`en`、`ja` 下 YAML 文件集合（7 个 domain）与所有点路径 key 100% 一致、无空字符串；
+   - 校验 `zh_CN`、`en`、`ja` 下 YAML 文件集合（6 个 domain：`dialog`、`extraction`、`generation`、`perception`、`session`、`story`）与所有点路径 key 100% 一致、无空字符串；
    - **占位符精确提取**：使用 Python 标准库 `string.Formatter().parse(text)` 提取真实格式字段名（自动忽略 JSON 示例中 `{{` / `}}` 转义花括号），断言三语占位符集合完全相等；
    - 校验 `python -m ai.llm.template.sync_standalone --check` 退出码为 0（保证后端 catalog 与前端 `generatedTemplateLocales.json` 永不失步）；
    - 保留并全量通过 [`test_generation_compatibility.py`](../test/unit/ai/llm/template/test_generation_compatibility.py) 的 384 组 SHA 摘要兼容测试；
@@ -327,7 +326,7 @@ ai/llm/template/
 | **P0**<br>拆雷与门禁建档 | 解除靠中文前缀做逻辑判断的高危隐患；上线三道棘轮守卫基线测试 | `frontend/src/features/chat-stage/state/text.ts`、`frontend_bridge_core/backgrounds.py`；新增 `frontend/src/test/architecture/i18nHardcodeBoundary.test.ts`、`test/unit/architecture/test_i18n_boundaries.py` | 保留旧存档消息正则仅作无元数据回放 fallback；运行 `pytest` 架构测试 + `pnpm test` 绿灯 |
 | **P1**<br>Prompt 底座与 `template/` 统一 + Standalone 同步 | 落地 `sdk/lang.py`、`PromptCatalog`、`LocalizedContext`、`I18nSection`、`PromptSpec`；所有模板显式跟随 `ui_language`；迁移 `template_gen` 到 YAML，补齐 `player.py` / `field_requirements.py` / `user.py` / `reminder.py` / `story/*`；落地 `sync_standalone.py` | `sdk/lang.py`、`ai/llm/template/core/*`、`catalog/*/{dialog,story,session}.yaml`、`application/chat/templates.py`、`application/chat/runtime/background_prompt.py`、`frontend/src/shared/platform/standalone/ai/*` | 384 组 `test_generation_compatibility.py` 全过；`test_story_prompts.py` 全过；`sync_standalone --check` 无 diff；`test_catalog_integrity.py` 通过 |
 | **P2**<br>会话与记忆/知识库全量 `Section` 化 | 收编 `compact_manager`、`dialog_repair`、记忆/知识库提取及各上下文注入 hooks（统一固定协议哨兵头 + `I18nSection`） | `ai/llm/{compact_manager,dialog_repair}.py`、`ai/memory/{extraction,hooks}.py`、`ai/knowledge/extraction.py`、`application/knowledge/hooks.py`、`application/chat/capabilities/{outfit,relation}.py`、`application/story/scene.py` | 记忆提取去中文时间示例 bug；注入去重同时识别新哨兵 `[Shinsekai:...]` 与旧标记；Standalone `compactManager.ts` 同步切到生成常量 |
-| **P3**<br>`@tool` 本地化与感知/媒体 Prompt 纳管 | `@tool` 增加 `description_key` 并迁移内置工具到 `tools.yaml`；分离 `core/perception/cache/` 与文案渲染；纳管感知与立绘/标注 Prompt（严格执行 L3 `fixed_locale`） | `sdk/tool_registry.py`、`ai/tools/*.py`、`ai/llm/template/integrations/tools.py`、`core/perception/cache/formatter.py`、`ai/perception/{prompts,cloud_summary}.py`、`ai/vision/service.py`、`application/characters/generate_briefs.py`、`application/characters/sprite/*`、`application/media/*` | `test_import_boundaries.py`（重点确认 `core` 不导入 `ai`）；第三方插件旧 `@tool(description=...)` 保持兼容；立绘标签生成契约回归通过 |
+| **P3**<br>感知/视觉与业务生成 Prompt 纳管 | 分离 `core/perception/cache/` 与文案渲染（通过 `sdk.lang.Translator` 注入）；纳管感知、视觉兜底与角色/立绘/标注/字段翻译 Prompt（严格执行 L3 `LOCKED_CONTRACT`；`@tool` 描述保持内联） | `ai/llm/template/{perception,generation}/*`、`catalog/*/{perception,generation}.yaml`、`core/perception/{pacing,cache/*}.py`、`ai/perception/{prompts,cloud_summary}.py`、`ai/vision/service.py`、`application/characters/{generate_character,generate_briefs,sprite/*}.py`、`application/localization/field_translation.py`、`application/media/*` | `test_import_boundaries.py`（重点确认 `core` 不导入 `ai`）；立绘标签与 H3 动作视频契约回归通过；6 个 YAML 域完整性校验通过 |
 | **P4**<br>前端基础抽象与壳层 i18n 收口 | 升级 `SchemaDrivenForm` 支持 `*Key`；抽取 `domainLabels.ts` 解耦持久化枚举值；改造 `TaskProgress`；收编 `onboardingCopy.ts`、`AppShell`、`SidebarNav`、`ErrorBoundary`、`PathPickerDialog`、`TopStageTools` | `frontend/src/shared/form-schema.ts`、`shared/ui/{SchemaDrivenForm,TaskProgress,ErrorBoundary,PathPickerDialog}.tsx`、`shared/i18n/domainLabels.ts`、`entities/config/schema.ts`、`app/shell/{AppShell,SidebarNav}.tsx`、`features/onboarding/*` | `i18n.test.ts` 三语占位符全对齐；`pnpm test:coverage >= 85%`；Playwright 关键页面视觉回归无破坏；缩减 `i18nHardcodeBoundary` allowlist |
 | **P5**<br>前端业务页与 Standalone UI 清零 | 清零剩余业务页面（`RuntimeModeDialog`、`LogsPage`、`MusicCoverPage`、`AdapterExtraForm`、`SystemSettingsPage` 等）与 Preview/Standalone UI 硬编码 | `features/runtime-mode/RuntimeModeDialog.tsx`、`features/logs/LogsPage.tsx`、`features/music-cover/MusicCoverPage.tsx`、`features/api-settings/*`、`features/system-settings/*`、`shared/platform/{slices/*PreviewPlatform,standalone/*}` | 前端 `i18nHardcodeBoundary` allowlist 归零；覆盖率 >= 85% |
 | **P6**<br>Bridge/SDK 错误码化与遗留清理收官 | 落地 `AppError` + `errorCode`/`errorParams` + `formatPlatformError`；`frontend_bridge_core` 与 `sdk/exception` 错误码化；清理 Python `i18n/locales/*.json` 废弃旧 Qt 词条；更新打包断言与文档 | `sdk/exception/types.py`、`frontend_bridge_core/{routes/http_handler,config,tools,chat_session,plugin_ui}.py`、`frontend/src/shared/platform/{errors,httpTransport}.ts`、`i18n/locales/*.json`、`frontend/scripts/verify-tauri-resources.mjs` | `test_i18n_boundaries.py` allowlist 归零；`pytest` 全量 + `pnpm format:check && pnpm lint:types && pnpm test:coverage` + `verify-tauri-resources` 检查通过 |

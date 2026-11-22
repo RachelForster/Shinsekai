@@ -1,16 +1,14 @@
 """Shared instructions and output rules for character emotion/action tags."""
 
+from __future__ import annotations
+
 import re
 
+from ai.llm.template.generation.media_annotation import render_sprite_tag_instructions
 from core.media.asset_tags import normalize_generated_tags
 
-
-SPRITE_TAG_INSTRUCTIONS = (
-    "仅用 2–3 个简短中文词语描述人物的情绪、表情和动作，至少包含一个情绪或表情词、"
-    "一个动作或姿态词；用中文逗号分隔。例如：开心，微笑，挥手；害羞，低头；平静，站立。"
-    "只描述可见状态，不写身份、外貌、服装、背景或推测的对话场景。"
-    "不要英文、编号、标题、解释、句子或 Markdown。"
-)
+# L3 locked contract: normalize_sprite_tags enforces 2-3 Chinese words (r"[\u3400-\u9fff]{1,8}")
+SPRITE_TAG_INSTRUCTIONS = render_sprite_tag_instructions()
 
 
 def normalize_sprite_tags(value: str) -> str:

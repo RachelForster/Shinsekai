@@ -16,6 +16,11 @@ from typing import Any
 import urllib.error
 import urllib.request
 
+from ai.llm.template.integrations.localization import LocaleInput, resolve_dynamic_locale
+from ai.llm.template.session import (
+    MEMORY_CONTEXT_SPEC,
+    MemoryContextPromptContext,
+)
 from ai.memory.constants import MEMORY_STORE_FILENAME
 from ai.memory.deduplication import find_duplicate_memory, semantic_deduplication_threshold
 from ai.memory.ebbinghaus import EbbinghausRetentionPolicy
@@ -453,8 +458,13 @@ def memory_search(
         return {"error": str(e)}
 
 
-def memory_recall_turn(turn_input: TurnRecallInput) -> dict[str, Any]:
+def memory_recall_turn(
+    turn_input: TurnRecallInput,
+    *,
+    locale: LocaleInput = None,
+) -> dict[str, Any]:
     """Execute Phase 3 hybrid turn recall (planner + Ebbinghaus + save-mode isolation)."""
+    active_locale = resolve_dynamic_locale(locale) if locale is not None else None
     payload: dict[str, Any] = {
         "userText": turn_input.user_text,
         "previousAssistantText": turn_input.previous_assistant_text,
@@ -467,6 +477,8 @@ def memory_recall_turn(turn_input: TurnRecallInput) -> dict[str, Any]:
         "inWindowTurnSeqs": sorted(int(x) for x in turn_input.in_window_turn_seqs),
         "recentlyInjectedIds": sorted(str(x) for x in turn_input.recently_injected_ids),
     }
+    if active_locale is not None:
+        payload["locale"] = active_locale
     service_result = _memory_service_request("recall", payload)
     if service_result is not None:
         return service_result
@@ -489,6 +501,7 @@ def memory_recall_turn(turn_input: TurnRecallInput) -> dict[str, Any]:
                 block = mem.orchestrator.recall_for_turn(
                     effective_input,
                     save_repo=save_repo,
+                    locale=active_locale,
                 )
             return {
                 "ok": True,
@@ -525,11 +538,12 @@ def memory_recall_turn(turn_input: TurnRecallInput) -> dict[str, Any]:
                 lines.append(f"- {normalized['memory']}")
         if not lines:
             return {"ok": True, "rendered": "", "recalled_ids": []}
-        rendered = (
-            "[Shinsekai long-term memory context]\n"
-            "Relevant long-term memories for this turn. Use them only as background; "
-            "do not mention the retrieval process unless the user asks.\n"
-            + "\n".join(lines)
+        rendered = MEMORY_CONTEXT_SPEC.render_system(
+            MemoryContextPromptContext(
+                items=tuple(lines),
+                tiered=False,
+                locale=active_locale or resolve_dynamic_locale(None),
+            )
         )
         return {"ok": True, "rendered": rendered, "recalled_ids": recalled_ids}
     except Exception as exc:

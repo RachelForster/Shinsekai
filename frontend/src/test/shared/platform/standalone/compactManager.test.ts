@@ -115,4 +115,98 @@ describe("compactManager", () => {
     const compactedView = store.buildActiveLlmMessages(session.sessionId, "SYSTEM");
     expect(compactedView.tailNodes.map((n) => n.seq)).toEqual([7, 8, 9, 10]);
   });
+
+  it.each([
+    {
+      uiLanguage: "zh_CN",
+      systemMarker: "剧情记忆归档助手",
+      turnsMarker: "【需要合并压缩的新增剧情对话】",
+      checkpointMarker: "【历史对话总结（截至第 6 轮",
+      truncSuffix: "(较早细节已浓缩)",
+    },
+    {
+      uiLanguage: "en",
+      systemMarker: "story memory archival assistant",
+      turnsMarker: "[New Dialogue Turns to Merge and Compress]",
+      checkpointMarker: "[Conversation Summary (up to turn 6",
+      truncSuffix: "(earlier details condensed)",
+    },
+    {
+      uiLanguage: "ja",
+      systemMarker: "物語記憶のアーカイブアシスタント",
+      turnsMarker: "【統合・圧縮する新規対話ログ】",
+      checkpointMarker: "【これまでの会話の要約（第 6 ターンまで",
+      truncSuffix: "(序盤の詳細は要約済み)",
+    },
+  ])(
+    "switches standalone compaction prompts and checkpoint headers with uiLanguage=$uiLanguage",
+    async ({ uiLanguage, systemMarker, turnsMarker, checkpointMarker, truncSuffix }) => {
+      const capped = binarySearchCapSummary("Memory segment. ".repeat(150), 90, uiLanguage);
+      expect(capped).toContain(truncSuffix);
+
+      const store = new StandaloneSessionStore();
+      await store.hydrate();
+      const session = await store.ensureSession({
+        sessionId: `s-loc-${uiLanguage}`,
+        historyPath: `./data/history/s-loc-${uiLanguage}.json`,
+        title: "Locale Compaction",
+        payload: {
+          templateId: "tpl",
+          characters: ["Sena"],
+          backgroundName: "Observatory",
+          historyPath: `./data/history/s-loc-${uiLanguage}.json`,
+        },
+      });
+
+      for (let i = 1; i <= 10; i += 1) {
+        await store.appendTurn(session.sessionId, {
+          role: i % 2 === 1 ? "user" : "assistant",
+          speaker: i % 2 === 1 ? "" : "Sena",
+          plainText: `Turn ${i}: ` + "Long starlight expedition dialogue content. ".repeat(14),
+        });
+      }
+
+      const completeSpy = vi.fn().mockResolvedValue({
+        content: "Rolling summary content.",
+        usageTokens: 64,
+      });
+      const adapter: StandaloneLlmAdapter = {
+        id: "mock-ok",
+        label: "mock-ok",
+        browserCors: "supported",
+        supportsProvider: () => true,
+        complete: completeSpy,
+        fetchModels: async () => [],
+        testConnection: async () => ({ message: "ok" }),
+      };
+
+      const res = await autoCompactIfNeeded({
+        sessionId: session.sessionId,
+        systemPrompt: "SYSTEM",
+        sessionStore: store,
+        apiConfig: {
+          ...sampleConfig.api_config,
+          llm_provider: "Deepseek",
+          max_context_tokens: 2048,
+          compact_threshold: 0.2,
+          compact_target_ratio: 0.25,
+          history_recent_messages: 4,
+        },
+        llmAdapter: adapter,
+        httpClient: standaloneHttpRequest,
+        apiKey: "sk-test",
+        baseUrl: "https://example.com/v1",
+        model: "deepseek-chat",
+        uiLanguage,
+      });
+
+      expect(res.compacted).toBe(true);
+      const sentMessages = completeSpy.mock.calls[0][0].messages;
+      expect(sentMessages[0].content).toContain(systemMarker);
+      expect(sentMessages[1].content).toContain(turnsMarker);
+
+      const activeView = store.buildActiveLlmMessages(session.sessionId, "SYSTEM", { uiLanguage });
+      expect(activeView.messages[1].content).toContain(checkpointMarker);
+    },
+  );
 });

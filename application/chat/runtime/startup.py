@@ -11,6 +11,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Protocol
 
+from ai.llm.template.integrations.localization import resolve_template_locale
 from application.chat.capabilities import (
     SessionCapabilitySet,
     StartupCapabilityContext,
@@ -197,6 +198,7 @@ def create_chat_startup_context(
             media_selection_mode=str(
                 getattr(args, "media_selection_mode", "indexed") or "indexed"
             ),
+            locale=lambda: resolve_template_locale(config),
             **({"use_current_template_for_history": True} if getattr(args, "use_current_template_for_history", False) else {}),
         )
         active_capabilities.on_llm_ready(

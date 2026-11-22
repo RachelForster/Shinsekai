@@ -3,6 +3,7 @@ import { agentJaMessages } from "./ja/agent";
 import { characterJaMessages } from "./ja/character";
 import { chatJaMessages } from "./ja/chat";
 import { knowledgeJaMessages } from "./ja/knowledge";
+import { onboardingJaMessages } from "./ja/onboarding";
 import { perceptionJaMessages } from "./ja/perception";
 import { pluginsJaMessages } from "./ja/plugins";
 import { relationJaMessages } from "./ja/relation";
@@ -25,6 +26,7 @@ export const jaMessageSlices = {
   agent: agentJaMessages,
   plugins: pluginsJaMessages,
   workspace: workspaceJaMessages,
+  onboarding: onboardingJaMessages,
 };
 
 export const jaMessages: Record<MessageKey, string> = {
@@ -40,4 +42,5 @@ export const jaMessages: Record<MessageKey, string> = {
   ...agentJaMessages,
   ...pluginsJaMessages,
   ...workspaceJaMessages,
+  ...onboardingJaMessages,
 };

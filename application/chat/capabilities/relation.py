@@ -10,7 +10,18 @@ from typing import TYPE_CHECKING, Any
 
 from ai.llm.template.dialog.context import DialogTemplateContext
 from ai.llm.template.dialog.sections.relation import RelationSection
-from ai.llm.template.integrations.localization import translate_template
+from ai.llm.template.integrations.localization import (
+    resolve_template_locale,
+    translate_template,
+)
+from ai.llm.template.session import (
+    ALL_RELATION_CONTEXT_MARKERS,
+    LEGACY_RELATION_CONTEXT_MARKERS,
+    RELATION_CONTEXT_MARKER,
+    RELATION_CONTEXT_SPEC,
+    RelationContextPromptContext,
+    contains_any_context_marker,
+)
 from application.chat.capabilities.contracts import (
     BaseSessionCapability,
     BaseTurnContextProvider,
@@ -23,8 +34,6 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
-
-RELATION_CONTEXT_MARKER = "[Shinsekai character relation context]"
 
 
 def _character_config_mtime_ns(config: Any) -> int | str | None:
@@ -210,20 +219,24 @@ class RelationTurnContextProvider(BaseTurnContextProvider):
             resolved_primary_names = frozenset(
                 name for name, _char in characters if name.casefold() in primary_keys
             )
+        active_locale = resolve_template_locale(self.config)
+        effective_translate = (
+            (lambda key, **kw: translate_template(key, locale=active_locale, **kw))
+            if self.translate is translate_template
+            else self.translate
+        )
         template_context = DialogTemplateContext(
             characters=tuple(characters),
-            translate=self.translate,
+            translate=effective_translate,
             target_voice_name="",
             json_reminder="",
             primary_character_names=resolved_primary_names,
+            locale=active_locale,
         )
         return RelationSection().render(template_context).strip()
 
     def before_chat(self, context: BeforeChatContext) -> None:
-        if any(
-            RELATION_CONTEXT_MARKER in str(message.get("content") or "")
-            for message in context.messages
-        ):
+        if contains_any_context_marker(context.messages, ALL_RELATION_CONTEXT_MARKERS):
             return
         rendered = self.render_relation_block()
         if not rendered:
@@ -235,10 +248,16 @@ class RelationTurnContextProvider(BaseTurnContextProvider):
                 message.get("content") or ""
             ):
                 return
+        active_locale = resolve_template_locale(self.config)
         context.messages.append(
             {
                 "role": "system",
-                "content": f"{RELATION_CONTEXT_MARKER}\n{rendered}",
+                "content": RELATION_CONTEXT_SPEC.render_system(
+                    RelationContextPromptContext(
+                        rendered_relations=rendered,
+                        locale=active_locale,
+                    )
+                ),
             }
         )
 

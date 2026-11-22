@@ -61,6 +61,7 @@ class LLMWorker(ThreadDagNode):
     ):
         super().__init__(name, parent=parent)
         self._app_inited = False
+        self.config_manager = None
         self.chat_vision_service = ChatVisionService()
         self.user_input_queue = input_queue
         self.dialog_queue = output_queue
@@ -107,10 +108,16 @@ class LLMWorker(ThreadDagNode):
                 turn_scope = log_context(turn_id=new_log_id("turn_"))
                 turn_scope.__enter__()
                 attachments = resolve_chat_attachments(message.attachments)
+                cfg_mgr = (
+                    getattr(self, "config_manager", None)
+                    or getattr(rt, "config_manager", None)
+                    or getattr(rt, "config", None)
+                )
                 prepared_input = self.chat_vision_service.prepare(
                     message.text,
                     attachments,
                     adapter=self.llm_manager.llm_adapter,
+                    locale=resolve_template_locale(cfg_mgr),
                 )
                 logger.info(
                     "LLM worker processing user message",

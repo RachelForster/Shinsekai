@@ -2,6 +2,7 @@ import { agentZhCNMessages } from "./zh_CN/agent";
 import { characterZhCNMessages } from "./zh_CN/character";
 import { chatZhCNMessages } from "./zh_CN/chat";
 import { knowledgeZhCNMessages } from "./zh_CN/knowledge";
+import { onboardingZhCNMessages } from "./zh_CN/onboarding";
 import { perceptionZhCNMessages } from "./zh_CN/perception";
 import { pluginsZhCNMessages } from "./zh_CN/plugins";
 import { relationZhCNMessages } from "./zh_CN/relation";
@@ -24,6 +25,7 @@ export const zhCNMessageSlices = {
   agent: agentZhCNMessages,
   plugins: pluginsZhCNMessages,
   workspace: workspaceZhCNMessages,
+  onboarding: onboardingZhCNMessages,
 };
 
 type DuplicateSliceKeys<Slices extends Record<string, Record<string, string>>> = {
@@ -51,4 +53,5 @@ export const zhCNMessages = {
   ...agentZhCNMessages,
   ...pluginsZhCNMessages,
   ...workspaceZhCNMessages,
+  ...onboardingZhCNMessages,
 };
