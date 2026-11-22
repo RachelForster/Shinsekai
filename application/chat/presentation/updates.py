@@ -580,6 +580,7 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         path = self._looping_effects.pop(key, None)
         # Aliases share one asset-level loop instance. Drop every alias with the
         # same asset so a stale snapshot key cannot revive the sound on resume.
+        removed = [key]
         if path:
             for alias, alias_path in [
                 (existing, existing_path)
@@ -587,7 +588,13 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
                 if self._same_loop_asset(existing_path, path)
             ]:
                 self._looping_effects.pop(alias, None)
-        self._emit({"type": "effect.loop.stop", "key": key})
+                removed.append(alias)
+        # Emit a stop for every removed key: the snapshot reducers and the
+        # frontend state only drop the key named by the event, so a missing
+        # alias would survive in ``loopingEffects`` and restart after a
+        # polling recovery or WebSocket reconnect.
+        for removed_key in removed:
+            self._emit({"type": "effect.loop.stop", "key": removed_key})
 
     @staticmethod
     def _find_running_effect_key(query: str, keys: Any) -> str:

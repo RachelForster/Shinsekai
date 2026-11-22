@@ -138,7 +138,9 @@ def test_stopping_one_loop_alias_stops_the_shared_asset(tmp_path) -> None:
         "effect.loop.start",
         "effect.loop.start",
         "effect.loop.stop",
+        "effect.loop.stop",
     ]
+    assert [event["key"] for event in sink.events[-2:]] == ["rain", "雨声"]
     assert presenter._looping_effects == {}
     presenter.stop_all_loop_effects()
     assert [event["type"] for event in sink.events][-1] == "effect.loop.stop"

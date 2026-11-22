@@ -523,6 +523,7 @@ export function EffectManagerPage() {
       });
     },
     onSuccess(effect) {
+      queryClient.setQueryData<Effect[]>(effectsQueryKey, (current = []) => upsertCatalogEffect(current, effect));
       queryClient.invalidateQueries({ queryKey: effectsQueryKey });
       setDraft((current) => ({
         ...current,
@@ -545,6 +546,7 @@ export function EffectManagerPage() {
       });
     },
     onSuccess(effect) {
+      queryClient.setQueryData<Effect[]>(effectsQueryKey, (current = []) => upsertCatalogEffect(current, effect));
       queryClient.invalidateQueries({ queryKey: effectsQueryKey });
       setDraft((current) => ({ ...current, ambient_tags: effect.ambient_tags }));
       showToast({ kind: "success", title: t("effect.action.saveAmbientTags") });
@@ -561,6 +563,7 @@ export function EffectManagerPage() {
       });
     },
     onSuccess(effect) {
+      queryClient.setQueryData<Effect[]>(effectsQueryKey, (current = []) => upsertCatalogEffect(current, effect));
       queryClient.invalidateQueries({ queryKey: effectsQueryKey });
       setDraft((current) => ({ ...current, ambient_layers: effect.ambient_layers }));
     },
@@ -577,6 +580,7 @@ export function EffectManagerPage() {
       });
     },
     onSuccess(effect) {
+      queryClient.setQueryData<Effect[]>(effectsQueryKey, (current = []) => upsertCatalogEffect(current, effect));
       queryClient.invalidateQueries({ queryKey: effectsQueryKey });
       setDraft((current) => ({ ...current, ambient_audio_list: effect.ambient_audio_list }));
       setAmbientAudioTargetIndex(null);
@@ -593,6 +597,7 @@ export function EffectManagerPage() {
       });
     },
     onSuccess(effect) {
+      queryClient.setQueryData<Effect[]>(effectsQueryKey, (current = []) => upsertCatalogEffect(current, effect));
       queryClient.invalidateQueries({ queryKey: effectsQueryKey });
       setDraft((current) => ({
         ...current,
@@ -790,6 +795,8 @@ export function EffectManagerPage() {
         effect: {
           ...latestSelected,
           ...(latestSelected.id ? { id: latestSelected.id } : {}),
+          ambient_layers: draft.ambient_layers,
+          ambient_tags: draft.ambient_tags,
           audio_tags: draft.audio_tags,
           color: draft.color.trim() || "#5b8def",
           image_tags: draft.image_tags,
@@ -813,6 +820,11 @@ export function EffectManagerPage() {
       !imageAudioBatchUploadMutation.isPending &&
       !audioBatchDeleteMutation.isPending &&
       !audioDeleteAllMutation.isPending &&
+      !ambientUploadMutation.isPending &&
+      !ambientDeleteMutation.isPending &&
+      !ambientAudioUploadMutation.isPending &&
+      !ambientTagsSaveMutation.isPending &&
+      !ambientLayersSaveMutation.isPending &&
       pendingDelete?.kind !== "effect",
     ),
     onError(error) {

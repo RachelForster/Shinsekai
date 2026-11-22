@@ -115,15 +115,21 @@ def test_save_preserves_asset_lists_against_partial_or_stale_payload_and_rewrite
     audio = old_dir / "hit.wav"
     image = old_dir / "flash.png"
     bound = old_dir / "flash-sfx.wav"
+    ambient = old_dir / "rain.webm"
+    ambient_audio = old_dir / "rain-loop.wav"
     audio.write_bytes(b"hit")
     image.write_bytes(b"img")
     bound.write_bytes(b"bound")
+    ambient.write_bytes(b"rain")
+    ambient_audio.write_bytes(b"rainloop")
 
     spark = _effect(
         "Spark",
         audio_list=[audio.as_posix()],
         image_list=[image.as_posix()],
         image_audio_list=[bound.as_posix()],
+        ambient_list=[ambient.as_posix()],
+        ambient_audio_list=[ambient_audio.as_posix()],
     )
     use_case, _ = _use_case(tmp_path, (spark,))
 
@@ -139,12 +145,16 @@ def test_save_preserves_asset_lists_against_partial_or_stale_payload_and_rewrite
             "audio_list": [],
             "image_list": [],
             "image_audio_list": [],
+            "ambient_list": [],
+            "ambient_audio_list": [],
         },
     )
     assert updated.prompt_text == "updated prompt"
     assert updated.audio_list == [audio.as_posix()]
     assert updated.image_list == [image.as_posix()]
     assert updated.image_audio_list == [bound.as_posix()]
+    assert updated.ambient_list == [ambient.as_posix()]
+    assert updated.ambient_audio_list == [ambient_audio.as_posix()]
 
     renamed = _execute(
         use_case,
@@ -158,6 +168,9 @@ def test_save_preserves_asset_lists_against_partial_or_stale_payload_and_rewrite
     assert Path(renamed.image_list[0]).read_bytes() == b"img"
     assert Path(renamed.image_audio_list[0]).read_bytes() == b"bound"
     assert "Sparkle" in renamed.image_audio_list[0]
+    assert Path(renamed.ambient_list[0]).read_bytes() == b"rain"
+    assert "Sparkle" in renamed.ambient_list[0]
+    assert Path(renamed.ambient_audio_list[0]).read_bytes() == b"rainloop"
 
 
 def test_save_and_delete_reject_storage_traversal(tmp_path: Path) -> None:

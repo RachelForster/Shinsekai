@@ -30,7 +30,14 @@ from sdk.path_utils import (
 
 
 _PROTECTED_EFFECT_FIELDS = frozenset(
-    {"id", "audio_list", "image_list", "image_audio_list"}
+    {
+        "id",
+        "audio_list",
+        "image_list",
+        "image_audio_list",
+        "ambient_list",
+        "ambient_audio_list",
+    }
 )
 
 
