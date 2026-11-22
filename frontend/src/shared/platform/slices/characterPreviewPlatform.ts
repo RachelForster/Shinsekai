@@ -527,9 +527,14 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
       return delay(next);
     },
     async save(character, originalName) {
-      const index = originalName
-        ? config.characters.findIndex((item) => item.name === originalName)
-        : config.characters.findIndex((item) => item.name === character.name);
+      const idIndex = character.id ? config.characters.findIndex((item) => item.id === character.id) : -1;
+      const index =
+        idIndex >= 0
+          ? idIndex
+          : originalName
+            ? config.characters.findIndex((item) => item.name === originalName)
+            : config.characters.findIndex((item) => item.name === character.name);
+      const effectiveOriginalName = index >= 0 ? config.characters[index].name : originalName;
       const duplicateIndex = config.characters.findIndex(
         (item, itemIndex) => item.name === character.name && itemIndex !== index,
       );
@@ -543,35 +548,38 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
         },
       );
       const migratedGraphs = new Map<number, NonNullable<Character["relation_graph"]>>();
-      if (index >= 0 && originalName && originalName !== character.name) {
+      if (index >= 0 && effectiveOriginalName && effectiveOriginalName !== character.name) {
         for (const [characterIndex, existing] of config.characters.entries()) {
           const graph = clone(existing.relation_graph ?? { nodes: [], edges: [] });
           graph.nodes = graph.nodes.map((node) => ({
             ...node,
-            key: identity(node.key) === identity(originalName) ? character.name : node.key,
+            key: identity(node.key) === identity(effectiveOriginalName) ? character.name : node.key,
           }));
           if (new Set(graph.nodes.map((node) => identity(node.key))).size !== graph.nodes.length) {
             throw new Error("Node keys must be unique");
           }
           graph.edges = graph.edges.map((edge) => ({
             ...edge,
-            source: identity(edge.source) === identity(originalName) ? character.name : edge.source,
-            target: identity(edge.target) === identity(originalName) ? character.name : edge.target,
+            source: identity(edge.source) === identity(effectiveOriginalName) ? character.name : edge.source,
+            target: identity(edge.target) === identity(effectiveOriginalName) ? character.name : edge.target,
           }));
           migratedGraphs.set(characterIndex, graph);
         }
       }
+      const existing = index >= 0 ? clone(config.characters[index]) : undefined;
       const savedCharacter = {
+        ...existing,
         ...clone(character),
+        ...(existing?.id ? { id: existing.id } : {}),
         color: character.color.trim() || DEFAULT_CHARACTER_COLOR,
-        emotion_tags: index >= 0 ? config.characters[index].emotion_tags : "",
+        emotion_tags: character.emotion_tags ?? (index >= 0 ? config.characters[index].emotion_tags : ""),
         gpt_model_path: character.gpt_model_path?.trim() || "",
         prompt_lang: character.prompt_lang?.trim() || "",
         prompt_text: character.prompt_text?.trim() || "",
         refer_audio_path: character.refer_audio_path?.trim() || "",
         sovits_model_path: character.sovits_model_path?.trim() || "",
         sprite_prefix: character.sprite_prefix.trim() || "temp",
-        sprite_scale: index >= 0 ? config.characters[index].sprite_scale : 1,
+        sprite_scale: character.sprite_scale ?? (index >= 0 ? config.characters[index].sprite_scale : 1),
         sprites:
           index >= 0
             ? config.characters[index].sprites.map((sprite, spriteIndex) => ({
@@ -597,25 +605,25 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
       } else {
         config.characters.push(savedCharacter);
       }
-      if (originalName && originalName !== savedCharacter.name) {
+      if (effectiveOriginalName && effectiveOriginalName !== savedCharacter.name) {
         for (const data of knowledgeData.values()) {
-          const oldBinding = data.characters.find((item) => item.name === originalName);
+          const oldBinding = data.characters.find((item) => item.name === effectiveOriginalName);
           if (!oldBinding) continue;
           const targetBinding = data.characters.find((item) => item.name === savedCharacter.name);
           if (targetBinding) {
             targetBinding.createdAt = [targetBinding.createdAt, oldBinding.createdAt].sort()[0];
-            data.characters = data.characters.filter((item) => item.name !== originalName);
+            data.characters = data.characters.filter((item) => item.name !== effectiveOriginalName);
           } else {
             oldBinding.name = savedCharacter.name;
           }
         }
       }
       const templateSession = getTemplateSession();
-      if (templateSession && originalName && originalName !== savedCharacter.name) {
+      if (templateSession && effectiveOriginalName && effectiveOriginalName !== savedCharacter.name) {
         setTemplateSession({
           ...templateSession,
           selectedCharacters: templateSession.selectedCharacters.map((name) =>
-            name === originalName ? savedCharacter.name : name,
+            name === effectiveOriginalName ? savedCharacter.name : name,
           ),
         });
       }
