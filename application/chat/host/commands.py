@@ -113,6 +113,12 @@ class ChatCommandRouter:
 
     def handle(self, state: Any, body: dict[str, Any]) -> dict[str, Any]:
         context = CommandContext(state, body, self.snapshot, self.runtime_commands)
+        service = getattr(state, "chat_replay_service", None)
+        if service is not None and service.is_active() and context.command in {
+            "send-message", "submit-option", "reroll", "clear-history", "revert-history",
+            "begin-asr-hold", "resume-asr", "flush-input-batch",
+        }:
+            raise ValueError("回放期间无法推进或修改对话，请先退出回放")
         handler = self.handlers.get(context.command)
         if handler is None:
             raise ValueError(f"未知聊天命令：{context.command}")
@@ -226,6 +232,21 @@ def dismiss_plugin_page(ctx: CommandContext) -> dict[str, Any]:
     ):
         raise RuntimeError("无法关闭插件页面展示。")
     return ctx.snapshot(state, ctx.current_status())
+
+
+def dismiss_cg(ctx: CommandContext) -> dict[str, Any]:
+    state = ctx.state
+    session_id = ctx.session_id
+    chat_stream = ctx.chat_stream
+    if session_id and chat_stream is not None:
+        if chat_stream.publish_event(
+            session_id,
+            {
+                "type": "cg.hide",
+            },
+        ):
+            return ctx.snapshot(state, ctx.current_status())
+    return ctx.snapshot(state, ctx.current_status(), extra={"cgPath": ""})
 
 
 class TurnOptionsCommands:
@@ -474,72 +495,22 @@ def reroll(ctx: CommandContext) -> dict[str, Any]:
     return ctx.forward("generating", "正在请求重新生成。")
 
 
-class BranchCommands:
+class HistoryRevertCommand:
     def __init__(
         self,
         *,
-        features: Callable[[Any], dict],
-        sync: Callable[[Any, str, dict], None],
-        publish: Callable[[Any], None],
+        restore_story: Callable[[Any, int], None],
+        publish_story: Callable[[Any], None],
     ) -> None:
-        self.features, self.sync, self.publish = features, sync, publish
+        self.restore_story = restore_story
+        self.publish_story = publish_story
 
     def revert(self, ctx: CommandContext) -> dict[str, Any]:
-        state = ctx.state
-        body = ctx.body
-        command = ctx.command
         try:
-            int(body.get("payload"))
+            index = int(ctx.body.get("payload"))
         except (TypeError, ValueError) as exc:
             raise ValueError("回溯索引无效。") from exc
-        self.sync(state, command, body)
+        self.restore_story(ctx.state, index)
         result = ctx.forward("idle")
-        self.publish(state)
+        self.publish_story(ctx.state)
         return result
-
-    def fork(self, ctx: CommandContext) -> dict[str, Any]:
-        state = ctx.state
-        body = ctx.body
-        command = ctx.command
-        if not self.features(state)["forkHistory"]:
-            raise PermissionError("React Chat UI Fork 实验功能未启用。")
-        payload = body.get("payload")
-        raw_index = payload.get("userIndex") if isinstance(payload, dict) else payload
-        try:
-            int(raw_index)
-        except (TypeError, ValueError) as exc:
-            raise ValueError("分支索引无效。") from exc
-        self.sync(state, command, body)
-        result = ctx.forward("generating", "正在创建对话分支。")
-        self.publish(state)
-        return result
-
-    def switch(self, ctx: CommandContext) -> dict[str, Any]:
-        state = ctx.state
-        body = ctx.body
-        command = ctx.command
-        if not self.features(state)["conversationTree"]:
-            raise PermissionError("React Chat UI 分支流程图实验功能未启用。")
-        branch_id = str(body.get("payload") or "").strip()
-        if not branch_id:
-            raise ValueError("分支 id 不能为空。")
-        self.sync(state, command, body)
-        result = ctx.forward("idle", "已切换对话分支。")
-        self.publish(state)
-        return result
-
-    def rename(self, ctx: CommandContext) -> dict[str, Any]:
-        state = ctx.state
-        body = ctx.body
-        if not self.features(state)["conversationTree"]:
-            raise PermissionError("React Chat UI 分支流程图实验功能未启用。")
-        payload = body.get("payload")
-        if not isinstance(payload, dict):
-            raise ValueError("分支重命名参数无效。")
-        branch_id = str(payload.get("branchId") or "").strip()
-        label = str(payload.get("label") or "").strip()
-        if not branch_id:
-            raise ValueError("分支 id 不能为空。")
-        if not label:
-            raise ValueError("分支名称不能为空。")
-        return ctx.forward("idle", "已重命名对话分支。")

@@ -24,11 +24,11 @@ FLAGS = (
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
-def render_case(monkeypatch, language, mask):
+def render_case(monkeypatch, language, mask, *, sprite_count=1):
     characters = {
         "Alice": SimpleNamespace(
             name="Alice",
-            sprites=[object()],
+            sprites=[object() for _ in range(sprite_count)],
             emotion_tags="happy: 01",
             character_setting="Careful observer.\nPrefers short sentences.",
         ),
@@ -84,3 +84,13 @@ def test_output_matches_deduplicated_renderer(monkeypatch, language, mask):
     # Preserve the original digests: only the new final protocol rule may differ.
     text = text[: -len(tool_protocol + "\n")]
     assert hashlib.sha256(text.encode("utf-8")).hexdigest() == expected[str(mask)]
+
+
+@pytest.mark.parametrize("language", LANGUAGES)
+def test_large_sprite_catalog_uses_full_ids_in_the_schema_and_rules(monkeypatch, language):
+    text, warning = render_case(monkeypatch, language, 0, sprite_count=111)
+
+    assert warning == ""
+    assert tr_in_bundle("template_gen.json_full_sprite_head_top", language) in text
+    assert tr_in_bundle("template_gen.r_full_sprite", language) in text
+    assert tr_in_bundle("template_gen.r_sprite", language) not in text

@@ -54,12 +54,8 @@ function renderSection(overrides: Partial<Parameters<typeof CharacterSpritesSect
     emotionTagsPending: false,
     onClearSprites: vi.fn(),
     onOpenBulkTags: vi.fn(),
-    onPendingSpritePathsChange: vi.fn(),
     onPendingVoicePathChange: vi.fn(),
-    onSaveScale: vi.fn(),
     onSaveTags: vi.fn(),
-    onScaleChange: vi.fn(),
-    onScaleWheel: vi.fn(),
     onSelectSprite: vi.fn(),
     onSpriteDelete: vi.fn(),
     onSpriteTagChange: vi.fn(),
@@ -69,7 +65,6 @@ function renderSection(overrides: Partial<Parameters<typeof CharacterSpritesSect
     onSpriteVoiceTextChange: vi.fn(),
     onSpriteVoiceUpload: vi.fn(),
     onSpriteVoiceTypeChange: vi.fn(),
-    pendingSpritePaths: ["D:/new/sprite-c.png"],
     pendingVoicePath: "D:/new/voice.wav",
     selectedSprite: draft.sprites[1],
     selectedSpriteIndex: 1,
@@ -79,7 +74,6 @@ function renderSection(overrides: Partial<Parameters<typeof CharacterSpritesSect
       { id: "sprite-a", imageSrc: "asset://D:/sprites/sprite-a.png", meta: "neutral", title: "sprite-a.png" },
       { id: "sprite-b", imageSrc: "asset://D:/sprites/sprite-b.png", meta: "happy", title: "sprite-b.png" },
     ],
-    spriteScalePending: false,
     spriteUploadPending: false,
     voiceDeletePending: false,
     voiceUploadPending: false,
@@ -107,30 +101,36 @@ describe("CharacterSpritesSection", () => {
     expect(onAutoLabel).toHaveBeenCalledOnce();
   });
 
-  it("shows an empty state and disables batch tagging when there are no sprites", () => {
+  it("shows an empty state and disables batch tagging and portrait crop when there are no sprites", () => {
+    const onOpenPortraitCrop = vi.fn();
     renderSection({
       draft: { ...createCharacter(), sprites: [] },
+      onOpenPortraitCrop,
       selectedSprite: undefined,
       spriteGalleryItems: [],
     });
 
     expect(screen.getByRole("button", { name: "Batch tags" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Avatar" })).toBeDisabled();
   });
 
-  it("routes gallery, scale, tag, voice, and destructive actions through callbacks", () => {
+  it("opens the portrait crop dialog when Avatar is clicked", () => {
+    const onOpenPortraitCrop = vi.fn();
+    renderSection({ onOpenPortraitCrop });
+
+    const button = screen.getByRole("button", { name: "Avatar" });
+    expect(button).toHaveAttribute("title", "Adjust portrait crop");
+    fireEvent.click(button);
+    expect(onOpenPortraitCrop).toHaveBeenCalledOnce();
+  });
+
+  it("routes gallery, tag, voice, and destructive actions through callbacks", () => {
     const { props } = renderSection();
 
     fireEvent.click(screen.getByRole("button", { name: /sprite-a\.png/ }));
     expect(props.onSelectSprite).toHaveBeenCalledWith(0);
 
-    fireEvent.change(screen.getByDisplayValue("1.25"), { target: { value: "1.5" } });
-    expect(props.onScaleChange).toHaveBeenCalledWith("sprite_scale", 1.5);
-
-    fireEvent.click(screen.getByRole("button", { name: "Save scale" }));
-    expect(props.onSaveScale).toHaveBeenCalledTimes(1);
-
-    fireEvent.click(screen.getByRole("button", { name: "Upload" }));
-    expect(props.onSpriteUpload).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: "Save scale" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Batch tags" }));
     expect(props.onOpenBulkTags).toHaveBeenCalledTimes(1);

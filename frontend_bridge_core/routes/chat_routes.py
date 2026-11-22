@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from http import HTTPStatus
+from application.chat.history.replay import replay_service
 
 from application.chat.conversation_library import (
     conversation_launch_payload,
@@ -8,6 +9,7 @@ from application.chat.conversation_library import (
     delete_conversation,
     list_conversations,
     rename_conversation,
+    update_conversation_settings,
 )
 
 from application.chat.composition import (
@@ -137,12 +139,34 @@ def _rename_conversation(request: ApiRequest) -> JsonResponse:
     return JsonResponse(rename_conversation(request.state, request.params["conversation_id"], request.body.get("title", "")))
 
 
+def _conversation_settings(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(
+        update_conversation_settings(
+            request.state,
+            request.params["conversation_id"],
+            request.body,
+        )
+    )
+
+
 def _delete_conversation(request: ApiRequest) -> JsonResponse:
     delete_conversation(request.state, request.params["conversation_id"])
     return JsonResponse({"ok": True})
 
 
 CHAT_ROUTES = (
+    Route(methods=frozenset({"POST"}), pattern="/api/chat/replay", name="chat.replay.prepare",
+          handler=lambda request: JsonResponse(replay_service(request.state).prepare())),
+    Route(methods=frozenset({"POST"}), pattern="/api/chat/replay/{replay_id}/start", name="chat.replay.start",
+          handler=lambda request: JsonResponse(replay_service(request.state).start(request.params["replay_id"], request.body))),
+    Route(methods=frozenset({"GET"}), pattern="/api/chat/replay/{replay_id}", name="chat.replay.current", body_kind=BodyKind.NONE,
+          handler=lambda request: JsonResponse(replay_service(request.state).current(request.params["replay_id"]))),
+    Route(methods=frozenset({"POST"}), pattern="/api/chat/replay/{replay_id}/voice/{entry_id}", name="chat.replay.voice",
+          handler=lambda request: JsonResponse(replay_service(request.state).generate(request.params["replay_id"], request.params["entry_id"]))),
+    Route(methods=frozenset({"POST"}), pattern="/api/chat/replay/{replay_id}/control", name="chat.replay.control",
+          handler=lambda request: JsonResponse(replay_service(request.state).control(request.params["replay_id"], request.body))),
+    Route(methods=frozenset({"DELETE"}), pattern="/api/chat/replay/{replay_id}", name="chat.replay.cancel", body_kind=BodyKind.NONE,
+          handler=lambda request: JsonResponse(replay_service(request.state).cancel(request.params["replay_id"]))),
     Route(methods=frozenset({"DELETE"}), pattern="/api/chat/conversations/{conversation_id}",
           handler=_delete_conversation, body_kind=BodyKind.NONE, name="chat.conversations.delete"),
     Route(methods=frozenset({"GET"}), pattern="/api/chat/conversations/current", handler=_current_conversation,
@@ -153,6 +177,8 @@ CHAT_ROUTES = (
           handler=_conversation_launch, body_kind=BodyKind.NONE, name="chat.conversations.launch_payload"),
     Route(methods=frozenset({"POST"}), pattern="/api/chat/conversations/{conversation_id}/rename",
           handler=_rename_conversation, name="chat.conversations.rename"),
+    Route(methods=frozenset({"POST"}), pattern="/api/chat/conversations/{conversation_id}/settings",
+          handler=_conversation_settings, name="chat.conversations.settings"),
     Route(
         methods=frozenset({"GET"}),
         pattern="/api/chat/runtime-status",

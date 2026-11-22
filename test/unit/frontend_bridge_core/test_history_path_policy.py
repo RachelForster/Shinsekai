@@ -13,6 +13,7 @@ import pytest
 from core.chat_history.storage import (
     ACTIVE_HISTORY_FILENAME,
     BRANCH_TREE_FILENAME,
+    HISTORY_EXPORT_FILENAME,
     remove_chat_history_storage,
 )
 from frontend_bridge import _prepare_project_root
@@ -276,6 +277,8 @@ def test_external_history_copy_open_and_clear_commands(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     (external / BRANCH_TREE_FILENAME).write_text("{}", encoding="utf-8")
+    pending = active.with_suffix(".json.tmp")
+    pending.write_text(json.dumps({"role": "assistant", "content": "hi"}) + ",\n", encoding="utf-8")
     state = _state(
         project,
         chat_session={"historyPath": str(external), "sessionId": ""},
@@ -293,7 +296,14 @@ def test_external_history_copy_open_and_clear_commands(tmp_path: Path) -> None:
 
     assert "hello" in copied["clipboardText"]
     capability = opened["downloadUrl"].split("cap=", 1)[1]
-    assert _chat_history_download_file(state, capability) == external / BRANCH_TREE_FILENAME
+    exported = _chat_history_download_file(state, capability)
+    assert exported == external / HISTORY_EXPORT_FILENAME
+    assert json.loads(exported.read_text(encoding="utf-8")) == [
+        {"role": "user", "content": "hello"},
+        {"role": "assistant", "content": "hi"},
+    ]
+    assert json.loads(active.read_text(encoding="utf-8")) == [{"role": "user", "content": "hello"}]
+    assert pending.is_file()
 
     unrelated = external / "important.txt"
     unrelated.write_text("keep", encoding="utf-8")
@@ -304,6 +314,7 @@ def test_external_history_copy_open_and_clear_commands(tmp_path: Path) -> None:
         _handle_chat_command(state, {"type": "clear-history"})
     assert unrelated.read_text(encoding="utf-8") == "keep"
     assert not active.exists()
+    assert not exported.exists()
 
 
 def test_non_file_runtime_command_does_not_resolve_stale_history_path() -> None:

@@ -8,6 +8,9 @@ export const llmProviderOptions = [
   { label: "Claude", value: "Claude" },
   { label: "豆包", value: "豆包" },
   { label: "通义千问", value: "通义千问" },
+  { label: "硅基流动", value: "硅基流动" },
+  { label: "Moonshot", value: "Moonshot" },
+  { label: "OpenRouter", value: "OpenRouter" },
   { label: "Ollama", value: "Ollama" },
 ] as const;
 
@@ -18,6 +21,9 @@ export const llmDefaultBaseUrls: Record<string, string> = {
   Gemini: "https://generativelanguage.googleapis.com/v1beta/openai",
   豆包: "https://ark.cn-beijing.volces.com/api/v3",
   通义千问: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  硅基流动: "https://api.siliconflow.cn/v1",
+  Moonshot: "https://api.moonshot.cn/v1",
+  OpenRouter: "https://openrouter.ai/api/v1",
   Ollama: "http://127.0.0.1:11434/v1",
 };
 
@@ -160,18 +166,6 @@ export const systemConfigFormSchema: Array<FormGroupSchema<SystemConfig>> = [
       },
       { label: "主题色", name: "theme_color", type: "color" },
       { label: "聊天主题", name: "chat_ui_theme_id", type: "text" },
-      {
-        description: "实验性功能，开启后 React Chat 历史记录里显示 Fork 按钮。",
-        label: "实验性：React Chat Fork",
-        name: "react_chat_fork_experimental_enabled",
-        type: "checkbox",
-      },
-      {
-        description: "实验性功能，开启后 React Chat 显示对话分支流程图入口。",
-        label: "实验性：React Chat 分支流程图",
-        name: "react_chat_flowchart_experimental_enabled",
-        type: "checkbox",
-      },
     ],
   },
   {

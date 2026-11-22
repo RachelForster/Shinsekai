@@ -43,6 +43,8 @@ def test_background_bridge_delegates_resource_mutations_to_one_use_case_entry() 
         "delete_background",
         "delete_single_bgm",
         "delete_single_sprite",
+        "upload_bg_tags",
+        "upload_bgm_tags",
         "upload_bgms",
         "upload_sprites",
     }
@@ -74,8 +76,10 @@ def test_character_bridge_delegates_resource_mutations_to_one_use_case_entry() -
         "delete_character",
         "delete_single_sprite",
         "delete_sprite_voice",
+        "save_sprite_scale",
         "save_sprite_voice_text",
         "save_sprite_voice_type",
+        "upload_emotion_tags",
         "upload_sprites",
         "upload_voice",
     }
@@ -91,3 +95,34 @@ def test_character_bridge_delegates_resource_mutations_to_one_use_case_entry() -
     assert "file_util.import_character" not in routes
     assert "file_util.export_character" not in routes
     assert "character_manager.delete_character" not in routes
+
+
+def test_sprite_workflows_and_capabilities_stay_in_application_and_core() -> None:
+    retired_paths = (
+        REPO_ROOT / "frontend_bridge_core" / "sprite_generation.py",
+        REPO_ROOT / "frontend_bridge_core" / "sprite_mouth.py",
+        REPO_ROOT / "frontend_bridge_core" / "sprite_transitions.py",
+        REPO_ROOT / "application" / "characters" / "generate_sprites.py",
+        REPO_ROOT / "application" / "characters" / "animate_sprites.py",
+        REPO_ROOT / "application" / "characters" / "h3_idle_workflow.py",
+        REPO_ROOT / "application" / "characters" / "mouth_resources.py",
+        REPO_ROOT / "application" / "characters" / "mouth_sync.py",
+        REPO_ROOT / "application" / "characters" / "transition_sprites.py",
+        REPO_ROOT / "application" / "characters" / "transition_recommendations.py",
+        REPO_ROOT / "core" / "media" / "sprite_mouth",
+        REPO_ROOT / "core" / "media" / "transition_presentation.py",
+    )
+    assert not any(path.exists() for path in retired_paths)
+    assert (REPO_ROOT / "application" / "characters" / "sprite" / "generate_sprites.py").is_file()
+    assert (REPO_ROOT / "application" / "characters" / "sprite" / "animate_sprites.py").is_file()
+    assert (REPO_ROOT / "application" / "characters" / "sprite" / "h3_idle_workflow.py").is_file()
+    assert (REPO_ROOT / "application" / "characters" / "sprite" / "mouth_resources.py").is_file()
+    assert (REPO_ROOT / "application" / "characters" / "sprite" / "mouth_sync.py").is_file()
+    assert (REPO_ROOT / "application" / "characters" / "sprite" / "transition_sprites.py").is_file()
+    assert (REPO_ROOT / "application" / "characters" / "sprite" / "transition_recommendations.py").is_file()
+    assert (REPO_ROOT / "core" / "sprite" / "mouth" / "worker.py").is_file()
+    assert (REPO_ROOT / "core" / "sprite" / "transition_presentation.py").is_file()
+    assert (REPO_ROOT / "core" / "media" / "background_removal.py").is_file()
+
+    for source in (REPO_ROOT / "application" / "characters").rglob("*.py"):
+        assert "tools.remove_bg" not in source.read_text(encoding="utf-8")

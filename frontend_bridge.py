@@ -90,8 +90,21 @@ def _shutdown_bridge_runtime(reason: str) -> None:
     _restart_debug_log(f"bridge runtime shutdown begin reason={reason}")
     with _bridge_state_lock:
         state = _bridge_state
+    if state is not None:
+        try:
+            from application.runtime.tasks import shutdown_background_tasks
+
+            shutdown_background_tasks(state, wait_timeout=5.0)
+        except Exception as exc:
+            _restart_debug_log(f"bridge background task shutdown failed reason={reason} error={exc}")
     services = getattr(state, "services", None)
-    if services is not None:
+    close_runtimes = getattr(services, "close_runtimes", None)
+    if callable(close_runtimes):
+        try:
+            close_runtimes()
+        except Exception as exc:
+            _restart_debug_log(f"bridge runtime Agent shutdown failed reason={reason} error={exc}")
+    elif services is not None:
         try:
             services.close()
         except Exception as exc:
@@ -100,10 +113,14 @@ def _shutdown_bridge_runtime(reason: str) -> None:
         from plugin_system.host import (
             bind_frontend_ui_runtime,
             bind_frontend_user_input_runtime,
+            bind_model_assets_runtime,
+            bind_perception_runtime,
         )
 
         bind_frontend_ui_runtime(None)
         bind_frontend_user_input_runtime(None)
+        bind_model_assets_runtime(None)
+        bind_perception_runtime(None)
     except Exception as exc:
         _restart_debug_log(
             f"bridge runtime plugin transport unbind failed reason={reason} error={exc}"
@@ -114,6 +131,12 @@ def _shutdown_bridge_runtime(reason: str) -> None:
         shutdown_active_chat_process(wait_timeout=1.5)
     except Exception as exc:
         _restart_debug_log(f"bridge runtime chat shutdown failed reason={reason} error={exc}")
+    try:
+        from application.perception.server_launcher import shutdown_perception_local_server
+
+        shutdown_perception_local_server()
+    except Exception as exc:
+        _restart_debug_log(f"bridge perception local server shutdown failed reason={reason} error={exc}")
 
     with _bridge_state_lock:
         state = _bridge_state
@@ -142,6 +165,29 @@ def _shutdown_bridge_runtime(reason: str) -> None:
             chat_stream.stop()
         except Exception as exc:
             _restart_debug_log(f"bridge runtime chat stream stop failed reason={reason} error={exc}")
+    try:
+        from application.memory.manage_memories import shutdown_memory_runtime
+
+        shutdown_memory_runtime()
+    except Exception as exc:
+        _restart_debug_log(f"bridge runtime memory shutdown failed reason={reason} error={exc}")
+    try:
+        from application.knowledge.runtime import shutdown_knowledge_runtime
+
+        shutdown_knowledge_runtime()
+    except Exception as exc:
+        _restart_debug_log(f"bridge runtime knowledge shutdown failed reason={reason} error={exc}")
+    try:
+        from core.chat_history.sqlite_session_store import close_all_session_stores
+
+        close_all_session_stores()
+    except Exception as exc:
+        _restart_debug_log(f"bridge runtime session store shutdown failed reason={reason} error={exc}")
+    if services is not None and callable(close_runtimes):
+        try:
+            services.close()
+        except Exception as exc:
+            _restart_debug_log(f"bridge runtime stores shutdown failed reason={reason} error={exc}")
     _restart_debug_log(f"bridge runtime shutdown completed reason={reason}")
 
 
@@ -288,8 +334,21 @@ def _start_plugin_loader(state, logger) -> None:
             from plugin_system.host import (
                 bind_frontend_ui_runtime,
                 bind_frontend_user_input_runtime,
+                bind_model_assets_runtime,
+                bind_perception_runtime,
                 ensure_plugins_loaded,
                 PluginRuntimeBindings,
+            )
+            from application.model_assets.download_model import (
+                configure_registered_model_assets,
+                create_plugin_model_assets_dispatcher,
+            )
+            from frontend_bridge_core.model_assets import (
+                configured_model_values,
+                huggingface_token,
+            )
+            from frontend_bridge_core.routes.perception_routes import (
+                forward_plugin_perception_from_bridge,
             )
             from ai.vision.fallback_registry import configure_registered_fallbacks
             from core.media.avatar.registry import configure_registered_formats
@@ -304,6 +363,13 @@ def _start_plugin_loader(state, logger) -> None:
 
                 register_mcp_tools_from_config(tool_manager)
 
+            bind_model_assets_runtime(
+                create_plugin_model_assets_dispatcher(
+                    get_token=lambda: huggingface_token(state),
+                    get_configured_values=lambda: configured_model_values(state),
+                )
+            )
+
             ensure_plugins_loaded(
                 state.config_manager,
                 runtime_bindings=PluginRuntimeBindings(
@@ -315,10 +381,14 @@ def _start_plugin_loader(state, logger) -> None:
                     configure_vision_fallbacks=configure_registered_fallbacks,
                     configure_avatar_formats=configure_registered_formats,
                     register_mcp_tools=register_mcp_tools,
+                    configure_model_assets=configure_registered_model_assets,
                 ),
             )
             bind_frontend_user_input_runtime(
                 lambda event: _forward_plugin_user_input(state, event)
+            )
+            bind_perception_runtime(
+                lambda payload: forward_plugin_perception_from_bridge(state, payload)
             )
 
             def emit_plugin_ui_event(event: dict[str, Any]) -> None:
@@ -386,6 +456,9 @@ def run(
     os.environ["SHINSEKAI_MEMORY_SERVICE_OWNER"] = "1"
     os.environ["SHINSEKAI_KNOWLEDGE_SERVICE_OWNER"] = "1"
 
+    from application.runtime.services import ApplicationServices
+    from application.runtime.state import BridgeState
+    from application.runtime.stores import build_app_stores
     from config.background_manager import BackgroundManager
     from config.character_manager import CharacterManager
     from config.config_manager import ConfigManager
@@ -395,9 +468,9 @@ def run(
     from frontend_bridge_core.chat_stream import ChatStreamService
     from frontend_bridge_core.routes.api import FrontendBridgeHandler
     from frontend_bridge_core.transport.mobile_access import MobileAccessTransport
-    from application.runtime.state import BridgeState
     from frontend_bridge_core.static import _schedule_browser_open
 
+    stores = build_app_stores(resolved_project_root)
     config_manager = ConfigManager()
     init_i18n(config_manager.config.system_config.ui_language)
     bridge_auth_token = (
@@ -413,6 +486,8 @@ def run(
         character_manager=CharacterManager(),
         background_manager=BackgroundManager(),
         template_generator=TemplateGenerator(),
+        stores=stores,
+        services=ApplicationServices(stores=stores),
         frontend_dist_dir=resolved_frontend_dist,
         app_root_dir=resolved_app_root,
         project_root_dir=resolved_project_root,
@@ -586,6 +661,7 @@ def check_runtime(
     apply_mirror_environment_from_system_config()
     _check_runtime_requirements(repo_root, requirements_file, profile)
 
+    from application.runtime.stores import build_app_stores
     from config.background_manager import BackgroundManager
     from config.character_manager import CharacterManager
     from config.config_manager import ConfigManager
@@ -596,11 +672,15 @@ def check_runtime(
     from frontend_bridge_core.routes.api import FrontendBridgeHandler  # noqa: F401
     from frontend_bridge_core.static import _frontend_dist_root  # noqa: F401
 
-    config_manager = ConfigManager()
-    init_i18n(config_manager.config.system_config.ui_language)
-    CharacterManager()
-    BackgroundManager()
-    TemplateGenerator()
+    stores = build_app_stores(resolved_project_root)
+    try:
+        config_manager = ConfigManager()
+        init_i18n(config_manager.config.system_config.ui_language)
+        CharacterManager()
+        BackgroundManager()
+        TemplateGenerator()
+    finally:
+        stores.close()
 
 
 def runtime_check_report(

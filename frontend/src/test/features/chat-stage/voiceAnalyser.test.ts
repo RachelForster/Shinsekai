@@ -3,23 +3,16 @@ import { VoiceAnalyser } from "../../../features/chat-stage/audio/voiceAnalyser"
 
 let tick: FrameRequestCallback;
 const disconnect = vi.fn();
-const source = { connect: vi.fn(), disconnect };
 const analyser = {
   fftSize: 256,
-  connect: vi.fn(),
-  disconnect,
   getFloatTimeDomainData: (data: Float32Array) => data.fill(0.1),
 };
-class FakeContext {
-  state = "running";
-  destination = {};
-  createMediaElementSource = vi.fn(() => source);
-  createAnalyser = vi.fn(() => analyser);
-  resume = vi.fn(async () => {});
-  close = vi.fn(async () => {});
-}
+const source = {
+  connect: vi.fn(),
+  disconnect,
+  context: { state: "running", createAnalyser: () => analyser },
+} as unknown as MediaElementAudioSourceNode;
 beforeEach(() => {
-  vi.stubGlobal("AudioContext", FakeContext);
   vi.stubGlobal(
     "requestAnimationFrame",
     vi.fn((callback: FrameRequestCallback) => {
@@ -36,7 +29,7 @@ it("routes only actual playing voice and clears during pause/buffering and stop"
   const driver = new VoiceAnalyser(listener);
   const audio = new Audio();
   Object.defineProperty(audio, "paused", { value: false });
-  driver.start(audio, "Haru");
+  driver.start(audio, "Haru", source);
   await Promise.resolve();
   tick(0);
   expect(listener).toHaveBeenLastCalledWith("Haru", expect.any(Number));
@@ -49,15 +42,14 @@ it("routes only actual playing voice and clears during pause/buffering and stop"
   expect(listener.mock.lastCall![1]).toBeGreaterThan(0);
   driver.stop();
   expect(listener).toHaveBeenLastCalledWith("Haru", 0);
-  expect(disconnect).toHaveBeenCalled();
-  driver.dispose();
-  driver.dispose();
+  expect(disconnect).toHaveBeenCalledWith(analyser);
+  driver.stop();
 });
 
 it("does not create WebAudio for a voice without a character", () => {
   const listener = vi.fn();
   const driver = new VoiceAnalyser(listener);
-  driver.start(new Audio(), "");
+  driver.start(new Audio(), "", source);
   expect(requestAnimationFrame).not.toHaveBeenCalled();
-  driver.dispose();
+  driver.stop();
 });

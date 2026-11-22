@@ -373,7 +373,7 @@ jobs:
             os: windows-11-arm
             bundles: nsis
           - platform: macos-arm64
-            os: macos-14
+            os: macos-15
             bundles: dmg,app
 
     steps:

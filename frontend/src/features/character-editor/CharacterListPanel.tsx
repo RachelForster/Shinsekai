@@ -1,6 +1,8 @@
 import type { Character } from "../../entities/config/types";
 import { useI18n } from "../../shared/i18n";
+import { getCharacterDisplayName } from "../../shared/playerCharacterOptions";
 import { EmptyState, QueryErrorState } from "../../shared/ui";
+import { isSelfPersonaCharacter } from "./characterEditorUtils";
 
 interface CharacterListPanelProps {
   characters: Character[];
@@ -51,7 +53,12 @@ export function CharacterListPanel({
           onClick={() => onSelect(character.name)}
           type="button"
         >
-          <span className="entity-list__primary">{character.name}</span>
+          <span className="entity-list__primary">
+            {getCharacterDisplayName(character)}
+            {isSelfPersonaCharacter(character) ? (
+              <span className="character-builtin-badge">{t("character.selfPersona.badge")}</span>
+            ) : null}
+          </span>
           <span className="swatch" style={{ background: character.color }} />
         </button>
       ))}

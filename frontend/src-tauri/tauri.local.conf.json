@@ -1,0 +1,8 @@
+{
+  "build": {
+    "beforeBuildCommand": "pnpm prepare:runtime --verify --skip-wheels && pnpm build"
+  },
+  "bundle": {
+    "resources": null
+  }
+}

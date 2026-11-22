@@ -4,6 +4,7 @@
     --stage-input-height: 112px;
     --stage-safe-x: 12px;
     --stage-safe-top: 12px;
+    --chat-dialog-toolbar-layer-max-width: calc(100vw - 24px);
     --chat-input-grid-template-columns: minmax(0, 1fr) 38px 38px 46px;
     --chat-input-resolved-width: min(var(--chat-input-max-width), calc(100vw - 24px));
     --chat-send-label-display: none;
@@ -12,14 +13,14 @@
   }
 
   .dialog-stack {
-    bottom: max(12px, var(--chat-dialog-stack-bottom), calc(var(--stage-control-stack-height) + 10px));
+    bottom: max(
+      12px,
+      var(--chat-dialog-stack-bottom),
+      var(--chat-dialog-toolbar-clearance, 0px),
+      calc(var(--stage-control-stack-height) + 10px)
+    );
     width: var(--chat-dialog-responsive-width, calc(100vw - 24px));
     max-width: var(--chat-dialog-responsive-width, calc(100vw - 24px));
-  }
-
-  .dialog-toolbar-layer {
-    width: var(--chat-dialog-toolbar-layer-width);
-    max-width: min(var(--chat-dialog-toolbar-layer-max-width), calc(100vw - 24px));
   }
 
   .dialog-layer {
@@ -37,27 +38,8 @@
     max-width: 100%;
   }
 
-  .dialog-stage-controls__rail {
-    flex-wrap: nowrap;
-    justify-content: flex-start;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-
   .dialog-stage-controls__surface {
     max-width: 100%;
-  }
-
-  .dialog-stage-controls__rail::-webkit-scrollbar {
-    display: none;
-  }
-
-  .dialog-stage-controls__button.button {
-    padding: 0 9px;
-  }
-
-  .dialog-stage-controls__button .button__label {
-    max-width: 58px;
   }
 
   .input-layer {
@@ -172,19 +154,6 @@
   .chat-history-dialog {
     width: calc(100vw - 24px);
   }
-
-  .chat-branch-dialog {
-    width: calc(100vw - 24px);
-  }
-
-  .chat-branch-tree__node {
-    grid-template-columns: 22px minmax(0, 1fr);
-  }
-
-  .chat-branch-tree__actions {
-    grid-column: 2;
-    justify-self: start;
-  }
 }
 
 @media (max-width: 520px) {
@@ -199,10 +168,6 @@
   .top-stage-tools__status {
     min-width: 0;
     max-width: 132px;
-  }
-
-  .dialog-stage-controls .button__label {
-    max-width: 64px;
   }
 
   .chat-config-dialog__row {

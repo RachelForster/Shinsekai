@@ -50,7 +50,7 @@ function DesktopTitleBar() {
   return (
     <header className="desktop-titlebar" data-tauri-drag-region onMouseDown={handleTitleBarMouseDown}>
       <div className="desktop-titlebar__brand" data-tauri-drag-region>
-        <img alt="" aria-hidden className="desktop-titlebar__icon" src="/favicon.png" />
+        <img alt="" aria-hidden className="desktop-titlebar__icon" src="./favicon.png" />
         <span className="desktop-titlebar__title">Shinsekai</span>
       </div>
       <div className="desktop-titlebar__controls">

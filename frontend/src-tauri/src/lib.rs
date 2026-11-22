@@ -48,9 +48,16 @@ const FRONTEND_DIST_RELEASES: &str = ".dist-releases";
 const UPDATE_PROGRESS_EVENT: &str = "shinsekai:update-progress";
 const BRIDGE_RESTART_STATE_EVENT: &str = "shinsekai:bridge-restart-state";
 const RUNTIME_PROGRESS_EVENT: &str = "shinsekai:runtime-progress";
+const MINI_AVATAR_INPUT_SHORTCUT_EVENT: &str = "shinsekai:mini-avatar-input-shortcut";
 const SHOW_BACKEND_CONSOLE_ENV: &str = "SHINSEKAI_SHOW_BACKEND_CONSOLE";
 const BRIDGE_STOP_TIMEOUT: Duration = Duration::from_secs(5);
 const BRIDGE_CHAT_CLOSE_TIMEOUT: Duration = Duration::from_secs(3);
+const CHAT_WINDOW_DEFAULT_WIDTH: f64 = 1280.0;
+const CHAT_WINDOW_DEFAULT_HEIGHT: f64 = 820.0;
+const CHAT_WINDOW_MIN_WIDTH: f64 = 960.0;
+const CHAT_WINDOW_MIN_HEIGHT: f64 = 620.0;
+const CHAT_MINI_WINDOW_WIDTH: f64 = 760.0;
+const CHAT_MINI_WINDOW_HEIGHT: f64 = 420.0;
 
 #[cfg(unix)]
 unsafe extern "C" {
@@ -215,6 +222,34 @@ struct DesktopRuntimeView {
     candidates: Vec<runtime::RuntimeCandidateView>,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct SavedChatWindowBounds {
+    position: tauri::PhysicalPosition<i32>,
+    size: tauri::PhysicalSize<u32>,
+    maximized: bool,
+}
+
+#[derive(Default)]
+struct ChatWindowModeState {
+    mini_active: bool,
+    mini_input_shortcut: Option<String>,
+    normal_bounds: Option<SavedChatWindowBounds>,
+    mini_position: Option<tauri::PhysicalPosition<i32>>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopMiniInputShortcutStatus {
+    registered: bool,
+    error: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopMiniWindowLayout {
+    dock_side: &'static str,
+}
+
 struct DesktopState {
     source_root: PathBuf,
     project_root: PathBuf,
@@ -225,6 +260,8 @@ struct DesktopState {
     bridge_auth_token: String,
     bridge: Mutex<Option<BridgeProcess>>,
     runtime: Mutex<DesktopRuntimePhase>,
+    chat_window_mode: Mutex<ChatWindowModeState>,
+    mini_shortcut_sync_lock: Mutex<()>,
 }
 
 #[cfg(desktop)]
@@ -261,6 +298,16 @@ impl DesktopState {
             bridge_auth_token,
             bridge: Mutex::new(None),
             runtime: Mutex::new(DesktopRuntimePhase::Checking { view: None }),
+            chat_window_mode: Mutex::new(ChatWindowModeState::default()),
+            mini_shortcut_sync_lock: Mutex::new(()),
+        }
+    }
+
+    fn reset_chat_window_session_bounds(&self) {
+        if let Ok(mut mode) = self.chat_window_mode.lock() {
+            mode.mini_active = false;
+            mode.mini_input_shortcut = None;
+            mode.normal_bounds = None;
         }
     }
 
@@ -397,12 +444,42 @@ struct DesktopWindowCursorPosition {
     y: f64,
 }
 
+#[derive(Default)]
+struct PluginChatWake(Mutex<Option<String>>);
+
+fn plugin_chat_wake_argument(args: impl IntoIterator<Item = String>) -> Option<String> {
+    args.into_iter().find_map(|arg| {
+        let id = arg.strip_prefix("--plugin-chat=")?;
+        let (plugin, action) = id.split_once('/')?;
+        if [plugin, action].iter().all(|part| !part.is_empty() && part.len() <= 128
+            && part.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'.' | b'_' | b'-'))) {
+            Some(id.to_owned())
+        } else {
+            None
+        }
+    })
+}
+
+#[tauri::command]
+fn desktop_take_plugin_chat_wake(window: WebviewWindow, state: State<'_, PluginChatWake>) -> Option<String> {
+    if window.label() != "main" {
+        return None;
+    }
+    state.0.lock().ok()?.take()
+}
+
 pub fn run() {
     restart_debug_log("run enter");
     let protocol_frontend_dist = Arc::new(Mutex::new(None::<PathBuf>));
     let protocol_frontend_dist_for_handler = Arc::clone(&protocol_frontend_dist);
     tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
+        .manage(PluginChatWake(Mutex::new(plugin_chat_wake_argument(env::args().skip(1)))))
+        .plugin(tauri_plugin_single_instance::init(|app, args, _| {
+            if let Some(request) = plugin_chat_wake_argument(args.into_iter().skip(1)) {
+                if let Ok(mut pending) = app.state::<PluginChatWake>().0.lock() {
+                    *pending = Some(request);
+                }
+            }
             background::show_main(app)
         }))
         .register_uri_scheme_protocol(LIVE_FRONTEND_SCHEME, move |_ctx, request| {
@@ -430,6 +507,7 @@ pub fn run() {
             desktop_project_root_status,
             desktop_project_root_select,
             desktop_files_browse,
+            desktop_files::desktop_files_save_history_export,
             desktop_restart_debug_log,
             desktop_app_restart,
             desktop_bridge_restart,
@@ -443,8 +521,12 @@ pub fn run() {
             desktop_window_start_resize,
             desktop_window_set_ignore_cursor_events,
             desktop_window_cursor_position,
+            desktop_chat_window_set_mini_mode,
+            desktop_chat_window_set_mini_input_shortcut,
+            desktop_chat_window_sync_mini_layout,
             desktop_window_close,
             desktop_open_chat_window,
+            desktop_take_plugin_chat_wake,
             desktop_open_external_url,
             #[cfg(desktop)]
             desktop_update_check,
@@ -475,6 +557,8 @@ pub fn run() {
                         api.prevent_close();
                         let app = window.app_handle().clone();
                         let state = app.state::<DesktopState>();
+                        state.reset_chat_window_session_bounds();
+                        schedule_mini_input_global_shortcut_sync(&app);
                         request_bridge_chat_close(
                             state.inner(),
                             "chat window close requested",
@@ -491,6 +575,12 @@ pub fn run() {
                 app.handle()
                     .plugin(tauri_plugin_updater::Builder::new().build())?;
                 app.manage(DesktopUpdateState::new());
+                if let Err(error) = app
+                    .handle()
+                    .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+                {
+                    restart_debug_log(format!("global shortcut plugin setup failed: {error}"));
+                }
             }
             app.handle().plugin(tauri_plugin_dialog::init())?;
             app.handle().plugin(tauri_plugin_notification::init())?;
@@ -1350,10 +1440,15 @@ fn desktop_window_hide(window: WebviewWindow) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn desktop_chat_window_destroy(window: WebviewWindow) -> Result<(), String> {
+fn desktop_chat_window_destroy(
+    window: WebviewWindow,
+    state: State<'_, DesktopState>,
+) -> Result<(), String> {
     if window.label() != "chat" {
         return Err("desktop_chat_window_destroy is only available to the chat window".to_string());
     }
+    state.reset_chat_window_session_bounds();
+    schedule_mini_input_global_shortcut_sync(window.app_handle());
     window.destroy().map_err(|error| error.to_string())
 }
 
@@ -1442,6 +1537,315 @@ fn desktop_window_cursor_position(
     })
 }
 
+fn compute_mini_dock_side(
+    window_center_x: f64,
+    monitor_left: f64,
+    monitor_width: f64,
+) -> &'static str {
+    if monitor_width > 0.0 && (window_center_x - monitor_left) / monitor_width >= 0.62 {
+        "right"
+    } else {
+        "left"
+    }
+}
+
+fn default_mini_window_position(
+    monitor_pos: (i32, i32),
+    monitor_size: (u32, u32),
+    mini_size: (u32, u32),
+) -> tauri::PhysicalPosition<i32> {
+    let mon_w = f64::from(monitor_size.0);
+    let mon_h = f64::from(monitor_size.1);
+    let mini_w = f64::from(mini_size.0);
+    let mini_h = f64::from(mini_size.1);
+    let target_x = f64::from(monitor_pos.0) + mon_w * 0.84 - mini_w * 0.5;
+    let target_y = f64::from(monitor_pos.1) + (mon_h * 0.24 - mini_h * 0.5).max(16.0);
+    tauri::PhysicalPosition::new(target_x.round() as i32, target_y.round() as i32)
+}
+
+fn current_window_mini_dock_side(window: &WebviewWindow) -> &'static str {
+    let Ok(origin) = window.outer_position() else {
+        return "left";
+    };
+    let Ok(size) = window.outer_size() else {
+        return "left";
+    };
+    let monitor = window
+        .current_monitor()
+        .ok()
+        .flatten()
+        .or_else(|| window.primary_monitor().ok().flatten());
+    let Some(monitor) = monitor else {
+        return "left";
+    };
+    let center_x = f64::from(origin.x) + f64::from(size.width) * 0.5;
+    compute_mini_dock_side(
+        center_x,
+        f64::from(monitor.position().x),
+        f64::from(monitor.size().width),
+    )
+}
+
+#[tauri::command]
+fn desktop_chat_window_set_mini_mode(
+    window: WebviewWindow,
+    state: State<'_, DesktopState>,
+    mini: bool,
+    restore_always_on_top: bool,
+) -> Result<DesktopMiniWindowLayout, String> {
+    if window.label() != "chat" {
+        return Ok(DesktopMiniWindowLayout { dock_side: "left" });
+    }
+    let mut mode = state
+        .chat_window_mode
+        .lock()
+        .map_err(|error| error.to_string())?;
+    if mini {
+        if !mode.mini_active {
+            let maximized = window.is_maximized().unwrap_or(false);
+            if maximized {
+                let _ = window.unmaximize();
+            }
+            if let (Ok(position), Ok(size)) = (window.outer_position(), window.inner_size()) {
+                mode.normal_bounds = Some(SavedChatWindowBounds {
+                    position,
+                    size,
+                    maximized,
+                });
+            }
+            mode.mini_active = true;
+        }
+        let mini_logical = tauri::LogicalSize::new(CHAT_MINI_WINDOW_WIDTH, CHAT_MINI_WINDOW_HEIGHT);
+        let _ = window.set_always_on_top(true);
+        let _ = window.set_min_size(Some(mini_logical));
+        let _ = window.set_size(mini_logical);
+        let _ = window.set_resizable(false);
+        let target_pos = mode.mini_position.or_else(|| {
+            let monitor = window
+                .current_monitor()
+                .ok()
+                .flatten()
+                .or_else(|| window.primary_monitor().ok().flatten())?;
+            let scale = window.scale_factor().unwrap_or(1.0).max(0.5);
+            let mini_phys = (
+                (CHAT_MINI_WINDOW_WIDTH * scale).round() as u32,
+                (CHAT_MINI_WINDOW_HEIGHT * scale).round() as u32,
+            );
+            let computed = default_mini_window_position(
+                (monitor.position().x, monitor.position().y),
+                (monitor.size().width, monitor.size().height),
+                mini_phys,
+            );
+            mode.mini_position = Some(computed);
+            Some(computed)
+        });
+        if let Some(pos) = target_pos {
+            let _ = window.set_position(pos);
+        }
+        drop(mode);
+        schedule_mini_input_global_shortcut_sync(window.app_handle());
+        Ok(DesktopMiniWindowLayout {
+            dock_side: current_window_mini_dock_side(&window),
+        })
+    } else {
+        if mode.mini_active {
+            if let Ok(pos) = window.outer_position() {
+                mode.mini_position = Some(pos);
+            }
+            mode.mini_active = false;
+            let saved = mode.normal_bounds.take();
+            let _ = window.set_resizable(true);
+            let _ = window.set_always_on_top(restore_always_on_top);
+            let normal_min = tauri::LogicalSize::new(CHAT_WINDOW_MIN_WIDTH, CHAT_WINDOW_MIN_HEIGHT);
+            if let Some(bounds) = saved {
+                let _ = window.set_size(bounds.size);
+                let _ = window.set_position(bounds.position);
+                let _ = window.set_min_size(Some(normal_min));
+                if bounds.maximized {
+                    let _ = window.maximize();
+                }
+            } else {
+                let _ = window.set_size(tauri::LogicalSize::new(
+                    CHAT_WINDOW_DEFAULT_WIDTH,
+                    CHAT_WINDOW_DEFAULT_HEIGHT,
+                ));
+                let _ = window.set_min_size(Some(normal_min));
+                let _ = window.center();
+            }
+        }
+        drop(mode);
+        schedule_mini_input_global_shortcut_sync(window.app_handle());
+        Ok(DesktopMiniWindowLayout { dock_side: "left" })
+    }
+}
+
+fn desired_mini_input_global_shortcut(
+    mini_active: bool,
+    chat_window_present: bool,
+    configured: Option<&str>,
+) -> Option<String> {
+    if !mini_active || !chat_window_present {
+        return None;
+    }
+    configured
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn activate_mini_avatar_input_from_shortcut(app: &AppHandle) {
+    let mini_active = app
+        .try_state::<DesktopState>()
+        .and_then(|state| state.chat_window_mode.lock().ok().map(|mode| mode.mini_active))
+        .unwrap_or(false);
+    if !mini_active {
+        return;
+    }
+    let Some(chat_window) = app.get_webview_window("chat") else {
+        return;
+    };
+    let _ = chat_window.set_ignore_cursor_events(false);
+    let _ = chat_window.show();
+    let _ = chat_window.unminimize();
+    let _ = chat_window.set_focus();
+    let _ = chat_window.emit_to("chat", MINI_AVATAR_INPUT_SHORTCUT_EVENT, ());
+}
+
+#[cfg(desktop)]
+fn apply_mini_input_global_shortcut_blocking(app: &AppHandle) -> DesktopMiniInputShortcutStatus {
+    use tauri_plugin_global_shortcut::ShortcutState;
+
+    let Some(global_shortcut) =
+        app.try_state::<tauri_plugin_global_shortcut::GlobalShortcut<tauri::Wry>>()
+    else {
+        return DesktopMiniInputShortcutStatus {
+            registered: false,
+            error: Some("global shortcut plugin is unavailable".to_string()),
+        };
+    };
+
+    let Some(state) = app.try_state::<DesktopState>() else {
+        return DesktopMiniInputShortcutStatus {
+            registered: false,
+            error: None,
+        };
+    };
+
+    let _sync_guard = match state.mini_shortcut_sync_lock.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+
+    let desired = state
+        .chat_window_mode
+        .lock()
+        .ok()
+        .and_then(|mode| {
+            desired_mini_input_global_shortcut(
+                mode.mini_active,
+                app.get_webview_window("chat").is_some(),
+                mode.mini_input_shortcut.as_deref(),
+            )
+        });
+
+    if let Err(error) = global_shortcut.unregister_all() {
+        restart_debug_log(format!("mini shortcut unregister_all failed: {error}"));
+    }
+
+    let Some(shortcut) = desired else {
+        return DesktopMiniInputShortcutStatus {
+            registered: false,
+            error: None,
+        };
+    };
+
+    match global_shortcut.on_shortcut(shortcut.as_str(), |app_handle, _shortcut, event| {
+        if event.state == ShortcutState::Pressed {
+            activate_mini_avatar_input_from_shortcut(app_handle);
+        }
+    }) {
+        Ok(()) => DesktopMiniInputShortcutStatus {
+            registered: true,
+            error: None,
+        },
+        Err(error) => {
+            let message = error.to_string();
+            restart_debug_log(format!(
+                "mini shortcut register failed shortcut={shortcut} error={message}"
+            ));
+            DesktopMiniInputShortcutStatus {
+                registered: false,
+                error: Some(message),
+            }
+        }
+    }
+}
+
+#[cfg(not(desktop))]
+fn apply_mini_input_global_shortcut_blocking(_app: &AppHandle) -> DesktopMiniInputShortcutStatus {
+    DesktopMiniInputShortcutStatus {
+        registered: false,
+        error: None,
+    }
+}
+
+fn schedule_mini_input_global_shortcut_sync(app: &AppHandle) {
+    let app_handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let _ = apply_mini_input_global_shortcut_blocking(&app_handle);
+    });
+}
+
+#[tauri::command]
+async fn desktop_chat_window_set_mini_input_shortcut(
+    app: AppHandle,
+    window: WebviewWindow,
+    shortcut: Option<String>,
+) -> Result<DesktopMiniInputShortcutStatus, String> {
+    if window.label() != "chat" {
+        return Ok(DesktopMiniInputShortcutStatus {
+            registered: false,
+            error: None,
+        });
+    }
+    let normalized = shortcut
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    {
+        let state = app.state::<DesktopState>();
+        let mut mode = state
+            .chat_window_mode
+            .lock()
+            .map_err(|error| error.to_string())?;
+        mode.mini_input_shortcut = normalized;
+    }
+    tauri::async_runtime::spawn_blocking(move || apply_mini_input_global_shortcut_blocking(&app))
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn desktop_chat_window_sync_mini_layout(
+    window: WebviewWindow,
+    state: State<'_, DesktopState>,
+) -> Result<DesktopMiniWindowLayout, String> {
+    if window.label() != "chat" {
+        return Ok(DesktopMiniWindowLayout { dock_side: "left" });
+    }
+    if let Ok(mut mode) = state.chat_window_mode.lock() {
+        if mode.mini_active {
+            if let Ok(pos) = window.outer_position() {
+                mode.mini_position = Some(pos);
+            }
+        }
+    }
+    Ok(DesktopMiniWindowLayout {
+        dock_side: current_window_mini_dock_side(&window),
+    })
+}
+
 #[tauri::command]
 fn desktop_window_close(
     window: WebviewWindow,
@@ -1452,6 +1856,8 @@ fn desktop_window_close(
         return background::request_main_close(&app);
     }
     if window.label() == "chat" {
+        state.reset_chat_window_session_bounds();
+        schedule_mini_input_global_shortcut_sync(&app);
         request_bridge_chat_close(state.inner(), "desktop_window_close command");
         return window.destroy().map_err(|error| error.to_string());
     }
@@ -2158,6 +2564,55 @@ mod tests {
     }
 
     #[test]
+    fn mini_dock_side_flips_on_right_portion_of_monitor() {
+        assert_eq!(compute_mini_dock_side(400.0, 0.0, 1920.0), "left");
+        assert_eq!(compute_mini_dock_side(1100.0, 0.0, 1920.0), "left");
+        assert_eq!(compute_mini_dock_side(1300.0, 0.0, 1920.0), "right");
+        // Secondary monitor with negative X offset:
+        assert_eq!(compute_mini_dock_side(-300.0, -1920.0, 1920.0), "right");
+        assert_eq!(compute_mini_dock_side(-1500.0, -1920.0, 1920.0), "left");
+    }
+
+    #[test]
+    fn default_mini_window_position_places_avatar_in_upper_right_region() {
+        let pos = default_mini_window_position((0, 0), (1920, 1080), (640, 340));
+        let center_x = f64::from(pos.x) + 320.0;
+        assert_eq!(compute_mini_dock_side(center_x, 0.0, 1920.0), "right");
+        assert!(pos.y >= 16);
+    }
+
+    #[test]
+    fn desired_mini_input_shortcut_requires_active_mini_chat_window() {
+        assert_eq!(
+            desired_mini_input_global_shortcut(true, true, Some(" Alt+Q ")),
+            Some("Alt+Q".to_string())
+        );
+        assert_eq!(
+            desired_mini_input_global_shortcut(false, true, Some("Alt+Q")),
+            None
+        );
+        assert_eq!(
+            desired_mini_input_global_shortcut(true, false, Some("Alt+Q")),
+            None
+        );
+        assert_eq!(
+            desired_mini_input_global_shortcut(true, true, Some("   ")),
+            None
+        );
+        assert_eq!(desired_mini_input_global_shortcut(true, true, None), None);
+
+        #[cfg(desktop)]
+        for accelerator in ["Alt+Q", "Ctrl+Shift+Space", "Super+Slash", "F7", "Alt+Backquote"] {
+            assert!(
+                accelerator
+                    .parse::<tauri_plugin_global_shortcut::Shortcut>()
+                    .is_ok(),
+                "expected {accelerator} to parse as a valid global shortcut"
+            );
+        }
+    }
+
+    #[test]
     fn send_bridge_chat_close_posts_local_close_request() {
         let listener = TcpListener::bind((BRIDGE_HOST, 0)).unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -2443,7 +2898,8 @@ fn resolve_project_root(
         ],
         restart_log_paths,
         untrusted_candidate_roots: project_root::windows_legacy_install_dir_hints(),
-        development_source: dev_project_root().as_deref() == Some(source_root),
+        development_source: app_root == source_root
+            && dev_project_root().as_deref() == Some(source_root),
     };
     project_root::resolve(options).map_err(Into::into)
 }

@@ -32,6 +32,17 @@ export interface DesktopWindowCursorPosition {
   y: number;
 }
 
+export type DesktopMiniDockSide = "left" | "right";
+
+export interface DesktopMiniWindowLayout {
+  dockSide: DesktopMiniDockSide;
+}
+
+export interface DesktopMiniInputShortcutStatus {
+  registered: boolean;
+  error?: string | null;
+}
+
 export interface DesktopRuntimeCandidate {
   id: string;
   pythonId?: string | null;
@@ -119,11 +130,74 @@ declare global {
 const bridgeRestartFinishedEvent = "shinsekai:bridge-restart-finished";
 const bridgeRestartStateEvent = "shinsekai:bridge-restart-state";
 const desktopChatStageRuntimeConfigChangeEvent = "shinsekai:chat-stage-runtime-config-change";
+const desktopMiniAvatarInputShortcutEvent = "shinsekai:mini-avatar-input-shortcut";
 const desktopUpdateProgressEvent = "shinsekai:update-progress";
 const desktopRuntimeProgressEvent = "shinsekai:runtime-progress";
 
+export interface TauriStandaloneHttpRequest {
+  url: string;
+  method: string;
+  headers?: Record<string, string>;
+  bodyBase64?: string;
+  timeoutMs?: number;
+}
+
+export interface TauriStandaloneHttpResponse {
+  status: number;
+  headers: Record<string, string>;
+  bodyBase64: string;
+}
+
+let tauriNativeHttpUnsupported = false;
+
+export function hasTauriNativeHttp(): boolean {
+  if (typeof window === "undefined" || tauriNativeHttpUnsupported) {
+    return false;
+  }
+  return Boolean(window.__TAURI_INTERNALS__);
+}
+
+export function markTauriNativeHttpUnsupported(): void {
+  tauriNativeHttpUnsupported = true;
+}
+
+export function resetTauriNativeHttpStateForTests(): void {
+  tauriNativeHttpUnsupported = false;
+}
+
+export function isUnknownTauriCommandError(error: unknown): boolean {
+  const message = (error instanceof Error ? error.message : String(error ?? "")).toLowerCase();
+  if (!message) {
+    return false;
+  }
+  if (message.includes("unknown command") || message.includes("not allowed by acl")) {
+    return true;
+  }
+  return (
+    message.includes("standalone_http_request") &&
+    (message.includes("not found") ||
+      message.includes("not registered") ||
+      message.includes("unimplemented") ||
+      message.includes("not allowed"))
+  );
+}
+
+export async function invokeTauriStandaloneHttp(
+  request: TauriStandaloneHttpRequest,
+): Promise<TauriStandaloneHttpResponse> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<TauriStandaloneHttpResponse>("standalone_http_request", { request });
+}
+
 function detectTauriDesktopEnvironment() {
   if (typeof window === "undefined") {
+    return false;
+  }
+  const explicitTarget = import.meta.env.VITE_SHINSEKAI_TARGET?.trim().toLowerCase();
+  if (explicitTarget === "mobile" || explicitTarget === "toy") {
+    return false;
+  }
+  if (typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent ?? "")) {
     return false;
   }
   return (
@@ -170,6 +244,10 @@ async function invokeDesktop<T>(command: string, args?: Record<string, unknown>)
   return invoke<T>(command, args);
 }
 
+export function takeDesktopPluginChatWake() {
+  return invokeDesktop<string | null>("desktop_take_plugin_chat_wake");
+}
+
 export function getDesktopRuntimeState() {
   return invokeDesktop<DesktopRuntimeState>("desktop_runtime_state");
 }
@@ -184,6 +262,14 @@ export function installDesktopRuntimeProfile(profile: DesktopRuntimeProfile) {
 
 export function browseDesktopFiles(options?: { path?: string; showHidden?: boolean }) {
   return invokeDesktop<FileBrowserSnapshot>("desktop_files_browse", options ?? {});
+}
+
+export async function saveDesktopHistoryExport(blob: Blob) {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<{ name: string; path: string; opened: boolean }>(
+    "desktop_files_save_history_export",
+    await blob.arrayBuffer(),
+  );
 }
 
 export interface DesktopNativePickOptions {
@@ -451,6 +537,34 @@ export function setDesktopWindowClickThrough(ignore: boolean) {
 
 export function getDesktopWindowCursorPosition() {
   return invokeDesktop<DesktopWindowCursorPosition>("desktop_window_cursor_position");
+}
+
+export function setDesktopChatWindowMiniMode(mini: boolean, restoreAlwaysOnTop = true) {
+  return invokeDesktop<DesktopMiniWindowLayout>("desktop_chat_window_set_mini_mode", {
+    mini,
+    restoreAlwaysOnTop,
+  });
+}
+
+export function setDesktopChatWindowMiniInputShortcut(shortcut: string | null) {
+  if (!isTauriDesktop()) {
+    return Promise.resolve<DesktopMiniInputShortcutStatus>({ error: null, registered: false });
+  }
+  return invokeDesktop<DesktopMiniInputShortcutStatus>("desktop_chat_window_set_mini_input_shortcut", {
+    shortcut: shortcut?.trim() || null,
+  });
+}
+
+export async function onDesktopMiniAvatarInputShortcut(listener: () => void): Promise<DesktopEventUnlisten> {
+  if (!isTauriDesktop()) {
+    return () => undefined;
+  }
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<unknown>(desktopMiniAvatarInputShortcutEvent, () => listener());
+}
+
+export function syncDesktopChatWindowMiniLayout() {
+  return invokeDesktop<DesktopMiniWindowLayout>("desktop_chat_window_sync_mini_layout");
 }
 
 export function closeDesktopWindow() {

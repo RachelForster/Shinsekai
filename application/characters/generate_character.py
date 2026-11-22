@@ -51,34 +51,65 @@ def _runtime_for(character_manager: Any) -> _GenerationRuntime:
     return runtime
 
 
+def _refresh_characters_if_supported(config_store: Any) -> None:
+    refresh = getattr(config_store, "refresh_characters", None)
+    if callable(refresh):
+        refresh()
+
+
 def generate_character(
     character_creator: CharacterCreator,
     config_store: CharacterConfigStore,
     name: str,
     setting: str,
+    *,
+    characters: Any = None,
 ) -> GenerateCharacterResult:
     """Generate and persist a character setting through the configured LLM."""
+    from config.character_ops import CHARACTER_MUTATION_LOCK, save_character_patch
 
     if not name:
         return GenerateCharacterResult("请选择或输入要生成的角色的名字！", setting)
 
-    character = config_store.get_character_by_name(name)
-    if character is None:
-        character_creator.add_character(
-            name=name,
-            color="",
-            sprite_prefix="",
-            gpt_model_path="",
-            sovits_model_path="",
-            refer_audio_path="",
-            prompt_text="",
-            prompt_lang="",
-            character_setting=setting,
-            character_brief="",
-        )
+    if characters is not None:
+        from application.characters.management import _CatalogCharacterTarget
+
+        target = _CatalogCharacterTarget(characters)
+        character = characters.get_by_name(name)
+        if character is None:
+            character, _, _ = save_character_patch(
+                target,
+                {
+                    "name": name,
+                    "character_setting": setting,
+                    "character_brief": "",
+                },
+            )
+            _refresh_characters_if_supported(config_store)
+    else:
+        target = None
         character = config_store.get_character_by_name(name)
         if character is None:
-            return GenerateCharacterResult(f"创建角色 {name} 失败。", setting)
+            with CHARACTER_MUTATION_LOCK:
+                character = config_store.get_character_by_name(name)
+                if character is None:
+                    character_creator.add_character(
+                        name=name,
+                        color="",
+                        sprite_prefix="",
+                        gpt_model_path="",
+                        sovits_model_path="",
+                        refer_audio_path="",
+                        prompt_text="",
+                        prompt_lang="",
+                        character_setting=setting,
+                        character_brief="",
+                    )
+                    character = config_store.get_character_by_name(name)
+            if character is None:
+                return GenerateCharacterResult(f"创建角色 {name} 失败。", setting)
+
+    char_id = str(getattr(character, "id", "") or "").strip()
 
     setting = "无" if not setting else setting
     template = f"""
@@ -139,8 +170,21 @@ def generate_character(
             response_format={"type": "text"},
             include_local_time=False,
         )
-        character.character_setting = generated
-        config_store.save_characters_config()
+        with CHARACTER_MUTATION_LOCK:
+            if target is not None:
+                current = (target.get_by_id(char_id) if char_id else None) or target.get_by_name(name)
+                target_name = current.name if current is not None else name
+                character, _, _ = save_character_patch(
+                    target,
+                    {"name": target_name, "character_setting": generated},
+                    target_id=char_id or None,
+                )
+                _refresh_characters_if_supported(config_store)
+            else:
+                latest = config_store.get_character_by_name(name) or character
+                latest.character_setting = generated
+                character = latest
+                config_store.save_characters_config()
 
         from application.characters.generate_briefs import (
             CHARACTER_BRIEF_PROMPT,
@@ -166,8 +210,21 @@ def generate_character(
                 str(getattr(character, "character_brief", "") or ""),
             )
 
-        character.character_brief = generated_brief
-        config_store.save_characters_config()
+        with CHARACTER_MUTATION_LOCK:
+            if target is not None:
+                current = (target.get_by_id(char_id) if char_id else None) or target.get_by_name(name)
+                target_name = current.name if current is not None else name
+                character, _, _ = save_character_patch(
+                    target,
+                    {"name": target_name, "character_brief": generated_brief},
+                    target_id=char_id or None,
+                )
+                _refresh_characters_if_supported(config_store)
+            else:
+                latest = config_store.get_character_by_name(name) or character
+                latest.character_brief = generated_brief
+                character = latest
+                config_store.save_characters_config()
         return GenerateCharacterResult(
             "输出成功",
             character.character_setting,

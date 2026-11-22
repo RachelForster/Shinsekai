@@ -48,6 +48,16 @@ def latest_media_dialogs(
                 kind = "character"
                 if player_name and dialog.name == player_name:
                     kind = "player"
+                elif str(dialog.effect or "").strip().upper() == "LEAVE":
+                    if kind in latest and latest[kind][1].name == dialog.name:
+                        latest.pop(kind)
+                    continue
+                if (
+                    str(dialog.asset_id or "").strip() in {"", "-1"}
+                    and not str(dialog.vibe or "").strip()
+                    and not str(dialog.outfit or "").strip()
+                ):
+                    continue
             latest[kind] = (position, dialog)
 
     return tuple(
@@ -76,7 +86,8 @@ def enqueue_latest_media_replay(
             )
         )
     return any(
-        not (match_scene_dialog(opencc, dialog.name) or match_bgm_name(dialog.name))
+        dialog.name != player_name
+        and not (match_scene_dialog(opencc, dialog.name) or match_bgm_name(dialog.name))
         for dialog in dialogs
     )
 

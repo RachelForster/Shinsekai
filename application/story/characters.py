@@ -198,8 +198,52 @@ class CharacterImportTokenStore:
         self._tokens.pop(str(token), None)
 
 
+def _build_character_payload(
+    character: Any,
+    character_id: str,
+    revision: str | None,
+) -> Mapping[str, Any]:
+    if character is None:
+        raise CharacterResolutionError(
+            "character.local_missing",
+            f"local character {character_id!r} is not installed",
+        )
+    payload = (
+        character.model_dump(mode="json")
+        if hasattr(character, "model_dump")
+        else dict(character)
+    )
+    computed = _payload_digest(payload)
+    if revision and revision != computed:
+        raise CharacterResolutionError(
+            "character.revision_mismatch",
+            f"local character {character_id!r} does not match pinned revision",
+        )
+    return {**payload, "_content_digest": computed, "_revision": computed}
+
+
+class CatalogCharacterLibrary:
+    """Read installed characters directly from a ``CharacterCatalogPort``."""
+
+    def __init__(self, catalog: Any) -> None:
+        self._catalog = catalog
+
+    def load_character(
+        self,
+        character_id: str,
+        revision: str | None,
+    ) -> Mapping[str, Any]:
+        character = self._catalog.get_by_name(character_id)
+        if character is None:
+            for candidate in self._catalog.list_all():
+                if str(candidate.name).casefold() == character_id.casefold():
+                    character = candidate
+                    break
+        return _build_character_payload(character, character_id, revision)
+
+
 class ConfigCharacterLibrary:
-    """Read installed characters through the existing ConfigManager API."""
+    """Read installed characters via a ``CharacterCatalogPort`` or ``ConfigManager``."""
 
     def __init__(self, config_manager: Any) -> None:
         self.config_manager = config_manager
@@ -209,29 +253,20 @@ class ConfigCharacterLibrary:
         character_id: str,
         revision: str | None,
     ) -> Mapping[str, Any]:
+        get_by_name = getattr(self.config_manager, "get_by_name", None)
+        list_all = getattr(self.config_manager, "list_all", None)
+        if callable(get_by_name) and callable(list_all):
+            return CatalogCharacterLibrary(self.config_manager).load_character(
+                character_id,
+                revision,
+            )
         character = self.config_manager.get_character_by_name(character_id)
         if character is None:
             for candidate in self.config_manager.config.characters:
                 if str(candidate.name).casefold() == character_id.casefold():
                     character = candidate
                     break
-        if character is None:
-            raise CharacterResolutionError(
-                "character.local_missing",
-                f"local character {character_id!r} is not installed",
-            )
-        payload = (
-            character.model_dump(mode="json")
-            if hasattr(character, "model_dump")
-            else dict(character)
-        )
-        computed = _payload_digest(payload)
-        if revision and revision != computed:
-            raise CharacterResolutionError(
-                "character.revision_mismatch",
-                f"local character {character_id!r} does not match pinned revision",
-            )
-        return {**payload, "_content_digest": computed, "_revision": computed}
+        return _build_character_payload(character, character_id, revision)
 
 
 class CharacterSourceResolver:

@@ -23,6 +23,10 @@ python -m application.agent --backend pi --task "介绍你可以如何协助排�
 
 没有新增另一份模型或凭据配置。当前 Pi 使用 API 设置中选中的模型。模型、地址等连接信息形成稳定 `model_ref`，session 固定该引用；配置变更后应重新装配 service。API Key 可以轮换，下一次 worker 启动会重新读取。
 
+DeepSeek 复用 `llm_extra_configs.Deepseek` 的 `thinking_enabled` 与 `reasoning_effort`：关闭时实际发送 `thinking.type=disabled`，开启时映射为 Pi 的 `high` 或 `xhigh`（DeepSeek 的 `max`）。`reasoning` 在 Pi 模型中表示支持思考，不能用 `false` 代替关闭开关，否则不会发送禁用参数，服务端可能按默认开启思考。开关与强度进入会话模型指纹，旧会话不自动迁移；更新运行版本或更改这些参数后创建新会话。
+
+单次输出上限优先读取当前提供商扩展配置中的正整数 `max_completion_tokens`，其次为 `max_tokens`，且不得超过配置的上下文窗口。未配置时 DeepSeek 使用 `min(16384, contextWindow/4)`，其他提供商维持 `min(4096, contextWindow/4)`。输出限制同时影响思考和最终回答，不能把单次输出上限当成上下文窗口或整项任务的累计 token 预算。
+
 ## 应用装配
 
 ```python
@@ -57,6 +61,8 @@ extension 保留启动时启用的 Pi 原生工具，并加入当前 profile 的
 宿主工具通过仅监听 loopback、每次任务生成随机 token 的私有通道调用 adapter，再由 `AgentHostPort` 请求宿主执行，继续执行输入校验、授权、预算、幂等与写操作记录。Pi 原生工具直接在 Pi 进程执行，拥有当前用户的文件和命令权限；workspace 是工作目录，不是沙箱。原生工具结果保存在 Pi 历史中，不经过 HTTP 响应脱敏或宿主 call ID 去重，也不计入宿主 `maxToolCalls`；公共 `effects` 当前只反映宿主操作。取消和退出仍回收 worker、Pi 及其进程树。
 
 Pi RPC 的 `prompt` 响应只代表受理，`agent_end` 也不是整个运行的完成。adapter 持续消费 LF 分帧的 JSONL，直到 `agent_settled` 才生成终态；将文本和 provider 报告的 token 数转换为公共事件。取消先清空排队消息、请求 abort，再确认子进程退出；未确认结束的运行不能报告成功。
+
+`stopReason=length` 表示单次输出被截断，是合法的 Pi 结束原因。此时返回 `failed` / `LIMIT_EXCEEDED`，保留已返回的正文和用量，在结果的 `data.stopReason` 记录 `length`，并显示输出上限提示；不再误报 `PROTOCOL_MISMATCH`。只有思考内容而没有正文时同样按截断处理，不泄露思考正文。已完成的工具操作不自动重放，用户可在核对当前进度后继续任务。
 
 Adapter 声明 `activityReporting`，将启动、模型处理、回复生成、自动重试、上下文整理，以及 Pi 原生 `tool_execution_start` / `tool_execution_end` 转成 `activity.updated`。事件形状依据 [Pi v1.0.4 JSON 事件规范](https://github.com/earendil-works/pi/blob/v1.0.4/packages/coding-agent/docs/json.md)。同一活动的开始与结束使用同一个、带 attempt 前缀的 ID。只传递原生工具名、路径或命令摘要、状态；目标最多 512 字符并脱敏，不传递文件正文、命令输出、写入内容或内部推理。
 

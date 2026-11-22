@@ -232,7 +232,7 @@ function TaskTurn({
 export function AgentPanel({ enabled = true, onNavigate }: { enabled?: boolean; onNavigate?: () => void }) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
-  const [selected, setSelected] = useState("");
+  const [selectedId, setSelected] = useState("");
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [artifact, setArtifact] = useState<{ title: string; text: string } | null>(null);
   const requestIds = useRef(new Map<string, { text: string; id: string }>());
@@ -253,8 +253,9 @@ export function AgentPanel({ enabled = true, onNavigate }: { enabled?: boolean; 
     refetchInterval: enabled ? 3000 : false,
     retry: false,
   });
+  const session = sessions.data?.find((item) => item.sessionId === selectedId) ?? sessions.data?.[0];
+  const selected = session?.sessionId ?? "";
   const { tasks, transcript } = useAgentConversation(selected, enabled);
-  const session = sessions.data?.find((item) => item.sessionId === selected);
   const draft = drafts[selected] ?? "";
   const pending = tasks.data?.some((task) => !isTerminal(task.status)) ?? false;
   const refresh = () => queryClient.invalidateQueries({ queryKey: agentQueryKey });
@@ -297,9 +298,8 @@ export function AgentPanel({ enabled = true, onNavigate }: { enabled?: boolean; 
     },
   });
   useEffect(() => {
-    if (sessions.data && !sessions.data.some((item) => item.sessionId === selected))
-      setSelected(sessions.data[0]?.sessionId ?? "");
-  }, [selected, sessions.data]);
+    if (sessions.data && selectedId !== selected) setSelected(selected);
+  }, [selected, selectedId, sessions.data]);
   useEffect(() => {
     stickToBottom.current = true;
   }, [selected]);

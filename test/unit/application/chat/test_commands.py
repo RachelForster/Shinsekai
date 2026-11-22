@@ -105,15 +105,8 @@ def command_runtime() -> SimpleNamespace:
         user_resume=Mock(),
     )
     turn_service = _TurnService()
-    branch_manager = SimpleNamespace(
-        reset=Mock(),
-        persist=Mock(),
-        publish_tree=Mock(),
-        fork=Mock(),
-        switch=Mock(),
-        rename=Mock(),
-        replay_media=Mock(),
-    )
+    persist_history = Mock()
+    replay_media = Mock()
     tts_manager = SimpleNamespace(set_language=Mock())
     shutdown = Mock()
     dispatcher = ChatCommandDispatcher(
@@ -135,12 +128,13 @@ def command_runtime() -> SimpleNamespace:
                 skip_speech=lambda: ui_calls.append(("skip", None)),
             ),
             translate=translate,
+            persist_history=persist_history,
+            replay_media=replay_media,
         ),
         config=config,
         llm_manager=llm_manager,
         runtime_asr=runtime_asr,
         chat_turn_service=turn_service,
-        branch_manager=branch_manager,
         chat_history=[],
         last_user_message={},
         presentation_queue=SimpleNamespace(put=Mock()),
@@ -157,7 +151,8 @@ def command_runtime() -> SimpleNamespace:
         llm_manager=llm_manager,
         runtime_asr=runtime_asr,
         turn_service=turn_service,
-        branch_manager=branch_manager,
+        persist_history=persist_history,
+        replay_media=replay_media,
         tts_manager=tts_manager,
         shutdown=shutdown,
     )
@@ -325,7 +320,7 @@ def test_reroll_removes_last_turn_and_resubmits_canonical_payload(
     assert runtime.notifications == ["main.notify_reroll:"]
 
 
-def test_clear_history_owns_storage_and_branch_reset(
+def test_clear_history_owns_storage(
     monkeypatch, command_runtime
 ) -> None:
     runtime = command_runtime
@@ -352,9 +347,6 @@ def test_clear_history_owns_storage_and_branch_reset(
         ("remove", "session.json"),
         ("clear", str(Path("resolved") / "session.json")),
     ]
-    runtime.branch_manager.reset.assert_called_once_with()
-    runtime.branch_manager.persist.assert_called_once_with()
-    runtime.branch_manager.publish_tree.assert_called_once_with()
     assert runtime.ui_calls[-2:] == [
         ("clear-options", None),
         ("sync-history", None),
@@ -390,35 +382,17 @@ def test_reverts_history_inside_application(monkeypatch, command_runtime) -> Non
         window=runtime.dispatcher.history_presenter,
     )
     assert runtime.turn_service.calls[-1] == ("cancel", None)
-    runtime.branch_manager.replay_media.assert_called_once_with(
-        runtime.llm_manager.get_messages()
-    )
-    runtime.branch_manager.persist.assert_called_once_with()
+    runtime.replay_media.assert_called_once_with(runtime.llm_manager.get_messages())
+    runtime.persist_history.assert_not_called()
     assert runtime.ui_calls[-2:] == [
         ("clear-options", None),
         ("sync-history", None),
     ]
 
 
-def test_dispatches_branch_commands(command_runtime) -> None:
-    runtime = command_runtime
-
-    assert _execute(
-        runtime,
-        "fork-history",
-        {"userIndex": 3, "branchId": " branch-3 "},
-    ).ok
-    assert _execute(runtime, "switch-branch", "branch-2").ok
-    assert _execute(
-        runtime,
-        "rename-branch",
-        {"branchId": "branch-2", "label": "Alternate"},
-    ).ok
-
-    runtime.branch_manager.fork.assert_called_once_with(3, branch_id="branch-3")
-    runtime.branch_manager.switch.assert_called_once_with("branch-2")
-    runtime.branch_manager.rename.assert_called_once_with("branch-2", "Alternate")
-    assert runtime.notifications == ["已切换对话分支。", "已重命名对话分支。"]
+@pytest.mark.parametrize("command", ["fork-history", "switch-branch", "rename-branch"])
+def test_rejects_removed_chat_branch_commands(command_runtime, command) -> None:
+    assert not _execute(command_runtime, command).ok
 
 
 @pytest.mark.parametrize(

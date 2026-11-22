@@ -16,6 +16,13 @@ import type { SystemConfig } from "../../entities/config/types";
 import { useOptionalChatTheme } from "../chat-stage/theme/ChatThemeProvider";
 import { useAppState } from "../../shared/app-state/AppState";
 import { isTauriDesktop } from "../../shared/desktop/desktopApi";
+import {
+  canConnectRemotePc,
+  getRuntimeTarget,
+  isRemotePcActive,
+  isStandaloneRuntimeActive,
+} from "../../shared/platform/runtimeTarget";
+import { RuntimeModeDialog } from "../runtime-mode/RuntimeModeDialog";
 import { useI18n } from "../../shared/i18n";
 import { applyThemeColor } from "../../shared/theme/appTheme";
 import { DEFAULT_CHAT_THEME_ID, chatThemeDisplayName } from "../../shared/theme/chatTheme";
@@ -84,6 +91,9 @@ export function SystemSettingsPage() {
   const { data, isLoading } = configQuery;
   const [draft, setDraft] = useState<SystemConfig | null>(null);
   const [errors, setErrors] = useState<SchemaErrorMap<SystemConfig>>({});
+  const [runtimeModeOpen, setRuntimeModeOpen] = useState(false);
+  const showCrossPlatformCard =
+    !isTauriDesktop() || isStandaloneRuntimeActive() || isRemotePcActive() || canConnectRemotePc();
   const themeOptions = useMemo(
     () =>
       [...(chatThemesQuery.data ?? [])].sort((left, right) =>
@@ -250,6 +260,28 @@ export function SystemSettingsPage() {
       </header>
       <DesktopRuntimeSection />
       <DesktopBackgroundSection />
+      {showCrossPlatformCard ? (
+        <section className="section page-section-anchor" id="system-cross-platform">
+          <div className="section__header">
+            <h2 className="section__title">运行模式与跨端连接</h2>
+            <div className="section__actions">
+              <Button onClick={() => setRuntimeModeOpen(true)} variant="primary">
+                配置 API Key / 角色包 / 电脑连接
+              </Button>
+            </div>
+          </div>
+          <p className="page__subtitle">
+            {isRemotePcActive()
+              ? "当前运行模式：已连接电脑端满血 Python 后端（可随时切回本机独立模式）。"
+              : getRuntimeTarget() === "toy"
+                ? "当前运行模式：Bilibili Toy 浏览器独立模式（本地 IndexedDB 持久化 + 自填 LLM / TTS API Key）。"
+                : getRuntimeTarget() === "mobile"
+                  ? "当前运行模式：手机独立模式（无 Python 依赖，支持随时接入电脑端满血后端或同步 .char 角色）。"
+                  : "当前运行模式：纯前端独立模式（支持快速配置 API Key、导入 .char 角色包及连接桌面端）。"}
+          </p>
+        </section>
+      ) : null}
+      <RuntimeModeDialog onClose={() => setRuntimeModeOpen(false)} open={runtimeModeOpen} />
       <SchemaDrivenForm
         disabled={saveMutation.isPending}
         errors={errors}

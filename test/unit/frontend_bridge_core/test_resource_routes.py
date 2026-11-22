@@ -25,6 +25,23 @@ RESOURCE_ROUTES = (
 )
 
 
+def test_character_revision_does_not_read_or_serialize_character_details():
+    from frontend_bridge_core.routes.character_routes import _list_characters
+
+    class Manager:
+        characters_revision = "saved-version"
+
+        @property
+        def config(self):
+            raise AssertionError("Version polling must not read the full character catalog")
+
+    response = _list_characters(ApiRequest(
+        state=SimpleNamespace(config_manager=Manager()),
+        method="GET", path="/api/characters", query={"view": ["revision"]}, params={}, body={},
+    ))
+    assert response == JsonResponse("saved-version")
+
+
 def _contracts(routes) -> set[tuple[str, str]]:
     return {(method, route.pattern) for route in routes for method in route.methods}
 
@@ -65,19 +82,32 @@ def test_character_route_contracts_remain_stable() -> None:
         ("POST", "/api/characters/sprite-voice/upload"),
         ("POST", "/api/characters/sprite-voice/voice-type"),
         ("POST", "/api/characters/sprites/animate"),
+        ("GET", "/api/characters/sprites/mouth/profile"),
+        ("POST", "/api/characters/sprites/mouth/status"),
+        ("POST", "/api/characters/sprites/mouth/configure"),
+        ("POST", "/api/characters/sprites/mouth/models/import"),
+        ("POST", "/api/characters/sprites/mouth/models/download"),
+        ("POST", "/api/characters/sprites/mouth/runtime/install"),
+        ("POST", "/api/characters/sprites/mouth/generate"),
+        ("POST", "/api/characters/sprites/mouth/read"),
+        ("POST", "/api/characters/sprites/mouth/save"),
+        ("POST", "/api/characters/sprites/mouth/remove"),
         ("POST", "/api/characters/sprites/transitions/analyze"),
         ("POST", "/api/characters/sprites/transitions/generate"),
         ("POST", "/api/characters/sprites/transitions/save"),
+        ("POST", "/api/characters/sprites/auto-group"),
         ("POST", "/api/characters/sprites/auto-label"),
         ("POST", "/api/characters/sprites/delete"),
         ("POST", "/api/characters/sprites/delete-all"),
         ("POST", "/api/characters/sprites/frame"),
+        ("POST", "/api/characters/sprites/groups"),
         ("POST", "/api/characters/sprites/remove-background"),
         ("POST", "/api/characters/sprites/import-generated"),
         ("POST", "/api/characters/sprites/plan"),
         ("POST", "/api/characters/sprites/render"),
         ("POST", "/api/characters/sprites/upload"),
         ("POST", "/api/characters/translate"),
+        ("POST", "/api/characters/voice/prepare"),
         ("PUT", "/api/characters"),
         ("DELETE", "/api/characters/{name}"),
     }

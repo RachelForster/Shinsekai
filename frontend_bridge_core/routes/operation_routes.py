@@ -152,6 +152,8 @@ def _install_missing_dependency(request: ApiRequest) -> TaskResponse:
     module_name = str(request.body.get("moduleName") or "").strip()
     if not module_name:
         raise ValueError("moduleName is required")
+    python_path = str(request.body.get("pythonPath") or "").strip() or None
+    extra_kwargs = {"python_path": python_path} if python_path is not None else {}
     return TaskResponse(
         kind="runtime-dependency-install",
         title=f"Install {module_name}",
@@ -165,6 +167,7 @@ def _install_missing_dependency(request: ApiRequest) -> TaskResponse:
             module_name,
             _task_id=task_id,
             _state=request.state,
+            **extra_kwargs,
         ),
     )
 

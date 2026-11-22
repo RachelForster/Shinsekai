@@ -436,7 +436,7 @@
 }
 
 /* Recessed but always present & clickable when unlocked; full strength on hover/focus. */
-.dialog-stage-controls[data-locked="false"]:not(:hover):not(:focus-within) .dialog-stage-controls__surface {
+.dialog-stage-controls:where([data-locked="false"]:not(:hover):not(:focus-within)) .dialog-stage-controls__surface {
   opacity: 0.72;
 }
 
@@ -455,38 +455,32 @@
   opacity: 0;
   pointer-events: none;
   transform: translateY(var(--chat-dialog-toolbar-hidden-y));
+  /* Keep the surface visible briefly while the pointer crosses the gap from the dialog. */
+  transition-delay: 180ms;
 }
 
-.dialog-toolbar-layer[data-reveal="hover"][data-locked="false"]:not(:hover):not(:focus-within)
-  .dialog-stage-controls[data-locked="false"]
-  .dialog-stage-controls__surface {
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(var(--chat-dialog-toolbar-hidden-y));
-}
-
-.dialog-toolbar-layer[data-reveal="hover"]:is(:hover, :focus-within) .dialog-stage-controls,
-.dialog-toolbar-layer[data-reveal="hover"][data-locked="true"] .dialog-stage-controls {
+:is(
+    .dialog-toolbar-layer[data-reveal="hover"]:is(:hover, :focus-within, [data-locked="true"]),
+    .chat-stage:has(> .dialog-stack:hover) > .dialog-toolbar-layer[data-reveal="hover"]
+  )
+  .dialog-stage-controls {
   pointer-events: auto;
 }
 
-.dialog-toolbar-layer[data-reveal="hover"]:is(:hover, :focus-within) .dialog-stage-controls__surface,
-.dialog-toolbar-layer[data-reveal="hover"][data-locked="true"] .dialog-stage-controls__surface {
-  opacity: 1;
-  pointer-events: auto;
-  transform: translateY(0);
-}
-
-.dialog-toolbar-layer[data-reveal="hover"]:is(:hover, :focus-within)
-  .dialog-stage-controls[data-locked="false"]
+:is(
+    .dialog-toolbar-layer[data-reveal="hover"]:is(:hover, :focus-within, [data-locked="true"]),
+    .chat-stage:has(> .dialog-stack:hover) > .dialog-toolbar-layer[data-reveal="hover"]
+  )
   .dialog-stage-controls__surface {
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0);
+  transition-delay: 0ms;
 }
 
 .dialog-stage-controls__rail {
   display: flex;
+  max-width: 100%;
   min-width: 0;
   flex-wrap: nowrap;
   align-items: center;
@@ -497,6 +491,10 @@
 
 .dialog-stage-controls__rail > [data-plugin-slot="chat-dialog-actions"] {
   display: contents;
+}
+
+.dialog-stage-controls__rail .button__label {
+  white-space: nowrap;
 }
 
 .dialog-stage-controls__chat-settings {
@@ -642,8 +640,93 @@
   gap: 4px;
 }
 
+.dialog-stage-controls__outfit-popover {
+  width: min(320px, calc(100vw - 28px));
+  max-height: min(64vh, 420px);
+  overflow-y: auto;
+}
+
+.dialog-stage-controls__popover-hint {
+  margin: 0;
+  padding: 0 4px;
+  color: color-mix(in oklch, var(--chat-toolbar-color, #fffaf0) 72%, transparent);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.dialog-stage-controls__outfit-list {
+  display: grid;
+  gap: 8px;
+}
+
+.dialog-stage-controls__outfit-card {
+  display: grid;
+  gap: 8px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  background: color-mix(in oklch, var(--stage-accent) 7%, rgba(255, 255, 255, 0.04));
+}
+
+.dialog-stage-controls__outfit-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dialog-stage-controls__outfit-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.dialog-stage-controls__outfit-badge {
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklch, var(--stage-accent) 44%, rgba(255, 255, 255, 0.2));
+  background: color-mix(in oklch, var(--stage-accent) 26%, transparent);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.dialog-stage-controls__pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dialog-stage-controls__pill {
+  padding: 4px 10px;
+  border: 1px solid color-mix(in oklch, var(--stage-accent) 28%, rgba(255, 255, 255, 0.18));
+  border-radius: 999px;
+  color: var(--chat-toolbar-color, #fffaf0);
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease;
+}
+
+.dialog-stage-controls__pill:hover {
+  border-color: color-mix(in oklch, var(--stage-accent) 52%, rgba(255, 255, 255, 0.28));
+  background: color-mix(in oklch, var(--stage-accent) 20%, rgba(255, 255, 255, 0.1));
+}
+
+.dialog-stage-controls__pill[data-active="true"] {
+  border-color: color-mix(in oklch, var(--stage-accent) 68%, rgba(255, 255, 255, 0.36));
+  color: #fff;
+  background: color-mix(in oklch, var(--stage-accent) 58%, rgba(20, 17, 14, 0.76));
+}
+
 .dialog-stage-controls__button.button {
   flex: 0 0 auto;
+  height: 30px;
   min-height: 30px;
   min-width: 0;
   padding: 0 10px;
@@ -668,11 +751,79 @@
 }
 
 .dialog-stage-controls__button .button__label {
-  max-width: 84px;
   color: inherit;
   font-size: 11px;
   font-weight: 600;
   line-height: 1.2;
+}
+
+.dialog-stage-controls[data-density="tight"] .dialog-stage-controls__surface {
+  padding: 4px 5px;
+}
+
+.dialog-stage-controls[data-density="tight"] .dialog-stage-controls__rail {
+  gap: 2px;
+}
+
+.dialog-stage-controls[data-density="tight"] .dialog-stage-controls__button.button {
+  padding: 0 7px;
+  gap: 3px;
+}
+
+.dialog-stage-controls[data-density="tight"] .dialog-stage-controls__button .button__label {
+  font-size: 10.5px;
+}
+
+.dialog-stage-controls[data-density="compact"] {
+  justify-content: center;
+}
+
+.dialog-stage-controls[data-density="compact"] .dialog-stage-controls__surface {
+  padding: 4px 5px;
+}
+
+.dialog-stage-controls[data-density="compact"] .dialog-stage-controls__rail {
+  gap: 2px;
+  justify-content: center;
+}
+
+.dialog-stage-controls[data-density="compact"] .dialog-stage-controls__button.button {
+  flex: 0 1 28px;
+  min-width: 18px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0 5px;
+  gap: 0;
+}
+
+.dialog-stage-controls[data-density="compact"] .dialog-stage-controls__button .button__icon {
+  flex: 0 1 13px;
+  width: min(13px, 100%);
+  min-width: 10px;
+  height: 13px;
+}
+
+.dialog-stage-controls[data-density="compact"]
+  .dialog-stage-controls__rail
+  .button:has(.button__icon, svg)
+  .button__label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+  pointer-events: none;
+}
+
+.dialog-stage-controls[data-density="compact"] .dialog-stage-controls__chat-settings {
+  right: auto;
+  left: 50%;
+  transform: translateX(-50%);
 }
 
 .dialog-stage-controls__button[data-active="true"] {

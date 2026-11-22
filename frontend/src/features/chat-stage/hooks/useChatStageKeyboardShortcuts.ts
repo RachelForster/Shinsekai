@@ -3,10 +3,12 @@ import { useEffect } from "react";
 export function useChatStageKeyboardShortcuts({
   disabled,
   onAdvance,
+  onExitCg,
   onToggleAuto,
 }: {
   disabled: boolean;
   onAdvance: () => void;
+  onExitCg?: () => void;
   onToggleAuto: () => void;
 }) {
   useEffect(() => {
@@ -21,7 +23,10 @@ export function useChatStageKeyboardShortcuts({
       if (disabled) {
         return;
       }
-      if (event.key === " " || event.key === "Enter") {
+      if (event.key === "Escape" && onExitCg) {
+        event.preventDefault();
+        onExitCg();
+      } else if (event.key === " " || event.key === "Enter") {
         event.preventDefault();
         onAdvance();
       } else if (event.key === "a" || event.key === "A") {
@@ -30,5 +35,5 @@ export function useChatStageKeyboardShortcuts({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [disabled, onAdvance, onToggleAuto]);
+  }, [disabled, onAdvance, onExitCg, onToggleAuto]);
 }

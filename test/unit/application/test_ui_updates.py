@@ -385,3 +385,53 @@ def test_headless_presenter_records_framework_neutral_history() -> None:
     assert len(history) == 2
     assert "hello" in history[0]
     assert "Mio" in history[1]
+
+
+def test_user_message_with_emoji_survives_gbk_console(monkeypatch) -> None:
+    import io
+    import sys
+
+    output = io.TextIOWrapper(io.BytesIO(), encoding="gbk")
+    monkeypatch.setattr(sys, "stdout", output)
+    history: list[str] = []
+    presenter = HeadlessUIUpdateManager(chat_history=history)
+
+    presenter.record_user_message("😡")
+    presenter.record_user_message("下一条")
+
+    assert "😡" in history[0]
+    assert "下一条" in history[1]
+
+
+def test_static_sprite_updates_and_initial_path_propagate_portrait_crop_into_snapshot(tmp_path) -> None:
+    sprite_one = tmp_path / "mio-1.png"
+    sprite_two = tmp_path / "mio-2.png"
+    sprite_one.write_bytes(b"png")
+    sprite_two.write_bytes(b"png")
+
+    character = SimpleNamespace(
+        name="Mio",
+        avatar_type="static",
+        sprite_scale=1.0,
+        portrait_crop={"x": 0.4, "y": 0.18, "zoom": 1.8},
+        sprites=[
+            {"path": str(sprite_one)},
+            {"path": str(sprite_two), "portrait_crop": {"x": 0.65, "y": 0.22, "zoom": 2.6}},
+        ],
+    )
+    sink = _Sink()
+    presenter = StreamingUIUpdateManager(sink, resource_urls=_Urls())
+
+    with patch("application.chat.presentation.updates.get_character_by_name", return_value=character):
+        presenter.update_sprite("Mio", 0)
+        assert sink.events[-1]["portraitCrop"] == {"x": 0.4, "y": 0.18, "zoom": 1.8}
+
+        presenter.update_sprite("Mio", 1)
+        assert sink.events[-1]["portraitCrop"] == {"x": 0.65, "y": 0.22, "zoom": 2.6}
+
+        snapshot = fold_event_into_snapshot(make_empty_chat_snapshot(), sink.events[-1])
+        assert snapshot["sprites"][0]["portraitCrop"] == {"x": 0.65, "y": 0.22, "zoom": 2.6}
+
+        presenter.update_sprite_from_path(str(sprite_one), character_name="Mio")
+        assert sink.events[-1]["portraitCrop"] == {"x": 0.4, "y": 0.18, "zoom": 1.8}
+

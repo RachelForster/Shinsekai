@@ -640,45 +640,69 @@ body:has(.app-shell) .dialog :is(.button, .icon-button):focus-visible {
 }
 
 .topbar,
-.bottombar {
+.bottombar,
+.mobile-bottom-nav {
   display: none;
 }
 
 @media (max-width: 760px) {
   .app-shell {
-    --shell-sidebar-width: 60px;
+    grid-template-columns: minmax(0, 1fr);
   }
 
-  .sidebar__brand {
-    justify-content: center;
-    padding: 0;
-  }
-
-  .sidebar__brand-text,
-  .sidebar__github-body,
-  .sidebar__section-label,
-  .sidebar__link-label {
+  .sidebar {
     display: none;
   }
 
-  .sidebar__github {
-    justify-content: center;
-    margin-inline: 8px;
-    padding: 9px 0;
+  .content-outlet {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
   }
 
-  .sidebar__nav {
-    padding: 10px 8px;
+  .mobile-bottom-nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    align-items: center;
+    min-height: 60px;
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+    border-top: 1px solid var(--color-border);
+    background: var(--color-bg-sidebar);
+    backdrop-filter: blur(14px);
   }
 
-  .sidebar__link {
+  .mobile-bottom-nav[data-keyboard-open="true"] {
+    display: none;
+  }
+
+  .mobile-bottom-nav__item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     justify-content: center;
-    gap: 0;
-    padding: 0;
+    gap: 3px;
+    padding: 4px 2px;
+    border-radius: var(--radius-control);
+    color: var(--color-text-muted);
+    font-size: 11px;
+    font-weight: 500;
+    text-decoration: none;
+  }
+
+  .mobile-bottom-nav__item.active {
+    color: var(--color-accent-primary);
+  }
+
+  .mobile-bottom-nav__icon {
+    width: 18px;
+    height: 18px;
   }
 
   .tools-drawer {
-    width: calc(100vw - var(--shell-sidebar-width));
+    width: 100vw;
   }
 
   .tools-drawer-scrim {

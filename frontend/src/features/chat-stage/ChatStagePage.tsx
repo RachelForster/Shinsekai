@@ -1,24 +1,52 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { isTauriDesktop, setDesktopWindowAlwaysOnTop } from "../../shared/desktop/desktopApi";
+import {
+  isTauriDesktop,
+  setDesktopChatWindowMiniMode,
+  setDesktopWindowAlwaysOnTop,
+  syncDesktopChatWindowMiniLayout,
+  type DesktopMiniDockSide,
+} from "../../shared/desktop/desktopApi";
 import { closeChatSurface } from "../../shared/desktop/chatWindow";
-import { getChatHistoryVoice, sendChatCommand, uploadChatAttachments } from "../../entities/chat/repository";
+import {
+  getChatHistoryVoice,
+  getChatReplay,
+  sendChatCommand,
+  uploadChatAttachments,
+} from "../../entities/chat/repository";
 import { useI18n } from "../../shared/i18n";
 import type { PluginPageTarget } from "../../shared/plugin/PluginSlot";
 import type { ChatAttachmentInput, ChatOption, ChatSendPayload, ChatTurnOptions } from "../../shared/platform/types";
 import { normalizeThemeColor } from "../../shared/theme/appTheme";
 import { DEFAULT_TYPEWRITER_CPS } from "../../shared/theme/chatTheme";
 import { AlertDialog, useToast } from "../../shared/ui";
+import {
+  getRuntimeTarget,
+  isStandaloneRuntimeActive,
+  RUNTIME_MODE_CHANGE_EVENT,
+} from "../../shared/platform/runtimeTarget";
+import { RuntimeModeDialog } from "../runtime-mode/RuntimeModeDialog";
 import { closeChatRuntime } from "../chat-startup/runtimeState";
-import { ChatSoundPlayer } from "./audio/ChatSoundPlayer";
+import { ChatSoundPlayer, type ChatSoundPlayerHandle } from "./audio/ChatSoundPlayer";
 import type { VoicePlaybackSignal } from "./audio/soundPlayer";
 import { ChatConfigDialog } from "./components/ChatConfigDialog";
-import { ConversationTreeDialog } from "./components/ConversationTreeDialog";
 import { DialogStageControls } from "./components/DialogStageControls";
 import { HistoryDialog } from "./components/HistoryDialog";
+import { HistoryExportDialog } from "./replay/HistoryExportDialog";
+import {
+  saveCgAsset,
+  saveHistoryExport,
+  type HistoryExportFormat,
+  type HistoryExportResult,
+} from "./replay/historyExport";
+import { ReplayControls, type ActiveReplay } from "./replay/ReplayControls";
+import { useReplayCapture } from "./replay/useReplayCapture";
 import { InputLayer } from "./components/InputLayer";
+import { MiniAvatarStage } from "./components/MiniAvatarStage";
 import { PluginPageOverlay } from "./components/PluginPageOverlay";
+import { ReactionBubble } from "./components/ReactionBubble";
+import { ScreenShareSettingsDialog } from "./components/ScreenShareSettingsDialog";
 import {
   BackgroundLayer,
   BusyLayer,
@@ -37,7 +65,7 @@ import { TopStageTools } from "./components/TopStageTools";
 import { StoryDebugPanel } from "./components/StoryDebugPanel";
 import "./chat-stage.css";
 import { buildChatStageViewModel, chatStageReducer, emptyChatState } from "./chatState";
-import { isRemoteMobileAccessPage, layerClassName } from "./chatStageUtils";
+import { isRemoteMobileAccessPage, layerClassName, stageAssetUrl } from "./chatStageUtils";
 import { useChatStageCommands } from "./hooks/useChatStageCommands";
 import { useChatStageEvents } from "./hooks/useChatStageEvents";
 import { useChatStageKeyboardShortcuts } from "./hooks/useChatStageKeyboardShortcuts";
@@ -47,6 +75,8 @@ import { useDesktopWindowDrag } from "./hooks/useDesktopWindowDrag";
 import { useDialogTypewriter } from "./hooks/useDialogTypewriter";
 import { useMainThemeColor } from "./hooks/useMainThemeColor";
 import { useRecentUserInputs } from "./hooks/useRecentUserInputs";
+import { useScreenShareCapture } from "./hooks/useScreenShareCapture";
+import { useChatSubmissionFocus } from "./hooks/useChatSubmissionFocus";
 import {
   chatStageRuntimeStyle,
   defaultChatStageRuntimeConfig,
@@ -134,18 +164,23 @@ export function ChatStagePage() {
   const [state, dispatch] = useReducer(chatStageReducer, location.state, initialChatStageState);
   const [confirmClearHistory, setConfirmClearHistory] = useState(false);
   const [confirmRevertUserIndex, setConfirmRevertUserIndex] = useState<number | null>(null);
-  const [branchDialogOpen, setBranchDialogOpen] = useState(false);
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const [activeReplay, setActiveReplay] = useState<ActiveReplay | null>(null);
+  const observedReplayIdRef = useRef<string>();
   const historyReplayRef = useRef<{ stop: () => void } | null>(null);
+  const soundPlayerRef = useRef<ChatSoundPlayerHandle>(null);
   const historyReplayGenerationRef = useRef(0);
   const [conversationEditorOpen, setConversationEditorOpen] = useState(false);
+  const [runtimeModeOpen, setRuntimeModeOpen] = useState(false);
   const [dialogControlsLocked, setDialogControlsLocked] = useState(false);
+  const dialogToolbarLayerRef = useRef<HTMLDivElement>(null);
   const [runtimeConfig, setRuntimeConfig] = useState(readChatStageRuntimeConfig);
   const [attachmentUploadPending, setAttachmentUploadPending] = useState(false);
   const mainThemeColor = useMainThemeColor();
   const [themePickerOpen, setThemePickerOpen] = useState(false);
   const [tokenUsageOpen, setTokenUsageOpen] = useState(false);
   const [toolbarConfigOpen, setToolbarConfigOpen] = useState(false);
+  const [screenSettingsOpen, setScreenSettingsOpen] = useState(false);
   const imageAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const fileAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const pendingAttachmentSlotsRef = useRef(0);
@@ -153,6 +188,23 @@ export function ChatStagePage() {
   const locallyDismissedPresentationRef = useRef<string | null>(null);
   const { showToast } = useToast();
   const { t } = useI18n();
+  const [savingCg, setSavingCg] = useState(false);
+  const [historyExport, setHistoryExport] = useState<HistoryExportResult>();
+  const exportHistory = useCallback(async (blob: Blob, format: HistoryExportFormat) => {
+    setHistoryExport(await saveHistoryExport(blob, format));
+  }, []);
+  const historyPreviewUrl = historyExport?.previewUrl;
+  useEffect(
+    () => () => {
+      if (historyPreviewUrl) URL.revokeObjectURL(historyPreviewUrl);
+    },
+    [historyPreviewUrl],
+  );
+  const capturingReplay = useReplayCapture(
+    activeReplay?.capture,
+    Boolean(state.replay && state.replay.id === activeReplay?.snapshot.id && state.replay.ended),
+    exportHistory,
+  );
   const stopHistoryReplay = useCallback(() => {
     historyReplayGenerationRef.current += 1;
     historyReplayRef.current?.stop();
@@ -229,25 +281,48 @@ export function ChatStagePage() {
   );
   const viewModel = useMemo(() => buildChatStageViewModel(state), [state]);
   const { recentInputs, rememberInput } = useRecentUserInputs();
+  const remoteMobileAccess = isRemoteMobileAccessPage();
+  const [standalone, setStandalone] = useState(() => isStandaloneRuntimeActive());
+  useEffect(() => {
+    const updateStandalone = () => setStandalone(isStandaloneRuntimeActive());
+    window.addEventListener(RUNTIME_MODE_CHANGE_EVENT, updateStandalone);
+    window.addEventListener("storage", updateStandalone);
+    return () => {
+      window.removeEventListener(RUNTIME_MODE_CHANGE_EVENT, updateStandalone);
+      window.removeEventListener("storage", updateStandalone);
+    };
+  }, []);
   const stageSprites = useMemo(
-    () => (isRemoteMobileAccessPage() ? limitChatStageSpritesToSlots(viewModel.sprites, 1) : viewModel.sprites),
-    [viewModel.sprites],
+    () => (remoteMobileAccess ? limitChatStageSpritesToSlots(viewModel.sprites, 1) : viewModel.sprites),
+    [remoteMobileAccess, viewModel.sprites],
   );
   const standaloneDesktopWindow = isTauriDesktop() && location.pathname === "/chat-stage";
   const handleWindowDrag = useDesktopWindowDrag(standaloneDesktopWindow);
-  const transparentBackground = !viewModel.backgroundPath;
+  const miniAvatarActive = runtimeConfig.miniAvatarMode && !activeReplay && !state.replay && !remoteMobileAccess;
+  const [miniDockSide, setMiniDockSide] = useState<DesktopMiniDockSide>("right");
+  const [miniInputPinned, setMiniInputPinned] = useState(false);
+  const wasMiniAvatarActiveRef = useRef(false);
+  const transparentBackground = miniAvatarActive || !viewModel.backgroundPath;
   const statsVisible = viewModel.stats.length > 0;
   const tokenUsageVisible = tokenUsageOpen && Boolean(viewModel.tokenUsageText);
   const modalOpen =
+    activeReplay != null ||
+    state.replay != null ||
     conversationEditorOpen ||
     overlayTarget != null ||
     themePickerOpen ||
     toolbarConfigOpen ||
-    branchDialogOpen ||
+    screenSettingsOpen ||
     historyDialogOpen ||
+    historyExport != null ||
     confirmClearHistory ||
     confirmRevertUserIndex != null;
-  const clickThroughEnabled = standaloneDesktopWindow && transparentBackground && !modalOpen;
+  const clickThroughEnabled =
+    standaloneDesktopWindow &&
+    transparentBackground &&
+    !viewModel.layers.cg &&
+    !modalOpen &&
+    !(miniAvatarActive && miniInputPinned);
   const dialogToolbarPlacement =
     typeof themeStyle["--chat-dialog-toolbar-placement"] === "string"
       ? themeStyle["--chat-dialog-toolbar-placement"]
@@ -255,8 +330,6 @@ export function ChatStagePage() {
   const dialogToolbarDetached = dialogToolbarPlacement === "input" || dialogToolbarPlacement === "dialog-top";
   const dialogToolbarReveal = themeStyle["--chat-dialog-toolbar-reveal"] === "hover" ? "hover" : "always";
   const inputLayout = themeStyle["--chat-input-layout"] === "pill" ? "pill" : "default";
-  const forkHistoryEnabled = state.experimentalFeatures?.forkHistory === true;
-  const conversationTreeEnabled = state.experimentalFeatures?.conversationTree === true;
   const dialogTextDirection = effectiveDialogText.direction ?? "ltr";
   const typewriterCps = runtimeConfig.typewriterCps ?? theme?.resolved?.typewriter.cps ?? DEFAULT_TYPEWRITER_CPS;
   const { historyLoading, refreshHistory, sendCommand } = useChatStageCommands({
@@ -284,7 +357,7 @@ export function ChatStagePage() {
     showFullDialog,
     typingDialog,
   } = useDialogTypewriter({
-    auto: runtimeConfig.auto,
+    auto: runtimeConfig.auto && !activeReplay && !state.replay && !historyDialogOpen,
     characterName: viewModel.dialogCharacterName,
     dialogVisible: viewModel.layers.dialog,
     html: viewModel.dialogHtml,
@@ -294,6 +367,16 @@ export function ChatStagePage() {
     text: viewModel.dialogText,
     textDirection: dialogTextDirection,
     typewriterCps,
+    paused: Boolean(state.replay?.paused),
+  });
+  const { stageRef, rememberSubmission } = useChatSubmissionFocus({
+    blocked: modalOpen || Boolean(viewModel.toolConfirmation),
+    inputDisabled: viewModel.inputDisabled,
+    options: viewModel.options,
+    replying:
+      ["generating", "streaming", "speaking"].includes(viewModel.status) ||
+      (typingDialog && viewModel.layers.dialog && !viewModel.layers.options),
+    sessionId: state.sessionId,
   });
   const {
     handleStageContextMenu,
@@ -312,6 +395,7 @@ export function ChatStagePage() {
     sessionId: state.sessionId,
     loadFallbackMessage: t("chat.error.loadFallback"),
     queueAnimatedDialog,
+    showDialogImmediately,
   });
 
   useEffect(() => {
@@ -373,28 +457,70 @@ export function ChatStagePage() {
   }, [viewModel.tokenUsageText]);
 
   useEffect(() => {
-    if (!conversationTreeEnabled) {
-      setBranchDialogOpen(false);
-    }
-  }, [conversationTreeEnabled]);
-
-  useEffect(() => {
     writeChatStageRuntimeConfig(runtimeConfig);
   }, [runtimeConfig]);
 
   useEffect(() => subscribeChatStageRuntimeConfig(setRuntimeConfig), []);
 
   useEffect(() => {
-    if (!standaloneDesktopWindow) {
+    if (!standaloneDesktopWindow || miniAvatarActive) {
       return;
     }
     void setDesktopWindowAlwaysOnTop(runtimeConfig.alwaysOnTop).catch((error) => {
       console.error("Desktop chat window always-on-top toggle failed", error);
     });
-  }, [runtimeConfig.alwaysOnTop, standaloneDesktopWindow]);
+  }, [miniAvatarActive, runtimeConfig.alwaysOnTop, standaloneDesktopWindow]);
+
+  const syncDesktopMiniDockSide = useCallback(() => {
+    if (!standaloneDesktopWindow) {
+      return;
+    }
+    void syncDesktopChatWindowMiniLayout()
+      .then((layout) => {
+        setMiniDockSide(layout.dockSide);
+      })
+      .catch((error) => {
+        console.error("Desktop mini avatar layout sync failed", error);
+      });
+  }, [standaloneDesktopWindow]);
+
+  useEffect(() => {
+    if (!standaloneDesktopWindow) {
+      wasMiniAvatarActiveRef.current = miniAvatarActive;
+      return;
+    }
+    if (!miniAvatarActive && !wasMiniAvatarActiveRef.current) {
+      return;
+    }
+    wasMiniAvatarActiveRef.current = miniAvatarActive;
+    void setDesktopChatWindowMiniMode(miniAvatarActive, runtimeConfig.alwaysOnTop)
+      .then((layout) => {
+        setMiniDockSide(layout.dockSide);
+      })
+      .catch((error) => {
+        console.error("Desktop chat window mini mode update failed", error);
+      });
+  }, [miniAvatarActive, runtimeConfig.alwaysOnTop, standaloneDesktopWindow]);
+
+  const enterMiniAvatarMode = useCallback(() => {
+    if (activeReplay || state.replay || remoteMobileAccess) {
+      return;
+    }
+    setThemePickerOpen(false);
+    setTokenUsageOpen(false);
+    setToolbarConfigOpen(false);
+    setHistoryDialogOpen(false);
+    setScreenSettingsOpen(false);
+    setConversationEditorOpen(false);
+    setRuntimeConfig((current) => (current.miniAvatarMode ? current : { ...current, miniAvatarMode: true }));
+  }, [activeReplay, remoteMobileAccess, state.replay]);
+
+  const exitMiniAvatarMode = useCallback(() => {
+    setRuntimeConfig((current) => (current.miniAvatarMode ? { ...current, miniAvatarMode: false } : current));
+  }, []);
 
   const submit = async (textOverride?: string) => {
-    if (pendingAttachmentSlotsRef.current) {
+    if (activeReplay || state.replay || pendingAttachmentSlotsRef.current) {
       return;
     }
     const text = (textOverride ?? viewModel.inputDraft).trim();
@@ -402,6 +528,7 @@ export function ChatStagePage() {
     if (!text && !attachments.length) {
       return;
     }
+    rememberSubmission({ kind: "input" });
     rememberInput(text);
     const displayText = chatAttachmentDisplayText(text, attachments);
     const payload: string | ChatSendPayload = attachments.length ? { attachments, text } : text;
@@ -481,10 +608,12 @@ export function ChatStagePage() {
   };
 
   const submitOption = (option: ChatOption) => {
+    if (activeReplay || state.replay) return;
     const label = typeof option === "string" ? option : option.label;
     if (typeof option !== "string" && !option.enabled) {
       return;
     }
+    rememberSubmission({ kind: "options", index: Math.max(0, viewModel.options.indexOf(option)) });
     showDialogImmediately();
     dispatch({
       queued: state.turnOptions.batchEnabled,
@@ -623,6 +752,13 @@ export function ChatStagePage() {
     setRuntimeConfig((current) => ({ ...current, configUseMainThemeColor }));
   };
 
+  const updateRuntimeMiniInputShortcut = (miniInputShortcut: string) => {
+    setRuntimeConfig((current) => ({
+      ...current,
+      miniInputShortcut: miniInputShortcut.trim(),
+    }));
+  };
+
   const resetRuntimeThemeAppearance = () => {
     const themeColor = (themeStyle as Record<string, unknown>)["--chat-theme-color"];
     setRuntimeConfig((current) =>
@@ -645,19 +781,59 @@ export function ChatStagePage() {
       showFullDialog();
       return;
     }
-    if (!viewModel.layers.dialog || !dialogTotalCharacters) {
+    if (activeReplay || state.replay || !viewModel.layers.dialog || !dialogTotalCharacters) {
       return;
     }
     void sendCommand({ type: "dialog-advance" });
-  }, [dialogTotalCharacters, sendCommand, showFullDialog, typingDialog, viewModel.layers.dialog]);
+  }, [
+    activeReplay,
+    state.replay,
+    dialogTotalCharacters,
+    sendCommand,
+    showFullDialog,
+    typingDialog,
+    viewModel.layers.dialog,
+  ]);
 
   const toggleAuto = useCallback(() => {
     setRuntimeConfig((current) => ({ ...current, auto: !current.auto }));
   }, []);
 
+  const exitCg = useCallback(() => {
+    dispatch({ type: "dismissCg" });
+    if (!state.sessionClosedReason && !activeReplay && !state.replay) {
+      void sendCommand({ type: "dismiss-cg" });
+    }
+  }, [activeReplay, sendCommand, state.replay, state.sessionClosedReason]);
+
+  const saveCg = useCallback(async () => {
+    const cgUrl = stageAssetUrl(viewModel.cgPath);
+    if (!cgUrl || savingCg) {
+      return;
+    }
+    setSavingCg(true);
+    try {
+      const saved = await saveCgAsset(cgUrl);
+      showToast({
+        kind: "success",
+        message: saved.path ?? saved.name,
+        title: t("chat.cg.saved"),
+      });
+    } catch (error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : undefined,
+        title: t("chat.cg.saveFailed"),
+      });
+    } finally {
+      setSavingCg(false);
+    }
+  }, [savingCg, showToast, t, viewModel.cgPath]);
+
   useChatStageKeyboardShortcuts({
     disabled: modalOpen,
     onAdvance: advanceDialog,
+    onExitCg: viewModel.layers.cg && !miniAvatarActive ? exitCg : undefined,
     onToggleAuto: toggleAuto,
   });
 
@@ -671,6 +847,33 @@ export function ChatStagePage() {
     setHistoryDialogOpen(true);
     void refreshHistory();
   };
+
+  useEffect(() => {
+    if (state.replay) observedReplayIdRef.current = state.replay.id;
+    if (
+      activeReplay &&
+      ((state.sessionId ?? "") !== activeReplay.snapshot.sessionId ||
+        state.sessionClosedReason ||
+        (state.replay && state.replay.id !== activeReplay.snapshot.id) ||
+        (!state.replay && observedReplayIdRef.current === activeReplay.snapshot.id))
+    ) {
+      setActiveReplay(null);
+      setHistoryDialogOpen(false);
+    }
+  }, [activeReplay, state.replay?.id, state.sessionId, state.sessionClosedReason]);
+
+  useEffect(() => {
+    if (!state.replay || activeReplay) return;
+    let mounted = true;
+    void getChatReplay(state.replay.id)
+      .then((replay) => {
+        if (mounted) setActiveReplay((current) => current ?? replay);
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, [state.replay?.id, activeReplay]);
 
   const closeSurface = () => {
     return closeChatSurface({
@@ -717,12 +920,101 @@ export function ChatStagePage() {
     ],
   );
 
-  const dialogSurfaceVisible = viewModel.layers.dialog || viewModel.layers.options;
-  const dialogToolbar = (
+  const {
+    changeOcrScope,
+    ocrScope,
+    playbackAudio,
+    sharing: screenSharing,
+    stream: screenShareStream,
+    starting: screenShareStarting,
+    toggleSharing: toggleScreenShare,
+  } = useScreenShareCapture({
+    captureRequestSeq: state.perceptionCaptureRequestSeq,
+    captureIntervalSec: state.perception?.captureIntervalSec ?? 0.5,
+    diffThreshold: state.perception?.diffThreshold ?? 0.035,
+    frameMaxSide: state.perception?.frameMaxSide ?? 512,
+    ocrIntervalSec: state.perception?.ocrIntervalSec ?? 1,
+    ocrEnabled: state.perception?.ocrEnabled ?? false,
+    proactiveEnabled: state.perception?.proactiveEnabled ?? true,
+    playbackAudioSettings: state.perception?.screenPlaybackAudioSettings,
+    characterAudioPlaying: viewModel.status === "speaking" || viewModel.status === "replaying",
+    onBlackScreen: () => {
+      showToast({ kind: "info", title: t("chat.perception.blackFrame") });
+    },
+    onError: (error, unsupported) => {
+      showToast({
+        kind: "error",
+        message: unsupported
+          ? t("chat.perception.shareUnsupported")
+          : error instanceof Error
+            ? error.message
+            : undefined,
+        title: t("chat.perception.shareFailed"),
+      });
+    },
+    onFrameError: () => {
+      showToast({ kind: "error", title: t("chat.perception.frameUploadFailed") });
+    },
+    onStarted: () => {
+      showToast({ kind: "info", title: t("chat.perception.shareStarted") });
+    },
+    onStopped: () => {
+      showToast({ kind: "info", title: t("chat.perception.shareStopped") });
+    },
+    sessionClosed: Boolean(state.sessionClosedReason),
+  });
+  useEffect(() => {
+    if (!screenSharing) setScreenSettingsOpen(false);
+  }, [screenSharing]);
+
+  const dialogSurfaceVisible = Boolean(activeReplay) || viewModel.layers.dialog || viewModel.layers.options;
+  useLayoutEffect(() => {
+    const toolbar = dialogToolbarLayerRef.current;
+    const stage = toolbar?.parentElement;
+    if (
+      !toolbar ||
+      !stage ||
+      !dialogSurfaceVisible ||
+      miniAvatarActive ||
+      activeReplay ||
+      dialogToolbarPlacement !== "input"
+    ) {
+      return;
+    }
+
+    // Keep the dialog stack clear of the detached input toolbar.
+    const updateClearance = () => {
+      const { height } = toolbar.getBoundingClientRect();
+      stage.style.setProperty(
+        "--chat-dialog-toolbar-clearance",
+        `calc(var(--chat-dialog-toolbar-layer-bottom) + ${height}px + var(--chat-dialog-toolbar-gap))`,
+      );
+    };
+    updateClearance();
+    const observer = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(updateClearance);
+    observer?.observe(toolbar);
+    return () => {
+      observer?.disconnect();
+      stage.style.removeProperty("--chat-dialog-toolbar-clearance");
+    };
+  }, [activeReplay, dialogSurfaceVisible, dialogToolbarPlacement, miniAvatarActive, runtimeConfig.windowScale]);
+
+  const dialogToolbar = activeReplay ? (
+    <ReplayControls
+      replay={activeReplay}
+      progress={state.replay}
+      onExit={(toHistory) => {
+        setActiveReplay(null);
+        setRuntimeConfig((current) => ({ ...current, auto: false }));
+        setHistoryDialogOpen(toHistory);
+      }}
+    />
+  ) : (
     <DialogStageControls
       onEditConversation={() => setConversationEditorOpen(true)}
       asrEnabled={viewModel.asrEnabled}
       auto={runtimeConfig.auto}
+      autoOutfitSwitch={state.autoOutfitSwitch ?? true}
       bgmVolume={runtimeConfig.bgmVolume}
       effectVolume={runtimeConfig.effectVolume}
       closeLabel={t(standaloneDesktopWindow ? "desktop.titlebar.close" : "chat.toolbar.close")}
@@ -731,6 +1023,7 @@ export function ChatStagePage() {
       hideCloseButton={standaloneDesktopWindow}
       longPressTalk={runtimeConfig.longPressTalk}
       locked={dialogControlsLocked}
+      memoryMode={state.memoryMode}
       onAutoChange={(auto) => setRuntimeConfig((current) => ({ ...current, auto }))}
       onBgmVolumeChange={updateRuntimeBgmVolume}
       onEffectVolumeChange={updateRuntimeEffectVolume}
@@ -741,12 +1034,16 @@ export function ChatStagePage() {
       onFlushBatch={() => void sendCommand({ type: "flush-input-batch" })}
       onLongPressTalkChange={updateRuntimeLongPressTalk}
       onLockedChange={setDialogControlsLocked}
-      onOpenBranches={() => setBranchDialogOpen(true)}
       onOpenHistory={openHistoryDialog}
       onOpenPluginPage={openPluginPage}
+      onOpenScreenSettings={() => setScreenSettingsOpen(true)}
+      onToggleScreenShare={isRemoteMobileAccessPage() || standalone ? undefined : toggleScreenShare}
       onTurnOptionsChange={updateTurnOptions}
-      showBranches={conversationTreeEnabled}
-      showAsrControl={!viewModel.layers.input}
+      outfitCatalog={state.outfitCatalog}
+      outfits={state.outfits}
+      screenShareStarting={screenShareStarting}
+      screenSharing={screenSharing}
+      showAsrControl={!viewModel.layers.input && !standalone}
       turnOptions={state.turnOptions}
       turnState={state.turnState}
     />
@@ -756,11 +1053,16 @@ export function ChatStagePage() {
     <>
       {overlayTarget ? <PluginPageOverlay onClose={closePluginPageOverlay} target={overlayTarget} /> : null}
       <main
+        ref={stageRef}
         className="chat-stage"
+        data-mini-avatar={miniAvatarActive ? "true" : "false"}
+        data-standalone={standalone ? "true" : "false"}
+        data-replaying={activeReplay || state.replay ? "true" : undefined}
+        data-replay-recording={capturingReplay ? "true" : undefined}
         data-background={transparentBackground ? "transparent" : "media"}
         data-click-through={clickThroughEnabled ? "true" : "false"}
-        data-stat-visible={statsVisible ? "true" : "false"}
-        data-token-visible={tokenUsageVisible ? "true" : "false"}
+        data-stat-visible={statsVisible && !miniAvatarActive ? "true" : "false"}
+        data-token-visible={tokenUsageVisible && !miniAvatarActive ? "true" : "false"}
         onContextMenuCapture={handleStageContextMenu}
         onFocusCapture={handleStageFocus}
         onPointerDownCapture={handleStagePointerDown}
@@ -768,16 +1070,24 @@ export function ChatStagePage() {
         onPointerMoveCapture={handleStagePointerMove}
         style={stageStyle}
       >
-        <StandaloneDesktopResizeHandles hidden={!standaloneDesktopWindow} />
+        <StandaloneDesktopResizeHandles hidden={!standaloneDesktopWindow || miniAvatarActive} />
         <TopStageTools
-          autoHide={runtimeConfig.immersiveMode && runtimeConfig.autoHideTopTools}
-          hidden={!viewModel.layers.toolbar}
+          autoHide={!activeReplay && runtimeConfig.immersiveMode && runtimeConfig.autoHideTopTools}
+          hidden={!viewModel.layers.toolbar || miniAvatarActive}
+          miniAvatarDisabled={Boolean(activeReplay || state.replay)}
           onCloseDesktopWindow={closeSurface}
+          onEnterMiniAvatar={remoteMobileAccess ? undefined : enterMiniAvatarMode}
           onOpenPluginPage={openPluginPage}
+          onOpenRuntimeMode={!isTauriDesktop() ? () => setRuntimeModeOpen(true) : undefined}
+          onOpenWorkspace={
+            !isTauriDesktop()
+              ? () => navigate(getRuntimeTarget() === "toy" ? "/settings/characters" : "/settings/templates")
+              : undefined
+          }
           onThemePickerOpenChange={setThemePickerOpen}
           onTokenUsageOpenChange={setTokenUsageOpen}
           standaloneDesktopWindow={standaloneDesktopWindow}
-          status={viewModel.statusText}
+          status={activeReplay ? "replaying" : viewModel.statusText}
           themePickerOpen={themePickerOpen}
           tokenUsageAvailable={Boolean(viewModel.tokenUsageText)}
           tokenUsageOpen={tokenUsageOpen}
@@ -785,12 +1095,14 @@ export function ChatStagePage() {
           transportState={viewModel.transportState}
         />
         <BackgroundLayer
-          hidden={!viewModel.layers.background}
+          hidden={!viewModel.layers.background || miniAvatarActive}
           onDragStart={standaloneDesktopWindow && !transparentBackground ? handleWindowDrag : undefined}
           path={viewModel.backgroundPath}
           transparent={transparentBackground}
         />
         <ChatSoundPlayer
+          ref={soundPlayerRef}
+          voicePaused={Boolean(state.replay?.paused)}
           key={state.sessionId}
           bgmPath={viewModel.bgmPath}
           bgmVolume={runtimeConfig.bgmVolume}
@@ -798,10 +1110,17 @@ export function ChatStagePage() {
           commands={state.audioCommands}
           onPlaybackSignal={handlePlaybackSignal}
         />
-        <CgLayer hidden={!viewModel.layers.cg} path={viewModel.cgPath} />
-        <EffectImageLayer effect={state.effectImage} />
+        <CgLayer
+          hidden={!viewModel.layers.cg || miniAvatarActive}
+          onExit={exitCg}
+          onSave={() => void saveCg()}
+          path={viewModel.cgPath}
+          saving={savingCg}
+          standaloneDesktopWindow={standaloneDesktopWindow}
+        />
+        {!miniAvatarActive ? <EffectImageLayer effect={state.effectImage} /> : null}
         <SpriteLayer
-          hidden={!viewModel.layers.sprites}
+          hidden={!viewModel.layers.sprites || miniAvatarActive}
           onDragStart={standaloneDesktopWindow ? handleWindowDrag : undefined}
           runtimeScaleForSprite={(sprite, index) => runtimeSpriteScale(runtimeConfig, sprite, index)}
           runtimeFramingForSprite={(sprite, index) => runtimeSpriteFraming(runtimeConfig, sprite, index)}
@@ -810,31 +1129,51 @@ export function ChatStagePage() {
           thinkingCharacterName={viewModel.thinkingCharacterName}
           sprites={stageSprites}
         />
-        <StatLayer stats={viewModel.stats} />
-        <StoryDebugPanel story={viewModel.story} />
-        <TokenUsageLayer hidden={!tokenUsageVisible} text={viewModel.tokenUsageText} />
-        <BusyLayer hidden={!viewModel.layers.busy} text={viewModel.busyText} />
+        <ReactionBubble
+          hidden={
+            miniAvatarActive ||
+            Boolean(activeReplay || state.replay) ||
+            viewModel.status === "streaming" ||
+            viewModel.status === "speaking" ||
+            typingDialog
+          }
+          reaction={viewModel.spriteReaction}
+          sprites={stageSprites}
+        />
+        {!miniAvatarActive ? <StatLayer stats={viewModel.stats} /> : null}
+        {!miniAvatarActive ? <StoryDebugPanel story={viewModel.story} /> : null}
+        <TokenUsageLayer hidden={!tokenUsageVisible || miniAvatarActive} text={viewModel.tokenUsageText} />
+        <BusyLayer hidden={!viewModel.layers.busy || miniAvatarActive} text={viewModel.busyText} />
         <NotificationLayer
-          hidden={!viewModel.layers.notification}
+          hidden={!viewModel.layers.notification || miniAvatarActive}
           spritesVisible={viewModel.layers.sprites && stageSprites.length > 0}
           text={viewModel.notificationText}
         />
         <div
-          aria-hidden={!dialogSurfaceVisible}
-          className={layerClassName("dialog-stack", !dialogSurfaceVisible)}
-          hidden={!dialogSurfaceVisible}
+          aria-hidden={!dialogSurfaceVisible || miniAvatarActive}
+          className={layerClassName("dialog-stack", !dialogSurfaceVisible || miniAvatarActive)}
+          hidden={!dialogSurfaceVisible || miniAvatarActive}
         >
-          {viewModel.layers.options ? (
+          {miniAvatarActive ? null : viewModel.layers.options ? (
             <>
               {viewModel.toolConfirmation ? (
                 <ToolConfirmationLayer confirmation={viewModel.toolConfirmation} onResolve={resolveToolConfirmation} />
               ) : (
-                <OptionsLayer hidden={false} onSelect={submitOption} options={viewModel.options} />
+                <OptionsLayer
+                  hidden={false}
+                  onSelect={submitOption}
+                  options={viewModel.options}
+                  readOnly={Boolean(activeReplay || state.replay)}
+                  selectedIndex={state.replaySelectedIndex}
+                />
               )}
-              {!dialogToolbarDetached ? <div className="dialog-layer__toolbar">{dialogToolbar}</div> : null}
+              {!dialogToolbarDetached && !activeReplay ? (
+                <div className="dialog-layer__toolbar">{dialogToolbar}</div>
+              ) : null}
             </>
           ) : (
             <DialogLayer
+              readOnly={Boolean(activeReplay || state.replay)}
               canAdvance={viewModel.layers.dialog && !typingDialog && dialogTotalCharacters > 0}
               characterName={viewModel.dialogCharacterName}
               playerPortrait={playerPortraitForDialog(
@@ -842,27 +1181,28 @@ export function ChatStagePage() {
                 viewModel.dialogCharacterName,
                 viewModel.dialogText,
               )}
-              hidden={!viewModel.layers.dialog}
+              hidden={!viewModel.layers.dialog || miniAvatarActive}
               htmlNodes={displayedDialog.nodes}
               onAdvance={advanceDialog}
               onOpenPluginPage={openPluginPage}
               onSkip={typingDialog ? advanceDialog : undefined}
               text={typingDialog ? displayedDialog.text : viewModel.dialogText}
               textDirection={dialogTextDirection}
-              toolbar={dialogToolbarDetached ? undefined : dialogToolbar}
+              toolbar={dialogToolbarDetached || activeReplay ? undefined : dialogToolbar}
               typing={typingDialog}
             />
           )}
         </div>
-        {dialogToolbarDetached ? (
+        {!miniAvatarActive && (dialogToolbarDetached || activeReplay) ? (
           <div
             aria-hidden={!dialogSurfaceVisible}
             className={layerClassName("dialog-toolbar-layer", !dialogSurfaceVisible)}
             data-chat-stage-hitbox="true"
             data-locked={dialogControlsLocked ? "true" : "false"}
-            data-placement={dialogToolbarPlacement}
+            data-placement={activeReplay ? "input" : dialogToolbarPlacement}
             data-reveal={dialogToolbarReveal}
             hidden={!dialogSurfaceVisible}
+            ref={dialogToolbarLayerRef}
           >
             {dialogToolbar}
           </div>
@@ -872,10 +1212,11 @@ export function ChatStagePage() {
           asrLoading={viewModel.asrLoading}
           asrRunning={viewModel.asrRunning}
           attachments={viewModel.inputAttachments}
-          autoHide={runtimeConfig.immersiveMode && runtimeConfig.autoHideInput}
+          autoHide={!activeReplay && !state.replay && runtimeConfig.immersiveMode && runtimeConfig.autoHideInput}
           batchEnabled={state.turnOptions.batchEnabled}
-          disabled={viewModel.inputDisabled}
-          hidden={!viewModel.layers.input}
+          disabled={Boolean(activeReplay) || viewModel.inputDisabled}
+          locked={Boolean(activeReplay || state.replay)}
+          hidden={miniAvatarActive || (!viewModel.layers.input && !activeReplay && !state.replay)}
           inputLayout={inputLayout}
           onChange={(text) => dispatch({ text, type: "setDraft" })}
           onCommand={sendCommand}
@@ -893,23 +1234,109 @@ export function ChatStagePage() {
           }
           onSubmit={submit}
           previousMessages={recentInputs}
+          replayProgress={state.replay}
           submitDisabled={attachmentUploadPending}
           value={viewModel.inputDraft}
         />
+        {miniAvatarActive ? (
+          <MiniAvatarStage
+            asrEnabled={viewModel.asrEnabled}
+            asrLoading={viewModel.asrLoading}
+            asrRunning={viewModel.asrRunning}
+            attachments={viewModel.inputAttachments}
+            autoPlay={runtimeConfig.auto}
+            batchEnabled={state.turnOptions.batchEnabled}
+            busyText={viewModel.busyText}
+            canAdvance={
+              (viewModel.status === "speaking" || viewModel.status === "streaming" || Boolean(viewModel.story)) &&
+              viewModel.layers.dialog &&
+              !typingDialog &&
+              dialogTotalCharacters > 0
+            }
+            dialogCharacterName={viewModel.dialogCharacterName}
+            dialogText={typingDialog ? displayedDialog.text : viewModel.dialogText}
+            dialogVisible={viewModel.layers.dialog}
+            dockSide={miniDockSide}
+            inputDisabled={viewModel.inputDisabled}
+            inputValue={viewModel.inputDraft}
+            locked={Boolean(activeReplay || state.replay)}
+            longPressTalk={runtimeConfig.longPressTalk}
+            miniInputShortcut={runtimeConfig.miniInputShortcut}
+            notificationText={viewModel.notificationText}
+            notificationVisible={viewModel.layers.notification}
+            onAdvance={advanceDialog}
+            onAutoPlayChange={(auto) => setRuntimeConfig((current) => ({ ...current, auto }))}
+            onChangeInput={(text) => dispatch({ text, type: "setDraft" })}
+            onCommand={sendCommand}
+            onDesktopDragEnd={syncDesktopMiniDockSide}
+            onDropFiles={handleDropFiles}
+            onExitMiniMode={exitMiniAvatarMode}
+            onFlushBatch={() => sendCommand({ type: "flush-input-batch" })}
+            onInputActivity={updateInputActivity}
+            onInputPinnedChange={setMiniInputPinned}
+            onLongPressTalkChange={updateRuntimeLongPressTalk}
+            onPickAttachments={pickAttachments}
+            onRemoveAttachment={(attachment) =>
+              dispatch({
+                attachments: state.inputAttachments.filter(
+                  (candidate) => candidate.kind !== attachment.kind || candidate.path !== attachment.path,
+                ),
+                type: "setAttachments",
+              })
+            }
+            onResolveToolConfirmation={resolveToolConfirmation}
+            onSelectOption={submitOption}
+            onSubmit={submit}
+            onToggleScreenShare={remoteMobileAccess ? undefined : toggleScreenShare}
+            options={viewModel.options}
+            optionsVisible={viewModel.layers.options}
+            playerPortrait={playerPortraitForDialog(
+              state.playerPortrait,
+              viewModel.dialogCharacterName,
+              viewModel.dialogText,
+            )}
+            previousMessages={recentInputs}
+            runtimeFramingForSprite={(sprite, index) => runtimeSpriteFraming(runtimeConfig, sprite, index)}
+            screenShareStarting={screenShareStarting}
+            screenSharing={screenSharing}
+            shortcutDisabled={modalOpen}
+            spriteReaction={viewModel.spriteReaction}
+            sprites={stageSprites}
+            standaloneDesktopWindow={standaloneDesktopWindow}
+            status={viewModel.status}
+            submitDisabled={attachmentUploadPending}
+            thinkingCharacterName={viewModel.thinkingCharacterName}
+            toolConfirmation={viewModel.toolConfirmation}
+            typing={typingDialog}
+            userDisplayName={viewModel.userDisplayName}
+          />
+        ) : null}
         <HistoryDialog
+          recordAudio={() => {
+            if (!soundPlayerRef.current) throw new Error("Stage audio is unavailable");
+            return soundPlayerRef.current.recordAudio();
+          }}
+          replayDisabled={
+            Boolean(state.sessionClosedReason) ||
+            ["generating", "streaming", "speaking", "initializing"].includes(viewModel.status) ||
+            viewModel.asrRunning ||
+            Boolean(viewModel.toolConfirmation) ||
+            state.turnState.pendingCount > 0 ||
+            attachmentUploadPending
+          }
+          onStartReplay={(replay) => {
+            stopHistoryReplay();
+            setHistoryDialogOpen(false);
+            setActiveReplay(replay);
+          }}
           entries={state.historyEntries ?? []}
-          forkEnabled={forkHistoryEnabled}
           loading={historyLoading}
           onClear={() => void sendCommand({ type: "clear-history" })}
           onClose={() => {
             stopHistoryReplay();
             setHistoryDialogOpen(false);
           }}
-          onCopy={() => void sendCommand({ type: "copy-history" })}
-          onFork={(userIndex) => {
-            setHistoryDialogOpen(false);
-            void sendCommand({ payload: { userIndex }, type: "fork-history" });
-          }}
+          onExportImage={(blob) => exportHistory(blob, "png")}
           onRefresh={() => {
             void refreshHistory();
           }}
@@ -917,21 +1344,21 @@ export function ChatStagePage() {
           onRevert={(userIndex) => setConfirmRevertUserIndex(userIndex)}
           onSaveVoice={(voiceId) => void sendCommand({ payload: voiceId, type: "save-history-voice" })}
           onToggleVoiceArchive={(enabled) => void sendCommand({ payload: enabled, type: "set-voice-archive" })}
-          open={historyDialogOpen}
+          open={historyDialogOpen && !historyExport}
           userDisplayName={viewModel.userDisplayName}
           voiceArchiveEnabled={state.voiceArchiveEnabled === true}
         />
-        {conversationTreeEnabled ? (
-          <ConversationTreeDialog
-            onClose={() => setBranchDialogOpen(false)}
-            onRenameBranch={(branchId, label) => {
-              void sendCommand({ payload: { branchId, label }, type: "rename-branch" });
-            }}
-            onSwitchBranch={(branchId) => {
-              void sendCommand({ payload: branchId, type: "switch-branch" });
-            }}
-            open={branchDialogOpen}
-            tree={state.conversationTree}
+        {historyExport && <HistoryExportDialog result={historyExport} onClose={() => setHistoryExport(undefined)} />}
+        {screenSettingsOpen && screenShareStream ? (
+          <ScreenShareSettingsDialog
+            currentScene={state.perception?.rpCache?.currentScene}
+            ocrEnabled={Boolean(state.perception?.ocrEnabled)}
+            onClose={() => setScreenSettingsOpen(false)}
+            onScopeChange={changeOcrScope}
+            playbackAudio={playbackAudio}
+            proactiveEnabled={state.perception?.proactiveEnabled ?? true}
+            scope={ocrScope}
+            stream={screenShareStream}
           />
         ) : null}
         <ChatConfigDialog
@@ -949,6 +1376,7 @@ export function ChatStagePage() {
           effectiveNameText={effectiveNameText}
           immersiveMode={runtimeConfig.immersiveMode}
           mainThemeColor={mainThemeColor}
+          miniInputShortcut={runtimeConfig.miniInputShortcut}
           nameText={runtimeConfig.nameText}
           onClose={() => setToolbarConfigOpen(false)}
           onCommand={sendCommand}
@@ -962,6 +1390,7 @@ export function ChatStagePage() {
           onDialogScaleChange={updateRuntimeDialogScale}
           onDialogWidthPctChange={updateRuntimeDialogWidthPct}
           onImmersiveModeChange={updateRuntimeImmersiveMode}
+          onMiniInputShortcutChange={updateRuntimeMiniInputShortcut}
           onResetThemeAppearance={resetRuntimeThemeAppearance}
           onOpenPluginPage={openPluginPage}
           onSpriteOffsetXChange={updateRuntimeSpriteOffsetX}
@@ -1041,6 +1470,7 @@ export function ChatStagePage() {
         open={confirmRevertUserIndex != null}
         title={t("chat.history.revertConfirmTitle")}
       />
+      {runtimeModeOpen ? <RuntimeModeDialog onClose={() => setRuntimeModeOpen(false)} open={runtimeModeOpen} /> : null}
     </>
   );
 }

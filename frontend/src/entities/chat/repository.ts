@@ -9,6 +9,7 @@ import type {
   ChatResumeOverrides,
   ChatRuntimeProcessState,
   ChatSnapshot,
+  MemoryMode,
   RuntimeDependencyInstallInput,
   RuntimeDependencyInstallResult,
   TaskProgressOptions,
@@ -31,6 +32,10 @@ export const reconfigureConversation = (
   options?: TaskProgressOptions<ChatSnapshot>,
 ) => getPlatform().chat.reconfigureConversation(id, payload, options);
 export const renameConversation = (id: string, title: string) => getPlatform().chat.renameConversation(id, title);
+export const updateConversationSettings = (
+  id: string,
+  input: { memoryMode?: MemoryMode; autoOutfitSwitch?: boolean },
+) => getPlatform().chat.updateConversationSettings(id, input);
 export const deleteConversation = (id: string) => getPlatform().chat.deleteConversation(id);
 
 export async function getConversationSession(id: string): Promise<TemplateLaunchSession> {
@@ -57,9 +62,16 @@ export async function getConversationSession(id: string): Promise<TemplateLaunch
     initSpritePath: payload.initSpritePath ?? "",
     showInitialSprite: payload.showInitialSprite ?? true,
     mediaSelectionMode: payload.mediaSelectionMode ?? "indexed",
+    memoryMode: payload.memoryMode ?? options.memoryMode,
+    autoOutfitSwitch: payload.autoOutfitSwitch ?? options.autoOutfitSwitch,
+    initialOutfits: payload.initialOutfits ?? options.initialOutfits,
     roomId: payload.roomId ?? "",
     scenario: payload.scenario ?? "",
+    ...(options.baseScenario !== undefined ? { baseScenario: options.baseScenario } : {}),
+    ...(options.selectedPresetIds !== undefined ? { selectedPresetIds: options.selectedPresetIds } : {}),
+    ...(options.appliedPresets !== undefined ? { appliedPresets: options.appliedPresets } : {}),
     system: payload.system ?? "",
+    ...(options.systemManuallyEdited !== undefined ? { systemManuallyEdited: options.systemManuallyEdited } : {}),
     selectedCharacters: payload.characters,
     templateFileDropdown: payload.templateId,
     useCg: payload.useCg ?? false,
@@ -122,6 +134,16 @@ export function getChatHistory(): Promise<ChatHistoryEntry[]> {
 export function getChatHistoryVoice(voiceId: string): Promise<string[]> {
   return getPlatform().chat.getHistoryVoice(voiceId);
 }
+
+export const prepareChatReplay = () => getPlatform().chat.prepareReplay();
+export const getChatReplay = (id: string) => getPlatform().chat.getReplay(id);
+export const startChatReplay = (id: string, start: string, end: string, generate: boolean) =>
+  getPlatform().chat.startReplay(id, start, end, generate);
+export const generateChatReplayVoice = (id: string, key: string, signal?: AbortSignal) =>
+  getPlatform().chat.generateReplayVoice(id, key, signal);
+export const cancelChatReplay = (id: string) => getPlatform().chat.cancelReplay(id);
+export const controlChatReplay = (id: string, control: import("../../shared/platform/types").ChatReplayControl) =>
+  getPlatform().chat.controlReplay(id, control);
 
 export function subscribeChat(listener: (snapshot: ChatSnapshot) => void): () => void {
   return getPlatform().chat.subscribe(listener);

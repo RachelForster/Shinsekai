@@ -44,7 +44,9 @@ def make_empty_chat_snapshot() -> Dict[str, Any]:
         "effectImage": None,
         "loopingEffects": [],
         "options": [],
+        "perception": None,
         "pluginPagePresentations": [],
+        "spriteReaction": None,
         "sprites": [],
         "stats": [],
         "status": "idle",
@@ -174,6 +176,18 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
         )
         return next_snapshot
 
+    if event_type == "replay.state":
+        next_snapshot["replay"] = event.get("replay")
+        if event.get("replay"):
+            next_snapshot["status"] = "replaying"
+        return next_snapshot
+
+    if event_type == "presentation.restore":
+        from application.chat.presentation.replay import PRESENTATION_KEYS
+        next_snapshot.update({k: v for k, v in event.get("presentation", {}).items() if k in PRESENTATION_KEYS})
+        next_snapshot["replaySelectedIndex"] = None
+        return next_snapshot
+
     if event_type == "dialog.end":
         _clear_transient_notification_state(next_snapshot)
         full_html = str(event.get("fullHtml") or "")
@@ -234,6 +248,10 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
                 next_sprite[axis] = event.get(axis)
         if event.get("identityKey"):
             next_sprite["identityKey"] = str(event["identityKey"])
+        if event.get("mouthSync"):
+            next_sprite["mouthSync"] = str(event["mouthSync"])
+        if isinstance(event.get("portraitCrop"), dict):
+            next_sprite["portraitCrop"] = dict(event["portraitCrop"])
         current.append(next_sprite)
         next_snapshot["sprites"] = current
         return next_snapshot
@@ -272,6 +290,7 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
         return next_snapshot
 
     if event_type == "options.show":
+        next_snapshot["replaySelectedIndex"] = event.get("selectedIndex")
         _clear_transient_notification_state(next_snapshot)
         next_snapshot["options"] = [
             dict(item) if isinstance(item, dict) else str(item)
@@ -328,12 +347,6 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
         ]
         if isinstance(event.get("voiceArchiveEnabled"), bool):
             next_snapshot["voiceArchiveEnabled"] = event["voiceArchiveEnabled"]
-        return next_snapshot
-
-    if event_type == "conversation.tree":
-        tree = event.get("tree")
-        if isinstance(tree, dict):
-            next_snapshot["conversationTree"] = dict(tree)
         return next_snapshot
 
     if event_type == "plugin.page.present":
@@ -594,6 +607,60 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
             next_snapshot["status"] = "paused"
         return next_snapshot
 
+    if event_type == "perception.state":
+        perception = event.get("perception")
+        if isinstance(perception, dict):
+            next_snapshot["perception"] = dict(perception)
+        return next_snapshot
+
+    if event_type == "outfit.state":
+        outfits = event.get("outfits")
+        if isinstance(outfits, dict):
+            next_snapshot["outfits"] = {
+                str(cname): dict(state_item)
+                for cname, state_item in outfits.items()
+                if str(cname).strip() and isinstance(state_item, dict)
+            }
+        if isinstance(event.get("autoOutfitSwitch"), bool):
+            next_snapshot["autoOutfitSwitch"] = bool(event["autoOutfitSwitch"])
+        catalog = event.get("outfitCatalog")
+        if isinstance(catalog, dict):
+            next_snapshot["outfitCatalog"] = {
+                str(cname): dict(entry)
+                for cname, entry in catalog.items()
+                if str(cname).strip() and isinstance(entry, dict)
+            }
+        return next_snapshot
+
+    if event_type == "memory.mode":
+        mode = str(event.get("memoryMode") or "").strip()
+        if mode in {"isolated", "shared", "inherit_readonly"}:
+            next_snapshot["memoryMode"] = mode
+        return next_snapshot
+
+    if event_type == "sprite.reaction":
+        try:
+            duration_ms = max(800, int(event.get("durationMs") or 3600))
+            triggered_at = int(event.get("ts") or 0)
+        except (TypeError, ValueError):
+            duration_ms = 3600
+            triggered_at = 0
+        text = str(event.get("text") or "").strip()
+        if text:
+            next_snapshot["spriteReaction"] = {
+                "characterName": str(event.get("characterName") or ""),
+                "text": text,
+                "durationMs": duration_ms,
+                "expiresAt": triggered_at + duration_ms,
+                "seq": int(event.get("seq") or 0),
+            }
+        else:
+            next_snapshot["spriteReaction"] = None
+        return next_snapshot
+
+    if event_type == "perception.capture_request":
+        return next_snapshot
+
     if event_type == "reply.finished":
         _clear_transient_notification_state(next_snapshot)
         next_snapshot["activePlayback"] = None
@@ -608,8 +675,10 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
         next_snapshot["loopingEffects"] = []
         next_snapshot["notificationText"] = str(event.get("reason") or "")
         next_snapshot["options"] = []
+        next_snapshot["perception"] = None
         next_snapshot["pluginPagePresentations"] = []
         next_snapshot["sessionClosedReason"] = str(event.get("reason") or "")
+        next_snapshot["spriteReaction"] = None
         next_snapshot["status"] = "idle"
         next_snapshot["systemMessageText"] = ""
         next_snapshot["toolConfirmation"] = None

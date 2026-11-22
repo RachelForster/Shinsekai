@@ -1,11 +1,17 @@
-import { useId, type ChangeEvent } from "react";
-import { Languages, RotateCcw } from "lucide-react";
+import { useEffect, useId, useState, type ChangeEvent, type KeyboardEvent } from "react";
+import { Keyboard, Languages, RotateCcw } from "lucide-react";
 
 import { useI18n } from "../../../shared/i18n";
 import { PluginSlot, type PluginPageTarget } from "../../../shared/plugin/PluginSlot";
 import type { ChatCommand, ChatTurnOptions } from "../../../shared/platform/types";
 import { Button, Select, Switch } from "../../../shared/ui";
 import type { ChatStageSprite } from "../chatState";
+import {
+  DEFAULT_MINI_INPUT_SHORTCUT,
+  formatMiniInputShortcut,
+  normalizeMiniInputShortcut,
+  shortcutFromKeyboardEvent,
+} from "../miniInputShortcut";
 import { ChatStageModal } from "./ChatStageModal";
 import { SpriteFramingControl } from "./SpriteFramingControl";
 import type { VisualFraming } from "../../../modules/character-visual";
@@ -114,6 +120,7 @@ export function ChatConfigDialog({
   effectiveNameText,
   immersiveMode,
   mainThemeColor,
+  miniInputShortcut = DEFAULT_MINI_INPUT_SHORTCUT,
   nameText,
   onAlwaysOnTopChange,
   onAutoHideInputChange,
@@ -127,6 +134,7 @@ export function ChatConfigDialog({
   onDialogScaleChange,
   onDialogWidthPctChange,
   onImmersiveModeChange,
+  onMiniInputShortcutChange,
   onResetThemeAppearance,
   onOpenPluginPage,
   onSpriteOffsetXChange,
@@ -163,6 +171,7 @@ export function ChatConfigDialog({
   effectiveNameText?: ChatStageTextStyleConfig;
   immersiveMode: boolean;
   mainThemeColor: string;
+  miniInputShortcut?: string;
   nameText: ChatStageTextStyleConfig;
   onAlwaysOnTopChange: (value: boolean) => void;
   onAutoHideInputChange: (value: boolean) => void;
@@ -176,6 +185,7 @@ export function ChatConfigDialog({
   onDialogScaleChange: (value: number) => void;
   onDialogWidthPctChange: (value: number | null) => void;
   onImmersiveModeChange: (value: boolean) => void;
+  onMiniInputShortcutChange?: (value: string) => void;
   onResetThemeAppearance: () => void;
   onOpenPluginPage: (target: PluginPageTarget) => void;
   onSpriteOffsetXChange: (value: number) => void;
@@ -200,6 +210,8 @@ export function ChatConfigDialog({
 }) {
   const { t } = useI18n();
   const titleId = useId();
+  const miniShortcutLabelId = useId();
+  const [recordingShortcut, setRecordingShortcut] = useState(false);
   const dialogTextView = effectiveDialogText ?? dialogText;
   const nameTextView = effectiveNameText ?? nameText;
   const dialogBoldChecked = dialogText.boldOverride === true ? dialogText.bold : dialogTextView.bold;
@@ -211,10 +223,46 @@ export function ChatConfigDialog({
   const dialogWidthCustom = dialogWidthPct != null;
   const dialogWidthPctValue = dialogWidthPct ?? runtimeDialogWidthPctDefault;
   const windowScalePercent = Math.round(windowScale * 100);
+  const normalizedMiniShortcut = normalizeMiniInputShortcut(miniInputShortcut, "");
+  const formattedMiniShortcut = formatMiniInputShortcut(normalizedMiniShortcut);
+
+  useEffect(() => {
+    if (!open) {
+      setRecordingShortcut(false);
+    }
+  }, [open]);
 
   if (!open) {
     return null;
   }
+
+  const handleMiniShortcutKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (!recordingShortcut) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.key === "Escape") {
+      setRecordingShortcut(false);
+      return;
+    }
+    if (
+      (event.key === "Backspace" || event.key === "Delete") &&
+      !event.ctrlKey &&
+      !event.altKey &&
+      !event.metaKey &&
+      !event.shiftKey
+    ) {
+      onMiniInputShortcutChange?.("");
+      setRecordingShortcut(false);
+      return;
+    }
+    const recorded = shortcutFromKeyboardEvent(event.nativeEvent);
+    if (recorded) {
+      onMiniInputShortcutChange?.(recorded);
+      setRecordingShortcut(false);
+    }
+  };
 
   const handleTextSpeedChange = (event: ChangeEvent<HTMLInputElement>) => {
     onTextSpeedChange(
@@ -394,6 +442,58 @@ export function ChatConfigDialog({
               onChange={(event) => onAutoHideInputChange(event.target.checked)}
             />
           </div>
+        </section>
+        <section className="chat-config-dialog__section">
+          <h3 className="chat-config-dialog__section-title">{t("chat.config.sectionMiniAvatar")}</h3>
+          <div className="chat-config-dialog__row">
+            <span className="chat-config-dialog__label" id={miniShortcutLabelId}>
+              <Keyboard aria-hidden className="chat-config-dialog__voice-icon" />
+              {t("chat.config.miniInputShortcut")}
+            </span>
+            <div className="chat-config-dialog__shortcut-control">
+              <button
+                aria-labelledby={miniShortcutLabelId}
+                aria-pressed={recordingShortcut}
+                className="chat-config-dialog__shortcut-recorder"
+                data-recording={recordingShortcut ? "true" : "false"}
+                onBlur={() => setRecordingShortcut(false)}
+                onClick={() => setRecordingShortcut((current) => !current)}
+                onKeyDown={handleMiniShortcutKeyDown}
+                type="button"
+              >
+                {recordingShortcut
+                  ? t("chat.config.miniInputShortcutRecording")
+                  : formattedMiniShortcut || t("chat.config.miniInputShortcutUnset")}
+              </button>
+              {normalizedMiniShortcut ? (
+                <Button
+                  aria-label={`${t("chat.config.miniInputShortcut")}: ${t("chat.config.miniInputShortcutClear")}`}
+                  className="chat-config-dialog__shortcut-action"
+                  onClick={() => {
+                    setRecordingShortcut(false);
+                    onMiniInputShortcutChange?.("");
+                  }}
+                  variant="ghost"
+                >
+                  {t("chat.config.miniInputShortcutClear")}
+                </Button>
+              ) : null}
+              {normalizedMiniShortcut !== DEFAULT_MINI_INPUT_SHORTCUT ? (
+                <Button
+                  aria-label={`${t("chat.config.miniInputShortcut")}: ${t("chat.config.miniInputShortcutReset")}`}
+                  className="chat-config-dialog__shortcut-action"
+                  onClick={() => {
+                    setRecordingShortcut(false);
+                    onMiniInputShortcutChange?.(DEFAULT_MINI_INPUT_SHORTCUT);
+                  }}
+                  variant="ghost"
+                >
+                  {t("chat.config.miniInputShortcutReset")}
+                </Button>
+              ) : null}
+            </div>
+          </div>
+          <p className="chat-config-dialog__help">{t("chat.config.miniInputShortcutHelp")}</p>
         </section>
         <section className="chat-config-dialog__section">
           <h3 className="chat-config-dialog__section-title">{t("chat.config.sectionSending")}</h3>

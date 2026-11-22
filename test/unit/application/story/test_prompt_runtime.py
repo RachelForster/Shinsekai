@@ -180,11 +180,8 @@ def test_normal_chat_without_binding_is_untouched(tmp_path):
     adapter.chat.assert_not_called()
 
 
-@pytest.mark.parametrize("command", ["fork-history", "revert-history"])
-def test_branch_selection_uses_full_ui_history_after_model_compaction(
-    tmp_path, command
-):
-    from application.chat.composition import _story_branches
+def test_rollback_uses_full_ui_history_after_model_compaction(tmp_path):
+    from application.chat.composition import _story_history_rollback
 
     state, initial, adapter, hooks = running_story(tmp_path)
     original_generation = initial.active_branch.generation
@@ -204,8 +201,7 @@ def test_branch_selection_uses_full_ui_history_after_model_compaction(
     saved = load_prompt_session(hooks.history_path, hooks.flags)
     assert saved.active_branch.state.current_node_id == "school-lobby"
     assert saved.checkpoint_generation_before_user_index(0) == original_generation
-    body = {"payload": {"userIndex": 0} if command == "fork-history" else 0}
-    _story_branches.sync(state, command, body)
+    _story_history_rollback.restore(state, 0)
     restored = load_prompt_session(hooks.history_path, hooks.flags)
     assert restored.active_branch.state.current_node_id == "school-gate"
     assert restored.active_branch.state.node_turn_count == 0
@@ -371,7 +367,7 @@ def test_story_launch_inherits_normal_workflow_and_template_options_without_savi
             "max_dialog_items": 6,
         },
     )
-    path = tmp_path / "data/config/template_tab_last_launch.json"
+    path = tmp_path / "data/state/ui_state.json"
     before = path.read_bytes()
     route = next(item for item in STORY_ROUTES if item.name == "story.launch-payload")
     launch = route.handler(

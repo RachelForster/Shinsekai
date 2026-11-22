@@ -242,8 +242,8 @@ def test_clearing_story_session_drops_memory_and_document(tmp_path) -> None:
     assert not story_path.exists()
 
 
-def test_fork_history_creates_a_matching_story_branch() -> None:
-    state = _state(enabled=True, fork=True)
+def test_reverting_chat_restores_story_without_creating_another_branch() -> None:
+    state = _state(enabled=True)
     session = _story_session(state.config_manager.feature_flags)
     state.story_session = session
     _handle_chat_command(
@@ -262,14 +262,13 @@ def test_fork_history_creates_a_matching_story_branch() -> None:
 
     snapshot = _handle_chat_command(
         state,
-        {"payload": {"userIndex": 0}, "type": "fork-history"},
+        {"payload": 0, "type": "revert-history"},
     )
 
-    assert snapshot["status"] == "generating"
-    assert "branch-2" in session.branches
-    assert session.active_branch_id == "branch-2"
+    assert snapshot["status"] == "idle"
+    assert list(session.branches) == ["main"]
     assert session.active_branch.state.current_node_id == "transfer-day"
-    assert state.chat_stream.command[1]["payload"]["branchId"] == "branch-2"
+    assert state.chat_stream.command[1]["payload"] == 0
 
 
 def test_story_transition_preserves_template_actor_resources() -> None:
@@ -305,20 +304,6 @@ def test_story_transition_preserves_template_actor_resources() -> None:
     assert state.chat_stream.snapshot["sprites"] == []
     assert "actorContext" not in state.chat_stream.snapshot
     assert set(story_snapshot_patch(state)) == {"story"}
-
-
-def test_fork_history_skips_story_transition_when_flag_is_off() -> None:
-    state = _state(enabled=False, fork=True)
-    event_seq = state.chat_stream.snapshot["eventSeq"]
-
-    snapshot = _handle_chat_command(
-        state,
-        {"payload": {"userIndex": 0}, "type": "fork-history"},
-    )
-
-    assert snapshot["status"] == "generating"
-    assert state.chat_stream.published == []
-    assert state.chat_stream.snapshot["eventSeq"] == event_seq
 
 
 def test_publish_story_transition_is_noop_when_flag_is_off() -> None:

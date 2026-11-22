@@ -9,6 +9,36 @@ from sdk.adapters.avatar import (
     ModelRuntimeInstaller,
 )
 from sdk.adapters.llm import LLMAdapter
+from sdk.adapters.memory import (
+    EmbeddingProvider,
+    EmbeddingProviderContribution,
+    MemoryExtractorPort,
+    MemoryRepository,
+    MemoryRepositoryContribution,
+    RecallPlanner,
+    RetentionPolicy,
+    StaticVectorStorePort,
+)
+from sdk.adapters.session import (
+    CompactCheckpoint,
+    ConversationSessionPort,
+    OutfitState,
+    SessionStoreContribution,
+    TruncateReport,
+    TurnNode,
+)
+from sdk.adapters.storage import (
+    BackendKind,
+    BackendStatus,
+    CatalogStore,
+    Codec,
+    DocumentStore,
+    ManagedBackend,
+    Migratable,
+    ReadableCatalog,
+    ReadableDocument,
+    UnitOfWork,
+)
 from sdk.llm_response import ChatResponse, ResponseCodec, ResponseDelta
 from sdk.adapters.t2i import T2IAdapter
 from sdk.adapters.tts import TTSAdapter
@@ -22,7 +52,31 @@ from sdk.adapters.vision import (
 __all__ = [
     "ASRAdapter",
     "AvatarFormatContribution",
+    "BackendKind",
+    "BackendStatus",
+    "CatalogStore",
+    "Codec",
+    "DocumentStore",
     "LLMAdapter",
+    "ManagedBackend",
+    "Migratable",
+    "CompactCheckpoint",
+    "ConversationSessionPort",
+    "EmbeddingProvider",
+    "EmbeddingProviderContribution",
+    "MemoryExtractorPort",
+    "MemoryRepository",
+    "MemoryRepositoryContribution",
+    "OutfitState",
+    "ReadableCatalog",
+    "ReadableDocument",
+    "RecallPlanner",
+    "RetentionPolicy",
+    "SessionStoreContribution",
+    "StaticVectorStorePort",
+    "TruncateReport",
+    "TurnNode",
+    "UnitOfWork",
     "ChatResponse",
     "ResponseCodec",
     "ResponseDelta",

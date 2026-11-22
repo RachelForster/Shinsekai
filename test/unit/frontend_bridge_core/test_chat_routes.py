@@ -42,11 +42,18 @@ def _request(
 
 def test_chat_route_contracts_remain_stable() -> None:
     assert _contracts() == {
+        ("POST", "/api/chat/replay"),
+        ("POST", "/api/chat/replay/{replay_id}/start"),
+        ("GET", "/api/chat/replay/{replay_id}"),
+        ("POST", "/api/chat/replay/{replay_id}/control"),
+        ("POST", "/api/chat/replay/{replay_id}/voice/{entry_id}"),
+        ("DELETE", "/api/chat/replay/{replay_id}"),
         ("DELETE", "/api/chat/conversations/{conversation_id}"),
         ("GET", "/api/chat/conversations/current"),
         ("GET", "/api/chat/conversations"),
         ("GET", "/api/chat/conversations/{conversation_id}/launch-payload"),
         ("POST", "/api/chat/conversations/{conversation_id}/rename"),
+        ("POST", "/api/chat/conversations/{conversation_id}/settings"),
         ("DELETE", "/api/chat/themes/{theme_id}"),
         ("GET", "/api/chat/history"),
         ("GET", "/api/chat/history-voice/{voice_id}"),

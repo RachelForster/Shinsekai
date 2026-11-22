@@ -1,5 +1,6 @@
 import type { ChatRuntimeStatus, PlayerPortrait } from "../../../shared/platform/types";
 import { parseHtmlFragment, stripHtmlFallback } from "../htmlFragment";
+import { isLegacySystemSnapshotText } from "./legacySnapshotCompat";
 import type { ChatStageState } from "./types";
 
 export const defaultUserDialogSpeaker = "你";
@@ -74,16 +75,6 @@ export function normalizedUserDisplayName(value?: string) {
   return value?.trim() || defaultUserDialogSpeaker;
 }
 
-function isSystemPromptText(value: string) {
-  const text = value.trim();
-  if (!text) {
-    return false;
-  }
-  return /^(已跳过|已选择|选择：|历史|浏览器预览历史|语音识别|正在请求|聊天会话|您的消息已提交|进程已经|当前聊天会话|实时聊天会话)/.test(
-    text,
-  );
-}
-
 export function normalizeTokenUsageText(value: string | undefined, status: ChatRuntimeStatus) {
   const text = value?.trim();
   if (!text || text === status) {
@@ -103,7 +94,11 @@ export function systemPromptTextFromState(state: ChatStageState, dialogText: str
   if (statusMessage && !state.characterName?.trim()) {
     return statusMessage;
   }
-  if (!state.characterName?.trim() && state.dialogHtml === undefined && isSystemPromptText(dialogText)) {
+  if (
+    !state.characterName?.trim() &&
+    state.dialogHtml === undefined &&
+    (state.isSystemDialog || isLegacySystemSnapshotText(dialogText))
+  ) {
     return dialogText.trim();
   }
   return undefined;

@@ -1,4 +1,7 @@
-import { useId, useState } from "react";
+import { isTauriDesktop } from "../../shared/desktop/desktopApi";
+import { useSearchParams } from "react-router-dom";
+import { runPluginSlotContribution, listPluginSlotContributions } from "../../entities/plugin/repository";
+import { type MouseEvent as ReactMouseEvent, useEffect, useId, useRef, useState } from "react";
 import { Pencil, Settings, Trash2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { charactersQueryKey, listCharacters } from "../../entities/character/repository";
@@ -12,7 +15,7 @@ import {
   renameConversation,
   deleteConversation,
 } from "../../entities/chat/repository";
-import { fileThumbnailUrl } from "../../entities/files/repository";
+import { Portrait, resolveSpritePortraitCrop } from "../../shared/components/Portrait";
 import type { ConversationSummary } from "../../shared/platform/types";
 import { ConversationTypeBadge } from "./ConversationTypeBadge";
 import { ActiveConversationPanel } from "./ActiveConversationPanel";
@@ -24,20 +27,8 @@ import { ChatInitializationDialog } from "../chat-startup/ChatInitializationDial
 import { useChatInitialization } from "../chat-startup/useChatInitialization";
 import { useChatLaunchGuard } from "../chat-startup/useChatLaunchGuard";
 import { StoryLaunchButton } from "../story-generator/components/StoryLaunchButton";
+import { PluginSlot } from "../../shared/plugin/PluginSlot";
 import "./ConversationLibrary.css";
-
-function ConversationAvatar({ name, path }: { name: string; path?: string }) {
-  const [failedPath, setFailedPath] = useState<string>();
-  return (
-    <div className="conversation-card__avatar" aria-hidden="true">
-      {path && path !== failedPath ? (
-        <img src={fileThumbnailUrl(path, 128)} alt="" loading="lazy" onError={() => setFailedPath(path)} />
-      ) : (
-        name.slice(0, 1)
-      )}
-    </div>
-  );
-}
 
 export function ConversationLibrary({
   onCreate,
@@ -63,16 +54,13 @@ export function ConversationLibrary({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const date = new Intl.DateTimeFormat(language.replace("_", "-"), { dateStyle: "medium", timeStyle: "short" });
-  const launch = async (item: ConversationSummary) => {
+  const launch = async (id: string) => {
     if (runtimeClosing || init.initializationPending) return;
     setError("");
     try {
       const snapshot = await init.runChatInitialization(async (options) => {
         if ((await getChatRuntimeStatus()).state !== "idle") throw new Error(t("story.launch.busy"));
-        return launchChat(
-          { ...(await prepareConversation(item.id)), enableMobileAccess: mobileAccessEnabled },
-          options,
-        );
+        return launchChat({ ...(await prepareConversation(id)), enableMobileAccess: mobileAccessEnabled }, options);
       });
       client.setQueryData(chatQueryKey, snapshot);
       await updateRuntimeStatusFromSnapshot(snapshot);
@@ -81,6 +69,49 @@ export function ConversationLibrary({
       setError(reason instanceof Error ? reason.message : String(reason));
     }
   };
+  const [params, setParams] = useSearchParams();
+  const handledWake = useRef<string | null>(null);
+  const wake = params.get("pluginChat");
+  useEffect(() => {
+    if (!wake || !isTauriDesktop()) {
+      handledWake.current = null;
+      return;
+    }
+    if (handledWake.current === wake) return;
+    handledWake.current = wake;
+    void (async () => {
+      try {
+        const [plugin, action] = wake.split("/");
+        const items = await listPluginSlotContributions();
+        if (
+          !items.some(
+            (item) =>
+              item.pluginId === plugin &&
+              item.id === action &&
+              item.slot === "chat-workspace-actions" &&
+              item.actionType === "callback" &&
+              item.externalLaunch,
+          )
+        ) {
+          throw new Error("The requested chat plugin action is unavailable.");
+        }
+        const result = await runPluginSlotContribution(plugin, action);
+        if (!result.conversationId) throw new Error(result.message || "The plugin did not return a conversation.");
+        await launch(result.conversationId);
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : String(reason));
+      } finally {
+        setParams(
+          (current) => {
+            const next = new URLSearchParams(current);
+            if (next.get("pluginChat") === wake) next.delete("pluginChat");
+            return next;
+          },
+          { replace: true },
+        );
+      }
+    })();
+  }, [wake]);
   const rename = async () => {
     if (!editing || saving) return;
     setSaving(true);
@@ -127,6 +158,7 @@ export function ConversationLibrary({
               {t("mobileAccess.launchHint")}
             </span>
           </div>
+          <PluginSlot slot="chat-workspace-actions" onLaunchConversation={launch} />
           {!isEmpty && (
             <Button variant="primary" disabled={runtimeLaunchDisabled || init.initializationPending} onClick={onCreate}>
               {t("conversation.new")}
@@ -154,9 +186,43 @@ export function ConversationLibrary({
           const character = characters.data?.find((entry) => item.characters.includes(entry.name));
           const sprite = character?.sprites[0]?.path;
           const name = item.title || t("conversation.untitled");
+          const isStoryDirect = item.kind === "story" && !item.requiresCharacterSelection;
+          const canTapCard = !isStoryDirect && !runtimeLaunchDisabled && !init.initializationPending;
+          const handleMobileCardTap = (event: ReactMouseEvent<HTMLElement>) => {
+            if (!canTapCard) return;
+            const target = event.target instanceof Element ? event.target : null;
+            if (target?.closest(".conversation-card__actions")) return;
+            if (
+              typeof window === "undefined" ||
+              typeof window.matchMedia !== "function" ||
+              !window.matchMedia("(max-width: 760px)").matches
+            ) {
+              return;
+            }
+            if (item.hasSettings) {
+              void launch(item.id);
+            } else {
+              onEdit(item.id, item.kind);
+            }
+          };
           return (
-            <article className="conversation-card" key={item.id}>
-              <ConversationAvatar name={character?.name || name} path={sprite} />
+            <article
+              className="conversation-card"
+              data-mobile-clickable={canTapCard ? "true" : undefined}
+              key={item.id}
+              onClick={handleMobileCardTap}
+            >
+              <Portrait
+                active={false}
+                alt=""
+                ariaHidden
+                className="conversation-card__avatar"
+                crop={resolveSpritePortraitCrop(character, 0)}
+                loading="lazy"
+                name={character?.name || name}
+                path={sprite}
+                shape="fill"
+              />
               <div className="conversation-card__content">
                 <h2>{name}</h2>
                 <div className="conversation-card__meta">
@@ -179,7 +245,7 @@ export function ConversationLibrary({
                   <Button
                     variant="primary"
                     disabled={runtimeLaunchDisabled || init.initializationPending}
-                    onClick={() => (item.hasSettings ? void launch(item) : onEdit(item.id, item.kind))}
+                    onClick={() => (item.hasSettings ? void launch(item.id) : onEdit(item.id, item.kind))}
                   >
                     {t(item.hasSettings ? "conversation.continue" : "conversation.configureAndContinue")}
                   </Button>

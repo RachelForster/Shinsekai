@@ -16,6 +16,11 @@ vi.mock("../../../entities/files/repository", () => ({
   browseFiles: vi.fn(),
 }));
 
+vi.mock("../../../entities/character/repository", () => ({
+  charactersQueryKey: ["characters"],
+  getCharactersRevision: async () => "unchanged",
+}));
+
 vi.mock("../../../shared/theme/appTheme", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../shared/theme/appTheme")>();
   return {

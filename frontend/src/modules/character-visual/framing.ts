@@ -4,20 +4,24 @@ import type { CSSProperties } from "react";
 export interface VisualFraming {
   /** Fraction of the original height kept visible (1 = full surface). */
   heightRatio: number;
-  /** Position within the available crop travel: 0 = top, 1 = bottom. */
+  /** Position within the available crop travel: -1 = shifted down by full crop travel, 0 = top, 1 = bottom. */
   verticalPosition: number;
 }
 
 export const visualFramingMinRatio = 0.2;
+export const visualFramingMinPosition = -1;
 export const defaultVisualFraming: Readonly<VisualFraming> = Object.freeze({ heightRatio: 1, verticalPosition: 0 });
 
 export function normalizeVisualFraming(value: unknown): VisualFraming {
   const candidate = value && typeof value === "object" ? (value as Partial<VisualFraming>) : {};
-  const clamp = (number: unknown, fallback: number, min: number) =>
-    typeof number === "number" && Number.isFinite(number) ? Math.min(1, Math.max(min, number)) : fallback;
+  const clamp = (number: unknown, fallback: number, min: number) => {
+    if (typeof number !== "number" || !Number.isFinite(number)) return fallback;
+    const clamped = Math.min(1, Math.max(min, number));
+    return clamped === 0 ? 0 : clamped;
+  };
   return {
     heightRatio: clamp(candidate.heightRatio, 1, visualFramingMinRatio),
-    verticalPosition: clamp(candidate.verticalPosition, 0, 0),
+    verticalPosition: clamp(candidate.verticalPosition, 0, visualFramingMinPosition),
   };
 }
 
@@ -25,6 +29,7 @@ export function normalizeVisualFraming(value: unknown): VisualFraming {
 export function visualFramingStyle(value: unknown): CSSProperties | undefined {
   const { heightRatio, verticalPosition } = normalizeVisualFraming(value);
   if (heightRatio === 1) return undefined;
-  const offset = ((1 - heightRatio) * verticalPosition * -100) / heightRatio;
+  const rawOffset = ((1 - heightRatio) * verticalPosition * -100) / heightRatio;
+  const offset = rawOffset === 0 ? 0 : rawOffset;
   return { transform: `translateY(${offset}%) scale(${1 / heightRatio})`, transformOrigin: "top center" };
 }

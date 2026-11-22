@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from core.chat_history.sqlite_session_store import close_all_session_stores
 from sdk.hooks import iter_shutdown_hooks
 
 
@@ -49,6 +50,7 @@ def shutdown_chat_runtime(
         steps.append(("tts_shutdown", tts_shutdown))
     if save_background is not None:
         steps.append(("save_background", save_background))
+    steps.append(("close_session_stores", close_all_session_stores))
     if close_stream_sink is not None:
         steps.append(("close_stream_sink", close_stream_sink))
 

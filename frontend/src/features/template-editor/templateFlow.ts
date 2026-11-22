@@ -3,9 +3,12 @@ import type { CSSProperties } from "react";
 import { DEFAULT_CHARACTER_COLOR } from "../../shared/constants";
 import { normalizePlayerOptions } from "../../shared/playerCharacterOptions";
 import type {
+  AppliedUserPromptPreset,
   ChatLaunchPayload,
   ChatSnapshot,
+  InitialOutfitValue,
   MediaSelectionMode,
+  MemoryMode,
   PlayerCharacterOptions,
   TemplateGenerateInput,
   TemplateLaunchSession,
@@ -63,12 +66,15 @@ export function buildDefaultTemplateScenario(selectedCharacters: string[], defau
 
 export function createTemplateDraft(name: string): TemplateSummary {
   return {
+    appliedPresets: [],
+    baseScenario: "",
     content: "",
     id: "",
     name,
     path: "",
     mediaSelectionMode: "indexed",
     scenario: "",
+    selectedPresetIds: [],
     system: "",
     updatedAt: "",
   };
@@ -76,12 +82,20 @@ export function createTemplateDraft(name: string): TemplateSummary {
 
 export function normalizeTemplateSummary(template: TemplateSummary): TemplateSummary {
   const scenario = template.scenario ?? (template.system ? "" : (template.content ?? ""));
+  const baseScenario = template.baseScenario ?? scenario;
+  const selectedPresetIds = Array.isArray(template.selectedPresetIds) ? [...template.selectedPresetIds] : [];
+  const appliedPresets = Array.isArray(template.appliedPresets)
+    ? template.appliedPresets.map((item) => ({ ...item }))
+    : [];
   const system = template.system ?? (template.scenario ? (template.content ?? "") : "");
   return {
     ...template,
+    appliedPresets,
+    baseScenario,
     content: composeTemplateContent(scenario, system),
     mediaSelectionMode: template.mediaSelectionMode ?? "indexed",
     scenario,
+    selectedPresetIds,
     system,
   };
 }
@@ -89,12 +103,18 @@ export function normalizeTemplateSummary(template: TemplateSummary): TemplateSum
 export function buildTemplateSummary(draft: TemplateSummary): TemplateSummary {
   const name = draft.name.trim();
   const scenario = String(draft.scenario ?? "");
+  const baseScenario = String(draft.baseScenario ?? scenario);
+  const selectedPresetIds = Array.isArray(draft.selectedPresetIds) ? [...draft.selectedPresetIds] : [];
+  const appliedPresets = Array.isArray(draft.appliedPresets) ? draft.appliedPresets.map((item) => ({ ...item })) : [];
   const system = String(draft.system ?? "");
   return {
     ...draft,
+    appliedPresets,
+    baseScenario,
     content: composeTemplateContent(scenario, system),
     name,
     scenario,
+    selectedPresetIds,
     system,
   };
 }
@@ -148,38 +168,61 @@ export function buildTemplateGenerateInput(input: TemplateGenerationOptions): Te
 }
 
 type TemplateSessionOptions = PlayerCharacterOptions & {
+  appliedPresets?: AppliedUserPromptPreset[];
+  autoOutfitSwitch?: boolean;
   backgroundName: string;
+  baseScenario?: string;
   draft: TemplateSummary;
   effectNames?: string[];
+  initialOutfits?: Record<string, InitialOutfitValue>;
+  memoryMode?: MemoryMode;
   mobileAccessEnabled: boolean;
   options: TemplateFlowOptions;
   runtime: TemplateRuntimeOptions;
   selectedCharacters: string[];
+  selectedPresetIds?: string[];
   characterPromptMode?: "compact" | "full";
   primaryCharacters?: string[];
   mediaSelectionMode: MediaSelectionMode;
   selectedTemplateId: string;
+  systemManuallyEdited?: boolean;
 };
 
 export function buildTemplateLaunchSession(input: TemplateSessionOptions): TemplateLaunchSession {
+  const initialOutfits =
+    input.initialOutfits && Object.keys(input.initialOutfits).length > 0 ? { ...input.initialOutfits } : undefined;
+  const selectedPresetIds = input.selectedPresetIds ?? input.draft.selectedPresetIds ?? [];
+  const appliedPresets = input.appliedPresets ?? input.draft.appliedPresets ?? [];
+  const baseScenario = input.baseScenario ?? input.draft.baseScenario ?? String(input.draft.scenario ?? "");
   return {
+    ...(input.autoOutfitSwitch !== undefined ? { autoOutfitSwitch: input.autoOutfitSwitch } : {}),
     background: input.backgroundName,
+    ...(selectedPresetIds.length || baseScenario !== String(input.draft.scenario ?? "")
+      ? {
+          baseScenario,
+          selectedPresetIds: [...selectedPresetIds],
+          appliedPresets: appliedPresets.map((item) => ({ ...item })),
+        }
+      : {}),
     characterPromptMode: input.characterPromptMode,
     enableMobileAccess: input.mobileAccessEnabled,
     effectNames: input.effectNames ?? [],
     filenameStub: input.draft.name.trim(),
     historyPath: input.runtime.historyPath.trim(),
+    ...(initialOutfits ? { initialOutfits } : {}),
     initSpritePath: input.runtime.initSpritePath.trim(),
     showInitialSprite: input.runtime.showInitialSprite ?? true,
     maxDialogItems: input.runtime.maxDialogItems,
     maxSpeechChars: input.runtime.maxSpeechChars,
     mediaSelectionMode: input.mediaSelectionMode,
+    ...(input.memoryMode ? { memoryMode: input.memoryMode } : {}),
     roomId: input.runtime.roomId.trim(),
     scenario: String(input.draft.scenario ?? ""),
     primaryCharacters: input.primaryCharacters,
     ...normalizePlayerOptions(input),
     selectedCharacters: input.selectedCharacters,
     system: String(input.draft.system ?? ""),
+    ...(input.systemManuallyEdited !== undefined ? { systemManuallyEdited: input.systemManuallyEdited } : {}),
     templateFileDropdown: input.selectedTemplateId,
     useCg: input.options.useCg,
     useChoice: input.options.useChoice,
@@ -193,8 +236,11 @@ export function buildTemplateLaunchSession(input: TemplateSessionOptions): Templ
 }
 
 export function buildChatLaunchPayload(input: {
+  autoOutfitSwitch?: boolean;
   backgroundName: string;
   effectNames?: string[];
+  initialOutfits?: Record<string, InitialOutfitValue>;
+  memoryMode?: MemoryMode;
   mobileAccessEnabled: boolean;
   resetHistory: boolean;
   runtime: Pick<TemplateRuntimeOptions, "historyPath" | "initSpritePath" | "showInitialSprite" | "roomId">;
@@ -203,15 +249,20 @@ export function buildChatLaunchPayload(input: {
   useCg: boolean;
   mediaSelectionMode: MediaSelectionMode;
 }): ChatLaunchPayload {
+  const initialOutfits =
+    input.initialOutfits && Object.keys(input.initialOutfits).length > 0 ? { ...input.initialOutfits } : undefined;
   return {
+    ...(input.autoOutfitSwitch !== undefined ? { autoOutfitSwitch: input.autoOutfitSwitch } : {}),
     backgroundName: input.backgroundName,
     characters: input.selectedCharacters,
     enableMobileAccess: input.mobileAccessEnabled,
     effectNames: input.effectNames?.length ? input.effectNames : undefined,
     historyPath: input.runtime.historyPath.trim(),
+    ...(initialOutfits ? { initialOutfits } : {}),
     initSpritePath: input.runtime.initSpritePath.trim(),
     showInitialSprite: input.runtime.showInitialSprite ?? true,
     mediaSelectionMode: input.mediaSelectionMode,
+    ...(input.memoryMode ? { memoryMode: input.memoryMode } : {}),
     resetHistory: input.resetHistory,
     roomId: input.runtime.roomId.trim(),
     scenario: String(input.template.scenario ?? ""),
@@ -227,17 +278,26 @@ export function synchronizeChatLaunchPayloadWithSession(
   session: TemplateLaunchSession,
 ): ChatLaunchPayload {
   const effectNames = Array.isArray(session.effectNames) ? session.effectNames : [];
+  const initialOutfits =
+    session.initialOutfits && Object.keys(session.initialOutfits).length > 0
+      ? { ...session.initialOutfits }
+      : undefined;
   return {
     ...payload,
+    ...(session.autoOutfitSwitch !== undefined ? { autoOutfitSwitch: session.autoOutfitSwitch } : {}),
     backgroundName: session.background,
+    characterPromptMode: session.characterPromptMode,
     characters: session.selectedCharacters,
+    primaryCharacters: session.primaryCharacters,
     ...normalizePlayerOptions(session),
     enableMobileAccess: session.enableMobileAccess,
     effectNames: effectNames.length ? effectNames : undefined,
     historyPath: session.historyPath.trim(),
+    ...(initialOutfits ? { initialOutfits } : {}),
     initSpritePath: session.initSpritePath.trim(),
     showInitialSprite: session.showInitialSprite ?? true,
     mediaSelectionMode: session.mediaSelectionMode ?? "indexed",
+    ...(session.memoryMode ? { memoryMode: session.memoryMode } : {}),
     roomId: session.roomId.trim(),
     scenario: session.scenario,
     system: session.system,

@@ -2,11 +2,13 @@ import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { useEffect, type ReactNode } from "react";
 
 import { browseFiles } from "../../entities/files/repository";
+import { useCharacterCatalogSync } from "../../entities/character/useCharacterCatalogSync";
 import { configQueryKey, getAppConfig } from "../../entities/config/repository";
 import { ChatThemeProvider } from "../../features/chat-stage/theme/ChatThemeProvider";
 import { queryClient } from "../../shared/async/queryClient";
 import { AppStateProvider, useAppState } from "../../shared/app-state/AppState";
 import { I18nProvider } from "../../shared/i18n";
+import { onPlatformModeChange } from "../../shared/platform/platform";
 import { applyThemeColor } from "../../shared/theme/appTheme";
 import { FileBrowserProvider, ToastProvider } from "../../shared/ui";
 
@@ -17,11 +19,19 @@ function AppI18nProvider({ children }: { children: ReactNode }) {
 }
 
 export function AppRuntimeProviders({ children }: { children: ReactNode }) {
+  useCharacterCatalogSync();
   const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
 
   useEffect(() => {
     applyThemeColor(configQuery.data?.system_config?.theme_color);
   }, [configQuery.data?.system_config?.theme_color]);
+
+  useEffect(() => {
+    return onPlatformModeChange(() => {
+      queryClient.clear();
+      void queryClient.invalidateQueries();
+    });
+  }, []);
 
   return (
     <FileBrowserProvider browse={browseFiles}>

@@ -153,7 +153,7 @@ jobs:
             os: windows-11-arm
             bundles: none
           - platform: macos-arm64
-            os: macos-14
+            os: macos-15
             bundles: dmg
 
     steps:

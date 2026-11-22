@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, ExternalLink, Languages, Plus, Save, Trash2, Upload } from "lucide-react";
+import { ExternalLink, FolderInput, FolderOutput, Languages, Plus, Save, Trash2 } from "lucide-react";
 
 import {
   backgroundsQueryKey,
@@ -701,15 +701,35 @@ export function BackgroundManagerPage() {
             </Select>
           </label>
           <div className="background-page__package-actions">
+            <Button
+              className="button--header-icon"
+              data-tooltip={t("common.new")}
+              icon={<Plus aria-hidden className="button__icon" />}
+              onClick={() => {
+                setIsCreating(true);
+                setSelectedName("");
+                setDraft(createBackground());
+                setDraftSourceName("");
+                setSelectedBgmIndexes([]);
+                setSelectedImageIndex(0);
+                setNameError("");
+              }}
+            >
+              {t("common.new")}
+            </Button>
             <AsyncButton
-              icon={<Upload aria-hidden className="button__icon" />}
+              className="button--header-icon"
+              data-tooltip={t("common.import")}
+              icon={<FolderInput aria-hidden className="button__icon" />}
               loading={importMutation.isPending}
               onClick={() => setImportPickerOpen(true)}
             >
               {t("common.import")}
             </AsyncButton>
             <AsyncButton
-              icon={<Download aria-hidden className="button__icon" />}
+              className="button--header-icon"
+              data-tooltip={t("common.export")}
+              icon={<FolderOutput aria-hidden className="button__icon" />}
               loading={exportMutation.isPending}
               onClick={() => {
                 if (!currentBackgroundName) {
@@ -722,33 +742,18 @@ export function BackgroundManagerPage() {
                 }
                 exportMutation.mutate(currentBackgroundName);
               }}
-              variant="ghost"
             >
               {t("common.export")}
             </AsyncButton>
+            <AsyncButton
+              icon={<Save aria-hidden className="button__icon" />}
+              loading={saveMutation.isPending}
+              onClick={saveDraft}
+              variant="primary"
+            >
+              {t("common.save")}
+            </AsyncButton>
           </div>
-          <Button
-            icon={<Plus aria-hidden className="button__icon" />}
-            onClick={() => {
-              setIsCreating(true);
-              setSelectedName("");
-              setDraft(createBackground());
-              setDraftSourceName("");
-              setSelectedBgmIndexes([]);
-              setSelectedImageIndex(0);
-              setNameError("");
-            }}
-          >
-            {t("common.new")}
-          </Button>
-          <AsyncButton
-            icon={<Save aria-hidden className="button__icon" />}
-            loading={saveMutation.isPending}
-            onClick={saveDraft}
-            variant="primary"
-          >
-            {t("common.save")}
-          </AsyncButton>
         </div>
         <PageSectionNav ariaLabel={t("background.title")} items={backgroundSectionNavItems} />
         <PathPickerDialog

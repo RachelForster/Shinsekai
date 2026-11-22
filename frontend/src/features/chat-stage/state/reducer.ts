@@ -96,6 +96,7 @@ function submitUserMessageState(
       dialogText: text,
       inputAttachments: [],
       inputDraft: "",
+      isSystemDialog: undefined,
       optimisticSubmission,
       options: [],
     });
@@ -108,6 +109,7 @@ function submitUserMessageState(
     error: undefined,
     inputDraft: "",
     inputAttachments: [],
+    isSystemDialog: undefined,
     optimisticSubmission,
     options: [],
     sessionClosedReason: undefined,
@@ -229,6 +231,14 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
         ...state,
         sessionClosedReason: undefined,
         status: action.status,
+      });
+    case "dismissCg":
+      if (!state.cgPath) {
+        return state;
+      }
+      return withResolvedLayers({
+        ...state,
+        cgPath: undefined,
       });
     case "error":
       return withResolvedLayers({

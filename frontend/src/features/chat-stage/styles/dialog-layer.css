@@ -1,7 +1,12 @@
 .dialog-stack {
   position: absolute;
   left: 50%;
-  bottom: max(16px, var(--chat-dialog-stack-bottom), calc(var(--stage-control-stack-height) + 12px));
+  bottom: max(
+    16px,
+    var(--chat-dialog-stack-bottom),
+    var(--chat-dialog-toolbar-clearance, 0px),
+    calc(var(--stage-control-stack-height) + 12px)
+  );
   z-index: 5;
   display: block;
   width: min(var(--chat-dialog-width), var(--chat-dialog-runtime-width));
@@ -58,14 +63,15 @@
 .dialog-layer__toolbar {
   position: absolute;
   top: calc(100% + var(--chat-dialog-toolbar-gap));
-  right: 0;
-  left: 0;
+  left: 50%;
   z-index: 3;
   display: flex;
-  min-width: 0;
+  width: fit-content;
+  min-width: min(calc(100% * var(--chat-dialog-runtime-scale, 1)), var(--chat-dialog-toolbar-available-width));
+  max-width: var(--chat-dialog-toolbar-available-width);
   justify-content: center;
   pointer-events: none;
-  transform: scale(var(--chat-dialog-runtime-inverse-scale));
+  transform: translateX(-50%) scale(var(--chat-dialog-runtime-inverse-scale));
   transform-origin: bottom center;
 }
 
@@ -75,8 +81,16 @@
   bottom: var(--chat-dialog-toolbar-layer-bottom);
   z-index: 6;
   display: flex;
-  width: var(--chat-dialog-toolbar-layer-width);
-  max-width: var(--chat-dialog-toolbar-layer-max-width);
+  width: fit-content;
+  min-width: min(
+    var(--chat-dialog-toolbar-layer-width),
+    calc(var(--chat-dialog-toolbar-layer-max-width) / var(--chat-toolbar-runtime-scale, 1)),
+    var(--chat-dialog-toolbar-available-width)
+  );
+  max-width: min(
+    calc(var(--chat-dialog-toolbar-layer-max-width) / var(--chat-toolbar-runtime-scale, 1)),
+    var(--chat-dialog-toolbar-available-width)
+  );
   min-height: var(--chat-dialog-toolbar-reserved-height);
   align-items: flex-end;
   justify-content: center;

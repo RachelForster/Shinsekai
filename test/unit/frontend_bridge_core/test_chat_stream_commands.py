@@ -400,6 +400,31 @@ class ChatStreamCommandTests(unittest.TestCase):
                 },
             )
 
+    def test_handle_chat_command_dismisses_cg_overlay(self):
+        chat_stream = _StubChatStream()
+        chat_stream.snapshot["cgPath"] = "http://127.0.0.1:8787/api/media?path=cache/0.png"
+        state = SimpleNamespace(
+            chat_session={"sessionId": "session-1"},
+            chat_stream=chat_stream,
+        )
+
+        snapshot = _handle_chat_command(
+            state,
+            {
+                "type": "dismiss-cg",
+            },
+        )
+
+        self.assertEqual(snapshot["status"], "idle")
+        self.assertIsNone(chat_stream.command)
+        self.assertEqual(
+            chat_stream.published_event,
+            {
+                "type": "cg.hide",
+            },
+        )
+        self.assertEqual(snapshot["cgPath"], "")
+
     def test_handle_chat_command_updates_and_persists_turn_options(self):
         chat_stream = _StubChatStream()
         config_manager = _config_manager_with_chat_experiments()
@@ -554,82 +579,6 @@ class ChatStreamCommandTests(unittest.TestCase):
         self.assertEqual(command["payload"], 1)
         self.assertIsInstance(command["cmdId"], str)
         self.assertTrue(command["cmdId"])
-
-    def test_handle_chat_command_wraps_fork_history_with_cmd_id(self):
-        chat_stream = _StubChatStream()
-        state = SimpleNamespace(
-            chat_session={"sessionId": "session-1"},
-            chat_stream=chat_stream,
-            config_manager=_config_manager_with_chat_experiments(fork=True),
-        )
-
-        snapshot = _handle_chat_command(state, {"payload": {"userIndex": 2}, "type": "fork-history"})
-
-        self.assertEqual(snapshot["status"], "generating")
-        self.assertEqual(snapshot["dialogText"], "正在创建对话分支。")
-        self.assertIsNotNone(chat_stream.command)
-        session_id, command = chat_stream.command
-        self.assertEqual(session_id, "session-1")
-        self.assertEqual(command["type"], "fork-history")
-        self.assertEqual(command["payload"], {"userIndex": 2})
-        self.assertIsInstance(command["cmdId"], str)
-        self.assertTrue(command["cmdId"])
-
-    def test_handle_chat_command_wraps_switch_branch_with_cmd_id(self):
-        chat_stream = _StubChatStream()
-        state = SimpleNamespace(
-            chat_session={"sessionId": "session-1"},
-            chat_stream=chat_stream,
-            config_manager=_config_manager_with_chat_experiments(flowchart=True),
-        )
-
-        snapshot = _handle_chat_command(state, {"payload": "branch-2", "type": "switch-branch"})
-
-        self.assertEqual(snapshot["status"], "idle")
-        self.assertEqual(snapshot["dialogText"], "已切换对话分支。")
-        self.assertIsNotNone(chat_stream.command)
-        session_id, command = chat_stream.command
-        self.assertEqual(session_id, "session-1")
-        self.assertEqual(command["type"], "switch-branch")
-        self.assertEqual(command["payload"], "branch-2")
-        self.assertIsInstance(command["cmdId"], str)
-        self.assertTrue(command["cmdId"])
-
-    def test_handle_chat_command_wraps_rename_branch_with_cmd_id(self):
-        chat_stream = _StubChatStream()
-        state = SimpleNamespace(
-            chat_session={"sessionId": "session-1"},
-            chat_stream=chat_stream,
-            config_manager=_config_manager_with_chat_experiments(flowchart=True),
-        )
-
-        snapshot = _handle_chat_command(
-            state,
-            {"payload": {"branchId": "branch-2", "label": "Side route"}, "type": "rename-branch"},
-        )
-
-        self.assertEqual(snapshot["status"], "idle")
-        self.assertEqual(snapshot["dialogText"], "已重命名对话分支。")
-        self.assertIsNotNone(chat_stream.command)
-        session_id, command = chat_stream.command
-        self.assertEqual(session_id, "session-1")
-        self.assertEqual(command["type"], "rename-branch")
-        self.assertEqual(command["payload"], {"branchId": "branch-2", "label": "Side route"})
-        self.assertIsInstance(command["cmdId"], str)
-        self.assertTrue(command["cmdId"])
-
-    def test_handle_chat_command_rejects_disabled_experimental_branch_features(self):
-        chat_stream = _StubChatStream()
-        state = SimpleNamespace(
-            chat_session={"sessionId": "session-1"},
-            chat_stream=chat_stream,
-            config_manager=_config_manager_with_chat_experiments(),
-        )
-
-        with self.assertRaisesRegex(PermissionError, "Fork 实验功能未启用"):
-            _handle_chat_command(state, {"payload": {"userIndex": 2}, "type": "fork-history"})
-        with self.assertRaisesRegex(PermissionError, "分支流程图实验功能未启用"):
-            _handle_chat_command(state, {"payload": "branch-2", "type": "switch-branch"})
 
     def test_handle_chat_command_clear_history_removes_directory_storage_without_runtime_stream(self):
         class _Config:

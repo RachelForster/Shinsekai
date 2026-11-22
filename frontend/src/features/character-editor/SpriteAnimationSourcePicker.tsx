@@ -3,7 +3,7 @@ import { Film, Image as ImageIcon } from "lucide-react";
 import { fileUrl } from "../../entities/files/repository";
 import { isVideoMedia } from "../../shared/assets/visualMedia";
 import { useI18n } from "../../shared/i18n";
-import { Button, VisualMedia } from "../../shared/ui";
+import { Button, ImageAssetCornerLabel, VisualMedia } from "../../shared/ui";
 import type { SpriteAnimationSource } from "./spriteAnimationSources";
 
 interface Props {
@@ -88,10 +88,11 @@ export function SpriteAnimationSourcePicker({
               />
               <div className="sprite-generation__source-image">
                 <VisualMedia alt="" autoPlay={false} loading="lazy" src={fileUrl(source.referenceImage)} />
-                <span className="sprite-generation__source-type">
+                <span className="sprite-generation__source-type" data-mouth-sync={source.mouthSync || undefined}>
                   {video ? <Film size={12} aria-hidden /> : <ImageIcon size={12} aria-hidden />}
                   {t(video ? "spriteAnimation.sourceAnimated" : "spriteAnimation.sourceImage")}
                 </span>
+                {source.mouthSync ? <ImageAssetCornerLabel>{t("spriteMouth.tab")}</ImageAssetCornerLabel> : null}
               </div>
               <strong>{label}</strong>
               <span>{source.tagging || untaggedLabel || t("spriteAnimation.untaggedSource")}</span>

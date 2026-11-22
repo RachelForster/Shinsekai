@@ -142,7 +142,7 @@ describe("Agent conversation", () => {
     });
     renderPanel();
     await screen.findByRole("tab", { name: "Session 1" });
-    const input = screen.getByRole("textbox", { name: "Message" });
+    const input = await screen.findByRole("textbox", { name: "Message" });
     fireEvent.change(input, { target: { value: "one logical message" } });
     await waitFor(() => expect(screen.getByRole("button", { name: "Send" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
@@ -161,7 +161,7 @@ describe("Agent conversation", () => {
     await api.createSession();
     renderPanel();
     await screen.findByRole("tab", { name: "Session 1" });
-    fireEvent.change(screen.getByRole("textbox", { name: "Message" }), { target: { value: "a task to stop" } });
+    fireEvent.change(await screen.findByRole("textbox", { name: "Message" }), { target: { value: "a task to stop" } });
     await waitFor(() => expect(screen.getByRole("button", { name: "Send" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     fireEvent.click(await screen.findByRole("button", { name: "Stop" }));
@@ -229,7 +229,9 @@ describe("Agent conversation", () => {
     await api.createSession();
     const view = renderPanel(true);
     await screen.findByRole("tab", { name: "Session 1" });
-    fireEvent.change(screen.getByRole("textbox", { name: "Message" }), { target: { value: "keep this draft" } });
+    fireEvent.change(await screen.findByRole("textbox", { name: "Message" }), {
+      target: { value: "keep this draft" },
+    });
     view.hide();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     view.show();

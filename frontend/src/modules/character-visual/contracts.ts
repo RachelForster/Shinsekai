@@ -78,6 +78,7 @@ export interface AvatarFormat<S, C> {
 
 /** 舞台 / 预览交给 CharacterVisual 的资源引用，与具体格式无关。 */
 export interface CharacterVisualAsset {
+  mouthSync?: string;
   transitions?: SpriteTransitionMedia[];
   id: string;
   label: string;

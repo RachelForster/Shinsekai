@@ -66,6 +66,7 @@ _NO_MODULE_PATTERNS = (
 
 MODULE_PACKAGE_MAP = {
     "PIL": "Pillow",
+    "accelerate": "accelerate",
     "anthropic": "anthropic",
     "cv2": "opencv-python",
     "fastembed": "fastembed",
@@ -74,14 +75,21 @@ MODULE_PACKAGE_MAP = {
     "huggingface_hub": "huggingface-hub",
     "mem0": "mem0ai",
     "numpy": "numpy",
+    "onnxruntime": "onnxruntime",
     "openai": "openai",
     "opencc": "opencc-python-reimplemented",
     "pandas": "pandas",
+    "perception": "torch",
     "pygame": "pygame",
+    "rapidocr_onnxruntime": "rapidocr-onnxruntime",
     "requests": "requests",
     "sentence_transformers": "sentence-transformers",
     "socksio": "socksio",
     "tiktoken": "tiktoken",
+    "tokenizers": "tokenizers",
+    "torch": "torch",
+    "torchvision": "torchvision",
+    "transformers": "transformers",
     "yaml": "PyYAML",
 }
 

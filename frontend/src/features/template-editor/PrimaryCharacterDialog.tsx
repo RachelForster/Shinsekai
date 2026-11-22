@@ -3,6 +3,7 @@ import { Check, Star } from "lucide-react";
 
 import type { Character } from "../../shared/platform/types";
 import { useI18n } from "../../shared/i18n";
+import { getCharacterDisplayName } from "../../shared/playerCharacterOptions";
 import { AsyncButton, Button, Dialog } from "../../shared/ui";
 import { getCharacterChipStyle } from "./templateFlow";
 import "./PrimaryCharacterDialog.css";
@@ -96,7 +97,7 @@ export function PrimaryCharacterDialog({
             >
               <span className="primary-character-dialog__name">
                 <Star aria-hidden className="primary-character-dialog__star" />
-                {character.name}
+                {getCharacterDisplayName(character)}
               </span>
               <span className="primary-character-dialog__status">
                 {isPrimary

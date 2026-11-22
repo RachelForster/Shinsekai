@@ -70,6 +70,9 @@ def test_plugin_host_applies_application_runtime_bindings(monkeypatch, tmp_path)
         def collect_avatar_formats(self):
             return ["avatar"]
 
+        def collect_model_assets(self):
+            return ["model-asset"]
+
     manager = FakePluginManager()
     tool_manager = object()
     app_config = object()
@@ -97,6 +100,7 @@ def test_plugin_host_applies_application_runtime_bindings(monkeypatch, tmp_path)
         configure_vision_fallbacks=lambda values: calls.setdefault("vision", values),
         configure_avatar_formats=lambda values: calls.setdefault("avatar", values),
         register_mcp_tools=lambda value: calls.setdefault("mcp", value),
+        configure_model_assets=lambda values: calls.setdefault("model_assets", values),
     )
 
     assert service.ensure_plugins_loaded(app_config, runtime_bindings=bindings) is manager
@@ -109,7 +113,28 @@ def test_plugin_host_applies_application_runtime_bindings(monkeypatch, tmp_path)
         "t2i": adapters["t2i"],
         "vision": ["vision"],
         "avatar": ["avatar"],
+        "model_assets": ["model-asset"],
         "sdk_tools": tool_manager,
         "plugin_tools": tool_manager,
         "mcp": tool_manager,
     }
+
+
+def test_bind_model_assets_runtime_wires_and_unwires_sdk_dispatcher() -> None:
+    import pytest
+    from sdk.model_assets import inspect_huggingface_model
+
+    received: list[dict[str, object]] = []
+    service.bind_model_assets_runtime(
+        lambda command: (received.append(command) or {"cached": True, "repoId": command["repoId"]})
+    )
+    try:
+        status = inspect_huggingface_model("BAAI/bge-m3", revision="main")
+        assert status == {"cached": True, "repoId": "BAAI/bge-m3"}
+        assert received == [{"action": "status", "repoId": "BAAI/bge-m3", "revision": "main"}]
+    finally:
+        service.bind_model_assets_runtime(None)
+
+    with pytest.raises(RuntimeError, match="Model assets runtime is not bound"):
+        inspect_huggingface_model("BAAI/bge-m3")
+

@@ -2,7 +2,10 @@ import { getPlatform } from "../../shared/platform/platform";
 import type { Character } from "../config/types";
 import type {
   CharacterMemoryImportResult,
+  CharacterMemoryRememberOptions,
+  CharacterMemorySearchInput,
   ImageAutoLabelResult,
+  SaveSpriteGroupsInput,
   ShinsekaiPlatform,
   SpriteVoiceType,
   TaskProgressOptions,
@@ -12,6 +15,10 @@ export const charactersQueryKey = ["characters"] as const;
 
 export function listCharacters() {
   return getPlatform().characters.list();
+}
+
+export function getCharactersRevision() {
+  return getPlatform().characters.revision();
 }
 
 export function saveCharacter(character: Character, originalName?: string) {
@@ -62,20 +69,32 @@ export function getMem0Status() {
   return getPlatform().characters.getMem0Status();
 }
 
-export function listCharacterMemories(name: string) {
-  return getPlatform().characters.listMemories(name);
+export function listCharacterMemories(name: string, options?: { sessionId?: string }) {
+  return options ? getPlatform().characters.listMemories(name, options) : getPlatform().characters.listMemories(name);
 }
 
-export function searchCharacterMemories(input: { limit?: number; name: string; query: string }) {
+export function searchCharacterMemories(input: CharacterMemorySearchInput) {
   return getPlatform().characters.searchMemories(input);
 }
 
-export function rememberCharacterMemory(name: string, content: string) {
-  return getPlatform().characters.remember(name, content);
+export function rememberCharacterMemory(name: string, content: string, options?: CharacterMemoryRememberOptions) {
+  return options
+    ? getPlatform().characters.remember(name, content, options)
+    : getPlatform().characters.remember(name, content);
 }
 
-export function deleteCharacterMemory(name: string, memoryId: string) {
-  return getPlatform().characters.deleteMemory(name, memoryId);
+export function deleteCharacterMemory(name: string, memoryId: string, options?: { sessionId?: string }) {
+  return options
+    ? getPlatform().characters.deleteMemory(name, memoryId, options)
+    : getPlatform().characters.deleteMemory(name, memoryId);
+}
+
+export function pinCharacterMemory(input: { name: string; memoryId: string; pinned: boolean; sessionId?: string }) {
+  return getPlatform().characters.pinMemory(input);
+}
+
+export function awakenCharacterMemory(input: { name: string; memoryId: string; sessionId?: string }) {
+  return getPlatform().characters.awakenMemory(input);
 }
 
 export function previewCharacterMemoryImport(name: string, items: File[]) {
@@ -90,8 +109,21 @@ export function importCharacterMemories(
   return getPlatform().characters.importMemories(name, items, options);
 }
 
-export function uploadCharacterSprites(input: { emotionTags: string; name: string; paths: string[] }) {
+export function uploadCharacterSprites(input: { emotionTags: string; name: string; paths: string[]; group?: string }) {
   return getPlatform().characters.uploadSprites(input);
+}
+
+export function saveCharacterSpriteGroups(input: SaveSpriteGroupsInput) {
+  return getPlatform().characters.saveSpriteGroups(input);
+}
+
+export function autoGroupCharacterSprites(input: {
+  name: string;
+  avatarType?: string;
+  overwriteExisting?: boolean;
+  apply?: boolean;
+}) {
+  return getPlatform().characters.autoGroupSprites(input);
 }
 
 export function autoLabelCharacterSprites(name: string, options?: TaskProgressOptions<ImageAutoLabelResult>) {
@@ -109,6 +141,26 @@ export function renderCharacterSprite(...args: Parameters<ShinsekaiPlatform["cha
 export function animateCharacterSprite(...args: Parameters<ShinsekaiPlatform["characters"]["animateSprite"]>) {
   return getPlatform().characters.animateSprite(...args);
 }
+
+export const spriteMouthRepository = {
+  status: () => getPlatform().characters.getSpriteMouthSetup(),
+  configure: (...args: Parameters<ShinsekaiPlatform["characters"]["configureSpriteMouth"]>) =>
+    getPlatform().characters.configureSpriteMouth(...args),
+  importModels: (...args: Parameters<ShinsekaiPlatform["characters"]["importSpriteMouthModels"]>) =>
+    getPlatform().characters.importSpriteMouthModels(...args),
+  download: (...args: Parameters<ShinsekaiPlatform["characters"]["downloadSpriteMouthModels"]>) =>
+    getPlatform().characters.downloadSpriteMouthModels(...args),
+  install: (...args: Parameters<ShinsekaiPlatform["characters"]["installSpriteMouthRuntime"]>) =>
+    getPlatform().characters.installSpriteMouthRuntime(...args),
+  generate: (...args: Parameters<ShinsekaiPlatform["characters"]["generateSpriteMouth"]>) =>
+    getPlatform().characters.generateSpriteMouth(...args),
+  read: (...args: Parameters<ShinsekaiPlatform["characters"]["readSpriteMouth"]>) =>
+    getPlatform().characters.readSpriteMouth(...args),
+  save: (...args: Parameters<ShinsekaiPlatform["characters"]["saveSpriteMouths"]>) =>
+    getPlatform().characters.saveSpriteMouths(...args),
+  remove: (...args: Parameters<ShinsekaiPlatform["characters"]["removeSpriteMouth"]>) =>
+    getPlatform().characters.removeSpriteMouth(...args),
+};
 
 export function analyzeSpriteTransitions(
   ...args: Parameters<ShinsekaiPlatform["characters"]["analyzeSpriteTransitions"]>

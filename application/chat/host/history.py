@@ -15,7 +15,11 @@ from core.messaging.dialog_tokens import (
 )
 from core.chat_history.storage import (
     chat_history_active_path,
+    chat_history_branch_tree_path,
+    chat_history_db_path,
     chat_history_download_path,
+    read_active_chat_history,
+    write_active_history_snapshot,
 )
 from core.chat_history.text import (
     DEFAULT_USER_DISPLAY_NAME,
@@ -66,6 +70,7 @@ def _serialize_history_entries_from_messages(
 ) -> list[dict[str, Any]]:
     if not isinstance(messages, list):
         return []
+    from core.chat_history.identity import CHAT_TURN_ID, DialogIdentities
     entries: list[dict[str, Any]] = []
     user_index = 0
     row_index = 0
@@ -77,6 +82,8 @@ def _serialize_history_entries_from_messages(
             continue
         role = str(message.get("role") or "").strip()
         if role == "user":
+            if str(message.get("source") or "user") == "perception":
+                continue
             text = str(
                 message.get("display_content") or message.get("content") or ""
             ).strip()
@@ -97,9 +104,11 @@ def _serialize_history_entries_from_messages(
             continue
         if role != "assistant":
             continue
+        identities = DialogIdentities(str(message.get(CHAT_TURN_ID) or ""))
         for item in parse_assistant_dialog_content(message.get("content", "")):
             if not isinstance(item, dict):
                 continue
+            dialog_id = identities.next(item)
             speaker = str(item.get("character_name") or "").strip()
             speech = str(item.get("speech") or "").strip()
             if not speech:
@@ -108,6 +117,7 @@ def _serialize_history_entries_from_messages(
             entries.append(
                 {
                     "id": f"history-{row_index}",
+                    **({"dialogId": dialog_id} if dialog_id else {}),
                     "role": _history_entry_role_from_text(plain),
                     "text": plain,
                 }
@@ -173,13 +183,11 @@ class HistoryProjection:
         history_path = self.resolve(state, history_raw) if history_raw else None
         if history_path is not None and is_unc_history_path(history_path):
             return []
-        history_file = (
-            chat_history_active_path(history_path) if history_path is not None else None
-        )
-        if history_file is None or not history_file.is_file():
+        if history_path is None:
             return []
         return _serialize_history_entries_from_messages(
-            self.read(history_file), self.user_name(state)
+            read_active_chat_history(history_path, read_snapshot=self.read),
+            self.user_name(state),
         )
 
 
@@ -199,7 +207,15 @@ class HistoryDownloads:
         if not history_raw:
             raise FileNotFoundError("没有已关联的聊天历史文件。")
         history_path = self.resolve(state, history_raw)
-        history_file = chat_history_download_path(history_path)
+        history_file = chat_history_active_path(history_path)
+        if not is_unc_history_path(history_path) and (
+            chat_history_db_path(history_path).is_file()
+            or Path(str(history_file) + ".tmp").is_file()
+            or (not history_file.is_file() and chat_history_branch_tree_path(history_path).is_file())
+        ):
+            # Leave the legacy snapshot intact until its journal is imported.
+            history_file = chat_history_download_path(history_path)
+            write_active_history_snapshot(history_file, read_active_chat_history(history_path))
         if not history_file.is_file():
             raise FileNotFoundError(history_file.as_posix())
         return history_file

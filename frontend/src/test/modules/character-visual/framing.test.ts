@@ -18,10 +18,22 @@ describe("format-independent visual framing", () => {
       heightRatio: 0.2,
       verticalPosition: 1,
     });
-    expect(normalizeVisualFraming({ heightRatio: 2, verticalPosition: -1 })).toEqual(defaultVisualFraming);
+    expect(normalizeVisualFraming({ heightRatio: 2, verticalPosition: -2 })).toEqual({
+      heightRatio: 1,
+      verticalPosition: -1,
+    });
+    expect(normalizeVisualFraming({ heightRatio: 0.5, verticalPosition: -0.5 })).toEqual({
+      heightRatio: 0.5,
+      verticalPosition: -0.5,
+    });
+    expect(Object.is(normalizeVisualFraming({ heightRatio: 0.5, verticalPosition: -0 }).verticalPosition, 0)).toBe(
+      true,
+    );
     expect(normalizeVisualFraming({ heightRatio: "0.5", verticalPosition: "1" })).toEqual(defaultVisualFraming);
   });
   it.each([
+    [-1, "100%"],
+    [-0.5, "50%"],
     [0, "0%"],
     [0.5, "-50%"],
     [1, "-100%"],
@@ -33,5 +45,6 @@ describe("format-independent visual framing", () => {
   });
   it("leaves a full surface and its existing placement untouched", () => {
     expect(visualFramingStyle({ heightRatio: 1, verticalPosition: 1 })).toBeUndefined();
+    expect(visualFramingStyle({ heightRatio: 1, verticalPosition: -1 })).toBeUndefined();
   });
 });

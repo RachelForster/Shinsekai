@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 
 import type { ChatStageSprite } from "./chatState";
+import { DEFAULT_MINI_INPUT_SHORTCUT, normalizeMiniInputShortcut } from "./miniInputShortcut";
 import { normalizeVisualFraming, type VisualFraming } from "../../modules/character-visual";
 import {
   emitDesktopChatStageRuntimeConfigChange,
@@ -88,6 +89,8 @@ export interface ChatStageRuntimeConfig {
   dialogWidthPct: number | null;
   immersiveMode: boolean;
   longPressTalk: boolean;
+  miniAvatarMode: boolean;
+  miniInputShortcut: string;
   spriteScales: Record<string, number>;
   spriteFramings: Record<string, VisualFraming>;
   spriteOffsetX: number;
@@ -137,6 +140,8 @@ export const defaultChatStageRuntimeConfig: ChatStageRuntimeConfig = {
   dialogWidthPct: null,
   immersiveMode: false,
   longPressTalk: false,
+  miniAvatarMode: false,
+  miniInputShortcut: DEFAULT_MINI_INPUT_SHORTCUT,
   nameText: {
     bold: true,
     color: "#fff6f4",
@@ -365,6 +370,12 @@ export function normalizeChatStageRuntimeConfig(value: unknown): ChatStageRuntim
       typeof parsed.immersiveMode === "boolean" ? parsed.immersiveMode : defaultChatStageRuntimeConfig.immersiveMode,
     longPressTalk:
       typeof parsed.longPressTalk === "boolean" ? parsed.longPressTalk : defaultChatStageRuntimeConfig.longPressTalk,
+    miniAvatarMode:
+      typeof parsed.miniAvatarMode === "boolean" ? parsed.miniAvatarMode : defaultChatStageRuntimeConfig.miniAvatarMode,
+    miniInputShortcut:
+      typeof parsed.miniInputShortcut === "string"
+        ? normalizeMiniInputShortcut(parsed.miniInputShortcut, defaultChatStageRuntimeConfig.miniInputShortcut)
+        : defaultChatStageRuntimeConfig.miniInputShortcut,
     typewriterCps:
       parsed.typewriterCps == null
         ? null

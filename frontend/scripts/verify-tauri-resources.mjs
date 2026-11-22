@@ -29,7 +29,7 @@ await assertExists(path.join(resourcesDir, "frontend_bridge.py"));
 await assertExists(path.join(resourcesDir, "application", "chat", "host", "mobile_access.py"));
 await assertExists(path.join(resourcesDir, "application", "chat", "composition.py"));
 await assertExists(path.join(resourcesDir, "application", "chat", "runtime", "commands.py"));
-await assertExists(path.join(resourcesDir, "application", "chat", "history", "branches.py"));
+await assertExists(path.join(resourcesDir, "application", "chat", "history", "state.py"));
 await assertExists(path.join(resourcesDir, "application", "chat", "runtime", "startup.py"));
 await assertExists(path.join(resourcesDir, "application", "chat", "runtime", "session.py"));
 await assertExists(path.join(resourcesDir, "application", "chat", "presentation", "assets.py"));
@@ -52,6 +52,9 @@ await assertExists(path.join(resourcesDir, "application", "runtime", "dependenci
 await assertExists(path.join(resourcesDir, "frontend_bridge_core", "transport", "mobile_access.py"));
 await assertExists(path.join(resourcesDir, "frontend_bridge_core", "transport", "chat_commands.py"));
 await assertExists(path.join(resourcesDir, "ai", "llm", "llm_manager.py"));
+await assertExists(path.join(resourcesDir, "ai", "llm", "template", "catalog", "zh_CN", "dialog.yaml"));
+await assertExists(path.join(resourcesDir, "ai", "llm", "template", "catalog", "en", "dialog.yaml"));
+await assertExists(path.join(resourcesDir, "ai", "llm", "template", "catalog", "ja", "dialog.yaml"));
 await assertExists(path.join(resourcesDir, "ai", "asr", "asr_adapter.py"));
 await assertExists(path.join(resourcesDir, "ai", "tts", "tts_manager.py"));
 await assertExists(path.join(resourcesDir, "ai", "t2i", "t2i_manager.py"));
@@ -81,6 +84,7 @@ for (const retiredPath of [
   path.join("application", "characters", "generation.py"),
   path.join("application", "chat", "effects.py"),
   path.join("application", "chat", "initialization.py"),
+  path.join("application", "chat", "history", "branches.py"),
   path.join("application", "memory", "service.py"),
   path.join("application", "model_assets", "service.py"),
   path.join("application", "plugins", "updates.py"),

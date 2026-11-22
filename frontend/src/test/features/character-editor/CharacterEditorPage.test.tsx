@@ -12,11 +12,15 @@ import { ToastProvider } from "../../../shared/ui";
 
 const mockGetAppConfig = vi.fn();
 const mockListCharacters = vi.fn();
+const mockAutoGroupCharacterSprites = vi.fn();
+const mockAwakenCharacterMemory = vi.fn();
+const mockPinCharacterMemory = vi.fn();
 const mockPlanCharacterSprites = vi.fn();
 const mockRenderCharacterSprite = vi.fn();
 const mockImportGeneratedCharacterSprites = vi.fn();
 const mockSaveCharacter = vi.fn();
 const mockSaveCharacterEmotionTags = vi.fn();
+const mockSaveCharacterSpriteGroups = vi.fn();
 const mockUploadCharacterSprites = vi.fn();
 const mockUploadSpriteVoice = vi.fn();
 const mockDeleteAllCharacterSprites = vi.fn();
@@ -33,7 +37,6 @@ const mockListCharacterMemories = vi.fn();
 const mockOpenExternal = vi.fn();
 const mockRememberCharacterMemory = vi.fn();
 const mockSearchCharacterMemories = vi.fn();
-const mockSaveSpriteScale = vi.fn();
 const mockSaveSpriteVoiceText = vi.fn();
 const mockSaveSpriteVoiceType = vi.fn();
 const mockTranslateCharacterFields = vi.fn();
@@ -119,6 +122,8 @@ vi.mock("../../../entities/chat/repository", () => ({
 
 vi.mock("../../../entities/character/repository", () => ({
   charactersQueryKey: ["characters"],
+  autoGroupCharacterSprites: (input: unknown) => mockAutoGroupCharacterSprites(input),
+  awakenCharacterMemory: (input: unknown) => mockAwakenCharacterMemory(input),
   planCharacterSprites: (...args: unknown[]) => mockPlanCharacterSprites(...args),
   renderCharacterSprite: (...args: unknown[]) => mockRenderCharacterSprite(...args),
   importGeneratedCharacterSprites: (...args: unknown[]) => mockImportGeneratedCharacterSprites(...args),
@@ -133,12 +138,13 @@ vi.mock("../../../entities/character/repository", () => ({
   importCharacters: (paths: string[]) => mockImportCharacters(paths),
   listCharacterMemories: (name: string) => mockListCharacterMemories(name),
   listCharacters: () => mockListCharacters(),
-  rememberCharacterMemory: (name: string, memory: string) => mockRememberCharacterMemory(name, memory),
+  pinCharacterMemory: (input: unknown) => mockPinCharacterMemory(input),
+  rememberCharacterMemory: (...args: unknown[]) => mockRememberCharacterMemory(...args),
   searchCharacterMemories: (input: { limit?: number; name: string; query: string }) =>
     mockSearchCharacterMemories(input),
   saveCharacter: (character: Character, originalName?: string) => mockSaveCharacter(character, originalName),
   saveCharacterEmotionTags: (name: string, emotionTags: string) => mockSaveCharacterEmotionTags(name, emotionTags),
-  saveSpriteScale: (name: string, scale: number) => mockSaveSpriteScale(name, scale),
+  saveCharacterSpriteGroups: (input: unknown) => mockSaveCharacterSpriteGroups(input),
   saveSpriteVoiceText: (name: string, index: number, text: string) => mockSaveSpriteVoiceText(name, index, text),
   saveSpriteVoiceType: (name: string, index: number, voiceType: string) =>
     mockSaveSpriteVoiceType(name, index, voiceType),
@@ -183,21 +189,27 @@ function renderPage(
   );
 }
 
+async function waitForCharacterLoaded(name = "Mika") {
+  await waitFor(() => expect(screen.getByLabelText("Character name")).toHaveValue(name));
+}
+
 describe("mergeSprites", () => {
   it("falls back to index only when rewritten paths keep the same list shape", () => {
     const current = {
       ...structuredClone(character),
       sprites: [
-        { path: "D:/old/sprite-a.png", voice_type: "preset" as const },
+        {
+          path: "D:/old/sprite-a.png",
+          portrait_crop: { x: 0.3, y: 0.2, zoom: 2 },
+          voice_type: "preset" as const,
+        },
         { path: "D:/old/sprite-b.png", voice_type: "reference" as const },
       ],
     };
 
-    expect(
-      mergeSprites([{ path: "D:/new/sprite-a.png" }, { path: "D:/new/sprite-b.png" }], current).map(
-        (sprite) => sprite.voice_type,
-      ),
-    ).toEqual(["preset", "reference"]);
+    const merged = mergeSprites([{ path: "D:/new/sprite-a.png" }, { path: "D:/new/sprite-b.png" }], current);
+    expect(merged.map((sprite) => sprite.voice_type)).toEqual(["preset", "reference"]);
+    expect(merged[0].portrait_crop).toEqual({ x: 0.3, y: 0.2, zoom: 2 });
 
     expect(mergeSprites([{ path: "D:/new/sprite-b.png" }], current).map((sprite) => sprite.voice_type)).toEqual([
       undefined,
@@ -309,11 +321,6 @@ describe("CharacterEditorPage", () => {
       ...character,
       emotion_tags: emotionTags,
     }));
-    mockSaveSpriteScale.mockImplementation(async (name: string, scale: number) => ({
-      ...structuredClone(character),
-      name,
-      sprite_scale: scale,
-    }));
     mockSaveSpriteVoiceText.mockImplementation(async (name: string, index: number, text: string) => ({
       ...structuredClone(character),
       name,
@@ -344,7 +351,7 @@ describe("CharacterEditorPage", () => {
   it("saves batch sprite tags when the dialog is confirmed", async () => {
     renderPage();
 
-    await screen.findByDisplayValue("Mika");
+    await waitForCharacterLoaded();
     const batchTagsButton = screen.getByRole("button", { name: "Batch tags" });
     await waitFor(() => expect(batchTagsButton).toBeEnabled());
     fireEvent.click(batchTagsButton);
@@ -363,7 +370,7 @@ describe("CharacterEditorPage", () => {
     renderPage();
 
     fireEvent.change(screen.getByLabelText("Character name"), { target: { value: "Sora" } });
-    fireEvent.change(screen.getByLabelText("Upload directory name (ASCII)"), { target: { value: "sora" } });
+    fireEvent.change(screen.getByLabelText(/Upload directory name \(ASCII\)/), { target: { value: "sora" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() =>
@@ -432,9 +439,13 @@ describe("CharacterEditorPage", () => {
     renderPage();
 
     fireEvent.change(screen.getByLabelText("Character name"), { target: { value: "Sora" } });
-    fireEvent.change(screen.getByLabelText("Upload directory name (ASCII)"), { target: { value: "sora" } });
-    fireEvent.click(screen.getByRole("button", { name: "Choose images or MP4 / WebM videos..." }));
+    fireEvent.change(screen.getByLabelText(/Upload directory name \(ASCII\)/), { target: { value: "sora" } });
+    expect(screen.queryByText("Choose images or MP4 / WebM videos...")).not.toBeInTheDocument();
+    pickerState.paths = ["D:/new/sora.png", "D:/new/sora.webm"];
     fireEvent.click(screen.getByRole("button", { name: "Upload" }));
+    const picker = screen.getByRole("dialog", { name: "Choose images or MP4 / WebM videos..." });
+    expect(mockUploadCharacterSprites).not.toHaveBeenCalled();
+    fireEvent.click(within(picker).getByRole("button", { name: "Choose mocked paths" }));
 
     await waitFor(() =>
       expect(mockSaveCharacter).toHaveBeenCalledWith(
@@ -449,7 +460,7 @@ describe("CharacterEditorPage", () => {
       expect(mockUploadCharacterSprites).toHaveBeenCalledWith({
         emotionTags: "",
         name: "Sora",
-        paths: ["D:/new/sora.png"],
+        paths: ["D:/new/sora.png", "D:/new/sora.webm"],
       }),
     );
     await waitFor(() => expect(screen.getByRole("combobox", { name: "Current character" })).toHaveTextContent("Sora"));
@@ -458,8 +469,8 @@ describe("CharacterEditorPage", () => {
   it("uploads sprite voice with the displayed default fallback type", async () => {
     renderPage();
 
-    await screen.findByDisplayValue("Mika");
-    fireEvent.click(screen.getByRole("button", { name: "Voice upload file" }));
+    await waitForCharacterLoaded();
+    fireEvent.click(await screen.findByRole("button", { name: "Voice upload file" }));
     fireEvent.click(screen.getByRole("button", { name: "Upload voice" }));
 
     await waitFor(() =>
@@ -484,8 +495,8 @@ describe("CharacterEditorPage", () => {
     ]);
     renderPage();
 
-    await screen.findByDisplayValue("Mika");
-    expect(screen.getByRole("radio", { name: "Fallback voice" })).toBeChecked();
+    await waitForCharacterLoaded();
+    expect(await screen.findByRole("radio", { name: "Fallback voice" })).toBeChecked();
     fireEvent.click(screen.getByRole("button", { name: "Voice upload file" }));
     fireEvent.click(screen.getByRole("button", { name: "Upload voice" }));
 
@@ -504,8 +515,8 @@ describe("CharacterEditorPage", () => {
   it("uploads sprite voice as preset after explicit selection", async () => {
     renderPage();
 
-    await screen.findByDisplayValue("Mika");
-    fireEvent.click(screen.getByRole("radio", { name: "Preset voice" }));
+    await waitForCharacterLoaded();
+    fireEvent.click(await screen.findByRole("radio", { name: "Preset voice" }));
     fireEvent.click(screen.getByRole("button", { name: "Voice upload file" }));
     fireEvent.click(screen.getByRole("button", { name: "Upload voice" }));
 
@@ -532,7 +543,7 @@ describe("CharacterEditorPage", () => {
     ]);
     renderPage();
 
-    await screen.findByDisplayValue("Mika");
+    await waitForCharacterLoaded();
     expect(await screen.findByRole("radio", { name: "Reference voice" })).toBeChecked();
     fireEvent.click(screen.getByRole("button", { name: "Voice upload file" }));
     fireEvent.click(screen.getByRole("button", { name: "Upload voice" }));
@@ -552,7 +563,7 @@ describe("CharacterEditorPage", () => {
   it("imports and exports packages, opens resources, and runs AI actions", async () => {
     renderPage();
 
-    await screen.findByDisplayValue("Mika");
+    await waitForCharacterLoaded();
     fireEvent.click(screen.getByRole("button", { name: "Community characters" }));
     fireEvent.click(screen.getByRole("button", { name: "Upload contribution" }));
     expect(mockOpenExternal).toHaveBeenCalledTimes(2);
@@ -594,12 +605,10 @@ describe("CharacterEditorPage", () => {
     ]);
     renderPage();
 
-    await screen.findByDisplayValue("Mika");
-    fireEvent.change(screen.getByLabelText("Display scale"), { target: { value: "1.25" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save scale" }));
-    await waitFor(() => expect(mockSaveSpriteScale).toHaveBeenCalledWith("Mika", 1.25));
+    await waitForCharacterLoaded();
+    expect(screen.queryByLabelText("Display scale")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("radio", { name: "Reference voice" }));
+    fireEvent.click(await screen.findByRole("radio", { name: "Reference voice" }));
     await waitFor(() => expect(mockSaveSpriteVoiceType).toHaveBeenCalledWith("Mika", 0, "reference"));
 
     const voiceTextInput = screen.getByDisplayValue("hello");
@@ -635,7 +644,7 @@ describe("CharacterEditorPage", () => {
     ]);
     renderPage();
 
-    await screen.findByDisplayValue("Mika");
+    await waitForCharacterLoaded();
     fireEvent.click(await screen.findByTitle("sprite-b.png"));
     fireEvent.change(screen.getByLabelText("Sprite tag"), { target: { value: "unsaved second edit" } });
     fireEvent.click(screen.getByTitle("sprite-a.png"));
@@ -680,8 +689,8 @@ describe("CharacterEditorPage", () => {
     mockDeleteCharacterSprite.mockResolvedValue(updatedCharacter);
     renderPage();
 
-    await screen.findByDisplayValue("Mika");
-    expect(screen.getByRole("radio", { name: "Preset voice" })).toBeChecked();
+    await waitForCharacterLoaded();
+    expect(await screen.findByRole("radio", { name: "Preset voice" })).toBeChecked();
 
     fireEvent.click(screen.getByRole("button", { name: "Remove" }));
     const dialog = screen.getByRole("dialog", { name: "Remove" });
@@ -699,7 +708,7 @@ describe("CharacterEditorPage", () => {
   it("refreshes, adds, and deletes long-term memories", async () => {
     renderPage();
 
-    await screen.findByDisplayValue("Mika");
+    await waitForCharacterLoaded();
     fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
     await waitFor(() => expect(mockGetMem0Status).toHaveBeenCalled());
     expect(await screen.findByText("Likes tea")).toBeInTheDocument();
@@ -751,7 +760,7 @@ describe("CharacterEditorPage", () => {
     });
     renderPage(client);
 
-    await screen.findByDisplayValue("Mika");
+    await waitForCharacterLoaded();
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     const dialog = screen.getByRole("dialog", { name: "Delete character" });
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
@@ -778,7 +787,7 @@ describe("CharacterEditorPage", () => {
 
     renderPage();
 
-    await screen.findByDisplayValue("Mika");
+    await waitForCharacterLoaded();
     expect(screen.getByText(/Upload the \.char package in the Kaggle Notebook/)).toBeInTheDocument();
     const voiceReferencePickers = [
       screen.getByRole("button", { name: "GPT model path" }),
@@ -805,17 +814,14 @@ describe("CharacterEditorPage", () => {
     expect(mockSaveCharacter).not.toHaveBeenCalled();
 
     fireEvent.change(nameInput, { target: { value: "Sora" } });
-    fireEvent.change(screen.getByLabelText("Upload directory name (ASCII)"), { target: { value: "空" } });
+    fireEvent.change(screen.getByLabelText(/Upload directory name \(ASCII\)/), { target: { value: "空" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByText(/Sprite directory must contain ASCII characters only/)).toBeInTheDocument();
 
+    pickerState.paths = ["D:/new/sora.png"];
     fireEvent.click(screen.getByRole("button", { name: "Upload" }));
-    await waitFor(() => expect(screen.getAllByText("Choose images or MP4 / WebM videos...").length).toBeGreaterThan(1));
+    fireEvent.click(screen.getByRole("button", { name: "Choose mocked paths" }));
     expect(mockUploadCharacterSprites).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByRole("button", { name: "Save scale" }));
-    await waitFor(() => expect(screen.getAllByText("Save scale").length).toBeGreaterThan(1));
-    expect(mockSaveSpriteScale).not.toHaveBeenCalled();
 
     expect(mockSaveCharacterEmotionTags).not.toHaveBeenCalled();
     expect(mockUploadSpriteVoice).not.toHaveBeenCalled();
@@ -846,7 +852,7 @@ describe("CharacterEditorPage", () => {
 
     renderPage();
 
-    await screen.findByDisplayValue("Mika");
+    await waitForCharacterLoaded();
     fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
     expect(await screen.findByText("Missing Python dependency")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Install" }));
@@ -860,5 +866,86 @@ describe("CharacterEditorPage", () => {
     await waitFor(() => expect(screen.queryByText("Missing Python dependency")).not.toBeInTheDocument());
     await waitFor(() => expect(mockGetMem0Status).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(mockListCharacterMemories).toHaveBeenCalledTimes(2));
+  });
+
+  it("opens Portrait crop from the sprites section and saves portrait_crop without discarding unsaved draft edits", async () => {
+    mockSaveCharacter.mockImplementation(async (saved: Character) => structuredClone(saved));
+
+    renderPage();
+    await waitForCharacterLoaded();
+
+    fireEvent.change(screen.getByLabelText("Character setting"), {
+      target: { value: "Unsaved personality text" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Avatar" }));
+    const dialog = await screen.findByRole("dialog", { name: /Adjust portrait crop/i });
+    const sliders = within(dialog).getAllByRole("slider");
+    expect(sliders).toHaveLength(3);
+    fireEvent.change(sliders[0], { target: { value: "0.35" } });
+    fireEvent.change(sliders[1], { target: { value: "0.18" } });
+    fireEvent.change(sliders[2], { target: { value: "2.4" } });
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(mockSaveCharacter).toHaveBeenCalledTimes(1));
+    const [savedPayload, originalName] = mockSaveCharacter.mock.calls[0] as [Character, string];
+    expect(originalName).toBe("Mika");
+    expect(savedPayload.portrait_crop).toEqual({ x: 0.35, y: 0.18, zoom: 2.4 });
+    expect(savedPayload.character_setting).toBe("Quiet student.");
+    expect(screen.getByLabelText("Character setting")).toHaveValue("Unsaved personality text");
+  });
+
+  it("locks the sprite prefix, hides delete, and keeps built-in 自设 pinned first after saving", async () => {
+    const selfPersona: Character = {
+      ...character,
+      character_setting: "Player persona bio",
+      is_builtin: true,
+      name: "自设",
+      pinned: true,
+      sprite_prefix: "__self__",
+      sprites: [],
+      undeletable: true,
+    };
+    mockListCharacters.mockResolvedValue([selfPersona, character]);
+    mockSaveCharacter.mockImplementation(async (saved: Character) => structuredClone(saved));
+
+    renderPage();
+    expect(await screen.findByLabelText("Display name")).toHaveAttribute("placeholder", "自设");
+    expect(screen.getByLabelText(/Upload directory name \(ASCII\)/)).toBeDisabled();
+    expect(screen.getByText("Global Player Persona & Public Self-Memory")).toBeInTheDocument();
+    const basicSection = document.getElementById("character-basic") as HTMLElement;
+    expect(within(basicSection).queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Character setting"), {
+      target: { value: "Updated player bio" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(mockSaveCharacter).toHaveBeenCalledTimes(1));
+
+    // Built-in 自设 remains first in the character selector even after saving!
+    fireEvent.click(screen.getByRole("combobox", { name: "Current character" }));
+    const options = screen.getAllByRole("option");
+    expect(options.map((option) => option.textContent)).toEqual(["自设", "Mika"]);
+  });
+  it("saves a display name for the built-in persona under its original ID", async () => {
+    const id = "自设";
+    mockListCharacters.mockResolvedValue([
+      { ...structuredClone(character), name: id, sprite_prefix: "__self__", is_builtin: true, undeletable: true },
+    ]);
+    renderPage();
+    const name = await screen.findByLabelText("Display name");
+    expect(name).toBeEnabled();
+    expect(screen.getByLabelText(/Upload directory name \(ASCII\)/)).toBeDisabled();
+    fireEvent.change(name, { target: { value: "Robin" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(mockSaveCharacter).toHaveBeenCalledWith(
+        expect.objectContaining({ name: id, display_name: "Robin", sprite_prefix: "__self__" }),
+        id,
+      ),
+    );
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Current character" })).toHaveTextContent("Robin"));
   });
 });

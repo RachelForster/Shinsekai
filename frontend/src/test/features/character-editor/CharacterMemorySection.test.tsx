@@ -170,4 +170,64 @@ describe("CharacterMemorySection", () => {
     // Button label + EmptyState title both show the text
     expect(screen.getAllByText("Initializing memory system…")).toHaveLength(2);
   });
+
+  it("renders canon vs dynamic groups, clarity badges, retention, detail toggle, pin, and awaken actions", () => {
+    const onPinMemory = vi.fn();
+    const onAwakenMemory = vi.fn();
+    const onAddAsCanonChange = vi.fn();
+
+    renderSection({
+      addAsCanon: false,
+      data: {
+        agentId: "Mio",
+        count: 2,
+        memories: [
+          {
+            clarity: "canon",
+            id: "canon-1",
+            memory: "Born in winter.",
+            pinned: true,
+          },
+          {
+            clarity: "faded",
+            detail: "Full conversation under the cherry blossoms at dusk.",
+            gist: "Walked together under cherry blossoms.",
+            id: "dyn-1",
+            memory: "Walked together under cherry blossoms.",
+            pinned: false,
+            retention: 0.52,
+          },
+        ],
+      },
+      isFetched: true,
+      memoryName: "Mio",
+      onAddAsCanonChange,
+      onAwakenMemory,
+      onPinMemory,
+    });
+
+    expect(screen.getByText("Canon / Core Memories")).toBeInTheDocument();
+    expect(screen.getByText("Dynamic Memories")).toBeInTheDocument();
+    expect(screen.getByText("Canon")).toBeInTheDocument();
+    expect(screen.getByText("Faded")).toBeInTheDocument();
+    expect(screen.getByText("Retention 52%")).toBeInTheDocument();
+
+    expect(screen.queryByText("Full conversation under the cherry blossoms at dusk.")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show detail" }));
+    expect(screen.getByText("Full conversation under the cherry blossoms at dusk.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Hide detail" }));
+    expect(screen.queryByText("Full conversation under the cherry blossoms at dusk.")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Awaken" }));
+    expect(onAwakenMemory).toHaveBeenCalledWith(expect.objectContaining({ id: "dyn-1" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Unpin" }));
+    expect(onPinMemory).toHaveBeenCalledWith(expect.objectContaining({ id: "canon-1" }), false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Pin as canon" }));
+    expect(onPinMemory).toHaveBeenCalledWith(expect.objectContaining({ id: "dyn-1" }), true);
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /Add as canon \(never fades\)/ }));
+    expect(onAddAsCanonChange).toHaveBeenCalledWith(true);
+  });
 });

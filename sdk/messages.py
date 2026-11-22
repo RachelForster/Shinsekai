@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 from typing import Any, Optional, Union
 
 
@@ -18,6 +18,10 @@ class UserInputMessage(BaseModel):
     attachments: list[dict[str, Any]] = Field(
         default_factory=list,
         description="User-selected chat attachments validated by core.media before processing.",
+    )
+    source: str = Field(
+        default="user",
+        description="输入来源标识：user 表示真实用户输入，perception 表示感知系统主动触发",
     )
 
 
@@ -47,6 +51,11 @@ class LLMDialogMessage(BaseModel):
         "", description="可选的翻译文本，如果存在则用于 TTS"
     )
     effect: Optional[str] = Field("", description="特效名称")
+    outfit: Optional[str] = Field(
+        "",
+        validation_alias=AliasChoices("outfit", "sprite_group"),
+        description="可选的服装分组名称；仅当剧情发生换装时输出",
+    )
     dialog_id: str = Field("", exclude=True, repr=False, description="Durable history dialog identity")
     turn_id: Optional[int] = Field(
         None,

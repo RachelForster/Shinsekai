@@ -1,37 +1,61 @@
-"""Lazy runtime for the isolated knowledge Mem0 instance."""
+"""Lazy runtime for the isolated HybridKnowledgeStore instance."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
+import importlib
 import importlib.util
 import logging
 import threading
 import time
 from typing import Any
 
+from core.knowledge.catalog import reset_knowledge_catalog
 from core.model_assets.service import download_model_asset
+from sdk.adapters.storage import ManagedBackend
 from sdk.exception.types import (
     download_error_from_exception,
     runtime_dependency_error_from_exception,
     runtime_dependency_error_from_module,
 )
 
+from ai.knowledge.config import (
+    HybridKnowledgeStore,
+    configure_mem0_environment,
+    create_knowledge_mem0,
+)
 from ai.memory.config import (
     EMBEDDING_MODEL_ASSET,
     embedding_model_snapshot_path,
 )
 from ai.memory.constants import EMBEDDING_MODEL
-from ai.knowledge.config import configure_mem0_environment, create_knowledge_mem0
 from application.knowledge.tasks import current_mem0_task, set_mem0_task
 
 logger = logging.getLogger(__name__)
+_REQUIRED_RUNTIME_MODULE = "onnxruntime"
 
 configure_mem0_environment()
 
 _mem0: Any = None
 _mem0_load_error: BaseException | None = None
 _mem0_loading = False
+_runtime_generation: int = 0
+_store_observer: Callable[[ManagedBackend | None], None] | None = None
 _lock = threading.Lock()
 
+
+def set_knowledge_store_observer(
+    observer: Callable[[ManagedBackend | None], None] | None,
+) -> None:
+    """Register or clear a lifecycle observer receiving the knowledge store backend."""
+    with _lock:
+        global _store_observer
+        _store_observer = observer
+        instance = _mem0
+    if observer is not None and instance is not None:
+        backend = getattr(instance, "store", None)
+        if isinstance(backend, ManagedBackend):
+            observer(backend)
 
 
 def _preload_embedding_model() -> str:
@@ -48,7 +72,10 @@ def _preload_embedding_model() -> str:
 
 
 def _dependency_from_error(error: BaseException) -> dict[str, Any]:
-    return runtime_dependency_error_from_exception(error) or runtime_dependency_error_from_module("mem0")
+    return (
+        runtime_dependency_error_from_exception(error)
+        or runtime_dependency_error_from_module(_REQUIRED_RUNTIME_MODULE)
+    )
 
 
 def _module_is_available(module_name: str) -> bool:
@@ -63,7 +90,7 @@ def _missing_dependency_status(dependency: dict[str, Any]) -> dict[str, Any]:
     return {**dependency, "status": "missing_dependency", **({"task": task} if task else {})}
 
 
-def _record_loading_error(exc: Exception, stage: str) -> None:
+def _record_loading_error(exc: Exception, stage: str, *, expected_generation: int | None = None) -> None:
     global _mem0_load_error
     dependency = runtime_dependency_error_from_exception(exc)
     if isinstance(exc, ModuleNotFoundError):
@@ -84,6 +111,8 @@ def _record_loading_error(exc: Exception, stage: str) -> None:
         user_message = f"资料初始化失败：{exc}"
         notice = str(exc)
     with _lock:
+        if expected_generation is not None and _runtime_generation != expected_generation:
+            return
         _mem0_load_error = exc
         set_mem0_task(
             error=str(exc), errorCode=error_code, errorUserMessage=user_message,
@@ -107,13 +136,15 @@ def start_mem0_loading(*, retry: bool = False) -> None:
             errorUserMessage="", httpStatus=None, notice="", noticeKind="info",
         )
         _mem0_loading = True
+        load_generation = _runtime_generation
 
     def _load() -> None:
         global _mem0, _mem0_loading
         stage = "dependency"
+        published = False
         try:
             configure_mem0_environment()
-            from mem0 import Memory
+            importlib.import_module(_REQUIRED_RUNTIME_MODULE)
 
             stage = "download"
             snapshot_path = _preload_embedding_model()
@@ -122,30 +153,50 @@ def start_mem0_loading(*, retry: bool = False) -> None:
                 phase="initialize", status="running", progress=0.96,
                 message="Initializing knowledge.",
             )
-            store = create_knowledge_mem0(Memory, snapshot_path)
+            store = create_knowledge_mem0(HybridKnowledgeStore, snapshot_path)
+            observer = None
             with _lock:
-                set_mem0_task(
-                    phase="completed", status="succeeded", progress=1.0,
-                    message="Knowledge is ready.",
-                )
-                _mem0 = store
+                if _runtime_generation == load_generation:
+                    set_mem0_task(
+                        phase="completed", status="succeeded", progress=1.0,
+                        message="Knowledge is ready.",
+                    )
+                    _mem0 = store
+                    observer = _store_observer
+                    published = True
+            if observer is not None and published:
+                backend = getattr(store, "store", None)
+                if isinstance(backend, ManagedBackend):
+                    try:
+                        observer(backend)
+                    except Exception:
+                        logger.exception("Knowledge store observer registration failed")
+            if not published and hasattr(store, "close"):
+                try:
+                    store.close()
+                except Exception:
+                    pass
         except Exception as exc:
             logger.exception("Knowledge initialization failed")
-            _record_loading_error(exc, stage)
+            _record_loading_error(exc, stage, expected_generation=load_generation)
         finally:
             with _lock:
-                _mem0_loading = False
+                if _runtime_generation == load_generation:
+                    _mem0_loading = False
 
     try:
         threading.Thread(target=_load, name="knowledge-loader", daemon=True).start()
     except Exception as exc:
-        _record_loading_error(exc, "initialize")
+        _record_loading_error(exc, "initialize", expected_generation=load_generation)
         with _lock:
-            _mem0_loading = False
+            if _runtime_generation == load_generation:
+                _mem0_loading = False
         logger.exception("Could not start Knowledge loader")
         raise
 
-_GET_MEM0_TIMEOUT_SEC = 600  # 10 minutes — covers worst-case first-time model download
+
+_GET_MEM0_TIMEOUT_SEC = 600
+
 
 def get_mem0() -> Any:
     """Return the Knowledge instance, waiting up to ten minutes for background loading."""
@@ -160,11 +211,11 @@ def get_mem0() -> Any:
         if not loading:
             if error is not None:
                 raise error
-            raise RuntimeError("Knowledge mem0 loading failed")
+            raise RuntimeError("Knowledge store loading failed")
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise TimeoutError(f"Knowledge mem0 加载超时（{_GET_MEM0_TIMEOUT_SEC} 秒）。请检查网络连接和模型下载状态。")
-        time.sleep(min(0.5, remaining))
+        time.sleep(min(0.05, remaining))
 
 
 def check_mem0_status(*, start_loading: bool = True, retry: bool = False) -> dict[str, Any]:
@@ -180,8 +231,11 @@ def check_mem0_status(*, start_loading: bool = True, retry: bool = False) -> dic
     if loading:
         return {"status": "loading", "modelCached": embedding_model_snapshot_path() is not None, **task_fields}
     if error is not None:
-        dependency = (_dependency_from_error(error) if isinstance(error, ModuleNotFoundError)
-                      else runtime_dependency_error_from_exception(error))
+        dependency = (
+            _dependency_from_error(error)
+            if isinstance(error, ModuleNotFoundError)
+            else runtime_dependency_error_from_exception(error)
+        )
         if dependency is not None and not _module_is_available(str(dependency["moduleName"])):
             return _missing_dependency_status(dependency)
         if not retry:
@@ -189,10 +243,13 @@ def check_mem0_status(*, start_loading: bool = True, retry: bool = False) -> dic
             return {"status": "error", "error": str(error), "message": message, **task_fields}
     configure_mem0_environment()
     try:
-        importlib.import_module("mem0")
+        importlib.import_module(_REQUIRED_RUNTIME_MODULE)
     except ImportError as exc:
-        dependency = (_dependency_from_error(exc) if isinstance(exc, ModuleNotFoundError)
-                      else runtime_dependency_error_from_exception(exc))
+        dependency = (
+            _dependency_from_error(exc)
+            if isinstance(exc, ModuleNotFoundError)
+            else runtime_dependency_error_from_exception(exc)
+        )
         if dependency is not None:
             return _missing_dependency_status(dependency)
         return {"status": "error", "message": str(exc), **task_fields}
@@ -205,3 +262,31 @@ def check_mem0_status(*, start_loading: bool = True, retry: bool = False) -> dic
         start_mem0_loading()
     task = current_mem0_task()
     return {"status": "loading", "modelCached": cached, **({"task": task} if task else {})}
+
+
+def shutdown_knowledge_runtime() -> None:
+    """Close the global knowledge store and release SQLite / catalog resources."""
+    global _mem0, _mem0_loading, _mem0_load_error, _runtime_generation
+    with _lock:
+        _runtime_generation += 1
+        instance = _mem0
+        observer = _store_observer
+        _mem0 = None
+        _mem0_loading = False
+        _mem0_load_error = None
+    if observer is not None:
+        try:
+            observer(None)
+        except Exception:
+            logger.exception("Knowledge store observer cleanup failed")
+    if instance is not None and hasattr(instance, "close"):
+        try:
+            instance.close()
+        except Exception:
+            logger.exception("Knowledge store shutdown failed")
+    reset_knowledge_catalog()
+
+
+def reset_knowledge_runtime_for_tests() -> None:
+    """Reset knowledge singleton state for isolated unit tests."""
+    shutdown_knowledge_runtime()

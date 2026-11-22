@@ -4,12 +4,15 @@ import { expectToast, fillInput, gotoAndExpectPage } from "./helpers";
 
 test.describe("CUJ: template generation and chat launch", () => {
   test("generates a template from selected characters and background", async ({ page }) => {
-    await gotoAndExpectPage(page, "/#/settings/templates", ".template-page");
+    await gotoAndExpectPage(page, "/#/settings/templates?tab=new&mode=normal", ".template-page");
 
-    await fillInput(page.locator(".template-scenario-textarea"), "A quiet evening conversation near the window.");
+    await fillInput(page.locator("#template-user-prompt"), "A quiet evening conversation near the window.");
+
+    await page.locator('[data-section="system-prompt"] button').click();
     await page.locator(".template-generate-button").click();
-
     await expectToast(page);
+    await page.locator('[role="dialog"] footer button').last().click();
+
     await fillInput(page.locator(".template-topbar-field input").first(), "cuj-template");
     await page.locator(".template-save-button").click();
     await expectToast(page);

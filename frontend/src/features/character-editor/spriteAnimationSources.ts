@@ -8,6 +8,7 @@ export interface SpriteAnimationSource {
   tagging: string;
   origin: "existing" | "generated";
   index: number;
+  mouthSync?: boolean;
 }
 
 export function spriteAnimationSources(character: Character, candidates: SpriteCandidate[]): SpriteAnimationSource[] {
@@ -22,6 +23,7 @@ export function spriteAnimationSources(character: Character, candidates: SpriteC
               tagging: item.tagging,
               origin: "generated" as const,
               index,
+              mouthSync: Boolean(item.result.mouthSyncManifest),
             },
           ]
         : [],
@@ -35,6 +37,7 @@ export function spriteAnimationSources(character: Character, candidates: SpriteC
               tagging: tags[index],
               origin: "existing" as const,
               index,
+              mouthSync: Boolean(sprite.mouth_sync),
             },
           ]
         : [],

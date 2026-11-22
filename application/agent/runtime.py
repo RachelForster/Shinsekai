@@ -6,7 +6,7 @@ import threading
 from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
-from typing import Callable, Iterator
+from typing import Any, Callable, Iterator
 
 from application.agent.execute_host_tool import AgentHostTool
 from application.agent.management import AgentProfile, AgentService
@@ -66,6 +66,23 @@ class AgentRuntime:
         self._phase = ""
         self._progress = 0.0
         self._error: AgentError | None = None
+        self._storage_hub: Any = None
+
+    def bind_storage_hub(self, hub: Any) -> None:
+        """Bind an instance-scoped ``StorageHub`` to track the owned ``AgentStore``."""
+        with self._lock:
+            self._storage_hub = hub
+            service = self._service
+        if hub is not None and service is not None:
+            store = getattr(service, "store", None)
+            if store is not None:
+                hub.register_or_replace(store)
+
+    def _register_agent_store(self, service: Any) -> None:
+        hub = self._storage_hub
+        store = getattr(service, "store", None) if service is not None else None
+        if hub is not None and store is not None:
+            hub.register_or_replace(store)
 
     def start(self) -> None:
         with self._lock:
@@ -106,6 +123,7 @@ class AgentRuntime:
                         profiles=(self._profile,),
                         tools=self._tools,
                     )
+                self._register_agent_store(self._service)
             setup = self._prepare(
                 self.config_manager,
                 root=self.root,
@@ -130,6 +148,7 @@ class AgentRuntime:
                     self._service.configure_backend(
                         setup.backend, worker_environment=setup.worker_environment
                     )
+                self._register_agent_store(self._service)
                 self._setup = setup
                 self._service.start()
                 self._status, self._phase, self._progress = "ready", "ready", 1.0

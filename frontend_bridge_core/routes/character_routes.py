@@ -1,6 +1,33 @@
 from __future__ import annotations
 
 from application.characters import CharacterOperation
+from application.characters.sprite import mouth_resources
+from application.characters.voice.pipeline import run_character_voice_prepare
+from application.characters.sprite.animate_sprites import run_sprite_animation
+from application.characters.sprite.generate_sprites import (
+    import_generated_sprites,
+    run_sprite_cutout,
+    run_sprite_frame,
+    run_sprite_plan,
+    run_sprite_render,
+)
+from application.characters.sprite.mouth_resources import (
+    configure_mouth_setup,
+    import_mouth_models,
+    run_mouth_setup,
+)
+from application.characters.sprite.mouth_sync import (
+    describe_bundle,
+    read_profile,
+    remove_sprite_mouth,
+    run_sprite_mouth,
+    save_sprite_mouths,
+)
+from application.characters.sprite.transition_recommendations import run_transition_analysis
+from application.characters.sprite.transition_sprites import (
+    run_sprite_transition,
+    save_sprite_transitions,
+)
 from frontend_bridge_core.characters import (
     _ensure_character_briefs,
     _execute_character_request,
@@ -11,19 +38,6 @@ from frontend_bridge_core.characters import (
     _translate_character_fields,
 )
 from frontend_bridge_core.image_annotations import run_character_sprite_auto_label
-from frontend_bridge_core.sprite_transitions import (
-    run_sprite_transition,
-    save_sprite_transitions,
-    run_transition_analysis,
-)
-from frontend_bridge_core.sprite_generation import (
-    import_generated_sprites,
-    run_sprite_plan,
-    run_sprite_render,
-    run_sprite_frame,
-    run_sprite_cutout,
-    run_sprite_animation,
-)
 from frontend_bridge_core.routes.router import (
     ApiRequest,
     BodyKind,
@@ -31,10 +45,18 @@ from frontend_bridge_core.routes.router import (
     Route,
     TaskResponse,
 )
+from frontend_bridge_core.tools import _local_file_access_roots
 
 
 def _list_characters(request: ApiRequest) -> JsonResponse:
-    characters = request.state.config_manager.config.characters
+    if (request.query.get("view") or [""])[0] == "revision":
+        return JsonResponse(request.state.config_manager.characters_revision)
+    catalog_fn = getattr(request.state.config_manager, "list_characters_catalog", None)
+    characters = (
+        catalog_fn()
+        if callable(catalog_fn)
+        else request.state.config_manager.config.characters
+    )
 
     def name(character):
         return character.get("name", "") if isinstance(character, dict) else character.name
@@ -109,6 +131,26 @@ def _upload_character_sprites_route(request: ApiRequest) -> JsonResponse:
         _execute_character_request(
             request.state,
             CharacterOperation.UPLOAD_SPRITES,
+            request.body,
+        )
+    )
+
+
+def _save_character_sprite_groups_route(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(
+        _execute_character_request(
+            request.state,
+            CharacterOperation.SAVE_SPRITE_GROUPS,
+            request.body,
+        )
+    )
+
+
+def _auto_group_character_sprites_route(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(
+        _execute_character_request(
+            request.state,
+            CharacterOperation.AUTO_GROUP_SPRITES,
             request.body,
         )
     )
@@ -214,7 +256,7 @@ def _render_sprite(request: ApiRequest) -> TaskResponse:
         kind="character-sprite-render",
         title="生成角色立绘",
         message="正在准备图像生成。",
-        worker=lambda task_id: run_sprite_render(request.state, task_id, body),
+        worker=lambda task_id: run_sprite_render(request.state, task_id, body, file_access_roots=_local_file_access_roots(request.state)),
     )
 
 
@@ -246,7 +288,7 @@ def _animate_sprite(request: ApiRequest) -> TaskResponse:
     body = dict(request.body)
     return TaskResponse(kind="character-sprite-animate", title="生成透明动态立绘",
                         message="正在准备 H3 动态生成与逐帧抠图。",
-                        worker=lambda task_id: run_sprite_animation(request.state, task_id, body))
+                        worker=lambda task_id: run_sprite_animation(request.state, task_id, body, file_access_roots=_local_file_access_roots(request.state)))
 
 
 def _generate_sprite_transition(request: ApiRequest) -> TaskResponse:
@@ -254,7 +296,7 @@ def _generate_sprite_transition(request: ApiRequest) -> TaskResponse:
     return TaskResponse(
         kind="character-sprite-transition", title="生成立绘过渡",
         message="正在准备 22 帧透明过渡。",
-        worker=lambda task_id: run_sprite_transition(request.state, task_id, body),
+        worker=lambda task_id: run_sprite_transition(request.state, task_id, body, file_access_roots=_local_file_access_roots(request.state)),
     )
 
 
@@ -268,14 +310,89 @@ def _analyze_sprite_transitions(request: ApiRequest) -> TaskResponse:
     )
 
 
+def _generate_sprite_mouth(request: ApiRequest) -> TaskResponse:
+    body = dict(request.body)
+    return TaskResponse(
+        kind="character-sprite-mouth", title="制作立绘口型",
+        message="正在准备嘴型生成与匹配。",
+        worker=lambda task_id: run_sprite_mouth(
+            request.state,
+            task_id,
+            body,
+            file_access_roots=_local_file_access_roots(request.state),
+        ),
+    )
+
+
+def _mouth_setup_task(request: ApiRequest, action: str) -> TaskResponse:
+    return TaskResponse(
+        kind="sprite-mouth-setup", title="准备口型识别资源",
+        message="正在准备识别资源。",
+        worker=lambda task_id: run_mouth_setup(request.state, task_id, request.body, action),
+    )
+
+
+def _prepare_character_voice(request: ApiRequest) -> TaskResponse:
+    body = dict(request.body)
+    name = str(body.get("name") or "").strip()
+    if not name:
+        raise ValueError("角色名称不能为空")
+    return TaskResponse(
+        kind="character-voice-prepare",
+        title=f"准备 {name} 的角色语音",
+        message="角色语音处理任务已排队。",
+        worker=lambda task_id: run_character_voice_prepare(
+            request.state,
+            task_id,
+            body,
+            file_access_roots=_local_file_access_roots(request.state),
+        ),
+    )
+
+
 CHARACTER_ROUTES = (
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/characters/voice/prepare",
+        handler=_prepare_character_voice,
+        name="characters.voice.prepare",
+    ),
+    Route(methods=frozenset({"GET"}), pattern="/api/characters/sprites/mouth/profile",
+          handler=lambda request: JsonResponse(read_profile(request.state, (request.query.get("path") or [""])[0])),
+          body_kind=BodyKind.NONE, name="characters.sprites.mouth.profile"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/mouth/status",
+          handler=lambda request: JsonResponse(mouth_resources.status(request.state.project_root_dir, request.state.config_manager)),
+          name="characters.sprites.mouth.status"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/mouth/configure",
+          handler=lambda request: JsonResponse(configure_mouth_setup(request.state, request.body)),
+          name="characters.sprites.mouth.configure"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/mouth/models/import",
+          handler=lambda request: JsonResponse(import_mouth_models(request.state, request.body, file_access_roots=_local_file_access_roots(request.state))),
+          name="characters.sprites.mouth.models.import"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/mouth/models/download",
+          handler=lambda request: _mouth_setup_task(request, "download"),
+          name="characters.sprites.mouth.models.download"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/mouth/runtime/install",
+          handler=lambda request: _mouth_setup_task(request, "install"),
+          name="characters.sprites.mouth.runtime.install"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/mouth/generate",
+          handler=_generate_sprite_mouth, name="characters.sprites.mouth.generate"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/mouth/read",
+          handler=lambda request: JsonResponse(describe_bundle(request.state, request.body.get("path"))),
+          name="characters.sprites.mouth.read"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/mouth/save",
+          handler=lambda request: JsonResponse(save_sprite_mouths(request.state, request.body, file_access_roots=_local_file_access_roots(request.state))),
+          name="characters.sprites.mouth.save"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/mouth/remove",
+          handler=lambda request: JsonResponse(remove_sprite_mouth(request.state, request.body, file_access_roots=_local_file_access_roots(request.state))),
+          name="characters.sprites.mouth.remove"),
     Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/transitions/analyze",
           handler=_analyze_sprite_transitions, name="characters.sprites.transitions.analyze"),
     Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/transitions/generate",
           handler=_generate_sprite_transition,
           name="characters.sprites.transitions.generate"),
     Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/transitions/save",
-          handler=lambda request: JsonResponse(save_sprite_transitions(request.state, request.body)),
+          handler=lambda request: JsonResponse(save_sprite_transitions(request.state, request.body, file_access_roots=_local_file_access_roots(request.state))),
           name="characters.sprites.transitions.save"),
     Route(methods=frozenset({"POST"}), pattern="/api/characters/sprites/animate",
           handler=_animate_sprite, name="characters.sprites.animate"),
@@ -343,6 +460,18 @@ CHARACTER_ROUTES = (
         pattern="/api/characters/sprites/upload",
         handler=_upload_character_sprites_route,
         name="characters.sprites.upload",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/characters/sprites/groups",
+        handler=_save_character_sprite_groups_route,
+        name="characters.sprites.groups.save",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/characters/sprites/auto-group",
+        handler=_auto_group_character_sprites_route,
+        name="characters.sprites.auto_group",
     ),
     Route(
         methods=frozenset({"POST"}),

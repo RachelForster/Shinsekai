@@ -1,4 +1,4 @@
-"""Wire realtime input, branches, ASR, and commands into a chat session."""
+"""Wire realtime input, ASR, and commands into a chat session."""
 
 from __future__ import annotations
 
@@ -11,13 +11,9 @@ from application.chat.runtime.commands import (
     ChatCommandDispatcher,
     ChatCommandUiBindings,
 )
-from application.chat.history.state import chat_history, replay_history_entry
-from application.chat.history.branches import (
-    ConversationBranchBindings,
-    ConversationBranchManager,
-)
+from application.chat.history.state import chat_history
+from core.chat_history.storage import legacy_active_history_branch, read_active_chat_history
 from application.chat.presentation.assets import StreamingHistoryPresenter
-from application.chat.runtime.startup import chat_history_is_present
 from application.runtime.context import resolve_pending_tool_confirmation
 from application.chat.dialog_media.replay import enqueue_latest_media_replay
 from core.media.chat_attachments import resolve_chat_attachments
@@ -30,7 +26,6 @@ logger = logging.getLogger(__name__)
 class StreamingSessionBindings:
     """Runtime collaborators created for one streaming chat session."""
 
-    branch_manager: Any
     runtime_asr: Any
     submit_text: Any
     last_user_message: dict[str, object]
@@ -49,6 +44,7 @@ def wire_streaming_session(
     translate: Any,
     create_asr_adapter: Any,
     save_history: Any,
+    capability_commands: Any = None,
 ) -> StreamingSessionBindings:
     """Connect realtime adapters to transport-neutral chat use cases."""
 
@@ -64,6 +60,7 @@ def wire_streaming_session(
         translate=translate,
         create_asr_adapter=create_asr_adapter,
         save_history=save_history,
+        capability_commands=capability_commands,
     )
     return wiring.wire()
 
@@ -83,6 +80,7 @@ class _StreamingSessionWiring:
         translate: Any,
         create_asr_adapter: Any,
         save_history: Any,
+        capability_commands: Any = None,
     ) -> None:
         self.args = args
         self.config = config
@@ -95,12 +93,12 @@ class _StreamingSessionWiring:
         self.translate = translate
         self.create_asr_adapter = create_asr_adapter
         self.save_history = save_history
+        self.capability_commands = capability_commands
         self.last_user_message: dict[str, object] = {
             "attachments": [],
             "text": "",
         }
         self.emit_user_text: Any | None = None
-        self.branch_manager: Any | None = None
         self.runtime_asr: Any | None = None
 
     def wire(self) -> StreamingSessionBindings:
@@ -117,14 +115,11 @@ class _StreamingSessionWiring:
         story_hooks = getattr(self.startup.llm_manager, "story_prompt_hooks", None)
         if story_hooks is not None:
             story_hooks.publish = lambda story: self.transport.emit({"type": "story.state.replace", "story": story})
-        self.branch_manager = self._create_branch_manager()
-        if story_hooks is not None:
-            story_hooks.branch_id = lambda: self.branch_manager.active_branch_id
+            story_hooks.branch_id = lambda: legacy_active_history_branch(self.args.history)
         self.runtime_asr = self._create_streaming_asr()
         self._bind_asr_presentation_hooks()
         self.transport.bind_command_dispatcher(self._create_command_dispatcher())
         return StreamingSessionBindings(
-            branch_manager=self.branch_manager,
             runtime_asr=self.runtime_asr,
             submit_text=self.submit_runtime_text,
             last_user_message=self.last_user_message,
@@ -165,44 +160,6 @@ class _StreamingSessionWiring:
         if notify_key:
             self.ui_updates.post_notification(self.translate(notify_key))
         return True
-
-    def _create_branch_manager(self) -> ConversationBranchManager:
-        manager = ConversationBranchManager(
-            history_path=self.args.history,
-            chat_history=chat_history,
-            bindings=ConversationBranchBindings(
-                get_messages=self.startup.llm_manager.get_messages,
-                set_messages=self.startup.llm_manager.set_messages,
-                cancel_pending_batch=self.chat_turn_service.cancel_pending_batch,
-                persist_messages=lambda messages: self.save_history(
-                    self.args.history,
-                    messages,
-                ),
-                publish_tree=lambda tree: self.transport.emit(
-                    {"type": "conversation.tree", "tree": tree}
-                ),
-                clear_options=lambda: self.transport.emit({"type": "options.clear"}),
-                sync_history=self._sync_stream_history,
-                replay_history=lambda entry: replay_history_entry(
-                    StreamingHistoryPresenter(self.ui_updates),
-                    str(entry),
-                ),
-                submit_text=self.submit_runtime_text,
-                replay_media=lambda messages: enqueue_latest_media_replay(
-                    messages,
-                    dialog_queue=self.runtime.dialog_queue,
-                    opencc=self.runtime.opencc,
-                    player_name=str(
-                        getattr(self.args, "player_character", "") or ""
-                    ),
-                ),
-            ),
-        )
-        manager.load(
-            self.startup.messages,
-            active_history_present=chat_history_is_present(self.args.history),
-        )
-        return manager
 
     def _create_streaming_asr(self) -> Any:
         from ai.asr.streaming_controller import StreamingASRController
@@ -255,6 +212,8 @@ class _StreamingSessionWiring:
 
     def _create_command_dispatcher(self) -> ChatCommandDispatcher:
         ui_worker = self.runtime.ui_worker
+        if getattr(ui_worker, "replay", None) is not None:
+            ui_worker.replay.ui = self.ui_updates
 
         def handle_playback_signal(
             playback_id: str,
@@ -295,12 +254,18 @@ class _StreamingSessionWiring:
                     ),
                 ),
                 translate=self.translate,
+                persist_history=lambda messages: self.save_history(self.args.history, messages),
+                replay_media=lambda messages: enqueue_latest_media_replay(
+                    read_active_chat_history(self.args.history) if self.args.history else messages,
+                    dialog_queue=self.runtime.dialog_queue,
+                    opencc=self.runtime.opencc,
+                    player_name=str(getattr(self.args, "player_character", "") or ""),
+                ),
             ),
             config=self.config,
             llm_manager=self.startup.llm_manager,
             runtime_asr=self.runtime_asr,
             chat_turn_service=self.chat_turn_service,
-            branch_manager=self.branch_manager,
             chat_history=chat_history,
             last_user_message=self.last_user_message,
             presentation_queue=self.runtime.presentation_queue,
@@ -308,6 +273,8 @@ class _StreamingSessionWiring:
             history_presenter=StreamingHistoryPresenter(self.ui_updates),
             tts_manager=self.startup.tts_manager,
             voice_archive=getattr(self.ui_updates, "voice_archive", None),
+            replay=getattr(ui_worker, "replay", None),
+            capability_commands=self.capability_commands,
         )
 
     def _sync_stream_history(self) -> None:

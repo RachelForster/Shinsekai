@@ -1,4 +1,4 @@
-import { Activity, Maximize2, Minus, X } from "lucide-react";
+import { Activity, CircleUserRound, KeyRound, LayoutGrid, Maximize2, Minus, X } from "lucide-react";
 
 import { minimizeDesktopWindow, toggleMaximizeDesktopWindow } from "../../../shared/desktop/desktopApi";
 import { useI18n } from "../../../shared/i18n";
@@ -12,8 +12,13 @@ import { ChatThemePicker } from "../theme/ChatThemePicker";
 export function TopStageTools({
   autoHide = false,
   hidden,
+  miniAvatarDisabled = false,
+  needsApiKeyBadge = false,
   onCloseDesktopWindow,
+  onEnterMiniAvatar,
   onOpenPluginPage,
+  onOpenRuntimeMode,
+  onOpenWorkspace,
   onThemePickerOpenChange,
   onTokenUsageOpenChange,
   standaloneDesktopWindow,
@@ -26,8 +31,13 @@ export function TopStageTools({
 }: {
   autoHide?: boolean;
   hidden: boolean;
+  miniAvatarDisabled?: boolean;
+  needsApiKeyBadge?: boolean;
   onCloseDesktopWindow: () => Promise<void>;
+  onEnterMiniAvatar?: () => void;
   onOpenPluginPage: (target: PluginPageTarget) => void;
+  onOpenRuntimeMode?: () => void;
+  onOpenWorkspace?: () => void;
   onThemePickerOpenChange: (open: boolean) => void;
   onTokenUsageOpenChange: (open: boolean) => void;
   standaloneDesktopWindow: boolean;
@@ -78,6 +88,21 @@ export function TopStageTools({
       </div>
       <div className="top-stage-tools__controls">
         <PluginSlot onOpenPluginPage={onOpenPluginPage} slot="chat-top-toolbar" />
+        {onOpenRuntimeMode ? (
+          <IconButton
+            className="top-stage-tools__button"
+            data-active={needsApiKeyBadge ? "true" : "false"}
+            label="AI / 语音与跨端配置"
+            onClick={onOpenRuntimeMode}
+          >
+            <KeyRound aria-hidden className="icon-button__icon" />
+          </IconButton>
+        ) : null}
+        {onOpenWorkspace ? (
+          <IconButton className="top-stage-tools__button" label="返回工作台 / 角色管理" onClick={onOpenWorkspace}>
+            <LayoutGrid aria-hidden className="icon-button__icon" />
+          </IconButton>
+        ) : null}
         <ChatThemePicker
           className="top-stage-tools__button"
           onOpenChange={onThemePickerOpenChange}
@@ -93,6 +118,16 @@ export function TopStageTools({
         >
           <Activity aria-hidden className="icon-button__icon" />
         </IconButton>
+        {onEnterMiniAvatar ? (
+          <IconButton
+            className="top-stage-tools__button top-stage-tools__button--mini-avatar"
+            disabled={miniAvatarDisabled}
+            label={t("chat.mini.enter")}
+            onClick={onEnterMiniAvatar}
+          >
+            <CircleUserRound aria-hidden className="icon-button__icon" />
+          </IconButton>
+        ) : null}
         {standaloneDesktopWindow ? (
           <>
             <IconButton

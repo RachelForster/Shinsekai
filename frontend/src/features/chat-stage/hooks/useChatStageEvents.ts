@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch } from "react";
 
 import { getChatSnapshot, subscribeChatEvents } from "../../../entities/chat/repository";
+import { onPlatformModeChange } from "../../../shared/platform/platform";
 import type { ChatSnapshot } from "../../../shared/platform/types";
-import type { ChatStageAction } from "../chatState";
+import { emptyChatState, type ChatStageAction } from "../chatState";
 
 export function useChatStageEvents({
   dispatch,
@@ -10,12 +11,14 @@ export function useChatStageEvents({
   sessionId,
   loadFallbackMessage,
   queueAnimatedDialog,
+  showDialogImmediately,
 }: {
   dispatch: Dispatch<ChatStageAction>;
   eventSeq: number;
   sessionId?: string;
   loadFallbackMessage: string;
   queueAnimatedDialog: (input: { characterName?: string; html?: string; text?: string }) => void;
+  showDialogImmediately?: () => void;
 }) {
   const eventSeqRef = useRef(0);
   eventSeqRef.current = eventSeq;
@@ -33,6 +36,20 @@ export function useChatStageEvents({
   );
 
   useEffect(() => {
+    return onPlatformModeChange(() => {
+      // Unsubscribe from the previous platform and reset sequence state before rebinding.
+      cancelRef.current?.();
+      eventSeqRef.current = 0;
+      dispatch({
+        type: "replaceSession",
+        snapshot: { ...emptyChatState, effectImage: null, eventSeq: 0 },
+        receivedAt: performance.now(),
+      });
+      setSubscriptionRevision((revision) => revision + 1);
+    });
+  }, [dispatch]);
+
+  useEffect(() => {
     let mounted = true;
     getChatSnapshot()
       .then((snapshot: ChatSnapshot) => {
@@ -45,7 +62,14 @@ export function useChatStageEvents({
       });
     const unsubscribe = subscribeChatEvents((event) => {
       if (!mounted) return;
-      if (event.type === "dialog.end" && event.seq > eventSeqRef.current) {
+      if (
+        event.type === "presentation.restore" &&
+        event.seq > eventSeqRef.current &&
+        ("dialogHtml" in event.presentation || "dialogText" in event.presentation)
+      ) {
+        showDialogImmediately?.();
+      }
+      if (event.type === "dialog.end" && event.animate !== false && event.seq > eventSeqRef.current) {
         if (!event.isSystem || event.speaker.trim()) {
           queueAnimatedDialog({
             characterName: event.speaker,
@@ -62,6 +86,6 @@ export function useChatStageEvents({
     };
     cancelRef.current = cancel;
     return cancel;
-  }, [dispatch, loadFallbackMessage, queueAnimatedDialog, sessionId, subscriptionRevision]);
+  }, [dispatch, loadFallbackMessage, queueAnimatedDialog, showDialogImmediately, sessionId, subscriptionRevision]);
   return { replaceSession };
 }

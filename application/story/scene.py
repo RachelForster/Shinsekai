@@ -14,6 +14,7 @@ from ai.tools.story_tools import (
     scene_tool_protocol_definitions,
 )
 from config.feature_flags import FeatureFlag, FeatureFlagConfigManager
+from config.llm_defaults import resolve_llm_api_credentials, resolve_llm_factory_kwargs
 from core.story import (
     AdvanceStoryTurn,
     ApplySemanticSignals,
@@ -243,13 +244,16 @@ class ConfigSceneModel:
         return _parse_json_mapping(_adapter_text_content(response))
 
     def _llm_manager(self) -> Any:
-        provider, model, base_url, api_key = self.config_manager.get_llm_api_config()
+        provider, model, base_url, api_key = resolve_llm_api_credentials(
+            self.config_manager
+        )
         if not provider or not model or not api_key:
             raise SceneProtocolError(
                 "scene.model_not_configured",
                 "scene LLM provider, model, or API key is missing",
             )
-        factory_kwargs = self.config_manager.merged_llm_factory_kwargs(
+        factory_kwargs = resolve_llm_factory_kwargs(
+            self.config_manager,
             provider,
             {
                 "llm_provider": provider,

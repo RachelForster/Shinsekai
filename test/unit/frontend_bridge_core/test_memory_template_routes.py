@@ -31,12 +31,18 @@ def _request(
 def test_memory_route_contracts_remain_stable() -> None:
     assert _contracts(MEMORY_ROUTES) == {
         ("POST", "/api/characters/memories/add"),
+        ("POST", "/api/characters/memories/awaken"),
         ("POST", "/api/characters/memories/delete"),
         ("POST", "/api/characters/memories/list"),
+        ("POST", "/api/characters/memories/pin"),
         ("POST", "/api/characters/memories/status"),
+        ("POST", "/api/memory/awaken"),
         ("POST", "/api/memory/forget"),
         ("POST", "/api/memory/list"),
+        ("POST", "/api/memory/pin"),
+        ("POST", "/api/memory/recall"),
         ("POST", "/api/memory/remember"),
+        ("POST", "/api/memory/rollback"),
         ("POST", "/api/memory/search"),
         ("POST", "/api/memory/status"),
         ("POST", "/api/memory/asset-index"),
@@ -47,11 +53,14 @@ def test_memory_route_contracts_remain_stable() -> None:
 def test_template_route_contracts_remain_stable() -> None:
     assert _contracts(TEMPLATE_ROUTES) == {
         ("GET", "/api/templates"),
+        ("GET", "/api/templates/presets"),
         ("GET", "/api/templates/session"),
         ("POST", "/api/templates"),
         ("POST", "/api/templates/generate"),
+        ("POST", "/api/templates/presets"),
         ("POST", "/api/templates/session"),
         ("PUT", "/api/templates"),
+        ("PUT", "/api/templates/presets"),
     }
 
 

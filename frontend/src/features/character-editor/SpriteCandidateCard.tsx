@@ -6,6 +6,7 @@ import { useI18n } from "../../shared/i18n";
 import {
   AsyncButton,
   IconButton,
+  ImageAssetCornerLabel,
   ImageAssetThumb,
   TextArea,
   TextInput,
@@ -105,6 +106,9 @@ export function SpriteCandidateCard({
               ) : (
                 <ImageAssetThumb alt={title} src={fileUrl(item.result.path)} />
               )}
+              {animation && item.result.mouthSyncManifest && !stale ? (
+                <ImageAssetCornerLabel>{t("spriteMouth.tab")}</ImageAssetCornerLabel>
+              ) : null}
             </button>
           ) : (
             <div className="sprite-generation__placeholder">
@@ -126,6 +130,14 @@ export function SpriteCandidateCard({
           {t(animation ? "spriteAnimation.failed" : "spriteGeneration.backgroundRemovalFailed", {
             error: item.result.backgroundRemovalError,
           })}
+        </p>
+      ) : null}
+      {animation && item.result?.mouthSyncManifest && !stale ? (
+        <p className="sprite-generation__hint">{t("spriteMouth.inherited")}</p>
+      ) : null}
+      {animation && item.result?.mouthSyncError && !stale ? (
+        <p className="sprite-generation__error" role="alert">
+          {t("spriteMouth.inheritFailed", { error: item.result.mouthSyncError })}
         </p>
       ) : null}
       {item.error ? (

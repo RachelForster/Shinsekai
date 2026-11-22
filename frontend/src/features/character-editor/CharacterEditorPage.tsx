@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { WheelEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { configQueryKey, getAppConfig } from "../../entities/config/repository";
@@ -18,7 +17,7 @@ import {
   listCharacters,
   saveCharacter,
   saveCharacterEmotionTags,
-  saveSpriteScale,
+  saveCharacterSpriteGroups,
   saveSpriteVoiceText,
   saveSpriteVoiceType,
   translateCharacterFields,
@@ -44,24 +43,30 @@ import { CharacterMemoryImportDialogs } from "./CharacterMemoryImportDialogs";
 import { CharacterMemorySection } from "./CharacterMemorySection";
 import { CharacterPageHeader } from "./CharacterPageHeader";
 import { CharacterPersonalitySection } from "./CharacterPersonalitySection";
-import { CharacterSpritesSection } from "./CharacterSpritesSection";
+import { CharacterRelationSection } from "../character-relation/view/CharacterRelationSection";
+import { CharacterSpritesSection, type SpriteGroupsPatch } from "./CharacterSpritesSection";
+import { SmartOutfitGroupDialog } from "./SmartOutfitGroupDialog";
 import { SpriteGenerationPage } from "./SpriteGenerationPage";
 import { CharacterVoiceSection } from "./CharacterVoiceSection";
 import { MediaAutoLabelProgressDialog } from "../media-auto-label/MediaAutoLabelProgressDialog";
 import { useVisionAvailability } from "../media-auto-label/useVisionAvailability";
 import { SpriteTagsDialog } from "./SpriteTagsDialog";
 import {
-  SPRITE_SCALE_STEP,
-  clampSpriteScale,
+  DEFAULT_SPRITE_GROUP,
   createCharacter,
+  isSelfPersonaCharacter,
+  normalizeSpriteGroupName,
   pronunciationMapToText,
   pronunciationTextToMap,
+  resolveCharacterSpriteGroups,
+  upsertCatalogCharacter,
   type CharacterResourceDeleteTarget,
 } from "./characterEditorUtils";
 import { useCharacterMemoryController } from "./useCharacterMemoryController";
 import { useCharacterMemoryImportController } from "./useCharacterMemoryImportController";
 import "./CharacterEditorPage.css";
 import { ModelStateEditor } from "./ModelStateEditor";
+import { PortraitCropDialog } from "../../shared/components/PortraitCropDialog";
 
 export function mergeSprites(serverSprites: Sprite[], current: Character) {
   const currentSpritesByPath = new Map(
@@ -73,6 +78,8 @@ export function mergeSprites(serverSprites: Sprite[], current: Character) {
       currentSpritesByPath.get(sprite.path) ?? (canFallbackToIndex ? current.sprites[index] : undefined);
     return {
       ...sprite,
+      group: sprite.group !== undefined ? sprite.group : currentSprite?.group,
+      portrait_crop: sprite.portrait_crop !== undefined ? sprite.portrait_crop : currentSprite?.portrait_crop,
       voice_type: sprite.voice_type ?? currentSprite?.voice_type,
     };
   });
@@ -93,11 +100,13 @@ export function CharacterEditorPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const [pendingResourceDelete, setPendingResourceDelete] = useState<CharacterResourceDeleteTarget | null>(null);
-  const [pendingSpritePaths, setPendingSpritePaths] = useState<string[]>([]);
   const [pendingVoicePaths, setPendingVoicePaths] = useState<Record<number, string>>({});
   const [selectedSpriteIndex, setSelectedSpriteIndex] = useState(0);
+  const [activeSpriteGroup, setActiveSpriteGroup] = useState("__all__");
+  const [smartGroupOpen, setSmartGroupOpen] = useState(false);
   const [bulkSpriteTagsOpen, setBulkSpriteTagsOpen] = useState(false);
   const [bulkSpriteTagsDraft, setBulkSpriteTagsDraft] = useState("");
+  const [portraitCropOpen, setPortraitCropOpen] = useState(false);
   const [autoLabelDialogOpen, setAutoLabelDialogOpen] = useState(false);
   const [spriteGenerationOpen, setSpriteGenerationOpen] = useState(false);
   const generationReturnRef = useRef<{ element: HTMLElement | null; scrollTop: number } | null>(null);
@@ -156,9 +165,10 @@ export function CharacterEditorPage() {
       setSelectedName(selected.name);
       setDraft(structuredClone(selected));
       setPronunciationText(pronunciationMapToText(selected.pronunciation_map));
-      setPendingSpritePaths([]);
       setPendingVoicePaths({});
       setSelectedSpriteIndex(0);
+      setActiveSpriteGroup("__all__");
+      setSmartGroupOpen(false);
       setNameError("");
     } else if (selected) {
       // same character, just sync draft silently (e.g. after invalidateQueries)
@@ -181,11 +191,9 @@ export function CharacterEditorPage() {
       });
     },
     onSuccess(character, variables) {
-      queryClient.setQueryData<Character[]>(charactersQueryKey, (current = []) => {
-        const targetNames = new Set([variables.originalName, character.name].filter(Boolean));
-        const next = current.filter((item) => !targetNames.has(item.name));
-        return [...next, character];
-      });
+      queryClient.setQueryData<Character[]>(charactersQueryKey, (current = []) =>
+        upsertCatalogCharacter(current, character, variables.originalName),
+      );
       setIsCreating(false);
       setSelectedName(character.name);
       setDraft(structuredClone(character));
@@ -442,12 +450,14 @@ export function CharacterEditorPage() {
     mutationFn: async ({
       character,
       emotionTags,
+      group,
       originalName,
       paths,
       saveFirst,
     }: {
       character: Character;
       emotionTags: string;
+      group?: string;
       originalName?: string;
       paths: string[];
       saveFirst: boolean;
@@ -455,6 +465,7 @@ export function CharacterEditorPage() {
       const saved = saveFirst ? await saveCharacter(character, originalName) : character;
       return uploadCharacterSprites({
         emotionTags,
+        ...(group ? { group } : {}),
         name: saved.name,
         paths,
       });
@@ -467,11 +478,9 @@ export function CharacterEditorPage() {
       });
     },
     onSuccess(character, variables) {
-      queryClient.setQueryData<Character[]>(charactersQueryKey, (current = []) => {
-        const targetNames = new Set([variables.originalName, character.name].filter(Boolean));
-        const next = current.filter((item) => !targetNames.has(item.name));
-        return [...next, character];
-      });
+      queryClient.setQueryData<Character[]>(charactersQueryKey, (current = []) =>
+        upsertCatalogCharacter(current, character, variables.originalName),
+      );
       setIsCreating(false);
       setSelectedName(character.name);
       setDraft((current) => ({
@@ -479,7 +488,6 @@ export function CharacterEditorPage() {
         sprites: mergeSprites(character.sprites, current),
       }));
       setPronunciationText(pronunciationMapToText(character.pronunciation_map));
-      setPendingSpritePaths([]);
       if (variables.saveFirst && variables.originalName && variables.originalName !== character.name) {
         void queryClient.invalidateQueries({ queryKey: ["knowledge", "binding-names"] });
       }
@@ -584,21 +592,142 @@ export function CharacterEditorPage() {
     },
   });
 
-  const spriteScaleMutation = useMutation({
-    mutationFn: () => saveSpriteScale(currentCharacterName, Number(draft.sprite_scale) || 0),
+  const spriteGroupsMutation = useMutation({
+    mutationFn: (patch: SpriteGroupsPatch) =>
+      saveCharacterSpriteGroups({
+        name: currentCharacterName,
+        ...patch,
+      }),
     onError(error) {
       showToast({
         kind: "error",
         message: error instanceof Error ? error.message : t("character.sprite.imageError"),
-        title: t("character.sprite.saveScale"),
+        title: t("common.saveFailed"),
       });
     },
     onSuccess(character) {
-      queryClient.invalidateQueries({ queryKey: charactersQueryKey });
-      setDraft((current) => ({ ...current, sprite_scale: character.sprite_scale }));
-      showToast({ kind: "success", title: t("character.sprite.saveScale") });
+      preserveImportedDraftRef.current = character;
+      queryClient.setQueryData<Character[]>(charactersQueryKey, (current = []) =>
+        upsertCatalogCharacter(current, character),
+      );
+      setDraft((current) => ({
+        ...current,
+        default_sprite_group: character.default_sprite_group,
+        fallback_to_default_group: character.fallback_to_default_group,
+        sprite_groups: character.sprite_groups,
+        sprites: mergeSprites(character.sprites, current),
+      }));
+      showToast({ kind: "success", title: t("spriteGroup.savedToast") });
     },
   });
+
+  const handleApplySpriteGroups = (patch: SpriteGroupsPatch) => {
+    if (!isSavedCharacter) {
+      setDraft((current) => {
+        let groups = resolveCharacterSpriteGroups(current);
+        if (patch.spriteGroups) {
+          groups = resolveCharacterSpriteGroups({ ...current, sprite_groups: patch.spriteGroups });
+        }
+        let defaultGroup = patch.defaultSpriteGroup
+          ? normalizeSpriteGroupName(patch.defaultSpriteGroup)
+          : normalizeSpriteGroupName(current.default_sprite_group);
+        let sprites = current.sprites.map((sprite) => ({ ...sprite }));
+        if (patch.assignments) {
+          for (const [rawIndex, group] of Object.entries(patch.assignments)) {
+            const idx = Number(rawIndex);
+            const normalized = normalizeSpriteGroupName(group);
+            if (Number.isInteger(idx) && sprites[idx]) {
+              sprites[idx] = { ...sprites[idx], group: normalized };
+              if (!groups.includes(normalized)) {
+                groups = [...groups, normalized];
+              }
+            }
+          }
+        }
+        if (patch.deleteGroup && patch.deleteGroup !== DEFAULT_SPRITE_GROUP) {
+          groups = groups.filter((group) => group !== patch.deleteGroup);
+          if (defaultGroup === patch.deleteGroup) {
+            defaultGroup = DEFAULT_SPRITE_GROUP;
+          }
+          sprites = sprites.map((sprite) =>
+            normalizeSpriteGroupName(sprite.group) === patch.deleteGroup
+              ? { ...sprite, group: DEFAULT_SPRITE_GROUP }
+              : sprite,
+          );
+        }
+        if (!groups.includes(defaultGroup)) {
+          groups = [...groups, defaultGroup];
+        }
+        return {
+          ...current,
+          default_sprite_group: defaultGroup,
+          fallback_to_default_group: patch.fallbackToDefaultGroup ?? current.fallback_to_default_group ?? true,
+          sprite_groups: groups,
+          sprites,
+        };
+      });
+      return;
+    }
+    spriteGroupsMutation.mutate(patch);
+  };
+
+  const portraitCropMutation = useMutation({
+    mutationFn: (nextCharacter: Character) => {
+      const base = selected ? structuredClone(selected) : structuredClone(nextCharacter);
+      const editedByPath = new Map(nextCharacter.sprites.map((sprite) => [sprite.path, sprite.portrait_crop]));
+      base.portrait_crop = nextCharacter.portrait_crop;
+      base.sprites = base.sprites.map((sprite, index) => {
+        const editedCrop = editedByPath.has(sprite.path)
+          ? editedByPath.get(sprite.path)
+          : nextCharacter.sprites[index]?.portrait_crop;
+        return {
+          ...sprite,
+          portrait_crop: editedCrop,
+        };
+      });
+      return saveCharacter(base, base.name);
+    },
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("character.sprite.imageError"),
+        title: t("character.sprite.portraitCropTitle"),
+      });
+    },
+    onSuccess(character) {
+      preserveImportedDraftRef.current = character;
+      queryClient.setQueryData<Character[]>(charactersQueryKey, (current = []) =>
+        current.map((item) => (item.name === character.name ? character : item)),
+      );
+      setDraft((current) => ({
+        ...current,
+        portrait_crop: character.portrait_crop,
+        sprites: current.sprites.map((sprite, index) => {
+          const savedSprite = character.sprites.find((item) => item.path === sprite.path) ?? character.sprites[index];
+          return savedSprite ? { ...sprite, portrait_crop: savedSprite.portrait_crop } : sprite;
+        }),
+      }));
+      setPortraitCropOpen(false);
+      showToast({ kind: "success", title: t("character.sprite.portraitCropSaved") });
+    },
+  });
+
+  const handleSavePortraitCrop = (nextCharacter: Character) => {
+    if (!isSavedCharacter) {
+      setDraft((current) => ({
+        ...current,
+        portrait_crop: nextCharacter.portrait_crop,
+        sprites: current.sprites.map((sprite, index) => ({
+          ...sprite,
+          portrait_crop: nextCharacter.sprites[index]?.portrait_crop,
+        })),
+      }));
+      setPortraitCropOpen(false);
+      showToast({ kind: "success", title: t("character.sprite.portraitCropSaved") });
+      return;
+    }
+    portraitCropMutation.mutate(nextCharacter);
+  };
 
   const update = <K extends keyof Character>(name: K, value: Character[K]) => {
     setDraft((current) => ({ ...current, [name]: value }));
@@ -637,14 +766,6 @@ export function CharacterEditorPage() {
   const openBulkSpriteTagsDialog = () => {
     setBulkSpriteTagsDraft(draft.emotion_tags);
     setBulkSpriteTagsOpen(true);
-  };
-
-  const handleSpriteScaleWheel = (event: WheelEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    const direction = event.deltaY < 0 ? 1 : -1;
-    const current = Number(draft.sprite_scale) || 0;
-    update("sprite_scale", clampSpriteScale(current + direction * SPRITE_SCALE_STEP));
   };
 
   const buildCharacterSaveInput = () => {
@@ -719,6 +840,7 @@ export function CharacterEditorPage() {
       draft.sprites.map((sprite, index) => ({
         badge: sprite.voice_path ? t("character.sprite.hasVoice") : t("character.sprite.noVoice"),
         badgeTone: sprite.voice_path ? ("default" as const) : ("muted" as const),
+        cornerLabel: sprite.mouth_sync ? t("spriteMouth.tab") : undefined,
         id: `${sprite.path}-${index}`,
         imageSrc: sprite.path && !isVideoMedia(sprite.path) ? fileUrl(sprite.path) : "",
         videoSrc: isVideoMedia(sprite.path) ? fileUrl(sprite.path) : undefined,
@@ -733,6 +855,7 @@ export function CharacterEditorPage() {
     { id: "character-voice", label: t("character.section.voice") },
     { id: "character-sprites", label: t("character.section.sprites") },
     { id: "character-memory", label: t("character.memory.section") },
+    { id: "character-relations", label: t("relation.title") },
   ];
 
   const confirmPendingResourceDelete = async () => {
@@ -804,9 +927,10 @@ export function CharacterEditorPage() {
     setSelectedName("");
     setDraft(createCharacter());
     setPronunciationText("");
-    setPendingSpritePaths([]);
     setPendingVoicePaths({});
     setSelectedSpriteIndex(0);
+    setActiveSpriteGroup("__all__");
+    setSmartGroupOpen(false);
     setNameError("");
   };
 
@@ -823,6 +947,9 @@ export function CharacterEditorPage() {
   };
 
   const requestCharacterDelete = () => {
+    if (isSelfPersonaCharacter(draft)) {
+      return;
+    }
     if (!currentCharacterName) {
       showToast({
         kind: "error",
@@ -871,9 +998,8 @@ export function CharacterEditorPage() {
     translateMutation.mutate();
   };
 
-  const uploadSprites = () => {
-    if (!pendingSpritePaths.length) {
-      showToast({ kind: "error", title: t("character.sprite.selectImages") });
+  const uploadSprites = (paths: string[]) => {
+    if (!paths.length) {
       return;
     }
     const input = buildCharacterSaveInput();
@@ -883,7 +1009,9 @@ export function CharacterEditorPage() {
     spriteUploadMutation.mutate({
       ...input,
       emotionTags: input.character.emotion_tags,
-      paths: pendingSpritePaths,
+      group:
+        activeSpriteGroup !== "__all__" && activeSpriteGroup !== DEFAULT_SPRITE_GROUP ? activeSpriteGroup : undefined,
+      paths,
       saveFirst: !isSavedCharacter || input.character.name !== currentCharacterName,
     });
   };
@@ -898,18 +1026,6 @@ export function CharacterEditorPage() {
       count: draft.sprites.length,
       kind: "all-sprites",
     });
-  };
-
-  const saveSpriteScaleValue = () => {
-    if (!isSavedCharacter) {
-      showToast({
-        kind: "error",
-        message: t("character.validation.nameRequired"),
-        title: t("character.sprite.saveScale"),
-      });
-      return;
-    }
-    spriteScaleMutation.mutate();
   };
 
   const saveSpriteTags = () => {
@@ -1034,7 +1150,13 @@ export function CharacterEditorPage() {
             const savedTags = tagContents(character.emotion_tags, character.sprites.length);
             return {
               ...current,
-              sprites: character.sprites.map((sprite) => currentSpritesByPath.get(sprite.path) ?? sprite),
+              default_sprite_group: character.default_sprite_group ?? current.default_sprite_group,
+              fallback_to_default_group: character.fallback_to_default_group ?? current.fallback_to_default_group,
+              sprite_groups: character.sprite_groups ?? current.sprite_groups,
+              sprites: character.sprites.map((sprite) => {
+                const draft = currentSpritesByPath.get(sprite.path);
+                return draft ? { ...draft, group: sprite.group ?? draft.group, mouth_sync: sprite.mouth_sync } : sprite;
+              }),
               sprite_transitions: character.sprite_transitions,
               emotion_tags: numberedTags(
                 "立绘",
@@ -1117,6 +1239,7 @@ export function CharacterEditorPage() {
 
         {draft.avatar_type === "static" && (
           <CharacterSpritesSection
+            activeSpriteGroup={activeSpriteGroup}
             generateDisabled={!isSavedCharacter || !draft.character_setting.trim()}
             generateHint={
               !isSavedCharacter
@@ -1125,11 +1248,15 @@ export function CharacterEditorPage() {
                   ? t("spriteGeneration.settingRequired")
                   : undefined
             }
+            isSavedCharacter={isSavedCharacter}
+            onActiveSpriteGroupChange={setActiveSpriteGroup}
+            onApplySpriteGroups={handleApplySpriteGroups}
             onGenerate={() => {
               const element = document.querySelector<HTMLElement>(".content-outlet");
               generationReturnRef.current = { element, scrollTop: element?.scrollTop ?? 0 };
               setSpriteGenerationOpen(true);
             }}
+            onOpenSmartGroup={() => setSmartGroupOpen(true)}
             autoLabelAvailable={visionAvailable}
             autoLabelDisabled={!isSavedCharacter || !draft.sprites.length || !spriteTags.some((tag) => !tag.trim())}
             autoLabelPending={autoLabelMutation.isPending}
@@ -1143,12 +1270,12 @@ export function CharacterEditorPage() {
               autoLabelMutation.mutate();
             }}
             onOpenBulkTags={openBulkSpriteTagsDialog}
-            onPendingSpritePathsChange={setPendingSpritePaths}
+            onOpenPortraitCrop={() => {
+              portraitCropMutation.reset();
+              setPortraitCropOpen(true);
+            }}
             onPendingVoicePathChange={updatePendingVoicePath}
-            onSaveScale={saveSpriteScaleValue}
             onSaveTags={saveSpriteTags}
-            onScaleChange={update}
-            onScaleWheel={handleSpriteScaleWheel}
             onSelectSprite={setSelectedSpriteIndex}
             onSpriteDelete={requestSelectedSpriteDelete}
             onSpriteTagChange={(value) => updateSpriteTag(selectedSpriteIndex, value)}
@@ -1158,7 +1285,6 @@ export function CharacterEditorPage() {
             onSpriteVoiceTextChange={(value) => updateSprite(selectedSpriteIndex, { voice_text: value })}
             onSpriteVoiceUpload={uploadSelectedSpriteVoice}
             onSpriteVoiceTypeChange={handleSpriteVoiceTypeChange}
-            pendingSpritePaths={pendingSpritePaths}
             pendingVoicePath={pendingVoicePaths[selectedSpriteIndex] ?? ""}
             selectedSprite={
               selectedSprite ? { ...selectedSprite, voice_type: spriteVoiceType(selectedSprite, draft) } : undefined
@@ -1167,7 +1293,7 @@ export function CharacterEditorPage() {
             selectedSpriteTag={selectedSpriteTag}
             spriteDeletePending={spriteDeleteMutation.isPending}
             spriteGalleryItems={spriteGalleryItems}
-            spriteScalePending={spriteScaleMutation.isPending}
+            spriteGroupsPending={spriteGroupsMutation.isPending}
             spriteUploadPending={spriteUploadMutation.isPending}
             voiceDeletePending={voiceDeleteMutation.isPending}
             voiceUploadPending={voiceUploadMutation.isPending}
@@ -1175,7 +1301,9 @@ export function CharacterEditorPage() {
         )}
 
         <CharacterMemorySection
+          addAsCanon={memoryController.addAsCanon}
           addPending={memoryController.addPending}
+          awakenPending={memoryController.awakenPending}
           data={memoryController.data}
           deletePending={memoryController.deletePending}
           depError={memoryController.depError}
@@ -1193,18 +1321,29 @@ export function CharacterEditorPage() {
           memoryPage={memoryController.memoryPage}
           memoryTotalPages={memoryController.memoryTotalPages}
           activeSearchQuery={memoryController.activeSearchQuery}
+          onAddAsCanonChange={memoryController.setAddAsCanon}
           onAddMemory={() => void memoryController.add()}
+          onAwakenMemory={(memory) => void memoryController.awakenMemory({ memoryId: memory.id, name: memoryName })}
           onClearSearch={memoryController.clearSearch}
           onDeleteMemory={requestMemoryDelete}
           onInstallDep={() => void memoryController.installDependency()}
           onImportMemories={() => void memoryImportController.openPicker()}
           onMemoryInputChange={memoryController.setMemoryInput}
           onMemoryPageChange={memoryController.setMemoryPage}
+          onPinMemory={(memory, pinned) =>
+            void memoryController.pinMemory({ memoryId: memory.id, name: memoryName, pinned })
+          }
           onRefresh={() => void memoryController.refresh()}
           onSearch={() => void memoryController.search()}
           onSearchInputChange={memoryController.setSearchInput}
+          pinPending={memoryController.pinPending}
           searchInput={memoryController.searchInput}
           searchPending={memoryController.searchPending}
+        />
+
+        <CharacterRelationSection
+          key={currentCharacterName || "new"}
+          primary={isSavedCharacter ? currentCharacterName : ""}
         />
       </div>
 
@@ -1214,6 +1353,46 @@ export function CharacterEditorPage() {
         onClose={() => setBulkSpriteTagsOpen(false)}
         onConfirm={confirmBulkSpriteTags}
         open={bulkSpriteTagsOpen}
+      />
+
+      <SmartOutfitGroupDialog
+        characterName={currentCharacterName}
+        onApplied={(character, groupCount) => {
+          preserveImportedDraftRef.current = character;
+          queryClient.setQueryData<Character[]>(charactersQueryKey, (current = []) =>
+            upsertCatalogCharacter(current, character),
+          );
+          setDraft((current) => ({
+            ...current,
+            default_sprite_group: character.default_sprite_group,
+            fallback_to_default_group: character.fallback_to_default_group,
+            sprite_groups: character.sprite_groups,
+            sprites: mergeSprites(character.sprites, current),
+          }));
+          showToast({
+            kind: "success",
+            title: t("spriteGroup.autoGroupApplied", { groups: groupCount }),
+          });
+        }}
+        onClose={() => setSmartGroupOpen(false)}
+        open={smartGroupOpen}
+        sprites={draft.sprites}
+      />
+
+      <PortraitCropDialog
+        character={draft}
+        error={
+          portraitCropMutation.isError
+            ? portraitCropMutation.error instanceof Error
+              ? portraitCropMutation.error.message
+              : String(portraitCropMutation.error)
+            : undefined
+        }
+        initialSpriteIndex={selectedSpriteIndex}
+        onClose={() => setPortraitCropOpen(false)}
+        onSave={handleSavePortraitCrop}
+        open={portraitCropOpen}
+        saving={portraitCropMutation.isPending}
       />
 
       <AlertDialog

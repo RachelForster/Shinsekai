@@ -843,6 +843,11 @@ describe("chatStageReducer", () => {
     expect(cgState.layers.cg).toBe(true);
     expect(cgState.layers.sprites).toBe(false);
 
+    const dismissedCgState = chatStageReducer(cgState, { type: "dismissCg" });
+    expect(dismissedCgState.cgPath).toBeUndefined();
+    expect(dismissedCgState.layers.cg).toBe(false);
+    expect(dismissedCgState.layers.sprites).toBe(true);
+
     const closedState = chatStageReducer(cgState, {
       event: {
         reason: "Closed",
@@ -1674,5 +1679,60 @@ describe("chatStageReducer", () => {
       batchIdleSeconds: 7,
       interruptEnabled: false,
     });
+  });
+
+  it("routes speakerless system snapshots via isSystemDialog independently of text language", () => {
+    const english = chatStageReducer(emptyChatState, {
+      snapshot: {
+        characterName: "",
+        dialogText: "Browser preview history cleared.",
+        eventSeq: 1,
+        inputDraft: "",
+        isSystemDialog: true,
+        options: [],
+        sprites: [],
+        status: "idle",
+      },
+      type: "hydrate",
+    });
+    const englishView = buildChatStageViewModel(english);
+    expect(englishView.layers.dialog).toBe(false);
+    expect(englishView.layers.notification).toBe(true);
+    expect(englishView.notificationText).toBe("Browser preview history cleared.");
+
+    const japanese = chatStageReducer(emptyChatState, {
+      snapshot: {
+        characterName: "",
+        dialogText: "プレビュー履歴を消去しました。",
+        eventSeq: 2,
+        inputDraft: "",
+        isSystemDialog: true,
+        options: [],
+        sprites: [],
+        status: "idle",
+      },
+      type: "hydrate",
+    });
+    const japaneseView = buildChatStageViewModel(japanese);
+    expect(japaneseView.layers.dialog).toBe(false);
+    expect(japaneseView.layers.notification).toBe(true);
+    expect(japaneseView.notificationText).toBe("プレビュー履歴を消去しました。");
+
+    const legacy = chatStageReducer(emptyChatState, {
+      snapshot: {
+        characterName: "",
+        dialogText: "您的消息已提交，正在等待 LLM 处理...",
+        eventSeq: 3,
+        inputDraft: "",
+        options: [],
+        sprites: [],
+        status: "idle",
+      },
+      type: "hydrate",
+    });
+    const legacyView = buildChatStageViewModel(legacy);
+    expect(legacyView.layers.dialog).toBe(false);
+    expect(legacyView.layers.notification).toBe(true);
+    expect(legacyView.notificationText).toBe("您的消息已提交，正在等待 LLM 处理...");
   });
 });

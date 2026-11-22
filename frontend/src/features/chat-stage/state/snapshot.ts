@@ -79,6 +79,25 @@ function restoreEffectImage(state: ChatStageState, snapshot: ChatSnapshot, recei
   return { deadline, durationMs: image.durationMs, label: image.label, seq: image.seq, url: image.url };
 }
 
+function restoreSpriteReaction(state: ChatStageState, snapshot: ChatSnapshot, receivedAt: number) {
+  const reaction = snapshot.spriteReaction;
+  if (!reaction?.text || !Number.isFinite(reaction.expiresAt) || !Number.isFinite(snapshot.serverTimeMs)) return null;
+  const remaining = Math.min(reaction.durationMs, Math.max(0, reaction.expiresAt! - snapshot.serverTimeMs!));
+  if (!Number.isFinite(remaining) || remaining <= 0) return null;
+  let deadline = receivedAt + remaining;
+  const previous = state.spriteReaction;
+  if (state.sessionId === snapshot.sessionId && previous?.seq === reaction.seq && previous.text === reaction.text) {
+    deadline = Math.min(deadline, previous.deadline);
+  }
+  return {
+    characterName: reaction.characterName,
+    deadline,
+    durationMs: reaction.durationMs,
+    seq: reaction.seq,
+    text: reaction.text,
+  };
+}
+
 export function hydrateFromSnapshot(state: ChatStageState, snapshot: ChatSnapshot, receivedAt = 0): ChatStageState {
   if (snapshot.sessionId && state.sessionId && snapshot.sessionId !== state.sessionId) {
     state = emptyChatState;
@@ -95,6 +114,16 @@ export function hydrateFromSnapshot(state: ChatStageState, snapshot: ChatSnapsho
     ...emptyChatState,
     ...snapshot,
     effectImage: restoreEffectImage(state, snapshot, receivedAt),
+    outfits: snapshot.outfits
+      ? Object.fromEntries(Object.entries(snapshot.outfits).map(([key, value]) => [key, { ...value }]))
+      : undefined,
+    outfitCatalog: snapshot.outfitCatalog
+      ? Object.fromEntries(
+          Object.entries(snapshot.outfitCatalog).map(([key, value]) => [key, { ...value, groups: [...value.groups] }]),
+        )
+      : undefined,
+    perception: snapshot.perception ? { ...snapshot.perception } : null,
+    spriteReaction: restoreSpriteReaction(state, snapshot, receivedAt),
     audioCommands,
     asrTranscript: undefined,
     error: undefined,

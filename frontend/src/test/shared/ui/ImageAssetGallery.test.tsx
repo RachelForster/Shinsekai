@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { ImageAssetGallery } from "../../../shared/ui";
@@ -6,6 +6,7 @@ import { ImageAssetGallery } from "../../../shared/ui";
 const items = [
   {
     badge: "Current",
+    cornerLabel: "Mouth sync",
     id: "first",
     imageSrc: "first.png",
     meta: "512x512",
@@ -27,6 +28,12 @@ describe("ImageAssetGallery", () => {
     expect(screen.getByRole("button", { name: /Second image/ })).toHaveAttribute("aria-selected", "false");
     expect(screen.getByText("512x512")).toBeInTheDocument();
     expect(screen.getByText("Current")).toHaveClass("image-asset-card__badge--default");
+    expect(within(screen.getByRole("button", { name: /First image/ })).getByText("Mouth sync")).toHaveClass(
+      "image-asset-corner-label",
+    );
+    expect(
+      within(screen.getByRole("button", { name: /Second image/ })).queryByText("Mouth sync"),
+    ).not.toBeInTheDocument();
   });
 
   it("calls onSelect with the clicked item index", () => {

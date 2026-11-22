@@ -37,7 +37,7 @@ def terminal(client, receipt):
     not os.environ.get("SHINSEKAI_TEST_PI_BINARY"),
     reason="Set SHINSEKAI_TEST_PI_BINARY to a verified official Pi binary",
 )
-@pytest.mark.parametrize("behavior", ["normal", "cancel", "auth-error"])
+@pytest.mark.parametrize("behavior", ["normal", "cancel", "auth-error", "length", "thinking-length", "tool-then-length", "deepseek-off", "deepseek-high", "deepseek-max"])
 def test_official_pi_stream_tool_and_session_resume(tmp_path, behavior):
     calls, requests = [], []
     received, release = threading.Event(), threading.Event()
@@ -51,6 +51,14 @@ def test_official_pi_stream_tool_and_session_resume(tmp_path, behavior):
             requests.append(body)
             assert self.headers["Authorization"] == "Bearer fixture-api-key"
             assert self.path == "/v1/chat/completions"
+            if behavior.startswith("deepseek-"):
+                enabled = behavior != "deepseek-off"
+                assert body["thinking"] == {"type": "enabled" if enabled else "disabled"}
+                if enabled:
+                    assert body["reasoning_effort"] == ("max" if behavior == "deepseek-max" else "high")
+                else:
+                    assert "reasoning_effort" not in body
+                assert body.get("max_tokens", body.get("max_completion_tokens")) == 16384
             if behavior == "auth-error":
                 self.send_response(401)
                 self.send_header("Content-Type", "application/json")
@@ -66,7 +74,10 @@ def test_official_pi_stream_tool_and_session_resume(tmp_path, behavior):
             tool_done = any(
                 message.get("role") == "tool" for message in body["messages"]
             )
-            if not tool_done:
+            if behavior in ("length", "thinking-length") or (behavior == "tool-then-length" and tool_done):
+                delta = {"reasoning_content": "unrequested-reasoning"} if behavior == "thinking-length" else {"content": "部分回复"}
+                finish = "length"
+            elif not tool_done:
                 delta = {
                     "tool_calls": [
                         {
@@ -141,10 +152,18 @@ def test_official_pi_stream_tool_and_session_resume(tmp_path, behavior):
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
+        config = ModelConfig(
+            "Deepseek" if behavior.startswith("deepseek-") else "ChatGPT",
+            key="fixture-api-key", url=f"http://127.0.0.1:{server.server_port}/v1",
+        )
+        if behavior.startswith("deepseek-"):
+            config.config.api_config.max_context_tokens = 128000
+            config.config.api_config.llm_extra_configs = {"Deepseek": {
+                "thinking_enabled": behavior != "deepseek-off",
+                "reasoning_effort": "max" if behavior == "deepseek-max" else "high",
+            }}
         setup = prepare_pi_agent(
-            ModelConfig(
-                key="fixture-api-key", url=f"http://127.0.0.1:{server.server_port}/v1"
-            ),
+            config,
             root=tmp_path,
             runtime=PiRuntime(Path(os.environ["SHINSEKAI_TEST_PI_BINARY"])),
         )
@@ -193,6 +212,12 @@ def test_official_pi_stream_tool_and_session_resume(tmp_path, behavior):
                     assert task.status == "failed", task.error
                     assert task.error.code == "AUTH_REQUIRED"
                     continue
+                if behavior in ("length", "thinking-length", "tool-then-length"):
+                    assert task.status == "failed", task.error
+                    assert task.error.code == "LIMIT_EXCEEDED"
+                    assert task.result.data["stopReason"] == "length"
+                    assert task.result.summary == ("" if behavior == "thinking-length" else "部分回复")
+                    continue
                 assert task.status == "succeeded", (
                     task.error,
                     list(service._supervisor.stderr),
@@ -203,8 +228,9 @@ def test_official_pi_stream_tool_and_session_resume(tmp_path, behavior):
                     for event in client.read_events(task.task_id).events
                 )
                 assert not task.result.effects
-            assert len(calls) == (1 if behavior == "normal" else 0)
-            assert len(requests) == (3 if behavior == "normal" else 1)
+            uses_tools = behavior in ("normal", "tool-then-length") or behavior.startswith("deepseek-")
+            assert len(calls) == int(uses_tools)
+            assert len(requests) == (3 if behavior == "normal" else (2 if uses_tools else 1))
             assert client.list_backends()[0].capabilities.native_session_resume
         for path in tmp_path.rglob("*"):
             if path.is_file() and path.suffix in (".json", ".jsonl", ".sqlite"):

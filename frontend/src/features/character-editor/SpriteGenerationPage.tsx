@@ -27,6 +27,7 @@ import {
 } from "../../shared/ui";
 import { SpriteAnimationSettings } from "./SpriteAnimationSettings";
 import { SpriteMattingSettings } from "./SpriteMattingSettings";
+import { SpriteH3ResolutionSelect } from "./SpriteH3ResolutionSelect";
 import { SpriteAnimationSourcePicker } from "./SpriteAnimationSourcePicker";
 import { spriteAnimationSources } from "./spriteAnimationSources";
 import { useSpriteGeneration, type SpriteCandidate } from "./useSpriteGeneration";
@@ -34,6 +35,8 @@ import { SpriteCandidateCard } from "./SpriteCandidateCard";
 import { SpriteGenerationSetupGuide } from "./SpriteGenerationSetupGuide";
 import { SpriteTransitionWorkspace } from "./SpriteTransitionWorkspace";
 import { useSpriteTransitions } from "./useSpriteTransitions";
+import { SpriteMouthWorkspace } from "./SpriteMouthWorkspace";
+import { useSpriteMouths } from "./useSpriteMouths";
 import "./SpriteGenerationPage.css";
 
 interface Props {
@@ -46,7 +49,7 @@ interface Props {
 export function SpriteGenerationPage({ character, name, onClose, onImported }: Props) {
   const { t } = useI18n();
   const tabsId = useId();
-  const [mode, setMode] = useState<"static" | "animation" | "transition">("static");
+  const [mode, setMode] = useState<"static" | "animation" | "transition" | "mouth">("static");
   const [animationSourceMode, setAnimationSourceMode] = useState<"library" | "file">("library");
   const [animationSelection, setAnimationSelection] = useState<string[]>([]);
   const [animationSourcesOpen, setAnimationSourcesOpen] = useState(true);
@@ -60,6 +63,7 @@ export function SpriteGenerationPage({ character, name, onClose, onImported }: P
     loop: true,
     motion: "",
     playbackSpeed: 0.75,
+    h3Resolution: "workflow",
     mattingModel: "toonout",
     autoScreen: false,
     alphaMatting: false,
@@ -95,9 +99,11 @@ export function SpriteGenerationPage({ character, name, onClose, onImported }: P
     character.sprites,
     mattingOptions,
     h3Resolution,
+    animationInput.h3Resolution,
   );
   const transitions = useSpriteTransitions(character, name, onImported, mattingOptions);
-  const busy = generator.busy || transitions.busy;
+  const mouths = useSpriteMouths(character, name, onImported, Boolean(generator.busy || transitions.busy));
+  const busy = generator.busy || transitions.busy || mouths.busy;
   const animationSources = spriteAnimationSources(character, generator.items);
   const animationInputs =
     animationSourceMode === "library"
@@ -113,7 +119,7 @@ export function SpriteGenerationPage({ character, name, onClose, onImported }: P
         : [];
   const items = generator.items.filter((item) => Boolean(item.animationInput) === (mode === "animation"));
   const selectedSprites = generator.selected.filter((item) => Boolean(item.animationInput) === (mode === "animation"));
-  const selected = mode === "transition" ? transitions.selected : selectedSprites;
+  const selected = mode === "mouth" ? mouths.selected : mode === "transition" ? transitions.selected : selectedSprites;
   const originals = selectedSprites.flatMap((item) => (item.original ? [item.original] : []));
   const replacementIssue =
     originals.length !== selectedSprites.length
@@ -150,29 +156,38 @@ export function SpriteGenerationPage({ character, name, onClose, onImported }: P
       item.tagging.trim(),
   );
   const currentStep =
-    mode === "transition"
-      ? !transitions.items.length
+    mode === "mouth"
+      ? !mouths.items.length
         ? 0
-        : transitions.items.some((item) => item.result?.alphaVerified)
+        : mouths.items.some((item) => item.result?.ready)
           ? 2
           : 1
-      : !hasItems
-        ? 0
-        : selectable.length
-          ? 2
-          : 1;
+      : mode === "transition"
+        ? !transitions.items.length
+          ? 0
+          : transitions.items.some((item) => item.result?.alphaVerified)
+            ? 2
+            : 1
+        : !hasItems
+          ? 0
+          : selectable.length
+            ? 2
+            : 1;
   const steps =
-    mode === "transition"
-      ? (["spriteTransition.stepSource", "spriteTransition.stepGenerate", "spriteTransition.stepSave"] as const)
-      : mode === "animation"
-        ? (["spriteAnimation.stepSource", "spriteAnimation.stepMotion", "spriteAnimation.stepSave"] as const)
-        : (["spriteGeneration.stepPlan", "spriteGeneration.stepGenerate", "spriteGeneration.stepSave"] as const);
+    mode === "mouth"
+      ? (["spriteMouth.stepSource", "spriteMouth.stepGenerate", "spriteMouth.stepSave"] as const)
+      : mode === "transition"
+        ? (["spriteTransition.stepSource", "spriteTransition.stepGenerate", "spriteTransition.stepSave"] as const)
+        : mode === "animation"
+          ? (["spriteAnimation.stepSource", "spriteAnimation.stepMotion", "spriteAnimation.stepSave"] as const)
+          : (["spriteGeneration.stepPlan", "spriteGeneration.stepGenerate", "spriteGeneration.stepSave"] as const);
   const remaining = 12 - generator.items.length;
   const validCount = Number.isInteger(count) && count >= 1 && count <= remaining;
   useEffect(() => {
     if (remaining > 0) setCount((current) => Math.min(current, remaining));
   }, [remaining]);
-  const close = () => (generator.items.length || transitions.hasDrafts ? setConfirmClose(true) : onClose());
+  const close = () =>
+    generator.items.length || transitions.hasDrafts || mouths.hasDrafts ? setConfirmClose(true) : onClose();
   const replacementTarget = replacementIndex === "" ? undefined : character.sprites[Number(replacementIndex)];
   const replacementTags = tagContents(character.emotion_tags, character.sprites.length);
 
@@ -208,48 +223,67 @@ export function SpriteGenerationPage({ character, name, onClose, onImported }: P
           </>
         }
         footer={
-          <>
-            <div className="sprite-generation__selection" role="status">
-              <strong>
-                {t(mode === "transition" ? "spriteTransition.selected" : "spriteGeneration.selected", {
+          mode === "mouth" ? (
+            <>
+              <div className="sprite-generation__selection" role="status">
+                <strong>{t("spriteGeneration.selected", { count: mouths.selected.length })}</strong>
+                <span>{t("spriteMouth.saveHint")}</span>
+              </div>
+              <AsyncButton
+                variant="primary"
+                disabled={Boolean(busy) || !mouths.selected.length}
+                loading={mouths.busy === "save"}
+                onClick={() => void mouths.save()}
+              >
+                {t("spriteMouth.save", { count: mouths.selected.length })}
+              </AsyncButton>
+            </>
+          ) : (
+            <>
+              <div className="sprite-generation__selection" role="status">
+                <strong>
+                  {t(mode === "transition" ? "spriteTransition.selected" : "spriteGeneration.selected", {
+                    count: selected.length,
+                  })}
+                </strong>
+                <span>
+                  {t(
+                    mode === "transition"
+                      ? "spriteTransition.saveHint"
+                      : selected.length
+                        ? (replacementIssue ?? "spriteGeneration.replaceSelectedHint")
+                        : "spriteGeneration.saveHint",
+                  )}
+                </span>
+              </div>
+              {mode !== "transition" ? (
+                <AsyncButton
+                  disabled={Boolean(busy) || !selectedSprites.length || Boolean(replacementIssue)}
+                  loading={busy === "replace"}
+                  title={t(replacementIssue ?? "spriteGeneration.replaceSelectedHint")}
+                  onClick={() => void generator.replaceSelected(selectedSprites)}
+                >
+                  {t("spriteGeneration.replaceSelected", { count: selectedSprites.length })}
+                </AsyncButton>
+              ) : null}
+              <AsyncButton
+                disabled={Boolean(busy) || !selected.length}
+                loading={busy === "import" || busy === "transition-save"}
+                onClick={() =>
+                  mode === "transition"
+                    ? void transitions.save()
+                    : void generator.save(
+                        generator.selected.filter((item) => Boolean(item.animationInput) === (mode === "animation")),
+                      )
+                }
+                variant="primary"
+              >
+                {t(mode === "transition" ? "spriteTransition.save" : "spriteGeneration.add", {
                   count: selected.length,
                 })}
-              </strong>
-              <span>
-                {t(
-                  mode === "transition"
-                    ? "spriteTransition.saveHint"
-                    : selected.length
-                      ? (replacementIssue ?? "spriteGeneration.replaceSelectedHint")
-                      : "spriteGeneration.saveHint",
-                )}
-              </span>
-            </div>
-            {mode !== "transition" ? (
-              <AsyncButton
-                disabled={Boolean(busy) || !selectedSprites.length || Boolean(replacementIssue)}
-                loading={busy === "replace"}
-                title={t(replacementIssue ?? "spriteGeneration.replaceSelectedHint")}
-                onClick={() => void generator.replaceSelected(selectedSprites)}
-              >
-                {t("spriteGeneration.replaceSelected", { count: selectedSprites.length })}
               </AsyncButton>
-            ) : null}
-            <AsyncButton
-              disabled={Boolean(busy) || !selected.length}
-              loading={busy === "import" || busy === "transition-save"}
-              onClick={() =>
-                mode === "transition"
-                  ? void transitions.save()
-                  : void generator.save(
-                      generator.selected.filter((item) => Boolean(item.animationInput) === (mode === "animation")),
-                    )
-              }
-              variant="primary"
-            >
-              {t(mode === "transition" ? "spriteTransition.save" : "spriteGeneration.add", { count: selected.length })}
-            </AsyncButton>
-          </>
+            </>
+          )
         }
       >
         <div className="sprite-generation__journey">
@@ -258,21 +292,24 @@ export function SpriteGenerationPage({ character, name, onClose, onImported }: P
             ariaLabel={t("spriteAnimation.mode")}
             value={mode}
             onChange={(value) => {
-              if (!busy) setMode(value);
+              setMode(value);
             }}
             items={[
               { id: "static", label: t("spriteAnimation.staticTab") },
               { id: "animation", label: t("spriteAnimation.animationTab") },
               { id: "transition", label: t("spriteTransition.tab") },
+              { id: "mouth", label: t("spriteMouth.tab") },
             ]}
           />
           <p className="sprite-generation__hint">
             {t(
-              mode === "transition"
-                ? "spriteTransition.intro"
-                : mode === "animation"
-                  ? "spriteAnimation.intro"
-                  : "spriteGeneration.intro",
+              mode === "mouth"
+                ? "spriteMouth.intro"
+                : mode === "transition"
+                  ? "spriteTransition.intro"
+                  : mode === "animation"
+                    ? "spriteAnimation.intro"
+                    : "spriteGeneration.intro",
               { name },
             )}
           </p>
@@ -291,7 +328,17 @@ export function SpriteGenerationPage({ character, name, onClose, onImported }: P
             ))}
           </ol>
         </div>
-        {mode === "transition" ? (
+        {mode === "mouth" ? (
+          <div
+            role="tabpanel"
+            id={`${tabsId}-panel-mouth`}
+            aria-labelledby={`${tabsId}-mouth`}
+            className="sprite-transitions__panel"
+            {...previewProps}
+          >
+            <SpriteMouthWorkspace character={character} controller={mouths} />
+          </div>
+        ) : mode === "transition" ? (
           <div
             role="tabpanel"
             id={`${tabsId}-panel-transition`}
@@ -447,20 +494,11 @@ export function SpriteGenerationPage({ character, name, onClose, onImported }: P
                         value={count}
                       />
                     </label>
-                    <label className="field-row field-row--stack">
-                      <span className="field-row__label">{t("spriteGeneration.h3Resolution")}</span>
-                      <Select
-                        aria-label={t("spriteGeneration.h3Resolution")}
-                        disabled={Boolean(busy)}
-                        value={h3Resolution}
-                        onChange={(event) => setH3Resolution(event.target.value as H3SpriteResolution)}
-                      >
-                        <option value="workflow">{t("spriteGeneration.resolutionWorkflow")}</option>
-                        <option value="hd">{t("spriteGeneration.resolutionHd")}</option>
-                        <option value="native">{t("spriteGeneration.resolutionNative")}</option>
-                      </Select>
-                      <p className="sprite-generation__hint">{t("spriteGeneration.resolutionHint")}</p>
-                    </label>
+                    <SpriteH3ResolutionSelect
+                      value={h3Resolution}
+                      onChange={setH3Resolution}
+                      disabled={Boolean(busy)}
+                    />
                     <div className="sprite-generation__auto-cutout">
                       <Switch
                         checked={removeBackground}

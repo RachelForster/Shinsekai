@@ -27,9 +27,13 @@ const desktopApiMocks = vi.hoisted(() => ({
   toggleMaximizeDesktopWindow: vi.fn(),
 }));
 
-vi.mock("../../../shared/platform/platform", () => ({
-  getPlatform: () => platformMocks.getPlatform(),
-}));
+vi.mock("../../../shared/platform/platform", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../shared/platform/platform")>();
+  return {
+    ...actual,
+    getPlatform: () => platformMocks.getPlatform(),
+  };
+});
 
 vi.mock("../../../shared/plugin/PluginSlot", () => ({
   PluginSlot: () => null,

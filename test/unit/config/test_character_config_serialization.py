@@ -4,7 +4,71 @@ import pytest
 import yaml
 
 from config.config_manager import ConfigManager
-from config.schema import Character, ModelSprites, Sprite
+from config.schema import ApiConfig, AppConfig, Character, ModelSprites, Sprite, SystemConfig
+
+
+def test_catalog_revision_changes_after_save_and_changed_reload_only(tmp_path, monkeypatch):
+    manager = object.__new__(ConfigManager)
+    manager._config = AppConfig(
+        characters=[Character(name="Mika", color="", sprite_prefix="mika")],
+        background_list=[],
+        api_config=ApiConfig(),
+        system_config=SystemConfig(),
+    )
+    manager._CHARACTERS_CONFIG_PATH = tmp_path / "characters.yaml"
+    manager._BACKGOUND_CONFIG_PATH = tmp_path / "background.yaml"
+    manager._BACKGOUND_CONFIG_PATH.write_text("[]", encoding="utf-8")
+    initial = manager.characters_revision
+    manager.save_characters_config()
+    saved = manager.characters_revision
+    assert saved and saved != initial
+    manager.refresh_media_catalogs()
+    assert manager.characters_revision == saved
+
+    # Simulate changed data loaded from disk without an HTTP save route.
+    data = yaml.safe_load(manager._CHARACTERS_CONFIG_PATH.read_text(encoding="utf-8"))
+    data[0]["character_setting"] = "changed outside the frontend"
+    manager._CHARACTERS_CONFIG_PATH.write_text(yaml.safe_dump(data), encoding="utf-8")
+    manager.refresh_media_catalogs()
+    assert manager.characters_revision != saved
+    assert manager.config.characters[0].character_setting == "changed outside the frontend"
+
+    revision = manager.characters_revision
+
+    def fail_save(*args):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(manager, "_save_single_config", fail_save)
+    with pytest.raises(OSError, match="disk full"):
+        manager.save_characters_config()
+    assert manager.characters_revision == revision
+
+
+def test_full_reload_tracks_catalog_changes_and_preserves_unchanged_version(tmp_path):
+    manager = object.__new__(ConfigManager)
+    manager._config = None
+    for attribute, filename, content in (
+        ("_API_CONFIG_PATH", "api.yaml", "{}"),
+        ("_SYSTEM_CONFIG_PATH", "system.yaml", "{}"),
+        ("_CHARACTERS_CONFIG_PATH", "characters.yaml", "[]"),
+        ("_BACKGOUND_CONFIG_PATH", "background.yaml", "[]"),
+        ("_EFFECT_CONFIG_PATH", "effects.yaml", "[]"),
+    ):
+        path = tmp_path / filename
+        path.write_text(content, encoding="utf-8")
+        setattr(manager, attribute, path)
+    manager.reload()
+    initial = manager.characters_revision
+    assert initial
+    manager.reload()
+    assert manager.characters_revision == initial
+    manager._CHARACTERS_CONFIG_PATH.write_text(
+        yaml.safe_dump([{"name": "Added by host", "color": "", "sprite_prefix": "added"}]),
+        encoding="utf-8",
+    )
+    manager.reload()
+    assert manager.characters_revision != initial
+    assert manager.config.characters[0].name == "Added by host"
 
 
 def test_unloaded_character_config_cannot_report_a_successful_save():

@@ -23,6 +23,7 @@ from sdk.adapters import (
 )
 
 from sdk.hooks import PluginHookDispatcher
+from sdk.model_assets import ModelAssetContribution
 from sdk.plugin import PluginBase
 from sdk.plugin_host_context import PluginHostContext
 from sdk.register import PluginCapabilityRegistry, PluginDiscoveryRegistry
@@ -229,6 +230,12 @@ class PluginManager:
         if self._capabilities is None:
             return []
         return self._capabilities.avatar_formats
+
+    def collect_model_assets(self) -> list[ModelAssetContribution]:
+        self._ensure_plugins_initialized()
+        if self._capabilities is None:
+            return []
+        return self._capabilities.model_assets_contributions
 
     def apply_llm_tools(self, tool_manager: ToolManager) -> None:
         self._ensure_plugins_initialized()

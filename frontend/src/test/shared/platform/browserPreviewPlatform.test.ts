@@ -63,6 +63,32 @@ function templateSession(overrides: Partial<TemplateLaunchSession> = {}): Templa
 }
 
 describe("browser preview platform chat themes", () => {
+  it("previews replay through the normal snapshot, pauses in range and restores live presentation", async () => {
+    vi.useFakeTimers();
+    const platform = createBrowserPreviewPlatform();
+    const live = await resolvePreview(platform.chat.getSnapshot());
+    const plan = await resolvePreview(platform.chat.prepareReplay());
+    const first = plan.entries[0];
+    const last = plan.entries[plan.entries.length - 1];
+    await platform.chat.startReplay(plan.id, first.key, last.key, false);
+    await platform.chat.controlReplay(plan.id, { action: "pause" });
+    const paused = await resolvePreview(platform.chat.getSnapshot());
+    expect(paused.status).toBe("replaying");
+    expect(paused.dialogText).toBe(first.body);
+    expect(paused.replay?.index).toBe(0);
+    await platform.chat.controlReplay(plan.id, { action: "seek", index: plan.entries.length - 1 });
+    expect((await platform.chat.getReplay(plan.id)).snapshot.entries).toHaveLength(plan.entries.length);
+    await platform.chat.controlReplay(plan.id, { action: "play" });
+    await vi.advanceTimersByTimeAsync(60_000);
+    const ended = await resolvePreview(platform.chat.getSnapshot());
+    expect(ended.replay?.ended).toBe(true);
+    await platform.chat.cancelReplay(plan.id);
+    const restored = await resolvePreview(platform.chat.getSnapshot());
+    expect(restored.replay).toBeNull();
+    expect(restored.historyEntries).toEqual(live.historyEntries);
+    expect(restored.dialogText).toBe(live.dialogText);
+  });
+
   it("deletes one story version and all its chats while retaining other versions", async () => {
     vi.useFakeTimers();
     const platform = createBrowserPreviewPlatform();
@@ -936,7 +962,7 @@ describe("browser preview platform chat themes", () => {
     expect(task.status).toBe("succeeded");
   });
 
-  it("handles preview chat branch, history, launch, and event commands", async () => {
+  it("handles preview chat history, launch, and event commands", async () => {
     vi.useFakeTimers();
     const platform = createBrowserPreviewPlatform();
     const events: string[] = [];
@@ -954,16 +980,6 @@ describe("browser preview platform chat themes", () => {
     expect((await resolvePreview(platform.chat.command({ type: "skip-speech" }))).status).toBe("idle");
     expect((await resolvePreview(platform.chat.command({ type: "open-history" }))).openedPath).toContain("preview");
     expect((await resolvePreview(platform.chat.command({ type: "copy-history" }))).clipboardText).toContain("Nanami");
-
-    const forked = await resolvePreview(platform.chat.command({ payload: { userIndex: 0 }, type: "fork-history" }));
-    expect(forked.conversationTree?.activeBranchId).toMatch(/^branch-/);
-    const branchId = forked.conversationTree?.activeBranchId ?? "";
-    await resolvePreview(platform.chat.command({ payload: { branchId, label: "Alt route" }, type: "rename-branch" }));
-    const renamed = await resolvePreview(platform.chat.getSnapshot());
-    expect(renamed.conversationTree?.branches.find((branch) => branch.id === branchId)?.label).toBe("Alt route");
-
-    const switchedMain = await resolvePreview(platform.chat.command({ payload: "main", type: "switch-branch" }));
-    expect(switchedMain.conversationTree?.activeBranchId).toBe("main");
 
     const reverted = await resolvePreview(platform.chat.command({ payload: 0, type: "revert-history" }));
     expect(reverted.historyEntries?.at(-1)?.role).toBe("system");
@@ -1054,4 +1070,40 @@ it("deletes image rows in preview without shifting tags across blank lines", asy
   } finally {
     vi.useRealTimers();
   }
+});
+
+it("preserves updated relations when saving an outdated character draft", async () => {
+  const platform = createBrowserPreviewPlatform();
+  const original = (await platform.characters.list())[0];
+  const stale = structuredClone(original);
+  const graph = await platform.characterRelation.applyRelationChanges(original.name, [
+    { op: "add_node", node: { key: "Local" } },
+    { op: "upsert_edge", edge: { source: original.name, target: "Local", temperature: 6, content: "Friend" } },
+    { op: "upsert_edge", edge: { source: "Local", target: original.name, temperature: 2, content: "Friend" } },
+  ]);
+  const character = (await platform.characters.list()).find((item) => item.name === original.name)!;
+  expect(character.relation_graph).toEqual({ nodes: graph.nodes, edges: graph.edges });
+  expect(character.relation_graph).not.toHaveProperty("owner");
+  const saved = await platform.characters.save({ ...stale, name: `${original.name} renamed` }, original.name);
+  const renamed = await platform.characterRelation.getRelationGraph(saved.name);
+  expect(renamed.owner).toBe(saved.name);
+  expect(renamed.nodes).toEqual([{ key: saved.name }, { key: "Local" }]);
+  expect(renamed.edges).toEqual([
+    { source: saved.name, target: "Local", temperature: 6, content: "Friend" },
+    { source: "Local", target: saved.name, temperature: 2, content: "Friend" },
+  ]);
+  expect(saved.relation_graph).toEqual({ nodes: renamed.nodes, edges: renamed.edges });
+});
+
+it("rejects a rename that collides with a relation node without changing the character", async () => {
+  const platform = createBrowserPreviewPlatform();
+  const original = (await platform.characters.list())[0];
+  const graph = await platform.characterRelation.applyRelationChanges(original.name, [
+    { op: "add_node", node: { key: "Local" } },
+  ]);
+  await expect(platform.characters.save({ ...original, name: "local" }, original.name)).rejects.toThrow(
+    "Node keys must be unique",
+  );
+  expect(await platform.characterRelation.getRelationGraph(original.name)).toEqual(graph);
+  expect((await platform.characters.list()).some((item) => item.name === "local")).toBe(false);
 });

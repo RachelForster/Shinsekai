@@ -23,6 +23,40 @@ function mockJsonResponse(body: unknown, ok = true) {
 }
 
 describe("http platform", () => {
+  it("prepares mouth profiles through an authenticated background task and reports progress", async () => {
+    const result = { ready: true, taskId: "mouth-task", manifestPath: "mouth-sync/manifest.json" };
+    const fetchMock = vi.fn(() => mockJsonResponse({ id: "mouth-task", status: "succeeded", result }));
+    vi.stubGlobal("fetch", fetchMock);
+    const progress = vi.fn();
+    const platform = createHttpPlatform("http://127.0.0.1:8787", "token");
+    const input = {
+      name: "Mika",
+      spritePath: "portrait.webm",
+      retryTaskId: "original-clip",
+      selectedFrames: { closed: 1, half: 10, open: 22 },
+    };
+    await expect(platform.characters.generateSpriteMouth(input, { onTaskUpdate: progress })).resolves.toEqual(result);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/characters/sprites/mouth/generate",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify(input),
+        headers: expect.objectContaining({ "X-Shinsekai-Bridge-Token": "token" }),
+      }),
+    );
+    expect(progress).toHaveBeenCalledOnce();
+  });
+
+  it("checks the lightweight character catalog version through authenticated HTTP", async () => {
+    const fetchMock = vi.fn(() => mockJsonResponse("saved-version"));
+    vi.stubGlobal("fetch", fetchMock);
+    const platform = createHttpPlatform("http://127.0.0.1:8787", "token");
+    await expect(platform.characters.revision()).resolves.toBe("saved-version");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/characters?view=revision",
+      expect.objectContaining({ headers: expect.objectContaining({ "X-Shinsekai-Bridge-Token": "token" }) }),
+    );
+  });
   it("analyzes directed sprite transitions through the authenticated task transport", async () => {
     const result = { name: "Mika", items: [], dialogCount: 8, transitionCount: 0, basis: "instructions" };
     const fetchMock = vi.fn(() => mockJsonResponse({ id: "analysis", status: "succeeded", result }));
@@ -2738,11 +2772,14 @@ describe("http platform", () => {
     expect(openMock).toHaveBeenCalledWith("https://example.test/community", "_blank", "noopener,noreferrer");
   });
 
-  it("maps template list, generate, and save endpoints", async () => {
+  it("maps template list, generate, presets, and save endpoints", async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith("/api/templates") && !init?.method) {
         return mockJsonResponse(sampleTemplates);
+      }
+      if (url.endsWith("/api/templates/presets")) {
+        return mockJsonResponse({ groups: ["Tone"], presets: [] });
       }
       return mockJsonResponse(sampleTemplates[0]);
     });
@@ -2757,11 +2794,15 @@ describe("http platform", () => {
       scenario: "scene",
     });
     await platform.templates.save({ ...sampleTemplates[0], name: "Custom" });
+    await platform.templates.getPresets();
+    await platform.templates.savePresets({ groups: ["Tone"], presets: [] });
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       "http://127.0.0.1:8787/api/templates",
       "http://127.0.0.1:8787/api/templates/generate",
       "http://127.0.0.1:8787/api/templates",
+      "http://127.0.0.1:8787/api/templates/presets",
+      "http://127.0.0.1:8787/api/templates/presets",
     ]);
     expect(fetchMock.mock.calls[1][1]).toEqual(
       expect.objectContaining({
@@ -2888,5 +2929,35 @@ describe("http platform", () => {
       "http://127.0.0.1:8787/api/tools/sprites/generate",
       "http://127.0.0.1:8787/api/tools/sprites/remove-background",
     ]);
+  });
+
+  it("uses the graph owner in endpoint URLs and sends operations", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+    const api = createHttpPlatform("http://127.0.0.1:8787").characterRelation;
+    const operations = [{ op: "delete_node" as const, key: "C" }];
+    vi.stubGlobal("fetch", fetchMock);
+    await api.getRelationGraph("Nanami");
+    await api.applyRelationChanges("Nanami", operations);
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "http://127.0.0.1:8787/api/character-relations/graphs/Nanami",
+      "http://127.0.0.1:8787/api/character-relations/graphs/Nanami/changes",
+    ]);
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ operations });
+  });
+
+  it("propagates relationship operation errors without retrying the request", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      statusText: "Bad Request",
+      json: async () => ({ error: "Node does not exist" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(
+      createHttpPlatform("http://127.0.0.1:8787").characterRelation.applyRelationChanges("A", [
+        { op: "delete_node", key: "B" },
+      ]),
+    ).rejects.toThrow("Node does not exist");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

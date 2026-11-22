@@ -12,6 +12,7 @@ from application.chat.presentation.handlers.registry import (
 from sdk.graph import Port
 from sdk.logging import get_logger
 from sdk.messages import PresentationMessage
+from application.chat.presentation.replay import ReplayPresentation, ReplayPresentationMessage
 
 from ..audio_playback_controller import (
     FrontendVoicePlaybackBackend,
@@ -45,6 +46,7 @@ class PresentationWorker(ThreadDagNode):
         self.current_audio_path = None
         self.DIALOG_CHANNEL_ID = 7
         self.ui_out_dispatcher = default_presentation_handler_chain()
+        self.replay = ReplayPresentation(self, None)
         if input_queue is not None:
             self.bind_input(self.PORT_PRESENTATION, input_queue)
 
@@ -73,6 +75,7 @@ class PresentationWorker(ThreadDagNode):
             playback_backend,
             interrupt_event=self.task_done_requested,
         )
+        self.replay.ui = self.ui_update_manager
         br.task_done_requested = self.task_done_requested
         br.dialog_channel = self.dialog_channel
         br.playback_controller = self.playback_controller
@@ -151,6 +154,8 @@ class PresentationWorker(ThreadDagNode):
     def _finish_turn_if_drained(self, turn) -> bool:
         """Publish completion once every downstream result has been consumed."""
         rt = get_app_runtime()
+        if getattr(getattr(self, "replay", None), "active", False):
+            return False
         if turn.is_cancelled() or not turn.generation_complete.is_set():
             return False
         if not self._queue_drained(rt.dialog_queue) or not self._queue_drained(
@@ -214,10 +219,17 @@ class PresentationWorker(ThreadDagNode):
 
                 if output_data is None:
                     break
+                if isinstance(output_data, ReplayPresentationMessage):
+                    self._dialog_active = True
+                    self.replay.present(output_data)
+                    continue
                 turn = get_app_runtime().chat_turn_service.current_turn()
                 if turn.is_cancelled():
                     continue
                 self._dialog_active = True
+                recorder = getattr(self.ui_update_manager, "replay_recorder", None)
+                if recorder is not None:
+                    recorder.record_message(output_data)
                 self.ui_out_dispatcher.dispatch(output_data)
             except Exception as e:
                 logger.exception(
@@ -241,6 +253,8 @@ class PresentationWorker(ThreadDagNode):
 
     def stop(self):
         self.running = False
+        if self.replay.active:
+            self.replay.control({"id": self.replay.id, "action": "stop"})
         controller = getattr(self, "playback_controller", None)
         if controller is not None:
             controller.shutdown()

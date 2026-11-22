@@ -272,6 +272,87 @@ test("chat stage browser preview supports state-driven interaction flow", async 
   await expect(page.locator(".toast__title").filter({ hasText: "历史已清空" })).toBeVisible();
 });
 
+test("reveals the themed dialog toolbar when hovering the dialog", async ({ page }) => {
+  await page.goto("/#/chat", { waitUntil: "domcontentloaded" });
+  const dialog = page.locator(".dialog-layer");
+  const toolbar = page.locator('.dialog-toolbar-layer[data-reveal="hover"]');
+  const surface = toolbar.locator(".dialog-stage-controls__surface");
+  await expect(page.getByRole("list", { name: "对话选项" })).toBeVisible();
+  await expect(surface).toHaveCSS("opacity", "0");
+
+  await page.getByRole("list", { name: "对话选项" }).hover();
+  await expect(surface).toHaveCSS("opacity", "1");
+  await page.getByRole("button", { name: "继续", exact: true }).click();
+  await expect(dialog).toBeVisible();
+  await page.mouse.move(10, 100);
+  await expect(surface).toHaveCSS("opacity", "0");
+  await dialog.hover();
+  await expect(surface).toHaveCSS("opacity", "1");
+
+  const lock = toolbar.getByRole("button", { name: "锁定聊天操作", exact: true });
+  await lock.click();
+  await page.mouse.move(10, 100);
+  await expect(toolbar).toHaveAttribute("data-locked", "true");
+  await expect(surface).toHaveCSS("opacity", "1");
+
+  await toolbar.getByRole("button", { name: "解锁聊天操作", exact: true }).click();
+  await page.mouse.click(10, 100);
+  await expect(surface).toHaveCSS("opacity", "0");
+});
+
+test("keeps every hover dialog action visible and clickable on a single row across window widths", async ({ page }) => {
+  await page.goto("/#/chat", { waitUntil: "domcontentloaded" });
+  const controls = page.locator(".dialog-stage-controls");
+  const options = page.getByRole("list", { name: "对话选项" });
+  const toolbar = page.getByRole("toolbar", { name: "聊天舞台操作" });
+  const surface = page.locator(".dialog-stage-controls__surface");
+  await expect(options).toBeVisible();
+  await expect(toolbar.getByRole("button", { name: "关闭聊天" })).toBeAttached();
+  const actionCount = await toolbar.getByRole("button").count();
+
+  const readLayout = () =>
+    toolbar.getByRole("button").evaluateAll((buttons) => {
+      const bounds = buttons.map((button) => button.getBoundingClientRect());
+      return {
+        rows: new Set(bounds.map((rect) => Math.round(rect.top))).size,
+        inViewport: bounds.every(
+          (rect) =>
+            rect.left >= 0 && rect.right <= window.innerWidth && rect.top >= 0 && rect.bottom <= window.innerHeight,
+        ),
+        clickable: bounds.every(
+          (rect, index) =>
+            document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)?.closest("button") ===
+            buttons[index],
+        ),
+      };
+    });
+
+  await options.hover();
+  await expect(surface).toHaveCSS("opacity", "1");
+  await expect(controls).toHaveAttribute("data-density", "full");
+  const desktopLayout = await readLayout();
+  const desktopSurfaceWidth = (await surface.boundingBox())?.width ?? 0;
+  expect(desktopLayout.rows).toBe(1);
+  expect(desktopLayout.inViewport).toBe(true);
+  expect(desktopLayout.clickable).toBe(true);
+
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.mouse.move(8, 102);
+  await expect(surface).toHaveCSS("opacity", "0");
+  await options.hover();
+  await expect(surface).toHaveCSS("opacity", "1");
+  await expect(controls).toHaveAttribute("data-density", "compact");
+
+  const narrowLayout = await readLayout();
+  const narrowSurfaceWidth = (await surface.boundingBox())?.width ?? 0;
+  expect(actionCount).toBeGreaterThan(5);
+  await expect(toolbar.getByRole("button")).toHaveCount(actionCount);
+  expect(narrowSurfaceWidth).toBeLessThan(desktopSurfaceWidth);
+  expect(narrowLayout.rows).toBe(1);
+  expect(narrowLayout.inViewport).toBe(true);
+  expect(narrowLayout.clickable).toBe(true);
+});
+
 async function exportCharacterPackage(request: APIRequestContext, name: string) {
   const result = await requestJson<{ path: string }>(request, "post", "/api/characters/export", { name });
   return path.resolve(projectRoot, result.path);

@@ -75,6 +75,21 @@ class ChatLaunchArgsTests(unittest.TestCase):
 
         self.assertEqual(args.media_selection_mode, "semantic")
 
+    def test_primary_characters_round_trip_through_cli_and_launch_config(self):
+        parser = build_chat_arg_parser(_tr)
+        self.assertEqual(parser.parse_args([]).primary_characters, "")
+        self.assertEqual(
+            parser.parse_args(["--primary-characters", '["Alice","Bob"]']).primary_characters,
+            '["Alice","Bob"]',
+        )
+        with patch.dict(
+            os.environ,
+            {CHAT_LAUNCH_CONFIG_ENV: json.dumps({"primary_characters": '["Alice"]'})},
+        ):
+            config = load_chat_launch_config()
+        parser.set_defaults(**config)
+        self.assertEqual(parser.parse_args([]).primary_characters, '["Alice"]')
+
     def test_bridge_launch_config_is_loaded_from_json_environment(self):
         payload = {
             "history": "data/chat_history/session",

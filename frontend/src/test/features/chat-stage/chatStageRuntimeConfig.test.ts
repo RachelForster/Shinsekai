@@ -36,6 +36,8 @@ describe("chat stage runtime config", () => {
       spriteFramings: {
         " character:mio ": { heightRatio: 0.5, verticalPosition: 0.25 },
         "character:ren": { heightRatio: -2, verticalPosition: 4 },
+        "character:yui": { heightRatio: 0.5, verticalPosition: -0.4 },
+        "character:sora": { heightRatio: 0.5, verticalPosition: -3 },
         bad: null,
         invalid: "bad",
         "": { heightRatio: 0.3 },
@@ -44,6 +46,8 @@ describe("chat stage runtime config", () => {
     expect(config.spriteFramings).toEqual({
       "character:mio": { heightRatio: 0.5, verticalPosition: 0.25 },
       "character:ren": { heightRatio: 0.2, verticalPosition: 1 },
+      "character:yui": { heightRatio: 0.5, verticalPosition: -0.4 },
+      "character:sora": { heightRatio: 0.5, verticalPosition: -1 },
     });
     writeChatStageRuntimeConfig(config);
     expect(readChatStageRuntimeConfig().spriteFramings).toEqual(config.spriteFramings);
@@ -466,5 +470,24 @@ describe("chat stage runtime config", () => {
     ) as unknown as Record<string, unknown>;
     expect(invalidStyle["--chat-dialog-runtime-width"]).toBe("1040px");
     expect(invalidStyle["--chat-dialog-responsive-width"]).toBeUndefined();
+  });
+
+  it("normalizes miniAvatarMode and preserves it across theme appearance resets", () => {
+    expect(defaultChatStageRuntimeConfig.miniAvatarMode).toBe(false);
+    expect(normalizeChatStageRuntimeConfig({}).miniAvatarMode).toBe(false);
+    expect(normalizeChatStageRuntimeConfig({ miniAvatarMode: "yes" }).miniAvatarMode).toBe(false);
+
+    const miniConfig = normalizeChatStageRuntimeConfig({
+      config: {
+        configThemeColor: "#ff5577",
+        miniAvatarMode: true,
+      },
+      version: chatStageRuntimeConfigVersion,
+    });
+    expect(miniConfig.miniAvatarMode).toBe(true);
+
+    writeChatStageRuntimeConfig(miniConfig);
+    expect(readChatStageRuntimeConfig().miniAvatarMode).toBe(true);
+    expect(resetChatStageRuntimeThemeAppearance(miniConfig, "#22aa88").miniAvatarMode).toBe(true);
   });
 });

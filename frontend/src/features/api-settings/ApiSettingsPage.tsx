@@ -46,6 +46,7 @@ import { AsrSettingsSection } from "./AsrSettingsSection";
 import { LlmConnectionSection } from "./LlmConnectionSection";
 import { KnowledgeSettingsSection } from "./KnowledgeSettingsSection";
 import { MemorySettingsSection } from "./MemorySettingsSection";
+import { PerceptionSettingsSection } from "./PerceptionSettingsSection";
 import { ResourceLinksSection } from "./ResourceLinksSection";
 import { T2iSetupSection } from "./T2iSetupSection";
 import { TtsBundleSection } from "./TtsBundleSection";
@@ -735,13 +736,14 @@ export function ApiSettingsPage() {
   );
   const apiSectionNavItems = [
     { id: "api-language", label: t("api.language.title") },
-    { id: "api-llm", label: t("api.llm.connectionTitle") },
-    { id: "api-tts", label: t("api.tts.bundleTitle") },
+    { id: "api-llm", label: t("api.nav.llm") },
+    { id: "api-tts", label: t("api.nav.tts") },
     { id: "api-vision", label: t("api.vision.title") },
+    { id: "api-perception", label: t("api.nav.perception") },
     { id: "api-memory", label: t("api.memory.title") },
     { id: "api-knowledge", label: t("api.knowledge.title") },
-    { id: "api-t2i", label: t("api.t2i.title") },
-    { id: "api-asr", label: t("system.asr.title") },
+    { id: "api-t2i", label: t("api.nav.t2i") },
+    { id: "api-asr", label: t("api.nav.asr") },
     { id: "api-links", label: t("api.links.title") },
   ];
 
@@ -772,6 +774,13 @@ export function ApiSettingsPage() {
     }
     if (containsPathQuotes(activeVisionBaseUrl)) {
       showToast({ kind: "error", message: t("api.vision.invalidBaseUrl"), title: t("common.validationFailed") });
+      return;
+    }
+    if (
+      (draft.perception_enabled && !draft.perception_base_url.trim()) ||
+      containsPathQuotes(draft.perception_base_url)
+    ) {
+      showToast({ kind: "error", message: t("api.perception.invalidBaseUrl"), title: t("common.validationFailed") });
       return;
     }
     const ttsProvider = normalizeTtsProvider(draft.tts_provider);
@@ -940,6 +949,14 @@ export function ApiSettingsPage() {
         onSharedCredentialChange={updateVisionSharedCredential}
         providerOptions={visionProviderOptions}
         sharedLlmProvider={visionProviderLlmProviders[resolvedVisionProvider]}
+      />
+      <PerceptionSettingsSection
+        disabled={saveMutation.isPending}
+        draft={draft}
+        id="api-perception"
+        onChange={(nextDraft) => setDraft(syncCompactRatioDraft(nextDraft))}
+        savedModel={data?.api_config.perception_model}
+        savedUseGguf={data?.api_config.perception_use_gguf}
       />
       <MemorySettingsSection
         disabled={saveMutation.isPending}

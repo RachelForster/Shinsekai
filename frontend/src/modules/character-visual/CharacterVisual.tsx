@@ -51,12 +51,15 @@ function StaticVisual({
   framing,
   active,
   mode,
+  voiceCharacterName,
 }: CharacterVisualProps) {
   const [aspectRatio, setAspectRatio] = useState(1);
   const style = visualFramingStyle(framing);
   const image = (
     <TransitionMedia
       transitions={asset.transitions}
+      mouthSync={asset.mouthSync}
+      voiceCharacterName={mode === "edit" ? undefined : voiceCharacterName}
       enabled={mode === "play"}
       alt={asset.label}
       active={active}
@@ -75,6 +78,7 @@ function StaticVisual({
     <div
       className={`${className} character-visual__static-frame character-visual--framed`}
       style={{ aspectRatio }}
+      data-orientation={aspectRatio > 1 ? "landscape" : "portrait"}
       data-chat-stage-hitbox={hitbox ? "true" : undefined}
       onMouseDown={onMouseDown}
     >

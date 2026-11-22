@@ -26,6 +26,7 @@ const mocks = {
   getAppConfig: vi.fn(),
   getChatHistory: vi.fn(),
   getChatHistoryVoice: vi.fn(),
+  getChatReplay: vi.fn(),
   getChatSnapshot: vi.fn(),
   getChatTheme: vi.fn(),
   sendChatCommand: vi.fn(),
@@ -50,6 +51,7 @@ vi.mock("../../../entities/chat/repository", () => ({
   closeChat: () => mocks.closeChat(),
   getChatHistory: () => mocks.getChatHistory(),
   getChatHistoryVoice: (voiceId: string) => mocks.getChatHistoryVoice(voiceId),
+  getChatReplay: (id: string) => mocks.getChatReplay(id),
   getChatSnapshot: () => mocks.getChatSnapshot(),
   getChatTheme: () => mocks.getChatTheme(),
   sendChatCommand: (command: ChatCommand) => mocks.sendChatCommand(command),
@@ -126,6 +128,7 @@ const desktopApiMocks = vi.hoisted(() => ({
   getDesktopWindowCursorPosition: vi.fn(),
   isTauriDesktop: vi.fn(),
   minimizeDesktopWindow: vi.fn(),
+  saveDesktopHistoryExport: vi.fn(),
   setDesktopWindowAlwaysOnTop: vi.fn(),
   setDesktopWindowClickThrough: vi.fn(),
   startDesktopWindowDrag: vi.fn(),
@@ -147,6 +150,7 @@ vi.mock("../../../shared/desktop/desktopApi", async (importOriginal) => {
     getDesktopWindowCursorPosition: () => desktopApiMocks.getDesktopWindowCursorPosition(),
     isTauriDesktop: () => desktopApiMocks.isTauriDesktop(),
     minimizeDesktopWindow: () => desktopApiMocks.minimizeDesktopWindow(),
+    saveDesktopHistoryExport: (blob: Blob) => desktopApiMocks.saveDesktopHistoryExport(blob),
     setDesktopWindowAlwaysOnTop: (alwaysOnTop: boolean) => desktopApiMocks.setDesktopWindowAlwaysOnTop(alwaysOnTop),
     setDesktopWindowClickThrough: (ignore: boolean) => desktopApiMocks.setDesktopWindowClickThrough(ignore),
     startDesktopWindowDrag: () => desktopApiMocks.startDesktopWindowDrag(),
@@ -160,10 +164,6 @@ function snapshot(overrides: Partial<ChatSnapshot> = {}): ChatSnapshot {
     backgroundPath: "asset://school.png",
     characterName: "Mio",
     dialogText: "Ready",
-    experimentalFeatures: {
-      conversationTree: true,
-      forkHistory: true,
-    },
     historyEntries: [
       { id: "history-0", role: "assistant", text: "Mio: Ready" },
       {
@@ -214,7 +214,107 @@ function chooseCustomSelectOption(root: HTMLElement, name: string, option: strin
   fireEvent.click(screen.getByRole("option", { name: option }));
 }
 
+function finishSpriteFade(image: Element) {
+  fireEvent.load(image);
+  const surface = image.closest(".character-visual__transition-content")!;
+  for (let phase = 0; phase < 2; phase++) {
+    fireEvent(surface, Object.assign(new Event("transitionend", { bubbles: true }), { propertyName: "opacity" }));
+  }
+}
+
+function captureStageEvents() {
+  let listener: ((event: ChatStageEvent) => void) | undefined;
+  mocks.subscribeChatEvents.mockImplementation((next) => {
+    listener = next;
+    return vi.fn();
+  });
+  return (event: ChatStageEvent) => act(() => listener?.(event));
+}
+
+function blurDisabledInput(input: HTMLElement) {
+  // jsdom keeps disabled controls focused and ignores their blur() method.
+  const temporaryTarget = document.createElement("button");
+  document.body.append(temporaryTarget);
+  act(() => temporaryTarget.focus());
+  temporaryTarget.remove();
+  expect(input).not.toHaveFocus();
+}
+
 describe("ChatStagePage", () => {
+  it("keeps a fast perception bubble visible while the main reply is generating", async () => {
+    const emit = captureStageEvents();
+    renderPage();
+    await screen.findByRole("textbox");
+
+    emit({
+      type: "sprite.reaction",
+      characterName: "Mio",
+      durationMs: 3600,
+      seq: 1,
+      text: "That was close!",
+      ts: 1,
+      v: 1,
+    });
+    expect(screen.getByText("That was close!")).toBeVisible();
+
+    emit({ type: "status.change", status: "generating", seq: 2, ts: 2, v: 1 });
+    expect(screen.getByText("That was close!")).toBeVisible();
+
+    emit({ type: "status.change", status: "speaking", seq: 3, ts: 3, v: 1 });
+    expect(screen.queryByText("That was close!")).toBeNull();
+  });
+
+  it("renders replay through the normal stage, locks input and shows historical choices read-only", async () => {
+    const emit = captureStageEvents();
+    renderPage();
+    const input = await screen.findByRole("textbox");
+    fireEvent.change(input, { target: { value: "keep this draft" } });
+    const commandsBefore = mocks.sendChatCommand.mock.calls.length;
+    emit({
+      type: "replay.state",
+      replay: { id: "clip", index: 0, total: 2, paused: false, ended: false, waiting: false, error: "" },
+      seq: 1,
+      ts: 1,
+      v: 1,
+    });
+    emit({
+      type: "dialog.end",
+      speaker: "Mio",
+      fullHtml: "<p>Historical line</p>",
+      color: "",
+      isSystem: false,
+      animate: false,
+      seq: 2,
+      ts: 2,
+      v: 1,
+    });
+    expect(document.querySelectorAll(".dialog-layer")).toHaveLength(1);
+    expect(document.querySelector(".dialog-layer")).toHaveTextContent("Historical line");
+    expect(input).toBeDisabled();
+    expect(input).toHaveValue("");
+    emit({ type: "options.show", options: ["First", "Second"], selectedIndex: 1, seq: 3, ts: 3, v: 1 });
+    const selected = screen.getByRole("button", { name: "Second Selected" });
+    expect(selected).toBeDisabled();
+    expect(selected).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "First" })).toBeDisabled();
+    fireEvent.keyDown(selected, { key: "Enter" });
+    fireEvent.click(selected);
+    expect(mocks.sendChatCommand.mock.calls.length).toBe(commandsBefore);
+    emit({ type: "status.change", status: "speaking", seq: 4, ts: 4, v: 1 });
+    expect(document.querySelector(".top-stage-tools__state")).toHaveTextContent("replaying");
+    emit({
+      type: "presentation.restore",
+      presentation: { characterName: "Mio", dialogHtml: "", dialogText: "Live restored", options: [] },
+      seq: 5,
+      ts: 5,
+      v: 1,
+    });
+    emit({ type: "replay.state", replay: null, seq: 6, ts: 6, v: 1 });
+    expect(input).toBeEnabled();
+    expect(input).toHaveValue("keep this draft");
+    expect(document.querySelector(".dialog-layer")).toHaveTextContent("Live restored");
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useRealTimers();
@@ -246,6 +346,7 @@ describe("ChatStagePage", () => {
     mocks.getChatSnapshot.mockResolvedValue(snapshot());
     mocks.getChatHistory.mockResolvedValue(snapshot().historyEntries as ChatHistoryEntry[]);
     mocks.getChatHistoryVoice.mockResolvedValue([]);
+    mocks.getChatReplay.mockReturnValue(new Promise(() => {}));
     desktopApiMocks.isTauriDesktop.mockReturnValue(false);
     desktopApiMocks.getDesktopWindowCursorPosition.mockResolvedValue({ x: 0, y: 0 });
     desktopApiMocks.minimizeDesktopWindow.mockResolvedValue(undefined);
@@ -308,6 +409,180 @@ describe("ChatStagePage", () => {
         type: "submit-option",
       }),
     );
+  });
+
+  it.each(["default", "pill"] as const)(
+    "returns focus to the %s input as soon as it is enabled, even while speech continues",
+    async (layout) => {
+      const emit = captureStageEvents();
+      if (layout === "pill") themeContextMocks.optional = { style: { "--chat-input-layout": "pill" } as CSSProperties };
+      mocks.getChatSnapshot.mockResolvedValue(
+        snapshot({ turnOptions: { batchEnabled: false, batchIdleSeconds: 5, interruptEnabled: false } }),
+      );
+      renderPage();
+      const input = await screen.findByRole("textbox");
+      act(() => input.focus());
+      fireEvent.change(input, { target: { value: "keep my typing focus" } });
+      const send = screen.getByRole("button", { name: "Send" });
+      act(() => send.focus());
+      fireEvent.click(send);
+      expect(input).toBeDisabled();
+      blurDisabledInput(input);
+      emit({ type: "options.show", options: ["New choice"], seq: 1, ts: 1, v: 1 });
+      expect(screen.getByRole("button", { name: "New choice" })).not.toHaveFocus();
+      emit({ type: "status.change", status: "speaking", seq: 2, ts: 2, v: 1 });
+      await waitFor(() => expect(input).toHaveFocus());
+      fireEvent.change(input, { target: { value: "next message while speech continues" } });
+      emit({ type: "status.change", status: "idle", seq: 3, ts: 3, v: 1 });
+      await waitFor(() => expect(input).toHaveFocus());
+      expect(input).toHaveValue("next message while speech continues");
+      expect(screen.getByRole("button", { name: "New choice" })).not.toHaveFocus();
+    },
+  );
+
+  it("returns to the selected option position after the reply instead of focusing the input", async () => {
+    const emit = captureStageEvents();
+    mocks.getChatSnapshot.mockResolvedValue(snapshot({ options: ["First choice", "Second choice"] }));
+    renderPage();
+    const selected = await screen.findByRole("button", { name: "Second choice" });
+    act(() => selected.focus());
+    fireEvent.keyDown(selected, { key: "Enter" });
+    emit({ type: "options.show", options: ["Next first", "Next second"], seq: 1, ts: 1, v: 1 });
+    expect(screen.getByRole("button", { name: "Next first" })).not.toHaveFocus();
+    emit({ type: "status.change", status: "idle", seq: 2, ts: 2, v: 1 });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Next second" })).toHaveFocus());
+    expect(screen.getByRole("textbox")).not.toHaveFocus();
+  });
+
+  it("falls back to the input and returns to late options only while the fallback is untouched", async () => {
+    const emit = captureStageEvents();
+    mocks.getChatSnapshot.mockResolvedValue(snapshot({ options: ["First choice", "Second choice"] }));
+    renderPage();
+    const selected = await screen.findByRole("button", { name: "Second choice" });
+    act(() => selected.focus());
+    fireEvent.click(selected);
+    emit({ type: "status.change", status: "idle", seq: 1, ts: 1, v: 1 });
+    const input = screen.getByRole("textbox");
+    await waitFor(() => expect(input).toHaveFocus());
+    emit({ type: "snapshot", snapshot: snapshot({ eventSeq: 2, options: [] }), seq: 2, ts: 2, v: 1 });
+    emit({ type: "options.show", options: ["Late first", "Late second"], seq: 3, ts: 3, v: 1 });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Late second" })).toHaveFocus());
+    fireEvent.click(screen.getByRole("button", { name: "Late second" }));
+    emit({ type: "status.change", status: "idle", seq: 4, ts: 4, v: 1 });
+    await waitFor(() => expect(input).toHaveFocus());
+    fireEvent.change(input, { target: { value: "a new draft" } });
+    emit({ type: "options.show", options: ["Another choice"], seq: 5, ts: 5, v: 1 });
+    expect(input).toHaveFocus();
+    expect(input).toHaveValue("a new draft");
+  });
+
+  it("returns typing focus when re-enabled without waiting for the reply typewriter", async () => {
+    const emit = captureStageEvents();
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({ turnOptions: { batchEnabled: false, batchIdleSeconds: 5, interruptEnabled: false } }),
+    );
+    renderPage();
+    const input = await screen.findByRole("textbox");
+    act(() => input.focus());
+    fireEvent.change(input, { target: { value: "hello" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(input).toBeDisabled();
+    blurDisabledInput(input);
+    emit({
+      type: "dialog.end",
+      fullHtml: "<p>A new reply.</p>",
+      color: "#fff",
+      isSystem: false,
+      speaker: "Mio",
+      seq: 1,
+      ts: 1,
+      v: 1,
+    });
+    emit({ type: "status.change", status: "idle", seq: 2, ts: 2, v: 1 });
+    await waitFor(() => expect(input).toHaveFocus());
+    fireEvent.change(input, { target: { value: "draft during the reply animation" } });
+    expect(input).toHaveValue("draft during the reply animation");
+  });
+
+  it.each(["default", "pill"] as const)(
+    "restores the %s field after an Enter send and temporary disable",
+    async (layout) => {
+      const emit = captureStageEvents();
+      if (layout === "pill") themeContextMocks.optional = { style: { "--chat-input-layout": "pill" } as CSSProperties };
+      mocks.getChatSnapshot.mockResolvedValue(
+        snapshot({ turnOptions: { batchEnabled: false, batchIdleSeconds: 5, interruptEnabled: false } }),
+      );
+      renderPage();
+      const input = await screen.findByRole("textbox");
+      act(() => input.focus());
+      fireEvent.change(input, { target: { value: "send with enter" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(input).toBeDisabled();
+      blurDisabledInput(input);
+      emit({ type: "status.change", status: "speaking", seq: 1, ts: 1, v: 1 });
+      expect(input).toBeEnabled();
+      await waitFor(() => expect(input).toHaveFocus());
+      fireEvent.change(input, { target: { value: "keep typing without clicking again" } });
+      expect(input).toHaveValue("keep typing without clicking again");
+    },
+  );
+
+  it("does not steal focus from history opened while a reply is running", async () => {
+    const emit = captureStageEvents();
+    renderPage();
+    const input = await screen.findByRole("textbox");
+    act(() => input.focus());
+    fireEvent.change(input, { target: { value: "hello" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.click(screen.getByRole("button", { name: "Open history" }));
+    const dialog = await screen.findByRole("dialog", { name: "Conversation history" });
+    const close = within(dialog).getAllByRole("button", { name: "Close" })[0]!;
+    act(() => close.focus());
+    emit({ type: "options.show", options: ["Reply choice"], seq: 1, ts: 1, v: 1 });
+    emit({ type: "status.change", status: "idle", seq: 2, ts: 2, v: 1 });
+    expect(close).toHaveFocus();
+    expect(input).not.toHaveFocus();
+  });
+
+  it("defers focus restoration while the window is inactive", async () => {
+    const emit = captureStageEvents();
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({ turnOptions: { batchEnabled: false, batchIdleSeconds: 5, interruptEnabled: false } }),
+    );
+    renderPage();
+    const input = await screen.findByRole("textbox");
+    act(() => input.focus());
+    fireEvent.change(input, { target: { value: "hello" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(input).toBeDisabled();
+    blurDisabledInput(input);
+    fireEvent(window, new Event("blur"));
+    expect(input).not.toHaveFocus();
+    emit({ type: "status.change", status: "idle", seq: 1, ts: 1, v: 1 });
+    expect(input).not.toHaveFocus();
+    fireEvent(window, new Event("focus"));
+    await waitFor(() => expect(input).toHaveFocus());
+  });
+
+  it("focuses an enabled option when the first choice is locked", async () => {
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({
+        options: [
+          {
+            source: "story",
+            id: "locked",
+            label: "Locked choice",
+            enabled: false,
+            expectedNodeId: "node",
+            expectedRevision: 1,
+          },
+          "Available choice",
+        ],
+      }),
+    );
+    renderPage();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Available choice" })).toHaveFocus());
+    expect(screen.getByRole("button", { name: "Locked choice" })).toBeDisabled();
   });
 
   it("renders localized correlated tool confirmation controls without submitting dialog text", async () => {
@@ -768,10 +1043,16 @@ describe("ChatStagePage", () => {
 
     const nextFigure = container.querySelector(".sprite-layer__figure");
     const nextHost = container.querySelector(".sprite-layer__image");
-    const nextImage = screen.getByAltText("Mio");
+    const nextImage = nextHost!.querySelector('[src="asset://mio-happy.png"]')!;
     expect(nextFigure).toBe(originalFigure);
     expect(nextFigure).toHaveAttribute("data-slot", "0");
     expect(nextHost).toBe(originalHost);
+    expect(screen.getByAltText("Mio")).toBe(originalImage);
+    expect(nextImage.parentElement).toHaveStyle({ opacity: "0" });
+    finishSpriteFade(nextImage);
+    expect(screen.getByAltText("Mio")).toBe(nextImage);
+    expect(originalImage).not.toBeInTheDocument();
+    expect(container.querySelector(".sprite-layer__image")).toBe(originalHost);
     expect(nextImage).not.toBe(originalImage);
     expect(nextImage).toHaveAttribute("src", "asset://mio-happy.png");
   });
@@ -1160,6 +1441,7 @@ describe("ChatStagePage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
     await waitFor(() => expect(input).toHaveValue("retry me"));
+    expect(input).toHaveFocus();
     expect(screen.getByText("Ready")).toBeInTheDocument();
     expect(mocks.sendChatCommand).toHaveBeenCalledTimes(1);
     expect(mocks.sendChatCommand).toHaveBeenCalledWith({ payload: "retry me", type: "send-message" });
@@ -1319,7 +1601,7 @@ describe("ChatStagePage", () => {
     const lockButton = within(actionBar).getByRole("button", { name: "Lock chat actions" });
     expect(lockButton).toHaveTextContent("LOCK");
     expect(within(actionBar).getByRole("button", { name: "Open history" })).toHaveTextContent("HISTORY");
-    expect(within(actionBar).getByRole("button", { name: "Open conversation tree" })).toHaveTextContent("TREE");
+    expect(within(actionBar).queryByRole("button", { name: "Open conversation tree" })).not.toBeInTheDocument();
     expect(within(actionBar).getByRole("button", { name: "Retry reply" })).toHaveTextContent("RETRY");
     expect(within(actionBar).queryByRole("button", { name: "Skip" })).not.toBeInTheDocument();
     expect(within(actionBar).queryByRole("button", { name: "Copy history" })).not.toBeInTheDocument();
@@ -1342,90 +1624,6 @@ describe("ChatStagePage", () => {
     expect(topTools).toHaveFocus();
     expect(within(topControls).getByRole("button", { name: "Token usage" })).toBeInTheDocument();
     expect(within(topTools).queryByRole("button", { name: "Open history" })).not.toBeInTheDocument();
-  });
-
-  it("opens the conversation tree from the toolbar and switches branches", async () => {
-    const conversationTree = {
-      activeBranchId: "main",
-      branches: [
-        { id: "main", label: "Main", parentId: null },
-        { forkedFromText: "hello", id: "branch-2", label: "Branch 2", parentId: "main" },
-        { forkedFromText: "branch path", id: "branch-3", label: "Branch 3", parentId: "branch-2" },
-      ],
-    };
-    mocks.getChatSnapshot.mockResolvedValue(
-      snapshot({
-        conversationTree,
-      }),
-    );
-    mocks.sendChatCommand.mockImplementation(async (command: ChatCommand) =>
-      snapshot({ conversationTree, dialogText: command.type, inputDraft: "", options: [] }),
-    );
-
-    renderPage();
-    await screen.findByText("Ready");
-
-    fireEvent.click(screen.getByRole("button", { name: "Open conversation tree" }));
-    const dialog = await screen.findByRole("dialog", { name: "Conversation branches" });
-    expect(within(dialog).getByText("Branch 2")).toBeInTheDocument();
-    expect(within(dialog).getByText("Forked from: hello")).toBeInTheDocument();
-    expect(within(dialog).getByText("Branch 3")).toBeInTheDocument();
-
-    fireEvent.click(within(dialog).getByRole("button", { name: "Collapse Branch 2" }));
-    await waitFor(() => expect(within(dialog).queryByText("Branch 3")).not.toBeInTheDocument());
-
-    fireEvent.click(within(dialog).getByRole("button", { name: "Expand Branch 2" }));
-    await waitFor(() => expect(within(dialog).getByText("Branch 3")).toBeInTheDocument());
-
-    const branch2Node = within(dialog).getByText("Branch 2").closest("article") as HTMLElement;
-    fireEvent.click(within(branch2Node).getByRole("button", { name: "Rename Branch 2" }));
-    fireEvent.change(within(branch2Node).getByRole("textbox", { name: "Branch name" }), {
-      target: { value: "Side route" },
-    });
-    fireEvent.click(within(branch2Node).getByRole("button", { name: "Save branch name" }));
-
-    await waitFor(() =>
-      expect(mocks.sendChatCommand).toHaveBeenCalledWith({
-        payload: { branchId: "branch-2", label: "Side route" },
-        type: "rename-branch",
-      }),
-    );
-
-    const refreshedBranch2Node = within(dialog).getByText("Branch 2").closest("article") as HTMLElement;
-    fireEvent.click(within(refreshedBranch2Node).getByRole("button", { name: "Switch" }));
-
-    await waitFor(() =>
-      expect(mocks.sendChatCommand).toHaveBeenCalledWith({ payload: "branch-2", type: "switch-branch" }),
-    );
-  });
-
-  it("disables experimental conversation tree and hides fork controls unless enabled", async () => {
-    mocks.getChatSnapshot.mockResolvedValue(
-      snapshot({
-        experimentalFeatures: { conversationTree: false, forkHistory: false },
-      }),
-    );
-    mocks.getChatHistory.mockResolvedValueOnce([
-      {
-        createdAt: userHistoryCreatedAt,
-        id: "history-1",
-        revertUserIndex: 0,
-        role: "user",
-        text: "你: hello",
-      },
-    ] satisfies ChatHistoryEntry[]);
-
-    renderPage();
-    await screen.findByText("Ready");
-
-    expect(
-      screen.getByRole("button", { name: "Conversation tree is experimental and disabled in settings" }),
-    ).toBeDisabled();
-
-    fireEvent.click(screen.getByRole("button", { name: "Open history" }));
-    const dialog = await screen.findByRole("dialog", { name: "Conversation history" });
-    expect(within(dialog).queryByRole("button", { name: "Fork" })).not.toBeInTheDocument();
-    expect(within(dialog).getByRole("button", { name: "Revert to previous turn" })).toBeInTheDocument();
   });
 
   it("uses opt-in theme placement for the detached dialog toolbar with start options", async () => {
@@ -1658,24 +1856,19 @@ describe("ChatStagePage", () => {
     await waitFor(() => expect(mocks.sendChatCommand).toHaveBeenCalledWith({ type: "resume-asr" }));
   });
 
-  it("keeps the current dialog visible after copying history", async () => {
-    mocks.sendChatCommand.mockResolvedValue(
-      snapshot({
-        dialogText: "",
-        inputDraft: "",
-        options: [],
-      }),
-    );
-
+  it("offers copying only after selecting messages in history", async () => {
+    mocks.getChatHistory.mockResolvedValueOnce([{ id: "history-0", role: "assistant", text: "Mio: Ready" }]);
     renderPage();
 
     await screen.findByText("Ready");
     fireEvent.click(screen.getByRole("button", { name: "Open history" }));
     const historyDialog = await screen.findByRole("dialog", { name: "Conversation history" });
-    fireEvent.click(within(historyDialog).getByRole("button", { name: "Copy history" }));
-
-    await waitFor(() => expect(mocks.sendChatCommand).toHaveBeenCalledWith({ type: "copy-history" }));
-    expect(document.querySelector(".dialog-layer__html")).toHaveTextContent("Ready");
+    expect(within(historyDialog).queryByRole("button", { name: "Copy history" })).not.toBeInTheDocument();
+    fireEvent.click(await within(historyDialog).findByRole("button", { name: "Replay/Share" }));
+    const copy = within(historyDialog).getByRole("button", { name: /^copy$/i });
+    expect(copy).toBeDisabled();
+    fireEvent.click(within(historyDialog).getByRole("checkbox", { name: "Select message 1" }));
+    expect(copy).toBeEnabled();
   });
 
   it("remembers per-character framing through presets, expression changes and stage reload", async () => {
@@ -1741,6 +1934,7 @@ describe("ChatStagePage", () => {
         v: 1,
       }),
     );
+    finishSpriteFade(document.querySelector('[src="asset://mio-happy.png"]')!);
     expect(screen.getByAltText("Mio")).toHaveAttribute("src", "asset://mio-happy.png");
     expect(screen.getByAltText("Mio").closest(".character-visual__framing-surface")).toHaveStyle({
       transform: "translateY(-25%) scale(2)",
@@ -1902,6 +2096,8 @@ describe("ChatStagePage", () => {
         dialogWidthPct: null,
         immersiveMode: false,
         longPressTalk: false,
+        miniAvatarMode: false,
+        miniInputShortcut: "Alt+Q",
         nameText: {
           bold: false,
           boldOverride: true,
@@ -2403,7 +2599,7 @@ describe("ChatStagePage", () => {
     expect(dialog).toHaveClass("chat-stage-modal");
     expect(dialog.querySelector(".chat-stage-modal__header")).not.toBeNull();
     expect(dialog.querySelector(".chat-stage-modal__summary")?.tagName).toBe("DIV");
-    expect(within(dialog).getByRole("button", { name: "Copy history" })).toHaveTextContent("COPY");
+    expect(within(dialog).getByRole("button", { name: "Replay/Share" })).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Clear history" })).toHaveTextContent("CLEAR");
     expect(within(dialog).getByText("2 entries")).toBeInTheDocument();
     const nameplates = dialog.querySelectorAll(".chat-history__nameplate");
@@ -2430,14 +2626,9 @@ describe("ChatStagePage", () => {
     expect(within(dialog).queryByText("Mio: Ready")).not.toBeInTheDocument();
     expect(within(dialog).queryByText("你: hello")).not.toBeInTheDocument();
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "Fork" }));
-    await waitFor(() =>
-      expect(mocks.sendChatCommand).toHaveBeenCalledWith({ payload: { userIndex: 0 }, type: "fork-history" }),
-    );
-
-    fireEvent.click(await screen.findByRole("button", { name: "Open history" }));
-    const reopenedDialog = await screen.findByRole("dialog", { name: "Conversation history" });
-    fireEvent.click(within(reopenedDialog).getByRole("button", { name: "Revert to previous turn" }));
+    expect(screen.queryByRole("button", { name: "Open conversation tree" })).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "Fork" })).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Revert to previous turn" }));
 
     const confirm = await screen.findByRole("dialog", { name: "Revert history" });
     fireEvent.click(within(confirm).getByRole("button", { name: "Revert" }));
@@ -2462,8 +2653,8 @@ describe("ChatStagePage", () => {
     const header = dialog.querySelector(".chat-stage-modal__header") as HTMLElement;
     const archiveToggle = within(header).getByRole("checkbox", { name: "Archive voices" });
     expect(archiveToggle).not.toBeChecked();
-    expect(header.querySelector(".chat-history__voice-toggle")?.nextElementSibling).toHaveTextContent(/copy/i);
-    expect(within(dialog).getByRole("button", { name: "Replay" })).toBeInTheDocument();
+    expect(within(header).queryByRole("button", { name: "Copy history" })).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Play voice" })).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "Save voice" }));
     await waitFor(() =>
       expect(mocks.sendChatCommand).toHaveBeenCalledWith({
@@ -2571,6 +2762,57 @@ describe("ChatStagePage", () => {
     });
     expect(document.querySelector(".chat-stage__cg img")).toHaveAttribute("src", "asset://cg.png");
     expect(document.querySelector(".sprite-layer")).toHaveAttribute("hidden");
+    expect(screen.getByRole("button", { name: "Save CG" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Exit CG" })).toBeInTheDocument();
+  });
+
+  it("lets users save and exit active CG illustrations", async () => {
+    let listener: ((event: ChatStageEvent) => void) | null = null;
+    mocks.subscribeChatEvents.mockImplementation((next) => {
+      listener = next;
+      return vi.fn();
+    });
+    desktopApiMocks.isTauriDesktop.mockReturnValue(true);
+    desktopApiMocks.saveDesktopHistoryExport.mockResolvedValue({
+      name: "shinsekai-cg.png",
+      opened: true,
+      path: "D:/Downloads/Shinsekai/shinsekai-cg.png",
+    });
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(new Blob(["png-bytes"], { type: "image/png" }), { status: 200 }));
+
+    try {
+      renderPage();
+      await screen.findByText("Ready");
+
+      act(() => {
+        listener?.({
+          seq: 2,
+          ts: Date.now(),
+          type: "cg.show",
+          url: "http://127.0.0.1:8787/api/media?path=cache%2Fimages%2F0.png",
+          v: 1,
+        });
+      });
+
+      const saveButton = await screen.findByRole("button", { name: "Save CG" });
+      fireEvent.click(saveButton);
+      await waitFor(() => expect(desktopApiMocks.saveDesktopHistoryExport).toHaveBeenCalledTimes(1));
+      expect(await screen.findByText("D:/Downloads/Shinsekai/shinsekai-cg.png")).toBeInTheDocument();
+
+      const exitButton = screen.getByRole("button", { name: "Exit CG" });
+      fireEvent.click(exitButton);
+      expect(document.querySelector(".chat-stage__cg")).toHaveAttribute("hidden");
+      expect(screen.queryByRole("button", { name: "Exit CG" })).not.toBeInTheDocument();
+      await waitFor(() =>
+        expect(mocks.sendChatCommand).toHaveBeenCalledWith({
+          type: "dismiss-cg",
+        }),
+      );
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 
   it("plays dialog.end events through the frontend typewriter and lets users skip", async () => {
@@ -2794,5 +3036,45 @@ describe("ChatStagePage", () => {
     act(() => vi.advanceTimersByTime(600));
 
     expect(topTools).toHaveAttribute("data-visible", "false");
+  });
+
+  it("adapts single-row dialog controls density across stage widths", async () => {
+    const { container } = renderPage();
+    await screen.findByText("Ready");
+
+    const stage = container.querySelector(".chat-stage") as HTMLElement;
+    const controls = container.querySelector(".dialog-stage-controls") as HTMLElement;
+    const rail = container.querySelector(".dialog-stage-controls__rail") as HTMLElement;
+
+    let stageWidth = 1280;
+    Object.defineProperty(stage, "clientWidth", { configurable: true, get: () => stageWidth });
+    Object.defineProperty(rail, "scrollWidth", {
+      configurable: true,
+      get: () => (controls.dataset.density === "tight" ? 600 : 740),
+    });
+
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(controls).toHaveAttribute("data-density", "full");
+
+    stageWidth = 700;
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(controls).toHaveAttribute("data-density", "tight");
+
+    stageWidth = 360;
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(controls).toHaveAttribute("data-density", "compact");
+    expect(within(controls).getByRole("button", { name: "Open history" })).toBeInTheDocument();
+
+    stageWidth = 1280;
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(controls).toHaveAttribute("data-density", "full");
   });
 });

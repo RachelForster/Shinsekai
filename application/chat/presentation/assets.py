@@ -82,7 +82,6 @@ def prepare_initial_presentation(
     welcome_html: str,
     initial_option: str,
     ready_notification: str,
-    publish_branch_tree: Any,
     translate: Any,
     replay_media: Any = None,
     show_initial_sprite: bool = True,
@@ -94,11 +93,12 @@ def prepare_initial_presentation(
         resolved_sprite_path = str(resource_path("assets/system/picture/shinsekai.png"))
 
     _persist_selected_background(config, assets)
-    if assets.background_sprites:
-        try:
-            ui_updates.post_background(_asset_path(assets.background_sprites[0]))
-        except Exception:
-            pass
+    try:
+        ui_updates.post_background(
+            _asset_path(assets.background_sprites[0]) if assets.background_sprites else ""
+        )
+    except Exception:
+        pass
     ui_updates.switch_bgm(assets.bgm_paths[0] if assets.bgm_paths else "")
 
     restored_sprite = False
@@ -121,7 +121,6 @@ def prepare_initial_presentation(
         if len(get_history()) <= 1:
             ui_updates.post_options([initial_option])
 
-    publish_branch_tree()
     ui_updates.post_notification(ready_notification)
     # A running worker may already have emitted the restored sprite. Never
     # overwrite it with the initial one, regardless of replay timing or format.

@@ -72,9 +72,11 @@ describe("entity repositories", () => {
       },
       templates: {
         generate: vi.fn().mockResolvedValue(template),
+        getPresets: vi.fn().mockResolvedValue({ groups: [], presets: [] }),
         getSession: vi.fn().mockResolvedValue(null),
         list: vi.fn().mockResolvedValue(sampleTemplates),
         save: vi.fn().mockResolvedValue(template),
+        savePresets: vi.fn().mockResolvedValue({ groups: [], presets: [] }),
         saveSession: vi.fn().mockResolvedValue({ characterNames: ["Nanami"], templateId: "default" }),
       },
     };
@@ -110,6 +112,8 @@ describe("entity repositories", () => {
     });
     await files.openExternal("https://example.test");
     await templates.listTemplates();
+    await templates.getUserPromptPresets();
+    await templates.saveUserPromptPresets({ groups: ["Style"], presets: [] });
     await templates.saveTemplate(template);
     await templates.generateTemplate({
       backgroundName: "默认房间",
@@ -314,12 +318,23 @@ describe("entity repositories", () => {
         planSprites: vi.fn().mockResolvedValue({ items: [] }),
         renderSprite: vi.fn().mockResolvedValue({}),
         animateSprite: vi.fn().mockResolvedValue({}),
+        getSpriteMouthSetup: vi.fn(),
+        configureSpriteMouth: vi.fn(),
+        importSpriteMouthModels: vi.fn(),
+        downloadSpriteMouthModels: vi.fn(),
+        installSpriteMouthRuntime: vi.fn(),
+        generateSpriteMouth: vi.fn(),
+        readSpriteMouth: vi.fn(),
+        saveSpriteMouths: vi.fn(),
+        removeSpriteMouth: vi.fn(),
         captureSpriteFrame: vi.fn().mockResolvedValue({}),
         removeSpriteBackground: vi.fn().mockResolvedValue({}),
         importGeneratedSprites: vi.fn().mockResolvedValue(character),
         delete: vi.fn().mockResolvedValue(undefined),
         deleteAllSprites: vi.fn().mockResolvedValue(character),
         deleteMemory: vi.fn().mockResolvedValue({ agentId: "Nanami", count: 0, memories: [] }),
+        pinMemory: vi.fn().mockResolvedValue({ agentId: "Nanami", count: 0, memories: [] }),
+        awakenMemory: vi.fn().mockResolvedValue({ agentId: "Nanami", count: 0, memories: [] }),
         deleteSprite: vi.fn().mockResolvedValue(character),
         deleteSpriteVoice: vi.fn().mockResolvedValue(character),
         ensureBriefs: vi.fn().mockResolvedValue({ characters: [character], generatedNames: [] }),
@@ -339,6 +354,7 @@ describe("entity repositories", () => {
           savedCount: 1,
         }),
         list: vi.fn().mockResolvedValue([character]),
+        revision: vi.fn().mockResolvedValue("catalog-v1"),
         listMemories: vi.fn().mockResolvedValue({ agentId: "Nanami", count: 0, memories: [] }),
         previewMemoryImport: vi.fn().mockResolvedValue({
           chunkCount: 1,
@@ -360,6 +376,15 @@ describe("entity repositories", () => {
         save: vi.fn().mockResolvedValue(character),
         saveEmotionTags: vi.fn().mockResolvedValue(character),
         saveSpriteScale: vi.fn().mockResolvedValue(character),
+        saveSpriteGroups: vi.fn().mockResolvedValue(character),
+        autoGroupSprites: vi.fn().mockResolvedValue({
+          characterName: "Nanami",
+          avatarType: "static",
+          groups: [],
+          spriteGroups: ["默认"],
+          assignments: {},
+          changedCount: 0,
+        }),
         saveSpriteVoiceText: vi.fn().mockResolvedValue(character),
         saveSpriteVoiceType: vi.fn().mockResolvedValue(character),
         translateFields: vi.fn().mockResolvedValue({ characterSetting: "kind", emotionTags: "happy", name: "Nanami" }),
@@ -448,11 +473,18 @@ describe("entity repositories", () => {
         reconfigureConversation: vi.fn(),
         prepareConversation: vi.fn(),
         renameConversation: vi.fn(),
+        updateConversationSettings: vi.fn(),
         deleteConversation: vi.fn(),
         close: vi.fn().mockResolvedValue(sampleChatSnapshot),
         command: vi.fn().mockResolvedValue(sampleChatSnapshot),
         getHistory: vi.fn().mockResolvedValue(sampleChatSnapshot.historyEntries ?? []),
         getHistoryVoice: vi.fn().mockResolvedValue([]),
+        prepareReplay: vi.fn(),
+        startReplay: vi.fn(),
+        generateReplayVoice: vi.fn(),
+        cancelReplay: vi.fn(),
+        controlReplay: vi.fn(),
+        getReplay: vi.fn(),
         getRuntimeStatus: vi.fn().mockResolvedValue({
           chatProcessRunning: false,
           chatRuntimeClosing: false,

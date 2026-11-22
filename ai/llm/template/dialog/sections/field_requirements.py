@@ -22,7 +22,10 @@ def _base_fields(context: DialogTemplateContext) -> dict[str, OutputFieldSpec]:
                 "opt_cg": "",
             },
         ),
-        ("sprite", "r_sprite", True, not context.uses_vibe, {}),
+        (
+            "sprite", "r_full_sprite" if context.uses_full_sprite_ids else "r_sprite",
+            True, not context.uses_vibe, {},
+        ),
         ("vibe", "r_vibe", True, context.uses_vibe, {}),
         (
             "speech",
@@ -80,9 +83,42 @@ def removed_optional_fields(context: DialogTemplateContext) -> tuple[str, ...]:
     return tuple(key for key in base if key not in fields)
 
 
+def _render_modified_field(
+    output_field: OutputFieldSpec,
+    *,
+    locale: str,
+) -> str:
+    from ...core import PROMPT_CATALOG
+
+    aliases_suffix = (
+        PROMPT_CATALOG.translate(
+            "dialog.field_aliases",
+            locale=locale,
+            aliases=", ".join(output_field.aliases),
+        )
+        if output_field.aliases
+        else ""
+    )
+    spec_key = (
+        "dialog.field_spec_required"
+        if output_field.required
+        else "dialog.field_spec_optional"
+    )
+    return PROMPT_CATALOG.translate(
+        spec_key,
+        locale=locale,
+        name=output_field.key,
+        field_type=output_field.type,
+        description=output_field.description,
+        aliases_suffix=aliases_suffix,
+    )
+
+
 def build_field_requirements(
     context: DialogTemplateContext,
 ) -> TextSection[DialogTemplateContext]:
+    from ...core import PROMPT_CATALOG
+
     if not any(
         patch.field_patches or patch.add_fields or patch.remove_fields
         for patch in context.output_contract_patches
@@ -93,25 +129,20 @@ def build_field_requirements(
     lines = tuple(
         TextSection(
             output_field.key,
-            text=(
-                f"- {output_field.key} ({output_field.type}, "
-                f"{'required' if output_field.required else 'optional'}): "
-                f"{output_field.description}"
-            ),
-            children=(
-                TextSection(
-                    "aliases",
-                    enabled=bool(output_field.aliases),
-                    text=f" Aliases: {', '.join(output_field.aliases)}.",
-                ),
-                TextSection("line_end", text="\n"),
-            ),
+            text=_render_modified_field(output_field, locale=context.locale),
         )
         for output_field in fields.values()
         if output_field != base.get(output_field.key)
     )
     lines += tuple(
-        TextSection(key, text=f"- {key}: Do not include this field in the output.\n")
+        TextSection(
+            key,
+            text=PROMPT_CATALOG.translate(
+                "dialog.field_omitted",
+                locale=context.locale,
+                name=key,
+            ),
+        )
         for key in base
         if key not in fields
     )

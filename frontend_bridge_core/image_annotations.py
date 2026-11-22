@@ -41,6 +41,7 @@ def _run_annotation(
     task_id: str,
     name: str,
     service: Callable[..., dict[str, Any]],
+    **extra_kwargs: Any,
 ) -> dict[str, Any]:
     on_progress, is_cancelled = _task_callbacks(state, task_id)
     try:
@@ -50,14 +51,29 @@ def _run_annotation(
             project_root=Path(state.project_root_dir),
             on_progress=on_progress,
             is_cancelled=is_cancelled,
+            **extra_kwargs,
         )
     except AnnotationCancelled as exc:
         raise TaskCancelled(str(exc)) from exc
 
 
 def run_character_sprite_auto_label(state: BridgeState, task_id: str, name: str) -> dict[str, Any]:
-    return _run_annotation(state, task_id, name, auto_label_character_sprites)
+    stores = getattr(state, "stores", None)
+    return _run_annotation(
+        state,
+        task_id,
+        name,
+        auto_label_character_sprites,
+        characters=getattr(stores, "characters", None) if stores is not None else None,
+    )
 
 
 def run_background_image_auto_label(state: BridgeState, task_id: str, name: str) -> dict[str, Any]:
-    return _run_annotation(state, task_id, name, auto_label_background_images)
+    stores = getattr(state, "stores", None)
+    return _run_annotation(
+        state,
+        task_id,
+        name,
+        auto_label_background_images,
+        backgrounds=getattr(stores, "backgrounds", None) if stores is not None else None,
+    )

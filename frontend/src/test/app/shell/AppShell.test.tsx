@@ -77,7 +77,7 @@ describe("AppShell", () => {
     expect(screen.getByTestId("feature-highlights-prompt")).toHaveAttribute("data-enabled", "true");
     fireEvent.click(screen.getByRole("button", { name: "Show update" }));
     expect(screen.getByTestId("feature-highlights-prompt")).toHaveAttribute("data-enabled", "false");
-    fireEvent.click(screen.getByRole("button", { name: "Assistant" }));
+    fireEvent.click(screen.getByRole("button", { name: "AI Assistant" }));
 
     expect(await screen.findByRole("dialog", { name: "Assistant drawer mock" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Close drawer" }));

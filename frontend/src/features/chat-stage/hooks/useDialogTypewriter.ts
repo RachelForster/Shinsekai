@@ -20,6 +20,7 @@ export function useDialogTypewriter({
   text,
   textDirection,
   typewriterCps,
+  paused = false,
 }: {
   auto: boolean;
   characterName?: string;
@@ -31,6 +32,7 @@ export function useDialogTypewriter({
   text: string;
   textDirection: DialogTypewriterDirection;
   typewriterCps: number;
+  paused?: boolean;
 }) {
   const [visibleDialogCharacters, setVisibleDialogCharacters] = useState(0);
   const pendingAnimatedDialogKeyRef = useRef<string | null>(null);
@@ -81,7 +83,7 @@ export function useDialogTypewriter({
   }, [dialogSource.cacheKey, dialogTotalCharacters]);
 
   useEffect(() => {
-    if (visibleDialogCharacters >= dialogTotalCharacters) {
+    if (paused || visibleDialogCharacters >= dialogTotalCharacters) {
       return;
     }
     const delayMs = Math.max(16, Math.round(1000 / Math.max(1, typewriterCps)));
@@ -89,7 +91,7 @@ export function useDialogTypewriter({
       setVisibleDialogCharacters((current) => Math.min(dialogTotalCharacters, current + 1));
     }, delayMs);
     return () => window.clearTimeout(timeoutId);
-  }, [dialogTotalCharacters, typewriterCps, visibleDialogCharacters]);
+  }, [dialogTotalCharacters, typewriterCps, visibleDialogCharacters, paused]);
 
   useEffect(() => {
     if (!auto || typingDialog) {

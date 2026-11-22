@@ -9,7 +9,7 @@ from PIL import Image
 import pytest
 
 from core.media import toonout, toonout_assets, toonout_worker
-from tools import remove_bg
+from core.media import background_removal as remove_bg
 
 
 def test_one_worker_per_job_preserves_alpha_and_closes_on_failure(monkeypatch):

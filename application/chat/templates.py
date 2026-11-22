@@ -2,15 +2,27 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
 from config.config_manager import character_name_key
+from config.models import (
+    UserPromptPresetLibrary,
+    normalize_applied_presets_list,
+    normalize_user_prompt_presets_dict,
+)
 from core.chat_history.storage import ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME
+from core.storage import FileDocumentStore, PydanticJsonCodec
 from application.chat.presentation.initial_sprite import (
     initial_sprite_path_for_characters,
 )
-from ai.llm.template.integrations.localization import translate_template
+from ai.llm.template.core import PROMPT_CATALOG
+from ai.llm.template.integrations.localization import (
+    resolve_template_locale,
+    translate_template,
+)
 from ai.llm.template.dialog.context import EffectCatalogContext, EffectCatalogEntry
 from application.chat.build_effect_context import SelectedEffectContext
 from ai.llm.template.prompts import (
@@ -26,6 +38,8 @@ from ai.llm.template_generator import (
 )
 
 from application.runtime.state import BridgeState
+from sdk.adapters.storage import DocumentStore
+from sdk.lang import normalize_lang
 from sdk.path_utils import safe_child_path, safe_filename
 
 MARK_SCENARIO = "<<<EASYAI_USER_SCENARIO>>>"
@@ -33,12 +47,79 @@ MARK_SYSTEM = "<<<EASYAI_SYSTEM_TEMPLATE>>>"
 MARK_METADATA = "<<<EASYAI_TEMPLATE_METADATA>>>"
 TEMP_SPLIT_META = "_temp_split.json"
 DEFAULT_EMPTY_SCENARIO = "你扮演一个RPG系统。"
+_default_translate_template = translate_template
+_default_json_format_reminder = json_format_reminder
+_fallback_presets_lock = threading.Lock()
+_fallback_preset_stores: dict[Path, FileDocumentStore[UserPromptPresetLibrary]] = {}
+_MAX_FALLBACK_PRESET_STORES = 16
 
 
 def _template_dir(state: BridgeState) -> Path:
     path = Path(state.template_dir_path)
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def _user_prompt_presets_file(state: BridgeState) -> Path:
+    root = Path(state.template_dir_path).resolve(strict=False).parent
+    return root / "config" / "user_prompt_presets.json"
+
+
+def _prompt_preset_store(
+    state: BridgeState,
+) -> DocumentStore[UserPromptPresetLibrary]:
+    stores = getattr(state, "stores", None)
+    managed = getattr(stores, "prompt_presets", None) if stores is not None else None
+    if managed is not None:
+        return managed
+    path = _user_prompt_presets_file(state).resolve(strict=False)
+    with _fallback_presets_lock:
+        cached = _fallback_preset_stores.get(path)
+        if cached is not None:
+            return cached
+        if len(_fallback_preset_stores) >= _MAX_FALLBACK_PRESET_STORES:
+            oldest_key = next(iter(_fallback_preset_stores))
+            _fallback_preset_stores.pop(oldest_key, None)
+        created = FileDocumentStore(
+            "settings.prompt_presets",
+            path,
+            PydanticJsonCodec(
+                UserPromptPresetLibrary,
+                pre_decode=normalize_user_prompt_presets_dict,
+                exclude_none=True,
+            ),
+        )
+        _fallback_preset_stores[path] = created
+        return created
+
+
+def _normalize_applied_presets(raw: Any) -> list[dict[str, Any]]:
+    return normalize_applied_presets_list(raw)
+
+
+def _normalize_user_prompt_presets(raw: Any) -> dict[str, Any]:
+    return normalize_user_prompt_presets_dict(raw)
+
+
+def _load_user_prompt_presets(state: BridgeState) -> dict[str, Any]:
+    store = _prompt_preset_store(state)
+    try:
+        library = store.get()
+    except (OSError, ValueError):
+        return {"groups": [], "presets": []}
+    return library.to_payload()
+
+
+def _save_user_prompt_presets(
+    state: BridgeState, payload: dict[str, Any]
+) -> dict[str, Any]:
+    source = payload.get("library", payload) if isinstance(payload, Mapping) else {}
+    if not isinstance(source, Mapping):
+        raise ValueError("preset library payload must be an object")
+    library = UserPromptPresetLibrary.model_validate(source)
+    store = _prompt_preset_store(state)
+    store.save(library)
+    return library.to_payload()
 
 
 def _template_id(path: Path) -> str:
@@ -61,6 +142,9 @@ def _compose_stored_template(
     player_character: str = "",
     read_player_speech: bool = False,
     allow_player_dialogue: bool = True,
+    base_scenario: str | None = None,
+    selected_preset_ids: list[str] | None = None,
+    applied_presets: list[dict[str, Any]] | None = None,
 ) -> str:
     a = (scenario or "").replace("\r\n", "\n").rstrip()
     b = (system or "").replace("\r\n", "\n").rstrip()
@@ -76,6 +160,20 @@ def _compose_stored_template(
                 "allowPlayerDialogue": bool(allow_player_dialogue),
             }
         )
+    preset_ids = _session_string_list(selected_preset_ids)
+    normalized_applied = _normalize_applied_presets(applied_presets)
+    normalized_base = (
+        str(base_scenario).replace("\r\n", "\n").rstrip()
+        if base_scenario is not None
+        else None
+    )
+    if preset_ids or (normalized_base is not None and normalized_base != a):
+        metadata_fields["baseScenario"] = (
+            normalized_base if normalized_base is not None else a
+        )
+        metadata_fields["selectedPresetIds"] = preset_ids
+        if normalized_applied:
+            metadata_fields["appliedPresets"] = normalized_applied
     metadata = json.dumps(
         metadata_fields,
         ensure_ascii=False,
@@ -101,7 +199,7 @@ def _parse_stored_template_metadata(raw: str) -> dict[str, Any]:
         parsed = {}
     metadata = parsed if isinstance(parsed, dict) else {}
     player_character = str(metadata.get("playerCharacter") or "").strip()
-    return {
+    result: dict[str, Any] = {
         "mediaSelectionMode": _normalize_media_selection_mode(
             metadata.get("mediaSelectionMode")
         ),
@@ -111,6 +209,17 @@ def _parse_stored_template_metadata(raw: str) -> dict[str, Any]:
             metadata.get("readPlayerSpeech", False) and player_character
         ),
     }
+    if "baseScenario" in metadata:
+        result["baseScenario"] = str(metadata.get("baseScenario") or "").replace(
+            "\r\n", "\n"
+        )
+    preset_ids = _session_string_list(metadata.get("selectedPresetIds"))
+    if preset_ids or "selectedPresetIds" in metadata:
+        result["selectedPresetIds"] = preset_ids
+    applied_presets = _normalize_applied_presets(metadata.get("appliedPresets"))
+    if applied_presets:
+        result["appliedPresets"] = applied_presets
+    return result
 
 
 def _parse_stored_template(raw: str) -> tuple[str, str]:
@@ -138,25 +247,48 @@ def _effective_user_scenario(user_scenario: str) -> str:
     return (user_scenario or "").strip() or DEFAULT_EMPTY_SCENARIO
 
 
+def _localized_user_scenario(user_scenario: str, *, locale: str = "zh_CN") -> str:
+    cleaned = (user_scenario or "").strip()
+    if cleaned:
+        return cleaned
+    return PROMPT_CATALOG.translate("session.default_empty_scenario", locale=locale)
+
+
 def _compose_runtime_template(
     system_template: str,
     user_scenario: str,
     effect_context: SelectedEffectContext | None = None,
+    *,
+    locale: str | None = None,
 ) -> str:
+    effective_locale = (
+        normalize_lang(locale) if locale else resolve_template_locale()
+    )
     catalog = None
     if effect_context is not None:
+        effect_translate = (
+            (lambda key, **kw: translate_template(key, locale=effective_locale, **kw))
+            if locale is not None and translate_template is _default_translate_template
+            else translate_template
+        )
         catalog = EffectCatalogContext(
             effects=tuple(
                 EffectCatalogEntry(item.label, item.kind, item.modes)
                 for item in effect_context.catalog
             ),
-            translate=translate_template,
+            translate=effect_translate,
         )
+    reminder_text = (
+        json_format_reminder(locale=effective_locale)
+        if locale is not None and json_format_reminder is _default_json_format_reminder
+        else json_format_reminder()
+    )
     context = RuntimePromptContext(
         system_template=(system_template or "").rstrip(),
-        user_scenario=_effective_user_scenario(user_scenario),
-        json_reminder=json_format_reminder(),
+        user_scenario=_localized_user_scenario(user_scenario, locale=effective_locale),
+        json_reminder=reminder_text,
         effect_catalog=catalog,
+        locale=effective_locale,
     )
     return build_runtime_prompt_section().render(context) + "\n"
 
@@ -203,6 +335,7 @@ def _latest_history_json(history_dir: str) -> Path | None:
                 for child in (
                     item / ACTIVE_HISTORY_FILENAME,
                     item / BRANCH_TREE_FILENAME,
+                    item / "history.db",
                     item / f"{ACTIVE_HISTORY_FILENAME}.tmp",
                 )
                 if child.is_file()
@@ -212,7 +345,12 @@ def _latest_history_json(history_dir: str) -> Path | None:
         if item.is_dir()
         and any(
             (item / name).is_file()
-            for name in (ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME, f"{ACTIVE_HISTORY_FILENAME}.tmp")
+            for name in (
+                ACTIVE_HISTORY_FILENAME,
+                BRANCH_TREE_FILENAME,
+                "history.db",
+                f"{ACTIVE_HISTORY_FILENAME}.tmp",
+            )
         )
     )
     candidates.extend(
@@ -235,15 +373,13 @@ def _read_split_meta(template_dir: Path) -> tuple[str, str] | None:
         return None
     if not isinstance(data, dict):
         return None
-    scenario = data.get("scenario", "")
-    system = data.get("system", "")
-    if not isinstance(scenario, str):
-        scenario = ""
-    if not isinstance(system, str):
-        system = ""
-    if scenario.strip() or system.strip():
-        return scenario, system
-    return None
+    has_scenario = isinstance(data.get("scenario"), str)
+    has_system = isinstance(data.get("system"), str)
+    if not (has_scenario or has_system):
+        return None
+    scenario = data["scenario"] if has_scenario else ""
+    system = data["system"] if has_system else ""
+    return scenario, system
 
 
 def _repair_template_parts_from_session_if_needed(
@@ -298,21 +434,26 @@ def _list_templates(state: BridgeState) -> list[dict[str, Any]]:
             continue
         scenario, system = _parse_stored_template(raw)
         metadata = _parse_stored_template_metadata(raw)
-        rows.append(
-            {
-                "content": _compose_for_llm(scenario, system),
-                "id": _template_id(path),
-                "name": path.stem,
-                "path": path.as_posix(),
-                "scenario": scenario,
-                "system": system,
-                "mediaSelectionMode": metadata["mediaSelectionMode"],
-                "playerCharacter": metadata["playerCharacter"],
-                "readPlayerSpeech": metadata["readPlayerSpeech"],
-                "allowPlayerDialogue": metadata["allowPlayerDialogue"],
-                "updatedAt": str(int(path.stat().st_mtime)),
-            }
-        )
+        row: dict[str, Any] = {
+            "content": _compose_for_llm(scenario, system),
+            "id": _template_id(path),
+            "name": path.stem,
+            "path": path.as_posix(),
+            "scenario": scenario,
+            "system": system,
+            "mediaSelectionMode": metadata["mediaSelectionMode"],
+            "playerCharacter": metadata["playerCharacter"],
+            "readPlayerSpeech": metadata["readPlayerSpeech"],
+            "allowPlayerDialogue": metadata["allowPlayerDialogue"],
+            "updatedAt": str(int(path.stat().st_mtime)),
+        }
+        if "baseScenario" in metadata:
+            row["baseScenario"] = metadata["baseScenario"]
+        if "selectedPresetIds" in metadata:
+            row["selectedPresetIds"] = metadata["selectedPresetIds"]
+        if "appliedPresets" in metadata:
+            row["appliedPresets"] = metadata["appliedPresets"]
+        rows.append(row)
     return rows
 
 
@@ -329,6 +470,21 @@ def _save_template_summary(state: BridgeState, payload: dict[str, Any]) -> dict[
         template.get("mediaSelectionMode")
     )
     file_name = safe_filename(name, default_suffix=".txt")
+    base_scenario = (
+        str(template.get("baseScenario") or "")
+        if "baseScenario" in template
+        else None
+    )
+    selected_preset_ids = (
+        template.get("selectedPresetIds")
+        if isinstance(template.get("selectedPresetIds"), list)
+        else None
+    )
+    applied_presets = (
+        template.get("appliedPresets")
+        if isinstance(template.get("appliedPresets"), list)
+        else None
+    )
     safe_child_path(_template_dir(state), file_name).write_text(
         _compose_stored_template(
             scenario,
@@ -337,6 +493,9 @@ def _save_template_summary(state: BridgeState, payload: dict[str, Any]) -> dict[
             player_character=str(template.get("playerCharacter") or ""),
             read_player_speech=bool(template.get("readPlayerSpeech", False)),
             allow_player_dialogue=bool(template.get("allowPlayerDialogue", True)),
+            base_scenario=base_scenario,
+            selected_preset_ids=selected_preset_ids,
+            applied_presets=applied_presets,
         ),
         encoding="utf-8",
     )
@@ -434,6 +593,46 @@ def _resolve_template_character_names(state: BridgeState, selected: Any) -> list
     return resolved_names
 
 
+def _resolve_launch_primary_characters(
+    state: BridgeState,
+    source: dict[str, Any],
+    characters: list[str],
+    player_character: str,
+) -> list[str] | None:
+    """Resolve canonical compact-mode primary characters for a launched chat session."""
+    mode_source = source
+    if "characterPromptMode" not in mode_source:
+        editor_session = source.get("editorSession")
+        if (
+            isinstance(editor_session, dict)
+            and "characterPromptMode" in editor_session
+        ):
+            mode_source = editor_session
+    prompt_mode = str(mode_source.get("characterPromptMode") or "").strip().lower()
+    if prompt_mode != "compact":
+        return None
+    raw_primary = mode_source.get("primaryCharacters")
+    primary_candidates = raw_primary if isinstance(raw_primary, list) else []
+    resolved_primary = [
+        name
+        for name, _character in resolve_chat_template_characters(
+            primary_candidates, state.config_manager
+        )
+    ]
+    if (
+        not source.get("storyPath")
+        and player_character
+        and player_character not in resolved_primary
+    ):
+        resolved_primary.append(player_character)
+    selected_keys = {character_name_key(name) for name in characters}
+    return [
+        name
+        for name in resolved_primary
+        if character_name_key(name) in selected_keys
+    ]
+
+
 def _safe_session_int(value: Any, default: int = 0) -> int:
     try:
         return max(0, int(value))
@@ -490,6 +689,22 @@ def _template_session_to_frontend(raw: dict[str, Any] | None) -> dict[str, Any] 
     payload["playerCharacter"] = str(raw.get("player_character") or "")
     payload["readPlayerSpeech"] = bool(raw.get("read_player_speech", False))
     payload["allowPlayerDialogue"] = bool(raw.get("allow_player_dialogue", True))
+    if isinstance(auto_switch := raw.get("auto_outfit_switch"), bool):
+        payload["autoOutfitSwitch"] = auto_switch
+    if isinstance(initial_outfits := raw.get("initial_outfits"), dict):
+        payload["initialOutfits"] = initial_outfits
+    if "base_scenario" in raw:
+        payload["baseScenario"] = str(raw.get("base_scenario") or "")
+    if "selected_preset_ids" in raw:
+        payload["selectedPresetIds"] = _session_string_list(
+            raw.get("selected_preset_ids")
+        )
+    if "applied_presets" in raw:
+        applied_presets = _normalize_applied_presets(raw.get("applied_presets"))
+        if applied_presets:
+            payload["appliedPresets"] = applied_presets
+    if isinstance(system_manually_edited := raw.get("system_manually_edited"), bool):
+        payload["systemManuallyEdited"] = system_manually_edited
     return payload
 
 
@@ -659,6 +874,24 @@ def _save_template_session_payload(state: BridgeState, payload: dict[str, Any]) 
             else "indexed"
         ),
     }
+    if isinstance(auto_switch := payload.get("autoOutfitSwitch"), bool):
+        data["auto_outfit_switch"] = auto_switch
+    if isinstance(initial_outfits := payload.get("initialOutfits"), dict):
+        data["initial_outfits"] = initial_outfits
+    if "baseScenario" in payload:
+        data["base_scenario"] = str(payload.get("baseScenario") or "")
+    if "selectedPresetIds" in payload:
+        data["selected_preset_ids"] = _session_string_list(
+            payload.get("selectedPresetIds")
+        )
+    if "appliedPresets" in payload:
+        data["applied_presets"] = _normalize_applied_presets(
+            payload.get("appliedPresets")
+        )
+    if isinstance(
+        system_manually_edited := payload.get("systemManuallyEdited"), bool
+    ):
+        data["system_manually_edited"] = system_manually_edited
     save_template_session(state.template_dir_path, data)
     loaded = _load_template_session_payload(state)
     if loaded is None:

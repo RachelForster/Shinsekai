@@ -146,6 +146,39 @@ def annotate_unlabelled_images(
     }
 
 
+def _merge_newly_annotated_tags(
+    original_sprites: Sequence[Any],
+    original_tag_block: str,
+    generated_tag_block: str,
+    latest_sprites: Sequence[Any],
+    latest_tag_block: str,
+    *,
+    prefix: str,
+) -> str:
+    """Apply newly generated tags onto still-unlabelled slots of the latest row snapshot."""
+    orig_tags = tag_contents(original_tag_block, len(original_sprites))
+    gen_tags = tag_contents(generated_tag_block, len(original_sprites))
+    latest_tags = tag_contents(latest_tag_block, len(latest_sprites))
+    latest_paths = [_sprite_path(sprite) for sprite in latest_sprites]
+
+    for idx, (old_tag, gen_tag) in enumerate(zip(orig_tags, gen_tags)):
+        if old_tag.strip() or not gen_tag.strip():
+            continue
+        orig_path = _sprite_path(original_sprites[idx])
+        if (
+            0 <= idx < len(latest_sprites)
+            and latest_paths[idx] == orig_path
+            and not latest_tags[idx].strip()
+        ):
+            latest_tags[idx] = gen_tag
+            continue
+        for fallback_idx, candidate_path in enumerate(latest_paths):
+            if candidate_path == orig_path and not latest_tags[fallback_idx].strip():
+                latest_tags[fallback_idx] = gen_tag
+                break
+    return numbered_tags(prefix, latest_tags)
+
+
 def auto_label_character_sprites(
     config_manager: object,
     name: str,
@@ -154,13 +187,23 @@ def auto_label_character_sprites(
     infer: InferCallback | None = None,
     on_progress: ProgressCallback | None = None,
     is_cancelled: CancelCallback | None = None,
+    characters: Any = None,
 ) -> dict[str, Any]:
-    character = config_manager.get_character_by_name(name)  # type: ignore[attr-defined]
+    from config.character_ops import CHARACTER_MUTATION_LOCK, save_character_emotion_tags_op
+
+    character = (
+        characters.get_by_name(name)
+        if characters is not None
+        else config_manager.get_character_by_name(name)  # type: ignore[attr-defined]
+    )
     if character is None:
         raise KeyError(f"角色不存在：{name}")
+    char_id = str(getattr(character, "id", "") or "").strip()
+    original_sprites = list(character.sprites or [])
+    original_tags = str(character.emotion_tags or "")
     result = annotate_unlabelled_images(
-        character.sprites,
-        character.emotion_tags,
+        original_sprites,
+        original_tags,
         prefix="立绘",
         prompt=CHARACTER_PROMPT,
         project_root=project_root,
@@ -170,10 +213,47 @@ def auto_label_character_sprites(
         on_progress=on_progress,
         is_cancelled=is_cancelled,
     )
+    resolved_name = str(character.name)
+    merged_tags = str(result["tags"])
     if result["annotatedCount"]:
-        character.emotion_tags = result["tags"]
-        config_manager.save_characters_config()  # type: ignore[attr-defined]
-    return {**result, "name": character.name, "scope": "character"}
+        with CHARACTER_MUTATION_LOCK:
+            if characters is not None:
+                from application.characters.management import _CatalogCharacterTarget
+
+                latest = (characters.get(char_id) if char_id else None) or characters.get_by_name(name)
+                if latest is None:
+                    raise KeyError(f"角色不存在：{name}")
+                merged_tags = _merge_newly_annotated_tags(
+                    original_sprites,
+                    original_tags,
+                    result["tags"],
+                    list(latest.sprites or []),
+                    str(latest.emotion_tags or ""),
+                    prefix="立绘",
+                )
+                save_character_emotion_tags_op(
+                    _CatalogCharacterTarget(characters),
+                    latest.name,
+                    merged_tags,
+                )
+                refresh = getattr(config_manager, "refresh_characters", None)
+                if callable(refresh):
+                    refresh()
+                resolved_name = str(latest.name)
+            else:
+                latest = config_manager.get_character_by_name(name) or character  # type: ignore[attr-defined]
+                merged_tags = _merge_newly_annotated_tags(
+                    original_sprites,
+                    original_tags,
+                    result["tags"],
+                    list(latest.sprites or []),
+                    str(latest.emotion_tags or ""),
+                    prefix="立绘",
+                )
+                latest.emotion_tags = merged_tags
+                config_manager.save_characters_config()  # type: ignore[attr-defined]
+                resolved_name = str(latest.name)
+    return {**result, "tags": merged_tags, "name": resolved_name, "scope": "character"}
 
 
 def auto_label_background_images(
@@ -184,13 +264,23 @@ def auto_label_background_images(
     infer: InferCallback | None = None,
     on_progress: ProgressCallback | None = None,
     is_cancelled: CancelCallback | None = None,
+    backgrounds: Any = None,
 ) -> dict[str, Any]:
-    background = config_manager.get_background_by_name(name)  # type: ignore[attr-defined]
+    from config.background_ops import BACKGROUND_MUTATION_LOCK, save_background_image_tags_op
+
+    background = (
+        backgrounds.get_by_name(name)
+        if backgrounds is not None
+        else config_manager.get_background_by_name(name)  # type: ignore[attr-defined]
+    )
     if background is None:
         raise KeyError(f"背景不存在：{name}")
+    bg_id = str(getattr(background, "id", "") or "").strip()
+    original_sprites = list(background.sprites or [])
+    original_tags = str(background.bg_tags or "")
     result = annotate_unlabelled_images(
-        background.sprites,
-        background.bg_tags,
+        original_sprites,
+        original_tags,
         prefix="场景",
         prompt=BACKGROUND_PROMPT,
         project_root=project_root,
@@ -199,7 +289,44 @@ def auto_label_background_images(
         on_progress=on_progress,
         is_cancelled=is_cancelled,
     )
+    resolved_name = str(background.name)
+    merged_tags = str(result["tags"])
     if result["annotatedCount"]:
-        background.bg_tags = result["tags"]
-        config_manager.save_background_config()  # type: ignore[attr-defined]
-    return {**result, "name": background.name, "scope": "background"}
+        with BACKGROUND_MUTATION_LOCK:
+            if backgrounds is not None:
+                from application.backgrounds.management import _CatalogBackgroundTarget
+
+                latest = (backgrounds.get(bg_id) if bg_id else None) or backgrounds.get_by_name(name)
+                if latest is None:
+                    raise KeyError(f"背景不存在：{name}")
+                merged_tags = _merge_newly_annotated_tags(
+                    original_sprites,
+                    original_tags,
+                    result["tags"],
+                    list(latest.sprites or []),
+                    str(latest.bg_tags or ""),
+                    prefix="场景",
+                )
+                save_background_image_tags_op(
+                    _CatalogBackgroundTarget(backgrounds),
+                    latest.name,
+                    merged_tags,
+                )
+                refresh = getattr(config_manager, "refresh_backgrounds", None)
+                if callable(refresh):
+                    refresh()
+                resolved_name = str(latest.name)
+            else:
+                latest = config_manager.get_background_by_name(name) or background  # type: ignore[attr-defined]
+                merged_tags = _merge_newly_annotated_tags(
+                    original_sprites,
+                    original_tags,
+                    result["tags"],
+                    list(latest.sprites or []),
+                    str(latest.bg_tags or ""),
+                    prefix="场景",
+                )
+                latest.bg_tags = merged_tags
+                config_manager.save_background_config()  # type: ignore[attr-defined]
+                resolved_name = str(latest.name)
+    return {**result, "tags": merged_tags, "name": resolved_name, "scope": "background"}

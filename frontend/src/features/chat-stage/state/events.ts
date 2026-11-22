@@ -3,7 +3,7 @@ import { clearTransientNotificationState, withResolvedLayers } from "./layers";
 import { hydrateFromSnapshot, snapshotEventSeq } from "./snapshot";
 import { htmlToText } from "./text";
 import type { ChatAudioCommand, ChatStageSprite, ChatStageState } from "./types";
-import { upsertChatStageSprite } from "./sprites";
+import { normalizeChatStageSprites, upsertChatStageSprite } from "./sprites";
 
 function upsertSprite(state: ChatStageState, event: Extract<ChatStageEvent, { type: "sprite.show" }>): ChatStageState {
   const id = event.characterName;
@@ -20,6 +20,8 @@ function upsertSprite(state: ChatStageState, event: Extract<ChatStageEvent, { ty
     avatarType: event.avatarType ?? "static",
     modelUrl: event.modelUrl ?? "",
     transitions: event.transitions,
+    mouthSync: event.mouthSync,
+    portraitCrop: event.portraitCrop,
     stateSequence: event.seq,
   };
   const sprites = upsertChatStageSprite(state.sprites, nextSprite);
@@ -59,6 +61,23 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, re
     return state;
   }
   switch (event.type) {
+    case "replay.state":
+      return withResolvedLayers({
+        ...state,
+        eventSeq: event.seq,
+        replay: event.replay,
+        status: event.replay ? "replaying" : "idle",
+      });
+    case "presentation.restore":
+      return withResolvedLayers({
+        ...state,
+        ...event.presentation,
+        eventSeq: event.seq,
+        replaySelectedIndex: null,
+        sprites: event.presentation.sprites
+          ? normalizeChatStageSprites(event.presentation.sprites.map((sprite) => ({ ...sprite, applyMode: "restore" })))
+          : state.sprites,
+      });
     case "player.portrait.show":
       return {
         ...state,
@@ -89,12 +108,14 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, re
         eventSeq: Math.max(state.eventSeq, event.seq),
         error: undefined,
         ...(event.isSystem && !event.speaker.trim()
-          ? { systemMessageText: htmlToText(event.fullHtml) }
+          ? { isSystemDialog: true, systemMessageText: htmlToText(event.fullHtml) }
           : {
               characterName: event.speaker,
               dialogHtml: event.fullHtml,
               dialogText: htmlToText(event.fullHtml),
+              isSystemDialog: false,
               options: [],
+              spriteReaction: null,
               systemMessageText: undefined,
             }),
       });
@@ -110,15 +131,6 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, re
         eventSeq: Math.max(state.eventSeq, event.seq),
         historyEntries: event.entries.map((entry) => ({ ...entry })),
         voiceArchiveEnabled: event.voiceArchiveEnabled ?? state.voiceArchiveEnabled,
-      });
-    case "conversation.tree":
-      return withResolvedLayers({
-        ...state,
-        conversationTree: {
-          activeBranchId: event.tree.activeBranchId,
-          branches: event.tree.branches.map((branch) => ({ ...branch })),
-        },
-        eventSeq: Math.max(state.eventSeq, event.seq),
       });
     case "chat.turn.state":
       return withResolvedLayers({
@@ -189,6 +201,7 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, re
     case "options.show":
       return withResolvedLayers({
         ...clearTransientNotificationState(state),
+        replaySelectedIndex: event.selectedIndex,
         eventSeq: Math.max(state.eventSeq, event.seq),
         options: event.options,
         toolConfirmation: null,
@@ -313,6 +326,7 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, re
         }),
         characterName: event.characterName,
         eventSeq: Math.max(state.eventSeq, event.seq),
+        spriteReaction: null,
         status: "speaking",
       });
     case "tts.skip": {
@@ -418,6 +432,51 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, re
         status: event.running ? "listening" : replyInProgress ? state.status : "paused",
       });
     }
+    case "perception.state":
+      return withResolvedLayers({
+        ...state,
+        eventSeq: Math.max(state.eventSeq, event.seq),
+        perception: { ...event.perception },
+      });
+    case "memory.mode":
+      return withResolvedLayers({
+        ...state,
+        eventSeq: Math.max(state.eventSeq, event.seq),
+        memoryMode: event.memoryMode,
+      });
+    case "outfit.state":
+      return withResolvedLayers({
+        ...state,
+        eventSeq: Math.max(state.eventSeq, event.seq),
+        autoOutfitSwitch: event.autoOutfitSwitch,
+        outfits: Object.fromEntries(Object.entries(event.outfits).map(([key, value]) => [key, { ...value }])),
+        outfitCatalog: Object.fromEntries(
+          Object.entries(event.outfitCatalog).map(([key, value]) => [key, { ...value, groups: [...value.groups] }]),
+        ),
+      });
+    case "sprite.reaction": {
+      const text = event.text.trim();
+      const durationMs = Math.max(800, event.durationMs || 3600);
+      return withResolvedLayers({
+        ...state,
+        eventSeq: Math.max(state.eventSeq, event.seq),
+        spriteReaction: text
+          ? {
+              characterName: event.characterName,
+              deadline: receivedAt + durationMs,
+              durationMs,
+              seq: event.seq,
+              text,
+            }
+          : null,
+      });
+    }
+    case "perception.capture_request":
+      return {
+        ...state,
+        eventSeq: Math.max(state.eventSeq, event.seq),
+        perceptionCaptureRequestSeq: event.seq,
+      };
     case "reply.finished":
       return withResolvedLayers({
         ...clearTransientNotificationState(state),
@@ -440,8 +499,10 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, re
         notificationText: event.reason,
         loopingEffects: [],
         options: [],
+        perception: null,
         pluginPagePresentations: [],
         sessionClosedReason: event.reason,
+        spriteReaction: null,
         status: "idle",
         systemMessageText: undefined,
         toolConfirmation: null,

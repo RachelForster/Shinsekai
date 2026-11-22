@@ -49,11 +49,13 @@ def _generate_character_setting(state: BridgeState, payload: dict[str, Any]) -> 
 
     name = str(payload.get("name") or "").strip()
     setting = str(payload.get("setting") or "")
+    stores = getattr(state, "stores", None)
     result = generate_character(
         state.character_manager,
         state.config_manager,
         name,
         setting,
+        characters=getattr(stores, "characters", None) if stores is not None else None,
     )
     return {
         "characterBrief": result.character_brief,
@@ -82,9 +84,11 @@ def _ensure_character_briefs(state: BridgeState, payload: dict[str, Any]) -> dic
     names = payload.get("names")
     if not isinstance(names, list):
         raise ValueError("names must be a list")
+    stores = getattr(state, "stores", None)
     characters, generated_names = ensure_character_briefs(
         state.config_manager,
         names,
+        characters=getattr(stores, "characters", None) if stores is not None else None,
     )
     return {
         "characters": [_jsonify(character) for character in characters],
@@ -97,9 +101,15 @@ def _translate_character_fields(state: BridgeState, payload: dict[str, Any]) -> 
         translate_character_name_and_tags,
     )
 
-    ui_language = str(getattr(state.config_manager.config.system_config, "ui_language", "") or "")
+    stores = getattr(state, "stores", None)
+    if stores is not None:
+        ui_language = str(getattr(stores.system_settings.get(), "ui_language", "") or "")
+        api_source: Any = stores.api_settings
+    else:
+        ui_language = str(getattr(state.config_manager.config.system_config, "ui_language", "") or "")
+        api_source = state.config_manager
     error, name, emotion_tags, character_setting = translate_character_name_and_tags(
-        state.config_manager,
+        api_source,
         ui_language,
         str(payload.get("name") or ""),
         str(payload.get("emotionTags") or ""),
@@ -120,24 +130,8 @@ def _translate_character_fields(state: BridgeState, payload: dict[str, Any]) -> 
 
 
 def _save_character_emotion_tags(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
-    name = str(payload.get("name") or "").strip()
-    emotion_tags = str(payload.get("emotionTags") or "")
-    message = state.character_manager.upload_emotion_tags(name, emotion_tags)
-    if (
-        message.startswith("请先")
-        or message.startswith("请输入")
-        or message.startswith("找不到")
-        or message.startswith("标注出错")
-    ):
-        raise RuntimeError(message)
-    return _character_json_after_reload(state, name)
+    return _execute_character_request(state, CharacterOperation.SAVE_EMOTION_TAGS, payload)
 
 
 def _save_sprite_scale(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
-    name = str(payload.get("name") or "").strip()
-    scale = float(payload.get("scale") or 0)
-    message = state.character_manager.save_sprite_scale(name, scale)
-    text = str(message[0] if isinstance(message, tuple) else message)
-    if text.startswith("名称不能为空") or text.startswith("找不到"):
-        raise RuntimeError(text)
-    return _character_json_after_reload(state, name)
+    return _execute_character_request(state, CharacterOperation.SAVE_SPRITE_SCALE, payload)

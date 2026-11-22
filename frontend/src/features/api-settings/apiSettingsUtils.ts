@@ -12,6 +12,7 @@ import type {
   SystemConfig,
 } from "../../entities/config/types";
 import type { FormGroupSchema } from "../../shared/form-schema";
+import { perceptionModelSettings } from "../../shared/platform/perceptionModel";
 import type { LlmModelOption, TaskSnapshot } from "../../shared/platform/types";
 
 export type UiLanguage = "zh_CN" | "en" | "ja";
@@ -39,6 +40,8 @@ export const DEFAULT_T2I_PROVIDER = "comfyui";
 export const DEFAULT_T2I_API_URL = "http://127.0.0.1:8188";
 export const DEFAULT_T2I_PROMPT_NODE_ID = "6";
 export const DEFAULT_T2I_OUTPUT_NODE_ID = "9";
+export const DEFAULT_PERCEPTION_BASE_URL = "http://127.0.0.1:8091/v1";
+export const DEFAULT_PERCEPTION_API_KEY = "EMPTY";
 export const LEGACY_DEFAULT_TTS_SERVER_URL = "http://127.0.0.1:9880";
 export const HTTPS_DEFAULT_TTS_SERVER_URL = "https://127.0.0.1:9880";
 export const DEFAULT_TTS_SERVER_URL = LEGACY_DEFAULT_TTS_SERVER_URL;
@@ -324,6 +327,11 @@ export function clampInt(value: unknown, fallback: number, min: number, max: num
   return Math.min(max, Math.max(min, parsed));
 }
 
+export function clampFloat(value: unknown, fallback: number, min: number, max: number) {
+  const parsed = finiteNumber(value, fallback);
+  return Math.min(max, Math.max(min, parsed));
+}
+
 export function syncCompactRatioDraft(config: ApiConfig): ApiConfig {
   const compactThreshold = finiteNumber(config.compact_threshold, 0.4);
   const compactTargetMax = compactTargetRatioMax({ compact_threshold: compactThreshold });
@@ -407,6 +415,22 @@ export function normalizeApiConfigForUi(config: ApiConfig, installedTtsBundlePat
       memory_extract_interval_turns: clampInt(normalizedProviders.memory_extract_interval_turns, 5, 1, 50),
       memory_recent_buffer_messages: clampInt(normalizedProviders.memory_recent_buffer_messages, 16, 2, 64),
       memory_search_limit: clampInt(normalizedProviders.memory_search_limit, 5, 1, 20),
+      perception_enabled: normalizedProviders.perception_enabled ?? false,
+      perception_base_url: String(normalizedProviders.perception_base_url || "").trim() || DEFAULT_PERCEPTION_BASE_URL,
+      perception_api_key: String(normalizedProviders.perception_api_key || "").trim() || DEFAULT_PERCEPTION_API_KEY,
+      ...perceptionModelSettings(normalizedProviders),
+      perception_python_path: String(normalizedProviders.perception_python_path ?? "").trim(),
+      perception_interval_sec: clampFloat(normalizedProviders.perception_interval_sec, 2, 0.5, 30),
+      perception_capture_interval_sec: clampFloat(normalizedProviders.perception_capture_interval_sec, 0.5, 0.2, 5),
+      perception_ocr_interval_sec: clampFloat(normalizedProviders.perception_ocr_interval_sec, 1, 0.5, 10),
+      perception_frame_max_side: clampInt(normalizedProviders.perception_frame_max_side, 512, 256, 1280),
+      perception_diff_threshold: clampFloat(normalizedProviders.perception_diff_threshold, 0.035, 0, 0.5),
+      perception_ocr_enabled: normalizedProviders.perception_ocr_enabled ?? false,
+      perception_reflex_enabled: normalizedProviders.perception_reflex_enabled ?? true,
+      perception_reflex_cooldown_sec: clampFloat(normalizedProviders.perception_reflex_cooldown_sec, 15, 1, 60),
+      perception_proactive_enabled: normalizedProviders.perception_proactive_enabled ?? true,
+      perception_salience_threshold: clampFloat(normalizedProviders.perception_salience_threshold, 0.78, 0, 1),
+      perception_proactive_cooldown_sec: clampFloat(normalizedProviders.perception_proactive_cooldown_sec, 25, 5, 300),
       t2i_api_url: String(normalizedProviders.t2i_api_url || "").trim() || DEFAULT_T2I_API_URL,
       t2i_output_node_id: String(normalizedProviders.t2i_output_node_id || "").trim() || DEFAULT_T2I_OUTPUT_NODE_ID,
       t2i_prompt_node_id: String(normalizedProviders.t2i_prompt_node_id || "").trim() || DEFAULT_T2I_PROMPT_NODE_ID,

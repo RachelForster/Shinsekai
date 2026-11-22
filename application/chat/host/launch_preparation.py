@@ -9,16 +9,16 @@ import os
 import sys
 from application.chat.host.ports import LaunchPlan, LaunchRejected
 from application.chat.build_effect_context import SelectedEffectContext
+from ai.llm.template.integrations.localization import resolve_template_locale
 from application.chat.templates import (
     TEMP_SPLIT_META,
     _compose_runtime_template,
-    _effective_user_scenario,
     _history_id_from_scenario,
     _template_dir,
 )
 from application.chat.history.paths import is_unc_history_path
 from application.chat.runtime.launch_args import CHAT_LAUNCH_CONFIG_ENV
-from core.chat_history.storage import chat_history_session_dir
+from core.chat_history.storage import chat_history_session_dir, register_session_history_path
 from core.media.chat_attachments import CHAT_ATTACHMENTS_ROOT_ENV
 
 
@@ -39,6 +39,7 @@ class ChatLaunchPreparation:
         state: Any,
         *,
         character_names: list[str] | None = None,
+        primary_character_names: list[str] | None = None,
         effect_names: str = "",
         effect_context: SelectedEffectContext | None = None,
         history_file: str,
@@ -55,7 +56,7 @@ class ChatLaunchPreparation:
         media_selection_mode: str = "indexed",
         use_current_template_for_history: bool = False,
     ) -> LaunchPlan | LaunchRejected:
-        effective_user_scenario = _effective_user_scenario(user_scenario)
+        raw_user_scenario = (user_scenario or "").strip()
         chat_session = getattr(state, "chat_session", {}) or {}
         player_name = str(chat_session.get("playerCharacter") or "")
         read_player_speech = bool(chat_session.get("readPlayerSpeech", False))
@@ -68,16 +69,25 @@ class ChatLaunchPreparation:
             read_speech=read_player_speech,
             media_selection_mode=media_selection_mode,
         )
+        effective_system = system_template or ""
+        if player_rules and player_rules.strip() not in effective_system:
+            effective_system = effective_system + "\n" + player_rules
         template = _compose_runtime_template(
-            (system_template or "") + ("\n" + player_rules if player_rules else ""),
-            effective_user_scenario,
+            effective_system,
+            user_scenario,
             effect_context,
+            locale=resolve_template_locale(
+                getattr(state, "stores", None) or state.config_manager
+            ),
         )
         template_dir = _template_dir(state)
         (template_dir / "_temp.txt").write_text(template, encoding="utf-8")
         (template_dir / TEMP_SPLIT_META).write_text(
             json.dumps(
-                {"scenario": effective_user_scenario, "system": system_template},
+                {
+                    "scenario": raw_user_scenario,
+                    "system": system_template,
+                },
                 ensure_ascii=False,
                 indent=2,
             ),
@@ -132,11 +142,32 @@ class ChatLaunchPreparation:
             launch_config["characters"] = json.dumps(
                 character_names, ensure_ascii=False
             )
+        if primary_character_names is not None:
+            launch_config["primary_characters"] = json.dumps(
+                list(primary_character_names), ensure_ascii=False
+            )
+        user_display_name = str(chat_session.get("userDisplayName") or "").strip()
+        if user_display_name:
+            launch_config["user_display_name"] = user_display_name
         if player_name:
             launch_config["player_character"] = player_name
             launch_config["read_player_speech"] = read_player_speech
             launch_config["allow_player_dialogue"] = bool(
                 chat_session.get("allowPlayerDialogue", True)
+            )
+        memory_mode = str(chat_session.get("memoryMode") or "").strip()
+        if memory_mode:
+            launch_config["memory_mode"] = memory_mode
+        if "autoOutfitSwitch" in chat_session and isinstance(
+            chat_session.get("autoOutfitSwitch"), bool
+        ):
+            launch_config["auto_outfit_switch"] = bool(
+                chat_session["autoOutfitSwitch"]
+            )
+        initial_outfits = chat_session.get("initialOutfits")
+        if isinstance(initial_outfits, dict) and initial_outfits:
+            launch_config["initial_outfits"] = json.dumps(
+                initial_outfits, ensure_ascii=False
             )
         if stream_endpoint:
             launch_config["stream_endpoint"] = stream_endpoint
@@ -176,6 +207,8 @@ class ChatLaunchPreparation:
         chat_stream = getattr(state, "chat_stream", None)
         memory_service_base = str(getattr(chat_stream, "http_base", "") or "").strip()
         if memory_service_base:
+            if not is_unc_history_path(history_path):
+                register_session_history_path(history_argument)
             env["SHINSEKAI_MEMORY_SERVICE_URL"] = (
                 f"{memory_service_base.rstrip('/')}/api/memory"
             )
