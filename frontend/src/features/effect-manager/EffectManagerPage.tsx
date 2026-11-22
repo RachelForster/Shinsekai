@@ -153,6 +153,7 @@ export function EffectManagerPage() {
   isCreatingRef.current = isCreating;
   const deletedEffectKeysRef = useRef<Set<string>>(new Set());
   const cancelAutoSaveRef = useRef<(targetKey?: string) => Promise<void>>(() => Promise.resolve());
+  const discardAutoSaveRef = useRef<(targetKey?: string) => Promise<void>>(() => Promise.resolve());
   const previousSelectedNameRef = useRef("");
   const activeEffectKeyRef = useRef("");
   const colorInputRef = useRef<HTMLInputElement | null>(null);
@@ -224,8 +225,18 @@ export function EffectManagerPage() {
   });
 
   const identityMutation = useMutation({
-    mutationFn: ({ effect, originalName }: { effect: Effect; originalName: string; sourceKey: string }) =>
-      saveEffect(effect, originalName),
+    mutationFn: async ({
+      effect,
+      originalName,
+      sourceKey,
+    }: {
+      effect: Effect;
+      originalName: string;
+      sourceKey: string;
+    }) => {
+      await discardAutoSaveRef.current(sourceKey);
+      return saveEffect(effect, originalName);
+    },
     onError(error) {
       showToast({
         kind: "error",
@@ -679,9 +690,13 @@ export function EffectManagerPage() {
         title: t("common.saveFailed"),
       });
     },
-    async onSave({ effect, originalName }, { resetKey }) {
+    async onSave({ effect, originalName }, { isSuperseded, resetKey }) {
       const saved = await saveEffect(effect, originalName);
-      if (deletedEffectKeysRef.current.has(resetKey) || deletedEffectKeysRef.current.has(`name:${originalName}`)) {
+      if (
+        isSuperseded() ||
+        deletedEffectKeysRef.current.has(resetKey) ||
+        deletedEffectKeysRef.current.has(`name:${originalName}`)
+      ) {
         return;
       }
       queryClient.setQueryData<Effect[]>(effectsQueryKey, (current = []) =>
@@ -696,6 +711,7 @@ export function EffectManagerPage() {
     resetKey: selected ? selected.id || `name:${selected.name}` : "__creating__",
   });
   cancelAutoSaveRef.current = autoSave.cancel;
+  discardAutoSaveRef.current = autoSave.discardPending;
 
   const confirmIdentityName = () => {
     if (!selected || identityMutation.isPending) {

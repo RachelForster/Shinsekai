@@ -1146,4 +1146,60 @@ describe("CharacterEditorPage", () => {
     await new Promise((resolve) => setTimeout(resolve, 700));
     expect(mockSaveCharacter).not.toHaveBeenCalled();
   });
+
+  it("serializes identity rename behind an already-in-flight auto-save so stale auto-save cannot undo the rename", async () => {
+    let catalog: Character[] = [{ ...structuredClone(character), id: "char-mika" }];
+    mockListCharacters.mockImplementation(async () => structuredClone(catalog));
+
+    let resolveInFlightAutoSave!: (saved: Character) => void;
+    mockSaveCharacter
+      .mockImplementationOnce(
+        () =>
+          new Promise<Character>((resolve) => {
+            resolveInFlightAutoSave = (saved) => {
+              catalog = [structuredClone(saved)];
+              resolve(structuredClone(saved));
+            };
+          }),
+      )
+      .mockImplementation(async (saved: Character) => {
+        catalog = [{ ...structuredClone(saved), id: "char-mika" }];
+        return structuredClone(catalog[0]);
+      });
+
+    renderPage();
+    await waitForCharacterLoaded("Mika");
+
+    // Start an auto-save under "Mika" and keep it in-flight on the wire
+    fireEvent.change(screen.getByLabelText("Character setting"), { target: { value: "In-flight setting v1" } });
+    await waitFor(() => expect(mockSaveCharacter).toHaveBeenCalledTimes(1), { timeout: 2500 });
+
+    // Confirm rename to "Mika Prime" while the old auto-save is STILL in-flight -> rename must wait!
+    fireEvent.change(screen.getByLabelText("Character name"), { target: { value: "Mika Prime" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm: Character name" }));
+    expect(mockSaveCharacter).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveInFlightAutoSave({
+        ...structuredClone(character),
+        character_setting: "In-flight setting v1",
+        id: "char-mika",
+        name: "Mika",
+      });
+    });
+
+    await waitFor(() =>
+      expect(mockSaveCharacter).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          character_setting: "In-flight setting v1",
+          id: "char-mika",
+          name: "Mika Prime",
+        }),
+        "Mika",
+      ),
+    );
+    await waitForCharacterLoaded("Mika Prime");
+    expect(screen.getByRole("combobox", { name: "Current character" })).toHaveTextContent("Mika Prime");
+  });
 });

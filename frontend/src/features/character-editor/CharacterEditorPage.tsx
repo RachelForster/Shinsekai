@@ -141,6 +141,7 @@ export function CharacterEditorPage() {
   isCreatingRef.current = isCreating;
   const deletedCharacterKeysRef = useRef<Set<string>>(new Set());
   const cancelAutoSaveRef = useRef<(targetKey?: string) => Promise<void>>(() => Promise.resolve());
+  const discardAutoSaveRef = useRef<(targetKey?: string) => Promise<void>>(() => Promise.resolve());
   const inCreateMode = isCreating || data.length === 0;
   const existingPrefixes = useMemo(() => data.map((character) => character.sprite_prefix), [data]);
   const selected = useMemo(() => {
@@ -260,15 +261,19 @@ export function CharacterEditorPage() {
   });
 
   const identityMutation = useMutation({
-    mutationFn: ({
+    mutationFn: async ({
       character,
       originalName,
+      sourceKey,
     }: {
       character: Character;
       field: "name" | "sprite_prefix";
       originalName: string;
       sourceKey: string;
-    }) => saveCharacter(character, originalName),
+    }) => {
+      await discardAutoSaveRef.current(sourceKey);
+      return saveCharacter(character, originalName);
+    },
     onError(error) {
       showToast({
         kind: "error",
@@ -1036,9 +1041,10 @@ export function CharacterEditorPage() {
         title: t("common.saveFailed"),
       });
     },
-    async onSave({ character, originalName }, { resetKey }) {
+    async onSave({ character, originalName }, { isSuperseded, resetKey }) {
       const saved = await saveCharacter(character, originalName);
       if (
+        isSuperseded() ||
         deletedCharacterKeysRef.current.has(resetKey) ||
         deletedCharacterKeysRef.current.has(`name:${originalName}`)
       ) {
@@ -1060,6 +1066,7 @@ export function CharacterEditorPage() {
     },
   });
   cancelAutoSaveRef.current = autoSave.cancel;
+  discardAutoSaveRef.current = autoSave.discardPending;
 
   const confirmIdentityField = (field: "name" | "sprite_prefix") => {
     if (!selected || lockedSelectedPersona || identitySavingField !== null || identityMutation.isPending) {
@@ -1628,9 +1635,14 @@ export function CharacterEditorPage() {
           onChange={setDraft}
           onSaved={(character) => {
             queryClient.setQueryData<Character[]>(charactersQueryKey, (current = [character]) =>
-              current.map((item) => (item.name === character.name ? character : item)),
+              upsertCatalogCharacter(current, character),
             );
-            setDraft(structuredClone(character));
+            setDraft((current) => ({
+              ...current,
+              ...(character.id ? { id: character.id } : {}),
+              avatar_type: character.avatar_type,
+              avatars: character.avatars,
+            }));
           }}
         />
 

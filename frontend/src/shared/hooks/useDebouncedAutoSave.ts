@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 export type AutoSavePhase = "idle" | "pending" | "saving" | "saved" | "error";
 
 export interface AutoSaveContext {
+  isSuperseded: () => boolean;
   resetKey: string;
 }
 
@@ -153,14 +154,16 @@ export function useDebouncedAutoSave<TPayload>({
             break;
           }
           const runGen = keyGenerationRef.current.get(key) ?? 0;
+          const isSuperseded = () =>
+            cancelledKeysRef.current.has(key) || (keyGenerationRef.current.get(key) ?? 0) !== runGen;
           inFlightCompositeByKeyRef.current.set(key, current.compositeKey);
           try {
-            await current.onSave(current.payload, { resetKey: key });
+            await current.onSave(current.payload, { isSuperseded, resetKey: key });
             if (failedKeyRef.current === current.compositeKey) {
               failedKeyRef.current = null;
               failedMessageRef.current = "";
             }
-            const superseded = cancelledKeysRef.current.has(key) || (keyGenerationRef.current.get(key) ?? 0) !== runGen;
+            const superseded = isSuperseded();
             const nextQueued = queuedByKeyRef.current.get(key);
             if (!superseded) {
               lastSavedResetKeyRef.current = key;
@@ -176,7 +179,7 @@ export function useDebouncedAutoSave<TPayload>({
               }
             }
           } catch (error: unknown) {
-            const superseded = cancelledKeysRef.current.has(key) || (keyGenerationRef.current.get(key) ?? 0) !== runGen;
+            const superseded = isSuperseded();
             const nextQueued = queuedByKeyRef.current.get(key);
             if (!superseded && !nextQueued) {
               const message = error instanceof Error ? error.message : String(error ?? "");
@@ -186,7 +189,7 @@ export function useDebouncedAutoSave<TPayload>({
                 setPhase("error");
                 setErrorMessage(message);
               }
-              current.onError?.(error, { resetKey: key });
+              current.onError?.(error, { isSuperseded, resetKey: key });
             }
           }
           const next = queuedByKeyRef.current.get(key);
@@ -198,6 +201,9 @@ export function useDebouncedAutoSave<TPayload>({
       const flightPromise = runLoop(preparedSnapshot).finally(() => {
         inFlightByKeyRef.current.delete(key);
         inFlightCompositeByKeyRef.current.delete(key);
+        if (activeResetKeyRef.current !== key) {
+          cancelledKeysRef.current.delete(key);
+        }
       });
       inFlightByKeyRef.current.set(key, flightPromise);
       return flightPromise;
@@ -215,19 +221,28 @@ export function useDebouncedAutoSave<TPayload>({
     void executePending(pending);
   }, [clearTimer, executePending]);
 
-  const discardPending = useCallback(() => {
-    clearTimer();
-    const key = activeResetKeyRef.current;
-    pendingRef.current = null;
-    queuedByKeyRef.current.delete(key);
-    failedKeyRef.current = null;
-    failedMessageRef.current = "";
-    bumpGeneration(key);
-    if (mountedRef.current) {
-      setPhase("idle");
-      setErrorMessage("");
-    }
-  }, [bumpGeneration, clearTimer]);
+  const discardPending = useCallback(
+    (targetResetKey?: string): Promise<void> => {
+      clearTimer();
+      const key = targetResetKey ?? activeResetKeyRef.current;
+      if (pendingRef.current?.resetKey === key) {
+        pendingRef.current = null;
+      }
+      queuedByKeyRef.current.delete(key);
+      if (failedKeyRef.current?.startsWith(`${key}::`)) {
+        failedKeyRef.current = null;
+        failedMessageRef.current = "";
+      }
+      bumpGeneration(key);
+      if (mountedRef.current && activeResetKeyRef.current === key) {
+        setPhase("idle");
+        setErrorMessage("");
+      }
+      const inFlight = inFlightByKeyRef.current.get(key);
+      return inFlight ? inFlight.catch(() => undefined) : Promise.resolve();
+    },
+    [bumpGeneration, clearTimer],
+  );
 
   const cancel = useCallback(
     (targetResetKey?: string): Promise<void> => {

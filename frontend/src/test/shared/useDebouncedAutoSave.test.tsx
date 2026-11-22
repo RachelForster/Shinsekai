@@ -154,7 +154,7 @@ describe("useDebouncedAutoSave", () => {
     expect(onSave).toHaveBeenNthCalledWith(
       1,
       { assets: ["initial.wav", "uploaded.wav"], value: "v1" },
-      { resetKey: "item-1" },
+      expect.objectContaining({ resetKey: "item-1" }),
     );
 
     // While v1 is still in-flight, v2 and then v3 fire -> must queue latest without overlapping!
@@ -178,9 +178,55 @@ describe("useDebouncedAutoSave", () => {
     expect(onSave).toHaveBeenNthCalledWith(
       2,
       { assets: ["initial.wav", "uploaded.wav"], value: "v3" },
-      { resetKey: "item-1" },
+      expect.objectContaining({ resetKey: "item-1" }),
     );
     expect(result.current.phase).toBe("saved");
+  });
+
+  it("marks an in-flight save as superseded and awaits its settlement in discardPending()", async () => {
+    let resolveInFlight!: () => void;
+    let capturedIsSuperseded!: () => boolean;
+    const inFlightPromise = new Promise<void>((resolve) => {
+      resolveInFlight = resolve;
+    });
+    const onSave = vi.fn().mockImplementationOnce((_payload: unknown, ctx: { isSuperseded: () => boolean }) => {
+      capturedIsSuperseded = ctx.isSuperseded;
+      return inFlightPromise;
+    });
+
+    const { result } = renderHook(() =>
+      useDebouncedAutoSave({
+        baselineKey: "base",
+        buildPayload: () => ({ value: "v1" }),
+        currentKey: "v1",
+        debounceMs: 600,
+        enabled: true,
+        onSave,
+        resetKey: "item-1",
+      }),
+    );
+
+    await act(async () => {
+      vi.advanceTimersByTime(600);
+    });
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(capturedIsSuperseded()).toBe(false);
+
+    let discardSettled = false;
+    let discardPromise!: Promise<void>;
+    act(() => {
+      discardPromise = result.current.discardPending("item-1").then(() => {
+        discardSettled = true;
+      });
+    });
+    expect(capturedIsSuperseded()).toBe(true);
+    expect(discardSettled).toBe(false);
+
+    await act(async () => {
+      resolveInFlight();
+      await discardPromise;
+    });
+    expect(discardSettled).toBe(true);
   });
 
   it("flushes pending save on resetKey switch or unmount unless cancelled", async () => {
@@ -202,7 +248,10 @@ describe("useDebouncedAutoSave", () => {
 
     // Switch item before 600ms -> flushes item-1 immediately
     rerender({ currentKey: "base", resetKey: "item-2" });
-    expect(onSave).toHaveBeenCalledWith({ currentKey: "edited-1", resetKey: "item-1" }, { resetKey: "item-1" });
+    expect(onSave).toHaveBeenCalledWith(
+      { currentKey: "edited-1", resetKey: "item-1" },
+      expect.objectContaining({ resetKey: "item-1" }),
+    );
 
     // Edit item-2 and cancel() before switching (delete flow) -> does NOT flush item-2!
     onSave.mockClear();
@@ -216,6 +265,9 @@ describe("useDebouncedAutoSave", () => {
     // Edit item-3 and unmount before 600ms -> flushes item-3 immediately
     rerender({ currentKey: "edited-3", resetKey: "item-3" });
     unmount();
-    expect(onSave).toHaveBeenCalledWith({ currentKey: "edited-3", resetKey: "item-3" }, { resetKey: "item-3" });
+    expect(onSave).toHaveBeenCalledWith(
+      { currentKey: "edited-3", resetKey: "item-3" },
+      expect.objectContaining({ resetKey: "item-3" }),
+    );
   });
 });

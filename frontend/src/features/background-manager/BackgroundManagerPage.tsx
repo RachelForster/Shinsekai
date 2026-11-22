@@ -95,6 +95,7 @@ export function BackgroundManagerPage() {
   isCreatingRef.current = isCreating;
   const deletedBackgroundKeysRef = useRef<Set<string>>(new Set());
   const cancelAutoSaveRef = useRef<(targetKey?: string) => Promise<void>>(() => Promise.resolve());
+  const discardAutoSaveRef = useRef<(targetKey?: string) => Promise<void>>(() => Promise.resolve());
   const previousSelectedNameRef = useRef("");
   const activeBackgroundKeyRef = useRef("");
 
@@ -190,15 +191,19 @@ export function BackgroundManagerPage() {
   });
 
   const identityMutation = useMutation({
-    mutationFn: ({
+    mutationFn: async ({
       background,
       originalName,
+      sourceKey,
     }: {
       background: Background;
       field: "name" | "sprite_prefix";
       originalName: string;
       sourceKey: string;
-    }) => saveBackground(background, originalName),
+    }) => {
+      await discardAutoSaveRef.current(sourceKey);
+      return saveBackground(background, originalName);
+    },
     onError(error) {
       showToast({
         kind: "error",
@@ -857,9 +862,10 @@ export function BackgroundManagerPage() {
         title: t("common.saveFailed"),
       });
     },
-    async onSave({ background, originalName }, { resetKey }) {
+    async onSave({ background, originalName }, { isSuperseded, resetKey }) {
       const saved = await saveBackground(background, originalName);
       if (
+        isSuperseded() ||
         deletedBackgroundKeysRef.current.has(resetKey) ||
         deletedBackgroundKeysRef.current.has(`name:${originalName}`)
       ) {
@@ -877,6 +883,7 @@ export function BackgroundManagerPage() {
     resetKey: selected ? selected.id || `name:${selected.name}` : "__creating__",
   });
   cancelAutoSaveRef.current = autoSave.cancel;
+  discardAutoSaveRef.current = autoSave.discardPending;
 
   const confirmIdentityField = (field: "name" | "sprite_prefix") => {
     if (!selected || identitySavingField !== null || identityMutation.isPending) {
