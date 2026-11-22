@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { RefreshCw, RotateCcw } from "lucide-react";
 
+import { I18nContext, translateMessage } from "../i18n";
 import "./ErrorBoundary.css";
 import { Button } from "./Button";
 
@@ -36,24 +37,39 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     const { error } = this.state;
     if (error) {
       return (
-        <main className="error-boundary" role="alert">
-          <section className="error-boundary__panel">
-            <div>
-              <p className="error-boundary__eyebrow">React runtime</p>
-              <h1 className="error-boundary__title">界面发生错误</h1>
-              <p className="error-boundary__body">当前页面遇到未捕获异常。可以先重试渲染，仍失败时刷新页面。</p>
-            </div>
-            <pre className="error-boundary__detail">{error.message}</pre>
-            <div className="inline-actions">
-              <Button icon={<RotateCcw aria-hidden className="button__icon" />} onClick={this.reset} variant="ghost">
-                重试
-              </Button>
-              <Button icon={<RefreshCw aria-hidden className="button__icon" />} onClick={this.reload} variant="primary">
-                刷新
-              </Button>
-            </div>
-          </section>
-        </main>
+        <I18nContext.Consumer>
+          {(i18n) => {
+            const t = i18n?.t ?? ((key, values) => translateMessage("zh_CN", key, values));
+            return (
+              <main className="error-boundary" role="alert">
+                <section className="error-boundary__panel">
+                  <div>
+                    <p className="error-boundary__eyebrow">React runtime</p>
+                    <h1 className="error-boundary__title">{t("errorBoundary.title")}</h1>
+                    <p className="error-boundary__body">{t("errorBoundary.body")}</p>
+                  </div>
+                  <pre className="error-boundary__detail">{error.message}</pre>
+                  <div className="inline-actions">
+                    <Button
+                      icon={<RotateCcw aria-hidden className="button__icon" />}
+                      onClick={this.reset}
+                      variant="ghost"
+                    >
+                      {t("common.retry")}
+                    </Button>
+                    <Button
+                      icon={<RefreshCw aria-hidden className="button__icon" />}
+                      onClick={this.reload}
+                      variant="primary"
+                    >
+                      {t("common.refresh")}
+                    </Button>
+                  </div>
+                </section>
+              </main>
+            );
+          }}
+        </I18nContext.Consumer>
       );
     }
     return this.props.children;

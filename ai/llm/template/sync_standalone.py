@@ -31,6 +31,14 @@ STANDALONE_SESSION_KEYS: tuple[str, ...] = (
     "standalone_stats_state",
     "list_sep_semi",
     "list_sep_comma",
+    "standalone_compact_system",
+    "standalone_compact_existing_heading",
+    "standalone_compact_new_turns_heading",
+    "standalone_compact_instruction",
+    "standalone_compact_speaker_user",
+    "standalone_compact_speaker_narrator",
+    "standalone_compact_truncated_suffix",
+    "standalone_checkpoint_context",
 )
 
 

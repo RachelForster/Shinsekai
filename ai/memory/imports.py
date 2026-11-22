@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
+from ai.llm.template.integrations.localization import LocaleInput
 from ai.memory.chunking import DEFAULT_DIALOGUE_CHUNK_TOKENS, chunk_dialogue_units
 from ai.memory.extraction import (
     EXPECTED_OUTPUT_TOKENS_PER_CHUNK,
@@ -152,6 +153,7 @@ def prepare_memory_import(
     character_name: str,
     source_root: str | Path,
     max_chunk_tokens: int = DEFAULT_DIALOGUE_CHUNK_TOKENS,
+    locale: LocaleInput = None,
 ) -> PreparedMemoryImport:
     target_name = str(character_name or "").strip()
     if not target_name:
@@ -176,7 +178,8 @@ def prepare_memory_import(
         )
         sources.append(source)
         estimated_input_tokens += sum(
-            estimate_extraction_input_tokens(chunk, target_name) for chunk in source.chunks
+            estimate_extraction_input_tokens(chunk, target_name, locale=locale)
+            for chunk in source.chunks
         )
 
     chunk_count = sum(len(source.chunks) for source in sources)
@@ -194,12 +197,14 @@ def preview_memory_import(
     character_name: str,
     source_root: str | Path,
     max_chunk_tokens: int = DEFAULT_DIALOGUE_CHUNK_TOKENS,
+    locale: LocaleInput = None,
 ) -> dict[str, Any]:
     return prepare_memory_import(
         paths,
         character_name=character_name,
         source_root=source_root,
         max_chunk_tokens=max_chunk_tokens,
+        locale=locale,
     ).preview_payload()
 
 
@@ -235,6 +240,7 @@ def execute_memory_import(
     remember_func: Callable[[str, str | None], dict[str, Any]] = memory_remember,
     progress_callback: ProgressCallback | None = None,
     cancel_callback: CancelCallback | None = None,
+    locale: LocaleInput = None,
 ) -> dict[str, Any]:
     _report(progress_callback, "parse", 0.02, "正在读取并转换历史消息。")
     prepared = prepare_memory_import(
@@ -242,9 +248,10 @@ def execute_memory_import(
         character_name=character_name,
         source_root=source_root,
         max_chunk_tokens=max_chunk_tokens,
+        locale=locale,
     )
     chunks = prepared.chunks
-    extractor = MemoryExtractor(llm_adapter)
+    extractor = MemoryExtractor(llm_adapter, locale=locale)
     extracted: list[dict[str, Any]] = []
 
     for index, chunk in enumerate(chunks, start=1):

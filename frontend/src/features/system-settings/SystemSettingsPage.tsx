@@ -23,6 +23,7 @@ import {
   isStandaloneRuntimeActive,
 } from "../../shared/platform/runtimeTarget";
 import { RuntimeModeDialog } from "../runtime-mode/RuntimeModeDialog";
+import { resolveFormGroupTitle } from "../../shared/form-schema";
 import { useI18n } from "../../shared/i18n";
 import { applyThemeColor } from "../../shared/theme/appTheme";
 import { DEFAULT_CHAT_THEME_ID, chatThemeDisplayName } from "../../shared/theme/chatTheme";
@@ -109,10 +110,12 @@ export function SystemSettingsPage() {
   const systemSectionNavItems = [
     ...(isTauriDesktop() ? [{ id: "system-runtime", label: t("system.runtime.title") }] : []),
     ...(isTauriDesktop() ? [{ id: "system-background", label: t("desktop.background.title") }] : []),
-    ...systemGeneralGroups.map((group) => ({ id: `system-${group.id}`, label: group.title })),
+    ...systemGeneralGroups.map((group) => ({ id: `system-${group.id}`, label: resolveFormGroupTitle(group, t) })),
     { id: "system-chat-theme", label: t("chat.theme.title") },
-    ...(systemNetworkProxyGroup ? [{ id: "system-network-proxy", label: systemNetworkProxyGroup.title }] : []),
-    ...systemRemainingGroups.map((group) => ({ id: `system-${group.id}`, label: group.title })),
+    ...(systemNetworkProxyGroup
+      ? [{ id: "system-network-proxy", label: resolveFormGroupTitle(systemNetworkProxyGroup, t) }]
+      : []),
+    ...systemRemainingGroups.map((group) => ({ id: `system-${group.id}`, label: resolveFormGroupTitle(group, t) })),
   ];
 
   useEffect(() => {
@@ -235,7 +238,7 @@ export function SystemSettingsPage() {
             icon={<Save aria-hidden className="button__icon" />}
             loading={saveMutation.isPending}
             onClick={() => {
-              const nextErrors = validatePayloadFromSchema(systemConfigPageSchema, draft);
+              const nextErrors = validatePayloadFromSchema(systemConfigPageSchema, draft, t);
               setErrors(nextErrors);
               if (hasSchemaErrors(nextErrors)) {
                 showToast({
@@ -344,7 +347,7 @@ export function SystemSettingsPage() {
       {systemNetworkProxyGroup ? (
         <section className="section schema-section system-network-proxy page-section-anchor" id="system-network-proxy">
           <div className="section__header">
-            <h2 className="section__title">{systemNetworkProxyGroup.title}</h2>
+            <h2 className="section__title">{resolveFormGroupTitle(systemNetworkProxyGroup, t)}</h2>
             <div className="section__actions">
               <AsyncButton
                 disabled={saveMutation.isPending}

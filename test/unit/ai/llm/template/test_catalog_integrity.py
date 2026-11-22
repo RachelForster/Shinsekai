@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import json
 from pathlib import Path
 import re
@@ -36,9 +37,16 @@ def _extract_placeholders(template: str) -> set[str]:
 
 
 def test_all_locales_share_identical_domains_and_nonempty_keys() -> None:
-    expected_domains = ("dialog", "session", "story")
+    expected_domains = (
+        "dialog",
+        "extraction",
+        "generation",
+        "perception",
+        "session",
+        "story",
+    )
     base_keys = PROMPT_CATALOG.keys("zh_CN")
-    assert len(base_keys) >= 100
+    assert len(base_keys) >= 240
 
     for locale in SUPPORTED_LANGS:
         assert PROMPT_CATALOG.domains(locale) == expected_domains
@@ -145,3 +153,67 @@ def test_i18n_section_and_prompt_spec_follow_ui_and_locked_contract_policies(
         assert follow_spec.render_system(TemplateContext(locale="ja")) == "こんにちは、Mika！"
         assert locked_spec.render_system(TemplateContext(locale="zh_CN")) == "English contract"
         assert locked_spec.render_system(TemplateContext(locale="ja")) == "English contract"
+
+
+def test_pure_template_packages_do_not_import_runtime_or_application_layers() -> None:
+    template_root = REPO_ROOT / "ai" / "llm" / "template"
+    strict_pure_packages = (
+        "core",
+        "extraction",
+        "generation",
+        "perception",
+        "prompts",
+        "session",
+        "story",
+    )
+    strict_forbidden = {"application", "config", "core", "frontend_bridge_core"}
+
+    for pkg in (*strict_pure_packages, "dialog"):
+        pkg_dir = template_root / pkg
+        assert pkg_dir.is_dir(), f"Expected pure template package {pkg_dir}"
+        forbidden_roots = (
+            {"application", "frontend_bridge_core"}
+            if pkg == "dialog"
+            else strict_forbidden
+        )
+        for py_path in sorted(pkg_dir.rglob("*.py")):
+            tree = ast.parse(py_path.read_text(encoding="utf-8"), filename=str(py_path))
+            for node in ast.walk(tree):
+                modules: list[str] = []
+                if isinstance(node, ast.Import):
+                    modules = [alias.name for alias in node.names]
+                elif isinstance(node, ast.ImportFrom) and not node.level:
+                    modules = [node.module or ""]
+                offending = [
+                    mod for mod in modules if mod.partition(".")[0] in forbidden_roots
+                ]
+                assert not offending, (
+                    f"Pure template module {py_path.relative_to(REPO_ROOT)} imported forbidden roots {offending}"
+                )
+
+
+def _walk_module_eager_nodes(node: ast.AST) -> list[ast.AST]:
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+        return []
+    out = [node]
+    for child in ast.iter_child_nodes(node):
+        out.extend(_walk_module_eager_nodes(child))
+    return out
+
+
+def test_template_modules_never_call_render_at_module_import_time() -> None:
+    template_root = REPO_ROOT / "ai" / "llm" / "template"
+    offenders: list[str] = []
+    for py_path in sorted(template_root.rglob("*.py")):
+        tree = ast.parse(py_path.read_text(encoding="utf-8"), filename=str(py_path))
+        for stmt in tree.body:
+            for node in _walk_module_eager_nodes(stmt):
+                if (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr in {"render", "render_system", "render_user"}
+                ):
+                    offenders.append(f"{py_path.relative_to(REPO_ROOT)}:{node.lineno}")
+    assert not offenders, (
+        f"Static module-level prompt rendering freezes locale at import time: {offenders}"
+    )

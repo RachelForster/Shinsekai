@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 import { FeatureHighlightsPrompt } from "../../features/release-highlights/FeatureHighlightsPrompt";
+import { useI18n, type MessageKey } from "../../shared/i18n";
 import { isStandaloneRuntimeActive, RUNTIME_MODE_CHANGE_EVENT } from "../../shared/platform/runtimeTarget";
 import { MobileTopAppBar } from "./MobileTopAppBar";
 import { SidebarNav } from "./SidebarNav";
@@ -13,22 +14,31 @@ const AgentDrawer = lazy(() =>
   })),
 );
 
-const DECORATE_SUBNAV = {
-  ariaLabel: "装扮子导航",
-  items: [
-    { end: false, label: "背景管理", to: "/settings/backgrounds" },
-    { end: false, label: "特效管理", to: "/settings/effects" },
-  ],
-} as const;
+interface MobileSubnavSchema {
+  ariaLabelKey: MessageKey;
+  items: ReadonlyArray<{
+    end: boolean;
+    labelKey: MessageKey;
+    to: string;
+  }>;
+}
 
-const SYSTEM_SUBNAV = {
-  ariaLabel: "系统子导航",
+const DECORATE_SUBNAV: MobileSubnavSchema = {
+  ariaLabelKey: "nav.subnav.decorateAria",
   items: [
-    { end: true, label: "系统设置", to: "/settings/system" },
-    { end: false, label: "对话主题", to: "/settings/system/chat-themes" },
-    { end: false, label: "运行日志", to: "/settings/logs" },
+    { end: false, labelKey: "nav.subnav.backgrounds", to: "/settings/backgrounds" },
+    { end: false, labelKey: "nav.subnav.effects", to: "/settings/effects" },
   ],
-} as const;
+};
+
+const SYSTEM_SUBNAV: MobileSubnavSchema = {
+  ariaLabelKey: "nav.subnav.systemAria",
+  items: [
+    { end: true, labelKey: "nav.subnav.systemSettings", to: "/settings/system" },
+    { end: false, labelKey: "nav.subnav.chatThemes", to: "/settings/system/chat-themes" },
+    { end: false, labelKey: "nav.subnav.logs", to: "/settings/logs" },
+  ],
+};
 
 function resolveMobileSubnav(pathname: string) {
   if (pathname.startsWith("/settings/backgrounds") || pathname.startsWith("/settings/effects")) {
@@ -49,6 +59,7 @@ function DrawerFallback() {
 }
 
 export function AppShell() {
+  const { t } = useI18n();
   const location = useLocation();
   const outletRef = useRef<HTMLElement | null>(null);
   const mobileSubnav = resolveMobileSubnav(location.pathname);
@@ -89,10 +100,10 @@ export function AppShell() {
       <MobileTopAppBar outletRef={outletRef} />
       <main className="content-outlet" ref={outletRef}>
         {mobileSubnav ? (
-          <nav aria-label={mobileSubnav.ariaLabel} className="mobile-subnav">
+          <nav aria-label={t(mobileSubnav.ariaLabelKey)} className="mobile-subnav">
             {mobileSubnav.items.map((item) => (
               <NavLink className="mobile-subnav__item" end={item.end} key={item.to} to={item.to}>
-                {item.label}
+                {t(item.labelKey)}
               </NavLink>
             ))}
           </nav>

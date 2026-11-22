@@ -51,12 +51,25 @@ class KnowledgeSessionCapability(BaseSessionCapability):
             or status is None
         ):
             return
+        from ai.llm.template.integrations.localization import resolve_template_locale
         from application.knowledge.hooks import install_knowledge_hooks
+
+        extra_kwargs: dict[str, Any] = {}
+        if (
+            getattr(context.config, "stores", None) is not None
+            or getattr(context.config, "system_settings", None) is not None
+            or getattr(context.config, "ui_language", None) is not None
+            or getattr(getattr(context.config, "config", None), "system_config", None)
+            is not None
+        ):
+            cfg_ref = context.config
+            extra_kwargs["locale"] = lambda: resolve_template_locale(cfg_ref)
 
         hooks = install_knowledge_hooks(
             context.hook_dispatcher,
             search_func=search,
             status_func=status,
+            **extra_kwargs,
         )
         if hooks is not None:
             self._provider = KnowledgeTurnContextProvider(hooks)

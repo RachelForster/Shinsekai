@@ -92,7 +92,15 @@
     "standalone_outfits_state": "【当前服装状态】{lines}",
     "standalone_stats_state": "【当前舞台数值】{lines}",
     "list_sep_semi": "；",
-    "list_sep_comma": "，"
+    "list_sep_comma": "，",
+    "standalone_compact_system": "你是剧情记忆归档助手，负责输出紧凑准确的对话总结。",
+    "standalone_compact_existing_heading": "【已有剧情前情摘要】",
+    "standalone_compact_new_turns_heading": "【需要合并压缩的新增剧情对话】",
+    "standalone_compact_instruction": "请将以上信息整合为一份简练、客观的中文滚动摘要，保留重要人物关系变化、关键约定、情绪转折与当前场景状态，避免流水账。",
+    "standalone_compact_speaker_user": "玩家",
+    "standalone_compact_speaker_narrator": "旁白",
+    "standalone_compact_truncated_suffix": "\n...(较早细节已浓缩)",
+    "standalone_checkpoint_context": "【历史对话总结（截至第 {up_to_seq} 轮，供延续剧情与人物状态参考）】\n{summary}"
   },
   "en": {
     "narr_token": "NARR",
@@ -187,7 +195,15 @@
     "standalone_outfits_state": "[Current Outfit State] {lines}",
     "standalone_stats_state": "[Current Stage Stats] {lines}",
     "list_sep_semi": "; ",
-    "list_sep_comma": ", "
+    "list_sep_comma": ", ",
+    "standalone_compact_system": "You are a story memory archival assistant responsible for producing compact, accurate dialogue summaries.",
+    "standalone_compact_existing_heading": "[Existing Rolling Story Summary]",
+    "standalone_compact_new_turns_heading": "[New Dialogue Turns to Merge and Compress]",
+    "standalone_compact_instruction": "Consolidate the above into a concise, objective rolling summary in English, preserving key relationship changes, promises, emotional turning points, and current scene state without a blow-by-blow transcript.",
+    "standalone_compact_speaker_user": "Player",
+    "standalone_compact_speaker_narrator": "Narrator",
+    "standalone_compact_truncated_suffix": "\n...(earlier details condensed)",
+    "standalone_checkpoint_context": "[Conversation Summary (up to turn {up_to_seq}, for story & character continuity)]\n{summary}"
   },
   "ja": {
     "narr_token": "NARR",
@@ -282,6 +298,14 @@
     "standalone_outfits_state": "【現在の衣装状態】{lines}",
     "standalone_stats_state": "【現在の舞台ステータス】{lines}",
     "list_sep_semi": "・",
-    "list_sep_comma": "、"
+    "list_sep_comma": "、",
+    "standalone_compact_system": "あなたは物語記憶のアーカイブアシスタントであり、簡潔で正確な対話要約を出力します。",
+    "standalone_compact_existing_heading": "【これまでのあらすじ要約】",
+    "standalone_compact_new_turns_heading": "【統合・圧縮する新規対話ログ】",
+    "standalone_compact_instruction": "上記の情報を簡潔で客観的な日本語のローリング要約に統合し、重要な人間関係の変化・約束・感情の転機・現在の場面状態を保持し、逐語的な羅列は避けてください。",
+    "standalone_compact_speaker_user": "プレイヤー",
+    "standalone_compact_speaker_narrator": "ナレーション",
+    "standalone_compact_truncated_suffix": "\n...(序盤の詳細は要約済み)",
+    "standalone_checkpoint_context": "【これまでの会話の要約（第 {up_to_seq} ターンまで・物語とキャラクター状態の引き継ぎ用）】\n{summary}"
   }
 }

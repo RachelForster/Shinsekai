@@ -9,6 +9,13 @@ from typing import Any
 
 import numpy as np
 
+from ai.llm.template.core import PROMPT_CATALOG
+from ai.llm.template.integrations.localization import LocaleInput, resolve_dynamic_locale
+from ai.llm.template.session import (
+    MEMORY_CONTEXT_MARKER,
+    MEMORY_CONTEXT_SPEC,
+    MemoryContextPromptContext,
+)
 from ai.memory.deduplication import find_duplicate_memory, semantic_deduplication_threshold
 from ai.memory.ebbinghaus import EbbinghausRetentionPolicy
 from ai.memory.rule_recall_planner import RuleRecallPlanner
@@ -39,7 +46,7 @@ from sdk.adapters.session import (
     normalize_memory_mode,
 )
 
-INJECTION_HEADER = "[Shinsekai long-term memory context]"
+INJECTION_HEADER = MEMORY_CONTEXT_MARKER
 DEFAULT_MIN_RELEVANCE = 0.38
 DEFAULT_CANON_MIN_RELEVANCE = 0.48
 DEFAULT_CANON_MIN_SCORE = 0.60
@@ -172,12 +179,14 @@ class MemoryOrchestrator:
         *,
         now_ts: float,
         offline_gap_seconds: float = 0.0,
+        locale: str | None = "zh_CN",
     ) -> RetentionState:
         if isinstance(self.retention_policy, EbbinghausRetentionPolicy):
             return self.retention_policy.evaluate(
                 record,
                 now_ts=now_ts,
                 offline_gap_seconds=offline_gap_seconds,
+                locale=locale,
             )
         return self.retention_policy.evaluate(record, now_ts=now_ts)
 
@@ -319,8 +328,10 @@ class MemoryOrchestrator:
         turn_input: TurnRecallInput,
         *,
         save_repo: MemoryRepository | None = None,
+        locale: LocaleInput = None,
     ) -> MemoryContextBlock:
         """Execute zero-latency recall plan, hybrid search, entity hop, and Ebbinghaus gating."""
+        active_locale = resolve_dynamic_locale(locale) if locale is not None else "zh_CN"
         now_ts = float(turn_input.now_ts) if turn_input.now_ts > 0 else time.time()
         plan = self.recall_planner.plan(replace(turn_input, now_ts=now_ts))
         if not plan.should_recall:
@@ -474,6 +485,7 @@ class MemoryOrchestrator:
                 rec,
                 now_ts=now_ts,
                 offline_gap_seconds=offline_gap,
+                locale=active_locale,
             )
             is_canon = _is_canon_memory(rec, ret_state)
 
@@ -604,15 +616,19 @@ class MemoryOrchestrator:
             recalled_ids.append(item.record.id)
             owner_prefix = ""
             if multi_char and item.record.owner_id not in {"__self__", "user", ""}:
-                owner_prefix = f"（{item.record.owner_id}）"
+                owner_prefix = PROMPT_CATALOG.translate(
+                    "session.memory_owner_prefix",
+                    locale=active_locale,
+                    owner=item.record.owner_id,
+                )
             bullet_lines.append(f"- {owner_prefix}{item.retention_state.rendered_text}")
 
-        rendered = (
-            f"{INJECTION_HEADER}\n"
-            "Relevant long-term memories for this turn. Respect each item's clarity tag "
-            "([固有设定], [清晰], [较久远·印象模糊], [唤醒的久远记忆]); use them naturally as background "
-            "and never mention the retrieval system unless asked.\n"
-            + "\n".join(bullet_lines)
+        rendered = MEMORY_CONTEXT_SPEC.render_system(
+            MemoryContextPromptContext(
+                items=tuple(bullet_lines),
+                tiered=True,
+                locale=active_locale,
+            )
         )
         return MemoryContextBlock(
             rendered=rendered,

@@ -7,13 +7,21 @@ import re
 from typing import Any, Iterable
 
 from ai.llm.llm_manager import LLMAdapterFactory, LLMManager
+from ai.llm.template.core.catalog import PROMPT_CATALOG
+from ai.llm.template.generation.character_brief import (
+    render_character_brief_batch_prompts,
+    render_character_brief_prompts,
+)
+from ai.llm.template.integrations.localization import (
+    LocaleInput,
+    resolve_dynamic_locale,
+)
 
 
 MAX_CHARACTER_BRIEF_LENGTH = 100
-CHARACTER_BRIEF_PROMPT = (
-    "你负责将人物设定压缩为可复用的人物简介。简介必须不超过100个字符，"
-    "使用一个自然段，优先保留身份、核心性格、行为或语言特点以及重要人物关系。"
-    "不要加入原设定中没有的信息，不要使用标题、列表、Markdown或引号，只输出简介。"
+CHARACTER_BRIEF_PROMPT = PROMPT_CATALOG.translate(
+    "generation.character_brief_system",
+    locale="zh_CN",
 )
 
 
@@ -57,11 +65,22 @@ def chat_character_text(
 _chat = chat_character_text
 
 
-def generate_character_brief(config_store: Any, name: str, setting: str) -> str:
+def generate_character_brief(
+    config_store: Any,
+    name: str,
+    setting: str,
+    *,
+    locale: LocaleInput = None,
+) -> str:
     """Generate one reusable brief from a character's detailed setting."""
 
-    user = f"人物名称：{name}\n人物设定：\n{setting or '无详细设定'}"
-    brief = normalize_character_brief(_chat(config_store, CHARACTER_BRIEF_PROMPT, user))
+    effective_locale = resolve_dynamic_locale(locale, config_manager=config_store)
+    system, user = render_character_brief_prompts(
+        name,
+        setting,
+        locale=effective_locale,
+    )
+    brief = normalize_character_brief(_chat(config_store, system, user))
     if not brief:
         raise ValueError("人物简介生成结果为空")
     return brief
@@ -87,6 +106,7 @@ def ensure_character_briefs(
     names: Iterable[str],
     *,
     characters: Any = None,
+    locale: LocaleInput = None,
 ) -> tuple[list[Any], list[str]]:
     """Generate all missing briefs in one request and persist them once."""
     from config.character_ops import CHARACTER_MUTATION_LOCK
@@ -115,24 +135,16 @@ def ensure_character_briefs(
     if not missing:
         return resolved_characters, []
 
-    system = (
-        "你负责批量生成可复用的人物简介。每条简介必须不超过100个字符，使用一个自然段，"
-        "优先保留身份、核心性格、行为或语言特点以及重要人物关系。不要加入人物设定中没有的信息。"
-        "只输出一个JSON对象，格式为"
-        '{"briefs":[{"name":"人物原名","brief":"简介"}]}。'
-        "必须为输入中的每个人物返回一条记录，name必须原样返回。"
-    )
-    user = json.dumps(
-        {
-            "characters": [
-                {
-                    "name": str(character.name),
-                    "setting": str(getattr(character, "character_setting", "") or ""),
-                }
-                for character in missing
-            ]
-        },
-        ensure_ascii=False,
+    effective_locale = resolve_dynamic_locale(locale, config_manager=config_store)
+    system, user = render_character_brief_batch_prompts(
+        [
+            {
+                "name": str(character.name),
+                "setting": str(getattr(character, "character_setting", "") or ""),
+            }
+            for character in missing
+        ],
+        locale=effective_locale,
     )
     rows = _parse_brief_rows(_chat(config_store, system, user))
     generated = {

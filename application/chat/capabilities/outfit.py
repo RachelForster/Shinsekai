@@ -8,6 +8,16 @@ import threading
 import time
 from typing import TYPE_CHECKING, Any
 
+from ai.llm.template.integrations.localization import resolve_template_locale
+from ai.llm.template.session import (
+    ALL_OUTFIT_CONTEXT_MARKERS,
+    LEGACY_OUTFIT_CONTEXT_MARKERS,
+    OUTFIT_CONTEXT_MARKER,
+    OUTFIT_CONTEXT_SPEC,
+    OutfitCharacterEntry,
+    OutfitContextPromptContext,
+    strip_system_messages_with_markers,
+)
 from application.chat.capabilities.contracts import (
     BaseSessionCapability,
     BaseTurnContextProvider,
@@ -39,20 +49,8 @@ if TYPE_CHECKING:
     from sdk.hooks import BeforeChatContext, MessageAddedContext
 
 
-OUTFIT_CONTEXT_MARKER = "[当前角色服装分组状态]"
-
-
 def _strip_existing_outfit_messages(messages: list[dict[str, Any]]) -> None:
-    messages[:] = [
-        msg
-        for msg in messages
-        if not (
-            isinstance(msg, Mapping)
-            and msg.get("role") == "system"
-            and isinstance(msg.get("content"), str)
-            and msg["content"].startswith(OUTFIT_CONTEXT_MARKER)
-        )
-    ]
+    strip_system_messages_with_markers(messages, ALL_OUTFIT_CONTEXT_MARKERS)
 
 
 def _lookup_character(config: Any | None, name: str) -> Any | None:
@@ -518,73 +516,61 @@ class OutfitRuntimeController:
             str(getattr(c, "name", "") or "").strip()
             for c in (getattr(getattr(config, "config", None), "characters", ()) or ())
         ]
-        lines: list[str] = []
-        switch_example: dict[str, str] | None = None
+        entries: list[OutfitCharacterEntry] = []
+        switch_example_character = ""
+        switch_example_target_group = ""
         for cname in target_names:
             if not cname:
                 continue
             char = _lookup_character(config, cname)
             if char is None or not has_multiple_sprite_groups(char):
                 continue
-            groups = list_character_sprite_groups(char)
+            groups = tuple(list_character_sprite_groups(char))
             st = states_copy.get(cname)
             active_group = resolve_effective_sprite_group(
                 char, st.active_group if st is not None else None
             )
             locked = bool(st.locked) if st is not None else False
-            if auto_switch and not locked and switch_example is None:
-                target_group = next(group for group in groups if group != active_group)
-                media = {"vibe": "平静的表情"} if media_mode == "semantic" else {"sprite": "-1"}
-                switch_example = {
-                    "character_name": cname,
-                    **media,
-                    "speech": "<本句台词>",
-                    "outfit": target_group,
-                }
-            lock_desc = "已手动锁定（禁止切换服装）" if locked else "未锁定"
-            entry = (
-                f"- {cname}：当前服装分组「{active_group}」（{lock_desc}；"
-                f"可用分组：{' / '.join(groups)}）"
-            )
+            if auto_switch and not locked and not switch_example_character:
+                switch_example_character = cname
+                switch_example_target_group = next(
+                    group for group in groups if group != active_group
+                )
+            sprite_tag_items: list[tuple[int, str]] = []
             if media_mode != "semantic":
                 assets = get_character_assets(
                     char, getattr(char, "avatar_type", "static")
                 )
                 tags = tag_contents(assets.emotion_tags, len(assets.sprites))
                 indices = filter_sprite_indices_for_group(char, active_group)
-                tag_items = [
-                    f"{idx + 1}: {tags[idx] or '默认'}"
+                sprite_tag_items = [
+                    (idx + 1, str(tags[idx] or ""))
                     for idx in indices
                     if 0 <= idx < len(assets.sprites)
                 ]
-                if tag_items:
-                    entry += f"\n  当前「{active_group}」分组可用 sprite 编号：{', '.join(tag_items)}"
-            lines.append(entry)
+            entries.append(
+                OutfitCharacterEntry(
+                    name=cname,
+                    active_group=active_group,
+                    locked=locked,
+                    groups=groups,
+                    sprite_tag_items=tuple(sprite_tag_items),
+                )
+            )
 
-        if not lines:
+        if not entries:
             return ""
 
-        header = [
-            OUTFIT_CONTEXT_MARKER,
-            "以下规则适用于拥有多套服装立绘的角色，也适用于旧存档中的模板。",
-        ]
-        if media_mode != "semantic":
-            header.append(
-                "立绘选择规则：sprite 填写当前分组中的完整编号字符串（可超过两位）。"
-                "无需换图时填 -1；换装当句可以填目标分组的编号，或填 -1 让程序选用目标分组的第一张立绘。"
+        active_locale = resolve_template_locale(config)
+        return OUTFIT_CONTEXT_SPEC.render_system(
+            OutfitContextPromptContext(
+                entries=tuple(entries),
+                media_selection_mode=media_mode,
+                switch_example_character=switch_example_character,
+                switch_example_target_group=switch_example_target_group,
+                locale=active_locale,
             )
-        if switch_example:
-            header.append(
-                "剧情换装规则：已开启自动换装。未锁定的角色完成换装时（剧情明确换装或应玩家要求换装），"
-                '必须在 dialog 数组内该角色当句的 JSON 对象里写入 "outfit"，值为下列可用分组中的准确名称。'
-                "普通台词、情绪或姿态变化时省略该字段。"
-            )
-            header.append("换装项示例：" + json.dumps(switch_example, ensure_ascii=False))
-        else:
-            header.append(
-                '当前已关闭自动换装或服装已锁定：请始终保持当前服装分组，不要输出 `"outfit"` 字段。'
-            )
-        return "\n".join([*header, *lines])
+        )
 
 
 class OutfitBeforeChatProvider(BaseTurnContextProvider):

@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Iterable
 
+from ai.llm.template.generation.sprite_plan import render_sprite_transition_prompt
 from ai.t2i.reference_image import validate_h3_sprite_resolution
 from application.characters.sprite.animate_sprites import (
     _finish_animation,
@@ -12,8 +13,6 @@ from application.characters.sprite.animate_sprites import (
     verify_transparent_animation,
 )
 from application.characters.sprite.generate_sprites import (
-    SPRITE_CAMERA_SUFFIX,
-    SPRITE_REFERENCE_FRAMING_SUFFIX,
     _local_file_access_roots,
     _resolve_file_access_roots,
     boundary_frame,
@@ -32,19 +31,7 @@ from core.sprite.transitions import (
 )
 from sdk.path_utils import safe_existing_file_path
 
-TRANSITION_PROMPT = (
-    "make the character transition directly from the standing pose, hand positions "
-    "and facial expression in the first reference to those in the last reference; "
-    "begin changing pose immediately and progress continuously throughout the shot; "
-    "complete the pose change and reach the last reference's hand positions and "
-    "facial expression by the final frame; keep the feet planted, the original neck "
-    "length and character proportions, and the same standing location; let the hair "
-    "roots follow the head and torso motion, with the hair lengths and tips trailing "
-    "slightly behind through natural inertia and coordinated follow-through, then "
-    "settling toward the last reference pose while preserving the original hairstyle"
-    + SPRITE_REFERENCE_FRAMING_SUFFIX
-    + SPRITE_CAMERA_SUFFIX
-)
+TRANSITION_PROMPT = render_sprite_transition_prompt()
 
 
 def transition_identity(character, start, end):

@@ -1,8 +1,16 @@
 """Story author instructions shared by stage generation and compiler repair."""
 
+from __future__ import annotations
+
 import json
 
-from ai.llm.template.core import I18nSection, PromptSpec, Section, TemplateContext, TextSection
+from ai.llm.template.core import (
+    I18nSection,
+    PromptSpec,
+    Section,
+    TemplateContext,
+    TextSection,
+)
 from ai.llm.template.story.context import StoryRequestContext
 
 
@@ -50,6 +58,17 @@ STORY_AUTHOR_SPEC = PromptSpec(
     system_builder=build_story_author_system_section,
     user_builder=build_story_author_user_section,
 )
-AUTHOR_COMPILER_TEMPLATE = build_story_author_system_section().render(
-    TemplateContext(locale="en")
-)
+
+
+def __getattr__(name: str) -> str:
+    if name == "AUTHOR_COMPILER_TEMPLATE":
+        return STORY_AUTHOR_SPEC.render_system(TemplateContext(locale="en"))
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+__all__ = [
+    "AUTHOR_COMPILER_TEMPLATE",
+    "STORY_AUTHOR_SPEC",
+    "build_story_author_system_section",
+    "build_story_author_user_section",
+]

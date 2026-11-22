@@ -5,6 +5,14 @@ from typing import Any, Protocol
 from weakref import WeakKeyDictionary
 
 from ai.llm.llm_manager import LLMAdapterFactory, LLMManager
+from ai.llm.template.generation.character_brief import (
+    render_character_brief_prompts,
+    render_character_setting_prompts,
+)
+from ai.llm.template.integrations.localization import (
+    LocaleInput,
+    resolve_dynamic_locale,
+)
 
 
 @dataclass
@@ -64,6 +72,7 @@ def generate_character(
     setting: str,
     *,
     characters: Any = None,
+    locale: LocaleInput = None,
 ) -> GenerateCharacterResult:
     """Generate and persist a character setting through the configured LLM."""
     from config.character_ops import CHARACTER_MUTATION_LOCK, save_character_patch
@@ -111,26 +120,12 @@ def generate_character(
 
     char_id = str(getattr(character, "id", "") or "").strip()
 
-    setting = "无" if not setting else setting
-    template = f"""
-    你需要帮助用户写出{name}的角色设定，包括{name}的背景信息，性格特点，和语言习惯。输出plain text格式，不要使用markdown格式。
-    将{name}的背景信息，性格特点，和语言习惯分段写，并且同一段内标号，不一定是3点，有可能比3点多。
-    输出格式示例：
-    {name}的背景信息：
-    1.姓名和出处：
-    2.外表：
-    3.背景：
-    4.经历：
-
-    {name}的性格特点：
-    1.
-    2.
-    3.
-
-    {name}的语言习惯：
-    1.
-    2.
-    """
+    effective_locale = resolve_dynamic_locale(locale, config_manager=config_store)
+    template, setting_user_prompt = render_character_setting_prompts(
+        name,
+        setting,
+        locale=effective_locale,
+    )
 
     try:
         llm_provider, llm_model, llm_base_url, api_key = (
@@ -165,7 +160,7 @@ def generate_character(
 
         runtime.manager.set_user_template(template)
         generated = runtime.manager.chat(
-            f"补充信息：{setting},请输出结果：",
+            setting_user_prompt,
             stream=False,
             response_format={"type": "text"},
             include_local_time=False,
@@ -186,16 +181,18 @@ def generate_character(
                 character = latest
                 config_store.save_characters_config()
 
-        from application.characters.generate_briefs import (
-            CHARACTER_BRIEF_PROMPT,
-            normalize_character_brief,
-        )
+        from application.characters.generate_briefs import normalize_character_brief
 
         try:
-            runtime.manager.set_user_template(CHARACTER_BRIEF_PROMPT)
+            brief_system, brief_user = render_character_brief_prompts(
+                name,
+                generated,
+                locale=effective_locale,
+            )
+            runtime.manager.set_user_template(brief_system)
             generated_brief = normalize_character_brief(
                 runtime.manager.chat(
-                    f"人物名称：{name}\n人物设定：\n{generated or '无详细设定'}",
+                    brief_user,
                     stream=False,
                     response_format={"type": "text"},
                     include_local_time=False,
