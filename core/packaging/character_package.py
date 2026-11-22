@@ -23,6 +23,7 @@ from config.models import (
     SELF_PERSONA_SPRITE_PREFIX,
 )
 from config.sprite_voice import normalize_sprite_voice_types
+from i18n import tr
 from core.packaging.zip_io import (
     format_restored_path,
     resolve_name_conflict,
@@ -295,7 +296,7 @@ def stage_character_package_import(
     """Validate an archive, copy media into destination folders, and build Character models."""
     archive_path = Path(input_path)
     if not archive_path.exists():
-        raise FileNotFoundError(f"文件未找到: {input_path}")
+        raise FileNotFoundError(tr("crud.common.archive_not_found", path=input_path))
 
     staged = StagedCharacterImport()
     try:
@@ -307,11 +308,11 @@ def stage_character_package_import(
             yaml_path = temp_dir / "character.yaml"
             yaml_data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
             if not yaml_data:
-                raise ValueError("YAML配置文件为空或格式错误。")
+                raise ValueError(tr("crud.common.char_yaml_empty"))
             if not isinstance(yaml_data, list) or not all(
                 isinstance(char_data, dict) for char_data in yaml_data
             ):
-                raise ValueError("YAML人物配置必须是对象列表。")
+                raise ValueError(tr("crud.common.char_yaml_not_list"))
 
             # Validate every entry schema and all bundled dependencies before publishing assets.
             from core.media.alpha_video import verify_alpha_video

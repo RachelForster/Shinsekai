@@ -12,6 +12,7 @@ from typing import Any, Optional, Protocol, TypeVar, runtime_checkable
 
 from config.character_ops.target import _sync_pydantic_model_in_place
 from config.schema import Background, Sprite
+from i18n import err_tr, tr
 
 _F = TypeVar("_F", bound=Callable[..., Any])
 _PROTECTED_BACKGROUND_FIELDS = frozenset({"id", "sprites", "bgm_list"})
@@ -283,7 +284,7 @@ def save_background_patch(
     """Create or update a background group via model-merge without per-field parameters."""
     raw_name = str(patch.get("name") or "").strip()
     if not raw_name:
-        raise BackgroundProfileError("名称不能为空！")
+        raise BackgroundProfileError(tr("crud.common.name_empty"))
 
     trimmed_edit_as = str(original_name).strip() if original_name else ""
     cleaned_id = str(target_id or patch.get("id") or "").strip()
@@ -302,7 +303,7 @@ def save_background_patch(
                 and getattr(taken, "id", None) == getattr(existing, "id", None)
             )
             if not same_id:
-                raise BackgroundProfileError(f"名称「{raw_name}」已与其他背景组重复！")
+                raise BackgroundProfileError(tr("crud.bg.duplicate_name", name=raw_name))
 
         merged = existing.model_dump(mode="python")
         for key, value in patch.items():
@@ -319,7 +320,7 @@ def save_background_patch(
                 exclude_id=getattr(existing, "id", None),
                 exclude_name=existing.name,
             ):
-                raise BackgroundProfileError(f"目录名「{next_prefix}」已被其他背景组使用！")
+                raise BackgroundProfileError(tr("crud.bg.prefix_in_use", prefix=next_prefix))
         merged["id"] = existing.id
         merged["name"] = raw_name
         merged["sprite_prefix"] = next_prefix
@@ -356,20 +357,20 @@ def delete_background_and_assets(
     """Delete a background group record and its managed image/BGM directories."""
     current_names = [b.name for b in target.list_all()]
     if not name or name == "新背景":
-        return "请选择要删除的背景组！", current_names
+        return err_tr("crud.bg.select_to_delete"), current_names
 
     background = target.get_by_name(name)
     if background is None:
-        return f"找不到背景组: {name}", current_names
+        return err_tr("crud.bg.not_found", name=name), current_names
 
     if not target.delete_background_record(background):
-        return f"找不到背景组: {name}", current_names
+        return err_tr("crud.bg.not_found", name=name), current_names
 
     remaining = list(target.list_all())
     new_names = [b.name for b in remaining]
     sprite_prefix = str(background.sprite_prefix or "").strip()
     if not sprite_prefix:
-        return "已删除背景组", new_names
+        return tr("crud.bg.deleted_unloaded"), new_names
 
     sharing = [
         item
@@ -386,7 +387,7 @@ def delete_background_and_assets(
             target_dir = Path(base_dir) / sprite_prefix
             if target_dir.exists():
                 shutil.rmtree(target_dir)
-    return f"背景组 {name} 已删除！", new_names
+    return tr("crud.bg.deleted", name=name), new_names
 
 
 @_with_background_lock
@@ -401,13 +402,13 @@ def upload_background_sprites(
     """Copy uploaded background images and persist appended ``Sprite`` entries."""
     del bg_tags  # Signature parity with legacy BackgroundManager.
     if not background_name:
-        return "请先选择或创建背景组！", [], ""
+        return err_tr("crud.bg.select_or_create"), [], ""
     if not sprite_files:
-        return "请选择要上传的图片！", [], ""
+        return err_tr("crud.bg.select_images"), [], ""
 
     background = target.get_by_name(background_name)
     if not background:
-        return f"找不到背景组: {background_name}", [], ""
+        return err_tr("crud.bg.not_found", name=background_name), [], ""
 
     bg_dir = os.path.join(str(upload_dir), background.sprite_prefix)
     Path(bg_dir).mkdir(parents=True, exist_ok=True)
@@ -435,7 +436,7 @@ def upload_background_sprites(
         raise
 
     all_paths = [_sprite_path(s) for s in updated.sprites]
-    return f"成功为 {background_name} 上传 {len(sprite_files)} 张背景图片！", all_paths, updated.bg_tags
+    return tr("crud.bg.images_uploaded", name=background_name, count=len(sprite_files)), all_paths, updated.bg_tags
 
 
 @_with_background_lock
@@ -447,10 +448,10 @@ def delete_all_background_sprites(
 ) -> tuple[str, list[str], str]:
     """Delete all scene images for ``background_name``."""
     if not background_name:
-        return "请先选择背景组！", [], ""
+        return err_tr("crud.bg.select_first"), [], ""
     background = target.get_by_name(background_name)
     if not background:
-        return f"找不到背景组: {background_name}", [], ""
+        return err_tr("crud.bg.not_found", name=background_name), [], ""
 
     sharing = _other_backgrounds_sharing_prefix(
         target,
@@ -468,7 +469,7 @@ def delete_all_background_sprites(
 
     updated = background.model_copy(update={"sprites": [], "bg_tags": ""})
     target.save_background(updated)
-    return f"已删除 {background_name} 的所有背景图片！", [], ""
+    return tr("crud.bg.images_cleared", name=background_name), [], ""
 
 
 @_with_background_lock
@@ -479,15 +480,15 @@ def delete_single_background_sprite(
 ) -> tuple[str, list[str], str]:
     """Delete one scene image by index and re-number scene tags."""
     if not background_name:
-        return "请先选择背景组！", [], ""
+        return err_tr("crud.bg.select_first"), [], ""
     background = target.get_by_name(background_name)
     if not background:
-        return f"找不到背景组: {background_name}", [], ""
+        return err_tr("crud.bg.not_found", name=background_name), [], ""
 
     sprites = list(background.sprites or [])
     if not sprites or sprite_index < 0 or sprite_index >= len(sprites):
         remaining = [_sprite_path(s) for s in sprites]
-        return "背景图片不存在！", remaining, background.bg_tags
+        return err_tr("crud.bg.image_not_found"), remaining, background.bg_tags
 
     sprite_data = sprites[sprite_index]
     sprite_path = _sprite_path(sprite_data)
@@ -507,7 +508,7 @@ def delete_single_background_sprite(
     updated = background.model_copy(update={"sprites": sprites, "bg_tags": next_tags})
     target.save_background(updated)
     remaining = [_sprite_path(s) for s in updated.sprites]
-    return f"已删除 {background_name} 的第 {sprite_index + 1} 张背景图片！", remaining, next_tags
+    return tr("crud.bg.image_deleted", name=background_name, index=sprite_index + 1), remaining, next_tags
 
 
 @_with_background_lock
@@ -518,12 +519,12 @@ def save_background_image_tags_op(
 ) -> Background:
     """Persist updated scene image tags for ``background_name``."""
     if not background_name:
-        raise BackgroundProfileError("请先选择或创建背景组！")
+        raise BackgroundProfileError(tr("crud.bg.select_or_create"))
     if not bg_tags:
-        raise BackgroundProfileError("请输入背景标注！")
+        raise BackgroundProfileError(tr("crud.bg.tags_empty"))
     background = target.get_by_name(background_name)
     if not background:
-        raise BackgroundProfileError(f"找不到背景组: {background_name}")
+        raise BackgroundProfileError(tr("crud.bg.not_found", name=background_name))
     updated = background.model_copy(update={"bg_tags": bg_tags})
     target.save_background(updated)
     return updated
@@ -540,12 +541,12 @@ def upload_background_bgms(
 ) -> tuple[str, list[str], str]:
     """Copy uploaded BGM files and persist the updated list and tags in a single write."""
     if not background_name:
-        return "请先选择或创建背景组！", [], ""
+        return err_tr("crud.bg.select_or_create"), [], ""
     if not bgm_files:
-        return "请选择要上传的背景音乐文件！", [], ""
+        return err_tr("crud.bg.select_bgm"), [], ""
     background = target.get_by_name(background_name)
     if not background:
-        return f"找不到背景组: {background_name}", [], ""
+        return err_tr("crud.bg.not_found", name=background_name), [], ""
 
     dest_dir = os.path.join(str(bgm_dir), background.sprite_prefix)
     Path(dest_dir).mkdir(parents=True, exist_ok=True)
@@ -574,7 +575,7 @@ def upload_background_bgms(
         raise
 
     return (
-        f"成功为 {background_name} 上传 {len(bgm_files)} 个背景音乐文件！",
+        tr("crud.bg.bgm_uploaded", name=background_name, count=len(bgm_files)),
         list(updated.bgm_list),
         updated.bgm_tags,
     )
@@ -589,10 +590,10 @@ def delete_all_background_bgms(
 ) -> tuple[str, list[str], str]:
     """Delete all BGM files and metadata for ``background_name``."""
     if not background_name:
-        return "请先选择背景组！", [], ""
+        return err_tr("crud.bg.select_first"), [], ""
     background = target.get_by_name(background_name)
     if not background:
-        return f"找不到背景组: {background_name}", [], ""
+        return err_tr("crud.bg.not_found", name=background_name), [], ""
 
     sharing = _other_backgrounds_sharing_prefix(
         target,
@@ -610,7 +611,7 @@ def delete_all_background_bgms(
 
     updated = background.model_copy(update={"bgm_list": [], "bgm_tags": ""})
     target.save_background(updated)
-    return f"已删除 {background_name} 的所有背景音乐！", [], ""
+    return tr("crud.bg.bgm_cleared", name=background_name), [], ""
 
 
 @_with_background_lock
@@ -621,15 +622,15 @@ def delete_single_background_bgm(
 ) -> tuple[str, list[str], str]:
     """Delete a single BGM track by index and re-number BGM tags."""
     if not background_name:
-        return "请先选择背景组！", [], ""
+        return err_tr("crud.bg.select_first"), [], ""
     background = target.get_by_name(background_name)
     if not background:
-        return f"找不到背景组: {background_name}", [], ""
+        return err_tr("crud.bg.not_found", name=background_name), [], ""
 
     bgm_list = list(getattr(background, "bgm_list", None) or [])
     bgm_tags = str(getattr(background, "bgm_tags", "") or "")
     if not bgm_list or bgm_index < 0 or bgm_index >= len(bgm_list):
-        return "背景音乐不存在！", bgm_list, bgm_tags
+        return err_tr("crud.bg.bgm_not_found"), bgm_list, bgm_tags
 
     bgm_path = bgm_list[bgm_index]
     if bgm_path and os.path.isfile(bgm_path):
@@ -648,7 +649,7 @@ def delete_single_background_bgm(
     updated = background.model_copy(update={"bgm_list": bgm_list, "bgm_tags": next_tags})
     target.save_background(updated)
     return (
-        f"已删除 {background_name} 的第 {bgm_index + 1} 个背景音乐文件！",
+        tr("crud.bg.bgm_deleted", name=background_name, index=bgm_index + 1),
         list(updated.bgm_list),
         next_tags,
     )
@@ -662,12 +663,12 @@ def save_background_bgm_tags_op(
 ) -> Background:
     """Persist updated BGM tags for ``background_name``."""
     if not background_name:
-        raise BackgroundProfileError("请先选择或创建背景组！")
+        raise BackgroundProfileError(tr("crud.bg.select_or_create"))
     if not bgm_tags:
-        raise BackgroundProfileError("请输入背景音乐标注！")
+        raise BackgroundProfileError(tr("crud.bg.bgm_tags_empty"))
     background = target.get_by_name(background_name)
     if not background:
-        raise BackgroundProfileError(f"找不到背景组: {background_name}")
+        raise BackgroundProfileError(tr("crud.bg.not_found", name=background_name))
     updated = background.model_copy(update={"bgm_tags": bgm_tags})
     target.save_background(updated)
     return updated

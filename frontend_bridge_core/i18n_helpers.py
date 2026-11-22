@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Any, Iterator, TypeVar
 
-from i18n import current_language, normalize_lang, tr_in_bundle
+from i18n import bind_language, current_language, normalize_lang, tr_in_bundle
 
 E = TypeVar("E", bound=Exception)
 
@@ -19,7 +19,8 @@ def bind_bridge_state(state: Any) -> Iterator[None]:
         return
     token = _ACTIVE_BRIDGE_STATE.set(state)
     try:
-        yield
+        with bind_language(bridge_locale(state)):
+            yield
     finally:
         _ACTIVE_BRIDGE_STATE.reset(token)
 

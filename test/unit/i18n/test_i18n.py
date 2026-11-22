@@ -3,6 +3,9 @@
 import pytest
 
 from i18n import (
+    bind_language,
+    err_tr,
+    is_operation_error_message,
     tr,
     tr_in_bundle,
     init_i18n,
@@ -180,3 +183,40 @@ class TestAllLocaleKeysExist:
                 if cur is None:
                     break
             assert cur is not None, f"Key '{key}' missing in ja.json"
+
+
+@pytest.fixture(autouse=True)
+def _reset_default_i18n_locale():
+    yield
+    init_i18n("zh_CN")
+
+
+class TestContextLocaleAndErrorMarkers:
+    def test_bind_language_restores_previous_locale(self):
+        init_i18n("zh_CN")
+        assert current_language() == "zh_CN"
+        with bind_language("en"):
+            assert current_language() == "en"
+            with bind_language("japanese"):
+                assert current_language() == "ja"
+            assert current_language() == "en"
+        assert current_language() == "zh_CN"
+
+    def test_bind_language_ignores_empty_and_keeps_active(self):
+        init_i18n("zh_CN")
+        with bind_language(""):
+            assert current_language() == "zh_CN"
+        with bind_language(None):
+            assert current_language() == "zh_CN"
+
+    def test_err_tr_marks_error_string_across_locales(self):
+        with bind_language("en"):
+            msg = err_tr("i18n.nonexistent.key")
+            assert isinstance(msg, str)
+            assert is_operation_error_message(msg) is True
+        assert is_operation_error_message("Saved successfully") is False
+        assert is_operation_error_message("❌ failed") is True
+        assert is_operation_error_message("保存失败: disk full") is True
+        assert is_operation_error_message("已保存背景") is False
+        assert is_operation_error_message(None) is False
+

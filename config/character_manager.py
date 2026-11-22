@@ -17,6 +17,7 @@ from config.character_ops import (
 )
 from config.config_manager import ConfigManager
 from config.schema import Character, ModelSprites, RelationGraph, Sprite
+from i18n import LocalizedErrorStr, err_tr, tr
 
 UPLOAD_DIR = "data/sprite"
 VOICE_DIR = "data/speech"
@@ -57,9 +58,9 @@ class CharacterManager:
     def save_characters_to_file(self) -> str:
         try:
             self._save_characters_config()
-            return f"人物设定已保存到 {CHARACTER_CONFIG_PATH}！"
+            return tr("crud.char.saved_to", path=CHARACTER_CONFIG_PATH)
         except Exception as exc:
-            return f"保存失败: {exc}"
+            return err_tr("crud.common.save_failed", error=exc)
 
     def save_sprite_mouths(self, name: str, results: list[tuple[int, str, str | None]]) -> None:
         save_character_sprite_mouths(self._target(), name, results)
@@ -144,8 +145,8 @@ class CharacterManager:
                 sprite_portrait_crops=sprite_portrait_crops, sprite_group_map=sprite_group_map,
             )
         except CharacterProfileError as exc:
-            return str(exc), [c.name for c in self._get_characters()]
-        return ("人物已添加！" if created else "人物已更新！", [c.name for c in self._get_characters()])
+            return LocalizedErrorStr(exc), [c.name for c in self._get_characters()]
+        return (tr("crud.char.added") if created else tr("crud.char.updated"), [c.name for c in self._get_characters()])
 
     def delete_character(self, name: str) -> Tuple[str, List[str]]:
         return delete_character_and_assets(self._target(), name, upload_dir=UPLOAD_DIR, voice_dir=VOICE_DIR, model_dir=MODEL_DIR)
@@ -169,11 +170,11 @@ class CharacterManager:
     def upload_emotion_tags(self, character_name: str, emotion_tags: str) -> str:
         try:
             save_character_emotion_tags_op(self._target(), character_name, emotion_tags)
-            return "标注成功！"
+            return tr("crud.common.tag_success")
         except CharacterProfileError as exc:
-            return str(exc)
+            return LocalizedErrorStr(exc)
         except Exception as exc:
-            return f"标注出错了：{exc}"
+            return err_tr("crud.common.tag_failed", error=exc)
 
     def upload_voice(self, character_name: str, sprite_index: int, voice_file: str, voice_text: str, voice_type: str = "") -> Tuple[str, Optional[str]]:
         return upload_character_sprite_voice(self._target(), character_name, sprite_index, voice_file, voice_text, voice_type, voice_dir=VOICE_DIR)
@@ -199,19 +200,19 @@ class CharacterManager:
 
     def save_sprite_scale(self, name: str, scale: float) -> Any:
         if not name:
-            return "名称不能为空！", [c.name for c in self._get_characters()]
+            return err_tr("crud.common.name_empty"), [c.name for c in self._get_characters()]
         try:
             save_character_sprite_scale_op(self._target(), name, scale)
-            return "保存立绘缩放倍率成功"
+            return tr("crud.char.scale_saved")
         except CharacterProfileError as exc:
-            return str(exc)
+            return LocalizedErrorStr(exc)
 
     def load_characters_from_file(self) -> Tuple[str, List[List[str]]]:
         try:
             self._config_manager.reload()
-            return "人物设定已加载！", [[c.name, c.color, c.prompt_lang or ""] for c in self._get_characters()]
+            return tr("crud.char.loaded"), [[c.name, c.color, c.prompt_lang or ""] for c in self._get_characters()]
         except Exception as exc:
-            return f"加载失败: {exc}", [[c.name, c.color, c.prompt_lang or ""] for c in self._get_characters()]
+            return err_tr("crud.common.load_failed", error=exc), [[c.name, c.color, c.prompt_lang or ""] for c in self._get_characters()]
 
     @staticmethod
     def _rename_relation_graph_owner(graph: RelationGraph, old_name: str, new_name: str) -> RelationGraph:
