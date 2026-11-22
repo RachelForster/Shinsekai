@@ -16,9 +16,13 @@ const PREVIEW_PLUGIN_SUBMIT_URL =
 function previewNormalizePluginKey(value: string | null | undefined) {
   return (value ?? "")
     .trim()
-    .replace(/\.git$/i, "")
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "");
+    .replace(/^git@github\.com:/i, "")
+    .replace(/^https?:\/\/github\.com\//i, "")
+    .replace(/^github\.com\//i, "")
+    .replace(/\.git$/i, "")
+    .replace(/[^\p{L}\p{N}]+/gu, "_")
+    .replace(/^_+|_+$/g, "");
 }
 
 function previewModuleToken(value: string | null | undefined) {
@@ -35,14 +39,14 @@ function previewModuleToken(value: string | null | undefined) {
 
 function previewPluginDirectory(entry: string, fallback: string) {
   const token = previewModuleToken(entry) || previewNormalizePluginKey(fallback) || "preview";
-  return `plugins/${token.replace(/[^A-Za-z0-9_]+/g, "_")}`;
+  return `plugins/${token.replace(/[^A-Za-z0-9_\u3040-\u30ff\u3400-\u9fff]+/g, "_")}`;
 }
 
 function previewCatalogKeys(plugin: PluginCatalogItem) {
   return new Set(
-    [plugin.id, plugin.name, plugin.displayName, plugin.repo, plugin.entry, previewModuleToken(plugin.entry)]
+    [plugin.id, plugin.name, plugin.repo, plugin.entry, previewModuleToken(plugin.entry)]
       .map(previewNormalizePluginKey)
-      .filter(Boolean),
+      .filter((key) => key.length >= 2),
   );
 }
 
@@ -50,7 +54,6 @@ function previewManifestKeys(plugin: PluginManifest) {
   return new Set(
     [
       plugin.id,
-      plugin.title,
       plugin.entry,
       plugin.directory?.split(/[\\/]/).filter(Boolean).at(-1),
       plugin.install?.repo,
@@ -58,13 +61,18 @@ function previewManifestKeys(plugin: PluginManifest) {
       previewModuleToken(plugin.entry),
     ]
       .map(previewNormalizePluginKey)
-      .filter(Boolean),
+      .filter((key) => key.length >= 2),
   );
 }
 
 function previewCatalogForSource(source: string, catalogItems: PluginCatalogItem[]) {
   const sourceKey = previewNormalizePluginKey(source);
-  return catalogItems.find((item) => previewCatalogKeys(item).has(sourceKey));
+  const rawLower = source.trim().toLowerCase();
+  return catalogItems.find(
+    (item) =>
+      previewCatalogKeys(item).has(sourceKey) ||
+      Boolean(rawLower && (item.displayName ?? "").trim().toLowerCase() === rawLower),
+  );
 }
 
 function previewUpsertPlugin(currentPlugins: PluginManifest[], plugin: PluginManifest, catalog?: PluginCatalogItem) {

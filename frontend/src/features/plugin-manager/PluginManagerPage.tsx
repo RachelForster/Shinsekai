@@ -47,7 +47,12 @@ import { PluginListControls, searchablePluginText, usePagedPluginList } from "./
 import { PluginPublisherDialog } from "./PluginPublisherDialog";
 import {
   catalogInstallSource,
+  findCatalogInstalledMatch,
+  findInstalledCatalogMatch,
   githubUrl,
+  installedPluginDescription,
+  installedPluginDisplayName,
+  installedPluginTechnicalName,
   pluginActionId,
   pluginHasManifestEntry,
   pluginInstallSource,
@@ -101,122 +106,12 @@ function parsePluginRouteReturnTo(value: unknown): PluginRouteReturnTo | null {
   };
 }
 
-function normalizePluginKey(value: string | null | undefined) {
-  return (value ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\/github\.com\//, "")
-    .replace(/\.git$/i, "")
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-}
-
-function moduleToken(value: string | null | undefined) {
-  const moduleName = (value ?? "").split(":", 1)[0] ?? "";
-  const parts = moduleName.split(".").filter(Boolean);
-  if (!parts.length) {
-    return "";
-  }
-  if (parts.at(-1) === "plugin" && parts.length > 1) {
-    return parts.at(-2) ?? "";
-  }
-  return parts.at(-1) ?? "";
-}
-
-function installedPluginKeys(plugin: PluginManifest) {
-  return new Set(
-    [
-      plugin.id,
-      plugin.title,
-      plugin.directory?.split(/[\\/]/).filter(Boolean).at(-1),
-      moduleToken(plugin.entry),
-      plugin.install?.sourceLabel,
-      plugin.install?.repo,
-      plugin.install?.entry,
-    ]
-      .map(normalizePluginKey)
-      .filter(Boolean),
-  );
-}
-
-function catalogPluginKeys(plugin: PluginCatalogItem) {
-  return new Set(
-    [
-      plugin.id,
-      plugin.name,
-      plugin.displayName,
-      (plugin as PluginCatalogItem & { display_name?: string }).display_name,
-      plugin.repo,
-      moduleToken(plugin.entry),
-    ]
-      .map(normalizePluginKey)
-      .filter(Boolean),
-  );
-}
-
-function findInstalledCatalogMatch(plugin: PluginManifest, catalogItems: PluginCatalogItem[]) {
-  const installedKeys = installedPluginKeys(plugin);
-  return catalogItems.find((item) => {
-    for (const key of catalogPluginKeys(item)) {
-      if (installedKeys.has(key)) {
-        return true;
-      }
-    }
-    return false;
-  });
-}
-
-function findCatalogInstalledMatch(catalog: PluginCatalogItem, plugins: PluginManifest[]) {
-  const catalogKeys = catalogPluginKeys(catalog);
-  return plugins.find((plugin) => {
-    for (const key of installedPluginKeys(plugin)) {
-      if (catalogKeys.has(key)) {
-        return true;
-      }
-    }
-    return false;
-  });
-}
-
-function catalogDisplayName(plugin: PluginCatalogItem | null | undefined) {
-  const raw = plugin as (PluginCatalogItem & { display_name?: string; title?: string }) | null | undefined;
-  return plugin?.displayName || raw?.display_name || raw?.title || plugin?.name || "";
-}
-
-function installedDisplayName(plugin: PluginManifest, catalog: PluginCatalogItem | undefined) {
-  const catalogName = catalogDisplayName(catalog);
-  if (catalogName && catalogName !== catalog?.name) {
-    return catalogName;
-  }
-  if (plugin.title && plugin.title !== plugin.id) {
-    return plugin.title;
-  }
-  return catalogName || plugin.title || plugin.id;
-}
-
-function installedTechnicalName(plugin: PluginManifest, catalog: PluginCatalogItem | undefined, displayName: string) {
-  if (catalog?.name && catalog.name !== displayName) {
-    return catalog.name;
-  }
-  if (plugin.id && plugin.id !== displayName) {
-    return plugin.id;
-  }
-  if (plugin.title && plugin.title !== displayName) {
-    return plugin.title;
-  }
-  return "";
-}
-
 function pluginRouteIntentKey(
   location: Pick<ReturnType<typeof useLocation>, "hash" | "key" | "pathname" | "search">,
   pluginId: string,
   pageId = "",
 ) {
   return `${location.key}:${location.pathname}${location.search}${location.hash}:${pluginId}:${pageId}`;
-}
-
-function catalogDescription(plugin: PluginCatalogItem | null | undefined) {
-  return plugin?.shortDescription || plugin?.description || "";
 }
 
 function versionLabel(value: string | null | undefined) {
@@ -692,12 +587,9 @@ export function PluginManagerPage() {
               {installedPlugins.pagedItems.map((plugin) => {
                 const loaded = plugin.loaded !== false;
                 const catalog = findInstalledCatalogMatch(plugin, catalogItems);
-                const displayTitle = installedDisplayName(plugin, catalog);
-                const secondaryTitle = installedTechnicalName(plugin, catalog, displayTitle);
-                const description =
-                  !loaded && plugin.enabled
-                    ? plugin.loadError || t("plugin.loadError.unavailable")
-                    : catalogDescription(catalog) || plugin.description;
+                const displayTitle = installedPluginDisplayName(plugin, catalog);
+                const secondaryTitle = installedPluginTechnicalName(plugin, catalog, displayTitle);
+                const description = installedPluginDescription(plugin, catalog, t("plugin.loadError.unavailable"));
                 const docsUrl = catalog?.readmeUrl || (catalog?.repo ? githubUrl(catalog.repo) : "");
                 const authorUrl = catalog?.socialLink?.trim() || "";
                 const updateSource = catalog ? catalogInstallSource(catalog) : "";
@@ -843,7 +735,11 @@ export function PluginManagerPage() {
       )}
 
       <AlertDialog
-        body={t("plugin.uninstall.confirmBody", { title: pendingUninstall?.title ?? "" })}
+        body={t("plugin.uninstall.confirmBody", {
+          title: pendingUninstall
+            ? installedPluginDisplayName(pendingUninstall, findInstalledCatalogMatch(pendingUninstall, catalogItems))
+            : "",
+        })}
         cancelLabel={t("common.cancel")}
         closeLabel={t("common.close")}
         confirmLabel={t("plugin.action.uninstall")}
