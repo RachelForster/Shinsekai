@@ -1,18 +1,5 @@
-"""An image effect and its optional audio are resolved as one resource."""
+"""Backward-compatible re-exports; canonical definitions live in ``core.effects.assets``."""
 
-from dataclasses import dataclass
+from core.effects.assets import AmbientEffectAsset, ImageEffectAsset
 
-
-@dataclass(frozen=True)
-class ImageEffectAsset:
-    image_path: str
-    audio_path: str = ""
-
-
-@dataclass(frozen=True)
-class AmbientEffectAsset:
-    """A persistent full-screen effect with an optional looping soundtrack."""
-
-    path: str
-    audio_path: str = ""
-    layer: str = "back"
+__all__ = ["AmbientEffectAsset", "ImageEffectAsset"]

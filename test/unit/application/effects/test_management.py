@@ -501,3 +501,102 @@ def test_upload_keeps_existing_blank_rows_and_handles_missing_trailing_newline(t
     assert lines[1].endswith("：")
     assert lines[2].endswith("：third：detail")
     assert lines[3].endswith("：")
+
+
+def test_category_subdirectories_and_cross_reference_delete_guard(tmp_path: Path) -> None:
+    audio = tmp_path / "loop.wav"
+    image = tmp_path / "flash.png"
+    ambient = tmp_path / "rain.webm"
+    audio.write_bytes(b"loop-audio")
+    image.write_bytes(b"flash-image")
+    ambient.write_bytes(b"rain-webm")
+
+    use_case, _ = _use_case(tmp_path, (_effect("FX"),), roots=(tmp_path,))
+    FX_audio = _execute(use_case, EffectOperation.UPLOAD_AUDIO, name="FX", paths=[str(audio)])
+    FX_image = _execute(use_case, EffectOperation.UPLOAD_IMAGES, name="FX", paths=[str(image)])
+    FX_ambient = _execute(use_case, EffectOperation.UPLOAD_AMBIENT, name="FX", paths=[str(ambient)])
+
+    assert Path(FX_audio.audio_list[0]).parent.name == "audio"
+    assert Path(FX_image.image_list[0]).parent.name == "images"
+    assert Path(FX_ambient.ambient_list[0]).parent.name == "ambient"
+
+    # Point ambient_audio_list[0] to the same managed file already referenced by audio_list[0].
+    shared_path = FX_audio.audio_list[0]
+    FX_ambient.ambient_audio_list[:] = [shared_path]
+    after_del = _execute(use_case, EffectOperation.DELETE_AMBIENT, name="FX", index=0)
+    assert after_del.ambient_list == []
+    assert Path(shared_path).is_file()
+
+    after_audio_del = _execute(use_case, EffectOperation.DELETE_AUDIO, name="FX", index=0)
+    assert after_audio_del.audio_list == []
+    assert not Path(shared_path).exists()
+
+
+def test_save_guards_ambient_layers_and_serializes_concurrent_mutations(tmp_path: Path) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+    from application.runtime.stores import build_app_stores
+
+    rain = tmp_path / "rain.webm"
+    fog = tmp_path / "fog.png"
+    rain.write_bytes(b"rain-webm")
+    fog.write_bytes(b"fog-png")
+
+    stores = build_app_stores(tmp_path, bind_globals=False)
+    try:
+        uc = EffectUseCase(
+            None,
+            effects=stores.effects,
+            project_root=tmp_path,
+            local_file_access_roots=(tmp_path,),
+        )
+        created = _execute(uc, EffectOperation.SAVE, name="Weather")
+        _execute(uc, EffectOperation.UPLOAD_AMBIENT, name="Weather", paths=[str(rain), str(fog)])
+        _execute(
+            uc,
+            EffectOperation.SAVE_AMBIENT_LAYERS,
+            name="Weather",
+            layers=["front", "back"],
+        )
+
+        # Stale autosave payload with mismatched ambient_layers length must not clobber layers.
+        stale_saved = _execute(
+            uc,
+            EffectOperation.SAVE,
+            id=created.id,
+            originalName="Weather",
+            effect={
+                "id": created.id,
+                "name": "Weather",
+                "prompt_text": "drizzle",
+                "ambient_layers": [],
+            },
+        )
+        assert stale_saved.prompt_text == "drizzle"
+        assert stale_saved.ambient_layers == ["front", "back"]
+
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            f_layer = pool.submit(
+                _execute,
+                uc,
+                EffectOperation.SAVE_AMBIENT_LAYERS,
+                name="Weather",
+                layers=["front", "front"],
+            )
+            f_save = pool.submit(
+                _execute,
+                uc,
+                EffectOperation.SAVE,
+                id=created.id,
+                originalName="Weather",
+                effect={"id": created.id, "name": "Weather", "prompt_text": "storm"},
+            )
+            f_layer.result()
+            f_save.result()
+
+        final = stores.effects.get_by_name("Weather")
+        assert final is not None
+        assert final.prompt_text == "storm"
+        assert len(final.ambient_list or ()) == 2
+        assert final.ambient_layers == ["front", "front"]
+    finally:
+        stores.close()

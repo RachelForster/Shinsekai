@@ -2,7 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, FolderInput, FolderOutput, Music, Palette, Plus, Save, Trash2, Upload, X } from "lucide-react";
 
-import { DEFAULT_CHARACTER_COLOR, TAG_PREFIX_AMBIENT, TAG_PREFIX_EFFECT, TAG_PREFIX_IMAGE } from "../../shared/constants";
+import {
+  DEFAULT_CHARACTER_COLOR,
+  TAG_PREFIX_AMBIENT,
+  TAG_PREFIX_EFFECT,
+  TAG_PREFIX_IMAGE,
+} from "../../shared/constants";
 
 import {
   effectsQueryKey,
@@ -48,6 +53,7 @@ import {
 } from "../../shared/ui";
 import { AudioPlayer } from "../../shared/ui/AudioPlayer";
 import { fileUrl } from "../../entities/files/repository";
+import { AmbientEffectSection } from "./AmbientEffectSection";
 import "./EffectManagerPage.css";
 
 const EFFECT_RESOURCES_URL = "https://shinsekai.end0rph1n.icu/resources";
@@ -1360,108 +1366,23 @@ export function EffectManagerPage() {
         </section>
 
         {/* Persistent full-screen ambience */}
-        <section className="section page-section-anchor" id="effect-ambient">
-          <div className="section__header">
-            <h2 className="section__title">{t("effect.section.ambient")}</h2>
-            <div className="section__actions">
-              <AsyncButton
-                icon={<Upload aria-hidden className="button__icon" />}
-                loading={saveMutation.isPending || ambientUploadMutation.isPending}
-                onClick={handleUploadAmbient}
-              >
-                {t("effect.asset.uploadAmbient")}
-              </AsyncButton>
-              <AsyncButton
-                icon={<Save aria-hidden className="button__icon" />}
-                loading={ambientTagsSaveMutation.isPending}
-                onClick={() => {
-                  if (!currentEffectName) {
-                    showToast({
-                      kind: "error",
-                      message: t("effect.validation.nameRequired"),
-                      title: t("effect.action.saveAmbientTags"),
-                    });
-                    return;
-                  }
-                  ambientTagsSaveMutation.mutate();
-                }}
-                variant="ghost"
-              >
-                {t("effect.action.saveAmbientTags")}
-              </AsyncButton>
-            </div>
-          </div>
-          {draft.ambient_list.length === 0 ? (
-            <EmptyState title={t("effect.asset.emptyAmbient")} />
-          ) : (
-            <div className="effect-image-list">
-              {draft.ambient_list.map((path, index) => {
-                const audioPath = draft.ambient_audio_list[index] ?? "";
-                const layer = draft.ambient_layers[index] === "front" ? "front" : "back";
-                const isVideo = /\.(?:m4v|mov|mp4|webm)$/i.test(path);
-                return (
-                  <div className="effect-image-row effect-image-row--ambient" key={`${path}-${index}`}>
-                    <figure className="effect-image-row__image">
-                      {isVideo ? (
-                        <video aria-label={baseName(path)} autoPlay loop muted playsInline src={fileUrl(path)} />
-                      ) : (
-                        <img alt={ambientRowTags[index] || baseName(path)} src={fileUrl(path)} />
-                      )}
-                      <figcaption title={path}>{baseName(path)}</figcaption>
-                    </figure>
-                    <div className="effect-image-row__controls">
-                      <TextInput
-                        onChange={(event) => updateAmbientRowTag(index, event.target.value)}
-                        value={ambientRowTags[index] ?? ""}
-                      />
-                      <AsyncButton
-                        icon={<Save aria-hidden className="button__icon" />}
-                        loading={ambientTagsSaveMutation.isPending}
-                        onClick={() => ambientTagsSaveMutation.mutate()}
-                        variant="ghost"
-                      >
-                        {t("common.save")}
-                      </AsyncButton>
-                      <Select
-                        aria-label={t("effect.ambient.layer")}
-                        onChange={(event) => updateAmbientLayer(index, event.target.value)}
-                        value={layer}
-                      >
-                        <option value="back">{t("effect.ambient.layerBack")}</option>
-                        <option value="front">{t("effect.ambient.layerFront")}</option>
-                      </Select>
-                      <Button
-                        icon={<Music aria-hidden className="button__icon" />}
-                        onClick={() => setAmbientAudioTargetIndex(index)}
-                        variant="ghost"
-                      >
-                        {t("effect.asset.insertAudio")}
-                      </Button>
-                      {audioPath ? (
-                        <span className="effect-image-row__audio" title={audioPath}>
-                          <small>{baseName(audioPath)}</small>
-                          <AudioPlayer
-                            compact
-                            label={`${t("effect.asset.preview")} ${baseName(audioPath)}`}
-                            src={fileUrl(audioPath)}
-                          />
-                        </span>
-                      ) : null}
-                      <AsyncButton
-                        icon={<Trash2 aria-hidden className="button__icon" />}
-                        loading={ambientDeleteMutation.isPending}
-                        onClick={() => ambientDeleteMutation.mutate(index)}
-                        variant="danger"
-                      >
-                        {t("common.delete")}
-                      </AsyncButton>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
+        <AmbientEffectSection
+          ambientAudioList={draft.ambient_audio_list}
+          ambientLayers={draft.ambient_layers}
+          ambientList={draft.ambient_list}
+          ambientRowTags={ambientRowTags}
+          currentEffectName={currentEffectName}
+          deletingAmbient={ambientDeleteMutation.isPending}
+          onDeleteAmbient={(index) => ambientDeleteMutation.mutate(index)}
+          onSaveAmbientTags={() => ambientTagsSaveMutation.mutate()}
+          onSelectAmbientAudio={(index) => setAmbientAudioTargetIndex(index)}
+          onUpdateAmbientLayer={updateAmbientLayer}
+          onUpdateAmbientRowTag={updateAmbientRowTag}
+          onUploadAmbient={handleUploadAmbient}
+          savingEffect={saveMutation.isPending}
+          savingTags={ambientTagsSaveMutation.isPending}
+          uploadingAmbient={ambientUploadMutation.isPending}
+        />
 
         {/* Audio section */}
         <section className="section page-section-anchor" id="effect-audio">

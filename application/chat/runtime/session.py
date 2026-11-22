@@ -12,7 +12,7 @@ import threading
 import time
 from typing import Any, Protocol
 
-from core.media.effect_image import AmbientEffectAsset, ImageEffectAsset
+from core.effects import AmbientEffectAsset, ImageEffectAsset
 from application.chat.capabilities import (
     PluginLoadedCapabilityContext,
     SessionCapabilitySet,

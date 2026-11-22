@@ -13,7 +13,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterator, List, Optional
 
-from core.media.effect_image import AmbientEffectAsset, ImageEffectAsset
+from core.effects import AmbientEffectAsset, ImageEffectAsset
 from core.messaging.chat_turn_service import ChatTurnService
 from application.runtime.services import ApplicationServices
 from sdk.agent import AgentRequester, NullAgentRequester

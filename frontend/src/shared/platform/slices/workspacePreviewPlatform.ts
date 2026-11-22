@@ -1,5 +1,11 @@
 import { numberedTags, tagContents } from "../../assets/assetText";
-import { TAG_PREFIX_AMBIENT, TAG_PREFIX_EFFECT, TAG_PREFIX_IMAGE, TAG_PREFIX_MUSIC, TAG_PREFIX_SCENE } from "../../constants";
+import {
+  TAG_PREFIX_AMBIENT,
+  TAG_PREFIX_EFFECT,
+  TAG_PREFIX_IMAGE,
+  TAG_PREFIX_MUSIC,
+  TAG_PREFIX_SCENE,
+} from "../../constants";
 import { translateRuntimeMessage } from "../../i18n/runtimeLanguage";
 import { DEFAULT_PLAYER_OPTIONS } from "../../playerCharacterOptions";
 import { PlatformRequestError } from "../errors";
@@ -344,9 +350,10 @@ export function createEffectsPreviewPlatform(ctx: BrowserPreviewContext): Effect
     list: () => delay(clone(config.effect_list)),
     async save(effect, originalName) {
       const mergeExistingEffect = (target: Effect) => {
-        const layers = Array.isArray(effect.ambient_layers) && effect.ambient_layers.length === target.ambient_list.length
-          ? effect.ambient_layers
-          : target.ambient_layers;
+        const layers =
+          Array.isArray(effect.ambient_layers) && effect.ambient_layers.length === target.ambient_list.length
+            ? effect.ambient_layers
+            : target.ambient_layers;
         Object.assign(target, effect, {
           ...(target.id ? { id: target.id } : {}),
           audio_list: target.audio_list,

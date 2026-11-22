@@ -5,8 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Protocol, Sequence
 
-from core.media.effect_bindings import effect_modes, parse_effect_bindings
-from core.media.effect_image import AmbientEffectAsset, ImageEffectAsset
+from core.effects import (
+    AmbientEffectAsset,
+    ImageEffectAsset,
+    effect_modes,
+    parse_effect_bindings,
+)
 
 
 @dataclass(frozen=True)

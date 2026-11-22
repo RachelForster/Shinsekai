@@ -363,6 +363,7 @@ export interface ChatSnapshot {
 export type ChatPresentation = Partial<
   Pick<
     ChatSnapshot,
+    | "ambientEffects"
     | "backgroundPath"
     | "bgmPath"
     | "cgPath"

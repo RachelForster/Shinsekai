@@ -15,8 +15,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, MutableSequence, Optional
 if TYPE_CHECKING:
     from application.runtime.event_sink import ChatEventSink
 
-from core.media.effect_bindings import effect_modes
-from core.media.effect_keywords import match_effect_label
+from core.effects import effect_modes, match_effect_label, parse_ambient_directive
 from core.messaging.stat_payload import parse_stat_payload
 from core.paths import resource_path
 from core.sprite.selection import resolve_runtime_path, sprite_entry_path
@@ -717,6 +716,100 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         self._ambient_aliases.clear()
         self._emit({"type": "ambient.stop-all"})
 
+    @staticmethod
+    def _match_ambient_asset(
+        keyword: str,
+        ambient_map: dict[str, Any],
+        *,
+        allow_fuzzy: bool = True,
+    ) -> tuple[str, Any | None]:
+        keyword_key = str(keyword or "").strip().casefold()
+        if keyword_key in ambient_map:
+            return keyword_key, ambient_map[keyword_key]
+        if allow_fuzzy:
+            matched = match_effect_label(keyword, tuple(ambient_map))
+            if matched is not None:
+                return matched, ambient_map[matched]
+        return "", None
+
+    def restore_ambient_directives(self, directives: Any) -> None:
+        """Fold persisted ambient effect directives and emit only the surviving active effects."""
+        ambient_map: dict[str, Any] = {}
+        try:
+            from application.runtime.context import get_app_runtime
+
+            ambient_map = getattr(get_app_runtime(), "ambient_effect_keyword_map", {}) or {}
+        except Exception:
+            ambient_map = {}
+
+        active: dict[str, dict[str, Any]] = {}
+        aliases: dict[str, str] = {}
+        for directive in directives or ():
+            parsed = parse_ambient_directive(directive)
+            if parsed is None:
+                continue
+            mode, keyword = parsed
+            if mode == "ambient-stop-all":
+                active.clear()
+                aliases.clear()
+                continue
+            if not keyword:
+                continue
+            matched_key, asset = self._match_ambient_asset(keyword, ambient_map)
+            if mode == "ambient-stop":
+                stop_key = matched_key
+                if not stop_key or (stop_key not in active and stop_key not in aliases):
+                    stop_key = self._find_running_effect_key(keyword, (*active, *aliases))
+                if not stop_key:
+                    continue
+                canonical = aliases.pop(stop_key, stop_key)
+                active.pop(canonical, None)
+                for alias in [k for k, target in aliases.items() if target == canonical]:
+                    aliases.pop(alias, None)
+                continue
+            if asset is None:
+                continue
+            raw_path = str(getattr(asset, "path", "") or "").strip()
+            if not raw_path:
+                continue
+            resolved_path = resource_path(raw_path) if Path(raw_path).is_absolute() else raw_path
+            key = matched_key or keyword
+            canonical = aliases.get(key, key)
+            current = active.get(canonical)
+            if current is not None and not self._same_loop_asset(
+                str(current.get("path") or ""), str(resolved_path)
+            ):
+                active.pop(canonical, None)
+                canonical = key
+                current = None
+            if current is None:
+                for existing_key, existing_state in active.items():
+                    if self._same_loop_asset(
+                        str(existing_state.get("path") or ""), str(resolved_path)
+                    ):
+                        canonical = existing_key
+                        current = existing_state
+                        break
+            layer = (
+                "front"
+                if mode == "expose"
+                else "back"
+                if mode == "shelter"
+                else ("front" if str(getattr(asset, "layer", "back") or "").strip().lower() == "front" else "back")
+            )
+            if current is not None:
+                if canonical != key:
+                    aliases[key] = canonical
+                current["layer"] = layer
+                current["asset"] = asset
+            else:
+                aliases.pop(key, None)
+                active[key] = {"asset": asset, "layer": layer, "path": str(resolved_path)}
+
+        self.stop_all_ambient_effects()
+        for key, entry in active.items():
+            self.start_ambient_effect(key, entry["asset"], layer=entry["layer"])
+
     def post_session_closed(self, reason: str = "聊天会话已结束。") -> None:
         self._emit({"type": "session.closed", "reason": str(reason or "聊天会话已结束。")})
 
@@ -737,7 +830,8 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
     def _apply_player_portrait_for_dialog(self, name: str, speech: str) -> None:
         from core.messaging.dialog_tokens import NARR_ALIASES, normalize_character_name
         player = str(getattr(self, "player_character", "") or "")
-        compact = lambda value: re.sub(r'\s+', '', str(value or ''))
+        def compact(value: object) -> str:
+            return re.sub(r'\s+', '', str(value or ''))
         relevant = bool(player) and (
             compact(name) == compact(player) or
             (normalize_character_name(name) in NARR_ALIASES and compact(player) in compact(speech))
@@ -970,40 +1064,31 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         if raw.upper() == "LEAVE":
             return True
 
-        if raw.upper() == "AMBIENT-STOP-ALL":
-            self.stop_all_ambient_effects()
-            return True
-
-        mode = "once"
-        if raw.startswith("ambient-stop:"):
-            mode = "ambient-stop"
-            raw = raw[13:]
-        elif raw.startswith("ambient:"):
-            mode = "ambient"
-            raw = raw[8:]
-        elif raw.startswith("shelter:"):
-            mode = "shelter"
-            raw = raw[8:]
-        elif raw.startswith("expose:"):
-            mode = "expose"
-            raw = raw[7:]
-        elif raw.startswith("loop:"):
-            mode = "loop"
-            raw = raw[5:]
-        elif raw.startswith("stop:"):
-            mode = "stop"
-            raw = raw[5:]
-        else:
-            timing = "before"
-            if raw.startswith("before:"):
-                raw = raw[7:]
-            elif raw.startswith("after:"):
-                timing = "after"
-                raw = raw[6:]
-            if (timing == "before" and after_dialog) or (
-                timing == "after" and not after_dialog
-            ):
+        ambient_directive = parse_ambient_directive(raw)
+        if ambient_directive is not None:
+            mode, raw = ambient_directive
+            if mode == "ambient-stop-all":
+                self.stop_all_ambient_effects()
                 return True
+        else:
+            mode = "once"
+            if raw.startswith("loop:"):
+                mode = "loop"
+                raw = raw[5:]
+            elif raw.startswith("stop:"):
+                mode = "stop"
+                raw = raw[5:]
+            else:
+                timing = "before"
+                if raw.startswith("before:"):
+                    raw = raw[7:]
+                elif raw.startswith("after:"):
+                    timing = "after"
+                    raw = raw[6:]
+                if (timing == "before" and after_dialog) or (
+                    timing == "after" and not after_dialog
+                ):
+                    return True
 
         keyword = raw.strip()
         if not keyword:
@@ -1056,14 +1141,11 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
             image_path = image.image_path
             image_audio_path = image.audio_path
 
-        if exact_ambient:
-            ambient_key = keyword_key
-            ambient_asset = ambient_map[keyword_key]
-        elif not has_exact_label:
-            matched_ambient = match_effect_label(keyword, tuple(ambient_map))
-            if matched_ambient is not None:
-                ambient_key = matched_ambient
-                ambient_asset = ambient_map[matched_ambient]
+        ambient_key, ambient_asset = self._match_ambient_asset(
+            keyword,
+            ambient_map,
+            allow_fuzzy=not has_exact_label,
+        )
 
         if image_audio_path:
             audio_path = image_audio_path

@@ -516,3 +516,50 @@ def test_static_sprite_updates_and_initial_path_propagate_portrait_crop_into_sna
         presenter.update_sprite_from_path(str(sprite_one), character_name="Mio")
         assert sink.events[-1]["portraitCrop"] == {"x": 0.4, "y": 0.18, "zoom": 1.8}
 
+
+def test_restore_session_replays_net_active_ambient_effects_and_layers(tmp_path) -> None:
+    import json
+    from types import SimpleNamespace
+    from application.chat.presentation.restore import restore_session_presentation
+    from core.effects import AmbientEffectAsset
+
+    rain = tmp_path / "rain.webm"
+    fog = tmp_path / "fog.png"
+    rain.write_bytes(b"rain")
+    fog.write_bytes(b"fog")
+
+    sink = _Sink()
+    presenter = StreamingUIUpdateManager(sink, resource_urls=_Urls())
+    runtime = SimpleNamespace(
+        ambient_effect_keyword_map={
+            "rain": AmbientEffectAsset(path=str(rain), audio_path="", layer="back"),
+            "fog": AmbientEffectAsset(path=str(fog), audio_path="", layer="back"),
+        }
+    )
+    messages = [
+        {"role": "assistant", "content": json.dumps({"dialog": [
+            {"character_name": "NARR", "speech": "rain starts", "sprite": "-1", "effect": "ambient:rain"},
+            {"character_name": "NARR", "speech": "fog starts", "sprite": "-1", "effect": "ambient:fog"},
+        ]})},
+        {"role": "assistant", "content": json.dumps({"dialog": [
+            {"character_name": "NARR", "speech": "rain clears", "sprite": "-1", "effect": "ambient-stop:rain"},
+            {"character_name": "Mio", "speech": "into the mist", "sprite": "0", "effect": "expose:fog"},
+        ]})},
+    ]
+    cfg = SimpleNamespace(config=SimpleNamespace(system_config=SimpleNamespace(bgm_path="", background_path="")))
+
+    with patch("application.runtime.context.get_app_runtime", return_value=runtime):
+        restore_session_presentation(
+            messages,
+            presentation_queue=SimpleNamespace(put=lambda _msg: None),
+            presenter=presenter,
+            config=cfg,
+            tr_i18n=lambda key, **_kwargs: key,
+        )
+
+    ambient_events = [e for e in sink.events if str(e.get("type", "")).startswith("ambient.")]
+    assert len(ambient_events) == 1
+    assert ambient_events[0]["type"] == "ambient.start"
+    assert ambient_events[0]["key"] == "fog"
+    assert ambient_events[0]["layer"] == "front"
+
