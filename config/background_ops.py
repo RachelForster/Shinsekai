@@ -210,6 +210,68 @@ def _sprite_path(sprite: Sprite | dict[str, Any]) -> str:
     return sprite.path if isinstance(sprite, Sprite) else str(sprite.get("path", "") or "")
 
 
+def _allocate_unique_background_prefix(
+    requested_prefix: str,
+    existing_backgrounds: list[Background],
+) -> str:
+    used = {
+        str(getattr(item, "sprite_prefix", "") or "").strip().lower()
+        for item in existing_backgrounds
+        if str(getattr(item, "sprite_prefix", "") or "").strip()
+    }
+    cleaned = str(requested_prefix or "").strip()
+    base = cleaned if cleaned and cleaned.lower() != "temp" else ""
+    if base:
+        if base.lower() not in used:
+            return base
+        suffix = 2
+        while f"{base}_{suffix}".lower() in used:
+            suffix += 1
+        return f"{base}_{suffix}"
+    if cleaned.lower() == "temp" and "temp" not in used:
+        return "temp"
+    index = 1
+    while f"bg_{index}" in used:
+        index += 1
+    return f"bg_{index}"
+
+
+def _other_backgrounds_sharing_prefix(
+    target: BackgroundPersistenceTarget,
+    sprite_prefix: str,
+    *,
+    exclude_id: str | None = None,
+    exclude_name: str = "",
+) -> list[Background]:
+    normalized = str(sprite_prefix or "").strip().lower()
+    if not normalized:
+        return []
+    others: list[Background] = []
+    for item in target.list_all():
+        if exclude_id and getattr(item, "id", None) == exclude_id:
+            continue
+        if exclude_name and item.name == exclude_name:
+            continue
+        if str(getattr(item, "sprite_prefix", "") or "").strip().lower() == normalized:
+            others.append(item)
+    return others
+
+
+def _unlink_unshared_files(paths: list[str], retained_paths: set[str]) -> None:
+    retained_norm = {os.path.normcase(os.path.abspath(p)) for p in retained_paths if p}
+    for raw in paths:
+        if not raw:
+            continue
+        norm = os.path.normcase(os.path.abspath(raw))
+        if norm in retained_norm:
+            continue
+        if os.path.isfile(raw):
+            try:
+                os.remove(raw)
+            except OSError:
+                pass
+
+
 @_with_background_lock
 def save_background_patch(
     target: BackgroundPersistenceTarget,
@@ -248,9 +310,19 @@ def save_background_patch(
                 continue
             merged[key] = value
         raw_prefix = patch["sprite_prefix"] if "sprite_prefix" in patch else existing.sprite_prefix
+        next_prefix = str(raw_prefix or "temp").strip() or "temp"
+        existing_prefix = str(existing.sprite_prefix or "").strip()
+        if next_prefix.lower() != existing_prefix.lower():
+            if _other_backgrounds_sharing_prefix(
+                target,
+                next_prefix,
+                exclude_id=getattr(existing, "id", None),
+                exclude_name=existing.name,
+            ):
+                raise BackgroundProfileError(f"目录名「{next_prefix}」已被其他背景组使用！")
         merged["id"] = existing.id
         merged["name"] = raw_name
-        merged["sprite_prefix"] = str(raw_prefix or "temp").strip() or "temp"
+        merged["sprite_prefix"] = next_prefix
         validated = Background.model_validate(merged)
         renamed_from = existing.name if existing.name != validated.name else None
         target.save_background(validated)
@@ -262,7 +334,10 @@ def save_background_patch(
         if key not in _PROTECTED_BACKGROUND_FIELDS
     }
     merged["name"] = raw_name
-    merged["sprite_prefix"] = str(patch.get("sprite_prefix") or "temp").strip() or "temp"
+    merged["sprite_prefix"] = _allocate_unique_background_prefix(
+        str(patch.get("sprite_prefix") or ""),
+        list(target.list_all()),
+    )
     merged["sprites"] = []
     merged["bgm_list"] = []
     validated = Background.model_validate(merged)
@@ -290,15 +365,27 @@ def delete_background_and_assets(
     if not target.delete_background_record(background):
         return f"找不到背景组: {name}", current_names
 
-    new_names = [b.name for b in target.list_all()]
+    remaining = list(target.list_all())
+    new_names = [b.name for b in remaining]
     sprite_prefix = str(background.sprite_prefix or "").strip()
     if not sprite_prefix:
         return "已删除背景组", new_names
 
-    for base_dir in (upload_dir, bgm_dir):
-        target_dir = Path(base_dir) / sprite_prefix
-        if target_dir.exists():
-            shutil.rmtree(target_dir)
+    sharing = [
+        item
+        for item in remaining
+        if str(getattr(item, "sprite_prefix", "") or "").strip().lower() == sprite_prefix.lower()
+    ]
+    if sharing:
+        retained_sprites = {_sprite_path(s) for item in sharing for s in (item.sprites or [])}
+        retained_bgms = {str(p) for item in sharing for p in (item.bgm_list or []) if p}
+        _unlink_unshared_files([_sprite_path(s) for s in (background.sprites or [])], retained_sprites)
+        _unlink_unshared_files([str(p) for p in (background.bgm_list or []) if p], retained_bgms)
+    else:
+        for base_dir in (upload_dir, bgm_dir):
+            target_dir = Path(base_dir) / sprite_prefix
+            if target_dir.exists():
+                shutil.rmtree(target_dir)
     return f"背景组 {name} 已删除！", new_names
 
 
@@ -365,9 +452,19 @@ def delete_all_background_sprites(
     if not background:
         return f"找不到背景组: {background_name}", [], ""
 
-    bg_dir = os.path.join(str(upload_dir), background.sprite_prefix)
-    if os.path.exists(bg_dir):
-        shutil.rmtree(bg_dir)
+    sharing = _other_backgrounds_sharing_prefix(
+        target,
+        background.sprite_prefix,
+        exclude_id=getattr(background, "id", None),
+        exclude_name=background.name,
+    )
+    if sharing:
+        retained = {_sprite_path(s) for item in sharing for s in (item.sprites or [])}
+        _unlink_unshared_files([_sprite_path(s) for s in (background.sprites or [])], retained)
+    else:
+        bg_dir = os.path.join(str(upload_dir), background.sprite_prefix)
+        if os.path.exists(bg_dir):
+            shutil.rmtree(bg_dir)
 
     updated = background.model_copy(update={"sprites": [], "bg_tags": ""})
     target.save_background(updated)
@@ -497,9 +594,19 @@ def delete_all_background_bgms(
     if not background:
         return f"找不到背景组: {background_name}", [], ""
 
-    dest_dir = os.path.join(str(bgm_dir), background.sprite_prefix)
-    if os.path.exists(dest_dir):
-        shutil.rmtree(dest_dir)
+    sharing = _other_backgrounds_sharing_prefix(
+        target,
+        background.sprite_prefix,
+        exclude_id=getattr(background, "id", None),
+        exclude_name=background.name,
+    )
+    if sharing:
+        retained = {str(p) for item in sharing for p in (item.bgm_list or []) if p}
+        _unlink_unshared_files([str(p) for p in (background.bgm_list or []) if p], retained)
+    else:
+        dest_dir = os.path.join(str(bgm_dir), background.sprite_prefix)
+        if os.path.exists(dest_dir):
+            shutil.rmtree(dest_dir)
 
     updated = background.model_copy(update={"bgm_list": [], "bgm_tags": ""})
     target.save_background(updated)
