@@ -49,15 +49,53 @@ describe("CharacterBasicSection", () => {
     expect(props.onPronunciationTextChange).toHaveBeenCalledWith("Mio=miyo");
   });
 
-  it("exposes validation and destructive actions through the rendered UI", () => {
-    const { props } = renderSection();
+  it("exposes validation, inline identity confirm/cancel shortcuts, and destructive actions", () => {
+    const onConfirmName = vi.fn();
+    const onCancelName = vi.fn();
+    const props: Parameters<typeof CharacterBasicSection>[0] = {
+      colorPickerValue: "#ff66aa",
+      draft: {
+        ...createCharacter(),
+        color: "#ff66aa",
+        name: "Mio Renamed",
+        sprite_prefix: "mio",
+      },
+      nameDirty: true,
+      nameError: "",
+      onCancelName,
+      onChange: vi.fn(),
+      onColorInputRef: vi.fn(),
+      onConfirmName,
+      onDelete: vi.fn(),
+      onPickColor: vi.fn(),
+      onPronunciationTextChange: vi.fn(),
+      pronunciationText: "Mio=mio",
+    };
 
-    expect(screen.getByText("Name is required")).toBeInTheDocument();
+    const view = render(
+      <I18nProvider language="en">
+        <CharacterBasicSection {...props} />
+      </I18nProvider>,
+    );
+
+    const nameInput = screen.getByLabelText("Character name");
+    fireEvent.keyDown(nameInput, { key: "Enter" });
+    expect(onConfirmName).toHaveBeenCalledTimes(1);
+
+    fireEvent.keyDown(nameInput, { key: "Escape" });
+    expect(onCancelName).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Confirm: Character name" }));
+    expect(onConfirmName).toHaveBeenCalledTimes(2);
 
     fireEvent.click(screen.getByRole("button", { name: "Pick color" }));
     expect(props.onPickColor).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     expect(props.onDelete).toHaveBeenCalledTimes(1);
+    view.unmount();
+
+    renderSection();
+    expect(screen.getByText("Name is required")).toBeInTheDocument();
   });
 });

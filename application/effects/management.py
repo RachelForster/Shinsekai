@@ -145,6 +145,20 @@ class EffectUseCase:
         self.config_manager.save_effect_config()
         return self._effect_after_reload(effect.name)
 
+    def _effect_by_id_if_exists(self, effect_id: str, existing_effects: Sequence[Any]) -> Any | None:
+        if not effect_id:
+            return None
+        if self.effects is not None:
+            get_by_id = getattr(self.effects, "get", None)
+            if callable(get_by_id):
+                found = get_by_id(effect_id)
+                if found is not None:
+                    return found
+        return next(
+            (effect for effect in existing_effects if getattr(effect, "id", "") == effect_id),
+            None,
+        )
+
     def _save(self, payload: dict[str, Any]) -> Effect:
         raw_body = payload.get("effect", payload)
         if not isinstance(raw_body, Mapping):
@@ -154,19 +168,25 @@ class EffectUseCase:
         original_name = str(payload.get("originalName") or "").strip()
         if original_name:
             validate_effect_storage_name(original_name)
+        effect_id = str(payload.get("id") or body.get("id") or "").strip()
 
         existing_effects = (
             list(self.effects.list_all())
             if self.effects is not None
             else self.config_manager.config.effect_list
         )
-        if original_name:
+        original = self._effect_by_id_if_exists(effect_id, existing_effects)
+        if original is None and original_name:
             original = self._effect_by_name(original_name)
+
+        if original is not None:
             body["id"] = original.id
             remaining = [
                 effect
                 for effect in existing_effects
-                if effect.name.lower() != original_name.lower()
+                if effect is not original
+                and getattr(effect, "id", "") != original.id
+                and effect.name.lower() != original.name.lower()
             ]
             existing_names = {effect.name.lower() for effect in remaining}
             base_name = name
@@ -197,7 +217,22 @@ class EffectUseCase:
                 self._effect_dir(updated.name).mkdir(parents=True, exist_ok=True)
                 self._sync_config_manager()
                 return self._effect_by_name(updated.name)
-            existing_effects[:] = [*remaining, updated]
+            replaced = False
+            next_effects: list[Effect] = []
+            for effect in existing_effects:
+                if (
+                    effect is original
+                    or getattr(effect, "id", "") == original.id
+                    or effect.name.lower() == original.name.lower()
+                ):
+                    if not replaced:
+                        next_effects.append(updated)
+                        replaced = True
+                else:
+                    next_effects.append(effect)
+            if not replaced:
+                next_effects.append(updated)
+            existing_effects[:] = next_effects
         else:
             existing_match = next(
                 (eff for eff in existing_effects if eff.name.lower() == name.lower()),

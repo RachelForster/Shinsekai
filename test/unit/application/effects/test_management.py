@@ -90,6 +90,23 @@ def test_save_rename_resolves_collision_and_moves_managed_audio(tmp_path: Path) 
     assert manager.saved == 1
 
 
+def test_save_by_id_renames_in_place_without_original_name(tmp_path: Path) -> None:
+    first = _effect("First")
+    second = _effect("Second")
+    use_case, manager = _use_case(tmp_path, (first, second))
+
+    result = _execute(
+        use_case,
+        EffectOperation.SAVE,
+        id=first.id,
+        effect={"id": first.id, "name": "FirstRenamed", "color": "#abcdef"},
+    )
+
+    assert result.id == first.id
+    assert [effect.name for effect in manager.config.effect_list] == ["FirstRenamed", "Second"]
+    assert manager.saved == 1
+
+
 def test_save_and_delete_reject_storage_traversal(tmp_path: Path) -> None:
     use_case, manager = _use_case(tmp_path, (_effect("../outside"),))
     outside = tmp_path / "outside"

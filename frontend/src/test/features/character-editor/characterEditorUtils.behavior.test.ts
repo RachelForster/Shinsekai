@@ -25,7 +25,7 @@ describe("character editor utilities", () => {
       pronunciation_map: {},
       speech_speed: 1,
       speech_volume: 1,
-      sprite_prefix: "temp",
+      sprite_prefix: "char_1",
       sprite_scale: 1,
       sprites: [],
     });

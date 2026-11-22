@@ -370,8 +370,8 @@ describe("CharacterEditorPage", () => {
     renderPage();
 
     fireEvent.change(screen.getByLabelText("Character name"), { target: { value: "Sora" } });
-    fireEvent.change(screen.getByLabelText(/Upload directory name \(ASCII\)/), { target: { value: "sora" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(screen.getByLabelText(/Upload directory name \(ASCII\)/)).toHaveValue("sora");
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
 
     await waitFor(() =>
       expect(mockSaveCharacter).toHaveBeenCalledWith(
@@ -421,7 +421,7 @@ describe("CharacterEditorPage", () => {
     const nameInput = screen.getByLabelText("Character name");
     await waitFor(() => expect(nameInput).toHaveValue("Mika"));
     fireEvent.change(nameInput, { target: { value: "C" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm: Character name" }));
 
     await waitFor(() => expect(mockSaveCharacter).toHaveBeenCalledWith(expect.objectContaining({ name: "C" }), "Mika"));
     await waitFor(() =>
@@ -809,14 +809,14 @@ describe("CharacterEditorPage", () => {
     renderPage();
 
     const nameInput = await screen.findByLabelText("Character name");
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
     expect(await screen.findByText("Validation failed")).toBeInTheDocument();
     expect(mockSaveCharacter).not.toHaveBeenCalled();
 
     fireEvent.change(nameInput, { target: { value: "Sora" } });
     fireEvent.change(screen.getByLabelText(/Upload directory name \(ASCII\)/), { target: { value: "空" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(await screen.findByText(/Sprite directory must contain ASCII characters only/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    expect(await screen.findAllByText(/Sprite directory must contain ASCII characters only/)).not.toHaveLength(0);
 
     pickerState.paths = ["D:/new/sora.png"];
     fireEvent.click(screen.getByRole("button", { name: "Upload" }));
@@ -920,15 +920,14 @@ describe("CharacterEditorPage", () => {
     fireEvent.change(screen.getByLabelText("Character setting"), {
       target: { value: "Updated player bio" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(mockSaveCharacter).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mockSaveCharacter).toHaveBeenCalledTimes(1), { timeout: 2500 });
 
     // Built-in 自设 remains first in the character selector even after saving!
     fireEvent.click(screen.getByRole("combobox", { name: "Current character" }));
     const options = screen.getAllByRole("option");
     expect(options.map((option) => option.textContent)).toEqual(["自设", "Mika"]);
   });
-  it("saves a display name for the built-in persona under its original ID", async () => {
+  it("auto-saves a display name for the built-in persona under its original ID", async () => {
     const id = "自设";
     mockListCharacters.mockResolvedValue([
       { ...structuredClone(character), name: id, sprite_prefix: "__self__", is_builtin: true, undeletable: true },
@@ -938,14 +937,79 @@ describe("CharacterEditorPage", () => {
     expect(name).toBeEnabled();
     expect(screen.getByLabelText(/Upload directory name \(ASCII\)/)).toBeDisabled();
     fireEvent.change(name, { target: { value: "Robin" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
-    await waitFor(() =>
-      expect(mockSaveCharacter).toHaveBeenCalledWith(
-        expect.objectContaining({ name: id, display_name: "Robin", sprite_prefix: "__self__" }),
-        id,
-      ),
+    await waitFor(
+      () =>
+        expect(mockSaveCharacter).toHaveBeenCalledWith(
+          expect.objectContaining({ name: id, display_name: "Robin", sprite_prefix: "__self__" }),
+          id,
+        ),
+      { timeout: 2500 },
     );
     await waitFor(() => expect(screen.getByRole("combobox", { name: "Current character" })).toHaveTextContent("Robin"));
+  });
+
+  it("auto-saves non-identity edits using committed identity while keeping unconfirmed rename isolated", async () => {
+    mockListCharacters.mockResolvedValue([
+      { ...structuredClone(character), id: "char-mika" },
+      { ...structuredClone(character), id: "char-aki", name: "Aki", sprite_prefix: "aki" },
+    ]);
+    renderPage();
+
+    const nameInput = await screen.findByLabelText("Character name");
+    await waitFor(() => expect(nameInput).toHaveValue("Mika"));
+
+    // Editing name alone does not auto-save; it reveals inline Confirm/Cancel
+    fireEvent.change(nameInput, { target: { value: "HalfTypedName" } });
+    expect(screen.getByRole("button", { name: "Confirm: Character name" })).toBeInTheDocument();
+
+    // Editing character_setting auto-saves with committed name "Mika", keeping "HalfTypedName" local
+    fireEvent.change(screen.getByLabelText("Character setting"), {
+      target: { value: "Auto-saved student bio" },
+    });
+    await waitFor(
+      () =>
+        expect(mockSaveCharacter).toHaveBeenCalledWith(
+          expect.objectContaining({
+            id: "char-mika",
+            character_setting: "Auto-saved student bio",
+            name: "Mika",
+            sprite_prefix: "mika",
+          }),
+          "Mika",
+        ),
+      { timeout: 2500 },
+    );
+    expect(nameInput).toHaveValue("HalfTypedName");
+
+    // Escape cancels the unconfirmed rename back to "Mika"
+    fireEvent.keyDown(nameInput, { key: "Escape" });
+    expect(nameInput).toHaveValue("Mika");
+
+    // Flushing pending auto-save immediately when switching character
+    mockSaveCharacter.mockClear();
+    fireEvent.change(screen.getByLabelText("Character setting"), {
+      target: { value: "Flushed on switch" },
+    });
+    fireEvent.click(screen.getByRole("combobox", { name: "Current character" }));
+    fireEvent.click(screen.getByRole("option", { name: "Aki" }));
+    await waitFor(() =>
+      expect(mockSaveCharacter).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "char-mika",
+          character_setting: "Flushed on switch",
+          name: "Mika",
+        }),
+        "Mika",
+      ),
+    );
+
+    // Clicking New generates non-colliding sprite_prefix and Cancel returns to Aki
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    expect(screen.getByLabelText(/Upload directory name \(ASCII\)/)).toHaveValue("char_1");
+    fireEvent.change(screen.getByLabelText("Character name"), { target: { value: "星奈" } });
+    expect(screen.getByLabelText(/Upload directory name \(ASCII\)/)).toHaveValue("char_1");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.getByLabelText("Character name")).toHaveValue("Aki"));
   });
 });

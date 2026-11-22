@@ -200,24 +200,35 @@ export function createBackgroundsPreviewPlatform(ctx: BrowserPreviewContext): Ba
     },
     list: () => delay(config.background_list),
     async save(background, originalName) {
-      const index = config.background_list.findIndex((item) => item.name === (originalName || background.name));
+      const idIndex = background.id ? config.background_list.findIndex((item) => item.id === background.id) : -1;
+      const index =
+        idIndex >= 0
+          ? idIndex
+          : config.background_list.findIndex((item) => item.name === (originalName || background.name));
       if (index >= 0) {
         config.background_list[index] = {
           ...config.background_list[index],
+          ...(background.bg_tags !== undefined ? { bg_tags: background.bg_tags } : {}),
+          ...(background.bgm_tags !== undefined ? { bgm_tags: background.bgm_tags } : {}),
           name: background.name,
           sprite_prefix: background.sprite_prefix || "temp",
         };
       } else {
         config.background_list.push({
-          bg_tags: "",
-          bgm_list: [],
-          bgm_tags: "",
+          ...(background.id ? { id: background.id } : {}),
+          bg_tags: background.bg_tags ?? "",
+          bgm_list: background.bgm_list ?? [],
+          bgm_tags: background.bgm_tags ?? "",
           name: background.name,
           sprite_prefix: background.sprite_prefix || "temp",
-          sprites: [],
+          sprites: background.sprites ?? [],
         });
       }
-      return delay(config.background_list.find((item) => item.name === background.name) ?? background);
+      return delay(
+        (background.id ? config.background_list.find((item) => item.id === background.id) : undefined) ??
+          config.background_list.find((item) => item.name === background.name) ??
+          background,
+      );
     },
     async saveBgmTags(input) {
       const background = config.background_list.find((item) => item.name === input.name);
@@ -322,16 +333,21 @@ export function createEffectsPreviewPlatform(ctx: BrowserPreviewContext): Effect
     },
     list: () => delay(clone(config.effect_list)),
     async save(effect, originalName) {
+      const idMatch = effect.id ? config.effect_list.find((item) => item.id === effect.id) : undefined;
+      if (idMatch) {
+        Object.assign(idMatch, effect, { id: idMatch.id });
+        return delay(clone(idMatch));
+      }
       if (originalName && originalName !== effect.name) {
         const existing = config.effect_list.find((item) => item.name === originalName);
         if (existing) {
-          Object.assign(existing, effect);
+          Object.assign(existing, effect, existing.id ? { id: existing.id } : {});
           return delay(clone(existing));
         }
       }
       const existing = config.effect_list.find((item) => item.name === effect.name);
       if (existing) {
-        Object.assign(existing, effect);
+        Object.assign(existing, effect, existing.id ? { id: existing.id } : {});
         return delay(clone(existing));
       }
       config.effect_list = [...config.effect_list, clone(effect)];

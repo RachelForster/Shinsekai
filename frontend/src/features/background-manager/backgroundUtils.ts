@@ -1,4 +1,5 @@
 import type { Background } from "../../entities/config/types";
+import { suggestUniqueSpritePrefix } from "../../shared/assets/spritePrefix";
 import type { MessageKey } from "../../shared/i18n";
 
 export type BackgroundDeleteTarget =
@@ -35,15 +36,47 @@ interface BackgroundDeleteActions {
 
 type BackgroundTranslate = (key: MessageKey, values?: Record<string, number | string>) => string;
 
-export function createBackground(): Background {
+export function createBackground(existingPrefixes: Iterable<string> = []): Background {
   return {
     bg_tags: "",
     bgm_list: [],
     bgm_tags: "",
     name: "",
-    sprite_prefix: "temp",
+    sprite_prefix: suggestUniqueSpritePrefix("", existingPrefixes, "bg"),
     sprites: [],
   };
+}
+
+export function upsertCatalogBackground(
+  current: Background[],
+  background: Background,
+  originalName?: string,
+): Background[] {
+  const targetNames = new Set([originalName, background.name].filter(Boolean));
+  const next: Background[] = [];
+  let replaced = false;
+  for (const item of current) {
+    const matchedById = Boolean(background.id && item.id && item.id === background.id);
+    if (matchedById || targetNames.has(item.name)) {
+      if (!replaced) {
+        next.push(background);
+        replaced = true;
+      }
+      continue;
+    }
+    next.push(item);
+  }
+  if (!replaced) {
+    next.push(background);
+  }
+  return next;
+}
+
+export function serializeBackgroundNonIdentity(background: Pick<Background, "bg_tags" | "bgm_tags">): string {
+  return JSON.stringify({
+    bg_tags: background.bg_tags ?? "",
+    bgm_tags: background.bgm_tags ?? "",
+  });
 }
 
 export function backgroundDeleteDialogCopy(

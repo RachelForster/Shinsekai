@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, FolderInput, FolderOutput, Languages, Plus, Save, Trash2 } from "lucide-react";
+import { ExternalLink, FolderInput, FolderOutput, Languages, Plus, Save, Trash2, X } from "lucide-react";
 
 import {
   backgroundsQueryKey,
@@ -23,13 +23,18 @@ import {
 import type { Background } from "../../entities/config/types";
 import { openExternal } from "../../entities/files/repository";
 import { baseName, numberedTags, removeTagRows, tagContents } from "../../shared/assets/assetText";
+import { suggestUniqueSpritePrefix } from "../../shared/assets/spritePrefix";
+import { useDebouncedAutoSave } from "../../shared/hooks/useDebouncedAutoSave";
 import { useI18n } from "../../shared/i18n";
 import type { ImageAutoLabelResult, TaskSnapshot } from "../../shared/platform/types";
 import {
   AlertDialog,
   AsyncButton,
+  AutoSaveStatus,
   Button,
   EmptyState,
+  handleIdentityKeyDown,
+  InlineIdentityConfirm,
   PathPickerDialog,
   PageSectionNav,
   QueryErrorState,
@@ -47,7 +52,8 @@ import {
   backgroundDeleteDialogCopy,
   createBackground,
   runBackgroundDeleteTarget,
-  type BackgroundBgmItem,
+  serializeBackgroundNonIdentity,
+  upsertCatalogBackground,
   type BackgroundDeleteTarget,
   type BgmSortDirection,
   type BgmSortKey,
@@ -81,6 +87,15 @@ export function BackgroundManagerPage() {
     key: "index",
   });
   const [nameError, setNameError] = useState("");
+  const [spritePrefixError, setSpritePrefixError] = useState("");
+  const [spritePrefixTouched, setSpritePrefixTouched] = useState(false);
+  const [identitySavingField, setIdentitySavingField] = useState<"name" | "sprite_prefix" | null>(null);
+  const [syncedBackgroundKey, setSyncedBackgroundKey] = useState("");
+  const previousSelectedNameRef = useRef("");
+  const activeBackgroundKeyRef = useRef("");
+
+  const inCreateMode = isCreating || data.length === 0;
+  const existingPrefixes = useMemo(() => data.map((bg) => bg.sprite_prefix), [data]);
 
   const selected = useMemo(() => {
     if (isCreating) {
@@ -95,17 +110,29 @@ export function BackgroundManagerPage() {
   const draftMatchesSelection = isCreating || !selected || draftSourceName === selected.name;
   const currentDraft = draftMatchesSelection ? draft : selected;
   const isSavedBackground = Boolean(
-    currentBackgroundName && data.some((background) => background.name === currentBackgroundName),
+    !isCreating && (selected || (currentBackgroundName && data.some((bg) => bg.name === currentBackgroundName))),
   );
 
   useEffect(() => {
-    if (selected) {
+    if (!selected) {
+      activeBackgroundKeyRef.current = "";
+      setSyncedBackgroundKey("");
+      return;
+    }
+    const selectedKey = selected.id || `name:${selected.name}`;
+    if (selectedKey !== activeBackgroundKeyRef.current) {
+      activeBackgroundKeyRef.current = selectedKey;
+      setSyncedBackgroundKey(selectedKey);
       setSelectedName(selected.name);
       setDraft(structuredClone(selected));
       setDraftSourceName(selected.name);
       setSelectedBgmIndexes([]);
       setSelectedImageIndex(0);
       setNameError("");
+      setSpritePrefixError("");
+      setSpritePrefixTouched(false);
+    } else if (selected.id) {
+      setDraft((current) => (current.id ? current : { ...current, id: selected.id }));
     }
   }, [selected]);
 
@@ -124,12 +151,16 @@ export function BackgroundManagerPage() {
       });
     },
     onSuccess(background, variables) {
-      queryClient.setQueryData<Background[]>(backgroundsQueryKey, (current = []) => {
-        const targetNames = new Set([variables.originalName, background.name].filter(Boolean));
-        const next = current.filter((item) => !targetNames.has(item.name));
-        return [...next, background];
-      });
+      const nextKey = background.id || `name:${background.name}`;
+      activeBackgroundKeyRef.current = nextKey;
+      setSyncedBackgroundKey(nextKey);
+      queryClient.setQueryData<Background[]>(backgroundsQueryKey, (current = []) =>
+        upsertCatalogBackground(current, background, variables.originalName),
+      );
       setIsCreating(false);
+      setSpritePrefixTouched(false);
+      setNameError("");
+      setSpritePrefixError("");
       setSelectedName(background.name);
       setDraft(structuredClone(background));
       setDraftSourceName(background.name);
@@ -139,9 +170,54 @@ export function BackgroundManagerPage() {
     },
   });
 
+  const identityMutation = useMutation({
+    mutationFn: ({
+      background,
+      originalName,
+    }: {
+      background: Background;
+      field: "name" | "sprite_prefix";
+      originalName: string;
+    }) => saveBackground(background, originalName),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("background.error.saveFallback"),
+        title: t("common.saveFailed"),
+      });
+    },
+    onSettled() {
+      setIdentitySavingField(null);
+    },
+    onSuccess(background, variables) {
+      const nextKey = background.id || `name:${background.name}`;
+      activeBackgroundKeyRef.current = nextKey;
+      setSyncedBackgroundKey(nextKey);
+      queryClient.setQueryData<Background[]>(backgroundsQueryKey, (current = []) =>
+        upsertCatalogBackground(current, background, variables.originalName),
+      );
+      setSelectedName(background.name);
+      setDraftSourceName(background.name);
+      setDraft((current) => ({
+        ...structuredClone(background),
+        bg_tags: current.bg_tags,
+        bgm_tags: current.bgm_tags,
+        name: variables.field === "name" ? background.name : current.name,
+        sprite_prefix: variables.field === "sprite_prefix" ? background.sprite_prefix : current.sprite_prefix,
+      }));
+      if (variables.field === "name") {
+        setNameError("");
+      } else {
+        setSpritePrefixError("");
+      }
+      showToast({ kind: "success", title: t("background.toast.saved") });
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: deleteBackground,
-    onSuccess() {
+    onSuccess(_result, deletedName) {
+      setSelectedName((current) => (current === deletedName ? "" : current));
       queryClient.invalidateQueries({ queryKey: backgroundsQueryKey });
       showToast({ kind: "success", title: t("background.toast.deleted") });
     },
@@ -237,6 +313,9 @@ export function BackgroundManagerPage() {
       });
     },
     onSuccess(background) {
+      queryClient.setQueryData<Background[]>(backgroundsQueryKey, (current = []) =>
+        upsertCatalogBackground(current, background),
+      );
       queryClient.invalidateQueries({ queryKey: backgroundsQueryKey });
       setDraft((current) => ({ ...current, bg_tags: background.bg_tags, sprites: background.sprites }));
       showToast({ kind: "success", title: t("background.asset.uploadImages") });
@@ -253,6 +332,9 @@ export function BackgroundManagerPage() {
       });
     },
     onSuccess(background) {
+      queryClient.setQueryData<Background[]>(backgroundsQueryKey, (current = []) =>
+        upsertCatalogBackground(current, background),
+      );
       queryClient.invalidateQueries({ queryKey: backgroundsQueryKey });
       setDraft((current) => ({ ...current, bg_tags: background.bg_tags }));
       showToast({ kind: "success", title: t("background.action.saveImageTags") });
@@ -272,6 +354,9 @@ export function BackgroundManagerPage() {
       });
     },
     onSuccess(result) {
+      queryClient.setQueryData<Background[]>(backgroundsQueryKey, (current = []) =>
+        current.map((item) => (item.name === currentBackgroundName ? { ...item, bg_tags: result.tags } : item)),
+      );
       queryClient.invalidateQueries({ queryKey: backgroundsQueryKey });
       setDraft((current) => ({ ...current, bg_tags: result.tags }));
       showToast({
@@ -297,6 +382,9 @@ export function BackgroundManagerPage() {
       });
     },
     onSuccess(background) {
+      queryClient.setQueryData<Background[]>(backgroundsQueryKey, (current = []) =>
+        upsertCatalogBackground(current, background),
+      );
       queryClient.invalidateQueries({ queryKey: backgroundsQueryKey });
       setDraft((current) => ({ ...current, bgm_list: background.bgm_list, bgm_tags: background.bgm_tags }));
       showToast({ kind: "success", title: t("background.asset.uploadBgm") });
@@ -313,6 +401,9 @@ export function BackgroundManagerPage() {
       });
     },
     onSuccess(background) {
+      queryClient.setQueryData<Background[]>(backgroundsQueryKey, (current = []) =>
+        upsertCatalogBackground(current, background),
+      );
       queryClient.invalidateQueries({ queryKey: backgroundsQueryKey });
       setDraft((current) => ({ ...current, bgm_tags: background.bgm_tags }));
       showToast({ kind: "success", title: t("background.action.saveBgmTags") });
@@ -438,11 +529,22 @@ export function BackgroundManagerPage() {
   });
 
   const update = <K extends keyof Background>(name: K, value: Background[K]) => {
-    setDraft((current) => ({ ...(draftMatchesSelection ? current : structuredClone(currentDraft)), [name]: value }));
-    setDraftSourceName(currentBackgroundName);
+    if (name === "sprite_prefix") {
+      setSpritePrefixTouched(true);
+      setSpritePrefixError("");
+    }
     if (name === "name" && String(value).trim()) {
       setNameError("");
     }
+    setDraft((current) => {
+      const baseDraft = draftMatchesSelection ? current : structuredClone(currentDraft);
+      const next = { ...baseDraft, [name]: value };
+      if (name === "name" && inCreateMode && !spritePrefixTouched) {
+        next.sprite_prefix = suggestUniqueSpritePrefix(String(value), existingPrefixes, "bg");
+      }
+      return next;
+    });
+    setDraftSourceName(currentBackgroundName);
   };
 
   const updateBgmRowTag = useCallback(
@@ -480,11 +582,17 @@ export function BackgroundManagerPage() {
     const nextTags = bulkImageTagsDraft;
     update("bg_tags", nextTags);
     setBulkImageTagsOpen(false);
-    if (nextTags.trim() && !saveMutation.isPending) {
-      const input = buildBackgroundSaveInput({ bg_tags: nextTags });
-      if (input) {
-        saveMutation.mutate(input);
-      }
+    if (selected && nextTags.trim() && !saveMutation.isPending) {
+      saveMutation.mutate({
+        background: {
+          ...currentDraft,
+          ...(selected.id ? { id: selected.id } : {}),
+          bg_tags: nextTags,
+          name: selected.name,
+          sprite_prefix: selected.sprite_prefix,
+        },
+        originalName: selected.name,
+      });
     }
   };
 
@@ -497,11 +605,17 @@ export function BackgroundManagerPage() {
     const nextTags = bulkBgmTagsDraft;
     update("bgm_tags", nextTags);
     setBulkBgmTagsOpen(false);
-    if (nextTags.trim() && !saveMutation.isPending) {
-      const input = buildBackgroundSaveInput({ bgm_tags: nextTags });
-      if (input) {
-        saveMutation.mutate(input);
-      }
+    if (selected && nextTags.trim() && !saveMutation.isPending) {
+      saveMutation.mutate({
+        background: {
+          ...currentDraft,
+          ...(selected.id ? { id: selected.id } : {}),
+          bgm_tags: nextTags,
+          name: selected.name,
+          sprite_prefix: selected.sprite_prefix,
+        },
+        originalName: selected.name,
+      });
     }
   };
 
@@ -598,9 +712,130 @@ export function BackgroundManagerPage() {
 
   const pendingDeleteCopy = pendingDelete ? backgroundDeleteDialogCopy(pendingDelete, t) : null;
 
-  const buildBackgroundSaveInput = (overrides: Partial<Background> = {}) => {
-    const nextDraft = { ...currentDraft, ...overrides };
-    if (!nextDraft.name.trim()) {
+  const selectedBackgroundKey = selected ? selected.id || `name:${selected.name}` : "";
+  const isDraftSynced = Boolean(selected && syncedBackgroundKey === selectedBackgroundKey && draftMatchesSelection);
+  const nameDirty = Boolean(!inCreateMode && isDraftSynced && currentDraft.name !== selected!.name);
+  const spritePrefixDirty = Boolean(
+    !inCreateMode && isDraftSynced && currentDraft.sprite_prefix !== selected!.sprite_prefix,
+  );
+
+  const liveNameError = useMemo(() => {
+    if (!nameDirty || !selected) {
+      return nameError;
+    }
+    const trimmed = currentDraft.name.trim();
+    if (!trimmed) {
+      return t("background.validation.nameRequired");
+    }
+    const duplicate = data.some(
+      (item) =>
+        item !== selected &&
+        (selected.id ? item.id !== selected.id : item.name !== selected.name) &&
+        item.name.trim().toLowerCase() === trimmed.toLowerCase(),
+    );
+    return duplicate ? t("identity.error.duplicateName", { name: trimmed }) : "";
+  }, [currentDraft.name, data, nameDirty, nameError, selected, t]);
+
+  const liveSpritePrefixError = useMemo(() => {
+    if (!spritePrefixDirty || !selected) {
+      return spritePrefixError;
+    }
+    const trimmed = currentDraft.sprite_prefix.trim();
+    if (!trimmed) {
+      return t("character.validation.spritePrefixRequired");
+    }
+    if (!/^[\x00-\x7F]+$/.test(trimmed)) {
+      return t("character.validation.spritePrefixAscii");
+    }
+    const duplicate = data.some(
+      (item) =>
+        item !== selected &&
+        (selected.id ? item.id !== selected.id : item.name !== selected.name) &&
+        item.sprite_prefix.trim().toLowerCase() === trimmed.toLowerCase(),
+    );
+    return duplicate ? t("identity.error.duplicatePrefix", { prefix: trimmed }) : "";
+  }, [currentDraft.sprite_prefix, data, selected, spritePrefixDirty, spritePrefixError, t]);
+
+  const baselineAutoSaveKey = useMemo(() => (selected ? serializeBackgroundNonIdentity(selected) : ""), [selected]);
+  const currentAutoSaveKey = useMemo(
+    () => (selected ? serializeBackgroundNonIdentity(currentDraft) : ""),
+    [currentDraft, selected],
+  );
+
+  const autoSave = useDebouncedAutoSave<{ background: Background; originalName: string }>({
+    baselineKey: baselineAutoSaveKey,
+    buildPayload: () => ({
+      background: {
+        ...currentDraft,
+        ...(selected!.id ? { id: selected!.id } : {}),
+        name: selected!.name,
+        sprite_prefix: selected!.sprite_prefix,
+      },
+      originalName: selected!.name,
+    }),
+    currentKey: currentAutoSaveKey,
+    enabled: Boolean(!inCreateMode && isDraftSynced),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("background.error.saveFallback"),
+        title: t("common.saveFailed"),
+      });
+    },
+    async onSave({ background, originalName }) {
+      const saved = await saveBackground(background, originalName);
+      queryClient.setQueryData<Background[]>(backgroundsQueryKey, (current = []) =>
+        upsertCatalogBackground(current, saved, originalName),
+      );
+      if (saved.id) {
+        setDraft((current) => (current.id ? current : { ...current, id: saved.id }));
+      }
+    },
+    resetKey: selected ? selected.id || `name:${selected.name}` : "__creating__",
+  });
+
+  const confirmIdentityField = (field: "name" | "sprite_prefix") => {
+    if (!selected) {
+      return;
+    }
+    const fieldError = field === "name" ? liveNameError : liveSpritePrefixError;
+    if (fieldError) {
+      showToast({
+        kind: "error",
+        message: fieldError,
+        title: t("common.validationFailed"),
+      });
+      return;
+    }
+    setIdentitySavingField(field);
+    identityMutation.mutate({
+      background: {
+        ...currentDraft,
+        ...(selected.id ? { id: selected.id } : {}),
+        name: field === "name" ? currentDraft.name.trim() : selected.name,
+        sprite_prefix: field === "sprite_prefix" ? currentDraft.sprite_prefix.trim() : selected.sprite_prefix,
+      },
+      field,
+      originalName: selected.name,
+    });
+  };
+
+  const cancelIdentityField = (field: "name" | "sprite_prefix") => {
+    if (!selected) {
+      return;
+    }
+    if (field === "name") {
+      setDraft((current) => ({ ...current, name: selected.name }));
+      setNameError("");
+    } else {
+      setDraft((current) => ({ ...current, sprite_prefix: selected.sprite_prefix }));
+      setSpritePrefixError("");
+    }
+  };
+
+  const buildBackgroundCreateInput = () => {
+    const trimmedName = currentDraft.name.trim();
+    if (!trimmedName) {
       setNameError(t("background.validation.nameRequired"));
       showToast({
         kind: "error",
@@ -609,22 +844,80 @@ export function BackgroundManagerPage() {
       });
       return null;
     }
+    if (data.some((item) => item.name.trim().toLowerCase() === trimmedName.toLowerCase())) {
+      const duplicateError = t("identity.error.duplicateName", { name: trimmedName });
+      setNameError(duplicateError);
+      showToast({
+        kind: "error",
+        message: duplicateError,
+        title: t("common.validationFailed"),
+      });
+      return null;
+    }
+    const spritePrefix = currentDraft.sprite_prefix.trim();
+    const prefixError = !spritePrefix
+      ? t("character.validation.spritePrefixRequired")
+      : !/^[\x00-\x7F]+$/.test(spritePrefix)
+        ? t("character.validation.spritePrefixAscii")
+        : data.some((item) => item.sprite_prefix.trim().toLowerCase() === spritePrefix.toLowerCase())
+          ? t("identity.error.duplicatePrefix", { prefix: spritePrefix })
+          : "";
+    if (prefixError) {
+      setSpritePrefixError(prefixError);
+      showToast({
+        kind: "error",
+        message: prefixError,
+        title: t("common.validationFailed"),
+      });
+      return null;
+    }
     return {
       background: {
-        ...nextDraft,
-        name: nextDraft.name.trim(),
-        sprite_prefix: nextDraft.sprite_prefix.trim() || "temp",
+        ...currentDraft,
+        name: trimmedName,
+        sprite_prefix: spritePrefix,
       },
-      originalName: isSavedBackground ? currentBackgroundName : undefined,
+      originalName: undefined,
     };
   };
 
   const saveDraft = () => {
-    const input = buildBackgroundSaveInput();
+    const input = buildBackgroundCreateInput();
     if (!input) {
       return;
     }
     saveMutation.mutate(input);
+  };
+
+  const startCreatingBackground = () => {
+    autoSave.flush();
+    previousSelectedNameRef.current = currentBackgroundName || data[0]?.name || "";
+    activeBackgroundKeyRef.current = "";
+    setIsCreating(true);
+    setSpritePrefixTouched(false);
+    setSelectedName("");
+    setDraft(createBackground(existingPrefixes));
+    setDraftSourceName("");
+    setSelectedBgmIndexes([]);
+    setSelectedImageIndex(0);
+    setNameError("");
+    setSpritePrefixError("");
+  };
+
+  const cancelCreatingBackground = () => {
+    if (!data.length) {
+      return;
+    }
+    const targetName =
+      (previousSelectedNameRef.current && data.some((item) => item.name === previousSelectedNameRef.current)
+        ? previousSelectedNameRef.current
+        : data[0]?.name) || "";
+    activeBackgroundKeyRef.current = "";
+    setIsCreating(false);
+    setSpritePrefixTouched(false);
+    setNameError("");
+    setSpritePrefixError("");
+    setSelectedName(targetName);
   };
 
   const bgmRowTags = useMemo(
@@ -686,7 +979,11 @@ export function BackgroundManagerPage() {
             <Select
               disabled={isLoading || (!isCreating && !data.length)}
               onChange={(event) => {
+                autoSave.flush();
                 setIsCreating(false);
+                setSpritePrefixTouched(false);
+                setNameError("");
+                setSpritePrefixError("");
                 setSelectedName(event.target.value);
               }}
               value={isCreating ? "" : selectedName || data[0]?.name || ""}
@@ -705,15 +1002,7 @@ export function BackgroundManagerPage() {
               className="button--header-icon"
               data-tooltip={t("common.new")}
               icon={<Plus aria-hidden className="button__icon" />}
-              onClick={() => {
-                setIsCreating(true);
-                setSelectedName("");
-                setDraft(createBackground());
-                setDraftSourceName("");
-                setSelectedBgmIndexes([]);
-                setSelectedImageIndex(0);
-                setNameError("");
-              }}
+              onClick={startCreatingBackground}
             >
               {t("common.new")}
             </Button>
@@ -745,14 +1034,34 @@ export function BackgroundManagerPage() {
             >
               {t("common.export")}
             </AsyncButton>
-            <AsyncButton
-              icon={<Save aria-hidden className="button__icon" />}
-              loading={saveMutation.isPending}
-              onClick={saveDraft}
-              variant="primary"
-            >
-              {t("common.save")}
-            </AsyncButton>
+            {inCreateMode ? (
+              <>
+                {isCreating && data.length > 0 ? (
+                  <Button
+                    icon={<X aria-hidden className="button__icon" />}
+                    onClick={cancelCreatingBackground}
+                    variant="ghost"
+                  >
+                    {t("common.cancel")}
+                  </Button>
+                ) : null}
+                <AsyncButton
+                  icon={<Save aria-hidden className="button__icon" />}
+                  loading={saveMutation.isPending}
+                  onClick={saveDraft}
+                  variant="primary"
+                >
+                  {t("common.create")}
+                </AsyncButton>
+              </>
+            ) : (
+              <AutoSaveStatus
+                errorMessage={autoSave.errorMessage}
+                onRetry={autoSave.retry}
+                pendingIdentity={nameDirty || spritePrefixDirty}
+                phase={autoSave.phase}
+              />
+            )}
           </div>
         </div>
         <PageSectionNav ariaLabel={t("background.title")} items={backgroundSectionNavItems} />
@@ -828,26 +1137,70 @@ export function BackgroundManagerPage() {
             </div>
           </div>
           <div className="form-grid form-grid--two">
-            <label className="field-row">
-              <span className="field-row__label">{t("background.field.name")}</span>
+            <div className="field-row">
+              <label className="field-row__label" htmlFor="background-info-name-input">
+                {t("background.field.name")}
+              </label>
               <span className="field-row__control">
-                <TextInput
-                  className={nameError ? "input--error" : ""}
-                  onChange={(event) => update("name", event.target.value)}
-                  value={currentDraft.name}
-                />
-                {nameError ? <span className="field-error">{nameError}</span> : null}
+                <div className="identity-field-group">
+                  <TextInput
+                    className={liveNameError ? "input--error" : ""}
+                    id="background-info-name-input"
+                    onChange={(event) => update("name", event.target.value)}
+                    onKeyDown={(event) =>
+                      handleIdentityKeyDown(event, {
+                        canConfirm: !liveNameError && identitySavingField === null,
+                        isDirty: nameDirty,
+                        onCancel: () => cancelIdentityField("name"),
+                        onConfirm: () => confirmIdentityField("name"),
+                      })
+                    }
+                    value={currentDraft.name}
+                  />
+                  <InlineIdentityConfirm
+                    confirmDisabled={Boolean(liveNameError)}
+                    fieldLabel={t("background.field.name")}
+                    loading={identitySavingField === "name"}
+                    onCancel={() => cancelIdentityField("name")}
+                    onConfirm={() => confirmIdentityField("name")}
+                    visible={nameDirty}
+                  />
+                </div>
+                {liveNameError ? <span className="field-error">{liveNameError}</span> : null}
               </span>
-            </label>
-            <label className="field-row">
-              <span className="field-row__label">{t("background.field.spritePrefix")}</span>
+            </div>
+            <div className="field-row">
+              <label className="field-row__label" htmlFor="background-info-prefix-input">
+                {t("background.field.spritePrefix")}
+              </label>
               <span className="field-row__control">
-                <TextInput
-                  onChange={(event) => update("sprite_prefix", event.target.value)}
-                  value={currentDraft.sprite_prefix}
-                />
+                <div className="identity-field-group">
+                  <TextInput
+                    className={liveSpritePrefixError ? "input--error" : ""}
+                    id="background-info-prefix-input"
+                    onChange={(event) => update("sprite_prefix", event.target.value)}
+                    onKeyDown={(event) =>
+                      handleIdentityKeyDown(event, {
+                        canConfirm: !liveSpritePrefixError && identitySavingField === null,
+                        isDirty: spritePrefixDirty,
+                        onCancel: () => cancelIdentityField("sprite_prefix"),
+                        onConfirm: () => confirmIdentityField("sprite_prefix"),
+                      })
+                    }
+                    value={currentDraft.sprite_prefix}
+                  />
+                  <InlineIdentityConfirm
+                    confirmDisabled={Boolean(liveSpritePrefixError)}
+                    fieldLabel={t("background.field.spritePrefix")}
+                    loading={identitySavingField === "sprite_prefix"}
+                    onCancel={() => cancelIdentityField("sprite_prefix")}
+                    onConfirm={() => confirmIdentityField("sprite_prefix")}
+                    visible={spritePrefixDirty}
+                  />
+                </div>
+                {liveSpritePrefixError ? <span className="field-error">{liveSpritePrefixError}</span> : null}
               </span>
-            </label>
+            </div>
           </div>
         </section>
 
