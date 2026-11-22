@@ -4,6 +4,7 @@ import {
   isUnknownTauriCommandError,
   markTauriNativeHttpUnsupported,
 } from "../../../desktop/desktopApi";
+import { translateRuntimeMessage } from "../../../i18n/runtimeLanguage";
 
 export interface StandaloneHttpRequest {
   url: string;
@@ -146,7 +147,7 @@ export async function standaloneHttpRequest(request: StandaloneHttpRequest): Pro
     return buildResponse(resp.status, normalizeHeadersMap(resp.headers), bytes);
   } catch (error) {
     if (timedOut) {
-      throw new Error(`请求超时 (${timeoutMs}ms): ${request.url}`);
+      throw new Error(translateRuntimeMessage("plat.standalone.httpTimeout", { timeoutMs, url: request.url }));
     }
     throw error;
   } finally {

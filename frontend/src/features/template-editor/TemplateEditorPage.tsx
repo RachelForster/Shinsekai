@@ -34,7 +34,7 @@ import {
   type TemplateSummary,
   type UserPromptPresetLibrary,
 } from "../../entities/template/repository";
-import { TRANSPARENT_BACKGROUND_NAME } from "../../shared/constants";
+import { DEFAULT_SPRITE_GROUP, TRANSPARENT_BACKGROUND_NAME } from "../../shared/constants";
 import {
   DEFAULT_PLAYER_OPTIONS,
   getCharacterDisplayName,
@@ -100,10 +100,10 @@ function characterOutfitGroups(character: {
   sprite_groups?: string[] | null;
   sprites?: Array<{ group?: string | null }> | null;
 }): string[] {
-  const seen = new Set<string>(["默认"]);
-  const ordered = ["默认"];
+  const seen = new Set<string>([DEFAULT_SPRITE_GROUP]);
+  const ordered = [DEFAULT_SPRITE_GROUP];
   const push = (raw?: string | null) => {
-    const trimmed = String(raw ?? "").trim() || "默认";
+    const trimmed = String(raw ?? "").trim() || DEFAULT_SPRITE_GROUP;
     if (!seen.has(trimmed)) {
       seen.add(trimmed);
       ordered.push(trimmed);

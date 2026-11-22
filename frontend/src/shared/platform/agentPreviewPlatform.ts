@@ -1,3 +1,4 @@
+import { translateRuntimeMessage } from "../i18n/runtimeLanguage";
 import { PlatformRequestError } from "./errors";
 import type { AgentEvent, AgentPlatform, AgentSession, AgentTask, AgentTaskStatus } from "./agentTypes";
 
@@ -107,8 +108,7 @@ export function createAgentPreviewPlatform(): AgentPlatform {
         status: "running",
         target: "",
       });
-      const text =
-        "这是助手聊天的浏览器预览。连接新世界应用后，可以使用已配置的模型与助手对话。\n\nThis is a browser preview. Connect to the Shinsekai app to chat with your configured model.";
+      const text = translateRuntimeMessage("plat.preview.agent.reply");
       setTimeout(() => {
         if (!terminal(task.status)) {
           append(task, "activity.updated", {

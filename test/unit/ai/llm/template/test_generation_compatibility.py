@@ -7,8 +7,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from ai.llm.template import PROMPT_CATALOG
 import ai.llm.template_generator as legacy
-from i18n import tr_in_bundle
 
 
 LANGUAGES = ("zh_CN", "en", "ja")
@@ -59,7 +59,7 @@ def render_case(monkeypatch, language, mask, *, sprite_count=1):
     monkeypatch.setattr(
         legacy,
         "_T",
-        lambda key, **kwargs: tr_in_bundle(f"template_gen.{key}", language, **kwargs),
+        lambda key, **kwargs: PROMPT_CATALOG.translate(f"dialog.{key}", locale=language, **kwargs),
     )
     monkeypatch.setattr(legacy, "_format_llm_tools_block", lambda: "TOOLS\n")
     options = {name: bool(mask & (1 << index)) for index, name in enumerate(FLAGS)}
@@ -79,7 +79,7 @@ def test_output_matches_deduplicated_renderer(monkeypatch, language, mask):
     text, warning = render_case(monkeypatch, language, mask)
 
     assert warning == ""
-    tool_protocol = tr_in_bundle("template_gen.closing_tool_protocol", language)
+    tool_protocol = PROMPT_CATALOG.translate("dialog.closing_tool_protocol", locale=language)
     assert text.endswith(tool_protocol + "\n")
     # Preserve the original digests: only the new final protocol rule may differ.
     text = text[: -len(tool_protocol + "\n")]
@@ -91,6 +91,6 @@ def test_large_sprite_catalog_uses_full_ids_in_the_schema_and_rules(monkeypatch,
     text, warning = render_case(monkeypatch, language, 0, sprite_count=111)
 
     assert warning == ""
-    assert tr_in_bundle("template_gen.json_full_sprite_head_top", language) in text
-    assert tr_in_bundle("template_gen.r_full_sprite", language) in text
-    assert tr_in_bundle("template_gen.r_sprite", language) not in text
+    assert PROMPT_CATALOG.translate("dialog.json_full_sprite_head_top", locale=language) in text
+    assert PROMPT_CATALOG.translate("dialog.r_full_sprite", locale=language) in text
+    assert PROMPT_CATALOG.translate("dialog.r_sprite", locale=language) not in text

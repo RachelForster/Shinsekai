@@ -100,6 +100,200 @@ export function pluginUiPageKey(page: PluginUIPage) {
   return `${page.kind}:${page.id}`;
 }
 
+export function normalizePluginKey(value: string | null | undefined) {
+  return (value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/^git@github\.com:/i, "")
+    .replace(/^https?:\/\/github\.com\//i, "")
+    .replace(/^github\.com\//i, "")
+    .replace(/\.git$/i, "")
+    .replace(/[^\p{L}\p{N}]+/gu, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+export function normalizeManifestEntryKey(value: string | null | undefined) {
+  const raw = (value ?? "").trim().toLowerCase();
+  if (!raw) {
+    return "";
+  }
+  return raw.startsWith("plugins.") ? raw.slice("plugins.".length) : raw;
+}
+
+export function pluginModuleToken(value: string | null | undefined) {
+  const moduleName = (value ?? "").split(":", 1)[0] ?? "";
+  const parts = moduleName.split(".").filter(Boolean);
+  if (!parts.length) {
+    return "";
+  }
+  if (parts.at(-1) === "plugin" && parts.length > 1) {
+    return parts.at(-2) ?? "";
+  }
+  return parts.at(-1) ?? "";
+}
+
+export function installedPluginTechnicalKeys(plugin: PluginManifest) {
+  return new Set(
+    [
+      plugin.id,
+      plugin.directory?.split(/[\\/]/).filter(Boolean).at(-1),
+      pluginModuleToken(plugin.entry),
+      pluginModuleToken(plugin.install?.entry),
+    ]
+      .map(normalizePluginKey)
+      .filter((key) => key.length >= 2),
+  );
+}
+
+export function catalogPluginTechnicalKeys(plugin: PluginCatalogItem) {
+  return new Set(
+    [plugin.id, plugin.name, githubRepoSlug(plugin.repo ?? ""), pluginModuleToken(plugin.entry)]
+      .map(normalizePluginKey)
+      .filter((key) => key.length >= 2),
+  );
+}
+
+function scorePluginCatalogMatch(plugin: PluginManifest, catalog: PluginCatalogItem) {
+  const catalogEntry = normalizeManifestEntryKey(catalog.entry);
+  if (catalogEntry) {
+    const installedEntries = new Set(
+      [plugin.entry, plugin.install?.entry].map(normalizeManifestEntryKey).filter(Boolean),
+    );
+    if (installedEntries.has(catalogEntry)) {
+      return 1_000_000 + catalogEntry.length;
+    }
+  }
+
+  const catalogRepo = githubRepoSlug(catalog.repo ?? "").toLowerCase();
+  const installedRepo = githubRepoSlug(plugin.install?.repo ?? "").toLowerCase();
+  if (catalogRepo && installedRepo && catalogRepo === installedRepo) {
+    return 500_000 + catalogRepo.length;
+  }
+
+  const installedKeys = installedPluginTechnicalKeys(plugin);
+  let longestKeyLength = 0;
+  for (const key of catalogPluginTechnicalKeys(catalog)) {
+    if (installedKeys.has(key) && key.length > longestKeyLength) {
+      longestKeyLength = key.length;
+    }
+  }
+  return longestKeyLength;
+}
+
+export function findInstalledCatalogMatch(plugin: PluginManifest, catalogItems: PluginCatalogItem[]) {
+  let bestMatch: PluginCatalogItem | undefined;
+  let bestScore = 0;
+  for (const item of catalogItems) {
+    const score = scorePluginCatalogMatch(plugin, item);
+    if (score > bestScore) {
+      bestScore = score;
+      bestMatch = item;
+    }
+  }
+  return bestMatch;
+}
+
+export function findCatalogInstalledMatch(catalog: PluginCatalogItem, plugins: PluginManifest[]) {
+  let bestMatch: PluginManifest | undefined;
+  let bestScore = 0;
+  for (const plugin of plugins) {
+    const score = scorePluginCatalogMatch(plugin, catalog);
+    if (score > bestScore) {
+      bestScore = score;
+      bestMatch = plugin;
+    }
+  }
+  return bestMatch;
+}
+
+export function catalogDisplayName(plugin: PluginCatalogItem | null | undefined) {
+  const raw = plugin as (PluginCatalogItem & { display_name?: string; title?: string }) | null | undefined;
+  return plugin?.displayName || raw?.display_name || raw?.title || plugin?.name || "";
+}
+
+export function catalogDescription(plugin: PluginCatalogItem | null | undefined) {
+  return (plugin?.shortDescription || plugin?.description || "").trim();
+}
+
+function defaultDerivedPluginTitle(pluginId: string) {
+  const trimmed = pluginId.trim();
+  if (!trimmed) {
+    return "";
+  }
+  const tail = trimmed.split(".").at(-1) ?? trimmed;
+  return tail.replace(/_/g, " ").trim() || trimmed;
+}
+
+function offlineEntryFallbackTitle(entry: string | null | undefined) {
+  const value = (entry ?? "").trim();
+  if (!value) {
+    return "";
+  }
+  if (value.includes(":")) {
+    return value.slice(value.lastIndexOf(":") + 1);
+  }
+  return value.includes(".") ? value.slice(value.lastIndexOf(".") + 1) : value;
+}
+
+export function installedPluginDisplayName(plugin: PluginManifest, catalog?: PluginCatalogItem) {
+  const loaded = plugin.loaded !== false;
+  const localTitle = (plugin.title ?? "").trim();
+  const catalogName = catalogDisplayName(catalog).trim();
+  const hasCuratedCatalogName = Boolean(catalogName && catalogName !== catalog?.name);
+
+  if (loaded && localTitle) {
+    const isRawTechnicalFallback =
+      localTitle === plugin.id ||
+      localTitle === catalog?.name ||
+      localTitle === offlineEntryFallbackTitle(plugin.entry) ||
+      (hasCuratedCatalogName && localTitle.toLowerCase() === defaultDerivedPluginTitle(plugin.id).toLowerCase());
+    if (!isRawTechnicalFallback) {
+      return localTitle;
+    }
+  }
+
+  if (hasCuratedCatalogName) {
+    return catalogName;
+  }
+  if (localTitle && localTitle !== plugin.id) {
+    return localTitle;
+  }
+  return catalogName || localTitle || plugin.id;
+}
+
+export function installedPluginTechnicalName(
+  plugin: PluginManifest,
+  catalog: PluginCatalogItem | undefined,
+  displayName: string,
+) {
+  if (catalog?.name && catalog.name !== displayName) {
+    return catalog.name;
+  }
+  if (plugin.id && plugin.id !== displayName) {
+    return plugin.id;
+  }
+  if (plugin.title && plugin.title !== displayName) {
+    return plugin.title;
+  }
+  return "";
+}
+
+export function installedPluginDescription(
+  plugin: PluginManifest,
+  catalog: PluginCatalogItem | undefined,
+  unavailableFallback: string,
+) {
+  const loaded = plugin.loaded !== false;
+  if (!loaded && plugin.enabled) {
+    return plugin.loadError || unavailableFallback;
+  }
+  const localDescription = (plugin.description ?? "").trim();
+  if (localDescription) {
+    return localDescription;
+  }
+  return catalogDescription(catalog);
+}
+
 function localizedPageI18n(i18n: PluginConfigI18nMap | undefined, language: FrontendLanguage) {
   if (!i18n) {
     return undefined;

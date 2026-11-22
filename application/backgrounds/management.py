@@ -15,6 +15,7 @@ from typing import Any, Iterable
 from application.media.resource_paths import MediaResourcePaths
 from application.runtime.state import _jsonify
 from config.background_manager import BackgroundManager
+from i18n import is_operation_error_message
 from config.background_ops import (
     BACKGROUND_MUTATION_LOCK,
     BackgroundProfileError,
@@ -213,7 +214,7 @@ class BackgroundUseCase:
             bg_tags=str(body.get("bg_tags") or ""),
             bgm_tags=str(body.get("bgm_tags") or ""),
         )
-        if message.startswith("名称") or "重复" in message or message.startswith("找不到"):
+        if is_operation_error_message(message):
             raise RuntimeError(message)
         self._refresh_backgrounds_catalog()
         saved_obj = self._state.config_manager.get_background_by_name(name)
@@ -268,7 +269,7 @@ class BackgroundUseCase:
             self._refresh_backgrounds_catalog()
         else:
             message, names = self._state.background_manager.delete_background(name)
-        if message.startswith("找不到") or message.startswith("请选择") or "失败" in message:
+        if is_operation_error_message(message):
             raise RuntimeError(message)
         return {"message": message, "names": names}
 
@@ -291,7 +292,7 @@ class BackgroundUseCase:
                 files,
                 bg_tags,
             )
-        if message.startswith("找不到") or message.startswith("请选择") or message.startswith("请先"):
+        if is_operation_error_message(message):
             raise RuntimeError(message)
         return self._after_reload(name)
 
@@ -314,7 +315,7 @@ class BackgroundUseCase:
             background.bgm_tags = str(payload.get("bgmTags") or background.bgm_tags or "")
             self._state.config_manager.save_background_config()
             message, _dataframe, _tags = self._state.background_manager.upload_bgms(name, files)
-        if message.startswith("找不到") or message.startswith("请选择") or message.startswith("请先"):
+        if is_operation_error_message(message):
             raise RuntimeError(message)
         return self._after_reload(name)
 
@@ -326,7 +327,7 @@ class BackgroundUseCase:
             message, _paths, _tags = delete_single_background_sprite(target, name, index)
         else:
             message, _paths, _tags = self._state.background_manager.delete_single_sprite(name, index)
-        if message.startswith("找不到") or message.startswith("背景图片不存在") or message.startswith("请先"):
+        if is_operation_error_message(message):
             raise RuntimeError(message)
         return self._after_reload(name)
 
@@ -341,7 +342,7 @@ class BackgroundUseCase:
             )
         else:
             message, _paths, _tags = self._state.background_manager.delete_all_sprites(name)
-        if message.startswith("找不到") or message.startswith("请先"):
+        if is_operation_error_message(message):
             raise RuntimeError(message)
         return self._after_reload(name)
 
@@ -353,7 +354,7 @@ class BackgroundUseCase:
             message, _paths, _tags = delete_single_background_bgm(target, name, index)
         else:
             message, _paths, _tags = self._state.background_manager.delete_single_bgm(name, index)
-        if message.startswith("找不到") or message.startswith("背景音乐不存在") or message.startswith("请先"):
+        if is_operation_error_message(message):
             raise RuntimeError(message)
         return self._after_reload(name)
 
@@ -368,7 +369,7 @@ class BackgroundUseCase:
             )
         else:
             message, _paths, _tags = self._state.background_manager.delete_all_bgms(name)
-        if message.startswith("找不到") or message.startswith("请先"):
+        if is_operation_error_message(message):
             raise RuntimeError(message)
         return self._after_reload(name)
 

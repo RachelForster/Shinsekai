@@ -1,5 +1,7 @@
 import { numberedTags, tagContents } from "../../assets/assetText";
-import { DEFAULT_CHARACTER_COLOR } from "../../constants";
+import { DEFAULT_CHARACTER_COLOR, DEFAULT_SPRITE_GROUP, TAG_PREFIX_SPRITE } from "../../constants";
+import { translateRuntimeMessage } from "../../i18n/runtimeLanguage";
+import { SELF_PERSONA_NAME } from "../../playerCharacterOptions";
 import { PlatformRequestError } from "../errors";
 import type {
   AvatarRuntimesPlatform,
@@ -125,6 +127,14 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
   const { config, getTemplateSession, knowledgeData, setTemplateSession } = ctx;
   const generatedSprites = new Map<string, GeneratedCharacterSprite & { imported?: boolean }>();
   const characterMemories = new Map<string, CharacterMemoryList>();
+  const tr = (key: Parameters<typeof translateRuntimeMessage>[0], values?: Record<string, string | number>) =>
+    translateRuntimeMessage(key, values, config.system_config.ui_language);
+  const planTagKeys = [
+    "plat.preview.char.planTag0",
+    "plat.preview.char.planTag1",
+    "plat.preview.char.planTag2",
+    "plat.preview.char.planTag3",
+  ] as const;
 
   return {
     importModelStates: async () => {
@@ -143,7 +153,7 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
       return delay({
         items: Array.from({ length: input.count }, (_, i) => ({
           prompt: `make the character stand and ${["smile warmly with relaxed eyebrows, wave the open right hand beside the head, and rest the relaxed left hand at the side", "furrow the eyebrows slightly, press the lips together thoughtfully, rest the right fingertips on the chin, and place the left hand loosely at the waist", "raise the eyebrows, open the mouth slightly in surprise, and hold both open hands at shoulder height with palms facing forward", "give a confident small smile with slightly narrowed eyes and cross both arms at chest height, with the left hand resting on the right upper arm and the right hand resting on the left upper arm"][i % 4]}${framing}, locked-off static camera, fixed viewpoint and focal length throughout, plain light, sprite`,
-          tagging: ["微笑，放松，日常对话", "思考，托腮，分析", "惊讶，张开双手，意外", "自信，抱臂，坚定"][i % 4],
+          tagging: tr(planTagKeys[i % 4]),
         })),
       });
     },
@@ -176,44 +186,40 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
       };
     },
     async configureSpriteMouth() {
-      throw new Error("请连接本机新世界以配置口型识别环境。");
+      throw new Error(tr("plat.preview.char.mouthConfigLocal"));
     },
     async importSpriteMouthModels() {
-      throw new Error("请连接本机新世界以导入口型模型。");
+      throw new Error(tr("plat.preview.char.mouthImportLocal"));
     },
     async downloadSpriteMouthModels() {
-      throw new Error("请连接本机新世界以下载口型模型。");
+      throw new Error(tr("plat.preview.char.mouthDownloadLocal"));
     },
     async installSpriteMouthRuntime() {
-      throw new Error("请连接本机新世界以安装口型识别依赖。");
+      throw new Error(tr("plat.preview.char.mouthInstallLocal"));
     },
     async generateSpriteMouth() {
-      throw new Error("口型同步需要连接本机新世界与 H3 服务；浏览器预览不会伪造识别结果。");
+      throw new Error(tr("plat.preview.char.mouthGenerateLocal"));
     },
     async readSpriteMouth() {
-      throw new Error("请连接本机新世界以读取口型配置。");
+      throw new Error(tr("plat.preview.char.mouthReadLocal"));
     },
     async saveSpriteMouths() {
-      throw new Error("请连接本机新世界以保存口型配置。");
+      throw new Error(tr("plat.preview.char.mouthSaveLocal"));
     },
     async removeSpriteMouth() {
-      throw new Error("请连接本机新世界以移除口型配置。");
+      throw new Error(tr("plat.preview.char.mouthRemoveLocal"));
     },
     async animateSprite() {
-      throw new PlatformRequestError(
-        "动态立绘需要连接本机新世界与 H3 服务；浏览器预览不会生成或伪造透明视频。",
-        501,
-        "local_app_required",
-      );
+      throw new PlatformRequestError(tr("plat.preview.char.animateLocalOnly"), 501, "local_app_required");
     },
     async analyzeSpriteTransitions() {
-      throw new PlatformRequestError("聊天过渡分析需要连接本机新世界。", 501, "local_app_required");
+      throw new PlatformRequestError(tr("plat.preview.char.transitionAnalyzeLocal"), 501, "local_app_required");
     },
     async generateSpriteTransition() {
-      throw new PlatformRequestError("过渡生成需要连接本机新世界与 H3 服务。", 501, "local_app_required");
+      throw new PlatformRequestError(tr("plat.preview.char.transitionGenerateLocal"), 501, "local_app_required");
     },
     async saveSpriteTransitions() {
-      throw new PlatformRequestError("请在本机新世界中保存过渡。", 501, "local_app_required");
+      throw new PlatformRequestError(tr("plat.preview.char.transitionSaveLocal"), 501, "local_app_required");
     },
     async captureSpriteFrame(input) {
       const source = generatedSprites.get(input.taskId);
@@ -249,7 +255,7 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
         }
         result.imported = true;
       }
-      character.emotion_tags = numberedTags("立绘", tags);
+      character.emotion_tags = numberedTags(TAG_PREFIX_SPRITE, tags);
       return delay(character);
     },
     async autoLabelSprites(name) {
@@ -261,11 +267,11 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
       let annotatedCount = 0;
       tags.forEach((tag, index) => {
         if (!tag.trim()) {
-          tags[index] = "平静，微笑，站立";
+          tags[index] = tr("plat.preview.char.autoLabelTag");
           annotatedCount += 1;
         }
       });
-      character.emotion_tags = numberedTags("立绘", tags);
+      character.emotion_tags = numberedTags(TAG_PREFIX_SPRITE, tags);
       return delay({
         annotatedCount,
         failedCount: 0,
@@ -279,8 +285,8 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
     },
     async delete(name) {
       const target = config.characters.find((character) => character.name === name);
-      if (target?.undeletable || target?.is_builtin || name.trim() === "自设") {
-        throw new Error(`角色「${name}」为内置角色，不可删除。`);
+      if (target?.undeletable || target?.is_builtin || name.trim() === SELF_PERSONA_NAME) {
+        throw new Error(tr("plat.preview.char.builtinUndeletable", { name }));
       }
       config.characters = config.characters.filter((character) => character.name !== name);
       for (const [knowledgeId, data] of knowledgeData) {
@@ -340,7 +346,7 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
     async deleteSpriteVoice(name, spriteIndex) {
       const character = config.characters.find((item) => item.name === name);
       if (!character || !character.sprites[spriteIndex]) {
-        throw new Error("立绘不存在。");
+        throw new Error(tr("plat.preview.char.spriteNotFound"));
       }
       character.sprites[spriteIndex] = {
         ...character.sprites[spriteIndex],
@@ -352,7 +358,7 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
     async deleteAllSprites(name) {
       const character = config.characters.find((item) => item.name === name);
       if (!character) {
-        throw new Error(`角色不存在：${name}`);
+        throw new Error(tr("plat.preview.char.notFound", { name }));
       }
       character.sprites = [];
       character.emotion_tags = "";
@@ -361,14 +367,14 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
     async deleteSprite(name, spriteIndex) {
       const character = config.characters.find((item) => item.name === name);
       if (!character || !character.sprites[spriteIndex]) {
-        throw new Error("立绘不存在。");
+        throw new Error(tr("plat.preview.char.spriteNotFound"));
       }
       character.sprites = character.sprites.filter((_, index) => index !== spriteIndex);
       const tags = character.emotion_tags
         .split(/\r?\n/)
         .filter(Boolean)
         .filter((_, index) => index !== spriteIndex)
-        .map((line, index) => `立绘 ${index + 1}：${line.split(/：|:/).slice(1).join("：")}`)
+        .map((line, index) => `${TAG_PREFIX_SPRITE} ${index + 1}：${line.split(/：|:/).slice(1).join("：")}`)
         .join("\n");
       character.emotion_tags = tags ? `${tags}\n` : "";
       return delay(character);
@@ -380,23 +386,25 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
       const generatedNames: string[] = [];
       for (const character of selected) {
         if (!character.character_brief?.trim()) {
-          character.character_brief = `${character.name}的精简人物简介。`;
+          character.character_brief = tr("plat.preview.char.briefGenerated", { name: character.name });
           generatedNames.push(character.name);
         }
       }
       return delay({ characters: selected, generatedNames });
     },
     async generateBrief(input) {
+      const charName = input.name || tr("plat.preview.char.defaultName");
       return delay({
-        characterBrief: `${input.name || "角色"}的精简人物简介。`,
-        message: "输出成功",
+        characterBrief: tr("plat.preview.char.briefGenerated", { name: charName }),
+        message: tr("plat.preview.char.outputSuccess"),
       });
     },
     async generateSetting(input) {
+      const charName = input.name || tr("plat.preview.char.defaultName");
       return delay({
-        characterBrief: `${input.name || "角色"}的精简人物简介。`,
-        characterSetting: `${input.name || "角色"}的背景信息：\n1. 浏览器预览生成的设定。\n\n语言习惯：\n1. 温和且简洁。`,
-        message: "输出成功",
+        characterBrief: tr("plat.preview.char.briefGenerated", { name: charName }),
+        characterSetting: tr("plat.preview.char.settingGenerated", { name: charName }),
+        message: tr("plat.preview.char.outputSuccess"),
       });
     },
     import: async (items) => {
@@ -407,7 +415,7 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
           avatars: {},
           character_brief: "",
           relation_graph: { nodes: [], edges: [] },
-          character_setting: "导入预览角色",
+          character_setting: tr("plat.preview.char.importedSetting"),
           color: DEFAULT_CHARACTER_COLOR,
           emotion_tags: "",
           name: `Imported ${index + 1}`,
@@ -491,7 +499,7 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
       const existing = characterMemories.get(agentId) ?? {
         agentId,
         count: 1,
-        memories: [{ id: `${agentId}-preview`, memory: "浏览器预览记忆。" }],
+        memories: [{ id: `${agentId}-preview`, memory: tr("plat.preview.char.memorySample") }],
       };
       characterMemories.set(agentId, existing);
       return delay(existing);
@@ -539,7 +547,7 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
         (item, itemIndex) => item.name === character.name && itemIndex !== index,
       );
       if (duplicateIndex >= 0) {
-        throw new Error(`名称「${character.name}」已与其他角色重复！`);
+        throw new Error(tr("plat.preview.char.duplicateName", { name: character.name }));
       }
       const relationGraph = clone(
         (index >= 0 ? config.characters[index].relation_graph : character.relation_graph) ?? {
@@ -631,14 +639,14 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
     },
     async saveEmotionTags(name, emotionTags) {
       if (!name) {
-        throw new Error("请先选择或创建角色！");
+        throw new Error(tr("plat.preview.char.selectFirst"));
       }
       if (!emotionTags) {
-        throw new Error("请输入情绪标注！");
+        throw new Error(tr("plat.preview.char.emotionRequired"));
       }
       const character = config.characters.find((item) => item.name === name);
       if (!character) {
-        throw new Error(`找不到角色: ${name}`);
+        throw new Error(tr("plat.preview.char.missingByColon", { name }));
       }
       character.emotion_tags = emotionTags;
       return delay(character);
@@ -646,7 +654,7 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
     async saveSpriteScale(name, scale) {
       const character = config.characters.find((item) => item.name === name);
       if (!character) {
-        throw new Error(`角色不存在：${name}`);
+        throw new Error(tr("plat.preview.char.notFound", { name }));
       }
       character.sprite_scale = scale;
       return delay(character);
@@ -654,29 +662,31 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
     async saveSpriteGroups(input) {
       const character = config.characters.find((item) => item.name === input.name);
       if (!character) {
-        throw new Error(`角色不存在：${input.name}`);
+        throw new Error(tr("plat.preview.char.notFound", { name: input.name }));
       }
-      let groups = [...(input.spriteGroups ?? character.sprite_groups ?? ["默认"])];
-      if (!groups.includes("默认")) groups.unshift("默认");
-      if (input.renameFrom && input.renameTo && input.renameFrom !== "默认") {
+      let groups = [...(input.spriteGroups ?? character.sprite_groups ?? [DEFAULT_SPRITE_GROUP])];
+      if (!groups.includes(DEFAULT_SPRITE_GROUP)) groups.unshift(DEFAULT_SPRITE_GROUP);
+      if (input.renameFrom && input.renameTo && input.renameFrom !== DEFAULT_SPRITE_GROUP) {
         const nextName = input.renameTo.trim();
         if (nextName) {
           groups = groups.map((g) => (g === input.renameFrom ? nextName : g));
           character.sprites = character.sprites.map((s) =>
-            (s.group || "默认") === input.renameFrom ? { ...s, group: nextName === "默认" ? null : nextName } : s,
+            (s.group || DEFAULT_SPRITE_GROUP) === input.renameFrom
+              ? { ...s, group: nextName === DEFAULT_SPRITE_GROUP ? null : nextName }
+              : s,
           );
           if (character.default_sprite_group === input.renameFrom) {
             character.default_sprite_group = nextName;
           }
         }
       }
-      if (input.deleteGroup && input.deleteGroup !== "默认") {
+      if (input.deleteGroup && input.deleteGroup !== DEFAULT_SPRITE_GROUP) {
         groups = groups.filter((g) => g !== input.deleteGroup);
         character.sprites = character.sprites.map((s) =>
-          (s.group || "默认") === input.deleteGroup ? { ...s, group: null } : s,
+          (s.group || DEFAULT_SPRITE_GROUP) === input.deleteGroup ? { ...s, group: null } : s,
         );
         if (character.default_sprite_group === input.deleteGroup) {
-          character.default_sprite_group = "默认";
+          character.default_sprite_group = DEFAULT_SPRITE_GROUP;
         }
       }
       if (input.assignments) {
@@ -684,14 +694,16 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
           const idx = Number(rawIndex);
           if (!Number.isInteger(idx) || !character.sprites[idx]) continue;
           const clean = (rawGroup ?? "").trim();
-          const targetGroup = !clean || clean === "默认" ? null : clean;
+          const targetGroup = !clean || clean === DEFAULT_SPRITE_GROUP ? null : clean;
           if (targetGroup && !groups.includes(targetGroup)) groups.push(targetGroup);
           character.sprites[idx] = { ...character.sprites[idx], group: targetGroup };
         }
       }
-      character.sprite_groups = [...new Set(["默认", ...groups.filter((g) => g && g !== "默认")])];
+      character.sprite_groups = [
+        ...new Set([DEFAULT_SPRITE_GROUP, ...groups.filter((g) => g && g !== DEFAULT_SPRITE_GROUP)]),
+      ];
       if (input.defaultSpriteGroup !== undefined) {
-        const def = input.defaultSpriteGroup.trim() || "默认";
+        const def = input.defaultSpriteGroup.trim() || DEFAULT_SPRITE_GROUP;
         character.default_sprite_group = def;
         if (!character.sprite_groups.includes(def)) character.sprite_groups.push(def);
       }
@@ -703,24 +715,24 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
     async autoGroupSprites(input) {
       const character = config.characters.find((item) => item.name === input.name);
       if (!character) {
-        throw new Error(`角色不存在：${input.name}`);
+        throw new Error(tr("plat.preview.char.notFound", { name: input.name }));
       }
       const assignments: Record<string, string> = {};
       const byGroup = new Map<string, number[]>();
       character.sprites.forEach((sprite, idx) => {
         const current = (sprite.group || "").trim();
-        if (current && current !== "默认" && !input.overwriteExisting) {
+        if (current && current !== DEFAULT_SPRITE_GROUP && !input.overwriteExisting) {
           assignments[String(idx)] = current;
           byGroup.set(current, [...(byGroup.get(current) ?? []), idx]);
           return;
         }
         const filename = (sprite.path.split(/[\\/]/).pop() ?? "").replace(/\.[^.]+$/, "");
         const prefixMatch = filename.match(/^([a-zA-Z\u4e00-\u9fa5]+)[_-]/);
-        const group = prefixMatch ? prefixMatch[1] : "默认";
+        const group = prefixMatch ? prefixMatch[1] : DEFAULT_SPRITE_GROUP;
         assignments[String(idx)] = group;
         byGroup.set(group, [...(byGroup.get(group) ?? []), idx]);
       });
-      const spriteGroups = ["默认", ...[...byGroup.keys()].filter((g) => g !== "默认")];
+      const spriteGroups = [DEFAULT_SPRITE_GROUP, ...[...byGroup.keys()].filter((g) => g !== DEFAULT_SPRITE_GROUP)];
       const groups = spriteGroups
         .filter((g) => byGroup.has(g))
         .map((group) => ({
@@ -729,8 +741,8 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
           spriteIndices: byGroup.get(group) ?? [],
         }));
       const changedCount = character.sprites.reduce((acc, sprite, idx) => {
-        const prev = (sprite.group || "").trim() || "默认";
-        const next = assignments[String(idx)] || "默认";
+        const prev = (sprite.group || "").trim() || DEFAULT_SPRITE_GROUP;
+        const next = assignments[String(idx)] || DEFAULT_SPRITE_GROUP;
         return prev !== next ? acc + 1 : acc;
       }, 0);
       let updatedCharacter: Character | null = null;
@@ -755,7 +767,7 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
     async saveSpriteVoiceText(name, spriteIndex, voiceText) {
       const character = config.characters.find((item) => item.name === name);
       if (!character || !character.sprites[spriteIndex]) {
-        throw new Error("立绘不存在。");
+        throw new Error(tr("plat.preview.char.spriteNotFound"));
       }
       character.sprites[spriteIndex] = { ...character.sprites[spriteIndex], voice_text: voiceText };
       return delay(character);
@@ -763,7 +775,7 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
     async saveSpriteVoiceType(name, spriteIndex, voiceType) {
       const character = config.characters.find((item) => item.name === name);
       if (!character || !character.sprites[spriteIndex]) {
-        throw new Error("立绘不存在。");
+        throw new Error(tr("plat.preview.char.spriteNotFound"));
       }
       character.sprites[spriteIndex] = {
         ...character.sprites[spriteIndex],
@@ -781,30 +793,30 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
     async uploadSprites(input) {
       const character = config.characters.find((item) => item.name === input.name);
       if (!character) {
-        throw new Error(`角色不存在：${input.name}`);
+        throw new Error(tr("plat.preview.char.notFound", { name: input.name }));
       }
       const start = character.sprites.length;
       const groupName = input.group?.trim();
-      const targetGroup = !groupName || groupName === "默认" ? undefined : groupName;
+      const targetGroup = !groupName || groupName === DEFAULT_SPRITE_GROUP ? undefined : groupName;
       const nextSprites = input.paths.map((path) => ({
         path: `data/sprite/${character.sprite_prefix}/${path.split(/[\\/]/).pop() ?? path}`,
         ...(targetGroup ? { group: targetGroup } : {}),
       }));
       character.sprites = [...character.sprites, ...nextSprites];
       if (targetGroup) {
-        const currentGroups = character.sprite_groups ?? ["默认"];
+        const currentGroups = character.sprite_groups ?? [DEFAULT_SPRITE_GROUP];
         if (!currentGroups.includes(targetGroup)) {
           character.sprite_groups = [...currentGroups, targetGroup];
         }
       }
-      const extraTags = input.paths.map((_, index) => `立绘 ${start + index + 1}：`).join("\n");
+      const extraTags = input.paths.map((_, index) => `${TAG_PREFIX_SPRITE} ${start + index + 1}：`).join("\n");
       character.emotion_tags = `${input.emotionTags || character.emotion_tags || ""}${extraTags ? `${extraTags}\n` : ""}`;
       return delay(character);
     },
     async uploadSpriteVoice(input) {
       const character = config.characters.find((item) => item.name === input.name);
       if (!character || !character.sprites[input.spriteIndex]) {
-        throw new Error("立绘不存在。");
+        throw new Error(tr("plat.preview.char.spriteNotFound"));
       }
       character.sprites[input.spriteIndex] = {
         ...character.sprites[input.spriteIndex],

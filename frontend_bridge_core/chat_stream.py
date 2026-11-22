@@ -287,7 +287,11 @@ class ChatStreamService:
             ready = session.producer_ready
         return ready.wait(timeout=max(float(timeout), 0.0))
 
-    def close_session(self, session_id: str, *, reason: str = "聊天会话已结束。") -> None:
+    def close_session(self, session_id: str, *, reason: str | None = None) -> None:
+        if reason is None:
+            from frontend_bridge_core.i18n_helpers import bridge_tr
+
+            reason = bridge_tr(None, "chat.session_ended")
         event: dict[str, Any] | None = None
         with self._lock:
             session = self._sessions.get(session_id)

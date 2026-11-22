@@ -8,6 +8,7 @@ from typing import Any, Optional
 from config.character_ops.profile import resolve_mutable_character
 from config.character_ops.target import CharacterPersistenceTarget, _with_character_lock
 from config.schema import Character, DEFAULT_SPRITE_GROUP
+from i18n import tr
 from config.sprite_groups import (
     normalize_sprite_group,
     normalize_sprite_group_list,
@@ -32,10 +33,10 @@ def save_character_sprite_groups(
 ) -> Character:
     """Atomically save sprite outfit groups, assignments, renames, and deletions."""
     if not name or not str(name).strip():
-        raise ValueError("角色名称不能为空")
+        raise ValueError(tr("crud.char.name_empty_plain"))
     character = resolve_mutable_character(target, str(name).strip())
     if character is None:
-        raise KeyError(f"找不到角色: {name}")
+        raise KeyError(tr("crud.char.not_found", name=name))
 
     target_avatar = (
         str(character.avatar_type or "static").strip().lower()
@@ -48,7 +49,7 @@ def save_character_sprite_groups(
         bank_sprites = list(character.sprites or [])
     else:
         if target_avatar not in next_avatars:
-            raise KeyError(f"未知形象类型: {target_avatar}")
+            raise KeyError(tr("crud.char.unknown_avatar_type", avatar=target_avatar))
         bank_sprites = list(next_avatars[target_avatar].sprites or [])
 
     next_groups = normalize_sprite_group_list(
@@ -69,7 +70,7 @@ def save_character_sprite_groups(
         src = normalize_sprite_group(rename_from)
         dst = normalize_sprite_group(rename_to)
         if src == DEFAULT_SPRITE_GROUP:
-            raise ValueError("默认分组不可重命名")
+            raise ValueError(tr("crud.char.default_group_rename_forbidden"))
         if src != dst:
             bank_sprites = [
                 set_sprite_group_value(sp, dst) if sprite_group_of(sp) == src else sp
@@ -84,7 +85,7 @@ def save_character_sprite_groups(
     if delete_group is not None:
         removed = normalize_sprite_group(delete_group)
         if removed == DEFAULT_SPRITE_GROUP:
-            raise ValueError("默认分组不可删除")
+            raise ValueError(tr("crud.char.default_group_delete_forbidden"))
         bank_sprites = [
             set_sprite_group_value(sp, None) if sprite_group_of(sp) == removed else sp
             for sp in bank_sprites
@@ -98,7 +99,7 @@ def save_character_sprite_groups(
         for raw_idx, group_val in assignments.items():
             idx = int(raw_idx)
             if not 0 <= idx < len(bank_sprites):
-                raise ValueError(f"立绘编号越界: {idx}")
+                raise ValueError(tr("crud.char.sprite_index_oob", index=idx))
             bank_sprites[idx] = set_sprite_group_value(bank_sprites[idx], group_val)
             norm = normalize_sprite_group(group_val)
             if norm != DEFAULT_SPRITE_GROUP and norm not in next_groups and norm not in added_groups:

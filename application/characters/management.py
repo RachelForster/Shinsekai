@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 from application.media.resource_paths import MediaResourcePaths
 from application.runtime.state import _jsonify
 from config.character_manager import CharacterManager
+from i18n import is_operation_error_message, tr
 from config.character_ops import (
     CHARACTER_MUTATION_LOCK,
     CharacterProfileError,
@@ -23,6 +24,8 @@ from config.character_ops import (
     delete_single_character_sprite,
     save_character_patch,
     save_character_sprite_groups,
+    save_character_sprite_voice_text,
+    save_character_sprite_voice_type,
     upload_character_sprite_voice,
     upload_character_sprites,
 )
@@ -120,24 +123,29 @@ def validate_character_payload(body: dict[str, Any], *, allow_remote_voice_paths
     def optional_suffix(value: str, suffix: str, label: str) -> tuple[bool, str]:
         if not value or value.lower().endswith(suffix):
             return True, ""
-        return False, f"{label}: 文件后缀应为 {suffix}"
+        return False, tr("validator.invalid_file_suffix", label=label, suffix=suffix)
+
+    sprite_prefix_label = tr("validator.field.sprite_prefix")
+    gpt_model_label = tr("validator.field.gpt_model_path")
+    sovits_model_label = tr("validator.field.sovits_model_path")
+    refer_audio_label = tr("validator.field.refer_audio_path")
 
     checks = [
-        not_empty(sprite_prefix, "立绘目录"),
-        ascii_only(sprite_prefix, "立绘目录"),
-        no_quotes(gpt_model_path, "GPT 模型路径"),
-        optional_suffix(gpt_model_path, ".ckpt", "GPT 模型路径"),
-        no_quotes(sovits_model_path, "SoVITS 模型路径"),
-        optional_suffix(sovits_model_path, ".pth", "SoVITS 模型路径"),
-        no_quotes(refer_audio_path, "参考音频"),
+        not_empty(sprite_prefix, sprite_prefix_label),
+        ascii_only(sprite_prefix, sprite_prefix_label),
+        no_quotes(gpt_model_path, gpt_model_label),
+        optional_suffix(gpt_model_path, ".ckpt", gpt_model_label),
+        no_quotes(sovits_model_path, sovits_model_label),
+        optional_suffix(sovits_model_path, ".pth", sovits_model_label),
+        no_quotes(refer_audio_path, refer_audio_label),
     ]
     if not allow_remote_voice_paths:
         checks.extend(
             [
-                file_exists(gpt_model_path, "GPT 模型路径"),
-                file_exists(sovits_model_path, "SoVITS 模型路径"),
-                file_exists(refer_audio_path, "参考音频"),
-                audio_duration_between(refer_audio_path, 3.0, 10.0, "参考音频"),
+                file_exists(gpt_model_path, gpt_model_label),
+                file_exists(sovits_model_path, sovits_model_label),
+                file_exists(refer_audio_path, refer_audio_label),
+                audio_duration_between(refer_audio_path, 3.0, 10.0, refer_audio_label),
             ]
         )
     ok, errors = check_all(*checks)
@@ -278,10 +286,10 @@ class CharacterUseCase:
     @staticmethod
     def _validate_reference_audio(voice_path: str) -> None:
         if not voice_path.lower().endswith(".wav"):
-            raise ValueError("参考语音必须是 WAV 格式")
+            raise ValueError(tr("crud.char.refer_voice_wav_only"))
         from sdk.ui.validators import audio_duration_between
 
-        ok, error = audio_duration_between(voice_path, 3.0, 10.0, "参考语音")
+        ok, error = audio_duration_between(voice_path, 3.0, 10.0, tr("validator.field.refer_voice"))
         if not ok:
             raise ValueError(error)
 
@@ -291,7 +299,7 @@ class CharacterUseCase:
             return
         from sdk.ui.validators import audio_duration_between
 
-        ok, error = audio_duration_between(voice_path, 3.0, 10.0, "语音")
+        ok, error = audio_duration_between(voice_path, 3.0, 10.0, tr("validator.field.voice"))
         if not ok:
             raise ValueError(error)
 
@@ -310,9 +318,9 @@ class CharacterUseCase:
         target_id = str(payload.get("id") or body.get("id") or "").strip()
         target_name = str(body.get("name") or "").strip()
         if explicit_original_name and is_self_persona_name(explicit_original_name) and not is_self_persona_name(target_name):
-            raise ValueError("内置「自设」人物不可重命名")
+            raise ValueError(tr("crud.char.self_rename_validation"))
         if explicit_original_name and not is_self_persona_name(explicit_original_name) and is_self_persona_name(target_name):
-            raise ValueError("不能将其他角色重命名为「自设」")
+            raise ValueError(tr("crud.char.rename_to_self_validation"))
         if is_self_persona_name(target_name) and not str(body.get("sprite_prefix") or "").strip():
             body = {**body, "sprite_prefix": SELF_PERSONA_SPRITE_PREFIX}
         if is_self_persona_name(target_name) and "display_name" in body:
@@ -321,7 +329,7 @@ class CharacterUseCase:
             raw_name = str(body["display_name"] or "").strip()
             display_name = sanitize_user_display_name(raw_name)
             if raw_name and not display_name:
-                raise ValueError("自设显示名无效，请使用 24 个字符以内的名称")
+                raise ValueError(tr("crud.char.self_display_name_invalid"))
             body = {**body, "display_name": display_name}
 
         target = self._catalog_target()
@@ -438,14 +446,7 @@ class CharacterUseCase:
                     else {}
                 ),
             )
-            if (
-                message.startswith("名称不能为空")
-                or "已与其他角色重复" in message
-                or "不可重命名" in message
-                or "不能将其他角色重命名" in message
-                or "占用" in message
-                or message.startswith("保存失败")
-            ):
+            if is_operation_error_message(message):
                 raise RuntimeError(message)
             saved_obj = character
 
@@ -510,13 +511,13 @@ class CharacterUseCase:
 
         name = str(payload.get("name") or "").strip()
         if is_self_persona_name(name):
-            raise ValueError("内置「自设」人物不可删除")
+            raise ValueError(tr("crud.char.self_delete_validation"))
 
         target = self._catalog_target()
         if target is not None:
             existing = target.get_by_name(name)
             if existing is not None and getattr(existing, "undeletable", False):
-                raise ValueError(f"内置人物「{existing.name}」不可删除")
+                raise ValueError(tr("crud.char.builtin_delete_validation", name=existing.name))
             existed = existing is not None
             message, names = delete_character_and_assets(
                 target,
@@ -532,7 +533,7 @@ class CharacterUseCase:
 
         existing = self._state.config_manager.get_character_by_name(name)
         if existing is not None and getattr(existing, "undeletable", False):
-            raise ValueError(f"内置人物「{existing.name}」不可删除")
+            raise ValueError(tr("crud.char.builtin_delete_validation", name=existing.name))
         existed = existing is not None
         message, names = self._state.character_manager.delete_character(name)
         if existed and self._state.config_manager.get_character_by_name(name) is None:
@@ -573,7 +574,7 @@ class CharacterUseCase:
                 emotion_tags,
                 **upload_kwargs,
             )
-        if message.startswith("找不到") or message.startswith("请选择") or message.startswith("请先"):
+        if is_operation_error_message(message):
             raise RuntimeError(message)
         return self._after_reload(name)
 
@@ -681,7 +682,7 @@ class CharacterUseCase:
             message, _paths, _tags = delete_single_character_sprite(target, name, index)
         else:
             message, _paths, _tags = self._state.character_manager.delete_single_sprite(name, index)
-        if message.startswith("找不到") or message.startswith("立绘不存在") or message.startswith("请先"):
+        if is_operation_error_message(message):
             raise RuntimeError(message)
         return self._after_reload(name)
 
@@ -697,7 +698,7 @@ class CharacterUseCase:
             )
         else:
             message, _paths, _tags = self._state.character_manager.delete_all_sprites(name)
-        if message.startswith("找不到") or message.startswith("请先"):
+        if is_operation_error_message(message):
             raise RuntimeError(message)
         return self._after_reload(name)
 
@@ -738,12 +739,7 @@ class CharacterUseCase:
                 voice_text,
                 voice_type,
             )
-        if (
-            message.startswith("找不到")
-            or message.startswith("立绘不存在")
-            or message.startswith("请选择")
-            or message.startswith("请先")
-        ):
+        if is_operation_error_message(message):
             raise RuntimeError(message)
         return self._after_reload(name)
 
@@ -767,7 +763,7 @@ class CharacterUseCase:
             message = save_character_sprite_voice_text(target, name, sprite_index, voice_text)
         else:
             message = self._state.character_manager.save_sprite_voice_text(name, sprite_index, voice_text)
-        if message.startswith("找不到") or message.startswith("立绘不存在") or message.startswith("请先"):
+        if is_operation_error_message(message):
             raise RuntimeError(message)
         return self._after_reload(name)
 
@@ -788,7 +784,7 @@ class CharacterUseCase:
             message = save_character_sprite_voice_type(target, name, sprite_index, voice_type)
         else:
             message = self._state.character_manager.save_sprite_voice_type(name, sprite_index, voice_type)
-        if message.startswith("找不到") or message.startswith("立绘不存在") or message.startswith("请先"):
+        if is_operation_error_message(message):
             raise RuntimeError(message)
         return self._after_reload(name)
 
@@ -800,7 +796,7 @@ class CharacterUseCase:
             message = delete_character_sprite_voice(target, name, sprite_index)
         else:
             message = self._state.character_manager.delete_sprite_voice(name, sprite_index)
-        if message.startswith("找不到") or message.startswith("立绘不存在") or message.startswith("请先"):
+        if is_operation_error_message(message):
             raise RuntimeError(message)
         return self._after_reload(name)
 

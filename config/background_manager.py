@@ -22,6 +22,7 @@ from config.background_ops import (
 )
 from config.config_manager import ConfigManager
 from config.schema import Background, Sprite
+from i18n import LocalizedErrorStr, err_tr, is_operation_error_message, tr
 import tools.file_util as fu
 
 if TYPE_CHECKING:
@@ -89,8 +90,8 @@ class BackgroundManager:
         try:
             _saved, _renamed, created = self.save_background_patch(patch, original_name=edit_as_name)
         except BackgroundProfileError as exc:
-            return str(exc), [b.name for b in self._get_background_list()]
-        return ("背景组已添加！" if created else "背景组已更新！", [b.name for b in self._get_background_list()])
+            return LocalizedErrorStr(exc), [b.name for b in self._get_background_list()]
+        return (tr("crud.bg.added") if created else tr("crud.bg.updated"), [b.name for b in self._get_background_list()])
 
     def delete_background(self, name: str) -> Tuple[str, List[str]]:
         return delete_background_and_assets(self._target(), name, upload_dir=BACKGROUND_UPLOAD_DIR, bgm_dir=BGM_UPLOAD_DIR)
@@ -107,11 +108,11 @@ class BackgroundManager:
     def upload_bg_tags(self, background_name: str, bg_tags: str) -> str:
         try:
             save_background_image_tags_op(self._target(), background_name, bg_tags)
-            return "标注成功！"
+            return tr("crud.common.tag_success")
         except BackgroundProfileError as exc:
-            return str(exc)
+            return LocalizedErrorStr(exc)
         except Exception as exc:
-            return f"标注出错了：{exc}"
+            return err_tr("crud.common.tag_failed", error=exc)
 
     def get_background_sprites(self, background_name: str) -> Tuple[List[str], str, List[Any]]:
         background = self._config_manager.get_background_by_name(background_name) if background_name else None
@@ -123,13 +124,13 @@ class BackgroundManager:
     def load_backgrounds_from_file(self) -> Tuple[str, List[List[str]]]:
         try:
             self._config_manager.reload()
-            return "背景设定已加载！", [[b.name, b.sprite_prefix, b.bg_tags or ""] for b in self._get_background_list()]
+            return tr("crud.bg.loaded"), [[b.name, b.sprite_prefix, b.bg_tags or ""] for b in self._get_background_list()]
         except Exception as exc:
-            return f"加载失败: {exc}", [[b.name, b.sprite_prefix, b.bg_tags or ""] for b in self._get_background_list()]
+            return err_tr("crud.common.load_failed", error=exc), [[b.name, b.sprite_prefix, b.bg_tags or ""] for b in self._get_background_list()]
 
     def upload_bgms(self, background_name: str, bgm_files: List[Any]) -> Any:
         message, _paths, tags = upload_background_bgms(self._target(), background_name, bgm_files, bgm_dir=BGM_UPLOAD_DIR)
-        if message.startswith(("请先", "请选择", "找不到")):
+        if is_operation_error_message(message):
             return message, _pd().DataFrame(), tags
         df, loaded_tags = self.load_bgms_and_tags(background_name)
         return message, df, loaded_tags
@@ -140,11 +141,11 @@ class BackgroundManager:
     def upload_bgm_tags(self, background_name: str, bgm_tags: str) -> str:
         try:
             save_background_bgm_tags_op(self._target(), background_name, bgm_tags)
-            return "背景音乐标注成功！"
+            return tr("crud.bg.bgm_tag_success")
         except BackgroundProfileError as exc:
-            return str(exc)
+            return LocalizedErrorStr(exc)
         except Exception as exc:
-            return f"背景音乐标注出错了：{exc}"
+            return err_tr("crud.bg.bgm_tag_failed", error=exc)
 
     def get_background_bgms(self, background_name: str) -> Tuple[List[str], str, List[Any]]:
         background = self._config_manager.get_background_by_name(background_name) if background_name else None
@@ -174,53 +175,53 @@ class BackgroundManager:
 
     def batch_delete_bgms(self, background_name: str, bgm_dataframe: pd.DataFrame, bgm_tags: str) -> Any:
         if not background_name:
-            return "请先选择背景组！", _pd().DataFrame(), bgm_tags
+            return err_tr("crud.bg.select_first"), _pd().DataFrame(), bgm_tags
         if bgm_dataframe.empty:
-            return "没有音乐条可供删除。", _pd().DataFrame(), ""
+            return err_tr("crud.bg.no_bgm_to_delete"), _pd().DataFrame(), ""
         try:
             indices = sorted(bgm_dataframe[bgm_dataframe["选择"] == True]["序号"].tolist(), reverse=True)  # noqa: E712
         except Exception as exc:
-            return f"处理数据失败: {exc}", bgm_dataframe, bgm_tags
+            return err_tr("crud.bg.bgm_dataframe_failed", error=exc), bgm_dataframe, bgm_tags
         if not indices:
-            return "请勾选要删除的音乐条。", bgm_dataframe, bgm_tags
+            return err_tr("crud.bg.select_bgm_rows"), bgm_dataframe, bgm_tags
         deleted, errors = 0, ""
         for original_index in indices:
             try:
                 msg, _, _ = self.delete_single_bgm(background_name, original_index - 1)
-                deleted += 1 if "已删除" in msg else 0
-                if "已删除" not in msg:
-                    errors += f"删除序号 {original_index} 失败: {msg}\n"
+                deleted += 0 if is_operation_error_message(msg) else 1
+                if is_operation_error_message(msg):
+                    errors += tr("crud.bg.bgm_row_delete_failed", index=original_index, message=msg)
             except Exception as exc:
-                errors += f"删除序号 {original_index} 发生异常: {exc}\n"
+                errors += tr("crud.bg.bgm_row_delete_error", index=original_index, error=exc)
         paths, remaining_tags, _ = self.get_background_bgms(background_name)
-        summary = f"成功删除了 {deleted} 个音乐条。" + (f"\n部分删除失败的提示：\n{errors}" if errors else "")
+        summary = tr("crud.bg.bgm_bulk_deleted", count=deleted) + (tr("crud.bg.bgm_partial_errors", errors=errors) if errors else "")
         return summary, self.format_bgms_for_display(paths, remaining_tags), remaining_tags
 
     def handle_bgm_selection(self, evt: Any, bgm_dataframe: pd.DataFrame) -> Tuple[str, str]:
         if evt is None or evt.index is None:
-            return "请点击 Dataframe 中的一行。", ""
+            return err_tr("crud.bg.click_row"), ""
         row_index = evt.index[0]
         if not 0 <= row_index < len(bgm_dataframe):
-            return "无效的行选择。", ""
+            return err_tr("crud.bg.invalid_row"), ""
         try:
             selected_path = bgm_dataframe.iloc[row_index]["路径"]
             if not selected_path or not os.path.exists(selected_path):
-                return f"文件路径不存在: {selected_path}", ""
-            return f"正在播放: {os.path.basename(selected_path)}", selected_path
+                return err_tr("crud.bg.file_missing", path=selected_path), ""
+            return tr("crud.bg.playing", filename=os.path.basename(selected_path)), selected_path
         except KeyError:
-            return "Dataframe 缺少 '路径' 列，无法播放。", ""
+            return err_tr("crud.bg.missing_path_column"), ""
         except Exception as exc:
-            return f"播放出错: {exc}", ""
+            return err_tr("crud.bg.play_failed", error=exc), ""
 
     def export_background_file(self, background_name: str) -> str:
         try:
             background = self._config_manager.get_background_by_name(background_name)
             if not background:
-                return f"找不到背景组: {background_name}"
+                return err_tr("crud.bg.not_found", name=background_name)
             fu.export_background([background], f"./output/{background_name}.bg")
-            return f"背景组已导出到: /output/{background_name}.bg"
+            return tr("crud.bg.exported", name=background_name)
         except Exception as exc:
-            return f"背景导出失败: {exc}"
+            return err_tr("crud.bg.export_failed", error=exc)
 
     def import_background_file(self, input_path: str) -> Tuple[str, List[str]]:
         try:
@@ -230,6 +231,6 @@ class BackgroundManager:
                 if item not in existing:
                     existing.append(item)
             self._config_manager.save_background_config()
-            return f"成功导入 {len(imported)} 个背景组！", [b.name for b in existing]
+            return tr("crud.bg.imported", count=len(imported)), [b.name for b in existing]
         except Exception as exc:
-            return f"背景导入失败: {exc}", [b.name for b in self._get_background_list()]
+            return err_tr("crud.bg.import_failed", error=exc), [b.name for b in self._get_background_list()]

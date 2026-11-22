@@ -1,3 +1,4 @@
+import { setActiveFrontendLanguage, translateRuntimeMessage } from "../../i18n/runtimeLanguage";
 import type { ConfigPlatform, ModelAssetsPlatform, MusicCoverPlatform, MusicCoverRunResult } from "./configTypes";
 import { type BrowserPreviewContext, clone, delay, previewTask } from "./previewContext";
 import type { RuntimePlatform } from "./taskTypes";
@@ -20,6 +21,8 @@ function looksLikeLocalModelReference(value: string) {
 
 export function createConfigPreviewPlatform(ctx: BrowserPreviewContext): ConfigPlatform {
   const { config } = ctx;
+  const tr = (key: Parameters<typeof translateRuntimeMessage>[0], values?: Record<string, string | number>) =>
+    translateRuntimeMessage(key, values, config.system_config.ui_language);
 
   return {
     async cancelTtsBundleDownload(taskId) {
@@ -30,12 +33,12 @@ export function createConfigPreviewPlatform(ctx: BrowserPreviewContext): ConfigP
         id: taskId,
         kind: "tts-bundle",
         logs: [],
-        message: "任务已取消，已清理下载内容。",
+        message: tr("plat.preview.config.ttsBundleCancelled"),
         phase: "cancelled",
         progress: null,
         result: null,
         status: "cancelled",
-        title: "TTS 整合包下载",
+        title: tr("plat.preview.config.ttsBundleTitle"),
         updatedAt: now,
       });
     },
@@ -43,13 +46,18 @@ export function createConfigPreviewPlatform(ctx: BrowserPreviewContext): ConfigP
       const taskId = `preview-tts-${Date.now()}`;
       previewTask(
         taskId,
-        { message: "正在下载 TTS 整合包。", phase: "download", progress: 0.35, status: "running" },
+        {
+          message: tr("plat.preview.config.ttsBundleDownloading"),
+          phase: "download",
+          progress: 0.35,
+          status: "running",
+        },
         options,
       );
       await delay(null, 160);
       previewTask(
         taskId,
-        { message: "正在解压整合包。", phase: "extract", progress: 0.82, status: "running" },
+        { message: tr("plat.preview.config.ttsBundleExtracting"), phase: "extract", progress: 0.82, status: "running" },
         options,
       );
       await delay(null, 160);
@@ -64,23 +72,25 @@ export function createConfigPreviewPlatform(ctx: BrowserPreviewContext): ConfigP
       } as const;
       previewTask(
         taskId,
-        { message: "TTS 整合包已就绪。", phase: "completed", progress: 1, result, status: "succeeded" },
+        {
+          message: tr("plat.preview.config.ttsBundleReady"),
+          phase: "completed",
+          progress: 1,
+          result,
+          status: "succeeded",
+        },
         options,
       );
       return delay(result);
     },
     fetchLlmModels: async () => {
-      throw new Error(
-        "当前页面未连接 Shinsekai Python bridge，无法获取真实模型列表。请使用 start-react 启动，或为 Vite 设置 VITE_SHINSEKAI_API_BASE。",
-      );
+      throw new Error(tr("plat.preview.config.llmModelsBridgeRequired"));
     },
     testLlmConnection: async () => {
-      throw new Error(
-        "当前页面未连接 Shinsekai Python bridge，无法进行真实 LLM 连通检测。请使用 start-react 启动，或为 Vite 设置 VITE_SHINSEKAI_API_BASE。",
-      );
+      throw new Error(tr("plat.preview.config.llmTestBridgeRequired"));
     },
     testComfyuiConnection: async () => {
-      throw new Error("当前页面未连接 Shinsekai Python bridge，无法进行真实 ComfyUI 连通检测。");
+      throw new Error(tr("plat.preview.config.comfyBridgeRequired"));
     },
     get: () => delay(config),
     detectNetworkProxy: () =>
@@ -103,6 +113,7 @@ export function createConfigPreviewPlatform(ctx: BrowserPreviewContext): ConfigP
     },
     async saveSystem(systemConfig) {
       config.system_config = clone(systemConfig);
+      setActiveFrontendLanguage(systemConfig.ui_language);
       return delay(config.system_config);
     },
   };
@@ -110,6 +121,8 @@ export function createConfigPreviewPlatform(ctx: BrowserPreviewContext): ConfigP
 
 export function createModelAssetsPreviewPlatform(ctx: BrowserPreviewContext): ModelAssetsPlatform {
   const { cachedModelAssets, config } = ctx;
+  const tr = (key: Parameters<typeof translateRuntimeMessage>[0], values?: Record<string, string | number>) =>
+    translateRuntimeMessage(key, values, config.system_config.ui_language);
 
   return {
     async download(input, options) {
@@ -140,11 +153,11 @@ export function createModelAssetsPreviewPlatform(ctx: BrowserPreviewContext): Mo
         taskId,
         {
           kind: "model-download",
-          message: `正在下载 ${variant}。`,
+          message: tr("plat.preview.config.modelDownloading", { variant }),
           phase: "download",
           progress: 0.42,
           status: "running",
-          title: "模型下载",
+          title: tr("plat.preview.config.modelDownloadTitle"),
         },
         options,
       );
@@ -173,12 +186,12 @@ export function createModelAssetsPreviewPlatform(ctx: BrowserPreviewContext): Mo
         taskId,
         {
           kind: "model-download",
-          message: `${variant} 已缓存。`,
+          message: tr("plat.preview.config.modelCached", { variant }),
           phase: "completed",
           progress: 1,
           result,
           status: "succeeded",
-          title: "模型下载",
+          title: tr("plat.preview.config.modelDownloadTitle"),
         },
         options,
       );
@@ -240,6 +253,8 @@ export function createRuntimePreviewPlatform(): RuntimePlatform {
 
 export function createMusicCoverPreviewPlatform(ctx: BrowserPreviewContext): MusicCoverPlatform {
   const { config } = ctx;
+  const tr = (key: Parameters<typeof translateRuntimeMessage>[0], values?: Record<string, string | number>) =>
+    translateRuntimeMessage(key, values, config.system_config.ui_language);
 
   return {
     async run(input, options) {
@@ -248,11 +263,11 @@ export function createMusicCoverPreviewPlatform(ctx: BrowserPreviewContext): Mus
         taskId,
         {
           kind: "music-cover",
-          message: "正在生成翻唱音频。",
+          message: tr("plat.preview.config.musicCoverRunning"),
           phase: "run",
           progress: 0.45,
           status: "running",
-          title: "音乐翻唱",
+          title: tr("plat.preview.config.musicCoverTitle"),
         },
         options,
       );
@@ -264,19 +279,19 @@ export function createMusicCoverPreviewPlatform(ctx: BrowserPreviewContext): Mus
           `query=${input.query || "(empty)"}`,
           `pick_index=${input.pickIndex}`,
           `skip_rvc=${input.skipRvc}`,
-          "浏览器预览模式未执行真实下载、分离或 RVC。",
+          tr("plat.preview.config.musicCoverLogHint"),
         ].join("\n"),
       };
       previewTask<MusicCoverRunResult>(
         taskId,
         {
           kind: "music-cover",
-          message: "翻唱音频预览完成。",
+          message: tr("plat.preview.config.musicCoverDone"),
           phase: "completed",
           progress: 1,
           result,
           status: "succeeded",
-          title: "音乐翻唱",
+          title: tr("plat.preview.config.musicCoverTitle"),
         },
         options,
       );
@@ -298,7 +313,7 @@ export function createMusicCoverPreviewPlatform(ctx: BrowserPreviewContext): Mus
         music_cover_yt_dlp_exe: input.music_cover_yt_dlp_exe || "",
       };
       return delay({
-        message: "音乐翻唱配置已保存。",
+        message: tr("plat.preview.config.musicCoverSaved"),
         systemConfig: config.system_config,
       });
     },

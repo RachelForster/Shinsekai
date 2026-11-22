@@ -1,3 +1,4 @@
+import { translateRuntimeMessage } from "../../../i18n/runtimeLanguage";
 import { idbDeleteMany, idbGet, idbGetAll, idbPut, type VfsBlobRecord } from "./indexedDbStore";
 
 export const VFS_SCHEME = "vfs://";
@@ -275,7 +276,7 @@ export async function relocateVfsBlob(sourcePath: string, targetPath: string): P
   }
   const blob = await getVfsBlobAsync(normalizedSource);
   if (!blob) {
-    throw new Error(`未找到上传资源: ${sourcePath}`);
+    throw new Error(translateRuntimeMessage("plat.standalone.vfsMissingUpload", { path: sourcePath }));
   }
   await putVfsBlob(normalizedTarget, blob, {
     mimeType: blob.type || guessMimeTypeFromPath(normalizedTarget),

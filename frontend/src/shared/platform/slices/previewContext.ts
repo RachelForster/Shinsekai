@@ -1,3 +1,4 @@
+import { translateRuntimeMessage } from "../../i18n/runtimeLanguage";
 import type { ChatThemePayload } from "../../theme/chatChromeTheme";
 import { DEFAULT_CHAT_THEME_ID, type ChatThemeManifest, type ChatThemeSummary } from "../../theme/chatTheme";
 import {
@@ -53,7 +54,7 @@ export function previewTask<TResult>(
     progress: 0,
     result: null,
     status: "queued",
-    title: "安装插件",
+    title: translateRuntimeMessage("plat.preview.ctx.installPluginTitle"),
     updatedAt: now,
     ...patch,
   });
@@ -197,7 +198,11 @@ export function createBrowserPreviewContext(): BrowserPreviewContext {
   knowledgeData.set("preview-knowledge", {
     memories: Array.from({ length: 18 }, (_, index) => ({
       id: `knowledge-preview-${index + 1}`,
-      memory: `雾港世界设定 ${index + 1}：居民依靠钟声辨认进港的船只。`,
+      memory: translateRuntimeMessage(
+        "plat.preview.ctx.knowledgeMemory",
+        { index: index + 1 },
+        config.system_config.ui_language,
+      ),
     })),
     characters: config.characters.map((character) => ({ name: character.name, createdAt: "2026-09-14 00:00:00" })),
   });

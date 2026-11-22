@@ -1,3 +1,4 @@
+import { translateRuntimeMessage } from "../../../../../i18n/runtimeLanguage";
 import { base64ToBytes, standaloneHttpJson, type StandaloneHttpClient } from "../../httpClient";
 import type { StandaloneTtsAdapter, StandaloneTtsInput } from "../types";
 
@@ -12,9 +13,13 @@ interface QwenTtsResponse {
 
 export const qwenTtsAdapter: StandaloneTtsAdapter = {
   id: "qwen-tts",
-  label: "阿里百炼 Qwen TTS (手机端原生免跨域直连)",
+  get label() {
+    return translateRuntimeMessage("plat.standalone.tts.qwenLabel");
+  },
   browserCors: "proxy-only",
-  description: "DashScope 通义千问语音合成，手机 App 通过原生 HTTP 直连无跨域限制；网页端需配 CORS 代理。",
+  get description() {
+    return translateRuntimeMessage("plat.standalone.tts.qwenDesc");
+  },
   schema: {
     api_key: {
       label: "DashScope API Key",
@@ -28,12 +33,16 @@ export const qwenTtsAdapter: StandaloneTtsAdapter = {
       default: "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
     },
     model: {
-      label: "模型",
+      get label() {
+        return translateRuntimeMessage("plat.standalone.tts.model");
+      },
       type: "str",
       default: "qwen-tts",
     },
     default_voice_id: {
-      label: "默认音色 (如 Cherry / Chelsie / Ethan)",
+      get label() {
+        return translateRuntimeMessage("plat.standalone.tts.qwenVoice");
+      },
       type: "str",
       default: "Cherry",
     },

@@ -10,32 +10,17 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 BRIDGE_ROOT = REPO_ROOT / "frontend_bridge_core"
 _CJK_RE = re.compile(r"[\u3400-\u9fff\u3040-\u30ff]")
 
+# LLM-facing host tool descriptions stay inline by design (matching @tool descriptions).
+EXEMPT_BRIDGE_FILES = frozenset(
+    {
+        "frontend_bridge_core/transport/agent_http_tools.py",
+    }
+)
+
 # Ratchet baseline of existing frontend_bridge_core files containing CJK string
 # literals in non-docstring code. Never add new files here; remove each entry
 # once migrated to structured error/task codes.
-LOCKED_BRIDGE_CJK_FILES = frozenset(
-    {
-        "frontend_bridge_core/backgrounds.py",
-        "frontend_bridge_core/characters.py",
-        "frontend_bridge_core/chat_session.py",
-        "frontend_bridge_core/chat_stream.py",
-        "frontend_bridge_core/chat_themes.py",
-        "frontend_bridge_core/config.py",
-        "frontend_bridge_core/music.py",
-        "frontend_bridge_core/plugin_ui.py",
-        "frontend_bridge_core/routes/background_routes.py",
-        "frontend_bridge_core/routes/character_routes.py",
-        "frontend_bridge_core/routes/file_transport.py",
-        "frontend_bridge_core/routes/operation_routes.py",
-        "frontend_bridge_core/routes/plugin_routes.py",
-        "frontend_bridge_core/routes/story_routes.py",
-        "frontend_bridge_core/routes/system_routes.py",
-        "frontend_bridge_core/routes/transfer_routes.py",
-        "frontend_bridge_core/tools.py",
-        "frontend_bridge_core/transport/agent_http_tools.py",
-        "frontend_bridge_core/transport/mobile_access.py",
-    }
-)
+LOCKED_BRIDGE_CJK_FILES: frozenset[str] = frozenset()
 
 
 def _docstring_node_ids(tree: ast.AST) -> set[int]:
@@ -57,6 +42,9 @@ def _docstring_node_ids(tree: ast.AST) -> set[int]:
 def _bridge_cjk_files() -> frozenset[str]:
     found: set[str] = set()
     for source in sorted(BRIDGE_ROOT.rglob("*.py")):
+        rel_path = source.relative_to(REPO_ROOT).as_posix()
+        if rel_path in EXEMPT_BRIDGE_FILES:
+            continue
         tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
         doc_ids = _docstring_node_ids(tree)
         for node in ast.walk(tree):
@@ -66,7 +54,7 @@ def _bridge_cjk_files() -> frozenset[str]:
                 and id(node) not in doc_ids
                 and _CJK_RE.search(node.value)
             ):
-                found.add(source.relative_to(REPO_ROOT).as_posix())
+                found.add(rel_path)
                 break
     return frozenset(found)
 

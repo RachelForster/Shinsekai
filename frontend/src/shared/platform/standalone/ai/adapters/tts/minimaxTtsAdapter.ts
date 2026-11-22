@@ -1,3 +1,4 @@
+import { translateRuntimeMessage } from "../../../../../i18n/runtimeLanguage";
 import { standaloneHttpJson, type StandaloneHttpClient } from "../../httpClient";
 import type { StandaloneTtsAdapter, StandaloneTtsInput } from "../types";
 
@@ -24,9 +25,13 @@ function hexToBytes(hex: string): Uint8Array {
 
 export const minimaxTtsAdapter: StandaloneTtsAdapter = {
   id: "minimax-tts",
-  label: "MiniMax 云端语音 (T2A v2)",
+  get label() {
+    return translateRuntimeMessage("plat.standalone.tts.minimaxLabel");
+  },
   browserCors: "supported",
-  description: "对齐仓库 minimax-tts 插件字段，调用 MiniMax T2A v2 合成高质量拟人语音。",
+  get description() {
+    return translateRuntimeMessage("plat.standalone.tts.minimaxDesc");
+  },
   schema: {
     api_key: {
       label: "MiniMax API Key",
@@ -45,12 +50,16 @@ export const minimaxTtsAdapter: StandaloneTtsAdapter = {
       default: "https://api.minimax.chat/v1",
     },
     model: {
-      label: "模型",
+      get label() {
+        return translateRuntimeMessage("plat.standalone.tts.model");
+      },
       type: "str",
       default: "speech-01-turbo",
     },
     default_voice_id: {
-      label: "默认音色 Voice ID",
+      get label() {
+        return translateRuntimeMessage("plat.standalone.tts.defaultVoice");
+      },
       type: "str",
       default: "female-shaonv",
     },

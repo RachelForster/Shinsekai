@@ -76,3 +76,46 @@ def test_add_background_creates_when_edit_target_is_missing():
     assert manager._config_manager.config.background_list[0].bg_tags == "Scene 1: street\n"
     assert manager._config_manager.config.background_list[0].bgm_tags == "Music 1: traffic\n"
     assert manager._config_manager.save_count == 1
+
+
+def test_background_creation_allocates_unique_prefixes_and_protects_shared_legacy_dirs(tmp_path):
+    from config.schema import Sprite
+
+    manager = build_manager([])
+    first, _, _ = manager.save_background_patch({"name": "樱花教室", "sprite_prefix": "temp"})
+    second, _, _ = manager.save_background_patch({"name": "深夜卧室", "sprite_prefix": "temp"})
+    assert first.sprite_prefix == "temp"
+    assert second.sprite_prefix == "bg_1"
+
+    import pytest
+    from config.background_ops import BackgroundProfileError
+
+    with pytest.raises(BackgroundProfileError):
+        manager.save_background_patch(
+            {"id": second.id, "name": "深夜卧室", "sprite_prefix": "temp"},
+            target_id=second.id,
+        )
+
+    upload_root = tmp_path / "backgrounds"
+    bgm_root = tmp_path / "bgm"
+    shared_img_dir = upload_root / "legacy_shared"
+    shared_img_dir.mkdir(parents=True)
+    img_a = shared_img_dir / "a.png"
+    img_b = shared_img_dir / "b.png"
+    img_a.write_bytes(b"a")
+    img_b.write_bytes(b"b")
+
+    legacy_a = Background(name="旧背景A", sprite_prefix="legacy_shared", sprites=[Sprite(path=str(img_a))])
+    legacy_b = Background(name="旧背景B", sprite_prefix="legacy_shared", sprites=[Sprite(path=str(img_b))])
+    legacy_mgr = build_manager([legacy_a, legacy_b])
+
+    from config.background_ops import ConfigManagerBackgroundTarget, delete_background_and_assets
+
+    delete_background_and_assets(
+        ConfigManagerBackgroundTarget(legacy_mgr._config_manager),
+        "旧背景A",
+        upload_dir=upload_root,
+        bgm_dir=bgm_root,
+    )
+    assert not img_a.exists()
+    assert img_b.exists()

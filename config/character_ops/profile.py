@@ -18,6 +18,7 @@ from config.character_ops.target import (
     CharacterProfileError,
     _with_character_lock,
 )
+from i18n import err_tr, tr
 from config.schema import (
     Character,
     PortraitCrop,
@@ -113,7 +114,7 @@ def _validate_prefix_uniqueness(
     owner_ref_name = existing.name if existing is not None else (trimmed_edit_as or raw_name)
     if prefix == SELF_PERSONA_SPRITE_PREFIX and not is_self_persona_name(owner_ref_name):
         raise CharacterProfileError(
-            f"立绘目录名「{prefix}」已被系统角色「{SELF_PERSONA_NAME}」占用！"
+            tr("crud.char.prefix_taken_self", prefix=prefix, self_name=SELF_PERSONA_NAME)
         )
     for candidate in target.list_all():
         c_prefix = str(getattr(candidate, "sprite_prefix", "") or "").strip()
@@ -126,16 +127,16 @@ def _validate_prefix_uniqueness(
             )
             if candidate is not existing and not same_id and candidate.name != existing.name:
                 raise CharacterProfileError(
-                    f"立绘目录名「{prefix}」已被角色「{candidate.name}」占用！"
+                    tr("crud.char.prefix_taken_other", prefix=prefix, owner=candidate.name)
                 )
         elif trimmed_edit_as:
             if candidate.name != trimmed_edit_as:
                 raise CharacterProfileError(
-                    f"立绘目录名「{prefix}」已被角色「{candidate.name}」占用！"
+                    tr("crud.char.prefix_taken_other", prefix=prefix, owner=candidate.name)
                 )
         elif not (is_self_persona_name(raw_name) and is_self_persona_name(candidate.name)):
             raise CharacterProfileError(
-                f"立绘目录名「{prefix}」已被角色「{candidate.name}」占用！"
+                tr("crud.char.prefix_taken_other", prefix=prefix, owner=candidate.name)
             )
 
 
@@ -152,15 +153,15 @@ def save_character_patch(
     """Create or update a character via model-merge without fixed per-field parameter lists."""
     raw_name = str(patch.get("name") or "").strip()
     if not raw_name:
-        raise CharacterProfileError("名称不能为空！")
+        raise CharacterProfileError(tr("crud.common.name_empty"))
 
     trimmed_edit_as = str(original_name).strip() if original_name else ""
     cleaned_id = str(target_id or patch.get("id") or "").strip()
 
     if trimmed_edit_as and is_self_persona_name(trimmed_edit_as) and not is_self_persona_name(raw_name):
-        raise CharacterProfileError("内置「自设」人物不可重命名！")
+        raise CharacterProfileError(tr("crud.char.self_rename_forbidden"))
     if trimmed_edit_as and not is_self_persona_name(trimmed_edit_as) and is_self_persona_name(raw_name):
-        raise CharacterProfileError("不能将其他角色重命名为「自设」！")
+        raise CharacterProfileError(tr("crud.char.rename_to_self_forbidden"))
 
     existing: Character | None = target.get_by_id(cleaned_id) if cleaned_id else None
     if existing is None and trimmed_edit_as:
@@ -170,11 +171,11 @@ def save_character_patch(
 
     if existing is not None:
         if is_self_persona_name(existing.name) and not is_self_persona_name(raw_name):
-            raise CharacterProfileError("内置「自设」人物不可重命名！")
+            raise CharacterProfileError(tr("crud.char.self_rename_forbidden"))
         if not is_self_persona_name(existing.name) and is_self_persona_name(raw_name):
-            raise CharacterProfileError("不能将其他角色重命名为「自设」！")
+            raise CharacterProfileError(tr("crud.char.rename_to_self_forbidden"))
         if getattr(existing, "undeletable", False) and existing.name != raw_name:
-            raise CharacterProfileError(f"内置角色「{existing.name}」不可重命名！")
+            raise CharacterProfileError(tr("crud.char.builtin_rename_forbidden", name=existing.name))
         taken = (
             None
             if is_self_persona_name(raw_name) and is_self_persona_name(existing.name)
@@ -186,7 +187,7 @@ def save_character_patch(
                 and getattr(taken, "id", None) == getattr(existing, "id", None)
             )
             if not same_id:
-                raise CharacterProfileError(f"名称「{raw_name}」已与其他角色重复！")
+                raise CharacterProfileError(tr("crud.char.duplicate_name", name=raw_name))
 
     raw_prefix = (
         patch["sprite_prefix"]
@@ -281,29 +282,29 @@ def delete_character_and_assets(
     """Delete a character record and remove its managed asset directories."""
     current_names = [c.name for c in target.list_all()]
     if not name or name == "新角色":
-        return "请选择要删除的角色！", current_names
+        return err_tr("crud.char.select_to_delete"), current_names
     if is_self_persona_name(name):
-        return "内置「自设」人物不可删除！", current_names
+        return err_tr("crud.char.self_delete_forbidden"), current_names
 
     character = target.get_by_name(name)
     if character is None:
-        return f"找不到角色: {name}", current_names
+        return err_tr("crud.char.not_found", name=name), current_names
     if getattr(character, "undeletable", False):
-        return f"内置角色「{character.name}」不可删除！", current_names
+        return err_tr("crud.char.builtin_delete_forbidden", name=character.name), current_names
 
     if not target.delete_character_record(character):
-        return f"找不到角色: {name}", current_names
+        return err_tr("crud.char.not_found", name=name), current_names
 
     new_names = [c.name for c in target.list_all()]
     sprite_prefix = str(character.sprite_prefix or "").strip()
     if not sprite_prefix:
-        return "已删除角色", new_names
+        return tr("crud.char.deleted_unloaded"), new_names
 
     for base_dir in (upload_dir, voice_dir, model_dir):
         char_dir = Path(base_dir) / sprite_prefix
         if char_dir.exists():
             shutil.rmtree(char_dir)
-    return f"角色 {name} 已删除！", new_names
+    return tr("crud.char.deleted", name=name), new_names
 
 
 @_with_character_lock
@@ -315,12 +316,12 @@ def save_character_emotion_tags_op(
     """Persist updated static sprite emotion tags for ``name``."""
     cleaned_name = str(name or "").strip()
     if not cleaned_name:
-        raise CharacterProfileError("请先选择或创建角色！")
+        raise CharacterProfileError(tr("crud.char.select_or_create"))
     if not emotion_tags:
-        raise CharacterProfileError("请输入情绪标注！")
+        raise CharacterProfileError(tr("crud.char.emotion_tags_empty"))
     character = target.get_by_name(cleaned_name)
     if character is None:
-        raise CharacterProfileError(f"找不到角色: {cleaned_name}")
+        raise CharacterProfileError(tr("crud.char.not_found", name=cleaned_name))
     updated = character.model_copy(update={"emotion_tags": emotion_tags})
     target.save_character(updated)
     return updated
@@ -335,10 +336,10 @@ def save_character_sprite_scale_op(
     """Persist sprite display scale for ``name``."""
     cleaned_name = str(name or "").strip()
     if not cleaned_name:
-        raise CharacterProfileError("名称不能为空！")
+        raise CharacterProfileError(tr("crud.common.name_empty"))
     character = target.get_by_name(cleaned_name)
     if character is None:
-        raise CharacterProfileError(f"找不到角色: {cleaned_name}")
+        raise CharacterProfileError(tr("crud.char.not_found", name=cleaned_name))
     updated = character.model_copy(update={"sprite_scale": float(scale)})
     target.save_character(updated)
     return updated

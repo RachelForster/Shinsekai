@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import re
 from contextlib import AbstractContextManager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
+from functools import wraps
 from http import HTTPStatus
 from typing import TYPE_CHECKING, Any, Callable, Mapping
 from urllib.parse import unquote
 
+from frontend_bridge_core.i18n_helpers import bind_bridge_state
 from frontend_bridge_core.routes.uploads import UploadedFiles
 
 if TYPE_CHECKING:
@@ -112,6 +114,23 @@ class Route:
             "_specificity",
             sum(segment != "{}" for segment in shape),
         )
+        raw_handler = self.handler
+
+        @wraps(raw_handler)
+        def _bound_handler(request: ApiRequest) -> RouteResponse:
+            with bind_bridge_state(request.state):
+                response = raw_handler(request)
+            if isinstance(response, TaskResponse):
+                raw_worker = response.worker
+
+                def _bound_worker(task_id: str) -> Any:
+                    with bind_bridge_state(request.state):
+                        return raw_worker(task_id)
+
+                return replace(response, worker=_bound_worker)
+            return response
+
+        object.__setattr__(self, "handler", _bound_handler)
 
     def match_path(self, path: str) -> Mapping[str, str] | None:
         matched = self._compiled_pattern.fullmatch(path)

@@ -1,3 +1,4 @@
+import { translateRuntimeMessage } from "../../../../../i18n/runtimeLanguage";
 import type { LlmModelOption } from "../../../../slices/configTypes";
 import { standaloneHttpJson, type StandaloneHttpClient } from "../../httpClient";
 import type { StandaloneLlmAdapter, StandaloneLlmInput, StandaloneLlmResult } from "../types";
@@ -69,7 +70,7 @@ export const openaiCompatibleLlmAdapter: StandaloneLlmAdapter = {
     const model = (input.model || preset.defaultModel).trim();
     const apiKey = input.apiKey.trim();
     if (!apiKey && input.provider !== "Ollama") {
-      throw new Error(`请先填写 ${input.provider} 的 API Key。`);
+      throw new Error(translateRuntimeMessage("plat.standalone.llmApiKeyRequired", { provider: input.provider }));
     }
 
     const basePayload: Record<string, unknown> = {
@@ -99,7 +100,7 @@ export const openaiCompatibleLlmAdapter: StandaloneLlmAdapter = {
 
     const content = extractChoiceText(data);
     if (!content.trim()) {
-      throw new Error("LLM 返回内容为空，请检查模型名称与配额。");
+      throw new Error(translateRuntimeMessage("plat.standalone.llmEmpty"));
     }
 
     const usageTokens =
@@ -155,7 +156,7 @@ export const openaiCompatibleLlmAdapter: StandaloneLlmAdapter = {
       http,
     );
     return {
-      message: `连接成功 (${result.model || model})`,
+      message: translateRuntimeMessage("plat.standalone.connectedModel", { model: result.model || model }),
     };
   },
 };

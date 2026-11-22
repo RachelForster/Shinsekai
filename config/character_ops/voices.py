@@ -12,6 +12,7 @@ from typing import Any, Optional, Union
 from config.character_ops.target import CharacterPersistenceTarget, _with_character_lock
 from config.schema import Sprite
 from config.sprite_files import sprite_field
+from i18n import err_tr, tr
 
 
 def voice_filename_for_sprite(
@@ -57,18 +58,18 @@ def upload_character_sprite_voice(
 ) -> tuple[str, Optional[str]]:
     """Copy a reference/preset voice clip for one sprite and update persistence."""
     if not character_name:
-        return "请先选择角色！", None
+        return err_tr("crud.char.select_first"), None
     character = target.get_by_name(character_name)
     if not character:
-        return f"找不到角色: {character_name}", None
+        return err_tr("crud.char.not_found", name=character_name), None
     sprites = list(character.sprites or [])
     if not sprites or sprite_index < 0 or sprite_index >= len(sprites):
-        return "立绘不存在！", None
+        return err_tr("crud.char.sprite_not_found"), None
 
     sprite_data = sprites[sprite_index]
     original_voice_path = str(sprite_field(sprite_data, "voice_path", "") or "")
     if (not voice_file) and (not original_voice_path):
-        return "请选择语音文件！", None
+        return err_tr("crud.char.select_voice"), None
 
     voice_char_dir = os.path.join(str(voice_dir), character.sprite_prefix)
     Path(voice_char_dir).mkdir(parents=True, exist_ok=True)
@@ -110,7 +111,7 @@ def upload_character_sprite_voice(
         except OSError:
             pass
 
-    return f"语音已上传到立绘 {sprite_index + 1}！", voice_path
+    return tr("crud.char.voice_uploaded", index=sprite_index + 1), voice_path
 
 
 def get_character_sprite_voice(
@@ -139,19 +140,19 @@ def save_character_sprite_voice_text(
 ) -> str:
     """Update only the transcript text attached to one sprite's voice."""
     if not character_name:
-        return "请先选择角色！"
+        return err_tr("crud.char.select_first")
     character = target.get_by_name(character_name)
     if not character:
-        return f"找不到角色: {character_name}"
+        return err_tr("crud.char.not_found", name=character_name)
     sprites = list(character.sprites or [])
     if not sprites or sprite_index < 0 or sprite_index >= len(sprites):
-        return "立绘不存在！"
+        return err_tr("crud.char.sprite_not_found")
     sprites[sprite_index] = _updated_sprite(
         sprites[sprite_index],
         voice_text=voice_text if voice_text else None,
     )
     target.save_character(character.model_copy(update={"sprites": sprites}))
-    return "语音文字已保存"
+    return tr("crud.char.voice_text_saved")
 
 
 @_with_character_lock
@@ -163,19 +164,19 @@ def save_character_sprite_voice_type(
 ) -> str:
     """Update only the voice routing mode (``preset`` / ``reference`` / ``fallback``)."""
     if not character_name:
-        return "请先选择角色！"
+        return err_tr("crud.char.select_first")
     character = target.get_by_name(character_name)
     if not character:
-        return f"找不到角色: {character_name}"
+        return err_tr("crud.char.not_found", name=character_name)
     sprites = list(character.sprites or [])
     if not sprites or sprite_index < 0 or sprite_index >= len(sprites):
-        return "立绘不存在！"
+        return err_tr("crud.char.sprite_not_found")
     sprites[sprite_index] = _updated_sprite(
         sprites[sprite_index],
         voice_type=voice_type if voice_type else None,
     )
     target.save_character(character.model_copy(update={"sprites": sprites}))
-    return "语音类型已保存"
+    return tr("crud.char.voice_type_saved")
 
 
 @_with_character_lock
@@ -186,13 +187,13 @@ def delete_character_sprite_voice(
 ) -> str:
     """Unlink and delete a single sprite's voice clip."""
     if not character_name:
-        return "请先选择角色！"
+        return err_tr("crud.char.select_first")
     character = target.get_by_name(character_name)
     if not character:
-        return f"找不到角色: {character_name}"
+        return err_tr("crud.char.not_found", name=character_name)
     sprites = list(character.sprites or [])
     if not sprites or sprite_index < 0 or sprite_index >= len(sprites):
-        return "立绘不存在！"
+        return err_tr("crud.char.sprite_not_found")
 
     sprite_data = sprites[sprite_index]
     voice_path = (
@@ -212,7 +213,7 @@ def delete_character_sprite_voice(
             os.remove(voice_path)
         except OSError:
             pass
-    return f"已删除立绘 {sprite_index + 1} 的语音"
+    return tr("crud.char.voice_deleted", index=sprite_index + 1)
 
 
 __all__ = [

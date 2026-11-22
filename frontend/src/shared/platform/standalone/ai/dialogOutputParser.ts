@@ -1,3 +1,10 @@
+import {
+  DIALOG_SPEAKER_COT_ALIASES,
+  DIALOG_SPEAKER_NARRATION_ALIASES,
+  DIALOG_SPEAKER_OPTION_ALIASES,
+  DIALOG_SPEAKER_SCENE_ALIASES,
+  DIALOG_SPEAKER_STAT_ALIASES,
+} from "../../../constants";
 import type { ChatStat, ChatStatIcon } from "../../slices/chatTypes";
 
 export interface ParsedDialogSpeechItem {
@@ -149,7 +156,7 @@ function mapRawDialogEntry(rawItem: unknown, fallbackCharacterName: string): Par
   const upperName = rawName.toUpperCase();
 
   // Internal COT & unsupported CG generation tokens should never be spoken as dialog
-  if (upperName === "COT" || upperName === "思维链" || upperName === "CG") {
+  if ((DIALOG_SPEAKER_COT_ALIASES as readonly string[]).includes(upperName)) {
     return null;
   }
 
@@ -157,7 +164,7 @@ function mapRawDialogEntry(rawItem: unknown, fallbackCharacterName: string): Par
   const sprite = typeof item.sprite === "number" || typeof item.sprite === "string" ? item.sprite : undefined;
   const vibe = typeof item.vibe === "string" && item.vibe.trim() ? item.vibe.trim() : undefined;
 
-  if (upperName === "CHOICE" || upperName === "OPTIONS" || upperName === "选项") {
+  if ((DIALOG_SPEAKER_OPTION_ALIASES as readonly string[]).includes(upperName)) {
     const rawArray = Array.isArray(item.options) ? item.options : Array.isArray(item.choices) ? item.choices : null;
     const options = rawArray
       ? rawArray.map((opt) => String(opt ?? "").trim()).filter(Boolean)
@@ -169,14 +176,14 @@ function mapRawDialogEntry(rawItem: unknown, fallbackCharacterName: string): Par
     return { kind: "choice", options };
   }
 
-  if (upperName === "STAT" || upperName === "STATS" || upperName === "数值") {
+  if ((DIALOG_SPEAKER_STAT_ALIASES as readonly string[]).includes(upperName)) {
     const arrayStats = normalizeStatList(item.stats ?? item.items);
     const stats = arrayStats.length ? arrayStats : parseStatSpeechLines(speech);
     if (!stats.length) return null;
     return { kind: "stat", stats };
   }
 
-  if (upperName === "SCENE" || upperName === "场景") {
+  if ((DIALOG_SPEAKER_SCENE_ALIASES as readonly string[]).includes(upperName)) {
     if (sprite === undefined && !vibe) return null;
     return { kind: "scene", sprite, vibe };
   }
@@ -186,7 +193,7 @@ function mapRawDialogEntry(rawItem: unknown, fallbackCharacterName: string): Par
     return { kind: "bgm", sprite, vibe };
   }
 
-  const isNarration = upperName === "NARR" || upperName === "NARRATION" || upperName === "旁白";
+  const isNarration = (DIALOG_SPEAKER_NARRATION_ALIASES as readonly string[]).includes(upperName);
   const characterName = isNarration ? "NARR" : rawName || fallbackCharacterName;
   const translate = typeof item.translate === "string" && item.translate.trim() ? item.translate.trim() : undefined;
   const outfit = typeof item.outfit === "string" && item.outfit.trim() ? item.outfit.trim() : undefined;

@@ -2,6 +2,7 @@ from dataclasses import replace
 
 import pytest
 
+from ai.llm.template import PROMPT_CATALOG
 from ai.llm.template.dialog.context import (
     DialogTemplateContext, EffectCatalogContext, EffectCatalogEntry,
 )
@@ -10,7 +11,6 @@ from ai.llm.template.prompts.system import (
     RuntimePromptContext,
     build_runtime_prompt_section,
 )
-from i18n import tr_in_bundle
 
 
 AUTHORED_SYSTEM = (
@@ -22,7 +22,7 @@ AUTHORED_SYSTEM = (
 
 @pytest.mark.parametrize("language", ["zh_CN", "en", "ja"])
 def test_catalog_is_one_runtime_section_and_preserves_authored_text(language):
-    translate = lambda key: tr_in_bundle(f"template_gen.{key}", language)
+    translate = lambda key: PROMPT_CATALOG.translate(f"dialog.{key}", locale=language)
     context = RuntimePromptContext(
         system_template=AUTHORED_SYSTEM,
         user_scenario="Scenario",

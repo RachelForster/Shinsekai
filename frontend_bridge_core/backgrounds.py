@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from application.backgrounds import (
+    BGM_TAG_LABEL_PREFIX,
     BackgroundExportResult,
     BackgroundOperation,
     BackgroundUseCase,
@@ -46,7 +47,10 @@ def _background_json_after_reload(state: BridgeState, name: str) -> dict[str, An
 
 
 def _numbered_background_bgm_tags(tags: list[str]) -> str:
-    return "".join(f"音乐 {index + 1}：{str(tag or '').strip()}\n" for index, tag in enumerate(tags))
+    return "".join(
+        f"{BGM_TAG_LABEL_PREFIX} {index + 1}：{str(tag or '').strip()}\n"
+        for index, tag in enumerate(tags)
+    )
 
 
 def _translate_background_fields(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:

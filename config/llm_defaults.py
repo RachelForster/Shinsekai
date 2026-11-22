@@ -27,6 +27,8 @@ LLM_MODELS = {
     "Ollama": []
 }
 
+DASHSCOPE_PROVIDER_KEYWORDS = ("通义", "qwen", "dashscope")
+
 
 def resolve_llm_base_url(api_config: Any, provider: str) -> str:
     """Resolve a provider URL from the per-provider map with legacy fallback."""

@@ -1,3 +1,4 @@
+import { translateRuntimeMessage } from "../../../i18n/runtimeLanguage";
 import type {
   CharacterOutfitState,
   ChatHistoryRole,
@@ -333,13 +334,13 @@ export class StandaloneSessionStore {
     const sessionId = input.sessionId || `session-${now}-${generateSecureRandomToken(6)}`;
     const mainBranch: StandaloneBranchInfo = {
       branchId: "main",
-      label: "主线",
+      label: translateRuntimeMessage("plat.standalone.mainBranch"),
       createdAtMs: now,
     };
     const created: StandaloneSessionRecord = {
       sessionId,
       historyPath: input.historyPath || `./data/history/${sessionId}.json`,
-      title: input.title || "新对话",
+      title: input.title || translateRuntimeMessage("plat.standalone.newConversation"),
       characters: [...input.payload.characters],
       primaryCharacters: [...(input.payload.primaryCharacters ?? input.payload.characters)],
       activeBranchId: "main",
@@ -766,7 +767,9 @@ export class StandaloneSessionStore {
     const newBranchId = options?.branchId ?? `branch-${Object.keys(session.branches).length + 1}-${now.toString(36)}`;
     const branchInfo: StandaloneBranchInfo = {
       branchId: newBranchId,
-      label: options?.label ?? `分支 ${Object.keys(session.branches).length}`,
+      label:
+        options?.label ??
+        translateRuntimeMessage("plat.standalone.branchLabel", { index: Object.keys(session.branches).length }),
       parentBranchId: sourceBranch,
       forkedAtSeq: forkSeq,
       createdAtMs: now,

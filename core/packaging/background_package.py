@@ -24,6 +24,7 @@ from core.packaging.zip_io import (
     safe_package_name,
     write_directory_zip,
 )
+from i18n import tr
 
 RESERVED_BACKGROUND_PACKAGE_FIELDS = frozenset({"id"})
 
@@ -106,7 +107,7 @@ def stage_background_package_import(
     """Validate a ``.bg`` archive, restore assets into destination dirs, and build Background models."""
     archive_path = Path(input_path)
     if not archive_path.exists():
-        raise FileNotFoundError(f"文件未找到: {input_path}")
+        raise FileNotFoundError(tr("crud.common.archive_not_found", path=input_path))
 
     staged = StagedBackgroundImport()
     try:
@@ -117,9 +118,9 @@ def stage_background_package_import(
 
             yaml_data = yaml.safe_load((temp_dir / "background.yaml").read_text(encoding="utf-8"))
             if not yaml_data:
-                raise ValueError("背景配置 YAML 文件为空或格式错误。")
+                raise ValueError(tr("crud.bg.yaml_empty"))
             if not isinstance(yaml_data, list):
-                raise ValueError("背景配置 YAML 格式错误。")
+                raise ValueError(tr("crud.bg.yaml_invalid"))
 
             existing_list = list(existing_configs)
             imported_names = {config.name for config in existing_list}

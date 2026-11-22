@@ -183,7 +183,7 @@ export function CharacterBasicSection({
           <span className="field-row__control">
             <TextArea
               onChange={(event) => onPronunciationTextChange(event.target.value)}
-              placeholder="名前=なまえ"
+              placeholder={t("ops.character.pronunciationPlaceholder")}
               rows={4}
               value={pronunciationText}
             />

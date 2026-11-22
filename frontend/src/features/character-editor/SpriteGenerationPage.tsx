@@ -4,6 +4,7 @@ import { Check, ImagePlus, Plus, Sparkles, X } from "lucide-react";
 import { fileUrl } from "../../entities/files/repository";
 import { isVideoMedia } from "../../shared/assets/visualMedia";
 import { tagContents } from "../../shared/assets/assetText";
+import { DEFAULT_SPRITE_TAGGING } from "../../shared/constants";
 import { useI18n } from "../../shared/i18n";
 import type { Character, CharacterSpriteAnimationInput, H3SpriteResolution } from "../../shared/platform/types";
 import {
@@ -56,7 +57,7 @@ export function SpriteGenerationPage({ character, name, onClose, onImported }: P
   const [animationInput, setAnimationInput] = useState<CharacterSpriteAnimationInput>({
     name,
     referenceImage: "",
-    tagging: "平静，站立",
+    tagging: DEFAULT_SPRITE_TAGGING,
     breathing: true,
     blinking: true,
     breeze: false,

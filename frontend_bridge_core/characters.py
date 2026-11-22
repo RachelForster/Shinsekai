@@ -10,6 +10,7 @@ from application.characters import (
     parse_character_request,
 )
 from application.runtime.state import BridgeState, _jsonify
+from frontend_bridge_core.i18n_helpers import bridge_error, bridge_tr
 from frontend_bridge_core.tools import _local_file_access_roots
 
 
@@ -69,13 +70,13 @@ def _generate_character_brief(state: BridgeState, payload: dict[str, Any]) -> di
 
     name = str(payload.get("name") or "").strip()
     if not name:
-        raise ValueError("角色名称不能为空")
+        raise bridge_error(ValueError, state, "character_name_required")
     brief = generate_character_brief(
         state.config_manager,
         name,
         str(payload.get("setting") or ""),
     )
-    return {"characterBrief": brief, "message": "输出成功"}
+    return {"characterBrief": brief, "message": bridge_tr(state, "char.output_success")}
 
 
 def _ensure_character_briefs(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:

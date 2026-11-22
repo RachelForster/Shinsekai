@@ -1,3 +1,4 @@
+import { translateRuntimeMessage } from "../i18n/runtimeLanguage";
 import { createAgentPreviewPlatform } from "./agentPreviewPlatform";
 import {
   createAvatarRuntimesPreviewPlatform,
@@ -61,7 +62,13 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           (chat.chatProcessRunning || chat.chatRuntimeClosing) &&
           selected.some(([, item]) => item.summary.historyPath === chat.historyPath)
         ) {
-          throw new Error("请先关闭该剧本版本的聊天，再删除剧本及关联对话。");
+          throw new Error(
+            translateRuntimeMessage(
+              "plat.preview.story.closeChatBeforeDelete",
+              undefined,
+              ctx.config.system_config.ui_language,
+            ),
+          );
         }
         for (const [id] of selected) ctx.conversations.delete(id);
       },

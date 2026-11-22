@@ -1,3 +1,6 @@
+import { LLM_PROVIDER_DOUBAO, LLM_PROVIDER_QWEN, LLM_PROVIDER_SILICONFLOW } from "../../../../../constants";
+import { translateRuntimeMessage } from "../../../../../i18n/runtimeLanguage";
+
 export interface LlmProviderPreset {
   provider: string;
   label: string;
@@ -10,9 +13,11 @@ export interface LlmProviderPreset {
 }
 
 export const LLM_PROVIDER_PRESETS: Record<string, LlmProviderPreset> = {
-  硅基流动: {
-    provider: "硅基流动",
-    label: "硅基流动 (SiliconFlow · 对话+语音一Key通用)",
+  [LLM_PROVIDER_SILICONFLOW]: {
+    provider: LLM_PROVIDER_SILICONFLOW,
+    get label() {
+      return translateRuntimeMessage("plat.standalone.preset.siliconflow");
+    },
     defaultBaseUrl: "https://api.siliconflow.cn/v1",
     defaultModel: "deepseek-ai/DeepSeek-V3",
     suggestedModels: [
@@ -35,7 +40,9 @@ export const LLM_PROVIDER_PRESETS: Record<string, LlmProviderPreset> = {
   },
   ChatGPT: {
     provider: "ChatGPT",
-    label: "OpenAI / 通用兼容",
+    get label() {
+      return translateRuntimeMessage("plat.standalone.preset.chatgpt");
+    },
     defaultBaseUrl: "https://api.openai.com/v1",
     defaultModel: "gpt-4o-mini",
     suggestedModels: ["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini"],
@@ -45,7 +52,9 @@ export const LLM_PROVIDER_PRESETS: Record<string, LlmProviderPreset> = {
   },
   Gemini: {
     provider: "Gemini",
-    label: "Google Gemini (OpenAI 兼容)",
+    get label() {
+      return translateRuntimeMessage("plat.standalone.preset.gemini");
+    },
     defaultBaseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
     defaultModel: "gemini-2.5-flash",
     suggestedModels: ["gemini-2.5-flash", "gemini-2.5-pro"],
@@ -61,18 +70,22 @@ export const LLM_PROVIDER_PRESETS: Record<string, LlmProviderPreset> = {
     browserCors: "supported",
     dropRepetitionPenalty: true,
   },
-  豆包: {
-    provider: "豆包",
-    label: "字节豆包 (火山引擎)",
+  [LLM_PROVIDER_DOUBAO]: {
+    provider: LLM_PROVIDER_DOUBAO,
+    get label() {
+      return translateRuntimeMessage("plat.standalone.preset.doubao");
+    },
     defaultBaseUrl: "https://ark.cn-beijing.volces.com/api/v3",
     defaultModel: "doubao-pro-32k",
     suggestedModels: ["doubao-1-5-pro-32k-250115", "doubao-pro-32k"],
     browserCors: "proxy-only",
     dropRepetitionPenalty: true,
   },
-  通义千问: {
-    provider: "通义千问",
-    label: "阿里通义千问 (DashScope)",
+  [LLM_PROVIDER_QWEN]: {
+    provider: LLM_PROVIDER_QWEN,
+    get label() {
+      return translateRuntimeMessage("plat.standalone.preset.qwen");
+    },
     defaultBaseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     defaultModel: "qwen-plus",
     suggestedModels: ["qwen-plus", "qwen-turbo", "qwen-max"],
@@ -99,7 +112,9 @@ export const LLM_PROVIDER_PRESETS: Record<string, LlmProviderPreset> = {
   },
   Ollama: {
     provider: "Ollama",
-    label: "Ollama (本地 / 局域网)",
+    get label() {
+      return translateRuntimeMessage("plat.standalone.preset.ollama");
+    },
     defaultBaseUrl: "http://127.0.0.1:11434/v1",
     defaultModel: "qwen2.5:7b",
     suggestedModels: ["qwen2.5:7b", "llama3.1:8b"],
