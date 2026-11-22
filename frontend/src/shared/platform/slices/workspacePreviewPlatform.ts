@@ -315,6 +315,10 @@ export function createEffectsPreviewPlatform(ctx: BrowserPreviewContext): Effect
           image_list: [],
           image_tags: "",
           image_audio_list: [],
+          ambient_list: [],
+          ambient_tags: "",
+          ambient_audio_list: [],
+          ambient_layers: [],
         };
       });
       config.effect_list = [...config.effect_list, ...imported];
@@ -378,6 +382,57 @@ export function createEffectsPreviewPlatform(ctx: BrowserPreviewContext): Effect
       effect.image_audio_list = [...effect.image_audio_list];
       while (effect.image_audio_list.length < effect.image_list.length) effect.image_audio_list.push("");
       effect.image_audio_list[input.index] = input.path;
+      return delay(effect);
+    },
+    async uploadAmbient(input) {
+      const effect = config.effect_list.find((item) => item.name === input.name);
+      if (!effect) throw new Error("特效方案不存在。");
+      const tags = tagContents(input.ambientTags || effect.ambient_tags, effect.ambient_list.length, true);
+      effect.ambient_list = [...effect.ambient_list, ...input.paths];
+      effect.ambient_audio_list = [...effect.ambient_audio_list, ...input.paths.map(() => "")];
+      effect.ambient_layers = [...effect.ambient_layers, ...input.paths.map(() => "back")];
+      effect.ambient_tags = numberedTags("环境", [...tags, ...input.paths.map(() => "")]);
+      return delay(effect);
+    },
+    async deleteAmbient(name, index) {
+      const effect = config.effect_list.find((item) => item.name === name);
+      if (!effect || index < 0 || index >= effect.ambient_list.length) {
+        throw new Error("环境特效不存在。");
+      }
+      effect.ambient_list = effect.ambient_list.filter((_, itemIndex) => itemIndex !== index);
+      effect.ambient_audio_list = effect.ambient_audio_list.filter((_, itemIndex) => itemIndex !== index);
+      effect.ambient_layers = effect.ambient_layers.filter((_, itemIndex) => itemIndex !== index);
+      const tags = tagContents(effect.ambient_tags, effect.ambient_list.length + 1, true);
+      effect.ambient_tags = numberedTags(
+        "环境",
+        tags.filter((_, itemIndex) => itemIndex !== index),
+      );
+      return delay(effect);
+    },
+    async saveAmbientTags(input) {
+      const effect = config.effect_list.find((item) => item.name === input.name);
+      if (!effect) throw new Error("特效方案不存在。");
+      effect.ambient_tags = input.ambientTags;
+      return delay(effect);
+    },
+    async saveAmbientLayers(input) {
+      const effect = config.effect_list.find((item) => item.name === input.name);
+      if (!effect) throw new Error("特效方案不存在。");
+      effect.ambient_layers = effect.ambient_list.map((_, index) =>
+        input.layers[index] === "front" ? "front" : "back",
+      );
+      return delay(effect);
+    },
+    async uploadAmbientAudio(input) {
+      const effect = config.effect_list.find((item) => item.name === input.name);
+      if (!effect || input.index < 0 || input.index >= effect.ambient_list.length) {
+        throw new Error("环境特效不存在。");
+      }
+      effect.ambient_audio_list = [...effect.ambient_audio_list];
+      while (effect.ambient_audio_list.length < effect.ambient_list.length) {
+        effect.ambient_audio_list.push("");
+      }
+      effect.ambient_audio_list[input.index] = input.path;
       return delay(effect);
     },
   };

@@ -519,6 +519,11 @@ describe("entity repositories", () => {
         uploadAudio: vi.fn().mockResolvedValue(effect),
         uploadImages: vi.fn().mockResolvedValue(effect),
         uploadImageAudio: vi.fn().mockResolvedValue(effect),
+        uploadAmbient: vi.fn().mockResolvedValue(effect),
+        deleteAmbient: vi.fn().mockResolvedValue(effect),
+        saveAmbientTags: vi.fn().mockResolvedValue(effect),
+        saveAmbientLayers: vi.fn().mockResolvedValue(effect),
+        uploadAmbientAudio: vi.fn().mockResolvedValue(effect),
       },
       logs: {
         exportDiagnostics: vi.fn().mockResolvedValue("/tmp/diagnostics.zip"),

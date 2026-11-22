@@ -48,6 +48,7 @@ import { PluginPageOverlay } from "./components/PluginPageOverlay";
 import { ReactionBubble } from "./components/ReactionBubble";
 import { ScreenShareSettingsDialog } from "./components/ScreenShareSettingsDialog";
 import {
+  AmbientLayer,
   BackgroundLayer,
   BusyLayer,
   CgLayer,
@@ -1104,6 +1105,7 @@ export function ChatStagePage() {
           ref={soundPlayerRef}
           voicePaused={Boolean(state.replay?.paused)}
           key={state.sessionId}
+          ambientEffects={state.ambientEffects}
           bgmPath={viewModel.bgmPath}
           bgmVolume={runtimeConfig.bgmVolume}
           effectVolume={runtimeConfig.effectVolume}
@@ -1118,6 +1120,7 @@ export function ChatStagePage() {
           saving={savingCg}
           standaloneDesktopWindow={standaloneDesktopWindow}
         />
+        {!miniAvatarActive ? <AmbientLayer effects={state.ambientEffects ?? []} hidden={false} layer="back" /> : null}
         {!miniAvatarActive ? <EffectImageLayer effect={state.effectImage} /> : null}
         <SpriteLayer
           hidden={!viewModel.layers.sprites || miniAvatarActive}
@@ -1129,6 +1132,7 @@ export function ChatStagePage() {
           thinkingCharacterName={viewModel.thinkingCharacterName}
           sprites={stageSprites}
         />
+        {!miniAvatarActive ? <AmbientLayer effects={state.ambientEffects ?? []} hidden={false} layer="front" /> : null}
         <ReactionBubble
           hidden={
             miniAvatarActive ||

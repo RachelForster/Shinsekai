@@ -85,9 +85,12 @@ export class SoundPlayer {
   private voicePaused = false;
   private effectVolume = 1;
   private readonly effectPlayers = new Set<HTMLAudioElement>();
+  private readonly effectPlayersByUrl = new Map<string, HTMLAudioElement>();
   private readonly listeners = new Set<SoundPlayerLockListener>();
   private locked = false;
   private readonly loopPlayers = new Map<string, HTMLAudioElement>();
+  private readonly loopKeys = new Map<string, string>();
+  private readonly ambientAudioKeys = new Map<string, string>();
   private readonly voiceQueue: QueuedVoice[] = [];
   private readonly voiceSignalListeners = new Set<VoicePlaybackSignalListener>();
 
@@ -218,12 +221,21 @@ export class SoundPlayer {
     if (!nextUrl) {
       return;
     }
+    // One asset can only have one live one-shot instance: repeated labels or
+    // aliases must not stack a second playback on top of the first.
+    if (this.effectPlayersByUrl.has(nextUrl)) {
+      return;
+    }
     const audio = this.createChannelAudio(nextUrl);
     audio.preload = "auto";
     audio.volume = this.effectVolume;
     this.effectPlayers.add(audio);
+    this.effectPlayersByUrl.set(nextUrl, audio);
     const release = () => {
       this.effectPlayers.delete(audio);
+      if (this.effectPlayersByUrl.get(nextUrl) === audio) {
+        this.effectPlayersByUrl.delete(nextUrl);
+      }
       this.mixer.release(audio);
     };
     audio.onended = release;
@@ -237,22 +249,31 @@ export class SoundPlayer {
     if (!nextKey || !nextUrl) {
       return;
     }
-    this.stopLoopEffect(nextKey);
+    const previousUrl = this.loopKeys.get(nextKey);
+    this.loopKeys.set(nextKey, nextUrl);
+    // The same asset is already looping under another key or alias. Keep the
+    // running instance instead of restarting it or stacking a second copy.
+    if (this.loopPlayers.has(nextUrl)) {
+      return;
+    }
+    if (previousUrl && previousUrl !== nextUrl) {
+      this.releaseLoopUrl(previousUrl);
+    }
     const audio = this.createChannelAudio(nextUrl);
     audio.loop = true;
     audio.preload = "auto";
     audio.volume = this.effectVolume;
-    this.loopPlayers.set(nextKey, audio);
+    this.loopPlayers.set(nextUrl, audio);
     this.requestPlay(audio);
   }
 
   stopLoopEffect(key: string) {
-    const audio = this.loopPlayers.get(key);
-    if (!audio) {
+    const nextKey = key.trim();
+    const url = this.loopKeys.get(nextKey);
+    if (!url) {
       return;
     }
-    this.releaseAudio(audio);
-    this.loopPlayers.delete(key);
+    this.releaseLoopUrl(url);
   }
 
   stopAllLoopEffects() {
@@ -260,6 +281,48 @@ export class SoundPlayer {
       this.releaseAudio(audio);
     }
     this.loopPlayers.clear();
+    this.loopKeys.clear();
+    this.ambientAudioKeys.clear();
+  }
+
+  /**
+   * Keep looping audio in sync with persistent ambient effects.
+   *
+   * Ambient audio is a projected state rather than a one-shot command, so the
+   * same asset is never restarted while the effect stays on screen.
+   */
+  setAmbientAudio(entries: Array<{ key: string; url: string }>) {
+    const next = new Map(entries.filter((entry) => entry.key && entry.url).map((entry) => [entry.key, entry.url]));
+    for (const [key, url] of [...this.ambientAudioKeys]) {
+      if (next.get(key) === url) {
+        continue;
+      }
+      this.ambientAudioKeys.delete(key);
+      const stillUsed = [...next.values()].includes(url) || [...this.ambientAudioKeys.values()].includes(url);
+      if (!stillUsed) {
+        this.stopLoopEffect(key);
+      }
+    }
+    for (const [key, url] of next) {
+      if (this.ambientAudioKeys.get(key) === url) {
+        continue;
+      }
+      this.startLoopEffect(key, url);
+      this.ambientAudioKeys.set(key, url);
+    }
+  }
+
+  private releaseLoopUrl(url: string) {
+    const audio = this.loopPlayers.get(url);
+    if (audio) {
+      this.releaseAudio(audio);
+      this.loopPlayers.delete(url);
+    }
+    for (const [key, loopUrl] of this.loopKeys) {
+      if (loopUrl === url) {
+        this.loopKeys.delete(key);
+      }
+    }
   }
 
   stopAll() {
@@ -271,6 +334,7 @@ export class SoundPlayer {
       this.releaseAudio(audio);
     }
     this.effectPlayers.clear();
+    this.effectPlayersByUrl.clear();
     this.stopAllLoopEffects();
   }
 

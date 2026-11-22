@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence
 import contextlib
 from dataclasses import dataclass
 from enum import Enum
+import hashlib
 import os
 from pathlib import Path, PureWindowsPath
 import shutil
@@ -39,6 +40,11 @@ class EffectOperation(str, Enum):
     DELETE_IMAGE = "delete-image"
     SAVE_IMAGE_TAGS = "save-image-tags"
     UPLOAD_IMAGE_AUDIO = "upload-image-audio"
+    UPLOAD_AMBIENT = "upload-ambient"
+    DELETE_AMBIENT = "delete-ambient"
+    SAVE_AMBIENT_TAGS = "save-ambient-tags"
+    SAVE_AMBIENT_LAYERS = "save-ambient-layers"
+    UPLOAD_AMBIENT_AUDIO = "upload-ambient-audio"
     IMPORT = "import"
     EXPORT = "export"
 
@@ -55,6 +61,32 @@ class EffectExportResult:
 
 
 EffectUseCaseResult: TypeAlias = Effect | list[Effect] | dict[str, Any] | EffectExportResult
+
+_AMBIENT_MEDIA_SUFFIXES = frozenset(
+    {
+        ".apng",
+        ".gif",
+        ".jpeg",
+        ".jpg",
+        ".m4v",
+        ".mov",
+        ".mp4",
+        ".png",
+        ".webm",
+        ".webp",
+    }
+)
+
+
+def _file_digest(path: Path) -> str:
+    try:
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+    except OSError:
+        return ""
 
 
 class EffectUseCase:
@@ -89,6 +121,11 @@ class EffectUseCase:
             EffectOperation.DELETE_IMAGE: self._delete_image,
             EffectOperation.SAVE_IMAGE_TAGS: self._save_image_tags,
             EffectOperation.UPLOAD_IMAGE_AUDIO: self._upload_image_audio,
+            EffectOperation.UPLOAD_AMBIENT: self._upload_ambient,
+            EffectOperation.DELETE_AMBIENT: self._delete_ambient,
+            EffectOperation.SAVE_AMBIENT_TAGS: self._save_ambient_tags,
+            EffectOperation.SAVE_AMBIENT_LAYERS: self._save_ambient_layers,
+            EffectOperation.UPLOAD_AMBIENT_AUDIO: self._upload_ambient_audio,
             EffectOperation.IMPORT: self._import,
             EffectOperation.EXPORT: self._export,
         }
@@ -190,6 +227,14 @@ class EffectUseCase:
                     body["image_audio_list"] = self._renamed_asset_paths(
                         body.get("image_audio_list"), old_dir, new_dir
                     )
+                if "ambient_list" in body:
+                    body["ambient_list"] = self._renamed_asset_paths(
+                        body.get("ambient_list"), old_dir, new_dir
+                    )
+                if "ambient_audio_list" in body:
+                    body["ambient_audio_list"] = self._renamed_asset_paths(
+                        body.get("ambient_audio_list"), old_dir, new_dir
+                    )
                 updated = Effect.model_validate(body)
                 self._move_effect_dir(old_dir, new_dir)
             if self.effects is not None:
@@ -257,6 +302,7 @@ class EffectUseCase:
             len(audio_list),
             preserve_blank_lines=True,
         )
+        known_digests = self._managed_asset_digests(name, audio_list)
 
         for raw_path in paths:
             try:
@@ -267,8 +313,13 @@ class EffectUseCase:
                 )
             except (OSError, ValueError, FileNotFoundError):
                 continue
+            digest = _file_digest(source)
+            if digest and digest in known_digests:
+                continue
             destination = self._available_destination(effect_dir, source.name)
             shutil.copy2(source, destination)
+            if digest:
+                known_digests.add(digest)
             destination_text = destination.as_posix()
             if destination_text not in audio_list:
                 audio_list.append(destination_text)
@@ -344,6 +395,7 @@ class EffectUseCase:
             len(image_list),
             preserve_blank_lines=True,
         )
+        known_digests = self._managed_asset_digests(name, image_list)
 
         for raw_path in paths:
             try:
@@ -356,8 +408,13 @@ class EffectUseCase:
                 continue
             if source.suffix.lower() not in {".jpg", ".jpeg", ".png"}:
                 continue
+            digest = _file_digest(source)
+            if digest and digest in known_digests:
+                continue
             destination = self._available_destination(effect_dir, source.name)
             shutil.copy2(source, destination)
+            if digest:
+                known_digests.add(digest)
             image_list.append(destination.as_posix())
             image_audio_list.append("")
             tags.append("")
@@ -425,6 +482,138 @@ class EffectUseCase:
         self._unlink_managed_file(name, image_audio_list[index])
         image_audio_list[index] = destination.as_posix()
         return self._save_updated_effect(effect, image_audio_list=image_audio_list)
+
+    def _upload_ambient(self, payload: dict[str, Any]) -> Effect:
+        name = validate_effect_storage_name(str(payload.get("name") or "").strip())
+        paths = payload.get("paths") or []
+        if not isinstance(paths, Sequence) or isinstance(paths, (str, bytes, bytearray)):
+            raise ValueError("paths must be a list")
+        effect = self._effect_by_name(name)
+        effect_dir = self._effect_dir(name)
+        effect_dir.mkdir(parents=True, exist_ok=True)
+        ambient_list = list(effect.ambient_list or [])
+        ambient_audio_list = list(effect.ambient_audio_list or [])
+        ambient_layers = list(effect.ambient_layers or [])
+        ambient_audio_list.extend("" for _ in range(len(ambient_list) - len(ambient_audio_list)))
+        ambient_layers.extend("back" for _ in range(len(ambient_list) - len(ambient_layers)))
+        tags = tag_contents(
+            str(payload.get("ambientTags") or effect.ambient_tags or ""),
+            len(ambient_list),
+            preserve_blank_lines=True,
+        )
+        known_digests = self._managed_asset_digests(name, ambient_list)
+
+        for raw_path in paths:
+            try:
+                source = safe_existing_file_path(
+                    str(raw_path),
+                    roots=self.local_file_access_roots,
+                    field="effect ambient asset path",
+                )
+            except (OSError, ValueError, FileNotFoundError):
+                continue
+            if source.suffix.lower() not in _AMBIENT_MEDIA_SUFFIXES:
+                continue
+            digest = _file_digest(source)
+            if digest and digest in known_digests:
+                continue
+            destination = self._available_destination(effect_dir, source.name)
+            shutil.copy2(source, destination)
+            if digest:
+                known_digests.add(digest)
+            ambient_list.append(destination.as_posix())
+            ambient_audio_list.append("")
+            ambient_layers.append("back")
+            tags.append("")
+
+        return self._save_updated_effect(
+            effect,
+            ambient_list=ambient_list,
+            ambient_audio_list=ambient_audio_list,
+            ambient_layers=ambient_layers,
+            ambient_tags=numbered_tags("环境", tags),
+        )
+
+    def _delete_ambient(self, payload: dict[str, Any]) -> Effect:
+        name = validate_effect_storage_name(str(payload.get("name") or "").strip())
+        index = int(payload.get("index") or 0)
+        effect = self._effect_by_name(name)
+        ambient_list = list(effect.ambient_list or [])
+        ambient_audio_list = list(effect.ambient_audio_list or [])
+        ambient_layers = list(effect.ambient_layers or [])
+        if index < 0 or index >= len(ambient_list):
+            raise IndexError(f"ambient index out of range: {index}")
+
+        self._unlink_managed_file(name, ambient_list.pop(index))
+        if index < len(ambient_audio_list):
+            self._unlink_managed_file(name, ambient_audio_list.pop(index))
+        if index < len(ambient_layers):
+            ambient_layers.pop(index)
+        tag_lines = str(effect.ambient_tags or "").splitlines()
+        while tag_lines and not tag_lines[-1].strip():
+            tag_lines.pop()
+        if index < len(tag_lines):
+            tag_lines.pop(index)
+        return self._save_updated_effect(
+            effect,
+            ambient_list=ambient_list,
+            ambient_audio_list=ambient_audio_list,
+            ambient_layers=ambient_layers,
+            ambient_tags="".join(
+                f"环境 {position + 1}：{_tag_text(line)}\n"
+                for position, line in enumerate(tag_lines)
+            ),
+        )
+
+    def _save_ambient_tags(self, payload: dict[str, Any]) -> Effect:
+        name = validate_effect_storage_name(str(payload.get("name") or "").strip())
+        effect = self._effect_by_name(name)
+        return self._save_updated_effect(
+            effect, ambient_tags=str(payload.get("ambientTags") or "")
+        )
+
+    def _save_ambient_layers(self, payload: dict[str, Any]) -> Effect:
+        name = validate_effect_storage_name(str(payload.get("name") or "").strip())
+        effect = self._effect_by_name(name)
+        raw_layers = payload.get("layers") or []
+        if not isinstance(raw_layers, Sequence) or isinstance(
+            raw_layers, (str, bytes, bytearray)
+        ):
+            raise ValueError("layers must be a list")
+        layers = [
+            "front" if str(value or "").strip().lower() == "front" else "back"
+            for value in raw_layers
+        ]
+        layers = layers[: len(effect.ambient_list or ())]
+        layers.extend("back" for _ in range(len(effect.ambient_list or ()) - len(layers)))
+        return self._save_updated_effect(effect, ambient_layers=layers)
+
+    def _upload_ambient_audio(self, payload: dict[str, Any]) -> Effect:
+        name = validate_effect_storage_name(str(payload.get("name") or "").strip())
+        index = int(payload.get("index") or 0)
+        effect = self._effect_by_name(name)
+        ambient_list = list(effect.ambient_list or [])
+        if index < 0 or index >= len(ambient_list):
+            raise IndexError(f"ambient index out of range: {index}")
+        source = safe_existing_file_path(
+            str(payload.get("path") or ""),
+            roots=self.local_file_access_roots,
+            field="effect ambient audio path",
+        )
+        if source.suffix.lower() not in {".flac", ".m4a", ".mp3", ".ogg", ".wav"}:
+            raise ValueError("unsupported effect ambient audio format")
+
+        effect_dir = self._effect_dir(name)
+        effect_dir.mkdir(parents=True, exist_ok=True)
+        destination = self._available_destination(effect_dir, source.name)
+        shutil.copy2(source, destination)
+        ambient_audio_list = list(effect.ambient_audio_list or [])
+        ambient_audio_list.extend("" for _ in range(len(ambient_list) - len(ambient_audio_list)))
+        self._unlink_managed_file(name, ambient_audio_list[index])
+        ambient_audio_list[index] = destination.as_posix()
+        return self._save_updated_effect(
+            effect, ambient_audio_list=ambient_audio_list
+        )
 
     def _import(self, payload: dict[str, Any]) -> list[Effect]:
         paths = payload.get("paths") or []
@@ -511,6 +700,24 @@ class EffectUseCase:
             target.unlink()
         except OSError:
             pass
+
+    def _managed_asset_digests(
+        self, effect_name: str, raw_paths: Sequence[Any] | None
+    ) -> set[str]:
+        """Fingerprint assets already stored for one effect.
+
+        The same asset may only appear once per field. Uploading a byte-identical
+        file under a new name must not create a second playback entry.
+        """
+        digests: set[str] = set()
+        for raw_path in raw_paths or ():
+            target = self._managed_file(effect_name, str(raw_path))
+            if target is None:
+                continue
+            digest = _file_digest(target)
+            if digest:
+                digests.add(digest)
+        return digests
 
     @staticmethod
     def _available_destination(directory: Path, filename: str) -> Path:

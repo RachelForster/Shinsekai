@@ -175,6 +175,23 @@
   object-fit: contain;
 }
 
+.effect-image-row--ambient {
+  grid-template-columns: 120px minmax(0, 1fr);
+}
+
+.effect-image-row--ambient .effect-image-row__controls {
+  grid-template-columns: minmax(160px, 280px) max-content max-content max-content max-content;
+}
+
+.effect-image-row__image video {
+  display: block;
+  width: 112px;
+  height: 72px;
+  border-radius: var(--radius-sm);
+  background: #000;
+  object-fit: cover;
+}
+
 .effect-image-row__image figcaption,
 .effect-image-row__audio small {
   display: block;

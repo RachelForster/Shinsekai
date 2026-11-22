@@ -126,6 +126,91 @@ def test_upload_uses_allowed_roots_and_keeps_tag_alignment(tmp_path: Path) -> No
     assert manager.saved == 1
 
 
+def test_upload_skips_byte_identical_audio_and_images(tmp_path: Path) -> None:
+    first = tmp_path / "hit.wav"
+    second = tmp_path / "hit-copy.wav"
+    image = tmp_path / "item.png"
+    image_copy = tmp_path / "item-copy.png"
+    first.write_bytes(b"same-audio")
+    second.write_bytes(b"same-audio")
+    image.write_bytes(b"same-image")
+    image_copy.write_bytes(b"same-image")
+    use_case, manager = _use_case(tmp_path, (_effect("Impact"),), roots=(tmp_path,))
+
+    uploaded = _execute(
+        use_case,
+        EffectOperation.UPLOAD_AUDIO,
+        name="Impact",
+        paths=[first.as_posix(), second.as_posix()],
+    )
+    repeated = _execute(
+        use_case,
+        EffectOperation.UPLOAD_AUDIO,
+        name="Impact",
+        paths=[second.as_posix()],
+    )
+    images = _execute(
+        use_case,
+        EffectOperation.UPLOAD_IMAGES,
+        name="Impact",
+        paths=[image.as_posix(), image_copy.as_posix()],
+    )
+
+    assert len(uploaded.audio_list) == 1
+    assert len(repeated.audio_list) == 1
+    assert len(uploaded.audio_tags.splitlines()) == 1
+    assert len(images.image_list) == 1
+    assert len(images.image_tags.splitlines()) == 1
+    assert manager.saved == 3
+
+
+def test_ambient_upload_delete_audio_and_layers_stay_aligned(tmp_path: Path) -> None:
+    rain = tmp_path / "rain.webm"
+    rain_copy = tmp_path / "rain-copy.webm"
+    fog = tmp_path / "fog.png"
+    audio = tmp_path / "rain.wav"
+    rain.write_bytes(b"rain-video")
+    rain_copy.write_bytes(b"rain-video")
+    fog.write_bytes(b"fog-image")
+    audio.write_bytes(b"rain-audio")
+    use_case, _ = _use_case(tmp_path, (_effect("Weather"),), roots=(tmp_path,))
+
+    uploaded = _execute(
+        use_case,
+        EffectOperation.UPLOAD_AMBIENT,
+        name="Weather",
+        paths=[rain.as_posix(), rain_copy.as_posix(), fog.as_posix()],
+    )
+
+    assert len(uploaded.ambient_list) == 2
+    assert len(uploaded.ambient_tags.splitlines()) == 2
+    assert uploaded.ambient_layers == ["back", "back"]
+
+    paired = _execute(
+        use_case,
+        EffectOperation.UPLOAD_AMBIENT_AUDIO,
+        name="Weather",
+        index=0,
+        path=audio.as_posix(),
+    )
+    assert Path(paired.ambient_audio_list[0]).read_bytes() == b"rain-audio"
+
+    layered = _execute(
+        use_case,
+        EffectOperation.SAVE_AMBIENT_LAYERS,
+        name="Weather",
+        layers=["front"],
+    )
+    assert layered.ambient_layers == ["front", "back"]
+
+    deleted = _execute(use_case, EffectOperation.DELETE_AMBIENT, name="Weather", index=0)
+
+    assert len(deleted.ambient_list) == 1
+    assert deleted.ambient_layers == ["back"]
+    assert deleted.ambient_audio_list == [""]
+    assert len(deleted.ambient_tags.splitlines()) == 1
+
+
 def test_delete_audio_preserves_external_file_and_rebuilds_tags(tmp_path: Path) -> None:
     external = tmp_path / "external.wav"
     external.write_bytes(b"keep")

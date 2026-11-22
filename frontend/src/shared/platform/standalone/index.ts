@@ -1260,6 +1260,48 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
         await persistAppConfig();
         return res;
       },
+      async uploadAmbient(input) {
+        await ensureInitialized();
+        const existing = ctx.config.effect_list.find((e) => e.name === input.name)?.ambient_list ?? [];
+        const relocated = await relocatePathsList(
+          input.paths,
+          `vfs://effects/${sanitizeVfsFileName(input.name)}/ambient`,
+          existing,
+        );
+        const res = await baseEffects.uploadAmbient({ ...input, paths: relocated });
+        await persistAppConfig();
+        return res;
+      },
+      async deleteAmbient(name, index) {
+        await ensureInitialized();
+        const res = await baseEffects.deleteAmbient(name, index);
+        await persistAppConfig();
+        return res;
+      },
+      async saveAmbientTags(input) {
+        await ensureInitialized();
+        const res = await baseEffects.saveAmbientTags(input);
+        await persistAppConfig();
+        return res;
+      },
+      async saveAmbientLayers(input) {
+        await ensureInitialized();
+        const res = await baseEffects.saveAmbientLayers(input);
+        await persistAppConfig();
+        return res;
+      },
+      async uploadAmbientAudio(input) {
+        await ensureInitialized();
+        const existing = ctx.config.effect_list.find((e) => e.name === input.name)?.ambient_audio_list ?? [];
+        const [relocatedPath] = await relocatePathsList(
+          [input.path],
+          `vfs://effects/${sanitizeVfsFileName(input.name)}/ambient-audio`,
+          existing,
+        );
+        const res = await baseEffects.uploadAmbientAudio({ ...input, path: relocatedPath });
+        await persistAppConfig();
+        return res;
+      },
       async deleteAudio(name, index) {
         await ensureInitialized();
         const res = await baseEffects.deleteAudio(name, index);

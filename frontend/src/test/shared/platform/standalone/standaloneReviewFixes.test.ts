@@ -344,6 +344,10 @@ describe("standalone PR #435 review fixes", () => {
       image_list: [],
       image_tags: "",
       image_audio_list: [],
+      ambient_list: [],
+      ambient_tags: "",
+      ambient_audio_list: [],
+      ambient_layers: [],
     });
     await p1.backgrounds.import(["vfs://uploads/imported_hall.bg"]);
     await p1.templates.saveSession({

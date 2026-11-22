@@ -64,7 +64,7 @@ def test_dialog_catalog_preserves_byte_for_byte_parity_with_legacy_i18n_bundle(
 ) -> None:
     legacy_path = REPO_ROOT / "i18n" / "locales" / f"{locale}.json"
     legacy_template_gen = json.loads(legacy_path.read_text(encoding="utf-8"))["template_gen"]
-    assert len(legacy_template_gen) == 78
+    assert len(legacy_template_gen) == 80
 
     for short_key, expected_text in legacy_template_gen.items():
         actual_text = PROMPT_CATALOG.translate(

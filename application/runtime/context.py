@@ -13,7 +13,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterator, List, Optional
 
-from core.media.effect_image import ImageEffectAsset
+from core.media.effect_image import AmbientEffectAsset, ImageEffectAsset
 from core.messaging.chat_turn_service import ChatTurnService
 from application.runtime.services import ApplicationServices
 from sdk.agent import AgentRequester, NullAgentRequester
@@ -91,6 +91,7 @@ class AppRuntime:
     background: Any = None
     effect_keyword_map: dict = field(default_factory=dict)  # keyword → audio_path
     effect_image_keyword_map: dict[str, ImageEffectAsset] = field(default_factory=dict)
+    ambient_effect_keyword_map: dict[str, AmbientEffectAsset] = field(default_factory=dict)
     ui_playback: UiPlaybackBridge = field(default_factory=UiPlaybackBridge)
     chat_turn_service: ChatTurnService = field(default_factory=ChatTurnService)
     tool_confirmations: ToolConfirmationController = field(

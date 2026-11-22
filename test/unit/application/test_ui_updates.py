@@ -124,6 +124,61 @@ def test_streaming_presenter_emits_frontend_effect_audio_events(tmp_path) -> Non
     assert sink.events[1]["key"] == "rain"
 
 
+def test_stopping_one_loop_alias_stops_the_shared_asset(tmp_path) -> None:
+    sink = _Sink()
+    presenter = StreamingUIUpdateManager(sink, resource_urls=_Urls())
+    loop = tmp_path / "rain.wav"
+    loop.write_bytes(b"wav")
+
+    presenter.start_loop_effect("rain", str(loop))
+    presenter.start_loop_effect("雨声", str(loop))
+    presenter.stop_loop_effect("rain")
+
+    assert [event["type"] for event in sink.events] == [
+        "effect.loop.start",
+        "effect.loop.start",
+        "effect.loop.stop",
+    ]
+    assert presenter._looping_effects == {}
+    presenter.stop_all_loop_effects()
+    assert [event["type"] for event in sink.events][-1] == "effect.loop.stop"
+
+
+def test_streaming_presenter_emits_ambient_lifecycle_and_layer_changes(tmp_path) -> None:
+    sink = _Sink()
+    presenter = StreamingUIUpdateManager(sink, resource_urls=_Urls())
+    visual = tmp_path / "rain.webm"
+    audio = tmp_path / "rain.wav"
+    visual.write_bytes(b"webm")
+    audio.write_bytes(b"wav")
+    asset = SimpleNamespace(
+        path=str(visual), audio_path=str(audio), layer="back"
+    )
+
+    assert presenter.start_ambient_effect("rain", asset) is True
+    assert presenter.start_ambient_effect("rain", asset) is False
+    assert presenter.start_ambient_effect("rain", asset, layer="front") is True
+    assert presenter.start_ambient_effect("雨声", asset, layer="front") is False
+    assert presenter.stop_ambient_effect("雨声") is True
+
+    assert [event["type"] for event in sink.events] == [
+        "ambient.start",
+        "ambient.layer",
+        "ambient.stop",
+    ]
+    assert sink.events[0]["layer"] == "back"
+    assert sink.events[0]["audioUrl"] == f"media://{audio}"
+    assert sink.events[1] == {
+        "type": "ambient.layer",
+        "key": "rain",
+        "layer": "front",
+        "audioUrl": f"media://{audio}",
+    }
+    assert sink.events[2]["key"] == "rain"
+    assert presenter._ambient_effects == {}
+    assert presenter._ambient_aliases == {}
+
+
 def test_streaming_presenter_keeps_relative_effect_audio_paths_for_the_bridge() -> None:
     sink = _Sink()
     presenter = StreamingUIUpdateManager(sink, resource_urls=_Urls())
@@ -229,7 +284,31 @@ def test_streaming_presenter_resolves_image_and_audio_for_the_same_keyword(tmp_p
     assert sink.events[-1]["label"] == "获得钥匙"
 
 
-def test_exact_audio_label_is_not_replaced_by_a_substring_image():
+def test_resolve_effect_fuzzy_matches_configured_labels(tmp_path) -> None:
+    sink = _Sink()
+    presenter = StreamingUIUpdateManager(sink, resource_urls=_Urls())
+    runtime = SimpleNamespace(
+        effect_image_keyword_map={
+            "被查验者为“狼”": ImageEffectAsset("wolf.png", ""),
+            "被查验者为“人”": ImageEffectAsset("human.png", ""),
+            "腹上的花纹为“蛇”": ImageEffectAsset("snake.png", ""),
+        },
+    )
+    with patch("application.runtime.context.get_app_runtime", return_value=runtime):
+        assert presenter.resolve_effect("查验结果为狼", {}, after_dialog=False)
+        assert presenter.resolve_effect("腹上的花纹是蛇", {}, after_dialog=False)
+
+    assert [event["type"] for event in sink.events] == [
+        "effect.image.show",
+        "effect.image.show",
+    ]
+    assert [event["label"] for event in sink.events] == [
+        "被查验者为“狼”",
+        "腹上的花纹为“蛇”",
+    ]
+
+
+def test_exact_audio_label_is_not_replaced_by_a_fuzzy_image():
     sink = _Sink()
     presenter = StreamingUIUpdateManager(sink, resource_urls=_Urls())
     runtime = SimpleNamespace(
@@ -238,7 +317,7 @@ def test_exact_audio_label_is_not_replaced_by_a_substring_image():
     )
     with patch("application.runtime.context.get_app_runtime", return_value=runtime):
         assert presenter.resolve_effect("  KEYBOARD  ", {}, after_dialog=False)
-        assert not presenter.resolve_effect("获得了key", {}, after_dialog=False)
+        assert not presenter.resolve_effect("获得了钥匙", {}, after_dialog=False)
     assert sink.events == [{"type": "effect.play", "url": "media://typing.wav"}]
 
 

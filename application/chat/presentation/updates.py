@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from application.runtime.event_sink import ChatEventSink
 
 from core.media.effect_bindings import effect_modes
+from core.media.effect_keywords import match_effect_label
 from core.messaging.stat_payload import parse_stat_payload
 from core.paths import resource_path
 from core.sprite.selection import resolve_runtime_path, sprite_entry_path
@@ -346,6 +347,8 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         self._sprite_lru: OrderedDict[str, int] = OrderedDict()
         self._background_url = ""
         self._looping_effects: dict[str, str] = {}
+        self._ambient_effects: dict[str, dict[str, str]] = {}
+        self._ambient_aliases: dict[str, str] = {}
         self.audio_playback_owner = "frontend"
         self._notification_lock = threading.Lock()
         self._notification_version = 0
@@ -574,14 +577,138 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         key = str(keyword or "").strip()
         if not key or key not in self._looping_effects:
             return
-        self._looping_effects.pop(key, None)
+        path = self._looping_effects.pop(key, None)
+        # Aliases share one asset-level loop instance. Drop every alias with the
+        # same asset so a stale snapshot key cannot revive the sound on resume.
+        if path:
+            for alias, alias_path in [
+                (existing, existing_path)
+                for existing, existing_path in self._looping_effects.items()
+                if self._same_loop_asset(existing_path, path)
+            ]:
+                self._looping_effects.pop(alias, None)
         self._emit({"type": "effect.loop.stop", "key": key})
+
+    @staticmethod
+    def _find_running_effect_key(query: str, keys: Any) -> str:
+        """Resolve a stop label against the effects that are actually running."""
+        candidates = tuple(str(key) for key in keys if str(key or "").strip())
+        normalized_query = str(query or "").strip().casefold()
+        for key in candidates:
+            if key.strip().casefold() == normalized_query:
+                return key
+        matched = match_effect_label(query, candidates)
+        return matched or ""
+
+    @staticmethod
+    def _same_loop_asset(left: str, right: str) -> bool:
+        if not left or not right:
+            return False
+        try:
+            return os.path.normcase(os.path.normpath(left)) == os.path.normcase(
+                os.path.normpath(right)
+            )
+        except (TypeError, ValueError):
+            return left == right
 
     def stop_all_loop_effects(self) -> None:
         if not self._looping_effects:
             return
         self._looping_effects.clear()
         self._emit({"type": "effect.loop.stop-all"})
+
+    def start_ambient_effect(
+        self,
+        keyword: str,
+        asset: Any,
+        layer: str = "",
+    ) -> bool:
+        """Start or retarget one persistent full-screen effect instance."""
+
+        key = str(keyword or "").strip()
+        raw_path = str(getattr(asset, "path", "") or "").strip()
+        if not key or not raw_path:
+            return False
+        path = resource_path(raw_path) if Path(raw_path).is_absolute() else raw_path
+        raw_audio = str(getattr(asset, "audio_path", "") or "").strip()
+        audio_path = (
+            resource_path(raw_audio) if raw_audio and Path(raw_audio).is_absolute() else raw_audio
+        )
+        resolved_layer = "front" if str(layer or "").strip().lower() == "front" else "back"
+        canonical = self._ambient_aliases.get(key, key)
+        current = self._ambient_effects.get(canonical)
+        if current is not None and not self._same_loop_asset(
+            str(current.get("path") or ""), str(path)
+        ):
+            self.stop_ambient_effect(canonical)
+            canonical = key
+            current = None
+        if current is None:
+            for existing_key, existing_state in self._ambient_effects.items():
+                if self._same_loop_asset(str(existing_state.get("path") or ""), str(path)):
+                    canonical = existing_key
+                    current = existing_state
+                    break
+        if current is not None:
+            if canonical != key:
+                self._ambient_aliases[key] = canonical
+            changed = (
+                current.get("layer") != resolved_layer
+                or current.get("audioPath") != audio_path
+            )
+            if not changed:
+                return False
+            current["layer"] = resolved_layer
+            current["audioPath"] = audio_path
+            self._emit(
+                {
+                    "type": "ambient.layer",
+                    "key": canonical,
+                    "layer": resolved_layer,
+                    "audioUrl": self._media_url(audio_path) if audio_path else "",
+                }
+            )
+            return True
+        self._ambient_aliases.pop(key, None)
+        self._ambient_effects[key] = {
+            "path": str(path),
+            "audioPath": audio_path,
+            "layer": resolved_layer,
+        }
+        self._emit(
+            {
+                "type": "ambient.start",
+                "key": key,
+                "url": self._media_url(str(path)),
+                "audioUrl": self._media_url(audio_path) if audio_path else "",
+                "layer": resolved_layer,
+            }
+        )
+        return True
+
+    def stop_ambient_effect(self, keyword: str) -> bool:
+        key = str(keyword or "").strip()
+        canonical = self._ambient_aliases.get(key, key)
+        current = self._ambient_effects.get(canonical)
+        if not key or current is None:
+            return False
+        self._ambient_effects.pop(canonical, None)
+        self._ambient_aliases.pop(key, None)
+        for alias in [
+            alias
+            for alias, target in self._ambient_aliases.items()
+            if target == canonical
+        ]:
+            self._ambient_aliases.pop(alias, None)
+        self._emit({"type": "ambient.stop", "key": canonical})
+        return True
+
+    def stop_all_ambient_effects(self) -> None:
+        if not self._ambient_effects:
+            return
+        self._ambient_effects.clear()
+        self._ambient_aliases.clear()
+        self._emit({"type": "ambient.stop-all"})
 
     def post_session_closed(self, reason: str = "聊天会话已结束。") -> None:
         self._emit({"type": "session.closed", "reason": str(reason or "聊天会话已结束。")})
@@ -836,8 +963,24 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         if raw.upper() == "LEAVE":
             return True
 
+        if raw.upper() == "AMBIENT-STOP-ALL":
+            self.stop_all_ambient_effects()
+            return True
+
         mode = "once"
-        if raw.startswith("loop:"):
+        if raw.startswith("ambient-stop:"):
+            mode = "ambient-stop"
+            raw = raw[13:]
+        elif raw.startswith("ambient:"):
+            mode = "ambient"
+            raw = raw[8:]
+        elif raw.startswith("shelter:"):
+            mode = "shelter"
+            raw = raw[8:]
+        elif raw.startswith("expose:"):
+            mode = "expose"
+            raw = raw[7:]
+        elif raw.startswith("loop:"):
             mode = "loop"
             raw = raw[5:]
         elif raw.startswith("stop:"):
@@ -858,44 +1001,122 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         keyword = raw.strip()
         if not keyword:
             return
-        audio_path = str(SOUND_EFFECTS_PATH.get(keyword.upper()) or "").strip()
-        image_path = ""
-        image_audio_path = ""
+        keyword_key = keyword.casefold()
+        audio_map: dict[str, str] = {}
+        image_map: dict[str, Any] = {}
+        ambient_map: dict[str, Any] = {}
         try:
             from application.runtime.context import get_app_runtime
 
             runtime = get_app_runtime()
-            if not audio_path:
-                audio_path = (getattr(runtime, "effect_keyword_map", {}) or {}).get(
-                    keyword.casefold(), ""
-                )
-            image = (getattr(runtime, "effect_image_keyword_map", {}) or {}).get(
-                keyword.casefold()
-            )
-            if image is not None:
-                image_path = image.image_path
-                image_audio_path = image.audio_path
+            audio_map = getattr(runtime, "effect_keyword_map", {}) or {}
+            image_map = getattr(runtime, "effect_image_keyword_map", {}) or {}
+            ambient_map = getattr(runtime, "ambient_effect_keyword_map", {}) or {}
         except Exception:
-            image_path = ""
-            image_audio_path = ""
+            pass
+
+        audio_path = str(SOUND_EFFECTS_PATH.get(keyword.upper()) or "").strip()
+        audio_key = keyword if audio_path else ""
+        image_path = ""
+        image_audio_path = ""
+        image_key = ""
+        ambient_asset = None
+        ambient_key = ""
+        exact_audio = bool(audio_path) or keyword_key in audio_map
+        exact_image = keyword_key in image_map
+        exact_ambient = keyword_key in ambient_map
+        has_exact_label = exact_audio or exact_image or exact_ambient
+
+        if not audio_path:
+            if keyword_key in audio_map:
+                audio_key = keyword_key
+                audio_path = str(audio_map[keyword_key] or "").strip()
+            elif not has_exact_label:
+                matched_audio = match_effect_label(keyword, tuple(audio_map))
+                if matched_audio is not None:
+                    audio_key = matched_audio
+                    audio_path = str(audio_map[matched_audio] or "").strip()
+
+        image = image_map.get(keyword_key) if exact_image else None
+        if image is None and not has_exact_label:
+            matched_image = match_effect_label(keyword, tuple(image_map))
+            if matched_image is not None:
+                image_key = matched_image
+                image = image_map[matched_image]
+        if exact_image:
+            image_key = keyword_key
+        if image is not None:
+            image_path = image.image_path
+            image_audio_path = image.audio_path
+
+        if exact_ambient:
+            ambient_key = keyword_key
+            ambient_asset = ambient_map[keyword_key]
+        elif not has_exact_label:
+            matched_ambient = match_effect_label(keyword, tuple(ambient_map))
+            if matched_ambient is not None:
+                ambient_key = matched_ambient
+                ambient_asset = ambient_map[matched_ambient]
+
         if image_audio_path:
             audio_path = image_audio_path
+
+        if mode in {"ambient", "shelter", "expose"}:
+            if ambient_asset is None:
+                logger.warning(
+                    "chat.effect.unresolved ambient effect=%r keyword=%r", effect, keyword
+                )
+                return False
+            layer = (
+                "front"
+                if mode == "expose"
+                else "back" if mode == "shelter" else ambient_asset.layer
+            )
+            emitted = self.start_ambient_effect(
+                ambient_key or keyword, ambient_asset, layer=layer
+            )
+            if emitted:
+                logger.info(
+                    "chat.effect.ambient effect=%r mode=%s keyword=%r layer=%r",
+                    effect,
+                    mode,
+                    keyword,
+                    layer,
+                )
+            return emitted
+        if mode == "ambient-stop":
+            stop_key = ambient_key
+            if not stop_key or (
+                stop_key not in self._ambient_effects
+                and stop_key not in self._ambient_aliases
+            ):
+                stop_key = self._find_running_effect_key(
+                    keyword,
+                    (*self._ambient_effects, *self._ambient_aliases),
+                )
+            return self.stop_ambient_effect(stop_key) if stop_key else False
         if mode != "stop" and not audio_path and not image_path:
             logger.warning("chat.effect.unresolved effect=%r keyword=%r", effect, keyword)
             return False
         if mode == "loop":
             if mode not in effect_modes(has_image=bool(image_path)):
                 return False
-            self.start_loop_effect(keyword, audio_path)
-            emitted = keyword in self._looping_effects
+            loop_key = audio_key or keyword
+            self.start_loop_effect(loop_key, audio_path)
+            emitted = loop_key in self._looping_effects
         elif mode == "stop":
-            emitted = keyword in self._looping_effects
-            self.stop_loop_effect(keyword)
+            stop_key = audio_key
+            if not stop_key or stop_key not in self._looping_effects:
+                stop_key = self._find_running_effect_key(keyword, self._looping_effects)
+            if not stop_key:
+                return False
+            emitted = True
+            self.stop_loop_effect(stop_key)
         else:
             if audio_path:
                 self.play_sound_effect(audio_path)
             if image_path:
-                self.show_image_effect(keyword, image_path)
+                self.show_image_effect(image_key or keyword, image_path)
             emitted = bool(audio_path or image_path)
         if emitted:
             logger.info(

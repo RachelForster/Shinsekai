@@ -176,9 +176,28 @@ def export_effect_package(
         directory="image-audio",
         allow_empty=True,
     )
+    packaged_ambient, exported_ambient = _export_asset_paths(
+        effect_root=effect_root,
+        project_root=project_root,
+        local_file_access_roots=local_file_access_roots,
+        effect_name=effect.name,
+        raw_paths=effect.ambient_list or (),
+        directory="ambient",
+    )
+    packaged_ambient_audio, exported_ambient_audio = _export_asset_paths(
+        effect_root=effect_root,
+        project_root=project_root,
+        local_file_access_roots=local_file_access_roots,
+        effect_name=effect.name,
+        raw_paths=effect.ambient_audio_list or (),
+        directory="ambient-audio",
+        allow_empty=True,
+    )
     effect_data["audio_list"] = exported_audio
     effect_data["image_list"] = exported_images
     effect_data["image_audio_list"] = exported_image_audio
+    effect_data["ambient_list"] = exported_ambient
+    effect_data["ambient_audio_list"] = exported_ambient_audio
 
     with tempfile.TemporaryDirectory(prefix="shinsekai-effect-export-") as raw_temp:
         temp_dir = Path(raw_temp)
@@ -186,7 +205,13 @@ def export_effect_package(
             yaml.safe_dump([effect_data], allow_unicode=True, default_flow_style=False, sort_keys=False),
             encoding="utf-8",
         )
-        for asset_file, package_path in (*packaged_audio, *packaged_images, *packaged_image_audio):
+        for asset_file, package_path in (
+            *packaged_audio,
+            *packaged_images,
+            *packaged_image_audio,
+            *packaged_ambient,
+            *packaged_ambient_audio,
+        ):
             dest = safe_child_path(temp_dir, package_path)
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(asset_file, dest)
@@ -220,6 +245,8 @@ def stage_effect_package_import(
             audio_source_dir = temp_dir / "audio"
             image_source_dir = temp_dir / "images"
             image_audio_source_dir = temp_dir / "image-audio"
+            ambient_source_dir = temp_dir / "ambient"
+            ambient_audio_source_dir = temp_dir / "ambient-audio"
 
             for entry in entries:
                 if not isinstance(entry, Mapping):
@@ -248,6 +275,12 @@ def stage_effect_package_import(
                 )
                 item["image_audio_list"] = _import_asset_paths(
                     item.get("image_audio_list"), image_audio_source_dir, effect_dir
+                )
+                item["ambient_list"] = _import_asset_paths(
+                    item.get("ambient_list"), ambient_source_dir, effect_dir
+                )
+                item["ambient_audio_list"] = _import_asset_paths(
+                    item.get("ambient_audio_list"), ambient_audio_source_dir, effect_dir
                 )
                 staged.effects.append(Effect.model_validate(item))
         return staged

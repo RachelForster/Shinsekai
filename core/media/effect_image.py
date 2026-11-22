@@ -7,3 +7,12 @@ from dataclasses import dataclass
 class ImageEffectAsset:
     image_path: str
     audio_path: str = ""
+
+
+@dataclass(frozen=True)
+class AmbientEffectAsset:
+    """A persistent full-screen effect with an optional looping soundtrack."""
+
+    path: str
+    audio_path: str = ""
+    layer: str = "back"

@@ -12,7 +12,7 @@ import threading
 import time
 from typing import Any, Protocol
 
-from core.media.effect_image import ImageEffectAsset
+from core.media.effect_image import AmbientEffectAsset, ImageEffectAsset
 from application.chat.capabilities import (
     PluginLoadedCapabilityContext,
     SessionCapabilitySet,
@@ -108,6 +108,7 @@ class _RuntimeComponents:
     text_processor: Any
     opencc: Any
     effect_image_keyword_map: dict[str, ImageEffectAsset] = field(default_factory=dict)
+    ambient_effect_keyword_map: dict[str, AmbientEffectAsset] = field(default_factory=dict)
 
 
 class _ChatInitialization:
@@ -469,6 +470,9 @@ class _BaseChatSession:
             text_processor=TextProcessor(),
             opencc=OpenCC("t2s"),
             effect_image_keyword_map=getattr(effect_context, "image_keyword_map", {}),
+            ambient_effect_keyword_map=getattr(
+                effect_context, "ambient_keyword_map", {}
+            ),
         )
         return self.runtime
 
@@ -513,6 +517,7 @@ class _BaseChatSession:
                 bgm_list=runtime.presentation_assets.bgm_paths,
                 effect_keyword_map=runtime.effect_keyword_map,
                 effect_image_keyword_map=runtime.effect_image_keyword_map,
+                ambient_effect_keyword_map=runtime.ambient_effect_keyword_map,
                 user_input_queue=runtime.input_queue,
                 dialog_queue=runtime.dialog_queue,
                 presentation_queue=runtime.presentation_queue,

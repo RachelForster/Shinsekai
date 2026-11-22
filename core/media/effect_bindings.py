@@ -56,6 +56,10 @@ def parse_effect_bindings(
     return tuple(bindings)
 
 
-def effect_modes(*, has_image: bool) -> tuple[str, ...]:
-    """Images are one-shot presentations; only audio supports looping."""
-    return ("before", "after") if has_image else ("before", "after", "loop", "stop")
+def effect_modes(*, has_image: bool, has_ambient: bool = False) -> tuple[str, ...]:
+    """Images are one-shot; ambience is persistent; audio supports looping."""
+    if has_image:
+        return ("before", "after")
+    if has_ambient:
+        return ("ambient", "shelter", "expose", "stop")
+    return ("before", "after", "loop", "stop")
