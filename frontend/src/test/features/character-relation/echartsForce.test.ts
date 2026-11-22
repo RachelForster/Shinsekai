@@ -75,16 +75,20 @@ describe("ECharts force layout", () => {
         { source: "B", target: "C", temperature: 0, content: "second" },
       ],
     };
-    const series = graphSeries({
-      graph,
-      positions: { A: { x: -400, y: 0 }, B: { x: 0, y: 0 }, C: { x: 400, y: 0 } },
-      activeNodeKey: "A",
-      selectedNodeKey: "A",
-      fixedKeys: new Set(["A"]),
-      emptyRelationLabel: "",
-      textColor: "#fff",
-      backgroundColor: "#000",
-    });
+    const series = graphSeries(
+      {
+        graph,
+        positions: { A: { x: -400, y: 0 }, B: { x: 0, y: 0 }, C: { x: 400, y: 0 } },
+        labelPositions: { A: { x: -400, y: 0 }, B: { x: 0, y: 0 }, C: { x: 400, y: 0 } },
+        activeNodeKey: "A",
+        selectedNodeKey: "A",
+        fixedKeys: new Set(["A"]),
+        emptyRelationLabel: "",
+        textColor: "#fff",
+        backgroundColor: "#000",
+      },
+      [graph],
+    );
     try {
       chart.setOption({
         series: [{ ...series, force: { ...series.force, repulsion: 0, gravity: 0, layoutAnimation: false } }],
@@ -109,14 +113,18 @@ describe("ECharts force layout", () => {
       nodes: ["A", "B"].map((key) => ({ key })),
       edges: [],
     };
-    const series = graphSeries({
-      graph: graph,
-      positions: { A: { x: -400, y: 0 }, B: { x: 400, y: 0 } },
-      activeNodeKey: "",
-      emptyRelationLabel: "",
-      textColor: "#fff",
-      backgroundColor: "#000",
-    });
+    const series = graphSeries(
+      {
+        graph: graph,
+        positions: { A: { x: -400, y: 0 }, B: { x: 400, y: 0 } },
+        labelPositions: { A: { x: -400, y: 0 }, B: { x: 400, y: 0 } },
+        activeNodeKey: "",
+        emptyRelationLabel: "",
+        textColor: "#fff",
+        backgroundColor: "#000",
+      },
+      [graph],
+    );
     try {
       chart.setOption({ series: [{ ...series, force: { ...series.force, gravity: 0, layoutAnimation: false } }] });
       installGraphBounds(chart);
@@ -143,15 +151,19 @@ describe("ECharts force layout", () => {
       edges: [{ source: "A", target: "B", temperature: 0, content: "" }],
     };
     const positions = { A: { x: -400, y: 0 }, B: { x: 400, y: 0 } };
-    const series = graphSeries({
-      graph: graph,
-      positions: positions,
-      activeNodeKey: "",
-      emptyRelationLabel: "",
-      textColor: "#fff",
-      backgroundColor: "#000",
-      fixedKeys: new Set(["A"]),
-    });
+    const series = graphSeries(
+      {
+        graph: graph,
+        positions: positions,
+        labelPositions: positions,
+        activeNodeKey: "",
+        emptyRelationLabel: "",
+        textColor: "#fff",
+        backgroundColor: "#000",
+        fixedKeys: new Set(["A"]),
+      },
+      [graph],
+    );
     try {
       chart.setOption({
         series: [{ ...series, force: { ...series.force, repulsion: 0, gravity: 0, layoutAnimation: false } }],
@@ -180,15 +192,19 @@ describe("ECharts force layout", () => {
       nodes: ["A", "B"].map((key) => ({ key })),
       edges: [],
     };
-    const series = graphSeries({
-      graph: graph,
-      positions: { A: { x: 0, y: 0 }, B: { x: 200, y: 100 } },
-      activeNodeKey: "",
-      emptyRelationLabel: "",
-      textColor: "#fff",
-      backgroundColor: "#000",
-      fixedKeys: new Set(["A", "B"]),
-    });
+    const series = graphSeries(
+      {
+        graph: graph,
+        positions: { A: { x: 0, y: 0 }, B: { x: 200, y: 100 } },
+        labelPositions: { A: { x: 0, y: 0 }, B: { x: 200, y: 100 } },
+        activeNodeKey: "",
+        emptyRelationLabel: "",
+        textColor: "#fff",
+        backgroundColor: "#000",
+        fixedKeys: new Set(["A", "B"]),
+      },
+      [graph],
+    );
     try {
       chart.setOption({ series: [{ ...series, force: { ...series.force, layoutAnimation: false } }] });
       expectEqualNodeDimensions(chart, [0, 1]);
@@ -210,16 +226,20 @@ describe("ECharts force layout", () => {
       edges: linked ? [{ source: "A", target: "B", temperature: 0, content: "" }] : [],
     };
     const positions = { A: { x: -distance / 2, y: 0 }, B: { x: distance / 2, y: 0 } };
-    const series = graphSeries({
-      graph: graph,
-      positions: positions,
-      activeNodeKey: "",
-      emptyRelationLabel: "",
-      textColor: "#fff",
-      backgroundColor: "#000",
-      fixedKeys: new Set(),
-      edgeLengths: { '["A","B"]': 180 },
-    });
+    const series = graphSeries(
+      {
+        graph: graph,
+        positions: positions,
+        labelPositions: positions,
+        activeNodeKey: "",
+        emptyRelationLabel: "",
+        textColor: "#fff",
+        backgroundColor: "#000",
+        fixedKeys: new Set(),
+        edgeLengths: { '["A","B"]': 180 },
+      },
+      [graph],
+    );
     try {
       chart.setOption({
         series: [{ ...series, force: { ...series.force, repulsion, gravity: 0, layoutAnimation: false } }],
@@ -262,15 +282,19 @@ describe("ECharts force layout", () => {
     try {
       chart.setOption({
         series: [
-          graphSeries({
-            graph: graph,
-            positions: { A: { x: 0, y: 0 } },
-            activeNodeKey: "",
-            emptyRelationLabel: "",
-            textColor: "#fff",
-            backgroundColor: "#000",
-            fixedKeys: new Set(["A"]),
-          }),
+          graphSeries(
+            {
+              graph: graph,
+              positions: { A: { x: 0, y: 0 } },
+              labelPositions: { A: { x: 0, y: 0 } },
+              activeNodeKey: "",
+              emptyRelationLabel: "",
+              textColor: "#fff",
+              backgroundColor: "#000",
+              fixedKeys: new Set(["A"]),
+            },
+            [graph],
+          ),
         ],
       });
       seedGraphPositions(chart, { A: { x: 123, y: -45 } });
@@ -290,18 +314,22 @@ describe("ECharts force layout", () => {
       edges: [{ source: "A", target: "B", temperature: 0, content: "" }],
     };
     const positions = { A: { x: 0, y: 0 }, B: { x: 800, y: 0 } };
-    const series = graphSeries({
-      graph: graph,
-      positions: positions,
-      activeNodeKey: "",
-      emptyRelationLabel: "",
-      textColor: "#fff",
-      backgroundColor: "#000",
-      fixedKeys: new Set(["A"]),
-      edgeLengths: {
-        '["A","B"]': 180,
+    const series = graphSeries(
+      {
+        graph: graph,
+        positions: positions,
+        labelPositions: positions,
+        activeNodeKey: "",
+        emptyRelationLabel: "",
+        textColor: "#fff",
+        backgroundColor: "#000",
+        fixedKeys: new Set(["A"]),
+        edgeLengths: {
+          '["A","B"]': 180,
+        },
       },
-    });
+      [graph],
+    );
     try {
       chart.setOption({ series: [{ ...series, force: { ...series.force, gravity: 0, layoutAnimation: false } }] });
       const held = readGraphPositions(chart);
@@ -322,29 +350,37 @@ describe("ECharts force layout", () => {
     };
     const positions = { A: { x: -800, y: 0 }, B: { x: 0, y: 0 } };
     try {
-      const held = graphSeries({
-        graph: graph,
-        positions: positions,
-        activeNodeKey: "",
-        emptyRelationLabel: "",
-        textColor: "#fff",
-        backgroundColor: "#000",
-        fixedKeys: new Set(["A", "B"]),
-      });
+      const held = graphSeries(
+        {
+          graph: graph,
+          positions: positions,
+          labelPositions: positions,
+          activeNodeKey: "",
+          emptyRelationLabel: "",
+          textColor: "#fff",
+          backgroundColor: "#000",
+          fixedKeys: new Set(["A", "B"]),
+        },
+        [graph],
+      );
       chart.setOption({ series: [held] });
       seedGraphPositions(chart, positions);
-      const released = graphSeries({
-        graph: graph,
-        positions: positions,
-        activeNodeKey: "",
-        emptyRelationLabel: "",
-        textColor: "#fff",
-        backgroundColor: "#000",
-        fixedKeys: new Set(),
-        edgeLengths: {
-          '["A","B"]': 180,
+      const released = graphSeries(
+        {
+          graph: graph,
+          positions: positions,
+          labelPositions: positions,
+          activeNodeKey: "",
+          emptyRelationLabel: "",
+          textColor: "#fff",
+          backgroundColor: "#000",
+          fixedKeys: new Set(),
+          edgeLengths: {
+            '["A","B"]': 180,
+          },
         },
-      });
+        [graph],
+      );
       chart.setOption({ series: [{ ...released, force: { ...released.force, gravity: 0, layoutAnimation: false } }] });
       expect(readGraphPositions(chart).A.x).toBeGreaterThan(-800);
     } finally {

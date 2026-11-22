@@ -1095,6 +1095,20 @@ it("preserves updated relations when saving an outdated character draft", async 
   expect(saved.relation_graph).toEqual({ nodes: renamed.nodes, edges: renamed.edges });
 });
 
+it("renames references in other characters' graphs", async () => {
+  const platform = createBrowserPreviewPlatform();
+  const [original] = await platform.characters.list();
+  const other = await platform.characters.save({ ...original, name: "Other person", sprite_prefix: "other_person" });
+  await platform.characterRelation.applyRelationChanges(other.name, [
+    { op: "add_node", node: { key: original.name } },
+    { op: "upsert_edge", edge: { source: other.name, target: original.name, temperature: 1, content: "Friend" } },
+  ]);
+  const newName = `${original.name} renamed`;
+  await platform.characters.save({ ...original, name: newName }, original.name);
+  const graph = await platform.characterRelation.getRelationGraph(other.name);
+  expect(graph.edges).toEqual([expect.objectContaining({ source: other.name, target: newName })]);
+});
+
 it("rejects a rename that collides with a relation node without changing the character", async () => {
   const platform = createBrowserPreviewPlatform();
   const original = (await platform.characters.list())[0];
