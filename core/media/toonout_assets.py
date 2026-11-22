@@ -5,6 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from core.paths import project_root
+from core.storage.layout import StorageLayout
 
 
 MODEL_REVISION = "cbf720eca394edcde66b861a8a8c20fbabe9c748"
@@ -25,8 +26,15 @@ ARTIFACTS = {
 }
 
 
-def model_directory():
-    return project_root() / "cache" / "models" / "toonout"
+def model_directory(root=None):
+    """Return the unified ToonOut directory, preserving legacy ``cache/models/toonout`` when populated."""
+    base = Path(root) if root is not None else project_root()
+    primary = StorageLayout(base).model_dir("toonout")
+    legacy = base / "cache" / "models" / "toonout"
+    weights_name = "birefnet_finetuned_toonout.pth"
+    if not (primary / weights_name).is_file() and (legacy / weights_name).is_file():
+        return legacy
+    return primary
 
 
 @lru_cache(maxsize=16)

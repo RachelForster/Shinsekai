@@ -65,6 +65,7 @@ const RRF_RT_REG_SZ_OR_EXPAND_SZ: u32 = 0x2 | 0x4;
 pub(crate) const CURRENT_APP_IDENTIFIER: &str = "studio.shinsekai";
 pub(crate) const LEGACY_APP_IDENTIFIER: &str = "icu.end0rph1n.shinsekai";
 pub(crate) const PROJECT_ROOT_LOCATOR_FILE: &str = "project-root.json";
+pub(crate) const PORTABLE_ROOT_MARKER_FILE: &str = ".shinsekai-portable";
 
 const PROJECT_ROOT_LOCATOR_VERSION: u32 = 1;
 const MAX_PROJECT_ROOT_LOCATOR_BYTES: u64 = 256 * 1024;
@@ -366,6 +367,30 @@ pub(crate) fn resolve(options: ProjectRootResolveOptions) -> Result<ResolvedProj
             has_project_data: has_meaningful_project_data(&path),
             path: path.clone(),
             source: ProjectRootCandidateSource::DevelopmentSource,
+            selectable: true,
+            trusted_for_automatic_selection: true,
+            allow_empty_project_data: true,
+        };
+        return Ok(resolution(
+            path,
+            locator_path,
+            vec![candidate],
+            false,
+            false,
+        ));
+    }
+
+    if options.app_root.join(PORTABLE_ROOT_MARKER_FILE).is_file() {
+        let path = prepare_app_root(&options.app_root).ok_or_else(|| {
+            format!(
+                "portable bundle directory is not writable (please extract to a writable path such as D:\\Shinsekai): {}",
+                options.app_root.display()
+            )
+        })?;
+        let candidate = CandidateRecord {
+            has_project_data: has_meaningful_project_data(&path),
+            path: path.clone(),
+            source: ProjectRootCandidateSource::CurrentAppRoot,
             selectable: true,
             trusted_for_automatic_selection: true,
             allow_empty_project_data: true,
@@ -2491,6 +2516,30 @@ mod tests {
         assert!(
             persisted == first.canonicalize().unwrap()
                 || persisted == second.canonicalize().unwrap()
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn portable_marker_uses_app_root_without_overwriting_existing_locator() {
+        let root = temp_dir("portable-marker");
+        let existing_installed = data_root(&root, "installed-root");
+        let options = options(&root);
+        let locator = options.locator_path.clone();
+        persist_locator_automatically(&locator, &existing_installed).unwrap();
+
+        fs::create_dir_all(&options.app_root).unwrap();
+        fs::write(options.app_root.join(PORTABLE_ROOT_MARKER_FILE), "portable=1\n").unwrap();
+        let expected_app_root = options.app_root.canonicalize().unwrap();
+
+        let resolved = resolve(options).unwrap();
+        let status = resolved.controller.status();
+
+        assert_eq!(resolved.path, expected_app_root);
+        assert!(!status.requires_selection);
+        assert_eq!(
+            read_valid_locator(&locator).unwrap(),
+            existing_installed.canonicalize().unwrap()
         );
         let _ = fs::remove_dir_all(root);
     }

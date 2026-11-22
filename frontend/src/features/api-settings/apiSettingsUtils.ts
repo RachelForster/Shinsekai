@@ -73,6 +73,7 @@ const TTS_PROVIDER_ALIASES: Record<string, string> = {
 export type T2iSetupMode = "custom" | "local" | "skip";
 
 export const asrProviderOptions = [
+  { label: "Sherpa-ONNX", value: "sherpa_onnx" },
   { label: "Vosk", value: "vosk" },
   { label: "faster-whisper", value: "faster_whisper" },
   { label: "RealtimeSTT", value: "realtime_stt" },
@@ -112,14 +113,17 @@ export function normalizeUiLanguage(language: string): UiLanguage {
 }
 
 export function normalizeAsrProvider(provider: string) {
-  const normalized = (provider || "vosk").trim().toLowerCase().replace(/-/g, "_");
+  const normalized = (provider || "sherpa_onnx").trim().toLowerCase().replace(/-/g, "_");
+  if (normalized === "sherpa" || normalized === "sherpaonnx" || normalized === "sherpa_onnx") {
+    return "sherpa_onnx";
+  }
   if (normalized === "fasterwhisper" || normalized === "whisper") {
     return "faster_whisper";
   }
   if (normalized === "realtimestt") {
     return "realtime_stt";
   }
-  return normalized || "vosk";
+  return normalized || "sherpa_onnx";
 }
 
 export function normalizeTtsProvider(provider: string) {

@@ -130,6 +130,10 @@ def test_storage_layout_exposes_directories_and_rejects_traversal(tmp_path: Path
     assert layout.config_file("api.yaml") == layout.config_dir / "api.yaml"
     assert layout.state_file("ui_state.json") == layout.state_dir / "ui_state.json"
     assert layout.cache_file("models.json") == layout.cache_dir / "models.json"
+    assert layout.models_dir == layout.data_dir / "models"
+    assert layout.runtime_dir == layout.data_dir / "runtime"
+    assert layout.model_dir("toonout") == layout.models_dir / "toonout"
+    assert layout.runtime_subdir("sprite-mouth") == layout.runtime_dir / "sprite-mouth"
     assert layout.db_file("shinsekai.db") == layout.main_db_path
     assert layout.media_dir("sprite", "alice") == layout.data_dir / "sprite" / "alice"
     assert layout.media_dir("sprite") == layout.data_dir / "sprite"
@@ -139,6 +143,10 @@ def test_storage_layout_exposes_directories_and_rejects_traversal(tmp_path: Path
     for bad in ("../outside.yaml", "/etc/passwd", "C:\\escape.yaml", "bad\x00.yaml", "."):
         with pytest.raises((PermissionError, ValueError)):
             layout.config_file(bad)
+        with pytest.raises((PermissionError, ValueError)):
+            layout.model_dir(bad)
+        with pytest.raises((PermissionError, ValueError)):
+            layout.runtime_subdir(bad)
         with pytest.raises((PermissionError, ValueError)):
             layout.media_dir("sprite", bad)
 

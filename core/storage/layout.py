@@ -69,6 +69,14 @@ class StorageLayout:
         return self.data_dir / "cache"
 
     @property
+    def models_dir(self) -> Path:
+        return self.data_dir / "models"
+
+    @property
+    def runtime_dir(self) -> Path:
+        return self.data_dir / "runtime"
+
+    @property
     def memory_dir(self) -> Path:
         return self.data_dir / "memory"
 
@@ -96,6 +104,12 @@ class StorageLayout:
 
     def cache_file(self, relative_path: str | os.PathLike[str]) -> Path:
         return _safe_relative_child(self.cache_dir, relative_path, field="cache path")
+
+    def model_dir(self, relative_path: str | os.PathLike[str]) -> Path:
+        return _safe_relative_child(self.models_dir, relative_path, field="model path")
+
+    def runtime_subdir(self, relative_path: str | os.PathLike[str]) -> Path:
+        return _safe_relative_child(self.runtime_dir, relative_path, field="runtime path")
 
     def db_file(self, relative_path: str | os.PathLike[str]) -> Path:
         return _safe_relative_child(self.data_dir, relative_path, field="database path")

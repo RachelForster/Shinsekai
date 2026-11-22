@@ -185,6 +185,106 @@ class TestNormalizeAsrProviderKey:
     def test_unknown_plugin_slug_is_preserved(self):
         assert normalize_asr_provider_storage_key("funasr_wss") == "funasr_wss"
 
+    def test_sherpa_onnx_variants(self):
+        from config.models import SystemConfig
+
+        assert SystemConfig().asr_provider == "sherpa_onnx"
+        assert normalize_asr_provider_storage_key("") == "sherpa_onnx"
+        assert normalize_asr_provider_storage_key("sherpa_onnx") == "sherpa_onnx"
+        assert normalize_asr_provider_storage_key("sherpa-onnx") == "sherpa_onnx"
+        assert normalize_asr_provider_storage_key("sherpa") == "sherpa_onnx"
+        assert "sherpa_onnx" in ASRAdapterFactory._adapters
+
+
+class TestSherpaOnnxAdapter:
+    def _build_stub_adapter(self, events: list[tuple[str, bool]]):
+        from collections import deque
+        import numpy as np
+        from threading import Event, Lock
+        from ai.asr.sherpa_onnx_adapter import SherpaOnnxAdapter
+
+        adapter = object.__new__(SherpaOnnxAdapter)
+        adapter.language = "zh"
+        adapter.callback = lambda text, is_partial: events.append((text, is_partial))
+        adapter._np = np
+        adapter._rms_threshold = 0.012
+        adapter._decode_lock = Lock()
+        adapter._online_stream = Mock()
+        adapter._preroll = deque(maxlen=SherpaOnnxAdapter.PREROLL_CHUNKS)
+        adapter._utterance_chunks = []
+        adapter._speech_chunks = 0
+        adapter._silent_chunks = 0
+        adapter._last_partial = ""
+        adapter._is_running = True
+        adapter._pause_event = Event()
+        adapter._pause_event.set()
+        return adapter
+
+    def test_normalize_sensevoice_language(self):
+        from ai.asr.sherpa_onnx_adapter import normalize_sensevoice_language
+
+        assert normalize_sensevoice_language("") == ""
+        assert normalize_sensevoice_language("auto") == ""
+        assert normalize_sensevoice_language("zh_CN") == "zh"
+        assert normalize_sensevoice_language("ja") == "ja"
+        assert normalize_sensevoice_language("yue") == "yue"
+        assert normalize_sensevoice_language("en") == "en"
+
+    def test_dual_stage_streaming_preview_then_sensevoice_polish(self):
+        import numpy as np
+
+        events: list[tuple[str, bool]] = []
+        adapter = self._build_stub_adapter(events)
+
+        online = Mock()
+        online.is_ready.return_value = False
+        online.get_result.side_effect = ["你好", "你好世界", "你好世界"]
+        online.is_endpoint.side_effect = [False, False, True]
+        adapter._online_recognizer = online
+
+        offline_stream = Mock()
+        offline_stream.result = SimpleNamespace(text="你好，世界！")
+        offline = Mock()
+        offline.create_stream.return_value = offline_stream
+        adapter._offline_recognizer = offline
+
+        voiced_chunk = np.full(1600, 0.05, dtype=np.float32)
+        adapter._process_audio_chunk(voiced_chunk)
+        adapter._process_audio_chunk(voiced_chunk)
+        adapter._process_audio_chunk(voiced_chunk)
+
+        assert events == [
+            ("你好", True),
+            ("你好世界", True),
+            ("你好，世界！", False),
+        ]
+        online.reset.assert_called_once()
+
+    def test_rms_fallback_polishes_non_zh_en_speech_and_finish_hold_keeps_warm(self):
+        import numpy as np
+
+        events: list[tuple[str, bool]] = []
+        adapter = self._build_stub_adapter(events)
+
+        online = Mock()
+        online.is_ready.return_value = False
+        online.get_result.return_value = ""
+        online.is_endpoint.return_value = False
+        adapter._online_recognizer = online
+
+        offline_stream = Mock()
+        offline_stream.result = SimpleNamespace(text="おはようございます。")
+        offline = Mock()
+        offline.create_stream.return_value = offline_stream
+        adapter._offline_recognizer = offline
+
+        voiced = np.full(1600, 0.05, dtype=np.float32)
+        for _ in range(3):
+            adapter._process_audio_chunk(voiced)
+
+        assert adapter.finish_hold(cancel=False) is True
+        assert events == [("おはようございます。", False)]
+
 
 class TestWhisperTriplet:
     def test_returns_defaults(self):

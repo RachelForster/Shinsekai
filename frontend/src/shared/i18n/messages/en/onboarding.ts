@@ -75,7 +75,7 @@ export const onboardingEnMessages: Record<OnboardingMessageKey, string> = {
   "onboarding.complete.openTemplates": "Open templates",
   "onboarding.complete.title": "Ready",
   "onboarding.plugins.aiDependencyHint":
-    "Visual and voice input plugins need AI dependencies. Installation can take a while, especially during package download and extraction.",
+    "The visual plugin needs AI dependencies. Installation can take a while during package download and extraction.",
   "onboarding.plugins.browserBody": "Lets tools browse and operate webpages during chat.",
   "onboarding.plugins.browserGuide":
     "After installation, open plugin settings and turn off headless mode when you want to see browser actions.",
@@ -94,7 +94,6 @@ export const onboardingEnMessages: Record<OnboardingMessageKey, string> = {
   "onboarding.plugins.keywords.browser": "playwright,playwright browser,playwright_browser,browser,浏览器",
   "onboarding.plugins.keywords.voiceExclude": "asr,whisper,speech,voice,microphone,语音,麦克风",
   "onboarding.plugins.keywords.visual": "vision,visual,screen,screenshot,image,视觉,屏幕",
-  "onboarding.plugins.keywords.voice": "voice,speech,asr,whisper,microphone,语音,麦克风",
   "onboarding.plugins.loading": "Loading plugin catalog",
   "onboarding.plugins.marketplaceHint": "Find more plugins in Plugins > Discover.",
   "onboarding.plugins.noMatch": "No matching market plugin was found yet.",
@@ -106,14 +105,11 @@ export const onboardingEnMessages: Record<OnboardingMessageKey, string> = {
   "onboarding.plugins.selectedCount": "{count} selected",
   "onboarding.plugins.title": "Common plugins",
   "onboarding.plugins.uninstalledWarning":
-    "No plugins have been installed yet. Voice, vision, and browser features won't be available. Skip anyway?",
+    "No plugins have been installed yet. Vision and browser features won't be available. Skip anyway?",
   "onboarding.plugins.visualBody": "Gives the assistant visual understanding for screen and image workflows.",
   "onboarding.plugins.visualGuide":
     "After installation, enable active screen recognition in the visual plugin settings.",
   "onboarding.plugins.visualTitle": "Visual plugin",
-  "onboarding.plugins.voiceBody": "Adds voice input support for hands-free chat.",
-  "onboarding.plugins.voiceGuide": "After installation, configure voice input in the API page.",
-  "onboarding.plugins.voiceTitle": "Voice input plugin",
   "onboarding.finishLabel": "Open templates",
   "onboarding.optionalLabel": "Skippable",
   "onboarding.requiredLabel": "Required",

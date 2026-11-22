@@ -496,7 +496,7 @@ export function ApiSettingsPage() {
       : [...asrProviderOptions],
     activeAsrProvider,
   );
-  const showWhisperFields = activeAsrProvider !== "vosk";
+  const showWhisperFields = activeAsrProvider === "faster_whisper" || activeAsrProvider === "realtime_stt";
   const whisperPresetValue = resolveAsrWhisperPresetValue(systemDraft.asr_whisper_model_size);
   const customWhisperModel = whisperPresetValue === "__custom__";
   const currentAsrCompute = String(systemDraft.asr_whisper_compute_type ?? "");

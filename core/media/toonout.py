@@ -17,23 +17,41 @@ class ToonOutUnavailable(RuntimeError):
     pass
 
 
+def _resolve_worker_python(directory: Path) -> str:
+    """Resolve ToonOut worker Python, falling back to bundled runtime on portable setups."""
+    runtime = directory / "runtime.json"
+    configured = ""
+    if runtime.is_file():
+        try:
+            payload = json.loads(runtime.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            payload = {}
+        if isinstance(payload, dict):
+            configured = str(payload.get("python") or "").strip()
+    if configured and Path(configured).is_file():
+        return configured
+
+    from config.perception import shinsekai_runtime_python_path
+
+    bundled = shinsekai_runtime_python_path()
+    if bundled and Path(bundled).is_file():
+        return bundled
+    if not getattr(sys, "frozen", False) and sys.executable and Path(sys.executable).is_file():
+        return sys.executable
+    raise FileNotFoundError("ToonOut Python does not exist")
+
+
 class ToonOutSession:
     def __init__(self):
         self.process = None
         self.reader = None
         self.log = None
         directory = model_directory()
+        self._log_path = directory / "worker.log"
         try:
             verify_assets(directory)
-            runtime = directory / "runtime.json"
-            python = (
-                json.loads(runtime.read_text(encoding="utf-8"))["python"]
-                if runtime.exists()
-                else sys.executable
-            )
-            if not Path(python).is_file():
-                raise FileNotFoundError("ToonOut Python does not exist")
-            self.log = (directory / "worker.log").open("a", encoding="utf-8")
+            python = _resolve_worker_python(directory)
+            self.log = self._log_path.open("a", encoding="utf-8")
             env = {
                 key: value
                 for key, value in os.environ.items()
@@ -86,7 +104,7 @@ class ToonOutSession:
             response = self.responses.get(timeout=timeout)
         except Empty as exc:
             raise RuntimeError(
-                "ToonOut 处理超时，请查看 cache/models/toonout/worker.log"
+                f"ToonOut 处理超时，请查看 {self._log_path}"
             ) from exc
         if response.get("error"):
             raise RuntimeError(response["error"])

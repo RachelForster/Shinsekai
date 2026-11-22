@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 > nul
-cd /d "%~dp0"
+cd /d "%~dp0.."
 
 :: Check that the current path contains only ASCII characters
 powershell -Command "if ('%cd%' -match '[^\x20-\x7E]') { Write-Host 'Error: The current path contains non-ASCII characters (e.g. Chinese, Japanese).'; Write-Host 'Please move the folder to a path with only English characters, e.g. D:\Shinsekai'; Write-Host 'Current path: %cd%'; exit 1 } else { exit 0 }" > nul 2>&1
