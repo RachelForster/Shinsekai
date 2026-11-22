@@ -86,6 +86,7 @@
   transition:
     background 140ms ease,
     border-color 140ms ease,
+    box-shadow 140ms ease,
     transform 140ms ease;
 }
 
@@ -93,6 +94,12 @@
   border-color: var(--color-accent-primary);
   background: var(--color-accent-bg-hover);
   transform: translateY(-1px);
+}
+
+.sidebar__github:active {
+  transform: translateY(1px) scale(0.99);
+  box-shadow: inset 0 2px 4px var(--color-shadow);
+  transition-duration: 80ms;
 }
 
 .sidebar__github-icon {
@@ -188,6 +195,10 @@
   cursor: pointer;
   font: inherit;
   text-align: left;
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    background 180ms ease;
 }
 
 .sidebar__link:hover {
@@ -198,9 +209,141 @@
 
 .sidebar__link.active,
 .sidebar__link[aria-pressed="true"] {
-  border-color: var(--color-accent-bg-intense);
+  border-color: var(--color-accent-border);
   color: var(--color-accent-primary);
-  background: var(--color-accent-bg-hover);
+  background: var(--color-accent-bg-intense);
+}
+
+.sidebar__link:active {
+  transform: translateY(1px) scale(0.99);
+  box-shadow: inset 0 2px 4px var(--color-shadow);
+  transition-duration: 80ms;
+}
+
+/* Main settings controls; chat stage is outside the application shell. */
+.content-outlet .button:not(.button--danger):not(.input-layer *),
+.content-outlet .icon-button:not(.input-layer *) {
+  border-radius: 999px;
+  border-color: light-dark(var(--color-accent-border), color-mix(in oklch, var(--theme-accent) 55%, transparent));
+  color: light-dark(var(--color-accent-secondary), var(--color-text-primary));
+  background: light-dark(
+    var(--color-accent-bg-hover),
+    color-mix(in oklch, var(--theme-accent) 22%, var(--color-bg-panel))
+  );
+  box-shadow:
+    inset 0 1px 0 var(--color-surface-raised),
+    0 3px 9px var(--color-shadow);
+  transition:
+    background 180ms ease,
+    transform 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.content-outlet .button:not(.button--danger):not(.input-layer *):hover:not(:disabled),
+.content-outlet .icon-button:not(.input-layer *):hover:not(:disabled) {
+  background: light-dark(
+    var(--color-accent-bg-intense),
+    color-mix(in oklch, var(--theme-accent) 32%, var(--color-bg-panel))
+  );
+  transform: none;
+}
+
+.content-outlet .button:not(.input-layer *):active:not(:disabled),
+.content-outlet .icon-button:not(.input-layer *):active:not(:disabled) {
+  transform: translateY(1px) scale(0.985);
+  box-shadow: inset 0 2px 4px var(--color-shadow);
+  transition-duration: 80ms;
+}
+
+.content-outlet .button--danger:not(.input-layer *) {
+  border-radius: 999px;
+  transition:
+    background 180ms ease,
+    transform 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.content-outlet .button--danger:not(.input-layer *):active:not(:disabled) {
+  background: var(--color-danger-bg-intense);
+}
+
+/* Dialogs are rendered outside the shell, so scope them by the active main app. */
+body:has(.app-shell) .dialog .button:not(.button--danger),
+body:has(.app-shell) .dialog .icon-button {
+  border-radius: 999px;
+  border-color: light-dark(var(--color-accent-border), color-mix(in oklch, var(--theme-accent) 55%, transparent));
+  color: light-dark(var(--color-accent-secondary), var(--color-text-primary));
+  background: light-dark(
+    var(--color-accent-bg-hover),
+    color-mix(in oklch, var(--theme-accent) 22%, var(--color-bg-panel))
+  );
+  box-shadow:
+    inset 0 1px 0 var(--color-surface-raised),
+    0 3px 9px var(--color-shadow);
+  transition:
+    background 180ms ease,
+    transform 180ms ease,
+    box-shadow 180ms ease;
+}
+
+body:has(.app-shell) .dialog .button--danger {
+  border-radius: 999px;
+  transition:
+    background 180ms ease,
+    transform 180ms ease,
+    box-shadow 180ms ease;
+}
+
+body:has(.app-shell) .dialog .button:hover:not(:disabled):not(.button--danger),
+body:has(.app-shell) .dialog .icon-button:hover:not(:disabled) {
+  background: light-dark(
+    var(--color-accent-bg-intense),
+    color-mix(in oklch, var(--theme-accent) 32%, var(--color-bg-panel))
+  );
+  transform: none;
+}
+
+body:has(.app-shell) .dialog .button:active:not(:disabled),
+body:has(.app-shell) .dialog .icon-button:active:not(:disabled) {
+  transform: translateY(1px) scale(0.985);
+  box-shadow: inset 0 2px 4px var(--color-shadow);
+  transition-duration: 80ms;
+}
+
+body:has(.app-shell) .dialog :is(.button, .icon-button):focus-visible {
+  outline: 2px solid var(--color-accent-primary);
+  outline-offset: 2px;
+}
+
+.content-outlet .audio-player__button {
+  border-radius: 50%;
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    background 180ms ease;
+}
+
+.content-outlet .audio-player__button:active:not(:disabled) {
+  transform: translateY(1px) scale(0.96);
+  box-shadow: inset 0 2px 4px var(--color-shadow);
+  transition-duration: 80ms;
+}
+
+.content-outlet .button:not(.input-layer *):focus-visible,
+.content-outlet .icon-button:not(.input-layer *):focus-visible {
+  outline: 2px solid var(--color-accent-primary);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body:has(.app-shell) .dialog :is(.button, .icon-button),
+  .sidebar__github,
+  .sidebar__link,
+  .content-outlet .audio-player__button,
+  .content-outlet .button,
+  .content-outlet .icon-button {
+    transition: none;
+  }
 }
 
 .sidebar__link--button {

@@ -168,6 +168,10 @@ export const sampleConfig: AppConfig = {
       image_list: [],
       image_tags: "",
       image_audio_list: [],
+      ambient_list: [],
+      ambient_tags: "",
+      ambient_audio_list: [],
+      ambient_layers: [],
     },
   ],
   characters: [

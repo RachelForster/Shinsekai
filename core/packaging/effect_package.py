@@ -6,7 +6,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass, field
 import os
-from pathlib import Path, PurePosixPath, PureWindowsPath
+from pathlib import Path, PurePosixPath
 import shutil
 import tempfile
 from typing import Any
@@ -16,6 +16,11 @@ import zipfile
 import yaml
 
 from config.models import Effect
+from core.effects.paths import (
+    configured_effect_path,
+    effect_category_dir,
+    validate_effect_storage_name,
+)
 from core.packaging.zip_io import (
     available_destination,
     available_package_filename,
@@ -38,32 +43,6 @@ class StagedEffectImport:
     created_dirs: list[Path] = field(default_factory=list)
 
 
-def validate_effect_storage_name(name: Any) -> str:
-    """Ensure an effect name addresses exactly one managed directory."""
-    value = str(name or "").strip()
-    if not value:
-        raise ValueError("effect name is required")
-    if "\x00" in value:
-        raise ValueError("effect name contains an invalid character")
-    if "/" in value or "\\" in value:
-        raise ValueError("effect name must not contain path separators")
-    path = Path(value)
-    windows_path = PureWindowsPath(value)
-    if path.is_absolute() or windows_path.is_absolute() or windows_path.drive:
-        raise ValueError("effect name must not be an absolute path")
-    if value in {".", ".."} or any(part in {".", ".."} for part in path.parts):
-        raise ValueError("effect name must not contain relative path segments")
-    return value
-
-
-def _configured_path(project_root: Path, raw_path: str) -> Path:
-    path = Path(raw_path)
-    windows_path = PureWindowsPath(raw_path)
-    if path.is_absolute() or windows_path.is_absolute() or windows_path.drive:
-        return path.resolve(strict=False)
-    return safe_child_path(project_root, path)
-
-
 def _export_asset_file(
     effect_root: Path,
     project_root: Path,
@@ -72,7 +51,7 @@ def _export_asset_file(
     raw_path: str,
 ) -> Path:
     effect_dir = safe_child_path(effect_root, validate_effect_storage_name(effect_name))
-    candidate = _configured_path(project_root, raw_path)
+    candidate = configured_effect_path(project_root, raw_path)
     if raw_path:
         try:
             return safe_existing_file_path(
@@ -121,8 +100,10 @@ def _import_asset_paths(
     raw_paths: Any,
     source_dir: Path,
     effect_dir: Path,
+    category: str,
 ) -> list[str]:
     imported: list[str] = []
+    dest_dir = effect_category_dir(effect_dir, category)
     for raw_path in raw_paths or ():
         if not raw_path:
             imported.append("")
@@ -130,7 +111,8 @@ def _import_asset_paths(
         filename = safe_filename(PurePosixPath(str(raw_path).replace("\\", "/")).name)
         source = safe_child_path(source_dir, filename)
         if source.is_file():
-            destination = available_destination(effect_dir, filename)
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            destination = available_destination(dest_dir, filename)
             shutil.copy2(source, destination)
             imported.append(destination.as_posix())
         else:
@@ -177,9 +159,28 @@ def export_effect_package(
         directory="image-audio",
         allow_empty=True,
     )
+    packaged_ambient, exported_ambient = _export_asset_paths(
+        effect_root=effect_root,
+        project_root=project_root,
+        local_file_access_roots=local_file_access_roots,
+        effect_name=effect.name,
+        raw_paths=effect.ambient_list or (),
+        directory="ambient",
+    )
+    packaged_ambient_audio, exported_ambient_audio = _export_asset_paths(
+        effect_root=effect_root,
+        project_root=project_root,
+        local_file_access_roots=local_file_access_roots,
+        effect_name=effect.name,
+        raw_paths=effect.ambient_audio_list or (),
+        directory="ambient-audio",
+        allow_empty=True,
+    )
     effect_data["audio_list"] = exported_audio
     effect_data["image_list"] = exported_images
     effect_data["image_audio_list"] = exported_image_audio
+    effect_data["ambient_list"] = exported_ambient
+    effect_data["ambient_audio_list"] = exported_ambient_audio
 
     with tempfile.TemporaryDirectory(prefix="shinsekai-effect-export-") as raw_temp:
         temp_dir = Path(raw_temp)
@@ -187,7 +188,13 @@ def export_effect_package(
             yaml.safe_dump([effect_data], allow_unicode=True, default_flow_style=False, sort_keys=False),
             encoding="utf-8",
         )
-        for asset_file, package_path in (*packaged_audio, *packaged_images, *packaged_image_audio):
+        for asset_file, package_path in (
+            *packaged_audio,
+            *packaged_images,
+            *packaged_image_audio,
+            *packaged_ambient,
+            *packaged_ambient_audio,
+        ):
             dest = safe_child_path(temp_dir, package_path)
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(asset_file, dest)
@@ -221,6 +228,8 @@ def stage_effect_package_import(
             audio_source_dir = temp_dir / "audio"
             image_source_dir = temp_dir / "images"
             image_audio_source_dir = temp_dir / "image-audio"
+            ambient_source_dir = temp_dir / "ambient"
+            ambient_audio_source_dir = temp_dir / "ambient-audio"
 
             for entry in entries:
                 if not isinstance(entry, Mapping):
@@ -242,13 +251,22 @@ def stage_effect_package_import(
                     staged.created_dirs.append(effect_dir)
 
                 item["audio_list"] = _import_asset_paths(
-                    item.get("audio_list"), audio_source_dir, effect_dir
+                    item.get("audio_list"), audio_source_dir, effect_dir, "audio"
                 )
                 item["image_list"] = _import_asset_paths(
-                    item.get("image_list"), image_source_dir, effect_dir
+                    item.get("image_list"), image_source_dir, effect_dir, "images"
                 )
                 item["image_audio_list"] = _import_asset_paths(
-                    item.get("image_audio_list"), image_audio_source_dir, effect_dir
+                    item.get("image_audio_list"), image_audio_source_dir, effect_dir, "image-audio"
+                )
+                item["ambient_list"] = _import_asset_paths(
+                    item.get("ambient_list"), ambient_source_dir, effect_dir, "ambient"
+                )
+                item["ambient_audio_list"] = _import_asset_paths(
+                    item.get("ambient_audio_list"),
+                    ambient_audio_source_dir,
+                    effect_dir,
+                    "ambient-audio",
                 )
                 staged.effects.append(Effect.model_validate(item))
         return staged

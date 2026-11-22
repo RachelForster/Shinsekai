@@ -58,6 +58,10 @@ function makeEffect(overrides: Partial<Effect> = {}): Effect {
     image_list: ["/eff/star-map.png", "/eff/meteor.png"],
     image_tags: "星图投影\n流星闪过",
     image_audio_list: ["", "/eff/meteor.mp3"],
+    ambient_list: [],
+    ambient_tags: "",
+    ambient_audio_list: [],
+    ambient_layers: [],
     ...overrides,
   };
 }

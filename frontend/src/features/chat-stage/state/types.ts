@@ -59,6 +59,14 @@ export interface ChatStageEffectImage {
   url: string;
 }
 
+export interface ChatStageAmbientEffect {
+  audioUrl?: string;
+  key: string;
+  layer: "back" | "front";
+  seq: number;
+  url: string;
+}
+
 export interface ChatStageSpriteReaction {
   characterName: string;
   deadline: number;
@@ -67,7 +75,11 @@ export interface ChatStageSpriteReaction {
   text: string;
 }
 
-export interface ChatStageState extends Omit<ChatSnapshot, "sprites" | "effectImage" | "spriteReaction"> {
+export interface ChatStageState extends Omit<
+  ChatSnapshot,
+  "sprites" | "effectImage" | "spriteReaction" | "ambientEffects"
+> {
+  ambientEffects?: ChatStageAmbientEffect[];
   effectImage?: ChatStageEffectImage | null;
   perceptionCaptureRequestSeq?: number;
   spriteReaction?: ChatStageSpriteReaction | null;

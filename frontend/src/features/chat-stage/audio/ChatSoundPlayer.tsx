@@ -16,6 +16,7 @@ export interface ChatSoundPlayerHandle {
 
 interface ChatSoundPlayerProps {
   voicePaused?: boolean;
+  ambientEffects?: Array<{ audioUrl?: string; key: string }>;
   bgmPath?: string;
   bgmVolume: number;
   effectVolume: number;
@@ -24,7 +25,7 @@ interface ChatSoundPlayerProps {
 }
 
 export const ChatSoundPlayer = forwardRef<ChatSoundPlayerHandle, ChatSoundPlayerProps>(function ChatSoundPlayer(
-  { bgmPath, bgmVolume, effectVolume, commands, onPlaybackSignal, voicePaused = false },
+  { ambientEffects, bgmPath, bgmVolume, effectVolume, commands, onPlaybackSignal, voicePaused = false },
   ref,
 ) {
   const playerRef = useRef<SoundPlayer | null>(null);
@@ -74,6 +75,15 @@ export const ChatSoundPlayer = forwardRef<ChatSoundPlayerHandle, ChatSoundPlayer
   useEffect(() => {
     playerRef.current?.setEffectVolume(effectVolume);
   }, [effectVolume]);
+
+  useEffect(() => {
+    playerRef.current?.setAmbientAudio(
+      (ambientEffects ?? []).map((effect) => ({
+        key: `ambient:${effect.key}`,
+        url: effect.audioUrl ? stageAssetUrl(effect.audioUrl) : "",
+      })),
+    );
+  }, [ambientEffects]);
 
   useEffect(() => {
     const player = playerRef.current;

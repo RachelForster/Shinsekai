@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from core.chat_history.text import parse_assistant_dialog_content
+from core.effects import parse_ambient_directive
 from core.messaging.dialog_tokens import (
     match_bgm_name,
     match_cg_name,
@@ -92,4 +93,25 @@ def enqueue_latest_media_replay(
     )
 
 
-__all__ = ["enqueue_latest_media_replay", "latest_media_dialogs"]
+def extract_ambient_effect_directives(messages: list[Any]) -> tuple[str, ...]:
+    """Collect ambient effect directives across persisted assistant turns in source order."""
+    directives: list[str] = []
+    for message in messages:
+        if not isinstance(message, dict) or message.get("role") != "assistant":
+            continue
+        for item in parse_assistant_dialog_content(message.get("content", "")):
+            try:
+                dialog = LLMDialogMessage.model_validate(item)
+            except (TypeError, ValueError):
+                continue
+            effect = str(dialog.effect or "").strip()
+            if parse_ambient_directive(effect) is not None:
+                directives.append(effect)
+    return tuple(directives)
+
+
+__all__ = [
+    "enqueue_latest_media_replay",
+    "extract_ambient_effect_directives",
+    "latest_media_dialogs",
+]

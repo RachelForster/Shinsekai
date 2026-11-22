@@ -54,6 +54,19 @@ class Effect(BaseModel):
         default_factory=list,
         description="图片特效绑定音频列表",
     )
+    ambient_list: Optional[List[str]] = Field(
+        default_factory=list,
+        description="全屏环境特效素材列表",
+    )
+    ambient_tags: DefaultIfNone[str] = Field(default="", description="全屏环境特效信息")
+    ambient_audio_list: Optional[List[str]] = Field(
+        default_factory=list,
+        description="环境特效绑定循环音频列表",
+    )
+    ambient_layers: Optional[List[str]] = Field(
+        default_factory=list,
+        description="环境特效默认层级列表（back/front）",
+    )
 
     @field_validator("id", mode="before")
     @classmethod

@@ -36,6 +36,10 @@ export interface Effect {
   image_list: string[];
   image_tags: string;
   image_audio_list: string[];
+  ambient_list: string[];
+  ambient_tags: string;
+  ambient_audio_list: string[];
+  ambient_layers: string[];
 }
 
 export interface PlayerCharacterOptions {
@@ -192,6 +196,11 @@ export interface EffectsPlatform {
   uploadAudio: (input: { audioTags: string; name: string; paths: string[] }) => Promise<Effect>;
   uploadImages: (input: { imageTags: string; name: string; paths: string[] }) => Promise<Effect>;
   uploadImageAudio: (input: { index: number; name: string; path: string }) => Promise<Effect>;
+  uploadAmbient: (input: { ambientTags: string; name: string; paths: string[] }) => Promise<Effect>;
+  deleteAmbient: (name: string, index: number) => Promise<Effect>;
+  saveAmbientTags: (input: { ambientTags: string; name: string }) => Promise<Effect>;
+  saveAmbientLayers: (input: { layers: string[]; name: string }) => Promise<Effect>;
+  uploadAmbientAudio: (input: { index: number; name: string; path: string }) => Promise<Effect>;
 }
 
 export interface TemplatesPlatform {

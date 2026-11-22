@@ -1,5 +1,49 @@
 .desktop-close-dialog {
   width: min(460px, calc(100vw - 32px));
+  border-color: var(--color-accent-border);
+  background: var(--color-bg-panel);
+}
+
+.desktop-close-dialog .button,
+.desktop-close-dialog .icon-button {
+  border-radius: 999px;
+  transition:
+    background 180ms ease,
+    transform 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.desktop-close-dialog .button,
+.desktop-close-dialog .icon-button {
+  border-color: var(--color-accent-border);
+  color: light-dark(var(--color-accent-secondary), var(--color-text-primary));
+  background: light-dark(
+    var(--color-accent-bg-hover),
+    color-mix(in oklch, var(--theme-accent) 22%, var(--color-bg-panel))
+  );
+  box-shadow:
+    inset 0 1px 0 var(--color-surface-raised),
+    0 3px 9px var(--color-shadow);
+}
+
+.desktop-close-dialog .button:hover:not(:disabled),
+.desktop-close-dialog .icon-button:hover:not(:disabled) {
+  border-color: var(--color-accent-border-strong);
+  background: var(--color-accent-bg-intense);
+}
+
+.desktop-close-dialog .button:active:not(:disabled),
+.desktop-close-dialog .icon-button:active:not(:disabled) {
+  transform: translateY(1px) scale(0.985);
+  box-shadow: inset 0 2px 4px var(--color-shadow);
+  transition-duration: 80ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .desktop-close-dialog .button,
+  .desktop-close-dialog .icon-button {
+    transition: none;
+  }
 }
 
 .desktop-close-dialog__remember {

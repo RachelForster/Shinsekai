@@ -232,3 +232,54 @@
 .sprite-layer__figure[data-speaking="true"] .sprite-layer__image {
   filter: brightness(1.06) saturate(1.04);
 }
+
+/* Persistent full-screen ambience sits between the background and sprites,
+   or above sprites when the characters are exposed to the environment. */
+.ambient-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.ambient-layer[data-layer="back"] {
+  z-index: 2;
+}
+
+.ambient-layer[data-layer="front"] {
+  z-index: 4;
+}
+
+.ambient-layer__media {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  animation: ambient-fade-in 0.5s ease both;
+}
+
+.ambient-layer__media[data-state="leaving"] {
+  animation: ambient-fade-out 0.5s ease both;
+}
+
+@keyframes ambient-fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes ambient-fade-out {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}

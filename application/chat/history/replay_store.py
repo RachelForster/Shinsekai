@@ -114,7 +114,14 @@ class ReplayRecorder:
     """Observe resolved stage output; never re-run media selection on playback."""
     def __init__(self, store):
         self.store = store
-        self.frame = {"backgroundPath": "", "bgmPath": "", "cgPath": "", "sprites": [], "stats": []}
+        self.frame = {
+            "backgroundPath": "",
+            "bgmPath": "",
+            "cgPath": "",
+            "ambientEffects": [],
+            "sprites": [],
+            "stats": [],
+        }
         self.message = None
 
     def record_message(self, message):
@@ -132,6 +139,48 @@ class ReplayRecorder:
             self.frame["bgmPath"] = event.get("url", "")
         elif kind in {"cg.show", "cg.hide"}:
             self.frame["cgPath"] = event.get("url", "") if kind == "cg.show" else ""
+        elif kind == "ambient.start":
+            key = str(event.get("key") or "")
+            if key:
+                current = [
+                    dict(item)
+                    for item in (self.frame.get("ambientEffects") or [])
+                    if isinstance(item, dict) and str(item.get("key") or "") != key
+                ]
+                current.append(
+                    {
+                        "key": key,
+                        "url": str(event.get("url") or ""),
+                        "audioUrl": str(event.get("audioUrl") or ""),
+                        "layer": "front" if event.get("layer") == "front" else "back",
+                        "seq": int(event.get("seq") or 0),
+                    }
+                )
+                self.frame["ambientEffects"] = current[-32:]
+        elif kind == "ambient.layer":
+            key = str(event.get("key") or "")
+            layer = "front" if event.get("layer") == "front" else "back"
+            audio_url = str(event.get("audioUrl") or "")
+            self.frame["ambientEffects"] = [
+                {
+                    **dict(item),
+                    "layer": layer,
+                    **({"audioUrl": audio_url} if audio_url else {}),
+                }
+                if isinstance(item, dict) and str(item.get("key") or "") == key
+                else dict(item)
+                for item in (self.frame.get("ambientEffects") or [])
+                if isinstance(item, dict)
+            ]
+        elif kind == "ambient.stop":
+            key = str(event.get("key") or "")
+            self.frame["ambientEffects"] = [
+                dict(item)
+                for item in (self.frame.get("ambientEffects") or [])
+                if isinstance(item, dict) and str(item.get("key") or "") != key
+            ]
+        elif kind == "ambient.stop-all":
+            self.frame["ambientEffects"] = []
         elif kind == "sprite.show":
             sprite = {k: v for k, v in event.items() if k != "type"}
             sprite["id"] = str(event.get("characterName") or event.get("slot", 0))

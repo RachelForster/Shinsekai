@@ -12,6 +12,7 @@ export const TAG_PREFIX_SCENE = "场景";
 export const TAG_PREFIX_MUSIC = "音乐";
 export const TAG_PREFIX_EFFECT = "特效";
 export const TAG_PREFIX_IMAGE = "图片";
+export const TAG_PREFIX_AMBIENT = "环境";
 
 export const DEFAULT_SPRITE_TAGGING = "平静，站立";
 export const LEGACY_UNSPECIFIED_LICENSE = "未标注";
