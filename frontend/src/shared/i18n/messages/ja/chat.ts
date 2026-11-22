@@ -303,6 +303,8 @@ export const chatJaMessages: Record<ChatMessageKey, string> = {
   "chat.toolbar.tokens": "Token 使用量",
   "chat.toolbar.tools": "チャットツール",
   "chat.toolbar.unlockActions": "チャット操作の固定を解除",
+  "chat.toolbar.runtimeMode": "AI・音声・クロスデバイス設定",
+  "chat.toolbar.backToWorkspace": "ワークスペース／キャラ管理へ戻る",
   "chat.theme.active": "適用中",
   "chat.theme.apply": "適用",
   "chat.theme.backToSettings": "システム設定に戻る",

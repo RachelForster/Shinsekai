@@ -7,21 +7,32 @@ import tiktoken
 from typing import List, Dict, Any
 import logging
 
+from ai.llm.template.core import TemplateContext
+from ai.llm.template.integrations.localization import LocaleInput, resolve_dynamic_locale
+from ai.llm.template.session import (
+    COMPACT_PROMPT_SPEC,
+    CompactPromptContext,
+    CompactTranscriptTurn,
+    render_compact_failure_fallback,
+    render_omitted_history_notice,
+)
 from config.schema import clamp_compact_target_ratio
 from core.chat_history.models import (
     COMPACT_SUMMARY_SOURCE,
     COMPACT_UP_TO_SEQ_KEY,
+    SUMMARY_MARKERS as _HISTORY_SUMMARY_MARKERS,
     build_compact_summary_message,
     is_compact_summary_message,
 )
 from sdk.hooks import BeforeCompactContext, PluginHookDispatcher, PluginHookEvent
+from sdk.lang import LocaleCode
 
 logger = logging.getLogger(__name__)
 
 class CompactManager:
     """管理记忆压缩的类"""
 
-    SUMMARY_MARKERS = ("历史对话总结", "历史摘要", "较早历史已省略")
+    SUMMARY_MARKERS = _HISTORY_SUMMARY_MARKERS
 
     def __init__(
         self,
@@ -36,6 +47,7 @@ class CompactManager:
         session_id: str = "",
         resolve_message_seq: Callable[[Mapping[str, Any]], int | None] | None = None,
         on_checkpoint: Callable[[int, str], None] | None = None,
+        locale: LocaleInput = None,
     ):
         """
         初始化CompactManager
@@ -61,6 +73,7 @@ class CompactManager:
         self.session_id = str(session_id or "")
         self.resolve_message_seq = resolve_message_seq
         self.on_checkpoint = on_checkpoint
+        self.locale = locale
         self.num_tokens = 0
 
         # 尝试使用tiktoken进行token计数
@@ -191,18 +204,25 @@ class CompactManager:
                 return message
         return None
 
+    def _active_locale(self) -> LocaleCode:
+        return resolve_dynamic_locale(self.locale)
+
     def _omitted_history_message(self, *, up_to_seq: int | None = None) -> Dict[str, Any]:
         msg: Dict[str, Any] = {
             "role": "user",
             "source": COMPACT_SUMMARY_SOURCE,
-            "content": "【历史摘要】较早历史已省略。请基于保留的系统设定、历史摘要和最近对话继续。",
+            "content": render_omitted_history_notice(locale=self._active_locale()),
         }
         if up_to_seq is not None:
             msg[COMPACT_UP_TO_SEQ_KEY] = int(up_to_seq)
         return msg
 
     def _summary_message(self, content: str, *, up_to_seq: int | None = None) -> Dict[str, Any]:
-        return build_compact_summary_message(content, up_to_seq=up_to_seq)
+        return build_compact_summary_message(
+            content,
+            up_to_seq=up_to_seq,
+            locale=self._active_locale(),
+        )
 
     def _limit_summary(self, content: str) -> str:
         if self.count_text_tokens(content) <= self.compact_summary_max_tokens:
@@ -394,38 +414,35 @@ class CompactManager:
 
     def _create_compact_prompt(self, messages: List[Dict[str, Any]]) -> str:
         """创建压缩提示"""
-        prompt = """请将以下对话历史压缩成一个简洁的总结。总结应该：
-1. 保留关键信息、重要决定和主要话题
-2. 忽略无关紧要的细节和重复内容
-3. 保持时间顺序和逻辑连贯性
-4. 用中文总结，保持客观准确
-
-对话历史：
-"""
-
-        for i, message in enumerate(messages):
-            role = message.get("role", "")
-            if role == "user":
-                role = "用户"
-            elif role == "assistant":
-                role = "助手"
-            elif role == "tool":
-                role = f"工具:{message.get('name', '')}"
-            content = message.get("display_content") or message.get('content', '')
+        turns: list[CompactTranscriptTurn] = []
+        for message in messages:
+            role = str(message.get("role", "") or "")
+            content = message.get("display_content") or message.get("content", "")
             if isinstance(content, (dict, list)):
                 content = self._message_token_text({"content": content})
-            prompt += f"\n{role}: {content}"
-
-        prompt += "\n\n请提供对话总结："
-
-        return prompt
+            turns.append(
+                CompactTranscriptTurn(
+                    role=role,
+                    content=str(content or ""),
+                    tool_name=str(message.get("name", "") or ""),
+                )
+            )
+        return COMPACT_PROMPT_SPEC.render_user(
+            CompactPromptContext(
+                turns=tuple(turns),
+                locale=self._active_locale(),
+            )
+        )
 
     def _call_llm_for_compaction(self, prompt: str) -> str:
         """调用LLM进行压缩"""
-        # 创建压缩专用的消息列表
+        active_locale = self._active_locale()
+        system_content = COMPACT_PROMPT_SPEC.render_system(
+            TemplateContext(locale=active_locale)
+        )
         compact_messages = [
-            {'role': 'system', 'content': '你是一个专业的对话总结助手，擅长将长对话压缩成简洁准确的总结。请保留用户的重要信息和目前的对话话题。'},
-            {'role': 'user', 'content': prompt}
+            {"role": "system", "content": system_content},
+            {"role": "user", "content": prompt},
         ]
 
         # 调用LLM
@@ -454,9 +471,9 @@ class CompactManager:
                     return str(response)
             except Exception as e:
                 logger.error(f"Failed to extract response content: {e}")
-                return "压缩失败，请参考原始对话历史。"
+                return render_compact_failure_fallback(locale=active_locale)
 
-        return "压缩失败，请参考原始对话历史。"
+        return render_compact_failure_fallback(locale=active_locale)
 
     def auto_compact_if_needed(self, messages: List[Dict[str, str]], token_usage: int = 0) -> List[Dict[str, str]]:
         """自动检查并压缩消息（如果需要）"""

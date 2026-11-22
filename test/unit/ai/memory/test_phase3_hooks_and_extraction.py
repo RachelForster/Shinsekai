@@ -10,6 +10,10 @@ from types import SimpleNamespace
 
 import pytest
 
+from ai.llm.template.session import (
+    LEGACY_MEMORY_CONTEXT_MARKERS,
+    MEMORY_CONTEXT_MARKER,
+)
 from ai.memory import operations
 from ai.memory.backends.in_memory import DeterministicHashEmbedder
 from ai.memory.backends.sqlite_repo import SqliteHybridMemoryRepo
@@ -228,7 +232,7 @@ def test_proactive_perception_turn_runs_perception_hook_before_memory_hook_and_s
         # 1. Perception hook attached game cache AND Memory hook recalled Malenia tip!
         assert "[Shinsekai realtime game perception cache]" in str(proactive_msg["content"])
         assert any(
-            "[Shinsekai long-term memory context]" in str(m.get("content") or "")
+            MEMORY_CONTEXT_MARKER in str(m.get("content") or "")
             and "冰冻壶" in str(m.get("content") or "")
             for m in ctx.messages
         )

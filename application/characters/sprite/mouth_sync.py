@@ -15,6 +15,7 @@ import time
 from typing import Any, Iterable
 from uuid import uuid4
 
+from ai.llm.template.generation.sprite_plan import render_mouth_speech_prompt
 from application.characters.sprite import mouth_resources
 from application.characters.sprite.generate_sprites import boundary_frame, render_sprite
 from application.characters.sprite.mouth_resources import (
@@ -38,31 +39,8 @@ _RECOGNITION_LOCK = threading.Lock()
 _save_lock = Lock()
 MOUTH_FRAME_COUNTS = (5, 22, 39)
 DEFAULT_MOUTH_FRAME_COUNT = 22
-MOUTH_PROMPT = (
-    "A quiet, natural conversational lip movement for this 2D character, as if "
-    "softly saying one short word. Only the lips and the inside of the mouth move. "
-    "Start with the original resting mouth, gently part the lips a little, briefly "
-    "form a modest opening for a soft vowel, then ease back to the original resting "
-    "mouth. Three distinct, subtle stages: resting, slightly parted, and gently open. "
-    "Keep the mouth near its original position and width. Leave visible skin between "
-    "the upper lip and the base of the nose, and between the lower lip and the chin "
-    "in every frame. Preserve the eyes, eyebrows, gaze, nose, cheeks, jawline, chin, "
-    "head angle, ears, hair, neck and clothing from the reference. Same character "
-    "design, lighting and crop, locked camera, plain white background."
-)
-MOUTH_BLINK_PROMPT = (
-    "A short, fixed-camera animation of this exact 2D portrait. In the first half, "
-    "with both eyes held at the original openness and gaze, softly say one short "
-    "syllable. Show the original resting mouth, a slightly parted mouth and a modest "
-    "vowel opening, then return to the resting mouth. Keep the mouth resting during "
-    "one natural blink in the second half: eyes open, eyelids half lowered, eyelids "
-    "fully closed briefly, then smoothly reopen to the original gaze and eye shape. "
-    "Blink only if both eyes are open and visible in the reference. Only the lips and "
-    "eyelids move. Preserve the eyebrows, nose, cheeks, chin, jawline, head angle, "
-    "ears, hair, neck, clothing and proportions. Keep visible skin between the lips "
-    "and the nose and chin. Match the exact original framing and lighting, plain "
-    "white background. End at the original expression."
-)
+MOUTH_PROMPT = render_mouth_speech_prompt(include_blink=False)
+MOUTH_BLINK_PROMPT = render_mouth_speech_prompt(include_blink=True)
 
 
 def _local_file_access_roots(state: Any) -> tuple[Path, ...]:

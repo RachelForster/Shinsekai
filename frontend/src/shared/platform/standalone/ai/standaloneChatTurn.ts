@@ -513,18 +513,22 @@ export class StandaloneChatTurnDriver {
     const llmAdapter = resolveLlmAdapter(provider);
 
     try {
+      const systemConfig = this.ctx.getSystemConfig?.();
+      const uiLanguage = systemConfig?.ui_language;
       const systemPrompt = buildStandaloneDialogSystemPrompt({
         characters: activeCharacters.length ? activeCharacters : characters.slice(0, 1),
         backgrounds: this.ctx.getBackgrounds?.(),
         effects: this.ctx.getEffects?.(),
-        systemConfig: this.ctx.getSystemConfig?.(),
+        systemConfig,
         payload: session.payload,
         outfits: session.outfits,
         stats: this.ctx.getChat().stats,
         userDisplayName: this.ctx.getChat().userDisplayName,
       });
 
-      const activeView = this.ctx.sessionStore.buildActiveLlmMessages(session.sessionId, systemPrompt);
+      const activeView = this.ctx.sessionStore.buildActiveLlmMessages(session.sessionId, systemPrompt, {
+        uiLanguage,
+      });
       const { maxContextTokens } = getCompactionLimits(apiConfig);
       const boundedMessages = trimMessagesToBudget(activeView.messages, maxContextTokens);
 
@@ -754,6 +758,7 @@ export class StandaloneChatTurnDriver {
         baseUrl,
         model,
         lastUsageTokens: llmResult.usageTokens,
+        uiLanguage,
         signal: compactCtrl.signal,
       }).finally(() => {
         if (this.compactionAbort === compactCtrl) {

@@ -5,9 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Iterable
 
+from ai.llm.template.generation.sprite_plan import render_sprite_idle_animation_prompt
 from application.characters.sprite.generate_sprites import (
-    SPRITE_CAMERA_SUFFIX,
-    SPRITE_REFERENCE_FRAMING_SUFFIX,
     _approve_sprite_media,
     _local_file_access_roots,
     boundary_frame,
@@ -48,71 +47,31 @@ def animation_prompt(payload):
                 "tagging": payload.get("tagging", "平静，站立"),
             }
         )
-    motions = []
-    for key, default, phrase in (
-        (
-            # Keep the legacy key so saved queues and redraw settings remain compatible.
-            "breathing",
-            True,
-            "let the body and relaxed limbs sway very slightly and slowly as one "
-            "coordinated motion over the whole shot, keeping the feet planted and "
-            "retaining the original hand gesture; let the hair sway very gently with "
-            "a soft delay; use smooth, gradual easing and a tiny range of motion",
-        ),
-        (
-            "blinking",
-            True,
-            "only if both eyes are naturally open in the reference, make one smooth "
-            "eyelid-only blink, softly closing then gently reopening to the original "
-            "eye shape and gaze, with a long pause between movements; if either eye "
-            "is closed, winking, squinting, stylized or obscured in the reference, "
-            "keep both eyes exactly as depicted for the whole shot without blinking "
-            "or opening them; preserve the original head tilt and facial expression",
-        ),
-        (
-            "breeze",
-            False,
-            "let a faint breeze add a slow, barely perceptible sway to the hair tips and clothing edges",
-        ),
+    flags: dict[str, bool] = {}
+    for key, default in (
+        # Keep the legacy key so saved queues and redraw settings remain compatible.
+        ("breathing", True),
+        ("blinking", True),
+        ("breeze", False),
     ):
         value = payload.get(key, default)
         if not isinstance(value, bool):
             raise ValueError(f"{key} 必须为布尔值")
-        if value:
-            motions.append(phrase)
+        flags[key] = value
     custom = payload.get("motion", "")
     if not isinstance(custom, str) or len(custom) > 2000:
         raise ValueError("补充动作应为 2000 字符内的文本")
-    if custom.strip():
-        motions.append(custom.strip())
-    if not motions:
+    if not any(flags.values()) and not custom.strip():
         raise ValueError("请至少选择一种轻微动作")
-    action = "; ".join(motions)
     return prompt_pair(
         {
-            "prompt": "make the character remain poised and relaxed in the original standing pose "
-            "and expression; keep the reference shoulder line almost motionless at its "
-            "original relaxed resting height and slope, with only barely perceptible "
-            "follow-through; preserve the original "
-            "neck length, visible neck outline, ear-to-shoulder clearance and chin-to-collar "
-            "distance in every frame; keep the head, neck and torso comfortably "
-            "aligned as one balanced unit, maintaining these distances and the original head tilt; "
-            + (
-                "preserve the reference eye shape, eyelid position and gaze throughout, "
-                "without blinking or opening closed eyes; "
-                if not payload.get("blinking", True)
-                else ""
-            )
-            + action
-            + "; keep the feet and body center rooted in place with tiny, slow, flowing motion only, "
-            "a single continuous shot, steady lighting and a stationary background"
-            + (
-                ", maintain an even, continuous idle rhythm across the loop seam"
-                if loop
-                else ""
-            )
-            + SPRITE_REFERENCE_FRAMING_SUFFIX
-            + SPRITE_CAMERA_SUFFIX,
+            "prompt": render_sprite_idle_animation_prompt(
+                breathing=flags["breathing"],
+                blinking=flags["blinking"],
+                breeze=flags["breeze"],
+                custom_motion=custom,
+                loop=loop,
+            ),
             "tagging": payload.get("tagging", "平静，站立"),
         }
     )
