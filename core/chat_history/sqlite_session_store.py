@@ -26,6 +26,7 @@ from core.chat_history.models import (
     build_compact_summary_message,
     extract_summary_body,
     is_compact_summary_message,
+    is_omitted_history_summary,
     normalize_memory_mode,
     rollback_memory_for_timeline,
     strip_internal_message_keys,
@@ -582,7 +583,7 @@ class SqliteSessionStore:
 
                 summary_msg = non_system[summary_idx]
                 body = extract_summary_body(str(summary_msg.get("content") or ""))
-                if body and not body.startswith("【历史摘要】"):
+                if body and not is_omitted_history_summary(body):
                     # A legacy JSON export may only contain the old summary
                     # and its tail, with no raw prefix available to import.
                     self.add_compact_checkpoint(up_to_seq=0, rolling_summary=body, branch_id=b)

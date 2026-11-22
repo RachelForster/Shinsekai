@@ -7,6 +7,7 @@ import inspect
 import os
 from typing import TYPE_CHECKING, Any
 
+from ai.llm.template.integrations.localization import resolve_template_locale
 from application.chat.capabilities.contracts import (
     BaseSessionCapability,
     BaseTurnContextProvider,
@@ -152,6 +153,15 @@ class MemorySessionCapability(BaseSessionCapability):
             candidate_kwargs["memory_mode_start_seq"] = boundary
         if player_character:
             candidate_kwargs["player_character"] = player_character
+        if (
+            getattr(context.config, "stores", None) is not None
+            or getattr(context.config, "system_settings", None) is not None
+            or getattr(context.config, "ui_language", None) is not None
+            or getattr(getattr(context.config, "config", None), "system_config", None)
+            is not None
+        ):
+            cfg_ref = context.config
+            candidate_kwargs["locale"] = lambda: resolve_template_locale(cfg_ref)
         extra_kwargs = {
             k: v for k, v in candidate_kwargs.items() if has_var_kw or k in params
         }

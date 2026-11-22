@@ -8,6 +8,7 @@ import type {
 } from "../../slices/chatTypes";
 import { idbBatchWrite, idbGetAll, idbPut, type IdbBatchOp } from "./indexedDbStore";
 import { unresolveVfsUrl } from "./vfsBlobRegistry";
+import { createStandaloneTemplateTranslator } from "../ai/standaloneTemplateLocales";
 
 export interface StandaloneRawMessage {
   role: "system" | "user" | "assistant";
@@ -596,7 +597,7 @@ export class StandaloneSessionStore {
   buildActiveLlmMessages(
     sessionId: string,
     systemPrompt: string,
-    options?: { branchId?: string; maxSeq?: number },
+    options?: { branchId?: string; maxSeq?: number; uiLanguage?: string },
   ): ActiveLlmContextView {
     const targetBranch = this.resolveBranchId(sessionId, options?.branchId);
     const ceiling = options?.maxSeq ?? Number.POSITIVE_INFINITY;
@@ -613,9 +614,13 @@ export class StandaloneSessionStore {
       messages.push({ role: "system", content: systemPrompt.trim() });
     }
     if (checkpoint?.rollingSummary) {
+      const tr = createStandaloneTemplateTranslator(options?.uiLanguage);
       messages.push({
         role: "system",
-        content: `【历史对话总结（截至第 ${checkpoint.upToSeq} 轮，供延续剧情与人物状态参考）】\n${checkpoint.rollingSummary}`,
+        content: tr("standalone_checkpoint_context", {
+          up_to_seq: checkpoint.upToSeq,
+          summary: checkpoint.rollingSummary,
+        }),
       });
     }
     for (const node of tailNodes) {

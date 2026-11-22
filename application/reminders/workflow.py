@@ -125,6 +125,7 @@ class ReminderDialogWorkflow:
                 adapter,
                 user_template=system_prompt,
                 tools_enabled=False,
+                locale=resolve_template_locale(self.config),
                 generation_config={
                     "temperature": float(getattr(api, "temperature", 0.7)),
                     "max_tokens": 1024,

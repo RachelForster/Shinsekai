@@ -6,6 +6,14 @@ import logging
 import os
 import time
 
+from ai.llm.template.integrations.localization import LocaleInput, resolve_dynamic_locale
+from ai.llm.template.session import (
+    ALL_KNOWLEDGE_CONTEXT_MARKERS,
+    KNOWLEDGE_CONTEXT_MARKER,
+    KNOWLEDGE_CONTEXT_SPEC,
+    KnowledgeContextPromptContext,
+    contains_any_context_marker,
+)
 from core.chat_history.text import strip_local_time_prefix
 from sdk.hooks import BeforeChatContext, PluginHookDispatcher
 from sdk.chat_init import InitChatCancelled, InitChatContext
@@ -13,7 +21,7 @@ from sdk.chat_init import InitChatCancelled, InitChatContext
 logger = logging.getLogger(__name__)
 
 DEFAULT_SEARCH_LIMIT = 5
-_MARKER = "[Shinsekai knowledge context]"
+_MARKER = KNOWLEDGE_CONTEXT_MARKER
 
 
 def _env_int(name: str, default: int, *, minimum: int = 1) -> int:
@@ -36,6 +44,7 @@ class KnowledgeHooks:
         search_func=None,
         status_func=None,
         search_limit: int = DEFAULT_SEARCH_LIMIT,
+        locale: LocaleInput = None,
     ) -> None:
         self.character_names = [
             str(name or "").strip()
@@ -45,6 +54,7 @@ class KnowledgeHooks:
         self.search_func = search_func
         self.status_func = status_func
         self.search_limit = max(1, int(search_limit))
+        self.locale = locale
         self.enabled = False
 
     def register(self, dispatcher: PluginHookDispatcher) -> None:
@@ -67,7 +77,7 @@ class KnowledgeHooks:
     def before_chat(self, context: BeforeChatContext) -> None:
         if not self.enabled:
             return
-        if any(_MARKER in str(message.get("content") or "") for message in context.messages):
+        if contains_any_context_marker(context.messages, ALL_KNOWLEDGE_CONTEXT_MARKERS):
             return
         query = ""
         for message in reversed(context.messages):
@@ -101,12 +111,16 @@ class KnowledgeHooks:
             if text:
                 texts.append(text)
         if texts:
+            rendered = KNOWLEDGE_CONTEXT_SPEC.render_system(
+                KnowledgeContextPromptContext(
+                    items=tuple(texts[: self.search_limit]),
+                    locale=resolve_dynamic_locale(self.locale),
+                )
+            )
             context.messages.append(
                 {
                     "role": "system",
-                    "content": f"{_MARKER}\n" + "\n".join(
-                        f"- {text}" for text in texts[: self.search_limit]
-                    ),
+                    "content": rendered,
                 }
             )
 
@@ -117,6 +131,7 @@ def install_knowledge_hooks(
     character_names: list[str] | None = None,
     search_func=None,
     status_func=None,
+    locale: LocaleInput = None,
 ) -> KnowledgeHooks | None:
     if dispatcher is None or search_func is None or status_func is None:
         return None
@@ -125,6 +140,7 @@ def install_knowledge_hooks(
         search_func=search_func,
         status_func=status_func,
         search_limit=min(20, _env_int("SHINSEKAI_KNOWLEDGE_SEARCH_LIMIT", DEFAULT_SEARCH_LIMIT)),
+        locale=locale,
     )
     hooks.register(dispatcher)
     return hooks

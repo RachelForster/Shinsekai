@@ -100,7 +100,8 @@ def recall_turn_memories(payload: dict[str, Any]) -> dict[str, Any]:
         in_window_turn_seqs=in_window_seqs,
         recently_injected_ids=injected_ids,
     )
-    return memory_recall_turn(turn_input)
+    raw_locale = str(payload.get("locale") or "").strip() or None
+    return memory_recall_turn(turn_input, locale=raw_locale)
 
 
 def search_media_assets(payload: dict[str, Any]) -> dict[str, Any]:
@@ -255,6 +256,7 @@ def preview_import(
     source_root: str | Path,
     config_manager: Any,
 ) -> dict[str, Any]:
+    from ai.llm.template.integrations.localization import resolve_template_locale
     from ai.memory.extraction import configured_memory_chunk_tokens
     from ai.memory.imports import preview_memory_import
 
@@ -263,6 +265,7 @@ def preview_import(
         character_name=character_name,
         source_root=source_root,
         max_chunk_tokens=configured_memory_chunk_tokens(config_manager),
+        locale=resolve_template_locale(config_manager),
     )
 
 
@@ -275,6 +278,7 @@ def execute_import(
     progress_callback: Callable[[str, float, str, str | None], None],
     cancel_callback: Callable[[], None],
 ) -> dict[str, Any]:
+    from ai.llm.template.integrations.localization import resolve_template_locale
     from ai.memory.extraction import (
         configured_memory_chunk_tokens,
         create_configured_memory_adapter,
@@ -289,4 +293,5 @@ def execute_import(
         max_chunk_tokens=configured_memory_chunk_tokens(config_manager),
         progress_callback=progress_callback,
         cancel_callback=cancel_callback,
+        locale=resolve_template_locale(config_manager),
     )

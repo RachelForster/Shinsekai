@@ -67,7 +67,6 @@ const LOCKED_FRONTEND_CJK_ALLOWLIST: readonly string[] = [
   "shared/platform/standalone/ai/adapters/tts/minimaxTtsAdapter.ts",
   "shared/platform/standalone/ai/adapters/tts/openaiSpeechAdapter.ts",
   "shared/platform/standalone/ai/adapters/tts/qwenTtsAdapter.ts",
-  "shared/platform/standalone/ai/compactManager.ts",
   "shared/platform/standalone/ai/dialogOutputParser.ts",
   "shared/platform/standalone/ai/httpClient.ts",
   "shared/platform/standalone/ai/standaloneChatTurn.ts",

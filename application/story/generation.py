@@ -26,7 +26,6 @@ import yaml
 from ai.llm.template.core import TemplateContext
 from ai.llm.template.integrations.localization import resolve_template_locale
 from ai.llm.template.story import (
-    AUTHOR_COMPILER_TEMPLATE,
     STORY_AUTHOR_SPEC,
     StoryRequestContext,
     build_story_author_user_section,
@@ -197,7 +196,7 @@ class ConfigStoryAuthorModel:
             adapter = LLMAdapterFactory.create_adapter(**factory_kwargs)
             self._manager = LLMManager(
                 adapter=adapter,
-                user_template=AUTHOR_COMPILER_TEMPLATE,
+                user_template="",
             )
             self._signature = signature
         return self._manager

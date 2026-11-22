@@ -7,21 +7,26 @@ import logging
 from collections.abc import Callable
 from typing import Any, Protocol
 
+from ai.llm.template.integrations.localization import LocaleInput, resolve_dynamic_locale
+from ai.llm.template.session import (
+    DIALOG_REPAIR_PROMPT_SPEC,
+    DialogRepairPromptContext,
+)
 from core.messaging.dialog_output import has_valid_dialog_output
 
 
-def _repair_prompt(media_field: str, *, retry: bool) -> str:
-    prefix = (
-        "That reply is STILL not valid. You MUST answer with ONLY"
-        if retry
-        else "Reformat your immediately preceding answer as"
-    )
-    return (
-        f"{prefix} the application's dialogue JSON. Return only a JSON object "
-        f"with a non-empty `dialog` array. Each character, scene, and BGM item "
-        f"must have `character_name`, `speech`, and `{media_field}`. Fixed "
-        "system items such as COT, NARR, CHOICE, STAT, and CG may omit the media "
-        "field. Do not call tools or add markdown."
+def _repair_prompt(
+    media_field: str,
+    *,
+    retry: bool,
+    locale: LocaleInput = None,
+) -> str:
+    return DIALOG_REPAIR_PROMPT_SPEC.render_user(
+        DialogRepairPromptContext(
+            media_field=media_field,
+            retry=retry,
+            locale=resolve_dynamic_locale(locale),
+        )
     )
 
 
@@ -66,6 +71,7 @@ def repair_dialog_output(
     event_logger: logging.Logger,
     max_attempts: int = 2,
     media_selection_mode: str = "indexed",
+    locale: LocaleInput = None,
 ) -> str:
     """Repair malformed dialogue JSON without mutating persisted chat history."""
     if has_valid_dialog_output(content, media_selection_mode=media_selection_mode):
@@ -85,7 +91,7 @@ def repair_dialog_output(
             if str(media_selection_mode or "").strip().lower() == "semantic"
             else "sprite"
         )
-        prompt = _repair_prompt(media_field, retry=attempt > 0)
+        prompt = _repair_prompt(media_field, retry=attempt > 0, locale=locale)
         repair_messages.append({"role": "user", "content": prompt})
         try:
             response = adapter.chat(

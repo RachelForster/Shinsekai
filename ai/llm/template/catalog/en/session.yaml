@@ -18,3 +18,50 @@ reminder_style_caring: a warm, caring nudge
 reminder_style_question: a brief, friendly question
 reminder_style_playful: a light playful nudge, only if it fits the character
 reminder_style_encouragement: a short word of encouragement
+compact_system: You are a professional conversation summarization assistant skilled at condensing long dialogues into concise, accurate summaries. Preserve important user facts and active conversation topics.
+compact_user_intro: |-
+  Compress the following conversation history into a concise summary. The summary should:
+  1. Preserve key facts, important decisions, and main topics
+  2. Omit trivial details and repetitive filler
+  3. Maintain chronological order and logical coherence
+  4. Write the summary in English with objective accuracy
+compact_history_heading: 'Conversation history:'
+compact_role_user: User
+compact_role_assistant: Assistant
+compact_role_tool: Tool:{name}
+compact_user_outro: 'Please provide the conversation summary:'
+compact_failed_fallback: Compaction failed; please refer to the original conversation history.
+compact_omitted_history: '[History Summary] Earlier history has been omitted. Continue based on the retained system instructions, summary, and recent dialogue.'
+standalone_compact_system: You are a story memory archival assistant responsible for producing compact, accurate dialogue summaries.
+standalone_compact_existing_heading: '[Existing Rolling Story Summary]'
+standalone_compact_new_turns_heading: '[New Dialogue Turns to Merge and Compress]'
+standalone_compact_instruction: Consolidate the above into a concise, objective rolling summary in English, preserving key relationship changes, promises, emotional turning points, and current scene state without a blow-by-blow transcript.
+standalone_compact_speaker_user: Player
+standalone_compact_speaker_narrator: Narrator
+standalone_compact_truncated_suffix: "\n...(earlier details condensed)"
+standalone_checkpoint_context: |-
+  [Conversation Summary (up to turn {up_to_seq}, for story & character continuity)]
+  {summary}
+dialog_repair_initial: Reformat your immediately preceding answer as the application's dialogue JSON. Return only a JSON object with a non-empty `dialog` array. Each character, scene, and BGM item must have `character_name`, `speech`, and `{media_field}`. Fixed system items such as COT, NARR, CHOICE, STAT, and CG may omit the media field. Do not call tools or add markdown.
+dialog_repair_retry: That reply is STILL not valid. You MUST answer with ONLY the application's dialogue JSON. Return only a JSON object with a non-empty `dialog` array. Each character, scene, and BGM item must have `character_name`, `speech`, and `{media_field}`. Fixed system items such as COT, NARR, CHOICE, STAT, and CG may omit the media field. Do not call tools or add markdown.
+memory_context_simple_guidance: Relevant long-term memories for this turn. Use them only as background; do not mention the retrieval process unless the user asks.
+memory_context_tiered_guidance: Relevant long-term memories for this turn. Respect each item's clarity tag ([Canon], [Clear], [Faded impression], [Awakened distant memory]); use them naturally as background and never mention the retrieval system unless asked.
+memory_tier_canon: Canon
+memory_tier_clear: Clear
+memory_tier_faded: Faded impression
+memory_tier_dormant: Awakened distant memory
+memory_owner_prefix: '({owner}) '
+knowledge_context_header: 'Relevant background setting references:'
+outfit_header_title: '[Active Character Outfit Group State]'
+outfit_scope_rule: The following rules apply to characters with multiple outfit sprite groups, including sessions resumed from older saves.
+outfit_indexed_sprite_rule: 'Sprite selection rule: set `sprite` to the full numeric ID string from the active outfit group (may exceed two digits). Use `-1` when no sprite change is needed; on the line where an outfit switch occurs, use an ID from the target group or `-1` so the app selects the first sprite of the target group.'
+outfit_auto_switch_rule: 'Story outfit switch rule: automatic outfit switching is enabled. When an unlocked character completes an outfit change (explicitly in the story or at the player''s request), include `"outfit"` set to the exact group name from the available groups below in that character''s JSON item inside `dialog`. Omit `"outfit"` on ordinary lines, emotion changes, or pose shifts.'
+outfit_switch_example_prefix: 'Outfit switch item example: '
+outfit_locked_or_disabled_rule: 'Automatic outfit switching is disabled or outfits are locked: always stay in the current outfit group and do not output the `"outfit"` field.'
+outfit_example_vibe: calm expression
+outfit_example_speech: <line of dialogue>
+outfit_lock_status_locked: manually locked (do not switch outfit)
+outfit_lock_status_unlocked: unlocked
+outfit_character_entry: '- {name}: active outfit group "{active_group}" ({lock_desc}; available groups: {groups})'
+outfit_default_tag: default
+outfit_group_sprites_line: '  Available sprite IDs in group "{active_group}": {items}'

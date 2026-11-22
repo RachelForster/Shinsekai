@@ -19,6 +19,7 @@ from ai.llm.message_journal import HistoryFileJournal
 from ai.llm.ports import ChatHost, HistoryCompactor, MessageJournal, ToolCatalog, ToolRunner
 from ai.llm.request_runner import RequestRunner
 from ai.llm.runtime_defaults import tool_executor, tool_manager
+from ai.llm.template.integrations.localization import LocaleInput
 from ai.llm.tool_session import FIRST_USER_TURN_TOOL_CALL_LIMIT, ToolSession
 from core.chat_history.identity import CHAT_TURN_ID
 from sdk.adapters.llm import LLMAdapter
@@ -84,7 +85,7 @@ class LLMManager:
         use_current_template_for_history: bool = False, *,
         tools: ToolCatalog | None = None, executor: ToolRunner | None = None,
         host: ChatHost | None = None, journal: MessageJournal | None = None,
-        compactor: HistoryCompactor | None = None,
+        compactor: HistoryCompactor | None = None, locale: LocaleInput = None,
     ) -> None:
         if tools is not None and executor is None:
             raise ValueError("An injected tool catalog requires a matching executor")
@@ -99,6 +100,7 @@ class LLMManager:
             compact_target_ratio=compact_target_ratio,
             recent_message_limit=max(1, int(history_recent_messages)),
             hook_dispatcher=hook_dispatcher,
+            locale=locale,
         )
         journal = journal if journal is not None else HistoryFileJournal(history_file, self._persist_story_message)
         self._history = ConversationHistory(
@@ -122,6 +124,7 @@ class LLMManager:
             generation_config=generation_config or {},
             media_selection_mode="semantic" if str(media_selection_mode or "").strip().lower() == "semantic" else "indexed",
             logger=self.logger,
+            locale=locale,
         )
         self.set_user_template(user_template)
         self.tools_definitions = self.tools_manager.get_definitions(groups="default") if tools_enabled else []
