@@ -76,4 +76,55 @@ describe("useCharacterRelationController", () => {
     unmount();
     client.clear();
   });
+
+  it("blocks saves while clean is fetching and then applies the cleanup", async () => {
+    await state.api!.applyRelationChanges("A", [{ op: "add_node", node: { key: "B" } }]);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    const { result, unmount } = renderHook(() => useCharacterRelationController("A"), { wrapper });
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    let resolveFetch!: (graph: CharacterRelationGraph) => void;
+    const fetch = vi.spyOn(state.api!, "getRelationGraph").mockReturnValueOnce(
+      new Promise((resolve) => { resolveFetch = resolve; }),
+    );
+    const save = vi.spyOn(state.api!, "applyRelationChanges");
+    let cleaning!: Promise<void>;
+    act(() => { cleaning = result.current.clean(); });
+    await waitFor(() => expect(result.current.cleanPending).toBe(true));
+    await act(async () => {
+      expect(await result.current.save([{ op: "add_node", node: { key: "C" } }])).toBe(false);
+    });
+    expect(save).not.toHaveBeenCalled();
+    await act(async () => {
+      resolveFetch({ owner: "A", nodes: [{ key: "A" }, { key: "B" }], edges: [] });
+      await cleaning;
+    });
+    expect(save).toHaveBeenCalledWith("A", [{ op: "delete_node", key: "B" }]);
+    expect((await state.api!.getRelationGraph("A")).nodes).toEqual([{ key: "A" }]);
+    expect(result.current.cleanPending).toBe(false);
+    fetch.mockRestore();
+    unmount();
+    client.clear();
+  });
+
+  it("releases the clean lock and exposes errors when cleanup fails", async () => {
+    await state.api!.applyRelationChanges("A", [{ op: "add_node", node: { key: "B" } }]);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    const { result, unmount } = renderHook(() => useCharacterRelationController("A"), { wrapper });
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    vi.spyOn(state.api!, "applyRelationChanges").mockRejectedValueOnce(new Error("cleanup failed"));
+    await act(async () => result.current.clean());
+    await waitFor(() => expect(result.current.saveError).toContain("cleanup failed"));
+    expect(result.current.cleanPending).toBe(false);
+    await act(async () => {
+      expect(await result.current.save([{ op: "add_node", node: { key: "C" } }])).toBe(true);
+    });
+    unmount();
+    client.clear();
+  });
 });

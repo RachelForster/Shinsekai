@@ -28,6 +28,7 @@ function RelationEditor({ owner }: RelationEditorProps) {
     isFetching,
     loadError,
     savePending,
+    cleanPending,
     saveError,
     save,
     reload,
@@ -38,6 +39,7 @@ function RelationEditor({ owner }: RelationEditorProps) {
   const [cleanDialogOpen, setCleanDialogOpen] = useState(false);
   const [actionsContainer, setActionsContainer] = useState<HTMLDivElement | null>(null);
   const [saveContainer, setSaveContainer] = useState<HTMLDivElement | null>(null);
+  const busy = savePending || cleanPending;
   return (
     <section className="section page-section-anchor character-relation-section" id="character-relations">
       <div className="section__header">
@@ -67,10 +69,10 @@ function RelationEditor({ owner }: RelationEditorProps) {
           )}
         </div>
         <div className="page__actions">
-          <Button disabled={!graph || savePending || tableDirty || isFetching} onClick={() => setCleanDialogOpen(true)}>
+          <Button disabled={!graph || busy || tableDirty || isFetching} onClick={() => setCleanDialogOpen(true)}>
             {t("relation.cleanLegacy")}
           </Button>
-          <Button disabled={!owner || savePending || tableDirty || isFetching} onClick={() => void reload()}>
+          <Button disabled={!owner || busy || tableDirty || isFetching} onClick={() => void reload()}>
             {t("relation.reload")}
           </Button>
           <div className="relation-action-slot" ref={setActionsContainer} />
@@ -81,14 +83,14 @@ function RelationEditor({ owner }: RelationEditorProps) {
         open={cleanDialogOpen}
         title={t("relation.cleanLegacy")}
         closeLabel={t("common.cancel")}
-        dismissible={!savePending && !isFetching}
+        dismissible={!busy && !isFetching}
         trapFocus
         onClose={() => setCleanDialogOpen(false)}
         footer={
           <>
             <Button
               variant="primary"
-              disabled={savePending || isFetching}
+              disabled={busy || isFetching}
               onClick={() => {
                 setCleanDialogOpen(false);
                 void clean();
@@ -96,7 +98,7 @@ function RelationEditor({ owner }: RelationEditorProps) {
             >
               {t("common.confirm")}
             </Button>
-            <Button disabled={savePending || isFetching} onClick={() => setCleanDialogOpen(false)}>
+            <Button disabled={busy || isFetching} onClick={() => setCleanDialogOpen(false)}>
               {t("common.cancel")}
             </Button>
           </>
@@ -114,7 +116,7 @@ function RelationEditor({ owner }: RelationEditorProps) {
             <CharacterGraphView
               active={tab === "graph"}
               graph={graph}
-              disabled={savePending || tableDirty}
+              disabled={busy || tableDirty}
               actionsContainer={actionsContainer}
             />
           </div>
@@ -122,7 +124,7 @@ function RelationEditor({ owner }: RelationEditorProps) {
             <CharacterRelationTable
               key={JSON.stringify(graph)}
               graph={graph}
-              pending={savePending}
+              pending={busy}
               save={save}
               onDirty={setTableDirty}
               actionsContainer={actionsContainer}

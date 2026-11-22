@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { charactersQueryKey } from "../../entities/character/repository";
 
 import {
@@ -15,6 +15,7 @@ export interface CharacterRelationController {
   isFetching: boolean;
   loadError: string;
   savePending: boolean;
+  cleanPending: boolean;
   saveError: string;
   /** True only when the changes have been saved; false on failure or a concurrent save. */
   save: (operations: RelationRequest[]) => Promise<boolean>;
@@ -30,6 +31,7 @@ function saveErrorMessage(error: unknown): string {
 export function useCharacterRelationController(owner: string): CharacterRelationController {
   const queryClient = useQueryClient();
   const saveInProgress = useRef(false);
+  const [cleanPending, setCleanPending] = useState(false);
   const queryKey = [...relationQueryKey, owner];
   const query = useQuery<CharacterRelationGraph, Error>({
     queryKey,
@@ -70,6 +72,9 @@ export function useCharacterRelationController(owner: string): CharacterRelation
   }
 
   async function clean(): Promise<void> {
+    if (saveInProgress.current) return;
+    saveInProgress.current = true;
+    setCleanPending(true);
     saveMutation.reset();
     try {
       const result = await query.refetch();
@@ -85,9 +90,20 @@ export function useCharacterRelationController(owner: string): CharacterRelation
           .filter((node) => node.key !== graph.owner && !connected.has(node.key))
           .map((node): RelationRequest => ({ op: "delete_node", key: node.key })),
       ];
-      if (operations.length) await save(operations);
+      if (operations.length) {
+        try {
+          await saveMutation.mutateAsync(operations);
+        } catch {
+          // The mutation exposes the error to the editor.
+        }
+      }
     } finally {
-      await queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+      try {
+        await queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+      } finally {
+        saveInProgress.current = false;
+        setCleanPending(false);
+      }
     }
   }
 
@@ -97,6 +113,7 @@ export function useCharacterRelationController(owner: string): CharacterRelation
     isFetching: query.isFetching,
     loadError: query.error ? String(query.error) : "",
     savePending: saveMutation.isPending,
+    cleanPending,
     saveError: saveErrorMessage(saveMutation.error),
     save,
     reload,
