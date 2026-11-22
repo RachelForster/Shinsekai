@@ -28,6 +28,11 @@ from sdk.path_utils import (
 )
 
 
+_PROTECTED_EFFECT_FIELDS = frozenset(
+    {"id", "audio_list", "image_list", "image_audio_list"}
+)
+
+
 class EffectOperation(str, Enum):
     SAVE = "save"
     DELETE = "delete"
@@ -180,7 +185,12 @@ class EffectUseCase:
             original = self._effect_by_name(original_name)
 
         if original is not None:
-            body["id"] = original.id
+            merged = original.model_dump(mode="python")
+            for key, value in body.items():
+                if key in _PROTECTED_EFFECT_FIELDS:
+                    continue
+                merged[key] = value
+            merged["id"] = original.id
             remaining = [
                 effect
                 for effect in existing_effects
@@ -194,23 +204,21 @@ class EffectUseCase:
             while name.lower() in existing_names:
                 name = f"{base_name}_{counter}"
                 counter += 1
-            body["name"] = name
-            updated = Effect.model_validate(body)
+            merged["name"] = name
+            updated = Effect.model_validate(merged)
             old_dir = self._effect_dir(original.name)
             new_dir = self._effect_dir(updated.name)
             if old_dir.is_dir() and old_dir != new_dir:
-                body["audio_list"] = self._renamed_asset_paths(
-                    body.get("audio_list"), old_dir, new_dir
+                merged["audio_list"] = self._renamed_asset_paths(
+                    merged.get("audio_list"), old_dir, new_dir
                 )
-                if "image_list" in body:
-                    body["image_list"] = self._renamed_asset_paths(
-                        body.get("image_list"), old_dir, new_dir
-                    )
-                if "image_audio_list" in body:
-                    body["image_audio_list"] = self._renamed_asset_paths(
-                        body.get("image_audio_list"), old_dir, new_dir
-                    )
-                updated = Effect.model_validate(body)
+                merged["image_list"] = self._renamed_asset_paths(
+                    merged.get("image_list"), old_dir, new_dir
+                )
+                merged["image_audio_list"] = self._renamed_asset_paths(
+                    merged.get("image_audio_list"), old_dir, new_dir
+                )
+                updated = Effect.model_validate(merged)
                 self._move_effect_dir(old_dir, new_dir)
             if self.effects is not None:
                 self.effects.put(updated.id, updated)

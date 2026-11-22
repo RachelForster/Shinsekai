@@ -561,9 +561,11 @@ export function createCharactersPreviewPlatform(ctx: BrowserPreviewContext): Cha
           target: edge.target === effectiveOriginalName ? character.name : edge.target,
         }));
       }
+      const existing = index >= 0 ? clone(config.characters[index]) : undefined;
       const savedCharacter = {
+        ...existing,
         ...clone(character),
-        ...(index >= 0 && config.characters[index].id ? { id: config.characters[index].id } : {}),
+        ...(existing?.id ? { id: existing.id } : {}),
         color: character.color.trim() || DEFAULT_CHARACTER_COLOR,
         emotion_tags: character.emotion_tags ?? (index >= 0 ? config.characters[index].emotion_tags : ""),
         gpt_model_path: character.gpt_model_path?.trim() || "",

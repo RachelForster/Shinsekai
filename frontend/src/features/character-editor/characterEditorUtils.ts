@@ -130,14 +130,14 @@ export function upsertCatalogCharacter(current: Character[], character: Characte
   return [...pinnedItems, ...regularItems];
 }
 
-export function buildCommittedCharacterPayload(
+export function buildNewCharacterPayload(
   draft: Character,
   pronunciationMap: Record<string, string>,
-  identity: Pick<Character, "id" | "name" | "sprite_prefix">,
+  identity: Pick<Character, "name" | "sprite_prefix">,
 ): Character {
+  const { id: _omittedId, ...rest } = draft;
   return {
-    ...draft,
-    ...(identity.id ? { id: identity.id } : {}),
+    ...rest,
     ...(draft.display_name !== undefined ? { display_name: draft.display_name.trim() } : {}),
     character_setting: draft.character_setting.trim(),
     color: draft.color.trim() || DEFAULT_CHARACTER_COLOR,
@@ -149,6 +149,40 @@ export function buildCommittedCharacterPayload(
     refer_audio_path: draft.refer_audio_path?.trim() || "",
     sovits_model_path: draft.sovits_model_path?.trim() || "",
     sprite_prefix: identity.sprite_prefix.trim(),
+  };
+}
+
+export function buildCommittedCharacterPayload(
+  draft: Character,
+  pronunciationMap: Record<string, string>,
+  baseCharacter: Character,
+  identityOverride?: Partial<Pick<Character, "name" | "sprite_prefix">>,
+): Character {
+  const { relation_graph: _omittedRelationGraph, ...persistedBase } = baseCharacter;
+  return {
+    ...persistedBase,
+    ...(baseCharacter.id ? { id: baseCharacter.id } : {}),
+    ...(draft.display_name !== undefined ? { display_name: draft.display_name.trim() } : {}),
+    avatar_type: draft.avatar_type ?? baseCharacter.avatar_type ?? "static",
+    avatars: {
+      ...draft.avatars,
+      ...baseCharacter.avatars,
+    },
+    character_brief: draft.character_brief ?? "",
+    character_setting: draft.character_setting.trim(),
+    color: draft.color.trim() || DEFAULT_CHARACTER_COLOR,
+    emotion_tags: draft.emotion_tags ?? "",
+    gpt_model_path: draft.gpt_model_path?.trim() || "",
+    name: (identityOverride?.name ?? baseCharacter.name).trim(),
+    prompt_lang: draft.prompt_lang?.trim() || "",
+    prompt_text: draft.prompt_text?.trim() || "",
+    pronunciation_map: pronunciationMap,
+    refer_audio_path: draft.refer_audio_path?.trim() || "",
+    sovits_model_path: draft.sovits_model_path?.trim() || "",
+    speech_speed: draft.speech_speed ?? baseCharacter.speech_speed ?? 1,
+    speech_volume: draft.speech_volume ?? baseCharacter.speech_volume ?? 1,
+    sprite_prefix: (identityOverride?.sprite_prefix ?? baseCharacter.sprite_prefix).trim(),
+    sprite_scale: draft.sprite_scale ?? baseCharacter.sprite_scale ?? 1,
   };
 }
 

@@ -2,24 +2,29 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 export type AutoSavePhase = "idle" | "pending" | "saving" | "saved" | "error";
 
+export interface AutoSaveContext {
+  resetKey: string;
+}
+
 export interface UseDebouncedAutoSaveOptions<TPayload> {
   baselineKey: string;
   buildPayload: () => TPayload;
   currentKey: string;
   debounceMs?: number;
   enabled: boolean;
-  onError?: (error: unknown) => void;
-  onSave: (payload: TPayload) => Promise<unknown>;
+  onError?: (error: unknown, context: AutoSaveContext) => void;
+  onSave: (payload: TPayload, context: AutoSaveContext) => Promise<unknown>;
   resetKey: string;
   validate?: (payload: TPayload) => string | null;
 }
 
 interface PendingAutoSave<TPayload> {
   compositeKey: string;
-  onError?: (error: unknown) => void;
-  onSave: (payload: TPayload) => Promise<unknown>;
+  onError?: (error: unknown, context: AutoSaveContext) => void;
+  onSave: (payload: TPayload, context: AutoSaveContext) => Promise<unknown>;
   payload: TPayload;
   resetKey: string;
+  useCapturedPayload?: boolean;
 }
 
 export function useDebouncedAutoSave<TPayload>({
@@ -44,11 +49,20 @@ export function useDebouncedAutoSave<TPayload>({
   onErrorRef.current = onError;
   const validateRef = useRef(validate);
   validateRef.current = validate;
+  const latestResetKeyRef = useRef(resetKey);
+  latestResetKeyRef.current = resetKey;
+  const latestEnabledRef = useRef(enabled);
+  latestEnabledRef.current = enabled;
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingRef = useRef<PendingAutoSave<TPayload> | null>(null);
-  const inFlightKeyRef = useRef<string | null>(null);
+  const inFlightByKeyRef = useRef<Map<string, Promise<void>>>(new Map());
+  const inFlightCompositeByKeyRef = useRef<Map<string, string>>(new Map());
+  const queuedByKeyRef = useRef<Map<string, PendingAutoSave<TPayload>>>(new Map());
+  const cancelledKeysRef = useRef<Set<string>>(new Set());
+  const keyGenerationRef = useRef<Map<string, number>>(new Map());
   const failedKeyRef = useRef<string | null>(null);
+  const failedMessageRef = useRef("");
   const lastSavedResetKeyRef = useRef<string | null>(null);
   const activeResetKeyRef = useRef(resetKey);
   const mountedRef = useRef(true);
@@ -67,61 +81,196 @@ export function useDebouncedAutoSave<TPayload>({
     }
   }, []);
 
-  const executePending = useCallback((snapshot: PendingAutoSave<TPayload>) => {
-    pendingRef.current = null;
-    inFlightKeyRef.current = snapshot.compositeKey;
-    if (mountedRef.current && activeResetKeyRef.current === snapshot.resetKey) {
-      setPhase("saving");
-      setErrorMessage("");
-    }
-    return snapshot
-      .onSave(snapshot.payload)
-      .then(() => {
-        if (inFlightKeyRef.current === snapshot.compositeKey) {
-          inFlightKeyRef.current = null;
-        }
-        if (failedKeyRef.current === snapshot.compositeKey) {
-          failedKeyRef.current = null;
-        }
-        lastSavedResetKeyRef.current = snapshot.resetKey;
-        if (mountedRef.current && activeResetKeyRef.current === snapshot.resetKey && timerRef.current === null) {
-          setPhase("saved");
-          setErrorMessage("");
-        }
-      })
-      .catch((error: unknown) => {
-        if (inFlightKeyRef.current === snapshot.compositeKey) {
-          inFlightKeyRef.current = null;
-        }
-        failedKeyRef.current = snapshot.compositeKey;
+  const bumpGeneration = useCallback((key: string) => {
+    keyGenerationRef.current.set(key, (keyGenerationRef.current.get(key) ?? 0) + 1);
+  }, []);
+
+  const resolveSnapshotPayload = useCallback((snapshot: PendingAutoSave<TPayload>): TPayload | null => {
+    if (
+      !snapshot.useCapturedPayload &&
+      mountedRef.current &&
+      latestEnabledRef.current &&
+      latestResetKeyRef.current === snapshot.resetKey
+    ) {
+      const freshPayload = buildPayloadRef.current();
+      const validationError = validateRef.current ? validateRef.current(freshPayload) : null;
+      if (validationError) {
         if (mountedRef.current && activeResetKeyRef.current === snapshot.resetKey) {
           setPhase("error");
-          setErrorMessage(error instanceof Error ? error.message : String(error ?? ""));
+          setErrorMessage(validationError);
         }
-        snapshot.onError?.(error);
-      });
+        return null;
+      }
+      return freshPayload;
+    }
+    return snapshot.payload;
   }, []);
+
+  const executePending = useCallback(
+    (initialSnapshot: PendingAutoSave<TPayload>): Promise<void> => {
+      const key = initialSnapshot.resetKey;
+      if (cancelledKeysRef.current.has(key)) {
+        if (pendingRef.current?.resetKey === key) {
+          pendingRef.current = null;
+        }
+        return Promise.resolve();
+      }
+
+      if (pendingRef.current?.compositeKey === initialSnapshot.compositeKey) {
+        pendingRef.current = null;
+      }
+
+      const resolvedPayload = resolveSnapshotPayload(initialSnapshot);
+      if (resolvedPayload === null) {
+        return Promise.resolve();
+      }
+      const preparedSnapshot: PendingAutoSave<TPayload> = {
+        ...initialSnapshot,
+        payload: resolvedPayload,
+        useCapturedPayload: true,
+      };
+
+      const existingFlight = inFlightByKeyRef.current.get(key);
+      if (existingFlight) {
+        queuedByKeyRef.current.set(key, preparedSnapshot);
+        if (mountedRef.current && activeResetKeyRef.current === key) {
+          setPhase("saving");
+          setErrorMessage("");
+        }
+        return existingFlight;
+      }
+
+      if (mountedRef.current && activeResetKeyRef.current === key) {
+        setPhase("saving");
+        setErrorMessage("");
+      }
+
+      const runLoop = async (first: PendingAutoSave<TPayload>) => {
+        let current: PendingAutoSave<TPayload> | undefined = first;
+        while (current) {
+          if (cancelledKeysRef.current.has(key)) {
+            queuedByKeyRef.current.delete(key);
+            break;
+          }
+          const runGen = keyGenerationRef.current.get(key) ?? 0;
+          inFlightCompositeByKeyRef.current.set(key, current.compositeKey);
+          try {
+            await current.onSave(current.payload, { resetKey: key });
+            if (failedKeyRef.current === current.compositeKey) {
+              failedKeyRef.current = null;
+              failedMessageRef.current = "";
+            }
+            const superseded = cancelledKeysRef.current.has(key) || (keyGenerationRef.current.get(key) ?? 0) !== runGen;
+            const nextQueued = queuedByKeyRef.current.get(key);
+            if (!superseded) {
+              lastSavedResetKeyRef.current = key;
+              if (
+                !nextQueued &&
+                mountedRef.current &&
+                activeResetKeyRef.current === key &&
+                timerRef.current === null &&
+                pendingRef.current === null
+              ) {
+                setPhase("saved");
+                setErrorMessage("");
+              }
+            }
+          } catch (error: unknown) {
+            const superseded = cancelledKeysRef.current.has(key) || (keyGenerationRef.current.get(key) ?? 0) !== runGen;
+            const nextQueued = queuedByKeyRef.current.get(key);
+            if (!superseded && !nextQueued) {
+              const message = error instanceof Error ? error.message : String(error ?? "");
+              failedKeyRef.current = current.compositeKey;
+              failedMessageRef.current = message;
+              if (mountedRef.current && activeResetKeyRef.current === key && timerRef.current === null) {
+                setPhase("error");
+                setErrorMessage(message);
+              }
+              current.onError?.(error, { resetKey: key });
+            }
+          }
+          const next = queuedByKeyRef.current.get(key);
+          queuedByKeyRef.current.delete(key);
+          current = next && !cancelledKeysRef.current.has(key) ? next : undefined;
+        }
+      };
+
+      const flightPromise = runLoop(preparedSnapshot).finally(() => {
+        inFlightByKeyRef.current.delete(key);
+        inFlightCompositeByKeyRef.current.delete(key);
+      });
+      inFlightByKeyRef.current.set(key, flightPromise);
+      return flightPromise;
+    },
+    [resolveSnapshotPayload],
+  );
 
   const flush = useCallback(() => {
     clearTimer();
     const pending = pendingRef.current;
-    if (!pending) {
+    if (!pending || cancelledKeysRef.current.has(pending.resetKey)) {
+      pendingRef.current = null;
       return;
     }
     void executePending(pending);
   }, [clearTimer, executePending]);
 
-  useEffect(() => {
-    if (activeResetKeyRef.current !== resetKey) {
-      if (pendingRef.current) {
-        clearTimer();
-        void executePending(pendingRef.current);
-      } else {
-        clearTimer();
+  const discardPending = useCallback(() => {
+    clearTimer();
+    const key = activeResetKeyRef.current;
+    pendingRef.current = null;
+    queuedByKeyRef.current.delete(key);
+    failedKeyRef.current = null;
+    failedMessageRef.current = "";
+    bumpGeneration(key);
+    if (mountedRef.current) {
+      setPhase("idle");
+      setErrorMessage("");
+    }
+  }, [bumpGeneration, clearTimer]);
+
+  const cancel = useCallback(
+    (targetResetKey?: string): Promise<void> => {
+      clearTimer();
+      const key = targetResetKey ?? activeResetKeyRef.current;
+      cancelledKeysRef.current.add(key);
+      if (pendingRef.current?.resetKey === key) {
+        pendingRef.current = null;
       }
+      queuedByKeyRef.current.delete(key);
+      if (failedKeyRef.current?.startsWith(`${key}::`)) {
+        failedKeyRef.current = null;
+        failedMessageRef.current = "";
+      }
+      bumpGeneration(key);
+      if (mountedRef.current && activeResetKeyRef.current === key) {
+        setPhase("idle");
+        setErrorMessage("");
+      }
+      const inFlight = inFlightByKeyRef.current.get(key);
+      return inFlight ? inFlight.catch(() => undefined) : Promise.resolve();
+    },
+    [bumpGeneration, clearTimer],
+  );
+
+  useEffect(() => {
+    const previousKey = activeResetKeyRef.current;
+    if (previousKey !== resetKey) {
+      clearTimer();
+      const pending = pendingRef.current;
+      pendingRef.current = null;
+      const wasCancelled = cancelledKeysRef.current.has(previousKey);
+      if (pending && pending.resetKey === previousKey && !wasCancelled) {
+        void executePending({ ...pending, useCapturedPayload: true });
+      }
+      if (wasCancelled && !inFlightByKeyRef.current.has(previousKey)) {
+        cancelledKeysRef.current.delete(previousKey);
+      }
+      cancelledKeysRef.current.delete(resetKey);
       activeResetKeyRef.current = resetKey;
       failedKeyRef.current = null;
-      setPhase("idle");
+      failedMessageRef.current = "";
+      setPhase(inFlightByKeyRef.current.has(resetKey) ? "saving" : "idle");
       setErrorMessage("");
     }
   }, [clearTimer, executePending, resetKey]);
@@ -131,16 +280,25 @@ export function useDebouncedAutoSave<TPayload>({
       clearTimer();
       pendingRef.current = null;
       failedKeyRef.current = null;
-      setPhase("idle");
+      failedMessageRef.current = "";
+      setPhase(inFlightByKeyRef.current.has(resetKey) ? "saving" : "idle");
       setErrorMessage("");
+      return;
+    }
+
+    if (cancelledKeysRef.current.has(resetKey)) {
+      clearTimer();
+      pendingRef.current = null;
       return;
     }
 
     if (currentKey === baselineKey) {
       clearTimer();
       pendingRef.current = null;
+      queuedByKeyRef.current.delete(resetKey);
       failedKeyRef.current = null;
-      if (inFlightKeyRef.current === null) {
+      failedMessageRef.current = "";
+      if (!inFlightByKeyRef.current.has(resetKey)) {
         setPhase(lastSavedResetKeyRef.current === resetKey ? "saved" : "idle");
         setErrorMessage("");
       }
@@ -152,13 +310,33 @@ export function useDebouncedAutoSave<TPayload>({
     if (validationError) {
       clearTimer();
       pendingRef.current = null;
+      queuedByKeyRef.current.delete(resetKey);
       setPhase("error");
       setErrorMessage(validationError);
       return;
     }
 
     const compositeKey = `${resetKey}::${currentKey}`;
-    if (inFlightKeyRef.current === compositeKey || failedKeyRef.current === compositeKey) {
+    if (failedKeyRef.current === compositeKey) {
+      clearTimer();
+      pendingRef.current = null;
+      queuedByKeyRef.current.delete(resetKey);
+      if (inFlightByKeyRef.current.has(resetKey)) {
+        setPhase("saving");
+        setErrorMessage("");
+      } else {
+        setPhase("error");
+        setErrorMessage(failedMessageRef.current);
+      }
+      return;
+    }
+
+    if (inFlightCompositeByKeyRef.current.get(resetKey) === compositeKey) {
+      clearTimer();
+      pendingRef.current = null;
+      queuedByKeyRef.current.delete(resetKey);
+      setPhase("saving");
+      setErrorMessage("");
       return;
     }
 
@@ -171,7 +349,7 @@ export function useDebouncedAutoSave<TPayload>({
       resetKey,
     };
     pendingRef.current = snapshot;
-    setPhase(inFlightKeyRef.current ? "saving" : "pending");
+    setPhase(inFlightByKeyRef.current.has(resetKey) ? "saving" : "pending");
     setErrorMessage("");
 
     timerRef.current = setTimeout(() => {
@@ -194,7 +372,7 @@ export function useDebouncedAutoSave<TPayload>({
   }, [flush]);
 
   const retry = useCallback(() => {
-    if (!enabled || currentKey === baselineKey) {
+    if (!enabled || currentKey === baselineKey || cancelledKeysRef.current.has(resetKey)) {
       return;
     }
     const payload = buildPayloadRef.current();
@@ -206,16 +384,20 @@ export function useDebouncedAutoSave<TPayload>({
     }
     clearTimer();
     failedKeyRef.current = null;
+    failedMessageRef.current = "";
     void executePending({
       compositeKey: `${resetKey}::${currentKey}`,
       onError: onErrorRef.current,
       onSave: onSaveRef.current,
       payload,
       resetKey,
+      useCapturedPayload: true,
     });
   }, [baselineKey, clearTimer, currentKey, enabled, executePending, resetKey]);
 
   return {
+    cancel,
+    discardPending,
     errorMessage,
     flush,
     phase,

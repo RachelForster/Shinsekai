@@ -75,6 +75,7 @@ export function AutoSaveStatus({ errorMessage, onRetry, pendingIdentity = false,
 
 export interface InlineIdentityConfirmProps {
   confirmDisabled?: boolean;
+  disabled?: boolean;
   fieldLabel: string;
   loading?: boolean;
   onCancel: () => void;
@@ -84,6 +85,7 @@ export interface InlineIdentityConfirmProps {
 
 export function InlineIdentityConfirm({
   confirmDisabled = false,
+  disabled = false,
   fieldLabel,
   loading = false,
   onCancel,
@@ -101,7 +103,7 @@ export function InlineIdentityConfirm({
       <AsyncButton
         aria-label={`${t("identity.confirm")}: ${fieldLabel}`}
         className="identity-inline-actions__btn"
-        disabled={confirmDisabled}
+        disabled={disabled || confirmDisabled}
         icon={<Check aria-hidden className="button__icon" />}
         loading={loading}
         onClick={onConfirm}
@@ -113,7 +115,7 @@ export function InlineIdentityConfirm({
       <Button
         aria-label={`${t("identity.cancel")}: ${fieldLabel}`}
         className="identity-inline-actions__btn"
-        disabled={loading}
+        disabled={disabled || loading}
         icon={<X aria-hidden className="button__icon" />}
         onClick={onCancel}
         tooltip={t("identity.cancel")}
@@ -129,12 +131,13 @@ export function handleIdentityKeyDown(
   event: KeyboardEvent<HTMLInputElement>,
   options: {
     canConfirm: boolean;
+    disabled?: boolean;
     isDirty: boolean;
     onCancel: () => void;
     onConfirm: () => void;
   },
 ) {
-  if (!options.isDirty || event.nativeEvent.isComposing) {
+  if (!options.isDirty || options.disabled || event.nativeEvent.isComposing) {
     return;
   }
   if (event.key === "Enter") {

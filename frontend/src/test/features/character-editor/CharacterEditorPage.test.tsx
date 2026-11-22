@@ -1,5 +1,5 @@
 import type { ComponentProps } from "react";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -250,6 +250,8 @@ describe("CharacterEditorPage", () => {
       name: "Close",
     });
     await waitFor(() => expect(closeGenerator).toBeEnabled());
+    await new Promise((resolve) => setTimeout(resolve, 650));
+    expect(mockSaveCharacter).not.toHaveBeenCalled();
     fireEvent.click(closeGenerator);
     expect(screen.getByLabelText("Character setting")).toHaveValue("My unsaved personality");
     expect(mockSaveCharacter).not.toHaveBeenCalled();
@@ -1011,5 +1013,137 @@ describe("CharacterEditorPage", () => {
     expect(screen.getByLabelText(/Upload directory name \(ASCII\)/)).toHaveValue("char_1");
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.getByLabelText("Character name")).toHaveValue("Aki"));
+  });
+
+  it("prevents ID leaks into New drafts, preserves concurrent edits during rename, and cancels auto-save on delete", async () => {
+    let catalog: Character[] = [
+      {
+        ...structuredClone(character),
+        id: "char-mika",
+        relation_graph: {
+          edges: [{ content: "trust", source: "Mika", target: "Aki", temperature: 7 }],
+          nodes: [{ key: "Mika" }, { key: "Aki" }],
+        },
+      },
+      { ...structuredClone(character), id: "char-aki", name: "Aki", sprite_prefix: "aki" },
+    ];
+    mockListCharacters.mockImplementation(async () => structuredClone(catalog));
+    mockDeleteCharacter.mockImplementation(async (deletedName: string) => {
+      catalog = catalog.filter((item) => item.name !== deletedName);
+    });
+    const upsertIntoCatalog = (saved: Character) => {
+      const idx = catalog.findIndex((item) => item.id === saved.id || item.name === saved.name);
+      if (idx >= 0) {
+        catalog[idx] = structuredClone(saved);
+      } else {
+        catalog.push(structuredClone(saved));
+      }
+      return structuredClone(saved);
+    };
+
+    let resolveFlushedSave!: (saved: Character) => void;
+    mockSaveCharacter.mockImplementationOnce(
+      () =>
+        new Promise<Character>((resolve) => {
+          resolveFlushedSave = (saved) => resolve(upsertIntoCatalog(saved));
+        }),
+    );
+
+    renderPage();
+    await waitForCharacterLoaded("Mika");
+
+    // 1. Edit Mika, click New (flushing Mika's save), then resolve Mika's save while in Create mode -> must NOT leak char-mika!
+    fireEvent.change(screen.getByLabelText("Character setting"), {
+      target: { value: "Outgoing bio before New" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    expect(mockSaveCharacter).toHaveBeenCalledTimes(1);
+    expect(mockSaveCharacter.mock.calls[0]?.[0]).not.toHaveProperty("relation_graph");
+
+    await act(async () => {
+      resolveFlushedSave({
+        ...structuredClone(character),
+        id: "char-mika",
+        character_setting: "Outgoing bio before New",
+      });
+    });
+
+    mockSaveCharacter.mockImplementationOnce(async (saved: Character) =>
+      upsertIntoCatalog({
+        ...structuredClone(saved),
+        id: "char-sora",
+      }),
+    );
+    fireEvent.change(screen.getByLabelText("Character name"), { target: { value: "Sora" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    await waitFor(() => expect(mockSaveCharacter).toHaveBeenCalledTimes(2));
+    const [createdPayload, createdOriginalName] = mockSaveCharacter.mock.calls[1] as [Character, string | undefined];
+    expect(createdOriginalName).toBeUndefined();
+    expect(createdPayload).not.toHaveProperty("id");
+    expect(createdPayload.name).toBe("Sora");
+
+    // 2. While confirming name rename, sprite_prefix confirm is disabled and concurrent setting edits survive!
+    await waitForCharacterLoaded("Sora");
+    let resolveRename!: (saved: Character) => void;
+    mockSaveCharacter.mockClear();
+    mockSaveCharacter
+      .mockImplementationOnce(
+        () =>
+          new Promise<Character>((resolve) => {
+            resolveRename = (saved) => resolve(upsertIntoCatalog(saved));
+          }),
+      )
+      .mockImplementation(async (saved: Character) =>
+        upsertIntoCatalog({ ...structuredClone(saved), id: "char-sora" }),
+      );
+
+    fireEvent.change(screen.getByLabelText("Character name"), { target: { value: "Sora Renamed" } });
+    fireEvent.change(screen.getByLabelText("Upload directory name (ASCII)"), { target: { value: "sora_v2" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm: Character name" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /Confirm: Upload directory name/ })).toBeDisabled());
+    fireEvent.change(screen.getByLabelText("Character setting"), {
+      target: { value: "Typed while rename in flight" },
+    });
+
+    await act(async () => {
+      resolveRename({
+        ...structuredClone(character),
+        id: "char-sora",
+        character_setting: "",
+        name: "Sora Renamed",
+        sprite_prefix: "sora",
+      });
+    });
+    await waitForCharacterLoaded("Sora Renamed");
+    expect(screen.getByLabelText("Character setting")).toHaveValue("Typed while rename in flight");
+    expect(screen.getByLabelText("Upload directory name (ASCII)")).toHaveValue("sora_v2");
+
+    // Wait for auto-save of the concurrent character_setting edit to settle under "Sora Renamed"
+    await waitFor(
+      () =>
+        expect(mockSaveCharacter).toHaveBeenCalledWith(
+          expect.objectContaining({
+            id: "char-sora",
+            character_setting: "Typed while rename in flight",
+            name: "Sora Renamed",
+          }),
+          "Sora Renamed",
+        ),
+      { timeout: 2500 },
+    );
+
+    // 3. Edit character_setting then immediately delete -> pending auto-save is cancelled and never resurrects!
+    mockSaveCharacter.mockClear();
+    fireEvent.change(screen.getByLabelText("Character setting"), {
+      target: { value: "Should never save after delete" },
+    });
+    const basicSection = document.getElementById("character-basic") as HTMLElement;
+    fireEvent.click(within(basicSection).getByRole("button", { name: "Delete" }));
+    const deleteDialog = screen.getByRole("dialog", { name: "Delete character" });
+    fireEvent.click(within(deleteDialog).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(mockDeleteCharacter).toHaveBeenCalledWith("Sora Renamed"));
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    expect(mockSaveCharacter).not.toHaveBeenCalled();
   });
 });

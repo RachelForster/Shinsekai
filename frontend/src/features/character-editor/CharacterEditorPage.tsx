@@ -58,6 +58,7 @@ import {
   DEFAULT_SPRITE_GROUP,
   SELF_PERSONA_SPRITE_PREFIX,
   buildCommittedCharacterPayload,
+  buildNewCharacterPayload,
   createCharacter,
   isSelfPersonaCharacter,
   normalizeSpriteGroupName,
@@ -136,6 +137,10 @@ export function CharacterEditorPage() {
   const [pronunciationText, setPronunciationText] = useState("");
   const colorInputRef = useRef<HTMLInputElement | null>(null);
   const [syncedCharacterKey, setSyncedCharacterKey] = useState("");
+  const isCreatingRef = useRef(isCreating);
+  isCreatingRef.current = isCreating;
+  const deletedCharacterKeysRef = useRef<Set<string>>(new Set());
+  const cancelAutoSaveRef = useRef<(targetKey?: string) => Promise<void>>(() => Promise.resolve());
   const inCreateMode = isCreating || data.length === 0;
   const existingPrefixes = useMemo(() => data.map((character) => character.sprite_prefix), [data]);
   const selected = useMemo(() => {
@@ -234,6 +239,9 @@ export function CharacterEditorPage() {
     },
     onSuccess(character, variables) {
       const nextKey = character.id || `name:${character.name}`;
+      deletedCharacterKeysRef.current.delete(nextKey);
+      deletedCharacterKeysRef.current.delete(`name:${character.name}`);
+      isCreatingRef.current = false;
       activeCharacterKeyRef.current = nextKey;
       setSyncedCharacterKey(nextKey);
       queryClient.setQueryData<Character[]>(charactersQueryKey, (current = []) =>
@@ -259,6 +267,7 @@ export function CharacterEditorPage() {
       character: Character;
       field: "name" | "sprite_prefix";
       originalName: string;
+      sourceKey: string;
     }) => saveCharacter(character, originalName),
     onError(error) {
       showToast({
@@ -271,31 +280,60 @@ export function CharacterEditorPage() {
       setIdentitySavingField(null);
     },
     onSuccess(character, variables) {
+      if (
+        deletedCharacterKeysRef.current.has(variables.sourceKey) ||
+        deletedCharacterKeysRef.current.has(`name:${variables.originalName}`)
+      ) {
+        return;
+      }
       const nextKey = character.id || `name:${character.name}`;
-      activeCharacterKeyRef.current = nextKey;
-      setSyncedCharacterKey(nextKey);
       queryClient.setQueryData<Character[]>(charactersQueryKey, (current = []) =>
         upsertCatalogCharacter(current, character, variables.originalName),
       );
-      setSelectedName(character.name);
-      setDraft((current) => ({
-        ...structuredClone(character),
-        name: variables.field === "name" ? character.name : current.name,
-        sprite_prefix: variables.field === "sprite_prefix" ? character.sprite_prefix : current.sprite_prefix,
-      }));
-      setPronunciationText(pronunciationMapToText(character.pronunciation_map));
-      if (variables.field === "name") {
-        setNameError("");
-      } else {
-        setSpritePrefixError("");
-      }
       syncRenamedCharacterCaches(variables.originalName, character.name);
+      if (!isCreatingRef.current && activeCharacterKeyRef.current === variables.sourceKey) {
+        activeCharacterKeyRef.current = nextKey;
+        setSyncedCharacterKey(nextKey);
+        setSelectedName(character.name);
+        setDraft((current) => ({
+          ...current,
+          ...(character.id ? { id: character.id } : {}),
+          avatars: {
+            ...current.avatars,
+            ...character.avatars,
+          },
+          default_sprite_group: character.default_sprite_group,
+          fallback_to_default_group: character.fallback_to_default_group,
+          is_builtin: character.is_builtin,
+          name: variables.field === "name" ? character.name : current.name,
+          pinned: character.pinned,
+          portrait_crop: character.portrait_crop,
+          portrait_sprite_index: character.portrait_sprite_index,
+          sprite_groups: character.sprite_groups,
+          sprite_prefix: variables.field === "sprite_prefix" ? character.sprite_prefix : current.sprite_prefix,
+          sprite_transitions: character.sprite_transitions,
+          sprites: mergeSprites(character.sprites, current),
+          undeletable: character.undeletable,
+        }));
+        if (variables.field === "name") {
+          setNameError("");
+        } else {
+          setSpritePrefixError("");
+        }
+      }
       showToast({ kind: "success", title: t("character.toast.saved") });
     },
   });
 
   const deleteMutation = useMutation({
-    mutationFn: deleteCharacter,
+    mutationFn: async (targetName: string) => {
+      const target = data.find((item) => item.name === targetName);
+      const targetKey = target ? target.id || `name:${target.name}` : `name:${targetName}`;
+      deletedCharacterKeysRef.current.add(targetKey);
+      deletedCharacterKeysRef.current.add(`name:${targetName}`);
+      await cancelAutoSaveRef.current(targetKey);
+      return deleteCharacter(targetName);
+    },
     onSuccess(_result, deletedName) {
       setSelectedName((current) => (current === deletedName ? "" : current));
       queryClient.invalidateQueries({ queryKey: charactersQueryKey });
@@ -319,7 +357,12 @@ export function CharacterEditorPage() {
       setPendingDelete(null);
       showToast({ kind: "success", title: t("character.toast.deleted") });
     },
-    onError(error) {
+    onError(error, deletedName) {
+      const target = data.find((item) => item.name === deletedName);
+      if (target?.id) {
+        deletedCharacterKeysRef.current.delete(target.id);
+      }
+      deletedCharacterKeysRef.current.delete(`name:${deletedName}`);
       showToast({
         kind: "error",
         message: error instanceof Error ? error.message : t("character.error.deleteFallback"),
@@ -331,9 +374,16 @@ export function CharacterEditorPage() {
   const importMutation = useMutation({
     mutationFn: importCharacters,
     onSuccess(imported) {
+      for (const item of imported) {
+        if (item.id) {
+          deletedCharacterKeysRef.current.delete(item.id);
+        }
+        deletedCharacterKeysRef.current.delete(`name:${item.name}`);
+      }
       queryClient.invalidateQueries({ queryKey: charactersQueryKey });
       const lastImported = imported[imported.length - 1];
       if (lastImported) {
+        isCreatingRef.current = false;
         setIsCreating(false);
         setSelectedName(lastImported.name);
       }
@@ -762,7 +812,8 @@ export function CharacterEditorPage() {
 
   const portraitCropMutation = useMutation({
     mutationFn: (nextCharacter: Character) => {
-      const base = selected ? structuredClone(selected) : structuredClone(nextCharacter);
+      const source = selected ? structuredClone(selected) : structuredClone(nextCharacter);
+      const { relation_graph: _omittedRelationGraph, ...base } = source;
       const editedByPath = new Map(nextCharacter.sprites.map((sprite) => [sprite.path, sprite.portrait_crop]));
       base.portrait_crop = nextCharacter.portrait_crop;
       base.sprites = base.sprites.map((sprite, index) => {
@@ -943,14 +994,41 @@ export function CharacterEditorPage() {
     [currentPronunciationMap, draft, selected],
   );
 
+  const resolveLatestSelectedCharacter = useCallback((): Character | undefined => {
+    if (!selected) {
+      return undefined;
+    }
+    const catalog = queryClient.getQueryData<Character[]>(charactersQueryKey) ?? data;
+    return (
+      (selected.id ? catalog.find((item) => item.id === selected.id) : undefined) ??
+      catalog.find((item) => item.name === selected.name) ??
+      selected
+    );
+  }, [data, queryClient, selected]);
+
   const autoSave = useDebouncedAutoSave<{ character: Character; originalName: string }>({
     baselineKey: baselineAutoSaveKey,
-    buildPayload: () => ({
-      character: buildCommittedCharacterPayload(draft, currentPronunciationMap, selected!),
-      originalName: selected!.name,
-    }),
+    buildPayload: () => {
+      const latestSelected = resolveLatestSelectedCharacter() ?? selected!;
+      return {
+        character: buildCommittedCharacterPayload(draft, currentPronunciationMap, latestSelected),
+        originalName: latestSelected.name,
+      };
+    },
     currentKey: currentAutoSaveKey,
-    enabled: Boolean(!inCreateMode && isDraftSynced),
+    enabled: Boolean(
+      !inCreateMode &&
+      isDraftSynced &&
+      identitySavingField === null &&
+      !identityMutation.isPending &&
+      !saveMutation.isPending &&
+      !deleteMutation.isPending &&
+      !spriteGenerationOpen &&
+      !portraitCropOpen &&
+      !bulkSpriteTagsOpen &&
+      !smartGroupOpen &&
+      !pendingDelete,
+    ),
     onError(error) {
       showToast({
         kind: "error",
@@ -958,12 +1036,20 @@ export function CharacterEditorPage() {
         title: t("common.saveFailed"),
       });
     },
-    async onSave({ character, originalName }) {
+    async onSave({ character, originalName }, { resetKey }) {
       const saved = await saveCharacter(character, originalName);
+      if (
+        deletedCharacterKeysRef.current.has(resetKey) ||
+        deletedCharacterKeysRef.current.has(`name:${originalName}`)
+      ) {
+        return;
+      }
       queryClient.setQueryData<Character[]>(charactersQueryKey, (current = []) =>
         upsertCatalogCharacter(current, saved, originalName),
       );
-      if (saved.id) {
+      if (saved.id && !isCreatingRef.current && activeCharacterKeyRef.current === resetKey) {
+        activeCharacterKeyRef.current = saved.id;
+        setSyncedCharacterKey(saved.id);
         setDraft((current) => (current.id ? current : { ...current, id: saved.id }));
       }
     },
@@ -973,9 +1059,10 @@ export function CharacterEditorPage() {
       return errors.length ? errors.join("\n") : null;
     },
   });
+  cancelAutoSaveRef.current = autoSave.cancel;
 
   const confirmIdentityField = (field: "name" | "sprite_prefix") => {
-    if (!selected || lockedSelectedPersona) {
+    if (!selected || lockedSelectedPersona || identitySavingField !== null || identityMutation.isPending) {
       return;
     }
     const fieldError = field === "name" ? liveNameError : liveSpritePrefixError;
@@ -996,15 +1083,17 @@ export function CharacterEditorPage() {
       });
       return;
     }
+    autoSave.discardPending();
+    const latestSelected = resolveLatestSelectedCharacter() ?? selected;
     setIdentitySavingField(field);
     identityMutation.mutate({
-      character: buildCommittedCharacterPayload(draft, currentPronunciationMap, {
-        id: selected.id,
-        name: field === "name" ? draft.name.trim() : selected.name,
-        sprite_prefix: field === "sprite_prefix" ? draft.sprite_prefix.trim() : selected.sprite_prefix,
+      character: buildCommittedCharacterPayload(draft, currentPronunciationMap, latestSelected, {
+        name: field === "name" ? draft.name.trim() : latestSelected.name,
+        sprite_prefix: field === "sprite_prefix" ? draft.sprite_prefix.trim() : latestSelected.sprite_prefix,
       }),
       field,
-      originalName: selected.name,
+      originalName: latestSelected.name,
+      sourceKey: selectedCharacterKey,
     });
   };
 
@@ -1067,8 +1156,7 @@ export function CharacterEditorPage() {
       return null;
     }
     return {
-      character: buildCommittedCharacterPayload(draft, currentPronunciationMap, {
-        id: draft.id,
+      character: buildNewCharacterPayload(draft, currentPronunciationMap, {
         name: trimmedName,
         sprite_prefix: spritePrefix,
       }),
@@ -1174,6 +1262,7 @@ export function CharacterEditorPage() {
 
   const selectExistingCharacter = (name: string) => {
     autoSave.flush();
+    isCreatingRef.current = false;
     setIsCreating(false);
     setSpritePrefixTouched(false);
     setNameError("");
@@ -1185,6 +1274,7 @@ export function CharacterEditorPage() {
     autoSave.flush();
     previousSelectedNameRef.current = currentCharacterName || data[0]?.name || "";
     activeCharacterKeyRef.current = "";
+    isCreatingRef.current = true;
     setIsCreating(true);
     setSpritePrefixTouched(false);
     setSelectedName("");
@@ -1207,6 +1297,7 @@ export function CharacterEditorPage() {
         ? previousSelectedNameRef.current
         : data[0]?.name) || "";
     activeCharacterKeyRef.current = "";
+    isCreatingRef.current = false;
     setIsCreating(false);
     setSpritePrefixTouched(false);
     setNameError("");

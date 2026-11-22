@@ -333,22 +333,28 @@ export function createEffectsPreviewPlatform(ctx: BrowserPreviewContext): Effect
     },
     list: () => delay(clone(config.effect_list)),
     async save(effect, originalName) {
+      const mergeExistingEffect = (target: Effect) => {
+        Object.assign(target, effect, {
+          ...(target.id ? { id: target.id } : {}),
+          audio_list: target.audio_list,
+          image_audio_list: target.image_audio_list,
+          image_list: target.image_list,
+        });
+        return delay(clone(target));
+      };
       const idMatch = effect.id ? config.effect_list.find((item) => item.id === effect.id) : undefined;
       if (idMatch) {
-        Object.assign(idMatch, effect, { id: idMatch.id });
-        return delay(clone(idMatch));
+        return mergeExistingEffect(idMatch);
       }
       if (originalName && originalName !== effect.name) {
         const existing = config.effect_list.find((item) => item.name === originalName);
         if (existing) {
-          Object.assign(existing, effect, existing.id ? { id: existing.id } : {});
-          return delay(clone(existing));
+          return mergeExistingEffect(existing);
         }
       }
       const existing = config.effect_list.find((item) => item.name === effect.name);
       if (existing) {
-        Object.assign(existing, effect, existing.id ? { id: existing.id } : {});
-        return delay(clone(existing));
+        return mergeExistingEffect(existing);
       }
       config.effect_list = [...config.effect_list, clone(effect)];
       return delay(clone(effect));

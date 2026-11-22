@@ -533,4 +533,60 @@ describe("EffectManagerPage", () => {
     );
     expect(await screen.findByText("delete boom")).toBeInTheDocument();
   });
+
+  it("preserves newly attached image audio during pending auto-save and cancels auto-save on scheme delete", async () => {
+    const initialEffect: Effect = {
+      ...structuredClone(effect),
+      id: "eff-spark",
+      image_list: ["D:/effects/key.png"],
+      image_tags: "图片 1：key\n",
+      image_audio_list: [""],
+    };
+    let catalogEffect = structuredClone(initialEffect);
+    mockListEffects.mockImplementation(async () => [structuredClone(catalogEffect)]);
+    mockUploadEffectImageAudio.mockImplementation(async ({ path }: { index: number; name: string; path: string }) => {
+      catalogEffect = { ...catalogEffect, image_audio_list: [path] };
+      return structuredClone(catalogEffect);
+    });
+    mockSaveEffect.mockImplementation(async (saved: Effect) => {
+      catalogEffect = structuredClone(saved);
+      return structuredClone(catalogEffect);
+    });
+
+    renderPage();
+    await screen.findByText("key.png");
+
+    // 1. Edit color (arms 600ms auto-save), then attach image audio before 600ms fires -> auto-save must carry latest image_audio_list!
+    fireEvent.change(screen.getAllByDisplayValue("#123456")[0], { target: { value: "#abcdef" } });
+    pickerState.paths = ["D:/effects/key-sfx.wav"];
+    fireEvent.click(screen.getByRole("button", { name: "Insert audio" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Insert audio" })).getByText("Choose mocked paths"));
+    await waitFor(() => expect(mockUploadEffectImageAudio).toHaveBeenCalledTimes(1));
+
+    await waitFor(
+      () =>
+        expect(mockSaveEffect).toHaveBeenCalledWith(
+          expect.objectContaining({
+            color: "#abcdef",
+            id: "eff-spark",
+            image_audio_list: ["D:/effects/key-sfx.wav"],
+            name: "Spark",
+          }),
+          "Spark",
+        ),
+      { timeout: 2500 },
+    );
+
+    // 2. Edit color again then immediately delete scheme -> pending auto-save is cancelled!
+    mockSaveEffect.mockClear();
+    fireEvent.change(screen.getAllByDisplayValue("#abcdef")[0], { target: { value: "#654321" } });
+    const infoSection = document.getElementById("effect-info") as HTMLElement;
+    fireEvent.click(within(infoSection).getByRole("button", { name: "Delete" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog", { name: "Delete effect scheme" })).getByRole("button", { name: "Delete" }),
+    );
+    await waitFor(() => expect(mockDeleteEffect).toHaveBeenCalledWith("Spark"));
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    expect(mockSaveEffect).not.toHaveBeenCalled();
+  });
 });

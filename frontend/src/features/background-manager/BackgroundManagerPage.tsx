@@ -91,6 +91,10 @@ export function BackgroundManagerPage() {
   const [spritePrefixTouched, setSpritePrefixTouched] = useState(false);
   const [identitySavingField, setIdentitySavingField] = useState<"name" | "sprite_prefix" | null>(null);
   const [syncedBackgroundKey, setSyncedBackgroundKey] = useState("");
+  const isCreatingRef = useRef(isCreating);
+  isCreatingRef.current = isCreating;
+  const deletedBackgroundKeysRef = useRef<Set<string>>(new Set());
+  const cancelAutoSaveRef = useRef<(targetKey?: string) => Promise<void>>(() => Promise.resolve());
   const previousSelectedNameRef = useRef("");
   const activeBackgroundKeyRef = useRef("");
 
@@ -152,6 +156,9 @@ export function BackgroundManagerPage() {
     },
     onSuccess(background, variables) {
       const nextKey = background.id || `name:${background.name}`;
+      deletedBackgroundKeysRef.current.delete(nextKey);
+      deletedBackgroundKeysRef.current.delete(`name:${background.name}`);
+      isCreatingRef.current = false;
       activeBackgroundKeyRef.current = nextKey;
       setSyncedBackgroundKey(nextKey);
       queryClient.setQueryData<Background[]>(backgroundsQueryKey, (current = []) =>
@@ -159,13 +166,25 @@ export function BackgroundManagerPage() {
       );
       setIsCreating(false);
       setSpritePrefixTouched(false);
-      setNameError("");
-      setSpritePrefixError("");
+      if (!variables.originalName) {
+        setNameError("");
+        setSpritePrefixError("");
+      }
       setSelectedName(background.name);
-      setDraft(structuredClone(background));
+      setDraft((current) =>
+        variables.originalName
+          ? {
+              ...structuredClone(background),
+              name: current.name,
+              sprite_prefix: current.sprite_prefix,
+            }
+          : structuredClone(background),
+      );
       setDraftSourceName(background.name);
-      setSelectedBgmIndexes([]);
-      setSelectedImageIndex(0);
+      if (!variables.originalName) {
+        setSelectedBgmIndexes([]);
+        setSelectedImageIndex(0);
+      }
       showToast({ kind: "success", title: t("background.toast.saved") });
     },
   });
@@ -178,6 +197,7 @@ export function BackgroundManagerPage() {
       background: Background;
       field: "name" | "sprite_prefix";
       originalName: string;
+      sourceKey: string;
     }) => saveBackground(background, originalName),
     onError(error) {
       showToast({
@@ -190,38 +210,59 @@ export function BackgroundManagerPage() {
       setIdentitySavingField(null);
     },
     onSuccess(background, variables) {
+      if (
+        deletedBackgroundKeysRef.current.has(variables.sourceKey) ||
+        deletedBackgroundKeysRef.current.has(`name:${variables.originalName}`)
+      ) {
+        return;
+      }
       const nextKey = background.id || `name:${background.name}`;
-      activeBackgroundKeyRef.current = nextKey;
-      setSyncedBackgroundKey(nextKey);
       queryClient.setQueryData<Background[]>(backgroundsQueryKey, (current = []) =>
         upsertCatalogBackground(current, background, variables.originalName),
       );
-      setSelectedName(background.name);
-      setDraftSourceName(background.name);
-      setDraft((current) => ({
-        ...structuredClone(background),
-        bg_tags: current.bg_tags,
-        bgm_tags: current.bgm_tags,
-        name: variables.field === "name" ? background.name : current.name,
-        sprite_prefix: variables.field === "sprite_prefix" ? background.sprite_prefix : current.sprite_prefix,
-      }));
-      if (variables.field === "name") {
-        setNameError("");
-      } else {
-        setSpritePrefixError("");
+      if (!isCreatingRef.current && activeBackgroundKeyRef.current === variables.sourceKey) {
+        activeBackgroundKeyRef.current = nextKey;
+        setSyncedBackgroundKey(nextKey);
+        setSelectedName(background.name);
+        setDraftSourceName(background.name);
+        setDraft((current) => ({
+          ...current,
+          ...(background.id ? { id: background.id } : {}),
+          bgm_list: background.bgm_list,
+          name: variables.field === "name" ? background.name : current.name,
+          sprite_prefix: variables.field === "sprite_prefix" ? background.sprite_prefix : current.sprite_prefix,
+          sprites: background.sprites,
+        }));
+        if (variables.field === "name") {
+          setNameError("");
+        } else {
+          setSpritePrefixError("");
+        }
       }
       showToast({ kind: "success", title: t("background.toast.saved") });
     },
   });
 
   const deleteMutation = useMutation({
-    mutationFn: deleteBackground,
+    mutationFn: async (targetName: string) => {
+      const target = data.find((item) => item.name === targetName);
+      const targetKey = target ? target.id || `name:${target.name}` : `name:${targetName}`;
+      deletedBackgroundKeysRef.current.add(targetKey);
+      deletedBackgroundKeysRef.current.add(`name:${targetName}`);
+      await cancelAutoSaveRef.current(targetKey);
+      return deleteBackground(targetName);
+    },
     onSuccess(_result, deletedName) {
       setSelectedName((current) => (current === deletedName ? "" : current));
       queryClient.invalidateQueries({ queryKey: backgroundsQueryKey });
       showToast({ kind: "success", title: t("background.toast.deleted") });
     },
-    onError(error) {
+    onError(error, deletedName) {
+      const target = data.find((item) => item.name === deletedName);
+      if (target?.id) {
+        deletedBackgroundKeysRef.current.delete(target.id);
+      }
+      deletedBackgroundKeysRef.current.delete(`name:${deletedName}`);
       showToast({
         kind: "error",
         message: error instanceof Error ? error.message : t("background.error.deleteFallback"),
@@ -233,9 +274,16 @@ export function BackgroundManagerPage() {
   const importMutation = useMutation({
     mutationFn: importBackgrounds,
     onSuccess(imported) {
+      for (const item of imported) {
+        if (item.id) {
+          deletedBackgroundKeysRef.current.delete(item.id);
+        }
+        deletedBackgroundKeysRef.current.delete(`name:${item.name}`);
+      }
       queryClient.invalidateQueries({ queryKey: backgroundsQueryKey });
       const lastImported = imported[imported.length - 1];
       if (lastImported) {
+        isCreatingRef.current = false;
         setIsCreating(false);
         setSelectedName(lastImported.name);
         setDraft(structuredClone(lastImported));
@@ -762,19 +810,46 @@ export function BackgroundManagerPage() {
     [currentDraft, selected],
   );
 
+  const resolveLatestSelectedBackground = useCallback((): Background | undefined => {
+    if (!selected) {
+      return undefined;
+    }
+    const catalog = queryClient.getQueryData<Background[]>(backgroundsQueryKey) ?? data;
+    return (
+      (selected.id ? catalog.find((item) => item.id === selected.id) : undefined) ??
+      catalog.find((item) => item.name === selected.name) ??
+      selected
+    );
+  }, [data, queryClient, selected]);
+
   const autoSave = useDebouncedAutoSave<{ background: Background; originalName: string }>({
     baselineKey: baselineAutoSaveKey,
-    buildPayload: () => ({
-      background: {
-        ...currentDraft,
-        ...(selected!.id ? { id: selected!.id } : {}),
-        name: selected!.name,
-        sprite_prefix: selected!.sprite_prefix,
-      },
-      originalName: selected!.name,
-    }),
+    buildPayload: () => {
+      const latestSelected = resolveLatestSelectedBackground() ?? selected!;
+      return {
+        background: {
+          ...latestSelected,
+          ...(latestSelected.id ? { id: latestSelected.id } : {}),
+          bg_tags: currentDraft.bg_tags,
+          bgm_tags: currentDraft.bgm_tags,
+          name: latestSelected.name,
+          sprite_prefix: latestSelected.sprite_prefix,
+        },
+        originalName: latestSelected.name,
+      };
+    },
     currentKey: currentAutoSaveKey,
-    enabled: Boolean(!inCreateMode && isDraftSynced),
+    enabled: Boolean(
+      !inCreateMode &&
+      isDraftSynced &&
+      identitySavingField === null &&
+      !identityMutation.isPending &&
+      !saveMutation.isPending &&
+      !deleteMutation.isPending &&
+      !bulkImageTagsOpen &&
+      !bulkBgmTagsOpen &&
+      pendingDelete?.kind !== "background",
+    ),
     onError(error) {
       showToast({
         kind: "error",
@@ -782,20 +857,29 @@ export function BackgroundManagerPage() {
         title: t("common.saveFailed"),
       });
     },
-    async onSave({ background, originalName }) {
+    async onSave({ background, originalName }, { resetKey }) {
       const saved = await saveBackground(background, originalName);
+      if (
+        deletedBackgroundKeysRef.current.has(resetKey) ||
+        deletedBackgroundKeysRef.current.has(`name:${originalName}`)
+      ) {
+        return;
+      }
       queryClient.setQueryData<Background[]>(backgroundsQueryKey, (current = []) =>
         upsertCatalogBackground(current, saved, originalName),
       );
-      if (saved.id) {
+      if (saved.id && !isCreatingRef.current && activeBackgroundKeyRef.current === resetKey) {
+        activeBackgroundKeyRef.current = saved.id;
+        setSyncedBackgroundKey(saved.id);
         setDraft((current) => (current.id ? current : { ...current, id: saved.id }));
       }
     },
     resetKey: selected ? selected.id || `name:${selected.name}` : "__creating__",
   });
+  cancelAutoSaveRef.current = autoSave.cancel;
 
   const confirmIdentityField = (field: "name" | "sprite_prefix") => {
-    if (!selected) {
+    if (!selected || identitySavingField !== null || identityMutation.isPending) {
       return;
     }
     const fieldError = field === "name" ? liveNameError : liveSpritePrefixError;
@@ -807,16 +891,21 @@ export function BackgroundManagerPage() {
       });
       return;
     }
+    autoSave.discardPending();
+    const latestSelected = resolveLatestSelectedBackground() ?? selected;
     setIdentitySavingField(field);
     identityMutation.mutate({
       background: {
-        ...currentDraft,
-        ...(selected.id ? { id: selected.id } : {}),
-        name: field === "name" ? currentDraft.name.trim() : selected.name,
-        sprite_prefix: field === "sprite_prefix" ? currentDraft.sprite_prefix.trim() : selected.sprite_prefix,
+        ...latestSelected,
+        ...(latestSelected.id ? { id: latestSelected.id } : {}),
+        bg_tags: currentDraft.bg_tags,
+        bgm_tags: currentDraft.bgm_tags,
+        name: field === "name" ? currentDraft.name.trim() : latestSelected.name,
+        sprite_prefix: field === "sprite_prefix" ? currentDraft.sprite_prefix.trim() : latestSelected.sprite_prefix,
       },
       field,
-      originalName: selected.name,
+      originalName: latestSelected.name,
+      sourceKey: selectedBackgroundKey,
     });
   };
 
@@ -871,9 +960,10 @@ export function BackgroundManagerPage() {
       });
       return null;
     }
+    const { id: _omittedId, ...restDraft } = currentDraft;
     return {
       background: {
-        ...currentDraft,
+        ...restDraft,
         name: trimmedName,
         sprite_prefix: spritePrefix,
       },
@@ -893,6 +983,7 @@ export function BackgroundManagerPage() {
     autoSave.flush();
     previousSelectedNameRef.current = currentBackgroundName || data[0]?.name || "";
     activeBackgroundKeyRef.current = "";
+    isCreatingRef.current = true;
     setIsCreating(true);
     setSpritePrefixTouched(false);
     setSelectedName("");
@@ -913,6 +1004,7 @@ export function BackgroundManagerPage() {
         ? previousSelectedNameRef.current
         : data[0]?.name) || "";
     activeBackgroundKeyRef.current = "";
+    isCreatingRef.current = false;
     setIsCreating(false);
     setSpritePrefixTouched(false);
     setNameError("");
@@ -980,6 +1072,7 @@ export function BackgroundManagerPage() {
               disabled={isLoading || (!isCreating && !data.length)}
               onChange={(event) => {
                 autoSave.flush();
+                isCreatingRef.current = false;
                 setIsCreating(false);
                 setSpritePrefixTouched(false);
                 setNameError("");
@@ -1150,6 +1243,7 @@ export function BackgroundManagerPage() {
                     onKeyDown={(event) =>
                       handleIdentityKeyDown(event, {
                         canConfirm: !liveNameError && identitySavingField === null,
+                        disabled: identitySavingField !== null,
                         isDirty: nameDirty,
                         onCancel: () => cancelIdentityField("name"),
                         onConfirm: () => confirmIdentityField("name"),
@@ -1159,6 +1253,7 @@ export function BackgroundManagerPage() {
                   />
                   <InlineIdentityConfirm
                     confirmDisabled={Boolean(liveNameError)}
+                    disabled={identitySavingField !== null && identitySavingField !== "name"}
                     fieldLabel={t("background.field.name")}
                     loading={identitySavingField === "name"}
                     onCancel={() => cancelIdentityField("name")}
@@ -1182,6 +1277,7 @@ export function BackgroundManagerPage() {
                     onKeyDown={(event) =>
                       handleIdentityKeyDown(event, {
                         canConfirm: !liveSpritePrefixError && identitySavingField === null,
+                        disabled: identitySavingField !== null,
                         isDirty: spritePrefixDirty,
                         onCancel: () => cancelIdentityField("sprite_prefix"),
                         onConfirm: () => confirmIdentityField("sprite_prefix"),
@@ -1191,6 +1287,7 @@ export function BackgroundManagerPage() {
                   />
                   <InlineIdentityConfirm
                     confirmDisabled={Boolean(liveSpritePrefixError)}
+                    disabled={identitySavingField !== null && identitySavingField !== "sprite_prefix"}
                     fieldLabel={t("background.field.spritePrefix")}
                     loading={identitySavingField === "sprite_prefix"}
                     onCancel={() => cancelIdentityField("sprite_prefix")}

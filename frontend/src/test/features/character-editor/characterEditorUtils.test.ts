@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildCommittedCharacterPayload,
+  buildNewCharacterPayload,
   clampSpriteScale,
   createCharacter,
   pronunciationMapToText,
@@ -43,6 +45,41 @@ describe("character editor utilities", () => {
       "Beta Prime",
       "Gamma",
     ]);
+  });
+
+  it("omits relation_graph on committed character updates and omits id on new character creation", () => {
+    const committed = {
+      ...createCharacter(),
+      id: "char-mika",
+      name: "Mika",
+      relation_graph: {
+        edges: [{ content: "best friend", source: "Mika", target: "Aki", temperature: 8 }],
+        nodes: [{ key: "Mika" }, { key: "Aki" }],
+      },
+      sprite_prefix: "mika",
+      sprites: [{ path: "D:/sprites/mika/a.png" }],
+    };
+    const draft = {
+      ...createCharacter(),
+      character_setting: "  Updated bio  ",
+      id: "leaked-id",
+      name: "UnconfirmedRename",
+      relation_graph: { edges: [], nodes: [] },
+      sprite_prefix: "unconfirmed_prefix",
+    };
+
+    const autoSavePayload = buildCommittedCharacterPayload(draft, { Mika: "mika" }, committed);
+    expect(autoSavePayload).not.toHaveProperty("relation_graph");
+    expect(autoSavePayload.id).toBe("char-mika");
+    expect(autoSavePayload.name).toBe("Mika");
+    expect(autoSavePayload.sprite_prefix).toBe("mika");
+    expect(autoSavePayload.character_setting).toBe("Updated bio");
+    expect(autoSavePayload.sprites).toEqual([{ path: "D:/sprites/mika/a.png" }]);
+
+    const createPayload = buildNewCharacterPayload(draft, {}, { name: "NewHero", sprite_prefix: "new_hero" });
+    expect(createPayload).not.toHaveProperty("id");
+    expect(createPayload.name).toBe("NewHero");
+    expect(createPayload.sprite_prefix).toBe("new_hero");
   });
 
   it("parses pronunciation map text and ignores invalid rows", () => {

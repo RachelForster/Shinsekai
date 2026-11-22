@@ -83,10 +83,110 @@ describe("useDebouncedAutoSave", () => {
     expect(result.current.phase).toBe("saved");
   });
 
-  it("flushes pending save immediately when resetKey switches or hook unmounts", async () => {
+  it("cancels intermediate timer when reverting back to a previously failed value", async () => {
+    const onSave = vi.fn().mockRejectedValueOnce(new Error("boom")).mockResolvedValue({ ok: true });
+
+    const { rerender, result } = renderHook(
+      ({ currentKey }: { currentKey: string }) =>
+        useDebouncedAutoSave({
+          baselineKey: "base",
+          buildPayload: () => ({ value: currentKey }),
+          currentKey,
+          debounceMs: 600,
+          enabled: true,
+          onSave,
+          resetKey: "item-1",
+        }),
+      { initialProps: { currentKey: "v1" } },
+    );
+
+    await act(async () => {
+      vi.advanceTimersByTime(600);
+    });
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(result.current.phase).toBe("error");
+
+    // Type v2 (arms v2 timer), then revert to failed v1 before 600ms -> v2 must NOT fire!
+    rerender({ currentKey: "v2" });
+    expect(result.current.phase).toBe("pending");
+    await act(async () => {
+      vi.advanceTimersByTime(200);
+    });
+    rerender({ currentKey: "v1" });
+    expect(result.current.phase).toBe("error");
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(onSave).toHaveBeenCalledTimes(1);
+  });
+
+  it("serializes saves per resetKey and evaluates fresh buildPayload when firing", async () => {
+    let resolveFirst!: () => void;
+    const firstPromise = new Promise<void>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const onSave = vi
+      .fn()
+      .mockImplementationOnce(() => firstPromise)
+      .mockResolvedValue(undefined);
+    let latestAssetList = ["initial.wav"];
+
+    const { rerender, result } = renderHook(
+      ({ currentKey }: { currentKey: string }) =>
+        useDebouncedAutoSave({
+          baselineKey: "base",
+          buildPayload: () => ({ assets: [...latestAssetList], value: currentKey }),
+          currentKey,
+          debounceMs: 600,
+          enabled: true,
+          onSave,
+          resetKey: "item-1",
+        }),
+      { initialProps: { currentKey: "v1" } },
+    );
+
+    // Mutate external asset list before v1 timer fires -> fresh buildPayload picks it up!
+    latestAssetList = ["initial.wav", "uploaded.wav"];
+    await act(async () => {
+      vi.advanceTimersByTime(600);
+    });
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave).toHaveBeenNthCalledWith(
+      1,
+      { assets: ["initial.wav", "uploaded.wav"], value: "v1" },
+      { resetKey: "item-1" },
+    );
+
+    // While v1 is still in-flight, v2 and then v3 fire -> must queue latest without overlapping!
+    rerender({ currentKey: "v2" });
+    await act(async () => {
+      vi.advanceTimersByTime(600);
+    });
+    expect(onSave).toHaveBeenCalledTimes(1);
+
+    rerender({ currentKey: "v3" });
+    await act(async () => {
+      vi.advanceTimersByTime(600);
+    });
+    expect(onSave).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveFirst();
+      await firstPromise;
+    });
+    expect(onSave).toHaveBeenCalledTimes(2);
+    expect(onSave).toHaveBeenNthCalledWith(
+      2,
+      { assets: ["initial.wav", "uploaded.wav"], value: "v3" },
+      { resetKey: "item-1" },
+    );
+    expect(result.current.phase).toBe("saved");
+  });
+
+  it("flushes pending save on resetKey switch or unmount unless cancelled", async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
 
-    const { rerender, unmount } = renderHook(
+    const { rerender, result, unmount } = renderHook(
       ({ currentKey, resetKey }: { currentKey: string; resetKey: string }) =>
         useDebouncedAutoSave({
           baselineKey: "base",
@@ -102,11 +202,20 @@ describe("useDebouncedAutoSave", () => {
 
     // Switch item before 600ms -> flushes item-1 immediately
     rerender({ currentKey: "base", resetKey: "item-2" });
-    expect(onSave).toHaveBeenCalledWith({ currentKey: "edited-1", resetKey: "item-1" });
+    expect(onSave).toHaveBeenCalledWith({ currentKey: "edited-1", resetKey: "item-1" }, { resetKey: "item-1" });
 
-    // Edit item-2 and unmount before 600ms -> flushes item-2 immediately
+    // Edit item-2 and cancel() before switching (delete flow) -> does NOT flush item-2!
+    onSave.mockClear();
     rerender({ currentKey: "edited-2", resetKey: "item-2" });
+    await act(async () => {
+      await result.current.cancel("item-2");
+    });
+    rerender({ currentKey: "base", resetKey: "item-3" });
+    expect(onSave).not.toHaveBeenCalled();
+
+    // Edit item-3 and unmount before 600ms -> flushes item-3 immediately
+    rerender({ currentKey: "edited-3", resetKey: "item-3" });
     unmount();
-    expect(onSave).toHaveBeenCalledWith({ currentKey: "edited-2", resetKey: "item-2" });
+    expect(onSave).toHaveBeenCalledWith({ currentKey: "edited-3", resetKey: "item-3" }, { resetKey: "item-3" });
   });
 });

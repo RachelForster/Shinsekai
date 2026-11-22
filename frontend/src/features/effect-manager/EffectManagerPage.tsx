@@ -149,6 +149,10 @@ export function EffectManagerPage() {
   const [imageAudioTargetIndex, setImageAudioTargetIndex] = useState<number | null>(null);
   const [nameError, setNameError] = useState("");
   const [syncedEffectKey, setSyncedEffectKey] = useState("");
+  const isCreatingRef = useRef(isCreating);
+  isCreatingRef.current = isCreating;
+  const deletedEffectKeysRef = useRef<Set<string>>(new Set());
+  const cancelAutoSaveRef = useRef<(targetKey?: string) => Promise<void>>(() => Promise.resolve());
   const previousSelectedNameRef = useRef("");
   const activeEffectKeyRef = useRef("");
   const colorInputRef = useRef<HTMLInputElement | null>(null);
@@ -202,6 +206,9 @@ export function EffectManagerPage() {
     },
     onSuccess(effect, variables) {
       const nextKey = effect.id || `name:${effect.name}`;
+      deletedEffectKeysRef.current.delete(nextKey);
+      deletedEffectKeysRef.current.delete(`name:${effect.name}`);
+      isCreatingRef.current = false;
       activeEffectKeyRef.current = nextKey;
       setSyncedEffectKey(nextKey);
       queryClient.setQueryData<Effect[]>(effectsQueryKey, (current = []) =>
@@ -217,7 +224,7 @@ export function EffectManagerPage() {
   });
 
   const identityMutation = useMutation({
-    mutationFn: ({ effect, originalName }: { effect: Effect; originalName: string }) =>
+    mutationFn: ({ effect, originalName }: { effect: Effect; originalName: string; sourceKey: string }) =>
       saveEffect(effect, originalName),
     onError(error) {
       showToast({
@@ -227,35 +234,55 @@ export function EffectManagerPage() {
       });
     },
     onSuccess(effect, variables) {
+      if (
+        deletedEffectKeysRef.current.has(variables.sourceKey) ||
+        deletedEffectKeysRef.current.has(`name:${variables.originalName}`)
+      ) {
+        return;
+      }
       const nextKey = effect.id || `name:${effect.name}`;
-      activeEffectKeyRef.current = nextKey;
-      setSyncedEffectKey(nextKey);
       queryClient.setQueryData<Effect[]>(effectsQueryKey, (current = []) =>
         upsertCatalogEffect(current, effect, variables.originalName),
       );
       queryClient.invalidateQueries({ queryKey: effectsQueryKey });
-      setNameError("");
-      setSelectedName(effect.name);
-      setDraft((current) => ({
-        ...structuredClone(effect),
-        audio_tags: current.audio_tags,
-        color: current.color,
-        image_tags: current.image_tags,
-        name: effect.name,
-        prompt_text: current.prompt_text,
-      }));
+      if (!isCreatingRef.current && activeEffectKeyRef.current === variables.sourceKey) {
+        activeEffectKeyRef.current = nextKey;
+        setSyncedEffectKey(nextKey);
+        setNameError("");
+        setSelectedName(effect.name);
+        setDraft((current) => ({
+          ...current,
+          ...(effect.id ? { id: effect.id } : {}),
+          audio_list: effect.audio_list,
+          image_audio_list: effect.image_audio_list,
+          image_list: effect.image_list,
+          name: effect.name,
+        }));
+      }
       showToast({ kind: "success", title: t("effect.toast.saved") });
     },
   });
 
   const deleteMutation = useMutation({
-    mutationFn: deleteEffect,
+    mutationFn: async (targetName: string) => {
+      const target = data.find((item) => item.name === targetName);
+      const targetKey = target ? target.id || `name:${target.name}` : `name:${targetName}`;
+      deletedEffectKeysRef.current.add(targetKey);
+      deletedEffectKeysRef.current.add(`name:${targetName}`);
+      await cancelAutoSaveRef.current(targetKey);
+      return deleteEffect(targetName);
+    },
     onSuccess(_result, deletedName) {
       setSelectedName((current) => (current === deletedName ? "" : current));
       queryClient.invalidateQueries({ queryKey: effectsQueryKey });
       showToast({ kind: "success", title: t("effect.toast.deleted") });
     },
-    onError(error) {
+    onError(error, deletedName) {
+      const target = data.find((item) => item.name === deletedName);
+      if (target?.id) {
+        deletedEffectKeysRef.current.delete(target.id);
+      }
+      deletedEffectKeysRef.current.delete(`name:${deletedName}`);
       showToast({
         kind: "error",
         message: error instanceof Error ? error.message : t("effect.error.deleteFallback"),
@@ -267,10 +294,17 @@ export function EffectManagerPage() {
   const importMutation = useMutation({
     mutationFn: importEffects,
     onSuccess(imported) {
+      for (const item of imported) {
+        if (item.id) {
+          deletedEffectKeysRef.current.delete(item.id);
+        }
+        deletedEffectKeysRef.current.delete(`name:${item.name}`);
+      }
       queryClient.setQueryData<Effect[]>(effectsQueryKey, (current = []) => [...current, ...imported]);
       queryClient.invalidateQueries({ queryKey: effectsQueryKey });
       const lastImported = imported[imported.length - 1];
       if (lastImported) {
+        isCreatingRef.current = false;
         activeEffectKeyRef.current = lastImported.id || `name:${lastImported.name}`;
         setIsCreating(false);
         setSelectedName(lastImported.name);
@@ -593,19 +627,51 @@ export function EffectManagerPage() {
   const baselineAutoSaveKey = useMemo(() => (selected ? serializeEffectNonIdentity(selected) : ""), [selected]);
   const currentAutoSaveKey = useMemo(() => (selected ? serializeEffectNonIdentity(draft) : ""), [draft, selected]);
 
+  const resolveLatestSelectedEffect = useCallback((): Effect | undefined => {
+    if (!selected) {
+      return undefined;
+    }
+    const catalog = queryClient.getQueryData<Effect[]>(effectsQueryKey) ?? data;
+    return (
+      (selected.id ? catalog.find((item) => item.id === selected.id) : undefined) ??
+      catalog.find((item) => item.name === selected.name) ??
+      selected
+    );
+  }, [data, queryClient, selected]);
+
   const autoSave = useDebouncedAutoSave<{ effect: Effect; originalName: string }>({
     baselineKey: baselineAutoSaveKey,
-    buildPayload: () => ({
-      effect: {
-        ...draft,
-        ...(selected!.id ? { id: selected!.id } : {}),
-        color: draft.color.trim() || "#5b8def",
-        name: selected!.name,
-      },
-      originalName: selected!.name,
-    }),
+    buildPayload: () => {
+      const latestSelected = resolveLatestSelectedEffect() ?? selected!;
+      return {
+        effect: {
+          ...latestSelected,
+          ...(latestSelected.id ? { id: latestSelected.id } : {}),
+          audio_tags: draft.audio_tags,
+          color: draft.color.trim() || "#5b8def",
+          image_tags: draft.image_tags,
+          name: latestSelected.name,
+          prompt_text: draft.prompt_text,
+        },
+        originalName: latestSelected.name,
+      };
+    },
     currentKey: currentAutoSaveKey,
-    enabled: Boolean(!inCreateMode && isDraftSynced),
+    enabled: Boolean(
+      !inCreateMode &&
+      isDraftSynced &&
+      !identityMutation.isPending &&
+      !saveMutation.isPending &&
+      !deleteMutation.isPending &&
+      !audioUploadMutation.isPending &&
+      !imageUploadMutation.isPending &&
+      !imageDeleteMutation.isPending &&
+      !imageAudioUploadMutation.isPending &&
+      !imageAudioBatchUploadMutation.isPending &&
+      !audioBatchDeleteMutation.isPending &&
+      !audioDeleteAllMutation.isPending &&
+      pendingDelete?.kind !== "effect",
+    ),
     onError(error) {
       showToast({
         kind: "error",
@@ -613,20 +679,26 @@ export function EffectManagerPage() {
         title: t("common.saveFailed"),
       });
     },
-    async onSave({ effect, originalName }) {
+    async onSave({ effect, originalName }, { resetKey }) {
       const saved = await saveEffect(effect, originalName);
+      if (deletedEffectKeysRef.current.has(resetKey) || deletedEffectKeysRef.current.has(`name:${originalName}`)) {
+        return;
+      }
       queryClient.setQueryData<Effect[]>(effectsQueryKey, (current = []) =>
         upsertCatalogEffect(current, saved, originalName),
       );
-      if (saved.id) {
+      if (saved.id && !isCreatingRef.current && activeEffectKeyRef.current === resetKey) {
+        activeEffectKeyRef.current = saved.id;
+        setSyncedEffectKey(saved.id);
         setDraft((current) => (current.id ? current : { ...current, id: saved.id }));
       }
     },
     resetKey: selected ? selected.id || `name:${selected.name}` : "__creating__",
   });
+  cancelAutoSaveRef.current = autoSave.cancel;
 
   const confirmIdentityName = () => {
-    if (!selected) {
+    if (!selected || identityMutation.isPending) {
       return;
     }
     if (liveNameError) {
@@ -637,14 +709,20 @@ export function EffectManagerPage() {
       });
       return;
     }
+    autoSave.discardPending();
+    const latestSelected = resolveLatestSelectedEffect() ?? selected;
     identityMutation.mutate({
       effect: {
-        ...draft,
-        ...(selected.id ? { id: selected.id } : {}),
+        ...latestSelected,
+        ...(latestSelected.id ? { id: latestSelected.id } : {}),
+        audio_tags: draft.audio_tags,
         color: draft.color.trim() || "#5b8def",
+        image_tags: draft.image_tags,
         name: draft.name.trim(),
+        prompt_text: draft.prompt_text,
       },
-      originalName: selected.name,
+      originalName: latestSelected.name,
+      sourceKey: selectedEffectKey,
     });
   };
 
@@ -684,8 +762,9 @@ export function EffectManagerPage() {
       });
       return;
     }
+    const { id: _omittedId, ...restDraft } = draft;
     saveMutation.mutate({
-      effect: { ...draft, color: draft.color.trim() || "#5b8def", name: draft.name.trim() },
+      effect: { ...restDraft, color: draft.color.trim() || "#5b8def", name: draft.name.trim() },
       originalName: undefined,
     });
   }, [draft, saveMutation, showToast, t, validateCreateName]);
@@ -694,6 +773,7 @@ export function EffectManagerPage() {
     autoSave.flush();
     previousSelectedNameRef.current = currentEffectName || data[0]?.name || "";
     activeEffectKeyRef.current = "";
+    isCreatingRef.current = true;
     setIsCreating(true);
     setSelectedName("");
     setDraft(createEffect());
@@ -711,6 +791,7 @@ export function EffectManagerPage() {
         ? previousSelectedNameRef.current
         : data[0]?.name) || "";
     activeEffectKeyRef.current = "";
+    isCreatingRef.current = false;
     setIsCreating(false);
     setNameError("");
     setSelectedName(targetName);
@@ -729,9 +810,10 @@ export function EffectManagerPage() {
         });
         return;
       }
+      const { id: _omittedId, ...restDraft } = draft;
       saveMutation.mutate(
         {
-          effect: { ...draft, color: draft.color.trim() || "#5b8def", name: draft.name.trim() },
+          effect: { ...restDraft, color: draft.color.trim() || "#5b8def", name: draft.name.trim() },
           originalName: undefined,
         },
         {
@@ -752,9 +834,10 @@ export function EffectManagerPage() {
         setNameError(error);
         return;
       }
+      const { id: _omittedId, ...restDraft } = draft;
       saveMutation.mutate(
         {
-          effect: { ...draft, color: draft.color.trim() || "#5b8def", name: draft.name.trim() },
+          effect: { ...restDraft, color: draft.color.trim() || "#5b8def", name: draft.name.trim() },
           originalName: undefined,
         },
         { onSuccess: () => setImageUploadPickerOpen(true) },
@@ -815,6 +898,7 @@ export function EffectManagerPage() {
               disabled={isLoading || (!isCreating && !data.length)}
               onChange={(event) => {
                 autoSave.flush();
+                isCreatingRef.current = false;
                 setIsCreating(false);
                 setNameError("");
                 setSelectedName(event.target.value);
@@ -948,6 +1032,7 @@ export function EffectManagerPage() {
                     onKeyDown={(event) =>
                       handleIdentityKeyDown(event, {
                         canConfirm: !liveNameError && !identityMutation.isPending,
+                        disabled: identityMutation.isPending,
                         isDirty: nameDirty,
                         onCancel: cancelIdentityName,
                         onConfirm: confirmIdentityName,

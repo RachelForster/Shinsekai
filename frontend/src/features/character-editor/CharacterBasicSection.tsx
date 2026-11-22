@@ -89,6 +89,7 @@ export function CharacterBasicSection({
                     ? (event) =>
                         handleIdentityKeyDown(event, {
                           canConfirm: !nameError && identitySavingField === null,
+                          disabled: identitySavingField !== null,
                           isDirty: nameDirty,
                           onCancel: () => onCancelName?.(),
                           onConfirm: () => onConfirmName?.(),
@@ -102,6 +103,7 @@ export function CharacterBasicSection({
               {!canEditDisplayName ? (
                 <InlineIdentityConfirm
                   confirmDisabled={Boolean(nameError)}
+                  disabled={identitySavingField !== null && identitySavingField !== "name"}
                   fieldLabel={nameFieldLabel}
                   loading={identitySavingField === "name"}
                   onCancel={() => onCancelName?.()}
@@ -148,6 +150,7 @@ export function CharacterBasicSection({
                     ? (event) =>
                         handleIdentityKeyDown(event, {
                           canConfirm: !spritePrefixError && identitySavingField === null,
+                          disabled: identitySavingField !== null,
                           isDirty: spritePrefixDirty,
                           onCancel: () => onCancelSpritePrefix?.(),
                           onConfirm: () => onConfirmSpritePrefix?.(),
@@ -160,6 +163,7 @@ export function CharacterBasicSection({
               {!lockedPersona ? (
                 <InlineIdentityConfirm
                   confirmDisabled={Boolean(spritePrefixError)}
+                  disabled={identitySavingField !== null && identitySavingField !== "sprite_prefix"}
                   fieldLabel={spritePrefixLabel}
                   loading={identitySavingField === "sprite_prefix"}
                   onCancel={() => onCancelSpritePrefix?.()}

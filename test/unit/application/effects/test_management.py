@@ -107,6 +107,59 @@ def test_save_by_id_renames_in_place_without_original_name(tmp_path: Path) -> No
     assert manager.saved == 1
 
 
+def test_save_preserves_asset_lists_against_partial_or_stale_payload_and_rewrites_on_rename(
+    tmp_path: Path,
+) -> None:
+    old_dir = tmp_path / "data" / "effects" / "Spark"
+    old_dir.mkdir(parents=True)
+    audio = old_dir / "hit.wav"
+    image = old_dir / "flash.png"
+    bound = old_dir / "flash-sfx.wav"
+    audio.write_bytes(b"hit")
+    image.write_bytes(b"img")
+    bound.write_bytes(b"bound")
+
+    spark = _effect(
+        "Spark",
+        audio_list=[audio.as_posix()],
+        image_list=[image.as_posix()],
+        image_audio_list=[bound.as_posix()],
+    )
+    use_case, _ = _use_case(tmp_path, (spark,))
+
+    updated = _execute(
+        use_case,
+        EffectOperation.SAVE,
+        id=spark.id,
+        originalName="Spark",
+        effect={
+            "id": spark.id,
+            "name": "Spark",
+            "prompt_text": "updated prompt",
+            "audio_list": [],
+            "image_list": [],
+            "image_audio_list": [],
+        },
+    )
+    assert updated.prompt_text == "updated prompt"
+    assert updated.audio_list == [audio.as_posix()]
+    assert updated.image_list == [image.as_posix()]
+    assert updated.image_audio_list == [bound.as_posix()]
+
+    renamed = _execute(
+        use_case,
+        EffectOperation.SAVE,
+        id=spark.id,
+        originalName="Spark",
+        effect={"id": spark.id, "name": "Sparkle", "prompt_text": "updated prompt"},
+    )
+    assert renamed.name == "Sparkle"
+    assert Path(renamed.audio_list[0]).read_bytes() == b"hit"
+    assert Path(renamed.image_list[0]).read_bytes() == b"img"
+    assert Path(renamed.image_audio_list[0]).read_bytes() == b"bound"
+    assert "Sparkle" in renamed.image_audio_list[0]
+
+
 def test_save_and_delete_reject_storage_traversal(tmp_path: Path) -> None:
     use_case, manager = _use_case(tmp_path, (_effect("../outside"),))
     outside = tmp_path / "outside"
