@@ -1,0 +1,32 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Shinsekai",
+  "version": "../package.json",
+  "identifier": "studio.shinsekai.mobile",
+  "build": {
+    "frontendDist": "../dist",
+    "beforeBuildCommand": "node ./node_modules/typescript/bin/tsc -b --pretty false && node ./node_modules/vite/bin/vite.js build --mode mobile"
+  },
+  "app": {
+    "macOSPrivateApi": false,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Shinsekai",
+        "url": "index.html"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "createUpdaterArtifacts": false,
+    "targets": "all",
+    "resources": []
+  },
+  "plugins": {
+    "updater": null
+  }
+}

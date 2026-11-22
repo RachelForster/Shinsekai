@@ -135,6 +135,7 @@ const desktopUpdateProgressEvent = "shinsekai:update-progress";
 const desktopRuntimeProgressEvent = "shinsekai:runtime-progress";
 
 export interface TauriStandaloneHttpRequest {
+  requestId?: string;
   url: string;
   method: string;
   headers?: Record<string, string>;
@@ -165,6 +166,14 @@ export function resetTauriNativeHttpStateForTests(): void {
   tauriNativeHttpUnsupported = false;
 }
 
+export function isAbortTauriHttpError(error: unknown): boolean {
+  if (error instanceof Error && error.name === "AbortError") {
+    return true;
+  }
+  const message = (error instanceof Error ? error.message : String(error ?? "")).toLowerCase();
+  return message.includes("http_aborted:");
+}
+
 export function isUnknownTauriCommandError(error: unknown): boolean {
   const message = (error instanceof Error ? error.message : String(error ?? "")).toLowerCase();
   if (!message) {
@@ -187,6 +196,19 @@ export async function invokeTauriStandaloneHttp(
 ): Promise<TauriStandaloneHttpResponse> {
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<TauriStandaloneHttpResponse>("standalone_http_request", { request });
+}
+
+export async function cancelTauriStandaloneHttp(requestId: string): Promise<void> {
+  const trimmed = requestId.trim();
+  if (!trimmed || !hasTauriNativeHttp()) {
+    return;
+  }
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke<boolean>("standalone_http_cancel", { requestId: trimmed });
+  } catch {
+    // Request may have already completed or run on a shell without cancel support.
+  }
 }
 
 function detectTauriDesktopEnvironment() {
