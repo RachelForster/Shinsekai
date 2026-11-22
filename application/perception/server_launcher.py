@@ -25,7 +25,10 @@ from application.model_assets.download_model import (
     _looks_like_local_model_reference,
     resolve_model_asset,
 )
-from application.runtime.dependencies import perception_dependency_issues
+from application.runtime.dependencies import (
+    perception_dependency_issues,
+    perception_gguf_dependency_issues,
+)
 from config.perception import DEFAULT_PERCEPTION_MODEL, default_perception_python_path
 from core.model_assets.service import (
     ModelAssetSpec,
@@ -280,6 +283,10 @@ def inspect_perception_setup(
             "pythonPath": str(python_path or "").strip(),
         }
 
+    if not target_python and clean_model == GGUF_MODEL_ID:
+        if not getattr(sys, "frozen", False) and sys.executable and Path(sys.executable).is_file():
+            target_python = str(sys.executable)
+
     if not target_python:
         return {
             "status": "error",
@@ -296,7 +303,12 @@ def inspect_perception_setup(
         downloadable = False
         try:
             script_path = resolve_local_server_script()
-            _gguf_arguments(script_path.parent.parent)
+            gguf_roots = [
+                *(Path(root) for root in (project_root, app_root) if root),
+                resolve_project_root(),
+                script_path.parent.parent,
+            ]
+            _gguf_arguments(*gguf_roots)
             model_cached = True
         except Exception as exc:
             model_cached = False
@@ -338,11 +350,16 @@ def inspect_perception_setup(
                 if _has_complete_hf_snapshot_in_hub_dir(user_hf_hub, spec.repo_id):
                     model_cached = True
 
-    issues = perception_dependency_issues(target_python)
+    is_gguf = clean_model == GGUF_MODEL_ID
+    issues = (
+        perception_gguf_dependency_issues(target_python)
+        if is_gguf
+        else perception_dependency_issues(target_python)
+    )
     if issues:
         return {
             "status": "missing_dependency",
-            "moduleName": "perception",
+            "moduleName": "perception_gguf" if is_gguf else "perception",
             "packageName": issues[0].name,
             "modelCached": model_cached,
             "downloadable": downloadable,
@@ -549,6 +566,9 @@ class PerceptionLocalServerManager:
             return self.status(explicit_python_path=python_path)
 
         resolved_python = discover_perception_python(python_path)
+        if not resolved_python and clean_model == GGUF_MODEL_ID:
+            if not getattr(sys, "frozen", False) and sys.executable and Path(sys.executable).is_file():
+                resolved_python = str(sys.executable)
         if not resolved_python:
             raise ValueError(
                 "未自动检测到包含 PyTorch 与 Transformers 的本地 Python 环境，请在下方填写 Python 解释器路径（如 Conda 环境下的 python.exe）。"

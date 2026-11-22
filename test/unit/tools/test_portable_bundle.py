@@ -166,16 +166,13 @@ def test_build_portable_bundle_sanitizes_and_organizes_models(
         "embedding",
         "sherpa-asr",
         "perception-gguf",
-        "toonout",
-        "sprite-mouth",
     }
     assert (output_dir / ".shinsekai-portable").is_file()
     assert not (output_dir / "一键启动Shinsekai.bat").exists()
     assert (output_dir / "使用说明.txt").is_file()
     assert (output_dir / "data" / "models" / "perception-gguf" / "Qwen3VL-2B-Instruct-Q4_K_M.gguf").is_file()
-    assert (output_dir / "data" / "models" / "toonout" / "deps" / "timm" / "__init__.py").is_file()
-    assert not (output_dir / "data" / "models" / "toonout" / "runtime.json").exists()
-    assert not (output_dir / "data" / "models" / "toonout" / "worker.log").exists()
+    assert not (output_dir / "data" / "models" / "toonout").exists()
+    assert not (output_dir / "data" / "models" / "sprite-mouth").exists()
     assert not (output_dir / "data" / "cache" / "huggingface" / "xet").exists()
 
     monkeypatch.setenv("HF_HUB_CACHE", str(output_dir / "data" / "cache" / "huggingface" / "hub"))
@@ -192,3 +189,196 @@ def test_build_portable_bundle_sanitizes_and_organizes_models(
     )
     with pytest.raises(ValueError, match="llm_api_key"):
         audit_portable_bundle(output_dir)
+
+
+def _write_fake_dist_info(site_packages: Path, name: str, version: str = "1.0.0") -> None:
+    dist_info = site_packages / f"{name.replace('-', '_')}-{version}.dist-info"
+    dist_info.mkdir(parents=True, exist_ok=True)
+    (dist_info / "METADATA").write_text(
+        f"Metadata-Version: 2.1\nName: {name}\nVersion: {version}\n",
+        encoding="utf-8",
+    )
+
+
+def test_optional_toonout_and_sprite_mouth_require_runnable_environments(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+    release_dir = tmp_path / "release"
+    (release_dir / "runtime").mkdir(parents=True)
+    (release_dir / "runtime" / "python.exe").write_bytes(b"py")
+    (release_dir / "shinsekai.exe").write_bytes(b"exe")
+    (release_dir / "frontend" / "dist").mkdir(parents=True)
+    (release_dir / "frontend" / "dist" / "index.html").write_text("<html></html>", encoding="utf-8")
+
+    data_src = tmp_path / "data_src"
+    toon_dir = data_src / "data" / "models" / "toonout"
+    for extra in ("timm", "kornia", "einops"):
+        (toon_dir / "deps" / extra).mkdir(parents=True, exist_ok=True)
+        (toon_dir / "deps" / extra / "__init__.py").write_text("", encoding="utf-8")
+    fake_artifacts = {}
+    for name in ("birefnet_finetuned_toonout.pth", "birefnet.py", "BiRefNet_config.py"):
+        content = f"content-{name}".encode()
+        (toon_dir / name).write_bytes(content)
+        fake_artifacts[name] = (f"repo/{name}", hashlib.sha256(content).hexdigest())
+    monkeypatch.setattr(toonout_assets, "ARTIFACTS", fake_artifacts)
+    monkeypatch.setattr("scripts.build_portable_bundle.TOONOUT_ARTIFACTS", fake_artifacts)
+
+    mouth_dir = data_src / "data" / "models" / "sprite-mouth"
+    mouth_dir.mkdir(parents=True)
+    fake_mouth = {}
+    for key in ("yolov3", "hrnetv2"):
+        content = f"mouth-{key}".encode()
+        (mouth_dir / f"{key}.safetensors").write_bytes(content)
+        fake_mouth[key] = {"size": len(content), "sha256": hashlib.sha256(content).hexdigest()}
+    monkeypatch.setattr(mouth_resources, "MODEL_FILES", fake_mouth)
+    monkeypatch.setattr("scripts.build_portable_bundle.MOUTH_MODEL_FILES", fake_mouth)
+
+    # 1) Without PyTorch / Python >= 3.12 runtimes, both optional packs are skipped cleanly
+    unrunnable_out = tmp_path / "unrunnable-out"
+    monkeypatch.setattr(
+        mouth_resources,
+        "_probe",
+        lambda *_a, **_kw: {"version": [3, 10, 20], "missing": list(mouth_resources.MODULES)},
+    )
+    report = build_portable_bundle(
+        source_root=repo_root,
+        release_dir=release_dir,
+        data_source_root=data_src,
+        output_dir=unrunnable_out,
+        runtime_dir=release_dir / "runtime",
+        frontend_dist_dir=release_dir / "frontend" / "dist",
+        models=("toonout", "sprite-mouth"),
+    )
+    assert report.included_models == ()
+    assert len(report.warnings) == 2
+    assert not (unrunnable_out / "data" / "models" / "toonout").exists()
+    assert not (unrunnable_out / "data" / "models" / "sprite-mouth").exists()
+
+    # Audit rejects manually dropped unrunnable ToonOut assets
+    (unrunnable_out / "data" / "models" / "toonout").mkdir(parents=True)
+    (unrunnable_out / "data" / "models" / "toonout" / "birefnet_finetuned_toonout.pth").write_bytes(b"x")
+    with pytest.raises(ValueError, match="ToonOut"):
+        audit_portable_bundle(unrunnable_out)
+
+    # 2) When self-contained portable runtimes ARE provided, both bundle and pass audit
+    toon_sp = data_src / "data" / "runtime" / "toonout" / "Lib" / "site-packages"
+    (data_src / "data" / "runtime" / "toonout" / "python.exe").parent.mkdir(parents=True, exist_ok=True)
+    (data_src / "data" / "runtime" / "toonout" / "python.exe").write_bytes(b"py")
+    for pkg in ("torch", "torchvision", "transformers", "Pillow"):
+        _write_fake_dist_info(toon_sp, pkg, "2.7.0")
+
+    mouth_py = data_src / "data" / "runtime" / "sprite-mouth" / "python" / "python.exe"
+    mouth_py.parent.mkdir(parents=True, exist_ok=True)
+    mouth_py.write_bytes(b"py312")
+    monkeypatch.setattr(
+        mouth_resources,
+        "_probe",
+        lambda py, *_a, **_kw: (
+            {"version": [3, 12, 8], "missing": []}
+            if "sprite-mouth" in str(py)
+            else {"version": [3, 10, 20], "missing": list(mouth_resources.MODULES)}
+        ),
+    )
+
+    runnable_out = tmp_path / "runnable-out"
+    report_ok = build_portable_bundle(
+        source_root=repo_root,
+        release_dir=release_dir,
+        data_source_root=data_src,
+        output_dir=runnable_out,
+        runtime_dir=release_dir / "runtime",
+        frontend_dist_dir=release_dir / "frontend" / "dist",
+        models=("toonout", "sprite-mouth"),
+    )
+    assert set(report_ok.included_models) == {"toonout", "sprite-mouth"}
+    assert report_ok.warnings == ()
+
+
+def test_inspect_perception_setup_gguf_does_not_require_pytorch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from core.perception.models import GGUF_MODEL_ID
+
+    exe = "llama-server.exe" if os.name == "nt" else "llama-server"
+    gguf_dir = tmp_path / "data" / "models" / "perception-gguf"
+    (gguf_dir / "llama.cpp").mkdir(parents=True)
+    (gguf_dir / "llama.cpp" / exe).write_bytes(b"llama")
+    (gguf_dir / "Qwen3VL-2B-Instruct-Q4_K_M.gguf").write_bytes(b"q4")
+    (gguf_dir / "mmproj-Qwen3VL-2B-Instruct-F16.gguf").write_bytes(b"mmproj")
+
+    py_dir = tmp_path / "runtime"
+    py_exe = py_dir / ("python.exe" if os.name == "nt" else "bin/python3")
+    py_exe.parent.mkdir(parents=True, exist_ok=True)
+    py_exe.write_bytes(b"py")
+    sp = py_dir / "Lib" / "site-packages"
+    _write_fake_dist_info(sp, "Pillow", "11.0.0")
+
+    monkeypatch.setattr(
+        server_launcher,
+        "perception_dependency_issues",
+        lambda *_a, **_kw: (_ for _ in ()).throw(AssertionError("PyTorch check must not run for GGUF")),
+    )
+
+    ready = server_launcher.inspect_perception_setup(
+        model=GGUF_MODEL_ID,
+        python_path=str(py_exe),
+        project_root=tmp_path,
+        app_root=tmp_path,
+    )
+    assert ready["status"] == "ready"
+    assert ready["modelCached"] is True
+
+    # If Pillow itself is missing, GGUF setup requests lightweight perception_gguf (Pillow), never perception (PyTorch)
+    bare_dir = tmp_path / "bare-runtime"
+    bare_exe = bare_dir / ("python.exe" if os.name == "nt" else "bin/python3")
+    bare_exe.parent.mkdir(parents=True, exist_ok=True)
+    bare_exe.write_bytes(b"py")
+    (bare_dir / "Lib" / "site-packages").mkdir(parents=True, exist_ok=True)
+
+    missing = server_launcher.inspect_perception_setup(
+        model=GGUF_MODEL_ID,
+        python_path=str(bare_exe),
+        project_root=tmp_path,
+        app_root=tmp_path,
+    )
+    assert missing["status"] == "missing_dependency"
+    assert missing["moduleName"] == "perception_gguf"
+    assert missing["packageName"].lower() == "pillow"
+
+
+def test_unix_launchers_are_executable_and_prioritize_venv() -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+    unix_scripts = (
+        "scripts/install.sh",
+        "scripts/install.command",
+        "scripts/start.sh",
+        "scripts/start.command",
+        "scripts/install-linux.sh",
+        "scripts/start-linux.sh",
+    )
+    for rel in unix_scripts:
+        script_path = repo_root / rel
+        assert script_path.is_file(), f"Missing {rel}"
+
+    start_sh = (repo_root / "scripts" / "start.sh").read_text(encoding="utf-8")
+    install_sh = (repo_root / "scripts" / "install.sh").read_text(encoding="utf-8")
+    assert '".venv/bin/python"' in start_sh
+    assert '".venv/bin/python"' in install_sh
+    assert start_sh.index('".venv/bin/python"') < start_sh.index('CONDA_CMD="$(find_conda)"')
+    assert install_sh.index('".venv/bin/python"') < install_sh.index('CONDA_CMD="$(find_conda)"')
+
+    if (repo_root / ".git").exists():
+        proc = subprocess.run(
+            ["git", "ls-files", "-s", *unix_scripts],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        modes = {}
+        for line in proc.stdout.strip().splitlines():
+            mode, _sha, _stage_and_path = line.split(" ", 2)
+            path = _stage_and_path.split("\t", 1)[1]
+            modes[path] = mode
+        assert modes == {rel: "100755" for rel in unix_scripts}

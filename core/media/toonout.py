@@ -18,7 +18,7 @@ class ToonOutUnavailable(RuntimeError):
 
 
 def _resolve_worker_python(directory: Path) -> str:
-    """Resolve ToonOut worker Python, falling back to bundled runtime on portable setups."""
+    """Resolve ToonOut worker Python across configured, isolated-portable, and bundled runtimes."""
     runtime = directory / "runtime.json"
     configured = ""
     if runtime.is_file():
@@ -28,8 +28,18 @@ def _resolve_worker_python(directory: Path) -> str:
             payload = {}
         if isinstance(payload, dict):
             configured = str(payload.get("python") or "").strip()
-    if configured and Path(configured).is_file():
-        return configured
+    if configured:
+        candidate = Path(configured).expanduser()
+        if not candidate.is_absolute():
+            candidate = directory / candidate
+        if candidate.is_file():
+            return str(candidate)
+
+    portable_runtime_dir = directory.parent.parent / "runtime" / "toonout"
+    for rel in ("python.exe", "Scripts/python.exe", "bin/python3", "bin/python"):
+        portable_py = portable_runtime_dir / rel
+        if portable_py.is_file():
+            return str(portable_py)
 
     from config.perception import shinsekai_runtime_python_path
 

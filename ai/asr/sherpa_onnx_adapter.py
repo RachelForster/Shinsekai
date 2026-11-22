@@ -354,24 +354,26 @@ class SherpaOnnxAdapter(ASRAdapter):
                 self._preroll.clear()
             self._utterance_chunks.append(samples)
 
-            if voiced or partial != self._last_partial:
+            partial_changed = bool(partial) and partial != self._last_partial
+            if voiced or partial_changed:
                 if voiced:
                     self._speech_chunks += 1
                 self._silent_chunks = 0
             else:
                 self._silent_chunks += 1
 
-            if partial and partial != self._last_partial:
+            if partial_changed:
                 self._last_partial = partial
                 partial_to_emit = partial
 
+            has_speech = bool(self._last_partial) or self._speech_chunks >= self.MIN_RMS_SPEECH_CHUNKS
             transducer_endpoint = bool(
                 self._online_recognizer.is_endpoint(self._online_stream)
-                and (bool(partial) or self._speech_chunks >= self.MIN_RMS_SPEECH_CHUNKS)
+                and (bool(partial) or has_speech)
             )
             rms_endpoint = (
                 not partial
-                and self._speech_chunks >= self.MIN_RMS_SPEECH_CHUNKS
+                and has_speech
                 and self._silent_chunks >= self.RMS_TRAILING_SILENCE_CHUNKS
             )
             length_cap = len(self._utterance_chunks) >= self.MAX_UTTERANCE_CHUNKS
@@ -380,7 +382,7 @@ class SherpaOnnxAdapter(ASRAdapter):
                 final_to_emit = self._polish_utterance_locked()
                 self._reset_segment_state_locked()
                 partial_to_emit = None
-            elif not partial and self._speech_chunks < self.MIN_RMS_SPEECH_CHUNKS and self._silent_chunks >= self.RMS_TRAILING_SILENCE_CHUNKS:
+            elif not partial and not has_speech and self._silent_chunks >= self.RMS_TRAILING_SILENCE_CHUNKS:
                 # Brief ambient noise spike that never became speech: discard buffer.
                 self._reset_segment_state_locked()
 

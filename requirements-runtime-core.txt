@@ -22,5 +22,6 @@ rembg[cpu]
 pyaudio; sys_platform == "linux"
 pyaudio; sys_platform == "win32" and platform_machine != "ARM64"
 vosk; sys_platform != "win32" or platform_machine != "ARM64"
+sherpa-onnx; sys_platform != "win32" or platform_machine != "ARM64"
 py7zr
 py7zz>=1.1.4; sys_platform == "darwin" or platform_machine == "x86_64" or platform_machine == "AMD64"

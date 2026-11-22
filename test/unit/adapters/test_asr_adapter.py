@@ -285,6 +285,75 @@ class TestSherpaOnnxAdapter:
         assert adapter.finish_hold(cancel=False) is True
         assert events == [("おはようございます。", False)]
 
+    def test_partial_then_blank_silence_triggers_rms_endpoint(self):
+        import numpy as np
+        from ai.asr.sherpa_onnx_adapter import SherpaOnnxAdapter
+
+        events: list[tuple[str, bool]] = []
+        adapter = self._build_stub_adapter(events)
+
+        silence_count = SherpaOnnxAdapter.RMS_TRAILING_SILENCE_CHUNKS
+        online = Mock()
+        online.is_ready.return_value = False
+        online.get_result.side_effect = ["你好", *([""] * silence_count)]
+        online.is_endpoint.return_value = False
+        adapter._online_recognizer = online
+
+        offline_stream = Mock()
+        offline_stream.result = SimpleNamespace(text="你好。")
+        offline = Mock()
+        offline.create_stream.return_value = offline_stream
+        adapter._offline_recognizer = offline
+
+        voiced = np.full(1600, 0.05, dtype=np.float32)
+        silent = np.zeros(1600, dtype=np.float32)
+        adapter._process_audio_chunk(voiced)
+        for _ in range(silence_count):
+            adapter._process_audio_chunk(silent)
+
+        assert events == [
+            ("你好", True),
+            ("你好。", False),
+        ]
+        assert adapter._silent_chunks == 0
+        assert adapter._last_partial == ""
+        online.reset.assert_called_once()
+
+    def test_create_default_asr_adapter_falls_back_to_vosk_when_sherpa_missing(
+        self, tmp_path, monkeypatch
+    ):
+        from ai.asr import asr_adapter
+        from ai.asr.asr_manager import ASRAdapterFactory
+        from config.config_manager import ConfigManager
+
+        vosk_dir = tmp_path / "vosk-model"
+        vosk_dir.mkdir()
+
+        fake_cfg_mgr = Mock()
+        fake_cfg_mgr.config = SimpleNamespace(
+            system_config=SimpleNamespace(
+                asr_provider="sherpa_onnx",
+                asr_language="",
+                ui_language="zh_CN",
+                asr_whisper_model_size="small",
+                asr_whisper_device="auto",
+                asr_whisper_compute_type="",
+            )
+        )
+        fake_cfg_mgr.get_adapter_extra_config.return_value = {}
+        monkeypatch.setattr(ConfigManager, "__new__", lambda cls: fake_cfg_mgr)
+        monkeypatch.setattr(asr_adapter, "VOSK_MODEL_PATH", str(vosk_dir))
+
+        def _missing_sherpa(*_args, **_kwargs):
+            raise ModuleNotFoundError("No module named 'sherpa_onnx'", name="sherpa_onnx")
+
+        sentinel_vosk = Mock(spec=asr_adapter.VoskAdapter)
+        monkeypatch.setitem(ASRAdapterFactory._adapters, "sherpa_onnx", _missing_sherpa)
+        monkeypatch.setattr(asr_adapter, "VoskAdapter", Mock(return_value=sentinel_vosk))
+
+        created = asr_adapter.create_default_asr_adapter(lambda *_a: None)
+        assert created is sentinel_vosk
+
 
 class TestWhisperTriplet:
     def test_returns_defaults(self):

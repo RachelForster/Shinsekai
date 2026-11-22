@@ -276,6 +276,24 @@ def create_default_asr_adapter(callback: TranscriptionCallback) -> ASRAdapter:
     _kw = filter_kwargs_for_ctor(adapter_cls, extras)
     if storage_key == "sherpa_onnx":
         _kw.setdefault("explicit_language", str(getattr(sys_cfg, "asr_language", "") or "").strip())
+        try:
+            return adapter_cls(lang, callback, **_kw)
+        except ModuleNotFoundError as exc:
+            if exc.name != "sherpa_onnx" or "vosk" not in ASRAdapterFactory._adapters:
+                raise
+            vosk_kw = filter_kwargs_for_ctor(
+                VoskAdapter,
+                ConfigManager().get_adapter_extra_config("asr", "vosk"),
+            )
+            vosk_model_path = str(vosk_kw.get("model_path") or VOSK_MODEL_PATH)
+            if not Path(vosk_model_path).is_dir():
+                raise
+            _log.warning(
+                "sherpa_onnx is not installed in the current Python runtime; "
+                "falling back to Vosk (%s).",
+                vosk_model_path,
+            )
+            return VoskAdapter(language=lang, callback=callback, model_path=vosk_model_path)
     elif storage_key == "faster_whisper":
         _kw.update(model_size=model_sz, device=dev, compute_type=ct)
     elif storage_key == "realtime_stt":

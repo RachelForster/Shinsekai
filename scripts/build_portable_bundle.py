@@ -25,17 +25,22 @@ import yaml
 
 from ai.asr.sherpa_onnx_adapter import SHERPA_SENSEVOICE_ASSET, SHERPA_ZIPFORMER_ASSET
 from ai.memory.config import EMBEDDING_MODEL_ASSET
+from application.characters.sprite import mouth_resources
 from application.characters.sprite.mouth_resources import MODEL_FILES as MOUTH_MODEL_FILES, verify_weight
 from application.model_assets.download_model import ModelAssetRequest, resolve_model_asset
 from application.model_assets.registry import ASR_FASTER_WHISPER_ASSET_ID
 from application.perception.server_launcher import _gguf_candidate_dirs
+from application.runtime.dependencies import (
+    installed_versions_for_python,
+    site_packages_dirs_for_python,
+)
 from config.models import ApiConfig, SystemConfig
 from core.media.toonout_assets import ARTIFACTS as TOONOUT_ARTIFACTS, verify_assets
 from core.model_assets.service import ModelAssetSpec, find_cached_huggingface_snapshot
 from core.storage.layout import StorageLayout
 
-DEFAULT_MODELS = ("embedding", "sherpa-asr", "perception-gguf", "toonout", "sprite-mouth")
-SUPPORTED_MODELS = frozenset((*DEFAULT_MODELS, "asr-small"))
+DEFAULT_MODELS = ("embedding", "sherpa-asr", "perception-gguf")
+SUPPORTED_MODELS = frozenset((*DEFAULT_MODELS, "asr-small", "toonout", "sprite-mouth"))
 
 APP_CODE_DIRS = (
     "ai",
@@ -316,6 +321,57 @@ def _bundle_perception_gguf(
     return True
 
 
+def _python_in_runtime_dir(runtime_dir: Path) -> Path | None:
+    for rel in ("python.exe", "Scripts/python.exe", "bin/python3", "bin/python"):
+        candidate = runtime_dir / rel
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _toonout_runtime_ready(bundle_dir: Path) -> bool:
+    layout = StorageLayout(bundle_dir)
+    py = _python_in_runtime_dir(layout.runtime_subdir("toonout")) or _python_in_runtime_dir(
+        bundle_dir / "runtime"
+    )
+    if py is None or not site_packages_dirs_for_python(py):
+        return False
+    versions = installed_versions_for_python(py)
+    if not all(pkg in versions for pkg in ("torch", "torchvision", "transformers", "pillow")):
+        return False
+    deps_dir = layout.model_dir("toonout") / "deps"
+    for extra in ("timm", "kornia", "einops"):
+        if extra in versions:
+            continue
+        if (deps_dir / extra).is_dir() or (deps_dir / f"{extra}.py").is_file():
+            continue
+        return False
+    return True
+
+
+def _sprite_mouth_runtime_ready(bundle_dir: Path) -> bool:
+    layout = StorageLayout(bundle_dir)
+    packages_dir = layout.runtime_subdir("sprite-mouth") / "packages"
+    candidates = (
+        layout.runtime_subdir("sprite-mouth") / "python" / "python.exe",
+        layout.runtime_subdir("sprite-mouth") / "python" / "bin" / "python3",
+        bundle_dir / "runtime" / "python.exe",
+        bundle_dir / "runtime" / "bin" / "python3",
+    )
+    for candidate in candidates:
+        if not candidate.is_file():
+            continue
+        probe = mouth_resources._probe(
+            str(candidate),
+            str(packages_dir),
+            candidate.stat().st_mtime_ns,
+        )
+        version = probe.get("version", [])
+        if tuple(version[:2]) >= (3, 12) and not probe.get("missing"):
+            return True
+    return False
+
+
 def _bundle_toonout(
     *,
     data_source_root: Path,
@@ -338,6 +394,13 @@ def _bundle_toonout(
         warnings.append("未找到完整的 ToonOut 模型文件，已跳过。")
         return False
 
+    src_runtime = StorageLayout(data_source_root).runtime_subdir("toonout")
+    dst_runtime = StorageLayout(output_dir).runtime_subdir("toonout")
+    copied_runtime = False
+    if src_runtime.is_dir():
+        _copy_tree(src_runtime, dst_runtime, dereference=True)
+        copied_runtime = True
+
     dst_dir = StorageLayout(output_dir).model_dir("toonout")
     dst_dir.mkdir(parents=True, exist_ok=True)
     for name in TOONOUT_ARTIFACTS:
@@ -346,6 +409,15 @@ def _bundle_toonout(
     if deps_dir.is_dir():
         _copy_tree(deps_dir, dst_dir / "deps", dereference=True)
     verify_assets(dst_dir)
+
+    if not _toonout_runtime_ready(output_dir):
+        shutil.rmtree(dst_dir, ignore_errors=True)
+        if copied_runtime:
+            shutil.rmtree(dst_runtime, ignore_errors=True)
+        warnings.append(
+            "随包运行环境不含 ToonOut 所需的 PyTorch 依赖（未提供可运行的 data/runtime/toonout），已跳过。"
+        )
+        return False
     return True
 
 
@@ -365,10 +437,18 @@ def _bundle_sprite_mouth(
     for key in MOUTH_MODEL_FILES:
         shutil.copy2(src_models / f"{key}.safetensors", dst_models / f"{key}.safetensors")
 
-    src_packages = StorageLayout(data_source_root).runtime_subdir("sprite-mouth") / "packages"
-    if src_packages.is_dir():
-        dst_packages = StorageLayout(output_dir).runtime_subdir("sprite-mouth") / "packages"
-        _copy_tree(src_packages, dst_packages, dereference=True)
+    src_runtime = StorageLayout(data_source_root).runtime_subdir("sprite-mouth")
+    dst_runtime = StorageLayout(output_dir).runtime_subdir("sprite-mouth")
+    if src_runtime.is_dir():
+        _copy_tree(src_runtime, dst_runtime, dereference=True)
+
+    if not _sprite_mouth_runtime_ready(output_dir):
+        shutil.rmtree(dst_models, ignore_errors=True)
+        shutil.rmtree(dst_runtime, ignore_errors=True)
+        warnings.append(
+            "随包运行环境不含 Python >=3.12 及口型检测依赖（未提供可运行的 data/runtime/sprite-mouth/python），已跳过。"
+        )
+        return False
     return True
 
 
@@ -427,6 +507,29 @@ def audit_portable_bundle(bundle_dir: Path) -> None:
             raise ValueError(f"Detected secret-like token in {config_file}")
         if _HARDCODED_PATH_PATTERN.search(text):
             raise ValueError(f"Detected machine-specific path in {config_file}")
+
+    toonout_dir = layout.model_dir("toonout")
+    if toonout_dir.is_dir() and any(toonout_dir.iterdir()) and not _toonout_runtime_ready(bundle_dir):
+        raise ValueError("Portable bundle includes ToonOut assets without a runnable PyTorch environment")
+
+    mouth_dir = layout.model_dir("sprite-mouth")
+    if mouth_dir.is_dir() and any(mouth_dir.glob("*.safetensors")) and not _sprite_mouth_runtime_ready(bundle_dir):
+        raise ValueError("Portable bundle includes sprite-mouth weights without a runnable Python >=3.12 environment")
+
+    bundle_py = _python_in_runtime_dir(bundle_dir / "runtime")
+    if bundle_py is not None and site_packages_dirs_for_python(bundle_py):
+        versions = installed_versions_for_python(bundle_py)
+        hub_dir = layout.cache_dir / "huggingface" / "hub"
+        sherpa_repo = hub_dir / ("models--" + SHERPA_ZIPFORMER_ASSET.repo_id.replace("/", "--"))
+        if sherpa_repo.is_dir() and "sherpa-onnx" not in versions:
+            raise ValueError("Portable bundle includes sherpa-asr models but runtime is missing sherpa-onnx")
+        embedding_repo = hub_dir / ("models--" + EMBEDDING_MODEL_ASSET.repo_id.replace("/", "--"))
+        if embedding_repo.is_dir() and ("onnxruntime" not in versions or "huggingface-hub" not in versions):
+            raise ValueError(
+                "Portable bundle includes embedding model but runtime is missing onnxruntime or huggingface-hub"
+            )
+        if layout.model_dir("perception-gguf").is_dir() and "pillow" not in versions:
+            raise ValueError("Portable bundle includes perception-gguf but runtime is missing Pillow")
 
 
 def _compress_bundle(source_root: Path, output_dir: Path) -> Path:
@@ -583,7 +686,10 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--models",
         default=",".join(DEFAULT_MODELS),
-        help="Comma-separated model packs to include (embedding,sherpa-asr,perception-gguf,toonout,sprite-mouth; optional: asr-small).",
+        help=(
+            "Comma-separated model packs to include "
+            "(default: embedding,sherpa-asr,perception-gguf; optional: asr-small,toonout,sprite-mouth)."
+        ),
     )
     parser.add_argument(
         "--download-missing",
