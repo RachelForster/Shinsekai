@@ -1,22 +1,22 @@
 import type { CharacterRelationGraph } from "../../../shared/platform/types";
 import { Button } from "../../../shared/ui";
 import { useCharacterGraphController } from "../useCharacterGraphController";
+import { createPortal } from "react-dom";
 
 interface CharacterGraphViewProps {
   graph: CharacterRelationGraph;
   disabled: boolean;
   active: boolean;
+  actionsContainer: HTMLElement | null;
 }
 
-export function CharacterGraphView({ graph, disabled, active }: CharacterGraphViewProps) {
+export function CharacterGraphView({ graph, disabled, active, actionsContainer }: CharacterGraphViewProps) {
   const {
     t,
-    selected,
     container,
     fitGraph,
     resetLayout,
     handleKeyDown,
-    handlePersonSelection,
     handlePointerDown,
     handlePointerMove,
     handlePointerUp,
@@ -27,24 +27,17 @@ export function CharacterGraphView({ graph, disabled, active }: CharacterGraphVi
 
   return (
     <div className="relation-graph-view" onKeyDown={handleKeyDown}>
-      <div className="page__actions">
-        <Button onClick={fitGraph}>{t("relation.fitGraph")}</Button>
-        <Button disabled={disabled} onClick={resetLayout}>
-          {t("relation.resetLayout")}
-        </Button>
-      </div>
-      <p>{t("relation.graphHint")}</p>
-      <label className="relation-field">
-        {t("relation.selectPerson")}
-        <select value={selected} onChange={handlePersonSelection}>
-          <option value="">—</option>
-          {graph.nodes.map((node) => (
-            <option key={node.key} value={node.key}>
-              {node.key}
-            </option>
-          ))}
-        </select>
-      </label>
+      {active &&
+        actionsContainer &&
+        createPortal(
+          <>
+            <Button onClick={fitGraph}>{t("relation.fitGraph")}</Button>
+            <Button disabled={disabled} onClick={resetLayout}>
+              {t("relation.resetLayout")}
+            </Button>
+          </>,
+          actionsContainer,
+        )}
       <div
         ref={container}
         className="relation-graph-canvas"

@@ -589,6 +589,7 @@ def test_relation_capability_skips_duplicate_and_injects_live_updates(
 
     config = SimpleNamespace(
         _CHARACTERS_CONFIG_PATH=str(char_file),
+        _has_custom_yaml_paths=lambda: True,
         config=SimpleNamespace(characters=[alice, bob]),
         get_character_by_name=lambda name: {"Alice": alice, "Bob": bob}.get(name),
         refresh_media_catalogs=refresh_media_catalogs,
@@ -704,6 +705,7 @@ def test_relation_capability_preserves_compact_primary_character_scope(
     lookup_map = {"Alice": alice, "Bob": bob, "Carol": carol, "Player": player}
     config = SimpleNamespace(
         _CHARACTERS_CONFIG_PATH=str(char_file),
+        _has_custom_yaml_paths=lambda: True,
         config=SimpleNamespace(characters=[alice, bob, carol, player]),
         get_character_by_name=lookup_map.get,
         refresh_media_catalogs=refresh_media_catalogs,
