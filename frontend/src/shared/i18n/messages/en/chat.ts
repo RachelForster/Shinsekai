@@ -306,6 +306,8 @@ export const chatEnMessages: Record<ChatMessageKey, string> = {
   "chat.toolbar.tokens": "Token usage",
   "chat.toolbar.tools": "Chat tools",
   "chat.toolbar.unlockActions": "Unlock chat actions",
+  "chat.toolbar.runtimeMode": "AI, voice & cross-device settings",
+  "chat.toolbar.backToWorkspace": "Back to workspace / characters",
   "chat.theme.active": "Active",
   "chat.theme.apply": "Apply",
   "chat.theme.backToSettings": "Back to system settings",

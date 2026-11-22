@@ -24,9 +24,6 @@ const EXEMPT_FILES = new Set<string>([
  * Never add new files here; remove entries as each module is migrated to i18n.
  */
 const LOCKED_FRONTEND_CJK_ALLOWLIST: readonly string[] = [
-  "app/shell/AppShell.tsx",
-  "app/shell/SidebarNav.tsx",
-  "entities/config/schema.ts",
   "features/api-settings/AdapterExtraForm.tsx",
   "features/api-settings/ApiSettingsPage.tsx",
   "features/api-settings/apiSettingsUtils.ts",
@@ -38,13 +35,10 @@ const LOCKED_FRONTEND_CJK_ALLOWLIST: readonly string[] = [
   "features/character-editor/useSpriteGeneration.ts",
   "features/character-editor/useSpriteMouths.ts",
   "features/chat-stage/components/HistoryDialog.tsx",
-  "features/chat-stage/components/TopStageTools.tsx",
   "features/chat-stage/state/text.ts",
   "features/effect-manager/EffectManagerPage.tsx",
   "features/logs/LogsPage.tsx",
   "features/music-cover/MusicCoverPage.tsx",
-  "features/onboarding/onboardingCopy.ts",
-  "features/onboarding/steps/PluginSetupPanel.tsx",
   "features/plugin-manager/PluginManagerPage.tsx",
   "features/runtime-mode/RuntimeModeDialog.tsx",
   "features/system-settings/SystemSettingsPage.tsx",
@@ -77,9 +71,6 @@ const LOCKED_FRONTEND_CJK_ALLOWLIST: readonly string[] = [
   "shared/platform/standalone/storage/sessionStore.ts",
   "shared/platform/standalone/storage/vfsBlobRegistry.ts",
   "shared/platform/storyPreviewPlatform.ts",
-  "shared/ui/ErrorBoundary.tsx",
-  "shared/ui/PathPickerDialog.tsx",
-  "shared/ui/TaskProgress.tsx",
 ];
 
 const sources = Object.fromEntries(

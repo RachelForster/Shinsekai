@@ -3,7 +3,6 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 import { DEFAULT_TTS_SERVER_URL, HTTPS_DEFAULT_TTS_SERVER_URL } from "../../../features/api-settings/apiSettingsUtils";
-import { onboardingCopy } from "../../../features/onboarding/onboardingCopy";
 import { ApiSetupPanel } from "../../../features/onboarding/steps/ApiSetupPanel";
 import { I18nProvider } from "../../../shared/i18n";
 import { sampleConfig } from "../../../shared/platform/sampleData";
@@ -35,7 +34,7 @@ function renderPanel() {
     <QueryClientProvider client={client}>
       <ToastProvider>
         <I18nProvider language="zh_CN">
-          <ApiSetupPanel copy={onboardingCopy.zh_CN} />
+          <ApiSetupPanel />
         </I18nProvider>
       </ToastProvider>
     </QueryClientProvider>,

@@ -1,25 +1,19 @@
 import type { ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 
-import type { OnboardingCopy } from "./onboardingCopy";
+import { useI18n } from "../../shared/i18n";
 
 interface OnboardingPanelLayoutProps {
   actions?: ReactNode;
   children: ReactNode;
-  copy: OnboardingCopy;
   description: string;
   done?: boolean;
   title: string;
 }
 
-export function OnboardingPanelLayout({
-  actions,
-  children,
-  copy,
-  description,
-  done,
-  title,
-}: OnboardingPanelLayoutProps) {
+export function OnboardingPanelLayout({ actions, children, description, done, title }: OnboardingPanelLayoutProps) {
+  const { t } = useI18n();
+
   return (
     <div className="onboarding-panel-layout">
       <div className="onboarding-panel-layout__intro">
@@ -27,7 +21,7 @@ export function OnboardingPanelLayout({
           <h2>{title}</h2>
           <p>{description}</p>
         </div>
-        {done ? <span className="onboarding-status-chip">{copy.common.done}</span> : null}
+        {done ? <span className="onboarding-status-chip">{t("onboarding.common.done")}</span> : null}
       </div>
       <div className="onboarding-panel-layout__content">{children}</div>
       {actions ? <div className="onboarding-panel-layout__actions">{actions}</div> : null}

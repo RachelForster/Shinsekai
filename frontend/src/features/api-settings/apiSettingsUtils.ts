@@ -11,7 +11,8 @@ import type {
   ApiConfig,
   SystemConfig,
 } from "../../entities/config/types";
-import type { FormGroupSchema } from "../../shared/form-schema";
+import { resolveFormOptionLabel, type FormGroupSchema, type FormOption } from "../../shared/form-schema";
+import { formatLlmProviderLabel, translateMessage, type TranslateFn } from "../../shared/i18n";
 import { perceptionModelSettings } from "../../shared/platform/perceptionModel";
 import type { LlmModelOption, TaskSnapshot } from "../../shared/platform/types";
 
@@ -174,14 +175,20 @@ export function normalizeApiAsrForSave(apiConfig: ApiConfig, systemConfig: Syste
   return updateAsrExtraConfig(apiConfig, "vosk", "model_path", modelPath);
 }
 
+const defaultCatalogTranslator: TranslateFn = (key, values) => translateMessage("zh_CN", key, values);
+
 export function catalogOptions(
   options: AdapterOption[] | undefined,
-  fallback: ReadonlyArray<{ label: string; value: string }>,
+  fallback: ReadonlyArray<FormOption>,
+  t: TranslateFn = defaultCatalogTranslator,
 ) {
   if (!options?.length) {
-    return fallback.map((option) => ({ label: option.label, value: option.value }));
+    return fallback.map((option) => ({ label: resolveFormOptionLabel(option, t), value: option.value }));
   }
-  return options.map((option) => ({ label: option.label || option.value, value: option.value }));
+  return options.map((option) => ({
+    label: formatLlmProviderLabel(option.value, t, option.label || option.value),
+    value: option.value,
+  }));
 }
 
 export function t2iProviderSelectOptions(catalog: AdapterCatalog | undefined, currentValue: string) {
@@ -290,18 +297,25 @@ export function apiSchemaWithAdapterOptions(
             return {
               ...field,
               description: ttsFieldCopy.pathDescription,
+              descriptionKey: undefined,
               disabledReason: ttsFieldCopy.pathDisabledReason,
+              disabledReasonKey: undefined,
               disabledWhen: (value: ApiConfig) => normalizeTtsProvider(value.tts_provider) === "kaggle-gpt-sovits",
               label: ttsFieldCopy.pathLabel,
+              labelKey: undefined,
               placeholder: ttsFieldCopy.pathPlaceholder,
+              placeholderKey: undefined,
             };
           }
           if (field.name === "gpt_sovits_url") {
             return {
               ...field,
               description: ttsFieldCopy.urlDescription,
+              descriptionKey: undefined,
               label: ttsFieldCopy.urlLabel,
+              labelKey: undefined,
               placeholder: ttsFieldCopy.urlPlaceholder,
+              placeholderKey: undefined,
             };
           }
           if (field.name === "t2i_provider") {

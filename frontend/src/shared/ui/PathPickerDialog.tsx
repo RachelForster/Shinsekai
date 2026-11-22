@@ -199,14 +199,10 @@ export function PathPickerDialog({
       >
         <div className="path-picker__standalone-box">
           {mode === "directory" ? (
-            <p className="path-picker__standalone-note">
-              当前处于浏览器/手机独立模式，暂不支持直接选取本地文件夹路径；如需操作电脑磁盘文件夹，请连接电脑端新世界或选择具体文件导入。
-            </p>
+            <p className="path-picker__standalone-note">{t("filePicker.standalone.directoryUnsupported")}</p>
           ) : (
             <>
-              <p className="path-picker__standalone-note">
-                选择的文件将仅缓存在当前设备的浏览器/应用本地 IndexedDB 存储中，不会上传至第三方服务器。
-              </p>
+              <p className="path-picker__standalone-note">{t("filePicker.standalone.localStorageNote")}</p>
               <input
                 accept={standaloneAccept}
                 className="path-picker__standalone-input"
@@ -222,7 +218,7 @@ export function PathPickerDialog({
                   onClick={() => standaloneInputRef.current?.click()}
                   variant="primary"
                 >
-                  {standaloneBusy ? "正在读取文件..." : "从设备选择文件"}
+                  {standaloneBusy ? t("filePicker.standalone.reading") : t("filePicker.standalone.pickFromDevice")}
                 </Button>
               </div>
               {standaloneError ? <p className="path-picker__error">{standaloneError}</p> : null}

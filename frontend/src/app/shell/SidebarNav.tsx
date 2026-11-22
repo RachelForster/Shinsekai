@@ -18,7 +18,7 @@ import {
 import { useEffect, useState } from "react";
 import { openExternal } from "../../entities/files/repository";
 import { RuntimeModeDialog } from "../../features/runtime-mode/RuntimeModeDialog";
-import type { FrontendLanguage, MessageKey } from "../../shared/i18n";
+import type { MessageKey } from "../../shared/i18n";
 import { useI18n } from "../../shared/i18n";
 import { canConnectRemotePc, isRemotePcActive, isStandaloneRuntimeActive } from "../../shared/platform/runtimeTarget";
 import { useAppUpdateInfo } from "./useAppUpdateInfo";
@@ -28,13 +28,12 @@ const GITHUB_REPO_API_URL = "https://api.github.com/repos/RachelForster/Shinseka
 
 type SidebarLink = {
   icon: typeof Settings;
-  label?: Record<FrontendLanguage, string>;
-  labelKey?: MessageKey;
+  labelKey: MessageKey;
   to: string;
 };
 
 const settingsLinks = [
-  { icon: Sparkles, label: { en: "Guide", ja: "ガイド", zh_CN: "新手引导" }, to: "/settings/onboarding" },
+  { icon: Sparkles, labelKey: "nav.onboarding", to: "/settings/onboarding" },
   { icon: Settings, labelKey: "nav.api", to: "/settings/api" },
   { icon: Gamepad2, labelKey: "nav.character", to: "/settings/characters" },
   { icon: FileImage, labelKey: "nav.background", to: "/settings/backgrounds" },
@@ -42,11 +41,7 @@ const settingsLinks = [
   { icon: LayoutTemplate, labelKey: "nav.template", to: "/settings/templates" },
 ] satisfies SidebarLink[];
 
-const extensionLinks = [{ icon: Plug, labelKey: "nav.plugins", to: "/settings/plugins" }] satisfies Array<{
-  icon: typeof Settings;
-  labelKey: MessageKey;
-  to: string;
-}>;
+const extensionLinks = [{ icon: Plug, labelKey: "nav.plugins", to: "/settings/plugins" }] satisfies SidebarLink[];
 
 const maintenanceLinks = [
   { icon: ScrollText, labelKey: "nav.logs", to: "/settings/logs" },
@@ -98,13 +93,6 @@ function useGitHubStars() {
   return stars;
 }
 
-function sidebarLinkLabel(link: SidebarLink, language: FrontendLanguage, t: (key: MessageKey) => string) {
-  if (link.labelKey) {
-    return t(link.labelKey);
-  }
-  return link.label?.[language] ?? link.label?.en ?? "";
-}
-
 const NON_TEXT_INPUT_TYPES = new Set([
   "button",
   "checkbox",
@@ -140,7 +128,7 @@ function opensVirtualKeyboard(el: Element | null): boolean {
 }
 
 export function SidebarNav({ onAssistantToggle, assistantOpen }: SidebarNavProps) {
-  const { language, t } = useI18n();
+  const { t } = useI18n();
   const location = useLocation();
   const standaloneActive = isStandaloneRuntimeActive();
   const showRuntimeModeControl = standaloneActive || isRemotePcActive() || canConnectRemotePc();
@@ -212,6 +200,8 @@ export function SidebarNav({ onAssistantToggle, assistantOpen }: SidebarNavProps
     location.pathname.startsWith("/settings/tools") ||
     location.pathname.startsWith("/settings/music-cover");
 
+  const runtimeModeLabel = t("nav.runtimeMode");
+
   return (
     <>
       <aside className="sidebar">
@@ -244,7 +234,7 @@ export function SidebarNav({ onAssistantToggle, assistantOpen }: SidebarNavProps
           <div className="sidebar__section-label">{t("nav.groupSettings")}</div>
           {visibleSettingsLinks.map((link) => {
             const Icon = link.icon;
-            const label = sidebarLinkLabel(link, language, t);
+            const label = t(link.labelKey);
             return (
               <NavLink className="sidebar__link" key={link.to} title={label} to={link.to}>
                 <Icon aria-hidden className="sidebar__icon" />
@@ -257,7 +247,7 @@ export function SidebarNav({ onAssistantToggle, assistantOpen }: SidebarNavProps
               <div className="sidebar__section-label">{t("nav.groupExtensions")}</div>
               {visibleExtensionLinks.map((link) => {
                 const Icon = link.icon;
-                const label = sidebarLinkLabel(link, language, t);
+                const label = t(link.labelKey);
                 return (
                   <NavLink className="sidebar__link" key={link.to} title={label} to={link.to}>
                     <Icon aria-hidden className="sidebar__icon" />
@@ -270,7 +260,7 @@ export function SidebarNav({ onAssistantToggle, assistantOpen }: SidebarNavProps
           <div className="sidebar__section-label">{t("nav.groupMaintenance")}</div>
           {visibleMaintenanceLinks.map((link) => {
             const Icon = link.icon;
-            const label = sidebarLinkLabel(link, language, t);
+            const label = t(link.labelKey);
             return (
               <NavLink className="sidebar__link" key={link.to} title={label} to={link.to}>
                 <Icon aria-hidden className="sidebar__icon" />
@@ -285,11 +275,11 @@ export function SidebarNav({ onAssistantToggle, assistantOpen }: SidebarNavProps
             <button
               className="sidebar__link sidebar__link--button"
               onClick={() => setRuntimeDialogOpen(true)}
-              title="AI / 跨端配置"
+              title={runtimeModeLabel}
               type="button"
             >
               <KeyRound aria-hidden className="sidebar__icon" />
-              <span className="sidebar__link-label">AI / 跨端配置</span>
+              <span className="sidebar__link-label">{runtimeModeLabel}</span>
             </button>
           ) : null}
           <button
@@ -305,7 +295,7 @@ export function SidebarNav({ onAssistantToggle, assistantOpen }: SidebarNavProps
         </nav>
       </aside>
       <nav
-        aria-label="移动端底部导航"
+        aria-label={t("nav.mobileBottom")}
         className="mobile-bottom-nav"
         data-keyboard-open={keyboardOpen ? "true" : "false"}
       >
@@ -318,19 +308,19 @@ export function SidebarNav({ onAssistantToggle, assistantOpen }: SidebarNavProps
           <span aria-hidden className="mobile-bottom-nav__indicator">
             <MessageCircle aria-hidden className="mobile-bottom-nav__icon" />
           </span>
-          <span>聊天管理</span>
+          <span>{t("nav.mobile.chatManage")}</span>
         </NavLink>
         <NavLink className="mobile-bottom-nav__item" to="/settings/characters">
           <span aria-hidden className="mobile-bottom-nav__indicator">
             <Gamepad2 aria-hidden className="mobile-bottom-nav__icon" />
           </span>
-          <span>角色</span>
+          <span>{t("nav.mobile.characters")}</span>
         </NavLink>
         <NavLink className="mobile-bottom-nav__item" to="/settings/api">
           <span aria-hidden className="mobile-bottom-nav__indicator">
             <Settings aria-hidden className="mobile-bottom-nav__icon" />
           </span>
-          <span>API</span>
+          <span>{t("nav.mobile.api")}</span>
         </NavLink>
         <NavLink
           className={({ isActive }) =>
@@ -341,7 +331,7 @@ export function SidebarNav({ onAssistantToggle, assistantOpen }: SidebarNavProps
           <span aria-hidden className="mobile-bottom-nav__indicator">
             <FileImage aria-hidden className="mobile-bottom-nav__icon" />
           </span>
-          <span>装扮</span>
+          <span>{t("nav.mobile.decorate")}</span>
         </NavLink>
         <NavLink
           className={({ isActive }) =>
@@ -352,7 +342,7 @@ export function SidebarNav({ onAssistantToggle, assistantOpen }: SidebarNavProps
           <span aria-hidden className="mobile-bottom-nav__indicator">
             <SlidersHorizontal aria-hidden className="mobile-bottom-nav__icon" />
           </span>
-          <span>系统</span>
+          <span>{t("nav.mobile.system")}</span>
         </NavLink>
       </nav>
       {runtimeDialogOpen ? (
