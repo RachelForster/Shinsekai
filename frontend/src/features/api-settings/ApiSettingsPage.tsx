@@ -155,8 +155,8 @@ export function ApiSettingsPage() {
   const [ttsBundleTask, setTtsBundleTask] = useState<TaskSnapshot<TtsBundleDownloadResult> | null>(null);
   const adapterCatalog = data?.adapter_catalog;
   const apiSchema = useMemo(
-    () => apiSchemaWithAdapterOptions(adapterCatalog, draft),
-    [adapterCatalog, draft?.t2i_provider, draft?.tts_provider],
+    () => apiSchemaWithAdapterOptions(adapterCatalog, draft, t),
+    [adapterCatalog, draft?.t2i_provider, draft?.tts_provider, t],
   );
   const installedTtsBundlePathForProvider = (provider: string) => {
     const normalizedProvider = normalizeTtsProvider(provider);
@@ -724,17 +724,21 @@ export function ApiSettingsPage() {
   const t2iExtraSchema = adapterSchema(adapterCatalog?.t2i, draft.t2i_provider);
   const visionExtraSchema = adapterSchema(adapterCatalog?.vision, resolvedVisionProvider);
   const visionProviderOptions = withCurrentOption(
-    catalogOptions(adapterCatalog?.vision, [
-      { label: t("api.vision.auto"), value: "auto" },
-      { label: "DeepSeek Vision", value: "deepseek" },
-      { label: "OpenAI Vision", value: "chatgpt" },
-      { label: "Gemini Vision", value: "gemini" },
-      { label: "Claude Vision", value: "claude" },
-      { label: "豆包视觉", value: "doubao" },
-      { label: "通义千问视觉", value: "qwen" },
-      { label: "Ollama Vision（本地）", value: "ollama" },
-      { label: "Moondream", value: "moondream" },
-    ]).map((option) => (option.value === "auto" ? { ...option, label: t("api.vision.auto") } : option)),
+    catalogOptions(
+      adapterCatalog?.vision,
+      [
+        { label: t("api.vision.auto"), value: "auto" },
+        { label: "DeepSeek Vision", value: "deepseek" },
+        { label: "OpenAI Vision", value: "chatgpt" },
+        { label: "Gemini Vision", value: "gemini" },
+        { label: "Claude Vision", value: "claude" },
+        { labelKey: "ops.api.vision.doubao", value: "doubao" },
+        { labelKey: "ops.api.vision.qwen", value: "qwen" },
+        { labelKey: "ops.api.vision.ollamaLocal", value: "ollama" },
+        { label: "Moondream", value: "moondream" },
+      ],
+      t,
+    ).map((option) => (option.value === "auto" ? { ...option, label: t("api.vision.auto") } : option)),
     draft.vision_provider,
   );
   const apiSectionNavItems = [
@@ -762,7 +766,11 @@ export function ApiSettingsPage() {
       return;
     }
     if (containsPathQuotes(draft.llm_base_url)) {
-      showToast({ kind: "error", message: "LLM API 基础网址不能包含引号。", title: t("common.validationFailed") });
+      showToast({
+        kind: "error",
+        message: t("ops.api.llm.baseUrlNoQuotes"),
+        title: t("common.validationFailed"),
+      });
       return;
     }
     if (
@@ -792,13 +800,13 @@ export function ApiSettingsPage() {
       if (!draft.gpt_sovits_url.trim()) {
         showToast({
           kind: "error",
-          message: "当前 TTS 引擎需要填写 URL。",
+          message: t("ops.api.tts.urlRequired"),
           title: t("common.validationFailed"),
         });
         return;
       }
       if (requiresTtsWorkPath(ttsProvider) && !draft.gpt_sovits_api_path.trim()) {
-        const message = "本地 TTS 引擎需要填写服务启动路径。";
+        const message = t("ops.api.tts.pathRequired");
         setErrors({ ...nextErrors, gpt_sovits_api_path: message });
         showToast({
           kind: "error",
@@ -810,7 +818,7 @@ export function ApiSettingsPage() {
       if (containsPathQuotes(draft.gpt_sovits_url) || (!isKaggleTts && containsPathQuotes(draft.gpt_sovits_api_path))) {
         showToast({
           kind: "error",
-          message: "TTS URL 和服务启动路径不能包含引号。",
+          message: t("ops.api.tts.noQuotes"),
           title: t("common.validationFailed"),
         });
         return;
@@ -1007,7 +1015,7 @@ export function ApiSettingsPage() {
           disabled={saveMutation.isPending}
           onChange={(key, value) => updateAdapterExtra("tts_extra_configs", draft.tts_provider, key, value)}
           schema={ttsExtraSchema}
-          title={`${draft.tts_provider} 扩展参数`}
+          title={t("ops.api.extra.providerTitle", { provider: draft.tts_provider })}
           values={draft.tts_extra_configs?.[draft.tts_provider] ?? {}}
         />
       ) : null}

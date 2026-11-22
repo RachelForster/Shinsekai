@@ -98,7 +98,13 @@
     "standalone_compact_speaker_user": "玩家",
     "standalone_compact_speaker_narrator": "旁白",
     "standalone_compact_truncated_suffix": "\n...(较早细节已浓缩)",
-    "standalone_checkpoint_context": "【历史对话总结（截至第 {up_to_seq} 轮，供延续剧情与人物状态参考）】\n{summary}"
+    "standalone_checkpoint_context": "【历史对话总结（截至第 {up_to_seq} 轮，供延续剧情与人物状态参考）】\n{summary}",
+    "character_brief_system": "你负责将人物设定压缩为可复用的人物简介。简介必须不超过100个字符，使用一个自然段，优先保留身份、核心性格、行为或语言特点以及重要人物关系。不要加入原设定中没有的信息，不要使用标题、列表、Markdown或引号，只输出简介。",
+    "character_brief_user_header": "人物名称：{name}\n人物设定：",
+    "character_brief_empty_setting": "无详细设定",
+    "character_setting_system": "你需要帮助用户写出{name}的角色设定，包括{name}的背景信息，性格特点，和语言习惯。输出plain text格式，不要使用markdown格式。\n将{name}的背景信息，性格特点，和语言习惯分段写，并且同一段内标号，不一定是3点，有可能比3点多。\n输出格式示例：\n{name}的背景信息：\n1.姓名和出处：\n2.外表：\n3.背景：\n4.经历：\n\n{name}的性格特点：\n1.\n2.\n3.\n\n{name}的语言习惯：\n1.\n2.",
+    "character_setting_empty_hint": "无",
+    "character_setting_user": "补充信息：{setting},请输出结果："
   },
   "en": {
     "narr_token": "NARR",
@@ -199,7 +205,13 @@
     "standalone_compact_speaker_user": "Player",
     "standalone_compact_speaker_narrator": "Narrator",
     "standalone_compact_truncated_suffix": "\n...(earlier details condensed)",
-    "standalone_checkpoint_context": "[Conversation Summary (up to turn {up_to_seq}, for story & character continuity)]\n{summary}"
+    "standalone_checkpoint_context": "[Conversation Summary (up to turn {up_to_seq}, for story & character continuity)]\n{summary}",
+    "character_brief_system": "Compress the character setting into a reusable character brief. Keep it strictly within 100 characters in a single paragraph, prioritizing identity, core personality, behavioral or speech traits, and key relationships. Never invent facts absent from the setting, and do not use headings, lists, Markdown, or quotation marks—output only the brief.",
+    "character_brief_user_header": "Character name: {name}\nCharacter setting:",
+    "character_brief_empty_setting": "No detailed setting",
+    "character_setting_system": "Help the user write a structured character setting for {name}, covering {name}'s background, personality traits, and speech habits. Output plain text only—do not use Markdown formatting.\nOrganize {name}'s background, personality traits, and speech habits into separate sections with numbered items inside each section (not necessarily limited to 3 items).\nExample format:\nBackground of {name}:\n1. Name and origin:\n2. Appearance:\n3. Background:\n4. Past experiences:\n\nPersonality traits of {name}:\n1.\n2.\n3.\n\nSpeech habits of {name}:\n1.\n2.",
+    "character_setting_empty_hint": "None",
+    "character_setting_user": "Additional notes: {setting}. Please output the character setting:"
   },
   "ja": {
     "narr_token": "NARR",
@@ -300,6 +312,12 @@
     "standalone_compact_speaker_user": "プレイヤー",
     "standalone_compact_speaker_narrator": "ナレーション",
     "standalone_compact_truncated_suffix": "\n...(序盤の詳細は要約済み)",
-    "standalone_checkpoint_context": "【これまでの会話の要約（第 {up_to_seq} ターンまで・物語とキャラクター状態の引き継ぎ用）】\n{summary}"
+    "standalone_checkpoint_context": "【これまでの会話の要約（第 {up_to_seq} ターンまで・物語とキャラクター状態の引き継ぎ用）】\n{summary}",
+    "character_brief_system": "キャラクター設定を再利用可能な人物紹介（ブリーフ）に要約してください。100文字以内の1段落でまとめ、立場・核心的な性格・行動や口調の特徴・重要な人間関係を優先して残してください。元の設定にない情報を追加せず、見出し・箇条書き・Markdown・引用符は使わず、紹介文のみを出力してください。",
+    "character_brief_user_header": "キャラクター名：{name}\nキャラクター設定：",
+    "character_brief_empty_setting": "詳細な設定なし",
+    "character_setting_system": "ユーザーの依頼に基づき、{name}のキャラクター設定（{name}の背景情報、性格の特徴、話し方の癖）を作成してください。Markdown形式は使わず、プレーンテキストのみで出力してください。\n{name}の背景情報、性格の特徴、話し方の癖を段落ごとに分け、各段落内は番号付きにしてください（3項目に限らず増減して構いません）。\n出力形式の例：\n{name}の背景情報：\n1.名前と出典：\n2.外見：\n3.背景：\n4.経歴：\n\n{name}の性格の特徴：\n1.\n2.\n3.\n\n{name}の話し方の癖：\n1.\n2.",
+    "character_setting_empty_hint": "なし",
+    "character_setting_user": "補足情報：{setting}。キャラクター設定を出力してください："
   }
 }

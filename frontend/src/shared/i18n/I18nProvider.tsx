@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 
 import { frontendMessages } from "./messages";
 import type { FrontendLanguage, MessageKey } from "./messages";
+import { setActiveFrontendLanguage } from "./runtimeLanguage";
 
 export type MessageValues = Record<string, string | number>;
 export type TranslateFn = (key: MessageKey, values?: MessageValues) => string;
@@ -41,7 +42,10 @@ export function translateMessage(language: FrontendLanguage, key: MessageKey, va
 }
 
 export function I18nProvider({ children, language }: { children: ReactNode; language: FrontendLanguage }) {
+  setActiveFrontendLanguage(language);
+
   useEffect(() => {
+    setActiveFrontendLanguage(language);
     document.documentElement.lang = language === "zh_CN" ? "zh-CN" : language;
   }, [language]);
 

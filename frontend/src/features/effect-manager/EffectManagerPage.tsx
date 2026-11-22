@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, FolderInput, FolderOutput, Music, Palette, Plus, Save, Trash2, Upload, X } from "lucide-react";
 
-import { DEFAULT_CHARACTER_COLOR } from "../../shared/constants";
+import { DEFAULT_CHARACTER_COLOR, TAG_PREFIX_EFFECT, TAG_PREFIX_IMAGE } from "../../shared/constants";
 
 import {
   effectsQueryKey,
@@ -547,7 +547,7 @@ export function EffectManagerPage() {
     setDraft((current) => {
       const tags = tagContents(current.audio_tags, current.audio_list.length, true);
       tags[index] = value;
-      return { ...current, audio_tags: numberedTags("特效", tags) };
+      return { ...current, audio_tags: numberedTags(TAG_PREFIX_EFFECT, tags) };
     });
   }, []);
 
@@ -555,7 +555,7 @@ export function EffectManagerPage() {
     setDraft((current) => {
       const tags = tagContents(current.image_tags, current.image_list.length, true);
       tags[index] = value;
-      return { ...current, image_tags: numberedTags("图片", tags) };
+      return { ...current, image_tags: numberedTags(TAG_PREFIX_IMAGE, tags) };
     });
   }, []);
 

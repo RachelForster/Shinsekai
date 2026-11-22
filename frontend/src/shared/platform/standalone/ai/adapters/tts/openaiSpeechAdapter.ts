@@ -1,3 +1,5 @@
+import { LLM_PROVIDER_SILICONFLOW } from "../../../../../constants";
+import { translateRuntimeMessage } from "../../../../../i18n/runtimeLanguage";
 import { bytesToBase64, type StandaloneHttpClient } from "../../httpClient";
 import type { StandaloneTtsAdapter, StandaloneTtsInput } from "../types";
 
@@ -39,7 +41,7 @@ function resolveApiKey(input: StandaloneTtsInput, extra: Record<string, unknown>
   if (!reuseLlmKey) return "";
 
   const keys = input.apiConfig.llm_api_key ?? {};
-  const siliconKey = typeof keys["硅基流动"] === "string" ? keys["硅基流动"].trim() : "";
+  const siliconKey = typeof keys[LLM_PROVIDER_SILICONFLOW] === "string" ? keys[LLM_PROVIDER_SILICONFLOW].trim() : "";
   const activeKey =
     typeof keys[input.apiConfig.llm_provider] === "string" ? keys[input.apiConfig.llm_provider].trim() : "";
   return siliconKey || activeKey;
@@ -47,17 +49,25 @@ function resolveApiKey(input: StandaloneTtsInput, extra: Record<string, unknown>
 
 export const openaiSpeechTtsAdapter: StandaloneTtsAdapter = {
   id: "openai-speech",
-  label: "OpenAI 兼容语音 (硅基流动 CosyVoice2 · 支持一Key复用)",
+  get label() {
+    return translateRuntimeMessage("plat.standalone.tts.openaiLabel");
+  },
   browserCors: "supported",
-  description: "兼容 OpenAI /v1/audio/speech，默认指向硅基流动 CosyVoice2；勾选复用 Key 后可直接共用对话 Key。",
+  get description() {
+    return translateRuntimeMessage("plat.standalone.tts.openaiDesc");
+  },
   schema: {
     reuse_llm_key: {
-      label: "复用对话 LLM Key（硅基流动等同源服务可直接留空语音 Key）",
+      get label() {
+        return translateRuntimeMessage("plat.standalone.tts.openaiReuseKey");
+      },
       type: "bool",
       default: true,
     },
     api_key: {
-      label: "语音 API Key（若未勾选复用则必填）",
+      get label() {
+        return translateRuntimeMessage("plat.standalone.tts.openaiApiKey");
+      },
       type: "str",
       secret: true,
       default: "",
@@ -68,22 +78,30 @@ export const openaiSpeechTtsAdapter: StandaloneTtsAdapter = {
       default: "https://api.siliconflow.cn/v1",
     },
     model: {
-      label: "语音模型 ID",
+      get label() {
+        return translateRuntimeMessage("plat.standalone.tts.openaiModelId");
+      },
       type: "str",
       default: "FunAudioLLM/CosyVoice2-0.5B",
     },
     default_voice_id: {
-      label: "默认音色 Voice ID",
+      get label() {
+        return translateRuntimeMessage("plat.standalone.tts.defaultVoice");
+      },
       type: "str",
       default: "FunAudioLLM/CosyVoice2-0.5B:claire",
     },
     enable_zero_shot: {
-      label: "若角色有参考音频，尝试零样本音色克隆",
+      get label() {
+        return translateRuntimeMessage("plat.standalone.tts.openaiZeroShot");
+      },
       type: "bool",
       default: true,
     },
     response_format: {
-      label: "音频格式",
+      get label() {
+        return translateRuntimeMessage("plat.standalone.tts.audioFormat");
+      },
       type: "str",
       choices: ["mp3", "wav", "opus"],
       default: "mp3",

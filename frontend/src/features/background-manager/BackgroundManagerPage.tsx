@@ -24,6 +24,7 @@ import type { Background } from "../../entities/config/types";
 import { openExternal } from "../../entities/files/repository";
 import { baseName, numberedTags, removeTagRows, tagContents } from "../../shared/assets/assetText";
 import { suggestUniqueSpritePrefix } from "../../shared/assets/spritePrefix";
+import { TAG_PREFIX_MUSIC, TAG_PREFIX_SCENE } from "../../shared/constants";
 import { useDebouncedAutoSave } from "../../shared/hooks/useDebouncedAutoSave";
 import { useI18n } from "../../shared/i18n";
 import type { ImageAutoLabelResult, TaskSnapshot } from "../../shared/platform/types";
@@ -344,7 +345,7 @@ export function BackgroundManagerPage() {
         bg_tags: result.bgTags,
         bgm_tags:
           result.bgmRowTags && result.bgmRowTags.length === current.bgm_list.length
-            ? numberedTags("音乐", result.bgmRowTags)
+            ? numberedTags(TAG_PREFIX_MUSIC, result.bgmRowTags)
             : result.bgmTags,
         name: result.name,
       }));
@@ -474,14 +475,14 @@ export function BackgroundManagerPage() {
       });
     },
     onSuccess(background, variables) {
-      const bgTags = removeTagRows(variables.tagBlock, variables.itemCount, [variables.index], "场景");
+      const bgTags = removeTagRows(variables.tagBlock, variables.itemCount, [variables.index], TAG_PREFIX_SCENE);
       const nextBackground = { ...background, bg_tags: bgTags };
       queryClient.setQueryData<Background[]>(backgroundsQueryKey, (current = []) =>
         current.map((item) => (item.name === nextBackground.name ? nextBackground : item)),
       );
       setDraft((current) => ({
         ...current,
-        bg_tags: removeTagRows(current.bg_tags, current.sprites.length, [variables.index], "场景"),
+        bg_tags: removeTagRows(current.bg_tags, current.sprites.length, [variables.index], TAG_PREFIX_SCENE),
         sprites: background.sprites,
       }));
       showToast({ kind: "success", title: t("common.remove") });
@@ -515,7 +516,7 @@ export function BackgroundManagerPage() {
       });
     },
     onSuccess(background, variables) {
-      const bgmTags = removeTagRows(variables.tagBlock, variables.itemCount, [variables.index], "音乐");
+      const bgmTags = removeTagRows(variables.tagBlock, variables.itemCount, [variables.index], TAG_PREFIX_MUSIC);
       const nextBackground = { ...background, bgm_tags: bgmTags };
       queryClient.setQueryData<Background[]>(backgroundsQueryKey, (current = []) =>
         current.map((item) => (item.name === nextBackground.name ? nextBackground : item)),
@@ -523,7 +524,7 @@ export function BackgroundManagerPage() {
       setDraft((current) => ({
         ...current,
         bgm_list: background.bgm_list,
-        bgm_tags: removeTagRows(current.bgm_tags, current.bgm_list.length, [variables.index], "音乐"),
+        bgm_tags: removeTagRows(current.bgm_tags, current.bgm_list.length, [variables.index], TAG_PREFIX_MUSIC),
       }));
       setSelectedBgmIndexes([]);
       showToast({ kind: "success", title: t("common.remove") });
@@ -549,7 +550,7 @@ export function BackgroundManagerPage() {
       });
     },
     onSuccess(background, variables) {
-      const bgmTags = removeTagRows(variables.tagBlock, variables.itemCount, variables.indexes, "音乐");
+      const bgmTags = removeTagRows(variables.tagBlock, variables.itemCount, variables.indexes, TAG_PREFIX_MUSIC);
       const nextBackground = { ...background, bgm_tags: bgmTags };
       queryClient.setQueryData<Background[]>(backgroundsQueryKey, (current = []) =>
         current.map((item) => (item.name === nextBackground.name ? nextBackground : item)),
@@ -557,7 +558,7 @@ export function BackgroundManagerPage() {
       setDraft((current) => ({
         ...current,
         bgm_list: background.bgm_list,
-        bgm_tags: removeTagRows(current.bgm_tags, current.bgm_list.length, variables.indexes, "音乐"),
+        bgm_tags: removeTagRows(current.bgm_tags, current.bgm_list.length, variables.indexes, TAG_PREFIX_MUSIC),
       }));
       setSelectedBgmIndexes([]);
       showToast({ kind: "success", title: t("background.asset.deleteSelectedBgm") });
@@ -606,7 +607,7 @@ export function BackgroundManagerPage() {
         const baseDraft = draftMatchesSelection ? current : currentDraft;
         const tags = tagContents(baseDraft.bgm_tags, baseDraft.bgm_list.length);
         tags[index] = value;
-        return { ...baseDraft, bgm_tags: numberedTags("音乐", tags) };
+        return { ...baseDraft, bgm_tags: numberedTags(TAG_PREFIX_MUSIC, tags) };
       });
       setDraftSourceName(currentBackgroundName);
     },
@@ -619,7 +620,7 @@ export function BackgroundManagerPage() {
         const baseDraft = draftMatchesSelection ? current : currentDraft;
         const tags = tagContents(baseDraft.bg_tags, baseDraft.sprites.length);
         tags[index] = value;
-        return { ...baseDraft, bg_tags: numberedTags("场景", tags) };
+        return { ...baseDraft, bg_tags: numberedTags(TAG_PREFIX_SCENE, tags) };
       });
       setDraftSourceName(currentBackgroundName);
     },

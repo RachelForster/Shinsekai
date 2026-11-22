@@ -1,3 +1,4 @@
+import { translateRuntimeMessage } from "../../../../../i18n/runtimeLanguage";
 import type { StandaloneTtsAdapter, StandaloneTtsInput } from "../types";
 
 export function stopBrowserSpeechSynthesis(): void {
@@ -13,12 +14,18 @@ export function stopBrowserSpeechSynthesis(): void {
 
 export const browserSpeechTtsAdapter: StandaloneTtsAdapter = {
   id: "browser-speech",
-  label: "浏览器系统朗读 (免 Key 轻量兜底)",
+  get label() {
+    return translateRuntimeMessage("plat.standalone.tts.browserLabel");
+  },
   browserCors: "supported",
-  description: "调用当前设备系统内置语音朗读台词，无需任何 API Key（不支持口型音频波纹采样）。",
+  get description() {
+    return translateRuntimeMessage("plat.standalone.tts.browserDesc");
+  },
   schema: {
     rate: {
-      label: "语速倍率",
+      get label() {
+        return translateRuntimeMessage("plat.standalone.tts.speedRate");
+      },
       type: "float",
       min: 0.5,
       max: 2.0,
@@ -26,7 +33,9 @@ export const browserSpeechTtsAdapter: StandaloneTtsAdapter = {
       default: 1.0,
     },
     pitch: {
-      label: "音高倍率",
+      get label() {
+        return translateRuntimeMessage("plat.standalone.tts.pitchRate");
+      },
       type: "float",
       min: 0.5,
       max: 2.0,

@@ -24,12 +24,18 @@ import {
   type ReplayCapture,
 } from "../replay/historyExport";
 import { useHistorySelection } from "../replay/useHistorySelection";
+import {
+  HIDDEN_HISTORY_LINE_PATTERN,
+  HIDDEN_HISTORY_SPEAKERS,
+  LEGACY_DEFAULT_USER_SPEAKER,
+  LOCAL_TIME_PREFIX_PATTERN,
+} from "../../../shared/constants";
 import { Button, Switch } from "../../../shared/ui";
-import { useI18n } from "../../../shared/i18n";
+import { translateRuntimeMessage, useI18n } from "../../../shared/i18n";
 import { ChatStageModal } from "./ChatStageModal";
 
-const defaultUserDisplayName = "你";
-const hiddenSystemHistorySpeakers = new Set(["scene", "场景", "bgm"]);
+const defaultUserDisplayName = LEGACY_DEFAULT_USER_SPEAKER;
+const hiddenSystemHistorySpeakers = new Set<string>(HIDDEN_HISTORY_SPEAKERS);
 const historyRenderBatchSize = 120;
 
 interface HistoryClip {
@@ -40,7 +46,11 @@ interface HistoryClip {
 }
 
 function normalizeUserDisplayName(value?: string) {
-  return value?.trim() || defaultUserDisplayName;
+  const trimmed = value?.trim();
+  if (!trimmed || trimmed === defaultUserDisplayName) {
+    return translateRuntimeMessage("ops.chatStage.defaultUserSpeaker");
+  }
+  return trimmed;
 }
 
 function userSpeakerPrefixPattern(userDisplayName: string) {
@@ -124,7 +134,7 @@ function isHiddenSystemHistoryEntry(entry: ChatHistoryEntry, dialog: { speaker: 
   if (hiddenSystemHistorySpeakers.has(normalizeHistorySpeaker(dialog.speaker))) {
     return true;
   }
-  return /^\s*(?:scene|场景|bgm)\s*[：:]/i.test(entry.text);
+  return HIDDEN_HISTORY_LINE_PATTERN.test(entry.text);
 }
 
 function normalizeHistorySearch(value: string) {
@@ -133,7 +143,7 @@ function normalizeHistorySearch(value: string) {
 
 function shareableUserText(text: string) {
   return text
-    .replace(/^\[[^\]\n]*(?:本地时间|Local time)[^\]\n]*\]\s*/, "")
+    .replace(LOCAL_TIME_PREFIX_PATTERN, "")
     .replace(/(?:\s*\[(?:image|file):[^\]\r\n]*\])+\s*$/i, "")
     .trim();
 }

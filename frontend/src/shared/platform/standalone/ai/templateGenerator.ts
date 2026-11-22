@@ -1,4 +1,13 @@
 import { tagContents } from "../../../assets/assetText";
+import {
+  DEFAULT_SPRITE_GROUP,
+  LANG_ALIAS_CHINESE_ZH,
+  LANG_ALIAS_ENGLISH_ZH,
+  LEGACY_TRANSPARENT_BACKGROUND_ALIAS,
+  TRANSPARENT_BACKGROUND_NAME,
+} from "../../../constants";
+import { translateRuntimeMessage } from "../../../i18n/runtimeLanguage";
+import { SELF_PERSONA_NAME } from "../../../playerCharacterOptions";
 import { PlatformRequestError } from "../../errors";
 import type { Character, RelationEdge } from "../../slices/characterTypes";
 import type { AppConfig, SystemConfig } from "../../slices/configTypes";
@@ -11,10 +20,10 @@ import type {
 } from "../../slices/workspaceTypes";
 import { createStandaloneTemplateTranslator } from "./standaloneTemplateLocales";
 
-export const SELF_PERSONA_NAME = "自设";
-export const TRANSPARENT_BG = "透明场景";
-const TRANSPARENT_BG_ALIAS = "透明背景";
-export const DEFAULT_EMPTY_SCENARIO = "你扮演一个RPG系统。";
+export { SELF_PERSONA_NAME };
+export const TRANSPARENT_BG = TRANSPARENT_BACKGROUND_NAME;
+const TRANSPARENT_BG_ALIAS = LEGACY_TRANSPARENT_BACKGROUND_ALIAS;
+export const DEFAULT_EMPTY_SCENARIO = createStandaloneTemplateTranslator("zh_CN")("default_empty_scenario");
 
 const COT_TOKEN = "COT";
 const CHOICE_TOKEN = "CHOICE";
@@ -50,10 +59,10 @@ export function targetVoiceKey(code?: string | null): "ja" | "en" | "zh" | "yue"
   if (low === "yue" || low === "yue_hk" || low === "cantonese" || low === "cht" || low === "zh_hk") {
     return "yue";
   }
-  if (low.startsWith("en") || low === "english" || low === "英语") {
+  if (low.startsWith("en") || low === "english" || low === LANG_ALIAS_ENGLISH_ZH) {
     return "en";
   }
-  if (low.startsWith("zh") || low === "chinese" || low === "中文") {
+  if (low.startsWith("zh") || low === "chinese" || low === LANG_ALIAS_CHINESE_ZH) {
     return "zh";
   }
   return "ja";
@@ -99,22 +108,23 @@ export function resolvePlayerCharacter(
   allCharacters: Character[],
   resolvedCastNames: string[],
   rawPlayerName: unknown,
+  uiLanguage?: string,
 ): string {
   const name = String(rawPlayerName ?? "").trim();
   if (!name) return "";
   const character = findCharacterByName(allCharacters, name);
   if (!character) {
-    throw new Error("主控人物必须是已选择的有效角色。");
+    throw new Error(translateRuntimeMessage("plat.standalone.playerMustBeValid", undefined, uiLanguage));
   }
   const castKeys = new Set(resolvedCastNames.map((n) => characterNameKey(n)));
   if (!isSelfPersonaName(character.name) && !castKeys.has(characterNameKey(character.name))) {
-    throw new Error("主控人物必须是已选择的有效角色。");
+    throw new Error(translateRuntimeMessage("plat.standalone.playerMustBeValid", undefined, uiLanguage));
   }
   return character.name;
 }
 
 function spriteGroupOf(group: string | null | undefined): string {
-  return String(group ?? "").trim() || "默认";
+  return String(group ?? "").trim() || DEFAULT_SPRITE_GROUP;
 }
 
 function listNonEmptySpriteGroups(character: Character): string[] {
@@ -145,8 +155,8 @@ function resolveDefaultSpriteGroup(character: Character): string {
       return norm;
     }
   }
-  if (!present.length || present.includes("默认")) {
-    return "默认";
+  if (!present.length || present.includes(DEFAULT_SPRITE_GROUP)) {
+    return DEFAULT_SPRITE_GROUP;
   }
   return present[0];
 }
@@ -262,7 +272,7 @@ export function generateStandaloneDialogSystemTemplate(options: GenerateTemplate
     throw new PlatformRequestError(t("err_no_characters"), 400, "no_valid_characters");
   }
 
-  const playerCharacter = resolvePlayerCharacter(allCharacters, resolvedNames, input.playerCharacter);
+  const playerCharacter = resolvePlayerCharacter(allCharacters, resolvedNames, input.playerCharacter, uiLanguage);
   const allowPlayerDialogue = input.allowPlayerDialogue !== false;
   const readPlayerSpeech = Boolean(playerCharacter && input.readPlayerSpeech);
 

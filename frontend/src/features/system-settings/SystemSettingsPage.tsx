@@ -61,20 +61,20 @@ const systemRemainingGroups = systemConfigPageSchema.filter(
   (group) => group.id !== "ui" && group.id !== "network-proxy",
 );
 
-function networkProxySourceLabel(source: string) {
+function networkProxySourceLabel(source: string, t: ReturnType<typeof useI18n>["t"]) {
   switch (source) {
     case "environment":
-      return "环境变量";
+      return t("ops.system.proxy.source.env");
     case "process-environment":
-      return "当前进程环境变量";
+      return t("ops.system.proxy.source.processEnv");
     case "windows":
-      return "Windows 系统代理";
+      return t("ops.system.proxy.source.windows");
     case "macos":
-      return "macOS 系统代理";
+      return t("ops.system.proxy.source.macos");
     case "gnome":
-      return "GNOME 系统代理";
+      return t("ops.system.proxy.source.gnome");
     case "kde":
-      return "KDE 系统代理";
+      return t("ops.system.proxy.source.kde");
     default:
       return source;
   }
@@ -181,13 +181,13 @@ export function SystemSettingsPage() {
     onError(error) {
       showToast({
         kind: "error",
-        message: error instanceof Error ? error.message : "无法读取当前系统代理配置。",
-        title: "检测系统代理失败",
+        message: error instanceof Error ? error.message : t("ops.system.proxy.detectError"),
+        title: t("ops.system.proxy.detectFailedTitle"),
       });
     },
     onSuccess(result) {
       const hasProxy = Boolean(result.http_proxy_url || result.https_proxy_url || result.socks5_proxy_url);
-      const sourceLabel = networkProxySourceLabel(result.source);
+      const sourceLabel = networkProxySourceLabel(result.source, t);
       setDraft((current) =>
         current
           ? {
@@ -203,10 +203,10 @@ export function SystemSettingsPage() {
         kind: hasProxy ? "success" : "info",
         message: hasProxy
           ? sourceLabel
-            ? `来源：${sourceLabel}`
+            ? t("ops.system.proxy.sourcePrefix", { source: sourceLabel })
             : undefined
-          : "没有读取到 HTTP / HTTPS / SOCKS5 代理。",
-        title: hasProxy ? "已填入检测到的代理" : "未检测到系统代理",
+          : t("ops.system.proxy.emptyBody"),
+        title: hasProxy ? t("ops.system.proxy.detectedTitle") : t("ops.system.proxy.emptyTitle"),
       });
     },
   });
@@ -266,21 +266,21 @@ export function SystemSettingsPage() {
       {showCrossPlatformCard ? (
         <section className="section page-section-anchor" id="system-cross-platform">
           <div className="section__header">
-            <h2 className="section__title">运行模式与跨端连接</h2>
+            <h2 className="section__title">{t("ops.system.crossPlatformTitle")}</h2>
             <div className="section__actions">
               <Button onClick={() => setRuntimeModeOpen(true)} variant="primary">
-                配置 API Key / 角色包 / 电脑连接
+                {t("ops.system.crossPlatformButton")}
               </Button>
             </div>
           </div>
           <p className="page__subtitle">
             {isRemotePcActive()
-              ? "当前运行模式：已连接电脑端满血 Python 后端（可随时切回本机独立模式）。"
+              ? t("ops.system.crossPlatformRemote")
               : getRuntimeTarget() === "toy"
-                ? "当前运行模式：Bilibili Toy 浏览器独立模式（本地 IndexedDB 持久化 + 自填 LLM / TTS API Key）。"
+                ? t("ops.system.crossPlatformToy")
                 : getRuntimeTarget() === "mobile"
-                  ? "当前运行模式：手机独立模式（无 Python 依赖，支持随时接入电脑端满血后端或同步 .char 角色）。"
-                  : "当前运行模式：纯前端独立模式（支持快速配置 API Key、导入 .char 角色包及连接桌面端）。"}
+                  ? t("ops.system.crossPlatformMobile")
+                  : t("ops.system.crossPlatformStandalone")}
           </p>
         </section>
       ) : null}
@@ -330,7 +330,7 @@ export function SystemSettingsPage() {
               ))}
             </Select>
             <span className="field-row__help" id="chat_ui_theme_id-help">
-              这是 React Stage 的聊天主题。
+              {t("ops.system.chatThemeHelp")}
             </span>
             {chatThemesQuery.isLoading ? <span className="field-row__help">{t("system.loading")}</span> : null}
             {!chatThemesQuery.isLoading && themeOptions.length === 0 ? (
@@ -355,7 +355,7 @@ export function SystemSettingsPage() {
                 loading={detectNetworkProxyMutation.isPending}
                 onClick={() => detectNetworkProxyMutation.mutate()}
               >
-                检测当前系统代理
+                {t("ops.system.proxy.detectButton")}
               </AsyncButton>
             </div>
           </div>

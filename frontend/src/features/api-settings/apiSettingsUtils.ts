@@ -11,8 +11,9 @@ import type {
   ApiConfig,
   SystemConfig,
 } from "../../entities/config/types";
+import { LEGACY_TTS_NONE_LABEL, LLM_PROVIDER_DOUBAO, LLM_PROVIDER_QWEN } from "../../shared/constants";
 import { resolveFormOptionLabel, type FormGroupSchema, type FormOption } from "../../shared/form-schema";
-import { formatLlmProviderLabel, translateMessage, type TranslateFn } from "../../shared/i18n";
+import { formatLlmProviderLabel, translateRuntimeMessage, type TranslateFn } from "../../shared/i18n";
 import { perceptionModelSettings } from "../../shared/platform/perceptionModel";
 import type { LlmModelOption, TaskSnapshot } from "../../shared/platform/types";
 
@@ -128,7 +129,7 @@ export function normalizeTtsProvider(provider: string) {
   if (!normalized) {
     return "gpt-sovits";
   }
-  if (["none", "off", "disable", "disabled", "不使用"].includes(normalized)) {
+  if (["none", "off", "disable", "disabled", LEGACY_TTS_NONE_LABEL].includes(normalized)) {
     return "none";
   }
   return TTS_PROVIDER_ALIASES[normalized] ?? normalized;
@@ -175,7 +176,7 @@ export function normalizeApiAsrForSave(apiConfig: ApiConfig, systemConfig: Syste
   return updateAsrExtraConfig(apiConfig, "vosk", "model_path", modelPath);
 }
 
-const defaultCatalogTranslator: TranslateFn = (key, values) => translateMessage("zh_CN", key, values);
+const defaultCatalogTranslator: TranslateFn = (key, values) => translateRuntimeMessage(key, values);
 
 export function catalogOptions(
   options: AdapterOption[] | undefined,
@@ -205,57 +206,57 @@ export function adapterSchema(options: AdapterOption[] | undefined, value: strin
   return options?.find((option) => option.value === value)?.schema ?? {};
 }
 
-function ttsSharedServerFieldCopy(provider: string) {
+function ttsSharedServerFieldCopy(provider: string, t: TranslateFn = defaultCatalogTranslator) {
   switch (normalizeTtsProvider(provider)) {
     case "genie-tts":
       return {
-        pathDescription: "当 Genie TTS 服务 URL 指向本机时必填，用于自动启动本地 Genie TTS Server。",
+        pathDescription: t("ops.api.tts.genie.pathDesc"),
         pathDisabledReason: undefined,
-        pathLabel: "Genie TTS 服务启动路径",
-        pathPlaceholder: "选择 Genie TTS Server 整合包根目录",
-        urlDescription: "Genie TTS Server 的 HTTP 地址。",
-        urlLabel: "Genie TTS 服务 URL",
-        urlPlaceholder: "如 http://127.0.0.1:9880/",
+        pathLabel: t("ops.api.tts.genie.pathLabel"),
+        pathPlaceholder: t("ops.api.tts.genie.pathPlaceholder"),
+        urlDescription: t("ops.api.tts.genie.urlDesc"),
+        urlLabel: t("ops.api.tts.genie.urlLabel"),
+        urlPlaceholder: t("ops.api.tts.genie.urlPlaceholder"),
       };
     case "index-tts":
       return {
-        pathDescription: "当 IndexTTS 服务 URL 指向本机时必填，用于自动启动本地 IndexTTS 服务。",
+        pathDescription: t("ops.api.tts.indexTts.pathDesc"),
         pathDisabledReason: undefined,
-        pathLabel: "IndexTTS 服务启动路径",
-        pathPlaceholder: "选择 IndexTTS 服务工程根目录",
-        urlDescription: "IndexTTS 服务的 HTTP 地址。",
-        urlLabel: "IndexTTS 服务 URL",
-        urlPlaceholder: "如 http://127.0.0.1:9880/",
+        pathLabel: t("ops.api.tts.indexTts.pathLabel"),
+        pathPlaceholder: t("ops.api.tts.indexTts.pathPlaceholder"),
+        urlDescription: t("ops.api.tts.indexTts.urlDesc"),
+        urlLabel: t("ops.api.tts.indexTts.urlLabel"),
+        urlPlaceholder: t("ops.api.tts.indexTts.urlPlaceholder"),
       };
     case "kaggle-gpt-sovits":
       return {
-        pathDescription: "Kaggle GPT-SoVITS 通过远端 Notebook URL 调用，本地整合包目录不会参与启动。",
-        pathDisabledReason: "Kaggle 模式通过远端 Notebook URL 调用，不使用本地 GPT-SoVITS 路径。",
-        pathLabel: "Kaggle GPT-SoVITS 本地路径",
-        pathPlaceholder: "Kaggle 模式不使用本地服务启动路径",
-        urlDescription: "Kaggle Notebook 暴露出来的 GPT-SoVITS HTTP 地址。",
-        urlLabel: "Kaggle Notebook 服务 URL",
-        urlPlaceholder: "填写 Kaggle Notebook 暴露的 http(s) URL",
+        pathDescription: t("ops.api.tts.kaggle.pathDesc"),
+        pathDisabledReason: t("ops.api.tts.kaggle.pathDisabledReason"),
+        pathLabel: t("ops.api.tts.kaggle.pathLabel"),
+        pathPlaceholder: t("ops.api.tts.kaggle.pathPlaceholder"),
+        urlDescription: t("ops.api.tts.kaggle.urlDesc"),
+        urlLabel: t("ops.api.tts.kaggle.urlLabel"),
+        urlPlaceholder: t("ops.api.tts.kaggle.urlPlaceholder"),
       };
     case "gpt-sovits":
       return {
-        pathDescription: "当 GPT-SoVITS 服务 URL 指向本机时必填，用于自动启动本地 GPT-SoVITS 服务。",
+        pathDescription: t("ops.api.tts.gptSovits.pathDesc"),
         pathDisabledReason: undefined,
-        pathLabel: "GPT-SoVITS 服务启动路径",
-        pathPlaceholder: "选择 GPT-SoVITS 整合包或工程根目录",
-        urlDescription: "GPT-SoVITS API 服务的 HTTP 地址。",
-        urlLabel: "GPT-SoVITS 服务 URL",
-        urlPlaceholder: "如 http://127.0.0.1:9880/",
+        pathLabel: t("ops.api.tts.gptSovits.pathLabel"),
+        pathPlaceholder: t("ops.api.tts.gptSovits.pathPlaceholder"),
+        urlDescription: t("ops.api.tts.gptSovits.urlDesc"),
+        urlLabel: t("ops.api.tts.gptSovits.urlLabel"),
+        urlPlaceholder: t("ops.api.tts.gptSovits.urlPlaceholder"),
       };
     default:
       return {
-        pathDescription: "当 TTS 服务 URL 指向本机时必填，用于自动启动本地 TTS 服务。",
+        pathDescription: t("ops.api.tts.default.pathDesc"),
         pathDisabledReason: undefined,
-        pathLabel: "TTS 服务启动路径",
-        pathPlaceholder: "选择 TTS 服务工程或整合包根目录",
-        urlDescription: "TTS 服务的 HTTP 地址。",
-        urlLabel: "TTS 服务 URL",
-        urlPlaceholder: "如 http://127.0.0.1:9880/",
+        pathLabel: t("ops.api.tts.default.pathLabel"),
+        pathPlaceholder: t("ops.api.tts.default.pathPlaceholder"),
+        urlDescription: t("ops.api.tts.default.urlDesc"),
+        urlLabel: t("ops.api.tts.default.urlLabel"),
+        urlPlaceholder: t("ops.api.tts.default.urlPlaceholder"),
       };
   }
 }
@@ -263,24 +264,33 @@ function ttsSharedServerFieldCopy(provider: string) {
 export function apiSchemaWithAdapterOptions(
   catalog: AdapterCatalog | undefined,
   draft: ApiConfig | null,
+  t: TranslateFn = defaultCatalogTranslator,
 ): Array<FormGroupSchema<ApiConfig>> {
-  const ttsFieldCopy = ttsSharedServerFieldCopy(draft?.tts_provider ?? "");
+  const ttsFieldCopy = ttsSharedServerFieldCopy(draft?.tts_provider ?? "", t);
   const ttsOptions = withCurrentOption(
-    catalogOptions(catalog?.tts, [
-      { label: "不使用", value: "none" },
-      { label: "Genie TTS", value: "genie-tts" },
-      { label: "Kaggle GPT-SoVITS", value: "kaggle-gpt-sovits" },
-      { label: "GPT SoVITS", value: "gpt-sovits" },
-      { label: "IndexTTS", value: "index-tts" },
-      { label: "CosyVoice", value: "cosyvoice" },
-    ]),
+    catalogOptions(
+      catalog?.tts,
+      [
+        { labelKey: "ops.api.tts.noneOption", value: "none" },
+        { label: "Genie TTS", value: "genie-tts" },
+        { label: "Kaggle GPT-SoVITS", value: "kaggle-gpt-sovits" },
+        { label: "GPT SoVITS", value: "gpt-sovits" },
+        { label: "IndexTTS", value: "index-tts" },
+        { label: "CosyVoice", value: "cosyvoice" },
+      ],
+      t,
+    ),
     draft?.tts_provider ?? "",
   );
   const t2iOptions = withCurrentOption(
-    catalogOptions(catalog?.t2i, [
-      { label: "ComfyUI", value: "comfyui" },
-      { label: "Stable Diffusion", value: "stable diffusion" },
-    ]),
+    catalogOptions(
+      catalog?.t2i,
+      [
+        { label: "ComfyUI", value: "comfyui" },
+        { label: "Stable Diffusion", value: "stable diffusion" },
+      ],
+      t,
+    ),
     draft?.t2i_provider ?? "",
   );
 
@@ -554,10 +564,10 @@ export const visionProviderLlmProviders: Record<string, string> = {
   chatgpt: "ChatGPT",
   claude: "Claude",
   deepseek: "Deepseek",
-  doubao: "豆包",
+  doubao: LLM_PROVIDER_DOUBAO,
   gemini: "Gemini",
   ollama: "Ollama",
-  qwen: "通义千问",
+  qwen: LLM_PROVIDER_QWEN,
 };
 
 export const visionDefaultModels: Record<string, string> = {

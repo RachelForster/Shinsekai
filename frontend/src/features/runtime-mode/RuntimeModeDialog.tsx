@@ -12,6 +12,9 @@ import {
 import { configQueryKey, getAppConfig, saveApiConfig, testLlmConnection } from "../../entities/config/repository";
 import type { Character } from "../../entities/config/types";
 import { llmDefaultBaseUrls, llmProviderOptions } from "../../entities/config/schema";
+import { LLM_PROVIDER_SILICONFLOW } from "../../shared/constants";
+import { resolveFormOptionLabel } from "../../shared/form-schema";
+import { useOptionalI18n } from "../../shared/i18n";
 import { resetPlatformForModeSwitch } from "../../shared/platform/platform";
 import {
   canConnectRemotePc,
@@ -42,6 +45,7 @@ interface RuntimeModeDialogProps {
 type DialogTab = "keys" | "characters" | "remote";
 
 export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
+  const { t } = useOptionalI18n();
   const { showToast } = useToast();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -63,7 +67,7 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
   });
 
   // Quick Key state
-  const [llmProvider, setLlmProvider] = useState("硅基流动");
+  const [llmProvider, setLlmProvider] = useState(LLM_PROVIDER_SILICONFLOW);
   const [llmApiKey, setLlmApiKey] = useState("");
   const [llmBaseUrl, setLlmBaseUrl] = useState("https://api.siliconflow.cn/v1");
   const [llmModel, setLlmModel] = useState("deepseek-ai/DeepSeek-V3");
@@ -114,7 +118,7 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
   useEffect(() => {
     if (!open || !configQuery.data) return;
     const api = configQuery.data.api_config;
-    const provider = api.llm_provider || "硅基流动";
+    const provider = api.llm_provider || LLM_PROVIDER_SILICONFLOW;
     const preset = getLlmProviderPreset(provider);
     setLlmProvider(provider);
     setLlmApiKey(api.llm_api_key?.[provider] ?? "");
@@ -186,13 +190,13 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
       await queryClient.invalidateQueries({ queryKey: configQueryKey });
       showToast({
         kind: "success",
-        title: "配置已保存",
-        message: "对话模型与云端语音配置已生效。",
+        title: t("ops.runtime.keysSavedTitle"),
+        message: t("ops.runtime.keysSavedMsg"),
       });
     } catch (error) {
       showToast({
         kind: "error",
-        title: "保存失败",
+        title: t("ops.runtime.saveFailed"),
         message: error instanceof Error ? error.message : String(error),
       });
     } finally {
@@ -211,13 +215,13 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
       });
       showToast({
         kind: "success",
-        title: "测试连接成功",
+        title: t("ops.runtime.testPassed"),
         message: result.message,
       });
     } catch (error) {
       showToast({
         kind: "error",
-        title: "测试连接失败",
+        title: t("ops.runtime.testFailed"),
         message: error instanceof Error ? error.message : String(error),
       });
     } finally {
@@ -236,13 +240,15 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
       await queryClient.invalidateQueries({ queryKey: configQueryKey });
       showToast({
         kind: "success",
-        title: "角色导入成功",
-        message: `已导入 ${imported.map((c) => c.name).join("、")}，可在角色工坊查看或发起新对话。`,
+        title: t("ops.runtime.charImportedTitle"),
+        message: t("ops.runtime.charImportedMsg", {
+          names: imported.map((c) => c.name).join(t("ops.runtime.listSeparator")),
+        }),
       });
     } catch (error) {
       showToast({
         kind: "error",
-        title: "导入角色包失败",
+        title: t("ops.runtime.charImportFailed"),
         message: error instanceof Error ? error.message : String(error),
       });
     } finally {
@@ -255,15 +261,17 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
       await exportCharacter(name);
       showToast({
         kind: "success",
-        title: "角色包已导出",
-        message: `已生成 ${name}.char`,
+        title: t("ops.runtime.charExportedTitle"),
+        message: t("ops.runtime.charExportedMsg", { name }),
       });
     } catch (error) {
       showToast({
         kind: "error",
-        title: "导出失败",
+        title: t("ops.runtime.charExportFailed"),
         message: error instanceof Error ? error.message : String(error),
       });
+    } finally {
+      // no-op
     }
   };
 
@@ -283,7 +291,7 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
       setRemoteCharacters(remoteChars);
       showToast({
         kind: "success",
-        title: "电脑端连接正常",
+        title: t("ops.runtime.pcConnected"),
         message: result.message,
       });
     } catch (error) {
@@ -291,7 +299,7 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
       setRemoteStatusMsg(msg);
       showToast({
         kind: "error",
-        title: "无法连接电脑端",
+        title: t("ops.runtime.pcConnectFailed"),
         message: msg,
       });
     } finally {
@@ -304,8 +312,8 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
     if (nextMode === "remote-pc" && !cleanUrl) {
       showToast({
         kind: "error",
-        title: "请填写电脑端地址",
-        message: "例如 http://192.168.1.100:8787",
+        title: t("ops.runtime.pcAddressRequiredTitle"),
+        message: t("ops.runtime.pcAddressRequiredMsg"),
       });
       return;
     }
@@ -319,11 +327,8 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
     await queryClient.invalidateQueries();
     showToast({
       kind: "success",
-      title: nextMode === "remote-pc" ? "已切换为连电脑端模式" : "已切换为手机独立模式",
-      message:
-        nextMode === "remote-pc"
-          ? "正在直接使用电脑端的本地模型、记忆与资产库。"
-          : "已切换至本机 Standalone 存储与自带 API Key 模式。",
+      title: nextMode === "remote-pc" ? t("ops.runtime.switchedPcTitle") : t("ops.runtime.switchedStandaloneTitle"),
+      message: nextMode === "remote-pc" ? t("ops.runtime.switchedPcMsg") : t("ops.runtime.switchedStandaloneMsg"),
     });
   };
 
@@ -341,13 +346,13 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
       }
       showToast({
         kind: "success",
-        title: "已离线缓存到本机",
-        message: `角色「${imported[0]?.name || name}」已写入手机本地存储。`,
+        title: t("ops.runtime.syncCharTitle"),
+        message: t("ops.runtime.syncCharMsg", { name: imported[0]?.name || name }),
       });
     } catch (error) {
       showToast({
         kind: "error",
-        title: "同步角色失败",
+        title: t("ops.runtime.syncCharFailed"),
         message: error instanceof Error ? error.message : String(error),
       });
     } finally {
@@ -364,7 +369,7 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
     <Dialog
       bodyClassName="runtime-mode-dialog__body"
       className="runtime-mode-dialog"
-      closeLabel="关闭"
+      closeLabel={t("ops.runtime.close")}
       footer={
         <div className="runtime-mode-dialog__footer">
           <Button
@@ -374,16 +379,16 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
             }}
             type="button"
           >
-            完整设置工作台
+            {t("ops.runtime.fullWorkbench")}
           </Button>
           <Button onClick={onClose} type="button" variant="primary">
-            完成
+            {t("ops.runtime.done")}
           </Button>
         </div>
       }
       onClose={onClose}
       open={open}
-      title="AI / 语音与跨端运行配置"
+      title={t("ops.runtime.title")}
     >
       <div className="runtime-mode-dialog__tabs" role="tablist">
         <button
@@ -395,7 +400,7 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
           type="button"
         >
           <KeyRound aria-hidden size={15} />
-          <span>配 Key / 语音</span>
+          <span>{t("ops.runtime.tabKeys")}</span>
         </button>
         <button
           aria-selected={activeTab === "characters"}
@@ -406,7 +411,7 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
           type="button"
         >
           <Sparkles aria-hidden size={15} />
-          <span>角色包 (.char)</span>
+          <span>{t("ops.runtime.tabCharacters")}</span>
         </button>
         {allowRemotePc ? (
           <button
@@ -418,32 +423,29 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
             type="button"
           >
             <Laptop aria-hidden size={15} />
-            <span>{remoteActive ? "已连电脑端" : "连接电脑端"}</span>
+            <span>{remoteActive ? t("ops.runtime.tabRemoteActive") : t("ops.runtime.tabRemoteIdle")}</span>
           </button>
         ) : null}
       </div>
 
       {activeTab === "keys" ? (
         <div className="runtime-mode-dialog__section">
-          <p className="runtime-mode-dialog__hint">
-            所有 API Key 仅保存在你的当前设备本地，不会上传第三方。推荐使用「硅基流动」一个 Key 同时驱动 DeepSeek 对话与
-            CosyVoice2 实时口型配音。
-          </p>
+          <p className="runtime-mode-dialog__hint">{t("ops.runtime.keysHint")}</p>
 
           <div className="runtime-mode-dialog__grid">
             <label className="runtime-mode-dialog__field">
-              <span>对话模型厂商 (LLM)</span>
+              <span>{t("ops.runtime.llmProviderLabel")}</span>
               <Select onChange={(e) => handleLlmProviderSwitch(e.target.value)} value={llmProvider}>
                 {llmProviderOptions.map((opt) => (
                   <option key={opt.value} value={opt.value}>
-                    {opt.label}
+                    {resolveFormOptionLabel(opt, t)}
                   </option>
                 ))}
               </Select>
             </label>
 
             <label className="runtime-mode-dialog__field">
-              <span>模型 ID</span>
+              <span>{t("ops.runtime.modelIdLabel")}</span>
               <TextInput
                 onChange={(e) => setLlmModel(e.target.value)}
                 placeholder="deepseek-ai/DeepSeek-V3"
@@ -463,7 +465,7 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
             </label>
 
             <label className="runtime-mode-dialog__field runtime-mode-dialog__field--full">
-              <span>API Base URL（可填自定义中转地址）</span>
+              <span>{t("ops.runtime.baseUrlLabel")}</span>
               <TextInput
                 onChange={(e) => setLlmBaseUrl(e.target.value)}
                 placeholder="https://api.siliconflow.cn/v1"
@@ -476,7 +478,7 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
 
           <div className="runtime-mode-dialog__grid">
             <label className="runtime-mode-dialog__field runtime-mode-dialog__field--full">
-              <span>云端语音合成 (TTS)</span>
+              <span>{t("ops.runtime.ttsProviderLabel")}</span>
               <Select onChange={(e) => handleTtsProviderSwitch(e.target.value)} value={ttsProvider}>
                 {catalogTtsOptions.map((opt) => (
                   <option key={opt.value} value={opt.value}>
@@ -487,10 +489,7 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
             </label>
 
             {selectedTtsNeedsCorsProxy ? (
-              <p className="runtime-mode-dialog__warn">
-                当前为纯网页/Toy 沙盒，{ttsProvider} 默认接口可能限制浏览器跨域；建议选择「OpenAI 兼容语音
-                (硅基流动)」或「MiniMax」，或安装手机 App 端走原生无跨域直连。
-              </p>
+              <p className="runtime-mode-dialog__warn">{t("ops.runtime.corsWarn", { provider: ttsProvider })}</p>
             ) : null}
 
             {ttsProvider !== "none" && ttsProvider !== "browser-speech" ? (
@@ -502,17 +501,17 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
                       onChange={(e) => setTtsReuseLlmKey(e.target.checked)}
                       type="checkbox"
                     />
-                    <span>与对话复用同一个硅基流动 / LLM API Key</span>
+                    <span>{t("ops.runtime.reuseLlmKey")}</span>
                   </label>
                 ) : null}
 
                 {!(ttsProvider === "openai-speech" && ttsReuseLlmKey) ? (
                   <label className="runtime-mode-dialog__field runtime-mode-dialog__field--full">
-                    <span>语音 API Key</span>
+                    <span>{t("ops.runtime.ttsApiKeyLabel")}</span>
                     <TextInput
                       autoComplete="off"
                       onChange={(e) => setTtsApiKey(e.target.value)}
-                      placeholder="语音服务 API Key"
+                      placeholder={t("ops.runtime.ttsApiKeyPlaceholder")}
                       type="password"
                       value={ttsApiKey}
                     />
@@ -520,7 +519,7 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
                 ) : null}
 
                 <label className="runtime-mode-dialog__field">
-                  <span>音色 Voice ID</span>
+                  <span>{t("ops.runtime.ttsVoiceIdLabel")}</span>
                   <TextInput
                     onChange={(e) => setTtsVoiceId(e.target.value)}
                     placeholder="FunAudioLLM/CosyVoice2-0.5B:claire"
@@ -529,7 +528,7 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
                 </label>
 
                 <label className="runtime-mode-dialog__field">
-                  <span>语音接口地址 (Base URL)</span>
+                  <span>{t("ops.runtime.ttsBaseUrlLabel")}</span>
                   <TextInput
                     onChange={(e) => setTtsBaseUrl(e.target.value)}
                     placeholder="https://api.siliconflow.cn/v1"
@@ -542,7 +541,7 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
                     <span>MiniMax Group ID</span>
                     <TextInput
                       onChange={(e) => setTtsGroupId(e.target.value)}
-                      placeholder="输入 Group ID"
+                      placeholder={t("ops.runtime.groupIdPlaceholder")}
                       value={ttsGroupId}
                     />
                   </label>
@@ -558,7 +557,7 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
               onClick={() => void handleTestLlm()}
               type="button"
             >
-              {testingLlm ? "测试中..." : "测试对话连通"}
+              {testingLlm ? t("ops.runtime.testing") : t("ops.runtime.testLlm")}
             </Button>
             <Button
               disabled={savingKeys || !configQuery.data}
@@ -566,7 +565,7 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
               type="button"
               variant="primary"
             >
-              {savingKeys ? "保存中..." : "保存配置"}
+              {savingKeys ? t("ops.runtime.saving") : t("ops.runtime.saveConfig")}
             </Button>
           </div>
         </div>
@@ -574,10 +573,7 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
 
       {activeTab === "characters" ? (
         <div className="runtime-mode-dialog__section">
-          <p className="runtime-mode-dialog__hint">
-            支持直接导入电脑版新世界导出的 <code>.char</code>（或 <code>.zip</code>
-            ）角色包，保留人设、多表情立绘、口型配置与参考音频并存于当前设备本地。
-          </p>
+          <p className="runtime-mode-dialog__hint">{t("ops.runtime.charHint")}</p>
 
           <input
             accept=".char,.zip,application/zip,application/octet-stream"
@@ -596,7 +592,7 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
               type="button"
               variant="primary"
             >
-              {importingChar ? "解析角色包中..." : "导入 .char 角色包"}
+              {importingChar ? t("ops.runtime.importingChar") : t("ops.runtime.importChar")}
             </Button>
             <Button
               onClick={() => {
@@ -605,7 +601,7 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
               }}
               type="button"
             >
-              打开角色工坊 (新建/编辑立绘)
+              {t("ops.runtime.openCharacterStudio")}
             </Button>
           </div>
 
@@ -615,7 +611,8 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
                 <div>
                   <strong>{char.name}</strong>
                   <span className="runtime-mode-dialog__char-meta">
-                    立绘 {char.sprites?.length ?? 0} 张 · {char.avatar_type || "static"}
+                    {t("ops.runtime.charSpriteCount", { count: char.sprites?.length ?? 0 })} ·{" "}
+                    {char.avatar_type || "static"}
                   </span>
                 </div>
                 <Button
@@ -623,7 +620,7 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
                   onClick={() => void handleExportChar(char.name)}
                   type="button"
                 >
-                  导出 .char
+                  {t("ops.runtime.exportChar")}
                 </Button>
               </div>
             ))}
@@ -634,14 +631,12 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
       {activeTab === "remote" && allowRemotePc ? (
         <div className="runtime-mode-dialog__section">
           <p className="runtime-mode-dialog__hint">
-            {remoteActive
-              ? "当前已连接电脑端满血后端，正直接使用电脑的本地 GPT-SoVITS、记忆库与全部角色。"
-              : "连接局域网或异地组网中运行的新世界电脑端，可一键热切换至满血后端或将电脑角色离线缓存到手机。"}
+            {remoteActive ? t("ops.runtime.pcHintActive") : t("ops.runtime.pcHintIdle")}
           </p>
 
           <div className="runtime-mode-dialog__grid">
             <label className="runtime-mode-dialog__field runtime-mode-dialog__field--full">
-              <span>电脑端 Shinsekai 地址</span>
+              <span>{t("ops.runtime.pcAddressLabel")}</span>
               <TextInput
                 onChange={(e) => setRemoteUrl(e.target.value)}
                 placeholder="http://192.168.1.100:8787"
@@ -649,11 +644,11 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
               />
             </label>
             <label className="runtime-mode-dialog__field runtime-mode-dialog__field--full">
-              <span>Bridge 访问 Token（如电脑端已开启认证则填写）</span>
+              <span>{t("ops.runtime.pcTokenLabel")}</span>
               <TextInput
                 autoComplete="off"
                 onChange={(e) => setRemoteToken(e.target.value)}
-                placeholder="留空表示无 Token"
+                placeholder={t("ops.runtime.pcTokenPlaceholder")}
                 type="password"
                 value={remoteToken}
               />
@@ -669,15 +664,15 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
               onClick={() => void handleTestRemoteBridge()}
               type="button"
             >
-              {testingRemote ? "测试中..." : "测试并拉取角色清单"}
+              {testingRemote ? t("ops.runtime.testing") : t("ops.runtime.testAndFetchChars")}
             </Button>
             {connectionMode === "remote-pc" || remoteActive ? (
               <Button onClick={() => void handleApplyConnectionMode("standalone")} type="button">
-                切回手机独立模式
+                {t("ops.runtime.switchToMobile")}
               </Button>
             ) : null}
             <Button onClick={() => void handleApplyConnectionMode("remote-pc")} type="button" variant="primary">
-              连接电脑端满血模式
+              {t("ops.runtime.connectPcFull")}
             </Button>
           </div>
 
@@ -687,7 +682,9 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
                 <div className="runtime-mode-dialog__char-item" key={char.name}>
                   <div>
                     <strong>{char.name}</strong>
-                    <span className="runtime-mode-dialog__char-meta">立绘 {char.sprites?.length ?? 0} 张</span>
+                    <span className="runtime-mode-dialog__char-meta">
+                      {t("ops.runtime.charSpriteCount", { count: char.sprites?.length ?? 0 })}
+                    </span>
                   </div>
                   <Button
                     disabled={syncingCharName === char.name}
@@ -695,7 +692,9 @@ export function RuntimeModeDialog({ open, onClose }: RuntimeModeDialogProps) {
                     onClick={() => void handleSyncCharacterFromPc(char.name)}
                     type="button"
                   >
-                    {syncingCharName === char.name ? "下载缓存中..." : "缓存到手机离线"}
+                    {syncingCharName === char.name
+                      ? t("ops.runtime.cachingCharacter")
+                      : t("ops.runtime.cacheCharacter")}
                   </Button>
                 </div>
               ))}

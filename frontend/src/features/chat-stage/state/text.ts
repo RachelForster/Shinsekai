@@ -1,9 +1,11 @@
+import { DIALOG_SPEAKER_NARRATION_ALIASES, LEGACY_DEFAULT_USER_SPEAKER } from "../../../shared/constants";
+import { translateRuntimeMessage } from "../../../shared/i18n";
 import type { ChatRuntimeStatus, PlayerPortrait } from "../../../shared/platform/types";
 import { parseHtmlFragment, stripHtmlFallback } from "../htmlFragment";
 import { isLegacySystemSnapshotText } from "./legacySnapshotCompat";
 import type { ChatStageState } from "./types";
 
-export const defaultUserDialogSpeaker = "你";
+export const defaultUserDialogSpeaker = LEGACY_DEFAULT_USER_SPEAKER;
 
 export function playerPortraitForDialog(
   portrait: PlayerPortrait | null | undefined,
@@ -14,7 +16,7 @@ export function playerPortraitForDialog(
   const compact = (value: string) => value.replace(/\s+/gu, "");
   const name = compact(portrait.characterName);
   const currentSpeaker = compact(speaker ?? "");
-  const narration = currentSpeaker.toUpperCase() === "NARR" || currentSpeaker === "旁白";
+  const narration = (DIALOG_SPEAKER_NARRATION_ALIASES as readonly string[]).includes(currentSpeaker.toUpperCase());
   return name && (currentSpeaker === name || (narration && compact(text).includes(name))) ? portrait : null;
 }
 
@@ -72,7 +74,11 @@ function escapeRegExp(value: string) {
 }
 
 export function normalizedUserDisplayName(value?: string) {
-  return value?.trim() || defaultUserDialogSpeaker;
+  const trimmed = value?.trim();
+  if (!trimmed || trimmed === defaultUserDialogSpeaker) {
+    return translateRuntimeMessage("ops.chatStage.defaultUserSpeaker");
+  }
+  return trimmed;
 }
 
 export function normalizeTokenUsageText(value: string | undefined, status: ChatRuntimeStatus) {

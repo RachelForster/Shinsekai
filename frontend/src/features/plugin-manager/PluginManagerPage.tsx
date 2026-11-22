@@ -26,6 +26,7 @@ import {
   isTauriDesktop,
   writeDesktopRestartDebugLog,
 } from "../../shared/desktop/desktopApi";
+import { LEGACY_UNSPECIFIED_LICENSE } from "../../shared/constants";
 import { useI18n } from "../../shared/i18n";
 import type { TaskSnapshot } from "../../shared/platform/types";
 import {
@@ -224,7 +225,7 @@ function versionLabel(value: string | null | undefined) {
 
 function parseVersionParts(value: string | null | undefined) {
   const raw = versionLabel(value);
-  if (!raw || raw === "built-in" || raw === "preview" || raw === "未标注") {
+  if (!raw || raw === "built-in" || raw === "preview" || raw === LEGACY_UNSPECIFIED_LICENSE) {
     return null;
   }
   const parts = raw
