@@ -9,8 +9,17 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
+from ai.llm.template.generation.media_annotation import (
+    render_annotation_retry_prompt,
+    render_background_annotation_prompt,
+    render_character_annotation_prompt,
+)
+from ai.llm.template.integrations.localization import (
+    LocaleInput,
+    resolve_dynamic_locale,
+)
 from ai.vision import configured_vision_manager
-from application.media.sprite_tags import SPRITE_TAG_INSTRUCTIONS, normalize_sprite_tags
+from application.media.sprite_tags import normalize_sprite_tags
 from core.media.asset_tags import normalize_generated_tags, numbered_tags, tag_contents
 
 
@@ -18,15 +27,8 @@ ProgressCallback = Callable[[int, int, str, str], None]
 CancelCallback = Callable[[], bool]
 InferCallback = Callable[[bytes, str], str]
 
-CHARACTER_PROMPT = (
-    "你在为对话系统标注角色立绘。请根据图片中可见的表情和姿态标注，不要根据角色设定猜测。"
-    + SPRITE_TAG_INSTRUCTIONS
-)
-BACKGROUND_PROMPT = (
-    "Generate concise English tags for this background image. Focus on location, time of day, weather, "
-    "lighting, atmosphere, and important objects. Output only comma-separated tags: no numbering and "
-    "no full sentences."
-)
+CHARACTER_PROMPT = render_character_annotation_prompt()
+BACKGROUND_PROMPT = render_background_annotation_prompt(locale="en")
 _IMAGE_SUFFIXES = {".gif", ".jpeg", ".jpg", ".png", ".webp", ".mp4", ".webm"}
 
 
@@ -82,7 +84,9 @@ def annotate_unlabelled_images(
     normalize: Callable[[str], str] = normalize_generated_tags,
     on_progress: ProgressCallback | None = None,
     is_cancelled: CancelCallback | None = None,
+    locale: LocaleInput = None,
 ) -> dict[str, Any]:
+    effective_locale = resolve_dynamic_locale(locale) if locale is not None else "zh_CN"
     tags = tag_contents(tag_block, len(sprites))
     missing_indexes = [index for index, tag in enumerate(tags) if not tag.strip()]
     failures: list[dict[str, Any]] = []
@@ -119,10 +123,10 @@ def annotate_unlabelled_images(
             except ValueError:
                 if is_cancelled and is_cancelled():
                     raise AnnotationCancelled("图片智能标注已取消")
-                retry = (
-                    prompt
-                    + "\n上次输出不符合格式，请重新看图并严格按要求回答。上次输出："
-                    + json.dumps(raw, ensure_ascii=False)
+                retry = render_annotation_retry_prompt(
+                    prompt,
+                    raw,
+                    locale=effective_locale,
                 )
                 generated = normalize(runner(image_bytes, retry))
             if not generated:
@@ -275,6 +279,7 @@ def auto_label_background_images(
     )
     if background is None:
         raise KeyError(f"背景不存在：{name}")
+    effective_locale = resolve_dynamic_locale(config_manager=config_manager)
     bg_id = str(getattr(background, "id", "") or "").strip()
     original_sprites = list(background.sprites or [])
     original_tags = str(background.bg_tags or "")
@@ -282,12 +287,13 @@ def auto_label_background_images(
         original_sprites,
         original_tags,
         prefix="场景",
-        prompt=BACKGROUND_PROMPT,
+        prompt=render_background_annotation_prompt(locale=effective_locale),
         project_root=project_root,
         infer=infer,
         api_config=getattr(getattr(config_manager, "config", None), "api_config", None),
         on_progress=on_progress,
         is_cancelled=is_cancelled,
+        locale=effective_locale,
     )
     resolved_name = str(background.name)
     merged_tags = str(result["tags"])

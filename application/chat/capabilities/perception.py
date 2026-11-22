@@ -106,6 +106,7 @@ class PerceptionSessionCapability(BaseSessionCapability):
     ) -> None:
         if context.mode != "stream":
             return
+        from ai.llm.template.integrations.localization import resolve_template_locale
         from ai.perception.cloud_summary import create_cloud_text_completer
         from application.perception import (
             PerceptionCoordinator,
@@ -116,6 +117,7 @@ class PerceptionSessionCapability(BaseSessionCapability):
         from sdk.hooks import PluginHookDispatcher
 
         self._context = context
+        locale_provider = lambda: resolve_template_locale(context.config)
         self.coordinator = PerceptionCoordinator(
             get_api_config=lambda: getattr(
                 getattr(context.config, "config", None), "api_config", None
@@ -131,6 +133,7 @@ class PerceptionSessionCapability(BaseSessionCapability):
             notify_once=getattr(context.ui_updates, "post_notification", None),
             cloud_complete=create_cloud_text_completer(context.config),
             cursor_probe=create_default_cursor_probe(),
+            locale=locale_provider,
         )
         dispatcher = getattr(context.startup.llm_manager, "hook_dispatcher", None)
         if dispatcher is None:
@@ -142,6 +145,7 @@ class PerceptionSessionCapability(BaseSessionCapability):
             gatekeeper=self.coordinator.gatekeeper,
             is_enabled=self.coordinator.is_effectively_enabled,
             proactive_threshold=self.coordinator.proactive_turn_threshold,
+            locale=locale_provider,
         )
         self._provider = PerceptionTurnContextProvider(
             hooks=hooks,

@@ -111,6 +111,7 @@ class LLMWorker(ThreadDagNode):
                     message.text,
                     attachments,
                     adapter=self.llm_manager.llm_adapter,
+                    locale=resolve_template_locale(self.config_manager),
                 )
                 logger.info(
                     "LLM worker processing user message",

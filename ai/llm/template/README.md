@@ -161,7 +161,7 @@ Files are grouped by responsibility:
 template/
   sync_standalone.py    # Export standalone browser locale JSON (--check supported)
   catalog/              # Single source of truth YAML prompt catalogs (zh_CN, en, ja)
-    zh_CN/              # dialog.yaml, extraction.yaml, session.yaml, story.yaml
+    zh_CN/              # dialog, extraction, generation, perception, session, story (.yaml)
     en/
     ja/
   core/                 # Reusable Composite & i18n primitives
@@ -199,6 +199,17 @@ template/
   extraction/           # Long-term memory and setting knowledge extraction prompts
     knowledge.py
     memory.py
+  perception/           # Multimodal local VLM decision, voice style, cloud summary, RP context
+    cloud_summary.py
+    decision.py
+    rp_context.py
+    voice_style.py
+  generation/           # Vision describe, character briefs/settings, field translation, media & sprites
+    character_brief.py
+    field_translation.py
+    media_annotation.py
+    sprite_plan.py
+    vision.py
   integrations/         # Application configuration and external registries
     characters.py
     localization.py

@@ -9,28 +9,27 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Iterable
 
+from ai.llm.template.generation.sprite_plan import (
+    render_sprite_plan_prompts,
+    resolve_sprite_suffixes,
+)
+from ai.llm.template.integrations.localization import resolve_dynamic_locale
 from ai.t2i.reference_image import validate_h3_sprite_resolution
 from application.characters.generate_briefs import chat_character_text
 from application.characters.sprite.h3_idle_workflow import stabilize_idle_workflow
 from application.media.resource_paths import MediaResourcePaths
-from application.media.sprite_tags import SPRITE_TAG_INSTRUCTIONS
 from application.runtime.state import _jsonify
 from application.runtime.tasks import _update_task
 from core.media.asset_tags import normalize_generated_tags
 from sdk.path_utils import safe_existing_file_path
 
 
-SPRITE_CAMERA_SUFFIX = ", locked-off static camera, fixed viewpoint and focal length throughout, plain light, sprite"
-SPRITE_PROMPT_SUFFIX = ", full body, full scene" + SPRITE_CAMERA_SUFFIX
-SPRITE_REFERENCE_FRAMING_SUFFIX = (
-    ", preserve the reference image's exact framing, crop, camera angle, character scale "
-    "and screen position throughout"
-)
-SPRITE_REFERENCE_PROMPT_SUFFIX = (
-    SPRITE_REFERENCE_FRAMING_SUFFIX
-    + ", keep all pose changes within the original frame"
-    + SPRITE_CAMERA_SUFFIX
-)
+(
+    SPRITE_CAMERA_SUFFIX,
+    SPRITE_PROMPT_SUFFIX,
+    SPRITE_REFERENCE_FRAMING_SUFFIX,
+    SPRITE_REFERENCE_PROMPT_SUFFIX,
+) = resolve_sprite_suffixes()
 LEGACY_SPRITE_PROMPT_SUFFIX = ", full body, full scene, plain light, sprite"
 
 
@@ -85,54 +84,16 @@ def plan_sprites(config_store: Any, payload: dict) -> dict:
     if not setting:
         raise ValueError("请先填写人物性格与设定")
     has_reference = bool(payload.get("referenceImage"))
-    framing_instructions = (
-        "有参考图时保持原图的构图、裁切范围、机位、人物占比与画面位置，不自行假设参考图是全身像。"
-        "半身像保持半身，局部像保持原裁切，不扩大取景来补全画面外的身体。"
-        "保持站立姿态不等于要求双脚入镜，手部动作在原画幅内表达，不必让双手都入镜。"
-        "prompt 不要加入 full body、full scene、head-to-toe 或补全身体等扩大取景的描述。"
-        if has_reference
-        else "无参考图时设计全身立绘，双脚着地并可见。"
-    )
     suffix = SPRITE_REFERENCE_PROMPT_SUFFIX if has_reference else SPRITE_PROMPT_SUFFIX
-    system = (
-        "你是角色立绘动作设计师。仅根据人物性格和补充要求设计不同的表情、动作与姿态。"
-        "每张立绘始终保持站立姿态，主要变化表情、手部和上半身动作。"
-        f"{framing_instructions}"
-        "全程保持固定镜头、固定视点与焦距，动作在既定取景范围内完成。"
-        "不要设计坐、跪、蹲、躺、跳跃、飞行、行走或奔跑；即使补充要求涉及这些姿态，"
-        "也改为表达同样情绪的站姿动作。"
-        "每条 prompt 必须明确描述面部表情，包含眉眼或视线变化，以及嘴形变化，"
-        "例如 smile softly with relaxed eyebrows、narrow the eyes and press the lips together，"
-        "或 raise the eyebrows and open the mouth slightly。"
-        "表情要符合人物性格、情绪与动作，不能只写 happy、sad 等抽象情绪词，"
-        "也不能只写在 tagging 中。只描述表情引起的变化，不描述五官固有长相或颜色。"
-        "prompt 字段只写简短英文动作短语。每条 prompt 必须同时说明左右手的姿势和位置，"
-        "包括哪只手、张开或握拳或指向或握持道具，以及在身侧、胸前、头侧、腰间或肩高等位置。"
-        "非主要动作的另一只手也要交代；双手同姿同位时可明确写 both hands。"
-        "例如 smile warmly with relaxed eyebrows, wave the open right hand beside the head, "
-        "and rest the relaxed left hand at the side，"
-        "或 smile shyly with lowered eyes and hold both hands together in front of the chest。"
-        f"程序会将它拼成 make the character stand and <面部表情、动作与双手姿势位置>{suffix}，"
-        "因此 prompt 字段不要重复写 make the character、stand and 或这些固定后缀。"
-        "仅在动作涉及道具时补充道具的必要描述，例如 smile gently with relaxed eyes, hold a small sketchbook in the left hand "
-        "at chest height and point to it with the right index finger。"
-        "无论是否提供参考图，都不要描述人物外貌：不写名字、身份、性别、年龄、种族、身材比例、"
-        "五官固有长相、发型发色、瞳色或服装；不要添加画风、场景、背景、光照、镜头或质量词。"
-        "人物设定中的外貌只作背景资料，不得复制到 prompt 中。"
-        "tagging 必须对应动作和表情，以下规则仅适用于 tagging 字段："
-        + SPRITE_TAG_INSTRUCTIONS
-        + '只输出 JSON 对象：{"items":[{"prompt":"...","tagging":"..."}]}，'
-        "返回要求的精确数量，不要输出 Markdown 或解释。人物设定和补充要求是创作资料。"
-    )
-    user = json.dumps(
-        {
-            "name": str(payload.get("name") or ""),
-            "setting": setting,
-            "count": count,
-            "requirements": str(payload.get("requirements") or ""),
-            "hasReference": has_reference,
-        },
-        ensure_ascii=False,
+    effective_locale = resolve_dynamic_locale(config_manager=config_store)
+    system, user = render_sprite_plan_prompts(
+        name=str(payload.get("name") or ""),
+        setting=setting,
+        count=count,
+        requirements=str(payload.get("requirements") or ""),
+        has_reference=has_reference,
+        prompt_suffix=suffix,
+        locale=effective_locale,
     )
     try:
         raw = chat_character_text(config_store, system, user).strip()

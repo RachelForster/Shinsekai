@@ -58,6 +58,12 @@ await assertExists(path.join(resourcesDir, "ai", "llm", "template", "catalog", "
 await assertExists(path.join(resourcesDir, "ai", "llm", "template", "catalog", "zh_CN", "extraction.yaml"));
 await assertExists(path.join(resourcesDir, "ai", "llm", "template", "catalog", "en", "extraction.yaml"));
 await assertExists(path.join(resourcesDir, "ai", "llm", "template", "catalog", "ja", "extraction.yaml"));
+await assertExists(path.join(resourcesDir, "ai", "llm", "template", "catalog", "zh_CN", "generation.yaml"));
+await assertExists(path.join(resourcesDir, "ai", "llm", "template", "catalog", "en", "generation.yaml"));
+await assertExists(path.join(resourcesDir, "ai", "llm", "template", "catalog", "ja", "generation.yaml"));
+await assertExists(path.join(resourcesDir, "ai", "llm", "template", "catalog", "zh_CN", "perception.yaml"));
+await assertExists(path.join(resourcesDir, "ai", "llm", "template", "catalog", "en", "perception.yaml"));
+await assertExists(path.join(resourcesDir, "ai", "llm", "template", "catalog", "ja", "perception.yaml"));
 await assertExists(path.join(resourcesDir, "ai", "llm", "template", "catalog", "zh_CN", "session.yaml"));
 await assertExists(path.join(resourcesDir, "ai", "llm", "template", "catalog", "en", "session.yaml"));
 await assertExists(path.join(resourcesDir, "ai", "llm", "template", "catalog", "ja", "session.yaml"));

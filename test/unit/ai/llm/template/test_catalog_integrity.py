@@ -37,9 +37,16 @@ def _extract_placeholders(template: str) -> set[str]:
 
 
 def test_all_locales_share_identical_domains_and_nonempty_keys() -> None:
-    expected_domains = ("dialog", "extraction", "session", "story")
+    expected_domains = (
+        "dialog",
+        "extraction",
+        "generation",
+        "perception",
+        "session",
+        "story",
+    )
     base_keys = PROMPT_CATALOG.keys("zh_CN")
-    assert len(base_keys) >= 140
+    assert len(base_keys) >= 240
 
     for locale in SUPPORTED_LANGS:
         assert PROMPT_CATALOG.domains(locale) == expected_domains
@@ -150,7 +157,15 @@ def test_i18n_section_and_prompt_spec_follow_ui_and_locked_contract_policies(
 
 def test_pure_template_packages_do_not_import_runtime_or_application_layers() -> None:
     template_root = REPO_ROOT / "ai" / "llm" / "template"
-    strict_pure_packages = ("core", "extraction", "prompts", "session", "story")
+    strict_pure_packages = (
+        "core",
+        "extraction",
+        "generation",
+        "perception",
+        "prompts",
+        "session",
+        "story",
+    )
     strict_forbidden = {"application", "config", "core", "frontend_bridge_core"}
 
     for pkg in (*strict_pure_packages, "dialog"):
