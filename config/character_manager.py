@@ -34,7 +34,10 @@ class CharacterManager:
         self._config_manager = ConfigManager()
 
     def _target(self) -> ConfigManagerCharacterTarget:
-        return ConfigManagerCharacterTarget(self._config_manager, save_fn=self._save_characters_config)
+        return ConfigManagerCharacterTarget(
+            self._config_manager, save_fn=self._save_characters_config,
+            custom_save="_save_characters_config" in getattr(self, "__dict__", {}),
+        )
 
     def _get_characters(self) -> List[Character]:
         try:

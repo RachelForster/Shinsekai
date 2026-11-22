@@ -4,9 +4,26 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from copy import deepcopy
-from typing import Any, Protocol, runtime_checkable
+from functools import wraps
+from threading import RLock
+from typing import Any, Protocol, TypeVar, runtime_checkable
 
 from config.schema import Character, SELF_PERSONA_NAME
+
+_F = TypeVar("_F", bound=Callable[..., Any])
+
+CHARACTER_MUTATION_LOCK = RLock()
+
+
+def _with_character_lock(fn: _F) -> _F:
+    """Serialize character read-modify-write mutations across direct and legacy callers."""
+
+    @wraps(fn)
+    def _wrapped(*args: Any, **kwargs: Any) -> Any:
+        with CHARACTER_MUTATION_LOCK:
+            return fn(*args, **kwargs)
+
+    return _wrapped  # type: ignore[return-value]
 
 
 class CharacterProfileError(ValueError):
@@ -47,10 +64,20 @@ class ConfigManagerCharacterTarget:
         config_manager: Any,
         *,
         save_fn: Callable[[], None] | None = None,
+        custom_save: bool = False,
     ) -> None:
         self._cm = config_manager
         self._save_fn = save_fn or config_manager.save_characters_config
+        self._custom_save = custom_save or (
+            "save_characters_config" in getattr(config_manager, "__dict__", {})
+        )
         self._seen_by_id: dict[str, Character] = {}
+
+    def _row_backend(self) -> Any | None:
+        if self._custom_save:
+            return None
+        backend = getattr(self._cm, "active_backend", None)
+        return backend if backend is not None and hasattr(backend, "put_character") else None
 
     def _remember(self, character: Character | None) -> Character | None:
         if character is not None:
@@ -67,6 +94,9 @@ class ConfigManagerCharacterTarget:
         return chars if isinstance(chars, list) else None
 
     def list_all(self) -> list[Character]:
+        backend = self._row_backend()
+        if backend is not None:
+            return list(backend.list_characters())
         chars = self._characters_list()
         if chars is not None:
             return list(chars)
@@ -76,15 +106,24 @@ class ConfigManagerCharacterTarget:
         cleaned = str(char_id or "").strip()
         if not cleaned:
             return None
+        backend = self._row_backend()
+        if backend is not None:
+            return self._remember(backend.get_character_by_id(cleaned))
         for item in self.list_all():
             if str(getattr(item, "id", "") or "") == cleaned:
                 return self._remember(item)
         return self._seen_by_id.get(cleaned)
 
     def get_by_name(self, name: str) -> Character | None:
+        backend = self._row_backend()
+        if backend is not None:
+            return self._remember(backend.get_character_by_name(name))
         return self._remember(self._cm.get_character_by_name(name))
 
     def ensure_self_persona(self) -> Character:
+        backend = self._row_backend()
+        if backend is not None:
+            return self._remember(backend.ensure_self_persona())  # type: ignore[return-value]
         ensure_fn = getattr(self._cm, "ensure_self_persona_persisted", None)
         if callable(ensure_fn):
             return self._remember(ensure_fn())  # type: ignore[return-value]
@@ -101,6 +140,18 @@ class ConfigManagerCharacterTarget:
         return None
 
     def save_character(self, character: Character) -> None:
+        backend = self._row_backend()
+        if backend is not None:
+            chars = self._characters_list()
+            mem_entry = self._find_list_entry(chars, character) if chars is not None else None
+            backend.put_character(character)
+            if mem_entry is not None:
+                _sync_pydantic_model_in_place(mem_entry, character)
+            refresh = getattr(self._cm, "refresh_characters", None)
+            if callable(refresh):
+                refresh()
+            return
+
         chars = self._characters_list()
         if chars is not None:
             existing = self._find_list_entry(chars, character)
@@ -142,6 +193,15 @@ class ConfigManagerCharacterTarget:
             raise
 
     def delete_character_record(self, character: Character) -> bool:
+        backend = self._row_backend()
+        if backend is not None:
+            deleted = bool(backend.delete_character(character.id))
+            if deleted:
+                refresh = getattr(self._cm, "refresh_characters", None)
+                if callable(refresh):
+                    refresh()
+            return deleted
+
         chars = self._characters_list()
         if chars is None:
             return False
@@ -159,7 +219,9 @@ class ConfigManagerCharacterTarget:
 
 
 __all__ = [
+    "CHARACTER_MUTATION_LOCK",
     "CharacterPersistenceTarget",
     "CharacterProfileError",
     "ConfigManagerCharacterTarget",
+    "_with_character_lock",
 ]

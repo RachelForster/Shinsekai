@@ -9,13 +9,13 @@ from enum import Enum
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Iterable
-from threading import RLock
 from urllib.parse import urlparse
 
 from application.media.resource_paths import MediaResourcePaths
 from application.runtime.state import _jsonify
 from config.character_manager import CharacterManager
 from config.character_ops import (
+    CHARACTER_MUTATION_LOCK,
     CharacterProfileError,
     delete_all_character_sprites,
     delete_character_and_assets,
@@ -147,7 +147,7 @@ def validate_character_payload(body: dict[str, Any], *, allow_remote_voice_paths
 
 class CharacterUseCase:
     """Single application entry point for character resource mutations."""
-    _mutation_lock = RLock()
+    _mutation_lock = CHARACTER_MUTATION_LOCK
 
     def __init__(
         self,

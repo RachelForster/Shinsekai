@@ -6,7 +6,7 @@ from collections.abc import Callable, Mapping
 from copy import deepcopy
 from typing import Any
 
-from config.character_ops.target import CharacterPersistenceTarget
+from config.character_ops.target import CharacterPersistenceTarget, _with_character_lock
 from config.schema import RelationGraph
 
 
@@ -39,6 +39,7 @@ def rename_relation_graph_owner(
     return RelationGraph.model_validate(value)
 
 
+@_with_character_lock
 def update_character_relation_graph(
     target: CharacterPersistenceTarget,
     char_name: str,

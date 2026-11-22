@@ -9,7 +9,7 @@ from typing import Any, Optional
 from uuid import uuid4
 
 from config.character_ops.profile import clamp_portrait_sprite_index
-from config.character_ops.target import CharacterPersistenceTarget
+from config.character_ops.target import CharacterPersistenceTarget, _with_character_lock
 from config.schema import (
     Character,
     DEFAULT_SPRITE_GROUP,
@@ -28,6 +28,7 @@ def _sprite_path(sprite: Sprite | dict[str, Any]) -> str:
     return sprite.path if isinstance(sprite, Sprite) else str(sprite.get("path", "") or "")
 
 
+@_with_character_lock
 def upload_character_sprites(
     target: CharacterPersistenceTarget,
     character_name: str,
@@ -168,6 +169,7 @@ def upload_character_sprites(
     return f"成功为 {character_name} 上传 {len(sprite_files)} 张立绘！", all_paths, updated.emotion_tags
 
 
+@_with_character_lock
 def delete_all_character_sprites(
     target: CharacterPersistenceTarget,
     character_name: str,
@@ -212,6 +214,7 @@ def delete_all_character_sprites(
     return f"已删除 {character_name} 的所有立绘！", [], ""
 
 
+@_with_character_lock
 def delete_single_character_sprite(
     target: CharacterPersistenceTarget,
     character_name: str,
@@ -268,6 +271,7 @@ def delete_single_character_sprite(
     return f"已删除 {character_name} 的第 {sprite_index + 1} 张立绘！", remaining_paths, next_tags
 
 
+@_with_character_lock
 def save_character_avatar_bank(
     target: CharacterPersistenceTarget,
     name: str,
@@ -296,6 +300,7 @@ def save_character_avatar_bank(
     return updated
 
 
+@_with_character_lock
 def save_character_sprite_mouths(
     target: CharacterPersistenceTarget,
     name: str,
@@ -322,6 +327,7 @@ def save_character_sprite_mouths(
     return updated
 
 
+@_with_character_lock
 def save_character_sprite_transitions(
     target: CharacterPersistenceTarget,
     name: str,

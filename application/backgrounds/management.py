@@ -9,7 +9,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from threading import RLock
 from types import SimpleNamespace
 from typing import Any, Iterable
 
@@ -17,6 +16,7 @@ from application.media.resource_paths import MediaResourcePaths
 from application.runtime.state import _jsonify
 from config.background_manager import BackgroundManager
 from config.background_ops import (
+    BACKGROUND_MUTATION_LOCK,
     BackgroundProfileError,
     delete_all_background_bgms,
     delete_all_background_sprites,
@@ -91,7 +91,7 @@ def parse_background_request(
 class BackgroundUseCase:
     """Single application entry point for background resource mutations."""
 
-    _mutation_lock = RLock()
+    _mutation_lock = BACKGROUND_MUTATION_LOCK
 
     def __init__(
         self,

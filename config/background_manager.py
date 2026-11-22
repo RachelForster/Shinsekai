@@ -48,7 +48,7 @@ class BackgroundManager:
         self._config_manager = ConfigManager()
 
     def _target(self) -> ConfigManagerBackgroundTarget:
-        return ConfigManagerBackgroundTarget(self._config_manager, save_fn=self._save_background_config)
+        return ConfigManagerBackgroundTarget(self._config_manager, save_fn=self._save_background_config, custom_save="_save_background_config" in getattr(self, "__dict__", {}))
 
     def _get_background_list(self) -> List[Background]:
         try:

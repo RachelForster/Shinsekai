@@ -3,15 +3,31 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
+from functools import wraps
 import os
 from pathlib import Path
 import shutil
-from typing import Any, Optional, Protocol, runtime_checkable
+from threading import RLock
+from typing import Any, Optional, Protocol, TypeVar, runtime_checkable
 
 from config.character_ops.target import _sync_pydantic_model_in_place
 from config.schema import Background, Sprite
 
+_F = TypeVar("_F", bound=Callable[..., Any])
 _PROTECTED_BACKGROUND_FIELDS = frozenset({"id", "sprites", "bgm_list"})
+
+BACKGROUND_MUTATION_LOCK = RLock()
+
+
+def _with_background_lock(fn: _F) -> _F:
+    """Serialize background read-modify-write mutations across direct and legacy callers."""
+
+    @wraps(fn)
+    def _wrapped(*args: Any, **kwargs: Any) -> Any:
+        with BACKGROUND_MUTATION_LOCK:
+            return fn(*args, **kwargs)
+
+    return _wrapped  # type: ignore[return-value]
 
 
 class BackgroundProfileError(ValueError):
@@ -41,10 +57,20 @@ class ConfigManagerBackgroundTarget:
         config_manager: Any,
         *,
         save_fn: Callable[[], None] | None = None,
+        custom_save: bool = False,
     ) -> None:
         self._cm = config_manager
         self._save_fn = save_fn or config_manager.save_background_config
+        self._custom_save = custom_save or (
+            "save_background_config" in getattr(config_manager, "__dict__", {})
+        )
         self._seen_by_id: dict[str, Background] = {}
+
+    def _row_backend(self) -> Any | None:
+        if self._custom_save:
+            return None
+        backend = getattr(self._cm, "active_backend", None)
+        return backend if backend is not None and hasattr(backend, "put_background") else None
 
     def _remember(self, background: Background | None) -> Background | None:
         if background is not None:
@@ -61,6 +87,9 @@ class ConfigManagerBackgroundTarget:
         return items if isinstance(items, list) else None
 
     def list_all(self) -> list[Background]:
+        backend = self._row_backend()
+        if backend is not None:
+            return list(backend.list_backgrounds())
         items = self._backgrounds_list()
         if items is not None:
             return list(items)
@@ -70,12 +99,18 @@ class ConfigManagerBackgroundTarget:
         cleaned = str(bg_id or "").strip()
         if not cleaned:
             return None
+        backend = self._row_backend()
+        if backend is not None:
+            return self._remember(backend.get_background_by_id(cleaned))
         for item in self.list_all():
             if str(getattr(item, "id", "") or "") == cleaned:
                 return self._remember(item)
         return self._seen_by_id.get(cleaned)
 
     def get_by_name(self, name: str) -> Background | None:
+        backend = self._row_backend()
+        if backend is not None:
+            return self._remember(backend.get_background_by_name(name))
         return self._remember(self._cm.get_background_by_name(name))
 
     def _find_list_entry(
@@ -93,6 +128,18 @@ class ConfigManagerBackgroundTarget:
         return None
 
     def save_background(self, background: Background) -> None:
+        backend = self._row_backend()
+        if backend is not None:
+            items = self._backgrounds_list()
+            mem_entry = self._find_list_entry(items, background) if items is not None else None
+            backend.put_background(background)
+            if mem_entry is not None:
+                _sync_pydantic_model_in_place(mem_entry, background)
+            refresh = getattr(self._cm, "refresh_backgrounds", None)
+            if callable(refresh):
+                refresh()
+            return
+
         items = self._backgrounds_list()
         if items is not None:
             existing = self._find_list_entry(items, background)
@@ -134,6 +181,15 @@ class ConfigManagerBackgroundTarget:
             raise
 
     def delete_background_record(self, background: Background) -> bool:
+        backend = self._row_backend()
+        if backend is not None:
+            deleted = bool(backend.delete_background(background.id))
+            if deleted:
+                refresh = getattr(self._cm, "refresh_backgrounds", None)
+                if callable(refresh):
+                    refresh()
+            return deleted
+
         items = self._backgrounds_list()
         if items is None:
             return False
@@ -154,6 +210,7 @@ def _sprite_path(sprite: Sprite | dict[str, Any]) -> str:
     return sprite.path if isinstance(sprite, Sprite) else str(sprite.get("path", "") or "")
 
 
+@_with_background_lock
 def save_background_patch(
     target: BackgroundPersistenceTarget,
     patch: Mapping[str, Any],
@@ -213,6 +270,7 @@ def save_background_patch(
     return validated, None, True
 
 
+@_with_background_lock
 def delete_background_and_assets(
     target: BackgroundPersistenceTarget,
     name: str,
@@ -244,6 +302,7 @@ def delete_background_and_assets(
     return f"背景组 {name} 已删除！", new_names
 
 
+@_with_background_lock
 def upload_background_sprites(
     target: BackgroundPersistenceTarget,
     background_name: str,
@@ -292,6 +351,7 @@ def upload_background_sprites(
     return f"成功为 {background_name} 上传 {len(sprite_files)} 张背景图片！", all_paths, updated.bg_tags
 
 
+@_with_background_lock
 def delete_all_background_sprites(
     target: BackgroundPersistenceTarget,
     background_name: str,
@@ -314,6 +374,7 @@ def delete_all_background_sprites(
     return f"已删除 {background_name} 的所有背景图片！", [], ""
 
 
+@_with_background_lock
 def delete_single_background_sprite(
     target: BackgroundPersistenceTarget,
     background_name: str,
@@ -352,6 +413,7 @@ def delete_single_background_sprite(
     return f"已删除 {background_name} 的第 {sprite_index + 1} 张背景图片！", remaining, next_tags
 
 
+@_with_background_lock
 def save_background_image_tags_op(
     target: BackgroundPersistenceTarget,
     background_name: str,
@@ -370,6 +432,7 @@ def save_background_image_tags_op(
     return updated
 
 
+@_with_background_lock
 def upload_background_bgms(
     target: BackgroundPersistenceTarget,
     background_name: str,
@@ -420,6 +483,7 @@ def upload_background_bgms(
     )
 
 
+@_with_background_lock
 def delete_all_background_bgms(
     target: BackgroundPersistenceTarget,
     background_name: str,
@@ -442,6 +506,7 @@ def delete_all_background_bgms(
     return f"已删除 {background_name} 的所有背景音乐！", [], ""
 
 
+@_with_background_lock
 def delete_single_background_bgm(
     target: BackgroundPersistenceTarget,
     background_name: str,
@@ -482,6 +547,7 @@ def delete_single_background_bgm(
     )
 
 
+@_with_background_lock
 def save_background_bgm_tags_op(
     target: BackgroundPersistenceTarget,
     background_name: str,
@@ -501,6 +567,7 @@ def save_background_bgm_tags_op(
 
 
 __all__ = [
+    "BACKGROUND_MUTATION_LOCK",
     "BackgroundPersistenceTarget",
     "BackgroundProfileError",
     "ConfigManagerBackgroundTarget",

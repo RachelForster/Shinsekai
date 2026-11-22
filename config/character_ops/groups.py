@@ -6,7 +6,7 @@ from copy import deepcopy
 from typing import Any, Optional
 
 from config.character_ops.profile import resolve_mutable_character
-from config.character_ops.target import CharacterPersistenceTarget
+from config.character_ops.target import CharacterPersistenceTarget, _with_character_lock
 from config.schema import Character, DEFAULT_SPRITE_GROUP
 from config.sprite_groups import (
     normalize_sprite_group,
@@ -16,6 +16,7 @@ from config.sprite_groups import (
 )
 
 
+@_with_character_lock
 def save_character_sprite_groups(
     target: CharacterPersistenceTarget,
     name: str,

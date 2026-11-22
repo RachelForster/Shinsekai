@@ -9,7 +9,7 @@ import re
 import shutil
 from typing import Any, Optional, Union
 
-from config.character_ops.target import CharacterPersistenceTarget
+from config.character_ops.target import CharacterPersistenceTarget, _with_character_lock
 from config.schema import Sprite
 from config.sprite_files import sprite_field
 
@@ -44,6 +44,7 @@ def _updated_sprite(sprite: Any, **changes: Any) -> Any:
     return {**sprite, **changes}
 
 
+@_with_character_lock
 def upload_character_sprite_voice(
     target: CharacterPersistenceTarget,
     character_name: str,
@@ -129,6 +130,7 @@ def get_character_sprite_voice(
     return sprite_data.get("voice_path", None), sprite_data.get("voice_text", "")
 
 
+@_with_character_lock
 def save_character_sprite_voice_text(
     target: CharacterPersistenceTarget,
     character_name: str,
@@ -152,6 +154,7 @@ def save_character_sprite_voice_text(
     return "语音文字已保存"
 
 
+@_with_character_lock
 def save_character_sprite_voice_type(
     target: CharacterPersistenceTarget,
     character_name: str,
@@ -175,6 +178,7 @@ def save_character_sprite_voice_type(
     return "语音类型已保存"
 
 
+@_with_character_lock
 def delete_character_sprite_voice(
     target: CharacterPersistenceTarget,
     character_name: str,

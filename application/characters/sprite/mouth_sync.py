@@ -591,15 +591,30 @@ def _save_sprite_mouths(
             data["eyeFrames"] = eyes
         results.append((index, result["spritePath"], character, manifest, data))
     installed = []
+    stores = getattr(state, "stores", None)
+    characters_catalog = getattr(stores, "characters", None) if stores is not None else None
     try:
         for index, source, character, manifest, data in results:
             destination = install_mouth_bundle(state, character, manifest, data)
             installed.append((index, source, str(destination)))
-        state.character_manager.save_sprite_mouths(name, installed)
+        if characters_catalog is not None:
+            from application.characters.management import _CatalogCharacterTarget
+            from config.character_ops import save_character_sprite_mouths as save_mouths_op
+
+            save_mouths_op(_CatalogCharacterTarget(characters_catalog), name, installed)
+        else:
+            state.character_manager.save_sprite_mouths(name, installed)
     except Exception:
         for _, _, destination in installed:
             discard_mouth_bundle(state, destination)
         raise
+    if characters_catalog is not None:
+        refresh = getattr(state.config_manager, "refresh_characters", None)
+        if callable(refresh):
+            refresh()
+        else:
+            state.config_manager.reload()
+        return _jsonify(characters_catalog.get_by_name(name))
     state.config_manager.reload()
     return _jsonify(state.config_manager.get_character_by_name(name))
 
@@ -611,6 +626,23 @@ def remove_sprite_mouth(
         character, index, _, _ = _source(
             state, payload, file_access_roots=file_access_roots
         )
+        stores = getattr(state, "stores", None)
+        characters_catalog = getattr(stores, "characters", None) if stores is not None else None
+        if characters_catalog is not None:
+            from application.characters.management import _CatalogCharacterTarget
+            from config.character_ops import save_character_sprite_mouths as save_mouths_op
+
+            save_mouths_op(
+                _CatalogCharacterTarget(characters_catalog),
+                character.name,
+                [(index, payload["spritePath"], None)],
+            )
+            refresh = getattr(state.config_manager, "refresh_characters", None)
+            if callable(refresh):
+                refresh()
+            else:
+                state.config_manager.reload()
+            return _jsonify(characters_catalog.get_by_name(character.name))
         state.character_manager.save_sprite_mouths(character.name, [(index, payload["spritePath"], None)])
         state.config_manager.reload()
         return _jsonify(state.config_manager.get_character_by_name(character.name))

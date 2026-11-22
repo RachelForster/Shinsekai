@@ -15,6 +15,7 @@ from config.character_ops.relations import (
 from config.character_ops.target import (
     CharacterPersistenceTarget,
     CharacterProfileError,
+    _with_character_lock,
 )
 from config.schema import (
     Character,
@@ -137,6 +138,7 @@ def _validate_prefix_uniqueness(
             )
 
 
+@_with_character_lock
 def save_character_patch(
     target: CharacterPersistenceTarget,
     patch: Mapping[str, Any],
@@ -258,6 +260,7 @@ def save_character_patch(
     return validated, None, True
 
 
+@_with_character_lock
 def delete_character_and_assets(
     target: CharacterPersistenceTarget,
     name: str,
@@ -294,6 +297,7 @@ def delete_character_and_assets(
     return f"角色 {name} 已删除！", new_names
 
 
+@_with_character_lock
 def save_character_emotion_tags_op(
     target: CharacterPersistenceTarget,
     name: str,
@@ -313,6 +317,7 @@ def save_character_emotion_tags_op(
     return updated
 
 
+@_with_character_lock
 def save_character_sprite_scale_op(
     target: CharacterPersistenceTarget,
     name: str,

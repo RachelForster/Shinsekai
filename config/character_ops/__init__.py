@@ -23,6 +23,7 @@ from config.character_ops.sprites import (
     upload_character_sprites,
 )
 from config.character_ops.target import (
+    CHARACTER_MUTATION_LOCK,
     CharacterPersistenceTarget,
     CharacterProfileError,
     ConfigManagerCharacterTarget,
@@ -37,6 +38,7 @@ from config.character_ops.voices import (
 )
 
 __all__ = [
+    "CHARACTER_MUTATION_LOCK",
     "CharacterPersistenceTarget",
     "CharacterProfileError",
     "ConfigManagerCharacterTarget",

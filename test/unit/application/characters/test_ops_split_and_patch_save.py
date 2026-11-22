@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import struct
 import sys
+from threading import Event
 from types import SimpleNamespace
 import wave
 
@@ -254,3 +256,174 @@ def test_background_use_case_patch_save_and_bgm_ops_without_pandas(
         assert "Rooftop" not in remaining["names"]
     finally:
         stores.close()
+
+
+def test_concurrent_background_image_and_bgm_tag_saves_preserve_both_fields(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stores = build_app_stores(tmp_path, bind_globals=False)
+    try:
+        state = _make_state(tmp_path, stores)
+        created = BackgroundUseCase(state, file_access_roots=[tmp_path]).execute(
+            BackgroundRequest(
+                BackgroundOperation.SAVE,
+                {
+                    "background": {
+                        "name": "Studio",
+                        "sprite_prefix": "studio",
+                        "bg_tags": "场景 1：initial-bg",
+                        "bgm_tags": "音乐 1：initial-bgm",
+                    }
+                },
+            )
+        )
+        bg_id = created["id"]
+
+        first_read = Event()
+        second_started = Event()
+        orig_get_by_name = stores.backgrounds.get_by_name
+
+        def slow_first_read(name: str):
+            row = orig_get_by_name(name)
+            if not first_read.is_set():
+                first_read.set()
+                second_started.wait(timeout=0.3)
+            return row
+
+        monkeypatch.setattr(stores.backgrounds, "get_by_name", slow_first_read)
+
+        def save_image_tags():
+            return BackgroundUseCase(state, file_access_roots=[tmp_path]).execute(
+                BackgroundRequest(
+                    BackgroundOperation.SAVE_IMAGE_TAGS,
+                    {"name": "Studio", "bgTags": "场景 1：sunset"},
+                )
+            )
+
+        def save_bgm_tags():
+            second_started.set()
+            return BackgroundUseCase(state, file_access_roots=[tmp_path]).execute(
+                BackgroundRequest(
+                    BackgroundOperation.SAVE_BGM_TAGS,
+                    {"name": "Studio", "bgmTags": "音乐 1：piano"},
+                )
+            )
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            f1 = pool.submit(save_image_tags)
+            assert first_read.wait(timeout=2.0)
+            f2 = pool.submit(save_bgm_tags)
+            f1.result(timeout=5.0)
+            f2.result(timeout=5.0)
+
+        persisted = stores.backgrounds.get(bg_id)
+        assert persisted is not None
+        assert persisted.bg_tags == "场景 1：sunset"
+        assert persisted.bgm_tags == "音乐 1：piano"
+    finally:
+        stores.close()
+
+
+def test_interleaving_character_direct_and_legacy_writers_preserve_all_updates(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from PIL import Image
+    from application.media.auto_annotation import auto_label_character_sprites
+    from config.character_manager import CharacterManager
+    from config.config_manager import ConfigManager
+
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.setattr(ConfigManager, "_instance", None)
+    monkeypatch.setattr(ConfigManager, "_config", None)
+    stores = build_app_stores(tmp_path, bind_globals=True)
+    try:
+        cm = ConfigManager()
+        legacy_mgr = CharacterManager()
+        state = SimpleNamespace(
+            project_root_dir=str(tmp_path),
+            template_dir_path=str(tmp_path / "templates"),
+            stores=stores,
+            character_manager=legacy_mgr,
+            background_manager=None,
+            config_manager=cm,
+        )
+        use_case = CharacterUseCase(state, file_access_roots=[tmp_path])
+
+        sprite_file = tmp_path / "pose1.png"
+        Image.new("RGB", (8, 8), "pink").save(sprite_file)
+
+        created = use_case.execute(
+            CharacterRequest(
+                CharacterOperation.SAVE,
+                {
+                    "character": {
+                        "name": "Alice",
+                        "color": "#112233",
+                        "sprite_prefix": "alice",
+                        "character_brief": "Before VLM",
+                    }
+                },
+            )
+        )
+        alice_id = created["id"]
+        use_case.execute(
+            CharacterRequest(
+                CharacterOperation.UPLOAD_SPRITES,
+                {"name": "Alice", "paths": [str(sprite_file)]},
+            )
+        )
+
+        # Interleave direct CharacterUseCase mutations while auto-annotation VLM inference runs,
+        # plus legacy CharacterManager scale update right before annotation commits.
+        def interleaving_infer(_image_bytes: bytes, _prompt: str) -> str:
+            use_case.execute(
+                CharacterRequest(
+                    CharacterOperation.SAVE,
+                    {
+                        "id": alice_id,
+                        "character": {
+                            "name": "Alice",
+                            "character_brief": "Updated during VLM",
+                        },
+                    },
+                )
+            )
+            use_case.execute(
+                CharacterRequest(
+                    CharacterOperation.SAVE,
+                    {
+                        "character": {
+                            "name": "Bob",
+                            "color": "#445566",
+                            "sprite_prefix": "bob",
+                            "character_brief": "Concurrent peer",
+                        }
+                    },
+                )
+            )
+            legacy_mgr.save_sprite_scale("Alice", 1.45)
+            return "标签：微笑，站立"
+
+        labelled = auto_label_character_sprites(
+            cm,
+            "Alice",
+            project_root=tmp_path,
+            infer=interleaving_infer,
+            characters=stores.characters,
+        )
+        assert labelled["annotatedCount"] == 1
+
+        alice = stores.characters.get(alice_id)
+        bob = stores.characters.get_by_name("Bob")
+        assert alice is not None
+        assert bob is not None
+        assert alice.character_brief == "Updated during VLM"
+        assert alice.sprite_scale == pytest.approx(1.45)
+        assert "微笑" in alice.emotion_tags
+        assert bob.character_brief == "Concurrent peer"
+    finally:
+        stores.close()
+        ConfigManager._instance = None
+        ConfigManager._config = None
