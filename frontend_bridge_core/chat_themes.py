@@ -35,6 +35,7 @@ from sdk.chat_ui_theme import (
 )
 
 from application.runtime.state import BridgeState
+from frontend_bridge_core.i18n_helpers import bridge_error
 from sdk.path_utils import safe_child_path, safe_existing_file_path
 
 #: 用户可写主题目录（相对项目根 / cwd）。
@@ -94,21 +95,26 @@ def _is_retired_builtin_theme_id(theme_id: str) -> bool:
     return theme_id in RETIRED_BUILTIN_THEME_IDS
 
 
-def _safe_theme_id(theme_id: str) -> str:
+def _safe_theme_id(theme_id: str, state: BridgeState | None = None) -> str:
     raw = str(theme_id or "").strip()
     safe_id = slugify_theme_id(raw)
     if not safe_id or safe_id != raw:
-        raise ValueError("主题 id 无效")
+        raise bridge_error(ValueError, state, "theme_id_invalid")
     return safe_id
 
 
-def _copy_theme_source(source: Path, staging: Path, root: Path) -> None:
+def _copy_theme_source(
+    source: Path,
+    staging: Path,
+    root: Path,
+    state: BridgeState | None = None,
+) -> None:
     """Copy a theme only after its canonical path is contained by ``root``."""
     canonical_root = os.path.normcase(os.path.realpath(os.fspath(root)))
     canonical_source = os.path.normcase(os.path.realpath(os.fspath(source)))
     root_prefix = os.path.join(canonical_root, "")
     if not canonical_source.startswith(root_prefix):
-        raise PermissionError("基础主题路径超出主题目录")
+        raise bridge_error(PermissionError, state, "theme_base_outside_root")
     shutil.copytree(canonical_source, staging)
 
 
@@ -132,16 +138,21 @@ def _atomic_write_manifest(theme_dir: Path, manifest: Dict[str, Any]) -> None:
             pending.unlink(missing_ok=True)
 
 
-def _publish_new_theme(staging: Path, target: Path, theme_id: str) -> None:
+def _publish_new_theme(
+    staging: Path,
+    target: Path,
+    theme_id: str,
+    state: BridgeState | None = None,
+) -> None:
     """Atomically publish a complete staged directory without replacing a peer."""
     with _THEME_PUBLICATION_LOCK:
         if target.exists():
-            raise FileExistsError(f"主题已存在：{theme_id}")
+            raise bridge_error(FileExistsError, state, "theme_exists", id=theme_id)
         try:
             staging.rename(target)
         except OSError as error:
             if target.exists():
-                raise FileExistsError(f"主题已存在：{theme_id}") from error
+                raise bridge_error(FileExistsError, state, "theme_exists", id=theme_id) from error
             raise
 
 
@@ -245,15 +256,15 @@ def list_chat_themes(state: BridgeState) -> List[Dict[str, Any]]:
 def get_chat_theme_manifest(state: BridgeState, theme_id: str) -> Dict[str, Any]:
     """读取并返回单个主题的完整 manifest。"""
     _seed_builtin_themes()
-    safe_id = _safe_theme_id(theme_id)
+    safe_id = _safe_theme_id(theme_id, state)
     if _is_retired_builtin_theme_id(safe_id):
-        raise FileNotFoundError(f"主题不存在或 theme.json 无效: {theme_id}")
+        raise bridge_error(FileNotFoundError, state, "theme_manifest_invalid", id=theme_id)
     root = _themes_root()
     manifest = _read_manifest(root / safe_id)
     if manifest is None and safe_id != DEFAULT_BUILTIN_CHAT_THEME_ID and _is_builtin_theme_dir(safe_id):
         manifest = _read_manifest(root / DEFAULT_BUILTIN_CHAT_THEME_ID)
     if manifest is None:
-        raise FileNotFoundError(f"主题不存在或 theme.json 无效: {theme_id}")
+        raise bridge_error(FileNotFoundError, state, "theme_manifest_invalid", id=theme_id)
     return manifest
 
 
@@ -270,13 +281,13 @@ def set_active_chat_theme(state: BridgeState, body: Dict[str, Any]) -> Dict[str,
     """设置激活主题 id 并持久化。"""
     theme_id = str((body or {}).get("id") or "").strip()
     if not theme_id:
-        raise ValueError("缺少主题 id")
+        raise bridge_error(ValueError, state, "theme_id_missing")
     _seed_builtin_themes()
-    safe_id = _safe_theme_id(theme_id)
+    safe_id = _safe_theme_id(theme_id, state)
     if _is_retired_builtin_theme_id(safe_id):
-        raise FileNotFoundError(f"主题不存在：{theme_id}")
+        raise bridge_error(FileNotFoundError, state, "theme_not_found", id=theme_id)
     if _read_manifest(_themes_root() / safe_id) is None:
-        raise FileNotFoundError(f"主题不存在：{theme_id}")
+        raise bridge_error(FileNotFoundError, state, "theme_not_found", id=theme_id)
     system_config = state.config_manager.config.system_config
     setattr(system_config, "chat_ui_theme_id", safe_id)
     save = (
@@ -314,17 +325,26 @@ def install_theme_from_zip(
         )
         manifest_root = locate_manifest_root(extracted)
         if manifest_root is None:
-            raise ValueError(f"压缩包内未找到 {MANIFEST_NAME}")
+            raise bridge_error(
+                ValueError, state, "theme_zip_missing_manifest", manifest=MANIFEST_NAME
+            )
 
         result = validate_theme_dir(manifest_root)
         if not result.ok:
-            raise ValueError("主题校验失败：\n" + "\n".join(result.errors))
+            raise bridge_error(
+                ValueError,
+                state,
+                "theme_validation_failed",
+                errors="\n".join(result.errors),
+            )
 
         theme_id = slugify_theme_id(result.normalized.get("id") or manifest_root.name)
         target = safe_child_path(root, theme_id)
         if target.exists():
             if not overwrite:
-                raise FileExistsError(f"主题已存在：{theme_id}（如需覆盖请传 overwrite=true）")
+                raise bridge_error(
+                    FileExistsError, state, "theme_exists_overwrite_hint", id=theme_id
+                )
             shutil.rmtree(target, ignore_errors=True)
 
         # 以校验后规整的 manifest 落地（剔除非法字段），其余资源原样拷贝。
@@ -352,67 +372,81 @@ def save_chat_theme(state: BridgeState, body: Dict[str, Any]) -> Dict[str, Any]:
     raw_manifest = (body or {}).get("manifest")
     result = validate_manifest(raw_manifest)
     if not result.ok:
-        raise ValueError("主题配置校验失败：\n" + "\n".join(result.errors))
+        raise bridge_error(
+            ValueError,
+            state,
+            "theme_manifest_validation_failed",
+            errors="\n".join(result.errors),
+        )
     manifest = result.normalized
-    theme_id = _safe_theme_id(str(manifest.get("id") or ""))
-    base_id = _safe_theme_id(str((body or {}).get("baseId") or DEFAULT_BUILTIN_CHAT_THEME_ID))
+    theme_id = _safe_theme_id(str(manifest.get("id") or ""), state)
+    base_id = _safe_theme_id(
+        str((body or {}).get("baseId") or DEFAULT_BUILTIN_CHAT_THEME_ID), state
+    )
     creating = base_id != theme_id
     target = safe_child_path(root, theme_id)
 
     if target.exists() and _is_builtin_theme_dir(theme_id):
-        raise PermissionError(f"内置主题不可编辑：{theme_id}")
+        raise bridge_error(PermissionError, state, "theme_builtin_readonly", id=theme_id)
     if target.exists() and not target.is_dir():
-        raise FileExistsError(f"主题路径不是目录：{theme_id}")
+        raise bridge_error(FileExistsError, state, "theme_not_directory", id=theme_id)
 
     if creating:
         if target.exists():
-            raise FileExistsError(f"主题已存在：{theme_id}")
+            raise bridge_error(FileExistsError, state, "theme_exists", id=theme_id)
         if _is_retired_builtin_theme_id(base_id):
-            raise FileNotFoundError(f"基础主题不存在：{base_id}")
+            raise bridge_error(FileNotFoundError, state, "theme_base_not_found", id=base_id)
         source = safe_child_path(root, base_id)
         if _read_manifest(source) is None:
-            raise FileNotFoundError(f"基础主题不存在或无效：{base_id}")
+            raise bridge_error(FileNotFoundError, state, "theme_base_invalid", id=base_id)
     else:
         if not target.is_dir():
-            raise FileNotFoundError(f"主题不存在：{theme_id}")
+            raise bridge_error(FileNotFoundError, state, "theme_not_found", id=theme_id)
         source = target
 
     with tempfile.TemporaryDirectory(prefix="chat_theme_save_", dir=root) as tmp:
         # The temporary directory is unique already. Keep its child name
         # server-controlled so request data is never used in this copy path.
         staging = Path(tmp) / "working-theme"
-        _copy_theme_source(source, staging, root)
+        _copy_theme_source(source, staging, root, state)
         safe_child_path(staging, BUILTIN_THEME_OWNER_MARKER).unlink(missing_ok=True)
         (staging / MANIFEST_NAME).write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
         )
         staged_result = validate_theme_dir(staging)
         if not staged_result.ok:
-            raise ValueError("主题资源校验失败：\n" + "\n".join(staged_result.errors))
+            raise bridge_error(
+                ValueError,
+                state,
+                "theme_asset_validation_failed",
+                errors="\n".join(staged_result.errors),
+            )
         normalized_manifest = staged_result.normalized
         (staging / MANIFEST_NAME).write_text(
             json.dumps(normalized_manifest, ensure_ascii=False, indent=2), encoding="utf-8"
         )
 
         if creating:
-            _publish_new_theme(staging, target, theme_id)
+            _publish_new_theme(staging, target, theme_id, state)
         else:
             _atomic_write_manifest(target, normalized_manifest)
 
     saved_manifest = _read_manifest(target)
     if saved_manifest is None:
-        raise ValueError(f"保存后的主题无效：{theme_id}")
+        raise bridge_error(ValueError, state, "theme_saved_invalid", id=theme_id)
     return _summary(target, saved_manifest)
 
 
 def delete_chat_theme(state: BridgeState, theme_id: str) -> Dict[str, Any]:
     """删除一个用户主题目录。内置主题（M5 种子化后只读）不可删。"""
-    safe_id = _safe_theme_id(theme_id)
+    safe_id = _safe_theme_id(theme_id, state)
     target = safe_child_path(_themes_root(), safe_id)
     if _is_builtin_theme_dir(safe_id):
-        raise PermissionError(f"内置主题不可删除：{theme_id}")
+        raise bridge_error(
+            PermissionError, state, "theme_builtin_undeletable", id=theme_id
+        )
     if not target.is_dir():
-        raise FileNotFoundError(f"主题不存在：{theme_id}")
+        raise bridge_error(FileNotFoundError, state, "theme_not_found", id=theme_id)
     shutil.rmtree(target, ignore_errors=True)
     # 若删除的是当前激活主题，清空激活态。
     active = get_active_chat_theme_id(state).get("id")

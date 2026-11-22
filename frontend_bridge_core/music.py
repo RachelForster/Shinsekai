@@ -5,20 +5,16 @@ from typing import Any
 
 from application.runtime.state import BridgeState, _jsonify
 from application.runtime.tasks import _append_task_log, _update_task
+from frontend_bridge_core.i18n_helpers import bridge_tr
 
 
 def _music_cover_source(payload: dict[str, Any]) -> str:
+    from live.music_cover_pipeline import MUSIC_COVER_SOURCE_ALIASES
+
     source = str(payload.get("source") or "youtube").strip().lower()
-    aliases = {
-        "youtube": "youtube",
-        "yt": "youtube",
-        "bilibili": "bilibili",
-        "b站": "bilibili",
-        "url": "url",
-    }
-    if source not in aliases:
+    if source not in MUSIC_COVER_SOURCE_ALIASES:
         raise ValueError(f"Unsupported music cover source: {source}")
-    return aliases[source]
+    return MUSIC_COVER_SOURCE_ALIASES[source]
 
 
 def _music_cover_search(state: BridgeState, payload: dict[str, Any]) -> dict[str, str]:
@@ -41,7 +37,7 @@ def _run_music_cover(state: BridgeState, task_id: str, payload: dict[str, Any]) 
     _update_task(
         state,
         task_id,
-        message="正在执行音乐翻唱流水线。",
+        message=bridge_tr(state, "task.music_cover_running"),
         phase="pipeline",
         progress=0.2,
     )

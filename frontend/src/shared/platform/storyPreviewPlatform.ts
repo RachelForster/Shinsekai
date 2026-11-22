@@ -1,6 +1,7 @@
 import type { ChatSnapshot, ShinsekaiPlatform, StoryGenerationTask, TaskProgressOptions } from "./types";
 import { previewStoryGraph } from "./previewStoryGraph";
 import { TRANSPARENT_BACKGROUND_NAME } from "../constants";
+import { translateRuntimeMessage } from "../i18n/runtimeLanguage";
 import type { StoryDocument } from "./storyEditorTypes";
 
 function previewStoryGeneration(id: string, status: StoryGenerationTask["status"]): StoryGenerationTask {
@@ -51,7 +52,7 @@ export function createStoryPreviewPlatform(
     const existing = documents.get(storyPath);
     if (existing) return structuredClone(existing);
     const task = [...tasks.values()].find((item) => item.draftPath === storyPath);
-    if (!task || !previewStoryGraph.graph) throw new Error("剧本不存在，请刷新后重试。");
+    if (!task || !previewStoryGraph.graph) throw new Error(translateRuntimeMessage("plat.preview.story.notFound"));
     const document = {
       storyPath,
       title: previewStoryGraph.title,
@@ -66,7 +67,7 @@ export function createStoryPreviewPlatform(
   let activeStoryPath = "";
   const read = (id: string) => {
     const task = tasks.get(id);
-    if (!task) throw new Error("预览任务已过期，请重新生成。");
+    if (!task) throw new Error(translateRuntimeMessage("plat.preview.story.expired"));
     return task;
   };
   const finish = async (task: StoryGenerationTask, options?: TaskProgressOptions<StoryGenerationTask>) => {
@@ -74,8 +75,8 @@ export function createStoryPreviewPlatform(
     options?.onTaskUpdate?.({
       id: task.id,
       kind: "story-generation",
-      title: "生成剧本",
-      message: "已完成",
+      title: translateRuntimeMessage("plat.preview.story.generateTitle"),
+      message: translateRuntimeMessage("plat.preview.story.done"),
       createdAt: task.createdAt,
       updatedAt: task.updatedAt,
       logs: [],
@@ -92,7 +93,7 @@ export function createStoryPreviewPlatform(
       documentFor(storyPath);
       const chat = getChat();
       if (activeStoryPath === storyPath && (chat.chatProcessRunning || chat.chatRuntimeClosing)) {
-        throw new Error("请先关闭该剧本版本的聊天，再删除剧本及关联对话。");
+        throw new Error(translateRuntimeMessage("plat.preview.story.closeChatBeforeDelete"));
       }
       deleteConversations(storyPath);
       for (const [id, task] of tasks) {
@@ -108,7 +109,7 @@ export function createStoryPreviewPlatform(
     readDocument: async (storyPath) => documentFor(storyPath),
     saveDocument: async (input) => {
       const base = documentFor(input.storyPath);
-      if (base.sourceHash !== input.sourceHash) throw new Error("剧本已变化，请重新打开编辑器。");
+      if (base.sourceHash !== input.sourceHash) throw new Error(translateRuntimeMessage("plat.preview.story.changed"));
       const task = [...tasks.values()].find((item) => item.draftPath === input.storyPath)!;
       const id = crypto.randomUUID();
       const storyPath = `data/stories/edited-${id}.json`;
@@ -118,7 +119,7 @@ export function createStoryPreviewPlatform(
       return structuredClone(result);
     },
     suggestGraph: async () => {
-      throw new Error("浏览器演示模式未连接 LLM。请连接后端后使用辅助修改。");
+      throw new Error(translateRuntimeMessage("plat.preview.story.suggestRequiresBackend"));
     },
     list: async () => {
       if (activeStoryPath && getChat().story) saves.set(activeStoryPath, getChat());
@@ -142,13 +143,14 @@ export function createStoryPreviewPlatform(
     },
     prepareLaunch: async (storyPath, historyPath = "") => {
       const task = [...tasks.values()].find((item) => item.draftPath === storyPath);
-      if (!task) throw new Error("剧本不存在，请刷新后重试。");
+      if (!task) throw new Error(translateRuntimeMessage("plat.preview.story.notFound"));
+      const title = documentFor(storyPath).title;
       return {
         templateId: "",
         storyPath,
-        templateName: documentFor(storyPath).title,
-        scenario: `正在游玩互动剧本《${documentFor(storyPath).title}》。根据当前节点的剧情要求和已发生的对话推进故事。`,
-        system: "根据当前剧本场景呈现人物对话和旁白。",
+        templateName: title,
+        scenario: translateRuntimeMessage("plat.preview.story.launchScenario", { title }),
+        system: translateRuntimeMessage("plat.preview.story.launchSystem"),
         characters: (task.options.characters as string[]) ?? [],
         backgroundName: String(task.options.backgroundName || TRANSPARENT_BACKGROUND_NAME),
         characterPromptMode: task.options.characterPromptMode === "compact" ? "compact" : "full",

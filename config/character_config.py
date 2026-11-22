@@ -9,6 +9,7 @@ import yaml
 
 from config.models import Character
 from config.sprite_voice import normalize_sprite_voice_types
+from i18n import tr
 
 _PACKAGE_EXCLUDED_FIELDS = {"id", "display_name", "is_builtin", "pinned", "undeletable"}
 
@@ -59,7 +60,7 @@ class CharacterConfig:
         characters = []
         for char_data in config_data:
             if not all(key in char_data for key in ("name", "color", "sprite_prefix")):
-                raise ValueError("YAML配置缺少必需字段（name, color, sprite_prefix）")
+                raise ValueError(tr("crud.common.yaml_missing_required"))
             characters.append(CharacterConfig.parse_dic(char_data=char_data))
         return characters
 

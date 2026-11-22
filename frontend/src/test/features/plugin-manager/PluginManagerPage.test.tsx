@@ -424,6 +424,51 @@ describe("PluginManagerPage", () => {
     expect(within(card).getByText("Version 0.1.0")).toBeInTheDocument();
   });
 
+  it("does not cross-contaminate installed plugin title or description with market plugins sharing a prefix before CJK text", async () => {
+    const localEmotionPlugin: PluginManifest = {
+      ...plainPlugin,
+      author: "LocalAuthor",
+      description: "本地多参考情绪语音合成说明。",
+      directory: "plugins/gpt_sovits_emotion_voice",
+      entry: "plugins.gpt_sovits_emotion_voice.plugin:GptSovitsEmotionVoicePlugin",
+      id: "com.local.gpt_sovits_emotion_voice",
+      loaded: true,
+      title: "GPT-SoVITS 多参考语音插件",
+      version: "0.6.1",
+    };
+    const marketBatchTrainer: PluginCatalogItem = {
+      ...catalogItem,
+      author: "RachelForster",
+      description: "批量训练详细说明",
+      displayName: "GPT-SoVITS 批量训练插件",
+      downloaded: false,
+      entry: "plugins.shinsekai_gptsovits_batch_trainer.plugin:BatchTrainerPlugin",
+      id: "shinsekai_gptsovits_batch_trainer",
+      installed: false,
+      name: "shinsekai_gptsovits_batch_trainer",
+      repo: "RachelForster/shinsekai_gptsovits_batch_trainer",
+      shortDescription: "市场批量训练简介",
+      version: "0.2.5",
+    };
+
+    mockListPlugins.mockResolvedValue([localEmotionPlugin]);
+    mockListPluginCatalog.mockResolvedValue([marketBatchTrainer]);
+
+    renderPage();
+
+    const card = await findPluginCard("GPT-SoVITS 多参考语音插件");
+    expect(card.querySelector(".plugin-card__title strong")).toHaveTextContent("GPT-SoVITS 多参考语音插件");
+    expect(within(card).getByText("本地多参考情绪语音合成说明。")).toBeInTheDocument();
+    expect(screen.queryByText("GPT-SoVITS 批量训练插件")).not.toBeInTheDocument();
+    expect(screen.queryByText("市场批量训练简介")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Discover" }));
+    const marketCard = (await screen.findByRole("heading", { name: "GPT-SoVITS 批量训练插件" })).closest(
+      ".plugin-market-card",
+    ) as HTMLElement;
+    expect(within(marketCard).getByRole("button", { name: "Install" })).toBeEnabled();
+  });
+
   it("uses raw registry display_name as the discovery card title when the bridge has not camel-cased it", async () => {
     mockListPlugins.mockResolvedValue([]);
     mockListPluginCatalog.mockResolvedValue([

@@ -4,6 +4,7 @@ import {
   waitForDesktopBridgeRestart,
   writeDesktopRestartDebugLog,
 } from "../desktop/desktopApi";
+import { translateRuntimeMessage } from "../i18n/runtimeLanguage";
 import { PlatformRequestError } from "./errors";
 import type { TaskProgressOptions, TaskSnapshot } from "./slices/taskTypes";
 
@@ -193,6 +194,21 @@ async function fetchWithStartupRetry(url: string, init: RequestInit): Promise<Re
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
+function parseErrorParams(raw: unknown): Record<string, string | number> | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return undefined;
+  }
+  const result: Record<string, string | number> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === "string" || typeof value === "number") {
+      result[key] = value;
+    } else if (value !== null && value !== undefined) {
+      result[key] = String(value);
+    }
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
 async function requestJson<T>(baseUrl: string, path: string, init?: RequestInit): Promise<T> {
   const requestHeaders: Record<string, string> = {
     "Content-Type": "application/json",
@@ -208,7 +224,8 @@ async function requestJson<T>(baseUrl: string, path: string, init?: RequestInit)
   if (!response.ok) {
     const message = typeof data?.error === "string" ? data.error : `${response.status} ${response.statusText}`;
     const errorCode = typeof data?.errorCode === "string" ? data.errorCode : undefined;
-    throw new PlatformRequestError(message, response.status, errorCode);
+    const errorParams = parseErrorParams(data?.errorParams);
+    throw new PlatformRequestError(message, response.status, errorCode, errorParams);
   }
   return data as T;
 }
@@ -239,7 +256,8 @@ async function requestForm<T>(baseUrl: string, path: string, formData: FormData)
   if (!response.ok) {
     const message = typeof data?.error === "string" ? data.error : `${response.status} ${response.statusText}`;
     const errorCode = typeof data?.errorCode === "string" ? data.errorCode : undefined;
-    throw new PlatformRequestError(message, response.status, errorCode);
+    const errorParams = parseErrorParams(data?.errorParams);
+    throw new PlatformRequestError(message, response.status, errorCode, errorParams);
   }
   return data as T;
 }
@@ -299,15 +317,15 @@ async function waitForTask<TResult>(
   }
 
   if (task.status === "failed") {
-    throw new Error(task.error || task.message || "任务失败。");
+    throw new Error(task.error || task.message || translateRuntimeMessage("plat.http.taskFailed"));
   }
   if (task.status === "cancelled") {
-    const error = new Error(task.message || "任务已取消。");
+    const error = new Error(task.message || translateRuntimeMessage("plat.http.taskCancelled"));
     error.name = "TaskCancelledError";
     throw error;
   }
   if (!task.result) {
-    throw new Error(task.message || "任务完成但没有返回结果。");
+    throw new Error(task.message || translateRuntimeMessage("plat.http.taskEmptyResult"));
   }
   return task.result;
 }

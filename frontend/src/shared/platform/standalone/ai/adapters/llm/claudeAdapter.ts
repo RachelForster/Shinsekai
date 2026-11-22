@@ -1,3 +1,4 @@
+import { translateRuntimeMessage } from "../../../../../i18n/runtimeLanguage";
 import type { LlmModelOption } from "../../../../slices/configTypes";
 import { standaloneHttpJson, type StandaloneHttpClient } from "../../httpClient";
 import type { StandaloneLlmAdapter, StandaloneLlmInput, StandaloneLlmResult } from "../types";
@@ -43,10 +44,10 @@ function convertMessagesForClaude(messages: StandaloneLlmInput["messages"]): {
   }
 
   if (rawTurns.length && rawTurns[0].role !== "user") {
-    rawTurns.unshift({ role: "user", content: "继续对话" });
+    rawTurns.unshift({ role: "user", content: translateRuntimeMessage("plat.standalone.claudeContinue") });
   }
   if (!rawTurns.length) {
-    rawTurns.push({ role: "user", content: "你好" });
+    rawTurns.push({ role: "user", content: translateRuntimeMessage("plat.standalone.claudeHello") });
   }
 
   return {
@@ -65,7 +66,7 @@ export const claudeLlmAdapter: StandaloneLlmAdapter = {
   async complete(input: StandaloneLlmInput, http: StandaloneHttpClient): Promise<StandaloneLlmResult> {
     const apiKey = input.apiKey.trim();
     if (!apiKey) {
-      throw new Error("请先填写 Claude API Key。");
+      throw new Error(translateRuntimeMessage("plat.standalone.claudeApiKeyRequired"));
     }
     const preset = getLlmProviderPreset("Claude");
     const baseUrl = normalizeClaudeBaseUrl(input.baseUrl);
@@ -96,7 +97,7 @@ export const claudeLlmAdapter: StandaloneLlmAdapter = {
 
     const content = (data.content ?? []).map((item) => (typeof item?.text === "string" ? item.text : "")).join("");
     if (!content.trim()) {
-      throw new Error("Claude 返回内容为空。");
+      throw new Error(translateRuntimeMessage("plat.standalone.claudeEmpty"));
     }
     const inputTokens = data.usage?.input_tokens ?? 0;
     const outputTokens = data.usage?.output_tokens ?? 0;
@@ -123,6 +124,8 @@ export const claudeLlmAdapter: StandaloneLlmAdapter = {
       },
       http,
     );
-    return { message: `连接成功 (${res.model || model})` };
+    return {
+      message: translateRuntimeMessage("plat.standalone.connectedModel", { model: res.model || model }),
+    };
   },
 };

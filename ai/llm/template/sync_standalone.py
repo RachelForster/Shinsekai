@@ -40,6 +40,14 @@ STANDALONE_SESSION_KEYS: tuple[str, ...] = (
     "standalone_compact_truncated_suffix",
     "standalone_checkpoint_context",
 )
+STANDALONE_GENERATION_KEYS: tuple[str, ...] = (
+    "character_brief_system",
+    "character_brief_user_header",
+    "character_brief_empty_setting",
+    "character_setting_system",
+    "character_setting_empty_hint",
+    "character_setting_user",
+)
 
 
 def build_standalone_locales_payload(
@@ -62,6 +70,16 @@ def build_standalone_locales_payload(
                 )
             bundle[session_key] = catalog.translate(
                 f"session.{session_key}",
+                locale=locale,
+                strict=True,
+            )
+        for generation_key in STANDALONE_GENERATION_KEYS:
+            if generation_key in bundle:
+                raise ValueError(
+                    f"Duplicate standalone prompt key {generation_key!r} across catalogs"
+                )
+            bundle[generation_key] = catalog.translate(
+                f"generation.{generation_key}",
                 locale=locale,
                 strict=True,
             )

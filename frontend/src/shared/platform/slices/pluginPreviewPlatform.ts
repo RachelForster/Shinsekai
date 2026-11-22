@@ -1,3 +1,4 @@
+import { translateRuntimeMessage } from "../../i18n/runtimeLanguage";
 import { sampleMcpConfig, sampleMcpTools, samplePluginCatalog, samplePlugins } from "../sampleData";
 import type {
   McpPlatform,
@@ -15,9 +16,13 @@ const PREVIEW_PLUGIN_SUBMIT_URL =
 function previewNormalizePluginKey(value: string | null | undefined) {
   return (value ?? "")
     .trim()
-    .replace(/\.git$/i, "")
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "");
+    .replace(/^git@github\.com:/i, "")
+    .replace(/^https?:\/\/github\.com\//i, "")
+    .replace(/^github\.com\//i, "")
+    .replace(/\.git$/i, "")
+    .replace(/[^\p{L}\p{N}]+/gu, "_")
+    .replace(/^_+|_+$/g, "");
 }
 
 function previewModuleToken(value: string | null | undefined) {
@@ -34,14 +39,14 @@ function previewModuleToken(value: string | null | undefined) {
 
 function previewPluginDirectory(entry: string, fallback: string) {
   const token = previewModuleToken(entry) || previewNormalizePluginKey(fallback) || "preview";
-  return `plugins/${token.replace(/[^A-Za-z0-9_]+/g, "_")}`;
+  return `plugins/${token.replace(/[^A-Za-z0-9_\u3040-\u30ff\u3400-\u9fff]+/g, "_")}`;
 }
 
 function previewCatalogKeys(plugin: PluginCatalogItem) {
   return new Set(
-    [plugin.id, plugin.name, plugin.displayName, plugin.repo, plugin.entry, previewModuleToken(plugin.entry)]
+    [plugin.id, plugin.name, plugin.repo, plugin.entry, previewModuleToken(plugin.entry)]
       .map(previewNormalizePluginKey)
-      .filter(Boolean),
+      .filter((key) => key.length >= 2),
   );
 }
 
@@ -49,7 +54,6 @@ function previewManifestKeys(plugin: PluginManifest) {
   return new Set(
     [
       plugin.id,
-      plugin.title,
       plugin.entry,
       plugin.directory?.split(/[\\/]/).filter(Boolean).at(-1),
       plugin.install?.repo,
@@ -57,13 +61,18 @@ function previewManifestKeys(plugin: PluginManifest) {
       previewModuleToken(plugin.entry),
     ]
       .map(previewNormalizePluginKey)
-      .filter(Boolean),
+      .filter((key) => key.length >= 2),
   );
 }
 
 function previewCatalogForSource(source: string, catalogItems: PluginCatalogItem[]) {
   const sourceKey = previewNormalizePluginKey(source);
-  return catalogItems.find((item) => previewCatalogKeys(item).has(sourceKey));
+  const rawLower = source.trim().toLowerCase();
+  return catalogItems.find(
+    (item) =>
+      previewCatalogKeys(item).has(sourceKey) ||
+      Boolean(rawLower && (item.displayName ?? "").trim().toLowerCase() === rawLower),
+  );
 }
 
 function previewUpsertPlugin(currentPlugins: PluginManifest[], plugin: PluginManifest, catalog?: PluginCatalogItem) {
@@ -146,18 +155,29 @@ export function createPluginsPreviewPlatform(): PluginsPlatform {
       const taskId = `preview-app-update-${Date.now()}`;
       previewTask(
         taskId,
-        { message: "正在下载源码归档。", phase: "download", progress: 0.35, status: "running" },
+        {
+          message: translateRuntimeMessage("plat.preview.plugin.updateDownloading"),
+          phase: "download",
+          progress: 0.35,
+          status: "running",
+        },
         options,
       );
       await delay(null, 160);
       previewTask(
         taskId,
-        { message: "正在合并到程序目录。", phase: "merge", progress: 0.72, status: "running" },
+        {
+          message: translateRuntimeMessage("plat.preview.plugin.updateMerging"),
+          phase: "merge",
+          progress: 0.72,
+          status: "running",
+        },
         options,
       );
       await delay(null, 160);
+      const target = input.refKind === "tag" ? input.tagName || "tag" : input.refKind;
       const result = {
-        message: `已模拟更新到 ${input.refKind === "tag" ? input.tagName || "tag" : input.refKind}。`,
+        message: translateRuntimeMessage("plat.preview.plugin.updateSimulated", { target }),
         pipCode: "app_update_skip_pip",
         version: "preview",
       };
@@ -174,7 +194,7 @@ export function createPluginsPreviewPlatform(): PluginsPlatform {
     getUi(id) {
       const plugin = plugins.find((item) => item.id === id || item.entry === id);
       if (!plugin) {
-        return Promise.reject(new Error(`插件不存在：${id}`));
+        return Promise.reject(new Error(translateRuntimeMessage("plat.preview.plugin.notFound", { id })));
       }
       const settingsPages: PluginUIPage[] = plugin.settingsPages.map((title, index) => ({
         id: `settings-${index}`,
@@ -183,7 +203,7 @@ export function createPluginsPreviewPlatform(): PluginsPlatform {
         pluginId: plugin.id,
         pluginVersion: plugin.version,
         title,
-        unavailableReason: "浏览器预览没有真实插件设置 schema。",
+        unavailableReason: translateRuntimeMessage("plat.preview.plugin.noSettingsSchema"),
       }));
       const toolsPages: PluginUIPage[] = plugin.toolsTabs.map((title, index) => ({
         id: `tools-${index}`,
@@ -192,7 +212,7 @@ export function createPluginsPreviewPlatform(): PluginsPlatform {
         pluginId: plugin.id,
         pluginVersion: plugin.version,
         title,
-        unavailableReason: "浏览器预览没有真实插件工具 schema。",
+        unavailableReason: translateRuntimeMessage("plat.preview.plugin.noToolsSchema"),
       }));
       return delay({ pages: [...settingsPages, ...toolsPages], plugin });
     },
@@ -206,15 +226,29 @@ export function createPluginsPreviewPlatform(): PluginsPlatform {
       const taskId = `preview-${Date.now()}`;
       previewTask(
         taskId,
-        { message: "正在下载插件清单。", phase: "download", progress: 0.25, status: "running" },
+        {
+          message: translateRuntimeMessage("plat.preview.plugin.downloadingManifest"),
+          phase: "download",
+          progress: 0.25,
+          status: "running",
+        },
         options,
       );
       await delay(null, 180);
-      previewTask(taskId, { message: "正在安装依赖。", phase: "pip", progress: 0.72, status: "running" }, options);
+      previewTask(
+        taskId,
+        {
+          message: translateRuntimeMessage("plat.preview.plugin.installingDeps"),
+          phase: "pip",
+          progress: 0.72,
+          status: "running",
+        },
+        options,
+      );
       await delay(null, 220);
       const plugin: PluginManifest = {
         author: catalog?.author || "Preview",
-        description: "浏览器预览安装的插件。",
+        description: translateRuntimeMessage("plat.preview.plugin.installedDesc"),
         directory: previewPluginDirectory(entry, id),
         enabled: true,
         entry,
@@ -232,7 +266,7 @@ export function createPluginsPreviewPlatform(): PluginsPlatform {
         },
         loaded: true,
         permissions: ["settings"],
-        settingsPages: ["预览设置"],
+        settingsPages: [translateRuntimeMessage("plat.preview.plugin.settingsPage")],
         slots: ["settings-extension"],
         title,
         toolsTabs: [],
@@ -247,7 +281,7 @@ export function createPluginsPreviewPlatform(): PluginsPlatform {
       previewTask(
         taskId,
         {
-          message: "插件已安装。",
+          message: translateRuntimeMessage("plat.preview.plugin.installed"),
           phase: "completed",
           progress: 1,
           result: plugin,
@@ -263,10 +297,10 @@ export function createPluginsPreviewPlatform(): PluginsPlatform {
         plugins.some((plugin) => plugin.id === "core-tools" && plugin.enabled)
           ? [
               {
-                actionLabel: "生成场景提示",
+                actionLabel: translateRuntimeMessage("plat.preview.plugin.slotActionLabel"),
                 actionType: "callback" as const,
                 actionable: true,
-                description: "由宿主安全渲染的浏览器预览贡献。",
+                description: translateRuntimeMessage("plat.preview.plugin.slotDesc"),
                 icon: "sparkles" as const,
                 id: "scene-prompt",
                 order: 100,
@@ -275,7 +309,7 @@ export function createPluginsPreviewPlatform(): PluginsPlatform {
                 pluginVersion: "built-in",
                 presentation: "button" as const,
                 slot: "chat-output" as const,
-                title: "场景灵感",
+                title: translateRuntimeMessage("plat.preview.plugin.slotTitle"),
                 variant: "ghost" as const,
               },
             ]
@@ -287,14 +321,14 @@ export function createPluginsPreviewPlatform(): PluginsPlatform {
       delay({
         id: contributionId,
         kind: "success" as const,
-        message: "浏览器预览动作已执行。",
+        message: translateRuntimeMessage("plat.preview.plugin.slotActionRan"),
         pluginId,
       }),
     scanLocal(input) {
       const baseName = input.path.split(/[\\/]/).filter(Boolean).pop() || "preview-plugin";
       return delay({
         author: "Shinsekai Contributors",
-        desc: "从本地插件目录生成的示例提交信息。",
+        desc: translateRuntimeMessage("plat.preview.plugin.scanDesc"),
         display_name: baseName.replace(/[-_]+/g, " "),
         entry: `plugins.${baseName.replace(/[^A-Za-z0-9_]/g, "_")}.plugin:PreviewPlugin`,
         logo: "logo.png",
@@ -303,7 +337,7 @@ export function createPluginsPreviewPlatform(): PluginsPlatform {
         requirements: "",
         social_link: "https://github.com/shinsekai",
         tags: ["preview"],
-        warnings: ["浏览器预览使用示例元数据，不会读取真实本地文件。"],
+        warnings: [translateRuntimeMessage("plat.preview.plugin.scanWarning")],
       });
     },
     validateSubmission(input) {
@@ -349,10 +383,10 @@ export function createPluginsPreviewPlatform(): PluginsPlatform {
     runUiAction(id, pageId, actionId, values) {
       const plugin = plugins.find((item) => item.id === id || item.entry === id);
       if (!plugin) {
-        return Promise.reject(new Error(`插件不存在：${id}`));
+        return Promise.reject(new Error(translateRuntimeMessage("plat.preview.plugin.notFound", { id })));
       }
       return delay({
-        message: `操作 ${actionId} 已完成。`,
+        message: translateRuntimeMessage("plat.preview.plugin.actionDone", { action: actionId }),
         page: {
           id: pageId,
           kind: "settings",
@@ -370,10 +404,10 @@ export function createPluginsPreviewPlatform(): PluginsPlatform {
     saveUiConfig(id, pageId, values) {
       const plugin = plugins.find((item) => item.id === id || item.entry === id);
       if (!plugin) {
-        return Promise.reject(new Error(`插件不存在：${id}`));
+        return Promise.reject(new Error(translateRuntimeMessage("plat.preview.plugin.notFound", { id })));
       }
       return delay({
-        message: "插件设置已保存。",
+        message: translateRuntimeMessage("plat.preview.plugin.saved"),
         page: {
           id: pageId,
           kind: "settings",
@@ -391,20 +425,20 @@ export function createPluginsPreviewPlatform(): PluginsPlatform {
       plugins = plugins.map((plugin) => (plugin.id === id || plugin.entry === id ? { ...plugin, enabled } : plugin));
       const plugin = plugins.find((item) => item.id === id || item.entry === id);
       if (!plugin) {
-        throw new Error(`插件不存在：${id}`);
+        throw new Error(translateRuntimeMessage("plat.preview.plugin.notFound", { id }));
       }
       return delay(plugin);
     },
     async uninstall(id) {
       const plugin = plugins.find((item) => item.id === id || item.entry === id);
       if (!plugin) {
-        throw new Error(`插件不存在：${id}`);
+        throw new Error(translateRuntimeMessage("plat.preview.plugin.notFound", { id }));
       }
       plugins = plugins.filter((item) => item.id !== id && item.entry !== id);
       pluginCatalog = pluginCatalog.map((item) =>
         item.entry === id || item.entry === plugin.entry ? { ...item, downloaded: false, installed: false } : item,
       );
-      return delay({ message: `${plugin.title} 已卸载。` });
+      return delay({ message: translateRuntimeMessage("plat.preview.plugin.uninstalled", { title: plugin.title }) });
     },
   };
 }
@@ -419,7 +453,13 @@ export function createMcpPreviewPlatform(): McpPlatform {
       const taskId = `mcp-preview-${Date.now()}`;
       previewTask(
         taskId,
-        { kind: "mcp-preview", message: "正在连接 MCP 服务。", phase: "probe", progress: 0.4, status: "running" },
+        {
+          kind: "mcp-preview",
+          message: translateRuntimeMessage("plat.preview.mcp.probing"),
+          phase: "probe",
+          progress: 0.4,
+          status: "running",
+        },
         options,
       );
       await delay(null, 220);
@@ -427,7 +467,7 @@ export function createMcpPreviewPlatform(): McpPlatform {
         taskId,
         {
           kind: "mcp-preview",
-          message: "工具列表已刷新。",
+          message: translateRuntimeMessage("plat.preview.mcp.refreshed"),
           phase: "completed",
           progress: 1,
           result: sampleMcpTools,
@@ -441,7 +481,13 @@ export function createMcpPreviewPlatform(): McpPlatform {
       const taskId = `mcp-apply-${Date.now()}`;
       previewTask(
         taskId,
-        { kind: "mcp-apply", message: "正在写入 MCP 配置。", phase: "write", progress: 0.45, status: "running" },
+        {
+          kind: "mcp-apply",
+          message: translateRuntimeMessage("plat.preview.mcp.writing"),
+          phase: "write",
+          progress: 0.45,
+          status: "running",
+        },
         options,
       );
       await delay(null, 180);
@@ -450,7 +496,7 @@ export function createMcpPreviewPlatform(): McpPlatform {
         taskId,
         {
           kind: "mcp-apply",
-          message: "MCP 配置已应用。",
+          message: translateRuntimeMessage("plat.preview.mcp.applied"),
           phase: "completed",
           progress: 1,
           result: mcpConfig,

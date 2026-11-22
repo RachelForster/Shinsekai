@@ -17,6 +17,7 @@ STAT = "STAT"
 SCENE = "SCENE"
 BGM = "bgm"
 CG = "CG"
+BGM_TAG_LABEL_PREFIX = "音乐"
 
 # --- 兼容旧版/中文 ---
 COT_ALIASES: frozenset[str] = frozenset({COT, "思维链"})

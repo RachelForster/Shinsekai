@@ -6,6 +6,7 @@ from typing import Any
 from urllib.parse import quote
 
 from application.plugins.catalog import _plugin_rows
+from frontend_bridge_core.i18n_helpers import bind_bridge_state, bridge_error, bridge_tr
 
 
 def _plugin_data_root(plugin_id: str) -> Path:
@@ -53,7 +54,12 @@ def _plugin_config_field(
     return field
 
 
-def _builtin_plugin_config_page(plugin_id: str, page_id: str) -> dict[str, Any] | None:
+def _builtin_plugin_config_page(
+    plugin_id: str,
+    page_id: str,
+    state: Any = None,
+) -> dict[str, Any] | None:
+    tr = lambda key: bridge_tr(state, f"plugin_ui.{key}")
     root = _plugin_data_root(plugin_id)
     if plugin_id == "com.shinsekai.moondream_vision" and page_id == "moondream_vision":
         from dataclasses import asdict
@@ -63,54 +69,48 @@ def _builtin_plugin_config_page(plugin_id: str, page_id: str) -> dict[str, Any] 
         cfg = load_config(default_config_path(root))
         cfg.clamp()
         return {
-            "description": (
-                "使用 mss 截屏，通过 Hugging Face Transformers 加载 Moondream2。"
-                "自动识屏按触发类型使用英文提示词，并受最短推理间隔限制。"
-            ),
-            "restartHint": "修改模型 ID、设备、量化或缓存目录后，建议重启聊天主程序以重新加载权重。",
+            "description": tr("moondream_desc"),
+            "restartHint": tr("moondream_restart_hint"),
             "schema": [
                 {
-                    "description": (
-                        "首次启用后首次推理会从网络下载模型到 Hugging Face 缓存。"
-                        "INT8 / INT4 需要 NVIDIA GPU + CUDA + bitsandbytes。"
-                    ),
+                    "description": tr("moondream_model_section_desc"),
                     "fields": [
                         _plugin_config_field(
                             "enabled",
-                            "启用识屏（差分 / 鼠标 / 系统窗口事件触发）",
+                            tr("moondream_enabled"),
                             "boolean",
                             default=False,
                             span="full",
                         ),
                         _plugin_config_field(
                             "model_id",
-                            "模型 ID",
+                            tr("moondream_model_id"),
                             "text",
                             default="vikhyatk/moondream2",
                             placeholder="vikhyatk/moondream2",
                         ),
                         _plugin_config_field(
                             "revision",
-                            "修订 revision",
+                            tr("moondream_revision"),
                             "text",
                             default="",
-                            placeholder="可选，如 2025-01-09",
+                            placeholder=tr("moondream_revision_ph"),
                         ),
                         _plugin_config_field(
                             "cache_dir",
-                            "缓存目录",
+                            tr("moondream_cache_dir"),
                             "text",
                             default="",
-                            placeholder="可选；留空用系统默认 HF 缓存",
+                            placeholder=tr("moondream_cache_dir_ph"),
                             span="full",
                         ),
                         _plugin_config_field(
                             "device",
-                            "设备",
+                            tr("moondream_device"),
                             "select",
                             default="auto",
                             options=[
-                                ("自动", "auto"),
+                                (tr("moondream_device_auto"), "auto"),
                                 ("CUDA", "cuda"),
                                 ("Apple MPS", "mps"),
                                 ("CPU", "cpu"),
@@ -118,91 +118,91 @@ def _builtin_plugin_config_page(plugin_id: str, page_id: str) -> dict[str, Any] 
                         ),
                         _plugin_config_field(
                             "quantization",
-                            "权重量化",
+                            tr("moondream_quantization"),
                             "select",
                             default="none",
-                            description="INT8 / INT4 需 NVIDIA CUDA 与 bitsandbytes；Apple MPS / CPU 不兼容。",
+                            description=tr("moondream_quantization_desc"),
                             options=[
-                                ("无（浮点）", "none"),
+                                (tr("moondream_quant_none"), "none"),
                                 ("INT8", "int8"),
-                                ("INT4（NF4）", "int4"),
+                                ("INT4 (NF4)", "int4"),
                             ],
                         ),
                     ],
                     "id": "model",
-                    "title": "Moondream 本地识屏",
+                    "title": tr("moondream_model_section_title"),
                 },
                 {
                     "fields": [
                         _plugin_config_field(
                             "motion_poll_sec",
-                            "触发采样间隔",
+                            tr("moondream_motion_poll"),
                             "number",
                             default=0.35,
-                            description="采样鼠标、窗口与缩略图差分的间隔；越小越灵敏，占用略高。",
+                            description=tr("moondream_motion_poll_desc"),
                             max_value=3.0,
                             min_value=0.12,
                             step=0.05,
                         ),
                         _plugin_config_field(
                             "diff_threshold",
-                            "屏幕差分阈值",
+                            tr("moondream_diff_threshold"),
                             "number",
                             default=0.35,
-                            description="相对上次识别成功的缩略图，变化像素占比阈值。",
+                            description=tr("moondream_diff_threshold_desc"),
                             max_value=0.35,
                             min_value=0.003,
                             step=0.002,
                         ),
                         _plugin_config_field(
                             "mouse_move_percent",
-                            "鼠标移动阈值（% 屏）",
+                            tr("moondream_mouse_move"),
                             "number",
                             default=1.1,
-                            description="相对当前显示器画面的宽/高较大一边，移动直线距离超过该比例视为活动。",
+                            description=tr("moondream_mouse_move_desc"),
                             max_value=25.0,
                             min_value=0.02,
                             step=0.05,
                         ),
                         _plugin_config_field(
                             "interval_sec",
-                            "最短推理间隔",
+                            tr("moondream_interval_sec"),
                             "number",
                             default=30,
-                            description="两次送模型推理之间的最短间隔。",
+                            description=tr("moondream_interval_sec_desc"),
                             max_value=600.0,
                             min_value=5.0,
                             step=1.0,
                         ),
                         _plugin_config_field(
                             "monitor_index",
-                            "显示器索引",
+                            tr("moondream_monitor_index"),
                             "integer",
                             default=1,
-                            description="mss：0=所有显示器合成；1 通常为第一块物理屏。",
+                            description=tr("moondream_monitor_index_desc"),
                             max_value=16,
                             min_value=0,
                             step=1,
                         ),
                         _plugin_config_field(
                             "infer_max_side",
-                            "推理输入最长边 (px)",
+                            tr("moondream_infer_max_side"),
                             "integer",
                             default=512,
-                            description="送入 Moondream 前将截图较长边缩到此像素；0=不缩放。",
+                            description=tr("moondream_infer_max_side_desc"),
                             max_value=8192,
                             min_value=0,
                             step=128,
                         ),
                     ],
                     "id": "triggers",
-                    "title": "触发与推理",
+                    "title": tr("moondream_triggers_title"),
                 },
                 {
                     "fields": [
                         _plugin_config_field(
                             "question_screen_diff",
-                            "屏幕差分 · screen_diff",
+                            tr("moondream_q_screen_diff"),
                             "textarea",
                             default="",
                             placeholder="screen thumbnail changed a lot since last successful capture",
@@ -210,7 +210,7 @@ def _builtin_plugin_config_page(plugin_id: str, page_id: str) -> dict[str, Any] 
                         ),
                         _plugin_config_field(
                             "question_foreground",
-                            "前台切换 · foreground",
+                            tr("moondream_q_foreground"),
                             "textarea",
                             default="",
                             placeholder="focused window changed (Windows)",
@@ -218,7 +218,7 @@ def _builtin_plugin_config_page(plugin_id: str, page_id: str) -> dict[str, Any] 
                         ),
                         _plugin_config_field(
                             "question_new_window",
-                            "新窗口 · new_window",
+                            tr("moondream_q_new_window"),
                             "textarea",
                             default="",
                             placeholder="new top-level window opened",
@@ -226,7 +226,7 @@ def _builtin_plugin_config_page(plugin_id: str, page_id: str) -> dict[str, Any] 
                         ),
                         _plugin_config_field(
                             "question_mouse",
-                            "鼠标移动 · mouse",
+                            tr("moondream_q_mouse"),
                             "textarea",
                             default="",
                             placeholder="user moved mouse beyond threshold",
@@ -234,7 +234,7 @@ def _builtin_plugin_config_page(plugin_id: str, page_id: str) -> dict[str, Any] 
                         ),
                         _plugin_config_field(
                             "question",
-                            "统一提问（可选）",
+                            tr("moondream_q_unified"),
                             "textarea",
                             default="",
                             placeholder="Legacy: one English prompt for all triggers only if the four fields above are empty",
@@ -242,15 +242,15 @@ def _builtin_plugin_config_page(plugin_id: str, page_id: str) -> dict[str, Any] 
                         ),
                         _plugin_config_field(
                             "message_prefix",
-                            "消息前缀",
+                            tr("moondream_message_prefix"),
                             "text",
                             default="[Screen] ",
-                            placeholder="发到聊天里的前缀",
+                            placeholder=tr("moondream_message_prefix_ph"),
                             span="full",
                         ),
                     ],
                     "id": "prompts",
-                    "title": "英文提示词（按触发类型，可留空用内置）",
+                    "title": tr("moondream_prompts_title"),
                 },
             ],
             "values": asdict(cfg),
@@ -263,36 +263,33 @@ def _builtin_plugin_config_page(plugin_id: str, page_id: str) -> dict[str, Any] 
         cfg = load_config(default_config_path(root))
         cfg.clamp()
         return {
-            "description": (
-                "Chromium / Firefox / WebKit 需要 playwright install 下载；"
-                "Edge / Chrome 使用系统浏览器无需下载。修改后需重启生效。"
-            ),
-            "restartHint": "修改浏览器设置后，建议重启聊天主程序以重新创建浏览器会话。",
+            "description": tr("playwright_desc"),
+            "restartHint": tr("playwright_restart_hint"),
             "schema": [
                 {
                     "fields": [
                         _plugin_config_field(
                             "browser_type",
-                            "浏览器类型",
+                            tr("playwright_browser_type"),
                             "select",
                             default="chromium",
                             options=[
-                                ("Chromium（Playwright 内置，需下载）", "chromium"),
-                                ("Firefox（Playwright 内置，需下载）", "firefox"),
-                                ("WebKit（Playwright 内置，需下载）", "webkit"),
-                                ("Microsoft Edge（使用系统已安装的 Edge）", "msedge"),
-                                ("Google Chrome（使用系统已安装的 Chrome）", "chrome"),
+                                (tr("playwright_opt_chromium"), "chromium"),
+                                (tr("playwright_opt_firefox"), "firefox"),
+                                (tr("playwright_opt_webkit"), "webkit"),
+                                (tr("playwright_opt_msedge"), "msedge"),
+                                (tr("playwright_opt_chrome"), "chrome"),
                             ],
                         ),
                         _plugin_config_field(
                             "headless",
-                            "无头模式（Headless）",
+                            tr("playwright_headless"),
                             "boolean",
                             default=True,
                         ),
                     ],
                     "id": "browser",
-                    "title": "Playwright 浏览器设置",
+                    "title": tr("playwright_title"),
                 },
             ],
             "values": asdict(cfg),
@@ -382,7 +379,11 @@ def _frontend_chat_ui_contribution_payloads() -> list[dict[str, Any]]:
     return rows
 
 
-def _run_frontend_chat_ui_contribution(plugin_id: str, contribution_id: str) -> dict[str, Any]:
+def _run_frontend_chat_ui_contribution(
+    plugin_id: str,
+    contribution_id: str,
+    state: Any = None,
+) -> dict[str, Any]:
     lookup_plugin = plugin_id.strip()
     lookup_contribution = contribution_id.strip()
     for contribution in _frontend_chat_ui_contributions():
@@ -392,7 +393,7 @@ def _run_frontend_chat_ui_contribution(plugin_id: str, contribution_id: str) -> 
             continue
         action = getattr(contribution, "action", None)
         if not callable(action):
-            raise ValueError("该插件插槽只提供状态展示，没有可执行动作。")
+            raise bridge_error(ValueError, state, "plugin_slot_display_only")
         result = action()
         if isinstance(result, Mapping):
             message = str(result.get("message") or "").strip()
@@ -501,7 +502,7 @@ def _frontend_page_payload(contribution: Any) -> dict[str, Any]:
     return page
 
 
-def _plugin_ui_detail(plugin_id_or_entry: str) -> dict[str, Any]:
+def _plugin_ui_detail(plugin_id_or_entry: str, state: Any = None) -> dict[str, Any]:
     lookup = plugin_id_or_entry.strip()
     plugin_row = None
     for row in _plugin_rows():
@@ -594,46 +595,52 @@ def _save_builtin_plugin_config(plugin_id: str, page_id: str, values: dict[str, 
     raise KeyError(f"plugin page config not supported: {plugin_id}/{page_id}")
 
 
-def _save_plugin_ui_config(plugin_id_or_entry: str, page_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-    detail = _plugin_ui_detail(plugin_id_or_entry)
-    plugin = detail["plugin"]
-    plugin_id = str(plugin.get("id") or "").strip()
-    page = None
-    for candidate in detail["pages"]:
-        if str(candidate.get("id") or "") == page_id:
-            page = candidate
-            break
-    if page is None:
-        raise KeyError(f"plugin page not found: {page_id}")
-    raw_values = payload.get("values", payload)
-    if not isinstance(raw_values, dict):
-        raise ValueError("values must be an object")
+def _save_plugin_ui_config(
+    plugin_id_or_entry: str,
+    page_id: str,
+    payload: dict[str, Any],
+    state: Any = None,
+) -> dict[str, Any]:
+    with bind_bridge_state(state):
+        detail = _plugin_ui_detail(plugin_id_or_entry)
+        plugin = detail["plugin"]
+        plugin_id = str(plugin.get("id") or "").strip()
+        page = None
+        for candidate in detail["pages"]:
+            if str(candidate.get("id") or "") == page_id:
+                page = candidate
+                break
+        if page is None:
+            raise KeyError(f"plugin page not found: {page_id}")
+        raw_values = payload.get("values", payload)
+        if not isinstance(raw_values, dict):
+            raise ValueError("values must be an object")
 
-    for contribution in _frontend_config_contributions_for(plugin_id):
-        if str(getattr(contribution, "page_id", "") or "").strip() == page_id:
-            contribution.save_values(raw_values)
-            updated = _plugin_ui_detail(plugin_id)
-            updated_page = next(
-                (candidate for candidate in updated["pages"] if candidate.get("id") == page_id),
-                page,
-            )
-            return {
-                "message": "插件设置已保存。",
-                "page": updated_page,
-                "plugin": updated["plugin"],
-            }
+        for contribution in _frontend_config_contributions_for(plugin_id):
+            if str(getattr(contribution, "page_id", "") or "").strip() == page_id:
+                contribution.save_values(raw_values)
+                updated = _plugin_ui_detail(plugin_id)
+                updated_page = next(
+                    (candidate for candidate in updated["pages"] if candidate.get("id") == page_id),
+                    page,
+                )
+                return {
+                    "message": bridge_tr(state, "plugin_ui.saved"),
+                    "page": updated_page,
+                    "plugin": updated["plugin"],
+                }
 
-    if "schema" not in page:
-        raise KeyError(f"plugin page config not supported: {plugin_id}/{page_id}")
+        if "schema" not in page:
+            raise KeyError(f"plugin page config not supported: {plugin_id}/{page_id}")
 
-    _save_builtin_plugin_config(plugin_id, page_id, raw_values)
-    updated = _plugin_ui_detail(plugin_id)
-    updated_page = next((candidate for candidate in updated["pages"] if candidate.get("id") == page_id), page)
-    return {
-        "message": "插件设置已保存。",
-        "page": updated_page,
-        "plugin": updated["plugin"],
-    }
+        _save_builtin_plugin_config(plugin_id, page_id, raw_values)
+        updated = _plugin_ui_detail(plugin_id)
+        updated_page = next((candidate for candidate in updated["pages"] if candidate.get("id") == page_id), page)
+        return {
+            "message": bridge_tr(state, "plugin_ui.saved"),
+            "page": updated_page,
+            "plugin": updated["plugin"],
+        }
 
 
 def _run_plugin_ui_action(
@@ -641,38 +648,41 @@ def _run_plugin_ui_action(
     page_id: str,
     action_id: str,
     payload: dict[str, Any],
+    state: Any = None,
 ) -> dict[str, Any]:
     """Find the matching action on a FrontendConfigContribution and invoke its run callback."""
-    detail = _plugin_ui_detail(plugin_id_or_entry)
-    plugin = detail["plugin"]
-    plugin_id = str(plugin.get("id") or "").strip()
-    raw_values = payload.get("values", payload)
-    if not isinstance(raw_values, dict):
-        raise ValueError("values must be an object")
+    with bind_bridge_state(state):
+        detail = _plugin_ui_detail(plugin_id_or_entry)
+        plugin = detail["plugin"]
+        plugin_id = str(plugin.get("id") or "").strip()
+        raw_values = payload.get("values", payload)
+        if not isinstance(raw_values, dict):
+            raise ValueError("values must be an object")
 
-    for contribution in _frontend_config_contributions_for(plugin_id):
-        if str(getattr(contribution, "page_id", "") or "").strip() != page_id:
-            continue
-        for action in getattr(contribution, "actions", None) or []:
-            if str(getattr(action, "id", "") or "") == action_id:
-                result = action.run(raw_values) or {}
-                if not isinstance(result, Mapping):
-                    raise ValueError(f"action {action_id!r} run must return a mapping or None")
-                updated = _plugin_ui_detail(plugin_id)
-                updated_page = next(
-                    (candidate for candidate in updated["pages"] if candidate.get("id") == page_id),
-                    None,
-                )
-                if updated_page is None:
-                    raise KeyError(f"plugin page not found after action: {page_id}")
-                return {
-                    "message": f"操作 {action.label or action_id!r} 已完成。",
-                    "page": updated_page,
-                    "plugin": updated["plugin"],
-                    "result": dict(result),
-                }
+        for contribution in _frontend_config_contributions_for(plugin_id):
+            if str(getattr(contribution, "page_id", "") or "").strip() != page_id:
+                continue
+            for action in getattr(contribution, "actions", None) or []:
+                if str(getattr(action, "id", "") or "") == action_id:
+                    result = action.run(raw_values) or {}
+                    if not isinstance(result, Mapping):
+                        raise ValueError(f"action {action_id!r} run must return a mapping or None")
+                    updated = _plugin_ui_detail(plugin_id)
+                    updated_page = next(
+                        (candidate for candidate in updated["pages"] if candidate.get("id") == page_id),
+                        None,
+                    )
+                    if updated_page is None:
+                        raise KeyError(f"plugin page not found after action: {page_id}")
+                    action_label = action.label or repr(action_id)
+                    return {
+                        "message": bridge_tr(state, "plugin_ui.action_done", action=action_label),
+                        "page": updated_page,
+                        "plugin": updated["plugin"],
+                        "result": dict(result),
+                    }
 
-    raise KeyError(f"action not found: {plugin_id}/{page_id}/{action_id}")
+        raise KeyError(f"action not found: {plugin_id}/{page_id}/{action_id}")
 
 
 def _resolve_plugin_frontend_file(plugin_id_or_entry: str, page_id: str, asset_path: str) -> Path:

@@ -1,41 +1,58 @@
+import { translateRuntimeMessage } from "../../../../../i18n/runtimeLanguage";
 import type { StandaloneHttpClient } from "../../httpClient";
 import type { StandaloneTtsAdapter, StandaloneTtsInput } from "../types";
 
 export const gptSovitsCloudAdapter: StandaloneTtsAdapter = {
   id: "gpt-sovits-api",
-  label: "远程 GPT-SoVITS 服务 (云端/自建局域网)",
+  get label() {
+    return translateRuntimeMessage("plat.standalone.tts.gptSovitsLabel");
+  },
   browserCors: "proxy-only",
-  description: "直连远程或局域网 GPT-SoVITS v2 HTTP API (/tts)，适合手机 App 直连自建语音服务器。",
+  get description() {
+    return translateRuntimeMessage("plat.standalone.tts.gptSovitsDesc");
+  },
   schema: {
     base_api_url: {
-      label: "GPT-SoVITS 服务地址",
+      get label() {
+        return translateRuntimeMessage("plat.standalone.tts.gptSovitsUrl");
+      },
       type: "str",
       default: "http://127.0.0.1:9880",
     },
     api_key: {
-      label: "鉴权 Token（可选）",
+      get label() {
+        return translateRuntimeMessage("plat.standalone.tts.authTokenOptional");
+      },
       type: "str",
       secret: true,
       default: "",
     },
     default_refer_wav_path: {
-      label: "服务端参考音频路径",
+      get label() {
+        return translateRuntimeMessage("plat.standalone.tts.referWavPath");
+      },
       type: "str",
       default: "",
     },
     default_prompt_text: {
-      label: "参考音频文本",
+      get label() {
+        return translateRuntimeMessage("plat.standalone.tts.promptText");
+      },
       type: "str",
       default: "",
     },
     default_prompt_language: {
-      label: "参考音频语种",
+      get label() {
+        return translateRuntimeMessage("plat.standalone.tts.promptLang");
+      },
       type: "str",
       choices: ["zh", "ja", "en"],
       default: "zh",
     },
     text_lang: {
-      label: "合成文本语种",
+      get label() {
+        return translateRuntimeMessage("plat.standalone.tts.textLang");
+      },
       type: "str",
       choices: ["auto", "zh", "ja", "en"],
       default: "auto",

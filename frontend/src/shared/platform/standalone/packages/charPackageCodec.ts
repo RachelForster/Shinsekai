@@ -1,4 +1,6 @@
 import type { SpriteMouthManifest } from "../../../assets/spriteMouth";
+import { translateRuntimeMessage } from "../../../i18n/runtimeLanguage";
+import { SELF_PERSONA_NAME } from "../../../playerCharacterOptions";
 import type { Character, Sprite, SpriteTransition } from "../../slices/characterTypes";
 import {
   getVfsBlobAsync,
@@ -52,15 +54,15 @@ function joinPosix(...parts: string[]): string {
 }
 
 function resolveNameConflict(rawName: string, existingNames: Set<string>): string {
-  const base = rawName.trim() || "导入角色";
+  const base = rawName.trim() || translateRuntimeMessage("plat.standalone.importedCharDefault");
   if (!existingNames.has(base)) {
     return base;
   }
   let counter = 1;
-  let candidate = `${base}（${counter}）`;
+  let candidate = translateRuntimeMessage("plat.standalone.nameConflictSuffix", { base, count: counter });
   while (existingNames.has(candidate)) {
     counter += 1;
-    candidate = `${base}（${counter}）`;
+    candidate = translateRuntimeMessage("plat.standalone.nameConflictSuffix", { base, count: counter });
   }
   return candidate;
 }
@@ -312,7 +314,7 @@ export async function importCharPackage(
     findEntryBytes(entries, ["character.yaml", "characters.yaml", "character.yml"]) ??
     findEntryBytes(entries, ["character.json"]);
   if (!yamlEntry) {
-    throw new Error("角色包中缺少 character.yaml 配置文件。");
+    throw new Error(translateRuntimeMessage("plat.standalone.charYamlMissing"));
   }
 
   const parsed = parseYaml(textDecoder.decode(yamlEntry.bytes));
@@ -325,17 +327,18 @@ export async function importCharPackage(
         : [];
 
   if (!rawList.length || !rawList.every((item) => item && typeof item === "object")) {
-    throw new Error("角色包内的 character.yaml 格式无效。");
+    throw new Error(translateRuntimeMessage("plat.standalone.charYamlInvalid"));
   }
 
-  const existingNames = new Set<string>(["自设", ...existingCharacters.map((c) => c.name)]);
+  const existingNames = new Set<string>([SELF_PERSONA_NAME, ...existingCharacters.map((c) => c.name)]);
   const existingPrefixes = new Set<string>(["user_self", ...existingCharacters.map((c) => c.sprite_prefix)]);
 
   const imported: Character[] = [];
 
   for (const rawItem of rawList) {
     const raw = rawItem as Record<string, unknown>;
-    const originalName = String(raw.name ?? "新角色").trim() || "新角色";
+    const defaultNewCharName = translateRuntimeMessage("plat.standalone.newCharDefault");
+    const originalName = String(raw.name ?? defaultNewCharName).trim() || defaultNewCharName;
     const originalPrefix = String(raw.sprite_prefix ?? originalName).trim() || "char";
 
     const newName = resolveNameConflict(originalName, existingNames);

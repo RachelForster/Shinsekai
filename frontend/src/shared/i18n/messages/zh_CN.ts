@@ -3,7 +3,9 @@ import { characterZhCNMessages } from "./zh_CN/character";
 import { chatZhCNMessages } from "./zh_CN/chat";
 import { knowledgeZhCNMessages } from "./zh_CN/knowledge";
 import { onboardingZhCNMessages } from "./zh_CN/onboarding";
+import { operationsZhCNMessages } from "./zh_CN/operations";
 import { perceptionZhCNMessages } from "./zh_CN/perception";
+import { platformZhCNMessages } from "./zh_CN/platform";
 import { pluginsZhCNMessages } from "./zh_CN/plugins";
 import { relationZhCNMessages } from "./zh_CN/relation";
 import { settingsZhCNMessages } from "./zh_CN/settings";
@@ -26,6 +28,8 @@ export const zhCNMessageSlices = {
   plugins: pluginsZhCNMessages,
   workspace: workspaceZhCNMessages,
   onboarding: onboardingZhCNMessages,
+  operations: operationsZhCNMessages,
+  platform: platformZhCNMessages,
 };
 
 type DuplicateSliceKeys<Slices extends Record<string, Record<string, string>>> = {
@@ -54,4 +58,6 @@ export const zhCNMessages = {
   ...pluginsZhCNMessages,
   ...workspaceZhCNMessages,
   ...onboardingZhCNMessages,
+  ...operationsZhCNMessages,
+  ...platformZhCNMessages,
 };

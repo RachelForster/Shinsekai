@@ -1,3 +1,4 @@
+import { translateRuntimeMessage } from "../../../../i18n/runtimeLanguage";
 import type { AdapterCatalog, AdapterOption } from "../../../slices/configTypes";
 import type { RuntimeTarget } from "../../../runtimeTarget";
 import { claudeLlmAdapter } from "./llm/claudeAdapter";
@@ -45,11 +46,13 @@ export function buildStandaloneAdapterCatalog(target: RuntimeTarget): AdapterCat
   const isToyBrowser = target === "toy" || target === "web";
 
   const ttsOptions: AdapterOption[] = [
-    { value: "none", label: "关闭语音 (仅文字)" },
+    { value: "none", label: translateRuntimeMessage("plat.standalone.tts.noneLabel") },
     ...STANDALONE_TTS_ADAPTERS.map<AdapterOption>((adapter) => ({
       value: adapter.id,
       label:
-        isToyBrowser && adapter.browserCors === "proxy-only" ? `${adapter.label} [网页端需支持跨域]` : adapter.label,
+        isToyBrowser && adapter.browserCors === "proxy-only"
+          ? `${adapter.label} ${translateRuntimeMessage("plat.standalone.tts.corsSuffix")}`
+          : adapter.label,
       schema: adapter.schema,
     })),
   ];
@@ -57,7 +60,9 @@ export function buildStandaloneAdapterCatalog(target: RuntimeTarget): AdapterCat
   const llmOptions: AdapterOption[] = Object.values(LLM_PROVIDER_PRESETS).map<AdapterOption>((preset) => ({
     value: preset.provider,
     label:
-      isToyBrowser && preset.browserCors === "proxy-only" ? `${preset.label} [网页端需自定义代理 URL]` : preset.label,
+      isToyBrowser && preset.browserCors === "proxy-only"
+        ? `${preset.label} ${translateRuntimeMessage("plat.standalone.llmProxySuffix")}`
+        : preset.label,
   }));
 
   return {

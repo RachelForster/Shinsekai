@@ -11,6 +11,7 @@ import {
   logsQueryKey,
   readLog,
 } from "../../entities/logs/repository";
+import { useOptionalI18n } from "../../shared/i18n";
 import type { LogFileInfo, LogSnapshot, LogStructuredEntry } from "../../shared/platform/types";
 import { AsyncButton, Button, EmptyState, QueryErrorState, Select, Switch, TextInput, useToast } from "../../shared/ui";
 import "./LogsPage.css";
@@ -326,6 +327,7 @@ function formatStructuredTimestamp(value: string) {
 }
 
 function LogLineBody({ expanded, line, onToggle }: { expanded: boolean; line: LogLine; onToggle: () => void }) {
+  const { t } = useOptionalI18n();
   const hasStructuredDetails = Boolean(line.entry && line.detailPairs.length);
   const showRaw = line.entry && line.rawText && line.rawText !== line.text;
   const canExpand = hasStructuredDetails || showRaw;
@@ -347,7 +349,9 @@ function LogLineBody({ expanded, line, onToggle }: { expanded: boolean; line: Lo
           {line.event ? <span className="logs-code__event">{line.event}</span> : null}
           {line.pluginId ? <span className="logs-code__chip">plugin {line.pluginId}</span> : null}
           {line.taskId ? <span className="logs-code__chip">task {line.taskId}</span> : null}
-          {canExpand ? <span className="logs-code__expand">{expanded ? "收起" : "展开"}</span> : null}
+          {canExpand ? (
+            <span className="logs-code__expand">{expanded ? t("ops.logs.collapse") : t("ops.logs.expand")}</span>
+          ) : null}
         </span>
         <span className="logs-code__message">{line.text || " "}</span>
       </button>
@@ -371,6 +375,7 @@ function LogLineBody({ expanded, line, onToggle }: { expanded: boolean; line: Lo
 }
 
 export function LogsPage() {
+  const { t } = useOptionalI18n();
   const { showToast } = useToast();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [activeLog, setActiveLog] = useState<LogSnapshot | null>(null);
@@ -392,8 +397,8 @@ export function LogsPage() {
     onError(error) {
       showToast({
         kind: "error",
-        message: error instanceof Error ? error.message : "日志读取失败。",
-        title: "读取失败",
+        message: error instanceof Error ? error.message : t("ops.logs.readError"),
+        title: t("ops.logs.readFailed"),
       });
     },
     onSuccess(snapshot) {
@@ -408,15 +413,15 @@ export function LogsPage() {
     onError(error) {
       showToast({
         kind: "error",
-        message: error instanceof Error ? error.message : "日志导入失败。",
-        title: "导入失败",
+        message: error instanceof Error ? error.message : t("ops.logs.importError"),
+        title: t("ops.logs.importFailed"),
       });
     },
     onSuccess(snapshot) {
       setActiveLog(snapshot);
       setActivePath(snapshot.path);
       setExpandedLines(new Set());
-      showToast({ kind: "success", message: snapshot.name, title: "日志已导入" });
+      showToast({ kind: "success", message: snapshot.name, title: t("ops.logs.imported") });
     },
   });
 
@@ -425,12 +430,12 @@ export function LogsPage() {
     onError(error) {
       showToast({
         kind: "error",
-        message: error instanceof Error ? error.message : "诊断包生成失败。",
-        title: "导出失败",
+        message: error instanceof Error ? error.message : t("ops.logs.diagnosticsError"),
+        title: t("ops.logs.exportFailed"),
       });
     },
     onSuccess(result) {
-      showToast({ kind: "success", message: result.path, title: "诊断包已生成" });
+      showToast({ kind: "success", message: result.path, title: t("ops.logs.diagnosticsGenerated") });
       openDownload(result.downloadUrl);
     },
   });
@@ -492,18 +497,18 @@ export function LogsPage() {
     <div className="page logs-page">
       <header className="page__header logs-header">
         <div className="logs-header__copy">
-          <h1 className="page__title logs-header__title">运行日志</h1>
+          <h1 className="page__title logs-header__title">{t("ops.logs.title")}</h1>
         </div>
         <div className="page__actions logs-header__actions">
           <Button icon={<Upload aria-hidden className="button__icon" />} onClick={() => inputRef.current?.click()}>
-            导入
+            {t("ops.logs.import")}
           </Button>
           <AsyncButton
             icon={<Archive aria-hidden className="button__icon" />}
             loading={diagnosticsMutation.isPending}
             onClick={() => diagnosticsMutation.mutate()}
           >
-            诊断包
+            {t("ops.logs.diagnostics")}
           </AsyncButton>
           <AsyncButton
             icon={<RefreshCw aria-hidden className="button__icon" />}
@@ -511,7 +516,7 @@ export function LogsPage() {
             onClick={resetToDefaultLog}
             variant="primary"
           >
-            刷新
+            {t("ops.logs.refresh")}
           </AsyncButton>
           <input
             ref={inputRef}
@@ -529,18 +534,22 @@ export function LogsPage() {
         </div>
       </header>
 
-      <section className="logs-toolbar" aria-label="日志搜索">
+      <section className="logs-toolbar" aria-label={t("ops.logs.toolbarAria")}>
         <div className="logs-toolbar__search">
           <Search aria-hidden className="logs-toolbar__icon" />
           <TextInput
-            aria-label="搜索日志"
+            aria-label={t("ops.logs.searchAria")}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="搜索文本、行号、事件、任务 ID"
+            placeholder={t("ops.logs.searchPlaceholder")}
             value={query}
           />
         </div>
-        <Select aria-label="日志级别" onChange={(event) => setLevelFilter(event.target.value)} value={levelFilter}>
-          <option value="all">全部级别</option>
+        <Select
+          aria-label={t("ops.logs.levelAria")}
+          onChange={(event) => setLevelFilter(event.target.value)}
+          value={levelFilter}
+        >
+          <option value="all">{t("ops.logs.allLevels")}</option>
           <option value="error">Error</option>
           <option value="warn">Warn</option>
           <option value="info">Info</option>
@@ -548,7 +557,7 @@ export function LogsPage() {
           <option value="default">Other</option>
         </Select>
         <Select aria-label="Logger" onChange={(event) => setLoggerFilter(event.target.value)} value={loggerFilter}>
-          <option value="all">全部 logger</option>
+          <option value="all">{t("ops.logs.allLoggers")}</option>
           {loggerOptions.map((logger) => (
             <option key={logger} value={logger}>
               {logger}
@@ -556,7 +565,7 @@ export function LogsPage() {
           ))}
         </Select>
         <Select aria-label="Event" onChange={(event) => setEventFilter(event.target.value)} value={eventFilter}>
-          <option value="all">全部事件</option>
+          <option value="all">{t("ops.logs.allEvents")}</option>
           {eventOptions.map((event) => (
             <option key={event} value={event}>
               {event}
@@ -564,7 +573,7 @@ export function LogsPage() {
           ))}
         </Select>
         <Select aria-label="Plugin" onChange={(event) => setPluginFilter(event.target.value)} value={pluginFilter}>
-          <option value="all">全部插件</option>
+          <option value="all">{t("ops.logs.allPlugins")}</option>
           {pluginOptions.map((plugin) => (
             <option key={plugin} value={plugin}>
               {plugin}
@@ -577,7 +586,7 @@ export function LogsPage() {
           onChange={(event) => setCaseSensitive(event.target.checked)}
         >
           <CaseSensitive aria-hidden className="logs-toolbar__switch-icon" />
-          区分大小写
+          {t("ops.logs.caseSensitive")}
         </Switch>
       </section>
 
@@ -586,39 +595,39 @@ export function LogsPage() {
           <div className="logs-source">
             <FileText aria-hidden className="logs-source__icon" />
             <div className="logs-source__text">
-              <strong>{currentLog?.name ?? "未载入"}</strong>
+              <strong>{currentLog?.name ?? t("ops.logs.notLoaded")}</strong>
               <span>{currentLog?.path ?? "-"}</span>
             </div>
           </div>
           <dl className="logs-stats">
             <div>
-              <dt>大小</dt>
+              <dt>{t("ops.logs.size")}</dt>
               <dd>{formatBytes(currentLog?.size ?? 0)}</dd>
             </div>
             <div>
-              <dt>修改时间</dt>
+              <dt>{t("ops.logs.modifiedAt")}</dt>
               <dd>{formatTimestamp(currentLog?.modifiedAt)}</dd>
             </div>
             <div>
-              <dt>行数</dt>
+              <dt>{t("ops.logs.lines")}</dt>
               <dd>{allLines.length}</dd>
             </div>
             <div>
-              <dt>匹配</dt>
+              <dt>{t("ops.logs.matches")}</dt>
               <dd>{filteredLines.length}</dd>
             </div>
           </dl>
-          <div className="logs-levels" aria-label="日志级别统计">
+          <div className="logs-levels" aria-label={t("ops.logs.levelStatsAria")}>
             <span data-level="error">Error {levelCounts.error}</span>
             <span data-level="warn">Warn {levelCounts.warn}</span>
             <span data-level="info">Info {levelCounts.info}</span>
             <span data-level="debug">Debug {levelCounts.debug}</span>
           </div>
-          {currentLog?.truncated ? <p className="logs-truncated">当前仅显示日志尾部内容。</p> : null}
+          {currentLog?.truncated ? <p className="logs-truncated">{t("ops.logs.truncated")}</p> : null}
 
           <div className="logs-file-list">
-            <h2 className="logs-section-title">最近日志</h2>
-            {filesQuery.isError ? <p className="logs-truncated">日志列表读取失败。</p> : null}
+            <h2 className="logs-section-title">{t("ops.logs.recentTitle")}</h2>
+            {filesQuery.isError ? <p className="logs-truncated">{t("ops.logs.filesError")}</p> : null}
             <div className="logs-file-list__items">
               {(filesQuery.data?.files ?? []).map((file) => (
                 <button
@@ -640,19 +649,19 @@ export function LogsPage() {
         </aside>
 
         <div className="logs-viewer-host">
-          <section className="logs-viewer" aria-label="日志内容">
-            {logsQuery.isLoading && !currentLog ? <EmptyState title="正在读取日志" /> : null}
+          <section className="logs-viewer" aria-label={t("ops.logs.contentAria")}>
+            {logsQuery.isLoading && !currentLog ? <EmptyState title={t("ops.logs.loading")} /> : null}
             {logsQuery.isError && !currentLog ? (
               <QueryErrorState
-                body="可以导入本地日志文件继续查看。"
+                body={t("ops.logs.errorBody")}
                 error={logsQuery.error}
                 onRetry={() => void logsQuery.refetch()}
-                retryLabel="重试"
-                title="无法读取默认日志"
+                retryLabel={t("ops.logs.retry")}
+                title={t("ops.logs.errorTitle")}
               />
             ) : null}
             {!logsQuery.isLoading && currentLog && visibleLines.length === 0 ? (
-              <EmptyState body="换一个筛选条件试试。" title="没有匹配的日志" />
+              <EmptyState body={t("ops.logs.emptyBody")} title={t("ops.logs.emptyTitle")} />
             ) : null}
             {visibleLines.length ? (
               <div className="logs-code" role="log">
@@ -673,7 +682,9 @@ export function LogsPage() {
                 ))}
               </div>
             ) : null}
-            {hiddenCount ? <p className="logs-hidden-count">还有 {hiddenCount} 行未显示。</p> : null}
+            {hiddenCount ? (
+              <p className="logs-hidden-count">{t("ops.logs.hiddenCount", { count: hiddenCount })}</p>
+            ) : null}
           </section>
         </div>
       </div>

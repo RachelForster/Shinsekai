@@ -27,22 +27,40 @@ def _format_dialog_message(
     exc: BaseException,
     error_info: ExceptionInfo | None,
 ) -> str:
+    from i18n import tr
+
     if error_info and error_info["kind"] == "missing_dependency":
-        return (
-            f"{app_name} 启动失败，缺少 Python 模块：{error_info['moduleName']}\n\n"
-            f"建议安装包：{error_info['packageName']}\n"
-            "安装依赖后请重新启动聊天。"
+        return tr(
+            "handler.dialog.missing_dependency",
+            app_name=app_name,
+            module_name=error_info["moduleName"],
+            package_name=error_info["packageName"],
         )
     if error_info and error_info["kind"] == "http_client":
-        detail = f"请求地址：{error_info['url']}\n" if error_info["url"] else ""
+        detail = (
+            tr("handler.dialog.request_url", url=error_info["url"])
+            if error_info["url"]
+            else ""
+        )
         if error_info["timeout"]:
-            reason = "网络请求超时"
+            reason = tr("handler.dialog.reason_timeout")
         elif error_info["statusCode"] is not None:
-            reason = f"网络请求返回 HTTP {error_info['statusCode']}"
+            reason = tr("handler.dialog.reason_http", status_code=error_info["statusCode"])
         else:
-            reason = "网络请求失败"
-        return f"{app_name} 启动失败：{reason}\n\n{detail}{error_info['message']}"
-    return f"{app_name} 启动失败：{type(exc).__name__}: {exc}"
+            reason = tr("handler.dialog.reason_network")
+        return tr(
+            "handler.dialog.http_client",
+            app_name=app_name,
+            reason=reason,
+            detail=detail,
+            message=error_info["message"],
+        )
+    return tr(
+        "handler.dialog.generic",
+        app_name=app_name,
+        exc_type=type(exc).__name__,
+        exc=exc,
+    )
 
 
 def _write_stderr(
@@ -159,8 +177,10 @@ def report_main_exception(
 
     _write_stderr(app_name, exc_type, exc, detail, error_info)
     if _should_show_dialog(show_dialog):
+        from i18n import tr
+
         show_error_dialog(
-            f"{app_name} 启动失败",
+            tr("handler.dialog.title", app_name=app_name),
             _format_dialog_message(app_name, exc, error_info),
             detail,
         )

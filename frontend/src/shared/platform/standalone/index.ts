@@ -1,4 +1,6 @@
 import { numberedTags, tagContents } from "../../assets/assetText";
+import { DEFAULT_SPRITE_GROUP, LLM_PROVIDER_QWEN, LLM_PROVIDER_SILICONFLOW, TAG_PREFIX_SPRITE } from "../../constants";
+import { setActiveFrontendLanguage, translateRuntimeMessage } from "../../i18n/runtimeLanguage";
 import { createAgentPreviewPlatform } from "../agentPreviewPlatform";
 import { createChatPreviewPlatform } from "../slices/chatPreviewPlatform";
 import { createKnowledgePreviewPlatform } from "../slices/knowledgePreviewPlatform";
@@ -52,10 +54,13 @@ import { getLlmProviderPreset } from "./ai/adapters/llm/presets";
 import { standaloneHttpJson, standaloneHttpRequest } from "./ai/httpClient";
 import { StandaloneChatTurnDriver } from "./ai/standaloneChatTurn";
 import { exportCharPackage, importCharPackage, refreshCharacterMouthManifestUrls } from "./packages/charPackageCodec";
+import { createStandaloneTemplateTranslator } from "./ai/standaloneTemplateLocales";
 import { characterNameKey, generateStandaloneTemplateSummary } from "./ai/templateGenerator";
 import {
   loadBundledPresets,
   resolveBundledStarterAssetUrl,
+  STARTER_BACKGROUND_NAME,
+  STARTER_CHARACTER_NAME,
   upgradeStarterPresetsInPlace,
 } from "./packages/presetLoader";
 import { getKvConfig, setKvConfig } from "./storage/indexedDbStore";
@@ -99,7 +104,7 @@ export async function testRemotePcBridge(input: {
 }): Promise<{ ok: boolean; characterCount: number; message: string }> {
   const baseUrl = normalizeRemoteUrl(input.bridgeUrl);
   if (!baseUrl) {
-    throw new Error("请填写电脑端 Shinsekai 地址，例如 http://192.168.1.100:8787");
+    throw new Error(translateRuntimeMessage("plat.standalone.pcAddressRequired"));
   }
   const { data } = await standaloneHttpJson<AppConfig>({
     url: `${baseUrl}/api/config`,
@@ -111,7 +116,7 @@ export async function testRemotePcBridge(input: {
   return {
     ok: true,
     characterCount: chars,
-    message: `已连接电脑端（共 ${chars} 个角色）`,
+    message: translateRuntimeMessage("plat.standalone.pcConnectedCount", { count: chars }),
   };
 }
 
@@ -144,7 +149,7 @@ export async function syncCharacterFromRemotePc(input: {
   });
 
   if (!exportRes.path) {
-    throw new Error(`电脑端未能导出角色「${input.characterName}」`);
+    throw new Error(translateRuntimeMessage("plat.standalone.pcExportFailed", { name: input.characterName }));
   }
 
   const downloadResp = await standaloneHttpRequest({
@@ -154,7 +159,7 @@ export async function syncCharacterFromRemotePc(input: {
     timeoutMs: 60_000,
   });
   if (!downloadResp.ok || downloadResp.body.byteLength < 64) {
-    throw new Error(`下载角色包失败 (HTTP ${downloadResp.status})`);
+    throw new Error(translateRuntimeMessage("plat.standalone.pcDownloadFailed", { status: downloadResp.status }));
   }
 
   const safeCopy = new Uint8Array(downloadResp.body.byteLength);
@@ -191,21 +196,21 @@ export async function syncCharacterFromRemotePc(input: {
 function defaultStandaloneApiConfig(base: ApiConfig): ApiConfig {
   return {
     ...clone(base),
-    llm_provider: "硅基流动",
+    llm_provider: LLM_PROVIDER_SILICONFLOW,
     tts_provider: "openai-speech",
     llm_base_url: "https://api.siliconflow.cn/v1",
     llm_base_urls: {
       ...base.llm_base_urls,
-      硅基流动: "https://api.siliconflow.cn/v1",
+      [LLM_PROVIDER_SILICONFLOW]: "https://api.siliconflow.cn/v1",
       Moonshot: "https://api.moonshot.cn/v1",
       OpenRouter: "https://openrouter.ai/api/v1",
     },
     llm_model: {
       ...base.llm_model,
-      硅基流动: "deepseek-ai/DeepSeek-V3",
+      [LLM_PROVIDER_SILICONFLOW]: "deepseek-ai/DeepSeek-V3",
       Deepseek: "deepseek-chat",
       ChatGPT: "gpt-4o-mini",
-      通义千问: "qwen-plus",
+      [LLM_PROVIDER_QWEN]: "qwen-plus",
     },
     max_context_tokens: base.max_context_tokens || 32000,
     compact_threshold: base.compact_threshold || 0.4,
@@ -255,7 +260,10 @@ function extractCommandText(payload: unknown): string {
   const labels = Array.isArray(candidate.attachments)
     ? candidate.attachments
         .filter((item) => item?.kind === "image" || item?.kind === "file")
-        .map((item) => `[${item.kind}: ${String(item.name || "附件")}]`)
+        .map(
+          (item) =>
+            `[${item.kind}: ${String(item.name || translateRuntimeMessage("plat.standalone.attachmentFallback"))}]`,
+        )
     : [];
   return [text, labels.join(" ")].filter(Boolean).join("\n");
 }
@@ -322,6 +330,8 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
   let activeSessionId: string | null = null;
   let explicitlyClosed = false;
   let latestUserInputDraft = "";
+  const tr = (key: Parameters<typeof translateRuntimeMessage>[0], values?: Record<string, string | number>) =>
+    translateRuntimeMessage(key, values, ctx.config.system_config.ui_language);
 
   const baseCharacters = createCharactersPreviewPlatform(ctx);
   const baseRelation = createCharacterRelationPreviewPlatform(ctx);
@@ -495,6 +505,7 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
         };
         ctx.config.api_config = mergedApi;
         ctx.config.system_config = { ...ctx.config.system_config, ...savedConfig.system_config };
+        setActiveFrontendLanguage(ctx.config.system_config.ui_language);
         ctx.config.characters = Array.isArray(savedConfig.characters) ? savedConfig.characters : [];
         ctx.config.background_list = Array.isArray(savedConfig.background_list) ? savedConfig.background_list : [];
         ctx.config.effect_list = Array.isArray(savedConfig.effect_list) ? savedConfig.effect_list : [];
@@ -533,17 +544,18 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
       if (Array.isArray(savedTemplates) && savedTemplates.length) {
         ctx.setTemplates(savedTemplates);
       } else {
-        const starterChar = ctx.config.characters[0]?.name ?? "星奈";
-        const starterBg = ctx.config.background_list[0]?.name ?? "星海观测台";
+        const starterChar = ctx.config.characters[0]?.name ?? STARTER_CHARACTER_NAME;
+        const starterBg = ctx.config.background_list[0]?.name ?? STARTER_BACKGROUND_NAME;
+        const starterTemplateName = tr("plat.standalone.starterTemplateName", { name: starterChar });
         const currentTemplates = ctx.getTemplates();
         if (currentTemplates.length) {
-          const starterScenario = "在星海观测台展开温柔又轻松的互动对话。";
+          const starterScenario = tr("plat.standalone.starterScenario");
           let starterSystem = currentTemplates[0].system ?? "";
           let starterContent = currentTemplates[0].content ?? "";
           try {
             const generated = generateStandaloneTemplateSummary(
               {
-                name: `${starterChar} 的观测台`,
+                name: starterTemplateName,
                 scenario: starterScenario,
                 characters: ctx.config.characters.length ? [starterChar] : [],
                 backgroundName: starterBg,
@@ -560,7 +572,7 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
             {
               ...currentTemplates[0],
               id: currentTemplates[0].id || "starter-template",
-              name: `${starterChar} 的观测台`,
+              name: starterTemplateName,
               scenario: starterScenario,
               system: starterSystem,
               content: starterContent,
@@ -581,7 +593,7 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
             maxSpeechChars: 120,
             mediaSelectionMode: "indexed",
             memoryMode: "isolated",
-            playerCharacter: "旅人",
+            playerCharacter: tr("plat.standalone.defaultPlayerTraveler"),
             primaryCharacters: [starterChar],
             readPlayerSpeech: false,
             roomId: "",
@@ -659,7 +671,10 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
       .map((node) => ({
         id: node.turnId,
         role: node.role,
-        text: node.speaker && node.role === "assistant" ? `【${node.speaker}】${node.plainText}` : node.plainText,
+        text:
+          node.speaker && node.role === "assistant"
+            ? tr("plat.standalone.historyAssistantSpeaker", { speaker: node.speaker, text: node.plainText })
+            : node.plainText,
         createdAt: node.createdAtMs,
         revertUserIndex: node.revertUserIndex,
       }));
@@ -714,7 +729,7 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
       dialogHtml: "",
       options: activeOptions,
       historyEntries,
-      userDisplayName: session.payload.playerCharacter || "我",
+      userDisplayName: session.payload.playerCharacter || tr("plat.standalone.defaultPlayerMe"),
       voiceLanguage: session.payload.voiceLanguage || "Chinese",
     };
 
@@ -725,11 +740,11 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
   const launchOrCreateStarterSession = async (payload?: ChatLaunchPayload): Promise<ChatSnapshot> => {
     await ensureInitialized();
     turnDriver.cancelActiveTurn();
-    const charName = payload?.characters?.[0] || ctx.config.characters[0]?.name || "星奈";
-    const bgName = payload?.backgroundName || ctx.config.background_list[0]?.name || "星海观测台";
+    const charName = payload?.characters?.[0] || ctx.config.characters[0]?.name || STARTER_CHARACTER_NAME;
+    const bgName = payload?.backgroundName || ctx.config.background_list[0]?.name || STARTER_BACKGROUND_NAME;
     const effectivePayload: ChatLaunchPayload = payload ?? {
       templateId: "starter-template",
-      templateName: "星海观测台",
+      templateName: STARTER_BACKGROUND_NAME,
       characters: [charName],
       primaryCharacters: [charName],
       backgroundName: bgName,
@@ -737,7 +752,7 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
       useChoice: true,
       useNarration: true,
       useStat: true,
-      playerCharacter: "旅人",
+      playerCharacter: tr("plat.standalone.defaultPlayerTraveler"),
     };
 
     const selectedChars = ctx.config.characters.filter((c) => effectivePayload.characters.includes(c.name));
@@ -767,7 +782,7 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
 
     const session = await sessionStore.ensureSession({
       historyPath: targetHistoryPath,
-      title: effectivePayload.conversationTitle || `${charName}的对话`,
+      title: effectivePayload.conversationTitle || tr("plat.standalone.conversationTitleFallback", { name: charName }),
       payload: sessionPayload,
       outfits,
     });
@@ -798,18 +813,18 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
     async prepareConversation(id) {
       await ensureInitialized();
       const session = sessionStore.getSession(id) ?? sessionStore.getSessionByHistoryPath(id);
-      if (!session) throw new Error("对话不存在");
+      if (!session) throw new Error(tr("plat.standalone.conversationNotFound"));
       return clone(session.payload);
     },
     async reconfigureConversation(id, payload) {
       const session = sessionStore.getSession(id) ?? sessionStore.getSessionByHistoryPath(id);
-      if (!session) throw new Error("对话不存在");
+      if (!session) throw new Error(tr("plat.standalone.conversationNotFound"));
       return this.launch({ ...payload, historyPath: session.historyPath, resetHistory: false });
     },
     async renameConversation(id, title) {
       await ensureInitialized();
       const updated = await sessionStore.updateSessionMeta(id, { title });
-      if (!updated) throw new Error("对话不存在");
+      if (!updated) throw new Error(tr("plat.standalone.conversationNotFound"));
       return sessionStore.listConversationSummaries().find((s) => s.sessionId === id)!;
     },
     async updateConversationSettings(id, input) {
@@ -820,7 +835,7 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
           ? { payload: { ...sessionStore.getSession(id)!.payload, memoryMode: input.memoryMode } }
           : {}),
       });
-      if (!updated) throw new Error("对话不存在");
+      if (!updated) throw new Error(tr("plat.standalone.conversationNotFound"));
       return sessionStore.listConversationSummaries().find((s) => s.sessionId === id)!;
     },
     async deleteConversation(id) {
@@ -901,7 +916,10 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
         .map<ChatHistoryEntry>((node) => ({
           id: node.turnId,
           role: node.role,
-          text: node.speaker && node.role === "assistant" ? `【${node.speaker}】${node.plainText}` : node.plainText,
+          text:
+            node.speaker && node.role === "assistant"
+              ? tr("plat.standalone.historyAssistantSpeaker", { speaker: node.speaker, text: node.plainText })
+              : node.plainText,
           createdAt: node.createdAtMs,
           revertUserIndex: node.revertUserIndex,
         }));
@@ -922,7 +940,9 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
           position: index,
           role: node.role,
           text: node.plainText,
-          speaker: node.speaker || (node.role === "user" ? session?.payload.playerCharacter || "我" : ""),
+          speaker:
+            node.speaker ||
+            (node.role === "user" ? session?.payload.playerCharacter || tr("plat.standalone.defaultPlayerMe") : ""),
           body: node.plainText,
           canGenerate: false,
           voiceUrls: [],
@@ -943,10 +963,10 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
                   modelUrl: sp.modelUrl ? resolveStandaloneFileUrl(sp.modelUrl) : "",
                   ...(sp.transitions?.length
                     ? {
-                        transitions: sp.transitions.map((tr) => ({
-                          ...tr,
-                          fromUrl: resolveStandaloneFileUrl(tr.fromUrl),
-                          url: resolveStandaloneFileUrl(tr.url),
+                        transitions: sp.transitions.map((trItem) => ({
+                          ...trItem,
+                          fromUrl: resolveStandaloneFileUrl(trItem.fromUrl),
+                          url: resolveStandaloneFileUrl(trItem.url),
                         })),
                       }
                     : {}),
@@ -959,7 +979,7 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
         id: `replay-${Date.now()}`,
         sessionId: sid,
         branchId: session?.activeBranchId ?? "main",
-        branchLabel: "主线",
+        branchLabel: tr("plat.standalone.mainBranch"),
         historyCount: entries.length,
         entries,
       };
@@ -990,7 +1010,7 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
       await setKvConfig(KV_ACTIVE_THEME_ID, id);
     },
     async uploadTheme() {
-      throw new Error("Standalone 模式暂仅支持内置主题切换。");
+      throw new Error(tr("plat.standalone.themeBuiltinOnly"));
     },
     async uploadAttachments(files) {
       const vfsPaths = await stageUploadedFiles(files, "attachments");
@@ -1157,13 +1177,15 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
 
   async function generateCharacterBrief(input: { name: string; setting: string }) {
     await ensureInitialized();
-    const provider = ctx.config.api_config.llm_provider || "硅基流动";
+    const provider = ctx.config.api_config.llm_provider || LLM_PROVIDER_SILICONFLOW;
     const key = (ctx.config.api_config.llm_api_key?.[provider] ?? "").trim();
     if (!key && provider !== "Ollama") {
       return baseCharacters.generateBrief(input);
     }
     const preset = getLlmProviderPreset(provider);
     const adapter = resolveLlmAdapter(provider);
+    const tpl = createStandaloneTemplateTranslator(ctx.config.system_config.ui_language);
+    const settingText = input.setting.trim() || tpl("character_brief_empty_setting");
     const res = await adapter.complete(
       {
         provider,
@@ -1171,14 +1193,14 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
         baseUrl: ctx.config.api_config.llm_base_urls?.[provider] || preset.defaultBaseUrl,
         model: ctx.config.api_config.llm_model?.[provider] || preset.defaultModel,
         messages: [
-          { role: "system", content: "根据角色名称与设定，用2句话凝练一段中文人物简介。" },
-          { role: "user", content: `角色：${input.name}\n设定：${input.setting}` },
+          { role: "system", content: tpl("character_brief_system") },
+          { role: "user", content: `${tpl("character_brief_user_header", { name: input.name })}\n${settingText}` },
         ],
         maxTokens: 256,
       },
       standaloneHttpRequest,
     );
-    return { characterBrief: res.content.trim(), message: "生成成功" };
+    return { characterBrief: res.content.trim(), message: tr("plat.standalone.generateSuccess") };
   }
 
   return {
@@ -1369,6 +1391,7 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
       async saveSystem(systemConfig: SystemConfig) {
         await ensureInitialized();
         ctx.config.system_config = clone(systemConfig);
+        setActiveFrontendLanguage(systemConfig.ui_language);
         await persistAppConfig();
         return clone(ctx.config.system_config);
       },
@@ -1415,28 +1438,28 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
         await ensureInitialized();
         const targetChar = ctx.config.characters.find((c) => c.name === input.name);
         if (!targetChar) {
-          throw new Error(`角色不存在：${input.name}`);
+          throw new Error(tr("plat.preview.char.notFound", { name: input.name }));
         }
         const prefix = sanitizeVfsFileName(targetChar.sprite_prefix || targetChar.name || "character");
         const existingPaths = targetChar.sprites.map((sp) => sp.path);
         const uploadedPaths = await relocatePathsList(input.paths, `vfs://characters/${prefix}/sprites`, existingPaths);
         const start = targetChar.sprites.length;
         const groupName = input.group?.trim();
-        const targetGroup = !groupName || groupName === "默认" ? undefined : groupName;
+        const targetGroup = !groupName || groupName === DEFAULT_SPRITE_GROUP ? undefined : groupName;
         const nextSprites = uploadedPaths.map((path) => ({
           path,
           ...(targetGroup ? { group: targetGroup } : {}),
         }));
         targetChar.sprites = [...targetChar.sprites, ...nextSprites];
         if (targetGroup) {
-          const currentGroups = targetChar.sprite_groups ?? ["默认"];
+          const currentGroups = targetChar.sprite_groups ?? [DEFAULT_SPRITE_GROUP];
           if (!currentGroups.includes(targetGroup)) {
             targetChar.sprite_groups = [...currentGroups, targetGroup];
           }
         }
         const existingTags = tagContents(input.emotionTags || targetChar.emotion_tags, start);
         const extraTags = uploadedPaths.map(() => "");
-        targetChar.emotion_tags = numberedTags("立绘", [...existingTags, ...extraTags]);
+        targetChar.emotion_tags = numberedTags(TAG_PREFIX_SPRITE, [...existingTags, ...extraTags]);
         await persistAppConfig();
         return clone(targetChar);
       },
@@ -1529,11 +1552,11 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
             importedAll.push(...parsed);
           } else if (typeof item === "string" && isVfsPath(item)) {
             const blob = await getVfsBlobAsync(item);
-            if (!blob) throw new Error(`未找到角色包文件: ${item}`);
+            if (!blob) throw new Error(tr("plat.standalone.charPackageFileMissing", { path: item }));
             const parsed = await importCharPackage(blob, [...ctx.config.characters, ...importedAll]);
             importedAll.push(...parsed);
           } else {
-            throw new Error("请通过文件选择器导入本地 .char 或 .zip 角色包。");
+            throw new Error(tr("plat.standalone.charImportSelectorOnly"));
           }
         }
         ctx.config.characters.push(...importedAll);
@@ -1543,7 +1566,7 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
       async export(name) {
         await ensureInitialized();
         const targetChar = ctx.config.characters.find((c) => c.name === name);
-        if (!targetChar) throw new Error(`角色不存在：${name}`);
+        if (!targetChar) throw new Error(tr("plat.preview.char.notFound", { name }));
         const { filename, blob } = await exportCharPackage(targetChar, { triggerDownload: true });
         const exportVfsPath = `vfs://exports/${filename}`;
         await putVfsBlob(exportVfsPath, blob, { mimeType: "application/zip", persist: false });
@@ -1587,13 +1610,16 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
       },
       async generateSetting(input) {
         await ensureInitialized();
-        const provider = ctx.config.api_config.llm_provider || "硅基流动";
+        const provider = ctx.config.api_config.llm_provider || LLM_PROVIDER_SILICONFLOW;
         const key = (ctx.config.api_config.llm_api_key?.[provider] ?? "").trim();
         if (!key && provider !== "Ollama") {
           return baseCharacters.generateSetting(input);
         }
         const preset = getLlmProviderPreset(provider);
         const adapter = resolveLlmAdapter(provider);
+        const tpl = createStandaloneTemplateTranslator(ctx.config.system_config.ui_language);
+        const charName = input.name || tr("plat.preview.char.defaultName");
+        const settingHint = input.setting.trim() || tpl("character_setting_empty_hint");
         const res = await adapter.complete(
           {
             provider,
@@ -1601,8 +1627,8 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
             baseUrl: ctx.config.api_config.llm_base_urls?.[provider] || preset.defaultBaseUrl,
             model: ctx.config.api_config.llm_model?.[provider] || preset.defaultModel,
             messages: [
-              { role: "system", content: "扩写角色背景设定与说话语气特点，结构清晰，使用中文。" },
-              { role: "user", content: `角色名：${input.name}\n灵感关键词：${input.setting}` },
+              { role: "system", content: tpl("character_setting_system", { name: charName }) },
+              { role: "user", content: tpl("character_setting_user", { setting: settingHint }) },
             ],
             maxTokens: 700,
           },
@@ -1610,8 +1636,8 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
         );
         return {
           characterSetting: res.content.trim(),
-          characterBrief: `${input.name || "角色"}的个性化设定。`,
-          message: "生成成功",
+          characterBrief: tr("plat.standalone.charBriefFallback", { name: charName }),
+          message: tr("plat.standalone.generateSuccess"),
         };
       },
     },

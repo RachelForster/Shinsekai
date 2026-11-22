@@ -25,6 +25,7 @@ from core.packaging.zip_io import (
     write_directory_zip,
 )
 from sdk.path_utils import safe_child_path, safe_existing_file_path, safe_filename
+from i18n import tr
 
 RESERVED_EFFECT_PACKAGE_FIELDS = frozenset({"id"})
 
@@ -227,7 +228,7 @@ def stage_effect_package_import(
     """Validate an effect package, restore media under ``effect_root``, and build Effect models."""
     archive_path = Path(archive)
     if not archive_path.is_file():
-        raise FileNotFoundError(f"文件未找到: {archive}")
+        raise FileNotFoundError(tr("crud.common.archive_not_found", path=archive))
 
     staged = StagedEffectImport()
     try:
@@ -238,7 +239,7 @@ def stage_effect_package_import(
             yaml_path = temp_dir / "effect.yaml"
             yaml_data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
             if not yaml_data:
-                raise ValueError("特效配置 YAML 文件为空或格式错误。")
+                raise ValueError(tr("crud.effect.yaml_empty"))
             entries = yaml_data if isinstance(yaml_data, list) else [yaml_data]
             existing_names_lower = {effect.name.lower() for effect in existing_effects}
 

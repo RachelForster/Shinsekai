@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from copy import deepcopy
 from typing import Any
 
 from config.character_ops.target import CharacterPersistenceTarget, _with_character_lock
-from config.schema import RelationGraph
+from config.schema import Character, RelationGraph
 
 
 def parse_relation_graph(
@@ -37,6 +37,24 @@ def rename_relation_graph_owner(
             if edge[endpoint] == old_name:
                 edge[endpoint] = new_name
     return RelationGraph.model_validate(value)
+
+
+def rename_references_in_other_graphs(
+    characters: Sequence[Character],
+    *,
+    renamed_id: str,
+    old_name: str,
+    new_name: str,
+) -> list[Character]:
+    """Prepare and validate renamed references without persisting changes."""
+    updated = []
+    for character in characters:
+        if character.id == renamed_id:
+            continue
+        graph = rename_relation_graph_owner(character.relation_graph, old_name, new_name)
+        if graph != character.relation_graph:
+            updated.append(character.model_copy(update={"relation_graph": graph}))
+    return updated
 
 
 @_with_character_lock

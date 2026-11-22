@@ -1,4 +1,6 @@
 import { tagContents } from "../../../assets/assetText";
+import { LLM_PROVIDER_SILICONFLOW } from "../../../constants";
+import { translateRuntimeMessage } from "../../../i18n/runtimeLanguage";
 import type { Character } from "../../slices/characterTypes";
 import type {
   CharacterOutfitState,
@@ -10,7 +12,7 @@ import type {
 } from "../../slices/chatTypes";
 import type { ApiConfig, SystemConfig } from "../../slices/configTypes";
 import type { Background, Effect } from "../../slices/workspaceTypes";
-import { advancePrologueStep, createInitialPrologueState } from "../packages/presetLoader";
+import { advancePrologueStep, createInitialPrologueState, STARTER_CHARACTER_NAME } from "../packages/presetLoader";
 import type { StandaloneSessionRecord, StandaloneSessionStore } from "../storage/sessionStore";
 import { getVfsBlobAsync, resolveVfsUrl } from "../storage/vfsBlobRegistry";
 import { autoCompactIfNeeded, getCompactionLimits, trimMessagesToBudget } from "./compactManager";
@@ -417,10 +419,12 @@ export class StandaloneChatTurnDriver {
     }
 
     try {
+      const uiLanguage = this.ctx.getSystemConfig?.()?.ui_language;
       const blob = await adapter.synthesize(
         {
           text: speech,
-          characterName: character?.name ?? "角色",
+          characterName:
+            character?.name ?? translateRuntimeMessage("plat.preview.char.defaultName", undefined, uiLanguage),
           speed: character?.speech_speed ?? apiConfig.tts_speed ?? 1.0,
           volume: character?.speech_volume ?? 1.0,
           referAudioBlob,
@@ -457,12 +461,14 @@ export class StandaloneChatTurnDriver {
 
     const { session, userText, isOptionSubmit } = input;
     const apiConfig = this.ctx.getApiConfig();
+    const systemConfig = this.ctx.getSystemConfig?.();
+    const uiLanguage = systemConfig?.ui_language;
     const characters = this.ctx.getCharacters();
     const activeCharacters = session.characters.length
       ? characters.filter((c) => session.characters.includes(c.name))
       : characters.slice(0, 1);
     const primaryChar = activeCharacters[0] ?? characters[0];
-    const fallbackName = primaryChar?.name ?? "星奈";
+    const fallbackName = primaryChar?.name ?? STARTER_CHARACTER_NAME;
 
     if (isOptionSubmit) {
       const currentOptions = this.ctx.getChat().options ?? [];
@@ -477,7 +483,7 @@ export class StandaloneChatTurnDriver {
       ...currentSnapshot,
       options: [],
       status: "generating",
-      busyText: "思考回复中...",
+      busyText: translateRuntimeMessage("plat.standalone.thinkingBusy", undefined, uiLanguage),
     });
     this.ctx.emitChat();
     this.ctx.emitStageEvent({ v: 1, seq: this.nextSeq(), ts: Date.now(), type: "options.clear" });
@@ -486,7 +492,9 @@ export class StandaloneChatTurnDriver {
     // Record player's turn into non-destructive timeline
     await this.ctx.sessionStore.appendTurn(session.sessionId, {
       role: "user",
-      speaker: session.payload.playerCharacter || "我",
+      speaker:
+        session.payload.playerCharacter ||
+        translateRuntimeMessage("plat.standalone.defaultPlayerMe", undefined, uiLanguage),
       plainText: userText,
       renderedHtml: userText,
       outfitSnapshot: session.outfits,
@@ -499,7 +507,7 @@ export class StandaloneChatTurnDriver {
       },
     });
 
-    const provider = apiConfig.llm_provider || "硅基流动";
+    const provider = apiConfig.llm_provider || LLM_PROVIDER_SILICONFLOW;
     const apiKey = (apiConfig.llm_api_key?.[provider] ?? "").trim();
 
     if (!apiKey && provider !== "Ollama") {
@@ -513,8 +521,6 @@ export class StandaloneChatTurnDriver {
     const llmAdapter = resolveLlmAdapter(provider);
 
     try {
-      const systemConfig = this.ctx.getSystemConfig?.();
-      const uiLanguage = systemConfig?.ui_language;
       const systemPrompt = buildStandaloneDialogSystemPrompt({
         characters: activeCharacters.length ? activeCharacters : characters.slice(0, 1),
         backgrounds: this.ctx.getBackgrounds?.(),
@@ -774,7 +780,7 @@ export class StandaloneChatTurnDriver {
         busyText: "",
         activePlayback: null,
         statusMessage: errMsg,
-        notificationText: `对话请求失败：${errMsg}`,
+        notificationText: translateRuntimeMessage("plat.standalone.turnFailed", { error: errMsg }, uiLanguage),
       });
       this.ctx.emitChat();
       this.ctx.emitStageEvent({ v: 1, seq: this.nextSeq(), ts: Date.now(), type: "status.change", status: "error" });

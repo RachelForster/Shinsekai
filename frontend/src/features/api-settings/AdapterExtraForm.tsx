@@ -4,6 +4,7 @@ import {
   type AdapterExtraFormValues,
 } from "../../entities/config/schema";
 import type { AdapterExtraFieldSchema } from "../../entities/config/types";
+import { useOptionalI18n } from "../../shared/i18n";
 import { SchemaFieldGrid } from "../../shared/ui";
 
 interface AdapterExtraFormProps {
@@ -21,6 +22,7 @@ export function AdapterExtraForm({
   schema,
   values,
 }: AdapterExtraFormProps) {
+  const { t } = useOptionalI18n();
   const entries = Object.entries(schema);
   if (!entries.length) {
     return null;
@@ -29,10 +31,10 @@ export function AdapterExtraForm({
   const disabledKeys = modelUnsupportedThinking ? ["thinking_enabled", "reasoning_effort"] : [];
   const group = adapterExtraSchemaToFormGroup({
     disabledKeys,
-    disabledReason: "该模型不支持思考模式。",
+    disabledReason: t("ops.api.extra.thinkingUnsupported"),
     id: "adapter-extra",
     schema,
-    title: "扩展参数",
+    title: t("ops.api.extra.title"),
   });
   const displayValues = entries.reduce<AdapterExtraFormValues>((accumulator, [key, field]) => {
     accumulator[key] = values[key] ?? defaultAdapterExtraValue(field);

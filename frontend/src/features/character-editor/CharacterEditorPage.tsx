@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { configQueryKey, getAppConfig } from "../../entities/config/repository";
 import { templatesQueryKey } from "../../entities/template/repository";
+import { relationQueryKey } from "../../entities/character-relation/repository";
 import {
   charactersQueryKey,
   autoLabelCharacterSprites,
@@ -29,7 +30,7 @@ import { fileUrl } from "../../entities/files/repository";
 import { baseName, numberedTags, removeTagRows, tagContents } from "../../shared/assets/assetText";
 import { suggestUniqueSpritePrefix } from "../../shared/assets/spritePrefix";
 import { isVideoMedia } from "../../shared/assets/visualMedia";
-import { DEFAULT_CHARACTER_COLOR } from "../../shared/constants";
+import { DEFAULT_CHARACTER_COLOR, TAG_PREFIX_SPRITE } from "../../shared/constants";
 import { useDebouncedAutoSave } from "../../shared/hooks/useDebouncedAutoSave";
 import { useI18n } from "../../shared/i18n";
 import { SELF_PERSONA_NAME } from "../../shared/playerCharacterOptions";
@@ -214,6 +215,8 @@ export function CharacterEditorPage() {
       if (!oldName || oldName === newName) {
         return;
       }
+      void queryClient.invalidateQueries({ queryKey: relationQueryKey });
+      void queryClient.invalidateQueries({ queryKey: charactersQueryKey });
       void queryClient.invalidateQueries({ queryKey: ["knowledge", "binding-names"] });
       queryClient.setQueryData<TemplateLaunchSession | null>([...templatesQueryKey, "session"], (current) =>
         current
@@ -697,7 +700,7 @@ export function CharacterEditorPage() {
         variables.draft.emotion_tags,
         variables.draft.sprites.length,
         [variables.index],
-        "立绘",
+        TAG_PREFIX_SPRITE,
       );
       const nextCharacter = {
         ...character,
@@ -709,7 +712,7 @@ export function CharacterEditorPage() {
       );
       setDraft((current) => ({
         ...current,
-        emotion_tags: removeTagRows(current.emotion_tags, current.sprites.length, [variables.index], "立绘"),
+        emotion_tags: removeTagRows(current.emotion_tags, current.sprites.length, [variables.index], TAG_PREFIX_SPRITE),
         sprites: mergeSprites(character.sprites, current),
       }));
       showToast({ kind: "success", title: t("common.remove") });
@@ -914,7 +917,7 @@ export function CharacterEditorPage() {
     setDraft((current) => {
       const tags = tagContents(current.emotion_tags, current.sprites.length);
       tags[index] = value;
-      return { ...current, emotion_tags: numberedTags("立绘", tags) };
+      return { ...current, emotion_tags: numberedTags(TAG_PREFIX_SPRITE, tags) };
     });
   };
 
@@ -1549,7 +1552,7 @@ export function CharacterEditorPage() {
               }),
               sprite_transitions: character.sprite_transitions,
               emotion_tags: numberedTags(
-                "立绘",
+                TAG_PREFIX_SPRITE,
                 character.sprites.map((sprite, index) => tagsByPath.get(sprite.path) ?? savedTags[index]),
               ),
             };

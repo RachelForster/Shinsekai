@@ -67,20 +67,24 @@ def test_placeholder_variables_match_across_all_locales() -> None:
 
 
 @pytest.mark.parametrize("locale", SUPPORTED_LANGS)
-def test_dialog_catalog_preserves_byte_for_byte_parity_with_legacy_i18n_bundle(
+def test_legacy_template_gen_and_qt_namespaces_pruned_from_ui_locales(
     locale: str,
 ) -> None:
     legacy_path = REPO_ROOT / "i18n" / "locales" / f"{locale}.json"
-    legacy_template_gen = json.loads(legacy_path.read_text(encoding="utf-8"))["template_gen"]
-    assert len(legacy_template_gen) == 80
-
-    for short_key, expected_text in legacy_template_gen.items():
-        actual_text = PROMPT_CATALOG.translate(
-            f"dialog.{short_key}",
-            locale=locale,
-            strict=True,
-        )
-        assert actual_text == expected_text, f"Parity drift in {locale} dialog.{short_key}"
+    bundle = json.loads(legacy_path.read_text(encoding="utf-8"))
+    pruned_namespaces = {
+        "template_gen",
+        "nav",
+        "plugins",
+        "api",
+        "char",
+        "bg",
+        "toolbar",
+        "template",
+        "tools",
+    }
+    assert pruned_namespaces.isdisjoint(bundle.keys())
+    assert len(PROMPT_CATALOG.keys(locale, "dialog")) >= 83
 
 
 def test_standalone_generated_locales_json_is_in_sync_with_yaml_catalog() -> None:

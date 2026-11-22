@@ -22,6 +22,7 @@ from config.sprite_groups import normalize_sprite_group_list
 from config.sprite_mouth import read_manifest
 from sdk.asset_tags import numbered_tags, tag_contents
 from sdk.path_utils import safe_child_path
+from i18n import err_tr, tr
 
 
 def _sprite_path(sprite: Sprite | dict[str, Any]) -> str:
@@ -46,18 +47,18 @@ def upload_character_sprites(
     """Upload or replace static sprites for ``character_name`` and persist tags."""
     del emotion_tags  # Preserved in signature for legacy caller compatibility.
     if not character_name:
-        return "请先选择或创建角色！", [], ""
+        return err_tr("crud.char.select_or_create"), [], ""
     if not sprite_files:
-        return "请选择要上传的图片！", [], ""
+        return err_tr("crud.char.select_sprites"), [], ""
 
     if sprite_tags is not None and len(sprite_tags) != len(sprite_files):
         raise ValueError("Each sprite requires one tag entry")
     if sprite_mouths is not None:
         if len(sprite_mouths) != len(sprite_files):
-            raise ValueError("每张生成结果需要一个口型条目")
+            raise ValueError(tr("crud.char.mouth_entry_per_output"))
         for file, manifest in zip(sprite_files, sprite_mouths):
             if manifest and read_manifest(manifest)["sourceFingerprint"] != sprite_fingerprint(file.name):
-                raise ValueError("动态立绘已变化，请重新匹配口型")
+                raise ValueError(tr("crud.char.motion_sprites_changed"))
 
     character = target.get_by_name(character_name)
     if character is None:
@@ -65,7 +66,7 @@ def upload_character_sprites(
 
         character = resolve_mutable_character(target, character_name)
     if not character:
-        return f"找不到角色: {character_name}", [], ""
+        return err_tr("crud.char.not_found", name=character_name), [], ""
 
     char_dir = os.path.join(str(upload_dir), character.sprite_prefix)
     Path(char_dir).mkdir(parents=True, exist_ok=True)
@@ -74,20 +75,20 @@ def upload_character_sprites(
     num_existing = len(existing_sprites)
     if replace_index is not None:
         if replacements is not None or len(sprite_files) != 1:
-            raise ValueError("请选择一张有效的原立绘进行替换")
+            raise ValueError(tr("crud.char.select_valid_base_sprite"))
         replacements = [(replace_index, str(expected_path or ""))]
     if replacements is not None and len(replacements) != len(sprite_files):
-        raise ValueError("每张生成结果需要一个替换目标")
+        raise ValueError(tr("crud.char.replace_target_per_output"))
 
     seen_targets: set[int] = set()
     for index, path in replacements or []:
         if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < num_existing:
-            raise ValueError("请选择一张有效的原立绘进行替换")
+            raise ValueError(tr("crud.char.select_valid_base_sprite"))
         if index in seen_targets:
-            raise ValueError("同一原立绘只能选择一个结果替换")
+            raise ValueError(tr("crud.char.duplicate_replace_target"))
         seen_targets.add(index)
         if path != sprite_field(existing_sprites[index], "path", ""):
-            raise ValueError("原立绘已改变或尚未保存，请刷新角色后重新选择")
+            raise ValueError(tr("crud.char.base_sprites_changed"))
 
     cleaned_group = str(group or "").strip()
     stored_group = None if not cleaned_group or cleaned_group == DEFAULT_SPRITE_GROUP else cleaned_group
@@ -166,7 +167,7 @@ def upload_character_sprites(
         raise
 
     all_paths = [_sprite_path(s) for s in updated.sprites]
-    return f"成功为 {character_name} 上传 {len(sprite_files)} 张立绘！", all_paths, updated.emotion_tags
+    return tr("crud.char.sprites_uploaded", name=character_name, count=len(sprite_files)), all_paths, updated.emotion_tags
 
 
 @_with_character_lock
@@ -179,10 +180,10 @@ def delete_all_character_sprites(
 ) -> tuple[str, list[str], str]:
     """Delete all static sprites and their static voices, preserving model banks."""
     if not character_name:
-        return "请先选择角色！", [], ""
+        return err_tr("crud.char.select_first"), [], ""
     character = target.get_by_name(character_name)
     if not character:
-        return f"找不到角色: {character_name}", [], ""
+        return err_tr("crud.char.not_found", name=character_name), [], ""
 
     char_dir = safe_child_path(Path(upload_dir), character.sprite_prefix)
     char_voice_dir = safe_child_path(Path(voice_dir), character.sprite_prefix)
@@ -211,7 +212,7 @@ def delete_all_character_sprites(
         }
     )
     target.save_character(updated)
-    return f"已删除 {character_name} 的所有立绘！", [], ""
+    return tr("crud.char.sprites_cleared", name=character_name), [], ""
 
 
 @_with_character_lock
@@ -222,15 +223,15 @@ def delete_single_character_sprite(
 ) -> tuple[str, list[str], str]:
     """Delete one static sprite, its bound voice file, and shift tags and portrait index."""
     if not character_name:
-        return "请先选择角色！", [], ""
+        return err_tr("crud.char.select_first"), [], ""
     character = target.get_by_name(character_name)
     if not character:
-        return f"找不到角色: {character_name}", [], ""
+        return err_tr("crud.char.not_found", name=character_name), [], ""
 
     sprites = list(character.sprites or [])
     if not sprites or sprite_index < 0 or sprite_index >= len(sprites):
         remaining = [_sprite_path(s) for s in sprites]
-        return "立绘不存在！", remaining, character.emotion_tags
+        return err_tr("crud.char.sprite_not_found"), remaining, character.emotion_tags
 
     sprite_data = sprites[sprite_index]
     s_path = _sprite_path(sprite_data)
@@ -268,7 +269,7 @@ def delete_single_character_sprite(
     )
     target.save_character(updated)
     remaining_paths = [_sprite_path(s) for s in updated.sprites]
-    return f"已删除 {character_name} 的第 {sprite_index + 1} 张立绘！", remaining_paths, next_tags
+    return tr("crud.char.sprite_deleted", name=character_name, index=sprite_index + 1), remaining_paths, next_tags
 
 
 @_with_character_lock
@@ -309,13 +310,13 @@ def save_character_sprite_mouths(
     """Attach or clear mouth-sync manifests on static sprites atomically."""
     character = target.get_by_name(name)
     if character is None:
-        raise ValueError("角色不存在")
+        raise ValueError(tr("crud.char.missing_record"))
     next_sprites = list(character.sprites or [])
     for index, source, path in results:
         if not 0 <= index < len(next_sprites) or str(sprite_field(next_sprites[index], "path")) != source:
-            raise ValueError("立绘列表已变化，请重新选择")
+            raise ValueError(tr("crud.char.sprite_list_changed"))
         if path and read_manifest(path)["sourceFingerprint"] != sprite_fingerprint(source):
-            raise ValueError("来源立绘已变化，请重新制作口型")
+            raise ValueError(tr("crud.char.source_sprite_changed"))
         sprite = next_sprites[index]
         next_sprites[index] = (
             {**sprite, "mouth_sync": path}
