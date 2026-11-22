@@ -89,6 +89,7 @@ export const platformEnMessages: Record<PlatformMessageKey, string> = {
   "plat.preview.ctx.installPluginTitle": "Install plugin",
   "plat.preview.ctx.knowledgeMemory": "Mist Harbor lore {index}: residents identify arriving ships by bell chimes.",
   "plat.preview.effect.audioNotFound": "Effect audio not found.",
+  "plat.preview.effect.ambientNotFound": "Ambient effect not found.",
   "plat.preview.effect.imageNotFound": "Effect image not found.",
   "plat.preview.effect.notFound": "Effect preset not found.",
   "plat.preview.mcp.applied": "MCP configuration applied.",

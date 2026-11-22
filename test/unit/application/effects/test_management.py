@@ -115,15 +115,21 @@ def test_save_preserves_asset_lists_against_partial_or_stale_payload_and_rewrite
     audio = old_dir / "hit.wav"
     image = old_dir / "flash.png"
     bound = old_dir / "flash-sfx.wav"
+    ambient = old_dir / "rain.webm"
+    ambient_audio = old_dir / "rain-loop.wav"
     audio.write_bytes(b"hit")
     image.write_bytes(b"img")
     bound.write_bytes(b"bound")
+    ambient.write_bytes(b"rain")
+    ambient_audio.write_bytes(b"rainloop")
 
     spark = _effect(
         "Spark",
         audio_list=[audio.as_posix()],
         image_list=[image.as_posix()],
         image_audio_list=[bound.as_posix()],
+        ambient_list=[ambient.as_posix()],
+        ambient_audio_list=[ambient_audio.as_posix()],
     )
     use_case, _ = _use_case(tmp_path, (spark,))
 
@@ -139,12 +145,16 @@ def test_save_preserves_asset_lists_against_partial_or_stale_payload_and_rewrite
             "audio_list": [],
             "image_list": [],
             "image_audio_list": [],
+            "ambient_list": [],
+            "ambient_audio_list": [],
         },
     )
     assert updated.prompt_text == "updated prompt"
     assert updated.audio_list == [audio.as_posix()]
     assert updated.image_list == [image.as_posix()]
     assert updated.image_audio_list == [bound.as_posix()]
+    assert updated.ambient_list == [ambient.as_posix()]
+    assert updated.ambient_audio_list == [ambient_audio.as_posix()]
 
     renamed = _execute(
         use_case,
@@ -158,6 +168,9 @@ def test_save_preserves_asset_lists_against_partial_or_stale_payload_and_rewrite
     assert Path(renamed.image_list[0]).read_bytes() == b"img"
     assert Path(renamed.image_audio_list[0]).read_bytes() == b"bound"
     assert "Sparkle" in renamed.image_audio_list[0]
+    assert Path(renamed.ambient_list[0]).read_bytes() == b"rain"
+    assert "Sparkle" in renamed.ambient_list[0]
+    assert Path(renamed.ambient_audio_list[0]).read_bytes() == b"rainloop"
 
 
 def test_save_and_delete_reject_storage_traversal(tmp_path: Path) -> None:
@@ -194,6 +207,91 @@ def test_upload_uses_allowed_roots_and_keeps_tag_alignment(tmp_path: Path) -> No
     assert result.audio_tags == "特效 1：\n特效 2：\n"
     assert all(Path(path).is_file() for path in result.audio_list)
     assert manager.saved == 1
+
+
+def test_upload_skips_byte_identical_audio_and_images(tmp_path: Path) -> None:
+    first = tmp_path / "hit.wav"
+    second = tmp_path / "hit-copy.wav"
+    image = tmp_path / "item.png"
+    image_copy = tmp_path / "item-copy.png"
+    first.write_bytes(b"same-audio")
+    second.write_bytes(b"same-audio")
+    image.write_bytes(b"same-image")
+    image_copy.write_bytes(b"same-image")
+    use_case, manager = _use_case(tmp_path, (_effect("Impact"),), roots=(tmp_path,))
+
+    uploaded = _execute(
+        use_case,
+        EffectOperation.UPLOAD_AUDIO,
+        name="Impact",
+        paths=[first.as_posix(), second.as_posix()],
+    )
+    repeated = _execute(
+        use_case,
+        EffectOperation.UPLOAD_AUDIO,
+        name="Impact",
+        paths=[second.as_posix()],
+    )
+    images = _execute(
+        use_case,
+        EffectOperation.UPLOAD_IMAGES,
+        name="Impact",
+        paths=[image.as_posix(), image_copy.as_posix()],
+    )
+
+    assert len(uploaded.audio_list) == 1
+    assert len(repeated.audio_list) == 1
+    assert len(uploaded.audio_tags.splitlines()) == 1
+    assert len(images.image_list) == 1
+    assert len(images.image_tags.splitlines()) == 1
+    assert manager.saved == 3
+
+
+def test_ambient_upload_delete_audio_and_layers_stay_aligned(tmp_path: Path) -> None:
+    rain = tmp_path / "rain.webm"
+    rain_copy = tmp_path / "rain-copy.webm"
+    fog = tmp_path / "fog.png"
+    audio = tmp_path / "rain.wav"
+    rain.write_bytes(b"rain-video")
+    rain_copy.write_bytes(b"rain-video")
+    fog.write_bytes(b"fog-image")
+    audio.write_bytes(b"rain-audio")
+    use_case, _ = _use_case(tmp_path, (_effect("Weather"),), roots=(tmp_path,))
+
+    uploaded = _execute(
+        use_case,
+        EffectOperation.UPLOAD_AMBIENT,
+        name="Weather",
+        paths=[rain.as_posix(), rain_copy.as_posix(), fog.as_posix()],
+    )
+
+    assert len(uploaded.ambient_list) == 2
+    assert len(uploaded.ambient_tags.splitlines()) == 2
+    assert uploaded.ambient_layers == ["back", "back"]
+
+    paired = _execute(
+        use_case,
+        EffectOperation.UPLOAD_AMBIENT_AUDIO,
+        name="Weather",
+        index=0,
+        path=audio.as_posix(),
+    )
+    assert Path(paired.ambient_audio_list[0]).read_bytes() == b"rain-audio"
+
+    layered = _execute(
+        use_case,
+        EffectOperation.SAVE_AMBIENT_LAYERS,
+        name="Weather",
+        layers=["front"],
+    )
+    assert layered.ambient_layers == ["front", "back"]
+
+    deleted = _execute(use_case, EffectOperation.DELETE_AMBIENT, name="Weather", index=0)
+
+    assert len(deleted.ambient_list) == 1
+    assert deleted.ambient_layers == ["back"]
+    assert deleted.ambient_audio_list == [""]
+    assert len(deleted.ambient_tags.splitlines()) == 1
 
 
 def test_delete_audio_preserves_external_file_and_rebuilds_tags(tmp_path: Path) -> None:
@@ -403,3 +501,102 @@ def test_upload_keeps_existing_blank_rows_and_handles_missing_trailing_newline(t
     assert lines[1].endswith("：")
     assert lines[2].endswith("：third：detail")
     assert lines[3].endswith("：")
+
+
+def test_category_subdirectories_and_cross_reference_delete_guard(tmp_path: Path) -> None:
+    audio = tmp_path / "loop.wav"
+    image = tmp_path / "flash.png"
+    ambient = tmp_path / "rain.webm"
+    audio.write_bytes(b"loop-audio")
+    image.write_bytes(b"flash-image")
+    ambient.write_bytes(b"rain-webm")
+
+    use_case, _ = _use_case(tmp_path, (_effect("FX"),), roots=(tmp_path,))
+    FX_audio = _execute(use_case, EffectOperation.UPLOAD_AUDIO, name="FX", paths=[str(audio)])
+    FX_image = _execute(use_case, EffectOperation.UPLOAD_IMAGES, name="FX", paths=[str(image)])
+    FX_ambient = _execute(use_case, EffectOperation.UPLOAD_AMBIENT, name="FX", paths=[str(ambient)])
+
+    assert Path(FX_audio.audio_list[0]).parent.name == "audio"
+    assert Path(FX_image.image_list[0]).parent.name == "images"
+    assert Path(FX_ambient.ambient_list[0]).parent.name == "ambient"
+
+    # Point ambient_audio_list[0] to the same managed file already referenced by audio_list[0].
+    shared_path = FX_audio.audio_list[0]
+    FX_ambient.ambient_audio_list[:] = [shared_path]
+    after_del = _execute(use_case, EffectOperation.DELETE_AMBIENT, name="FX", index=0)
+    assert after_del.ambient_list == []
+    assert Path(shared_path).is_file()
+
+    after_audio_del = _execute(use_case, EffectOperation.DELETE_AUDIO, name="FX", index=0)
+    assert after_audio_del.audio_list == []
+    assert not Path(shared_path).exists()
+
+
+def test_save_guards_ambient_layers_and_serializes_concurrent_mutations(tmp_path: Path) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+    from application.runtime.stores import build_app_stores
+
+    rain = tmp_path / "rain.webm"
+    fog = tmp_path / "fog.png"
+    rain.write_bytes(b"rain-webm")
+    fog.write_bytes(b"fog-png")
+
+    stores = build_app_stores(tmp_path, bind_globals=False)
+    try:
+        uc = EffectUseCase(
+            None,
+            effects=stores.effects,
+            project_root=tmp_path,
+            local_file_access_roots=(tmp_path,),
+        )
+        created = _execute(uc, EffectOperation.SAVE, name="Weather")
+        _execute(uc, EffectOperation.UPLOAD_AMBIENT, name="Weather", paths=[str(rain), str(fog)])
+        _execute(
+            uc,
+            EffectOperation.SAVE_AMBIENT_LAYERS,
+            name="Weather",
+            layers=["front", "back"],
+        )
+
+        # Stale autosave payload with mismatched ambient_layers length must not clobber layers.
+        stale_saved = _execute(
+            uc,
+            EffectOperation.SAVE,
+            id=created.id,
+            originalName="Weather",
+            effect={
+                "id": created.id,
+                "name": "Weather",
+                "prompt_text": "drizzle",
+                "ambient_layers": [],
+            },
+        )
+        assert stale_saved.prompt_text == "drizzle"
+        assert stale_saved.ambient_layers == ["front", "back"]
+
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            f_layer = pool.submit(
+                _execute,
+                uc,
+                EffectOperation.SAVE_AMBIENT_LAYERS,
+                name="Weather",
+                layers=["front", "front"],
+            )
+            f_save = pool.submit(
+                _execute,
+                uc,
+                EffectOperation.SAVE,
+                id=created.id,
+                originalName="Weather",
+                effect={"id": created.id, "name": "Weather", "prompt_text": "storm"},
+            )
+            f_layer.result()
+            f_save.result()
+
+        final = stores.effects.get_by_name("Weather")
+        assert final is not None
+        assert final.prompt_text == "storm"
+        assert len(final.ambient_list or ()) == 2
+        assert final.ambient_layers == ["front", "front"]
+    finally:
+        stores.close()

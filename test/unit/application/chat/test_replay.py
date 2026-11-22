@@ -367,3 +367,33 @@ def test_conversation_cleanup_removes_only_owned_replay_files(tmp_path):
     assert unrelated.read_bytes() == b"keep"
     assert not store.path("a" * 64, "frame.json").exists()
     assert not store.path("b" * 64, "wav").exists()
+
+
+def test_recorder_tracks_ambient_effects_across_layer_and_stop(tmp_path):
+    store = ReplayStore(tmp_path / "chat")
+    recorder = ReplayRecorder(store)
+    recorder.observe(
+        {
+            "type": "ambient.start",
+            "key": "rain",
+            "url": "http://localhost:123/api/media?path=rain.webm&token=tok",
+            "audioUrl": "http://localhost:123/api/media?path=rain.wav&token=tok",
+            "layer": "back",
+            "seq": 3,
+        }
+    )
+    recorder.observe({"type": "ambient.layer", "key": "rain", "layer": "front"})
+    recorder.observe({"type": "dialog.end", "fullHtml": f"<p data-dialog-id='{'d' * 64}'>rain</p>"})
+    frame = store.read("d" * 64, "frame.json")
+    assert frame["ambientEffects"] == [
+        {
+            "key": "rain",
+            "url": "/api/media?path=rain.webm",
+            "audioUrl": "/api/media?path=rain.wav",
+            "layer": "front",
+            "seq": 3,
+        }
+    ]
+    recorder.observe({"type": "ambient.stop", "key": "rain"})
+    recorder.observe({"type": "dialog.end", "fullHtml": f"<p data-dialog-id='{'e' * 64}'>clear</p>"})
+    assert store.read("e" * 64, "frame.json")["ambientEffects"] == []

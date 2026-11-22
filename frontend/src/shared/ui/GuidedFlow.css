@@ -62,7 +62,7 @@
   align-items: center;
   gap: 8px;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
+  border-radius: 999px;
   padding: 8px;
   color: var(--color-text-muted);
   background: var(--color-surface);
@@ -84,6 +84,18 @@
   transform: translateY(-1px);
 }
 
+.guided-flow__step:active {
+  transform: translateY(1px) scale(0.985);
+  box-shadow: inset 0 2px 4px var(--color-shadow);
+  transition-duration: 80ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .guided-flow__step {
+    transition: none;
+  }
+}
+
 .guided-flow__step[data-selected="true"] {
   border-color: var(--color-accent-border-strong);
   color: var(--color-text-primary);
@@ -94,7 +106,11 @@
   border-color: color-mix(in oklch, var(--color-accent-primary) 22%, var(--color-border));
   color: var(--color-text-primary);
   background: color-mix(in oklch, var(--color-accent-primary) 3%, var(--color-surface));
-  box-shadow: inset 3px 0 0 color-mix(in oklch, var(--color-accent-primary) 48%, transparent);
+  box-shadow: none;
+}
+
+.guided-flow__step[data-complete="true"]:active {
+  box-shadow: inset 0 2px 4px var(--color-shadow);
 }
 
 .guided-flow__step-icon {

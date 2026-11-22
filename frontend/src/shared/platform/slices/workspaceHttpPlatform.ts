@@ -177,6 +177,31 @@ export function createEffectsHttpPlatform(transport: HttpTransport): EffectsPlat
         body: JSON.stringify(input),
         method: "POST",
       }),
+    uploadAmbient: (input) =>
+      requestJson<Effect>("/api/effects/ambient/upload", {
+        body: JSON.stringify(input),
+        method: "POST",
+      }),
+    deleteAmbient: (name, index) =>
+      requestJson<Effect>("/api/effects/ambient/delete", {
+        body: JSON.stringify({ index, name }),
+        method: "POST",
+      }),
+    saveAmbientTags: (input) =>
+      requestJson<Effect>("/api/effects/ambient-tags", {
+        body: JSON.stringify(input),
+        method: "POST",
+      }),
+    saveAmbientLayers: (input) =>
+      requestJson<Effect>("/api/effects/ambient-layers", {
+        body: JSON.stringify(input),
+        method: "POST",
+      }),
+    uploadAmbientAudio: (input) =>
+      requestJson<Effect>("/api/effects/ambient/audio/upload", {
+        body: JSON.stringify(input),
+        method: "POST",
+      }),
   };
 }
 

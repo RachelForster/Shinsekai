@@ -165,6 +165,8 @@ export function EffectImageLayer({ effect }: { effect?: ChatStageEffectImage | n
   );
 }
 
+export { AmbientLayer } from "./AmbientLayer";
+
 export function SpriteLayer({
   hidden,
   onDragStart,

@@ -3,6 +3,7 @@ import { defaultUserDialogSpeaker } from "./text";
 import type { ChatStageState } from "./types";
 
 export const emptyChatState: ChatStageState = {
+  ambientEffects: [],
   audioCommands: [],
   asrEnabled: false,
   asrLoading: false,

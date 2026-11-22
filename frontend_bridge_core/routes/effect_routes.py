@@ -61,6 +61,26 @@ def _upload_effect_image_audio_route(request: ApiRequest) -> JsonResponse:
     return _execute_effect(request, EffectOperation.UPLOAD_IMAGE_AUDIO)
 
 
+def _upload_effect_ambient_route(request: ApiRequest) -> JsonResponse:
+    return _execute_effect(request, EffectOperation.UPLOAD_AMBIENT)
+
+
+def _delete_effect_ambient_route(request: ApiRequest) -> JsonResponse:
+    return _execute_effect(request, EffectOperation.DELETE_AMBIENT)
+
+
+def _save_effect_ambient_tags_route(request: ApiRequest) -> JsonResponse:
+    return _execute_effect(request, EffectOperation.SAVE_AMBIENT_TAGS)
+
+
+def _save_effect_ambient_layers_route(request: ApiRequest) -> JsonResponse:
+    return _execute_effect(request, EffectOperation.SAVE_AMBIENT_LAYERS)
+
+
+def _upload_effect_ambient_audio_route(request: ApiRequest) -> JsonResponse:
+    return _execute_effect(request, EffectOperation.UPLOAD_AMBIENT_AUDIO)
+
+
 def _save_effect_route(request: ApiRequest) -> JsonResponse:
     return _execute_effect(request, EffectOperation.SAVE)
 
@@ -128,6 +148,36 @@ EFFECT_ROUTES = (
         pattern="/api/effects/images/audio/upload",
         handler=_upload_effect_image_audio_route,
         name="effects.images.audio.upload",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/effects/ambient/upload",
+        handler=_upload_effect_ambient_route,
+        name="effects.ambient.upload",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/effects/ambient/delete",
+        handler=_delete_effect_ambient_route,
+        name="effects.ambient.delete",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/effects/ambient-tags",
+        handler=_save_effect_ambient_tags_route,
+        name="effects.ambient_tags.save",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/effects/ambient-layers",
+        handler=_save_effect_ambient_layers_route,
+        name="effects.ambient_layers.save",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/effects/ambient/audio/upload",
+        handler=_upload_effect_ambient_audio_route,
+        name="effects.ambient.audio.upload",
     ),
     Route(
         methods=frozenset({"POST", "PUT"}),

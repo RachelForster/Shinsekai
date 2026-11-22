@@ -116,6 +116,14 @@ def restore_session_presentation(
             # Only media replay knows whether a character visual was queued.
             restored_character_sprite = bool(replay_media(messages))
 
+        restore_ambient = getattr(presenter, "restore_ambient_directives", None)
+        if callable(restore_ambient):
+            from application.chat.dialog_media.replay import extract_ambient_effect_directives
+
+            directives = extract_ambient_effect_directives(messages)
+            if directives:
+                restore_ambient(directives)
+
         if last_choice is not None:
             presentation_queue.put(
                 PresentationMessage(

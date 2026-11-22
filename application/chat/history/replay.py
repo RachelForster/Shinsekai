@@ -226,7 +226,7 @@ class ChatReplayService:
         plan["started"] = True
         try:
             self._send(plan, "replay-start", {"id": plan_id, "entries": entries,
-                "restore": {k: copy.deepcopy(snapshot.get(k, {"sprites": [], "stats": [], "options": [], "playerPortrait": None}.get(k, ""))) for k in PRESENTATION_KEYS}})
+                "restore": {k: copy.deepcopy(snapshot.get(k, {"ambientEffects": [], "sprites": [], "stats": [], "options": [], "playerPortrait": None}.get(k, ""))) for k in PRESENTATION_KEYS}})
         except Exception:
             plan["range"] = None
             plan["started"] = False

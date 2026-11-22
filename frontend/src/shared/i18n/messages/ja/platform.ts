@@ -93,6 +93,7 @@ export const platformJaMessages: Record<PlatformMessageKey, string> = {
   "plat.preview.ctx.installPluginTitle": "プラグインのインストール",
   "plat.preview.ctx.knowledgeMemory": "霧港の世界設定 {index}：住民は鐘の音で入港する船を聞き分ける。",
   "plat.preview.effect.audioNotFound": "エフェクト音声が存在しません。",
+  "plat.preview.effect.ambientNotFound": "環境エフェクトが存在しません。",
   "plat.preview.effect.imageNotFound": "エフェクト画像が存在しません。",
   "plat.preview.effect.notFound": "エフェクトプリセットが存在しません。",
   "plat.preview.mcp.applied": "MCP 設定を適用しました。",

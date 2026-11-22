@@ -83,6 +83,7 @@ export const platformZhCNMessages = {
   "plat.preview.ctx.installPluginTitle": "安装插件",
   "plat.preview.ctx.knowledgeMemory": "雾港世界设定 {index}：居民依靠钟声辨认进港的船只。",
   "plat.preview.effect.audioNotFound": "特效音频不存在。",
+  "plat.preview.effect.ambientNotFound": "环境特效不存在。",
   "plat.preview.effect.imageNotFound": "特效图片不存在。",
   "plat.preview.effect.notFound": "特效方案不存在。",
   "plat.preview.mcp.applied": "MCP 配置已应用。",

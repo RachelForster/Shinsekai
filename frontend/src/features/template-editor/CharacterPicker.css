@@ -64,7 +64,7 @@
   gap: var(--space-2);
   padding: 0 12px;
   border: 1px solid color-mix(in srgb, var(--color-border-hover) 54%, var(--color-border));
-  border-radius: 4px;
+  border-radius: 999px;
   color: color-mix(in srgb, var(--color-text-primary) 76%, var(--color-text-muted));
   background: color-mix(in srgb, var(--color-control-hover) 38%, var(--color-bg-panel));
   cursor: pointer;
@@ -72,8 +72,19 @@
     border-color var(--transition-fast),
     background var(--transition-fast),
     box-shadow var(--transition-fast),
+    transform 180ms ease,
     color var(--transition-fast);
   user-select: none;
+}
+
+.template-character-card:active:not(:disabled) {
+  transform: translateY(1px) scale(0.985);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .template-character-card {
+    transition: none;
+  }
 }
 
 .template-character-card:hover {

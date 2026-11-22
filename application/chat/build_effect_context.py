@@ -5,8 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Protocol, Sequence
 
-from core.media.effect_bindings import effect_modes, parse_effect_bindings
-from core.media.effect_image import ImageEffectAsset
+from core.effects import (
+    AmbientEffectAsset,
+    ImageEffectAsset,
+    effect_modes,
+    parse_effect_bindings,
+)
 
 
 @dataclass(frozen=True)
@@ -24,6 +28,7 @@ class SelectedEffectContext:
     labels: tuple[str, ...]
     keyword_map: dict[str, str]
     image_keyword_map: dict[str, ImageEffectAsset] = field(default_factory=dict)
+    ambient_keyword_map: dict[str, AmbientEffectAsset] = field(default_factory=dict)
 
     @property
     def catalog(self) -> tuple[EffectCatalogItem, ...]:
@@ -32,14 +37,22 @@ class SelectedEffectContext:
         for label in self.labels:
             key = label.casefold()
             image = self.image_keyword_map.get(key)
+            ambient = self.ambient_keyword_map.get(key)
             has_audio = bool((image and image.audio_path) or self.keyword_map.get(key))
             if image is not None:
                 kind = "image_audio" if has_audio else "image"
+            elif ambient is not None:
+                kind = "ambient_audio" if ambient.audio_path else "ambient"
             else:
                 kind = "audio"
             items.append(
                 EffectCatalogItem(
-                    label, kind, effect_modes(has_image=image is not None)
+                    label,
+                    kind,
+                    effect_modes(
+                        has_image=image is not None,
+                        has_ambient=ambient is not None,
+                    ),
                 )
             )
         return tuple(items)
@@ -80,6 +93,7 @@ def build_effect_context(
     seen_labels: set[str] = set()
     keyword_map: dict[str, str] = {}
     image_keyword_map: dict[str, ImageEffectAsset] = {}
+    ambient_keyword_map: dict[str, AmbientEffectAsset] = {}
     effects = config_reader.list_effects()
 
     for effect in effects:
@@ -122,9 +136,37 @@ def build_effect_context(
                 seen_labels.add(label_key)
                 labels.append(binding.keyword)
 
+        ambient_assets = getattr(effect, "ambient_list", []) or []
+        ambient_audio = getattr(effect, "ambient_audio_list", []) or []
+        ambient_layers = getattr(effect, "ambient_layers", []) or []
+        for binding in parse_effect_bindings(
+            getattr(effect, "ambient_tags", ""), ambient_assets
+        ):
+            index = binding.index
+            layer = (
+                str(ambient_layers[index] or "").strip().lower()
+                if index < len(ambient_layers)
+                else ""
+            )
+            asset = AmbientEffectAsset(
+                path=binding.path,
+                audio_path=(
+                    str(ambient_audio[index] or "") if index < len(ambient_audio) else ""
+                ),
+                layer="front" if layer == "front" else "back",
+            )
+            label = binding.source_label or binding.keyword
+            ambient_keyword_map[binding.keyword.casefold()] = asset
+            ambient_keyword_map[label.casefold()] = asset
+            label_key = binding.keyword.casefold()
+            if label_key not in seen_labels:
+                seen_labels.add(label_key)
+                labels.append(binding.keyword)
+
     return SelectedEffectContext(
         selected_names=tuple(canonical_names),
         labels=tuple(labels),
         keyword_map=keyword_map,
         image_keyword_map=image_keyword_map,
+        ambient_keyword_map=ambient_keyword_map,
     )

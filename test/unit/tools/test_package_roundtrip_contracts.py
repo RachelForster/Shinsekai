@@ -413,6 +413,10 @@ def test_schema_field_sets_match_roundtrip_contract_expectations() -> None:
         "image_list",
         "image_tags",
         "image_audio_list",
+        "ambient_list",
+        "ambient_tags",
+        "ambient_audio_list",
+        "ambient_layers",
     }
 
 
@@ -794,9 +798,13 @@ def test_effect_use_case_export_import_preserves_every_field_and_conflict_copy(
     fx_audio = src_fx_dir / "chime.wav"
     fx_image = src_fx_dir / "star.png"
     fx_image_audio = src_fx_dir / "twinkle.wav"
+    fx_ambient = src_fx_dir / "rain.webm"
+    fx_ambient_audio = src_fx_dir / "rain-loop.wav"
     fx_audio.write_bytes(b"RIFF-chime")
     Image.new("RGBA", (16, 16), (255, 220, 80, 255)).save(fx_image)
     fx_image_audio.write_bytes(b"RIFF-twinkle")
+    fx_ambient.write_bytes(b"WEBM-rain")
+    fx_ambient_audio.write_bytes(b"RIFF-rainloop")
 
     effect_payload = {
         "name": "Spark",
@@ -807,12 +815,18 @@ def test_effect_use_case_export_import_preserves_every_field_and_conflict_copy(
         "image_list": [str(fx_image)],
         "image_tags": "图片 1：金色星芒\n",
         "image_audio_list": [str(fx_image_audio)],
+        "ambient_list": [str(fx_ambient)],
+        "ambient_tags": "环境 1：雨幕\n",
+        "ambient_audio_list": [str(fx_ambient_audio)],
+        "ambient_layers": ["front"],
     }
     assert set(effect_payload) == set(Effect.model_fields) - RESERVED_EFFECT_FIELDS
 
     expected_audio = fx_audio.read_bytes()
     expected_image = fx_image.read_bytes()
     expected_image_audio = fx_image_audio.read_bytes()
+    expected_ambient = fx_ambient.read_bytes()
+    expected_ambient_audio = fx_ambient_audio.read_bytes()
 
     src_cfg = _YamlBackedConfigManager(effects=[Effect.model_validate(effect_payload)])
     src_uc = EffectUseCase(src_cfg, project_root=src, local_file_access_roots=(src,))
@@ -833,6 +847,8 @@ def test_effect_use_case_export_import_preserves_every_field_and_conflict_copy(
         assert imported.prompt_text == "Play when a revelation occurs."
         assert imported.audio_tags == "特效 1：清脆提示音\n"
         assert imported.image_tags == "图片 1：金色星芒\n"
+        assert imported.ambient_tags == "环境 1：雨幕\n"
+        assert imported.ambient_layers == ["front"]
 
         fx_dst_dir = (dst / "data" / "effects" / expected_name).resolve()
         assert len(imported.audio_list) == 1
@@ -846,6 +862,14 @@ def test_effect_use_case_export_import_preserves_every_field_and_conflict_copy(
         assert len(imported.image_audio_list) == 1
         assert Path(imported.image_audio_list[0]).resolve().is_relative_to(fx_dst_dir)
         assert Path(imported.image_audio_list[0]).read_bytes() == expected_image_audio
+
+        assert len(imported.ambient_list) == 1
+        assert Path(imported.ambient_list[0]).resolve().is_relative_to(fx_dst_dir)
+        assert Path(imported.ambient_list[0]).read_bytes() == expected_ambient
+
+        assert len(imported.ambient_audio_list) == 1
+        assert Path(imported.ambient_audio_list[0]).resolve().is_relative_to(fx_dst_dir)
+        assert Path(imported.ambient_audio_list[0]).read_bytes() == expected_ambient_audio
 
     first = dst_uc.execute(EffectRequest(EffectOperation.IMPORT, {"paths": [str(archive_path)]}))
     assert len(first) == 1

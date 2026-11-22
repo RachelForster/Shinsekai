@@ -2,20 +2,30 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, FolderInput, FolderOutput, Music, Palette, Plus, Save, Trash2, Upload, X } from "lucide-react";
 
-import { DEFAULT_CHARACTER_COLOR, TAG_PREFIX_EFFECT, TAG_PREFIX_IMAGE } from "../../shared/constants";
+import {
+  DEFAULT_CHARACTER_COLOR,
+  TAG_PREFIX_AMBIENT,
+  TAG_PREFIX_EFFECT,
+  TAG_PREFIX_IMAGE,
+} from "../../shared/constants";
 
 import {
   effectsQueryKey,
   deleteAllEffectAudio,
   deleteEffect,
+  deleteEffectAmbient,
   deleteEffectAudio,
   deleteEffectImage,
   exportEffect,
   importEffects,
   listEffects,
   saveEffect,
+  saveEffectAmbientLayers,
+  saveEffectAmbientTags,
   saveEffectAudioTags,
   saveEffectImageTags,
+  uploadEffectAmbient,
+  uploadEffectAmbientAudio,
   uploadEffectAudio,
   uploadEffectImages,
   uploadEffectImageAudio,
@@ -43,6 +53,7 @@ import {
 } from "../../shared/ui";
 import { AudioPlayer } from "../../shared/ui/AudioPlayer";
 import { fileUrl } from "../../entities/files/repository";
+import { AmbientEffectSection } from "./AmbientEffectSection";
 import "./EffectManagerPage.css";
 
 const EFFECT_RESOURCES_URL = "https://shinsekai.end0rph1n.icu/resources";
@@ -57,6 +68,20 @@ function createEffect(): Effect {
     image_list: [],
     image_tags: "",
     image_audio_list: [],
+    ambient_list: [],
+    ambient_tags: "",
+    ambient_audio_list: [],
+    ambient_layers: [],
+  };
+}
+
+function normalizeEffect(effect: Effect): Effect {
+  return {
+    ...effect,
+    ambient_list: effect.ambient_list ?? [],
+    ambient_tags: effect.ambient_tags ?? "",
+    ambient_audio_list: effect.ambient_audio_list ?? [],
+    ambient_layers: effect.ambient_layers ?? [],
   };
 }
 
@@ -147,6 +172,8 @@ export function EffectManagerPage() {
   const [imageUploadPickerOpen, setImageUploadPickerOpen] = useState(false);
   const [imageAudioBatchPickerOpen, setImageAudioBatchPickerOpen] = useState(false);
   const [imageAudioTargetIndex, setImageAudioTargetIndex] = useState<number | null>(null);
+  const [ambientUploadPickerOpen, setAmbientUploadPickerOpen] = useState(false);
+  const [ambientAudioTargetIndex, setAmbientAudioTargetIndex] = useState<number | null>(null);
   const [nameError, setNameError] = useState("");
   const [syncedEffectKey, setSyncedEffectKey] = useState("");
   const isCreatingRef = useRef(isCreating);
@@ -186,7 +213,7 @@ export function EffectManagerPage() {
       activeEffectKeyRef.current = selectedKey;
       setSyncedEffectKey(selectedKey);
       setSelectedName(selected.name);
-      setDraft(structuredClone(selected));
+      setDraft(normalizeEffect(structuredClone(selected)));
       setSelectedAudioIndexes([]);
       setSelectedImageIndexes([]);
       setNameError("");
@@ -319,7 +346,7 @@ export function EffectManagerPage() {
         activeEffectKeyRef.current = lastImported.id || `name:${lastImported.name}`;
         setIsCreating(false);
         setSelectedName(lastImported.name);
-        setDraft(structuredClone(lastImported));
+        setDraft(normalizeEffect(structuredClone(lastImported)));
       }
       showToast({ kind: "success", title: t("effect.toast.importComplete", { count: imported.length }) });
     },
@@ -491,6 +518,103 @@ export function EffectManagerPage() {
     },
   });
 
+  const ambientUploadMutation = useMutation({
+    mutationFn: (paths: string[]) =>
+      uploadEffectAmbient({ ambientTags: draft.ambient_tags, name: currentEffectName, paths }),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("effect.asset.uploadError"),
+        title: t("effect.asset.uploadAmbient"),
+      });
+    },
+    onSuccess(effect) {
+      queryClient.setQueryData<Effect[]>(effectsQueryKey, (current = []) => upsertCatalogEffect(current, effect));
+      queryClient.invalidateQueries({ queryKey: effectsQueryKey });
+      setDraft((current) => ({
+        ...current,
+        ambient_list: effect.ambient_list,
+        ambient_tags: effect.ambient_tags,
+        ambient_audio_list: effect.ambient_audio_list,
+        ambient_layers: effect.ambient_layers,
+      }));
+      showToast({ kind: "success", title: t("effect.asset.uploadAmbient") });
+    },
+  });
+
+  const ambientTagsSaveMutation = useMutation({
+    mutationFn: () => saveEffectAmbientTags({ ambientTags: draft.ambient_tags, name: currentEffectName }),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("effect.error.saveFallback"),
+        title: t("common.saveFailed"),
+      });
+    },
+    onSuccess(effect) {
+      queryClient.setQueryData<Effect[]>(effectsQueryKey, (current = []) => upsertCatalogEffect(current, effect));
+      queryClient.invalidateQueries({ queryKey: effectsQueryKey });
+      setDraft((current) => ({ ...current, ambient_tags: effect.ambient_tags }));
+      showToast({ kind: "success", title: t("effect.action.saveAmbientTags") });
+    },
+  });
+
+  const ambientLayersSaveMutation = useMutation({
+    mutationFn: (layers: string[]) => saveEffectAmbientLayers({ layers, name: currentEffectName }),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("effect.error.saveFallback"),
+        title: t("common.saveFailed"),
+      });
+    },
+    onSuccess(effect) {
+      queryClient.setQueryData<Effect[]>(effectsQueryKey, (current = []) => upsertCatalogEffect(current, effect));
+      queryClient.invalidateQueries({ queryKey: effectsQueryKey });
+      setDraft((current) => ({ ...current, ambient_layers: effect.ambient_layers }));
+    },
+  });
+
+  const ambientAudioUploadMutation = useMutation({
+    mutationFn: ({ index, path }: { index: number; path: string }) =>
+      uploadEffectAmbientAudio({ index, name: currentEffectName, path }),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("effect.asset.uploadError"),
+        title: t("effect.asset.insertAudio"),
+      });
+    },
+    onSuccess(effect) {
+      queryClient.setQueryData<Effect[]>(effectsQueryKey, (current = []) => upsertCatalogEffect(current, effect));
+      queryClient.invalidateQueries({ queryKey: effectsQueryKey });
+      setDraft((current) => ({ ...current, ambient_audio_list: effect.ambient_audio_list }));
+      setAmbientAudioTargetIndex(null);
+    },
+  });
+
+  const ambientDeleteMutation = useMutation({
+    mutationFn: (index: number) => deleteEffectAmbient(currentEffectName, index),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("effect.error.deleteFallback"),
+        title: t("common.deleteFailed"),
+      });
+    },
+    onSuccess(effect) {
+      queryClient.setQueryData<Effect[]>(effectsQueryKey, (current = []) => upsertCatalogEffect(current, effect));
+      queryClient.invalidateQueries({ queryKey: effectsQueryKey });
+      setDraft((current) => ({
+        ...current,
+        ambient_list: effect.ambient_list,
+        ambient_tags: effect.ambient_tags,
+        ambient_audio_list: effect.ambient_audio_list,
+        ambient_layers: effect.ambient_layers,
+      }));
+    },
+  });
+
   const audioBatchDeleteMutation = useMutation({
     mutationFn: async ({ indexes, name }: { indexes: number[]; name: string }) => {
       let effect: Effect | null = null;
@@ -558,6 +682,25 @@ export function EffectManagerPage() {
       return { ...current, image_tags: numberedTags(TAG_PREFIX_IMAGE, tags) };
     });
   }, []);
+
+  const updateAmbientRowTag = useCallback((index: number, value: string) => {
+    setDraft((current) => {
+      const tags = tagContents(current.ambient_tags, current.ambient_list.length, true);
+      tags[index] = value;
+      return { ...current, ambient_tags: numberedTags(TAG_PREFIX_AMBIENT, tags) };
+    });
+  }, []);
+
+  const updateAmbientLayer = useCallback(
+    (index: number, layer: string) => {
+      const layers = [...draft.ambient_layers];
+      while (layers.length < draft.ambient_list.length) layers.push("back");
+      layers[index] = layer === "front" ? "front" : "back";
+      setDraft((current) => ({ ...current, ambient_layers: layers }));
+      ambientLayersSaveMutation.mutate(layers);
+    },
+    [ambientLayersSaveMutation, draft.ambient_layers, draft.ambient_list.length],
+  );
 
   const toggleAudioSelection = useCallback((index: number, checked: boolean) => {
     setSelectedAudioIndexes((current) => {
@@ -658,6 +801,8 @@ export function EffectManagerPage() {
         effect: {
           ...latestSelected,
           ...(latestSelected.id ? { id: latestSelected.id } : {}),
+          ambient_layers: draft.ambient_layers,
+          ambient_tags: draft.ambient_tags,
           audio_tags: draft.audio_tags,
           color: draft.color.trim() || "#5b8def",
           image_tags: draft.image_tags,
@@ -681,6 +826,11 @@ export function EffectManagerPage() {
       !imageAudioBatchUploadMutation.isPending &&
       !audioBatchDeleteMutation.isPending &&
       !audioDeleteAllMutation.isPending &&
+      !ambientUploadMutation.isPending &&
+      !ambientDeleteMutation.isPending &&
+      !ambientAudioUploadMutation.isPending &&
+      !ambientTagsSaveMutation.isPending &&
+      !ambientLayersSaveMutation.isPending &&
       pendingDelete?.kind !== "effect",
     ),
     onError(error) {
@@ -863,6 +1013,22 @@ export function EffectManagerPage() {
     setImageUploadPickerOpen(true);
   }, [currentEffectName, draft, saveMutation, validateCreateName]);
 
+  const handleUploadAmbient = useCallback(() => {
+    const trimmed = draft.name.trim();
+    if (!trimmed) {
+      setNameError(t("effect.validation.nameRequired"));
+      return;
+    }
+    if (!currentEffectName) {
+      saveMutation.mutate(
+        { effect: { ...draft, name: trimmed }, originalName: undefined },
+        { onSuccess: () => setAmbientUploadPickerOpen(true) },
+      );
+      return;
+    }
+    setAmbientUploadPickerOpen(true);
+  }, [currentEffectName, draft, saveMutation, t]);
+
   const audioRowTags = useMemo(
     () => tagContents(draft.audio_tags, draft.audio_list.length, true),
     [draft.audio_list.length, draft.audio_tags],
@@ -870,6 +1036,10 @@ export function EffectManagerPage() {
   const imageRowTags = useMemo(
     () => tagContents(draft.image_tags, draft.image_list.length, true),
     [draft.image_list.length, draft.image_tags],
+  );
+  const ambientRowTags = useMemo(
+    () => tagContents(draft.ambient_tags, draft.ambient_list.length, true),
+    [draft.ambient_list.length, draft.ambient_tags],
   );
 
   const selectedAudioIndexSet = useMemo(() => new Set(selectedAudioIndexes), [selectedAudioIndexes]);
@@ -882,6 +1052,7 @@ export function EffectManagerPage() {
   const effectSectionNavItems = [
     { id: "effect-info", label: t("effect.section.info") },
     { id: "effect-images", label: t("effect.section.image") },
+    { id: "effect-ambient", label: t("effect.section.ambient") },
     { id: "effect-audio", label: t("effect.section.audio") },
   ];
 
@@ -1034,7 +1205,7 @@ export function EffectManagerPage() {
               </Button>
             </div>
           </div>
-          <div className="form-grid form-grid--two">
+          <div className="form-grid form-grid--two effect-info-grid">
             <div className="field-row">
               <label className="field-row__label" htmlFor="effect-info-name-input">
                 {t("effect.field.name")}
@@ -1193,6 +1364,25 @@ export function EffectManagerPage() {
             </div>
           )}
         </section>
+
+        {/* Persistent full-screen ambience */}
+        <AmbientEffectSection
+          ambientAudioList={draft.ambient_audio_list}
+          ambientLayers={draft.ambient_layers}
+          ambientList={draft.ambient_list}
+          ambientRowTags={ambientRowTags}
+          currentEffectName={currentEffectName}
+          deletingAmbient={ambientDeleteMutation.isPending}
+          onDeleteAmbient={(index) => ambientDeleteMutation.mutate(index)}
+          onSaveAmbientTags={() => ambientTagsSaveMutation.mutate()}
+          onSelectAmbientAudio={(index) => setAmbientAudioTargetIndex(index)}
+          onUpdateAmbientLayer={updateAmbientLayer}
+          onUpdateAmbientRowTag={updateAmbientRowTag}
+          onUploadAmbient={handleUploadAmbient}
+          savingEffect={saveMutation.isPending}
+          savingTags={ambientTagsSaveMutation.isPending}
+          uploadingAmbient={ambientUploadMutation.isPending}
+        />
 
         {/* Audio section */}
         <section className="section page-section-anchor" id="effect-audio">
@@ -1353,6 +1543,26 @@ export function EffectManagerPage() {
           if (imageAudioTargetIndex !== null) imageAudioUploadMutation.mutate({ index: imageAudioTargetIndex, path });
         }}
         open={imageAudioTargetIndex !== null}
+        title={t("effect.asset.insertAudio")}
+      />
+      <PathPickerDialog
+        acceptedExtensions={[".apng", ".gif", ".jpeg", ".jpg", ".m4v", ".mov", ".mp4", ".png", ".webm", ".webp"]}
+        multiple
+        onClose={() => setAmbientUploadPickerOpen(false)}
+        onSelect={(path) => ambientUploadMutation.mutate([path])}
+        onSelectMany={(paths) => ambientUploadMutation.mutate(paths)}
+        open={ambientUploadPickerOpen}
+        title={t("effect.asset.uploadAmbient")}
+      />
+      <PathPickerDialog
+        acceptedExtensions={[".flac", ".m4a", ".mp3", ".ogg", ".wav"]}
+        onClose={() => setAmbientAudioTargetIndex(null)}
+        onSelect={(path) => {
+          if (ambientAudioTargetIndex !== null) {
+            ambientAudioUploadMutation.mutate({ index: ambientAudioTargetIndex, path });
+          }
+        }}
+        open={ambientAudioTargetIndex !== null}
         title={t("effect.asset.insertAudio")}
       />
 

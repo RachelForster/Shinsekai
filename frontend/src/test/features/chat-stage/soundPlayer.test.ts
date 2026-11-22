@@ -224,6 +224,60 @@ describe("SoundPlayer", () => {
     expect(audio.map((item) => item.volume)).toEqual([0.35, 0.35, 0.35]);
   });
 
+  it("plays a one-shot effect asset only once while its instance is alive", async () => {
+    const { audio, player } = createHarness();
+
+    player.playEffect("footsteps.wav");
+    player.playEffect("footsteps.wav");
+    await Promise.resolve();
+
+    expect(audio).toHaveLength(1);
+    audio[0].finish();
+    player.playEffect("footsteps.wav");
+    expect(audio).toHaveLength(2);
+  });
+
+  it("keeps one loop instance per asset even when different aliases start it", async () => {
+    const { audio, player } = createHarness();
+
+    player.startLoopEffect("rain", "rain.wav");
+    player.startLoopEffect("雨声", "rain.wav");
+    await Promise.resolve();
+
+    expect(audio).toHaveLength(1);
+    expect(audio[0].play).toHaveBeenCalledTimes(1);
+
+    player.stopLoopEffect("rain");
+    expect(audio[0].pause).toHaveBeenCalledOnce();
+
+    player.stopLoopEffect("雨声");
+    expect(audio[0].pause).toHaveBeenCalledOnce();
+  });
+
+  it("keeps ambient audio in sync without restarting unchanged assets", async () => {
+    const { audio, player } = createHarness();
+
+    player.setAmbientAudio([{ key: "ambient:rain", url: "rain.wav" }]);
+    player.setAmbientAudio([{ key: "ambient:rain", url: "rain.wav" }]);
+    await Promise.resolve();
+
+    expect(audio).toHaveLength(1);
+    player.setAmbientAudio([]);
+    expect(audio[0].pause).toHaveBeenCalledOnce();
+  });
+
+  it("replaces the previous asset when the same loop key moves to a new one", async () => {
+    const { audio, player } = createHarness();
+
+    player.startLoopEffect("weather", "rain.wav");
+    player.startLoopEffect("weather", "storm.wav");
+    await Promise.resolve();
+
+    expect(audio).toHaveLength(2);
+    expect(audio[0].pause).toHaveBeenCalledOnce();
+    expect(audio[1]).toMatchObject({ loop: true, src: "storm.wav" });
+  });
+
   it("reports autoplay blocking and retries active channels after unlock", async () => {
     const { audio, player } = createHarness();
     const lockStates: boolean[] = [];
