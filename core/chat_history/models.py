@@ -28,13 +28,38 @@ from sdk.adapters.session import (
     normalize_memory_mode,
 )
 
+from sdk.lang import normalize_lang
+
 COMPACT_SUMMARY_SOURCE = "compact_summary"
 COMPACT_UP_TO_SEQ_KEY = "_compact_up_to_seq"
-SUMMARY_MARKERS: tuple[str, ...] = ("历史对话总结", "历史摘要", "较早历史已省略")
+SUMMARY_MARKERS: tuple[str, ...] = (
+    "历史对话总结",
+    "历史摘要",
+    "较早历史已省略",
+    "[Conversation Summary]",
+    "[History Summary]",
+    "これまでの会話の要約",
+    "履歴要約",
+)
+OMITTED_HISTORY_PREFIXES: tuple[str, ...] = (
+    "【历史摘要】",
+    "[History Summary]",
+    "【履歴要約】",
+)
 
-_SUMMARY_WRAPPER_RE = re.compile(
-    r"^【历史对话总结】以下是之前对话的压缩总结：\n?(.*?)(?:\n\n请基于这个上下文继续对话。)?\s*$",
-    flags=re.DOTALL,
+_SUMMARY_WRAPPER_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(
+        r"^【历史对话总结】以下是之前对话的压缩总结：\n?(.*?)(?:\n\n请基于这个上下文继续对话。)?\s*$",
+        flags=re.DOTALL,
+    ),
+    re.compile(
+        r"^\[Conversation Summary\] Compressed summary of earlier dialogue:\n?(.*?)(?:\n\nContinue based on this context\.)?\s*$",
+        flags=re.DOTALL,
+    ),
+    re.compile(
+        r"^【これまでの会話の要約】以前の会話の圧縮要約：\n?(.*?)(?:\n\nこの文脈を踏まえて会話を続けてください。)?\s*$",
+        flags=re.DOTALL,
+    ),
 )
 
 
@@ -83,12 +108,18 @@ def is_real_user_turn_message(message: Any) -> bool:
     return not is_compact_summary_message(message)
 
 
+def is_omitted_history_summary(content: str) -> bool:
+    """Return True when text is a non-LLM omitted-history fallback notice."""
+    return str(content or "").strip().startswith(OMITTED_HISTORY_PREFIXES)
+
+
 def extract_summary_body(content: str) -> str:
     """Unwrap standard summary framing so rolling summaries never double-wrap."""
     text = str(content or "").strip()
-    match = _SUMMARY_WRAPPER_RE.match(text)
-    if match:
-        return match.group(1).strip()
+    for pattern in _SUMMARY_WRAPPER_PATTERNS:
+        match = pattern.match(text)
+        if match:
+            return match.group(1).strip()
     return text
 
 
@@ -96,17 +127,32 @@ def build_compact_summary_message(
     rolling_summary: str,
     *,
     up_to_seq: int | None = None,
+    locale: str | None = "zh_CN",
 ) -> dict[str, Any]:
     """Construct the canonical synthetic LLM message for a CompactCheckpoint."""
     body = extract_summary_body(rolling_summary)
-    if body.startswith("【历史摘要】"):
+    if is_omitted_history_summary(body):
         formatted = body
     else:
-        formatted = (
-            f"【历史对话总结】以下是之前对话的压缩总结：\n"
-            f"{body}\n\n"
-            f"请基于这个上下文继续对话。"
-        )
+        loc = normalize_lang(locale)
+        if loc == "en":
+            formatted = (
+                f"[Conversation Summary] Compressed summary of earlier dialogue:\n"
+                f"{body}\n\n"
+                f"Continue based on this context."
+            )
+        elif loc == "ja":
+            formatted = (
+                f"【これまでの会話の要約】以前の会話の圧縮要約：\n"
+                f"{body}\n\n"
+                f"この文脈を踏まえて会話を続けてください。"
+            )
+        else:
+            formatted = (
+                f"【历史对话总结】以下是之前对话的压缩总结：\n"
+                f"{body}\n\n"
+                f"请基于这个上下文继续对话。"
+            )
     msg: dict[str, Any] = {
         "role": "user",
         "source": COMPACT_SUMMARY_SOURCE,
@@ -233,6 +279,7 @@ __all__ = [
     "MEMORY_MODE_ISOLATED",
     "MEMORY_MODE_SHARED",
     "MemoryMode",
+    "OMITTED_HISTORY_PREFIXES",
     "OutfitState",
     "SUMMARY_MARKERS",
     "TruncateReport",
@@ -241,6 +288,7 @@ __all__ = [
     "build_compact_summary_message",
     "extract_summary_body",
     "is_compact_summary_message",
+    "is_omitted_history_summary",
     "is_real_user_turn_message",
     "normalize_memory_mode",
     "render_messages_to_ui_history",

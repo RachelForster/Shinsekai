@@ -92,14 +92,18 @@ export function TopStageTools({
           <IconButton
             className="top-stage-tools__button"
             data-active={needsApiKeyBadge ? "true" : "false"}
-            label="AI / 语音与跨端配置"
+            label={t("chat.toolbar.runtimeMode")}
             onClick={onOpenRuntimeMode}
           >
             <KeyRound aria-hidden className="icon-button__icon" />
           </IconButton>
         ) : null}
         {onOpenWorkspace ? (
-          <IconButton className="top-stage-tools__button" label="返回工作台 / 角色管理" onClick={onOpenWorkspace}>
+          <IconButton
+            className="top-stage-tools__button"
+            label={t("chat.toolbar.backToWorkspace")}
+            onClick={onOpenWorkspace}
+          >
             <LayoutGrid aria-hidden className="icon-button__icon" />
           </IconButton>
         ) : null}

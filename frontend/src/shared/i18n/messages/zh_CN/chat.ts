@@ -296,6 +296,8 @@ export const chatZhCNMessages = {
   "chat.toolbar.tokens": "Token 消耗",
   "chat.toolbar.tools": "聊天工具",
   "chat.toolbar.unlockActions": "解锁聊天操作",
+  "chat.toolbar.runtimeMode": "AI / 语音与跨端配置",
+  "chat.toolbar.backToWorkspace": "返回工作台 / 角色管理",
   "chat.theme.active": "当前使用",
   "chat.theme.apply": "应用",
   "chat.theme.backToSettings": "返回程序设置",

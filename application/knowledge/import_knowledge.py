@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
+from ai.llm.template.integrations.localization import LocaleInput
 from ai.memory.chunking import chunk_dialogue_units
 from ai.memory.token_estimator import estimate_text_tokens
 from core.knowledge.import_sources import prepare_import_sources
@@ -77,6 +78,7 @@ def prepare_knowledge_import(
     knowledge_id: str,
     source_root: str | Path,
     max_chunk_tokens: int,
+    locale: LocaleInput = None,
 ) -> PreparedKnowledgeImport:
     target_id = str(knowledge_id or "").strip()
     if not target_id:
@@ -97,7 +99,8 @@ def prepare_knowledge_import(
         knowledge_id=target_id,
         sources=tuple(sources),
         estimated_input_tokens=sum(
-            estimate_knowledge_extraction_input_tokens(chunk) for chunk in chunks
+            estimate_knowledge_extraction_input_tokens(chunk, locale=locale)
+            for chunk in chunks
         ),
         estimated_output_tokens=len(chunks) * EXPECTED_OUTPUT_TOKENS_PER_CHUNK,
     )
@@ -109,12 +112,14 @@ def preview_knowledge_import(
     knowledge_id: str,
     source_root: str | Path,
     max_chunk_tokens: int,
+    locale: LocaleInput = None,
 ) -> dict[str, Any]:
     return prepare_knowledge_import(
         paths,
         knowledge_id=knowledge_id,
         source_root=source_root,
         max_chunk_tokens=max_chunk_tokens,
+        locale=locale,
     ).preview_payload()
 
 
@@ -127,6 +132,7 @@ def execute_knowledge_import(
     max_chunk_tokens: int,
     progress_callback: Callable[[str, float, str, str | None], None] | None = None,
     cancel_callback: Callable[[], None] | None = None,
+    locale: LocaleInput = None,
 ) -> dict[str, Any]:
     knowledge_id = str(knowledge_id or "").strip()
     prepared = prepare_knowledge_import(
@@ -134,8 +140,9 @@ def execute_knowledge_import(
         knowledge_id=knowledge_id,
         source_root=source_root,
         max_chunk_tokens=max_chunk_tokens,
+        locale=locale,
     )
-    extractor = KnowledgeExtractor(llm_adapter)
+    extractor = KnowledgeExtractor(llm_adapter, locale=locale)
     extracted: list[KnowledgeEntry] = []
     chunks = prepared.chunks
     for index, chunk in enumerate(chunks, start=1):

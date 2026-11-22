@@ -3,7 +3,17 @@ import type { ChangeEvent } from "react";
 import { CircleHelp } from "lucide-react";
 
 import { useI18n } from "../i18n";
-import type { FormFieldSchema, FormGroupSchema } from "../form-schema";
+import {
+  resolveFormFieldDescription,
+  resolveFormFieldDisabledReason,
+  resolveFormFieldLabel,
+  resolveFormFieldPlaceholder,
+  resolveFormGroupDescription,
+  resolveFormGroupTitle,
+  resolveFormOptionLabel,
+  type FormFieldSchema,
+  type FormGroupSchema,
+} from "../form-schema";
 import { normalizeThemeColor } from "../theme/appTheme";
 import { ColorInput, FilePicker, NumberInput, Select, TextArea, TextInput } from "./FormControls";
 import { Switch } from "./Switch";
@@ -40,13 +50,6 @@ function formatJson(value: unknown): string {
   return JSON.stringify(value ?? {}, null, 2);
 }
 
-function resolveDisabledReason<T extends object>(field: FormFieldSchema<T>, value: T) {
-  if (typeof field.disabledReason === "function") {
-    return field.disabledReason(value);
-  }
-  return field.disabledReason;
-}
-
 function resolveNumericBound<T extends object>(bound: FormFieldSchema<T>["max"] | FormFieldSchema<T>["min"], value: T) {
   return typeof bound === "function" ? bound(value) : bound;
 }
@@ -69,9 +72,10 @@ export function SchemaFieldGrid<T extends object>({
     onChange({ ...value, [name]: next });
   };
 
-  const renderField = (field: FormFieldSchema<T>, describedBy?: string) => {
+  const renderField = (field: FormFieldSchema<T>, fieldLabel: string, describedBy?: string) => {
     const rawValue = value[field.name] ?? field.defaultValue;
     const fieldDisabled = disabled || Boolean(field.disabledWhen?.(value));
+    const placeholder = resolveFormFieldPlaceholder(field, t);
     const common = {
       "aria-describedby": describedBy,
       disabled: fieldDisabled,
@@ -98,7 +102,7 @@ export function SchemaFieldGrid<T extends object>({
         >
           {(field.options ?? []).map((option) => (
             <option key={option.value} value={option.value}>
-              {option.label}
+              {resolveFormOptionLabel(option, t)}
             </option>
           ))}
         </Select>
@@ -110,7 +114,7 @@ export function SchemaFieldGrid<T extends object>({
         <TextArea
           {...common}
           onChange={(event) => update(field.name, event.target.value as T[keyof T])}
-          placeholder={field.placeholder}
+          placeholder={placeholder}
           value={String(rawValue ?? "")}
         />
       );
@@ -135,8 +139,8 @@ export function SchemaFieldGrid<T extends object>({
           onPathChange={(path) => update(field.name, path as T[keyof T])}
           pickLabel={field.pathKind === "directory" ? t("common.chooseFolder") : t("common.chooseFile")}
           pickerMode={field.pathKind ?? "file"}
-          pickerTitle={field.label}
-          placeholder={field.placeholder}
+          pickerTitle={fieldLabel}
+          placeholder={placeholder}
           value={String(rawValue ?? "")}
         />
       );
@@ -179,22 +183,28 @@ export function SchemaFieldGrid<T extends object>({
       <TextInput
         {...common}
         onChange={(event) => update(field.name, event.target.value as T[keyof T])}
-        placeholder={field.placeholder}
+        placeholder={placeholder}
         type={field.type === "password" ? "password" : field.type === "url" ? "url" : "text"}
         value={String(rawValue ?? "")}
       />
     );
   };
 
+  const groupDescription = resolveFormGroupDescription(group, t);
+
   return (
     <>
-      {group.description ? <p className="section__description">{group.description}</p> : null}
+      {groupDescription ? <p className="section__description">{groupDescription}</p> : null}
       <div className={formGridClassName(group, className)}>
         {group.fields.map((field) => {
           if (field.visibleWhen && !field.visibleWhen(value)) {
             return null;
           }
-          const disabledReason = field.disabledWhen?.(value) ? resolveDisabledReason(field, value) : undefined;
+          const fieldLabel = resolveFormFieldLabel(field, t);
+          const fieldDescription = resolveFormFieldDescription(field, t);
+          const disabledReason = field.disabledWhen?.(value)
+            ? resolveFormFieldDisabledReason(field, value, t)
+            : undefined;
           const fullWidth = field.span === "full" || field.type === "json" || field.type === "textarea";
           const rowClassName = ["field-row", fullWidth ? "field-row--full" : ""].filter(Boolean).join(" ");
           const fieldId = String(field.name);
@@ -202,28 +212,28 @@ export function SchemaFieldGrid<T extends object>({
           const errorId = `${String(field.name)}-error`;
           const helpId = `${String(field.name)}-help`;
           const describedBy =
-            [field.description ? descriptionId : "", errors[field.name] ? errorId : "", disabledReason ? helpId : ""]
+            [fieldDescription ? descriptionId : "", errors[field.name] ? errorId : "", disabledReason ? helpId : ""]
               .filter(Boolean)
               .join(" ") || undefined;
           return (
             <div className={rowClassName} key={fieldId}>
               <span className="field-row__label">
                 <label className="field-row__label-text" htmlFor={fieldId}>
-                  {field.label}
+                  {fieldLabel}
                 </label>
-                {field.description ? (
+                {fieldDescription ? (
                   <span className="field-row__tooltip">
                     <span aria-describedby={descriptionId} className="field-row__tooltip-trigger" tabIndex={0}>
                       <CircleHelp aria-hidden className="field-row__tooltip-icon" />
                     </span>
                     <span className="field-row__tooltip-bubble" id={descriptionId} role="tooltip">
-                      {field.description}
+                      {fieldDescription}
                     </span>
                   </span>
                 ) : null}
               </span>
               <span className="field-row__control">
-                {renderField(field, describedBy)}
+                {renderField(field, fieldLabel, describedBy)}
                 {errors[field.name] ? (
                   <span className="field-error" id={errorId}>
                     {errors[field.name]}
@@ -252,9 +262,12 @@ export function SchemaDrivenForm<T extends object>({
   sectionIdPrefix = "",
   value,
 }: SchemaDrivenFormProps<T>) {
+  const { t } = useI18n();
+
   return (
     <div className="settings-grid">
       {groups.map((group) => {
+        const groupTitle = resolveFormGroupTitle(group, t);
         const sectionId = sectionIdPrefix ? `${sectionIdPrefix}${group.id}` : undefined;
         const sectionClassName = ["section", "schema-section", sectionId ? "page-section-anchor" : ""]
           .filter(Boolean)
@@ -266,7 +279,7 @@ export function SchemaDrivenForm<T extends object>({
         if (collapsedGroupIds.includes(group.id)) {
           return (
             <details className={sectionClassName} id={sectionId} key={group.id}>
-              <summary className="schema-section__summary">{group.title}</summary>
+              <summary className="schema-section__summary">{groupTitle}</summary>
               {fields}
             </details>
           );
@@ -275,7 +288,7 @@ export function SchemaDrivenForm<T extends object>({
         return (
           <section className={sectionClassName} id={sectionId} key={group.id}>
             <div className="section__header">
-              <h2 className="section__title">{group.title}</h2>
+              <h2 className="section__title">{groupTitle}</h2>
             </div>
             {fields}
           </section>

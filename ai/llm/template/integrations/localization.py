@@ -2,16 +2,37 @@
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Callable
+from typing import Any, TypeAlias
 
 from i18n import current_language
 from sdk.lang import LocaleCode, normalize_lang
 
 from ..core.catalog import PROMPT_CATALOG
 
+LocaleInput: TypeAlias = str | Callable[[], str] | None
+
 # 与配置中的背景名一致，勿翻译（UI 默认选此项；旧名「透明背景」仍识别）
 TRANSPARENT_BG = "透明场景"
 _TRANSPARENT_ALIAS = "透明背景"
+
+
+def resolve_dynamic_locale(
+    locale: LocaleInput = None,
+    *,
+    config_manager: Any = None,
+) -> LocaleCode:
+    """Resolve an explicit locale code, a lazy per-turn locale callback, or active UI locale."""
+    if callable(locale):
+        try:
+            resolved = locale()
+            if resolved:
+                return normalize_lang(str(resolved))
+        except Exception:
+            pass
+    elif isinstance(locale, str) and locale.strip():
+        return normalize_lang(locale)
+    return resolve_template_locale(config_manager)
 
 
 def resolve_template_locale(config_manager: Any = None) -> LocaleCode:

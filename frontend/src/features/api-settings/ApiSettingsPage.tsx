@@ -28,7 +28,7 @@ import { useChatLaunchGuard } from "../chat-startup/useChatLaunchGuard";
 import { useMobileAccessPreference } from "../mobile-access/useMobileAccessPreference";
 import { useAppState } from "../../shared/app-state/AppState";
 import { showChatSurface } from "../../shared/desktop/chatWindow";
-import { useI18n } from "../../shared/i18n";
+import { formatLlmProviderLabel, useI18n } from "../../shared/i18n";
 import type { LlmModelOption, TaskSnapshot, TtsBundleDownloadResult, TtsBundleKind } from "../../shared/platform/types";
 import {
   AsyncButton,
@@ -712,7 +712,10 @@ export function ApiSettingsPage() {
   };
 
   const llmProviderSelectOptions = withCurrentOption(
-    catalogOptions(adapterCatalog?.llm, llmProviderOptions),
+    catalogOptions(adapterCatalog?.llm, llmProviderOptions, t).map((option) => ({
+      ...option,
+      label: formatLlmProviderLabel(option.value, t) || option.label,
+    })),
     draft.llm_provider,
   );
   const t2iProviderOptions = t2iProviderSelectOptions(adapterCatalog, draft.t2i_provider);
@@ -748,7 +751,7 @@ export function ApiSettingsPage() {
   ];
 
   const handleSave = () => {
-    const nextErrors = validatePayloadFromSchema(apiSchema, draft);
+    const nextErrors = validatePayloadFromSchema(apiSchema, draft, t);
     setErrors(nextErrors);
     if (hasSchemaErrors(nextErrors)) {
       showToast({ kind: "error", message: t("common.fixInvalidFields"), title: t("common.validationFailed") });

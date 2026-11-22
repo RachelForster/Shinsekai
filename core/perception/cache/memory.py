@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict, deque
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 import threading
 import time
@@ -43,6 +43,7 @@ from core.perception.pacing import (
     proactive_scene_delivery_hint,
 )
 from core.perception.policy import PerceptionMemoryPolicy
+from sdk.lang import Translator
 
 
 class RPInputCache:
@@ -58,8 +59,12 @@ class RPInputCache:
         archive_batch_size: int | None = None,
         max_notable_events: int | None = None,
         notable_salience_floor: float | None = None,
+        translator: Translator | None = None,
+        translator_provider: Callable[[], Translator | None] | None = None,
     ) -> None:
         self._lock = threading.RLock()
+        self._translator: Translator | None = translator
+        self._translator_provider: Callable[[], Translator | None] | None = translator_provider
         effective_policy = policy if policy is not None else PerceptionMemoryPolicy()
         if max_recent_digests is not None:
             effective_policy.max_visual_track_beats = max(2, int(max_recent_digests))
@@ -576,6 +581,25 @@ class RPInputCache:
                 if ev.seq <= target_seq:
                     ev.consumed = True
 
+    def set_translator_provider(
+        self,
+        provider: Callable[[], Translator | None] | None,
+    ) -> None:
+        with self._lock:
+            self._translator_provider = provider
+
+    def _resolve_translator(self, explicit: Translator | None = None) -> Translator | None:
+        if explicit is not None:
+            return explicit
+        if self._translator_provider is not None:
+            try:
+                resolved = self._translator_provider()
+                if resolved is not None:
+                    return resolved
+            except Exception:
+                pass
+        return self._translator
+
     def format_for_rp_context(
         self,
         *,
@@ -583,14 +607,17 @@ class RPInputCache:
         max_age_sec: float = 300.0,
         include_recent_events: bool = False,
         pending_only: bool = False,
+        translate: Translator | None = None,
     ) -> str:
         now = time.time()
         with self._lock:
+            tr_fn = self._resolve_translator(translate)
             block, snapshot_seq = self._render_locked(
                 now=now,
                 max_age_sec=max_age_sec,
                 include_recent_events=include_recent_events,
                 pending_only=pending_only,
+                translate=tr_fn,
             )
             if consume and block and snapshot_seq > self._consumed_seq:
                 self.mark_consumed(up_to_seq=snapshot_seq)
@@ -603,6 +630,7 @@ class RPInputCache:
         max_age_sec: float,
         include_recent_events: bool,
         pending_only: bool,
+        translate: Translator | None = None,
     ) -> tuple[str, int]:
         return render_rp_context(
             now=now,
@@ -618,6 +646,7 @@ class RPInputCache:
             episode_archive=self._episodes,
             notable_events=tuple(self._notable_events),
             policy=self.policy,
+            translate=translate,
         )
 
     def take_turn_context(
@@ -627,12 +656,14 @@ class RPInputCache:
         proactive: bool = False,
         salience_threshold: float = 0.0,
         allow_consumed_context: bool = False,
+        translate: Translator | None = None,
     ) -> str:
         clean_turn_id = str(turn_id or "").strip()
         with self._lock:
             if clean_turn_id and clean_turn_id in self._frozen_turns:
                 return self._frozen_turns[clean_turn_id]
 
+            tr_fn = self._resolve_translator(translate)
             now = time.time()
             if proactive:
                 pacing = self._adaptive_pacing_locked(now=now)
@@ -657,14 +688,26 @@ class RPInputCache:
                     max_age_sec=max(16.0, event_max_age) if salience_threshold else event_max_age,
                     include_recent_events=False,
                     pending_only=True,
+                    translate=tr_fn,
                 )
                 if block:
                     if trigger_event is not None and block.count("\n  * ") >= 2:
-                        block = (
-                            f"{block}\n"
-                            f"- 本次触发焦点：{trigger_event.summary[:72]}（聚焦此新变化自然回应一句，切勿逐条复述或重复旧话题）"
+                        focus_line = (
+                            tr_fn(
+                                "perception.rp_trigger_focus",
+                                focus=trigger_event.summary[:72],
+                            )
+                            if tr_fn is not None
+                            else (
+                                f"- 本次触发焦点：{trigger_event.summary[:72]}"
+                                "（聚焦此新变化自然回应一句，切勿逐条复述或重复旧话题）"
+                            )
                         )
-                    delivery_hint = proactive_scene_delivery_hint(pacing)
+                        block = f"{block}\n{focus_line}"
+                    delivery_hint = proactive_scene_delivery_hint(
+                        pacing,
+                        translate=tr_fn,
+                    )
                     if delivery_hint:
                         block = f"{block}\n{delivery_hint}"
             elif allow_consumed_context:
@@ -673,6 +716,7 @@ class RPInputCache:
                     max_age_sec=self.policy.live_window_sec,
                     include_recent_events=True,
                     pending_only=False,
+                    translate=tr_fn,
                 )
             else:
                 block, snapshot_seq = self._render_locked(
@@ -680,6 +724,7 @@ class RPInputCache:
                     max_age_sec=self.policy.live_window_sec,
                     include_recent_events=False,
                     pending_only=True,
+                    translate=tr_fn,
                 )
 
             if snapshot_seq > self._consumed_seq:
@@ -706,8 +751,14 @@ class RPInputCache:
             )
             return bool(block)
 
-    def format_proactive_trigger_prompt(self, *, consume: bool = True) -> str:
+    def format_proactive_trigger_prompt(
+        self,
+        *,
+        consume: bool = True,
+        translate: Translator | None = None,
+    ) -> str:
         with self._lock:
+            tr_fn = self._resolve_translator(translate)
             event_max_age = max(
                 PROACTIVE_EVENT_MAX_AGE_SEC,
                 self._adaptive_pacing_locked().pending_event_max_age_sec,
@@ -717,14 +768,19 @@ class RPInputCache:
             max_age_sec=event_max_age,
             include_recent_events=False,
             pending_only=True,
+            translate=tr_fn,
         )
         if not context_block:
             return ""
-        return (
-            f"{context_block}\n\n"
-            "[系统事件：玩家并未打字发言，但上述游戏/屏幕画面刚刚发生了值得你主动搭话的关键一幕。"
-            "请以角色身份自然地主动说一两句话做出反应。]"
+        suffix = (
+            tr_fn("perception.proactive_trigger_prompt_suffix")
+            if tr_fn is not None
+            else (
+                "[系统事件：玩家并未打字发言，但上述游戏/屏幕画面刚刚发生了值得你主动搭话的关键一幕。"
+                "请以角色身份自然地主动说一两句话做出反应。]"
+            )
         )
+        return f"{context_block}\n\n{suffix}"
 
     def clear(self) -> None:
         with self._lock:

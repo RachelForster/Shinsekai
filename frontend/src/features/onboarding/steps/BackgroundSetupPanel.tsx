@@ -2,17 +2,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, FileUp, Sparkles } from "lucide-react";
 
 import { backgroundsQueryKey, importBackgrounds, listBackgrounds } from "../../../entities/background/repository";
-import type { Background } from "../../../entities/config/types";
 import { openExternal } from "../../../entities/files/repository";
+import { formatBackgroundName, useI18n } from "../../../shared/i18n";
 import { Button, EmptyState, QueryErrorState, useToast } from "../../../shared/ui";
 import { ExistingList, OnboardingPanelLayout } from "../OnboardingPanelLayout";
-import type { OnboardingCopy } from "../onboardingCopy";
 
-interface BackgroundSetupPanelProps {
-  copy: OnboardingCopy;
-}
-
-export function BackgroundSetupPanel({ copy }: BackgroundSetupPanelProps) {
+export function BackgroundSetupPanel() {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const backgroundsQuery = useQuery({ queryFn: listBackgrounds, queryKey: backgroundsQueryKey });
@@ -20,16 +16,24 @@ export function BackgroundSetupPanel({ copy }: BackgroundSetupPanelProps) {
   const importMutation = useMutation({
     mutationFn: (files: File[]) => importBackgrounds(files),
     onError(error) {
-      showToast({ kind: "error", message: error instanceof Error ? error.message : "", title: copy.toastFailed });
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : "",
+        title: t("onboarding.toastFailed"),
+      });
     },
     onSuccess(imported) {
       void queryClient.invalidateQueries({ queryKey: backgroundsQueryKey });
-      showToast({ kind: "success", message: String(imported.length), title: copy.backgrounds.imported });
+      showToast({
+        kind: "success",
+        message: String(imported.length),
+        title: t("onboarding.backgrounds.imported"),
+      });
     },
   });
 
   if (backgroundsQuery.isLoading) {
-    return <EmptyState title={copy.common.loading} />;
+    return <EmptyState title={t("onboarding.common.loading")} />;
   }
 
   if (backgroundsQuery.isError) {
@@ -37,8 +41,8 @@ export function BackgroundSetupPanel({ copy }: BackgroundSetupPanelProps) {
       <QueryErrorState
         error={backgroundsQuery.error}
         onRetry={() => void backgroundsQuery.refetch()}
-        retryLabel={copy.actions.retry}
-        title={copy.toastFailed}
+        retryLabel={t("onboarding.actions.retry")}
+        title={t("onboarding.toastFailed")}
       />
     );
   }
@@ -47,17 +51,16 @@ export function BackgroundSetupPanel({ copy }: BackgroundSetupPanelProps) {
 
   return (
     <OnboardingPanelLayout
-      copy={copy}
-      description={copy.backgrounds.description}
+      description={t("onboarding.backgrounds.description")}
       done={backgrounds.length > 0}
-      title={copy.backgrounds.title}
+      title={t("onboarding.backgrounds.title")}
     >
       <div className="onboarding-resource-steps">
         <section className="onboarding-resource-step">
           <span className="onboarding-resource-step__index">1</span>
           <div className="onboarding-resource-step__body">
-            <h3>{copy.backgrounds.resourceLink}</h3>
-            <p>{copy.backgrounds.resourceBody}</p>
+            <h3>{t("onboarding.backgrounds.resourceLink")}</h3>
+            <p>{t("onboarding.backgrounds.resourceBody")}</p>
           </div>
           <Button
             className="onboarding-compact-button"
@@ -65,15 +68,18 @@ export function BackgroundSetupPanel({ copy }: BackgroundSetupPanelProps) {
             onClick={() => openExternal("https://shinsekai.end0rph1n.icu/resources")}
             variant="ghost"
           >
-            {copy.backgrounds.resourceLink}
+            {t("onboarding.backgrounds.resourceLink")}
           </Button>
         </section>
         <section className="onboarding-resource-step">
           <span className="onboarding-resource-step__index">2</span>
           <div className="onboarding-resource-step__body">
-            <h3>{copy.actions.import}</h3>
-            <p>{copy.backgrounds.description}</p>
-            <ExistingList emptyLabel={copy.backgrounds.empty} items={backgrounds.map((item) => item.name)} />
+            <h3>{t("onboarding.actions.import")}</h3>
+            <p>{t("onboarding.backgrounds.description")}</p>
+            <ExistingList
+              emptyLabel={t("onboarding.backgrounds.empty")}
+              items={backgrounds.map((item) => formatBackgroundName(item.name, t))}
+            />
           </div>
           <Button
             className="onboarding-compact-button onboarding-file-picker-button"
@@ -81,7 +87,7 @@ export function BackgroundSetupPanel({ copy }: BackgroundSetupPanelProps) {
             loading={importMutation.isPending}
             variant="primary"
           >
-            {copy.actions.import}
+            {t("onboarding.actions.import")}
             <input
               accept=".bg"
               multiple
@@ -100,7 +106,7 @@ export function BackgroundSetupPanel({ copy }: BackgroundSetupPanelProps) {
       <div className="onboarding-resource-transparent">
         <div className="onboarding-resource-note onboarding-resource-note--soft">
           <Sparkles aria-hidden size={18} />
-          <span>{copy.backgrounds.transparentBody}</span>
+          <span>{t("onboarding.backgrounds.transparentBody")}</span>
         </div>
       </div>
     </OnboardingPanelLayout>

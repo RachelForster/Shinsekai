@@ -9,6 +9,14 @@ import logging
 import re
 from typing import Any
 
+from ai.llm.template.core import TemplateContext
+from ai.llm.template.extraction import (
+    MEMORY_SIMPLE_EXTRACTION_SPEC,
+    MEMORY_STRUCTURED_EXTRACTION_SPEC,
+    MemorySimpleExtractionContext,
+    MemoryStructuredExtractionContext,
+)
+from ai.llm.template.integrations.localization import LocaleInput, resolve_dynamic_locale
 from ai.memory.chunking import DEFAULT_DIALOGUE_CHUNK_TOKENS, chunk_plain_dialogue
 from ai.memory.temporal import resolve_event_timestamp
 from ai.memory.token_estimator import estimate_message_tokens
@@ -27,10 +35,6 @@ MAX_MEMORIES_PER_CHUNK = 8
 MAX_MEMORY_CHARS = 800
 MAX_GIST_CHARS = 80
 
-_SYSTEM_PROMPT = (
-    "You extract durable long-term memories from roleplay chat. "
-    "Return only JSON. Do not include prose."
-)
 _DIALOGUE_KINDS = frozenset({"profile", "episodic", "promise"})
 _SELF_NAMES = frozenset({"user", "__self__", "你", "自设", "player", "human"})
 
@@ -108,23 +112,45 @@ def parse_json_payload(text: str) -> Any:
     return None
 
 
-def build_extraction_prompt(dialogue: str, default_character_name: str) -> str:
+def build_extraction_prompt(
+    dialogue: str,
+    default_character_name: str,
+    *,
+    locale: LocaleInput = None,
+) -> str:
     name = clean_text(default_character_name, max_chars=120) or "user"
-    return (
-        "Extract stable, useful long-term memories from the plain dialogue below.\n"
-        "Keep only durable facts, preferences, relationships, promises, goals, or character-relevant state.\n"
-        "Ignore temporary emotions, filler, one-off phrasing, system narration, and duplicates.\n"
-        f"Default character_name is {name!r}.\n"
-        "Return JSON array only, each item like:\n"
-        '[{"character_name":"Name","memory":"fact to save","confidence":0.85}]\n\n'
-        f"Dialogue:\n{clean_text(dialogue)}"
+    active_locale = resolve_dynamic_locale(locale)
+    return MEMORY_SIMPLE_EXTRACTION_SPEC.render_user(
+        MemorySimpleExtractionContext(
+            dialogue=clean_text(dialogue),
+            default_character_name=name,
+            locale=active_locale,
+        )
     )
 
 
-def build_extraction_messages(dialogue: str, default_character_name: str) -> list[dict[str, str]]:
+def build_extraction_messages(
+    dialogue: str,
+    default_character_name: str,
+    *,
+    locale: LocaleInput = None,
+) -> list[dict[str, str]]:
+    active_locale = resolve_dynamic_locale(locale)
     return [
-        {"role": "system", "content": _SYSTEM_PROMPT},
-        {"role": "user", "content": build_extraction_prompt(dialogue, default_character_name)},
+        {
+            "role": "system",
+            "content": MEMORY_SIMPLE_EXTRACTION_SPEC.render_system(
+                TemplateContext(locale=active_locale)
+            ),
+        },
+        {
+            "role": "user",
+            "content": build_extraction_prompt(
+                dialogue,
+                default_character_name,
+                locale=active_locale,
+            ),
+        },
     ]
 
 
@@ -133,26 +159,24 @@ def build_structured_extraction_prompt(
     *,
     character_names: Sequence[str],
     now_iso: str,
+    locale: LocaleInput = None,
 ) -> str:
-    cleaned_chars = [clean_text(c, max_chars=120) for c in character_names if clean_text(c, max_chars=120)]
-    default_char = cleaned_chars[0] if cleaned_chars else "user"
-    chars_desc = ", ".join(repr(c) for c in cleaned_chars) if cleaned_chars else repr("user")
-    anchor = clean_text(now_iso, max_chars=64) or datetime.now().astimezone().isoformat(timespec="seconds")
-    return (
-        "Extract durable dual-granularity long-term memories from the plain dialogue below.\n"
-        f"Current local timestamp: {anchor}\n"
-        f"Active characters in scene: [{chars_desc}] (default character_name: {default_char!r}; "
-        "use 'user' ONLY for durable public facts about the human player).\n"
-        "Keep only durable facts, preferences, relationships, promises, significant events, or state updates.\n"
-        "Ignore filler, temporary emotions, system narration, and duplicates.\n"
-        "For mutable attributes/preferences (e.g. favorite drink, occupation, current goal), set a stable "
-        "`slot_key` like 'profile:favorite_drink' so updates supersede outdated facts.\n"
-        "Resolve relative dates ('明天', '昨天', '下周') against the current local timestamp into YYYY-MM-DD in `event_time`.\n"
-        "Return JSON array only, each item shaped like:\n"
-        '[{"character_name":"Name","detail":"exact concrete memory","gist":"brief vague impression (<=25 chars)",'
-        '"kind":"episodic|profile|promise","slot_key":"","topics":["tag"],"entities":["Entity"],'
-        '"importance":0.7,"event_time":"YYYY-MM-DD or null"}]\n\n'
-        f"Dialogue:\n{clean_text(dialogue)}"
+    cleaned_chars = tuple(
+        clean_text(c, max_chars=120)
+        for c in character_names
+        if clean_text(c, max_chars=120)
+    )
+    anchor = clean_text(now_iso, max_chars=64) or datetime.now().astimezone().isoformat(
+        timespec="seconds"
+    )
+    active_locale = resolve_dynamic_locale(locale)
+    return MEMORY_STRUCTURED_EXTRACTION_SPEC.render_user(
+        MemoryStructuredExtractionContext(
+            dialogue=clean_text(dialogue),
+            character_names=cleaned_chars,
+            now_iso=anchor,
+            locale=active_locale,
+        )
     )
 
 
@@ -161,22 +185,37 @@ def build_structured_extraction_messages(
     *,
     character_names: Sequence[str],
     now_iso: str,
+    locale: LocaleInput = None,
 ) -> list[dict[str, str]]:
+    active_locale = resolve_dynamic_locale(locale)
     return [
-        {"role": "system", "content": _SYSTEM_PROMPT},
+        {
+            "role": "system",
+            "content": MEMORY_STRUCTURED_EXTRACTION_SPEC.render_system(
+                TemplateContext(locale=active_locale)
+            ),
+        },
         {
             "role": "user",
             "content": build_structured_extraction_prompt(
                 dialogue,
                 character_names=character_names,
                 now_iso=now_iso,
+                locale=active_locale,
             ),
         },
     ]
 
 
-def estimate_extraction_input_tokens(dialogue: str, default_character_name: str) -> int:
-    return estimate_message_tokens(build_extraction_messages(dialogue, default_character_name))
+def estimate_extraction_input_tokens(
+    dialogue: str,
+    default_character_name: str,
+    *,
+    locale: LocaleInput = None,
+) -> int:
+    return estimate_message_tokens(
+        build_extraction_messages(dialogue, default_character_name, locale=locale)
+    )
 
 
 def parse_extracted_memories(
@@ -425,8 +464,17 @@ def window_to_plain_dialogue(window: ExtractionWindow) -> str:
 class MemoryExtractor:
     """Extract memories from plain dialogue, implementing MemoryExtractorPort."""
 
-    def __init__(self, llm_adapter: Any) -> None:
+    def __init__(
+        self,
+        llm_adapter: Any,
+        *,
+        locale: LocaleInput = None,
+    ) -> None:
         self.llm_adapter = llm_adapter
+        self.locale = locale
+
+    def _effective_locale(self, override: LocaleInput = None) -> str:
+        return resolve_dynamic_locale(override if override is not None else self.locale)
 
     def extract_chunk(
         self,
@@ -434,8 +482,13 @@ class MemoryExtractor:
         *,
         default_character_name: str,
         force_character_name: str | None = None,
+        locale: LocaleInput = None,
     ) -> list[dict[str, Any]]:
-        messages = build_extraction_messages(dialogue, default_character_name)
+        messages = build_extraction_messages(
+            dialogue,
+            default_character_name,
+            locale=self._effective_locale(locale),
+        )
         response = self.llm_adapter.chat(
             messages,
             stream=False,
@@ -454,15 +507,18 @@ class MemoryExtractor:
         default_character_name: str,
         force_character_name: str | None = None,
         max_chunk_tokens: int = DEFAULT_DIALOGUE_CHUNK_TOKENS,
+        locale: LocaleInput = None,
     ) -> tuple[list[dict[str, Any]], int, int]:
         chunks = chunk_plain_dialogue(dialogue, max_tokens=max_chunk_tokens)
         extracted: list[dict[str, Any]] = []
+        active_locale = self._effective_locale(locale)
         for chunk in chunks:
             extracted.extend(
                 self.extract_chunk(
                     chunk,
                     default_character_name=default_character_name,
                     force_character_name=force_character_name,
+                    locale=active_locale,
                 )
             )
         unique, duplicates = deduplicate_memories(extracted)
@@ -473,6 +529,7 @@ class MemoryExtractor:
         window: ExtractionWindow,
         *,
         max_chunk_tokens: int = DEFAULT_DIALOGUE_CHUNK_TOKENS,
+        locale: LocaleInput = None,
     ) -> Sequence[MemoryDraft]:
         """Extract dual-granularity MemoryDrafts from an ExtractionWindow."""
         dialogue = window_to_plain_dialogue(window)
@@ -480,11 +537,13 @@ class MemoryExtractor:
             return ()
         chunks = chunk_plain_dialogue(dialogue, max_tokens=max_chunk_tokens)
         collected: list[MemoryDraft] = []
+        active_locale = self._effective_locale(locale)
         for chunk in chunks:
             messages = build_structured_extraction_messages(
                 chunk,
                 character_names=window.character_names,
                 now_iso=window.now_iso,
+                locale=active_locale,
             )
             response = self.llm_adapter.chat(
                 messages,

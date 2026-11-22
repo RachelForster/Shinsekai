@@ -2,6 +2,7 @@ import type { ApiConfig } from "../../slices/configTypes";
 import type { CompactCheckpoint, StandaloneRawMessage, StandaloneSessionStore } from "../storage/sessionStore";
 import type { StandaloneLlmAdapter } from "./adapters/types";
 import type { StandaloneHttpClient } from "./httpClient";
+import { createStandaloneTemplateTranslator } from "./standaloneTemplateLocales";
 
 const CJK_CHAR_RE = /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af\uf900-\ufaff]/g;
 
@@ -52,7 +53,7 @@ export function needsCompaction(estimatedTokens: number, apiConfig: Partial<ApiC
 /**
  * Binary searches for the longest summary prefix that stays within `maxSummaryTokens`.
  */
-export function binarySearchCapSummary(summary: string, maxSummaryTokens: number): string {
+export function binarySearchCapSummary(summary: string, maxSummaryTokens: number, uiLanguage?: string): string {
   const trimmed = summary.trim();
   if (!trimmed || maxSummaryTokens <= 0) return "";
   if (estimateTextTokens(trimmed) <= maxSummaryTokens) {
@@ -62,7 +63,8 @@ export function binarySearchCapSummary(summary: string, maxSummaryTokens: number
   let lo = 0;
   let hi = trimmed.length;
   let best = "";
-  const suffix = "\n...(较早细节已浓缩)";
+  const tr = createStandaloneTemplateTranslator(uiLanguage);
+  const suffix = tr("standalone_compact_truncated_suffix");
   const suffixTokens = estimateTextTokens(suffix);
   const effectiveBudget = Math.max(32, maxSummaryTokens - suffixTokens);
 
@@ -130,6 +132,7 @@ export interface AutoCompactInput {
   baseUrl: string;
   model: string;
   lastUsageTokens?: number;
+  uiLanguage?: string;
   signal?: AbortSignal;
 }
 
@@ -152,6 +155,7 @@ export async function autoCompactIfNeeded(input: AutoCompactInput): Promise<Auto
     baseUrl,
     model,
     lastUsageTokens,
+    uiLanguage,
     signal,
   } = input;
 
@@ -159,7 +163,7 @@ export async function autoCompactIfNeeded(input: AutoCompactInput): Promise<Auto
     return { compacted: false, checkpoint: null };
   }
 
-  const view = sessionStore.buildActiveLlmMessages(sessionId, systemPrompt, { branchId });
+  const view = sessionStore.buildActiveLlmMessages(sessionId, systemPrompt, { branchId, uiLanguage });
   const currentTokens = Math.max(lastUsageTokens ?? 0, estimateMessagesTokens(view.messages));
   if (!needsCompaction(currentTokens, apiConfig)) {
     return { compacted: false, checkpoint: view.checkpoint };
@@ -182,22 +186,23 @@ export async function autoCompactIfNeeded(input: AutoCompactInput): Promise<Auto
     return { compacted: false, checkpoint: view.checkpoint };
   }
 
+  const tr = createStandaloneTemplateTranslator(uiLanguage);
   const anchorTurn = turnsToSummarize[turnsToSummarize.length - 1];
   const upToSeq = anchorTurn.seq;
   const expectedTurnId = anchorTurn.turnId;
+  const userSpeakerLabel = tr("standalone_compact_speaker_user");
+  const narratorSpeakerLabel = tr("standalone_compact_speaker_narrator");
   const transcriptLines = turnsToSummarize.map((node) => {
-    const label = node.speaker ? node.speaker : node.role === "user" ? "玩家" : "旁白";
+    const label = node.speaker ? node.speaker : node.role === "user" ? userSpeakerLabel : narratorSpeakerLabel;
     return `${label}: ${node.plainText || node.rawMessage.content}`;
   });
 
   const userPromptParts: string[] = [];
   if (view.checkpoint?.rollingSummary) {
-    userPromptParts.push(`【已有剧情前情摘要】\n${view.checkpoint.rollingSummary}`);
+    userPromptParts.push(`${tr("standalone_compact_existing_heading")}\n${view.checkpoint.rollingSummary}`);
   }
-  userPromptParts.push(`【需要合并压缩的新增剧情对话】\n${transcriptLines.join("\n")}`);
-  userPromptParts.push(
-    "请将以上信息整合为一份简练、客观的中文滚动摘要，保留重要人物关系变化、关键约定、情绪转折与当前场景状态，避免流水账。",
-  );
+  userPromptParts.push(`${tr("standalone_compact_new_turns_heading")}\n${transcriptLines.join("\n")}`);
+  userPromptParts.push(tr("standalone_compact_instruction"));
 
   try {
     const result = await llmAdapter.complete(
@@ -209,7 +214,7 @@ export async function autoCompactIfNeeded(input: AutoCompactInput): Promise<Auto
         messages: [
           {
             role: "system",
-            content: "你是剧情记忆归档助手，负责输出紧凑准确的对话总结。",
+            content: tr("standalone_compact_system"),
           },
           {
             role: "user",
@@ -227,7 +232,7 @@ export async function autoCompactIfNeeded(input: AutoCompactInput): Promise<Auto
       return { compacted: false, checkpoint: null };
     }
 
-    const cappedSummary = binarySearchCapSummary(result.content, targetSummaryTokens);
+    const cappedSummary = binarySearchCapSummary(result.content, targetSummaryTokens, uiLanguage);
     if (!cappedSummary) {
       return { compacted: false, checkpoint: view.checkpoint };
     }

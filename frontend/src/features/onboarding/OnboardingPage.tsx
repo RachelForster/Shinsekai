@@ -4,7 +4,6 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import { useI18n } from "../../shared/i18n";
 import { AlertDialog, GuidedFlow } from "../../shared/ui";
-import { onboardingCopy, type OnboardingStepId } from "./onboardingCopy";
 import { ApiSetupPanel } from "./steps/ApiSetupPanel";
 import { BackgroundSetupPanel } from "./steps/BackgroundSetupPanel";
 import { CharacterSetupPanel } from "./steps/CharacterSetupPanel";
@@ -12,9 +11,7 @@ import { CompletionSetupPanel } from "./steps/CompletionSetupPanel";
 import { PluginSetupPanel } from "./steps/PluginSetupPanel";
 import "./OnboardingPage.css";
 
-function format(template: string, values: Record<string, number | string>) {
-  return template.replace(/\{(\w+)\}/g, (match, key) => String(values[key] ?? match));
-}
+export type OnboardingStepId = "api" | "plugins" | "characters" | "backgrounds" | "complete";
 
 function isOnboardingStepId(value: unknown): value is OnboardingStepId {
   return (
@@ -25,8 +22,7 @@ function isOnboardingStepId(value: unknown): value is OnboardingStepId {
 export function OnboardingPage() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { language, t } = useI18n();
-  const copy = onboardingCopy[language] ?? onboardingCopy.zh_CN;
+  const { t } = useI18n();
   const requestedStep = isOnboardingStepId((location.state as { activeStep?: unknown } | null)?.activeStep)
     ? (location.state as { activeStep: OnboardingStepId }).activeStep
     : undefined;
@@ -36,7 +32,7 @@ export function OnboardingPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmBody, setConfirmBody] = useState("");
   const confirmResolver = useRef<((ok: boolean) => void) | null>(null);
-  const stepLabel = (current: number, total: number) => format(copy.stepLabel, { current, total });
+  const stepLabel = useCallback((current: number, total: number) => t("onboarding.stepLabel", { current, total }), [t]);
 
   const showConfirm = useCallback((body: string): Promise<boolean> => {
     return new Promise((resolve) => {
@@ -62,72 +58,72 @@ export function OnboardingPage() {
     () => [
       {
         accent: "accent" as const,
-        content: <ApiSetupPanel copy={copy} onSaved={() => setApiSaved(true)} />,
+        content: <ApiSetupPanel onSaved={() => setApiSaved(true)} />,
         icon: <Settings aria-hidden size={18} />,
         id: "api",
-        title: copy.api.title,
+        title: t("onboarding.api.title"),
       },
       {
         accent: "info" as const,
-        content: <PluginSetupPanel copy={copy} onInstalled={() => setPluginsInstalled(true)} />,
+        content: <PluginSetupPanel onInstalled={() => setPluginsInstalled(true)} />,
         icon: <Plug aria-hidden size={18} />,
         id: "plugins",
         optional: true,
-        title: copy.plugins.title,
+        title: t("onboarding.plugins.title"),
       },
       {
         accent: "success" as const,
-        content: <CharacterSetupPanel copy={copy} />,
+        content: <CharacterSetupPanel />,
         icon: <Gamepad2 aria-hidden size={18} />,
         id: "characters",
-        title: copy.characters.title,
+        title: t("onboarding.characters.title"),
       },
       {
         accent: "warning" as const,
-        content: <BackgroundSetupPanel copy={copy} />,
+        content: <BackgroundSetupPanel />,
         icon: <FileImage aria-hidden size={18} />,
         id: "backgrounds",
         optional: true,
-        title: copy.backgrounds.title,
+        title: t("onboarding.backgrounds.title"),
       },
       {
         accent: "accent" as const,
-        content: <CompletionSetupPanel copy={copy} />,
+        content: <CompletionSetupPanel />,
         icon: <CheckCircle2 aria-hidden size={18} />,
         id: "complete",
-        title: copy.complete.title,
+        title: t("onboarding.complete.title"),
       },
     ],
-    [copy],
+    [t],
   );
 
   return (
     <>
       <GuidedFlow
         activeId={activeStep}
-        backLabel={copy.actions.previous}
+        backLabel={t("onboarding.actions.previous")}
         beforeNext={(stepId) => {
           if (stepId === "api" && !apiSaved) {
-            return showConfirm(copy.api.unsavedWarning);
+            return showConfirm(t("onboarding.api.unsavedWarning"));
           }
           if (stepId === "plugins" && !pluginsInstalled) {
-            return showConfirm(copy.plugins.uninstalledWarning);
+            return showConfirm(t("onboarding.plugins.uninstalledWarning"));
           }
           return true;
         }}
-        finishLabel={copy.finishLabel}
-        nextLabel={copy.actions.next}
+        finishLabel={t("onboarding.finishLabel")}
+        nextLabel={t("onboarding.actions.next")}
         onActiveChange={(id) => {
           if (isOnboardingStepId(id)) {
             setActiveStep(id);
           }
         }}
         onFinish={() => navigate("/settings/templates")}
-        optionalLabel={copy.optionalLabel}
-        requiredLabel={copy.requiredLabel}
+        optionalLabel={t("onboarding.optionalLabel")}
+        requiredLabel={t("onboarding.requiredLabel")}
         stepLabel={stepLabel}
         steps={steps}
-        title={copy.title}
+        title={t("onboarding.title")}
       />
       <AlertDialog
         body={confirmBody}
