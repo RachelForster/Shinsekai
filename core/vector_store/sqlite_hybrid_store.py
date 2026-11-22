@@ -435,7 +435,7 @@ class SqliteHybridStore:
         parts = [
             record.detail_text,
             record.gist_text,
-            " ".join(record.topic_tags),
+            " ".join(t for t in record.topic_tags if not t.startswith("__sys:")),
             " ".join(record.entities),
         ]
         return " ".join(p for p in parts if p)

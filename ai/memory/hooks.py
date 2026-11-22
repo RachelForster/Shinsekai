@@ -12,14 +12,24 @@ from collections.abc import Callable, Sequence
 from typing import Any
 
 from ai.memory.chunking import DEFAULT_DIALOGUE_CHUNK_TOKENS
-from ai.memory.extraction import MemoryExtractor
+from ai.memory.consolidation import DEFAULT_MIN_SCENE_EPISODES, SceneConsolidator
+from ai.memory.extraction import MemoryExtractor, window_to_plain_dialogue
 from ai.memory.operations import (
+    is_memory_backend_ready,
+    memory_list,
     memory_recall_turn,
     memory_search,
     memory_service_status,
 )
 from ai.memory.queue import MemoryWriteQueue
+from ai.memory.reconciliation import CandidateReconciler
 from ai.memory.rule_recall_planner import RuleRecallPlanner
+from ai.memory.visual_bridge import (
+    PerceptionSnapshot,
+    VisualMemoryBridge,
+    extract_message_visual_artifacts,
+    parse_perception_block,
+)
 from core.chat_history.models import is_compact_summary_message
 from core.chat_history.text import (
     history_payload_to_plain_text,
@@ -130,12 +140,16 @@ class MemoryAutoHooks:
         player_character: str = "",
         queue: MemoryWriteQueue | None = None,
         search_func=memory_search,
+        list_func=memory_list,
         recall_func=None,
         extract_interval_turns: int = DEFAULT_EXTRACT_INTERVAL_TURNS,
         search_limit: int = DEFAULT_SEARCH_LIMIT,
         recent_buffer_messages: int = DEFAULT_RECENT_BUFFER_MESSAGES,
         extraction_chunk_tokens: int = DEFAULT_DIALOGUE_CHUNK_TOKENS,
         cooldown_turns: int = DEFAULT_INJECTION_COOLDOWN_TURNS,
+        min_scene_episodes: int = DEFAULT_MIN_SCENE_EPISODES,
+        vision_describer_factory=None,
+        vision_available_probe=None,
         memory_status_func=memory_service_status,
         init_poll_interval_seconds: float = DEFAULT_INIT_POLL_INTERVAL_SECONDS,
         init_timeout_seconds: float = DEFAULT_INIT_TIMEOUT_SECONDS,
@@ -155,6 +169,7 @@ class MemoryAutoHooks:
         self.player_character = str(player_character or "").strip()
         self.queue = queue if queue is not None else MemoryWriteQueue()
         self.search_func = search_func
+        self.list_func = list_func
         self._uses_custom_search = (search_func is not memory_search) and (recall_func is None)
         self.recall_func = recall_func if recall_func is not None else memory_recall_turn
         self.extract_interval_turns = max(1, int(extract_interval_turns))
@@ -162,6 +177,7 @@ class MemoryAutoHooks:
         self.recent_buffer_messages = max(2, int(recent_buffer_messages))
         self.extraction_chunk_tokens = max(256, int(extraction_chunk_tokens))
         self.cooldown_turns = max(1, int(cooldown_turns))
+        self.min_scene_episodes = max(3, int(min_scene_episodes))
         self.memory_status_func = memory_status_func
         self.init_poll_interval_seconds = max(0.01, float(init_poll_interval_seconds))
         self.init_timeout_seconds = max(0.01, float(init_timeout_seconds))
@@ -187,6 +203,20 @@ class MemoryAutoHooks:
         self._workers: list[threading.Thread] = []
         self._extractor = MemoryExtractor(llm_adapter)
         self._planner = RuleRecallPlanner(default_limit=self.search_limit)
+        self._visual_bridge = VisualMemoryBridge(
+            llm_adapter,
+            vision_describer_factory=vision_describer_factory,
+            vision_available_probe=vision_available_probe,
+        )
+        self._reconciler = CandidateReconciler(
+            llm_adapter,
+            candidate_fetcher=self._fetch_reconciliation_candidates,
+        )
+        self._consolidator = SceneConsolidator(
+            llm_adapter,
+            list_func=self._list_memories_for_consolidation,
+            min_episodes=self.min_scene_episodes,
+        )
 
     @property
     def primary_character_name(self) -> str:
@@ -307,7 +337,24 @@ class MemoryAutoHooks:
             return
 
         now_ts = float(self._clock())
+        self._visual_bridge.observe_before_chat_turn(
+            user_text=user_text,
+            source=source,
+            now_ts=now_ts,
+        )
         with self._lock:
+            if (
+                source != "perception"
+                and self._buffer
+                and self._buffer[-1].get("role") == "user"
+                and self._buffer[-1].get("_perception_snapshot") is None
+            ):
+                bound_perc = self._visual_bridge.consume_turn_perception_for_user(
+                    explicit_snapshot=None,
+                    now_ts=now_ts,
+                )
+                if bound_perc is not None:
+                    self._buffer[-1]["_perception_snapshot"] = bound_perc
             seconds_since_last = (
                 max(0.0, now_ts - self._last_turn_ts) if self._last_turn_ts > 0.0 else 0.0
             )
@@ -425,15 +472,31 @@ class MemoryAutoHooks:
         if role not in {"user", "assistant"}:
             return
         message = context.message or {}
-        if is_compact_summary_message(message) or message.get("source") == "perception":
+        if is_compact_summary_message(message):
+            return
+        if message.get("source") == "perception":
+            self._visual_bridge.observe_before_chat_turn(
+                user_text=str(
+                    message.get("content") or message.get("_perception_digest") or ""
+                ),
+                source="perception",
+                now_ts=float(self._clock()),
+            )
             return
         if role == "assistant" and message.get("tool_calls"):
             return
         raw_content = message.get("content")
+        img_artifacts = ()
+        explicit_perc: PerceptionSnapshot | None = None
+        if role == "user":
+            img_artifacts, explicit_perc = extract_message_visual_artifacts(message)
         content = _clean_text(
             history_payload_to_plain_text([message], user_display_name="user"),
             max_chars=20000,
         )
+        if not content and img_artifacts:
+            names = ", ".join(a.name for a in img_artifacts)
+            content = f"user: [发送图片: {names}]"
         if not content:
             return
         turn_seq = context.turn_seq
@@ -448,23 +511,31 @@ class MemoryAutoHooks:
                 if self._memory_mode_start_seq is not None and int(turn_seq) <= self._memory_mode_start_seq:
                     return
                 self._last_seen_seq = max(self._last_seen_seq, int(turn_seq))
+            perc_snap: PerceptionSnapshot | None = None
             if role == "user":
                 self._user_turns += 1
                 self._last_injected_user = ""
                 if self._last_turn_ts <= 0.0:
                     self._last_turn_ts = now_ts
+                perc_snap = self._visual_bridge.consume_turn_perception_for_user(
+                    explicit_snapshot=explicit_perc,
+                    now_ts=now_ts,
+                )
             elif role == "assistant":
                 self._last_turn_ts = now_ts
                 speaker_names = _dialog_speaker_names(raw_content)
                 if speaker_names:
                     self._active_character_name = speaker_names[-1]
-            self._buffer.append(
-                {
-                    "role": role,
-                    "content": content,
-                    "turn_seq": None if turn_seq is None else int(turn_seq),
-                }
-            )
+            entry: dict[str, Any] = {
+                "role": role,
+                "content": content,
+                "turn_seq": None if turn_seq is None else int(turn_seq),
+            }
+            if img_artifacts:
+                entry["_visual_artifacts"] = img_artifacts
+            if perc_snap is not None:
+                entry["_perception_snapshot"] = perc_snap
+            self._buffer.append(entry)
             self._buffer = self._buffer[-self.recent_buffer_messages :]
             if (
                 role == "assistant"
@@ -516,20 +587,36 @@ class MemoryAutoHooks:
             ):
                 return
 
+            ambient_compact_perc: list[PerceptionSnapshot] = []
             for message in older:
                 if not isinstance(message, dict):
                     continue
                 role = str(message.get("role") or "")
                 if role not in {"user", "assistant"}:
                     continue
-                if is_compact_summary_message(message) or message.get("source") == "perception":
+                if is_compact_summary_message(message):
+                    continue
+                if message.get("source") == "perception":
+                    perc_from_msg = parse_perception_block(
+                        str(message.get("_perception_digest") or message.get("content") or "")
+                    )
+                    if perc_from_msg is not None:
+                        ambient_compact_perc.append(perc_from_msg)
+                        ambient_compact_perc = ambient_compact_perc[-4:]
                     continue
                 if role == "assistant" and message.get("tool_calls"):
                     continue
+                img_artifacts = ()
+                explicit_perc: PerceptionSnapshot | None = None
+                if role == "user":
+                    img_artifacts, explicit_perc = extract_message_visual_artifacts(message)
                 content = _clean_text(
                     history_payload_to_plain_text([message], user_display_name="user"),
                     max_chars=20000,
                 )
+                if not content and img_artifacts:
+                    names = ", ".join(a.name for a in img_artifacts)
+                    content = f"user: [发送图片: {names}]"
                 if not content:
                     continue
                 if role == "assistant":
@@ -543,13 +630,29 @@ class MemoryAutoHooks:
                     continue
                 if msg_seq is None:
                     msg_seq = anchor_seq
-                snapshot.append(
-                    {
-                        "role": role,
-                        "content": content,
-                        "turn_seq": None if msg_seq is None else int(msg_seq),
-                    }
-                )
+                item_dict: dict[str, Any] = {
+                    "role": role,
+                    "content": content,
+                    "turn_seq": None if msg_seq is None else int(msg_seq),
+                }
+                if img_artifacts:
+                    item_dict["_visual_artifacts"] = img_artifacts
+                if role == "user":
+                    eff_perc = explicit_perc
+                    if eff_perc is None and ambient_compact_perc:
+                        merged_sum = _clean_text(
+                            "；".join(dict.fromkeys(p.summary for p in ambient_compact_perc)),
+                            max_chars=360,
+                        )
+                        game = next(
+                            (p.active_game for p in reversed(ambient_compact_perc) if p.active_game),
+                            "",
+                        )
+                        eff_perc = PerceptionSnapshot(summary=merged_sum, active_game=game)
+                    ambient_compact_perc.clear()
+                    if eff_perc is not None:
+                        item_dict["_perception_snapshot"] = eff_perc
+                snapshot.append(item_dict)
 
             if not snapshot:
                 return
@@ -571,6 +674,7 @@ class MemoryAutoHooks:
             session_id=effective_session,
             turn_seq=anchor_seq,
             epoch=epoch,
+            consolidate_scenes=True,
         )
 
     def set_memory_mode(self, mode: str, *, up_to_seq: int = 0) -> None:
@@ -581,6 +685,7 @@ class MemoryAutoHooks:
             # Older dialogue belongs to the previous memory scope.
             self._memory_mode_start_seq = max(up_to_seq, self._last_seen_seq, self._memory_mode_start_seq or 0)
             self._buffer.clear()
+            self._visual_bridge.clear_state()
             self._last_extract_turn = self._user_turns
             self._last_injected_user = ""
             self._recent_injected_window.clear()
@@ -600,6 +705,7 @@ class MemoryAutoHooks:
                         for item in self._buffer
                         if item.get("turn_seq") is not None and int(item["turn_seq"]) <= cutoff
                     ]
+                    self._visual_bridge.clear_state()
                     self._last_extracted_seq = min(self._last_extracted_seq, cutoff)
                     self._last_seen_seq = min(self._last_seen_seq, cutoff)
                     self._last_injected_user = ""
@@ -620,6 +726,14 @@ class MemoryAutoHooks:
                 session_id=tail_session,
                 turn_seq=tail_seq,
                 epoch=epoch,
+                consolidate_scenes=True,
+            )
+        elif tail_session:
+            self._run_scene_consolidation_only(
+                session_id=tail_session,
+                turn_seq=tail_seq,
+                epoch=epoch,
+                source=f"shutdown_scene:{tail_turn}",
             )
         for worker in self._live_workers():
             worker.join(timeout=max(0.0, wait_timeout))
@@ -657,45 +771,187 @@ class MemoryAutoHooks:
         session_id: str,
         turn_seq: int | None,
         epoch: int,
+        consolidate_scenes: bool = False,
     ) -> None:
         with self._summary_lock:
             try:
                 resolved_session = str(session_id or self.session_id or "").strip()
-                drafts = self._extract_drafts(
-                    messages,
+                enriched_msgs, visual_refs, active_games = (
+                    self._visual_bridge.enrich_messages_for_extraction(messages)
+                )
+                raw_drafts = self._extract_drafts(
+                    enriched_msgs,
                     session_id=resolved_session,
                     turn_seq=turn_seq,
                 )
-                with self._write_lock:
-                    with self._lock:
-                        if epoch != self._rollback_epoch:
-                            return
-                    for draft in drafts:
-                        char_target = (
-                            "user"
-                            if draft.owner_id in {"__self__", "user", ""}
-                            else draft.owner_id
-                        )
-                        self.queue.enqueue(
-                            draft.detail_text,
-                            character_name=char_target,
-                            source=source,
-                            confidence=float(draft.importance),
-                            gist_text=draft.gist_text,
-                            slot_key=draft.slot_key,
-                            kind=draft.kind,
-                            topic_tags=draft.topic_tags,
-                            entities=draft.entities,
-                            importance=draft.importance,
-                            event_at=draft.event_at,
-                            memory_mode=self.memory_mode,
-                            player_character=self.player_character,
-                            source_session_id=resolved_session,
-                            source_turn_seq=turn_seq,
-                        )
-                    self.queue.flush()
+                visual_drafts = self._visual_bridge.postprocess_visual_drafts(
+                    raw_drafts,
+                    visual_refs=visual_refs,
+                    active_games=active_games,
+                )
+                dialogue_preview = window_to_plain_dialogue(
+                    ExtractionWindow(
+                        messages=tuple(enriched_msgs),
+                        character_names=(),
+                        now_iso="",
+                    )
+                )
+                drafts = self._reconciler.reconcile(
+                    visual_drafts,
+                    dialogue_text=dialogue_preview,
+                )
+                if not self._enqueue_draft_batch(
+                    drafts,
+                    source=source,
+                    resolved_session=resolved_session,
+                    turn_seq=turn_seq,
+                    epoch=epoch,
+                ):
+                    return
+                if consolidate_scenes and resolved_session:
+                    self._consolidate_and_enqueue_locked(
+                        resolved_session=resolved_session,
+                        turn_seq=turn_seq,
+                        epoch=epoch,
+                        source=source,
+                    )
             except Exception:
                 logger.exception("automatic memory extraction failed")
+
+    def _run_scene_consolidation_only(
+        self,
+        *,
+        session_id: str,
+        turn_seq: int | None,
+        epoch: int,
+        source: str,
+    ) -> None:
+        with self._summary_lock:
+            try:
+                self._consolidate_and_enqueue_locked(
+                    resolved_session=session_id,
+                    turn_seq=turn_seq,
+                    epoch=epoch,
+                    source=source,
+                )
+            except Exception:
+                logger.exception("automatic scene consolidation failed")
+
+    def _consolidate_and_enqueue_locked(
+        self,
+        *,
+        resolved_session: str,
+        turn_seq: int | None,
+        epoch: int,
+        source: str,
+    ) -> None:
+        with self._lock:
+            if epoch != self._rollback_epoch:
+                return
+            scene_chars = (
+                tuple(self.character_names)
+                if self.character_names
+                else (self.primary_character_name,)
+            )
+        scene_drafts = self._consolidator.consolidate_if_ready(
+            character_names=scene_chars,
+            session_id=resolved_session,
+            turn_seq=turn_seq,
+        )
+        if scene_drafts:
+            self._enqueue_draft_batch(
+                scene_drafts,
+                source=source,
+                resolved_session=resolved_session,
+                turn_seq=turn_seq,
+                epoch=epoch,
+            )
+
+    def _enqueue_draft_batch(
+        self,
+        drafts: Sequence[MemoryDraft],
+        *,
+        source: str,
+        resolved_session: str,
+        turn_seq: int | None,
+        epoch: int,
+    ) -> bool:
+        with self._write_lock:
+            with self._lock:
+                if epoch != self._rollback_epoch:
+                    return False
+            for draft in drafts:
+                char_target = (
+                    "user"
+                    if draft.owner_id in {"__self__", "user", ""}
+                    else draft.owner_id
+                )
+                self.queue.enqueue(
+                    draft.detail_text,
+                    character_name=char_target,
+                    source=source,
+                    confidence=float(draft.importance),
+                    gist_text=draft.gist_text,
+                    slot_key=draft.slot_key,
+                    kind=draft.kind,
+                    topic_tags=draft.topic_tags,
+                    entities=draft.entities,
+                    importance=draft.importance,
+                    event_at=draft.event_at,
+                    memory_mode=self.memory_mode,
+                    player_character=self.player_character,
+                    source_session_id=resolved_session,
+                    source_turn_seq=turn_seq,
+                )
+            self.queue.flush()
+            return True
+
+    def _fetch_reconciliation_candidates(
+        self,
+        draft: MemoryDraft,
+        limit: int,
+    ) -> Sequence[dict[str, Any]]:
+        char_target = (
+            "user"
+            if draft.owner_id in {"__self__", "user", ""}
+            else draft.owner_id
+        )
+        if self.search_func is memory_search:
+            if not is_memory_backend_ready():
+                return ()
+            with self._lock:
+                sid = self.session_id
+                mode = self.memory_mode
+            result = self.search_func(
+                draft.detail_text,
+                character_name=char_target,
+                limit=limit,
+                session_id=sid,
+                memory_mode=mode,
+            )
+        else:
+            result = self.search_func(
+                draft.detail_text,
+                character_name=char_target,
+                limit=limit,
+            )
+        if not isinstance(result, dict) or result.get("error") or result.get("status") == "loading":
+            return ()
+        rows = result.get("memories") or result.get("results") or []
+        return rows if isinstance(rows, list) else ()
+
+    def _list_memories_for_consolidation(
+        self,
+        char_name: str,
+        session_id: str,
+    ) -> dict[str, Any]:
+        if self.list_func is memory_list and not is_memory_backend_ready():
+            return {"memories": []}
+        try:
+            res = self.list_func(char_name, session_id=session_id)
+        except TypeError:
+            res = self.list_func(char_name)
+        return res if isinstance(res, dict) else {"memories": []}
 
     def _shutdown_tail_snapshot(self) -> tuple[list[dict[str, Any]], int, int | None, str, int]:
         with self._lock:

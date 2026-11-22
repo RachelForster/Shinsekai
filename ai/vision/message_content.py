@@ -93,6 +93,7 @@ def normalize_openai_messages(
         message.pop("display_content", None)
         message.pop("input_text", None)
         message.pop("attachments", None)
+        message.pop("_perception_digest", None)
         message.pop("_storyTurnId", None)
         message.pop(CHAT_TURN_ID, None)
         content = message.get("content")
