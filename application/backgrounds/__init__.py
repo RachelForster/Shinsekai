@@ -1,5 +1,6 @@
 """Background application use cases."""
 
+from core.messaging.dialog_tokens import BGM_TAG_LABEL_PREFIX
 from .management import (
     BackgroundExportResult,
     BackgroundOperation,
@@ -9,6 +10,7 @@ from .management import (
 )
 
 __all__ = [
+    "BGM_TAG_LABEL_PREFIX",
     "BackgroundExportResult",
     "BackgroundOperation",
     "BackgroundRequest",

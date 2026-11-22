@@ -5,8 +5,8 @@ from types import SimpleNamespace
 import pytest
 
 from core.messaging.dialog_tokens import BGM, SCENE
+from ai.llm.template import PROMPT_CATALOG
 from ai.llm.template_generator import DEFAULT_DIALOG_CONTRACT_ID, NoValidCharactersError, TemplateGenerator
-from i18n import tr_in_bundle
 from sdk.register import PluginCapabilityRegistry
 from sdk.types import (
     ChatOutputContract,
@@ -283,7 +283,7 @@ def test_template_generator_preserves_effect_toggle_without_duplicate_field_cont
 
 
 def test_effect_requirement_retains_audio_modes_and_image_aliases() -> None:
-    requirement = tr_in_bundle("template_gen.r_effect", "zh_CN")
+    requirement = PROMPT_CATALOG.translate("dialog.r_effect", locale="zh_CN")
 
     assert "同行逗号分隔项为别名" in requirement
     assert "不用于图片" in requirement

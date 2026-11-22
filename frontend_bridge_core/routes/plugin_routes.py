@@ -26,6 +26,7 @@ from frontend_bridge_core.plugin_publisher import (
     _scan_local_plugin,
     _validate_plugin_submission,
 )
+from frontend_bridge_core.i18n_helpers import bridge_tr
 from frontend_bridge_core.plugin_install import BridgePluginInstallProgress
 from frontend_bridge_core.plugin_ui import (
     _frontend_chat_ui_contribution_payloads,
@@ -141,8 +142,8 @@ def _install_plugin(request: ApiRequest) -> JsonResponse | TaskResponse:
         return JsonResponse(running[0], HTTPStatus.ACCEPTED)
     return TaskResponse(
         kind="plugin-install",
-        title=f"安装插件 {plugin_id}",
-        message="插件安装任务已排队。",
+        title=bridge_tr(request.state, "task.plugin_install_title", id=plugin_id),
+        message=bridge_tr(request.state, "task.plugin_install_queued"),
         task_updates={"source": plugin_id},
         worker=lambda task_id: install_plugin(
             BridgePluginInstallProgress(request.state, task_id),
@@ -183,8 +184,8 @@ def _run_app_update_route(request: ApiRequest) -> TaskResponse:
     tag_name = str(request.body.get("tagName") or "").strip()
     return TaskResponse(
         kind="app-update",
-        title="更新主程序",
-        message="主程序更新任务已排队。",
+        title=bridge_tr(request.state, "task.app_update_title"),
+        message=bridge_tr(request.state, "task.app_update_queued"),
         task_updates={"refKind": ref_kind, "tagName": tag_name},
         worker=lambda task_id: update_application(
             request.state,

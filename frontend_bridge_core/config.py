@@ -32,8 +32,9 @@ from config.vision_defaults import (
     vision_llm_provider,
     vision_provider_requires_api_key,
 )
-from config.llm_defaults import resolve_llm_base_url
+from config.llm_defaults import DASHSCOPE_PROVIDER_KEYWORDS, resolve_llm_base_url
 from config.perception import default_perception_python_path
+from .i18n_helpers import bridge_error, bridge_tr
 from .security import host_matches, validated_http_url
 from application.runtime.state import BridgeState, _jsonify
 
@@ -163,15 +164,15 @@ def _provider_map_value(mapping: dict[str, str], provider: str) -> str:
     return str((mapping or {}).get(provider, "") or "").strip()
 
 
-def _validate_api_config_for_save(config: Any) -> None:
+def _validate_api_config_for_save(config: Any, state: BridgeState | None = None) -> None:
     provider = str(config.llm_provider or "").strip()
     base_url = resolve_llm_base_url(config, provider)
     api_key = _provider_map_value(config.llm_api_key, provider)
     model = _provider_map_value(config.llm_model, provider)
     if not provider or not base_url or not api_key or not model:
-        raise ValueError("服务商、基础地址、API Key 和模型 ID 都需要填写。")
+        raise bridge_error(ValueError, state, "llm_fields_required")
     if _contains_quotes(base_url):
-        raise ValueError("LLM API 基础网址不能包含引号。")
+        raise bridge_error(ValueError, state, "llm_base_url_quotes")
 
     vision_provider = str(getattr(config, "vision_provider", "auto") or "auto").strip().lower()
     if vision_provider not in {"auto", "moondream"} and vision_llm_provider(
@@ -185,11 +186,9 @@ def _validate_api_config_for_save(config: Any) -> None:
             or not vision_base_url
             or not vision_model
         ):
-            raise ValueError(
-                "视觉适配器的基础地址和模型 ID 都需要填写；远程服务还需 API Key。"
-            )
+            raise bridge_error(ValueError, state, "vision_fields_required")
         if _contains_quotes(vision_base_url) or not is_http_url(vision_base_url):
-            raise ValueError("视觉服务基础地址必须是有效且不含引号的 http(s) URL。")
+            raise bridge_error(ValueError, state, "vision_base_url_invalid")
 
     tts_provider = normalize_tts_provider(config.tts_provider)
     if not uses_shared_tts_server_config(tts_provider):
@@ -198,15 +197,15 @@ def _validate_api_config_for_save(config: Any) -> None:
     tts_url = str(config.gpt_sovits_url or "").strip()
     tts_path = str(config.gpt_sovits_api_path or "").strip()
     if not tts_url:
-        raise ValueError("当前 TTS 引擎需要填写 URL。")
+        raise bridge_error(ValueError, state, "tts_url_required")
     if _contains_quotes(tts_url) or _contains_quotes(tts_path):
-        raise ValueError("TTS URL 和服务启动路径不能包含引号。")
+        raise bridge_error(ValueError, state, "tts_quotes_invalid")
     if not is_http_url(tts_url):
-        raise ValueError("TTS URL 必须是有效的 http(s) URL。")
+        raise bridge_error(ValueError, state, "tts_url_invalid")
     if requires_tts_work_path(tts_provider) and not tts_path:
-        raise ValueError("本地 TTS 引擎需要填写服务启动路径。")
+        raise bridge_error(ValueError, state, "tts_work_path_required")
     if tts_path and tts_provider != "kaggle-gpt-sovits" and not Path(tts_path).expanduser().is_dir():
-        raise ValueError("TTS 服务启动路径必须是已存在的目录。")
+        raise bridge_error(ValueError, state, "tts_work_path_not_dir")
 
 
 def _save_api_config(state: BridgeState, payload: dict[str, Any]) -> Any:
@@ -236,7 +235,7 @@ def _save_api_config(state: BridgeState, payload: dict[str, Any]) -> Any:
         project_root=_state_project_root(state),
         app_root=getattr(state, "app_root_dir", ""),
     )
-    _validate_api_config_for_save(config)
+    _validate_api_config_for_save(config, state)
     previous = state.config_manager.config.api_config
     switch_running_perception_model(previous, config)
     state.config_manager.config.api_config = config
@@ -287,11 +286,8 @@ def _llm_model_provider_kind(provider: str, base_url: str) -> str:
         return "deepseek"
     if low_provider == "claude" or "claude" in low_provider or _base_url_host_matches(base_url, {"anthropic.com"}):
         return "anthropic"
-    if (
-        _base_url_host_matches(base_url, {"dashscope.aliyuncs.com"})
-        or "通义" in low_provider
-        or "qwen" in low_provider
-        or "dashscope" in low_provider
+    if _base_url_host_matches(base_url, {"dashscope.aliyuncs.com"}) or any(
+        token in low_provider for token in DASHSCOPE_PROVIDER_KEYWORDS
     ):
         return "dashscope"
     return "openai_compatible"
@@ -305,10 +301,10 @@ def _base_url_host_matches(base_url: str, allowed_hosts: set[str]) -> bool:
     return parsed.hostname is not None and host_matches(parsed.hostname, allowed_hosts)
 
 
-def _openai_models_endpoint(base_url: str) -> str:
+def _openai_models_endpoint(base_url: str, state: BridgeState | None = None) -> str:
     base = base_url.strip().rstrip("/")
     if not base:
-        raise ValueError("请先填写 LLM 基础地址和 API Key。")
+        raise bridge_error(ValueError, state, "llm_base_and_key_required")
     if base.lower().endswith("/models"):
         return _validated_llm_endpoint(base)
     return _validated_llm_endpoint(f"{base}/models")
@@ -323,7 +319,12 @@ def _validated_llm_endpoint(endpoint: str) -> str:
     )
 
 
-def _llm_models_endpoint(provider: str, base_url: str, api_key: str) -> str:
+def _llm_models_endpoint(
+    provider: str,
+    base_url: str,
+    api_key: str,
+    state: BridgeState | None = None,
+) -> str:
     kind = _llm_model_provider_kind(provider, base_url)
     base = base_url.strip().rstrip("/")
     if kind == "anthropic":
@@ -346,13 +347,13 @@ def _llm_models_endpoint(provider: str, base_url: str, api_key: str) -> str:
             base = base[: -len("/compatible-mode/v1")] + "/api/v1"
         if base.lower().endswith("/api/v1"):
             return _validated_llm_endpoint(f"{base}/deployments/models?{query}")
-    return _openai_models_endpoint(base)
+    return _openai_models_endpoint(base, state)
 
 
-def _openai_chat_endpoint(base_url: str) -> str:
+def _openai_chat_endpoint(base_url: str, state: BridgeState | None = None) -> str:
     base = base_url.strip().rstrip("/")
     if not base:
-        raise ValueError("请先填写 LLM 基础地址和 API Key。")
+        raise bridge_error(ValueError, state, "llm_base_and_key_required")
     if base.lower().endswith("/chat/completions"):
         return _validated_llm_endpoint(base)
     return _validated_llm_endpoint(f"{base}/chat/completions")
@@ -362,10 +363,15 @@ def _anthropic_messages_endpoint(base_url: str) -> str:
     return _validated_llm_endpoint(claude_messages_endpoint_url(base_url))
 
 
-def _llm_model_request_headers(provider: str, base_url: str, api_key: str) -> dict[str, str]:
+def _llm_model_request_headers(
+    provider: str,
+    base_url: str,
+    api_key: str,
+    state: BridgeState | None = None,
+) -> dict[str, str]:
     key = api_key.strip()
     if not key:
-        raise ValueError("请先填写 LLM 基础地址和 API Key。")
+        raise bridge_error(ValueError, state, "llm_base_and_key_required")
     headers = {
         "Accept": "application/json, text/plain, */*",
         "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
@@ -387,8 +393,13 @@ def _llm_model_request_headers(provider: str, base_url: str, api_key: str) -> di
     return headers
 
 
-def _llm_chat_request_headers(provider: str, base_url: str, api_key: str) -> dict[str, str]:
-    headers = _llm_model_request_headers(provider, base_url, api_key)
+def _llm_chat_request_headers(
+    provider: str,
+    base_url: str,
+    api_key: str,
+    state: BridgeState | None = None,
+) -> dict[str, str]:
+    headers = _llm_model_request_headers(provider, base_url, api_key, state)
     kind = _llm_model_provider_kind(provider, base_url)
     if kind == "gemini":
         headers["Authorization"] = f"Bearer {api_key.strip()}"
@@ -418,20 +429,23 @@ def _request_json(endpoint: str, headers: dict[str, str], payload: dict[str, Any
         raise RuntimeError(f"Invalid JSON response: {exc}") from exc
 
 
-def _test_llm_connection(payload: dict[str, Any]) -> dict[str, str]:
+def _test_llm_connection(
+    payload: dict[str, Any],
+    state: BridgeState | None = None,
+) -> dict[str, str]:
     provider = str(payload.get("provider") or "").strip()
     base_url = str(payload.get("baseUrl") or "").strip()
     api_key = str(payload.get("apiKey") or "").strip()
     model = str(payload.get("model") or "").strip()
     if not base_url or not api_key:
-        raise ValueError("请先填写 LLM 基础地址和 API Key。")
+        raise bridge_error(ValueError, state, "llm_base_and_key_required")
     if not model:
-        raise ValueError("请先填写 LLM 模型 ID。")
+        raise bridge_error(ValueError, state, "llm_model_required")
 
     kind = _llm_model_provider_kind(provider, base_url)
     if kind == "anthropic":
         endpoint = _anthropic_messages_endpoint(base_url)
-        headers = _llm_model_request_headers(provider, base_url, api_key)
+        headers = _llm_model_request_headers(provider, base_url, api_key, state)
         _request_json(
             endpoint,
             headers,
@@ -441,10 +455,10 @@ def _test_llm_connection(payload: dict[str, Any]) -> dict[str, str]:
                 "model": model,
             },
         )
-        return {"message": "LLM 连通检测通过。"}
+        return {"message": bridge_tr(state, "config.llm_connection_ok")}
 
-    endpoint = _openai_chat_endpoint(base_url)
-    headers = _llm_chat_request_headers(provider, base_url, api_key)
+    endpoint = _openai_chat_endpoint(base_url, state)
+    headers = _llm_chat_request_headers(provider, base_url, api_key, state)
     _request_json(
         endpoint,
         headers,
@@ -455,7 +469,7 @@ def _test_llm_connection(payload: dict[str, Any]) -> dict[str, str]:
             "stream": False,
         },
     )
-    return {"message": "LLM 连通检测通过。"}
+    return {"message": bridge_tr(state, "config.llm_connection_ok")}
 
 
 def _iter_llm_model_items(payload: Any):
@@ -558,14 +572,17 @@ def _llm_model_option_from_item(item: Any) -> dict[str, Any] | None:
     return {"id": model_id, "tags": tags}
 
 
-def _fetch_llm_models(payload: dict[str, Any]) -> list[dict[str, Any]]:
+def _fetch_llm_models(
+    payload: dict[str, Any],
+    state: BridgeState | None = None,
+) -> list[dict[str, Any]]:
     provider = str(payload.get("provider") or "").strip()
     base_url = str(payload.get("baseUrl") or "").strip()
     api_key = str(payload.get("apiKey") or "").strip()
     if not base_url or not api_key:
-        raise ValueError("请先填写 LLM 基础地址和 API Key。")
-    endpoint = _llm_models_endpoint(provider, base_url, api_key)
-    headers = _llm_model_request_headers(provider, base_url, api_key)
+        raise bridge_error(ValueError, state, "llm_base_and_key_required")
+    endpoint = _llm_models_endpoint(provider, base_url, api_key, state)
+    headers = _llm_model_request_headers(provider, base_url, api_key, state)
     request = urllib.request.Request(endpoint, headers=headers, method="GET")
     try:
         with urllib.request.urlopen(request, timeout=20) as response:

@@ -109,9 +109,9 @@ def test_reuses_dialog_contract_personality_translation_and_single_item_limit(
     assert '"dialog"' in system and '"translate"' in system
     assert "仅输出 1 个条目" in system
     assert "不要编造事实" in system
-    from i18n import tr_in_bundle
+    from ai.llm.template import PROMPT_CATALOG
 
-    assert tr_in_bundle("template_gen.r_dialog_max_items", "zh_CN", n=1) in system
+    assert PROMPT_CATALOG.translate("dialog.r_dialog_max_items", locale="zh_CN", n=1) in system
 
 
 def test_prompt_uses_current_local_date_prior_count_and_varied_expression(presenter, monkeypatch):

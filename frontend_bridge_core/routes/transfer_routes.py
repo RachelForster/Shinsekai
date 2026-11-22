@@ -35,6 +35,7 @@ from frontend_bridge_core.routes.router import (
     TaskResponse,
 )
 from frontend_bridge_core.routes.uploads import UploadedFiles
+from frontend_bridge_core.i18n_helpers import bridge_error, bridge_tr
 from frontend_bridge_core.knowledge import (
     _preview_knowledge_import,
     _run_knowledge_import,
@@ -222,10 +223,11 @@ def _preview_uploaded_character_memories(request: ApiRequest) -> JsonResponse:
 def _import_uploaded_character_memories(request: ApiRequest) -> TaskResponse:
     uploads = _uploads(request)
     name = str((request.query.get("name") or [""])[0]).strip()
+    target_label = name or bridge_tr(request.state, "char.default_label")
     return TaskResponse(
         kind="memory-import",
-        title=f"导入 {name or '角色'} 的长期记忆",
-        message="长期记忆导入任务已排队。",
+        title=bridge_tr(request.state, "task.memory_import_title", name=target_label),
+        message=bridge_tr(request.state, "task.memory_import_queued"),
         worker=lambda task_id: _run_character_memory_import(
             request.state,
             task_id,
@@ -251,10 +253,11 @@ def _preview_uploaded_knowledge(request: ApiRequest) -> JsonResponse:
 def _import_uploaded_knowledge(request: ApiRequest) -> TaskResponse:
     uploads = _uploads(request)
     knowledge_id = str((request.query.get("knowledge_id") or [""])[0]).strip()
+    target_label = knowledge_id or bridge_tr(request.state, "task.knowledge_default_label")
     return TaskResponse(
         kind="knowledge-import",
-        title=f"导入 {knowledge_id or '资料'} 的资料",
-        message="资料导入任务已排队。",
+        title=bridge_tr(request.state, "task.knowledge_import_title", name=target_label),
+        message=bridge_tr(request.state, "task.knowledge_import_queued"),
         worker=lambda task_id: _run_knowledge_import(
             request.state,
             task_id,
@@ -273,7 +276,7 @@ def _import_uploaded_log(request: ApiRequest) -> JsonResponse:
 def _upload_chat_theme(request: ApiRequest) -> JsonResponse:
     uploads = _uploads(request)
     if not uploads.paths:
-        raise ValueError("未收到主题压缩包")
+        raise bridge_error(ValueError, request.state, "theme_zip_missing")
     return JsonResponse(install_theme_from_zip(request.state, uploads.paths[0]))
 
 

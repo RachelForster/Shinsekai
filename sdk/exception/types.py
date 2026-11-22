@@ -2,12 +2,42 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Literal, TypedDict
+from typing import Any, Literal, TypedDict
 
 try:
     from typing import NotRequired
 except ImportError:  # Python 3.10
     from typing_extensions import NotRequired
+
+
+DownloadReasonCode = Literal[
+    "unauthorized",
+    "forbidden",
+    "not_found",
+    "rate_limited",
+    "timeout",
+    "proxy_error",
+    "ssl_error",
+    "http_status",
+    "generic",
+]
+
+
+class AppError(Exception):
+    """Structured domain/bridge exception carrying an i18n error_code and params."""
+
+    def __init__(
+        self,
+        error_code: str,
+        params: dict[str, Any] | None = None,
+        fallback_message: str = "",
+        *,
+        http_status: int = 400,
+    ) -> None:
+        self.error_code = str(error_code or "").strip()
+        self.error_params: dict[str, Any] = dict(params or {})
+        self.http_status = int(http_status)
+        super().__init__(fallback_message or self.error_code)
 
 
 class RuntimeDependencyError(TypedDict):
@@ -36,6 +66,7 @@ class DownloadError(TypedDict):
     statusCode: int | None
     url: str
     source: str
+    reasonCode: DownloadReasonCode
     userMessage: str
 
 
@@ -48,8 +79,13 @@ class ProgressSnapshot(TypedDict):
     message: str
     progress: float | None
     logs: list[str]
+    titleKey: NotRequired[str]
+    titleParams: NotRequired[dict[str, Any]]
+    messageKey: NotRequired[str]
+    messageParams: NotRequired[dict[str, Any]]
     error: NotRequired[str]
     errorCode: NotRequired[str]
+    errorParams: NotRequired[dict[str, Any]]
     errorUserMessage: NotRequired[str]
     httpStatus: NotRequired[int | None]
     notice: NotRequired[str]
@@ -262,27 +298,47 @@ def http_client_error_from_exception(exc: BaseException) -> HttpClientError | No
     return error
 
 
-def _download_user_message(error_type: str, message: str, status_code: int | None, timeout: bool) -> str:
+def _download_reason_code(
+    error_type: str,
+    message: str,
+    status_code: int | None,
+    timeout: bool,
+) -> DownloadReasonCode:
     if status_code == 401:
-        return "下载失败：认证失效或缺少访问令牌，请检查 Hugging Face token / 网络代理后重试。"
+        return "unauthorized"
     if status_code == 403:
-        return "下载失败：没有权限访问该资源，可能需要登录、申请模型权限，或切换可访问的镜像源。"
+        return "forbidden"
     if status_code == 404:
-        return "下载失败：资源不存在或模型名称不正确，请检查下载地址。"
+        return "not_found"
     if status_code == 429:
-        return "下载失败：请求过于频繁或被限流，请稍后重试。"
+        return "rate_limited"
     if timeout:
-        return "下载超时：请检查网络、代理或镜像源设置，然后重试。"
+        return "timeout"
     lowered = f"{error_type} {message}".lower()
     if "timeout" in lowered or "timed out" in lowered:
-        return "下载超时：请检查网络、代理或镜像源设置，然后重试。"
+        return "timeout"
     if "proxy" in lowered:
-        return "下载失败：代理连接异常，请检查系统代理或 Shinsekai 网络代理设置。"
+        return "proxy_error"
     if "ssl" in lowered or "certificate" in lowered:
-        return "下载失败：SSL 证书校验失败，请检查网络代理、证书或镜像源。"
+        return "ssl_error"
     if status_code is not None:
-        return f"下载失败：服务器返回 HTTP {status_code}，请检查网络、权限或镜像源。"
-    return "下载失败：请检查网络、代理、镜像源或稍后重试。"
+        return "http_status"
+    return "generic"
+
+
+def _download_user_message(
+    error_type: str,
+    message: str,
+    status_code: int | None,
+    timeout: bool,
+    *,
+    locale: str | None = None,
+) -> str:
+    from i18n import current_language, tr_in_bundle
+
+    reason = _download_reason_code(error_type, message, status_code, timeout)
+    target_locale = locale or current_language()
+    return tr_in_bundle(f"download.error.{reason}", target_locale, status=status_code)
 
 
 def download_error_from_exception(
@@ -290,6 +346,7 @@ def download_error_from_exception(
     *,
     source: str = "",
     url: str = "",
+    locale: str | None = None,
 ) -> DownloadError:
     http_error = http_client_error_from_exception(exc)
     if http_error is not None:
@@ -307,6 +364,7 @@ def download_error_from_exception(
         error_url = url or _httpx_url(exc)
         message = str(exc).strip() or error_type
 
+    reason_code = _download_reason_code(error_type, message, status_code, timeout)
     return {
         "kind": "download",
         "message": f"Download failed: {message}",
@@ -315,7 +373,8 @@ def download_error_from_exception(
         "statusCode": status_code,
         "url": error_url,
         "source": source,
-        "userMessage": _download_user_message(error_type, message, status_code, timeout),
+        "reasonCode": reason_code,
+        "userMessage": _download_user_message(error_type, message, status_code, timeout, locale=locale),
     }
 
 
