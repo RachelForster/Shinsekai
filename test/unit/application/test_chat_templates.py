@@ -776,7 +776,7 @@ def test_empty_scenario_split_meta_resumes_in_updated_ui_language(tmp_path):
     )
     assert "你扮演一个RPG系统。" in (template_dir / "_temp.txt").read_text(encoding="utf-8")
     split_meta = json.loads((template_dir / TEMP_SPLIT_META).read_text(encoding="utf-8"))
-    assert split_meta == {"scenario": "", "system": "", "defaultScenario": True}
+    assert split_meta == {"scenario": "", "system": ""}
 
     resumed = _resume_template_parts(state)
     assert resumed == ("", "", "_temp.txt")

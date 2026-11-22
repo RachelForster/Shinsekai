@@ -87,7 +87,6 @@ class ChatLaunchPreparation:
                 {
                     "scenario": raw_user_scenario,
                     "system": system_template,
-                    "defaultScenario": not bool(raw_user_scenario),
                 },
                 ensure_ascii=False,
                 indent=2,

@@ -373,18 +373,13 @@ def _read_split_meta(template_dir: Path) -> tuple[str, str] | None:
         return None
     if not isinstance(data, dict):
         return None
-    scenario = data.get("scenario", "")
-    system = data.get("system", "")
-    if not isinstance(scenario, str):
-        scenario = ""
-    if not isinstance(system, str):
-        system = ""
-    default_scenario = data.get("defaultScenario") is True
-    if default_scenario:
-        scenario = ""
-    if default_scenario or scenario.strip() or system.strip():
-        return scenario, system
-    return None
+    has_scenario = isinstance(data.get("scenario"), str)
+    has_system = isinstance(data.get("system"), str)
+    if not (has_scenario or has_system):
+        return None
+    scenario = data["scenario"] if has_scenario else ""
+    system = data["system"] if has_system else ""
+    return scenario, system
 
 
 def _repair_template_parts_from_session_if_needed(
