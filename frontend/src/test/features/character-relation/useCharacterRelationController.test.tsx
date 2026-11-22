@@ -87,11 +87,15 @@ describe("useCharacterRelationController", () => {
     await waitFor(() => expect(result.current.data).toBeDefined());
     let resolveFetch!: (graph: CharacterRelationGraph) => void;
     const fetch = vi.spyOn(state.api!, "getRelationGraph").mockReturnValueOnce(
-      new Promise((resolve) => { resolveFetch = resolve; }),
+      new Promise((resolve) => {
+        resolveFetch = resolve;
+      }),
     );
     const save = vi.spyOn(state.api!, "applyRelationChanges");
     let cleaning!: Promise<void>;
-    act(() => { cleaning = result.current.clean(); });
+    act(() => {
+      cleaning = result.current.clean();
+    });
     await waitFor(() => expect(result.current.cleanPending).toBe(true));
     await act(async () => {
       expect(await result.current.save([{ op: "add_node", node: { key: "C" } }])).toBe(false);
