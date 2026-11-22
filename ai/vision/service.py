@@ -47,6 +47,7 @@ class PreparedChatInput:
         background: Mapping[str, str | int] | None = None,
         prefix: str = "",
         suffix: str = "",
+        locale: str | None = None,
     ) -> str | list[dict[str, Any]]:
         """Render turn sections while keeping native image blocks intact."""
         context = self.prompt_context
@@ -61,13 +62,15 @@ class PreparedChatInput:
         merged_suffix = "\n\n".join(
             part for part in (context.suffix, suffix) if part and part.strip()
         )
+        replace_kwargs: dict[str, Any] = {
+            "background": background,
+            "prefix": merged_prefix,
+            "suffix": merged_suffix,
+        }
+        if locale is not None:
+            replace_kwargs["locale"] = locale
         text = build_user_prompt_section().render(
-            replace(
-                context,
-                background=background,
-                prefix=merged_prefix,
-                suffix=merged_suffix,
-            )
+            replace(context, **replace_kwargs)
         )
         if isinstance(self.content, str):
             return text

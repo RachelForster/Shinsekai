@@ -23,8 +23,11 @@ import uuid
 
 import yaml
 
+from ai.llm.template.core import TemplateContext
+from ai.llm.template.integrations.localization import resolve_template_locale
 from ai.llm.template.story import (
     AUTHOR_COMPILER_TEMPLATE,
+    STORY_AUTHOR_SPEC,
     StoryRequestContext,
     build_story_author_user_section,
 )
@@ -147,9 +150,17 @@ class ConfigStoryAuthorModel:
                 "generation.model_not_configured",
                 "story author LLM adapter is missing",
             )
-        prompt = build_story_author_user_section().render(StoryRequestContext(request))
+        locale = resolve_template_locale(self.config_manager)
+        prompt = STORY_AUTHOR_SPEC.render_user(
+            StoryRequestContext(request, locale=locale)
+        )
         messages = [
-            {"role": "system", "content": AUTHOR_COMPILER_TEMPLATE},
+            {
+                "role": "system",
+                "content": STORY_AUTHOR_SPEC.render_system(
+                    TemplateContext(locale=locale)
+                ),
+            },
             {"role": "user", "content": prompt},
         ]
         chat_kwargs: dict[str, Any] = {}

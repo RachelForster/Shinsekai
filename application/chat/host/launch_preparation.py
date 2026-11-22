@@ -9,10 +9,10 @@ import os
 import sys
 from application.chat.host.ports import LaunchPlan, LaunchRejected
 from application.chat.build_effect_context import SelectedEffectContext
+from ai.llm.template.integrations.localization import resolve_template_locale
 from application.chat.templates import (
     TEMP_SPLIT_META,
     _compose_runtime_template,
-    _effective_user_scenario,
     _history_id_from_scenario,
     _template_dir,
 )
@@ -56,7 +56,7 @@ class ChatLaunchPreparation:
         media_selection_mode: str = "indexed",
         use_current_template_for_history: bool = False,
     ) -> LaunchPlan | LaunchRejected:
-        effective_user_scenario = _effective_user_scenario(user_scenario)
+        raw_user_scenario = (user_scenario or "").strip()
         chat_session = getattr(state, "chat_session", {}) or {}
         player_name = str(chat_session.get("playerCharacter") or "")
         read_player_speech = bool(chat_session.get("readPlayerSpeech", False))
@@ -74,14 +74,20 @@ class ChatLaunchPreparation:
             effective_system = effective_system + "\n" + player_rules
         template = _compose_runtime_template(
             effective_system,
-            effective_user_scenario,
+            user_scenario,
             effect_context,
+            locale=resolve_template_locale(
+                getattr(state, "stores", None) or state.config_manager
+            ),
         )
         template_dir = _template_dir(state)
         (template_dir / "_temp.txt").write_text(template, encoding="utf-8")
         (template_dir / TEMP_SPLIT_META).write_text(
             json.dumps(
-                {"scenario": effective_user_scenario, "system": system_template},
+                {
+                    "scenario": raw_user_scenario,
+                    "system": system_template,
+                },
                 ensure_ascii=False,
                 indent=2,
             ),

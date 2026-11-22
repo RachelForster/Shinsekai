@@ -92,16 +92,12 @@ def _translate_background_fields(state: BridgeState, payload: dict[str, Any]) ->
 
 
 def _save_background_image_tags(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
-    name = str(payload.get("name") or "").strip()
-    message = state.background_manager.upload_bg_tags(name, str(payload.get("bgTags") or ""))
-    if message.startswith("找不到") or message.startswith("请") or "出错" in message:
-        raise RuntimeError(message)
-    return _background_json_after_reload(state, name)
+    return _execute_background_request(
+        state, BackgroundOperation.SAVE_IMAGE_TAGS, payload
+    )
 
 
 def _save_background_bgm_tags(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
-    name = str(payload.get("name") or "").strip()
-    message = state.background_manager.upload_bgm_tags(name, str(payload.get("bgmTags") or ""))
-    if message.startswith("找不到") or message.startswith("请") or "出错" in message:
-        raise RuntimeError(message)
-    return _background_json_after_reload(state, name)
+    return _execute_background_request(
+        state, BackgroundOperation.SAVE_BGM_TAGS, payload
+    )

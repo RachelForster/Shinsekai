@@ -435,8 +435,10 @@ export function createChatPreviewPlatform(ctx: BrowserPreviewContext): ChatPlatf
           ...getChat(),
           dialogText: "浏览器预览历史已清空。",
           historyEntries: [],
+          isSystemDialog: true,
           options: [],
           status: "idle",
+          statusMessage: "浏览器预览历史已清空。",
           numericInfo: "idle",
         });
         emitChat();

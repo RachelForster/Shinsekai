@@ -20,6 +20,7 @@ from .template.integrations.localization import (
     _target_voice_display_name as _voice_display_name,
     _ui_voice_same_lang as _same_voice_language,
     is_transparent_background,
+    resolve_template_locale,
     translate_template,
 )
 from .template.integrations.tools import format_llm_tools_block
@@ -30,7 +31,10 @@ DEFAULT_DIALOG_CONTRACT_ID = "default.dialog.v1"
 
 
 def _T(key: str, **kwargs) -> str:
-    return translate_template(key, **kwargs)
+    return translate_template(key, config_manager=config_manager, **kwargs)
+
+
+_DEFAULT_T = _T
 
 
 def no_valid_characters_message() -> str:
@@ -56,8 +60,13 @@ def resolve_chat_template_characters(
     )
 
 
-def json_format_reminder() -> str:
+def json_format_reminder(*, locale: str | None = None) -> str:
     """Close system prompts with the output format and tool protocol rules."""
+    if locale is not None and _T is _DEFAULT_T:
+        return "\n".join(
+            translate_template(key, locale=locale).strip()
+            for key in ("closing_json_reminder", "closing_tool_protocol")
+        )
     return "\n".join(
         _T(key).strip()
         for key in ("closing_json_reminder", "closing_tool_protocol")
@@ -149,11 +158,13 @@ class TemplateGenerator:
             if self_char is not None and is_self_persona_name(getattr(self_char, "name", "")):
                 self_persona_setting = str(getattr(self_char, "character_setting", "") or "").strip()
         has_background = bool(bg_name) and not is_transparent_background(bg_name)
+        resolved_locale = resolve_template_locale(config_manager)
         context = DialogTemplateContext(
             characters=tuple(characters),
             translate=_T,
             target_voice_name=_target_voice_display_name(),
             json_reminder=json_format_reminder(),
+            locale=resolved_locale,
             player_name=player_character if player is not None else "",
             player_character=player,
             self_persona_setting=self_persona_setting,

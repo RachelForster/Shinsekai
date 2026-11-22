@@ -18,7 +18,11 @@ from core.storage import FileDocumentStore, PydanticJsonCodec
 from application.chat.presentation.initial_sprite import (
     initial_sprite_path_for_characters,
 )
-from ai.llm.template.integrations.localization import translate_template
+from ai.llm.template.core import PROMPT_CATALOG
+from ai.llm.template.integrations.localization import (
+    resolve_template_locale,
+    translate_template,
+)
 from ai.llm.template.dialog.context import EffectCatalogContext, EffectCatalogEntry
 from application.chat.build_effect_context import SelectedEffectContext
 from ai.llm.template.prompts import (
@@ -35,6 +39,7 @@ from ai.llm.template_generator import (
 
 from application.runtime.state import BridgeState
 from sdk.adapters.storage import DocumentStore
+from sdk.lang import normalize_lang
 from sdk.path_utils import safe_child_path, safe_filename
 
 MARK_SCENARIO = "<<<EASYAI_USER_SCENARIO>>>"
@@ -42,6 +47,8 @@ MARK_SYSTEM = "<<<EASYAI_SYSTEM_TEMPLATE>>>"
 MARK_METADATA = "<<<EASYAI_TEMPLATE_METADATA>>>"
 TEMP_SPLIT_META = "_temp_split.json"
 DEFAULT_EMPTY_SCENARIO = "你扮演一个RPG系统。"
+_default_translate_template = translate_template
+_default_json_format_reminder = json_format_reminder
 _fallback_presets_lock = threading.Lock()
 _fallback_preset_stores: dict[Path, FileDocumentStore[UserPromptPresetLibrary]] = {}
 _MAX_FALLBACK_PRESET_STORES = 16
@@ -240,25 +247,48 @@ def _effective_user_scenario(user_scenario: str) -> str:
     return (user_scenario or "").strip() or DEFAULT_EMPTY_SCENARIO
 
 
+def _localized_user_scenario(user_scenario: str, *, locale: str = "zh_CN") -> str:
+    cleaned = (user_scenario or "").strip()
+    if cleaned:
+        return cleaned
+    return PROMPT_CATALOG.translate("session.default_empty_scenario", locale=locale)
+
+
 def _compose_runtime_template(
     system_template: str,
     user_scenario: str,
     effect_context: SelectedEffectContext | None = None,
+    *,
+    locale: str | None = None,
 ) -> str:
+    effective_locale = (
+        normalize_lang(locale) if locale else resolve_template_locale()
+    )
     catalog = None
     if effect_context is not None:
+        effect_translate = (
+            (lambda key, **kw: translate_template(key, locale=effective_locale, **kw))
+            if locale is not None and translate_template is _default_translate_template
+            else translate_template
+        )
         catalog = EffectCatalogContext(
             effects=tuple(
                 EffectCatalogEntry(item.label, item.kind, item.modes)
                 for item in effect_context.catalog
             ),
-            translate=translate_template,
+            translate=effect_translate,
         )
+    reminder_text = (
+        json_format_reminder(locale=effective_locale)
+        if locale is not None and json_format_reminder is _default_json_format_reminder
+        else json_format_reminder()
+    )
     context = RuntimePromptContext(
         system_template=(system_template or "").rstrip(),
-        user_scenario=_effective_user_scenario(user_scenario),
-        json_reminder=json_format_reminder(),
+        user_scenario=_localized_user_scenario(user_scenario, locale=effective_locale),
+        json_reminder=reminder_text,
         effect_catalog=catalog,
+        locale=effective_locale,
     )
     return build_runtime_prompt_section().render(context) + "\n"
 
@@ -343,15 +373,13 @@ def _read_split_meta(template_dir: Path) -> tuple[str, str] | None:
         return None
     if not isinstance(data, dict):
         return None
-    scenario = data.get("scenario", "")
-    system = data.get("system", "")
-    if not isinstance(scenario, str):
-        scenario = ""
-    if not isinstance(system, str):
-        system = ""
-    if scenario.strip() or system.strip():
-        return scenario, system
-    return None
+    has_scenario = isinstance(data.get("scenario"), str)
+    has_system = isinstance(data.get("system"), str)
+    if not (has_scenario or has_system):
+        return None
+    scenario = data["scenario"] if has_scenario else ""
+    system = data["system"] if has_system else ""
+    return scenario, system
 
 
 def _repair_template_parts_from_session_if_needed(

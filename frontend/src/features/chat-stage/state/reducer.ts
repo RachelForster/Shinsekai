@@ -96,6 +96,7 @@ function submitUserMessageState(
       dialogText: text,
       inputAttachments: [],
       inputDraft: "",
+      isSystemDialog: undefined,
       optimisticSubmission,
       options: [],
     });
@@ -108,6 +109,7 @@ function submitUserMessageState(
     error: undefined,
     inputDraft: "",
     inputAttachments: [],
+    isSystemDialog: undefined,
     optimisticSubmission,
     options: [],
     sessionClosedReason: undefined,

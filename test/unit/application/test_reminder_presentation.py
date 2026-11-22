@@ -12,7 +12,10 @@ import pytest
 
 from ai.tts.model_session import tts_model_session
 from application.reminders.presentation import ReminderPresenter
-from application.reminders.workflow import REMINDER_EXPRESSION_STYLES
+from application.reminders.workflow import (
+    REMINDER_EXPRESSION_STYLES,
+    reminder_expression_styles,
+)
 from test.mocks import MockLLMAdapter
 
 
@@ -101,11 +104,11 @@ def test_reuses_dialog_contract_personality_translation_and_single_item_limit(
     assert {key: data[key] for key in reminder()} == reminder()
     assert data["previous_reminder_count"] == 0
     assert data["reminder_number"] == 1
-    assert data["expression_style"] in REMINDER_EXPRESSION_STYLES
+    assert data["expression_style"] in reminder_expression_styles("zh_CN")
     assert "嘴硬但关心用户" in system
     assert '"dialog"' in system and '"translate"' in system
-    assert "exactly one dialog item" in system
-    assert "do not invent facts" in system
+    assert "仅输出 1 个条目" in system
+    assert "不要编造事实" in system
     from i18n import tr_in_bundle
 
     assert tr_in_bundle("template_gen.r_dialog_max_items", "zh_CN", n=1) in system
@@ -116,11 +119,12 @@ def test_prompt_uses_current_local_date_prior_count_and_varied_expression(presen
     clock = Mock()
     clock.now.return_value = now
     monkeypatch.setattr("application.reminders.workflow.datetime", clock)
-    choose = Mock(side_effect=REMINDER_EXPRESSION_STYLES[:2])
+    zh_styles = reminder_expression_styles("zh_CN")[:2]
+    choose = Mock(side_effect=zh_styles)
     monkeypatch.setattr("application.reminders.workflow.random.choice", choose)
     presenter.workflow.complete = Mock(return_value=output())
     payload = reminder(delivery_count=3, current_date="wrong date", previous_reminder_count=999)
-    for style in REMINDER_EXPRESSION_STYLES[:2]:
+    for style in zh_styles:
         presenter.render(payload)
         system, user = presenter.workflow.complete.call_args.args
         data = json.loads(user)
@@ -130,9 +134,36 @@ def test_prompt_uses_current_local_date_prior_count_and_varied_expression(presen
         assert data["previous_reminder_count"] == 3
         assert data["reminder_number"] == 4
         assert data["expression_style"] == style
-        assert "do not mean the user ignored" in system
+        assert "也不代表用户忽略了提醒" in system
     assert payload["delivery_count"] == 3
     assert choose.call_count == 2
+
+
+@pytest.mark.parametrize(
+    ("ui_language", "dialog_marker", "reminder_marker"),
+    [
+        ("zh_CN", "出场人物有：澪", "本轮是一次计划提醒播报"),
+        ("en", "Cast includes: 澪", "This turn is a scheduled reminder."),
+        ("ja", "登場人物：澪", "このターンはスケジュールされたリマインダー通知です。"),
+    ],
+)
+def test_reminder_prompt_and_dialog_contract_switch_together_with_ui_language(
+    presenter,
+    ui_language,
+    dialog_marker,
+    reminder_marker,
+):
+    presenter.config.config.system_config.ui_language = ui_language
+    presenter.config.config.system_config.voice_language = "en"
+    presenter.workflow.complete = Mock(return_value=output())
+
+    presenter.render(reminder())
+
+    system, user = presenter.workflow.complete.call_args.args
+    data = json.loads(user)
+    assert dialog_marker in system
+    assert reminder_marker in system
+    assert data["expression_style"] in reminder_expression_styles(ui_language)
 
 
 @pytest.mark.parametrize("count", [-1, True, "3", 1.5, None])

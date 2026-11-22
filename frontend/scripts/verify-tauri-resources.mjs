@@ -52,6 +52,9 @@ await assertExists(path.join(resourcesDir, "application", "runtime", "dependenci
 await assertExists(path.join(resourcesDir, "frontend_bridge_core", "transport", "mobile_access.py"));
 await assertExists(path.join(resourcesDir, "frontend_bridge_core", "transport", "chat_commands.py"));
 await assertExists(path.join(resourcesDir, "ai", "llm", "llm_manager.py"));
+await assertExists(path.join(resourcesDir, "ai", "llm", "template", "catalog", "zh_CN", "dialog.yaml"));
+await assertExists(path.join(resourcesDir, "ai", "llm", "template", "catalog", "en", "dialog.yaml"));
+await assertExists(path.join(resourcesDir, "ai", "llm", "template", "catalog", "ja", "dialog.yaml"));
 await assertExists(path.join(resourcesDir, "ai", "asr", "asr_adapter.py"));
 await assertExists(path.join(resourcesDir, "ai", "tts", "tts_manager.py"));
 await assertExists(path.join(resourcesDir, "ai", "t2i", "t2i_manager.py"));

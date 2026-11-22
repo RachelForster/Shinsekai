@@ -4,6 +4,7 @@ import re
 from queue import Queue
 from uuid import uuid4
 
+from ai.llm.template.integrations.localization import resolve_template_locale
 from ai.vision.service import ChatVisionService
 from application.chat.capabilities import (
     TurnAdmissionRequest,
@@ -72,6 +73,7 @@ class LLMWorker(ThreadDagNode):
         if self._app_inited:
             return
         rt = get_app_runtime()
+        self.config_manager = getattr(rt, "config_manager", None) or getattr(rt, "config", None)
         self.ui_update_manager = rt.ui_update_manager
         self.llm_manager = rt.llm_manager
         self.user_input_queue = self.inq(self.PORT_USER_INPUT)
@@ -173,6 +175,9 @@ class LLMWorker(ThreadDagNode):
                         chat_kwargs["user_display_text"] = prepared_input.display_text
                     render_kwargs: dict[str, object] = {
                         "background": prompt_envelope.background,
+                        "locale": resolve_template_locale(
+                            getattr(self, "config_manager", None)
+                        ),
                     }
                     if prompt_envelope.prefix:
                         render_kwargs["prefix"] = prompt_envelope.prefix

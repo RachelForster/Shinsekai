@@ -15,7 +15,10 @@ from pathlib import Path
 from typing import Any
 
 from ai.llm.template.core import TemplateContext
+from ai.llm.template.integrations.localization import resolve_template_locale
 from ai.llm.template.story import (
+    STORY_ASSESSMENT_SPEC,
+    STORY_GUIDANCE_SPEC,
     StoryGuidanceContext,
     StoryGuidanceTransition,
     StoryRequestContext,
@@ -23,6 +26,7 @@ from ai.llm.template.story import (
     build_story_assessment_system_section,
     build_story_assessment_user_section,
 )
+from sdk.lang import LocaleCode
 from config.feature_flags import FeatureFlag
 from core.chat_history.storage import chat_history_session_dir
 from core.chat_history.text import parse_assistant_dialog_content
@@ -85,7 +89,7 @@ def load_prompt_session(history_path: str | Path, flags: Any) -> StorySession | 
     return session
 
 
-def node_prompt(session: StorySession) -> str:
+def node_prompt(session: StorySession, *, locale: LocaleCode = "zh_CN") -> str:
     state = session.active_branch.state
     node = session.runtime.program.nodes_by_id[state.current_node_id]
     context = StoryGuidanceContext(
@@ -101,15 +105,23 @@ def node_prompt(session: StorySession) -> str:
             for item in node.transitions
         ),
         background=node.background,
+        locale=locale,
     )
-    return build_story_guidance_section().render(context)
+    return STORY_GUIDANCE_SPEC.render_system(context)
 
 
 class StoryPromptHooks:
-    def __init__(self, history_path: str, flags: Any, adapter: Any) -> None:
+    def __init__(
+        self,
+        history_path: str,
+        flags: Any,
+        adapter: Any,
+        config_manager: Any = None,
+    ) -> None:
         self.history_path = history_path
         self.flags = flags
         self.adapter = adapter
+        self.config_manager = config_manager
         self.publish = lambda story: None
         self.history_entries = lambda: []
         self.branch_id = lambda: None
@@ -117,6 +129,9 @@ class StoryPromptHooks:
         self._turn: tuple[str, str, int, str] | None = None
         self._history: list[dict[str, Any]] = []
         self._assessment: list[dict[str, Any]] = []
+
+    def _locale(self) -> LocaleCode:
+        return resolve_template_locale(self.config_manager)
 
     @staticmethod
     def _identity(session: StorySession) -> tuple[str, str, int, str]:
@@ -154,7 +169,7 @@ class StoryPromptHooks:
             1
             if context.messages and context.messages[0].get("role") == "system"
             else 0,
-            {"role": "system", "content": node_prompt(session)},
+            {"role": "system", "content": node_prompt(session, locale=self._locale())},
         )
 
     def persist_message(self, message: dict[str, Any]) -> bool:
@@ -236,18 +251,19 @@ class StoryPromptHooks:
                     ],
                     "conversation": messages[-12:],
                 }
+                locale = self._locale()
                 response = self.adapter.chat(
                     [
                         {
                             "role": "system",
-                            "content": build_story_assessment_system_section().render(
-                                TemplateContext()
+                            "content": STORY_ASSESSMENT_SPEC.render_system(
+                                TemplateContext(locale=locale)
                             ),
                         },
                         {
                             "role": "user",
-                            "content": build_story_assessment_user_section().render(
-                                StoryRequestContext(request)
+                            "content": STORY_ASSESSMENT_SPEC.render_user(
+                                StoryRequestContext(request, locale=locale)
                             ),
                         },
                     ],
@@ -304,7 +320,12 @@ def install_story_prompt_hooks(
     if dispatcher is None:
         dispatcher = PluginHookDispatcher()
         llm_manager.hook_dispatcher = dispatcher
-    hooks = StoryPromptHooks(history_path, flags, llm_manager.llm_adapter)
+    hooks = StoryPromptHooks(
+        history_path,
+        flags,
+        llm_manager.llm_adapter,
+        config_manager=config,
+    )
     from application.chat.history.state import (
         get_history,
         serialize_chat_history_entries,

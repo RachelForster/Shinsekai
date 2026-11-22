@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+from threading import RLock
 from types import SimpleNamespace
 from typing import Any, Iterable
 
@@ -18,6 +19,8 @@ from application.runtime.state import _jsonify
 
 class BackgroundOperation(str, Enum):
     SAVE = "save"
+    SAVE_IMAGE_TAGS = "save-image-tags"
+    SAVE_BGM_TAGS = "save-bgm-tags"
     DELETE = "delete"
     UPLOAD_IMAGES = "upload-images"
     UPLOAD_BGM = "upload-bgm"
@@ -54,6 +57,8 @@ def parse_background_request(
 class BackgroundUseCase:
     """Single application entry point for background resource mutations."""
 
+    _mutation_lock = RLock()
+
     def __init__(
         self,
         state: Any,
@@ -72,6 +77,8 @@ class BackgroundUseCase:
     def execute(self, request: BackgroundRequest) -> Any:
         handlers = {
             BackgroundOperation.SAVE: self._save,
+            BackgroundOperation.SAVE_IMAGE_TAGS: self._save_image_tags,
+            BackgroundOperation.SAVE_BGM_TAGS: self._save_bgm_tags,
             BackgroundOperation.DELETE: self._delete,
             BackgroundOperation.UPLOAD_IMAGES: self._upload_images,
             BackgroundOperation.UPLOAD_BGM: self._upload_bgm,
@@ -82,7 +89,8 @@ class BackgroundUseCase:
             BackgroundOperation.IMPORT: self._import_packages,
             BackgroundOperation.EXPORT: self._export_package,
         }
-        return handlers[request.operation](request.payload)
+        with self._mutation_lock:
+            return handlers[request.operation](request.payload)
 
     def _background(self, name: str) -> Any:
         if self._backgrounds is not None:
@@ -134,6 +142,40 @@ class BackgroundUseCase:
         if saved is None:
             raise RuntimeError(message)
         return _jsonify(saved)
+
+    def _persist_background(self, background: Any) -> None:
+        if self._backgrounds is not None and getattr(background, "id", None):
+            self._backgrounds.put(background.id, background)
+        else:
+            self._state.config_manager.save_background_config()
+
+    def _update_background_fields(self, name: str, **updates: Any) -> dict[str, Any]:
+        background = self._background(name)
+        bg_id = getattr(background, "id", None)
+        patch_fn = (
+            getattr(self._backgrounds, "patch", None)
+            if self._backgrounds is not None
+            else None
+        )
+        if self._backgrounds is not None and bg_id and callable(patch_fn):
+            patch_fn(bg_id, lambda current: current.model_copy(update=updates))
+        else:
+            for field, value in updates.items():
+                setattr(background, field, value)
+            self._persist_background(background)
+        return self._after_reload(name)
+
+    def _save_image_tags(self, payload: dict[str, Any]) -> dict[str, Any]:
+        name = str(payload.get("name") or "").strip()
+        if not name:
+            raise ValueError("background name is required")
+        return self._update_background_fields(name, bg_tags=str(payload.get("bgTags") or ""))
+
+    def _save_bgm_tags(self, payload: dict[str, Any]) -> dict[str, Any]:
+        name = str(payload.get("name") or "").strip()
+        if not name:
+            raise ValueError("background name is required")
+        return self._update_background_fields(name, bgm_tags=str(payload.get("bgmTags") or ""))
 
     def _delete(self, payload: dict[str, Any]) -> dict[str, Any]:
         name = str(payload.get("name") or "").strip()

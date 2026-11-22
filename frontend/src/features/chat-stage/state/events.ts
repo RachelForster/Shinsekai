@@ -108,11 +108,12 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, re
         eventSeq: Math.max(state.eventSeq, event.seq),
         error: undefined,
         ...(event.isSystem && !event.speaker.trim()
-          ? { systemMessageText: htmlToText(event.fullHtml) }
+          ? { isSystemDialog: true, systemMessageText: htmlToText(event.fullHtml) }
           : {
               characterName: event.speaker,
               dialogHtml: event.fullHtml,
               dialogText: htmlToText(event.fullHtml),
+              isSystemDialog: false,
               options: [],
               spriteReaction: null,
               systemMessageText: undefined,

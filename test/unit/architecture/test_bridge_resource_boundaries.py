@@ -43,6 +43,8 @@ def test_background_bridge_delegates_resource_mutations_to_one_use_case_entry() 
         "delete_background",
         "delete_single_bgm",
         "delete_single_sprite",
+        "upload_bg_tags",
+        "upload_bgm_tags",
         "upload_bgms",
         "upload_sprites",
     }
@@ -74,8 +76,10 @@ def test_character_bridge_delegates_resource_mutations_to_one_use_case_entry() -
         "delete_character",
         "delete_single_sprite",
         "delete_sprite_voice",
+        "save_sprite_scale",
         "save_sprite_voice_text",
         "save_sprite_voice_type",
+        "upload_emotion_tags",
         "upload_sprites",
         "upload_voice",
     }
