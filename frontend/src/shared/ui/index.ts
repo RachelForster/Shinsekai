@@ -15,6 +15,7 @@ export * from "./IconButton";
 export * from "./ImageAssetGallery";
 export * from "./MediaPreviewDialog";
 export * from "./VisualMedia";
+export * from "./PageSectionHost";
 export * from "./PageSectionNav";
 export * from "./PathDisplay";
 export * from "./PathPickerDialog";
