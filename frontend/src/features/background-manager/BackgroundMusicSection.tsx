@@ -315,7 +315,7 @@ export function BackgroundMusicSection({
             icon={<Upload aria-hidden className="button__icon" />}
             loading={uploadPending}
             onClick={() => setPickerOpen(true)}
-            variant="ghost"
+            variant="primary"
           >
             {t("background.asset.uploadBgm")}
           </AsyncButton>
@@ -332,7 +332,7 @@ export function BackgroundMusicSection({
             icon={<Trash2 aria-hidden className="button__icon" />}
             loading={batchDeletePending}
             onClick={onBatchDelete}
-            variant="ghost"
+            variant="danger"
           >
             {t("background.asset.deleteSelectedBgm")}
           </AsyncButton>
@@ -340,7 +340,7 @@ export function BackgroundMusicSection({
             disabled={!canClearBgm}
             icon={<Trash2 aria-hidden className="button__icon" />}
             onClick={onClearAll}
-            variant="ghost"
+            variant="danger"
           >
             {t("background.asset.clearBgm")}
           </Button>

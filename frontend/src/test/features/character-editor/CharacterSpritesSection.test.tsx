@@ -217,4 +217,34 @@ describe("CharacterSpritesSection", () => {
     expect(screen.getByLabelText("Voice text")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save text" })).toBeInTheDocument();
   });
+
+  it("applies a single-primary hierarchy in the sprite section header and inspector", () => {
+    const { container } = renderSection({
+      autoLabelAvailable: true,
+      autoLabelDisabled: false,
+      onAutoLabel: vi.fn(),
+      onGenerate: vi.fn(),
+      onOpenPortraitCrop: vi.fn(),
+    });
+
+    const headerActions = container.querySelector(".section__header .page__actions");
+    expect(headerActions).not.toBeNull();
+    expect(headerActions!.querySelectorAll(".button--primary")).toHaveLength(1);
+
+    expect(screen.getByRole("button", { name: "Upload" })).toHaveClass("button--primary");
+    expect(screen.getByRole("button", { name: "Generate sprites" })).not.toHaveClass(
+      "button--primary",
+      "button--ghost",
+      "button--danger",
+    );
+    expect(screen.getByRole("button", { name: "Smart labeling" })).toHaveClass("button--ghost");
+    expect(screen.getByRole("button", { name: "Batch tags" })).toHaveClass("button--ghost");
+    expect(screen.getByRole("button", { name: "Avatar" })).toHaveClass("button--ghost");
+    expect(screen.getByRole("button", { name: "Delete all sprites" })).toHaveClass("button--danger");
+
+    expect(screen.getByRole("button", { name: "Upload tags" })).not.toHaveClass("button--ghost");
+    expect(screen.getByRole("button", { name: "Upload voice" })).not.toHaveClass("button--ghost");
+    expect(screen.getByRole("button", { name: "Delete voice" })).toHaveClass("button--ghost");
+    expect(screen.getByRole("button", { name: "Remove" })).toHaveClass("button--danger");
+  });
 });

@@ -189,7 +189,7 @@ export function BackgroundSpriteGallery({
             icon={<Upload aria-hidden className="button__icon" />}
             loading={uploadPending}
             onClick={() => setPickerOpen(true)}
-            variant="ghost"
+            variant="primary"
           >
             {t("background.asset.uploadImages")}
           </AsyncButton>
@@ -210,7 +210,7 @@ export function BackgroundSpriteGallery({
               }
               onClearImages();
             }}
-            variant="ghost"
+            variant="danger"
           >
             {t("background.asset.clearImages")}
           </Button>
@@ -265,7 +265,7 @@ export function BackgroundSpriteGallery({
                   icon={<Save aria-hidden className="button__icon" />}
                   loading={saveTagsPending}
                   onClick={onSaveImageTags}
-                  variant="ghost"
+                  variant="default"
                 >
                   {t("background.action.saveImageTags")}
                 </AsyncButton>
@@ -273,7 +273,7 @@ export function BackgroundSpriteGallery({
                   icon={<Trash2 aria-hidden className="button__icon" />}
                   loading={deletePending}
                   onClick={() => onDeleteImage(selectedImageIndex)}
-                  variant="ghost"
+                  variant="danger"
                 >
                   {t("common.remove")}
                 </AsyncButton>

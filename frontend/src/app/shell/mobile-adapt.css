@@ -743,9 +743,64 @@
     background: var(--m3-inner-button-bg);
   }
 
+  .app-shell .button--ghost,
+  .dialog .button--ghost {
+    border-color: transparent;
+    border-radius: var(--m3-shape-full);
+    color: var(--color-text-muted);
+    background: transparent;
+    box-shadow: none;
+    font-weight: 550;
+  }
+
+  .app-shell .button--ghost:hover:not(:disabled),
+  .dialog .button--ghost:hover:not(:disabled) {
+    border-color: var(--m3-card-border);
+    color: var(--color-text-primary);
+    background: var(--m3-surface-container-high);
+    box-shadow: none;
+  }
+
+  .app-shell .button--ghost:active:not(:disabled),
+  .dialog .button--ghost:active:not(:disabled) {
+    background: var(--m3-surface-container-highest);
+    box-shadow: none;
+  }
+
+  .app-shell .button--ghost:disabled,
+  .dialog .button--ghost:disabled {
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+    opacity: 0.45;
+  }
+
   .app-shell .button--danger,
   .dialog .button--danger {
+    border-color: var(--color-danger-border);
     border-radius: var(--m3-shape-full);
+    color: var(--color-danger);
+    background: var(--color-danger-bg);
+    box-shadow: none;
+  }
+
+  .app-shell .button--danger:hover:not(:disabled),
+  .dialog .button--danger:hover:not(:disabled) {
+    border-color: var(--color-danger-border-strong);
+    color: var(--color-danger);
+    background: var(--color-danger-bg-hover);
+    box-shadow: none;
+  }
+
+  .app-shell .button--danger:active:not(:disabled),
+  .dialog .button--danger:active:not(:disabled) {
+    background: var(--color-danger-bg-intense);
+  }
+
+  .app-shell .button--danger:disabled,
+  .dialog .button--danger:disabled {
+    box-shadow: none;
+    opacity: 0.45;
   }
 
   .app-shell .icon-button,
@@ -754,8 +809,15 @@
     height: 40px;
     border-color: var(--m3-card-border);
     border-radius: var(--m3-shape-full);
+    color: var(--color-text-muted);
     background: var(--m3-surface-container-high);
+    box-shadow: none;
     -webkit-tap-highlight-color: transparent;
+  }
+
+  .app-shell .icon-button:hover:not(:disabled),
+  .dialog .icon-button:hover:not(:disabled) {
+    color: var(--color-text-primary);
   }
 
   .app-shell

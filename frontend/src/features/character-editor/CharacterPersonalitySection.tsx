@@ -44,6 +44,7 @@ export function CharacterPersonalitySection({
             icon={<Sparkles aria-hidden className="button__icon" />}
             loading={aiPending}
             onClick={onAiWrite}
+            variant="primary"
           >
             {t("character.action.aiWrite")}
           </AsyncButton>
@@ -79,7 +80,7 @@ export function CharacterPersonalitySection({
               icon={<Sparkles aria-hidden className="button__icon" />}
               loading={briefPending}
               onClick={onAiBrief}
-              variant="ghost"
+              variant="default"
             >
               {t("character.action.aiBrief")}
             </AsyncButton>

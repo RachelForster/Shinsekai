@@ -328,7 +328,7 @@ export function CharacterSpritesSection({
             icon={<Sparkles aria-hidden className="button__icon" />}
             onClick={onGenerate}
             tooltip={generateHint}
-            variant="ghost"
+            variant="default"
           >
             {t("character.sprite.generate")}
           </Button>
@@ -336,7 +336,7 @@ export function CharacterSpritesSection({
             icon={<Upload aria-hidden className="button__icon" />}
             loading={spriteUploadPending}
             onClick={() => setSpritePickerOpen(true)}
-            variant="ghost"
+            variant="primary"
           >
             {t("character.sprite.uploadImages")}
           </AsyncButton>
@@ -359,7 +359,7 @@ export function CharacterSpritesSection({
               {t("character.sprite.portraitCrop")}
             </Button>
           ) : null}
-          <Button icon={<Trash2 aria-hidden className="button__icon" />} onClick={onClearSprites} variant="ghost">
+          <Button icon={<Trash2 aria-hidden className="button__icon" />} onClick={onClearSprites} variant="danger">
             {t("character.sprite.clear")}
           </Button>
         </div>
@@ -408,7 +408,7 @@ export function CharacterSpritesSection({
                 <Button
                   icon={<FolderPlus aria-hidden className="button__icon" />}
                   onClick={() => setCreatingGroupOpen((current) => !current)}
-                  variant="ghost"
+                  variant="default"
                 >
                   {t("spriteGroup.newGroup")}
                 </Button>
@@ -429,7 +429,7 @@ export function CharacterSpritesSection({
                     setBatchSelectMode((current) => !current);
                     setCheckedIndices(new Set());
                   }}
-                  variant="ghost"
+                  variant={batchSelectMode ? "default" : "ghost"}
                 >
                   {t(batchSelectMode ? "spriteGroup.batchExitSelectMode" : "spriteGroup.batchSelectMode")}
                 </Button>
@@ -457,7 +457,12 @@ export function CharacterSpritesSection({
                   placeholder={t("spriteGroup.newGroupPlaceholder")}
                   value={newGroupInput}
                 />
-                <AsyncButton disabled={!newGroupInput.trim()} loading={spriteGroupsPending} onClick={handleCreateGroup}>
+                <AsyncButton
+                  disabled={!newGroupInput.trim()}
+                  loading={spriteGroupsPending}
+                  onClick={handleCreateGroup}
+                  variant="primary"
+                >
                   {t("spriteGroup.create")}
                 </AsyncButton>
               </div>
@@ -490,7 +495,7 @@ export function CharacterSpritesSection({
                     <Button
                       icon={<Trash2 aria-hidden className="button__icon" />}
                       onClick={() => setPendingDeleteGroup(activeSpriteGroup)}
-                      variant="ghost"
+                      variant="danger"
                     >
                       {t("spriteGroup.delete")}
                     </Button>
@@ -513,6 +518,7 @@ export function CharacterSpritesSection({
                       disabled={!renameInput.trim() || renameInput.trim() === activeSpriteGroup}
                       loading={spriteGroupsPending}
                       onClick={handleConfirmRename}
+                      variant="primary"
                     >
                       {t("common.save")}
                     </AsyncButton>
@@ -555,6 +561,7 @@ export function CharacterSpritesSection({
                     disabled={checkedIndices.size === 0 || !batchTargetGroup}
                     loading={spriteGroupsPending}
                     onClick={handleBatchMove}
+                    variant="primary"
                   >
                     {t("spriteGroup.batchMoveTo")}
                   </AsyncButton>
@@ -618,7 +625,7 @@ export function CharacterSpritesSection({
                       onChange={(event) => onSpriteTagChange(event.target.value)}
                       value={selectedSpriteTag}
                     />
-                    <AsyncButton loading={emotionTagsPending} onClick={onSaveTags} variant="ghost">
+                    <AsyncButton loading={emotionTagsPending} onClick={onSaveTags} variant="default">
                       {t("character.sprite.saveTags")}
                     </AsyncButton>
                   </div>
@@ -709,7 +716,7 @@ export function CharacterSpritesSection({
                       />
                       <AsyncButton
                         onClick={() => onSpriteVoiceTextBlur(selectedSprite?.voice_text ?? "")}
-                        variant="ghost"
+                        variant="default"
                       >
                         {t("character.sprite.saveVoiceText")}
                       </AsyncButton>
@@ -718,7 +725,7 @@ export function CharacterSpritesSection({
                 </label>
               ) : null}
               <div className="asset-inspector__actions">
-                <AsyncButton loading={voiceUploadPending} onClick={onSpriteVoiceUpload} variant="ghost">
+                <AsyncButton loading={voiceUploadPending} onClick={onSpriteVoiceUpload} variant="default">
                   {t("character.sprite.uploadVoice")}
                 </AsyncButton>
                 <AsyncButton loading={voiceDeletePending} onClick={onSpriteVoiceDelete} variant="ghost">
@@ -728,7 +735,7 @@ export function CharacterSpritesSection({
                   icon={<Trash2 aria-hidden className="button__icon" />}
                   loading={spriteDeletePending}
                   onClick={onSpriteDelete}
-                  variant="ghost"
+                  variant="danger"
                 >
                   {t("common.remove")}
                 </AsyncButton>

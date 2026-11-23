@@ -29,6 +29,7 @@ export function EffectAudioSection({ ctx, id }: PageSectionProps<EffectPageConte
             icon={<Upload aria-hidden className="button__icon" />}
             loading={ctx.savePending || audio.uploadAudioPending}
             onClick={audio.handleUploadAudio}
+            variant="primary"
           >
             {t("effect.asset.uploadAudio")}
           </AsyncButton>
@@ -36,7 +37,7 @@ export function EffectAudioSection({ ctx, id }: PageSectionProps<EffectPageConte
             icon={<Save aria-hidden className="button__icon" />}
             loading={audio.saveAudioTagsPending}
             onClick={audio.saveAudioTags}
-            variant="ghost"
+            variant="default"
           >
             {t("effect.action.saveAudioTags")}
           </AsyncButton>

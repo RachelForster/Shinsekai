@@ -231,7 +231,7 @@ export function CharacterMemorySection({
             icon={<Upload aria-hidden className="button__icon" />}
             loading={memoryImportPending}
             onClick={onImportMemories}
-            variant="ghost"
+            variant="default"
           >
             {t("character.memory.import")}
           </AsyncButton>
@@ -266,6 +266,7 @@ export function CharacterMemorySection({
             icon={<Search aria-hidden className="button__icon" />}
             loading={searchPending}
             onClick={onSearch}
+            variant="default"
           >
             {t("character.memory.search")}
           </AsyncButton>

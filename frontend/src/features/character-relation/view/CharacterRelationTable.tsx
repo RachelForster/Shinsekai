@@ -110,10 +110,10 @@ export function CharacterRelationTable({
         actionsContainer &&
         createPortal(
           <>
-            <Button disabled={pending} onClick={addRelationshipRow}>
+            <Button disabled={pending} onClick={addRelationshipRow} variant="default">
               {t("relation.addRow")}
             </Button>
-            <Button disabled={pending || !dirty} onClick={cancelRelationshipChanges}>
+            <Button disabled={pending || !dirty} onClick={cancelRelationshipChanges} variant="ghost">
               {t("relation.cancelChanges")}
             </Button>
           </>,
