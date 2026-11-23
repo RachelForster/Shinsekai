@@ -9,7 +9,11 @@ import os
 import sys
 from application.chat.host.ports import LaunchPlan, LaunchRejected
 from application.chat.build_effect_context import SelectedEffectContext
-from ai.llm.template.integrations.localization import resolve_template_locale
+from ai.llm.template.integrations.localization import (
+    resolve_template_locale,
+    translate_template,
+)
+from config.schema import SELF_PERSONA_NAME, is_self_persona_name
 from application.chat.templates import (
     TEMP_SPLIT_META,
     _compose_runtime_template,
@@ -60,8 +64,17 @@ class ChatLaunchPreparation:
         chat_session = getattr(state, "chat_session", {}) or {}
         player_name = str(chat_session.get("playerCharacter") or "")
         read_player_speech = bool(chat_session.get("readPlayerSpeech", False))
-        from ai.llm.template.dialog.sections.player import player_runtime_prompt
+        from ai.llm.template.dialog.sections.player import (
+            player_runtime_prompt,
+            strip_self_persona_block,
+        )
 
+        locale = resolve_template_locale(
+            getattr(state, "stores", None) or state.config_manager
+        )
+        has_self_in_cast = any(
+            is_self_persona_name(ch) for ch in (character_names or ())
+        )
         player_rules = player_runtime_prompt(
             state.config_manager,
             player_name,
@@ -71,15 +84,39 @@ class ChatLaunchPreparation:
             character_names=character_names,
         )
         effective_system = system_template or ""
+        if (not player_name and has_self_in_cast) or is_self_persona_name(player_name):
+            stripped_system = strip_self_persona_block(effective_system)
+            if stripped_system != effective_system:
+                effective_system = stripped_system
+                if not player_name and has_self_in_cast:
+                    getter = getattr(state.config_manager, "get_character_by_name", None)
+                    self_char = getter(SELF_PERSONA_NAME) if callable(getter) else None
+                    setting = (
+                        str(getattr(self_char, "character_setting", "") or "").strip()
+                        if self_char is not None
+                        else ""
+                    )
+                    if setting and setting not in effective_system:
+                        profile_header = (
+                            translate_template(
+                                "profile_for",
+                                locale=locale,
+                                name=SELF_PERSONA_NAME,
+                            )
+                            + setting
+                        )
+                        effective_system = (
+                            f"{effective_system}\n\n{profile_header}"
+                            if effective_system
+                            else profile_header
+                        )
         if player_rules and player_rules.strip() not in effective_system:
             effective_system = effective_system + "\n" + player_rules
         template = _compose_runtime_template(
             effective_system,
             user_scenario,
             effect_context,
-            locale=resolve_template_locale(
-                getattr(state, "stores", None) or state.config_manager
-            ),
+            locale=locale,
         )
         template_dir = _template_dir(state)
         (template_dir / "_temp.txt").write_text(template, encoding="utf-8")

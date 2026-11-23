@@ -2,6 +2,7 @@
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+import re
 
 from config.schema import SELF_PERSONA_NAME, is_self_persona_name
 
@@ -14,6 +15,9 @@ from ...integrations.localization import (
 from ..context import DialogTemplateContext
 
 
+_SELF_PERSONA_SENTINEL = "__SELF_PERSONA_SETTING_PLACEHOLDER__"
+
+
 def format_self_persona_prompt(setting: str, *, locale: str = "zh_CN") -> str:
     cleaned = str(setting or "").strip()
     if not cleaned:
@@ -23,6 +27,38 @@ def format_self_persona_prompt(setting: str, *, locale: str = "zh_CN") -> str:
         locale=locale,
         setting=cleaned,
     )
+
+
+def strip_self_persona_block(text: str) -> str:
+    """Remove persisted background-only self-persona prohibitions from legacy prompts."""
+    if not text:
+        return text
+    cleaned = text
+    changed = False
+    for locale in ("zh_CN", "en", "ja"):
+        sample = PROMPT_CATALOG.translate(
+            "dialog.self_persona_block",
+            locale=locale,
+            setting=_SELF_PERSONA_SENTINEL,
+        )
+        prefix, sep, suffix = sample.partition(_SELF_PERSONA_SENTINEL)
+        if not sep:
+            continue
+        head = prefix.strip()
+        tail = suffix.strip()
+        if not head or not tail:
+            continue
+        pattern = re.compile(
+            rf"[ \t]*{re.escape(head)}[\s\S]*?{re.escape(tail)}[ \t]*(?:\r?\n)*"
+        )
+        updated = pattern.sub("\n", cleaned)
+        if updated != cleaned:
+            cleaned = updated
+            changed = True
+    if not changed:
+        return text
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip("\n")
 
 
 @dataclass(frozen=True)
@@ -85,7 +121,7 @@ def player_runtime_prompt(
     locale = resolve_template_locale(config)
     if not name:
         if any(is_self_persona_name(ch) for ch in (character_names or ())):
-            return ""
+            return translate_template("self_persona_cast_runtime_override", locale=locale)
         getter = getattr(config, "get_character_by_name", None)
         self_char = getter(SELF_PERSONA_NAME) if callable(getter) else None
         if self_char is not None and is_self_persona_name(getattr(self_char, "name", "")):

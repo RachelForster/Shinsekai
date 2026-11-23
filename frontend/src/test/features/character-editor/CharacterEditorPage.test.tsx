@@ -1280,4 +1280,94 @@ describe("CharacterEditorPage", () => {
     expect(toastMessage.closest("article")).toHaveClass("toast--error");
     expect(screen.getByLabelText("Character setting")).toHaveValue("Quiet student.");
   });
+
+  it("serializes identity confirmation and AI actions so identity saves cannot overwrite generated output", async () => {
+    let serverCharacter: Character = {
+      ...structuredClone(character),
+      character_brief: "Old brief",
+      character_setting: "Old setting",
+      id: "char-mika",
+      sprite_prefix: "mika",
+    };
+    mockListCharacters.mockImplementation(async () => [structuredClone(serverCharacter)]);
+
+    let resolveAiWrite!: (value: {
+      characterBrief?: string;
+      characterSetting: string;
+      message: string;
+      ok?: boolean;
+    }) => void;
+    mockGenerateCharacterSetting.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveAiWrite = resolve;
+        }),
+    );
+
+    renderPage();
+    await waitForCharacterLoaded("Mika");
+
+    const prefixInput = screen.getByLabelText("Upload directory name (ASCII)");
+    fireEvent.change(prefixInput, { target: { value: "mika_new" } });
+    fireEvent.click(screen.getByRole("button", { name: "AI write" }));
+
+    const confirmPrefixBtn = await screen.findByRole("button", { name: /Confirm: Upload directory name/ });
+    await waitFor(() => expect(confirmPrefixBtn).toBeDisabled());
+    fireEvent.keyDown(prefixInput, { key: "Enter" });
+    expect(mockSaveCharacter).not.toHaveBeenCalled();
+
+    await act(async () => {
+      serverCharacter = {
+        ...serverCharacter,
+        character_brief: "New brief",
+        character_setting: "New AI setting",
+      };
+      resolveAiWrite({
+        characterBrief: "New brief",
+        characterSetting: "New AI setting",
+        message: "输出成功",
+        ok: true,
+      });
+    });
+
+    await waitFor(() => expect(screen.getByLabelText("Character setting")).toHaveValue("New AI setting"));
+    await waitFor(() => expect(confirmPrefixBtn).toBeEnabled());
+
+    let resolveIdentitySave!: (saved: Character) => void;
+    mockSaveCharacter.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveIdentitySave = (saved) => {
+            serverCharacter = structuredClone(saved);
+            resolve(structuredClone(saved));
+          };
+        }),
+    );
+
+    fireEvent.click(confirmPrefixBtn);
+    await waitFor(() => expect(mockSaveCharacter).toHaveBeenCalledTimes(1));
+    expect(mockSaveCharacter).toHaveBeenCalledWith(
+      expect.objectContaining({
+        character_brief: "New brief",
+        character_setting: "New AI setting",
+        sprite_prefix: "mika_new",
+      }),
+      "Mika",
+    );
+
+    // While identity confirmation is in flight, AI actions must be disabled and blocked.
+    await waitFor(() => expect(screen.getByRole("button", { name: "AI write" })).toBeDisabled());
+    expect(screen.getByRole("button", { name: "AI translate" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /AI.*brief|Generate brief/i })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "AI write" }));
+    expect(mockGenerateCharacterSetting).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveIdentitySave({
+        ...serverCharacter,
+        sprite_prefix: "mika_new",
+      });
+    });
+    await waitFor(() => expect(screen.getByRole("button", { name: "AI write" })).toBeEnabled());
+  });
 });

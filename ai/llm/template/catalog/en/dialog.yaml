@@ -65,6 +65,9 @@ player_portrait_vibe_value: the expression and action shown by the user this tur
 player_runtime_override: '
 
   The current player options below override any conflicting earlier player-control rules.'
+self_persona_cast_runtime_override: '
+
+  The current cast options below override any conflicting earlier self-persona rules: "自设" is explicitly included as a standalone cast member in this conversation and may speak and display sprites like any other character.'
 player_ai_control: '
 
   Player character: {name}

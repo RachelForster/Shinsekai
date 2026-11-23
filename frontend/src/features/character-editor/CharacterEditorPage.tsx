@@ -143,6 +143,9 @@ export function CharacterEditorPage() {
   const deletedCharacterKeysRef = useRef<Set<string>>(new Set());
   const cancelAutoSaveRef = useRef<(targetKey?: string) => Promise<void>>(() => Promise.resolve());
   const discardAutoSaveRef = useRef<(targetKey?: string) => Promise<void>>(() => Promise.resolve());
+  const pendingAiActionsRef = useRef(0);
+  const identityPendingRef = useRef(false);
+  const identityMutationEpochRef = useRef(0);
   const inCreateMode = isCreating || data.length === 0;
   const existingPrefixes = useMemo(() => data.map((character) => character.sprite_prefix), [data]);
   const selected = useMemo(() => {
@@ -285,9 +288,11 @@ export function CharacterEditorPage() {
       });
     },
     onSettled() {
+      identityPendingRef.current = false;
       setIdentitySavingField(null);
     },
     onSuccess(character, variables) {
+      identityMutationEpochRef.current += 1;
       if (
         deletedCharacterKeysRef.current.has(variables.sourceKey) ||
         deletedCharacterKeysRef.current.has(`name:${variables.originalName}`)
@@ -423,6 +428,7 @@ export function CharacterEditorPage() {
   const aiSettingMutation = useMutation({
     mutationFn: async (variables: {
       committedName: string;
+      identityEpoch: number;
       name: string;
       setting: string;
       sourceKey: string;
@@ -440,6 +446,9 @@ export function CharacterEditorPage() {
         title: t("character.action.aiWrite"),
       });
     },
+    onSettled() {
+      pendingAiActionsRef.current = Math.max(0, pendingAiActionsRef.current - 1);
+    },
     onSuccess(result, variables) {
       if (result.ok === false) {
         showToast({
@@ -456,7 +465,8 @@ export function CharacterEditorPage() {
         !variables.wasCreating &&
         variables.committedName &&
         variables.committedName === variables.name &&
-        !isDeleted
+        !isDeleted &&
+        identityMutationEpochRef.current === variables.identityEpoch
       ) {
         queryClient.setQueryData<Character[]>(charactersQueryKey, (current = []) =>
           current.map((item) => {
@@ -500,6 +510,9 @@ export function CharacterEditorPage() {
         title: t("character.action.aiBrief"),
       });
     },
+    onSettled() {
+      pendingAiActionsRef.current = Math.max(0, pendingAiActionsRef.current - 1);
+    },
     onSuccess(result, variables) {
       const stillActive =
         isCreatingRef.current === variables.wasCreating &&
@@ -534,6 +547,9 @@ export function CharacterEditorPage() {
         message: error instanceof Error ? error.message : t("character.error.translateFallback"),
         title: t("character.action.aiTranslate"),
       });
+    },
+    onSettled() {
+      pendingAiActionsRef.current = Math.max(0, pendingAiActionsRef.current - 1);
     },
     onSuccess(result, variables) {
       if (result.error) {
@@ -1146,8 +1162,18 @@ export function CharacterEditorPage() {
   cancelAutoSaveRef.current = autoSave.cancel;
   discardAutoSaveRef.current = autoSave.discardPending;
 
+  const aiActionPending = aiSettingMutation.isPending || aiBriefMutation.isPending || translateMutation.isPending;
+  const identityPending = identitySavingField !== null || identityMutation.isPending;
+
   const confirmIdentityField = (field: "name" | "sprite_prefix") => {
-    if (!selected || lockedSelectedPersona || identitySavingField !== null || identityMutation.isPending) {
+    if (
+      !selected ||
+      lockedSelectedPersona ||
+      identityPending ||
+      identityPendingRef.current ||
+      aiActionPending ||
+      pendingAiActionsRef.current > 0
+    ) {
       return;
     }
     const fieldError = field === "name" ? liveNameError : liveSpritePrefixError;
@@ -1170,6 +1196,8 @@ export function CharacterEditorPage() {
     }
     autoSave.discardPending();
     const latestSelected = resolveLatestSelectedCharacter() ?? selected;
+    identityPendingRef.current = true;
+    identityMutationEpochRef.current += 1;
     setIdentitySavingField(field);
     identityMutation.mutate({
       character: buildCommittedCharacterPayload(draft, currentPronunciationMap, latestSelected, {
@@ -1418,6 +1446,9 @@ export function CharacterEditorPage() {
   };
 
   const generateSetting = () => {
+    if (identityPending || identityPendingRef.current || aiSettingMutation.isPending) {
+      return;
+    }
     if (!draft.name.trim()) {
       setNameError(t("character.validation.nameRequired"));
       showToast({
@@ -1427,8 +1458,10 @@ export function CharacterEditorPage() {
       });
       return;
     }
+    pendingAiActionsRef.current += 1;
     aiSettingMutation.mutate({
       committedName: !inCreateMode && selected ? selected.name : "",
+      identityEpoch: identityMutationEpochRef.current,
       name: draft.name.trim(),
       setting: draft.character_setting,
       sourceKey: selectedCharacterKey,
@@ -1437,6 +1470,9 @@ export function CharacterEditorPage() {
   };
 
   const generateBrief = () => {
+    if (identityPending || identityPendingRef.current || aiBriefMutation.isPending) {
+      return;
+    }
     if (!draft.name.trim() || !draft.character_setting.trim()) {
       showToast({
         kind: "error",
@@ -1445,6 +1481,7 @@ export function CharacterEditorPage() {
       });
       return;
     }
+    pendingAiActionsRef.current += 1;
     aiBriefMutation.mutate({
       name: draft.name.trim(),
       setting: draft.character_setting,
@@ -1454,6 +1491,9 @@ export function CharacterEditorPage() {
   };
 
   const translateDraft = () => {
+    if (identityPending || identityPendingRef.current || translateMutation.isPending) {
+      return;
+    }
     if (!draft.name.trim() && !draft.character_setting.trim() && !draft.emotion_tags.trim()) {
       showToast({
         kind: "error",
@@ -1462,6 +1502,7 @@ export function CharacterEditorPage() {
       });
       return;
     }
+    pendingAiActionsRef.current += 1;
     translateMutation.mutate({
       characterSetting: draft.character_setting,
       emotionTags: draft.emotion_tags,
@@ -1688,6 +1729,7 @@ export function CharacterEditorPage() {
             colorPickerValue={colorPickerValue}
             draft={draft}
             id="character-basic"
+            identityConfirmDisabled={aiActionPending}
             identitySavingField={identitySavingField}
             nameDirty={nameDirty}
             nameError={liveNameError}
@@ -1706,6 +1748,7 @@ export function CharacterEditorPage() {
           />
 
           <CharacterPersonalitySection
+            actionsDisabled={identityPending}
             aiPending={aiSettingMutation.isPending}
             briefPending={aiBriefMutation.isPending}
             draft={draft}
