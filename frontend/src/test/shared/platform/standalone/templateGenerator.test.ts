@@ -689,4 +689,45 @@ describe("standalone template generation & dialog protocol", () => {
       expect(fallback).toContain(c.emptyScenario);
     }
   });
+
+  it("strips legacy self_persona_block and appends explicit cast override when 自设 is selected in persisted system prompts", () => {
+    const heroine = makeCharacter({
+      name: "星奈",
+      character_setting: "Observatory senpai.",
+    });
+    const selfPersona = makeCharacter({
+      name: "自设",
+      character_setting: "Traveler carrying a pocket watch.",
+    });
+    const legacySystem = [
+      "出场人物有：星奈",
+      "",
+      "【用户自设设定】",
+      "Traveler carrying a pocket watch.",
+      "（以上是当前与你对话的用户本人的背景与偏好设定；请在互动中自然知晓并贴合，不要将「自设」作为独立台词角色输出。）",
+      "",
+      "必须以规定的 JSON 格式回复。",
+    ].join("\n");
+
+    for (const playerCharacter of ["", "星奈"]) {
+      const prompt = buildStandaloneDialogSystemPrompt({
+        characters: [heroine, selfPersona],
+        systemConfig: { ui_language: "zh_CN", voice_language: "ja" },
+        payload: {
+          templateId: "legacy-self-cast",
+          characters: ["自设", "星奈"],
+          backgroundName: "",
+          historyPath: "./data/history/legacy-self-cast.json",
+          playerCharacter,
+          scenario: "星海观测台重逢",
+          system: legacySystem,
+        },
+      });
+
+      expect(prompt).not.toContain("不要将「自设」作为独立台词角色输出");
+      expect(prompt).toContain("以下是自设的角色设定：");
+      expect(prompt).toContain("Traveler carrying a pocket watch.");
+      expect(prompt).toContain("独立出场角色");
+    }
+  });
 });

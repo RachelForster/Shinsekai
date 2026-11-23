@@ -2,6 +2,7 @@
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+import re
 
 from config.schema import SELF_PERSONA_NAME, is_self_persona_name
 
@@ -14,6 +15,9 @@ from ...integrations.localization import (
 from ..context import DialogTemplateContext
 
 
+_SELF_PERSONA_SENTINEL = "__SELF_PERSONA_SETTING_PLACEHOLDER__"
+
+
 def format_self_persona_prompt(setting: str, *, locale: str = "zh_CN") -> str:
     cleaned = str(setting or "").strip()
     if not cleaned:
@@ -23,6 +27,38 @@ def format_self_persona_prompt(setting: str, *, locale: str = "zh_CN") -> str:
         locale=locale,
         setting=cleaned,
     )
+
+
+def strip_self_persona_block(text: str) -> str:
+    """Remove persisted background-only self-persona prohibitions from legacy prompts."""
+    if not text:
+        return text
+    cleaned = text
+    changed = False
+    for locale in ("zh_CN", "en", "ja"):
+        sample = PROMPT_CATALOG.translate(
+            "dialog.self_persona_block",
+            locale=locale,
+            setting=_SELF_PERSONA_SENTINEL,
+        )
+        prefix, sep, suffix = sample.partition(_SELF_PERSONA_SENTINEL)
+        if not sep:
+            continue
+        head = prefix.strip()
+        tail = suffix.strip()
+        if not head or not tail:
+            continue
+        pattern = re.compile(
+            rf"[ \t]*{re.escape(head)}[\s\S]*?{re.escape(tail)}[ \t]*(?:\r?\n)*"
+        )
+        updated = pattern.sub("\n", cleaned)
+        if updated != cleaned:
+            cleaned = updated
+            changed = True
+    if not changed:
+        return text
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip("\n")
 
 
 @dataclass(frozen=True)
@@ -83,9 +119,10 @@ def player_runtime_prompt(
 ) -> str:
     """Apply current player options without rewriting an older authored template."""
     locale = resolve_template_locale(config)
+    has_self_in_cast = any(is_self_persona_name(ch) for ch in (character_names or ()))
     if not name:
-        if any(is_self_persona_name(ch) for ch in (character_names or ())):
-            return ""
+        if has_self_in_cast:
+            return translate_template("self_persona_cast_runtime_override", locale=locale)
         getter = getattr(config, "get_character_by_name", None)
         self_char = getter(SELF_PERSONA_NAME) if callable(getter) else None
         if self_char is not None and is_self_persona_name(getattr(self_char, "name", "")):
@@ -94,22 +131,29 @@ def player_runtime_prompt(
                 return format_self_persona_prompt(setting, locale=locale)
         return ""
     character = config.get_character_by_name(name)
-    if character is None:
-        return ""
+    player_block = ""
+    if character is not None:
 
-    def _translate(key: str, **kwargs) -> str:
-        return translate_template(key, locale=locale, **kwargs)
+        def _translate(key: str, **kwargs) -> str:
+            return translate_template(key, locale=locale, **kwargs)
 
-    context = DialogTemplateContext(
-        characters=(),
-        translate=_translate,
-        target_voice_name=_target_voice_display_name(config, _translate),
-        json_reminder="",
-        locale=locale,
-        player_name=name,
-        player_character=character,
-        allow_player_dialogue=allow_dialogue,
-        read_player_speech=read_speech,
-        media_selection_mode=media_selection_mode,
-    )
-    return _translate("player_runtime_override") + PlayerSection().render(context)
+        context = DialogTemplateContext(
+            characters=(),
+            translate=_translate,
+            target_voice_name=_target_voice_display_name(config, _translate),
+            json_reminder="",
+            locale=locale,
+            player_name=name,
+            player_character=character,
+            allow_player_dialogue=allow_dialogue,
+            read_player_speech=read_speech,
+            media_selection_mode=media_selection_mode,
+        )
+        player_block = _translate("player_runtime_override") + PlayerSection().render(context)
+
+    if has_self_in_cast and not is_self_persona_name(name):
+        cast_override = translate_template("self_persona_cast_runtime_override", locale=locale)
+        if player_block:
+            return f"{player_block.rstrip()}{cast_override}"
+        return cast_override
+    return player_block

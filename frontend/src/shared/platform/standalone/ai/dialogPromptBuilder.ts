@@ -4,7 +4,41 @@ import type { CharacterOutfitState, ChatLaunchPayload, ChatStat } from "../../sl
 import type { SystemConfig } from "../../slices/configTypes";
 import type { Background, Effect } from "../../slices/workspaceTypes";
 import { createStandaloneTemplateTranslator } from "./standaloneTemplateLocales";
-import { buildStandaloneEffectCatalogBlock, generateStandaloneDialogSystemTemplate } from "./templateGenerator";
+import {
+  buildStandaloneEffectCatalogBlock,
+  generateStandaloneDialogSystemTemplate,
+  isSelfPersonaName,
+  SELF_PERSONA_NAME,
+} from "./templateGenerator";
+
+const SELF_PERSONA_SENTINEL = "__SELF_PERSONA_SETTING_PLACEHOLDER__";
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function stripStandaloneSelfPersonaBlock(text: string): string {
+  if (!text) return text;
+  let cleaned = text;
+  let changed = false;
+  for (const locale of ["zh_CN", "en", "ja"] as const) {
+    const translator = createStandaloneTemplateTranslator(locale);
+    const sample = translator("self_persona_block", { setting: SELF_PERSONA_SENTINEL });
+    const markerIndex = sample.indexOf(SELF_PERSONA_SENTINEL);
+    if (markerIndex < 0) continue;
+    const head = sample.slice(0, markerIndex).trim();
+    const tail = sample.slice(markerIndex + SELF_PERSONA_SENTINEL.length).trim();
+    if (!head || !tail) continue;
+    const pattern = new RegExp(`[ \\t]*${escapeRegExp(head)}[\\s\\S]*?${escapeRegExp(tail)}[ \\t]*(?:\\r?\\n)*`, "g");
+    const updated = cleaned.replace(pattern, "\n");
+    if (updated !== cleaned) {
+      cleaned = updated;
+      changed = true;
+    }
+  }
+  if (!changed) return text;
+  return cleaned.replace(/\n{3,}/g, "\n\n").replace(/^\n+|\n+$/g, "");
+}
 
 export interface StandalonePromptContext {
   characters: Character[];
@@ -67,17 +101,19 @@ export function buildStandaloneDialogSystemPrompt(ctx: StandalonePromptContext):
   const uiLanguage = systemConfig.ui_language || "zh_CN";
   const t = createStandaloneTemplateTranslator(uiLanguage);
 
+  const hadPersistedSystem = Boolean((payload.system ?? "").trim());
+  const selectedCharacterNames = (payload.characters ?? []).filter((name) => {
+    const key = name.trim().toLowerCase();
+    return Boolean(key) && characters.some((c) => c.name.trim().toLowerCase() === key);
+  });
+  const effectiveCastNames = selectedCharacterNames.length ? selectedCharacterNames : characters.map((c) => c.name);
   let systemTemplate = (payload.system ?? "").trim();
   if (!systemTemplate) {
     if (characters.length > 0) {
-      const selectedCharacterNames = (payload.characters ?? []).filter((name) => {
-        const key = name.trim().toLowerCase();
-        return Boolean(key) && characters.some((c) => c.name.trim().toLowerCase() === key);
-      });
       const generated = generateStandaloneDialogSystemTemplate({
         input: {
           name: payload.templateName || "runtime",
-          characters: selectedCharacterNames.length ? selectedCharacterNames : characters.map((c) => c.name),
+          characters: effectiveCastNames,
           primaryCharacters: payload.primaryCharacters,
           characterPromptMode: payload.characterPromptMode,
           backgroundName: payload.backgroundName ?? "",
@@ -104,6 +140,31 @@ export function buildStandaloneDialogSystemPrompt(ctx: StandalonePromptContext):
       systemTemplate = generated.system.trimEnd();
     } else {
       systemTemplate = t("standalone_fallback_system_prompt");
+    }
+  }
+
+  const playerCharacter = (payload.playerCharacter ?? "").trim();
+  const hasSelfInCast = effectiveCastNames.some((name) => isSelfPersonaName(name));
+  const selfAsPlayer = isSelfPersonaName(playerCharacter);
+  const selfAsNpcCast = hasSelfInCast && !selfAsPlayer;
+  if (hadPersistedSystem && (hasSelfInCast || selfAsPlayer)) {
+    const strippedSystem = stripStandaloneSelfPersonaBlock(systemTemplate);
+    if (strippedSystem !== systemTemplate) {
+      systemTemplate = strippedSystem;
+      if (selfAsNpcCast) {
+        const selfChar = characters.find((c) => isSelfPersonaName(c.name));
+        const selfSetting = (selfChar?.character_setting ?? "").trim();
+        if (selfSetting && !systemTemplate.includes(selfSetting)) {
+          const profileHeader = `${t("profile_for", { name: SELF_PERSONA_NAME })}${selfSetting}`;
+          systemTemplate = systemTemplate ? `${systemTemplate}\n\n${profileHeader}` : profileHeader;
+        }
+      }
+    }
+    if (selfAsNpcCast) {
+      const castOverride = t("self_persona_cast_runtime_override").trim();
+      if (castOverride && !systemTemplate.includes(castOverride)) {
+        systemTemplate = systemTemplate ? `${systemTemplate}\n\n${castOverride}` : castOverride;
+      }
     }
   }
 

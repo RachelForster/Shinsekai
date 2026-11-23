@@ -66,6 +66,9 @@ player_portrait_vibe_value: 用户本轮表现出的表情和动作
 player_runtime_override: '
 
   以下是当前主控选项；与先前的主控说明冲突时，以这些当前选项为准。'
+self_persona_cast_runtime_override: '
+
+  以下是当前出场人物选项；与先前关于「自设」的说明冲突时，以当前选项为准：「自设」已作为独立出场角色参与本次对话，请允许「自设」像其他出场角色一样正常发言与展示立绘。'
 player_ai_control: '
 
   主控人物：{name}

@@ -10,6 +10,7 @@ interface CharacterBasicSectionProps {
   colorPickerValue: string;
   draft: Character;
   id?: string;
+  identityConfirmDisabled?: boolean;
   identitySavingField?: "name" | "sprite_prefix" | null;
   nameDirty?: boolean;
   nameError: string;
@@ -31,6 +32,7 @@ export function CharacterBasicSection({
   colorPickerValue,
   draft,
   id,
+  identityConfirmDisabled = false,
   identitySavingField = null,
   nameDirty = false,
   nameError,
@@ -88,7 +90,7 @@ export function CharacterBasicSection({
                   !canEditDisplayName
                     ? (event) =>
                         handleIdentityKeyDown(event, {
-                          canConfirm: !nameError && identitySavingField === null,
+                          canConfirm: !nameError && identitySavingField === null && !identityConfirmDisabled,
                           disabled: identitySavingField !== null,
                           isDirty: nameDirty,
                           onCancel: () => onCancelName?.(),
@@ -102,7 +104,7 @@ export function CharacterBasicSection({
               />
               {!canEditDisplayName ? (
                 <InlineIdentityConfirm
-                  confirmDisabled={Boolean(nameError)}
+                  confirmDisabled={Boolean(nameError) || identityConfirmDisabled}
                   disabled={identitySavingField !== null && identitySavingField !== "name"}
                   fieldLabel={nameFieldLabel}
                   loading={identitySavingField === "name"}
@@ -149,7 +151,7 @@ export function CharacterBasicSection({
                   !lockedPersona
                     ? (event) =>
                         handleIdentityKeyDown(event, {
-                          canConfirm: !spritePrefixError && identitySavingField === null,
+                          canConfirm: !spritePrefixError && identitySavingField === null && !identityConfirmDisabled,
                           disabled: identitySavingField !== null,
                           isDirty: spritePrefixDirty,
                           onCancel: () => onCancelSpritePrefix?.(),
@@ -162,7 +164,7 @@ export function CharacterBasicSection({
               />
               {!lockedPersona ? (
                 <InlineIdentityConfirm
-                  confirmDisabled={Boolean(spritePrefixError)}
+                  confirmDisabled={Boolean(spritePrefixError) || identityConfirmDisabled}
                   disabled={identitySavingField !== null && identitySavingField !== "sprite_prefix"}
                   fieldLabel={spritePrefixLabel}
                   loading={identitySavingField === "sprite_prefix"}
