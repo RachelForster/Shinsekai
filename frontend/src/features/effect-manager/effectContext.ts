@@ -1,5 +1,6 @@
 import type { Effect } from "../../entities/config/types";
 import type { AutoSavePhase } from "../../shared/hooks/useDebouncedAutoSave";
+import type { SectionBusyLease } from "../../shared/ui";
 
 export interface EnsureSavedOptions {
   requireNonEmptyNameWhenSaved?: boolean;
@@ -38,7 +39,7 @@ export interface EffectPageContext {
   selectedEffectKey: string;
   selectedName: string;
   selectEffect: (name: string) => void;
-  setSectionBusy: (sectionId: string, busy: boolean) => void;
+  beginSectionBusy: (sectionId: string) => SectionBusyLease;
   startCreatingEffect: () => void;
   syncSavedEffect: (
     effect: Effect,

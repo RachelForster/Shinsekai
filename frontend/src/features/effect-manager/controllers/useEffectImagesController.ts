@@ -11,7 +11,7 @@ import {
 import { numberedTags, tagContents } from "../../../shared/assets/assetText";
 import { TAG_PREFIX_IMAGE } from "../../../shared/constants";
 import { useI18n } from "../../../shared/i18n";
-import { useReportSectionBusy, useToast } from "../../../shared/ui";
+import { useToast, withSectionBusy } from "../../../shared/ui";
 import type { EffectPageContext } from "../effectContext";
 
 export function useEffectImagesController(ctx: EffectPageContext) {
@@ -26,118 +26,118 @@ export function useEffectImagesController(ctx: EffectPageContext) {
     setSelectedImageIndexes([]);
   }, [ctx.selectedEffectKey]);
 
-  const imageUploadMutation = useMutation({
-    mutationFn: (paths: string[]) =>
-      uploadEffectImages({ imageTags: ctx.draft.image_tags, name: ctx.currentEffectName, paths }),
-    onError(error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("effect.asset.uploadError"),
-        title: t("effect.asset.uploadImage"),
-      });
-    },
-    onSuccess(effect) {
-      ctx.syncSavedEffect(effect, (current, saved) => ({
-        ...current,
-        image_audio_list: saved.image_audio_list,
-        image_list: saved.image_list,
-        image_tags: saved.image_tags,
-      }));
-      showToast({ kind: "success", title: t("effect.asset.uploadImage") });
-    },
-  });
+  const imageUploadMutation = useMutation(
+    withSectionBusy(ctx.beginSectionBusy, "effect-images", {
+      mutationFn: (paths: string[]) =>
+        uploadEffectImages({ imageTags: ctx.draft.image_tags, name: ctx.currentEffectName, paths }),
+      onError(error) {
+        showToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : t("effect.asset.uploadError"),
+          title: t("effect.asset.uploadImage"),
+        });
+      },
+      onSuccess(effect) {
+        ctx.syncSavedEffect(effect, (current, saved) => ({
+          ...current,
+          image_audio_list: saved.image_audio_list,
+          image_list: saved.image_list,
+          image_tags: saved.image_tags,
+        }));
+        showToast({ kind: "success", title: t("effect.asset.uploadImage") });
+      },
+    }),
+  );
 
-  const imageTagsSaveMutation = useMutation({
-    mutationFn: () => saveEffectImageTags({ imageTags: ctx.draft.image_tags, name: ctx.currentEffectName }),
-    onError(error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("effect.error.saveFallback"),
-        title: t("common.saveFailed"),
-      });
-    },
-    onSuccess(effect) {
-      ctx.syncSavedEffect(effect, (current, saved) => ({ ...current, image_tags: saved.image_tags }));
-      showToast({ kind: "success", title: t("effect.action.saveImageTags") });
-    },
-  });
+  const imageTagsSaveMutation = useMutation(
+    withSectionBusy(ctx.beginSectionBusy, "effect-images", {
+      mutationFn: () => saveEffectImageTags({ imageTags: ctx.draft.image_tags, name: ctx.currentEffectName }),
+      onError(error) {
+        showToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : t("effect.error.saveFallback"),
+          title: t("common.saveFailed"),
+        });
+      },
+      onSuccess(effect) {
+        ctx.syncSavedEffect(effect, (current, saved) => ({ ...current, image_tags: saved.image_tags }));
+        showToast({ kind: "success", title: t("effect.action.saveImageTags") });
+      },
+    }),
+  );
 
-  const imageDeleteMutation = useMutation({
-    mutationFn: (index: number) => deleteEffectImage(ctx.currentEffectName, index),
-    onError(error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("effect.error.deleteFallback"),
-        title: t("common.deleteFailed"),
-      });
-    },
-    onSuccess(effect) {
-      ctx.syncSavedEffect(effect, (current, saved) => ({
-        ...current,
-        image_audio_list: saved.image_audio_list,
-        image_list: saved.image_list,
-        image_tags: saved.image_tags,
-      }));
-      setSelectedImageIndexes([]);
-    },
-  });
+  const imageDeleteMutation = useMutation(
+    withSectionBusy(ctx.beginSectionBusy, "effect-images", {
+      mutationFn: (index: number) => deleteEffectImage(ctx.currentEffectName, index),
+      onError(error) {
+        showToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : t("effect.error.deleteFallback"),
+          title: t("common.deleteFailed"),
+        });
+      },
+      onSuccess(effect) {
+        ctx.syncSavedEffect(effect, (current, saved) => ({
+          ...current,
+          image_audio_list: saved.image_audio_list,
+          image_list: saved.image_list,
+          image_tags: saved.image_tags,
+        }));
+        setSelectedImageIndexes([]);
+      },
+    }),
+  );
 
-  const imageAudioUploadMutation = useMutation({
-    mutationFn: ({ index, path }: { index: number; path: string }) =>
-      uploadEffectImageAudio({ index, name: ctx.currentEffectName, path }),
-    onError(error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("effect.asset.uploadError"),
-        title: t("effect.asset.insertAudio"),
-      });
-    },
-    onSuccess(effect) {
-      ctx.syncSavedEffect(effect, (current, saved) => ({ ...current, image_audio_list: saved.image_audio_list }));
-      setImageAudioTargetIndex(null);
-    },
-  });
+  const imageAudioUploadMutation = useMutation(
+    withSectionBusy(ctx.beginSectionBusy, "effect-images", {
+      mutationFn: ({ index, path }: { index: number; path: string }) =>
+        uploadEffectImageAudio({ index, name: ctx.currentEffectName, path }),
+      onError(error) {
+        showToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : t("effect.asset.uploadError"),
+          title: t("effect.asset.insertAudio"),
+        });
+      },
+      onSuccess(effect) {
+        ctx.syncSavedEffect(effect, (current, saved) => ({ ...current, image_audio_list: saved.image_audio_list }));
+        setImageAudioTargetIndex(null);
+      },
+    }),
+  );
 
-  const imageAudioBatchUploadMutation = useMutation({
-    mutationFn: async ({ indexes, path }: { indexes: number[]; path: string }) => {
-      let effect: Effect | null = null;
-      for (const index of indexes) {
-        effect = await uploadEffectImageAudio({ index, name: ctx.currentEffectName, path });
-      }
-      if (!effect) throw new Error(t("effect.asset.noSelectedImage"));
-      return effect;
-    },
-    onError(error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("effect.asset.uploadError"),
-        title: t("effect.asset.batchInsertAudio"),
-      });
-    },
-    onSuccess(effect, variables) {
-      ctx.syncSavedEffect(effect, (current, saved) => ({ ...current, image_audio_list: saved.image_audio_list }), {
-        invalidate: false,
-      });
-      setSelectedImageIndexes([]);
-      setImageAudioBatchPickerOpen(false);
-      showToast({
-        kind: "success",
-        title: t("effect.asset.batchInsertAudioComplete", { count: variables.indexes.length }),
-      });
-    },
-    onSettled() {
-      ctx.invalidateEffects();
-    },
-  });
-
-  useReportSectionBusy(
-    ctx.setSectionBusy,
-    "effect-images",
-    imageUploadMutation.isPending ||
-      imageTagsSaveMutation.isPending ||
-      imageDeleteMutation.isPending ||
-      imageAudioUploadMutation.isPending ||
-      imageAudioBatchUploadMutation.isPending,
+  const imageAudioBatchUploadMutation = useMutation(
+    withSectionBusy(ctx.beginSectionBusy, "effect-images", {
+      mutationFn: async ({ indexes, path }: { indexes: number[]; path: string }) => {
+        let effect: Effect | null = null;
+        for (const index of indexes) {
+          effect = await uploadEffectImageAudio({ index, name: ctx.currentEffectName, path });
+        }
+        if (!effect) throw new Error(t("effect.asset.noSelectedImage"));
+        return effect;
+      },
+      onError(error) {
+        showToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : t("effect.asset.uploadError"),
+          title: t("effect.asset.batchInsertAudio"),
+        });
+      },
+      onSuccess(effect, variables) {
+        ctx.syncSavedEffect(effect, (current, saved) => ({ ...current, image_audio_list: saved.image_audio_list }), {
+          invalidate: false,
+        });
+        setSelectedImageIndexes([]);
+        setImageAudioBatchPickerOpen(false);
+        showToast({
+          kind: "success",
+          title: t("effect.asset.batchInsertAudioComplete", { count: variables.indexes.length }),
+        });
+      },
+      onSettled() {
+        ctx.invalidateEffects();
+      },
+    }),
   );
 
   const updateImageRowTag = useCallback(

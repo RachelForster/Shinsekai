@@ -5,7 +5,7 @@ import { backgroundsQueryKey, listBackgrounds } from "../../../entities/backgrou
 import type { Background } from "../../../entities/config/types";
 import { suggestUniqueSpritePrefix } from "../../../shared/assets/spritePrefix";
 import { useI18n } from "../../../shared/i18n";
-import { useToast } from "../../../shared/ui";
+import { useSectionBusyRegistry, useToast } from "../../../shared/ui";
 import { useVisionAvailability } from "../../media-auto-label/useVisionAvailability";
 import type { BackgroundPageContext, BackgroundSyncOptions } from "../backgroundContext";
 import { createBackground, upsertCatalogBackground } from "../backgroundUtils";
@@ -32,7 +32,6 @@ export function useBackgroundPageController(): BackgroundPageContext {
   const [spritePrefixTouched, setSpritePrefixTouched] = useState(false);
   const [identitySavingField, setIdentitySavingField] = useState<"name" | "sprite_prefix" | null>(null);
   const [syncedBackgroundKey, setSyncedBackgroundKey] = useState("");
-  const [busySections, setBusySections] = useState<Set<string>>(() => new Set());
   const isCreatingRef = useRef(isCreating);
   isCreatingRef.current = isCreating;
   const deletedBackgroundKeysRef = useRef<Set<string>>(new Set());
@@ -81,20 +80,9 @@ export function useBackgroundPageController(): BackgroundPageContext {
     }
   }, [selected]);
 
-  const setSectionBusy = useCallback((sectionId: string, busy: boolean) => {
-    setBusySections((current) => {
-      if (current.has(sectionId) === busy) {
-        return current;
-      }
-      const next = new Set(current);
-      if (busy) {
-        next.add(sectionId);
-      } else {
-        next.delete(sectionId);
-      }
-      return next;
-    });
-  }, []);
+  const { beginSectionBusy, busyCount, resumeRevision, setSectionBusy } = useSectionBusyRegistry({
+    onBeforeBusy: () => discardAutoSaveRef.current(),
+  });
 
   const invalidateBackgrounds = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: backgroundsQueryKey });
@@ -197,7 +185,8 @@ export function useBackgroundPageController(): BackgroundPageContext {
     liveSpritePrefixError,
   } = useBackgroundAutoSaveController({
     activeBackgroundKeyRef,
-    busySectionsCount: busySections.size,
+    busyResumeRevision: resumeRevision,
+    busySectionsCount: busyCount,
     cancelAutoSaveRef,
     currentDraft,
     data,
@@ -372,6 +361,7 @@ export function useBackgroundPageController(): BackgroundPageContext {
     selected,
     selectedBackgroundKey,
     selectedName,
+    beginSectionBusy,
     selectBackground,
     setNameError,
     setSectionBusy,

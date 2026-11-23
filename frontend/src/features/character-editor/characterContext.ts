@@ -4,6 +4,7 @@ import type { Character, Sprite } from "../../entities/config/types";
 import { numberedTags, tagContents } from "../../shared/assets/assetText";
 import { TAG_PREFIX_SPRITE } from "../../shared/constants";
 import type { AutoSavePhase } from "../../shared/hooks/useDebouncedAutoSave";
+import type { SectionBusyLease } from "../../shared/ui";
 
 export type CharacterSectionSlot = "top-grid" | "body";
 
@@ -110,6 +111,7 @@ export interface CharacterPageContext {
   selectedCharacterKey: string;
   selectedName: string;
   selectExistingCharacter: (name: string) => void;
+  beginSectionBusy: (sectionId: string) => SectionBusyLease;
   setNameError: Dispatch<SetStateAction<string>>;
   setPronunciationText: Dispatch<SetStateAction<string>>;
   setSectionBusy: (sectionId: string, busy: boolean) => void;

@@ -7,7 +7,7 @@ import {
   translateCharacterFields,
 } from "../../../entities/character/repository";
 import { useI18n } from "../../../shared/i18n";
-import { useReportSectionBusy, useToast } from "../../../shared/ui";
+import { useToast, withSectionBusy } from "../../../shared/ui";
 import type { CharacterPageContext } from "../characterContext";
 
 interface AiSettingVariables {
@@ -41,101 +41,101 @@ export function useCharacterPersonalityController(ctx: CharacterPageContext) {
   const { showToast } = useToast();
   const { t } = useI18n();
 
-  const aiSettingMutation = useMutation({
-    mutationFn: ({ name, setting }: AiSettingVariables) => generateCharacterSetting({ name, setting }),
-    onError(error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("character.error.aiFallback"),
-        title: t("character.action.aiWrite"),
-      });
-    },
-    onSettled(_data, _error, variables) {
-      variables.releaseAiAction();
-    },
-    onSuccess(result, variables) {
-      if (result.ok === false) {
+  const aiSettingMutation = useMutation(
+    withSectionBusy(ctx.beginSectionBusy, "character-personality", {
+      mutationFn: ({ name, setting }: AiSettingVariables) => generateCharacterSetting({ name, setting }),
+      onError(error) {
         showToast({
           kind: "error",
-          message: result.message,
+          message: error instanceof Error ? error.message : t("character.error.aiFallback"),
           title: t("character.action.aiWrite"),
         });
-        return;
-      }
-      ctx.syncGeneratedSetting({
-        characterBrief: result.characterBrief,
-        characterSetting: result.characterSetting,
-        committedName: variables.committedName,
-        identityEpoch: variables.identityEpoch,
-        name: variables.name,
-        sourceKey: variables.sourceKey,
-        wasCreating: variables.wasCreating,
-      });
-      showToast({ kind: "success", message: result.message, title: t("character.action.aiWrite") });
-    },
-  });
-
-  const aiBriefMutation = useMutation({
-    mutationFn: ({ name, setting }: AiBriefVariables) => generateCharacterBrief({ name, setting }),
-    onError(error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("character.error.aiFallback"),
-        title: t("character.action.aiBrief"),
-      });
-    },
-    onSettled(_data, _error, variables) {
-      variables.releaseAiAction();
-    },
-    onSuccess(result, variables) {
-      if (ctx.isSelectionActive(variables.sourceKey, variables.wasCreating)) {
-        ctx.updateField("character_brief", result.characterBrief);
-      }
-      showToast({ kind: "success", message: result.message, title: t("character.action.aiBrief") });
-    },
-  });
-
-  const translateMutation = useMutation({
-    mutationFn: ({ characterSetting, emotionTags, name }: AiTranslateVariables) =>
-      translateCharacterFields({
-        characterSetting,
-        emotionTags,
-        name,
-      }),
-    onError(error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("character.error.translateFallback"),
-        title: t("character.action.aiTranslate"),
-      });
-    },
-    onSettled(_data, _error, variables) {
-      variables.releaseAiAction();
-    },
-    onSuccess(result, variables) {
-      if (result.error) {
-        showToast({ kind: "error", message: result.error, title: t("character.action.aiTranslate") });
-        return;
-      }
-      if (ctx.isSelectionActive(variables.sourceKey, variables.wasCreating)) {
-        ctx.patchDraft((current) => ({
-          ...current,
-          character_setting: result.characterSetting,
-          emotion_tags: result.emotionTags,
-          name: result.name,
-        }));
-        if (result.name.trim()) {
-          ctx.setNameError("");
+      },
+      onSettled(_data, _error, variables) {
+        variables.releaseAiAction();
+      },
+      onSuccess(result, variables) {
+        if (result.ok === false) {
+          showToast({
+            kind: "error",
+            message: result.message,
+            title: t("character.action.aiWrite"),
+          });
+          return;
         }
-      }
-      showToast({ kind: "success", title: t("character.action.aiTranslate") });
-    },
-  });
+        ctx.syncGeneratedSetting({
+          characterBrief: result.characterBrief,
+          characterSetting: result.characterSetting,
+          committedName: variables.committedName,
+          identityEpoch: variables.identityEpoch,
+          name: variables.name,
+          sourceKey: variables.sourceKey,
+          wasCreating: variables.wasCreating,
+        });
+        showToast({ kind: "success", message: result.message, title: t("character.action.aiWrite") });
+      },
+    }),
+  );
 
-  useReportSectionBusy(
-    ctx.setSectionBusy,
-    "character-personality",
-    aiSettingMutation.isPending || aiBriefMutation.isPending || translateMutation.isPending,
+  const aiBriefMutation = useMutation(
+    withSectionBusy(ctx.beginSectionBusy, "character-personality", {
+      mutationFn: ({ name, setting }: AiBriefVariables) => generateCharacterBrief({ name, setting }),
+      onError(error) {
+        showToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : t("character.error.aiFallback"),
+          title: t("character.action.aiBrief"),
+        });
+      },
+      onSettled(_data, _error, variables) {
+        variables.releaseAiAction();
+      },
+      onSuccess(result, variables) {
+        if (ctx.isSelectionActive(variables.sourceKey, variables.wasCreating)) {
+          ctx.updateField("character_brief", result.characterBrief);
+        }
+        showToast({ kind: "success", message: result.message, title: t("character.action.aiBrief") });
+      },
+    }),
+  );
+
+  const translateMutation = useMutation(
+    withSectionBusy(ctx.beginSectionBusy, "character-personality", {
+      mutationFn: ({ characterSetting, emotionTags, name }: AiTranslateVariables) =>
+        translateCharacterFields({
+          characterSetting,
+          emotionTags,
+          name,
+        }),
+      onError(error) {
+        showToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : t("character.error.translateFallback"),
+          title: t("character.action.aiTranslate"),
+        });
+      },
+      onSettled(_data, _error, variables) {
+        variables.releaseAiAction();
+      },
+      onSuccess(result, variables) {
+        if (result.error) {
+          showToast({ kind: "error", message: result.error, title: t("character.action.aiTranslate") });
+          return;
+        }
+        if (ctx.isSelectionActive(variables.sourceKey, variables.wasCreating)) {
+          ctx.patchDraft((current) => ({
+            ...current,
+            character_setting: result.characterSetting,
+            emotion_tags: result.emotionTags,
+            name: result.name,
+          }));
+          if (result.name.trim()) {
+            ctx.setNameError("");
+          }
+        }
+        showToast({ kind: "success", title: t("character.action.aiTranslate") });
+      },
+    }),
   );
 
   const generateSetting = useCallback(() => {

@@ -1,5 +1,6 @@
 import type { Background } from "../../entities/config/types";
 import type { AutoSavePhase } from "../../shared/hooks/useDebouncedAutoSave";
+import type { SectionBusyLease } from "../../shared/ui";
 
 export const BACKGROUND_RESOURCES_URL = "https://shinsekai.end0rph1n.icu/resources";
 
@@ -48,6 +49,7 @@ export interface BackgroundPageContext {
   selectedBackgroundKey: string;
   selectedName: string;
   selectBackground: (name: string) => void;
+  beginSectionBusy: (sectionId: string) => SectionBusyLease;
   setNameError: (message: string) => void;
   setSectionBusy: (sectionId: string, busy: boolean) => void;
   spritePrefixDirty: boolean;

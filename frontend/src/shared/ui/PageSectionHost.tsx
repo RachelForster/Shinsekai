@@ -1,4 +1,5 @@
-import { useEffect, useMemo, type ComponentType } from "react";
+import { useCallback, useMemo, useRef, useState, type ComponentType } from "react";
+import type { DefaultError, UseMutationOptions } from "@tanstack/react-query";
 
 import { useI18n, type MessageKey } from "../i18n";
 import type { PageSectionNavItem } from "./PageSectionNav";
@@ -73,19 +74,103 @@ export function PageSectionHost<TCtx, TSlot extends string = "body">({
   );
 }
 
-/** Reports a section's active mutation/dialog busy state to pause page-level debounced auto-save. */
-export function useReportSectionBusy(
-  setSectionBusy: (sectionId: string, busy: boolean) => void,
-  sectionId: string,
-  busy: boolean,
-) {
-  useEffect(() => {
-    setSectionBusy(sectionId, busy);
-  }, [busy, sectionId, setSectionBusy]);
+export interface SectionBusyLease {
+  release: () => void;
+  settled: Promise<void>;
+}
 
-  useEffect(() => {
-    return () => {
-      setSectionBusy(sectionId, false);
-    };
-  }, [sectionId, setSectionBusy]);
+export interface UseSectionBusyRegistryOptions {
+  onBeforeBusy?: () => Promise<void> | void;
+}
+
+export interface SectionBusyRegistry {
+  beginSectionBusy: (sectionId: string) => SectionBusyLease;
+  busyCount: number;
+  resumeRevision: number;
+  setSectionBusy: (key: string, busy: boolean) => void;
+}
+
+/** Tracks busy section mutations and modal states while discarding/draining autosave synchronously. */
+export function useSectionBusyRegistry({ onBeforeBusy }: UseSectionBusyRegistryOptions = {}): SectionBusyRegistry {
+  const onBeforeBusyRef = useRef(onBeforeBusy);
+  onBeforeBusyRef.current = onBeforeBusy;
+  const leaseCountRef = useRef(0);
+  const busyFlagsRef = useRef<Set<string>>(new Set());
+  const [busyCount, setBusyCount] = useState(0);
+  const [resumeRevision, setResumeRevision] = useState(0);
+
+  const syncBusyCount = useCallback((shouldMarkResume = false) => {
+    const nextCount = leaseCountRef.current + busyFlagsRef.current.size;
+    setBusyCount(nextCount);
+    if (shouldMarkResume && nextCount === 0) {
+      setResumeRevision((current) => current + 1);
+    }
+  }, []);
+
+  const beginSectionBusy = useCallback(
+    (_sectionId: string): SectionBusyLease => {
+      leaseCountRef.current += 1;
+      syncBusyCount();
+      const pendingBeforeBusy = onBeforeBusyRef.current?.();
+      const settled = Promise.resolve(pendingBeforeBusy).catch(() => undefined);
+      let released = false;
+      return {
+        release: () => {
+          if (released) {
+            return;
+          }
+          released = true;
+          leaseCountRef.current = Math.max(0, leaseCountRef.current - 1);
+          syncBusyCount(true);
+        },
+        settled,
+      };
+    },
+    [syncBusyCount],
+  );
+
+  const setSectionBusy = useCallback(
+    (key: string, busy: boolean) => {
+      if (busy) {
+        void onBeforeBusyRef.current?.();
+        if (!busyFlagsRef.current.has(key)) {
+          busyFlagsRef.current.add(key);
+          syncBusyCount();
+        }
+        return;
+      }
+      if (busyFlagsRef.current.delete(key)) {
+        syncBusyCount(true);
+      }
+    },
+    [syncBusyCount],
+  );
+
+  return {
+    beginSectionBusy,
+    busyCount,
+    resumeRevision,
+    setSectionBusy,
+  };
+}
+
+/** Wraps TanStack Query mutation options to acquire a synchronous busy lease before mutationFn runs. */
+export function withSectionBusy<TData = unknown, TError = DefaultError, TVariables = void>(
+  beginSectionBusy: (sectionId: string) => SectionBusyLease,
+  sectionId: string,
+  options: Omit<UseMutationOptions<TData, TError, TVariables, SectionBusyLease>, "onMutate">,
+): UseMutationOptions<TData, TError, TVariables, SectionBusyLease> {
+  const { onSettled, ...rest } = options;
+  return {
+    ...rest,
+    async onMutate() {
+      const lease = beginSectionBusy(sectionId);
+      await lease.settled;
+      return lease;
+    },
+    onSettled(data, error, variables, lease, context) {
+      lease?.release();
+      return onSettled?.(data, error, variables, lease, context);
+    },
+  };
 }

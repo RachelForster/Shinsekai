@@ -15,6 +15,7 @@ export interface UseDebouncedAutoSaveOptions<TPayload> {
   enabled: boolean;
   onError?: (error: unknown, context: AutoSaveContext) => void;
   onSave: (payload: TPayload, context: AutoSaveContext) => Promise<unknown>;
+  rescheduleToken?: number;
   resetKey: string;
   validate?: (payload: TPayload) => string | null;
 }
@@ -36,6 +37,7 @@ export function useDebouncedAutoSave<TPayload>({
   enabled,
   onError,
   onSave,
+  rescheduleToken,
   resetKey,
   validate,
 }: UseDebouncedAutoSaveOptions<TPayload>) {
@@ -373,7 +375,7 @@ export function useDebouncedAutoSave<TPayload>({
         void executePending(pendingRef.current);
       }
     }, debounceMs);
-  }, [baselineKey, clearTimer, currentKey, debounceMs, enabled, executePending, resetKey]);
+  }, [baselineKey, clearTimer, currentKey, debounceMs, enabled, executePending, rescheduleToken, resetKey]);
 
   useEffect(() => {
     const handleBeforeUnload = () => {

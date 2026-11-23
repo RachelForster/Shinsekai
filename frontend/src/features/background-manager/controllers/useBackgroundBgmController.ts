@@ -11,7 +11,7 @@ import type { Background } from "../../../entities/config/types";
 import { baseName, numberedTags, removeTagRows, tagContents } from "../../../shared/assets/assetText";
 import { TAG_PREFIX_MUSIC } from "../../../shared/constants";
 import { useI18n } from "../../../shared/i18n";
-import { useReportSectionBusy, useToast } from "../../../shared/ui";
+import { useToast, withSectionBusy } from "../../../shared/ui";
 import type { BackgroundPageContext } from "../backgroundContext";
 import {
   backgroundDeleteDialogCopy,
@@ -38,125 +38,143 @@ export function useBackgroundBgmController(ctx: BackgroundPageContext) {
     setSelectedBgmIndexes([]);
   }, [ctx.selectedBackgroundKey]);
 
-  useReportSectionBusy(ctx.setSectionBusy, "background-bgm", bulkBgmTagsOpen);
+  useEffect(() => () => ctx.setSectionBusy("background-bgm:bulk-tags", false), [ctx.setSectionBusy]);
 
-  const bgmUploadMutation = useMutation({
-    mutationFn: (paths: string[]) =>
-      uploadBackgroundBgm({ bgmTags: ctx.currentDraft.bgm_tags, name: ctx.currentBackgroundName, paths }),
-    onError(error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("background.asset.uploadError"),
-        title: t("background.asset.uploadBgm"),
-      });
-    },
-    onSuccess(background) {
-      ctx.syncSavedBackground(background, (current, saved) => ({
-        ...current,
-        bgm_list: saved.bgm_list,
-        bgm_tags: saved.bgm_tags,
-      }));
-      showToast({ kind: "success", title: t("background.asset.uploadBgm") });
-    },
-  });
-
-  const bgmTagsSaveMutation = useMutation({
-    mutationFn: (bgmTags: string) => saveBackgroundBgmTags({ bgmTags, name: ctx.currentBackgroundName }),
-    onError(error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("background.error.saveFallback"),
-        title: t("common.saveFailed"),
-      });
-    },
-    onSuccess(background) {
-      ctx.syncSavedBackground(background, (current, saved) => ({
-        ...current,
-        bgm_tags: saved.bgm_tags,
-      }));
-      showToast({ kind: "success", title: t("background.action.saveBgmTags") });
-    },
-  });
-
-  const bgmDeleteMutation = useMutation({
-    mutationFn: ({ index, name }: { index: number; itemCount: number; name: string; tagBlock: string }) =>
-      deleteBackgroundBgm(name, index),
-    onError(error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("background.asset.uploadError"),
-        title: t("common.remove"),
-      });
-    },
-    onSuccess(background, variables) {
-      const bgmTags = removeTagRows(variables.tagBlock, variables.itemCount, [variables.index], TAG_PREFIX_MUSIC);
-      ctx.syncSavedBackground(
-        { ...background, bgm_tags: bgmTags },
-        (current, saved) => ({
+  const bgmUploadMutation = useMutation(
+    withSectionBusy(ctx.beginSectionBusy, "background-bgm", {
+      mutationFn: (paths: string[]) =>
+        uploadBackgroundBgm({ bgmTags: ctx.currentDraft.bgm_tags, name: ctx.currentBackgroundName, paths }),
+      onError(error) {
+        showToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : t("background.asset.uploadError"),
+          title: t("background.asset.uploadBgm"),
+        });
+      },
+      onSuccess(background) {
+        ctx.syncSavedBackground(background, (current, saved) => ({
           ...current,
           bgm_list: saved.bgm_list,
-          bgm_tags: removeTagRows(current.bgm_tags, current.bgm_list.length, [variables.index], TAG_PREFIX_MUSIC),
-        }),
-        { invalidate: false, mode: "replace" },
-      );
-      setSelectedBgmIndexes([]);
-      showToast({ kind: "success", title: t("common.remove") });
-    },
-  });
+          bgm_tags: saved.bgm_tags,
+        }));
+        showToast({ kind: "success", title: t("background.asset.uploadBgm") });
+      },
+    }),
+  );
 
-  const bgmBatchDeleteMutation = useMutation({
-    mutationFn: async ({ indexes, name }: { indexes: number[]; itemCount: number; name: string; tagBlock: string }) => {
-      let background: Background | null = null;
-      for (const index of [...indexes].sort((a, b) => b - a)) {
-        background = await deleteBackgroundBgm(name, index);
-      }
-      if (!background) {
-        throw new Error(t("background.asset.noSelectedBgm"));
-      }
-      return background;
-    },
-    onError(error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("background.asset.uploadError"),
-        title: t("background.asset.deleteSelectedBgm"),
-      });
-    },
-    onSuccess(background, variables) {
-      const bgmTags = removeTagRows(variables.tagBlock, variables.itemCount, variables.indexes, TAG_PREFIX_MUSIC);
-      ctx.syncSavedBackground(
-        { ...background, bgm_tags: bgmTags },
-        (current, saved) => ({
+  const bgmTagsSaveMutation = useMutation(
+    withSectionBusy(ctx.beginSectionBusy, "background-bgm", {
+      mutationFn: (bgmTags: string) => saveBackgroundBgmTags({ bgmTags, name: ctx.currentBackgroundName }),
+      onError(error) {
+        showToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : t("background.error.saveFallback"),
+          title: t("common.saveFailed"),
+        });
+      },
+      onSuccess(background) {
+        ctx.syncSavedBackground(background, (current, saved) => ({
           ...current,
-          bgm_list: saved.bgm_list,
-          bgm_tags: removeTagRows(current.bgm_tags, current.bgm_list.length, variables.indexes, TAG_PREFIX_MUSIC),
-        }),
-        { invalidate: false, mode: "replace" },
-      );
-      setSelectedBgmIndexes([]);
-      showToast({ kind: "success", title: t("background.asset.deleteSelectedBgm") });
-    },
-  });
+          bgm_tags: saved.bgm_tags,
+        }));
+        showToast({ kind: "success", title: t("background.action.saveBgmTags") });
+      },
+    }),
+  );
 
-  const bgmDeleteAllMutation = useMutation({
-    mutationFn: (name: string) => deleteAllBackgroundBgm(name),
-    onError(error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("background.asset.uploadError"),
-        title: t("background.asset.clearBgm"),
-      });
-    },
-    onSuccess(background) {
-      ctx.syncSavedBackground(
-        background,
-        (current, saved) => ({ ...current, bgm_list: saved.bgm_list, bgm_tags: saved.bgm_tags }),
-        { mode: "none" },
-      );
-      setSelectedBgmIndexes([]);
-      showToast({ kind: "success", title: t("background.asset.clearBgm") });
-    },
-  });
+  const bgmDeleteMutation = useMutation(
+    withSectionBusy(ctx.beginSectionBusy, "background-bgm", {
+      mutationFn: ({ index, name }: { index: number; itemCount: number; name: string; tagBlock: string }) =>
+        deleteBackgroundBgm(name, index),
+      onError(error) {
+        showToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : t("background.asset.uploadError"),
+          title: t("common.remove"),
+        });
+      },
+      onSuccess(background, variables) {
+        const bgmTags = removeTagRows(variables.tagBlock, variables.itemCount, [variables.index], TAG_PREFIX_MUSIC);
+        ctx.syncSavedBackground(
+          { ...background, bgm_tags: bgmTags },
+          (current, saved) => ({
+            ...current,
+            bgm_list: saved.bgm_list,
+            bgm_tags: removeTagRows(current.bgm_tags, current.bgm_list.length, [variables.index], TAG_PREFIX_MUSIC),
+          }),
+          { invalidate: false, mode: "replace" },
+        );
+        setSelectedBgmIndexes([]);
+        showToast({ kind: "success", title: t("common.remove") });
+      },
+    }),
+  );
+
+  const bgmBatchDeleteMutation = useMutation(
+    withSectionBusy(ctx.beginSectionBusy, "background-bgm", {
+      mutationFn: async ({
+        indexes,
+        name,
+      }: {
+        indexes: number[];
+        itemCount: number;
+        name: string;
+        tagBlock: string;
+      }) => {
+        let background: Background | null = null;
+        for (const index of [...indexes].sort((a, b) => b - a)) {
+          background = await deleteBackgroundBgm(name, index);
+        }
+        if (!background) {
+          throw new Error(t("background.asset.noSelectedBgm"));
+        }
+        return background;
+      },
+      onError(error) {
+        showToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : t("background.asset.uploadError"),
+          title: t("background.asset.deleteSelectedBgm"),
+        });
+      },
+      onSuccess(background, variables) {
+        const bgmTags = removeTagRows(variables.tagBlock, variables.itemCount, variables.indexes, TAG_PREFIX_MUSIC);
+        ctx.syncSavedBackground(
+          { ...background, bgm_tags: bgmTags },
+          (current, saved) => ({
+            ...current,
+            bgm_list: saved.bgm_list,
+            bgm_tags: removeTagRows(current.bgm_tags, current.bgm_list.length, variables.indexes, TAG_PREFIX_MUSIC),
+          }),
+          { invalidate: false, mode: "replace" },
+        );
+        setSelectedBgmIndexes([]);
+        showToast({ kind: "success", title: t("background.asset.deleteSelectedBgm") });
+      },
+    }),
+  );
+
+  const bgmDeleteAllMutation = useMutation(
+    withSectionBusy(ctx.beginSectionBusy, "background-bgm", {
+      mutationFn: (name: string) => deleteAllBackgroundBgm(name),
+      onError(error) {
+        showToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : t("background.asset.uploadError"),
+          title: t("background.asset.clearBgm"),
+        });
+      },
+      onSuccess(background) {
+        ctx.syncSavedBackground(
+          background,
+          (current, saved) => ({ ...current, bgm_list: saved.bgm_list, bgm_tags: saved.bgm_tags }),
+          { mode: "none" },
+        );
+        setSelectedBgmIndexes([]);
+        showToast({ kind: "success", title: t("background.asset.clearBgm") });
+      },
+    }),
+  );
 
   // Reference kept so TypeScript knows bgmTagsSaveMutation stays part of BGM capabilities if wired later
   void bgmTagsSaveMutation;
@@ -200,15 +218,17 @@ export function useBackgroundBgmController(ctx: BackgroundPageContext) {
   }, []);
 
   const openBulkBgmTagsDialog = useCallback(() => {
+    ctx.setSectionBusy("background-bgm:bulk-tags", true);
     setBulkBgmTagsDraft(ctx.currentDraft.bgm_tags);
     setBulkBgmTagsOpen(true);
-  }, [ctx.currentDraft.bgm_tags]);
+  }, [ctx.currentDraft.bgm_tags, ctx.setSectionBusy]);
 
   const confirmBulkBgmTags = useCallback(() => {
     const nextTags = bulkBgmTagsDraft;
+    ctx.setSectionBusy("background-bgm:bulk-tags", false);
     setBulkBgmTagsOpen(false);
     ctx.saveBulkTags("bgm_tags", nextTags);
-  }, [bulkBgmTagsDraft, ctx.saveBulkTags]);
+  }, [bulkBgmTagsDraft, ctx.saveBulkTags, ctx.setSectionBusy]);
 
   const handleBgmDelete = useCallback(
     (index: number) => {
@@ -309,7 +329,10 @@ export function useBackgroundBgmController(ctx: BackgroundPageContext) {
     bulkBgmTagsDraft,
     bulkBgmTagsOpen,
     cancelPendingDelete: () => setPendingDelete(null),
-    closeBulkBgmTags: () => setBulkBgmTagsOpen(false),
+    closeBulkBgmTags: () => {
+      ctx.setSectionBusy("background-bgm:bulk-tags", false);
+      setBulkBgmTagsOpen(false);
+    },
     confirmBulkBgmTags,
     confirmPendingDelete,
     deletePending: bgmDeleteMutation.isPending,

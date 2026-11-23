@@ -10,6 +10,7 @@ import { serializeBackgroundNonIdentity, upsertCatalogBackground } from "../back
 
 interface UseBackgroundAutoSaveControllerOptions {
   activeBackgroundKeyRef: MutableRefObject<string>;
+  busyResumeRevision: number;
   busySectionsCount: number;
   cancelAutoSaveRef: MutableRefObject<(targetKey?: string) => Promise<void>>;
   currentDraft: Background;
@@ -51,6 +52,7 @@ interface UseBackgroundAutoSaveControllerOptions {
 
 export function useBackgroundAutoSaveController({
   activeBackgroundKeyRef,
+  busyResumeRevision,
   busySectionsCount,
   cancelAutoSaveRef,
   currentDraft,
@@ -188,6 +190,7 @@ export function useBackgroundAutoSaveController({
         setDraft((current) => (current.id ? current : { ...current, id: saved.id }));
       }
     },
+    rescheduleToken: busyResumeRevision,
     resetKey: selected ? selected.id || `name:${selected.name}` : "__creating__",
   });
   cancelAutoSaveRef.current = autoSave.cancel;

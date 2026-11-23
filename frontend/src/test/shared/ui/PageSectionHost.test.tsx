@@ -1,11 +1,15 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { QueryClient, QueryClientProvider, useMutation } from "@tanstack/react-query";
+import { act, render, renderHook, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { describe, expect, it, vi } from "vitest";
 
 import { I18nProvider } from "../../../shared/i18n/I18nProvider";
 import {
   PageSectionHost,
   PageSectionNav,
+  useSectionBusyRegistry,
   useVisibleSectionNavItems,
+  withSectionBusy,
   type PageSectionDescriptor,
   type PageSectionProps,
 } from "../../../shared/ui";
@@ -123,5 +127,183 @@ describe("PageSectionHost", () => {
 
     const rendered = screen.getAllByTestId("rendered-section");
     expect(rendered.map((node) => node.id)).toEqual(["sec-first", "sec-unlisted", "sec-third"]);
+  });
+
+  it("tracks synchronous ref-counted busy leases, independent flags, and resumeRevision", async () => {
+    const events: string[] = [];
+    let resolveBeforeBusy: (() => void) | null = null;
+    const onBeforeBusy = vi.fn(() => {
+      events.push("beforeBusy");
+      return new Promise<void>((resolve) => {
+        resolveBeforeBusy = resolve;
+      });
+    });
+
+    const { result } = renderHook(() => useSectionBusyRegistry({ onBeforeBusy }));
+    expect(result.current.busyCount).toBe(0);
+    expect(result.current.resumeRevision).toBe(0);
+
+    let leaseA!: ReturnType<typeof result.current.beginSectionBusy>;
+    let leaseB!: ReturnType<typeof result.current.beginSectionBusy>;
+    let settledDone = false;
+
+    act(() => {
+      leaseA = result.current.beginSectionBusy("sec-a");
+      void leaseA.settled.then(() => {
+        settledDone = true;
+      });
+      events.push("afterBegin");
+    });
+
+    expect(events).toEqual(["beforeBusy", "afterBegin"]);
+    expect(result.current.busyCount).toBe(1);
+    expect(settledDone).toBe(false);
+
+    await act(async () => {
+      resolveBeforeBusy?.();
+      await leaseA.settled;
+    });
+    expect(settledDone).toBe(true);
+
+    act(() => {
+      leaseB = result.current.beginSectionBusy("sec-b");
+      result.current.setSectionBusy("modal-a", true);
+      result.current.setSectionBusy("modal-a", true);
+    });
+    expect(result.current.busyCount).toBe(3);
+
+    act(() => {
+      leaseA.release();
+      leaseA.release();
+    });
+    expect(result.current.busyCount).toBe(2);
+    expect(result.current.resumeRevision).toBe(0);
+
+    act(() => {
+      result.current.setSectionBusy("modal-a", false);
+    });
+    expect(result.current.busyCount).toBe(1);
+    expect(result.current.resumeRevision).toBe(0);
+
+    act(() => {
+      leaseB.release();
+    });
+    expect(result.current.busyCount).toBe(0);
+    expect(result.current.resumeRevision).toBe(1);
+
+    const rejectingHook = renderHook(() =>
+      useSectionBusyRegistry({
+        onBeforeBusy: () => Promise.reject(new Error("drain failed")),
+      }),
+    );
+    let rejectingLease!: ReturnType<typeof rejectingHook.result.current.beginSectionBusy>;
+    await act(async () => {
+      rejectingLease = rejectingHook.result.current.beginSectionBusy("sec-reject");
+      await expect(rejectingLease.settled).resolves.toBeUndefined();
+      rejectingLease.release();
+    });
+    expect(rejectingHook.result.current.busyCount).toBe(0);
+  });
+
+  it("wires withSectionBusy into zero-arg and param mutations, waits for settled, and chains onSettled", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { mutations: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+
+    const events: string[] = [];
+    let resolveBeforeBusy: (() => void) | null = null;
+    let resolveZeroArg: (() => void) | null = null;
+    let rejectParam: ((err: Error) => void) | null = null;
+
+    const zeroArgFn = vi.fn(
+      () =>
+        new Promise<string>((resolve) => {
+          events.push("zeroArgFn");
+          resolveZeroArg = () => resolve("ok");
+        }),
+    );
+    const paramFn = vi.fn(
+      (_id: string) =>
+        new Promise<string>((_resolve, reject) => {
+          events.push("paramFn");
+          rejectParam = reject;
+        }),
+    );
+    const customOnSettled = vi.fn((_data, error, variables) => {
+      events.push(`customOnSettled:${variables}:${error instanceof Error ? error.message : "none"}`);
+    });
+
+    const { result } = renderHook(
+      () => {
+        const registry = useSectionBusyRegistry({
+          onBeforeBusy: () => {
+            events.push("beforeBusy");
+            return new Promise<void>((resolve) => {
+              resolveBeforeBusy = resolve;
+            });
+          },
+        });
+        const zeroMutation = useMutation(
+          withSectionBusy(registry.beginSectionBusy, "sec-zero", {
+            mutationFn: () => zeroArgFn(),
+          }),
+        );
+        const paramMutation = useMutation(
+          withSectionBusy(registry.beginSectionBusy, "sec-param", {
+            mutationFn: (id: string) => paramFn(id),
+            onSettled: customOnSettled,
+          }),
+        );
+        return { paramMutation, registry, zeroMutation };
+      },
+      { wrapper },
+    );
+
+    act(() => {
+      result.current.zeroMutation.mutate();
+      events.push("afterMutateCall");
+    });
+
+    expect(events).toEqual(["beforeBusy", "afterMutateCall"]);
+    expect(zeroArgFn).not.toHaveBeenCalled();
+    expect(result.current.registry.busyCount).toBe(1);
+
+    await act(async () => {
+      resolveBeforeBusy?.();
+      await Promise.resolve();
+    });
+    expect(zeroArgFn).toHaveBeenCalledTimes(1);
+    expect(result.current.registry.busyCount).toBe(1);
+
+    await act(async () => {
+      resolveZeroArg?.();
+      await Promise.resolve();
+    });
+    expect(result.current.registry.busyCount).toBe(0);
+    expect(result.current.registry.resumeRevision).toBe(1);
+
+    await act(async () => {
+      result.current.paramMutation.mutate("item-1");
+      await Promise.resolve();
+    });
+    expect(paramFn).not.toHaveBeenCalled();
+    expect(result.current.registry.busyCount).toBe(1);
+
+    await act(async () => {
+      resolveBeforeBusy?.();
+      await Promise.resolve();
+    });
+    expect(paramFn).toHaveBeenCalledWith("item-1");
+
+    await act(async () => {
+      rejectParam?.(new Error("boom"));
+      await Promise.resolve();
+    });
+    expect(result.current.registry.busyCount).toBe(0);
+    expect(result.current.registry.resumeRevision).toBe(2);
+    expect(events).toContain("customOnSettled:item-1:boom");
   });
 });

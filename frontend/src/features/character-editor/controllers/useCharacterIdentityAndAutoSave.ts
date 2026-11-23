@@ -19,6 +19,7 @@ import {
 interface UseCharacterIdentityAndAutoSaveOptions {
   activeCharacterKeyRef: MutableRefObject<string>;
   aiActionPending: boolean;
+  busyResumeRevision: number;
   busySectionsCount: number;
   cancelAutoSaveRef: MutableRefObject<(targetKey?: string) => Promise<void>>;
   data: Character[];
@@ -64,6 +65,7 @@ interface UseCharacterIdentityAndAutoSaveOptions {
 export function useCharacterIdentityAndAutoSave({
   activeCharacterKeyRef,
   aiActionPending,
+  busyResumeRevision,
   busySectionsCount,
   cancelAutoSaveRef,
   data,
@@ -226,6 +228,7 @@ export function useCharacterIdentityAndAutoSave({
         setDraft((current) => (current.id ? current : { ...current, id: saved.id }));
       }
     },
+    rescheduleToken: busyResumeRevision,
     resetKey: selected ? selected.id || `name:${selected.name}` : "__creating__",
     validate: ({ character }) => {
       const errors = validateNonIdentityFields(character);

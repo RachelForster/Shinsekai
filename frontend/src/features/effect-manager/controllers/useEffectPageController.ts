@@ -6,7 +6,7 @@ import type { Effect } from "../../../entities/config/types";
 import { isValidEffectStorageName } from "../../../shared/assets/spritePrefix";
 import { useDebouncedAutoSave } from "../../../shared/hooks/useDebouncedAutoSave";
 import { useI18n } from "../../../shared/i18n";
-import { useToast } from "../../../shared/ui";
+import { useToast, useSectionBusyRegistry } from "../../../shared/ui";
 import type { EffectPageContext, EnsureSavedOptions } from "../effectContext";
 import {
   buildCreateEffectPayload,
@@ -32,7 +32,6 @@ export function useEffectPageController(): EffectPageContext {
   const [pendingEffectDelete, setPendingEffectDelete] = useState<string | null>(null);
   const [nameError, setNameError] = useState("");
   const [syncedEffectKey, setSyncedEffectKey] = useState("");
-  const [busySections, setBusySections] = useState<Set<string>>(() => new Set());
   const isCreatingRef = useRef(isCreating);
   isCreatingRef.current = isCreating;
   const deletedEffectKeysRef = useRef<Set<string>>(new Set());
@@ -72,20 +71,9 @@ export function useEffectPageController(): EffectPageContext {
     }
   }, [selected]);
 
-  const setSectionBusy = useCallback((sectionId: string, busy: boolean) => {
-    setBusySections((current) => {
-      if (current.has(sectionId) === busy) {
-        return current;
-      }
-      const next = new Set(current);
-      if (busy) {
-        next.add(sectionId);
-      } else {
-        next.delete(sectionId);
-      }
-      return next;
-    });
-  }, []);
+  const { beginSectionBusy, busyCount, resumeRevision } = useSectionBusyRegistry({
+    onBeforeBusy: () => discardAutoSaveRef.current(),
+  });
 
   const invalidateEffects = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: effectsQueryKey });
@@ -196,7 +184,7 @@ export function useEffectPageController(): EffectPageContext {
       !identityMutation.isPending &&
       !saveMutation.isPending &&
       !deleteMutation.isPending &&
-      busySections.size === 0 &&
+      busyCount === 0 &&
       !pendingEffectDelete,
     ),
     onError(error) {
@@ -224,6 +212,7 @@ export function useEffectPageController(): EffectPageContext {
         setDraft((current) => (current.id ? current : { ...current, id: saved.id }));
       }
     },
+    rescheduleToken: resumeRevision,
     resetKey: selected ? selected.id || `name:${selected.name}` : "__creating__",
   });
   cancelAutoSaveRef.current = autoSave.cancel;
@@ -453,7 +442,7 @@ export function useEffectPageController(): EffectPageContext {
     selectedEffectKey,
     selectedName,
     selectEffect,
-    setSectionBusy,
+    beginSectionBusy,
     startCreatingEffect,
     syncSavedEffect,
     updateField,

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ComponentProps } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -597,5 +597,141 @@ describe("EffectManagerPage", () => {
     await waitFor(() => expect(mockDeleteEffect).toHaveBeenCalledWith("Spark"));
     await new Promise((resolve) => setTimeout(resolve, 700));
     expect(mockSaveEffect).not.toHaveBeenCalled();
+  });
+
+  it("cancels a due debounce timer synchronously when deleting an image so pre-delete tags are not saved", async () => {
+    const twoImageEffect: Effect = {
+      ...structuredClone(effect),
+      id: "eff-spark",
+      image_list: ["D:/effects/first.png", "D:/effects/second.png"],
+      image_tags: "Image 1: first\nImage 2: second\n",
+      image_audio_list: ["", ""],
+    };
+    let catalogEffect = structuredClone(twoImageEffect);
+    mockListEffects.mockImplementation(async () => [structuredClone(catalogEffect)]);
+
+    let resolveDelete!: (value: Effect) => void;
+    mockDeleteEffectImage.mockImplementationOnce(
+      () =>
+        new Promise<Effect>((resolve) => {
+          resolveDelete = (next) => {
+            catalogEffect = structuredClone(next);
+            resolve(structuredClone(catalogEffect));
+          };
+        }),
+    );
+
+    renderPage();
+    await screen.findByText("first.png");
+    const firstRow = screen.getByText("first.png").closest(".effect-image-row") as HTMLElement;
+
+    try {
+      vi.useFakeTimers();
+
+      fireEvent.change(within(firstRow).getByRole("textbox"), { target: { value: "edited first" } });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(590);
+      });
+      expect(mockSaveEffect).not.toHaveBeenCalled();
+
+      fireEvent.click(within(firstRow).getByRole("button", { name: "Delete" }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+
+      expect(mockSaveEffect).not.toHaveBeenCalled();
+      expect(mockDeleteEffectImage).toHaveBeenCalledWith("Spark", 0);
+
+      await act(async () => {
+        resolveDelete({
+          ...structuredClone(twoImageEffect),
+          image_list: ["D:/effects/second.png"],
+          image_tags: "Image 1: second\n",
+          image_audio_list: [""],
+        });
+        await Promise.resolve();
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+
+      expect(mockSaveEffect).not.toHaveBeenCalled();
+      expect(screen.queryByText("first.png")).not.toBeInTheDocument();
+      expect(screen.getByDisplayValue("second")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("serializes image deletion after an already in-flight autosave settles", async () => {
+    const twoImageEffect: Effect = {
+      ...structuredClone(effect),
+      id: "eff-spark",
+      image_list: ["D:/effects/first.png", "D:/effects/second.png"],
+      image_tags: "Image 1: first\nImage 2: second\n",
+      image_audio_list: ["", ""],
+    };
+    let catalogEffect = structuredClone(twoImageEffect);
+    mockListEffects.mockImplementation(async () => [structuredClone(catalogEffect)]);
+
+    let resolveSave!: (value: Effect) => void;
+    mockSaveEffect.mockImplementationOnce(
+      (saved: Effect) =>
+        new Promise<Effect>((resolve) => {
+          resolveSave = (next) => {
+            catalogEffect = structuredClone(next ?? saved);
+            resolve(structuredClone(catalogEffect));
+          };
+        }),
+    );
+    mockDeleteEffectImage.mockImplementationOnce(async () => {
+      catalogEffect = {
+        ...structuredClone(catalogEffect),
+        image_list: ["D:/effects/second.png"],
+        image_tags: "Image 1: second\n",
+        image_audio_list: [""],
+      };
+      return structuredClone(catalogEffect);
+    });
+
+    renderPage();
+    await screen.findByText("first.png");
+    const firstRow = screen.getByText("first.png").closest(".effect-image-row") as HTMLElement;
+
+    try {
+      vi.useFakeTimers();
+
+      fireEvent.change(within(firstRow).getByRole("textbox"), { target: { value: "edited first" } });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(600);
+      });
+      expect(mockSaveEffect).toHaveBeenCalledTimes(1);
+
+      fireEvent.click(within(firstRow).getByRole("button", { name: "Delete" }));
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(mockDeleteEffectImage).not.toHaveBeenCalled();
+
+      await act(async () => {
+        resolveSave({
+          ...structuredClone(twoImageEffect),
+          image_tags: "Image 1: edited first\nImage 2: second\n",
+        });
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(mockDeleteEffectImage).toHaveBeenCalledWith("Spark", 0);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+      expect(mockSaveEffect).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText("first.png")).not.toBeInTheDocument();
+      expect(screen.getByDisplayValue("second")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

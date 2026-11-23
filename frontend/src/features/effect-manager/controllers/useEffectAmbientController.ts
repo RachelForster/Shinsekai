@@ -11,7 +11,7 @@ import {
 import { numberedTags, tagContents } from "../../../shared/assets/assetText";
 import { TAG_PREFIX_AMBIENT } from "../../../shared/constants";
 import { useI18n } from "../../../shared/i18n";
-import { useReportSectionBusy, useToast } from "../../../shared/ui";
+import { useToast, withSectionBusy } from "../../../shared/ui";
 import type { EffectPageContext } from "../effectContext";
 
 export function useEffectAmbientController(ctx: EffectPageContext) {
@@ -20,101 +20,101 @@ export function useEffectAmbientController(ctx: EffectPageContext) {
   const [ambientUploadPickerOpen, setAmbientUploadPickerOpen] = useState(false);
   const [ambientAudioTargetIndex, setAmbientAudioTargetIndex] = useState<number | null>(null);
 
-  const ambientUploadMutation = useMutation({
-    mutationFn: (paths: string[]) =>
-      uploadEffectAmbient({ ambientTags: ctx.draft.ambient_tags, name: ctx.currentEffectName, paths }),
-    onError(error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("effect.asset.uploadError"),
-        title: t("effect.asset.uploadAmbient"),
-      });
-    },
-    onSuccess(effect) {
-      ctx.syncSavedEffect(effect, (current, saved) => ({
-        ...current,
-        ambient_audio_list: saved.ambient_audio_list,
-        ambient_layers: saved.ambient_layers,
-        ambient_list: saved.ambient_list,
-        ambient_tags: saved.ambient_tags,
-      }));
-      showToast({ kind: "success", title: t("effect.asset.uploadAmbient") });
-    },
-  });
+  const ambientUploadMutation = useMutation(
+    withSectionBusy(ctx.beginSectionBusy, "effect-ambient", {
+      mutationFn: (paths: string[]) =>
+        uploadEffectAmbient({ ambientTags: ctx.draft.ambient_tags, name: ctx.currentEffectName, paths }),
+      onError(error) {
+        showToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : t("effect.asset.uploadError"),
+          title: t("effect.asset.uploadAmbient"),
+        });
+      },
+      onSuccess(effect) {
+        ctx.syncSavedEffect(effect, (current, saved) => ({
+          ...current,
+          ambient_audio_list: saved.ambient_audio_list,
+          ambient_layers: saved.ambient_layers,
+          ambient_list: saved.ambient_list,
+          ambient_tags: saved.ambient_tags,
+        }));
+        showToast({ kind: "success", title: t("effect.asset.uploadAmbient") });
+      },
+    }),
+  );
 
-  const ambientTagsSaveMutation = useMutation({
-    mutationFn: () => saveEffectAmbientTags({ ambientTags: ctx.draft.ambient_tags, name: ctx.currentEffectName }),
-    onError(error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("effect.error.saveFallback"),
-        title: t("common.saveFailed"),
-      });
-    },
-    onSuccess(effect) {
-      ctx.syncSavedEffect(effect, (current, saved) => ({ ...current, ambient_tags: saved.ambient_tags }));
-      showToast({ kind: "success", title: t("effect.action.saveAmbientTags") });
-    },
-  });
+  const ambientTagsSaveMutation = useMutation(
+    withSectionBusy(ctx.beginSectionBusy, "effect-ambient", {
+      mutationFn: () => saveEffectAmbientTags({ ambientTags: ctx.draft.ambient_tags, name: ctx.currentEffectName }),
+      onError(error) {
+        showToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : t("effect.error.saveFallback"),
+          title: t("common.saveFailed"),
+        });
+      },
+      onSuccess(effect) {
+        ctx.syncSavedEffect(effect, (current, saved) => ({ ...current, ambient_tags: saved.ambient_tags }));
+        showToast({ kind: "success", title: t("effect.action.saveAmbientTags") });
+      },
+    }),
+  );
 
-  const ambientLayersSaveMutation = useMutation({
-    mutationFn: (layers: string[]) => saveEffectAmbientLayers({ layers, name: ctx.currentEffectName }),
-    onError(error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("effect.error.saveFallback"),
-        title: t("common.saveFailed"),
-      });
-    },
-    onSuccess(effect) {
-      ctx.syncSavedEffect(effect, (current, saved) => ({ ...current, ambient_layers: saved.ambient_layers }));
-    },
-  });
+  const ambientLayersSaveMutation = useMutation(
+    withSectionBusy(ctx.beginSectionBusy, "effect-ambient", {
+      mutationFn: (layers: string[]) => saveEffectAmbientLayers({ layers, name: ctx.currentEffectName }),
+      onError(error) {
+        showToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : t("effect.error.saveFallback"),
+          title: t("common.saveFailed"),
+        });
+      },
+      onSuccess(effect) {
+        ctx.syncSavedEffect(effect, (current, saved) => ({ ...current, ambient_layers: saved.ambient_layers }));
+      },
+    }),
+  );
 
-  const ambientAudioUploadMutation = useMutation({
-    mutationFn: ({ index, path }: { index: number; path: string }) =>
-      uploadEffectAmbientAudio({ index, name: ctx.currentEffectName, path }),
-    onError(error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("effect.asset.uploadError"),
-        title: t("effect.asset.insertAudio"),
-      });
-    },
-    onSuccess(effect) {
-      ctx.syncSavedEffect(effect, (current, saved) => ({ ...current, ambient_audio_list: saved.ambient_audio_list }));
-      setAmbientAudioTargetIndex(null);
-    },
-  });
+  const ambientAudioUploadMutation = useMutation(
+    withSectionBusy(ctx.beginSectionBusy, "effect-ambient", {
+      mutationFn: ({ index, path }: { index: number; path: string }) =>
+        uploadEffectAmbientAudio({ index, name: ctx.currentEffectName, path }),
+      onError(error) {
+        showToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : t("effect.asset.uploadError"),
+          title: t("effect.asset.insertAudio"),
+        });
+      },
+      onSuccess(effect) {
+        ctx.syncSavedEffect(effect, (current, saved) => ({ ...current, ambient_audio_list: saved.ambient_audio_list }));
+        setAmbientAudioTargetIndex(null);
+      },
+    }),
+  );
 
-  const ambientDeleteMutation = useMutation({
-    mutationFn: (index: number) => deleteEffectAmbient(ctx.currentEffectName, index),
-    onError(error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("effect.error.deleteFallback"),
-        title: t("common.deleteFailed"),
-      });
-    },
-    onSuccess(effect) {
-      ctx.syncSavedEffect(effect, (current, saved) => ({
-        ...current,
-        ambient_audio_list: saved.ambient_audio_list,
-        ambient_layers: saved.ambient_layers,
-        ambient_list: saved.ambient_list,
-        ambient_tags: saved.ambient_tags,
-      }));
-    },
-  });
-
-  useReportSectionBusy(
-    ctx.setSectionBusy,
-    "effect-ambient",
-    ambientUploadMutation.isPending ||
-      ambientTagsSaveMutation.isPending ||
-      ambientLayersSaveMutation.isPending ||
-      ambientAudioUploadMutation.isPending ||
-      ambientDeleteMutation.isPending,
+  const ambientDeleteMutation = useMutation(
+    withSectionBusy(ctx.beginSectionBusy, "effect-ambient", {
+      mutationFn: (index: number) => deleteEffectAmbient(ctx.currentEffectName, index),
+      onError(error) {
+        showToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : t("effect.error.deleteFallback"),
+          title: t("common.deleteFailed"),
+        });
+      },
+      onSuccess(effect) {
+        ctx.syncSavedEffect(effect, (current, saved) => ({
+          ...current,
+          ambient_audio_list: saved.ambient_audio_list,
+          ambient_layers: saved.ambient_layers,
+          ambient_list: saved.ambient_list,
+          ambient_tags: saved.ambient_tags,
+        }));
+      },
+    }),
   );
 
   const updateAmbientRowTag = useCallback(

@@ -6,7 +6,7 @@ import { baseName, numberedTags, tagContents } from "../../../shared/assets/asse
 import { isVideoMedia } from "../../../shared/assets/visualMedia";
 import { TAG_PREFIX_SPRITE } from "../../../shared/constants";
 import { useI18n } from "../../../shared/i18n";
-import { useReportSectionBusy, useToast } from "../../../shared/ui";
+import { useToast } from "../../../shared/ui";
 import type { SpriteGroupsPatch } from "../CharacterSpritesSection";
 import { mergeSprites, type CharacterPageContext } from "../characterContext";
 import {
@@ -37,16 +37,20 @@ export function useCharacterSpritesController(ctx: CharacterPageContext) {
     setSelectedSpriteIndex(0);
     setActiveSpriteGroup("__all__");
     setSmartGroupOpen(false);
-  }, [ctx.selectedCharacterKey]);
+    ctx.setSectionBusy("character-sprites:smart-group", false);
+  }, [ctx.selectedCharacterKey, ctx.setSectionBusy]);
 
   useEffect(() => {
     setSelectedSpriteIndex((current) => Math.min(current, Math.max(0, ctx.draft.sprites.length - 1)));
   }, [ctx.draft.sprites.length]);
 
-  useReportSectionBusy(
-    ctx.setSectionBusy,
-    "character-sprites",
-    portraitCropOpen || bulkSpriteTagsOpen || smartGroupOpen,
+  useEffect(
+    () => () => {
+      ctx.setSectionBusy("character-sprites:portrait-crop", false);
+      ctx.setSectionBusy("character-sprites:bulk-tags", false);
+      ctx.setSectionBusy("character-sprites:smart-group", false);
+    },
+    [ctx.setSectionBusy],
   );
 
   const selectedSprite = ctx.draft.sprites[selectedSpriteIndex];
@@ -72,7 +76,10 @@ export function useCharacterSpritesController(ctx: CharacterPageContext) {
     spriteGroupsMutation,
     spriteUploadMutation,
   } = useCharacterSpriteMutations(ctx, {
-    onPortraitCropSaved: () => setPortraitCropOpen(false),
+    onPortraitCropSaved: () => {
+      ctx.setSectionBusy("character-sprites:portrait-crop", false);
+      setPortraitCropOpen(false);
+    },
   });
 
   const handleApplySpriteGroups = useCallback(
@@ -139,13 +146,14 @@ export function useCharacterSpritesController(ctx: CharacterPageContext) {
             portrait_crop: nextCharacter.sprites[index]?.portrait_crop,
           })),
         }));
+        ctx.setSectionBusy("character-sprites:portrait-crop", false);
         setPortraitCropOpen(false);
         showToast({ kind: "success", title: t("character.sprite.portraitCropSaved") });
         return;
       }
       portraitCropMutation.mutate(nextCharacter);
     },
-    [ctx.isSavedCharacter, ctx.patchDraft, portraitCropMutation, showToast, t],
+    [ctx.isSavedCharacter, ctx.patchDraft, ctx.setSectionBusy, portraitCropMutation, showToast, t],
   );
 
   const uploadSprites = useCallback(
@@ -226,11 +234,12 @@ export function useCharacterSpritesController(ctx: CharacterPageContext) {
   const confirmBulkSpriteTags = useCallback(() => {
     const nextTags = bulkSpriteTagsDraft;
     ctx.updateField("emotion_tags", nextTags);
-    setBulkSpriteTagsOpen(false);
     if (ctx.isSavedCharacter && nextTags.trim() && !emotionTagsMutation.isPending) {
       emotionTagsMutation.mutate(nextTags);
     }
-  }, [bulkSpriteTagsDraft, ctx.isSavedCharacter, ctx.updateField, emotionTagsMutation]);
+    ctx.setSectionBusy("character-sprites:bulk-tags", false);
+    setBulkSpriteTagsOpen(false);
+  }, [bulkSpriteTagsDraft, ctx.isSavedCharacter, ctx.setSectionBusy, ctx.updateField, emotionTagsMutation]);
 
   const requestSelectedSpriteVoiceDelete = useCallback(() => {
     if (!ctx.currentCharacterName || !selectedSprite?.voice_path) {
@@ -339,9 +348,18 @@ export function useCharacterSpritesController(ctx: CharacterPageContext) {
     bulkSpriteTagsOpen,
     cancelPendingDelete: () => setPendingDelete(null),
     closeAutoLabelDialog,
-    closeBulkTags: () => setBulkSpriteTagsOpen(false),
-    closePortraitCrop: () => setPortraitCropOpen(false),
-    closeSmartGroup: () => setSmartGroupOpen(false),
+    closeBulkTags: () => {
+      ctx.setSectionBusy("character-sprites:bulk-tags", false);
+      setBulkSpriteTagsOpen(false);
+    },
+    closePortraitCrop: () => {
+      ctx.setSectionBusy("character-sprites:portrait-crop", false);
+      setPortraitCropOpen(false);
+    },
+    closeSmartGroup: () => {
+      ctx.setSectionBusy("character-sprites:smart-group", false);
+      setSmartGroupOpen(false);
+    },
     confirmBulkSpriteTags,
     confirmPendingDelete,
     emotionTagsPending: emotionTagsMutation.isPending,
@@ -373,16 +391,21 @@ export function useCharacterSpritesController(ctx: CharacterPageContext) {
       autoLabelMutation.mutate();
     },
     handleOpenPortraitCrop: () => {
+      ctx.setSectionBusy("character-sprites:portrait-crop", true);
       portraitCropMutation.reset();
       setPortraitCropOpen(true);
     },
     handleSavePortraitCrop,
     handleSpriteVoiceTypeChange: voice.handleSpriteVoiceTypeChange,
     openBulkSpriteTagsDialog: () => {
+      ctx.setSectionBusy("character-sprites:bulk-tags", true);
       setBulkSpriteTagsDraft(ctx.draft.emotion_tags);
       setBulkSpriteTagsOpen(true);
     },
-    openSmartGroup: () => setSmartGroupOpen(true),
+    openSmartGroup: () => {
+      ctx.setSectionBusy("character-sprites:smart-group", true);
+      setSmartGroupOpen(true);
+    },
     pendingDeleteCopy,
     pendingDeleteOpen: Boolean(pendingDelete),
     pendingVoicePath: pendingVoicePaths[selectedSpriteIndex] ?? "",

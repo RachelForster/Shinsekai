@@ -11,7 +11,7 @@ import {
 import { numberedTags, tagContents } from "../../../shared/assets/assetText";
 import { TAG_PREFIX_EFFECT } from "../../../shared/constants";
 import { useI18n } from "../../../shared/i18n";
-import { useReportSectionBusy, useToast } from "../../../shared/ui";
+import { useToast, withSectionBusy } from "../../../shared/ui";
 import type { EffectPageContext } from "../effectContext";
 
 type AudioDeleteTarget =
@@ -29,97 +29,96 @@ export function useEffectAudioController(ctx: EffectPageContext) {
     setSelectedAudioIndexes([]);
   }, [ctx.selectedEffectKey]);
 
-  const audioUploadMutation = useMutation({
-    mutationFn: (paths: string[]) =>
-      uploadEffectAudio({ audioTags: ctx.draft.audio_tags, name: ctx.currentEffectName, paths }),
-    onError(error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("effect.asset.uploadError"),
-        title: t("effect.asset.uploadAudio"),
-      });
-    },
-    onSuccess(effect) {
-      ctx.syncSavedEffect(effect, (current, saved) => ({
-        ...current,
-        audio_list: saved.audio_list,
-        audio_tags: saved.audio_tags,
-      }));
-      showToast({ kind: "success", title: t("effect.asset.uploadAudio") });
-    },
-  });
+  const audioUploadMutation = useMutation(
+    withSectionBusy(ctx.beginSectionBusy, "effect-audio", {
+      mutationFn: (paths: string[]) =>
+        uploadEffectAudio({ audioTags: ctx.draft.audio_tags, name: ctx.currentEffectName, paths }),
+      onError(error) {
+        showToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : t("effect.asset.uploadError"),
+          title: t("effect.asset.uploadAudio"),
+        });
+      },
+      onSuccess(effect) {
+        ctx.syncSavedEffect(effect, (current, saved) => ({
+          ...current,
+          audio_list: saved.audio_list,
+          audio_tags: saved.audio_tags,
+        }));
+        showToast({ kind: "success", title: t("effect.asset.uploadAudio") });
+      },
+    }),
+  );
 
-  const audioTagsSaveMutation = useMutation({
-    mutationFn: () => saveEffectAudioTags({ audioTags: ctx.draft.audio_tags, name: ctx.currentEffectName }),
-    onError(error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("effect.error.saveFallback"),
-        title: t("common.saveFailed"),
-      });
-    },
-    onSuccess(effect) {
-      ctx.syncSavedEffect(effect, (current, saved) => ({ ...current, audio_tags: saved.audio_tags }));
-      showToast({ kind: "success", title: t("effect.action.saveAudioTags") });
-    },
-  });
+  const audioTagsSaveMutation = useMutation(
+    withSectionBusy(ctx.beginSectionBusy, "effect-audio", {
+      mutationFn: () => saveEffectAudioTags({ audioTags: ctx.draft.audio_tags, name: ctx.currentEffectName }),
+      onError(error) {
+        showToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : t("effect.error.saveFallback"),
+          title: t("common.saveFailed"),
+        });
+      },
+      onSuccess(effect) {
+        ctx.syncSavedEffect(effect, (current, saved) => ({ ...current, audio_tags: saved.audio_tags }));
+        showToast({ kind: "success", title: t("effect.action.saveAudioTags") });
+      },
+    }),
+  );
 
-  const audioBatchDeleteMutation = useMutation({
-    mutationFn: async ({ indexes, name }: { indexes: number[]; name: string }) => {
-      let effect: Effect | null = null;
-      for (const index of [...indexes].sort((a, b) => b - a)) {
-        effect = await deleteEffectAudio(name, index);
-      }
-      if (!effect) {
-        throw new Error(t("effect.asset.noSelectedAudio"));
-      }
-      return effect;
-    },
-    onError(error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("effect.error.deleteFallback"),
-        title: t("effect.asset.deleteSelectedAudio"),
-      });
-    },
-    onSuccess(effect) {
-      ctx.syncSavedEffect(effect, (current, saved) => ({
-        ...current,
-        audio_list: saved.audio_list,
-        audio_tags: saved.audio_tags,
-      }));
-      setSelectedAudioIndexes([]);
-      showToast({ kind: "success", title: t("effect.asset.deleteSelectedAudio") });
-    },
-  });
+  const audioBatchDeleteMutation = useMutation(
+    withSectionBusy(ctx.beginSectionBusy, "effect-audio", {
+      mutationFn: async ({ indexes, name }: { indexes: number[]; name: string }) => {
+        let effect: Effect | null = null;
+        for (const index of [...indexes].sort((a, b) => b - a)) {
+          effect = await deleteEffectAudio(name, index);
+        }
+        if (!effect) {
+          throw new Error(t("effect.asset.noSelectedAudio"));
+        }
+        return effect;
+      },
+      onError(error) {
+        showToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : t("effect.error.deleteFallback"),
+          title: t("effect.asset.deleteSelectedAudio"),
+        });
+      },
+      onSuccess(effect) {
+        ctx.syncSavedEffect(effect, (current, saved) => ({
+          ...current,
+          audio_list: saved.audio_list,
+          audio_tags: saved.audio_tags,
+        }));
+        setSelectedAudioIndexes([]);
+        showToast({ kind: "success", title: t("effect.asset.deleteSelectedAudio") });
+      },
+    }),
+  );
 
-  const audioDeleteAllMutation = useMutation({
-    mutationFn: (name: string) => deleteAllEffectAudio(name),
-    onError(error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("effect.error.deleteFallback"),
-        title: t("effect.asset.clearAudio"),
-      });
-    },
-    onSuccess(effect) {
-      ctx.syncSavedEffect(effect, (current, saved) => ({
-        ...current,
-        audio_list: saved.audio_list,
-        audio_tags: saved.audio_tags,
-      }));
-      setSelectedAudioIndexes([]);
-      showToast({ kind: "success", title: t("effect.asset.clearAudio") });
-    },
-  });
-
-  useReportSectionBusy(
-    ctx.setSectionBusy,
-    "effect-audio",
-    audioUploadMutation.isPending ||
-      audioTagsSaveMutation.isPending ||
-      audioBatchDeleteMutation.isPending ||
-      audioDeleteAllMutation.isPending,
+  const audioDeleteAllMutation = useMutation(
+    withSectionBusy(ctx.beginSectionBusy, "effect-audio", {
+      mutationFn: (name: string) => deleteAllEffectAudio(name),
+      onError(error) {
+        showToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : t("effect.error.deleteFallback"),
+          title: t("effect.asset.clearAudio"),
+        });
+      },
+      onSuccess(effect) {
+        ctx.syncSavedEffect(effect, (current, saved) => ({
+          ...current,
+          audio_list: saved.audio_list,
+          audio_tags: saved.audio_tags,
+        }));
+        setSelectedAudioIndexes([]);
+        showToast({ kind: "success", title: t("effect.asset.clearAudio") });
+      },
+    }),
   );
 
   const updateAudioRowTag = useCallback(

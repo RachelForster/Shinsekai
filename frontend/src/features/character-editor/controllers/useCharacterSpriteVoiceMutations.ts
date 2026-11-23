@@ -10,7 +10,7 @@ import {
 import type { Character, Sprite } from "../../../entities/config/types";
 import { useI18n } from "../../../shared/i18n";
 import type { SpriteVoiceType } from "../../../shared/platform/types";
-import { useToast } from "../../../shared/ui";
+import { useToast, withSectionBusy } from "../../../shared/ui";
 import { mergeSprites, type CharacterPageContext } from "../characterContext";
 
 function characterHasGptSovitsModel(character: Character) {
@@ -44,100 +44,108 @@ export function useCharacterSpriteVoiceMutations({
   const { showToast } = useToast();
   const { t } = useI18n();
 
-  const voiceUploadMutation = useMutation({
-    mutationFn: ({ index, voicePath, voiceText }: { index: number; voicePath: string; voiceText: string }) =>
-      uploadSpriteVoice({
-        name: ctx.currentCharacterName,
-        spriteIndex: index,
-        voicePath,
-        voiceText,
-        voiceType: resolveSpriteVoiceType(ctx.draft.sprites[index], ctx.draft),
-      }),
-    onError(error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("character.sprite.voiceError"),
-        title: t("character.sprite.uploadVoice"),
-      });
-    },
-    onSuccess(character, variables) {
-      ctx.invalidateCharacters();
-      ctx.patchDraft((current) => ({
-        ...current,
-        sprites: mergeSprites(character.sprites, current),
-      }));
-      setPendingVoicePaths((current) => {
-        const next = { ...current };
-        delete next[variables.index];
-        return next;
-      });
-      showToast({ kind: "success", title: t("character.sprite.uploadVoice") });
-    },
-  });
+  const voiceUploadMutation = useMutation(
+    withSectionBusy(ctx.beginSectionBusy, "character-sprites", {
+      mutationFn: ({ index, voicePath, voiceText }: { index: number; voicePath: string; voiceText: string }) =>
+        uploadSpriteVoice({
+          name: ctx.currentCharacterName,
+          spriteIndex: index,
+          voicePath,
+          voiceText,
+          voiceType: resolveSpriteVoiceType(ctx.draft.sprites[index], ctx.draft),
+        }),
+      onError(error) {
+        showToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : t("character.sprite.voiceError"),
+          title: t("character.sprite.uploadVoice"),
+        });
+      },
+      onSuccess(character, variables) {
+        ctx.invalidateCharacters();
+        ctx.patchDraft((current) => ({
+          ...current,
+          sprites: mergeSprites(character.sprites, current),
+        }));
+        setPendingVoicePaths((current) => {
+          const next = { ...current };
+          delete next[variables.index];
+          return next;
+        });
+        showToast({ kind: "success", title: t("character.sprite.uploadVoice") });
+      },
+    }),
+  );
 
-  const voiceTextMutation = useMutation({
-    mutationFn: ({ index, text }: { index: number; text: string }) =>
-      saveSpriteVoiceText(ctx.currentCharacterName, index, text),
-    onError(error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("character.sprite.voiceError"),
-        title: t("character.sprite.saveVoiceText"),
-      });
-    },
-    onSuccess(character, variables) {
-      ctx.invalidateCharacters();
-      ctx.patchDraft((current) => {
-        const sprites = [...current.sprites];
-        const returned = character.sprites[variables.index];
-        if (returned && sprites[variables.index]) {
-          sprites[variables.index] = {
-            ...sprites[variables.index],
-            voice_path: returned.voice_path || sprites[variables.index].voice_path,
-            voice_text: returned.voice_text ?? "",
-          };
-        }
-        return { ...current, sprites };
-      });
-      showToast({ kind: "success", title: t("character.sprite.saveVoiceText") });
-    },
-  });
+  const voiceTextMutation = useMutation(
+    withSectionBusy(ctx.beginSectionBusy, "character-sprites", {
+      mutationFn: ({ index, text }: { index: number; text: string }) =>
+        saveSpriteVoiceText(ctx.currentCharacterName, index, text),
+      onError(error) {
+        showToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : t("character.sprite.voiceError"),
+          title: t("character.sprite.saveVoiceText"),
+        });
+      },
+      onSuccess(character, variables) {
+        ctx.invalidateCharacters();
+        ctx.patchDraft((current) => {
+          const sprites = [...current.sprites];
+          const returned = character.sprites[variables.index];
+          if (returned && sprites[variables.index]) {
+            sprites[variables.index] = {
+              ...sprites[variables.index],
+              voice_path: returned.voice_path || sprites[variables.index].voice_path,
+              voice_text: returned.voice_text ?? "",
+            };
+          }
+          return { ...current, sprites };
+        });
+        showToast({ kind: "success", title: t("character.sprite.saveVoiceText") });
+      },
+    }),
+  );
 
-  const voiceTypeMutation = useMutation({
-    mutationFn: ({ index, voiceType }: { index: number; voiceType: SpriteVoiceType }) =>
-      saveSpriteVoiceType(ctx.currentCharacterName, index, voiceType),
-    onError(error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("character.sprite.voiceError"),
-        title: t("character.sprite.voiceType"),
-      });
-    },
-  });
+  const voiceTypeMutation = useMutation(
+    withSectionBusy(ctx.beginSectionBusy, "character-sprites", {
+      mutationFn: ({ index, voiceType }: { index: number; voiceType: SpriteVoiceType }) =>
+        saveSpriteVoiceType(ctx.currentCharacterName, index, voiceType),
+      onError(error) {
+        showToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : t("character.sprite.voiceError"),
+          title: t("character.sprite.voiceType"),
+        });
+      },
+    }),
+  );
 
-  const voiceDeleteMutation = useMutation({
-    mutationFn: ({ index, name }: { index: number; name: string }) => deleteSpriteVoice(name, index),
-    onError(error) {
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("character.sprite.voiceError"),
-        title: t("character.sprite.deleteVoice"),
-      });
-    },
-    onSuccess(character, variables) {
-      ctx.invalidateCharacters();
-      ctx.patchDraft((current) => ({
-        ...current,
-        sprites: mergeSprites(character.sprites, current),
-      }));
-      setPendingVoicePaths((current) => {
-        const next = { ...current };
-        delete next[variables.index];
-        return next;
-      });
-      showToast({ kind: "success", title: t("character.sprite.deleteVoice") });
-    },
-  });
+  const voiceDeleteMutation = useMutation(
+    withSectionBusy(ctx.beginSectionBusy, "character-sprites", {
+      mutationFn: ({ index, name }: { index: number; name: string }) => deleteSpriteVoice(name, index),
+      onError(error) {
+        showToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : t("character.sprite.voiceError"),
+          title: t("character.sprite.deleteVoice"),
+        });
+      },
+      onSuccess(character, variables) {
+        ctx.invalidateCharacters();
+        ctx.patchDraft((current) => ({
+          ...current,
+          sprites: mergeSprites(character.sprites, current),
+        }));
+        setPendingVoicePaths((current) => {
+          const next = { ...current };
+          delete next[variables.index];
+          return next;
+        });
+        showToast({ kind: "success", title: t("character.sprite.deleteVoice") });
+      },
+    }),
+  );
 
   const updateSprite = useCallback(
     (index: number, patch: Partial<Sprite>) => {

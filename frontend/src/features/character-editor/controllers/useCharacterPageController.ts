@@ -6,7 +6,7 @@ import { charactersQueryKey, listCharacters } from "../../../entities/character/
 import type { Character } from "../../../entities/config/types";
 import { suggestUniqueSpritePrefix } from "../../../shared/assets/spritePrefix";
 import { useI18n } from "../../../shared/i18n";
-import { useToast } from "../../../shared/ui";
+import { useSectionBusyRegistry, useToast } from "../../../shared/ui";
 import { useVisionAvailability } from "../../media-auto-label/useVisionAvailability";
 import { mergeGeneratedSpritesIntoDraft, mergeSprites, type CharacterPageContext } from "../characterContext";
 import {
@@ -43,7 +43,6 @@ export function useCharacterPageController(): CharacterPageContext {
   const [nameError, setNameError] = useState("");
   const [pronunciationText, setPronunciationText] = useState("");
   const [syncedCharacterKey, setSyncedCharacterKey] = useState("");
-  const [busySections, setBusySections] = useState<Set<string>>(() => new Set());
 
   const generationReturnRef = useRef<{ element: HTMLElement | null; scrollTop: number } | null>(null);
   const preserveImportedDraftRef = useRef<Character | null>(null);
@@ -114,20 +113,9 @@ export function useCharacterPageController(): CharacterPageContext {
     }
   }, [selected]);
 
-  const setSectionBusy = useCallback((sectionId: string, busy: boolean) => {
-    setBusySections((current) => {
-      if (current.has(sectionId) === busy) {
-        return current;
-      }
-      const next = new Set(current);
-      if (busy) {
-        next.add(sectionId);
-      } else {
-        next.delete(sectionId);
-      }
-      return next;
-    });
-  }, []);
+  const { beginSectionBusy, busyCount, resumeRevision, setSectionBusy } = useSectionBusyRegistry({
+    onBeforeBusy: () => discardAutoSaveRef.current(),
+  });
 
   const invalidateCharacters = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: charactersQueryKey });
@@ -287,7 +275,8 @@ export function useCharacterPageController(): CharacterPageContext {
   } = useCharacterIdentityAndAutoSave({
     activeCharacterKeyRef,
     aiActionPending,
-    busySectionsCount: busySections.size,
+    busyResumeRevision: resumeRevision,
+    busySectionsCount: busyCount,
     cancelAutoSaveRef,
     data,
     deletedCharacterKeysRef,
@@ -454,6 +443,7 @@ export function useCharacterPageController(): CharacterPageContext {
     selected,
     selectedCharacterKey,
     selectedName,
+    beginSectionBusy,
     selectExistingCharacter,
     setNameError,
     setPronunciationText,
