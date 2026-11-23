@@ -307,6 +307,23 @@ describe("standalone template generation & dialog protocol", () => {
     expect(selfInjected.system).toContain("【用户自设设定】");
     expect(selfInjected.system).toContain("喜欢夜间喝热可可");
 
+    const selfExplicitInCast = generateStandaloneDialogSystemTemplate({
+      input: {
+        name: "self-explicit-cast",
+        characters: ["自设", "星奈"],
+        backgroundName: "",
+        playerCharacter: "",
+      },
+      characters: [heroine, selfPersona],
+      backgrounds: [],
+      systemConfig: { ui_language: "zh_CN" },
+    });
+    expect(selfExplicitInCast.resolvedCharacters).toEqual(["自设", "星奈"]);
+    expect(selfExplicitInCast.system).toContain("自设有2张立绘：");
+    expect(selfExplicitInCast.system).toContain("以下是自设的角色设定");
+    expect(selfExplicitInCast.system).toContain("喜欢夜间喝热可可");
+    expect(selfExplicitInCast.system).not.toContain("不要将「自设」作为独立台词角色输出");
+
     const enRes = generateStandaloneDialogSystemTemplate({
       input: {
         name: "en-locale",

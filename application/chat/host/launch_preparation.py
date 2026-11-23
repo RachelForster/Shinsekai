@@ -68,6 +68,7 @@ class ChatLaunchPreparation:
             allow_dialogue=bool(chat_session.get("allowPlayerDialogue", True)),
             read_speech=read_player_speech,
             media_selection_mode=media_selection_mode,
+            character_names=character_names,
         )
         effective_system = system_template or ""
         if player_rules and player_rules.strip() not in effective_system:

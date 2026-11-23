@@ -35,12 +35,13 @@ def initial_sprite_path_for_characters(
         if isinstance(name, str) and name.strip()
     ]
     default_path = ""
-    if selected_names:
-        character = config.get_character_by_name(selected_names[0])
+    for name in selected_names:
+        character = config.get_character_by_name(name)
         if character is not None:
             sprites = get_character_assets(character).sprites
             if sprites:
                 default_path = sprite_entry_path(sprites[0])
+                break
 
     return resolve_initial_sprite_path(
         _characters(config),

@@ -1202,4 +1202,82 @@ describe("CharacterEditorPage", () => {
     await waitForCharacterLoaded("Mika Prime");
     expect(screen.getByRole("combobox", { name: "Current character" })).toHaveTextContent("Mika Prime");
   });
+
+  it("pauses auto-save during AI write so catalog refetch mid-generation does not overwrite the setting", async () => {
+    let serverCharacter: Character = {
+      ...structuredClone(character),
+      character_brief: "",
+      character_setting: "",
+      id: "char-mika",
+    };
+    mockListCharacters.mockImplementation(async () => [structuredClone(serverCharacter)]);
+
+    let resolveAiWrite!: (value: {
+      characterBrief?: string;
+      characterSetting: string;
+      message: string;
+      ok?: boolean;
+    }) => void;
+    mockGenerateCharacterSetting.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveAiWrite = resolve;
+        }),
+    );
+
+    const queryClient = new QueryClient({
+      defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
+    });
+    renderPage(queryClient);
+    await waitForCharacterLoaded("Mika");
+    expect(screen.getByLabelText("Character setting")).toHaveValue("");
+    expect(screen.getByLabelText("Character brief")).toHaveValue("");
+
+    fireEvent.click(screen.getByRole("button", { name: "AI write" }));
+    await waitFor(() => expect(mockGenerateCharacterSetting).toHaveBeenCalledWith({ name: "Mika", setting: "" }));
+
+    // Simulate Step 1 backend save + 1s revision polling refetch arriving while Step 2 brief generation runs
+    serverCharacter = {
+      ...serverCharacter,
+      character_setting: "Generated full setting.",
+    };
+    await act(async () => {
+      await queryClient.invalidateQueries({ queryKey: ["characters"] });
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 750));
+    expect(mockSaveCharacter).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveAiWrite({
+        characterBrief: "Concise brief.",
+        characterSetting: "Generated full setting.",
+        message: "输出成功",
+        ok: true,
+      });
+    });
+
+    await waitFor(() => expect(screen.getByLabelText("Character setting")).toHaveValue("Generated full setting."));
+    expect(screen.getByLabelText("Character brief")).toHaveValue("Concise brief.");
+
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    expect(mockSaveCharacter).not.toHaveBeenCalled();
+  });
+
+  it("shows an error toast and keeps existing setting when AI write returns ok: false", async () => {
+    mockGenerateCharacterSetting.mockResolvedValueOnce({
+      characterBrief: "",
+      characterSetting: "Quiet student.",
+      message: "输出失败: 生成结果为空",
+      ok: false,
+    });
+
+    renderPage();
+    await waitForCharacterLoaded("Mika");
+
+    fireEvent.click(screen.getByRole("button", { name: "AI write" }));
+    const toastMessage = await screen.findByText("输出失败: 生成结果为空");
+    expect(toastMessage.closest("article")).toHaveClass("toast--error");
+    expect(screen.getByLabelText("Character setting")).toHaveValue("Quiet student.");
+  });
 });

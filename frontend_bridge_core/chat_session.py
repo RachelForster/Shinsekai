@@ -291,12 +291,7 @@ def _launch_chat_locked(
         state,
         body.get("characters") or [],
     )
-    from config.schema import is_self_persona_name
     player_character = resolve_player(state.config_manager, characters, body.get("playerCharacter"))
-    if not is_self_persona_name(player_character) and any(
-        not is_self_persona_name(name) for name in characters
-    ):
-        characters = [name for name in characters if not is_self_persona_name(name)]
     primary_characters = _resolve_launch_primary_characters(
         state,
         body,
@@ -304,7 +299,7 @@ def _launch_chat_locked(
         player_character,
     )
     first_character = next(
-        (name for name in characters if name != player_character and not is_self_persona_name(name)),
+        (name for name in characters if name != player_character),
         "",
     )
     init_sprite_path = initial_sprite_path_for_characters(

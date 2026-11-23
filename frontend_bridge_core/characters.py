@@ -62,6 +62,7 @@ def _generate_character_setting(state: BridgeState, payload: dict[str, Any]) -> 
         "characterBrief": result.character_brief,
         "characterSetting": result.character_setting,
         "message": result.message,
+        "ok": result.ok,
     }
 
 

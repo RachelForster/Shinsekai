@@ -139,20 +139,13 @@ class TemplateGenerator:
             candidate = getter(SELF_PERSONA_NAME) if callable(getter) else None
             if candidate is not None and is_self_persona_name(getattr(candidate, "name", "")):
                 player = candidate
-        if not is_self_persona_name(player_character) and any(
-            not is_self_persona_name(name) for name, _character in characters
-        ):
-            characters = [
-                (name, character)
-                for name, character in characters
-                if not is_self_persona_name(name)
-            ]
         if player is not None and not allow_player_dialogue:
             characters = [(name, character) for name, character in characters if name != player_character]
         if not characters and player is None:
             raise NoValidCharactersError()
+        has_self_in_cast = any(is_self_persona_name(name) for name, _character in characters)
         self_persona_setting = ""
-        if not player_character and player is None:
+        if not player_character and player is None and not has_self_in_cast:
             getter = getattr(config_manager, "get_character_by_name", None)
             self_char = getter(SELF_PERSONA_NAME) if callable(getter) else None
             if self_char is not None and is_self_persona_name(getattr(self_char, "name", "")):

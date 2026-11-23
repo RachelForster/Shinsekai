@@ -120,6 +120,7 @@ export interface CharacterSettingResult {
   characterBrief?: string;
   characterSetting: string;
   message: string;
+  ok?: boolean;
 }
 
 export interface CharacterBriefResult {

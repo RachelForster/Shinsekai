@@ -284,9 +284,6 @@ export function generateStandaloneDialogSystemTemplate(options: GenerateTemplate
     }
   }
 
-  if (!isSelfPersonaName(playerCharacter) && cast.some((c) => !isSelfPersonaName(c.name))) {
-    cast = cast.filter((c) => !isSelfPersonaName(c.name));
-  }
   if (playerObj && !allowPlayerDialogue) {
     cast = cast.filter((c) => characterNameKey(c.name) !== characterNameKey(playerCharacter));
   }
@@ -295,7 +292,7 @@ export function generateStandaloneDialogSystemTemplate(options: GenerateTemplate
   }
 
   let selfPersonaSetting = "";
-  if (!playerCharacter && !playerObj) {
+  if (!playerCharacter && !playerObj && !cast.some((c) => isSelfPersonaName(c.name))) {
     const selfChar = findCharacterByName(allCharacters, SELF_PERSONA_NAME);
     if (selfChar && isSelfPersonaName(selfChar.name)) {
       selfPersonaSetting = (selfChar.character_setting ?? "").trim();
