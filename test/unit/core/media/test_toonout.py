@@ -91,6 +91,26 @@ def test_worker_protocol_uses_configured_python_and_closes_pipes(tmp_path, monke
     process.wait.assert_called_once_with(timeout=5)
 
 
+def test_toonout_model_directory_prefers_unified_and_falls_back_to_legacy(tmp_path):
+    unified = tmp_path / "data" / "models" / "toonout"
+    legacy = tmp_path / "cache" / "models" / "toonout"
+    assert toonout_assets.model_directory(tmp_path) == unified
+
+    legacy.mkdir(parents=True)
+    (legacy / "birefnet_finetuned_toonout.pth").write_bytes(b"legacy")
+    assert toonout_assets.model_directory(tmp_path) == legacy
+
+    unified.mkdir(parents=True)
+    (unified / "birefnet_finetuned_toonout.pth").write_bytes(b"unified")
+    assert toonout_assets.model_directory(tmp_path) == unified
+
+
+def test_toonout_falls_back_when_runtime_json_points_to_missing_python(tmp_path, monkeypatch):
+    (tmp_path / "runtime.json").write_text(json.dumps({"python": str(tmp_path / "missing-python.exe")}))
+    monkeypatch.setattr("config.perception.shinsekai_runtime_python_path", lambda: sys.executable)
+    assert toonout._resolve_worker_python(tmp_path) == sys.executable
+
+
 def test_corrupt_artifact_blocks_worker_before_executing_code(tmp_path, monkeypatch):
     (tmp_path / "code.py").write_bytes(b"bad")
     monkeypatch.setattr(

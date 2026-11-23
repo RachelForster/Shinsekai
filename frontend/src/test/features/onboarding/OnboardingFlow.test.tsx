@@ -242,12 +242,13 @@ describe("onboarding flow", () => {
     renderWithProviders(<PluginSetupPanel onInstalled={onInstalled} />);
 
     expect(await screen.findByText("Visual plugin")).toBeInTheDocument();
+    expect(screen.queryByText("Voice input plugin")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "One-click download" }));
 
     await waitFor(() => expect(mocks.installMissingRuntimeDependency).toHaveBeenCalled());
-    await waitFor(() => expect(mocks.installPlugin).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(mocks.installPlugin).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(onInstalled).toHaveBeenCalledTimes(1));
-    expect(await screen.findAllByRole("button", { name: "Configure" })).toHaveLength(3);
+    expect(await screen.findAllByRole("button", { name: "Configure" })).toHaveLength(2);
     expect(screen.getByText(/Dependencies and selected plugins are installed/)).toBeInTheDocument();
   });
 

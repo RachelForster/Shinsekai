@@ -1,27 +1,16 @@
 @echo off
 chcp 65001 > nul
-cd /d "%~dp0"
-
-:: Check that the current path contains only ASCII characters
-powershell -Command "if ('%cd%' -match '[^\x20-\x7E]') { Write-Host 'Error: The current path contains non-ASCII characters (e.g. Chinese, Japanese).'; Write-Host 'Please move the folder to a path with only English characters, e.g. D:\Shinsekai'; Write-Host 'Current path: %cd%'; exit 1 } else { exit 0 }" > nul 2>&1
-if %errorlevel% neq 0 (
-    echo.
-    echo ========================================
-    echo   Path contains non-ASCII characters!
-    echo   Please move this folder to a path
-    echo   with only English letters and numbers.
-    echo   e.g. D:\Shinsekai
-    echo ========================================
-    echo   Current: %cd%
-    echo ========================================
-    pause
-    exit /b 1
-)
+setlocal
+cd /d "%~dp0.."
+echo ========================================
+echo   Installing...
+echo ========================================
+echo.
 
 set "CONDA_ENV_NAME=shinsekai"
 if not "%SHINSEKAI_CONDA_ENV%"=="" set "CONDA_ENV_NAME=%SHINSEKAI_CONDA_ENV%"
 
-:: Check for embedded python, then the project conda env, then system python
+REM Check for embedded python, then the project conda env, then system python
 set "PYTHON_CMD="
 if exist "runtime\python.exe" (
     set "PYTHON_CMD=runtime\python.exe"
@@ -52,5 +41,31 @@ if "%PYTHON_CMD%"=="" (
     )
 )
 
-%PYTHON_CMD% webui_react.py %*
+if not exist "requirements.txt" (
+    echo Error: requirements.txt not found
+    echo Please ensure requirements.txt exists in the repository root
+    pause
+    exit /b 1
+)
+
+echo Installing dependencies...
+echo.
+
+%PYTHON_CMD% -m pip install -r requirements.txt -i https://mirrors.aliyun.com/pypi/simple --extra-index-url https://pypi.tuna.tsinghua.edu.cn/simple --extra-index-url https://pypi.org/simple
+
+if %errorlevel% neq 0 (
+    echo.
+    echo Error occurred during dependency installation
+    pause
+    exit /b 1
+)
+
+endlocal
+
+echo.
+echo ========================================
+echo   Installation complete!
+echo ========================================
+echo.
+echo You can now run scripts\start.bat to launch the React settings center
 pause

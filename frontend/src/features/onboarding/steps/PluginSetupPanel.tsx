@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, DownloadCloud, Eye, Globe2, Mic2, Settings } from "lucide-react";
+import { CheckCircle2, DownloadCloud, Eye, Globe2, Settings } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { installMissingRuntimeDependency } from "../../../entities/chat/repository";
@@ -24,7 +24,7 @@ import { catalogInstallSource } from "../../plugin-manager/pluginUtils";
 import { reloadPluginService } from "../../plugin-manager/pluginReload";
 import { OnboardingPanelLayout, OnboardingTaskPanel } from "../OnboardingPanelLayout";
 
-type PluginPresetId = "browser" | "visual" | "voice";
+type PluginPresetId = "browser" | "visual";
 
 interface PluginPreset {
   body: string;
@@ -171,7 +171,7 @@ export function PluginSetupPanel({ onInstalled }: PluginSetupPanelProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { showToast } = useToast();
-  const [selectedIds, setSelectedIds] = useState<PluginPresetId[]>(["visual", "browser", "voice"]);
+  const [selectedIds, setSelectedIds] = useState<PluginPresetId[]>(["visual", "browser"]);
   const [dependencyTask, setDependencyTask] = useState<TaskSnapshot<RuntimeDependencyInstallResult> | null>(null);
   const [installTask, setInstallTask] = useState<TaskSnapshot<PluginManifest> | null>(null);
   const [installedPlugins, setInstalledPlugins] = useState<Partial<Record<PluginPresetId, PluginManifest>>>({});
@@ -208,23 +208,12 @@ export function PluginSetupPanel({ onInstalled }: PluginSetupPanelProps) {
         keywords: splitKeywords(t("onboarding.plugins.keywords.browser")),
         title: t("onboarding.plugins.browserTitle"),
       },
-      {
-        body: t("onboarding.plugins.voiceBody"),
-        dependencies: ["openai", "faster_whisper", "sounddevice"],
-        excludedKeywords: ["vision", "visual", "screen", "screenshot", "browser", "playwright"],
-        guide: t("onboarding.plugins.voiceGuide"),
-        id: "voice",
-        keywords: splitKeywords(t("onboarding.plugins.keywords.voice")),
-        title: t("onboarding.plugins.voiceTitle"),
-      },
     ],
     [t],
   );
   const catalog = catalogQuery.data ?? [];
   const selectedPresets = presets.filter((preset) => selectedIds.includes(preset.id));
-  const selectedAiDependencyPresets = selectedPresets.filter(
-    (preset) => preset.id === "visual" || preset.id === "voice",
-  );
+  const selectedAiDependencyPresets = selectedPresets.filter((preset) => preset.id === "visual");
 
   const installMutation = useMutation({
     mutationFn: async () => {
@@ -315,7 +304,7 @@ export function PluginSetupPanel({ onInstalled }: PluginSetupPanelProps) {
           {presets.map((preset) => {
             const plugin = findPluginMatch(catalog, preset);
             const selected = selectedIds.includes(preset.id);
-            const Icon = preset.id === "visual" ? Eye : preset.id === "browser" ? Globe2 : Mic2;
+            const Icon = preset.id === "visual" ? Eye : Globe2;
             const installedPlugin =
               installedPlugins[preset.id] ?? findInstalledPresetPlugin(pluginsQuery.data ?? [], preset);
             const hasConfig = pluginHasConfig(installedPlugin);

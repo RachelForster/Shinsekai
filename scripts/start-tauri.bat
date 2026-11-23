@@ -2,7 +2,8 @@
 chcp 65001 > nul
 setlocal
 
-cd /d "%~dp0"
+cd /d "%~dp0.."
+set "REPO_ROOT=%CD%"
 
 set "SHINSEKAI_SHOW_BACKEND_CONSOLE="
 if /i "%~1"=="--backend-console" set "SHINSEKAI_SHOW_BACKEND_CONSOLE=1"
@@ -122,9 +123,9 @@ if "%SHINSEKAI_SHOW_BACKEND_CONSOLE%"=="1" (
     echo Backend console debug mode enabled.
 )
 :: Run from the checkout while keeping the existing desktop app/data location.
-if not defined SHINSEKAI_SOURCE_ROOT set "SHINSEKAI_SOURCE_ROOT=%~dp0."
+if not defined SHINSEKAI_SOURCE_ROOT set "SHINSEKAI_SOURCE_ROOT=%REPO_ROOT%"
 if not defined SHINSEKAI_APP_ROOT for %%I in ("%EXE_PATH%") do set "SHINSEKAI_APP_ROOT=%%~dpI."
-if not defined SHINSEKAI_RUNTIME_MANIFEST set "SHINSEKAI_RUNTIME_MANIFEST=%~dp0frontend\src-tauri\runtime_manifest.json"
+if not defined SHINSEKAI_RUNTIME_MANIFEST set "SHINSEKAI_RUNTIME_MANIFEST=%REPO_ROOT%\frontend\src-tauri\runtime_manifest.json"
 start "" "%EXE_PATH%"
 endlocal
 exit /b 0
@@ -147,7 +148,7 @@ if errorlevel 1 (
 exit /b 0
 
 :usage
-echo Usage: start-tauri.bat [--backend-console]
+echo Usage: scripts\start-tauri.bat [--backend-console]
 echo.
 echo   --backend-console   Show the backend Python terminal window for debugging.
 endlocal

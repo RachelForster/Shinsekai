@@ -73,6 +73,9 @@ PERCEPTION_RUNTIME_PACKAGE_SPECS = (
     PERCEPTION_PILLOW_SPEC,
     PERCEPTION_RAPIDOCR_SPEC,
 )
+PERCEPTION_GGUF_RUNTIME_PACKAGE_SPECS = (
+    PERCEPTION_PILLOW_SPEC,
+)
 def _resolve_perception_target_python(state: Any) -> str:
     raw = ""
     project_root = getattr(state, "project_root_dir", "") if state is not None else ""
@@ -133,6 +136,17 @@ def _register_builtin_runtime_dependencies(registry: RuntimeDependencyRegistry) 
             default_label="PyTorch / Transformers",
             secondary_group_label="Transformers / RapidOCR",
             success_message="感知运行环境依赖已就绪。",
+        )
+    )
+    registry.register_builtin(
+        RuntimeDependencySpec(
+            key="perception_gguf",
+            package_specs=PERCEPTION_GGUF_RUNTIME_PACKAGE_SPECS,
+            install_only_unsatisfied=True,
+            requires_target_python=True,
+            target_python=_resolve_perception_target_python,
+            default_label="Pillow",
+            success_message="GGUF 感知运行环境依赖已就绪。",
         )
     )
     registry.register_builtin(
@@ -361,6 +375,18 @@ def perception_dependency_issues(
 ) -> tuple[RequirementCheck, ...]:
     return runtime_dependency_issues(
         "perception",
+        installed_versions=installed_versions,
+        python_exe=python_exe,
+    )
+
+
+def perception_gguf_dependency_issues(
+    python_exe: str | Path,
+    *,
+    installed_versions: Mapping[str, str] | None = None,
+) -> tuple[RequirementCheck, ...]:
+    return runtime_dependency_issues(
+        "perception_gguf",
         installed_versions=installed_versions,
         python_exe=python_exe,
     )

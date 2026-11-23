@@ -39,8 +39,8 @@ class SystemConfig(BaseModel):
     )
     voice_language: DefaultIfNone[str] = Field(default="ja", description="系统语音的默认语言 (例如: ja)")
     asr_provider: DefaultIfNone[str] = Field(
-        default="vosk",
-        description="麦克风语音识别后端：vosk | faster_whisper | realtime_stt",
+        default="sherpa_onnx",
+        description="麦克风语音识别后端：sherpa_onnx | vosk | faster_whisper | realtime_stt",
     )
     asr_language: DefaultIfNone[str] = Field(
         default="",

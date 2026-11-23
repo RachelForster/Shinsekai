@@ -120,6 +120,7 @@ MODULE_PACKAGE_MAP = {
     "rapidocr_onnxruntime": "rapidocr-onnxruntime",
     "requests": "requests",
     "sentence_transformers": "sentence-transformers",
+    "sherpa_onnx": "sherpa-onnx",
     "socksio": "socksio",
     "tiktoken": "tiktoken",
     "tokenizers": "tokenizers",

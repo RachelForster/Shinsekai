@@ -203,7 +203,7 @@ export const sampleConfig: AppConfig = {
     base_font_size_px: 56,
     ui_language: "zh_CN",
     voice_language: "ja",
-    asr_provider: "vosk",
+    asr_provider: "sherpa_onnx",
     asr_language: "",
     asr_whisper_model_size: "small",
     asr_whisper_device: "auto",

@@ -10,8 +10,7 @@ on:
       - "frontend/**"
       - "frontend_bridge.py"
       - "webui_react.py"
-      - "start-react.*"
-      - "scripts/start.*"
+      - "scripts/start*"
   pull_request:
     branches: [main]
     paths:
@@ -20,8 +19,7 @@ on:
       - "frontend/**"
       - "frontend_bridge.py"
       - "webui_react.py"
-      - "start-react.*"
-      - "scripts/start.*"
+      - "scripts/start*"
 
 permissions:
   contents: read

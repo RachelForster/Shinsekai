@@ -17,10 +17,10 @@
 
 ## 2. 怎样打开设置窗口
 
-- **下载了整合包：** 解压后双击 **`start.bat`**（有的版本名称接近，以您包内说明为准）。  
+- **下载了绿色便携包 / 安装版：** 解压后直接双击 **`shinsekai.exe`**。  
 - **从源码安装的玩家：** 在程序所在文件夹运行对应平台的
-  **`start-react.bat` / `start-react.command` / `start-react.sh`**（若不会操作，
-  可优先使用整合包，一般只需双击）。
+  **`scripts\start.bat` / `scripts/start.command` / `scripts/start.sh`**（若不会操作，
+  可优先使用绿色便携包，一般只需双击 `shinsekai.exe`）。
 
 打开后，您应能看到 **左侧一列竖排按钮** 和 **右侧大块的设置内容**。
 

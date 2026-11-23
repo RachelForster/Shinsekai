@@ -37,7 +37,7 @@ describe("API settings utilities", () => {
     expect(normalizeUiLanguage("fr")).toBe("zh_CN");
     expect(normalizeAsrProvider("faster-whisper")).toBe("faster_whisper");
     expect(normalizeAsrProvider("RealtimeSTT")).toBe("realtime_stt");
-    expect(normalizeAsrProvider("")).toBe("vosk");
+    expect(normalizeAsrProvider("")).toBe("sherpa_onnx");
     expect(resolveAsrWhisperPresetValue("large-v3")).toBe("large-v3");
     expect(resolveAsrWhisperPresetValue("custom-model")).toBe("__custom__");
     expect(resolveAsrWhisperPresetValue("")).toBe("__custom__");

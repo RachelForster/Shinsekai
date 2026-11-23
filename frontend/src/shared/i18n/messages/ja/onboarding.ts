@@ -76,7 +76,7 @@ export const onboardingJaMessages: Record<OnboardingMessageKey, string> = {
   "onboarding.complete.openTemplates": "テンプレートへ進む",
   "onboarding.complete.title": "準備完了",
   "onboarding.plugins.aiDependencyHint":
-    "視覚プラグインと音声入力プラグインは AI 依存関係をインストールします。ダウンロードや展開に時間がかかる場合があります。",
+    "視覚プラグインは AI 依存関係をインストールします。ダウンロードや展開に時間がかかる場合があります。",
   "onboarding.plugins.browserBody": "チャット中に Web ページを閲覧・操作できるようにします。",
   "onboarding.plugins.browserGuide":
     "インストール後、動作を見たい場合はプラグイン設定で headless をオフにしてください。",
@@ -95,7 +95,6 @@ export const onboardingJaMessages: Record<OnboardingMessageKey, string> = {
   "onboarding.plugins.keywords.browser": "playwright,playwright browser,playwright_browser,browser,浏览器,ブラウザ",
   "onboarding.plugins.keywords.voiceExclude": "asr,whisper,speech,voice,microphone,语音,麦克风,音声,マイク",
   "onboarding.plugins.keywords.visual": "vision,visual,screen,screenshot,image,视觉,屏幕,視覚,画面",
-  "onboarding.plugins.keywords.voice": "voice,speech,asr,whisper,microphone,语音,麦克风,音声,マイク",
   "onboarding.plugins.loading": "プラグイン一覧を読み込み中",
   "onboarding.plugins.marketplaceHint": "その他のプラグインは「プラグイン」>「発見」にあります。",
   "onboarding.plugins.noMatch": "対応するマーケットプラグインがまだ見つかりません。",
@@ -108,13 +107,10 @@ export const onboardingJaMessages: Record<OnboardingMessageKey, string> = {
   "onboarding.plugins.selectedCount": "{count} 件選択中",
   "onboarding.plugins.title": "よく使うプラグイン",
   "onboarding.plugins.uninstalledWarning":
-    "プラグインがまだインストールされていません。音声・視覚・ブラウザ機能は利用できません。それでもスキップしますか？",
+    "プラグインがまだインストールされていません。視覚・ブラウザ機能は利用できません。それでもスキップしますか？",
   "onboarding.plugins.visualBody": "画面や画像を理解するための視覚拡張です。",
   "onboarding.plugins.visualGuide": "インストール後、視覚プラグイン設定で画面の自動認識を有効にしてください。",
   "onboarding.plugins.visualTitle": "視覚プラグイン",
-  "onboarding.plugins.voiceBody": "ハンズフリー会話のための音声入力を追加します。",
-  "onboarding.plugins.voiceGuide": "インストール後、API ページで音声入力を設定してください。",
-  "onboarding.plugins.voiceTitle": "音声入力プラグイン",
   "onboarding.finishLabel": "テンプレートへ進む",
   "onboarding.optionalLabel": "スキップ可",
   "onboarding.requiredLabel": "必須",
