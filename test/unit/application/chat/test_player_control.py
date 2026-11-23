@@ -133,6 +133,26 @@ class PlayerControlTests(unittest.TestCase):
         self.assertIn("独立出场角色", cast_override)
         self.assertNotIn("不要将「自设」作为独立台词角色输出", cast_override)
 
+        combined_config = SimpleNamespace(
+            get_character_by_name=lambda name: (
+                player if name == "神羽" else (self_persona if name == SELF_PERSONA_NAME else None)
+            )
+        )
+        normal_player_with_self = player_runtime_prompt(
+            combined_config, "神羽", allow_dialogue=True, read_speech=False,
+            media_selection_mode="indexed", character_names=["神羽", SELF_PERSONA_NAME],
+        )
+        self.assertIn("主控人物：神羽", normal_player_with_self)
+        self.assertIn("独立出场角色", normal_player_with_self)
+        self.assertNotIn("不要将「自设」作为独立台词角色输出", normal_player_with_self)
+
+        self_player = player_runtime_prompt(
+            combined_config, SELF_PERSONA_NAME, allow_dialogue=False, read_speech=False,
+            media_selection_mode="indexed", character_names=[SELF_PERSONA_NAME, "Mika"],
+        )
+        self.assertIn("用户控制的主控人物：自设", self_player)
+        self.assertNotIn("独立出场角色", self_player)
+
         for locale in ("zh_CN", "en", "ja"):
             from ai.llm.template.dialog.sections.player import format_self_persona_prompt
 

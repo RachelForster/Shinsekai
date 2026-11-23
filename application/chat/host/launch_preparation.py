@@ -75,6 +75,8 @@ class ChatLaunchPreparation:
         has_self_in_cast = any(
             is_self_persona_name(ch) for ch in (character_names or ())
         )
+        self_as_player = is_self_persona_name(player_name)
+        self_as_npc_cast = has_self_in_cast and not self_as_player
         player_rules = player_runtime_prompt(
             state.config_manager,
             player_name,
@@ -84,11 +86,11 @@ class ChatLaunchPreparation:
             character_names=character_names,
         )
         effective_system = system_template or ""
-        if (not player_name and has_self_in_cast) or is_self_persona_name(player_name):
+        if has_self_in_cast or self_as_player:
             stripped_system = strip_self_persona_block(effective_system)
             if stripped_system != effective_system:
                 effective_system = stripped_system
-                if not player_name and has_self_in_cast:
+                if self_as_npc_cast:
                     getter = getattr(state.config_manager, "get_character_by_name", None)
                     self_char = getter(SELF_PERSONA_NAME) if callable(getter) else None
                     setting = (

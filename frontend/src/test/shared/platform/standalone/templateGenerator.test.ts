@@ -709,23 +709,25 @@ describe("standalone template generation & dialog protocol", () => {
       "必须以规定的 JSON 格式回复。",
     ].join("\n");
 
-    const prompt = buildStandaloneDialogSystemPrompt({
-      characters: [heroine, selfPersona],
-      systemConfig: { ui_language: "zh_CN", voice_language: "ja" },
-      payload: {
-        templateId: "legacy-self-cast",
-        characters: ["自设", "星奈"],
-        backgroundName: "",
-        historyPath: "./data/history/legacy-self-cast.json",
-        playerCharacter: "",
-        scenario: "星海观测台重逢",
-        system: legacySystem,
-      },
-    });
+    for (const playerCharacter of ["", "星奈"]) {
+      const prompt = buildStandaloneDialogSystemPrompt({
+        characters: [heroine, selfPersona],
+        systemConfig: { ui_language: "zh_CN", voice_language: "ja" },
+        payload: {
+          templateId: "legacy-self-cast",
+          characters: ["自设", "星奈"],
+          backgroundName: "",
+          historyPath: "./data/history/legacy-self-cast.json",
+          playerCharacter,
+          scenario: "星海观测台重逢",
+          system: legacySystem,
+        },
+      });
 
-    expect(prompt).not.toContain("不要将「自设」作为独立台词角色输出");
-    expect(prompt).toContain("以下是自设的角色设定：");
-    expect(prompt).toContain("Traveler carrying a pocket watch.");
-    expect(prompt).toContain("独立出场角色");
+      expect(prompt).not.toContain("不要将「自设」作为独立台词角色输出");
+      expect(prompt).toContain("以下是自设的角色设定：");
+      expect(prompt).toContain("Traveler carrying a pocket watch.");
+      expect(prompt).toContain("独立出场角色");
+    }
   });
 });

@@ -145,11 +145,13 @@ export function buildStandaloneDialogSystemPrompt(ctx: StandalonePromptContext):
 
   const playerCharacter = (payload.playerCharacter ?? "").trim();
   const hasSelfInCast = effectiveCastNames.some((name) => isSelfPersonaName(name));
-  if (hadPersistedSystem && ((!playerCharacter && hasSelfInCast) || isSelfPersonaName(playerCharacter))) {
+  const selfAsPlayer = isSelfPersonaName(playerCharacter);
+  const selfAsNpcCast = hasSelfInCast && !selfAsPlayer;
+  if (hadPersistedSystem && (hasSelfInCast || selfAsPlayer)) {
     const strippedSystem = stripStandaloneSelfPersonaBlock(systemTemplate);
     if (strippedSystem !== systemTemplate) {
       systemTemplate = strippedSystem;
-      if (!playerCharacter && hasSelfInCast) {
+      if (selfAsNpcCast) {
         const selfChar = characters.find((c) => isSelfPersonaName(c.name));
         const selfSetting = (selfChar?.character_setting ?? "").trim();
         if (selfSetting && !systemTemplate.includes(selfSetting)) {
@@ -158,7 +160,7 @@ export function buildStandaloneDialogSystemPrompt(ctx: StandalonePromptContext):
         }
       }
     }
-    if (!playerCharacter && hasSelfInCast) {
+    if (selfAsNpcCast) {
       const castOverride = t("self_persona_cast_runtime_override").trim();
       if (castOverride && !systemTemplate.includes(castOverride)) {
         systemTemplate = systemTemplate ? `${systemTemplate}\n\n${castOverride}` : castOverride;

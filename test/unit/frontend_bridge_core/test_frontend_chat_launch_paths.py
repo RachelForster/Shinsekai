@@ -654,9 +654,11 @@ def test_launch_chat_preserves_self_persona_in_cast_and_initial_sprite(
     assert conversations[0]["characters"] == [SELF_PERSONA_NAME, "Alice"]
 
 
+@pytest.mark.parametrize("player_character", ["", "Alice"])
 def test_launch_chat_strips_legacy_self_persona_prohibition_when_explicitly_cast(
     tmp_path,
     monkeypatch,
+    player_character,
 ):
     from ai.llm.template.dialog.sections.player import format_self_persona_prompt
     from config.schema import SELF_PERSONA_NAME
@@ -720,7 +722,7 @@ def test_launch_chat_strips_legacy_self_persona_prohibition_when_explicitly_cast
             "backgroundName": "",
             "characters": [SELF_PERSONA_NAME, "Alice"],
             "historyPath": str(history_dir / "legacy_self_cast.json"),
-            "playerCharacter": "",
+            "playerCharacter": player_character,
             "scenario": "scene",
             "system": legacy_system,
             "templateId": "legacy.txt",
@@ -732,3 +734,5 @@ def test_launch_chat_strips_legacy_self_persona_prohibition_when_explicitly_cast
     assert "旧模板自设人设" in rendered
     assert "以下是自设的角色设定：" in rendered
     assert "独立出场角色" in rendered
+    if player_character:
+        assert f"主控人物：{player_character}" in rendered
