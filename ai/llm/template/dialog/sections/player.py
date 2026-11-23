@@ -1,5 +1,6 @@
 """Rules for a user-controlled cast member using the normal dialog schema."""
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 from config.schema import SELF_PERSONA_NAME, is_self_persona_name
@@ -78,11 +79,13 @@ class PlayerSection(Section[DialogTemplateContext]):
 
 def player_runtime_prompt(
     config, name: str, *, allow_dialogue: bool, read_speech: bool,
-    media_selection_mode: str,
+    media_selection_mode: str, character_names: Iterable[str] | None = None,
 ) -> str:
     """Apply current player options without rewriting an older authored template."""
     locale = resolve_template_locale(config)
     if not name:
+        if any(is_self_persona_name(ch) for ch in (character_names or ())):
+            return ""
         getter = getattr(config, "get_character_by_name", None)
         self_char = getter(SELF_PERSONA_NAME) if callable(getter) else None
         if self_char is not None and is_self_persona_name(getattr(self_char, "name", "")):

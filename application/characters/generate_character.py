@@ -29,6 +29,7 @@ class GenerateCharacterResult:
     message: str
     character_setting: str
     character_brief: str = ""
+    ok: bool = True
 
 
 class CharacterCreator(Protocol):
@@ -78,23 +79,15 @@ def generate_character(
     from config.character_ops import CHARACTER_MUTATION_LOCK, save_character_patch
 
     if not name:
-        return GenerateCharacterResult("请选择或输入要生成的角色的名字！", setting)
+        return GenerateCharacterResult(
+            "请选择或输入要生成的角色的名字！", setting, ok=False
+        )
 
     if characters is not None:
         from application.characters.management import _CatalogCharacterTarget
 
         target = _CatalogCharacterTarget(characters)
         character = characters.get_by_name(name)
-        if character is None:
-            character, _, _ = save_character_patch(
-                target,
-                {
-                    "name": name,
-                    "character_setting": setting,
-                    "character_brief": "",
-                },
-            )
-            _refresh_characters_if_supported(config_store)
     else:
         target = None
         character = config_store.get_character_by_name(name)
@@ -116,7 +109,9 @@ def generate_character(
                     )
                     character = config_store.get_character_by_name(name)
             if character is None:
-                return GenerateCharacterResult(f"创建角色 {name} 失败。", setting)
+                return GenerateCharacterResult(
+                    f"创建角色 {name} 失败。", setting, ok=False
+                )
 
     char_id = str(getattr(character, "id", "") or "").strip()
 
@@ -135,6 +130,8 @@ def generate_character(
             return GenerateCharacterResult(
                 "LLM 配置不完整，请先设定大语言模型供应商、模型和 API Key。",
                 setting,
+                str(getattr(character, "character_brief", "") or ""),
+                ok=False,
             )
 
         factory_kwargs = config_store.merged_llm_factory_kwargs(
@@ -155,26 +152,43 @@ def generate_character(
             runtime.manager = LLMManager(
                 adapter=adapter,
                 user_template=template,
+                tools_enabled=False,
             )
             runtime.config_signature = signature
+        elif hasattr(runtime.manager, "tools_enabled"):
+            runtime.manager.tools_enabled = False
 
         runtime.manager.set_user_template(template)
-        generated = runtime.manager.chat(
-            setting_user_prompt,
-            stream=False,
-            response_format={"type": "text"},
-            include_local_time=False,
-        )
+        generated = str(
+            runtime.manager.chat(
+                setting_user_prompt,
+                stream=False,
+                response_format={"type": "text"},
+                include_local_time=False,
+            )
+            or ""
+        ).strip()
+        if not generated:
+            return GenerateCharacterResult(
+                "输出失败:角色设定生成结果为空",
+                setting,
+                str(getattr(character, "character_brief", "") or ""),
+                ok=False,
+            )
+
         with CHARACTER_MUTATION_LOCK:
             if target is not None:
-                current = (target.get_by_id(char_id) if char_id else None) or target.get_by_name(name)
-                target_name = current.name if current is not None else name
-                character, _, _ = save_character_patch(
-                    target,
-                    {"name": target_name, "character_setting": generated},
-                    target_id=char_id or None,
-                )
-                _refresh_characters_if_supported(config_store)
+                if character is not None:
+                    current = (
+                        target.get_by_id(char_id) if char_id else None
+                    ) or target.get_by_name(name)
+                    if current is not None:
+                        character, _, _ = save_character_patch(
+                            target,
+                            {"name": current.name, "character_setting": generated},
+                            target_id=char_id or None,
+                        )
+                        _refresh_characters_if_supported(config_store)
             else:
                 latest = config_store.get_character_by_name(name) or character
                 latest.character_setting = generated
@@ -203,39 +217,51 @@ def generate_character(
         except Exception as exc:
             return GenerateCharacterResult(
                 f"角色设定输出成功，人物简介生成失败:{exc}",
-                character.character_setting,
+                generated,
                 str(getattr(character, "character_brief", "") or ""),
+                ok=True,
             )
 
         with CHARACTER_MUTATION_LOCK:
             if target is not None:
-                current = (target.get_by_id(char_id) if char_id else None) or target.get_by_name(name)
-                target_name = current.name if current is not None else name
-                character, _, _ = save_character_patch(
-                    target,
-                    {"name": target_name, "character_brief": generated_brief},
-                    target_id=char_id or None,
-                )
-                _refresh_characters_if_supported(config_store)
+                if character is not None:
+                    current = (
+                        target.get_by_id(char_id) if char_id else None
+                    ) or target.get_by_name(name)
+                    if current is not None:
+                        character, _, _ = save_character_patch(
+                            target,
+                            {
+                                "name": current.name,
+                                "character_setting": generated,
+                                "character_brief": generated_brief,
+                            },
+                            target_id=char_id or None,
+                        )
+                        _refresh_characters_if_supported(config_store)
             else:
                 latest = config_store.get_character_by_name(name) or character
+                latest.character_setting = generated
                 latest.character_brief = generated_brief
                 character = latest
                 config_store.save_characters_config()
         return GenerateCharacterResult(
             "输出成功",
-            character.character_setting,
-            character.character_brief,
+            generated,
+            generated_brief,
+            ok=True,
         )
     except ImportError:
         return GenerateCharacterResult(
             "输出失败: LLM 模块依赖未找到 (LLMAdapterFactory, LLMManager)",
             setting,
             str(getattr(character, "character_brief", "") or ""),
+            ok=False,
         )
     except Exception as exc:
         return GenerateCharacterResult(
             f"输出失败:{exc}",
             setting,
             str(getattr(character, "character_brief", "") or ""),
+            ok=False,
         )

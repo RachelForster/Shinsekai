@@ -70,10 +70,14 @@ export function buildStandaloneDialogSystemPrompt(ctx: StandalonePromptContext):
   let systemTemplate = (payload.system ?? "").trim();
   if (!systemTemplate) {
     if (characters.length > 0) {
+      const selectedCharacterNames = (payload.characters ?? []).filter((name) => {
+        const key = name.trim().toLowerCase();
+        return Boolean(key) && characters.some((c) => c.name.trim().toLowerCase() === key);
+      });
       const generated = generateStandaloneDialogSystemTemplate({
         input: {
           name: payload.templateName || "runtime",
-          characters: characters.map((c) => c.name),
+          characters: selectedCharacterNames.length ? selectedCharacterNames : characters.map((c) => c.name),
           primaryCharacters: payload.primaryCharacters,
           characterPromptMode: payload.characterPromptMode,
           backgroundName: payload.backgroundName ?? "",

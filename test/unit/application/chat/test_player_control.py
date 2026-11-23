@@ -115,6 +115,24 @@ class PlayerControlTests(unittest.TestCase):
             config, "", allow_dialogue=True, read_speech=False, media_selection_mode="indexed",
         ), "")
 
+        from config.schema import SELF_PERSONA_NAME
+        self_persona = SimpleNamespace(name=SELF_PERSONA_NAME, character_setting="自设背景")
+        self_config = SimpleNamespace(get_character_by_name=lambda name: self_persona if name == SELF_PERSONA_NAME else None)
+        self.assertIn(
+            "自设背景",
+            player_runtime_prompt(
+                self_config, "", allow_dialogue=True, read_speech=False,
+                media_selection_mode="indexed", character_names=["Mika"],
+            ),
+        )
+        self.assertEqual(
+            player_runtime_prompt(
+                self_config, "", allow_dialogue=True, read_speech=False,
+                media_selection_mode="indexed", character_names=[SELF_PERSONA_NAME, "Mika"],
+            ),
+            "",
+        )
+
     def test_player_media_restores_from_normal_dialog_items(self):
         from application.chat.dialog_media.replay import latest_media_dialogs
 

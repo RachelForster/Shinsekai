@@ -421,7 +421,18 @@ export function CharacterEditorPage() {
   });
 
   const aiSettingMutation = useMutation({
-    mutationFn: () => generateCharacterSetting({ name: draft.name.trim(), setting: draft.character_setting }),
+    mutationFn: async (variables: {
+      committedName: string;
+      name: string;
+      setting: string;
+      sourceKey: string;
+      wasCreating: boolean;
+    }) => {
+      if (!variables.wasCreating && variables.sourceKey) {
+        await discardAutoSaveRef.current(variables.sourceKey);
+      }
+      return generateCharacterSetting({ name: variables.name, setting: variables.setting });
+    },
     onError(error) {
       showToast({
         kind: "error",
@@ -429,18 +440,59 @@ export function CharacterEditorPage() {
         title: t("character.action.aiWrite"),
       });
     },
-    onSuccess(result) {
-      setDraft((current) => ({
-        ...current,
-        character_brief: result.characterBrief ?? current.character_brief ?? "",
-        character_setting: result.characterSetting,
-      }));
+    onSuccess(result, variables) {
+      if (result.ok === false) {
+        showToast({
+          kind: "error",
+          message: result.message,
+          title: t("character.action.aiWrite"),
+        });
+        return;
+      }
+      const isDeleted =
+        (variables.sourceKey && deletedCharacterKeysRef.current.has(variables.sourceKey)) ||
+        (variables.committedName && deletedCharacterKeysRef.current.has(`name:${variables.committedName}`));
+      if (
+        !variables.wasCreating &&
+        variables.committedName &&
+        variables.committedName === variables.name &&
+        !isDeleted
+      ) {
+        queryClient.setQueryData<Character[]>(charactersQueryKey, (current = []) =>
+          current.map((item) => {
+            const itemKey = item.id || `name:${item.name}`;
+            if (itemKey !== variables.sourceKey && item.name !== variables.committedName) {
+              return item;
+            }
+            return {
+              ...item,
+              character_brief: result.characterBrief ?? item.character_brief ?? "",
+              character_setting: result.characterSetting,
+            };
+          }),
+        );
+      }
+      const stillActive =
+        isCreatingRef.current === variables.wasCreating &&
+        (variables.wasCreating || activeCharacterKeyRef.current === variables.sourceKey);
+      if (stillActive) {
+        setDraft((current) => ({
+          ...current,
+          character_brief: result.characterBrief ?? current.character_brief ?? "",
+          character_setting: result.characterSetting,
+        }));
+      }
       showToast({ kind: "success", message: result.message, title: t("character.action.aiWrite") });
     },
   });
 
   const aiBriefMutation = useMutation({
-    mutationFn: () => generateCharacterBrief({ name: draft.name.trim(), setting: draft.character_setting }),
+    mutationFn: async (variables: { name: string; setting: string; sourceKey: string; wasCreating: boolean }) => {
+      if (!variables.wasCreating && variables.sourceKey) {
+        await discardAutoSaveRef.current(variables.sourceKey);
+      }
+      return generateCharacterBrief({ name: variables.name, setting: variables.setting });
+    },
     onError(error) {
       showToast({
         kind: "error",
@@ -448,19 +500,34 @@ export function CharacterEditorPage() {
         title: t("character.action.aiBrief"),
       });
     },
-    onSuccess(result) {
-      update("character_brief", result.characterBrief);
+    onSuccess(result, variables) {
+      const stillActive =
+        isCreatingRef.current === variables.wasCreating &&
+        (variables.wasCreating || activeCharacterKeyRef.current === variables.sourceKey);
+      if (stillActive) {
+        update("character_brief", result.characterBrief);
+      }
       showToast({ kind: "success", message: result.message, title: t("character.action.aiBrief") });
     },
   });
 
   const translateMutation = useMutation({
-    mutationFn: () =>
-      translateCharacterFields({
-        characterSetting: draft.character_setting,
-        emotionTags: draft.emotion_tags,
-        name: draft.name,
-      }),
+    mutationFn: async (variables: {
+      characterSetting: string;
+      emotionTags: string;
+      name: string;
+      sourceKey: string;
+      wasCreating: boolean;
+    }) => {
+      if (!variables.wasCreating && variables.sourceKey) {
+        await discardAutoSaveRef.current(variables.sourceKey);
+      }
+      return translateCharacterFields({
+        characterSetting: variables.characterSetting,
+        emotionTags: variables.emotionTags,
+        name: variables.name,
+      });
+    },
     onError(error) {
       showToast({
         kind: "error",
@@ -468,19 +535,24 @@ export function CharacterEditorPage() {
         title: t("character.action.aiTranslate"),
       });
     },
-    onSuccess(result) {
+    onSuccess(result, variables) {
       if (result.error) {
         showToast({ kind: "error", message: result.error, title: t("character.action.aiTranslate") });
         return;
       }
-      setDraft((current) => ({
-        ...current,
-        character_setting: result.characterSetting,
-        emotion_tags: result.emotionTags,
-        name: result.name,
-      }));
-      if (result.name.trim()) {
-        setNameError("");
+      const stillActive =
+        isCreatingRef.current === variables.wasCreating &&
+        (variables.wasCreating || activeCharacterKeyRef.current === variables.sourceKey);
+      if (stillActive) {
+        setDraft((current) => ({
+          ...current,
+          character_setting: result.characterSetting,
+          emotion_tags: result.emotionTags,
+          name: result.name,
+        }));
+        if (result.name.trim()) {
+          setNameError("");
+        }
       }
       showToast({ kind: "success", title: t("character.action.aiTranslate") });
     },
@@ -1031,6 +1103,9 @@ export function CharacterEditorPage() {
       !identityMutation.isPending &&
       !saveMutation.isPending &&
       !deleteMutation.isPending &&
+      !aiSettingMutation.isPending &&
+      !aiBriefMutation.isPending &&
+      !translateMutation.isPending &&
       !spriteGenerationOpen &&
       !portraitCropOpen &&
       !bulkSpriteTagsOpen &&
@@ -1352,7 +1427,13 @@ export function CharacterEditorPage() {
       });
       return;
     }
-    aiSettingMutation.mutate();
+    aiSettingMutation.mutate({
+      committedName: !inCreateMode && selected ? selected.name : "",
+      name: draft.name.trim(),
+      setting: draft.character_setting,
+      sourceKey: selectedCharacterKey,
+      wasCreating: inCreateMode,
+    });
   };
 
   const generateBrief = () => {
@@ -1364,7 +1445,12 @@ export function CharacterEditorPage() {
       });
       return;
     }
-    aiBriefMutation.mutate();
+    aiBriefMutation.mutate({
+      name: draft.name.trim(),
+      setting: draft.character_setting,
+      sourceKey: selectedCharacterKey,
+      wasCreating: inCreateMode,
+    });
   };
 
   const translateDraft = () => {
@@ -1376,7 +1462,13 @@ export function CharacterEditorPage() {
       });
       return;
     }
-    translateMutation.mutate();
+    translateMutation.mutate({
+      characterSetting: draft.character_setting,
+      emotionTags: draft.emotion_tags,
+      name: draft.name,
+      sourceKey: selectedCharacterKey,
+      wasCreating: inCreateMode,
+    });
   };
 
   const uploadSprites = (paths: string[]) => {

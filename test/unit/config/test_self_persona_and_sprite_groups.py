@@ -311,7 +311,7 @@ def test_self_persona_prompt_injection_and_player_control(monkeypatch):
     cfg_empty_self = _FakeConfigManager([build_default_self_persona(), mika])
     monkeypatch.setattr("ai.llm.template_generator.config_manager", cfg_empty_self)
     prompt_empty_self, _ = TemplateGenerator(output_contract_patches=[]).generate_chat_template(
-        ["Mika", SELF_PERSONA_NAME],
+        ["Mika"],
         "",
         False,
         False,
@@ -321,7 +321,11 @@ def test_self_persona_prompt_injection_and_player_control(monkeypatch):
     assert prompt_empty_self == prompt_base
 
     populated_self = build_default_self_persona().model_copy(
-        update={"character_setting": "表面冷静、内心细腻的古书店店长。"}
+        update={
+            "character_setting": "表面冷静、内心细腻的古书店店长。",
+            "sprites": [Sprite(path="data/sprite/__self__/idle.png")],
+            "emotion_tags": "立绘 1：平静\n",
+        }
     )
     cfg_with_self = _FakeConfigManager([populated_self, mika])
     monkeypatch.setattr("ai.llm.template_generator.config_manager", cfg_with_self)
@@ -335,6 +339,19 @@ def test_self_persona_prompt_injection_and_player_control(monkeypatch):
     )
     assert "表面冷静、内心细腻的古书店店长。" in prompt_with_self
     assert "自设" in prompt_with_self
+
+    prompt_self_in_cast, _ = TemplateGenerator(output_contract_patches=[]).generate_chat_template(
+        ["Mika", SELF_PERSONA_NAME],
+        "",
+        False,
+        False,
+        False,
+        player_character="",
+    )
+    assert "自设有1张立绘：" in prompt_self_in_cast
+    assert "以下是自设的角色设定" in prompt_self_in_cast
+    assert "表面冷静、内心细腻的古书店店长。" in prompt_self_in_cast
+    assert "不要将「自设」作为独立台词角色输出" not in prompt_self_in_cast
 
     resolved = resolve_player(
         cfg_with_self,

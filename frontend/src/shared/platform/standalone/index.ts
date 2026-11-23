@@ -1634,8 +1634,12 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
           },
           standaloneHttpRequest,
         );
+        const generatedSetting = res.content.trim();
+        if (!generatedSetting) {
+          throw new Error(tr("plat.standalone.llmEmpty"));
+        }
         return {
-          characterSetting: res.content.trim(),
+          characterSetting: generatedSetting,
           characterBrief: tr("plat.standalone.charBriefFallback", { name: charName }),
           message: tr("plat.standalone.generateSuccess"),
         };
