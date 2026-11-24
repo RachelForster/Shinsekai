@@ -105,6 +105,7 @@ def _validate_history_storage_target(path: Path) -> Path:
         "active.json",
         "active.json.tmp",
         "branches.json",
+        "document-binding.json",
         "history.db",
         "history.db-wal",
         "history.db-shm",

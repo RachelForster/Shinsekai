@@ -1,4 +1,5 @@
 pyyaml
+pypdf>=5.0.0
 packaging>=24
 filelock>=3.13,<4
 pydantic

@@ -12,7 +12,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from application.chat.history.paths import resolve_history_path_for_project
+from application.chat.history.paths import (
+    _state_project_root,
+    resolve_history_path_for_project,
+)
+from core.storage.layout import StorageLayout
 from application.story.prompt_turns import PROMPT_TURN_FILENAME
 from core.chat_history.models import MEMORY_MODE_ISOLATED, normalize_memory_mode
 from core.chat_history.sqlite_session_store import (
@@ -32,6 +36,7 @@ from core.chat_history.storage import (
     prune_chat_history_storage,
     read_active_chat_history,
 )
+from core.document.repository import DOCUMENT_BINDING_FILENAME
 from core.chat_history.text import chat_history_to_turns, parse_assistant_dialog_content
 from core.messaging.dialog_tokens import (
     NARR_ALIASES,
@@ -612,6 +617,7 @@ def _conversation_storage_files(state: Any, path: Path) -> tuple[Path, ...]:
         path = legacy
     return (
         *chat_history_storage_files(path),
+        directory / DOCUMENT_BINDING_FILENAME,
         directory / "story-prompt-binding.json",
         directory / f"{STORY_SESSION_FILENAME}.lock",
         directory / PROMPT_TURN_FILENAME,
@@ -621,9 +627,24 @@ def _conversation_storage_files(state: Any, path: Path) -> tuple[Path, ...]:
 
 def _delete_conversation_files(state: Any, path: Path) -> None:
     """Remove validated storage while the caller holds initialization/metadata locks."""
+    from application.documents.reclaim_documents import (
+        read_bound_doc_id,
+        reclaim_unreferenced_documents,
+    )
+
+    session_dir = chat_history_session_dir(path)
+    bound_doc_id = read_bound_doc_id(session_dir)
     for file in _conversation_storage_files(state, path):
         file.unlink(missing_ok=True)
     prune_chat_history_storage(path)
     store = _conversation_store(state)
     if store is not None:
         store.delete(_id(path))
+    if bound_doc_id:
+        layout = StorageLayout(_state_project_root(state))
+        history_root = Path(getattr(state, "history_dir", None) or layout.chat_history_dir)
+        reclaim_unreferenced_documents(
+            layout,
+            history_root=history_root,
+            candidate_doc_ids=(bound_doc_id,),
+        )
