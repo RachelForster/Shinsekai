@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 
 import { TRANSPARENT_BACKGROUND_NAME } from "../../../shared/constants";
 import { useI18n } from "../../../shared/i18n";
-import { Select, Switch, type PageSectionProps } from "../../../shared/ui";
+import { SegmentedRadio, Select, Switch, type PageSectionProps } from "../../../shared/ui";
 import { templateVoiceLanguages } from "../templateFlow";
 import type { TemplateEditorContext } from "../templateContext";
 
@@ -58,21 +58,16 @@ export function TemplateStageSection({ ctx }: PageSectionProps<TemplateEditorCon
 
       <div className="template-side-field">
         <span className="template-side-field__label">{t("template.field.voiceLanguage")}</span>
-        <div className="template-language-segments" role="group">
-          {templateVoiceLanguages.map((option) => (
-            <button
-              aria-pressed={ctx.voiceLanguage === option.value}
-              className={`template-language-segment${
-                ctx.voiceLanguage === option.value ? " template-language-segment--active" : ""
-              }`}
-              key={option.value}
-              onClick={() => ctx.handleVoiceLanguageChange(option.value)}
-              type="button"
-            >
-              {t(option.labelKey)}
-            </button>
-          ))}
-        </div>
+        <SegmentedRadio
+          ariaLabel={t("template.field.voiceLanguage")}
+          onChange={ctx.handleVoiceLanguageChange}
+          options={templateVoiceLanguages.map((option) => ({
+            label: t(option.labelKey),
+            value: option.value,
+          }))}
+          size="sm"
+          value={ctx.voiceLanguage}
+        />
       </div>
     </>
   );

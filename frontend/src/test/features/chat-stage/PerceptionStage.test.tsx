@@ -231,7 +231,7 @@ describe("Perception chat-stage state & components", () => {
         </I18nProvider>,
       );
       expect(screen.getByText("当前识别场景：视频通话")).toBeVisible();
-      fireEvent.click(screen.getByRole("button", { name: "全屏文字" }));
+      fireEvent.click(screen.getByRole("radio", { name: "全屏文字" }));
       expect(onScopeChange).toHaveBeenLastCalledWith({ mode: "full" });
       fireEvent.loadedMetadata(container.querySelector("video")!);
       const preview = screen.getByRole("group", { name: "共享画面预览" });

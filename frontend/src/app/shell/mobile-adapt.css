@@ -1123,24 +1123,10 @@
     flex: 1 1 auto;
   }
 
-  .app-shell .conversation-card__actions .button--primary,
-  .app-shell .conversation-card__actions .button--primary:hover:not(:disabled) {
-    border-color: var(--m3-card-border);
-    color: var(--color-text-primary);
-    background: var(--m3-surface-container-high);
-    box-shadow: 0 1px 2px light-dark(rgb(0 0 0 / 0.025), rgb(0 0 0 / 0.18));
-  }
-
-  .app-shell .conversation-card__actions .button--primary:active:not(:disabled) {
+  .app-shell .conversation-type-badge:not(.conversation-type-badge--story) {
     border-color: var(--m3-primary-container-border);
     color: var(--m3-on-primary-container);
     background: var(--m3-primary-container);
-  }
-
-  .app-shell .conversation-type-badge:not(.conversation-type-badge--story) {
-    border-color: var(--m3-card-border);
-    color: var(--color-text-muted);
-    background: var(--m3-inner-bg);
   }
 
   .app-shell .conversation-type-badge--story {

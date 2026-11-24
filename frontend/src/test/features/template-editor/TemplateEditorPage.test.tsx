@@ -1199,7 +1199,7 @@ describe("TemplateEditorPage", () => {
     expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Rain" }));
 
-    fireEvent.click(screen.getByRole("button", { name: "English" }));
+    fireEvent.click(screen.getByRole("radio", { name: "English" }));
     await waitFor(() =>
       expect(mockSaveSystemConfig).toHaveBeenCalledWith(expect.objectContaining({ voice_language: "en" })),
     );

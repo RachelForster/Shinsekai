@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type PointerEvent } from "react";
 
 import { useI18n } from "../../../shared/i18n";
 import type { ScreenOcrRegion, ScreenOcrScope, ScreenPlaybackAudioState } from "../../../shared/platform/types";
-import { Button } from "../../../shared/ui";
+import { SegmentedRadio } from "../../../shared/ui";
 import { ChatStageModal } from "./ChatStageModal";
 
 type Point = { x: number; y: number };
@@ -127,22 +127,17 @@ export function ScreenShareSettingsDialog({
     >
       <div className="screen-share-settings__body">
         <div className="screen-share-settings__modes">
-          <Button
-            aria-pressed={scope.mode === "bottom"}
+          <SegmentedRadio
+            ariaLabel={t("chat.perception.screenSettings")}
             disabled={!ocrEnabled}
-            onClick={() => onScopeChange({ mode: "bottom" })}
-            variant={scope.mode === "bottom" ? "primary" : "default"}
-          >
-            {t("chat.perception.ocrBottom")}
-          </Button>
-          <Button
-            aria-pressed={scope.mode === "full"}
-            disabled={!ocrEnabled}
-            onClick={() => onScopeChange({ mode: "full" })}
-            variant={scope.mode === "full" ? "primary" : "default"}
-          >
-            {t("chat.perception.ocrFull")}
-          </Button>
+            onChange={(mode) => onScopeChange({ mode })}
+            options={[
+              { label: t("chat.perception.ocrBottom"), value: "bottom" },
+              { label: t("chat.perception.ocrFull"), value: "full" },
+            ]}
+            size="sm"
+            value={scope.mode === "region" ? null : scope.mode}
+          />
           {scope.mode === "region" ? <span role="status">{t("chat.perception.ocrRegion")}</span> : null}
         </div>
         <div
