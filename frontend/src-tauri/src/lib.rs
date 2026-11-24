@@ -42,6 +42,38 @@ use runtime_commands::{
 use state::{generate_bridge_auth_token, plugin_chat_wake_argument, PluginChatWake};
 use window_controls::schedule_mini_input_global_shortcut_sync;
 
+pub(crate) const MAIN_WINDOW_DEFAULT_WIDTH: f64 = 1416.0;
+pub(crate) const MAIN_WINDOW_DEFAULT_HEIGHT: f64 = 936.0;
+pub(crate) const MAIN_WINDOW_MIN_WIDTH: f64 = 860.0;
+pub(crate) const MAIN_WINDOW_MIN_HEIGHT: f64 = 620.0;
+const MAIN_WINDOW_WORK_AREA_RATIO: f64 = 0.96;
+
+pub(crate) fn resolve_main_window_initial_size(
+    work_area_logical: Option<(f64, f64)>,
+) -> (f64, f64) {
+    let Some((area_width, area_height)) = work_area_logical else {
+        return (MAIN_WINDOW_DEFAULT_WIDTH, MAIN_WINDOW_DEFAULT_HEIGHT);
+    };
+    if !area_width.is_finite()
+        || !area_height.is_finite()
+        || area_width <= 0.0
+        || area_height <= 0.0
+    {
+        return (MAIN_WINDOW_DEFAULT_WIDTH, MAIN_WINDOW_DEFAULT_HEIGHT);
+    }
+    let scale = (area_width * MAIN_WINDOW_WORK_AREA_RATIO / MAIN_WINDOW_DEFAULT_WIDTH)
+        .min(area_height * MAIN_WINDOW_WORK_AREA_RATIO / MAIN_WINDOW_DEFAULT_HEIGHT)
+        .min(1.0);
+    (
+        (MAIN_WINDOW_DEFAULT_WIDTH * scale)
+            .round()
+            .max(MAIN_WINDOW_MIN_WIDTH),
+        (MAIN_WINDOW_DEFAULT_HEIGHT * scale)
+            .round()
+            .max(MAIN_WINDOW_MIN_HEIGHT),
+    )
+}
+
 pub fn run() {
     restart_debug_log("run enter");
     let protocol_frontend_dist = Arc::new(Mutex::new(None::<PathBuf>));
@@ -198,10 +230,25 @@ pub fn run() {
                 bridge_auth_token,
             ));
 
+            let primary_work_area = app.primary_monitor().ok().flatten().and_then(|monitor| {
+                let scale = monitor.scale_factor();
+                if scale.is_finite() && scale > 0.0 {
+                    let area = monitor.work_area();
+                    Some((
+                        f64::from(area.size.width) / scale,
+                        f64::from(area.size.height) / scale,
+                    ))
+                } else {
+                    None
+                }
+            });
+            let (initial_width, initial_height) =
+                resolve_main_window_initial_size(primary_work_area);
+
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App(url.into()))
                 .title("Shinsekai")
-                .inner_size(1180.0, 780.0)
-                .min_inner_size(860.0, 620.0)
+                .inner_size(initial_width, initial_height)
+                .min_inner_size(MAIN_WINDOW_MIN_WIDTH, MAIN_WINDOW_MIN_HEIGHT)
                 .decorations(false)
                 .shadow(true)
                 .center()
