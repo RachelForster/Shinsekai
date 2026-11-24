@@ -1,4 +1,4 @@
-"""Tool-free repair policy for malformed runtime dialogue output."""
+"""Tool-free repair policy and cross-format history normalization for runtime dialogue."""
 
 from __future__ import annotations
 
@@ -12,7 +12,13 @@ from ai.llm.template.session import (
     DIALOG_REPAIR_PROMPT_SPEC,
     DialogRepairPromptContext,
 )
+from core.chat_history.identity import CHAT_OUTPUT_FORMAT
 from core.messaging.dialog_output import has_valid_dialog_output
+from core.messaging.formats.registry import (
+    parse_dialog_content,
+    resolve_dialog_format,
+)
+from sdk.adapters.dialog_format import DEFAULT_DIALOG_FORMAT_ID, DialogOutputFormat
 
 
 def _repair_prompt(
@@ -22,16 +28,62 @@ def _repair_prompt(
     allow_unbound_speakers: bool = False,
     bound_speakers: Sequence[str] = (),
     locale: LocaleInput = None,
+    output_format_id: str = DEFAULT_DIALOG_FORMAT_ID,
 ) -> str:
+    fmt = resolve_dialog_format(output_format_id)
+    resolved_locale = resolve_dynamic_locale(locale)
+    custom = fmt.render_repair_prompt(
+        media_field=media_field,
+        retry=retry,
+        locale=resolved_locale,
+    )
+    if isinstance(custom, str) and custom.strip():
+        return custom
     return DIALOG_REPAIR_PROMPT_SPEC.render_user(
         DialogRepairPromptContext(
             media_field=media_field,
             retry=retry,
             allow_unbound_speakers=allow_unbound_speakers,
             bound_speakers=tuple(bound_speakers),
-            locale=resolve_dynamic_locale(locale),
+            output_format_id=fmt.format_id,
+            locale=resolved_locale,
         )
     )
+
+
+def normalize_messages_for_output_format(
+    messages: list[dict[str, Any]],
+    target_format: DialogOutputFormat,
+) -> list[dict[str, Any]]:
+    """Return outbound request messages converted to `target_format` when needed.
+
+    Never mutates the persisted history list or its message dicts in place.
+    """
+    target_id = target_format.format_id
+    updated: list[dict[str, Any]] | None = None
+    for index, msg in enumerate(messages):
+        if not isinstance(msg, dict) or msg.get("role") != "assistant":
+            continue
+        if msg.get("tool_calls"):
+            continue
+        content = msg.get("content")
+        if not isinstance(content, str) or not content.strip():
+            continue
+        source_format = str(msg.get(CHAT_OUTPUT_FORMAT) or "").strip().lower()
+        if source_format == target_id:
+            continue
+        if not source_format and target_format.can_parse(content):
+            continue
+        items = parse_dialog_content(content, format_id=source_format or None)
+        if not items:
+            continue
+        converted = target_format.serialize(items)
+        if not converted:
+            continue
+        if updated is None:
+            updated = list(messages)
+        updated[index] = {**msg, "content": converted}
+    return updated if updated is not None else messages
 
 
 class ChatAdapter(Protocol):
@@ -77,13 +129,16 @@ def repair_dialog_output(
     media_selection_mode: str = "indexed",
     speaker_requires_media: Callable[[str], bool] | None = None,
     bound_speakers: Sequence[str] = (),
+    output_format_id: str = DEFAULT_DIALOG_FORMAT_ID,
     locale: LocaleInput = None,
 ) -> str:
-    """Repair malformed dialogue JSON without mutating persisted chat history."""
+    """Repair malformed dialogue output without mutating persisted chat history."""
+    resolved_format_id = resolve_dialog_format(output_format_id).format_id
     if has_valid_dialog_output(
         content,
         media_selection_mode=media_selection_mode,
         speaker_requires_media=speaker_requires_media,
+        format_id=resolved_format_id,
     ):
         return content
 
@@ -107,6 +162,7 @@ def repair_dialog_output(
             allow_unbound_speakers=speaker_requires_media is not None,
             bound_speakers=bound_speakers,
             locale=locale,
+            output_format_id=resolved_format_id,
         )
         repair_messages.append({"role": "user", "content": prompt})
         try:
@@ -137,6 +193,7 @@ def repair_dialog_output(
                     "event": "llm.dialog_format.repair_failed",
                     "attempt": attempt + 1,
                     "error_type": type(exc).__name__,
+                    "output_format": resolved_format_id,
                     "raw_chars": len(content),
                 },
             )
@@ -146,12 +203,14 @@ def repair_dialog_output(
             repaired,
             media_selection_mode=media_selection_mode,
             speaker_requires_media=speaker_requires_media,
+            format_id=resolved_format_id,
         ):
             event_logger.warning(
-                "Recovered malformed LLM dialogue output with a tool-free JSON repair request",
+                "Recovered malformed LLM dialogue output with a tool-free repair request",
                 extra={
                     "event": "llm.dialog_format.repaired",
                     "attempt": attempt + 1,
+                    "output_format": resolved_format_id,
                     "raw_chars": len(content),
                     "repaired_chars": len(repaired),
                 },
@@ -165,6 +224,7 @@ def repair_dialog_output(
         extra={
             "event": "llm.dialog_format.repair_invalid",
             "attempts": attempts,
+            "output_format": resolved_format_id,
             "raw_chars": len(content),
         },
     )

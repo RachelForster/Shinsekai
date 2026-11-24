@@ -49,9 +49,16 @@ export interface PlayerCharacterOptions {
 }
 
 export type CharacterPromptMode = "compact" | "full";
+export type DialogOutputFormatId = string;
 export type MediaSelectionMode = "indexed" | "semantic";
 export type MemoryMode = "isolated" | "shared" | "inherit_readonly";
 export type InitialOutfitValue = string | { activeGroup: string; locked?: boolean };
+
+export interface DialogFormatOption {
+  id: DialogOutputFormatId;
+  label: string;
+  builtin?: boolean;
+}
 
 export interface UserPromptPreset {
   id: string;
@@ -83,6 +90,7 @@ export interface TemplateSummary extends PlayerCharacterOptions {
   name: string;
   path: string;
   mediaSelectionMode?: MediaSelectionMode;
+  outputFormat?: DialogOutputFormatId;
   scenario?: string;
   selectedPresetIds?: string[];
   system?: string;
@@ -102,6 +110,7 @@ export interface TemplateGenerateInput extends PlayerCharacterOptions {
   maxSpeechChars?: number;
   mediaSelectionMode?: MediaSelectionMode;
   name: string;
+  outputFormat?: DialogOutputFormatId;
   primaryCharacters?: string[];
   scenario?: string;
   useCg?: boolean;
@@ -129,6 +138,7 @@ export interface TemplateLaunchSession extends PlayerCharacterOptions {
   maxSpeechChars: number;
   mediaSelectionMode?: MediaSelectionMode;
   memoryMode?: MemoryMode;
+  outputFormat?: DialogOutputFormatId;
   autoOutfitSwitch?: boolean;
   initialOutfits?: Record<string, InitialOutfitValue>;
   roomId: string;
@@ -208,6 +218,7 @@ export interface TemplatesPlatform {
   getPresets: () => Promise<UserPromptPresetLibrary>;
   getSession: () => Promise<TemplateLaunchSession | null>;
   list: () => Promise<TemplateSummary[]>;
+  listDialogFormats: () => Promise<DialogFormatOption[]>;
   save: (template: TemplateSummary) => Promise<TemplateSummary>;
   savePresets: (library: UserPromptPresetLibrary) => Promise<UserPromptPresetLibrary>;
   saveSession: (session: TemplateLaunchSession) => Promise<TemplateLaunchSession>;

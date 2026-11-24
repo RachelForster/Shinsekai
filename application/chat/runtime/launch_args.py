@@ -35,6 +35,12 @@ def build_chat_arg_parser(tr_i18n: Callable[..., str]) -> argparse.ArgumentParse
         default="indexed",
         help="Select media by explicit ids or semantic vibe matching.",
     )
+    parser.add_argument(
+        "--output-format",
+        type=str,
+        default="json_v1",
+        help="LLM dialog output format id (e.g. json_v1, xml_v1, or plugin format).",
+    )
     parser.add_argument("--effect_names", type=str, default="")
     parser.add_argument(
         "--characters",

@@ -1,4 +1,4 @@
-"""Pure localized prompt section for malformed runtime dialogue JSON repair."""
+"""Pure localized prompt section for malformed runtime dialogue repair."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from ai.llm.template.core import (
     TemplateContext,
     TextSection,
 )
+from sdk.adapters.dialog_format import DEFAULT_DIALOG_FORMAT_ID, XML_DIALOG_FORMAT_ID
 
 
 @dataclass(frozen=True)
@@ -19,6 +20,7 @@ class DialogRepairPromptContext(TemplateContext):
     retry: bool = False
     allow_unbound_speakers: bool = False
     bound_speakers: tuple[str, ...] = ()
+    output_format_id: str = DEFAULT_DIALOG_FORMAT_ID
 
 
 class _DialogRepairInstructionSection(Section[DialogRepairPromptContext]):
@@ -26,7 +28,17 @@ class _DialogRepairInstructionSection(Section[DialogRepairPromptContext]):
         self,
         context: DialogRepairPromptContext,
     ) -> tuple[Section[DialogRepairPromptContext], ...]:
-        if context.allow_unbound_speakers:
+        is_xml = (
+            str(context.output_format_id or DEFAULT_DIALOG_FORMAT_ID).strip().lower()
+            == XML_DIALOG_FORMAT_ID
+        )
+        if is_xml:
+            key = (
+                "session.dialog_repair_xml_retry"
+                if context.retry
+                else "session.dialog_repair_xml_initial"
+            )
+        elif context.allow_unbound_speakers:
             key = (
                 "session.dialog_repair_retry_selective"
                 if context.retry

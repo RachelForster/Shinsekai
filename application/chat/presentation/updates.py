@@ -16,6 +16,11 @@ if TYPE_CHECKING:
     from application.runtime.event_sink import ChatEventSink
 
 from core.effects import effect_modes, match_effect_label, parse_ambient_directive
+from core.messaging.stage_effects import (
+    character_motion_duration_ms,
+    normalize_character_motion,
+    normalize_scene_transition,
+)
 from core.messaging.stat_payload import parse_stat_payload
 from core.paths import resource_path
 from core.sprite.selection import resolve_runtime_path, sprite_entry_path
@@ -224,7 +229,8 @@ class HeadlessUIUpdateManager:
     def post_context_token_estimate(self, estimate: Dict[str, Any]) -> None:
         pass
 
-    def post_background(self, path: str) -> None:
+    def post_background(self, path: str, *, transition: str = "") -> None:
+        del transition
         self.current_background_path = path or None
         if path:
             print(f"background: {path}")
@@ -300,6 +306,9 @@ class HeadlessUIUpdateManager:
         *,
         duration_ms: int = 3600,
     ) -> None:
+        pass
+
+    def post_sprite_motion(self, character_name: str, motion: str) -> None:
         pass
 
     def update_player_portrait(self, character_name: str, sprite_id: int) -> None:
@@ -474,13 +483,17 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
     def post_context_token_estimate(self, estimate: Dict[str, Any]) -> None:
         self._emit({"type": "numeric.update", "html": format_context_token_estimate(estimate)})
 
-    def post_background(self, path: str) -> None:
+    def post_background(self, path: str, *, transition: str = "") -> None:
         url = self._media_url(path)
         if url != self._background_url:
             self._sprite_lru.clear()
         self._background_url = url
         self.current_background_path = path or None
-        self._emit({"type": "background.change", "url": url})
+        payload: dict[str, Any] = {"type": "background.change", "url": url}
+        normalized_transition = normalize_scene_transition(transition)
+        if normalized_transition:
+            payload["transition"] = normalized_transition
+        self._emit(payload)
 
     def switch_bgm(self, new_bgm_path: str) -> None:
         path = str(new_bgm_path or "").strip()
@@ -1051,6 +1064,20 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
                 "characterName": str(character_name or "").strip(),
                 "text": cleaned[:80],
                 "durationMs": max(800, int(duration_ms or 3600)),
+            }
+        )
+
+    def post_sprite_motion(self, character_name: str, motion: str) -> None:
+        normalized = normalize_character_motion(motion)
+        name = str(character_name or "").strip()
+        if not normalized or not name:
+            return
+        self._emit(
+            {
+                "type": "sprite.motion",
+                "characterName": name,
+                "motion": normalized,
+                "durationMs": character_motion_duration_ms(normalized),
             }
         )
 

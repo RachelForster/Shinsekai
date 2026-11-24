@@ -10,6 +10,7 @@ import type { StoryGenerationInput, StoryGenerationStage, StoryGenerationTask, S
 import type { RuntimeDependencyError, TaskProgressOptions, TaskSnapshot } from "./taskTypes";
 import type {
   CharacterPromptMode,
+  DialogOutputFormatId,
   InitialOutfitValue,
   MediaSelectionMode,
   MemoryMode,
@@ -50,6 +51,7 @@ export interface ConversationSummary {
 export interface ChatLaunchPayload extends PlayerCharacterOptions {
   storyPath?: string;
   characterPromptMode?: CharacterPromptMode;
+  outputFormat?: DialogOutputFormatId;
   primaryCharacters?: string[];
   maxDialogItems?: number;
   maxSpeechChars?: number;
@@ -542,7 +544,8 @@ export type ChatStageEvent =
       modelUrl: string;
     })
   | (ChatEventBase & { type: "sprite.remove"; characterName: string })
-  | (ChatEventBase & { type: "background.change"; url: string })
+  | (ChatEventBase & { type: "sprite.motion"; characterName: string; motion: string; durationMs?: number })
+  | (ChatEventBase & { type: "background.change"; url: string; transition?: string })
   | (ChatEventBase & { type: "bgm.change"; url: string })
   | (ChatEventBase & { type: "cg.show"; url: string })
   | (ChatEventBase & { type: "cg.hide" })

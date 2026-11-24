@@ -33,8 +33,14 @@ from ai.llm.template.prompts import (
 )
 from ai.llm.template_generator import (
     NoValidCharactersError,
+    format_reminder,
     json_format_reminder,
     resolve_chat_template_characters,
+)
+from application.chat.dialog_formats import (
+    DEFAULT_DIALOG_FORMAT_ID,
+    list_dialog_formats,
+    normalize_output_format,
 )
 
 from application.runtime.state import BridgeState
@@ -139,6 +145,7 @@ def _compose_stored_template(
     system: str,
     *,
     media_selection_mode: str = "indexed",
+    output_format: str = DEFAULT_DIALOG_FORMAT_ID,
     player_character: str = "",
     read_player_speech: bool = False,
     allow_player_dialogue: bool = True,
@@ -152,6 +159,9 @@ def _compose_stored_template(
     metadata_fields: dict[str, Any] = {
         "mediaSelectionMode": _normalize_media_selection_mode(media_selection_mode),
     }
+    normalized_output_format = normalize_output_format(output_format)
+    if normalized_output_format != DEFAULT_DIALOG_FORMAT_ID:
+        metadata_fields["outputFormat"] = normalized_output_format
     if player_name:
         metadata_fields.update(
             {
@@ -219,6 +229,8 @@ def _parse_stored_template_metadata(raw: str) -> dict[str, Any]:
     applied_presets = _normalize_applied_presets(metadata.get("appliedPresets"))
     if applied_presets:
         result["appliedPresets"] = applied_presets
+    if "outputFormat" in metadata:
+        result["outputFormat"] = normalize_output_format(metadata.get("outputFormat"))
     return result
 
 
@@ -260,6 +272,7 @@ def _compose_runtime_template(
     effect_context: SelectedEffectContext | None = None,
     *,
     locale: str | None = None,
+    output_format: str = DEFAULT_DIALOG_FORMAT_ID,
 ) -> str:
     effective_locale = (
         normalize_lang(locale) if locale else resolve_template_locale()
@@ -278,11 +291,18 @@ def _compose_runtime_template(
             ),
             translate=effect_translate,
         )
-    reminder_text = (
-        json_format_reminder(locale=effective_locale)
-        if locale is not None and json_format_reminder is _default_json_format_reminder
-        else json_format_reminder()
-    )
+    resolved_output_format = normalize_output_format(output_format)
+    if resolved_output_format != DEFAULT_DIALOG_FORMAT_ID:
+        reminder_text = format_reminder(
+            resolved_output_format,
+            locale=effective_locale if locale is not None else None,
+        )
+    else:
+        reminder_text = (
+            json_format_reminder(locale=effective_locale)
+            if locale is not None and json_format_reminder is _default_json_format_reminder
+            else json_format_reminder()
+        )
     context = RuntimePromptContext(
         system_template=(system_template or "").rstrip(),
         user_scenario=_localized_user_scenario(user_scenario, locale=effective_locale),
@@ -453,6 +473,8 @@ def _list_templates(state: BridgeState) -> list[dict[str, Any]]:
             row["selectedPresetIds"] = metadata["selectedPresetIds"]
         if "appliedPresets" in metadata:
             row["appliedPresets"] = metadata["appliedPresets"]
+        if "outputFormat" in metadata:
+            row["outputFormat"] = metadata["outputFormat"]
         rows.append(row)
     return rows
 
@@ -469,6 +491,7 @@ def _save_template_summary(state: BridgeState, payload: dict[str, Any]) -> dict[
     media_selection_mode = _normalize_media_selection_mode(
         template.get("mediaSelectionMode")
     )
+    output_format = normalize_output_format(template.get("outputFormat"))
     file_name = safe_filename(name, default_suffix=".txt")
     base_scenario = (
         str(template.get("baseScenario") or "")
@@ -490,6 +513,7 @@ def _save_template_summary(state: BridgeState, payload: dict[str, Any]) -> dict[
             scenario,
             system,
             media_selection_mode=media_selection_mode,
+            output_format=output_format,
             player_character=str(template.get("playerCharacter") or ""),
             read_player_speech=bool(template.get("readPlayerSpeech", False)),
             allow_player_dialogue=bool(template.get("allowPlayerDialogue", True)),
@@ -534,6 +558,7 @@ def _generate_template_summary(state: BridgeState, payload: dict[str, Any]) -> d
         == "semantic"
         else "indexed"
     )
+    output_format = normalize_output_format(payload.get("outputFormat"))
     if primary_characters is not None:
         if player_character and player_character not in primary_characters:
             primary_characters.append(player_character)
@@ -560,6 +585,7 @@ def _generate_template_summary(state: BridgeState, payload: dict[str, Any]) -> d
         player_character=player_character,
         read_player_speech=read_player_speech,
         allow_player_dialogue=bool(payload.get("allowPlayerDialogue", True)),
+        output_format=output_format,
     )
     output_name = str(result or "").strip()
     name = str(output_name or payload.get("name") or "generated").strip()
@@ -572,6 +598,7 @@ def _generate_template_summary(state: BridgeState, payload: dict[str, Any]) -> d
         "scenario": scenario,
         "system": content,
         "mediaSelectionMode": media_selection_mode,
+        "outputFormat": output_format,
         "playerCharacter": player_character,
         "readPlayerSpeech": read_player_speech,
         "allowPlayerDialogue": bool(payload.get("allowPlayerDialogue", True)),
@@ -705,6 +732,8 @@ def _template_session_to_frontend(raw: dict[str, Any] | None) -> dict[str, Any] 
             payload["appliedPresets"] = applied_presets
     if isinstance(system_manually_edited := raw.get("system_manually_edited"), bool):
         payload["systemManuallyEdited"] = system_manually_edited
+    if "output_format" in raw:
+        payload["outputFormat"] = normalize_output_format(raw.get("output_format"))
     return payload
 
 
@@ -892,6 +921,8 @@ def _save_template_session_payload(state: BridgeState, payload: dict[str, Any]) 
         system_manually_edited := payload.get("systemManuallyEdited"), bool
     ):
         data["system_manually_edited"] = system_manually_edited
+    if "outputFormat" in payload:
+        data["output_format"] = normalize_output_format(payload.get("outputFormat"))
     save_template_session(state.template_dir_path, data)
     loaded = _load_template_session_payload(state)
     if loaded is None:
@@ -934,6 +965,7 @@ def _repair_template_session_if_needed(state: BridgeState, raw: dict[str, Any] |
                 == "semantic"
                 else "indexed"
             ),
+            output_format=normalize_output_format(raw.get("output_format")),
         )
     except NoValidCharactersError:
         return raw

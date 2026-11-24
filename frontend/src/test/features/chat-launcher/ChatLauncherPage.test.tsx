@@ -38,7 +38,9 @@ vi.mock("../../../entities/character/repository", () => ({
   listCharacters: () => mocks.listCharacters(),
 }));
 vi.mock("../../../entities/template/repository", () => ({
+  dialogFormatsQueryKey: ["templates", "dialog-formats"],
   getTemplateSession: () => mocks.getTemplateSession(),
+  listDialogFormats: () => Promise.resolve([]),
   listTemplates: () => mocks.listTemplates(),
   saveTemplateSession: (session: TemplateLaunchSession) => mocks.saveTemplateSession(session),
   templatesQueryKey: ["templates"],

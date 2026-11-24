@@ -7,11 +7,15 @@ import { conversationsQueryKey, getConversationSession } from "../../../entities
 import { configQueryKey, getAppConfig } from "../../../entities/config/repository";
 import { effectsQueryKey, listEffects } from "../../../entities/effect/repository";
 import {
+  dialogFormatsQueryKey,
   getTemplateSession,
   getUserPromptPresets,
+  listDialogFormats,
   listTemplates,
   templatesQueryKey,
   userPromptPresetsQueryKey,
+  type DialogFormatOption,
+  type DialogOutputFormatId,
   type TemplateSummary,
 } from "../../../entities/template/repository";
 import { TRANSPARENT_BACKGROUND_NAME } from "../../../shared/constants";
@@ -25,6 +29,7 @@ import {
   buildDefaultTemplateScenario,
   composeTemplateContent,
   createTemplateDraft,
+  DEFAULT_NEW_OUTPUT_FORMAT,
   templateGenerationKey,
 } from "../templateFlow";
 import {
@@ -40,8 +45,14 @@ interface UseTemplateSessionStateOptions {
   createOnly: boolean;
 }
 
+const FALLBACK_DIALOG_FORMATS: DialogFormatOption[] = [
+  { id: "xml_v1", label: "XML / HTML Tags", builtin: true },
+  { id: "json_v1", label: "JSON", builtin: true },
+];
+
 export function useTemplateSessionState({ conversationId, createOnly }: UseTemplateSessionStateOptions) {
   const { t } = useI18n();
+  const dialogFormatsQuery = useQuery({ queryFn: listDialogFormats, queryKey: dialogFormatsQueryKey });
   const templatesQuery = useQuery({ queryFn: listTemplates, queryKey: templatesQueryKey });
   const presetsQuery = useQuery({ queryFn: getUserPromptPresets, queryKey: userPromptPresetsQueryKey });
   const sessionQuery = useQuery({
@@ -56,6 +67,7 @@ export function useTemplateSessionState({ conversationId, createOnly }: UseTempl
   const effectsQuery = useQuery({ queryFn: listEffects, queryKey: effectsQueryKey });
 
   const templates = templatesQuery.data ?? [];
+  const dialogFormats = dialogFormatsQuery.data?.length ? dialogFormatsQuery.data : FALLBACK_DIALOG_FORMATS;
   const isLoading = templatesQuery.isLoading;
   const launchSession = sessionQuery.data;
   const sessionFetched = sessionQuery.isFetched;
@@ -86,6 +98,7 @@ export function useTemplateSessionState({ conversationId, createOnly }: UseTempl
   };
 
   const [mediaSelectionMode, setMediaSelectionMode] = useState<MediaSelectionMode>("indexed");
+  const [outputFormat, setOutputFormat] = useState<DialogOutputFormatId>(DEFAULT_NEW_OUTPUT_FORMAT);
   const [primaryCharacterDialogOpen, setPrimaryCharacterDialogOpen] = useState(false);
   const [characterDialogOpen, setCharacterDialogOpen] = useState(false);
   const [userPromptDialogOpen, setUserPromptDialogOpen] = useState(false);
@@ -204,6 +217,7 @@ export function useTemplateSessionState({ conversationId, createOnly }: UseTempl
     useStat,
     maxSpeechChars,
     maxDialogItems,
+    outputFormat,
   });
 
   useTemplateRestoreEffects({
@@ -217,6 +231,7 @@ export function useTemplateSessionState({ conversationId, createOnly }: UseTempl
     launchSession,
     maxDialogItems,
     maxSpeechChars,
+    outputFormat,
     primaryCharacters,
     restoredSessionBackgroundRef,
     selected,
@@ -238,6 +253,7 @@ export function useTemplateSessionState({ conversationId, createOnly }: UseTempl
     setMediaSelectionMode,
     setMemoryMode,
     setNameError,
+    setOutputFormat,
     setPlayerCharacter,
     setPrimaryCharacters,
     setReadPlayerSpeech,
@@ -315,6 +331,7 @@ export function useTemplateSessionState({ conversationId, createOnly }: UseTempl
     ...draft,
     appliedPresets: appliedPresetsSnapshot,
     baseScenario,
+    outputFormat,
     scenario: composedScenario,
     selectedPresetIds: effectiveSelectedPresetIds,
   });
@@ -352,6 +369,7 @@ export function useTemplateSessionState({ conversationId, createOnly }: UseTempl
     characters,
     composedScenario,
     deferredLaunchRef,
+    dialogFormats,
     draft,
     effectivePlayerCharacter,
     effectiveSelectedPresetIds,
@@ -374,6 +392,7 @@ export function useTemplateSessionState({ conversationId, createOnly }: UseTempl
     memoryMode,
     mobileAccessEnabled,
     nameError,
+    outputFormat,
     playerCharacter,
     playerOptions,
     presetsError: presetsQuery.error as unknown,
@@ -417,6 +436,7 @@ export function useTemplateSessionState({ conversationId, createOnly }: UseTempl
     setMediaSelectionMode,
     setMemoryMode,
     setNameError,
+    setOutputFormat,
     setPlayerCharacter,
     setPrimaryCharacterDialogOpen,
     setPrimaryCharacters,

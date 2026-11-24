@@ -28,6 +28,7 @@ from config.sprite_groups import (
     has_multiple_sprite_groups,
     resolve_default_sprite_group,
 )
+from core.messaging.stage_effects import normalize_character_motion
 from i18n import tr as tr_i18n
 from sdk.handlers import MessageHandler
 from sdk.messages import LLMDialogMessage, PresentationMessage
@@ -158,6 +159,11 @@ class CharacterMediaHandler(MessageHandler):
                 effect=(message.effect or "") if (
                     is_final if str(message.effect or "").strip().upper() == "LEAVE" else first
                 ) else "",
+                motion=(
+                    normalize_character_motion(getattr(message, "motion", ""))
+                    if first
+                    else ""
+                ),
                 is_system_message=False,
                 is_final_segment=is_final,
                 timeout=None if first else 0,

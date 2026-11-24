@@ -353,4 +353,10 @@ export const storyEnMessages: Record<StoryMessageKey, string> = {
     "Cast, background, or rules changed. Click Regenerate to rebuild from latest settings (overwrites manual edits).",
   "template.systemDialog.autoHint":
     "Auto-sync is active: toggling rules or changing cast/background updates the system prompt automatically.",
+  "template.field.outputFormat": "Output format",
+  "template.field.outputFormatHint":
+    "Controls the protocol format for AI stage directives (XML/HTML tags by default for new templates; JSON for legacy templates).",
+  "template.outputFormat.xml_v1": "XML / HTML Tags (transitions & motions)",
+  "template.outputFormat.json_v1": "JSON (classic compatible)",
+  "template.bar.outputFormat": "Format: {format}",
 };

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from application.chat.dialog_formats import list_dialog_formats
 from application.chat.templates import (
     _generate_template_summary,
     _list_templates,
@@ -19,6 +20,11 @@ from frontend_bridge_core.routes.router import (
 
 def _list_template_rows(request: ApiRequest) -> JsonResponse:
     return JsonResponse(_list_templates(request.state))
+
+
+def _list_dialog_format_rows(request: ApiRequest) -> JsonResponse:
+    del request
+    return JsonResponse({"formats": list_dialog_formats()})
 
 
 def _load_template_session(request: ApiRequest) -> JsonResponse:
@@ -46,6 +52,13 @@ def _save_presets(request: ApiRequest) -> JsonResponse:
 
 
 TEMPLATE_ROUTES = (
+    Route(
+        methods=frozenset({"GET"}),
+        pattern="/api/templates/dialog-formats",
+        handler=_list_dialog_format_rows,
+        body_kind=BodyKind.NONE,
+        name="templates.dialog_formats",
+    ),
     Route(
         methods=frozenset({"GET"}),
         pattern="/api/templates",

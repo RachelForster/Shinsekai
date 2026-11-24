@@ -4,6 +4,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any
 
 from core.messaging.dialog_tokens import BGM, CG, CHOICE, COT, SCENE, STAT
+from sdk.adapters.dialog_format import DEFAULT_DIALOG_FORMAT_ID, XML_DIALOG_FORMAT_ID
 from sdk.types import RequirementSpec
 
 from ...core import Section, TextSection
@@ -89,47 +90,96 @@ def build_requirement_sections(
     context: DialogTemplateContext,
 ) -> tuple[_RequirementRuleSection, ...]:
     arguments = _requirement_arguments(context)
-    definitions = (
-        ("r_cot", 5, context.use_cot, None),
-        ("r_format", 10, True, None),
-        ("r_user_display_name_tool", 15, True, None),
-        ("r_cname", 20, True, None),
-        (
-            "r_sprite", 30, not context.uses_vibe,
-            "r_full_sprite" if context.uses_full_sprite_ids else None,
-        ),
-        ("r_vibe", 30, context.uses_vibe, None),
-        (
-            "r_non_sprite",
-            40,
-            True,
-            "r_non_vibe" if context.uses_vibe else None,
-        ),
-        (
-            "r_scene",
-            50,
-            context.has_real_background,
-            "r_scene_vibe" if context.uses_vibe else None,
-        ),
-        (
-            "r_bgm",
-            60,
-            context.has_real_background,
-            "r_bgm_vibe" if context.uses_vibe else None,
-        ),
-        ("r_speech", 70, True, None),
-        ("r_array", 80, True, None),
-        ("r_speech_max_chars", 90, context.max_speech_chars > 0, None),
-        ("r_dialog_max_items", 95, context.max_dialog_items > 0, None),
-        ("r_narration", 100, context.use_narration, None),
-        ("r_choice_pos", 110, context.use_choice, None),
-        ("r_choice_format", 120, context.use_choice, None),
-        ("r_choice_balance", 130, context.use_choice, None),
-        ("r_stats", 140, context.use_stat, None),
-        ("r_cg", 150, context.use_cg, None),
-        ("r_translate", 160, context.use_llm_translation, None),
-        ("r_effect", 170, context.use_effect, None),
+    is_xml = (
+        str(context.output_format_id or DEFAULT_DIALOG_FORMAT_ID).strip().lower()
+        == XML_DIALOG_FORMAT_ID
     )
+    if is_xml:
+        definitions: tuple[tuple[str, int, bool, str | None], ...] = (
+            ("r_cot", 5, context.use_cot, "xml_r_cot"),
+            ("r_format", 10, True, "xml_r_format"),
+            ("r_user_display_name_tool", 15, True, None),
+            ("r_cname", 20, True, "xml_r_cname"),
+            (
+                "r_sprite", 30, not context.uses_vibe,
+                "r_full_sprite" if context.uses_full_sprite_ids else None,
+            ),
+            ("r_vibe", 30, context.uses_vibe, None),
+            (
+                "r_non_sprite",
+                40,
+                True,
+                "r_non_vibe" if context.uses_vibe else None,
+            ),
+            (
+                "r_scene",
+                50,
+                context.has_real_background,
+                "xml_r_scene_vibe" if context.uses_vibe else "xml_r_scene",
+            ),
+            (
+                "r_bgm",
+                60,
+                context.has_real_background,
+                "xml_r_bgm_vibe" if context.uses_vibe else "xml_r_bgm",
+            ),
+            ("r_speech", 70, True, None),
+            ("r_array", 80, True, "xml_r_sequence"),
+            ("r_speech_max_chars", 90, context.max_speech_chars > 0, None),
+            ("r_dialog_max_items", 95, context.max_dialog_items > 0, "xml_r_dialog_max_items"),
+            ("r_narration", 100, context.use_narration, "xml_r_narration"),
+            ("r_choice_pos", 110, context.use_choice, "xml_r_choice_pos"),
+            ("r_choice_format", 120, context.use_choice, "xml_r_choice_format"),
+            ("r_choice_balance", 130, context.use_choice, None),
+            ("r_stats", 140, context.use_stat, "xml_r_stats"),
+            ("r_cg", 150, context.use_cg, "xml_r_cg"),
+            ("r_translate", 160, context.use_llm_translation, "xml_r_translate"),
+            ("r_effect", 170, context.use_effect, "xml_r_effect"),
+            ("r_scene_transition", 172, context.has_real_background, "xml_r_scene_transition"),
+            ("r_character_motion", 174, True, "xml_r_character_motion"),
+        )
+    else:
+        definitions = (
+            ("r_cot", 5, context.use_cot, None),
+            ("r_format", 10, True, None),
+            ("r_user_display_name_tool", 15, True, None),
+            ("r_cname", 20, True, None),
+            (
+                "r_sprite", 30, not context.uses_vibe,
+                "r_full_sprite" if context.uses_full_sprite_ids else None,
+            ),
+            ("r_vibe", 30, context.uses_vibe, None),
+            (
+                "r_non_sprite",
+                40,
+                True,
+                "r_non_vibe" if context.uses_vibe else None,
+            ),
+            (
+                "r_scene",
+                50,
+                context.has_real_background,
+                "r_scene_vibe" if context.uses_vibe else None,
+            ),
+            (
+                "r_bgm",
+                60,
+                context.has_real_background,
+                "r_bgm_vibe" if context.uses_vibe else None,
+            ),
+            ("r_speech", 70, True, None),
+            ("r_array", 80, True, None),
+            ("r_speech_max_chars", 90, context.max_speech_chars > 0, None),
+            ("r_dialog_max_items", 95, context.max_dialog_items > 0, None),
+            ("r_narration", 100, context.use_narration, None),
+            ("r_choice_pos", 110, context.use_choice, None),
+            ("r_choice_format", 120, context.use_choice, None),
+            ("r_choice_balance", 130, context.use_choice, None),
+            ("r_stats", 140, context.use_stat, None),
+            ("r_cg", 150, context.use_cg, None),
+            ("r_translate", 160, context.use_llm_translation, None),
+            ("r_effect", 170, context.use_effect, None),
+        )
     return tuple(
         _RequirementRuleSection(
             id=rule_id,
