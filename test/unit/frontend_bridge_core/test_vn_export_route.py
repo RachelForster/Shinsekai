@@ -47,6 +47,9 @@ def test_export_vn_route_projects_zip_download_url(monkeypatch, tmp_path: Path) 
         SimpleNamespace(project_root_dir=str(tmp_path)),
         {
             "conversationId": "c1",
+            "selectedEntryIds": ["history-0", "history-2"],
+            "expectedSessionId": "sess-9",
+            "selectedEntryAnchors": [{"id": "history-0", "role": "user", "dialogId": "", "text": "You: Hi"}],
             "title": "Demo",
             "outputFormat": "zip",
             "includeVoices": True,
@@ -57,6 +60,11 @@ def test_export_vn_route_projects_zip_download_url(monkeypatch, tmp_path: Path) 
     assert res.data["downloadUrl"] == "/api/download?path=output/vn_exports/demo.zip"
     assert res.data["entryCount"] == 5
     assert captured["req"].conversation_id == "c1"
+    assert captured["req"].selected_entry_ids == ("history-0", "history-2")
+    assert captured["req"].expected_session_id == "sess-9"
+    assert captured["req"].selected_entry_anchors == (
+        {"id": "history-0", "role": "user", "dialogId": "", "text": "You: Hi"},
+    )
 
 
 def test_export_vn_route_omits_download_url_for_directory_and_opens_folder(monkeypatch, tmp_path: Path) -> None:

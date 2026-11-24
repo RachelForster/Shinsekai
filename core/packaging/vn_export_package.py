@@ -12,7 +12,9 @@ from pathlib import Path
 import re
 import shutil
 import tempfile
+import threading
 from typing import Any, Literal
+import uuid
 
 from core.packaging.vn_export_media import (
     content_hash_bytes,
@@ -151,26 +153,51 @@ def _serialize_story_data_js(payload: Mapping[str, Any]) -> bytes:
     return f"window.__SHINSEKAI_VN__={escaped};\n".encode("utf-8")
 
 
+_PUBLISH_LOCKS_GUARD = threading.Lock()
+_PUBLISH_LOCKS: dict[str, threading.Lock] = {}
+
+
+def _publish_lock_for(target: Path) -> threading.Lock:
+    key = os.path.normcase(os.path.realpath(os.fspath(target)))
+    with _PUBLISH_LOCKS_GUARD:
+        lock = _PUBLISH_LOCKS.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _PUBLISH_LOCKS[key] = lock
+        return lock
+
+
 def _publish_directory(stage_dir: Path, target_dir: Path) -> None:
     target = Path(target_dir)
     target.parent.mkdir(parents=True, exist_ok=True)
-    tmp_dir = Path(tempfile.mkdtemp(prefix=f".{target.name}.", dir=target.parent))
-    backup_dir: Path | None = None
-    try:
-        shutil.copytree(stage_dir, tmp_dir, dirs_exist_ok=True)
-        if target.exists():
-            backup_dir = target.parent / f".{target.name}.bak.{os.getpid()}"
-            if backup_dir.exists():
+    with _publish_lock_for(target):
+        if not target.exists():
+            orphaned = sorted(
+                (p for p in target.parent.glob(f".{target.name}.bak.*") if p.is_dir()),
+                key=lambda p: p.stat().st_mtime_ns,
+                reverse=True,
+            )
+            if orphaned:
+                os.replace(orphaned[0], target)
+
+        tmp_dir = Path(tempfile.mkdtemp(prefix=f".{target.name}.tmp.", dir=target.parent))
+        backup_dir: Path | None = None
+        try:
+            shutil.copytree(stage_dir, tmp_dir, dirs_exist_ok=True)
+            if target.exists():
+                backup_dir = target.parent / f".{target.name}.bak.{uuid.uuid4().hex[:12]}"
+                os.replace(target, backup_dir)
+            os.replace(tmp_dir, target)
+            if backup_dir is not None and backup_dir.exists():
                 shutil.rmtree(backup_dir, ignore_errors=True)
-            os.replace(target, backup_dir)
-        os.replace(tmp_dir, target)
-        if backup_dir is not None and backup_dir.exists():
-            shutil.rmtree(backup_dir, ignore_errors=True)
-    except Exception:
-        if backup_dir is not None and backup_dir.exists() and not target.exists():
-            os.replace(backup_dir, target)
-        shutil.rmtree(tmp_dir, ignore_errors=True)
-        raise
+            for stale in target.parent.glob(f".{target.name}.bak.*"):
+                if stale.is_dir():
+                    shutil.rmtree(stale, ignore_errors=True)
+        except Exception:
+            if backup_dir is not None and backup_dir.exists() and not target.exists():
+                os.replace(backup_dir, target)
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            raise
 
 
 def _stage_voices(

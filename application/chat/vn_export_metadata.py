@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
-from core.paths import source_root
-from core.storage.layout import StorageLayout
+from core.storage.chat_theme_store import read_chat_theme_manifest
 from sdk.lang import normalize_lang
 
 _PLAYER_UI_LABELS: dict[str, dict[str, str]] = {
@@ -136,29 +134,9 @@ def player_ui_labels(locale: str) -> dict[str, str]:
     return dict(_PLAYER_UI_LABELS[normalize_lang(locale)])
 
 
-def _read_theme_manifest(project_root: Path, theme_id: str) -> dict[str, Any]:
-    clean_id = str(theme_id or "").strip()
-    if not clean_id or "/" in clean_id or "\\" in clean_id or ".." in clean_id:
-        return {}
-    candidates = (
-        StorageLayout(project_root).data_dir / "chat_ui_themes" / clean_id / "theme.json",
-        source_root() / "assets" / "chat_ui_themes" / clean_id / "theme.json",
-    )
-    for path in candidates:
-        if not path.is_file():
-            continue
-        try:
-            loaded = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        if isinstance(loaded, dict):
-            return loaded
-    return {}
-
-
 def extract_vn_theme_vars(project_root: Path, theme_id: str, fallback_accent: str = "") -> dict[str, str]:
     """Map active Shinsekai chat theme tokens to safe ``--vn-*`` CSS variables."""
-    manifest = _read_theme_manifest(project_root, theme_id)
+    manifest = read_chat_theme_manifest(project_root, theme_id)
     tokens = manifest.get("tokens") if isinstance(manifest.get("tokens"), dict) else {}
     global_tok = tokens.get("global") if isinstance(tokens.get("global"), dict) else {}
     dialog_tok = tokens.get("dialog") if isinstance(tokens.get("dialog"), dict) else {}

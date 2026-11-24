@@ -13,8 +13,15 @@ export const platformJaMessages: Record<PlatformMessageKey, string> = {
   "error.no_valid_characters": "有効なキャラクターを少なくとも 1 人選択してください。",
   "error.vn_export_conversation_not_found": "書き出し対象の会話アーカイブが見つかりません。",
   "error.vn_export_empty_history": "書き出せるチャット履歴がありません。",
+  "error.vn_export_history_changed": "選択した履歴内容が変更されました。履歴を更新して再試行してください。",
   "error.vn_export_invalid_output": "書き出し形式または出力先パスが無効です。",
   "error.vn_export_invalid_range": "選択した会話範囲が無効です。更新して再試行してください。",
+  "error.vn_export_no_playable_entries":
+    "選択範囲に再生可能なセリフやナレーションがありません（選択肢行のみの書き出しはできません）。",
+  "error.vn_export_output_io_failed":
+    "ビジュアルノベルの出力ファイルの書き込みに失敗しました。権限と空き容量を確認してください。",
+  "error.vn_export_session_changed":
+    "アクティブなチャットセッションが切り替わりました。履歴を開き直して再試行してください。",
   "plat.http.taskCancelled": "タスクがキャンセルされました。",
   "plat.http.taskEmptyResult": "タスクは完了しましたが結果が返されませんでした。",
   "plat.http.taskFailed": "タスクが失敗しました。",

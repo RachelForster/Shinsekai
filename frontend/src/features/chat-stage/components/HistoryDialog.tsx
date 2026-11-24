@@ -1,20 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import {
-  ArrowDownToLine,
-  BookOpen,
-  Camera,
-  Check,
-  Clapperboard,
-  Copy,
-  ListChecks,
-  Play,
-  RotateCcw,
-  Save,
-  Trash2,
-  Video,
-} from "lucide-react";
+import { ListChecks, Trash2 } from "lucide-react";
 
-import type { ChatHistoryEntry, ChatReplaySnapshot } from "../../../shared/platform/types";
+import type { ChatHistoryEntry } from "../../../shared/platform/types";
 import { prepareChatReplay, startChatReplay, cancelChatReplay } from "../../../entities/chat/repository";
 import type { ActiveReplay } from "../replay/ReplayControls";
 import type { RecordingAudio } from "../audio/stageAudioMixer";
@@ -26,146 +13,20 @@ import {
 } from "../replay/historyExport";
 import { useHistorySelection } from "../replay/useHistorySelection";
 import { VnExportDialog } from "../replay/VnExportDialog";
-import {
-  HIDDEN_HISTORY_LINE_PATTERN,
-  HIDDEN_HISTORY_SPEAKERS,
-  LEGACY_DEFAULT_USER_SPEAKER,
-  LOCAL_TIME_PREFIX_PATTERN,
-} from "../../../shared/constants";
 import { Button, Switch } from "../../../shared/ui";
-import { translateRuntimeMessage, useI18n } from "../../../shared/i18n";
+import { useI18n } from "../../../shared/i18n";
 import { ChatStageModal } from "./ChatStageModal";
-
-const defaultUserDisplayName = LEGACY_DEFAULT_USER_SPEAKER;
-const hiddenSystemHistorySpeakers = new Set<string>(HIDDEN_HISTORY_SPEAKERS);
-const historyRenderBatchSize = 120;
-
-interface HistoryClip {
-  mode: "replay" | "video";
-  snapshot: ChatReplaySnapshot;
-  entries: ChatReplaySnapshot["entries"];
-  includesUnselected: boolean;
-}
-
-function normalizeUserDisplayName(value?: string) {
-  const trimmed = value?.trim();
-  if (!trimmed || trimmed === defaultUserDisplayName) {
-    return translateRuntimeMessage("ops.chatStage.defaultUserSpeaker");
-  }
-  return trimmed;
-}
-
-function userSpeakerPrefixPattern(userDisplayName: string) {
-  const names = [defaultUserDisplayName, userDisplayName]
-    .map((name) => name.trim())
-    .filter(Boolean)
-    .filter((name, index, list) => list.indexOf(name) === index)
-    .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  return new RegExp(`^\\s*(${names.join("|")})\\s*[：:]\\s*([\\s\\S]*)$`);
-}
-
-function historySpeakerFallback(
-  role: ChatHistoryEntry["role"],
-  userDisplayName: string,
-  labels: Record<ChatHistoryEntry["role"], string>,
-) {
-  if (role === "user") {
-    return userDisplayName;
-  }
-  return labels[role] ?? labels.system;
-}
-
-function historyEntryLocalTime(entry: ChatHistoryEntry) {
-  const raw = entry.createdAt;
-  if (typeof raw !== "number" || !Number.isFinite(raw)) {
-    return "";
-  }
-  const date = new Date(raw);
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-  return date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-}
-
-function splitHistoryEntryText(
-  entry: ChatHistoryEntry,
-  userDisplayName: string,
-  labels: Record<ChatHistoryEntry["role"], string>,
-) {
-  const userName = normalizeUserDisplayName(userDisplayName);
-  if (entry.role === "user") {
-    const userMatch = entry.text.match(userSpeakerPrefixPattern(userName));
-    return {
-      body: (userMatch?.[2] ?? entry.text).trimStart(),
-      localTime: historyEntryLocalTime(entry),
-      speaker: userMatch?.[1] === defaultUserDisplayName ? userName : userMatch?.[1]?.trim() || userName,
-    };
-  }
-  const match = entry.text.match(/^\s*([^：:\n]{1,36})\s*[：:]\s*([\s\S]*)$/);
-  if (!match) {
-    return { body: entry.text, localTime: "", speaker: historySpeakerFallback(entry.role, userName, labels) };
-  }
-  return {
-    body: match[2]?.trimStart() ?? "",
-    localTime: "",
-    speaker: match[1]?.trim() || historySpeakerFallback(entry.role, userName, labels),
-  };
-}
-
-function historyEntryTone(role: ChatHistoryEntry["role"]) {
-  if (role === "user") {
-    return "user";
-  }
-  if (role === "options") {
-    return "options";
-  }
-  if (role === "system") {
-    return "system";
-  }
-  return "assistant";
-}
-
-function normalizeHistorySpeaker(value: string) {
-  return value.trim().toLocaleLowerCase();
-}
-
-function isHiddenSystemHistoryEntry(entry: ChatHistoryEntry, dialog: { speaker: string }) {
-  if (entry.role !== "system") {
-    return false;
-  }
-  if (hiddenSystemHistorySpeakers.has(normalizeHistorySpeaker(dialog.speaker))) {
-    return true;
-  }
-  return HIDDEN_HISTORY_LINE_PATTERN.test(entry.text);
-}
-
-function normalizeHistorySearch(value: string) {
-  return value.trim().toLocaleLowerCase();
-}
-
-function shareableUserText(text: string) {
-  return text
-    .replace(LOCAL_TIME_PREFIX_PATTERN, "")
-    .replace(/(?:\s*\[(?:image|file):[^\]\r\n]*\])+\s*$/i, "")
-    .trim();
-}
-
-function sameHistoryMessage(source: ChatHistoryEntry, target: ChatHistoryEntry) {
-  if (
-    source.id !== target.id ||
-    source.role !== target.role ||
-    source.dialogId !== target.dialogId ||
-    source.createdAt !== target.createdAt
-  ) {
-    return false;
-  }
-  if (source.role !== "user" || source.text === target.text) return source.text === target.text;
-  const normalized = (text: string) => {
-    const prefix = text.match(/^\s*([^：:\n]{1,120})[：:]\s*/);
-    return `${prefix?.[1].trim() ?? ""}:${shareableUserText(text.slice(prefix?.[0].length ?? 0))}`;
-  };
-  return normalized(source.text) === normalized(target.text);
-}
+import { HistoryEntryCard } from "./HistoryEntryCard";
+import { HistorySelectionFooter, type HistoryClip } from "./HistorySelectionFooter";
+import {
+  historyEntryLocalTime,
+  historyRenderBatchSize,
+  isHiddenSystemHistoryEntry,
+  normalizeHistorySearch,
+  sameHistoryMessage,
+  shareableUserText,
+  splitHistoryEntryText,
+} from "./historyEntries";
 
 export function HistoryDialog({
   entries,
@@ -179,6 +40,7 @@ export function HistoryDialog({
   onSaveVoice,
   onToggleVoiceArchive,
   open,
+  sessionId,
   userDisplayName,
   voiceArchiveEnabled,
   onStartReplay,
@@ -199,6 +61,7 @@ export function HistoryDialog({
   onSaveVoice: (voiceId: string) => void;
   onToggleVoiceArchive: (enabled: boolean) => void;
   open: boolean;
+  sessionId?: string;
   userDisplayName: string;
   voiceArchiveEnabled: boolean;
 }) {
@@ -255,21 +118,21 @@ export function HistoryDialog({
       const last = selectedRows.at(-1)!;
       const start = snapshot.entries.findIndex((item) => item.id === first.entry.id);
       const end = snapshot.entries.findIndex((item) => item.id === last.entry.id);
-      const entries = snapshot.entries.slice(start, end + 1);
+      const slice = snapshot.entries.slice(start, end + 1);
       const expected = historyRows.slice(first.originalIndex, last.originalIndex + 1);
       if (
         start < 0 ||
         end < start ||
-        entries.length !== expected.length ||
-        entries.some((item, index) => !sameHistoryMessage(expected[index].entry, item))
+        slice.length !== expected.length ||
+        slice.some((item, index) => !sameHistoryMessage(expected[index].entry, item))
       ) {
         throw new Error(t("chat.replay.changed"));
       }
       setClip({
         mode,
         snapshot,
-        entries,
-        includesUnselected: entries.some((item) => !selection.selected.has(item.id)),
+        entries: slice,
+        includesUnselected: slice.some((item) => !selection.selected.has(item.id)),
       });
     } catch (error) {
       if (request === requestRef.current) {
@@ -328,8 +191,6 @@ export function HistoryDialog({
     if (!open || loading) {
       return;
     }
-    // Open on the newest messages (bottom) rather than the oldest (top).
-    // The scroll container is the modal body (overflow: auto), not the list.
     const frame = requestAnimationFrame(() => {
       const body = bodyRef.current;
       if (body) {
@@ -379,6 +240,7 @@ export function HistoryDialog({
     }
   }, [historyRows, multi, selection.selected]);
   const selectedRows = historyRows.filter(({ entry }) => selection.selected.has(entry.id));
+  const playableSelectedRows = selectedRows.filter(({ entry }) => entry.role !== "options");
   const visibleEntries = useMemo(
     () =>
       historyRows.filter(({ dialog, entry }) =>
@@ -386,8 +248,6 @@ export function HistoryDialog({
       ),
     [historyRows, normalizedQuery, roleLabels],
   );
-  // Render the newest `visibleLimit` entries so the dialog opens on the latest
-  // messages; "show more" then reveals older entries above.
   const hiddenOlderCount = Math.max(0, visibleEntries.length - visibleLimit);
   const renderedEntries = visibleEntries.slice(hiddenOlderCount);
   const moreEntriesAvailable = hiddenOlderCount > 0;
@@ -425,9 +285,6 @@ export function HistoryDialog({
   if (!open) {
     return null;
   }
-
-  const selectedRangeCount =
-    selectedRows.length > 0 ? selectedRows.at(-1)!.originalIndex - selectedRows[0].originalIndex + 1 : 0;
 
   return (
     <>
@@ -517,210 +374,58 @@ export function HistoryDialog({
                   {t("chat.history.showMore", { count: hiddenOlderCount })}
                 </Button>
               ) : null}
-              {renderedEntries.map(({ dialog, entry, localTime, originalIndex }) => {
-                const checked = selection.selected.has(entry.id);
-                return (
-                  <section
-                    data-history-entry-id={entry.id}
-                    data-history-selected={multi && checked ? "true" : undefined}
-                    data-history-anchor={multi && selection.anchor === entry.id ? "true" : undefined}
-                    className="chat-history__entry"
-                    data-role={entry.role}
-                    data-tone={historyEntryTone(entry.role)}
-                    key={entry.id}
-                    onClick={
-                      multi && !clip && !preparing
-                        ? (event) => {
-                            if (feedback) setFeedback(undefined);
-                            selection.click(event, entry.id);
-                          }
-                        : undefined
-                    }
-                  >
-                    {multi && (
-                      <button
-                        aria-checked={checked}
-                        aria-label={t("chat.history.selection.message", { index: originalIndex + 1 })}
-                        className="chat-history__checkbox"
-                        disabled={preparing || Boolean(clip)}
-                        role="checkbox"
-                        type="button"
-                      >
-                        {checked && <Check aria-hidden size={15} />}
-                      </button>
-                    )}
-                    <header className="chat-history__entry-header">
-                      <div className="chat-history__nameplate">
-                        <span aria-hidden className="chat-history__nameplate-accent" />
-                        <span className="chat-history__speaker">{dialog.speaker}</span>
-                        <span className="chat-history__role">{roleLabels[entry.role]}</span>
-                      </div>
-                      <div className="chat-history__meta">
-                        <span className="chat-history__index">
-                          {t("chat.history.entryIndex", { index: originalIndex + 1 })}
-                        </span>
-                        {localTime ? (
-                          <time className="chat-history__time" dateTime={new Date(entry.createdAt ?? 0).toISOString()}>
-                            {localTime}
-                          </time>
-                        ) : null}
-                      </div>
-                    </header>
-                    <p className="chat-history__text">{dialog.body}</p>
-                    {!multi && (entry.voiceId || (entry.role === "user" && entry.revertUserIndex != null)) && (
-                      <div className="chat-history__actions">
-                        {entry.voiceId ? (
-                          <>
-                            <Button
-                              className="chat-history__voice-button"
-                              icon={<Play aria-hidden className="button__icon" />}
-                              onClick={() => onReplayVoice(entry.voiceId!)}
-                            >
-                              {t("chat.history.replayVoice")}
-                            </Button>
-                            <Button
-                              className="chat-history__voice-button"
-                              icon={<Save aria-hidden className="button__icon" />}
-                              onClick={() => onSaveVoice(entry.voiceId!)}
-                            >
-                              {t("chat.history.saveVoice")}
-                            </Button>
-                          </>
-                        ) : null}
-                        {entry.role === "user" && entry.revertUserIndex != null ? (
-                          <>
-                            <Button
-                              className="chat-history__revert"
-                              icon={<RotateCcw aria-hidden className="button__icon" />}
-                              onClick={() => onRevert(entry.revertUserIndex!)}
-                            >
-                              {t("chat.history.revert")}
-                            </Button>
-                          </>
-                        ) : null}
-                      </div>
-                    )}
-                  </section>
-                );
-              })}
+              {renderedEntries.map(({ dialog, entry, localTime, originalIndex }) => (
+                <HistoryEntryCard
+                  anchored={multi && selection.anchor === entry.id}
+                  checked={selection.selected.has(entry.id)}
+                  dialog={dialog}
+                  disabled={preparing || Boolean(clip)}
+                  entry={entry}
+                  key={entry.id}
+                  localTime={localTime}
+                  multi={multi}
+                  onReplayVoice={onReplayVoice}
+                  onRevert={onRevert}
+                  onSaveVoice={onSaveVoice}
+                  onSelect={
+                    multi && !clip && !preparing
+                      ? (event, entryId) => {
+                          if (feedback) setFeedback(undefined);
+                          selection.click(event, entryId);
+                        }
+                      : undefined
+                  }
+                  originalIndex={originalIndex}
+                  roleLabel={roleLabels[entry.role]}
+                />
+              ))}
             </div>
           ) : null}
         </div>
         {multi ? (
-          <footer className="chat-history-selection">
-            {!clip && selection.anchor && !preparing && (
-              <Button
-                className="chat-history-selection__to-end"
-                icon={<ArrowDownToLine aria-hidden className="button__icon" />}
-                onClick={selection.selectToVisibleEnd}
-              >
-                {t("chat.history.selection.toHere")}
-              </Button>
-            )}
-            {clip ? (
-              <>
-                <div className="chat-history-selection__summary">
-                  <strong>
-                    {t("chat.replay.range", {
-                      start: clip.entries[0].position,
-                      end: clip.entries.at(-1)!.position,
-                      count: clip.entries.length,
-                    })}
-                  </strong>
-                  {clip.includesUnselected && <span>{t("chat.history.selection.contiguous")}</span>}
-                  {clip.mode === "video" && <span>{t("chat.history.selection.videoHint")}</span>}
-                </div>
-                <div className="chat-history-selection__actions">
-                  {generatable && (
-                    <label className="chat-history-selection__voice">
-                      <input
-                        checked={generate}
-                        disabled={preparing}
-                        onChange={(event) => setGenerate(event.target.checked)}
-                        type="checkbox"
-                      />
-                      {t("chat.history.selection.fillVoice")}
-                    </label>
-                  )}
-                  <Button onClick={clearClip}>{t("chat.history.selection.edit")}</Button>
-                  <Button
-                    className="chat-history-selection__primary"
-                    disabled={preparing || replayDisabled}
-                    onClick={() => void begin()}
-                  >
-                    {t(clip.mode === "video" ? "chat.history.selection.record" : "chat.replay.direct")}
-                  </Button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="chat-history-selection__summary">
-                  <strong role="status">{t("chat.history.selection.count", { count: selectedRows.length })}</strong>
-                  {selectedRows.length === 0 && <span>{t("chat.history.selection.hint")}</span>}
-                  {selectedRows.length > 0 && replayDisabled && onStartReplay && <span>{t("chat.replay.busy")}</span>}
-                </div>
-                <div className="chat-history-selection__actions">
-                  <Button
-                    disabled={preparing || visibleEntries.length === 0}
-                    onClick={() => selection.reset(visibleEntries.map(({ entry }) => entry.id))}
-                  >
-                    {t("chat.history.selection.all")}
-                  </Button>
-                  {onStartReplay && (
-                    <Button
-                      className="chat-history-selection__primary"
-                      disabled={!selectedRows.length || preparing || replayDisabled}
-                      icon={<Clapperboard aria-hidden className="button__icon" />}
-                      onClick={() => void prepare("replay")}
-                    >
-                      {t("chat.history.selection.replay")}
-                    </Button>
-                  )}
-                  <Button
-                    disabled={!selectedRows.length || preparing}
-                    icon={<Copy aria-hidden className="button__icon" />}
-                    onClick={() => void exportSelection(false)}
-                  >
-                    {t("chat.actionBar.copy")}
-                  </Button>
-                  <Button
-                    disabled={!selectedRows.length || preparing}
-                    icon={<Camera aria-hidden className="button__icon" />}
-                    onClick={() => void exportSelection(true)}
-                  >
-                    {t("chat.history.selection.screenshot")}
-                  </Button>
-                  <Button
-                    disabled={!selectedRows.length || preparing}
-                    icon={<BookOpen aria-hidden className="button__icon" />}
-                    onClick={() => setVnExportOpen(true)}
-                  >
-                    {t("chat.vnExport.button")}
-                  </Button>
-                  {onStartReplay && (
-                    <Button
-                      disabled={!selectedRows.length || preparing || replayDisabled || !videoAvailable}
-                      title={videoAvailable ? undefined : t("chat.history.selection.videoUnsupported")}
-                      icon={<Video aria-hidden className="button__icon" />}
-                      onClick={() => void prepare("video")}
-                    >
-                      {t("chat.history.selection.video")}
-                    </Button>
-                  )}
-                </div>
-              </>
-            )}
-            {preparing && (
-              <p className="chat-history-selection__feedback" role="status">
-                {t("chat.replay.preparing")}
-              </p>
-            )}
-            {feedback && (
-              <p className="chat-history-selection__feedback" role={feedback.error ? "alert" : "status"}>
-                {feedback.text}
-              </p>
-            )}
-          </footer>
+          <HistorySelectionFooter
+            clip={clip}
+            feedback={feedback}
+            generate={generate}
+            generatable={generatable}
+            hasAnchor={Boolean(selection.anchor)}
+            hasReplayHandler={Boolean(onStartReplay)}
+            onBegin={() => void begin()}
+            onClearClip={clearClip}
+            onCopy={() => void exportSelection(false)}
+            onOpenVnExport={() => setVnExportOpen(true)}
+            onPrepare={(mode) => void prepare(mode)}
+            onScreenshot={() => void exportSelection(true)}
+            onSelectAll={() => selection.reset(visibleEntries.map(({ entry }) => entry.id))}
+            onSelectToEnd={selection.selectToVisibleEnd}
+            onToggleGenerate={setGenerate}
+            playableSelectedCount={playableSelectedRows.length}
+            preparing={preparing}
+            replayDisabled={replayDisabled}
+            selectedCount={selectedRows.length}
+            videoAvailable={videoAvailable}
+            visibleCount={visibleEntries.length}
+          />
         ) : (
           <footer className="chat-stage-modal__footer chat-history-dialog__footer">
             <Button onClick={onRefresh}>{t("common.refresh")}</Button>
@@ -730,11 +435,19 @@ export function HistoryDialog({
       </ChatStageModal>
       <VnExportDialog
         defaultUserDisplayName={userDisplayName}
-        endEntryId={selectedRows.at(-1)?.entry.id}
+        endEntryId={playableSelectedRows.at(-1)?.entry.id}
+        expectedSessionId={sessionId}
         onClose={() => setVnExportOpen(false)}
         open={open && vnExportOpen}
-        rangeCount={selectedRangeCount}
-        startEntryId={selectedRows[0]?.entry.id}
+        rangeCount={playableSelectedRows.length}
+        selectedEntryAnchors={playableSelectedRows.map(({ entry }) => ({
+          id: entry.id,
+          role: entry.role,
+          dialogId: entry.dialogId ?? "",
+          text: entry.text,
+        }))}
+        selectedEntryIds={playableSelectedRows.map(({ entry }) => entry.id)}
+        startEntryId={playableSelectedRows[0]?.entry.id}
       />
     </>
   );

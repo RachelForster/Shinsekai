@@ -161,10 +161,29 @@ def _delete_conversation(request: ApiRequest) -> JsonResponse:
 def _export_playable_vn(request: ApiRequest) -> JsonResponse:
     body = request.body if isinstance(request.body, dict) else {}
     output_format = str(body.get("outputFormat") or "zip").strip().lower()
+    raw_selected = body.get("selectedEntryIds")
+    selected_entry_ids = (
+        tuple(str(item) for item in raw_selected if item is not None and str(item).strip())
+        if isinstance(raw_selected, list)
+        else ()
+    )
+    raw_anchors = body.get("selectedEntryAnchors")
+    selected_entry_anchors = (
+        tuple(
+            {str(k): str(v or "") for k, v in item.items()}
+            for item in raw_anchors
+            if isinstance(item, dict)
+        )
+        if isinstance(raw_anchors, list)
+        else ()
+    )
     export_req = PlayableVnExportRequest(
         conversation_id=str(body.get("conversationId") or ""),
         start_entry_id=str(body.get("startEntryId") or ""),
         end_entry_id=str(body.get("endEntryId") or ""),
+        selected_entry_ids=selected_entry_ids,
+        expected_session_id=str(body.get("expectedSessionId") or ""),
+        selected_entry_anchors=selected_entry_anchors,
         title=str(body.get("title") or ""),
         subtitle=str(body.get("subtitle") or ""),
         output_format=output_format,  # type: ignore[arg-type]

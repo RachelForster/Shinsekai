@@ -190,10 +190,20 @@ export interface ChatReplayControl {
 
 export type ChatVnExportFormat = "zip" | "directory";
 
+export interface ChatVnExportAnchor {
+  id: string;
+  role: string;
+  dialogId?: string;
+  text: string;
+}
+
 export interface ChatVnExportInput {
   conversationId?: string;
   startEntryId?: string;
   endEntryId?: string;
+  selectedEntryIds?: string[];
+  expectedSessionId?: string;
+  selectedEntryAnchors?: ChatVnExportAnchor[];
   title?: string;
   subtitle?: string;
   outputFormat: ChatVnExportFormat;

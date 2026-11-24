@@ -4,7 +4,7 @@ import { Download, FolderOpen } from "lucide-react";
 import { exportPlayableVn } from "../../../entities/chat/repository";
 import { useI18n } from "../../../shared/i18n";
 import { formatPlatformError } from "../../../shared/platform/errors";
-import type { ChatVnExportFormat, ChatVnExportResult } from "../../../shared/platform/types";
+import type { ChatVnExportAnchor, ChatVnExportFormat, ChatVnExportResult } from "../../../shared/platform/types";
 import { Button, Dialog, Switch, TextInput } from "../../../shared/ui";
 import "./VnExportDialog.css";
 
@@ -14,6 +14,9 @@ interface VnExportDialogProps {
   conversationId?: string;
   startEntryId?: string;
   endEntryId?: string;
+  selectedEntryIds?: string[];
+  expectedSessionId?: string;
+  selectedEntryAnchors?: ChatVnExportAnchor[];
   rangeCount?: number;
   defaultTitle?: string;
   defaultUserDisplayName?: string;
@@ -31,6 +34,9 @@ export function VnExportDialog({
   conversationId,
   startEntryId,
   endEntryId,
+  selectedEntryIds,
+  expectedSessionId,
+  selectedEntryAnchors,
   rangeCount,
   defaultTitle = "",
   defaultUserDisplayName = "",
@@ -95,8 +101,11 @@ export function VnExportDialog({
     try {
       const exported = await exportPlayableVn({
         ...(conversationId ? { conversationId } : {}),
-        ...(startEntryId ? { startEntryId } : {}),
-        ...(endEntryId ? { endEntryId } : {}),
+        ...(expectedSessionId ? { expectedSessionId } : {}),
+        ...(selectedEntryIds?.length ? { selectedEntryIds } : {}),
+        ...(selectedEntryAnchors?.length ? { selectedEntryAnchors } : {}),
+        ...(!selectedEntryIds?.length && startEntryId ? { startEntryId } : {}),
+        ...(!selectedEntryIds?.length && endEntryId ? { endEntryId } : {}),
         title: title.trim(),
         subtitle: subtitle.trim(),
         outputFormat,

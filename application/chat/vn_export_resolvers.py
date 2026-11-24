@@ -75,6 +75,8 @@ def _iter_approved_external_roots(state: Any) -> tuple[Path, ...]:
 def _relative_media_candidates(clean_str: str) -> list[str]:
     rel_candidates = [clean_str]
     slash_path = clean_str.replace("\\", "/")
+    if slash_path != clean_str:
+        rel_candidates.append(slash_path)
     parts = [part for part in slash_path.split("/") if part and part != "."]
     if len(parts) >= 5 and parts[0] == "data":
         family, prefix = parts[1], parts[2]

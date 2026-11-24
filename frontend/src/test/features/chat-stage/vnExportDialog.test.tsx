@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { VnExportDialog } from "../../../features/chat-stage/replay/VnExportDialog";
+import { HistoryDialog } from "../../../features/chat-stage/components/HistoryDialog";
 import * as chatRepo from "../../../entities/chat/repository";
 import { I18nProvider } from "../../../shared/i18n";
 
@@ -105,5 +106,79 @@ describe("VnExportDialog", () => {
         openFolder: true,
       }),
     );
+  });
+
+  it("disables VN export for option-only selection and forwards exact anchors for non-contiguous rows", async () => {
+    vi.mocked(chatRepo.exportPlayableVn).mockResolvedValue({
+      path: "output/vn_exports/exact.zip",
+      format: "zip",
+      entryCount: 2,
+      assetCount: 1,
+      voiceCount: 0,
+      transcodedVoiceCount: 0,
+      skippedNonStaticSprites: 0,
+      totalBytes: 2048,
+      indexHtmlBytes: 1024,
+      warnings: [],
+    });
+
+    render(
+      <I18nProvider language="en">
+        <HistoryDialog
+          entries={[
+            { id: "h-0", role: "assistant", dialogId: "d0", text: "Mio: Hello" },
+            { id: "h-1", role: "options", text: "CHOICE: Opt A / Opt B" },
+            { id: "h-2", role: "user", text: "You: Opt A", revertUserIndex: 0 },
+          ]}
+          loading={false}
+          onClear={vi.fn()}
+          onClose={vi.fn()}
+          onExportImage={vi.fn()}
+          onRefresh={vi.fn()}
+          onReplayVoice={vi.fn()}
+          onRevert={vi.fn()}
+          onSaveVoice={vi.fn()}
+          onToggleVoiceArchive={vi.fn()}
+          open
+          recordAudio={() => ({ start: vi.fn(), stop: vi.fn() }) as never}
+          sessionId="sess-42"
+          userDisplayName="Hero"
+          voiceArchiveEnabled={false}
+        />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Replay/Share" }));
+    const checkboxes = screen.getAllByRole("checkbox");
+    expect(checkboxes).toHaveLength(3);
+
+    // Selecting only the options row keeps Export playable VN disabled.
+    fireEvent.click(checkboxes[1]!);
+    expect(screen.getByRole("button", { name: "Export playable VN" })).toBeDisabled();
+
+    // Adding first & third (playable) rows enables Export playable VN and sends exact IDs + session + anchors.
+    fireEvent.click(checkboxes[0]!);
+    fireEvent.click(checkboxes[2]!);
+    const vnButton = screen.getByRole("button", { name: "Export playable VN" });
+    expect(vnButton).toBeEnabled();
+    fireEvent.click(vnButton);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Exports 2 selected dialogue entries/i)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Export VN" }));
+    await waitFor(() => {
+      expect(chatRepo.exportPlayableVn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          expectedSessionId: "sess-42",
+          selectedEntryIds: ["h-0", "h-2"],
+          selectedEntryAnchors: [
+            { id: "h-0", role: "assistant", dialogId: "d0", text: "Mio: Hello" },
+            { id: "h-2", role: "user", dialogId: "", text: "You: Opt A" },
+          ],
+        }),
+      );
+    });
   });
 });

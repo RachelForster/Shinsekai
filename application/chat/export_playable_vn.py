@@ -5,9 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 import hashlib
+import json
 from pathlib import Path
 import re
 from typing import Any, Literal
+import uuid
 
 from application.chat.composition import _chat_history
 from application.chat.conversation_library import _records as list_conversation_records
@@ -24,6 +26,7 @@ from application.chat.vn_export_resolvers import (
     merge_stage_sprites,
     resolve_entry_voices,
 )
+from application.chat.vn_export_selection import resolve_vn_selection, validate_expected_session
 from application.chat.voice_archive import VoiceArchive
 from config.config_manager import character_name_key
 from core.chat_history.storage import (
@@ -55,6 +58,9 @@ class PlayableVnExportRequest:
     conversation_id: str = ""
     start_entry_id: str = ""
     end_entry_id: str = ""
+    selected_entry_ids: tuple[str, ...] = ()
+    expected_session_id: str = ""
+    selected_entry_anchors: tuple[dict[str, str], ...] = ()
     title: str = ""
     subtitle: str = ""
     output_format: Literal["zip", "directory"] = "zip"
@@ -115,7 +121,7 @@ def _resolve_output_path(
 ) -> Path:
     ascii_slug = re.sub(r"[^A-Za-z0-9_-]+", "-", title).strip("-").lower()[:40]
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    folder_slug = f"{ascii_slug or 'shinsekai-vn'}-{stamp}"
+    folder_slug = f"{ascii_slug or 'shinsekai-vn'}-{stamp}-{uuid.uuid4().hex[:6]}"
 
     raw_dir = str(output_dir or "").strip()
     if raw_dir:
@@ -134,9 +140,14 @@ def _resolve_output_path(
     return default_dir / (f"{folder_slug}.zip" if output_format == "zip" else folder_slug)
 
 
-def _slug_story_id(history_path: Path, start_id: str, end_id: str) -> str:
-    raw = f"{chat_history_session_dir(history_path)}|{start_id}|{end_id}"
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+def _slug_story_id(history_path: Path, branch: str, entries: list[VnRawEntry]) -> str:
+    payload = {
+        "session": str(chat_history_session_dir(history_path)),
+        "branch": str(branch or "main"),
+        "lines": [(e.id, e.role, e.speaker, e.text) for e in entries],
+    }
+    encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()[:16]
 
 
 def _merge_live_voice_ids(state: Any, history_path: Path, entries: list[dict[str, Any]]) -> None:
@@ -225,35 +236,12 @@ def _seed_initial_background(state: Any, record: dict[str, Any] | None, resolve_
     return ""
 
 
-def _resolve_visible_range(
-    parsed_raw: list[tuple[dict[str, Any], str, str, bool, bool]],
-    selectable_indices: list[int],
-    request: PlayableVnExportRequest,
-) -> tuple[int, int]:
-    visible_start = 0
-    visible_end = len(selectable_indices) - 1
-    if request.start_entry_id.strip():
-        target = request.start_entry_id.strip()
-        matches = [i for i, raw_idx in enumerate(selectable_indices) if parsed_raw[raw_idx][0].get("id") == target]
-        if not matches:
-            raise AppError("vn_export_invalid_range", http_status=400)
-        visible_start = matches[0]
-    if request.end_entry_id.strip():
-        target = request.end_entry_id.strip()
-        matches = [i for i, raw_idx in enumerate(selectable_indices) if parsed_raw[raw_idx][0].get("id") == target]
-        if not matches:
-            raise AppError("vn_export_invalid_range", http_status=400)
-        visible_end = matches[0]
-    if visible_start > visible_end:
-        raise AppError("vn_export_invalid_range", http_status=400)
-    return selectable_indices[visible_start], selectable_indices[visible_end]
-
-
 def export_playable_vn(state: Any, request: PlayableVnExportRequest) -> PlayableVnExportOutcome:
     """Compile a chat session or selected range into an offline & Toy-ready VN bundle."""
     if request.output_format not in {"zip", "directory"}:
         raise AppError("vn_export_invalid_output", http_status=400)
 
+    validate_expected_session(state, request.conversation_id, request.expected_session_id)
     history_path, raw_entries, raw_messages, default_title, user_name, record = _load_session_entries(state, request)
     parsed_raw: list[tuple[dict[str, Any], str, str, bool, bool]] = []
     selectable_indices: list[int] = []
@@ -269,15 +257,24 @@ def export_playable_vn(state: Any, request: PlayableVnExportRequest) -> Playable
             if not options_row:
                 has_playable = True
 
-    if not selectable_indices or not has_playable:
+    if not selectable_indices:
         raise AppError("vn_export_empty_history", http_status=400)
+    if not has_playable:
+        raise AppError("vn_export_no_playable_entries", http_status=400)
 
-    raw_start_idx, raw_end_idx = _resolve_visible_range(parsed_raw, selectable_indices, request)
+    raw_max_idx, emit_set = resolve_vn_selection(
+        parsed_raw,
+        selectable_indices,
+        selected_entry_ids=request.selected_entry_ids,
+        selected_entry_anchors=request.selected_entry_anchors,
+        start_entry_id=request.start_entry_id,
+        end_entry_id=request.end_entry_id,
+    )
     proj_root = _project_root(state)
     resolve_asset = make_vn_asset_resolver(state, proj_root)
 
     store = ReplayStore(history_path)
-    archive = VoiceArchive(history_path)
+    archive = VoiceArchive(history_path) if request.include_voices else None
     branch = legacy_active_history_branch(history_path)
     users = [m for m in raw_messages if isinstance(m, dict) and m.get("role") == "user"]
     hints_by_id, hints_by_text = extract_dialog_sprite_hints(raw_messages)
@@ -296,7 +293,7 @@ def export_playable_vn(state: Any, request: PlayableVnExportRequest) -> Playable
     }
     vn_entries: list[VnRawEntry] = []
 
-    for idx in range(raw_end_idx + 1):
+    for idx in range(raw_max_idx + 1):
         raw, speaker, body, sys_hidden, options_row = parsed_raw[idx]
         chain = digest([chain, raw.get("role"), raw.get("text"), raw.get("dialogId")])
         if sys_hidden:
@@ -336,19 +333,23 @@ def export_playable_vn(state: Any, request: PlayableVnExportRequest) -> Playable
             resolve_asset=resolve_asset,
         )
         rolling_frame["sprites"] = list(merged_sprites)
-        if idx < raw_start_idx:
+        if idx not in emit_set:
             continue
 
-        voice_paths = resolve_entry_voices(
-            archive,
-            store,
-            project_root=proj_root,
-            raw_entry=raw,
-            dialog_id=dialog_id,
-            chain_key=chain,
-            role=role,
-            matched_sprite=matched_sprite,
-            resolve_asset=resolve_asset,
+        voice_paths = (
+            resolve_entry_voices(
+                archive,
+                store,
+                project_root=proj_root,
+                raw_entry=raw,
+                dialog_id=dialog_id,
+                chain_key=chain,
+                role=role,
+                matched_sprite=matched_sprite,
+                resolve_asset=resolve_asset,
+            )
+            if request.include_voices and archive is not None
+            else []
         )
         character = get_char(speaker) if (callable(get_char) and role == "assistant") else None
         voice_volume = min(1.0, max(0.0, float(getattr(character, "speech_volume", 1.0) if character else 1.0)))
@@ -373,7 +374,7 @@ def export_playable_vn(state: Any, request: PlayableVnExportRequest) -> Playable
         )
 
     if not vn_entries:
-        raise AppError("vn_export_empty_history", http_status=400)
+        raise AppError("vn_export_no_playable_entries", http_status=400)
 
     locale, theme_id, accent = _system_settings_values(state)
     final_title = request.title.strip() or default_title or "Shinsekai Visual Novel"
@@ -382,25 +383,32 @@ def export_playable_vn(state: Any, request: PlayableVnExportRequest) -> Playable
     except (PermissionError, ValueError) as exc:
         raise AppError("vn_export_invalid_output", fallback_message=str(exc), http_status=400) from exc
 
-    result = export_playable_vn_package(
-        vn_entries,
-        VnExportOptions(
-            title=final_title,
-            subtitle=request.subtitle.strip(),
-            locale=locale,
-            story_id=_slug_story_id(history_path, vn_entries[0].id, vn_entries[-1].id),
-            output_format=request.output_format,
-            output_path=output_path,
-            include_voices=request.include_voices,
-            transcode_mp3=request.transcode_mp3,
-            include_bgm=request.include_bgm,
-            include_ambient=request.include_ambient,
-            theme_vars=extract_vn_theme_vars(proj_root, theme_id, accent),
-            ui_labels=player_ui_labels(locale),
-            ffmpeg_search_roots=(proj_root, app_root(), source_root()),
-        ),
-        resolve_asset=resolve_asset,
-    )
+    try:
+        result = export_playable_vn_package(
+            vn_entries,
+            VnExportOptions(
+                title=final_title,
+                subtitle=request.subtitle.strip(),
+                locale=locale,
+                story_id=_slug_story_id(history_path, branch, vn_entries),
+                output_format=request.output_format,
+                output_path=output_path,
+                include_voices=request.include_voices,
+                transcode_mp3=request.transcode_mp3,
+                include_bgm=request.include_bgm,
+                include_ambient=request.include_ambient,
+                theme_vars=extract_vn_theme_vars(proj_root, theme_id, accent),
+                ui_labels=player_ui_labels(locale),
+                ffmpeg_search_roots=(proj_root, app_root(), source_root()),
+            ),
+            resolve_asset=resolve_asset,
+        )
+    except PermissionError as exc:
+        raise AppError("vn_export_invalid_output", fallback_message=str(exc), http_status=400) from exc
+    except OSError as exc:
+        raise AppError("vn_export_output_io_failed", fallback_message=str(exc), http_status=500) from exc
+    except ValueError as exc:
+        raise AppError("vn_export_invalid_output", fallback_message=str(exc), http_status=400) from exc
 
     resolved_out = result.output_path.resolve(strict=False)
     resolved_proj = proj_root.resolve(strict=False)

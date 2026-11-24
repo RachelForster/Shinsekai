@@ -166,3 +166,63 @@ def test_export_directory_with_mp3_transcode(tmp_path: Path, monkeypatch: pytest
     assert result.warnings == ()
     voice_files = list((out_dir / "assets" / "voice").glob("*.mp3"))
     assert len(voice_files) == 1
+
+
+def test_publish_directory_recovers_orphaned_backup_and_handles_concurrency(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    src = _create_sample_assets(tmp_path / "src")
+    monkeypatch.setattr("core.packaging.vn_export_package.find_ffmpeg", lambda _roots=(): None)
+
+    out_dir = tmp_path / "vn_out"
+    orphaned_backup = tmp_path / ".vn_out.bak.crashed"
+    orphaned_backup.mkdir(parents=True)
+    (orphaned_backup / "stale.txt").write_text("old", encoding="utf-8")
+
+    # Even if swap fails right after backup, an orphaned backup at target.parent is recovered first.
+    from core.packaging.vn_export_package import _publish_directory
+
+    stage_bad = tmp_path / "stage_bad"
+    stage_bad.mkdir()
+
+    real_replace = __import__("os").replace
+
+    def fail_second_replace(src_p, dst_p):
+        if Path(dst_p) == out_dir and Path(src_p).name.startswith(".vn_out.tmp."):
+            raise OSError("simulated swap failure")
+        return real_replace(src_p, dst_p)
+
+    monkeypatch.setattr("core.packaging.vn_export_package.os.replace", fail_second_replace)
+    with pytest.raises(OSError):
+        _publish_directory(stage_bad, out_dir)
+    assert out_dir.is_dir() and (out_dir / "stale.txt").is_file()
+
+    monkeypatch.undo()
+
+    # Concurrent exports to the exact same directory finish cleanly without colliding backup dirs.
+    def run_export(i: int) -> Path:
+        res = export_playable_vn_package(
+            [VnRawEntry(id=f"e-{i}", role="assistant", speaker="Mio", text=f"Line {i}")],
+            VnExportOptions(
+                title=f"Concurrent {i}",
+                subtitle="",
+                locale="en",
+                story_id=f"conc-{i}",
+                output_format="directory",
+                output_path=out_dir,
+                include_voices=False,
+                include_bgm=False,
+                include_ambient=False,
+            ),
+            resolve_asset=lambda ref: src.get(ref),
+        )
+        return res.output_path
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        results = list(pool.map(run_export, range(6)))
+
+    assert all(p == out_dir for p in results)
+    assert (out_dir / "index.html").is_file()
+    assert not list(tmp_path.glob(".vn_out.bak.*"))
