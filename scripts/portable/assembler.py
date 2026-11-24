@@ -380,7 +380,8 @@ def build_portable_bundle(
     if strict_models:
         missing = [item for item in selected if item not in included]
         if missing:
-            raise RuntimeError(f"Failed to include required portable model(s): {', '.join(missing)}")
+            detail = f" (warnings: {' | '.join(warnings)})" if warnings else ""
+            raise RuntimeError(f"Failed to include required portable model(s): {', '.join(missing)}{detail}")
 
     audit_portable_bundle(
         output_dir,

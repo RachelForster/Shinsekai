@@ -199,7 +199,7 @@ jobs:
               "$RUNTIME_PY" -m ensurepip --upgrade --default-pip
             fi
             "$RUNTIME_PY" -m pip install --upgrade pip -q
-            "$RUNTIME_PY" -m pip install -r requirements-runtime-core.txt -q
+            "$RUNTIME_PY" -m pip install --prefer-binary -r requirements-runtime-core.txt -q
           fi
           "$RUNTIME_PY" frontend_bridge.py \
             --check-runtime \
