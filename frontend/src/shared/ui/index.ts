@@ -21,6 +21,7 @@ export * from "./PathDisplay";
 export * from "./PathPickerDialog";
 export * from "./QueryErrorState";
 export * from "./SchemaDrivenForm";
+export * from "./SegmentedRadio";
 export * from "./SegmentedTabs";
 export * from "./Switch";
 export * from "./TaskProgress";

@@ -541,21 +541,6 @@
     color: var(--color-text-primary);
   }
 
-  .app-shell .conversation-create__type {
-    border-color: var(--m3-inner-border);
-    border-radius: 14px;
-    background: var(--m3-inner-bg);
-    transition:
-      border-color 150ms var(--m3-easing),
-      background-color 150ms var(--m3-easing);
-  }
-
-  .app-shell .conversation-create__type.is-selected,
-  .app-shell .conversation-create__type:focus-within {
-    border-color: var(--m3-primary);
-    background: color-mix(in oklab, var(--m3-secondary-container) 55%, var(--m3-card-bg));
-  }
-
   /* Template Workbench Card */
   .app-shell .template-page {
     min-height: auto;
@@ -596,25 +581,6 @@
     border-radius: 0 0 var(--m3-shape-card-desktop) var(--m3-shape-card-desktop);
     background: color-mix(in oklab, var(--m3-card-bg) 88%, var(--m3-inner-bg));
     backdrop-filter: blur(12px);
-  }
-
-  .app-shell .template-language-segment {
-    min-height: 30px;
-    border-color: var(--m3-card-border);
-    border-radius: var(--m3-shape-full);
-    background: var(--m3-card-bg);
-    font-weight: 560;
-    transition:
-      background-color 150ms var(--m3-easing),
-      border-color 150ms var(--m3-easing),
-      color 150ms var(--m3-easing);
-  }
-
-  .app-shell .template-language-segment--active {
-    border-color: transparent;
-    color: var(--m3-on-secondary-container);
-    background: var(--m3-secondary-container);
-    font-weight: 650;
   }
 
   .app-shell .template-system-toggle {

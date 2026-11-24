@@ -6,12 +6,12 @@ import {
   type VisualFraming,
 } from "../../../modules/character-visual";
 import { useI18n } from "../../../shared/i18n";
-import { Button } from "../../../shared/ui";
+import { SegmentedRadio } from "../../../shared/ui";
 
 const presets = [
-  { label: "chat.config.spriteFrameFull", heightRatio: 1 },
-  { label: "chat.config.spriteFrameHalf", heightRatio: 0.5 },
-  { label: "chat.config.spriteFrameClose", heightRatio: 0.3 },
+  { id: "full", label: "chat.config.spriteFrameFull", heightRatio: 1 },
+  { id: "half", label: "chat.config.spriteFrameHalf", heightRatio: 0.5 },
+  { id: "close", label: "chat.config.spriteFrameClose", heightRatio: 0.3 },
 ] as const;
 
 /** All formats edit the same host-level presentation, never adapter state. */
@@ -27,24 +27,27 @@ export function SpriteFramingControl({
   const { t } = useI18n();
   const framing = normalizeVisualFraming(value);
   const positionPercent = Math.round(framing.verticalPosition * 100) || 0;
+  const activePreset =
+    presets.find((preset) => framing.heightRatio === preset.heightRatio && framing.verticalPosition === 0)?.id ?? null;
   return (
     <div
       className="chat-config-dialog__sprite-framing"
       role="group"
       aria-label={`${t("chat.config.spriteFraming")}: ${label}`}
     >
-      <div className="chat-config-dialog__framing-presets">
-        {presets.map((preset) => (
-          <Button
-            key={preset.label}
-            variant="ghost"
-            aria-pressed={framing.heightRatio === preset.heightRatio && framing.verticalPosition === 0}
-            onClick={() => onChange({ ...defaultVisualFraming, heightRatio: preset.heightRatio })}
-          >
-            {t(preset.label)}
-          </Button>
-        ))}
-      </div>
+      <SegmentedRadio
+        ariaLabel={`${t("chat.config.spriteFraming")}: ${label}`}
+        className="chat-config-dialog__framing-presets"
+        onChange={(id) => {
+          const preset = presets.find((item) => item.id === id);
+          if (preset) {
+            onChange({ ...defaultVisualFraming, heightRatio: preset.heightRatio });
+          }
+        }}
+        options={presets.map((preset) => ({ label: t(preset.label), value: preset.id }))}
+        size="sm"
+        value={activePreset}
+      />
       <label className="chat-config-dialog__row chat-config-dialog__range-row">
         <span className="chat-config-dialog__label">{t("chat.config.spriteHeightRatio")}</span>
         <span className="chat-config-dialog__range-control">

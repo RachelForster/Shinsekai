@@ -46,9 +46,7 @@
 }
 
 .screen-share-settings__modes {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
+  display: grid;
   gap: 8px;
 }
 

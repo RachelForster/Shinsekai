@@ -29,6 +29,7 @@ import {
   ImageAssetGallery,
   PathPickerDialog,
   PathDisplay,
+  SegmentedRadio,
   Select,
   Switch,
   TextInput,
@@ -654,38 +655,18 @@ export function CharacterSpritesSection({
               <div className="field-row field-row--stack">
                 <span className="field-row__label">{t("character.sprite.voiceType")}</span>
                 <span className="field-row__control">
-                  <div className="voice-type-selector">
-                    <label className="radio-row">
-                      <input
-                        checked={voiceType === "reference"}
-                        name="voiceType"
-                        onChange={() => onSpriteVoiceTypeChange("reference")}
-                        type="radio"
-                        value="reference"
-                      />
-                      <span>{t("character.sprite.voiceTypeReference")}</span>
-                    </label>
-                    <label className="radio-row">
-                      <input
-                        checked={voiceType === "preset"}
-                        name="voiceType"
-                        onChange={() => onSpriteVoiceTypeChange("preset")}
-                        type="radio"
-                        value="preset"
-                      />
-                      <span>{t("character.sprite.voiceTypePreset")}</span>
-                    </label>
-                    <label className="radio-row">
-                      <input
-                        checked={voiceType === "fallback"}
-                        name="voiceType"
-                        onChange={() => onSpriteVoiceTypeChange("fallback")}
-                        type="radio"
-                        value="fallback"
-                      />
-                      <span>{t("character.sprite.voiceTypeFallback")}</span>
-                    </label>
-                  </div>
+                  <SegmentedRadio
+                    ariaLabel={t("character.sprite.voiceType")}
+                    className="voice-type-selector"
+                    name="voiceType"
+                    onChange={onSpriteVoiceTypeChange}
+                    options={[
+                      { label: t("character.sprite.voiceTypeReference"), value: "reference" },
+                      { label: t("character.sprite.voiceTypePreset"), value: "preset" },
+                      { label: t("character.sprite.voiceTypeFallback"), value: "fallback" },
+                    ]}
+                    value={voiceType}
+                  />
                   <p className="field-row__hint field-row__hint--voice-type">{t(voiceTypeHintKey)}</p>
                 </span>
               </div>
