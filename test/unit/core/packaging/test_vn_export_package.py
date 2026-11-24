@@ -226,3 +226,43 @@ def test_publish_directory_recovers_orphaned_backup_and_handles_concurrency(
     assert all(p == out_dir for p in results)
     assert (out_dir / "index.html").is_file()
     assert not list(tmp_path.glob(".vn_out.bak.*"))
+
+
+def test_export_preserves_sparse_slots_and_player_sorts_slots(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    src = _create_sample_assets(tmp_path / "src")
+    monkeypatch.setattr("core.packaging.vn_export_package.find_ffmpeg", lambda _roots=(): None)
+
+    out_dir = tmp_path / "sparse_dir"
+    export_playable_vn_package(
+        [
+            VnRawEntry(
+                id="e1",
+                role="assistant",
+                speaker="Bob",
+                text="Two sparse slots",
+                sprites=(
+                    {"id": "bob", "characterName": "Bob", "path": "sprite_static.png", "avatarType": "static", "slot": 2},
+                    {"id": "alice", "characterName": "Alice", "path": "sprite_video.webm", "avatarType": "static", "slot": 1},
+                ),
+            )
+        ],
+        VnExportOptions(
+            title="Sparse Slots",
+            subtitle="",
+            locale="en",
+            story_id="sparse-1",
+            output_format="directory",
+            output_path=out_dir,
+            include_voices=False,
+            include_bgm=False,
+            include_ambient=False,
+        ),
+        resolve_asset=lambda ref: src.get(ref),
+    )
+    player_files = list(out_dir.glob("player.*.js"))
+    assert len(player_files) == 1
+    player_js = player_files[0].read_text(encoding="utf-8")
+    assert "spriteAxisCenter(rank, valid.length)" in player_js
+    assert "valid.sort(" in player_js

@@ -16,6 +16,7 @@ from application.chat.voice_archive import VoiceArchive
 from config.character_assets import get_character_assets, get_character_avatar_type
 from config.config_manager import character_name_key
 from core.chat_history.identity import CHAT_TURN_ID, DialogIdentities
+from core.chat_history.models import is_compact_summary_message
 from core.chat_history.text import parse_assistant_dialog_content
 from core.messaging.dialog_tokens import match_scene_name
 from core.packaging.vn_export_media import is_static_sprite
@@ -158,11 +159,22 @@ def extract_dialog_sprite_hints(
     by_id: dict[str, dict[str, str]] = {}
     by_text: dict[tuple[str, str], dict[str, str] | None] = {}
     active_sprites: dict[str, str] = {}
+    identities = DialogIdentities()
 
     for message in raw_messages:
-        if not isinstance(message, dict) or message.get("role") != "assistant":
+        if not isinstance(message, dict):
             continue
-        identities = DialogIdentities(message.get(CHAT_TURN_ID))
+        role = str(message.get("role") or "").strip()
+        if role == "user":
+            if is_compact_summary_message(message):
+                continue
+            identities = DialogIdentities(str(message.get(CHAT_TURN_ID) or ""))
+            continue
+        if role != "assistant":
+            continue
+        explicit_turn_id = str(message.get(CHAT_TURN_ID) or "")
+        if explicit_turn_id and explicit_turn_id != identities.turn_id:
+            identities = DialogIdentities(explicit_turn_id)
         for item in parse_assistant_dialog_content(message.get("content", "")):
             try:
                 dialog = LLMDialogMessage.model_validate(item)
@@ -411,7 +423,15 @@ def resolve_entry_voices(
             index_data = _read_archive_index(archive)
         raw_voice = (index_data.get("voices") or {}).get(voice_id)
         segments = raw_voice.get("segments") if isinstance(raw_voice, dict) else raw_voice
-        cache_dirs = tuple(dict.fromkeys(((project_root / "cache" / "audio").resolve(), (Path.cwd() / "cache" / "audio").resolve())))
+        cache_dirs = tuple(
+            dict.fromkeys(
+                (
+                    (project_root / "cache" / "audio").resolve(),
+                    (project_root / "data" / "cache" / "audio").resolve(),
+                    (Path.cwd() / "cache" / "audio").resolve(),
+                )
+            )
+        )
         paths: list[Path] = []
         if isinstance(segments, list) and segments:
             for idx, segment in enumerate(segments):

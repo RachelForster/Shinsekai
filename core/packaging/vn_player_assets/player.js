@@ -111,29 +111,34 @@
     });
   }
 
-  function spriteAxisCenter(sprites, sprite, idx) {
-    var count = sprites.length;
+  function spriteAxisCenter(rank, count) {
     if (count <= 1) return 50;
-    var slot = typeof sprite.slot === "number" ? sprite.slot : idx;
     var span = count === 2 ? 44 : 68;
-    return 50 - span / 2 + Math.min(Math.max(slot, 0), count - 1) * (span / Math.max(1, count - 1));
+    return 50 - span / 2 + rank * (span / Math.max(1, count - 1));
   }
 
   function applySprites(sprites, activeSpeaker) {
     dom.spriteLayer.innerHTML = "";
-    var list = Array.isArray(sprites) ? sprites : [];
-    if (!list.length) return;
-    var speaker = String(activeSpeaker || "").trim();
-    var hasSpeaker = speaker.length > 0 && list.some(function (sp) {
-      return String(sp.characterName || sp.label || "").trim() === speaker;
+    var valid = (Array.isArray(sprites) ? sprites : [])
+      .map(function (sp, idx) { return { sp: sp, idx: idx }; })
+      .filter(function (item) { return item.sp && item.sp.url; });
+    if (!valid.length) return;
+    valid.sort(function (a, b) {
+      var sa = typeof a.sp.slot === "number" ? a.sp.slot : a.idx;
+      var sb = typeof b.sp.slot === "number" ? b.sp.slot : b.idx;
+      return sa !== sb ? sa - sb : a.idx - b.idx;
     });
-    list.forEach(function (sp, idx) {
-      if (!sp || !sp.url) return;
+    var speaker = String(activeSpeaker || "").trim();
+    var hasSpeaker = speaker.length > 0 && valid.some(function (item) {
+      return String(item.sp.characterName || item.sp.label || "").trim() === speaker;
+    });
+    valid.forEach(function (item, rank) {
+      var sp = item.sp;
       var speaking = hasSpeaker && String(sp.characterName || sp.label || "").trim() === speaker;
       var fig = mk("figure", "vn-sprite");
       fig.setAttribute("data-speaking", speaking ? "true" : "false");
       fig.setAttribute("data-dim", hasSpeaker && !speaking ? "true" : "false");
-      fig.style.setProperty("--sprite-axis-center", spriteAxisCenter(list, sp, idx) + "%");
+      fig.style.setProperty("--sprite-axis-center", spriteAxisCenter(rank, valid.length) + "%");
       fig.style.setProperty("--sprite-offset-x", (sp.x || 0) + "px");
       fig.style.setProperty("--sprite-offset-y", (sp.y || 0) + "px");
       fig.style.setProperty("--sprite-scale", String(sp.scale || 1));

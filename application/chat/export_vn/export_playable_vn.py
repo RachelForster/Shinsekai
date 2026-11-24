@@ -20,6 +20,7 @@ from application.chat.host.history import _serialize_history_entries_from_messag
 from application.chat.host.projection import _chat_user_display_name
 from application.chat.presentation.user_display import sanitize_user_display_name
 from application.chat.export_vn.metadata import extract_vn_theme_vars, player_ui_labels
+from application.chat.export_vn.replay_recovery import recover_missing_dialog_ids
 from application.chat.export_vn.resolvers import (
     extract_dialog_sprite_hints,
     make_vn_asset_resolver,
@@ -278,6 +279,12 @@ def export_playable_vn(state: Any, request: PlayableVnExportRequest) -> Playable
     branch = legacy_active_history_branch(history_path)
     users = [m for m in raw_messages if isinstance(m, dict) and m.get("role") == "user"]
     hints_by_id, hints_by_text = extract_dialog_sprite_hints(raw_messages)
+    recovered_ids = recover_missing_dialog_ids(
+        parsed_raw[: raw_max_idx + 1],
+        raw_messages=raw_messages,
+        user_name=user_name,
+        store=store,
+    )
     config_manager = getattr(state, "config_manager", None)
     get_char = getattr(config_manager, "get_character_by_name", None)
 
@@ -307,7 +314,7 @@ def export_playable_vn(state: Any, request: PlayableVnExportRequest) -> Playable
         if role == "user":
             body = replay_user_text(raw, body, users)
             speaker = user_name or speaker
-        dialog_id = str(raw.get("dialogId") or "")
+        dialog_id = str(raw.get("dialogId") or "") or recovered_ids.get(idx, "")
         frame = store.read(dialog_id, "frame.json") if dialog_id else None
         if frame is not None:
             rolling_frame = {
