@@ -9,7 +9,7 @@ pandas
 requests
 onnxruntime
 tokenizers>=0.20,<1
-rembg
+rembg; sys_platform != "win32" or platform_machine != "ARM64"
 av
 google-genai
 tiktoken

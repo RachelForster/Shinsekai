@@ -129,13 +129,29 @@ def bundle_huggingface_asset(
             os.environ["HF_HUB_CACHE"] = str(target_hub)
             os.environ["HUGGINGFACE_HUB_CACHE"] = str(target_hub)
             os.environ["TRANSFORMERS_CACHE"] = str(target_hf_home / "transformers")
+            downloaded: Mapping[str, object] | None = None
+            download_exc: Exception | None = None
+            fallback_failed = False
             try:
-                download_model_asset(spec, update_task=lambda **_: None)
-            except Exception:
+                downloaded = download_model_asset(spec, update_task=lambda **_: None)
+            except Exception as exc:
+                download_exc = exc
                 from ai.asr.sherpa_onnx_adapter import _download_snapshot_via_direct_http
 
-                _download_snapshot_via_direct_http(spec)
+                try:
+                    _download_snapshot_via_direct_http(spec)
+                except Exception as fallback_exc:
+                    fallback_failed = True
+                    warnings.append(
+                        f"下载{label}（{spec.repo_id}）失败：{download_exc}；直连回退失败：{fallback_exc}"
+                    )
             snapshot = find_cached_huggingface_snapshot(spec)
+            if snapshot is None and isinstance(downloaded, Mapping):
+                raw_path = downloaded.get("path")
+                if isinstance(raw_path, (str, Path)) and str(raw_path).strip():
+                    candidate = Path(str(raw_path)).resolve(strict=False)
+                    if candidate.is_dir():
+                        snapshot = candidate
         finally:
             for key, val in old_env.items():
                 if val is None:
@@ -146,28 +162,41 @@ def bundle_huggingface_asset(
             temp_dir = target_hf_home / temp_name
             if temp_dir.is_dir():
                 shutil.rmtree(temp_dir, ignore_errors=True)
+        if snapshot is None and not fallback_failed:
+            if download_exc is not None:
+                warnings.append(
+                    f"下载{label}（{spec.repo_id}）直连回退后仍未找到有效缓存快照（主下载错误：{download_exc}）。"
+                )
+            else:
+                warnings.append(
+                    f"下载{label}（{spec.repo_id}）后未找到有效缓存快照（目标目录：{target_hub}）。"
+                )
+            return False
 
     if snapshot is None:
-        warnings.append(
-            f"未找到本地缓存的{label}（{spec.repo_id}）；"
-            "可追加 --download-missing 自动下载并打入便携包。"
-        )
+        if not download_missing:
+            warnings.append(
+                f"未找到本地缓存的{label}（{spec.repo_id}）；"
+                "可追加 --download-missing 自动下载并打入便携包。"
+            )
         return False
 
     repo_folder = "models--" + spec.repo_id.replace("/", "--")
-    if snapshot.is_relative_to(target_hub):
+    resolved_snapshot = snapshot.resolve(strict=False)
+    resolved_target_hub = target_hub.resolve(strict=False)
+    if resolved_snapshot.is_relative_to(resolved_target_hub):
         staged_tmp = target_hub / f".staging-{repo_folder}"
         if staged_tmp.exists():
             shutil.rmtree(staged_tmp)
-        copy_tree(snapshot, staged_tmp, dereference=True)
-        shutil.rmtree(snapshot)
-        shutil.move(str(staged_tmp), str(snapshot))
+        copy_tree(resolved_snapshot, staged_tmp, dereference=True)
+        shutil.rmtree(resolved_snapshot)
+        shutil.move(str(staged_tmp), str(resolved_snapshot))
         for removable in (target_hub / repo_folder / "blobs", target_hub / ".locks"):
             if removable.is_dir():
                 shutil.rmtree(removable, ignore_errors=True)
     else:
         materialize_hf_repo_snapshot(
-            snapshot_dir=snapshot,
+            snapshot_dir=resolved_snapshot,
             repo_id=spec.repo_id,
             target_hub_dir=target_hub,
             revision_ref=spec.revision or "main",
