@@ -7,7 +7,7 @@ import {
   AsyncButton,
   FilePicker,
   VisualMedia,
-  SegmentedTabs,
+  SegmentedRadio,
   Select,
   Switch,
   TextArea,
@@ -60,16 +60,17 @@ export function SpriteAnimationSettings({
     <>
       <h3 className="sprite-generation__section-title">{t("spriteAnimation.settings")}</h3>
       <div className="sprite-generation__settings-fields">
-        <SegmentedTabs
+        <SegmentedRadio
           ariaLabel={t("spriteAnimation.sourceMode")}
-          value={sourceMode}
+          disabled={busy}
           onChange={(mode) => {
             if (!busy) onSourceModeChange(mode);
           }}
-          items={[
-            { id: "library", label: t("spriteAnimation.library") },
-            { id: "file", label: t("spriteAnimation.uploadSingle") },
+          options={[
+            { label: t("spriteAnimation.library"), value: "library" },
+            { label: t("spriteAnimation.uploadSingle"), value: "file" },
           ]}
+          value={sourceMode}
         />
         {sourceMode === "library" ? (
           <p className="sprite-generation__hint">{t("spriteAnimation.libraryHint")}</p>

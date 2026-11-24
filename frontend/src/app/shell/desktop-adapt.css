@@ -486,30 +486,10 @@
     background: var(--m3-inner-bg);
   }
 
-  .app-shell .conversation-card__actions .button--primary {
-    border-color: var(--m3-card-border);
-    color: var(--color-text-primary);
-    background: var(--m3-surface-container-high);
-    box-shadow: 0 1px 2px light-dark(rgb(0 0 0 / 0.025), rgb(0 0 0 / 0.18));
-  }
-
-  .app-shell .conversation-card:hover .conversation-card__actions .button--primary:not(:disabled) {
+  .app-shell .conversation-type-badge:not(.conversation-type-badge--story) {
     border-color: var(--m3-primary-container-border);
     color: var(--m3-on-primary-container);
     background: var(--m3-primary-container);
-  }
-
-  .app-shell .conversation-card__actions .button--primary:hover:not(:disabled) {
-    border-color: var(--m3-primary-container-border-hover);
-    color: var(--m3-on-primary-container);
-    background: var(--m3-primary-container-hover);
-    box-shadow: var(--m3-primary-shadow-hover);
-  }
-
-  .app-shell .conversation-type-badge:not(.conversation-type-badge--story) {
-    border-color: var(--m3-card-border);
-    color: var(--color-text-secondary);
-    background: var(--m3-inner-bg);
   }
 
   .app-shell .conversation-type-badge--story {
@@ -539,21 +519,6 @@
 
   .app-shell .conversation-library__active h2 {
     color: var(--color-text-primary);
-  }
-
-  .app-shell .conversation-create__type {
-    border-color: var(--m3-inner-border);
-    border-radius: 14px;
-    background: var(--m3-inner-bg);
-    transition:
-      border-color 150ms var(--m3-easing),
-      background-color 150ms var(--m3-easing);
-  }
-
-  .app-shell .conversation-create__type.is-selected,
-  .app-shell .conversation-create__type:focus-within {
-    border-color: var(--m3-primary);
-    background: color-mix(in oklab, var(--m3-secondary-container) 55%, var(--m3-card-bg));
   }
 
   /* Template Workbench Card */
@@ -596,25 +561,6 @@
     border-radius: 0 0 var(--m3-shape-card-desktop) var(--m3-shape-card-desktop);
     background: color-mix(in oklab, var(--m3-card-bg) 88%, var(--m3-inner-bg));
     backdrop-filter: blur(12px);
-  }
-
-  .app-shell .template-language-segment {
-    min-height: 30px;
-    border-color: var(--m3-card-border);
-    border-radius: var(--m3-shape-full);
-    background: var(--m3-card-bg);
-    font-weight: 560;
-    transition:
-      background-color 150ms var(--m3-easing),
-      border-color 150ms var(--m3-easing),
-      color 150ms var(--m3-easing);
-  }
-
-  .app-shell .template-language-segment--active {
-    border-color: transparent;
-    color: var(--m3-on-secondary-container);
-    background: var(--m3-secondary-container);
-    font-weight: 650;
   }
 
   .app-shell .template-system-toggle {

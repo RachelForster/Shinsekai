@@ -3,7 +3,7 @@ import { Play, X } from "lucide-react";
 
 import { useI18n } from "../../../shared/i18n";
 import type { ChatTurnOptions, ChatTurnState, MemoryMode } from "../../../shared/platform/types";
-import { Button, IconButton, Switch } from "../../../shared/ui";
+import { Button, IconButton, SegmentedRadio, Switch } from "../../../shared/ui";
 
 const MEMORY_MODE_ITEMS: ReadonlyArray<{
   value: MemoryMode;
@@ -145,23 +145,16 @@ export function ChatTurnSettingsPopover({
         {memoryMode && onMemoryModeChange ? (
           <div className="dialog-stage-controls__chat-setting dialog-stage-controls__chat-slider">
             <span className="dialog-stage-controls__chat-slider-label">{t("chat.memoryMode.label")}</span>
-            <div className="dialog-stage-controls__pill-row" role="group" aria-label={t("chat.memoryMode.label")}>
-              {MEMORY_MODE_ITEMS.map((item) => {
-                const active = memoryMode === item.value;
-                return (
-                  <button
-                    aria-pressed={active}
-                    className="dialog-stage-controls__pill"
-                    data-active={active ? "true" : "false"}
-                    key={item.value}
-                    onClick={() => onMemoryModeChange(item.value)}
-                    type="button"
-                  >
-                    {t(item.labelKey)}
-                  </button>
-                );
-              })}
-            </div>
+            <SegmentedRadio
+              ariaLabel={t("chat.memoryMode.label")}
+              onChange={onMemoryModeChange}
+              options={MEMORY_MODE_ITEMS.map((item) => ({
+                label: t(item.labelKey),
+                value: item.value,
+              }))}
+              size="sm"
+              value={memoryMode}
+            />
           </div>
         ) : null}
       </div>
