@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import subprocess
+import sys
+import textwrap
 
 import pytest
 import yaml
@@ -11,8 +14,10 @@ import yaml
 from scripts.build_portable_bundle import build_portable_bundle
 from scripts.portable.archive import compute_sha256
 from scripts.portable.hub_providers import UploadTargetConfig, build_remote_url
+from scripts.portable.models import bundle_huggingface_asset
 from scripts.portable.plan_matrix import resolve_portable_plan
 from scripts.portable.upload_artifacts import publish_portable_artifacts
+from core.model_assets.service import ModelAssetSpec, find_cached_huggingface_snapshot
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -296,3 +301,138 @@ def test_rebuild_cleans_stale_archives_and_upload_rejects_mismatched_sidecar(tmp
             artifacts_dir=out_dir.parent,
             upload_fn=lambda cfg, _p, r, _m: build_remote_url(cfg, r),
         )
+
+
+def test_bundle_huggingface_asset_honors_target_cache_despite_frozen_hf_hub_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import huggingface_hub
+    import huggingface_hub.constants
+
+    stale_hub = tmp_path / "stale-repo-cache" / "huggingface" / "hub"
+    stale_hub.mkdir(parents=True)
+    monkeypatch.setattr(huggingface_hub.constants, "HF_HUB_CACHE", str(stale_hub))
+    monkeypatch.setenv("SHINSEKAI_SKIP_NETWORK_REGION_PROBE", "1")
+    monkeypatch.setattr(
+        "config.mirror_env.apply_mirror_environment_from_system_config",
+        lambda *_args, **_kwargs: None,
+    )
+
+    spec = ModelAssetSpec(
+        asset_id="test.portable.hf",
+        title="Portable test HF model",
+        variant="default",
+        repo_id="owner/portable-test-model",
+        allow_patterns=("model.onnx", "tokens.txt"),
+        required_file_groups=(("model.onnx",), ("tokens.txt",)),
+        enforce_allow_patterns=False,
+    )
+
+    def fake_snapshot_download(repo_id: str, **kwargs):
+        hub_root = Path(str(kwargs.get("cache_dir") or huggingface_hub.constants.HF_HUB_CACHE))
+        repo_dir = hub_root / ("models--" + repo_id.replace("/", "--"))
+        rev = "d" * 40
+        snapshot_dir = repo_dir / "snapshots" / rev
+        snapshot_dir.mkdir(parents=True, exist_ok=True)
+        (snapshot_dir / "model.onnx").write_bytes(b"onnx-weights")
+        (snapshot_dir / "tokens.txt").write_text("0 <unk>\n", encoding="utf-8")
+        (repo_dir / "refs").mkdir(parents=True, exist_ok=True)
+        (repo_dir / "refs" / "main").write_text(rev, encoding="utf-8")
+        return str(snapshot_dir)
+
+    monkeypatch.setattr(huggingface_hub, "snapshot_download", fake_snapshot_download)
+
+    data_src = tmp_path / "data_src"
+    output_dir = tmp_path / "bundle"
+    warnings: list[str] = []
+    ok = bundle_huggingface_asset(
+        spec,
+        label="测试模型",
+        data_source_root=data_src,
+        output_dir=output_dir,
+        download_missing=True,
+        warnings=warnings,
+    )
+
+    assert ok is True
+    assert warnings == []
+    assert list(stale_hub.iterdir()) == []
+    target_hub = output_dir / "data" / "cache" / "huggingface" / "hub"
+    monkeypatch.setenv("HF_HUB_CACHE", str(target_hub))
+    monkeypatch.setenv("HUGGINGFACE_HUB_CACHE", str(target_hub))
+    monkeypatch.delenv("HF_HOME", raising=False)
+    resolved = find_cached_huggingface_snapshot(spec)
+    assert resolved is not None
+    assert (resolved / "model.onnx").read_bytes() == b"onnx-weights"
+
+
+def test_portable_workflow_uses_prefer_binary_for_embedded_pip_install() -> None:
+    workflow_text = (REPO_ROOT / ".github" / "workflows" / "portable-artifacts.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "pip install --prefer-binary -r requirements-runtime-core.txt" in workflow_text
+
+
+def test_publish_and_plan_modules_import_without_app_dependencies() -> None:
+    # Reproduce the clean publish runner where only stdlib + upload SDKs exist.
+    script = textwrap.dedent(
+        """
+        import builtins
+
+        blocked = ("numpy", "yaml", "pydantic", "ai", "core", "PySide6")
+        real_import = builtins.__import__
+
+        def guarded_import(name, globals=None, locals=None, fromlist=(), level=0):
+            if level == 0 and (
+                name in blocked or any(name.startswith(prefix + ".") for prefix in blocked)
+            ):
+                raise ModuleNotFoundError(name)
+            return real_import(name, globals, locals, fromlist, level)
+
+        builtins.__import__ = guarded_import
+
+        from scripts.portable.archive import compute_sha256
+        from scripts.portable.hub_providers import UploadTargetConfig
+        from scripts.portable.plan_matrix import CATALOG
+        from scripts.portable.upload_artifacts import _parse_args
+
+        args = _parse_args(["--release-prefix", "v2.7.0"])
+        assert args.release_prefix == "v2.7.0"
+        assert "linux-x64" in CATALOG
+        assert UploadTargetConfig("huggingface", True, "tok", "o/r").configured
+        assert callable(compute_sha256)
+        """
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+
+    cli_proc = subprocess.run(
+        [sys.executable, "-S", str(REPO_ROOT / "scripts" / "portable" / "upload_artifacts.py"), "--help"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert cli_proc.returncode == 0, cli_proc.stderr or cli_proc.stdout
+    assert "--release-prefix" in cli_proc.stdout
+
+    import scripts.portable as portable
+    from scripts.portable.hub_providers import _is_already_exists_error
+
+    assert portable.BundleReport.__name__ == "BundleReport"
+    assert callable(portable.build_portable_bundle)
+    assert callable(portable.read_version)
+    assert callable(portable.audit_portable_bundle)
+    assert "build_portable_bundle" in dir(portable)
+    with pytest.raises(AttributeError):
+        getattr(portable, "nonexistent_portable_symbol")
+
+    assert _is_already_exists_error(RuntimeError("repo already exists")) is True
+    assert _is_already_exists_error(RuntimeError("仓库已存在")) is True
+    assert _is_already_exists_error(RuntimeError("permission denied")) is False

@@ -63,4 +63,17 @@ describe("shell and M3 adapt button hierarchy", () => {
 
     expect(iconBlock).toContain("box-shadow: none;");
   });
+
+  it("keeps primary styling for chat workspace continue buttons and normal badges", () => {
+    expect(desktopAdaptCss).not.toContain(".app-shell .conversation-card__actions .button--primary");
+    expect(mobileAdaptCss).not.toContain(".app-shell .conversation-card__actions .button--primary");
+
+    for (const css of [desktopAdaptCss, mobileAdaptCss]) {
+      const badgeBlock =
+        css.split(".app-shell .conversation-type-badge:not(.conversation-type-badge--story) {")[1]?.split("}")[0] ?? "";
+      expect(badgeBlock).toContain("border-color: var(--m3-primary-container-border);");
+      expect(badgeBlock).toContain("color: var(--m3-on-primary-container);");
+      expect(badgeBlock).toContain("background: var(--m3-primary-container);");
+    }
+  });
 });

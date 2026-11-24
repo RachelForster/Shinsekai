@@ -143,7 +143,7 @@ describe("Chat stage outfit & memory mode state and controls", () => {
     // Opening chat turn settings closes outfit popover and exposes live memory mode pills
     fireEvent.click(screen.getByRole("button", { name: "Chat settings" }));
     expect(screen.queryByRole("dialog", { name: "Character Outfits" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Shared across saves" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Shared across saves" }));
     expect(onCommand).toHaveBeenCalledWith({
       payload: { memoryMode: "shared" },
       type: "set-memory-mode",

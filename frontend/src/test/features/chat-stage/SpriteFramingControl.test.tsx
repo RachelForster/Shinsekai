@@ -1,25 +1,43 @@
+import { useState } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SpriteFramingControl } from "../../../features/chat-stage/components/SpriteFramingControl";
+import type { VisualFraming } from "../../../modules/character-visual";
 import { I18nProvider } from "../../../shared/i18n/I18nProvider";
 
 afterEach(cleanup);
 describe("shared sprite framing controls", () => {
   it("offers full, half and close presets without a format-specific editor", () => {
     const onChange = vi.fn();
+    function ControlledFraming() {
+      const [framing, setFraming] = useState<VisualFraming | undefined>(undefined);
+      return (
+        <SpriteFramingControl
+          label="Alice"
+          value={framing}
+          onChange={(next) => {
+            setFraming(next);
+            onChange(next);
+          }}
+        />
+      );
+    }
     render(
       <I18nProvider language="en">
-        <SpriteFramingControl label="Alice" onChange={onChange} />
+        <ControlledFraming />
       </I18nProvider>,
     );
-    expect(screen.getByRole("button", { name: "Full view" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("radio", { name: "Full view" })).toBeChecked();
     expect(screen.getByRole("slider", { name: "Vertical framing position: Alice" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "Half view" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Half view" }));
     expect(onChange).toHaveBeenLastCalledWith({ heightRatio: 0.5, verticalPosition: 0 });
-    fireEvent.click(screen.getByRole("button", { name: "Close-up" }));
+    expect(screen.getByRole("radio", { name: "Half view" })).toBeChecked();
+    fireEvent.click(screen.getByRole("radio", { name: "Close-up" }));
     expect(onChange).toHaveBeenLastCalledWith({ heightRatio: 0.3, verticalPosition: 0 });
-    fireEvent.click(screen.getByRole("button", { name: "Full view" }));
+    expect(screen.getByRole("radio", { name: "Close-up" })).toBeChecked();
+    fireEvent.click(screen.getByRole("radio", { name: "Full view" }));
     expect(onChange).toHaveBeenLastCalledWith({ heightRatio: 1, verticalPosition: 0 });
+    expect(screen.getByRole("radio", { name: "Full view" })).toBeChecked();
   });
   it("edits height and position independently using percentages", () => {
     const onChange = vi.fn();
@@ -47,6 +65,6 @@ describe("shared sprite framing controls", () => {
       </I18nProvider>,
     );
     expect(screen.getByText("-50%")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Half view" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("radio", { name: "Half view" })).not.toBeChecked();
   });
 });

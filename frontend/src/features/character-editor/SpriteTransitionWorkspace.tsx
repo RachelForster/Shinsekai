@@ -18,6 +18,7 @@ import {
   Button,
   EmptyState,
   NumberInput,
+  SegmentedRadio,
   Select,
   Switch,
   TaskProgress,
@@ -118,27 +119,19 @@ export function SpriteTransitionWorkspace({
             </Switch>
           </div>
           {controller.analysis ? (
-            <div className="sprite-generation__toolbar" role="group" aria-label={t("spriteTransition.pairMode")}>
-              <Button
-                disabled={busy}
-                aria-pressed={recommended}
-                variant={recommended ? "primary" : "default"}
-                onClick={() => controller.setPlanningMode("recommended")}
-              >
-                {t("spriteTransition.recommendations")}
-              </Button>
-              <Button
-                disabled={busy}
-                aria-pressed={!recommended}
-                variant={!recommended ? "primary" : "default"}
-                onClick={() => {
-                  controller.setPlanningMode("manual");
-                  setSourcesOpen(true);
-                }}
-              >
-                {t("spriteTransition.manual")}
-              </Button>
-            </div>
+            <SegmentedRadio
+              ariaLabel={t("spriteTransition.pairMode")}
+              disabled={busy}
+              onChange={(mode) => {
+                controller.setPlanningMode(mode);
+                if (mode === "manual") setSourcesOpen(true);
+              }}
+              options={[
+                { label: t("spriteTransition.recommendations"), value: "recommended" },
+                { label: t("spriteTransition.manual"), value: "manual" },
+              ]}
+              value={recommended ? "recommended" : "manual"}
+            />
           ) : null}
           <p className="sprite-generation__hint">
             {t(recommended ? "spriteTransition.recommendationHint" : "spriteTransition.directionHint")}
