@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-from application.chat.export_playable_vn import PlayableVnExportOutcome
+from application.chat.export_vn.export_playable_vn import PlayableVnExportOutcome
 from frontend_bridge_core.routes.chat_routes import CHAT_ROUTES
 from frontend_bridge_core.routes.router import ApiRequest, Router
 

@@ -19,14 +19,14 @@ from application.chat.history.replay_store import ReplayStore
 from application.chat.host.history import _serialize_history_entries_from_messages
 from application.chat.host.projection import _chat_user_display_name
 from application.chat.presentation.user_display import sanitize_user_display_name
-from application.chat.vn_export_metadata import extract_vn_theme_vars, player_ui_labels
-from application.chat.vn_export_resolvers import (
+from application.chat.export_vn.metadata import extract_vn_theme_vars, player_ui_labels
+from application.chat.export_vn.resolvers import (
     extract_dialog_sprite_hints,
     make_vn_asset_resolver,
     merge_stage_sprites,
     resolve_entry_voices,
 )
-from application.chat.vn_export_selection import resolve_vn_selection, validate_expected_session
+from application.chat.export_vn.selection import resolve_vn_selection, validate_expected_session
 from application.chat.voice_archive import VoiceArchive
 from config.config_manager import character_name_key
 from core.chat_history.storage import (

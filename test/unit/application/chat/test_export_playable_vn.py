@@ -7,7 +7,7 @@ import zipfile
 
 import pytest
 
-from application.chat.export_playable_vn import PlayableVnExportRequest, export_playable_vn
+from application.chat.export_vn.export_playable_vn import PlayableVnExportRequest, export_playable_vn
 from application.chat.history.replay_store import ReplayRecorder, ReplayStore
 from application.chat.voice_archive import VoiceArchive
 from core.chat_history.identity import CHAT_TURN_ID, DialogIdentities
@@ -98,9 +98,9 @@ def _setup_history_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         chat_session={"sessionId": "s1", "historyPath": str(active_file), "conversationTitle": "Morning Chat"},
         config_manager=config_manager,
     )
-    monkeypatch.setattr("application.chat.export_playable_vn._chat_history", lambda _st: list(history_entries))
+    monkeypatch.setattr("application.chat.export_vn.export_playable_vn._chat_history", lambda _st: list(history_entries))
     monkeypatch.setattr(
-        "application.chat.export_playable_vn.resolve_history_path_for_project",
+        "application.chat.export_vn.export_playable_vn.resolve_history_path_for_project",
         lambda _st, raw: Path(raw),
     )
     monkeypatch.setattr("core.packaging.vn_export_package.find_ffmpeg", lambda _roots=(): None)
@@ -147,7 +147,7 @@ def test_export_playable_vn_active_range_and_conversation(tmp_path: Path, monkey
         assert choice_end.entry_count == 1
 
         monkeypatch.setattr(
-            "application.chat.export_playable_vn.list_conversation_records",
+            "application.chat.export_vn.export_playable_vn.list_conversation_records",
             lambda _st: {"conv-1": {"historyPath": str(active_file), "title": "Saved Story"}},
         )
         dir_outcome = export_playable_vn(
@@ -179,7 +179,7 @@ def test_export_playable_vn_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPat
         export_playable_vn(state, PlayableVnExportRequest(output_format="tar"))  # type: ignore[arg-type]
     assert fmt_exc.value.error_code == "vn_export_invalid_output"
 
-    monkeypatch.setattr("application.chat.export_playable_vn.list_conversation_records", lambda _st: {})
+    monkeypatch.setattr("application.chat.export_vn.export_playable_vn.list_conversation_records", lambda _st: {})
     with pytest.raises(AppError) as conv_exc:
         export_playable_vn(state, PlayableVnExportRequest(conversation_id="missing"))
     assert conv_exc.value.error_code == "vn_export_conversation_not_found"
@@ -287,8 +287,8 @@ def test_export_resolves_bridge_media_urls_and_empty_frame_fallback(
         {"id": "history-2", "role": "user", "text": "You: Reply after", "revertUserIndex": 0},
     ]
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("application.chat.export_playable_vn._chat_history", lambda _st: list(history_entries))
-    monkeypatch.setattr("application.chat.export_playable_vn.resolve_history_path_for_project", lambda _st, raw: Path(raw))
+    monkeypatch.setattr("application.chat.export_vn.export_playable_vn._chat_history", lambda _st: list(history_entries))
+    monkeypatch.setattr("application.chat.export_vn.export_playable_vn.resolve_history_path_for_project", lambda _st, raw: Path(raw))
     monkeypatch.setattr("core.packaging.vn_export_package.find_ffmpeg", lambda _roots=(): None)
 
     try:
@@ -388,8 +388,8 @@ def test_export_legacy_zero_padded_sprite_fallback_voice_and_chain_hashes(
             get_character_by_name=lambda n: kyoko_char if n == "Kyoko" else None,
         ),
     )
-    monkeypatch.setattr("application.chat.export_playable_vn._chat_history", lambda _st: list(history_entries))
-    monkeypatch.setattr("application.chat.export_playable_vn.resolve_history_path_for_project", lambda _st, raw: Path(raw))
+    monkeypatch.setattr("application.chat.export_vn.export_playable_vn._chat_history", lambda _st: list(history_entries))
+    monkeypatch.setattr("application.chat.export_vn.export_playable_vn.resolve_history_path_for_project", lambda _st, raw: Path(raw))
     monkeypatch.setattr("core.packaging.vn_export_package.find_ffmpeg", lambda _roots=(): None)
 
     try:

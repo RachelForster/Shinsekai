@@ -9,9 +9,9 @@ import zipfile
 
 import pytest
 
-from application.chat.export_playable_vn import PlayableVnExportRequest, export_playable_vn
-from application.chat.vn_export_metadata import extract_vn_theme_vars
-from application.chat.vn_export_resolvers import _relative_media_candidates
+from application.chat.export_vn.export_playable_vn import PlayableVnExportRequest, export_playable_vn
+from application.chat.export_vn.metadata import extract_vn_theme_vars
+from application.chat.export_vn.resolvers import _relative_media_candidates
 from core.chat_history.storage import remove_chat_history_storage
 from core.storage.chat_theme_store import read_chat_theme_manifest
 from sdk.exception.types import AppError
@@ -32,8 +32,8 @@ def _make_state(
     session_id: str = "sess-1",
     theme_id: str = "",
 ) -> SimpleNamespace:
-    monkeypatch.setattr("application.chat.export_playable_vn._chat_history", lambda _st: list(history_entries))
-    monkeypatch.setattr("application.chat.export_playable_vn.resolve_history_path_for_project", lambda _st, raw: Path(raw))
+    monkeypatch.setattr("application.chat.export_vn.export_playable_vn._chat_history", lambda _st: list(history_entries))
+    monkeypatch.setattr("application.chat.export_vn.export_playable_vn.resolve_history_path_for_project", lambda _st, raw: Path(raw))
     monkeypatch.setattr("core.packaging.vn_export_package.find_ffmpeg", lambda _roots=(): None)
     return SimpleNamespace(
         project_root_dir=str(project_root),
@@ -198,7 +198,7 @@ def test_output_io_errors_map_to_structured_app_errors(
         def raise_perm(*_args, **_kwargs):
             raise PermissionError("read-only dir")
 
-        monkeypatch.setattr("application.chat.export_playable_vn.export_playable_vn_package", raise_perm)
+        monkeypatch.setattr("application.chat.export_vn.export_playable_vn.export_playable_vn_package", raise_perm)
         with pytest.raises(AppError) as perm_exc:
             export_playable_vn(state, PlayableVnExportRequest(include_voices=False))
         assert perm_exc.value.error_code == "vn_export_invalid_output"
@@ -207,7 +207,7 @@ def test_output_io_errors_map_to_structured_app_errors(
         def raise_os(*_args, **_kwargs):
             raise OSError("disk full")
 
-        monkeypatch.setattr("application.chat.export_playable_vn.export_playable_vn_package", raise_os)
+        monkeypatch.setattr("application.chat.export_vn.export_playable_vn.export_playable_vn_package", raise_os)
         with pytest.raises(AppError) as io_exc:
             export_playable_vn(state, PlayableVnExportRequest(include_voices=False))
         assert io_exc.value.error_code == "vn_export_output_io_failed"

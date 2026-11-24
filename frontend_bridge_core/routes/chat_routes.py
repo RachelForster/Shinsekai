@@ -4,7 +4,7 @@ from http import HTTPStatus
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
-from application.chat.export_playable_vn import PlayableVnExportRequest, export_playable_vn
+from application.chat.export_vn.export_playable_vn import PlayableVnExportRequest, export_playable_vn
 from application.chat.history.replay import replay_service
 
 from application.chat.conversation_library import (
