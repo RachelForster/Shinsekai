@@ -40,7 +40,7 @@ export function KnowledgeImportPicker({
           setSelectedFiles([]);
           setPickerOpen(true);
         }}
-        variant="ghost"
+        variant="default"
       >
         {t("knowledge.import")}
       </AsyncButton>

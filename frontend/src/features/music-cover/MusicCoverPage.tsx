@@ -366,7 +366,7 @@ export function MusicCoverPage() {
           </section>
 
           <section className="section">
-            <div className="page__actions page__actions--left">
+            <div className="page__actions">
               <AsyncButton
                 icon={<Save aria-hidden className="button__icon" />}
                 loading={saveMutation.isPending}
