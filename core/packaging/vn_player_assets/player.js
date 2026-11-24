@@ -10,12 +10,13 @@
   var SETTINGS_KEY = "shinsekai_vn:" + storyId + ":settings";
   var VIDEO_RE = /\.(?:m4v|mov|mp4|webm)(?:[?#]|$)/i;
   var SLOT_IDS = ["1", "2", "3", "4", "5", "6"];
+  var NARR_SPEAKERS = { "": 1, "旁白": 1, narr: 1, narration: 1 };
   var dom = { dialogBox: document.querySelector(".vn-dialog") };
   [
     "title-screen", "title-cover", "title-heading", "title-subtitle", "title-meta",
     "btn-start", "btn-continue", "stage", "bg-layer", "ambient-back", "sprite-layer",
     "ambient-front", "cg-layer", "cg-toggle", "stats-layer", "progress-pill",
-    "options-layer", "player-portrait", "nameplate", "speaker-name", "dialog-text",
+    "player-portrait", "nameplate", "speaker-name", "dialog-text",
     "ctc", "tb-voice", "tb-auto", "tb-skip", "tb-backlog", "tb-save", "tb-load",
     "tb-hide", "tb-settings", "tb-title", "restore-hint", "end-overlay", "end-title",
     "end-restart", "end-title-btn", "modal-backdrop", "modal-title", "modal-close", "modal-body",
@@ -160,20 +161,6 @@
     });
   }
 
-  function applyOptions(entry) {
-    dom.optionsLayer.innerHTML = "";
-    var opts = Array.isArray(entry.options) ? entry.options : [];
-    dom.optionsLayer.hidden = !opts.length;
-    opts.forEach(function (optText, idx) {
-      var btn = mk("button", "vn-option-btn", undefined, { type: "button" }), isSelected = entry.selectedIndex === idx;
-      if (isSelected) btn.setAttribute("data-selected", "true");
-      btn.appendChild(mk("span", "", optText));
-      if (isSelected) btn.appendChild(mk("span", "vn-option-btn__badge", label("selectedBadge", "Selected")));
-      btn.addEventListener("click", function (ev) { ev.stopPropagation(); advance(); });
-      dom.optionsLayer.appendChild(btn);
-    });
-  }
-
   function applyPortrait(portrait) {
     dom.playerPortrait.innerHTML = "";
     if (!portrait || !portrait.url) {
@@ -286,10 +273,13 @@
     syncAmbientEffects(entry.ambientEffects);
     applySprites(entry.sprites, entry.speaker);
     applyStats(entry.stats);
-    applyOptions(entry);
     applyPortrait(entry.playerPortrait);
     syncBgm(entry.bgm || "");
-    var speakerText = entry.speaker || (entry.role === "system" ? label("system", "System") : "");
+    var rawSpeaker = String(entry.speaker || "").trim();
+    var isNarration = entry.role !== "user" && Boolean(NARR_SPEAKERS[rawSpeaker.toLowerCase()]);
+    var dialogRole = entry.role === "user" ? "user" : (isNarration ? "narration" : "assistant");
+    var speakerText = isNarration ? "" : (rawSpeaker || (entry.role === "system" ? label("system", "System") : ""));
+    dom.dialogBox.setAttribute("data-role", dialogRole);
     dom.nameplate.hidden = !speakerText;
     dom.speakerName.textContent = speakerText;
     dom.progressPill.textContent = index + 1 + " / " + data.entries.length;
@@ -368,7 +358,10 @@
         var jBtn = mk("button", "vn-tb-btn", label("jumpHere", "Jump"), { type: "button" });
         jBtn.addEventListener("click", function () { closeModal(); renderEntry(idx); });
         actions.appendChild(jBtn);
-        head.append(mk("strong", "", entry.speaker || label("narration", "Narration")), actions);
+        var backlogSpeaker = NARR_SPEAKERS[String(entry.speaker || "").trim().toLowerCase()]
+          ? label("narration", "Narration")
+          : entry.speaker;
+        head.append(mk("strong", "", backlogSpeaker), actions);
         card.append(head, mk("p", "vn-backlog-item__text", entry.text || ""));
         dom.modalBody.appendChild(card);
       })(i);
@@ -463,7 +456,7 @@
     });
 
     dom.stage.addEventListener("click", function (ev) {
-      if (!ev.target.closest("#vn-toolbar, #vn-options-layer, #vn-cg-toggle, #vn-end-overlay")) advance();
+      if (!ev.target.closest("#vn-toolbar, #vn-cg-toggle, #vn-end-overlay")) advance();
     });
     dom.cgToggle.addEventListener("click", function (ev) {
       ev.stopPropagation(); state.cgDismissed = !state.cgDismissed;

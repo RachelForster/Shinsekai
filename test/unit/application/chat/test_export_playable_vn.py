@@ -114,23 +114,37 @@ def test_export_playable_vn_active_range_and_conversation(tmp_path: Path, monkey
             state,
             PlayableVnExportRequest(
                 start_entry_id="history-1",
-                end_entry_id="history-2",
+                end_entry_id="history-3",
                 output_format="zip",
                 user_display_name="Hero",
             ),
         )
         assert outcome.is_project_relative is True
         assert "/api/download" not in outcome.path
-        assert outcome.entry_count == 2
+        assert outcome.entry_count == 2  # history-2 (CHOICE) omitted
         assert outcome.voice_count == 1
         assert (tmp_path / outcome.path).is_file()
         with zipfile.ZipFile(tmp_path / outcome.path) as zf:
             data_name = next(n for n in zf.namelist() if n.startswith("story-data."))
             payload = json.loads(zf.read(data_name).decode("utf-8").split("=", 1)[1].rstrip(";\n"))
+            assert len(payload["entries"]) == 2
+            assert all(e["role"] != "options" for e in payload["entries"])
             assert payload["entries"][0]["speaker"] == "Mio"
             assert payload["entries"][0]["background"].startswith("./assets/bg/")
-            assert payload["entries"][1]["options"] == ["Go left", "Go right"]
-            assert payload["entries"][1]["selectedIndex"] == 0
+            assert payload["entries"][1]["role"] == "user"
+            assert payload["entries"][1]["speaker"] == "Hero"
+            assert payload["entries"][1]["text"] == "Go left"
+
+        choice_end = export_playable_vn(
+            state,
+            PlayableVnExportRequest(
+                start_entry_id="history-1",
+                end_entry_id="history-2",
+                output_format="zip",
+                user_display_name="Hero",
+            ),
+        )
+        assert choice_end.entry_count == 1
 
         monkeypatch.setattr(
             "application.chat.export_playable_vn.list_conversation_records",

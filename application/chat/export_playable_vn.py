@@ -226,27 +226,27 @@ def _seed_initial_background(state: Any, record: dict[str, Any] | None, resolve_
 
 
 def _resolve_visible_range(
-    parsed_raw: list[tuple[dict[str, Any], str, str, bool]],
-    visible_indices: list[int],
+    parsed_raw: list[tuple[dict[str, Any], str, str, bool, bool]],
+    selectable_indices: list[int],
     request: PlayableVnExportRequest,
 ) -> tuple[int, int]:
     visible_start = 0
-    visible_end = len(visible_indices) - 1
+    visible_end = len(selectable_indices) - 1
     if request.start_entry_id.strip():
         target = request.start_entry_id.strip()
-        matches = [i for i, raw_idx in enumerate(visible_indices) if parsed_raw[raw_idx][0].get("id") == target]
+        matches = [i for i, raw_idx in enumerate(selectable_indices) if parsed_raw[raw_idx][0].get("id") == target]
         if not matches:
             raise AppError("vn_export_invalid_range", http_status=400)
         visible_start = matches[0]
     if request.end_entry_id.strip():
         target = request.end_entry_id.strip()
-        matches = [i for i, raw_idx in enumerate(visible_indices) if parsed_raw[raw_idx][0].get("id") == target]
+        matches = [i for i, raw_idx in enumerate(selectable_indices) if parsed_raw[raw_idx][0].get("id") == target]
         if not matches:
             raise AppError("vn_export_invalid_range", http_status=400)
         visible_end = matches[0]
     if visible_start > visible_end:
         raise AppError("vn_export_invalid_range", http_status=400)
-    return visible_indices[visible_start], visible_indices[visible_end]
+    return selectable_indices[visible_start], selectable_indices[visible_end]
 
 
 def export_playable_vn(state: Any, request: PlayableVnExportRequest) -> PlayableVnExportOutcome:
@@ -255,19 +255,24 @@ def export_playable_vn(state: Any, request: PlayableVnExportRequest) -> Playable
         raise AppError("vn_export_invalid_output", http_status=400)
 
     history_path, raw_entries, raw_messages, default_title, user_name, record = _load_session_entries(state, request)
-    parsed_raw: list[tuple[dict[str, Any], str, str, bool]] = []
-    visible_indices: list[int] = []
+    parsed_raw: list[tuple[dict[str, Any], str, str, bool, bool]] = []
+    selectable_indices: list[int] = []
+    has_playable = False
     for raw in raw_entries:
         speaker, body = split_text(raw)
-        hidden = raw.get("role") == "system" and speaker.casefold() in _HIDDEN_SYSTEM_SPEAKERS
-        parsed_raw.append((raw, speaker, body, hidden))
-        if not hidden:
-            visible_indices.append(len(parsed_raw) - 1)
+        role = str(raw.get("role") or "assistant")
+        sys_hidden = role == "system" and speaker.casefold() in _HIDDEN_SYSTEM_SPEAKERS
+        options_row = role == "options" or is_option_history_name(speaker)
+        parsed_raw.append((raw, speaker, body, sys_hidden, options_row))
+        if not sys_hidden:
+            selectable_indices.append(len(parsed_raw) - 1)
+            if not options_row:
+                has_playable = True
 
-    if not visible_indices:
+    if not selectable_indices or not has_playable:
         raise AppError("vn_export_empty_history", http_status=400)
 
-    raw_start_idx, raw_end_idx = _resolve_visible_range(parsed_raw, visible_indices, request)
+    raw_start_idx, raw_end_idx = _resolve_visible_range(parsed_raw, selectable_indices, request)
     proj_root = _project_root(state)
     resolve_asset = make_vn_asset_resolver(state, proj_root)
 
@@ -292,11 +297,13 @@ def export_playable_vn(state: Any, request: PlayableVnExportRequest) -> Playable
     vn_entries: list[VnRawEntry] = []
 
     for idx in range(raw_end_idx + 1):
-        raw, speaker, body, hidden = parsed_raw[idx]
+        raw, speaker, body, sys_hidden, options_row = parsed_raw[idx]
         chain = digest([chain, raw.get("role"), raw.get("text"), raw.get("dialogId")])
-        if hidden:
+        if sys_hidden:
             if speaker.casefold() in {"scene", "场景"}:
                 rolling_frame["sprites"] = []
+            continue
+        if options_row:
             continue
 
         role = str(raw.get("role") or "assistant")
@@ -332,21 +339,6 @@ def export_playable_vn(state: Any, request: PlayableVnExportRequest) -> Playable
         if idx < raw_start_idx:
             continue
 
-        options: tuple[str, ...] = ()
-        selected_index: int | None = None
-        if role == "options" or is_option_history_name(speaker):
-            choices = [c.strip() for c in body.split("/") if c.strip()]
-            options = tuple(choices)
-            for f_raw, f_speaker, f_body, f_hidden in parsed_raw[idx + 1 :]:
-                if f_hidden:
-                    continue
-                if f_raw.get("role") == "options" or is_option_history_name(f_speaker):
-                    break
-                if f_raw.get("role") == "user":
-                    picked = replay_user_text(f_raw, f_body, users)
-                    selected_index = choices.index(picked) if choices.count(picked) == 1 else None
-                    break
-
         voice_paths = resolve_entry_voices(
             archive,
             store,
@@ -367,8 +359,6 @@ def export_playable_vn(state: Any, request: PlayableVnExportRequest) -> Playable
                 role=role,
                 speaker=speaker,
                 text=body,
-                options=options,
-                selected_index=selected_index,
                 background=str(rolling_frame["backgroundPath"] or ""),
                 bgm=str(rolling_frame["bgmPath"] or ""),
                 cg=str(rolling_frame["cgPath"] or ""),
@@ -381,6 +371,9 @@ def export_playable_vn(state: Any, request: PlayableVnExportRequest) -> Playable
                 created_at_ms=int(raw["createdAt"]) if isinstance(raw.get("createdAt"), (int, float)) else None,
             )
         )
+
+    if not vn_entries:
+        raise AppError("vn_export_empty_history", http_status=400)
 
     locale, theme_id, accent = _system_settings_values(state)
     final_title = request.title.strip() or default_title or "Shinsekai Visual Novel"

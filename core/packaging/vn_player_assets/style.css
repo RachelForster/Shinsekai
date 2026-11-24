@@ -263,62 +263,17 @@ html, body {
 
 .vn-stat-item__fill { height: 100%; background: var(--vn-accent); }
 
-.vn-options {
-  position: absolute;
-  left: 50%;
-  bottom: calc(min(26vh, 210px) + 34px);
-  transform: translateX(-50%);
-  z-index: 7;
-  width: min(640px, 90vw);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.vn-option-btn {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  width: 100%;
-  padding: 12px 18px;
-  border-radius: 14px;
-  background: var(--vn-option-bg);
-  border: 1px solid var(--vn-option-border);
-  color: var(--vn-option-color);
-  font-family: inherit;
-  font-size: 15px;
-  font-weight: 600;
-  text-align: left;
-  cursor: pointer;
-  backdrop-filter: blur(10px);
-  transition: transform 0.14s ease, border-color 0.14s ease;
-}
-
-.vn-option-btn:hover { transform: translateY(-1px); border-color: var(--vn-accent); }
-.vn-option-btn[data-selected="true"] { border-color: var(--vn-accent); box-shadow: 0 0 0 1px var(--vn-accent); }
-
-.vn-option-btn__badge {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--vn-accent);
-  color: #ffffff;
-  flex-shrink: 0;
-}
-
 .vn-dialog-shell {
   position: absolute;
   left: 50%;
-  bottom: max(18px, env(safe-area-inset-bottom, 18px));
+  bottom: clamp(14px, 2.4vh, 28px);
   transform: translateX(-50%);
   z-index: 7;
-  width: min(960px, 94vw);
+  width: min(1120px, 92vw);
   transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
 .vn-stage[data-ui-hidden="true"] .vn-dialog-shell,
-.vn-stage[data-ui-hidden="true"] .vn-options,
 .vn-stage[data-ui-hidden="true"] .vn-stats,
 .vn-stage[data-ui-hidden="true"] .vn-progress-pill {
   opacity: 0;
@@ -327,9 +282,9 @@ html, body {
 
 .vn-dialog {
   position: relative;
-  min-height: 156px;
-  padding: 24px 26px 46px;
-  border-radius: var(--vn-dialog-radius);
+  min-height: clamp(168px, 22vh, 216px);
+  padding: 26px 36px 24px;
+  border-radius: var(--vn-dialog-radius, 12px);
   background: var(--vn-dialog-bg);
   border: 1px solid var(--vn-dialog-border);
   color: var(--vn-dialog-color);
@@ -337,14 +292,16 @@ html, body {
   backdrop-filter: blur(14px);
 }
 
-.vn-dialog[data-has-portrait="true"] { padding-left: 116px; }
+.vn-dialog[data-role="user"] { border-left: 3px solid var(--vn-accent); }
+.vn-dialog[data-role="narration"] .vn-dialog__text { opacity: 0.94; }
+.vn-dialog[data-has-portrait="true"] { padding-left: 132px; }
 
 .vn-player-portrait {
   position: absolute;
-  left: 18px;
-  bottom: 18px;
-  width: 82px;
-  height: 108px;
+  left: 22px;
+  bottom: 20px;
+  width: 88px;
+  height: 116px;
   border-radius: 12px;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.22);
@@ -355,24 +312,29 @@ html, body {
 
 .vn-nameplate {
   position: absolute;
-  top: -18px;
-  left: 22px;
-  padding: 6px 18px;
-  border-radius: 999px;
+  bottom: calc(100% - 1px);
+  left: 28px;
+  padding: 7px 26px;
+  min-width: 112px;
+  border-radius: 10px 10px 0 0;
   background: var(--vn-name-bg);
   border: 1px solid var(--vn-name-border);
+  border-bottom: none;
   color: var(--vn-name-color);
-  font-size: 16px;
+  font-size: clamp(17px, 1.35vw, 21px);
   font-weight: 700;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+  letter-spacing: 0.04em;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
 }
 
-.vn-dialog__body { max-height: 136px; overflow-y: auto; user-select: text; }
+.vn-dialog__body { max-height: min(24vh, 196px); overflow-y: auto; user-select: text; }
 
 .vn-dialog__text {
   margin: 0;
-  font-size: clamp(16px, 2vw, 20px);
-  line-height: 1.7;
+  font-size: clamp(19px, 1.55vw, 24px);
+  line-height: 1.85;
+  letter-spacing: 0.03em;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.72), 0 0 1px rgba(0, 0, 0, 0.45);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -394,13 +356,16 @@ html, body {
 }
 
 .vn-toolbar {
-  position: absolute;
-  right: 14px;
-  bottom: 10px;
+  margin-top: 8px;
   display: flex;
+  justify-content: flex-end;
   flex-wrap: wrap;
   gap: 6px;
+  opacity: 0.8;
+  transition: opacity 0.16s ease;
 }
+
+.vn-toolbar:hover, .vn-toolbar:focus-within { opacity: 1; }
 
 .vn-tb-btn {
   appearance: none;
@@ -490,9 +455,12 @@ html, body {
 }
 
 @media (max-width: 720px) {
-  .vn-dialog { padding: 20px 14px 54px; }
-  .vn-dialog[data-has-portrait="true"] { padding-left: 14px; }
+  .vn-dialog-shell { width: calc(100vw - 20px); bottom: max(10px, env(safe-area-inset-bottom, 10px)); }
+  .vn-dialog { min-height: 144px; padding: 18px 18px 16px; }
+  .vn-dialog[data-has-portrait="true"] { padding-left: 18px; }
+  .vn-dialog__text { font-size: clamp(16px, 4.2vw, 19px); line-height: 1.75; }
+  .vn-nameplate { left: 16px; padding: 5px 18px; font-size: 15px; }
   .vn-player-portrait { display: none; }
   .vn-sprite > img, .vn-sprite > video { max-width: 82vw; }
-  .vn-toolbar { left: 10px; right: 10px; justify-content: flex-end; }
+  .vn-toolbar { justify-content: center; }
 }
