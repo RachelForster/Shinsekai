@@ -327,6 +327,7 @@ for command, handler in {
     "set-auto-outfit-switch": forward_current,
     "reroll": reroll,
     "revert-history": _history_revert.revert,
+    "behavior-command": forward_current,
 }.items():
     _command_router.register(command, handler)
 

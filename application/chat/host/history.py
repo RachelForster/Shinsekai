@@ -13,6 +13,10 @@ from core.messaging.dialog_tokens import (
     is_option_history_name,
     normalize_character_name,
 )
+from core.chat_history.models import (
+    is_compact_summary_message,
+    is_synthetic_internal_message,
+)
 from core.chat_history.storage import (
     chat_history_active_path,
     chat_history_branch_tree_path,
@@ -82,7 +86,7 @@ def _serialize_history_entries_from_messages(
             continue
         role = str(message.get("role") or "").strip()
         if role == "user":
-            if str(message.get("source") or "user") == "perception":
+            if is_synthetic_internal_message(message) or is_compact_summary_message(message):
                 continue
             text = str(
                 message.get("display_content") or message.get("content") or ""

@@ -345,22 +345,26 @@ class CompactManager:
 
         up_to_seq = self._max_seq_for_messages(older_messages)
 
+        extra_instructions: tuple[str, ...] = ()
         if (
             self.hook_dispatcher is not None
             and self.hook_dispatcher.has_hooks(PluginHookEvent.BEFORE_COMPACT)
         ):
-            self.hook_dispatcher.dispatch_before_compact(
-                BeforeCompactContext(
-                    messages=copy.deepcopy(messages),
-                    older_messages=copy.deepcopy(older_messages),
-                    recent_messages=copy.deepcopy(recent_messages),
-                    session_id=self.session_id,
-                    up_to_seq=up_to_seq,
-                )
+            before_ctx = BeforeCompactContext(
+                messages=copy.deepcopy(messages),
+                older_messages=copy.deepcopy(older_messages),
+                recent_messages=copy.deepcopy(recent_messages),
+                session_id=self.session_id,
+                up_to_seq=up_to_seq,
             )
+            self.hook_dispatcher.dispatch_before_compact(before_ctx)
+            extra_instructions = tuple(before_ctx.extra_instructions)
 
         # 准备压缩提示
-        compact_prompt = self._create_compact_prompt(older_messages)
+        compact_prompt = self._create_compact_prompt(
+            older_messages,
+            extra_instructions=extra_instructions,
+        )
 
         try:
             # 使用LLM进行压缩
@@ -412,7 +416,12 @@ class CompactManager:
             self.num_tokens = self.count_tokens(fallback)
             return fallback
 
-    def _create_compact_prompt(self, messages: List[Dict[str, Any]]) -> str:
+    def _create_compact_prompt(
+        self,
+        messages: List[Dict[str, Any]],
+        *,
+        extra_instructions: tuple[str, ...] = (),
+    ) -> str:
         """创建压缩提示"""
         turns: list[CompactTranscriptTurn] = []
         for message in messages:
@@ -430,6 +439,7 @@ class CompactManager:
         return COMPACT_PROMPT_SPEC.render_user(
             CompactPromptContext(
                 turns=tuple(turns),
+                extra_instructions=tuple(extra_instructions),
                 locale=self._active_locale(),
             )
         )

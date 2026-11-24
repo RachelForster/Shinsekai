@@ -123,6 +123,12 @@ export function hydrateFromSnapshot(state: ChatStageState, snapshot: ChatSnapsho
         )
       : undefined,
     perception: snapshot.perception ? { ...snapshot.perception } : null,
+    behavior: snapshot.behavior
+      ? {
+          ...snapshot.behavior,
+          stagePolicy: { ...snapshot.behavior.stagePolicy },
+        }
+      : null,
     spriteReaction: restoreSpriteReaction(state, snapshot, receivedAt),
     audioCommands,
     asrTranscript: undefined,

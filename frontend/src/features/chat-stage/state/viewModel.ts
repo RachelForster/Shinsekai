@@ -49,6 +49,7 @@ export function buildChatStageViewModel(state: ChatStageState): ChatStageViewMod
     asrLoading: Boolean(state.asrLoading),
     asrRunning: Boolean(state.asrRunning),
     backgroundPath: state.backgroundPath,
+    behavior: state.behavior ?? null,
     bgmPath: state.bgmPath,
     busyText: state.busyText,
     cgPath: state.cgPath,

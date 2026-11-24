@@ -8,6 +8,7 @@ export const emptyChatState: ChatStageState = {
   asrEnabled: false,
   asrLoading: false,
   asrRunning: false,
+  behavior: null,
   dialogText: "",
   eventSeq: 0,
   inputAttachments: [],

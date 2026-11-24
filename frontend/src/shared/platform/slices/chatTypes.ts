@@ -2,6 +2,7 @@ import type { ChatThemePayload } from "../../theme/chatChromeTheme";
 import type { ChatThemeManifest, ChatThemeSummary, SaveChatThemeInput } from "../../theme/chatTheme";
 import type { StoryDocument, StoryEditInput, StorySuggestion, StorySuggestionInput } from "../storyEditorTypes";
 import type { StoryGenerationPreview } from "../storyPreviewTypes";
+import type { ChatBehaviorState } from "./behaviorTypes";
 import type { PlayerPortrait, PortraitCrop, SpriteTransitionMedia } from "./characterTypes";
 import type { PerceptionRuntimeState } from "./perceptionTypes";
 import type { PluginPagePresentation } from "./pluginTypes";
@@ -284,6 +285,7 @@ export interface ChatSnapshot {
   voiceArchiveEnabled?: boolean;
   playerPortrait?: PlayerPortrait | null;
   perception?: PerceptionRuntimeState | null;
+  behavior?: ChatBehaviorState | null;
   spriteReaction?: ChatSpriteReactionSnapshot | null;
   activePlayback?: {
     characterName: string;
@@ -404,6 +406,7 @@ export interface ChatCommand {
   payload?: unknown;
   type:
     | "audio-playback-signal"
+    | "behavior-command"
     | "set-voice-archive"
     | "save-history-voice"
     | "cancel-input-batch"
@@ -504,6 +507,7 @@ export type ChatStageEvent =
   | (ChatEventBase & { type: "replay.state"; replay: ChatReplayProgress | null })
   | (ChatEventBase & { type: "presentation.restore"; presentation: ChatPresentation })
   | (ChatEventBase & { type: "options.clear" })
+  | (ChatEventBase & { type: "behavior.state.replace"; behavior: ChatBehaviorState | null })
   | (ChatEventBase & { type: "story.state.replace"; story: ChatStoryState })
   | (ChatEventBase & {
       type: "story.node.entered" | "story.node.unlocked" | "story.cast.replace" | "story.ending.reached";

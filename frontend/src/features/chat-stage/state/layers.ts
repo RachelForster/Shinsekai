@@ -32,7 +32,7 @@ export function withResolvedLayers(state: ChatStageState): ChatStageState {
       busy: Boolean(state.busyText),
       cg: Boolean(state.cgPath),
       dialog: !optionsVisible && Boolean(state.error || state.dialogHtml || state.dialogText || state.characterName),
-      input: !state.sessionClosedReason,
+      input: !state.sessionClosedReason && !state.behavior?.stagePolicy?.hideInputLayer,
       notification: Boolean(state.notificationText),
       options: optionsVisible,
       sprites: !state.cgPath && state.sprites.length > 0,

@@ -1,5 +1,6 @@
 import type {
   ChatAttachmentInput,
+  ChatBehaviorState,
   ChatHistoryEntry,
   ChatOption,
   ChatRuntimeStatus,
@@ -129,6 +130,7 @@ export interface ChatStageViewModel {
   asrLoading: boolean;
   asrRunning: boolean;
   backgroundPath?: string;
+  behavior?: ChatBehaviorState | null;
   bgmPath?: string;
   busyText?: string;
   cgPath?: string;

@@ -30,6 +30,7 @@ compact_role_user: ユーザー
 compact_role_assistant: アシスタント
 compact_role_tool: ツール:{name}
 compact_user_outro: 会話の要約を出力してください：
+compact_extra_requirements_heading: 追加の要約要件：
 compact_failed_fallback: 圧縮に失敗しました。元の会話履歴を参照してください。
 compact_omitted_history: 【履歴要約】これより前の履歴は省略されました。保持されているシステム設定・要約・直近の会話を踏まえて続けてください。
 standalone_compact_system: あなたは物語記憶のアーカイブアシスタントであり、簡潔で正確な対話要約を出力します。
@@ -44,6 +45,9 @@ standalone_checkpoint_context: |-
   {summary}
 dialog_repair_initial: 直前の応答をアプリケーションの対話 JSON 形式に整形し直してください。空でない `dialog` 配列を持つ JSON オブジェクトのみを返してください。各キャラクター・シーン・BGM 項目には `character_name`、`speech`、`{media_field}` が必須です。COT、NARR、CHOICE、STAT、CG などの固定システム項目ではメディアフィールドを省略できます。ツールの呼び出しや Markdown の付加は行わないでください。
 dialog_repair_retry: その応答はまだ有効な形式ではありません。アプリケーションの対話 JSON のみで回答しなければなりません。空でない `dialog` 配列を持つ JSON オブジェクトのみを返してください。各キャラクター・シーン・BGM 項目には `character_name`、`speech`、`{media_field}` が必須です。COT、NARR、CHOICE、STAT、CG などの固定システム項目ではメディアフィールドを省略できます。ツールの呼び出しや Markdown の付加は行わないでください。
+dialog_repair_initial_selective: 直前の応答をアプリケーションの対話 JSON 形式に整形し直してください。空でない `dialog` 配列を持つ JSON オブジェクトのみを返してください。すべての項目には `character_name` と `speech` が必須です。`{media_field}` が必須なのは SCENE、bgm、およびバインド済みキャストキャラクターのみです。COT、NARR、CHOICE、STAT、CG と未バインドのモブ・NPC 発話では `{media_field}` を省略できます。ツールの呼び出しや Markdown の付加は行わないでください。
+dialog_repair_retry_selective: その応答はまだ有効な形式ではありません。アプリケーションの対話 JSON のみで回答しなければなりません。空でない `dialog` 配列を持つ JSON オブジェクトのみを返してください。すべての項目には `character_name` と `speech` が必須です。`{media_field}` が必須なのは SCENE、bgm、およびバインド済みキャストキャラクターのみです。COT、NARR、CHOICE、STAT、CG と未バインドのモブ・NPC 発話では `{media_field}` を省略できます。ツールの呼び出しや Markdown の付加は行わないでください。
+dialog_repair_bound_speakers_heading: '`{media_field}` が必須のバインド済みキャラクター：'
 memory_context_simple_guidance: このターンに関連する長期記憶です。背景情報としてのみ参照し、ユーザーから尋ねられない限り検索プロセスには触れないでください。
 memory_context_tiered_guidance: このターンに関連する長期記憶です。各項目の鮮明度タグ（[固有設定]、[鮮明]、[やや古い・朧気な印象]、[呼び覚まされた遠い記憶]）に従い背景として自然に活用し、尋ねられない限り記憶検索システムには決して言及しないでください。
 memory_tier_canon: 固有設定

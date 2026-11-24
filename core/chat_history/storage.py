@@ -25,11 +25,13 @@ from core.chat_history.sqlite_session_store import (
     register_session_db_directory,
 )
 from sdk.adapters.session import ConversationSessionPort
+from sdk.file_io import durable_rename
 
 ACTIVE_HISTORY_FILENAME = "active.json"
 HISTORY_EXPORT_FILENAME = "shinsekai-chat-export.json"
 BRANCH_TREE_FILENAME = "branches.json"
 STORY_SESSION_FILENAME = "story-v2.json"
+BEHAVIOR_TURN_JOURNAL_FILENAME = "behavior-turn-journal.json"
 VOICE_ARCHIVE_DIRECTORY = "audio"
 VOICE_INDEX_FILENAME = "index.json"
 VOICE_INDEX_TEMP_PREFIX = ".voice-index-"
@@ -70,6 +72,10 @@ def chat_history_branch_tree_path(path: str | Path) -> Path:
 
 def chat_history_db_path(path: str | Path) -> Path:
     return chat_history_session_dir(path) / HISTORY_DB_FILENAME
+
+
+def chat_history_behavior_journal_path(path: str | Path) -> Path:
+    return chat_history_session_dir(path) / BEHAVIOR_TURN_JOURNAL_FILENAME
 
 
 def session_id_for_history_path(path: str | Path) -> str:
@@ -173,6 +179,7 @@ def chat_history_storage_files(path: str | Path) -> tuple[Path, ...]:
         ACTIVE_HISTORY_FILENAME,
         HISTORY_EXPORT_FILENAME,
         STORY_SESSION_FILENAME,
+        BEHAVIOR_TURN_JOURNAL_FILENAME,
     ))
     for audio_dir in _voice_storage_directories(directory):
         files += tuple(
@@ -346,6 +353,22 @@ def branch_state_payload(branch_state: dict[str, Any]) -> dict[str, Any]:
 def save_branch_state(path: str | Path, branch_state: dict[str, Any]) -> Path:
     tree_path = chat_history_branch_tree_path(path)
     tree_path.parent.mkdir(parents=True, exist_ok=True)
-    with tree_path.open("w", encoding="utf-8") as file:
-        json.dump(branch_state_payload(branch_state), file, ensure_ascii=False, indent=2)
+    fd, temporary = tempfile.mkstemp(
+        prefix=".branches-", suffix=".tmp", dir=tree_path.parent
+    )
+    temp_path = Path(temporary)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as file:
+            json.dump(
+                branch_state_payload(branch_state),
+                file,
+                ensure_ascii=False,
+                indent=2,
+            )
+            file.flush()
+            os.fsync(file.fileno())
+        durable_rename(temp_path, tree_path, replace=True)
+    except Exception:
+        temp_path.unlink(missing_ok=True)
+        raise
     return tree_path
