@@ -235,3 +235,33 @@ git push origin v2.1.0
 - 版本号已通过 `pnpm sync:version` 同步，Release workflow 的版本一致性检查通过。
 - release notes 已覆盖用户可见变化、破坏性变化、已知问题和升级提示。
 - 回滚方案明确：上一个稳定 tag 和对应 release assets 可用。
+
+## 9. 多平台 Portable 整合包（`portable-artifacts.yml`）
+
+除了面向安装包发布的 `Release` workflow（`.github/workflows/release.yml`）外，仓库还提供 `.github/workflows/portable-artifacts.yml` 用于构建全平台零配置绿色便携整合包（含内置 Python 核心依赖、ONNX 记忆模型、Sherpa-ONNX 语音模型与 Qwen3-VL GGUF + `llama.cpp`）。
+
+### 支持平台与产物格式
+
+| 平台 | Runner | 默认模型包 | 默认归档格式 |
+| --- | --- | --- | --- |
+| `windows-x64` | `windows-latest` | `embedding,sherpa-asr,perception-gguf` | `.zip`（本地有 `7za.exe` 时自动用 `.7z`） |
+| `windows-arm64` | `windows-11-arm` | `embedding,perception-gguf` | `.zip` |
+| `macos-arm64` | `macos-15` | `embedding,sherpa-asr,perception-gguf` | `.tar.gz`（内含 `Shinsekai.app` 与同级 `data/`） |
+| `linux-x64` | `ubuntu-latest` | `embedding,sherpa-asr,perception-gguf` | `.tar.gz` |
+| `linux-arm64` | `ubuntu-24.04-arm` | `embedding,sherpa-asr,perception-gguf` | `.tar.gz` |
+
+所有平台构建产物会上传到 GitHub Actions Artifacts（`shinsekai-portable-<platform>`，含归档文件、`.sha256` 与 `.meta.json`），并由 `publish` 任务按平台顺序下载、上传至 Hugging Face / 魔搭（ModelScope）后立即清理临时目录。
+
+### GitHub Repository Secrets & Variables 配置
+
+未配置密钥与仓库变量时，workflow 会自动输出提醒并跳过对应外部上传步骤（不影响 GitHub Actions Artifacts 生成）。在仓库 `Settings -> Secrets and variables -> Actions` 中配置以下占位项即可激活上传：
+
+| 类型 | 名称 | 说明 |
+| --- | --- | --- |
+| Secret | `HF_TOKEN` | Hugging Face 具备目标仓库写权限的 Access Token |
+| Secret | `MODELSCOPE_TOKEN` | 魔搭（ModelScope）访问令牌（个人中心 -> 访问令牌） |
+| Variable | `HF_PORTABLE_REPO_ID` | Hugging Face 目标仓库（如 `owner/shinsekai-portable`） |
+| Variable | `HF_PORTABLE_REPO_TYPE` | 可选，Hugging Face 仓库类型：`model`（默认）或 `dataset` |
+| Variable | `MODELSCOPE_PORTABLE_REPO_ID` | 魔搭目标仓库（如 `owner/shinsekai-portable`） |
+| Variable | `MODELSCOPE_PORTABLE_REPO_TYPE` | 可选，魔搭仓库类型：`model`（默认）或 `dataset` |
+| Variable | `SHINSEKAI_LLAMA_CPP_TAG` | 可选，覆盖默认拉取的 `ggml-org/llama.cpp` 发布标签（默认 `b12669`） |

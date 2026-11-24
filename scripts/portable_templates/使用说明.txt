@@ -3,20 +3,25 @@ Shinsekai 绿色免安装整合包 使用说明
 
 1. 解压路径建议
    请将整个文件夹完整解压到【纯英文路径】下，例如：
-   D:\Shinsekai
-   （避免放在桌面、C:\Program Files 或包含中文/日文的目录下，防止权限或本地模型路径问题。）
+   - Windows: `D:\Shinsekai`（避免放在桌面、`C:\Program Files` 或包含中文/日文的目录下）
+   - macOS  : `~/Applications/Shinsekai-Portable` 或 `~/Shinsekai`
+   - Linux  : `~/Shinsekai`
 
 2. 启动方式
-   直接双击运行：shinsekai.exe
-   （已内置便携模式识别，所有配置、存档、记忆与模型都会自动保存在当前文件夹内，不与电脑上其他目录冲突。）
+   - Windows: 直接双击运行 `shinsekai.exe`
+   - macOS  : 双击运行 `Shinsekai.app`。若首次打开提示“已损坏”或无法验证开发者，请在当前目录打开终端执行：
+              `xattr -cr Shinsekai.app`
+              然后再双击启动 `Shinsekai.app`。
+   - Linux  : 在终端执行 `./shinsekai`（若无执行权限，请先运行 `chmod +x shinsekai`）。
+   （全平台均已内置 `.shinsekai-portable` 便携模式识别，所有配置、存档、记忆与模型都会自动保存在当前文件夹的 `data/` 目录内，不与本机其他安装目录冲突。）
 
 3. 首次使用设置
    - 打开软件后进入【设置】，填写你的大模型 API Key（如 DeepSeek / OpenAI / Gemini 等）即可开始对话。
    - 如需语音合成（TTS）或图像生成（ComfyUI），可在设置中按需开启并填写对应服务地址。
 
 4. 本整合包已预置的本地模型与目录结构
-   所有用户数据、模型与缓存已统一整理至 data\ 目录下：
-   - data\cache\huggingface\     ：长期记忆 ONNX 向量模型 + Sherpa-ONNX 双阶段语音模型（流式 Zipformer 实时出字 + SenseVoiceSmall 中/英/日/粤/韩停顿秒修，已默认启用）
-   - data\models\perception-gguf\：本地实时感知模型（Qwen3VL-2B Q4_K_M + llama.cpp，零 PyTorch 开箱即用）
-   - data\config\                ：干净的默认配置（不含任何个人密钥或历史记录）
-   - runtime\                    ：内置 Python 运行环境（无需用户额外安装 Python；内置默认 ISNet 立绘抠图）
+   所有用户数据、模型与缓存已统一整理至 `data/` 目录下：
+   - `data/cache/huggingface/`     ：长期记忆 ONNX 向量模型 + Sherpa-ONNX 双阶段语音模型（流式 Zipformer 实时出字 + SenseVoiceSmall 中/英/日/粤/韩停顿秒修；Windows ARM64 版本因上游轮子限制默认不包含 Sherpa-ONNX）
+   - `data/models/perception-gguf/`：本地实时感知模型（Qwen3VL-2B Q4_K_M + llama.cpp，零 PyTorch 开箱即用）
+   - `data/config/`                ：干净的默认配置（不含任何个人密钥或历史记录）
+   - `runtime/`                    ：内置 Python 运行环境（无需用户额外安装 Python；内置默认 ISNet 立绘抠图）

@@ -1,0 +1,359 @@
+# Cross-platform Portable Artifacts workflow.
+#
+# GitHub Repository Secrets & Variables placeholders for external hosting:
+#   Secrets:
+#     - HF_TOKEN                  (Hugging Face Access Token with write scope)
+#     - MODELSCOPE_TOKEN          (ModelScope SDK Access Token)
+#   Variables:
+#     - HF_PORTABLE_REPO_ID       (e.g. "owner/shinsekai-portable")
+#     - HF_PORTABLE_REPO_TYPE     ("model" [default] or "dataset")
+#     - MODELSCOPE_PORTABLE_REPO_ID   (e.g. "owner/shinsekai-portable")
+#     - MODELSCOPE_PORTABLE_REPO_TYPE ("model" [default] or "dataset")
+#     - SHINSEKAI_LLAMA_CPP_TAG   (optional override for ggml-org/llama.cpp tag)
+#
+# When a provider's Secret or Variable is unset, publish skips that provider
+# gracefully while still keeping GitHub Actions artifacts for all built targets.
+
+name: Portable Artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: "Comma-separated platforms or 'all' (windows-x64,windows-arm64,macos-arm64,linux-x64,linux-arm64)"
+        required: false
+        default: "all"
+        type: string
+      models:
+        description: "Model packs: 'default', 'none', or comma-separated (embedding,sherpa-asr,perception-gguf)"
+        required: false
+        default: "default"
+        type: string
+      archive_format:
+        description: "Portable archive format"
+        required: false
+        default: "auto"
+        type: choice
+        options:
+          - auto
+          - zip
+          - tar.gz
+          - 7z
+      version_tag:
+        description: "Optional version/folder prefix for Hugging Face & ModelScope (default: v<VERSION>)"
+        required: false
+        default: ""
+        type: string
+      upload_huggingface:
+        description: "Upload built portable artifacts to Hugging Face (uses HF_TOKEN + HF_PORTABLE_REPO_ID)"
+        required: false
+        default: true
+        type: boolean
+      upload_modelscope:
+        description: "Upload built portable artifacts to ModelScope (uses MODELSCOPE_TOKEN + MODELSCOPE_PORTABLE_REPO_ID)"
+        required: false
+        default: true
+        type: boolean
+      hf_repo_id:
+        description: "Optional Hugging Face repo override (defaults to vars.HF_PORTABLE_REPO_ID)"
+        required: false
+        default: ""
+        type: string
+      modelscope_repo_id:
+        description: "Optional ModelScope repo override (defaults to vars.MODELSCOPE_PORTABLE_REPO_ID)"
+        required: false
+        default: ""
+        type: string
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+concurrency:
+  group: portable-artifacts-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Plan matrix
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      release_prefix: ${{ steps.plan.outputs.release_prefix }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+      platforms_csv: ${{ steps.plan.outputs.platforms_csv }}
+      models_mode: ${{ steps.plan.outputs.models_mode }}
+      archive_format: ${{ steps.plan.outputs.archive_format }}
+      upload_huggingface: ${{ steps.plan.outputs.upload_huggingface }}
+      upload_modelscope: ${{ steps.plan.outputs.upload_modelscope }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve portable build matrix
+        id: plan
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          GITHUB_REF: ${{ github.ref }}
+          INPUT_PLATFORMS: ${{ inputs.platforms }}
+          INPUT_MODELS: ${{ inputs.models }}
+          INPUT_ARCHIVE_FORMAT: ${{ inputs.archive_format }}
+          INPUT_VERSION_TAG: ${{ inputs.version_tag }}
+          INPUT_UPLOAD_HF: ${{ inputs.upload_huggingface }}
+          INPUT_UPLOAD_MS: ${{ inputs.upload_modelscope }}
+        run: python3 scripts/portable/plan_matrix.py
+
+  build:
+    needs: plan
+    name: Portable ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - uses: dtolnay/rust-toolchain@1.96.0
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: frontend/src-tauri -> target
+          shared-key: build
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev \
+            libssl-dev patchelf portaudio19-dev libportaudio2 p7zip-full
+          if apt-cache show libfuse2t64 >/dev/null 2>&1; then
+            sudo apt-get install -y -qq libfuse2t64
+          else
+            sudo apt-get install -y -qq libfuse2
+          fi
+
+      - name: Install macOS 7z support
+        if: runner.os == 'macOS' && needs.plan.outputs.archive_format == '7z'
+        run: brew install p7zip
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Restore embedded Python runtime cache
+        id: portable-python-runtime-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .cache/python-build-standalone
+            runtime
+          key: portable-python-runtime-${{ runner.os }}-${{ matrix.platform }}-${{ hashFiles('frontend/src-tauri/runtime_sources.json', 'frontend/scripts/prepare-runtime.mjs', 'requirements-runtime-core.txt') }}
+
+      - name: Prepare embedded Python runtime
+        working-directory: frontend
+        shell: bash
+        env:
+          SHINSEKAI_PBS_DOWNLOAD_BASES: ${{ vars.SHINSEKAI_PBS_DOWNLOAD_BASES }}
+          SHINSEKAI_PIP_INDEX_URLS: ${{ vars.SHINSEKAI_PIP_INDEX_URLS }}
+        run: pnpm prepare:runtime --target ${{ matrix.platform }} --verify --skip-wheels
+
+      - name: Install core runtime dependencies into embedded Python
+        shell: bash
+        env:
+          PYTHONUTF8: "1"
+          PYTHONIOENCODING: "utf-8"
+          PIP_DISABLE_PIP_VERSION_CHECK: "1"
+        run: |
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            RUNTIME_PY="$PWD/runtime/python.exe"
+          else
+            RUNTIME_PY="$PWD/runtime/bin/python3"
+          fi
+          if ! "$RUNTIME_PY" frontend_bridge.py \
+            --check-runtime \
+            --json \
+            --requirements-only \
+            --profile desktop-core \
+            --project-root . \
+            --requirements-file requirements-runtime-core.txt; then
+            if ! "$RUNTIME_PY" -m pip --version >/dev/null 2>&1; then
+              "$RUNTIME_PY" -m ensurepip --upgrade --default-pip
+            fi
+            "$RUNTIME_PY" -m pip install --upgrade pip -q
+            "$RUNTIME_PY" -m pip install -r requirements-runtime-core.txt -q
+          fi
+          "$RUNTIME_PY" frontend_bridge.py \
+            --check-runtime \
+            --json \
+            --profile desktop-core \
+            --project-root . \
+            --requirements-file requirements-runtime-core.txt
+
+      - name: Save embedded Python runtime cache
+        if: steps.portable-python-runtime-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .cache/python-build-standalone
+            runtime
+          key: portable-python-runtime-${{ runner.os }}-${{ matrix.platform }}-${{ hashFiles('frontend/src-tauri/runtime_sources.json', 'frontend/scripts/prepare-runtime.mjs', 'requirements-runtime-core.txt') }}
+
+      - name: Clear stale Tauri bundle outputs
+        working-directory: frontend
+        shell: bash
+        run: |
+          rm -rf src-tauri/target/release/bundle
+          rm -rf src-tauri/target/release/runtime src-tauri/target/release/wheels
+          rm -f src-tauri/target/release/requirements-runtime-*.txt
+
+      - name: Build Tauri application
+        working-directory: frontend
+        shell: bash
+        env:
+          NO_STRIP: "1"
+          SHINSEKAI_RUNTIME_TARGET: ${{ matrix.platform }}
+          RUST_LOG: ${{ runner.os == 'macOS' && 'tauri_bundler::utils=debug' || '' }}
+        run: |
+          if [[ "${{ matrix.tauri_bundles }}" == "none" ]]; then
+            pnpm tauri build --ci --no-bundle --config '{"bundle":{"createUpdaterArtifacts":false}}'
+          else
+            pnpm tauri build --ci --bundles ${{ matrix.tauri_bundles }} --config '{"bundle":{"createUpdaterArtifacts":false}}'
+          fi
+
+      - name: Assemble and archive portable bundle
+        shell: bash
+        env:
+          PYTHONUTF8: "1"
+          PYTHONIOENCODING: "utf-8"
+          PIP_DISABLE_PIP_VERSION_CHECK: "1"
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+          SHINSEKAI_LLAMA_CPP_TAG: ${{ vars.SHINSEKAI_LLAMA_CPP_TAG }}
+          MODELS_MODE: ${{ needs.plan.outputs.models_mode }}
+          DEFAULT_MODELS: ${{ matrix.default_models }}
+          ARCHIVE_FORMAT: ${{ needs.plan.outputs.archive_format }}
+        run: |
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            RUNTIME_PY="$PWD/runtime/python.exe"
+          else
+            RUNTIME_PY="$PWD/runtime/bin/python3"
+          fi
+          if [[ "${MODELS_MODE}" == "default" ]]; then
+            MODELS_ARG="${DEFAULT_MODELS}"
+          elif [[ "${MODELS_MODE}" == "none" || -z "${MODELS_MODE}" ]]; then
+            MODELS_ARG="none"
+          else
+            MODELS_ARG="${MODELS_MODE}"
+          fi
+          BUNDLE_DIR="dist/Shinsekai-Portable-v${{ needs.plan.outputs.version }}-${{ matrix.platform }}"
+          rm -rf dist
+          mkdir -p dist
+          "$RUNTIME_PY" scripts/build_portable_bundle.py \
+            --target "${{ matrix.platform }}" \
+            --release-dir "frontend/src-tauri/target/release" \
+            --runtime-dir "runtime" \
+            --output-dir "${BUNDLE_DIR}" \
+            --models "${MODELS_ARG}" \
+            --download-missing \
+            --strict-models \
+            --archive \
+            --archive-format "${ARCHIVE_FORMAT}" \
+            --write-sha256 \
+            --write-metadata \
+            --overwrite
+          rm -rf "${BUNDLE_DIR}"
+          ls -lh dist
+
+      - name: Upload portable workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: shinsekai-portable-${{ matrix.platform }}
+          retention-days: 7
+          if-no-files-found: error
+          path: dist/*
+
+  publish:
+    needs: [plan, build]
+    if: ${{ needs.plan.outputs.upload_huggingface == 'true' || needs.plan.outputs.upload_modelscope == 'true' }}
+    name: Publish to Hugging Face & ModelScope
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    concurrency:
+      group: portable-publish-${{ needs.plan.outputs.release_prefix }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      actions: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install upload SDKs for configured providers
+        shell: bash
+        env:
+          UPLOAD_HUGGINGFACE: ${{ needs.plan.outputs.upload_huggingface }}
+          UPLOAD_MODELSCOPE: ${{ needs.plan.outputs.upload_modelscope }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_PORTABLE_REPO_ID: ${{ inputs.hf_repo_id || vars.HF_PORTABLE_REPO_ID }}
+          MODELSCOPE_TOKEN: ${{ secrets.MODELSCOPE_TOKEN }}
+          MODELSCOPE_PORTABLE_REPO_ID: ${{ inputs.modelscope_repo_id || vars.MODELSCOPE_PORTABLE_REPO_ID }}
+        run: |
+          packages=()
+          if [[ "${UPLOAD_HUGGINGFACE}" == "true" && -n "${HF_TOKEN}" && -n "${HF_PORTABLE_REPO_ID}" ]]; then
+            packages+=("huggingface-hub>=0.34.0,<1.0")
+          fi
+          if [[ "${UPLOAD_MODELSCOPE}" == "true" && -n "${MODELSCOPE_TOKEN}" && -n "${MODELSCOPE_PORTABLE_REPO_ID}" ]]; then
+            packages+=("modelscope")
+          fi
+          if [[ "${#packages[@]}" -gt 0 ]]; then
+            python -m pip install --upgrade pip -q
+            pip install -q "${packages[@]}"
+          else
+            echo "Skipping upload SDK installation because no external repository credentials/IDs are set."
+          fi
+
+      - name: Publish portable artifacts sequentially
+        shell: bash
+        env:
+          PYTHONUTF8: "1"
+          PYTHONIOENCODING: "utf-8"
+          GH_TOKEN: ${{ github.token }}
+          UPLOAD_HUGGINGFACE: ${{ needs.plan.outputs.upload_huggingface }}
+          UPLOAD_MODELSCOPE: ${{ needs.plan.outputs.upload_modelscope }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_PORTABLE_REPO_ID: ${{ inputs.hf_repo_id || vars.HF_PORTABLE_REPO_ID }}
+          HF_PORTABLE_REPO_TYPE: ${{ vars.HF_PORTABLE_REPO_TYPE || 'model' }}
+          MODELSCOPE_TOKEN: ${{ secrets.MODELSCOPE_TOKEN }}
+          MODELSCOPE_PORTABLE_REPO_ID: ${{ inputs.modelscope_repo_id || vars.MODELSCOPE_PORTABLE_REPO_ID }}
+          MODELSCOPE_PORTABLE_REPO_TYPE: ${{ vars.MODELSCOPE_PORTABLE_REPO_TYPE || 'model' }}
+        run: |
+          python scripts/portable/upload_artifacts.py \
+            --release-prefix "${{ needs.plan.outputs.release_prefix }}" \
+            --version "${{ needs.plan.outputs.version }}" \
+            --github-run-id "${{ github.run_id }}" \
+            --github-repo "${{ github.repository }}" \
+            --platforms "${{ needs.plan.outputs.platforms_csv }}"

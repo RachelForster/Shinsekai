@@ -35,13 +35,6 @@ export function KnowledgeManagerPage({ embedded = false }: { embedded?: boolean 
         disabled={importer.importPending}
         actions={
           <>
-            <KnowledgeImportPicker
-              importPending={importer.previewPending || importer.importPending || controller.refreshPending}
-              importKnowledgeId={importer.importKnowledgeId}
-              selectedKnowledge={controller.selectedKnowledge}
-              onImportKnowledgeIdChange={importer.setImportKnowledgeId}
-              onImportFiles={importer.previewFiles}
-            />
             <AsyncButton
               icon={<RefreshCw aria-hidden className="button__icon" />}
               disabled={
@@ -52,9 +45,17 @@ export function KnowledgeManagerPage({ embedded = false }: { embedded?: boolean 
               }
               loading={controller.refreshPending}
               onClick={controller.refresh}
+              variant="ghost"
             >
               {t("knowledge.refresh")}
             </AsyncButton>
+            <KnowledgeImportPicker
+              importPending={importer.previewPending || importer.importPending || controller.refreshPending}
+              importKnowledgeId={importer.importKnowledgeId}
+              selectedKnowledge={controller.selectedKnowledge}
+              onImportKnowledgeIdChange={importer.setImportKnowledgeId}
+              onImportFiles={importer.previewFiles}
+            />
           </>
         }
       />

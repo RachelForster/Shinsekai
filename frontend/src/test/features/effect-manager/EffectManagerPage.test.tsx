@@ -284,6 +284,20 @@ describe("EffectManagerPage", () => {
     expect(mockDeleteAllEffectAudio).not.toHaveBeenCalled();
   });
 
+  it("places upload before save prompts at the far right of the effect audio header", async () => {
+    renderPage();
+
+    expect(await screen.findByDisplayValue("Spark")).toBeInTheDocument();
+    const audioActions = screen.getByRole("button", { name: "Upload Audio" }).closest(".section__actions");
+    expect(audioActions).not.toBeNull();
+    expect(Array.from(audioActions!.querySelectorAll("button")).map((button) => button.textContent?.trim())).toEqual([
+      "Delete selected audio",
+      "Clear all audio",
+      "Upload Audio",
+      "Save prompts",
+    ]);
+  });
+
   it("auto-saves a new effect before uploading audio", async () => {
     mockListEffects.mockResolvedValue([]);
     mockSaveEffect.mockImplementation(async (input: Effect) => input);

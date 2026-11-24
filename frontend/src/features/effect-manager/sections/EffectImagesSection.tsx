@@ -46,6 +46,7 @@ export function EffectImagesSection({ ctx, id }: PageSectionProps<EffectPageCont
             icon={<Upload aria-hidden className="button__icon" />}
             loading={ctx.savePending || images.uploadImagePending}
             onClick={images.handleUploadImage}
+            variant="primary"
           >
             {t("effect.asset.uploadImage")}
           </AsyncButton>
