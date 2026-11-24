@@ -486,30 +486,10 @@
     background: var(--m3-inner-bg);
   }
 
-  .app-shell .conversation-card__actions .button--primary {
-    border-color: var(--m3-card-border);
-    color: var(--color-text-primary);
-    background: var(--m3-surface-container-high);
-    box-shadow: 0 1px 2px light-dark(rgb(0 0 0 / 0.025), rgb(0 0 0 / 0.18));
-  }
-
-  .app-shell .conversation-card:hover .conversation-card__actions .button--primary:not(:disabled) {
+  .app-shell .conversation-type-badge:not(.conversation-type-badge--story) {
     border-color: var(--m3-primary-container-border);
     color: var(--m3-on-primary-container);
     background: var(--m3-primary-container);
-  }
-
-  .app-shell .conversation-card__actions .button--primary:hover:not(:disabled) {
-    border-color: var(--m3-primary-container-border-hover);
-    color: var(--m3-on-primary-container);
-    background: var(--m3-primary-container-hover);
-    box-shadow: var(--m3-primary-shadow-hover);
-  }
-
-  .app-shell .conversation-type-badge:not(.conversation-type-badge--story) {
-    border-color: var(--m3-card-border);
-    color: var(--color-text-secondary);
-    background: var(--m3-inner-bg);
   }
 
   .app-shell .conversation-type-badge--story {
