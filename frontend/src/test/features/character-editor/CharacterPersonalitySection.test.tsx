@@ -42,10 +42,15 @@ describe("CharacterPersonalitySection", () => {
     fireEvent.click(screen.getByRole("button", { name: "Generate brief" }));
     expect(props.onAiBrief).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "AI write" }));
+    const aiWriteButton = screen.getByRole("button", { name: "AI write" });
+    const aiTranslateButton = screen.getByRole("button", { name: "AI translate" });
+    expect(aiTranslateButton.parentElement).toBe(aiWriteButton.parentElement);
+    expect(aiTranslateButton.compareDocumentPosition(aiWriteButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    fireEvent.click(aiWriteButton);
     expect(props.onAiWrite).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "AI translate" }));
+    fireEvent.click(aiTranslateButton);
     expect(props.onTranslate).toHaveBeenCalledTimes(1);
   });
 });

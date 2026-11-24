@@ -86,7 +86,12 @@ describe("CharacterMemorySection", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add memory" }));
     expect(props.onAddMemory).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "Import from files" }));
+    const refreshButton = screen.getByRole("button", { name: "Refresh" });
+    const importButton = screen.getByRole("button", { name: "Import from files" });
+    expect(refreshButton.parentElement).toBe(importButton.parentElement);
+    expect(refreshButton.compareDocumentPosition(importButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    fireEvent.click(importButton);
     expect(props.onImportMemories).toHaveBeenCalledTimes(1);
   });
 

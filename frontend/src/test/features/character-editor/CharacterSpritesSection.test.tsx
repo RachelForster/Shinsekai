@@ -230,6 +230,14 @@ describe("CharacterSpritesSection", () => {
     const headerActions = container.querySelector(".section__header .page__actions");
     expect(headerActions).not.toBeNull();
     expect(headerActions!.querySelectorAll(".button--primary")).toHaveLength(1);
+    expect(Array.from(headerActions!.querySelectorAll("button")).map((button) => button.textContent?.trim())).toEqual([
+      "Delete all sprites",
+      "Smart labeling",
+      "Batch tags",
+      "Avatar",
+      "Generate sprites",
+      "Upload",
+    ]);
 
     expect(screen.getByRole("button", { name: "Upload" })).toHaveClass("button--primary");
     expect(screen.getByRole("button", { name: "Generate sprites" })).not.toHaveClass(
@@ -241,6 +249,12 @@ describe("CharacterSpritesSection", () => {
     expect(screen.getByRole("button", { name: "Batch tags" })).toHaveClass("button--ghost");
     expect(screen.getByRole("button", { name: "Avatar" })).toHaveClass("button--ghost");
     expect(screen.getByRole("button", { name: "Delete all sprites" })).toHaveClass("button--danger");
+
+    const inspectorActions = container.querySelector(".asset-inspector__actions");
+    expect(inspectorActions).not.toBeNull();
+    expect(
+      Array.from(inspectorActions!.querySelectorAll("button")).map((button) => button.textContent?.trim()),
+    ).toEqual(["Remove", "Delete voice", "Upload voice"]);
 
     expect(screen.getByRole("button", { name: "Upload tags" })).not.toHaveClass("button--ghost");
     expect(screen.getByRole("button", { name: "Upload voice" })).not.toHaveClass("button--ghost");

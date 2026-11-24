@@ -311,23 +311,6 @@ export function BackgroundMusicSection({
         <h2 className="section__title">{t("background.section.bgm")}</h2>
         <div className="page__actions">
           <AsyncButton
-            disabled={!currentBackgroundName}
-            icon={<Upload aria-hidden className="button__icon" />}
-            loading={uploadPending}
-            onClick={() => setPickerOpen(true)}
-            variant="primary"
-          >
-            {t("background.asset.uploadBgm")}
-          </AsyncButton>
-          <Button
-            disabled={!bgmList.length}
-            icon={<Tags aria-hidden className="button__icon" />}
-            onClick={onOpenBulkTags}
-            variant="ghost"
-          >
-            {t("background.asset.batchBgmTags")}
-          </Button>
-          <AsyncButton
             disabled={!canDeleteSelectedBgm}
             icon={<Trash2 aria-hidden className="button__icon" />}
             loading={batchDeletePending}
@@ -344,6 +327,23 @@ export function BackgroundMusicSection({
           >
             {t("background.asset.clearBgm")}
           </Button>
+          <Button
+            disabled={!bgmList.length}
+            icon={<Tags aria-hidden className="button__icon" />}
+            onClick={onOpenBulkTags}
+            variant="ghost"
+          >
+            {t("background.asset.batchBgmTags")}
+          </Button>
+          <AsyncButton
+            disabled={!currentBackgroundName}
+            icon={<Upload aria-hidden className="button__icon" />}
+            loading={uploadPending}
+            onClick={() => setPickerOpen(true)}
+            variant="primary"
+          >
+            {t("background.asset.uploadBgm")}
+          </AsyncButton>
         </div>
       </div>
       <div className="asset-editor">

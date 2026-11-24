@@ -151,6 +151,12 @@ describe("CharacterSpritesSection outfit groups & SmartOutfitGroupDialog", () =>
     const groupActions = container.querySelector(".sprite-group-actions");
     expect(groupActions).not.toBeNull();
     expect(groupActions!.querySelectorAll(".button--primary")).toHaveLength(0);
+    expect(groupActions!.firstElementChild?.querySelector("#sprite-group-fallback-default")).not.toBeNull();
+    expect(Array.from(groupActions!.querySelectorAll("button")).map((button) => button.textContent?.trim())).toEqual([
+      "Smart auto-group",
+      "Batch move",
+      "+ New outfit group",
+    ]);
 
     const newGroupButton = screen.getByRole("button", { name: "+ New outfit group" });
     const autoGroupButton = screen.getByRole("button", { name: "Smart auto-group" });

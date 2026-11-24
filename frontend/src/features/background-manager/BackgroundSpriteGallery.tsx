@@ -173,34 +173,6 @@ export function BackgroundSpriteGallery({
       <div className="section__header">
         <h2 className="section__title">{t("background.section.images")}</h2>
         <div className="page__actions">
-          {autoLabelAvailable ? (
-            <AsyncButton
-              disabled={autoLabelDisabled}
-              icon={<Sparkles aria-hidden className="button__icon" />}
-              loading={autoLabelPending}
-              onClick={onAutoLabel}
-              variant="ghost"
-            >
-              {t("mediaAutoLabel.action")}
-            </AsyncButton>
-          ) : null}
-          <AsyncButton
-            disabled={!currentBackgroundName}
-            icon={<Upload aria-hidden className="button__icon" />}
-            loading={uploadPending}
-            onClick={() => setPickerOpen(true)}
-            variant="primary"
-          >
-            {t("background.asset.uploadImages")}
-          </AsyncButton>
-          <Button
-            disabled={!sprites.length}
-            icon={<Tags aria-hidden className="button__icon" />}
-            onClick={onOpenBulkTags}
-            variant="ghost"
-          >
-            {t("background.asset.batchImageTags")}
-          </Button>
           <Button
             disabled={!currentBackgroundName || !sprites.length}
             icon={<Trash2 aria-hidden className="button__icon" />}
@@ -214,6 +186,34 @@ export function BackgroundSpriteGallery({
           >
             {t("background.asset.clearImages")}
           </Button>
+          {autoLabelAvailable ? (
+            <AsyncButton
+              disabled={autoLabelDisabled}
+              icon={<Sparkles aria-hidden className="button__icon" />}
+              loading={autoLabelPending}
+              onClick={onAutoLabel}
+              variant="ghost"
+            >
+              {t("mediaAutoLabel.action")}
+            </AsyncButton>
+          ) : null}
+          <Button
+            disabled={!sprites.length}
+            icon={<Tags aria-hidden className="button__icon" />}
+            onClick={onOpenBulkTags}
+            variant="ghost"
+          >
+            {t("background.asset.batchImageTags")}
+          </Button>
+          <AsyncButton
+            disabled={!currentBackgroundName}
+            icon={<Upload aria-hidden className="button__icon" />}
+            loading={uploadPending}
+            onClick={() => setPickerOpen(true)}
+            variant="primary"
+          >
+            {t("background.asset.uploadImages")}
+          </AsyncButton>
         </div>
       </div>
       <div className="asset-editor">
@@ -262,20 +262,20 @@ export function BackgroundSpriteGallery({
               </label>
               <div className="asset-inspector__actions">
                 <AsyncButton
-                  icon={<Save aria-hidden className="button__icon" />}
-                  loading={saveTagsPending}
-                  onClick={onSaveImageTags}
-                  variant="default"
-                >
-                  {t("background.action.saveImageTags")}
-                </AsyncButton>
-                <AsyncButton
                   icon={<Trash2 aria-hidden className="button__icon" />}
                   loading={deletePending}
                   onClick={() => onDeleteImage(selectedImageIndex)}
                   variant="danger"
                 >
                   {t("common.remove")}
+                </AsyncButton>
+                <AsyncButton
+                  icon={<Save aria-hidden className="button__icon" />}
+                  loading={saveTagsPending}
+                  onClick={onSaveImageTags}
+                  variant="default"
+                >
+                  {t("background.action.saveImageTags")}
                 </AsyncButton>
               </div>
             </aside>

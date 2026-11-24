@@ -41,21 +41,21 @@ export function CharacterPersonalitySection({
         <div className="page__actions">
           <AsyncButton
             disabled={actionsDisabled}
-            icon={<Sparkles aria-hidden className="button__icon" />}
-            loading={aiPending}
-            onClick={onAiWrite}
-            variant="primary"
-          >
-            {t("character.action.aiWrite")}
-          </AsyncButton>
-          <AsyncButton
-            disabled={actionsDisabled}
             icon={<Languages aria-hidden className="button__icon" />}
             loading={translatePending}
             onClick={onTranslate}
             variant="ghost"
           >
             {t("character.action.aiTranslate")}
+          </AsyncButton>
+          <AsyncButton
+            disabled={actionsDisabled}
+            icon={<Sparkles aria-hidden className="button__icon" />}
+            loading={aiPending}
+            onClick={onAiWrite}
+            variant="primary"
+          >
+            {t("character.action.aiWrite")}
           </AsyncButton>
         </div>
       </div>

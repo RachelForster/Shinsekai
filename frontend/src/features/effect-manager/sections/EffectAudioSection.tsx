@@ -26,22 +26,6 @@ export function EffectAudioSection({ ctx, id }: PageSectionProps<EffectPageConte
         <h2 className="section__title">{t("effect.section.audio")}</h2>
         <div className="section__actions">
           <AsyncButton
-            icon={<Upload aria-hidden className="button__icon" />}
-            loading={ctx.savePending || audio.uploadAudioPending}
-            onClick={audio.handleUploadAudio}
-            variant="primary"
-          >
-            {t("effect.asset.uploadAudio")}
-          </AsyncButton>
-          <AsyncButton
-            icon={<Save aria-hidden className="button__icon" />}
-            loading={audio.saveAudioTagsPending}
-            onClick={audio.saveAudioTags}
-            variant="default"
-          >
-            {t("effect.action.saveAudioTags")}
-          </AsyncButton>
-          <AsyncButton
             disabled={!audio.canDeleteSelected}
             icon={<Trash2 aria-hidden className="button__icon" />}
             loading={audio.batchDeletePending}
@@ -57,6 +41,22 @@ export function EffectAudioSection({ ctx, id }: PageSectionProps<EffectPageConte
           >
             {t("effect.asset.clearAudio")}
           </Button>
+          <AsyncButton
+            icon={<Upload aria-hidden className="button__icon" />}
+            loading={ctx.savePending || audio.uploadAudioPending}
+            onClick={audio.handleUploadAudio}
+            variant="primary"
+          >
+            {t("effect.asset.uploadAudio")}
+          </AsyncButton>
+          <AsyncButton
+            icon={<Save aria-hidden className="button__icon" />}
+            loading={audio.saveAudioTagsPending}
+            onClick={audio.saveAudioTags}
+            variant="default"
+          >
+            {t("effect.action.saveAudioTags")}
+          </AsyncButton>
         </div>
       </div>
       {ctx.draft.audio_list.length === 0 ? (

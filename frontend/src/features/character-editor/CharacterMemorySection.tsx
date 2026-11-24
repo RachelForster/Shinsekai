@@ -226,6 +226,14 @@ export function CharacterMemorySection({
         <h2 className="section__title">{t("character.memory.section")}</h2>
         <div className="page__actions">
           <span className="entity-list__meta">{data ? t("character.memory.count", { count: data.count }) : ""}</span>
+          <Button
+            disabled={!memoryName || isFetching || depInstalling || isChecking}
+            icon={<RefreshCw aria-hidden className="button__icon" />}
+            onClick={onRefresh}
+            variant="ghost"
+          >
+            {isChecking ? t("character.memory.initializing") : t("character.memory.refresh")}
+          </Button>
           <AsyncButton
             disabled={!memoryName || Boolean(depError) || depInstalling || isChecking}
             icon={<Upload aria-hidden className="button__icon" />}
@@ -235,14 +243,6 @@ export function CharacterMemorySection({
           >
             {t("character.memory.import")}
           </AsyncButton>
-          <Button
-            disabled={!memoryName || isFetching || depInstalling || isChecking}
-            icon={<RefreshCw aria-hidden className="button__icon" />}
-            onClick={onRefresh}
-            variant="ghost"
-          >
-            {isChecking ? t("character.memory.initializing") : t("character.memory.refresh")}
-          </Button>
         </div>
       </div>
       {!depError ? (
