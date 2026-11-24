@@ -221,9 +221,18 @@
 }
 
 /* Main settings controls; chat stage is outside the application shell. */
-.content-outlet .button:not(.button--danger):not(.input-layer *),
-.content-outlet .icon-button:not(.input-layer *) {
+/* Base fallback rules stay zero-specificity (:where) so M3 adapt layers govern button variants cleanly. */
+:where(.content-outlet, body:has(.app-shell) .dialog) :where(.button, .icon-button):not(.input-layer *) {
   border-radius: 999px;
+  transition:
+    background 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease,
+    transform 180ms ease,
+    box-shadow 180ms ease;
+}
+
+:where(.content-outlet, body:has(.app-shell) .dialog) :where(.button--primary):not(.input-layer *) {
   border-color: light-dark(var(--color-accent-border), color-mix(in oklch, var(--theme-accent) 55%, transparent));
   color: light-dark(var(--color-accent-secondary), var(--color-text-primary));
   background: light-dark(
@@ -233,14 +242,10 @@
   box-shadow:
     inset 0 1px 0 var(--color-surface-raised),
     0 3px 9px var(--color-shadow);
-  transition:
-    background 180ms ease,
-    transform 180ms ease,
-    box-shadow 180ms ease;
 }
 
-.content-outlet .button:not(.button--danger):not(.input-layer *):hover:not(:disabled),
-.content-outlet .icon-button:not(.input-layer *):hover:not(:disabled) {
+:where(.content-outlet, body:has(.app-shell) .dialog)
+  :where(.button--primary):not(.input-layer *):hover:not(:disabled) {
   background: light-dark(
     var(--color-accent-bg-intense),
     color-mix(in oklch, var(--theme-accent) 32%, var(--color-bg-panel))
@@ -248,69 +253,51 @@
   transform: none;
 }
 
-.content-outlet .button:not(.input-layer *):active:not(:disabled),
-.content-outlet .icon-button:not(.input-layer *):active:not(:disabled) {
+:where(.content-outlet, body:has(.app-shell) .dialog)
+  :where(.button:not(.button--primary):not(.button--danger):not(.button--ghost), .icon-button):not(.input-layer *) {
+  border-color: var(--color-border);
+  color: var(--color-text-primary);
+  background: var(--color-surface-raised);
+  box-shadow: none;
+}
+
+:where(.content-outlet, body:has(.app-shell) .dialog)
+  :where(.button:not(.button--primary):not(.button--danger):not(.button--ghost), .icon-button):not(
+    .input-layer *
+  ):hover:not(:disabled) {
+  border-color: var(--color-border-hover);
+  background: var(--color-surface-hover);
+  transform: none;
+}
+
+:where(.content-outlet, body:has(.app-shell) .dialog) :where(.button--ghost):not(.input-layer *) {
+  border-color: transparent;
+  color: var(--color-text-secondary, var(--color-text-muted));
+  background: transparent;
+  box-shadow: none;
+}
+
+:where(.content-outlet, body:has(.app-shell) .dialog) :where(.button--ghost):not(.input-layer *):hover:not(:disabled) {
+  border-color: var(--color-border);
+  color: var(--color-text-primary);
+  background: var(--color-surface-hover);
+  box-shadow: none;
+  transform: none;
+}
+
+:where(.content-outlet, body:has(.app-shell) .dialog)
+  :where(.button, .icon-button):not(.input-layer *):active:not(:disabled) {
   transform: translateY(1px) scale(0.985);
   box-shadow: inset 0 2px 4px var(--color-shadow);
   transition-duration: 80ms;
 }
 
-.content-outlet .button--danger:not(.input-layer *) {
-  border-radius: 999px;
-  transition:
-    background 180ms ease,
-    transform 180ms ease,
-    box-shadow 180ms ease;
-}
-
-.content-outlet .button--danger:not(.input-layer *):active:not(:disabled) {
+:where(.content-outlet, body:has(.app-shell) .dialog)
+  :where(.button--danger):not(.input-layer *):active:not(:disabled) {
   background: var(--color-danger-bg-intense);
 }
 
-/* Dialogs are rendered outside the shell, so scope them by the active main app. */
-body:has(.app-shell) .dialog .button:not(.button--danger),
-body:has(.app-shell) .dialog .icon-button {
-  border-radius: 999px;
-  border-color: light-dark(var(--color-accent-border), color-mix(in oklch, var(--theme-accent) 55%, transparent));
-  color: light-dark(var(--color-accent-secondary), var(--color-text-primary));
-  background: light-dark(
-    var(--color-accent-bg-hover),
-    color-mix(in oklch, var(--theme-accent) 22%, var(--color-bg-panel))
-  );
-  box-shadow:
-    inset 0 1px 0 var(--color-surface-raised),
-    0 3px 9px var(--color-shadow);
-  transition:
-    background 180ms ease,
-    transform 180ms ease,
-    box-shadow 180ms ease;
-}
-
-body:has(.app-shell) .dialog .button--danger {
-  border-radius: 999px;
-  transition:
-    background 180ms ease,
-    transform 180ms ease,
-    box-shadow 180ms ease;
-}
-
-body:has(.app-shell) .dialog .button:hover:not(:disabled):not(.button--danger),
-body:has(.app-shell) .dialog .icon-button:hover:not(:disabled) {
-  background: light-dark(
-    var(--color-accent-bg-intense),
-    color-mix(in oklch, var(--theme-accent) 32%, var(--color-bg-panel))
-  );
-  transform: none;
-}
-
-body:has(.app-shell) .dialog .button:active:not(:disabled),
-body:has(.app-shell) .dialog .icon-button:active:not(:disabled) {
-  transform: translateY(1px) scale(0.985);
-  box-shadow: inset 0 2px 4px var(--color-shadow);
-  transition-duration: 80ms;
-}
-
-body:has(.app-shell) .dialog :is(.button, .icon-button):focus-visible {
+:where(.content-outlet, body:has(.app-shell) .dialog) :where(.button, .icon-button):not(.input-layer *):focus-visible {
   outline: 2px solid var(--color-accent-primary);
   outline-offset: 2px;
 }
@@ -329,19 +316,11 @@ body:has(.app-shell) .dialog :is(.button, .icon-button):focus-visible {
   transition-duration: 80ms;
 }
 
-.content-outlet .button:not(.input-layer *):focus-visible,
-.content-outlet .icon-button:not(.input-layer *):focus-visible {
-  outline: 2px solid var(--color-accent-primary);
-  outline-offset: 2px;
-}
-
 @media (prefers-reduced-motion: reduce) {
-  body:has(.app-shell) .dialog :is(.button, .icon-button),
+  :where(.content-outlet, body:has(.app-shell) .dialog) :where(.button, .icon-button):not(.input-layer *),
   .sidebar__github,
   .sidebar__link,
-  .content-outlet .audio-player__button,
-  .content-outlet .button,
-  .content-outlet .icon-button {
+  .content-outlet .audio-player__button {
     transition: none;
   }
 }

@@ -134,7 +134,7 @@ export function DesktopRuntimeSection() {
             icon={<DownloadCloud aria-hidden className="button__icon" />}
             loading={activeRuntimeAction === "local-ai"}
             onClick={() => void installRuntimeProfile("local-ai")}
-            variant="ghost"
+            variant="default"
           >
             {t("system.runtime.installLocalAi")}
           </AsyncButton>

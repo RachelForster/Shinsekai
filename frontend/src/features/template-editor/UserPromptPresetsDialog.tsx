@@ -415,14 +415,6 @@ export function UserPromptPresetsDialog({
           <div className="template-dialog-toolbar__actions">
             <Button
               disabled={mutationDisabled}
-              icon={<Plus aria-hidden className="button__icon" />}
-              onClick={openCreatePreset}
-              variant="ghost"
-            >
-              {t("template.presets.newPreset")}
-            </Button>
-            <Button
-              disabled={mutationDisabled}
               icon={<FolderCog aria-hidden className="button__icon" />}
               onClick={() => {
                 setPresetEditorMode("none");
@@ -432,6 +424,14 @@ export function UserPromptPresetsDialog({
               variant="ghost"
             >
               {t(manageGroupsOpen ? "template.presets.closeManageGroups" : "template.presets.manageGroups")}
+            </Button>
+            <Button
+              disabled={mutationDisabled}
+              icon={<Plus aria-hidden className="button__icon" />}
+              onClick={openCreatePreset}
+              variant="ghost"
+            >
+              {t("template.presets.newPreset")}
             </Button>
           </div>
         </div>

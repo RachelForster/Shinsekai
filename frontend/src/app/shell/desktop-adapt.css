@@ -398,11 +398,17 @@
     gap: 8px;
   }
 
-  .app-shell .section__actions .button {
+  .app-shell .section__header :is(.page__actions, .section__actions) .button {
     flex: 0 0 auto;
     min-height: 34px;
     padding: 0 13px;
     font-size: 13px;
+  }
+
+  .app-shell :is(.sprite-group-actions, .sprite-group-manage-row, .sprite-batch-bar) .button {
+    min-height: 32px;
+    padding: 0 12px;
+    font-size: 12.5px;
   }
 
   .app-shell .page-section-nav__item:hover,
@@ -675,19 +681,6 @@
     min-height: 34px;
   }
 
-  .app-shell .plugin-card__actions .button--ghost {
-    border-color: var(--m3-card-border);
-    color: var(--color-text-secondary);
-    background: var(--m3-surface-container-high);
-    box-shadow: 0 1px 2px light-dark(rgb(0 0 0 / 0.025), rgb(0 0 0 / 0.18));
-  }
-
-  .app-shell .plugin-card__actions .button--ghost:hover:not(:disabled) {
-    border-color: var(--m3-field-border);
-    color: var(--color-text-primary);
-    background: var(--m3-surface-container-highest);
-  }
-
   .app-shell .plugin-card__logo,
   .app-shell .plugin-market-card__logo {
     border-color: var(--m3-inner-border);
@@ -839,9 +832,73 @@
     background: var(--m3-surface-container-highest);
   }
 
-  :is(.app-shell, .dialog, .desktop-runtime) .button--danger,
   :is(.app-shell, .dialog, .desktop-runtime) .button--ghost {
+    border-color: transparent;
     border-radius: var(--m3-shape-full);
+    color: var(--color-text-secondary);
+    background: transparent;
+    box-shadow: none;
+    font-weight: 550;
+  }
+
+  :is(.app-shell, .dialog, .desktop-runtime) .button--ghost:hover:not(:disabled) {
+    border-color: var(--m3-card-border);
+    color: var(--color-text-primary);
+    background: var(--m3-surface-container-high);
+    box-shadow: none;
+    transform: none;
+  }
+
+  :is(.app-shell, .dialog, .desktop-runtime) .button--ghost:active:not(:disabled) {
+    background: var(--m3-surface-container-highest);
+    box-shadow: none;
+  }
+
+  :is(.app-shell, .dialog, .desktop-runtime) .button--ghost:disabled {
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+    opacity: 0.45;
+  }
+
+  .app-shell
+    :is(
+      .asset-inspector,
+      .sprite-group-panel,
+      .template-options-panel,
+      .background-bgm-panel,
+      .effect-audio-list,
+      .effect-image-list,
+      .tool-group
+    )
+    .button--ghost:hover:not(:disabled) {
+    border-color: var(--m3-inner-border);
+    background: var(--m3-inner-button-bg);
+  }
+
+  :is(.app-shell, .dialog, .desktop-runtime) .button--danger {
+    border-color: var(--color-danger-border);
+    border-radius: var(--m3-shape-full);
+    color: var(--color-danger);
+    background: var(--color-danger-bg);
+    box-shadow: none;
+  }
+
+  :is(.app-shell, .dialog, .desktop-runtime) .button--danger:hover:not(:disabled) {
+    border-color: var(--color-danger-border-strong);
+    color: var(--color-danger);
+    background: var(--color-danger-bg-hover);
+    box-shadow: none;
+    transform: translateY(-1px);
+  }
+
+  :is(.app-shell, .dialog, .desktop-runtime) .button--danger:active:not(:disabled) {
+    background: var(--color-danger-bg-intense);
+  }
+
+  :is(.app-shell, .dialog, .desktop-runtime) .button--danger:disabled {
+    box-shadow: none;
+    opacity: 0.45;
   }
 
   .app-shell .plugin-list-controls__pager .button {
@@ -920,15 +977,19 @@
     height: 34px;
     border-color: var(--m3-card-border);
     border-radius: var(--m3-shape-full);
+    color: var(--color-text-secondary);
     background: var(--m3-surface-container-high);
+    box-shadow: none;
     transition:
       background-color 150ms var(--m3-easing),
       border-color 150ms var(--m3-easing),
+      color 150ms var(--m3-easing),
       transform 120ms var(--m3-easing);
   }
 
   :is(.app-shell, .dialog) .icon-button:hover:not(:disabled) {
     border-color: var(--m3-field-border);
+    color: var(--color-text-primary);
     background: var(--m3-surface-container-highest);
   }
 
@@ -1233,7 +1294,7 @@
     box-shadow: var(--m3-card-shadow);
   }
 
-  .app-shell .logs-page .button {
+  .app-shell .logs-page .button:not(.button--primary):not(.button--danger):not(.button--ghost) {
     min-height: 36px;
     border-color: var(--m3-card-border);
     border-radius: var(--m3-shape-full);
@@ -1242,7 +1303,7 @@
     box-shadow: 0 1px 2px light-dark(rgb(0 0 0 / 0.025), rgb(0 0 0 / 0.18));
   }
 
-  .app-shell .logs-page .button:hover:not(:disabled) {
+  .app-shell .logs-page .button:not(.button--primary):not(.button--danger):not(.button--ghost):hover:not(:disabled) {
     border-color: var(--m3-field-border);
     color: var(--color-text-primary);
     background: var(--m3-surface-container-highest);

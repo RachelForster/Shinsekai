@@ -120,14 +120,6 @@ function PluginConfigPanel({ lookupId, page }: { lookupId: string; page: PluginU
       <SchemaDrivenForm groups={formGroups} onChange={setDraft} value={draft} />
       {page.restartHint ? <p className="inline-status">{page.restartHint}</p> : null}
       <div className="plugin-detail-page__footer">
-        <AsyncButton
-          icon={<Save aria-hidden className="button__icon" />}
-          loading={saveMutation.isPending}
-          onClick={() => saveMutation.mutate()}
-          variant="primary"
-        >
-          {t("plugin.detail.save")}
-        </AsyncButton>
         {actions.map((action) => (
           <AsyncButton
             key={action.id}
@@ -139,6 +131,14 @@ function PluginConfigPanel({ lookupId, page }: { lookupId: string; page: PluginU
             {action.label}
           </AsyncButton>
         ))}
+        <AsyncButton
+          icon={<Save aria-hidden className="button__icon" />}
+          loading={saveMutation.isPending}
+          onClick={() => saveMutation.mutate()}
+          variant="primary"
+        >
+          {t("plugin.detail.save")}
+        </AsyncButton>
       </div>
       {pendingAction ? (
         <AlertDialog

@@ -226,15 +226,6 @@ export function CharacterMemorySection({
         <h2 className="section__title">{t("character.memory.section")}</h2>
         <div className="page__actions">
           <span className="entity-list__meta">{data ? t("character.memory.count", { count: data.count }) : ""}</span>
-          <AsyncButton
-            disabled={!memoryName || Boolean(depError) || depInstalling || isChecking}
-            icon={<Upload aria-hidden className="button__icon" />}
-            loading={memoryImportPending}
-            onClick={onImportMemories}
-            variant="ghost"
-          >
-            {t("character.memory.import")}
-          </AsyncButton>
           <Button
             disabled={!memoryName || isFetching || depInstalling || isChecking}
             icon={<RefreshCw aria-hidden className="button__icon" />}
@@ -243,6 +234,15 @@ export function CharacterMemorySection({
           >
             {isChecking ? t("character.memory.initializing") : t("character.memory.refresh")}
           </Button>
+          <AsyncButton
+            disabled={!memoryName || Boolean(depError) || depInstalling || isChecking}
+            icon={<Upload aria-hidden className="button__icon" />}
+            loading={memoryImportPending}
+            onClick={onImportMemories}
+            variant="default"
+          >
+            {t("character.memory.import")}
+          </AsyncButton>
         </div>
       </div>
       {!depError ? (
@@ -266,6 +266,7 @@ export function CharacterMemorySection({
             icon={<Search aria-hidden className="button__icon" />}
             loading={searchPending}
             onClick={onSearch}
+            variant="default"
           >
             {t("character.memory.search")}
           </AsyncButton>

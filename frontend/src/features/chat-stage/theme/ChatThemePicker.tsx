@@ -193,14 +193,6 @@ export function ChatThemeManager({ onActiveThemeChange, onThemesChange }: ChatTh
             type="file"
           />
           <Button
-            disabled={uploading}
-            icon={<Upload aria-hidden className="button__icon" />}
-            onClick={() => fileInputRef.current?.click()}
-            variant="primary"
-          >
-            {uploading ? t("chat.theme.uploading") : t("chat.theme.upload")}
-          </Button>
-          <Button
             disabled={loading}
             icon={<RefreshCw aria-hidden className="button__icon" />}
             onClick={() => {
@@ -208,6 +200,14 @@ export function ChatThemeManager({ onActiveThemeChange, onThemesChange }: ChatTh
             }}
           >
             {t("common.refresh")}
+          </Button>
+          <Button
+            disabled={uploading}
+            icon={<Upload aria-hidden className="button__icon" />}
+            onClick={() => fileInputRef.current?.click()}
+            variant="primary"
+          >
+            {uploading ? t("chat.theme.uploading") : t("chat.theme.upload")}
           </Button>
         </div>
         <div className="chat-theme-picker__grid">

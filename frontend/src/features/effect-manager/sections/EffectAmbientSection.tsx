@@ -29,6 +29,7 @@ export function EffectAmbientSection({ ctx, id }: PageSectionProps<EffectPageCon
             icon={<Upload aria-hidden className="button__icon" />}
             loading={ctx.savePending || ambient.uploadingAmbient}
             onClick={ambient.handleUploadAmbient}
+            variant="primary"
           >
             {t("effect.asset.uploadAmbient")}
           </AsyncButton>
@@ -36,7 +37,7 @@ export function EffectAmbientSection({ ctx, id }: PageSectionProps<EffectPageCon
             icon={<Save aria-hidden className="button__icon" />}
             loading={ambient.savingTags}
             onClick={ambient.saveAmbientTags}
-            variant="ghost"
+            variant="default"
           >
             {t("effect.action.saveAmbientTags")}
           </AsyncButton>
