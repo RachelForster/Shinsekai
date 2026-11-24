@@ -71,12 +71,14 @@ def normalize_asr_provider_storage_key(prov: str) -> str:
     内置兼容键会归一化到既有 slug；其他插件 provider 则保持其标准化后的原值，
     以便 ``register_asr_adapter("my_plugin_asr", ...)`` 这类扩展后端能被正确选择。
     """
-    p = (prov or "vosk").strip().lower().replace("-", "_")
+    p = (prov or "sherpa_onnx").strip().lower().replace("-", "_")
+    if p in ("sherpa_onnx", "sherpaonnx", "sherpa"):
+        return "sherpa_onnx"
     if p in ("faster_whisper", "fasterwhisper", "whisper"):
         return "faster_whisper"
     if p in ("realtime_stt", "realtimestt"):
         return "realtime_stt"
-    return p or "vosk"
+    return p or "sherpa_onnx"
 
 
 class VoskAdapter(ASRAdapter):
@@ -239,7 +241,7 @@ def create_default_asr_adapter(callback: TranscriptionCallback) -> ASRAdapter:
 
     sys_cfg = ConfigManager().config.system_config
     lang = system_config_to_asr_lang(sys_cfg)
-    prov = (sys_cfg.asr_provider or "vosk").strip().lower().replace("-", "_")
+    prov = (sys_cfg.asr_provider or "sherpa_onnx").strip().lower().replace("-", "_")
     storage_key = normalize_asr_provider_storage_key(prov)
     extras = ConfigManager().get_adapter_extra_config("asr", storage_key)
     model_sz, dev, ct = _whisper_triplet_from_sys(sys_cfg)
@@ -255,13 +257,16 @@ def create_default_asr_adapter(callback: TranscriptionCallback) -> ASRAdapter:
     adapter_cls = ASRAdapterFactory._adapters.get(storage_key)
 
     if adapter_cls is None:
-        if storage_key != "vosk":
+        fallback_key = "sherpa_onnx" if "sherpa_onnx" in ASRAdapterFactory._adapters else "vosk"
+        if storage_key != fallback_key:
             _log.warning(
                 "ASR provider %r not registered (e.g. enable Whisper ASR plugin); "
-                "falling back to vosk.",
+                "falling back to %s.",
                 storage_key,
+                fallback_key,
             )
-        adapter_cls = VoskAdapter
+        storage_key = fallback_key
+        adapter_cls = ASRAdapterFactory._adapters.get(fallback_key, VoskAdapter)
 
     if adapter_cls is VoskAdapter:
         _kw = filter_kwargs_for_ctor(VoskAdapter, extras)
@@ -269,7 +274,27 @@ def create_default_asr_adapter(callback: TranscriptionCallback) -> ASRAdapter:
         return VoskAdapter(language=lang, callback=callback, model_path=model_path)
 
     _kw = filter_kwargs_for_ctor(adapter_cls, extras)
-    if storage_key == "faster_whisper":
+    if storage_key == "sherpa_onnx":
+        _kw.setdefault("explicit_language", str(getattr(sys_cfg, "asr_language", "") or "").strip())
+        try:
+            return adapter_cls(lang, callback, **_kw)
+        except ModuleNotFoundError as exc:
+            if exc.name != "sherpa_onnx" or "vosk" not in ASRAdapterFactory._adapters:
+                raise
+            vosk_kw = filter_kwargs_for_ctor(
+                VoskAdapter,
+                ConfigManager().get_adapter_extra_config("asr", "vosk"),
+            )
+            vosk_model_path = str(vosk_kw.get("model_path") or VOSK_MODEL_PATH)
+            if not Path(vosk_model_path).is_dir():
+                raise
+            _log.warning(
+                "sherpa_onnx is not installed in the current Python runtime; "
+                "falling back to Vosk (%s).",
+                vosk_model_path,
+            )
+            return VoskAdapter(language=lang, callback=callback, model_path=vosk_model_path)
+    elif storage_key == "faster_whisper":
         _kw.update(model_size=model_sz, device=dev, compute_type=ct)
     elif storage_key == "realtime_stt":
         _kw.update(model_name=model_sz, device=dev, compute_type=ct)

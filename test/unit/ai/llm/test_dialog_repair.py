@@ -3,6 +3,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
+
 from ai.llm.dialog_repair import repair_dialog_output
 from ai.llm.llm_manager import LLMManager
 from test.mocks import MockLLMAdapter
@@ -10,7 +12,12 @@ from test.mocks import MockLLMAdapter
 VALID_DIALOG = '{"dialog":[{"character_name":"Alice","sprite":"0","speech":"Hi"}]}'
 
 
-def _repair(adapter, content: str = "plain text answer") -> str:
+def _repair(
+    adapter,
+    content: str = "plain text answer",
+    *,
+    locale: str | None = None,
+) -> str:
     return repair_dialog_output(
         adapter,
         content,
@@ -18,6 +25,7 @@ def _repair(adapter, content: str = "plain text answer") -> str:
         {"temperature": 0.4},
         cancelled=lambda: False,
         event_logger=MagicMock(),
+        locale=locale,
     )
 
 
@@ -41,7 +49,7 @@ def test_invalid_final_answer_is_repaired_without_tools() -> None:
 def test_invalid_final_answer_retries_with_escalated_instruction() -> None:
     adapter = MockLLMAdapter(responses=["still not json", VALID_DIALOG])
 
-    repaired = _repair(adapter)
+    repaired = _repair(adapter, locale="en")
 
     assert repaired == VALID_DIALOG
     assert len(adapter.call_history) == 2
@@ -53,6 +61,43 @@ def test_invalid_final_answer_retries_with_escalated_instruction() -> None:
         "messages"
     ]
     assert all(call["kwargs"]["tools"] is None for call in adapter.call_history)
+
+
+@pytest.mark.parametrize(
+    ("locale", "first_marker", "retry_marker"),
+    [
+        ("zh_CN", "重新整理为符合应用要求的对话 JSON", "仍然不符合有效格式"),
+        ("en", "Reformat your immediately preceding answer", "STILL not valid"),
+        ("ja", "対話 JSON 形式に整形し直してください", "まだ有効な形式ではありません"),
+    ],
+)
+def test_dialog_repair_prompt_follows_ui_locale(
+    locale: str,
+    first_marker: str,
+    retry_marker: str,
+) -> None:
+    valid_semantic_dialog = (
+        '{"dialog":[{"character_name":"Alice","vibe":"calm","speech":"Hi"}]}'
+    )
+    adapter = MockLLMAdapter(responses=["not json", valid_semantic_dialog])
+    repaired = repair_dialog_output(
+        adapter,
+        "bad output",
+        [{"role": "system", "content": "S"}, {"role": "user", "content": "hi"}],
+        {},
+        cancelled=lambda: False,
+        event_logger=MagicMock(),
+        media_selection_mode="semantic",
+        locale=locale,
+    )
+    assert repaired == valid_semantic_dialog
+    msgs = adapter.call_history[-1]["messages"]
+    first_prompt = msgs[3]["content"]
+    retry_prompt = msgs[5]["content"]
+    assert first_marker in first_prompt
+    assert retry_marker in retry_prompt
+    assert "`vibe`" in first_prompt
+    assert "`vibe`" in retry_prompt
 
 
 def test_invalid_final_answer_gives_up_after_max_attempts() -> None:

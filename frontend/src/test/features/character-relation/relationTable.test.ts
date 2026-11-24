@@ -51,9 +51,12 @@ describe("tableOperations", () => {
     expect(() => tableOperations(rows, nodes)).toThrow("duplicateEdge");
   });
 
-  it("validates endpoints against the graph nodes", () => {
+  it("creates missing endpoints before saving the relationship", () => {
     const rows = createRows({ target: "Missing" });
-    expect(() => tableOperations(rows, nodes)).toThrow("invalidEndpoints");
+    expect(tableOperations(rows, nodes)).toEqual([
+      { op: "add_node", node: { key: "Missing" } },
+      { op: "upsert_edge", edge: { source: "A", target: "Missing", content: "Friends", temperature: 8 } },
+    ]);
     expect(tableOperations(rows, [...nodes, { key: "Missing" }])).toEqual([
       { op: "upsert_edge", edge: { source: "A", target: "Missing", content: "Friends", temperature: 8 } },
     ]);
@@ -86,10 +89,10 @@ describe("convertGraphToRows", () => {
       edges: [],
     };
     expect(convertGraphToRows(graph)).toHaveLength(1);
-    expect(tableOperations(convertGraphToRows(graph), graph.nodes)).toEqual([]);
+    expect(tableOperations(convertGraphToRows(graph), graph.nodes, graph.owner)).toEqual([]);
     graph.edges = [{ source: "A", target: "B", content: "Friends", temperature: 8 }];
     expect(convertGraphToRows(graph)).toHaveLength(2);
-    expect(tableOperations(convertGraphToRows(graph), graph.nodes)).toEqual([]);
+    expect(tableOperations(convertGraphToRows(graph), graph.nodes, graph.owner)).toEqual([]);
   });
 
   it("preserves multiline relationship text in the editable row", () => {

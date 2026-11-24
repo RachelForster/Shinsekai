@@ -102,6 +102,55 @@ def clean_visual_summary(text: str, subtitle_keys: set[str]) -> str:
     return "".join(kept).strip(" ，,；;\n")
 
 
+def register_visual_clauses(
+    text: str,
+    seen_clauses: list[tuple[str, tuple[str, ...]]],
+) -> None:
+    """Record normalized `(key, digits)` pairs for each clause in `text`."""
+    for clause, _sep in _CLAUSE_SPLIT_RE.findall(str(text or "")):
+        clean_clause = _LEADING_VISUAL_PREFIX_RE.sub("", clause.strip())
+        key = observation_key(clean_clause)
+        if key:
+            seen_clauses.append((key, digits_signature(clean_clause)))
+
+
+def dedupe_incremental_visual_clauses(
+    text: str,
+    seen_clauses: list[tuple[str, tuple[str, ...]]],
+    *,
+    similarity_threshold: float = 0.84,
+) -> str:
+    """Strip visual clauses already stated in the scene anchor or earlier beats, registering new ones."""
+    kept: list[str] = []
+    for clause, sep in _CLAUSE_SPLIT_RE.findall(str(text or "")):
+        clean_clause = _LEADING_VISUAL_PREFIX_RE.sub("", clause.strip())
+        key = observation_key(clean_clause)
+        if not key:
+            continue
+        digits = digits_signature(clean_clause)
+        duplicate = False
+        for prev_key, prev_digits in seen_clauses:
+            if key == prev_key:
+                duplicate = True
+                break
+            if digits != prev_digits:
+                continue
+            if len(key) >= 5 and key in prev_key:
+                duplicate = True
+                break
+            if (
+                min(len(key), len(prev_key)) >= 6
+                and SequenceMatcher(None, key, prev_key).ratio() >= similarity_threshold
+            ):
+                duplicate = True
+                break
+        if duplicate:
+            continue
+        seen_clauses.append((key, digits))
+        kept.append(clean_clause + sep)
+    return "".join(kept).strip(" ，,；;\n")
+
+
 class SubtitleTrack:
     """Chronological OCR subtitle / highlight / cursor-text buffer with priority merging."""
 
@@ -258,6 +307,7 @@ class VisualTrack:
         self.max_beats = max(2, int(max_beats))
         self.beats: list[VisualBeat] = []
         self.scene_anchor: str = ""
+        self.scene_anchor_first_at: float = 0.0
         self.scene_anchor_at: float = 0.0
         self.scene_anchor_seq: int = 0
         self.current_digest: str = ""
@@ -279,7 +329,11 @@ class VisualTrack:
             return
 
         matched = next(
-            (b for b in reversed(self.beats[-2:]) if is_near_identical(b.summary, cleaned_visual)),
+            (
+                b
+                for b in reversed(self.beats[-4:])
+                if is_near_identical(b.summary, cleaned_visual, threshold=0.84)
+            ),
             None,
         )
         if matched is not None:
@@ -288,11 +342,15 @@ class VisualTrack:
             self.current_digest = matched.summary
             self.current_digest_at = matched.timestamp
             if visual_change == "cut" or not self.scene_anchor:
+                if not self.scene_anchor or not is_near_identical(
+                    self.scene_anchor, matched.summary, threshold=0.84
+                ):
+                    self.scene_anchor_first_at = now
                 self.scene_anchor = matched.summary
                 self.scene_anchor_at = matched.timestamp
             return
 
-        if self.scene_anchor and is_near_identical(self.scene_anchor, cleaned_visual):
+        if self.scene_anchor and is_near_identical(self.scene_anchor, cleaned_visual, threshold=0.84):
             self.scene_anchor_at = max(self.scene_anchor_at, now)
             self.current_digest = self.scene_anchor
             self.current_digest_at = self.scene_anchor_at
@@ -313,6 +371,7 @@ class VisualTrack:
         self.current_digest_at = now
         if visual_change == "cut" or not self.scene_anchor:
             self.scene_anchor = cleaned_visual
+            self.scene_anchor_first_at = now
             self.scene_anchor_at = now
             self.scene_anchor_seq = seq
         while len(self.beats) > self.max_beats:
@@ -334,6 +393,7 @@ class VisualTrack:
     def clear(self) -> None:
         self.beats.clear()
         self.scene_anchor = ""
+        self.scene_anchor_first_at = 0.0
         self.scene_anchor_at = 0.0
         self.scene_anchor_seq = 0
         self.current_digest = ""

@@ -37,6 +37,7 @@ from frontend_bridge_core.characters import (
     _save_sprite_scale,
     _translate_character_fields,
 )
+from frontend_bridge_core.i18n_helpers import bridge_error, bridge_tr
 from frontend_bridge_core.image_annotations import run_character_sprite_auto_label
 from frontend_bridge_core.routes.router import (
     ApiRequest,
@@ -231,11 +232,11 @@ def _delete_character_route(request: ApiRequest) -> JsonResponse:
 def _auto_label_character_sprites(request: ApiRequest) -> TaskResponse:
     name = str(request.body.get("name") or "").strip()
     if not name:
-        raise ValueError("角色名称不能为空")
+        raise bridge_error(ValueError, request.state, "character_name_required")
     return TaskResponse(
         kind="vision-character-smart-label",
-        title=f"智能标注 {name} 的角色立绘",
-        message="图片智能标注任务已排队。",
+        title=bridge_tr(request.state, "task.char_auto_label_title", name=name),
+        message=bridge_tr(request.state, "task.image_auto_label_queued"),
         worker=lambda task_id: run_character_sprite_auto_label(
             request.state,
             task_id,
@@ -248,8 +249,8 @@ def _plan_sprites(request: ApiRequest) -> TaskResponse:
     body = dict(request.body)
     return TaskResponse(
         kind="character-sprite-plan",
-        title="设计立绘提示词",
-        message="正在准备立绘方案。",
+        title=bridge_tr(request.state, "task.plan_sprites_title"),
+        message=bridge_tr(request.state, "task.plan_sprites_preparing"),
         worker=lambda task_id: run_sprite_plan(request.state, task_id, body),
     )
 
@@ -258,8 +259,8 @@ def _render_sprite(request: ApiRequest) -> TaskResponse:
     body = dict(request.body)
     return TaskResponse(
         kind="character-sprite-render",
-        title="生成角色立绘",
-        message="正在准备图像生成。",
+        title=bridge_tr(request.state, "task.render_sprite_title"),
+        message=bridge_tr(request.state, "task.render_sprite_preparing"),
         worker=lambda task_id: run_sprite_render(request.state, task_id, body, file_access_roots=_local_file_access_roots(request.state)),
     )
 
@@ -272,8 +273,8 @@ def _capture_sprite_frame(request: ApiRequest) -> TaskResponse:
     body = dict(request.body)
     return TaskResponse(
         kind="character-sprite-frame",
-        title="截取立绘画面",
-        message="正在准备视频截帧。",
+        title=bridge_tr(request.state, "task.capture_frame_title"),
+        message=bridge_tr(request.state, "task.capture_frame_preparing"),
         worker=lambda task_id: run_sprite_frame(request.state, task_id, body),
     )
 
@@ -282,24 +283,28 @@ def _remove_sprite_background(request: ApiRequest) -> TaskResponse:
     body = dict(request.body)
     return TaskResponse(
         kind="character-sprite-cutout",
-        title="立绘抠图",
-        message="正在准备移除背景。",
+        title=bridge_tr(request.state, "task.cutout_sprite_title"),
+        message=bridge_tr(request.state, "task.cutout_sprite_preparing"),
         worker=lambda task_id: run_sprite_cutout(request.state, task_id, body),
     )
 
 
 def _animate_sprite(request: ApiRequest) -> TaskResponse:
     body = dict(request.body)
-    return TaskResponse(kind="character-sprite-animate", title="生成透明动态立绘",
-                        message="正在准备 H3 动态生成与逐帧抠图。",
-                        worker=lambda task_id: run_sprite_animation(request.state, task_id, body, file_access_roots=_local_file_access_roots(request.state)))
+    return TaskResponse(
+        kind="character-sprite-animate",
+        title=bridge_tr(request.state, "task.animate_sprite_title"),
+        message=bridge_tr(request.state, "task.animate_sprite_preparing"),
+        worker=lambda task_id: run_sprite_animation(request.state, task_id, body, file_access_roots=_local_file_access_roots(request.state)),
+    )
 
 
 def _generate_sprite_transition(request: ApiRequest) -> TaskResponse:
     body = dict(request.body)
     return TaskResponse(
-        kind="character-sprite-transition", title="生成立绘过渡",
-        message="正在准备 22 帧透明过渡。",
+        kind="character-sprite-transition",
+        title=bridge_tr(request.state, "task.transition_sprite_title"),
+        message=bridge_tr(request.state, "task.transition_sprite_preparing"),
         worker=lambda task_id: run_sprite_transition(request.state, task_id, body, file_access_roots=_local_file_access_roots(request.state)),
     )
 
@@ -308,8 +313,8 @@ def _analyze_sprite_transitions(request: ApiRequest) -> TaskResponse:
     body = dict(request.body)
     return TaskResponse(
         kind="character-transition-analysis",
-        title="分析常用立绘过渡",
-        message="正在准备最近聊天分析。",
+        title=bridge_tr(request.state, "task.analyze_transitions_title"),
+        message=bridge_tr(request.state, "task.analyze_transitions_preparing"),
         worker=lambda task_id: run_transition_analysis(request.state, task_id, body),
     )
 
@@ -317,8 +322,9 @@ def _analyze_sprite_transitions(request: ApiRequest) -> TaskResponse:
 def _generate_sprite_mouth(request: ApiRequest) -> TaskResponse:
     body = dict(request.body)
     return TaskResponse(
-        kind="character-sprite-mouth", title="制作立绘口型",
-        message="正在准备嘴型生成与匹配。",
+        kind="character-sprite-mouth",
+        title=bridge_tr(request.state, "task.mouth_sync_title"),
+        message=bridge_tr(request.state, "task.mouth_sync_preparing"),
         worker=lambda task_id: run_sprite_mouth(
             request.state,
             task_id,
@@ -330,8 +336,9 @@ def _generate_sprite_mouth(request: ApiRequest) -> TaskResponse:
 
 def _mouth_setup_task(request: ApiRequest, action: str) -> TaskResponse:
     return TaskResponse(
-        kind="sprite-mouth-setup", title="准备口型识别资源",
-        message="正在准备识别资源。",
+        kind="sprite-mouth-setup",
+        title=bridge_tr(request.state, "task.mouth_setup_title"),
+        message=bridge_tr(request.state, "task.mouth_setup_preparing"),
         worker=lambda task_id: run_mouth_setup(request.state, task_id, request.body, action),
     )
 
@@ -340,11 +347,11 @@ def _prepare_character_voice(request: ApiRequest) -> TaskResponse:
     body = dict(request.body)
     name = str(body.get("name") or "").strip()
     if not name:
-        raise ValueError("角色名称不能为空")
+        raise bridge_error(ValueError, request.state, "character_name_required")
     return TaskResponse(
         kind="character-voice-prepare",
-        title=f"准备 {name} 的角色语音",
-        message="角色语音处理任务已排队。",
+        title=bridge_tr(request.state, "task.char_voice_prepare_title", name=name),
+        message=bridge_tr(request.state, "task.char_voice_prepare_queued"),
         worker=lambda task_id: run_character_voice_prepare(
             request.state,
             task_id,

@@ -8,6 +8,8 @@ import {
   removeCharacterSpriteBackground,
   animateCharacterSprite,
 } from "../../entities/character/repository";
+import { DEFAULT_SPRITE_TAGGING } from "../../shared/constants";
+import { useOptionalI18n } from "../../shared/i18n";
 import type {
   Character,
   CharacterSpriteAnimationInput,
@@ -37,6 +39,7 @@ export function useSpriteGeneration(
   h3Resolution: H3SpriteResolution = "workflow",
   animationResolution?: H3SpriteResolution,
 ) {
+  const { t } = useOptionalI18n();
   const [items, setItems] = useState<SpriteCandidate[]>([]);
   const [busy, setBusy] = useState<"plan" | "render" | "frame" | "cutout" | "import" | "replace" | "animate" | null>(
     null,
@@ -152,7 +155,7 @@ export function useSpriteGeneration(
             {
               id: crypto.randomUUID(),
               prompt: "",
-              tagging: animationInput?.tagging || "平静，站立",
+              tagging: animationInput?.tagging || DEFAULT_SPRITE_TAGGING,
               selected: false,
               error: "",
               manual: true,
@@ -164,7 +167,7 @@ export function useSpriteGeneration(
   const queueAnimations = (entries: { input: CharacterSpriteAnimationInput; existing?: SpriteCandidate }[]) =>
     operate("animate", async () => {
       const additions = entries.filter((entry) => !entry.existing).length;
-      if (items.length + additions > 12) throw new Error("每次最多保留 12 个方案，请先添加或移除部分方案。");
+      if (items.length + additions > 12) throw new Error(t("ops.character.maxSpritePlans"));
       const candidates = entries.map(({ input, existing }) => ({
         input: {
           ...input,

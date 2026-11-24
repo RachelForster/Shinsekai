@@ -34,6 +34,7 @@ def _plain_text(value: str) -> str:
 def make_empty_chat_snapshot() -> Dict[str, Any]:
     return {
         "activePlayback": None,
+        "ambientEffects": [],
         "asrEnabled": False,
         "asrLoading": False,
         "asrRunning": False,
@@ -136,6 +137,7 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
     next_snapshot.setdefault("eventSeq", 0)
     next_snapshot.setdefault("historyEntries", [])
     next_snapshot.setdefault("effectImage", None)
+    next_snapshot.setdefault("ambientEffects", [])
     next_snapshot.setdefault("inputDraft", "")
     next_snapshot.setdefault("activePlayback", None)
     next_snapshot.setdefault("loopingEffects", [])
@@ -570,6 +572,56 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
         next_snapshot["loopingEffects"] = []
         return next_snapshot
 
+    if event_type == "ambient.start":
+        key = str(event.get("key") or "")
+        current = [
+            dict(item)
+            for item in (next_snapshot.get("ambientEffects") or [])
+            if isinstance(item, dict) and str(item.get("key") or "") != key
+        ]
+        if key:
+            current.append(
+                {
+                    "audioUrl": str(event.get("audioUrl") or ""),
+                    "key": key,
+                    "layer": "front" if event.get("layer") == "front" else "back",
+                    "seq": int(event.get("seq") or 0),
+                    "url": str(event.get("url") or ""),
+                }
+            )
+        next_snapshot["ambientEffects"] = current[-32:]
+        return next_snapshot
+
+    if event_type == "ambient.layer":
+        key = str(event.get("key") or "")
+        layer = "front" if event.get("layer") == "front" else "back"
+        audio_url = str(event.get("audioUrl") or "")
+        next_snapshot["ambientEffects"] = [
+            {
+                **dict(item),
+                "layer": layer,
+                **({"audioUrl": audio_url} if audio_url else {}),
+            }
+            if str(item.get("key") or "") == key
+            else dict(item)
+            for item in (next_snapshot.get("ambientEffects") or [])
+            if isinstance(item, dict)
+        ]
+        return next_snapshot
+
+    if event_type == "ambient.stop":
+        key = str(event.get("key") or "")
+        next_snapshot["ambientEffects"] = [
+            dict(item)
+            for item in (next_snapshot.get("ambientEffects") or [])
+            if isinstance(item, dict) and str(item.get("key") or "") != key
+        ]
+        return next_snapshot
+
+    if event_type == "ambient.stop-all":
+        next_snapshot["ambientEffects"] = []
+        return next_snapshot
+
     if event_type == "asr.partial":
         _clear_transient_notification_state(next_snapshot)
         next_snapshot["asrEnabled"] = True
@@ -669,6 +721,7 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
 
     if event_type == "session.closed":
         next_snapshot["activePlayback"] = None
+        next_snapshot["ambientEffects"] = []
         next_snapshot["effectImage"] = None
         next_snapshot["busyText"] = ""
         next_snapshot["busyDurationSeconds"] = 0.0

@@ -25,7 +25,10 @@ from application.model_assets.download_model import (
     _looks_like_local_model_reference,
     resolve_model_asset,
 )
-from application.runtime.dependencies import perception_dependency_issues
+from application.runtime.dependencies import (
+    perception_dependency_issues,
+    perception_gguf_dependency_issues,
+)
 from config.perception import DEFAULT_PERCEPTION_MODEL, default_perception_python_path
 from core.model_assets.service import (
     ModelAssetSpec,
@@ -33,7 +36,9 @@ from core.model_assets.service import (
     find_cached_huggingface_snapshot,
     inspect_model_asset,
 )
+from core.paths import project_root as resolve_project_root
 from core.perception.models import GGUF_MODEL_ID, PerceptionConfig
+from core.storage.layout import StorageLayout
 
 _LOCAL_HOSTS = {"127.0.0.1", "localhost", "0.0.0.0", "::1"}
 
@@ -278,6 +283,10 @@ def inspect_perception_setup(
             "pythonPath": str(python_path or "").strip(),
         }
 
+    if not target_python and clean_model == GGUF_MODEL_ID:
+        if not getattr(sys, "frozen", False) and sys.executable and Path(sys.executable).is_file():
+            target_python = str(sys.executable)
+
     if not target_python:
         return {
             "status": "error",
@@ -294,7 +303,12 @@ def inspect_perception_setup(
         downloadable = False
         try:
             script_path = resolve_local_server_script()
-            _gguf_arguments(script_path.parent.parent)
+            gguf_roots = [
+                *(Path(root) for root in (project_root, app_root) if root),
+                resolve_project_root(),
+                script_path.parent.parent,
+            ]
+            _gguf_arguments(*gguf_roots)
             model_cached = True
         except Exception as exc:
             model_cached = False
@@ -336,11 +350,16 @@ def inspect_perception_setup(
                 if _has_complete_hf_snapshot_in_hub_dir(user_hf_hub, spec.repo_id):
                     model_cached = True
 
-    issues = perception_dependency_issues(target_python)
+    is_gguf = clean_model == GGUF_MODEL_ID
+    issues = (
+        perception_gguf_dependency_issues(target_python)
+        if is_gguf
+        else perception_dependency_issues(target_python)
+    )
     if issues:
         return {
             "status": "missing_dependency",
-            "moduleName": "perception",
+            "moduleName": "perception_gguf" if is_gguf else "perception",
             "packageName": issues[0].name,
             "modelCached": model_cached,
             "downloadable": downloadable,
@@ -400,18 +419,41 @@ def parse_local_server_endpoint(base_url: str) -> tuple[str, int]:
     return bind_host, port
 
 
-def _gguf_arguments(root: Path) -> list[str]:
-    directory = root / "data" / "cache" / "perception-gguf"
+def _gguf_candidate_dirs(*roots: Path) -> list[Path]:
+    """Return candidate GGUF directories prioritizing unified ``data/models`` then legacy ``data/cache``."""
+    dirs: list[Path] = []
+    seen: set[str] = set()
+    for root in roots:
+        layout = StorageLayout(root)
+        for candidate in (
+            layout.model_dir("perception-gguf"),
+            layout.cache_dir / "perception-gguf",
+        ):
+            norm = os.path.normcase(str(candidate))
+            if norm not in seen:
+                seen.add(norm)
+                dirs.append(candidate)
+    return dirs
+
+
+def _gguf_arguments(*roots: Path) -> list[str]:
     executable = "llama-server.exe" if os.name == "nt" else "llama-server"
-    files = (
-        directory / "llama.cpp" / executable,
-        directory / "Qwen3VL-2B-Instruct-Q4_K_M.gguf",
-        directory / "mmproj-Qwen3VL-2B-Instruct-F16.gguf",
-    )
-    missing = [file.name for file in files if not file.is_file()]
-    if missing:
-        raise ValueError(f"Q4 感知服务缺少 {', '.join(missing)}。资源目录：{directory}")
-    return ["--gguf", *(str(file) for file in files)]
+    candidates = _gguf_candidate_dirs(*roots)
+    best_dir = candidates[0] if candidates else (Path.cwd() / "data" / "models" / "perception-gguf")
+    best_missing: list[str] = []
+    for directory in candidates:
+        files = (
+            directory / "llama.cpp" / executable,
+            directory / "Qwen3VL-2B-Instruct-Q4_K_M.gguf",
+            directory / "mmproj-Qwen3VL-2B-Instruct-F16.gguf",
+        )
+        missing = [file.name for file in files if not file.is_file()]
+        if not missing:
+            return ["--gguf", *(str(file) for file in files)]
+        if not best_missing or len(missing) < len(best_missing):
+            best_dir = directory
+            best_missing = missing
+    raise ValueError(f"Q4 感知服务缺少 {', '.join(best_missing)}。资源目录：{best_dir}")
 
 
 class PerceptionLocalServerManager:
@@ -488,7 +530,11 @@ class PerceptionLocalServerManager:
         clean_model = str(model or "Qwen/Qwen3-VL-2B-Instruct").strip() or "Qwen/Qwen3-VL-2B-Instruct"
         bind_host, port = parse_local_server_endpoint(clean_base_url)
         script_path = resolve_local_server_script() if clean_model == GGUF_MODEL_ID else None
-        gguf_arguments = _gguf_arguments(script_path.parent.parent) if script_path is not None else []
+        gguf_arguments = (
+            _gguf_arguments(resolve_project_root(), script_path.parent.parent)
+            if script_path is not None
+            else []
+        )
 
         with self._lock:
             self._refresh_locked()
@@ -520,6 +566,9 @@ class PerceptionLocalServerManager:
             return self.status(explicit_python_path=python_path)
 
         resolved_python = discover_perception_python(python_path)
+        if not resolved_python and clean_model == GGUF_MODEL_ID:
+            if not getattr(sys, "frozen", False) and sys.executable and Path(sys.executable).is_file():
+                resolved_python = str(sys.executable)
         if not resolved_python:
             raise ValueError(
                 "未自动检测到包含 PyTorch 与 Transformers 的本地 Python 环境，请在下方填写 Python 解释器路径（如 Conda 环境下的 python.exe）。"

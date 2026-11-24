@@ -234,6 +234,21 @@ def dismiss_plugin_page(ctx: CommandContext) -> dict[str, Any]:
     return ctx.snapshot(state, ctx.current_status())
 
 
+def dismiss_cg(ctx: CommandContext) -> dict[str, Any]:
+    state = ctx.state
+    session_id = ctx.session_id
+    chat_stream = ctx.chat_stream
+    if session_id and chat_stream is not None:
+        if chat_stream.publish_event(
+            session_id,
+            {
+                "type": "cg.hide",
+            },
+        ):
+            return ctx.snapshot(state, ctx.current_status())
+    return ctx.snapshot(state, ctx.current_status(), extra={"cgPath": ""})
+
+
 class TurnOptionsCommands:
     def __init__(self, turn_options: Callable[[Any], dict]) -> None:
         self.turn_options = turn_options

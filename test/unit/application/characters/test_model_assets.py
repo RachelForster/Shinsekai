@@ -344,6 +344,32 @@ def harness(tmp_path):
     return state, CharacterUseCase(state), entry
 
 
+@pytest.fixture(params=["config", "catalog"])
+def preset_persistence_harness(harness, request):
+    if request.param == "config":
+        yield harness
+        return
+
+    from application.runtime.stores import build_app_stores
+
+    state, _, entry = harness
+    stores = build_app_stores(Path(state.project_root_dir), bind_globals=False)
+    try:
+        character = state.config_manager.get_character_by_name("Haru")
+        stores.characters.put(character.id, character)
+        state.stores = stores
+        state.character_manager = None
+
+        def refresh_characters():
+            state.config_manager.config.characters = list(stores.characters.list_all())
+
+        state.config_manager.refresh_characters = refresh_characters
+        refresh_characters()
+        yield state, CharacterUseCase(state), entry
+    finally:
+        stores.close()
+
+
 def execute(use_case, operation, **body):
     return use_case.execute(CharacterRequest(operation, body))
 
@@ -376,14 +402,14 @@ def test_model_preset_batch_deletion_preserves_files_and_other_tags(harness):
     assert Path(model).is_file() and all(Path(path).is_file() for path in paths)
 
 
-def test_deleting_mmd_motion_preset_keeps_saved_replay_urls_readable(harness):
+def test_deleting_mmd_motion_preset_keeps_saved_replay_urls_readable(preset_persistence_harness):
     from urllib.parse import parse_qs, urlsplit
 
     from application.chat.history.replay_store import portable_urls
     from application.chat.presentation.character_visual import resolve_character_visual
     from frontend_bridge_core.resource_urls import BridgeResourceUrls
 
-    state, use_case, body = _mmd_batch(harness)
+    state, use_case, body = _mmd_batch(preset_persistence_harness)
     bank = execute(use_case, CharacterOperation.IMPORT_MODEL_STATES, **body)["avatars"]["mmd"]
     pose, motion = bank["sprites"]
     model = Path(bank["model_path"])
@@ -440,11 +466,11 @@ def test_import_save_overwrite_and_authorized_files(harness):
     with pytest.raises(ValueError): execute(use_case, CharacterOperation.SAVE_MODEL_STATE, **{**body, "sprite_index": 0, "path": path})
 
 
-def test_character_edits_cannot_replace_history_grants(harness):
+def test_character_edits_cannot_replace_history_grants(preset_persistence_harness):
     from core.media.avatar.registry import adapter_for
     from core.media.avatar.state_dependencies import write_state_index
 
-    state, use_case, entry = harness
+    state, use_case, entry = preset_persistence_harness
     state.config_manager.config.api_config = SimpleNamespace()
     imported = execute(use_case, CharacterOperation.IMPORT_MODEL, name="Haru", avatar_type="l2d", source_path=str(entry))
     model = Path(imported["avatars"]["l2d"]["model_path"])
@@ -662,7 +688,7 @@ def test_real_persistence_failure_rolls_back_files_and_bank(harness, monkeypatch
         if failure == "serialize":
             args[1].write("partial YAML")
         raise OSError("simulated disk write failure")
-    target = {"serialize": "yaml.dump", "flush": "os.fsync", "replace": "os.replace"}[failure]
+    target = {"serialize": "yaml.dump", "flush": "os.fsync", "replace": "durable_rename"}[failure]
     monkeypatch.setattr(f"config.config_manager.{target}", fail)
     with pytest.raises(OSError, match="simulated disk write failure"):
         if operation in {"import", "replace"}:
@@ -770,3 +796,81 @@ def test_new_format_reuses_import_startup_events_and_snapshot(harness, monkeypat
         assert initial[0][key] == restored[key]
     relative_state = Path(saved_path).relative_to(Path(model).parent).as_posix()
     assert json.loads(model_file(state, model, relative_state).read_text()) == {"pose": [1, 2, 3]}
+
+
+@pytest.mark.parametrize("operation", ["import", "save_state", "import_states"])
+def test_post_rename_fsync_failure_preserves_published_assets_and_memory(
+    harness, monkeypatch, operation
+):
+    import os
+    import yaml
+    from config.config_manager import ConfigManager
+
+    if operation == "import_states":
+        state, use_case, mmd_body = _mmd_batch(harness)
+        entry = Path(mmd_body["model_path"])
+    else:
+        state, use_case, entry = harness
+
+    manager = object.__new__(ConfigManager)
+    manager._config = state.config_manager.config
+    manager._CHARACTERS_CONFIG_PATH = Path(state.project_root_dir) / "characters.yaml"
+    state.config_manager = manager
+    state.character_manager._config_manager = manager
+    manager.save_characters_config()
+
+    if operation == "save_state":
+        imported = execute(
+            use_case,
+            CharacterOperation.IMPORT_MODEL,
+            name="Haru",
+            avatar_type="l2d",
+            source_path=str(entry),
+        )
+        model = imported["avatars"]["l2d"]["model_path"]
+
+    def post_rename_fsync_failure(temporary: Path, destination: Path, *, replace: bool = False):
+        os.replace(temporary, destination)
+        raise OSError("simulated dir fsync failure")
+
+    monkeypatch.setattr("config.config_manager.durable_rename", post_rename_fsync_failure)
+    with pytest.raises(OSError, match="simulated dir fsync failure"):
+        if operation == "import":
+            execute(
+                use_case,
+                CharacterOperation.IMPORT_MODEL,
+                name="Haru",
+                avatar_type="l2d",
+                source_path=str(entry),
+            )
+        elif operation == "save_state":
+            execute(
+                use_case,
+                CharacterOperation.SAVE_MODEL_STATE,
+                name="Haru",
+                avatar_type="l2d",
+                model_path=model,
+                sprite_index=-1,
+                path="",
+                state={"parameters": {"ParamAngleX": 1}, "expressions": [], "motion": ""},
+                tags="published",
+            )
+        else:
+            execute(use_case, CharacterOperation.IMPORT_MODEL_STATES, **mmd_body)
+
+    persisted_chars = [
+        Character.model_validate(item)
+        for item in yaml.safe_load(manager._CHARACTERS_CONFIG_PATH.read_text(encoding="utf-8"))
+    ]
+    persisted_haru = next(c for c in persisted_chars if c.name == "Haru")
+    in_memory_haru = manager.get_character_by_name("Haru")
+    assert in_memory_haru is not None
+    assert in_memory_haru.model_dump(mode="json") == persisted_haru.model_dump(mode="json")
+
+    kind = "mmd" if operation == "import_states" else "l2d"
+    bank = persisted_haru.avatars[kind]
+    assert Path(bank.model_path).is_file()
+    if operation != "import":
+        assert len(bank.sprites) >= 1
+        for sprite in bank.sprites:
+            assert Path(sprite.path).is_file()

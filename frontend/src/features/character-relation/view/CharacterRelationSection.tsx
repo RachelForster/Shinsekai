@@ -1,9 +1,8 @@
 import { useState } from "react";
 
 import { useI18n } from "../../../shared/i18n";
-import { Button } from "../../../shared/ui";
+import { Button, Dialog } from "../../../shared/ui";
 import { CharacterGraphView } from "./CharacterGraphView";
-import { CharacterRelationNodeEditor } from "./CharacterRelationNodeEditor";
 import { CharacterRelationTable } from "./CharacterRelationTable";
 import { useCharacterRelationController } from "../useCharacterRelationController";
 
@@ -29,76 +28,108 @@ function RelationEditor({ owner }: RelationEditorProps) {
     isFetching,
     loadError,
     savePending,
+    cleanPending,
     saveError,
     save,
     reload,
+    clean,
   } = useCharacterRelationController(owner);
   const [tab, setTab] = useState<"edit" | "graph">("edit");
   const [tableDirty, setTableDirty] = useState(false);
-  const [nodesDirty, setNodesDirty] = useState(false);
+  const [cleanDialogOpen, setCleanDialogOpen] = useState(false);
   const [actionsContainer, setActionsContainer] = useState<HTMLDivElement | null>(null);
+  const [saveContainer, setSaveContainer] = useState<HTMLDivElement | null>(null);
+  const busy = savePending || cleanPending;
   return (
     <section className="section page-section-anchor character-relation-section" id="character-relations">
       <div className="section__header">
-        <h2 className="section__title">{t("relation.title")}</h2>
-        <div className="page__actions" ref={setActionsContainer}>
-          <Button
-            disabled={!owner || savePending || tableDirty || nodesDirty || isFetching}
-            onClick={() => void reload()}
-          >
+        <div className="relation-header-title">
+          <h2 className="section__title">{t("relation.title")}</h2>
+          {graph && (
+            <div role="tablist" aria-label={t("relation.title")} className="relation-tabs">
+              <Button
+                id="relation-edit-tab"
+                role="tab"
+                aria-selected={tab === "edit"}
+                aria-controls="relation-edit-panel"
+                onClick={() => setTab("edit")}
+              >
+                {t("relation.editTab")}
+              </Button>
+              <Button
+                id="relation-graph-tab"
+                role="tab"
+                aria-selected={tab === "graph"}
+                aria-controls="relation-graph-panel"
+                onClick={() => setTab("graph")}
+              >
+                {t("relation.graphTab")}
+              </Button>
+            </div>
+          )}
+        </div>
+        <div className="page__actions">
+          <Button disabled={!graph || busy || tableDirty || isFetching} onClick={() => setCleanDialogOpen(true)}>
+            {t("relation.cleanLegacy")}
+          </Button>
+          <Button disabled={!owner || busy || tableDirty || isFetching} onClick={() => void reload()}>
             {t("relation.reload")}
           </Button>
+          <div className="relation-action-slot" ref={setActionsContainer} />
+          <div className="relation-action-slot" ref={setSaveContainer} />
         </div>
       </div>
-      <p>{t(owner ? "relation.description" : "relation.saveFirst")}</p>
+      <Dialog
+        open={cleanDialogOpen}
+        title={t("relation.cleanLegacy")}
+        closeLabel={t("common.cancel")}
+        dismissible={!busy && !isFetching}
+        trapFocus
+        onClose={() => setCleanDialogOpen(false)}
+        footer={
+          <>
+            <Button
+              variant="primary"
+              disabled={busy || isFetching}
+              onClick={() => {
+                setCleanDialogOpen(false);
+                void clean();
+              }}
+            >
+              {t("common.confirm")}
+            </Button>
+            <Button disabled={busy || isFetching} onClick={() => setCleanDialogOpen(false)}>
+              {t("common.cancel")}
+            </Button>
+          </>
+        }
+      >
+        <p>{t("relation.cleanLegacyWarning")}</p>
+      </Dialog>
+      {!owner && <p>{t("relation.saveFirst")}</p>}
       {owner && isLoading && <p role="status">{t("relation.loading")}</p>}
       {loadError && <p role="alert">{loadError}</p>}
       {saveError && <p role="alert">{saveError}</p>}
       {graph && (
         <>
-          <CharacterRelationNodeEditor
-            key={JSON.stringify(graph)}
-            graph={graph}
-            pending={savePending || tableDirty}
-            save={save}
-            onDirty={setNodesDirty}
-            actionsContainer={actionsContainer}
-          />
-          <div role="tablist" aria-label={t("relation.title")} className="relation-tabs">
-            <Button
-              id="relation-edit-tab"
-              role="tab"
-              aria-selected={tab === "edit"}
-              aria-controls="relation-edit-panel"
-              onClick={() => setTab("edit")}
-            >
-              {t("relation.editTab")}
-            </Button>
-            <Button
-              id="relation-graph-tab"
-              role="tab"
-              aria-selected={tab === "graph"}
-              aria-controls="relation-graph-panel"
-              onClick={() => setTab("graph")}
-            >
-              {t("relation.graphTab")}
-            </Button>
-          </div>
           <div role="tabpanel" id="relation-graph-panel" aria-labelledby="relation-graph-tab" hidden={tab !== "graph"}>
             <CharacterGraphView
               active={tab === "graph"}
               graph={graph}
-              disabled={savePending || tableDirty || nodesDirty}
+              disabled={busy || tableDirty}
+              actionsContainer={actionsContainer}
             />
           </div>
           <div role="tabpanel" id="relation-edit-panel" aria-labelledby="relation-edit-tab" hidden={tab !== "edit"}>
             <CharacterRelationTable
               key={JSON.stringify(graph)}
               graph={graph}
-              pending={savePending || nodesDirty}
+              pending={busy}
               save={save}
               onDirty={setTableDirty}
-              actionsContainer={nodesDirty ? null : actionsContainer}
+              actionsContainer={actionsContainer}
+              saveContainer={saveContainer}
+              active={tab === "edit"}
             />
           </div>
         </>

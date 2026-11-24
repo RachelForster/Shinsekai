@@ -3,7 +3,10 @@ import { agentEnMessages } from "./en/agent";
 import { characterEnMessages } from "./en/character";
 import { chatEnMessages } from "./en/chat";
 import { knowledgeEnMessages } from "./en/knowledge";
+import { onboardingEnMessages } from "./en/onboarding";
+import { operationsEnMessages } from "./en/operations";
 import { perceptionEnMessages } from "./en/perception";
+import { platformEnMessages } from "./en/platform";
 import { pluginsEnMessages } from "./en/plugins";
 import { relationEnMessages } from "./en/relation";
 import { settingsEnMessages } from "./en/settings";
@@ -25,6 +28,9 @@ export const enMessageSlices = {
   agent: agentEnMessages,
   plugins: pluginsEnMessages,
   workspace: workspaceEnMessages,
+  onboarding: onboardingEnMessages,
+  operations: operationsEnMessages,
+  platform: platformEnMessages,
 };
 
 export const enMessages: Record<MessageKey, string> = {
@@ -40,4 +46,7 @@ export const enMessages: Record<MessageKey, string> = {
   ...agentEnMessages,
   ...pluginsEnMessages,
   ...workspaceEnMessages,
+  ...onboardingEnMessages,
+  ...operationsEnMessages,
+  ...platformEnMessages,
 };

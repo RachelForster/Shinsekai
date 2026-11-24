@@ -1,3 +1,5 @@
+import { DEFAULT_SPRITE_GROUP, HIDDEN_HISTORY_LINE_PATTERN, LEGACY_DEFAULT_USER_SPEAKER } from "../../constants";
+import { translateRuntimeMessage } from "../../i18n/runtimeLanguage";
 import { DEFAULT_CHAT_THEME_ID, type ChatThemeManifest, type ChatThemeSummary } from "../../theme/chatTheme";
 import { runtimeStatusFromSnapshot } from "../chatRuntimeStatus";
 import { PlatformRequestError } from "../errors";
@@ -31,7 +33,12 @@ function browserPreviewChatPayload(payload: unknown) {
 }
 
 function isPreviewRealtimeCommand(command: { type: string }) {
-  return command.type !== "copy-history" && command.type !== "dismiss-plugin-page" && command.type !== "open-history";
+  return (
+    command.type !== "copy-history" &&
+    command.type !== "dismiss-cg" &&
+    command.type !== "dismiss-plugin-page" &&
+    command.type !== "open-history"
+  );
 }
 
 export function createChatPreviewPlatform(ctx: BrowserPreviewContext): ChatPlatform {
@@ -61,6 +68,8 @@ export function createChatPreviewPlatform(ctx: BrowserPreviewContext): ChatPlatf
   let replayPlan: ChatReplaySnapshot | null = null;
   let replayRestore: ChatSnapshot | null = null;
   let replayTimer: number | undefined;
+  const tr = (key: Parameters<typeof translateRuntimeMessage>[0], values?: Record<string, string | number>) =>
+    translateRuntimeMessage(key, values, config.system_config.ui_language);
 
   const showPreviewReplay = () => {
     window.clearTimeout(replayTimer);
@@ -186,13 +195,14 @@ export function createChatPreviewPlatform(ctx: BrowserPreviewContext): ChatPlatf
         throw new PlatformRequestError("The current chat has changed.", 409, "chat_session_changed");
       }
       clearScheduledChatUpdates();
+      const endedText = tr("plat.preview.chat.sessionEnded");
       const next: ChatSnapshot = {
         ...chat,
         chatProcessRunning: false,
         chatRuntimeClosing: false,
-        notificationText: "聊天会话已结束。",
+        notificationText: endedText,
         options: [],
-        sessionClosedReason: "聊天会话已结束。",
+        sessionClosedReason: endedText,
         status: "idle",
       };
       setChat(next);
@@ -206,6 +216,13 @@ export function createChatPreviewPlatform(ctx: BrowserPreviewContext): ChatPlatf
           notificationText: "",
           sessionClosedReason: "",
         });
+      }
+      if (command.type === "dismiss-cg") {
+        setChat({
+          ...getChat(),
+          cgPath: "",
+        });
+        emitChat();
       }
       if (command.type === "dismiss-plugin-page") {
         const payload = command.payload as { pluginId?: unknown; presentationId?: unknown } | undefined;
@@ -298,7 +315,7 @@ export function createChatPreviewPlatform(ctx: BrowserPreviewContext): ChatPlatf
           return delay(next);
         }
         clearScheduledChatUpdates();
-        const userDisplayName = chat.userDisplayName?.trim() || "你";
+        const userDisplayName = chat.userDisplayName?.trim() || LEGACY_DEFAULT_USER_SPEAKER;
         const nextUserIndex =
           Math.max(-1, ...cloneHistoryEntries(chat.historyEntries).map((entry) => entry.revertUserIndex ?? -1)) + 1;
         setChat({
@@ -324,10 +341,14 @@ export function createChatPreviewPlatform(ctx: BrowserPreviewContext): ChatPlatf
         scheduleChatUpdate(700, (current) => ({
           ...current,
           characterName: "Nanami",
-          dialogText: `收到：${displayText}`,
+          dialogText: tr("plat.preview.chat.receivedReply", { text: displayText }),
           historyEntries: [
             ...cloneHistoryEntries(current.historyEntries),
-            { id: `history-${Date.now()}-assistant`, role: "assistant", text: `Nanami: 收到：${displayText}` },
+            {
+              id: `history-${Date.now()}-assistant`,
+              role: "assistant",
+              text: tr("plat.preview.chat.receivedReplyHistory", { text: displayText }),
+            },
           ],
           numericInfo: "speaking",
           status: "speaking",
@@ -358,26 +379,33 @@ export function createChatPreviewPlatform(ctx: BrowserPreviewContext): ChatPlatf
         clearScheduledChatUpdates();
         setChat({
           ...chat,
-          dialogText: `选择：${option}`,
+          dialogText: tr("plat.preview.chat.choosingOption", { option }),
           historyEntries: [
             ...cloneHistoryEntries(chat.historyEntries),
-            { id: `history-${Date.now()}-option`, role: "options", text: `选项: ${option}` },
+            {
+              id: `history-${Date.now()}-option`,
+              role: "options",
+              text: tr("plat.preview.chat.optionEntry", { option }),
+            },
           ],
           options: [],
           status: "generating",
           numericInfo: "generating",
         });
         emitChat();
-        scheduleChatUpdate(650, (current) => ({
-          ...current,
-          dialogText: `Nanami: 已选择「${option}」`,
-          historyEntries: [
-            ...cloneHistoryEntries(current.historyEntries),
-            { id: `history-${Date.now()}-assistant`, role: "assistant", text: `Nanami: 已选择「${option}」` },
-          ],
-          numericInfo: "idle",
-          status: "idle",
-        }));
+        scheduleChatUpdate(650, (current) => {
+          const pickedText = tr("plat.preview.chat.optionPicked", { option });
+          return {
+            ...current,
+            dialogText: pickedText,
+            historyEntries: [
+              ...cloneHistoryEntries(current.historyEntries),
+              { id: `history-${Date.now()}-assistant`, role: "assistant", text: pickedText },
+            ],
+            numericInfo: "idle",
+            status: "idle",
+          };
+        });
       }
       if (command.type === "skip-speech" || command.type === "dialog-advance") {
         clearScheduledChatUpdates();
@@ -419,12 +447,15 @@ export function createChatPreviewPlatform(ctx: BrowserPreviewContext): ChatPlatf
       }
       if (command.type === "clear-history") {
         clearScheduledChatUpdates();
+        const clearedText = tr("plat.preview.chat.historyCleared");
         setChat({
           ...getChat(),
-          dialogText: "浏览器预览历史已清空。",
+          dialogText: clearedText,
           historyEntries: [],
+          isSystemDialog: true,
           options: [],
           status: "idle",
+          statusMessage: clearedText,
           numericInfo: "idle",
         });
         emitChat();
@@ -498,7 +529,7 @@ export function createChatPreviewPlatform(ctx: BrowserPreviewContext): ChatPlatf
           const currentOutfits = { ...(chat.outfits ?? {}) };
           const prev = currentOutfits[characterName] ?? {
             characterName,
-            activeGroup: chat.outfitCatalog?.[characterName]?.defaultGroup || "默认",
+            activeGroup: chat.outfitCatalog?.[characterName]?.defaultGroup || DEFAULT_SPRITE_GROUP,
             locked: false,
           };
           currentOutfits[characterName] = {
@@ -525,7 +556,7 @@ export function createChatPreviewPlatform(ctx: BrowserPreviewContext): ChatPlatf
         branchLabel: "",
         historyCount: chat.historyEntries?.length ?? 0,
         entries: cloneHistoryEntries(chat.historyEntries)
-          .filter((entry) => !/^\s*(?:scene|场景|bgm)[:：]/i.test(entry.text))
+          .filter((entry) => !HIDDEN_HISTORY_LINE_PATTERN.test(entry.text))
           .map((entry, index) => {
             const match = entry.text.match(/^\s*([^：:\n]+)[：:]\s*([\s\S]*)$/);
             return {
@@ -646,15 +677,19 @@ export function createChatPreviewPlatform(ctx: BrowserPreviewContext): ChatPlatf
       const historyPath = payload.resetHistory
         ? `${historyBase}-quick-restart-${(previewHistoryCounter += 1)}`
         : requestedHistoryPath;
+      const playerIndex = player?.sprites?.length
+        ? Math.min(Math.max(0, player.portrait_sprite_index ?? 0), player.sprites.length - 1)
+        : 0;
+      const playerSprite = player?.sprites?.[playerIndex];
       const next: ChatSnapshot = {
         ...chat,
         backgroundPath: background?.sprites[0]?.path,
-        userDisplayName: player?.name || "你",
-        playerPortrait: player?.sprites[0]
+        userDisplayName: player?.name || LEGACY_DEFAULT_USER_SPEAKER,
+        playerPortrait: playerSprite
           ? {
               characterName: player.name,
-              url: player.sprites[0].path,
-              crop: player.sprites[0].portrait_crop ?? player.portrait_crop ?? { x: 0.5, y: 0.2, zoom: 1 },
+              url: playerSprite.path,
+              crop: playerSprite.portrait_crop ?? player.portrait_crop ?? { x: 0.5, y: 0.2, zoom: 1 },
             }
           : null,
         characterName: character?.name,
@@ -681,7 +716,10 @@ export function createChatPreviewPlatform(ctx: BrowserPreviewContext): ChatPlatf
         memoryMode: payload.memoryMode ?? "isolated",
         autoOutfitSwitch: payload.autoOutfitSwitch ?? true,
         status: "idle",
-        statusMessage: `${payload.templateId || payload.templateName || "预览聊天"} 已启动：${historyPath}`,
+        statusMessage: tr("plat.preview.chat.launchedStatus", {
+          path: historyPath,
+          title: payload.templateId || payload.templateName || tr("plat.preview.chat.defaultTitle"),
+        }),
       };
       setChat(next);
       const templateSession = getTemplateSession();
@@ -763,17 +801,21 @@ export function createChatPreviewPlatform(ctx: BrowserPreviewContext): ChatPlatf
       );
       const background = config.background_list.find((item) => item.name === templateSession?.background);
       const historyPath = templateSession?.historyPath || chat.historyPath || "./data/chat_history/preview";
+      const playerIndex = player?.sprites?.length
+        ? Math.min(Math.max(0, player.portrait_sprite_index ?? 0), player.sprites.length - 1)
+        : 0;
+      const playerSprite = player?.sprites?.[playerIndex];
       const next: ChatSnapshot = {
         ...chat,
         backgroundPath: background?.sprites[0]?.path ?? chat.backgroundPath,
-        userDisplayName: player?.name || "你",
-        playerPortrait: player?.sprites[0]
-          ? chat.playerPortrait?.characterName === player.name
+        userDisplayName: player?.name || LEGACY_DEFAULT_USER_SPEAKER,
+        playerPortrait: playerSprite
+          ? chat.playerPortrait?.characterName === player.name && chat.playerPortrait.url === playerSprite.path
             ? chat.playerPortrait
             : {
                 characterName: player.name,
-                url: player.sprites[0].path,
-                crop: player.sprites[0].portrait_crop ?? player.portrait_crop ?? { x: 0.5, y: 0.2, zoom: 1 },
+                url: playerSprite.path,
+                crop: playerSprite.portrait_crop ?? player.portrait_crop ?? { x: 0.5, y: 0.2, zoom: 1 },
               }
           : null,
         characterName: character?.name ?? chat.characterName,
@@ -800,7 +842,7 @@ export function createChatPreviewPlatform(ctx: BrowserPreviewContext): ChatPlatf
               : chat.sprites,
         sessionClosedReason: "",
         status: "idle",
-        statusMessage: `已恢复上次启动：${historyPath}`,
+        statusMessage: tr("plat.preview.chat.resumedStatus", { path: historyPath }),
       };
       setChat(next);
       emitChat();
@@ -828,14 +870,14 @@ export function createChatPreviewPlatform(ctx: BrowserPreviewContext): ChatPlatf
     async getThemeManifest(id) {
       const manifest = resolvePreviewManifest(id);
       if (!manifest) {
-        throw new Error(`主题不存在：${id}`);
+        throw new Error(tr("plat.preview.chat.themeNotFound", { id }));
       }
       return delay<ChatThemeManifest>(manifest);
     },
     getActiveThemeId: () => delay(getActiveThemeId()),
     async setActiveThemeId(id) {
       if (!previewThemeManifests.has(id)) {
-        throw new Error(`主题不存在：${id}`);
+        throw new Error(tr("plat.preview.chat.themeNotFound", { id }));
       }
       setActiveThemeId(id);
     },
@@ -881,13 +923,13 @@ export function createChatPreviewPlatform(ctx: BrowserPreviewContext): ChatPlatf
       const existingSource = previewThemeSources.get(manifest.id);
       const creating = manifest.id !== input.baseId;
       if (existingSource === "builtin") {
-        throw new Error("内置主题不可编辑。");
+        throw new Error(tr("plat.preview.chat.themeBuiltinEdit"));
       }
       if (creating && previewThemeManifests.has(manifest.id)) {
-        throw new Error(`主题已存在：${manifest.id}`);
+        throw new Error(tr("plat.preview.chat.themeExists", { id: manifest.id }));
       }
       if (!previewThemeManifests.has(manifest.id) && !previewThemeManifests.has(input.baseId)) {
-        throw new Error(`基础主题不存在：${input.baseId}`);
+        throw new Error(tr("plat.preview.chat.themeBaseNotFound", { id: input.baseId }));
       }
       previewThemeManifests.set(manifest.id, manifest);
       previewThemeSources.set(manifest.id, "user");
@@ -909,7 +951,7 @@ export function createChatPreviewPlatform(ctx: BrowserPreviewContext): ChatPlatf
     },
     async deleteTheme(id) {
       if ((previewThemeSources.get(id) ?? "user") !== "user") {
-        throw new Error("内置主题不能删除。");
+        throw new Error(tr("plat.preview.chat.themeBuiltinDelete"));
       }
       previewThemeManifests.delete(id);
       previewThemeSources.delete(id);

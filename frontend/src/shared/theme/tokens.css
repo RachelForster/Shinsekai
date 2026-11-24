@@ -2,16 +2,78 @@
   --radius-control: 7px;
   --radius-panel: 10px;
   --radius-toast: 12px;
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 20px;
-  --space-6: 24px;
+
+  /* Desktop spacing scale (preserves exact existing desktop geometry) */
+  --desktop-space-1: 4px;
+  --desktop-space-2: 8px;
+  --desktop-space-3: 12px;
+  --desktop-space-4: 16px;
+  --desktop-space-5: 20px;
+  --desktop-space-6: 24px;
+  --desktop-page-gutter: 28px;
+  --desktop-section-gap: 20px;
+  --desktop-card-padding: 20px;
+
+  /* Mobile spacing scale (Android Material 3 4dp/8dp Gestalt hierarchy) */
+  --mobile-space-1: 4px;
+  --mobile-space-2: 8px;
+  --mobile-space-3: 12px;
+  --mobile-space-4: 16px;
+  --mobile-space-5: 18px;
+  --mobile-space-6: 24px;
+  --mobile-page-gutter: 14px;
+  --mobile-section-gap: 14px;
+  --mobile-card-padding: 16px;
+  --mobile-inner-padding: 12px;
+  --mobile-form-gap: 12px;
+  --mobile-field-gap: 6px;
+
+  /* Mobile Chat Stage 5-zone spacing & typography tokens */
+  --mobile-stage-gutter: 12px;
+  --mobile-stage-top-bar-height: 40px;
+  --mobile-stage-hud-gap: 8px;
+  --mobile-stage-stack-gap: 8px;
+  --mobile-stage-toolbar-height: 34px;
+  --mobile-stage-input-height: 48px;
+  --mobile-stage-dialog-font: 15.5px;
+  --mobile-stage-name-font: 14px;
+  --mobile-stage-option-font: 14.5px;
+
+  /* Desktop typography sizes (preserves exact desktop sizing) */
+  --desktop-text-xs: 11px;
+  --desktop-text-sm: 12px;
+  --desktop-text-base: 13px;
+  --desktop-text-md: 14px;
+  --desktop-text-lg: 15px;
+  --desktop-text-xl: 18px;
+
+  /* Mobile typography sizes (Android M3 Compact readable type scale) */
+  --mobile-text-xs: 11.5px;
+  --mobile-text-sm: 12.5px;
+  --mobile-text-base: 13.5px;
+  --mobile-text-md: 14.5px;
+  --mobile-text-lg: 16px;
+  --mobile-text-xl: 17.5px;
+
+  /* Active semantic spacing & font-size tokens (bound to desktop by default) */
+  --space-1: var(--desktop-space-1);
+  --space-2: var(--desktop-space-2);
+  --space-3: var(--desktop-space-3);
+  --space-4: var(--desktop-space-4);
+  --space-5: var(--desktop-space-5);
+  --space-6: var(--desktop-space-6);
+
+  --text-xs: var(--desktop-text-xs);
+  --text-sm: var(--desktop-text-sm);
+  --text-base: var(--desktop-text-base);
+  --text-md: var(--desktop-text-md);
+  --text-lg: var(--desktop-text-lg);
+  --text-xl: var(--desktop-text-xl);
+
   --shell-sidebar-width: 232px;
   --shell-brand-height: 76px;
   --settings-content-max-width: 1120px;
-  --settings-page-gutter: 28px;
+  --settings-page-gutter: var(--desktop-page-gutter);
   --shell-topbar-height: 50px;
   --shell-bottombar-height: 22px;
   --focus-ring: 0 0 0 2px var(--color-accent-border);

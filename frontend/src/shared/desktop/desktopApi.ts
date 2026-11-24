@@ -134,8 +134,70 @@ const desktopMiniAvatarInputShortcutEvent = "shinsekai:mini-avatar-input-shortcu
 const desktopUpdateProgressEvent = "shinsekai:update-progress";
 const desktopRuntimeProgressEvent = "shinsekai:runtime-progress";
 
+export interface TauriStandaloneHttpRequest {
+  url: string;
+  method: string;
+  headers?: Record<string, string>;
+  bodyBase64?: string;
+  timeoutMs?: number;
+}
+
+export interface TauriStandaloneHttpResponse {
+  status: number;
+  headers: Record<string, string>;
+  bodyBase64: string;
+}
+
+let tauriNativeHttpUnsupported = false;
+
+export function hasTauriNativeHttp(): boolean {
+  if (typeof window === "undefined" || tauriNativeHttpUnsupported) {
+    return false;
+  }
+  return Boolean(window.__TAURI_INTERNALS__);
+}
+
+export function markTauriNativeHttpUnsupported(): void {
+  tauriNativeHttpUnsupported = true;
+}
+
+export function resetTauriNativeHttpStateForTests(): void {
+  tauriNativeHttpUnsupported = false;
+}
+
+export function isUnknownTauriCommandError(error: unknown): boolean {
+  const message = (error instanceof Error ? error.message : String(error ?? "")).toLowerCase();
+  if (!message) {
+    return false;
+  }
+  if (message.includes("unknown command") || message.includes("not allowed by acl")) {
+    return true;
+  }
+  return (
+    message.includes("standalone_http_request") &&
+    (message.includes("not found") ||
+      message.includes("not registered") ||
+      message.includes("unimplemented") ||
+      message.includes("not allowed"))
+  );
+}
+
+export async function invokeTauriStandaloneHttp(
+  request: TauriStandaloneHttpRequest,
+): Promise<TauriStandaloneHttpResponse> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<TauriStandaloneHttpResponse>("standalone_http_request", { request });
+}
+
 function detectTauriDesktopEnvironment() {
   if (typeof window === "undefined") {
+    return false;
+  }
+  const explicitTarget = import.meta.env.VITE_SHINSEKAI_TARGET?.trim().toLowerCase();
+  if (explicitTarget === "mobile" || explicitTarget === "toy") {
+    return false;
+  }
+  if (typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent ?? "")) {
     return false;
   }
   return (

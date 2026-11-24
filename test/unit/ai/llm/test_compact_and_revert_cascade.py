@@ -75,7 +75,13 @@ class _FakeRoleplayAndCompactionAdapter:
             text = f"阶段总结#{idx}：已记录前序约会行程（共第{idx}次压缩）。"
             return SimpleNamespace(content=text, text=text)
 
-        if "extract durable long-term memories" in sys_text.lower() or "Return JSON array only" in user_text:
+        if (
+            "extract durable long-term memories" in sys_text.lower()
+            or "长期记忆" in sys_text
+            or "長期記憶" in sys_text
+            or "Return JSON array only" in user_text
+            or "仅返回 JSON 数组" in user_text
+        ):
             self.extract_calls.append(user_text)
             distinct_facts = [
                 "压缩归档事实Alpha：Mio清晨在站前广场挥手迎接用户",

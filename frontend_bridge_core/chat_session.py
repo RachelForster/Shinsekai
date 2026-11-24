@@ -27,6 +27,7 @@ from application.chat.host.projection import (
     _chat_stream_initial_snapshot,
 )
 from application.chat.composition import (
+    LAUNCH_FAILURE_PREFIX,
     _chat_process_running,
     _chat_snapshot,
     _launch_chat as _launch_runtime_chat,
@@ -52,6 +53,7 @@ from application.story.coordinator import (
     release_unbound_story_session,
 )
 from frontend_bridge_core.effects import EffectConfigAdapter
+from frontend_bridge_core.i18n_helpers import bridge_error, bridge_tr
 from sdk.logging import get_logger
 
 
@@ -121,11 +123,11 @@ def wait_for_chat_runtime_ready(
         return
     if wait_for_producer(session_id, timeout=timeout):
         return
-    error = RuntimeError("启动失败: 实时聊天会话未就绪，请稍后重试。")
+    error = bridge_error(RuntimeError, state, "chat_not_ready")
     lifecycle = _session_lifecycle(state)
     launch_id = lifecycle.adopt_current().launch_id
     try:
-        stop_chat(state, reason="聊天会话启动超时。")
+        stop_chat(state, reason=bridge_tr(state, "chat.start_timeout"))
     finally:
         try:
             lifecycle.release_stream(session_id)
@@ -154,16 +156,22 @@ def _complete_chat_launch(
             message,
             extra={"runtimeDependencyError": dependency_error},
         )
-    if message.startswith("启动失败"):
+    if message.startswith(LAUNCH_FAILURE_PREFIX):
         lifecycle.failed(message)
         raise RuntimeError(message)
     state.chat_session = {
         **state.chat_session,
         **session_base,
-        "sessionId": (
-            str(stream_info.get("sessionId") or "") if use_react_runtime else ""
-        ),
+        "sessionId": "",
     }
+    initial_background_path = str(
+        _chat_snapshot(state, "idle", "").get("backgroundPath") or ""
+    )
+    if use_react_runtime:
+        state.chat_session = {
+            **state.chat_session,
+            "sessionId": str(stream_info.get("sessionId") or ""),
+        }
     if (
         use_react_runtime
         and stream_info.get("sessionId")
@@ -172,7 +180,9 @@ def _complete_chat_launch(
         state.chat_stream.update_session_snapshot(
             str(stream_info["sessionId"]),
             {
-                "backgroundPath": _chat_snapshot(state).get("backgroundPath", ""),
+                "backgroundPath": initial_background_path,
+                "bgmPath": "",
+                "cgPath": "",
                 "characterName": session_base["characterName"],
                 "dialogText": "",
                 "historyPath": session_base["historyPath"],
@@ -253,7 +263,7 @@ def _launch_chat_locked(
     init_stream_info: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     if _chat_runtime_closing(state):
-        raise RuntimeError("聊天会话正在关闭，请稍后再启动。")
+        raise bridge_error(RuntimeError, state, "chat_closing")
     mobile_access_enabled = bool(body.get("enableMobileAccess", False))
     if not mobile_access_enabled:
         configure_mobile_access(state, enabled=False)
@@ -281,12 +291,7 @@ def _launch_chat_locked(
         state,
         body.get("characters") or [],
     )
-    from config.schema import is_self_persona_name
     player_character = resolve_player(state.config_manager, characters, body.get("playerCharacter"))
-    if not is_self_persona_name(player_character) and any(
-        not is_self_persona_name(name) for name in characters
-    ):
-        characters = [name for name in characters if not is_self_persona_name(name)]
     primary_characters = _resolve_launch_primary_characters(
         state,
         body,
@@ -294,7 +299,7 @@ def _launch_chat_locked(
         player_character,
     )
     first_character = next(
-        (name for name in characters if name != player_character and not is_self_persona_name(name)),
+        (name for name in characters if name != player_character),
         "",
     )
     init_sprite_path = initial_sprite_path_for_characters(
@@ -316,7 +321,7 @@ def _launch_chat_locked(
             state,
             None,
             "",
-            extra={"statusMessage": "进程已经在运行中。"},
+            extra={"statusMessage": bridge_tr(state, "chat.already_running")},
         )
     start_fresh_history = bool(body.get("resetHistory"))
     history_target = plan_chat_history_launch(
@@ -489,7 +494,7 @@ def _resume_last_chat_locked(
     enable_mobile_access: bool | None = None,
 ) -> dict[str, Any]:
     if _chat_runtime_closing(state):
-        raise RuntimeError("聊天会话正在关闭，请稍后再启动。")
+        raise bridge_error(RuntimeError, state, "chat_closing")
     session = _load_template_session_payload(state) or {}
     mobile_access_enabled = (
         bool(session.get("enableMobileAccess", False))
@@ -509,7 +514,7 @@ def _resume_last_chat_locked(
         else _latest_history_json(state.history_dir)
     )
     if history_path is None:
-        raise FileNotFoundError("未找到聊天记录（*.json）。请先在主窗口进行过对话。")
+        raise bridge_error(FileNotFoundError, state, "chat_history_missing")
     saved_launch = saved_conversation_launch(state, history_path)
     if saved_launch is not None:
         if enable_mobile_access is not None:
@@ -525,9 +530,7 @@ def _resume_last_chat_locked(
             str(session.get("templateFileDropdown") or "_temp.txt"),
         )
     if template_parts is None:
-        raise FileNotFoundError(
-            "未找到可用模板（.txt）。请先在聊天模板页生成、保存或启动过一次。"
-        )
+        raise bridge_error(FileNotFoundError, state, "chat_template_missing")
     scenario, system_template, template_id = template_parts
     selected_characters = _resolve_template_character_names(
         state,
@@ -587,7 +590,7 @@ def _resume_last_chat_locked(
             state,
             None,
             "",
-            extra={"statusMessage": "进程已经在运行中。"},
+            extra={"statusMessage": bridge_tr(state, "chat.already_running")},
         )
     state.chat_session = {**state.chat_session, **session_base}
     initial_snapshot = _chat_stream_initial_snapshot(_chat_snapshot(state, "idle", ""))

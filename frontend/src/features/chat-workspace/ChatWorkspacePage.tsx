@@ -34,6 +34,10 @@ export function ChatWorkspacePage() {
   const configuring =
     params.get("tab") === "new" || Boolean(conversationId) || (!params.has("tab") && params.has("mode"));
   const mode = params.get("mode") === "story" ? "story" : "normal";
+  const isNormalEditor =
+    configuring &&
+    !(conversationId && (params.get("kind") === "story" || mode === "story")) &&
+    (Boolean(conversationId) || mode === "normal");
   const [creating, setCreating] = useState(false);
   const [kind, setKind] = useState<"normal" | "story">("normal");
   const [draftTitle, setDraftTitle] = useState("");
@@ -41,7 +45,7 @@ export function ChatWorkspacePage() {
   const [draftKey, setDraftKey] = useState(0);
   const back = () => setParams({ tab: "recent" });
   return (
-    <div className="chat-workspace">
+    <div className={`chat-workspace${isNormalEditor ? " chat-workspace--normal-editor" : ""}`}>
       {configuring ? (
         <>
           <header className="conversation-setup__header">
@@ -51,20 +55,20 @@ export function ChatWorkspacePage() {
             <ConversationTypeBadge
               kind={conversationId ? (params.get("kind") === "story" ? "story" : "normal") : mode}
             />
+            {conversationId ? (
+              <h1 className="conversation-setup__title">{t("conversation.settings")}</h1>
+            ) : (
+              <label className="conversation-setup__name conversation-setup__name--header">
+                <span className="conversation-setup__name-label">{t("conversation.optionalTitle")}</span>
+                <TextInput
+                  value={title}
+                  placeholder={t("conversation.titlePlaceholder")}
+                  maxLength={120}
+                  onChange={(event) => setTitle(event.target.value)}
+                />
+              </label>
+            )}
           </header>
-          {conversationId ? (
-            <h1 className="conversation-setup__title">{t("conversation.settings")}</h1>
-          ) : (
-            <label className="conversation-setup__name">
-              <span>{t("conversation.optionalTitle")}</span>
-              <TextInput
-                value={title}
-                placeholder={t("conversation.titlePlaceholder")}
-                maxLength={120}
-                onChange={(event) => setTitle(event.target.value)}
-              />
-            </label>
-          )}
           <Suspense fallback={<p role="status">{t("common.loading")}</p>}>
             {conversationId && (params.get("kind") === "story" || mode === "story") ? (
               <StorySettings key={conversationId} conversationId={conversationId} />

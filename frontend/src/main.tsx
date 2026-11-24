@@ -19,6 +19,8 @@ import "./shared/theme/global.css";
 import "./shared/theme/settings-base.css";
 import "./app/shell/shell.css";
 import "./shared/desktop/DesktopChrome.css";
+import "./app/shell/desktop-adapt.css";
+import "./app/shell/mobile-adapt.css";
 
 function logGlobalBridgeError(source: string, error: unknown) {
   if (!isDesktopBridgeConnectionError(error)) {

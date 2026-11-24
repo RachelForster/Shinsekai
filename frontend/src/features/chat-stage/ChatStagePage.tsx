@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import {
@@ -21,6 +21,12 @@ import type { ChatAttachmentInput, ChatOption, ChatSendPayload, ChatTurnOptions 
 import { normalizeThemeColor } from "../../shared/theme/appTheme";
 import { DEFAULT_TYPEWRITER_CPS } from "../../shared/theme/chatTheme";
 import { AlertDialog, useToast } from "../../shared/ui";
+import {
+  getRuntimeTarget,
+  isStandaloneRuntimeActive,
+  RUNTIME_MODE_CHANGE_EVENT,
+} from "../../shared/platform/runtimeTarget";
+import { RuntimeModeDialog } from "../runtime-mode/RuntimeModeDialog";
 import { closeChatRuntime } from "../chat-startup/runtimeState";
 import { ChatSoundPlayer, type ChatSoundPlayerHandle } from "./audio/ChatSoundPlayer";
 import type { VoicePlaybackSignal } from "./audio/soundPlayer";
@@ -28,7 +34,12 @@ import { ChatConfigDialog } from "./components/ChatConfigDialog";
 import { DialogStageControls } from "./components/DialogStageControls";
 import { HistoryDialog } from "./components/HistoryDialog";
 import { HistoryExportDialog } from "./replay/HistoryExportDialog";
-import { saveHistoryExport, type HistoryExportFormat, type HistoryExportResult } from "./replay/historyExport";
+import {
+  saveCgAsset,
+  saveHistoryExport,
+  type HistoryExportFormat,
+  type HistoryExportResult,
+} from "./replay/historyExport";
 import { ReplayControls, type ActiveReplay } from "./replay/ReplayControls";
 import { useReplayCapture } from "./replay/useReplayCapture";
 import { InputLayer } from "./components/InputLayer";
@@ -37,6 +48,7 @@ import { PluginPageOverlay } from "./components/PluginPageOverlay";
 import { ReactionBubble } from "./components/ReactionBubble";
 import { ScreenShareSettingsDialog } from "./components/ScreenShareSettingsDialog";
 import {
+  AmbientLayer,
   BackgroundLayer,
   BusyLayer,
   CgLayer,
@@ -54,7 +66,7 @@ import { TopStageTools } from "./components/TopStageTools";
 import { StoryDebugPanel } from "./components/StoryDebugPanel";
 import "./chat-stage.css";
 import { buildChatStageViewModel, chatStageReducer, emptyChatState } from "./chatState";
-import { isRemoteMobileAccessPage, layerClassName } from "./chatStageUtils";
+import { isRemoteMobileAccessPage, layerClassName, stageAssetUrl } from "./chatStageUtils";
 import { useChatStageCommands } from "./hooks/useChatStageCommands";
 import { useChatStageEvents } from "./hooks/useChatStageEvents";
 import { useChatStageKeyboardShortcuts } from "./hooks/useChatStageKeyboardShortcuts";
@@ -160,7 +172,9 @@ export function ChatStagePage() {
   const soundPlayerRef = useRef<ChatSoundPlayerHandle>(null);
   const historyReplayGenerationRef = useRef(0);
   const [conversationEditorOpen, setConversationEditorOpen] = useState(false);
+  const [runtimeModeOpen, setRuntimeModeOpen] = useState(false);
   const [dialogControlsLocked, setDialogControlsLocked] = useState(false);
+  const dialogToolbarLayerRef = useRef<HTMLDivElement>(null);
   const [runtimeConfig, setRuntimeConfig] = useState(readChatStageRuntimeConfig);
   const [attachmentUploadPending, setAttachmentUploadPending] = useState(false);
   const mainThemeColor = useMainThemeColor();
@@ -175,6 +189,7 @@ export function ChatStagePage() {
   const locallyDismissedPresentationRef = useRef<string | null>(null);
   const { showToast } = useToast();
   const { t } = useI18n();
+  const [savingCg, setSavingCg] = useState(false);
   const [historyExport, setHistoryExport] = useState<HistoryExportResult>();
   const exportHistory = useCallback(async (blob: Blob, format: HistoryExportFormat) => {
     setHistoryExport(await saveHistoryExport(blob, format));
@@ -268,6 +283,16 @@ export function ChatStagePage() {
   const viewModel = useMemo(() => buildChatStageViewModel(state), [state]);
   const { recentInputs, rememberInput } = useRecentUserInputs();
   const remoteMobileAccess = isRemoteMobileAccessPage();
+  const [standalone, setStandalone] = useState(() => isStandaloneRuntimeActive());
+  useEffect(() => {
+    const updateStandalone = () => setStandalone(isStandaloneRuntimeActive());
+    window.addEventListener(RUNTIME_MODE_CHANGE_EVENT, updateStandalone);
+    window.addEventListener("storage", updateStandalone);
+    return () => {
+      window.removeEventListener(RUNTIME_MODE_CHANGE_EVENT, updateStandalone);
+      window.removeEventListener("storage", updateStandalone);
+    };
+  }, []);
   const stageSprites = useMemo(
     () => (remoteMobileAccess ? limitChatStageSpritesToSlots(viewModel.sprites, 1) : viewModel.sprites),
     [remoteMobileAccess, viewModel.sprites],
@@ -294,7 +319,11 @@ export function ChatStagePage() {
     confirmClearHistory ||
     confirmRevertUserIndex != null;
   const clickThroughEnabled =
-    standaloneDesktopWindow && transparentBackground && !modalOpen && !(miniAvatarActive && miniInputPinned);
+    standaloneDesktopWindow &&
+    transparentBackground &&
+    !viewModel.layers.cg &&
+    !modalOpen &&
+    !(miniAvatarActive && miniInputPinned);
   const dialogToolbarPlacement =
     typeof themeStyle["--chat-dialog-toolbar-placement"] === "string"
       ? themeStyle["--chat-dialog-toolbar-placement"]
@@ -771,9 +800,41 @@ export function ChatStagePage() {
     setRuntimeConfig((current) => ({ ...current, auto: !current.auto }));
   }, []);
 
+  const exitCg = useCallback(() => {
+    dispatch({ type: "dismissCg" });
+    if (!state.sessionClosedReason && !activeReplay && !state.replay) {
+      void sendCommand({ type: "dismiss-cg" });
+    }
+  }, [activeReplay, sendCommand, state.replay, state.sessionClosedReason]);
+
+  const saveCg = useCallback(async () => {
+    const cgUrl = stageAssetUrl(viewModel.cgPath);
+    if (!cgUrl || savingCg) {
+      return;
+    }
+    setSavingCg(true);
+    try {
+      const saved = await saveCgAsset(cgUrl);
+      showToast({
+        kind: "success",
+        message: saved.path ?? saved.name,
+        title: t("chat.cg.saved"),
+      });
+    } catch (error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : undefined,
+        title: t("chat.cg.saveFailed"),
+      });
+    } finally {
+      setSavingCg(false);
+    }
+  }, [savingCg, showToast, t, viewModel.cgPath]);
+
   useChatStageKeyboardShortcuts({
     disabled: modalOpen,
     onAdvance: advanceDialog,
+    onExitCg: viewModel.layers.cg && !miniAvatarActive ? exitCg : undefined,
     onToggleAuto: toggleAuto,
   });
 
@@ -908,6 +969,37 @@ export function ChatStagePage() {
   }, [screenSharing]);
 
   const dialogSurfaceVisible = Boolean(activeReplay) || viewModel.layers.dialog || viewModel.layers.options;
+  useLayoutEffect(() => {
+    const toolbar = dialogToolbarLayerRef.current;
+    const stage = toolbar?.parentElement;
+    if (
+      !toolbar ||
+      !stage ||
+      !dialogSurfaceVisible ||
+      miniAvatarActive ||
+      activeReplay ||
+      dialogToolbarPlacement !== "input"
+    ) {
+      return;
+    }
+
+    // Keep the dialog stack clear of the detached input toolbar.
+    const updateClearance = () => {
+      const { height } = toolbar.getBoundingClientRect();
+      stage.style.setProperty(
+        "--chat-dialog-toolbar-clearance",
+        `calc(var(--chat-dialog-toolbar-layer-bottom) + ${height}px + var(--chat-dialog-toolbar-gap))`,
+      );
+    };
+    updateClearance();
+    const observer = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(updateClearance);
+    observer?.observe(toolbar);
+    return () => {
+      observer?.disconnect();
+      stage.style.removeProperty("--chat-dialog-toolbar-clearance");
+    };
+  }, [activeReplay, dialogSurfaceVisible, dialogToolbarPlacement, miniAvatarActive, runtimeConfig.windowScale]);
+
   const dialogToolbar = activeReplay ? (
     <ReplayControls
       replay={activeReplay}
@@ -946,13 +1038,13 @@ export function ChatStagePage() {
       onOpenHistory={openHistoryDialog}
       onOpenPluginPage={openPluginPage}
       onOpenScreenSettings={() => setScreenSettingsOpen(true)}
-      onToggleScreenShare={isRemoteMobileAccessPage() ? undefined : toggleScreenShare}
+      onToggleScreenShare={isRemoteMobileAccessPage() || standalone ? undefined : toggleScreenShare}
       onTurnOptionsChange={updateTurnOptions}
       outfitCatalog={state.outfitCatalog}
       outfits={state.outfits}
       screenShareStarting={screenShareStarting}
       screenSharing={screenSharing}
-      showAsrControl={!viewModel.layers.input}
+      showAsrControl={!viewModel.layers.input && !standalone}
       turnOptions={state.turnOptions}
       turnState={state.turnState}
     />
@@ -965,6 +1057,7 @@ export function ChatStagePage() {
         ref={stageRef}
         className="chat-stage"
         data-mini-avatar={miniAvatarActive ? "true" : "false"}
+        data-standalone={standalone ? "true" : "false"}
         data-replaying={activeReplay || state.replay ? "true" : undefined}
         data-replay-recording={capturingReplay ? "true" : undefined}
         data-background={transparentBackground ? "transparent" : "media"}
@@ -986,6 +1079,12 @@ export function ChatStagePage() {
           onCloseDesktopWindow={closeSurface}
           onEnterMiniAvatar={remoteMobileAccess ? undefined : enterMiniAvatarMode}
           onOpenPluginPage={openPluginPage}
+          onOpenRuntimeMode={!isTauriDesktop() ? () => setRuntimeModeOpen(true) : undefined}
+          onOpenWorkspace={
+            !isTauriDesktop()
+              ? () => navigate(getRuntimeTarget() === "toy" ? "/settings/characters" : "/settings/templates")
+              : undefined
+          }
           onThemePickerOpenChange={setThemePickerOpen}
           onTokenUsageOpenChange={setTokenUsageOpen}
           standaloneDesktopWindow={standaloneDesktopWindow}
@@ -1006,13 +1105,22 @@ export function ChatStagePage() {
           ref={soundPlayerRef}
           voicePaused={Boolean(state.replay?.paused)}
           key={state.sessionId}
+          ambientEffects={state.ambientEffects}
           bgmPath={viewModel.bgmPath}
           bgmVolume={runtimeConfig.bgmVolume}
           effectVolume={runtimeConfig.effectVolume}
           commands={state.audioCommands}
           onPlaybackSignal={handlePlaybackSignal}
         />
-        <CgLayer hidden={!viewModel.layers.cg || miniAvatarActive} path={viewModel.cgPath} />
+        <CgLayer
+          hidden={!viewModel.layers.cg || miniAvatarActive}
+          onExit={exitCg}
+          onSave={() => void saveCg()}
+          path={viewModel.cgPath}
+          saving={savingCg}
+          standaloneDesktopWindow={standaloneDesktopWindow}
+        />
+        {!miniAvatarActive ? <AmbientLayer effects={state.ambientEffects ?? []} hidden={false} layer="back" /> : null}
         {!miniAvatarActive ? <EffectImageLayer effect={state.effectImage} /> : null}
         <SpriteLayer
           hidden={!viewModel.layers.sprites || miniAvatarActive}
@@ -1024,6 +1132,7 @@ export function ChatStagePage() {
           thinkingCharacterName={viewModel.thinkingCharacterName}
           sprites={stageSprites}
         />
+        {!miniAvatarActive ? <AmbientLayer effects={state.ambientEffects ?? []} hidden={false} layer="front" /> : null}
         <ReactionBubble
           hidden={
             miniAvatarActive ||
@@ -1097,6 +1206,7 @@ export function ChatStagePage() {
             data-placement={activeReplay ? "input" : dialogToolbarPlacement}
             data-reveal={dialogToolbarReveal}
             hidden={!dialogSurfaceVisible}
+            ref={dialogToolbarLayerRef}
           >
             {dialogToolbar}
           </div>
@@ -1245,6 +1355,7 @@ export function ChatStagePage() {
         {historyExport && <HistoryExportDialog result={historyExport} onClose={() => setHistoryExport(undefined)} />}
         {screenSettingsOpen && screenShareStream ? (
           <ScreenShareSettingsDialog
+            currentScene={state.perception?.rpCache?.currentScene}
             ocrEnabled={Boolean(state.perception?.ocrEnabled)}
             onClose={() => setScreenSettingsOpen(false)}
             onScopeChange={changeOcrScope}
@@ -1363,6 +1474,7 @@ export function ChatStagePage() {
         open={confirmRevertUserIndex != null}
         title={t("chat.history.revertConfirmTitle")}
       />
+      {runtimeModeOpen ? <RuntimeModeDialog onClose={() => setRuntimeModeOpen(false)} open={runtimeModeOpen} /> : null}
     </>
   );
 }

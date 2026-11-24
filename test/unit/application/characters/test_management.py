@@ -398,3 +398,33 @@ def test_export_returns_transport_neutral_path_result(tmp_path, monkeypatch):
 
     assert result == CharacterExportResult(path="output/Mika.char")
     assert exported == [(tmp_path / "output" / "Mika.char").as_posix()]
+
+
+def test_save_emotion_tags_and_sprite_scale_persist_without_localized_prefix_parsing(tmp_path):
+    character = make_character()
+    use_case = make_use_case(character, tmp_path)
+
+    updated = execute(
+        use_case,
+        CharacterOperation.SAVE_EMOTION_TAGS,
+        {"name": "Mika", "emotionTags": "立绘 1：微笑"},
+    )
+    assert updated["emotion_tags"] == "立绘 1：微笑"
+    assert character.emotion_tags == "立绘 1：微笑"
+
+    scaled = execute(
+        use_case,
+        CharacterOperation.SAVE_SPRITE_SCALE,
+        {"name": "Mika", "scale": 1.25},
+    )
+    assert scaled["sprite_scale"] == pytest.approx(1.25)
+    assert character.sprite_scale == pytest.approx(1.25)
+
+    with pytest.raises(ValueError, match="character name is required"):
+        execute(use_case, CharacterOperation.SAVE_EMOTION_TAGS, {"name": "", "emotionTags": "tag"})
+    with pytest.raises(ValueError, match="emotion tags are required"):
+        execute(use_case, CharacterOperation.SAVE_EMOTION_TAGS, {"name": "Mika", "emotionTags": ""})
+    with pytest.raises(ValueError, match="character name is required"):
+        execute(use_case, CharacterOperation.SAVE_SPRITE_SCALE, {"name": "", "scale": 1.0})
+    with pytest.raises(KeyError, match="Unknown"):
+        execute(use_case, CharacterOperation.SAVE_SPRITE_SCALE, {"name": "Unknown", "scale": 1.0})

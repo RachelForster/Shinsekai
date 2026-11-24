@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import type { PluginManifest, PluginUIPage } from "../../../entities/plugin/types";
+import type { PluginCatalogItem, PluginManifest, PluginUIPage } from "../../../entities/plugin/types";
 import {
   catalogInstallSource,
   fallbackPluginUiPages,
+  findCatalogInstalledMatch,
+  findInstalledCatalogMatch,
   githubUrl,
+  installedPluginDescription,
+  installedPluginDisplayName,
+  normalizePluginKey,
   pluginActionId,
   pluginConfigGroupsToFormGroups,
   pluginConfigInitialValues,
@@ -181,5 +186,104 @@ describe("plugin manager utilities", () => {
     expect(visible({ adapter: "local", enabled: false })).toBe(false);
     expect(visible({ adapter: "local" })).toBe(false);
     expect(visible({ adapter: "local", enabled: true })).toBe(true);
+  });
+
+  it("preserves Unicode letters in normalizePluginKey and never cross-matches CJK plugins sharing an ASCII prefix", () => {
+    expect(normalizePluginKey("GPT-SoVITS 多参考语音插件")).toBe("gpt_sovits_多参考语音插件");
+    expect(normalizePluginKey("GPT-SoVITS 批量训练插件")).toBe("gpt_sovits_批量训练插件");
+
+    const localEmotionPlugin: PluginManifest = {
+      author: "LocalDev",
+      description: "支持多参考情绪音频切换的本地语音合成插件。",
+      directory: "plugins/gpt_sovits_emotion_voice",
+      enabled: true,
+      entry: "plugins.gpt_sovits_emotion_voice.plugin:GptSovitsEmotionVoicePlugin",
+      id: "com.local.gpt_sovits_emotion_voice",
+      install: {
+        sourceLabel: "官方包体 (R2)",
+        sourceType: "package",
+      },
+      loaded: true,
+      permissions: [],
+      settingsPages: [],
+      slots: [],
+      title: "GPT-SoVITS 多参考语音插件",
+      toolsTabs: [],
+      version: "0.6.1",
+    };
+
+    const marketBatchTrainer: PluginCatalogItem = {
+      author: "RachelForster",
+      description: "批量训练 GPT-SoVITS 模型。",
+      displayName: "GPT-SoVITS 批量训练插件",
+      downloaded: false,
+      entry: "plugins.shinsekai_gptsovits_batch_trainer.plugin:BatchTrainerPlugin",
+      id: "shinsekai_gptsovits_batch_trainer",
+      installed: false,
+      name: "shinsekai_gptsovits_batch_trainer",
+      repo: "RachelForster/shinsekai_gptsovits_batch_trainer",
+      shortDescription: "市场里的批量训练插件简介。",
+      version: "0.2.5",
+    };
+
+    const r2NamedCatalog: PluginCatalogItem = {
+      ...marketBatchTrainer,
+      displayName: "R2 Plugin",
+      entry: "plugins.r2_demo.plugin:R2Plugin",
+      id: "r2",
+      name: "r2",
+      repo: "owner/r2",
+    };
+
+    expect(findInstalledCatalogMatch(localEmotionPlugin, [marketBatchTrainer, r2NamedCatalog])).toBeUndefined();
+    expect(findCatalogInstalledMatch(marketBatchTrainer, [localEmotionPlugin])).toBeUndefined();
+    expect(installedPluginDisplayName(localEmotionPlugin, undefined)).toBe("GPT-SoVITS 多参考语音插件");
+    expect(installedPluginDescription(localEmotionPlugin, undefined, "unavailable")).toBe(
+      "支持多参考情绪音频切换的本地语音合成插件。",
+    );
+  });
+
+  it("prefers installed plugin title and description when explicitly authored, while enriching fallback defaults from matched catalog", () => {
+    const matchedCatalog: PluginCatalogItem = {
+      author: "Shinsekai",
+      description: "Market full description",
+      displayName: "Moondream 视觉模型插件",
+      downloaded: true,
+      entry: "plugins.moondream_vision.plugin:MoondreamVisionPlugin",
+      id: "moondream_vision",
+      installed: true,
+      name: "moondream_vision",
+      repo: "RachelForster/moondream_vision",
+      shortDescription: "Market short description",
+      version: "0.2.0",
+    };
+
+    const defaultNamedPlugin: PluginManifest = {
+      ...plugin,
+      description: "",
+      directory: "plugins/moondream_vision",
+      entry: "plugins.moondream_vision.plugin:MoondreamVisionPlugin",
+      id: "com.shinsekai.moondream_vision",
+      loaded: true,
+      title: "moondream vision",
+    };
+
+    expect(findInstalledCatalogMatch(defaultNamedPlugin, [matchedCatalog])).toBe(matchedCatalog);
+    expect(installedPluginDisplayName(defaultNamedPlugin, matchedCatalog)).toBe("Moondream 视觉模型插件");
+    expect(installedPluginDescription(defaultNamedPlugin, matchedCatalog, "unavailable")).toBe(
+      "Market short description",
+    );
+
+    const customAuthoredPlugin: PluginManifest = {
+      ...defaultNamedPlugin,
+      description: "本地 0.3.0 自定义描述",
+      title: "Moondream 本地增强版",
+      version: "0.3.0",
+    };
+
+    expect(installedPluginDisplayName(customAuthoredPlugin, matchedCatalog)).toBe("Moondream 本地增强版");
+    expect(installedPluginDescription(customAuthoredPlugin, matchedCatalog, "unavailable")).toBe(
+      "本地 0.3.0 自定义描述",
+    );
   });
 });

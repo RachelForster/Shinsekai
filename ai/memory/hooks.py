@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import deque
 from datetime import datetime
+import inspect
 import logging
 import os
 import threading
@@ -11,6 +12,14 @@ import time
 from collections.abc import Callable, Sequence
 from typing import Any
 
+from ai.llm.template.integrations.localization import LocaleInput, resolve_dynamic_locale
+from ai.llm.template.session import (
+    ALL_MEMORY_CONTEXT_MARKERS,
+    MEMORY_CONTEXT_MARKER,
+    MEMORY_CONTEXT_SPEC,
+    MemoryContextPromptContext,
+    contains_any_context_marker,
+)
 from ai.memory.chunking import DEFAULT_DIALOGUE_CHUNK_TOKENS
 from ai.memory.extraction import MemoryExtractor
 from ai.memory.operations import (
@@ -44,7 +53,7 @@ DEFAULT_INJECTION_COOLDOWN_TURNS = 3
 DEFAULT_INIT_POLL_INTERVAL_SECONDS = 0.45
 DEFAULT_INIT_TIMEOUT_SECONDS = 600.0
 MEMORY_BEFORE_CHAT_PRIORITY = 150
-_INJECTION_MARKER = "[Shinsekai long-term memory context]"
+_INJECTION_MARKER = MEMORY_CONTEXT_MARKER
 _SYSTEM_CHARACTER_NAMES = {"cot", "narr", "choice", "stat", "scene", "bgm", "cg"}
 
 
@@ -144,6 +153,7 @@ class MemoryAutoHooks:
         clock_func=time.time,
         last_turn_at: Callable[[], float] | None = None,
         memory_mode_start_seq: int | None = None,
+        locale: LocaleInput = None,
     ) -> None:
         self.llm_adapter = llm_adapter
         self.character_names = [
@@ -185,7 +195,8 @@ class MemoryAutoHooks:
             maxlen=self.cooldown_turns
         )
         self._workers: list[threading.Thread] = []
-        self._extractor = MemoryExtractor(llm_adapter)
+        self.locale = locale
+        self._extractor = MemoryExtractor(llm_adapter, locale=locale)
         self._planner = RuleRecallPlanner(default_limit=self.search_limit)
 
     @property
@@ -300,10 +311,7 @@ class MemoryAutoHooks:
         user_text, source, prev_assistant_text, in_window_seqs = turn_meta
         if not user_text:
             return
-        if any(
-            _INJECTION_MARKER in str(message.get("content") or "")
-            for message in context.messages
-        ):
+        if contains_any_context_marker(context.messages, ALL_MEMORY_CONTEXT_MARKERS):
             return
 
         now_ts = float(self._clock())
@@ -394,7 +402,17 @@ class MemoryAutoHooks:
             return
 
         try:
-            recall_result = self.recall_func(turn_input)
+            recall_kwargs: dict[str, Any] = {}
+            if self.locale is not None:
+                try:
+                    params = inspect.signature(self.recall_func).parameters
+                    if "locale" in params or any(
+                        p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()
+                    ):
+                        recall_kwargs["locale"] = resolve_dynamic_locale(self.locale)
+                except (TypeError, ValueError):
+                    pass
+            recall_result = self.recall_func(turn_input, **recall_kwargs)
         except Exception:
             logger.exception("automatic memory turn recall failed")
             return
@@ -801,12 +819,13 @@ class MemoryAutoHooks:
         return (user_text, source, prev_assistant, frozenset(window_seqs))
 
     def _format_memory_context(self, memories: list[str]) -> str:
-        body = "\n".join(f"- {memory}" for memory in memories[: self.search_limit])
-        return (
-            f"{_INJECTION_MARKER}\n"
-            "Relevant long-term memories for this turn. Use them only as background; "
-            "do not mention the retrieval process unless the user asks.\n"
-            f"{body}"
+        active_locale = resolve_dynamic_locale(self.locale)
+        return MEMORY_CONTEXT_SPEC.render_system(
+            MemoryContextPromptContext(
+                items=tuple(memories[: self.search_limit]),
+                tiered=False,
+                locale=active_locale,
+            )
         )
 
     def _live_workers(self) -> list[threading.Thread]:
@@ -829,6 +848,7 @@ def install_memory_hooks(
     queue: MemoryWriteQueue | None = None,
     last_turn_at: Callable[[], float] | None = None,
     memory_mode_start_seq: int | None = None,
+    locale: LocaleInput = None,
 ) -> MemoryAutoHooks | None:
     if dispatcher is None or not _env_enabled("SHINSEKAI_MEMORY_AUTO_ENABLED", True):
         return None
@@ -841,6 +861,7 @@ def install_memory_hooks(
         queue=queue,
         last_turn_at=last_turn_at,
         memory_mode_start_seq=memory_mode_start_seq,
+        locale=locale,
         extract_interval_turns=_env_int(
             "SHINSEKAI_MEMORY_EXTRACT_INTERVAL_TURNS",
             DEFAULT_EXTRACT_INTERVAL_TURNS,

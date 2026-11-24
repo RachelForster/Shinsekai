@@ -384,7 +384,9 @@ def dispatch_file_request(
         try:
             index = int((query.get("segment") or [""])[0])
         except ValueError as exc:
-            raise ValueError("语音片段不存在") from exc
+            from frontend_bridge_core.i18n_helpers import bridge_error
+
+            raise bridge_error(ValueError, handler.state, "voice_segment_not_found") from exc
         handler._send_local_file(
             _chat_voice_source(handler.state, voice_id, index),
             send_body=send_body,

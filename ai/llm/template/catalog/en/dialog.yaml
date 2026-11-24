@@ -1,0 +1,163 @@
+narr_token: NARR
+err_no_characters: Select at least one character.
+name_sep: ', '
+preamble: |
+  Cast includes: {names}
+json_line_effect: '        "effect": "Effect label (optional). Use exactly one label or alias from the runtime effect catalog; fill it whenever the scene has an audible sound, a perceptible environment (rain, fog, wind, etc.), or an image that actually appears or is used. Use LEAVE for an actual character exit.",
+
+  '
+effects_header: '
+
+  Available effect labels:
+
+  '
+effect_type_audio: Audio
+effect_type_ambient: Ambient
+effect_type_ambient_audio: Ambient + audio
+effect_type_image: Image
+effect_type_image_audio: Image + audio
+voice_target_ja: Japanese
+voice_target_en: English
+voice_target_zh: Chinese
+voice_target_yue: Cantonese
+json_line_trans: '        "translate": "{target_voice_name} translation of the line (match system voice language)",
+
+  '
+json_head_top: "    For each reply, you MUST use JSON only, with this structure:\n    {\n    \"dialog\": [\n        {\n        \"character_name\": \"Character name\",\n        \"sprite\": \"str, two-digit sprite id, e.g. 01, 02\",\n"
+json_full_sprite_head_top: "    For each reply, you MUST use JSON only, with this structure:\n    {\n    \"dialog\": [\n        {\n        \"character_name\": \"Character name\",\n        \"sprite\": \"str, full sprite ID, e.g. 01, 02, 111\",\n"
+json_vibe_head_top: "    For each reply, you MUST use JSON only, with this structure:\n    {\n    \"dialog\": [\n        {\n        \"character_name\": \"Character name\",\n        \"vibe\": \"brief words describing expression, action, scene, or atmosphere\",\n"
+json_speech_line: '        "speech": "{example}",
+
+  '
+json_speech_example: The character’s line in English
+speech_lang_name: English
+json_foot: "\n        }\n    ]\n    }\n"
+sprites_header: '
+
+  Sprite sheets:
+
+  '
+sprites_count: "Sprites for {name} ({n}): \n"
+profile_header: '
+
+  Character profiles:
+
+  '
+profile_for: |
+  Profile for {name}:
+brief_header: '
+
+  Supporting character briefs:
+
+  '
+brief_for: '{name}: '
+relations_header: '
+
+  Character relationships:
+
+  '
+relations_description: |
+  Each group represents one character's understanding. Keep perspectives separate. Affinity ranges from -10 (dislike) to 10 (affection). The following is the character relationship graph.
+relations_owner: '{name}''s relationship graph:'
+relations_edge: '{source} toward {target}: {content}'
+relations_temperature: ' (affinity: {temperature})'
+player_portrait_vibe_value: the expression and action shown by the user this turn
+player_runtime_override: '
+
+  The current player options below override any conflicting earlier player-control rules.'
+self_persona_cast_runtime_override: '
+
+  The current cast options below override any conflicting earlier self-persona rules: "自设" is explicitly included as a standalone cast member in this conversation and may speak and display sprites like any other character.'
+player_ai_control: '
+
+  Player character: {name}
+
+  {setting}
+
+  AI may write new dialogue and replies for {name}, using ordinary dialog items with non-empty speech, just like other characters. Do not output only empty portrait items or repeat the user''s words this turn. Do not decide key actions or major choices for the user. Use {portrait_field} to select the player''s expression; portrait-only items use {portrait_value} and empty speech. The user''s explicit words, actions, and corrections take precedence.
+
+  '
+player_speech_contract: 'To read the player''s input aloud, add a separate dialog item before the portrait item: {{"character_name":"{name}",{speech_media},"speech":"the exact words already spoken by the user this turn","translate":"a {target_voice_name} translation of those words"}}. speech must repeat only words the user actually entered, removing actions in parentheses, brackets, or asterisks and explicitly marked thoughts. Never add or rewrite words.'
+player_speech_disabled: Do not output a speech item for {name}; the player portrait item's speech must be empty.
+player_control: '
+
+  User-controlled player character: {name}
+
+  {setting}
+
+  The user''s message contains words, deliberate actions, and explicit thoughts already supplied for {name}. Never invent dialogue, answers, key actions, or choices for {name}, including through narration, indirect speech, or another character. After another character asks a question or presents a choice, wait for the user.
+
+  When the player''s expression changes, add a normal dialog item before other characters: {{"character_name":"{name}","{portrait_field}":"{portrait_value}","speech":""}}. This item updates the player portrait and is not visible dialogue; omit it when the expression does not change. {speech_contract}
+
+  Narration involving the player should name {name}. CHOICE entries are suggestions not yet performed.
+
+  '
+scene_block_header: |
+  Scenes:
+scene_count: "There are {n} available scenes: \n"
+bgm_block_header: |
+  BGM:
+bgm_count: "There are {n} BGM tracks: \n"
+r_format: 'Format: Output must be valid JSON only, with no extra commentary, explanation, or greetings outside the JSON object.'
+r_user_display_name_tool: 'User nameplate: if the user scenario or system rules explicitly state the user''s name, call-sign, or preferred form of address, call set_user_display_name(name=...) before the first visible dialog line. Do not infer a name.'
+r_cname: 'character_name: Must be one of: {names} or other in-story names, or the fixed tokens: {cot_part}{fixed_roles}{opt_scene}{opt_bgm}{opt_cg} (legacy CJK names for the same roles are also accepted at runtime).'
+r_sprite: 'Sprites: The sprite field must be a two-digit id (e.g. 01, 02) chosen to match tone and emotion of the line.'
+r_full_sprite: 'Sprites: Use the full listed sprite ID as a string (e.g. 01, 02, or 111) to match the line''s tone and emotion. Use -1 when the sprite should stay the same.'
+r_vibe: 'Vibe: use brief, specific words describing the character''s current expression and action, or a scene''s or track''s mood and atmosphere. Do not use asset ids.'
+r_non_sprite: When character_name is one of {fixed_roles_non_sprite}, set sprite to -1.
+r_non_vibe: When character_name is one of {fixed_roles_non_sprite}, use an empty vibe string.
+r_scene: 'Scene change: When character_name is {scn}, put the scene id in sprite to switch; leave other fields empty.'
+r_scene_vibe: 'Scene change: When character_name is {scn}, briefly describe the target place, time, weather, and atmosphere in vibe; leave speech empty.'
+r_bgm: 'BGM change: When character_name is {bgm_t}, put the BGM id in sprite; change sparingly. Other fields empty.'
+r_bgm_vibe: 'BGM change: When character_name is {bgm_t}, briefly describe the desired musical mood, pace, and atmosphere in vibe; leave speech empty and change sparingly.'
+r_speech: 'Speech: The speech field must be written in {speech_lang_name} for the character’s lines; the wording and tone must match the character’s personality, voice, and background.'
+r_array: 'Array: All beats go into dialog in time order. The array must have at least two items.'
+r_speech_max_chars: 'Speech length: In each assistant reply, every dialog item''s speech string must not exceed {n} Unicode characters (including spaces and punctuation). Use an empty string when there is no spoken line.'
+r_dialog_max_items: 'Dialog length: In each assistant reply, the dialog array must contain at most {n} items (each item is one JSON dialog object).'
+r_narration: '{narr}: use for action, scene flavor, and mood text—no sprite line.'
+r_choice_pos: 'Choices: the last item in dialog must be {choice}.'
+r_choice_format: 'Choice: in {choice}’s speech, split sub-options with ''/''. Only plain, selectable lines—no extra labels.'
+r_choice_balance: 'Balance: one silly, one rational, one middle-ground; all must match the story and cast.'
+r_stats: 'Stats: {stat} may appear near the start of dialog. When character_name is {stat}, every speech line must use icon|label|value|max; max is optional. Allowed icons: heart, shield, zap, star, sparkles, target, coins, clock, gauge. Example: heart|HP|72|100\nzap|Energy|30|100. Do not emit HTML, colors, or extra commentary.'
+r_cg: 'CG: For a highlight, set character_name to {cg} and use speech as an SD prompt: highres, masterpiece, 8k, bestscores, count (e.g. 1girl), name, hair, eyes, clothes, expression, action, scene. “looking at the viewer” allowed. For background-only: quality first, no person, pure scenery, then details.'
+r_translate: 'translate: a {target_voice_name} rendering of the speech line only, matching the system target voice language; do not translate stage directions or narration.'
+r_effect: 'When a character explicitly leaves or the player explicitly changes location alone, put LEAVE on that character''s last dialogue line before they leave so their sprite is removed after it. Keep companions on stage when they explicitly move together or only the backdrop changes. Once a character is absent, keep them out of the dialogue until narration establishes their return or pursuit. If there is no departure line, do not invent one just to attach LEAVE or put it on narration or another character. Effect: optional; use exactly one runtime catalog label (comma-separated terms on a line are aliases). Labels trigger audio, an image, or both. A plain label or before:<label> triggers once before dialog; after:<label> triggers after it. loop:<label> starts looping audio; stop:<label> stops it; neither is for images. Fill an effect whenever the current scene has an audible sound, a perceptible environment, or an image that actually appears, is shown, or is used. Mark the first state change of a persistent sound; if you are unsure whether it is already playing, repeating loop:<label> is harmless because the system deduplicates it. Stop the same label when that sound ends or becomes inaudible. Omit effects for metaphors, comparisons, memories, imagination, hypotheticals, plans, negation, reports, or mere mentions. Use identity-check or identity-reveal effects only when a check actually happens and produces a result; do not use them for guesses, accusations, arguments, or reported claims between characters. Ambient effects: when the scene has a perceptible environment (rain, snow, fog, wind, falling leaves, water, etc.), use ambient:<label> to start the full-screen ambient effect (looping its bound audio, if any). Repeating the same ambient label is harmless because the system deduplicates it; if you are unsure whether it is already active, label it anyway. Use expose:<label> when characters are affected by the environment (for example, getting rained on), and shelter:<label> when they are sheltered (umbrella, indoors, under an awning); the layer may switch as the story changes. Stop it with ambient-stop:<label> or ambient-stop-all when the environment ends. When entering a new scene, changing the background, or when weather first appears, label the current environment on the first relevant dialogue or narration line. Omit ambient effects only for metaphors, memories, imagination, hypotheticals, plans, negation, or reported mentions.'
+r_cot: 'Chain-of-thought: before visible dialog, add one entry with character_name {cot} and sprite -1 (not shown; logging). `speech` must follow `<摘要>...</摘要><动机>...</动机><剧情走向>...</剧情走向>` (three parts, engine tag names).'
+requirements_header: |
+  Requirements:
+tools_header: '
+
+  Callable tools (invoke via the model’s tool/function-calling API; use exact names):
+
+  '
+tools_intro: When helpful—and without breaking the JSON dialog rules above—you may call tools; follow your LLM provider’s tool protocol.
+tools_no_desc: (no description)
+tools_other_groups: '
+
+  Other available tool groups: {groups}. Use search_tools(keyword) to discover and enable them.'
+tools_item: '- **{name}**: {description}'
+tools_param_summary: ' (parameters: {summary}; * = required)'
+closing: '
+
+  Begin the scene: describe the situation and what the user is doing; {extra}then continue:
+
+  '
+closing_json_reminder: |
+  You must reply using the required JSON format.
+closing_tool_protocol: 'Tool protocol: When a tool is needed, invoke it through the model''s actual function/tool-calling interface. The JSON dialog format above applies only to the final user-facing reply and does not replace the tool protocol. Never pretend to call tools, fabricate tool responses, or invent retrieved results in character dialogue, narration, or JSON text. Do not claim an action is complete or a result has been obtained until the corresponding tool returns a real response explicitly confirming success. Report failures, cancellations, and pending results truthfully; character personality or plot requirements never justify pretending that an operation succeeded.'
+closing_extra_bgm: 'set initial scene and BGM, '
+self_persona_block: '[User Persona]
+
+  {setting}
+
+  (The above describes the background and preferences of the user conversing with you; naturally incorporate it in interaction, and do not output "Self Persona" as a standalone speaking character.)
+
+
+  '
+field_spec_required: |
+  - {name} ({field_type}, required): {description}{aliases_suffix}
+field_spec_optional: |
+  - {name} ({field_type}, optional): {description}{aliases_suffix}
+field_aliases: ' Aliases: {aliases}.'
+field_omitted: |
+  - {name}: Do not include this field in the output.

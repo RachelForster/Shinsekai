@@ -185,6 +185,11 @@ class AgentService:
             self._store.close()
             raise
 
+    @property
+    def store(self) -> AgentStore:
+        """Expose the owned ``AgentStore`` backend for lifecycle registration."""
+        return self._store
+
     def bind(
         self,
         origin: AgentOrigin,

@@ -7,6 +7,7 @@ from frontend_bridge_core.backgrounds import (
     _save_background_image_tags,
     _translate_background_fields,
 )
+from frontend_bridge_core.i18n_helpers import bridge_error, bridge_tr
 from frontend_bridge_core.image_annotations import run_background_image_auto_label
 from frontend_bridge_core.routes.router import (
     ApiRequest,
@@ -116,11 +117,11 @@ def _delete_background_route(request: ApiRequest) -> JsonResponse:
 def _auto_label_background_images(request: ApiRequest) -> TaskResponse:
     name = str(request.body.get("name") or "").strip()
     if not name:
-        raise ValueError("背景名称不能为空")
+        raise bridge_error(ValueError, request.state, "background_name_required")
     return TaskResponse(
         kind="vision-background-smart-label",
-        title=f"智能标注 {name} 的背景图片",
-        message="图片智能标注任务已排队。",
+        title=bridge_tr(request.state, "task.bg_auto_label_title", name=name),
+        message=bridge_tr(request.state, "task.image_auto_label_queued"),
         worker=lambda task_id: run_background_image_auto_label(
             request.state,
             task_id,

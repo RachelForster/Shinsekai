@@ -6,6 +6,7 @@ from collections.abc import Mapping
 import math
 import time
 
+from ai.llm.template.core import PROMPT_CATALOG
 from ai.memory.temporal import format_event_date_tag
 from sdk.adapters.memory import (
     SCOPE_CHAR_CANON,
@@ -99,6 +100,7 @@ class EbbinghausRetentionPolicy:
         *,
         now_ts: float = 0.0,
         offline_gap_seconds: float = 0.0,
+        locale: str | None = "zh_CN",
     ) -> RetentionState:
         """Evaluate retention score and format dual-granularity presentation text."""
         effective_now = float(now_ts) if now_ts > 0.0 else time.time()
@@ -108,10 +110,11 @@ class EbbinghausRetentionPolicy:
         gist = str(record.gist_text or "").strip() or detail
 
         if record.pinned or record.scope == SCOPE_CHAR_CANON or record.kind == "canon":
+            canon_label = PROMPT_CATALOG.translate("session.memory_tier_canon", locale=locale)
             return RetentionState(
                 retention=1.0,
                 tier="canon",
-                rendered_text=f"[固有设定{date_suffix}] {detail}",
+                rendered_text=f"[{canon_label}{date_suffix}] {detail}",
             )
 
         stability = self.stability_seconds(record)
@@ -129,13 +132,16 @@ class EbbinghausRetentionPolicy:
         tier: ClarityTier
         if retention >= self.clear_threshold:
             tier = "clear"
-            rendered = f"[清晰{date_suffix}] {detail}"
+            clear_label = PROMPT_CATALOG.translate("session.memory_tier_clear", locale=locale)
+            rendered = f"[{clear_label}{date_suffix}] {detail}"
         elif retention >= self.faded_threshold:
             tier = "faded"
-            rendered = f"[较久远·印象模糊{date_suffix}] {gist}"
+            faded_label = PROMPT_CATALOG.translate("session.memory_tier_faded", locale=locale)
+            rendered = f"[{faded_label}{date_suffix}] {gist}"
         else:
             tier = "dormant"
-            rendered = f"[唤醒的久远记忆{date_suffix}] {gist}"
+            dormant_label = PROMPT_CATALOG.translate("session.memory_tier_dormant", locale=locale)
+            rendered = f"[{dormant_label}{date_suffix}] {gist}"
 
         return RetentionState(
             retention=retention,

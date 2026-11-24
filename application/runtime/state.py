@@ -65,6 +65,7 @@ class BridgeState:
     story_generation_service: Any = field(default=None, kw_only=True)
     reminder_presenter: Any = field(default=None, kw_only=True)
     resource_urls: ResourceUrls = field(default_factory=UnconfiguredResourceUrls, kw_only=True)
+    stores: Any = field(default=None, kw_only=True)
     services: ApplicationServices = field(default_factory=ApplicationServices, kw_only=True)
     task_cancel_callbacks: dict[str, list[Any]] = field(default_factory=dict, kw_only=True)
     task_threads: dict[str, threading.Thread] = field(default_factory=dict, kw_only=True)

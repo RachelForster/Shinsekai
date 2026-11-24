@@ -13,6 +13,10 @@ export const characterEnMessages: Record<CharacterMessageKey, string> = {
   "player.speechHint":
     "Controls player audio, including AI-written dialogue. Turning off does not hide dialogue text. Actions and thoughts are silent.",
   "player.adjust": "Adjust player portrait",
+  "player.uploadAvatar": "Upload avatar",
+  "player.avatarLabel": "Player avatar",
+  "player.noSpritesHint": "No portrait image yet. Click Upload avatar to choose an image.",
+  "player.avatarUploaded": "Player avatar updated",
   "player.reset": "Reset crop",
   "player.sprite": "Expression sprite",
   "player.dragHint": "Drag to frame the head, or use the sliders. Save before switching sprites.",

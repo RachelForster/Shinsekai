@@ -2,6 +2,7 @@ import type { Sprite } from "./characterTypes";
 import type { ImageAutoLabelResult, TaskProgressOptions } from "./taskTypes";
 
 export interface Background {
+  id?: string;
   name: string;
   sprite_prefix: string;
   sprites: Sprite[];
@@ -26,6 +27,7 @@ export interface BackgroundTranslateInput {
 }
 
 export interface Effect {
+  id?: string;
   name: string;
   color: string;
   prompt_text: string;
@@ -34,6 +36,10 @@ export interface Effect {
   image_list: string[];
   image_tags: string;
   image_audio_list: string[];
+  ambient_list: string[];
+  ambient_tags: string;
+  ambient_audio_list: string[];
+  ambient_layers: string[];
 }
 
 export interface PlayerCharacterOptions {
@@ -47,7 +53,30 @@ export type MediaSelectionMode = "indexed" | "semantic";
 export type MemoryMode = "isolated" | "shared" | "inherit_readonly";
 export type InitialOutfitValue = string | { activeGroup: string; locked?: boolean };
 
+export interface UserPromptPreset {
+  id: string;
+  name: string;
+  group: string;
+  color?: string;
+  content: string;
+}
+
+export interface AppliedUserPromptPreset {
+  id: string;
+  name: string;
+  group?: string;
+  color?: string;
+  content: string;
+}
+
+export interface UserPromptPresetLibrary {
+  groups: string[];
+  presets: UserPromptPreset[];
+}
+
 export interface TemplateSummary extends PlayerCharacterOptions {
+  appliedPresets?: AppliedUserPromptPreset[];
+  baseScenario?: string;
   content: string;
   generationMessage?: string;
   id: string;
@@ -55,6 +84,7 @@ export interface TemplateSummary extends PlayerCharacterOptions {
   path: string;
   mediaSelectionMode?: MediaSelectionMode;
   scenario?: string;
+  selectedPresetIds?: string[];
   system?: string;
   updatedAt: string;
 }
@@ -85,7 +115,9 @@ export interface TemplateGenerateInput extends PlayerCharacterOptions {
 }
 
 export interface TemplateLaunchSession extends PlayerCharacterOptions {
+  appliedPresets?: AppliedUserPromptPreset[];
   background: string;
+  baseScenario?: string;
   characterPromptMode?: CharacterPromptMode;
   enableMobileAccess?: boolean;
   effectNames: string[];
@@ -101,9 +133,11 @@ export interface TemplateLaunchSession extends PlayerCharacterOptions {
   initialOutfits?: Record<string, InitialOutfitValue>;
   roomId: string;
   scenario: string;
+  selectedPresetIds?: string[];
   primaryCharacters?: string[];
   selectedCharacters: string[];
   system: string;
+  systemManuallyEdited?: boolean;
   templateFileDropdown: string;
   useCg: boolean;
   useChoice: boolean;
@@ -162,13 +196,20 @@ export interface EffectsPlatform {
   uploadAudio: (input: { audioTags: string; name: string; paths: string[] }) => Promise<Effect>;
   uploadImages: (input: { imageTags: string; name: string; paths: string[] }) => Promise<Effect>;
   uploadImageAudio: (input: { index: number; name: string; path: string }) => Promise<Effect>;
+  uploadAmbient: (input: { ambientTags: string; name: string; paths: string[] }) => Promise<Effect>;
+  deleteAmbient: (name: string, index: number) => Promise<Effect>;
+  saveAmbientTags: (input: { ambientTags: string; name: string }) => Promise<Effect>;
+  saveAmbientLayers: (input: { layers: string[]; name: string }) => Promise<Effect>;
+  uploadAmbientAudio: (input: { index: number; name: string; path: string }) => Promise<Effect>;
 }
 
 export interface TemplatesPlatform {
   generate: (input: TemplateGenerateInput) => Promise<TemplateGenerationResult>;
+  getPresets: () => Promise<UserPromptPresetLibrary>;
   getSession: () => Promise<TemplateLaunchSession | null>;
   list: () => Promise<TemplateSummary[]>;
   save: (template: TemplateSummary) => Promise<TemplateSummary>;
+  savePresets: (library: UserPromptPresetLibrary) => Promise<UserPromptPresetLibrary>;
   saveSession: (session: TemplateLaunchSession) => Promise<TemplateLaunchSession>;
 }
 

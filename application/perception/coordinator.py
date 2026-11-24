@@ -10,6 +10,12 @@ import threading
 import time
 from typing import Any
 
+from ai.llm.template.integrations.localization import LocaleInput, resolve_dynamic_locale
+from ai.llm.template.perception import (
+    build_perception_translator,
+    render_focus_guidance_hint,
+    render_proactive_turn_instruction,
+)
 from ai.perception.cloud_summary import CloudTextCompletionFn, summarize_vision_window
 from ai.perception.decision_client import PerceptionDecisionClient, PerceptionInferenceError
 from ai.perception.parser import InvalidPerceptionDecision
@@ -45,10 +51,14 @@ from core.perception.gatekeeper import (
 )
 from core.perception.models import (
     PerceptionConfig,
+    PerceptionDigestResult,
     PerceptionFrame,
     ReflexDecision,
     ScreenOcrScope,
+    normalize_scene_mood,
+    normalize_scene_type,
 )
+from core.perception.pacing import AdaptivePacingProfile, compute_adaptive_pacing
 from core.perception.raw_buffer import PerceptionRawBuffer
 
 logger = logging.getLogger(__name__)
@@ -74,10 +84,12 @@ class PerceptionCoordinator:
         cloud_complete: CloudTextCompletionFn | None = None,
         cursor_probe: CursorProbe | None = None,
         resolve_active_sprite_group: Callable[[Any], str | None] | None = None,
+        locale: LocaleInput = None,
     ) -> None:
         self._get_api_config = get_api_config
         self._resolve_character = resolve_character
         self._resolve_active_sprite_group = resolve_active_sprite_group
+        self._locale: LocaleInput = locale
         self._is_chat_busy = is_chat_busy
         self._apply_reflex = apply_reflex
         self._enqueue_proactive_turn = enqueue_proactive_turn
@@ -89,6 +101,10 @@ class PerceptionCoordinator:
 
         self.raw_buffer = raw_buffer or PerceptionRawBuffer()
         self.rp_input_cache = rp_input_cache or RPInputCache()
+        if locale is not None:
+            self.rp_input_cache.set_translator_provider(
+                lambda: build_perception_translator(resolve_dynamic_locale(self._locale))
+            )
         self.gatekeeper = gatekeeper or PerceptionGatekeeper()
         self.decision_client = decision_client or PerceptionDecisionClient()
         self._reflex_policy = ReflexPolicy()
@@ -187,6 +203,7 @@ class PerceptionCoordinator:
         with self._analysis_progress:
             self.raw_buffer.clear()
             self.rp_input_cache.clear()
+            self.gatekeeper.reset()
             self._reflex_policy.reset()
             self._cursor_tracker.reset()
             self._analysis_epoch += 1
@@ -384,7 +401,7 @@ class PerceptionCoordinator:
             "salienceThreshold": cfg.salience_threshold,
             "lastError": last_error,
             "rawBuffer": self.raw_buffer.stats(),
-            "rpCache": self.rp_input_cache.to_status_dict(),
+            "rpCache": self.rp_input_cache.to_status_dict(cfg),
         }
 
     def _emit_state(self) -> None:
@@ -436,6 +453,31 @@ class PerceptionCoordinator:
             }
         return name, brief, expressions, choices, len(sprites)
 
+    def _pacing_for_decision(
+        self,
+        cfg: PerceptionConfig,
+        result: PerceptionDigestResult | None = None,
+        *,
+        now_wall: float | None = None,
+    ) -> AdaptivePacingProfile:
+        unanswered, since_user = self.gatekeeper.engagement_state()
+        signals = self.rp_input_cache.activity_signals(
+            now=now_wall,
+            unanswered_proactive_count=unanswered,
+            seconds_since_user_reply=since_user,
+        )
+        if result is not None:
+            scene_tag = normalize_scene_type(result.scene)
+            mood_tag = normalize_scene_mood(result.mood)
+            signals = replace(
+                signals,
+                explicit_scene=scene_tag if scene_tag and scene_tag != "auto" else signals.explicit_scene,
+                mood=mood_tag if mood_tag and mood_tag != "unclear" else signals.mood,
+                player_busy=bool(result.player_busy),
+                active_game=str(result.game or signals.active_game).strip()[:64],
+            )
+        return compute_adaptive_pacing(signals, cfg, self.rp_input_cache.policy)
+
     def _maybe_fire_reflex(
         self,
         reflex: ReflexDecision,
@@ -448,6 +490,9 @@ class PerceptionCoordinator:
         allowed_indices: Collection[int] | None = None,
         fallback_bark: str = "",
         now_mono: float | None = None,
+        reflex_cooldown_sec: float | None = None,
+        ambient_cooldown_sec: float | None = None,
+        allow_ambient: bool = True,
     ) -> ReflexDecision | None:
         if not config.reflex_enabled or not reflex.act or not character_name:
             return None
@@ -468,6 +513,9 @@ class PerceptionCoordinator:
                 allowed_indices=allowed_indices,
                 fallback_bark=fallback_bark,
                 now=now,
+                reflex_cooldown_sec=reflex_cooldown_sec,
+                ambient_cooldown_sec=ambient_cooldown_sec,
+                allow_ambient=allow_ambient,
             )
         if emitted is None:
             logger.debug("Perception reaction suppressed by cooldown or deduplication")
@@ -619,7 +667,7 @@ class PerceptionCoordinator:
 
         if changed:
             reading = short_reading_focus(obs.text)
-            if reading:
+            if reading and (obs.source == "highlight" or not self.rp_input_cache.player_busy):
                 char_name, _brief, expressions, sprite_choices, sprite_count = self._character_prompt_metadata()
                 effective_cfg = (
                     replace(cfg, reflex_cooldown_sec=min(3.5, cfg.reflex_cooldown_sec))
@@ -636,6 +684,8 @@ class PerceptionCoordinator:
                     now_mono=mono,
                 )
             self._emit_state()
+            if obs.source == "highlight":
+                self._maybe_trigger_proactive(cfg)
         return obs
 
     def _run_cursor_loop(self) -> None:
@@ -667,6 +717,7 @@ class PerceptionCoordinator:
         result = summarize_vision_window(
             job,
             cloud_complete=self._cloud_complete,
+            locale=self._locale,
         )
         with self._lock:
             if epoch != self._analysis_epoch or self._stop_event.is_set():
@@ -788,7 +839,12 @@ class PerceptionCoordinator:
                     and time.time() - frame.captured_at <= frame_max_age
                 )
 
-            def on_reflex(reflex: ReflexDecision, *, fallback_bark: str = "") -> None:
+            def on_reflex(
+                reflex: ReflexDecision,
+                *,
+                fallback_bark: str = "",
+                pacing: AdaptivePacingProfile | None = None,
+            ) -> None:
                 nonlocal displayed_reflex
                 with self._lock:
                     if epoch != self._analysis_epoch or self._stop_event.is_set():
@@ -803,11 +859,16 @@ class PerceptionCoordinator:
                     config=cfg,
                     sprite_choices=sprite_choices,
                     fallback_bark=fallback_bark,
+                    reflex_cooldown_sec=pacing.reflex_cooldown_sec if pacing is not None else None,
+                    ambient_cooldown_sec=(
+                        pacing.ambient_reflex_cooldown_sec if pacing is not None else None
+                    ),
+                    allow_ambient=pacing.allow_ambient_reflex if pacing is not None else True,
                 )
 
             def on_early_reflex(reflex: ReflexDecision) -> None:
                 if comparison_text(reflex.bark):
-                    on_reflex(reflex)
+                    on_reflex(reflex, pacing=self._pacing_for_decision(cfg))
 
             try:
                 previous_frame = None
@@ -882,7 +943,10 @@ class PerceptionCoordinator:
                     "on_early_reflex": None if live_screen else on_early_reflex,
                 }
                 if focus_hint:
-                    decide_kwargs["reaction_guidance"] = f"当前观察侧重：{focus_hint}。"
+                    decide_kwargs["reaction_guidance"] = render_focus_guidance_hint(
+                        focus_hint,
+                        locale=resolve_dynamic_locale(self._locale),
+                    )
                 result = self.decision_client.decide(snapshot, cfg, **decide_kwargs)
             except Exception as exc:
                 err_text = str(exc)
@@ -929,6 +993,10 @@ class PerceptionCoordinator:
                         continue
                     self._server_verified = True
                     now_mono = time.monotonic()
+                    observed_at = frame.captured_at if frame else max(
+                        (event.timestamp for event in snapshot.events), default=result.created_at,
+                    )
+                    decision_pacing = self._pacing_for_decision(cfg, result, now_wall=observed_at)
                     if live_screen:
                         if screen_text_changed:
                             self._last_vision_ocr_key = comparison_text(screen_text)
@@ -942,6 +1010,9 @@ class PerceptionCoordinator:
                             screen_text_changed=screen_text_changed,
                             config=cfg,
                             now=now_mono,
+                            reflex_cooldown_sec=decision_pacing.reflex_cooldown_sec,
+                            ambient_cooldown_sec=decision_pacing.ambient_reflex_cooldown_sec,
+                            allow_ambient=decision_pacing.allow_ambient_reflex,
                         )
                         if reflex.act:
                             on_reflex(
@@ -949,6 +1020,7 @@ class PerceptionCoordinator:
                                 fallback_bark=observation_bark(
                                     result, fresh_screen_text=screen_text if screen_text_changed else "",
                                 ),
+                                pacing=decision_pacing,
                             )
                     elif displayed_reflex is None and result.reflex.act:
                         reflex = self._reflex_policy.refine_for_context(
@@ -958,20 +1030,24 @@ class PerceptionCoordinator:
                             screen_text_changed=False,
                             config=cfg,
                             now=now_mono,
+                            reflex_cooldown_sec=decision_pacing.reflex_cooldown_sec,
+                            ambient_cooldown_sec=decision_pacing.ambient_reflex_cooldown_sec,
+                            allow_ambient=decision_pacing.allow_ambient_reflex,
                         )
                         if reflex.act:
-                            on_reflex(reflex, fallback_bark=observation_bark(result, fresh_screen_text=""))
+                            on_reflex(
+                                reflex,
+                                fallback_bark=observation_bark(result, fresh_screen_text=""),
+                                pacing=decision_pacing,
+                            )
                     self._last_error = ""
                     self._warned_unreachable = False
-                    observed_at = frame.captured_at if frame else max(
-                        (event.timestamp for event in snapshot.events), default=result.created_at,
-                    )
                     if live_screen and result.digest:
                         self._screen_digest = result.digest
                         self._screen_digest_at = observed_at
                     self.rp_input_cache.record_decision(
                         replace(result, reflex=displayed_reflex or ReflexDecision(), created_at=observed_at),
-                        proactive_threshold=cfg.salience_threshold,
+                        proactive_threshold=decision_pacing.proactive_salience_threshold,
                     )
             finally:
                 with self._analysis_progress:
@@ -1004,7 +1080,11 @@ class PerceptionCoordinator:
         now = time.time()
         if now - self._screen_audio_at > 2.0:
             return "unavailable"
-        if self._screen_audio == "stopped" and now - self._playback_stopped_at > PROACTIVE_EVENT_MAX_AGE_SEC:
+        max_stopped_age = max(
+            PROACTIVE_EVENT_MAX_AGE_SEC,
+            self.rp_input_cache.adaptive_pacing(now=now).pending_event_max_age_sec,
+        )
+        if self._screen_audio == "stopped" and now - self._playback_stopped_at > max_stopped_age:
             return "unavailable"
         return self._screen_audio
 
@@ -1017,12 +1097,24 @@ class PerceptionCoordinator:
                 chat_busy=self._is_chat_busy(),
                 screen_audio=self._screen_audio_for_proactive(),
             )
-            if verdict.allow and self._enqueue_proactive_turn(PROACTIVE_TURN_INSTRUCTION):
+            proactive_instruction = (
+                render_proactive_turn_instruction(
+                    locale=resolve_dynamic_locale(self._locale)
+                )
+                if self._locale is not None
+                else PROACTIVE_TURN_INSTRUCTION
+            )
+            if verdict.allow and self._enqueue_proactive_turn(proactive_instruction):
                 logger.info(
-                    "Perception proactive reply queued (reason=%s, salience=%.2f)",
+                    "Perception proactive reply queued (reason=%s, scene=%s, salience=%.2f)",
                     verdict.reason,
+                    verdict.scene,
                     verdict.salience,
-                    extra={"event": "perception.proactive.queued", "reason": verdict.reason},
+                    extra={
+                        "event": "perception.proactive.queued",
+                        "reason": verdict.reason,
+                        "scene": verdict.scene,
+                    },
                 )
 
     def proactive_turn_threshold(self) -> float | None:
@@ -1034,11 +1126,17 @@ class PerceptionCoordinator:
             )
             if not verdict.allow:
                 return None
-            if verdict.reason == "playback_stopped":
+            if verdict.reason == "playback_stopped" and verdict.scene != "video_call":
                 return 0.0
             if self.rp_input_cache.player_busy:
                 return max(cfg.salience_threshold, URGENT_SCREEN_SALIENCE)
-            return max(cfg.salience_threshold, 0.001)
+            unanswered, since_user = self.gatekeeper.engagement_state()
+            pacing = self.rp_input_cache.adaptive_pacing(
+                cfg,
+                unanswered_proactive_count=unanswered,
+                seconds_since_user_reply=since_user,
+            )
+            return max(pacing.proactive_salience_threshold, 0.001)
 
     def mark_proactive_turn_admitted(self) -> None:
         with self._lock:

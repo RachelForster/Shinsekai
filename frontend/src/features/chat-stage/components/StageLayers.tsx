@@ -9,7 +9,21 @@ import {
   type MouseEventHandler,
   type ReactNode,
 } from "react";
-import { Check, Clock, Coins, Gauge, Heart, Shield, Sparkles, Star, Target, Zap, type LucideIcon } from "lucide-react";
+import {
+  Check,
+  Clock,
+  Coins,
+  Download,
+  Gauge,
+  Heart,
+  Shield,
+  Sparkles,
+  Star,
+  Target,
+  X,
+  Zap,
+  type LucideIcon,
+} from "lucide-react";
 
 import { startDesktopWindowResize, type DesktopResizeDirection } from "../../../shared/desktop/desktopApi";
 import { useI18n } from "../../../shared/i18n";
@@ -60,12 +74,68 @@ export function BackgroundLayer({
   );
 }
 
-export function CgLayer({ hidden, path }: { hidden: boolean; path?: string }) {
+export function CgLayer({
+  hidden,
+  onExit,
+  onSave,
+  path,
+  saving = false,
+  standaloneDesktopWindow = false,
+}: {
+  hidden: boolean;
+  onExit?: () => void;
+  onSave?: () => void;
+  path?: string;
+  saving?: boolean;
+  standaloneDesktopWindow?: boolean;
+}) {
+  const { t } = useI18n();
   const src = stageAssetUrl(path);
   return (
-    <div aria-hidden={hidden} className={layerClassName("chat-stage__cg", hidden)} hidden={hidden}>
-      {src ? <VisualMedia active={!hidden} alt="" onError={hideBrokenStageAsset} src={src} /> : null}
-    </div>
+    <>
+      <div aria-hidden={hidden} className={layerClassName("chat-stage__cg", hidden)} hidden={hidden}>
+        {src ? <VisualMedia active={!hidden} alt="" onError={hideBrokenStageAsset} src={src} /> : null}
+      </div>
+      {!hidden && (onSave || onExit) ? (
+        <div
+          aria-label={t("chat.cg.controlsLabel")}
+          className="chat-stage__cg-controls"
+          data-chat-stage-hitbox="true"
+          data-standalone-desktop={standaloneDesktopWindow ? "true" : "false"}
+          onClick={(event) => event.stopPropagation()}
+          onPointerDown={(event) => event.stopPropagation()}
+          role="toolbar"
+        >
+          <ThemeFrame prefix="chat-toolbar" />
+          {onSave ? (
+            <Button
+              aria-label={t("chat.cg.saveLabel")}
+              className="chat-stage__cg-button"
+              disabled={!src}
+              icon={<Download aria-hidden className="button__icon" />}
+              loading={saving}
+              onClick={onSave}
+              tooltip={t("chat.cg.saveLabel")}
+              variant="ghost"
+            >
+              {t(saving ? "chat.cg.saving" : "chat.cg.save")}
+            </Button>
+          ) : null}
+          {onExit ? (
+            <Button
+              aria-label={t("chat.cg.exitLabel")}
+              className="chat-stage__cg-button"
+              icon={<X aria-hidden className="button__icon" />}
+              onClick={onExit}
+              tooltip={t("chat.cg.exitLabel")}
+              variant="ghost"
+            >
+              {t("chat.cg.exit")}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -94,6 +164,8 @@ export function EffectImageLayer({ effect }: { effect?: ChatStageEffectImage | n
     </aside>
   );
 }
+
+export { AmbientLayer } from "./AmbientLayer";
 
 export function SpriteLayer({
   hidden,

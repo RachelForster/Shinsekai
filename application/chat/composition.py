@@ -49,6 +49,7 @@ from application.chat.host.launch_history import persist_confirmed_history_path
 from sdk.chat_lifecycle import ChatProcessContext, ChatSessionContext
 from application.chat.host.commands import (
     ChatCommandRouter,
+    dismiss_cg,
     dismiss_plugin_page,
     forward_current,
     voice_archive_command,
@@ -108,6 +109,9 @@ def _chat_log_path() -> Path:
     return log_dir / "main.log"
 
 
+LAUNCH_FAILURE_PREFIX = "启动失败"
+
+
 def _failed_launch_message(exit_code: int, log_path: Path) -> str:
     tail = tail_text(log_path).strip()
     detail = f"\n\n日志尾部:\n{tail}" if tail else ""
@@ -115,7 +119,7 @@ def _failed_launch_message(exit_code: int, log_path: Path) -> str:
     dependency_hint = ""
     if dependency_error:
         dependency_hint = f"\n缺少 Python 模块: {dependency_error['moduleName']}\n建议安装包: {dependency_error['packageName']}"
-    return f"启动失败: 聊天进程已退出，退出码 {exit_code}。\n日志: {log_path}{dependency_hint}{detail}"
+    return f"{LAUNCH_FAILURE_PREFIX}: 聊天进程已退出，退出码 {exit_code}。\n日志: {log_path}{dependency_hint}{detail}"
 
 
 def _app_root(state: BridgeState) -> Path:
@@ -291,6 +295,7 @@ _history_revert = HistoryRevertCommand(
 for command, handler in {
     "copy-history": _history_commands.copy_history,
     "open-history": _history_commands.open_history,
+    "dismiss-cg": dismiss_cg,
     "dismiss-plugin-page": dismiss_plugin_page,
 }.items():
     _command_router.register(command, handler, runtime=False)

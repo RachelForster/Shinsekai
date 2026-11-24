@@ -82,6 +82,7 @@ export interface AvatarRuntimeImport {
 }
 
 export interface Character {
+  id?: string;
   sprite_groups?: string[];
   default_sprite_group?: string | null;
   fallback_to_default_group?: boolean;
@@ -91,6 +92,7 @@ export interface Character {
   display_name?: string;
   sprite_transitions?: SpriteTransition[];
   portrait_crop?: PortraitCrop;
+  portrait_sprite_index?: number;
   name: string;
   color: string;
   sprite_prefix: string;
@@ -118,6 +120,7 @@ export interface CharacterSettingResult {
   characterBrief?: string;
   characterSetting: string;
   message: string;
+  ok?: boolean;
 }
 
 export interface CharacterBriefResult {

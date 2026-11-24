@@ -1,22 +1,26 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import {
+  Bot,
   Brush,
   FileImage,
   Gamepad2,
   Github,
+  KeyRound,
   LayoutTemplate,
+  MessageCircle,
   Plug,
   ScrollText,
   Settings,
   SlidersHorizontal,
   Sparkles,
   Star,
-  Bot,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { openExternal } from "../../entities/files/repository";
-import type { FrontendLanguage, MessageKey } from "../../shared/i18n";
+import { RuntimeModeDialog } from "../../features/runtime-mode/RuntimeModeDialog";
+import type { MessageKey } from "../../shared/i18n";
 import { useI18n } from "../../shared/i18n";
+import { canConnectRemotePc, isRemotePcActive, isStandaloneRuntimeActive } from "../../shared/platform/runtimeTarget";
 import { useAppUpdateInfo } from "./useAppUpdateInfo";
 
 const GITHUB_REPO_URL = "https://github.com/RachelForster/Shinsekai";
@@ -24,13 +28,12 @@ const GITHUB_REPO_API_URL = "https://api.github.com/repos/RachelForster/Shinseka
 
 type SidebarLink = {
   icon: typeof Settings;
-  label?: Record<FrontendLanguage, string>;
-  labelKey?: MessageKey;
+  labelKey: MessageKey;
   to: string;
 };
 
 const settingsLinks = [
-  { icon: Sparkles, label: { en: "Guide", ja: "ガイド", zh_CN: "新手引导" }, to: "/settings/onboarding" },
+  { icon: Sparkles, labelKey: "nav.onboarding", to: "/settings/onboarding" },
   { icon: Settings, labelKey: "nav.api", to: "/settings/api" },
   { icon: Gamepad2, labelKey: "nav.character", to: "/settings/characters" },
   { icon: FileImage, labelKey: "nav.background", to: "/settings/backgrounds" },
@@ -38,11 +41,7 @@ const settingsLinks = [
   { icon: LayoutTemplate, labelKey: "nav.template", to: "/settings/templates" },
 ] satisfies SidebarLink[];
 
-const extensionLinks = [{ icon: Plug, labelKey: "nav.plugins", to: "/settings/plugins" }] satisfies Array<{
-  icon: typeof Settings;
-  labelKey: MessageKey;
-  to: string;
-}>;
+const extensionLinks = [{ icon: Plug, labelKey: "nav.plugins", to: "/settings/plugins" }] satisfies SidebarLink[];
 
 const maintenanceLinks = [
   { icon: ScrollText, labelKey: "nav.logs", to: "/settings/logs" },
@@ -94,96 +93,261 @@ function useGitHubStars() {
   return stars;
 }
 
-function sidebarLinkLabel(link: SidebarLink, language: FrontendLanguage, t: (key: MessageKey) => string) {
-  if (link.labelKey) {
-    return t(link.labelKey);
+const NON_TEXT_INPUT_TYPES = new Set([
+  "button",
+  "checkbox",
+  "color",
+  "file",
+  "hidden",
+  "image",
+  "radio",
+  "range",
+  "reset",
+  "submit",
+]);
+
+/** Return true only when focusing `el` is expected to open an on-screen virtual keyboard. */
+function opensVirtualKeyboard(el: Element | null): boolean {
+  if (!el || !(el instanceof HTMLElement)) {
+    return false;
   }
-  return link.label?.[language] ?? link.label?.en ?? "";
+  if (el.getAttribute("inputmode") === "none") {
+    return false;
+  }
+  if (el instanceof HTMLInputElement) {
+    if (el.readOnly || el.disabled) {
+      return false;
+    }
+    const inputType = (el.getAttribute("type") || el.type || "text").toLowerCase();
+    return !NON_TEXT_INPUT_TYPES.has(inputType);
+  }
+  if (el instanceof HTMLTextAreaElement) {
+    return !el.readOnly && !el.disabled;
+  }
+  return Boolean(el.isContentEditable || el.getAttribute("contenteditable") === "true");
 }
 
 export function SidebarNav({ onAssistantToggle, assistantOpen }: SidebarNavProps) {
-  const { language, t } = useI18n();
+  const { t } = useI18n();
+  const location = useLocation();
+  const standaloneActive = isStandaloneRuntimeActive();
+  const showRuntimeModeControl = standaloneActive || isRemotePcActive() || canConnectRemotePc();
+  const [runtimeDialogOpen, setRuntimeDialogOpen] = useState(false);
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+
+  const visibleSettingsLinks = standaloneActive
+    ? settingsLinks.filter((link) => link.to !== "/settings/onboarding")
+    : settingsLinks;
+  const visibleExtensionLinks = standaloneActive ? [] : extensionLinks;
+  const visibleMaintenanceLinks = standaloneActive
+    ? maintenanceLinks.filter((link) => link.to !== "/settings/logs")
+    : maintenanceLinks;
+
+  useEffect(() => {
+    if (typeof document === "undefined" || typeof window === "undefined") {
+      return;
+    }
+    const handleFocusIn = (event: FocusEvent) => {
+      if (window.innerWidth > 760) {
+        setKeyboardOpen(false);
+        return;
+      }
+      const target = (event.target as Element | null) ?? document.activeElement;
+      setKeyboardOpen(opensVirtualKeyboard(target));
+    };
+
+    const handleFocusOut = (event: FocusEvent) => {
+      if (window.innerWidth > 760) {
+        setKeyboardOpen(false);
+        return;
+      }
+      const nextTarget =
+        (event.relatedTarget as Element | null) ??
+        (document.activeElement !== event.target ? document.activeElement : null);
+      setKeyboardOpen(opensVirtualKeyboard(nextTarget));
+    };
+
+    const handleResize = () => {
+      setKeyboardOpen(window.innerWidth <= 760 && opensVirtualKeyboard(document.activeElement));
+    };
+
+    document.addEventListener("focusin", handleFocusIn);
+    document.addEventListener("focusout", handleFocusOut);
+    window.addEventListener("resize", handleResize);
+    return () => {
+      document.removeEventListener("focusin", handleFocusIn);
+      document.removeEventListener("focusout", handleFocusOut);
+      window.removeEventListener("resize", handleResize);
+    };
+  }, []);
+
   const versionQuery = useAppUpdateInfo();
   const rawVersion = versionQuery.data?.version?.trim() ?? "";
   const version = rawVersion ? (rawVersion.toLowerCase().startsWith("v") ? rawVersion : `v${rawVersion}`) : "";
   const stars = useGitHubStars();
   const starLabel = stars == null ? t("nav.githubStarsLoading") : t("nav.githubStars", { count: formatStars(stars) });
 
+  const chatManageActive =
+    location.pathname.startsWith("/settings/templates") ||
+    location.pathname.startsWith("/settings/launch") ||
+    location.pathname.startsWith("/settings/stories");
+  const decorateActive =
+    location.pathname.startsWith("/settings/backgrounds") || location.pathname.startsWith("/settings/effects");
+  const systemActive =
+    location.pathname.startsWith("/settings/system") ||
+    location.pathname.startsWith("/settings/logs") ||
+    location.pathname.startsWith("/settings/plugins") ||
+    location.pathname.startsWith("/settings/tools") ||
+    location.pathname.startsWith("/settings/music-cover");
+
+  const runtimeModeLabel = t("nav.runtimeMode");
+
   return (
-    <aside className="sidebar">
-      <div className="sidebar__brand">
-        <div aria-hidden className="sidebar__brand-mark">
-          <Brush className="sidebar__icon" />
+    <>
+      <aside className="sidebar">
+        <div className="sidebar__brand">
+          <div aria-hidden className="sidebar__brand-mark">
+            <Brush className="sidebar__icon" />
+          </div>
+          <div className="sidebar__brand-text">
+            <p className="sidebar__brand-title">{t("app.title")}</p>
+            <p className="sidebar__brand-subtitle">{t("app.brandSubtitle")}</p>
+            {version ? <p className="sidebar__brand-version">{version}</p> : null}
+          </div>
         </div>
-        <div className="sidebar__brand-text">
-          <p className="sidebar__brand-title">{t("app.title")}</p>
-          <p className="sidebar__brand-subtitle">{t("app.brandSubtitle")}</p>
-          {version ? <p className="sidebar__brand-version">{version}</p> : null}
-        </div>
-      </div>
-      <button
-        className="sidebar__github"
-        onClick={() => openExternal(GITHUB_REPO_URL)}
-        title={t("nav.githubRepo")}
-        type="button"
-      >
-        <Github aria-hidden className="sidebar__github-icon" />
-        <span className="sidebar__github-body">
-          <span className="sidebar__github-label">{t("nav.githubRepo")}</span>
-          <span className="sidebar__github-stars">
-            <Star aria-hidden className="sidebar__github-star-icon" />
-            {starLabel}
-          </span>
-        </span>
-      </button>
-      <nav aria-label={t("nav.settingsCenter")} className="sidebar__nav">
-        <div className="sidebar__section-label">{t("nav.groupSettings")}</div>
-        {settingsLinks.map((link) => {
-          const Icon = link.icon;
-          const label = sidebarLinkLabel(link, language, t);
-          return (
-            <NavLink className="sidebar__link" key={link.to} title={label} to={link.to}>
-              <Icon aria-hidden className="sidebar__icon" />
-              <span className="sidebar__link-label">{label}</span>
-            </NavLink>
-          );
-        })}
-        <div className="sidebar__section-label">{t("nav.groupExtensions")}</div>
-        {extensionLinks.map((link) => {
-          const Icon = link.icon;
-          const label = sidebarLinkLabel(link, language, t);
-          return (
-            <NavLink className="sidebar__link" key={link.to} title={label} to={link.to}>
-              <Icon aria-hidden className="sidebar__icon" />
-              <span className="sidebar__link-label">{label}</span>
-            </NavLink>
-          );
-        })}
-        <div className="sidebar__section-label">{t("nav.groupMaintenance")}</div>
-        {maintenanceLinks.map((link) => {
-          const Icon = link.icon;
-          const label = sidebarLinkLabel(link, language, t);
-          return (
-            <NavLink className="sidebar__link" key={link.to} title={label} to={link.to}>
-              <Icon aria-hidden className="sidebar__icon" />
-              <span className="sidebar__link-label">{label}</span>
-            </NavLink>
-          );
-        })}
-      </nav>
-      <div className="sidebar__spacer" />
-      <nav aria-label={t("nav.secondary")} className="sidebar__nav sidebar__nav--secondary">
         <button
-          aria-pressed={assistantOpen}
-          className="sidebar__link sidebar__link--button"
-          onClick={onAssistantToggle}
-          title={t("nav.assistant")}
+          className="sidebar__github"
+          onClick={() => openExternal(GITHUB_REPO_URL)}
+          title={t("nav.githubRepo")}
           type="button"
         >
-          <Bot aria-hidden className="sidebar__icon" />
-          <span className="sidebar__link-label">{t("nav.assistant")}</span>
+          <Github aria-hidden className="sidebar__github-icon" />
+          <span className="sidebar__github-body">
+            <span className="sidebar__github-label">{t("nav.githubRepo")}</span>
+            <span className="sidebar__github-stars">
+              <Star aria-hidden className="sidebar__github-star-icon" />
+              {starLabel}
+            </span>
+          </span>
         </button>
+        <nav aria-label={t("nav.settingsCenter")} className="sidebar__nav">
+          <div className="sidebar__section-label">{t("nav.groupSettings")}</div>
+          {visibleSettingsLinks.map((link) => {
+            const Icon = link.icon;
+            const label = t(link.labelKey);
+            return (
+              <NavLink className="sidebar__link" key={link.to} title={label} to={link.to}>
+                <Icon aria-hidden className="sidebar__icon" />
+                <span className="sidebar__link-label">{label}</span>
+              </NavLink>
+            );
+          })}
+          {visibleExtensionLinks.length > 0 ? (
+            <>
+              <div className="sidebar__section-label">{t("nav.groupExtensions")}</div>
+              {visibleExtensionLinks.map((link) => {
+                const Icon = link.icon;
+                const label = t(link.labelKey);
+                return (
+                  <NavLink className="sidebar__link" key={link.to} title={label} to={link.to}>
+                    <Icon aria-hidden className="sidebar__icon" />
+                    <span className="sidebar__link-label">{label}</span>
+                  </NavLink>
+                );
+              })}
+            </>
+          ) : null}
+          <div className="sidebar__section-label">{t("nav.groupMaintenance")}</div>
+          {visibleMaintenanceLinks.map((link) => {
+            const Icon = link.icon;
+            const label = t(link.labelKey);
+            return (
+              <NavLink className="sidebar__link" key={link.to} title={label} to={link.to}>
+                <Icon aria-hidden className="sidebar__icon" />
+                <span className="sidebar__link-label">{label}</span>
+              </NavLink>
+            );
+          })}
+        </nav>
+        <div className="sidebar__spacer" />
+        <nav aria-label={t("nav.secondary")} className="sidebar__nav sidebar__nav--secondary">
+          {showRuntimeModeControl ? (
+            <button
+              className="sidebar__link sidebar__link--button"
+              onClick={() => setRuntimeDialogOpen(true)}
+              title={runtimeModeLabel}
+              type="button"
+            >
+              <KeyRound aria-hidden className="sidebar__icon" />
+              <span className="sidebar__link-label">{runtimeModeLabel}</span>
+            </button>
+          ) : null}
+          <button
+            aria-pressed={assistantOpen}
+            className="sidebar__link sidebar__link--button"
+            onClick={onAssistantToggle}
+            title={t("nav.assistant")}
+            type="button"
+          >
+            <Bot aria-hidden className="sidebar__icon" />
+            <span className="sidebar__link-label">{t("nav.assistant")}</span>
+          </button>
+        </nav>
+      </aside>
+      <nav
+        aria-label={t("nav.mobileBottom")}
+        className="mobile-bottom-nav"
+        data-keyboard-open={keyboardOpen ? "true" : "false"}
+      >
+        <NavLink
+          className={({ isActive }) =>
+            ["mobile-bottom-nav__item", isActive || chatManageActive ? "active" : ""].filter(Boolean).join(" ")
+          }
+          to="/settings/templates"
+        >
+          <span aria-hidden className="mobile-bottom-nav__indicator">
+            <MessageCircle aria-hidden className="mobile-bottom-nav__icon" />
+          </span>
+          <span>{t("nav.mobile.chatManage")}</span>
+        </NavLink>
+        <NavLink className="mobile-bottom-nav__item" to="/settings/characters">
+          <span aria-hidden className="mobile-bottom-nav__indicator">
+            <Gamepad2 aria-hidden className="mobile-bottom-nav__icon" />
+          </span>
+          <span>{t("nav.mobile.characters")}</span>
+        </NavLink>
+        <NavLink className="mobile-bottom-nav__item" to="/settings/api">
+          <span aria-hidden className="mobile-bottom-nav__indicator">
+            <Settings aria-hidden className="mobile-bottom-nav__icon" />
+          </span>
+          <span>{t("nav.mobile.api")}</span>
+        </NavLink>
+        <NavLink
+          className={({ isActive }) =>
+            ["mobile-bottom-nav__item", isActive || decorateActive ? "active" : ""].filter(Boolean).join(" ")
+          }
+          to="/settings/backgrounds"
+        >
+          <span aria-hidden className="mobile-bottom-nav__indicator">
+            <FileImage aria-hidden className="mobile-bottom-nav__icon" />
+          </span>
+          <span>{t("nav.mobile.decorate")}</span>
+        </NavLink>
+        <NavLink
+          className={({ isActive }) =>
+            ["mobile-bottom-nav__item", isActive || systemActive ? "active" : ""].filter(Boolean).join(" ")
+          }
+          to="/settings/system"
+        >
+          <span aria-hidden className="mobile-bottom-nav__indicator">
+            <SlidersHorizontal aria-hidden className="mobile-bottom-nav__icon" />
+          </span>
+          <span>{t("nav.mobile.system")}</span>
+        </NavLink>
       </nav>
-    </aside>
+      {runtimeDialogOpen ? (
+        <RuntimeModeDialog onClose={() => setRuntimeDialogOpen(false)} open={runtimeDialogOpen} />
+      ) : null}
+    </>
   );
 }

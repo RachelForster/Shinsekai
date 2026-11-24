@@ -3,21 +3,32 @@
 from datetime import datetime
 import random
 
+from ai.llm.template.core import PROMPT_CATALOG
 from ai.llm.template.dialog import DialogTemplateContext
 from ai.llm.template.integrations.localization import (
     _target_voice_display_name,
     _ui_voice_same_lang,
+    resolve_template_locale,
+    translate_template,
 )
 from ai.llm.template.reminder import (
+    REMINDER_PROMPT_SPEC,
     ReminderContext,
     build_reminder_system_section,
     build_reminder_user_section,
 )
 from core.messaging.dialog_output import has_valid_dialog_output
 from core.messaging.stream_parser import LlmResponseStreamParser
-from i18n import tr_in_bundle
 from sdk.messages import LLMDialogMessage
 
+
+REMINDER_STYLE_KEYS = (
+    "session.reminder_style_direct",
+    "session.reminder_style_caring",
+    "session.reminder_style_question",
+    "session.reminder_style_playful",
+    "session.reminder_style_encouragement",
+)
 
 # Vary only the phrasing, never the event's timing, facts or character identity.
 REMINDER_EXPRESSION_STYLES = (
@@ -29,15 +40,21 @@ REMINDER_EXPRESSION_STYLES = (
 )
 
 
+def reminder_expression_styles(locale: str = "zh_CN") -> tuple[str, ...]:
+    return tuple(
+        PROMPT_CATALOG.translate(key, locale=locale) for key in REMINDER_STYLE_KEYS
+    )
+
+
 class ReminderDialogWorkflow:
     def __init__(self, config):
         self.config = config
 
     def generate(self, data, character) -> LLMDialogMessage:
-        language = self.config.config.system_config.ui_language
+        locale = resolve_template_locale(self.config)
 
         def translate(key, **kwargs):
-            return tr_in_bundle(f"template_gen.{key}", language, **kwargs)
+            return translate_template(key, locale=locale, **kwargs)
 
         now = datetime.now().astimezone()
         previous_count = data.get("delivery_count", 0)
@@ -48,13 +65,15 @@ class ReminderDialogWorkflow:
                 "current_time": now.isoformat(timespec="seconds"),
                 "previous_reminder_count": previous_count,
                 "reminder_number": previous_count + 1,
-                "expression_style": random.choice(REMINDER_EXPRESSION_STYLES),
+                "expression_style": random.choice(reminder_expression_styles(locale)),
             },
+            locale=locale,
             dialog=DialogTemplateContext(
                 characters=((character.name, character),),
                 translate=translate,
                 target_voice_name=_target_voice_display_name(self.config, translate),
                 json_reminder=translate("closing_json_reminder"),
+                locale=locale,
                 use_llm_translation=not _ui_voice_same_lang(self.config),
                 use_choice=False,
                 use_narration=False,
@@ -64,8 +83,8 @@ class ReminderDialogWorkflow:
             ),
         )
         raw = self.complete(
-            build_reminder_system_section().render(context),
-            build_reminder_user_section().render(context),
+            REMINDER_PROMPT_SPEC.render_system(context),
+            REMINDER_PROMPT_SPEC.render_user(context),
         )
         if not has_valid_dialog_output(raw):
             raise ValueError("Invalid reminder dialog output")
@@ -106,6 +125,7 @@ class ReminderDialogWorkflow:
                 adapter,
                 user_template=system_prompt,
                 tools_enabled=False,
+                locale=resolve_template_locale(self.config),
                 generation_config={
                     "temperature": float(getattr(api, "temperature", 0.7)),
                     "max_tokens": 1024,

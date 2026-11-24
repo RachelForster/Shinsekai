@@ -53,11 +53,14 @@ def test_memory_route_contracts_remain_stable() -> None:
 def test_template_route_contracts_remain_stable() -> None:
     assert _contracts(TEMPLATE_ROUTES) == {
         ("GET", "/api/templates"),
+        ("GET", "/api/templates/presets"),
         ("GET", "/api/templates/session"),
         ("POST", "/api/templates"),
         ("POST", "/api/templates/generate"),
+        ("POST", "/api/templates/presets"),
         ("POST", "/api/templates/session"),
         ("PUT", "/api/templates"),
+        ("PUT", "/api/templates/presets"),
     }
 
 

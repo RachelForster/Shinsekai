@@ -1,8 +1,11 @@
+import { DIALOG_SPEAKER_NARRATION_ALIASES, LEGACY_DEFAULT_USER_SPEAKER } from "../../../shared/constants";
+import { translateRuntimeMessage } from "../../../shared/i18n";
 import type { ChatRuntimeStatus, PlayerPortrait } from "../../../shared/platform/types";
 import { parseHtmlFragment, stripHtmlFallback } from "../htmlFragment";
+import { isLegacySystemSnapshotText } from "./legacySnapshotCompat";
 import type { ChatStageState } from "./types";
 
-export const defaultUserDialogSpeaker = "你";
+export const defaultUserDialogSpeaker = LEGACY_DEFAULT_USER_SPEAKER;
 
 export function playerPortraitForDialog(
   portrait: PlayerPortrait | null | undefined,
@@ -13,7 +16,7 @@ export function playerPortraitForDialog(
   const compact = (value: string) => value.replace(/\s+/gu, "");
   const name = compact(portrait.characterName);
   const currentSpeaker = compact(speaker ?? "");
-  const narration = currentSpeaker.toUpperCase() === "NARR" || currentSpeaker === "旁白";
+  const narration = (DIALOG_SPEAKER_NARRATION_ALIASES as readonly string[]).includes(currentSpeaker.toUpperCase());
   return name && (currentSpeaker === name || (narration && compact(text).includes(name))) ? portrait : null;
 }
 
@@ -71,17 +74,11 @@ function escapeRegExp(value: string) {
 }
 
 export function normalizedUserDisplayName(value?: string) {
-  return value?.trim() || defaultUserDialogSpeaker;
-}
-
-function isSystemPromptText(value: string) {
-  const text = value.trim();
-  if (!text) {
-    return false;
+  const trimmed = value?.trim();
+  if (!trimmed || trimmed === defaultUserDialogSpeaker) {
+    return translateRuntimeMessage("ops.chatStage.defaultUserSpeaker");
   }
-  return /^(已跳过|已选择|选择：|历史|浏览器预览历史|语音识别|正在请求|聊天会话|您的消息已提交|进程已经|当前聊天会话|实时聊天会话)/.test(
-    text,
-  );
+  return trimmed;
 }
 
 export function normalizeTokenUsageText(value: string | undefined, status: ChatRuntimeStatus) {
@@ -103,7 +100,11 @@ export function systemPromptTextFromState(state: ChatStageState, dialogText: str
   if (statusMessage && !state.characterName?.trim()) {
     return statusMessage;
   }
-  if (!state.characterName?.trim() && state.dialogHtml === undefined && isSystemPromptText(dialogText)) {
+  if (
+    !state.characterName?.trim() &&
+    state.dialogHtml === undefined &&
+    (state.isSystemDialog || isLegacySystemSnapshotText(dialogText))
+  ) {
     return dialogText.trim();
   }
   return undefined;

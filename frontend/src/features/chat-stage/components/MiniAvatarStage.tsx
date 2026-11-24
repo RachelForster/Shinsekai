@@ -34,6 +34,7 @@ import {
   STATIC_AVATAR_TYPE,
   TransitionMedia,
   normalizeVisualFraming,
+  visualFramingMinPosition,
   visualFramingMinRatio,
   type VisualFraming,
 } from "../../../modules/character-visual";
@@ -76,13 +77,15 @@ function composeMiniAvatarFraming(baseFraming: VisualFraming, runtimeFraming?: V
   }
   const userTop = (1 - userFraming.heightRatio) * userFraming.verticalPosition;
   const heightRatio = Math.max(visualFramingMinRatio, userFraming.heightRatio * baseFraming.heightRatio);
+  const maxTravel = 1 - heightRatio;
   const top = Math.min(
-    1 - heightRatio,
-    userTop + Math.max(0, userFraming.heightRatio - heightRatio) * baseFraming.verticalPosition,
+    maxTravel,
+    Math.max(-maxTravel, userTop + Math.max(0, userFraming.heightRatio - heightRatio) * baseFraming.verticalPosition),
   );
+  const rawPosition = heightRatio < 1 ? Math.min(1, Math.max(visualFramingMinPosition, top / maxTravel)) : 0;
   return {
     heightRatio,
-    verticalPosition: heightRatio < 1 ? Math.min(1, Math.max(0, top / (1 - heightRatio))) : 0,
+    verticalPosition: rawPosition === 0 ? 0 : rawPosition,
   };
 }
 

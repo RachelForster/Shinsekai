@@ -1,15 +1,83 @@
 """Shared template translation and language compatibility helpers."""
 
-from i18n import tr
-from sdk.lang import normalize_lang
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Any, TypeAlias
+
+from i18n import current_language
+from sdk.lang import LocaleCode, normalize_lang
+
+from ..core.catalog import PROMPT_CATALOG
+
+LocaleInput: TypeAlias = str | Callable[[], str] | None
 
 # 与配置中的背景名一致，勿翻译（UI 默认选此项；旧名「透明背景」仍识别）
 TRANSPARENT_BG = "透明场景"
 _TRANSPARENT_ALIAS = "透明背景"
 
 
-def translate_template(key: str, **kwargs) -> str:
-    return tr(f"template_gen.{key}", **kwargs)
+def resolve_dynamic_locale(
+    locale: LocaleInput = None,
+    *,
+    config_manager: Any = None,
+) -> LocaleCode:
+    """Resolve an explicit locale code, a lazy per-turn locale callback, or active UI locale."""
+    if callable(locale):
+        try:
+            resolved = locale()
+            if resolved:
+                return normalize_lang(str(resolved))
+        except Exception:
+            pass
+    elif isinstance(locale, str) and locale.strip():
+        return normalize_lang(locale)
+    return resolve_template_locale(config_manager)
+
+
+def resolve_template_locale(config_manager: Any = None) -> LocaleCode:
+    """Resolve prompt locale from AppStores/SystemConfig/ui_language, falling back to active i18n language."""
+    try:
+        stores = getattr(config_manager, "stores", None)
+        if stores is not None:
+            system_settings = getattr(stores, "system_settings", None)
+            get_settings = getattr(system_settings, "get", None)
+            if callable(get_settings):
+                ui_lang = getattr(get_settings(), "ui_language", None)
+                if ui_lang:
+                    return normalize_lang(str(ui_lang))
+        direct_settings = getattr(config_manager, "system_settings", None)
+        get_direct = getattr(direct_settings, "get", None)
+        if callable(get_direct):
+            ui_lang = getattr(get_direct(), "ui_language", None)
+            if ui_lang:
+                return normalize_lang(str(ui_lang))
+        direct_ui_lang = getattr(config_manager, "ui_language", None)
+        if isinstance(direct_ui_lang, str) and direct_ui_lang.strip():
+            return normalize_lang(direct_ui_lang)
+        cfg = getattr(config_manager, "config", None)
+        sys_cfg = getattr(cfg, "system_config", None)
+        ui_lang = getattr(sys_cfg, "ui_language", None)
+        if ui_lang:
+            return normalize_lang(str(ui_lang))
+    except Exception:
+        pass
+    return normalize_lang(current_language())
+
+
+def translate_template(
+    key: str,
+    *,
+    config_manager: Any = None,
+    locale: str | None = None,
+    **kwargs: Any,
+) -> str:
+    effective_locale = (
+        normalize_lang(locale)
+        if locale
+        else resolve_template_locale(config_manager)
+    )
+    return PROMPT_CATALOG.translate(f"dialog.{key}", locale=effective_locale, **kwargs)
 
 
 def is_transparent_background(name: str | None) -> bool:

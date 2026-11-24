@@ -14,10 +14,13 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 from config.mirror_env import mirror_github_url
+from sdk.file_io import durable_mkdir, durable_rename
 
 logger = logging.getLogger(__name__)
 _PLUGINS_DIR = Path("plugins")
-_DOWNLOAD_STATE_PATH = Path("data/config/plugin_registry_downloads.json")
+_DEFAULT_DOWNLOAD_STATE_PATH = Path("data/cache/plugin_registry_downloads.json")
+_LEGACY_DOWNLOAD_STATE_PATH = Path("data/config/plugin_registry_downloads.json")
+_DOWNLOAD_STATE_PATH = _DEFAULT_DOWNLOAD_STATE_PATH
 
 _WIN_RESERVED_DEVICE_NAMES = frozenset(
     {"CON", "PRN", "AUX", "NUL"}
@@ -115,14 +118,23 @@ def _normalize_install_metadata(value: object) -> dict[str, object]:
     return {key: item for key, item in value.items() if key in allowed and item not in (None, "")}
 
 
+def _download_state_source_path() -> Path | None:
+    if _DOWNLOAD_STATE_PATH.is_file():
+        return _DOWNLOAD_STATE_PATH
+    if _DOWNLOAD_STATE_PATH == _DEFAULT_DOWNLOAD_STATE_PATH and _LEGACY_DOWNLOAD_STATE_PATH.is_file():
+        return _LEGACY_DOWNLOAD_STATE_PATH
+    return None
+
+
 def _load_download_state_payload() -> tuple[list[str], dict[str, str], dict[str, dict[str, object]]]:
     """Load persisted repos, manifest-entry mapping, and install metadata."""
-    if not _DOWNLOAD_STATE_PATH.is_file():
+    source_path = _download_state_source_path()
+    if source_path is None:
         return [], {}, {}
     try:
-        raw = json.loads(_DOWNLOAD_STATE_PATH.read_text(encoding="utf-8"))
+        raw = json.loads(source_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        logger.warning("Could not read plugin download state: %s", _DOWNLOAD_STATE_PATH)
+        logger.warning("Could not read plugin download state: %s", source_path)
         return [], {}, {}
     if isinstance(raw, list):
         repos_set = {normalize_repo_slug(str(x)) for x in raw if str(x).strip()}
@@ -175,11 +187,28 @@ def _write_download_state(
 ) -> None:
     if entry_install is None:
         _repos, _entry_repo, entry_install = _load_download_state_payload()
-    _DOWNLOAD_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    durable_mkdir(_DOWNLOAD_STATE_PATH.parent)
     payload = {"repos": repos, "entry_repo": entry_repo, "entry_install": entry_install}
-    _DOWNLOAD_STATE_PATH.write_text(
-        json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-    )
+    serialized = json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=_DOWNLOAD_STATE_PATH.parent,
+            prefix=f".{_DOWNLOAD_STATE_PATH.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as file:
+            temporary_path = Path(file.name)
+            file.write(serialized)
+            file.flush()
+            os.fsync(file.fileno())
+        durable_rename(temporary_path, _DOWNLOAD_STATE_PATH, replace=True)
+        temporary_path = None
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
 
 
 def load_downloaded_repos() -> set[str]:

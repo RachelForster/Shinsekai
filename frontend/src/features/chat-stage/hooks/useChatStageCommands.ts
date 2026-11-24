@@ -53,6 +53,7 @@ export function useChatStageCommands({
           "finish-asr-hold",
           "cancel-asr-hold",
           "cancel-input-batch",
+          "dismiss-cg",
           "dismiss-plugin-page",
           "flush-input-batch",
           "send-message",

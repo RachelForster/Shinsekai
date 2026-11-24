@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { spriteMouthRepository } from "../../entities/character/repository";
+import { useOptionalI18n } from "../../shared/i18n";
 import type {
   Character,
   GeneratedSpriteMouth,
@@ -53,6 +54,7 @@ export function useSpriteMouths(
   onSaved: (character: Character) => void,
   externalBusy = false,
 ) {
+  const { t } = useOptionalI18n();
   const [items, setItems] = useState<MouthCandidate[]>([]);
   const [selection, setSelection] = useState<string[]>([]);
   const [setup, setSetup] = useState<SpriteMouthSetup | null>(null);
@@ -245,11 +247,11 @@ export function useSpriteMouths(
 
   const enqueue = async (paths: string[], options: MouthOptions, reanalysis: boolean, saveAfter = false) => {
     if (!paths.length) {
-      setError("请至少选择一张立绘");
+      setError(t("ops.character.mouthSelectRequired"));
       return;
     }
     if (!saveAfter && lock.current && lock.current !== "generate") {
-      setError("请等待当前操作完成");
+      setError(t("ops.character.mouthWaitBusy"));
       return;
     }
     setStopping(false);

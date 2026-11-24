@@ -12,6 +12,7 @@ from sdk.types import OutputContractPatch, OutputFieldSpec, RequirementPatch, Re
 
 
 def make_context(**kwargs):
+    kwargs.setdefault("locale", "en")
     return DialogTemplateContext(
         characters=(),
         target_voice_name="Japanese",
@@ -167,6 +168,49 @@ def test_rule_addition_cannot_restore_a_removed_field():
     text = DialogTemplateSection().render(context)
     assert "Contradictory effect rule." not in text
     assert "Do not include this field" in text
+
+
+@pytest.mark.parametrize(
+    ("locale", "added_expected", "omitted_expected"),
+    [
+        (
+            "zh_CN",
+            "- camera（string，可选）：Camera framing. 兼容别名：shot。",
+            "- effect：请勿在输出中包含该字段。",
+        ),
+        (
+            "en",
+            "- camera (string, optional): Camera framing. Aliases: shot.",
+            "- effect: Do not include this field in the output.",
+        ),
+        (
+            "ja",
+            "- camera（string、任意）：Camera framing. 互換エイリアス：shot。",
+            "- effect：出力にこのフィールドを含めないでください。",
+        ),
+    ],
+)
+def test_field_requirements_localize_across_ui_languages(
+    locale,
+    added_expected,
+    omitted_expected,
+):
+    patch = OutputContractPatch(
+        id="localize-fields",
+        target_contract="default.dialog.v1",
+        add_fields=(
+            OutputFieldSpec("camera", description="Camera framing.", aliases=("shot",)),
+        ),
+        remove_fields=("effect",),
+    )
+    context = make_context(
+        locale=locale,
+        use_effect=True,
+        output_contract_patches=(patch,),
+    )
+    text = DialogTemplateSection().render(context)
+    assert added_expected in text
+    assert omitted_expected in text
 
 
 def test_added_then_removed_plugin_field_leaves_no_guidance():

@@ -76,6 +76,7 @@
   --chat-dialog-toolbar-layer-max-width: calc(100vw - 40px);
   --chat-dialog-toolbar-layer-padding: 0;
   --chat-dialog-toolbar-layer-width: min(var(--chat-dialog-width), var(--chat-dialog-runtime-width));
+  --chat-dialog-toolbar-available-width: calc((100vw - 2 * var(--stage-safe-x)) / var(--chat-toolbar-runtime-scale, 1));
   --chat-dialog-toolbar-hidden-y: 14px;
   --chat-dialog-toolbar-reserved-height: clamp(54px, 6.4svh, 68px);
   --chat-dialog-name-input-gap: 22svh;

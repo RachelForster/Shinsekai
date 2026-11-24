@@ -198,7 +198,7 @@ export const chatZhCNMessages = {
   "chat.config.spriteScale": "立绘显示缩放",
   "chat.config.spriteFraming": "立绘取景",
   "chat.config.spriteFramingHint":
-    "按角色记住本机取景，静态立绘和所有模型格式通用。显示高度越小，画面越近；上下位置从顶部到下方调整，不会修改原文件。",
+    "按角色记住本机取景，静态立绘和所有模型格式通用。显示高度越小，画面越近；上下位置可在 -100% 到 100% 之间调节，不会修改原文件。",
   "chat.config.spriteHeightRatio": "显示高度比例",
   "chat.config.spriteFramePosition": "上下取景位置",
   "chat.config.spriteFrameFull": "全身",
@@ -296,6 +296,8 @@ export const chatZhCNMessages = {
   "chat.toolbar.tokens": "Token 消耗",
   "chat.toolbar.tools": "聊天工具",
   "chat.toolbar.unlockActions": "解锁聊天操作",
+  "chat.toolbar.runtimeMode": "AI / 语音与跨端配置",
+  "chat.toolbar.backToWorkspace": "返回工作台 / 角色管理",
   "chat.theme.active": "当前使用",
   "chat.theme.apply": "应用",
   "chat.theme.backToSettings": "返回程序设置",
@@ -429,6 +431,14 @@ export const chatZhCNMessages = {
   "launch.initialOutfits": "初始服装组",
   "launch.initialOutfitDefault": "跟随角色默认服装",
   "launch.autoOutfitSwitch": "允许随剧情自动换装",
+  "chat.cg.controlsLabel": "CG 画面操作",
+  "chat.cg.save": "保存",
+  "chat.cg.saveLabel": "保存 CG",
+  "chat.cg.saving": "保存中…",
+  "chat.cg.saved": "CG 已保存",
+  "chat.cg.saveFailed": "保存 CG 失败",
+  "chat.cg.exit": "退出",
+  "chat.cg.exitLabel": "退出 CG",
 } satisfies Record<string, string>;
 
 export type ChatMessageKey = keyof typeof chatZhCNMessages;

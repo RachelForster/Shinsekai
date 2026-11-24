@@ -28,6 +28,13 @@ from sdk.path_utils import reject_control_chars, safe_existing_file_path
 LogFn = Callable[[str], None]
 YOUTUBE_HOSTS = {"youtube.com", "youtu.be", "youtube-nocookie.com"}
 BILIBILI_HOSTS = {"bilibili.com", "b23.tv"}
+MUSIC_COVER_SOURCE_ALIASES = {
+    "youtube": "youtube",
+    "yt": "youtube",
+    "bilibili": "bilibili",
+    "b站": "bilibili",
+    "url": "url",
+}
 
 
 def _slug(s: str, max_len: int = 80) -> str:

@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from application.backgrounds import (
+    BGM_TAG_LABEL_PREFIX,
     BackgroundExportResult,
     BackgroundOperation,
     BackgroundUseCase,
@@ -46,7 +47,10 @@ def _background_json_after_reload(state: BridgeState, name: str) -> dict[str, An
 
 
 def _numbered_background_bgm_tags(tags: list[str]) -> str:
-    return "".join(f"音乐 {index + 1}：{str(tag or '').strip()}\n" for index, tag in enumerate(tags))
+    return "".join(
+        f"{BGM_TAG_LABEL_PREFIX} {index + 1}：{str(tag or '').strip()}\n"
+        for index, tag in enumerate(tags)
+    )
 
 
 def _translate_background_fields(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
@@ -57,9 +61,15 @@ def _translate_background_fields(state: BridgeState, payload: dict[str, Any]) ->
         bgm_row_tags = [str(item or "") for item in row_tag_payload]
     else:
         bgm_row_tags = [_tag_content(line) for line in str(payload.get("bgmTags") or "").splitlines()]
-    ui_language = str(getattr(state.config_manager.config.system_config, "ui_language", "") or "")
+    stores = getattr(state, "stores", None)
+    if stores is not None:
+        ui_language = str(getattr(stores.system_settings.get(), "ui_language", "") or "")
+        api_source: Any = stores.api_settings
+    else:
+        ui_language = str(getattr(state.config_manager.config.system_config, "ui_language", "") or "")
+        api_source = state.config_manager
     error, name, bg_tags, bgm_tags, bgm_row_tags = translate_background_fields(
-        state.config_manager,
+        api_source,
         ui_language,
         str(payload.get("name") or ""),
         str(payload.get("bgTags") or ""),
@@ -86,16 +96,12 @@ def _translate_background_fields(state: BridgeState, payload: dict[str, Any]) ->
 
 
 def _save_background_image_tags(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
-    name = str(payload.get("name") or "").strip()
-    message = state.background_manager.upload_bg_tags(name, str(payload.get("bgTags") or ""))
-    if message.startswith("找不到") or message.startswith("请") or "出错" in message:
-        raise RuntimeError(message)
-    return _background_json_after_reload(state, name)
+    return _execute_background_request(
+        state, BackgroundOperation.SAVE_IMAGE_TAGS, payload
+    )
 
 
 def _save_background_bgm_tags(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
-    name = str(payload.get("name") or "").strip()
-    message = state.background_manager.upload_bgm_tags(name, str(payload.get("bgmTags") or ""))
-    if message.startswith("找不到") or message.startswith("请") or "出错" in message:
-        raise RuntimeError(message)
-    return _background_json_after_reload(state, name)
+    return _execute_background_request(
+        state, BackgroundOperation.SAVE_BGM_TAGS, payload
+    )

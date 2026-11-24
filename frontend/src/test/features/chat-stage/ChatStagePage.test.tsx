@@ -128,6 +128,7 @@ const desktopApiMocks = vi.hoisted(() => ({
   getDesktopWindowCursorPosition: vi.fn(),
   isTauriDesktop: vi.fn(),
   minimizeDesktopWindow: vi.fn(),
+  saveDesktopHistoryExport: vi.fn(),
   setDesktopWindowAlwaysOnTop: vi.fn(),
   setDesktopWindowClickThrough: vi.fn(),
   startDesktopWindowDrag: vi.fn(),
@@ -149,6 +150,7 @@ vi.mock("../../../shared/desktop/desktopApi", async (importOriginal) => {
     getDesktopWindowCursorPosition: () => desktopApiMocks.getDesktopWindowCursorPosition(),
     isTauriDesktop: () => desktopApiMocks.isTauriDesktop(),
     minimizeDesktopWindow: () => desktopApiMocks.minimizeDesktopWindow(),
+    saveDesktopHistoryExport: (blob: Blob) => desktopApiMocks.saveDesktopHistoryExport(blob),
     setDesktopWindowAlwaysOnTop: (alwaysOnTop: boolean) => desktopApiMocks.setDesktopWindowAlwaysOnTop(alwaysOnTop),
     setDesktopWindowClickThrough: (ignore: boolean) => desktopApiMocks.setDesktopWindowClickThrough(ignore),
     startDesktopWindowDrag: () => desktopApiMocks.startDesktopWindowDrag(),
@@ -2760,6 +2762,57 @@ describe("ChatStagePage", () => {
     });
     expect(document.querySelector(".chat-stage__cg img")).toHaveAttribute("src", "asset://cg.png");
     expect(document.querySelector(".sprite-layer")).toHaveAttribute("hidden");
+    expect(screen.getByRole("button", { name: "Save CG" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Exit CG" })).toBeInTheDocument();
+  });
+
+  it("lets users save and exit active CG illustrations", async () => {
+    let listener: ((event: ChatStageEvent) => void) | null = null;
+    mocks.subscribeChatEvents.mockImplementation((next) => {
+      listener = next;
+      return vi.fn();
+    });
+    desktopApiMocks.isTauriDesktop.mockReturnValue(true);
+    desktopApiMocks.saveDesktopHistoryExport.mockResolvedValue({
+      name: "shinsekai-cg.png",
+      opened: true,
+      path: "D:/Downloads/Shinsekai/shinsekai-cg.png",
+    });
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(new Blob(["png-bytes"], { type: "image/png" }), { status: 200 }));
+
+    try {
+      renderPage();
+      await screen.findByText("Ready");
+
+      act(() => {
+        listener?.({
+          seq: 2,
+          ts: Date.now(),
+          type: "cg.show",
+          url: "http://127.0.0.1:8787/api/media?path=cache%2Fimages%2F0.png",
+          v: 1,
+        });
+      });
+
+      const saveButton = await screen.findByRole("button", { name: "Save CG" });
+      fireEvent.click(saveButton);
+      await waitFor(() => expect(desktopApiMocks.saveDesktopHistoryExport).toHaveBeenCalledTimes(1));
+      expect(await screen.findByText("D:/Downloads/Shinsekai/shinsekai-cg.png")).toBeInTheDocument();
+
+      const exitButton = screen.getByRole("button", { name: "Exit CG" });
+      fireEvent.click(exitButton);
+      expect(document.querySelector(".chat-stage__cg")).toHaveAttribute("hidden");
+      expect(screen.queryByRole("button", { name: "Exit CG" })).not.toBeInTheDocument();
+      await waitFor(() =>
+        expect(mocks.sendChatCommand).toHaveBeenCalledWith({
+          type: "dismiss-cg",
+        }),
+      );
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 
   it("plays dialog.end events through the frontend typewriter and lets users skip", async () => {
@@ -2983,5 +3036,45 @@ describe("ChatStagePage", () => {
     act(() => vi.advanceTimersByTime(600));
 
     expect(topTools).toHaveAttribute("data-visible", "false");
+  });
+
+  it("adapts single-row dialog controls density across stage widths", async () => {
+    const { container } = renderPage();
+    await screen.findByText("Ready");
+
+    const stage = container.querySelector(".chat-stage") as HTMLElement;
+    const controls = container.querySelector(".dialog-stage-controls") as HTMLElement;
+    const rail = container.querySelector(".dialog-stage-controls__rail") as HTMLElement;
+
+    let stageWidth = 1280;
+    Object.defineProperty(stage, "clientWidth", { configurable: true, get: () => stageWidth });
+    Object.defineProperty(rail, "scrollWidth", {
+      configurable: true,
+      get: () => (controls.dataset.density === "tight" ? 600 : 740),
+    });
+
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(controls).toHaveAttribute("data-density", "full");
+
+    stageWidth = 700;
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(controls).toHaveAttribute("data-density", "tight");
+
+    stageWidth = 360;
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(controls).toHaveAttribute("data-density", "compact");
+    expect(within(controls).getByRole("button", { name: "Open history" })).toBeInTheDocument();
+
+    stageWidth = 1280;
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(controls).toHaveAttribute("data-density", "full");
   });
 });

@@ -193,8 +193,8 @@ describe("BackgroundManagerPage", () => {
     renderPage();
 
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "City" } });
-    fireEvent.change(screen.getByLabelText("Resource directory"), { target: { value: "city" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(screen.getByLabelText("Resource directory")).toHaveValue("city");
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
 
     await waitFor(() =>
       expect(mockSaveBackground).toHaveBeenCalledWith(
@@ -235,7 +235,7 @@ describe("BackgroundManagerPage", () => {
     mockListBackgrounds.mockResolvedValue([]);
     renderPage();
 
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
     expect(await screen.findByText("Validation failed")).toBeInTheDocument();
     expect(screen.getByText("Background name is required.")).toBeInTheDocument();
     expect(mockSaveBackground).not.toHaveBeenCalled();
@@ -469,5 +469,70 @@ describe("BackgroundManagerPage", () => {
     dialog = screen.getByRole("dialog", { name: "Delete background" });
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(mockDeleteBackground).toHaveBeenCalledWith("School"));
+  });
+
+  it("auto-saves BGM tag edits under committed identity and renames backgrounds in place on inline confirm", async () => {
+    mockListBackgrounds.mockResolvedValue([
+      {
+        ...structuredClone(background),
+        bgm_list: ["D:/backgrounds/school/theme.mp3"],
+        bgm_tags: "音乐 1：平静\n",
+        id: "bg-school",
+      },
+      {
+        ...structuredClone(background),
+        id: "bg-park",
+        name: "Park",
+        sprite_prefix: "park",
+      },
+    ]);
+    renderPage();
+
+    const nameInput = await screen.findByLabelText("Name");
+    await waitFor(() => expect(nameInput).toHaveValue("School"));
+
+    // Unconfirmed name edit stays isolated while BGM tag auto-saves
+    fireEvent.change(nameInput, { target: { value: "Academy" } });
+    expect(screen.getByRole("button", { name: "Confirm: Name" })).toBeInTheDocument();
+
+    const tagInputs = screen.getAllByLabelText("Tag");
+    fireEvent.change(tagInputs[tagInputs.length - 1], { target: { value: "lively" } });
+
+    await waitFor(
+      () =>
+        expect(mockSaveBackground).toHaveBeenCalledWith(
+          expect.objectContaining({
+            bgm_tags: "音乐 1：lively\n",
+            id: "bg-school",
+            name: "School",
+            sprite_prefix: "school",
+          }),
+          "School",
+        ),
+      { timeout: 2500 },
+    );
+    expect(nameInput).toHaveValue("Academy");
+
+    // Confirming inline rename updates the catalog in place without jumping behind Park
+    fireEvent.keyDown(nameInput, { key: "Enter" });
+    await waitFor(() =>
+      expect(mockSaveBackground).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "bg-school",
+          name: "Academy",
+          sprite_prefix: "school",
+        }),
+        "School",
+      ),
+    );
+    fireEvent.click(screen.getByRole("combobox"));
+    const options = screen.getAllByRole("option");
+    expect(options.map((option) => option.textContent)).toEqual(["Academy", "Park"]);
+
+    // New generates non-colliding bg_1 and Cancel returns to Academy
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    expect(screen.getByLabelText("Resource directory")).toHaveValue("bg_1");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.getByLabelText("Name")).toHaveValue("Academy"));
   });
 });

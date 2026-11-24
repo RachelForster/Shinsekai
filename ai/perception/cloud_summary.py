@@ -10,12 +10,15 @@ import re
 import threading
 from typing import Any
 
+from ai.llm.template.integrations.localization import LocaleInput, resolve_dynamic_locale
+from ai.llm.template.perception import render_cloud_summary_messages
 from ai.perception.parser import sanitize_episode_summary
 from core.perception.cache.episodes import (
     build_fallback_episode_summary,
     merge_fallback_overall_summary,
 )
 from core.perception.models import VisionEpisode, normalize_scene_mood
+from sdk.lang import normalize_lang
 
 logger = logging.getLogger(__name__)
 
@@ -24,9 +27,18 @@ CloudTextCompletionFn = Callable[[list[dict[str, str]]], str]
 _CODE_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE)
 
 _SLOT_PREFIX_PATTERNS: dict[str, re.Pattern[str]] = {
-    "subtitle": re.compile(r"^(?:字幕内容|屏幕文字|屏幕台词|字幕|台词|文字)\s*[：:]\s*"),
-    "visual": re.compile(r"^(?:画面内容|画面动态|画面表现|画面)\s*[：:]\s*"),
-    "turning_point": re.compile(r"^(?:关键转折|剧情转折|胜负转折|转折|反转)\s*[：:]\s*"),
+    "subtitle": re.compile(
+        r"^(?:字幕内容|屏幕文字|屏幕台词|字幕|台词|文字|subtitles?|screen\s*text|テキスト)\s*[：:]\s*",
+        re.IGNORECASE,
+    ),
+    "visual": re.compile(
+        r"^(?:画面内容|画面动态|画面表现|画面|映像|visuals?)\s*[：:]\s*",
+        re.IGNORECASE,
+    ),
+    "turning_point": re.compile(
+        r"^(?:关键转折|剧情转折|胜负转折|转折|反转|転機|転換点|turning\s*point)\s*[：:]\s*",
+        re.IGNORECASE,
+    ),
 }
 
 _EMPTY_SLOT_TOKENS: frozenset[str] = frozenset(
@@ -37,7 +49,11 @@ _EMPTY_SLOT_TOKENS: frozenset[str] = frozenset(
         "没有",
         "空",
         "无内容",
+        "なし",
+        "特になし",
+        "特に転機なし",
         "none",
+        "no turning point",
         "null",
         "nil",
         "n/a",
@@ -84,40 +100,52 @@ def compose_minute_summary(
     turning_point: Any = "",
     *,
     max_chars: int = 120,
+    locale: str | None = None,
 ) -> str:
     """Assemble the 2-to-3 sentence episodic summary in strict order: 字幕 -> 画面 -> 转折(optional)."""
+    lang = normalize_lang(locale) if locale else "zh_CN"
     limit = max(40, int(max_chars))
     sub = _clean_summary_slot(subtitle_summary, slot="subtitle", slot_max_chars=42)
     vis = _clean_summary_slot(visual_summary, slot="visual", slot_max_chars=40)
     turn = _clean_summary_slot(turning_point, slot="turning_point", slot_max_chars=36)
 
+    if lang == "en":
+        labels = ("Subtitles", "Visuals", "Turning point")
+        colon, end_punct, joiner = ": ", ". ", ""
+    elif lang == "ja":
+        labels = ("字幕", "映像", "転機")
+        colon, end_punct, joiner = "：", "。", ""
+    else:
+        labels = ("字幕", "画面", "转折")
+        colon, end_punct, joiner = "：", "。", ""
+
     sentences: list[str] = []
-    if sub:
-        sentences.append(f"字幕：{sub}。")
-    if vis:
-        sentences.append(f"画面：{vis}。")
-    if turn:
-        sentences.append(f"转折：{turn}。")
+    for label, val in zip(labels, (sub, vis, turn), strict=True):
+        if val:
+            sentences.append(f"{label}{colon}{val}{end_punct}".strip() if lang == "en" else f"{label}{colon}{val}{end_punct}")
 
     if not sentences:
         return ""
 
-    joined = "".join(sentences)
+    joined = (" ".join(sentences) if lang == "en" else joiner.join(sentences))
     if len(joined) <= limit:
         return joined
 
     per_slot = max(12, (limit - 4 * len(sentences)) // len(sentences))
     tightened: list[str] = []
-    for label, val in (("字幕", sub), ("画面", vis), ("转折", turn)):
+    for label, val in zip(labels, (sub, vis, turn), strict=True):
         if not val:
             continue
         short_val = _clean_summary_slot(val, slot="", slot_max_chars=per_slot)
         if short_val:
-            tightened.append(f"{label}：{short_val}。")
-    result = "".join(tightened)
+            tightened.append(
+                f"{label}: {short_val}." if lang == "en" else f"{label}{colon}{short_val}{end_punct}"
+            )
+    result = " ".join(tightened) if lang == "en" else joiner.join(tightened)
     if len(result) <= limit:
         return result
-    return result[: limit - 1].rstrip(" ，,、：:。；;") + "。"
+    tail = "." if lang == "en" else "。"
+    return result[: limit - 1].rstrip(" ，,、：:。；;.") + tail
 
 
 @dataclass(frozen=True, slots=True)
@@ -226,69 +254,20 @@ def build_cloud_summary_messages(
     minute_max_chars: int = 120,
     overall_max_chars: int = 180,
     active_game: str = "",
+    locale: LocaleInput = None,
 ) -> list[dict[str, str]]:
     """Build stateless messages asking the Cloud LLM for dual summaries + adaptive guidance."""
-    system_prompt = (
-        "你是实时陪看/陪玩系统的云端视觉记忆整理与感知策略助手。\n"
-        "请根据「既有总体纪要」与本段约2分钟的「字幕/文字记录」及「画面记录」，高度提炼核心信息并输出一个严格的JSON对象：\n"
-        "{\n"
-        '  "subtitle_summary": "一句话（38字以内）清晰概括本段字幕/文字的核心内容或对话主旨；若本段无字幕填\\"\\"",\n'
-        '  "visual_summary": "一句话（36字以内）高度概括本段画面的核心场景与主要动作状态；若本段无画面填\\"\\"",\n'
-        '  "turning_point": "一句话（32字以内）点出本段的关键剧情反转、核心线索揭晓或胜负结果；若无明显转折必须填\\"\\"",\n'
-        f'  "overall_summary": "{overall_max_chars}字以内，在既有总体纪要基础上融合本段主线进展，保留核心人物/线索/胜负转折，禁止附带情绪基调标签",\n'
-        '  "mood": "calm|serious|sad|tense|joyful|hyped|unclear",\n'
-        '  "guidance": {\n'
-        '    "scene_pace": "auto|dialogue_heavy|action_heavy|quiet",\n'
-        '    "visual_beats_subtitle_heavy": 2,\n'
-        '    "visual_beats_visual_heavy": 5,\n'
-        '    "notable_salience_floor": 0.85,\n'
-        '    "focus_hint": "给本地视觉模型的简短观察侧重提示（28字以内，无需调整填\\"\\"）"\n'
-        "  }\n"
-        "}\n"
-        "规则：\n"
-        "1. 严禁写成“先是……接着……随后……然后……”的时间流水账！subtitle_summary 与 visual_summary 各限干脆利落的一句话（总体控制"
-        f"{minute_max_chars}字以内），做高度归纳提炼而非逐条复述，且不要自带“字幕：”“画面：”“转折：”前缀。\n"
-        "2. turning_point 宁缺毋滥：常规剧情推进、普通对话或日常走位探索时必须填 \"\"，严禁硬凑或填写“无明显转折”。\n"
-        "3. 只依据提供的观察记录整理，OCR谐音错字可结合上下文轻微修正，禁止主观感叹、情绪基调判断或脑补未出现的信息。\n"
-        "4. guidance用于主动自适应指导后续参数：台词密集的文戏/科普/访谈设 scene_pace=\"dialogue_heavy\"、visual_beats_subtitle_heavy=1~2；"
-        "少台词的探索/战斗设 scene_pace=\"action_heavy\"、visual_beats_visual_heavy=5~6；若琐碎波动过多可上调 notable_salience_floor（0.85~0.92）。无需调整时 guidance 可填 {}。\n"
-        "5. 只输出一行合法JSON对象，不要包含Markdown代码块。"
+    resolved_locale = resolve_dynamic_locale(locale) if locale is not None else "zh_CN"
+    return render_cloud_summary_messages(
+        batch,
+        previous_overall_summary=previous_overall_summary,
+        recent_episodes=recent_episodes,
+        policy_snapshot=policy_snapshot,
+        minute_max_chars=minute_max_chars,
+        overall_max_chars=overall_max_chars,
+        active_game=active_game,
+        locale=resolved_locale,
     )
-
-    user_sections: list[str] = []
-    if active_game:
-        user_sections.append(f"[当前游戏/来源] {active_game}")
-    user_sections.append(
-        f"[既有总体纪要] {previous_overall_summary.strip() or '（暂无，这是首段记录）'}"
-    )
-    if recent_episodes:
-        ep_lines = [f"- 第{ep.index}段：{ep.summary}" for ep in recent_episodes[-2:]]
-        user_sections.append("[最近分段纪要]\n" + "\n".join(ep_lines))
-    if policy_snapshot:
-        user_sections.append(
-            "[当前策略参数] " + json.dumps(dict(policy_snapshot), ensure_ascii=False)
-        )
-    text_lines = [
-        f"[{kind}] {text.strip()}"
-        for _ts, kind, text in batch
-        if kind != "画面" and str(text or "").strip()
-    ]
-    visual_lines = [
-        f"[画面] {text.strip()}"
-        for _ts, kind, text in batch
-        if kind == "画面" and str(text or "").strip()
-    ]
-    user_sections.append(
-        "[本段字幕/文字记录]\n" + ("\n".join(text_lines)[:1600] if text_lines else "（本段无字幕或文字）")
-    )
-    user_sections.append(
-        "[本段画面记录]\n" + ("\n".join(visual_lines)[:1400] if visual_lines else "（本段无画面变化）")
-    )
-
-    return [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": "\n\n".join(user_sections)},
-    ]
 
 
 def parse_cloud_summary_response(
@@ -299,6 +278,7 @@ def parse_cloud_summary_response(
     minute_max_chars: int = 120,
     overall_max_chars: int = 180,
     default_mood: str = "unclear",
+    locale: str | None = None,
 ) -> CloudSummaryResult:
     """Parse Cloud LLM JSON output with deterministic fallback on malformed responses."""
     items = list(batch)
@@ -336,6 +316,7 @@ def parse_cloud_summary_response(
                 parsed.get("visual_summary", "") if has_visual_items else "",
                 parsed.get("turning_point", ""),
                 max_chars=minute_max_chars,
+                locale=locale,
             )
         else:
             minute = ""
@@ -372,6 +353,7 @@ def summarize_vision_window(
     job: Mapping[str, Any],
     *,
     cloud_complete: CloudTextCompletionFn | None = None,
+    locale: LocaleInput = None,
 ) -> CloudSummaryResult:
     """Run Cloud LLM dual-stage summarization on a prepared `RPInputCache` job."""
     batch = list(job.get("batch") or ())
@@ -391,6 +373,9 @@ def summarize_vision_window(
         )
 
     if callable(cloud_complete):
+        resolved_locale = (
+            resolve_dynamic_locale(locale) if locale is not None else "zh_CN"
+        )
         messages = build_cloud_summary_messages(
             batch,
             previous_overall_summary=prev_overall,
@@ -399,6 +384,7 @@ def summarize_vision_window(
             minute_max_chars=minute_max_chars,
             overall_max_chars=overall_max_chars,
             active_game=active_game,
+            locale=resolved_locale,
         )
         try:
             raw = cloud_complete(messages)
@@ -410,6 +396,7 @@ def summarize_vision_window(
                     minute_max_chars=minute_max_chars,
                     overall_max_chars=overall_max_chars,
                     default_mood=current_mood,
+                    locale=resolved_locale,
                 )
         except Exception:
             logger.debug("cloud vision memory summarization failed; falling back", exc_info=True)

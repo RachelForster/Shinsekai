@@ -72,9 +72,11 @@ describe("entity repositories", () => {
       },
       templates: {
         generate: vi.fn().mockResolvedValue(template),
+        getPresets: vi.fn().mockResolvedValue({ groups: [], presets: [] }),
         getSession: vi.fn().mockResolvedValue(null),
         list: vi.fn().mockResolvedValue(sampleTemplates),
         save: vi.fn().mockResolvedValue(template),
+        savePresets: vi.fn().mockResolvedValue({ groups: [], presets: [] }),
         saveSession: vi.fn().mockResolvedValue({ characterNames: ["Nanami"], templateId: "default" }),
       },
     };
@@ -110,6 +112,8 @@ describe("entity repositories", () => {
     });
     await files.openExternal("https://example.test");
     await templates.listTemplates();
+    await templates.getUserPromptPresets();
+    await templates.saveUserPromptPresets({ groups: ["Style"], presets: [] });
     await templates.saveTemplate(template);
     await templates.generateTemplate({
       backgroundName: "默认房间",
@@ -516,6 +520,11 @@ describe("entity repositories", () => {
         uploadAudio: vi.fn().mockResolvedValue(effect),
         uploadImages: vi.fn().mockResolvedValue(effect),
         uploadImageAudio: vi.fn().mockResolvedValue(effect),
+        uploadAmbient: vi.fn().mockResolvedValue(effect),
+        deleteAmbient: vi.fn().mockResolvedValue(effect),
+        saveAmbientTags: vi.fn().mockResolvedValue(effect),
+        saveAmbientLayers: vi.fn().mockResolvedValue(effect),
+        uploadAmbientAudio: vi.fn().mockResolvedValue(effect),
       },
       logs: {
         exportDiagnostics: vi.fn().mockResolvedValue("/tmp/diagnostics.zip"),

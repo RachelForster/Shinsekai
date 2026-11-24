@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Check } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
+import { Check, Upload } from "lucide-react";
 
 import type { PathPickerMode } from "../platform/types";
+import { isStandaloneRuntimeActive } from "../platform/runtimeTarget";
+import { stageUploadedFiles } from "../platform/standalone/storage/vfsBlobRegistry";
 import { isTauriDesktop, pickDesktopNativePath } from "../desktop/desktopApi";
 import { useI18n } from "../i18n";
 import "./PathPickerDialog.css";
@@ -133,12 +135,98 @@ export function PathPickerDialog({
     setConfirmPaths(selection.confirmPaths);
   }, []);
 
+  const standaloneInputRef = useRef<HTMLInputElement>(null);
+  const [standaloneBusy, setStandaloneBusy] = useState(false);
+  const [standaloneError, setStandaloneError] = useState("");
+  const standaloneMode = isStandaloneRuntimeActive();
+
+  const standaloneAccept = (() => {
+    const exts = (acceptedExtensions ?? []).map((ext) => ext.trim().replace(/^\.+/, "").toLowerCase()).filter(Boolean);
+    if (!exts.length) {
+      return ".char,.zip,.png,.jpg,.jpeg,.webp,.gif,.mp4,.webm,.wav,.mp3,.ogg,application/zip,application/octet-stream";
+    }
+    const tokens = new Set<string>();
+    for (const ext of exts) {
+      tokens.add(`.${ext}`);
+      if (ext === "char" || ext === "cha" || ext === "zip" || ext === "bg" || ext === "ef") {
+        tokens.add(".zip");
+        tokens.add("application/zip");
+        tokens.add("application/octet-stream");
+      }
+    }
+    return Array.from(tokens).join(",");
+  })();
+
+  const handleStandaloneFilePick = async (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    if (!files.length) return;
+    setStandaloneBusy(true);
+    setStandaloneError("");
+    try {
+      const vfsPaths = await stageUploadedFiles(files, "uploads");
+      if (multiple && mode === "file" && onSelectMany) {
+        onSelectMany(vfsPaths);
+      } else if (vfsPaths[0]) {
+        onSelect(vfsPaths[0]);
+      }
+      onClose();
+    } catch (error) {
+      setStandaloneError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setStandaloneBusy(false);
+    }
+  };
+
   if (!open) {
     return null;
   }
   if (isTauriDesktop() && !nativeDialogFailed) {
     // The native dialog owns the whole flow; render nothing behind it.
     return null;
+  }
+
+  if (standaloneMode) {
+    return (
+      <Dialog
+        bodyClassName="path-picker__body"
+        className="path-picker path-picker--standalone"
+        closeLabel={t("common.close")}
+        footer={<Button onClick={onClose}>{t("common.cancel")}</Button>}
+        onClose={onClose}
+        open={open}
+        title={title}
+      >
+        <div className="path-picker__standalone-box">
+          {mode === "directory" ? (
+            <p className="path-picker__standalone-note">{t("filePicker.standalone.directoryUnsupported")}</p>
+          ) : (
+            <>
+              <p className="path-picker__standalone-note">{t("filePicker.standalone.localStorageNote")}</p>
+              <input
+                accept={standaloneAccept}
+                className="path-picker__standalone-input"
+                multiple={multiple && mode === "file"}
+                onChange={(event) => void handleStandaloneFilePick(event)}
+                ref={standaloneInputRef}
+                type="file"
+              />
+              <div>
+                <Button
+                  disabled={standaloneBusy}
+                  icon={<Upload aria-hidden className="button__icon" />}
+                  onClick={() => standaloneInputRef.current?.click()}
+                  variant="primary"
+                >
+                  {standaloneBusy ? t("filePicker.standalone.reading") : t("filePicker.standalone.pickFromDevice")}
+                </Button>
+              </div>
+              {standaloneError ? <p className="path-picker__error">{standaloneError}</p> : null}
+            </>
+          )}
+        </div>
+      </Dialog>
+    );
   }
 
   return (

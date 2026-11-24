@@ -5,8 +5,8 @@ from types import SimpleNamespace
 import pytest
 
 from core.messaging.dialog_tokens import BGM, SCENE
+from ai.llm.template import PROMPT_CATALOG
 from ai.llm.template_generator import DEFAULT_DIALOG_CONTRACT_ID, NoValidCharactersError, TemplateGenerator
-from i18n import tr_in_bundle
 from sdk.register import PluginCapabilityRegistry
 from sdk.types import (
     ChatOutputContract,
@@ -109,7 +109,10 @@ def test_template_generator_renders_added_field_aliases(monkeypatch) -> None:
 
     monkeypatch.setattr(
         "ai.llm.template_generator.config_manager",
-        SimpleNamespace(get_character_by_name=lambda name: character),
+        SimpleNamespace(
+            get_character_by_name=lambda name: character,
+            config=SimpleNamespace(system_config=SimpleNamespace(ui_language="en")),
+        ),
     )
 
     patch = OutputContractPatch(
@@ -135,6 +138,72 @@ def test_template_generator_renders_added_field_aliases(monkeypatch) -> None:
 
     assert warning == ""
     assert "camera (string, optional): Camera framing for this line. Aliases: shot, framing." in template
+
+
+@pytest.mark.parametrize(
+    ("ui_language", "expected_field_line", "expected_omitted_line"),
+    [
+        (
+            "zh_CN",
+            "- camera（string，可选）：Camera framing. 兼容别名：shot。",
+            "- effect：请勿在输出中包含该字段。",
+        ),
+        (
+            "en",
+            "- camera (string, optional): Camera framing. Aliases: shot.",
+            "- effect: Do not include this field in the output.",
+        ),
+        (
+            "ja",
+            "- camera（string、任意）：Camera framing. 互換エイリアス：shot。",
+            "- effect：出力にこのフィールドを含めないでください。",
+        ),
+    ],
+)
+def test_template_generator_localizes_field_contract_changes_with_ui_language(
+    monkeypatch,
+    ui_language: str,
+    expected_field_line: str,
+    expected_omitted_line: str,
+) -> None:
+    character = SimpleNamespace(
+        sprites=[object()],
+        emotion_tags="happy: 01",
+        character_setting="A test character.",
+    )
+    monkeypatch.setattr(
+        "ai.llm.template_generator.config_manager",
+        SimpleNamespace(
+            get_character_by_name=lambda _name: character,
+            config=SimpleNamespace(system_config=SimpleNamespace(ui_language=ui_language)),
+        ),
+    )
+
+    patch = OutputContractPatch(
+        id="demo.camera",
+        target_contract=DEFAULT_DIALOG_CONTRACT_ID,
+        add_fields=(
+            OutputFieldSpec(
+                key="camera",
+                type="string",
+                description="Camera framing.",
+                aliases=("shot",),
+            ),
+        ),
+        remove_fields=("effect",),
+    )
+
+    template, warning = TemplateGenerator(output_contract_patches=[patch]).generate_chat_template(
+        selected_characters=["Alice"],
+        bg_name=None,
+        use_effect=True,
+        use_cg=False,
+        use_llm_translation=False,
+    )
+
+    assert warning == ""
+    assert expected_field_line in template
+    assert expected_omitted_line in template
 
 
 def test_template_generator_ends_with_json_format_reminder(monkeypatch) -> None:
@@ -214,7 +283,7 @@ def test_template_generator_preserves_effect_toggle_without_duplicate_field_cont
 
 
 def test_effect_requirement_retains_audio_modes_and_image_aliases() -> None:
-    requirement = tr_in_bundle("template_gen.r_effect", "zh_CN")
+    requirement = PROMPT_CATALOG.translate("dialog.r_effect", locale="zh_CN")
 
     assert "同行逗号分隔项为别名" in requirement
     assert "不用于图片" in requirement

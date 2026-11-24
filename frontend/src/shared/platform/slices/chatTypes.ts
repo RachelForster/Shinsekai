@@ -317,10 +317,18 @@ export interface ChatSnapshot {
     seq: number;
     url: string;
   } | null;
+  ambientEffects?: Array<{
+    audioUrl?: string;
+    key: string;
+    layer: "back" | "front";
+    seq: number;
+    url: string;
+  }>;
   historyEntries?: ChatHistoryEntry[];
   historyPath?: string;
   inputDraft: string;
   initTask?: TaskSnapshot;
+  isSystemDialog?: boolean;
   loopingEffects?: Array<{
     key: string;
     seq: number;
@@ -355,6 +363,7 @@ export interface ChatSnapshot {
 export type ChatPresentation = Partial<
   Pick<
     ChatSnapshot,
+    | "ambientEffects"
     | "backgroundPath"
     | "bgmPath"
     | "cgPath"
@@ -363,6 +372,7 @@ export type ChatPresentation = Partial<
     | "characterName"
     | "dialogHtml"
     | "dialogText"
+    | "isSystemDialog"
     | "options"
     | "systemMessageText"
     | "playerPortrait"
@@ -402,6 +412,7 @@ export interface ChatCommand {
     | "clear-history"
     | "copy-history"
     | "dialog-advance"
+    | "dismiss-cg"
     | "dismiss-plugin-page"
     | "flush-input-batch"
     | "open-history"
@@ -422,7 +433,7 @@ export interface ChatCommand {
 }
 
 export type ChatRealtimeCommandType =
-  | Exclude<ChatCommand["type"], "copy-history" | "dismiss-plugin-page" | "open-history">
+  | Exclude<ChatCommand["type"], "copy-history" | "dismiss-cg" | "dismiss-plugin-page" | "open-history">
   | "revert-history";
 
 /** 上行命令（React→server，WebSocket），沿用并扩展 ChatCommand。 */
@@ -527,6 +538,10 @@ export type ChatStageEvent =
   | (ChatEventBase & { type: "effect.loop.start"; key: string; url: string })
   | (ChatEventBase & { type: "effect.loop.stop"; key: string })
   | (ChatEventBase & { type: "effect.loop.stop-all" })
+  | (ChatEventBase & { type: "ambient.start"; audioUrl?: string; key: string; layer: "back" | "front"; url: string })
+  | (ChatEventBase & { type: "ambient.layer"; audioUrl?: string; key: string; layer: "back" | "front" })
+  | (ChatEventBase & { type: "ambient.stop"; key: string })
+  | (ChatEventBase & { type: "ambient.stop-all" })
   | (ChatEventBase & { type: "asr.partial"; text: string })
   | (ChatEventBase & { type: "asr.final"; text: string })
   | (ChatEventBase & { type: "asr.state"; enabled?: boolean; loading?: boolean; running: boolean })

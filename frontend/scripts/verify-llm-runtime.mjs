@@ -37,7 +37,7 @@ async function pythonFiles(directory) {
     const entryPath = path.join(directory, entry.name);
     if (entry.isDirectory() && entry.name !== "__pycache__") {
       files.push(...(await pythonFiles(entryPath)));
-    } else if (entry.isFile() && entry.name.endsWith(".py")) {
+    } else if (entry.isFile() && (entry.name.endsWith(".py") || entry.name.endsWith(".yaml"))) {
       files.push(entryPath);
     }
   }

@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   player: {
     subscribeLock: vi.fn(() => () => {}),
     subscribeVoiceSignal: vi.fn(() => () => {}),
+    setAmbientAudio: vi.fn(),
     setBgm: vi.fn(),
     setEffectVolume: vi.fn(),
     setVoicePaused: vi.fn(),
@@ -71,6 +72,24 @@ describe("shared replay audio", () => {
     expect(mocks.player.playEffect).toHaveBeenCalledTimes(1);
     result.rerender(view(commands, false));
     expect(mocks.player.playVoice).toHaveBeenCalledTimes(2);
+  });
+
+  it("projects ambient effect audio into persistent loop sync", () => {
+    render(
+      <I18nProvider language="en">
+        <ChatSoundPlayer
+          ambientEffects={[{ audioUrl: "rain.wav", key: "rain" }, { key: "fog" }]}
+          bgmVolume={0.5}
+          commands={[]}
+          effectVolume={0.5}
+          onPlaybackSignal={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+    expect(mocks.player.setAmbientAudio).toHaveBeenCalledWith([
+      { key: "ambient:rain", url: "rain.wav" },
+      { key: "ambient:fog", url: "" },
+    ]);
   });
 
   it("still processes a stop while paused without replaying the audio request", () => {

@@ -10,6 +10,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from application.characters.model_files import owned_model_file
+from config.character_ops import save_character_avatar_bank
 from config.schema import Character, ModelSprites, Sprite
 from config.sprite_files import sprite_field
 from core.media.asset_import import PendingAssetBatch
@@ -36,6 +37,19 @@ def _retired_state_paths(
             continue
         retained.append(saved.relative_to(model.parent).as_posix())
     return tuple(retained)
+
+
+def _save_avatar_bank(
+    use_case, name: str, kind: str, bank: ModelSprites, *,
+    activate: bool = False, retired_states: tuple[str, ...] = (),
+) -> None:
+    target = use_case._catalog_target() if hasattr(use_case, "_catalog_target") else None
+    if target is not None:
+        save_character_avatar_bank(target, name, kind, bank, activate=activate, retired_states=retired_states)
+    else:
+        use_case._state.character_manager.save_avatar_bank(
+            name, kind, bank, activate=activate, retired_states=retired_states,
+        )
 
 
 def import_model_states(use_case, body: dict) -> dict:
@@ -83,7 +97,12 @@ def import_model_states(use_case, body: dict) -> dict:
             old_count = len(bank.sprites) - len(sources)
             tags = tag_contents(bank.emotion_tags, old_count)
             bank.emotion_tags = numbered_tags("立绘", [*tags, *tags_to_add])
-            use_case._state.character_manager.save_avatar_bank(name, kind, bank)
+            try:
+                _save_avatar_bank(use_case, name, kind, bank)
+            except Exception as exc:
+                if getattr(exc, "published", False):
+                    transaction.preserve()
+                raise
             transaction.commit()
     return use_case._after_reload(name)
 
@@ -98,7 +117,11 @@ def import_model(use_case, body: dict) -> dict:
     # Each dependency is separately checked against the input grant.
     for file in files.files:
         use_case._file(str(file), field="model dependency")
-    root = safe_child_path(use_case._resource_paths.project_root, "data/sprite")
+    root = (
+        use_case._media_dir("sprite")
+        if hasattr(use_case, "_media_dir")
+        else safe_child_path(use_case._resource_paths.project_root, "data/sprite")
+    )
     parent = safe_child_path(root, f"{character.sprite_prefix}/avatars/{kind}")
     parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".import-", dir=parent) as directory:
@@ -118,9 +141,9 @@ def import_model(use_case, body: dict) -> dict:
             bank = ModelSprites(model_path=str(final / files.entry.name))
             try:
                 shutil.copytree(staged, final)
-                use_case._state.character_manager.save_avatar_bank(name, kind, bank, activate=True)
-            except Exception:
-                if final.exists():
+                _save_avatar_bank(use_case, name, kind, bank, activate=True)
+            except Exception as exc:
+                if not getattr(exc, "published", False) and final.exists():
                     shutil.rmtree(final)
                 raise
     return use_case._after_reload(name)
@@ -152,7 +175,7 @@ def save_model_state(use_case, body: dict) -> dict:
             write_state_index(adapter_for(kind), model, target, state)
             from core.media.asset_tags import numbered_tags, tag_contents
             tags = tag_contents(bank.emotion_tags, len(bank.sprites))
-            sprite = Sprite(path=target) if index == -1 else bank.sprites[index].model_copy(update={"path": target})
+            sprite = Sprite(path=target) if index == -1 else bank.sprites[index].model_copy(update={"path": str(target)})
             retired = ()
             if index == -1:
                 bank.sprites.append(sprite)
@@ -164,10 +187,11 @@ def save_model_state(use_case, body: dict) -> dict:
                 bank.sprites[index] = sprite
                 tags[index] = str(body["tags"])
             bank.emotion_tags = numbered_tags("立绘", tags)
-            use_case._state.character_manager.save_avatar_bank(name, kind, bank, retired_states=retired)
-        except Exception:
-            target.unlink(missing_ok=True)
-            index_path(target).unlink(missing_ok=True)
+            _save_avatar_bank(use_case, name, kind, bank, retired_states=retired)
+        except Exception as exc:
+            if not getattr(exc, "published", False):
+                target.unlink(missing_ok=True)
+                index_path(target).unlink(missing_ok=True)
             raise
     return use_case._after_reload(name)
 
@@ -201,5 +225,5 @@ def delete_model_states(use_case, body: dict) -> dict:
         tags = tag_contents(bank.emotion_tags, len(bank.sprites))
         bank.sprites = [sprite for i, sprite in enumerate(bank.sprites) if i not in removed]
         bank.emotion_tags = numbered_tags("立绘", [tag for i, tag in enumerate(tags) if i not in removed])
-        use_case._state.character_manager.save_avatar_bank(name, kind, bank, retired_states=retired)
+        _save_avatar_bank(use_case, name, kind, bank, retired_states=retired)
     return use_case._after_reload(name)

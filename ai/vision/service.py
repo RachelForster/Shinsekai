@@ -4,6 +4,9 @@ import importlib.util
 from dataclasses import dataclass, replace
 from typing import Any, Callable, Iterable, Mapping, Protocol
 
+from ai.llm.template.core.catalog import PROMPT_CATALOG
+from ai.llm.template.generation.vision import render_vision_describe_prompt
+from ai.llm.template.integrations.localization import LocaleInput, resolve_dynamic_locale
 from ai.llm.template.prompts import UserPromptContext, build_user_prompt_section
 from ai.vision.fallback_registry import active_vision_fallback
 from ai.vision.message_content import local_image_block
@@ -28,9 +31,9 @@ from core.media.chat_attachments import (
 from ai.tools.file_tools import file_read
 
 
-DEFAULT_IMAGE_PROMPT = (
-    "Describe this image accurately for another language model. Include visible text, "
-    "important objects, people, layout, and details relevant to the user's request."
+DEFAULT_IMAGE_PROMPT = PROMPT_CATALOG.translate(
+    "generation.vision_describe_prompt",
+    locale="en",
 )
 
 
@@ -47,6 +50,7 @@ class PreparedChatInput:
         background: Mapping[str, str | int] | None = None,
         prefix: str = "",
         suffix: str = "",
+        locale: str | None = None,
     ) -> str | list[dict[str, Any]]:
         """Render turn sections while keeping native image blocks intact."""
         context = self.prompt_context
@@ -61,13 +65,15 @@ class PreparedChatInput:
         merged_suffix = "\n\n".join(
             part for part in (context.suffix, suffix) if part and part.strip()
         )
+        replace_kwargs: dict[str, Any] = {
+            "background": background,
+            "prefix": merged_prefix,
+            "suffix": merged_suffix,
+        }
+        if locale is not None:
+            replace_kwargs["locale"] = locale
         text = build_user_prompt_section().render(
-            replace(
-                context,
-                background=background,
-                prefix=merged_prefix,
-                suffix=merged_suffix,
-            )
+            replace(context, **replace_kwargs)
         )
         if isinstance(self.content, str):
             return text
@@ -225,13 +231,26 @@ class ChatVisionService:
         attachments: Iterable[ResolvedChatAttachment],
         *,
         adapter: Any,
+        locale: LocaleInput = None,
     ) -> PreparedChatInput:
         resolved = list(attachments)
         images = [attachment for attachment in resolved if attachment.kind == "image"]
         display_text = chat_attachment_display_text(text, resolved)
         file_contents = self._read_file_attachments(resolved)
         user_text = str(text or "").strip() or "Please inspect the attached items and respond to the user."
-        context = UserPromptContext(user_input=user_text, attachments=(file_contents,) if file_contents else ())
+        active_locale = resolve_dynamic_locale(locale) if locale is not None else None
+        context = (
+            UserPromptContext(
+                locale=active_locale,
+                user_input=user_text,
+                attachments=(file_contents,) if file_contents else (),
+            )
+            if active_locale is not None
+            else UserPromptContext(
+                user_input=user_text,
+                attachments=(file_contents,) if file_contents else (),
+            )
+        )
 
         if not images:
             return _prepared_input(context, display_text, "text")
@@ -253,9 +272,12 @@ class ChatVisionService:
 
         try:
             fallback = self._fallback_factory()
+            describe_prompt = render_vision_describe_prompt(
+                locale=active_locale or resolve_dynamic_locale(None)
+            )
             descriptions: list[str] = []
             for image in images:
-                description = fallback.describe(image.path.read_bytes(), DEFAULT_IMAGE_PROMPT).strip()
+                description = fallback.describe(image.path.read_bytes(), describe_prompt).strip()
                 descriptions.append(f"Image attachment {image.name}:\n{description or '[No description returned]'}")
         except (MoondreamPluginUnavailable, ImportError):
             # Fallback plugin present but not runnable (e.g. missing torch): degrade

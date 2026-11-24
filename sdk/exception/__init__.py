@@ -12,8 +12,10 @@ from sdk.exception.presenter import (
 )
 from sdk.exception.types import (
     MODULE_PACKAGE_MAP,
-    ExceptionInfo,
+    AppError,
     DownloadError,
+    DownloadReasonCode,
+    ExceptionInfo,
     HttpClientError,
     HTTP_REASON_UNPAIRED_TOOL_MESSAGES,
     ProgressSnapshot,
@@ -31,9 +33,11 @@ from sdk.exception.types import (
 )
 
 __all__ = [
+    "AppError",
     "MODULE_PACKAGE_MAP",
     "ExceptionInfo",
     "DownloadError",
+    "DownloadReasonCode",
     "HttpClientError",
     "HTTP_REASON_UNPAIRED_TOOL_MESSAGES",
     "ProgressSnapshot",

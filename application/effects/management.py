@@ -2,26 +2,40 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
 import os
-from pathlib import Path, PurePosixPath, PureWindowsPath
-import shutil
-import tempfile
-from typing import Any, TypeAlias
-import zipfile
+from pathlib import Path
+from typing import Any, Sequence, TypeAlias
 
-import yaml
-
+from application.media.resource_paths import MediaResourcePaths
 from config.schema import Effect
-from core.media.asset_tags import numbered_tags, tag_content as _tag_text, tag_contents
-from sdk.path_utils import (
-    safe_child_path,
-    safe_existing_file_path,
-    safe_filename,
-    safe_project_path,
+from core.effects.ops import (
+    CatalogEffectTarget,
+    ConfigManagerEffectTarget,
+    EffectPersistenceTarget,
+    delete_all_effect_audio_op,
+    delete_effect_ambient_op,
+    delete_effect_audio_op,
+    delete_effect_image_op,
+    delete_effect_op,
+    import_effect_packages_op,
+    save_effect_ambient_layers_op,
+    save_effect_ambient_tags_op,
+    save_effect_audio_tags_op,
+    save_effect_image_tags_op,
+    save_effect_op,
+    upload_effect_ambient_audio_op,
+    upload_effect_ambient_op,
+    upload_effect_audio_op,
+    upload_effect_image_audio_op,
+    upload_effect_images_op,
 )
+from core.effects.paths import validate_effect_storage_name
+from core.packaging.effect_package import export_effect_package
+from core.storage.layout import StorageLayout
+from core.storage.stores import EffectCatalogPort
 
 
 class EffectOperation(str, Enum):
@@ -35,6 +49,11 @@ class EffectOperation(str, Enum):
     DELETE_IMAGE = "delete-image"
     SAVE_IMAGE_TAGS = "save-image-tags"
     UPLOAD_IMAGE_AUDIO = "upload-image-audio"
+    UPLOAD_AMBIENT = "upload-ambient"
+    DELETE_AMBIENT = "delete-ambient"
+    SAVE_AMBIENT_TAGS = "save-ambient-tags"
+    SAVE_AMBIENT_LAYERS = "save-ambient-layers"
+    UPLOAD_AMBIENT_AUDIO = "upload-ambient-audio"
     IMPORT = "import"
     EXPORT = "export"
 
@@ -58,15 +77,24 @@ class EffectUseCase:
 
     def __init__(
         self,
-        config_manager: Any,
+        config_manager: Any = None,
         *,
+        effects: EffectCatalogPort | None = None,
         local_file_access_roots: Sequence[str | os.PathLike[str]] = (),
         project_root: str | os.PathLike[str] | None = None,
     ) -> None:
+        if config_manager is None and effects is None:
+            raise ValueError("either config_manager or effects must be provided")
         self.config_manager = config_manager
-        self.project_root = Path(project_root or Path.cwd()).resolve(strict=False)
+        self.effects = effects
+        self.layout = StorageLayout(project_root or Path.cwd())
+        self.project_root = self.layout.project_root
         self.local_file_access_roots = tuple(
             Path(root).resolve(strict=False) for root in local_file_access_roots
+        )
+        self._resource_paths = MediaResourcePaths(
+            self.project_root,
+            file_access_roots=self.local_file_access_roots,
         )
 
     def execute(self, request: EffectRequest) -> EffectUseCaseResult:
@@ -81,6 +109,11 @@ class EffectUseCase:
             EffectOperation.DELETE_IMAGE: self._delete_image,
             EffectOperation.SAVE_IMAGE_TAGS: self._save_image_tags,
             EffectOperation.UPLOAD_IMAGE_AUDIO: self._upload_image_audio,
+            EffectOperation.UPLOAD_AMBIENT: self._upload_ambient,
+            EffectOperation.DELETE_AMBIENT: self._delete_ambient,
+            EffectOperation.SAVE_AMBIENT_TAGS: self._save_ambient_tags,
+            EffectOperation.SAVE_AMBIENT_LAYERS: self._save_ambient_layers,
+            EffectOperation.UPLOAD_AMBIENT_AUDIO: self._upload_ambient_audio,
             EffectOperation.IMPORT: self._import,
             EffectOperation.EXPORT: self._export,
         }
@@ -92,584 +125,151 @@ class EffectUseCase:
 
     @property
     def effect_root(self) -> Path:
-        return safe_project_path("data/effects", root=self.project_root)
+        return self.layout.media_dir("effects")
 
-    def _effect_dir(self, name: str) -> Path:
-        safe_name = validate_effect_storage_name(name)
-        candidate = safe_child_path(self.effect_root, safe_name)
-        if candidate == self.effect_root:
-            raise ValueError("effect directory escapes managed storage")
-        return candidate
-
-    def _effect_by_name(self, name: str) -> Any:
-        effect = self.config_manager.get_effect_by_name(name)
-        if effect is None:
-            raise KeyError(f"effect not found: {name}")
-        return effect
-
-    def _effect_after_reload(self, name: str) -> Any:
-        self.config_manager.reload()
-        return self._effect_by_name(name)
+    def _target(self) -> EffectPersistenceTarget:
+        if self.effects is not None:
+            return CatalogEffectTarget(self.effects, self.config_manager)
+        return ConfigManagerEffectTarget(self.config_manager)
 
     def _save(self, payload: dict[str, Any]) -> Effect:
-        raw_body = payload.get("effect", payload)
-        if not isinstance(raw_body, Mapping):
-            raise ValueError("effect payload must be an object")
-        body = dict(raw_body)
-        name = validate_effect_storage_name(str(body.get("name") or "").strip())
-        original_name = str(payload.get("originalName") or "").strip()
-        if original_name:
-            validate_effect_storage_name(original_name)
-
-        effect_list = self.config_manager.config.effect_list
-        if original_name:
-            original = self._effect_by_name(original_name)
-            remaining = [
-                effect
-                for effect in effect_list
-                if effect.name.lower() != original_name.lower()
-            ]
-            existing_names = {effect.name.lower() for effect in remaining}
-            base_name = name
-            counter = 1
-            while name.lower() in existing_names:
-                name = f"{base_name}_{counter}"
-                counter += 1
-            body["name"] = name
-            updated = Effect.model_validate(body)
-            old_dir = self._effect_dir(original.name)
-            new_dir = self._effect_dir(updated.name)
-            if old_dir.is_dir() and old_dir != new_dir:
-                body["audio_list"] = self._renamed_asset_paths(
-                    body.get("audio_list"), old_dir, new_dir
-                )
-                if "image_list" in body:
-                    body["image_list"] = self._renamed_asset_paths(
-                        body.get("image_list"), old_dir, new_dir
-                    )
-                if "image_audio_list" in body:
-                    body["image_audio_list"] = self._renamed_asset_paths(
-                        body.get("image_audio_list"), old_dir, new_dir
-                    )
-                updated = Effect.model_validate(body)
-                self._move_effect_dir(old_dir, new_dir)
-            effect_list[:] = remaining
-            effect_list.append(updated)
-        else:
-            updated = Effect.model_validate(body)
-            effect_list[:] = [
-                effect
-                for effect in effect_list
-                if effect.name.lower() != updated.name.lower()
-            ]
-            effect_list.append(updated)
-
-        self.config_manager.save_effect_config()
-        self._effect_dir(updated.name).mkdir(parents=True, exist_ok=True)
-        return self._effect_after_reload(updated.name)
+        return save_effect_op(self._target(), self.layout, payload)
 
     def _delete(self, payload: dict[str, Any]) -> dict[str, Any]:
-        name = validate_effect_storage_name(str(payload.get("name") or ""))
-        effect_list = self.config_manager.config.effect_list
-        match = next(
-            (effect for effect in effect_list if effect.name.lower() == name.lower()),
-            None,
+        return delete_effect_op(
+            self._target(),
+            self.layout,
+            str(payload.get("name") or ""),
         )
-        if match is None:
-            raise KeyError(f"effect not found: {name}")
-        effect_list.remove(match)
-        self.config_manager.save_effect_config()
-        effect_dir = self._effect_dir(match.name)
-        if effect_dir.is_dir():
-            shutil.rmtree(effect_dir, ignore_errors=True)
-        return {}
 
     def _upload_audio(self, payload: dict[str, Any]) -> Effect:
-        name = validate_effect_storage_name(str(payload.get("name") or "").strip())
-        paths = payload.get("paths") or []
-        if not isinstance(paths, Sequence) or isinstance(paths, (str, bytes, bytearray)):
-            raise ValueError("paths must be a list")
-        effect = self._effect_by_name(name)
-        effect_dir = self._effect_dir(name)
-        effect_dir.mkdir(parents=True, exist_ok=True)
-        audio_list = list(effect.audio_list or [])
-        tags = tag_contents(
-            str(payload.get("audioTags") or effect.audio_tags or ""),
-            len(audio_list),
-            preserve_blank_lines=True,
+        return upload_effect_audio_op(
+            self._target(),
+            self.layout,
+            local_file_access_roots=self.local_file_access_roots,
+            name=str(payload.get("name") or ""),
+            paths=payload.get("paths") or [],
+            audio_tags=payload.get("audioTags") or "",
         )
-
-        for raw_path in paths:
-            try:
-                source = safe_existing_file_path(
-                    str(raw_path),
-                    roots=self.local_file_access_roots,
-                    field="effect asset path",
-                )
-            except (OSError, ValueError, FileNotFoundError):
-                continue
-            destination = self._available_destination(effect_dir, source.name)
-            shutil.copy2(source, destination)
-            destination_text = destination.as_posix()
-            if destination_text not in audio_list:
-                audio_list.append(destination_text)
-                tags.append("")
-
-        effect.audio_list = audio_list
-        effect.audio_tags = numbered_tags("特效", tags)
-        self.config_manager.save_effect_config()
-        return self._effect_after_reload(name)
 
     def _delete_audio(self, payload: dict[str, Any]) -> Effect:
-        name = validate_effect_storage_name(str(payload.get("name") or "").strip())
-        index = int(payload.get("index") or 0)
-        effect = self._effect_by_name(name)
-        audio_list = list(effect.audio_list or [])
-        if index < 0 or index >= len(audio_list):
-            raise IndexError(f"audio index out of range: {index}")
-
-        removed_path = audio_list.pop(index)
-        self._unlink_managed_file(name, removed_path)
-        tag_lines = str(effect.audio_tags or "").splitlines()
-        while tag_lines and not tag_lines[-1].strip():
-            tag_lines.pop()
-        if index < len(tag_lines):
-            tag_lines.pop(index)
-        effect.audio_list = audio_list
-        effect.audio_tags = "".join(
-            f"特效 {position + 1}：{_tag_text(line)}\n"
-            for position, line in enumerate(tag_lines)
+        return delete_effect_audio_op(
+            self._target(),
+            self.layout,
+            name=str(payload.get("name") or ""),
+            index=int(payload.get("index") or 0),
         )
-        self.config_manager.save_effect_config()
-        return self._effect_after_reload(name)
 
     def _delete_all_audio(self, payload: dict[str, Any]) -> Effect:
-        name = validate_effect_storage_name(str(payload.get("name") or "").strip())
-        effect = self._effect_by_name(name)
-        for path in effect.audio_list or ():
-            self._unlink_managed_file(name, str(path))
-        effect.audio_list = []
-        effect.audio_tags = ""
-        self.config_manager.save_effect_config()
-        return self._effect_after_reload(name)
+        return delete_all_effect_audio_op(
+            self._target(),
+            self.layout,
+            name=str(payload.get("name") or ""),
+        )
 
     def _save_audio_tags(self, payload: dict[str, Any]) -> Effect:
-        name = validate_effect_storage_name(str(payload.get("name") or "").strip())
-        effect = self._effect_by_name(name)
-        new_tags = str(payload.get("audioTags") or "")
-        effect.audio_tags = new_tags
-        lines = new_tags.splitlines()
-        missing = [
-            str(index + 1)
-            for index in range(len(effect.audio_list or ()))
-            if index >= len(lines) or not _tag_text(lines[index])
-        ]
-        if missing:
-            print(
-                f"[Effect] 警告：特效方案 '{name}' 的第 {', '.join(missing)} 个音频"
-                "未输入提示词，将无法通过关键词触发。"
-            )
-        self.config_manager.save_effect_config()
-        return self._effect_after_reload(name)
+        return save_effect_audio_tags_op(
+            self._target(),
+            name=str(payload.get("name") or ""),
+            audio_tags=str(payload.get("audioTags") or ""),
+        )
 
     def _upload_images(self, payload: dict[str, Any]) -> Effect:
-        name = validate_effect_storage_name(str(payload.get("name") or "").strip())
-        paths = payload.get("paths") or []
-        if not isinstance(paths, Sequence) or isinstance(paths, (str, bytes, bytearray)):
-            raise ValueError("paths must be a list")
-        effect = self._effect_by_name(name)
-        effect_dir = self._effect_dir(name)
-        effect_dir.mkdir(parents=True, exist_ok=True)
-        image_list = list(effect.image_list or [])
-        image_audio_list = list(effect.image_audio_list or [])
-        image_audio_list.extend("" for _ in range(len(image_list) - len(image_audio_list)))
-        tags = tag_contents(
-            str(payload.get("imageTags") or effect.image_tags or ""),
-            len(image_list),
-            preserve_blank_lines=True,
+        return upload_effect_images_op(
+            self._target(),
+            self.layout,
+            local_file_access_roots=self.local_file_access_roots,
+            name=str(payload.get("name") or ""),
+            paths=payload.get("paths") or [],
+            image_tags=payload.get("imageTags") or "",
         )
-
-        for raw_path in paths:
-            try:
-                source = safe_existing_file_path(
-                    str(raw_path),
-                    roots=self.local_file_access_roots,
-                    field="effect image path",
-                )
-            except (OSError, ValueError, FileNotFoundError):
-                continue
-            if source.suffix.lower() not in {".jpg", ".jpeg", ".png"}:
-                continue
-            destination = self._available_destination(effect_dir, source.name)
-            shutil.copy2(source, destination)
-            image_list.append(destination.as_posix())
-            image_audio_list.append("")
-            tags.append("")
-
-        effect.image_list = image_list
-        effect.image_audio_list = image_audio_list
-        effect.image_tags = numbered_tags("图片", tags)
-        self.config_manager.save_effect_config()
-        return self._effect_after_reload(name)
 
     def _delete_image(self, payload: dict[str, Any]) -> Effect:
-        name = validate_effect_storage_name(str(payload.get("name") or "").strip())
-        index = int(payload.get("index") or 0)
-        effect = self._effect_by_name(name)
-        image_list = list(effect.image_list or [])
-        image_audio_list = list(effect.image_audio_list or [])
-        if index < 0 or index >= len(image_list):
-            raise IndexError(f"image index out of range: {index}")
-
-        self._unlink_managed_file(name, image_list.pop(index))
-        if index < len(image_audio_list):
-            self._unlink_managed_file(name, image_audio_list.pop(index))
-        tag_lines = str(effect.image_tags or "").splitlines()
-        while tag_lines and not tag_lines[-1].strip():
-            tag_lines.pop()
-        if index < len(tag_lines):
-            tag_lines.pop(index)
-        effect.image_list = image_list
-        effect.image_audio_list = image_audio_list
-        effect.image_tags = "".join(
-            f"图片 {position + 1}：{_tag_text(line)}\n"
-            for position, line in enumerate(tag_lines)
+        return delete_effect_image_op(
+            self._target(),
+            self.layout,
+            name=str(payload.get("name") or ""),
+            index=int(payload.get("index") or 0),
         )
-        self.config_manager.save_effect_config()
-        return self._effect_after_reload(name)
 
     def _save_image_tags(self, payload: dict[str, Any]) -> Effect:
-        name = validate_effect_storage_name(str(payload.get("name") or "").strip())
-        effect = self._effect_by_name(name)
-        effect.image_tags = str(payload.get("imageTags") or "")
-        self.config_manager.save_effect_config()
-        return self._effect_after_reload(name)
+        return save_effect_image_tags_op(
+            self._target(),
+            name=str(payload.get("name") or ""),
+            image_tags=str(payload.get("imageTags") or ""),
+        )
 
     def _upload_image_audio(self, payload: dict[str, Any]) -> Effect:
-        name = validate_effect_storage_name(str(payload.get("name") or "").strip())
-        index = int(payload.get("index") or 0)
-        effect = self._effect_by_name(name)
-        image_list = list(effect.image_list or [])
-        if index < 0 or index >= len(image_list):
-            raise IndexError(f"image index out of range: {index}")
-        source = safe_existing_file_path(
-            str(payload.get("path") or ""),
-            roots=self.local_file_access_roots,
-            field="effect image audio path",
+        return upload_effect_image_audio_op(
+            self._target(),
+            self.layout,
+            local_file_access_roots=self.local_file_access_roots,
+            name=str(payload.get("name") or ""),
+            index=int(payload.get("index") or 0),
+            raw_path=str(payload.get("path") or ""),
         )
-        if source.suffix.lower() not in {".flac", ".m4a", ".mp3", ".ogg", ".wav"}:
-            raise ValueError("unsupported effect image audio format")
 
-        effect_dir = self._effect_dir(name)
-        effect_dir.mkdir(parents=True, exist_ok=True)
-        destination = self._available_destination(effect_dir, source.name)
-        shutil.copy2(source, destination)
-        image_audio_list = list(effect.image_audio_list or [])
-        image_audio_list.extend("" for _ in range(len(image_list) - len(image_audio_list)))
-        self._unlink_managed_file(name, image_audio_list[index])
-        image_audio_list[index] = destination.as_posix()
-        effect.image_audio_list = image_audio_list
-        self.config_manager.save_effect_config()
-        return self._effect_after_reload(name)
+    def _upload_ambient(self, payload: dict[str, Any]) -> Effect:
+        return upload_effect_ambient_op(
+            self._target(),
+            self.layout,
+            local_file_access_roots=self.local_file_access_roots,
+            name=str(payload.get("name") or ""),
+            paths=payload.get("paths") or [],
+            ambient_tags=payload.get("ambientTags") or "",
+        )
+
+    def _delete_ambient(self, payload: dict[str, Any]) -> Effect:
+        return delete_effect_ambient_op(
+            self._target(),
+            self.layout,
+            name=str(payload.get("name") or ""),
+            index=int(payload.get("index") or 0),
+        )
+
+    def _save_ambient_tags(self, payload: dict[str, Any]) -> Effect:
+        return save_effect_ambient_tags_op(
+            self._target(),
+            name=str(payload.get("name") or ""),
+            ambient_tags=str(payload.get("ambientTags") or ""),
+        )
+
+    def _save_ambient_layers(self, payload: dict[str, Any]) -> Effect:
+        return save_effect_ambient_layers_op(
+            self._target(),
+            name=str(payload.get("name") or ""),
+            raw_layers=payload.get("layers") or [],
+        )
+
+    def _upload_ambient_audio(self, payload: dict[str, Any]) -> Effect:
+        return upload_effect_ambient_audio_op(
+            self._target(),
+            self.layout,
+            local_file_access_roots=self.local_file_access_roots,
+            name=str(payload.get("name") or ""),
+            index=int(payload.get("index") or 0),
+            raw_path=str(payload.get("path") or ""),
+        )
 
     def _import(self, payload: dict[str, Any]) -> list[Effect]:
-        paths = payload.get("paths") or []
-        if not isinstance(paths, Sequence) or isinstance(paths, (str, bytes, bytearray)):
-            raise ValueError("paths must be a list")
-        existing = self.config_manager.config.effect_list
-        imported: list[Effect] = []
-        for raw_path in paths:
-            archive = safe_existing_file_path(
-                str(raw_path),
-                roots=self.local_file_access_roots,
-                field="effect package path",
-            )
-            batch = self._import_package(archive, existing)
-            imported.extend(batch)
-            for effect in batch:
-                if effect not in existing:
-                    existing.append(effect)
-                self._effect_dir(effect.name).mkdir(parents=True, exist_ok=True)
-        self.config_manager.save_effect_config()
-        self.config_manager.reload()
-        return imported
+        return import_effect_packages_op(
+            self._target(),
+            self.layout,
+            local_file_access_roots=self.local_file_access_roots,
+            paths=payload.get("paths") or [],
+        )
 
     def _export(self, payload: dict[str, Any]) -> EffectExportResult:
         name = validate_effect_storage_name(str(payload.get("name") or ""))
-        effect = self._effect_by_name(name)
-        output_root = safe_project_path("output", root=self.project_root)
-        output_root.mkdir(parents=True, exist_ok=True)
-        output = safe_child_path(output_root, safe_filename(f"{name}.ef"))
-        self._export_package(effect, output)
-        return EffectExportResult(output.relative_to(self.project_root).as_posix())
-
-    def _import_package(self, archive: Path, existing: Sequence[Any]) -> list[Effect]:
-        with tempfile.TemporaryDirectory(prefix="shinsekai-effect-import-") as raw_temp:
-            temp_dir = Path(raw_temp)
-            with zipfile.ZipFile(archive, "r") as package:
-                _safe_extract(package, temp_dir)
-            yaml_path = temp_dir / "effect.yaml"
-            with yaml_path.open("r", encoding="utf-8") as file:
-                yaml_data = yaml.safe_load(file)
-            if not yaml_data:
-                raise ValueError("特效配置 YAML 文件为空或格式错误。")
-            entries = yaml_data if isinstance(yaml_data, list) else [yaml_data]
-            existing_names = {effect.name.lower() for effect in existing}
-            imported: list[Effect] = []
-            audio_source_dir = temp_dir / "audio"
-            image_source_dir = temp_dir / "images"
-            image_audio_source_dir = temp_dir / "image-audio"
-            for entry in entries:
-                if not isinstance(entry, Mapping):
-                    continue
-                item = dict(entry)
-                original_name = validate_effect_storage_name(item.get("name", ""))
-                name = original_name
-                counter = 1
-                while name.lower() in existing_names:
-                    name = f"{original_name}_{counter}"
-                    counter += 1
-                existing_names.add(name.lower())
-                item["name"] = name
-                effect_dir = self._effect_dir(name)
-                effect_dir.mkdir(parents=True, exist_ok=True)
-                audio_list = []
-                for raw_audio_path in item.get("audio_list") or ():
-                    filename = safe_filename(
-                        PurePosixPath(str(raw_audio_path).replace("\\", "/")).name
-                    )
-                    source = safe_child_path(audio_source_dir, filename)
-                    if source.is_file():
-                        destination = self._available_destination(effect_dir, filename)
-                        shutil.copy2(source, destination)
-                        audio_list.append(destination.as_posix())
-                    else:
-                        audio_list.append(str(raw_audio_path))
-                item["audio_list"] = audio_list
-                item["image_list"] = self._import_asset_paths(
-                    item.get("image_list"), image_source_dir, effect_dir
-                )
-                item["image_audio_list"] = self._import_asset_paths(
-                    item.get("image_audio_list"), image_audio_source_dir, effect_dir
-                )
-                imported.append(Effect.model_validate(item))
-            return imported
-
-    def _export_package(self, effect: Effect, output: Path) -> None:
-        effect_data = effect.model_dump(exclude_none=True, mode="json")
-        packaged_audio: list[tuple[Path, str]] = []
-        packaged_names: set[str] = set()
-        exported_audio_list: list[str] = []
-        for raw_audio_path in effect.audio_list or ():
-            audio_file = self._export_asset_file(effect.name, str(raw_audio_path))
-            package_name = self._available_package_filename(
-                audio_file.name,
-                packaged_names,
-            )
-            packaged_names.add(package_name.casefold())
-            packaged_audio.append((audio_file, package_name))
-            exported_audio_list.append(f"audio/{package_name}")
-        effect_data["audio_list"] = exported_audio_list
-        packaged_images, exported_image_list = self._export_asset_paths(
-            effect.name,
-            effect.image_list or (),
-            "images",
+        effect = self._target().get_by_name(name)
+        if effect is None:
+            raise KeyError(f"effect not found: {name}")
+        output, relative_path = self._resource_paths.export_target(name, ".ef")
+        export_effect_package(
+            effect,
+            output,
+            effect_root=self.effect_root,
+            project_root=self.project_root,
+            local_file_access_roots=self.local_file_access_roots,
         )
-        packaged_image_audio, exported_image_audio_list = self._export_asset_paths(
-            effect.name,
-            effect.image_audio_list or (),
-            "image-audio",
-            allow_empty=True,
-        )
-        effect_data["image_list"] = exported_image_list
-        effect_data["image_audio_list"] = exported_image_audio_list
-
-        with tempfile.TemporaryDirectory(prefix="shinsekai-effect-export-") as raw_temp:
-            temp_dir = Path(raw_temp)
-            yaml_path = temp_dir / "effect.yaml"
-            with yaml_path.open("w", encoding="utf-8") as file:
-                yaml.safe_dump(
-                    [effect_data],
-                    file,
-                    allow_unicode=True,
-                    default_flow_style=False,
-                )
-            with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as package:
-                package.write(yaml_path, "effect.yaml")
-                for audio_file, package_name in packaged_audio:
-                    package.write(audio_file, f"audio/{package_name}")
-                for asset_file, package_path in (*packaged_images, *packaged_image_audio):
-                    package.write(asset_file, package_path)
-
-    def _import_asset_paths(
-        self,
-        raw_paths: Any,
-        source_dir: Path,
-        effect_dir: Path,
-    ) -> list[str]:
-        imported: list[str] = []
-        for raw_path in raw_paths or ():
-            if not raw_path:
-                imported.append("")
-                continue
-            filename = safe_filename(
-                PurePosixPath(str(raw_path).replace("\\", "/")).name
-            )
-            source = safe_child_path(source_dir, filename)
-            if source.is_file():
-                destination = self._available_destination(effect_dir, filename)
-                shutil.copy2(source, destination)
-                imported.append(destination.as_posix())
-            else:
-                imported.append(str(raw_path))
-        return imported
-
-    def _export_asset_paths(
-        self,
-        effect_name: str,
-        raw_paths: Sequence[str],
-        directory: str,
-        *,
-        allow_empty: bool = False,
-    ) -> tuple[list[tuple[Path, str]], list[str]]:
-        packaged: list[tuple[Path, str]] = []
-        exported: list[str] = []
-        used_names: set[str] = set()
-        for raw_path in raw_paths:
-            if not raw_path and allow_empty:
-                exported.append("")
-                continue
-            asset_file = self._export_asset_file(effect_name, str(raw_path))
-            package_name = self._available_package_filename(asset_file.name, used_names)
-            used_names.add(package_name.casefold())
-            package_path = f"{directory}/{package_name}"
-            packaged.append((asset_file, package_path))
-            exported.append(package_path)
-        return packaged, exported
-
-    def _export_asset_file(self, effect_name: str, raw_path: str) -> Path:
-        managed_file = self._managed_file(effect_name, raw_path)
-        if managed_file is not None:
-            return managed_file
-        return safe_existing_file_path(
-            self._configured_path(raw_path),
-            roots=self.local_file_access_roots,
-            field="effect asset path",
-        )
-
-    def _managed_file(self, effect_name: str, raw_path: str) -> Path | None:
-        if not raw_path:
-            return None
-        root = self._effect_dir(effect_name).resolve(strict=False)
-        try:
-            candidate = self._configured_path(raw_path)
-            return safe_existing_file_path(
-                candidate,
-                roots=[root],
-                field="effect asset path",
-            )
-        except (OSError, ValueError, FileNotFoundError):
-            return None
-
-    def _unlink_managed_file(self, effect_name: str, raw_path: str) -> None:
-        target = self._managed_file(effect_name, raw_path)
-        if target is None:
-            return
-        try:
-            target.unlink()
-        except OSError:
-            pass
-
-    @staticmethod
-    def _available_destination(directory: Path, filename: str) -> Path:
-        destination = safe_child_path(directory, safe_filename(filename))
-        counter = 1
-        stem = destination.stem
-        suffix = destination.suffix
-        while destination.exists():
-            destination = directory / f"{stem}_{counter}{suffix}"
-            counter += 1
-        return destination
-
-    @staticmethod
-    def _available_package_filename(filename: str, used_names: set[str]) -> str:
-        candidate = safe_filename(filename)
-        stem = Path(candidate).stem
-        suffix = Path(candidate).suffix
-        counter = 1
-        while candidate.casefold() in used_names:
-            candidate = f"{stem}_{counter}{suffix}"
-            counter += 1
-        return candidate
-
-    def _renamed_asset_paths(
-        self,
-        raw_paths: Any,
-        old_dir: Path,
-        new_dir: Path,
-    ) -> list[Any]:
-        if not isinstance(raw_paths, list):
-            return list(raw_paths or [])
-        old_root = old_dir.resolve(strict=False)
-        updated: list[Any] = []
-        for raw_path in raw_paths:
-            if not isinstance(raw_path, str):
-                updated.append(raw_path)
-                continue
-            try:
-                relative = self._configured_path(raw_path).relative_to(old_root)
-            except (OSError, RuntimeError, ValueError):
-                updated.append(raw_path)
-            else:
-                updated.append((new_dir / relative).as_posix())
-        return updated
-
-    def _configured_path(self, raw_path: str) -> Path:
-        path = Path(raw_path)
-        windows_path = PureWindowsPath(raw_path)
-        if path.is_absolute() or windows_path.is_absolute() or windows_path.drive:
-            return path.resolve(strict=False)
-        return safe_child_path(self.project_root, path)
-
-    @staticmethod
-    def _move_effect_dir(old_dir: Path, new_dir: Path) -> None:
-        new_dir.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            old_dir.rename(new_dir)
-        except OSError:
-            new_dir.mkdir(parents=True, exist_ok=True)
-            for item in old_dir.iterdir():
-                if item.is_file():
-                    shutil.copy2(item, safe_child_path(new_dir, item.name))
-            shutil.rmtree(old_dir, ignore_errors=True)
-
-
-def validate_effect_storage_name(name: Any) -> str:
-    """Ensure an effect name addresses exactly one managed directory."""
-
-    value = str(name or "").strip()
-    if not value:
-        raise ValueError("effect name is required")
-    if "\x00" in value:
-        raise ValueError("effect name contains an invalid character")
-    if "/" in value or "\\" in value:
-        raise ValueError("effect name must not contain path separators")
-    path = Path(value)
-    windows_path = PureWindowsPath(value)
-    if path.is_absolute() or windows_path.is_absolute() or windows_path.drive:
-        raise ValueError("effect name must not be an absolute path")
-    if value in {".", ".."} or any(part in {".", ".."} for part in path.parts):
-        raise ValueError("effect name must not contain relative path segments")
-    return value
-
-
-def _safe_extract(package: zipfile.ZipFile, target_dir: Path) -> None:
-    for info in package.infolist():
-        member = str(info.filename or "").replace("\\", "/").rstrip("/")
-        if not member:
-            continue
-        path = PurePosixPath(member)
-        if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
-            raise ValueError(f"zip member contains an unsafe path: {info.filename!r}")
-        safe_child_path(target_dir, Path(*path.parts))
-    package.extractall(target_dir)
+        return EffectExportResult(relative_path)

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, DownloadCloud, Eye, Globe2, Mic2, Settings } from "lucide-react";
+import { CheckCircle2, DownloadCloud, Eye, Globe2, Settings } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { installMissingRuntimeDependency } from "../../../entities/chat/repository";
@@ -17,14 +17,14 @@ import {
   isTauriDesktop,
   writeDesktopRestartDebugLog,
 } from "../../../shared/desktop/desktopApi";
+import { useI18n } from "../../../shared/i18n";
 import type { RuntimeDependencyInstallResult, TaskSnapshot } from "../../../shared/platform/types";
 import { Button, EmptyState, QueryErrorState, TaskProgress, useToast } from "../../../shared/ui";
 import { catalogInstallSource } from "../../plugin-manager/pluginUtils";
 import { reloadPluginService } from "../../plugin-manager/pluginReload";
 import { OnboardingPanelLayout, OnboardingTaskPanel } from "../OnboardingPanelLayout";
-import type { OnboardingCopy } from "../onboardingCopy";
 
-type PluginPresetId = "browser" | "visual" | "voice";
+type PluginPresetId = "browser" | "visual";
 
 interface PluginPreset {
   body: string;
@@ -37,11 +37,17 @@ interface PluginPreset {
 }
 
 interface PluginSetupPanelProps {
-  copy: OnboardingCopy;
   onInstalled?: () => void;
 }
 
 type PluginReloadStatus = "idle" | "reloading" | "done" | "failed";
+
+function splitKeywords(csv: string): string[] {
+  return csv
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
 
 function normalizeSearchText(value: string) {
   return value.toLowerCase().replace(/[_-]+/g, " ");
@@ -106,10 +112,6 @@ function findPluginMatch(catalog: PluginCatalogItem[], preset: PluginPreset) {
   return best?.plugin;
 }
 
-function selectedCountLabel(template: string, count: number) {
-  return template.replace("{count}", String(count));
-}
-
 function pluginHasConfig(plugin: PluginManifest | null | undefined) {
   return Boolean(plugin && ((plugin.settingsPages ?? []).length || (plugin.toolsTabs ?? []).length));
 }
@@ -163,12 +165,13 @@ function findInstalledPresetPlugin(plugins: PluginManifest[], preset: PluginPres
   return best?.plugin;
 }
 
-export function PluginSetupPanel({ copy, onInstalled }: PluginSetupPanelProps) {
+export function PluginSetupPanel({ onInstalled }: PluginSetupPanelProps) {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const location = useLocation();
   const navigate = useNavigate();
   const { showToast } = useToast();
-  const [selectedIds, setSelectedIds] = useState<PluginPresetId[]>(["visual", "browser", "voice"]);
+  const [selectedIds, setSelectedIds] = useState<PluginPresetId[]>(["visual", "browser"]);
   const [dependencyTask, setDependencyTask] = useState<TaskSnapshot<RuntimeDependencyInstallResult> | null>(null);
   const [installTask, setInstallTask] = useState<TaskSnapshot<PluginManifest> | null>(null);
   const [installedPlugins, setInstalledPlugins] = useState<Partial<Record<PluginPresetId, PluginManifest>>>({});
@@ -188,40 +191,29 @@ export function PluginSetupPanel({ copy, onInstalled }: PluginSetupPanelProps) {
   const presets = useMemo<PluginPreset[]>(
     () => [
       {
-        body: copy.plugins.visualBody,
+        body: t("onboarding.plugins.visualBody"),
         dependencies: ["openai", "PIL", "cv2"],
         excludedKeywords: ["asr", "whisper", "speech", "voice", "microphone", "browser", "playwright"],
-        guide: copy.plugins.visualGuide,
+        guide: t("onboarding.plugins.visualGuide"),
         id: "visual",
-        keywords: ["vision", "visual", "screen", "screenshot", "image", "视觉", "屏幕"],
-        title: copy.plugins.visualTitle,
+        keywords: splitKeywords(t("onboarding.plugins.keywords.visual")),
+        title: t("onboarding.plugins.visualTitle"),
       },
       {
-        body: copy.plugins.browserBody,
+        body: t("onboarding.plugins.browserBody"),
         dependencies: ["openai", "playwright"],
-        excludedKeywords: ["asr", "whisper", "speech", "voice", "microphone", "语音", "麦克风"],
-        guide: copy.plugins.browserGuide,
+        excludedKeywords: splitKeywords(t("onboarding.plugins.keywords.voiceExclude")),
+        guide: t("onboarding.plugins.browserGuide"),
         id: "browser",
-        keywords: ["playwright", "playwright browser", "playwright_browser", "browser", "浏览器"],
-        title: copy.plugins.browserTitle,
-      },
-      {
-        body: copy.plugins.voiceBody,
-        dependencies: ["openai", "faster_whisper", "sounddevice"],
-        excludedKeywords: ["vision", "visual", "screen", "screenshot", "browser", "playwright"],
-        guide: copy.plugins.voiceGuide,
-        id: "voice",
-        keywords: ["voice", "speech", "asr", "whisper", "microphone", "语音", "麦克风"],
-        title: copy.plugins.voiceTitle,
+        keywords: splitKeywords(t("onboarding.plugins.keywords.browser")),
+        title: t("onboarding.plugins.browserTitle"),
       },
     ],
-    [copy],
+    [t],
   );
   const catalog = catalogQuery.data ?? [];
   const selectedPresets = presets.filter((preset) => selectedIds.includes(preset.id));
-  const selectedAiDependencyPresets = selectedPresets.filter(
-    (preset) => preset.id === "visual" || preset.id === "voice",
-  );
+  const selectedAiDependencyPresets = selectedPresets.filter((preset) => preset.id === "visual");
 
   const installMutation = useMutation({
     mutationFn: async () => {
@@ -271,10 +263,14 @@ export function PluginSetupPanel({ copy, onInstalled }: PluginSetupPanelProps) {
       setReloadStatus("idle");
     },
     onError(error) {
-      showToast({ kind: "error", message: error instanceof Error ? error.message : "", title: copy.toastFailed });
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : "",
+        title: t("onboarding.toastFailed"),
+      });
     },
     onSuccess() {
-      showToast({ kind: "success", title: copy.plugins.installDone });
+      showToast({ kind: "success", title: t("onboarding.plugins.installDone") });
       onInstalled?.();
       void queryClient.invalidateQueries({ queryKey: pluginsQueryKey });
       void queryClient.invalidateQueries({ queryKey: pluginCatalogQueryKey });
@@ -287,28 +283,28 @@ export function PluginSetupPanel({ copy, onInstalled }: PluginSetupPanelProps) {
 
   let content;
   if (catalogQuery.isLoading) {
-    content = <EmptyState title={copy.plugins.loading} />;
+    content = <EmptyState title={t("onboarding.plugins.loading")} />;
   } else if (catalogQuery.isError) {
     content = (
       <QueryErrorState
         error={catalogQuery.error}
         onRetry={() => void catalogQuery.refetch()}
-        retryLabel={copy.actions.retry}
-        title={copy.toastFailed}
+        retryLabel={t("onboarding.actions.retry")}
+        title={t("onboarding.toastFailed")}
       />
     );
   } else {
     content = (
       <div className="onboarding-plugin-stack">
         {selectedAiDependencyPresets.length ? (
-          <div className="onboarding-plugin-dependency-note">{copy.plugins.aiDependencyHint}</div>
+          <div className="onboarding-plugin-dependency-note">{t("onboarding.plugins.aiDependencyHint")}</div>
         ) : null}
-        <div className="onboarding-plugin-dependency-note">{copy.plugins.marketplaceHint}</div>
+        <div className="onboarding-plugin-dependency-note">{t("onboarding.plugins.marketplaceHint")}</div>
         <div className="onboarding-plugin-choice-grid">
           {presets.map((preset) => {
             const plugin = findPluginMatch(catalog, preset);
             const selected = selectedIds.includes(preset.id);
-            const Icon = preset.id === "visual" ? Eye : preset.id === "browser" ? Globe2 : Mic2;
+            const Icon = preset.id === "visual" ? Eye : Globe2;
             const installedPlugin =
               installedPlugins[preset.id] ?? findInstalledPresetPlugin(pluginsQuery.data ?? [], preset);
             const hasConfig = pluginHasConfig(installedPlugin);
@@ -317,11 +313,11 @@ export function PluginSetupPanel({ copy, onInstalled }: PluginSetupPanelProps) {
             );
             const status = installedPlugin
               ? hasConfig
-                ? copy.plugins.configReady
-                : copy.plugins.installedNoConfig
+                ? t("onboarding.plugins.configReady")
+                : t("onboarding.plugins.installedNoConfig")
               : plugin
                 ? pluginTitle(plugin)
-                : copy.plugins.noMatch;
+                : t("onboarding.plugins.noMatch");
             return (
               <article
                 className="onboarding-plugin-choice"
@@ -368,7 +364,7 @@ export function PluginSetupPanel({ copy, onInstalled }: PluginSetupPanelProps) {
                     }
                     variant="ghost"
                   >
-                    {copy.plugins.configure}
+                    {t("onboarding.plugins.configure")}
                   </Button>
                 ) : null}
               </article>
@@ -376,7 +372,7 @@ export function PluginSetupPanel({ copy, onInstalled }: PluginSetupPanelProps) {
           })}
         </div>
         <div className="onboarding-plugin-install-bar">
-          <span>{selectedCountLabel(copy.plugins.selectedCount, selectedPresets.length)}</span>
+          <span>{t("onboarding.plugins.selectedCount", { count: selectedPresets.length })}</span>
           <Button
             disabled={!selectedPresets.length || installMutation.isPending}
             icon={<DownloadCloud aria-hidden size={16} />}
@@ -384,18 +380,20 @@ export function PluginSetupPanel({ copy, onInstalled }: PluginSetupPanelProps) {
             onClick={() => installMutation.mutate()}
             variant="primary"
           >
-            {copy.plugins.installSelected}
+            {t("onboarding.plugins.installSelected")}
           </Button>
         </div>
         {installMutation.isPending || reloadStatus !== "idle" ? (
           <div className="onboarding-plugin-install-status" data-state={reloadStatus}>
             {reloadStatus === "reloading"
-              ? copy.plugins.reloadPending
+              ? t("onboarding.plugins.reloadPending")
               : reloadStatus === "done"
-                ? copy.plugins.installDone
+                ? t("onboarding.plugins.installDone")
                 : reloadStatus === "failed"
-                  ? `${copy.plugins.reloadFailed}${reloadError ? `：${reloadError}` : ""}`
-                  : copy.plugins.installPending}
+                  ? reloadError
+                    ? t("onboarding.plugins.reloadFailedDetail", { detail: reloadError })
+                    : t("onboarding.plugins.reloadFailed")
+                  : t("onboarding.plugins.installPending")}
           </div>
         ) : null}
         <TaskProgress task={dependencyTask} />
@@ -405,8 +403,12 @@ export function PluginSetupPanel({ copy, onInstalled }: PluginSetupPanelProps) {
   }
 
   return (
-    <OnboardingPanelLayout copy={copy} description={copy.plugins.description} title={copy.plugins.title}>
-      <OnboardingTaskPanel defaultOpen description={copy.plugins.dependencyStep} title={copy.plugins.title}>
+    <OnboardingPanelLayout description={t("onboarding.plugins.description")} title={t("onboarding.plugins.title")}>
+      <OnboardingTaskPanel
+        defaultOpen
+        description={t("onboarding.plugins.dependencyStep")}
+        title={t("onboarding.plugins.title")}
+      >
         {content}
       </OnboardingTaskPanel>
     </OnboardingPanelLayout>
