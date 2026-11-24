@@ -16,6 +16,23 @@ import zipfile
 from scripts.portable.targets import PlatformTarget
 
 SUPPORTED_ARCHIVE_FORMATS = ("auto", "zip", "tar.gz", "7z")
+ARCHIVE_EXTENSIONS = (".zip", ".tar.gz", ".7z")
+SIDECAR_SUFFIXES = ("", ".sha256", ".meta.json")
+
+
+def cleanup_stale_bundle_artifacts(output_dir: Path) -> list[Path]:
+    """Remove stale archives and sidecar files sharing `<output_dir.name>` in `output_dir.parent`."""
+    parent = output_dir.parent
+    if not parent.is_dir():
+        return []
+    removed: list[Path] = []
+    for ext in ARCHIVE_EXTENSIONS:
+        for sidecar in SIDECAR_SUFFIXES:
+            candidate = parent / f"{output_dir.name}{ext}{sidecar}"
+            if candidate.is_file() or candidate.is_symlink():
+                candidate.unlink()
+                removed.append(candidate)
+    return removed
 
 
 def resolve_archive_format(

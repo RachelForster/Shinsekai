@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import tempfile
 from typing import Any, Callable
+import urllib.error
+import urllib.request
 
 VALID_REPO_TYPES = frozenset({"model", "dataset"})
 
@@ -51,6 +54,7 @@ class UploadTargetConfig:
 
 
 ProviderUploadFn = Callable[[UploadTargetConfig, Path, str, str], str]
+ProviderFetchFn = Callable[[UploadTargetConfig, str], str | None]
 
 
 def build_remote_url(config: UploadTargetConfig, remote_path: str) -> str:
@@ -72,6 +76,40 @@ class _HuggingFaceClient:
         self._config = config
         self._api = HfApi(token=config.token)
         self._repo_ready = False
+
+    def fetch_text(self, remote_path: str) -> str | None:
+        from huggingface_hub import hf_hub_download
+        try:
+            from huggingface_hub.errors import (
+                EntryNotFoundError,
+                HfHubHTTPError,
+                RepositoryNotFoundError,
+            )
+        except ImportError:
+            from huggingface_hub.utils import (
+                EntryNotFoundError,
+                HfHubHTTPError,
+                RepositoryNotFoundError,
+            )
+
+        with tempfile.TemporaryDirectory(prefix="shinsekai-hf-fetch-") as tmp_dir:
+            try:
+                local_file = hf_hub_download(
+                    repo_id=self._config.repo_id,
+                    filename=remote_path,
+                    repo_type=self._config.repo_type,
+                    token=self._config.token,
+                    cache_dir=tmp_dir,
+                    force_download=True,
+                )
+            except (EntryNotFoundError, RepositoryNotFoundError):
+                return None
+            except HfHubHTTPError as exc:
+                response = getattr(exc, "response", None)
+                if getattr(response, "status_code", None) == 404:
+                    return None
+                raise
+            return Path(local_file).read_text(encoding="utf-8")
 
     def upload(self, local_path: Path, remote_path: str, commit_message: str) -> str:
         if not self._repo_ready:
@@ -104,6 +142,24 @@ class _ModelScopeClient:
         self._api = HubApi()
         self._api.login(config.token)
         self._repo_ready = False
+
+    def fetch_text(self, remote_path: str) -> str | None:
+        url = build_remote_url(self._config, remote_path)
+        request = urllib.request.Request(
+            url,
+            headers={
+                "Authorization": f"Bearer {self._config.token}",
+                "Cache-Control": "no-cache",
+                "User-Agent": "shinsekai-portable-publisher",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                return response.read().decode("utf-8")
+        except urllib.error.HTTPError as exc:
+            if exc.code == 404:
+                return None
+            raise
 
     def _ensure_repo(self) -> None:
         if self._repo_ready:
@@ -139,8 +195,25 @@ class _ModelScopeClient:
         return build_remote_url(self._config, remote_path)
 
 
-def make_default_upload_fn() -> ProviderUploadFn:
-    """Create a stateful upload function that caches authenticated HF/ModelScope clients."""
+def _get_or_create_client(
+    clients: dict[tuple[str, str, str], Any],
+    config: UploadTargetConfig,
+) -> Any:
+    key = (config.provider, config.repo_type, config.repo_id)
+    client = clients.get(key)
+    if client is None:
+        if config.provider == "huggingface":
+            client = _HuggingFaceClient(config)
+        elif config.provider == "modelscope":
+            client = _ModelScopeClient(config)
+        else:
+            raise ValueError(f"Unsupported upload provider: {config.provider}")
+        clients[key] = client
+    return client
+
+
+def make_default_clients() -> tuple[ProviderUploadFn, ProviderFetchFn]:
+    """Create stateful upload and fetch callables sharing authenticated HF/ModelScope clients."""
     clients: dict[tuple[str, str, str], Any] = {}
 
     def _upload(
@@ -149,16 +222,21 @@ def make_default_upload_fn() -> ProviderUploadFn:
         remote_path: str,
         commit_message: str,
     ) -> str:
-        key = (config.provider, config.repo_type, config.repo_id)
-        client = clients.get(key)
-        if client is None:
-            if config.provider == "huggingface":
-                client = _HuggingFaceClient(config)
-            elif config.provider == "modelscope":
-                client = _ModelScopeClient(config)
-            else:
-                raise ValueError(f"Unsupported upload provider: {config.provider}")
-            clients[key] = client
-        return client.upload(local_path, remote_path, commit_message)
+        return _get_or_create_client(clients, config).upload(local_path, remote_path, commit_message)
 
-    return _upload
+    def _fetch(config: UploadTargetConfig, remote_path: str) -> str | None:
+        return _get_or_create_client(clients, config).fetch_text(remote_path)
+
+    return _upload, _fetch
+
+
+def make_default_upload_fn() -> ProviderUploadFn:
+    """Create a stateful upload function that caches authenticated HF/ModelScope clients."""
+    upload_fn, _fetch_fn = make_default_clients()
+    return upload_fn
+
+
+def make_default_fetch_fn() -> ProviderFetchFn:
+    """Create a stateful remote file fetch function for HF/ModelScope clients."""
+    _upload_fn, fetch_fn = make_default_clients()
+    return fetch_fn

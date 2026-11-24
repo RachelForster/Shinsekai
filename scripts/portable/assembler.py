@@ -15,6 +15,7 @@ from application.model_assets.registry import ASR_FASTER_WHISPER_ASSET_ID
 from core.model_assets.service import ModelAssetSpec
 from core.storage.layout import StorageLayout
 from scripts.portable.archive import (
+    cleanup_stale_bundle_artifacts,
     compress_bundle,
     compute_sha256,
     resolve_archive_format,
@@ -298,6 +299,8 @@ def build_portable_bundle(
         if not overwrite:
             raise FileExistsError(f"Output directory already exists: {output_dir} (pass --overwrite to replace)")
         shutil.rmtree(output_dir)
+    if overwrite:
+        cleanup_stale_bundle_artifacts(output_dir)
 
     _copy_base_desktop_app(
         source_root=source_root,
@@ -401,6 +404,8 @@ def build_portable_bundle(
             digest = compute_sha256(archive_path)
         if write_sha256:
             sha256_path, digest = write_sha256_file(archive_path, digest=digest)
+        else:
+            archive_path.with_name(f"{archive_path.name}.sha256").unlink(missing_ok=True)
         if write_metadata and digest is not None:
             metadata_path = write_bundle_metadata(
                 archive_path,
@@ -411,6 +416,8 @@ def build_portable_bundle(
                 archive_format=resolved_fmt,
                 llama_cpp_tag=llama_cpp_tag,
             )
+        else:
+            archive_path.with_name(f"{archive_path.name}.meta.json").unlink(missing_ok=True)
 
     return BundleReport(
         output_dir=output_dir,

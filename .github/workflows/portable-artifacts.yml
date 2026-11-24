@@ -106,108 +106,7 @@ jobs:
           INPUT_VERSION_TAG: ${{ inputs.version_tag }}
           INPUT_UPLOAD_HF: ${{ inputs.upload_huggingface }}
           INPUT_UPLOAD_MS: ${{ inputs.upload_modelscope }}
-        run: |
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          CATALOG = {
-              "windows-x64": {
-                  "platform": "windows-x64",
-                  "os": "windows-latest",
-                  "tauri_bundles": "none",
-                  "default_models": "embedding,sherpa-asr,perception-gguf",
-              },
-              "windows-arm64": {
-                  "platform": "windows-arm64",
-                  "os": "windows-11-arm",
-                  "tauri_bundles": "none",
-                  "default_models": "embedding,perception-gguf",
-              },
-              "macos-arm64": {
-                  "platform": "macos-arm64",
-                  "os": "macos-15",
-                  "tauri_bundles": "app",
-                  "default_models": "embedding,sherpa-asr,perception-gguf",
-              },
-              "linux-x64": {
-                  "platform": "linux-x64",
-                  "os": "ubuntu-latest",
-                  "tauri_bundles": "none",
-                  "default_models": "embedding,sherpa-asr,perception-gguf",
-              },
-              "linux-arm64": {
-                  "platform": "linux-arm64",
-                  "os": "ubuntu-24.04-arm",
-                  "tauri_bundles": "none",
-                  "default_models": "embedding,sherpa-asr,perception-gguf",
-              },
-          }
-
-          repo_version = Path("VERSION").read_text(encoding="utf-8").splitlines()[0].strip()
-          clean_version = repo_version.removeprefix("v").removesuffix("-dev")
-          pkg_version = json.loads(Path("frontend/package.json").read_text(encoding="utf-8"))["version"]
-          if clean_version != pkg_version:
-              raise SystemExit(
-                  f"VERSION ({clean_version}) must match frontend/package.json ({pkg_version})."
-              )
-
-          is_dispatch = os.environ["EVENT_NAME"] == "workflow_dispatch"
-          raw_platforms = (os.environ.get("INPUT_PLATFORMS") or "all").strip() if is_dispatch else "all"
-          if not raw_platforms or raw_platforms.lower() == "all":
-              selected_names = list(CATALOG.keys())
-          else:
-              selected_names = []
-              for part in raw_platforms.split(","):
-                  name = part.strip().lower()
-                  if not name:
-                      continue
-                  if name not in CATALOG:
-                      raise SystemExit(
-                          f"Unsupported platform '{name}'. Supported: {', '.join(CATALOG.keys())}"
-                      )
-                  if name not in selected_names:
-                      selected_names.append(name)
-          if not selected_names:
-              raise SystemExit("At least one platform must be selected.")
-
-          models_mode = (os.environ.get("INPUT_MODELS") or "default").strip() if is_dispatch else "default"
-          archive_format = (os.environ.get("INPUT_ARCHIVE_FORMAT") or "auto").strip() if is_dispatch else "auto"
-          if archive_format not in {"auto", "zip", "tar.gz", "7z"}:
-              raise SystemExit(f"Unsupported archive format: {archive_format}")
-
-          if is_dispatch:
-              upload_hf = "true" if (os.environ.get("INPUT_UPLOAD_HF", "true").lower() == "true") else "false"
-              upload_ms = "true" if (os.environ.get("INPUT_UPLOAD_MS", "true").lower() == "true") else "false"
-              custom_tag = (os.environ.get("INPUT_VERSION_TAG") or "").strip()
-          else:
-              upload_hf = "true"
-              upload_ms = "true"
-              custom_tag = ""
-
-          if custom_tag:
-              release_prefix = custom_tag
-          elif os.environ.get("GITHUB_REF", "").startswith("refs/tags/"):
-              release_prefix = os.environ["REF_NAME"]
-          else:
-              release_prefix = f"v{clean_version}"
-
-          matrix = {"include": [CATALOG[name] for name in selected_names]}
-          outputs = {
-              "version": clean_version,
-              "release_prefix": release_prefix,
-              "matrix": json.dumps(matrix, separators=(",", ":")),
-              "platforms_csv": ",".join(selected_names),
-              "models_mode": models_mode,
-              "archive_format": archive_format,
-              "upload_huggingface": upload_hf,
-              "upload_modelscope": upload_ms,
-          }
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
-              for key, value in outputs.items():
-                  fh.write(f"{key}={value}\n")
-          PY
+        run: python3 scripts/portable/plan_matrix.py
 
   build:
     needs: plan
@@ -398,6 +297,9 @@ jobs:
     name: Publish to Hugging Face & ModelScope
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    concurrency:
+      group: portable-publish-${{ needs.plan.outputs.release_prefix }}
+      cancel-in-progress: false
     permissions:
       contents: read
       actions: read

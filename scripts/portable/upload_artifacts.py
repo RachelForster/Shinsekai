@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -19,14 +20,18 @@ if str(REPO_ROOT) not in sys.path:
 
 from scripts.portable.archive import compute_sha256
 from scripts.portable.hub_providers import (
+    ProviderFetchFn,
     ProviderUploadFn,
     UploadTargetConfig,
     VALID_REPO_TYPES,
     build_remote_url,
+    make_default_clients,
     make_default_upload_fn,
 )
+from scripts.portable.targets import SUPPORTED_TARGETS
 
 ARCHIVE_SUFFIXES = (".tar.gz", ".zip", ".7z")
+_SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 
 
 @dataclass(frozen=True)
@@ -109,16 +114,76 @@ def _read_sidecar_metadata(archive_path: Path, fallback_platform: str = "") -> d
     return {"platform": fallback_platform}
 
 
-def _read_or_compute_sha256(archive_path: Path, meta: dict[str, Any]) -> tuple[str, Path | None]:
+def _verify_or_compute_sha256(archive_path: Path, meta: dict[str, Any]) -> tuple[str, Path | None]:
+    actual_digest = compute_sha256(archive_path)
+    meta_sha = str(meta.get("sha256") or "").strip().lower()
+    if meta_sha and meta_sha != actual_digest:
+        raise ValueError(
+            f"Metadata checksum mismatch for {archive_path.name}: sidecar has {meta_sha!r}, actual is {actual_digest}"
+        )
+
     sha_path = archive_path.with_name(f"{archive_path.name}.sha256")
     if sha_path.is_file():
-        first_token = sha_path.read_text(encoding="utf-8").strip().split()
-        if first_token and len(first_token[0]) == 64:
-            return first_token[0].lower(), sha_path
-    digest = str(meta.get("sha256") or "").strip().lower()
-    if len(digest) != 64:
-        digest = compute_sha256(archive_path)
-    return digest, None
+        tokens = sha_path.read_text(encoding="utf-8").strip().split()
+        recorded = tokens[0] if tokens else ""
+        if not _SHA256_RE.fullmatch(recorded) or recorded.lower() != actual_digest:
+            raise ValueError(
+                f"Checksum mismatch for {archive_path.name}: sidecar has {recorded!r}, actual is {actual_digest}"
+            )
+        return actual_digest, sha_path
+    return actual_digest, None
+
+
+def merge_manifest_artifacts(
+    existing_text: str | None,
+    new_records: Sequence[UploadedArtifactRecord],
+) -> list[dict[str, Any]]:
+    """Merge newly uploaded artifact records into an existing remote manifest JSON payload."""
+    by_platform: dict[str, dict[str, Any]] = {}
+    if existing_text is not None and existing_text.strip():
+        try:
+            payload = json.loads(existing_text)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Existing remote portable-manifest.json is invalid JSON: {exc}") from exc
+        if not isinstance(payload, dict) or not isinstance(payload.get("artifacts"), list):
+            raise ValueError("Existing remote portable-manifest.json has invalid schema")
+        for idx, entry in enumerate(payload["artifacts"]):
+            if not isinstance(entry, dict):
+                raise ValueError(f"Invalid artifact entry in existing remote portable-manifest.json at index {idx}")
+            copied = dict(entry)
+            copied["urls"] = dict(entry.get("urls") or {}) if isinstance(entry.get("urls"), dict) else {}
+            platform = str(copied.get("platform") or "").strip()
+            key = platform or f"__unknown__:{copied.get('archive_name', idx)}"
+            by_platform[key] = copied
+
+    for item in new_records:
+        merged_urls = dict(item.urls)
+        prev = by_platform.get(item.platform)
+        if (
+            prev is not None
+            and prev.get("archive_name") == item.archive_name
+            and str(prev.get("sha256") or "").lower() == item.sha256.lower()
+            and isinstance(prev.get("urls"), dict)
+        ):
+            merged_urls = {**prev["urls"], **item.urls}
+        by_platform[item.platform] = {
+            "platform": item.platform,
+            "archive_name": item.archive_name,
+            "size_bytes": item.size_bytes,
+            "sha256": item.sha256,
+            "included_models": list(item.included_models),
+            "urls": merged_urls,
+        }
+
+    order_map = {name: idx for idx, name in enumerate(SUPPORTED_TARGETS)}
+    return sorted(
+        by_platform.values(),
+        key=lambda entry: (
+            order_map.get(str(entry.get("platform") or ""), len(order_map)),
+            str(entry.get("platform") or ""),
+            str(entry.get("archive_name") or ""),
+        ),
+    )
 
 
 def _emit_step_summary(report: PublishReport, summary_path: Path | None) -> None:
@@ -171,6 +236,7 @@ def publish_portable_artifacts(
     require_configured: bool = False,
     summary_path: Path | None = None,
     upload_fn: ProviderUploadFn | None = None,
+    fetch_fn: ProviderFetchFn | None = None,
     download_fn: DownloadPlatformFn | None = None,
 ) -> PublishReport:
     """Upload built portable archives sequentially to configured Hugging Face / ModelScope targets."""
@@ -204,14 +270,18 @@ def publish_portable_artifacts(
         _emit_step_summary(report, summary_path)
         return report
 
-    uploader = upload_fn or make_default_upload_fn()
+    if upload_fn is None and fetch_fn is None:
+        uploader, fetcher = make_default_clients()
+    else:
+        uploader = upload_fn or make_default_upload_fn()
+        fetcher = fetch_fn if fetch_fn is not None else (lambda _cfg, _remote: None)
     downloader = download_fn or _download_github_platform_artifact
     records: list[UploadedArtifactRecord] = []
 
     def _process_directory(stage_dir: Path, fallback_platform: str) -> None:
         for archive_path in _collect_archives_from_dir(stage_dir, fallback_platform):
             meta = _read_sidecar_metadata(archive_path, fallback_platform)
-            digest, sha_path = _read_or_compute_sha256(archive_path, meta)
+            digest, sha_path = _verify_or_compute_sha256(archive_path, meta)
             platform_name = str(meta.get("platform") or fallback_platform or "unknown")
             included_models = tuple(str(m) for m in (meta.get("included_models") or ()))
             size_bytes = archive_path.stat().st_size
@@ -255,32 +325,28 @@ def publish_portable_artifacts(
 
     manifest_urls: dict[str, str] = {}
     checksum_urls: dict[str, str] = {}
-    with tempfile.TemporaryDirectory(prefix="shinsekai-manifest-") as meta_tmp:
-        meta_dir = Path(meta_tmp)
-        sums_path = meta_dir / "SHA256SUMS.txt"
-        sums_lines = [f"{item.sha256}  {item.archive_name}" for item in records]
-        sums_path.write_text("\n".join(sums_lines) + ("\n" if sums_lines else ""), encoding="utf-8")
+    for cfg in active_targets:
+        existing_manifest = fetcher(cfg, f"{clean_prefix}/portable-manifest.json")
+        merged_artifacts = merge_manifest_artifacts(existing_manifest, records)
 
-        manifest_path = meta_dir / "portable-manifest.json"
-        manifest_payload = {
-            "version": version,
-            "release_prefix": clean_prefix,
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "artifacts": [
-                {
-                    "platform": item.platform,
-                    "archive_name": item.archive_name,
-                    "size_bytes": item.size_bytes,
-                    "sha256": item.sha256,
-                    "included_models": list(item.included_models),
-                    "urls": item.urls,
-                }
-                for item in records
-            ],
-        }
-        manifest_path.write_text(json.dumps(manifest_payload, indent=2) + "\n", encoding="utf-8")
+        with tempfile.TemporaryDirectory(prefix=f"shinsekai-manifest-{cfg.provider}-") as meta_tmp:
+            meta_dir = Path(meta_tmp)
+            sums_path = meta_dir / "SHA256SUMS.txt"
+            sums_lines = [
+                f"{str(entry['sha256']).lower()}  {entry['archive_name']}"
+                for entry in merged_artifacts
+            ]
+            sums_path.write_text("\n".join(sums_lines) + ("\n" if sums_lines else ""), encoding="utf-8")
 
-        for cfg in active_targets:
+            manifest_path = meta_dir / "portable-manifest.json"
+            manifest_payload = {
+                "version": version,
+                "release_prefix": clean_prefix,
+                "generated_at": datetime.now(timezone.utc).isoformat(),
+                "artifacts": merged_artifacts,
+            }
+            manifest_path.write_text(json.dumps(manifest_payload, indent=2) + "\n", encoding="utf-8")
+
             checksum_urls[cfg.provider] = uploader(
                 cfg,
                 sums_path,
@@ -370,6 +436,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 __all__ = [
     "DownloadPlatformFn",
+    "ProviderFetchFn",
     "ProviderUploadFn",
     "PublishReport",
     "UploadTargetConfig",
@@ -377,6 +444,7 @@ __all__ = [
     "VALID_REPO_TYPES",
     "build_remote_url",
     "main",
+    "merge_manifest_artifacts",
     "publish_portable_artifacts",
 ]
 
