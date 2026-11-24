@@ -880,6 +880,9 @@ def _download_model_asset_unlocked(
         return {**current, "downloaded": False}
 
     snapshot_kwargs: dict[str, object] = {}
+    cache_roots = _huggingface_cache_roots()
+    if cache_roots:
+        snapshot_kwargs["cache_dir"] = str(cache_roots[0])
     main_snapshots = _main_huggingface_snapshots(spec)
     if main_snapshots:
         if any(_snapshot_is_provably_invalid_locally(spec, s) for s in main_snapshots):
