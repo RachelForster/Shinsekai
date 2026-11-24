@@ -188,6 +188,39 @@ export interface ChatReplayControl {
   playing?: boolean;
 }
 
+export type ChatVnExportFormat = "zip" | "directory";
+
+export interface ChatVnExportInput {
+  conversationId?: string;
+  startEntryId?: string;
+  endEntryId?: string;
+  title?: string;
+  subtitle?: string;
+  outputFormat: ChatVnExportFormat;
+  outputDir?: string;
+  includeVoices?: boolean;
+  transcodeMp3?: boolean;
+  includeBgm?: boolean;
+  includeAmbient?: boolean;
+  userDisplayName?: string;
+  openFolder?: boolean;
+}
+
+export interface ChatVnExportResult {
+  path: string;
+  format: ChatVnExportFormat;
+  entryCount: number;
+  assetCount: number;
+  voiceCount: number;
+  transcodedVoiceCount: number;
+  skippedNonStaticSprites: number;
+  totalBytes: number;
+  indexHtmlBytes: number;
+  warnings: string[];
+  downloadUrl?: string;
+  folderOpened?: boolean;
+}
+
 export interface ChatTurnOptions {
   batchEnabled: boolean;
   batchIdleSeconds: number;
@@ -583,6 +616,7 @@ export interface ChatPlatform {
   generateReplayVoice: (id: string, key: string, signal?: AbortSignal) => Promise<ChatReplayVoice>;
   cancelReplay: (id: string) => Promise<void>;
   controlReplay: (id: string, control: ChatReplayControl) => Promise<void>;
+  exportPlayableVn: (input: ChatVnExportInput) => Promise<ChatVnExportResult>;
   getRuntimeStatus: () => Promise<ChatRuntimeProcessState>;
   getSnapshot: (options?: ChatSnapshotOptions) => Promise<ChatSnapshot>;
   getTheme: () => Promise<ChatThemePayload>;

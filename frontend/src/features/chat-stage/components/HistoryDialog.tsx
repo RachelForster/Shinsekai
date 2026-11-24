@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   ArrowDownToLine,
+  BookOpen,
   Camera,
   Check,
   Clapperboard,
@@ -24,6 +25,7 @@ import {
   type ReplayCapture,
 } from "../replay/historyExport";
 import { useHistorySelection } from "../replay/useHistorySelection";
+import { VnExportDialog } from "../replay/VnExportDialog";
 import {
   HIDDEN_HISTORY_LINE_PATTERN,
   HIDDEN_HISTORY_SPEAKERS,
@@ -210,6 +212,7 @@ export function HistoryDialog({
   const [clip, setClip] = useState<HistoryClip | null>(null);
   const [generate, setGenerate] = useState(false);
   const [preparing, setPreparing] = useState(false);
+  const [vnExportOpen, setVnExportOpen] = useState(false);
   const [feedback, setFeedback] = useState<{ text: string; error?: boolean }>();
   const requestRef = useRef(0);
   const planRef = useRef<string>();
@@ -231,6 +234,7 @@ export function HistoryDialog({
   };
   const close = () => {
     clearClip();
+    setVnExportOpen(false);
     setMulti(false);
     selection.reset();
     onClose();
@@ -422,296 +426,316 @@ export function HistoryDialog({
     return null;
   }
 
+  const selectedRangeCount =
+    selectedRows.length > 0 ? selectedRows.at(-1)!.originalIndex - selectedRows[0].originalIndex + 1 : 0;
+
   return (
-    <ChatStageModal
-      backdropClassName="chat-history-backdrop"
-      closeLabel={t("common.close")}
-      dialogClassName="chat-history-dialog"
-      eyebrow={t("chat.actionBar.history")}
-      headerActions={
-        <>
-          {!multi && (
-            <div className="chat-history__voice-toggle">
-              <label htmlFor="chat-history-voice-archive">{t("chat.history.voiceArchive")}</label>
-              <Switch
-                checked={voiceArchiveEnabled}
-                id="chat-history-voice-archive"
-                onChange={(event) => onToggleVoiceArchive(event.target.checked)}
-              />
-            </div>
-          )}
-          <Button
-            aria-pressed={multi}
-            className="chat-history__select-mode"
-            disabled={!multi && (loading || !historyRows.length)}
-            icon={<ListChecks aria-hidden className="button__icon" />}
-            onClick={toggleMulti}
-          >
-            {t(multi ? "common.cancel" : "chat.history.selection.enter")}
-          </Button>
-          {!multi && (
+    <>
+      <ChatStageModal
+        backdropClassName="chat-history-backdrop"
+        closeLabel={t("common.close")}
+        dialogClassName="chat-history-dialog"
+        eyebrow={t("chat.actionBar.history")}
+        headerActions={
+          <>
+            {!multi && (
+              <div className="chat-history__voice-toggle">
+                <label htmlFor="chat-history-voice-archive">{t("chat.history.voiceArchive")}</label>
+                <Switch
+                  checked={voiceArchiveEnabled}
+                  id="chat-history-voice-archive"
+                  onChange={(event) => onToggleVoiceArchive(event.target.checked)}
+                />
+              </div>
+            )}
             <Button
-              aria-label={t("chat.toolbar.clearHistory")}
-              className="chat-history__header-action"
-              icon={<Trash2 aria-hidden className="button__icon" />}
-              onClick={onClear}
-              variant="danger"
+              aria-pressed={multi}
+              className="chat-history__select-mode"
+              disabled={!multi && (loading || !historyRows.length)}
+              icon={<ListChecks aria-hidden className="button__icon" />}
+              onClick={toggleMulti}
             >
-              {t("chat.actionBar.clear")}
+              {t(multi ? "common.cancel" : "chat.history.selection.enter")}
             </Button>
-          )}
-        </>
-      }
-      labelledBy={titleId}
-      onClose={close}
-      open={open}
-      summary={t("chat.history.count", { count: visibleEntries.length })}
-      title={t("chat.history.title")}
-    >
-      <div
-        className="chat-stage-modal__body chat-history-dialog__body"
-        ref={bodyRef}
-        onScroll={(event) => {
-          scrollRef.current = event.currentTarget.scrollTop;
-        }}
-      >
-        <div className="chat-history__filters">
-          <input
-            aria-label={t("chat.history.search")}
-            className="chat-history__search"
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={t("chat.history.search")}
-            type="search"
-            value={query}
-          />
-          <span className="chat-history__visible-count">
-            {t("chat.history.visibleCount", {
-              total: visibleEntries.length,
-              visible: Math.min(renderedEntries.length, visibleEntries.length),
-            })}
-          </span>
-        </div>
-        {loading ? <p className="chat-history__empty">{t("chat.history.loading")}</p> : null}
-        {!loading && visibleEntries.length === 0 ? (
-          <p className="chat-history__empty">{t("chat.history.empty")}</p>
-        ) : null}
-        {!loading && visibleEntries.length > 0 ? (
-          <div
-            className="chat-history__list"
-            data-multi={multi || undefined}
-            {...(multi && !clip && !preparing ? selection.pointerHandlers : {})}
-          >
-            {moreEntriesAvailable ? (
+            {!multi && (
               <Button
-                className="chat-history__show-more"
-                onClick={() => setVisibleLimit((current) => current + historyRenderBatchSize)}
+                aria-label={t("chat.toolbar.clearHistory")}
+                className="chat-history__header-action"
+                icon={<Trash2 aria-hidden className="button__icon" />}
+                onClick={onClear}
+                variant="danger"
               >
-                {t("chat.history.showMore", { count: hiddenOlderCount })}
+                {t("chat.actionBar.clear")}
               </Button>
-            ) : null}
-            {renderedEntries.map(({ dialog, entry, localTime, originalIndex }) => {
-              const checked = selection.selected.has(entry.id);
-              return (
-                <section
-                  data-history-entry-id={entry.id}
-                  data-history-selected={multi && checked ? "true" : undefined}
-                  data-history-anchor={multi && selection.anchor === entry.id ? "true" : undefined}
-                  className="chat-history__entry"
-                  data-role={entry.role}
-                  data-tone={historyEntryTone(entry.role)}
-                  key={entry.id}
-                  onClick={
-                    multi && !clip && !preparing
-                      ? (event) => {
-                          if (feedback) setFeedback(undefined);
-                          selection.click(event, entry.id);
-                        }
-                      : undefined
-                  }
-                >
-                  {multi && (
-                    <button
-                      aria-checked={checked}
-                      aria-label={t("chat.history.selection.message", { index: originalIndex + 1 })}
-                      className="chat-history__checkbox"
-                      disabled={preparing || Boolean(clip)}
-                      role="checkbox"
-                      type="button"
-                    >
-                      {checked && <Check aria-hidden size={15} />}
-                    </button>
-                  )}
-                  <header className="chat-history__entry-header">
-                    <div className="chat-history__nameplate">
-                      <span aria-hidden className="chat-history__nameplate-accent" />
-                      <span className="chat-history__speaker">{dialog.speaker}</span>
-                      <span className="chat-history__role">{roleLabels[entry.role]}</span>
-                    </div>
-                    <div className="chat-history__meta">
-                      <span className="chat-history__index">
-                        {t("chat.history.entryIndex", { index: originalIndex + 1 })}
-                      </span>
-                      {localTime ? (
-                        <time className="chat-history__time" dateTime={new Date(entry.createdAt ?? 0).toISOString()}>
-                          {localTime}
-                        </time>
-                      ) : null}
-                    </div>
-                  </header>
-                  <p className="chat-history__text">{dialog.body}</p>
-                  {!multi && (entry.voiceId || (entry.role === "user" && entry.revertUserIndex != null)) && (
-                    <div className="chat-history__actions">
-                      {entry.voiceId ? (
-                        <>
-                          <Button
-                            className="chat-history__voice-button"
-                            icon={<Play aria-hidden className="button__icon" />}
-                            onClick={() => onReplayVoice(entry.voiceId!)}
-                          >
-                            {t("chat.history.replayVoice")}
-                          </Button>
-                          <Button
-                            className="chat-history__voice-button"
-                            icon={<Save aria-hidden className="button__icon" />}
-                            onClick={() => onSaveVoice(entry.voiceId!)}
-                          >
-                            {t("chat.history.saveVoice")}
-                          </Button>
-                        </>
-                      ) : null}
-                      {entry.role === "user" && entry.revertUserIndex != null ? (
-                        <>
-                          <Button
-                            className="chat-history__revert"
-                            icon={<RotateCcw aria-hidden className="button__icon" />}
-                            onClick={() => onRevert(entry.revertUserIndex!)}
-                          >
-                            {t("chat.history.revert")}
-                          </Button>
-                        </>
-                      ) : null}
-                    </div>
-                  )}
-                </section>
-              );
-            })}
+            )}
+          </>
+        }
+        labelledBy={titleId}
+        onClose={close}
+        open={open && !vnExportOpen}
+        summary={t("chat.history.count", { count: visibleEntries.length })}
+        title={t("chat.history.title")}
+      >
+        <div
+          className="chat-stage-modal__body chat-history-dialog__body"
+          ref={bodyRef}
+          onScroll={(event) => {
+            scrollRef.current = event.currentTarget.scrollTop;
+          }}
+        >
+          <div className="chat-history__filters">
+            <input
+              aria-label={t("chat.history.search")}
+              className="chat-history__search"
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={t("chat.history.search")}
+              type="search"
+              value={query}
+            />
+            <span className="chat-history__visible-count">
+              {t("chat.history.visibleCount", {
+                total: visibleEntries.length,
+                visible: Math.min(renderedEntries.length, visibleEntries.length),
+              })}
+            </span>
           </div>
-        ) : null}
-      </div>
-      {multi ? (
-        <footer className="chat-history-selection">
-          {!clip && selection.anchor && !preparing && (
-            <Button
-              className="chat-history-selection__to-end"
-              icon={<ArrowDownToLine aria-hidden className="button__icon" />}
-              onClick={selection.selectToVisibleEnd}
+          {loading ? <p className="chat-history__empty">{t("chat.history.loading")}</p> : null}
+          {!loading && visibleEntries.length === 0 ? (
+            <p className="chat-history__empty">{t("chat.history.empty")}</p>
+          ) : null}
+          {!loading && visibleEntries.length > 0 ? (
+            <div
+              className="chat-history__list"
+              data-multi={multi || undefined}
+              {...(multi && !clip && !preparing ? selection.pointerHandlers : {})}
             >
-              {t("chat.history.selection.toHere")}
-            </Button>
-          )}
-          {clip ? (
-            <>
-              <div className="chat-history-selection__summary">
-                <strong>
-                  {t("chat.replay.range", {
-                    start: clip.entries[0].position,
-                    end: clip.entries.at(-1)!.position,
-                    count: clip.entries.length,
-                  })}
-                </strong>
-                {clip.includesUnselected && <span>{t("chat.history.selection.contiguous")}</span>}
-                {clip.mode === "video" && <span>{t("chat.history.selection.videoHint")}</span>}
-              </div>
-              <div className="chat-history-selection__actions">
-                {generatable && (
-                  <label className="chat-history-selection__voice">
-                    <input
-                      checked={generate}
-                      disabled={preparing}
-                      onChange={(event) => setGenerate(event.target.checked)}
-                      type="checkbox"
-                    />
-                    {t("chat.history.selection.fillVoice")}
-                  </label>
-                )}
-                <Button onClick={clearClip}>{t("chat.history.selection.edit")}</Button>
+              {moreEntriesAvailable ? (
                 <Button
-                  className="chat-history-selection__primary"
-                  disabled={preparing || replayDisabled}
-                  onClick={() => void begin()}
+                  className="chat-history__show-more"
+                  onClick={() => setVisibleLimit((current) => current + historyRenderBatchSize)}
                 >
-                  {t(clip.mode === "video" ? "chat.history.selection.record" : "chat.replay.direct")}
+                  {t("chat.history.showMore", { count: hiddenOlderCount })}
                 </Button>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="chat-history-selection__summary">
-                <strong role="status">{t("chat.history.selection.count", { count: selectedRows.length })}</strong>
-                {selectedRows.length === 0 && <span>{t("chat.history.selection.hint")}</span>}
-                {selectedRows.length > 0 && replayDisabled && onStartReplay && <span>{t("chat.replay.busy")}</span>}
-              </div>
-              <div className="chat-history-selection__actions">
-                <Button
-                  disabled={preparing || visibleEntries.length === 0}
-                  onClick={() => selection.reset(visibleEntries.map(({ entry }) => entry.id))}
-                >
-                  {t("chat.history.selection.all")}
-                </Button>
-                {onStartReplay && (
+              ) : null}
+              {renderedEntries.map(({ dialog, entry, localTime, originalIndex }) => {
+                const checked = selection.selected.has(entry.id);
+                return (
+                  <section
+                    data-history-entry-id={entry.id}
+                    data-history-selected={multi && checked ? "true" : undefined}
+                    data-history-anchor={multi && selection.anchor === entry.id ? "true" : undefined}
+                    className="chat-history__entry"
+                    data-role={entry.role}
+                    data-tone={historyEntryTone(entry.role)}
+                    key={entry.id}
+                    onClick={
+                      multi && !clip && !preparing
+                        ? (event) => {
+                            if (feedback) setFeedback(undefined);
+                            selection.click(event, entry.id);
+                          }
+                        : undefined
+                    }
+                  >
+                    {multi && (
+                      <button
+                        aria-checked={checked}
+                        aria-label={t("chat.history.selection.message", { index: originalIndex + 1 })}
+                        className="chat-history__checkbox"
+                        disabled={preparing || Boolean(clip)}
+                        role="checkbox"
+                        type="button"
+                      >
+                        {checked && <Check aria-hidden size={15} />}
+                      </button>
+                    )}
+                    <header className="chat-history__entry-header">
+                      <div className="chat-history__nameplate">
+                        <span aria-hidden className="chat-history__nameplate-accent" />
+                        <span className="chat-history__speaker">{dialog.speaker}</span>
+                        <span className="chat-history__role">{roleLabels[entry.role]}</span>
+                      </div>
+                      <div className="chat-history__meta">
+                        <span className="chat-history__index">
+                          {t("chat.history.entryIndex", { index: originalIndex + 1 })}
+                        </span>
+                        {localTime ? (
+                          <time className="chat-history__time" dateTime={new Date(entry.createdAt ?? 0).toISOString()}>
+                            {localTime}
+                          </time>
+                        ) : null}
+                      </div>
+                    </header>
+                    <p className="chat-history__text">{dialog.body}</p>
+                    {!multi && (entry.voiceId || (entry.role === "user" && entry.revertUserIndex != null)) && (
+                      <div className="chat-history__actions">
+                        {entry.voiceId ? (
+                          <>
+                            <Button
+                              className="chat-history__voice-button"
+                              icon={<Play aria-hidden className="button__icon" />}
+                              onClick={() => onReplayVoice(entry.voiceId!)}
+                            >
+                              {t("chat.history.replayVoice")}
+                            </Button>
+                            <Button
+                              className="chat-history__voice-button"
+                              icon={<Save aria-hidden className="button__icon" />}
+                              onClick={() => onSaveVoice(entry.voiceId!)}
+                            >
+                              {t("chat.history.saveVoice")}
+                            </Button>
+                          </>
+                        ) : null}
+                        {entry.role === "user" && entry.revertUserIndex != null ? (
+                          <>
+                            <Button
+                              className="chat-history__revert"
+                              icon={<RotateCcw aria-hidden className="button__icon" />}
+                              onClick={() => onRevert(entry.revertUserIndex!)}
+                            >
+                              {t("chat.history.revert")}
+                            </Button>
+                          </>
+                        ) : null}
+                      </div>
+                    )}
+                  </section>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
+        {multi ? (
+          <footer className="chat-history-selection">
+            {!clip && selection.anchor && !preparing && (
+              <Button
+                className="chat-history-selection__to-end"
+                icon={<ArrowDownToLine aria-hidden className="button__icon" />}
+                onClick={selection.selectToVisibleEnd}
+              >
+                {t("chat.history.selection.toHere")}
+              </Button>
+            )}
+            {clip ? (
+              <>
+                <div className="chat-history-selection__summary">
+                  <strong>
+                    {t("chat.replay.range", {
+                      start: clip.entries[0].position,
+                      end: clip.entries.at(-1)!.position,
+                      count: clip.entries.length,
+                    })}
+                  </strong>
+                  {clip.includesUnselected && <span>{t("chat.history.selection.contiguous")}</span>}
+                  {clip.mode === "video" && <span>{t("chat.history.selection.videoHint")}</span>}
+                </div>
+                <div className="chat-history-selection__actions">
+                  {generatable && (
+                    <label className="chat-history-selection__voice">
+                      <input
+                        checked={generate}
+                        disabled={preparing}
+                        onChange={(event) => setGenerate(event.target.checked)}
+                        type="checkbox"
+                      />
+                      {t("chat.history.selection.fillVoice")}
+                    </label>
+                  )}
+                  <Button onClick={clearClip}>{t("chat.history.selection.edit")}</Button>
                   <Button
                     className="chat-history-selection__primary"
-                    disabled={!selectedRows.length || preparing || replayDisabled}
-                    icon={<Clapperboard aria-hidden className="button__icon" />}
-                    onClick={() => void prepare("replay")}
+                    disabled={preparing || replayDisabled}
+                    onClick={() => void begin()}
                   >
-                    {t("chat.history.selection.replay")}
+                    {t(clip.mode === "video" ? "chat.history.selection.record" : "chat.replay.direct")}
                   </Button>
-                )}
-                <Button
-                  disabled={!selectedRows.length || preparing}
-                  icon={<Copy aria-hidden className="button__icon" />}
-                  onClick={() => void exportSelection(false)}
-                >
-                  {t("chat.actionBar.copy")}
-                </Button>
-                <Button
-                  disabled={!selectedRows.length || preparing}
-                  icon={<Camera aria-hidden className="button__icon" />}
-                  onClick={() => void exportSelection(true)}
-                >
-                  {t("chat.history.selection.screenshot")}
-                </Button>
-                {onStartReplay && (
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="chat-history-selection__summary">
+                  <strong role="status">{t("chat.history.selection.count", { count: selectedRows.length })}</strong>
+                  {selectedRows.length === 0 && <span>{t("chat.history.selection.hint")}</span>}
+                  {selectedRows.length > 0 && replayDisabled && onStartReplay && <span>{t("chat.replay.busy")}</span>}
+                </div>
+                <div className="chat-history-selection__actions">
                   <Button
-                    disabled={!selectedRows.length || preparing || replayDisabled || !videoAvailable}
-                    title={videoAvailable ? undefined : t("chat.history.selection.videoUnsupported")}
-                    icon={<Video aria-hidden className="button__icon" />}
-                    onClick={() => void prepare("video")}
+                    disabled={preparing || visibleEntries.length === 0}
+                    onClick={() => selection.reset(visibleEntries.map(({ entry }) => entry.id))}
                   >
-                    {t("chat.history.selection.video")}
+                    {t("chat.history.selection.all")}
                   </Button>
-                )}
-              </div>
-            </>
-          )}
-          {preparing && (
-            <p className="chat-history-selection__feedback" role="status">
-              {t("chat.replay.preparing")}
-            </p>
-          )}
-          {feedback && (
-            <p className="chat-history-selection__feedback" role={feedback.error ? "alert" : "status"}>
-              {feedback.text}
-            </p>
-          )}
-        </footer>
-      ) : (
-        <footer className="chat-stage-modal__footer chat-history-dialog__footer">
-          <Button onClick={onRefresh}>{t("common.refresh")}</Button>
-          <Button onClick={close}>{t("common.close")}</Button>
-        </footer>
-      )}
-    </ChatStageModal>
+                  {onStartReplay && (
+                    <Button
+                      className="chat-history-selection__primary"
+                      disabled={!selectedRows.length || preparing || replayDisabled}
+                      icon={<Clapperboard aria-hidden className="button__icon" />}
+                      onClick={() => void prepare("replay")}
+                    >
+                      {t("chat.history.selection.replay")}
+                    </Button>
+                  )}
+                  <Button
+                    disabled={!selectedRows.length || preparing}
+                    icon={<Copy aria-hidden className="button__icon" />}
+                    onClick={() => void exportSelection(false)}
+                  >
+                    {t("chat.actionBar.copy")}
+                  </Button>
+                  <Button
+                    disabled={!selectedRows.length || preparing}
+                    icon={<Camera aria-hidden className="button__icon" />}
+                    onClick={() => void exportSelection(true)}
+                  >
+                    {t("chat.history.selection.screenshot")}
+                  </Button>
+                  <Button
+                    disabled={!selectedRows.length || preparing}
+                    icon={<BookOpen aria-hidden className="button__icon" />}
+                    onClick={() => setVnExportOpen(true)}
+                  >
+                    {t("chat.vnExport.button")}
+                  </Button>
+                  {onStartReplay && (
+                    <Button
+                      disabled={!selectedRows.length || preparing || replayDisabled || !videoAvailable}
+                      title={videoAvailable ? undefined : t("chat.history.selection.videoUnsupported")}
+                      icon={<Video aria-hidden className="button__icon" />}
+                      onClick={() => void prepare("video")}
+                    >
+                      {t("chat.history.selection.video")}
+                    </Button>
+                  )}
+                </div>
+              </>
+            )}
+            {preparing && (
+              <p className="chat-history-selection__feedback" role="status">
+                {t("chat.replay.preparing")}
+              </p>
+            )}
+            {feedback && (
+              <p className="chat-history-selection__feedback" role={feedback.error ? "alert" : "status"}>
+                {feedback.text}
+              </p>
+            )}
+          </footer>
+        ) : (
+          <footer className="chat-stage-modal__footer chat-history-dialog__footer">
+            <Button onClick={onRefresh}>{t("common.refresh")}</Button>
+            <Button onClick={close}>{t("common.close")}</Button>
+          </footer>
+        )}
+      </ChatStageModal>
+      <VnExportDialog
+        defaultUserDisplayName={userDisplayName}
+        endEntryId={selectedRows.at(-1)?.entry.id}
+        onClose={() => setVnExportOpen(false)}
+        open={open && vnExportOpen}
+        rangeCount={selectedRangeCount}
+        startEntryId={selectedRows[0]?.entry.id}
+      />
+    </>
   );
 }

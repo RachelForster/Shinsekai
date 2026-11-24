@@ -9,6 +9,7 @@ import type {
   ChatResumeOverrides,
   ChatRuntimeProcessState,
   ChatSnapshot,
+  ChatVnExportInput,
   MemoryMode,
   RuntimeDependencyInstallInput,
   RuntimeDependencyInstallResult,
@@ -144,6 +145,7 @@ export const generateChatReplayVoice = (id: string, key: string, signal?: AbortS
 export const cancelChatReplay = (id: string) => getPlatform().chat.cancelReplay(id);
 export const controlChatReplay = (id: string, control: import("../../shared/platform/types").ChatReplayControl) =>
   getPlatform().chat.controlReplay(id, control);
+export const exportPlayableVn = (input: ChatVnExportInput) => getPlatform().chat.exportPlayableVn(input);
 
 export function subscribeChat(listener: (snapshot: ChatSnapshot) => void): () => void {
   return getPlatform().chat.subscribe(listener);

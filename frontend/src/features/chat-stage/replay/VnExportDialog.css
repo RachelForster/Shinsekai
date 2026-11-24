@@ -1,0 +1,97 @@
+.vn-export-dialog {
+  width: min(560px, 100%);
+}
+
+.vn-export-dialog__form,
+.vn-export-dialog__result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.vn-export-dialog__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.vn-export-dialog__field > label,
+.vn-export-dialog__format > legend {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.vn-export-dialog__format {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--color-border);
+}
+
+.vn-export-dialog__radio {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.vn-export-dialog__switches {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.vn-export-dialog__hint {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
+.vn-export-dialog__ready {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-accent-primary);
+}
+
+.vn-export-dialog__stats,
+.vn-export-dialog__size {
+  margin: 0;
+  font-size: 13px;
+}
+
+.vn-export-dialog__path {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-control);
+  background: var(--color-bg-panel, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--color-border);
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.vn-export-dialog__warnings {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--color-warning, #e5a93c);
+}
+
+.vn-export-dialog__error {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-danger, #e5534b);
+}
+
+.vn-export-dialog__download {
+  text-decoration: none;
+}

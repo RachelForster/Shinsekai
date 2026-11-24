@@ -613,6 +613,9 @@ export function createChatPreviewPlatform(ctx: BrowserPreviewContext): ChatPlatf
       }
       showPreviewReplay();
     },
+    exportPlayableVn: async () => {
+      throw new PlatformRequestError(tr("error.local_app_required"), 400, "local_app_required");
+    },
     getRuntimeStatus: () => delay(runtimeStatusFromSnapshot(getChat())),
     getSnapshot: () => delay(getChat()),
     getTheme: () =>

@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="__LANG__">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>__TITLE__</title>
+    <link rel="stylesheet" href="./__STYLE_FILE__" />
+    __THEME_STYLE_BLOCK__
+    <script defer src="./__DATA_FILE__"></script>
+    <script defer src="./__PLAYER_FILE__"></script>
+  </head>
+  <body>
+    <main id="vn-app" class="vn-app" data-screen="title">
+      <section id="vn-title-screen" class="vn-title" aria-labelledby="vn-title-heading">
+        <div id="vn-title-cover" class="vn-title__cover" aria-hidden="true"></div>
+        <div class="vn-title__scrim" aria-hidden="true"></div>
+        <div class="vn-title__panel">
+          <p class="vn-title__brand">SHINSEKAI</p>
+          <h1 id="vn-title-heading" class="vn-title__heading"></h1>
+          <p id="vn-title-subtitle" class="vn-title__subtitle" hidden></p>
+          <div id="vn-title-meta" class="vn-title__meta"></div>
+          <div class="vn-title__actions">
+            <button id="vn-btn-start" type="button" class="vn-btn vn-btn--primary"></button>
+            <button id="vn-btn-continue" type="button" class="vn-btn vn-btn--secondary" hidden></button>
+          </div>
+        </div>
+      </section>
+
+      <section id="vn-stage" class="vn-stage" hidden aria-label="Visual novel stage">
+        <div id="vn-bg-layer" class="vn-layer vn-bg" aria-hidden="true"></div>
+        <div id="vn-ambient-back" class="vn-layer vn-ambient vn-ambient--back" aria-hidden="true"></div>
+        <div id="vn-sprite-layer" class="vn-layer vn-sprites" aria-hidden="true"></div>
+        <div id="vn-ambient-front" class="vn-layer vn-ambient vn-ambient--front" aria-hidden="true"></div>
+        <div id="vn-cg-layer" class="vn-layer vn-cg" hidden></div>
+
+        <button id="vn-cg-toggle" type="button" class="vn-pill vn-cg-toggle" hidden></button>
+        <aside id="vn-stats-layer" class="vn-stats" hidden aria-live="polite"></aside>
+        <div id="vn-progress-pill" class="vn-pill vn-progress-pill" aria-live="polite"></div>
+
+        <div id="vn-options-layer" class="vn-options" hidden role="list"></div>
+
+        <section id="vn-dialog-shell" class="vn-dialog-shell" aria-live="polite">
+          <div class="vn-dialog">
+            <div id="vn-player-portrait" class="vn-player-portrait" hidden></div>
+            <div id="vn-nameplate" class="vn-nameplate" hidden>
+              <span id="vn-speaker-name"></span>
+            </div>
+            <div id="vn-dialog-body" class="vn-dialog__body">
+              <p id="vn-dialog-text" class="vn-dialog__text"></p>
+              <span id="vn-ctc" class="vn-dialog__ctc" hidden aria-hidden="true"></span>
+            </div>
+            <div id="vn-toolbar" class="vn-toolbar" role="toolbar">
+              <button id="vn-tb-voice" type="button" class="vn-tb-btn" data-action="voice"></button>
+              <button id="vn-tb-auto" type="button" class="vn-tb-btn" data-action="auto"></button>
+              <button id="vn-tb-skip" type="button" class="vn-tb-btn" data-action="skip"></button>
+              <button id="vn-tb-backlog" type="button" class="vn-tb-btn" data-action="backlog"></button>
+              <button id="vn-tb-save" type="button" class="vn-tb-btn" data-action="save"></button>
+              <button id="vn-tb-load" type="button" class="vn-tb-btn" data-action="load"></button>
+              <button id="vn-tb-hide" type="button" class="vn-tb-btn" data-action="hide"></button>
+              <button id="vn-tb-settings" type="button" class="vn-tb-btn" data-action="settings"></button>
+              <button id="vn-tb-title" type="button" class="vn-tb-btn" data-action="title"></button>
+            </div>
+          </div>
+        </section>
+
+        <div id="vn-restore-hint" class="vn-pill vn-restore-hint" hidden></div>
+
+        <div id="vn-end-overlay" class="vn-end-overlay" hidden>
+          <div class="vn-end-card">
+            <h2 id="vn-end-title"></h2>
+            <div class="vn-end-card__actions">
+              <button id="vn-end-restart" type="button" class="vn-btn vn-btn--primary"></button>
+              <button id="vn-end-title-btn" type="button" class="vn-btn vn-btn--secondary"></button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div id="vn-modal-backdrop" class="vn-modal-backdrop" hidden>
+        <section id="vn-modal" class="vn-modal" role="dialog" aria-modal="true" aria-labelledby="vn-modal-title">
+          <header class="vn-modal__header">
+            <h2 id="vn-modal-title" class="vn-modal__title"></h2>
+            <button id="vn-modal-close" type="button" class="vn-tb-btn"></button>
+          </header>
+          <div id="vn-modal-body" class="vn-modal__body"></div>
+        </section>
+      </div>
+    </main>
+  </body>
+</html>

@@ -1,4 +1,5 @@
 import type { ChatMessageKey } from "../zh_CN/chat";
+import { chatVnExportEnMessages } from "./chatVnExport";
 
 export const chatEnMessages: Record<ChatMessageKey, string> = {
   "chat.history.selection.enter": "Replay/Share",
@@ -453,4 +454,5 @@ export const chatEnMessages: Record<ChatMessageKey, string> = {
   "chat.cg.saveFailed": "Failed to save CG",
   "chat.cg.exit": "Exit",
   "chat.cg.exitLabel": "Exit CG",
+  ...chatVnExportEnMessages,
 };
