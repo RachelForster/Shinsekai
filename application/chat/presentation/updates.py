@@ -21,6 +21,12 @@ from core.paths import resource_path
 from core.sprite.selection import resolve_runtime_path, sprite_entry_path
 from config.character_assets import get_character_assets
 from config.config_manager import character_name_key
+from config.schema import (
+    SELF_PERSONA_NAME,
+    is_self_persona_name,
+    resolve_character_by_prompt_name,
+    resolve_character_prompt_name,
+)
 from application.chat.presentation.character_visual import (
     image_visual_identity,
     resolve_character_visual,
@@ -70,15 +76,51 @@ def get_character_by_name(name: str):
         folded = str(name or "").strip().casefold()
         list_all = getattr(catalog, "list_all", None)
         if folded and callable(list_all):
+            self_match = None
             for character in list_all():
-                if str(getattr(character, "name", "")).strip().casefold() == folded:
+                char_name = str(getattr(character, "name", "") or "").strip()
+                if char_name.casefold() == folded:
                     return character
+                if self_match is None and is_self_persona_name(char_name):
+                    display_name = str(getattr(character, "display_name", "") or "").strip()
+                    if display_name and display_name.casefold() == folded:
+                        self_match = character
+            if self_match is not None:
+                return self_match
+        if callable(get_by_name) and folded:
+            self_char = get_by_name(SELF_PERSONA_NAME)
+            if self_char is not None and is_self_persona_name(getattr(self_char, "name", "")):
+                display_name = str(getattr(self_char, "display_name", "") or "").strip()
+                if display_name and display_name.casefold() == folded:
+                    return self_char
         if callable(get_by_name) or callable(list_all):
             return None
     try:
-        return _get_config_manager().get_character_by_name(name)
+        return resolve_character_by_prompt_name(_get_config_manager(), name)
     except ModuleNotFoundError:
         return None
+
+
+def _all_character_names() -> tuple[str, ...]:
+    with _catalog_lock:
+        catalog = _bound_character_catalog
+    if catalog is not None:
+        list_all = getattr(catalog, "list_all", None)
+        if callable(list_all):
+            return tuple(
+                cname
+                for c in list_all()
+                if isinstance((cname := getattr(c, "name", None)), str) and cname.strip()
+            )
+    try:
+        cfg = _get_config_manager()
+    except ModuleNotFoundError:
+        return ()
+    return tuple(
+        cname
+        for c in getattr(getattr(cfg, "config", None), "characters", ()) or ()
+        if isinstance((cname := getattr(c, "name", None)), str) and cname.strip()
+    )
 
 
 def _native_tool_confirmation_options(
@@ -832,9 +874,19 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         player = str(getattr(self, "player_character", "") or "")
         def compact(value: object) -> str:
             return re.sub(r'\s+', '', str(value or ''))
+        candidates = tuple(
+            token
+            for token in dict.fromkeys(
+                compact(v) for v in (player, getattr(self, "user_display_name", ""))
+            )
+            if token
+        )
         relevant = bool(player) and (
-            compact(name) == compact(player) or
-            (normalize_character_name(name) in NARR_ALIASES and compact(player) in compact(speech))
+            compact(name) in candidates
+            or (
+                normalize_character_name(name) in NARR_ALIASES
+                and any(token in compact(speech) for token in candidates)
+            )
         )
         self._player_input_visible = False
         pending = getattr(self, "_pending_player_portrait", None)
@@ -919,7 +971,9 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         except Exception as e:
             print(f"StreamingUIUpdateManager: 立绘解析失败: {e}")
             return
-        character_name = str(getattr(character_config, "name", "") or character_name)
+        character_name = resolve_character_prompt_name(
+            character_config, character_name, colliding_names=_all_character_names()
+        )
         display_slot = self._get_or_create_sprite_slot(character_name) if slot is None else slot
         self._emit(
             {
@@ -968,10 +1022,13 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
             else getattr(sprite, "portrait_crop", None)
         )
         crop = crop or getattr(character_config, "portrait_crop", None)
+        display_name = resolve_character_prompt_name(
+            character_config, character_name, colliding_names=_all_character_names()
+        )
         self._emit(
             {
                 "type": "player.portrait.show",
-                "characterName": character_name,
+                "characterName": display_name,
                 "url": self._media_url(image_path),
                 "crop": (
                     crop.model_dump()
@@ -997,6 +1054,11 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
             try:
                 character_config = get_character_by_name(character_name)
                 if character_config is not None:
+                    resolved_character_name = resolve_character_prompt_name(
+                        character_config,
+                        character_name,
+                        colliding_names=_all_character_names(),
+                    )
                     from .character_visual import _resolve_portrait_crop
 
                     target_norm = os.path.normcase(str(resolve_runtime_path(path)))
@@ -1027,13 +1089,26 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         return True
 
     def remove_character_sprite(self, character_name: str) -> None:
-        name_key = character_name_key(character_name)
-        character_name = next(
-            (name for name in self._sprite_lru if character_name_key(name) == name_key),
+        candidates = [character_name]
+        try:
+            character_config = get_character_by_name(character_name)
+        except Exception:
+            character_config = None
+        if character_config is not None:
+            canonical_name = str(getattr(character_config, "name", "") or "").strip()
+            prompt_name = resolve_character_prompt_name(
+                character_config, canonical_name, colliding_names=_all_character_names()
+            )
+            candidates.extend([prompt_name, canonical_name])
+        candidate_keys = {
+            character_name_key(item) for item in candidates if str(item or "").strip()
+        }
+        matched = next(
+            (name for name in self._sprite_lru if character_name_key(name) in candidate_keys),
             character_name,
         )
-        self._sprite_lru.pop(character_name, None)
-        self._emit({"type": "sprite.remove", "characterName": character_name})
+        self._sprite_lru.pop(matched, None)
+        self._emit({"type": "sprite.remove", "characterName": matched})
 
     def post_sprite_reaction(
         self,

@@ -144,12 +144,18 @@ class TemplateGenerator:
         if not characters and player is None:
             raise NoValidCharactersError()
         has_self_in_cast = any(is_self_persona_name(name) for name, _character in characters)
+        getter = getattr(config_manager, "get_character_by_name", None)
+        self_char = getter(SELF_PERSONA_NAME) if callable(getter) else None
+        if self_char is not None and not is_self_persona_name(getattr(self_char, "name", "")):
+            self_char = None
+        self_persona_display_name = (
+            str(getattr(self_char, "display_name", "") or "").strip()
+            if self_char is not None
+            else ""
+        )
         self_persona_setting = ""
-        if not player_character and player is None and not has_self_in_cast:
-            getter = getattr(config_manager, "get_character_by_name", None)
-            self_char = getter(SELF_PERSONA_NAME) if callable(getter) else None
-            if self_char is not None and is_self_persona_name(getattr(self_char, "name", "")):
-                self_persona_setting = str(getattr(self_char, "character_setting", "") or "").strip()
+        if not player_character and player is None and not has_self_in_cast and self_char is not None:
+            self_persona_setting = str(getattr(self_char, "character_setting", "") or "").strip()
         has_background = bool(bg_name) and not is_transparent_background(bg_name)
         resolved_locale = resolve_template_locale(config_manager)
         context = DialogTemplateContext(
@@ -161,6 +167,7 @@ class TemplateGenerator:
             player_name=player_character if player is not None else "",
             player_character=player,
             self_persona_setting=self_persona_setting,
+            self_persona_display_name=self_persona_display_name,
             read_player_speech=bool(read_player_speech and player is not None),
             allow_player_dialogue=allow_player_dialogue,
             primary_character_names=(

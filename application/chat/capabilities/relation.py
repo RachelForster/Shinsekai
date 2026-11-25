@@ -28,6 +28,7 @@ from application.chat.capabilities.contracts import (
     StartupCapabilityContext,
     TurnContextProvider,
 )
+from config.schema import SELF_PERSONA_NAME, is_self_persona_name
 
 if TYPE_CHECKING:
     from sdk.hooks import BeforeChatContext
@@ -225,11 +226,23 @@ class RelationTurnContextProvider(BaseTurnContextProvider):
             if self.translate is translate_template
             else self.translate
         )
+        self_char = _resolve_character_record(self.config, SELF_PERSONA_NAME)
+        raw_display = (
+            getattr(self_char, "display_name", None)
+            if self_char is not None
+            and is_self_persona_name(getattr(self_char, "name", ""))
+            else None
+        )
+        self_persona_display_name = (
+            raw_display.strip() if isinstance(raw_display, str) else ""
+        )
         template_context = DialogTemplateContext(
             characters=tuple(characters),
             translate=effective_translate,
             target_voice_name="",
             json_reminder="",
+            self_persona_display_name=self_persona_display_name,
+            colliding_character_names=tuple(self.character_names),
             primary_character_names=resolved_primary_names,
             locale=active_locale,
         )

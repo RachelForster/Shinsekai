@@ -2,7 +2,7 @@
 from dataclasses import dataclass
 import logging
 
-from config.schema import RelationGraph
+from config.schema import RelationGraph, is_self_persona_name
 
 from ...core import Section
 from ..context import DialogTemplateContext
@@ -18,8 +18,10 @@ def _normalize_name(value):
     return value.strip().casefold()
 
 
-def _build_relation_context(characters, primary_names=None):
+def _build_relation_context(characters, primary_names=None, self_persona_display_name=""):
     selected = {_normalize_name(name) for name, _ in characters}
+    if self_persona_display_name and any(is_self_persona_name(name) for name, _ in characters):
+        selected.add(_normalize_name(self_persona_display_name))
     blocks = []
     for name, character in characters:
         if primary_names is not None and name not in primary_names:
@@ -49,16 +51,25 @@ class RelationSection(Section[DialogTemplateContext]):
     id: str = "relations"
 
     def _render_self(self, context: DialogTemplateContext) -> str:
-        blocks = _build_relation_context(context.characters, context.primary_character_names)
+        self_display = context.self_persona_display_prompt_name
+        blocks = _build_relation_context(
+            context.characters,
+            context.primary_character_names,
+            self_persona_display_name=self_display,
+        )
+
+        def _display_name(raw: str) -> str:
+            return self_display if self_display and is_self_persona_name(raw) else raw
+
         rendered = []
         for owner, edges in blocks:
-            heading = context.translate("relations_owner", name=_clean(owner))
+            heading = context.translate("relations_owner", name=_clean(_display_name(owner)))
             lines = []
             for edge in edges:
                 line = context.translate(
                     "relations_edge",
-                    source=_clean(edge.source),
-                    target=_clean(edge.target),
+                    source=_clean(_display_name(edge.source)),
+                    target=_clean(_display_name(edge.target)),
                     content=_clean(edge.content),
                 )
                 if edge.temperature:

@@ -389,6 +389,109 @@ class PlayerControlTests(unittest.TestCase):
         ui.update_dialog.assert_not_called()
         ui.queue_player_portrait.assert_not_called()
 
+    def test_named_self_persona_runtime_media_ui_replay_and_tools(self):
+        from queue import Queue
+        from ai.llm.template.dialog.sections.player import player_runtime_prompt
+        from ai.tools.character_tools import CharacterToolHandler
+        from application.chat.dialog_media.replay import latest_media_dialogs
+        from application.chat.presentation.handlers.character_media import CharacterMediaHandler
+        from application.chat.presentation.handlers.presentation import CharacterDialogUiHandler
+        from application.session_behavior.casting import CastBinding, CastingMap
+        from config.schema import SELF_PERSONA_NAME
+        from sdk.messages import LLMDialogMessage
+
+        self_persona = Character.model_construct(
+            name=SELF_PERSONA_NAME,
+            display_name="浅羽",
+            color="#94A3B8",
+            sprite_prefix="__self__",
+            character_setting="冷静调查员",
+            emotion_tags="立绘 1：平静",
+            sprites=[Sprite.model_construct(path="face.png", portrait_crop=PortraitCrop())],
+            sprite_groups=[],
+        )
+        cfg = SimpleNamespace(
+            config=SimpleNamespace(
+                characters=[self_persona],
+                system_config=SimpleNamespace(ui_language="zh_CN", voice_language="ja"),
+            ),
+            get_character_by_name=lambda n: self_persona if n == SELF_PERSONA_NAME else None,
+            refresh_media_catalogs=lambda: None,
+        )
+
+        # 1) Runtime player/cast overrides use display_name + identity note
+        cast_override = player_runtime_prompt(
+            cfg, "", allow_dialogue=True, read_speech=False,
+            media_selection_mode="indexed", character_names=[SELF_PERSONA_NAME, "Mika"],
+        )
+        assert "「浅羽」（该人物是用户自设）已作为独立出场角色" in cast_override
+        player_rules = player_runtime_prompt(
+            cfg, SELF_PERSONA_NAME, allow_dialogue=False, read_speech=False,
+            media_selection_mode="indexed", character_names=[SELF_PERSONA_NAME, "Mika"],
+        )
+        assert "用户控制的主控人物：浅羽\n该人物是用户自设。" in player_rules
+
+        # 2) CharacterMediaHandler resolves display_name + CastingMap back to 自设, emits display_name
+        pres_q: Queue[PresentationMessage] = Queue()
+        rt = SimpleNamespace(
+            opencc=SimpleNamespace(convert=lambda s: s),
+            config=cfg,
+            presentation_queue=pres_q,
+            ui_update_manager=SimpleNamespace(post_busy_bar=lambda *_: None, hide_busy_bar=lambda: None),
+            tts_manager=None,
+            player_character=SELF_PERSONA_NAME,
+            read_player_speech=False,
+        )
+        casting = CastingMap((CastBinding(character_name=SELF_PERSONA_NAME),))
+        sprite_mock = SimpleNamespace(
+            candidates=lambda _cfg: (),
+            resolve=lambda _c, _cands, _req: SimpleNamespace(found=True, asset_id="1", voice_type="", voice_path="", voice_text=""),
+        )
+        with patch("application.chat.presentation.handlers.character_media.get_app_runtime", return_value=rt):
+            media_handler = CharacterMediaHandler(sprite_resolver=sprite_mock, casting_map_provider=lambda: casting)
+            media_handler.handle(LLMDialogMessage(character_name="浅羽", speech="走吧", sprite="1"))
+        emitted = pres_q.get_nowait()
+        self.assertEqual(emitted.name, "浅羽")
+
+        # 3) CharacterDialogUiHandler + StreamingUIUpdateManager portrait matching
+        sink = MagicMock()
+        sink.media_url.side_effect = lambda p: p
+        ui = StreamingUIUpdateManager(sink, chat_history=[], resource_urls=UnconfiguredResourceUrls())
+        ui.set_player_character(SELF_PERSONA_NAME)
+        ui.set_user_display_name("浅羽")
+        playback = MagicMock()
+        playback.play_and_wait.return_value = SimpleNamespace(error="")
+        ui_rt = SimpleNamespace(
+            config=cfg,
+            player_character=SELF_PERSONA_NAME,
+            allow_player_dialogue=False,
+            read_player_speech=False,
+            ui_update_manager=ui,
+            ui_playback=SimpleNamespace(playback_controller=playback, task_done_requested=None),
+        )
+        with patch("application.chat.presentation.handlers.presentation.get_app_runtime", return_value=ui_rt):
+            CharacterDialogUiHandler().handle(PresentationMessage(name="浅羽", text="", audio_path="", asset_id="1", timeout=0))
+        with patch("application.chat.presentation.updates.get_character_by_name", return_value=self_persona):
+            ui.update_dialog("NARR", "浅羽摊开手。", "#fff")
+        assert any(c.args[0].get("type") == "player.portrait.show" and c.args[0].get("characterName") == "浅羽" for c in sink.emit.call_args_list)
+
+        # 4) latest_media_dialogs separates player instructed by display_name from NPC cast
+        dialogs = latest_media_dialogs(
+            [{"role": "assistant", "content": json.dumps({"dialog": [{"character_name": "浅羽", "sprite": "1", "speech": ""}, {"character_name": "阳明", "sprite": "1", "speech": "早"}]}, ensure_ascii=False)}],
+            opencc=SimpleNamespace(convert=lambda s: s),
+            player_name=SELF_PERSONA_NAME,
+            player_display_name="浅羽",
+        )
+        self.assertEqual([d.name for d in dialogs], ["浅羽", "阳明"])
+
+        # 5) CharacterToolHandler exposes display_name and resolves it back to 自设
+        catalog = SimpleNamespace(get_by_name=lambda n: self_persona if n == SELF_PERSONA_NAME else None, list_all=lambda: [self_persona])
+        tools = CharacterToolHandler(catalog)
+        self.assertEqual(tools.get_available_character_name_list(), ["浅羽"])
+        info = tools.get_character_info("浅羽")
+        self.assertEqual(info["name"], "浅羽")
+        self.assertTrue(info["is_user_self_persona"])
+
 
 if __name__ == "__main__":
     unittest.main()

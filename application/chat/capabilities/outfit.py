@@ -27,6 +27,10 @@ from application.chat.capabilities.contracts import (
 )
 from application.chat.presentation.initial_sprite import find_character_sprite_by_path
 from config.character_assets import get_character_assets
+from config.schema import (
+    resolve_character_by_prompt_name,
+    resolve_character_prompt_name,
+)
 from config.sprite_groups import (
     allows_default_group_fallback,
     filter_sprite_indices_for_group,
@@ -57,13 +61,7 @@ def _lookup_character(config: Any | None, name: str) -> Any | None:
     cname = str(name or "").strip()
     if not cname or config is None:
         return None
-    getter = getattr(config, "get_character_by_name", None)
-    if callable(getter):
-        return getter(cname)
-    for char in getattr(getattr(config, "config", None), "characters", ()) or ():
-        if str(getattr(char, "name", "") or "").strip() == cname:
-            return char
-    return None
+    return resolve_character_by_prompt_name(config, cname)
 
 
 class OutfitRuntimeController:
@@ -426,6 +424,17 @@ class OutfitRuntimeController:
         cname = str(getattr(character, "name", "") or "").strip()
         if not cname:
             return
+        with self._lock:
+            config = self.config
+            session_names = self.character_names
+        cfg_names = [
+            n
+            for c in (getattr(getattr(config, "config", None), "characters", ()) or ())
+            if isinstance((n := getattr(c, "name", None)), str) and n.strip()
+        ]
+        prompt_name = resolve_character_prompt_name(
+            character, cname, colliding_names=(*session_names, *cfg_names)
+        )
         indices = filter_sprite_indices_for_group(character, target_group)
         if not indices:
             return
@@ -439,12 +448,12 @@ class OutfitRuntimeController:
                     onstage = any(
                         isinstance(item, dict)
                         and str(item.get("characterName") or item.get("label") or "").strip()
-                        == cname
+                        in {cname, prompt_name}
                         for item in sprites
                     )
         if onstage:
             try:
-                ui_updates.update_sprite(cname, indices[0])
+                ui_updates.update_sprite(prompt_name, indices[0])
             except Exception:
                 pass
 
@@ -525,6 +534,9 @@ class OutfitRuntimeController:
             char = _lookup_character(config, cname)
             if char is None or not has_multiple_sprite_groups(char):
                 continue
+            prompt_name = resolve_character_prompt_name(
+                char, cname, colliding_names=target_names
+            )
             groups = tuple(list_character_sprite_groups(char))
             st = states_copy.get(cname)
             active_group = resolve_effective_sprite_group(
@@ -532,7 +544,7 @@ class OutfitRuntimeController:
             )
             locked = bool(st.locked) if st is not None else False
             if auto_switch and not locked and not switch_example_character:
-                switch_example_character = cname
+                switch_example_character = prompt_name
                 switch_example_target_group = next(
                     group for group in groups if group != active_group
                 )
@@ -550,7 +562,7 @@ class OutfitRuntimeController:
                 ]
             entries.append(
                 OutfitCharacterEntry(
-                    name=cname,
+                    name=prompt_name,
                     active_group=active_group,
                     locked=locked,
                     groups=groups,

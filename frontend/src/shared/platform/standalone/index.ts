@@ -56,7 +56,12 @@ import { standaloneHttpJson, standaloneHttpRequest } from "./ai/httpClient";
 import { StandaloneChatTurnDriver } from "./ai/standaloneChatTurn";
 import { exportCharPackage, importCharPackage, refreshCharacterMouthManifestUrls } from "./packages/charPackageCodec";
 import { createStandaloneTemplateTranslator } from "./ai/standaloneTemplateLocales";
-import { characterNameKey, generateStandaloneTemplateSummary } from "./ai/templateGenerator";
+import {
+  characterNameKey,
+  findCharacterByName,
+  generateStandaloneTemplateSummary,
+  resolveCharacterPromptName,
+} from "./ai/templateGenerator";
 import {
   loadBundledPresets,
   resolveBundledStarterAssetUrl,
@@ -650,14 +655,16 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
         ? lastTurn.options
         : [];
 
+    const allCharNames = ctx.config.characters.map((ch) => ch.name);
     const initialSprites: ChatSprite[] = selectedChars
       .filter((c) => c.sprites?.length)
       .map((c) => {
         const firstSprite = c.sprites[0];
+        const displayName = resolveCharacterPromptName(c, allCharNames);
         return {
           id: `sprite-${c.name}`,
           identityKey: c.name,
-          label: c.name,
+          label: displayName,
           path: resolveStandaloneFileUrl(firstSprite.path),
           scale: c.sprite_scale || 1,
           avatarType: c.avatar_type || "static",
@@ -725,12 +732,20 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
       stats: lastStageTurn?.stageSnapshot?.stats?.length ? lastStageTurn.stageSnapshot.stats : session.stats,
       outfits: session.outfits,
       autoOutfitSwitch: session.autoOutfitSwitch,
-      characterName: lastSpokenTurn?.speaker ?? selectedChars[0]?.name ?? "",
+      characterName:
+        lastSpokenTurn?.speaker ?? (selectedChars[0] ? resolveCharacterPromptName(selectedChars[0], allCharNames) : ""),
       dialogText: lastSpokenTurn?.plainText ?? "",
       dialogHtml: "",
       options: activeOptions,
       historyEntries,
-      userDisplayName: session.payload.playerCharacter || tr("plat.standalone.defaultPlayerMe"),
+      userDisplayName:
+        (session.payload.playerCharacter
+          ? resolveCharacterPromptName(
+              findCharacterByName(ctx.config.characters, session.payload.playerCharacter),
+              allCharNames,
+              session.payload.playerCharacter,
+            )
+          : "") || tr("plat.standalone.defaultPlayerMe"),
       voiceLanguage: session.payload.voiceLanguage || "Chinese",
     };
 
@@ -943,7 +958,15 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
           text: node.plainText,
           speaker:
             node.speaker ||
-            (node.role === "user" ? session?.payload.playerCharacter || tr("plat.standalone.defaultPlayerMe") : ""),
+            (node.role === "user"
+              ? (session?.payload.playerCharacter
+                  ? resolveCharacterPromptName(
+                      findCharacterByName(ctx.config.characters, session.payload.playerCharacter),
+                      ctx.config.characters.map((ch) => ch.name),
+                      session.payload.playerCharacter,
+                    )
+                  : "") || tr("plat.standalone.defaultPlayerMe")
+              : ""),
           body: node.plainText,
           canGenerate: false,
           voiceUrls: [],

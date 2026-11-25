@@ -698,6 +698,7 @@ class StreamingChatSession(_BaseChatSession):
 
     def _present_initial_ui(self) -> None:
         from application.chat.dialog_media.replay import enqueue_latest_media_replay
+        from application.chat.player_control import resolve_player_display_name
         from application.chat.presentation.assets import prepare_initial_presentation
 
         if self.options.asr_language(self.config.config.system_config) == "zh":
@@ -712,6 +713,12 @@ class StreamingChatSession(_BaseChatSession):
         else:
             welcome_html = self.options.translate("main.welcome_html")
             initial_option = self.options.translate("main.option_start")
+        player_name = str(getattr(self.args, "player_character", "") or "")
+        player_display_name = resolve_player_display_name(
+            self.config,
+            player_name,
+            getattr(self.args, "user_display_name", ""),
+        )
         with self.initialization.phase("stream.initial_ui"):
             prepare_initial_presentation(
                 messages=self.startup.messages,
@@ -729,9 +736,8 @@ class StreamingChatSession(_BaseChatSession):
                     messages,
                     dialog_queue=self._require_runtime().dialog_queue,
                     opencc=self._require_runtime().opencc,
-                    player_name=str(
-                        getattr(self.args, "player_character", "") or ""
-                    ),
+                    player_name=player_name,
+                    player_display_name=player_display_name,
                 ),
             )
 

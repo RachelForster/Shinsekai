@@ -15,6 +15,7 @@ from application.chat.history.replay_store import ReplayStore
 from application.chat.voice_archive import VoiceArchive
 from config.character_assets import get_character_assets, get_character_avatar_type
 from config.config_manager import character_name_key
+from config.schema import resolve_character_by_prompt_name
 from core.chat_history.identity import CHAT_TURN_ID, DialogIdentities
 from core.chat_history.models import is_compact_summary_message
 from core.chat_history.text import parse_assistant_dialog_content
@@ -217,10 +218,9 @@ def resolve_character_fallback_sprite(
 ) -> tuple[dict[str, Any] | None, Any]:
     """Resolve a character's static sprite directly from config without HTTP URL round-trips."""
     config_manager = getattr(state, "config_manager", None)
-    get_char = getattr(config_manager, "get_character_by_name", None)
-    if not callable(get_char) or not speaker.strip():
+    if config_manager is None or not speaker.strip():
         return None, None
-    character = get_char(speaker)
+    character = resolve_character_by_prompt_name(config_manager, speaker)
     if character is None:
         return None, None
     assets = get_character_assets(character)
@@ -272,10 +272,9 @@ def _match_character_sprite_entry(
     resolve_asset: Callable[[str], Path | None],
 ) -> Any:
     config_manager = getattr(state, "config_manager", None)
-    get_char = getattr(config_manager, "get_character_by_name", None)
-    if not callable(get_char) or not speaker.strip():
+    if config_manager is None or not speaker.strip():
         return None
-    character = get_char(speaker)
+    character = resolve_character_by_prompt_name(config_manager, speaker)
     if character is None or get_character_avatar_type(character) != "static":
         return None
     assets = get_character_assets(character)

@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from config.character_assets import get_character_assets
+from config.schema import is_self_persona_name, resolve_character_prompt_name
 from sdk.types import OutputContractPatch
 
 from ai.llm.template.core.context import TemplateContext
@@ -33,6 +34,8 @@ class DialogTemplateContext(TemplateContext):
     player_name: str = ""
     player_character: Any = None
     self_persona_setting: str = ""
+    self_persona_display_name: str = ""
+    colliding_character_names: tuple[str, ...] = ()
     read_player_speech: bool = False
     allow_player_dialogue: bool = True
     effect_catalog: EffectCatalogContext | None = field(default=None, kw_only=True)
@@ -52,9 +55,44 @@ class DialogTemplateContext(TemplateContext):
     max_dialog_items: int = 0
     media_selection_mode: str = "indexed"
 
+    def _all_colliding_names(self) -> tuple[str, ...]:
+        names = [name for name, _ in self.characters]
+        if self.player_name:
+            names.append(self.player_name)
+        names.extend(self.colliding_character_names)
+        return tuple(names)
+
+    def prompt_name_for(self, canonical_name: str, character: Any = None) -> str:
+        return resolve_character_prompt_name(
+            character,
+            canonical_name,
+            colliding_names=self._all_colliding_names(),
+        )
+
+    @property
+    def self_persona_display_prompt_name(self) -> str:
+        for name, character in self.characters:
+            if is_self_persona_name(name):
+                resolved = self.prompt_name_for(name, character)
+                return "" if is_self_persona_name(resolved) else resolved
+        if is_self_persona_name(self.player_name) and self.player_character is not None:
+            resolved = self.prompt_name_for(self.player_name, self.player_character)
+            return "" if is_self_persona_name(resolved) else resolved
+        candidate = str(self.self_persona_display_name or "").strip()
+        if not candidate or is_self_persona_name(candidate):
+            return ""
+        collision_keys = {
+            str(item or "").strip().casefold()
+            for item in self._all_colliding_names()
+            if str(item or "").strip() and not is_self_persona_name(item)
+        }
+        return "" if candidate.casefold() in collision_keys else candidate
+
     @property
     def names(self) -> str:
-        return self.translate("name_sep").join(name for name, _ in self.characters)
+        return self.translate("name_sep").join(
+            self.prompt_name_for(name, character) for name, character in self.characters
+        )
 
     @property
     def uses_vibe(self) -> bool:

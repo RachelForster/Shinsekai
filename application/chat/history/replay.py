@@ -17,6 +17,7 @@ from application.chat.history.paths import resolve_history_path_for_project
 from application.chat.history.state import canonical_user_turn_payload
 from application.chat.history.replay_store import ReplayStore, replay_dialog_inputs, replay_history_messages
 from application.chat.voice_archive import VoiceArchive
+from config.schema import resolve_character_by_prompt_name
 from core.chat_history.models import is_real_user_turn_message
 from core.chat_history.storage import chat_history_active_path, chat_history_db_path, legacy_active_history_branch
 from core.chat_history.text import strip_local_time_prefix
@@ -122,7 +123,11 @@ class ChatReplayService:
                 recorded_text = ""
             speech = speech_by_id.get(dialog_id) or speech_by_text.get((speaker, body)) or recorded_text or body
             speech_key = digest(speech)
-            character = copy.deepcopy(config.get_character_by_name(speaker)) if raw.get("role") == "assistant" else None
+            character = (
+                copy.deepcopy(resolve_character_by_prompt_name(config, speaker))
+                if raw.get("role") == "assistant"
+                else None
+            )
             can_generate = bool(character and provider and provider != "none" and
                                 str(getattr(character, "refer_audio_path", "") or "").strip() and speech.strip())
             paths, origin, voice_label = [], "", ""

@@ -21,9 +21,11 @@ def latest_media_dialogs(
     *,
     opencc: Any,
     player_name: str = "",
+    player_display_name: str = "",
 ) -> tuple[LLMDialogMessage, ...]:
     """Return the latest scene, BGM, and character instructions in source order."""
 
+    player_names = {n for n in (player_name, player_display_name) if n}
     latest: dict[str, tuple[int, LLMDialogMessage]] = {}
     position = 0
     for message in messages:
@@ -47,7 +49,7 @@ def latest_media_dialogs(
                 continue
             else:
                 kind = "character"
-                if player_name and dialog.name == player_name:
+                if dialog.name in player_names:
                     kind = "player"
                 elif str(dialog.effect or "").strip().upper() == "LEAVE":
                     if kind in latest and latest[kind][1].name == dialog.name:
@@ -72,13 +74,16 @@ def enqueue_latest_media_replay(
     dialog_queue: Any,
     opencc: Any,
     player_name: str = "",
+    player_display_name: str = "",
 ) -> bool:
     """Replay raw media inputs with the active strategies, without replaying speech."""
 
+    player_names = {n for n in (player_name, player_display_name) if n}
     dialogs = latest_media_dialogs(
         messages,
         opencc=opencc,
         player_name=player_name,
+        player_display_name=player_display_name,
     )
     for dialog in dialogs:
         dialog_queue.put(
@@ -87,7 +92,7 @@ def enqueue_latest_media_replay(
             )
         )
     return any(
-        dialog.name != player_name
+        dialog.name not in player_names
         and not (match_scene_dialog(opencc, dialog.name) or match_bgm_name(dialog.name))
         for dialog in dialogs
     )

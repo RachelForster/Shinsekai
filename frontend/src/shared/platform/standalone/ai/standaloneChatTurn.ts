@@ -22,6 +22,7 @@ import { getLlmProviderPreset } from "./adapters/llm/presets";
 import { parseStandaloneDialogOutput } from "./dialogOutputParser";
 import { buildStandaloneDialogSystemPrompt } from "./dialogPromptBuilder";
 import type { StandaloneHttpClient } from "./httpClient";
+import { findCharacterByPromptName, resolveCharacterPromptName } from "./templateGenerator";
 
 export interface ChatTurnDriverContext {
   getApiConfig: () => ApiConfig;
@@ -266,13 +267,17 @@ export class StandaloneChatTurnDriver {
     if (!resolved || !resolved.url) return;
     const url = resolved.url;
 
+    const displayName = resolveCharacterPromptName(
+      character,
+      this.ctx.getCharacters().map((c) => c.name),
+    );
     const existingIdx = current.sprites.findIndex(
-      (s) => s.label === character.name || s.identityKey === character.name,
+      (s) => s.identityKey === character.name || s.label === displayName || s.label === character.name,
     );
     const nextSprite: ChatSprite = {
       id: existingIdx >= 0 ? current.sprites[existingIdx].id : `sprite-${character.name}`,
       identityKey: character.name,
-      label: character.name,
+      label: displayName,
       path: url,
       scale: character.sprite_scale || 1,
       avatarType: character.avatar_type || "static",
@@ -291,7 +296,7 @@ export class StandaloneChatTurnDriver {
 
     this.ctx.setChat({
       ...current,
-      characterName: character.name,
+      characterName: displayName,
       sprites: nextSprites,
     });
     this.ctx.emitChat();
@@ -300,7 +305,7 @@ export class StandaloneChatTurnDriver {
       seq: this.nextSeq(),
       ts: Date.now(),
       type: "sprite.show",
-      characterName: character.name,
+      characterName: displayName,
       identityKey: character.name,
       url,
       scale: nextSprite.scale ?? 1,
@@ -314,7 +319,8 @@ export class StandaloneChatTurnDriver {
 
   private removeStageSprite(characterName: string) {
     const current = this.ctx.getChat();
-    const nextSprites = current.sprites.filter((s) => s.label !== characterName && s.identityKey !== characterName);
+    const removed = current.sprites.find((s) => s.identityKey === characterName || s.label === characterName);
+    const nextSprites = current.sprites.filter((s) => s.identityKey !== characterName && s.label !== characterName);
     if (nextSprites.length === current.sprites.length) return;
     this.ctx.setChat({
       ...current,
@@ -326,7 +332,7 @@ export class StandaloneChatTurnDriver {
       seq: this.nextSeq(),
       ts: Date.now(),
       type: "sprite.remove",
-      characterName,
+      characterName: removed?.label || characterName,
     });
   }
 
@@ -489,12 +495,18 @@ export class StandaloneChatTurnDriver {
     this.ctx.emitStageEvent({ v: 1, seq: this.nextSeq(), ts: Date.now(), type: "options.clear" });
     this.ctx.emitStageEvent({ v: 1, seq: this.nextSeq(), ts: Date.now(), type: "status.change", status: "generating" });
 
+    const allCharNames = characters.map((c) => c.name);
+    const playerCharObj = session.payload.playerCharacter
+      ? findCharacterByPromptName(characters, session.payload.playerCharacter)
+      : undefined;
+    const playerSpeaker = playerCharObj
+      ? resolveCharacterPromptName(playerCharObj, allCharNames, session.payload.playerCharacter)
+      : session.payload.playerCharacter;
+
     // Record player's turn into non-destructive timeline
     await this.ctx.sessionStore.appendTurn(session.sessionId, {
       role: "user",
-      speaker:
-        session.payload.playerCharacter ||
-        translateRuntimeMessage("plat.standalone.defaultPlayerMe", undefined, uiLanguage),
+      speaker: playerSpeaker || translateRuntimeMessage("plat.standalone.defaultPlayerMe", undefined, uiLanguage),
       plainText: userText,
       renderedHtml: userText,
       outfitSnapshot: session.outfits,
@@ -597,7 +609,7 @@ export class StandaloneChatTurnDriver {
           continue;
         }
         if (item.kind === "portrait") {
-          const targetChar = characters.find((c) => c.name === item.characterName);
+          const targetChar = findCharacterByPromptName(characters, item.characterName);
           if (targetChar) {
             if (item.outfit && latestSession.autoOutfitSwitch && !outfits[targetChar.name]?.locked) {
               if (targetChar.sprite_groups?.includes(item.outfit)) {
@@ -621,7 +633,7 @@ export class StandaloneChatTurnDriver {
         }
         const seg = item;
         const targetChar =
-          characters.find((c) => c.name === seg.characterName) ?? (seg.isNarration ? undefined : primaryChar);
+          findCharacterByPromptName(characters, seg.characterName) ?? (seg.isNarration ? undefined : primaryChar);
 
         if (targetChar && seg.outfit && latestSession.autoOutfitSwitch && !outfits[targetChar.name]?.locked) {
           if (targetChar.sprite_groups?.includes(seg.outfit)) {
@@ -645,7 +657,11 @@ export class StandaloneChatTurnDriver {
 
         if (abort.signal.aborted) return;
 
-        const speakerDisplay = seg.isNarration ? "" : seg.characterName;
+        const speakerDisplay = seg.isNarration
+          ? ""
+          : targetChar
+            ? resolveCharacterPromptName(targetChar, allCharNames, seg.characterName)
+            : seg.characterName;
         const snapshotBeforeLine = this.ctx.getChat();
         this.playbackSeq += 1;
         const playbackId = ttsUrl ? `standalone-pb-${this.playbackSeq}` : null;

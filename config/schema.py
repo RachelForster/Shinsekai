@@ -33,6 +33,8 @@ from config.models import (  # noqa: F401
     normalize_applied_presets_list,
     normalize_system_config_dict,
     normalize_user_prompt_presets_dict,
+    resolve_character_by_prompt_name,
+    resolve_character_prompt_name,
 )
 
 __all__ = [
@@ -68,4 +70,6 @@ __all__ = [
     "normalize_applied_presets_list",
     "normalize_system_config_dict",
     "normalize_user_prompt_presets_dict",
+    "resolve_character_by_prompt_name",
+    "resolve_character_prompt_name",
 ]

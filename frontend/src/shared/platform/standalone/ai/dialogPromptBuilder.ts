@@ -6,12 +6,15 @@ import type { Background, Effect } from "../../slices/workspaceTypes";
 import { createStandaloneTemplateTranslator } from "./standaloneTemplateLocales";
 import {
   buildStandaloneEffectCatalogBlock,
+  findCharacterByName,
   generateStandaloneDialogSystemTemplate,
   isSelfPersonaName,
+  resolveCharacterPromptName,
   SELF_PERSONA_NAME,
 } from "./templateGenerator";
 
 const SELF_PERSONA_SENTINEL = "__SELF_PERSONA_SETTING_PLACEHOLDER__";
+const SELF_PERSONA_NAME_SENTINEL = "__SELF_PERSONA_NAME_PLACEHOLDER__";
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -23,13 +26,20 @@ function stripStandaloneSelfPersonaBlock(text: string): string {
   let changed = false;
   for (const locale of ["zh_CN", "en", "ja"] as const) {
     const translator = createStandaloneTemplateTranslator(locale);
-    const sample = translator("self_persona_block", { setting: SELF_PERSONA_SENTINEL });
+    const sample = translator("self_persona_block", {
+      setting: SELF_PERSONA_SENTINEL,
+      name: SELF_PERSONA_NAME_SENTINEL,
+    });
     const markerIndex = sample.indexOf(SELF_PERSONA_SENTINEL);
     if (markerIndex < 0) continue;
     const head = sample.slice(0, markerIndex).trim();
     const tail = sample.slice(markerIndex + SELF_PERSONA_SENTINEL.length).trim();
     if (!head || !tail) continue;
-    const pattern = new RegExp(`[ \\t]*${escapeRegExp(head)}[\\s\\S]*?${escapeRegExp(tail)}[ \\t]*(?:\\r?\\n)*`, "g");
+    const tailRegex = tail
+      .split(SELF_PERSONA_NAME_SENTINEL)
+      .map((part) => escapeRegExp(part))
+      .join("[^\\r\\n]{1,64}");
+    const pattern = new RegExp(`[ \\t]*${escapeRegExp(head)}[\\s\\S]*?${tailRegex}[ \\t]*(?:\\r?\\n)*`, "g");
     const updated = cleaned.replace(pattern, "\n");
     if (updated !== cleaned) {
       cleaned = updated;
@@ -60,7 +70,12 @@ function buildRuntimeStateSupplement(
   t: ReturnType<typeof createStandaloneTemplateTranslator>,
 ): string {
   const lines: string[] = [];
-  const activePlayer = userDisplayName || playerCharacter || "";
+  const allNames = characters.map((c) => c.name);
+  const playerCharObj = playerCharacter ? findCharacterByName(characters, playerCharacter) : undefined;
+  const resolvedPlayerName = playerCharObj
+    ? resolveCharacterPromptName(playerCharObj, allNames, playerCharacter)
+    : playerCharacter || "";
+  const activePlayer = userDisplayName || resolvedPlayerName || "";
   if (activePlayer) {
     lines.push(t("standalone_player_address", { name: activePlayer }));
   }
@@ -71,7 +86,8 @@ function buildRuntimeStateSupplement(
       if (!state?.activeGroup) continue;
       const defaultGroup = char.default_sprite_group || DEFAULT_SPRITE_GROUP;
       if (state.activeGroup !== defaultGroup || state.locked || (char.sprite_groups?.length ?? 0) > 1) {
-        outfitLines.push(`${char.name}: ${state.activeGroup}${state.locked ? t("standalone_outfit_locked") : ""}`);
+        const displayName = resolveCharacterPromptName(char, allNames);
+        outfitLines.push(`${displayName}: ${state.activeGroup}${state.locked ? t("standalone_outfit_locked") : ""}`);
       }
     }
     if (outfitLines.length) {
@@ -148,20 +164,28 @@ export function buildStandaloneDialogSystemPrompt(ctx: StandalonePromptContext):
   const selfAsPlayer = isSelfPersonaName(playerCharacter);
   const selfAsNpcCast = hasSelfInCast && !selfAsPlayer;
   if (hadPersistedSystem && (hasSelfInCast || selfAsPlayer)) {
+    const selfChar = characters.find((c) => isSelfPersonaName(c.name));
+    const selfPromptName = selfChar
+      ? resolveCharacterPromptName(selfChar, effectiveCastNames, SELF_PERSONA_NAME)
+      : SELF_PERSONA_NAME;
     const strippedSystem = stripStandaloneSelfPersonaBlock(systemTemplate);
     if (strippedSystem !== systemTemplate) {
       systemTemplate = strippedSystem;
       if (selfAsNpcCast) {
-        const selfChar = characters.find((c) => isSelfPersonaName(c.name));
         const selfSetting = (selfChar?.character_setting ?? "").trim();
-        if (selfSetting && !systemTemplate.includes(selfSetting)) {
-          const profileHeader = `${t("profile_for", { name: SELF_PERSONA_NAME })}${selfSetting}`;
+        const identityNote = t("self_persona_identity_note");
+        const profileBody = selfSetting ? `${identityNote}\n${selfSetting}` : identityNote;
+        const needsProfile =
+          (selfSetting && !systemTemplate.includes(selfSetting)) ||
+          (!selfSetting && selfPromptName !== SELF_PERSONA_NAME && !systemTemplate.includes(identityNote));
+        if (needsProfile) {
+          const profileHeader = `${t("profile_for", { name: selfPromptName })}${profileBody}`;
           systemTemplate = systemTemplate ? `${systemTemplate}\n\n${profileHeader}` : profileHeader;
         }
       }
     }
     if (selfAsNpcCast) {
-      const castOverride = t("self_persona_cast_runtime_override").trim();
+      const castOverride = t("self_persona_cast_runtime_override", { name: selfPromptName }).trim();
       if (castOverride && !systemTemplate.includes(castOverride)) {
         systemTemplate = systemTemplate ? `${systemTemplate}\n\n${castOverride}` : castOverride;
       }

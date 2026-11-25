@@ -24,6 +24,8 @@ from config.models.common import (
     clamp_compact_target_ratio,
     default_if_none,
     is_self_persona_name,
+    resolve_character_by_prompt_name,
+    resolve_character_prompt_name,
 )
 from config.models.mcp_settings import McpConfig
 from config.models.media_catalog import Background, Effect
@@ -69,4 +71,6 @@ __all__ = [
     "normalize_applied_presets_list",
     "normalize_system_config_dict",
     "normalize_user_prompt_presets_dict",
+    "resolve_character_by_prompt_name",
+    "resolve_character_prompt_name",
 ]

@@ -16,6 +16,7 @@ from i18n import tr as tr_i18n
 from ai.asr.asr_adapter import get_asr_log
 from application.chat.presentation.replay import ReplayPresentationMessage
 from application.runtime.context import get_app_runtime
+from config.schema import resolve_character_by_prompt_name
 from core.messaging.dialog_tokens import (
     SYSTEM_UI_SKIP,
     match_bgm_name,
@@ -33,7 +34,8 @@ def _ui() -> Any:
 
 
 def get_character_by_name(name: str):
-    return get_app_runtime().config.get_character_by_name(name)
+    cfg = getattr(get_app_runtime(), "config", None)
+    return resolve_character_by_prompt_name(cfg, name) if cfg is not None else None
 
 
 def _play() -> Any:
@@ -200,7 +202,17 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
         if audio_path:
             audio_path = Path(audio_path).as_posix()
         effect = out.effect
-        is_player = character_name == str(getattr(rt, "player_character", "") or "")
+        character_config = get_character_by_name(character_name)
+        raw_char_name = getattr(character_config, "name", None) if character_config is not None else None
+        canonical_name = (
+            raw_char_name.strip()
+            if isinstance(raw_char_name, str) and raw_char_name.strip()
+            else character_name
+        )
+        player_char = str(getattr(rt, "player_character", "") or "")
+        is_player = bool(player_char) and (
+            character_name == player_char or canonical_name == player_char
+        )
         if is_player and replay is None:
             allow_dialogue = bool(getattr(rt, "allow_player_dialogue", True))
             generated_dialogue = allow_dialogue and bool(speech)
@@ -223,8 +235,6 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
         if not is_continuation and replay is None:
             from sdk.logging.timing import tracker
             tracker.stop_cross("e2e")
-
-        character_config = get_character_by_name(character_name)
         if character_config and not is_player and replay is not None and replay.restore_sprite:
             try:
                 index = int(sprite_id) - 1

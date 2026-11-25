@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from typing import Any
 from config.character_assets import get_character_assets
+from config.schema import is_self_persona_name
 from config.sprite_groups import (
     filter_sprite_indices_for_group,
     has_multiple_sprite_groups,
@@ -19,6 +20,7 @@ def _character_sprite_catalog_text(
     name: str,
     character: Any,
 ) -> str:
+    prompt_name = context.prompt_name_for(name, character)
     assets = get_character_assets(
         character, getattr(character, "avatar_type", "static")
     )
@@ -26,7 +28,7 @@ def _character_sprite_catalog_text(
         return (
             context.translate(
                 "sprites_count",
-                name=name,
+                name=prompt_name,
                 n=len(assets.sprites),
             )
             + f"{assets.emotion_tags}\n\n"
@@ -42,7 +44,7 @@ def _character_sprite_catalog_text(
     return (
         context.translate(
             "sprites_count",
-            name=name,
+            name=prompt_name,
             n=len(indices),
         )
         + f"{filtered_tags}\n\n"
@@ -53,11 +55,21 @@ def _profile_node(
     index: int, name: str, character: Any
 ) -> TextSection[DialogTemplateContext]:
     setting = str(getattr(character, "character_setting", "") or "")
+    is_self = is_self_persona_name(name)
+
+    def _render(context: DialogTemplateContext) -> str:
+        prompt_name = context.prompt_name_for(name, character)
+        if is_self:
+            note = context.translate("self_persona_identity_note")
+            body = f"{note}\n{setting}" if setting else note
+        else:
+            body = setting
+        return context.translate("profile_for", name=prompt_name) + f"{body}\n\n"
+
     return TextSection(
         f"profile.{index}",
-        enabled=bool(setting),
-        text=lambda context: context.translate("profile_for", name=name)
-        + f"{setting}\n\n",
+        enabled=bool(setting) or is_self,
+        text=_render,
     )
 
 
@@ -67,11 +79,21 @@ def _brief_node(
     brief = str(getattr(character, "character_brief", "") or "").strip()
     setting = str(getattr(character, "character_setting", "") or "")
     content = brief or setting
+    is_self = is_self_persona_name(name)
+
+    def _render(context: DialogTemplateContext) -> str:
+        prompt_name = context.prompt_name_for(name, character)
+        if is_self:
+            note = context.translate("self_persona_identity_note")
+            body = f"{note}\n{content}" if content else note
+        else:
+            body = content
+        return context.translate("brief_for", name=prompt_name) + f"{body}\n\n"
+
     return TextSection(
         f"brief.{index}",
-        enabled=bool(content),
-        text=lambda context: context.translate("brief_for", name=name)
-        + f"{content}\n\n",
+        enabled=bool(content) or is_self,
+        text=_render,
     )
 
 

@@ -11,6 +11,10 @@ from core.chat_history.sqlite_session_store import read_session_preferences_read
 from core.chat_history.storage import chat_history_db_path, chat_history_session_dir
 from core.chat_history.text import DEFAULT_USER_DISPLAY_NAME
 from config.character_assets import get_character_assets
+from config.schema import (
+    resolve_character_by_prompt_name,
+    resolve_character_prompt_name,
+)
 from config.sprite_groups import (
     allows_default_group_fallback,
     has_multiple_sprite_groups,
@@ -75,7 +79,7 @@ def _chat_session_media(state: Any) -> tuple[str, str, list[dict[str, Any]]]:
     character_name = str(state.chat_session.get("characterName") or "")
     background_name = str(state.chat_session.get("backgroundName") or "")
     character = (
-        state.config_manager.get_character_by_name(character_name)
+        resolve_character_by_prompt_name(state.config_manager, character_name)
         if character_name
         else None
     )
@@ -86,13 +90,23 @@ def _chat_session_media(state: Any) -> tuple[str, str, list[dict[str, Any]]]:
     )
     if character is None:
         character = config.characters[0] if config.characters else None
+    all_names = [
+        cname
+        for c in (getattr(config, "characters", None) or ())
+        if isinstance((cname := getattr(c, "name", None)), str) and cname.strip()
+    ]
+    display_name = (
+        resolve_character_prompt_name(character, colliding_names=all_names)
+        if character
+        else ""
+    )
     sprites = []
     if character and get_character_assets(character).sprites:
         visual = resolve_character_visual(character, 0, state.resource_urls)
         sprites.append(
             {
                 "id": f"{character.name}-0",
-                "label": character.name,
+                "label": display_name or character.name,
                 **visual.snapshot_fields(),
             }
         )
@@ -100,7 +114,7 @@ def _chat_session_media(state: Any) -> tuple[str, str, list[dict[str, Any]]]:
     if background and background.sprites:
         sprite = background.sprites[0]
         bg_path = _sprite_path(sprite)
-    return (bg_path, character.name if character else "", sprites)
+    return (bg_path, display_name, sprites)
 
 
 def _chat_voice_language(state: Any) -> str:

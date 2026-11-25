@@ -23,6 +23,10 @@ from application.chat.dialog_media import (
 )
 from application.chat.voice_archive import VoiceArchive
 from application.runtime.context import get_app_runtime as _context_get_app_runtime
+from config.schema import (
+    resolve_character_by_prompt_name,
+    resolve_character_prompt_name,
+)
 from config.sprite_groups import (
     allows_default_group_fallback,
     has_multiple_sprite_groups,
@@ -195,20 +199,44 @@ class CharacterMediaHandler(MessageHandler):
         if casting_map is not None:
             binding = casting_map.resolve(raw_name, cc=cc)
             if binding is None:
+                resolved_char = resolve_character_by_prompt_name(rt.config, raw_name)
+                if resolved_char is None:
+                    resolved_char = resolve_character_by_prompt_name(
+                        rt.config, cc.convert(raw_name)
+                    )
+                if resolved_char is not None:
+                    resolved_name = getattr(resolved_char, "name", None)
+                    if isinstance(resolved_name, str) and resolved_name.strip():
+                        binding = casting_map.resolve(resolved_name, cc=cc)
+            if binding is None:
                 self._emit_unbound_npc_dialog(
                     rt, raw_name=raw_name, msg=msg, replaying=replaying
                 )
                 return
             lookup_name = binding.character_name
 
-        name_s = (
-            lookup_name
-            if rt.config.get_character_by_name(lookup_name) is not None
-            else cc.convert(lookup_name)
-        )
-        character_config = rt.config.get_character_by_name(name_s)
+        character_config = resolve_character_by_prompt_name(rt.config, lookup_name)
         if character_config is None:
-            raise ValueError(f"未找到角色配置: {name_s}")
+            character_config = resolve_character_by_prompt_name(
+                rt.config, cc.convert(lookup_name)
+            )
+        if character_config is None:
+            raise ValueError(f"未找到角色配置: {lookup_name}")
+        raw_char_name = getattr(character_config, "name", None)
+        name_s = (
+            raw_char_name.strip()
+            if isinstance(raw_char_name, str) and raw_char_name.strip()
+            else lookup_name
+        )
+        cfg_chars = getattr(getattr(rt.config, "config", None), "characters", ()) or ()
+        all_char_names = [
+            cname
+            for c in cfg_chars
+            if isinstance((cname := getattr(c, "name", None)), str) and cname.strip()
+        ]
+        display_name = resolve_character_prompt_name(
+            character_config, name_s, colliding_names=all_char_names
+        )
 
         if has_multiple_sprite_groups(character_config):
             outfit_controller = getattr(rt, "outfit_controller", None)
@@ -319,7 +347,7 @@ class CharacterMediaHandler(MessageHandler):
             rt.presentation_queue.put(
                 PresentationMessage(
                     audio_path="",
-                    name=name_s,
+                    name=display_name,
                     text="",
                     asset_id=sprite.asset_id,
                     effect="",
@@ -347,7 +375,7 @@ class CharacterMediaHandler(MessageHandler):
         )
         show_busy = rt.tts_manager is not None and not player_silent
         if show_busy:
-            _post_media_busy(tr_i18n("desktop.tts_busy_synthesizing", name=name_s))
+            _post_media_busy(tr_i18n("desktop.tts_busy_synthesizing", name=display_name))
         try:
             audio_paths = (
                 ("",) if player_silent
@@ -381,7 +409,7 @@ class CharacterMediaHandler(MessageHandler):
                         rt.ui_update_manager.sync_history_entries()
 
             for output in self._presentation_messages(
-                character_name=name_s,
+                character_name=display_name,
                 message=msg,
                 sprite=speech_sprite,
                 audio_paths=track_audio(),

@@ -13,7 +13,11 @@ from ai.llm.template.integrations.localization import (
     resolve_template_locale,
     translate_template,
 )
-from config.schema import SELF_PERSONA_NAME, is_self_persona_name
+from config.schema import (
+    SELF_PERSONA_NAME,
+    is_self_persona_name,
+    resolve_character_prompt_name,
+)
 from application.chat.templates import (
     TEMP_SPLIT_META,
     _compose_runtime_template,
@@ -93,19 +97,43 @@ class ChatLaunchPreparation:
                 if self_as_npc_cast:
                     getter = getattr(state.config_manager, "get_character_by_name", None)
                     self_char = getter(SELF_PERSONA_NAME) if callable(getter) else None
+                    self_prompt_name = (
+                        resolve_character_prompt_name(
+                            self_char,
+                            SELF_PERSONA_NAME,
+                            colliding_names=character_names or (),
+                        )
+                        if self_char is not None
+                        else SELF_PERSONA_NAME
+                    )
                     setting = (
                         str(getattr(self_char, "character_setting", "") or "").strip()
                         if self_char is not None
                         else ""
                     )
-                    if setting and setting not in effective_system:
+                    identity_note = translate_template(
+                        "self_persona_identity_note",
+                        locale=locale,
+                    )
+                    profile_body = (
+                        f"{identity_note}\n{setting}" if setting else identity_note
+                    )
+                    needs_profile = bool(
+                        (setting and setting not in effective_system)
+                        or (
+                            not setting
+                            and self_prompt_name != SELF_PERSONA_NAME
+                            and identity_note not in effective_system
+                        )
+                    )
+                    if needs_profile:
                         profile_header = (
                             translate_template(
                                 "profile_for",
                                 locale=locale,
-                                name=SELF_PERSONA_NAME,
+                                name=self_prompt_name,
                             )
-                            + setting
+                            + profile_body
                         )
                         effective_system = (
                             f"{effective_system}\n\n{profile_header}"
