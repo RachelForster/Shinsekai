@@ -11,6 +11,7 @@ and edit/restart use cases remain at the package root.
 | `history/` | Shared history paths, state, branches and template-to-history session records |
 | `presentation/` | Initial assets, restoration, presentation updates and output handlers |
 | `dialog_media/` | Existing media resolution, lookup, generation and replay |
+| `export_vn/` | Playable HTML/CSS/JS visual novel export orchestration, selection validation, theme metadata and asset/voice resolution |
 
 Import helpers from their defining module. Package initializers contain no
 compatibility forwarding or eager service construction.

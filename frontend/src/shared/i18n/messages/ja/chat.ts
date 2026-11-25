@@ -1,4 +1,5 @@
 import type { ChatMessageKey } from "../zh_CN/chat";
+import { chatVnExportJaMessages } from "./chatVnExport";
 
 export const chatJaMessages: Record<ChatMessageKey, string> = {
   "chat.history.selection.enter": "リプレイ/共有",
@@ -449,4 +450,5 @@ export const chatJaMessages: Record<ChatMessageKey, string> = {
   "chat.cg.saveFailed": "CG の保存に失敗しました",
   "chat.cg.exit": "閉じる",
   "chat.cg.exitLabel": "CG を閉じる",
+  ...chatVnExportJaMessages,
 };

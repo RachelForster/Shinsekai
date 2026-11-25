@@ -27,6 +27,10 @@ class DialogMediaDispatcher:
             raise ValueError("至少需要一个 dialog media handler（末项应为缺省）")
         self._handlers = list(handlers)
 
+    @property
+    def handlers(self) -> tuple[MessageHandler, ...]:
+        return tuple(self._handlers)
+
     def init_handlers(self) -> None:
         for h in self._handlers:
             h.init()

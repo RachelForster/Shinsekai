@@ -131,6 +131,12 @@ class _HuggingFaceClient:
         return build_remote_url(self._config, remote_path)
 
 
+def _is_already_exists_error(exc: Exception) -> bool:
+    """Return True when a remote hub exception reports that the repository already exists."""
+    message = str(exc).lower()
+    return any(marker in message for marker in ("exist", "已存在"))
+
+
 class _ModelScopeClient:
     def __init__(self, config: UploadTargetConfig) -> None:
         try:
@@ -176,10 +182,10 @@ class _ModelScopeClient:
                 try:
                     create_repo(repo_id=self._config.repo_id, repo_type=self._config.repo_type)
                 except Exception as exc:
-                    if "exist" not in str(exc).lower():
+                    if not _is_already_exists_error(exc):
                         raise
             except Exception as exc:
-                if "exist" not in str(exc).lower():
+                if not _is_already_exists_error(exc):
                     raise
         self._repo_ready = True
 

@@ -6,7 +6,7 @@
 
 # Shinsekai
 
-An open-source desktop companion and interactive performance platform for **visual-novel / otome / story-driven RPG** play: let large language models drive character dialogue and story staging with **multi-format visuals (static/animated sprites, MMD, Live2D)**, **outfit groups and emotion sync**, **speech synthesis and lip-sync**, **long-term memory and knowledge retrieval**, **real-time screen perception**, a **built-in desktop agent**, and **plugin / MCP extensions**—managed centrally in the React / Tauri Settings app while the chat stage stays focused on immersion.
+A source-available desktop companion and interactive performance platform for **visual-novel / otome / story-driven RPG** play: let large language models drive character dialogue and story staging with **multi-format visuals (static/animated sprites, MMD, Live2D)**, **outfit groups and emotion sync**, **speech synthesis and lip-sync**, **long-term memory and knowledge retrieval**, **real-time screen perception**, a **built-in desktop agent**, and **plugin / MCP extensions**—managed centrally in the React / Tauri Settings app while the chat stage stays focused on immersion.
 
 ---
 
@@ -153,4 +153,4 @@ Issues and PRs are welcome. If you redistribute character or voice assets, follo
 
 ## License Notice
 
-Shinsekai is a source-available project. You may inspect the source code, build it locally for personal use, and maintain public forks for discussion and contribution. Redistribution, release builds, installer packages, app store distribution, and commercial use are not permitted without written permission. See [LICENSE](../LICENSE).
+Shinsekai is a source-available project licensed under the **PolyForm Strict License 1.0.0** with **Shinsekai Additional Permissions and Contribution Terms**. You may inspect, build, and modify the source code locally for personal noncommercial use and study, and maintain GitHub forks for learning, discussion, and submitting pull requests. Commercial use and redistribution (including modified copies, release builds, installers, portable bundles, standalone mirrors, or app/game store distribution) are not permitted without prior written permission. See [LICENSE](../LICENSE).

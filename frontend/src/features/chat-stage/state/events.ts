@@ -218,6 +218,12 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, re
         eventSeq: Math.max(state.eventSeq, event.seq),
         story: event.story,
       });
+    case "behavior.state.replace":
+      return withResolvedLayers({
+        ...state,
+        eventSeq: Math.max(state.eventSeq, event.seq),
+        behavior: event.behavior ?? null,
+      });
     case "story.node.entered":
     case "story.node.unlocked":
     case "story.cast.replace":

@@ -2,7 +2,8 @@ import { isTauriDesktop } from "../../shared/desktop/desktopApi";
 import { useSearchParams } from "react-router-dom";
 import { runPluginSlotContribution, listPluginSlotContributions } from "../../entities/plugin/repository";
 import { type MouseEvent as ReactMouseEvent, useEffect, useId, useRef, useState } from "react";
-import { Pencil, Settings, Trash2 } from "lucide-react";
+import { BookOpen, Pencil, Settings, Trash2 } from "lucide-react";
+import { VnExportDialog } from "../chat-stage/replay/VnExportDialog";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { charactersQueryKey, listCharacters } from "../../entities/character/repository";
 import {
@@ -50,6 +51,7 @@ export function ConversationLibrary({
   const characters = useQuery({ queryKey: charactersQueryKey, queryFn: listCharacters });
   const [editing, setEditing] = useState<ConversationSummary | null>(null);
   const [deleting, setDeleting] = useState<ConversationSummary | null>(null);
+  const [exporting, setExporting] = useState<{ id: string; title: string } | null>(null);
   const [title, setTitle] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -251,6 +253,12 @@ export function ConversationLibrary({
                   </Button>
                 )}
                 <IconButton
+                  label={t("chat.vnExport.button")}
+                  onClick={() => setExporting({ id: item.id, title: name })}
+                >
+                  <BookOpen aria-hidden className="icon-button__icon" />
+                </IconButton>
+                <IconButton
                   label={t("conversation.rename")}
                   onClick={() => {
                     setEditing(item);
@@ -329,6 +337,12 @@ export function ConversationLibrary({
         task={init.initializationTask}
       />
       {mobileAccess.dialog}
+      <VnExportDialog
+        conversationId={exporting?.id}
+        defaultTitle={exporting?.title}
+        onClose={() => setExporting(null)}
+        open={Boolean(exporting)}
+      />
     </section>
   );
 }

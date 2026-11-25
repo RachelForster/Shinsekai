@@ -76,6 +76,13 @@ class BeforeCompactContext:
     recent_messages: list[dict[str, Any]]
     session_id: str = ""
     up_to_seq: int | None = None
+    extra_instructions: list[str] = field(default_factory=list)
+
+    def add_instruction(self, text: str) -> None:
+        """Append a deduplicated domain instruction for the compaction prompt."""
+        clean = str(text or "").strip()
+        if clean and clean not in self.extra_instructions:
+            self.extra_instructions.append(clean)
 
 
 @dataclass

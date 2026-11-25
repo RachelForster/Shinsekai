@@ -9,6 +9,16 @@ export const platformEnMessages: Record<PlatformMessageKey, string> = {
   "error.chat_template_missing": "No template (.txt) found. Generate, save, or launch a template first.",
   "error.local_app_required": "This feature requires connecting to the local Shinsekai desktop app.",
   "error.no_valid_characters": "Please select at least one valid character.",
+  "error.vn_export_conversation_not_found": "The selected conversation archive was not found.",
+  "error.vn_export_empty_history": "There is no chat history available to export.",
+  "error.vn_export_history_changed": "The selected chat history has changed. Refresh history and try again.",
+  "error.vn_export_invalid_output": "Invalid VN export format or output directory.",
+  "error.vn_export_invalid_range": "The selected dialogue range is invalid. Refresh and try again.",
+  "error.vn_export_no_playable_entries":
+    "Selection contains no playable dialogue or narration (cannot export option rows alone).",
+  "error.vn_export_output_io_failed":
+    "Failed to write visual novel export files. Check directory permissions and disk space.",
+  "error.vn_export_session_changed": "The active chat session changed. Reopen history and try again.",
   "plat.http.taskCancelled": "Task was cancelled.",
   "plat.http.taskEmptyResult": "Task completed without returning a result.",
   "plat.http.taskFailed": "Task failed.",
