@@ -653,6 +653,106 @@ class EventSinkSnapshotTests(unittest.TestCase):
 
         self.assertEqual(dismissed["pluginPagePresentations"], [])
 
+    def test_background_transition_and_sprite_motions_fold_with_expiry_and_reset(self):
+        snapshot = fold_event_into_snapshot(
+            make_empty_chat_snapshot(),
+            {
+                "seq": 1,
+                "ts": 1000,
+                "type": "background.change",
+                "url": "asset://room.png",
+                "transition": "fade_black",
+                "transitionDurationMs": 680,
+                "v": 1,
+            },
+        )
+        self.assertEqual(
+            snapshot["backgroundTransition"],
+            {
+                "durationMs": 680,
+                "effect": "fade_black",
+                "expiresAt": 1680,
+                "seq": 1,
+            },
+        )
+
+        snapshot = fold_event_into_snapshot(
+            snapshot,
+            {
+                "seq": 2,
+                "ts": 1100,
+                "type": "sprite.show",
+                "characterName": "Alice",
+                "url": "asset://alice.png",
+                "v": 1,
+            },
+        )
+        snapshot = fold_event_into_snapshot(
+            snapshot,
+            {
+                "seq": 3,
+                "ts": 1200,
+                "type": "sprite.motion",
+                "characterName": "Alice",
+                "motion": "shake",
+                "durationMs": 460,
+                "v": 1,
+            },
+        )
+        self.assertEqual(
+            snapshot["spriteMotions"],
+            {
+                "Alice": {
+                    "durationMs": 460,
+                    "expiresAt": 1660,
+                    "motion": "shake",
+                    "seq": 3,
+                }
+            },
+        )
+
+        # Removing Alice removes her motion entry too.
+        after_remove = fold_event_into_snapshot(
+            snapshot,
+            {
+                "seq": 4,
+                "ts": 1250,
+                "type": "sprite.remove",
+                "characterName": "Alice",
+                "v": 1,
+            },
+        )
+        self.assertEqual(after_remove["spriteMotions"], {})
+
+        # Scene cut / new background clears sprite motions and leaves no expiring transition on cut.
+        after_bg_cut = fold_event_into_snapshot(
+            snapshot,
+            {
+                "seq": 5,
+                "ts": 1300,
+                "type": "background.change",
+                "url": "asset://street.png",
+                "transition": "cut",
+                "v": 1,
+            },
+        )
+        self.assertIsNone(after_bg_cut["backgroundTransition"])
+        self.assertEqual(after_bg_cut["spriteMotions"], {})
+
+        # Session close clears both transient fields.
+        closed = fold_event_into_snapshot(
+            snapshot,
+            {
+                "seq": 6,
+                "ts": 1400,
+                "type": "session.closed",
+                "reason": "done",
+                "v": 1,
+            },
+        )
+        self.assertIsNone(closed["backgroundTransition"])
+        self.assertEqual(closed["spriteMotions"], {})
+
 
 class StoryEventSinkTests(unittest.TestCase):
     def test_structured_options_and_story_state_survive_snapshot_folding(self):

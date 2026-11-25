@@ -1,9 +1,14 @@
+// @ts-expect-error -- Vitest runs in Node; the browser bundle intentionally omits Node types.
+import { readFileSync } from "node:fs";
+
 import { act, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { chatStageReducer, emptyChatState } from "../../../features/chat-stage/chatState";
 import { BackgroundTransitionLayer } from "../../../features/chat-stage/components/BackgroundTransitionLayer";
 import { SpriteMotionBox } from "../../../features/chat-stage/components/SpriteMotionBox";
+
+const stageEffectsCss: string = readFileSync("src/features/chat-stage/styles/stage-effects.css", "utf8");
 
 describe("chat stage transitions & motions reducer", () => {
   it("tracks backgroundTransition and spriteMotions and resets them cleanly", () => {
@@ -99,6 +104,102 @@ describe("chat stage transitions & motions reducer", () => {
     expect(afterHydrate.backgroundTransition).toBeNull();
     expect(afterHydrate.spriteMotions).toEqual({});
   });
+
+  it("restores unexpired backgroundTransition and spriteMotions from snapshot and drops expired ones", () => {
+    const hydratedActive = chatStageReducer(emptyChatState, {
+      type: "hydrate",
+      snapshot: {
+        ...emptyChatState,
+        sessionId: "s1",
+        eventSeq: 12,
+        serverTimeMs: 1100,
+        effectImage: null,
+        backgroundPath: "/bg/night.png",
+        backgroundTransition: {
+          effect: "fade_black",
+          durationMs: 680,
+          expiresAt: 1680,
+          seq: 11,
+        },
+        spriteMotions: {
+          Alice: {
+            motion: "shake",
+            durationMs: 460,
+            expiresAt: 1560,
+            seq: 12,
+          },
+          OldExpired: {
+            motion: "nod",
+            durationMs: 460,
+            expiresAt: 1050,
+            seq: 8,
+          },
+        },
+      },
+    });
+    expect(hydratedActive.backgroundTransition).toEqual({ effect: "fade_black", seq: 11 });
+    expect(hydratedActive.spriteMotions).toEqual({
+      Alice: { durationMs: 460, motion: "shake", seq: 12 },
+    });
+
+    // Repeated polling snapshot with same seq preserves existing entry object references.
+    const repeatedPoll = chatStageReducer(hydratedActive, {
+      type: "hydrate",
+      snapshot: {
+        ...emptyChatState,
+        sessionId: "s1",
+        eventSeq: 12,
+        serverTimeMs: 1200,
+        effectImage: null,
+        backgroundPath: "/bg/night.png",
+        backgroundTransition: {
+          effect: "fade_black",
+          durationMs: 680,
+          expiresAt: 1680,
+          seq: 11,
+        },
+        spriteMotions: {
+          Alice: {
+            motion: "shake",
+            durationMs: 460,
+            expiresAt: 1560,
+            seq: 12,
+          },
+        },
+      },
+    });
+    expect(repeatedPoll.backgroundTransition).toBe(hydratedActive.backgroundTransition);
+    expect(repeatedPoll.spriteMotions.Alice).toBe(hydratedActive.spriteMotions.Alice);
+
+    // Late reload after expiresAt drops expired transition and motion.
+    const staleReload = chatStageReducer(emptyChatState, {
+      type: "hydrate",
+      snapshot: {
+        ...emptyChatState,
+        sessionId: "s1",
+        eventSeq: 12,
+        serverTimeMs: 2500,
+        effectImage: null,
+        backgroundPath: "/bg/night.png",
+        backgroundTransition: {
+          effect: "fade_black",
+          durationMs: 680,
+          expiresAt: 1680,
+          seq: 11,
+        },
+        spriteMotions: {
+          Alice: {
+            motion: "shake",
+            durationMs: 460,
+            expiresAt: 1560,
+            seq: 12,
+          },
+        },
+      },
+    });
+    expect(staleReload.backgroundTransition).toBeNull();
+    expect(staleReload.spriteMotions).toEqual({});
+  });
 });
 
 describe("BackgroundTransitionLayer & SpriteMotionBox", () => {
@@ -169,5 +270,14 @@ describe("BackgroundTransitionLayer & SpriteMotionBox", () => {
       vi.advanceTimersByTime(700);
     });
     expect(box).not.toHaveAttribute("data-motion");
+  });
+
+  it("anchors .sprite-motion-box transform-origin to character position CSS vars", () => {
+    const blockMatch = stageEffectsCss.match(/\.sprite-motion-box\s*\{[\s\S]*?\}/);
+    expect(blockMatch).not.toBeNull();
+    const block = blockMatch![0];
+    expect(block).toContain("--sprite-axis-center");
+    expect(block).toContain("--sprite-offset-x");
+    expect(block).not.toContain("transform-origin: center bottom");
   });
 });

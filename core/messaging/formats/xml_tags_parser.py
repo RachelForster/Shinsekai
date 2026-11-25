@@ -163,7 +163,6 @@ def _build_dialog_message(
                 speech=speech,
                 translate=translate,
                 effect=(attrs.get("effect") or "").strip(),
-                motion=normalize_character_motion(attrs.get("motion")),
             ),
             "",
         )

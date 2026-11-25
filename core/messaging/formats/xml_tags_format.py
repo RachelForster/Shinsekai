@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+import re
 from xml.sax.saxutils import escape as _xml_escape, quoteattr as _xml_quoteattr
 
 from core.messaging.dialog_tokens import (
@@ -34,6 +35,14 @@ def _fmt_attrs(**kwargs: str | None) -> str:
             continue
         parts.append(f"{key}={_xml_quoteattr(str(val))}")
     return (" " + " ".join(parts)) if parts else ""
+
+
+_COT_CLOSE_RE = re.compile(r"</(\s*cot\b)", re.IGNORECASE)
+
+
+def _escape_cot_body(text: str) -> str:
+    """Prevent literal ``</cot>`` inside reasoning from closing the outer tag."""
+    return _COT_CLOSE_RE.sub(r"&lt;/\1", text)
 
 
 class XmlTagsDialogFormat(DialogOutputFormat):
@@ -90,7 +99,7 @@ class XmlTagsDialogFormat(DialogOutputFormat):
             speech = item.text or ""
             tr_part = f" <tr>{_xml_escape(item.translate)}</tr>" if item.translate else ""
             if norm in COT_ALIASES:
-                lines.append(f"<cot>{speech}</cot>")
+                lines.append(f"<cot>{_escape_cot_body(speech)}</cot>")
             elif norm in SCENE_ALIASES:
                 attrs = _fmt_attrs(
                     sprite=None if item.asset_id is None else str(item.asset_id),
@@ -99,7 +108,7 @@ class XmlTagsDialogFormat(DialogOutputFormat):
                     effect=item.effect,
                 )
                 lines.append(
-                    f"<scene{attrs}>{speech}</scene>" if speech else f"<scene{attrs} />"
+                    f"<scene{attrs}>{_xml_escape(speech)}</scene>" if speech else f"<scene{attrs} />"
                 )
             elif norm in BGM_ALIASES:
                 attrs = _fmt_attrs(
@@ -108,7 +117,7 @@ class XmlTagsDialogFormat(DialogOutputFormat):
                     effect=item.effect,
                 )
                 lines.append(
-                    f"<bgm{attrs}>{speech}</bgm>" if speech else f"<bgm{attrs} />"
+                    f"<bgm{attrs}>{_xml_escape(speech)}</bgm>" if speech else f"<bgm{attrs} />"
                 )
             elif norm in CG_ALIASES:
                 attrs = _fmt_attrs(
@@ -116,14 +125,14 @@ class XmlTagsDialogFormat(DialogOutputFormat):
                     vibe=item.vibe,
                     effect=item.effect,
                 )
-                lines.append(f"<cg{attrs}>{speech}</cg>")
+                lines.append(f"<cg{attrs}>{_xml_escape(speech)}</cg>")
             elif norm in NARR_ALIASES:
-                attrs = _fmt_attrs(effect=item.effect, motion=item.motion)
-                lines.append(f"<narr{attrs}>{speech}{tr_part}</narr>")
+                attrs = _fmt_attrs(effect=item.effect)
+                lines.append(f"<narr{attrs}>{_xml_escape(speech)}{tr_part}</narr>")
             elif norm in STAT_ALIASES:
-                lines.append(f"<stat>{speech}</stat>")
+                lines.append(f"<stat>{_xml_escape(speech)}</stat>")
             elif norm in CHOICE_ALIASES:
-                lines.append(f"<choice>{speech}</choice>")
+                lines.append(f"<choice>{_xml_escape(speech)}</choice>")
             else:
                 asset_str = "" if item.asset_id is None else str(item.asset_id)
                 eff_upper = str(item.effect or "").strip().upper()
@@ -138,7 +147,7 @@ class XmlTagsDialogFormat(DialogOutputFormat):
                         motion=item.motion,
                         effect=item.effect,
                     )
-                    lines.append(f"<say{attrs}>{speech}{tr_part}</say>")
+                    lines.append(f"<say{attrs}>{_xml_escape(speech)}{tr_part}</say>")
         return "\n".join(lines)
 
 

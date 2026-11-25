@@ -24,7 +24,7 @@ def _list_template_rows(request: ApiRequest) -> JsonResponse:
 
 def _list_dialog_format_rows(request: ApiRequest) -> JsonResponse:
     del request
-    return JsonResponse({"formats": list_dialog_formats()})
+    return JsonResponse(list_dialog_formats())
 
 
 def _load_template_session(request: ApiRequest) -> JsonResponse:

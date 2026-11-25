@@ -167,7 +167,7 @@ xml_head_top: |
   <scene sprite="two-digit scene id" transition="optional transition" />
   <bgm sprite="two-digit BGM id" />
   <say char="Character name" sprite="two-digit sprite id" motion="optional motion" effect="optional effect">Spoken line</say>
-  <narr motion="optional motion">Action and scene narration</narr>
+  <narr>Action and scene narration</narr>
   <stat>heart|HP|72|100</stat>
   <choice>Option A / Option B / Option C</choice>
 xml_full_sprite_head_top: |
@@ -176,7 +176,7 @@ xml_full_sprite_head_top: |
   <scene sprite="full scene id" transition="optional transition" />
   <bgm sprite="full BGM id" />
   <say char="Character name" sprite="full sprite id (-1 to keep)" motion="optional motion" effect="optional effect">Spoken line</say>
-  <narr motion="optional motion">Action and scene narration</narr>
+  <narr>Action and scene narration</narr>
   <stat>heart|HP|72|100</stat>
   <choice>Option A / Option B / Option C</choice>
 xml_vibe_head_top: |
@@ -185,12 +185,12 @@ xml_vibe_head_top: |
   <scene vibe="place, weather, and mood phrase" transition="optional transition" />
   <bgm vibe="music mood and tempo phrase" />
   <say char="Character name" vibe="expression and pose phrase" motion="optional motion" effect="optional effect">Spoken line</say>
-  <narr motion="optional motion">Action and scene narration</narr>
+  <narr>Action and scene narration</narr>
   <stat>heart|HP|72|100</stat>
   <choice>Option A / Option B / Option C</choice>
 xml_line_effect: 'Optional effect attribute: effect="label" (exact label or alias from the runtime effect catalog such as sounds or ambient:<label>); when a character actually leaves, use <leave char="Character name" /> or effect="LEAVE" on their final <say>.'
 xml_line_trans: 'Bilingual translation tag: inside each <say>...</say>, include <tr>{target_voice_name} translation of the spoken line</tr> (translate spoken words only, not stage directions).'
-xml_stage_effects: 'Optional stage effects: <scene> accepts transition="fade|fade_black|fade_white|slide_left|slide_right|zoom|cut"; <say> and <narr> accept motion="shake|tremble|jump|bounce|nod|tilt|flash|sink|lean_in".'
+xml_stage_effects: 'Optional stage effects: <scene> accepts transition="fade|fade_black|fade_white|slide_left|slide_right|zoom|cut"; <say> accepts motion="shake|tremble|jump|bounce|nod|tilt|flash|sink|lean_in".'
 xml_foot: 'Output the raw XML/HTML stage tags directly; do not output JSON or wrap the reply in Markdown code fences (such as ```xml).'
 xml_player_speech_contract: 'To read the player''s input aloud, add a <say> tag before the portrait tag: <say char="{name}" {speech_media}>the exact words already spoken by the user this turn<tr>{target_voice_name} translation of those words</tr></say>. Repeat only the exact words spoken by the user, stripping bracketed/parenthetical actions and thoughts; never add or rewrite words.'
 xml_player_ai_control: '
@@ -232,8 +232,15 @@ xml_r_translate: 'Translation: Include <tr>{target_voice_name} translation</tr> 
 xml_r_effect: 'Exit & effects: Use <leave char="Name" /> or effect="LEAVE" on a character''s final <say> when they explicitly leave (never put LEAVE on <narr> or bystanders). Use effect="label" (supporting before:/after:/loop:/stop:/ambient:/expose:/shelter:/ambient-stop:/ambient-stop-all) only for real audible/visual/ambient events, not metaphors or memories.'
 xml_r_cot: 'Chain-of-thought: Emit one <cot> tag ({cot}; hidden backend log) before visible stage tags containing <摘要>...</摘要><动机>...</动机><剧情走向>...</剧情走向>.'
 xml_r_scene_transition: 'Scene transitions (optional): Add transition="..." on <scene> ONLY using fade, fade_black, fade_white, slide_left, slide_right, zoom, or cut. Use thoughtfully on meaningful scene shifts.'
-xml_r_character_motion: 'Character motions (optional): On intense emotional or physical beats, add motion="..." on <say> or <narr> ONLY using shake, tremble, jump, bounce, nod, tilt, flash, sink, or lean_in. Omit during calm lines.'
+xml_r_character_motion: 'Character motions (optional): On intense emotional or physical beats, add motion="..." on <say> ONLY using shake, tremble, jump, bounce, nod, tilt, flash, sink, or lean_in. Omit during calm lines.'
 closing_xml_reminder: |
   You MUST reply using only the required XML/HTML stage tags (<say>, <narr>, <scene>, etc.). Do not output JSON or Markdown fences.
 closing_xml_tool_protocol: 'Tool protocol: When a tool is needed, invoke it via the model''s real function/tool interface; the XML/HTML stage tags apply only to your final user-facing reply and never replace tool calls. Never pretend to call tools or fabricate tool results inside dialogue or XML tags.'
 xml_tools_intro: When helpful—and while following the XML/HTML stage tag format above—you may invoke tools via your LLM provider’s tool protocol.
+custom_r_format: 'Format: Follow the custom structured output format specified above strictly; do not wrap replies in Markdown code fences or add prose commentary outside the format.'
+custom_r_speech_max_chars: 'Speech length: Each speech segment must not exceed {n} Unicode characters (including spaces and punctuation); leave empty when no speech is needed.'
+custom_r_dialog_max_items: 'Reply length: Emit at most {n} stage items in a single turn.'
+custom_tools_intro: When helpful—and while following the configured output format above—you may invoke tools via your LLM provider’s tool protocol.
+closing_custom_reminder: |
+  You MUST reply strictly using the required output format specified above. Do not wrap the reply in Markdown code fences.
+closing_custom_tool_protocol: 'Tool protocol: When a tool is needed, invoke it via the model''s real function/tool interface; the output format above applies only to your final user-facing reply and never replaces tool calls. Never pretend to call tools or fabricate tool results inside dialogue or formatted output.'

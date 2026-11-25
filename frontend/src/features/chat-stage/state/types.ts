@@ -89,7 +89,7 @@ export interface ChatStageSpriteMotion {
 
 export interface ChatStageState extends Omit<
   ChatSnapshot,
-  "sprites" | "effectImage" | "spriteReaction" | "ambientEffects"
+  "sprites" | "effectImage" | "spriteReaction" | "ambientEffects" | "backgroundTransition" | "spriteMotions"
 > {
   ambientEffects?: ChatStageAmbientEffect[];
   backgroundTransition?: ChatStageBackgroundTransition | null;

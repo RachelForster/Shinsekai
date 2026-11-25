@@ -124,6 +124,13 @@ class _CustomPromptFormat(DialogOutputFormat):
 
 def test_plugin_dialog_format_hooks_render_in_template(monkeypatch) -> None:
     _configure_fake_assets(monkeypatch, "en")
+
+    class _FallbackReminderFormat(_CustomPromptFormat):
+        format_id = "custom_fallback_v1"
+
+        def render_format_reminder(self, *, locale: str) -> str | None:
+            return None
+
     configure_registered_dialog_formats(
         [
             DialogFormatContribution(
@@ -131,7 +138,13 @@ def test_plugin_dialog_format_hooks_render_in_template(monkeypatch) -> None:
                 factory=_CustomPromptFormat,
                 label="Custom DSL",
                 plugin_id="custom-plugin",
-            )
+            ),
+            DialogFormatContribution(
+                format_id="custom_fallback_v1",
+                factory=_FallbackReminderFormat,
+                label="Custom Fallback",
+                plugin_id="custom-plugin",
+            ),
         ]
     )
 
@@ -147,3 +160,18 @@ def test_plugin_dialog_format_hooks_render_in_template(monkeypatch) -> None:
     assert warning == ""
     assert "CUSTOM_SCHEMA(sprite,False,en)" in text
     assert "CUSTOM_REMINDER(en)" in text
+    assert "JSON" not in text
+    assert "XML/HTML" not in text
+
+    fallback_text, fallback_warning = legacy.TemplateGenerator(output_contract_patches=[]).generate_chat_template(
+        selected_characters=["Alice"],
+        bg_name="Room",
+        use_effect=False,
+        use_cg=False,
+        use_llm_translation=False,
+        output_format="custom_fallback_v1",
+    )
+    assert fallback_warning == ""
+    assert "CUSTOM_SCHEMA(sprite,False,en)" in fallback_text
+    assert "JSON" not in fallback_text
+    assert "XML/HTML" not in fallback_text

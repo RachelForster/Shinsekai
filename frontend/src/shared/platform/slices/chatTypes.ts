@@ -312,6 +312,20 @@ export interface ChatSpriteReactionSnapshot {
   seq: number;
 }
 
+export interface ChatBackgroundTransitionSnapshot {
+  durationMs?: number;
+  effect: string;
+  expiresAt?: number;
+  seq: number;
+}
+
+export interface ChatSpriteMotionSnapshot {
+  durationMs: number;
+  expiresAt?: number;
+  motion: string;
+  seq: number;
+}
+
 export interface MobileAccessInfo {
   enabled: true;
   host: string;
@@ -344,6 +358,7 @@ export interface ChatSnapshot {
   asrLoading?: boolean;
   asrRunning?: boolean;
   backgroundPath?: string;
+  backgroundTransition?: ChatBackgroundTransitionSnapshot | null;
   bgmPath?: string;
   busyDurationSeconds?: number;
   busyText?: string;
@@ -390,6 +405,7 @@ export interface ChatSnapshot {
   runtimeMode?: "native" | "react";
   sessionClosedReason?: string;
   sessionId?: string;
+  spriteMotions?: Record<string, ChatSpriteMotionSnapshot>;
   sprites: ChatSprite[];
   story?: ChatStoryState;
   storyAck?: Record<string, unknown>;
@@ -545,7 +561,7 @@ export type ChatStageEvent =
     })
   | (ChatEventBase & { type: "sprite.remove"; characterName: string })
   | (ChatEventBase & { type: "sprite.motion"; characterName: string; motion: string; durationMs?: number })
-  | (ChatEventBase & { type: "background.change"; url: string; transition?: string })
+  | (ChatEventBase & { type: "background.change"; url: string; transition?: string; transitionDurationMs?: number })
   | (ChatEventBase & { type: "bgm.change"; url: string })
   | (ChatEventBase & { type: "cg.show"; url: string })
   | (ChatEventBase & { type: "cg.hide" })

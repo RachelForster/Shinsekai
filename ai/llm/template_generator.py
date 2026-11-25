@@ -81,9 +81,14 @@ def format_reminder(
             locale if locale is not None else resolve_template_locale(config_manager)
         )
         custom = resolved.render_format_reminder(locale=resolved_locale)
+        protocol = _render_template_keys("closing_custom_tool_protocol", locale=locale)
         if isinstance(custom, str) and custom.strip():
-            protocol = _render_template_keys("closing_xml_tool_protocol", locale=locale)
             return f"{custom.strip()}\n{protocol}"
+        return _render_template_keys(
+            "closing_custom_reminder",
+            "closing_custom_tool_protocol",
+            locale=locale,
+        )
     if fmt_id == XML_DIALOG_FORMAT_ID:
         return _render_template_keys(
             "closing_xml_reminder",
@@ -113,13 +118,18 @@ def _format_llm_tools_block() -> str:
 def _format_llm_tools_block_for_format(output_format_id: str) -> str:
     if output_format_id == DEFAULT_DIALOG_FORMAT_ID:
         return _format_llm_tools_block()
+    intro_key = (
+        "xml_tools_intro"
+        if output_format_id == XML_DIALOG_FORMAT_ID
+        else "custom_tools_intro"
+    )
 
-    def _xml_translate(key: str, **kwargs: Any) -> str:
+    def _format_translate(key: str, **kwargs: Any) -> str:
         if key == "tools_intro":
-            return _T("xml_tools_intro", **kwargs)
+            return _T(intro_key, **kwargs)
         return _T(key, **kwargs)
 
-    return format_llm_tools_block(_xml_translate)
+    return format_llm_tools_block(_format_translate)
 
 
 def _ui_voice_same_lang() -> bool:

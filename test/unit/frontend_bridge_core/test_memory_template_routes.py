@@ -1,8 +1,15 @@
 from __future__ import annotations
 
+from core.messaging.formats.registry import (
+    _reset_for_tests,
+    configure_builtin_dialog_formats,
+    configure_registered_dialog_formats,
+)
+from core.messaging.formats.xml_tags_parser import XmlTagsStreamParser
 from frontend_bridge_core.routes.memory_routes import MEMORY_ROUTES
 from frontend_bridge_core.routes.router import ApiRequest, JsonResponse, Router
 from frontend_bridge_core.routes.template_routes import TEMPLATE_ROUTES
+from sdk.adapters.dialog_format import DialogFormatContribution, DialogOutputFormat
 
 
 def _contracts(routes) -> set[tuple[str, str]]:
@@ -93,3 +100,49 @@ def test_memory_search_preserves_legacy_field_aliases(monkeypatch) -> None:
     assert isinstance(response, JsonResponse)
     assert response.data == []
     assert received == [("hello", "Alice", 3)]
+
+
+class _RoutePluginFormat(DialogOutputFormat):
+    format_id = "route_custom_v1"
+    label = "Route Custom"
+
+    def create_stream_parser(self) -> XmlTagsStreamParser:
+        return XmlTagsStreamParser()
+
+    def parse_complete(self, raw: str):
+        return []
+
+    def validate(self, raw: str) -> bool:
+        return True
+
+
+def test_dialog_formats_endpoint_returns_bare_array() -> None:
+    _reset_for_tests()
+    configure_builtin_dialog_formats()
+    configure_registered_dialog_formats(
+        [
+            DialogFormatContribution(
+                format_id="route_custom_v1",
+                factory=_RoutePluginFormat,
+                label="Route Custom",
+                plugin_id="route-plugin",
+            )
+        ]
+    )
+    try:
+        router = Router(list(TEMPLATE_ROUTES))
+        request = _request(router, object(), "GET", "/api/templates/dialog-formats")
+        matched = router.match(request.method, request.path)
+        assert matched is not None
+
+        response = matched.route.handler(request)
+
+        assert isinstance(response, JsonResponse)
+        assert isinstance(response.data, list)
+        by_id = {row["id"]: row for row in response.data}
+        assert "xml_v1" in by_id and by_id["xml_v1"]["builtin"] is True
+        assert "json_v1" in by_id and by_id["json_v1"]["builtin"] is True
+        assert "route_custom_v1" in by_id and by_id["route_custom_v1"]["builtin"] is False
+    finally:
+        _reset_for_tests()
+        configure_builtin_dialog_formats()

@@ -20,6 +20,7 @@ from core.messaging.stage_effects import (
     character_motion_duration_ms,
     normalize_character_motion,
     normalize_scene_transition,
+    scene_transition_duration_ms,
 )
 from core.messaging.stat_payload import parse_stat_payload
 from core.paths import resource_path
@@ -493,6 +494,9 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         normalized_transition = normalize_scene_transition(transition)
         if normalized_transition:
             payload["transition"] = normalized_transition
+            payload["transitionDurationMs"] = scene_transition_duration_ms(
+                normalized_transition
+            )
         self._emit(payload)
 
     def switch_bgm(self, new_bgm_path: str) -> None:

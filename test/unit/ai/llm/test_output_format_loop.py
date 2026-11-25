@@ -3,11 +3,24 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
+
 from ai.llm.dialog_repair import repair_dialog_output
 from ai.llm.llm_manager import LLMManager
 from ai.vision.message_content import normalize_openai_messages
 from core.chat_history.identity import CHAT_OUTPUT_FORMAT
-from sdk.adapters.dialog_format import DEFAULT_DIALOG_FORMAT_ID, XML_DIALOG_FORMAT_ID
+from core.messaging.formats.registry import (
+    _reset_for_tests,
+    configure_builtin_dialog_formats,
+    configure_registered_dialog_formats,
+)
+from core.messaging.formats.xml_tags_parser import XmlTagsStreamParser
+from sdk.adapters.dialog_format import (
+    DEFAULT_DIALOG_FORMAT_ID,
+    DialogFormatContribution,
+    DialogOutputFormat,
+    XML_DIALOG_FORMAT_ID,
+)
 from test.mocks import MockLLMAdapter
 
 VALID_XML = '<say char="Alice" sprite="01" motion="shake">Hello!</say>'
@@ -109,3 +122,72 @@ def test_switching_output_format_converts_history_non_destructively() -> None:
     # ...while persisted in-memory history keeps original turn untouched.
     assert persisted_first["content"] == VALID_JSON
     assert persisted_first[CHAT_OUTPUT_FORMAT] == DEFAULT_DIALOG_FORMAT_ID
+
+
+class _CustomNoApiFormat(DialogOutputFormat):
+    format_id = "custom_text_v1"
+    label = "Custom Text"
+    api_response_format = None
+
+    def create_stream_parser(self) -> XmlTagsStreamParser:
+        return XmlTagsStreamParser()
+
+    def parse_complete(self, raw: str):
+        return []
+
+    def validate(self, raw: str) -> bool:
+        return bool(raw.strip())
+
+
+def test_custom_plugin_format_with_none_response_format_forces_text() -> None:
+    _reset_for_tests()
+    configure_builtin_dialog_formats()
+    configure_registered_dialog_formats(
+        [
+            DialogFormatContribution(
+                format_id="custom_text_v1",
+                factory=_CustomNoApiFormat,
+                label="Custom Text",
+                plugin_id="custom-plugin",
+            )
+        ]
+    )
+    try:
+        adapter = MockLLMAdapter(responses=["CUSTOM_LINE"])
+        manager = LLMManager(
+            adapter=adapter,
+            user_template="System",
+            output_format="custom_text_v1",
+        )
+        reply = manager.chat(
+            "hi",
+            stream=False,
+            include_local_time=False,
+            dialog_output_required=True,
+        )
+        assert reply == "CUSTOM_LINE"
+        assert adapter.call_history[0]["kwargs"].get("response_format") == {
+            "type": "text"
+        }
+    finally:
+        _reset_for_tests()
+        configure_builtin_dialog_formats()
+
+
+def test_empty_response_is_not_persisted_with_output_format_metadata() -> None:
+    adapter = MockLLMAdapter(responses=["", "", ""])
+    manager = LLMManager(
+        adapter=adapter,
+        user_template="System",
+        output_format=XML_DIALOG_FORMAT_ID,
+    )
+
+    reply = manager.chat(
+        "hi",
+        stream=False,
+        include_local_time=False,
+        dialog_output_required=True,
+    )
+
+    assert reply == ""
+    assert [m for m in manager.messages if m.get("role") == "assistant"] == []

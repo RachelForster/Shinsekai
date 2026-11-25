@@ -51,12 +51,13 @@ class ChatLoop:
         dialog_output_required: bool = False,
     ) -> RequestedRound:
         merged = {**self.generation_config, **kwargs}
-        if (
-            dialog_output_required
-            and "response_format" not in merged
-            and self.dialog_format.api_response_format is not None
-        ):
-            merged["response_format"] = dict(self.dialog_format.api_response_format)
+        if dialog_output_required and "response_format" not in merged:
+            if self.dialog_format.api_response_format is not None:
+                merged["response_format"] = dict(self.dialog_format.api_response_format)
+            elif self.dialog_format.format_id != DEFAULT_DIALOG_FORMAT_ID:
+                # OpenAIAdapter defaults omitted response_format to json_object; keep
+                # non-JSON custom plugin formats on plain text unless overridden.
+                merged["response_format"] = {"type": "text"}
         try:
             return self.requests.request(
                 stream=stream,
@@ -75,10 +76,10 @@ class ChatLoop:
         if self.cancelled():
             return False
         metadata = dict(self.adapter.assistant_message_metadata(response.reasoning) or {})
-        if dialog_output_required:
-            metadata[CHAT_OUTPUT_FORMAT] = self.output_format
         if not response.content.strip() and not metadata:
             return False
+        if dialog_output_required and response.content.strip():
+            metadata[CHAT_OUTPUT_FORMAT] = self.output_format
         self.append_message("assistant", response.content, **metadata)
         return True
 

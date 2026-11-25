@@ -90,11 +90,8 @@ def build_requirement_sections(
     context: DialogTemplateContext,
 ) -> tuple[_RequirementRuleSection, ...]:
     arguments = _requirement_arguments(context)
-    is_xml = (
-        str(context.output_format_id or DEFAULT_DIALOG_FORMAT_ID).strip().lower()
-        == XML_DIALOG_FORMAT_ID
-    )
-    if is_xml:
+    format_id = str(context.output_format_id or DEFAULT_DIALOG_FORMAT_ID).strip().lower()
+    if format_id == XML_DIALOG_FORMAT_ID:
         definitions: tuple[tuple[str, int, bool, str | None], ...] = (
             ("r_cot", 5, context.use_cot, "xml_r_cot"),
             ("r_format", 10, True, "xml_r_format"),
@@ -138,7 +135,7 @@ def build_requirement_sections(
             ("r_scene_transition", 172, context.has_real_background, "xml_r_scene_transition"),
             ("r_character_motion", 174, True, "xml_r_character_motion"),
         )
-    else:
+    elif format_id == DEFAULT_DIALOG_FORMAT_ID:
         definitions = (
             ("r_cot", 5, context.use_cot, None),
             ("r_format", 10, True, None),
@@ -179,6 +176,22 @@ def build_requirement_sections(
             ("r_cg", 150, context.use_cg, None),
             ("r_translate", 160, context.use_llm_translation, None),
             ("r_effect", 170, context.use_effect, None),
+        )
+    else:
+        definitions = (
+            ("r_format", 10, True, "custom_r_format"),
+            ("r_user_display_name_tool", 15, True, None),
+            (
+                "r_sprite",
+                30,
+                not context.uses_vibe,
+                "r_full_sprite" if context.uses_full_sprite_ids else None,
+            ),
+            ("r_vibe", 30, context.uses_vibe, None),
+            ("r_speech", 70, True, None),
+            ("r_speech_max_chars", 90, context.max_speech_chars > 0, "custom_r_speech_max_chars"),
+            ("r_dialog_max_items", 95, context.max_dialog_items > 0, "custom_r_dialog_max_items"),
+            ("r_choice_balance", 130, context.use_choice, None),
         )
     return tuple(
         _RequirementRuleSection(

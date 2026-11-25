@@ -194,7 +194,10 @@
   width: 100%;
   height: 100%;
   pointer-events: none;
-  transform-origin: center bottom;
+  transform-origin: calc(
+      var(--sprite-axis-center, 50%) + var(--chat-sprite-runtime-offset-x, 0px) + var(--sprite-offset-x, 0px)
+    )
+    calc(100% + var(--chat-sprite-runtime-offset-y, 0px) + var(--sprite-offset-y, 0px));
   will-change: transform, filter;
 }
 

@@ -238,8 +238,27 @@ def test_xml_format_serialize_round_trip_and_negative_validation() -> None:
     assert len(reparsed) == len(items)
     assert reparsed[1].transition == "fade_black"
     assert reparsed[6].translate == "雨落下来。"
+    assert reparsed[6].motion == ""
     assert reparsed[9].outfit == "school" and reparsed[9].motion == "shake"
     assert reparsed[10].effect == "LEAVE"
+
+    tricky_speech = 'Wait </say><say char="Evil">hacked</say> & a < b'
+    tricky_cot = "step 1 </cot> step 2"
+    escaped_xml = fmt.serialize(
+        [
+            LLMDialogMessage(character_name="COT", sprite="-1", speech=tricky_cot),
+            LLMDialogMessage(character_name="Alice", sprite="01", speech=tricky_speech),
+        ]
+    )
+    assert escaped_xml is not None
+    assert escaped_xml.count("<say") == 1
+    assert 'char="Evil"' not in escaped_xml or "&lt;/say&gt;" in escaped_xml
+    reparsed_escaped = fmt.parse_complete(escaped_xml)
+    assert len(reparsed_escaped) == 2
+    assert reparsed_escaped[0].name == "COT"
+    assert reparsed_escaped[0].text == tricky_cot
+    assert reparsed_escaped[1].name == "Alice"
+    assert reparsed_escaped[1].text == tricky_speech
 
     assert not fmt.validate("")
     assert not fmt.validate('<say char="Alice" sprite="01">hi</say><say char="Bob"')
@@ -338,7 +357,7 @@ def test_xml_parser_edge_cases_attributes_comments_and_truncation() -> None:
     out.extend(parser.flush())
 
     assert parser.parse_failures == 2
-    assert any(m.name == "NARR" and m.translate == "旁白" and m.motion == "nod" for m in out)
+    assert any(m.name == "NARR" and m.translate == "旁白" and m.motion == "" for m in out)
     assert any(m.name == "Bob" and m.effect == "LEAVE" and str(m.asset_id) == "-1" for m in out)
     assert any(m.name == "Sue" and m.effect == "LEAVE" for m in out)
     assert any(m.name == "COT" and m.text == "thought" for m in out)
