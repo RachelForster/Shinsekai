@@ -167,13 +167,22 @@ def _publish_lock_for(target: Path) -> threading.Lock:
         return lock
 
 
+def _backup_dirs(target: Path) -> list[Path]:
+    backup_prefix = f".{target.name}.bak."
+    try:
+        candidates = list(target.parent.iterdir())
+    except FileNotFoundError:
+        return []
+    return [entry for entry in candidates if entry.name.startswith(backup_prefix) and entry.is_dir()]
+
+
 def _publish_directory(stage_dir: Path, target_dir: Path) -> None:
     target = Path(target_dir)
     target.parent.mkdir(parents=True, exist_ok=True)
     with _publish_lock_for(target):
         if not target.exists():
             orphaned = sorted(
-                (p for p in target.parent.glob(f".{target.name}.bak.*") if p.is_dir()),
+                _backup_dirs(target),
                 key=lambda p: p.stat().st_mtime_ns,
                 reverse=True,
             )
@@ -190,9 +199,8 @@ def _publish_directory(stage_dir: Path, target_dir: Path) -> None:
             os.replace(tmp_dir, target)
             if backup_dir is not None and backup_dir.exists():
                 shutil.rmtree(backup_dir, ignore_errors=True)
-            for stale in target.parent.glob(f".{target.name}.bak.*"):
-                if stale.is_dir():
-                    shutil.rmtree(stale, ignore_errors=True)
+            for stale in _backup_dirs(target):
+                shutil.rmtree(stale, ignore_errors=True)
         except Exception:
             if backup_dir is not None and backup_dir.exists() and not target.exists():
                 os.replace(backup_dir, target)
