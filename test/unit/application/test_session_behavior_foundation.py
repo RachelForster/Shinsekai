@@ -306,3 +306,175 @@ def test_presentation_worker_fires_on_playback_idle_once(monkeypatch) -> None:
     assert worker._finish_turn_if_drained(turn) is True
     assert worker._finish_turn_if_drained(turn) is False
     assert fired == [turn]
+
+
+def test_configure_session_runtime_binds_runtime_workers_and_opencc_parity(
+    tmp_path: Path,
+) -> None:
+    from application.chat.capabilities.contracts import SessionRuntimeCapabilityContext
+
+    session_dir = tmp_path / "sess_rt"
+    session_dir.mkdir()
+    db_store = SqliteSessionStore(session_dir / "history.db")
+    try:
+        state_store = BehaviorStateStore(db_store, session_dir)
+        recorded_policies: list[tuple[Any, tuple[str, ...]]] = []
+
+        class _FakeLlmManager:
+            hook_dispatcher = None
+
+            def set_speaker_media_policy(self, pred, names=()):
+                recorded_policies.append((pred, tuple(names)))
+
+        class _FakeOpenCC:
+            def convert(self, text: str) -> str:
+                return text.replace("愛麗絲", "爱丽丝")
+
+        ui_worker = PresentationWorker(Queue())
+        char_handler = CharacterMediaHandler()
+        media_worker = SimpleNamespace(
+            dialog_media_dispatcher=SimpleNamespace(handlers=(char_handler,))
+        )
+        runtime_components = SimpleNamespace(
+            workflow=None,
+            ui_worker=ui_worker,
+            dialog_media_worker=media_worker,
+            opencc=_FakeOpenCC(),
+        )
+        # Bare AppRuntime intentionally has NO ui_worker / dialog_media_worker
+        bare_app_runtime = SimpleNamespace(opencc=None)
+
+        cap = SessionBehaviorCapability()
+        ctx = SessionRuntimeCapabilityContext(
+            mode="stream",
+            args=SimpleNamespace(history=""),
+            config=SimpleNamespace(),
+            startup=SimpleNamespace(llm_manager=_FakeLlmManager()),
+            transport=SimpleNamespace(emit=lambda _ev: None),
+            runtime=runtime_components,
+            ui_updates=SimpleNamespace(),
+            chat_turn_service=SimpleNamespace(),
+            app_runtime=bare_app_runtime,
+        )
+        cap.configure_session_runtime(ctx)
+        assert ui_worker._on_playback_idle == cap.on_playback_idle
+
+        casting = CastingMap((CastBinding(character_name="Alice", aliases=("爱丽丝",)),))
+        cap.attach_behavior(
+            _FakeBehavior(casting=casting),
+            state_store=state_store,
+            initial_state={"cursor": 0},
+        )
+        assert char_handler.casting_map_provider is not None
+        assert recorded_policies
+        validator_pred, bound_names = recorded_policies[-1]
+        assert "爱丽丝" in bound_names
+        # Validation predicate must use the same OpenCC normalization as presentation
+        assert validator_pred("愛麗絲") is True
+        assert validator_pred("路人甲") is False
+        assert casting.resolve("愛麗絲", cc=runtime_components.opencc) is not None
+    finally:
+        db_store.close()
+
+
+def test_free_text_policy_enforced_server_side_and_at_turn_admission(
+    tmp_path: Path,
+) -> None:
+    from application.chat.capabilities.contracts import (
+        StreamingWiringCapabilityContext,
+        TurnAdmissionRequest,
+    )
+    from application.chat.runtime.commands import (
+        ChatCommandBindings,
+        ChatCommandDispatcher,
+        ChatCommandRequest,
+        ChatCommandUiBindings,
+    )
+
+    class _LockedBehavior(_FakeBehavior):
+        def describe_state(self, state, state_version: int) -> BehaviorStateEnvelope:
+            return BehaviorStateEnvelope(
+                behavior_id=self.behavior_id,
+                state_version=state_version,
+                stage_policy=InteractionPolicy(
+                    hide_input_layer=True,
+                    playback_end_action="show_options",
+                    allow_free_text_interject=False,
+                    allow_unbound_speakers=True,
+                ),
+                options=(BehaviorOption(id="opt-a", label="Choice A", action="choose"),),
+            )
+
+    session_dir = tmp_path / "sess_locked"
+    session_dir.mkdir()
+    db_store = SqliteSessionStore(session_dir / "history.db")
+    try:
+        state_store = BehaviorStateStore(db_store, session_dir)
+        cap = SessionBehaviorCapability()
+        cap.attach_behavior(
+            _LockedBehavior(),
+            state_store=state_store,
+            initial_state={"cursor": 0},
+        )
+
+        submitted: list[str] = []
+        confirmed: list[tuple[str, str]] = []
+        dispatcher = ChatCommandDispatcher(
+            bindings=ChatCommandBindings(
+                submit_text=lambda text, **_kw: (submitted.append(text) or True),
+                can_submit_text=lambda: True,
+                shutdown_session=lambda: None,
+                resolve_tool_confirmation=lambda cid, act: (confirmed.append((cid, act)) or True),
+                ui=ChatCommandUiBindings(
+                    clear_options=lambda: None,
+                    sync_history=lambda: None,
+                    notify=lambda _msg: None,
+                    clear_tool_confirmation=lambda _cid: None,
+                ),
+                translate=lambda key, **_kw: key,
+            ),
+            config=SimpleNamespace(),
+            llm_manager=SimpleNamespace(),
+            runtime_asr=SimpleNamespace(pause_for_turn=lambda: None, begin_hold=lambda: None),
+            chat_turn_service=SimpleNamespace(flush=lambda: None),
+            chat_history=[],
+            last_user_message={},
+            presentation_queue=None,
+            capability_commands=cap.command_handlers(),
+        )
+        cap.bind_streaming_session(
+            StreamingWiringCapabilityContext(
+                bindings=SimpleNamespace(command_dispatcher=dispatcher),
+                app_runtime=None,
+            )
+        )
+
+        assert dispatcher.execute(ChatCommandRequest(type="send-message", payload="hi")).ok is False
+        assert dispatcher.execute(ChatCommandRequest(type="submit-option", payload="plain")).ok is False
+        assert dispatcher.execute(ChatCommandRequest(type="begin-asr-hold")).ok is False
+        assert dispatcher.execute(ChatCommandRequest(type="flush-input-batch")).ok is False
+        assert submitted == []
+
+        # Tool confirmation must remain allowed even when free-text input is blocked
+        tool_res = dispatcher.execute(
+            ChatCommandRequest(
+                type="submit-option",
+                payload={"kind": "tool-confirmation", "confirmationId": "c1", "action": "confirm"},
+            )
+        )
+        assert tool_res.ok is True
+        assert confirmed == [("c1", "confirm")]
+
+        # Defense-in-depth at LLMWorker TurnContextProvider admission
+        providers = cap.turn_context_providers()
+        assert len(providers) == 1
+        user_decision = providers[0].admit_turn(
+            TurnAdmissionRequest(history_turn_id="t1", source="user", text="sneaky")
+        )
+        assert user_decision is not None and user_decision.admitted is False
+        chunk_decision = providers[0].admit_turn(
+            TurnAdmissionRequest(history_turn_id="t2", source="chunk_feed", text="[chunk]")
+        )
+        assert chunk_decision is None
+    finally:
+        db_store.close()

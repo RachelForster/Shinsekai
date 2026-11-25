@@ -2,18 +2,27 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 import logging
 import threading
 from typing import Any
 
 from application.chat.capabilities.contracts import (
     BaseSessionCapability,
+    BaseTurnContextProvider,
     SessionRuntimeCapabilityContext,
     StreamingWiringCapabilityContext,
+    TurnAdmissionDecision,
+    TurnAdmissionRequest,
+    TurnContextProvider,
 )
 from application.session_behavior.casting import CastingMap
 from application.session_behavior.prefetch import SpeculativePrefetchCoordinator
+from application.session_behavior.runtime_binding import (
+    resolve_character_media_handler,
+    resolve_opencc,
+    resolve_ui_worker,
+)
 from application.session_behavior.protocol import (
     BehaviorCommand,
     BehaviorStateEnvelope,
@@ -55,12 +64,14 @@ class SessionBehaviorCapability(BaseSessionCapability):
         self._branch_id_provider = branch_id_provider
         self._llm_manager = llm_manager
         self._character_media_handler = character_media_handler
+        self._runtime_components: Any | None = None
         self._app_runtime: Any | None = None
         self._hook_dispatcher: Any | None = None
         self._prefetch = prefetch_coordinator
         self._idempotency = CommandIdempotencyCache(max_entries=128)
         self._compact_hook_registered = False
         self._last_envelope: BehaviorStateEnvelope | None = None
+        self._turn_provider = _BehaviorTurnContextProvider(self)
 
     @property
     def behavior(self) -> SessionBehavior | None:
@@ -100,12 +111,19 @@ class SessionBehaviorCapability(BaseSessionCapability):
     def _resolve_character_media_handler(self) -> Any | None:
         if self._character_media_handler is not None:
             return self._character_media_handler
-        if self._app_runtime is not None:
-            found = self._find_character_media_handler(self._app_runtime)
-            if found is not None:
-                self._character_media_handler = found
-                return found
+        found = resolve_character_media_handler(
+            self._runtime_components,
+            self._app_runtime,
+        )
+        if found is not None:
+            self._character_media_handler = found
+            return found
         return None
+
+    def _bind_ui_worker(self) -> None:
+        ui_worker = resolve_ui_worker(self._runtime_components, self._app_runtime)
+        if ui_worker is not None and hasattr(ui_worker, "set_on_playback_idle"):
+            ui_worker.set_on_playback_idle(self.on_playback_idle)
 
     def _sync_media_policy(self, state: Mapping[str, Any] | None) -> None:
         behavior = self._behavior
@@ -117,8 +135,17 @@ class SessionBehaviorCapability(BaseSessionCapability):
         llm_mgr = self._llm_manager
         if llm_mgr is not None and hasattr(llm_mgr, "set_speaker_media_policy"):
             if casting is not None:
+                def _speaker_requires_media(
+                    speaker_name: str,
+                    _casting: CastingMap = casting,
+                ) -> bool:
+                    return _casting.speaker_requires_media(
+                        speaker_name,
+                        cc=resolve_opencc(self._runtime_components, self._app_runtime),
+                    )
+
                 llm_mgr.set_speaker_media_policy(
-                    casting.speaker_requires_media,
+                    _speaker_requires_media,
                     casting.bound_speaker_names(),
                 )
             else:
@@ -161,6 +188,7 @@ class SessionBehaviorCapability(BaseSessionCapability):
                 state=initial_state,
             )
             behavior.on_state_restored(snap)
+            self._bind_ui_worker()
             self._sync_media_policy(snap.state)
             envelope = behavior.describe_state(snap.state, snap.state_version)
         self._emit_replace(envelope)
@@ -181,6 +209,7 @@ class SessionBehaviorCapability(BaseSessionCapability):
 
         app_runtime = context.app_runtime
         startup = context.startup
+        self._runtime_components = context.runtime
         self._app_runtime = app_runtime
         if self._emit_event is None:
             emit_fn = getattr(context.transport, "emit", None)
@@ -197,30 +226,13 @@ class SessionBehaviorCapability(BaseSessionCapability):
             self._hook_dispatcher = getattr(
                 getattr(startup, "llm_manager", None), "hook_dispatcher", None
             )
+        self._bind_ui_worker()
         if self._behavior is not None:
             self._ensure_compact_hook()
-        if app_runtime is not None:
-            ui_worker = getattr(app_runtime, "ui_worker", None)
-            if ui_worker is not None and hasattr(ui_worker, "set_on_playback_idle"):
-                ui_worker.set_on_playback_idle(self.on_playback_idle)
-
-    @staticmethod
-    def _find_character_media_handler(app_runtime: Any) -> Any | None:
-        for attr in ("dialog_media_worker", "tts_worker"):
-            worker = getattr(app_runtime, attr, None)
-            dispatcher = getattr(worker, "dialog_media_dispatcher", None) or getattr(
-                worker, "handler_chain", None
-            )
-            handlers = (
-                getattr(dispatcher, "handlers", None)
-                or getattr(dispatcher, "_handlers", ())
-                if dispatcher is not None
-                else ()
-            )
-            for handler in handlers:
-                if hasattr(handler, "casting_map_provider"):
-                    return handler
-        return None
+            if self._state_store is not None:
+                latest = self._state_store.get_latest_state(self._current_branch())
+                if latest is not None:
+                    self._sync_media_policy(latest.state)
 
     def bind_streaming_session(self, context: StreamingWiringCapabilityContext) -> None:
         app_runtime = context.app_runtime
@@ -229,10 +241,37 @@ class SessionBehaviorCapability(BaseSessionCapability):
         add_listener = getattr(dispatcher, "add_history_mutated_listener", None)
         if callable(add_listener):
             add_listener(self.on_history_mutated)
-        if app_runtime is not None:
-            ui_worker = getattr(app_runtime, "ui_worker", None)
-            if ui_worker is not None and hasattr(ui_worker, "set_on_playback_idle"):
-                ui_worker.set_on_playback_idle(self.on_playback_idle)
+        add_guard = getattr(dispatcher, "add_free_text_guard", None)
+        if callable(add_guard):
+            add_guard(self.assert_free_text_allowed)
+        self._bind_ui_worker()
+        if self._behavior is not None and self._state_store is not None:
+            latest = self._state_store.get_latest_state(self._current_branch())
+            if latest is not None:
+                self._sync_media_policy(latest.state)
+
+    def is_free_text_allowed(self) -> bool:
+        with self._lock:
+            behavior = self._behavior
+            store = self._state_store
+            if behavior is None or store is None:
+                return True
+            latest = store.get_latest_state(self._current_branch())
+            if latest is None:
+                return True
+            envelope = behavior.describe_state(latest.state, latest.state_version)
+            return bool(envelope.stage_policy.allow_free_text_interject)
+
+    def assert_free_text_allowed(self) -> None:
+        if not self.is_free_text_allowed():
+            raise AppError(
+                "behavior.free_text_disabled",
+                fallback_message="Free-text input is disabled by the active session behavior.",
+                http_status=400,
+            )
+
+    def turn_context_providers(self) -> Sequence[TurnContextProvider]:
+        return (self._turn_provider,)
 
     def command_handlers(self) -> dict[str, Callable[[object], None]]:
         return {"behavior-command": self._dispatch_runtime_command}
@@ -442,6 +481,24 @@ class SessionBehaviorCapability(BaseSessionCapability):
     def on_shutdown(self) -> None:
         if self._prefetch is not None:
             self._prefetch.shutdown()
+
+
+class _BehaviorTurnContextProvider(BaseTurnContextProvider):
+    """Enforce active SessionBehavior free-text policy at LLMWorker admission."""
+
+    capability_id = "session_behavior"
+
+    def __init__(self, capability: SessionBehaviorCapability) -> None:
+        self._capability = capability
+
+    def admit_turn(
+        self,
+        request: TurnAdmissionRequest,
+    ) -> TurnAdmissionDecision | None:
+        source = str(request.source or "user").strip() or "user"
+        if source == "user" and not self._capability.is_free_text_allowed():
+            return TurnAdmissionDecision(admitted=False, record_user_message=False)
+        return None
 
 
 __all__ = ["SessionBehaviorCapability"]

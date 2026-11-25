@@ -1,3 +1,4 @@
+import { isBehaviorFreeTextBlocked, resolveBehaviorOptions } from "./behaviorCommands";
 import type { ChatStageLayers, ChatStageState } from "./types";
 
 export function defaultLayers(): ChatStageLayers {
@@ -23,7 +24,8 @@ export function clearTransientNotificationState(state: ChatStageState) {
 }
 
 export function withResolvedLayers(state: ChatStageState): ChatStageState {
-  const optionsVisible = state.options.length > 0 || Boolean(state.toolConfirmation);
+  const optionsVisible =
+    state.options.length > 0 || Boolean(state.toolConfirmation) || resolveBehaviorOptions(state).length > 0;
   return {
     ...state,
     layers: {
@@ -32,7 +34,7 @@ export function withResolvedLayers(state: ChatStageState): ChatStageState {
       busy: Boolean(state.busyText),
       cg: Boolean(state.cgPath),
       dialog: !optionsVisible && Boolean(state.error || state.dialogHtml || state.dialogText || state.characterName),
-      input: !state.sessionClosedReason && !state.behavior?.stagePolicy?.hideInputLayer,
+      input: !state.sessionClosedReason && !isBehaviorFreeTextBlocked(state.behavior),
       notification: Boolean(state.notificationText),
       options: optionsVisible,
       sprites: !state.cgPath && state.sprites.length > 0,

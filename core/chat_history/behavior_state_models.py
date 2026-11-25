@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS session_state_snapshots (
     state_version  INTEGER NOT NULL,
     state_json     TEXT NOT NULL,
     created_at_ms  INTEGER NOT NULL,
-    PRIMARY KEY (branch_id, turn_seq)
+    PRIMARY KEY (branch_id, turn_seq, state_version)
 );
 
 CREATE INDEX IF NOT EXISTS idx_state_snapshots_branch_ver
@@ -32,8 +32,32 @@ CREATE INDEX IF NOT EXISTS idx_state_snapshots_branch_ver
 
 
 def ensure_behavior_state_schema(conn: sqlite3.Connection) -> None:
-    """Create session behavior snapshot tables and indexes if missing."""
+    """Create session behavior snapshot tables and indexes, upgrading legacy PKs."""
     conn.executescript(_BEHAVIOR_STATE_DDL)
+    cols = conn.execute("PRAGMA table_info(session_state_snapshots)").fetchall()
+    state_ver_col = next((row for row in cols if row["name"] == "state_version"), None)
+    if state_ver_col is not None and int(state_ver_col["pk"] or 0) == 0:
+        conn.executescript(
+            """
+            CREATE TABLE session_state_snapshots_v2 (
+                branch_id      TEXT NOT NULL,
+                turn_seq       INTEGER NOT NULL,
+                behavior_id    TEXT NOT NULL,
+                state_version  INTEGER NOT NULL,
+                state_json     TEXT NOT NULL,
+                created_at_ms  INTEGER NOT NULL,
+                PRIMARY KEY (branch_id, turn_seq, state_version)
+            );
+            INSERT INTO session_state_snapshots_v2
+                (branch_id, turn_seq, behavior_id, state_version, state_json, created_at_ms)
+            SELECT branch_id, turn_seq, behavior_id, state_version, state_json, created_at_ms
+            FROM session_state_snapshots;
+            DROP TABLE session_state_snapshots;
+            ALTER TABLE session_state_snapshots_v2 RENAME TO session_state_snapshots;
+            CREATE INDEX IF NOT EXISTS idx_state_snapshots_branch_ver
+                ON session_state_snapshots (branch_id, state_version DESC);
+            """
+        )
 
 
 class BehaviorVersionConflictError(RuntimeError):

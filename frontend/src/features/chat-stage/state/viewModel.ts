@@ -1,3 +1,4 @@
+import { isBehaviorFreeTextBlocked, resolveBehaviorOptions } from "./behaviorCommands";
 import {
   normalizeDialogView,
   normalizedUserDisplayName,
@@ -44,6 +45,7 @@ export function buildChatStageViewModel(state: ChatStageState): ChatStageViewMod
     notification: Boolean(notificationText),
     options: pendingBatchText ? false : state.layers.options,
   };
+  const effectiveOptions = state.options.length > 0 ? state.options : resolveBehaviorOptions(state);
   return {
     asrEnabled: Boolean(state.asrEnabled),
     asrLoading: Boolean(state.asrLoading),
@@ -62,11 +64,12 @@ export function buildChatStageViewModel(state: ChatStageState): ChatStageViewMod
       Boolean(state.replay) ||
       Boolean(state.toolConfirmation) ||
       !state.layers.input ||
+      isBehaviorFreeTextBlocked(state.behavior) ||
       ((state.status === "generating" || state.status === "streaming") && !state.turnOptions.interruptEnabled),
     inputDraft: state.inputDraft,
     layers,
     notificationText,
-    options: state.options,
+    options: effectiveOptions,
     perception: state.perception ?? null,
     spriteReaction: state.spriteReaction ?? null,
     sprites: state.sprites,

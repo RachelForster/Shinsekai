@@ -14,6 +14,12 @@ export interface ChatBehaviorOption {
   payload?: Record<string, unknown>;
 }
 
+export interface ChatBehaviorChoiceOption extends ChatBehaviorOption {
+  kind: "behavior-option";
+  enabled: boolean;
+  expectedStateVersion: number;
+}
+
 export interface ChatBehaviorState {
   behaviorId: string;
   stateVersion: number;

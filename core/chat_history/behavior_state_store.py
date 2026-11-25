@@ -256,9 +256,8 @@ class BehaviorStateStore:
                         INSERT INTO session_state_snapshots(
                             branch_id, turn_seq, behavior_id, state_version, state_json, created_at_ms
                         ) VALUES (?, ?, ?, ?, ?, ?)
-                        ON CONFLICT(branch_id, turn_seq) DO UPDATE SET
+                        ON CONFLICT(branch_id, turn_seq, state_version) DO UPDATE SET
                             behavior_id = excluded.behavior_id,
-                            state_version = excluded.state_version,
                             state_json = excluded.state_json,
                             created_at_ms = excluded.created_at_ms
                         """,
@@ -331,10 +330,17 @@ class BehaviorStateStore:
         with self._session_store._write_lock:
             with self._session_store._store._borrow_conn() as conn:
                 with _immediate_tx(conn):
-                    conn.execute(
-                        "DELETE FROM session_state_snapshots WHERE branch_id = ? AND turn_seq > ?",
-                        (b, cutoff),
-                    )
+                    if cutoff == 0:
+                        conn.execute(
+                            "DELETE FROM session_state_snapshots "
+                            "WHERE branch_id = ? AND (turn_seq > 0 OR state_version > 1)",
+                            (b,),
+                        )
+                    else:
+                        conn.execute(
+                            "DELETE FROM session_state_snapshots WHERE branch_id = ? AND turn_seq > ?",
+                            (b, cutoff),
+                        )
                 return self._get_latest_conn(conn, b)
 
     def clear_branch(
@@ -344,8 +350,17 @@ class BehaviorStateStore:
         with self._session_store._write_lock:
             with self._session_store._store._borrow_conn() as conn:
                 with _immediate_tx(conn):
-                    clause = "branch_id = ? AND turn_seq > 0" if preserve_initial else "branch_id = ?"
-                    conn.execute(f"DELETE FROM session_state_snapshots WHERE {clause}", (b,))
+                    if preserve_initial:
+                        conn.execute(
+                            "DELETE FROM session_state_snapshots "
+                            "WHERE branch_id = ? AND (turn_seq > 0 OR state_version > 1)",
+                            (b,),
+                        )
+                    else:
+                        conn.execute(
+                            "DELETE FROM session_state_snapshots WHERE branch_id = ?",
+                            (b,),
+                        )
                 return self._get_latest_conn(conn, b)
 
     def recover_pending(self) -> BehaviorRecoveryReport:
@@ -374,15 +389,19 @@ class BehaviorStateStore:
                     (b,),
                 ).fetchone()
                 max_seq = int(max_row["max_seq"]) if max_row is not None else 0
-                if max_seq > record.base_turn_seq:
+                has_partial_snapshot = (
+                    latest is not None and latest.state_version > record.base_state_version
+                )
+                if max_seq > record.base_turn_seq or has_partial_snapshot:
                     with _immediate_tx(conn):
                         conn.execute(
                             "DELETE FROM turns WHERE branch_id = ? AND seq > ?",
                             (b, record.base_turn_seq),
                         )
                         conn.execute(
-                            "DELETE FROM session_state_snapshots WHERE branch_id = ? AND turn_seq > ?",
-                            (b, record.base_turn_seq),
+                            "DELETE FROM session_state_snapshots "
+                            "WHERE branch_id = ? AND (turn_seq > ? OR state_version > ?)",
+                            (b, record.base_turn_seq, record.base_state_version),
                         )
                     restored = self._get_latest_conn(conn, b)
                     jpath.unlink(missing_ok=True)

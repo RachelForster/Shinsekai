@@ -115,6 +115,7 @@ class ChatCommandDispatcher:
         self._history_mutated_listeners: list[Callable[[str], None]] = (
             [on_history_mutated] if callable(on_history_mutated) else []
         )
+        self._free_text_guards: list[Callable[[], None]] = []
 
         self._handlers: dict[str, Callable[[object], None]] = {
             "replay-start": lambda payload: self.replay.start(payload),
@@ -148,6 +149,14 @@ class ChatCommandDispatcher:
     def add_history_mutated_listener(self, callback: Callable[[str], None]) -> None:
         if callable(callback) and callback not in self._history_mutated_listeners:
             self._history_mutated_listeners.append(callback)
+
+    def add_free_text_guard(self, guard: Callable[[], None]) -> None:
+        if callable(guard) and guard not in self._free_text_guards:
+            self._free_text_guards.append(guard)
+
+    def _ensure_free_text_allowed(self) -> None:
+        for guard in tuple(self._free_text_guards):
+            guard()
 
     def _notify_history_mutated(self, reason: str) -> None:
         for listener in tuple(self._history_mutated_listeners):
@@ -192,6 +201,7 @@ class ChatCommandDispatcher:
         self.bindings.ui.notify("语音已保存")
 
     def _send_message(self, payload: object) -> None:
+        self._ensure_free_text_allowed()
         self.runtime_asr.pause_for_turn()
         if isinstance(payload, Mapping):
             raw_attachments = payload.get("attachments")
@@ -223,6 +233,7 @@ class ChatCommandDispatcher:
             return
         if isinstance(payload, Mapping):
             raise ValueError("Option selection must be a string.")
+        self._ensure_free_text_allowed()
         self.runtime_asr.pause_for_turn()
         self.bindings.submit_text(str(payload or ""))
 
@@ -267,6 +278,7 @@ class ChatCommandDispatcher:
         )
 
     def _flush_input_batch(self, _payload: object) -> None:
+        self._ensure_free_text_allowed()
         self.chat_turn_service.flush()
 
     def _cancel_input_batch(self, _payload: object) -> None:
@@ -311,6 +323,7 @@ class ChatCommandDispatcher:
         self.runtime_asr.user_resume()
 
     def _begin_asr_hold(self, _payload: object) -> None:
+        self._ensure_free_text_allowed()
         if not self.bindings.can_submit_text():
             raise ValueError("当前无法开始语音输入。")
         self.runtime_asr.begin_hold()
@@ -349,8 +362,7 @@ class ChatCommandDispatcher:
         self.bindings.ui.clear_options()
         self.bindings.ui.sync_history()
         self._resync_session_outfits()
-        self._notify_history_mutated("revert")
-        self._notify_history_mutated("clear")
+        self._notify_history_mutated("reroll")
         if (reroll_text or reroll_attachments) and self.bindings.can_submit_text():
             self.bindings.submit_text(
                 reroll_text,
@@ -373,7 +385,6 @@ class ChatCommandDispatcher:
         self.bindings.ui.clear_options()
         self.bindings.ui.sync_history()
         self._resync_session_outfits()
-        self._notify_history_mutated("revert")
         self._notify_history_mutated("clear")
 
     def _change_voice_language(self, payload: object) -> None:
@@ -420,7 +431,6 @@ class ChatCommandDispatcher:
         self.bindings.ui.sync_history()
         self._resync_session_outfits()
         self._notify_history_mutated("revert")
-        self._notify_history_mutated("clear")
 
     @staticmethod
     def _resync_session_outfits() -> None:

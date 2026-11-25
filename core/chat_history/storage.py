@@ -30,8 +30,10 @@ from sdk.file_io import durable_rename
 ACTIVE_HISTORY_FILENAME = "active.json"
 HISTORY_EXPORT_FILENAME = "shinsekai-chat-export.json"
 BRANCH_TREE_FILENAME = "branches.json"
+BRANCH_TREE_TEMP_PREFIX = ".branches-"
 STORY_SESSION_FILENAME = "story-v2.json"
 BEHAVIOR_TURN_JOURNAL_FILENAME = "behavior-turn-journal.json"
+BEHAVIOR_TURN_JOURNAL_TEMP_PREFIX = ".behavior-journal-"
 VOICE_ARCHIVE_DIRECTORY = "audio"
 VOICE_INDEX_FILENAME = "index.json"
 VOICE_INDEX_TEMP_PREFIX = ".voice-index-"
@@ -181,6 +183,17 @@ def chat_history_storage_files(path: str | Path) -> tuple[Path, ...]:
         STORY_SESSION_FILENAME,
         BEHAVIOR_TURN_JOURNAL_FILENAME,
     ))
+    if directory.is_dir():
+        files += tuple(
+            file
+            for file in directory.iterdir()
+            if (file.is_file() or file.is_symlink())
+            and file.suffix == ".tmp"
+            and (
+                file.name.startswith(BRANCH_TREE_TEMP_PREFIX)
+                or file.name.startswith(BEHAVIOR_TURN_JOURNAL_TEMP_PREFIX)
+            )
+        )
     for audio_dir in _voice_storage_directories(directory):
         files += tuple(
             file for file in audio_dir.iterdir()
@@ -354,7 +367,7 @@ def save_branch_state(path: str | Path, branch_state: dict[str, Any]) -> Path:
     tree_path = chat_history_branch_tree_path(path)
     tree_path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(
-        prefix=".branches-", suffix=".tmp", dir=tree_path.parent
+        prefix=BRANCH_TREE_TEMP_PREFIX, suffix=".tmp", dir=tree_path.parent
     )
     temp_path = Path(temporary)
     try:

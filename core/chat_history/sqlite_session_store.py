@@ -680,10 +680,17 @@ class SqliteSessionStore:
                         (b, cutoff),
                     )
                 deleted_checkpoints = int(cur_cp.rowcount or 0)
-                conn.execute(
-                    "DELETE FROM session_state_snapshots WHERE branch_id = ? AND turn_seq > ?",
-                    (b, cutoff),
-                )
+                if cutoff == 0:
+                    conn.execute(
+                        "DELETE FROM session_state_snapshots "
+                        "WHERE branch_id = ? AND (turn_seq > 0 OR state_version > 1)",
+                        (b,),
+                    )
+                else:
+                    conn.execute(
+                        "DELETE FROM session_state_snapshots WHERE branch_id = ? AND turn_seq > ?",
+                        (b, cutoff),
+                    )
 
                 latest_row = conn.execute(
                     "SELECT outfit_snapshot_json FROM turns "
@@ -729,13 +736,16 @@ class SqliteSessionStore:
                         "DELETE FROM session_meta WHERE key LIKE 'system_prompt:%'"
                     )
                     conn.execute("DELETE FROM memories")
-                    conn.execute("DELETE FROM session_state_snapshots WHERE turn_seq > 0")
+                    conn.execute(
+                        "DELETE FROM session_state_snapshots WHERE turn_seq > 0 OR state_version > 1"
+                    )
                 else:
                     b = str(branch_id or "main").strip() or "main"
                     conn.execute("DELETE FROM turns WHERE branch_id = ?", (b,))
                     conn.execute("DELETE FROM compact_checkpoints WHERE branch_id = ?", (b,))
                     conn.execute(
-                        "DELETE FROM session_state_snapshots WHERE branch_id = ? AND turn_seq > 0",
+                        "DELETE FROM session_state_snapshots "
+                        "WHERE branch_id = ? AND (turn_seq > 0 OR state_version > 1)",
                         (b,),
                     )
                     conn.execute(

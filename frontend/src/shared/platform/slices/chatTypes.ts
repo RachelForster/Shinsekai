@@ -2,7 +2,7 @@ import type { ChatThemePayload } from "../../theme/chatChromeTheme";
 import type { ChatThemeManifest, ChatThemeSummary, SaveChatThemeInput } from "../../theme/chatTheme";
 import type { StoryDocument, StoryEditInput, StorySuggestion, StorySuggestionInput } from "../storyEditorTypes";
 import type { StoryGenerationPreview } from "../storyPreviewTypes";
-import type { ChatBehaviorState } from "./behaviorTypes";
+import type { ChatBehaviorChoiceOption, ChatBehaviorState } from "./behaviorTypes";
 import type { PlayerPortrait, PortraitCrop, SpriteTransitionMedia } from "./characterTypes";
 import type { PerceptionRuntimeState } from "./perceptionTypes";
 import type { PluginPagePresentation } from "./pluginTypes";
@@ -221,7 +221,7 @@ export interface ChatStoryOption {
   source: "story";
 }
 
-export type ChatOption = string | ChatStoryOption;
+export type ChatOption = string | ChatStoryOption | ChatBehaviorChoiceOption;
 
 export interface ChatStoryState {
   activeCast: Array<{ id: string; roles: string[] }>;
