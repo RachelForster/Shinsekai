@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import ExitStack
 
 from ai.llm.dialog_repair import repair_dialog_output
@@ -22,6 +22,8 @@ class ChatLoop:
         requests: RequestRunner, *, cancelled: Callable[[], bool],
         append_message: Callable[..., None], generation_config: dict,
         media_selection_mode: str, logger, locale: LocaleInput = None,
+        speaker_requires_media: Callable[[str], bool] | None = None,
+        bound_speakers: Sequence[str] = (),
     ) -> None:
         self.adapter = adapter
         self.append_message = append_message
@@ -32,6 +34,8 @@ class ChatLoop:
         self.media_selection_mode = media_selection_mode
         self.logger = logger
         self.locale = locale
+        self.speaker_requires_media = speaker_requires_media
+        self.bound_speakers: tuple[str, ...] = tuple(bound_speakers)
 
     def _request(self, stream: bool, kwargs: dict) -> RequestedRound:
         return self.requests.request(stream=stream, generation_kwargs={**self.generation_config, **kwargs})
@@ -66,6 +70,8 @@ class ChatLoop:
             self.adapter, response.content, request.context.messages,
             request.context.generation_kwargs, cancelled=self.cancelled,
             event_logger=self.logger, media_selection_mode=self.media_selection_mode,
+            speaker_requires_media=self.speaker_requires_media,
+            bound_speakers=self.bound_speakers,
             locale=self.locale,
         )
 
@@ -146,7 +152,9 @@ class ChatLoop:
                     return
                 continue
             needs_repair = dialog_output_required and not has_valid_dialog_output(
-                response.content, media_selection_mode=self.media_selection_mode,
+                response.content,
+                media_selection_mode=self.media_selection_mode,
+                speaker_requires_media=self.speaker_requires_media,
             )
             if needs_repair:
                 self._repair(response, request)
@@ -154,7 +162,9 @@ class ChatLoop:
                 return
             persisted = self._persist_assistant(response)
             if persisted and needs_repair and has_valid_dialog_output(
-                response.content, media_selection_mode=self.media_selection_mode,
+                response.content,
+                media_selection_mode=self.media_selection_mode,
+                speaker_requires_media=self.speaker_requires_media,
             ):
                 yield {STREAM_DIALOG_REPAIR_KEY: response.content}
             return

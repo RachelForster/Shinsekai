@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from application.chat.capabilities.background import BackgroundTurnContextProvider
+from application.chat.capabilities.behavior import SessionBehaviorCapability
 from application.chat.capabilities.contracts import (
     BaseSessionCapability,
     BaseTurnContextProvider,
@@ -65,6 +66,7 @@ def build_default_session_capabilities() -> SessionCapabilitySet:
             RelationSessionCapability(),
             OutfitSessionCapability(),
             PerceptionSessionCapability(),
+            SessionBehaviorCapability(),
         ),
         default_turn_providers=(BackgroundTurnContextProvider(),),
     )
@@ -104,6 +106,7 @@ __all__ = [
     "RELATION_CONTEXT_MARKER",
     "RelationSessionCapability",
     "RelationTurnContextProvider",
+    "SessionBehaviorCapability",
     "SessionCapability",
     "SessionCapabilitySet",
     "SessionRuntimeCapabilityContext",

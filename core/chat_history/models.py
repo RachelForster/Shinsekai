@@ -31,6 +31,11 @@ from sdk.adapters.session import (
 from sdk.lang import normalize_lang
 
 COMPACT_SUMMARY_SOURCE = "compact_summary"
+PERCEPTION_SOURCE = "perception"
+CHUNK_FEED_SOURCE = "chunk_feed"
+SYNTHETIC_INTERNAL_SOURCES: frozenset[str] = frozenset(
+    {PERCEPTION_SOURCE, CHUNK_FEED_SOURCE}
+)
 COMPACT_UP_TO_SEQ_KEY = "_compact_up_to_seq"
 SUMMARY_MARKERS: tuple[str, ...] = (
     "历史对话总结",
@@ -96,14 +101,26 @@ def is_compact_summary_message(message: Any) -> bool:
     return any(marker in content for marker in SUMMARY_MARKERS)
 
 
+def is_synthetic_internal_source(source: object) -> bool:
+    """Return True when source identifies a host-injected non-user turn."""
+    return str(source or "").strip().casefold() in SYNTHETIC_INTERNAL_SOURCES
+
+
+def is_synthetic_internal_message(message: Any) -> bool:
+    """Return True when message originated from a synthetic internal source."""
+    if not isinstance(message, Mapping):
+        return False
+    return is_synthetic_internal_source(message.get("source"))
+
+
 def is_real_user_turn_message(message: Any) -> bool:
-    """Return True when message represents an interactive user turn (not perception/summary)."""
+    """Return True when message represents an interactive user turn (not synthetic/summary)."""
     if not isinstance(message, Mapping):
         return False
     if message.get("role") != "user":
         return False
     source = str(message.get("source") or "user").strip()
-    if source in {"perception", COMPACT_SUMMARY_SOURCE}:
+    if is_synthetic_internal_source(source) or source == COMPACT_SUMMARY_SOURCE:
         return False
     return not is_compact_summary_message(message)
 
@@ -185,7 +202,7 @@ def render_messages_to_ui_history(
             if is_compact_summary_message(message):
                 continue
             identities = DialogIdentities(str(message.get(CHAT_TURN_ID, "") or ""))
-            if message.get("source") == "perception":
+            if is_synthetic_internal_message(message):
                 continue
             display_content = message.get("display_content") or message.get("content", "")
             rendered.append(

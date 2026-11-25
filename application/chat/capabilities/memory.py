@@ -17,6 +17,7 @@ from application.chat.capabilities.contracts import (
 )
 from core.chat_history.models import (
     is_real_user_turn_message,
+    is_synthetic_internal_source,
     normalize_memory_mode,
     rollback_memory_for_timeline,
 )
@@ -51,7 +52,7 @@ def _last_dialogue_turn_at(history_path: str) -> float:
     branch = legacy_active_history_branch(history_path)
     for turn in reversed(store.list_turns(branch_id=branch)):
         raw = turn.raw_message
-        if not turn.created_at_ms or turn.source == "perception" or not raw.get("content"):
+        if not turn.created_at_ms or is_synthetic_internal_source(turn.source) or not raw.get("content"):
             continue
         if is_real_user_turn_message(raw) or (turn.role == "assistant" and not raw.get("tool_calls")):
             return turn.created_at_ms / 1000.0

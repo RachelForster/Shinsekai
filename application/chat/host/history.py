@@ -13,6 +13,10 @@ from core.messaging.dialog_tokens import (
     is_option_history_name,
     normalize_character_name,
 )
+from core.chat_history.models import (
+    is_compact_summary_message,
+    is_synthetic_internal_message,
+)
 from core.chat_history.storage import (
     chat_history_active_path,
     chat_history_branch_tree_path,
@@ -71,7 +75,6 @@ def _serialize_history_entries_from_messages(
     if not isinstance(messages, list):
         return []
     from core.chat_history.identity import CHAT_TURN_ID, DialogIdentities
-    from core.chat_history.models import is_compact_summary_message
 
     entries: list[dict[str, Any]] = []
     identities = DialogIdentities()
@@ -88,7 +91,7 @@ def _serialize_history_entries_from_messages(
             if is_compact_summary_message(message):
                 continue
             identities = DialogIdentities(str(message.get(CHAT_TURN_ID) or ""))
-            if str(message.get("source") or "user") == "perception":
+            if is_synthetic_internal_message(message):
                 continue
             text = str(
                 message.get("display_content") or message.get("content") or ""

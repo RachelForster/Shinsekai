@@ -176,6 +176,9 @@ class RuleRecallPlanner:
         source = str(turn_input.source or "user").strip().lower()
         raw_user = strip_local_time_prefix(str(turn_input.user_text or "")).strip()
 
+        if source != "perception" and source != "user" and source in {"chunk_feed", "compact_summary"}:
+            return RecallPlan(should_recall=False)
+
         if source == "perception":
             obs_clauses = _extract_perception_clauses(
                 raw_user,
