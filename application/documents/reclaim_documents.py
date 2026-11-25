@@ -28,16 +28,33 @@ def read_bound_doc_id(session_dir: str | Path) -> str | None:
     return doc_id or None
 
 
-def scan_referenced_doc_ids(history_root: str | Path) -> set[str]:
-    """Scan all live chat history sessions for referenced ``docId`` entries."""
+def scan_referenced_doc_ids(
+    history_root: str | Path,
+    *,
+    extra_session_dirs: Iterable[str | Path] = (),
+) -> set[str]:
+    """Scan live history sessions under ``history_root`` plus registered external dirs."""
     root = Path(history_root)
     referenced: set[str] = set()
-    if not root.is_dir():
-        return referenced
-    for binding_path in root.rglob(DOCUMENT_BINDING_FILENAME):
-        if not binding_path.is_file():
+    scanned_dirs: set[Path] = set()
+    if root.is_dir():
+        for binding_path in root.rglob(DOCUMENT_BINDING_FILENAME):
+            if not binding_path.is_file():
+                continue
+            parent = binding_path.parent.resolve(strict=False)
+            scanned_dirs.add(parent)
+            doc_id = read_bound_doc_id(binding_path.parent)
+            if doc_id:
+                referenced.add(doc_id)
+    for raw_dir in extra_session_dirs:
+        if not raw_dir:
             continue
-        doc_id = read_bound_doc_id(binding_path.parent)
+        session_dir = Path(raw_dir)
+        resolved = session_dir.resolve(strict=False)
+        if resolved in scanned_dirs or not session_dir.is_dir():
+            continue
+        scanned_dirs.add(resolved)
+        doc_id = read_bound_doc_id(session_dir)
         if doc_id:
             referenced.add(doc_id)
     return referenced
@@ -48,12 +65,16 @@ def reclaim_unreferenced_documents(
     *,
     history_root: str | Path | None = None,
     candidate_doc_ids: Iterable[str] | None = None,
+    extra_session_dirs: Iterable[str | Path] = (),
 ) -> tuple[str, ...]:
     """Remove unreferenced content-addressed documents safely under whitelist rules."""
     resolved_history = (
         Path(history_root) if history_root is not None else layout.chat_history_dir
     )
-    referenced = scan_referenced_doc_ids(resolved_history)
+    referenced = scan_referenced_doc_ids(
+        resolved_history,
+        extra_session_dirs=extra_session_dirs,
+    )
     repo = DocumentRepository(layout)
     if candidate_doc_ids is None:
         candidates = [manifest.doc_id for manifest in repo.list_documents()]

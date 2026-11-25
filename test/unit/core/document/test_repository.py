@@ -65,16 +65,63 @@ def test_repository_stale_tmp_cleanup_and_whitelist_delete(tmp_path: Path) -> No
     doc_file.write_text("正文一段足够长的内容来生成文档包。" * 5, encoding="utf-8")
     manifest = repo.ingest_and_store(doc_file)
     doc_dir = layout.document_dir(manifest.doc_id)
-    # Unlisted custom file should block blind directory destruction.
+    # Unlisted custom file must abort removal BEFORE unlinking manifest or any artifact.
     custom = doc_dir / "user_notes.txt"
     custom.write_text("keep", encoding="utf-8")
     assert repo.remove_document(manifest.doc_id) is False
     assert custom.is_file()
-    assert not (doc_dir / "manifest.json").exists()
+    assert (doc_dir / "manifest.json").is_file()
+    assert repo.get_manifest(manifest.doc_id) == manifest
 
     custom.unlink()
     assert repo.remove_document(manifest.doc_id) is True
     assert not doc_dir.exists()
+    # Clean deletion allows re-ingesting the exact same content later.
+    reingested = repo.ingest_and_store(doc_file)
+    assert reingested.doc_id == manifest.doc_id
+    assert repo.get_manifest(manifest.doc_id) == reingested
+
+    # Stale .trash-*.tmp quarantine dirs are also reaped by cleanup_stale_tmp.
+    stale_trash = repo.documents_dir / ".trash-abandoned.tmp"
+    stale_trash.mkdir()
+    (stale_trash / "manifest.json").write_text("{}", encoding="utf-8")
+    os.utime(stale_trash, (old_ts, old_ts))
+    assert repo.cleanup_stale_tmp(max_age_seconds=3600.0) == 1
+    assert not stale_trash.exists()
+
+
+def test_repository_syncs_directories_during_publication(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import core.document.repository as repo_mod
+
+    synced: list[Path] = []
+    renamed: list[tuple[Path, Path, bool]] = []
+    orig_sync = repo_mod.sync_directory
+    orig_rename = repo_mod.durable_rename
+
+    def _spy_sync(directory: Path) -> None:
+        synced.append(directory)
+        orig_sync(directory)
+
+    def _spy_rename(tmp: Path, dst: Path, *, replace: bool = False) -> None:
+        renamed.append((tmp, dst, replace))
+        orig_rename(tmp, dst, replace=replace)
+
+    monkeypatch.setattr(repo_mod, "sync_directory", _spy_sync)
+    monkeypatch.setattr(repo_mod, "durable_rename", _spy_rename)
+
+    layout = StorageLayout(tmp_path)
+    repo = DocumentRepository(layout)
+    book = tmp_path / "durable.txt"
+    book.write_text("第一章 耐久发布\n\n" + ("持久性验证内容。" * 10), encoding="utf-8")
+    manifest = repo.ingest_and_store(book)
+
+    assert len(renamed) == 1
+    assert renamed[0][1] == layout.document_dir(manifest.doc_id)
+    assert renamed[0][2] is False
+    # Staging directory must be synced before publication rename.
+    assert any(path.name.startswith(".ingest-") for path in synced)
 
 
 def test_layout_rejects_invalid_doc_id_and_binds_session_atomically(

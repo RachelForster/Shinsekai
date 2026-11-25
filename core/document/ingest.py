@@ -31,6 +31,7 @@ _LIST_ITEM_RE = re.compile(r"^\s*(?:[-*•·]|\d+[.)、])\s+")
 _TERMINAL_PUNCT = frozenset("。！？!?…….”」』\"'：:")
 _DIALOGUE_OPENERS = frozenset("“「『\"")
 _SUPPORTED_TEXT_SUFFIXES = frozenset({".txt", ".md", ".markdown"})
+_VIRTUAL_CHAPTER_TARGET_CHARS = 5000
 
 
 def compute_doc_id(raw_bytes: bytes) -> str:
@@ -113,7 +114,77 @@ def heal_pdf_line_breaks(text: str) -> str:
     return "\n\n".join(healed_blocks)
 
 
-def detect_chapters(text: str, *, default_title: str = "Document") -> list[ChapterEntry]:
+def _build_virtual_chapters(
+    text: str,
+    *,
+    default_title: str,
+    target_chars: int = _VIRTUAL_CHAPTER_TARGET_CHARS,
+) -> list[ChapterEntry]:
+    total = len(text)
+    if total == 0:
+        return []
+    target = max(500, int(target_chars))
+    if total <= target:
+        return [
+            ChapterEntry(
+                index=0,
+                title=default_title,
+                char_start=0,
+                char_end=total,
+            )
+        ]
+    min_span = max(200, int(target * 0.6))
+    max_span = max(min_span + 100, int(target * 1.25))
+    tail_merge = max(200, target // 4)
+    spans: list[tuple[int, int]] = []
+    pos = 0
+    while pos < total:
+        if total - pos <= max_span:
+            spans.append((pos, total))
+            break
+        ideal = pos + target
+        win_start = pos + min_span
+        win_end = min(total, pos + max_span)
+        cut: int | None = None
+        best_dist = total
+        for sep in ("\n\n", "\n"):
+            search_pos = win_start
+            while search_pos < win_end:
+                idx = text.find(sep, search_pos, win_end)
+                if idx < 0:
+                    break
+                candidate = idx + len(sep)
+                dist = abs(candidate - ideal)
+                if dist < best_dist and candidate < total:
+                    cut = candidate
+                    best_dist = dist
+                search_pos = candidate
+            if cut is not None:
+                break
+        if cut is None:
+            cut = ideal
+        if total - cut < tail_merge and cut < total:
+            cut = total
+        spans.append((pos, cut))
+        pos = cut
+
+    return [
+        ChapterEntry(
+            index=idx,
+            title=default_title if len(spans) == 1 else f"Part {idx + 1}",
+            char_start=start,
+            char_end=end,
+        )
+        for idx, (start, end) in enumerate(spans)
+    ]
+
+
+def detect_chapters(
+    text: str,
+    *,
+    default_title: str = "Document",
+    virtual_chapter_chars: int = _VIRTUAL_CHAPTER_TARGET_CHARS,
+) -> list[ChapterEntry]:
     """Detect chapter headings and compute non-overlapping [start, end) spans."""
     if not text:
         return []
@@ -126,14 +197,11 @@ def detect_chapters(text: str, *, default_title: str = "Document") -> list[Chapt
         offset += len(line) + 1
 
     if not matches:
-        return [
-            ChapterEntry(
-                index=0,
-                title=default_title,
-                char_start=0,
-                char_end=len(text),
-            )
-        ]
+        return _build_virtual_chapters(
+            text,
+            default_title=default_title,
+            target_chars=virtual_chapter_chars,
+        )
 
     chapters: list[ChapterEntry] = []
     if matches[0][0] > 0 and text[: matches[0][0]].strip():
@@ -188,6 +256,7 @@ def _chapters_from_pdf_outline(
     reader: Any,
     page_char_ranges: Sequence[tuple[int, int]],
     total_chars: int,
+    normalized_text: str = "",
 ) -> list[ChapterEntry]:
     raw_entries: list[tuple[int, str]] = []
     try:
@@ -207,6 +276,19 @@ def _chapters_from_pdf_outline(
         return []
 
     chapters: list[ChapterEntry] = []
+    first_page = unique[0][0]
+    first_start = page_char_ranges[first_page][0]
+    if first_start > 0 and (not normalized_text or normalized_text[:first_start].strip()):
+        chapters.append(
+            ChapterEntry(
+                index=0,
+                title="Opening",
+                char_start=0,
+                char_end=first_start,
+                page_start=1,
+                page_end=max(1, first_page),
+            )
+        )
     for idx, (page_idx, title) in enumerate(unique):
         char_start = page_char_ranges[page_idx][0]
         if idx + 1 < len(unique):
@@ -327,7 +409,12 @@ def ingest_pdf(path: Path, *, title: str | None = None, raw_bytes: bytes | None 
         )
 
     resolved_title = str(title or path.stem or path.name).strip() or path.name
-    chapters = _chapters_from_pdf_outline(reader, aligned_ranges, len(normalized))
+    chapters = _chapters_from_pdf_outline(
+        reader,
+        aligned_ranges,
+        len(normalized),
+        normalized_text=normalized,
+    )
     if not chapters:
         chapters = detect_chapters(normalized, default_title=resolved_title)
 

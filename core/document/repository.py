@@ -20,11 +20,13 @@ from core.document.models import (
     SessionDocumentBinding,
 )
 from core.storage.layout import StorageLayout
-from sdk.file_io import durable_rename
+from sdk.file_io import durable_mkdir, durable_rename, sync_directory
 
 logger = logging.getLogger(__name__)
 
 DOCUMENT_BINDING_FILENAME = "document-binding.json"
+_INGEST_DIR_PREFIX = ".ingest-"
+_TRASH_DIR_PREFIX = ".trash-"
 _MANIFEST_FILENAME = "manifest.json"
 _NORMALIZED_TEXT_FILENAME = "normalized.txt"
 _CHAPTERS_FILENAME = "chapters.json"
@@ -37,6 +39,7 @@ _DOC_ARTIFACT_FILES: tuple[str, ...] = (
     _CHUNKS_FILENAME,
     _INDEX_SQLITE_FILENAME,
 )
+_DOC_ARTIFACT_FILE_SET = frozenset(_DOC_ARTIFACT_FILES)
 
 
 def _fsync_write_text(path: Path, text: str) -> None:
@@ -44,6 +47,24 @@ def _fsync_write_text(path: Path, text: str) -> None:
         handle.write(text)
         handle.flush()
         os.fsync(handle.fileno())
+
+
+def _directory_contains_only_allowed(
+    directory: Path,
+    allowed_files: frozenset[str],
+) -> bool:
+    if not directory.is_dir():
+        return False
+    try:
+        entries = list(directory.iterdir())
+    except OSError:
+        return False
+    for entry in entries:
+        if entry.is_dir() and not entry.is_symlink():
+            return False
+        if entry.name not in allowed_files:
+            return False
+    return True
 
 
 def _safe_cleanup_dir(directory: Path, allowed_files: Iterable[str]) -> None:
@@ -73,7 +94,7 @@ class DocumentRepository:
         return self._layout.documents_dir
 
     def cleanup_stale_tmp(self, *, max_age_seconds: float = 3600.0) -> int:
-        """Remove stale ``.ingest-*.tmp`` staging directories left by crashed runs."""
+        """Remove stale ``.ingest-*.tmp`` and ``.trash-*.tmp`` staging dirs."""
         root = self.documents_dir
         if not root.is_dir():
             return 0
@@ -82,7 +103,11 @@ class DocumentRepository:
         for entry in root.iterdir():
             if not entry.is_dir():
                 continue
-            if not (entry.name.startswith(".ingest-") and entry.name.endswith(".tmp")):
+            is_temp_dir = (
+                entry.name.startswith(_INGEST_DIR_PREFIX)
+                or entry.name.startswith(_TRASH_DIR_PREFIX)
+            ) and entry.name.endswith(".tmp")
+            if not is_temp_dir:
                 continue
             try:
                 age = now - entry.stat().st_mtime
@@ -90,9 +115,13 @@ class DocumentRepository:
                 continue
             if age < max_age_seconds:
                 continue
+            if not _directory_contains_only_allowed(entry, _DOC_ARTIFACT_FILE_SET):
+                continue
             _safe_cleanup_dir(entry, _DOC_ARTIFACT_FILES)
             if not entry.exists():
                 removed += 1
+        if removed:
+            sync_directory(root)
         return removed
 
     def ingest_and_store(
@@ -150,9 +179,9 @@ class DocumentRepository:
             },
         )
 
-        self.documents_dir.mkdir(parents=True, exist_ok=True)
+        durable_mkdir(self.documents_dir)
         target_dir = self._layout.document_dir(ingested.doc_id)
-        staging_dir = self.documents_dir / f".ingest-{uuid.uuid4().hex}.tmp"
+        staging_dir = self.documents_dir / f"{_INGEST_DIR_PREFIX}{uuid.uuid4().hex}.tmp"
         staging_dir.mkdir(parents=True, exist_ok=False)
         try:
             _fsync_write_text(
@@ -179,8 +208,9 @@ class DocumentRepository:
                 staging_dir / _MANIFEST_FILENAME,
                 json.dumps(manifest.to_dict(), ensure_ascii=False, indent=2),
             )
+            sync_directory(staging_dir)
             try:
-                os.replace(staging_dir, target_dir)
+                durable_rename(staging_dir, target_dir, replace=False)
             except OSError:
                 concurrent = self.get_manifest(ingested.doc_id)
                 if concurrent is not None:
@@ -259,11 +289,20 @@ class DocumentRepository:
         return None
 
     def remove_document(self, doc_id: str) -> bool:
-        """Delete whitelisted document artifacts inside the validated doc directory."""
+        """Atomically quarantine and delete a validated whitelist-only doc directory."""
         target_dir = self._layout.document_dir(doc_id)
         if not target_dir.is_dir():
             return False
-        _safe_cleanup_dir(target_dir, _DOC_ARTIFACT_FILES)
+        if not _directory_contains_only_allowed(target_dir, _DOC_ARTIFACT_FILE_SET):
+            logger.warning(
+                "Skipping document deletion for %s because unexpected entries are present",
+                doc_id,
+            )
+            return False
+        quarantine_dir = self.documents_dir / f"{_TRASH_DIR_PREFIX}{uuid.uuid4().hex}.tmp"
+        durable_rename(target_dir, quarantine_dir, replace=False)
+        _safe_cleanup_dir(quarantine_dir, _DOC_ARTIFACT_FILES)
+        sync_directory(self.documents_dir)
         return not target_dir.exists()
 
     @staticmethod

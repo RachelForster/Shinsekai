@@ -169,3 +169,64 @@ def test_chunk_document_respects_chapters_quotes_bounds_and_lookahead() -> None:
     for idx in range(len(chunks) - 1):
         assert chunks[idx].lookahead == chunks[idx + 1].text[:120]
     assert chunks[-1].lookahead == ""
+
+
+def test_detect_chapters_generates_virtual_chapters_for_long_headingless_text() -> None:
+    paragraphs = [f"第{i}段测试正文：夜风沿着长廊缓缓吹过，屋檐下的铜铃发出清脆声响。" * 4 for i in range(100)]
+    long_text = "\n\n".join(paragraphs)
+    assert len(long_text) > 10000
+
+    chapters = detect_chapters(long_text, default_title="PlainBook")
+    assert len(chapters) >= 2
+    assert chapters[0].char_start == 0
+    assert chapters[-1].char_end == len(long_text)
+    for idx in range(len(chapters) - 1):
+        assert chapters[idx].char_end == chapters[idx + 1].char_start
+
+    chunks = chunk_document(long_text, chapters, target_chars=800, min_chars=500, max_chars=1300)
+    chapter_indices = {c.chapter_index for c in chunks}
+    assert len(chapter_indices) >= 2
+
+
+def test_pdf_outline_starting_after_page_one_keeps_opening_front_matter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import types
+
+    page1 = "Cover Page Front Matter Introduction. " * 4
+    page2 = "Chapter One Begins Here With Full Text. " * 4
+    pdf_path = tmp_path / "book_with_late_toc.pdf"
+    pdf_path.write_bytes(_build_minimal_pdf([page1, page2]))
+
+    class _Bookmark(dict):
+        title = "Bookmark Chapter 1"
+
+    bm = _Bookmark()
+    orig_pdf_reader = __import__("pypdf").PdfReader
+
+    class _PatchedReader(orig_pdf_reader):
+        @property
+        def outline(self):
+            return [bm]
+
+        def get_destination_page_number(self, item):
+            return 1
+
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "pypdf",
+        types.SimpleNamespace(PdfReader=_PatchedReader),
+    )
+
+    ingested = ingest_document(pdf_path)
+    assert len(ingested.chapters) == 2
+    assert ingested.chapters[0].title == "Opening"
+    assert ingested.chapters[0].char_start == 0
+    assert ingested.chapters[0].page_start == 1
+    assert ingested.chapters[1].title == "Bookmark Chapter 1"
+    assert ingested.chapters[1].char_start == ingested.chapters[0].char_end
+    assert "Front Matter Introduction" in ingested.normalized_text[: ingested.chapters[0].char_end]
+
+    chunks = chunk_document(ingested.normalized_text, ingested.chapters)
+    assert any(c.chapter_index == 0 and "Front Matter Introduction" in c.text for c in chunks)
+    assert any(c.chapter_index == 1 and "Chapter One Begins Here" in c.text for c in chunks)
