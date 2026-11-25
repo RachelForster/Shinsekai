@@ -34,14 +34,26 @@ def scan_referenced_doc_ids(
     extra_session_dirs: Iterable[str | Path] = (),
 ) -> set[str]:
     """Scan live history sessions under ``history_root`` plus registered external dirs."""
-    root = Path(history_root)
     referenced: set[str] = set()
     scanned_dirs: set[Path] = set()
-    if root.is_dir():
-        for binding_path in root.rglob(DOCUMENT_BINDING_FILENAME):
-            if not binding_path.is_file():
+    try:
+        root = Path(history_root)
+        root_is_dir = root.is_dir()
+    except (OSError, ValueError):
+        root = None
+        root_is_dir = False
+    if root is not None and root_is_dir:
+        try:
+            binding_paths = list(root.rglob(DOCUMENT_BINDING_FILENAME))
+        except (OSError, ValueError):
+            binding_paths = []
+        for binding_path in binding_paths:
+            try:
+                if not binding_path.is_file():
+                    continue
+                parent = binding_path.parent.resolve(strict=False)
+            except (OSError, ValueError):
                 continue
-            parent = binding_path.parent.resolve(strict=False)
             scanned_dirs.add(parent)
             doc_id = read_bound_doc_id(binding_path.parent)
             if doc_id:
@@ -49,9 +61,12 @@ def scan_referenced_doc_ids(
     for raw_dir in extra_session_dirs:
         if not raw_dir:
             continue
-        session_dir = Path(raw_dir)
-        resolved = session_dir.resolve(strict=False)
-        if resolved in scanned_dirs or not session_dir.is_dir():
+        try:
+            session_dir = Path(raw_dir)
+            resolved = session_dir.resolve(strict=False)
+            if resolved in scanned_dirs or not session_dir.is_dir():
+                continue
+        except (OSError, ValueError):
             continue
         scanned_dirs.add(resolved)
         doc_id = read_bound_doc_id(session_dir)

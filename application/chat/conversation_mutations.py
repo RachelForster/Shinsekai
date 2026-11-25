@@ -5,12 +5,14 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
+import logging
 from pathlib import Path
 from typing import Any
 
 from application.chat import conversation_library as _lib
 from application.chat.history.paths import (
     _state_project_root,
+    is_unc_history_path,
     resolve_history_path_for_project,
 )
 from application.documents.reclaim_documents import (
@@ -29,6 +31,8 @@ from core.chat_history.storage import (
 )
 from core.document.repository import DOCUMENT_BINDING_FILENAME
 from core.storage.layout import StorageLayout
+
+logger = logging.getLogger(__name__)
 
 
 def rename_conversation(state: Any, conversation_id: str, title: str) -> dict:
@@ -214,11 +218,19 @@ def _registered_session_dirs(state: Any) -> tuple[Path, ...]:
         raw = str(raw_path or "").strip()
         if not raw:
             return
-        session_dir = chat_history_session_dir(Path(raw))
-        resolved = session_dir.resolve(strict=False)
-        if resolved not in seen:
-            seen.add(resolved)
-            session_dirs.append(session_dir)
+        try:
+            resolved_history = resolve_history_path_for_project(state, raw)
+            if is_unc_history_path(resolved_history):
+                return
+            session_dir = chat_history_session_dir(resolved_history)
+            if not session_dir.is_dir():
+                return
+            canonical = session_dir.resolve(strict=False)
+        except (OSError, ValueError):
+            return
+        if canonical not in seen:
+            seen.add(canonical)
+            session_dirs.append(canonical)
 
     store = _lib._conversation_store(state)
     if store is not None:
@@ -231,8 +243,9 @@ def _registered_session_dirs(state: Any) -> tuple[Path, ...]:
                 value = _lib._read(file)
                 if isinstance(value, dict):
                     _add(value.get("historyPath"))
-    active_history = getattr(state, "chat_session", {}).get("historyPath")
-    _add(active_history)
+    chat_session = getattr(state, "chat_session", None)
+    if isinstance(chat_session, Mapping):
+        _add(chat_session.get("historyPath"))
     return tuple(session_dirs)
 
 
@@ -244,16 +257,23 @@ def _reclaim_documents_for_state(
     ids = tuple(candidate_doc_ids or ())
     if candidate_doc_ids is not None and not ids:
         return ()
-    layout = StorageLayout(_state_project_root(state))
-    history_root = Path(
-        getattr(state, "history_dir", None) or layout.chat_history_dir
-    )
-    return reclaim_unreferenced_documents(
-        layout,
-        history_root=history_root,
-        candidate_doc_ids=ids if candidate_doc_ids is not None else None,
-        extra_session_dirs=_registered_session_dirs(state),
-    )
+    try:
+        layout = StorageLayout(_state_project_root(state))
+        history_root = Path(
+            getattr(state, "history_dir", None) or layout.chat_history_dir
+        )
+        return reclaim_unreferenced_documents(
+            layout,
+            history_root=history_root,
+            candidate_doc_ids=ids if candidate_doc_ids is not None else None,
+            extra_session_dirs=_registered_session_dirs(state),
+        )
+    except Exception:
+        logger.warning(
+            "Failed to reclaim unreferenced documents after conversation mutation",
+            exc_info=True,
+        )
+        return ()
 
 
 def delete_conversation(state: Any, conversation_id: str) -> None:
@@ -319,6 +339,7 @@ _DEFERRED_DOC_RECLAIM_CANDIDATES: ContextVar[list[str] | None] = ContextVar(
 @contextmanager
 def deferred_document_reclamation(state: Any) -> Iterator[None]:
     """Defer shared-document GC until an outer multi-history transaction commits."""
+    outer = _DEFERRED_DOC_RECLAIM_CANDIDATES.get()
     candidates: list[str] = []
     token = _DEFERRED_DOC_RECLAIM_CANDIDATES.set(candidates)
     succeeded = False
@@ -327,5 +348,9 @@ def deferred_document_reclamation(state: Any) -> Iterator[None]:
         succeeded = True
     finally:
         _DEFERRED_DOC_RECLAIM_CANDIDATES.reset(token)
-    if succeeded and candidates:
-        _reclaim_documents_for_state(state, candidate_doc_ids=candidates)
+    if not (succeeded and candidates):
+        return
+    if outer is not None:
+        outer.extend(candidates)
+        return
+    _reclaim_documents_for_state(state, candidate_doc_ids=candidates)
