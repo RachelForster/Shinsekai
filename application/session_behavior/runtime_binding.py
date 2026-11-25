@@ -1,8 +1,14 @@
-"""Runtime worker and OpenCC resolution helpers for SessionBehavior."""
+"""Runtime worker, turn admission, and OpenCC resolution helpers for SessionBehavior."""
 
 from __future__ import annotations
 
 from typing import Any
+
+from application.chat.capabilities.contracts import (
+    BaseTurnContextProvider,
+    TurnAdmissionDecision,
+    TurnAdmissionRequest,
+)
 
 
 def resolve_ui_worker(runtime_components: Any, app_runtime: Any) -> Any | None:
@@ -84,7 +90,26 @@ def resolve_opencc(runtime_components: Any, app_runtime: Any) -> Any | None:
         return None
 
 
+class BehaviorTurnContextProvider(BaseTurnContextProvider):
+    """Enforce active SessionBehavior free-text policy at LLMWorker admission."""
+
+    capability_id = "session_behavior"
+
+    def __init__(self, capability: Any) -> None:
+        self._capability = capability
+
+    def admit_turn(
+        self,
+        request: TurnAdmissionRequest,
+    ) -> TurnAdmissionDecision | None:
+        source = str(request.source or "user").strip() or "user"
+        if source == "user" and not self._capability.is_free_text_allowed():
+            return TurnAdmissionDecision(admitted=False, record_user_message=False)
+        return None
+
+
 __all__ = [
+    "BehaviorTurnContextProvider",
     "resolve_character_media_handler",
     "resolve_opencc",
     "resolve_ui_worker",

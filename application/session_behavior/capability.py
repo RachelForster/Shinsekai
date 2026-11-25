@@ -9,16 +9,14 @@ from typing import Any
 
 from application.chat.capabilities.contracts import (
     BaseSessionCapability,
-    BaseTurnContextProvider,
     SessionRuntimeCapabilityContext,
     StreamingWiringCapabilityContext,
-    TurnAdmissionDecision,
-    TurnAdmissionRequest,
     TurnContextProvider,
 )
 from application.session_behavior.casting import CastingMap
 from application.session_behavior.prefetch import SpeculativePrefetchCoordinator
 from application.session_behavior.runtime_binding import (
+    BehaviorTurnContextProvider,
     resolve_character_media_handler,
     resolve_opencc,
     resolve_ui_worker,
@@ -71,7 +69,7 @@ class SessionBehaviorCapability(BaseSessionCapability):
         self._idempotency = CommandIdempotencyCache(max_entries=128)
         self._compact_hook_registered = False
         self._last_envelope: BehaviorStateEnvelope | None = None
-        self._turn_provider = _BehaviorTurnContextProvider(self)
+        self._turn_provider = BehaviorTurnContextProvider(self)
 
     @property
     def behavior(self) -> SessionBehavior | None:
@@ -481,24 +479,6 @@ class SessionBehaviorCapability(BaseSessionCapability):
     def on_shutdown(self) -> None:
         if self._prefetch is not None:
             self._prefetch.shutdown()
-
-
-class _BehaviorTurnContextProvider(BaseTurnContextProvider):
-    """Enforce active SessionBehavior free-text policy at LLMWorker admission."""
-
-    capability_id = "session_behavior"
-
-    def __init__(self, capability: SessionBehaviorCapability) -> None:
-        self._capability = capability
-
-    def admit_turn(
-        self,
-        request: TurnAdmissionRequest,
-    ) -> TurnAdmissionDecision | None:
-        source = str(request.source or "user").strip() or "user"
-        if source == "user" and not self._capability.is_free_text_allowed():
-            return TurnAdmissionDecision(admitted=False, record_user_message=False)
-        return None
 
 
 __all__ = ["SessionBehaviorCapability"]
