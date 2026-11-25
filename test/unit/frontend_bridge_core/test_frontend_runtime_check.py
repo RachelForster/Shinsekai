@@ -282,6 +282,7 @@ def test_desktop_core_runtime_check_does_not_import_optional_packages(tmp_path):
             "packaging": "24.2",
             "pygame": "2.5.7",
             "pygame-ce": "2.5.7",
+            "pypdf": "5.0.0",
             "pyqt-toast-notification": "1.3.3",
             "py7zz": "1.1.4",
             "qrcode": "8.2",
