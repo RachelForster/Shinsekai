@@ -12,6 +12,12 @@ from ai.llm.template.perception import (
     render_proactive_collapsed_history,
 )
 from core.chat_history.identity import CHAT_TURN_ID
+from core.chat_history.models import (
+    PERCEPTION_SOURCE,
+    is_compact_summary_message,
+    is_synthetic_internal_message,
+    is_synthetic_internal_source,
+)
 from core.perception.cache import PERCEPTION_CONTEXT_MARKER, RPInputCache
 from core.perception.gatekeeper import PerceptionGatekeeper
 from sdk.hooks import BeforeChatContext, MessageAddedContext, PluginHookDispatcher
@@ -56,7 +62,11 @@ class PerceptionAutoHooks:
 
     def prepare_turn(self, turn_id: str, source: str) -> bool:
         """Take one snapshot for the dequeued chat event, shared by every request in the turn."""
-        proactive = source == "perception"
+        if is_synthetic_internal_source(source) and source != PERCEPTION_SOURCE:
+            self._turn_id = turn_id
+            self._turn_context = ""
+            return True
+        proactive = source == PERCEPTION_SOURCE
         self._turn_id = turn_id
         self._turn_context = ""
         active_locale = self._active_locale()
@@ -85,6 +95,8 @@ class PerceptionAutoHooks:
             return
         content = user.get("content")
         if PERCEPTION_CONTEXT_MARKER in str(content or ""):
+            return
+        if is_synthetic_internal_message(user) and user.get("source") != PERCEPTION_SOURCE:
             return
         turn_id = user.get(CHAT_TURN_ID)
         if turn_id:
@@ -119,7 +131,11 @@ class PerceptionAutoHooks:
     def message_added(self, context: MessageAddedContext) -> None:
         role = str(context.role or "")
         message: dict[str, Any] = context.message or {}
-        is_real_user = role == "user" and message.get("source") != "perception"
+        is_real_user = (
+            role == "user"
+            and not is_synthetic_internal_message(message)
+            and not is_compact_summary_message(message)
+        )
         if role == "assistant" or is_real_user:
             self.gatekeeper.notify_conversation_activity(from_user=is_real_user)
 

@@ -63,7 +63,14 @@ class PerceptionTurnContextProvider(BaseTurnContextProvider):
         self,
         request: TurnAdmissionRequest,
     ) -> TurnAdmissionDecision | None:
+        from core.chat_history.models import PERCEPTION_SOURCE, is_synthetic_internal_source
+
         source = str(request.source or "user").strip() or "user"
+        if is_synthetic_internal_source(source) and source != PERCEPTION_SOURCE:
+            return TurnAdmissionDecision(
+                admitted=True,
+                record_user_message=False,
+            )
         if not self.hooks.prepare_turn(request.history_turn_id, source):
             return TurnAdmissionDecision(
                 admitted=False,

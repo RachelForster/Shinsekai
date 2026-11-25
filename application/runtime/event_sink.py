@@ -307,6 +307,11 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
             next_snapshot["story"] = dict(story)
         return next_snapshot
 
+    if event_type == "behavior.state.replace":
+        behavior = event.get("behavior")
+        next_snapshot["behavior"] = dict(behavior) if isinstance(behavior, dict) else None
+        return next_snapshot
+
     if event_type in {"story.node.entered", "story.node.unlocked", "story.cast.replace", "story.ending.reached"}:
         story = dict(next_snapshot.get("story") or {})
         payload = event.get("payload")

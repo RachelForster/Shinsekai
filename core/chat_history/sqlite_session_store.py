@@ -15,6 +15,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+from core.chat_history.behavior_state_store import ensure_behavior_state_schema
 from core.chat_history.models import (
     CompactCheckpoint,
     MEMORY_MODE_ISOLATED,
@@ -353,6 +354,7 @@ class SqliteSessionStore:
         with self._write_lock:
             with self._store._borrow_conn() as conn:
                 conn.executescript(_SESSION_DDL)
+                ensure_behavior_state_schema(conn)
                 conn.execute(
                     "INSERT OR IGNORE INTO session_meta(key, value) VALUES (?, ?)",
                     (_META_SCHEMA_VERSION, SESSION_SCHEMA_VERSION),
@@ -678,6 +680,17 @@ class SqliteSessionStore:
                         (b, cutoff),
                     )
                 deleted_checkpoints = int(cur_cp.rowcount or 0)
+                if cutoff == 0:
+                    conn.execute(
+                        "DELETE FROM session_state_snapshots "
+                        "WHERE branch_id = ? AND (turn_seq > 0 OR state_version > 1)",
+                        (b,),
+                    )
+                else:
+                    conn.execute(
+                        "DELETE FROM session_state_snapshots WHERE branch_id = ? AND turn_seq > ?",
+                        (b, cutoff),
+                    )
 
                 latest_row = conn.execute(
                     "SELECT outfit_snapshot_json FROM turns "
@@ -723,10 +736,18 @@ class SqliteSessionStore:
                         "DELETE FROM session_meta WHERE key LIKE 'system_prompt:%'"
                     )
                     conn.execute("DELETE FROM memories")
+                    conn.execute(
+                        "DELETE FROM session_state_snapshots WHERE turn_seq > 0 OR state_version > 1"
+                    )
                 else:
                     b = str(branch_id or "main").strip() or "main"
                     conn.execute("DELETE FROM turns WHERE branch_id = ?", (b,))
                     conn.execute("DELETE FROM compact_checkpoints WHERE branch_id = ?", (b,))
+                    conn.execute(
+                        "DELETE FROM session_state_snapshots "
+                        "WHERE branch_id = ? AND (turn_seq > 0 OR state_version > 1)",
+                        (b,),
+                    )
                     conn.execute(
                         "DELETE FROM session_meta WHERE key = ?",
                         (self._sys_prompt_key(b),),

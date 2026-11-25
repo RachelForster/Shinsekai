@@ -36,6 +36,7 @@ import type { ChatStageEffectImage } from "../state/types";
 import { classNames, hideBrokenStageAsset, layerClassName, stageAssetUrl } from "../chatStageUtils";
 import type { DialogHtmlNode, DialogHtmlStyleProperty } from "../dialogTypewriter";
 import { chatStageSpriteAxisCenter, chatStageSpriteCharacterName } from "../state/sprites";
+import { chatOptionKey } from "../state/behaviorCommands";
 import { Portrait } from "../../../shared/components/Portrait";
 import type { PlayerPortrait } from "../../../shared/platform/types";
 
@@ -451,7 +452,7 @@ export function OptionsLayer({
           const label = typeof option === "string" ? option : option.label;
           const disabled = readOnly || (typeof option !== "string" && !option.enabled);
           const selected = readOnly && selectedIndex === index;
-          const key = typeof option === "string" ? option : `${option.expectedRevision}:${option.id}`;
+          const key = chatOptionKey(option);
           return (
             <div
               className="options-layer__item"

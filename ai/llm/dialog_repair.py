@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import copy
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any, Protocol
 
 from ai.llm.template.integrations.localization import LocaleInput, resolve_dynamic_locale
@@ -19,12 +19,16 @@ def _repair_prompt(
     media_field: str,
     *,
     retry: bool,
+    allow_unbound_speakers: bool = False,
+    bound_speakers: Sequence[str] = (),
     locale: LocaleInput = None,
 ) -> str:
     return DIALOG_REPAIR_PROMPT_SPEC.render_user(
         DialogRepairPromptContext(
             media_field=media_field,
             retry=retry,
+            allow_unbound_speakers=allow_unbound_speakers,
+            bound_speakers=tuple(bound_speakers),
             locale=resolve_dynamic_locale(locale),
         )
     )
@@ -71,10 +75,16 @@ def repair_dialog_output(
     event_logger: logging.Logger,
     max_attempts: int = 2,
     media_selection_mode: str = "indexed",
+    speaker_requires_media: Callable[[str], bool] | None = None,
+    bound_speakers: Sequence[str] = (),
     locale: LocaleInput = None,
 ) -> str:
     """Repair malformed dialogue JSON without mutating persisted chat history."""
-    if has_valid_dialog_output(content, media_selection_mode=media_selection_mode):
+    if has_valid_dialog_output(
+        content,
+        media_selection_mode=media_selection_mode,
+        speaker_requires_media=speaker_requires_media,
+    ):
         return content
 
     attempts = max(1, int(max_attempts))
@@ -91,7 +101,13 @@ def repair_dialog_output(
             if str(media_selection_mode or "").strip().lower() == "semantic"
             else "sprite"
         )
-        prompt = _repair_prompt(media_field, retry=attempt > 0, locale=locale)
+        prompt = _repair_prompt(
+            media_field,
+            retry=attempt > 0,
+            allow_unbound_speakers=speaker_requires_media is not None,
+            bound_speakers=bound_speakers,
+            locale=locale,
+        )
         repair_messages.append({"role": "user", "content": prompt})
         try:
             response = adapter.chat(
@@ -129,6 +145,7 @@ def repair_dialog_output(
         if has_valid_dialog_output(
             repaired,
             media_selection_mode=media_selection_mode,
+            speaker_requires_media=speaker_requires_media,
         ):
             event_logger.warning(
                 "Recovered malformed LLM dialogue output with a tool-free JSON repair request",

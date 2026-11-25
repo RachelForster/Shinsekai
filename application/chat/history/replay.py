@@ -17,6 +17,7 @@ from application.chat.history.paths import resolve_history_path_for_project
 from application.chat.history.state import canonical_user_turn_payload
 from application.chat.history.replay_store import ReplayStore, replay_dialog_inputs, replay_history_messages
 from application.chat.voice_archive import VoiceArchive
+from core.chat_history.models import is_real_user_turn_message
 from core.chat_history.storage import chat_history_active_path, chat_history_db_path, legacy_active_history_branch
 from core.chat_history.text import strip_local_time_prefix
 from core.messaging.dialog_tokens import is_option_history_name
@@ -84,7 +85,7 @@ class ChatReplayService:
         store = ReplayStore(path)
         messages = replay_history_messages(chat_history_active_path(path))
         legacy_by_id, legacy_by_text, speech_by_id, speech_by_text = replay_dialog_inputs(messages)
-        users = [message for message in messages if message.get("role") == "user"]
+        users = [message for message in messages if is_real_user_turn_message(message)]
         archive = VoiceArchive(path)
         config = self.state.config_manager
         url, work_path, provider = config.get_gpt_sovits_config()
