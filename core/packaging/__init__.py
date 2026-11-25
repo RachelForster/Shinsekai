@@ -25,6 +25,12 @@ from core.packaging.zip_io import (
     resolve_underscore_conflict,
     rollback_staged_assets,
 )
+from core.packaging.vn_export_package import (
+    VnExportOptions,
+    VnExportResult,
+    VnRawEntry,
+    export_playable_vn_package,
+)
 
 __all__ = [
     "RESERVED_BACKGROUND_PACKAGE_FIELDS",
@@ -33,9 +39,13 @@ __all__ = [
     "StagedBackgroundImport",
     "StagedCharacterImport",
     "StagedEffectImport",
+    "VnExportOptions",
+    "VnExportResult",
+    "VnRawEntry",
     "export_background_package",
     "export_character_package",
     "export_effect_package",
+    "export_playable_vn_package",
     "resolve_name_conflict",
     "resolve_sprite_prefix_conflict",
     "resolve_underscore_conflict",

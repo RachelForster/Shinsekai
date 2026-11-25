@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from scripts.portable.assembler import BundleReport, build_portable_bundle, read_version
-from scripts.portable.audit import audit_portable_bundle
+import importlib
+from typing import TYPE_CHECKING, Any
+
 from scripts.portable.targets import (
     DEFAULT_LLAMA_CPP_TAG,
     DEFAULT_MODELS,
@@ -16,6 +17,31 @@ from scripts.portable.targets import (
     infer_host_target,
     resolve_target,
 )
+
+if TYPE_CHECKING:
+    from scripts.portable.assembler import BundleReport, build_portable_bundle, read_version
+    from scripts.portable.audit import audit_portable_bundle
+
+_LAZY_EXPORTS: dict[str, tuple[str, str]] = {
+    "BundleReport": ("scripts.portable.assembler", "BundleReport"),
+    "build_portable_bundle": ("scripts.portable.assembler", "build_portable_bundle"),
+    "read_version": ("scripts.portable.assembler", "read_version"),
+    "audit_portable_bundle": ("scripts.portable.audit", "audit_portable_bundle"),
+}
+
+
+def __getattr__(name: str) -> Any:
+    target = _LAZY_EXPORTS.get(name)
+    if target is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module_name, attr_name = target
+    value = getattr(importlib.import_module(module_name), attr_name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(__all__))
 
 __all__ = [
     "BundleReport",

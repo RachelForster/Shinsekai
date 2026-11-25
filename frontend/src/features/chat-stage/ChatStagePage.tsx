@@ -1398,6 +1398,7 @@ export function ChatStagePage() {
           onSaveVoice={(voiceId) => void sendCommand({ payload: voiceId, type: "save-history-voice" })}
           onToggleVoiceArchive={(enabled) => void sendCommand({ payload: enabled, type: "set-voice-archive" })}
           open={historyDialogOpen && !historyExport}
+          sessionId={state.sessionId}
           userDisplayName={viewModel.userDisplayName}
           voiceArchiveEnabled={state.voiceArchiveEnabled === true}
         />

@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import subprocess
+import sys
+import textwrap
 
 import pytest
 import yaml
@@ -368,3 +371,68 @@ def test_portable_workflow_uses_prefer_binary_for_embedded_pip_install() -> None
         encoding="utf-8"
     )
     assert "pip install --prefer-binary -r requirements-runtime-core.txt" in workflow_text
+
+
+def test_publish_and_plan_modules_import_without_app_dependencies() -> None:
+    # Reproduce the clean publish runner where only stdlib + upload SDKs exist.
+    script = textwrap.dedent(
+        """
+        import builtins
+
+        blocked = ("numpy", "yaml", "pydantic", "ai", "core", "PySide6")
+        real_import = builtins.__import__
+
+        def guarded_import(name, globals=None, locals=None, fromlist=(), level=0):
+            if level == 0 and (
+                name in blocked or any(name.startswith(prefix + ".") for prefix in blocked)
+            ):
+                raise ModuleNotFoundError(name)
+            return real_import(name, globals, locals, fromlist, level)
+
+        builtins.__import__ = guarded_import
+
+        from scripts.portable.archive import compute_sha256
+        from scripts.portable.hub_providers import UploadTargetConfig
+        from scripts.portable.plan_matrix import CATALOG
+        from scripts.portable.upload_artifacts import _parse_args
+
+        args = _parse_args(["--release-prefix", "v2.7.0"])
+        assert args.release_prefix == "v2.7.0"
+        assert "linux-x64" in CATALOG
+        assert UploadTargetConfig("huggingface", True, "tok", "o/r").configured
+        assert callable(compute_sha256)
+        """
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+
+    cli_proc = subprocess.run(
+        [sys.executable, "-S", str(REPO_ROOT / "scripts" / "portable" / "upload_artifacts.py"), "--help"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert cli_proc.returncode == 0, cli_proc.stderr or cli_proc.stdout
+    assert "--release-prefix" in cli_proc.stdout
+
+    import scripts.portable as portable
+    from scripts.portable.hub_providers import _is_already_exists_error
+
+    assert portable.BundleReport.__name__ == "BundleReport"
+    assert callable(portable.build_portable_bundle)
+    assert callable(portable.read_version)
+    assert callable(portable.audit_portable_bundle)
+    assert "build_portable_bundle" in dir(portable)
+    with pytest.raises(AttributeError):
+        getattr(portable, "nonexistent_portable_symbol")
+
+    assert _is_already_exists_error(RuntimeError("repo already exists")) is True
+    assert _is_already_exists_error(RuntimeError("仓库已存在")) is True
+    assert _is_already_exists_error(RuntimeError("permission denied")) is False

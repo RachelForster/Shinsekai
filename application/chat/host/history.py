@@ -75,7 +75,9 @@ def _serialize_history_entries_from_messages(
     if not isinstance(messages, list):
         return []
     from core.chat_history.identity import CHAT_TURN_ID, DialogIdentities
+
     entries: list[dict[str, Any]] = []
+    identities = DialogIdentities()
     user_index = 0
     row_index = 0
     user_name = (
@@ -86,7 +88,10 @@ def _serialize_history_entries_from_messages(
             continue
         role = str(message.get("role") or "").strip()
         if role == "user":
-            if is_synthetic_internal_message(message) or is_compact_summary_message(message):
+            if is_compact_summary_message(message):
+                continue
+            identities = DialogIdentities(str(message.get(CHAT_TURN_ID) or ""))
+            if is_synthetic_internal_message(message):
                 continue
             text = str(
                 message.get("display_content") or message.get("content") or ""
@@ -108,7 +113,9 @@ def _serialize_history_entries_from_messages(
             continue
         if role != "assistant":
             continue
-        identities = DialogIdentities(str(message.get(CHAT_TURN_ID) or ""))
+        explicit_turn_id = str(message.get(CHAT_TURN_ID) or "")
+        if explicit_turn_id and explicit_turn_id != identities.turn_id:
+            identities = DialogIdentities(explicit_turn_id)
         for item in parse_assistant_dialog_content(message.get("content", "")):
             if not isinstance(item, dict):
                 continue
