@@ -47,6 +47,7 @@ import type { ApiConfig, AppConfig, SystemConfig } from "../slices/configTypes";
 import type { TemplateLaunchSession, TemplateSummary, UserPromptPresetLibrary } from "../slices/workspaceTypes";
 import type { ShinsekaiPlatform } from "../types";
 import { getPlatform } from "../platform";
+import { PlatformRequestError } from "../errors";
 import { isStandaloneRuntimeActive, type RuntimeTarget } from "../runtimeTarget";
 import { sampleConfig } from "../sampleData";
 import { buildStandaloneAdapterCatalog, resolveLlmAdapter } from "./ai/adapters/registry";
@@ -996,6 +997,9 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
     },
     async cancelReplay() {},
     async controlReplay() {},
+    async exportPlayableVn() {
+      throw new PlatformRequestError(tr("error.local_app_required"), 400, "local_app_required");
+    },
     async getTheme() {
       return { raw: {}, themeColor: ctx.config.system_config.theme_color || "#18181b" };
     },

@@ -484,6 +484,7 @@ describe("entity repositories", () => {
         generateReplayVoice: vi.fn(),
         cancelReplay: vi.fn(),
         controlReplay: vi.fn(),
+        exportPlayableVn: vi.fn(),
         getReplay: vi.fn(),
         getRuntimeStatus: vi.fn().mockResolvedValue({
           chatProcessRunning: false,

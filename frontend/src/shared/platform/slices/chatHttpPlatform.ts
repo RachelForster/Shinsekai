@@ -16,6 +16,7 @@ import type {
   ChatSnapshot,
   ChatStageEvent,
   ChatUpstreamCommand,
+  ChatVnExportResult,
   StoryPlatform,
 } from "./chatTypes";
 import type { StoryGenerationTask } from "./storyTypes";
@@ -128,6 +129,13 @@ export function createChatHttpPlatform(transport: HttpTransport): ChatPlatform {
         method: "POST",
         body: JSON.stringify(control),
       });
+    },
+    exportPlayableVn: async (input) => {
+      const res = await requestJson<ChatVnExportResult>("/api/chat/export-vn", {
+        method: "POST",
+        body: JSON.stringify(input),
+      });
+      return res.downloadUrl ? { ...res, downloadUrl: bridgeUrl(res.downloadUrl) } : res;
     },
     getHistoryVoice: async (voiceId) => {
       const { segmentCount } = await requestJson<{ segmentCount: number }>(

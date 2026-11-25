@@ -1,3 +1,5 @@
+import { chatVnExportZhCNMessages } from "./chatVnExport";
+
 export const chatZhCNMessages = {
   "chat.history.selection.enter": "回放/分享",
   "chat.history.selection.message": "选择第 {index} 条消息",
@@ -439,6 +441,7 @@ export const chatZhCNMessages = {
   "chat.cg.saveFailed": "保存 CG 失败",
   "chat.cg.exit": "退出",
   "chat.cg.exitLabel": "退出 CG",
+  ...chatVnExportZhCNMessages,
 } satisfies Record<string, string>;
 
 export type ChatMessageKey = keyof typeof chatZhCNMessages;
