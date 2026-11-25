@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 
 import type { ChatStageSprite } from "./chatState";
+import { resolveVnDialogViewportStyle, type StageViewportState } from "./dialogViewportLayout";
 import { DEFAULT_MINI_INPUT_SHORTCUT, normalizeMiniInputShortcut } from "./miniInputShortcut";
 import { normalizeVisualFraming, type VisualFraming } from "../../modules/character-visual";
 import {
@@ -718,6 +719,7 @@ export function chatStageRuntimeStyle(
   config: ChatStageRuntimeConfig,
   themeStyle: CSSProperties,
   mainThemeColor = DEFAULT_THEME_COLOR,
+  viewport?: StageViewportState | null,
 ): CSSProperties {
   const configAccent = normalizeThemeColor(config.configUseMainThemeColor ? mainThemeColor : config.configThemeColor);
   const dialogFillBackground = runtimeDialogFillBackground(config.dialogFill);
@@ -750,6 +752,13 @@ export function chatStageRuntimeStyle(
           "--chat-dialog-max-width": dialogLayoutWidth,
           "--chat-dialog-responsive-width": dialogLayoutWidth,
         };
+  const vnViewportStyle = resolveVnDialogViewportStyle({
+    config,
+    defaultConfig: defaultChatStageRuntimeConfig,
+    dialogComposedScale,
+    themeStyle,
+    viewport,
+  });
   return {
     ...themeStyle,
     "--chat-config-accent": configAccent,
@@ -814,5 +823,6 @@ export function chatStageRuntimeStyle(
     "--chat-toolbar-runtime-scale": String(windowScale),
     "--chat-ui-runtime-width": "1120px",
     "--chat-ui-window-scale": String(windowScale),
+    ...vnViewportStyle,
   } as CSSProperties;
 }

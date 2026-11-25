@@ -67,6 +67,7 @@ import { StoryDebugPanel } from "./components/StoryDebugPanel";
 import "./chat-stage.css";
 import { buildChatStageViewModel, chatStageReducer, emptyChatState } from "./chatState";
 import { isRemoteMobileAccessPage, layerClassName, stageAssetUrl } from "./chatStageUtils";
+import { shouldApplyVnDialogAdaptation } from "./dialogViewportLayout";
 import { useChatStageCommands } from "./hooks/useChatStageCommands";
 import { useChatStageEvents } from "./hooks/useChatStageEvents";
 import { useChatStageKeyboardShortcuts } from "./hooks/useChatStageKeyboardShortcuts";
@@ -77,6 +78,7 @@ import { useDialogTypewriter } from "./hooks/useDialogTypewriter";
 import { useMainThemeColor } from "./hooks/useMainThemeColor";
 import { useRecentUserInputs } from "./hooks/useRecentUserInputs";
 import { useScreenShareCapture } from "./hooks/useScreenShareCapture";
+import { useStageViewport } from "./hooks/useStageViewport";
 import { useChatSubmissionFocus } from "./hooks/useChatSubmissionFocus";
 import {
   chatStageRuntimeStyle,
@@ -263,10 +265,6 @@ export function ChatStagePage() {
   );
   const theme = useOptionalChatTheme();
   const themeStyle = theme?.style ?? {};
-  const stageStyle = useMemo(
-    () => chatStageRuntimeStyle(runtimeConfig, themeStyle, mainThemeColor),
-    [mainThemeColor, runtimeConfig, themeStyle],
-  );
   const effectiveDialogText = useMemo(
     () =>
       effectiveChatStageTextStyle(
@@ -398,6 +396,13 @@ export function ChatStagePage() {
       (typingDialog && viewModel.layers.dialog && !viewModel.layers.options),
     sessionId: state.sessionId,
   });
+  const stageViewport = useStageViewport(stageRef);
+  const activeStageViewport = miniAvatarActive ? null : stageViewport;
+  const vnDialogActive = shouldApplyVnDialogAdaptation(activeStageViewport);
+  const stageStyle = useMemo(
+    () => chatStageRuntimeStyle(runtimeConfig, themeStyle, mainThemeColor, activeStageViewport),
+    [activeStageViewport, mainThemeColor, runtimeConfig, themeStyle],
+  );
   const {
     handleStageContextMenu,
     handleStageFocus,
@@ -1044,7 +1049,15 @@ export function ChatStagePage() {
       observer?.disconnect();
       stage.style.removeProperty("--chat-dialog-toolbar-clearance");
     };
-  }, [activeReplay, dialogSurfaceVisible, dialogToolbarPlacement, miniAvatarActive, runtimeConfig.windowScale]);
+  }, [
+    activeReplay,
+    dialogSurfaceVisible,
+    dialogToolbarPlacement,
+    miniAvatarActive,
+    runtimeConfig.windowScale,
+    stageViewport.height,
+    stageViewport.width,
+  ]);
 
   const dialogToolbar = activeReplay ? (
     <ReplayControls
@@ -1103,6 +1116,7 @@ export function ChatStagePage() {
         ref={stageRef}
         className="chat-stage"
         data-mini-avatar={miniAvatarActive ? "true" : "false"}
+        data-viewport-vn={vnDialogActive ? "true" : "false"}
         data-standalone={standalone ? "true" : "false"}
         data-replaying={activeReplay || state.replay ? "true" : undefined}
         data-replay-recording={capturingReplay ? "true" : undefined}
