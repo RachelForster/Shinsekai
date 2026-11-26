@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import re
 import zipfile
@@ -266,3 +267,36 @@ def test_export_preserves_sparse_slots_and_player_sorts_slots(
     player_js = player_files[0].read_text(encoding="utf-8")
     assert "spriteAxisCenter(rank, valid.length)" in player_js
     assert "valid.sort(" in player_js
+
+
+def test_publish_directory_recovers_backups_with_glob_metacharacters(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from core.packaging.vn_export_package import _publish_directory
+
+    out_dir = tmp_path / "vn_out[ch1]"
+    orphaned_backup = tmp_path / ".vn_out[ch1].bak.crashed"
+    orphaned_backup.mkdir(parents=True)
+    (orphaned_backup / "recovered.txt").write_text("ok", encoding="utf-8")
+
+    stage_bad = tmp_path / "stage_bad"
+    stage_bad.mkdir()
+    real_replace = os.replace
+
+    def fail_swap(src_p, dst_p):
+        if Path(dst_p) == out_dir and Path(src_p).name.startswith(".vn_out[ch1].tmp."):
+            raise OSError("simulated swap failure")
+        return real_replace(src_p, dst_p)
+
+    monkeypatch.setattr("core.packaging.vn_export_package.os.replace", fail_swap)
+    with pytest.raises(OSError):
+        _publish_directory(stage_bad, out_dir)
+    assert (out_dir / "recovered.txt").read_text(encoding="utf-8") == "ok"
+
+    monkeypatch.undo()
+    stage_good = tmp_path / "stage_good"
+    stage_good.mkdir()
+    (stage_good / "index.html").write_text("<html></html>", encoding="utf-8")
+    _publish_directory(stage_good, out_dir)
+    assert (out_dir / "index.html").is_file()
+    assert not any(p.name.startswith(".vn_out[ch1].bak.") for p in tmp_path.iterdir())

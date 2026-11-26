@@ -181,4 +181,82 @@ describe("VnExportDialog", () => {
       );
     });
   });
+
+  it("keeps the frozen selection snapshot even when session or entries change while VnExportDialog is open", async () => {
+    vi.mocked(chatRepo.exportPlayableVn).mockResolvedValue({
+      path: "output/vn_exports/frozen.zip",
+      format: "zip",
+      entryCount: 2,
+      assetCount: 0,
+      voiceCount: 0,
+      transcodedVoiceCount: 0,
+      skippedNonStaticSprites: 0,
+      totalBytes: 1024,
+      indexHtmlBytes: 512,
+      warnings: [],
+    });
+
+    const baseProps = {
+      loading: false,
+      onClear: vi.fn(),
+      onClose: vi.fn(),
+      onExportImage: vi.fn(),
+      onRefresh: vi.fn(),
+      onReplayVoice: vi.fn(),
+      onRevert: vi.fn(),
+      onSaveVoice: vi.fn(),
+      onToggleVoiceArchive: vi.fn(),
+      open: true,
+      recordAudio: () => ({ start: vi.fn(), stop: vi.fn() }) as never,
+      userDisplayName: "Hero",
+      voiceArchiveEnabled: false,
+    };
+
+    const { rerender } = render(
+      <I18nProvider language="en">
+        <HistoryDialog
+          {...baseProps}
+          entries={[
+            { id: "h-0", role: "assistant", dialogId: "d0", text: "Mio: Hello" },
+            { id: "h-1", role: "user", text: "You: Reply", revertUserIndex: 0 },
+          ]}
+          sessionId="sess-42"
+        />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Replay/Share" }));
+    const checkboxes = screen.getAllByRole("checkbox");
+    fireEvent.click(checkboxes[0]!);
+    fireEvent.click(checkboxes[1]!);
+    fireEvent.click(screen.getByRole("button", { name: "Export playable VN" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Exports 2 selected dialogue entries/i)).toBeInTheDocument();
+    });
+
+    rerender(
+      <I18nProvider language="en">
+        <HistoryDialog
+          {...baseProps}
+          entries={[{ id: "h-0", role: "assistant", dialogId: "d9", text: "Other: Switched" }]}
+          sessionId="sess-99"
+        />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Export VN" }));
+    await waitFor(() => {
+      expect(chatRepo.exportPlayableVn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          expectedSessionId: "sess-42",
+          selectedEntryIds: ["h-0", "h-1"],
+          selectedEntryAnchors: [
+            { id: "h-0", role: "assistant", dialogId: "d0", text: "Mio: Hello" },
+            { id: "h-1", role: "user", dialogId: "", text: "You: Reply" },
+          ],
+        }),
+      );
+    });
+  });
 });

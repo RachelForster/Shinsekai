@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ListChecks, Trash2 } from "lucide-react";
 
-import type { ChatHistoryEntry } from "../../../shared/platform/types";
+import type { ChatHistoryEntry, ChatVnExportAnchor } from "../../../shared/platform/types";
 import { prepareChatReplay, startChatReplay, cancelChatReplay } from "../../../entities/chat/repository";
 import type { ActiveReplay } from "../replay/ReplayControls";
 import type { RecordingAudio } from "../audio/stageAudioMixer";
@@ -27,6 +27,15 @@ import {
   shareableUserText,
   splitHistoryEntryText,
 } from "./historyEntries";
+
+interface VnExportSelectionSnapshot {
+  expectedSessionId?: string;
+  selectedEntryIds: string[];
+  selectedEntryAnchors: ChatVnExportAnchor[];
+  startEntryId?: string;
+  endEntryId?: string;
+  rangeCount: number;
+}
 
 export function HistoryDialog({
   entries,
@@ -75,7 +84,7 @@ export function HistoryDialog({
   const [clip, setClip] = useState<HistoryClip | null>(null);
   const [generate, setGenerate] = useState(false);
   const [preparing, setPreparing] = useState(false);
-  const [vnExportOpen, setVnExportOpen] = useState(false);
+  const [vnExportSnapshot, setVnExportSnapshot] = useState<VnExportSelectionSnapshot | null>(null);
   const [feedback, setFeedback] = useState<{ text: string; error?: boolean }>();
   const requestRef = useRef(0);
   const planRef = useRef<string>();
@@ -97,11 +106,16 @@ export function HistoryDialog({
   };
   const close = () => {
     clearClip();
-    setVnExportOpen(false);
+    setVnExportSnapshot(null);
     setMulti(false);
     selection.reset();
     onClose();
   };
+  useEffect(() => {
+    if (!open) {
+      setVnExportSnapshot(null);
+    }
+  }, [open]);
   const prepare = async (mode: HistoryClip["mode"]) => {
     if (preparing || replayDisabled || !selectedRows.length) return;
     clearClip();
@@ -241,6 +255,22 @@ export function HistoryDialog({
   }, [historyRows, multi, selection.selected]);
   const selectedRows = historyRows.filter(({ entry }) => selection.selected.has(entry.id));
   const playableSelectedRows = selectedRows.filter(({ entry }) => entry.role !== "options");
+  const openVnExport = () => {
+    if (!playableSelectedRows.length) return;
+    setVnExportSnapshot({
+      expectedSessionId: sessionId,
+      selectedEntryIds: playableSelectedRows.map(({ entry }) => entry.id),
+      selectedEntryAnchors: playableSelectedRows.map(({ entry }) => ({
+        id: entry.id,
+        role: entry.role,
+        dialogId: entry.dialogId ?? "",
+        text: entry.text,
+      })),
+      startEntryId: playableSelectedRows[0]?.entry.id,
+      endEntryId: playableSelectedRows.at(-1)?.entry.id,
+      rangeCount: playableSelectedRows.length,
+    });
+  };
   const visibleEntries = useMemo(
     () =>
       historyRows.filter(({ dialog, entry }) =>
@@ -329,7 +359,7 @@ export function HistoryDialog({
         }
         labelledBy={titleId}
         onClose={close}
-        open={open && !vnExportOpen}
+        open={open && !vnExportSnapshot}
         summary={t("chat.history.count", { count: visibleEntries.length })}
         title={t("chat.history.title")}
       >
@@ -413,7 +443,7 @@ export function HistoryDialog({
             onBegin={() => void begin()}
             onClearClip={clearClip}
             onCopy={() => void exportSelection(false)}
-            onOpenVnExport={() => setVnExportOpen(true)}
+            onOpenVnExport={openVnExport}
             onPrepare={(mode) => void prepare(mode)}
             onScreenshot={() => void exportSelection(true)}
             onSelectAll={() => selection.reset(visibleEntries.map(({ entry }) => entry.id))}
@@ -435,19 +465,14 @@ export function HistoryDialog({
       </ChatStageModal>
       <VnExportDialog
         defaultUserDisplayName={userDisplayName}
-        endEntryId={playableSelectedRows.at(-1)?.entry.id}
-        expectedSessionId={sessionId}
-        onClose={() => setVnExportOpen(false)}
-        open={open && vnExportOpen}
-        rangeCount={playableSelectedRows.length}
-        selectedEntryAnchors={playableSelectedRows.map(({ entry }) => ({
-          id: entry.id,
-          role: entry.role,
-          dialogId: entry.dialogId ?? "",
-          text: entry.text,
-        }))}
-        selectedEntryIds={playableSelectedRows.map(({ entry }) => entry.id)}
-        startEntryId={playableSelectedRows[0]?.entry.id}
+        endEntryId={vnExportSnapshot?.endEntryId}
+        expectedSessionId={vnExportSnapshot?.expectedSessionId}
+        onClose={() => setVnExportSnapshot(null)}
+        open={open && Boolean(vnExportSnapshot)}
+        rangeCount={vnExportSnapshot?.rangeCount}
+        selectedEntryAnchors={vnExportSnapshot?.selectedEntryAnchors}
+        selectedEntryIds={vnExportSnapshot?.selectedEntryIds}
+        startEntryId={vnExportSnapshot?.startEntryId}
       />
     </>
   );
