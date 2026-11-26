@@ -1063,10 +1063,12 @@
   }
 
   .toast-region {
+    top: auto;
     left: var(--mobile-page-gutter);
     right: var(--mobile-page-gutter);
     bottom: calc(86px + env(safe-area-inset-bottom, 0px));
     width: auto;
+    transform: none;
   }
 
   .toast {
