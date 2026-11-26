@@ -127,12 +127,16 @@ def _repair_json_string(text: str) -> str:
     return "".join(result)
 
 
-def parse_assistant_dialog_content(content: Any) -> list[Any]:
-    """Parse an assistant response into its ``dialog`` list.
+def parse_assistant_dialog_content(
+    content: Any,
+    *,
+    format_id: str | None = None,
+) -> list[Any]:
+    """Parse an assistant response into canonical ``dialog`` item dicts.
 
-    Plain JSON objects, fenced JSON, and the same mildly malformed JSON that
-    the legacy history loader repaired are supported.  A decoded mapping is
-    also accepted, which is useful for third-party history exports.
+    Supports ``{"dialog": [...]}`` JSON, repaired legacy JSON, XML/HTML stage
+    tags, and plugin-registered dialog formats. When *format_id* is omitted,
+    fast JSON parsing runs first and falls back to pluggable format detection.
     """
 
     if content is None:
@@ -141,15 +145,25 @@ def parse_assistant_dialog_content(content: Any) -> list[Any]:
         dialog = content.get("dialog", [])
         return dialog if isinstance(dialog, list) else []
 
-    text = str(content).strip()
-    if not text:
+    raw_text = str(content).strip()
+    if not raw_text:
         return []
+
+    explicit_format = str(format_id or "").strip().lower()
+    if explicit_format and explicit_format != "json_v1":
+        from core.messaging.formats.registry import parse_dialog_content
+
+        items = parse_dialog_content(raw_text, format_id=explicit_format)
+        if items:
+            return [item.model_dump(by_alias=True, exclude_none=True) for item in items]
+
+    text = raw_text
     if text.startswith("```"):
         text = re.sub(r"^```[a-zA-Z0-9]*\s*", "", text)
         text = re.sub(r"\s*```$", "", text, flags=re.DOTALL)
     text = text.strip()
 
-    parsed: Any
+    parsed: Any = None
     try:
         parsed = json.loads(text)
     except json.JSONDecodeError:
@@ -157,16 +171,22 @@ def parse_assistant_dialog_content(content: Any) -> list[Any]:
             parsed = json.loads(_repair_json_string(text))
         except json.JSONDecodeError:
             start, end = text.find("{"), text.rfind("}")
-            if start < 0 or end <= start:
-                return []
-            try:
-                parsed = json.loads(text[start : end + 1])
-            except json.JSONDecodeError:
-                return []
-    if not isinstance(parsed, dict):
-        return []
-    dialog = parsed.get("dialog", [])
-    return dialog if isinstance(dialog, list) else []
+            if start >= 0 and end > start:
+                try:
+                    parsed = json.loads(text[start : end + 1])
+                except json.JSONDecodeError:
+                    parsed = None
+    if isinstance(parsed, dict):
+        dialog = parsed.get("dialog", [])
+        if isinstance(dialog, list):
+            return dialog
+
+    from core.messaging.formats.registry import parse_dialog_content
+
+    detected_items = parse_dialog_content(raw_text)
+    if detected_items:
+        return [item.model_dump(by_alias=True, exclude_none=True) for item in detected_items]
+    return []
 
 
 def rendered_history_text(value: Any) -> str:
@@ -241,7 +261,10 @@ def _turns_from_message(message: Mapping[str, Any], user_display_name: str) -> l
 
     content_value = message.get("content")
     turns: list[ChatHistoryTurn] = []
-    dialog = parse_assistant_dialog_content(content_value)
+    dialog = parse_assistant_dialog_content(
+        content_value,
+        format_id=message.get("_outputFormat"),
+    )
     for item in dialog:
         if not isinstance(item, Mapping):
             continue

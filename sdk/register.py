@@ -15,6 +15,8 @@ from sdk.handlers import MessageHandler, UIOutputMessageHandler
 from sdk.adapters import (
     ASRAdapter,
     AvatarFormatContribution,
+    DialogFormatContribution,
+    DialogOutputFormat,
     LLMAdapter,
     ModelAssetAdapter,
     T2IAdapter,
@@ -168,6 +170,7 @@ class PluginCapabilityRegistry:
         self._t2i_adapters: dict[str, Type[T2IAdapter]] = {}
         self._vision_fallbacks: dict[str, VisionFallbackContribution] = {}
         self._avatar_formats: dict[str, AvatarFormatContribution] = {}
+        self._dialog_formats: dict[str, DialogFormatContribution] = {}
         self._model_assets: dict[str, ModelAssetContribution] = {}
         self._llm_tool_registrars: list[Callable[[ToolManager], None]] = []
         self._dialog_media_handlers: list[MessageHandler] = []
@@ -249,6 +252,42 @@ class PluginCapabilityRegistry:
             factory=factory,
             label=str(label or "").strip(),
             priority=int(priority),
+        )
+
+    def register_dialog_format(
+        self,
+        format_or_id: DialogOutputFormat | str,
+        factory: Callable[[], DialogOutputFormat] | None = None,
+        *,
+        label: str = "",
+        priority: int = 100,
+    ) -> None:
+        """Register an optional LLM dialog output format provided by a plugin."""
+        if isinstance(format_or_id, DialogOutputFormat):
+            if factory is not None:
+                raise ValueError(
+                    "cannot specify both a DialogOutputFormat instance and factory"
+                )
+            clean_id = str(getattr(format_or_id, "format_id", "") or "").strip().lower()
+            resolved_factory: Callable[[], DialogOutputFormat] = lambda _fmt=format_or_id: _fmt
+            resolved_label = str(label or getattr(format_or_id, "label", "") or "").strip()
+        else:
+            clean_id = str(format_or_id or "").strip().lower()
+            if not callable(factory):
+                raise TypeError("dialog format factory must be callable")
+            resolved_factory = factory
+            resolved_label = str(label or "").strip()
+        if not clean_id:
+            raise ValueError("dialog format id cannot be empty")
+        if clean_id in self._dialog_formats:
+            raise ValueError(f"duplicate dialog format: {clean_id}")
+        ctx = self._settings_ui_plugin_ctx
+        self._dialog_formats[clean_id] = DialogFormatContribution(
+            format_id=clean_id,
+            factory=resolved_factory,
+            label=resolved_label or clean_id,
+            priority=int(priority),
+            plugin_id=ctx[0] if ctx is not None else "",
         )
 
     def register_llm_tool(self, registrar: Callable[[ToolManager], None]) -> None:
@@ -645,6 +684,13 @@ class PluginCapabilityRegistry:
     def avatar_formats(self) -> list[AvatarFormatContribution]:
         return sorted(
             self._avatar_formats.values(),
+            key=lambda contribution: (contribution.priority, contribution.format_id),
+        )
+
+    @property
+    def dialog_formats(self) -> list[DialogFormatContribution]:
+        return sorted(
+            self._dialog_formats.values(),
             key=lambda contribution: (contribution.priority, contribution.format_id),
         )
 

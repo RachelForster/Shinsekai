@@ -338,6 +338,11 @@ export const storyZhCNMessages = {
   "template.systemDialog.staleHint":
     "角色、背景或生成规则已变更，点击「重新生成」可按最新配置更新（将覆盖当前手改内容）。",
   "template.systemDialog.autoHint": "处于自动同步状态：调整下方规则或外层角色/背景时，系统提示词会自动刷新。",
+  "template.field.outputFormat": "输出格式",
+  "template.field.outputFormatHint": "控制 AI 演出指令的协议格式（新对话默认 XML/HTML 标签；历史模板默认兼容 JSON）。",
+  "template.outputFormat.xml_v1": "XML / HTML 标签（支持转场与人物动作）",
+  "template.outputFormat.json_v1": "JSON（经典兼容格式）",
+  "template.bar.outputFormat": "格式：{format}",
 } satisfies Record<string, string>;
 
 export type StoryMessageKey = keyof typeof storyZhCNMessages;

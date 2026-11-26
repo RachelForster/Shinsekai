@@ -12,6 +12,7 @@
 @import "./styles/responsive.css";
 @import "./styles/animations.css";
 @import "./styles/mini-avatar.css";
+@import "./styles/stage-effects.css";
 
 .chat-stage__audio-unlock {
   position: absolute;

@@ -9,7 +9,7 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
-from core.chat_history.identity import CHAT_TURN_ID, DialogIdentities
+from core.chat_history.identity import CHAT_OUTPUT_FORMAT, CHAT_TURN_ID, DialogIdentities
 from core.chat_history.text import (
     history_payload_to_plain_text,
     parse_assistant_dialog_content,
@@ -213,7 +213,10 @@ def render_messages_to_ui_history(
             content = message.get("content", "")
             if not content:
                 continue
-            dialog = parse_assistant_dialog_content(content)
+            dialog = parse_assistant_dialog_content(
+                content,
+                format_id=message.get(CHAT_OUTPUT_FORMAT),
+            )
             if not dialog:
                 continue
             for item in dialog:
@@ -247,7 +250,10 @@ def turn_node_from_message(
     if role == "user":
         speaker = "user"
     elif role == "assistant":
-        dialog = parse_assistant_dialog_content(clean_msg.get("content"))
+        dialog = parse_assistant_dialog_content(
+            clean_msg.get("content"),
+            format_id=clean_msg.get(CHAT_OUTPUT_FORMAT),
+        )
         for item in reversed(dialog):
             cand = str(item.get("character_name") or "").strip()
             if cand:

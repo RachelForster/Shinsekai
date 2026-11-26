@@ -75,6 +75,10 @@ describe("entity repositories", () => {
         getPresets: vi.fn().mockResolvedValue({ groups: [], presets: [] }),
         getSession: vi.fn().mockResolvedValue(null),
         list: vi.fn().mockResolvedValue(sampleTemplates),
+        listDialogFormats: vi.fn().mockResolvedValue([
+          { id: "xml_v1", label: "XML / HTML Tags", builtin: true },
+          { id: "json_v1", label: "JSON", builtin: true },
+        ]),
         save: vi.fn().mockResolvedValue(template),
         savePresets: vi.fn().mockResolvedValue({ groups: [], presets: [] }),
         saveSession: vi.fn().mockResolvedValue({ characterNames: ["Nanami"], templateId: "default" }),
