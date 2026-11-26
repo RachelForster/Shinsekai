@@ -282,6 +282,7 @@ def test_desktop_core_runtime_check_does_not_import_optional_packages(tmp_path):
             "packaging": "24.2",
             "pygame": "2.5.7",
             "pygame-ce": "2.5.7",
+            "pypdf": "5.0.0",
             "pyqt-toast-notification": "1.3.3",
             "py7zz": "1.1.4",
             "qrcode": "8.2",
@@ -415,6 +416,31 @@ def test_runtime_core_asr_markers_skip_platforms_without_native_wheels(monkeypat
     assert "pyaudio" in names
     assert "vosk" in names
     assert "sherpa-onnx" in names
+
+
+def test_windows_arm64_requirements_skip_rembg_and_keep_onnxruntime(monkeypatch):
+    import frontend_bridge
+
+    repo_root = _repo_root()
+    core_req = repo_root / "requirements-runtime-core.txt"
+    full_req = repo_root / "requirements.txt"
+
+    monkeypatch.setattr(frontend_bridge.sys, "platform", "win32")
+    monkeypatch.setattr(frontend_bridge.platform, "machine", lambda: "ARM64")
+    core_arm64 = set(frontend_bridge._iter_requirement_names(core_req))
+    full_arm64 = set(frontend_bridge._iter_requirement_names(full_req))
+    assert "rembg" not in core_arm64
+    assert "onnxruntime" in core_arm64
+    assert "rembg" not in full_arm64
+    assert "onnxruntime" in full_arm64
+
+    for plat, mach in (("win32", "AMD64"), ("linux", "x86_64"), ("darwin", "arm64")):
+        monkeypatch.setattr(frontend_bridge.sys, "platform", plat)
+        monkeypatch.setattr(frontend_bridge.platform, "machine", lambda m=mach: m)
+        core_other = set(frontend_bridge._iter_requirement_names(core_req))
+        full_other = set(frontend_bridge._iter_requirement_names(full_req))
+        assert "rembg" in core_other
+        assert "rembg" in full_other
 
 
 def test_runtime_core_does_not_require_opencv_distribution():

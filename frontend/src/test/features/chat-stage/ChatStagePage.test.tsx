@@ -1904,7 +1904,7 @@ describe("ChatStagePage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Chat appearance settings" }));
     const config = await screen.findByRole("dialog", { name: "Chat appearance settings" });
     const mio = within(config).getByRole("group", { name: "Sprite framing: Mio" });
-    fireEvent.click(within(mio).getByRole("button", { name: "Half view" }));
+    fireEvent.click(within(mio).getByRole("radio", { name: "Half view" }));
     fireEvent.change(within(mio).getByRole("slider", { name: "Vertical framing position: Mio" }), {
       target: { value: "25" },
     });
@@ -1947,7 +1947,7 @@ describe("ChatStagePage", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Chat appearance settings" }));
     const restored = await screen.findByRole("group", { name: "Sprite framing: Mio" });
-    fireEvent.click(within(restored).getByRole("button", { name: "Full view" }));
+    fireEvent.click(within(restored).getByRole("radio", { name: "Full view" }));
     expect(screen.getByAltText("Mio").closest(".sprite-layer__image")).not.toBeNull();
     expect(document.querySelector(".character-visual--framed")).toBeNull();
   });

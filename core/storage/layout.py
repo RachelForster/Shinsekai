@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 from pathlib import Path
+import re
 
 from sdk.path_utils import (
     is_portable_relative_path,
@@ -12,6 +13,8 @@ from sdk.path_utils import (
     resolve_regular_path,
     safe_child_path,
 )
+
+_DOC_ID_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 def _safe_relative_child(
@@ -85,6 +88,10 @@ class StorageLayout:
         return self.data_dir / "chat_history"
 
     @property
+    def documents_dir(self) -> Path:
+        return self.data_dir / "documents"
+
+    @property
     def legacy_backup_dir(self) -> Path:
         return self.config_dir / "legacy_backup"
 
@@ -110,6 +117,12 @@ class StorageLayout:
 
     def runtime_subdir(self, relative_path: str | os.PathLike[str]) -> Path:
         return _safe_relative_child(self.runtime_dir, relative_path, field="runtime path")
+
+    def document_dir(self, doc_id: str) -> Path:
+        clean = reject_control_chars(str(doc_id or ""), field="doc_id").lower()
+        if not _DOC_ID_RE.fullmatch(clean):
+            raise ValueError("doc_id must be a 64-character hex SHA-256 digest")
+        return _safe_relative_child(self.documents_dir, clean, field="doc_id")
 
     def db_file(self, relative_path: str | os.PathLike[str]) -> Path:
         return _safe_relative_child(self.data_dir, relative_path, field="database path")

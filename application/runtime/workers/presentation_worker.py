@@ -1,8 +1,9 @@
 """Worker that presents dialog output and controls voice playback."""
 
 import threading
+from collections.abc import Callable
 from queue import Empty, Queue
-from typing import Optional
+from typing import Any, Optional
 
 import pygame
 
@@ -37,6 +38,7 @@ class PresentationWorker(ThreadDagNode):
         parent=None,
         *,
         name: str = "ui_worker",
+        on_playback_idle: Callable[[Any], None] | None = None,
     ):
         super().__init__(name, parent=parent)
         self._app_inited = False
@@ -44,11 +46,18 @@ class PresentationWorker(ThreadDagNode):
         self.task_done_requested = threading.Event()
         self._dialog_active = False
         self.current_audio_path = None
+        self.dialog_channel = None
         self.DIALOG_CHANNEL_ID = 7
         self.ui_out_dispatcher = default_presentation_handler_chain()
         self.replay = ReplayPresentation(self, None)
+        self._on_playback_idle = on_playback_idle
         if input_queue is not None:
             self.bind_input(self.PORT_PRESENTATION, input_queue)
+
+    def set_on_playback_idle(
+        self, callback: Callable[[Any], None] | None
+    ) -> None:
+        self._on_playback_idle = callback
 
     def _init_app(self):
         if self._app_inited:
@@ -170,6 +179,14 @@ class PresentationWorker(ThreadDagNode):
         if not rt.chat_turn_service.mark_idle(turn):
             return False
         self.ui_update_manager.post_llm_reply_finished()
+        if callable(self._on_playback_idle):
+            try:
+                self._on_playback_idle(turn)
+            except Exception:
+                logger.exception(
+                    "on_playback_idle callback failed",
+                    extra={"event": "presentation.playback_idle.failed"},
+                )
         return True
 
     def run(self):

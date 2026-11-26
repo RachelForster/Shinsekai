@@ -2,12 +2,32 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Sparkles } from "lucide-react";
 
 import { useI18n } from "../../shared/i18n";
-import type { MediaSelectionMode } from "../../shared/platform/types";
-import { AsyncButton, Button, Dialog, NumberInput, Switch, TextArea } from "../../shared/ui";
+import type { DialogFormatOption, DialogOutputFormatId, MediaSelectionMode } from "../../shared/platform/types";
+import { AsyncButton, Button, Dialog, NumberInput, Select, Switch, TextArea } from "../../shared/ui";
 import { SemanticMediaSwitch } from "./SemanticMediaSwitch";
+
+const FALLBACK_DIALOG_FORMATS: DialogFormatOption[] = [
+  { id: "xml_v1", label: "XML / HTML Tags", builtin: true },
+  { id: "json_v1", label: "JSON", builtin: true },
+];
+
+export function resolveDialogFormatLabel(
+  formatId: DialogOutputFormatId,
+  dialogFormats: DialogFormatOption[] | undefined,
+  t: (key: "template.outputFormat.xml_v1" | "template.outputFormat.json_v1") => string,
+): string {
+  if (formatId === "xml_v1") {
+    return t("template.outputFormat.xml_v1");
+  }
+  if (formatId === "json_v1") {
+    return t("template.outputFormat.json_v1");
+  }
+  return dialogFormats?.find((item) => item.id === formatId)?.label || formatId;
+}
 
 export interface SystemPromptRulesDraft {
   mediaSelectionMode: MediaSelectionMode;
+  outputFormat: DialogOutputFormatId;
   useEffectPrompt: boolean;
   useTranslation: boolean;
   useCot: boolean;
@@ -25,6 +45,7 @@ export interface SystemPromptCommit extends SystemPromptRulesDraft {
 
 interface SystemPromptDialogProps {
   open: boolean;
+  dialogFormats?: DialogFormatOption[];
   rules: SystemPromptRulesDraft;
   systemText: string;
   systemManuallyEdited: boolean;
@@ -39,6 +60,7 @@ interface SystemPromptDialogProps {
 function rulesSignature(rules: SystemPromptRulesDraft): string {
   return [
     rules.mediaSelectionMode,
+    rules.outputFormat,
     rules.useEffectPrompt,
     rules.useTranslation,
     rules.useCot,
@@ -52,6 +74,7 @@ function rulesSignature(rules: SystemPromptRulesDraft): string {
 
 export function SystemPromptDialog({
   open,
+  dialogFormats,
   rules,
   systemText,
   systemManuallyEdited,
@@ -144,6 +167,14 @@ export function SystemPromptDialog({
       setLocalGenerating(false);
     }
   };
+
+  const formatOptions = useMemo(() => {
+    const base = dialogFormats?.length ? dialogFormats : FALLBACK_DIALOG_FORMATS;
+    if (base.some((item) => item.id === draftRules.outputFormat)) {
+      return base;
+    }
+    return [...base, { id: draftRules.outputFormat, label: draftRules.outputFormat, builtin: false }];
+  }, [dialogFormats, draftRules.outputFormat]);
 
   const busy = generating || localGenerating;
 
@@ -247,6 +278,22 @@ export function SystemPromptDialog({
             ? t(draftLocalStale ? "template.systemDialog.staleHint" : "template.systemDialog.manualHint")
             : t("template.systemDialog.autoHint")}
         </p>
+
+        <label className="template-side-field">
+          <span className="template-side-field__label">{t("template.field.outputFormat")}</span>
+          <Select
+            aria-label={t("template.field.outputFormat")}
+            onChange={(event) => setDraftRules((curr) => ({ ...curr, outputFormat: event.target.value || "xml_v1" }))}
+            value={draftRules.outputFormat}
+          >
+            {formatOptions.map((option) => (
+              <option key={option.id} value={option.id}>
+                {resolveDialogFormatLabel(option.id, formatOptions, t)}
+              </option>
+            ))}
+          </Select>
+          <span className="template-options-panel__hint">{t("template.field.outputFormatHint")}</span>
+        </label>
 
         <div className="template-option-list template-option-list--dialog">
           <SemanticMediaSwitch

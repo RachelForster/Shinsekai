@@ -30,6 +30,7 @@ compact_role_user: 用户
 compact_role_assistant: 助手
 compact_role_tool: 工具:{name}
 compact_user_outro: 请提供对话总结：
+compact_extra_requirements_heading: 附加摘要要求：
 compact_failed_fallback: 压缩失败，请参考原始对话历史。
 compact_omitted_history: 【历史摘要】较早历史已省略。请基于保留的系统设定、历史摘要和最近对话继续。
 standalone_compact_system: 你是剧情记忆归档助手，负责输出紧凑准确的对话总结。
@@ -44,6 +45,11 @@ standalone_checkpoint_context: |-
   {summary}
 dialog_repair_initial: 请将你上一条回复重新整理为符合应用要求的对话 JSON。只返回一个包含非空 `dialog` 数组的 JSON 对象。每个角色、场景与 BGM 条目都必须包含 `character_name`、`speech` 和 `{media_field}`。COT、NARR、CHOICE、STAT、CG 等固定系统条目可省略媒体字段。不要调用工具，也不要输出 Markdown。
 dialog_repair_retry: 该回复仍然不符合有效格式。你必须仅以符合应用要求的对话 JSON 作答。只返回一个包含非空 `dialog` 数组的 JSON 对象。每个角色、场景与 BGM 条目都必须包含 `character_name`、`speech` 和 `{media_field}`。COT、NARR、CHOICE、STAT、CG 等固定系统条目可省略媒体字段。不要调用工具，也不要输出 Markdown。
+dialog_repair_initial_selective: 请将你上一条回复重新整理为符合应用要求的对话 JSON。只返回一个包含非空 `dialog` 数组的 JSON 对象。所有条目都必须包含 `character_name` 和 `speech`；仅场景（SCENE）、BGM（bgm）以及已绑定演员表角色必须包含非空 `{media_field}`。COT、NARR、CHOICE、STAT、CG 与未绑定的龙套/NPC 发言可省略 `{media_field}`。不要调用工具，也不要输出 Markdown。
+dialog_repair_retry_selective: 该回复仍然不符合有效格式。你必须仅以符合应用要求的对话 JSON 作答。只返回一个包含非空 `dialog` 数组的 JSON 对象。所有条目都必须包含 `character_name` 和 `speech`；仅场景（SCENE）、BGM（bgm）以及已绑定演员表角色必须包含非空 `{media_field}`。COT、NARR、CHOICE、STAT、CG 与未绑定的龙套/NPC 发言可省略 `{media_field}`。不要调用工具，也不要输出 Markdown。
+dialog_repair_bound_speakers_heading: '以下已绑定演员表角色必须提供 `{media_field}` 字段：'
+dialog_repair_xml_initial: 请将你上一条回复重新整理为符合应用要求的 XML/HTML 舞台标签序列（使用 `<say char="..." {media_field}="...">`、`<narr>`、`<scene>`、`<bgm>`、`<choice>` 等有效标签）。至少输出一个完整舞台标签；不要调用工具，不要输出 JSON，也不要使用 Markdown 代码块。
+dialog_repair_xml_retry: 该回复仍然不符合有效的 XML/HTML 舞台标签格式。你必须仅以符合要求的 `<say char="..." {media_field}="...">`、`<narr>`、`<scene>`、`<bgm>` 等标签序列作答，不要调用工具，不要输出 JSON 或多余说明。
 memory_context_simple_guidance: 本轮相关的长期记忆。请仅将其作为背景参考，除非用户主动询问，否则不要提及检索过程。
 memory_context_tiered_guidance: 本轮相关的长期记忆。请遵循每条记忆的清晰度标记（[固有设定]、[清晰]、[较久远·印象模糊]、[唤醒的久远记忆]），自然地融入背景，除非用户询问，否则绝不要提及记忆检索系统。
 memory_tier_canon: 固有设定
@@ -58,6 +64,8 @@ outfit_indexed_sprite_rule: 立绘选择规则：sprite 填写当前分组中的
 outfit_auto_switch_rule: '剧情换装规则：已开启自动换装。未锁定的角色完成换装时（剧情明确换装或应玩家要求换装），必须在 dialog 数组内该角色当句的 JSON 对象里写入 "outfit"，值为下列可用分组中的准确名称。普通台词、情绪或姿态变化时省略该字段。'
 outfit_switch_example_prefix: '换装项示例：'
 outfit_locked_or_disabled_rule: '当前已关闭自动换装或服装已锁定：请始终保持当前服装分组，不要输出 `"outfit"` 字段。'
+outfit_auto_switch_rule_xml: '剧情换装规则：已开启自动换装。未锁定的角色完成换装时（剧情明确换装或应玩家要求换装），必须在当句的 <say> 标签属性中写入 outfit="可用分组名"。普通台词、情绪或姿态变化时省略该属性。'
+outfit_locked_or_disabled_rule_xml: '当前已关闭自动换装或服装已锁定：请始终保持当前服装分组，不要在 <say> 上输出 `outfit` 属性。'
 outfit_example_vibe: 平静的表情
 outfit_example_speech: <本句台词>
 outfit_lock_status_locked: 已手动锁定（禁止切换服装）

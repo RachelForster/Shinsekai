@@ -103,7 +103,14 @@ class SceneUiHandler(UIOutputMessageHandler):
             if idx < 0 or idx >= len(bg):
                 raise IndexError("背景图片的index不正常")
             bg_path = Path(bg[idx].get("path")).as_posix()
-            _ui().post_background(bg_path)
+            transition = str(getattr(out, "transition", "") or "").strip()
+            if transition:
+                try:
+                    _ui().post_background(bg_path, transition=transition)
+                except TypeError:
+                    _ui().post_background(bg_path)
+            else:
+                _ui().post_background(bg_path)
         except Exception as e:
             traceback.print_exc()
             print("更新背景失败", e)
@@ -275,6 +282,11 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
                 )
         if replay is not None:
             return
+        motion = str(getattr(out, "motion", "") or "").strip()
+        if motion and not is_player:
+            post_motion = getattr(ui, "post_sprite_motion", None)
+            if callable(post_motion):
+                post_motion(character_name, motion)
         if not is_continuation or str(effect or "").strip():
             ui.resolve_effect(
                 effect=effect, args={"character_name": character_name}, after_dialog=False

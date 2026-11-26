@@ -679,3 +679,41 @@ def test_offline_download_preserves_existing_complete_snapshot_without_local_man
     assert service.inspect_model_asset(full_spec)["cached"] is True
     assert service.inspect_model_asset(wildcard_with_group_spec)["cached"] is True
 
+
+def test_download_model_asset_forwards_dynamic_hf_hub_cache_dir_to_downloader(
+    tmp_path, monkeypatch
+):
+    dynamic_hub = tmp_path / "dynamic-hub"
+    monkeypatch.setenv("HF_HUB_CACHE", str(dynamic_hub))
+    monkeypatch.setenv("HF_HOME", str(tmp_path / "other-home"))
+    monkeypatch.delenv("HUGGINGFACE_HUB_CACHE", raising=False)
+
+    calls = []
+
+    def fake_preload(repo_id, **kwargs):
+        calls.append((repo_id, kwargs))
+        cache_dir = Path(str(kwargs["cache_dir"]))
+        model_dir = cache_dir / "models--owner--model"
+        snapshot = model_dir / "snapshots" / "rev-dynamic"
+        _write_complete_snapshot(snapshot)
+        (model_dir / "refs").mkdir(parents=True, exist_ok=True)
+        (model_dir / "refs" / "main").write_text("rev-dynamic", encoding="utf-8")
+        return str(snapshot)
+
+    monkeypatch.setattr(service, "preload_huggingface_snapshot", fake_preload)
+
+    result = service.download_model_asset(_spec(), update_task=lambda **_changes: None)
+
+    assert result["cached"] is True
+    assert result["downloaded"] is True
+    assert len(calls) == 1
+    assert (
+        Path(str(calls[0][1]["cache_dir"])).resolve(strict=False)
+        == dynamic_hub.resolve(strict=False)
+    )
+    assert (
+        Path(str(result["path"])).resolve(strict=False)
+        == (dynamic_hub / "models--owner--model" / "snapshots" / "rev-dynamic").resolve(strict=False)
+    )
+
+

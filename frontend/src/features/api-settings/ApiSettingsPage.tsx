@@ -32,14 +32,6 @@ function ApiSettingsReadyView({ ctx, initialization }: ApiSettingsReadyViewProps
         </div>
         <div className="page__actions">
           <AsyncButton
-            icon={<Save aria-hidden className="button__icon" />}
-            loading={ctx.savePending}
-            onClick={ctx.handleSave}
-            variant="primary"
-          >
-            {t("common.save")}
-          </AsyncButton>
-          <AsyncButton
             disabled={ctx.resumeDisabled}
             icon={<RotateCcw aria-hidden className="button__icon" />}
             loading={ctx.resumePending}
@@ -47,6 +39,14 @@ function ApiSettingsReadyView({ ctx, initialization }: ApiSettingsReadyViewProps
             tooltip={t("api.resume.tip")}
           >
             {t("api.resume.btn")}
+          </AsyncButton>
+          <AsyncButton
+            icon={<Save aria-hidden className="button__icon" />}
+            loading={ctx.savePending}
+            onClick={ctx.handleSave}
+            variant="primary"
+          >
+            {t("common.save")}
           </AsyncButton>
         </div>
         <PageSectionNav ariaLabel={t("api.title")} items={navItems} />

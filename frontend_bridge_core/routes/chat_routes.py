@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 from http import HTTPStatus
+from pathlib import Path
+from typing import Any
+from urllib.parse import quote
+from application.chat.export_vn.export_playable_vn import PlayableVnExportRequest, export_playable_vn
 from application.chat.history.replay import replay_service
 
 from application.chat.conversation_library import (
@@ -154,7 +158,74 @@ def _delete_conversation(request: ApiRequest) -> JsonResponse:
     return JsonResponse({"ok": True})
 
 
+def _export_playable_vn(request: ApiRequest) -> JsonResponse:
+    body = request.body if isinstance(request.body, dict) else {}
+    output_format = str(body.get("outputFormat") or "zip").strip().lower()
+    raw_selected = body.get("selectedEntryIds")
+    selected_entry_ids = (
+        tuple(str(item) for item in raw_selected if item is not None and str(item).strip())
+        if isinstance(raw_selected, list)
+        else ()
+    )
+    raw_anchors = body.get("selectedEntryAnchors")
+    selected_entry_anchors = (
+        tuple(
+            {str(k): str(v or "") for k, v in item.items()}
+            for item in raw_anchors
+            if isinstance(item, dict)
+        )
+        if isinstance(raw_anchors, list)
+        else ()
+    )
+    export_req = PlayableVnExportRequest(
+        conversation_id=str(body.get("conversationId") or ""),
+        start_entry_id=str(body.get("startEntryId") or ""),
+        end_entry_id=str(body.get("endEntryId") or ""),
+        selected_entry_ids=selected_entry_ids,
+        expected_session_id=str(body.get("expectedSessionId") or ""),
+        selected_entry_anchors=selected_entry_anchors,
+        title=str(body.get("title") or ""),
+        subtitle=str(body.get("subtitle") or ""),
+        output_format=output_format,  # type: ignore[arg-type]
+        output_dir=str(body.get("outputDir") or ""),
+        include_voices=bool(body.get("includeVoices", True)),
+        transcode_mp3=bool(body.get("transcodeMp3", True)),
+        include_bgm=bool(body.get("includeBgm", True)),
+        include_ambient=bool(body.get("includeAmbient", True)),
+        user_display_name=str(body.get("userDisplayName") or ""),
+    )
+    outcome = export_playable_vn(request.state, export_req)
+    payload: dict[str, Any] = {
+        "path": outcome.path,
+        "format": outcome.format,
+        "entryCount": outcome.entry_count,
+        "assetCount": outcome.asset_count,
+        "voiceCount": outcome.voice_count,
+        "transcodedVoiceCount": outcome.transcoded_voice_count,
+        "skippedNonStaticSprites": outcome.skipped_non_static_sprites,
+        "totalBytes": outcome.total_bytes,
+        "indexHtmlBytes": outcome.index_html_bytes,
+        "warnings": list(outcome.warnings),
+    }
+    if outcome.format == "zip" and outcome.is_project_relative:
+        payload["downloadUrl"] = f"/api/download?path={quote(outcome.path, safe='/')}"
+    if body.get("openFolder") is True:
+        from tools.file_util import _open_export_folder
+
+        project_root = Path(getattr(request.state, "project_root_dir", "") or Path.cwd())
+        resolved = (project_root / outcome.path).resolve() if outcome.is_project_relative else Path(outcome.path).resolve()
+        folder_marker = (resolved / "index.html") if outcome.format == "directory" else resolved
+        payload["folderOpened"] = _open_export_folder(folder_marker)
+    return JsonResponse(payload)
+
+
 CHAT_ROUTES = (
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/chat/export-vn",
+        handler=_export_playable_vn,
+        name="chat.export_vn",
+    ),
     Route(methods=frozenset({"POST"}), pattern="/api/chat/replay", name="chat.replay.prepare",
           handler=lambda request: JsonResponse(replay_service(request.state).prepare())),
     Route(methods=frozenset({"POST"}), pattern="/api/chat/replay/{replay_id}/start", name="chat.replay.start",

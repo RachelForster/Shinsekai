@@ -63,6 +63,7 @@ import { IconButton, TextInput } from "../../../shared/ui";
 import { classNames, hideBrokenStageAsset, stageAssetUrl } from "../chatStageUtils";
 import { useDismissableLayer } from "../hooks/useDismissableLayer";
 import { chatStageSpriteCharacterName } from "../state/sprites";
+import { chatOptionKey } from "../state/behaviorCommands";
 import type { ChatStageSprite, ChatStageSpriteReaction } from "../state/types";
 
 export const MINI_AVATAR_HOVER_HIDE_MS = 260;
@@ -1257,7 +1258,7 @@ export function MiniAvatarStage({
               {options.map((option) => {
                 const label = typeof option === "string" ? option : option.label;
                 const disabled = locked || (typeof option !== "string" && !option.enabled);
-                const key = typeof option === "string" ? option : `${option.expectedRevision}:${option.id}`;
+                const key = chatOptionKey(option);
                 return (
                   <button
                     className="mini-avatar__option-button"

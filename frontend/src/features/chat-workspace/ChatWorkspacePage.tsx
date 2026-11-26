@@ -5,6 +5,7 @@ import { useI18n } from "../../shared/i18n";
 import { Button } from "../../shared/ui/Button";
 import { Dialog } from "../../shared/ui/Dialog";
 import { TextInput } from "../../shared/ui/FormControls";
+import { SegmentedRadio } from "../../shared/ui/SegmentedRadio";
 import { ConversationLibrary } from "./ConversationLibrary";
 import { ConversationTypeBadge } from "./ConversationTypeBadge";
 import { resolveConversationTitle } from "../../entities/chat/conversationTitle";
@@ -141,25 +142,25 @@ export function ChatWorkspacePage() {
         </label>
         <fieldset className="conversation-create__types">
           <legend>{t("conversation.chooseType")}</legend>
-          {(["normal", "story"] as const).map((value) => {
-            const Icon = value === "normal" ? MessageCircle : BookOpen;
-            return (
-              <label key={value} className={`conversation-create__type${kind === value ? " is-selected" : ""}`}>
-                <input
-                  type="radio"
-                  name="conversation-kind"
-                  value={value}
-                  checked={kind === value}
-                  onChange={() => setKind(value)}
-                />
-                <Icon aria-hidden />
-                <span>
-                  <strong>{t(`conversation.${value}`)}</strong>
-                  <small>{t(`conversation.${value}Hint`)}</small>
-                </span>
-              </label>
-            );
-          })}
+          <SegmentedRadio
+            ariaLabel={t("conversation.chooseType")}
+            name="conversation-kind"
+            onChange={setKind}
+            options={[
+              {
+                icon: <MessageCircle aria-hidden className="segmented-radio__icon" />,
+                label: t("conversation.normal"),
+                value: "normal",
+              },
+              {
+                icon: <BookOpen aria-hidden className="segmented-radio__icon" />,
+                label: t("conversation.story"),
+                value: "story",
+              },
+            ]}
+            value={kind}
+          />
+          <p className="conversation-create__hint">{t(`conversation.${kind}Hint`)}</p>
         </fieldset>
       </Dialog>
     </div>

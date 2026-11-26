@@ -20,6 +20,7 @@ from application.chat.templates import (
     _history_id_from_scenario,
     _template_dir,
 )
+from application.chat.dialog_formats import normalize_output_format
 from application.chat.history.paths import is_unc_history_path
 from application.chat.runtime.launch_args import CHAT_LAUNCH_CONFIG_ENV
 from core.chat_history.storage import chat_history_session_dir, register_session_history_path
@@ -58,6 +59,7 @@ class ChatLaunchPreparation:
         init_stream_endpoint: str = "",
         workflow_path: str = "",
         media_selection_mode: str = "indexed",
+        output_format: str = "json_v1",
         use_current_template_for_history: bool = False,
     ) -> LaunchPlan | LaunchRejected:
         raw_user_scenario = (user_scenario or "").strip()
@@ -77,6 +79,7 @@ class ChatLaunchPreparation:
         )
         self_as_player = is_self_persona_name(player_name)
         self_as_npc_cast = has_self_in_cast and not self_as_player
+        resolved_output_format = normalize_output_format(output_format)
         player_rules = player_runtime_prompt(
             state.config_manager,
             player_name,
@@ -84,6 +87,7 @@ class ChatLaunchPreparation:
             read_speech=read_player_speech,
             media_selection_mode=media_selection_mode,
             character_names=character_names,
+            output_format=resolved_output_format,
         )
         effective_system = system_template or ""
         if has_self_in_cast or self_as_player:
@@ -119,6 +123,7 @@ class ChatLaunchPreparation:
             user_scenario,
             effect_context,
             locale=locale,
+            output_format=resolved_output_format,
         )
         template_dir = _template_dir(state)
         (template_dir / "_temp.txt").write_text(template, encoding="utf-8")
@@ -177,6 +182,7 @@ class ChatLaunchPreparation:
             "media_selection_mode": (
                 "semantic" if media_selection_mode == "semantic" else "indexed"
             ),
+            "output_format": resolved_output_format,
         }
         if character_names:
             launch_config["characters"] = json.dumps(

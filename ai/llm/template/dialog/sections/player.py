@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import re
 
 from config.schema import SELF_PERSONA_NAME, is_self_persona_name
+from sdk.adapters.dialog_format import DEFAULT_DIALOG_FORMAT_ID, XML_DIALOG_FORMAT_ID
 
 from ...core import PROMPT_CATALOG, Section
 from ...integrations.localization import (
@@ -75,18 +76,22 @@ class PlayerSection(Section[DialogTemplateContext]):
             )
 
         setting = str(getattr(character, "character_setting", "") or "").strip()
+        is_xml = (
+            str(context.output_format_id or DEFAULT_DIALOG_FORMAT_ID).strip().lower()
+            == XML_DIALOG_FORMAT_ID
+        )
         if context.uses_vibe:
             portrait_field = "vibe"
             portrait_value = context.translate("player_portrait_vibe_value")
-            speech_media = '"vibe":""'
+            speech_media = 'vibe=""' if is_xml else '"vibe":""'
         else:
             portrait_field = "sprite"
             portrait_value = "01"
-            speech_media = '"sprite":"-1"'
+            speech_media = 'sprite="-1"' if is_xml else '"sprite":"-1"'
 
         if context.allow_player_dialogue:
             return context.translate(
-                "player_ai_control",
+                "xml_player_ai_control" if is_xml else "player_ai_control",
                 name=name,
                 setting=setting,
                 portrait_field=portrait_field,
@@ -95,7 +100,7 @@ class PlayerSection(Section[DialogTemplateContext]):
 
         speech_contract = (
             context.translate(
-                "player_speech_contract",
+                "xml_player_speech_contract" if is_xml else "player_speech_contract",
                 name=name,
                 speech_media=speech_media,
                 target_voice_name=context.target_voice_name,
@@ -104,7 +109,7 @@ class PlayerSection(Section[DialogTemplateContext]):
             else context.translate("player_speech_disabled", name=name)
         )
         return context.translate(
-            "player_control",
+            "xml_player_control" if is_xml else "player_control",
             name=name,
             setting=setting,
             portrait_field=portrait_field,
@@ -116,6 +121,7 @@ class PlayerSection(Section[DialogTemplateContext]):
 def player_runtime_prompt(
     config, name: str, *, allow_dialogue: bool, read_speech: bool,
     media_selection_mode: str, character_names: Iterable[str] | None = None,
+    output_format: str = DEFAULT_DIALOG_FORMAT_ID,
 ) -> str:
     """Apply current player options without rewriting an older authored template."""
     locale = resolve_template_locale(config)
@@ -148,6 +154,7 @@ def player_runtime_prompt(
             allow_player_dialogue=allow_dialogue,
             read_player_speech=read_speech,
             media_selection_mode=media_selection_mode,
+            output_format_id=output_format,
         )
         player_block = _translate("player_runtime_override") + PlayerSection().render(context)
 

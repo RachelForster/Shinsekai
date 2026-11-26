@@ -9,6 +9,7 @@ import type { FilesPlatform, LogsPlatform, RuntimePlatform, TasksPlatform } from
 import type { BackgroundsPlatform, EffectsPlatform, TemplatesPlatform, ToolsPlatform } from "./slices/workspaceTypes";
 
 export type * from "./slices/storyTypes";
+export type * from "./slices/behaviorTypes";
 export type * from "./slices/taskTypes";
 export type * from "./slices/characterTypes";
 export type * from "./slices/knowledgeTypes";

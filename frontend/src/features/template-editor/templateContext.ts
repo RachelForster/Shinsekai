@@ -6,6 +6,8 @@ import type {
   Character,
   CharacterPromptMode,
   ChatSnapshot,
+  DialogFormatOption,
+  DialogOutputFormatId,
   Effect,
   MediaSelectionMode,
   MemoryMode,
@@ -74,6 +76,7 @@ export function buildSystemSyncKey(input: {
   useStat: boolean;
   maxSpeechChars: number;
   maxDialogItems: number;
+  outputFormat?: DialogOutputFormatId;
 }) {
   return [
     input.characterKey,
@@ -88,6 +91,7 @@ export function buildSystemSyncKey(input: {
     input.useStat,
     input.maxSpeechChars,
     input.maxDialogItems,
+    input.outputFormat ?? "",
   ].join("\n::");
 }
 
@@ -110,6 +114,7 @@ export interface TemplateEditorContext {
   confirmPrimaryCharacters: (nextPrimaryCharacters: string[]) => Promise<void>;
   conversationId?: string;
   createOnly: boolean;
+  dialogFormats: DialogFormatOption[];
   draft: TemplateSummary;
   effectivePlayerCharacter: string;
   effects: Effect[];
@@ -143,6 +148,7 @@ export interface TemplateEditorContext {
   nameError: string;
   openCharacterDialog: () => void;
   openLocalChatFromMobile: () => void;
+  outputFormat: DialogOutputFormatId;
   playerCharacter: string;
   presetsLibrary: UserPromptPresetLibrary;
   presetsLibraryError: boolean;

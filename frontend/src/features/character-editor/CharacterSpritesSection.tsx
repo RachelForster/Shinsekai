@@ -29,6 +29,7 @@ import {
   ImageAssetGallery,
   PathPickerDialog,
   PathDisplay,
+  SegmentedRadio,
   Select,
   Switch,
   TextInput,
@@ -311,6 +312,9 @@ export function CharacterSpritesSection({
       <div className="section__header">
         <h2 className="section__title">{t("character.section.sprites")}</h2>
         <div className="page__actions">
+          <Button icon={<Trash2 aria-hidden className="button__icon" />} onClick={onClearSprites} variant="danger">
+            {t("character.sprite.clear")}
+          </Button>
           {autoLabelAvailable ? (
             <AsyncButton
               disabled={autoLabelDisabled}
@@ -322,24 +326,6 @@ export function CharacterSpritesSection({
               {t("mediaAutoLabel.action")}
             </AsyncButton>
           ) : null}
-          <Button
-            data-sprite-generation-trigger
-            disabled={generateDisabled}
-            icon={<Sparkles aria-hidden className="button__icon" />}
-            onClick={onGenerate}
-            tooltip={generateHint}
-            variant="ghost"
-          >
-            {t("character.sprite.generate")}
-          </Button>
-          <AsyncButton
-            icon={<Upload aria-hidden className="button__icon" />}
-            loading={spriteUploadPending}
-            onClick={() => setSpritePickerOpen(true)}
-            variant="ghost"
-          >
-            {t("character.sprite.uploadImages")}
-          </AsyncButton>
           <Button
             disabled={!draft.sprites.length}
             icon={<Tags aria-hidden className="button__icon" />}
@@ -359,9 +345,24 @@ export function CharacterSpritesSection({
               {t("character.sprite.portraitCrop")}
             </Button>
           ) : null}
-          <Button icon={<Trash2 aria-hidden className="button__icon" />} onClick={onClearSprites} variant="ghost">
-            {t("character.sprite.clear")}
+          <Button
+            data-sprite-generation-trigger
+            disabled={generateDisabled}
+            icon={<Sparkles aria-hidden className="button__icon" />}
+            onClick={onGenerate}
+            tooltip={generateHint}
+            variant="default"
+          >
+            {t("character.sprite.generate")}
           </Button>
+          <AsyncButton
+            icon={<Upload aria-hidden className="button__icon" />}
+            loading={spriteUploadPending}
+            onClick={() => setSpritePickerOpen(true)}
+            variant="primary"
+          >
+            {t("character.sprite.uploadImages")}
+          </AsyncButton>
         </div>
       </div>
       <PathPickerDialog
@@ -405,13 +406,14 @@ export function CharacterSpritesSection({
                 ))}
               </div>
               <div className="sprite-group-actions">
-                <Button
-                  icon={<FolderPlus aria-hidden className="button__icon" />}
-                  onClick={() => setCreatingGroupOpen((current) => !current)}
-                  variant="ghost"
+                <Switch
+                  checked={fallbackToDefault}
+                  disabled={spriteGroupsPending}
+                  id="sprite-group-fallback-default"
+                  onChange={(event) => onApplySpriteGroups?.({ fallbackToDefaultGroup: event.currentTarget.checked })}
                 >
-                  {t("spriteGroup.newGroup")}
-                </Button>
+                  {t("spriteGroup.fallbackToDefault")}
+                </Switch>
                 {onOpenSmartGroup ? (
                   <Button
                     disabled={!isSavedCharacter || !draft.sprites.length}
@@ -429,18 +431,17 @@ export function CharacterSpritesSection({
                     setBatchSelectMode((current) => !current);
                     setCheckedIndices(new Set());
                   }}
-                  variant="ghost"
+                  variant={batchSelectMode ? "default" : "ghost"}
                 >
                   {t(batchSelectMode ? "spriteGroup.batchExitSelectMode" : "spriteGroup.batchSelectMode")}
                 </Button>
-                <Switch
-                  checked={fallbackToDefault}
-                  disabled={spriteGroupsPending}
-                  id="sprite-group-fallback-default"
-                  onChange={(event) => onApplySpriteGroups?.({ fallbackToDefaultGroup: event.currentTarget.checked })}
+                <Button
+                  icon={<FolderPlus aria-hidden className="button__icon" />}
+                  onClick={() => setCreatingGroupOpen((current) => !current)}
+                  variant="default"
                 >
-                  {t("spriteGroup.fallbackToDefault")}
-                </Switch>
+                  {t("spriteGroup.newGroup")}
+                </Button>
               </div>
             </div>
 
@@ -457,7 +458,12 @@ export function CharacterSpritesSection({
                   placeholder={t("spriteGroup.newGroupPlaceholder")}
                   value={newGroupInput}
                 />
-                <AsyncButton disabled={!newGroupInput.trim()} loading={spriteGroupsPending} onClick={handleCreateGroup}>
+                <AsyncButton
+                  disabled={!newGroupInput.trim()}
+                  loading={spriteGroupsPending}
+                  onClick={handleCreateGroup}
+                  variant="primary"
+                >
                   {t("spriteGroup.create")}
                 </AsyncButton>
               </div>
@@ -490,7 +496,7 @@ export function CharacterSpritesSection({
                     <Button
                       icon={<Trash2 aria-hidden className="button__icon" />}
                       onClick={() => setPendingDeleteGroup(activeSpriteGroup)}
-                      variant="ghost"
+                      variant="danger"
                     >
                       {t("spriteGroup.delete")}
                     </Button>
@@ -513,6 +519,7 @@ export function CharacterSpritesSection({
                       disabled={!renameInput.trim() || renameInput.trim() === activeSpriteGroup}
                       loading={spriteGroupsPending}
                       onClick={handleConfirmRename}
+                      variant="primary"
                     >
                       {t("common.save")}
                     </AsyncButton>
@@ -555,6 +562,7 @@ export function CharacterSpritesSection({
                     disabled={checkedIndices.size === 0 || !batchTargetGroup}
                     loading={spriteGroupsPending}
                     onClick={handleBatchMove}
+                    variant="primary"
                   >
                     {t("spriteGroup.batchMoveTo")}
                   </AsyncButton>
@@ -618,7 +626,7 @@ export function CharacterSpritesSection({
                       onChange={(event) => onSpriteTagChange(event.target.value)}
                       value={selectedSpriteTag}
                     />
-                    <AsyncButton loading={emotionTagsPending} onClick={onSaveTags} variant="ghost">
+                    <AsyncButton loading={emotionTagsPending} onClick={onSaveTags} variant="default">
                       {t("character.sprite.saveTags")}
                     </AsyncButton>
                   </div>
@@ -647,38 +655,18 @@ export function CharacterSpritesSection({
               <div className="field-row field-row--stack">
                 <span className="field-row__label">{t("character.sprite.voiceType")}</span>
                 <span className="field-row__control">
-                  <div className="voice-type-selector">
-                    <label className="radio-row">
-                      <input
-                        checked={voiceType === "reference"}
-                        name="voiceType"
-                        onChange={() => onSpriteVoiceTypeChange("reference")}
-                        type="radio"
-                        value="reference"
-                      />
-                      <span>{t("character.sprite.voiceTypeReference")}</span>
-                    </label>
-                    <label className="radio-row">
-                      <input
-                        checked={voiceType === "preset"}
-                        name="voiceType"
-                        onChange={() => onSpriteVoiceTypeChange("preset")}
-                        type="radio"
-                        value="preset"
-                      />
-                      <span>{t("character.sprite.voiceTypePreset")}</span>
-                    </label>
-                    <label className="radio-row">
-                      <input
-                        checked={voiceType === "fallback"}
-                        name="voiceType"
-                        onChange={() => onSpriteVoiceTypeChange("fallback")}
-                        type="radio"
-                        value="fallback"
-                      />
-                      <span>{t("character.sprite.voiceTypeFallback")}</span>
-                    </label>
-                  </div>
+                  <SegmentedRadio
+                    ariaLabel={t("character.sprite.voiceType")}
+                    className="voice-type-selector"
+                    name="voiceType"
+                    onChange={onSpriteVoiceTypeChange}
+                    options={[
+                      { label: t("character.sprite.voiceTypeReference"), value: "reference" },
+                      { label: t("character.sprite.voiceTypePreset"), value: "preset" },
+                      { label: t("character.sprite.voiceTypeFallback"), value: "fallback" },
+                    ]}
+                    value={voiceType}
+                  />
                   <p className="field-row__hint field-row__hint--voice-type">{t(voiceTypeHintKey)}</p>
                 </span>
               </div>
@@ -709,7 +697,7 @@ export function CharacterSpritesSection({
                       />
                       <AsyncButton
                         onClick={() => onSpriteVoiceTextBlur(selectedSprite?.voice_text ?? "")}
-                        variant="ghost"
+                        variant="default"
                       >
                         {t("character.sprite.saveVoiceText")}
                       </AsyncButton>
@@ -718,19 +706,19 @@ export function CharacterSpritesSection({
                 </label>
               ) : null}
               <div className="asset-inspector__actions">
-                <AsyncButton loading={voiceUploadPending} onClick={onSpriteVoiceUpload} variant="ghost">
-                  {t("character.sprite.uploadVoice")}
-                </AsyncButton>
-                <AsyncButton loading={voiceDeletePending} onClick={onSpriteVoiceDelete} variant="ghost">
-                  {t("character.sprite.deleteVoice")}
-                </AsyncButton>
                 <AsyncButton
                   icon={<Trash2 aria-hidden className="button__icon" />}
                   loading={spriteDeletePending}
                   onClick={onSpriteDelete}
-                  variant="ghost"
+                  variant="danger"
                 >
                   {t("common.remove")}
+                </AsyncButton>
+                <AsyncButton loading={voiceDeletePending} onClick={onSpriteVoiceDelete} variant="ghost">
+                  {t("character.sprite.deleteVoice")}
+                </AsyncButton>
+                <AsyncButton loading={voiceUploadPending} onClick={onSpriteVoiceUpload} variant="default">
+                  {t("character.sprite.uploadVoice")}
                 </AsyncButton>
               </div>
             </aside>

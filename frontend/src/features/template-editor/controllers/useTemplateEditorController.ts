@@ -81,6 +81,7 @@ export function useTemplateEditorController(props: TemplateEditorPageProps): Tem
     confirmPrimaryCharacters: launch.confirmPrimaryCharacters,
     conversationId,
     createOnly,
+    dialogFormats: state.dialogFormats,
     draft: state.draft,
     effectivePlayerCharacter: state.effectivePlayerCharacter,
     effects: state.effects,
@@ -129,6 +130,7 @@ export function useTemplateEditorController(props: TemplateEditorPageProps): Tem
       launch.setMobileAccessInfo(null);
       return showChatSurface({ snapshot: info ? { runtimeMode: "react", wsUrl: info.websocketUrl } : null });
     },
+    outputFormat: state.outputFormat,
     playerCharacter: state.playerCharacter,
     presetsLibrary: state.presetsLibrary,
     presetsLibraryError: state.presetsIsError,

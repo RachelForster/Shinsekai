@@ -10,6 +10,15 @@ describe("CharacterRelationSection", () => {
     expect(screen.getByRole("textbox", { name: "Target 1" })).toBeInTheDocument();
     expect(screen.getByLabelText("Relationship 1")).toBeInTheDocument();
     expect(screen.getByLabelText("Affection 1")).toBeInTheDocument();
+    const headerActions = screen.getByRole("button", { name: "Add relationship" }).closest(".page__actions");
+    expect(headerActions).not.toBeNull();
+    expect(Array.from(headerActions!.querySelectorAll("button")).map((button) => button.textContent?.trim())).toEqual([
+      "Clean up old data",
+      "Reload",
+      "Discard changes",
+      "Add relationship",
+      "Save",
+    ]);
   });
 
   it("discards an unsaved relationship draft when the owner changes", async () => {

@@ -29,7 +29,11 @@ from ai.memory.operations import (
 )
 from ai.memory.queue import MemoryWriteQueue
 from ai.memory.rule_recall_planner import RuleRecallPlanner
-from core.chat_history.models import is_compact_summary_message
+from core.chat_history.models import (
+    PERCEPTION_SOURCE,
+    is_compact_summary_message,
+    is_synthetic_internal_message,
+)
 from core.chat_history.text import (
     history_payload_to_plain_text,
     parse_assistant_dialog_content,
@@ -443,7 +447,7 @@ class MemoryAutoHooks:
         if role not in {"user", "assistant"}:
             return
         message = context.message or {}
-        if is_compact_summary_message(message) or message.get("source") == "perception":
+        if is_compact_summary_message(message) or is_synthetic_internal_message(message):
             return
         if role == "assistant" and message.get("tool_calls"):
             return
@@ -540,7 +544,7 @@ class MemoryAutoHooks:
                 role = str(message.get("role") or "")
                 if role not in {"user", "assistant"}:
                     continue
-                if is_compact_summary_message(message) or message.get("source") == "perception":
+                if is_compact_summary_message(message) or is_synthetic_internal_message(message):
                     continue
                 if role == "assistant" and message.get("tool_calls"):
                     continue
@@ -773,7 +777,10 @@ class MemoryAutoHooks:
             if role == "system":
                 continue
             if role == "user":
-                if is_compact_summary_message(msg):
+                if is_compact_summary_message(msg) or (
+                    is_synthetic_internal_message(msg)
+                    and msg.get("source") != PERCEPTION_SOURCE
+                ):
                     return None
                 target_idx = idx
                 break

@@ -107,14 +107,15 @@ def delete_story_version(state: Any, story_path: str) -> dict:
         files = [story]
         for path in histories:
             files.extend(conversations._conversation_storage_files(state, path))
-        with recoverable_deletion(files, conversations._directory(state).parent / "story-deletions"):
-            for path in histories:
-                conversations._delete_conversation_files(state, path)
-            story.unlink()
-            if active_selected:
-                lifecycle = _session_lifecycle(state)
-                lifecycle.closing("剧本版本已删除。")
-                lifecycle.ended("剧本版本已删除。")
+        with conversations.deferred_document_reclamation(state):
+            with recoverable_deletion(files, conversations._directory(state).parent / "story-deletions"):
+                for path in histories:
+                    conversations._delete_conversation_files(state, path)
+                story.unlink()
+                if active_selected:
+                    lifecycle = _session_lifecycle(state)
+                    lifecycle.closing("剧本版本已删除。")
+                    lifecycle.ended("剧本版本已删除。")
         # Referenced cast/assets and sibling versions may be shared. Deleting a
         # version never recursively removes its containing directory.
         return {"ok": True, "deletedConversations": len(histories)}

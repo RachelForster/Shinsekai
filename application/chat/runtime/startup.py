@@ -198,6 +198,9 @@ def create_chat_startup_context(
             media_selection_mode=str(
                 getattr(args, "media_selection_mode", "indexed") or "indexed"
             ),
+            output_format=str(
+                getattr(args, "output_format", "json_v1") or "json_v1"
+            ),
             locale=lambda: resolve_template_locale(config),
             **({"use_current_template_for_history": True} if getattr(args, "use_current_template_for_history", False) else {}),
         )
@@ -277,7 +280,12 @@ def _import_provider_runtime() -> SimpleNamespace:
         configure_registered_formats,
         configure_builtin_formats,
     )
+    from core.messaging.formats.registry import (
+        configure_builtin_dialog_formats,
+        configure_registered_dialog_formats,
+    )
     configure_builtin_formats()
+    configure_builtin_dialog_formats()
     from plugin_system.host import (
         bind_model_assets_runtime,
         ensure_plugins_loaded,
@@ -299,6 +307,7 @@ def _import_provider_runtime() -> SimpleNamespace:
         bind_model_assets_runtime=bind_model_assets_runtime,
         configure_registered_fallbacks=configure_registered_fallbacks,
         configure_registered_formats=configure_registered_formats,
+        configure_registered_dialog_formats=configure_registered_dialog_formats,
         configure_registered_model_assets=configure_registered_model_assets,
         create_plugin_model_assets_dispatcher=create_plugin_model_assets_dispatcher,
         ensure_plugins_loaded=ensure_plugins_loaded,
@@ -368,6 +377,11 @@ def _load_plugin_manager(
     configure_assets_fn = getattr(runtime, "configure_registered_model_assets", None)
     if callable(configure_assets_fn):
         extra_bindings["configure_model_assets"] = configure_assets_fn
+    configure_dialog_formats_fn = getattr(
+        runtime, "configure_registered_dialog_formats", None
+    )
+    if callable(configure_dialog_formats_fn):
+        extra_bindings["configure_dialog_formats"] = configure_dialog_formats_fn
 
     return runtime.ensure_plugins_loaded(
         config,

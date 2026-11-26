@@ -171,10 +171,14 @@ describe("ApiSettingsPage", () => {
     mocks.saveApiConfig.mockImplementation(async (api) => api);
     renderPage();
     await screen.findByRole("heading", { name: "AI 服务设置" });
+    const saveButton = screen.getByRole("button", { name: "保存" });
+    const resumeButton = screen.getByRole("button", { name: "加载上次聊天并启动" });
+    expect(resumeButton.parentElement).toBe(saveButton.parentElement);
+    expect(resumeButton.compareDocumentPosition(saveButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.click(screen.getByText("实时感知与游戏反应", { selector: "summary" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "使用 Q4 GGUF" }));
     expect(screen.getByRole("checkbox", { name: "使用 Q4 GGUF" })).toBeChecked();
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    fireEvent.click(saveButton);
     await waitFor(() =>
       expect(mocks.saveApiConfig).toHaveBeenCalledWith(
         expect.objectContaining({

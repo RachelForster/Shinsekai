@@ -15,6 +15,19 @@ import {
 import { isChatStageHitbox, isPointInsideChatStageHitbox } from "../chatStageUtils";
 import { clickThroughGuardIntervalMs } from "../runtimeConfig";
 
+export type ClickThroughReason =
+  | "cleanup"
+  | "disabled-stage"
+  | "enabled-transparent-stage"
+  | "focus-hitbox"
+  | "guard-error"
+  | "guard-hitbox"
+  | "pointer-down"
+  | "pointer-hitbox"
+  | "pointer-leave-disabled"
+  | "pointer-leave-transparent"
+  | "pointer-transparent";
+
 export function useDesktopClickThrough({
   clickThroughEnabled,
   standaloneDesktopWindow,
@@ -36,7 +49,7 @@ export function useDesktopClickThrough({
     clickThroughGuardIntervalRef.current = null;
   }, []);
 
-  const applyClickThroughIgnored = useCallback((ignore: boolean, reason: string) => {
+  const applyClickThroughIgnored = useCallback((ignore: boolean, reason: ClickThroughReason) => {
     if (clickThroughIgnoredRef.current === ignore) {
       return;
     }
@@ -48,7 +61,7 @@ export function useDesktopClickThrough({
   }, []);
 
   const disableClickThrough = useCallback(
-    (reason: string) => {
+    (reason: ClickThroughReason) => {
       stopClickThroughGuard();
       applyClickThroughIgnored(false, reason);
     },
@@ -81,7 +94,7 @@ export function useDesktopClickThrough({
   }, [disableClickThrough]);
 
   const enableClickThrough = useCallback(
-    (reason: string) => {
+    (reason: ClickThroughReason) => {
       applyClickThroughIgnored(true, reason);
       startClickThroughGuard();
     },
@@ -89,7 +102,7 @@ export function useDesktopClickThrough({
   );
 
   const setClickThroughIgnored = useCallback(
-    (ignore: boolean, reason: string) => {
+    (ignore: boolean, reason: ClickThroughReason) => {
       if (ignore) {
         enableClickThrough(reason);
       } else {

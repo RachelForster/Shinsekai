@@ -352,6 +352,7 @@ def _start_plugin_loader(state, logger) -> None:
             )
             from ai.vision.fallback_registry import configure_registered_fallbacks
             from core.media.avatar.registry import configure_registered_formats
+            from core.messaging.formats.registry import configure_registered_dialog_formats
             from ai.asr.asr_manager import ASRAdapterFactory
             from ai.llm.llm_manager import LLMAdapterFactory
             from ai.tools.tool_manager import ToolManager
@@ -380,6 +381,7 @@ def _start_plugin_loader(state, logger) -> None:
                     create_tool_manager=ToolManager,
                     configure_vision_fallbacks=configure_registered_fallbacks,
                     configure_avatar_formats=configure_registered_formats,
+                    configure_dialog_formats=configure_registered_dialog_formats,
                     register_mcp_tools=register_mcp_tools,
                     configure_model_assets=configure_registered_model_assets,
                 ),
@@ -481,6 +483,8 @@ def run(
 
     from core.media.avatar.registry import configure_builtin_formats
     configure_builtin_formats()
+    from core.messaging.formats.registry import configure_builtin_dialog_formats
+    configure_builtin_dialog_formats()
     state = BridgeState(
         config_manager=config_manager,
         character_manager=CharacterManager(),

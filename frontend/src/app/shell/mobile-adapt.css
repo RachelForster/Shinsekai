@@ -743,9 +743,64 @@
     background: var(--m3-inner-button-bg);
   }
 
+  .app-shell .button--ghost,
+  .dialog .button--ghost {
+    border-color: transparent;
+    border-radius: var(--m3-shape-full);
+    color: var(--color-text-muted);
+    background: transparent;
+    box-shadow: none;
+    font-weight: 550;
+  }
+
+  .app-shell .button--ghost:hover:not(:disabled),
+  .dialog .button--ghost:hover:not(:disabled) {
+    border-color: var(--m3-card-border);
+    color: var(--color-text-primary);
+    background: var(--m3-surface-container-high);
+    box-shadow: none;
+  }
+
+  .app-shell .button--ghost:active:not(:disabled),
+  .dialog .button--ghost:active:not(:disabled) {
+    background: var(--m3-surface-container-highest);
+    box-shadow: none;
+  }
+
+  .app-shell .button--ghost:disabled,
+  .dialog .button--ghost:disabled {
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+    opacity: 0.45;
+  }
+
   .app-shell .button--danger,
   .dialog .button--danger {
+    border-color: var(--color-danger-border);
     border-radius: var(--m3-shape-full);
+    color: var(--color-danger);
+    background: var(--color-danger-bg);
+    box-shadow: none;
+  }
+
+  .app-shell .button--danger:hover:not(:disabled),
+  .dialog .button--danger:hover:not(:disabled) {
+    border-color: var(--color-danger-border-strong);
+    color: var(--color-danger);
+    background: var(--color-danger-bg-hover);
+    box-shadow: none;
+  }
+
+  .app-shell .button--danger:active:not(:disabled),
+  .dialog .button--danger:active:not(:disabled) {
+    background: var(--color-danger-bg-intense);
+  }
+
+  .app-shell .button--danger:disabled,
+  .dialog .button--danger:disabled {
+    box-shadow: none;
+    opacity: 0.45;
   }
 
   .app-shell .icon-button,
@@ -754,8 +809,15 @@
     height: 40px;
     border-color: var(--m3-card-border);
     border-radius: var(--m3-shape-full);
+    color: var(--color-text-muted);
     background: var(--m3-surface-container-high);
+    box-shadow: none;
     -webkit-tap-highlight-color: transparent;
+  }
+
+  .app-shell .icon-button:hover:not(:disabled),
+  .dialog .icon-button:hover:not(:disabled) {
+    color: var(--color-text-primary);
   }
 
   .app-shell
@@ -1001,10 +1063,12 @@
   }
 
   .toast-region {
+    top: auto;
     left: var(--mobile-page-gutter);
     right: var(--mobile-page-gutter);
     bottom: calc(86px + env(safe-area-inset-bottom, 0px));
     width: auto;
+    transform: none;
   }
 
   .toast {
@@ -1061,24 +1125,10 @@
     flex: 1 1 auto;
   }
 
-  .app-shell .conversation-card__actions .button--primary,
-  .app-shell .conversation-card__actions .button--primary:hover:not(:disabled) {
-    border-color: var(--m3-card-border);
-    color: var(--color-text-primary);
-    background: var(--m3-surface-container-high);
-    box-shadow: 0 1px 2px light-dark(rgb(0 0 0 / 0.025), rgb(0 0 0 / 0.18));
-  }
-
-  .app-shell .conversation-card__actions .button--primary:active:not(:disabled) {
+  .app-shell .conversation-type-badge:not(.conversation-type-badge--story) {
     border-color: var(--m3-primary-container-border);
     color: var(--m3-on-primary-container);
     background: var(--m3-primary-container);
-  }
-
-  .app-shell .conversation-type-badge:not(.conversation-type-badge--story) {
-    border-color: var(--m3-card-border);
-    color: var(--color-text-muted);
-    background: var(--m3-inner-bg);
   }
 
   .app-shell .conversation-type-badge--story {

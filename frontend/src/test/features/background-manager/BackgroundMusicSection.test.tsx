@@ -87,9 +87,18 @@ describe("BackgroundMusicSection", () => {
   });
 
   it("routes toolbar actions through public callbacks", () => {
-    const { props } = renderSection({
+    const { container, props } = renderSection({
       selectedBgmIndexSet: new Set([1]),
     });
+
+    const headerActions = container.querySelector(".section__header .page__actions");
+    expect(headerActions).not.toBeNull();
+    expect(Array.from(headerActions!.querySelectorAll("button")).map((button) => button.textContent?.trim())).toEqual([
+      "Delete selected BGM",
+      "Delete all BGM",
+      "Batch BGM tags",
+      "Upload BGM",
+    ]);
 
     fireEvent.click(screen.getByRole("button", { name: "Upload BGM" }));
     expect(screen.getByRole("dialog", { name: "Select BGM files" })).toBeInTheDocument();

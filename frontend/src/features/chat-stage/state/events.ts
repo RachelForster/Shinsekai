@@ -36,12 +36,25 @@ function removeSprite(
   state: ChatStageState,
   event: Extract<ChatStageEvent, { type: "sprite.remove" }>,
 ): ChatStageState {
+  const remaining = state.sprites.filter(
+    (sprite) => sprite.id !== event.characterName && sprite.label !== event.characterName,
+  );
+  const removedKeys = new Set<string>([event.characterName]);
+  for (const sprite of state.sprites) {
+    if (sprite.id === event.characterName || sprite.label === event.characterName) {
+      if (sprite.id) removedKeys.add(sprite.id);
+      if (sprite.label) removedKeys.add(sprite.label);
+    }
+  }
+  const nextSpriteMotions = { ...state.spriteMotions };
+  for (const key of removedKeys) {
+    delete nextSpriteMotions[key];
+  }
   return withResolvedLayers({
     ...state,
     eventSeq: Math.max(state.eventSeq, event.seq),
-    sprites: state.sprites.filter(
-      (sprite) => sprite.id !== event.characterName && sprite.label !== event.characterName,
-    ),
+    spriteMotions: nextSpriteMotions,
+    sprites: remaining,
   });
 }
 
@@ -173,13 +186,40 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, re
       return upsertSprite(state, event);
     case "sprite.remove":
       return removeSprite(state, event);
-    case "background.change":
+    case "sprite.motion": {
+      const motion = event.motion.trim();
+      const characterName = event.characterName.trim();
+      if (!motion || !characterName) {
+        return {
+          ...state,
+          eventSeq: Math.max(state.eventSeq, event.seq),
+        };
+      }
+      return {
+        ...state,
+        eventSeq: Math.max(state.eventSeq, event.seq),
+        spriteMotions: {
+          ...state.spriteMotions,
+          [characterName]: {
+            durationMs: event.durationMs && event.durationMs > 0 ? event.durationMs : 600,
+            motion,
+            seq: event.seq,
+          },
+        },
+      };
+    }
+    case "background.change": {
+      const sceneChanged = event.url !== (state.backgroundPath ?? "");
+      const transitionEffect = event.transition?.trim() ?? "";
       return withResolvedLayers({
         ...clearTransientNotificationState(state),
         backgroundPath: event.url,
-        sprites: event.url === (state.backgroundPath ?? "") ? state.sprites : [],
+        backgroundTransition: transitionEffect ? { effect: transitionEffect, seq: event.seq } : null,
+        spriteMotions: sceneChanged ? {} : state.spriteMotions,
+        sprites: sceneChanged ? [] : state.sprites,
         eventSeq: Math.max(state.eventSeq, event.seq),
       });
+    }
     case "bgm.change":
       return withResolvedLayers({
         ...state,
@@ -217,6 +257,12 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, re
         ...state,
         eventSeq: Math.max(state.eventSeq, event.seq),
         story: event.story,
+      });
+    case "behavior.state.replace":
+      return withResolvedLayers({
+        ...state,
+        eventSeq: Math.max(state.eventSeq, event.seq),
+        behavior: event.behavior ?? null,
       });
     case "story.node.entered":
     case "story.node.unlocked":
@@ -544,6 +590,8 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, re
         perception: null,
         pluginPagePresentations: [],
         sessionClosedReason: event.reason,
+        backgroundTransition: null,
+        spriteMotions: {},
         spriteReaction: null,
         status: "idle",
         systemMessageText: undefined,
