@@ -108,7 +108,7 @@
   display: inline-flex;
   width: fit-content;
   min-width: 88px;
-  max-width: min(52vw, 360px);
+  max-width: var(--chat-name-max-width, min(52vw, 360px));
   min-height: var(--chat-name-min-height, clamp(24px, 13%, 28px));
   align-items: center;
   justify-content: var(--chat-name-justify-content);
@@ -298,9 +298,9 @@
   height: 0;
   margin-left: 0.45em;
   vertical-align: 0.02em;
-  border-right: 6px solid transparent;
-  border-left: 6px solid transparent;
-  border-top: 8px solid var(--chat-ctc-color, var(--stage-accent));
+  border-right: 0.34em solid transparent;
+  border-left: 0.34em solid transparent;
+  border-top: 0.45em solid var(--chat-ctc-color, var(--stage-accent));
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
   pointer-events: none;
   animation: chat-stage-ctc 1.15s ease-in-out infinite;
@@ -327,7 +327,7 @@
   --player-portrait-inset: clamp(8px, 1.5vw, 16px);
   --player-portrait-gap: clamp(12px, 1.5vw, 20px);
   --player-portrait-size: min(
-    clamp(64px, 20vw, 160px),
+    var(--chat-player-portrait-max-size, clamp(64px, 20vw, 160px)),
     max(0px, calc(var(--player-portrait-height) - 2 * var(--player-portrait-inset)))
   );
   --player-portrait-text-inset: calc(var(--player-portrait-size) + var(--player-portrait-gap));
@@ -335,4 +335,8 @@
 
 .dialog-layer-shell[data-player-portrait="true"] .dialog-layer__body {
   padding-left: var(--player-portrait-text-inset);
+}
+
+.chat-stage[data-viewport-vn="true"] .dialog-layer-shell[data-player-portrait="true"] {
+  --player-portrait-height: var(--chat-dialog-portrait-height, var(--chat-dialog-height));
 }
