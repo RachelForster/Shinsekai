@@ -38,6 +38,10 @@ export const onboardingEnMessages: Record<OnboardingMessageKey, string> = {
   "onboarding.api.ttsSpeed": "Speech speed",
   "onboarding.api.unsavedWarning":
     "You haven't saved your API configuration yet. Shinsekai can't respond without an LLM provider. Skip anyway?",
+  "onboarding.api.voiceBundledDescription":
+    "Built-in Qwen3-TTS voice is ready to use; expand to one-click download Genie / GPT-SoVITS for closer character voice likeness.",
+  "onboarding.api.voiceBundledHint":
+    "Built-in Qwen3-TTS is enabled by default and works once your API key is saved. For closer character voice likeness, one-click download the Genie / GPT-SoVITS voice bundle (extraction after download can take a while; keep this page open).",
   "onboarding.api.voiceDescription": "Choose a voice provider and keep a practical speech speed.",
   "onboarding.api.voiceTitle": "Voice",
   "onboarding.backgrounds.description":

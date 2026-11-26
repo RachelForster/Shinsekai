@@ -8,7 +8,7 @@ export function perceptionModelSettings(config: ApiConfig) {
   const legacyGguf = model === GGUF_PERCEPTION_MODEL;
   return {
     perception_model: legacyGguf ? DEFAULT_PERCEPTION_MODEL : model,
-    perception_use_gguf: legacyGguf || Boolean(config.perception_use_gguf),
+    perception_use_gguf: legacyGguf || (config.perception_use_gguf ?? true),
   };
 }
 

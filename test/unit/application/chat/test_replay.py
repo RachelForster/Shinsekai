@@ -292,6 +292,21 @@ def test_synthesis_uses_original_speech_and_keeps_the_shared_server_running(
     manager.shutdown.assert_called_once_with(stop_server=False)
 
 
+def test_synthesis_stops_server_when_replay_spawned_its_own_adapter(replay, tmp_path, monkeypatch):
+    service, source, _, _ = replay
+    source[1]["text"] = "Mio: こんにちは"
+    snapshot = service.prepare()
+    begin(service, snapshot, 1, 1, True)
+    manager, adapter = Mock(), Mock()
+    adapter.owns_server_process = True
+    adapter.wait_until_ready.side_effect = RuntimeError("startup failed")
+    monkeypatch.setattr("ai.tts.tts_manager.TTSManager", Mock(return_value=manager))
+    monkeypatch.setattr("ai.tts.tts_manager.TTSAdapterFactory.create_adapter", Mock(return_value=adapter))
+    with pytest.raises(RuntimeError, match="startup failed"):
+        service.generate(snapshot["id"], snapshot["entries"][1]["key"])
+    manager.shutdown.assert_called_once_with(stop_server=True)
+
+
 def test_cancellation_stops_new_requests_but_can_save_completed_audio(replay, tmp_path):
     service, _, _, _ = replay
     snapshot = service.prepare()

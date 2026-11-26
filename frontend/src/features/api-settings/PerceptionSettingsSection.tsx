@@ -54,7 +54,7 @@ function statusQueryOptions(draft: ApiConfig) {
   const pythonPath = (draft.perception_python_path || "").trim();
   return {
     probe: false,
-    ...(model !== DEFAULT_PERCEPTION_MODEL ? { model } : {}),
+    model,
     ...(pythonPath ? { pythonPath } : {}),
   };
 }

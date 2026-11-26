@@ -381,6 +381,7 @@ class ChatReplayService:
         from ai.tts.tts_manager import TTSAdapterFactory, TTSManager
         settings = plan["settings"]
         manager = TTSManager(audio_cache_dir=Path(self.state.project_root_dir) / "cache" / "audio", unique_cache_files=True)
+        adapter = None
         try:
             adapter = TTSAdapterFactory.create_adapter(settings["provider"], **settings["kwargs"])
             manager.set_tts_adapter(adapter)
@@ -410,7 +411,12 @@ class ChatReplayService:
                 raise ValueError("语音生成失败，可重试或跳过本句语音")
             return Path(path)
         finally:
-            manager.shutdown(stop_server=False)
+            owns_server = getattr(adapter, "owns_server_process", None) is True
+            manager.shutdown(stop_server=owns_server)
+            if owns_server and getattr(manager, "tts_adapter", None) is not adapter:
+                stop_fn = getattr(adapter, "stop_server", None)
+                if callable(stop_fn):
+                    stop_fn()
 
 
 _service_lock = threading.Lock()

@@ -20,6 +20,9 @@ voice_target_ja: 日语
 voice_target_en: 英语
 voice_target_zh: 中文
 voice_target_yue: 粤语
+voice_target_ko: 韩语
+voice_target_auto: 该角色参考语音对应的语言
+voice_target_auto_map: "{base}（{mapping}）"
 json_line_trans: '        "translate": "该句台词的{target_voice_name}译文（与系统语音目标语言一致）",
 
   '

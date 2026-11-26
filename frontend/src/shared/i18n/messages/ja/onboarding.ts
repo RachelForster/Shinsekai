@@ -38,6 +38,10 @@ export const onboardingJaMessages: Record<OnboardingMessageKey, string> = {
   "onboarding.api.ttsSpeed": "話速",
   "onboarding.api.unsavedWarning":
     "API 設定がまだ保存されていません。LLM プロバイダーがないと AI は応答できません。それでもスキップしますか？",
+  "onboarding.api.voiceBundledDescription":
+    "内蔵 Qwen3-TTS 音声がすぐ使えます。よりキャラクターらしい声質にしたい場合は展開して Genie / GPT-SoVITS を一括ダウンロードしてください。",
+  "onboarding.api.voiceBundledHint":
+    "現在は内蔵 Qwen3-TTS が有効になっており、API Key を保存すればすぐ音声再生できます。より原音に近い声質にしたい場合は Genie / GPT-SoVITS 音声パックを一括ダウンロードしてください（展開には時間がかかることがあります）。",
   "onboarding.api.voiceDescription": "音声プロバイダーと実用的な話速を設定します。",
   "onboarding.api.voiceTitle": "音声",
   "onboarding.backgrounds.description":

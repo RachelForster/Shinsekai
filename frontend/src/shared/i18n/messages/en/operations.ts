@@ -41,6 +41,13 @@ export const operationsEnMessages: Record<OperationsMessageKey, string> = {
   "ops.api.tts.noQuotes": "TTS URL and startup path must not contain quotes.",
   "ops.api.tts.noneOption": "Disabled",
   "ops.api.tts.pathRequired": "Local TTS engine requires a startup path.",
+  "ops.api.tts.qwen3Gguf.pathDesc":
+    "Optional. Auto-discovers weights in data/models/qwen3-tts-gguf and llama-server in perception-gguf/llama.cpp when blank, or set a custom directory.",
+  "ops.api.tts.qwen3Gguf.pathLabel": "Qwen3-TTS GGUF directory (optional)",
+  "ops.api.tts.qwen3Gguf.pathPlaceholder": "Leave blank to auto-detect data/models/qwen3-tts-gguf",
+  "ops.api.tts.qwen3Gguf.urlDesc": "HTTP URL of the llama-server TTS service (defaults to local port 9882).",
+  "ops.api.tts.qwen3Gguf.urlLabel": "Qwen3-TTS service URL",
+  "ops.api.tts.qwen3Gguf.urlPlaceholder": "e.g. http://127.0.0.1:9882",
   "ops.api.tts.urlRequired": "Current TTS engine requires a service URL.",
   "ops.api.vision.doubao": "Doubao Vision",
   "ops.api.vision.ollamaLocal": "Ollama Vision (Local)",

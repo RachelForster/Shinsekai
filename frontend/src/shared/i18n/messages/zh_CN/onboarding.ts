@@ -34,6 +34,10 @@ export const onboardingZhCNMessages = {
   "onboarding.api.ttsProvider": "语音服务商",
   "onboarding.api.ttsSpeed": "语速",
   "onboarding.api.unsavedWarning": "API 配置还没有保存哦。没有 LLM 服务商 AI 就无法回复。确定要跳过吗？",
+  "onboarding.api.voiceBundledDescription":
+    "已内置开箱即用的 Qwen3-TTS 语音；如果想让语音听起来更像角色原声，可展开一键下载 Genie / GPT-SoVITS。",
+  "onboarding.api.voiceBundledHint":
+    "当前已默认启用内置 Qwen3-TTS 语音，填写 API Key 后即可直接配音。如果想让语音听起来更像角色原声，请一键下载 Genie / GPT-SoVITS 语音包（下载完成后解压耗时较长属正常现象，请保持页面打开）。",
   "onboarding.api.voiceDescription": "需要本地语音能力时，直接下载推荐语音包即可。",
   "onboarding.api.voiceTitle": "语音",
   "onboarding.backgrounds.description": "导入已有背景包即可；如果想做桌宠，也可以不导入背景，保留透明舞台。",

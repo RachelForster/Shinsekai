@@ -394,6 +394,7 @@ class ChatCommandDispatcher:
         if self.tts_manager is not None:
             self.tts_manager.set_language(voice_language)
         voice_labels = {
+            "auto": "template.voice_lang_auto",
             "en": "template.voice_lang_en",
             "zh": "template.voice_lang_zh",
             "ja": "template.voice_lang_ja",

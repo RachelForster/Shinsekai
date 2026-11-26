@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any, TypeAlias
 
 from i18n import current_language
 from sdk.lang import LocaleCode, normalize_lang
+from sdk.voice_lang import VOICE_LANG_AUTO, normalize_voice_language, resolve_character_voice_language
 
 from ..core.catalog import PROMPT_CATALOG
 
@@ -92,9 +93,11 @@ def is_transparent_background(name: str | None) -> bool:
 def _target_voice_key(code: str | None) -> str:
     """将 api.yaml 中的 voice_language 归一成 template_gen.voice_target_* 文案键。"""
     c = (str(code).strip() if code is not None else "") or "ja"
-    low = c.lower()
-    if low in ("yue", "yue_hk", "cantonese", "cht", "zh_hk"):
-        return "yue"
+    normalized = normalize_voice_language(c)
+    if normalized == VOICE_LANG_AUTO:
+        return VOICE_LANG_AUTO
+    if normalized in ("yue", "ko", "en", "zh", "ja"):
+        return normalized
     n = normalize_lang(c)
     if n == "en":
         return "en"
@@ -103,22 +106,70 @@ def _target_voice_key(code: str | None) -> str:
     return "ja"
 
 
-def _ui_voice_same_lang(config_manager) -> bool:
+def resolve_cast_voice_target(
+    voice_language: str | None,
+    characters: Sequence[tuple[str, Any]] | None = None,
+    *,
+    ui_language: str | None = None,
+) -> tuple[str, list[tuple[str, str]]]:
+    """Resolve effective dialog voice target key and per-character language hints for ``auto``."""
+    if normalize_voice_language(voice_language) != VOICE_LANG_AUTO:
+        return _target_voice_key(voice_language), []
+
+    per_char: list[tuple[str, str]] = []
+    for name, char in characters or ():
+        resolved = resolve_character_voice_language(
+            VOICE_LANG_AUTO,
+            prompt_lang=getattr(char, "prompt_lang", ""),
+            prompt_text=getattr(char, "prompt_text", ""),
+            fallback="",
+        )
+        if resolved and resolved != VOICE_LANG_AUTO:
+            per_char.append((str(name), _target_voice_key(resolved)))
+
+    distinct = {key for _, key in per_char}
+    if len(distinct) == 1:
+        return next(iter(distinct)), per_char
+    if not distinct:
+        return _target_voice_key(ui_language or "zh_CN"), []
+    return VOICE_LANG_AUTO, per_char
+
+
+def _ui_voice_same_lang(
+    config_manager,
+    characters: Sequence[tuple[str, Any]] | None = None,
+) -> bool:
     """UI 语言和语音目标语言相同时返回 True（无需翻译）。"""
     try:
         ui = str(config_manager.config.system_config.ui_language or "")
         voice = str(config_manager.config.system_config.voice_language or "ja")
     except Exception:
         return False
+    target, _ = resolve_cast_voice_target(voice, characters, ui_language=ui)
+    if target == VOICE_LANG_AUTO:
+        return False
     # 比较语种前缀：zh_CN vs zh → 都是中文
-    ui_main = ui.split("_")[0].lower()
-    voice_main = _target_voice_key(voice)
-    return ui_main == voice_main
+    ui_main = normalize_lang(ui).split("_")[0].lower()
+    return ui_main == target
 
 
-def _target_voice_display_name(config_manager, translate) -> str:
+def _target_voice_display_name(
+    config_manager,
+    translate,
+    characters: Sequence[tuple[str, Any]] | None = None,
+) -> str:
     try:
+        ui = str(config_manager.config.system_config.ui_language or "")
         raw = config_manager.config.system_config.voice_language
     except Exception:
+        ui = ""
         raw = "ja"
-    return translate(f"voice_target_{_target_voice_key(raw)}")
+    target, per_char = resolve_cast_voice_target(raw, characters, ui_language=ui)
+    if target == VOICE_LANG_AUTO:
+        base = translate("voice_target_auto")
+        if per_char:
+            sep = translate("name_sep")
+            mapping = sep.join(f"{name}:{translate(f'voice_target_{key}')}" for name, key in per_char)
+            return translate("voice_target_auto_map", base=base, mapping=mapping)
+        return base
+    return translate(f"voice_target_{target}")

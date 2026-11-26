@@ -17,8 +17,12 @@ from scripts.portable.targets import (
     DEFAULT_LLAMA_CPP_TAG,
     PERCEPTION_GGUF_FILES,
     PERCEPTION_GGUF_REPO_ID,
+    QWEN3_TTS_GGUF_FILES,
+    QWEN3_TTS_GGUF_REPO_ID,
     PlatformTarget,
 )
+
+_QWEN3_QUANT_RANK = ("q8_0", "q4_k_m", "bf16", "f16")
 
 IGNORED_DIR_NAMES = frozenset({"__pycache__", ".pytest_cache", ".ruff_cache", ".git"})
 IGNORED_FILE_SUFFIXES = (".pyc", ".pyo", ".pdb", ".d", ".rlib")
@@ -110,7 +114,12 @@ def safe_extract_tar_gz(archive_path: Path, extract_dir: Path) -> None:
             tf.extractall(extract_dir, members=members)
 
 
-def _download_gguf_weights(dst_dir: Path) -> None:
+def _download_gguf_weights(
+    dst_dir: Path,
+    *,
+    repo_id: str = PERCEPTION_GGUF_REPO_ID,
+    files: tuple[str, ...] = PERCEPTION_GGUF_FILES,
+) -> None:
     dst_dir.mkdir(parents=True, exist_ok=True)
     hf_token = (os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN") or "").strip() or None
     endpoint = (
@@ -119,7 +128,7 @@ def _download_gguf_weights(dst_dir: Path) -> None:
         or "https://huggingface.co"
     ).rstrip("/")
 
-    for filename in PERCEPTION_GGUF_FILES:
+    for filename in files:
         dest_file = dst_dir / filename
         if dest_file.is_file() and dest_file.stat().st_size > 0:
             continue
@@ -127,7 +136,7 @@ def _download_gguf_weights(dst_dir: Path) -> None:
             from huggingface_hub import hf_hub_download
 
             downloaded = hf_hub_download(
-                repo_id=PERCEPTION_GGUF_REPO_ID,
+                repo_id=repo_id,
                 filename=filename,
                 local_dir=str(dst_dir),
                 token=hf_token,
@@ -138,7 +147,7 @@ def _download_gguf_weights(dst_dir: Path) -> None:
                 resolved.unlink()
                 shutil.copy2(materialized, resolved)
         except Exception:
-            url = f"{endpoint}/{PERCEPTION_GGUF_REPO_ID}/resolve/main/{filename}"
+            url = f"{endpoint}/{repo_id}/resolve/main/{filename}"
             headers = {"User-Agent": "shinsekai-portable-builder"}
             if hf_token:
                 headers["Authorization"] = f"Bearer {hf_token}"
@@ -203,6 +212,46 @@ def _download_llama_cpp_runtime(
             dst_exe.chmod(dst_exe.stat().st_mode | 0o111)
 
 
+def _accepted_llama_executables(target: PlatformTarget, *, allow_host_fallback: bool) -> list[str]:
+    llama_names = [target.llama_executable]
+    if allow_host_fallback:
+        host_llama = "llama-server.exe" if os.name == "nt" else "llama-server"
+        if host_llama not in llama_names:
+            llama_names.append(host_llama)
+    return llama_names
+
+
+def _rank_gguf_file(path: Path) -> tuple[int, str]:
+    lowered = path.name.lower()
+    for idx, token in enumerate(_QWEN3_QUANT_RANK):
+        if token in lowered:
+            return (idx, lowered)
+    return (len(_QWEN3_QUANT_RANK), lowered)
+
+
+def _find_local_qwen3_tts_pair(data_source_root: Path) -> tuple[Path, Path, Path | None] | None:
+    layout = StorageLayout(data_source_root)
+    for candidate in (layout.model_dir("qwen3-tts-gguf"), layout.cache_dir / "qwen3-tts-gguf"):
+        if not candidate.is_dir():
+            continue
+        llama_dir = (candidate / "llama.cpp") if (candidate / "llama.cpp").is_dir() else None
+        exact = [candidate / name for name in QWEN3_TTS_GGUF_FILES]
+        if all(path.is_file() and path.stat().st_size > 0 for path in exact):
+            return exact[0], exact[1], llama_dir
+        non_mmproj: list[Path] = []
+        mmprojs: list[Path] = []
+        for entry in candidate.glob("*.gguf"):
+            if not entry.is_file() or entry.stat().st_size <= 0:
+                continue
+            if "mmproj" in entry.name.lower():
+                mmprojs.append(entry)
+            else:
+                non_mmproj.append(entry)
+        if non_mmproj and mmprojs:
+            return min(non_mmproj, key=_rank_gguf_file), min(mmprojs, key=_rank_gguf_file), llama_dir
+    return None
+
+
 def bundle_perception_gguf(
     *,
     target: PlatformTarget,
@@ -214,11 +263,7 @@ def bundle_perception_gguf(
     warnings: list[str],
 ) -> bool:
     """Copy or download Qwen3-VL-2B GGUF weights and platform llama-server runtime."""
-    llama_names = [target.llama_executable]
-    if allow_host_llama_fallback:
-        host_llama = "llama-server.exe" if os.name == "nt" else "llama-server"
-        if host_llama not in llama_names:
-            llama_names.append(host_llama)
+    llama_names = _accepted_llama_executables(target, allow_host_fallback=allow_host_llama_fallback)
 
     src_dir: Path | None = None
     matched_llama_name = target.llama_executable
@@ -260,4 +305,79 @@ def bundle_perception_gguf(
     except Exception as exc:
         shutil.rmtree(dst_dir, ignore_errors=True)
         warnings.append(f"下载 perception-gguf 模型或 llama.cpp 失败，已跳过：{exc}")
+        return False
+
+
+def bundle_qwen3_tts_gguf(
+    *,
+    target: PlatformTarget,
+    data_source_root: Path,
+    output_dir: Path,
+    download_missing: bool = False,
+    llama_cpp_tag: str = DEFAULT_LLAMA_CPP_TAG,
+    allow_host_llama_fallback: bool = False,
+    warnings: list[str],
+) -> bool:
+    """Copy or download Qwen3-TTS 0.6B GGUF weights and reuse or bundle llama-server."""
+    dst_dir = StorageLayout(output_dir).model_dir("qwen3-tts-gguf")
+    local_pair = _find_local_qwen3_tts_pair(data_source_root)
+    if local_pair is None and not download_missing:
+        warnings.append("未找到完整的 qwen3-tts-gguf 模型权重，已跳过；可追加 --download-missing 自动下载并打入便携包。")
+        return False
+
+    try:
+        local_llama_dir: Path | None = None
+        if local_pair is not None:
+            src_backbone, src_mmproj, local_llama_dir = local_pair
+            dst_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src_backbone, dst_dir / src_backbone.name)
+            shutil.copy2(src_mmproj, dst_dir / src_mmproj.name)
+            expected_weights = (src_backbone.name, src_mmproj.name)
+        else:
+            _download_gguf_weights(
+                dst_dir,
+                repo_id=QWEN3_TTS_GGUF_REPO_ID,
+                files=QWEN3_TTS_GGUF_FILES,
+            )
+            expected_weights = QWEN3_TTS_GGUF_FILES
+
+        if not all((dst_dir / name).is_file() and (dst_dir / name).stat().st_size > 0 for name in expected_weights):
+            raise FileNotFoundError("qwen3-tts-gguf bundle is missing required GGUF weights.")
+
+        llama_names = _accepted_llama_executables(target, allow_host_fallback=allow_host_llama_fallback)
+        shared_llama_dir = StorageLayout(output_dir).model_dir("perception-gguf") / "llama.cpp"
+        if any((shared_llama_dir / name).is_file() for name in llama_names):
+            return True
+
+        candidate_llama_dirs: list[Path] = []
+        if local_llama_dir is not None:
+            candidate_llama_dirs.append(local_llama_dir)
+        for cand in _gguf_candidate_dirs(data_source_root):
+            candidate_llama_dirs.append(cand / "llama.cpp")
+
+        matched_llama_dir = next(
+            (
+                cand
+                for cand in candidate_llama_dirs
+                if cand.is_dir() and any((cand / name).is_file() for name in llama_names)
+            ),
+            None,
+        )
+        if matched_llama_dir is not None:
+            copy_tree(matched_llama_dir, dst_dir / "llama.cpp", dereference=(target.os_family == "windows"))
+        elif download_missing:
+            _download_llama_cpp_runtime(
+                target=target,
+                dst_dir=dst_dir,
+                llama_cpp_tag=llama_cpp_tag,
+            )
+        else:
+            raise FileNotFoundError("No usable llama-server runtime found for qwen3-tts-gguf.")
+
+        if not any((dst_dir / "llama.cpp" / name).is_file() for name in llama_names):
+            raise FileNotFoundError("Bundled qwen3-tts-gguf runtime is missing llama-server executable.")
+        return True
+    except Exception as exc:
+        shutil.rmtree(dst_dir, ignore_errors=True)
+        warnings.append(f"准备 qwen3-tts-gguf 模型或 llama.cpp 失败，已跳过：{exc}")
         return False

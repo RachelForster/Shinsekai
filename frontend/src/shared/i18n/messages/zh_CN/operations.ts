@@ -37,6 +37,13 @@ export const operationsZhCNMessages = {
   "ops.api.tts.noQuotes": "TTS URL 和服务启动路径不能包含引号。",
   "ops.api.tts.noneOption": "不使用",
   "ops.api.tts.pathRequired": "本地 TTS 引擎需要填写服务启动路径。",
+  "ops.api.tts.qwen3Gguf.pathDesc":
+    "可选。当留空时自动从 data/models/qwen3-tts-gguf 与 perception-gguf/llama.cpp 加载；也可指向包含 GGUF 模型或 llama-server 的自定义目录。",
+  "ops.api.tts.qwen3Gguf.pathLabel": "Qwen3-TTS 模型与运行时目录（可选）",
+  "ops.api.tts.qwen3Gguf.pathPlaceholder": "留空则自动查找 data/models/qwen3-tts-gguf",
+  "ops.api.tts.qwen3Gguf.urlDesc": "llama-server TTS 服务的 HTTP 地址（默认本机 9882 端口，避免与 9880/8091 冲突）。",
+  "ops.api.tts.qwen3Gguf.urlLabel": "Qwen3-TTS 服务 URL",
+  "ops.api.tts.qwen3Gguf.urlPlaceholder": "如 http://127.0.0.1:9882",
   "ops.api.tts.urlRequired": "当前 TTS 引擎需要填写 URL。",
   "ops.api.vision.doubao": "豆包视觉",
   "ops.api.vision.ollamaLocal": "Ollama Vision（本地）",

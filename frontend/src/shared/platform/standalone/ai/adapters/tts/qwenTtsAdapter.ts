@@ -1,6 +1,24 @@
 import { translateRuntimeMessage } from "../../../../../i18n/runtimeLanguage";
 import { base64ToBytes, standaloneHttpJson, type StandaloneHttpClient } from "../../httpClient";
+import { normalizeVoiceLanguageCode } from "../../voiceLanguage";
 import type { StandaloneTtsAdapter, StandaloneTtsInput } from "../types";
+
+const QWEN_CLOUD_LANGUAGE_TYPES: Record<string, string> = {
+  zh: "Chinese",
+  en: "English",
+  ja: "Japanese",
+  ko: "Korean",
+  yue: "Cantonese",
+};
+
+function resolveQwenCloudLanguageType(voiceLanguage?: string): string {
+  const raw = String(voiceLanguage ?? "").trim();
+  const normalized = normalizeVoiceLanguageCode(raw);
+  if (normalized && normalized !== "auto") {
+    return QWEN_CLOUD_LANGUAGE_TYPES[normalized] ?? raw;
+  }
+  return "Chinese";
+}
 
 interface QwenTtsResponse {
   output?: {
@@ -78,7 +96,7 @@ export const qwenTtsAdapter: StandaloneTtsAdapter = {
         input: {
           text,
           voice,
-          language_type: input.voiceLanguage || "Chinese",
+          language_type: resolveQwenCloudLanguageType(input.voiceLanguage),
         },
       }),
       timeoutMs: 45_000,

@@ -20,6 +20,9 @@ voice_target_ja: Japanese
 voice_target_en: English
 voice_target_zh: Chinese
 voice_target_yue: Cantonese
+voice_target_ko: Korean
+voice_target_auto: each character's reference voice language
+voice_target_auto_map: "{base} ({mapping})"
 json_line_trans: '        "translate": "{target_voice_name} translation of the line (match system voice language)",
 
   '

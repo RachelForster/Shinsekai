@@ -166,7 +166,11 @@ describe("ApiSettingsPage", () => {
     const config = validAppConfig();
     mocks.getAppConfig.mockResolvedValue({
       ...config,
-      api_config: { ...config.api_config, perception_model: "custom-vision-model" },
+      api_config: {
+        ...config.api_config,
+        perception_model: "custom-vision-model",
+        perception_use_gguf: false,
+      },
     });
     mocks.saveApiConfig.mockImplementation(async (api) => api);
     renderPage();
@@ -787,5 +791,17 @@ describe("ApiSettingsPage", () => {
     fireEvent.click(cancelButton);
 
     await waitFor(() => expect(mocks.cancelTtsBundleDownload).toHaveBeenCalledWith("tts-task"));
+  });
+
+  it("checks Q4 GGUF and local OCR by default in perception settings", async () => {
+    mocks.getAppConfig.mockResolvedValue(validAppConfig());
+    renderPage();
+
+    await screen.findByRole("heading", { name: "AI 服务设置" });
+    fireEvent.click(screen.getByText("实时感知与游戏反应", { selector: "summary" }));
+    fireEvent.click(screen.getByText("高级设置").closest("summary")!);
+
+    expect(screen.getByRole("checkbox", { name: "使用 Q4 GGUF" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "本地 OCR" })).toBeChecked();
   });
 });
