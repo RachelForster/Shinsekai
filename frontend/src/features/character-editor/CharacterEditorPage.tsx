@@ -1,6 +1,7 @@
 import { useI18n } from "../../shared/i18n";
 import { AlertDialog, PageSectionHost, PageSectionNav, useVisibleSectionNavItems } from "../../shared/ui";
 import { CharacterPageHeader } from "./CharacterPageHeader";
+import { CharacterRenameTextDialog } from "./CharacterRenameTextDialog";
 import { CHARACTER_EDITOR_SECTIONS } from "./characterSections";
 import { SpriteGenerationPage } from "./SpriteGenerationPage";
 import { useCharacterPageController } from "./controllers/useCharacterPageController";
@@ -64,6 +65,14 @@ export function CharacterEditorPage() {
         onConfirm={ctx.confirmDeleteCharacter}
         open={Boolean(ctx.pendingDelete)}
         title={t("character.delete.confirmTitle")}
+      />
+
+      <CharacterRenameTextDialog
+        onCancel={ctx.cancelPendingRenameText}
+        onKeepOriginalText={ctx.confirmRenameKeepText}
+        onReplaceText={ctx.confirmRenameReplaceText}
+        pending={ctx.identityPending}
+        preview={ctx.pendingRenameText}
       />
     </div>
   );

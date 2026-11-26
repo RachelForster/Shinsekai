@@ -5,6 +5,7 @@ import { numberedTags, tagContents } from "../../shared/assets/assetText";
 import { TAG_PREFIX_SPRITE } from "../../shared/constants";
 import type { AutoSavePhase } from "../../shared/hooks/useDebouncedAutoSave";
 import type { SectionBusyLease } from "../../shared/ui";
+import type { CharacterRenameTextPreview } from "./characterRenameText";
 
 export type CharacterSectionSlot = "top-grid" | "body";
 
@@ -76,9 +77,12 @@ export interface CharacterPageContext {
   cancelCreatingCharacter: () => void;
   cancelDeleteCharacter: () => void;
   cancelIdentityField: (field: "name" | "sprite_prefix") => void;
+  cancelPendingRenameText: () => void;
   closeSpriteGeneration: () => void;
   confirmDeleteCharacter: () => void;
   confirmIdentityField: (field: "name" | "sprite_prefix") => void;
+  confirmRenameKeepText: () => void;
+  confirmRenameReplaceText: () => void;
   currentCharacterName: string;
   data: Character[];
   draft: Character;
@@ -101,6 +105,7 @@ export interface CharacterPageContext {
   openSpriteGeneration: () => void;
   patchDraft: Dispatch<SetStateAction<Character>>;
   pendingDelete: string | null;
+  pendingRenameText: CharacterRenameTextPreview | null;
   preserveImportedDraft: (character: Character) => void;
   pronunciationText: string;
   replaceCharacterInCache: (character: Character) => void;
