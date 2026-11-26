@@ -65,13 +65,14 @@ relations_description: |
 relations_owner: '{name}的关系图谱：'
 relations_edge: '{source}对{target}：{content}'
 relations_temperature: (亲密度：{temperature})
+self_persona_identity_note: '该人物是用户自设。'
 player_portrait_vibe_value: 用户本轮表现出的表情和动作
 player_runtime_override: '
 
   以下是当前主控选项；与先前的主控说明冲突时，以这些当前选项为准。'
 self_persona_cast_runtime_override: '
 
-  以下是当前出场人物选项；与先前关于「自设」的说明冲突时，以当前选项为准：「自设」已作为独立出场角色参与本次对话，请允许「自设」像其他出场角色一样正常发言与展示立绘。'
+  以下是当前出场人物选项；与先前关于用户自设的说明冲突时，以当前选项为准：「{name}」（用户自设）已作为独立出场角色参与本次对话，请允许「{name}」像其他出场角色一样正常发言与展示立绘。'
 player_ai_control: '
 
   主控人物：{name}
@@ -153,6 +154,16 @@ self_persona_block: '【用户自设设定】
   {setting}
 
   （以上是当前与你对话的用户本人的背景与偏好设定；请在互动中自然知晓并贴合，不要将「自设」作为独立台词角色输出。）
+
+
+  '
+self_persona_block_named: '【用户自设设定】
+
+  人物名：{name}（该人物是用户自设。）
+
+  {setting}
+
+  （以上是当前与你对话的用户本人的背景与偏好设定；请在互动中自然知晓并贴合，请直接称呼「{name}」，不要将「{name}」作为独立台词角色输出。）
 
 
   '

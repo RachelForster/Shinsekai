@@ -25,12 +25,16 @@ from config.models import (
     SystemConfig,
     UiRuntimeState,
     build_default_self_persona,
+    is_self_persona,
     is_self_persona_name,
 )
 from config.sprite_voice import normalize_sprite_voice_types
 from core.storage.codecs import PydanticJsonCodec, PydanticYamlCodec
 from core.storage.file_store import FileDocumentStore
 from core.storage.layout import StorageLayout
+from core.storage.migrations.self_persona_migration import (
+    migrate_v2_self_persona_display_name,
+)
 from core.storage.sqlite_engine import SqliteEngine, SqliteMigration
 from core.storage.stores.conversation_store import ConversationRecord
 from sdk.adapters.storage import BackendStatus
@@ -184,6 +188,11 @@ MAIN_DB_MIGRATIONS: tuple[SqliteMigration, ...] = (
         version=1,
         description="Initial unified shinsekai.db schema",
         up=_migrate_v1,
+    ),
+    SqliteMigration(
+        version=2,
+        description="Promote built-in self-persona display_name into canonical name",
+        up=migrate_v2_self_persona_display_name,
     ),
 )
 
@@ -432,7 +441,7 @@ class LegacyDataMigrator:
             for idx, raw_item in enumerate(_safe_yaml_list(char_yaml)):
                 normalized_dict = normalize_sprite_voice_types(raw_item)
                 char = Character.model_validate(normalized_dict)
-                if is_self_persona_name(char.name):
+                if is_self_persona(char):
                     char = char.model_copy(update={"id": SELF_PERSONA_ID})
                     sort_order = -1
                 else:

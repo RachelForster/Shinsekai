@@ -20,6 +20,10 @@ from frontend_bridge_core.memory import (
 from frontend_bridge_core.routes.router import ApiRequest, JsonResponse, Route
 
 
+def _cfg(request: ApiRequest) -> object:
+    return getattr(getattr(request, "state", None), "config_manager", None)
+
+
 def _character_memory_status(_request: ApiRequest) -> JsonResponse:
     return JsonResponse(_get_mem0_status())
 
@@ -27,9 +31,11 @@ def _character_memory_status(_request: ApiRequest) -> JsonResponse:
 def _character_memory_list(request: ApiRequest) -> JsonResponse:
     sid = str(request.body.get("sessionId") or request.body.get("session_id") or "")
     name = str(request.body.get("name") or "")
+    cfg = _cfg(request)
+    extra = {"config_manager": cfg} if cfg is not None else {}
     if sid:
-        return JsonResponse(_list_character_memories(name, session_id=sid))
-    return JsonResponse(_list_character_memories(name))
+        return JsonResponse(_list_character_memories(name, session_id=sid, **extra))
+    return JsonResponse(_list_character_memories(name, **extra))
 
 
 def _character_memory_add(request: ApiRequest) -> JsonResponse:
@@ -48,6 +54,9 @@ def _character_memory_add(request: ApiRequest) -> JsonResponse:
     sid = str(request.body.get("sessionId") or request.body.get("session_id") or "")
     if sid:
         extra["session_id"] = sid
+    cfg = _cfg(request)
+    if cfg is not None:
+        extra["config_manager"] = cfg
     return JsonResponse(
         _add_character_memory(
             str(request.body.get("name") or ""),
@@ -59,7 +68,10 @@ def _character_memory_add(request: ApiRequest) -> JsonResponse:
 
 def _character_memory_delete(request: ApiRequest) -> JsonResponse:
     sid = str(request.body.get("sessionId") or request.body.get("session_id") or "")
-    extra = {"session_id": sid} if sid else {}
+    extra: dict = {"session_id": sid} if sid else {}
+    cfg = _cfg(request)
+    if cfg is not None:
+        extra["config_manager"] = cfg
     return JsonResponse(
         _delete_character_memory(
             str(request.body.get("name") or ""),
@@ -71,23 +83,29 @@ def _character_memory_delete(request: ApiRequest) -> JsonResponse:
 
 def _character_memory_pin(request: ApiRequest) -> JsonResponse:
     sid = str(request.body.get("sessionId") or request.body.get("session_id") or "")
+    cfg = _cfg(request)
+    extra = {"config_manager": cfg} if cfg is not None else {}
     return JsonResponse(
         _pin_character_memory(
             str(request.body.get("name") or ""),
             str(request.body.get("memoryId") or request.body.get("memory_id") or ""),
             bool(request.body.get("pinned", True)),
             session_id=sid,
+            **extra,
         )
     )
 
 
 def _character_memory_awaken(request: ApiRequest) -> JsonResponse:
     sid = str(request.body.get("sessionId") or request.body.get("session_id") or "")
+    cfg = _cfg(request)
+    extra = {"config_manager": cfg} if cfg is not None else {}
     return JsonResponse(
         _awaken_character_memory(
             str(request.body.get("name") or ""),
             str(request.body.get("memoryId") or request.body.get("memory_id") or ""),
             session_id=sid,
+            **extra,
         )
     )
 
@@ -101,9 +119,11 @@ def _memory_status(request: ApiRequest) -> JsonResponse:
 def _memory_list(request: ApiRequest) -> JsonResponse:
     sid = str(request.body.get("sessionId") or request.body.get("session_id") or "")
     name = str(request.body.get("name") or request.body.get("characterName") or "")
+    cfg = _cfg(request)
+    extra = {"config_manager": cfg} if cfg is not None else {}
     if sid:
-        return JsonResponse(_list_character_memories(name, session_id=sid))
-    return JsonResponse(_list_character_memories(name))
+        return JsonResponse(_list_character_memories(name, session_id=sid, **extra))
+    return JsonResponse(_list_character_memories(name, **extra))
 
 
 def _memory_search(request: ApiRequest) -> JsonResponse:
@@ -120,6 +140,8 @@ def _memory_search(request: ApiRequest) -> JsonResponse:
     memory_mode = str(
         request.body.get("memoryMode") or request.body.get("memory_mode") or ""
     )
+    cfg = _cfg(request)
+    extra = {"config_manager": cfg} if cfg is not None else {}
     if session_id or memory_mode:
         return JsonResponse(
             _memory_tool_search(
@@ -128,12 +150,16 @@ def _memory_search(request: ApiRequest) -> JsonResponse:
                 limit,
                 session_id=session_id,
                 memory_mode=memory_mode,
+                **extra,
             )
         )
-    return JsonResponse(_memory_tool_search(query, character_name, limit))
+    return JsonResponse(_memory_tool_search(query, character_name, limit, **extra))
 
 
 def _memory_recall(request: ApiRequest) -> JsonResponse:
+    cfg = _cfg(request)
+    if cfg is not None:
+        return JsonResponse(_memory_tool_recall(dict(request.body or {}), config_manager=cfg))
     return JsonResponse(_memory_tool_recall(dict(request.body or {})))
 
 
@@ -152,6 +178,8 @@ def _memory_remember(request: ApiRequest) -> JsonResponse:
         if isinstance(raw_entities, (list, tuple))
         else ()
     )
+    cfg = _cfg(request)
+    extra = {"config_manager": cfg} if cfg is not None else {}
     return JsonResponse(
         _memory_tool_remember(
             str(request.body.get("content") or ""),
@@ -185,6 +213,7 @@ def _memory_remember(request: ApiRequest) -> JsonResponse:
                 or ""
             ),
             source_turn_seq=parsed_seq,
+            **extra,
         )
     )
 

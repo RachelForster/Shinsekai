@@ -248,7 +248,7 @@ export function useCharacterPageController(): CharacterPageContext {
   const selectedCharacterKey = selected ? selected.id || `name:${selected.name}` : "";
   const isDraftSynced = Boolean(selected && syncedCharacterKey === selectedCharacterKey);
   const lockedSelectedPersona = isSelfPersonaCharacter(selected);
-  const nameDirty = Boolean(!inCreateMode && isDraftSynced && !lockedSelectedPersona && draft.name !== selected!.name);
+  const nameDirty = Boolean(!inCreateMode && isDraftSynced && draft.name !== selected!.name);
   const spritePrefixDirty = Boolean(
     !inCreateMode && isDraftSynced && !lockedSelectedPersona && draft.sprite_prefix !== selected!.sprite_prefix,
   );

@@ -8,6 +8,12 @@ import os
 from typing import TYPE_CHECKING, Any
 
 from ai.llm.template.integrations.localization import resolve_template_locale
+from config.schema import (
+    SELF_PERSONA_ID,
+    find_self_persona,
+    is_self_persona_id,
+    is_self_persona_name,
+)
 from application.chat.capabilities.contracts import (
     BaseSessionCapability,
     BaseTurnContextProvider,
@@ -43,6 +49,38 @@ def is_memory_auto_enabled() -> bool:
         "no",
         "off",
     }
+
+
+def _resolve_self_persona_name(config: Any) -> str:
+    if config is None:
+        return ""
+    stores = getattr(config, "stores", None)
+    chars_catalog = getattr(stores, "characters", None) if stores is not None else None
+    if chars_catalog is not None and hasattr(chars_catalog, "list_all"):
+        found = find_self_persona(chars_catalog.list_all())
+        if found is not None:
+            return str(getattr(found, "name", "") or "").strip()
+    getter_self = getattr(config, "get_self_persona", None)
+    if callable(getter_self):
+        found = getter_self()
+        if found is not None:
+            return str(getattr(found, "name", "") or "").strip()
+    chars = getattr(getattr(config, "config", None), "characters", None)
+    if chars is not None:
+        found = find_self_persona(chars)
+        if found is not None:
+            return str(getattr(found, "name", "") or "").strip()
+    return ""
+
+
+def _accepts_kwarg(fn: Any, kw: str) -> bool:
+    try:
+        params = inspect.signature(fn).parameters
+    except (TypeError, ValueError):
+        return False
+    return kw in params or any(
+        p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()
+    )
 
 
 def _last_dialogue_turn_at(history_path: str) -> float:
@@ -104,7 +142,16 @@ class MemorySessionCapability(BaseSessionCapability):
 
         history_arg = str(getattr(context.args, "history", "") or "")
         resolved_session_id = session_id_for_history_path(history_arg) if history_arg else ""
-        player_character = str(getattr(context.args, "player_character", "") or "").strip()
+        raw_player = str(getattr(context.args, "player_character", "") or "").strip()
+        self_persona_name = _resolve_self_persona_name(context.config)
+        if raw_player and (
+            is_self_persona_id(raw_player)
+            or is_self_persona_name(raw_player)
+            or (self_persona_name and raw_player.casefold() == self_persona_name.casefold())
+        ):
+            player_character = SELF_PERSONA_ID
+        else:
+            player_character = raw_player
         raw_arg_mode = str(getattr(context.args, "memory_mode", "") or "").strip()
         open_store = peek_open_session_store(history_arg) if history_arg else None
         if raw_arg_mode:
@@ -121,11 +168,14 @@ class MemorySessionCapability(BaseSessionCapability):
         self._session_id = resolved_session_id
         self._memory_mode = resolved_memory_mode or "shared"
 
-        self._tool_ctx_token = bind_memory_tool_context(
-            session_id=resolved_session_id,
-            memory_mode=resolved_memory_mode,
-            player_character=player_character,
-        )
+        bind_kwargs: dict[str, Any] = {
+            "session_id": resolved_session_id,
+            "memory_mode": resolved_memory_mode,
+            "player_character": player_character,
+        }
+        if self_persona_name and _accepts_kwarg(bind_memory_tool_context, "self_persona_name"):
+            bind_kwargs["self_persona_name"] = self_persona_name
+        self._tool_ctx_token = bind_memory_tool_context(**bind_kwargs)
 
         if context.hook_dispatcher is None:
             set_default_shared_memory_rollback(memory_rollback_count)
@@ -154,6 +204,8 @@ class MemorySessionCapability(BaseSessionCapability):
             candidate_kwargs["memory_mode_start_seq"] = boundary
         if player_character:
             candidate_kwargs["player_character"] = player_character
+        if self_persona_name:
+            candidate_kwargs["self_persona_name"] = self_persona_name
         if (
             getattr(context.config, "stores", None) is not None
             or getattr(context.config, "system_settings", None) is not None

@@ -132,7 +132,7 @@ frontend_bridge_core
   - React 组件通过 `useI18n()` / `useOptionalI18n()` 调用 `t(key, values)`；
   - 表单 Schema（`frontend/src/shared/form-schema.ts` + `frontend/src/entities/config/schema.ts`）使用 `*Key`（`labelKey`、`descriptionKey`、`placeholderKey`、`disabledReasonKey`、`titleKey`、`FormOption.labelKey`），由 `SchemaDrivenForm.tsx` 统一翻译；
   - 后台任务状态映射走 `TaskProgress.tsx` 的 `task.phase.*`、`task.packageStatus.*`、`task.depStatus.*` 词条；
-  - 持久化内部枚举值（如 `"自设"`、`"硅基流动"`、`"豆包"`、`"通义千问"`、`"透明场景"`、`"默认"`）**不得修改存储键名**，仅在展示层通过 `frontend/src/shared/i18n/domainLabels.ts` 转换显示文案。
+  - 持久化内部枚举值（如 `"硅基流动"`、`"豆包"`、`"通义千问"`、`"透明场景"`、`"默认"`）**不得修改存储键名**，仅在展示层通过 `frontend/src/shared/i18n/domainLabels.ts` 转换显示文案；内置自设通过不可变主键 `id = "__self__"`（`SELF_PERSONA_ID`）识别，其 `name` 可直接重命名（默认 `"自设"`，仅在仍为默认名时由展示层本地化）。
 - **硬编码零容忍**：`frontend/src/test/architecture/i18nHardcodeBoundary.test.ts` 的 `LOCKED_FRONTEND_CJK_ALLOWLIST` 已清零（`[]`）。禁止在 `features/`、`app/`、`entities/`、`shared/` 新增任何未经 i18n 的中文/日文字符串或体系外独立多语字典。
 
 ### 4.2 Bridge / SDK 结构化错误与后端 `i18n/`

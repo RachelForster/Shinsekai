@@ -131,7 +131,7 @@ export function useCharacterIdentityAndAutoSave({
       return t("character.validation.nameRequired");
     }
     const duplicate =
-      trimmed === SELF_PERSONA_NAME ||
+      (!lockedSelectedPersona && trimmed === SELF_PERSONA_NAME) ||
       data.some(
         (item) =>
           item !== selected &&
@@ -139,7 +139,7 @@ export function useCharacterIdentityAndAutoSave({
           item.name.trim().toLowerCase() === trimmed.toLowerCase(),
       );
     return duplicate ? t("identity.error.duplicateName", { name: trimmed }) : "";
-  }, [data, draft.name, nameDirty, nameError, selected, t]);
+  }, [data, draft.name, lockedSelectedPersona, nameDirty, nameError, selected, t]);
 
   const liveSpritePrefixError = useMemo(() => {
     if (!spritePrefixDirty || !selected) {
@@ -242,7 +242,7 @@ export function useCharacterIdentityAndAutoSave({
     (field: "name" | "sprite_prefix") => {
       if (
         !selected ||
-        lockedSelectedPersona ||
+        (field === "sprite_prefix" && lockedSelectedPersona) ||
         identitySavingField !== null ||
         identityMutation.isPending ||
         identityPendingRef.current ||
@@ -274,11 +274,12 @@ export function useCharacterIdentityAndAutoSave({
       identityPendingRef.current = true;
       identityMutationEpochRef.current += 1;
       setIdentitySavingField(field);
+      const committed = buildCommittedCharacterPayload(draft, currentPronunciationMap, latestSelected, {
+        name: field === "name" ? draft.name.trim() : latestSelected.name,
+        sprite_prefix: field === "sprite_prefix" ? draft.sprite_prefix.trim() : latestSelected.sprite_prefix,
+      });
       identityMutation.mutate({
-        character: buildCommittedCharacterPayload(draft, currentPronunciationMap, latestSelected, {
-          name: field === "name" ? draft.name.trim() : latestSelected.name,
-          sprite_prefix: field === "sprite_prefix" ? draft.sprite_prefix.trim() : latestSelected.sprite_prefix,
-        }),
+        character: lockedSelectedPersona && field === "name" ? { ...committed, display_name: "" } : committed,
         field,
         originalName: latestSelected.name,
         sourceKey: selectedCharacterKey,

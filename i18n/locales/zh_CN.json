@@ -388,6 +388,7 @@
       "prefix_taken_other": "立绘目录名「{prefix}」已被角色「{owner}」占用！",
       "self_rename_forbidden": "内置「自设」人物不可重命名！",
       "rename_to_self_forbidden": "不能将其他角色重命名为「自设」！",
+      "self_prefix_locked": "内置自设人物的立绘目录名固定为「__self__」，不可修改！",
       "builtin_rename_forbidden": "内置角色「{name}」不可重命名！",
       "duplicate_name": "名称「{name}」已与其他角色重复！",
       "select_to_delete": "请选择要删除的角色！",

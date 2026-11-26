@@ -6,7 +6,7 @@ import {
   TRANSPARENT_BACKGROUND_NAME,
 } from "../constants";
 import type { Character } from "../platform/types";
-import { SELF_PERSONA_NAME } from "../playerCharacterOptions";
+import { isSelfPersonaCharacter, isSelfPersonaName } from "../playerCharacterOptions";
 import type { TranslateFn } from "./I18nProvider";
 
 export function formatLlmProviderLabel(value: string, t: TranslateFn, fallbackLabel?: string): string {
@@ -32,14 +32,17 @@ export function formatBackgroundName(value: string, t: TranslateFn): string {
 }
 
 export function formatCharacterDisplayName(
-  character: Pick<Character, "name" | "display_name"> | string,
+  character:
+    | (Pick<Character, "name" | "display_name"> & Partial<Pick<Character, "id" | "is_builtin" | "undeletable">>)
+    | string,
   t: TranslateFn,
 ): string {
   if (typeof character === "string") {
     const clean = character.trim();
-    return clean === SELF_PERSONA_NAME ? t("domain.character.selfPersona") : clean;
+    return isSelfPersonaName(clean) ? t("domain.character.selfPersona") : clean;
   }
-  if (character.name === SELF_PERSONA_NAME) {
+  const cleanName = character.name.trim();
+  if (isSelfPersonaCharacter(character) && isSelfPersonaName(cleanName)) {
     return character.display_name?.trim() || t("domain.character.selfPersona");
   }
   return character.name;

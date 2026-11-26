@@ -15,7 +15,7 @@ import {
   translateMessage,
   type FrontendLanguage,
 } from "../../../shared/i18n";
-import { SELF_PERSONA_NAME } from "../../../shared/playerCharacterOptions";
+import { SELF_PERSONA_ID, SELF_PERSONA_NAME } from "../../../shared/playerCharacterOptions";
 
 const tFor =
   (language: FrontendLanguage) =>
@@ -43,10 +43,22 @@ describe("domainLabels display-layer formatters", () => {
     expect(formatBackgroundName("Classroom Sunset", tFor("en"))).toBe("Classroom Sunset");
   });
 
-  it("formats self persona sentinel while respecting explicit display_name overrides", () => {
+  it("formats self persona sentinel while respecting renamed or legacy display_name overrides", () => {
     expect(formatCharacterDisplayName(SELF_PERSONA_NAME, tFor("en"))).toBe("User persona");
     expect(formatCharacterDisplayName(SELF_PERSONA_NAME, tFor("ja"))).toBe(
       translateMessage("ja", "domain.character.selfPersona"),
+    );
+    expect(
+      formatCharacterDisplayName({ id: SELF_PERSONA_ID, name: SELF_PERSONA_NAME, is_builtin: true }, tFor("en")),
+    ).toBe("User persona");
+    expect(formatCharacterDisplayName({ id: SELF_PERSONA_ID, name: "浅羽", is_builtin: true }, tFor("en"))).toBe(
+      "浅羽",
+    );
+    expect(formatCharacterDisplayName({ id: SELF_PERSONA_ID, name: "浅羽", is_builtin: true }, tFor("ja"))).toBe(
+      "浅羽",
+    );
+    expect(formatCharacterDisplayName({ id: SELF_PERSONA_ID, name: "浅羽", is_builtin: true }, tFor("zh_CN"))).toBe(
+      "浅羽",
     );
     expect(formatCharacterDisplayName({ name: SELF_PERSONA_NAME, display_name: "Takina" }, tFor("en"))).toBe("Takina");
     expect(formatCharacterDisplayName({ name: SELF_PERSONA_NAME, display_name: "" }, tFor("en"))).toBe("User persona");

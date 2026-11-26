@@ -75,6 +75,7 @@ export function useCharacterCatalogMutations({
         current
           ? {
               ...current,
+              playerCharacter: current.playerCharacter === oldName ? newName : current.playerCharacter,
               primaryCharacters: current.primaryCharacters?.map((name) => (name === oldName ? newName : name)),
               selectedCharacters: current.selectedCharacters.map((name) => (name === oldName ? newName : name)),
             }
@@ -166,6 +167,7 @@ export function useCharacterCatalogMutations({
             ...character.avatars,
           },
           default_sprite_group: character.default_sprite_group,
+          display_name: character.display_name,
           fallback_to_default_group: character.fallback_to_default_group,
           is_builtin: character.is_builtin,
           name: variables.field === "name" ? character.name : current.name,

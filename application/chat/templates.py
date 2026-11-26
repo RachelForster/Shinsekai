@@ -773,6 +773,12 @@ def _reconcile_template_session_characters(
         prompt_mode = ""
     saved_player = str(raw.get("player_character") or "")
     resolved_player = resolved_by_key.get(character_name_key(saved_player), "")
+    if not resolved_player and saved_player:
+        from config.schema import is_self_persona
+
+        candidate_player = state.config_manager.get_character_by_name(saved_player)
+        if candidate_player is not None and is_self_persona(candidate_player):
+            resolved_player = candidate_player.name
     if (
         resolved_names == selected
         and resolved_primary == primary
@@ -817,17 +823,21 @@ def _rename_template_session_character(
         saved_name if character_name_key(name) == original_key else name
         for name in selected
     ]
-    if renamed == selected:
-        return
-    repaired = dict(raw)
-    repaired["selected_characters"] = renamed
-    if character_name_key(str(raw.get("player_character") or "")) == original_key:
-        repaired["player_character"] = saved_name
+    raw_player = str(raw.get("player_character") or "")
+    renamed_player = (
+        saved_name if character_name_key(raw_player) == original_key else raw_player
+    )
     primary = _session_string_list(raw.get("primary_characters"))
-    repaired["primary_characters"] = [
+    renamed_primary = [
         saved_name if character_name_key(name) == original_key else name
         for name in primary
     ]
+    if renamed == selected and renamed_player == raw_player and renamed_primary == primary:
+        return
+    repaired = dict(raw)
+    repaired["selected_characters"] = renamed
+    repaired["player_character"] = renamed_player
+    repaired["primary_characters"] = renamed_primary
     reconciled = _reconcile_template_session_characters(state, repaired)
     if reconciled is repaired:
         _persist_template_session_repair(state, repaired)

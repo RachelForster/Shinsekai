@@ -65,6 +65,7 @@ import {
   upgradeStarterPresetsInPlace,
 } from "./packages/presetLoader";
 import { getKvConfig, setKvConfig } from "./storage/indexedDbStore";
+import { migrateStandaloneSelfPersonaDisplayName } from "./storage/selfPersonaMigration";
 import {
   generateSecureRandomToken,
   StandaloneSessionStore,
@@ -520,8 +521,15 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
           await persistAppConfig();
         } else {
           const upgradedStarter = upgradeStarterPresetsInPlace(ctx.config.characters, ctx.config.background_list);
-          if (upgradedStarter) {
+          const selfPersonaMigration = migrateStandaloneSelfPersonaDisplayName(
+            ctx.config.characters,
+            savedTemplateSession,
+          );
+          if (upgradedStarter || selfPersonaMigration.configChanged) {
             await persistAppConfig();
+          }
+          if (selfPersonaMigration.templateSessionChanged && savedTemplateSession) {
+            await setKvConfig(KV_TEMPLATE_SESSION, clone(savedTemplateSession));
           }
           await refreshCharacterMouthManifestUrls(ctx.config.characters);
         }

@@ -902,6 +902,7 @@ describe("CharacterEditorPage", () => {
     const selfPersona: Character = {
       ...character,
       character_setting: "Player persona bio",
+      id: "__self__",
       is_builtin: true,
       name: "自设",
       pinned: true,
@@ -913,7 +914,7 @@ describe("CharacterEditorPage", () => {
     mockSaveCharacter.mockImplementation(async (saved: Character) => structuredClone(saved));
 
     renderPage();
-    expect(await screen.findByLabelText("Display name")).toHaveAttribute("placeholder", "自设");
+    await waitFor(() => expect(screen.getByLabelText("Character name")).toHaveValue("自设"));
     expect(screen.getByLabelText(/Upload directory name \(ASCII\)/)).toBeDisabled();
     expect(screen.getByText("Global Player Persona & Public Self-Memory")).toBeInTheDocument();
     const basicSection = document.getElementById("character-basic") as HTMLElement;
@@ -929,26 +930,64 @@ describe("CharacterEditorPage", () => {
     const options = screen.getAllByRole("option");
     expect(options.map((option) => option.textContent)).toEqual(["自设", "Mika"]);
   });
-  it("auto-saves a display name for the built-in persona under its original ID", async () => {
-    const id = "自设";
-    mockListCharacters.mockResolvedValue([
-      { ...structuredClone(character), name: id, sprite_prefix: "__self__", is_builtin: true, undeletable: true },
-    ]);
+  it("renames the built-in persona directly on inline confirm while keeping __self__ ID and memory anchor", async () => {
+    const catalog: Character[] = [
+      {
+        ...structuredClone(character),
+        id: "__self__",
+        name: "自设",
+        display_name: "LegacyAlias",
+        sprite_prefix: "__self__",
+        is_builtin: true,
+        pinned: true,
+        undeletable: true,
+      },
+      structuredClone(character),
+    ];
+    mockListCharacters.mockImplementation(async () => structuredClone(catalog));
+    mockSaveCharacter.mockImplementation(async (saved: Character) => {
+      const idx = catalog.findIndex((item) => item.id === saved.id || item.name === saved.name);
+      if (idx >= 0) {
+        catalog[idx] = structuredClone(saved);
+      }
+      return structuredClone(saved);
+    });
+
     renderPage();
-    const name = await screen.findByLabelText("Display name");
+    const name = await screen.findByLabelText("Character name");
+    await waitFor(() => expect(name).toHaveValue("自设"));
     expect(name).toBeEnabled();
     expect(screen.getByLabelText(/Upload directory name \(ASCII\)/)).toBeDisabled();
+    const memorySection = document.getElementById("character-memory") as HTMLElement;
+    fireEvent.click(within(memorySection).getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(mockListCharacterMemories).toHaveBeenCalledWith("__self__"));
+
     fireEvent.change(name, { target: { value: "Robin" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm: Character name" }));
 
     await waitFor(
       () =>
         expect(mockSaveCharacter).toHaveBeenCalledWith(
-          expect.objectContaining({ name: id, display_name: "Robin", sprite_prefix: "__self__" }),
-          id,
+          expect.objectContaining({
+            id: "__self__",
+            name: "Robin",
+            display_name: "",
+            sprite_prefix: "__self__",
+          }),
+          "自设",
         ),
       { timeout: 2500 },
     );
     await waitFor(() => expect(screen.getByRole("combobox", { name: "Current character" })).toHaveTextContent("Robin"));
+    expect(screen.getByLabelText(/Upload directory name \(ASCII\)/)).toBeDisabled();
+    const basicSection = document.getElementById("character-basic") as HTMLElement;
+    expect(within(basicSection).queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("combobox", { name: "Current character" }));
+    const options = screen.getAllByRole("option");
+    expect(options.map((option) => option.textContent)).toEqual(["Robin", "Mika"]);
+    fireEvent.click(within(memorySection).getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(mockListCharacterMemories).toHaveBeenLastCalledWith("__self__"));
   });
 
   it("auto-saves non-identity edits using committed identity while keeping unconfirmed rename isolated", async () => {

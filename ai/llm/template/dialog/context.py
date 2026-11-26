@@ -34,6 +34,7 @@ class DialogTemplateContext(TemplateContext):
     player_name: str = ""
     player_character: Any = None
     self_persona_setting: str = ""
+    self_persona_name: str = ""
     read_player_speech: bool = False
     allow_player_dialogue: bool = True
     effect_catalog: EffectCatalogContext | None = field(default=None, kw_only=True)
