@@ -14,6 +14,13 @@ import re
 import time
 from typing import Any, Dict, Protocol, runtime_checkable
 
+from core.messaging.stage_effects import (
+    character_motion_duration_ms,
+    normalize_character_motion,
+    normalize_scene_transition,
+    scene_transition_duration_ms,
+)
+
 #: 事件协议版本，与前端 ``ChatStageEvent`` 的 ``v`` 字段一致。
 EVENT_PROTOCOL_VERSION = 1
 
@@ -38,6 +45,7 @@ def make_empty_chat_snapshot() -> Dict[str, Any]:
         "asrEnabled": False,
         "asrLoading": False,
         "asrRunning": False,
+        "backgroundTransition": None,
         "dialogText": "",
         "eventSeq": 0,
         "historyEntries": [],
@@ -47,6 +55,7 @@ def make_empty_chat_snapshot() -> Dict[str, Any]:
         "options": [],
         "perception": None,
         "pluginPagePresentations": [],
+        "spriteMotions": {},
         "spriteReaction": None,
         "sprites": [],
         "stats": [],
@@ -136,6 +145,7 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
     next_snapshot.setdefault("dialogText", "")
     next_snapshot.setdefault("eventSeq", 0)
     next_snapshot.setdefault("historyEntries", [])
+    next_snapshot.setdefault("backgroundTransition", None)
     next_snapshot.setdefault("effectImage", None)
     next_snapshot.setdefault("ambientEffects", [])
     next_snapshot.setdefault("inputDraft", "")
@@ -143,6 +153,7 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
     next_snapshot.setdefault("loopingEffects", [])
     next_snapshot.setdefault("options", [])
     next_snapshot.setdefault("pluginPagePresentations", [])
+    next_snapshot.setdefault("spriteMotions", {})
     next_snapshot.setdefault("sprites", [])
     next_snapshot.setdefault("stats", [])
     next_snapshot.setdefault("status", "idle")
@@ -152,6 +163,10 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
         if isinstance(payload, dict):
             merged = make_empty_chat_snapshot()
             merged.update(payload)
+            if isinstance(merged.get("spriteMotions"), dict):
+                merged["spriteMotions"] = dict(merged["spriteMotions"])
+            else:
+                merged["spriteMotions"] = {}
             if "eventSeq" not in merged:
                 try:
                     merged["eventSeq"] = int(event.get("seq") or 0)
@@ -260,14 +275,55 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
 
     if event_type == "sprite.remove":
         character_name = str(event.get("characterName") or "")
-        next_snapshot["sprites"] = [
-            item
-            for item in (next_snapshot.get("sprites") or [])
-            if isinstance(item, dict)
-            and item.get("id") != character_name
-            and item.get("label") != character_name
-            and item.get("characterName") != character_name
-        ]
+        removed_keys = {character_name} if character_name else set()
+        kept_sprites = []
+        for item in (next_snapshot.get("sprites") or []):
+            if not isinstance(item, dict):
+                continue
+            if (
+                item.get("id") == character_name
+                or item.get("label") == character_name
+                or item.get("characterName") == character_name
+            ):
+                for key in ("id", "label", "characterName"):
+                    val = str(item.get(key) or "").strip()
+                    if val:
+                        removed_keys.add(val)
+            else:
+                kept_sprites.append(item)
+        next_snapshot["sprites"] = kept_sprites
+        motions = dict(next_snapshot.get("spriteMotions") or {})
+        for key in removed_keys:
+            motions.pop(key, None)
+        next_snapshot["spriteMotions"] = motions
+        return next_snapshot
+
+    if event_type == "sprite.motion":
+        character_name = str(event.get("characterName") or "").strip()
+        motion = normalize_character_motion(event.get("motion"))
+        if character_name and motion:
+            try:
+                raw_duration = event.get("durationMs")
+                parsed_duration = int(raw_duration) if raw_duration is not None else 0
+                duration_ms = (
+                    parsed_duration
+                    if parsed_duration > 0
+                    else character_motion_duration_ms(motion)
+                )
+            except (TypeError, ValueError):
+                duration_ms = character_motion_duration_ms(motion)
+            try:
+                triggered_at = int(event.get("ts") or 0)
+            except (TypeError, ValueError):
+                triggered_at = 0
+            motions = dict(next_snapshot.get("spriteMotions") or {})
+            motions[character_name] = {
+                "durationMs": duration_ms,
+                "expiresAt": triggered_at + duration_ms,
+                "motion": motion,
+                "seq": int(event.get("seq") or 0),
+            }
+            next_snapshot["spriteMotions"] = motions
         return next_snapshot
 
     if event_type == "background.change":
@@ -275,7 +331,31 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
         background_path = str(event.get("url") or "")
         if background_path != (next_snapshot.get("backgroundPath") or ""):
             next_snapshot["sprites"] = []
+            next_snapshot["spriteMotions"] = {}
         next_snapshot["backgroundPath"] = background_path
+        transition = normalize_scene_transition(event.get("transition"))
+        try:
+            raw_duration = event.get("transitionDurationMs")
+            duration_ms = (
+                int(raw_duration)
+                if raw_duration is not None
+                else scene_transition_duration_ms(transition)
+            )
+        except (TypeError, ValueError):
+            duration_ms = scene_transition_duration_ms(transition)
+        try:
+            triggered_at = int(event.get("ts") or 0)
+        except (TypeError, ValueError):
+            triggered_at = 0
+        if transition and duration_ms > 0:
+            next_snapshot["backgroundTransition"] = {
+                "durationMs": duration_ms,
+                "effect": transition,
+                "expiresAt": triggered_at + duration_ms,
+                "seq": int(event.get("seq") or 0),
+            }
+        else:
+            next_snapshot["backgroundTransition"] = None
         return next_snapshot
 
     if event_type == "bgm.change":
@@ -727,6 +807,7 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
     if event_type == "session.closed":
         next_snapshot["activePlayback"] = None
         next_snapshot["ambientEffects"] = []
+        next_snapshot["backgroundTransition"] = None
         next_snapshot["effectImage"] = None
         next_snapshot["busyText"] = ""
         next_snapshot["busyDurationSeconds"] = 0.0
@@ -736,6 +817,7 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
         next_snapshot["perception"] = None
         next_snapshot["pluginPagePresentations"] = []
         next_snapshot["sessionClosedReason"] = str(event.get("reason") or "")
+        next_snapshot["spriteMotions"] = {}
         next_snapshot["spriteReaction"] = None
         next_snapshot["status"] = "idle"
         next_snapshot["systemMessageText"] = ""

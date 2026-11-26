@@ -36,6 +36,7 @@ from core.messaging.dialog_tokens import (
     match_system_dialog,
     normalize_character_name,
 )
+from core.messaging.stage_effects import normalize_scene_transition
 from i18n import tr as tr_i18n
 from sdk.handlers import MessageHandler
 from sdk.messages import LLMDialogMessage
@@ -103,6 +104,7 @@ class SceneMediaHandler(MessageHandler):
             "",
             is_system_message=True,
             effect=msg.effect,
+            transition=normalize_scene_transition(getattr(msg, "transition", "")),
         )
 
 

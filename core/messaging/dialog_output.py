@@ -92,7 +92,7 @@ def parse_and_validate_dialog_output(
     return True, validated
 
 
-def has_valid_dialog_output(
+def has_valid_json_dialog_output(
     content: Any,
     *,
     media_selection_mode: str = "indexed",
@@ -105,3 +105,40 @@ def has_valid_dialog_output(
         speaker_requires_media=speaker_requires_media,
     )
     return valid
+
+
+def has_valid_dialog_output(
+    content: Any,
+    *,
+    media_selection_mode: str = "indexed",
+    speaker_requires_media: Callable[[str], bool] | None = None,
+    format_id: str | None = None,
+) -> bool:
+    """Return whether *content* satisfies the active dialogue output format contract."""
+    fmt_key = str(format_id or "").strip().lower()
+    if fmt_key and fmt_key != "json_v1":
+        if not isinstance(content, str):
+            return False
+        from core.messaging.formats.registry import resolve_dialog_format
+
+        fmt = resolve_dialog_format(fmt_key)
+        try:
+            return bool(
+                fmt.validate(
+                    content,
+                    media_selection_mode=media_selection_mode,
+                    speaker_requires_media=speaker_requires_media,
+                )
+            )
+        except TypeError:
+            try:
+                return bool(
+                    fmt.validate(content, media_selection_mode=media_selection_mode)
+                )
+            except TypeError:
+                return bool(fmt.validate(content))
+    return has_valid_json_dialog_output(
+        content,
+        media_selection_mode=media_selection_mode,
+        speaker_requires_media=speaker_requires_media,
+    )

@@ -13,11 +13,12 @@ from application.chat.capabilities import (
 from core.chat_history.identity import DialogIdentities
 from core.media.chat_attachments import resolve_chat_attachments
 from core.messaging.dialog_reconciliation import reconcile_dialog_repair
+from core.messaging.formats.registry import resolve_dialog_format
 from core.messaging.stream_events import (
     STREAM_DIALOG_REPAIR_KEY,
     STREAM_REASONING_DELTA_KEY,
 )
-from core.messaging.stream_parser import LlmResponseStreamParser
+from sdk.adapters.dialog_format import DEFAULT_DIALOG_FORMAT_ID
 from i18n import tr
 from sdk.exception.presenter import format_llm_exception_message
 from sdk.exception.types import classify_exception
@@ -204,7 +205,10 @@ class LLMWorker(ThreadDagNode):
                 else:
                     response_stream = [raw_response]
 
-                parser = LlmResponseStreamParser()
+                dialog_format = resolve_dialog_format(
+                    getattr(self.llm_manager, "output_format", DEFAULT_DIALOG_FORMAT_ID)
+                )
+                parser = dialog_format.create_stream_parser()
                 reasoning_shown = ""
                 message_count = 0
                 delivered_dialogs: list[LLMDialogMessage] = []
@@ -228,10 +232,13 @@ class LLMWorker(ThreadDagNode):
                             isinstance(chunk, dict)
                             and STREAM_DIALOG_REPAIR_KEY in chunk
                         ):
-                            repaired_parser = LlmResponseStreamParser()
+                            repaired_parser = dialog_format.create_stream_parser()
                             repaired_messages = list(
                                 repaired_parser.feed(chunk[STREAM_DIALOG_REPAIR_KEY])
                             )
+                            repaired_flush = getattr(repaired_parser, "flush", None)
+                            if callable(repaired_flush):
+                                repaired_messages.extend(repaired_flush())
                             delivered_before_repair = message_count
                             reconciliation = reconcile_dialog_repair(
                                 delivered_dialogs,
@@ -276,6 +283,18 @@ class LLMWorker(ThreadDagNode):
                                     "dialog_id": dialog_identities.next(llm_dialog.model_dump(by_alias=True)),
                                 })
                             )
+                    if not turn.is_cancelled():
+                        flush_fn = getattr(parser, "flush", None)
+                        if callable(flush_fn):
+                            for llm_dialog in flush_fn():
+                                message_count += 1
+                                delivered_dialogs.append(llm_dialog)
+                                self.dialog_queue.put(
+                                    llm_dialog.model_copy(update={
+                                        "turn_id": turn.id,
+                                        "dialog_id": dialog_identities.next(llm_dialog.model_dump(by_alias=True)),
+                                    })
+                                )
 
                 # --- Interrupted: write committed context, discard the rest ---
                 if turn.is_cancelled():

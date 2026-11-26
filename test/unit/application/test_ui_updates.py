@@ -563,3 +563,16 @@ def test_restore_session_replays_net_active_ambient_effects_and_layers(tmp_path)
     assert ambient_events[0]["key"] == "fog"
     assert ambient_events[0]["layer"] == "front"
 
+
+def test_streaming_presenter_post_background_includes_transition_duration() -> None:
+    sink = _Sink()
+    presenter = StreamingUIUpdateManager(sink, resource_urls=_Urls())
+
+    presenter.post_background("night.png", transition="fade_black")
+    presenter.post_background("dawn.png", transition="cut")
+
+    assert sink.events[0]["transition"] == "fade_black"
+    assert sink.events[0]["transitionDurationMs"] == 680
+    assert sink.events[1]["transition"] == "cut"
+    assert sink.events[1]["transitionDurationMs"] == 0
+

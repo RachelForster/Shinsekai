@@ -25,6 +25,8 @@ vi.mock("../../../entities/config/repository", () => ({
     Promise.resolve({ ...sampleConfig, system_config: { ...sampleConfig.system_config, story_system_enabled: true } }),
 }));
 vi.mock("../../../entities/template/repository", () => ({
+  dialogFormatsQueryKey: ["templates", "dialog-formats"],
+  listDialogFormats: () => Promise.resolve([]),
   templatesQueryKey: ["templates"],
   listTemplates: () => {
     throw new Error("Story mode must not load templates");

@@ -349,4 +349,10 @@ export const storyJaMessages: Record<StoryMessageKey, string> = {
     "キャラクター・背景・ルールが変更されました。「再生成」を押すと最新設定で更新されます（手動編集は上書きされます）。",
   "template.systemDialog.autoHint":
     "自動同期中：下のルールやキャラクター・背景を変更するとシステムプロンプトが自動更新されます。",
+  "template.field.outputFormat": "出力形式",
+  "template.field.outputFormatHint":
+    "AI演出ディレクティブの出力形式を選択します（新規テンプレートはXML/HTMLタグ、既存テンプレートはJSON互換）。",
+  "template.outputFormat.xml_v1": "XML / HTML タグ（場面転換・キャラ動作対応）",
+  "template.outputFormat.json_v1": "JSON（クラシック互換）",
+  "template.bar.outputFormat": "形式：{format}",
 };

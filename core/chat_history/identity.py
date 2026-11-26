@@ -6,6 +6,7 @@ import hashlib
 import json
 
 CHAT_TURN_ID = "_chatTurnId"
+CHAT_OUTPUT_FORMAT = "_outputFormat"
 
 
 class DialogIdentities:

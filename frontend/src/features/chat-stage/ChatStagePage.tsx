@@ -1159,6 +1159,7 @@ export function ChatStagePage() {
           hidden={!viewModel.layers.background || miniAvatarActive}
           onDragStart={standaloneDesktopWindow && !transparentBackground ? handleWindowDrag : undefined}
           path={viewModel.backgroundPath}
+          transition={viewModel.backgroundTransition}
           transparent={transparentBackground}
         />
         <ChatSoundPlayer
@@ -1189,6 +1190,7 @@ export function ChatStagePage() {
           runtimeFramingForSprite={(sprite, index) => runtimeSpriteFraming(runtimeConfig, sprite, index)}
           speaker={viewModel.dialogCharacterName}
           responding={viewModel.status === "speaking" || viewModel.status === "streaming" || typingDialog}
+          spriteMotions={viewModel.spriteMotions}
           thinkingCharacterName={viewModel.thinkingCharacterName}
           sprites={stageSprites}
         />

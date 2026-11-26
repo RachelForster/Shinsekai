@@ -3,6 +3,10 @@
 import json
 from typing import Iterator
 
+from core.messaging.stage_effects import (
+    normalize_character_motion,
+    normalize_scene_transition,
+)
 from sdk.messages import LLMDialogMessage
 
 
@@ -78,6 +82,10 @@ class LlmResponseStreamParser:
             self.accumulated_text += chunk
         yield from self._iter_drain_complete_objects()
 
+    def flush(self) -> list[LLMDialogMessage]:
+        """Drain any remaining complete objects at end-of-stream."""
+        return list(self._iter_drain_complete_objects())
+
     def _iter_drain_complete_objects(self) -> Iterator[LLMDialogMessage]:
         while "}" in self._buffer:
             span = _complete_json_object_span(self._buffer)
@@ -116,4 +124,12 @@ class LlmResponseStreamParser:
             items = [item for item in dialog_item["dialog"] if isinstance(item, dict)]
         else:
             items = [dialog_item]
-        return [LLMDialogMessage(**item) for item in items]
+        messages: list[LLMDialogMessage] = []
+        for item in items:
+            msg = LLMDialogMessage(**item)
+            if msg.transition:
+                msg.transition = normalize_scene_transition(msg.transition)
+            if msg.motion:
+                msg.motion = normalize_character_motion(msg.motion)
+            messages.append(msg)
+        return messages

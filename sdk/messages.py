@@ -56,6 +56,14 @@ class LLMDialogMessage(BaseModel):
         validation_alias=AliasChoices("outfit", "sprite_group"),
         description="可选的服装分组名称；仅当剧情发生换装时输出",
     )
+    transition: Optional[str] = Field(
+        "",
+        description="可选的切场过渡效果名称（仅 SCENE 条目使用）",
+    )
+    motion: Optional[str] = Field(
+        "",
+        description="可选的角色立绘动态特效名称（仅角色台词条目使用）",
+    )
     dialog_id: str = Field("", exclude=True, repr=False, description="Durable history dialog identity")
     turn_id: Optional[int] = Field(
         None,
@@ -79,6 +87,8 @@ class PresentationMessage(BaseModel):
         "-1", alias="sprite", description="资源编号"
     )
     effect: Optional[str] = Field("", description="特效名称")
+    transition: Optional[str] = Field("", description="可选的切场过渡效果名称")
+    motion: Optional[str] = Field("", description="可选的角色立绘动态特效名称")
     is_system_message: bool = Field(False, description="是否是系统通知或非对话消息")
     is_final_segment: bool = Field(True, description="是否是多段TTS中的最后一段")
     timeout: Optional[float] = Field(None, description="可选的等待时间（秒）")

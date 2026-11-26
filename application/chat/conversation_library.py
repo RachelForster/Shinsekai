@@ -387,6 +387,7 @@ def conversation_launch_payload(state: Any, conversation_id: str) -> dict:
             ],
             "backgroundName": "",
             "mediaSelectionMode": "indexed",
+            "outputFormat": "json_v1",
         }
     return {
         **launch,

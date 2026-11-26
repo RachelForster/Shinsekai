@@ -46,6 +46,7 @@ from application.chat.templates import (
     _resume_template_parts,
     _scenario_from_template_like,
 )
+from application.chat.dialog_formats import normalize_output_format
 from application.runtime.dependencies import runtime_dependency_error_from_text
 from application.runtime.state import BridgeState
 from application.story.coordinator import (
@@ -84,6 +85,7 @@ def _generate_system_template_for_mode(
     background: str,
     source: dict[str, Any],
     media_selection_mode: str,
+    output_format: str = "json_v1",
 ) -> str:
     prompt_mode = str(source.get("characterPromptMode") or "").strip().lower()
     primary = source.get("primaryCharacters") if prompt_mode == "compact" else None
@@ -104,6 +106,7 @@ def _generate_system_template_for_mode(
         player_character=str(source.get("playerCharacter") or ""),
         read_player_speech=bool(source.get("readPlayerSpeech", False)),
         allow_player_dialogue=bool(source.get("allowPlayerDialogue", True)),
+        output_format=normalize_output_format(output_format),
     )
     return content
 
@@ -287,6 +290,10 @@ def _launch_chat_locked(
     if requested_media_mode is None:
         requested_media_mode = row.get("mediaSelectionMode")
     media_selection_mode = _usable_media_selection_mode(requested_media_mode)
+    requested_output_format = body.get("outputFormat")
+    if requested_output_format is None:
+        requested_output_format = row.get("outputFormat")
+    output_format = normalize_output_format(requested_output_format)
     characters = _resolve_template_character_names(
         state,
         body.get("characters") or [],
@@ -423,6 +430,7 @@ def _launch_chat_locked(
             ),
             workflow_path=str(body.get("workflowPath") or ""),
             media_selection_mode=media_selection_mode,
+            output_format=output_format,
             **(
                 {"primary_character_names": primary_characters}
                 if primary_characters is not None
@@ -453,6 +461,7 @@ def _launch_chat_locked(
             "system": system_template,
             "templateName": row.get("name", ""),
             "mediaSelectionMode": media_selection_mode,
+            "outputFormat": output_format,
             "initSpritePath": init_sprite_path,
         })
     except OSError:
@@ -538,6 +547,7 @@ def _resume_last_chat_locked(
     )
     requested_media_mode = session.get("mediaSelectionMode")
     media_selection_mode = _usable_media_selection_mode(requested_media_mode)
+    output_format = normalize_output_format(session.get("outputFormat"))
     player_character = resolve_player(state.config_manager, selected_characters, session.get("playerCharacter"))
     primary_characters = _resolve_launch_primary_characters(
         state,
@@ -631,6 +641,7 @@ def _resume_last_chat_locked(
             ),
             workflow_path=str(session.get("workflowPath") or ""),
             media_selection_mode=media_selection_mode,
+            output_format=output_format,
             **(
                 {"primary_character_names": primary_characters}
                 if primary_characters is not None
