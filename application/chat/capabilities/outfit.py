@@ -44,6 +44,7 @@ from core.chat_history.storage import (
 )
 from core.media.asset_tags import tag_contents
 from core.sprite.selection import sprite_entry_path
+from sdk.adapters.dialog_format import DEFAULT_DIALOG_FORMAT_ID
 
 if TYPE_CHECKING:
     from sdk.hooks import BeforeChatContext, MessageAddedContext
@@ -74,6 +75,7 @@ class OutfitRuntimeController:
         self.config: Any | None = None
         self.history_arg: str = ""
         self.media_selection_mode: str = "indexed"
+        self.output_format: str = DEFAULT_DIALOG_FORMAT_ID
         self.auto_outfit_switch: bool = True
         self.character_names: tuple[str, ...] = ()
         self._states: dict[str, OutfitState] = {}
@@ -87,6 +89,7 @@ class OutfitRuntimeController:
         *,
         history_arg: str = "",
         media_selection_mode: str = "indexed",
+        output_format: str = DEFAULT_DIALOG_FORMAT_ID,
         auto_outfit_switch_arg: bool | None = None,
         initial_outfits_raw: str = "",
         character_names: Sequence[str] = (),
@@ -188,6 +191,10 @@ class OutfitRuntimeController:
                 "semantic"
                 if str(media_selection_mode or "").strip().lower() == "semantic"
                 else "indexed"
+            )
+            self.output_format = (
+                str(output_format or DEFAULT_DIALOG_FORMAT_ID).strip().lower()
+                or DEFAULT_DIALOG_FORMAT_ID
             )
             self.auto_outfit_switch = auto_switch
             self.character_names = tuple(str(n).strip() for n in character_names if str(n).strip())
@@ -506,6 +513,7 @@ class OutfitRuntimeController:
             config = self.config
             session_names = self.character_names
             media_mode = self.media_selection_mode
+            output_format = self.output_format
             auto_switch = self.auto_outfit_switch
             states_copy = dict(self._states)
 
@@ -568,6 +576,7 @@ class OutfitRuntimeController:
                 media_selection_mode=media_mode,
                 switch_example_character=switch_example_character,
                 switch_example_target_group=switch_example_target_group,
+                output_format_id=output_format,
                 locale=active_locale,
             )
         )
@@ -616,6 +625,10 @@ class OutfitSessionCapability(BaseSessionCapability):
         media_mode = str(
             getattr(context.args, "media_selection_mode", "indexed") or "indexed"
         )
+        output_format = str(
+            getattr(context.args, "output_format", DEFAULT_DIALOG_FORMAT_ID)
+            or DEFAULT_DIALOG_FORMAT_ID
+        )
         raw_auto = getattr(context.args, "auto_outfit_switch", None)
         auto_arg = raw_auto if isinstance(raw_auto, bool) else None
         initial_outfits_raw = str(
@@ -626,6 +639,7 @@ class OutfitSessionCapability(BaseSessionCapability):
             context.config,
             history_arg=history_arg,
             media_selection_mode=media_mode,
+            output_format=output_format,
             auto_outfit_switch_arg=auto_arg,
             initial_outfits_raw=initial_outfits_raw,
             character_names=context.character_names,

@@ -15,6 +15,7 @@ import type {
   Background,
   BackgroundsPlatform,
   BatchToolResult,
+  DialogFormatOption,
   Effect,
   EffectsPlatform,
   SpriteGenerationResult,
@@ -599,6 +600,7 @@ export function createTemplatesPreviewPlatform(ctx: BrowserPreviewContext): Temp
         content: [scenario, system].filter(Boolean).join("\n\n"),
         id: "",
         name: input.name || tr("plat.preview.template.defaultName"),
+        ...(input.outputFormat ? { outputFormat: input.outputFormat } : {}),
         path: "",
         resolvedCharacters: [...input.characters],
         allowPlayerDialogue: input.allowPlayerDialogue ?? DEFAULT_PLAYER_OPTIONS.allowPlayerDialogue,
@@ -611,6 +613,11 @@ export function createTemplatesPreviewPlatform(ctx: BrowserPreviewContext): Temp
     getPresets: () => delay(getUserPromptPresets()),
     getSession: () => delay(getTemplateSession()),
     list: () => delay(getTemplates()),
+    listDialogFormats: () =>
+      delay<DialogFormatOption[]>([
+        { id: "xml_v1", label: "XML / HTML Tags", builtin: true },
+        { id: "json_v1", label: "JSON", builtin: true },
+      ]),
     async save(template) {
       const id = template.id || `${template.name || "new"}.txt`;
       const saved = {

@@ -9,6 +9,8 @@ from typing import Any
 
 from config.config_manager import ConfigManager
 from config.schema import SELF_PERSONA_NAME, is_self_persona_name
+from core.messaging.formats.registry import resolve_dialog_format
+from sdk.adapters.dialog_format import DEFAULT_DIALOG_FORMAT_ID, XML_DIALOG_FORMAT_ID
 from sdk.types import OutputContractPatch
 
 from .template.dialog import DialogTemplateContext, DialogTemplateSection
@@ -60,21 +62,74 @@ def resolve_chat_template_characters(
     )
 
 
+def _render_template_keys(*keys: str, locale: str | None = None) -> str:
+    if locale is not None and _T is _DEFAULT_T:
+        return "\n".join(translate_template(key, locale=locale).strip() for key in keys)
+    return "\n".join(_T(key).strip() for key in keys)
+
+
+def format_reminder(
+    output_format_id: str = DEFAULT_DIALOG_FORMAT_ID,
+    *,
+    locale: str | None = None,
+) -> str:
+    """Close system prompts with the active output-format and tool protocol rules."""
+    resolved = resolve_dialog_format(output_format_id)
+    fmt_id = resolved.format_id
+    if fmt_id not in (DEFAULT_DIALOG_FORMAT_ID, XML_DIALOG_FORMAT_ID):
+        resolved_locale = (
+            locale if locale is not None else resolve_template_locale(config_manager)
+        )
+        custom = resolved.render_format_reminder(locale=resolved_locale)
+        protocol = _render_template_keys("closing_custom_tool_protocol", locale=locale)
+        if isinstance(custom, str) and custom.strip():
+            return f"{custom.strip()}\n{protocol}"
+        return _render_template_keys(
+            "closing_custom_reminder",
+            "closing_custom_tool_protocol",
+            locale=locale,
+        )
+    if fmt_id == XML_DIALOG_FORMAT_ID:
+        return _render_template_keys(
+            "closing_xml_reminder",
+            "closing_xml_tool_protocol",
+            locale=locale,
+        )
+    return _render_template_keys(
+        "closing_json_reminder",
+        "closing_tool_protocol",
+        locale=locale,
+    )
+
+
 def json_format_reminder(*, locale: str | None = None) -> str:
     """Close system prompts with the output format and tool protocol rules."""
-    if locale is not None and _T is _DEFAULT_T:
-        return "\n".join(
-            translate_template(key, locale=locale).strip()
-            for key in ("closing_json_reminder", "closing_tool_protocol")
-        )
-    return "\n".join(
-        _T(key).strip()
-        for key in ("closing_json_reminder", "closing_tool_protocol")
+    return _render_template_keys(
+        "closing_json_reminder",
+        "closing_tool_protocol",
+        locale=locale,
     )
 
 
 def _format_llm_tools_block() -> str:
     return format_llm_tools_block(_T)
+
+
+def _format_llm_tools_block_for_format(output_format_id: str) -> str:
+    if output_format_id == DEFAULT_DIALOG_FORMAT_ID:
+        return _format_llm_tools_block()
+    intro_key = (
+        "xml_tools_intro"
+        if output_format_id == XML_DIALOG_FORMAT_ID
+        else "custom_tools_intro"
+    )
+
+    def _format_translate(key: str, **kwargs: Any) -> str:
+        if key == "tools_intro":
+            return _T(intro_key, **kwargs)
+        return _T(key, **kwargs)
+
+    return format_llm_tools_block(_format_translate)
 
 
 def _ui_voice_same_lang() -> bool:
@@ -126,6 +181,7 @@ class TemplateGenerator:
         player_character: str = "",
         read_player_speech: bool = False,
         allow_player_dialogue: bool = True,
+        output_format: str = DEFAULT_DIALOG_FORMAT_ID,
     ):
         if not selected_characters:
             raise NoValidCharactersError()
@@ -152,11 +208,12 @@ class TemplateGenerator:
                 self_persona_setting = str(getattr(self_char, "character_setting", "") or "").strip()
         has_background = bool(bg_name) and not is_transparent_background(bg_name)
         resolved_locale = resolve_template_locale(config_manager)
+        resolved_format = resolve_dialog_format(output_format).format_id
         context = DialogTemplateContext(
             characters=tuple(characters),
             translate=_T,
             target_voice_name=_target_voice_display_name(),
-            json_reminder=json_format_reminder(),
+            json_reminder=format_reminder(resolved_format),
             locale=resolved_locale,
             player_name=player_character if player is not None else "",
             player_character=player,
@@ -173,7 +230,7 @@ class TemplateGenerator:
                     )
                 )
             ),
-            tools_block=_format_llm_tools_block(),
+            tools_block=_format_llm_tools_block_for_format(resolved_format),
             background=(
                 config_manager.get_background_by_name(bg_name)
                 if has_background
@@ -193,5 +250,6 @@ class TemplateGenerator:
             media_selection_mode=(
                 "semantic" if media_selection_mode == "semantic" else "indexed"
             ),
+            output_format_id=resolved_format,
         )
         return DialogTemplateSection().render(context), ""

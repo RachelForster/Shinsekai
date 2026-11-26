@@ -8,6 +8,13 @@ from sdk.adapters.avatar import (
     ModelFiles,
     ModelRuntimeInstaller,
 )
+from sdk.adapters.dialog_format import (
+    DEFAULT_DIALOG_FORMAT_ID,
+    XML_DIALOG_FORMAT_ID,
+    DialogFormatContribution,
+    DialogOutputFormat,
+    DialogStreamParser,
+)
 from sdk.adapters.llm import LLMAdapter
 from sdk.adapters.memory import (
     EmbeddingProvider,
@@ -62,6 +69,10 @@ __all__ = [
     "Migratable",
     "CompactCheckpoint",
     "ConversationSessionPort",
+    "DEFAULT_DIALOG_FORMAT_ID",
+    "DialogFormatContribution",
+    "DialogOutputFormat",
+    "DialogStreamParser",
     "EmbeddingProvider",
     "EmbeddingProviderContribution",
     "MemoryExtractorPort",
@@ -91,4 +102,5 @@ __all__ = [
     "VisionAdapterFactory",
     "VisionAvailabilityProbe",
     "VisionFallbackContribution",
+    "XML_DIALOG_FORMAT_ID",
 ]

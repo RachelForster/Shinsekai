@@ -297,6 +297,7 @@ class ChatOutputContract:
     requirements: tuple[str, ...] = ()
     target_export: str = "llm.output"
     stream_mode: Literal["json_object", "json_lines", "json_array"] = "json_object"
+    format_id: str = "json_v1"
 
 
 @dataclass(frozen=True)

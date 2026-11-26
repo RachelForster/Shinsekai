@@ -4,10 +4,16 @@ import { normalizePlayerOptions } from "../../../shared/playerCharacterOptions";
 import type {
   AppliedUserPromptPreset,
   CharacterPromptMode,
+  DialogOutputFormatId,
   MemoryMode,
   TemplateLaunchSession,
 } from "../../../shared/platform/types";
-import { composeTemplateContent, normalizeTemplateSummary, templateGenerationKey } from "../templateFlow";
+import {
+  composeTemplateContent,
+  LEGACY_OUTPUT_FORMAT,
+  normalizeTemplateSummary,
+  templateGenerationKey,
+} from "../templateFlow";
 import { buildSystemSyncKey } from "../templateContext";
 
 export interface RestoredSessionSnapshot {
@@ -24,6 +30,7 @@ export interface RestoredSessionSnapshot {
   maxSpeechChars: number;
   mediaSelectionMode: "indexed" | "semantic";
   memoryMode: MemoryMode;
+  outputFormat: DialogOutputFormatId;
   playerCharacter: string;
   primaryCharacters: string[];
   readPlayerSpeech: boolean;
@@ -80,6 +87,7 @@ export function buildRestoredSessionSnapshot({
   const restoredUseStat = launchSession.useStat ?? true;
   const restoredMaxSpeech = Number(launchSession.maxSpeechChars) || 0;
   const restoredMaxDialog = Number(launchSession.maxDialogItems) || 0;
+  const restoredOutputFormat = launchSession.outputFormat || LEGACY_OUTPUT_FORMAT;
 
   const restoredCharKey = templateGenerationKey({
     characters: restoredCharacters,
@@ -101,6 +109,7 @@ export function buildRestoredSessionSnapshot({
     useStat: restoredUseStat,
     maxSpeechChars: restoredMaxSpeech,
     maxDialogItems: restoredMaxDialog,
+    outputFormat: restoredOutputFormat,
   });
 
   let initialOutfits: Record<string, string> | null = null;
@@ -131,6 +140,7 @@ export function buildRestoredSessionSnapshot({
     content: composeTemplateContent(launchSession.scenario, launchSession.system),
     id: matchingTemplate?.id ?? "",
     name: launchSession.filenameStub || matchingTemplate?.name || defaultName,
+    outputFormat: restoredOutputFormat,
     path: matchingTemplate?.path ?? "",
     mediaSelectionMode: launchSession.mediaSelectionMode ?? "indexed",
     ...restoredPlayer,
@@ -154,6 +164,7 @@ export function buildRestoredSessionSnapshot({
     maxSpeechChars: restoredMaxSpeech,
     mediaSelectionMode: restoredMediaSelectionMode,
     memoryMode: launchSession.memoryMode ?? "isolated",
+    outputFormat: restoredOutputFormat,
     playerCharacter: restoredPlayer.playerCharacter,
     primaryCharacters: restoredPrimaryCharacters,
     readPlayerSpeech: restoredPlayer.readPlayerSpeech,

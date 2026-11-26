@@ -16,6 +16,7 @@ from sdk.handlers import MessageHandler, UIOutputMessageHandler
 from sdk.adapters import (
     ASRAdapter,
     AvatarFormatContribution,
+    DialogFormatContribution,
     LLMAdapter,
     T2IAdapter,
     TTSAdapter,
@@ -230,6 +231,12 @@ class PluginManager:
         if self._capabilities is None:
             return []
         return self._capabilities.avatar_formats
+
+    def collect_dialog_formats(self) -> list[DialogFormatContribution]:
+        self._ensure_plugins_initialized()
+        if self._capabilities is None:
+            return []
+        return self._capabilities.dialog_formats
 
     def collect_model_assets(self) -> list[ModelAssetContribution]:
         self._ensure_plugins_initialized()

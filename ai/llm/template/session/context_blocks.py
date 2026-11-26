@@ -6,6 +6,9 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 import json
 from typing import Any
+from xml.sax.saxutils import escape as xml_escape, quoteattr as xml_quoteattr
+
+from sdk.adapters.dialog_format import DEFAULT_DIALOG_FORMAT_ID, XML_DIALOG_FORMAT_ID
 
 from ai.llm.template.core import (
     I18nSection,
@@ -178,9 +181,29 @@ class OutfitContextPromptContext(TemplateContext):
     media_selection_mode: str = "indexed"
     switch_example_character: str = ""
     switch_example_target_group: str = ""
+    output_format_id: str = DEFAULT_DIALOG_FORMAT_ID
 
 
 def _render_outfit_example_line(context: OutfitContextPromptContext) -> str:
+    prefix = context.tr("session.outfit_switch_example_prefix")
+    example_speech = context.tr("session.outfit_example_speech")
+    is_xml = (
+        str(context.output_format_id or DEFAULT_DIALOG_FORMAT_ID).strip().lower()
+        == XML_DIALOG_FORMAT_ID
+    )
+    if is_xml:
+        media_attr = (
+            f"vibe={xml_quoteattr(context.tr('session.outfit_example_vibe'))}"
+            if context.media_selection_mode == "semantic"
+            else 'sprite="-1"'
+        )
+        return (
+            prefix
+            + f"<say char={xml_quoteattr(context.switch_example_character)} "
+            + f"{media_attr} "
+            + f"outfit={xml_quoteattr(context.switch_example_target_group)}>"
+            + f"{xml_escape(example_speech)}</say>"
+        )
     media = (
         {"vibe": context.tr("session.outfit_example_vibe")}
         if context.media_selection_mode == "semantic"
@@ -189,13 +212,10 @@ def _render_outfit_example_line(context: OutfitContextPromptContext) -> str:
     payload = {
         "character_name": context.switch_example_character,
         **media,
-        "speech": context.tr("session.outfit_example_speech"),
+        "speech": example_speech,
         "outfit": context.switch_example_target_group,
     }
-    return (
-        context.tr("session.outfit_switch_example_prefix")
-        + json.dumps(payload, ensure_ascii=False)
-    )
+    return prefix + json.dumps(payload, ensure_ascii=False)
 
 
 def _render_outfit_entries(context: OutfitContextPromptContext) -> str:
@@ -255,12 +275,20 @@ class _OutfitContextSection(Section[OutfitContextPromptContext]):
                     key="session.outfit_indexed_sprite_rule",
                 )
             )
+        is_xml = (
+            str(context.output_format_id or DEFAULT_DIALOG_FORMAT_ID).strip().lower()
+            == XML_DIALOG_FORMAT_ID
+        )
         if context.switch_example_character and context.switch_example_target_group:
             children.append(
                 I18nSection(
                     id="switch_rule",
                     priority=40,
-                    key="session.outfit_auto_switch_rule",
+                    key=(
+                        "session.outfit_auto_switch_rule_xml"
+                        if is_xml
+                        else "session.outfit_auto_switch_rule"
+                    ),
                 )
             )
             children.append(
@@ -275,7 +303,11 @@ class _OutfitContextSection(Section[OutfitContextPromptContext]):
                 I18nSection(
                     id="locked_rule",
                     priority=40,
-                    key="session.outfit_locked_or_disabled_rule",
+                    key=(
+                        "session.outfit_locked_or_disabled_rule_xml"
+                        if is_xml
+                        else "session.outfit_locked_or_disabled_rule"
+                    ),
                 )
             )
         children.append(
