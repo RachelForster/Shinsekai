@@ -41,6 +41,9 @@ describe("dialogViewportLayout", () => {
     expect(maximized1080p["--chat-dialog-min-height"]).toBe("208px");
     expect(maximized1080p["--chat-dialog-body-max-height"]).toBe("312px");
     expect(maximized1080p["--chat-dialog-text-runtime-font-size"]).toBe("23px");
+    expect(maximized1080p["--chat-option-font-size"]).toBe("22px");
+    expect(maximized1080p["--chat-option-min-height"]).toBe("61px");
+    expect(maximized1080p["--chat-options-gap"]).toBe("13px");
 
     const fullscreen1080p = resolveVnDialogViewportStyle({
       config: defaultChatStageRuntimeConfig,
@@ -53,6 +56,10 @@ describe("dialogViewportLayout", () => {
     expect(fullscreen1080p["--chat-dialog-min-height"]).toBe("216px");
     expect(fullscreen1080p["--chat-dialog-body-max-height"]).toBe("324px");
     expect(fullscreen1080p["--chat-dialog-text-runtime-font-size"]).toBe("24px");
+    expect(fullscreen1080p["--chat-option-font-size"]).toBe("22px");
+    expect(fullscreen1080p["--chat-option-min-height"]).toBe("63px");
+    expect(fullscreen1080p["--chat-option-padding"]).toBe("16px 29px");
+    expect(fullscreen1080p["--chat-options-gap"]).toBe("13px");
 
     const qhd2k = resolveVnDialogViewportStyle({
       config: defaultChatStageRuntimeConfig,
@@ -65,6 +72,9 @@ describe("dialogViewportLayout", () => {
     expect(qhd2k["--chat-dialog-min-height"]).toBe("288px");
     expect(qhd2k["--chat-dialog-body-max-height"]).toBe("432px");
     expect(qhd2k["--chat-dialog-text-runtime-font-size"]).toBe("32px");
+    expect(qhd2k["--chat-option-font-size"]).toBe("30px");
+    expect(qhd2k["--chat-option-min-height"]).toBe("84px");
+    expect(qhd2k["--chat-options-gap"]).toBe("18px");
 
     const uhd4k = resolveVnDialogViewportStyle({
       config: defaultChatStageRuntimeConfig,
@@ -78,6 +88,9 @@ describe("dialogViewportLayout", () => {
     expect(uhd4k["--chat-dialog-body-max-height"]).toBe("460px");
     expect(uhd4k["--chat-dialog-text-runtime-font-size"]).toBe(`${Math.round(18 * VN_SCALE_MAX)}px`);
     expect(uhd4k["--chat-name-runtime-font-size"]).toBe(`${Math.round(16 * VN_SCALE_MAX)}px`);
+    expect(uhd4k["--chat-option-font-size"]).toBe("31px");
+    expect(uhd4k["--chat-option-min-height"]).toBe("89px");
+    expect(uhd4k["--chat-options-gap"]).toBe("19px");
 
     const ultrawide = resolveVnDialogViewportStyle({
       config: defaultChatStageRuntimeConfig,
@@ -99,15 +112,42 @@ describe("dialogViewportLayout", () => {
     expect(laptop150Dpi["--chat-dialog-runtime-width"]).toBe("1101px");
     expect(laptop150Dpi["--chat-dialog-min-height"]).toBe("156px");
     expect(laptop150Dpi["--chat-dialog-body-max-height"]).toBe("260px");
+    expect(laptop150Dpi["--chat-option-font-size"]).toBe("17px");
+    expect(laptop150Dpi["--chat-option-min-height"]).toBe("48px");
+    expect(laptop150Dpi["--chat-options-gap"]).toBe("10px");
   });
 
   it("adapts built-in visual-novel themes cleanly beyond the 980px theme cap", () => {
     const cases = [
-      { id: "sakura-dream", expectedWidth: 1651, baseHeight: 178 },
-      { id: "spiritron-command", expectedWidth: 1805, baseHeight: 180 },
-      { id: "raging-loop-simple", expectedWidth: 1920, baseHeight: 226 },
-      { id: "windborne-adventure", expectedWidth: 1382, baseHeight: 166 },
-      { id: "neon-night-city", expectedWidth: 1613, baseHeight: 184 },
+      { id: "sakura-dream", expectedWidth: 1651, baseHeight: 178, expectedOptionFont: 24, expectedOptionMinHeight: 71 },
+      {
+        id: "spiritron-command",
+        expectedWidth: 1805,
+        baseHeight: 180,
+        expectedOptionFont: 24,
+        expectedOptionMinHeight: 68,
+      },
+      {
+        id: "raging-loop-simple",
+        expectedWidth: 1920,
+        baseHeight: 226,
+        expectedOptionFont: 24,
+        expectedOptionMinHeight: 60,
+      },
+      {
+        id: "windborne-adventure",
+        expectedWidth: 1382,
+        baseHeight: 166,
+        expectedOptionFont: 24,
+        expectedOptionMinHeight: 60,
+      },
+      {
+        id: "neon-night-city",
+        expectedWidth: 1613,
+        baseHeight: 184,
+        expectedOptionFont: 24,
+        expectedOptionMinHeight: 66,
+      },
     ] as const;
 
     for (const item of cases) {
@@ -120,6 +160,8 @@ describe("dialogViewportLayout", () => {
 
       expect(style["--chat-dialog-width"]).toBe(`${item.expectedWidth}px`);
       expect(style["--chat-dialog-runtime-width"]).toBe(`${item.expectedWidth}px`);
+      expect(style["--chat-option-font-size"]).toBe(`${item.expectedOptionFont}px`);
+      expect(style["--chat-option-min-height"]).toBe(`${item.expectedOptionMinHeight}px`);
 
       const scaledHeight = Number.parseInt(style["--chat-dialog-height"], 10);
       expect(scaledHeight).toBeGreaterThan(item.baseHeight);
@@ -128,6 +170,15 @@ describe("dialogViewportLayout", () => {
       const gapPx = Number.parseInt(style["--chat-dialog-name-input-gap"], 10);
       expect(gapPx).toBeGreaterThan(scaledHeight);
     }
+
+    const windborneTheme = resolveChatTheme(builtinChatThemeManifests["windborne-adventure"], (rel) => rel);
+    const windborneStyle = chatStageRuntimeStyle(defaultChatStageRuntimeConfig, windborneTheme.style, "#f3cf57", {
+      expanded: true,
+      height: 1080,
+      width: 1920,
+    }) as unknown as Record<string, string>;
+    expect(windborneStyle["--chat-option-icon-size"]).toBe("41px");
+    expect(windborneStyle["--chat-option-padding"]).toBe("11px 24px 11px 71px");
 
     const ragingTheme = resolveChatTheme(builtinChatThemeManifests["raging-loop-simple"], (rel) => rel);
     const ultrawideFullBleed = chatStageRuntimeStyle(defaultChatStageRuntimeConfig, ragingTheme.style, "#62c3ff", {

@@ -31,6 +31,29 @@ function parseSinglePx(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function parseResponsivePx(value: unknown, baseHeight = VN_STAGE_BASE_HEIGHT): number | null {
+  const single = parseSinglePx(value);
+  if (single != null) {
+    return single;
+  }
+  if (typeof value !== "string") {
+    return null;
+  }
+  const clampMatch = /^\s*clamp\(\s*(\d+(?:\.\d+)?)px\s*,\s*(\d+(?:\.\d+)?)svh\s*,\s*(\d+(?:\.\d+)?)px\s*\)\s*$/i.exec(
+    value,
+  );
+  if (!clampMatch) {
+    return null;
+  }
+  const minPx = Number(clampMatch[1]);
+  const svhPct = Number(clampMatch[2]);
+  const maxPx = Number(clampMatch[3]);
+  if (!Number.isFinite(minPx) || !Number.isFinite(svhPct) || !Number.isFinite(maxPx)) {
+    return null;
+  }
+  return clamp((baseHeight * svhPct) / 100, minPx, maxPx);
+}
+
 function parseThemeDialogWidthPct(themeStyle: Record<string, unknown>): number {
   const raw = themeStyle["--chat-dialog-width"];
   if (typeof raw !== "string") {
@@ -184,6 +207,55 @@ export function resolveVnDialogViewportStyle({
     } else {
       result["--chat-name-runtime-font-size"] = `${Math.round(clamp(16 * vnScale, 16, 30))}px`;
     }
+  }
+
+  const themeOptionFontPx = parseResponsivePx(styleRecord["--chat-option-font-size"]);
+  const optionFontPx =
+    themeOptionFontPx != null
+      ? Math.round(clamp(themeOptionFontPx * vnScale, themeOptionFontPx, 42))
+      : Math.round(clamp(17 * vnScale, 17, 32));
+  result["--chat-option-font-size"] = `${optionFontPx}px`;
+
+  const themeOptionMinHeightPx = parseResponsivePx(styleRecord["--chat-option-min-height"]);
+  const baseOptionMinHeightPx = themeOptionMinHeightPx ?? 48;
+  const maxOptionMinHeightPx = Math.max(
+    Math.round(baseOptionMinHeightPx),
+    Math.min(112, Math.round(viewport.height * 0.11)),
+  );
+  const scaledOptionMinHeightPx = Math.round(
+    clamp(
+      Math.max(baseOptionMinHeightPx * vnScale, Math.round(optionFontPx * 2.5)),
+      baseOptionMinHeightPx,
+      maxOptionMinHeightPx,
+    ),
+  );
+  result["--chat-option-min-height"] = `${scaledOptionMinHeightPx}px`;
+
+  if (styleRecord["--chat-option-icon-opacity"] === "1") {
+    const baseOptionIconPx = parseResponsivePx(styleRecord["--chat-option-icon-size"]) ?? 31;
+    const scaledIconPx = Math.round(clamp(baseOptionIconPx * vnScale, 28, 48));
+    const padY = Math.round(clamp(8 * vnScale, 8, 16));
+    const padRight = Math.round(clamp(18 * vnScale, 18, 34));
+    const padLeft = 14 + scaledIconPx + Math.round(clamp(12 * vnScale, 12, 22));
+    result["--chat-option-icon-size"] = `${scaledIconPx}px`;
+    result["--chat-option-padding"] = `${padY}px ${padRight}px ${padY}px ${padLeft}px`;
+  } else {
+    const rawOptionPad = styleRecord["--chat-option-padding"];
+    if (rawOptionPad == null) {
+      const padY = Math.round(clamp(12 * vnScale, 12, 22));
+      const padX = Math.round(clamp(22 * vnScale, 22, 40));
+      result["--chat-option-padding"] = `${padY}px ${padX}px`;
+    } else {
+      const baseOptionPad = parseSinglePx(rawOptionPad);
+      if (baseOptionPad != null) {
+        result["--chat-option-padding"] = `${Math.round(clamp(baseOptionPad * vnScale, baseOptionPad, 48))}px`;
+      }
+    }
+  }
+
+  const baseOptionGapPx = parseSinglePx(styleRecord["--chat-options-gap"]) ?? 10;
+  if (baseOptionGapPx > 0) {
+    result["--chat-options-gap"] = `${Math.round(clamp(baseOptionGapPx * vnScale, baseOptionGapPx, 28))}px`;
   }
 
   return result;

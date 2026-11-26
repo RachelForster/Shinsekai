@@ -168,6 +168,8 @@ describe("ChatStagePage fullscreen visual-novel dialog adaptation", () => {
     const stage = await waitFor(() => document.querySelector<HTMLElement>(".chat-stage")!);
     expect(stage.dataset.viewportVn).toBe("false");
     expect(stage.style.getPropertyValue("--chat-dialog-runtime-width")).toBe("1040px");
+    expect(stage.style.getPropertyValue("--chat-option-font-size")).toBe("");
+    expect(stage.style.getPropertyValue("--chat-option-min-height")).toBe("");
 
     act(() => {
       setWindowSize(1920, 1080);
@@ -178,6 +180,8 @@ describe("ChatStagePage fullscreen visual-novel dialog adaptation", () => {
     expect(stage.style.getPropertyValue("--chat-dialog-runtime-width")).toBe("1651px");
     expect(stage.style.getPropertyValue("--chat-dialog-min-height")).toBe("216px");
     expect(stage.style.getPropertyValue("--chat-dialog-text-runtime-font-size")).toBe("24px");
+    expect(stage.style.getPropertyValue("--chat-option-font-size")).toBe("22px");
+    expect(stage.style.getPropertyValue("--chat-option-min-height")).toBe("63px");
 
     act(() => {
       setWindowSize(1280, 820);
@@ -186,6 +190,8 @@ describe("ChatStagePage fullscreen visual-novel dialog adaptation", () => {
 
     await waitFor(() => expect(stage.dataset.viewportVn).toBe("false"));
     expect(stage.style.getPropertyValue("--chat-dialog-runtime-width")).toBe("1040px");
+    expect(stage.style.getPropertyValue("--chat-option-font-size")).toBe("");
+    expect(stage.style.getPropertyValue("--chat-option-min-height")).toBe("");
   });
 
   it("activates VN adaptation on browser fullscreenchange even at 1280x720", async () => {
@@ -212,6 +218,8 @@ describe("ChatStagePage fullscreen visual-novel dialog adaptation", () => {
     const stage = await waitFor(() => document.querySelector<HTMLElement>(".chat-stage")!);
     await waitFor(() => expect(stage.dataset.viewportVn).toBe("true"));
     expect(stage.style.getPropertyValue("--chat-dialog-runtime-width")).toBe("1101px");
+    expect(stage.style.getPropertyValue("--chat-option-font-size")).toBe("17px");
+    expect(stage.style.getPropertyValue("--chat-option-min-height")).toBe("48px");
 
     const miniButton = stage.querySelector<HTMLButtonElement>(".top-stage-tools__button--mini-avatar");
     expect(miniButton).not.toBeNull();
@@ -220,6 +228,8 @@ describe("ChatStagePage fullscreen visual-novel dialog adaptation", () => {
     await waitFor(() => expect(stage.dataset.miniAvatar).toBe("true"));
     expect(stage.dataset.viewportVn).toBe("false");
     expect(stage.style.getPropertyValue("--chat-dialog-runtime-width")).toBe("1040px");
+    expect(stage.style.getPropertyValue("--chat-option-font-size")).toBe("");
+    expect(stage.style.getPropertyValue("--chat-option-min-height")).toBe("");
   });
 
   it("ignores stale desktop expanded query results that resolve out of order after restoring to 1280x720", async () => {
