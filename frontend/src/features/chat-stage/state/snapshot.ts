@@ -2,7 +2,7 @@ import type { ChatSnapshot } from "../../../shared/platform/types";
 import { emptyChatState } from "./initialState";
 import { withResolvedLayers } from "./layers";
 import { normalizeChatStageSprites } from "./sprites";
-import type { ChatAudioCommand, ChatStageState } from "./types";
+import type { ChatAudioCommand, ChatStageBackgroundTransition, ChatStageSpriteMotion, ChatStageState } from "./types";
 
 export function snapshotEventSeq(snapshot: ChatSnapshot) {
   return typeof snapshot.eventSeq === "number" && Number.isFinite(snapshot.eventSeq) ? snapshot.eventSeq : 0;
@@ -98,6 +98,64 @@ function restoreSpriteReaction(state: ChatStageState, snapshot: ChatSnapshot, re
   };
 }
 
+function restoreBackgroundTransition(
+  state: ChatStageState,
+  snapshot: ChatSnapshot,
+): ChatStageBackgroundTransition | null {
+  const transition = snapshot.backgroundTransition;
+  const effect = transition?.effect?.trim().toLowerCase() ?? "";
+  if (
+    !transition ||
+    !effect ||
+    typeof transition.expiresAt !== "number" ||
+    !Number.isFinite(transition.expiresAt) ||
+    typeof snapshot.serverTimeMs !== "number" ||
+    !Number.isFinite(snapshot.serverTimeMs)
+  ) {
+    return null;
+  }
+  const durationMs =
+    typeof transition.durationMs === "number" && Number.isFinite(transition.durationMs)
+      ? Math.max(0, transition.durationMs)
+      : 0;
+  const remaining = Math.min(durationMs, Math.max(0, transition.expiresAt - snapshot.serverTimeMs));
+  if (!Number.isFinite(remaining) || remaining <= 0) {
+    return null;
+  }
+  const previous = state.backgroundTransition;
+  if (state.sessionId === snapshot.sessionId && previous?.seq === transition.seq && previous.effect === effect) {
+    return previous;
+  }
+  return { effect, seq: transition.seq };
+}
+
+function restoreSpriteMotions(state: ChatStageState, snapshot: ChatSnapshot): Record<string, ChatStageSpriteMotion> {
+  const rawMotions = snapshot.spriteMotions;
+  if (!rawMotions || typeof snapshot.serverTimeMs !== "number" || !Number.isFinite(snapshot.serverTimeMs)) {
+    return {};
+  }
+  const serverTimeMs = snapshot.serverTimeMs;
+  const restored: Record<string, ChatStageSpriteMotion> = {};
+  for (const [name, entry] of Object.entries(rawMotions)) {
+    const motion = entry?.motion?.trim().toLowerCase() ?? "";
+    if (!name.trim() || !entry || !motion || typeof entry.expiresAt !== "number" || !Number.isFinite(entry.expiresAt)) {
+      continue;
+    }
+    const durationMs = entry.durationMs && entry.durationMs > 0 ? entry.durationMs : 600;
+    const remaining = Math.min(durationMs, Math.max(0, entry.expiresAt - serverTimeMs));
+    if (!Number.isFinite(remaining) || remaining <= 0) {
+      continue;
+    }
+    const previous = state.spriteMotions?.[name];
+    if (state.sessionId === snapshot.sessionId && previous?.seq === entry.seq && previous.motion === motion) {
+      restored[name] = previous;
+    } else {
+      restored[name] = { durationMs, motion, seq: entry.seq };
+    }
+  }
+  return restored;
+}
+
 export function hydrateFromSnapshot(state: ChatStageState, snapshot: ChatSnapshot, receivedAt = 0): ChatStageState {
   if (snapshot.sessionId && state.sessionId && snapshot.sessionId !== state.sessionId) {
     state = emptyChatState;
@@ -113,6 +171,7 @@ export function hydrateFromSnapshot(state: ChatStageState, snapshot: ChatSnapsho
   return withResolvedLayers({
     ...emptyChatState,
     ...snapshot,
+    backgroundTransition: restoreBackgroundTransition(state, snapshot),
     effectImage: restoreEffectImage(state, snapshot, receivedAt),
     outfits: snapshot.outfits
       ? Object.fromEntries(Object.entries(snapshot.outfits).map(([key, value]) => [key, { ...value }]))
@@ -129,6 +188,7 @@ export function hydrateFromSnapshot(state: ChatStageState, snapshot: ChatSnapsho
           stagePolicy: { ...snapshot.behavior.stagePolicy },
         }
       : null,
+    spriteMotions: restoreSpriteMotions(state, snapshot),
     spriteReaction: restoreSpriteReaction(state, snapshot, receivedAt),
     audioCommands,
     asrTranscript: undefined,

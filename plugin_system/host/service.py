@@ -63,6 +63,7 @@ class PluginRuntimeBindings:
     configure_avatar_formats: Callable[[list[Any]], None]
     register_mcp_tools: Callable[[Any], None] | None = None
     configure_model_assets: Callable[[list[Any]], None] | None = None
+    configure_dialog_formats: Callable[[list[Any]], None] | None = None
 
 
 def get_plugin_manager() -> PluginManager | None:
@@ -261,6 +262,11 @@ def ensure_plugins_loaded(
             runtime_bindings.configure_avatar_formats(mgr.collect_avatar_formats())
         except Exception:
             logger.exception("collect_avatar_formats failed")
+        if runtime_bindings.configure_dialog_formats is not None:
+            try:
+                runtime_bindings.configure_dialog_formats(mgr.collect_dialog_formats())
+            except Exception:
+                logger.exception("collect_dialog_formats failed")
         if runtime_bindings.configure_model_assets is not None:
             try:
                 runtime_bindings.configure_model_assets(mgr.collect_model_assets())

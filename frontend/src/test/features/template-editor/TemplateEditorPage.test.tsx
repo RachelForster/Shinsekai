@@ -107,9 +107,15 @@ vi.mock("../../../entities/config/repository", () => ({
 }));
 
 vi.mock("../../../entities/template/repository", () => ({
+  dialogFormatsQueryKey: ["templates", "dialog-formats"],
   generateTemplate: (input: unknown) => mockGenerateTemplate(input),
   getTemplateSession: () => mockGetTemplateSession(),
   getUserPromptPresets: () => mockGetUserPromptPresets(),
+  listDialogFormats: () =>
+    Promise.resolve([
+      { id: "xml_v1", label: "XML / HTML Tags", builtin: true },
+      { id: "json_v1", label: "JSON", builtin: true },
+    ]),
   listTemplates: () => mockListTemplates(),
   saveTemplate: (input: unknown) => mockSaveTemplate(input),
   saveTemplateSession: (input: unknown) => mockSaveTemplateSession(input),

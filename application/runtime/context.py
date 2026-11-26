@@ -167,6 +167,8 @@ def emit_presentation_message(
     *,
     is_system_message: bool = False,
     effect: str = "",
+    transition: str = "",
+    motion: str = "",
 ) -> None:
     """Emit one presentation-ready dialog media message."""
     from sdk.messages import PresentationMessage
@@ -180,6 +182,8 @@ def emit_presentation_message(
         text=speech,
         is_system_message=is_system_message,
         effect=effect,
+        transition=transition,
+        motion=motion,
     )
     rt.presentation_queue.put(out)
 

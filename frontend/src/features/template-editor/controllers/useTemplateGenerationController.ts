@@ -50,6 +50,7 @@ export function useTemplateGenerationController(state: TemplateSessionState) {
       effectNames: state.selectedEffects,
       mediaSelectionMode: effectiveMode,
       options: effectiveOptions,
+      outputFormat: overrides?.outputFormat ?? state.outputFormat,
       runtime: effectiveRuntime,
       primaryCharacters: state.characterPromptMode === "compact" ? state.primaryCharacters : state.selectedCharacters,
       ...state.playerOptions,
@@ -89,6 +90,7 @@ export function useTemplateGenerationController(state: TemplateSessionState) {
       useStat: state.useStat,
       maxSpeechChars: state.maxSpeechChars,
       maxDialogItems: state.maxDialogItems,
+      outputFormat: state.outputFormat,
     });
     state.setPrimaryCharacters(resolvedPrimary);
     state.setSelectedCharacters(resolvedCharacters);
@@ -319,6 +321,7 @@ export function useTemplateGenerationController(state: TemplateSessionState) {
       useStat: commit.useStat,
       maxSpeechChars: commit.maxSpeechChars,
       maxDialogItems: commit.maxDialogItems,
+      outputFormat: commit.outputFormat,
     });
 
     // Prevent redundant immediate auto-generation after confirming inside dialog.
@@ -327,6 +330,7 @@ export function useTemplateGenerationController(state: TemplateSessionState) {
       state.setSessionDraftActive(true);
     }
     state.setMediaSelectionMode(commit.mediaSelectionMode);
+    state.setOutputFormat(commit.outputFormat);
     state.setUseEffectPrompt(commit.useEffectPrompt);
     state.setUseTranslation(commit.useTranslation);
     state.setUseCot(commit.useCot);
@@ -339,6 +343,7 @@ export function useTemplateGenerationController(state: TemplateSessionState) {
     state.setManualBaseKey(commit.systemManuallyEdited ? nextSyncKey : "");
     state.updateDraft({
       mediaSelectionMode: commit.mediaSelectionMode,
+      outputFormat: commit.outputFormat,
       system: commit.system,
     });
     state.setSystemPromptDialogOpen(false);

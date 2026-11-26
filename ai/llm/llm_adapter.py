@@ -274,11 +274,13 @@ class GeminiAdapter(LLMAdapter):
             history.append({"role": role, "parts": [msg["content"]]})
 
         try:
+            clean_kwargs = dict(kwargs)
+            clean_kwargs.pop("response_format", None)
             # 使用传入的 messages 参数
             response = self.model.generate_content(
                 history,
                 stream=stream,
-                **kwargs
+                **clean_kwargs
             )
             if stream:
                 self._current_stream = response

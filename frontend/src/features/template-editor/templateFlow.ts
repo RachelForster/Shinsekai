@@ -6,6 +6,7 @@ import type {
   AppliedUserPromptPreset,
   ChatLaunchPayload,
   ChatSnapshot,
+  DialogOutputFormatId,
   InitialOutfitValue,
   MediaSelectionMode,
   MemoryMode,
@@ -14,6 +15,9 @@ import type {
   TemplateLaunchSession,
   TemplateSummary,
 } from "../../shared/platform/types";
+
+export const DEFAULT_NEW_OUTPUT_FORMAT: DialogOutputFormatId = "xml_v1";
+export const LEGACY_OUTPUT_FORMAT: DialogOutputFormatId = "json_v1";
 
 export const templateVoiceLanguages = [
   { labelKey: "system.asr.langJa", value: "ja" },
@@ -71,6 +75,7 @@ export function createTemplateDraft(name: string): TemplateSummary {
     content: "",
     id: "",
     name,
+    outputFormat: DEFAULT_NEW_OUTPUT_FORMAT,
     path: "",
     mediaSelectionMode: "indexed",
     scenario: "",
@@ -94,6 +99,7 @@ export function normalizeTemplateSummary(template: TemplateSummary): TemplateSum
     baseScenario,
     content: composeTemplateContent(scenario, system),
     mediaSelectionMode: template.mediaSelectionMode ?? "indexed",
+    ...(template.outputFormat ? { outputFormat: template.outputFormat } : {}),
     scenario,
     selectedPresetIds,
     system,
@@ -135,6 +141,7 @@ type TemplateGenerationOptions = PlayerCharacterOptions & {
   draft: TemplateSummary;
   effectNames?: string[];
   options: TemplateFlowOptions;
+  outputFormat?: DialogOutputFormatId;
   runtime: Pick<TemplateRuntimeOptions, "maxDialogItems" | "maxSpeechChars" | "voiceLanguage">;
   selectedCharacters: string[];
   characterPromptMode?: "compact" | "full";
@@ -143,6 +150,7 @@ type TemplateGenerationOptions = PlayerCharacterOptions & {
 };
 
 export function buildTemplateGenerateInput(input: TemplateGenerationOptions): TemplateGenerateInput {
+  const outputFormat = input.outputFormat ?? input.draft.outputFormat;
   return {
     backgroundName: input.backgroundName,
     characterPromptMode: input.characterPromptMode,
@@ -152,6 +160,7 @@ export function buildTemplateGenerateInput(input: TemplateGenerationOptions): Te
     maxSpeechChars: input.runtime.maxSpeechChars,
     mediaSelectionMode: input.mediaSelectionMode,
     name: input.draft.name.trim(),
+    ...(outputFormat ? { outputFormat } : {}),
     primaryCharacters: input.primaryCharacters,
     ...normalizePlayerOptions(input),
     readPlayerSpeech: Boolean(input.playerCharacter && input.readPlayerSpeech),
@@ -178,6 +187,7 @@ type TemplateSessionOptions = PlayerCharacterOptions & {
   memoryMode?: MemoryMode;
   mobileAccessEnabled: boolean;
   options: TemplateFlowOptions;
+  outputFormat?: DialogOutputFormatId;
   runtime: TemplateRuntimeOptions;
   selectedCharacters: string[];
   selectedPresetIds?: string[];
@@ -194,6 +204,7 @@ export function buildTemplateLaunchSession(input: TemplateSessionOptions): Templ
   const selectedPresetIds = input.selectedPresetIds ?? input.draft.selectedPresetIds ?? [];
   const appliedPresets = input.appliedPresets ?? input.draft.appliedPresets ?? [];
   const baseScenario = input.baseScenario ?? input.draft.baseScenario ?? String(input.draft.scenario ?? "");
+  const outputFormat = input.outputFormat ?? input.draft.outputFormat;
   return {
     ...(input.autoOutfitSwitch !== undefined ? { autoOutfitSwitch: input.autoOutfitSwitch } : {}),
     background: input.backgroundName,
@@ -216,6 +227,7 @@ export function buildTemplateLaunchSession(input: TemplateSessionOptions): Templ
     maxSpeechChars: input.runtime.maxSpeechChars,
     mediaSelectionMode: input.mediaSelectionMode,
     ...(input.memoryMode ? { memoryMode: input.memoryMode } : {}),
+    ...(outputFormat ? { outputFormat } : {}),
     roomId: input.runtime.roomId.trim(),
     scenario: String(input.draft.scenario ?? ""),
     primaryCharacters: input.primaryCharacters,
@@ -242,6 +254,7 @@ export function buildChatLaunchPayload(input: {
   initialOutfits?: Record<string, InitialOutfitValue>;
   memoryMode?: MemoryMode;
   mobileAccessEnabled: boolean;
+  outputFormat?: DialogOutputFormatId;
   resetHistory: boolean;
   runtime: Pick<TemplateRuntimeOptions, "historyPath" | "initSpritePath" | "showInitialSprite" | "roomId">;
   selectedCharacters: string[];
@@ -251,6 +264,7 @@ export function buildChatLaunchPayload(input: {
 }): ChatLaunchPayload {
   const initialOutfits =
     input.initialOutfits && Object.keys(input.initialOutfits).length > 0 ? { ...input.initialOutfits } : undefined;
+  const outputFormat = input.outputFormat ?? input.template.outputFormat;
   return {
     ...(input.autoOutfitSwitch !== undefined ? { autoOutfitSwitch: input.autoOutfitSwitch } : {}),
     backgroundName: input.backgroundName,
@@ -263,6 +277,7 @@ export function buildChatLaunchPayload(input: {
     showInitialSprite: input.runtime.showInitialSprite ?? true,
     mediaSelectionMode: input.mediaSelectionMode,
     ...(input.memoryMode ? { memoryMode: input.memoryMode } : {}),
+    ...(outputFormat ? { outputFormat } : {}),
     resetHistory: input.resetHistory,
     roomId: input.runtime.roomId.trim(),
     scenario: String(input.template.scenario ?? ""),
@@ -298,6 +313,7 @@ export function synchronizeChatLaunchPayloadWithSession(
     showInitialSprite: session.showInitialSprite ?? true,
     mediaSelectionMode: session.mediaSelectionMode ?? "indexed",
     ...(session.memoryMode ? { memoryMode: session.memoryMode } : {}),
+    ...(session.outputFormat ? { outputFormat: session.outputFormat } : {}),
     roomId: session.roomId.trim(),
     scenario: session.scenario,
     system: session.system,
