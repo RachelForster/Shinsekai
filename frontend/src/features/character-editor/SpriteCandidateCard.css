@@ -1,0 +1,198 @@
+.sprite-generation__replace-previews {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-4);
+}
+
+.sprite-generation__replace-previews .sprite-generation__preview {
+  height: 160px;
+}
+
+.sprite-generation__replace-previews img,
+.sprite-generation__replace-previews video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.sprite-generation__resources {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  background: var(--color-bg-sidebar);
+  overflow-wrap: anywhere;
+}
+
+.sprite-generation__resources ol {
+  display: grid;
+  gap: var(--space-3);
+  padding-inline-start: var(--space-5);
+  margin-block: var(--space-4);
+}
+
+.sprite-generation__resource-title {
+  margin-block: var(--space-4) var(--space-2);
+  font-size: 14px;
+}
+
+.sprite-generation__resources .data-table-wrap {
+  margin-top: var(--space-3);
+}
+
+.sprite-generation__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+  align-items: start;
+  gap: var(--space-5);
+}
+
+[data-sprite-preview-size="large"] .sprite-generation__grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr));
+}
+
+[data-sprite-preview-size="large"] :is(.sprite-generation__preview, .sprite-transitions__preview) {
+  height: clamp(280px, 48dvh, 560px);
+}
+
+.sprite-generation__card {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  background: var(--color-bg-sidebar);
+}
+
+.sprite-generation__card--selected {
+  border-color: var(--color-accent-primary);
+  box-shadow: inset 0 0 0 1px var(--color-accent-primary);
+}
+
+.sprite-generation__card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.sprite-generation__card-header label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.sprite-generation__badge {
+  margin-left: auto;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.sprite-generation__card input[type="checkbox"] {
+  accent-color: var(--color-accent-primary);
+}
+
+.sprite-generation__preview {
+  position: relative;
+  height: 240px;
+  overflow: hidden;
+  border-radius: var(--radius-control);
+  background-color: var(--color-bg-app);
+  background-image: conic-gradient(
+    rgba(128, 128, 128, 0.12) 25%,
+    transparent 0 50%,
+    rgba(128, 128, 128, 0.12) 0 75%,
+    transparent 0
+  );
+  background-size: 20px 20px;
+}
+
+.sprite-generation__preview-trigger {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  justify-content: center;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  cursor: zoom-in;
+}
+
+.sprite-generation__preview-trigger:focus-visible {
+  outline: 2px solid var(--color-accent-primary);
+  outline-offset: -3px;
+}
+
+.sprite-generation__preview img,
+.sprite-generation__preview video,
+.sprite-generation__reference-image :is(img, video) {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.sprite-generation__preview video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: transparent;
+}
+
+.sprite-generation__preview .image-asset-card__media,
+.sprite-generation__reference-image .image-asset-card__media {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.sprite-generation__preview .image-asset-card__media[data-state="loaded"] {
+  background: transparent;
+}
+
+.sprite-generation__preview .image-asset-card__media img,
+.sprite-generation__reference-image .image-asset-card__media img {
+  object-fit: contain;
+  min-height: 0;
+  max-height: 100%;
+}
+
+.sprite-generation__prompt-details,
+.sprite-generation__video {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.sprite-generation summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.6;
+}
+
+.sprite-generation__prompt-details[open] summary {
+  margin-bottom: var(--space-3);
+}
+
+.sprite-generation__card-actions {
+  justify-content: flex-end;
+}
+
+.sprite-generation__video video {
+  display: block;
+  width: 100%;
+  max-height: 260px;
+  margin-block: var(--space-3);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-app);
+}
+
+.sprite-generation__video .sprite-generation__hint {
+  margin-top: var(--space-2);
+}
