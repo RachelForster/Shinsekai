@@ -209,6 +209,7 @@ export const settingsZhCNMessages = {
   "system.asr.followUi": "跟随界面语言",
   "system.asr.hint":
     "识别语言对所有引擎共用；Whisper 模型、推理设备与计算精度仅在选用 Whisper 引擎时显示，Vosk 只保留模型目录字段。",
+  "system.asr.langAuto": "自动",
   "system.asr.langEn": "English",
   "system.asr.langJa": "日本語",
   "system.asr.langYue": "粵語",

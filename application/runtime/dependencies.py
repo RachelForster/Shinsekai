@@ -64,6 +64,9 @@ PERCEPTION_ACCELERATE_SPEC = "accelerate>=0.26.0"
 PERCEPTION_HUGGINGFACE_HUB_SPEC = "huggingface-hub>=0.34.0,<1.0"
 PERCEPTION_PILLOW_SPEC = "Pillow>=10.0.0"
 PERCEPTION_RAPIDOCR_SPEC = "rapidocr-onnxruntime>=1.3.0"
+PERCEPTION_GGUF_RAPIDOCR_SPEC = (
+    f'{PERCEPTION_RAPIDOCR_SPEC}; sys_platform != "win32" or platform_machine != "ARM64"'
+)
 PERCEPTION_RUNTIME_PACKAGE_SPECS = (
     PERCEPTION_TORCH_SPEC,
     PERCEPTION_TORCHVISION_SPEC,
@@ -75,6 +78,7 @@ PERCEPTION_RUNTIME_PACKAGE_SPECS = (
 )
 PERCEPTION_GGUF_RUNTIME_PACKAGE_SPECS = (
     PERCEPTION_PILLOW_SPEC,
+    PERCEPTION_GGUF_RAPIDOCR_SPEC,
 )
 def _resolve_perception_target_python(state: Any) -> str:
     raw = ""
@@ -143,9 +147,13 @@ def _register_builtin_runtime_dependencies(registry: RuntimeDependencyRegistry) 
             key="perception_gguf",
             package_specs=PERCEPTION_GGUF_RUNTIME_PACKAGE_SPECS,
             install_only_unsatisfied=True,
+            install_spec_overrides={
+                PERCEPTION_GGUF_RAPIDOCR_SPEC: PERCEPTION_RAPIDOCR_SPEC,
+            },
             requires_target_python=True,
             target_python=_resolve_perception_target_python,
-            default_label="Pillow",
+            default_label="Pillow / RapidOCR",
+            secondary_group_label="Pillow / RapidOCR",
             success_message="GGUF 感知运行环境依赖已就绪。",
         )
     )

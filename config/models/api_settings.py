@@ -48,7 +48,10 @@ class ApiConfig(BaseModel):
     )
     tts_provider: DefaultIfNone[str] = Field(
         default="gpt-sovits",
-        description="TTS 提供器: gpt-sovits / kaggle-gpt-sovits / genie-tts / index-tts / cosyvoice / none（不使用语音合成）",
+        description=(
+            "TTS 提供器: gpt-sovits / kaggle-gpt-sovits / genie-tts / index-tts / cosyvoice / "
+            "qwen3-tts-gguf / none（不使用语音合成）"
+        ),
     )
     tts_speed: DefaultIfNone[float] = Field(default=1.0, description="TTS 语速 (默认值 1.0)")
 
@@ -146,7 +149,7 @@ class ApiConfig(BaseModel):
     )
     perception_api_key: DefaultIfNone[str] = Field(default="", description="本地感知模型 API Key（本地服务可留空）")
     perception_model: DefaultIfNone[str] = Field(default=DEFAULT_PERCEPTION_MODEL, description="常规感知模型名称")
-    perception_use_gguf: DefaultIfNone[bool] = Field(default=False, description="使用本地 Q4 GGUF 感知模型")
+    perception_use_gguf: DefaultIfNone[bool] = Field(default=True, description="使用本地 Q4 GGUF 感知模型")
     perception_python_path: DefaultIfNone[str] = Field(
         default="", description="一键启动本地感知推理服务的 Python 解释器或环境路径（默认使用新世界自带 Python 运行时）"
     )
@@ -166,7 +169,7 @@ class ApiConfig(BaseModel):
         default=0.06, ge=0.0, le=0.5, description="画面像素变化跳过阈值（0 表示每周期都采样）"
     )
     perception_ocr_enabled: DefaultIfNone[bool] = Field(
-        default=False, description="由内置本地感知服务识别共享画面中的文字"
+        default=True, description="由内置本地感知服务识别共享画面中的文字"
     )
     perception_reflex_enabled: DefaultIfNone[bool] = Field(
         default=True, description="启用本地小模型快速反应（实时立绘切换 + 短促气泡台词，无语音）"

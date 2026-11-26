@@ -730,4 +730,54 @@ describe("standalone template generation & dialog protocol", () => {
       expect(prompt).toContain("独立出场角色");
     }
   });
+
+  it("resolves voiceLanguage='auto' from each character's reference audio language", () => {
+    const zhChar = makeCharacter({ name: "寸策", prompt_lang: "zh", prompt_text: "你好" });
+    const jaChar = makeCharacter({ name: "七海", prompt_lang: "ja", prompt_text: "おはよう" });
+
+    const zhRes = generateStandaloneDialogSystemTemplate({
+      input: {
+        name: "zh-auto",
+        characters: ["寸策"],
+        backgroundName: "",
+        scenario: "测试",
+        useTranslation: true,
+        voiceLanguage: "auto",
+      },
+      characters: [zhChar],
+      backgrounds: [],
+      systemConfig: { ui_language: "zh_CN", voice_language: "auto" },
+    });
+    expect(zhRes.system).not.toContain('"translate"');
+
+    const jaRes = generateStandaloneDialogSystemTemplate({
+      input: {
+        name: "ja-auto",
+        characters: ["七海"],
+        backgroundName: "",
+        scenario: "テスト",
+        useTranslation: true,
+        voiceLanguage: "auto",
+      },
+      characters: [jaChar],
+      backgrounds: [],
+      systemConfig: { ui_language: "zh_CN", voice_language: "auto" },
+    });
+    expect(jaRes.system).toContain("该句台词的日语译文");
+
+    const mixedRes = generateStandaloneDialogSystemTemplate({
+      input: {
+        name: "mixed-auto",
+        characters: ["七海", "寸策"],
+        backgroundName: "",
+        scenario: "混合",
+        useTranslation: true,
+        voiceLanguage: "auto",
+      },
+      characters: [jaChar, zhChar],
+      backgrounds: [],
+      systemConfig: { ui_language: "zh_CN", voice_language: "auto" },
+    });
+    expect(mixedRes.system).toContain("该角色参考语音对应的语言（七海:日语，寸策:中文）");
+  });
 });

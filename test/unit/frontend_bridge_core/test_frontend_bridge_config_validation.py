@@ -232,6 +232,7 @@ def test_save_gguf_toggle_switches_managed_server_and_preserves_custom_model(tmp
     state, manager = _bridge_state_for_config(tmp_path, tmp_path)
     api = manager.config.api_config
     api.perception_model = "custom-vision-model"
+    api.perception_use_gguf = False
     active = {"managed": True, "baseUrl": api.perception_base_url, "model": api.perception_model}
     switched = []
 
@@ -316,4 +317,59 @@ def test_app_config_and_save_default_perception_python_to_shinsekai_runtime(tmp_
     )
     assert saved_custom.perception_python_path == custom_py
     assert manager.config.api_config.perception_python_path == custom_py
+
+
+def test_qwen3_tts_gguf_allows_empty_path_validates_non_empty_and_defaults_url(tmp_path):
+    _validate_api_config_for_save(
+        _valid_config(
+            tts_provider="qwen3-tts-gguf",
+            gpt_sovits_url="http://127.0.0.1:9882",
+            gpt_sovits_api_path="",
+        )
+    )
+    valid_dir = tmp_path / "qwen3-tts"
+    valid_dir.mkdir()
+    _validate_api_config_for_save(
+        _valid_config(
+            tts_provider="qwen3-tts-gguf",
+            gpt_sovits_url="http://127.0.0.1:9882",
+            gpt_sovits_api_path=str(valid_dir),
+        )
+    )
+    with pytest.raises(ValueError, match="TTS 服务启动路径必须是已存在的目录"):
+        _validate_api_config_for_save(
+            _valid_config(
+                tts_provider="qwen3-tts-gguf",
+                gpt_sovits_url="http://127.0.0.1:9882",
+                gpt_sovits_api_path=str(tmp_path / "missing"),
+            )
+        )
+
+    from config.tts_provider_config import QWEN3_TTS_GGUF_DEFAULT_URL, tts_server_url_or_default
+
+    assert tts_server_url_or_default("qwen3-tts-gguf", "") == QWEN3_TTS_GGUF_DEFAULT_URL
+    assert tts_server_url_or_default("qwen3-tts-gguf", "http://127.0.0.1:9880") == QWEN3_TTS_GGUF_DEFAULT_URL
+
+
+def test_api_config_defaults_perception_gguf_and_ocr_enabled():
+    import yaml
+
+    api = ApiConfig()
+    assert api.perception_use_gguf is True
+    assert api.perception_ocr_enabled is True
+
+    runtime_cfg = PerceptionConfig.from_api_config(api)
+    assert runtime_cfg.model == GGUF_MODEL_ID
+    assert runtime_cfg.ocr_enabled is True
+    assert runtime_cfg.use_local_ocr is True
+
+    explicit_off = ApiConfig.model_validate({"perception_use_gguf": False, "perception_ocr_enabled": False})
+    assert explicit_off.perception_use_gguf is False
+    assert explicit_off.perception_ocr_enabled is False
+
+    portable_api = Path(__file__).resolve().parents[3] / "scripts" / "portable_templates" / "data" / "config" / "api.yaml"
+    portable_raw = yaml.safe_load(portable_api.read_text(encoding="utf-8"))
+    assert portable_raw["perception_use_gguf"] is True
+    assert portable_raw["perception_ocr_enabled"] is True
+
 

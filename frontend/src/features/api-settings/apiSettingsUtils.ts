@@ -11,11 +11,35 @@ import type {
   ApiConfig,
   SystemConfig,
 } from "../../entities/config/types";
-import { LEGACY_TTS_NONE_LABEL, LLM_PROVIDER_DOUBAO, LLM_PROVIDER_QWEN } from "../../shared/constants";
+import { LLM_PROVIDER_DOUBAO, LLM_PROVIDER_QWEN } from "../../shared/constants";
 import { resolveFormOptionLabel, type FormGroupSchema, type FormOption } from "../../shared/form-schema";
 import { formatLlmProviderLabel, translateRuntimeMessage, type TranslateFn } from "../../shared/i18n";
 import { perceptionModelSettings } from "../../shared/platform/perceptionModel";
 import type { LlmModelOption, TaskSnapshot } from "../../shared/platform/types";
+import {
+  DEFAULT_T2I_API_URL,
+  DEFAULT_T2I_OUTPUT_NODE_ID,
+  DEFAULT_T2I_PROMPT_NODE_ID,
+  DEFAULT_T2I_PROVIDER,
+  applyT2iSetupMode,
+  inferT2iSetupMode,
+  isT2iReadyForSprites,
+  type T2iSetupMode,
+} from "./t2iSetupUtils";
+import {
+  DEFAULT_TTS_SERVER_URL,
+  HTTPS_DEFAULT_TTS_SERVER_URL,
+  LEGACY_DEFAULT_TTS_SERVER_URL,
+  QWEN3_TTS_GGUF_DEFAULT_URL,
+  applyDownloadedTtsBundle,
+  applyTtsProviderDefaults,
+  defaultTtsServerUrl,
+  normalizeTtsProvider,
+  requiresTtsServerConfig,
+  requiresTtsWorkPath,
+  ttsServerUrlOrDefault,
+  ttsSharedServerFieldCopy,
+} from "./ttsProviderUtils";
 
 export type UiLanguage = "zh_CN" | "en" | "ja";
 
@@ -38,39 +62,8 @@ export const resourceLinks = [
 
 export const VOSK_MODEL_PATH = "./assets/system/models/vosk-model-small-cn-0.22";
 export const VOSK_MODELS_URL = "https://alphacephei.com/vosk/models";
-export const DEFAULT_T2I_PROVIDER = "comfyui";
-export const DEFAULT_T2I_API_URL = "http://127.0.0.1:8188";
-export const DEFAULT_T2I_PROMPT_NODE_ID = "6";
-export const DEFAULT_T2I_OUTPUT_NODE_ID = "9";
 export const DEFAULT_PERCEPTION_BASE_URL = "http://127.0.0.1:8091/v1";
 export const DEFAULT_PERCEPTION_API_KEY = "EMPTY";
-export const LEGACY_DEFAULT_TTS_SERVER_URL = "http://127.0.0.1:9880";
-export const HTTPS_DEFAULT_TTS_SERVER_URL = "https://127.0.0.1:9880";
-export const DEFAULT_TTS_SERVER_URL = LEGACY_DEFAULT_TTS_SERVER_URL;
-const LOCAL_SERVER_TTS_PROVIDERS = new Set(["gpt-sovits", "genie-tts", "index-tts"]);
-const REMOTE_SERVER_TTS_PROVIDERS = new Set(["kaggle-gpt-sovits"]);
-const SERVER_CONFIG_TTS_PROVIDERS = new Set([...LOCAL_SERVER_TTS_PROVIDERS, ...REMOTE_SERVER_TTS_PROVIDERS]);
-const TTS_PROVIDER_DEFAULT_URLS: Record<string, string> = {
-  "genie-tts": DEFAULT_TTS_SERVER_URL,
-  "gpt-sovits": DEFAULT_TTS_SERVER_URL,
-  "index-tts": LEGACY_DEFAULT_TTS_SERVER_URL,
-};
-const BUILTIN_TTS_SERVER_URLS = new Set([
-  LEGACY_DEFAULT_TTS_SERVER_URL,
-  HTTPS_DEFAULT_TTS_SERVER_URL,
-  DEFAULT_TTS_SERVER_URL,
-]);
-const TTS_PROVIDER_ALIASES: Record<string, string> = {
-  "genie tts": "genie-tts",
-  "gpt sovits": "gpt-sovits",
-  "gpt-sovits": "gpt-sovits",
-  kaggle: "kaggle-gpt-sovits",
-  "kaggle gpt sovits": "kaggle-gpt-sovits",
-  "kaggle gpt-sovits": "kaggle-gpt-sovits",
-  "kaggle-gpt-sovits": "kaggle-gpt-sovits",
-};
-
-export type T2iSetupMode = "custom" | "local" | "skip";
 
 export const asrProviderOptions = [
   { label: "Sherpa-ONNX", value: "sherpa_onnx" },
@@ -124,19 +117,6 @@ export function normalizeAsrProvider(provider: string) {
     return "realtime_stt";
   }
   return normalized || "sherpa_onnx";
-}
-
-export function normalizeTtsProvider(provider: string) {
-  const normalized = String(provider || "")
-    .trim()
-    .toLowerCase();
-  if (!normalized) {
-    return "gpt-sovits";
-  }
-  if (["none", "off", "disable", "disabled", LEGACY_TTS_NONE_LABEL].includes(normalized)) {
-    return "none";
-  }
-  return TTS_PROVIDER_ALIASES[normalized] ?? normalized;
 }
 
 export function resolveAsrWhisperPresetValue(model: string) {
@@ -210,61 +190,6 @@ export function adapterSchema(options: AdapterOption[] | undefined, value: strin
   return options?.find((option) => option.value === value)?.schema ?? {};
 }
 
-function ttsSharedServerFieldCopy(provider: string, t: TranslateFn = defaultCatalogTranslator) {
-  switch (normalizeTtsProvider(provider)) {
-    case "genie-tts":
-      return {
-        pathDescription: t("ops.api.tts.genie.pathDesc"),
-        pathDisabledReason: undefined,
-        pathLabel: t("ops.api.tts.genie.pathLabel"),
-        pathPlaceholder: t("ops.api.tts.genie.pathPlaceholder"),
-        urlDescription: t("ops.api.tts.genie.urlDesc"),
-        urlLabel: t("ops.api.tts.genie.urlLabel"),
-        urlPlaceholder: t("ops.api.tts.genie.urlPlaceholder"),
-      };
-    case "index-tts":
-      return {
-        pathDescription: t("ops.api.tts.indexTts.pathDesc"),
-        pathDisabledReason: undefined,
-        pathLabel: t("ops.api.tts.indexTts.pathLabel"),
-        pathPlaceholder: t("ops.api.tts.indexTts.pathPlaceholder"),
-        urlDescription: t("ops.api.tts.indexTts.urlDesc"),
-        urlLabel: t("ops.api.tts.indexTts.urlLabel"),
-        urlPlaceholder: t("ops.api.tts.indexTts.urlPlaceholder"),
-      };
-    case "kaggle-gpt-sovits":
-      return {
-        pathDescription: t("ops.api.tts.kaggle.pathDesc"),
-        pathDisabledReason: t("ops.api.tts.kaggle.pathDisabledReason"),
-        pathLabel: t("ops.api.tts.kaggle.pathLabel"),
-        pathPlaceholder: t("ops.api.tts.kaggle.pathPlaceholder"),
-        urlDescription: t("ops.api.tts.kaggle.urlDesc"),
-        urlLabel: t("ops.api.tts.kaggle.urlLabel"),
-        urlPlaceholder: t("ops.api.tts.kaggle.urlPlaceholder"),
-      };
-    case "gpt-sovits":
-      return {
-        pathDescription: t("ops.api.tts.gptSovits.pathDesc"),
-        pathDisabledReason: undefined,
-        pathLabel: t("ops.api.tts.gptSovits.pathLabel"),
-        pathPlaceholder: t("ops.api.tts.gptSovits.pathPlaceholder"),
-        urlDescription: t("ops.api.tts.gptSovits.urlDesc"),
-        urlLabel: t("ops.api.tts.gptSovits.urlLabel"),
-        urlPlaceholder: t("ops.api.tts.gptSovits.urlPlaceholder"),
-      };
-    default:
-      return {
-        pathDescription: t("ops.api.tts.default.pathDesc"),
-        pathDisabledReason: undefined,
-        pathLabel: t("ops.api.tts.default.pathLabel"),
-        pathPlaceholder: t("ops.api.tts.default.pathPlaceholder"),
-        urlDescription: t("ops.api.tts.default.urlDesc"),
-        urlLabel: t("ops.api.tts.default.urlLabel"),
-        urlPlaceholder: t("ops.api.tts.default.urlPlaceholder"),
-      };
-  }
-}
-
 export function apiSchemaWithAdapterOptions(
   catalog: AdapterCatalog | undefined,
   draft: ApiConfig | null,
@@ -279,6 +204,7 @@ export function apiSchemaWithAdapterOptions(
         { label: "Genie TTS", value: "genie-tts" },
         { label: "Kaggle GPT-SoVITS", value: "kaggle-gpt-sovits" },
         { label: "GPT SoVITS", value: "gpt-sovits" },
+        { label: "Qwen3-TTS (llama.cpp GGUF)", value: "qwen3-tts-gguf" },
         { label: "IndexTTS", value: "index-tts" },
         { label: "CosyVoice", value: "cosyvoice" },
       ],
@@ -370,47 +296,6 @@ export function syncCompactRatioDraft(config: ApiConfig): ApiConfig {
   };
 }
 
-export function defaultTtsServerUrl(provider: string) {
-  return TTS_PROVIDER_DEFAULT_URLS[normalizeTtsProvider(provider)] ?? "";
-}
-
-export function ttsServerUrlOrDefault(provider: string, currentUrl: string) {
-  const cleanUrl = String(currentUrl || "").trim();
-  const defaultUrl = defaultTtsServerUrl(provider);
-  if (defaultUrl && (!cleanUrl || BUILTIN_TTS_SERVER_URLS.has(cleanUrl))) {
-    return defaultUrl;
-  }
-  return cleanUrl;
-}
-
-export function applyTtsProviderDefaults(config: ApiConfig, installedTtsBundlePath = ""): ApiConfig {
-  const ttsProvider = normalizeTtsProvider(config.tts_provider);
-  const cleanPath = String(config.gpt_sovits_api_path || "").trim();
-  const defaultPath = String(installedTtsBundlePath || "").trim();
-  return {
-    ...config,
-    gpt_sovits_api_path:
-      ttsProvider === "kaggle-gpt-sovits"
-        ? ""
-        : requiresTtsWorkPath(ttsProvider) && !cleanPath && defaultPath
-          ? defaultPath
-          : cleanPath,
-    gpt_sovits_url: ttsServerUrlOrDefault(ttsProvider, config.gpt_sovits_url),
-    tts_provider: ttsProvider,
-  };
-}
-
-export function applyDownloadedTtsBundle(config: ApiConfig, result: { path: string; provider: string }): ApiConfig {
-  return applyTtsProviderDefaults(
-    {
-      ...config,
-      gpt_sovits_api_path: result.path,
-      tts_provider: result.provider,
-    },
-    result.path,
-  );
-}
-
 export function normalizeProviderBaseUrls(config: ApiConfig): ApiConfig {
   const provider = (config.llm_provider || "Deepseek").trim() || "Deepseek";
   const llmBaseUrls = { ...(config.llm_base_urls ?? {}) };
@@ -453,7 +338,7 @@ export function normalizeApiConfigForUi(config: ApiConfig, installedTtsBundlePat
       perception_ocr_interval_sec: clampFloat(normalizedProviders.perception_ocr_interval_sec, 1, 0.5, 10),
       perception_frame_max_side: clampInt(normalizedProviders.perception_frame_max_side, 512, 256, 1280),
       perception_diff_threshold: clampFloat(normalizedProviders.perception_diff_threshold, 0.035, 0, 0.5),
-      perception_ocr_enabled: normalizedProviders.perception_ocr_enabled ?? false,
+      perception_ocr_enabled: normalizedProviders.perception_ocr_enabled ?? true,
       perception_reflex_enabled: normalizedProviders.perception_reflex_enabled ?? true,
       perception_reflex_cooldown_sec: clampFloat(normalizedProviders.perception_reflex_cooldown_sec, 15, 1, 60),
       perception_proactive_enabled: normalizedProviders.perception_proactive_enabled ?? true,
@@ -466,78 +351,6 @@ export function normalizeApiConfigForUi(config: ApiConfig, installedTtsBundlePat
     }),
     installedTtsBundlePath,
   );
-}
-
-export function inferT2iSetupMode(
-  config: Pick<ApiConfig, "t2i_api_url" | "t2i_default_workflow_path" | "t2i_provider" | "t2i_work_path">,
-): T2iSetupMode {
-  const workflow = String(config.t2i_default_workflow_path || "").trim();
-  const workPath = String(config.t2i_work_path || "").trim();
-  const url = String(config.t2i_api_url || "")
-    .trim()
-    .toLowerCase();
-  const provider = String(config.t2i_provider || DEFAULT_T2I_PROVIDER)
-    .trim()
-    .toLowerCase();
-  const defaultUrl = !url || url === DEFAULT_T2I_API_URL;
-  const defaultProvider = !provider || provider === DEFAULT_T2I_PROVIDER;
-  if (!workflow && !workPath && defaultUrl && defaultProvider) {
-    return "skip";
-  }
-  if (/^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(?::\d+)?(?:\/.*)?$/.test(url)) {
-    return "local";
-  }
-  return "custom";
-}
-
-export function applyT2iSetupMode(config: ApiConfig, mode: T2iSetupMode): ApiConfig {
-  const baseDefaults = {
-    t2i_output_node_id: config.t2i_output_node_id || DEFAULT_T2I_OUTPUT_NODE_ID,
-    t2i_prompt_node_id: config.t2i_prompt_node_id || DEFAULT_T2I_PROMPT_NODE_ID,
-    t2i_provider: config.t2i_provider || DEFAULT_T2I_PROVIDER,
-  };
-  if (mode === "skip") {
-    return {
-      ...config,
-      ...baseDefaults,
-      t2i_api_url: DEFAULT_T2I_API_URL,
-      t2i_default_workflow_path: "",
-      t2i_output_node_id: DEFAULT_T2I_OUTPUT_NODE_ID,
-      t2i_prompt_node_id: DEFAULT_T2I_PROMPT_NODE_ID,
-      t2i_provider: DEFAULT_T2I_PROVIDER,
-      t2i_work_path: "",
-    };
-  }
-  if (mode === "local") {
-    return {
-      ...config,
-      ...baseDefaults,
-      t2i_api_url: inferT2iSetupMode(config) === "local" ? config.t2i_api_url : DEFAULT_T2I_API_URL,
-      t2i_provider: DEFAULT_T2I_PROVIDER,
-    };
-  }
-  return {
-    ...config,
-    ...baseDefaults,
-    t2i_api_url: config.t2i_api_url || DEFAULT_T2I_API_URL,
-  };
-}
-
-export function isT2iReadyForSprites(
-  config: Pick<ApiConfig, "t2i_api_url" | "t2i_default_workflow_path" | "t2i_provider">,
-) {
-  const provider = String(config.t2i_provider || "")
-    .trim()
-    .toLowerCase();
-  const apiUrl = String(config.t2i_api_url || "").trim();
-  const workflow = String(config.t2i_default_workflow_path || "").trim();
-  if (!provider || !apiUrl) {
-    return false;
-  }
-  if (provider === DEFAULT_T2I_PROVIDER) {
-    return Boolean(workflow);
-  }
-  return true;
 }
 
 export function mergeModelOptions(...groups: Array<LlmModelOption[] | undefined>) {
@@ -649,14 +462,6 @@ export function isTaskCancelledError(error: unknown) {
   return error instanceof Error && error.name === "TaskCancelledError";
 }
 
-export function requiresTtsServerConfig(provider: string) {
-  return SERVER_CONFIG_TTS_PROVIDERS.has(normalizeTtsProvider(provider));
-}
-
-export function requiresTtsWorkPath(provider: string) {
-  return LOCAL_SERVER_TTS_PROVIDERS.has(normalizeTtsProvider(provider));
-}
-
 export function containsPathQuotes(value: string) {
   return value.includes('"') || value.includes("'");
 }
@@ -665,4 +470,26 @@ export function hasAdapterSchema(schema: Record<string, AdapterExtraFieldSchema>
   return Object.keys(schema).length > 0;
 }
 
-export { llmDefaultBaseUrls, llmProviderOptions };
+export {
+  DEFAULT_T2I_API_URL,
+  DEFAULT_T2I_OUTPUT_NODE_ID,
+  DEFAULT_T2I_PROMPT_NODE_ID,
+  DEFAULT_T2I_PROVIDER,
+  DEFAULT_TTS_SERVER_URL,
+  HTTPS_DEFAULT_TTS_SERVER_URL,
+  LEGACY_DEFAULT_TTS_SERVER_URL,
+  QWEN3_TTS_GGUF_DEFAULT_URL,
+  applyDownloadedTtsBundle,
+  applyT2iSetupMode,
+  applyTtsProviderDefaults,
+  defaultTtsServerUrl,
+  inferT2iSetupMode,
+  isT2iReadyForSprites,
+  llmDefaultBaseUrls,
+  llmProviderOptions,
+  normalizeTtsProvider,
+  requiresTtsServerConfig,
+  requiresTtsWorkPath,
+  ttsServerUrlOrDefault,
+  type T2iSetupMode,
+};

@@ -6,16 +6,26 @@ from urllib.parse import urlparse
 LEGACY_DEFAULT_TTS_SERVER_URL = "http://127.0.0.1:9880"
 HTTPS_DEFAULT_TTS_SERVER_URL = "https://127.0.0.1:9880"
 DEFAULT_TTS_SERVER_URL = LEGACY_DEFAULT_TTS_SERVER_URL
+QWEN3_TTS_GGUF_DEFAULT_URL = "http://127.0.0.1:9882"
 TTS_PROVIDER_DEFAULT_URLS = {
     "genie-tts": DEFAULT_TTS_SERVER_URL,
     "gpt-sovits": DEFAULT_TTS_SERVER_URL,
     "index-tts": LEGACY_DEFAULT_TTS_SERVER_URL,
+    "qwen3-tts-gguf": QWEN3_TTS_GGUF_DEFAULT_URL,
 }
-BUILTIN_TTS_SERVER_URLS = {LEGACY_DEFAULT_TTS_SERVER_URL, HTTPS_DEFAULT_TTS_SERVER_URL, DEFAULT_TTS_SERVER_URL}
+BUILTIN_TTS_SERVER_URLS = {
+    LEGACY_DEFAULT_TTS_SERVER_URL,
+    HTTPS_DEFAULT_TTS_SERVER_URL,
+    DEFAULT_TTS_SERVER_URL,
+    QWEN3_TTS_GGUF_DEFAULT_URL,
+}
 INSTALLED_TTS_BUNDLES_PATH = Path("data/tts_bundles/installed")
 REMOTE_TTS_PROVIDERS = {"kaggle-gpt-sovits"}
 LOCAL_SERVER_TTS_PROVIDERS = {"gpt-sovits", "genie-tts", "index-tts"}
-SERVER_CONFIG_TTS_PROVIDERS = LOCAL_SERVER_TTS_PROVIDERS | REMOTE_TTS_PROVIDERS
+OPTIONAL_PATH_TTS_PROVIDERS = {"qwen3-tts-gguf"}
+SERVER_CONFIG_TTS_PROVIDERS = (
+    LOCAL_SERVER_TTS_PROVIDERS | REMOTE_TTS_PROVIDERS | OPTIONAL_PATH_TTS_PROVIDERS
+)
 TTS_PROVIDER_BUNDLE_KEYS: dict[str, tuple[str, ...]] = {
     "genie-tts": ("genie_tts_server",),
     "gpt-sovits": ("gpt_sovits_v2pro", "gpt_sovits_nvidia50"),
@@ -35,6 +45,11 @@ def normalize_tts_provider(value: str | None) -> str:
         "kaggle gpt sovits": "kaggle-gpt-sovits",
         "kaggle gpt-sovits": "kaggle-gpt-sovits",
         "kaggle-gpt-sovits": "kaggle-gpt-sovits",
+        "qwen3-tts": "qwen3-tts-gguf",
+        "qwen3 tts": "qwen3-tts-gguf",
+        "qwen3-tts-gguf": "qwen3-tts-gguf",
+        "qwen3 tts gguf": "qwen3-tts-gguf",
+        "llama-tts": "qwen3-tts-gguf",
     }
     if low in legacy:
         return legacy[low]

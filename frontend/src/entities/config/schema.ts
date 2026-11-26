@@ -134,6 +134,7 @@ export const apiConfigFormSchema: Array<FormGroupSchema<ApiConfig>> = [
           { labelKey: "api.schema.tts.providerNone", value: "none" },
           { label: "Genie TTS", value: "genie-tts" },
           { label: "GPT SoVITS", value: "gpt-sovits" },
+          { label: "Qwen3-TTS (llama.cpp GGUF)", value: "qwen3-tts-gguf" },
           { label: "IndexTTS", value: "index-tts" },
           { label: "CosyVoice", value: "cosyvoice" },
         ],

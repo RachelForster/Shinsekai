@@ -1,8 +1,6 @@
 import { tagContents } from "../../../assets/assetText";
 import {
   DEFAULT_SPRITE_GROUP,
-  LANG_ALIAS_CHINESE_ZH,
-  LANG_ALIAS_ENGLISH_ZH,
   LEGACY_TRANSPARENT_BACKGROUND_ALIAS,
   TRANSPARENT_BACKGROUND_NAME,
 } from "../../../constants";
@@ -19,6 +17,11 @@ import type {
   TemplateGenerationResult,
 } from "../../slices/workspaceTypes";
 import { createStandaloneTemplateTranslator } from "./standaloneTemplateLocales";
+import {
+  isUiVoiceSameLanguage as isUiVoiceSameTarget,
+  resolveCastVoiceTarget,
+  targetVoiceKey as resolveVoiceTargetKey,
+} from "./voiceLanguage";
 
 export { SELF_PERSONA_NAME };
 export const TRANSPARENT_BG = TRANSPARENT_BACKGROUND_NAME;
@@ -53,26 +56,12 @@ export function normalizeMediaSelectionMode(mode: unknown): MediaSelectionMode {
     : "indexed";
 }
 
-export function targetVoiceKey(code?: string | null): "ja" | "en" | "zh" | "yue" {
-  const raw = String(code ?? "").trim() || "ja";
-  const low = raw.toLowerCase();
-  if (low === "yue" || low === "yue_hk" || low === "cantonese" || low === "cht" || low === "zh_hk") {
-    return "yue";
-  }
-  if (low.startsWith("en") || low === "english" || low === LANG_ALIAS_ENGLISH_ZH) {
-    return "en";
-  }
-  if (low.startsWith("zh") || low === "chinese" || low === LANG_ALIAS_CHINESE_ZH) {
-    return "zh";
-  }
-  return "ja";
+export function targetVoiceKey(code?: string | null): "ja" | "en" | "zh" | "yue" | "auto" {
+  return resolveVoiceTargetKey(code);
 }
 
 export function isUiVoiceSameLanguage(uiLanguage?: string, voiceLanguage?: string): boolean {
-  const uiNorm = String(uiLanguage ?? "zh_CN").trim();
-  const uiMain = uiNorm.split(/[-_]/)[0].toLowerCase() || "zh";
-  const voiceMain = targetVoiceKey(voiceLanguage);
-  return uiMain === voiceMain;
+  return isUiVoiceSameTarget(uiLanguage, resolveVoiceTargetKey(voiceLanguage || "ja"));
 }
 
 export function composeTemplateContent(scenario: string, system: string): string {
@@ -325,8 +314,19 @@ export function generateStandaloneDialogSystemTemplate(options: GenerateTemplate
     : undefined;
 
   const voiceLanguage = String(input.voiceLanguage ?? systemConfig.voice_language ?? "ja").trim();
-  const targetVoiceDisplay = t(`voice_target_${targetVoiceKey(voiceLanguage)}`);
-  const useLlmTranslation = Boolean(input.useTranslation && !isUiVoiceSameLanguage(uiLanguage, voiceLanguage));
+  const castVoice = resolveCastVoiceTarget(voiceLanguage, cast, uiLanguage);
+  const targetVoiceDisplay =
+    castVoice.target === "auto"
+      ? castVoice.perChar.length
+        ? t("voice_target_auto_map", {
+            base: t("voice_target_auto"),
+            mapping: castVoice.perChar
+              .map((item) => `${item.name}:${t(`voice_target_${item.key}`)}`)
+              .join(t("name_sep")),
+          })
+        : t("voice_target_auto")
+      : t(`voice_target_${castVoice.target}`);
+  const useLlmTranslation = Boolean(input.useTranslation && !isUiVoiceSameTarget(uiLanguage, castVoice.target));
   const useEffect = input.useEffect !== false;
   const useCg = Boolean(input.useCg);
   const useCot = Boolean(input.useCot);

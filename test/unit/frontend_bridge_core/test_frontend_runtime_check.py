@@ -253,6 +253,7 @@ def test_desktop_core_runtime_check_does_not_import_optional_packages(tmp_path):
         "onnxruntime",
         "pandas",
         "qdrant_client",
+        "rapidocr_onnxruntime",
         "rembg",
         "sentence_transformers",
         "sherpa_onnx",
@@ -287,6 +288,7 @@ def test_desktop_core_runtime_check_does_not_import_optional_packages(tmp_path):
             "py7zz": "1.1.4",
             "qrcode": "8.2",
             "qtpy": "2.4.1",
+            "rapidocr-onnxruntime": "1.4.4",
         }}
         importlib.metadata.version = lambda name: compatible_versions.get(name.lower(), "1.0.0")
 
@@ -441,6 +443,25 @@ def test_windows_arm64_requirements_skip_rembg_and_keep_onnxruntime(monkeypatch)
         full_other = set(frontend_bridge._iter_requirement_names(full_req))
         assert "rembg" in core_other
         assert "rembg" in full_other
+
+
+def test_runtime_core_and_full_requirements_include_rapidocr_except_windows_arm64(monkeypatch):
+    import frontend_bridge
+
+    repo_root = _repo_root()
+    core_req = repo_root / "requirements-runtime-core.txt"
+    full_req = repo_root / "requirements.txt"
+
+    monkeypatch.setattr(frontend_bridge.sys, "platform", "win32")
+    monkeypatch.setattr(frontend_bridge.platform, "machine", lambda: "ARM64")
+    assert "rapidocr-onnxruntime" not in set(frontend_bridge._iter_requirement_names(core_req))
+    assert "rapidocr-onnxruntime" not in set(frontend_bridge._iter_requirement_names(full_req))
+
+    for plat, mach in (("win32", "AMD64"), ("linux", "x86_64"), ("darwin", "arm64")):
+        monkeypatch.setattr(frontend_bridge.sys, "platform", plat)
+        monkeypatch.setattr(frontend_bridge.platform, "machine", lambda m=mach: m)
+        assert "rapidocr-onnxruntime" in set(frontend_bridge._iter_requirement_names(core_req))
+        assert "rapidocr-onnxruntime" in set(frontend_bridge._iter_requirement_names(full_req))
 
 
 def test_runtime_core_does_not_require_opencv_distribution():

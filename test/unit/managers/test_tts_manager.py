@@ -42,6 +42,7 @@ class TestTTSAdapterFactoryRegistry:
         assert "kaggle-gpt-sovits" in TTSAdapterFactory._adapters
         assert "genie-tts" in TTSAdapterFactory._adapters
         assert "cosyvoice" in TTSAdapterFactory._adapters
+        assert "qwen3-tts-gguf" in TTSAdapterFactory._adapters
 
     def test_unknown_adapter_raises(self):
         with pytest.raises(ValueError, match="Unsupported TTS adapter"):
@@ -225,6 +226,21 @@ class TestTTSManagerWithMock:
         assert result == ""
         mgr.shutdown()
 
+    def test_generate_tts_allows_empty_ref_audio_when_adapter_opts_out(self, tmp_path):
+        class PresetVoiceAdapter(MockTTSAdapter):
+            requires_ref_audio = False
+
+        adapter = PresetVoiceAdapter()
+        mgr = TTSManager(audio_cache_dir=tmp_path)
+        mgr.set_tts_adapter(adapter)
+        try:
+            result = mgr.generate_tts(text="Hello", ref_audio_path=None)
+            assert result
+            assert Path(result).is_file()
+            assert len(adapter.call_history) == 1
+        finally:
+            mgr.shutdown()
+
     def test_generate_tts_retries_empty_audio_result(self):
         adapter = EmptyThenSuccessTTSAdapter()
         mgr = TTSManager()
@@ -296,3 +312,48 @@ class TestTTSManagerWithMock:
         time.sleep(0.2)
         assert len(mock_tts_adapter.call_history) >= 1
         mgr.shutdown()
+
+    def test_auto_voice_language_follows_character_prompt_lang_and_text(self, mock_tts_adapter, tmp_path):
+        class DummyProcessor:
+            def __init__(self):
+                self.translations = []
+
+            def remove_parentheses(self, t):
+                return t
+
+            def html_to_plain_qt(self, t):
+                return t
+
+            def decide_language(self, t):
+                if any("\u3040" <= ch <= "\u30ff" for ch in t):
+                    return "ja"
+                if any("\u4e00" <= ch <= "\u9fff" for ch in t):
+                    return "zh"
+                return "en"
+
+            def replace_names(self, t):
+                return t
+
+            def libre_translate(self, t, source, target):
+                self.translations.append((t, source, target))
+                return f"[{target}]{t}"
+
+            def replace_watashi(self, t):
+                return t
+
+        mgr = TTSManager(audio_cache_dir=str(tmp_path), unique_cache_files=True)
+        mgr.set_tts_adapter(mock_tts_adapter)
+        mgr.set_language("auto")
+        proc = DummyProcessor()
+        try:
+            mgr.generate_tts(text="你好世界", text_processor=proc, ref_audio_path="ref.wav", prompt_lang="zh")
+            mgr.generate_tts(text="こんにちは", text_processor=proc, ref_audio_path="ref.wav", prompt_lang="ja")
+            mgr.generate_tts(text="Hello", text_processor=proc, ref_audio_path="ref.wav", prompt_lang="en")
+            mgr.generate_tts(text="Hello", text_processor=proc, ref_audio_path="ref.wav", prompt_lang="", prompt_text="今天天气不错")
+            mgr.generate_tts(text="你好呀", text_processor=None, ref_audio_path="ref.wav", prompt_lang="")
+        finally:
+            mgr.shutdown()
+
+        langs = [entry["kwargs"]["text_lang"] for entry in mock_tts_adapter.call_history]
+        assert langs == ["zh", "ja", "en", "zh", "zh"]
+        assert proc.translations == [("Hello", "en", "zh")]

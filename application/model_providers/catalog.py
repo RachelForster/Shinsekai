@@ -15,6 +15,7 @@ _TTS_LABEL_PREFS: tuple[tuple[str, str], ...] = (
     ("genie-tts", "Genie TTS"),
     ("kaggle-gpt-sovits", "Kaggle GPT-SoVITS"),
     ("gpt-sovits", "GPT SoVITS"),
+    ("qwen3-tts-gguf", "Qwen3-TTS (llama.cpp GGUF)"),
     ("index-tts", "IndexTTS"),
     ("cosyvoice", "CosyVoice"),
 )

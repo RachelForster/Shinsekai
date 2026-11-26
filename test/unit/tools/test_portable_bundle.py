@@ -4,20 +4,25 @@ from __future__ import annotations
 
 from dataclasses import replace
 import hashlib
+import json
 import os
 from pathlib import Path
 import subprocess
 import sys
 
 import pytest
+import yaml
 
 from ai.asr.sherpa_onnx_adapter import SHERPA_SENSEVOICE_ASSET, SHERPA_ZIPFORMER_ASSET
 from ai.memory.config import EMBEDDING_MODEL_ASSET
 from application.characters.sprite import mouth_resources
 from application.perception import server_launcher
+from config.tts_provider_config import QWEN3_TTS_GGUF_DEFAULT_URL
+from core.agent.pi_runtime import PI_ARCHIVES, PI_VERSION
 from core.media import toonout_assets
 from core.model_assets.service import find_cached_huggingface_snapshot
 from scripts.build_portable_bundle import audit_portable_bundle, build_portable_bundle
+from scripts.portable.targets import QWEN3_TTS_GGUF_FILES, infer_host_target, resolve_target
 
 
 def _seed_fake_hf_sherpa_asr(root: Path) -> None:
@@ -145,6 +150,41 @@ def test_build_portable_bundle_sanitizes_and_organizes_models(
     (data_src / "data" / "runtime" / "sprite-mouth" / "packages" / "python-3.13").mkdir(parents=True)
     (data_src / "data" / "runtime" / "sprite-mouth" / "packages" / "python-3.13" / "pkg.py").write_text("", encoding="utf-8")
 
+    # Seed local qwen3-tts-gguf weights (sharing llama.cpp from perception-gguf)
+    qwen3_dir = data_src / "data" / "models" / "qwen3-tts-gguf"
+    qwen3_dir.mkdir(parents=True)
+    for name in QWEN3_TTS_GGUF_FILES:
+        (qwen3_dir / name).write_bytes(b"qwen3-gguf")
+
+    # Seed verified Pi Agent runtime + decoy transient files that must not be bundled
+    target_cfg = resolve_target(infer_host_target())
+    pi_key = target_cfg.pi_platform_key
+    pi_root = data_src / "data" / "agent" / "runtimes" / "pi"
+    pi_inst = pi_root / f"{PI_VERSION}-{pi_key}"
+    pi_inst.mkdir(parents=True)
+    pi_exe_name = "pi.exe" if target_cfg.os_family == "windows" else "pi"
+    pi_exe = pi_inst / pi_exe_name
+    pi_bytes = b"fake-pi-bin"
+    pi_exe.write_bytes(pi_bytes)
+    if os.name != "nt":
+        pi_exe.chmod(0o755)
+    (pi_inst / "installed.json").write_text(
+        json.dumps(
+            {
+                "version": PI_VERSION,
+                "platform": pi_key,
+                "archiveSha256": PI_ARCHIVES[pi_key][1],
+                "executable": pi_exe_name,
+                "files": {pi_exe_name: hashlib.sha256(pi_bytes).hexdigest()},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (pi_root / "downloads").mkdir(parents=True)
+    (pi_root / "downloads" / PI_ARCHIVES[pi_key][0]).write_bytes(b"stale-zip")
+    (data_src / "data" / "agent" / "pi-sessions").mkdir(parents=True)
+    (data_src / "data" / "agent" / "agent.sqlite").write_bytes(b"sqlite")
+
     # Seed personal files that must NEVER leak into the bundle
     (data_src / "data" / "config").mkdir(parents=True, exist_ok=True)
     (data_src / "data" / "config" / "api.yaml").write_text("llm_api_key:\n  Deepseek: sk-secret1234567890", encoding="utf-8")
@@ -166,14 +206,26 @@ def test_build_portable_bundle_sanitizes_and_organizes_models(
         "embedding",
         "sherpa-asr",
         "perception-gguf",
+        "qwen3-tts-gguf",
+        "pi-agent",
     }
     assert (output_dir / ".shinsekai-portable").is_file()
     assert not (output_dir / "一键启动Shinsekai.bat").exists()
     assert (output_dir / "使用说明.txt").is_file()
     assert (output_dir / "data" / "models" / "perception-gguf" / "Qwen3VL-2B-Instruct-Q4_K_M.gguf").is_file()
+    assert (output_dir / "data" / "models" / "qwen3-tts-gguf" / QWEN3_TTS_GGUF_FILES[0]).is_file()
+    assert not (output_dir / "data" / "models" / "qwen3-tts-gguf" / "llama.cpp").exists()
+    assert (output_dir / "data" / "agent" / "runtimes" / "pi" / f"{PI_VERSION}-{pi_key}" / pi_exe_name).is_file()
+    assert not (output_dir / "data" / "agent" / "runtimes" / "pi" / "downloads").exists()
+    assert not (output_dir / "data" / "agent" / "agent.sqlite").exists()
+    assert not (output_dir / "data" / "agent" / "pi-sessions").exists()
     assert not (output_dir / "data" / "models" / "toonout").exists()
     assert not (output_dir / "data" / "models" / "sprite-mouth").exists()
     assert not (output_dir / "data" / "cache" / "huggingface" / "xet").exists()
+
+    bundled_api = yaml.safe_load((output_dir / "data" / "config" / "api.yaml").read_text(encoding="utf-8"))
+    assert bundled_api["tts_provider"] == "qwen3-tts-gguf"
+    assert bundled_api["gpt_sovits_url"] == QWEN3_TTS_GGUF_DEFAULT_URL
 
     monkeypatch.setenv("HF_HUB_CACHE", str(output_dir / "data" / "cache" / "huggingface" / "hub"))
     monkeypatch.setenv("HUGGINGFACE_HUB_CACHE", str(output_dir / "data" / "cache" / "huggingface" / "hub"))
@@ -181,6 +233,18 @@ def test_build_portable_bundle_sanitizes_and_organizes_models(
     assert find_cached_huggingface_snapshot(test_embedding_spec) is not None
     assert find_cached_huggingface_snapshot(SHERPA_ZIPFORMER_ASSET) is not None
     assert find_cached_huggingface_snapshot(SHERPA_SENSEVOICE_ASSET) is not None
+
+    # Audit rejects corrupted Pi runtime and dangling qwen3-tts-gguf config
+    pi_out_exe = output_dir / "data" / "agent" / "runtimes" / "pi" / f"{PI_VERSION}-{pi_key}" / pi_exe_name
+    pi_out_exe.write_bytes(b"tampered")
+    with pytest.raises(ValueError, match="pi-agent"):
+        audit_portable_bundle(output_dir)
+    pi_out_exe.write_bytes(pi_bytes)
+
+    (output_dir / "data" / "models" / "qwen3-tts-gguf" / QWEN3_TTS_GGUF_FILES[1]).unlink()
+    with pytest.raises(ValueError, match="qwen3-tts-gguf"):
+        audit_portable_bundle(output_dir)
+    (output_dir / "data" / "models" / "qwen3-tts-gguf" / QWEN3_TTS_GGUF_FILES[1]).write_bytes(b"qwen3-gguf")
 
     # Audit rejects leaked secrets
     (output_dir / "data" / "config" / "api.yaml").write_text(
@@ -313,6 +377,7 @@ def test_inspect_perception_setup_gguf_does_not_require_pytorch(
     py_exe.write_bytes(b"py")
     sp = py_dir / "Lib" / "site-packages"
     _write_fake_dist_info(sp, "Pillow", "11.0.0")
+    _write_fake_dist_info(sp, "rapidocr-onnxruntime", "1.4.4")
 
     monkeypatch.setattr(
         server_launcher,
@@ -329,7 +394,25 @@ def test_inspect_perception_setup_gguf_does_not_require_pytorch(
     assert ready["status"] == "ready"
     assert ready["modelCached"] is True
 
-    # If Pillow itself is missing, GGUF setup requests lightweight perception_gguf (Pillow), never perception (PyTorch)
+    import platform
+
+    if not (sys.platform == "win32" and platform.machine().strip().upper() == "ARM64"):
+        pillow_only_dir = tmp_path / "pillow-only-runtime"
+        pillow_only_exe = pillow_only_dir / ("python.exe" if os.name == "nt" else "bin/python3")
+        pillow_only_exe.parent.mkdir(parents=True, exist_ok=True)
+        pillow_only_exe.write_bytes(b"py")
+        _write_fake_dist_info(pillow_only_dir / "Lib" / "site-packages", "Pillow", "11.0.0")
+        missing_ocr = server_launcher.inspect_perception_setup(
+            model=GGUF_MODEL_ID,
+            python_path=str(pillow_only_exe),
+            project_root=tmp_path,
+            app_root=tmp_path,
+        )
+        assert missing_ocr["status"] == "missing_dependency"
+        assert missing_ocr["moduleName"] == "perception_gguf"
+        assert missing_ocr["packageName"] == "rapidocr-onnxruntime"
+
+    # If Pillow itself is missing, GGUF setup requests lightweight perception_gguf, never perception (PyTorch)
     bare_dir = tmp_path / "bare-runtime"
     bare_exe = bare_dir / ("python.exe" if os.name == "nt" else "bin/python3")
     bare_exe.parent.mkdir(parents=True, exist_ok=True)

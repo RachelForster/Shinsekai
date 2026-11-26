@@ -19,6 +19,7 @@ import {
   applyDownloadedTtsBundle,
   llmDefaultBaseUrls,
   normalizeProviderBaseUrls,
+  normalizeTtsProvider,
 } from "../../api-settings/apiSettingsUtils";
 import {
   AsyncButton,
@@ -69,6 +70,7 @@ export function ApiSetupPanel({ onSaved }: ApiSetupPanelProps) {
   const apiKey = activeProviderValue(draft?.llm_api_key, provider);
   const model = activeProviderValue(draft?.llm_model, provider);
   const baseUrl = draft?.llm_base_url ?? "";
+  const isBundledQwen3TtsReady = normalizeTtsProvider(draft?.tts_provider ?? "") === "qwen3-tts-gguf";
   const canSave = Boolean(draft && provider && baseUrl.trim() && apiKey.trim() && model.trim());
   const providerChoices = useMemo(() => {
     if (providerOptions.length) {
@@ -310,14 +312,16 @@ export function ApiSetupPanel({ onSaved }: ApiSetupPanelProps) {
         </div>
       </OnboardingTaskPanel>
       <OnboardingTaskPanel
-        defaultOpen
-        description={t("onboarding.api.voiceDescription")}
+        defaultOpen={!isBundledQwen3TtsReady}
+        description={t(
+          isBundledQwen3TtsReady ? "onboarding.api.voiceBundledDescription" : "onboarding.api.voiceDescription",
+        )}
         title={t("onboarding.api.voiceTitle")}
       >
         <div className="onboarding-resource-note">
           <div>
             <strong>{t("onboarding.api.voiceTitle")}</strong>
-            <span>{t("onboarding.api.bundleHint")}</span>
+            <span>{t(isBundledQwen3TtsReady ? "onboarding.api.voiceBundledHint" : "onboarding.api.bundleHint")}</span>
           </div>
           <AsyncButton
             disabled={!ttsBundleRecommendationQuery.isSuccess}

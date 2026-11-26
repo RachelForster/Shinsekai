@@ -20,6 +20,7 @@ export const DEFAULT_NEW_OUTPUT_FORMAT: DialogOutputFormatId = "xml_v1";
 export const LEGACY_OUTPUT_FORMAT: DialogOutputFormatId = "json_v1";
 
 export const templateVoiceLanguages = [
+  { labelKey: "system.asr.langAuto", value: "auto" },
   { labelKey: "system.asr.langJa", value: "ja" },
   { labelKey: "system.asr.langEn", value: "en" },
   { labelKey: "system.asr.langZh", value: "zh" },

@@ -198,4 +198,25 @@ describe("ApiSetupPanel TTS bundle flow", () => {
       expect(downloadButton).toBeEnabled();
     });
   });
+
+  it("collapses the voice download section with a likeness tip when Qwen3-TTS GGUF is already enabled", async () => {
+    mocks.getAppConfig.mockResolvedValue(
+      appConfigForOnboarding({
+        tts_provider: "qwen3-tts-gguf",
+        gpt_sovits_url: "http://127.0.0.1:9882",
+      }),
+    );
+
+    renderPanel();
+    expect(await screen.findByLabelText("基础地址")).toBeInTheDocument();
+
+    const voiceSummaryText = screen.getByText(/已内置开箱即用的 Qwen3-TTS 语音/);
+    const detailsEl = voiceSummaryText.closest("details");
+    expect(detailsEl).not.toBeNull();
+    expect(detailsEl?.open).toBe(false);
+    expect(
+      screen.getByText(/如果想让语音听起来更像角色原声，请一键下载 Genie \/ GPT-SoVITS 语音包/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "一键下载语音包" })).toBeEnabled();
+  });
 });

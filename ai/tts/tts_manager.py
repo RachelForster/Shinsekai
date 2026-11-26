@@ -3,6 +3,7 @@ import threading
 import queue
 import time
 import uuid
+from ai.tts.qwen3_tts_adapter import Qwen3TTSLlamaAdapter
 from ai.tts.tts_adapter import (
     TTSAdapter,
     GPTSoVitsAdapter,
@@ -13,6 +14,7 @@ from ai.tts.tts_adapter import (
 )
 from pathlib import Path
 from ai.tts.server_process import start_server_process
+from sdk.voice_lang import resolve_character_voice_language
 
 class TTSAdapterFactory:
     """
@@ -24,6 +26,7 @@ class TTSAdapterFactory:
         'genie-tts': GenieTTSAdapter,
         'index-tts': IndexTTSAdapter,
         'cosyvoice': CosyVoiceAdapter,
+        'qwen3-tts-gguf': Qwen3TTSLlamaAdapter,
     }
 
     @staticmethod
@@ -113,12 +116,26 @@ class TTSManager:
             text = text_processor.html_to_plain_qt(text)
             language = text_processor.decide_language(text)
             text = text_processor.replace_names(text)
-            if language != self.voice_language:
-                text = text_processor.libre_translate(text, source=language, target=self.voice_language)
-            if self.voice_language == 'ja' and (character_name == "狛枝凪斗" or character_name == "仆役" or character_name == "小狛枝"):
+            effective_voice_lang = resolve_character_voice_language(
+                self.voice_language,
+                prompt_lang=prompt_lang,
+                prompt_text=prompt_text,
+                speech_text=text,
+                fallback=language or "ja",
+            )
+            if language != effective_voice_lang:
+                text = text_processor.libre_translate(text, source=language, target=effective_voice_lang)
+            if effective_voice_lang == 'ja' and (character_name == "狛枝凪斗" or character_name == "仆役" or character_name == "小狛枝"):
                 text = text_processor.replace_watashi(text)
+        else:
+            effective_voice_lang = resolve_character_voice_language(
+                self.voice_language,
+                prompt_lang=prompt_lang,
+                prompt_text=prompt_text,
+                speech_text=text,
+            )
 
-        if not ref_audio_path:
+        if not ref_audio_path and getattr(self.tts_adapter, "requires_ref_audio", True):
             print("No reference audio provided")
             return ''
 
@@ -137,7 +154,7 @@ class TTSManager:
                 ref_audio_path=ref_audio_path,
                 prompt_text=prompt_text,
                 prompt_lang=prompt_lang,
-                text_lang=self.voice_language,
+                text_lang=effective_voice_lang,
                 character_name=character_name,
                 speed_factor=speed_factor,
             )

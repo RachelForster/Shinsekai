@@ -132,12 +132,12 @@ def _format_llm_tools_block_for_format(output_format_id: str) -> str:
     return format_llm_tools_block(_format_translate)
 
 
-def _ui_voice_same_lang() -> bool:
-    return _same_voice_language(config_manager)
+def _ui_voice_same_lang(characters=None) -> bool:
+    return _same_voice_language(config_manager, characters=characters)
 
 
-def _target_voice_display_name() -> str:
-    return _voice_display_name(config_manager, _T)
+def _target_voice_display_name(characters=None) -> str:
+    return _voice_display_name(config_manager, _T, characters=characters)
 
 
 class TemplateGenerator:
@@ -212,7 +212,7 @@ class TemplateGenerator:
         context = DialogTemplateContext(
             characters=tuple(characters),
             translate=_T,
-            target_voice_name=_target_voice_display_name(),
+            target_voice_name=_target_voice_display_name(characters=characters),
             json_reminder=format_reminder(resolved_format),
             locale=resolved_locale,
             player_name=player_character if player is not None else "",
@@ -240,7 +240,7 @@ class TemplateGenerator:
             output_contract_patches=tuple(self._get_output_contract_patches()),
             use_effect=use_effect,
             use_cg=use_cg,
-            use_llm_translation=bool(use_llm_translation and not _ui_voice_same_lang()),
+            use_llm_translation=bool(use_llm_translation and not _ui_voice_same_lang(characters=characters)),
             use_cot=use_cot,
             use_choice=use_choice,
             use_narration=use_narration,

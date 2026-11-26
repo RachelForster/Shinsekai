@@ -41,6 +41,13 @@ export const operationsJaMessages: Record<OperationsMessageKey, string> = {
   "ops.api.tts.noQuotes": "TTS URL と起動パスに引用符を含めることはできません。",
   "ops.api.tts.noneOption": "使用しない",
   "ops.api.tts.pathRequired": "ローカル TTS エンジンには起動パスが必要です。",
+  "ops.api.tts.qwen3Gguf.pathDesc":
+    "任意。空欄の場合は data/models/qwen3-tts-gguf と perception-gguf/llama.cpp から自動検出し、指定時はカスタムディレクトリを使用します。",
+  "ops.api.tts.qwen3Gguf.pathLabel": "Qwen3-TTS GGUF ディレクトリ（任意）",
+  "ops.api.tts.qwen3Gguf.pathPlaceholder": "空欄で data/models/qwen3-tts-gguf を自動検出",
+  "ops.api.tts.qwen3Gguf.urlDesc": "llama-server TTS サービスの HTTP アドレス（既定はローカル 9882 番ポート）。",
+  "ops.api.tts.qwen3Gguf.urlLabel": "Qwen3-TTS サービス URL",
+  "ops.api.tts.qwen3Gguf.urlPlaceholder": "例: http://127.0.0.1:9882",
   "ops.api.tts.urlRequired": "現在の TTS エンジンには URL が必要です。",
   "ops.api.vision.doubao": "Doubao Vision",
   "ops.api.vision.ollamaLocal": "Ollama Vision（ローカル）",

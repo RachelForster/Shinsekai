@@ -31,3 +31,4 @@ export const LOCAL_TIME_PREFIX_PATTERN = /^\[[^\]\n]*(?:本地时间|Local time)
 
 export const LANG_ALIAS_ENGLISH_ZH = "英语";
 export const LANG_ALIAS_CHINESE_ZH = "中文";
+export const LANG_ALIAS_AUTO_TOKENS = ["auto", "自动", "自動"] as const;

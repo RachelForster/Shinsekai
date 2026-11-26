@@ -225,6 +225,7 @@ export const settingsEnMessages: Record<SettingsMessageKey, string> = {
   "system.asr.followUi": "Follow interface language",
   "system.asr.hint":
     "Recognition language applies to every engine. Whisper model, device, and precision appear only for Whisper engines; Vosk keeps only its model path.",
+  "system.asr.langAuto": "Auto",
   "system.asr.langEn": "English",
   "system.asr.langJa": "Japanese",
   "system.asr.langYue": "Cantonese",

@@ -146,7 +146,7 @@ def player_runtime_prompt(
         context = DialogTemplateContext(
             characters=(),
             translate=_translate,
-            target_voice_name=_target_voice_display_name(config, _translate),
+            target_voice_name=_target_voice_display_name(config, _translate, characters=[(name, character)]),
             json_reminder="",
             locale=locale,
             player_name=name,

@@ -8,7 +8,9 @@ import {
   catalogOptions,
   containsPathQuotes,
   DEFAULT_TTS_SERVER_URL,
+  defaultTtsServerUrl,
   HTTPS_DEFAULT_TTS_SERVER_URL,
+  QWEN3_TTS_GGUF_DEFAULT_URL,
   isTaskCancelledError,
   isTaskRunning,
   llmModelFetchKey,
@@ -103,6 +105,15 @@ describe("API settings utilities", () => {
     expect(kagglePathField?.disabledWhen?.({ ...sampleConfig.api_config, tts_provider: "kaggle-gpt-sovits" })).toBe(
       true,
     );
+
+    const qwen3Fields = apiSchemaWithAdapterOptions(undefined, {
+      ...sampleConfig.api_config,
+      tts_provider: "qwen3-tts-gguf",
+    }).flatMap((group) => group.fields);
+    expect(qwen3Fields.find((field) => field.name === "gpt_sovits_api_path")?.label).toBe(
+      "Qwen3-TTS 模型与运行时目录（可选）",
+    );
+    expect(qwen3Fields.find((field) => field.name === "gpt_sovits_url")?.label).toBe("Qwen3-TTS 服务 URL");
   });
 
   it("normalizes ASR config for saving", () => {
@@ -169,8 +180,24 @@ describe("API settings utilities", () => {
       normalizeApiConfigForUi({
         ...sampleConfig.api_config,
         memory_auto_enabled: undefined as unknown as boolean,
-      }).memory_auto_enabled,
-    ).toBe(false);
+        perception_ocr_enabled: undefined as unknown as boolean,
+        perception_use_gguf: undefined as unknown as boolean,
+      }),
+    ).toMatchObject({
+      memory_auto_enabled: false,
+      perception_ocr_enabled: true,
+      perception_use_gguf: true,
+    });
+    expect(
+      normalizeApiConfigForUi({
+        ...sampleConfig.api_config,
+        perception_ocr_enabled: false,
+        perception_use_gguf: false,
+      }),
+    ).toMatchObject({
+      perception_ocr_enabled: false,
+      perception_use_gguf: false,
+    });
 
     expect(syncCompactRatioDraft({ ...sampleConfig.api_config, compact_target_ratio: 0.9 }).compact_target_ratio).toBe(
       0.35,
@@ -277,13 +304,18 @@ describe("API settings utilities", () => {
     expect(isTaskCancelledError(cancelled)).toBe(true);
     expect(isTaskCancelledError(new Error("other"))).toBe(false);
     expect(normalizeTtsProvider("Kaggle GPT SoVITS")).toBe("kaggle-gpt-sovits");
+    expect(normalizeTtsProvider("Qwen3-TTS")).toBe("qwen3-tts-gguf");
+    expect(normalizeTtsProvider("llama-tts")).toBe("qwen3-tts-gguf");
+    expect(defaultTtsServerUrl("qwen3-tts-gguf")).toBe(QWEN3_TTS_GGUF_DEFAULT_URL);
     expect(requiresTtsServerConfig("GPT-SoVITS")).toBe(true);
     expect(requiresTtsServerConfig("index-tts")).toBe(true);
+    expect(requiresTtsServerConfig("qwen3-tts-gguf")).toBe(true);
     expect(requiresTtsServerConfig("cosyvoice")).toBe(false);
     expect(requiresTtsServerConfig("none")).toBe(false);
     expect(requiresTtsWorkPath("genie-tts")).toBe(true);
     expect(requiresTtsWorkPath("gpt-sovits")).toBe(true);
     expect(requiresTtsWorkPath("index-tts")).toBe(true);
+    expect(requiresTtsWorkPath("qwen3-tts-gguf")).toBe(false);
     expect(requiresTtsWorkPath("kaggle-gpt-sovits")).toBe(false);
     expect(containsPathQuotes("C:\\Program Files\\App")).toBe(false);
     expect(containsPathQuotes('"C:\\Program Files\\App"')).toBe(true);
