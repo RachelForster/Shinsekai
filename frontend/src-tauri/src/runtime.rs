@@ -4,6 +4,7 @@ use tauri::{Emitter, Manager, Runtime};
 
 mod managed;
 mod manifest;
+mod probe_runner;
 mod python_env;
 mod python_probe;
 mod pytorch;

@@ -4,7 +4,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_updater::{Update, UpdaterExt};
 
-use crate::state::restart_debug_log;
+use crate::state::{restart_debug_log, DesktopState};
 
 const UPDATE_PROGRESS_EVENT: &str = "shinsekai:update-progress";
 
@@ -45,9 +45,14 @@ struct DesktopUpdateDownloadProgress {
 #[tauri::command]
 pub(crate) async fn desktop_update_check(
     app: AppHandle,
+    desktop_state: State<'_, DesktopState>,
     update_state: State<'_, DesktopUpdateState>,
 ) -> Result<Option<DesktopUpdate>, String> {
     restart_debug_log("desktop_update_check command received");
+    if desktop_state.is_portable() {
+        restart_debug_log("desktop_update_check skipped for portable build");
+        return Ok(None);
+    }
     let update = app
         .updater()
         .map_err(desktop_update_error)?
@@ -70,9 +75,14 @@ pub(crate) async fn desktop_update_check(
 #[tauri::command]
 pub(crate) async fn desktop_update_install(
     app: AppHandle,
+    desktop_state: State<'_, DesktopState>,
     update_state: State<'_, DesktopUpdateState>,
 ) -> Result<(), String> {
     restart_debug_log("desktop_update_install command received");
+    if desktop_state.is_portable() {
+        restart_debug_log("desktop_update_install blocked for portable build");
+        return Err("Desktop auto-update is disabled for portable builds.".to_string());
+    }
     let update = update_state
         .pending
         .lock()

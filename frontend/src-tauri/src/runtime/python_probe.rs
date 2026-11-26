@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::{Manager, Runtime};
 
-use super::python_env;
+use super::{probe_runner, python_env};
 
 pub const INSTALL_DIR_RUNTIME_ID: &str = "install-dir-runtime";
 const PRIORITY_INSTALL_DIR_RUNTIME: i32 = 9_000;
@@ -180,10 +180,18 @@ fn probe_python_source(source: PythonSource) -> PythonInstall {
     let mut command = Command::new(&source.executable);
     command.arg("-c").arg(PYTHON_PROBE_SCRIPT);
     python_env::configure_python_command(&mut command, &source.executable);
-    let output = command.output();
+    let output = probe_runner::run_probe_command_with_retry(&mut command, |output| {
+        !output.status.success()
+            || probe_runner::parse_json_line::<PythonProbePayload>(&String::from_utf8_lossy(
+                &output.stdout,
+            ))
+            .is_err()
+    });
     match output {
         Ok(output) if output.status.success() => {
-            let payload = serde_json::from_slice::<PythonProbePayload>(&output.stdout);
+            let payload = probe_runner::parse_json_line::<PythonProbePayload>(
+                &String::from_utf8_lossy(&output.stdout),
+            );
             match payload {
                 Ok(payload) => install_from_payload(source, payload),
                 Err(error) => {

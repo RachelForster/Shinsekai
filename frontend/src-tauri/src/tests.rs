@@ -363,6 +363,22 @@ fn main_window_initial_size_scales_proportionally_for_smaller_work_areas() {
     );
 }
 
+#[test]
+fn is_portable_bundle_detects_portable_marker_file() {
+    let dir = temp_test_dir("portable-marker");
+    std::fs::create_dir_all(&dir).unwrap();
+    assert!(!crate::state::is_portable_bundle(&dir));
+
+    std::fs::write(
+        dir.join(crate::project_root::PORTABLE_ROOT_MARKER_FILE),
+        "portable\n",
+    )
+    .unwrap();
+    assert!(crate::state::is_portable_bundle(&dir));
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 fn runtime_scan_view(selected_candidate_id: Option<&str>) -> runtime::RuntimeScanView {
     runtime::RuntimeScanView {
         selected_candidate_id: selected_candidate_id.map(ToString::to_string),

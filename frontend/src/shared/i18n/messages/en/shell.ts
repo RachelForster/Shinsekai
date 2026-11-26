@@ -85,6 +85,8 @@ export const shellEnMessages: Record<ShellMessageKey, string> = {
   "desktop.runtime.progressSpeed": "{speed}/s",
   "desktop.runtime.pipLogLabel": "pip output log",
   "desktop.runtime.required": "Runtime update required",
+  "desktop.runtime.retryStartButton": "Retry startup",
+  "desktop.runtime.startFailed": "Failed to start local service",
   "desktop.runtime.status.brokenBridge": "Bridge check failed",
   "desktop.runtime.status.brokenPython": "Python unavailable",
   "desktop.runtime.status.missingCoreDeps": "Missing core deps",

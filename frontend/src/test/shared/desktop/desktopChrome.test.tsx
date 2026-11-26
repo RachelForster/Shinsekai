@@ -249,12 +249,26 @@ describe("DesktopChrome", () => {
       status: "error",
     });
 
+    desktopApi.repairDesktopRuntime.mockResolvedValueOnce({
+      bridgeUrl: "http://127.0.0.1:18787",
+      candidates: [],
+      status: "ready",
+    });
+
     renderChrome(<main>App content</main>);
 
-    expect(await screen.findByText("Runtime update required")).toBeInTheDocument();
+    expect(await screen.findByText("Failed to start local service")).toBeInTheDocument();
+    expect(screen.queryByText("Runtime update required")).not.toBeInTheDocument();
     expect(screen.queryByText("Install dependencies manually")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Copy command" })).not.toBeInTheDocument();
     expect(screen.queryByText("App content")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry startup" }));
+
+    await waitFor(() => {
+      expect(desktopApi.repairDesktopRuntime).toHaveBeenCalledWith("python-ready", "start");
+    });
+    expect(await screen.findByText("App content")).toBeInTheDocument();
   });
 
   it("shows the manual dependency command only after automatic installation fails", async () => {

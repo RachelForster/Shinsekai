@@ -620,20 +620,26 @@ def test_install_runtime_dependency_uses_runtime_pip_index_and_extra_args(monkey
     from application.runtime import dependencies as runtime_dependencies
 
     calls = []
+    seen_constraints: list[tuple[Path, str]] = []
 
     monkeypatch.setenv("SHINSEKAI_PIP_INDEX_URL", "https://mirror.example/simple")
     monkeypatch.setenv("SHINSEKAI_PIP_INSTALL_ARGS", "--timeout 60 --trusted-host mirror.example")
-    monkeypatch.setattr(runtime_dependencies, "_run_pip_install", _fake_runtime_pip_install(calls))
+
+    def fake_run(cmd, *, cwd, detail_max=4000, timeout_sec=900, on_output_line=None):
+        calls.append(list(cmd))
+        if "-c" in cmd:
+            c_path = Path(cmd[cmd.index("-c") + 1])
+            seen_constraints.append((c_path, c_path.read_text(encoding="utf-8")))
+        return ("pip_ok", "")
+
+    monkeypatch.setattr(runtime_dependencies, "_run_pip_install", fake_run)
 
     result = runtime_dependencies.install_runtime_dependency("openai")
 
     assert result["packageName"] == "openai"
-    assert calls[0] == [
-        sys.executable,
-        "-m",
-        "pip",
-        "install",
-        "openai",
+    assert calls[0][:5] == [sys.executable, "-m", "pip", "install", "openai"]
+    assert calls[0][5] == "-c"
+    assert calls[0][7:] == [
         "-i",
         "https://mirror.example/simple",
         "--timeout",
@@ -641,6 +647,9 @@ def test_install_runtime_dependency_uses_runtime_pip_index_and_extra_args(monkey
         "--trusted-host",
         "mirror.example",
     ]
+    assert len(seen_constraints) == 1
+    assert "huggingface-hub==0.36.2" in seen_constraints[0][1]
+    assert not seen_constraints[0][0].exists()
 
 
 def test_install_runtime_dependency_pins_huggingface_hub(monkeypatch):

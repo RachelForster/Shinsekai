@@ -278,14 +278,18 @@ function DesktopRuntimeGate({ children }: { children: ReactNode }) {
   }
 
   const detail = runtime.message || t("desktop.runtime.defaultDetail");
+  const runtimeCandidate = runtime.candidates?.find((candidate) => candidate.selected) ?? runtime.candidates?.[0];
+  const canInstallDeps = runtimeCandidate?.repairActions.includes("installRuntimeDeps") ?? false;
+  const canRetryStart = runtimeCandidate?.repairActions.includes("start") ?? false;
+  const isBridgeStartError = runtime.status === "error" && runtimeCandidate?.status === "ready" && !canInstallDeps;
   const title =
     runtime.status === "checking"
       ? t("desktop.runtime.checking")
       : runtime.status === "updating"
         ? t("desktop.runtime.updating")
-        : t("desktop.runtime.required");
-  const runtimeCandidate = runtime.candidates?.find((candidate) => candidate.selected) ?? runtime.candidates?.[0];
-  const canInstallDeps = runtimeCandidate?.repairActions.includes("installRuntimeDeps") ?? false;
+        : isBridgeStartError
+          ? t("desktop.runtime.startFailed")
+          : t("desktop.runtime.required");
 
   return (
     <main className="desktop-runtime">
@@ -331,6 +335,16 @@ function DesktopRuntimeGate({ children }: { children: ReactNode }) {
               variant="primary"
             >
               {t("desktop.runtime.installDepsButton")}
+            </Button>
+          </div>
+        ) : runtimeCandidate && isBridgeStartError && canRetryStart ? (
+          <div className="desktop-runtime__actions">
+            <Button
+              disabled={busy}
+              onClick={() => handleRepairCandidate(runtimeCandidate.id, "start")}
+              variant="primary"
+            >
+              {t("desktop.runtime.retryStartButton")}
             </Button>
           </div>
         ) : null}

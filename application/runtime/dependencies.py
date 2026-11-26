@@ -12,6 +12,7 @@ import tempfile
 from typing import Any
 
 from config.perception import default_perception_python_path
+from core.runtime_env.constraints import temporary_core_constraints_file
 from core.runtime_env.pip_runner import (
     apply_pip_index_and_extra_args as _apply_pip_index_and_extra_args,
     run_pip_install as _run_pip_install,
@@ -417,12 +418,13 @@ def _runtime_pip_install_cmd(
     package_specs: tuple[str, ...],
     *,
     python_executable: str | Path | None = None,
+    constraints_path: Path | None = None,
 ) -> list[str]:
     py = str(python_executable) if python_executable is not None else sys.executable
-    return _apply_pip_index_and_extra_args(
-        [py, "-m", "pip", "install", *package_specs],
-        primary_flag="-i",
-    )
+    cmd = [py, "-m", "pip", "install", *package_specs]
+    if constraints_path is not None:
+        cmd.extend(["-c", str(constraints_path)])
+    return _apply_pip_index_and_extra_args(cmd, primary_flag="-i")
 
 
 def _write_temp_lines(prefix: str, lines: list[str]) -> Path:
@@ -663,16 +665,19 @@ def _execute_staged_dependency_spec(
                         "shinsekai_torch_pin_", constraint_lines
                     )
                     cmd_other.extend(["-c", str(constraint_tf)])
-            cmd_other.extend(install_specs)
-            code3, detail3 = _run_pip_install(
-                _apply_pip_index_and_extra_args(
-                    cmd_other, list(install_specs), primary_flag="-i"
-                ),
-                cwd=Path.cwd(),
-                detail_max=4000,
-                timeout_sec=900,
-                on_output_line=_on_line,
-            )
+            with temporary_core_constraints_file() as core_tf:
+                if core_tf is not None:
+                    cmd_other.extend(["-c", str(core_tf)])
+                cmd_other.extend(install_specs)
+                code3, detail3 = _run_pip_install(
+                    _apply_pip_index_and_extra_args(
+                        cmd_other, list(install_specs), primary_flag="-i"
+                    ),
+                    cwd=Path.cwd(),
+                    detail_max=4000,
+                    timeout_sec=900,
+                    on_output_line=_on_line,
+                )
             if code3 != "pip_ok":
                 _fail(detail3, code3)
 
@@ -791,13 +796,18 @@ def install_runtime_dependency(
                 progress=min(0.9, 0.05 + len(output_lines) * 0.01),
             )
 
-    code, detail = _run_pip_install(
-        _runtime_pip_install_cmd(package_specs, python_executable=target_exe),
-        cwd=Path.cwd(),
-        detail_max=4000,
-        timeout_sec=900,
-        on_output_line=_on_line,
-    )
+    with temporary_core_constraints_file() as core_tf:
+        code, detail = _run_pip_install(
+            _runtime_pip_install_cmd(
+                package_specs,
+                python_executable=target_exe,
+                constraints_path=core_tf,
+            ),
+            cwd=Path.cwd(),
+            detail_max=4000,
+            timeout_sec=900,
+            on_output_line=_on_line,
+        )
     output = "\n".join(output_lines).strip()
     if code != "pip_ok":
         if _task_available:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from contextlib import nullcontext
 
 import importlib.metadata as importlib_metadata
 import logging
@@ -13,6 +14,10 @@ import tempfile
 import time
 from pathlib import Path
 
+from core.runtime_env.constraints import (
+    is_host_requirements_file as _is_host_requirements_file,
+    temporary_core_constraints_file as _temporary_core_constraints_file,
+)
 from core.runtime_env.pip_index import (
     strip_inline_requirement_comment as _strip_inline_requirement_comment,
 )
@@ -353,9 +358,27 @@ def install_plugin_requirements_txt(
 
     active_req = req
     active_lines = lines
+    apply_core = not _is_host_requirements_file(req)
     precheck_tf: Path | None = None
     torch_tf: Path | None = None
     other_tf: Path | None = None
+
+    def _run_constrained_install(
+        cmd_prefix: list[str],
+        req_file: Path,
+        req_lines: list[str],
+        timeout: float,
+        target_dir: Path | None,
+        constrain_core: bool,
+    ) -> tuple[str, str]:
+        with (_temporary_core_constraints_file() if constrain_core else nullcontext()) as core_c:
+            prefix = [*cmd_prefix, "-c", str(core_c)] if core_c is not None else cmd_prefix
+            full_cmd = _apply_pip_index_and_extra_args([*prefix, "-r", str(req_file)], req_lines)
+            return _finish_install_result(
+                _run_pip_install(full_cmd, cwd=root, timeout_sec=timeout, on_output_line=on_output_line),
+                target_dir,
+            )
+
     try:
         if can_prune:
             # pip 仍然只认识 requirements 文件；在 finally 生效后再写临时文件，
@@ -451,32 +474,13 @@ def install_plugin_requirements_txt(
             cmd_other_base = _pip_base_install_cmd(py, None)
             if torch_tf is not None:
                 cmd_other_base.extend(["-c", str(torch_tf)])
-            cmd_other = _apply_pip_index_and_extra_args(
-                [*cmd_other_base, "-r", str(other_tf)],
-                other_lines,
-            )
-            return _finish_install_result(
-                _run_pip_install(
-                    cmd_other,
-                    cwd=root,
-                    timeout_sec=remaining_budget(),
-                    on_output_line=on_output_line,
-                ),
-                None,
+            return _run_constrained_install(
+                cmd_other_base, other_tf, other_lines, remaining_budget(), None, apply_core
             )
 
-        cmd = _apply_pip_index_and_extra_args(
-            [*base_cmd, "-r", str(active_req)],
-            active_lines,
-        )
-        return _finish_install_result(
-            _run_pip_install(
-                cmd,
-                cwd=root,
-                timeout_sec=timeout_sec,
-                on_output_line=on_output_line,
-            ),
-            pip_target,
+        return _run_constrained_install(
+            base_cmd, active_req, active_lines, timeout_sec, pip_target,
+            pip_target is None and apply_core,
         )
     finally:
         for path in (precheck_tf, torch_tf, other_tf):
