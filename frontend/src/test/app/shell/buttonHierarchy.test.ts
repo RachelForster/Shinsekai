@@ -1,5 +1,5 @@
 // @vitest-environment node
-// @ts-expect-error -- Vitest runs in Node; the browser bundle intentionally omits Node types.
+// @ts-ignore -- Vitest runs in Node; Node types may or may not be visible to the app tsconfig.
 import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
