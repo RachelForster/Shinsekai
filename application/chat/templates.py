@@ -10,6 +10,8 @@ from typing import Any
 from config.config_manager import character_name_key
 from config.models import (
     UserPromptPresetLibrary,
+    is_self_persona,
+    is_self_persona_name,
     normalize_applied_presets_list,
     normalize_user_prompt_presets_dict,
 )
@@ -743,6 +745,81 @@ def _persist_template_session_repair(state: BridgeState, raw: dict[str, Any]) ->
     save_template_session(state.template_dir_path, raw)
 
 
+def _regenerate_template_session_system(
+    state: BridgeState,
+    raw: dict[str, Any],
+) -> str | None:
+    """Regenerate non-manually-edited template session system prompt text."""
+    if bool(raw.get("system_manually_edited")):
+        return None
+    template_generator = getattr(state, "template_generator", None)
+    config_manager = getattr(state, "config_manager", None)
+    if template_generator is None or config_manager is None:
+        return None
+    selected = _session_string_list(raw.get("selected_characters"))
+    if not selected:
+        return None
+    resolved_names = [
+        name for name, _character in resolve_chat_template_characters(selected, config_manager)
+    ]
+    if not resolved_names:
+        return None
+    from application.chat.player_control import resolve_player
+
+    try:
+        player_character = resolve_player(
+            config_manager,
+            resolved_names,
+            raw.get("player_character"),
+        )
+    except ValueError:
+        player_character = ""
+    prompt_mode = str(raw.get("character_prompt_mode") or "").strip().lower()
+    primary_characters: list[str] | None = None
+    if prompt_mode == "compact":
+        resolved_primary = [
+            name
+            for name, _character in resolve_chat_template_characters(
+                _session_string_list(raw.get("primary_characters")),
+                config_manager,
+            )
+        ]
+        if player_character and player_character not in resolved_primary:
+            resolved_primary.append(player_character)
+        selected_keys = {character_name_key(name) for name in resolved_names}
+        primary_characters = [
+            name for name in resolved_primary if character_name_key(name) in selected_keys
+        ]
+    media_selection_mode = (
+        "semantic"
+        if str(raw.get("media_selection_mode") or "").strip().lower() == "semantic"
+        else "indexed"
+    )
+    try:
+        content, _result = template_generator.generate_chat_template(
+            resolved_names,
+            str(raw.get("background") or ""),
+            bool(raw.get("use_effect_yes", True)),
+            bool(raw.get("use_cg_yes", False)),
+            bool(raw.get("use_tr_yes", True)),
+            bool(raw.get("use_cot_yes", False)),
+            bool(raw.get("use_choice_yes", True)),
+            bool(raw.get("use_narration_yes", True)),
+            bool(raw.get("use_stat_yes", True)),
+            max_speech_chars=_safe_session_int(raw.get("max_speech_chars")),
+            max_dialog_items=_safe_session_int(raw.get("max_dialog_items")),
+            primary_characters=primary_characters,
+            media_selection_mode=media_selection_mode,
+            player_character=player_character,
+            read_player_speech=bool(player_character and raw.get("read_player_speech", False)),
+            allow_player_dialogue=bool(raw.get("allow_player_dialogue", True)),
+            output_format=normalize_output_format(raw.get("output_format")),
+        )
+    except NoValidCharactersError:
+        return None
+    return content
+
+
 def _reconcile_template_session_characters(
     state: BridgeState,
     raw: dict[str, Any] | None,
@@ -779,11 +856,13 @@ def _reconcile_template_session_characters(
         candidate_player = state.config_manager.get_character_by_name(saved_player)
         if candidate_player is not None and is_self_persona(candidate_player):
             resolved_player = candidate_player.name
+    system_stale = bool(raw.get("system_stale"))
     if (
         resolved_names == selected
         and resolved_primary == primary
         and prompt_mode == str(raw.get("character_prompt_mode") or "")
         and saved_player == resolved_player
+        and not system_stale
     ):
         return raw
 
@@ -797,6 +876,15 @@ def _reconcile_template_session_characters(
         str(raw.get("init_sprite_path") or ""),
         resolved_names,
     )
+    if (
+        (saved_player != resolved_player or system_stale)
+        and not bool(repaired.get("system_manually_edited"))
+        and str(repaired.get("system_template_text") or "").strip()
+    ):
+        regenerated = _regenerate_template_session_system(state, repaired)
+        if regenerated:
+            repaired["system_template_text"] = regenerated
+    repaired.pop("system_stale", None)
     try:
         _persist_template_session_repair(state, repaired)
     except OSError:
@@ -832,12 +920,28 @@ def _rename_template_session_character(
         saved_name if character_name_key(name) == original_key else name
         for name in primary
     ]
-    if renamed == selected and renamed_player == raw_player and renamed_primary == primary:
+    saved_char = state.config_manager.get_character_by_name(saved_name)
+    is_self_rename = is_self_persona_name(original_name) or (
+        saved_char is not None and is_self_persona(saved_char)
+    )
+    has_non_manual_system = (
+        not bool(raw.get("system_manually_edited"))
+        and bool(str(raw.get("system_template_text") or "").strip())
+    )
+    refs_changed = (
+        renamed != selected or renamed_player != raw_player or renamed_primary != primary
+    )
+    if not refs_changed and not (is_self_rename and has_non_manual_system):
         return
     repaired = dict(raw)
     repaired["selected_characters"] = renamed
     repaired["player_character"] = renamed_player
     repaired["primary_characters"] = renamed_primary
+    if has_non_manual_system:
+        regenerated = _regenerate_template_session_system(state, repaired)
+        if regenerated:
+            repaired["system_template_text"] = regenerated
+    repaired.pop("system_stale", None)
     reconciled = _reconcile_template_session_characters(state, repaired)
     if reconciled is repaired:
         _persist_template_session_repair(state, repaired)

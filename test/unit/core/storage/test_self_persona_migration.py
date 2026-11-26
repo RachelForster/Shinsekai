@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 from pathlib import Path
 import time
+
+import yaml
+
+from application.runtime.stores import build_app_stores
 
 from config.models import (
     Character,
@@ -154,3 +160,102 @@ def test_v2_migration_skips_when_display_name_collides_with_other_character(tmp_
         assert kept_self.display_name == "Mika"
     finally:
         engine.close()
+
+
+def test_legacy_yaml_startup_import_runs_self_persona_promotion_and_marks_stale(
+    tmp_path: Path,
+) -> None:
+    config_dir = tmp_path / "data" / "config"
+    config_dir.mkdir(parents=True)
+    (config_dir / "characters.yaml").write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "name": SELF_PERSONA_NAME,
+                    "display_name": "浅羽",
+                    "color": "#89b4fa",
+                    "sprite_prefix": SELF_PERSONA_SPRITE_PREFIX,
+                },
+                {
+                    "name": "Mika",
+                    "color": "#ffffff",
+                    "sprite_prefix": "mika",
+                    "relation_graph": {
+                        "nodes": [{"key": "Mika"}, {"key": SELF_PERSONA_NAME}],
+                        "edges": [
+                            {"source": "Mika", "target": SELF_PERSONA_NAME, "temperature": 6, "content": "同学"}
+                        ],
+                    },
+                },
+            ],
+            allow_unicode=True,
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    (config_dir / "template_tab_last_launch.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "selected_characters": [SELF_PERSONA_NAME, "Mika"],
+                "primary_characters": [SELF_PERSONA_NAME],
+                "player_character": SELF_PERSONA_NAME,
+                "system_template_text": "stale自设",
+                "system_manually_edited": False,
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    conv_dir = config_dir / "conversations"
+    conv_dir.mkdir(parents=True)
+    for name, manual in (("s_auto", False), ("s_manual", True)):
+        sess_dir = (tmp_path / "data" / "chat_history" / name).resolve()
+        sess_dir.mkdir(parents=True)
+        (sess_dir / "active.json").write_text("[]", encoding="utf-8")
+        conv_id = hashlib.sha256(os.path.normcase(str(sess_dir)).encode()).hexdigest()
+        (conv_dir / f"{conv_id}.json").write_text(
+            json.dumps(
+                {
+                    "historyPath": sess_dir.as_posix(),
+                    "title": name,
+                    "createdAt": "2026-01-01T00:00:00Z",
+                    "launch": {
+                        "playerCharacter": SELF_PERSONA_NAME,
+                        "characters": [SELF_PERSONA_NAME, "Mika"],
+                        "system": "stale prompt",
+                        "systemManuallyEdited": manual,
+                    },
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+
+    stores = build_app_stores(tmp_path, bind_globals=False)
+    try:
+        promoted = stores.characters.get(SELF_PERSONA_ID)
+        assert promoted is not None
+        assert promoted.name == "浅羽"
+        assert promoted.display_name == ""
+
+        mika = stores.characters.get_by_name("Mika")
+        assert mika is not None
+        assert [n.key for n in mika.relation_graph.nodes] == ["Mika", "浅羽"]
+
+        ui_tpl = stores.ui_state.get().template_last_launch
+        assert ui_tpl is not None
+        assert ui_tpl["player_character"] == "浅羽"
+        assert ui_tpl["selected_characters"] == ["浅羽", "Mika"]
+        assert ui_tpl["primary_characters"] == ["浅羽"]
+        assert ui_tpl["system_stale"] is True
+
+        convs = {rec.title: rec.launch for rec in stores.conversations.list_all()}
+        assert convs["s_auto"]["playerCharacter"] == "浅羽"
+        assert convs["s_auto"]["characters"] == ["浅羽", "Mika"]
+        assert convs["s_auto"]["systemStale"] is True
+        assert convs["s_manual"]["playerCharacter"] == "浅羽"
+        assert "systemStale" not in convs["s_manual"]
+    finally:
+        stores.close()

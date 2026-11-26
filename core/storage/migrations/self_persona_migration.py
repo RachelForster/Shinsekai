@@ -98,7 +98,51 @@ def _rename_launch_payload(launch: Any, old_cf: str, new_name: str) -> tuple[Any
         if sess_changed:
             updated["editorSession"] = next_session
             changed = True
+    manual = bool(updated.get("systemManuallyEdited")) or (
+        isinstance(updated.get("editorSession"), dict)
+        and bool(updated["editorSession"].get("systemManuallyEdited"))
+    )
+    has_system = bool(str(updated.get("system") or "").strip()) or (
+        isinstance(updated.get("editorSession"), dict)
+        and bool(str(updated["editorSession"].get("system") or "").strip())
+    )
+    if changed and not updated.get("storyPath") and not manual and has_system:
+        updated["systemStale"] = True
     return (updated if changed else launch), changed
+
+
+def rename_template_session_dict(
+    raw: dict[str, Any],
+    old_name: str,
+    new_name: str,
+) -> tuple[dict[str, Any], bool]:
+    """Cascade a character rename into a raw template session dictionary."""
+    old_cf = str(old_name or "").strip().casefold()
+    new_cf = str(new_name or "").strip().casefold()
+    if not old_cf or not new_cf or old_cf == new_cf:
+        return raw, False
+    updated = dict(raw)
+    changed = False
+    if "player_character" in updated:
+        nxt_player = _replace_name(updated.get("player_character"), old_cf, new_name)
+        if nxt_player != updated.get("player_character"):
+            updated["player_character"] = nxt_player
+            changed = True
+    for list_key in ("selected_characters", "primary_characters"):
+        items = updated.get(list_key)
+        if isinstance(items, list):
+            nxt_items = [_replace_name(item, old_cf, new_name) for item in items]
+            if nxt_items != items:
+                updated[list_key] = nxt_items
+                changed = True
+    if (
+        (changed or is_self_persona_name(old_name))
+        and not bool(updated.get("system_manually_edited"))
+        and str(updated.get("system_template_text") or "").strip()
+    ):
+        updated["system_stale"] = True
+        changed = True
+    return (updated if changed else raw), changed
 
 
 def _bump_meta(connection: sqlite3.Connection, table_names: tuple[str, ...]) -> None:
@@ -216,4 +260,4 @@ def migrate_v2_self_persona_display_name(connection: sqlite3.Connection) -> None
     _bump_meta(connection, meta_tables)
 
 
-__all__ = ["migrate_v2_self_persona_display_name"]
+__all__ = ["migrate_v2_self_persona_display_name", "rename_template_session_dict"]

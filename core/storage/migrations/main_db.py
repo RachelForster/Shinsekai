@@ -22,6 +22,7 @@ from config.models import (
     Character,
     Effect,
     SELF_PERSONA_ID,
+    SELF_PERSONA_NAME,
     SystemConfig,
     UiRuntimeState,
     build_default_self_persona,
@@ -34,6 +35,7 @@ from core.storage.file_store import FileDocumentStore
 from core.storage.layout import StorageLayout
 from core.storage.migrations.self_persona_migration import (
     migrate_v2_self_persona_display_name,
+    rename_template_session_dict,
 )
 from core.storage.sqlite_engine import SqliteEngine, SqliteMigration
 from core.storage.stores.conversation_store import ConversationRecord
@@ -674,6 +676,9 @@ class LegacyDataMigrator:
                 (now,),
             )
 
+        # Promote legacy __self__.display_name -> name once YAML/conversation rows are in place.
+        migrate_v2_self_persona_display_name(connection)
+
         # Bump catalog revisions for populated tables.
         rev_updates = {
             "characters": bool(characters_to_insert),
@@ -762,6 +767,21 @@ class LegacyDataMigrator:
                     extracted_template = parsed
             except (OSError, ValueError):
                 pass
+        if extracted_template is not None:
+            current_self_name = ""
+            with self._engine.read_connection() as connection:
+                row = connection.execute(
+                    "SELECT name FROM characters WHERE id = ? LIMIT 1",
+                    (SELF_PERSONA_ID,),
+                ).fetchone()
+                if row is not None:
+                    current_self_name = str(row["name"] or "").strip()
+            if current_self_name and not is_self_persona_name(current_self_name):
+                extracted_template, _ = rename_template_session_dict(
+                    extracted_template,
+                    SELF_PERSONA_NAME,
+                    current_self_name,
+                )
 
         if extracted_geometry or extracted_template is not None:
             def _merge_ui_state(current: UiRuntimeState) -> UiRuntimeState:

@@ -205,16 +205,34 @@ class TemplateGenerator:
             ),
             None,
         )
-        if player is None and cleaned_player_arg and (
-            is_self_persona_name(cleaned_player_arg) or is_self_persona_id(cleaned_player_arg)
-        ):
-            getter_self = getattr(config_manager, "get_self_persona", None)
-            candidate = getter_self() if callable(getter_self) else None
-            if candidate is None:
+        if player is None and cleaned_player_arg:
+            if is_self_persona_name(cleaned_player_arg) or is_self_persona_id(
+                cleaned_player_arg
+            ):
+                getter_self = getattr(config_manager, "get_self_persona", None)
+                candidate = getter_self() if callable(getter_self) else None
+                if candidate is None:
+                    getter = getattr(config_manager, "get_character_by_name", None)
+                    candidate = getter(SELF_PERSONA_NAME) if callable(getter) else None
+                if candidate is not None and is_self_persona(candidate):
+                    player = candidate
+            else:
                 getter = getattr(config_manager, "get_character_by_name", None)
-                candidate = getter(SELF_PERSONA_NAME) if callable(getter) else None
-            if candidate is not None and is_self_persona(candidate):
-                player = candidate
+                candidate = getter(cleaned_player_arg) if callable(getter) else None
+                if candidate is None:
+                    getter_self = getattr(config_manager, "get_self_persona", None)
+                    self_candidate = getter_self() if callable(getter_self) else None
+                    if (
+                        self_candidate is not None
+                        and is_self_persona(self_candidate)
+                        and character_name_key(
+                            str(getattr(self_candidate, "name", "") or "")
+                        )
+                        == character_name_key(cleaned_player_arg)
+                    ):
+                        candidate = self_candidate
+                if candidate is not None and is_self_persona(candidate):
+                    player = candidate
         resolved_player_name = (
             str(getattr(player, "name", "") or cleaned_player_arg).strip()
             if player is not None

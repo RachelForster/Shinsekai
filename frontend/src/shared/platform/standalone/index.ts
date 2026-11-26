@@ -1,6 +1,7 @@
 import { numberedTags, tagContents } from "../../assets/assetText";
 import { DEFAULT_SPRITE_GROUP, LLM_PROVIDER_QWEN, LLM_PROVIDER_SILICONFLOW, TAG_PREFIX_SPRITE } from "../../constants";
 import { setActiveFrontendLanguage, translateRuntimeMessage } from "../../i18n/runtimeLanguage";
+import { isSelfPersonaCharacter } from "../../playerCharacterOptions";
 import { createAgentPreviewPlatform } from "../agentPreviewPlatform";
 import { createChatPreviewPlatform } from "../slices/chatPreviewPlatform";
 import { createKnowledgePreviewPlatform } from "../slices/knowledgePreviewPlatform";
@@ -65,7 +66,10 @@ import {
   upgradeStarterPresetsInPlace,
 } from "./packages/presetLoader";
 import { getKvConfig, setKvConfig } from "./storage/indexedDbStore";
-import { migrateStandaloneSelfPersonaDisplayName } from "./storage/selfPersonaMigration";
+import {
+  cascadeStandaloneCharacterRename,
+  migrateStandaloneSelfPersonaDisplayName,
+} from "./storage/selfPersonaMigration";
 import {
   generateSecureRandomToken,
   StandaloneSessionStore,
@@ -525,10 +529,33 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
             ctx.config.characters,
             savedTemplateSession,
           );
+          let migratedTemplateSessionChanged = selfPersonaMigration.templateSessionChanged;
+          if (selfPersonaMigration.renamedFrom && selfPersonaMigration.renamedTo) {
+            const cascaded = cascadeStandaloneCharacterRename({
+              oldName: selfPersonaMigration.renamedFrom,
+              newName: selfPersonaMigration.renamedTo,
+              isSelf: true,
+              characters: ctx.config.characters,
+              backgrounds: ctx.config.background_list,
+              systemConfig: ctx.config.system_config,
+              templateSession: savedTemplateSession ?? null,
+              sessions: sessionStore.listSessions(),
+            });
+            if (cascaded.templateSessionChanged) {
+              migratedTemplateSessionChanged = true;
+            }
+            for (const updatedSession of cascaded.updatedSessions) {
+              await sessionStore.updateSessionMeta(updatedSession.sessionId, {
+                characters: updatedSession.characters,
+                primaryCharacters: updatedSession.primaryCharacters,
+                payload: updatedSession.payload,
+              });
+            }
+          }
           if (upgradedStarter || selfPersonaMigration.configChanged) {
             await persistAppConfig();
           }
-          if (selfPersonaMigration.templateSessionChanged && savedTemplateSession) {
+          if (migratedTemplateSessionChanged && savedTemplateSession) {
             await setKvConfig(KV_TEMPLATE_SESSION, clone(savedTemplateSession));
           }
           await refreshCharacterMouthManifestUrls(ctx.config.characters);
@@ -1437,8 +1464,38 @@ export function createStandalonePlatform(options?: { target?: RuntimeTarget }): 
           );
           nextCharacter = { ...character, refer_audio_path: relocatedRefer };
         }
+        const previousChar =
+          (character.id ? ctx.config.characters.find((c) => c.id === character.id) : undefined) ??
+          (originalName ? ctx.config.characters.find((c) => c.name === originalName) : undefined) ??
+          ctx.config.characters.find((c) => c.name === character.name);
+        const previousName = previousChar?.name ?? originalName ?? "";
+        const sessionBeforeSave = ctx.getTemplateSession();
         const saved = await baseCharacters.save(nextCharacter, originalName);
         await persistAppConfig();
+        if (previousName && previousName !== saved.name) {
+          const activeSession = ctx.getTemplateSession();
+          const cascaded = cascadeStandaloneCharacterRename({
+            oldName: previousName,
+            newName: saved.name,
+            isSelf: isSelfPersonaCharacter(saved),
+            characters: ctx.config.characters,
+            backgrounds: ctx.config.background_list,
+            systemConfig: ctx.config.system_config,
+            templateSession: activeSession,
+            sessions: sessionStore.listSessions(),
+          });
+          if (activeSession && (cascaded.templateSessionChanged || activeSession !== sessionBeforeSave)) {
+            ctx.setTemplateSession(activeSession);
+            await setKvConfig(KV_TEMPLATE_SESSION, clone(activeSession));
+          }
+          for (const updatedSession of cascaded.updatedSessions) {
+            await sessionStore.updateSessionMeta(updatedSession.sessionId, {
+              characters: updatedSession.characters,
+              primaryCharacters: updatedSession.primaryCharacters,
+              payload: updatedSession.payload,
+            });
+          }
+        }
         return saved;
       },
       async delete(name) {
