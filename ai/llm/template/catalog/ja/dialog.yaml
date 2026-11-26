@@ -164,36 +164,27 @@ field_spec_optional: |
 field_aliases: ' 互換エイリアス：{aliases}。'
 field_omitted: |
   - {name}：出力にこのフィールドを含めないでください。
-xml_head_top: |
-  各出力は必ず次の XML/HTML 舞台タグ列のみで構成してください（順序厳守）：
-  <cot><摘要>...</摘要><动机>...</动机><剧情走向>...</剧情走向></cot>
-  <scene sprite="2桁シーンID" transition="任意の場面転換効果" />
-  <bgm sprite="2桁BGM ID" />
-  <say char="キャラ名" sprite="2桁立ち絵ID" motion="任意の動き効果" effect="任意エフェクト">セリフ本文</say>
-  <narr>地の文・情景描写</narr>
-  <stat>heart|HP|72|100</stat>
-  <choice>選択肢1 / 選択肢2 / 選択肢3</choice>
-xml_full_sprite_head_top: |
-  各出力は必ず次の XML/HTML 舞台タグ列のみで構成してください（順序厳守）：
-  <cot><摘要>...</摘要><动机>...</动机><剧情走向>...</剧情走向></cot>
-  <scene sprite="完全なシーンID" transition="任意の場面転換効果" />
-  <bgm sprite="完全なBGM ID" />
-  <say char="キャラ名" sprite="完全な立ち絵ID（変更なしは -1）" motion="任意の動き効果" effect="任意エフェクト">セリフ本文</say>
-  <narr>地の文・情景描写</narr>
-  <stat>heart|HP|72|100</stat>
-  <choice>選択肢1 / 選択肢2 / 選択肢3</choice>
-xml_vibe_head_top: |
-  各出力は必ず次の XML/HTML 舞台タグ列のみで構成してください（順序厳守）：
-  <cot><摘要>...</摘要><动机>...</动机><剧情走向>...</剧情走向></cot>
-  <scene vibe="場所・天候・雰囲気の短い語句" transition="任意の場面転換効果" />
-  <bgm vibe="曲調・テンポ・雰囲気の短い語句" />
-  <say char="キャラ名" vibe="表情や動作の短い語句" motion="任意の動き効果" effect="任意エフェクト">セリフ本文</say>
-  <narr>地の文・情景描写</narr>
-  <stat>heart|HP|72|100</stat>
-  <choice>選択肢1 / 選択肢2 / 選択肢3</choice>
+xml_schema_intro: '各出力は必ず次の許可された XML/HTML 舞台タグ列のみで構成してください（順序厳守）：'
+xml_example_cot: '<cot><摘要>...</摘要><动机>...</动机><剧情走向>...</剧情走向></cot>'
+xml_example_scene_indexed: '<scene sprite="2桁シーンID" transition="任意の場面転換効果" />'
+xml_example_scene_full: '<scene sprite="完全なシーンID" transition="任意の場面転換効果" />'
+xml_example_scene_vibe: '<scene vibe="場所・天候・雰囲気の短い語句" transition="任意の場面転換効果" />'
+xml_example_bgm_indexed: '<bgm sprite="2桁BGM ID" />'
+xml_example_bgm_full: '<bgm sprite="完全なBGM ID" />'
+xml_example_bgm_vibe: '<bgm vibe="曲調・テンポ・雰囲気の短い語句" />'
+xml_example_effect_attr: ' effect="任意エフェクト"'
+xml_example_trans_tag: '<tr>セリフの{target_voice_name}訳</tr>'
+xml_example_say_indexed: '<say char="キャラ名" sprite="2桁立ち絵ID" motion="任意の動き効果"{effect_attr}>セリフ本文{trans_tag}</say>'
+xml_example_say_full: '<say char="キャラ名" sprite="完全な立ち絵ID（変更なしは -1）" motion="任意の動き効果"{effect_attr}>セリフ本文{trans_tag}</say>'
+xml_example_say_vibe: '<say char="キャラ名" vibe="表情や動作の短い語句" motion="任意の動き効果"{effect_attr}>セリフ本文{trans_tag}</say>'
+xml_example_narr: '<narr>地の文・情景描写</narr>'
+xml_example_stat: '<stat>heart|HP|72|100</stat>'
+xml_example_cg: '<cg>highres, masterpiece, 8k, 描写プロンプト</cg>'
+xml_example_choice: '<choice>選択肢1 / 選択肢2 / 選択肢3</choice>'
 xml_line_effect: '任意エフェクト属性：effect="ラベル"（実行時カタログの正確なラベルまたは別名。音声や ambient:<ラベル> など）。退場時は <leave char="キャラ名" /> または最後の <say> に effect="LEAVE" を指定。'
 xml_line_trans: '翻訳タグ：各 <say>...</say> の中に <tr>セリフの{target_voice_name}訳</tr> を含める（セリフのみ翻訳し、ト書きは含めない）。'
 xml_stage_effects: '任意の演出属性：<scene> には transition="fade|fade_black|fade_white|slide_left|slide_right|zoom|cut"、<say> には motion="shake|tremble|jump|bounce|nod|tilt|flash|sink|lean_in" を指定可能。'
+xml_stage_effects_motion_only: '任意の演出属性：<say> には motion="shake|tremble|jump|bounce|nod|tilt|flash|sink|lean_in" を指定可能。'
 xml_foot: '上記の XML/HTML 舞台タグを直接出力してください。JSON や Markdown のコードブロック（```xml 等）は出力しないでください。'
 xml_player_speech_contract: '主控入力を読み上げる場合は顔画像タグの前に <say> タグを追加する：<say char="{name}" {speech_media}>このターンにユーザーが実際に入力した台詞<tr>その台詞の{target_voice_name}訳</tr></say>。ユーザーが実際に入力した発話のみを繰り返して、括弧書きの動作や内心は省き、加筆や改変は禁止。'
 xml_player_ai_control: '
@@ -219,7 +210,8 @@ xml_player_control: '
 
   '
 xml_r_format: '形式厳守：出力は XML/HTML 舞台タグのみとし、JSON や Markdown コードブロック、タグ外の前置き説明を禁止します。属性値に引用符を含む場合はシングルクォートまたは &quot; を使用してください。'
-xml_r_cname: '話者とタグ：<say char="..."> の char は {names} または劇中の登場人物名を指定し、システム演出には対応する専用タグ（{cot_part}{fixed_roles}{opt_scene}{opt_bgm}{opt_cg}）を使用してください。'
+xml_r_cname: '話者とタグ：<say char="..."> の char は {names} または劇中の登場人物名を指定し、システム演出には対応する専用タグ（{xml_tags}）を使用してください。'
+xml_r_cname_say_only: '話者とタグ：<say char="..."> の char は {names} または劇中の登場人物名を指定してください。'
 xml_r_scene: 'シーン切替（{scn}）：<scene sprite="シーン番号" /> を出力して背景を切り替え、演出上必要な場合のみ transition="..." を添えます。'
 xml_r_scene_vibe: 'シーン切替（{scn}）：<scene vibe="場所・時間・天候・雰囲気" /> を出力し、必要に応じて transition="..." を添えます。'
 xml_r_bgm: 'BGM 切替（{bgm_t}）：<bgm sprite="BGM番号" /> を出力して BGM を切り替えます（頻繁に変えすぎないこと）。'
@@ -232,12 +224,12 @@ xml_r_choice_format: '選択肢形式（{choice}）：<choice>選択肢1 / 選�
 xml_r_stats: 'ステータス（{stat}）：物語冒頭寄りに <stat>icon|label|value|max</stat>（max は省略可）形式で出力します（icon: heart, shield, zap, star, sparkles, target, coins, clock, gauge）。'
 xml_r_cg: 'CG（{cg}）：見せ場では <cg>Stable Diffusion プロンプト...</cg> を出力し、冒頭に highres, masterpiece, 8k, bestscores（背景のみは no person, pure scenery）を入れてください。'
 xml_r_translate: '翻訳タグ：二言語出力時は <say>...</say> 内に <tr>{target_voice_name}訳</tr> を含めてください（台詞のみ翻訳）。'
-xml_r_effect: '退場とエフェクト：明確に退場する際は <leave char="キャラ名" /> または最後の <say> に effect="LEAVE" を指定（<narr> や他キャラに付けないこと）。effect="ラベル"（before:/after:/loop:/stop:/ambient:/expose:/shelter:/ambient-stop:/ambient-stop-all 対応）は実際に発生した音・環境・画像のみ記入します。'
+xml_r_effect: '退場とエフェクト：明確に退場する際は <leave char="キャラ名" /> または最後の <say> に effect="LEAVE" を指定（地の文や他キャラに付けないこと）。effect="ラベル"（before:/after:/loop:/stop:/ambient:/expose:/shelter:/ambient-stop:/ambient-stop-all 対応）は実際に発生した音・環境・画像のみ記入します。'
 xml_r_cot: '思考ログ：本編タグの前に 1 つだけ <cot>（{cot}、非表示ログ）を出力し、内部に <摘要>...</摘要><动机>...</动机><剧情走向>...</剧情走向> を必ず含めてください。'
 xml_r_scene_transition: '場面転換効果（任意）：<scene> 切替時に transition="..." を指定可能（fade、fade_black、fade_white、slide_left、slide_right、zoom、cut のみ）。重要な切替時に控えめに使ってください。'
 xml_r_character_motion: 'キャラクター動効果（任意）：驚愕・震え・跳躍・頷きなど強い感情や動きの瞬間にのみ、<say> に motion="..."（shake、tremble、jump、bounce、nod、tilt、flash、sink、lean_in のみ）を指定してください。通常の会話では省略します。'
 closing_xml_reminder: |
-  必ず規定の XML/HTML 舞台タグ（<say>、<narr>、<scene> 等）のみで応答してください。JSON や Markdown コードブロックは禁止です。
+  必ず上記で規定された XML/HTML 舞台タグ（<say> 等）のみで応答してください。JSON や Markdown コードブロックは禁止です。
 closing_xml_tool_protocol: ツール規約：ツールが必要な場合はモデルの実際の function/tool 呼び出し機能を使用してください。上記の XML/HTML 舞台タグはユーザー向けの最終応答にのみ適用され、ツール呼び出しの代替にはなりません。台詞やタグ内でツール呼び出しや結果を捏造しないでください。
 xml_tools_intro: 上記の XML/HTML 舞台タグ形式を守る範囲で、必要に応じて利用中の LLM プロバイダの規約に従いツールを呼び出してよい。
 custom_r_format: '形式厳守：上記の出力形式に厳密に従い、Markdown コードブロックや形式外の説明・挨拶を出力しないでください。'

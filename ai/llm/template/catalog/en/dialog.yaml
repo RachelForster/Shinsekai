@@ -161,36 +161,27 @@ field_spec_optional: |
 field_aliases: ' Aliases: {aliases}.'
 field_omitted: |
   - {name}: Do not include this field in the output.
-xml_head_top: |
-  For each reply, you MUST output an ordered sequence of XML/HTML stage tags with this structure:
-  <cot><摘要>...</摘要><动机>...</动机><剧情走向>...</剧情走向></cot>
-  <scene sprite="two-digit scene id" transition="optional transition" />
-  <bgm sprite="two-digit BGM id" />
-  <say char="Character name" sprite="two-digit sprite id" motion="optional motion" effect="optional effect">Spoken line</say>
-  <narr>Action and scene narration</narr>
-  <stat>heart|HP|72|100</stat>
-  <choice>Option A / Option B / Option C</choice>
-xml_full_sprite_head_top: |
-  For each reply, you MUST output an ordered sequence of XML/HTML stage tags with this structure:
-  <cot><摘要>...</摘要><动机>...</动机><剧情走向>...</剧情走向></cot>
-  <scene sprite="full scene id" transition="optional transition" />
-  <bgm sprite="full BGM id" />
-  <say char="Character name" sprite="full sprite id (-1 to keep)" motion="optional motion" effect="optional effect">Spoken line</say>
-  <narr>Action and scene narration</narr>
-  <stat>heart|HP|72|100</stat>
-  <choice>Option A / Option B / Option C</choice>
-xml_vibe_head_top: |
-  For each reply, you MUST output an ordered sequence of XML/HTML stage tags with this structure:
-  <cot><摘要>...</摘要><动机>...</动机><剧情走向>...</剧情走向></cot>
-  <scene vibe="place, weather, and mood phrase" transition="optional transition" />
-  <bgm vibe="music mood and tempo phrase" />
-  <say char="Character name" vibe="expression and pose phrase" motion="optional motion" effect="optional effect">Spoken line</say>
-  <narr>Action and scene narration</narr>
-  <stat>heart|HP|72|100</stat>
-  <choice>Option A / Option B / Option C</choice>
+xml_schema_intro: 'For each reply, you MUST output an ordered sequence of XML/HTML stage tags using the enabled tags below:'
+xml_example_cot: '<cot><摘要>...</摘要><动机>...</动机><剧情走向>...</剧情走向></cot>'
+xml_example_scene_indexed: '<scene sprite="two-digit scene id" transition="optional transition" />'
+xml_example_scene_full: '<scene sprite="full scene id" transition="optional transition" />'
+xml_example_scene_vibe: '<scene vibe="place, weather, and mood phrase" transition="optional transition" />'
+xml_example_bgm_indexed: '<bgm sprite="two-digit BGM id" />'
+xml_example_bgm_full: '<bgm sprite="full BGM id" />'
+xml_example_bgm_vibe: '<bgm vibe="music mood and tempo phrase" />'
+xml_example_effect_attr: ' effect="optional effect"'
+xml_example_trans_tag: '<tr>{target_voice_name} translation</tr>'
+xml_example_say_indexed: '<say char="Character name" sprite="two-digit sprite id" motion="optional motion"{effect_attr}>Spoken line{trans_tag}</say>'
+xml_example_say_full: '<say char="Character name" sprite="full sprite id (-1 to keep)" motion="optional motion"{effect_attr}>Spoken line{trans_tag}</say>'
+xml_example_say_vibe: '<say char="Character name" vibe="expression and pose phrase" motion="optional motion"{effect_attr}>Spoken line{trans_tag}</say>'
+xml_example_narr: '<narr>Action and scene narration</narr>'
+xml_example_stat: '<stat>heart|HP|72|100</stat>'
+xml_example_cg: '<cg>highres, masterpiece, 8k, scene or illustration prompt</cg>'
+xml_example_choice: '<choice>Option A / Option B / Option C</choice>'
 xml_line_effect: 'Optional effect attribute: effect="label" (exact label or alias from the runtime effect catalog such as sounds or ambient:<label>); when a character actually leaves, use <leave char="Character name" /> or effect="LEAVE" on their final <say>.'
 xml_line_trans: 'Bilingual translation tag: inside each <say>...</say>, include <tr>{target_voice_name} translation of the spoken line</tr> (translate spoken words only, not stage directions).'
 xml_stage_effects: 'Optional stage effects: <scene> accepts transition="fade|fade_black|fade_white|slide_left|slide_right|zoom|cut"; <say> accepts motion="shake|tremble|jump|bounce|nod|tilt|flash|sink|lean_in".'
+xml_stage_effects_motion_only: 'Optional stage effects: <say> accepts motion="shake|tremble|jump|bounce|nod|tilt|flash|sink|lean_in".'
 xml_foot: 'Output the raw XML/HTML stage tags directly; do not output JSON or wrap the reply in Markdown code fences (such as ```xml).'
 xml_player_speech_contract: 'To read the player''s input aloud, add a <say> tag before the portrait tag: <say char="{name}" {speech_media}>the exact words already spoken by the user this turn<tr>{target_voice_name} translation of those words</tr></say>. Repeat only the exact words spoken by the user, stripping bracketed/parenthetical actions and thoughts; never add or rewrite words.'
 xml_player_ai_control: '
@@ -216,7 +207,8 @@ xml_player_control: '
 
   '
 xml_r_format: 'Format: Output MUST consist strictly of valid XML/HTML stage tags only—no JSON, no Markdown code fences, and no prose commentary outside tags. Escape quotes inside attribute values with single quotes or &quot;.'
-xml_r_cname: 'Speakers & tags: Use <say char="..."> with char set to {names} or other cast names; use the dedicated system tags for stage directives: {cot_part}{fixed_roles}{opt_scene}{opt_bgm}{opt_cg}.'
+xml_r_cname: 'Speakers & tags: Use <say char="..."> with char set to {names} or other cast names; use the dedicated system tags for stage directives: {xml_tags}.'
+xml_r_cname_say_only: 'Speakers & tags: Use <say char="..."> with char set to {names} or other cast names.'
 xml_r_scene: 'Scene change ({scn}): Emit <scene sprite="scene_id" /> to switch backgrounds, optionally adding transition="..." for dramatic transitions.'
 xml_r_scene_vibe: 'Scene change ({scn}): Emit <scene vibe="brief place, time, weather, mood" /> to switch backgrounds, optionally adding transition="...".'
 xml_r_bgm: 'BGM change ({bgm_t}): Emit <bgm sprite="bgm_id" /> to change background music when the mood shifts; avoid over-switching.'
@@ -229,12 +221,12 @@ xml_r_choice_format: 'Choice format ({choice}): Write <choice>Option 1 / Option 
 xml_r_stats: 'Stats ({stat}): Place near the start when needed using <stat>icon|label|value|max</stat> (max optional; allowed icons: heart, shield, zap, star, sparkles, target, coins, clock, gauge).'
 xml_r_cg: 'CG ({cg}): For key visual highlights, emit <cg>Stable Diffusion prompt...</cg> starting with quality tags (highres, masterpiece, 8k, bestscores; add no person, pure scenery for scenery-only).'
 xml_r_translate: 'Translation: Include <tr>{target_voice_name} translation</tr> inside <say>...</say>; translate spoken dialogue only, not stage directions.'
-xml_r_effect: 'Exit & effects: Use <leave char="Name" /> or effect="LEAVE" on a character''s final <say> when they explicitly leave (never put LEAVE on <narr> or bystanders). Use effect="label" (supporting before:/after:/loop:/stop:/ambient:/expose:/shelter:/ambient-stop:/ambient-stop-all) only for real audible/visual/ambient events, not metaphors or memories.'
+xml_r_effect: 'Exit & effects: Use <leave char="Name" /> or effect="LEAVE" on a character''s final <say> when they explicitly leave (never put LEAVE on narration or bystanders). Use effect="label" (supporting before:/after:/loop:/stop:/ambient:/expose:/shelter:/ambient-stop:/ambient-stop-all) only for real audible/visual/ambient events, not metaphors or memories.'
 xml_r_cot: 'Chain-of-thought: Emit one <cot> tag ({cot}; hidden backend log) before visible stage tags containing <摘要>...</摘要><动机>...</动机><剧情走向>...</剧情走向>.'
 xml_r_scene_transition: 'Scene transitions (optional): Add transition="..." on <scene> ONLY using fade, fade_black, fade_white, slide_left, slide_right, zoom, or cut. Use thoughtfully on meaningful scene shifts.'
 xml_r_character_motion: 'Character motions (optional): On intense emotional or physical beats, add motion="..." on <say> ONLY using shake, tremble, jump, bounce, nod, tilt, flash, sink, or lean_in. Omit during calm lines.'
 closing_xml_reminder: |
-  You MUST reply using only the required XML/HTML stage tags (<say>, <narr>, <scene>, etc.). Do not output JSON or Markdown fences.
+  You MUST reply using only the required XML/HTML stage tags defined above (<say>, etc.). Do not output JSON or Markdown fences.
 closing_xml_tool_protocol: 'Tool protocol: When a tool is needed, invoke it via the model''s real function/tool interface; the XML/HTML stage tags apply only to your final user-facing reply and never replace tool calls. Never pretend to call tools or fabricate tool results inside dialogue or XML tags.'
 xml_tools_intro: When helpful—and while following the XML/HTML stage tag format above—you may invoke tools via your LLM provider’s tool protocol.
 custom_r_format: 'Format: Follow the custom structured output format specified above strictly; do not wrap replies in Markdown code fences or add prose commentary outside the format.'

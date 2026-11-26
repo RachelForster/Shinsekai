@@ -38,21 +38,71 @@ class JsonSchemaSection(Section[DialogTemplateContext]):
 
         if format_id == XML_DIALOG_FORMAT_ID:
             if context.uses_vibe:
-                head = "xml_vibe_head_top"
+                variant = "vibe"
             elif context.uses_full_sprite_ids:
-                head = "xml_full_sprite_head_top"
+                variant = "full"
             else:
-                head = "xml_head_top"
+                variant = "indexed"
+            effect_enabled = bool(context.use_effect and "effect" not in removed)
+            trans_enabled = bool(context.use_llm_translation and "translate" not in removed)
             generated = (
-                TextSection("head", text=translate(head)),
+                TextSection("head_intro", text=lambda ctx: ctx.translate("xml_schema_intro") + "\n"),
+                TextSection(
+                    "example_cot",
+                    enabled=context.use_cot,
+                    text=lambda ctx: ctx.translate("xml_example_cot") + "\n",
+                ),
+                TextSection(
+                    "example_scene",
+                    enabled=context.has_real_background,
+                    text=lambda ctx, v=variant: ctx.translate(f"xml_example_scene_{v}") + "\n",
+                ),
+                TextSection(
+                    "example_bgm",
+                    enabled=context.has_real_background,
+                    text=lambda ctx, v=variant: ctx.translate(f"xml_example_bgm_{v}") + "\n",
+                ),
+                TextSection(
+                    "example_say",
+                    text=lambda ctx, v=variant, eff=effect_enabled, tr=trans_enabled: ctx.translate(
+                        f"xml_example_say_{v}",
+                        effect_attr=ctx.translate("xml_example_effect_attr") if eff else "",
+                        trans_tag=(
+                            ctx.translate("xml_example_trans_tag", target_voice_name=ctx.target_voice_name)
+                            if tr
+                            else ""
+                        ),
+                    )
+                    + "\n",
+                ),
+                TextSection(
+                    "example_narr",
+                    enabled=context.use_narration,
+                    text=lambda ctx: ctx.translate("xml_example_narr") + "\n",
+                ),
+                TextSection(
+                    "example_stat",
+                    enabled=context.use_stat,
+                    text=lambda ctx: ctx.translate("xml_example_stat") + "\n",
+                ),
+                TextSection(
+                    "example_cg",
+                    enabled=context.use_cg,
+                    text=lambda ctx: ctx.translate("xml_example_cg") + "\n",
+                ),
+                TextSection(
+                    "example_choice",
+                    enabled=context.use_choice,
+                    text=lambda ctx: ctx.translate("xml_example_choice") + "\n",
+                ),
                 TextSection(
                     "effect",
-                    enabled=context.use_effect and "effect" not in removed,
+                    enabled=effect_enabled,
                     text=lambda ctx: ctx.translate("xml_line_effect") + "\n",
                 ),
                 TextSection(
                     "translation",
-                    enabled=context.use_llm_translation and "translate" not in removed,
+                    enabled=trans_enabled,
                     text=lambda ctx: ctx.translate(
                         "xml_line_trans",
                         target_voice_name=ctx.target_voice_name,
@@ -61,9 +111,14 @@ class JsonSchemaSection(Section[DialogTemplateContext]):
                 ),
                 TextSection(
                     "stage_effects",
-                    text=lambda ctx: ctx.translate("xml_stage_effects") + "\n",
+                    text=lambda ctx: ctx.translate(
+                        "xml_stage_effects"
+                        if ctx.has_real_background
+                        else "xml_stage_effects_motion_only"
+                    )
+                    + "\n",
                 ),
-                TextSection("foot", text=translate("xml_foot") + "\n"),
+                TextSection("foot", text=lambda ctx: ctx.translate("xml_foot") + "\n"),
             )
             return *generated, *self.children
 

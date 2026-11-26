@@ -160,36 +160,27 @@ field_spec_optional: |
 field_aliases: ' 兼容别名：{aliases}。'
 field_omitted: |
   - {name}：请勿在输出中包含该字段。
-xml_head_top: |
-  每次输出时，必须严格使用 XML/HTML 舞台标签序列，顺序编写以下标签：
-  <cot><摘要>...</摘要><动机>...</动机><剧情走向>...</剧情走向></cot>
-  <scene sprite="两位数场景编号" transition="可选切场效果" />
-  <bgm sprite="两位数BGM编号" />
-  <say char="角色名" sprite="两位数字立绘ID" motion="可选动作特效" effect="可选特效">台词正文</say>
-  <narr>旁白与环境描写</narr>
-  <stat>heart|生命|72|100</stat>
-  <choice>选项一 / 选项二 / 选项三</choice>
-xml_full_sprite_head_top: |
-  每次输出时，必须严格使用 XML/HTML 舞台标签序列，顺序编写以下标签：
-  <cot><摘要>...</摘要><动机>...</动机><剧情走向>...</剧情走向></cot>
-  <scene sprite="完整场景编号" transition="可选切场效果" />
-  <bgm sprite="完整BGM编号" />
-  <say char="角色名" sprite="完整立绘ID（无需换图填 -1）" motion="可选动作特效" effect="可选特效">台词正文</say>
-  <narr>旁白与环境描写</narr>
-  <stat>heart|生命|72|100</stat>
-  <choice>选项一 / 选项二 / 选项三</choice>
-xml_vibe_head_top: |
-  每次输出时，必须严格使用 XML/HTML 舞台标签序列，顺序编写以下标签：
-  <cot><摘要>...</摘要><动机>...</动机><剧情走向>...</剧情走向></cot>
-  <scene vibe="场景与氛围短语" transition="可选切场效果" />
-  <bgm vibe="音乐情绪与节奏短语" />
-  <say char="角色名" vibe="角色神态与动作短语" motion="可选动作特效" effect="可选特效">台词正文</say>
-  <narr>旁白与环境描写</narr>
-  <stat>heart|生命|72|100</stat>
-  <choice>选项一 / 选项二 / 选项三</choice>
+xml_schema_intro: '每次输出时，必须严格使用 XML/HTML 舞台标签序列，顺序编写以下允许使用的标签：'
+xml_example_cot: '<cot><摘要>...</摘要><动机>...</动机><剧情走向>...</剧情走向></cot>'
+xml_example_scene_indexed: '<scene sprite="两位数场景编号" transition="可选切场效果" />'
+xml_example_scene_full: '<scene sprite="完整场景编号" transition="可选切场效果" />'
+xml_example_scene_vibe: '<scene vibe="场景与氛围短语" transition="可选切场效果" />'
+xml_example_bgm_indexed: '<bgm sprite="两位数BGM编号" />'
+xml_example_bgm_full: '<bgm sprite="完整BGM编号" />'
+xml_example_bgm_vibe: '<bgm vibe="音乐情绪与节奏短语" />'
+xml_example_effect_attr: ' effect="可选特效"'
+xml_example_trans_tag: '<tr>该句台词的{target_voice_name}译文</tr>'
+xml_example_say_indexed: '<say char="角色名" sprite="两位数字立绘ID" motion="可选动作特效"{effect_attr}>台词正文{trans_tag}</say>'
+xml_example_say_full: '<say char="角色名" sprite="完整立绘ID（无需换图填 -1）" motion="可选动作特效"{effect_attr}>台词正文{trans_tag}</say>'
+xml_example_say_vibe: '<say char="角色名" vibe="角色神态与动作短语" motion="可选动作特效"{effect_attr}>台词正文{trans_tag}</say>'
+xml_example_narr: '<narr>旁白与环境描写</narr>'
+xml_example_stat: '<stat>heart|生命|72|100</stat>'
+xml_example_cg: '<cg>highres, masterpiece, 8k, 场景或角色立绘画面描述</cg>'
+xml_example_choice: '<choice>选项一 / 选项二 / 选项三</choice>'
 xml_line_effect: '可选特效属性：effect="标签"（填写运行时特效目录中的标签或别名，如音效、环境 ambient:<标签> 等）；角色明确离场时可用 <leave char="角色名" /> 或在最后一句 <say> 上加 effect="LEAVE"。'
 xml_line_trans: '双语翻译标签：在每句 <say>...</say> 内附上 <tr>该句台词的{target_voice_name}译文</tr>（只翻译对白内容，不翻译动作提示）。'
 xml_stage_effects: '可选舞台表现属性：<scene> 可加 transition="fade|fade_black|fade_white|slide_left|slide_right|zoom|cut" 控制切场过渡；<say> 可加 motion="shake|tremble|jump|bounce|nod|tilt|flash|sink|lean_in" 表达立绘动态。'
+xml_stage_effects_motion_only: '可选舞台表现属性：<say> 可加 motion="shake|tremble|jump|bounce|nod|tilt|flash|sink|lean_in" 表达立绘动态。'
 xml_foot: '请直接输出上述 XML/HTML 舞台标签流；不要输出 JSON，不要使用 Markdown 代码块（如 ```xml）。'
 xml_player_speech_contract: '朗读主控输入时，在头像标签前添加一个 <say> 标签：<say char="{name}" {speech_media}>用户本轮实际说出的原文<tr>该原文的{target_voice_name}译文</tr></say>。正文只能逐字复述用户实际说出的话，去掉括号、方括号、星号中的动作与明确标出的内心活动，不得补写或改写。'
 xml_player_ai_control: '
@@ -215,7 +206,8 @@ xml_player_control: '
 
   '
 xml_r_format: '格式严格：输出内容必须仅由上述 XML/HTML 舞台标签组成，禁止输出 JSON、Markdown 代码块或标签外解释；属性值含引号时请使用单引号或 &quot;，正文如需表达 < 可直接写（勿提前写出闭合标签）。'
-xml_r_cname: '角色与标签规范：<say char="..."> 的 char 只能是以下角色之一：{names} 以及其他可能登场的人物；系统段落请使用对应的专用标签：{cot_part}{fixed_roles}{opt_scene}{opt_bgm}{opt_cg}。'
+xml_r_cname: '角色与标签规范：<say char="..."> 的 char 只能是以下角色之一：{names} 以及其他可能登场的人物；系统段落请使用对应的专用标签：{xml_tags}。'
+xml_r_cname_say_only: '角色与标签规范：<say char="..."> 的 char 只能是以下角色之一：{names} 以及其他可能登场的人物。'
 xml_r_scene: '场景切换（{scn}）：使用 <scene sprite="场景编号" /> 切换背景，可在需要戏剧过渡时附带可选 transition 属性。'
 xml_r_scene_vibe: '场景切换（{scn}）：使用 <scene vibe="目标地点、时间、天气与氛围" /> 切换背景，可附带可选 transition 属性。'
 xml_r_bgm: 'BGM 切换（{bgm_t}）：使用 <bgm sprite="BGM编号" /> 切换背景音乐，根据氛围适时调整，勿过于频繁。'
@@ -233,7 +225,7 @@ xml_r_cot: '思维链：正式舞台输出前先输出 1 个 <cot> 标签（对�
 xml_r_scene_transition: '切场效果（可选）：切换 <scene> 时可加 transition="..."，仅限以下值之一：fade（柔和淡入淡出）、fade_black（黑场渐变转场）、fade_white（白屏闪白转场）、slide_left（向左滑动切场）、slide_right（向右滑动切场）、zoom（推镜放大转场）、cut（瞬间硬切）。普通微调无需每轮滥用。'
 xml_r_character_motion: '人物动效（可选）：角色受惊、颤抖、跳跃、点头、受击等强烈情绪或肢体瞬间，可在 <say> 上加 motion="..."，仅限以下值之一：shake（剧烈震动/冲击）、tremble（持续轻颤/发抖）、jump（惊跳起）、bounce（轻快弹跳）、nod（点头）、tilt（歪头倾身）、flash（受惊闪烁）、sink（情绪低落沉下）、lean_in（压近前倾）。普通平稳对话省略该属性。'
 closing_xml_reminder: |
-  必须严格使用规定格式的 XML/HTML 舞台标签（<say>、<narr>、<scene> 等）回复，禁止输出 JSON 或 Markdown 代码块。
+  必须严格使用上文规定的 XML/HTML 舞台标签（<say> 等）回复，禁止输出 JSON 或 Markdown 代码块。
 closing_xml_tool_protocol: 工具协议：需要调用工具时，必须通过模型的真实 function/tool 调用接口执行；上述 XML/HTML 舞台标签仅约束面向用户的最终回复，不替代工具调用协议。禁止在台词、旁白或标签正文中假装调用工具、伪造工具回执或编造查询结果。未收到工具真实成功回执前，不得声称操作已完成或结果已获取。
 xml_tools_intro: 在遵守上文 XML/HTML 舞台标签输出格式的前提下，可在适当时机调用工具获取信息或执行操作；调用方式以当前 LLM 提供商的工具协议为准。
 custom_r_format: '格式严格：必须严格遵循上文说明的输出格式要求，禁止使用 Markdown 代码块包裹回复，也不要在格式外添加解释说明。'

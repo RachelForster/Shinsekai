@@ -92,22 +92,42 @@ def build_requirement_sections(
     arguments = _requirement_arguments(context)
     format_id = str(context.output_format_id or DEFAULT_DIALOG_FORMAT_ID).strip().lower()
     if format_id == XML_DIALOG_FORMAT_ID:
+        xml_system_tags = tuple(
+            tag
+            for enabled, tag in (
+                (context.use_cot, "<cot>"),
+                (context.has_real_background, "<scene>"),
+                (context.has_real_background, "<bgm>"),
+                (context.use_narration, "<narr>"),
+                (context.use_stat, "<stat>"),
+                (context.use_cg, "<cg>"),
+                (context.use_choice, "<choice>"),
+            )
+            if enabled
+        )
+        arguments["r_cname"] = (
+            {
+                "names": context.names,
+                "xml_tags": context.translate("name_sep").join(xml_system_tags),
+            }
+            if xml_system_tags
+            else {"names": context.names}
+        )
         definitions: tuple[tuple[str, int, bool, str | None], ...] = (
             ("r_cot", 5, context.use_cot, "xml_r_cot"),
             ("r_format", 10, True, "xml_r_format"),
             ("r_user_display_name_tool", 15, True, None),
-            ("r_cname", 20, True, "xml_r_cname"),
+            (
+                "r_cname",
+                20,
+                True,
+                "xml_r_cname" if xml_system_tags else "xml_r_cname_say_only",
+            ),
             (
                 "r_sprite", 30, not context.uses_vibe,
                 "r_full_sprite" if context.uses_full_sprite_ids else None,
             ),
             ("r_vibe", 30, context.uses_vibe, None),
-            (
-                "r_non_sprite",
-                40,
-                True,
-                "r_non_vibe" if context.uses_vibe else None,
-            ),
             (
                 "r_scene",
                 50,
