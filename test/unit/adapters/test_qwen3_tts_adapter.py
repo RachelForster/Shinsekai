@@ -226,11 +226,14 @@ def test_stop_server_terminates_child_process(monkeypatch):
             events.append("kill")
 
     adapter = Qwen3TTSLlamaAdapter(tts_server_url=DEFAULT_QWEN3_TTS_URL)
+    assert adapter.owns_server_process is False
     adapter._server_process = FakeProc()
+    assert adapter.owns_server_process is True
     adapter.stop_server()
 
     assert events == ["terminate", ("wait", 5)]
     assert adapter._server_process is None
+    assert adapter.owns_server_process is False
 
 
 def test_normalize_lang_and_schema_labels():

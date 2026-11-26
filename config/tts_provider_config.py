@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
+import shutil
 from urllib.parse import urlparse
 
 LEGACY_DEFAULT_TTS_SERVER_URL = "http://127.0.0.1:9880"
@@ -116,6 +118,49 @@ def _installed_tts_bundle_root_for_key(
     return None
 
 
+def _has_qwen3_tts_weights(directory: Path) -> bool:
+    try:
+        if not directory.is_dir():
+            return False
+        ggufs = [p for p in directory.glob("*.gguf") if p.is_file() and p.stat().st_size > 0]
+    except OSError:
+        return False
+    return any("mmproj" not in p.name.lower() for p in ggufs) and any(
+        "mmproj" in p.name.lower() for p in ggufs
+    )
+
+
+def _has_llama_server_binary(*candidate_dirs: Path) -> bool:
+    exe_name = "llama-server.exe" if os.name == "nt" else "llama-server"
+    for directory in candidate_dirs:
+        try:
+            if (directory / "llama.cpp" / exe_name).is_file() or (directory / exe_name).is_file():
+                return True
+        except OSError:
+            continue
+    return bool(shutil.which(exe_name) or shutil.which("llama-server"))
+
+
+def _installed_qwen3_tts_bundle_path(project_root: str | Path | None = None) -> str:
+    base_root = Path(project_root) if project_root else Path(".")
+    weight_dirs = (
+        base_root / "data" / "models" / "qwen3-tts-gguf",
+        base_root / "data" / "cache" / "qwen3-tts-gguf",
+    )
+    binary_dirs = (
+        *weight_dirs,
+        base_root / "data" / "models" / "perception-gguf",
+        base_root / "data" / "cache" / "perception-gguf",
+    )
+    for directory in weight_dirs:
+        if _has_qwen3_tts_weights(directory) and _has_llama_server_binary(*binary_dirs):
+            try:
+                return directory.resolve().as_posix()
+            except OSError:
+                return ""
+    return ""
+
+
 def installed_tts_bundle_paths(project_root: str | Path | None = None) -> dict[str, str]:
     paths: dict[str, str] = {}
     for provider, keys in TTS_PROVIDER_BUNDLE_KEYS.items():
@@ -127,6 +172,9 @@ def installed_tts_bundle_paths(project_root: str | Path | None = None) -> dict[s
         if roots:
             newest = max(roots, key=lambda root: root.stat().st_mtime)
             paths[provider] = newest.as_posix()
+    qwen3_path = _installed_qwen3_tts_bundle_path(project_root)
+    if qwen3_path:
+        paths["qwen3-tts-gguf"] = qwen3_path
     return paths
 
 

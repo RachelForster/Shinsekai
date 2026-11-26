@@ -22,6 +22,7 @@ import { getLlmProviderPreset } from "./adapters/llm/presets";
 import { parseStandaloneDialogOutput } from "./dialogOutputParser";
 import { buildStandaloneDialogSystemPrompt } from "./dialogPromptBuilder";
 import type { StandaloneHttpClient } from "./httpClient";
+import { resolveCharacterVoiceLanguage } from "./voiceLanguage";
 
 export interface ChatTurnDriverContext {
   getApiConfig: () => ApiConfig;
@@ -406,6 +407,7 @@ export class StandaloneChatTurnDriver {
     speech: string,
     apiConfig: ApiConfig,
     signal: AbortSignal,
+    configuredVoiceLanguage?: string,
   ): Promise<string | null> {
     const ttsProvider = (apiConfig.tts_provider || "none").trim();
     const adapter = resolveTtsAdapter(ttsProvider);
@@ -418,6 +420,15 @@ export class StandaloneChatTurnDriver {
       referAudioBlob = await getVfsBlobAsync(character.refer_audio_path);
     }
 
+    const rawVoiceLanguage =
+      configuredVoiceLanguage ?? this.ctx.getChat().voiceLanguage ?? this.ctx.getSystemConfig?.()?.voice_language ?? "";
+    const voiceLanguage = resolveCharacterVoiceLanguage(rawVoiceLanguage, {
+      promptLang: character?.prompt_lang,
+      promptText: character?.prompt_text,
+      speechText: speech,
+      fallback: "zh",
+    });
+
     try {
       const uiLanguage = this.ctx.getSystemConfig?.()?.ui_language;
       const blob = await adapter.synthesize(
@@ -425,6 +436,7 @@ export class StandaloneChatTurnDriver {
           text: speech,
           characterName:
             character?.name ?? translateRuntimeMessage("plat.preview.char.defaultName", undefined, uiLanguage),
+          voiceLanguage,
           speed: character?.speech_speed ?? apiConfig.tts_speed ?? 1.0,
           volume: character?.speech_volume ?? 1.0,
           referAudioBlob,
@@ -641,7 +653,13 @@ export class StandaloneChatTurnDriver {
         const displayText = seg.translate ? `${seg.speech}\n${seg.translate}` : seg.speech;
         const ttsUrl = seg.isNarration
           ? null
-          : await this.synthesizeTtsUrl(targetChar, seg.speech, apiConfig, abort.signal);
+          : await this.synthesizeTtsUrl(
+              targetChar,
+              seg.speech,
+              apiConfig,
+              abort.signal,
+              latestSession.payload.voiceLanguage ?? this.ctx.getSystemConfig?.()?.voice_language,
+            );
 
         if (abort.signal.aborted) return;
 

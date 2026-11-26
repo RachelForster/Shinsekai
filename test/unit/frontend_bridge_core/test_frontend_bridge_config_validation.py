@@ -373,3 +373,30 @@ def test_api_config_defaults_perception_gguf_and_ocr_enabled():
     assert portable_raw["perception_ocr_enabled"] is True
 
 
+def test_installed_tts_bundle_paths_verifies_qwen3_tts_gguf_assets(tmp_path, monkeypatch):
+    import os
+    from config.tts_provider_config import default_tts_work_path, installed_tts_bundle_paths
+
+    monkeypatch.setattr("config.tts_provider_config.shutil.which", lambda _name: None)
+    assert "qwen3-tts-gguf" not in installed_tts_bundle_paths(tmp_path)
+
+    qwen_dir = tmp_path / "data" / "models" / "qwen3-tts-gguf"
+    qwen_dir.mkdir(parents=True)
+    (qwen_dir / "Qwen3-TTS-12Hz-0.6B-Base.Q8_0.gguf").write_bytes(b"weights")
+    # Missing mmproj and llama-server -> not ready
+    assert "qwen3-tts-gguf" not in installed_tts_bundle_paths(tmp_path)
+
+    (qwen_dir / "Qwen3-TTS-12Hz-0.6B-Base.mmproj-f16.gguf").write_bytes(b"mmproj")
+    # Still missing llama-server -> not ready
+    assert "qwen3-tts-gguf" not in installed_tts_bundle_paths(tmp_path)
+
+    exe_name = "llama-server.exe" if os.name == "nt" else "llama-server"
+    llama_dir = tmp_path / "data" / "models" / "perception-gguf" / "llama.cpp"
+    llama_dir.mkdir(parents=True)
+    (llama_dir / exe_name).write_bytes(b"llama-bin")
+
+    paths = installed_tts_bundle_paths(tmp_path)
+    assert paths["qwen3-tts-gguf"] == qwen_dir.resolve().as_posix()
+    assert default_tts_work_path("qwen3-tts-gguf", "", tmp_path) == ""
+
+

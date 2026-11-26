@@ -209,10 +209,17 @@ class TemplateGenerator:
         has_background = bool(bg_name) and not is_transparent_background(bg_name)
         resolved_locale = resolve_template_locale(config_manager)
         resolved_format = resolve_dialog_format(output_format).format_id
+        voice_characters = list(characters)
+        if (
+            player is not None
+            and read_player_speech
+            and not any(name == player_character for name, _character in voice_characters)
+        ):
+            voice_characters.append((player_character, player))
         context = DialogTemplateContext(
             characters=tuple(characters),
             translate=_T,
-            target_voice_name=_target_voice_display_name(characters=characters),
+            target_voice_name=_target_voice_display_name(characters=voice_characters),
             json_reminder=format_reminder(resolved_format),
             locale=resolved_locale,
             player_name=player_character if player is not None else "",
@@ -240,7 +247,7 @@ class TemplateGenerator:
             output_contract_patches=tuple(self._get_output_contract_patches()),
             use_effect=use_effect,
             use_cg=use_cg,
-            use_llm_translation=bool(use_llm_translation and not _ui_voice_same_lang(characters=characters)),
+            use_llm_translation=bool(use_llm_translation and not _ui_voice_same_lang(characters=voice_characters)),
             use_cot=use_cot,
             use_choice=use_choice,
             use_narration=use_narration,

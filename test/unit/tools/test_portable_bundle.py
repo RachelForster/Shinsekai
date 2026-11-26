@@ -22,7 +22,7 @@ from core.agent.pi_runtime import PI_ARCHIVES, PI_VERSION
 from core.media import toonout_assets
 from core.model_assets.service import find_cached_huggingface_snapshot
 from scripts.build_portable_bundle import audit_portable_bundle, build_portable_bundle
-from scripts.portable.targets import QWEN3_TTS_GGUF_FILES, infer_host_target, resolve_target
+from scripts.portable.targets import QWEN3_TTS_GGUF_FILES, resolve_target
 
 
 def _seed_fake_hf_sherpa_asr(root: Path) -> None:
@@ -157,7 +157,7 @@ def test_build_portable_bundle_sanitizes_and_organizes_models(
         (qwen3_dir / name).write_bytes(b"qwen3-gguf")
 
     # Seed verified Pi Agent runtime + decoy transient files that must not be bundled
-    target_cfg = resolve_target(infer_host_target())
+    target_cfg = resolve_target("windows-x64")
     pi_key = target_cfg.pi_platform_key
     pi_root = data_src / "data" / "agent" / "runtimes" / "pi"
     pi_inst = pi_root / f"{PI_VERSION}-{pi_key}"

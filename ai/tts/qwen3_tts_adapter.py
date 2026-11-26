@@ -288,6 +288,10 @@ class Qwen3TTSLlamaAdapter(TTSAdapter):
     def requires_ref_audio(self) -> bool:
         return not bool(self._override_voice or self.voice)
 
+    @property
+    def owns_server_process(self) -> bool:
+        return self._server_process is not None
+
     def _is_local_server_url(self) -> bool:
         return _is_local_server_url(self.tts_server_url)
 

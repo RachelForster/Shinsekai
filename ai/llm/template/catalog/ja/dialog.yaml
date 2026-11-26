@@ -20,6 +20,7 @@ voice_target_ja: 日本語
 voice_target_en: 英語
 voice_target_zh: 中国語
 voice_target_yue: 広東語
+voice_target_ko: 韓国語
 voice_target_auto: 各キャラクターの参照音声の言語
 voice_target_auto_map: "{base}（{mapping}）"
 json_line_trans: '        "translate": "セリフの{target_voice_name}訳（システムの音声目標言語に合わせる）",

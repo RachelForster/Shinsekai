@@ -1,9 +1,15 @@
-import { LANG_ALIAS_AUTO_TOKENS, LANG_ALIAS_CHINESE_ZH, LANG_ALIAS_ENGLISH_ZH } from "../../../constants";
+import {
+  LANG_ALIAS_AUTO_TOKENS,
+  LANG_ALIAS_CHINESE_ZH,
+  LANG_ALIAS_ENGLISH_ZH,
+  LANG_ALIAS_KOREAN_TOKENS,
+} from "../../../constants";
 import type { Character } from "../../slices/characterTypes";
 
-export type VoiceTargetKey = "ja" | "en" | "zh" | "yue";
+export type VoiceTargetKey = "ja" | "en" | "zh" | "yue" | "ko";
 
 const AUTO_TOKENS = new Set<string>(LANG_ALIAS_AUTO_TOKENS);
+const KOREAN_TOKENS = new Set<string>(["ko", "ko_kr", "korean", "all_ko", ...LANG_ALIAS_KOREAN_TOKENS]);
 
 export function normalizeVoiceLanguageCode(raw?: string | null): string {
   const clean = String(raw ?? "").trim();
@@ -19,6 +25,9 @@ export function normalizeVoiceLanguageCode(raw?: string | null): string {
     low === "all_yue"
   ) {
     return "yue";
+  }
+  if (KOREAN_TOKENS.has(low)) {
+    return "ko";
   }
   if (low.startsWith("en") || low === "english" || low === "all_en" || low === LANG_ALIAS_ENGLISH_ZH) {
     return "en";
@@ -44,6 +53,7 @@ export function inferLanguageFromText(text?: string | null): VoiceTargetKey | ""
   if (!sample) return "";
   if (/[\u3040-\u30ff]/.test(sample)) return "ja";
   if (/[\u4e00-\u9fff]/.test(sample)) return "zh";
+  if (/[\uac00-\ud7af]/.test(sample)) return "ko";
   if (/[A-Za-z]/.test(sample)) return "en";
   return "";
 }
@@ -51,10 +61,49 @@ export function inferLanguageFromText(text?: string | null): VoiceTargetKey | ""
 export function targetVoiceKey(code?: string | null): VoiceTargetKey | "auto" {
   const normalized = normalizeVoiceLanguageCode(code);
   if (normalized === "auto") return "auto";
-  if (normalized === "yue" || normalized === "en" || normalized === "zh" || normalized === "ja") {
+  if (
+    normalized === "yue" ||
+    normalized === "en" ||
+    normalized === "zh" ||
+    normalized === "ja" ||
+    normalized === "ko"
+  ) {
     return normalized;
   }
   return "ja";
+}
+
+export function resolveCharacterVoiceLanguage(
+  voiceLanguage: string | null | undefined,
+  options: {
+    promptLang?: string | null;
+    promptText?: string | null;
+    speechText?: string | null;
+    fallback?: string;
+  } = {},
+): string {
+  const fallback = options.fallback ?? "ja";
+  const raw = String(voiceLanguage ?? "").trim();
+  if (normalizeVoiceLanguageCode(raw) !== "auto") {
+    return raw || fallback;
+  }
+
+  const refLang = normalizeVoiceLanguageCode(options.promptLang);
+  if (refLang && refLang !== "auto") {
+    return refLang;
+  }
+
+  const fromPrompt = inferLanguageFromText(options.promptText);
+  if (fromPrompt) {
+    return fromPrompt;
+  }
+
+  const fromSpeech = inferLanguageFromText(options.speechText);
+  if (fromSpeech) {
+    return fromSpeech;
+  }
+
+  return fallback;
 }
 
 export function resolveCastVoiceTarget(

@@ -199,13 +199,16 @@ describe("ApiSetupPanel TTS bundle flow", () => {
     });
   });
 
-  it("collapses the voice download section with a likeness tip when Qwen3-TTS GGUF is already enabled", async () => {
-    mocks.getAppConfig.mockResolvedValue(
-      appConfigForOnboarding({
+  it("collapses the voice download section with a likeness tip when Qwen3-TTS GGUF is already enabled and verified", async () => {
+    mocks.getAppConfig.mockResolvedValue({
+      ...appConfigForOnboarding({
         tts_provider: "qwen3-tts-gguf",
         gpt_sovits_url: "http://127.0.0.1:9882",
       }),
-    );
+      tts_bundle_installed_paths: {
+        "qwen3-tts-gguf": "/project/data/models/qwen3-tts-gguf",
+      },
+    });
 
     renderPanel();
     expect(await screen.findByLabelText("基础地址")).toBeInTheDocument();
@@ -218,5 +221,24 @@ describe("ApiSetupPanel TTS bundle flow", () => {
       screen.getByText(/如果想让语音听起来更像角色原声，请一键下载 Genie \/ GPT-SoVITS 语音包/),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "一键下载语音包" })).toBeEnabled();
+  });
+
+  it("keeps the voice download section open when Qwen3-TTS GGUF is selected without verified local assets", async () => {
+    mocks.getAppConfig.mockResolvedValue(
+      appConfigForOnboarding({
+        tts_provider: "qwen3-tts-gguf",
+        gpt_sovits_url: "http://127.0.0.1:9882",
+      }),
+    );
+
+    renderPanel();
+    expect(await screen.findByLabelText("基础地址")).toBeInTheDocument();
+
+    expect(screen.queryByText(/已内置开箱即用的 Qwen3-TTS 语音/)).not.toBeInTheDocument();
+    const downloadButton = screen.getByRole("button", { name: "一键下载语音包" });
+    const detailsEl = downloadButton.closest("details");
+    expect(detailsEl).not.toBeNull();
+    expect(detailsEl?.open).toBe(true);
+    expect(downloadButton).toBeEnabled();
   });
 });

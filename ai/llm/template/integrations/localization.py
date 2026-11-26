@@ -93,11 +93,11 @@ def is_transparent_background(name: str | None) -> bool:
 def _target_voice_key(code: str | None) -> str:
     """将 api.yaml 中的 voice_language 归一成 template_gen.voice_target_* 文案键。"""
     c = (str(code).strip() if code is not None else "") or "ja"
-    if normalize_voice_language(c) == VOICE_LANG_AUTO:
+    normalized = normalize_voice_language(c)
+    if normalized == VOICE_LANG_AUTO:
         return VOICE_LANG_AUTO
-    low = c.lower()
-    if low in ("yue", "yue_hk", "cantonese", "cht", "zh_hk"):
-        return "yue"
+    if normalized in ("yue", "ko", "en", "zh", "ja"):
+        return normalized
     n = normalize_lang(c)
     if n == "en":
         return "en"

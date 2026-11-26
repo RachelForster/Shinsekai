@@ -70,7 +70,9 @@ export function ApiSetupPanel({ onSaved }: ApiSetupPanelProps) {
   const apiKey = activeProviderValue(draft?.llm_api_key, provider);
   const model = activeProviderValue(draft?.llm_model, provider);
   const baseUrl = draft?.llm_base_url ?? "";
-  const isBundledQwen3TtsReady = normalizeTtsProvider(draft?.tts_provider ?? "") === "qwen3-tts-gguf";
+  const hasVerifiedBundledQwen3Tts = Boolean(configQuery.data?.tts_bundle_installed_paths?.["qwen3-tts-gguf"]?.trim());
+  const isBundledQwen3TtsReady =
+    normalizeTtsProvider(draft?.tts_provider ?? "") === "qwen3-tts-gguf" && hasVerifiedBundledQwen3Tts;
   const canSave = Boolean(draft && provider && baseUrl.trim() && apiKey.trim() && model.trim());
   const providerChoices = useMemo(() => {
     if (providerOptions.length) {
