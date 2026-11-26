@@ -48,9 +48,20 @@ from core.sprite.transitions import valid_transitions
 from tools import file_util
 
 
-RESERVED_CHARACTER_FIELDS = frozenset({"id", "display_name", "is_builtin", "pinned", "undeletable"})
+RESERVED_CHARACTER_FIELDS = frozenset({"id", "display_name", "is_builtin", "pinned", "undeletable", "avatar_state_history"})
 RESERVED_BACKGROUND_FIELDS = frozenset({"id"})
 RESERVED_EFFECT_FIELDS = frozenset({"id"})
+
+
+def test_character_package_omits_local_history_grants():
+    from core.packaging.character_package import _character_to_export_dict
+
+    character = Character(
+        name="Alice", color="#ffffff", sprite_prefix="alice",
+        avatar_state_history={"local/model.pmx": ["retired.json"]},
+    )
+    assert "avatar_state_history" not in _character_to_export_dict(character)
+    assert character.avatar_state_history == {"local/model.pmx": ["retired.json"]}
 
 
 @pytest.fixture(autouse=True)

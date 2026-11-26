@@ -40,7 +40,7 @@ from core.sprite.transitions import field as transition_field, valid_transitions
 from sdk.path_utils import safe_existing_file_path
 
 RESERVED_CHARACTER_PACKAGE_FIELDS = frozenset(
-    {"id", "display_name", "is_builtin", "pinned", "undeletable"}
+    {"id", "display_name", "is_builtin", "pinned", "undeletable", "avatar_state_history"}
 )
 
 
