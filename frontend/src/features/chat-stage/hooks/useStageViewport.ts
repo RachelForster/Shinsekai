@@ -44,6 +44,7 @@ export function useStageViewport(stageRef: RefObject<HTMLElement | null>): Stage
 
   useEffect(() => {
     let disposed = false;
+    let desktopExpandedRequestId = 0;
 
     const commit = () => {
       if (disposed) {
@@ -62,8 +63,9 @@ export function useStageViewport(stageRef: RefObject<HTMLElement | null>): Stage
       if (!isTauriDesktop()) {
         return;
       }
+      const requestId = ++desktopExpandedRequestId;
       void isDesktopWindowExpanded().then((expanded) => {
-        if (disposed || desktopExpandedRef.current === expanded) {
+        if (disposed || requestId !== desktopExpandedRequestId || desktopExpandedRef.current === expanded) {
           return;
         }
         desktopExpandedRef.current = expanded;

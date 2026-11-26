@@ -96,6 +96,14 @@ function setWindowSize(width: number, height: number) {
   Object.defineProperty(window, "innerHeight", { configurable: true, writable: true, value: height });
 }
 
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
 function makeSnapshot(overrides: Partial<ChatSnapshot> = {}): ChatSnapshot {
   return {
     backgroundPath: "asset://school.png",
@@ -212,5 +220,82 @@ describe("ChatStagePage fullscreen visual-novel dialog adaptation", () => {
     await waitFor(() => expect(stage.dataset.miniAvatar).toBe("true"));
     expect(stage.dataset.viewportVn).toBe("false");
     expect(stage.style.getPropertyValue("--chat-dialog-runtime-width")).toBe("1040px");
+  });
+
+  it("ignores stale desktop expanded query results that resolve out of order after restoring to 1280x720", async () => {
+    setWindowSize(1280, 720);
+    desktopApiMocks.isTauriDesktop.mockReturnValue(true);
+
+    const initialQuery = createDeferred<boolean>();
+    const staleMaximizeQuery = createDeferred<boolean>();
+    const restoreQuery = createDeferred<boolean>();
+    const earlierPendingQuery = createDeferred<boolean>();
+    const latestRestoreQuery = createDeferred<boolean>();
+
+    windowViewportMocks.isDesktopWindowExpanded
+      .mockReturnValueOnce(initialQuery.promise)
+      .mockReturnValueOnce(staleMaximizeQuery.promise)
+      .mockReturnValueOnce(restoreQuery.promise)
+      .mockReturnValueOnce(earlierPendingQuery.promise)
+      .mockReturnValueOnce(latestRestoreQuery.promise);
+
+    renderStage();
+    const stage = await waitFor(() => document.querySelector<HTMLElement>(".chat-stage")!);
+    await waitFor(() => expect(windowViewportMocks.resizeListener).not.toBeNull());
+
+    await act(async () => {
+      initialQuery.resolve(true);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(stage.dataset.viewportVn).toBe("true"));
+    expect(stage.style.getPropertyValue("--chat-dialog-runtime-width")).toBe("1101px");
+
+    act(() => {
+      windowViewportMocks.resizeListener?.();
+    });
+    act(() => {
+      fireEvent(window, new Event("resize"));
+    });
+
+    await act(async () => {
+      restoreQuery.resolve(false);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(stage.dataset.viewportVn).toBe("false"));
+    expect(stage.style.getPropertyValue("--chat-dialog-runtime-width")).toBe("1040px");
+
+    await act(async () => {
+      staleMaximizeQuery.resolve(true);
+      await Promise.resolve();
+    });
+
+    expect(stage.dataset.viewportVn).toBe("false");
+    expect(stage.style.getPropertyValue("--chat-dialog-runtime-width")).toBe("1040px");
+
+    act(() => {
+      windowViewportMocks.resizeListener?.();
+    });
+    act(() => {
+      fireEvent(window, new Event("resize"));
+    });
+
+    await act(async () => {
+      earlierPendingQuery.resolve(true);
+      await Promise.resolve();
+    });
+
+    expect(stage.dataset.viewportVn).toBe("false");
+    expect(stage.style.getPropertyValue("--chat-dialog-runtime-width")).toBe("1040px");
+
+    await act(async () => {
+      latestRestoreQuery.resolve(false);
+      await Promise.resolve();
+    });
+
+    expect(stage.dataset.viewportVn).toBe("false");
+    expect(stage.style.getPropertyValue("--chat-dialog-runtime-width")).toBe("1040px");
+    expect(windowViewportMocks.isDesktopWindowExpanded).toHaveBeenCalledTimes(5);
   });
 });
