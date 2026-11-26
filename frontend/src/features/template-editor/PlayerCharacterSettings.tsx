@@ -8,7 +8,11 @@ import { VISUAL_MEDIA_EXTENSIONS } from "../../shared/assets/visualMedia";
 import { Portrait, applyPortraitCrop, resolveSpritePortraitCrop } from "../../shared/components/Portrait";
 import { PortraitCropDialog } from "../../shared/components/PortraitCropDialog";
 import { useI18n } from "../../shared/i18n";
-import { getCharacterDisplayName, SELF_PERSONA_NAME } from "../../shared/playerCharacterOptions";
+import {
+  getCharacterDisplayName,
+  isSelfPersonaCharacter,
+  SELF_PERSONA_SPRITE_PREFIX,
+} from "../../shared/playerCharacterOptions";
 import type { Character } from "../../shared/platform/types";
 import { AsyncButton, Button, Dialog, PathPickerDialog, Select, Switch } from "../../shared/ui";
 import "./PlayerCharacterSettings.css";
@@ -94,9 +98,9 @@ export function PlayerCharacterFields({
         throw new Error("No image selected");
       }
       const ensured =
-        character.name === SELF_PERSONA_NAME && !sprites.length
+        isSelfPersonaCharacter(character) && !sprites.length
           ? await saveCharacter(
-              { ...character, sprite_prefix: character.sprite_prefix || "__self__" },
+              { ...character, sprite_prefix: character.sprite_prefix || SELF_PERSONA_SPRITE_PREFIX },
               character.name,
             ).catch(() => character)
           : character;

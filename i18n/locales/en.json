@@ -388,6 +388,7 @@
       "prefix_taken_other": "Sprite directory \"{prefix}\" is already used by character \"{owner}\"!",
       "self_rename_forbidden": "The built-in Self character cannot be renamed!",
       "rename_to_self_forbidden": "Cannot rename another character to \"自设\" (Self)!",
+      "self_prefix_locked": "The built-in persona's sprite directory is locked to \"__self__\" and cannot be changed!",
       "builtin_rename_forbidden": "Built-in character \"{name}\" cannot be renamed!",
       "duplicate_name": "Character name \"{name}\" already exists!",
       "select_to_delete": "Please select a character to delete!",

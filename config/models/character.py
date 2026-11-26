@@ -13,6 +13,7 @@ from config.models.common import (
     SELF_PERSONA_ID,
     SELF_PERSONA_NAME,
     SELF_PERSONA_SPRITE_PREFIX,
+    is_self_persona_id,
     is_self_persona_name,
 )
 
@@ -24,8 +25,7 @@ def _coerce_path_str(value: Any) -> Any:
 
 
 def _normalize_entity_id(value: Any) -> str:
-    cleaned = str(value or "").strip()
-    return cleaned or uuid4().hex
+    return str(value or "").strip()
 
 
 class RelationNode(BaseModel):
@@ -274,14 +274,20 @@ class Character(BaseModel):
 
     @model_validator(mode="after")
     def _enforce_self_persona_invariants(self):
-        if is_self_persona_name(self.name):
+        explicit_id = "id" in self.model_fields_set and bool((self.id or "").strip())
+        is_self = (
+            is_self_persona_id(self.id)
+            or bool(self.is_builtin)
+            or (not explicit_id and is_self_persona_name(self.name))
+        )
+        if is_self:
             self.id = SELF_PERSONA_ID
             self.is_builtin = True
             self.pinned = True
             self.undeletable = True
             if not (self.sprite_prefix or "").strip():
                 self.sprite_prefix = SELF_PERSONA_SPRITE_PREFIX
-        elif not (self.id or "").strip() or self.id == SELF_PERSONA_ID:
+        elif not (self.id or "").strip():
             self.id = uuid4().hex
         return self
 

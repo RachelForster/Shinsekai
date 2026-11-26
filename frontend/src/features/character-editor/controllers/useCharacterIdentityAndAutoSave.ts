@@ -1,4 +1,4 @@
-import { useCallback, useMemo, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
+import { useCallback, useMemo, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import type { QueryClient } from "@tanstack/react-query";
 
 import { charactersQueryKey, saveCharacter } from "../../../entities/character/repository";
@@ -15,6 +15,12 @@ import {
   serializeCharacterNonIdentity,
   upsertCatalogCharacter,
 } from "../characterEditorUtils";
+import { previewCharacterRenameText, type CharacterRenameTextPreview } from "../characterRenameText";
+
+export interface RenameSyncedTextBaseline {
+  previousBrief: string;
+  previousSetting: string;
+}
 
 interface UseCharacterIdentityAndAutoSaveOptions {
   activeCharacterKeyRef: MutableRefObject<string>;
@@ -34,6 +40,7 @@ interface UseCharacterIdentityAndAutoSaveOptions {
       field: "name" | "sprite_prefix";
       originalName: string;
       sourceKey: string;
+      syncedText?: RenameSyncedTextBaseline;
     }) => void;
   };
   identityMutationEpochRef: MutableRefObject<number>;
@@ -131,7 +138,7 @@ export function useCharacterIdentityAndAutoSave({
       return t("character.validation.nameRequired");
     }
     const duplicate =
-      trimmed === SELF_PERSONA_NAME ||
+      (!lockedSelectedPersona && trimmed === SELF_PERSONA_NAME) ||
       data.some(
         (item) =>
           item !== selected &&
@@ -139,7 +146,7 @@ export function useCharacterIdentityAndAutoSave({
           item.name.trim().toLowerCase() === trimmed.toLowerCase(),
       );
     return duplicate ? t("identity.error.duplicateName", { name: trimmed }) : "";
-  }, [data, draft.name, nameDirty, nameError, selected, t]);
+  }, [data, draft.name, lockedSelectedPersona, nameDirty, nameError, selected, t]);
 
   const liveSpritePrefixError = useMemo(() => {
     if (!spritePrefixDirty || !selected) {
@@ -182,6 +189,19 @@ export function useCharacterIdentityAndAutoSave({
     );
   }, [data, queryClient, selected]);
 
+  const [pendingRenameText, setPendingRenameText] = useState<CharacterRenameTextPreview | null>(null);
+  const activePendingRenameText = useMemo(
+    () =>
+      pendingRenameText &&
+      selected &&
+      !inCreateMode &&
+      pendingRenameText.oldName === selected.name &&
+      pendingRenameText.newName === draft.name.trim()
+        ? pendingRenameText
+        : null,
+    [draft.name, inCreateMode, pendingRenameText, selected],
+  );
+
   const autoSave = useDebouncedAutoSave<{ character: Character; originalName: string }>({
     baselineKey: baselineAutoSaveKey,
     buildPayload: () => {
@@ -195,6 +215,7 @@ export function useCharacterIdentityAndAutoSave({
     enabled: Boolean(
       !inCreateMode &&
       isDraftSynced &&
+      !activePendingRenameText &&
       identitySavingField === null &&
       !identityMutation.isPending &&
       !savePending &&
@@ -238,74 +259,145 @@ export function useCharacterIdentityAndAutoSave({
   cancelAutoSaveRef.current = autoSave.cancel;
   discardAutoSaveRef.current = autoSave.discardPending;
 
-  const confirmIdentityField = useCallback(
-    (field: "name" | "sprite_prefix") => {
+  const validateIdentityCommit = useCallback(
+    (field: "name" | "sprite_prefix"): boolean => {
       if (
         !selected ||
-        lockedSelectedPersona ||
+        (field === "sprite_prefix" && lockedSelectedPersona) ||
         identitySavingField !== null ||
         identityMutation.isPending ||
         identityPendingRef.current ||
         aiActionPending ||
         pendingAiActionsRef.current > 0
       ) {
-        return;
+        return false;
       }
       const fieldError = field === "name" ? liveNameError : liveSpritePrefixError;
       if (fieldError) {
-        showToast({
-          kind: "error",
-          message: fieldError,
-          title: t("common.validationFailed"),
-        });
-        return;
+        showToast({ kind: "error", message: fieldError, title: t("common.validationFailed") });
+        return false;
       }
       const nonIdentityErrors = validateNonIdentityFields(draft);
       if (nonIdentityErrors.length) {
-        showToast({
-          kind: "error",
-          message: nonIdentityErrors.join("\n"),
-          title: t("common.validationFailed"),
-        });
-        return;
+        showToast({ kind: "error", message: nonIdentityErrors.join("\n"), title: t("common.validationFailed") });
+        return false;
       }
-      autoSave.discardPending();
-      const latestSelected = resolveLatestSelectedCharacter() ?? selected;
-      identityPendingRef.current = true;
-      identityMutationEpochRef.current += 1;
-      setIdentitySavingField(field);
-      identityMutation.mutate({
-        character: buildCommittedCharacterPayload(draft, currentPronunciationMap, latestSelected, {
-          name: field === "name" ? draft.name.trim() : latestSelected.name,
-          sprite_prefix: field === "sprite_prefix" ? draft.sprite_prefix.trim() : latestSelected.sprite_prefix,
-        }),
-        field,
-        originalName: latestSelected.name,
-        sourceKey: selectedCharacterKey,
-      });
+      return true;
     },
     [
       aiActionPending,
-      autoSave,
-      currentPronunciationMap,
       draft,
-      identityMutation,
-      identityMutationEpochRef,
+      identityMutation.isPending,
       identityPendingRef,
       identitySavingField,
       liveNameError,
       liveSpritePrefixError,
       lockedSelectedPersona,
       pendingAiActionsRef,
-      resolveLatestSelectedCharacter,
       selected,
-      selectedCharacterKey,
-      setIdentitySavingField,
       showToast,
       t,
       validateNonIdentityFields,
     ],
   );
+
+  const commitIdentityField = useCallback(
+    (
+      field: "name" | "sprite_prefix",
+      textOverride?: {
+        nextBrief: string;
+        nextSetting: string;
+        previousBrief: string;
+        previousSetting: string;
+      },
+    ) => {
+      if (!selected || !validateIdentityCommit(field)) {
+        return;
+      }
+      setPendingRenameText(null);
+      autoSave.discardPending();
+      const latestSelected = resolveLatestSelectedCharacter() ?? selected;
+      identityPendingRef.current = true;
+      identityMutationEpochRef.current += 1;
+      setIdentitySavingField(field);
+      const effectiveDraft = textOverride
+        ? { ...draft, character_brief: textOverride.nextBrief, character_setting: textOverride.nextSetting }
+        : draft;
+      const committed = buildCommittedCharacterPayload(effectiveDraft, currentPronunciationMap, latestSelected, {
+        name: field === "name" ? draft.name.trim() : latestSelected.name,
+        sprite_prefix: field === "sprite_prefix" ? draft.sprite_prefix.trim() : latestSelected.sprite_prefix,
+      });
+      identityMutation.mutate({
+        character: lockedSelectedPersona && field === "name" ? { ...committed, display_name: "" } : committed,
+        field,
+        originalName: latestSelected.name,
+        sourceKey: selectedCharacterKey,
+        ...(textOverride
+          ? {
+              syncedText: {
+                previousBrief: textOverride.previousBrief,
+                previousSetting: textOverride.previousSetting,
+              },
+            }
+          : {}),
+      });
+    },
+    [
+      autoSave,
+      currentPronunciationMap,
+      draft,
+      identityMutation,
+      identityMutationEpochRef,
+      identityPendingRef,
+      lockedSelectedPersona,
+      resolveLatestSelectedCharacter,
+      selected,
+      selectedCharacterKey,
+      setIdentitySavingField,
+      validateIdentityCommit,
+    ],
+  );
+
+  const confirmIdentityField = useCallback(
+    (field: "name" | "sprite_prefix") => {
+      if (!selected || !validateIdentityCommit(field)) {
+        return;
+      }
+      if (field === "name") {
+        const latestSelected = resolveLatestSelectedCharacter() ?? selected;
+        const preview = previewCharacterRenameText(draft, latestSelected.name, draft.name.trim());
+        if (preview.totalMatches > 0) {
+          setPendingRenameText(preview);
+          return;
+        }
+      }
+      commitIdentityField(field);
+    },
+    [commitIdentityField, draft, resolveLatestSelectedCharacter, selected, validateIdentityCommit],
+  );
+
+  const cancelPendingRenameText = useCallback(() => {
+    setPendingRenameText(null);
+  }, []);
+
+  const confirmRenameKeepText = useCallback(() => {
+    if (!activePendingRenameText) {
+      return;
+    }
+    commitIdentityField("name");
+  }, [activePendingRenameText, commitIdentityField]);
+
+  const confirmRenameReplaceText = useCallback(() => {
+    if (!activePendingRenameText) {
+      return;
+    }
+    commitIdentityField("name", {
+      nextBrief: activePendingRenameText.nextBrief,
+      nextSetting: activePendingRenameText.nextSetting,
+      previousBrief: draft.character_brief ?? "",
+      previousSetting: draft.character_setting,
+    });
+  }, [activePendingRenameText, commitIdentityField, draft.character_brief, draft.character_setting]);
 
   const cancelIdentityField = useCallback(
     (field: "name" | "sprite_prefix") => {
@@ -313,6 +405,7 @@ export function useCharacterIdentityAndAutoSave({
         return;
       }
       if (field === "name") {
+        setPendingRenameText(null);
         setDraft((current) => ({ ...current, name: selected.name }));
         setNameError("");
       } else {
@@ -390,8 +483,12 @@ export function useCharacterIdentityAndAutoSave({
     autoSave,
     buildCharacterCreateInput,
     cancelIdentityField,
+    cancelPendingRenameText,
     confirmIdentityField,
+    confirmRenameKeepText,
+    confirmRenameReplaceText,
     liveNameError,
     liveSpritePrefixError,
+    pendingRenameText: activePendingRenameText,
   };
 }

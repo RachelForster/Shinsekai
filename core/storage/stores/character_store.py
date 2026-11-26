@@ -12,8 +12,10 @@ from config.models import (
     Character,
     CharacterSummary,
     SELF_PERSONA_ID,
+    SELF_PERSONA_NAME,
     Sprite,
     build_default_self_persona,
+    is_self_persona,
     is_self_persona_name,
 )
 from config.sprite_voice import normalize_sprite_voice_types
@@ -56,7 +58,7 @@ def _normalize_character_for_storage(item: Character) -> Character:
             for kind, bank in avatars.items()
         }
     normalized = item.model_copy(update=updates) if updates else item
-    if is_self_persona_name(normalized.name):
+    if is_self_persona(normalized):
         return Character.model_validate(normalized.model_dump(mode="python"))
     return normalized
 
@@ -165,7 +167,7 @@ class SqliteCharacterCatalog:
             if candidate.name.strip().casefold() == target_cf:
                 return candidate
         if is_self_persona_name(cleaned):
-            return build_default_self_persona()
+            return self.get(SELF_PERSONA_ID) or build_default_self_persona()
         return None
 
     def get_by_sprite_prefix(self, prefix: str) -> Character | None:
@@ -183,7 +185,7 @@ class SqliteCharacterCatalog:
         self_char: Character | None = None
         others: list[Character] = []
         for item in items:
-            if is_self_persona_name(item.name) and self_char is None:
+            if is_self_persona(item) and self_char is None:
                 self_char = item
             else:
                 others.append(item)
@@ -197,8 +199,13 @@ class SqliteCharacterCatalog:
     def ensure_self_persona(self) -> Character:
         with self._engine.write_connection() as connection:
             row = connection.execute(
-                "SELECT payload_json FROM characters WHERE id = ? OR name = ? COLLATE NOCASE LIMIT 1",
-                (SELF_PERSONA_ID, "自设"),
+                """
+                SELECT payload_json FROM characters
+                WHERE id = ? OR is_builtin = 1 OR name = ? COLLATE NOCASE
+                ORDER BY (id = ?) DESC, is_builtin DESC
+                LIMIT 1
+                """,
+                (SELF_PERSONA_ID, SELF_PERSONA_NAME, SELF_PERSONA_ID),
             ).fetchone()
             if row is not None:
                 return self._codec.decode(str(row["payload_json"]).encode("utf-8"))
@@ -277,7 +284,7 @@ class SqliteCharacterCatalog:
             seen_ids: set[str] = set()
             for item in raw_items:
                 candidate = item
-                if is_self_persona_name(candidate.name):
+                if is_self_persona(candidate):
                     if candidate.id != SELF_PERSONA_ID:
                         candidate = candidate.model_copy(update={"id": SELF_PERSONA_ID})
                 elif candidate.id not in existing_by_id:

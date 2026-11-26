@@ -389,8 +389,14 @@ def conversation_launch_payload(state: Any, conversation_id: str) -> dict:
             "mediaSelectionMode": "indexed",
             "outputFormat": "json_v1",
         }
+    launch_copy = dict(launch)
+    if launch_copy.get("systemStale"):
+        from application.chat.conversation_mutations import regenerate_launch_system
+
+        regenerate_launch_system(state, launch_copy)
+        launch_copy.pop("systemStale", None)
     return {
-        **launch,
+        **launch_copy,
         "memoryMode": details["memoryMode"],
         "autoOutfitSwitch": details["autoOutfitSwitch"],
         "historyPath": path.as_posix(),
@@ -424,8 +430,14 @@ def saved_conversation_launch(state: Any, history_path: Path) -> dict | None:
     if not isinstance(record, dict) or not isinstance(record.get("launch"), dict):
         return None
     details = _details(record)
+    launch_copy = dict(record["launch"])
+    if launch_copy.get("systemStale"):
+        from application.chat.conversation_mutations import regenerate_launch_system
+
+        regenerate_launch_system(state, launch_copy)
+        launch_copy.pop("systemStale", None)
     return {
-        **record["launch"],
+        **launch_copy,
         "memoryMode": details["memoryMode"],
         "autoOutfitSwitch": details["autoOutfitSwitch"],
         "historyPath": history_path.as_posix(),

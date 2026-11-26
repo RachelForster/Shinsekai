@@ -388,6 +388,7 @@
       "prefix_taken_other": "立ち絵ディレクトリ名「{prefix}」はすでにキャラクター「{owner}」で使用されています！",
       "self_rename_forbidden": "組み込みの「Self（ユーザー設定）」キャラクターは名前を変更できません！",
       "rename_to_self_forbidden": "他のキャラクターを「自设」にリネームすることはできません！",
+      "self_prefix_locked": "組み込み自設キャラクターの立ち絵ディレクトリは「__self__」に固定されており、変更できません！",
       "builtin_rename_forbidden": "組み込みキャラクター「{name}」は名前を変更できません！",
       "duplicate_name": "キャラクター名「{name}」はすでに他のキャラクターと重複しています！",
       "select_to_delete": "削除するキャラクターを選択してください！",

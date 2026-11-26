@@ -75,11 +75,13 @@ export function useCharacterCatalogMutations({
         current
           ? {
               ...current,
+              playerCharacter: current.playerCharacter === oldName ? newName : current.playerCharacter,
               primaryCharacters: current.primaryCharacters?.map((name) => (name === oldName ? newName : name)),
               selectedCharacters: current.selectedCharacters.map((name) => (name === oldName ? newName : name)),
             }
           : current,
       );
+      void queryClient.invalidateQueries({ queryKey: [...templatesQueryKey, "session"] });
     },
     [queryClient],
   );
@@ -126,6 +128,7 @@ export function useCharacterCatalogMutations({
       field: "name" | "sprite_prefix";
       originalName: string;
       sourceKey: string;
+      syncedText?: { previousBrief: string; previousSetting: string };
     }) => {
       await discardAutoSaveRef.current(sourceKey);
       return saveCharacter(character, originalName);
@@ -165,7 +168,14 @@ export function useCharacterCatalogMutations({
             ...current.avatars,
             ...character.avatars,
           },
+          ...(variables.syncedText && (current.character_brief ?? "") === variables.syncedText.previousBrief
+            ? { character_brief: character.character_brief ?? "" }
+            : {}),
+          ...(variables.syncedText && current.character_setting === variables.syncedText.previousSetting
+            ? { character_setting: character.character_setting }
+            : {}),
           default_sprite_group: character.default_sprite_group,
+          display_name: character.display_name,
           fallback_to_default_group: character.fallback_to_default_group,
           is_builtin: character.is_builtin,
           name: variables.field === "name" ? character.name : current.name,

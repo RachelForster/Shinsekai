@@ -20,10 +20,13 @@ from config.config_manager import ConfigManager
 from config.schema import (
     Character,
     DEFAULT_SPRITE_GROUP,
+    SELF_PERSONA_ID,
     SELF_PERSONA_NAME,
     SELF_PERSONA_SPRITE_PREFIX,
     Sprite,
     build_default_self_persona,
+    find_self_persona,
+    is_self_persona_name,
 )
 from config.sprite_groups import (
     filter_sprite_indices_for_group,
@@ -46,15 +49,12 @@ class _FakeConfigManager:
         found = next((c for c in self.config.characters if c.name == name), None)
         if found is not None:
             return found
-        if name.strip() == SELF_PERSONA_NAME:
-            return build_default_self_persona()
+        if is_self_persona_name(name):
+            return find_self_persona(self.config.characters) or build_default_self_persona()
         return None
 
     def ensure_self_persona_persisted(self):
-        existing = next(
-            (c for c in self.config.characters if c.name == SELF_PERSONA_NAME),
-            None,
-        )
+        existing = find_self_persona(self.config.characters)
         if existing is None:
             existing = build_default_self_persona()
             self.config.characters.insert(0, existing)
@@ -115,8 +115,8 @@ def test_self_persona_cannot_be_deleted_renamed_or_collided():
     assert "不可删除" in msg_del
     assert SELF_PERSONA_NAME in names_del
 
-    msg_ren, _ = mgr.add_character(
-        "OtherName",
+    msg_prefix_lock, _ = mgr.add_character(
+        SELF_PERSONA_NAME,
         "#fff",
         "other",
         "",
@@ -127,7 +127,7 @@ def test_self_persona_cannot_be_deleted_renamed_or_collided():
         "设定",
         edit_as_name=SELF_PERSONA_NAME,
     )
-    assert "不可重命名" in msg_ren
+    assert SELF_PERSONA_SPRITE_PREFIX in msg_prefix_lock
 
     msg_into_self, _ = mgr.add_character(
         SELF_PERSONA_NAME,
@@ -156,8 +156,8 @@ def test_self_persona_cannot_be_deleted_renamed_or_collided():
     )
     assert "占用" in msg_prefix_collision
 
-    msg_ok, _ = mgr.add_character(
-        SELF_PERSONA_NAME,
+    msg_ok, names_after = mgr.add_character(
+        "OtherName",
         "#89b4fa",
         SELF_PERSONA_SPRITE_PREFIX,
         "",
@@ -169,10 +169,33 @@ def test_self_persona_cannot_be_deleted_renamed_or_collided():
         edit_as_name=SELF_PERSONA_NAME,
     )
     assert "已更新" in msg_ok
-    saved = mgr._config_manager.get_character_by_name(SELF_PERSONA_NAME)
+    assert names_after == ["OtherName", "Mika"]
+    saved = mgr._config_manager.get_character_by_name("OtherName")
+    assert saved is not None
+    assert saved.id == SELF_PERSONA_ID
+    assert saved.sprite_prefix == SELF_PERSONA_SPRITE_PREFIX
     assert saved.character_setting == "一名精通古文献修复的大学生"
     assert saved.is_builtin is True
+    assert saved.pinned is True
     assert saved.undeletable is True
+    assert mgr._config_manager.get_character_by_name(SELF_PERSONA_NAME) is saved
+
+    msg_del_renamed, names_del_renamed = mgr.delete_character("OtherName")
+    assert "不可删除" in msg_del_renamed
+    assert "OtherName" in names_del_renamed
+
+    msg_create_self, _ = mgr.add_character(
+        SELF_PERSONA_NAME,
+        "#fff",
+        "new_self",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "设定",
+    )
+    assert "不能将其他角色重命名" in msg_create_self
 
 
 def test_self_persona_display_name_survives_save_and_reload(tmp_path):

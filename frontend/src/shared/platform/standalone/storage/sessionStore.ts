@@ -372,6 +372,7 @@ export class StandaloneSessionStore {
         | "prologueStepId"
         | "preview"
         | "characters"
+        | "primaryCharacters"
         | "payload"
       >
     >,

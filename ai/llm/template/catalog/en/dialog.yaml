@@ -64,13 +64,14 @@ relations_description: |
 relations_owner: '{name}''s relationship graph:'
 relations_edge: '{source} toward {target}: {content}'
 relations_temperature: ' (affinity: {temperature})'
+self_persona_identity_note: 'This character is the user''s self-persona.'
 player_portrait_vibe_value: the expression and action shown by the user this turn
 player_runtime_override: '
 
   The current player options below override any conflicting earlier player-control rules.'
 self_persona_cast_runtime_override: '
 
-  The current cast options below override any conflicting earlier self-persona rules: "自设" is explicitly included as a standalone cast member in this conversation and may speak and display sprites like any other character.'
+  The current cast options below override any conflicting earlier self-persona rules: "{name}" (the user''s self-persona) is explicitly included as a standalone cast member in this conversation and may speak and display sprites like any other character.'
 player_ai_control: '
 
   Player character: {name}
@@ -154,6 +155,16 @@ self_persona_block: '[User Persona]
   {setting}
 
   (The above describes the background and preferences of the user conversing with you; naturally incorporate it in interaction, and do not output "Self Persona" as a standalone speaking character.)
+
+
+  '
+self_persona_block_named: '[User Persona]
+
+  Character name: {name} (This character is the user''s self-persona.)
+
+  {setting}
+
+  (The above describes the background and preferences of the user conversing with you; keep it naturally in mind, address the user as "{name}", and do not output "{name}" as a standalone speaking character.)
 
 
   '

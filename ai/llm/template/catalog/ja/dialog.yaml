@@ -65,13 +65,14 @@ relations_description: |
 relations_owner: '{name}の関係図：'
 relations_edge: '{source}から{target}へ：{content}'
 relations_temperature: (親密度：{temperature})
+self_persona_identity_note: 'この人物はユーザーの自設です。'
 player_portrait_vibe_value: このターンにユーザーが示した表情と動作
 player_runtime_override: '
 
   以下の現在の主控人物設定は、以前の矛盾する設定に優先します。'
 self_persona_cast_runtime_override: '
 
-  以下の現在の登場人物設定は、以前の「自設」に関する矛盾する説明に優先します：「自設」は独立した登場キャラクターとして今回の会話に参加しており、他の登場人物と同様に通常どおり発話し立ち絵を表示してください。'
+  以下の現在の登場人物オプションは、以前のユーザー自設に関する説明と矛盾する場合はこちらを優先します：「{name}」（ユーザー自設）は独立した登場キャラクターとして本会話に参加しているため、他の登場キャラクターと同様に発言および立ち絵表示を許可してください。'
 player_ai_control: '
 
   主控人物：{name}
@@ -157,6 +158,16 @@ self_persona_block: '【ユーザー自設設定】
   {setting}
 
   （以上は現在対話しているユーザー自身の背景と好みの設定です。やり取りの中で自然に踏まえ、「自設」を独立した発話キャラクターとして出力しないでください。）
+
+
+  '
+self_persona_block_named: '【ユーザー自設設定】
+
+  キャラクター名：{name}（この人物はユーザーの自設です。）
+
+  {setting}
+
+  （以上は現在対話しているユーザー自身の背景と好みの設定です。やり取りの中で自然に踏まえ、「{name}」と呼んでください。「{name}」を独立した発話キャラクターとして出力しないでください。）
 
 
   '

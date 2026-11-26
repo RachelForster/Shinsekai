@@ -23,6 +23,9 @@ from config.models.common import (
     SELF_PERSONA_SPRITE_PREFIX,
     clamp_compact_target_ratio,
     default_if_none,
+    find_self_persona,
+    is_self_persona,
+    is_self_persona_id,
     is_self_persona_name,
 )
 from config.models.mcp_settings import McpConfig
@@ -64,6 +67,9 @@ __all__ = [
     "build_default_self_persona",
     "clamp_compact_target_ratio",
     "default_if_none",
+    "find_self_persona",
+    "is_self_persona",
+    "is_self_persona_id",
     "is_self_persona_name",
     "normalize_api_config_dict",
     "normalize_applied_presets_list",

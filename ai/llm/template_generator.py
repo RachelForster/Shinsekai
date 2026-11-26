@@ -7,8 +7,14 @@ method signatures and the ``(template, warning)`` result remain supported.
 
 from typing import Any
 
-from config.config_manager import ConfigManager
-from config.schema import SELF_PERSONA_NAME, is_self_persona_name
+from config.config_manager import ConfigManager, character_name_key
+from config.schema import (
+    SELF_PERSONA_NAME,
+    find_self_persona,
+    is_self_persona,
+    is_self_persona_id,
+    is_self_persona_name,
+)
 from core.messaging.formats.registry import resolve_dialog_format
 from sdk.adapters.dialog_format import DEFAULT_DIALOG_FORMAT_ID, XML_DIALOG_FORMAT_ID
 from sdk.types import OutputContractPatch
@@ -186,26 +192,82 @@ class TemplateGenerator:
         if not selected_characters:
             raise NoValidCharactersError()
         characters = self.resolve_chat_template_characters(selected_characters)
+        cleaned_player_arg = str(player_character or "").strip()
         player = next(
-            (character for name, character in characters if name == player_character),
+            (
+                character
+                for name, character in characters
+                if character_name_key(name) == character_name_key(cleaned_player_arg)
+                or (
+                    (is_self_persona_name(cleaned_player_arg) or is_self_persona_id(cleaned_player_arg))
+                    and is_self_persona(character)
+                )
+            ),
             None,
         )
-        if player is None and is_self_persona_name(player_character):
-            getter = getattr(config_manager, "get_character_by_name", None)
-            candidate = getter(SELF_PERSONA_NAME) if callable(getter) else None
-            if candidate is not None and is_self_persona_name(getattr(candidate, "name", "")):
-                player = candidate
+        if player is None and cleaned_player_arg:
+            if is_self_persona_name(cleaned_player_arg) or is_self_persona_id(
+                cleaned_player_arg
+            ):
+                getter_self = getattr(config_manager, "get_self_persona", None)
+                candidate = getter_self() if callable(getter_self) else None
+                if candidate is None:
+                    getter = getattr(config_manager, "get_character_by_name", None)
+                    candidate = getter(SELF_PERSONA_NAME) if callable(getter) else None
+                if candidate is not None and is_self_persona(candidate):
+                    player = candidate
+            else:
+                getter = getattr(config_manager, "get_character_by_name", None)
+                candidate = getter(cleaned_player_arg) if callable(getter) else None
+                if candidate is None:
+                    getter_self = getattr(config_manager, "get_self_persona", None)
+                    self_candidate = getter_self() if callable(getter_self) else None
+                    if (
+                        self_candidate is not None
+                        and is_self_persona(self_candidate)
+                        and character_name_key(
+                            str(getattr(self_candidate, "name", "") or "")
+                        )
+                        == character_name_key(cleaned_player_arg)
+                    ):
+                        candidate = self_candidate
+                if candidate is not None and is_self_persona(candidate):
+                    player = candidate
+        resolved_player_name = (
+            str(getattr(player, "name", "") or cleaned_player_arg).strip()
+            if player is not None
+            else ""
+        )
         if player is not None and not allow_player_dialogue:
-            characters = [(name, character) for name, character in characters if name != player_character]
+            player_is_self = is_self_persona(player)
+            resolved_player_key = character_name_key(resolved_player_name)
+            characters = [
+                (name, character)
+                for name, character in characters
+                if not (
+                    is_self_persona(character)
+                    if player_is_self
+                    else character_name_key(name) == resolved_player_key
+                )
+            ]
         if not characters and player is None:
             raise NoValidCharactersError()
-        has_self_in_cast = any(is_self_persona_name(name) for name, _character in characters)
+        has_self_in_cast = any(is_self_persona(character) for _name, character in characters)
         self_persona_setting = ""
-        if not player_character and player is None and not has_self_in_cast:
-            getter = getattr(config_manager, "get_character_by_name", None)
-            self_char = getter(SELF_PERSONA_NAME) if callable(getter) else None
-            if self_char is not None and is_self_persona_name(getattr(self_char, "name", "")):
+        self_persona_name = ""
+        if not cleaned_player_arg and player is None and not has_self_in_cast:
+            getter_self = getattr(config_manager, "get_self_persona", None)
+            self_char = getter_self() if callable(getter_self) else None
+            if self_char is None:
+                chars = getattr(getattr(config_manager, "config", None), "characters", None)
+                if chars is not None:
+                    self_char = find_self_persona(chars)
+            if self_char is None:
+                getter = getattr(config_manager, "get_character_by_name", None)
+                self_char = getter(SELF_PERSONA_NAME) if callable(getter) else None
+            if self_char is not None and is_self_persona(self_char):
                 self_persona_setting = str(getattr(self_char, "character_setting", "") or "").strip()
+                self_persona_name = str(getattr(self_char, "name", "") or "").strip()
         has_background = bool(bg_name) and not is_transparent_background(bg_name)
         resolved_locale = resolve_template_locale(config_manager)
         resolved_format = resolve_dialog_format(output_format).format_id
@@ -213,18 +275,22 @@ class TemplateGenerator:
         if (
             player is not None
             and read_player_speech
-            and not any(name == player_character for name, _character in voice_characters)
+            and not any(
+                character_name_key(name) == character_name_key(resolved_player_name)
+                for name, _character in voice_characters
+            )
         ):
-            voice_characters.append((player_character, player))
+            voice_characters.append((resolved_player_name, player))
         context = DialogTemplateContext(
             characters=tuple(characters),
             translate=_T,
             target_voice_name=_target_voice_display_name(characters=voice_characters),
             json_reminder=format_reminder(resolved_format),
             locale=resolved_locale,
-            player_name=player_character if player is not None else "",
+            player_name=resolved_player_name,
             player_character=player,
             self_persona_setting=self_persona_setting,
+            self_persona_name=self_persona_name,
             read_player_speech=bool(read_player_speech and player is not None),
             allow_player_dialogue=allow_player_dialogue,
             primary_character_names=(

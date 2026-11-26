@@ -158,6 +158,7 @@ class MemoryAutoHooks:
         last_turn_at: Callable[[], float] | None = None,
         memory_mode_start_seq: int | None = None,
         locale: LocaleInput = None,
+        self_persona_name: str = "",
     ) -> None:
         self.llm_adapter = llm_adapter
         self.character_names = [
@@ -166,7 +167,15 @@ class MemoryAutoHooks:
         self._active_character_name = self.character_names[0] if self.character_names else "user"
         self.session_id = str(session_id or "").strip()
         self.memory_mode = str(memory_mode or "").strip()
-        self.player_character = str(player_character or "").strip()
+        self.self_persona_name = str(self_persona_name or "").strip()
+        raw_player = str(player_character or "").strip()
+        if (
+            self.self_persona_name
+            and raw_player
+            and raw_player.casefold() == self.self_persona_name.casefold()
+        ):
+            raw_player = "__self__"
+        self.player_character = raw_player
         self.queue = queue if queue is not None else MemoryWriteQueue()
         self.search_func = search_func
         self._uses_custom_search = (search_func is not memory_search) and (recall_func is None)
@@ -200,8 +209,22 @@ class MemoryAutoHooks:
         )
         self._workers: list[threading.Thread] = []
         self.locale = locale
-        self._extractor = MemoryExtractor(llm_adapter, locale=locale)
+        self._extractor = MemoryExtractor(
+            llm_adapter,
+            locale=locale,
+            self_persona_name=self.self_persona_name,
+        )
         self._planner = RuleRecallPlanner(default_limit=self.search_limit)
+
+    def _normalize_memory_owner_name(self, name: str) -> str:
+        cleaned = str(name or "").strip()
+        if (
+            self.self_persona_name
+            and cleaned
+            and cleaned.casefold() == self.self_persona_name.casefold()
+        ):
+            return "__self__"
+        return cleaned
 
     @property
     def primary_character_name(self) -> str:
@@ -328,11 +351,14 @@ class MemoryAutoHooks:
                 if self._recent_injected_window
                 else frozenset()
             )
-            active_char = self.primary_character_name
+            active_char = self._normalize_memory_owner_name(self.primary_character_name)
             ordered_scene = [
-                name
-                for name in dict.fromkeys([active_char, *self.character_names])
-                if name and name.casefold() != "user"
+                norm
+                for norm in dict.fromkeys(
+                    self._normalize_memory_owner_name(name)
+                    for name in [active_char, *self.character_names]
+                )
+                if norm and norm.casefold() != "user"
             ]
             active_chars = tuple(ordered_scene)
             effective_session = self.session_id
@@ -856,6 +882,7 @@ def install_memory_hooks(
     last_turn_at: Callable[[], float] | None = None,
     memory_mode_start_seq: int | None = None,
     locale: LocaleInput = None,
+    self_persona_name: str = "",
 ) -> MemoryAutoHooks | None:
     if dispatcher is None or not _env_enabled("SHINSEKAI_MEMORY_AUTO_ENABLED", True):
         return None
@@ -869,6 +896,7 @@ def install_memory_hooks(
         last_turn_at=last_turn_at,
         memory_mode_start_seq=memory_mode_start_seq,
         locale=locale,
+        self_persona_name=self_persona_name,
         extract_interval_turns=_env_int(
             "SHINSEKAI_MEMORY_EXTRACT_INTERVAL_TURNS",
             DEFAULT_EXTRACT_INTERVAL_TURNS,

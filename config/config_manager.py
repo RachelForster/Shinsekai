@@ -31,6 +31,8 @@ from config.schema import (
     Effect,
     SystemConfig,
     build_default_self_persona,
+    find_self_persona,
+    is_self_persona,
     is_self_persona_name,
 )
 from config.sprite_voice import normalize_sprite_voice_types
@@ -503,12 +505,19 @@ class ConfigManager:
         """Return a stable read-only snapshot for application use cases."""
         return tuple(self.config.effect_list)
 
+    def get_self_persona(self) -> Character:
+        """返回内置自设人物实体（按稳定 ID 识别，缺失时构造默认实例）。"""
+        found = find_self_persona(self.config.characters)
+        if found is not None:
+            return found
+        return build_default_self_persona()
+
     def list_characters_catalog(self) -> List[Character]:
-        """返回面向界面的完整人物目录（始终将内置「自设」槽位置顶，不破坏原始未保存列表）。"""
+        """返回面向界面的完整人物目录（始终将内置自设槽位置顶，不破坏原始未保存列表）。"""
         self_char: Optional[Character] = None
         others: List[Character] = []
         for char in self.config.characters:
-            if is_self_persona_name(char.name) and self_char is None:
+            if is_self_persona(char) and self_char is None:
                 self_char = char
             else:
                 others.append(char)
@@ -517,9 +526,9 @@ class ConfigManager:
         return [self_char, *others]
 
     def ensure_self_persona_persisted(self) -> Character:
-        """确保「自设」存在于内存 ``config.characters`` 首位，供编辑或立绘变更持久化使用。"""
+        """确保内置自设存在于内存 ``config.characters`` 首位，供编辑或立绘变更持久化使用。"""
         for idx, char in enumerate(self.config.characters):
-            if is_self_persona_name(char.name):
+            if is_self_persona(char):
                 if idx != 0:
                     self.config.characters.pop(idx)
                     self.config.characters.insert(0, char)
@@ -535,7 +544,7 @@ class ConfigManager:
             if character_name_key(char.name) == name_key:
                 return char
         if is_self_persona_name(name):
-            return build_default_self_persona()
+            return self.get_self_persona()
         return None
 
     def get_llm_api_config(self):

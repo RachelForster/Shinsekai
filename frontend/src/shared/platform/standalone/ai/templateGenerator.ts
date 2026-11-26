@@ -1,6 +1,3 @@
-import { LEGACY_TRANSPARENT_BACKGROUND_ALIAS, TRANSPARENT_BACKGROUND_NAME } from "../../../constants";
-import { translateRuntimeMessage } from "../../../i18n/runtimeLanguage";
-import { SELF_PERSONA_NAME } from "../../../playerCharacterOptions";
 import { PlatformRequestError } from "../../errors";
 import type { Character } from "../../slices/characterTypes";
 import type { AppConfig, SystemConfig } from "../../slices/configTypes";
@@ -17,16 +14,49 @@ import {
   characterSpriteCatalogText,
 } from "./templateCatalogSections";
 import {
-  isUiVoiceSameLanguage as isUiVoiceSameTarget,
-  resolveCastVoiceTarget,
-  targetVoiceKey as resolveVoiceTargetKey,
-  type VoiceTargetKey,
-} from "./voiceLanguage";
+  DEFAULT_EMPTY_SCENARIO,
+  SELF_PERSONA_ID,
+  SELF_PERSONA_NAME,
+  SELF_PERSONA_SPRITE_PREFIX,
+  TRANSPARENT_BG,
+  characterNameKey,
+  composeTemplateContent,
+  findCharacterByName,
+  findSelfPersona,
+  isSelfPersonaCharacter,
+  isSelfPersonaId,
+  isSelfPersonaName,
+  isTransparentBackground,
+  isUiVoiceSameLanguage,
+  normalizeMediaSelectionMode,
+  resolvePlayerCharacter,
+  resolveTemplateCharacters,
+  targetVoiceKey,
+} from "./templateResolution";
+import { buildStandalonePlayerSection, withStandaloneSelfPersonaNote } from "./templateSections";
+import { isUiVoiceSameLanguage as isUiVoiceSameTarget, resolveCastVoiceTarget } from "./voiceLanguage";
 
-export { buildStandaloneEffectCatalogBlock, SELF_PERSONA_NAME };
-export const TRANSPARENT_BG = TRANSPARENT_BACKGROUND_NAME;
-const TRANSPARENT_BG_ALIAS = LEGACY_TRANSPARENT_BACKGROUND_ALIAS;
-export const DEFAULT_EMPTY_SCENARIO = createStandaloneTemplateTranslator("zh_CN")("default_empty_scenario");
+export {
+  DEFAULT_EMPTY_SCENARIO,
+  SELF_PERSONA_ID,
+  SELF_PERSONA_NAME,
+  SELF_PERSONA_SPRITE_PREFIX,
+  TRANSPARENT_BG,
+  buildStandaloneEffectCatalogBlock,
+  characterNameKey,
+  composeTemplateContent,
+  findCharacterByName,
+  findSelfPersona,
+  isSelfPersonaCharacter,
+  isSelfPersonaId,
+  isSelfPersonaName,
+  isTransparentBackground,
+  isUiVoiceSameLanguage,
+  normalizeMediaSelectionMode,
+  resolvePlayerCharacter,
+  resolveTemplateCharacters,
+  targetVoiceKey,
+};
 
 const COT_TOKEN = "COT";
 const CHOICE_TOKEN = "CHOICE";
@@ -34,89 +64,6 @@ const STAT_TOKEN = "STAT";
 const SCENE_TOKEN = "SCENE";
 const BGM_TOKEN = "bgm";
 const CG_TOKEN = "CG";
-
-export function characterNameKey(name: string): string {
-  return name.trim().toLowerCase();
-}
-
-export function isSelfPersonaName(name: string | undefined | null): boolean {
-  return characterNameKey(String(name ?? "")) === SELF_PERSONA_NAME;
-}
-
-export function isTransparentBackground(name?: string | null): boolean {
-  const clean = String(name ?? "").trim();
-  return !clean || clean === TRANSPARENT_BG || clean === TRANSPARENT_BG_ALIAS;
-}
-
-export function normalizeMediaSelectionMode(mode: unknown): MediaSelectionMode {
-  return String(mode ?? "")
-    .trim()
-    .toLowerCase() === "semantic"
-    ? "semantic"
-    : "indexed";
-}
-
-export function targetVoiceKey(code?: string | null): VoiceTargetKey | "auto" {
-  return resolveVoiceTargetKey(code);
-}
-
-export function isUiVoiceSameLanguage(uiLanguage?: string, voiceLanguage?: string): boolean {
-  return isUiVoiceSameTarget(uiLanguage, resolveVoiceTargetKey(voiceLanguage || "ja"));
-}
-
-export function composeTemplateContent(scenario: string, system: string): string {
-  return [scenario.trim(), system.trim()].filter(Boolean).join("\n\n");
-}
-
-function findCharacterByName(characters: Character[], rawName: string): Character | undefined {
-  const key = characterNameKey(rawName);
-  if (!key) return undefined;
-  return characters.find((c) => characterNameKey(c.name) === key);
-}
-
-export function resolveTemplateCharacters(selectedNames: string[], allCharacters: Character[]): Character[] {
-  const seenKeys = new Set<string>();
-  const resolved: Character[] = [];
-  for (const raw of selectedNames) {
-    const clean = String(raw ?? "").trim();
-    if (!clean) continue;
-    const reqKey = characterNameKey(clean);
-    if (seenKeys.has(reqKey)) continue;
-    seenKeys.add(reqKey);
-
-    const found = findCharacterByName(allCharacters, clean);
-    if (!found) continue;
-    const canonKey = characterNameKey(found.name);
-    if (resolved.some((c) => characterNameKey(c.name) === canonKey)) continue;
-    resolved.push(found);
-  }
-  return resolved;
-}
-
-export function resolvePlayerCharacter(
-  allCharacters: Character[],
-  resolvedCastNames: string[],
-  rawPlayerName: unknown,
-  uiLanguage?: string,
-): string {
-  const name = String(rawPlayerName ?? "").trim();
-  if (!name) return "";
-  const character = findCharacterByName(allCharacters, name);
-  if (!character) {
-    throw new Error(translateRuntimeMessage("plat.standalone.playerMustBeValid", undefined, uiLanguage));
-  }
-  const castKeys = new Set(resolvedCastNames.map((n) => characterNameKey(n)));
-  if (!isSelfPersonaName(character.name) && !castKeys.has(characterNameKey(character.name))) {
-    throw new Error(translateRuntimeMessage("plat.standalone.playerMustBeValid", undefined, uiLanguage));
-  }
-  return character.name;
-}
-
-function formatSelfPersonaPrompt(setting: string, t: ReturnType<typeof createStandaloneTemplateTranslator>): string {
-  const cleaned = setting.trim();
-  if (!cleaned) return "";
-  return t("self_persona_block", { setting: cleaned });
-}
 
 export interface GenerateTemplateOptions {
   input: TemplateGenerateInput;
@@ -149,25 +96,32 @@ export function generateStandaloneDialogSystemTemplate(options: GenerateTemplate
   const readPlayerSpeech = Boolean(playerCharacter && input.readPlayerSpeech);
 
   let playerObj = playerCharacter ? findCharacterByName(cast, playerCharacter) : undefined;
-  if (!playerObj && isSelfPersonaName(playerCharacter)) {
-    const candidate = findCharacterByName(allCharacters, SELF_PERSONA_NAME);
-    if (candidate && isSelfPersonaName(candidate.name)) {
+  if (!playerObj && (isSelfPersonaName(playerCharacter) || isSelfPersonaId(playerCharacter))) {
+    playerObj = findSelfPersona(allCharacters);
+  }
+  if (!playerObj && playerCharacter) {
+    const candidate = findCharacterByName(allCharacters, playerCharacter);
+    if (candidate && isSelfPersonaCharacter(candidate)) {
       playerObj = candidate;
     }
   }
 
   if (playerObj && !allowPlayerDialogue) {
-    cast = cast.filter((c) => characterNameKey(c.name) !== characterNameKey(playerCharacter));
+    const playerIsSelf = isSelfPersonaCharacter(playerObj);
+    const playerKey = characterNameKey(playerCharacter);
+    cast = cast.filter((c) => (playerIsSelf ? !isSelfPersonaCharacter(c) : characterNameKey(c.name) !== playerKey));
   }
   if (!cast.length && !playerObj) {
     throw new PlatformRequestError(t("err_no_characters"), 400, "no_valid_characters");
   }
 
   let selfPersonaSetting = "";
-  if (!playerCharacter && !playerObj && !cast.some((c) => isSelfPersonaName(c.name))) {
-    const selfChar = findCharacterByName(allCharacters, SELF_PERSONA_NAME);
-    if (selfChar && isSelfPersonaName(selfChar.name)) {
+  let selfPersonaName = "";
+  if (!playerCharacter && !playerObj && !cast.some((c) => isSelfPersonaCharacter(c))) {
+    const selfChar = findSelfPersona(allCharacters);
+    if (selfChar) {
       selfPersonaSetting = (selfChar.character_setting ?? "").trim();
+      selfPersonaName = (selfChar.name ?? "").trim();
     }
   }
 
@@ -256,8 +210,9 @@ export function generateStandaloneDialogSystemTemplate(options: GenerateTemplate
   parts.push(t("profile_header"));
   for (const char of primaryCharacters) {
     const setting = String(char.character_setting ?? "");
-    if (setting) {
-      parts.push(`${t("profile_for", { name: char.name })}${setting}\n\n`);
+    if (setting || isSelfPersonaCharacter(char)) {
+      const content = withStandaloneSelfPersonaNote(t, setting, char);
+      parts.push(`${t("profile_for", { name: char.name })}${content}\n\n`);
     }
   }
 
@@ -265,48 +220,27 @@ export function generateStandaloneDialogSystemTemplate(options: GenerateTemplate
     parts.push(t("brief_header"));
     for (const char of supportingCharacters) {
       const brief = String(char.character_brief ?? "").trim() || String(char.character_setting ?? "");
-      if (brief) {
-        parts.push(`${t("brief_for", { name: char.name })}${brief}\n\n`);
+      if (brief || isSelfPersonaCharacter(char)) {
+        const content = withStandaloneSelfPersonaNote(t, brief, char);
+        parts.push(`${t("brief_for", { name: char.name })}${content}\n\n`);
       }
     }
   }
 
   // 4. Player section
-  if (!playerCharacter || !playerObj) {
-    const persona = formatSelfPersonaPrompt(selfPersonaSetting, t);
-    if (persona) parts.push(persona);
-  } else {
-    const setting = String(playerObj.character_setting ?? "").trim();
-    const portraitField = usesVibe ? "vibe" : "sprite";
-    const portraitValue = usesVibe ? t("player_portrait_vibe_value") : "01";
-    const speechMedia = usesVibe ? '"vibe":""' : '"sprite":"-1"';
-    if (allowPlayerDialogue) {
-      parts.push(
-        t("player_ai_control", {
-          name: playerCharacter,
-          setting,
-          portrait_field: portraitField,
-          portrait_value: portraitValue,
-        }),
-      );
-    } else {
-      const speechContract = readPlayerSpeech
-        ? t("player_speech_contract", {
-            name: playerCharacter,
-            speech_media: speechMedia,
-            target_voice_name: targetVoiceDisplay,
-          })
-        : t("player_speech_disabled", { name: playerCharacter });
-      parts.push(
-        t("player_control", {
-          name: playerCharacter,
-          setting,
-          portrait_field: portraitField,
-          portrait_value: portraitValue,
-          speech_contract: speechContract,
-        }),
-      );
-    }
+  const playerSection = buildStandalonePlayerSection({
+    allowPlayerDialogue,
+    playerCharacter,
+    playerObj,
+    readPlayerSpeech,
+    selfPersonaName,
+    selfPersonaSetting,
+    t,
+    targetVoiceDisplay,
+    usesVibe,
+  });
+  if (playerSection) {
+    parts.push(playerSection);
   }
 
   // 5. Relations section
