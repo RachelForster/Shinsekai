@@ -11,7 +11,7 @@
 3. **禁止在 `.py` 中写大段 Prompts**：所有内置提示词必须放到 `ai/llm/template/catalog/{zh_CN,en,ja}/*.yaml`，并用 `Section` / `I18nSection` / `PromptSpec` 组装；禁止在模块导入期调用 `.render()`。
 4. **禁止未经 i18n 的 Message**：前端 UI、表单 Schema、任务状态、Bridge 异常与任务消息必须走三语字典或结构化 `errorCode`/`AppError`；禁止新增硬编码中文/日文字符串。
 5. **单文件必须 `<= 500` 行**：`.py`、`.ts`、`.tsx`、`.rs`、`.css` 源码文件不得超过 500 行；接近或超过时按职责拆分，禁止无意义拆分或堆积 `utils.py`/`helpers.py`。
-6. **必须过测试与格式检查**：提交与提 PR 前必须通过 `pytest`、前端 `pnpm format:check`、`pnpm lint:types`、`pnpm test`（及变更涉及时的覆盖率门禁与 Rust 检查）。
+6. **必须过测试与格式检查**：提交与提 PR 前必须通过 `pytest`、前端 `pnpm format:check`、`pnpm lint:types`、`pnpm test`（及变更涉及时的覆盖率门禁与 Rust 检查）；提 PR 时必须在描述中说明需手动测试的部分。
 
 ---
 
@@ -180,6 +180,9 @@ frontend_bridge_core
 - Commit 标题受 `.husky/commit-msg`（`scripts/presubmit.py`）强制校验，必须符合 Conventional Commits 且 `<= 100` 字符：
   `<type>(optional-scope)!: summary`（允许类型：`feat`、`fix`、`docs`、`style`、`refactor`、`perf`、`test`、`build`、`ci`、`chore`、`revert`）。
 - 遵循 `CONTRIBUTING.md`「One PR, one concern」，PR 描述关联对应 Issue，且严禁为图省事删除测试、放宽断言或使用 `SKIP_PRESUBMIT=1` 绕过检查。
+- **PR 必须包含需手动测试说明**：提 PR 时必须在描述中单列「需手动测试（Manual Testing）」小节：
+  - 明确列出自动化测试无法覆盖、需人工验证的场景、前置条件、操作步骤与预期结果（例如 UI 交互与视觉表现、角色渲染/立绘/Live2D/VRM、本地模型或外部 API 联调、TTS/ASR 音视频链路、Tauri 桌面壳与系统集成、数据/配置迁移等）；
+  - 若本次变更不涉及需手动验证项（如纯文档更新或已被自动化测试充分覆盖的内部重构），也须显式注明「无需手动测试」并简述原因，不得省略该小节。
 
 ### 7.2 必过验证命令
 

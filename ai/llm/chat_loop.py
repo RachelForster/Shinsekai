@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import ExitStack
 
 from ai.llm.dialog_repair import repair_dialog_output
 from ai.llm.request_runner import RequestRunner, RequestedRound
 from ai.llm.template.integrations.localization import LocaleInput
 from ai.llm.tool_session import ToolSession
+from core.chat_history.identity import CHAT_OUTPUT_FORMAT
 from core.messaging.dialog_output import has_valid_dialog_output
+from core.messaging.formats.registry import resolve_dialog_format
 from core.messaging.stream_events import STREAM_DIALOG_REPAIR_KEY, STREAM_REASONING_DELTA_KEY
+from sdk.adapters.dialog_format import DEFAULT_DIALOG_FORMAT_ID
 from sdk.adapters.llm import LLMAdapter
 from sdk.llm_response import ChatResponse
 
@@ -22,6 +25,9 @@ class ChatLoop:
         requests: RequestRunner, *, cancelled: Callable[[], bool],
         append_message: Callable[..., None], generation_config: dict,
         media_selection_mode: str, logger, locale: LocaleInput = None,
+        speaker_requires_media: Callable[[str], bool] | None = None,
+        bound_speakers: Sequence[str] = (),
+        output_format: str = DEFAULT_DIALOG_FORMAT_ID,
     ) -> None:
         self.adapter = adapter
         self.append_message = append_message
@@ -32,16 +38,48 @@ class ChatLoop:
         self.media_selection_mode = media_selection_mode
         self.logger = logger
         self.locale = locale
+        self.speaker_requires_media = speaker_requires_media
+        self.bound_speakers: tuple[str, ...] = tuple(bound_speakers)
+        self.dialog_format = resolve_dialog_format(output_format)
+        self.output_format = self.dialog_format.format_id
 
-    def _request(self, stream: bool, kwargs: dict) -> RequestedRound:
-        return self.requests.request(stream=stream, generation_kwargs={**self.generation_config, **kwargs})
+    def _request(
+        self,
+        stream: bool,
+        kwargs: dict,
+        *,
+        dialog_output_required: bool = False,
+    ) -> RequestedRound:
+        merged = {**self.generation_config, **kwargs}
+        if dialog_output_required and "response_format" not in merged:
+            if self.dialog_format.api_response_format is not None:
+                merged["response_format"] = dict(self.dialog_format.api_response_format)
+            elif self.dialog_format.format_id != DEFAULT_DIALOG_FORMAT_ID:
+                # OpenAIAdapter defaults omitted response_format to json_object; keep
+                # non-JSON custom plugin formats on plain text unless overridden.
+                merged["response_format"] = {"type": "text"}
+        try:
+            return self.requests.request(
+                stream=stream,
+                generation_kwargs=merged,
+                normalize_output_format=dialog_output_required,
+            )
+        except TypeError:
+            return self.requests.request(stream=stream, generation_kwargs=merged)
 
-    def _persist_assistant(self, response: ChatResponse) -> bool:
+    def _persist_assistant(
+        self,
+        response: ChatResponse,
+        *,
+        dialog_output_required: bool = False,
+    ) -> bool:
         if self.cancelled():
             return False
-        metadata = self.adapter.assistant_message_metadata(response.reasoning)
+        metadata = dict(self.adapter.assistant_message_metadata(response.reasoning) or {})
         if not response.content.strip() and not metadata:
             return False
+        if dialog_output_required and response.content.strip():
+            metadata[CHAT_OUTPUT_FORMAT] = self.output_format
         self.append_message("assistant", response.content, **metadata)
         return True
 
@@ -66,12 +104,18 @@ class ChatLoop:
             self.adapter, response.content, request.context.messages,
             request.context.generation_kwargs, cancelled=self.cancelled,
             event_logger=self.logger, media_selection_mode=self.media_selection_mode,
-            locale=self.locale,
+            speaker_requires_media=self.speaker_requires_media,
+            bound_speakers=self.bound_speakers,
+            output_format_id=self.output_format, locale=self.locale,
         )
 
     def sync(self, *, dialog_output_required: bool = False, **kwargs) -> str:
         while True:
-            request = self._request(False, kwargs)
+            request = self._request(
+                False,
+                kwargs,
+                dialog_output_required=dialog_output_required,
+            )
             if not request.response:
                 self.requests.complete(request, outcome="no_response")
                 return ""
@@ -92,7 +136,10 @@ class ChatLoop:
                 self._repair(response, request)
             if self.cancelled():
                 return ""
-            self._persist_assistant(response)
+            self._persist_assistant(
+                response,
+                dialog_output_required=dialog_output_required,
+            )
             return response.content
 
     def stream(self, *, dialog_output_required: bool = False, **kwargs) -> Iterator[str | dict[str, str]]:
@@ -101,7 +148,11 @@ class ChatLoop:
                 # Preserve the public stream contract while retaining provider metadata.
                 yield from self.sync(dialog_output_required=dialog_output_required, **kwargs)
                 return
-            request = self._request(True, kwargs)
+            request = self._request(
+                True,
+                kwargs,
+                dialog_output_required=dialog_output_required,
+            )
             if request.response is None:
                 self.requests.complete(request, outcome="no_response")
                 return
@@ -146,15 +197,24 @@ class ChatLoop:
                     return
                 continue
             needs_repair = dialog_output_required and not has_valid_dialog_output(
-                response.content, media_selection_mode=self.media_selection_mode,
+                response.content,
+                media_selection_mode=self.media_selection_mode,
+                speaker_requires_media=self.speaker_requires_media,
+                format_id=self.output_format,
             )
             if needs_repair:
                 self._repair(response, request)
             if self.cancelled():
                 return
-            persisted = self._persist_assistant(response)
+            persisted = self._persist_assistant(
+                response,
+                dialog_output_required=dialog_output_required,
+            )
             if persisted and needs_repair and has_valid_dialog_output(
-                response.content, media_selection_mode=self.media_selection_mode,
+                response.content,
+                media_selection_mode=self.media_selection_mode,
+                speaker_requires_media=self.speaker_requires_media,
+                format_id=self.output_format,
             ):
                 yield {STREAM_DIALOG_REPAIR_KEY: response.content}
             return

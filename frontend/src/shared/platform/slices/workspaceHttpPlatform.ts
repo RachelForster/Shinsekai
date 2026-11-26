@@ -16,6 +16,7 @@ import type {
   BackgroundsPlatform,
   BackgroundTranslateResult,
   BatchToolResult,
+  DialogFormatOption,
   Effect,
   EffectsPlatform,
   SpriteGenerationResult,
@@ -332,6 +333,7 @@ export function createTemplatesHttpPlatform(transport: HttpTransport): Templates
     getPresets: () => requestJson<UserPromptPresetLibrary>("/api/templates/presets"),
     getSession: () => requestJson<TemplateLaunchSession | null>("/api/templates/session"),
     list: () => requestJson<TemplateSummary[]>("/api/templates"),
+    listDialogFormats: () => requestJson<DialogFormatOption[]>("/api/templates/dialog-formats"),
     save: (template) =>
       requestJson<TemplateSummary>("/api/templates", {
         body: JSON.stringify({ template }),

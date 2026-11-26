@@ -78,14 +78,15 @@ function renderPage(embedded = false) {
   );
 }
 
-it.each([false, true])("places refresh after file import in embedded=%s mode", async (embedded) => {
+it.each([false, true])("places file import after refresh in embedded=%s mode", async (embedded) => {
   renderPage(embedded);
   const importButton = screen.getByRole("button", { name: "Import from files" });
   expect(screen.queryByRole("button", { name: "New" })).not.toBeInTheDocument();
-  expect(importButton).toHaveClass("button--ghost");
   const refreshButton = screen.getByRole("button", { name: "Refresh" });
-  expect(importButton.parentElement).toBe(refreshButton.parentElement);
-  expect(importButton.compareDocumentPosition(refreshButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(refreshButton).toHaveClass("button--ghost");
+  expect(importButton).not.toHaveClass("button--ghost");
+  expect(refreshButton.parentElement).toBe(importButton.parentElement);
+  expect(refreshButton.compareDocumentPosition(importButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   fireEvent.click(refreshButton);
   await waitFor(() => expect(mocks.instances).toHaveBeenCalledWith({ query: "", page: 1, refresh: true }));
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

@@ -24,6 +24,33 @@ class CompactTranscriptTurn:
 @dataclass(frozen=True)
 class CompactPromptContext(TemplateContext):
     turns: tuple[CompactTranscriptTurn, ...] = ()
+    extra_instructions: tuple[str, ...] = ()
+
+
+class _ExtraRequirementsSection(Section[CompactPromptContext]):
+    def _resolve_children(
+        self,
+        context: CompactPromptContext,
+    ) -> tuple[Section[CompactPromptContext], ...]:
+        items = tuple(
+            cleaned
+            for raw in context.extra_instructions
+            if (cleaned := str(raw or "").strip())
+        )
+        if not items:
+            return ()
+        return (
+            I18nSection(
+                id="heading",
+                priority=10,
+                key="session.compact_extra_requirements_heading",
+            ),
+            TextSection(
+                id="items",
+                priority=20,
+                text="\n".join(f"- {item}" for item in items),
+            ),
+        )
 
 
 def _format_transcript_lines(context: CompactPromptContext) -> str:
@@ -80,6 +107,11 @@ def build_compact_user_section() -> Section[CompactPromptContext]:
                         text=_format_transcript_lines,
                     ),
                 ),
+            ),
+            _ExtraRequirementsSection(
+                id="extra_requirements",
+                priority=25,
+                separator="\n",
             ),
             I18nSection(
                 id="outro",

@@ -107,6 +107,7 @@ class _RuntimeComponents:
     effect_keyword_map: dict[str, str]
     text_processor: Any
     opencc: Any
+    dialog_media_worker: Any | None = None
     effect_image_keyword_map: dict[str, ImageEffectAsset] = field(default_factory=dict)
     ambient_effect_keyword_map: dict[str, AmbientEffectAsset] = field(default_factory=dict)
 
@@ -469,6 +470,7 @@ class _BaseChatSession:
             effect_keyword_map=effect_context.keyword_map,
             text_processor=TextProcessor(),
             opencc=OpenCC("t2s"),
+            dialog_media_worker=getattr(handles, "dialog_media_worker", None),
             effect_image_keyword_map=getattr(effect_context, "image_keyword_map", {}),
             ambient_effect_keyword_map=getattr(
                 effect_context, "ambient_keyword_map", {}

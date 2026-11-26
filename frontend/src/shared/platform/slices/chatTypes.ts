@@ -2,6 +2,7 @@ import type { ChatThemePayload } from "../../theme/chatChromeTheme";
 import type { ChatThemeManifest, ChatThemeSummary, SaveChatThemeInput } from "../../theme/chatTheme";
 import type { StoryDocument, StoryEditInput, StorySuggestion, StorySuggestionInput } from "../storyEditorTypes";
 import type { StoryGenerationPreview } from "../storyPreviewTypes";
+import type { ChatBehaviorChoiceOption, ChatBehaviorState } from "./behaviorTypes";
 import type { PlayerPortrait, PortraitCrop, SpriteTransitionMedia } from "./characterTypes";
 import type { PerceptionRuntimeState } from "./perceptionTypes";
 import type { PluginPagePresentation } from "./pluginTypes";
@@ -9,6 +10,7 @@ import type { StoryGenerationInput, StoryGenerationStage, StoryGenerationTask, S
 import type { RuntimeDependencyError, TaskProgressOptions, TaskSnapshot } from "./taskTypes";
 import type {
   CharacterPromptMode,
+  DialogOutputFormatId,
   InitialOutfitValue,
   MediaSelectionMode,
   MemoryMode,
@@ -49,6 +51,7 @@ export interface ConversationSummary {
 export interface ChatLaunchPayload extends PlayerCharacterOptions {
   storyPath?: string;
   characterPromptMode?: CharacterPromptMode;
+  outputFormat?: DialogOutputFormatId;
   primaryCharacters?: string[];
   maxDialogItems?: number;
   maxSpeechChars?: number;
@@ -188,6 +191,49 @@ export interface ChatReplayControl {
   playing?: boolean;
 }
 
+export type ChatVnExportFormat = "zip" | "directory";
+
+export interface ChatVnExportAnchor {
+  id: string;
+  role: string;
+  dialogId?: string;
+  text: string;
+}
+
+export interface ChatVnExportInput {
+  conversationId?: string;
+  startEntryId?: string;
+  endEntryId?: string;
+  selectedEntryIds?: string[];
+  expectedSessionId?: string;
+  selectedEntryAnchors?: ChatVnExportAnchor[];
+  title?: string;
+  subtitle?: string;
+  outputFormat: ChatVnExportFormat;
+  outputDir?: string;
+  includeVoices?: boolean;
+  transcodeMp3?: boolean;
+  includeBgm?: boolean;
+  includeAmbient?: boolean;
+  userDisplayName?: string;
+  openFolder?: boolean;
+}
+
+export interface ChatVnExportResult {
+  path: string;
+  format: ChatVnExportFormat;
+  entryCount: number;
+  assetCount: number;
+  voiceCount: number;
+  transcodedVoiceCount: number;
+  skippedNonStaticSprites: number;
+  totalBytes: number;
+  indexHtmlBytes: number;
+  warnings: string[];
+  downloadUrl?: string;
+  folderOpened?: boolean;
+}
+
 export interface ChatTurnOptions {
   batchEnabled: boolean;
   batchIdleSeconds: number;
@@ -220,7 +266,7 @@ export interface ChatStoryOption {
   source: "story";
 }
 
-export type ChatOption = string | ChatStoryOption;
+export type ChatOption = string | ChatStoryOption | ChatBehaviorChoiceOption;
 
 export interface ChatStoryState {
   activeCast: Array<{ id: string; roles: string[] }>;
@@ -266,6 +312,20 @@ export interface ChatSpriteReactionSnapshot {
   seq: number;
 }
 
+export interface ChatBackgroundTransitionSnapshot {
+  durationMs?: number;
+  effect: string;
+  expiresAt?: number;
+  seq: number;
+}
+
+export interface ChatSpriteMotionSnapshot {
+  durationMs: number;
+  expiresAt?: number;
+  motion: string;
+  seq: number;
+}
+
 export interface MobileAccessInfo {
   enabled: true;
   host: string;
@@ -284,6 +344,7 @@ export interface ChatSnapshot {
   voiceArchiveEnabled?: boolean;
   playerPortrait?: PlayerPortrait | null;
   perception?: PerceptionRuntimeState | null;
+  behavior?: ChatBehaviorState | null;
   spriteReaction?: ChatSpriteReactionSnapshot | null;
   activePlayback?: {
     characterName: string;
@@ -297,6 +358,7 @@ export interface ChatSnapshot {
   asrLoading?: boolean;
   asrRunning?: boolean;
   backgroundPath?: string;
+  backgroundTransition?: ChatBackgroundTransitionSnapshot | null;
   bgmPath?: string;
   busyDurationSeconds?: number;
   busyText?: string;
@@ -343,6 +405,7 @@ export interface ChatSnapshot {
   runtimeMode?: "native" | "react";
   sessionClosedReason?: string;
   sessionId?: string;
+  spriteMotions?: Record<string, ChatSpriteMotionSnapshot>;
   sprites: ChatSprite[];
   story?: ChatStoryState;
   storyAck?: Record<string, unknown>;
@@ -404,6 +467,7 @@ export interface ChatCommand {
   payload?: unknown;
   type:
     | "audio-playback-signal"
+    | "behavior-command"
     | "set-voice-archive"
     | "save-history-voice"
     | "cancel-input-batch"
@@ -496,7 +560,8 @@ export type ChatStageEvent =
       modelUrl: string;
     })
   | (ChatEventBase & { type: "sprite.remove"; characterName: string })
-  | (ChatEventBase & { type: "background.change"; url: string })
+  | (ChatEventBase & { type: "sprite.motion"; characterName: string; motion: string; durationMs?: number })
+  | (ChatEventBase & { type: "background.change"; url: string; transition?: string; transitionDurationMs?: number })
   | (ChatEventBase & { type: "bgm.change"; url: string })
   | (ChatEventBase & { type: "cg.show"; url: string })
   | (ChatEventBase & { type: "cg.hide" })
@@ -504,6 +569,7 @@ export type ChatStageEvent =
   | (ChatEventBase & { type: "replay.state"; replay: ChatReplayProgress | null })
   | (ChatEventBase & { type: "presentation.restore"; presentation: ChatPresentation })
   | (ChatEventBase & { type: "options.clear" })
+  | (ChatEventBase & { type: "behavior.state.replace"; behavior: ChatBehaviorState | null })
   | (ChatEventBase & { type: "story.state.replace"; story: ChatStoryState })
   | (ChatEventBase & {
       type: "story.node.entered" | "story.node.unlocked" | "story.cast.replace" | "story.ending.reached";
@@ -583,6 +649,7 @@ export interface ChatPlatform {
   generateReplayVoice: (id: string, key: string, signal?: AbortSignal) => Promise<ChatReplayVoice>;
   cancelReplay: (id: string) => Promise<void>;
   controlReplay: (id: string, control: ChatReplayControl) => Promise<void>;
+  exportPlayableVn: (input: ChatVnExportInput) => Promise<ChatVnExportResult>;
   getRuntimeStatus: () => Promise<ChatRuntimeProcessState>;
   getSnapshot: (options?: ChatSnapshotOptions) => Promise<ChatSnapshot>;
   getTheme: () => Promise<ChatThemePayload>;

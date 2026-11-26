@@ -1,5 +1,6 @@
 import type {
   ChatAttachmentInput,
+  ChatBehaviorState,
   ChatHistoryEntry,
   ChatOption,
   ChatRuntimeStatus,
@@ -75,13 +76,26 @@ export interface ChatStageSpriteReaction {
   text: string;
 }
 
+export interface ChatStageBackgroundTransition {
+  effect: string;
+  seq: number;
+}
+
+export interface ChatStageSpriteMotion {
+  durationMs: number;
+  motion: string;
+  seq: number;
+}
+
 export interface ChatStageState extends Omit<
   ChatSnapshot,
-  "sprites" | "effectImage" | "spriteReaction" | "ambientEffects"
+  "sprites" | "effectImage" | "spriteReaction" | "ambientEffects" | "backgroundTransition" | "spriteMotions"
 > {
   ambientEffects?: ChatStageAmbientEffect[];
+  backgroundTransition?: ChatStageBackgroundTransition | null;
   effectImage?: ChatStageEffectImage | null;
   perceptionCaptureRequestSeq?: number;
+  spriteMotions: Record<string, ChatStageSpriteMotion>;
   spriteReaction?: ChatStageSpriteReaction | null;
   audioCommands: ChatAudioCommand[];
   asrTranscript?: string;
@@ -129,6 +143,8 @@ export interface ChatStageViewModel {
   asrLoading: boolean;
   asrRunning: boolean;
   backgroundPath?: string;
+  backgroundTransition?: ChatStageBackgroundTransition | null;
+  behavior?: ChatBehaviorState | null;
   bgmPath?: string;
   busyText?: string;
   cgPath?: string;
@@ -143,6 +159,7 @@ export interface ChatStageViewModel {
   notificationText?: string;
   options: ChatOption[];
   perception?: PerceptionRuntimeState | null;
+  spriteMotions: Record<string, ChatStageSpriteMotion>;
   spriteReaction?: ChatStageSpriteReaction | null;
   sprites: ChatStageSprite[];
   story?: ChatStoryState;

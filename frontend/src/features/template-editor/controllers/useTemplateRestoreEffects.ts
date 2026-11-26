@@ -8,13 +8,19 @@ import type {
   AppConfig,
   Character,
   CharacterPromptMode,
+  DialogOutputFormatId,
   MediaSelectionMode,
   MemoryMode,
   TemplateLaunchSession,
 } from "../../../shared/platform/types";
 import { compatibleInitialSpritePath } from "../../chat-startup/initialSpriteSelection";
 import { buildSystemSyncKey } from "../templateContext";
-import { normalizeTemplateSummary, templateGenerationKey, templateVoiceLanguages } from "../templateFlow";
+import {
+  LEGACY_OUTPUT_FORMAT,
+  normalizeTemplateSummary,
+  templateGenerationKey,
+  templateVoiceLanguages,
+} from "../templateFlow";
 import { buildRestoredSessionSnapshot } from "./templateSessionRestore";
 
 interface UseTemplateRestoreEffectsOptions {
@@ -28,6 +34,7 @@ interface UseTemplateRestoreEffectsOptions {
   launchSession: TemplateLaunchSession | null | undefined;
   maxDialogItems: number;
   maxSpeechChars: number;
+  outputFormat: DialogOutputFormatId;
   primaryCharacters: string[];
   restoredSessionBackgroundRef: MutableRefObject<string | null>;
   selected: TemplateSummary | undefined;
@@ -49,6 +56,7 @@ interface UseTemplateRestoreEffectsOptions {
   setMediaSelectionMode: Dispatch<SetStateAction<MediaSelectionMode>>;
   setMemoryMode: Dispatch<SetStateAction<MemoryMode>>;
   setNameError: Dispatch<SetStateAction<string>>;
+  setOutputFormat: Dispatch<SetStateAction<DialogOutputFormatId>>;
   setPlayerCharacter: Dispatch<SetStateAction<string>>;
   setPrimaryCharacters: Dispatch<SetStateAction<string[]>>;
   setReadPlayerSpeech: Dispatch<SetStateAction<boolean>>;
@@ -114,6 +122,7 @@ export function useTemplateRestoreEffects({
   setMediaSelectionMode,
   setMemoryMode,
   setNameError,
+  setOutputFormat,
   setPlayerCharacter,
   setPrimaryCharacters,
   setReadPlayerSpeech,
@@ -153,6 +162,7 @@ export function useTemplateRestoreEffects({
       setSelectedId(selected.id);
       const normalized = normalizeTemplateSummary(structuredClone(selected));
       const nextMediaMode = createOnly ? "indexed" : (selected.mediaSelectionMode ?? "indexed");
+      const nextOutputFormat = selected.outputFormat || LEGACY_OUTPUT_FORMAT;
       const savedPlayer = normalizePlayerOptions(selected);
       const charKey = templateGenerationKey({
         characters: selectedCharacters,
@@ -176,9 +186,11 @@ export function useTemplateRestoreEffects({
         useStat,
         maxSpeechChars,
         maxDialogItems,
+        outputFormat: nextOutputFormat,
       });
       setDraft(normalized);
       setMediaSelectionMode(nextMediaMode);
+      setOutputFormat(nextOutputFormat);
       setPlayerCharacter(savedPlayer.playerCharacter);
       setReadPlayerSpeech(Boolean(savedPlayer.playerCharacter && savedPlayer.readPlayerSpeech));
       setAllowPlayerDialogue(savedPlayer.allowPlayerDialogue);
@@ -217,6 +229,7 @@ export function useTemplateRestoreEffects({
     setCharacterPromptMode(restored.characterPromptMode);
     setPrimaryCharacters(restored.primaryCharacters);
     setMediaSelectionMode(restored.mediaSelectionMode);
+    setOutputFormat(restored.outputFormat);
     setSelectedBackground(restored.selectedBackground);
     setSelectedEffects(restored.selectedEffects);
     setVoiceLanguage(restored.voiceLanguage);

@@ -25,6 +25,10 @@ use crate::window_controls::{
     chat_window_open_plan_for_windows, compute_mini_dock_side, default_mini_window_position,
     desired_mini_input_global_shortcut,
 };
+use crate::{
+    resolve_main_window_initial_size, MAIN_WINDOW_DEFAULT_HEIGHT, MAIN_WINDOW_DEFAULT_WIDTH,
+    MAIN_WINDOW_MIN_HEIGHT, MAIN_WINDOW_MIN_WIDTH,
+};
 
 #[test]
 fn runtime_backend_console_truthy_values_are_case_insensitive() {
@@ -326,6 +330,37 @@ fn send_bridge_agent_close_posts_authenticated_runtime_shutdown() {
     assert!(request.starts_with("POST /api/agent/runtime/stop HTTP/1.1\r\n"));
     assert!(request.contains("X-Shinsekai-Bridge-Token: agent-token\r\n"));
     assert!(request.ends_with("\r\n\r\n{}"));
+}
+
+#[test]
+fn main_window_default_size_preserves_legacy_aspect_ratio() {
+    let legacy_ratio = 1180.0_f64 / 780.0_f64;
+    let default_ratio = MAIN_WINDOW_DEFAULT_WIDTH / MAIN_WINDOW_DEFAULT_HEIGHT;
+    assert!((default_ratio - legacy_ratio).abs() < 1e-9);
+    assert_eq!(
+        resolve_main_window_initial_size(None),
+        (MAIN_WINDOW_DEFAULT_WIDTH, MAIN_WINDOW_DEFAULT_HEIGHT)
+    );
+    assert_eq!(
+        resolve_main_window_initial_size(Some((1920.0, 1040.0))),
+        (MAIN_WINDOW_DEFAULT_WIDTH, MAIN_WINDOW_DEFAULT_HEIGHT)
+    );
+}
+
+#[test]
+fn main_window_initial_size_scales_proportionally_for_smaller_work_areas() {
+    let legacy_ratio = 1180.0_f64 / 780.0_f64;
+    let (width, height) = resolve_main_window_initial_size(Some((1536.0, 825.0)));
+    assert!(width > 1180.0);
+    assert!(height > 780.0);
+    assert!(width <= 1536.0 * 0.96 + 1.0);
+    assert!(height <= 825.0 * 0.96 + 1.0);
+    assert!(((width / height) - legacy_ratio).abs() < 0.01);
+
+    assert_eq!(
+        resolve_main_window_initial_size(Some((700.0, 500.0))),
+        (MAIN_WINDOW_MIN_WIDTH, MAIN_WINDOW_MIN_HEIGHT)
+    );
 }
 
 fn runtime_scan_view(selected_candidate_id: Option<&str>) -> runtime::RuntimeScanView {

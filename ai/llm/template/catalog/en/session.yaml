@@ -30,6 +30,7 @@ compact_role_user: User
 compact_role_assistant: Assistant
 compact_role_tool: Tool:{name}
 compact_user_outro: 'Please provide the conversation summary:'
+compact_extra_requirements_heading: 'Additional compaction requirements:'
 compact_failed_fallback: Compaction failed; please refer to the original conversation history.
 compact_omitted_history: '[History Summary] Earlier history has been omitted. Continue based on the retained system instructions, summary, and recent dialogue.'
 standalone_compact_system: You are a story memory archival assistant responsible for producing compact, accurate dialogue summaries.
@@ -44,6 +45,11 @@ standalone_checkpoint_context: |-
   {summary}
 dialog_repair_initial: Reformat your immediately preceding answer as the application's dialogue JSON. Return only a JSON object with a non-empty `dialog` array. Each character, scene, and BGM item must have `character_name`, `speech`, and `{media_field}`. Fixed system items such as COT, NARR, CHOICE, STAT, and CG may omit the media field. Do not call tools or add markdown.
 dialog_repair_retry: That reply is STILL not valid. You MUST answer with ONLY the application's dialogue JSON. Return only a JSON object with a non-empty `dialog` array. Each character, scene, and BGM item must have `character_name`, `speech`, and `{media_field}`. Fixed system items such as COT, NARR, CHOICE, STAT, and CG may omit the media field. Do not call tools or add markdown.
+dialog_repair_initial_selective: Reformat your immediately preceding answer as the application's dialogue JSON. Return only a JSON object with a non-empty `dialog` array. Every item must have `character_name` and `speech`; only SCENE, bgm, and bound cast characters must include `{media_field}`. Fixed non-media system items (COT, NARR, CHOICE, STAT, CG) and unbound minor/NPC speakers may omit `{media_field}`. Do not call tools or add markdown.
+dialog_repair_retry_selective: That reply is STILL not valid. You MUST answer with ONLY the application's dialogue JSON. Return only a JSON object with a non-empty `dialog` array. Every item must have `character_name` and `speech`; only SCENE, bgm, and bound cast characters must include `{media_field}`. Fixed non-media system items (COT, NARR, CHOICE, STAT, CG) and unbound minor/NPC speakers may omit `{media_field}`. Do not call tools or add markdown.
+dialog_repair_bound_speakers_heading: 'Bound cast characters that require `{media_field}`:'
+dialog_repair_xml_initial: Reformat your immediately preceding answer as valid XML/HTML stage tags (such as `<say char="..." {media_field}="...">`, `<narr>`, `<scene>`, `<bgm>`, and `<choice>`). Output at least one complete stage tag; do not call tools, output JSON, or add markdown code fences.
+dialog_repair_xml_retry: That reply is STILL not valid XML/HTML stage tags. You MUST reply with ONLY valid stage tags (`<say char="..." {media_field}="...">`, `<narr>`, `<scene>`, `<bgm>`, etc.). Do not call tools, output JSON, or add prose commentary.
 memory_context_simple_guidance: Relevant long-term memories for this turn. Use them only as background; do not mention the retrieval process unless the user asks.
 memory_context_tiered_guidance: Relevant long-term memories for this turn. Respect each item's clarity tag ([Canon], [Clear], [Faded impression], [Awakened distant memory]); use them naturally as background and never mention the retrieval system unless asked.
 memory_tier_canon: Canon
@@ -58,6 +64,8 @@ outfit_indexed_sprite_rule: 'Sprite selection rule: set `sprite` to the full num
 outfit_auto_switch_rule: 'Story outfit switch rule: automatic outfit switching is enabled. When an unlocked character completes an outfit change (explicitly in the story or at the player''s request), include `"outfit"` set to the exact group name from the available groups below in that character''s JSON item inside `dialog`. Omit `"outfit"` on ordinary lines, emotion changes, or pose shifts.'
 outfit_switch_example_prefix: 'Outfit switch item example: '
 outfit_locked_or_disabled_rule: 'Automatic outfit switching is disabled or outfits are locked: always stay in the current outfit group and do not output the `"outfit"` field.'
+outfit_auto_switch_rule_xml: 'Story outfit switch rule: automatic outfit switching is enabled. When an unlocked character completes an outfit change (explicitly in the story or at the player''s request), include `outfit="exact group name"` on that character''s `<say>` tag. Omit `outfit` on ordinary lines, emotion changes, or pose shifts.'
+outfit_locked_or_disabled_rule_xml: 'Automatic outfit switching is disabled or outfits are locked: always stay in the current outfit group and do not include the `outfit` attribute on `<say>`.'
 outfit_example_vibe: calm expression
 outfit_example_speech: <line of dialogue>
 outfit_lock_status_locked: manually locked (do not switch outfit)

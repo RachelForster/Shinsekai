@@ -1,6 +1,8 @@
 import { getPlatform } from "../../shared/platform/platform";
 import type {
   AppliedUserPromptPreset,
+  DialogFormatOption,
+  DialogOutputFormatId,
   TemplateGenerateInput,
   TemplateLaunchSession,
   TemplateSummary,
@@ -8,8 +10,13 @@ import type {
   UserPromptPresetLibrary,
 } from "../../shared/platform/types";
 
+export const dialogFormatsQueryKey = ["templates", "dialog-formats"] as const;
 export const templatesQueryKey = ["templates"] as const;
 export const userPromptPresetsQueryKey = ["templates", "presets"] as const;
+
+export function listDialogFormats() {
+  return getPlatform().templates.listDialogFormats();
+}
 
 export function listTemplates() {
   return getPlatform().templates.list();
@@ -39,4 +46,11 @@ export function saveUserPromptPresets(library: UserPromptPresetLibrary) {
   return getPlatform().templates.savePresets(library);
 }
 
-export type { AppliedUserPromptPreset, TemplateSummary, UserPromptPreset, UserPromptPresetLibrary };
+export type {
+  AppliedUserPromptPreset,
+  DialogFormatOption,
+  DialogOutputFormatId,
+  TemplateSummary,
+  UserPromptPreset,
+  UserPromptPresetLibrary,
+};

@@ -29,6 +29,7 @@ class StreamingSessionBindings:
     runtime_asr: Any
     submit_text: Any
     last_user_message: dict[str, object]
+    command_dispatcher: Any = None
 
 
 def wire_streaming_session(
@@ -118,11 +119,13 @@ class _StreamingSessionWiring:
             story_hooks.branch_id = lambda: legacy_active_history_branch(self.args.history)
         self.runtime_asr = self._create_streaming_asr()
         self._bind_asr_presentation_hooks()
-        self.transport.bind_command_dispatcher(self._create_command_dispatcher())
+        command_dispatcher = self._create_command_dispatcher()
+        self.transport.bind_command_dispatcher(command_dispatcher)
         return StreamingSessionBindings(
             runtime_asr=self.runtime_asr,
             submit_text=self.submit_runtime_text,
             last_user_message=self.last_user_message,
+            command_dispatcher=command_dispatcher,
         )
 
     def submit_runtime_text(

@@ -105,6 +105,80 @@ describe("CharacterSpritesSection outfit groups & SmartOutfitGroupDialog", () =>
     });
   });
 
+  it("keeps resting outfit-group actions free of primary clutter and promotes confirm/danger states cleanly", () => {
+    const galleryItems = multiOutfitCharacter.sprites.map((sprite, index) => ({
+      badge: "No voice",
+      badgeTone: "muted" as const,
+      id: `${sprite.path}-${index}`,
+      imageSrc: `asset://${sprite.path}`,
+      title: sprite.path.split("/").pop() || `${index + 1}`,
+    }));
+
+    const { container } = render(
+      <I18nProvider language="en">
+        <CharacterSpritesSection
+          draft={multiOutfitCharacter}
+          emotionTagsPending={false}
+          isSavedCharacter
+          onApplySpriteGroups={vi.fn()}
+          onClearSprites={vi.fn()}
+          onOpenBulkTags={vi.fn()}
+          onOpenSmartGroup={vi.fn()}
+          onPendingVoicePathChange={vi.fn()}
+          onSaveTags={vi.fn()}
+          onSelectSprite={vi.fn()}
+          onSpriteDelete={vi.fn()}
+          onSpriteTagChange={vi.fn()}
+          onSpriteUpload={vi.fn()}
+          onSpriteVoiceDelete={vi.fn()}
+          onSpriteVoiceTextBlur={vi.fn()}
+          onSpriteVoiceTextChange={vi.fn()}
+          onSpriteVoiceTypeChange={vi.fn()}
+          onSpriteVoiceUpload={vi.fn()}
+          pendingVoicePath=""
+          selectedSprite={multiOutfitCharacter.sprites[0]}
+          selectedSpriteIndex={0}
+          selectedSpriteTag="smile"
+          spriteDeletePending={false}
+          spriteGalleryItems={galleryItems}
+          spriteUploadPending={false}
+          voiceDeletePending={false}
+          voiceUploadPending={false}
+        />
+      </I18nProvider>,
+    );
+
+    const groupActions = container.querySelector(".sprite-group-actions");
+    expect(groupActions).not.toBeNull();
+    expect(groupActions!.querySelectorAll(".button--primary")).toHaveLength(0);
+    expect(groupActions!.firstElementChild?.querySelector("#sprite-group-fallback-default")).not.toBeNull();
+    expect(Array.from(groupActions!.querySelectorAll("button")).map((button) => button.textContent?.trim())).toEqual([
+      "Smart auto-group",
+      "Batch move",
+      "+ New outfit group",
+    ]);
+
+    const newGroupButton = screen.getByRole("button", { name: "+ New outfit group" });
+    const autoGroupButton = screen.getByRole("button", { name: "Smart auto-group" });
+    const batchMoveButton = screen.getByRole("button", { name: "Batch move" });
+
+    expect(newGroupButton).not.toHaveClass("button--primary", "button--ghost");
+    expect(autoGroupButton).toHaveClass("button--ghost");
+    expect(batchMoveButton).toHaveClass("button--ghost");
+
+    fireEvent.click(newGroupButton);
+    expect(screen.getByRole("button", { name: "Create group" })).toHaveClass("button--primary");
+
+    fireEvent.click(batchMoveButton);
+    expect(screen.getByRole("button", { name: "Done selecting" })).not.toHaveClass("button--ghost");
+    expect(screen.getByRole("button", { name: "Move to group" })).toHaveClass("button--primary");
+
+    fireEvent.click(screen.getByRole("tab", { name: /私服 \(1\)/ }));
+    expect(screen.getByRole("button", { name: "Set as default outfit" })).toHaveClass("button--ghost");
+    expect(screen.getByRole("button", { name: "Rename group" })).toHaveClass("button--ghost");
+    expect(screen.getByRole("button", { name: "Delete group" })).toHaveClass("button--danger");
+  });
+
   it("previews smart auto-grouping and applies assignments via SmartOutfitGroupDialog", async () => {
     mockAutoGroupCharacterSprites.mockResolvedValue({
       assignments: { "0": "校服", "1": "校服", "3": "私服" },

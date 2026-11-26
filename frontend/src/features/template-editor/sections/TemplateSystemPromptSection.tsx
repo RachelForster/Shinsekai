@@ -2,7 +2,7 @@ import { Pencil } from "lucide-react";
 
 import { useI18n } from "../../../shared/i18n";
 import { Button, type PageSectionProps } from "../../../shared/ui";
-import { SystemPromptDialog } from "../SystemPromptDialog";
+import { resolveDialogFormatLabel, SystemPromptDialog } from "../SystemPromptDialog";
 import type { TemplateEditorContext } from "../templateContext";
 
 export function TemplateSystemPromptSection({ ctx }: PageSectionProps<TemplateEditorContext>) {
@@ -30,6 +30,11 @@ export function TemplateSystemPromptSection({ ctx }: PageSectionProps<TemplateEd
         <div className="template-summary-bar__body">
           <div className="template-summary-chips">
             <span className="template-summary-pill">
+              {t("template.bar.outputFormat", {
+                format: resolveDialogFormatLabel(ctx.outputFormat, ctx.dialogFormats, t),
+              })}
+            </span>
+            <span className="template-summary-pill">
               {t(ctx.mediaSelectionMode === "semantic" ? "template.semanticMedia.label" : "template.bar.mediaIndexed")}
             </span>
             <span className="template-summary-pill">
@@ -43,6 +48,7 @@ export function TemplateSystemPromptSection({ ctx }: PageSectionProps<TemplateEd
         canAutoSync={
           ctx.selectedCharacters.length > 0 && (ctx.selectedCharacters.length <= 4 || Boolean(ctx.characterPromptMode))
         }
+        dialogFormats={ctx.dialogFormats}
         generating={ctx.generatePending}
         onClose={() => ctx.setSystemPromptDialogOpen(false)}
         onConfirm={ctx.handleConfirmSystemPrompt}
@@ -52,6 +58,7 @@ export function TemplateSystemPromptSection({ ctx }: PageSectionProps<TemplateEd
           maxDialogItems: ctx.maxDialogItems,
           maxSpeechChars: ctx.maxSpeechChars,
           mediaSelectionMode: ctx.mediaSelectionMode,
+          outputFormat: ctx.outputFormat,
           useChoice: ctx.useChoice,
           useCot: ctx.useCot,
           useEffectPrompt: ctx.useEffectPrompt,

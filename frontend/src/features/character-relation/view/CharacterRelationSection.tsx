@@ -69,10 +69,14 @@ function RelationEditor({ owner }: RelationEditorProps) {
           )}
         </div>
         <div className="page__actions">
-          <Button disabled={!graph || busy || tableDirty || isFetching} onClick={() => setCleanDialogOpen(true)}>
+          <Button
+            disabled={!graph || busy || tableDirty || isFetching}
+            onClick={() => setCleanDialogOpen(true)}
+            variant="ghost"
+          >
             {t("relation.cleanLegacy")}
           </Button>
-          <Button disabled={!owner || busy || tableDirty || isFetching} onClick={() => void reload()}>
+          <Button disabled={!owner || busy || tableDirty || isFetching} onClick={() => void reload()} variant="ghost">
             {t("relation.reload")}
           </Button>
           <div className="relation-action-slot" ref={setActionsContainer} />

@@ -8,8 +8,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from ai.llm.conversation_history import ConversationHistory
+from ai.llm.dialog_repair import normalize_messages_for_output_format
 from ai.llm.message_sanitizer import filter_unpaired_tool_messages_for_request
 from ai.llm.tool_session import ToolSession
+from core.messaging.formats.registry import resolve_dialog_format
+from sdk.adapters.dialog_format import DEFAULT_DIALOG_FORMAT_ID
 from sdk.adapters.llm import LLMAdapter
 from sdk.exception.types import HTTP_REASON_UNPAIRED_TOOL_MESSAGES, classify_exception
 from sdk.hooks import BeforeChatContext
@@ -25,12 +28,22 @@ class RequestedRound:
 
 
 class RequestRunner:
-    def __init__(self, adapter: LLMAdapter, history: ConversationHistory, tools: ToolSession, *, host, logger) -> None:
+    def __init__(
+        self,
+        adapter: LLMAdapter,
+        history: ConversationHistory,
+        tools: ToolSession,
+        *,
+        host,
+        logger,
+        output_format: str = DEFAULT_DIALOG_FORMAT_ID,
+    ) -> None:
         self.llm_adapter = adapter
         self.history = history
         self.tools = tools
         self.host = host
         self.logger = logger
+        self.dialog_output_format = resolve_dialog_format(output_format)
         self.last_token_estimate = {
             "system_prompt_tokens": 0, "history_tokens": 0,
             "tool_definition_tokens": 0, "estimated_total_tokens": 0,
@@ -47,11 +60,22 @@ class RequestRunner:
     def get_messages(self):
         return self.history.get_messages()
 
-    def request(self, *, stream: bool, generation_kwargs: dict) -> RequestedRound:
+    def request(
+        self,
+        *,
+        stream: bool,
+        generation_kwargs: dict,
+        normalize_output_format: bool = False,
+    ) -> RequestedRound:
         context = self.history._before_chat_context(
             stream=stream, tools_defs=self.tools._current_tool_definitions(),
             generation_kwargs=generation_kwargs,
         )
+        if normalize_output_format:
+            context.messages = normalize_messages_for_output_format(
+                context.messages,
+                self.dialog_output_format,
+            )
         definitions = context.tools or []
         estimate = self._estimate_context_tokens(definitions, context.messages)
         index = self.tools._next_llm_round()

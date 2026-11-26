@@ -91,6 +91,13 @@ import {
 } from "./runtimeConfig";
 import { useOptionalChatTheme } from "./theme/ChatThemeProvider";
 import { limitChatStageSpritesToSlots } from "./state/sprites";
+import {
+  buildBehaviorAdvanceCommand,
+  buildBehaviorOptionCommand,
+  isBehaviorChoiceOption,
+  isBehaviorFreeTextBlocked,
+  isPlaybackSettledForBehavior,
+} from "./state/behaviorCommands";
 import { normalizeVisualFraming, type VisualFraming } from "../../modules/character-visual";
 import { playerPortraitForDialog } from "./state/text";
 import {
@@ -348,8 +355,16 @@ export function ChatStagePage() {
     [sendCommand],
   );
   const autoAdvanceDialog = useCallback(() => {
+    const behavior = viewModel.behavior;
+    if (isPlaybackSettledForBehavior(viewModel.status) && behavior?.stagePolicy?.playbackEndAction === "auto_advance") {
+      const payload = buildBehaviorAdvanceCommand(behavior);
+      if (payload) {
+        void sendCommand({ payload, type: "behavior-command" });
+        return;
+      }
+    }
     void sendCommand({ type: "dialog-advance" });
-  }, [sendCommand]);
+  }, [sendCommand, viewModel.behavior, viewModel.status]);
   const {
     dialogTotalCharacters,
     displayedDialog,
@@ -358,7 +373,11 @@ export function ChatStagePage() {
     showFullDialog,
     typingDialog,
   } = useDialogTypewriter({
-    auto: runtimeConfig.auto && !activeReplay && !state.replay && !historyDialogOpen,
+    auto:
+      (runtimeConfig.auto || viewModel.behavior?.stagePolicy?.playbackEndAction === "auto_advance") &&
+      !activeReplay &&
+      !state.replay &&
+      !historyDialogOpen,
     characterName: viewModel.dialogCharacterName,
     dialogVisible: viewModel.layers.dialog,
     html: viewModel.dialogHtml,
@@ -521,7 +540,12 @@ export function ChatStagePage() {
   }, []);
 
   const submit = async (textOverride?: string) => {
-    if (activeReplay || state.replay || pendingAttachmentSlotsRef.current) {
+    if (
+      activeReplay ||
+      state.replay ||
+      pendingAttachmentSlotsRef.current ||
+      isBehaviorFreeTextBlocked(viewModel.behavior)
+    ) {
       return;
     }
     const text = (textOverride ?? viewModel.inputDraft).trim();
@@ -610,6 +634,18 @@ export function ChatStagePage() {
 
   const submitOption = (option: ChatOption) => {
     if (activeReplay || state.replay) return;
+    if (isBehaviorChoiceOption(option)) {
+      if (!option.enabled) {
+        return;
+      }
+      rememberSubmission({ kind: "options", index: Math.max(0, viewModel.options.indexOf(option)) });
+      showDialogImmediately();
+      void sendCommand({
+        payload: buildBehaviorOptionCommand(option),
+        type: "behavior-command",
+      });
+      return;
+    }
     const label = typeof option === "string" ? option : option.label;
     if (typeof option !== "string" && !option.enabled) {
       return;
@@ -785,6 +821,14 @@ export function ChatStagePage() {
     if (activeReplay || state.replay || !viewModel.layers.dialog || !dialogTotalCharacters) {
       return;
     }
+    const behavior = viewModel.behavior;
+    if (isPlaybackSettledForBehavior(viewModel.status) && behavior?.stagePolicy?.playbackEndAction === "auto_advance") {
+      const payload = buildBehaviorAdvanceCommand(behavior);
+      if (payload) {
+        void sendCommand({ payload, type: "behavior-command" });
+        return;
+      }
+    }
     void sendCommand({ type: "dialog-advance" });
   }, [
     activeReplay,
@@ -793,7 +837,9 @@ export function ChatStagePage() {
     sendCommand,
     showFullDialog,
     typingDialog,
+    viewModel.behavior,
     viewModel.layers.dialog,
+    viewModel.status,
   ]);
 
   const toggleAuto = useCallback(() => {
@@ -1099,6 +1145,7 @@ export function ChatStagePage() {
           hidden={!viewModel.layers.background || miniAvatarActive}
           onDragStart={standaloneDesktopWindow && !transparentBackground ? handleWindowDrag : undefined}
           path={viewModel.backgroundPath}
+          transition={viewModel.backgroundTransition}
           transparent={transparentBackground}
         />
         <ChatSoundPlayer
@@ -1129,6 +1176,7 @@ export function ChatStagePage() {
           runtimeFramingForSprite={(sprite, index) => runtimeSpriteFraming(runtimeConfig, sprite, index)}
           speaker={viewModel.dialogCharacterName}
           responding={viewModel.status === "speaking" || viewModel.status === "streaming" || typingDialog}
+          spriteMotions={viewModel.spriteMotions}
           thinkingCharacterName={viewModel.thinkingCharacterName}
           sprites={stageSprites}
         />
@@ -1252,7 +1300,10 @@ export function ChatStagePage() {
             batchEnabled={state.turnOptions.batchEnabled}
             busyText={viewModel.busyText}
             canAdvance={
-              (viewModel.status === "speaking" || viewModel.status === "streaming" || Boolean(viewModel.story)) &&
+              (viewModel.status === "speaking" ||
+                viewModel.status === "streaming" ||
+                Boolean(viewModel.story) ||
+                viewModel.behavior?.stagePolicy?.playbackEndAction === "auto_advance") &&
               viewModel.layers.dialog &&
               !typingDialog &&
               dialogTotalCharacters > 0
@@ -1349,6 +1400,7 @@ export function ChatStagePage() {
           onSaveVoice={(voiceId) => void sendCommand({ payload: voiceId, type: "save-history-voice" })}
           onToggleVoiceArchive={(enabled) => void sendCommand({ payload: enabled, type: "set-voice-archive" })}
           open={historyDialogOpen && !historyExport}
+          sessionId={state.sessionId}
           userDisplayName={viewModel.userDisplayName}
           voiceArchiveEnabled={state.voiceArchiveEnabled === true}
         />

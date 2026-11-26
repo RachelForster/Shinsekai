@@ -1,138 +1,118 @@
-SHINSEKAI SOURCE-AVAILABLE END-USER LICENSE AGREEMENT
+# PolyForm Strict License 1.0.0
 
-Version 1.0, effective 2026-06-13
+<https://polyformproject.org/licenses/strict/1.0.0>
 
-IMPORTANT: PLEASE READ THIS LICENSE CAREFULLY BEFORE INSTALLING, COPYING,
-BUILDING, MODIFYING, OR USING SHINSEKAI.
+## Acceptance
 
-This End-User License Agreement ("Agreement") is a legal agreement between you
-(an individual or legal entity) and the Shinsekai copyright holders
-("Licensor") for the Shinsekai software project, including source code,
-compiled binaries, scripts, documentation, media distributed with the project,
-and related materials (collectively, the "Software").
+In order to get any license under these terms, you must agree to them as both strict obligations and conditions to all your licenses.
 
-By installing, copying, building, modifying, or using the Software, you agree to
-be bound by this Agreement. If you do not agree to this Agreement, do not
-install, copy, build, modify, or use the Software.
+## Copyright License
 
-The Software is licensed, not sold. All rights not expressly granted in this
-Agreement are reserved by Licensor.
+The licensor grants you a copyright license for the software to do everything you might do with the software that would otherwise infringe the licensor's copyright in it for any permitted purpose, other than distributing the software or making changes or new works based on the software.
 
-1. GRANT OF LICENSE
+## Patent License
 
-Subject to your compliance with this Agreement, Licensor grants you a limited,
-non-exclusive, non-transferable, revocable license to:
+The licensor grants you a patent license for the software that covers patent claims the licensor can license, or becomes able to license, that you would infringe by using the software.
 
-(a) download and inspect the source code of the Software;
+## Noncommercial Purposes
 
-(b) compile and run the Software for your own personal, internal, or evaluation
-purposes;
+Any noncommercial purpose is a permitted purpose.
 
-(c) modify the source code for your own personal or internal use; and
+## Personal Uses
 
-(d) create and maintain a public source-code fork of the official Shinsekai
-repository on a source-code collaboration platform, solely for review,
-experimentation, issue discussion, or contribution back to the official
-Shinsekai project, provided that the fork clearly preserves this Agreement and
-all copyright, license, and attribution notices; and
+Personal use for research, experiment, and testing for the benefit of public knowledge, personal study, private entertainment, hobby projects, amateur pursuits, or religious observance, without any anticipated commercial application, is use for a permitted purpose.
 
-(e) submit proposed changes, patches, bug reports, or pull requests to the
-official Shinsekai project.
+## Noncommercial Organizations
 
-2. RESTRICTIONS
+Use by any charitable organization, educational institution, public research organization, public safety or health organization, environmental protection organization, or government institution is use for a permitted purpose regardless of the source of funding or obligations resulting from the funding.
 
-You may not, without prior written permission from Licensor:
+## Fair Use
 
-(a) distribute, publish, sublicense, sell, rent, lease, lend, host, or otherwise
-make available copies of the Software, modified versions of the Software, or
-compiled binaries of the Software to any third party, except for the narrow
-public source-code fork permission granted in Section 1(d);
+You may have "fair use" rights for the software under the law. These terms do not limit them.
 
-(b) use the Software, modified versions of the Software, or compiled binaries of
-the Software as part of a commercial product, paid service, marketplace listing,
-app store listing, game store listing, subscription service, or other
-commercial offering;
+## No Other Rights
 
-(c) publish release builds, installers, archives, packages, container images,
-portable builds, app bundles, executable binaries, or other redistributable
-copies of the Software or modified versions of the Software;
+These terms do not allow you to sublicense or transfer any of your licenses to anyone else, or prevent the licensor from granting licenses to anyone else.  These terms do not imply any other licenses.
 
-(d) create or maintain a public mirror, clone, archive, re-upload, or separate
-repository that presents the Software or a modified version of the Software as
-an independent project, replacement project, unofficial release channel, or
-redistribution source;
+## Patent Defense
 
-(e) remove, alter, or obscure copyright notices, license notices, attribution
-notices, trademarks, logos, or other proprietary notices in the Software;
+If you make any written claim that the software infringes or contributes to infringement of any patent, your patent license for the software granted under these terms ends immediately. If your company makes such a claim, your patent license ends immediately for work on behalf of your company.
 
-(f) use the names "Shinsekai", "RachelForster/Shinsekai", project logos,
-icons, artwork, website assets, store assets, or other Shinsekai branding in a
-way that suggests endorsement, affiliation, or official status without prior
-written permission from Licensor;
+## Violations
 
-(g) use the Software to create or distribute a product that is confusingly
-similar to Shinsekai or that represents itself as an official Shinsekai release;
-or
+The first time you are notified in writing that you have violated any of these terms, or done anything with the software not covered by your licenses, your licenses can nonetheless continue if you come into full compliance with these terms, and take practical steps to correct past violations, within 32 days of receiving notice.  Otherwise, all your licenses end immediately.
 
-(h) circumvent license checks, update signing, platform integration, access
-controls, or other technical measures included in official Shinsekai releases.
+## No Liability
 
-3. CONTRIBUTIONS
+***As far as the law allows, the software comes as is, without any warranty or condition, and the licensor will not be liable to you for any damages arising out of these terms or the use or nature of the software, under any kind of legal claim.***
 
-By submitting a contribution to the official Shinsekai project, you represent
-that you have the right to submit it and you grant Licensor a perpetual,
-worldwide, non-exclusive, royalty-free, transferable, sublicensable license to
-use, reproduce, modify, prepare derivative works of, publicly display,
-publicly perform, distribute, and otherwise exploit that contribution as part
-of Shinsekai and related products or services.
+## Definitions
 
-4. THIRD-PARTY COMPONENTS
+The **licensor** is the individual or entity offering these terms, and the **software** is the software the licensor makes available under these terms.
 
-The Software may include third-party components, dependencies, templates,
-assets, or tools that are licensed under separate terms. Those separate terms
-continue to apply to the relevant third-party materials. This Agreement does
-not replace, modify, or remove any third-party license notices.
+**You** refers to the individual or entity agreeing to these terms.
 
-5. CONTENT AND USER DATA
+**Your company** is any legal entity, sole proprietorship, or other kind of organization that you work for, plus all organizations that have control over, are under the control of, or are under common control with that organization.  **Control** means ownership of substantially all the assets of an entity, or the power to direct its management and policies by vote, contract, or otherwise.  Control can be direct or indirect.
 
-This Agreement does not grant you rights to third-party character packs, voice
-models, images, audio, prompts, datasets, plugins, or other content that may be
-used with the Software. You are responsible for ensuring that your use of any
-such content complies with applicable laws and the relevant content licenses.
+**Your licenses** are all the licenses granted to you for the software under these terms.
 
-6. TERMINATION
+**Use** means anything you do with the software requiring one of your licenses.
 
-This Agreement terminates automatically if you violate its terms. Upon
-termination, you must stop using the Software and destroy all copies of the
-Software in your possession or control, except where retention is required by
-law.
+---
 
-7. DISCLAIMER OF WARRANTY
+# Shinsekai Additional Permissions and Contribution Terms
 
-THE SOFTWARE IS PROVIDED "AS IS" AND "AS AVAILABLE", WITHOUT WARRANTY OF ANY
-KIND, EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, NON-INFRINGEMENT,
-ACCURACY, SECURITY, OR RELIABILITY.
+Effective 2026-11-25
+Copyright (c) 2026 Shinsekai Copyright Holders. All rights reserved.
 
-8. LIMITATION OF LIABILITY
+> **Notice:** The terms below are separate additional permissions and terms granted solely by the Shinsekai copyright holders ("Licensor") as permitted by the "No Other Rights" section of the PolyForm Strict License 1.0.0 above. They are **not** part of, do **not** modify, and are **not** endorsed by the PolyForm Project or the PolyForm Strict License 1.0.0.
 
-TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, LICENSOR AND SHINSEKAI
-CONTRIBUTORS WILL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL,
-CONSEQUENTIAL, EXEMPLARY, OR PUNITIVE DAMAGES, OR FOR LOSS OF PROFITS, DATA,
-GOODWILL, OR BUSINESS INTERRUPTION, ARISING OUT OF OR RELATING TO THE SOFTWARE
-OR THIS AGREEMENT, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+Subject to your compliance with the PolyForm Strict License 1.0.0 above and all conditions below, Licensor grants you the following narrow additional permissions for the Shinsekai software project (including source code, compiled binaries, scripts, documentation, media distributed with the project, and related materials, collectively the "Software"):
 
-9. RESERVED RIGHTS AND COMMERCIAL LICENSING
+## 1. Local Personal Modification and Study
 
-Commercial redistribution, marketplace distribution, app store distribution,
-game store distribution, managed hosting, sublicensing, and any use outside the
-rights expressly granted in Section 1 require a separate written license from
-Licensor.
+As an additional permission solely for your own personal, educational, study, research, or noncommercial evaluation purposes (with no commercial purpose or anticipated commercial application), you may:
 
-10. GOVERNING TERMS
+- download, inspect, compile, and run the Software locally; and
+- make local changes or modifications to the source code strictly for your own private, noncommercial use and study.
 
-If any provision of this Agreement is found unenforceable, the remaining
-provisions will remain in effect. This Agreement is the complete agreement
-between you and Licensor regarding the Software and supersedes any prior
-understanding about the Software, except for separate written agreements signed
-by Licensor.
+Modified versions created under this section may **not** be distributed, published, hosted, or otherwise made available to any third party, except as expressly permitted in Section 2 and Section 3 below.
+
+## 2. Repository Forks
+
+As an additional permission, you may create and maintain a public or private source-code fork of the official Shinsekai repository (`https://github.com/RachelForster/Shinsekai`) on GitHub or a similar source-code collaboration platform solely for personal study, code review, experimentation, issue discussion, or contributing changes back to the official Shinsekai project, provided that:
+
+1. the fork preserves this entire `LICENSE` file (including both the unmodified PolyForm Strict License 1.0.0 and these Additional Permissions) and all copyright, license, and attribution notices intact;
+2. the fork is **not** used to publish release builds, installers, archives, portable bundles, packages, container images, compiled binaries, or other redistributable copies of the Software or modified versions; and
+3. the fork is **not** presented as an independent project, replacement project, unofficial release channel, or general redistribution source.
+
+## 3. Contributions and Pull Requests
+
+You may submit proposed changes, patches, bug reports, or pull requests to the official Shinsekai project.
+
+By submitting a contribution to the official Shinsekai project, you represent that you have the right to submit it and you grant Licensor a perpetual, worldwide, non-exclusive, royalty-free, transferable, sublicensable license to use, reproduce, modify, prepare derivative works of, publicly display, publicly perform, distribute, and otherwise exploit that contribution as part of Shinsekai and related products or services.
+
+## 4. No Redistribution and No Commercial Use
+
+Except for the narrow source-code fork permission in Section 2 and submissions to the official project in Section 3, nothing in these Additional Permissions grants any right to:
+
+- distribute, publish, sublicense, sell, rent, lease, lend, host, mirror, or otherwise make available copies of the Software, modified versions, or compiled binaries to any third party;
+- publish release builds, installers, portable builds, app bundles, packages, container images, or other redistributable artifacts;
+- use the Software or modified versions for any commercial purpose, paid service, marketplace listing, app store listing, game store listing, or subscription offering; or
+- remove, alter, or obscure copyright, license, attribution, or trademark notices, or circumvent license checks, update signing, or access controls in official releases.
+
+## 5. Trademarks and Branding
+
+These terms do not grant any right to use the names "Shinsekai", "RachelForster/Shinsekai", project logos, icons, artwork, website assets, or other Shinsekai branding in a way that suggests official status, endorsement, or affiliation without prior written permission from Licensor.
+
+## 6. Third-Party Components and User Content
+
+The Software may include or interact with third-party components, dependencies, SDKs, templates, assets, character packs, voice models, plugins, or tools licensed under separate terms. Those separate terms continue to apply to the relevant third-party materials, and you are responsible for complying with them.
+
+## 7. Commercial Licensing and Reserved Rights
+
+Any commercial use, redistribution, release publishing, app/game store distribution, managed hosting, sublicensing, or other use outside the PolyForm Strict License 1.0.0 and these Additional Permissions requires a separate written license from Licensor.
+
+## 8. Termination and No Liability
+
+Your additional permissions under this addendum terminate automatically if you violate its terms. All additional permissions granted here are provided on the same "as is", without warranty, and no-liability basis as stated in the "No Liability" section of the PolyForm Strict License 1.0.0 above.

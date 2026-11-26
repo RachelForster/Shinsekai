@@ -7,7 +7,7 @@ recovery, provider responses and tool policy each have a separate owner.
 from __future__ import annotations
 
 import copy
-from collections.abc import Generator
+from collections.abc import Callable, Generator, Sequence
 from datetime import datetime
 from typing import Any, Dict, Optional, Union
 
@@ -22,7 +22,10 @@ from ai.llm.runtime_defaults import tool_executor, tool_manager
 from ai.llm.template.integrations.localization import LocaleInput
 from ai.llm.tool_session import FIRST_USER_TURN_TOOL_CALL_LIMIT, ToolSession
 from core.chat_history.identity import CHAT_TURN_ID
+from core.chat_history.models import CHUNK_FEED_SOURCE
+from sdk.adapters.dialog_format import DEFAULT_DIALOG_FORMAT_ID
 from sdk.adapters.llm import LLMAdapter
+from core.messaging.formats.registry import resolve_dialog_format
 from sdk.hooks import PluginHookDispatcher
 from sdk.llm_runtime import get_llm_host_runtime
 from sdk.logging import get_logger
@@ -72,6 +75,20 @@ class LLMManager:
     last_token_estimate = _view("_requests", "last_token_estimate")
     generation_config = _view("_loop", "generation_config")
     media_selection_mode = _view("_loop", "media_selection_mode")
+    speaker_requires_media = _view("_loop", "speaker_requires_media")
+    bound_speakers = _view("_loop", "bound_speakers")
+    dialog_format = _view("_loop", "dialog_format")
+
+    @property
+    def output_format(self) -> str:
+        return self._loop.output_format
+
+    @output_format.setter
+    def output_format(self, value: str) -> None:
+        resolved = resolve_dialog_format(value)
+        self._loop.dialog_format = resolved
+        self._loop.output_format = resolved.format_id
+        self._requests.dialog_output_format = resolved
 
     def __init__(
         self, adapter: LLMAdapter, user_template='', max_tokens: int = 128000,
@@ -81,7 +98,8 @@ class LLMManager:
         first_turn_tool_call_limit: int = FIRST_USER_TURN_TOOL_CALL_LIMIT,
         generation_config: Optional[Dict[str, Any]] = None, history_file: str = "",
         hook_dispatcher: PluginHookDispatcher | None = None,
-        media_selection_mode: str = "indexed", tools_enabled: bool = True,
+        media_selection_mode: str = "indexed", output_format: str = DEFAULT_DIALOG_FORMAT_ID,
+        tools_enabled: bool = True,
         use_current_template_for_history: bool = False, *,
         tools: ToolCatalog | None = None, executor: ToolRunner | None = None,
         host: ChatHost | None = None, journal: MessageJournal | None = None,
@@ -116,7 +134,14 @@ class LLMManager:
             first_turn_tool_call_limit=max(0, int(first_turn_tool_call_limit)),
             confirm=self._confirm_risky_tool, notify=self._notify_tool_call, logger=self.logger,
         )
-        self._requests = RequestRunner(adapter, self._history, self._tools, host=self._get_host, logger=self.logger)
+        self._requests = RequestRunner(
+            adapter,
+            self._history,
+            self._tools,
+            host=self._get_host,
+            logger=self.logger,
+            output_format=output_format,
+        )
         self._loop = ChatLoop(
             adapter, self._tools, self._requests,
             cancelled=lambda: self._cancel_requested,
@@ -125,6 +150,7 @@ class LLMManager:
             media_selection_mode="semantic" if str(media_selection_mode or "").strip().lower() == "semantic" else "indexed",
             logger=self.logger,
             locale=locale,
+            output_format=output_format,
         )
         self.set_user_template(user_template)
         self.tools_definitions = self.tools_manager.get_definitions(groups="default") if tools_enabled else []
@@ -189,6 +215,15 @@ class LLMManager:
         self._history.set_user_template(template)
         self.llm_adapter.set_user_template(template)
 
+    def set_speaker_media_policy(
+        self,
+        speaker_requires_media: Callable[[str], bool] | None,
+        bound_speakers: Sequence[str] = (),
+    ) -> None:
+        """Configure selective per-speaker media validation and repair context."""
+        self._loop.speaker_requires_media = speaker_requires_media
+        self._loop.bound_speakers = tuple(bound_speakers)
+
     def add_message(self, role: str, content: Optional[str], **kwargs) -> None:
         self._history.add_message(role, content, **kwargs)
 
@@ -236,10 +271,13 @@ class LLMManager:
         stream_owns_scope = False
         try:
             self._history._strip_orphaned_tool_calls()
-            include_local_time = bool(kwargs.pop("include_local_time", True))
+            user_source = str(kwargs.pop("user_source", "user") or "user").strip()
+            default_local_time = user_source.casefold() != CHUNK_FEED_SOURCE
+            include_local_time = bool(
+                kwargs.pop("include_local_time", default_local_time)
+            )
             display_text = str(kwargs.pop("user_display_text", "") or "").strip()
             input_text = kwargs.pop("user_input_text", None)
-            user_source = str(kwargs.pop("user_source", "user") or "user").strip()
             history_turn_id = kwargs.pop("history_turn_id", "")
             attachments = kwargs.pop("user_attachments", None)
             groups = kwargs.pop("tool_groups", ())

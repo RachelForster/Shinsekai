@@ -199,25 +199,6 @@
 
 /* ── Voice type selector ── */
 
-.voice-type-selector {
-  display: flex;
-  gap: var(--space-3);
-}
-
-.radio-row {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  cursor: pointer;
-  font-size: 13px;
-  color: var(--color-text-primary);
-}
-
-.radio-row input[type="radio"] {
-  accent-color: var(--color-accent-primary);
-  cursor: pointer;
-}
-
 .field-row__hint--voice-type {
   margin: var(--space-1) 0 0;
   font-size: 12px;
@@ -540,6 +521,11 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
+}
+
+.sprite-group-actions {
+  margin-left: auto;
+  justify-content: flex-end;
 }
 
 .sprite-group-inline-editor {

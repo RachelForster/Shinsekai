@@ -427,7 +427,7 @@ describe("sprite generator", () => {
     fireEvent.click(pairs[3]);
     expect(within(recommendations).getByText("1 selected · 10.0% of sample changes covered")).toBeInTheDocument();
     expect(analyzeTransitions).toHaveBeenCalledOnce();
-    fireEvent.click(screen.getByRole("button", { name: "Manual selection" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Manual selection" }));
     expect(screen.queryByRole("region", { name: "Chat recommendations" })).toBeNull();
     expect(screen.getByText("Choose sprites (at least two)")).toBeInTheDocument();
   });
@@ -504,7 +504,7 @@ describe("sprite generator", () => {
     mount();
     fireEvent.click(screen.getByRole("tab", { name: "Animated sprites" }));
     expect(screen.getByRole("button", { name: "Generate transparent animation" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("tab", { name: "Choose a file" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Choose a file" }));
     fireEvent.click(screen.getByRole("button", { name: "Choose reference image" }));
     animate.mockResolvedValueOnce({
       name: "Mika",

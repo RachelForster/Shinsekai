@@ -32,10 +32,13 @@ import type { ChatOption, ChatStat, ChatToolConfirmation } from "../../../shared
 import { CharacterVisual, type VisualFraming } from "../../../modules/character-visual";
 import { Button, ThemeFrame, VisualMedia } from "../../../shared/ui";
 import type { ChatStageSprite } from "../chatState";
-import type { ChatStageEffectImage } from "../state/types";
+import type { ChatStageBackgroundTransition, ChatStageEffectImage, ChatStageSpriteMotion } from "../state/types";
+import { BackgroundTransitionLayer } from "./BackgroundTransitionLayer";
+import { SpriteMotionBox } from "./SpriteMotionBox";
 import { classNames, hideBrokenStageAsset, layerClassName, stageAssetUrl } from "../chatStageUtils";
 import type { DialogHtmlNode, DialogHtmlStyleProperty } from "../dialogTypewriter";
 import { chatStageSpriteAxisCenter, chatStageSpriteCharacterName } from "../state/sprites";
+import { chatOptionKey } from "../state/behaviorCommands";
 import { Portrait } from "../../../shared/components/Portrait";
 import type { PlayerPortrait } from "../../../shared/platform/types";
 
@@ -50,27 +53,23 @@ export function BackgroundLayer({
   hidden,
   onDragStart,
   path,
+  transition,
   transparent,
 }: {
   hidden: boolean;
   onDragStart?: MouseEventHandler<HTMLElement>;
   path?: string;
+  transition?: ChatStageBackgroundTransition | null;
   transparent: boolean;
 }) {
-  const src = stageAssetUrl(path);
   return (
-    <div
-      aria-hidden={hidden}
-      className={layerClassName("chat-stage__background", hidden)}
-      data-chat-stage-hitbox={onDragStart ? "true" : undefined}
-      data-draggable={onDragStart ? "true" : "false"}
-      data-transparent={transparent ? "true" : "false"}
+    <BackgroundTransitionLayer
       hidden={hidden}
-      onMouseDown={onDragStart}
-    >
-      {transparent ? null : <div aria-hidden className="chat-stage__fallback" />}
-      {src ? <VisualMedia active={!hidden} alt="" onError={hideBrokenStageAsset} src={src} /> : null}
-    </div>
+      onDragStart={onDragStart}
+      path={path}
+      transition={transition}
+      transparent={transparent}
+    />
   );
 }
 
@@ -174,6 +173,7 @@ export function SpriteLayer({
   runtimeFramingForSprite,
   speaker,
   responding = false,
+  spriteMotions,
   thinkingCharacterName,
   sprites,
 }: {
@@ -183,6 +183,7 @@ export function SpriteLayer({
   runtimeFramingForSprite?: (sprite: ChatStageSprite, index: number) => VisualFraming;
   speaker?: string;
   responding?: boolean;
+  spriteMotions?: Record<string, ChatStageSpriteMotion>;
   thinkingCharacterName?: string;
   sprites: ChatStageSprite[];
 }) {
@@ -197,8 +198,10 @@ export function SpriteLayer({
       hidden={hidden}
     >
       {sprites.map((sprite, index) => {
-        const speaking = hasSpeakingSprite && chatStageSpriteCharacterName(sprite) === activeSpeaker;
+        const spriteName = chatStageSpriteCharacterName(sprite);
+        const speaking = hasSpeakingSprite && spriteName === activeSpeaker;
         const axisCenter = chatStageSpriteAxisCenter(sprites, sprite, index);
+        const spriteMotion = spriteMotions?.[spriteName] ?? spriteMotions?.[sprite.label] ?? spriteMotions?.[sprite.id];
         return (
           <figure
             className="sprite-layer__figure"
@@ -207,7 +210,7 @@ export function SpriteLayer({
             data-draggable={onDragStart ? "true" : "false"}
             data-slot={sprite.slot ?? index}
             data-speaking={speaking ? "true" : "false"}
-            key={chatStageSpriteCharacterName(sprite) || sprite.id}
+            key={spriteName || sprite.id}
             style={
               {
                 "--sprite-axis-center": `${axisCenter}%`,
@@ -218,39 +221,41 @@ export function SpriteLayer({
               } as CSSProperties
             }
           >
-            <CharacterVisual
-              active={!hidden}
-              asset={{
-                id: sprite.id,
-                label: sprite.label,
-                url: stageAssetUrl(sprite.path),
-                avatarType: sprite.avatarType ?? "static",
-                modelUrl: sprite.modelUrl ? stageAssetUrl(sprite.modelUrl) : "",
-                mouthSync: sprite.mouthSync ? stageAssetUrl(sprite.mouthSync) : undefined,
-                transitions: sprite.transitions?.map((edge) => ({
-                  ...edge,
-                  fromUrl: stageAssetUrl(edge.fromUrl),
-                  url: stageAssetUrl(edge.url),
-                })),
-              }}
-              hitbox={Boolean(onDragStart)}
-              framing={runtimeFramingForSprite?.(sprite, index)}
-              className="sprite-layer__image"
-              onImageError={hideBrokenStageAsset}
-              onMouseDown={onDragStart ?? (() => {})}
-              mode={sprite.applyMode ?? "play"}
-              voiceCharacterName={chatStageSpriteCharacterName(sprite)}
-              attention={
-                hidden
-                  ? "idle"
-                  : speaking && responding
-                    ? "responding"
-                    : chatStageSpriteCharacterName(sprite) === thinkingCharacterName
-                      ? "thinking"
-                      : "idle"
-              }
-              stateSequence={sprite.stateSequence}
-            />
+            <SpriteMotionBox motion={spriteMotion}>
+              <CharacterVisual
+                active={!hidden}
+                asset={{
+                  id: sprite.id,
+                  label: sprite.label,
+                  url: stageAssetUrl(sprite.path),
+                  avatarType: sprite.avatarType ?? "static",
+                  modelUrl: sprite.modelUrl ? stageAssetUrl(sprite.modelUrl) : "",
+                  mouthSync: sprite.mouthSync ? stageAssetUrl(sprite.mouthSync) : undefined,
+                  transitions: sprite.transitions?.map((edge) => ({
+                    ...edge,
+                    fromUrl: stageAssetUrl(edge.fromUrl),
+                    url: stageAssetUrl(edge.url),
+                  })),
+                }}
+                hitbox={Boolean(onDragStart)}
+                framing={runtimeFramingForSprite?.(sprite, index)}
+                className="sprite-layer__image"
+                onImageError={hideBrokenStageAsset}
+                onMouseDown={onDragStart ?? (() => {})}
+                mode={sprite.applyMode ?? "play"}
+                voiceCharacterName={spriteName}
+                attention={
+                  hidden
+                    ? "idle"
+                    : speaking && responding
+                      ? "responding"
+                      : spriteName === thinkingCharacterName
+                        ? "thinking"
+                        : "idle"
+                }
+                stateSequence={sprite.stateSequence}
+              />
+            </SpriteMotionBox>
           </figure>
         );
       })}
@@ -451,7 +456,7 @@ export function OptionsLayer({
           const label = typeof option === "string" ? option : option.label;
           const disabled = readOnly || (typeof option !== "string" && !option.enabled);
           const selected = readOnly && selectedIndex === index;
-          const key = typeof option === "string" ? option : `${option.expectedRevision}:${option.id}`;
+          const key = chatOptionKey(option);
           return (
             <div
               className="options-layer__item"

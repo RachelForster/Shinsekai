@@ -311,14 +311,22 @@ export function BackgroundMusicSection({
         <h2 className="section__title">{t("background.section.bgm")}</h2>
         <div className="page__actions">
           <AsyncButton
-            disabled={!currentBackgroundName}
-            icon={<Upload aria-hidden className="button__icon" />}
-            loading={uploadPending}
-            onClick={() => setPickerOpen(true)}
-            variant="ghost"
+            disabled={!canDeleteSelectedBgm}
+            icon={<Trash2 aria-hidden className="button__icon" />}
+            loading={batchDeletePending}
+            onClick={onBatchDelete}
+            variant="danger"
           >
-            {t("background.asset.uploadBgm")}
+            {t("background.asset.deleteSelectedBgm")}
           </AsyncButton>
+          <Button
+            disabled={!canClearBgm}
+            icon={<Trash2 aria-hidden className="button__icon" />}
+            onClick={onClearAll}
+            variant="danger"
+          >
+            {t("background.asset.clearBgm")}
+          </Button>
           <Button
             disabled={!bgmList.length}
             icon={<Tags aria-hidden className="button__icon" />}
@@ -328,22 +336,14 @@ export function BackgroundMusicSection({
             {t("background.asset.batchBgmTags")}
           </Button>
           <AsyncButton
-            disabled={!canDeleteSelectedBgm}
-            icon={<Trash2 aria-hidden className="button__icon" />}
-            loading={batchDeletePending}
-            onClick={onBatchDelete}
-            variant="ghost"
+            disabled={!currentBackgroundName}
+            icon={<Upload aria-hidden className="button__icon" />}
+            loading={uploadPending}
+            onClick={() => setPickerOpen(true)}
+            variant="primary"
           >
-            {t("background.asset.deleteSelectedBgm")}
+            {t("background.asset.uploadBgm")}
           </AsyncButton>
-          <Button
-            disabled={!canClearBgm}
-            icon={<Trash2 aria-hidden className="button__icon" />}
-            onClick={onClearAll}
-            variant="ghost"
-          >
-            {t("background.asset.clearBgm")}
-          </Button>
         </div>
       </div>
       <div className="asset-editor">

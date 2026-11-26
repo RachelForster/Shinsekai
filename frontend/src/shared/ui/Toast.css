@@ -1,7 +1,8 @@
 .toast-region {
   position: fixed;
-  right: var(--space-4);
-  bottom: var(--space-4);
+  top: calc(var(--desktop-titlebar-height, 0px) + var(--space-4));
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 60;
   display: grid;
   width: min(420px, calc(100vw - 32px));

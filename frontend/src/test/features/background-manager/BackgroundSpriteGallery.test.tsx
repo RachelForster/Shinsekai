@@ -83,6 +83,20 @@ describe("BackgroundSpriteGallery", () => {
   it("routes selected image inspection actions by the selected sprite index", async () => {
     const { container, props } = renderGallery();
 
+    const headerActions = container.querySelector(".section__header .page__actions");
+    expect(headerActions).not.toBeNull();
+    expect(Array.from(headerActions!.querySelectorAll("button")).map((button) => button.textContent?.trim())).toEqual([
+      "Delete all images",
+      "Batch image tags",
+      "Upload images / videos",
+    ]);
+
+    const inspectorActions = container.querySelector(".asset-inspector__actions");
+    expect(inspectorActions).not.toBeNull();
+    expect(
+      Array.from(inspectorActions!.querySelectorAll("button")).map((button) => button.textContent?.trim()),
+    ).toEqual(["Remove", "Save image description"]);
+
     expect(filesRepositoryMock.fileThumbnailBatch).toHaveBeenCalledWith(
       ["D:/bg/scene-a.png", "D:/bg/scene-b.png"],
       160,

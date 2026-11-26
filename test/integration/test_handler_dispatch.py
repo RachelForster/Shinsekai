@@ -67,7 +67,12 @@ class TestDialogMediaHandlerChainAssembly:
         builtin_types = [
             t
             for t in types
-            if t.__module__.startswith("application.chat.presentation.handlers.dialog_media")
+            if t.__module__.startswith(
+                (
+                    "application.chat.presentation.handlers.dialog_media",
+                    "application.chat.presentation.handlers.character_media",
+                )
+            )
         ]
         assert builtin_types[-1] == CharacterMediaHandler
 
