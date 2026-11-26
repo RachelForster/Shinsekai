@@ -1,99 +1,70 @@
+"""Compatibility wrapper delegating directly to the ``Character`` Pydantic schema."""
+
+from __future__ import annotations
+
+from copy import deepcopy
+from typing import Any
+
 import yaml
 
+from config.models import Character
 from config.sprite_voice import normalize_sprite_voice_types
-from config.schema import Character
+from i18n import tr
+
+_PACKAGE_EXCLUDED_FIELDS = {"id", "display_name", "is_builtin", "pinned", "undeletable"}
 
 
 class CharacterConfig:
-    def __init__(self, name, color, sprite_prefix, gpt_model_path=None, sovits_model_path=None, refer_audio_path=None, prompt_text=None, prompt_lang=None, sprites=[], emotion_tags="", sprite_scale=1.0, character_setting="", speech_speed=1.0, speech_volume=1.0, pronunciation_map=None, character_brief="", avatar_type="static", avatars=None, portrait_crop=None, sprite_transitions=None, relation_graph=None, sprite_groups=None, default_sprite_group="", fallback_to_default_group=True):
-        # 角色基本信息
-        self.name = name
-        self.color = color
-        self.sprite_prefix = sprite_prefix
-        self.sprites = sprites
-        self.sprite_groups = list(sprite_groups or [])
-        self.default_sprite_group = "" if default_sprite_group is None else str(default_sprite_group)
-        self.fallback_to_default_group = True if fallback_to_default_group is None else bool(fallback_to_default_group)
-        self.character_brief = "" if character_brief is None else character_brief
-        self.relation_graph = relation_graph or {}
-        self.character_setting = character_setting
-        self.sprite_scale = sprite_scale
-        self.portrait_crop = portrait_crop
-        self.emotion_tags = emotion_tags
-        self.speech_speed = speech_speed
-        self.speech_volume = speech_volume
-        self.pronunciation_map = pronunciation_map or {}
-        avatar_fields = Character(
-            name=name, color=color, sprite_prefix=sprite_prefix,
-            avatar_type=avatar_type, avatars=avatars,
-            sprite_transitions=sprite_transitions,
-        )
-        self.avatar_type = avatar_fields.avatar_type
-        # Packages and legacy config files must contain plain YAML-safe data,
-        # even when the caller supplies ModelSprites / Sprite instances.
-        self.avatars = avatar_fields.model_dump(mode="json")["avatars"]
-        self.sprite_transitions = avatar_fields.model_dump(mode="json")["sprite_transitions"]
+    """Pass-through legacy wrapper backed by ``Character`` (no manual field enumeration)."""
 
-        # gpt-sovits 语音配置
-        self.gpt_model_path = gpt_model_path
-        self.sovits_model_path = sovits_model_path
-        self.refer_audio_path = refer_audio_path
-        self.prompt_text = prompt_text
-        self.prompt_lang = prompt_lang
-       
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        raw: dict[str, Any] = dict(kwargs)
+        positional_keys = ("name", "color", "sprite_prefix")
+        for idx, val in enumerate(args):
+            if idx < len(positional_keys):
+                raw[positional_keys[idx]] = val
+
+        # Preserve explicit None for optional model paths & empty relation_graph dict semantics
+        normalized_input = normalize_sprite_voice_types(deepcopy(raw))
+        explicit_none_paths = {
+            k: normalized_input[k]
+            for k in ("gpt_model_path", "sovits_model_path", "refer_audio_path", "prompt_text", "prompt_lang")
+            if k in normalized_input and normalized_input[k] is None
+        }
+        model_input = {**normalized_input}
+        for k in explicit_none_paths:
+            model_input.pop(k, None)
+
+        model = Character.model_validate(model_input)
+        dumped = model.model_dump(mode="json", exclude=_PACKAGE_EXCLUDED_FIELDS)
+        # Keep portrait_crop None when omitted or None in legacy dict inputs if caller passed None
+        if raw.get("portrait_crop") is None and "portrait_crop" in raw:
+            dumped["portrait_crop"] = None
+        for k, v in explicit_none_paths.items():
+            dumped[k] = v
+        # Keep plain empty dict for empty relation_graph when passed as None/{} for compat
+        if not dumped["relation_graph"].get("nodes") and not dumped["relation_graph"].get("edges"):
+            dumped["relation_graph"] = {}
+        # Ensure YAML-safe dict serialization on nested avatars even if callers passed ModelSprites
+        for attr, val in dumped.items():
+            setattr(self, attr, val)
+
+    def to_character(self) -> Character:
+        """Convert this compatibility wrapper back into a validated ``Character`` model."""
+        return Character.model_validate(normalize_sprite_voice_types(dict(self.__dict__)))
 
     @staticmethod
-    def read_from_files(path):
-        """
-        从YAML文件中读取角色配置并返回CharacterConfig对象列表。
-        
-        Args:
-            path (str): YAML配置文件的路径
-            
-        Returns:
-            list[CharacterConfig]: 包含所有角色配置的列表
-        """
-        with open(path, 'r', encoding='utf-8') as file:
-            config_data = yaml.safe_load(file)
-        
+    def read_from_files(path: str) -> list["CharacterConfig"]:
+        with open(path, "r", encoding="utf-8") as file:
+            config_data = yaml.safe_load(file) or []
         characters = []
         for char_data in config_data:
-            # 确保必需的字段存在
-            if not all(key in char_data for key in ['name', 'color', 'sprite_prefix']):
-                raise ValueError("YAML配置缺少必需字段（name, color, sprite_prefix）")
-            
-            # 创建CharacterConfig对象
-            character=CharacterConfig.parse_dic(char_data=char_data)
-            characters.append(character)
+            if not all(key in char_data for key in ("name", "color", "sprite_prefix")):
+                raise ValueError(tr("crud.common.yaml_missing_required"))
+            characters.append(CharacterConfig.parse_dic(char_data=char_data))
         return characters
-    
+
     @staticmethod
-    def parse_dic(char_data):
-        char_data = normalize_sprite_voice_types(char_data)
-        character = CharacterConfig(
-                name=char_data['name'],
-                color=char_data['color'],
-                sprite_prefix=char_data['sprite_prefix'],
-                gpt_model_path=char_data.get('gpt_model_path'),
-                sovits_model_path=char_data.get('sovits_model_path'),
-                refer_audio_path=char_data.get('refer_audio_path'),
-                prompt_text=char_data.get('prompt_text'),
-                prompt_lang=char_data.get('prompt_lang'),
-                sprites=char_data.get("sprites"),
-                sprite_scale=char_data.get("sprite_scale", 1.0),
-                emotion_tags=char_data.get("emotion_tags", ""),
-                character_brief=char_data.get("character_brief", ""),
-                relation_graph=char_data.get("relation_graph"),
-                character_setting=char_data.get("character_setting", ""),
-                speech_speed=char_data.get("speech_speed", 1.0),
-                speech_volume=char_data.get("speech_volume", 1.0),
-                pronunciation_map=char_data.get("pronunciation_map", None),
-                portrait_crop=char_data.get("portrait_crop"),
-                avatar_type=char_data.get("avatar_type", "static"),
-                avatars=char_data.get("avatars"),
-                sprite_transitions=char_data.get("sprite_transitions"),
-                sprite_groups=char_data.get("sprite_groups"),
-                default_sprite_group=char_data.get("default_sprite_group", ""),
-                fallback_to_default_group=char_data.get("fallback_to_default_group", True),
-            )
-        return character
+    def parse_dic(char_data: dict[str, Any]) -> "CharacterConfig":
+        normalized = normalize_sprite_voice_types(deepcopy(dict(char_data)))
+        return CharacterConfig(**normalized)

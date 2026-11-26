@@ -109,6 +109,9 @@ def _chat_log_path() -> Path:
     return log_dir / "main.log"
 
 
+LAUNCH_FAILURE_PREFIX = "启动失败"
+
+
 def _failed_launch_message(exit_code: int, log_path: Path) -> str:
     tail = tail_text(log_path).strip()
     detail = f"\n\n日志尾部:\n{tail}" if tail else ""
@@ -116,7 +119,7 @@ def _failed_launch_message(exit_code: int, log_path: Path) -> str:
     dependency_hint = ""
     if dependency_error:
         dependency_hint = f"\n缺少 Python 模块: {dependency_error['moduleName']}\n建议安装包: {dependency_error['packageName']}"
-    return f"启动失败: 聊天进程已退出，退出码 {exit_code}。\n日志: {log_path}{dependency_hint}{detail}"
+    return f"{LAUNCH_FAILURE_PREFIX}: 聊天进程已退出，退出码 {exit_code}。\n日志: {log_path}{dependency_hint}{detail}"
 
 
 def _app_root(state: BridgeState) -> Path:

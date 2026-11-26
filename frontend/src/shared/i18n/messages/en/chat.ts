@@ -206,7 +206,7 @@ export const chatEnMessages: Record<ChatMessageKey, string> = {
   "chat.config.spriteScale": "Sprite scale",
   "chat.config.spriteFraming": "Sprite framing",
   "chat.config.spriteFramingHint":
-    "Framing is remembered per character on this device for images and every model format. A smaller height ratio gives a closer view; position moves from top to bottom. Original files are unchanged.",
+    "Framing is remembered per character on this device for images and every model format. A smaller height ratio gives a closer view; vertical position adjusts from -100% to 100%. Original files are unchanged.",
   "chat.config.spriteHeightRatio": "Visible height ratio",
   "chat.config.spriteFramePosition": "Vertical framing position",
   "chat.config.spriteFrameFull": "Full view",
@@ -306,6 +306,8 @@ export const chatEnMessages: Record<ChatMessageKey, string> = {
   "chat.toolbar.tokens": "Token usage",
   "chat.toolbar.tools": "Chat tools",
   "chat.toolbar.unlockActions": "Unlock chat actions",
+  "chat.toolbar.runtimeMode": "AI, voice & cross-device settings",
+  "chat.toolbar.backToWorkspace": "Back to workspace / characters",
   "chat.theme.active": "Active",
   "chat.theme.apply": "Apply",
   "chat.theme.backToSettings": "Back to system settings",

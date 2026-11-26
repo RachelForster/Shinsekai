@@ -11,6 +11,7 @@ from typing import Any, Callable
 from urllib.parse import quote
 
 from application.chat.host.mobile_access import MobileAccessInfo
+from frontend_bridge_core.i18n_helpers import bridge_error
 
 
 class MobileAccessError(RuntimeError):
@@ -56,9 +57,7 @@ def discover_lan_ipv4() -> str:
     for candidate in candidates:
         if usable := _usable_lan_ipv4(candidate):
             return usable
-    raise MobileAccessError(
-        "未检测到可用的局域网 IPv4 地址。请连接 Wi-Fi 或有线网络后重试。"
-    )
+    raise bridge_error(MobileAccessError, None, "mobile_no_lan_ipv4")
 
 
 def generate_qr_data_url(value: str) -> str:
@@ -70,9 +69,7 @@ def generate_qr_data_url(value: str) -> str:
     try:
         import qrcode
     except ImportError as exc:  # pragma: no cover - dependency failure is environment-specific
-        raise MobileAccessError(
-            "二维码组件未安装，请重新运行安装程序或执行 `pip install qrcode`。"
-        ) from exc
+        raise bridge_error(MobileAccessError, None, "mobile_qrcode_missing") from exc
 
     try:
         qr = qrcode.QRCode(
@@ -87,9 +84,7 @@ def generate_qr_data_url(value: str) -> str:
         buffer = BytesIO()
         image.save(buffer, format="PNG")
     except ImportError as exc:  # pragma: no cover - dependency failure is environment-specific
-        raise MobileAccessError(
-            "二维码组件或 Pillow 未安装，请重新运行安装程序。"
-        ) from exc
+        raise bridge_error(MobileAccessError, None, "mobile_pillow_missing") from exc
     encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
     return f"data:image/png;base64,{encoded}"
 
@@ -139,7 +134,7 @@ class MobileAccessTransport:
 
             host = _usable_lan_ipv4(self._advertised_host_factory())
             if not host:
-                raise MobileAccessError("检测到的局域网地址不可用。")
+                raise bridge_error(MobileAccessError, None, "mobile_lan_unavailable")
 
             last_error: Exception | None = None
             for offset in range(self._port_attempts):
@@ -191,8 +186,8 @@ class MobileAccessTransport:
                 return info
 
             detail = f": {last_error}" if last_error else ""
-            raise MobileAccessError(
-                f"无法打开移动访问端口，请检查防火墙或端口占用{detail}"
+            raise bridge_error(
+                MobileAccessError, None, "mobile_port_open_failed", detail=detail
             )
 
     def stop(self) -> None:

@@ -218,4 +218,41 @@ describe("player portrait", () => {
     const saved = onSave.mock.calls[0][0];
     expect(saved.sprites[1].portrait_crop).toEqual({ x: 0.5, y: 0.2, zoom: 1 });
   });
+
+  it("saves portrait_sprite_index when saveSelectedAsDefaultPortrait is enabled", () => {
+    const onSave = vi.fn();
+    render(
+      <I18nProvider language="en">
+        <PortraitCropDialog
+          character={{
+            avatar_type: "static",
+            avatars: {},
+            character_setting: "",
+            color: "#ffffff",
+            emotion_tags: "Sprite 1: neutral\nSprite 2: smile\n",
+            name: "Mio",
+            portrait_crop: { x: 0.5, y: 0.2, zoom: 1 },
+            portrait_sprite_index: 0,
+            pronunciation_map: {},
+            speech_speed: 1,
+            speech_volume: 1,
+            sprite_prefix: "mio",
+            sprite_scale: 1,
+            sprites: [{ path: "http://127.0.0.1:8787/mio-1.png" }, { path: "http://127.0.0.1:8787/mio-2.png" }],
+          }}
+          initialSpriteIndex={0}
+          onClose={vi.fn()}
+          onSave={onSave}
+          open
+          saveSelectedAsDefaultPortrait
+        />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("combobox", { name: "Expression sprite" }));
+    fireEvent.click(screen.getByRole("option", { name: /mio-2\.png/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ portrait_sprite_index: 1 }));
+  });
 });

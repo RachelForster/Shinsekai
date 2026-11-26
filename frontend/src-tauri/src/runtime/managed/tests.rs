@@ -4,10 +4,14 @@ use std::env;
 use std::ffi::OsString;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
-use std::sync::Mutex;
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Mutex,
+};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 static PYTORCH_WHEEL_ENV_LOCK: Mutex<()> = Mutex::new(());
+static NEXT_TEMP_DIR_ID: AtomicU64 = AtomicU64::new(0);
 
 struct EnvRestore {
     name: &'static str,
@@ -592,6 +596,79 @@ fn verify_python_imports_reports_missing_modules() {
     let _ = fs::remove_dir_all(temp_root);
 }
 
+#[cfg(unix)]
+#[test]
+fn retry_on_etxtbsy_succeeds_before_limit_and_stops_at_cap() {
+    let mut attempts = 0;
+    let value = retry_on_etxtbsy(|| {
+        attempts += 1;
+        if attempts < 4 {
+            Err(io::Error::from_raw_os_error(26))
+        } else {
+            Ok("ready")
+        }
+    })
+    .unwrap();
+    assert_eq!(value, "ready");
+    assert_eq!(attempts, 4);
+
+    let mut capped_attempts = 0;
+    let err = retry_on_etxtbsy::<(), _>(|| {
+        capped_attempts += 1;
+        Err(io::Error::from_raw_os_error(26))
+    })
+    .unwrap_err();
+    assert_eq!(capped_attempts, 6);
+    assert_eq!(err.raw_os_error(), Some(26));
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn run_command_and_live_log_retry_transient_etxtbsy_and_fail_after_cap() {
+    let temp_root = unique_temp_dir("runtime-etxtbsy-retry");
+    fs::create_dir_all(&temp_root).unwrap();
+    let fake_python = temp_root.join("python");
+    write_executable(&fake_python, "#!/bin/sh\necho live-ok\nexit 0\n");
+
+    let busy_for_run = OpenOptions::new().write(true).open(&fake_python).unwrap();
+    let releaser = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(15));
+        drop(busy_for_run);
+    });
+    let mut cmd = Command::new(&fake_python);
+    run_command(&mut cmd, "transient etxtbsy command").unwrap();
+    releaser.join().unwrap();
+
+    let busy_for_live = OpenOptions::new().write(true).open(&fake_python).unwrap();
+    let live_releaser = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(15));
+        drop(busy_for_live);
+    });
+    let mut live_cmd = Command::new(&fake_python);
+    let mut captured = Vec::new();
+    run_command_with_live_log(&mut live_cmd, "transient etxtbsy live", |line| {
+        captured.push(line.to_string());
+    })
+    .unwrap();
+    live_releaser.join().unwrap();
+    assert!(captured.iter().any(|line| line == "live-ok"));
+
+    let _persistent_busy = OpenOptions::new().write(true).open(&fake_python).unwrap();
+    let mut capped_cmd = Command::new(&fake_python);
+    let run_err = run_command(&mut capped_cmd, "capped etxtbsy command")
+        .unwrap_err()
+        .to_string();
+    assert!(run_err.contains("Text file busy") || run_err.contains("os error 26"));
+
+    let mut capped_live_cmd = Command::new(&fake_python);
+    let live_err = run_command_with_live_log(&mut capped_live_cmd, "capped etxtbsy live", |_| {})
+        .unwrap_err()
+        .to_string();
+    assert!(live_err.contains("Text file busy") || live_err.contains("os error 26"));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
 #[test]
 fn safe_component_rejects_parent_directory_components() {
     assert_eq!(safe_component(".."), "runtime");
@@ -599,11 +676,15 @@ fn safe_component_rejects_parent_directory_components() {
 }
 
 fn unique_temp_dir(name: &str) -> PathBuf {
+    let seq = NEXT_TEMP_DIR_ID.fetch_add(1, Ordering::Relaxed);
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    std::env::temp_dir().join(format!("shinsekai-{name}-{nonce}"))
+    std::env::temp_dir().join(format!(
+        "shinsekai-{name}-{}-{seq}-{nonce}",
+        std::process::id()
+    ))
 }
 
 #[cfg(unix)]

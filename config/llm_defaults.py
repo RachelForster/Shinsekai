@@ -1,6 +1,9 @@
 """Built-in LLM provider defaults used by configuration surfaces."""
 
+from collections.abc import Mapping
 from typing import Any
+
+from sdk.adapters.storage import ReadableDocument
 
 # Add a dictionary to map LLM providers to their default base URLs
 LLM_BASE_URLS = {
@@ -24,6 +27,8 @@ LLM_MODELS = {
     "Ollama": []
 }
 
+DASHSCOPE_PROVIDER_KEYWORDS = ("通义", "qwen", "dashscope")
+
 
 def resolve_llm_base_url(api_config: Any, provider: str) -> str:
     """Resolve a provider URL from the per-provider map with legacy fallback."""
@@ -46,3 +51,53 @@ def resolve_llm_base_url(api_config: Any, provider: str) -> str:
     except (AttributeError, TypeError):
         pass
     return str(LLM_BASE_URLS.get(provider_key, "") or "").strip()
+
+
+def extract_llm_api_credentials(api_config: Any) -> tuple[str, str, str, str]:
+    """Extract ``(provider, model, base_url, api_key)`` from an ``ApiConfig`` snapshot."""
+    llm_provider = str(getattr(api_config, "llm_provider", "") or "")
+    llm_api_keys = getattr(api_config, "llm_api_key", None) or {}
+    llm_models = getattr(api_config, "llm_model", None) or {}
+    api_key = str(llm_api_keys.get(llm_provider, "") or "")
+    model = str(llm_models.get(llm_provider, "") or "")
+    base_url = resolve_llm_base_url(api_config, llm_provider)
+    return llm_provider, model, base_url, api_key
+
+
+def merge_llm_factory_kwargs(
+    api_config: Any,
+    llm_provider: str,
+    base_kwargs: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Merge adapter extra kwargs for ``llm_provider`` over ``base_kwargs``."""
+    out = dict(base_kwargs)
+    extra_map = getattr(api_config, "llm_extra_configs", None) or {}
+    provider_key = str(llm_provider or "").strip()
+    extra = extra_map.get(provider_key, {}) or {}
+    if isinstance(extra, Mapping):
+        out.update(extra)
+    return out
+
+
+def resolve_llm_api_credentials(source: Any) -> tuple[str, str, str, str]:
+    """Read ``(provider, model, base_url, api_key)`` from a doc port, ApiConfig, or ConfigManager."""
+    if isinstance(source, ReadableDocument):
+        return extract_llm_api_credentials(source.get())
+    getter = getattr(source, "get_llm_api_config", None)
+    if callable(getter):
+        return getter()
+    return extract_llm_api_credentials(source)
+
+
+def resolve_llm_factory_kwargs(
+    source: Any,
+    llm_provider: str,
+    base_kwargs: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Resolve merged LLM adapter kwargs from a doc port, ApiConfig, or ConfigManager."""
+    if isinstance(source, ReadableDocument):
+        return merge_llm_factory_kwargs(source.get(), llm_provider, base_kwargs)
+    merger = getattr(source, "merged_llm_factory_kwargs", None)
+    if callable(merger):
+        return merger(llm_provider, dict(base_kwargs))
+    return merge_llm_factory_kwargs(source, llm_provider, base_kwargs)

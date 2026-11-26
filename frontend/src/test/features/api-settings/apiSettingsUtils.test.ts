@@ -65,7 +65,7 @@ describe("API settings utilities", () => {
   it("normalizes ASR provider aliases and save payloads", () => {
     expect(normalizeAsrProvider("faster-whisper")).toBe("faster_whisper");
     expect(normalizeAsrProvider("RealtimeSTT")).toBe("realtime_stt");
-    expect(normalizeAsrProvider("")).toBe("vosk");
+    expect(normalizeAsrProvider("")).toBe("sherpa_onnx");
 
     expect(
       normalizeSystemAsrForSave(

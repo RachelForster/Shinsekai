@@ -11,6 +11,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Protocol
 
+from ai.llm.template.integrations.localization import resolve_template_locale
 from application.chat.capabilities import (
     SessionCapabilitySet,
     StartupCapabilityContext,
@@ -56,8 +57,24 @@ class MissingLlmProviderError(RuntimeError):
 
 def load_chat_config() -> ConfigManager:
     """Load chat configuration without exposing its concrete constructor to main."""
+    import atexit
 
     from config.config_manager import ConfigManager
+    from core.storage.layout import StorageLayout
+
+    layout = StorageLayout.from_env()
+    existing_manager = ConfigManager._instance
+    if (
+        (existing_manager is None or existing_manager.active_backend is None)
+        and (
+            layout.main_db_path.is_file()
+            or layout.config_file("characters.yaml").is_file()
+        )
+    ):
+        from application.runtime.stores import build_app_stores
+
+        stores = build_app_stores(layout.project_root)
+        atexit.register(stores.close)
 
     return ConfigManager()
 
@@ -181,6 +198,7 @@ def create_chat_startup_context(
             media_selection_mode=str(
                 getattr(args, "media_selection_mode", "indexed") or "indexed"
             ),
+            locale=lambda: resolve_template_locale(config),
             **({"use_current_template_for_history": True} if getattr(args, "use_current_template_for_history", False) else {}),
         )
         active_capabilities.on_llm_ready(

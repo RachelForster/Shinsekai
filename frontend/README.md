@@ -15,11 +15,11 @@ pnpm install
 
 Use the launcher from the repository root:
 
-| Platform | Command               |
-| -------- | --------------------- |
-| Windows  | `start-react.bat`     |
-| macOS    | `start-react.command` |
-| Linux    | `./start-react.sh`    |
+| Platform | Command                 |
+| -------- | ----------------------- |
+| Windows  | `scripts\start.bat`     |
+| macOS    | `scripts/start.command` |
+| Linux    | `./scripts/start.sh`    |
 
 The launcher runs `webui_react.py`, starts the Python bridge, serves
 `frontend/dist`, and opens the settings UI in the default browser. If the build

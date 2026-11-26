@@ -4,8 +4,10 @@ from application.chat.templates import (
     _generate_template_summary,
     _list_templates,
     _load_template_session_payload,
+    _load_user_prompt_presets,
     _save_template_session_payload,
     _save_template_summary,
+    _save_user_prompt_presets,
 )
 from frontend_bridge_core.routes.router import (
     ApiRequest,
@@ -35,6 +37,14 @@ def _generate_template(request: ApiRequest) -> JsonResponse:
     return JsonResponse(_generate_template_summary(request.state, request.body))
 
 
+def _load_presets(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(_load_user_prompt_presets(request.state))
+
+
+def _save_presets(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(_save_user_prompt_presets(request.state, request.body))
+
+
 TEMPLATE_ROUTES = (
     Route(
         methods=frozenset({"GET"}),
@@ -42,6 +52,13 @@ TEMPLATE_ROUTES = (
         handler=_list_template_rows,
         body_kind=BodyKind.NONE,
         name="templates.list",
+    ),
+    Route(
+        methods=frozenset({"GET"}),
+        pattern="/api/templates/presets",
+        handler=_load_presets,
+        body_kind=BodyKind.NONE,
+        name="templates.presets.get",
     ),
     Route(
         methods=frozenset({"GET"}),
@@ -55,6 +72,12 @@ TEMPLATE_ROUTES = (
         pattern="/api/templates",
         handler=_save_template,
         name="templates.save",
+    ),
+    Route(
+        methods=frozenset({"POST", "PUT"}),
+        pattern="/api/templates/presets",
+        handler=_save_presets,
+        name="templates.presets.save",
     ),
     Route(
         methods=frozenset({"POST"}),

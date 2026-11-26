@@ -255,6 +255,7 @@ def test_desktop_core_runtime_check_does_not_import_optional_packages(tmp_path):
         "qdrant_client",
         "rembg",
         "sentence_transformers",
+        "sherpa_onnx",
     )
     script = textwrap.dedent(
         f"""
@@ -399,18 +400,21 @@ def test_runtime_core_asr_markers_skip_platforms_without_native_wheels(monkeypat
     names = set(frontend_bridge._iter_requirement_names(requirements))
     assert "pyaudio" not in names
     assert "vosk" in names
+    assert "sherpa-onnx" in names
 
     monkeypatch.setattr(frontend_bridge.sys, "platform", "win32")
     monkeypatch.setattr(frontend_bridge.platform, "machine", lambda: "ARM64")
     names = set(frontend_bridge._iter_requirement_names(requirements))
     assert "pyaudio" not in names
     assert "vosk" not in names
+    assert "sherpa-onnx" not in names
 
     monkeypatch.setattr(frontend_bridge.sys, "platform", "linux")
     monkeypatch.setattr(frontend_bridge.platform, "machine", lambda: "x86_64")
     names = set(frontend_bridge._iter_requirement_names(requirements))
     assert "pyaudio" in names
     assert "vosk" in names
+    assert "sherpa-onnx" in names
 
 
 def test_runtime_core_does_not_require_opencv_distribution():

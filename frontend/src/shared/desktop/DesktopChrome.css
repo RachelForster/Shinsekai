@@ -114,9 +114,14 @@
 }
 
 .desktop-titlebar__button--close:hover {
-  border-color: var(--color-danger-border);
-  color: var(--color-danger);
-  background: var(--color-danger-bg-hover);
+  border-color: var(--color-accent-border-strong);
+  color: var(--color-accent-primary);
+  background: var(--color-accent-bg-hover);
+}
+
+.desktop-titlebar__button:active {
+  transform: translateY(1px) scale(0.96);
+  box-shadow: inset 0 2px 4px var(--color-shadow);
 }
 
 .desktop-runtime {

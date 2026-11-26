@@ -12,13 +12,17 @@ from application.chat.templates import (
     _generate_template_summary,
     _has_untranslated_template_keys,
     _history_id_from_scenario,
+    _list_templates,
     _load_template_session_payload,
+    _load_user_prompt_presets,
     _parse_stored_template,
     _parse_stored_template_metadata,
     _rename_template_session_character,
+    _save_template_summary,
     _scenario_from_template_like,
     _safe_session_int,
     _save_template_session_payload,
+    _save_user_prompt_presets,
     _template_session_to_frontend,
 )
 from ai.llm.template_generator import NoValidCharactersError, TemplateGenerator
@@ -544,3 +548,268 @@ def test_runtime_catalog_projects_types_and_does_not_modify_authored_template(mo
         "\nSCENARIO\nREMINDER\n"
     )
     assert _compose_runtime_template(authored, "SCENARIO") == authored + "\nSCENARIO\nREMINDER\n"
+
+
+def test_user_prompt_presets_normalize_and_round_trip(tmp_path):
+    template_dir = tmp_path / "data" / "character_templates"
+    template_dir.mkdir(parents=True)
+    state = SimpleNamespace(template_dir_path=str(template_dir))
+
+    assert _load_user_prompt_presets(state) == {"groups": [], "presets": []}
+
+    saved = _save_user_prompt_presets(
+        state,
+        {
+            "groups": ["  Style ", "Style", ""],
+            "presets": [
+                {
+                    "id": "p1",
+                    "name": "  Light Novel  ",
+                    "group": "Style",
+                    "color": "#5b8def",
+                    "content": "Line 1\r\nLine 2",
+                },
+                {
+                    "id": "p2",
+                    "name": "No Autoplay",
+                    "group": "Rules",
+                    "content": "Never speak for player.",
+                },
+                {"id": "p1", "name": "Duplicate", "group": "", "content": "ignored"},
+                {"id": "", "name": "Invalid", "group": "", "content": "ignored"},
+            ],
+        },
+    )
+
+    assert saved == {
+        "groups": ["Style", "Rules"],
+        "presets": [
+            {
+                "id": "p1",
+                "name": "Light Novel",
+                "group": "Style",
+                "color": "#5b8def",
+                "content": "Line 1\nLine 2",
+            },
+            {
+                "id": "p2",
+                "name": "No Autoplay",
+                "group": "Rules",
+                "content": "Never speak for player.",
+            },
+        ],
+    }
+    assert _load_user_prompt_presets(state) == saved
+
+
+def test_template_summary_and_session_round_trip_user_prompt_presets(tmp_path, monkeypatch):
+    template_dir = tmp_path / "data" / "character_templates"
+    template_dir.mkdir(parents=True)
+    state = SimpleNamespace(
+        config_manager=SimpleNamespace(config=SimpleNamespace(characters=[]), get_character_by_name=lambda _n: None),
+        template_dir_path=str(template_dir),
+    )
+
+    saved = _save_template_summary(
+        state,
+        {
+            "name": "WithPresets",
+            "baseScenario": "Base scene",
+            "scenario": "Base scene\n\nExtra rule",
+            "system": "System rules",
+            "selectedPresetIds": ["p1"],
+            "appliedPresets": [{"id": "p1", "name": "Tone", "group": "Style", "content": "Extra rule"}],
+        },
+    )
+    assert saved["baseScenario"] == "Base scene"
+    assert saved["selectedPresetIds"] == ["p1"]
+    assert saved["appliedPresets"] == [{"id": "p1", "name": "Tone", "group": "Style", "content": "Extra rule"}]
+    assert _list_templates(state)[0]["selectedPresetIds"] == ["p1"]
+
+    stored = {}
+    storage_module = ModuleType("application.chat.history.session_store")
+    storage_module.load_template_session = lambda _path: dict(stored)
+    storage_module.save_template_session = lambda _path, data: stored.update(data)
+    monkeypatch.setitem(sys.modules, "application.chat.history.session_store", storage_module)
+
+    restored_session = _save_template_session_payload(
+        state,
+        {
+            "baseScenario": "Base scene",
+            "scenario": "Base scene\n\nExtra rule",
+            "selectedPresetIds": ["p1"],
+            "appliedPresets": [{"id": "p1", "name": "Tone", "content": "Extra rule"}],
+            "selectedCharacters": [],
+            "system": "Manual system",
+            "systemManuallyEdited": True,
+        },
+    )
+    assert restored_session["baseScenario"] == "Base scene"
+    assert restored_session["selectedPresetIds"] == ["p1"]
+    assert restored_session["appliedPresets"] == [{"id": "p1", "name": "Tone", "content": "Extra rule"}]
+    assert restored_session["systemManuallyEdited"] is True
+
+
+def test_user_prompt_presets_use_app_stores_document_store_and_in_memory_port(tmp_path):
+    from application.runtime.stores import build_app_stores
+    from config.models import UserPromptPresetLibrary
+    from core.storage import InMemoryDocumentStore
+    from sdk.adapters.storage import DocumentStore
+
+    stores = build_app_stores(tmp_path, bind_globals=False)
+    try:
+        assert isinstance(stores.prompt_presets, DocumentStore)
+        assert stores.hub.get_backend("settings.prompt_presets") is stores.prompt_presets
+        initial_status = stores.prompt_presets.status()
+        assert initial_status.healthy is True
+        assert initial_status.kind == "json"
+        assert initial_status.detail == "default"
+        initial_rev = stores.prompt_presets.revision
+
+        template_dir = tmp_path / "data" / "character_templates"
+        state = SimpleNamespace(template_dir_path=str(template_dir), stores=stores)
+
+        saved = _save_user_prompt_presets(
+            state,
+            {
+                "library": {
+                    "groups": ["Style"],
+                    "presets": [
+                        {
+                            "id": "p1",
+                            "name": "Cinematic",
+                            "group": "Style",
+                            "color": "#5b8def",
+                            "content": "Line 1\r\nLine 2",
+                        }
+                    ],
+                }
+            },
+        )
+        preset_file = tmp_path / "data" / "config" / "user_prompt_presets.json"
+        assert preset_file.is_file()
+        assert stores.prompt_presets.revision != initial_rev
+        assert stores.prompt_presets.status().detail == "exists"
+        assert _load_user_prompt_presets(state) == saved
+        assert saved == {
+            "groups": ["Style"],
+            "presets": [
+                {
+                    "id": "p1",
+                    "name": "Cinematic",
+                    "group": "Style",
+                    "color": "#5b8def",
+                    "content": "Line 1\nLine 2",
+                }
+            ],
+        }
+
+        preset_file.write_text("{bad json", encoding="utf-8")
+        assert _load_user_prompt_presets(state) == {"groups": [], "presets": []}
+        assert stores.prompt_presets.status().healthy is False
+    finally:
+        stores.close()
+
+    mem_store = InMemoryDocumentStore("settings.prompt_presets", UserPromptPresetLibrary)
+    mem_state = SimpleNamespace(
+        template_dir_path="unused",
+        stores=SimpleNamespace(prompt_presets=mem_store),
+    )
+    assert _load_user_prompt_presets(mem_state) == {"groups": [], "presets": []}
+    mem_saved = _save_user_prompt_presets(
+        mem_state,
+        {
+            "groups": ["Tone"],
+            "presets": [{"id": "p2", "name": "Warm", "group": "Tone", "content": "Be kind"}],
+        },
+    )
+    assert _load_user_prompt_presets(mem_state) == mem_saved
+    with pytest.raises(ValueError, match="preset library payload must be an object"):
+        _save_user_prompt_presets(mem_state, {"library": "bad"})
+
+
+def test_empty_scenario_split_meta_resumes_in_updated_ui_language(tmp_path):
+    import json
+    from application.chat.host.launch_preparation import ChatLaunchPreparation
+    from application.chat.templates import TEMP_SPLIT_META, _resume_template_parts
+    from config.schema import SystemConfig
+
+    project_root = tmp_path / "project"
+    template_dir = project_root / "data" / "character_templates"
+    history_dir = project_root / "data" / "chat_history"
+    main_py = project_root / "main.py"
+    template_dir.mkdir(parents=True)
+    history_dir.mkdir(parents=True)
+    main_py.write_text("# stub\n", encoding="utf-8")
+
+    sys_config = SystemConfig(ui_language="zh_CN")
+    config_manager = SimpleNamespace(
+        config=SimpleNamespace(
+            system_config=sys_config,
+            api_config=SimpleNamespace(tts_provider="gpt-sovits"),
+        ),
+        get_character_by_name=lambda _name: None,
+        save_system_config=lambda: None,
+    )
+    state = SimpleNamespace(
+        config_manager=config_manager,
+        template_dir_path=str(template_dir),
+        history_dir=str(history_dir),
+        chat_session={},
+    )
+    prep = ChatLaunchPreparation(
+        project_root=lambda: project_root,
+        app_root=lambda _s: project_root,
+        exe_candidates=lambda _s: [],
+        main_py=lambda: main_py,
+    )
+
+    prep.prepare(
+        state,
+        history_file=str(history_dir / "h1.json"),
+        init_sprite_path="",
+        room_id="",
+        selected_bg="",
+        system_template="",
+        use_cg=False,
+        user_scenario="",
+    )
+    assert "你扮演一个RPG系统。" in (template_dir / "_temp.txt").read_text(encoding="utf-8")
+    split_meta = json.loads((template_dir / TEMP_SPLIT_META).read_text(encoding="utf-8"))
+    assert split_meta == {"scenario": "", "system": ""}
+
+    resumed = _resume_template_parts(state)
+    assert resumed == ("", "", "_temp.txt")
+
+    config_manager.config.system_config.ui_language = "en"
+    prep.prepare(
+        state,
+        history_file=str(history_dir / "h1.json"),
+        init_sprite_path="",
+        room_id="",
+        selected_bg="",
+        system_template=resumed[1],
+        use_cg=False,
+        user_scenario=resumed[0],
+    )
+    resumed_en = (template_dir / "_temp.txt").read_text(encoding="utf-8")
+    assert "You act as an RPG system." in resumed_en
+    assert "你扮演一个RPG系统。" not in resumed_en
+
+    config_manager.config.system_config.ui_language = "ja"
+    resumed_again = _resume_template_parts(state)
+    assert resumed_again == ("", "", "_temp.txt")
+    prep.prepare(
+        state,
+        history_file=str(history_dir / "h1.json"),
+        init_sprite_path="",
+        room_id="",
+        selected_bg="",
+        system_template=resumed_again[1],
+        use_cg=False,
+        user_scenario=resumed_again[0],
+    )
+    resumed_ja = (template_dir / "_temp.txt").read_text(encoding="utf-8")
+    assert "あなたはRPGシステムとして振る舞います。" in resumed_ja
+    assert "你扮演一个RPG系统。" not in resumed_ja
+

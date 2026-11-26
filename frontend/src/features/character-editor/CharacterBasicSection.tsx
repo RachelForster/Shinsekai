@@ -3,37 +3,57 @@ import { Palette, Trash2 } from "lucide-react";
 import type { Character } from "../../entities/config/types";
 import { useI18n } from "../../shared/i18n";
 import { SELF_PERSONA_NAME } from "../../shared/playerCharacterOptions";
-import { Button, TextArea, TextInput } from "../../shared/ui";
+import { Button, handleIdentityKeyDown, InlineIdentityConfirm, TextArea, TextInput } from "../../shared/ui";
 import { isSelfPersonaCharacter, type CharacterFieldChange } from "./characterEditorUtils";
 
 interface CharacterBasicSectionProps {
   colorPickerValue: string;
   draft: Character;
   id?: string;
+  identityConfirmDisabled?: boolean;
+  identitySavingField?: "name" | "sprite_prefix" | null;
+  nameDirty?: boolean;
   nameError: string;
+  onCancelName?: () => void;
+  onCancelSpritePrefix?: () => void;
   onChange: CharacterFieldChange;
   onColorInputRef: (element: HTMLInputElement | null) => void;
+  onConfirmName?: () => void;
+  onConfirmSpritePrefix?: () => void;
   onDelete: () => void;
   onPickColor: () => void;
   onPronunciationTextChange: (value: string) => void;
   pronunciationText: string;
+  spritePrefixDirty?: boolean;
+  spritePrefixError?: string;
 }
 
 export function CharacterBasicSection({
   colorPickerValue,
   draft,
   id,
+  identityConfirmDisabled = false,
+  identitySavingField = null,
+  nameDirty = false,
   nameError,
+  onCancelName,
+  onCancelSpritePrefix,
   onChange,
   onColorInputRef,
+  onConfirmName,
+  onConfirmSpritePrefix,
   onDelete,
   onPickColor,
   onPronunciationTextChange,
   pronunciationText,
+  spritePrefixDirty = false,
+  spritePrefixError = "",
 }: CharacterBasicSectionProps) {
   const { t } = useI18n();
   const lockedPersona = isSelfPersonaCharacter(draft);
   const canEditDisplayName = draft.name === SELF_PERSONA_NAME;
+  const nameFieldLabel = t(canEditDisplayName ? "character.selfPersona.displayName" : "character.field.name");
+  const spritePrefixLabel = t("character.field.spritePrefix");
 
   return (
     <section className="section page-section-anchor" id={id}>
@@ -54,23 +74,49 @@ export function CharacterBasicSection({
         </div>
       ) : null}
       <div className="form-grid form-grid--two">
-        <label className="field-row">
-          <span className="field-row__label">
-            {t(canEditDisplayName ? "character.selfPersona.displayName" : "character.field.name")}
-          </span>
+        <div className="field-row">
+          <label className="field-row__label" htmlFor="character-basic-name-input">
+            {nameFieldLabel}
+          </label>
           <span className="field-row__control">
-            <TextInput
-              className={nameError ? "input--error" : ""}
-              disabled={lockedPersona && !canEditDisplayName}
-              maxLength={canEditDisplayName ? 24 : undefined}
-              onChange={(event) => onChange(canEditDisplayName ? "display_name" : "name", event.target.value)}
-              placeholder={canEditDisplayName ? draft.name : undefined}
-              readOnly={lockedPersona && !canEditDisplayName}
-              value={canEditDisplayName ? (draft.display_name ?? "") : draft.name}
-            />
+            <div className="identity-field-group">
+              <TextInput
+                className={nameError ? "input--error" : ""}
+                disabled={lockedPersona && !canEditDisplayName}
+                id="character-basic-name-input"
+                maxLength={canEditDisplayName ? 24 : undefined}
+                onChange={(event) => onChange(canEditDisplayName ? "display_name" : "name", event.target.value)}
+                onKeyDown={
+                  !canEditDisplayName
+                    ? (event) =>
+                        handleIdentityKeyDown(event, {
+                          canConfirm: !nameError && identitySavingField === null && !identityConfirmDisabled,
+                          disabled: identitySavingField !== null,
+                          isDirty: nameDirty,
+                          onCancel: () => onCancelName?.(),
+                          onConfirm: () => onConfirmName?.(),
+                        })
+                    : undefined
+                }
+                placeholder={canEditDisplayName ? draft.name : undefined}
+                readOnly={lockedPersona && !canEditDisplayName}
+                value={canEditDisplayName ? (draft.display_name ?? "") : draft.name}
+              />
+              {!canEditDisplayName ? (
+                <InlineIdentityConfirm
+                  confirmDisabled={Boolean(nameError) || identityConfirmDisabled}
+                  disabled={identitySavingField !== null && identitySavingField !== "name"}
+                  fieldLabel={nameFieldLabel}
+                  loading={identitySavingField === "name"}
+                  onCancel={() => onCancelName?.()}
+                  onConfirm={() => onConfirmName?.()}
+                  visible={nameDirty}
+                />
+              ) : null}
+            </div>
             {nameError ? <span className="field-error">{nameError}</span> : null}
           </span>
-        </label>
+        </div>
         <label className="field-row">
           <span className="field-row__label">{t("character.field.color")}</span>
           <span className="field-row__control">
@@ -90,26 +136,56 @@ export function CharacterBasicSection({
             </div>
           </span>
         </label>
-        <label className="field-row">
-          <span className="field-row__label">{t("character.field.spritePrefix")}</span>
+        <div className="field-row">
+          <label className="field-row__label" htmlFor="character-basic-prefix-input">
+            {spritePrefixLabel}
+          </label>
           <span className="field-row__control">
-            <TextInput
-              disabled={lockedPersona}
-              onChange={(event) => onChange("sprite_prefix", event.target.value)}
-              readOnly={lockedPersona}
-              value={draft.sprite_prefix}
-            />
+            <div className="identity-field-group">
+              <TextInput
+                className={spritePrefixError ? "input--error" : ""}
+                disabled={lockedPersona}
+                id="character-basic-prefix-input"
+                onChange={(event) => onChange("sprite_prefix", event.target.value)}
+                onKeyDown={
+                  !lockedPersona
+                    ? (event) =>
+                        handleIdentityKeyDown(event, {
+                          canConfirm: !spritePrefixError && identitySavingField === null && !identityConfirmDisabled,
+                          disabled: identitySavingField !== null,
+                          isDirty: spritePrefixDirty,
+                          onCancel: () => onCancelSpritePrefix?.(),
+                          onConfirm: () => onConfirmSpritePrefix?.(),
+                        })
+                    : undefined
+                }
+                readOnly={lockedPersona}
+                value={draft.sprite_prefix}
+              />
+              {!lockedPersona ? (
+                <InlineIdentityConfirm
+                  confirmDisabled={Boolean(spritePrefixError) || identityConfirmDisabled}
+                  disabled={identitySavingField !== null && identitySavingField !== "sprite_prefix"}
+                  fieldLabel={spritePrefixLabel}
+                  loading={identitySavingField === "sprite_prefix"}
+                  onCancel={() => onCancelSpritePrefix?.()}
+                  onConfirm={() => onConfirmSpritePrefix?.()}
+                  visible={spritePrefixDirty}
+                />
+              ) : null}
+            </div>
+            {spritePrefixError ? <span className="field-error">{spritePrefixError}</span> : null}
             {lockedPersona ? (
               <span className="field-row__hint">{t("character.selfPersona.lockedFieldHint")}</span>
             ) : null}
           </span>
-        </label>
+        </div>
         <label className="field-row">
           <span className="field-row__label">{t("character.field.pronunciationMap")}</span>
           <span className="field-row__control">
             <TextArea
               onChange={(event) => onPronunciationTextChange(event.target.value)}
-              placeholder="名前=なまえ"
+              placeholder={t("ops.character.pronunciationPlaceholder")}
               rows={4}
               value={pronunciationText}
             />

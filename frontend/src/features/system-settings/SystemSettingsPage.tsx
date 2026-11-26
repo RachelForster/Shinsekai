@@ -16,6 +16,14 @@ import type { SystemConfig } from "../../entities/config/types";
 import { useOptionalChatTheme } from "../chat-stage/theme/ChatThemeProvider";
 import { useAppState } from "../../shared/app-state/AppState";
 import { isTauriDesktop } from "../../shared/desktop/desktopApi";
+import {
+  canConnectRemotePc,
+  getRuntimeTarget,
+  isRemotePcActive,
+  isStandaloneRuntimeActive,
+} from "../../shared/platform/runtimeTarget";
+import { RuntimeModeDialog } from "../runtime-mode/RuntimeModeDialog";
+import { resolveFormGroupTitle } from "../../shared/form-schema";
 import { useI18n } from "../../shared/i18n";
 import { applyThemeColor } from "../../shared/theme/appTheme";
 import { DEFAULT_CHAT_THEME_ID, chatThemeDisplayName } from "../../shared/theme/chatTheme";
@@ -53,20 +61,20 @@ const systemRemainingGroups = systemConfigPageSchema.filter(
   (group) => group.id !== "ui" && group.id !== "network-proxy",
 );
 
-function networkProxySourceLabel(source: string) {
+function networkProxySourceLabel(source: string, t: ReturnType<typeof useI18n>["t"]) {
   switch (source) {
     case "environment":
-      return "环境变量";
+      return t("ops.system.proxy.source.env");
     case "process-environment":
-      return "当前进程环境变量";
+      return t("ops.system.proxy.source.processEnv");
     case "windows":
-      return "Windows 系统代理";
+      return t("ops.system.proxy.source.windows");
     case "macos":
-      return "macOS 系统代理";
+      return t("ops.system.proxy.source.macos");
     case "gnome":
-      return "GNOME 系统代理";
+      return t("ops.system.proxy.source.gnome");
     case "kde":
-      return "KDE 系统代理";
+      return t("ops.system.proxy.source.kde");
     default:
       return source;
   }
@@ -84,6 +92,9 @@ export function SystemSettingsPage() {
   const { data, isLoading } = configQuery;
   const [draft, setDraft] = useState<SystemConfig | null>(null);
   const [errors, setErrors] = useState<SchemaErrorMap<SystemConfig>>({});
+  const [runtimeModeOpen, setRuntimeModeOpen] = useState(false);
+  const showCrossPlatformCard =
+    !isTauriDesktop() || isStandaloneRuntimeActive() || isRemotePcActive() || canConnectRemotePc();
   const themeOptions = useMemo(
     () =>
       [...(chatThemesQuery.data ?? [])].sort((left, right) =>
@@ -99,10 +110,12 @@ export function SystemSettingsPage() {
   const systemSectionNavItems = [
     ...(isTauriDesktop() ? [{ id: "system-runtime", label: t("system.runtime.title") }] : []),
     ...(isTauriDesktop() ? [{ id: "system-background", label: t("desktop.background.title") }] : []),
-    ...systemGeneralGroups.map((group) => ({ id: `system-${group.id}`, label: group.title })),
+    ...systemGeneralGroups.map((group) => ({ id: `system-${group.id}`, label: resolveFormGroupTitle(group, t) })),
     { id: "system-chat-theme", label: t("chat.theme.title") },
-    ...(systemNetworkProxyGroup ? [{ id: "system-network-proxy", label: systemNetworkProxyGroup.title }] : []),
-    ...systemRemainingGroups.map((group) => ({ id: `system-${group.id}`, label: group.title })),
+    ...(systemNetworkProxyGroup
+      ? [{ id: "system-network-proxy", label: resolveFormGroupTitle(systemNetworkProxyGroup, t) }]
+      : []),
+    ...systemRemainingGroups.map((group) => ({ id: `system-${group.id}`, label: resolveFormGroupTitle(group, t) })),
   ];
 
   useEffect(() => {
@@ -168,13 +181,13 @@ export function SystemSettingsPage() {
     onError(error) {
       showToast({
         kind: "error",
-        message: error instanceof Error ? error.message : "无法读取当前系统代理配置。",
-        title: "检测系统代理失败",
+        message: error instanceof Error ? error.message : t("ops.system.proxy.detectError"),
+        title: t("ops.system.proxy.detectFailedTitle"),
       });
     },
     onSuccess(result) {
       const hasProxy = Boolean(result.http_proxy_url || result.https_proxy_url || result.socks5_proxy_url);
-      const sourceLabel = networkProxySourceLabel(result.source);
+      const sourceLabel = networkProxySourceLabel(result.source, t);
       setDraft((current) =>
         current
           ? {
@@ -190,10 +203,10 @@ export function SystemSettingsPage() {
         kind: hasProxy ? "success" : "info",
         message: hasProxy
           ? sourceLabel
-            ? `来源：${sourceLabel}`
+            ? t("ops.system.proxy.sourcePrefix", { source: sourceLabel })
             : undefined
-          : "没有读取到 HTTP / HTTPS / SOCKS5 代理。",
-        title: hasProxy ? "已填入检测到的代理" : "未检测到系统代理",
+          : t("ops.system.proxy.emptyBody"),
+        title: hasProxy ? t("ops.system.proxy.detectedTitle") : t("ops.system.proxy.emptyTitle"),
       });
     },
   });
@@ -225,7 +238,7 @@ export function SystemSettingsPage() {
             icon={<Save aria-hidden className="button__icon" />}
             loading={saveMutation.isPending}
             onClick={() => {
-              const nextErrors = validatePayloadFromSchema(systemConfigPageSchema, draft);
+              const nextErrors = validatePayloadFromSchema(systemConfigPageSchema, draft, t);
               setErrors(nextErrors);
               if (hasSchemaErrors(nextErrors)) {
                 showToast({
@@ -250,6 +263,28 @@ export function SystemSettingsPage() {
       </header>
       <DesktopRuntimeSection />
       <DesktopBackgroundSection />
+      {showCrossPlatformCard ? (
+        <section className="section page-section-anchor" id="system-cross-platform">
+          <div className="section__header">
+            <h2 className="section__title">{t("ops.system.crossPlatformTitle")}</h2>
+            <div className="section__actions">
+              <Button onClick={() => setRuntimeModeOpen(true)} variant="primary">
+                {t("ops.system.crossPlatformButton")}
+              </Button>
+            </div>
+          </div>
+          <p className="page__subtitle">
+            {isRemotePcActive()
+              ? t("ops.system.crossPlatformRemote")
+              : getRuntimeTarget() === "toy"
+                ? t("ops.system.crossPlatformToy")
+                : getRuntimeTarget() === "mobile"
+                  ? t("ops.system.crossPlatformMobile")
+                  : t("ops.system.crossPlatformStandalone")}
+          </p>
+        </section>
+      ) : null}
+      <RuntimeModeDialog onClose={() => setRuntimeModeOpen(false)} open={runtimeModeOpen} />
       <SchemaDrivenForm
         disabled={saveMutation.isPending}
         errors={errors}
@@ -295,7 +330,7 @@ export function SystemSettingsPage() {
               ))}
             </Select>
             <span className="field-row__help" id="chat_ui_theme_id-help">
-              这是 React Stage 的聊天主题。
+              {t("ops.system.chatThemeHelp")}
             </span>
             {chatThemesQuery.isLoading ? <span className="field-row__help">{t("system.loading")}</span> : null}
             {!chatThemesQuery.isLoading && themeOptions.length === 0 ? (
@@ -312,7 +347,7 @@ export function SystemSettingsPage() {
       {systemNetworkProxyGroup ? (
         <section className="section schema-section system-network-proxy page-section-anchor" id="system-network-proxy">
           <div className="section__header">
-            <h2 className="section__title">{systemNetworkProxyGroup.title}</h2>
+            <h2 className="section__title">{resolveFormGroupTitle(systemNetworkProxyGroup, t)}</h2>
             <div className="section__actions">
               <AsyncButton
                 disabled={saveMutation.isPending}
@@ -320,7 +355,7 @@ export function SystemSettingsPage() {
                 loading={detectNetworkProxyMutation.isPending}
                 onClick={() => detectNetworkProxyMutation.mutate()}
               >
-                检测当前系统代理
+                {t("ops.system.proxy.detectButton")}
               </AsyncButton>
             </div>
           </div>

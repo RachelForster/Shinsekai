@@ -36,11 +36,7 @@ import urllib.error
 import urllib.request
 import uuid
 
-import torch
-from huggingface_hub import try_to_load_from_cache
 from PIL import Image
-from transformers import AutoProcessor, StoppingCriteria, StoppingCriteriaList
-from transformers.generation.streamers import BaseStreamer
 
 if not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -48,13 +44,45 @@ if not __package__:
 from core.perception.models import ScreenOcrScope
 from tools.perception_subtitles import select_cursor_text, select_screen_text, select_subtitles
 
-try:
-    from transformers import Qwen3VLForConditionalGeneration as VLModelClass
-except ImportError:
-    from transformers import AutoModelForImageTextToText as VLModelClass
+torch: Any = None
+try_to_load_from_cache: Any = None
+AutoProcessor: Any = None
+StoppingCriteria: Any = object
+StoppingCriteriaList: Any = None
+BaseStreamer: Any = object
+VLModelClass: Any = None
 
 
-class _ImmediateTokenQueueStreamer(BaseStreamer):
+def _ensure_hf_runtime() -> None:
+    """Lazy-load PyTorch/Transformers only for non-GGUF Hugging Face inference."""
+    global torch, try_to_load_from_cache, AutoProcessor
+    global StoppingCriteria, StoppingCriteriaList, BaseStreamer, VLModelClass
+    if torch is not None and AutoProcessor is not None and VLModelClass is not None:
+        return
+    import torch as _torch
+    from huggingface_hub import try_to_load_from_cache as _try_to_load
+    from transformers import (
+        AutoProcessor as _AutoProcessor,
+        StoppingCriteria as _StoppingCriteria,
+        StoppingCriteriaList as _StoppingCriteriaList,
+    )
+    from transformers.generation.streamers import BaseStreamer as _BaseStreamer
+
+    try:
+        from transformers import Qwen3VLForConditionalGeneration as _VLModelClass
+    except ImportError:
+        from transformers import AutoModelForImageTextToText as _VLModelClass
+
+    torch = _torch
+    try_to_load_from_cache = _try_to_load
+    AutoProcessor = _AutoProcessor
+    StoppingCriteria = _StoppingCriteria
+    StoppingCriteriaList = _StoppingCriteriaList
+    BaseStreamer = _BaseStreamer
+    VLModelClass = _VLModelClass
+
+
+class _ImmediateTokenQueueStreamer:
     """Push incremental UTF-8 text after every token without waiting for spaces."""
 
     def __init__(self, tokenizer: Any) -> None:
@@ -90,7 +118,7 @@ class _ImmediateTokenQueueStreamer(BaseStreamer):
         self.out_queue.put(None)
 
 
-class _DecisionComplete(StoppingCriteria):
+class _DecisionComplete:
     def __init__(self, tokenizer: Any, prompt_length: int, streamer: _ImmediateTokenQueueStreamer | None = None):
         self.tokenizer = tokenizer
         self.prompt_length = prompt_length
@@ -225,8 +253,12 @@ def _candidate_hf_hub_dirs() -> list[Path]:
 
 
 def _find_cached_snapshot(model_id: str) -> Path | None:
+    loader = try_to_load_from_cache
+    if loader is None:
+        from huggingface_hub import try_to_load_from_cache as loader
+
     for hub_dir in _candidate_hf_hub_dirs():
-        config_path = try_to_load_from_cache(model_id, "config.json", cache_dir=hub_dir)
+        config_path = loader(model_id, "config.json", cache_dir=hub_dir)
         if isinstance(config_path, str):
             # Keep the snapshot directory, rather than resolving the config symlink into blobs.
             return Path(config_path).parent
@@ -235,6 +267,7 @@ def _find_cached_snapshot(model_id: str) -> Path | None:
 
 class _RuntimeHolder:
     def __init__(self, model_id: str, device: str) -> None:
+        _ensure_hf_runtime()
         self.model_id = model_id
         self.infer_lock = threading.Lock()
         self.ocr_lock = threading.Lock()

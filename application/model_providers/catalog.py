@@ -123,12 +123,16 @@ def adapter_catalog() -> dict[str, list[dict[str, Any]]]:
     asr_labels = {
         "faster_whisper": "faster-whisper",
         "realtime_stt": "RealtimeSTT",
+        "sherpa_onnx": "Sherpa-ONNX",
         "vosk": "Vosk",
     }
     asr: list[dict[str, Any]] = []
-    if "vosk" in asr_adapters:
-        asr.append(_adapter_option("vosk", asr_labels["vosk"], asr_adapters["vosk"]))
-    for key in sorted(key for key in asr_adapters if key != "vosk"):
+    for preferred_asr in ("sherpa_onnx", "vosk"):
+        if preferred_asr in asr_adapters:
+            asr.append(
+                _adapter_option(preferred_asr, asr_labels[preferred_asr], asr_adapters[preferred_asr])
+            )
+    for key in sorted(key for key in asr_adapters if key not in {"sherpa_onnx", "vosk"}):
         asr.append(_adapter_option(key, asr_labels.get(key, key), asr_adapters[key]))
 
     vision_adapters = dict(VisionManager._adapters)

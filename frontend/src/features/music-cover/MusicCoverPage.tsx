@@ -6,6 +6,7 @@ import { configQueryKey, getAppConfig } from "../../entities/config/repository";
 import type { SystemConfig } from "../../entities/config/types";
 import { fileUrl } from "../../entities/files/repository";
 import { runMusicCover, saveMusicCoverConfig, searchMusicCover } from "../../entities/music-cover/repository";
+import { useOptionalI18n } from "../../shared/i18n";
 import type {
   MusicCoverConfigInput,
   MusicCoverRunResult,
@@ -50,6 +51,7 @@ function musicCoverConfigFromSystem(systemConfig: SystemConfig): MusicCoverConfi
 }
 
 export function MusicCoverPage() {
+  const { t } = useOptionalI18n();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
@@ -73,22 +75,22 @@ export function MusicCoverPage() {
   const saveMutation = useMutation({
     mutationFn: (config: MusicCoverConfigInput) => saveMusicCoverConfig(config),
     onError(error) {
-      const message = error instanceof Error ? error.message : "保存失败。";
+      const message = error instanceof Error ? error.message : t("ops.music.saveError");
       setSaveOutput(message);
-      showToast({ kind: "error", message, title: "保存翻唱流水线配置" });
+      showToast({ kind: "error", message, title: t("ops.music.saveButton") });
     },
     onSuccess(result) {
       setDraft(result.systemConfig);
       setSaveOutput(result.message);
       queryClient.invalidateQueries({ queryKey: configQueryKey });
-      showToast({ kind: "success", title: "保存翻唱流水线配置" });
+      showToast({ kind: "success", title: t("ops.music.saveButton") });
     },
   });
 
   const musicSearchMutation = useMutation({
     mutationFn: () => searchMusicCover({ query: musicQuery.trim(), source: musicSource }),
     onError(error) {
-      setMusicLog(error instanceof Error ? error.message : "搜索预览失败。");
+      setMusicLog(error instanceof Error ? error.message : t("ops.music.searchError"));
     },
     onSuccess(result) {
       setMusicLog(result.log);
@@ -114,7 +116,7 @@ export function MusicCoverPage() {
         },
       ),
     onError(error) {
-      setMusicLog(error instanceof Error ? error.message : "翻唱流水线执行失败。");
+      setMusicLog(error instanceof Error ? error.message : t("ops.music.runError"));
       setMusicAudioPath("");
     },
     onMutate() {
@@ -130,17 +132,17 @@ export function MusicCoverPage() {
   if (configQuery.isError) {
     return (
       <QueryErrorState
-        body="检查桥接服务后重试。"
+        body={t("ops.music.errorBody")}
         error={configQuery.error}
         onRetry={() => void configQuery.refetch()}
-        retryLabel="重试"
-        title="读取翻唱流水线配置失败"
+        retryLabel={t("ops.music.retry")}
+        title={t("ops.music.errorTitle")}
       />
     );
   }
 
   if (isLoading || !draft) {
-    return <EmptyState title="正在读取翻唱流水线配置" />;
+    return <EmptyState title={t("ops.music.loading")} />;
   }
 
   const updateDraft = <K extends keyof SystemConfig>(key: K, value: SystemConfig[K]) => {
@@ -153,7 +155,7 @@ export function MusicCoverPage() {
     <div className="page music-cover-page">
       <header className="page__header">
         <div>
-          <h1 className="page__title">音乐翻唱</h1>
+          <h1 className="page__title">{t("ops.music.title")}</h1>
         </div>
       </header>
 
@@ -161,11 +163,11 @@ export function MusicCoverPage() {
         <div className="settings-grid">
           <section className="section">
             <div className="section__header">
-              <h2 className="section__title">流水线与工具路径</h2>
+              <h2 className="section__title">{t("ops.music.pipelineSection")}</h2>
             </div>
             <div className="form-grid">
               <label className="field-row">
-                <span className="field-row__label">工作目录</span>
+                <span className="field-row__label">{t("ops.music.workDir")}</span>
                 <span className="field-row__control">
                   <TextInput
                     disabled={busy}
@@ -175,7 +177,7 @@ export function MusicCoverPage() {
                 </span>
               </label>
               <label className="field-row">
-                <span className="field-row__label">yt-dlp 路径（可空=PATH）</span>
+                <span className="field-row__label">{t("ops.music.ytDlpPath")}</span>
                 <span className="field-row__control">
                   <TextInput
                     disabled={busy}
@@ -185,7 +187,7 @@ export function MusicCoverPage() {
                 </span>
               </label>
               <label className="field-row">
-                <span className="field-row__label">ffmpeg 路径（可空=PATH）</span>
+                <span className="field-row__label">{t("ops.music.ffmpegPath")}</span>
                 <span className="field-row__control">
                   <TextInput
                     disabled={busy}
@@ -195,7 +197,7 @@ export function MusicCoverPage() {
                 </span>
               </label>
               <label className="field-row">
-                <span className="field-row__label">UVR/分离 命令模板</span>
+                <span className="field-row__label">{t("ops.music.uvrCmdTemplate")}</span>
                 <span className="field-row__control">
                   <TextArea
                     disabled={busy}
@@ -206,7 +208,7 @@ export function MusicCoverPage() {
                 </span>
               </label>
               <label className="field-row">
-                <span className="field-row__label">RVC 命令模板</span>
+                <span className="field-row__label">{t("ops.music.rvcCmdTemplate")}</span>
                 <span className="field-row__control">
                   <TextArea
                     disabled={busy}
@@ -217,7 +219,7 @@ export function MusicCoverPage() {
                 </span>
               </label>
               <label className="field-row">
-                <span className="field-row__label">RVC 模型 .pth</span>
+                <span className="field-row__label">{t("ops.music.rvcModel")}</span>
                 <span className="field-row__control">
                   <TextInput
                     disabled={busy}
@@ -227,7 +229,7 @@ export function MusicCoverPage() {
                 </span>
               </label>
               <label className="field-row">
-                <span className="field-row__label">RVC 索引 .index（可选）</span>
+                <span className="field-row__label">{t("ops.music.rvcIndex")}</span>
                 <span className="field-row__control">
                   <TextInput
                     disabled={busy}
@@ -241,7 +243,7 @@ export function MusicCoverPage() {
 
           <section className="section">
             <div className="section__header">
-              <h2 className="section__title">rvc-python 推理参数</h2>
+              <h2 className="section__title">{t("ops.music.rvcSection")}</h2>
             </div>
             <div className="form-grid">
               <label className="field-row">
@@ -255,7 +257,7 @@ export function MusicCoverPage() {
                 </span>
               </label>
               <label className="field-row">
-                <span className="field-row__label">模型版本</span>
+                <span className="field-row__label">{t("ops.music.modelVersion")}</span>
                 <span className="field-row__control">
                   <Select
                     disabled={busy}
@@ -268,7 +270,7 @@ export function MusicCoverPage() {
                 </span>
               </label>
               <label className="field-row">
-                <span className="field-row__label">音高 method</span>
+                <span className="field-row__label">{t("ops.music.f0Method")}</span>
                 <span className="field-row__control">
                   <Select
                     disabled={busy}
@@ -283,7 +285,7 @@ export function MusicCoverPage() {
                 </span>
               </label>
               <label className="field-row">
-                <span className="field-row__label">变调 pitch（半音）</span>
+                <span className="field-row__label">{t("ops.music.pitch")}</span>
                 <span className="field-row__control">
                   <NumberInput
                     disabled={busy}
@@ -322,7 +324,7 @@ export function MusicCoverPage() {
                 </span>
               </label>
               <label className="field-row">
-                <span className="field-row__label">resample_sr（0=不重采样）</span>
+                <span className="field-row__label">{t("ops.music.resampleSr")}</span>
                 <span className="field-row__control">
                   <NumberInput
                     disabled={busy}
@@ -370,7 +372,7 @@ export function MusicCoverPage() {
                 loading={saveMutation.isPending}
                 onClick={() => saveMutation.mutate(musicCoverConfigFromSystem(draft))}
               >
-                保存翻唱流水线配置
+                {t("ops.music.saveButton")}
               </AsyncButton>
             </div>
             <TextArea readOnly rows={3} value={saveOutput} />
@@ -380,7 +382,7 @@ export function MusicCoverPage() {
         <section className="section">
           <div className="section__header">
             <div>
-              <h2 className="section__title">流水线执行</h2>
+              <h2 className="section__title">{t("ops.music.execSection")}</h2>
             </div>
             <div className="page__actions">
               <AsyncButton
@@ -388,7 +390,7 @@ export function MusicCoverPage() {
                 loading={musicSearchMutation.isPending}
                 onClick={() => musicSearchMutation.mutate()}
               >
-                预览搜索结果
+                {t("ops.music.previewSearch")}
               </AsyncButton>
               <AsyncButton
                 icon={<Play aria-hidden className="button__icon" />}
@@ -396,13 +398,13 @@ export function MusicCoverPage() {
                 onClick={() => musicRunMutation.mutate()}
                 variant="primary"
               >
-                执行完整流水线
+                {t("ops.music.runFull")}
               </AsyncButton>
             </div>
           </div>
           <div className="form-grid">
             <label className="field-row field-row--stack">
-              <span className="field-row__label">来源</span>
+              <span className="field-row__label">{t("ops.music.source")}</span>
               <span className="field-row__control">
                 <Select
                   disabled={musicSearchMutation.isPending || musicRunMutation.isPending}
@@ -411,24 +413,24 @@ export function MusicCoverPage() {
                 >
                   <option value="youtube">YouTube</option>
                   <option value="bilibili">Bilibili</option>
-                  <option value="url">完整 URL</option>
+                  <option value="url">{t("ops.music.sourceFullUrl")}</option>
                 </Select>
               </span>
             </label>
             <label className="field-row field-row--stack">
-              <span className="field-row__label">搜索词或 URL</span>
+              <span className="field-row__label">{t("ops.music.queryLabel")}</span>
               <span className="field-row__control">
                 <TextArea
                   disabled={musicSearchMutation.isPending || musicRunMutation.isPending}
                   onChange={(event) => setMusicQuery(event.target.value)}
-                  placeholder="搜索词或 URL"
+                  placeholder={t("ops.music.queryLabel")}
                   rows={3}
                   value={musicQuery}
                 />
               </span>
             </label>
             <label className="field-row field-row--stack">
-              <span className="field-row__label">选用第 {musicPick} 条</span>
+              <span className="field-row__label">{t("ops.music.pickIndex", { index: musicPick })}</span>
               <span className="field-row__control">
                 <input
                   disabled={musicRunMutation.isPending}
@@ -449,25 +451,25 @@ export function MusicCoverPage() {
                     onChange={(event) => setMusicSkipRvc(event.target.checked)}
                     type="checkbox"
                   />
-                  <span>跳过 RVC（仅用分离后人声合成）</span>
+                  <span>{t("ops.music.skipRvc")}</span>
                 </label>
               </span>
             </label>
             <TaskProgress logLimit={0} task={musicTask} />
             <label className="field-row field-row--stack">
-              <span className="field-row__label">日志</span>
+              <span className="field-row__label">{t("ops.music.logLabel")}</span>
               <span className="field-row__control">
                 <TextArea readOnly rows={12} value={musicLog} />
               </span>
             </label>
             <label className="field-row field-row--stack">
-              <span className="field-row__label">成品试听路径</span>
+              <span className="field-row__label">{t("ops.music.audioPath")}</span>
               <span className="field-row__control">
                 <PathDisplay className="path-display--input" path={musicAudioPath} />
                 {musicAudioPath ? (
                   <AudioPlayer
                     className="music-cover-player"
-                    label="成品试听"
+                    label={t("ops.music.audioLabel")}
                     preload="metadata"
                     src={fileUrl(musicAudioPath)}
                   />

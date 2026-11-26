@@ -311,7 +311,7 @@ def test_self_persona_prompt_injection_and_player_control(monkeypatch):
     cfg_empty_self = _FakeConfigManager([build_default_self_persona(), mika])
     monkeypatch.setattr("ai.llm.template_generator.config_manager", cfg_empty_self)
     prompt_empty_self, _ = TemplateGenerator(output_contract_patches=[]).generate_chat_template(
-        ["Mika", SELF_PERSONA_NAME],
+        ["Mika"],
         "",
         False,
         False,
@@ -321,7 +321,11 @@ def test_self_persona_prompt_injection_and_player_control(monkeypatch):
     assert prompt_empty_self == prompt_base
 
     populated_self = build_default_self_persona().model_copy(
-        update={"character_setting": "表面冷静、内心细腻的古书店店长。"}
+        update={
+            "character_setting": "表面冷静、内心细腻的古书店店长。",
+            "sprites": [Sprite(path="data/sprite/__self__/idle.png")],
+            "emotion_tags": "立绘 1：平静\n",
+        }
     )
     cfg_with_self = _FakeConfigManager([populated_self, mika])
     monkeypatch.setattr("ai.llm.template_generator.config_manager", cfg_with_self)
@@ -335,6 +339,19 @@ def test_self_persona_prompt_injection_and_player_control(monkeypatch):
     )
     assert "表面冷静、内心细腻的古书店店长。" in prompt_with_self
     assert "自设" in prompt_with_self
+
+    prompt_self_in_cast, _ = TemplateGenerator(output_contract_patches=[]).generate_chat_template(
+        ["Mika", SELF_PERSONA_NAME],
+        "",
+        False,
+        False,
+        False,
+        player_character="",
+    )
+    assert "自设有1张立绘：" in prompt_self_in_cast
+    assert "以下是自设的角色设定" in prompt_self_in_cast
+    assert "表面冷静、内心细腻的古书店店长。" in prompt_self_in_cast
+    assert "不要将「自设」作为独立台词角色输出" not in prompt_self_in_cast
 
     resolved = resolve_player(
         cfg_with_self,
@@ -403,3 +420,85 @@ def test_save_sprite_groups_atomic_create_rename_delete_assign_and_auto_group():
     assert char.sprites[4].group == "日常服"
     assert char.sprites[3].group is None
     assert list_character_sprite_groups(char) == ["校服", "睡衣", "日常服", DEFAULT_SPRITE_GROUP]
+
+
+def test_portrait_sprite_index_persists_and_clamps_on_sprite_deletion(tmp_path):
+    sprite_dir = tmp_path / "sprites"
+    sprite_dir.mkdir()
+    img1 = sprite_dir / "s1.png"
+    img2 = sprite_dir / "s2.png"
+    img3 = sprite_dir / "s3.png"
+    img1.write_bytes(b"1")
+    img2.write_bytes(b"2")
+    img3.write_bytes(b"3")
+
+    self_char = build_default_self_persona().model_copy(
+        update={
+            "sprites": [
+                Sprite(path=img1),
+                Sprite(path=img2),
+                Sprite(path=img3),
+            ],
+        },
+    )
+    config = _FakeConfigManager([self_char])
+    config.config.api_config = SimpleNamespace()
+    mgr = _build_manager(config.config.characters)
+    mgr._config_manager = config
+    path = tmp_path / "characters.yaml"
+
+    def save():
+        data = [c.model_dump(mode="json") for c in config.config.characters]
+        path.write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+
+    def reload():
+        config.config.characters = [
+            Character.model_validate(value) for value in yaml.safe_load(path.read_text(encoding="utf-8"))
+        ]
+
+    config.save_characters_config = save
+    config.reload = reload
+    use_case = CharacterUseCase(
+        SimpleNamespace(
+            config_manager=config, character_manager=mgr, project_root_dir=tmp_path,
+        )
+    )
+
+    payload = self_char.model_dump(mode="json")
+    updated = use_case.execute(
+        CharacterRequest(
+            CharacterOperation.SAVE,
+            {
+                "originalName": SELF_PERSONA_NAME,
+                "character": {**payload, "portrait_sprite_index": 2},
+            },
+        )
+    )
+    assert updated["portrait_sprite_index"] == 2
+    reload()
+    assert config.config.characters[0].portrait_sprite_index == 2
+
+    # Deleting an earlier sprite shifts index down to keep pointing at the same image
+    mgr.delete_single_sprite(SELF_PERSONA_NAME, 0)
+    assert config.config.characters[0].portrait_sprite_index == 1
+
+    # Deleting the currently selected last sprite clamps down to 0
+    mgr.delete_single_sprite(SELF_PERSONA_NAME, 1)
+    assert config.config.characters[0].portrait_sprite_index == 0
+
+    # Deleting all resets index to 0
+    mgr.add_character(
+        SELF_PERSONA_NAME,
+        self_char.color,
+        SELF_PERSONA_SPRITE_PREFIX,
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        portrait_sprite_index=9,
+    )
+    assert config.config.characters[0].portrait_sprite_index == 0
+    mgr.delete_all_sprites(SELF_PERSONA_NAME)
+    assert config.config.characters[0].portrait_sprite_index == 0

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from application.model_assets.tts_bundle import _download_tts_bundle
 from application.runtime.dependencies import install_runtime_dependency
+from frontend_bridge_core.i18n_helpers import bridge_tr
 from frontend_bridge_core.mcp import (
     _mcp_config_response,
     _open_mcp_config_file,
@@ -39,8 +40,8 @@ def _music_config(request: ApiRequest) -> JsonResponse:
 def _music_run(request: ApiRequest) -> TaskResponse:
     return TaskResponse(
         kind="music-cover",
-        title="音乐翻唱流水线",
-        message="音乐翻唱流水线已排队。",
+        title=bridge_tr(request.state, "task.music_cover_title"),
+        message=bridge_tr(request.state, "task.music_cover_queued"),
         worker=lambda task_id: _run_music_cover(
             request.state,
             task_id,
@@ -52,8 +53,8 @@ def _music_run(request: ApiRequest) -> TaskResponse:
 def _download_tts_bundle_route(request: ApiRequest) -> TaskResponse:
     return TaskResponse(
         kind="tts-bundle",
-        title="TTS 整合包下载",
-        message="TTS 整合包下载已排队。",
+        title=bridge_tr(request.state, "task.tts_bundle_title"),
+        message=bridge_tr(request.state, "task.tts_bundle_queued"),
         worker=lambda task_id: _download_tts_bundle(
             request.state,
             task_id,
@@ -65,8 +66,8 @@ def _download_tts_bundle_route(request: ApiRequest) -> TaskResponse:
 def _generate_prompts(request: ApiRequest) -> TaskResponse:
     return TaskResponse(
         kind="tools-prompts",
-        title="生成立绘提示词",
-        message="立绘提示词生成任务已排队。",
+        title=bridge_tr(request.state, "task.tools_prompts_title"),
+        message=bridge_tr(request.state, "task.tools_prompts_queued"),
         worker=lambda task_id: _generate_sprite_prompts(
             request.state,
             task_id,
@@ -78,8 +79,8 @@ def _generate_prompts(request: ApiRequest) -> TaskResponse:
 def _generate_sprite_batch(request: ApiRequest) -> TaskResponse:
     return TaskResponse(
         kind="tools-sprites",
-        title="批量生成立绘",
-        message="立绘批量生成任务已排队。",
+        title=bridge_tr(request.state, "task.tools_sprites_title"),
+        message=bridge_tr(request.state, "task.tools_sprites_queued"),
         worker=lambda task_id: _generate_sprites(
             request.state,
             task_id,
@@ -91,8 +92,8 @@ def _generate_sprite_batch(request: ApiRequest) -> TaskResponse:
 def _crop_sprite_batch(request: ApiRequest) -> TaskResponse:
     return TaskResponse(
         kind="tools-crop",
-        title="批量裁剪立绘",
-        message="立绘裁剪任务已排队。",
+        title=bridge_tr(request.state, "task.tools_crop_title"),
+        message=bridge_tr(request.state, "task.tools_crop_queued"),
         worker=lambda task_id: _crop_sprites(
             request.state,
             task_id,
@@ -104,8 +105,8 @@ def _crop_sprite_batch(request: ApiRequest) -> TaskResponse:
 def _remove_sprite_backgrounds(request: ApiRequest) -> TaskResponse:
     return TaskResponse(
         kind="tools-rmbg",
-        title="批量抠出立绘",
-        message="立绘抠图任务已排队。",
+        title=bridge_tr(request.state, "task.tools_rmbg_title"),
+        message=bridge_tr(request.state, "task.tools_rmbg_queued"),
         worker=lambda task_id: _remove_sprite_background(
             request.state,
             task_id,
@@ -125,8 +126,8 @@ def _open_mcp_config(_request: ApiRequest) -> JsonResponse:
 def _apply_mcp_config(request: ApiRequest) -> TaskResponse:
     return TaskResponse(
         kind="mcp-apply",
-        title="保存并应用 MCP 配置",
-        message="MCP 保存应用任务已排队。",
+        title=bridge_tr(request.state, "task.mcp_apply_title"),
+        message=bridge_tr(request.state, "task.mcp_apply_queued"),
         worker=lambda task_id: _save_and_apply_mcp_config(
             request.state,
             task_id,
@@ -138,8 +139,8 @@ def _apply_mcp_config(request: ApiRequest) -> TaskResponse:
 def _preview_mcp_tools(request: ApiRequest) -> TaskResponse:
     return TaskResponse(
         kind="mcp-preview",
-        title="刷新 MCP 工具列表",
-        message="MCP 工具预览任务已排队。",
+        title=bridge_tr(request.state, "task.mcp_preview_title"),
+        message=bridge_tr(request.state, "task.mcp_preview_queued"),
         worker=lambda task_id: _preview_mcp_tools_from_payload(
             request.state,
             task_id,

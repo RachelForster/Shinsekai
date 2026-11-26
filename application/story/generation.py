@@ -23,12 +23,15 @@ import uuid
 
 import yaml
 
+from ai.llm.template.core import TemplateContext
+from ai.llm.template.integrations.localization import resolve_template_locale
 from ai.llm.template.story import (
-    AUTHOR_COMPILER_TEMPLATE,
+    STORY_AUTHOR_SPEC,
     StoryRequestContext,
     build_story_author_user_section,
 )
 from config.feature_flags import FeatureFlag, FeatureFlagConfigManager
+from config.llm_defaults import resolve_llm_api_credentials, resolve_llm_factory_kwargs
 from core.story import (
     DiagnosticSeverity,
     StoryCompiler,
@@ -146,9 +149,17 @@ class ConfigStoryAuthorModel:
                 "generation.model_not_configured",
                 "story author LLM adapter is missing",
             )
-        prompt = build_story_author_user_section().render(StoryRequestContext(request))
+        locale = resolve_template_locale(self.config_manager)
+        prompt = STORY_AUTHOR_SPEC.render_user(
+            StoryRequestContext(request, locale=locale)
+        )
         messages = [
-            {"role": "system", "content": AUTHOR_COMPILER_TEMPLATE},
+            {
+                "role": "system",
+                "content": STORY_AUTHOR_SPEC.render_system(
+                    TemplateContext(locale=locale)
+                ),
+            },
             {"role": "user", "content": prompt},
         ]
         chat_kwargs: dict[str, Any] = {}
@@ -158,13 +169,16 @@ class ConfigStoryAuthorModel:
         return _parse_json_mapping(_adapter_text_content(response))
 
     def _llm_manager(self) -> Any:
-        provider, model, base_url, api_key = self.config_manager.get_llm_api_config()
+        provider, model, base_url, api_key = resolve_llm_api_credentials(
+            self.config_manager
+        )
         if not provider or not model or not api_key:
             raise StoryGenerationError(
                 "generation.model_not_configured",
                 "story author LLM provider, model, or API key is missing",
             )
-        factory_kwargs = self.config_manager.merged_llm_factory_kwargs(
+        factory_kwargs = resolve_llm_factory_kwargs(
+            self.config_manager,
             provider,
             {
                 "llm_provider": provider,
@@ -182,7 +196,7 @@ class ConfigStoryAuthorModel:
             adapter = LLMAdapterFactory.create_adapter(**factory_kwargs)
             self._manager = LLMManager(
                 adapter=adapter,
-                user_template=AUTHOR_COMPILER_TEMPLATE,
+                user_template="",
             )
             self._signature = signature
         return self._manager
@@ -1299,17 +1313,28 @@ def story_generation_service_for_state(state: Any) -> StoryGenerationService:
 
 
 def _create_story_generation_service(state: Any) -> StoryGenerationService:
-    flags = state.config_manager.feature_flags
+    stores = getattr(state, "stores", None)
+    if getattr(state, "config_manager", None) is not None:
+        flags = state.config_manager.feature_flags
+    elif stores is not None:
+        flags = FeatureFlagConfigManager(stores.system_settings.get())
+    else:
+        raise AttributeError("state must provide config_manager or stores")
     flags.require(FeatureFlag.STORY_SYSTEM)
     existing = getattr(state, "story_generation_service", None)
     if existing is not None:
         return existing
     root = Path(state.project_root_dir) / "data" / "stories" / ".generation"
     repository = StoryGenerationRepository(flags, root)
+    author_source = (
+        getattr(stores, "api_settings", None)
+        if stores is not None
+        else state.config_manager
+    )
     service = StoryGenerationService(
         flags,
         repository,
-        ConfigStoryAuthorModel(flags, state.config_manager),
+        ConfigStoryAuthorModel(flags, author_source),
     )
     state.story_generation_service = service
     return service

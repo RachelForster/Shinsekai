@@ -62,11 +62,11 @@ git clone https://github.com/RachelForster/Shinsekai
 cd Shinsekai
 ```
 
-**Bundle:** download and extract from [Releases](https://github.com/RachelForster/Shinsekai/releases) (`install.bat` / `start-react.bat` included).
+**Portable Bundle:** download and extract from [Releases](https://github.com/RachelForster/Shinsekai/releases). On Windows portable bundles, double-click `shinsekai.exe` directly.
 
 ### 2. Install dependencies
 
-Bundle users: run `install.bat` (Windows) or `install.command` (macOS).
+Source script users: run `scripts\install.bat` (Windows) or `scripts/install.command` (macOS).
 
 Developers (Python 3.10 recommended):
 
@@ -80,13 +80,13 @@ Linux source users may also run `./scripts/install-linux.sh`. If a Python 3.10 n
 
 ### 3. Open Settings
 
-Bundle: `start-react.bat`. From source, use the platform launch script:
+Portable bundle (Windows): double-click `shinsekai.exe`. From source, use the platform launch script under `scripts/`:
 
 ```bash
-./start-react.sh
+./scripts/start.sh
 ```
 
-Windows and macOS provide `start-react.bat` and `start-react.command`. Source builds require building the React frontend once (`cd frontend && pnpm install && pnpm build`). The retired Qt settings and chat windows are no longer available.
+Windows and macOS provide `scripts\start.bat` (plus `scripts\start-tauri.bat`) and `scripts/start.command`. Source builds require building the React frontend once (`cd frontend && pnpm install && pnpm build`). The retired Qt settings and chat windows are no longer available.
 
 For Tauri desktop development:
 

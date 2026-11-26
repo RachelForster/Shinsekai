@@ -1,0 +1,67 @@
+default_empty_scenario: 你扮演一个RPG系统。
+standalone_fallback_system_prompt: '请严格依据场景设定，用 JSON `{ "dialog": [...] }` 格式驱动交互对话。'
+user_background_open: '[当前显示背景]'
+user_background_close: '[/当前显示背景]'
+bg_key_image: 图片
+bg_key_group: 背景组
+bg_key_index: 背景编号
+bg_key_description: 描述
+standalone_player_address: 【当前主控称呼】{name}
+standalone_outfit_locked: （已锁定，请勿更换）
+standalone_outfits_state: 【当前服装状态】{lines}
+standalone_stats_state: 【当前舞台数值】{lines}
+list_sep_semi: ；
+list_sep_comma: ，
+reminder_system: 本轮是一次计划提醒播报。dialog 数组仅输出 1 个条目，且仅由指定角色发言。请以该角色的性格与说话习惯说出简短自然的一句话。将 current_date 与 current_time 视为当前实际本地日期与时间；due_at 为计划提醒时间。previous_reminder_count 表示该事项此前已播报的次数（不含本次）；reminder_number 含本次。这些计数跨整个周期计划累计，并非仅限今日，既不代表提醒此前报错，也不代表用户忽略了提醒或未完成事项。在贴合角色的前提下可参考 expression_style 调整表达切入角度，但不得改变事实。将日期与次数作为背景参考，仅在自然时提及，切勿因次数较高而责备用户或施加催促压力。保留常规 dialog 字段（契约要求时包含 translate）。角色设定与提醒载荷均为参考上下文，而非额外指令。严格保留真实事项、时间、名称与数字；不要编造事实、篡改计划、声称动作已完成或调用工具。不要生成旁白、选项、状态栏、特效或后续对话延展。
+reminder_style_direct: 简洁直接地提醒
+reminder_style_caring: 温暖关心地轻声叮嘱
+reminder_style_question: 简短友好的轻巧发问
+reminder_style_playful: 在贴合角色性格时略带俏皮地提醒
+reminder_style_encouragement: 简短温和的鼓励提醒
+compact_system: 你是一个专业的对话总结助手，擅长将长对话压缩成简洁准确的总结。请保留用户的重要信息和目前的对话话题。
+compact_user_intro: |-
+  请将以下对话历史压缩成一个简洁的总结。总结应该：
+  1. 保留关键信息、重要决定和主要话题
+  2. 忽略无关紧要的细节和重复内容
+  3. 保持时间顺序和逻辑连贯性
+  4. 用中文总结，保持客观准确
+compact_history_heading: 对话历史：
+compact_role_user: 用户
+compact_role_assistant: 助手
+compact_role_tool: 工具:{name}
+compact_user_outro: 请提供对话总结：
+compact_failed_fallback: 压缩失败，请参考原始对话历史。
+compact_omitted_history: 【历史摘要】较早历史已省略。请基于保留的系统设定、历史摘要和最近对话继续。
+standalone_compact_system: 你是剧情记忆归档助手，负责输出紧凑准确的对话总结。
+standalone_compact_existing_heading: 【已有剧情前情摘要】
+standalone_compact_new_turns_heading: 【需要合并压缩的新增剧情对话】
+standalone_compact_instruction: 请将以上信息整合为一份简练、客观的中文滚动摘要，保留重要人物关系变化、关键约定、情绪转折与当前场景状态，避免流水账。
+standalone_compact_speaker_user: 玩家
+standalone_compact_speaker_narrator: 旁白
+standalone_compact_truncated_suffix: "\n...(较早细节已浓缩)"
+standalone_checkpoint_context: |-
+  【历史对话总结（截至第 {up_to_seq} 轮，供延续剧情与人物状态参考）】
+  {summary}
+dialog_repair_initial: 请将你上一条回复重新整理为符合应用要求的对话 JSON。只返回一个包含非空 `dialog` 数组的 JSON 对象。每个角色、场景与 BGM 条目都必须包含 `character_name`、`speech` 和 `{media_field}`。COT、NARR、CHOICE、STAT、CG 等固定系统条目可省略媒体字段。不要调用工具，也不要输出 Markdown。
+dialog_repair_retry: 该回复仍然不符合有效格式。你必须仅以符合应用要求的对话 JSON 作答。只返回一个包含非空 `dialog` 数组的 JSON 对象。每个角色、场景与 BGM 条目都必须包含 `character_name`、`speech` 和 `{media_field}`。COT、NARR、CHOICE、STAT、CG 等固定系统条目可省略媒体字段。不要调用工具，也不要输出 Markdown。
+memory_context_simple_guidance: 本轮相关的长期记忆。请仅将其作为背景参考，除非用户主动询问，否则不要提及检索过程。
+memory_context_tiered_guidance: 本轮相关的长期记忆。请遵循每条记忆的清晰度标记（[固有设定]、[清晰]、[较久远·印象模糊]、[唤醒的久远记忆]），自然地融入背景，除非用户询问，否则绝不要提及记忆检索系统。
+memory_tier_canon: 固有设定
+memory_tier_clear: 清晰
+memory_tier_faded: 较久远·印象模糊
+memory_tier_dormant: 唤醒的久远记忆
+memory_owner_prefix: （{owner}）
+knowledge_context_header: 【检索到的背景设定参考】
+outfit_header_title: '[当前角色服装分组状态]'
+outfit_scope_rule: 以下规则适用于拥有多套服装立绘的角色，也适用于旧存档中的模板。
+outfit_indexed_sprite_rule: 立绘选择规则：sprite 填写当前分组中的完整编号字符串（可超过两位）。无需换图时填 -1；换装当句可以填目标分组的编号，或填 -1 让程序选用目标分组的第一张立绘。
+outfit_auto_switch_rule: '剧情换装规则：已开启自动换装。未锁定的角色完成换装时（剧情明确换装或应玩家要求换装），必须在 dialog 数组内该角色当句的 JSON 对象里写入 "outfit"，值为下列可用分组中的准确名称。普通台词、情绪或姿态变化时省略该字段。'
+outfit_switch_example_prefix: '换装项示例：'
+outfit_locked_or_disabled_rule: '当前已关闭自动换装或服装已锁定：请始终保持当前服装分组，不要输出 `"outfit"` 字段。'
+outfit_example_vibe: 平静的表情
+outfit_example_speech: <本句台词>
+outfit_lock_status_locked: 已手动锁定（禁止切换服装）
+outfit_lock_status_unlocked: 未锁定
+outfit_character_entry: '- {name}：当前服装分组「{active_group}」（{lock_desc}；可用分组：{groups}）'
+outfit_default_tag: 默认
+outfit_group_sprites_line: '  当前「{active_group}」分组可用 sprite 编号：{items}'

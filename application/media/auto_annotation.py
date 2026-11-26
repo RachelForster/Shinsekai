@@ -10,8 +10,17 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any
 
+from ai.llm.template.generation.media_annotation import (
+    render_annotation_retry_prompt,
+    render_background_annotation_prompt,
+    render_character_annotation_prompt,
+)
+from ai.llm.template.integrations.localization import (
+    LocaleInput,
+    resolve_dynamic_locale,
+)
 from ai.vision import configured_vision_manager
-from application.media.sprite_tags import SPRITE_TAG_INSTRUCTIONS, normalize_sprite_tags
+from application.media.sprite_tags import normalize_sprite_tags
 from core.media.asset_tags import normalize_generated_tags, numbered_tags, tag_contents
 
 
@@ -19,15 +28,8 @@ ProgressCallback = Callable[[int, int, str, str], None]
 CancelCallback = Callable[[], bool]
 InferCallback = Callable[[bytes, str], str]
 
-CHARACTER_PROMPT = (
-    "你在为对话系统标注角色立绘。请根据图片中可见的表情和姿态标注，不要根据角色设定猜测。"
-    + SPRITE_TAG_INSTRUCTIONS
-)
-BACKGROUND_PROMPT = (
-    "Generate concise English tags for this background image. Focus on location, time of day, weather, "
-    "lighting, atmosphere, and important objects. Output only comma-separated tags: no numbering and "
-    "no full sentences."
-)
+CHARACTER_PROMPT = render_character_annotation_prompt()
+BACKGROUND_PROMPT = render_background_annotation_prompt(locale="en")
 _IMAGE_SUFFIXES = {".gif", ".jpeg", ".jpg", ".png", ".webp", ".mp4", ".webm"}
 
 
@@ -117,7 +119,9 @@ def annotate_unlabelled_images(
     normalize: Callable[[str], str] = normalize_generated_tags,
     on_progress: ProgressCallback | None = None,
     is_cancelled: CancelCallback | None = None,
+    locale: LocaleInput = None,
 ) -> dict[str, Any]:
+    effective_locale = resolve_dynamic_locale(locale) if locale is not None else "zh_CN"
     tags = tag_contents(tag_block, len(sprites))
     missing_indexes = [index for index, tag in enumerate(tags) if not tag.strip()]
     failures: list[dict[str, Any]] = []
@@ -154,10 +158,10 @@ def annotate_unlabelled_images(
             except ValueError:
                 if is_cancelled and is_cancelled():
                     raise AnnotationCancelled("图片智能标注已取消")
-                retry = (
-                    prompt
-                    + "\n上次输出不符合格式，请重新看图并严格按要求回答。上次输出："
-                    + json.dumps(raw, ensure_ascii=False)
+                retry = render_annotation_retry_prompt(
+                    prompt,
+                    raw,
+                    locale=effective_locale,
                 )
                 generated = normalize(runner(image_bytes, retry))
             if not generated:
@@ -181,6 +185,39 @@ def annotate_unlabelled_images(
     }
 
 
+def _merge_newly_annotated_tags(
+    original_sprites: Sequence[Any],
+    original_tag_block: str,
+    generated_tag_block: str,
+    latest_sprites: Sequence[Any],
+    latest_tag_block: str,
+    *,
+    prefix: str,
+) -> str:
+    """Apply newly generated tags onto still-unlabelled slots of the latest row snapshot."""
+    orig_tags = tag_contents(original_tag_block, len(original_sprites))
+    gen_tags = tag_contents(generated_tag_block, len(original_sprites))
+    latest_tags = tag_contents(latest_tag_block, len(latest_sprites))
+    latest_paths = [_sprite_path(sprite) for sprite in latest_sprites]
+
+    for idx, (old_tag, gen_tag) in enumerate(zip(orig_tags, gen_tags)):
+        if old_tag.strip() or not gen_tag.strip():
+            continue
+        orig_path = _sprite_path(original_sprites[idx])
+        if (
+            0 <= idx < len(latest_sprites)
+            and latest_paths[idx] == orig_path
+            and not latest_tags[idx].strip()
+        ):
+            latest_tags[idx] = gen_tag
+            continue
+        for fallback_idx, candidate_path in enumerate(latest_paths):
+            if candidate_path == orig_path and not latest_tags[fallback_idx].strip():
+                latest_tags[fallback_idx] = gen_tag
+                break
+    return numbered_tags(prefix, latest_tags)
+
+
 def auto_label_character_sprites(
     config_manager: object,
     name: str,
@@ -189,13 +226,23 @@ def auto_label_character_sprites(
     infer: InferCallback | None = None,
     on_progress: ProgressCallback | None = None,
     is_cancelled: CancelCallback | None = None,
+    characters: Any = None,
 ) -> dict[str, Any]:
-    character = config_manager.get_character_by_name(name)  # type: ignore[attr-defined]
+    from config.character_ops import CHARACTER_MUTATION_LOCK, save_character_emotion_tags_op
+
+    character = (
+        characters.get_by_name(name)
+        if characters is not None
+        else config_manager.get_character_by_name(name)  # type: ignore[attr-defined]
+    )
     if character is None:
         raise KeyError(f"角色不存在：{name}")
+    char_id = str(getattr(character, "id", "") or "").strip()
+    original_sprites = list(character.sprites or [])
+    original_tags = str(character.emotion_tags or "")
     result = annotate_unlabelled_images(
-        character.sprites,
-        character.emotion_tags,
+        original_sprites,
+        original_tags,
         prefix="立绘",
         prompt=CHARACTER_PROMPT,
         project_root=project_root,
@@ -205,10 +252,47 @@ def auto_label_character_sprites(
         on_progress=on_progress,
         is_cancelled=is_cancelled,
     )
+    resolved_name = str(character.name)
+    merged_tags = str(result["tags"])
     if result["annotatedCount"]:
-        character.emotion_tags = result["tags"]
-        config_manager.save_characters_config()  # type: ignore[attr-defined]
-    return {**result, "name": character.name, "scope": "character"}
+        with CHARACTER_MUTATION_LOCK:
+            if characters is not None:
+                from application.characters.management import _CatalogCharacterTarget
+
+                latest = (characters.get(char_id) if char_id else None) or characters.get_by_name(name)
+                if latest is None:
+                    raise KeyError(f"角色不存在：{name}")
+                merged_tags = _merge_newly_annotated_tags(
+                    original_sprites,
+                    original_tags,
+                    result["tags"],
+                    list(latest.sprites or []),
+                    str(latest.emotion_tags or ""),
+                    prefix="立绘",
+                )
+                save_character_emotion_tags_op(
+                    _CatalogCharacterTarget(characters),
+                    latest.name,
+                    merged_tags,
+                )
+                refresh = getattr(config_manager, "refresh_characters", None)
+                if callable(refresh):
+                    refresh()
+                resolved_name = str(latest.name)
+            else:
+                latest = config_manager.get_character_by_name(name) or character  # type: ignore[attr-defined]
+                merged_tags = _merge_newly_annotated_tags(
+                    original_sprites,
+                    original_tags,
+                    result["tags"],
+                    list(latest.sprites or []),
+                    str(latest.emotion_tags or ""),
+                    prefix="立绘",
+                )
+                latest.emotion_tags = merged_tags
+                config_manager.save_characters_config()  # type: ignore[attr-defined]
+                resolved_name = str(latest.name)
+    return {**result, "tags": merged_tags, "name": resolved_name, "scope": "character"}
 
 
 def auto_label_background_images(
@@ -219,22 +303,71 @@ def auto_label_background_images(
     infer: InferCallback | None = None,
     on_progress: ProgressCallback | None = None,
     is_cancelled: CancelCallback | None = None,
+    backgrounds: Any = None,
 ) -> dict[str, Any]:
-    background = config_manager.get_background_by_name(name)  # type: ignore[attr-defined]
+    from config.background_ops import BACKGROUND_MUTATION_LOCK, save_background_image_tags_op
+
+    background = (
+        backgrounds.get_by_name(name)
+        if backgrounds is not None
+        else config_manager.get_background_by_name(name)  # type: ignore[attr-defined]
+    )
     if background is None:
         raise KeyError(f"背景不存在：{name}")
+    effective_locale = resolve_dynamic_locale(config_manager=config_manager)
+    bg_id = str(getattr(background, "id", "") or "").strip()
+    original_sprites = list(background.sprites or [])
+    original_tags = str(background.bg_tags or "")
     result = annotate_unlabelled_images(
-        background.sprites,
-        background.bg_tags,
+        original_sprites,
+        original_tags,
         prefix="场景",
-        prompt=BACKGROUND_PROMPT,
+        prompt=render_background_annotation_prompt(locale=effective_locale),
         project_root=project_root,
         infer=infer,
         api_config=getattr(getattr(config_manager, "config", None), "api_config", None),
         on_progress=on_progress,
         is_cancelled=is_cancelled,
+        locale=effective_locale,
     )
+    resolved_name = str(background.name)
+    merged_tags = str(result["tags"])
     if result["annotatedCount"]:
-        background.bg_tags = result["tags"]
-        config_manager.save_background_config()  # type: ignore[attr-defined]
-    return {**result, "name": background.name, "scope": "background"}
+        with BACKGROUND_MUTATION_LOCK:
+            if backgrounds is not None:
+                from application.backgrounds.management import _CatalogBackgroundTarget
+
+                latest = (backgrounds.get(bg_id) if bg_id else None) or backgrounds.get_by_name(name)
+                if latest is None:
+                    raise KeyError(f"背景不存在：{name}")
+                merged_tags = _merge_newly_annotated_tags(
+                    original_sprites,
+                    original_tags,
+                    result["tags"],
+                    list(latest.sprites or []),
+                    str(latest.bg_tags or ""),
+                    prefix="场景",
+                )
+                save_background_image_tags_op(
+                    _CatalogBackgroundTarget(backgrounds),
+                    latest.name,
+                    merged_tags,
+                )
+                refresh = getattr(config_manager, "refresh_backgrounds", None)
+                if callable(refresh):
+                    refresh()
+                resolved_name = str(latest.name)
+            else:
+                latest = config_manager.get_background_by_name(name) or background  # type: ignore[attr-defined]
+                merged_tags = _merge_newly_annotated_tags(
+                    original_sprites,
+                    original_tags,
+                    result["tags"],
+                    list(latest.sprites or []),
+                    str(latest.bg_tags or ""),
+                    prefix="场景",
+                )
+                latest.bg_tags = merged_tags
+                config_manager.save_background_config()  # type: ignore[attr-defined]
+                resolved_name = str(latest.name)
+    return {**result, "tags": merged_tags, "name": resolved_name, "scope": "background"}

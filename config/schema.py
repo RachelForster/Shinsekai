@@ -1,637 +1,71 @@
-from collections.abc import Mapping
+"""Backwards-compatible re-export module for ``config.models``."""
 
-from pydantic import ConfigDict, BaseModel, Field, HttpUrl, FilePath, BeforeValidator, field_validator, model_validator
-from pydantic_core import PydanticUseDefault
-from typing import List, Dict, Optional, Union, Any, Annotated, TypeVar, Literal
-from config.feature_flags import FeatureFlagConfigManager
-from config.network_proxy import normalize_proxy_url
-from config.perception import (
-    DEFAULT_PERCEPTION_MODEL,
-    DEFAULT_SALIENCE_THRESHOLD,
-    GGUF_MODEL_ID,
+from config.models import (  # noqa: F401
+    ApiConfig,
+    AppConfig,
+    Background,
+    COMPACT_TARGET_RATIO_MIN_GAP,
+    Character,
+    CharacterSummary,
+    DEFAULT_SPRITE_GROUP,
+    DefaultIfNone,
+    Effect,
+    McpConfig,
+    ModelSprites,
+    PortraitCrop,
+    RelationEdge,
+    RelationGraph,
+    RelationNode,
+    SELF_PERSONA_ID,
+    SELF_PERSONA_NAME,
+    SELF_PERSONA_SPRITE_PREFIX,
+    Sprite,
+    SpriteTransition,
+    SystemConfig,
+    UiRuntimeState,
+    UserPromptPreset,
+    UserPromptPresetLibrary,
+    build_default_self_persona,
+    clamp_compact_target_ratio,
+    default_if_none,
+    is_self_persona_name,
+    normalize_api_config_dict,
+    normalize_applied_presets_list,
+    normalize_system_config_dict,
+    normalize_user_prompt_presets_dict,
 )
 
-# ----------------- 解决 YAML None 问题的工具 -----------------
-def default_if_none(value: Any) -> Any:
-    """
-    如果输入值是 None，则抛出 PydanticUseDefault 异常，
-    让 Pydantic 使用字段的默认值。
-    """
-    if value is None:
-        raise PydanticUseDefault()
-    return value
-
-# 创建一个可复用的 Annotated 类型，用于在遇到 None 时使用默认值
-T = TypeVar('T')
-# 注意：该 Annotated 类型应包裹原始类型，并且只能用于设置了默认值的字段。
-DefaultIfNone = Annotated[T, BeforeValidator(default_if_none)]
-# -------------------------------------------------------------
-
-COMPACT_TARGET_RATIO_MIN_GAP = 0.05
-
-SELF_PERSONA_NAME = "自设"
-SELF_PERSONA_SPRITE_PREFIX = "__self__"
-DEFAULT_SPRITE_GROUP = "默认"
-
-
-def is_self_persona_name(name: Any) -> bool:
-    """Return True when ``name`` refers to the built-in pinned self-persona slot."""
-    return str(name or "").strip() == SELF_PERSONA_NAME
-
-
-def build_default_self_persona() -> "Character":
-    """Construct the default built-in pinned ``自设`` character entity."""
-    return Character(
-        name=SELF_PERSONA_NAME,
-        color="#94A3B8",
-        sprite_prefix=SELF_PERSONA_SPRITE_PREFIX,
-        is_builtin=True,
-        pinned=True,
-        undeletable=True,
-    )
-
-
-def clamp_compact_target_ratio(compact_threshold: float, compact_target_ratio: float) -> float:
-    """Keep compaction target safely below the trigger threshold."""
-    try:
-        threshold = float(compact_threshold)
-        target = float(compact_target_ratio)
-    except (TypeError, ValueError):
-        return compact_target_ratio
-    max_target = max(0.0, threshold - COMPACT_TARGET_RATIO_MIN_GAP)
-    return round(min(target, max_target), 6)
-
-class RelationNode(BaseModel):
-    """角色关系图谱的节点"""
-    model_config = ConfigDict(extra="forbid")
-    key: str = Field(..., min_length=1, max_length=200, description="人物名称及图谱节点标识")
-
-    @model_validator(mode="after")
-    def validate_relation_node(self):
-        if not self.key.strip() or self.key != self.key.strip():
-            raise ValueError("Node key must be non-empty and trimmed")
-        return self
-
-
-class RelationEdge(BaseModel):
-    """角色关系图谱的有向边"""
-    model_config = ConfigDict(extra="forbid")
-    source: str = Field(..., description="起点节点标识")
-    target: str = Field(..., description="终点节点标识")
-    temperature: DefaultIfNone[int] = Field(default=0, ge=-10, le=10, description="关系温度")
-    content: DefaultIfNone[str] = Field(default="", max_length=100, description="关系描述")
-
-    @model_validator(mode="after")
-    def validate_relation_content(self):
-        if self.content and not self.content.strip():
-            raise ValueError("Relationship content must not be blank")
-        return self
-
-
-class RelationGraph(BaseModel):
-    """所属角色的独立关系图谱"""
-    model_config = ConfigDict(extra="forbid")
-    nodes: DefaultIfNone[List[RelationNode]] = Field(default_factory=list, max_length=100, description="关系节点列表")
-    edges: DefaultIfNone[List[RelationEdge]] = Field(default_factory=list, max_length=156, description="有向关系列表")
-
-    @model_validator(mode="after")
-    def validate_relation_graph(self):
-        keys = [n.key for n in self.nodes]
-        if len({k.strip().lower() for k in keys}) != len(keys):
-            raise ValueError("Node keys must be unique")
-        pairs = set()
-        for edge in self.edges:
-            pair = (edge.source, edge.target)
-            if edge.source not in keys or edge.target not in keys or edge.source == edge.target:
-                raise ValueError("Edge endpoints must be distinct existing nodes")
-            if pair in pairs:
-                raise ValueError("Duplicate directed edge")
-            pairs.add(pair)
-        return self
-
-
-# Character Config Models
-class PortraitCrop(BaseModel):
-    """Normalized square viewport: center in the image and zoom over cover size."""
-    x: float = Field(default=0.5, ge=0, le=1)
-    y: float = Field(default=0.2, ge=0, le=1)
-    zoom: float = Field(default=1.0, ge=1, le=8)
-
-
-class Sprite(BaseModel):
-    """角色的单个立绘/语音配置"""
-    path: FilePath = Field(..., description="立绘图片的文件路径")
-    voice_path: Optional[FilePath] = Field(None, description="对应的语音文件的路径 (可选)")
-    voice_text: Optional[str] = Field(None, description="语音对应的文本内容 (可选, 存在于某些条目中)")
-    voice_type: Optional[str] = Field(None, description="语音类型: fallback、preset 或 reference")
-    portrait_crop: Optional[PortraitCrop] = None
-    mouth_sync: Optional[str] = None
-    group: Optional[str] = Field(default=None, description="服装分组名称；为空或省略时视为默认组")
-
-class ModelSprites(BaseModel):
-    """一个模型形象格式（如 l2d / vrm）的模型路径与它自己的资源列表、标签。
-
-    静态形象继续使用根级 ``sprites`` / ``emotion_tags``，不进入 ``Character.avatars``。
-    """
-    model_path: str = Field("", description="模型入口文件路径；未配置时为空字符串")
-    sprites: List[Union[Sprite, dict]] = Field(default_factory=list, description="该格式的状态文件列表（复用 Sprite）")
-    emotion_tags: DefaultIfNone[str] = Field(default="", description="该格式的情绪标签")
-
-class SpriteTransition(BaseModel):
-    """A directed clip tied to the exact source assets, including legacy five-frame clips."""
-    from_path: str
-    to_path: str
-    path: str
-    from_fingerprint: str
-    to_fingerprint: str
-    frame_count: int = Field(default=5, ge=1)
-    h3_resolution: Literal["workflow", "hd", "native"] = "workflow"
-
-class Character(BaseModel):
-    """单个角色配置的实体模型"""
-    # 角色基本信息
-    name: str = Field(..., description="角色名称")
-    display_name: DefaultIfNone[str] = Field(default="", max_length=24, description="内置自设的显示名")
-    color: str = Field(..., description="角色对话框或名字的颜色")
-    sprite_prefix: str = Field(..., description="立绘文件名的通用前缀")
-    
-    # 列表中可能包含 Sprite 模型，也可能只是原始字典
-    sprites: List[Union[Sprite, dict]] = Field(default_factory=list, description="角色的立绘和对应语音的列表")
-    sprite_transitions: DefaultIfNone[List[SpriteTransition]] = Field(default_factory=list)
-    character_brief: DefaultIfNone[str] = Field(
-        default="",
-        description="用于次要角色精简提示词的角色简介",
-    )
-    relation_graph: DefaultIfNone[RelationGraph] = Field(default_factory=RelationGraph, description="角色独立的关系图谱")
-    character_setting: DefaultIfNone[str] = Field(default="", description="角色背景、性格和语言习惯的详细描述")
-    sprite_scale: DefaultIfNone[float] = Field(default=1.0, description="立绘的缩放比例 (默认值 1.0)")
-    portrait_crop: DefaultIfNone[PortraitCrop] = Field(default_factory=PortraitCrop)
-    emotion_tags: DefaultIfNone[str] = Field(default="", description="情绪标签和对应的立绘编号描述")
-    sprite_groups: DefaultIfNone[List[str]] = Field(
-        default_factory=list,
-        description="自定义服装分组名称列表（保序）",
-    )
-    default_sprite_group: DefaultIfNone[str] = Field(
-        default="",
-        description="角色初始默认服装组名称；留空时使用默认组",
-    )
-    fallback_to_default_group: DefaultIfNone[bool] = Field(
-        default=True,
-        description="当前服装组无匹配立绘时是否回退到默认组",
-    )
-    is_builtin: DefaultIfNone[bool] = Field(
-        default=False,
-        description="是否为系统内置人物槽位（如「自设」）",
-    )
-    pinned: DefaultIfNone[bool] = Field(
-        default=False,
-        description="是否在人物列表中置顶显示",
-    )
-    undeletable: DefaultIfNone[bool] = Field(
-        default=False,
-        description="是否禁止删除与重命名",
-    )
-    avatar_type: DefaultIfNone[str] = Field(default="static", description="当前选择的形象类型：static 或已注册的模型格式 id")
-    avatars: DefaultIfNone[Dict[str, ModelSprites]] = Field(
-        default_factory=dict,
-        description="模型格式 id → 该格式的模型路径与资源列表；static 不在其中",
-    )
-
-    @field_validator("avatar_type")
-    @classmethod
-    def normalize_avatar_type(cls, value: str) -> str:
-        return value.strip().lower() or "static"
-
-    @field_validator("avatars", mode="before")
-    @classmethod
-    def normalize_avatar_keys(cls, value):
-        if not isinstance(value, dict):
-            return value
-        normalized = {}
-        for key, assets in value.items():
-            format_id = str(key).strip().lower()
-            if not format_id or format_id == "static" or format_id in normalized:
-                raise ValueError(f"invalid or duplicate avatar format: {key!r}")
-            normalized[format_id] = assets
-        return normalized
-
-    @model_validator(mode="after")
-    def _enforce_self_persona_invariants(self):
-        if is_self_persona_name(self.name):
-            self.is_builtin = True
-            self.pinned = True
-            self.undeletable = True
-            if not (self.sprite_prefix or "").strip():
-                self.sprite_prefix = SELF_PERSONA_SPRITE_PREFIX
-        return self
-
-    # gpt-sovits 相关的配置
-    gpt_model_path: Optional[str] = Field('', description="角色 GPT 模型的路径 (可选)")
-    sovits_model_path: Optional[str] = Field('', description="角色的 SoVITS 语音模型路径 (可选)")
-    refer_audio_path: Optional[str] = Field('', description="用于语音克隆的参考音频路径 (可选)")
-    prompt_text: Optional[str] = Field('', description="角色的初始 Prompt/台词 (可选)")
-    prompt_lang: Optional[str] = Field('', description="Prompt 语言，例如: ja (可选)")
-    speech_speed: DefaultIfNone[float] = Field(default=1.0, description="角色TTS语速倍率 (默认值 1.0)")
-    speech_volume: DefaultIfNone[float] = Field(default=1.0, description="角色TTS语音音量 (0.0-2.0, 默认 1.0)")
-    pronunciation_map: DefaultIfNone[Dict[str, str]] = Field(default_factory=dict, description="角色名 → 日语读音映射（用于 TTS 发音替换）")
-
-class Background(BaseModel):
-    """单个背景配置的实体模型"""
-    name: str = Field(..., description="背景组名称")
-    sprite_prefix: str = Field(..., description="背景图片的上传目录名")
-    sprites: List[Union[Sprite, dict]] = Field(default_factory=list, description="背景图片列表")
-    bg_tags: DefaultIfNone[str] = Field(default="", description="背景图片的信息") # 应用 DefaultIfNone
-    bgm_list: Optional[List[str]] = Field(default_factory=list, description="背景音乐列表")
-    bgm_tags: DefaultIfNone[str] = Field(default="",description="背景音乐描述")
-
-# API Config Model
-class ApiConfig(BaseModel):
-    """API 相关的配置，如 GPT-SoVITS 和 LLM 的设置"""
-    gpt_sovits_api_path: DefaultIfNone[str] = Field(default='', description="TTS 服务启动目录（历史字段名）")
-    gpt_sovits_url: DefaultIfNone[Union[HttpUrl, str]] = Field(default='http://127.0.0.1:9880', description="TTS 服务访问 URL")
-    tts_provider: DefaultIfNone[str] = Field(
-        default="gpt-sovits",
-        description="TTS 提供器: gpt-sovits / kaggle-gpt-sovits / genie-tts / index-tts / cosyvoice / none（不使用语音合成）",
-    )
-    tts_speed: DefaultIfNone[float] = Field(default=1.0, description="TTS 语速 (默认值 1.0)")
-
-    tts_split_enabled: DefaultIfNone[bool] = Field(default=False, description="是否启用TTS分句发送")
-    tts_max_sentence_length: DefaultIfNone[int] = Field(default=15, description="TTS分句最大长度（字符数）")
-
-    t2i_provider: DefaultIfNone[str] = Field(
-        default="comfyui",
-        description="T2I 引擎标识（与 T2IAdapterFactory 注册名一致，含插件）",
-    )
-    t2i_work_path: DefaultIfNone[str] = Field(default='', description="T2I API 的工作目录")
-    t2i_api_url: DefaultIfNone[Union[HttpUrl, str]] = Field(default='http://127.0.0.1:8188', description="T2I API 的访问 URL")
-    t2i_default_workflow_path: DefaultIfNone[str] = Field(default='', description="T2I API 默认工作流路径")
-    t2i_prompt_node_id: DefaultIfNone[str] = Field(default='6', description="T2I 工作流的 Prompt 节点ID")
-    t2i_output_node_id: DefaultIfNone[str] = Field(default='9', description="T2I 工作流的 保存图片 节点id")
-
-    llm_api_key: DefaultIfNone[Dict[str, str]] = Field(default_factory=dict, description="不同 LLM 服务商的 API Key 字典")
-    llm_base_url: DefaultIfNone[Union[HttpUrl, str]] = Field(default='', description="LLM 服务的 Base URL")
-    llm_base_urls: DefaultIfNone[Dict[str, str]] = Field(
-        default_factory=dict,
-        description="不同模型服务商共用的 Base URL 字典",
-    )
-    llm_model: DefaultIfNone[Dict[str, str]] = Field(default_factory=dict, description="不同 LLM 服务商使用的具体模型名称字典")
-    llm_provider: DefaultIfNone[str] = Field(default="Deepseek", description="LLM 服务器商名字")
-    is_streaming: DefaultIfNone[bool] = Field(default=True, description="是否使用流式响应")
-
-    vision_provider: DefaultIfNone[str] = Field(
-        default="auto",
-        description="视觉理解适配器：auto 默认跟随当前 LLM / remote provider / moondream",
-    )
-    vision_model: DefaultIfNone[Dict[str, str]] = Field(
-        default_factory=dict,
-        description="不同视觉服务商使用的模型名称字典；未指定时沿用该服务商的 LLM 模型",
-    )
-    vision_config_version: DefaultIfNone[int] = Field(
-        default=1,
-        ge=1,
-        description="视觉配置迁移版本，用于区分历史默认值与显式模型选择",
-    )
-    # --- Interrupt & Batch Input ---
-    interrupt_enabled: DefaultIfNone[bool] = Field(default=True, description="是否启用打断功能：新消息可中断正在生成的回复")
-    is_batch_input_enabled: DefaultIfNone[bool] = Field(default=False, description="启用批量消息输入：连续发送多条后合并为一条")
-    batch_input_timeout: DefaultIfNone[float] = Field(default=5.0, description="输入框空闲等待时间（秒）：空输入这么长后自动提交批量消息", ge=0.3, le=120.0)
-    batch_input_separator: DefaultIfNone[str] = Field(default="\n---\n", description="合并批量消息的分隔符")
-    temperature: DefaultIfNone[float] = Field(default=0.7, description="LLM 采样温度")
-    repetition_penalty: DefaultIfNone[float] = Field(default=1.0, description="重复惩罚")
-    presence_penalty: DefaultIfNone[float] = Field(default=0.0, description="存在惩罚")
-    frequency_penalty: DefaultIfNone[float] = Field(default=0.0, description="频率惩罚")
-    max_context_tokens: DefaultIfNone[int] = Field(default=128000, description="最大上下文 token")
-    compact_threshold: DefaultIfNone[float] = Field(default=0.4, description="触发历史压缩的上下文占比")
-    compact_target_ratio: DefaultIfNone[float] = Field(default=0.3, description="历史压缩后的目标上下文占比")
-    history_recent_messages: DefaultIfNone[int] = Field(default=20, description="压缩或加载历史时保留的最近消息数")
-    max_tool_result_chars: DefaultIfNone[int] = Field(default=6000, description="写入历史的单次工具结果最大字符数")
-    max_active_tool_groups: DefaultIfNone[int] = Field(default=3, description="同时启用的工具组数量上限")
-
-    knowledge_enabled: DefaultIfNone[bool] = Field(default=False, description="Automatic knowledge retrieval enabled")
-    knowledge_search_limit: DefaultIfNone[int] = Field(default=5, ge=1, le=20, description="Knowledge search result limit per turn")
-    memory_auto_enabled: DefaultIfNone[bool] = Field(default=False, description="Automatic long-term memory extraction enabled")
-    memory_extract_interval_turns: DefaultIfNone[int] = Field(default=5, ge=1, le=50, description="Turns between automatic long-term memory extraction")
-    memory_search_limit: DefaultIfNone[int] = Field(default=5, ge=1, le=20, description="Long-term memory search result limit per turn")
-    memory_recent_buffer_messages: DefaultIfNone[int] = Field(default=16, ge=2, le=64, description="Recent messages used for automatic memory extraction")
-
-    # --- Real-time Game Perception (Local VLM Reflex + RP Input Cache + Gatekeeper) ---
-    perception_enabled: DefaultIfNone[bool] = Field(default=False, description="是否启用实时画面/游戏状态感知模块")
-    perception_base_url: DefaultIfNone[str] = Field(default="http://127.0.0.1:8091/v1", description="本地感知小模型 OpenAI 兼容服务地址")
-    perception_api_key: DefaultIfNone[str] = Field(default="", description="本地感知模型 API Key（本地服务可留空）")
-    perception_model: DefaultIfNone[str] = Field(default=DEFAULT_PERCEPTION_MODEL, description="常规感知模型名称")
-    perception_use_gguf: DefaultIfNone[bool] = Field(default=False, description="使用本地 Q4 GGUF 感知模型")
-    perception_python_path: DefaultIfNone[str] = Field(default="", description="一键启动本地感知推理服务的 Python 解释器或环境路径（默认使用新世界自带 Python 运行时）")
-    perception_interval_sec: DefaultIfNone[float] = Field(default=2.0, ge=0.5, le=30.0, description="本地感知模型的常规识别间隔（秒）")
-    perception_capture_interval_sec: DefaultIfNone[float] = Field(default=0.5, ge=0.2, le=5.0, description="共享屏幕画面变化检测间隔（秒）")
-    perception_ocr_interval_sec: DefaultIfNone[float] = Field(default=1.0, ge=0.5, le=10.0, description="共享屏幕文字识别间隔（秒）")
-    perception_frame_max_side: DefaultIfNone[int] = Field(default=512, ge=256, le=1280, description="共享屏幕上传帧最大边长（像素）")
-    perception_diff_threshold: DefaultIfNone[float] = Field(default=0.06, ge=0.0, le=0.5, description="画面像素变化跳过阈值（0 表示每周期都采样）")
-    perception_ocr_enabled: DefaultIfNone[bool] = Field(default=False, description="由内置本地感知服务识别共享画面中的文字")
-    perception_reflex_enabled: DefaultIfNone[bool] = Field(default=True, description="启用本地小模型快速反应（实时立绘切换 + 短促气泡台词，无语音）")
-    perception_reflex_cooldown_sec: DefaultIfNone[float] = Field(default=15.0, ge=0.5, le=60.0, description="气泡反应最小冷却时间（秒）")
-    perception_proactive_enabled: DefaultIfNone[bool] = Field(default=True, description="启用 Gatekeeper 主动触发主 RP 大模型发言")
-    perception_salience_threshold: DefaultIfNone[float] = Field(default=DEFAULT_SALIENCE_THRESHOLD, ge=0.1, le=1.0, description="Gatekeeper 放行主动 RP 发言的事件重要度阈值")
-    perception_proactive_cooldown_sec: DefaultIfNone[float] = Field(default=25.0, ge=3.0, le=600.0, description="主动 RP 发言最小冷却时间（秒）")
-
-    hugging_face_access_token: DefaultIfNone[str] = Field(default="", description="Hugging Face Access Token")
-
-    llm_extra_configs: DefaultIfNone[Dict[str, Dict[str, Any]]] = Field(
-        default_factory=dict,
-        description="LLM 适配器扩展参数：provider 名 -> 字段名 -> 值",
-    )
-    tts_extra_configs: DefaultIfNone[Dict[str, Dict[str, Any]]] = Field(
-        default_factory=dict,
-        description="TTS 适配器扩展参数：引擎 slug -> 字段名 -> 值",
-    )
-    asr_extra_configs: DefaultIfNone[Dict[str, Dict[str, Any]]] = Field(
-        default_factory=dict,
-        description="ASR 适配器扩展参数：后端 slug -> 字段名 -> 值",
-    )
-    t2i_extra_configs: DefaultIfNone[Dict[str, Dict[str, Any]]] = Field(
-        default_factory=dict,
-        description="T2I 适配器扩展参数：引擎名（如 comfyui） -> 字段名 -> 值",
-    )
-    vision_extra_configs: DefaultIfNone[Dict[str, Dict[str, Any]]] = Field(
-        default_factory=dict,
-        description="视觉适配器扩展参数：provider 名 -> 字段名 -> 值",
-    )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _migrate_legacy_vision_defaults(cls, value: Any) -> Any:
-        if (
-            not isinstance(value, Mapping)
-            or value.get("vision_config_version") is not None
-        ):
-            return value
-        migrated = dict(value)
-        migrated["vision_config_version"] = 1
-        selected = str(value.get("vision_provider") or "auto").strip().lower() or "auto"
-        models = value.get("vision_model")
-        if (
-            selected == "auto"
-            and isinstance(models, Mapping)
-            and str(models.get("deepseek") or "").strip() == "deepseek-flash"
-        ):
-            # This value was persisted by the old schema even without a user selection.
-            # Mark the migration so choosing the same model afterward remains explicit.
-            migrated["vision_model"] = {
-                key: model for key, model in models.items() if key != "deepseek"
-            }
-        return migrated
-
-    @model_validator(mode="after")
-    def _clamp_compact_ratios(self):
-        self.compact_target_ratio = clamp_compact_target_ratio(
-            self.compact_threshold,
-            self.compact_target_ratio,
-        )
-        return self
-
-    @model_validator(mode="before")
-    @classmethod
-    def _migrate_perception_gguf_model(cls, value: Any) -> Any:
-        if isinstance(value, Mapping) and str(value.get("perception_model") or "").strip() == GGUF_MODEL_ID:
-            return {**value, "perception_model": DEFAULT_PERCEPTION_MODEL, "perception_use_gguf": True}
-        return value
-
-# System Config Model
-class SystemConfig(BaseModel):
-    """系统相关的通用配置"""
-    # 应用 DefaultIfNone
-    base_font_size_px: DefaultIfNone[int] = Field(default=56, description="基础字体大小 (像素)")
-    ui_language: DefaultIfNone[str] = Field(
-        default="zh_CN",
-        description="界面语言: zh_CN / en / ja",
-    )
-    voice_language: DefaultIfNone[str] = Field(default='ja', description="系统语音的默认语言 (例如: ja)")
-    asr_provider: DefaultIfNone[str] = Field(
-        default="vosk",
-        description="麦克风语音识别后端：vosk | faster_whisper | realtime_stt",
-    )
-    asr_language: DefaultIfNone[str] = Field(
-        default="",
-        description="麦克风识别语言 UI 码（en/zh/ja/yue），留空则跟随 ui_language",
-    )
-    asr_whisper_model_size: DefaultIfNone[str] = Field(
-        default="small",
-        description="faster-whisper / RealtimeSTT 模型名（如 tiny/base/small）或本地模型目录",
-    )
-    asr_whisper_device: DefaultIfNone[str] = Field(
-        default="auto",
-        description="faster-whisper / RealtimeSTT 设备：auto | cuda | cpu",
-    )
-    asr_whisper_compute_type: DefaultIfNone[str] = Field(
-        default="",
-        description="faster-whisper / RealtimeSTT compute_type，留空则按设备自动选择",
-    )
-    music_volumn: DefaultIfNone[int] =Field(default=30,description="bgm 音量")
-    theme_color: DefaultIfNone[str] = Field(default='#d4788e',description="主题色")
-    bgm_path: DefaultIfNone[str] = Field(default="",description="BGM 的路径")
-    background_path: DefaultIfNone[str] = Field(default="",description="背景图片的路径")
-    live_room_id : DefaultIfNone[str] = Field(default="", description="直播间ID，用于直播相关功能")
-    chat_window_geometry_b64: DefaultIfNone[str] = Field(
-        default="",
-        description="聊天主窗口上次关闭时的 saveGeometry Base64，留空则使用默认居中与尺寸",
-    )
-    chat_ui_theme_path: DefaultIfNone[str] = Field(
-        default="",
-        description="聊天主窗外观补丁 JSON 路径，留空则使用 data/chat_ui_theme.json（若存在）",
-    )
-    chat_ui_theme_id: DefaultIfNone[str] = Field(
-        default="windborne-adventure",
-        description="React chat stage 当前激活的主题 mod id（对应 data/chat_ui_themes/<id>/），留空则用默认主题",
-    )
-    chat_ui_runtime_mode: DefaultIfNone[str] = Field(
-        default="react",
-        description="聊天界面运行模式；当前固定使用流式 React chat stage",
-    )
-    story_system_enabled: DefaultIfNone[bool] = Field(
-        default=False,
-        description="Experimental master switch for every structured story capability.",
-    )
-    story_system_enabled_diagnostic: Optional[str] = Field(
-        default=None,
-        exclude=True,
-        description="Load-time fail-closed diagnostic for story_system_enabled; never persisted.",
-    )
-
-    # 音乐翻唱流水线（YouTube/B站下载 → UVR 分离 → RVC 转换 → pydub 合成）
-    mirror_auto_detect_china: DefaultIfNone[bool] = Field(
-        default=True,
-        description="Auto-detect China network and fill mirror sources.",
-    )
-    mirror_region: DefaultIfNone[str] = Field(
-        default="auto",
-        description="Detected mirror region: auto / china / global.",
-    )
-    huggingface_mirror_url: DefaultIfNone[str] = Field(
-        default="",
-        description="Hugging Face mirror URL, exported as HF_ENDPOINT.",
-    )
-    huggingface_cache_dir: DefaultIfNone[str] = Field(
-        default="",
-        description="Hugging Face cache directory, exported as HF_HOME.",
-    )
-    github_mirror_url: DefaultIfNone[str] = Field(
-        default="",
-        description="GitHub mirror URL or proxy prefix.",
-    )
-    pypi_mirror_url: DefaultIfNone[str] = Field(
-        default="",
-        description="PyPI mirror URL for Shinsekai-managed pip installs.",
-    )
-    network_proxy_enabled: DefaultIfNone[bool] = Field(
-        default=False,
-        description="Whether Shinsekai should write the configured proxy URLs to process environment variables.",
-    )
-    http_proxy_url: DefaultIfNone[str] = Field(
-        default="",
-        description="HTTP proxy URL, exported as HTTP_PROXY/http_proxy.",
-    )
-    https_proxy_url: DefaultIfNone[str] = Field(
-        default="",
-        description="HTTPS proxy URL, exported as HTTPS_PROXY/https_proxy.",
-    )
-    socks5_proxy_url: DefaultIfNone[str] = Field(
-        default="",
-        description="SOCKS5 proxy URL, exported as ALL_PROXY/all_proxy.",
-    )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _fail_closed_story_system_enabled(cls, data: Any) -> Any:
-        """Invalid persisted story_system_enabled must not abort SystemConfig load."""
-        if not isinstance(data, Mapping):
-            return data
-        updated = dict(data)
-        updated.pop("story_system_enabled_diagnostic", None)
-        if "story_system_enabled" not in updated:
-            return updated
-        enabled, diagnostic = FeatureFlagConfigManager.coerce_persisted_value(
-            updated.get("story_system_enabled")
-        )
-        updated["story_system_enabled"] = enabled
-        if diagnostic:
-            updated["story_system_enabled_diagnostic"] = diagnostic
-        return updated
-
-    @field_validator("chat_ui_runtime_mode", mode="before")
-    @classmethod
-    def _force_react_chat_ui(cls, _value: Any) -> str:
-        """Migrate legacy native-mode settings to the supported React runtime."""
-        return "react"
-
-    @model_validator(mode="after")
-    def _normalize_proxy_urls(self):
-        self.http_proxy_url = normalize_proxy_url(
-            self.http_proxy_url,
-            allowed_schemes={"http", "https"},
-            field_name="http_proxy_url",
-        )
-        self.https_proxy_url = normalize_proxy_url(
-            self.https_proxy_url,
-            allowed_schemes={"http", "https"},
-            field_name="https_proxy_url",
-        )
-        self.socks5_proxy_url = normalize_proxy_url(
-            self.socks5_proxy_url,
-            allowed_schemes={"socks5", "socks5h"},
-            field_name="socks5_proxy_url",
-        )
-        return self
-
-    music_cover_work_dir: DefaultIfNone[str] = Field(
-        default="./data/music_cover",
-        description="翻唱流水线工作目录（下载、分离、中间文件与成品）",
-    )
-    music_cover_yt_dlp_exe: DefaultIfNone[str] = Field(
-        default="",
-        description="yt-dlp 可执行文件路径，留空则从 PATH 查找 yt-dlp",
-    )
-    music_cover_ffmpeg_exe: DefaultIfNone[str] = Field(
-        default="",
-        description="ffmpeg 可执行文件路径，留空则由 pydub 使用系统 PATH",
-    )
-    music_cover_uvr_cmd_template: DefaultIfNone[str] = Field(
-        default="",
-        description=(
-            "UVR 或其它分离工具命令模板。占位符：{input_wav} 输入波形，{out_dir} 输出目录。"
-            "需在 out_dir 下生成可识别的 vocals / instrumental 波形（文件名含 Vocals、Instrumental、no_vocals 等关键字）。"
-        ),
-    )
-    music_cover_rvc_cmd_template: DefaultIfNone[str] = Field(
-        default="",
-        description=(
-            "留空则使用 rvc-python（RVCInference）；若填写则改为 shell 命令模板。"
-            "占位符：{input_wav} 干声，{output_wav} 输出，{model_pth} 模型，{index_file} 索引。"
-        ),
-    )
-    music_cover_rvc_model_path: DefaultIfNone[str] = Field(
-        default="",
-        description="RVC .pth 模型路径",
-    )
-    music_cover_rvc_index_path: DefaultIfNone[str] = Field(
-        default="",
-        description="RVC .index 特征索引路径（可选，无则传空）",
-    )
-    # rvc-python（RVCInference）参数；若 music_cover_rvc_cmd_template 非空则仍走命令行
-    music_cover_rvc_device: DefaultIfNone[str] = Field(
-        default="cuda:0",
-        description='rvc-python 计算设备，如 "cpu"、"cuda:0"',
-    )
-    music_cover_rvc_model_version: DefaultIfNone[str] = Field(
-        default="v2",
-        description='模型版本：v1 或 v2（对应 CLI -v）',
-    )
-    music_cover_rvc_f0_method: DefaultIfNone[str] = Field(
-        default="rmvpe",
-        description="音高提取：harvest / crepe / rmvpe / pm",
-    )
-    music_cover_rvc_pitch: DefaultIfNone[float] = Field(
-        default=0.0,
-        description="变调（半音）",
-    )
-    music_cover_rvc_index_rate: DefaultIfNone[float] = Field(
-        default=0.75,
-        description="特征检索占比 index_rate",
-    )
-    music_cover_rvc_filter_radius: DefaultIfNone[int] = Field(
-        default=3,
-        description="音高中值滤波半径 filter_radius",
-    )
-    music_cover_rvc_resample_sr: DefaultIfNone[int] = Field(
-        default=0,
-        description="输出重采样采样率，0 表示使用库默认（不强制传参）",
-    )
-    music_cover_rvc_rms_mix_rate: DefaultIfNone[float] = Field(
-        default=0.25,
-        description="音量包络混合比例 rms_mix_rate",
-    )
-    music_cover_rvc_protect: DefaultIfNone[float] = Field(
-        default=0.33,
-        description="清辅音保护 protect",
-    )
-
-class Effect(BaseModel):
-    """单个特效方案的实体模型"""
-    name: str = Field(..., description="特效方案名称")
-    color: str = Field(default="#5b8def", description="特效方案标识颜色")
-    prompt_text: DefaultIfNone[str] = Field(default="", description="通用提示词")
-    audio_list: Optional[List[str]] = Field(default_factory=list, description="特效音频列表")
-    audio_tags: DefaultIfNone[str] = Field(default="", description="特效音频信息")
-    image_list: Optional[List[str]] = Field(default_factory=list, description="特效图片列表")
-    image_tags: DefaultIfNone[str] = Field(default="", description="特效图片信息")
-    image_audio_list: Optional[List[str]] = Field(
-        default_factory=list,
-        description="图片特效绑定音频列表",
-    )
-
-# Main Config Model
-class AppConfig(BaseModel):
-    """应用的整体配置模型，包含角色列表、API 配置和系统配置"""
-    characters: List[Character] = Field(..., description="角色配置列表")
-    background_list: List[Background] = Field(..., description="背景组设置")
-    effect_list: List[Effect] = Field(default_factory=list, description="特效方案列表")
-    api_config: ApiConfig = Field(..., description="API 相关配置")
-    system_config: SystemConfig = Field(..., description="系统相关配置")
+__all__ = [
+    "ApiConfig",
+    "AppConfig",
+    "Background",
+    "COMPACT_TARGET_RATIO_MIN_GAP",
+    "Character",
+    "CharacterSummary",
+    "DEFAULT_SPRITE_GROUP",
+    "DefaultIfNone",
+    "Effect",
+    "McpConfig",
+    "ModelSprites",
+    "PortraitCrop",
+    "RelationEdge",
+    "RelationGraph",
+    "RelationNode",
+    "SELF_PERSONA_ID",
+    "SELF_PERSONA_NAME",
+    "SELF_PERSONA_SPRITE_PREFIX",
+    "Sprite",
+    "SpriteTransition",
+    "SystemConfig",
+    "UiRuntimeState",
+    "UserPromptPreset",
+    "UserPromptPresetLibrary",
+    "build_default_self_persona",
+    "clamp_compact_target_ratio",
+    "default_if_none",
+    "is_self_persona_name",
+    "normalize_api_config_dict",
+    "normalize_applied_presets_list",
+    "normalize_system_config_dict",
+    "normalize_user_prompt_presets_dict",
+]

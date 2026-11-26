@@ -567,3 +567,172 @@ def test_launch_chat_forwards_compact_primary_characters_to_child_config(
         },
     )
     assert "primary_characters" not in captured_configs[-1]
+
+
+def test_launch_chat_preserves_self_persona_in_cast_and_initial_sprite(
+    tmp_path,
+    monkeypatch,
+):
+    from application.chat.conversation_library import list_conversations
+    from config.schema import SELF_PERSONA_NAME
+    from frontend_bridge_core.chat_session import launch_chat
+
+    project_root = tmp_path / "project"
+    app_root = tmp_path / "Shinsekai"
+    template_dir = project_root / "data" / "character_templates"
+    history_dir = project_root / "data" / "chat_history"
+    app_root.mkdir()
+    template_dir.mkdir(parents=True)
+    history_dir.mkdir(parents=True)
+
+    captured_configs: list[dict] = []
+
+    def fake_popen(cmd, *, cwd, env, **kwargs):
+        del cmd, cwd, kwargs
+        captured_configs.append(json.loads(env[CHAT_LAUNCH_CONFIG_ENV]))
+        return _DummyProcess()
+
+    monkeypatch.setenv("EASYAI_PROJECT_ROOT", str(project_root))
+    monkeypatch.setattr(sys, "frozen", False, raising=False)
+    monkeypatch.setattr(chat.subprocess, "Popen", fake_popen)
+
+    self_sprite = "data/sprite/__self__/idle.png"
+    alice_sprite = "data/sprite/alice/idle.png"
+    chars = {
+        SELF_PERSONA_NAME: SimpleNamespace(
+            name=SELF_PERSONA_NAME,
+            character_setting="自设独立人设",
+            sprites=[SimpleNamespace(path=self_sprite)],
+        ),
+        "Alice": SimpleNamespace(
+            name="Alice",
+            character_setting="Alice setting",
+            sprites=[SimpleNamespace(path=alice_sprite)],
+        ),
+    }
+    config_manager = _ConfigManager()
+    config_manager.config.system_config.voice_language = "ja"
+    config_manager.config.characters = list(chars.values())
+    config_manager.config.effects = []
+    config_manager.get_character_by_name = chars.get
+    config_manager.get_background_by_name = lambda _name: None
+    config_manager.list_effects = lambda: []
+
+    state = SimpleNamespace(
+        app_root_dir=str(app_root),
+        chat_session={},
+        chat_stream=None,
+        config_manager=config_manager,
+        history_dir=str(history_dir),
+        resource_urls=SimpleNamespace(media_url=lambda path: path),
+        template_dir_path=str(template_dir),
+    )
+
+    monkeypatch.setattr(chat._supervisor.resources, "process", None)
+    snapshot = launch_chat(
+        state,
+        {
+            "backgroundName": "",
+            "characters": [SELF_PERSONA_NAME, "Alice"],
+            "historyPath": str(history_dir / "self_cast.json"),
+            "playerCharacter": "",
+            "scenario": "scene",
+            "system": "system",
+            "templateId": "_temp.txt",
+        },
+    )
+
+    assert json.loads(captured_configs[-1]["characters"]) == [SELF_PERSONA_NAME, "Alice"]
+    assert captured_configs[-1]["init_sprite_path"] == self_sprite
+    assert snapshot["characterName"] == SELF_PERSONA_NAME
+    assert len(snapshot["sprites"]) == 1
+    assert snapshot["sprites"][0]["label"] == SELF_PERSONA_NAME
+    assert snapshot["sprites"][0]["path"] == self_sprite
+    assert "不要将「自设」作为独立台词角色输出" not in (template_dir / "_temp.txt").read_text(encoding="utf-8")
+    conversations = list_conversations(state)
+    assert len(conversations) == 1
+    assert conversations[0]["characters"] == [SELF_PERSONA_NAME, "Alice"]
+
+
+@pytest.mark.parametrize("player_character", ["", "Alice"])
+def test_launch_chat_strips_legacy_self_persona_prohibition_when_explicitly_cast(
+    tmp_path,
+    monkeypatch,
+    player_character,
+):
+    from ai.llm.template.dialog.sections.player import format_self_persona_prompt
+    from config.schema import SELF_PERSONA_NAME
+    from frontend_bridge_core.chat_session import launch_chat
+
+    project_root = tmp_path / "project"
+    app_root = tmp_path / "Shinsekai"
+    template_dir = project_root / "data" / "character_templates"
+    history_dir = project_root / "data" / "chat_history"
+    app_root.mkdir()
+    template_dir.mkdir(parents=True)
+    history_dir.mkdir(parents=True)
+
+    def fake_popen(cmd, *, cwd, env, **kwargs):
+        del cmd, cwd, env, kwargs
+        return _DummyProcess()
+
+    monkeypatch.setenv("EASYAI_PROJECT_ROOT", str(project_root))
+    monkeypatch.setattr(sys, "frozen", False, raising=False)
+    monkeypatch.setattr(chat.subprocess, "Popen", fake_popen)
+
+    chars = {
+        SELF_PERSONA_NAME: SimpleNamespace(
+            name=SELF_PERSONA_NAME,
+            character_setting="旧模板自设人设",
+            sprites=[SimpleNamespace(path="data/sprite/__self__/idle.png")],
+        ),
+        "Alice": SimpleNamespace(
+            name="Alice",
+            character_setting="Alice setting",
+            sprites=[SimpleNamespace(path="data/sprite/alice/idle.png")],
+        ),
+    }
+    config_manager = _ConfigManager()
+    config_manager.config.system_config.voice_language = "ja"
+    config_manager.config.characters = list(chars.values())
+    config_manager.config.effects = []
+    config_manager.get_character_by_name = chars.get
+    config_manager.get_background_by_name = lambda _name: None
+    config_manager.list_effects = lambda: []
+
+    state = SimpleNamespace(
+        app_root_dir=str(app_root),
+        chat_session={},
+        chat_stream=None,
+        config_manager=config_manager,
+        history_dir=str(history_dir),
+        resource_urls=SimpleNamespace(media_url=lambda path: path),
+        template_dir_path=str(template_dir),
+    )
+
+    legacy_system = (
+        "出场人物有：Alice\n\n"
+        + format_self_persona_prompt("旧模板自设人设", locale="zh_CN")
+        + "要求：\n请开始对话"
+    )
+    monkeypatch.setattr(chat._supervisor.resources, "process", None)
+    launch_chat(
+        state,
+        {
+            "backgroundName": "",
+            "characters": [SELF_PERSONA_NAME, "Alice"],
+            "historyPath": str(history_dir / "legacy_self_cast.json"),
+            "playerCharacter": player_character,
+            "scenario": "scene",
+            "system": legacy_system,
+            "templateId": "legacy.txt",
+        },
+    )
+
+    rendered = (template_dir / "_temp.txt").read_text(encoding="utf-8")
+    assert "不要将「自设」作为独立台词角色输出" not in rendered
+    assert "旧模板自设人设" in rendered
+    assert "以下是自设的角色设定：" in rendered
+    assert "独立出场角色" in rendered
+    if player_character:
+        assert f"主控人物：{player_character}" in rendered

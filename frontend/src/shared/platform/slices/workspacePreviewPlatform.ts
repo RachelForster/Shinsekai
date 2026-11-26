@@ -1,4 +1,12 @@
 import { numberedTags, tagContents } from "../../assets/assetText";
+import {
+  TAG_PREFIX_AMBIENT,
+  TAG_PREFIX_EFFECT,
+  TAG_PREFIX_IMAGE,
+  TAG_PREFIX_MUSIC,
+  TAG_PREFIX_SCENE,
+} from "../../constants";
+import { translateRuntimeMessage } from "../../i18n/runtimeLanguage";
 import { DEFAULT_PLAYER_OPTIONS } from "../../playerCharacterOptions";
 import { PlatformRequestError } from "../errors";
 import { type BrowserPreviewContext, clone, delay, previewSpriteUrl, previewTask } from "./previewContext";
@@ -100,6 +108,8 @@ function previewLogSnapshot(): LogSnapshot {
 
 export function createBackgroundsPreviewPlatform(ctx: BrowserPreviewContext): BackgroundsPlatform {
   const { config } = ctx;
+  const tr = (key: Parameters<typeof translateRuntimeMessage>[0], values?: Record<string, string | number>) =>
+    translateRuntimeMessage(key, values, config.system_config.ui_language);
 
   return {
     async autoLabelImages(name) {
@@ -111,11 +121,11 @@ export function createBackgroundsPreviewPlatform(ctx: BrowserPreviewContext): Ba
       let annotatedCount = 0;
       tags.forEach((tag, index) => {
         if (!tag.trim()) {
-          tags[index] = "室内，柔和光线，安静氛围";
+          tags[index] = tr("plat.preview.bg.defaultTag");
           annotatedCount += 1;
         }
       });
-      background.bg_tags = numberedTags("场景", tags);
+      background.bg_tags = numberedTags(TAG_PREFIX_SCENE, tags);
       return delay({
         annotatedCount,
         failedCount: 0,
@@ -133,7 +143,7 @@ export function createBackgroundsPreviewPlatform(ctx: BrowserPreviewContext): Ba
     async deleteAllBgm(name) {
       const background = config.background_list.find((item) => item.name === name);
       if (!background) {
-        throw new Error("背景组不存在。");
+        throw new Error(tr("plat.preview.bg.notFound"));
       }
       background.bgm_list = [];
       background.bgm_tags = "";
@@ -142,7 +152,7 @@ export function createBackgroundsPreviewPlatform(ctx: BrowserPreviewContext): Ba
     async deleteAllImages(name) {
       const background = config.background_list.find((item) => item.name === name);
       if (!background) {
-        throw new Error("背景组不存在。");
+        throw new Error(tr("plat.preview.bg.notFound"));
       }
       background.sprites = [];
       background.bg_tags = "";
@@ -151,14 +161,14 @@ export function createBackgroundsPreviewPlatform(ctx: BrowserPreviewContext): Ba
     async deleteBgm(name, index) {
       const background = config.background_list.find((item) => item.name === name);
       if (!background || !background.bgm_list[index]) {
-        throw new Error("背景音乐不存在。");
+        throw new Error(tr("plat.preview.bg.musicNotFound"));
       }
       background.bgm_list = background.bgm_list.filter((_, itemIndex) => itemIndex !== index);
       background.bgm_tags = background.bgm_tags
         .split(/\r?\n/)
         .filter(Boolean)
         .filter((_, itemIndex) => itemIndex !== index)
-        .map((line, itemIndex) => `音乐 ${itemIndex + 1}：${line.split(/：|:/).slice(1).join("：")}`)
+        .map((line, itemIndex) => `${TAG_PREFIX_MUSIC} ${itemIndex + 1}：${line.split(/：|:/).slice(1).join("：")}`)
         .join("\n");
       if (background.bgm_tags) {
         background.bgm_tags += "\n";
@@ -168,14 +178,14 @@ export function createBackgroundsPreviewPlatform(ctx: BrowserPreviewContext): Ba
     async deleteImage(name, index) {
       const background = config.background_list.find((item) => item.name === name);
       if (!background || !background.sprites[index]) {
-        throw new Error("背景图片不存在。");
+        throw new Error(tr("plat.preview.bg.imageNotFound"));
       }
       background.sprites = background.sprites.filter((_, itemIndex) => itemIndex !== index);
       background.bg_tags = background.bg_tags
         .split(/\r?\n/)
         .filter(Boolean)
         .filter((_, itemIndex) => itemIndex !== index)
-        .map((line, itemIndex) => `场景 ${itemIndex + 1}：${line.split(/：|:/).slice(1).join("：")}`)
+        .map((line, itemIndex) => `${TAG_PREFIX_SCENE} ${itemIndex + 1}：${line.split(/：|:/).slice(1).join("：")}`)
         .join("\n");
       if (background.bg_tags) {
         background.bg_tags += "\n";
@@ -187,7 +197,7 @@ export function createBackgroundsPreviewPlatform(ctx: BrowserPreviewContext): Ba
       const imported = items.map<Background>((item, index) => {
         const label = item instanceof File ? item.name : item.split("/").pop() || `background-${index + 1}`;
         return {
-          bg_tags: "导入预览背景",
+          bg_tags: tr("plat.preview.bg.importedTag"),
           bgm_list: [],
           bgm_tags: "",
           name: `Imported Background ${index + 1}`,
@@ -200,29 +210,40 @@ export function createBackgroundsPreviewPlatform(ctx: BrowserPreviewContext): Ba
     },
     list: () => delay(config.background_list),
     async save(background, originalName) {
-      const index = config.background_list.findIndex((item) => item.name === (originalName || background.name));
+      const idIndex = background.id ? config.background_list.findIndex((item) => item.id === background.id) : -1;
+      const index =
+        idIndex >= 0
+          ? idIndex
+          : config.background_list.findIndex((item) => item.name === (originalName || background.name));
       if (index >= 0) {
         config.background_list[index] = {
           ...config.background_list[index],
+          ...(background.bg_tags !== undefined ? { bg_tags: background.bg_tags } : {}),
+          ...(background.bgm_tags !== undefined ? { bgm_tags: background.bgm_tags } : {}),
           name: background.name,
           sprite_prefix: background.sprite_prefix || "temp",
         };
       } else {
         config.background_list.push({
-          bg_tags: "",
-          bgm_list: [],
-          bgm_tags: "",
+          ...(background.id ? { id: background.id } : {}),
+          bg_tags: background.bg_tags ?? "",
+          bgm_list: background.bgm_list ?? [],
+          bgm_tags: background.bgm_tags ?? "",
           name: background.name,
           sprite_prefix: background.sprite_prefix || "temp",
-          sprites: [],
+          sprites: background.sprites ?? [],
         });
       }
-      return delay(config.background_list.find((item) => item.name === background.name) ?? background);
+      return delay(
+        (background.id ? config.background_list.find((item) => item.id === background.id) : undefined) ??
+          config.background_list.find((item) => item.name === background.name) ??
+          background,
+      );
     },
     async saveBgmTags(input) {
       const background = config.background_list.find((item) => item.name === input.name);
       if (!background) {
-        throw new Error("背景组不存在。");
+        throw new Error(tr("plat.preview.bg.notFound"));
       }
       background.bgm_tags = input.bgmTags;
       return delay(background);
@@ -230,7 +251,7 @@ export function createBackgroundsPreviewPlatform(ctx: BrowserPreviewContext): Ba
     async saveImageTags(input) {
       const background = config.background_list.find((item) => item.name === input.name);
       if (!background) {
-        throw new Error("背景组不存在。");
+        throw new Error(tr("plat.preview.bg.notFound"));
       }
       background.bg_tags = input.bgTags;
       return delay(background);
@@ -241,19 +262,19 @@ export function createBackgroundsPreviewPlatform(ctx: BrowserPreviewContext): Ba
     async uploadBgm(input) {
       const background = config.background_list.find((item) => item.name === input.name);
       if (!background) {
-        throw new Error("背景组不存在。");
+        throw new Error(tr("plat.preview.bg.notFound"));
       }
       background.bgm_list = [...background.bgm_list, ...input.paths];
-      background.bgm_tags = `${input.bgmTags || ""}${input.paths.map((_, index) => `音乐 ${background.bgm_list.length - input.paths.length + index + 1}：`).join("\n")}\n`;
+      background.bgm_tags = `${input.bgmTags || ""}${input.paths.map((_, index) => `${TAG_PREFIX_MUSIC} ${background.bgm_list.length - input.paths.length + index + 1}：`).join("\n")}\n`;
       return delay(background);
     },
     async uploadImages(input) {
       const background = config.background_list.find((item) => item.name === input.name);
       if (!background) {
-        throw new Error("背景组不存在。");
+        throw new Error(tr("plat.preview.bg.notFound"));
       }
       background.sprites = [...background.sprites, ...input.paths.map((path) => ({ path }))];
-      background.bg_tags = `${input.bgTags || ""}${input.paths.map((_, index) => `场景 ${background.sprites.length - input.paths.length + index + 1}：`).join("\n")}\n`;
+      background.bg_tags = `${input.bgTags || ""}${input.paths.map((_, index) => `${TAG_PREFIX_SCENE} ${background.sprites.length - input.paths.length + index + 1}：`).join("\n")}\n`;
       return delay(background);
     },
   };
@@ -261,6 +282,8 @@ export function createBackgroundsPreviewPlatform(ctx: BrowserPreviewContext): Ba
 
 export function createEffectsPreviewPlatform(ctx: BrowserPreviewContext): EffectsPlatform {
   const { config } = ctx;
+  const tr = (key: Parameters<typeof translateRuntimeMessage>[0], values?: Record<string, string | number>) =>
+    translateRuntimeMessage(key, values, config.system_config.ui_language);
 
   return {
     async delete(name) {
@@ -269,7 +292,7 @@ export function createEffectsPreviewPlatform(ctx: BrowserPreviewContext): Effect
     async deleteAllAudio(name) {
       const effect = config.effect_list.find((item) => item.name === name);
       if (!effect) {
-        throw new Error("特效方案不存在。");
+        throw new Error(tr("plat.preview.effect.notFound"));
       }
       effect.audio_list = [];
       effect.audio_tags = "";
@@ -278,12 +301,12 @@ export function createEffectsPreviewPlatform(ctx: BrowserPreviewContext): Effect
     async deleteAudio(name, index) {
       const effect = config.effect_list.find((item) => item.name === name);
       if (!effect || index < 0 || index >= effect.audio_list.length) {
-        throw new Error("特效音频不存在。");
+        throw new Error(tr("plat.preview.effect.audioNotFound"));
       }
       const tags = tagContents(effect.audio_tags, effect.audio_list.length, true);
       effect.audio_list = effect.audio_list.filter((_, itemIndex) => itemIndex !== index);
       effect.audio_tags = numberedTags(
-        "特效",
+        TAG_PREFIX_EFFECT,
         tags.filter((_, itemIndex) => itemIndex !== index),
       );
       return delay(effect);
@@ -291,13 +314,13 @@ export function createEffectsPreviewPlatform(ctx: BrowserPreviewContext): Effect
     async deleteImage(name, index) {
       const effect = config.effect_list.find((item) => item.name === name);
       if (!effect || index < 0 || index >= effect.image_list.length) {
-        throw new Error("特效图片不存在。");
+        throw new Error(tr("plat.preview.effect.imageNotFound"));
       }
       const tags = tagContents(effect.image_tags, effect.image_list.length, true);
       effect.image_list = effect.image_list.filter((_, itemIndex) => itemIndex !== index);
       effect.image_audio_list = effect.image_audio_list.filter((_, itemIndex) => itemIndex !== index);
       effect.image_tags = numberedTags(
-        "图片",
+        TAG_PREFIX_IMAGE,
         tags.filter((_, itemIndex) => itemIndex !== index),
       );
       return delay(effect);
@@ -315,6 +338,10 @@ export function createEffectsPreviewPlatform(ctx: BrowserPreviewContext): Effect
           image_list: [],
           image_tags: "",
           image_audio_list: [],
+          ambient_list: [],
+          ambient_tags: "",
+          ambient_audio_list: [],
+          ambient_layers: [],
         };
       });
       config.effect_list = [...config.effect_list, ...imported];
@@ -322,17 +349,35 @@ export function createEffectsPreviewPlatform(ctx: BrowserPreviewContext): Effect
     },
     list: () => delay(clone(config.effect_list)),
     async save(effect, originalName) {
+      const mergeExistingEffect = (target: Effect) => {
+        const layers =
+          Array.isArray(effect.ambient_layers) && effect.ambient_layers.length === target.ambient_list.length
+            ? effect.ambient_layers
+            : target.ambient_layers;
+        Object.assign(target, effect, {
+          ...(target.id ? { id: target.id } : {}),
+          audio_list: target.audio_list,
+          image_audio_list: target.image_audio_list,
+          image_list: target.image_list,
+          ambient_list: target.ambient_list,
+          ambient_audio_list: target.ambient_audio_list,
+          ambient_layers: layers,
+        });
+        return delay(clone(target));
+      };
+      const idMatch = effect.id ? config.effect_list.find((item) => item.id === effect.id) : undefined;
+      if (idMatch) {
+        return mergeExistingEffect(idMatch);
+      }
       if (originalName && originalName !== effect.name) {
         const existing = config.effect_list.find((item) => item.name === originalName);
         if (existing) {
-          Object.assign(existing, effect);
-          return delay(clone(existing));
+          return mergeExistingEffect(existing);
         }
       }
       const existing = config.effect_list.find((item) => item.name === effect.name);
       if (existing) {
-        Object.assign(existing, effect);
-        return delay(clone(existing));
+        return mergeExistingEffect(existing);
       }
       config.effect_list = [...config.effect_list, clone(effect)];
       return delay(clone(effect));
@@ -340,44 +385,95 @@ export function createEffectsPreviewPlatform(ctx: BrowserPreviewContext): Effect
     async saveAudioTags(input) {
       const effect = config.effect_list.find((item) => item.name === input.name);
       if (!effect) {
-        throw new Error("特效方案不存在。");
+        throw new Error(tr("plat.preview.effect.notFound"));
       }
       effect.audio_tags = input.audioTags;
       return delay(effect);
     },
     async saveImageTags(input) {
       const effect = config.effect_list.find((item) => item.name === input.name);
-      if (!effect) throw new Error("特效方案不存在。");
+      if (!effect) throw new Error(tr("plat.preview.effect.notFound"));
       effect.image_tags = input.imageTags;
       return delay(effect);
     },
     async uploadAudio(input) {
       const effect = config.effect_list.find((item) => item.name === input.name);
       if (!effect) {
-        throw new Error("特效方案不存在。");
+        throw new Error(tr("plat.preview.effect.notFound"));
       }
       const tags = tagContents(input.audioTags || effect.audio_tags, effect.audio_list.length, true);
       effect.audio_list = [...effect.audio_list, ...input.paths];
-      effect.audio_tags = numberedTags("特效", [...tags, ...input.paths.map(() => "")]);
+      effect.audio_tags = numberedTags(TAG_PREFIX_EFFECT, [...tags, ...input.paths.map(() => "")]);
       return delay(effect);
     },
     async uploadImages(input) {
       const effect = config.effect_list.find((item) => item.name === input.name);
-      if (!effect) throw new Error("特效方案不存在。");
+      if (!effect) throw new Error(tr("plat.preview.effect.notFound"));
       const tags = tagContents(input.imageTags || effect.image_tags, effect.image_list.length, true);
       effect.image_list = [...effect.image_list, ...input.paths];
       effect.image_audio_list = [...effect.image_audio_list, ...input.paths.map(() => "")];
-      effect.image_tags = numberedTags("图片", [...tags, ...input.paths.map(() => "")]);
+      effect.image_tags = numberedTags(TAG_PREFIX_IMAGE, [...tags, ...input.paths.map(() => "")]);
       return delay(effect);
     },
     async uploadImageAudio(input) {
       const effect = config.effect_list.find((item) => item.name === input.name);
       if (!effect || input.index < 0 || input.index >= effect.image_list.length) {
-        throw new Error("特效图片不存在。");
+        throw new Error(tr("plat.preview.effect.imageNotFound"));
       }
       effect.image_audio_list = [...effect.image_audio_list];
       while (effect.image_audio_list.length < effect.image_list.length) effect.image_audio_list.push("");
       effect.image_audio_list[input.index] = input.path;
+      return delay(effect);
+    },
+    async uploadAmbient(input) {
+      const effect = config.effect_list.find((item) => item.name === input.name);
+      if (!effect) throw new Error(tr("plat.preview.effect.notFound"));
+      const tags = tagContents(input.ambientTags || effect.ambient_tags, effect.ambient_list.length, true);
+      effect.ambient_list = [...effect.ambient_list, ...input.paths];
+      effect.ambient_audio_list = [...effect.ambient_audio_list, ...input.paths.map(() => "")];
+      effect.ambient_layers = [...effect.ambient_layers, ...input.paths.map(() => "back")];
+      effect.ambient_tags = numberedTags(TAG_PREFIX_AMBIENT, [...tags, ...input.paths.map(() => "")]);
+      return delay(effect);
+    },
+    async deleteAmbient(name, index) {
+      const effect = config.effect_list.find((item) => item.name === name);
+      if (!effect || index < 0 || index >= effect.ambient_list.length) {
+        throw new Error(tr("plat.preview.effect.ambientNotFound"));
+      }
+      effect.ambient_list = effect.ambient_list.filter((_, itemIndex) => itemIndex !== index);
+      effect.ambient_audio_list = effect.ambient_audio_list.filter((_, itemIndex) => itemIndex !== index);
+      effect.ambient_layers = effect.ambient_layers.filter((_, itemIndex) => itemIndex !== index);
+      const tags = tagContents(effect.ambient_tags, effect.ambient_list.length + 1, true);
+      effect.ambient_tags = numberedTags(
+        TAG_PREFIX_AMBIENT,
+        tags.filter((_, itemIndex) => itemIndex !== index),
+      );
+      return delay(effect);
+    },
+    async saveAmbientTags(input) {
+      const effect = config.effect_list.find((item) => item.name === input.name);
+      if (!effect) throw new Error(tr("plat.preview.effect.notFound"));
+      effect.ambient_tags = input.ambientTags;
+      return delay(effect);
+    },
+    async saveAmbientLayers(input) {
+      const effect = config.effect_list.find((item) => item.name === input.name);
+      if (!effect) throw new Error(tr("plat.preview.effect.notFound"));
+      effect.ambient_layers = effect.ambient_list.map((_, index) =>
+        input.layers[index] === "front" ? "front" : "back",
+      );
+      return delay(effect);
+    },
+    async uploadAmbientAudio(input) {
+      const effect = config.effect_list.find((item) => item.name === input.name);
+      if (!effect || input.index < 0 || input.index >= effect.ambient_list.length) {
+        throw new Error(tr("plat.preview.effect.ambientNotFound"));
+      }
+      effect.ambient_audio_list = [...effect.ambient_audio_list];
+      while (effect.ambient_audio_list.length < effect.ambient_list.length) {
+        effect.ambient_audio_list.push("");
+      }
+      effect.ambient_audio_list[input.index] = input.path;
       return delay(effect);
     },
   };
@@ -464,19 +560,29 @@ export function createTasksPreviewPlatform(): TasksPlatform {
       id,
       kind: "preview",
       logs: [],
-      message: "浏览器预览没有持久后台任务。",
+      message: translateRuntimeMessage("plat.preview.task.noPersistentTasks"),
       phase: "completed",
       progress: 1,
       result: null,
       status: "succeeded",
-      title: "预览任务",
+      title: translateRuntimeMessage("plat.preview.task.title"),
       updatedAt: Date.now(),
     }),
   };
 }
 
 export function createTemplatesPreviewPlatform(ctx: BrowserPreviewContext): TemplatesPlatform {
-  const { config, getTemplates, getTemplateSession, setTemplates, setTemplateSession } = ctx;
+  const {
+    config,
+    getTemplates,
+    getTemplateSession,
+    getUserPromptPresets,
+    setTemplates,
+    setTemplateSession,
+    setUserPromptPresets,
+  } = ctx;
+  const tr = (key: Parameters<typeof translateRuntimeMessage>[0], values?: Record<string, string | number>) =>
+    translateRuntimeMessage(key, values, config.system_config.ui_language);
 
   return {
     async generate(input) {
@@ -485,12 +591,14 @@ export function createTemplatesPreviewPlatform(ctx: BrowserPreviewContext): Temp
       }
       const scenario =
         input.scenario ||
-        `你需要模拟一个RPG剧情对话系统，出场人物有：${input.characters.join("、")} 以及其他相关人物，请根据剧情调度人物。`;
+        tr("plat.preview.template.defaultScenario", {
+          characters: input.characters.join(tr("plat.preview.template.sep")),
+        });
       const system = "";
       const template = {
         content: [scenario, system].filter(Boolean).join("\n\n"),
         id: "",
-        name: input.name || "新模板",
+        name: input.name || tr("plat.preview.template.defaultName"),
         path: "",
         resolvedCharacters: [...input.characters],
         allowPlayerDialogue: input.allowPlayerDialogue ?? DEFAULT_PLAYER_OPTIONS.allowPlayerDialogue,
@@ -500,6 +608,7 @@ export function createTemplatesPreviewPlatform(ctx: BrowserPreviewContext): Temp
       };
       return delay(template, 600);
     },
+    getPresets: () => delay(getUserPromptPresets()),
     getSession: () => delay(getTemplateSession()),
     list: () => delay(getTemplates()),
     async save(template) {
@@ -517,6 +626,11 @@ export function createTemplatesPreviewPlatform(ctx: BrowserPreviewContext): Temp
       setTemplates(next);
       return delay(saved);
     },
+    async savePresets(library) {
+      const next = clone(library);
+      setUserPromptPresets(next);
+      return delay(next);
+    },
     async saveSession(session) {
       const next = clone(session);
       setTemplateSession(next);
@@ -529,13 +643,20 @@ export function createToolsPreviewPlatform(): ToolsPlatform {
   return {
     async cropSprites(input, options) {
       const taskId = `tools-crop-${Date.now()}`;
+      const outputDir = input.outputDir || `${input.inputDir}/cropped_upper_${input.ratio}`;
       const result: BatchToolResult = {
-        message: `成功裁剪，输出目录: ${input.outputDir || `${input.inputDir}/cropped_upper_${input.ratio}`}`,
-        outputDir: input.outputDir || `${input.inputDir}/cropped_upper_${input.ratio}`,
+        message: translateRuntimeMessage("plat.preview.tools.cropDone", { dir: outputDir }),
+        outputDir,
       };
       previewTask(
         taskId,
-        { kind: "tools-crop", message: "正在裁剪立绘。", phase: "crop", progress: 0.6, status: "running" },
+        {
+          kind: "tools-crop",
+          message: translateRuntimeMessage("plat.preview.tools.cropping"),
+          phase: "crop",
+          progress: 0.6,
+          status: "running",
+        },
         options,
       );
       await delay(null, 180);
@@ -556,7 +677,13 @@ export function createToolsPreviewPlatform(): ToolsPlatform {
       };
       previewTask(
         taskId,
-        { kind: "tools-prompts", message: "正在生成立绘提示词。", phase: "prompt", progress: 0.4, status: "running" },
+        {
+          kind: "tools-prompts",
+          message: translateRuntimeMessage("plat.preview.tools.generatingPrompts"),
+          phase: "prompt",
+          progress: 0.4,
+          status: "running",
+        },
         options,
       );
       await delay(null, 220);
@@ -564,7 +691,7 @@ export function createToolsPreviewPlatform(): ToolsPlatform {
         taskId,
         {
           kind: "tools-prompts",
-          message: "提示词已生成。",
+          message: translateRuntimeMessage("plat.preview.tools.promptsGenerated"),
           phase: "completed",
           progress: 1,
           result,
@@ -579,12 +706,21 @@ export function createToolsPreviewPlatform(): ToolsPlatform {
       const outputDir = input.outputDir || `data/sprite/${input.characterName || "preview"}`;
       const result: SpriteGenerationResult = {
         files: input.prompts.map((_, index) => `${outputDir}/sprite_${String(index + 1).padStart(3, "0")}.png`),
-        message: `已生成 ${input.prompts.length} 张（输出目录: ${outputDir}）`,
+        message: translateRuntimeMessage("plat.preview.tools.generatedCount", {
+          count: input.prompts.length,
+          dir: outputDir,
+        }),
         outputDir,
       };
       previewTask(
         taskId,
-        { kind: "tools-sprites", message: "正在生成立绘。", phase: "generate", progress: 0.35, status: "running" },
+        {
+          kind: "tools-sprites",
+          message: translateRuntimeMessage("plat.preview.tools.generatingSprites"),
+          phase: "generate",
+          progress: 0.35,
+          status: "running",
+        },
         options,
       );
       await delay(null, 260);
@@ -606,14 +742,14 @@ export function createToolsPreviewPlatform(): ToolsPlatform {
       const taskId = `tools-rmbg-${Date.now()}`;
       const outputDir = input.outputDir || `${input.inputDir}/removed_backgrounds`;
       const result: BatchToolResult = {
-        message: `成功处理: 3，失败: 0，输出到目录： ${outputDir}`,
+        message: translateRuntimeMessage("plat.preview.tools.rmbgDone", { dir: outputDir }),
         outputDir,
       };
       previewTask(
         taskId,
         {
           kind: "tools-rmbg",
-          message: "正在批量抠出立绘。",
+          message: translateRuntimeMessage("plat.preview.tools.removingBg"),
           phase: "remove-background",
           progress: 0.5,
           status: "running",

@@ -25,6 +25,7 @@ import type {
   TemplatesPlatform,
   TemplateSummary,
   ToolsPlatform,
+  UserPromptPresetLibrary,
 } from "./workspaceTypes";
 
 export function createBackgroundsHttpPlatform(transport: HttpTransport): BackgroundsPlatform {
@@ -74,7 +75,11 @@ export function createBackgroundsHttpPlatform(transport: HttpTransport): Backgro
     list: () => requestJson<Background[]>("/api/backgrounds"),
     save: (background, originalName) =>
       requestJson<Background>("/api/backgrounds", {
-        body: JSON.stringify({ background, originalName }),
+        body: JSON.stringify({
+          ...(background.id ? { id: background.id } : {}),
+          background,
+          originalName,
+        }),
         method: "POST",
       }),
     saveBgmTags: (input) =>
@@ -140,7 +145,11 @@ export function createEffectsHttpPlatform(transport: HttpTransport): EffectsPlat
     list: () => requestJson<Effect[]>("/api/effects"),
     save: (effect, originalName) =>
       requestJson<Effect>("/api/effects", {
-        body: JSON.stringify({ effect, originalName }),
+        body: JSON.stringify({
+          ...(effect.id ? { id: effect.id } : {}),
+          effect,
+          originalName,
+        }),
         method: "POST",
       }),
     saveAudioTags: (input) =>
@@ -165,6 +174,31 @@ export function createEffectsHttpPlatform(transport: HttpTransport): EffectsPlat
       }),
     uploadImageAudio: (input) =>
       requestJson<Effect>("/api/effects/images/audio/upload", {
+        body: JSON.stringify(input),
+        method: "POST",
+      }),
+    uploadAmbient: (input) =>
+      requestJson<Effect>("/api/effects/ambient/upload", {
+        body: JSON.stringify(input),
+        method: "POST",
+      }),
+    deleteAmbient: (name, index) =>
+      requestJson<Effect>("/api/effects/ambient/delete", {
+        body: JSON.stringify({ index, name }),
+        method: "POST",
+      }),
+    saveAmbientTags: (input) =>
+      requestJson<Effect>("/api/effects/ambient-tags", {
+        body: JSON.stringify(input),
+        method: "POST",
+      }),
+    saveAmbientLayers: (input) =>
+      requestJson<Effect>("/api/effects/ambient-layers", {
+        body: JSON.stringify(input),
+        method: "POST",
+      }),
+    uploadAmbientAudio: (input) =>
+      requestJson<Effect>("/api/effects/ambient/audio/upload", {
         body: JSON.stringify(input),
         method: "POST",
       }),
@@ -295,11 +329,17 @@ export function createTemplatesHttpPlatform(transport: HttpTransport): Templates
         body: JSON.stringify(input),
         method: "POST",
       }),
+    getPresets: () => requestJson<UserPromptPresetLibrary>("/api/templates/presets"),
     getSession: () => requestJson<TemplateLaunchSession | null>("/api/templates/session"),
     list: () => requestJson<TemplateSummary[]>("/api/templates"),
     save: (template) =>
       requestJson<TemplateSummary>("/api/templates", {
         body: JSON.stringify({ template }),
+        method: "POST",
+      }),
+    savePresets: (library) =>
+      requestJson<UserPromptPresetLibrary>("/api/templates/presets", {
+        body: JSON.stringify(library),
         method: "POST",
       }),
     saveSession: (session) =>

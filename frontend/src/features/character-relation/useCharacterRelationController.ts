@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRef } from "react";
+import { useRef, useState } from "react";
+import { charactersQueryKey } from "../../entities/character/repository";
 
 import {
   applyCharacterRelationChanges,
@@ -14,10 +15,12 @@ export interface CharacterRelationController {
   isFetching: boolean;
   loadError: string;
   savePending: boolean;
+  cleanPending: boolean;
   saveError: string;
   /** True only when the changes have been saved; false on failure or a concurrent save. */
   save: (operations: RelationRequest[]) => Promise<boolean>;
   reload: () => Promise<void>;
+  clean: () => Promise<void>;
 }
 
 function saveErrorMessage(error: unknown): string {
@@ -28,6 +31,7 @@ function saveErrorMessage(error: unknown): string {
 export function useCharacterRelationController(owner: string): CharacterRelationController {
   const queryClient = useQueryClient();
   const saveInProgress = useRef(false);
+  const [cleanPending, setCleanPending] = useState(false);
   const queryKey = [...relationQueryKey, owner];
   const query = useQuery<CharacterRelationGraph, Error>({
     queryKey,
@@ -60,7 +64,47 @@ export function useCharacterRelationController(owner: string): CharacterRelation
 
   async function reload(): Promise<void> {
     saveMutation.reset();
-    await query.refetch();
+    try {
+      await query.refetch();
+    } finally {
+      await queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+    }
+  }
+
+  async function clean(): Promise<void> {
+    if (saveInProgress.current) return;
+    saveInProgress.current = true;
+    setCleanPending(true);
+    saveMutation.reset();
+    try {
+      const result = await query.refetch();
+      if (result.isError || !result.data) return;
+      const graph = result.data;
+      const retainedEdges = graph.edges.filter((edge) => edge.source === graph.owner || edge.target === graph.owner);
+      const connected = new Set(retainedEdges.flatMap((edge) => [edge.source, edge.target]));
+      const operations: RelationRequest[] = [
+        ...graph.edges
+          .filter((edge) => edge.source !== graph.owner && edge.target !== graph.owner)
+          .map((edge): RelationRequest => ({ op: "delete_edge", source: edge.source, target: edge.target })),
+        ...graph.nodes
+          .filter((node) => node.key !== graph.owner && !connected.has(node.key))
+          .map((node): RelationRequest => ({ op: "delete_node", key: node.key })),
+      ];
+      if (operations.length) {
+        try {
+          await saveMutation.mutateAsync(operations);
+        } catch {
+          // The mutation exposes the error to the editor.
+        }
+      }
+    } finally {
+      try {
+        await queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+      } finally {
+        saveInProgress.current = false;
+        setCleanPending(false);
+      }
+    }
   }
 
   return {
@@ -69,8 +113,10 @@ export function useCharacterRelationController(owner: string): CharacterRelation
     isFetching: query.isFetching,
     loadError: query.error ? String(query.error) : "",
     savePending: saveMutation.isPending,
+    cleanPending,
     saveError: saveErrorMessage(saveMutation.error),
     save,
     reload,
+    clean,
   };
 }

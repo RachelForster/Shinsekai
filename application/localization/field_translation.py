@@ -6,17 +6,11 @@ import json
 import re
 from typing import Any, Tuple
 
-from config.config_manager import ConfigManager
-from sdk.lang import normalize_lang
-
-
-def _target_language_phrase(ui_lang_code: str) -> str:
-    c = normalize_lang(ui_lang_code)
-    if c == "en":
-        return "English"
-    if c == "ja":
-        return "Japanese (日本語)"
-    return "Simplified Chinese (简体中文)"
+from ai.llm.template.generation.field_translation import (
+    render_background_field_translation_prompts,
+    render_character_field_translation_prompts,
+)
+from config.llm_defaults import resolve_llm_api_credentials, resolve_llm_factory_kwargs
 
 
 def _parse_json_object(text: str) -> dict[str, Any]:
@@ -31,14 +25,15 @@ def _parse_json_object(text: str) -> dict[str, Any]:
     return json.loads(t[i : j + 1])
 
 
-def _llm_one_shot(config: ConfigManager, system: str, user: str) -> str:
-    llm_provider, llm_model, llm_base_url, api_key = config.get_llm_api_config()
+def _llm_one_shot(config: Any, system: str, user: str) -> str:
+    llm_provider, llm_model, llm_base_url, api_key = resolve_llm_api_credentials(config)
     if not llm_provider or not api_key or not llm_model:
         raise ValueError("llm_incomplete")
     from ai.llm.llm_manager import LLMAdapterFactory, LLMManager
 
     llm_adapter = LLMAdapterFactory.create_adapter(
-        **config.merged_llm_factory_kwargs(
+        **resolve_llm_factory_kwargs(
+            config,
             llm_provider,
             {
                 "llm_provider": llm_provider,
@@ -55,7 +50,7 @@ def _llm_one_shot(config: ConfigManager, system: str, user: str) -> str:
 
 
 def translate_character_name_and_tags(
-    config: ConfigManager,
+    config: Any,
     ui_lang_code: str,
     name: str,
     emotion_block: str,
@@ -71,18 +66,11 @@ def translate_character_name_and_tags(
     if not n and not (e and e.strip()) and not (s and s.strip()):
         return "no_content", n, e, s
 
-    target = _target_language_phrase(ui_lang_code)
-    system = (
-        f"You are a professional translator. Translate the user's fields to {target}. "
-        "If the text is already in the target language, return it with minimal edits. "
-        "Output ONLY a single JSON object, no markdown fences, no other text. "
-        'The JSON must have exactly three string keys: "name", "emotion_block", and "character_setting". '
-        "Preserve all line breaks and paragraph structure in emotion_block and character_setting. "
-        "Use empty string for a field that had no source text."
-    )
-    user = json.dumps(
-        {"name": n, "emotion_block": e, "character_setting": s},
-        ensure_ascii=False,
+    system, user = render_character_field_translation_prompts(
+        ui_lang_code=ui_lang_code,
+        name=n,
+        emotion_block=e,
+        character_setting=s,
     )
     try:
         raw = _llm_one_shot(config, system, user)
@@ -105,7 +93,7 @@ def translate_character_name_and_tags(
 
 
 def translate_background_fields(
-    config: ConfigManager,
+    config: Any,
     ui_lang_code: str,
     bg_name: str,
     bg_info: str,
@@ -124,24 +112,12 @@ def translate_background_fields(
     ):
         return "no_content", n, bgi, bgmi, tags
 
-    target = _target_language_phrase(ui_lang_code)
-    system = (
-        f"You are a professional translator. Translate the user's fields to {target}. "
-        "If the text is already in the target language, return it with minimal edits. "
-        "Output ONLY a single JSON object, no markdown fences, no other text. "
-        'Keys: "bg_name" (string), "bg_info" (string), "bgm_info" (string), "bgm_row_tags" (array of strings). '
-        "The array bgm_row_tags MUST have the same length as in the input, same order (one per BGM table row). "
-        "Translate each tag independently; for empty input tags use empty string. "
-        "Preserve line breaks in bg_info and bgm_info."
-    )
-    user = json.dumps(
-        {
-            "bg_name": n,
-            "bg_info": bgi,
-            "bgm_info": bgmi,
-            "bgm_row_tags": tags,
-        },
-        ensure_ascii=False,
+    system, user = render_background_field_translation_prompts(
+        ui_lang_code=ui_lang_code,
+        bg_name=n,
+        bg_info=bgi,
+        bgm_info=bgmi,
+        bgm_row_tags=tags,
     )
     try:
         raw = _llm_one_shot(config, system, user)

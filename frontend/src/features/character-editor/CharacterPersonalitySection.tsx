@@ -7,6 +7,7 @@ import { AsyncButton, TextArea } from "../../shared/ui";
 import type { CharacterFieldChange } from "./characterEditorUtils";
 
 interface CharacterPersonalitySectionProps {
+  actionsDisabled?: boolean;
   aiPending: boolean;
   briefPending: boolean;
   draft: Character;
@@ -19,6 +20,7 @@ interface CharacterPersonalitySectionProps {
 }
 
 export function CharacterPersonalitySection({
+  actionsDisabled = false,
   aiPending,
   briefPending,
   draft,
@@ -37,10 +39,16 @@ export function CharacterPersonalitySection({
       <div className="section__header">
         <h2 className="section__title">{t("character.section.personality")}</h2>
         <div className="page__actions">
-          <AsyncButton icon={<Sparkles aria-hidden className="button__icon" />} loading={aiPending} onClick={onAiWrite}>
+          <AsyncButton
+            disabled={actionsDisabled}
+            icon={<Sparkles aria-hidden className="button__icon" />}
+            loading={aiPending}
+            onClick={onAiWrite}
+          >
             {t("character.action.aiWrite")}
           </AsyncButton>
           <AsyncButton
+            disabled={actionsDisabled}
             icon={<Languages aria-hidden className="button__icon" />}
             loading={translatePending}
             onClick={onTranslate}
@@ -67,6 +75,7 @@ export function CharacterPersonalitySection({
               value={draft.character_brief ?? ""}
             />
             <AsyncButton
+              disabled={actionsDisabled}
               icon={<Sparkles aria-hidden className="button__icon" />}
               loading={briefPending}
               onClick={onAiBrief}

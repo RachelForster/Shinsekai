@@ -4,12 +4,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import { OnboardingPage } from "../../../features/onboarding/OnboardingPage";
-import { onboardingCopy } from "../../../features/onboarding/onboardingCopy";
 import { BackgroundSetupPanel } from "../../../features/onboarding/steps/BackgroundSetupPanel";
 import { CharacterSetupPanel } from "../../../features/onboarding/steps/CharacterSetupPanel";
 import { CompletionSetupPanel } from "../../../features/onboarding/steps/CompletionSetupPanel";
 import { PluginSetupPanel } from "../../../features/onboarding/steps/PluginSetupPanel";
-import { I18nProvider } from "../../../shared/i18n";
+import { I18nProvider, translateMessage } from "../../../shared/i18n";
 import { sampleConfig } from "../../../shared/platform/sampleData";
 import { ToastProvider } from "../../../shared/ui";
 
@@ -190,7 +189,9 @@ describe("onboarding flow", () => {
     expect(await screen.findByRole("heading", { name: "First run guide" })).toBeInTheDocument();
     const stepNavigation = screen.getByRole("navigation", { name: "First run guide" });
     expect(within(stepNavigation).getAllByRole("button")).toHaveLength(5);
-    expect(within(stepNavigation).queryByText(onboardingCopy.en.api.description)).not.toBeInTheDocument();
+    expect(
+      within(stepNavigation).queryByText(translateMessage("en", "onboarding.api.description")),
+    ).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Open next step" }));
 
     const apiDialog = await screen.findByRole("dialog", { name: "Confirm" });
@@ -238,20 +239,21 @@ describe("onboarding flow", () => {
       },
     ]);
 
-    renderWithProviders(<PluginSetupPanel copy={onboardingCopy.en} onInstalled={onInstalled} />);
+    renderWithProviders(<PluginSetupPanel onInstalled={onInstalled} />);
 
     expect(await screen.findByText("Visual plugin")).toBeInTheDocument();
+    expect(screen.queryByText("Voice input plugin")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "One-click download" }));
 
     await waitFor(() => expect(mocks.installMissingRuntimeDependency).toHaveBeenCalled());
-    await waitFor(() => expect(mocks.installPlugin).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(mocks.installPlugin).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(onInstalled).toHaveBeenCalledTimes(1));
-    expect(await screen.findAllByRole("button", { name: "Configure" })).toHaveLength(3);
+    expect(await screen.findAllByRole("button", { name: "Configure" })).toHaveLength(2);
     expect(screen.getByText(/Dependencies and selected plugins are installed/)).toBeInTheDocument();
   });
 
   it("imports characters and backgrounds and opens resource links", async () => {
-    const characterView = renderWithProviders(<CharacterSetupPanel copy={onboardingCopy.en} />);
+    const characterView = renderWithProviders(<CharacterSetupPanel />);
 
     expect(await screen.findByText("No characters yet.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Open resource library" }));
@@ -263,7 +265,7 @@ describe("onboarding flow", () => {
     await waitFor(() => expect(mocks.importCharacters).toHaveBeenCalledWith([characterFile]));
     characterView.unmount();
 
-    const backgroundView = renderWithProviders(<BackgroundSetupPanel copy={onboardingCopy.en} />);
+    const backgroundView = renderWithProviders(<BackgroundSetupPanel />);
     expect(await screen.findByText("No backgrounds yet.")).toBeInTheDocument();
     const backgroundInput = backgroundView.container.querySelector<HTMLInputElement>('input[type="file"]');
     const backgroundFile = new File(["bg"], "room.bg");
@@ -275,7 +277,7 @@ describe("onboarding flow", () => {
   it("opens templates from the completion panel action", async () => {
     renderWithProviders(
       <Routes>
-        <Route path="/onboarding" element={<CompletionSetupPanel copy={onboardingCopy.en} />} />
+        <Route path="/onboarding" element={<CompletionSetupPanel />} />
         <Route path="/settings/templates" element={<div>Templates destination</div>} />
       </Routes>,
     );

@@ -8,6 +8,7 @@ from contextlib import ExitStack
 
 from ai.llm.dialog_repair import repair_dialog_output
 from ai.llm.request_runner import RequestRunner, RequestedRound
+from ai.llm.template.integrations.localization import LocaleInput
 from ai.llm.tool_session import ToolSession
 from core.messaging.dialog_output import has_valid_dialog_output
 from core.messaging.stream_events import STREAM_DIALOG_REPAIR_KEY, STREAM_REASONING_DELTA_KEY
@@ -20,7 +21,7 @@ class ChatLoop:
         self, adapter: LLMAdapter, tools: ToolSession,
         requests: RequestRunner, *, cancelled: Callable[[], bool],
         append_message: Callable[..., None], generation_config: dict,
-        media_selection_mode: str, logger,
+        media_selection_mode: str, logger, locale: LocaleInput = None,
     ) -> None:
         self.adapter = adapter
         self.append_message = append_message
@@ -30,6 +31,7 @@ class ChatLoop:
         self.generation_config = generation_config
         self.media_selection_mode = media_selection_mode
         self.logger = logger
+        self.locale = locale
 
     def _request(self, stream: bool, kwargs: dict) -> RequestedRound:
         return self.requests.request(stream=stream, generation_kwargs={**self.generation_config, **kwargs})
@@ -64,6 +66,7 @@ class ChatLoop:
             self.adapter, response.content, request.context.messages,
             request.context.generation_kwargs, cancelled=self.cancelled,
             event_logger=self.logger, media_selection_mode=self.media_selection_mode,
+            locale=self.locale,
         )
 
     def sync(self, *, dialog_output_required: bool = False, **kwargs) -> str:

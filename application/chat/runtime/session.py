@@ -12,7 +12,7 @@ import threading
 import time
 from typing import Any, Protocol
 
-from core.media.effect_image import ImageEffectAsset
+from core.effects import AmbientEffectAsset, ImageEffectAsset
 from application.chat.capabilities import (
     PluginLoadedCapabilityContext,
     SessionCapabilitySet,
@@ -108,6 +108,7 @@ class _RuntimeComponents:
     text_processor: Any
     opencc: Any
     effect_image_keyword_map: dict[str, ImageEffectAsset] = field(default_factory=dict)
+    ambient_effect_keyword_map: dict[str, AmbientEffectAsset] = field(default_factory=dict)
 
 
 class _ChatInitialization:
@@ -469,6 +470,9 @@ class _BaseChatSession:
             text_processor=TextProcessor(),
             opencc=OpenCC("t2s"),
             effect_image_keyword_map=getattr(effect_context, "image_keyword_map", {}),
+            ambient_effect_keyword_map=getattr(
+                effect_context, "ambient_keyword_map", {}
+            ),
         )
         return self.runtime
 
@@ -513,6 +517,7 @@ class _BaseChatSession:
                 bgm_list=runtime.presentation_assets.bgm_paths,
                 effect_keyword_map=runtime.effect_keyword_map,
                 effect_image_keyword_map=runtime.effect_image_keyword_map,
+                ambient_effect_keyword_map=runtime.ambient_effect_keyword_map,
                 user_input_queue=runtime.input_queue,
                 dialog_queue=runtime.dialog_queue,
                 presentation_queue=runtime.presentation_queue,
@@ -622,7 +627,9 @@ class StreamingChatSession(_BaseChatSession):
         if player_name:
             character = self.config.get_character_by_name(player_name)
             if character is not None and character.sprites:
-                self.ui_updates.update_player_portrait(player_name, 0)
+                raw_idx = int(getattr(character, "portrait_sprite_index", 0) or 0)
+                sprite_idx = raw_idx if 0 <= raw_idx < len(character.sprites) else 0
+                self.ui_updates.update_player_portrait(player_name, sprite_idx)
         self._present_initial_ui()
         self.capabilities.on_session_ready()
         self.initialization.complete()

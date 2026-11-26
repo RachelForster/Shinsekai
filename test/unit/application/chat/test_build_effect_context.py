@@ -2,9 +2,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.media.effect_image import ImageEffectAsset
+from core.media.effect_image import AmbientEffectAsset, ImageEffectAsset
 
-from application.chat.build_effect_context import build_effect_context
+from application.chat.build_effect_context import EffectCatalogItem, build_effect_context
 
 
 def _manager(*effects):
@@ -19,6 +19,10 @@ def _effect(name: str, audio_tags: str, audio_list: list[str], **values):
         image_tags=values.get("image_tags", ""),
         image_list=values.get("image_list", []),
         image_audio_list=values.get("image_audio_list", []),
+        ambient_tags=values.get("ambient_tags", ""),
+        ambient_list=values.get("ambient_list", []),
+        ambient_audio_list=values.get("ambient_audio_list", []),
+        ambient_layers=values.get("ambient_layers", []),
     )
 
 
@@ -112,6 +116,45 @@ def test_selected_effect_context_includes_image_and_bound_audio():
         label: ImageEffectAsset("letter.png", "paper.wav")
         for label in ("letter", "sealed letter", "letter, sealed letter")
     }
+
+
+def test_selected_effect_context_includes_persistent_ambient_assets():
+    context = build_effect_context(
+        _manager(
+            _effect(
+                "Weather",
+                "",
+                [],
+                ambient_tags="环境 1：rain, 下雨\n环境 2：fog\n",
+                ambient_list=["rain.webm", "fog.webm"],
+                ambient_audio_list=["rain.wav", ""],
+                ambient_layers=["front", "back"],
+            )
+        ),
+        ["Weather"],
+    )
+
+    assert context.labels == ("rain", "下雨", "fog")
+    assert context.ambient_keyword_map["rain"] == AmbientEffectAsset(
+        "rain.webm", "rain.wav", "front"
+    )
+    assert context.ambient_keyword_map["下雨"] == AmbientEffectAsset(
+        "rain.webm", "rain.wav", "front"
+    )
+    assert context.ambient_keyword_map["fog"] == AmbientEffectAsset(
+        "fog.webm", "", "back"
+    )
+    assert context.catalog == (
+        EffectCatalogItem(
+            "rain", "ambient_audio", ("ambient", "shelter", "expose", "stop")
+        ),
+        EffectCatalogItem(
+            "下雨", "ambient_audio", ("ambient", "shelter", "expose", "stop")
+        ),
+        EffectCatalogItem(
+            "fog", "ambient", ("ambient", "shelter", "expose", "stop")
+        ),
+    )
 
 
 @pytest.mark.parametrize("second_audio", [[], [""], ["B.wav"]])

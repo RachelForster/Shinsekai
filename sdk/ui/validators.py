@@ -13,6 +13,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from i18n import tr
 from sdk.path_utils import reject_control_chars, safe_existing_path
 
 
@@ -47,16 +48,16 @@ def _local_input_roots() -> tuple[Path, ...]:
 def not_empty(value: Any, label: str = "") -> tuple[bool, str]:
     """值不能为空（None 或去除空白后为空字符串）。"""
     if value is None:
-        return False, _msg("不能为空", label)
+        return False, _msg(tr("validator.not_empty"), label)
     if isinstance(value, str) and not value.strip():
-        return False, _msg("不能为空", label)
+        return False, _msg(tr("validator.not_empty"), label)
     return True, ""
 
 
 def not_none(value: Any, label: str = "") -> tuple[bool, str]:
     """值不能为 None。"""
     if value is None:
-        return False, _msg("不能为 None", label)
+        return False, _msg(tr("validator.not_none"), label)
     return True, ""
 
 
@@ -75,7 +76,7 @@ def file_exists(path: str | Path | None, label: str = "") -> tuple[bool, str]:
     except (OSError, ValueError) as exc:
         return False, str(exc)
     if not p.is_file():
-        return False, _msg(f"文件不存在: {p}", label)
+        return False, _msg(tr("validator.file_not_found", path=p), label)
     return True, ""
 
 
@@ -92,7 +93,7 @@ def dir_exists(path: str | Path | None, label: str = "") -> tuple[bool, str]:
     except (OSError, ValueError) as exc:
         return False, str(exc)
     if not p.is_dir():
-        return False, _msg(f"目录不存在: {p}", label)
+        return False, _msg(tr("validator.dir_not_found", path=p), label)
     return True, ""
 
 
@@ -109,7 +110,7 @@ def path_exists(path: str | Path | None, label: str = "") -> tuple[bool, str]:
     except (OSError, ValueError) as exc:
         return False, str(exc)
     if not p.exists():
-        return False, _msg(f"路径不存在: {p}", label)
+        return False, _msg(tr("validator.path_not_found", path=p), label)
     return True, ""
 
 
@@ -122,7 +123,7 @@ def path_is_absolute(path: str | Path | None, label: str = "") -> tuple[bool, st
     except ValueError as exc:
         return False, str(exc)
     if not p.is_absolute():
-        return False, _msg("必须填写绝对路径", label)
+        return False, _msg(tr("validator.path_not_absolute"), label)
     return True, ""
 
 
@@ -132,21 +133,21 @@ def in_range(value: int | float, low: int | float, high: int | float,
              label: str = "") -> tuple[bool, str]:
     """数值必须在 [low, high] 区间内。"""
     if not (low <= value <= high):
-        return False, _msg(f"必须介于 {low}–{high}，当前为 {value}", label)
+        return False, _msg(tr("validator.out_of_range", low=low, high=high, value=value), label)
     return True, ""
 
 
 def positive(value: int | float, label: str = "") -> tuple[bool, str]:
     """数值必须 > 0。"""
     if value <= 0:
-        return False, _msg("必须大于 0", label)
+        return False, _msg(tr("validator.must_be_positive"), label)
     return True, ""
 
 
 def non_negative(value: int | float, label: str = "") -> tuple[bool, str]:
     """数值必须 ≥ 0。"""
     if value < 0:
-        return False, _msg("不能为负数", label)
+        return False, _msg(tr("validator.must_be_non_negative"), label)
     return True, ""
 
 
@@ -159,7 +160,7 @@ def ascii_only(value: str | None, label: str = "") -> tuple[bool, str]:
     if not value:
         return True, ""
     if not value.isascii():
-        return False, _msg("只能包含英文字母、数字和英文标点，不能有中文等字符", label)
+        return False, _msg(tr("validator.ascii_only"), label)
     return True, ""
 
 
@@ -170,10 +171,10 @@ def audio_duration_between(path: str | None, lo: float, hi: float,
         return True, ""
     dur = _audio_duration(path)
     if dur is None:
-        return False, _msg(f"无法读取音频文件", label)
+        return False, _msg(tr("validator.audio_unreadable"), label)
     if lo <= dur <= hi:
         return True, ""
-    return False, _msg(f"音频时长 {dur:.1f}s，需要 {lo}–{hi}s", label)
+    return False, _msg(tr("validator.audio_duration_range", dur=f"{dur:.1f}", lo=lo, hi=hi), label)
 
 
 def _audio_duration(path: str) -> float | None:
@@ -201,9 +202,9 @@ def no_quotes(value: str | None, label: str = "") -> tuple[bool, str]:
         return True, ""
     v = value.strip()
     if v.startswith('"') and v.endswith('"'):
-        return False, _msg("请不要用双引号包裹路径，去掉两边的 \" 即可", label)
+        return False, _msg(tr("validator.no_surrounding_quotes"), label)
     if v.startswith('"') or v.endswith('"'):
-        return False, _msg("路径前后有不该出现的双引号，请删掉", label)
+        return False, _msg(tr("validator.no_quotes"), label)
     return True, ""
 
 
@@ -212,7 +213,7 @@ def valid_url(url: str | None, label: str = "") -> tuple[bool, str]:
     if not url:
         return True, ""
     if not _URL_RE.match(url.strip()):
-        return False, _msg("必须以 http:// 或 https:// 开头", label)
+        return False, _msg(tr("validator.invalid_url"), label)
     return True, ""
 
 
@@ -254,7 +255,7 @@ def first_error(*checks: tuple[bool, str]) -> tuple[bool, str]:
 # ── 弹窗提示 ──────────────────────────────────────────────────────────────────
 
 def warn_if_invalid(checks_or_ok, errors=None, *,
-                    title: str = "提示", parent=None) -> bool:
+                    title: str | None = None, parent=None) -> bool:
     """Return ``False`` and emit a warning when validation fails.
 
     两种用法::
@@ -284,12 +285,13 @@ def warn_if_invalid(checks_or_ok, errors=None, *,
     del parent
     import warnings
 
-    warnings.warn(f"{title}: {text}", stacklevel=2)
+    resolved_title = tr("validator.default_title") if title is None else title
+    warnings.warn(f"{resolved_title}: {text}", stacklevel=2)
     return False
 
 
 def validate_or_block(*checks: tuple[bool, str],
-                      title: str = "提示", parent=None) -> bool:
+                      title: str | None = None, parent=None) -> bool:
     """Return ``False`` and emit a warning for the first failed check.
 
     适合放在保存按钮逻辑开头::
@@ -306,7 +308,8 @@ def validate_or_block(*checks: tuple[bool, str],
     del parent
     import warnings
 
-    warnings.warn(f"{title}: {err}", stacklevel=2)
+    resolved_title = tr("validator.default_title") if title is None else title
+    warnings.warn(f"{resolved_title}: {err}", stacklevel=2)
     return False
 
 

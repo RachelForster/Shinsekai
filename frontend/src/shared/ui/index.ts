@@ -1,4 +1,5 @@
 export * from "./AudioPlayer";
+export * from "./AutoSaveStatus";
 export * from "./Button";
 export * from "./ComfyUIConnectionGuide";
 export * from "./CustomSelect";
@@ -14,6 +15,7 @@ export * from "./IconButton";
 export * from "./ImageAssetGallery";
 export * from "./MediaPreviewDialog";
 export * from "./VisualMedia";
+export * from "./PageSectionHost";
 export * from "./PageSectionNav";
 export * from "./PathDisplay";
 export * from "./PathPickerDialog";

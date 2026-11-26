@@ -1,7 +1,7 @@
 use std::{
     error::Error,
     fs::{self, OpenOptions},
-    io::{BufRead, BufReader, Read, Write},
+    io::{self, BufRead, BufReader, Read, Write},
     path::{Path, PathBuf},
     process::{Command, ExitStatus, Stdio},
     sync::mpsc::{self, RecvTimeoutError},
@@ -381,9 +381,33 @@ fn verify_python_imports(python: &Path, modules: &[String]) -> RuntimeResult<()>
     run_command(&mut command, "check Shinsekai runtime imports")
 }
 
+fn is_executable_file_busy(error: &io::Error) -> bool {
+    #[cfg(unix)]
+    {
+        error.raw_os_error() == Some(26)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = error;
+        false
+    }
+}
+
+fn retry_on_etxtbsy<T, F: FnMut() -> io::Result<T>>(mut op: F) -> io::Result<T> {
+    let mut attempts = 0;
+    loop {
+        match op() {
+            Err(err) if attempts < 5 && is_executable_file_busy(&err) => {
+                attempts += 1;
+                thread::sleep(Duration::from_millis(10));
+            }
+            result => return result,
+        }
+    }
+}
+
 fn run_command(command: &mut Command, label: &str) -> RuntimeResult<()> {
-    let output = command
-        .output()
+    let output = retry_on_etxtbsy(|| command.output())
         .map_err(|error| format!("{label} failed to start: {error}"))?;
     if output.status.success() {
         return Ok(());
@@ -412,7 +436,7 @@ where
     F: FnMut(&str),
 {
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
-    let mut child = command.spawn()?;
+    let mut child = retry_on_etxtbsy(|| command.spawn())?;
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
     let (tx, rx) = mpsc::channel::<(OutputStream, String)>();

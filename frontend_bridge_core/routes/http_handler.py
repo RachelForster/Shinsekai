@@ -14,6 +14,7 @@ from urllib.parse import parse_qs, urlparse, urlunparse
 from sdk.logging import get_logger, log_context, new_log_id
 from sdk.path_utils import reject_control_chars
 from sdk.agent import AgentRequestError
+from sdk.exception import AppError
 
 from application.chat.templates import NoValidCharactersError
 from application.runtime.state import BridgeState, _jsonify
@@ -138,6 +139,7 @@ class BridgeHttpHandler(BaseHTTPRequestHandler):
         if isinstance(
             exc,
             (
+                AppError,
                 KeyError,
                 FileExistsError,
                 FileNotFoundError,
@@ -349,10 +351,19 @@ class BridgeHttpHandler(BaseHTTPRequestHandler):
         status: HTTPStatus = HTTPStatus.BAD_REQUEST,
         *,
         error_code: str = "",
+        error_params: dict[str, Any] | None = None,
     ) -> None:
-        payload = {"error": str(exc), "type": exc.__class__.__name__}
-        if error_code:
-            payload["errorCode"] = error_code
+        payload: dict[str, Any] = {"error": str(exc), "type": exc.__class__.__name__}
+        resolved_code = error_code or str(getattr(exc, "error_code", "") or "")
+        if resolved_code:
+            payload["errorCode"] = resolved_code
+        resolved_params = (
+            error_params
+            if error_params is not None
+            else getattr(exc, "error_params", None)
+        )
+        if isinstance(resolved_params, dict) and resolved_params:
+            payload["errorParams"] = dict(resolved_params)
         self._send_json(payload, status)
 
     def _send_exception_json(self, exc: Exception) -> None:
@@ -366,6 +377,17 @@ class BridgeHttpHandler(BaseHTTPRequestHandler):
                     "agentError": exc.error.to_wire(),
                 },
                 status,
+            )
+        elif isinstance(exc, AppError):
+            try:
+                app_status = HTTPStatus(exc.http_status)
+            except ValueError:
+                app_status = HTTPStatus.BAD_REQUEST
+            self._send_error_json(
+                exc,
+                app_status,
+                error_code=exc.error_code,
+                error_params=exc.error_params,
             )
         elif isinstance(exc, NoValidCharactersError):
             self._send_error_json(

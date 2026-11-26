@@ -15,6 +15,7 @@ import time
 from typing import Any, Iterable
 from uuid import uuid4
 
+from ai.llm.template.generation.sprite_plan import render_mouth_speech_prompt
 from application.characters.sprite import mouth_resources
 from application.characters.sprite.generate_sprites import boundary_frame, render_sprite
 from application.characters.sprite.mouth_resources import (
@@ -38,31 +39,8 @@ _RECOGNITION_LOCK = threading.Lock()
 _save_lock = Lock()
 MOUTH_FRAME_COUNTS = (5, 22, 39)
 DEFAULT_MOUTH_FRAME_COUNT = 22
-MOUTH_PROMPT = (
-    "A quiet, natural conversational lip movement for this 2D character, as if "
-    "softly saying one short word. Only the lips and the inside of the mouth move. "
-    "Start with the original resting mouth, gently part the lips a little, briefly "
-    "form a modest opening for a soft vowel, then ease back to the original resting "
-    "mouth. Three distinct, subtle stages: resting, slightly parted, and gently open. "
-    "Keep the mouth near its original position and width. Leave visible skin between "
-    "the upper lip and the base of the nose, and between the lower lip and the chin "
-    "in every frame. Preserve the eyes, eyebrows, gaze, nose, cheeks, jawline, chin, "
-    "head angle, ears, hair, neck and clothing from the reference. Same character "
-    "design, lighting and crop, locked camera, plain white background."
-)
-MOUTH_BLINK_PROMPT = (
-    "A short, fixed-camera animation of this exact 2D portrait. In the first half, "
-    "with both eyes held at the original openness and gaze, softly say one short "
-    "syllable. Show the original resting mouth, a slightly parted mouth and a modest "
-    "vowel opening, then return to the resting mouth. Keep the mouth resting during "
-    "one natural blink in the second half: eyes open, eyelids half lowered, eyelids "
-    "fully closed briefly, then smoothly reopen to the original gaze and eye shape. "
-    "Blink only if both eyes are open and visible in the reference. Only the lips and "
-    "eyelids move. Preserve the eyebrows, nose, cheeks, chin, jawline, head angle, "
-    "ears, hair, neck, clothing and proportions. Keep visible skin between the lips "
-    "and the nose and chin. Match the exact original framing and lighting, plain "
-    "white background. End at the original expression."
-)
+MOUTH_PROMPT = render_mouth_speech_prompt(include_blink=False)
+MOUTH_BLINK_PROMPT = render_mouth_speech_prompt(include_blink=True)
 
 
 def _local_file_access_roots(state: Any) -> tuple[Path, ...]:
@@ -591,15 +569,30 @@ def _save_sprite_mouths(
             data["eyeFrames"] = eyes
         results.append((index, result["spritePath"], character, manifest, data))
     installed = []
+    stores = getattr(state, "stores", None)
+    characters_catalog = getattr(stores, "characters", None) if stores is not None else None
     try:
         for index, source, character, manifest, data in results:
             destination = install_mouth_bundle(state, character, manifest, data)
             installed.append((index, source, str(destination)))
-        state.character_manager.save_sprite_mouths(name, installed)
+        if characters_catalog is not None:
+            from application.characters.management import _CatalogCharacterTarget
+            from config.character_ops import save_character_sprite_mouths as save_mouths_op
+
+            save_mouths_op(_CatalogCharacterTarget(characters_catalog), name, installed)
+        else:
+            state.character_manager.save_sprite_mouths(name, installed)
     except Exception:
         for _, _, destination in installed:
             discard_mouth_bundle(state, destination)
         raise
+    if characters_catalog is not None:
+        refresh = getattr(state.config_manager, "refresh_characters", None)
+        if callable(refresh):
+            refresh()
+        else:
+            state.config_manager.reload()
+        return _jsonify(characters_catalog.get_by_name(name))
     state.config_manager.reload()
     return _jsonify(state.config_manager.get_character_by_name(name))
 
@@ -611,6 +604,23 @@ def remove_sprite_mouth(
         character, index, _, _ = _source(
             state, payload, file_access_roots=file_access_roots
         )
+        stores = getattr(state, "stores", None)
+        characters_catalog = getattr(stores, "characters", None) if stores is not None else None
+        if characters_catalog is not None:
+            from application.characters.management import _CatalogCharacterTarget
+            from config.character_ops import save_character_sprite_mouths as save_mouths_op
+
+            save_mouths_op(
+                _CatalogCharacterTarget(characters_catalog),
+                character.name,
+                [(index, payload["spritePath"], None)],
+            )
+            refresh = getattr(state.config_manager, "refresh_characters", None)
+            if callable(refresh):
+                refresh()
+            else:
+                state.config_manager.reload()
+            return _jsonify(characters_catalog.get_by_name(character.name))
         state.character_manager.save_sprite_mouths(character.name, [(index, payload["spritePath"], None)])
         state.config_manager.reload()
         return _jsonify(state.config_manager.get_character_by_name(character.name))

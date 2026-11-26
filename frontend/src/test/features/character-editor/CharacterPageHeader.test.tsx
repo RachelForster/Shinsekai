@@ -43,17 +43,25 @@ function renderHeader(overrides: Partial<Parameters<typeof CharacterPageHeader>[
 }
 
 describe("CharacterPageHeader", () => {
-  it("routes primary toolbar actions through public callbacks", () => {
-    const { props } = renderHeader();
+  it("shows auto-save status on saved characters and Create/Cancel actions when creating", () => {
+    const onCancelCreate = vi.fn();
+    const first = renderHeader({ autoSavePhase: "saved" });
 
     fireEvent.click(screen.getByRole("button", { name: "New" }));
-    expect(props.onCreate).toHaveBeenCalledTimes(1);
+    expect(first.props.onCreate).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByRole("button", { name: "Export" }));
-    expect(props.onExport).toHaveBeenCalledTimes(1);
+    expect(first.props.onExport).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(props.onSave).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("status")).toHaveTextContent("Auto-saved");
+    expect(screen.queryByRole("button", { name: "Create" })).not.toBeInTheDocument();
+    first.unmount();
+
+    const creating = renderHeader({ canCancelCreate: true, isCreating: true, onCancelCreate });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    expect(creating.props.onSave).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(onCancelCreate).toHaveBeenCalledTimes(1);
   });
 
   it("selects characters and opens community links without touching production APIs", () => {

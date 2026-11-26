@@ -108,11 +108,12 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, re
         eventSeq: Math.max(state.eventSeq, event.seq),
         error: undefined,
         ...(event.isSystem && !event.speaker.trim()
-          ? { systemMessageText: htmlToText(event.fullHtml) }
+          ? { isSystemDialog: true, systemMessageText: htmlToText(event.fullHtml) }
           : {
               characterName: event.speaker,
               dialogHtml: event.fullHtml,
               dialogText: htmlToText(event.fullHtml),
+              isSystemDialog: false,
               options: [],
               spriteReaction: null,
               systemMessageText: undefined,
@@ -400,6 +401,47 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, re
         eventSeq: Math.max(state.eventSeq, event.seq),
         loopingEffects: [],
       });
+    case "ambient.start":
+      return withResolvedLayers({
+        ...state,
+        ambientEffects: [
+          ...(state.ambientEffects ?? []).filter((effect) => effect.key !== event.key),
+          {
+            audioUrl: event.audioUrl ?? "",
+            key: event.key,
+            layer: event.layer,
+            seq: event.seq,
+            url: event.url,
+          },
+        ],
+        eventSeq: Math.max(state.eventSeq, event.seq),
+      });
+    case "ambient.layer":
+      return withResolvedLayers({
+        ...state,
+        ambientEffects: (state.ambientEffects ?? []).map((effect) =>
+          effect.key === event.key
+            ? {
+                ...effect,
+                layer: event.layer,
+                ...(event.audioUrl !== undefined ? { audioUrl: event.audioUrl } : {}),
+              }
+            : effect,
+        ),
+        eventSeq: Math.max(state.eventSeq, event.seq),
+      });
+    case "ambient.stop":
+      return withResolvedLayers({
+        ...state,
+        ambientEffects: (state.ambientEffects ?? []).filter((effect) => effect.key !== event.key),
+        eventSeq: Math.max(state.eventSeq, event.seq),
+      });
+    case "ambient.stop-all":
+      return withResolvedLayers({
+        ...state,
+        ambientEffects: [],
+        eventSeq: Math.max(state.eventSeq, event.seq),
+      });
     case "asr.partial":
       return withResolvedLayers({
         ...clearTransientNotificationState(state),
@@ -486,6 +528,7 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, re
     case "session.closed":
       return withResolvedLayers({
         ...state,
+        ambientEffects: [],
         activePlayback: null,
         audioCommands: appendAudioCommand(state, {
           kind: "all-stop",

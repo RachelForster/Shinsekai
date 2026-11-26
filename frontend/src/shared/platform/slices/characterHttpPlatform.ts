@@ -392,7 +392,11 @@ export function createCharactersHttpPlatform(transport: HttpTransport): Characte
     },
     save: (character, originalName) =>
       requestJson<Character>("/api/characters", {
-        body: JSON.stringify({ character, originalName }),
+        body: JSON.stringify({
+          ...(character.id ? { id: character.id } : {}),
+          character,
+          originalName,
+        }),
         method: "POST",
       }),
     saveEmotionTags: (name, emotionTags) =>

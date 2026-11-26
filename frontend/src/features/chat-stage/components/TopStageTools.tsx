@@ -1,4 +1,4 @@
-import { Activity, CircleUserRound, Maximize2, Minus, X } from "lucide-react";
+import { Activity, CircleUserRound, KeyRound, LayoutGrid, Maximize2, Minus, X } from "lucide-react";
 
 import { minimizeDesktopWindow, toggleMaximizeDesktopWindow } from "../../../shared/desktop/desktopApi";
 import { useI18n } from "../../../shared/i18n";
@@ -13,9 +13,12 @@ export function TopStageTools({
   autoHide = false,
   hidden,
   miniAvatarDisabled = false,
+  needsApiKeyBadge = false,
   onCloseDesktopWindow,
   onEnterMiniAvatar,
   onOpenPluginPage,
+  onOpenRuntimeMode,
+  onOpenWorkspace,
   onThemePickerOpenChange,
   onTokenUsageOpenChange,
   standaloneDesktopWindow,
@@ -29,9 +32,12 @@ export function TopStageTools({
   autoHide?: boolean;
   hidden: boolean;
   miniAvatarDisabled?: boolean;
+  needsApiKeyBadge?: boolean;
   onCloseDesktopWindow: () => Promise<void>;
   onEnterMiniAvatar?: () => void;
   onOpenPluginPage: (target: PluginPageTarget) => void;
+  onOpenRuntimeMode?: () => void;
+  onOpenWorkspace?: () => void;
   onThemePickerOpenChange: (open: boolean) => void;
   onTokenUsageOpenChange: (open: boolean) => void;
   standaloneDesktopWindow: boolean;
@@ -82,6 +88,25 @@ export function TopStageTools({
       </div>
       <div className="top-stage-tools__controls">
         <PluginSlot onOpenPluginPage={onOpenPluginPage} slot="chat-top-toolbar" />
+        {onOpenRuntimeMode ? (
+          <IconButton
+            className="top-stage-tools__button"
+            data-active={needsApiKeyBadge ? "true" : "false"}
+            label={t("chat.toolbar.runtimeMode")}
+            onClick={onOpenRuntimeMode}
+          >
+            <KeyRound aria-hidden className="icon-button__icon" />
+          </IconButton>
+        ) : null}
+        {onOpenWorkspace ? (
+          <IconButton
+            className="top-stage-tools__button"
+            label={t("chat.toolbar.backToWorkspace")}
+            onClick={onOpenWorkspace}
+          >
+            <LayoutGrid aria-hidden className="icon-button__icon" />
+          </IconButton>
+        ) : null}
         <ChatThemePicker
           className="top-stage-tools__button"
           onOpenChange={onThemePickerOpenChange}

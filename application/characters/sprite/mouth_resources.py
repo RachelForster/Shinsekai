@@ -144,7 +144,16 @@ def runtime_status(root, config_store=None):
         work = str(getattr(api, "t2i_work_path", "") or "")
         if work:
             candidates.append(str(Path(work) / "python_embeded/python.exe"))
-        candidates.extend(str(Path(root) / x) for x in ("runtime/python.exe", ".venv/Scripts/python.exe", ".venv/bin/python"))
+        candidates.extend(
+            str(Path(root) / x)
+            for x in (
+                "data/runtime/sprite-mouth/python/python.exe",
+                "data/runtime/sprite-mouth/python/bin/python3",
+                "runtime/python.exe",
+                ".venv/Scripts/python.exe",
+                ".venv/bin/python",
+            )
+        )
         candidates.extend(filter(None, (shutil.which("python3.12"), shutil.which("python3.13"))))
     options = []
     for raw in dict.fromkeys(candidates):

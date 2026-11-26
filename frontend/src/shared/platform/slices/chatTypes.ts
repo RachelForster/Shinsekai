@@ -317,10 +317,18 @@ export interface ChatSnapshot {
     seq: number;
     url: string;
   } | null;
+  ambientEffects?: Array<{
+    audioUrl?: string;
+    key: string;
+    layer: "back" | "front";
+    seq: number;
+    url: string;
+  }>;
   historyEntries?: ChatHistoryEntry[];
   historyPath?: string;
   inputDraft: string;
   initTask?: TaskSnapshot;
+  isSystemDialog?: boolean;
   loopingEffects?: Array<{
     key: string;
     seq: number;
@@ -355,6 +363,7 @@ export interface ChatSnapshot {
 export type ChatPresentation = Partial<
   Pick<
     ChatSnapshot,
+    | "ambientEffects"
     | "backgroundPath"
     | "bgmPath"
     | "cgPath"
@@ -363,6 +372,7 @@ export type ChatPresentation = Partial<
     | "characterName"
     | "dialogHtml"
     | "dialogText"
+    | "isSystemDialog"
     | "options"
     | "systemMessageText"
     | "playerPortrait"
@@ -528,6 +538,10 @@ export type ChatStageEvent =
   | (ChatEventBase & { type: "effect.loop.start"; key: string; url: string })
   | (ChatEventBase & { type: "effect.loop.stop"; key: string })
   | (ChatEventBase & { type: "effect.loop.stop-all" })
+  | (ChatEventBase & { type: "ambient.start"; audioUrl?: string; key: string; layer: "back" | "front"; url: string })
+  | (ChatEventBase & { type: "ambient.layer"; audioUrl?: string; key: string; layer: "back" | "front" })
+  | (ChatEventBase & { type: "ambient.stop"; key: string })
+  | (ChatEventBase & { type: "ambient.stop-all" })
   | (ChatEventBase & { type: "asr.partial"; text: string })
   | (ChatEventBase & { type: "asr.final"; text: string })
   | (ChatEventBase & { type: "asr.state"; enabled?: boolean; loading?: boolean; running: boolean })

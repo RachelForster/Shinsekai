@@ -62,13 +62,15 @@ git clone https://github.com/RachelForster/Shinsekai
 cd Shinsekai
 ```
 
-**整合包：** 从 [Releases](https://github.com/RachelForster/Shinsekai/releases) 下载解压。
+**整合包 / 绿色便携包：** 从 [Releases](https://github.com/RachelForster/Shinsekai/releases) 下载解压。Windows 绿色便携包（Portable）解压后直接双击根目录的 `shinsekai.exe` 即可运行（无需安装依赖或批处理脚本）。
 
-| 平台 | 安装 | 启动 |
+**源码脚本入口：**
+
+| 平台 | 安装 | 启动（React 网页端） |
 |------|------|------|
-| Windows | 双击 `install.bat` | 双击 `start-react.bat` |
-| macOS | 双击 `install.command` | 双击 `start-react.command` |
-| Linux | `./scripts/install-linux.sh` | `./start-react.sh` |
+| Windows | 双击 `scripts\install.bat` | 双击 `scripts\start.bat`（或 `scripts\start-tauri.bat`） |
+| macOS | 双击 `scripts/install.command` | 双击 `scripts/start.command` |
+| Linux | `./scripts/install-linux.sh` | `./scripts/start.sh` |
 
 > **macOS 首次运行**：如果双击提示「无法验证开发者」，请右键（或 Ctrl+点击）文件 → **打开**，在弹出的对话框中再次点 **打开** 即可。或者前往 **系统设置 → 隐私与安全性** 中允许。
 
@@ -99,11 +101,11 @@ Linux 源码用户也可以运行 `./scripts/install-linux.sh`。如果已激活
 
 | 平台 | 启动方式 |
 |------|----------|
-| Windows | 双击 `start-react.bat` |
-| macOS | 双击 `start-react.command` |
-| Linux | 运行 `./start-react.sh` |
+| Windows | 双击 `scripts\start.bat` |
+| macOS | 双击 `scripts/start.command` |
+| Linux | 运行 `./scripts/start.sh` |
 
-`start-react.*` 会启动本地 Python HTTP bridge，托管 React 设置中心，并自动打开浏览器。React 设置中心用于管理 API、角色、背景、特效、聊天模板、小工具、插件和 MCP。
+`scripts/start.*` 会启动本地 Python HTTP bridge，托管 React 设置中心，并自动打开浏览器。React 设置中心用于管理 API、角色、背景、特效、聊天模板、小工具、插件和 MCP。
 
 源码用户如果没有运行安装脚本，需要先安装前端依赖并构建 React 前端：
 
@@ -114,7 +116,7 @@ pnpm build
 cd ..
 ```
 
-源码仓库不再提交 `frontend/dist`。`start-react.*` 发现构建产物不存在时会提示手动运行 `cd frontend && pnpm install && pnpm build`；需要自动构建时可显式传入 `--build-if-missing` 或 `--build-if-stale`。正式桌面安装包会在 release 构建流程中生成并内置前端资源。Qt 设置页和 Qt 聊天窗已退出，不再提供 Python UI 兼容入口。
+源码仓库不再提交 `frontend/dist`。`scripts/start.*` 发现构建产物不存在时会提示手动运行 `cd frontend && pnpm install && pnpm build`；需要自动构建时可显式传入 `--build-if-missing` 或 `--build-if-stale`。正式桌面安装包会在 release 构建流程中生成并内置前端资源。Qt 设置页和 Qt 聊天窗已退出，不再提供 Python UI 兼容入口。
 
 ### Tauri 桌面端开发
 

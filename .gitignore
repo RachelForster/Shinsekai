@@ -60,6 +60,7 @@ node_modules/
 /frontend/node_modules
 /frontend/.vite
 /frontend/dist
+/frontend/dist-toy
 /frontend/coverage
 /frontend/playwright-report
 /frontend/test-results

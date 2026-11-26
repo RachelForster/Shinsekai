@@ -25,6 +25,7 @@ from frontend_bridge_core.chat_session import (
     _generate_system_template_for_mode,
     _usable_media_selection_mode,
 )
+from frontend_bridge_core.i18n_helpers import bridge_tr
 from frontend_bridge_core.routes.router import (
     ApiRequest,
     BodyKind,
@@ -126,9 +127,12 @@ def _start_generation(request: ApiRequest) -> TaskResponse:
     synopsis = str(request.body.get("synopsis") or "").strip()
     if "characters" in options:
         options, resource_catalog = generation_selection(request.state, options)
-        synopsis = (
-            synopsis
-            or f"围绕人物{'、'.join(options['characters'])}，在{options['backgroundName']}展开一个有起承转合的互动故事。"
+        char_sep = bridge_tr(request.state, "story.character_sep")
+        synopsis = synopsis or bridge_tr(
+            request.state,
+            "story.default_synopsis",
+            characters=char_sep.join(options["characters"]),
+            background=options["backgroundName"],
         )
     generation_task = story_generation_service_for_state(request.state).create(
         synopsis,
@@ -203,8 +207,8 @@ STORY_ROUTES = (
         pattern="/api/story/editor/suggest",
         handler=lambda request: TaskResponse(
             kind="story-edit",
-            title="修改剧本",
-            message="正在生成候选修改。",
+            title=bridge_tr(request.state, "task.story_edit_title"),
+            message=bridge_tr(request.state, "task.story_edit_running"),
             worker=lambda task_id: suggest_story_graph(request.state, request.body),
         ),
         name="story.editor.suggest",

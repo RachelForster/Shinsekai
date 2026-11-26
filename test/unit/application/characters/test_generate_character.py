@@ -40,9 +40,10 @@ class _FakeAdapter:
 
 
 class _FakeLLMManager:
-    def __init__(self, adapter, user_template=""):
+    def __init__(self, adapter, user_template="", tools_enabled=True):
         self.adapter = adapter
         self.user_template = user_template
+        self.tools_enabled = tools_enabled
 
     def set_user_template(self, template):
         self.user_template = template
@@ -85,10 +86,16 @@ def test_character_ai_writer_rebuilds_llm_when_model_config_changes(
     monkeypatch,
 ):
     created_models = []
+    created_managers = []
 
     def fake_create_adapter(**kwargs):
         created_models.append(kwargs["model"])
         return _FakeAdapter(kwargs["model"])
+
+    class CapturingLLMManager(_FakeLLMManager):
+        def __init__(self, adapter, user_template="", tools_enabled=True):
+            super().__init__(adapter, user_template, tools_enabled=tools_enabled)
+            created_managers.append(self)
 
     monkeypatch.setattr(
         generation.LLMAdapterFactory,
@@ -98,7 +105,7 @@ def test_character_ai_writer_rebuilds_llm_when_model_config_changes(
     monkeypatch.setattr(
         generation,
         "LLMManager",
-        _FakeLLMManager,
+        CapturingLLMManager,
     )
 
     config = _FakeConfigManager()
@@ -106,21 +113,26 @@ def test_character_ai_writer_rebuilds_llm_when_model_config_changes(
     manager._config_manager = config
 
     result = generate_character(manager, config, "Alice", "seed")
+    assert result.ok is True
     assert result.message == "输出成功"
     assert result.character_setting == "generated:model-a"
     assert result.character_brief == "generated:model-a"
     assert config.character.character_brief == "generated:model-a"
+    assert created_managers and created_managers[-1].tools_enabled is False
 
     config.model = "model-b"
     result = generate_character(manager, config, "Alice", "seed")
+    assert result.ok is True
     assert result.message == "输出成功"
     assert result.character_setting == "generated:model-b"
 
     result = generate_character(manager, config, "Alice", "seed")
+    assert result.ok is True
     assert result.message == "输出成功"
     assert result.character_setting == "generated:model-b"
 
     assert created_models == ["model-a", "model-b"]
+    assert all(item.tools_enabled is False for item in created_managers)
     assert config.saved == 6
 
 
@@ -128,8 +140,8 @@ def test_character_generation_keeps_saved_setting_when_brief_generation_fails(
     monkeypatch,
 ):
     class BriefFailureLLMManager(_FakeLLMManager):
-        def __init__(self, adapter, user_template=""):
-            super().__init__(adapter, user_template)
+        def __init__(self, adapter, user_template="", tools_enabled=True):
+            super().__init__(adapter, user_template, tools_enabled=tools_enabled)
             self.calls = 0
 
         def chat(self, *_args, **_kwargs):
@@ -151,8 +163,148 @@ def test_character_generation_keeps_saved_setting_when_brief_generation_fails(
 
     result = generate_character(manager, config, "Alice", "seed")
 
+    assert result.ok is True
     assert "角色设定输出成功" in result.message
     assert "人物简介生成失败" in result.message
     assert result.character_setting == "generated setting"
     assert config.character.character_setting == "generated setting"
     assert config.saved == 1
+
+
+def test_character_generation_preserves_setting_if_overwritten_during_brief_generation(
+    monkeypatch,
+):
+    class InMemoryCatalog:
+        def __init__(self, item):
+            self.items = {item.id: item}
+
+        def get(self, key):
+            return self.items.get(key)
+
+        def get_by_name(self, name):
+            return next((c for c in self.items.values() if c.name == name), None)
+
+        def list_all(self):
+            return tuple(self.items.values())
+
+        def ensure_self_persona(self):
+            raise NotImplementedError
+
+        def put(self, key, item):
+            self.items[key] = item
+
+        def delete(self, key):
+            return self.items.pop(key, None) is not None
+
+    alice = make_character(id="char-alice", name="Alice", sprite_prefix="alice", character_setting="")
+    catalog = InMemoryCatalog(alice)
+
+    class RacingLLMManager(_FakeLLMManager):
+        def __init__(self, adapter, user_template="", tools_enabled=True):
+            super().__init__(adapter, user_template, tools_enabled=tools_enabled)
+            self.calls = 0
+
+        def chat(self, *_args, **_kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                return "generated setting"
+            # Simulate a racing client auto-save wiping character_setting back to "".
+            stale = catalog.get("char-alice")
+            catalog.put("char-alice", stale.model_copy(update={"character_setting": ""}))
+            return "generated brief"
+
+    monkeypatch.setattr(
+        generation.LLMAdapterFactory,
+        "create_adapter",
+        lambda **kwargs: _FakeAdapter(kwargs["model"]),
+    )
+    monkeypatch.setattr(generation, "LLMManager", RacingLLMManager)
+
+    config = _FakeConfigManager()
+    manager = CharacterManager()
+    manager._config_manager = config
+
+    result = generate_character(manager, config, "Alice", "", characters=catalog)
+
+    assert result.ok is True
+    assert result.message == "输出成功"
+    assert result.character_setting == "generated setting"
+    assert result.character_brief == "generated brief"
+    saved = catalog.get_by_name("Alice")
+    assert saved is not None
+    assert saved.character_setting == "generated setting"
+    assert saved.character_brief == "generated brief"
+
+
+def test_character_generation_rejects_empty_setting_output(monkeypatch):
+    calls = 0
+
+    class EmptySettingLLMManager(_FakeLLMManager):
+        def chat(self, *_args, **_kwargs):
+            nonlocal calls
+            calls += 1
+            return "   \n  "
+
+    monkeypatch.setattr(
+        generation.LLMAdapterFactory,
+        "create_adapter",
+        lambda **kwargs: _FakeAdapter(kwargs["model"]),
+    )
+    monkeypatch.setattr(generation, "LLMManager", EmptySettingLLMManager)
+
+    config = _FakeConfigManager()
+    config.character = make_character(name="Alice", character_setting="seed")
+    manager = CharacterManager()
+    manager._config_manager = config
+
+    result = generate_character(manager, config, "Alice", "seed")
+
+    assert result.ok is False
+    assert "为空" in result.message
+    assert result.character_setting == "seed"
+    assert calls == 1
+    assert config.saved == 0
+
+
+def test_character_generation_unsaved_character_skips_ghost_row_when_empty_prefix_exists(
+    tmp_path,
+    monkeypatch,
+):
+    from core.storage.sqlite_engine import SqliteEngine
+    from core.storage.stores.character_store import SqliteCharacterCatalog
+
+    class TwoCallLLMManager(_FakeLLMManager):
+        def __init__(self, adapter, user_template="", tools_enabled=True):
+            super().__init__(adapter, user_template, tools_enabled=tools_enabled)
+            self.calls = 0
+
+        def chat(self, *_args, **_kwargs):
+            self.calls += 1
+            return "generated setting" if self.calls == 1 else "generated brief"
+
+    monkeypatch.setattr(
+        generation.LLMAdapterFactory,
+        "create_adapter",
+        lambda **kwargs: _FakeAdapter(kwargs["model"]),
+    )
+    monkeypatch.setattr(generation, "LLMManager", TwoCallLLMManager)
+
+    engine = SqliteEngine("db.test", tmp_path / "characters.db")
+    catalog = SqliteCharacterCatalog(engine)
+    catalog.migrate()
+    existing = make_character(id="char-02", name="02", sprite_prefix="")
+    catalog.put(existing.id, existing)
+
+    config = _FakeConfigManager()
+    manager = CharacterManager()
+    manager._config_manager = config
+
+    try:
+        result = generate_character(manager, config, "BrandNew", "", characters=catalog)
+        assert result.ok is True
+        assert result.message == "输出成功"
+        assert result.character_setting == "generated setting"
+        assert result.character_brief == "generated brief"
+        assert catalog.get_by_name("BrandNew") is None
+    finally:
+        engine.close()

@@ -13,6 +13,7 @@ import {
   ttsBundleRecommendationQueryKey,
 } from "../../../entities/config/repository";
 import type { ApiConfig } from "../../../entities/config/types";
+import { formatLlmProviderLabel, useI18n } from "../../../shared/i18n";
 import type { TaskSnapshot, TtsBundleDownloadResult, TtsBundleKind } from "../../../shared/platform/types";
 import {
   applyDownloadedTtsBundle,
@@ -30,10 +31,8 @@ import {
   useToast,
 } from "../../../shared/ui";
 import { FieldBlock, OnboardingPanelLayout, OnboardingTaskPanel } from "../OnboardingPanelLayout";
-import type { OnboardingCopy } from "../onboardingCopy";
 
 interface ApiSetupPanelProps {
-  copy: OnboardingCopy;
   onSaved?: () => void;
 }
 
@@ -45,7 +44,8 @@ function updateProviderValue(record: Record<string, string> | undefined, provide
   return { ...(record ?? {}), [provider]: value };
 }
 
-export function ApiSetupPanel({ copy, onSaved }: ApiSetupPanelProps) {
+export function ApiSetupPanel({ onSaved }: ApiSetupPanelProps) {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
@@ -80,21 +80,29 @@ export function ApiSetupPanel({ copy, onSaved }: ApiSetupPanelProps) {
   const saveMutation = useMutation({
     mutationFn: (next: ApiConfig) => saveApiConfig(next),
     onError(error) {
-      showToast({ kind: "error", message: error instanceof Error ? error.message : "", title: copy.toastFailed });
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : "",
+        title: t("onboarding.toastFailed"),
+      });
     },
     onSuccess(saved) {
       queryClient.setQueryData(configQueryKey, (current: typeof configQuery.data) =>
         current ? { ...current, api_config: saved } : current,
       );
       onSaved?.();
-      showToast({ kind: "success", title: copy.actions.saved });
+      showToast({ kind: "success", title: t("onboarding.actions.saved") });
     },
   });
 
   const ttsBundleMutation = useMutation({
     mutationFn: (kind: TtsBundleKind) => downloadTtsBundle({ kind }, { onTaskUpdate: setTtsBundleTask }),
     onError(error) {
-      showToast({ kind: "error", message: error instanceof Error ? error.message : "", title: copy.toastFailed });
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : "",
+        title: t("onboarding.toastFailed"),
+      });
     },
     onMutate() {
       setTtsBundleTask(null);
@@ -105,29 +113,45 @@ export function ApiSetupPanel({ copy, onSaved }: ApiSetupPanelProps) {
         setDraft(next);
         saveMutation.mutate(next);
       }
-      showToast({ kind: "success", message: copy.api.bundleDone, title: copy.api.voiceTitle });
+      showToast({
+        kind: "success",
+        message: t("onboarding.api.bundleDone"),
+        title: t("onboarding.api.voiceTitle"),
+      });
     },
   });
 
   const modelsMutation = useMutation({
     mutationFn: () => fetchLlmModels({ apiKey, baseUrl, provider }),
     onError(error) {
-      showToast({ kind: "error", message: error instanceof Error ? error.message : "", title: copy.toastFailed });
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : "",
+        title: t("onboarding.toastFailed"),
+      });
     },
     onSuccess(result) {
       const ids = result.map((item) => item.id).filter(Boolean);
       setModelOptions(ids);
-      showToast({ kind: "success", message: String(ids.length), title: copy.actions.fetchModels });
+      showToast({
+        kind: "success",
+        message: String(ids.length),
+        title: t("onboarding.actions.fetchModels"),
+      });
     },
   });
 
   const testMutation = useMutation({
     mutationFn: () => testLlmConnection({ apiKey, baseUrl, model, provider }),
     onError(error) {
-      showToast({ kind: "error", message: error instanceof Error ? error.message : "", title: copy.toastFailed });
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : "",
+        title: t("onboarding.toastFailed"),
+      });
     },
     onSuccess() {
-      showToast({ kind: "success", title: copy.api.connected });
+      showToast({ kind: "success", title: t("onboarding.api.connected") });
       if (draft) {
         saveMutation.mutate(draft);
       }
@@ -135,7 +159,7 @@ export function ApiSetupPanel({ copy, onSaved }: ApiSetupPanelProps) {
   });
 
   if (configQuery.isLoading || !draft) {
-    return <EmptyState title={copy.common.loading} />;
+    return <EmptyState title={t("onboarding.common.loading")} />;
   }
 
   if (configQuery.isError) {
@@ -143,17 +167,16 @@ export function ApiSetupPanel({ copy, onSaved }: ApiSetupPanelProps) {
       <QueryErrorState
         error={configQuery.error}
         onRetry={() => void configQuery.refetch()}
-        retryLabel={copy.actions.retry}
-        title={copy.toastFailed}
+        retryLabel={t("onboarding.actions.retry")}
+        title={t("onboarding.toastFailed")}
       />
     );
   }
 
   return (
     <OnboardingPanelLayout
-      copy={copy}
-      description={copy.api.description}
-      title={copy.api.title}
+      description={t("onboarding.api.description")}
+      title={t("onboarding.api.title")}
       actions={
         <AsyncButton
           disabled={!canSave}
@@ -161,13 +184,13 @@ export function ApiSetupPanel({ copy, onSaved }: ApiSetupPanelProps) {
           loading={saveMutation.isPending}
           onClick={() => draft && saveMutation.mutate(draft)}
         >
-          {copy.actions.save}
+          {t("onboarding.actions.save")}
         </AsyncButton>
       }
     >
-      <OnboardingTaskPanel defaultOpen description={copy.api.description} title={copy.api.title}>
+      <OnboardingTaskPanel defaultOpen description={t("onboarding.api.description")} title={t("onboarding.api.title")}>
         <div className="onboarding-form-grid">
-          <FieldBlock label={copy.api.provider}>
+          <FieldBlock label={t("onboarding.api.provider")}>
             <Select
               onChange={(event) => {
                 const nextProvider = event.target.value;
@@ -187,12 +210,12 @@ export function ApiSetupPanel({ copy, onSaved }: ApiSetupPanelProps) {
             >
               {providerChoices.map((option) => (
                 <option key={option.value} value={option.value}>
-                  {option.label}
+                  {formatLlmProviderLabel(option.value, t, option.label)}
                 </option>
               ))}
             </Select>
           </FieldBlock>
-          <FieldBlock label={copy.api.baseUrl}>
+          <FieldBlock label={t("onboarding.api.baseUrl")}>
             <TextInput
               onChange={(event) => {
                 const nextBaseUrl = event.target.value;
@@ -210,7 +233,7 @@ export function ApiSetupPanel({ copy, onSaved }: ApiSetupPanelProps) {
               value={baseUrl}
             />
           </FieldBlock>
-          <FieldBlock label={copy.api.apiKey}>
+          <FieldBlock label={t("onboarding.api.apiKey")}>
             <TextInput
               onChange={(event) =>
                 setDraft((current) =>
@@ -226,7 +249,7 @@ export function ApiSetupPanel({ copy, onSaved }: ApiSetupPanelProps) {
               value={apiKey}
             />
           </FieldBlock>
-          <FieldBlock label={copy.api.model}>
+          <FieldBlock label={t("onboarding.api.model")}>
             {modelOptions.length ? (
               <Select
                 onChange={(event) =>
@@ -241,7 +264,7 @@ export function ApiSetupPanel({ copy, onSaved }: ApiSetupPanelProps) {
                 }
                 value={model}
               >
-                <option value="">{copy.common.selectPlaceholder}</option>
+                <option value="">{t("onboarding.common.selectPlaceholder")}</option>
                 {modelOptions.map((item) => (
                   <option key={item} value={item}>
                     {item}
@@ -273,7 +296,7 @@ export function ApiSetupPanel({ copy, onSaved }: ApiSetupPanelProps) {
             loading={modelsMutation.isPending}
             onClick={() => modelsMutation.mutate()}
           >
-            {copy.actions.fetchModels}
+            {t("onboarding.actions.fetchModels")}
           </Button>
           <AsyncButton
             disabled={!canSave}
@@ -282,15 +305,19 @@ export function ApiSetupPanel({ copy, onSaved }: ApiSetupPanelProps) {
             onClick={() => testMutation.mutate()}
             variant="primary"
           >
-            {copy.actions.test}
+            {t("onboarding.actions.test")}
           </AsyncButton>
         </div>
       </OnboardingTaskPanel>
-      <OnboardingTaskPanel defaultOpen description={copy.api.voiceDescription} title={copy.api.voiceTitle}>
+      <OnboardingTaskPanel
+        defaultOpen
+        description={t("onboarding.api.voiceDescription")}
+        title={t("onboarding.api.voiceTitle")}
+      >
         <div className="onboarding-resource-note">
           <div>
-            <strong>{copy.api.voiceTitle}</strong>
-            <span>{copy.api.bundleHint}</span>
+            <strong>{t("onboarding.api.voiceTitle")}</strong>
+            <span>{t("onboarding.api.bundleHint")}</span>
           </div>
           <AsyncButton
             disabled={!ttsBundleRecommendationQuery.isSuccess}
@@ -299,7 +326,7 @@ export function ApiSetupPanel({ copy, onSaved }: ApiSetupPanelProps) {
             onClick={() => ttsBundleMutation.mutate(ttsBundleKind)}
             variant="primary"
           >
-            {copy.api.bundleButton}
+            {t("onboarding.api.bundleButton")}
           </AsyncButton>
         </div>
         <TaskProgress logLimit={0} task={ttsBundleTask} />

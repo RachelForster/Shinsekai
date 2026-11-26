@@ -10,6 +10,12 @@ import threading
 import time
 from typing import Any
 
+from ai.llm.template.integrations.localization import LocaleInput, resolve_dynamic_locale
+from ai.llm.template.perception import (
+    build_perception_translator,
+    render_focus_guidance_hint,
+    render_proactive_turn_instruction,
+)
 from ai.perception.cloud_summary import CloudTextCompletionFn, summarize_vision_window
 from ai.perception.decision_client import PerceptionDecisionClient, PerceptionInferenceError
 from ai.perception.parser import InvalidPerceptionDecision
@@ -78,10 +84,12 @@ class PerceptionCoordinator:
         cloud_complete: CloudTextCompletionFn | None = None,
         cursor_probe: CursorProbe | None = None,
         resolve_active_sprite_group: Callable[[Any], str | None] | None = None,
+        locale: LocaleInput = None,
     ) -> None:
         self._get_api_config = get_api_config
         self._resolve_character = resolve_character
         self._resolve_active_sprite_group = resolve_active_sprite_group
+        self._locale: LocaleInput = locale
         self._is_chat_busy = is_chat_busy
         self._apply_reflex = apply_reflex
         self._enqueue_proactive_turn = enqueue_proactive_turn
@@ -93,6 +101,10 @@ class PerceptionCoordinator:
 
         self.raw_buffer = raw_buffer or PerceptionRawBuffer()
         self.rp_input_cache = rp_input_cache or RPInputCache()
+        if locale is not None:
+            self.rp_input_cache.set_translator_provider(
+                lambda: build_perception_translator(resolve_dynamic_locale(self._locale))
+            )
         self.gatekeeper = gatekeeper or PerceptionGatekeeper()
         self.decision_client = decision_client or PerceptionDecisionClient()
         self._reflex_policy = ReflexPolicy()
@@ -705,6 +717,7 @@ class PerceptionCoordinator:
         result = summarize_vision_window(
             job,
             cloud_complete=self._cloud_complete,
+            locale=self._locale,
         )
         with self._lock:
             if epoch != self._analysis_epoch or self._stop_event.is_set():
@@ -930,7 +943,10 @@ class PerceptionCoordinator:
                     "on_early_reflex": None if live_screen else on_early_reflex,
                 }
                 if focus_hint:
-                    decide_kwargs["reaction_guidance"] = f"当前观察侧重：{focus_hint}。"
+                    decide_kwargs["reaction_guidance"] = render_focus_guidance_hint(
+                        focus_hint,
+                        locale=resolve_dynamic_locale(self._locale),
+                    )
                 result = self.decision_client.decide(snapshot, cfg, **decide_kwargs)
             except Exception as exc:
                 err_text = str(exc)
@@ -1081,7 +1097,14 @@ class PerceptionCoordinator:
                 chat_busy=self._is_chat_busy(),
                 screen_audio=self._screen_audio_for_proactive(),
             )
-            if verdict.allow and self._enqueue_proactive_turn(PROACTIVE_TURN_INSTRUCTION):
+            proactive_instruction = (
+                render_proactive_turn_instruction(
+                    locale=resolve_dynamic_locale(self._locale)
+                )
+                if self._locale is not None
+                else PROACTIVE_TURN_INSTRUCTION
+            )
+            if verdict.allow and self._enqueue_proactive_turn(proactive_instruction):
                 logger.info(
                     "Perception proactive reply queued (reason=%s, scene=%s, salience=%.2f)",
                     verdict.reason,

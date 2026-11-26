@@ -124,6 +124,63 @@ def test_streaming_presenter_emits_frontend_effect_audio_events(tmp_path) -> Non
     assert sink.events[1]["key"] == "rain"
 
 
+def test_stopping_one_loop_alias_stops_the_shared_asset(tmp_path) -> None:
+    sink = _Sink()
+    presenter = StreamingUIUpdateManager(sink, resource_urls=_Urls())
+    loop = tmp_path / "rain.wav"
+    loop.write_bytes(b"wav")
+
+    presenter.start_loop_effect("rain", str(loop))
+    presenter.start_loop_effect("雨声", str(loop))
+    presenter.stop_loop_effect("rain")
+
+    assert [event["type"] for event in sink.events] == [
+        "effect.loop.start",
+        "effect.loop.start",
+        "effect.loop.stop",
+        "effect.loop.stop",
+    ]
+    assert [event["key"] for event in sink.events[-2:]] == ["rain", "雨声"]
+    assert presenter._looping_effects == {}
+    presenter.stop_all_loop_effects()
+    assert [event["type"] for event in sink.events][-1] == "effect.loop.stop"
+
+
+def test_streaming_presenter_emits_ambient_lifecycle_and_layer_changes(tmp_path) -> None:
+    sink = _Sink()
+    presenter = StreamingUIUpdateManager(sink, resource_urls=_Urls())
+    visual = tmp_path / "rain.webm"
+    audio = tmp_path / "rain.wav"
+    visual.write_bytes(b"webm")
+    audio.write_bytes(b"wav")
+    asset = SimpleNamespace(
+        path=str(visual), audio_path=str(audio), layer="back"
+    )
+
+    assert presenter.start_ambient_effect("rain", asset) is True
+    assert presenter.start_ambient_effect("rain", asset) is False
+    assert presenter.start_ambient_effect("rain", asset, layer="front") is True
+    assert presenter.start_ambient_effect("雨声", asset, layer="front") is False
+    assert presenter.stop_ambient_effect("雨声") is True
+
+    assert [event["type"] for event in sink.events] == [
+        "ambient.start",
+        "ambient.layer",
+        "ambient.stop",
+    ]
+    assert sink.events[0]["layer"] == "back"
+    assert sink.events[0]["audioUrl"] == f"media://{audio}"
+    assert sink.events[1] == {
+        "type": "ambient.layer",
+        "key": "rain",
+        "layer": "front",
+        "audioUrl": f"media://{audio}",
+    }
+    assert sink.events[2]["key"] == "rain"
+    assert presenter._ambient_effects == {}
+    assert presenter._ambient_aliases == {}
+
+
 def test_streaming_presenter_keeps_relative_effect_audio_paths_for_the_bridge() -> None:
     sink = _Sink()
     presenter = StreamingUIUpdateManager(sink, resource_urls=_Urls())
@@ -229,7 +286,31 @@ def test_streaming_presenter_resolves_image_and_audio_for_the_same_keyword(tmp_p
     assert sink.events[-1]["label"] == "获得钥匙"
 
 
-def test_exact_audio_label_is_not_replaced_by_a_substring_image():
+def test_resolve_effect_fuzzy_matches_configured_labels(tmp_path) -> None:
+    sink = _Sink()
+    presenter = StreamingUIUpdateManager(sink, resource_urls=_Urls())
+    runtime = SimpleNamespace(
+        effect_image_keyword_map={
+            "被查验者为“狼”": ImageEffectAsset("wolf.png", ""),
+            "被查验者为“人”": ImageEffectAsset("human.png", ""),
+            "腹上的花纹为“蛇”": ImageEffectAsset("snake.png", ""),
+        },
+    )
+    with patch("application.runtime.context.get_app_runtime", return_value=runtime):
+        assert presenter.resolve_effect("查验结果为狼", {}, after_dialog=False)
+        assert presenter.resolve_effect("腹上的花纹是蛇", {}, after_dialog=False)
+
+    assert [event["type"] for event in sink.events] == [
+        "effect.image.show",
+        "effect.image.show",
+    ]
+    assert [event["label"] for event in sink.events] == [
+        "被查验者为“狼”",
+        "腹上的花纹为“蛇”",
+    ]
+
+
+def test_exact_audio_label_is_not_replaced_by_a_fuzzy_image():
     sink = _Sink()
     presenter = StreamingUIUpdateManager(sink, resource_urls=_Urls())
     runtime = SimpleNamespace(
@@ -238,7 +319,7 @@ def test_exact_audio_label_is_not_replaced_by_a_substring_image():
     )
     with patch("application.runtime.context.get_app_runtime", return_value=runtime):
         assert presenter.resolve_effect("  KEYBOARD  ", {}, after_dialog=False)
-        assert not presenter.resolve_effect("获得了key", {}, after_dialog=False)
+        assert not presenter.resolve_effect("获得了钥匙", {}, after_dialog=False)
     assert sink.events == [{"type": "effect.play", "url": "media://typing.wav"}]
 
 
@@ -434,4 +515,51 @@ def test_static_sprite_updates_and_initial_path_propagate_portrait_crop_into_sna
 
         presenter.update_sprite_from_path(str(sprite_one), character_name="Mio")
         assert sink.events[-1]["portraitCrop"] == {"x": 0.4, "y": 0.18, "zoom": 1.8}
+
+
+def test_restore_session_replays_net_active_ambient_effects_and_layers(tmp_path) -> None:
+    import json
+    from types import SimpleNamespace
+    from application.chat.presentation.restore import restore_session_presentation
+    from core.effects import AmbientEffectAsset
+
+    rain = tmp_path / "rain.webm"
+    fog = tmp_path / "fog.png"
+    rain.write_bytes(b"rain")
+    fog.write_bytes(b"fog")
+
+    sink = _Sink()
+    presenter = StreamingUIUpdateManager(sink, resource_urls=_Urls())
+    runtime = SimpleNamespace(
+        ambient_effect_keyword_map={
+            "rain": AmbientEffectAsset(path=str(rain), audio_path="", layer="back"),
+            "fog": AmbientEffectAsset(path=str(fog), audio_path="", layer="back"),
+        }
+    )
+    messages = [
+        {"role": "assistant", "content": json.dumps({"dialog": [
+            {"character_name": "NARR", "speech": "rain starts", "sprite": "-1", "effect": "ambient:rain"},
+            {"character_name": "NARR", "speech": "fog starts", "sprite": "-1", "effect": "ambient:fog"},
+        ]})},
+        {"role": "assistant", "content": json.dumps({"dialog": [
+            {"character_name": "NARR", "speech": "rain clears", "sprite": "-1", "effect": "ambient-stop:rain"},
+            {"character_name": "Mio", "speech": "into the mist", "sprite": "0", "effect": "expose:fog"},
+        ]})},
+    ]
+    cfg = SimpleNamespace(config=SimpleNamespace(system_config=SimpleNamespace(bgm_path="", background_path="")))
+
+    with patch("application.runtime.context.get_app_runtime", return_value=runtime):
+        restore_session_presentation(
+            messages,
+            presentation_queue=SimpleNamespace(put=lambda _msg: None),
+            presenter=presenter,
+            config=cfg,
+            tr_i18n=lambda key, **_kwargs: key,
+        )
+
+    ambient_events = [e for e in sink.events if str(e.get("type", "")).startswith("ambient.")]
+    assert len(ambient_events) == 1
+    assert ambient_events[0]["type"] == "ambient.start"
+    assert ambient_events[0]["key"] == "fog"
+    assert ambient_events[0]["layer"] == "front"
 

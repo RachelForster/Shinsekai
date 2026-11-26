@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ComponentProps } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -72,6 +72,7 @@ vi.mock("../../../entities/files/repository", () => ({
 vi.mock("../../../entities/effect/repository", () => ({
   deleteAllEffectAudio: (name: string) => mockDeleteAllEffectAudio(name),
   deleteEffect: (name: string) => mockDeleteEffect(name),
+  deleteEffectAmbient: vi.fn(),
   deleteEffectAudio: (name: string, index: number) => mockDeleteEffectAudio(name, index),
   deleteEffectImage: (name: string, index: number) => mockDeleteEffectImage(name, index),
   effectsQueryKey: ["effects"],
@@ -79,8 +80,12 @@ vi.mock("../../../entities/effect/repository", () => ({
   importEffects: (paths: string[]) => mockImportEffects(paths),
   listEffects: () => mockListEffects(),
   saveEffect: (effect: Effect, originalName?: string) => mockSaveEffect(effect, originalName),
+  saveEffectAmbientLayers: vi.fn(),
+  saveEffectAmbientTags: vi.fn(),
   saveEffectAudioTags: (input: { audioTags: string; name: string }) => mockSaveEffectAudioTags(input),
   saveEffectImageTags: (input: { imageTags: string; name: string }) => mockSaveEffectImageTags(input),
+  uploadEffectAmbient: vi.fn(),
+  uploadEffectAmbientAudio: vi.fn(),
   uploadEffectAudio: (input: { audioTags: string; name: string; paths: string[] }) => mockUploadEffectAudio(input),
   uploadEffectImages: (input: { imageTags: string; name: string; paths: string[] }) => mockUploadEffectImages(input),
   uploadEffectImageAudio: (input: { index: number; name: string; path: string }) => mockUploadEffectImageAudio(input),
@@ -92,6 +97,10 @@ const effect: Effect = {
   image_list: [],
   image_tags: "",
   image_audio_list: [],
+  ambient_list: [],
+  ambient_tags: "",
+  ambient_audio_list: [],
+  ambient_layers: [],
   color: "#123456",
   name: "Spark",
   prompt_text: "",
@@ -179,14 +188,29 @@ describe("EffectManagerPage", () => {
     });
   });
 
-  it("saves edits, exports the selected effect, and opens community resources", async () => {
+  it("auto-saves color edits, confirms inline scheme rename, exports, and opens community resources", async () => {
     renderPage();
 
     expect(await screen.findByDisplayValue("Spark")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Scheme name"), { target: { value: "Flash" } });
+    const nameInput = screen.getByLabelText("Scheme name");
+    fireEvent.change(nameInput, { target: { value: "Flash" } });
     fireEvent.change(screen.getAllByDisplayValue("#123456")[0], { target: { value: "#abcdef" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
+    // Color auto-saves under committed "Spark" before rename is confirmed
+    await waitFor(
+      () =>
+        expect(mockSaveEffect).toHaveBeenCalledWith(
+          expect.objectContaining({
+            color: "#abcdef",
+            name: "Spark",
+          }),
+          "Spark",
+        ),
+      { timeout: 2500 },
+    );
+
+    // Explicit inline Confirm commits the rename to "Flash"
+    fireEvent.click(screen.getByRole("button", { name: "Confirm: Scheme name" }));
     await waitFor(() =>
       expect(mockSaveEffect).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -204,12 +228,20 @@ describe("EffectManagerPage", () => {
     expect(mockOpenExternal).toHaveBeenCalledWith("https://shinsekai.end0rph1n.icu/resources");
   });
 
-  it("saves the current draft as a new effect when New is clicked", async () => {
+  it("enters two-stage creation mode when New is clicked and supports Cancel and Create", async () => {
     renderPage();
 
     expect(await screen.findByDisplayValue("Spark")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Scheme name"), { target: { value: "Flash Copy" } });
     fireEvent.click(screen.getByRole("button", { name: "New" }));
+    expect(mockSaveEffect).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Scheme name")).toHaveValue("");
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.getByLabelText("Scheme name")).toHaveValue("Spark"));
+
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    fireEvent.change(screen.getByLabelText("Scheme name"), { target: { value: "Flash Copy" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
 
     await waitFor(() =>
       expect(mockSaveEffect).toHaveBeenCalledWith(
@@ -225,7 +257,7 @@ describe("EffectManagerPage", () => {
     mockListEffects.mockResolvedValue([]);
     renderPage();
 
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
     expect(await screen.findByText("Validation failed")).toBeInTheDocument();
     expect(screen.getByText("Effect scheme name is required.")).toBeInTheDocument();
     expect(mockSaveEffect).not.toHaveBeenCalled();
@@ -478,7 +510,8 @@ describe("EffectManagerPage", () => {
 
     expect(await screen.findByDisplayValue("Spark")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.change(screen.getByLabelText("Scheme name"), { target: { value: "Spark Renamed" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm: Scheme name" }));
     expect(await screen.findByText("save boom")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Export" }));
@@ -508,5 +541,197 @@ describe("EffectManagerPage", () => {
       within(screen.getByRole("dialog", { name: "Delete effect scheme" })).getByRole("button", { name: "Delete" }),
     );
     expect(await screen.findByText("delete boom")).toBeInTheDocument();
+  });
+
+  it("preserves newly attached image audio during pending auto-save and cancels auto-save on scheme delete", async () => {
+    const initialEffect: Effect = {
+      ...structuredClone(effect),
+      id: "eff-spark",
+      image_list: ["D:/effects/key.png"],
+      image_tags: "图片 1：key\n",
+      image_audio_list: [""],
+    };
+    let catalogEffect = structuredClone(initialEffect);
+    mockListEffects.mockImplementation(async () => [structuredClone(catalogEffect)]);
+    mockUploadEffectImageAudio.mockImplementation(async ({ path }: { index: number; name: string; path: string }) => {
+      catalogEffect = { ...catalogEffect, image_audio_list: [path] };
+      return structuredClone(catalogEffect);
+    });
+    mockSaveEffect.mockImplementation(async (saved: Effect) => {
+      catalogEffect = structuredClone(saved);
+      return structuredClone(catalogEffect);
+    });
+
+    renderPage();
+    await screen.findByText("key.png");
+
+    // 1. Edit color (arms 600ms auto-save), then attach image audio before 600ms fires -> auto-save must carry latest image_audio_list!
+    fireEvent.change(screen.getAllByDisplayValue("#123456")[0], { target: { value: "#abcdef" } });
+    pickerState.paths = ["D:/effects/key-sfx.wav"];
+    fireEvent.click(screen.getByRole("button", { name: "Insert audio" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Insert audio" })).getByText("Choose mocked paths"));
+    await waitFor(() => expect(mockUploadEffectImageAudio).toHaveBeenCalledTimes(1));
+
+    await waitFor(
+      () =>
+        expect(mockSaveEffect).toHaveBeenCalledWith(
+          expect.objectContaining({
+            color: "#abcdef",
+            id: "eff-spark",
+            image_audio_list: ["D:/effects/key-sfx.wav"],
+            name: "Spark",
+          }),
+          "Spark",
+        ),
+      { timeout: 2500 },
+    );
+
+    // 2. Edit color again then immediately delete scheme -> pending auto-save is cancelled!
+    mockSaveEffect.mockClear();
+    fireEvent.change(screen.getAllByDisplayValue("#abcdef")[0], { target: { value: "#654321" } });
+    const infoSection = document.getElementById("effect-info") as HTMLElement;
+    fireEvent.click(within(infoSection).getByRole("button", { name: "Delete" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog", { name: "Delete effect scheme" })).getByRole("button", { name: "Delete" }),
+    );
+    await waitFor(() => expect(mockDeleteEffect).toHaveBeenCalledWith("Spark"));
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    expect(mockSaveEffect).not.toHaveBeenCalled();
+  });
+
+  it("cancels a due debounce timer synchronously when deleting an image so pre-delete tags are not saved", async () => {
+    const twoImageEffect: Effect = {
+      ...structuredClone(effect),
+      id: "eff-spark",
+      image_list: ["D:/effects/first.png", "D:/effects/second.png"],
+      image_tags: "Image 1: first\nImage 2: second\n",
+      image_audio_list: ["", ""],
+    };
+    let catalogEffect = structuredClone(twoImageEffect);
+    mockListEffects.mockImplementation(async () => [structuredClone(catalogEffect)]);
+
+    let resolveDelete!: (value: Effect) => void;
+    mockDeleteEffectImage.mockImplementationOnce(
+      () =>
+        new Promise<Effect>((resolve) => {
+          resolveDelete = (next) => {
+            catalogEffect = structuredClone(next);
+            resolve(structuredClone(catalogEffect));
+          };
+        }),
+    );
+
+    renderPage();
+    await screen.findByText("first.png");
+    const firstRow = screen.getByText("first.png").closest(".effect-image-row") as HTMLElement;
+
+    try {
+      vi.useFakeTimers();
+
+      fireEvent.change(within(firstRow).getByRole("textbox"), { target: { value: "edited first" } });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(590);
+      });
+      expect(mockSaveEffect).not.toHaveBeenCalled();
+
+      fireEvent.click(within(firstRow).getByRole("button", { name: "Delete" }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+
+      expect(mockSaveEffect).not.toHaveBeenCalled();
+      expect(mockDeleteEffectImage).toHaveBeenCalledWith("Spark", 0);
+
+      await act(async () => {
+        resolveDelete({
+          ...structuredClone(twoImageEffect),
+          image_list: ["D:/effects/second.png"],
+          image_tags: "Image 1: second\n",
+          image_audio_list: [""],
+        });
+        await Promise.resolve();
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+
+      expect(mockSaveEffect).not.toHaveBeenCalled();
+      expect(screen.queryByText("first.png")).not.toBeInTheDocument();
+      expect(screen.getByDisplayValue("second")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("serializes image deletion after an already in-flight autosave settles", async () => {
+    const twoImageEffect: Effect = {
+      ...structuredClone(effect),
+      id: "eff-spark",
+      image_list: ["D:/effects/first.png", "D:/effects/second.png"],
+      image_tags: "Image 1: first\nImage 2: second\n",
+      image_audio_list: ["", ""],
+    };
+    let catalogEffect = structuredClone(twoImageEffect);
+    mockListEffects.mockImplementation(async () => [structuredClone(catalogEffect)]);
+
+    let resolveSave!: (value: Effect) => void;
+    mockSaveEffect.mockImplementationOnce(
+      (saved: Effect) =>
+        new Promise<Effect>((resolve) => {
+          resolveSave = (next) => {
+            catalogEffect = structuredClone(next ?? saved);
+            resolve(structuredClone(catalogEffect));
+          };
+        }),
+    );
+    mockDeleteEffectImage.mockImplementationOnce(async () => {
+      catalogEffect = {
+        ...structuredClone(catalogEffect),
+        image_list: ["D:/effects/second.png"],
+        image_tags: "Image 1: second\n",
+        image_audio_list: [""],
+      };
+      return structuredClone(catalogEffect);
+    });
+
+    renderPage();
+    await screen.findByText("first.png");
+    const firstRow = screen.getByText("first.png").closest(".effect-image-row") as HTMLElement;
+
+    try {
+      vi.useFakeTimers();
+
+      fireEvent.change(within(firstRow).getByRole("textbox"), { target: { value: "edited first" } });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(600);
+      });
+      expect(mockSaveEffect).toHaveBeenCalledTimes(1);
+
+      fireEvent.click(within(firstRow).getByRole("button", { name: "Delete" }));
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(mockDeleteEffectImage).not.toHaveBeenCalled();
+
+      await act(async () => {
+        resolveSave({
+          ...structuredClone(twoImageEffect),
+          image_tags: "Image 1: edited first\nImage 2: second\n",
+        });
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(mockDeleteEffectImage).toHaveBeenCalledWith("Spark", 0);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+      expect(mockSaveEffect).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText("first.png")).not.toBeInTheDocument();
+      expect(screen.getByDisplayValue("second")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

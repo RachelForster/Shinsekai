@@ -1,54 +1,38 @@
-.effect-page {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-lg);
-}
-
 .effect-page__header {
-  display: flex;
-  align-items: flex-start;
-  flex-wrap: wrap;
-  gap: var(--spacing-md);
-  justify-content: space-between;
+  align-items: center;
 }
 
 .effect-page__heading {
-  flex: 1 1 auto;
   min-width: 0;
 }
 
 .effect-page__primary-actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--spacing-md);
+  min-width: 0;
+  justify-content: flex-end;
 }
 
 .effect-page__group-select {
-  position: relative;
+  width: 220px;
+  min-width: 180px;
+  flex: 0 0 auto;
 }
 
-.effect-page__group-select select {
-  min-width: 160px;
+.effect-page__package-actions,
+.effect-page__resource-actions {
+  display: flex;
+  min-width: 0;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .effect-page__resource-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-}
-
-.effect-page__package-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
+  justify-content: flex-start;
 }
 
 .effect-page__content {
-  display: flex;
-  flex-direction: column;
-  gap: 48px;
-  margin-top: 48px;
+  gap: var(--space-4);
 }
 
 /* Audio list */
@@ -135,6 +119,10 @@
   max-width: 520px;
 }
 
+.effect-page .effect-info-grid {
+  max-width: none;
+}
+
 .effect-page .field-row__control .input {
   max-width: 240px;
 }
@@ -187,6 +175,23 @@
   object-fit: contain;
 }
 
+.effect-image-row--ambient {
+  grid-template-columns: 120px minmax(0, 1fr);
+}
+
+.effect-image-row--ambient .effect-image-row__controls {
+  grid-template-columns: minmax(160px, 280px) max-content max-content max-content max-content;
+}
+
+.effect-image-row__image video {
+  display: block;
+  width: 112px;
+  height: 72px;
+  border-radius: var(--radius-sm);
+  background: #000;
+  object-fit: cover;
+}
+
 .effect-image-row__image figcaption,
 .effect-image-row__audio small {
   display: block;
@@ -231,20 +236,26 @@
   margin: 0 0 4px;
 }
 
+.effect-page #effect-info .field-row {
+  grid-template-columns: minmax(84px, auto) minmax(0, 1fr);
+}
 .effect-color-control {
-  gap: 2px;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
 }
 .effect-color-control .input {
-  min-width: 88px;
+  min-width: 96px;
 }
 .effect-color-control .button {
   flex: 0 0 auto;
-  padding: 0 4px;
+  max-width: none;
+  padding: 7px 14px;
 }
 .effect-color-control .swatch {
-  width: 16px;
-  height: 16px;
-  border-radius: 2px;
+  width: 28px;
+  height: 24px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--color-border);
   flex-shrink: 0;
 }

@@ -4,6 +4,7 @@ import re
 from queue import Queue
 from uuid import uuid4
 
+from ai.llm.template.integrations.localization import resolve_template_locale
 from ai.vision.service import ChatVisionService
 from application.chat.capabilities import (
     TurnAdmissionRequest,
@@ -60,6 +61,7 @@ class LLMWorker(ThreadDagNode):
     ):
         super().__init__(name, parent=parent)
         self._app_inited = False
+        self.config_manager = None
         self.chat_vision_service = ChatVisionService()
         self.user_input_queue = input_queue
         self.dialog_queue = output_queue
@@ -72,6 +74,7 @@ class LLMWorker(ThreadDagNode):
         if self._app_inited:
             return
         rt = get_app_runtime()
+        self.config_manager = getattr(rt, "config_manager", None) or getattr(rt, "config", None)
         self.ui_update_manager = rt.ui_update_manager
         self.llm_manager = rt.llm_manager
         self.user_input_queue = self.inq(self.PORT_USER_INPUT)
@@ -105,10 +108,16 @@ class LLMWorker(ThreadDagNode):
                 turn_scope = log_context(turn_id=new_log_id("turn_"))
                 turn_scope.__enter__()
                 attachments = resolve_chat_attachments(message.attachments)
+                cfg_mgr = (
+                    getattr(self, "config_manager", None)
+                    or getattr(rt, "config_manager", None)
+                    or getattr(rt, "config", None)
+                )
                 prepared_input = self.chat_vision_service.prepare(
                     message.text,
                     attachments,
                     adapter=self.llm_manager.llm_adapter,
+                    locale=resolve_template_locale(cfg_mgr),
                 )
                 logger.info(
                     "LLM worker processing user message",
@@ -173,6 +182,9 @@ class LLMWorker(ThreadDagNode):
                         chat_kwargs["user_display_text"] = prepared_input.display_text
                     render_kwargs: dict[str, object] = {
                         "background": prompt_envelope.background,
+                        "locale": resolve_template_locale(
+                            getattr(self, "config_manager", None)
+                        ),
                     }
                     if prompt_envelope.prefix:
                         render_kwargs["prefix"] = prompt_envelope.prefix

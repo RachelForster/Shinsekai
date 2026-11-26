@@ -159,12 +159,19 @@ Files are grouped by responsibility:
 
 ```text
 template/
-  core/                 # Reusable Composite primitives
+  sync_standalone.py    # Export standalone browser locale JSON (--check supported)
+  catalog/              # Single source of truth YAML prompt catalogs (zh_CN, en, ja)
+    zh_CN/              # dialog, extraction, generation, perception, session, story (.yaml)
+    en/
+    ja/
+  core/                 # Reusable Composite & i18n primitives
+    catalog.py
     context.py
+    prompt_spec.py
     section.py
   dialog/               # Dialog prompt domain
     context.py
-    sections/            # Composite nodes; one major section per file
+    sections/           # Composite nodes; one major section per file
       dialog_template.py
       json_schema.py
       character.py
@@ -174,10 +181,35 @@ template/
       effects.py
       requirements.py
       field_requirements.py # Plugin field changes and removal projection
-    patches.py            # Shared SDK OutputContractPatch reducers
+    patches.py          # Shared SDK OutputContractPatch reducers
   prompts/              # System and user text assembly
     system.py
     user.py
+  session/              # Compaction, dialog repair, reminder, and context sentinel blocks
+    compact.py
+    context_blocks.py
+    dialog_repair.py
+    reminder.py
+  story/                # Story authoring, assessment, runtime guidance, and scene renderer
+    author.py
+    assessment.py
+    context.py
+    guidance.py
+    scene.py
+  extraction/           # Long-term memory and setting knowledge extraction prompts
+    knowledge.py
+    memory.py
+  perception/           # Multimodal local VLM decision, voice style, cloud summary, RP context
+    cloud_summary.py
+    decision.py
+    rp_context.py
+    voice_style.py
+  generation/           # Vision describe, character briefs/settings, field translation, media & sprites
+    character_brief.py
+    field_translation.py
+    media_annotation.py
+    sprite_plan.py
+    vision.py
   integrations/         # Application configuration and external registries
     characters.py
     localization.py

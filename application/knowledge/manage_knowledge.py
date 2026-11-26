@@ -37,6 +37,7 @@ def preview_import(
     source_root: str | Path,
     config_manager: Any,
 ) -> dict[str, Any]:
+    from ai.llm.template.integrations.localization import resolve_template_locale
     from ai.memory.extraction import configured_memory_chunk_tokens
     from application.knowledge.import_knowledge import preview_knowledge_import
 
@@ -45,6 +46,7 @@ def preview_import(
         knowledge_id=knowledge_id,
         source_root=source_root,
         max_chunk_tokens=configured_memory_chunk_tokens(config_manager),
+        locale=resolve_template_locale(config_manager),
     )
 
 
@@ -57,6 +59,7 @@ def execute_import(
     progress_callback: Callable[[str, float, str, str | None], None],
     cancel_callback: Callable[[], None],
 ) -> dict[str, Any]:
+    from ai.llm.template.integrations.localization import resolve_template_locale
     from ai.memory.extraction import (
         configured_memory_chunk_tokens,
         create_configured_memory_adapter,
@@ -71,6 +74,7 @@ def execute_import(
         max_chunk_tokens=configured_memory_chunk_tokens(config_manager),
         progress_callback=progress_callback,
         cancel_callback=cancel_callback,
+        locale=resolve_template_locale(config_manager),
     )
 
 

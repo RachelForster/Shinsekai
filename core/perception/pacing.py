@@ -15,6 +15,7 @@ from core.perception.models import (
     normalize_scene_type,
 )
 from core.perception.policy import PerceptionMemoryPolicy
+from sdk.lang import Translator
 
 DEFAULT_PENDING_EVENT_MAX_AGE_SEC = 8.0
 POST_COMBAT_BREATHER_WINDOW_SEC = 14.0
@@ -381,21 +382,42 @@ def compute_adaptive_pacing(
     )
 
 
-def proactive_scene_delivery_hint(profile: AdaptivePacingProfile) -> str:
+_DEFAULT_DELIVERY_HINTS: dict[str, str] = {
+    "perception.delivery_post_combat": "- 表达节奏：激烈操作刚告一段落，可顺势简短点评或关心一句刚才的交锋。",
+    "perception.delivery_story_media": "- 表达节奏：当前处于剧情沉浸阶段，简短轻声回应一句即可，避免剧透或长篇大论。",
+    "perception.delivery_casual_media": "- 表达节奏：当前内容轻松日常，可用自然口语简短吐槽或搭话一两句。",
+    "perception.delivery_exploration": "- 表达节奏：当前正在探索或整备，自然随口聊一两句眼前的发现即可。",
+    "perception.delivery_reading_highlight": "- 表达节奏：用户刚划选了重点内容，围绕所选文字简短回应一两句即可。",
+    "perception.delivery_reading_quiet": "- 表达节奏：用户正在阅读或处理内容，保持安静陪伴感，简短点到关键处即可。",
+}
+
+
+def proactive_scene_delivery_hint(
+    profile: AdaptivePacingProfile,
+    *,
+    translate: Translator | None = None,
+) -> str:
     """Return a concise delivery-posture hint for proactive main-RP turns when scene is known."""
+    key = ""
     if profile.post_combat_breather:
-        return "- 表达节奏：激烈操作刚告一段落，可顺势简短点评或关心一句刚才的交锋。"
-    if profile.scene == "story_media":
-        return "- 表达节奏：当前处于剧情沉浸阶段，简短轻声回应一句即可，避免剧透或长篇大论。"
-    if profile.scene == "casual_media":
-        return "- 表达节奏：当前内容轻松日常，可用自然口语简短吐槽或搭话一两句。"
-    if profile.scene == "exploration":
-        return "- 表达节奏：当前正在探索或整备，自然随口聊一两句眼前的发现即可。"
-    if profile.scene == "reading_work":
-        if profile.recent_highlight:
-            return "- 表达节奏：用户刚划选了重点内容，围绕所选文字简短回应一两句即可。"
-        return "- 表达节奏：用户正在阅读或处理内容，保持安静陪伴感，简短点到关键处即可。"
-    return ""
+        key = "perception.delivery_post_combat"
+    elif profile.scene == "story_media":
+        key = "perception.delivery_story_media"
+    elif profile.scene == "casual_media":
+        key = "perception.delivery_casual_media"
+    elif profile.scene == "exploration":
+        key = "perception.delivery_exploration"
+    elif profile.scene == "reading_work":
+        key = (
+            "perception.delivery_reading_highlight"
+            if profile.recent_highlight
+            else "perception.delivery_reading_quiet"
+        )
+    if not key:
+        return ""
+    if translate is not None:
+        return translate(key)
+    return _DEFAULT_DELIVERY_HINTS[key]
 
 
 __all__ = [

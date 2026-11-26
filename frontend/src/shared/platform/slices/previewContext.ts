@@ -1,3 +1,4 @@
+import { translateRuntimeMessage } from "../../i18n/runtimeLanguage";
 import type { ChatThemePayload } from "../../theme/chatChromeTheme";
 import { DEFAULT_CHAT_THEME_ID, type ChatThemeManifest, type ChatThemeSummary } from "../../theme/chatTheme";
 import {
@@ -12,7 +13,7 @@ import type { CharacterMemoryImportPreview } from "./characterTypes";
 import type { ChatLaunchPayload, ChatSnapshot, ChatStageEvent, ConversationSummary } from "./chatTypes";
 import type { AppConfig } from "./configTypes";
 import type { TaskProgressOptions, TaskSnapshot } from "./taskTypes";
-import type { TemplateLaunchSession, TemplateSummary } from "./workspaceTypes";
+import type { TemplateLaunchSession, TemplateSummary, UserPromptPresetLibrary } from "./workspaceTypes";
 
 const bundledChatThemeAssets = import.meta.glob<string>(
   "../../../../../assets/chat_ui_themes/**/*.{gif,jpeg,jpg,mp3,ogg,otf,png,svg,ttf,wav,webp,woff,woff2}",
@@ -53,7 +54,7 @@ export function previewTask<TResult>(
     progress: 0,
     result: null,
     status: "queued",
-    title: "安装插件",
+    title: translateRuntimeMessage("plat.preview.ctx.installPluginTitle"),
     updatedAt: now,
     ...patch,
   });
@@ -170,6 +171,8 @@ export interface BrowserPreviewContext {
   setTemplates: (next: TemplateSummary[]) => void;
   getTemplateSession: () => TemplateLaunchSession | null;
   setTemplateSession: (next: TemplateLaunchSession | null) => void;
+  getUserPromptPresets: () => UserPromptPresetLibrary;
+  setUserPromptPresets: (next: UserPromptPresetLibrary) => void;
   cachedModelAssets: Set<string>;
   knowledgeData: Map<string, KnowledgePreviewRecord>;
   getActiveThemeId: () => string;
@@ -189,12 +192,17 @@ export function createBrowserPreviewContext(): BrowserPreviewContext {
   const conversations = new Map<string, { summary: ConversationSummary; payload: ChatLaunchPayload }>();
   let activeThemeId = DEFAULT_CHAT_THEME_ID;
   let templateSession: TemplateLaunchSession | null = null;
+  let userPromptPresets: UserPromptPresetLibrary = { groups: [], presets: [] };
   const cachedModelAssets = new Set<string>();
   const knowledgeData = new Map<string, KnowledgePreviewRecord>();
   knowledgeData.set("preview-knowledge", {
     memories: Array.from({ length: 18 }, (_, index) => ({
       id: `knowledge-preview-${index + 1}`,
-      memory: `雾港世界设定 ${index + 1}：居民依靠钟声辨认进港的船只。`,
+      memory: translateRuntimeMessage(
+        "plat.preview.ctx.knowledgeMemory",
+        { index: index + 1 },
+        config.system_config.ui_language,
+      ),
     })),
     characters: config.characters.map((character) => ({ name: character.name, createdAt: "2026-09-14 00:00:00" })),
   });
@@ -301,6 +309,10 @@ export function createBrowserPreviewContext(): BrowserPreviewContext {
     getTemplateSession: () => templateSession,
     setTemplateSession: (next) => {
       templateSession = next;
+    },
+    getUserPromptPresets: () => userPromptPresets,
+    setUserPromptPresets: (next) => {
+      userPromptPresets = next;
     },
     cachedModelAssets,
     knowledgeData,

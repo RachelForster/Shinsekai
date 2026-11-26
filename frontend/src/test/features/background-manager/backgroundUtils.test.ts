@@ -5,6 +5,7 @@ import {
   backgroundDeleteDialogCopy,
   createBackground,
   runBackgroundDeleteTarget,
+  upsertCatalogBackground,
   type BackgroundDeleteTarget,
 } from "../../../features/background-manager/backgroundUtils";
 import type { MessageKey } from "../../../shared/i18n";
@@ -16,9 +17,17 @@ describe("background manager utilities", () => {
       bgm_list: [],
       bgm_tags: "",
       name: "",
-      sprite_prefix: "temp",
+      sprite_prefix: "bg_1",
       sprites: [],
     });
+  });
+
+  it("replaces renamed backgrounds in place by id or originalName", () => {
+    const first = { ...createBackground(), id: "bg-1", name: "School", sprite_prefix: "school" };
+    const second = { ...createBackground(), id: "bg-2", name: "Park", sprite_prefix: "park" };
+    expect(
+      upsertCatalogBackground([first, second], { ...first, name: "Academy" }, "School").map((item) => item.name),
+    ).toEqual(["Academy", "Park"]);
   });
 
   it("builds delete confirmation copy from the delete target kind", () => {

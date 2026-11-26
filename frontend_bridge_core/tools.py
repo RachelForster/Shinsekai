@@ -14,6 +14,7 @@ from sdk.path_utils import (
 )
 from application.runtime.state import BridgeState
 from application.runtime.tasks import _update_task
+from frontend_bridge_core.i18n_helpers import bridge_error, bridge_tr
 
 MAX_FILE_BROWSER_ENTRIES = 2000
 
@@ -79,10 +80,23 @@ def _generate_sprite_prompts(state: BridgeState, task_id: str, payload: dict[str
     if character is None:
         raise KeyError(f"character not found: {character_name}")
 
-    _update_task(state, task_id, message="正在生成立绘提示词。", phase="prompt", progress=0.18)
+    _update_task(
+        state,
+        task_id,
+        message=bridge_tr(state, "task.tools_prompts_running"),
+        phase="prompt",
+        progress=0.18,
+    )
     prompts = ImageGenerator().generate_prompts(count, str(character.character_setting or ""))
     result = {"prompts": [str(item) for item in prompts]}
-    _update_task(state, task_id, message="提示词已生成。", phase="completed", progress=1, result=result)
+    _update_task(
+        state,
+        task_id,
+        message=bridge_tr(state, "task.tools_prompts_done"),
+        phase="completed",
+        progress=1,
+        result=result,
+    )
     return result
 
 
@@ -109,12 +123,23 @@ def _generate_sprites(state: BridgeState, task_id: str, payload: dict[str, Any])
         raise ValueError("at least one prompt is required")
 
     output_dir = _sprite_output_dir(state, character_name, payload.get("outputDir"))
-    _update_task(state, task_id, message="正在批量生成立绘。", phase="generate", progress=0.12)
+    _update_task(
+        state,
+        task_id,
+        message=bridge_tr(state, "task.tools_sprites_running"),
+        phase="generate",
+        progress=0.12,
+    )
     files = ImageGenerator().batch_generate_sprites(reference, prompts, output_dir)
     paths = [Path(item).as_posix() for item in files if item and Path(item).is_file()]
     result = {
         "files": paths,
-        "message": f"已生成 {len(paths)} 张（输出目录: {output_dir.as_posix()}）",
+        "message": bridge_tr(
+            state,
+            "task.tools_sprites_done",
+            count=len(paths),
+            dir=output_dir.as_posix(),
+        ),
         "outputDir": output_dir.as_posix(),
     }
     _update_task(state, task_id, message=result["message"], phase="completed", progress=1, result=result)
@@ -135,7 +160,13 @@ def _crop_sprites(state: BridgeState, task_id: str, payload: dict[str, Any]) -> 
         requested_output = reject_control_chars(requested_output, field="outputDir")
     output_dir = Path(requested_output) if requested_output else input_dir / f"cropped_upper_{ratio}"
 
-    _update_task(state, task_id, message="正在批量裁剪立绘。", phase="crop", progress=0.25)
+    _update_task(
+        state,
+        task_id,
+        message=bridge_tr(state, "task.tools_crop_running"),
+        phase="crop",
+        progress=0.25,
+    )
     message = batch_crop_upper_half(ratio, input_dir.as_posix(), requested_output or None)
     result = {"message": str(message), "outputDir": output_dir.as_posix()}
     _update_task(state, task_id, message=result["message"], phase="completed", progress=1, result=result)
@@ -155,7 +186,13 @@ def _remove_sprite_background(state: BridgeState, task_id: str, payload: dict[st
         requested_output = reject_control_chars(requested_output, field="outputDir")
     output_dir = Path(requested_output) if requested_output else input_dir / "removed_backgrounds"
 
-    _update_task(state, task_id, message="正在批量抠出立绘。", phase="remove-background", progress=0.25)
+    _update_task(
+        state,
+        task_id,
+        message=bridge_tr(state, "task.tools_rmbg_running"),
+        phase="remove-background",
+        progress=0.25,
+    )
     message = batch_remove_background(input_dir.as_posix(), requested_output or None)
     result = {"message": str(message), "outputDir": output_dir.as_posix()}
     _update_task(state, task_id, message=result["message"], phase="completed", progress=1, result=result)
@@ -314,9 +351,13 @@ def _browse_local_files(state: BridgeState, payload: dict[str, Any]) -> dict[str
         target = target.parent
 
     if not target.exists():
-        raise FileNotFoundError(f"路径不存在: {_display_path(target)}")
+        raise bridge_error(
+            FileNotFoundError, state, "path_not_found", path=_display_path(target)
+        )
     if not target.is_dir():
-        raise NotADirectoryError(f"不是目录: {_display_path(target)}")
+        raise bridge_error(
+            NotADirectoryError, state, "path_not_directory", path=_display_path(target)
+        )
 
     entries: list[dict[str, Any]] = []
     try:
@@ -344,7 +385,13 @@ def _browse_local_files(state: BridgeState, payload: dict[str, Any]) -> dict[str
     except PermissionError:
         raise
     except OSError as exc:
-        raise RuntimeError(f"无法读取目录: {_display_path(target)}: {exc}") from exc
+        raise bridge_error(
+            RuntimeError,
+            state,
+            "directory_read_failed",
+            path=_display_path(target),
+            error=str(exc),
+        ) from exc
 
     entries.sort(key=lambda item: (item["kind"] != "directory", item["name"].casefold()))
     parent = target.parent if target.parent != target else None

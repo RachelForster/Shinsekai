@@ -5,7 +5,7 @@
   overflow-x: auto;
   padding: 4px;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
+  border-radius: 999px;
   background:
     linear-gradient(135deg, color-mix(in oklch, var(--color-accent-primary) 7%, transparent), transparent 52%),
     var(--color-bg-input);
@@ -29,7 +29,7 @@
   align-items: center;
   gap: var(--space-1);
   border: 1px solid transparent;
-  border-radius: calc(var(--radius-control) - 2px);
+  border-radius: 999px;
   padding: 7px 10px;
   color: var(--color-text-muted);
   background: transparent;
@@ -42,6 +42,7 @@
     border-color 140ms ease,
     background 140ms ease,
     color 140ms ease,
+    box-shadow 140ms ease,
     transform 140ms ease;
   white-space: nowrap;
 }
@@ -55,6 +56,18 @@
 
 .page-section-nav__item:hover {
   transform: translateY(-1px);
+}
+
+.page-section-nav__item:active {
+  transform: translateY(1px) scale(0.985);
+  box-shadow: inset 0 2px 4px var(--color-shadow);
+  transition-duration: 80ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-section-nav__item {
+    transition: none;
+  }
 }
 
 .page-section-nav__item:focus-visible {

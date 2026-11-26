@@ -5,6 +5,9 @@ from frontend_bridge_core.routes.router import ApiRequest, BodyKind, JsonRespons
 
 
 def _store(request):
+    stores = getattr(request.state, "stores", None)
+    if stores is not None and getattr(stores, "reminders", None) is not None:
+        return stores.reminders
     return ReminderStore(request.state.project_root_dir)
 
 

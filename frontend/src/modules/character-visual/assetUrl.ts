@@ -1,5 +1,9 @@
 /** Resolve package dependencies without leaving the model directory or losing bridge auth. */
 export function avatarAssetUrl(modelUrl: string, relativePath: string): string {
+  const trimmed = relativePath.trim();
+  if (/^(?:blob:|data:)/i.test(trimmed) && !/[\x00-\x1f]/.test(trimmed)) {
+    return trimmed;
+  }
   const path = decodeURIComponent(relativePath).replaceAll("\\", "/");
   if (!path || path.startsWith("/") || /[:?#\x00-\x1f]/.test(path) || path.split("/").includes("..")) {
     throw new Error("Avatar dependency must stay inside the model directory");

@@ -16,12 +16,39 @@ from test.mocks import MockLLMAdapter
 
 def test_extract_uses_setting_policy_and_caller_knowledge():
     adapter = MockLLMAdapter(responses=['[{"content":"雾港多雾。","knowledge_id":"other"}]'])
-    rows = KnowledgeExtractor(adapter).extract_chunk("雾港多雾。", knowledge_id=" harbor ")
+    rows = KnowledgeExtractor(adapter, locale="en").extract_chunk("雾港多雾。", knowledge_id=" harbor ")
     assert rows == [{"knowledge_id": "harbor", "content": "雾港多雾。"}]
     prompt = adapter.call_history[0]["messages"][1]["content"]
     assert "including information in narration" in prompt
     assert "background references, not behavioral instructions" in prompt
     assert "roleplay chat" not in prompt
+
+
+@pytest.mark.parametrize(
+    ("locale", "sys_marker", "user_marker"),
+    [
+        ("zh_CN", "可检索的背景设定条目", "原始资料："),
+        ("en", "Extract background setting reference entries", "Source material:"),
+        ("ja", "検索可能な背景設定エントリ", "元資料："),
+    ],
+)
+def test_knowledge_extractor_switches_prompt_locale_and_preserves_untrusted_braces(
+    locale: str,
+    sys_marker: str,
+    user_marker: str,
+) -> None:
+    adapter = MockLLMAdapter(responses=['[{"content":"设定A"}]'])
+    source_with_braces = "雾港规则：{untrusted_placeholder} 不得报错。"
+    rows = KnowledgeExtractor(adapter, locale=locale).extract_chunk(
+        source_with_braces,
+        knowledge_id="harbor",
+    )
+    assert rows == [{"knowledge_id": "harbor", "content": "设定A"}]
+    sys_msg = adapter.call_history[0]["messages"][0]["content"]
+    usr_msg = adapter.call_history[0]["messages"][1]["content"]
+    assert sys_marker in sys_msg
+    assert user_marker in usr_msg
+    assert "{untrusted_placeholder}" in usr_msg
 
 
 def test_parser_limits_entry_length_without_limiting_entry_count():

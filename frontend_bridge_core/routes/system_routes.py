@@ -12,6 +12,7 @@ from frontend_bridge_core.config import (
     _save_api_config,
     _test_llm_connection,
 )
+from frontend_bridge_core.i18n_helpers import bridge_tr
 from frontend_bridge_core.routes.router import (
     ApiRequest,
     BodyKind,
@@ -74,8 +75,15 @@ def _llm_error_response(exc: Exception, *, fallback_message: str) -> JsonRespons
     from sdk.exception.presenter import format_llm_exception_message
 
     message = format_llm_exception_message(exc, fallback_message=fallback_message)
+    payload: dict[str, object] = {"error": message, "type": exc.__class__.__name__}
+    error_code = str(getattr(exc, "error_code", "") or "")
+    if error_code:
+        payload["errorCode"] = error_code
+    error_params = getattr(exc, "error_params", None)
+    if isinstance(error_params, dict) and error_params:
+        payload["errorParams"] = dict(error_params)
     return JsonResponse(
-        {"error": message, "type": exc.__class__.__name__},
+        payload,
         HTTPStatus.BAD_REQUEST,
     )
 
@@ -84,14 +92,20 @@ def _fetch_llm_models_route(request: ApiRequest) -> JsonResponse:
     try:
         return JsonResponse(_fetch_llm_models(request.body))
     except Exception as exc:
-        return _llm_error_response(exc, fallback_message="获取模型列表失败。")
+        return _llm_error_response(
+            exc,
+            fallback_message=bridge_tr(request.state, "config.fetch_models_failed"),
+        )
 
 
 def _test_llm_connection_route(request: ApiRequest) -> JsonResponse:
     try:
         return JsonResponse(_test_llm_connection(request.body))
     except Exception as exc:
-        return _llm_error_response(exc, fallback_message="LLM 连通检测失败。")
+        return _llm_error_response(
+            exc,
+            fallback_message=bridge_tr(request.state, "config.llm_test_failed"),
+        )
 
 
 def _test_comfyui_connection_route(request: ApiRequest) -> JsonResponse:

@@ -11,8 +11,8 @@ from sdk.messages import PresentationMessage
 
 
 PRESENTATION_KEYS = (
-    "backgroundPath", "bgmPath", "cgPath", "sprites", "stats", "characterName",
-    "dialogHtml", "dialogText", "options", "systemMessageText", "playerPortrait",
+    "backgroundPath", "bgmPath", "cgPath", "ambientEffects", "sprites", "stats",
+    "characterName", "dialogHtml", "dialogText", "options", "systemMessageText", "playerPortrait",
 )
 
 
@@ -236,6 +236,7 @@ class ReplayPresentation:
                 presentation.update({
                     "backgroundPath": frame.get("backgroundPath", ""),
                     "bgmPath": frame.get("bgmPath", ""), "cgPath": frame.get("cgPath", ""),
+                    "ambientEffects": list(frame.get("ambientEffects") or []),
                     "sprites": sprites, "stats": frame.get("stats", []),
                     "playerPortrait": frame.get("playerPortrait"),
                 })

@@ -54,3 +54,23 @@ export function uploadEffectImages(input: { imageTags: string; name: string; pat
 export function uploadEffectImageAudio(input: { index: number; name: string; path: string }) {
   return getPlatform().effects.uploadImageAudio(input);
 }
+
+export function uploadEffectAmbient(input: { ambientTags: string; name: string; paths: string[] }) {
+  return getPlatform().effects.uploadAmbient(input);
+}
+
+export function deleteEffectAmbient(name: string, index: number) {
+  return getPlatform().effects.deleteAmbient(name, index);
+}
+
+export function saveEffectAmbientTags(input: { ambientTags: string; name: string }) {
+  return getPlatform().effects.saveAmbientTags(input);
+}
+
+export function saveEffectAmbientLayers(input: { layers: string[]; name: string }) {
+  return getPlatform().effects.saveAmbientLayers(input);
+}
+
+export function uploadEffectAmbientAudio(input: { index: number; name: string; path: string }) {
+  return getPlatform().effects.uploadAmbientAudio(input);
+}

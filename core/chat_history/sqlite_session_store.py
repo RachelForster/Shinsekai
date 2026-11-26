@@ -26,6 +26,7 @@ from core.chat_history.models import (
     build_compact_summary_message,
     extract_summary_body,
     is_compact_summary_message,
+    is_omitted_history_summary,
     normalize_memory_mode,
     rollback_memory_for_timeline,
     strip_internal_message_keys,
@@ -41,6 +42,7 @@ from sdk.adapters.memory import (
     MemoryScopeFilter,
 )
 from sdk.adapters.session import ConversationSessionPort
+from sdk.adapters.storage import BackendKind, BackendStatus
 
 logger = logging.getLogger(__name__)
 
@@ -264,6 +266,7 @@ class SqliteSessionStore:
         session_id: str | None = None,
         shared_memory_rollback: Callable[..., int] | None = None,
         max_pool_size: int = 4,
+        name: str | None = None,
     ) -> None:
         raw_str = str(db_path)
         if raw_str == ":memory:":
@@ -281,17 +284,50 @@ class SqliteSessionStore:
             )
 
         self._session_id = resolved_session_id
+        custom_name = str(name).strip() if name is not None else ""
+        self._name = custom_name or f"db.session.{self._session_id[:12]}"
         self._shared_memory_rollback = shared_memory_rollback
         self._write_lock = threading.RLock()
         self._store = SqliteHybridStore(
             ":memory:" if self._db_path is None else self._db_path,
             max_idle_connections=max_pool_size,
+            name=f"{self._name}.hybrid",
         )
         self._save_repo = _SessionSaveMemoryRepo(self._store)
         self._closed = False
         self._init_session_schema()
         if self._db_path is not None and self._session_id:
             _register_session_db_path(self._session_id, self._db_path)
+
+    @property
+    def name(self) -> str:
+        """Logical backend identifier for ``StorageHub`` registration."""
+        return self._name
+
+    def status(self) -> BackendStatus:
+        """Return session DB health and schema version."""
+        with self._write_lock:
+            closed = self._closed
+        kind: BackendKind = "memory" if self._db_path is None else "sqlite"
+        location = ":memory:" if self._db_path is None else str(self._db_path)
+        if closed:
+            return BackendStatus(
+                name=self._name,
+                kind=kind,
+                location=location,
+                healthy=False,
+                schema_version=int(SESSION_SCHEMA_VERSION),
+                detail="closed",
+            )
+        inner = self._store.status()
+        return BackendStatus(
+            name=self._name,
+            kind=kind,
+            location=location,
+            healthy=inner.healthy,
+            schema_version=int(SESSION_SCHEMA_VERSION),
+            detail=inner.detail,
+        )
 
     @property
     def db_path(self) -> Path | None:
@@ -547,7 +583,7 @@ class SqliteSessionStore:
 
                 summary_msg = non_system[summary_idx]
                 body = extract_summary_body(str(summary_msg.get("content") or ""))
-                if body and not body.startswith("【历史摘要】"):
+                if body and not is_omitted_history_summary(body):
                     # A legacy JSON export may only contain the old summary
                     # and its tail, with no raw prefix available to import.
                     self.add_compact_checkpoint(up_to_seq=0, rolling_summary=body, branch_id=b)
