@@ -127,6 +127,7 @@ export interface AdapterExtraFieldSchema {
   choices?: string[];
   default?: unknown;
   label?: string;
+  labelKey?: string;
   max?: number;
   min?: number;
   secret?: boolean;
