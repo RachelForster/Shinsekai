@@ -24,6 +24,13 @@ from application.runtime.tasks import (
     _run_background_task,
     _update_task,
 )
+from frontend_bridge_core.plugin_auth import (
+    PLUGIN_AUTH_COOKIE,
+    build_plugin_cookie_header,
+    is_plugin_route_allowed,
+    is_sensitive_master_only_read,
+    verify_plugin_token,
+)
 from frontend_bridge_core.routes.plugin_routes import inject_bridge_token
 from frontend_bridge_core.routes.router import (
     ApiRequest,
@@ -245,12 +252,58 @@ class BridgeHttpHandler(BaseHTTPRequestHandler):
         morsel = cookie.get(BRIDGE_AUTH_COOKIE)
         return str(morsel.value if morsel is not None else "").strip()
 
-    def _has_valid_auth_token(self) -> bool:
+    def _auth_context(self) -> tuple[str, str | None]:
         required = str(getattr(self.state, "auth_token", "") or "").strip()
         if not required:
-            return True
-        supplied = self._auth_token_from_request()
-        return bool(supplied) and hmac.compare_digest(supplied, required)
+            return ("master", None)
+
+        header_token = str(self.headers.get(BRIDGE_AUTH_HEADER) or "").strip()
+        if header_token:
+            if hmac.compare_digest(header_token, required):
+                return ("master", None)
+            plugin_id = verify_plugin_token(required, header_token)
+            return ("plugin", plugin_id) if plugin_id is not None else ("invalid", None)
+
+        parsed = urlparse(getattr(self, "path", ""))
+        query = parse_qs(parsed.query)
+        query_token = str(
+            (query.get(BRIDGE_AUTH_QUERY) or query.get("token") or [""])[0]
+        ).strip()
+        if query_token:
+            if hmac.compare_digest(query_token, required):
+                return ("master", None)
+            plugin_id = verify_plugin_token(required, query_token)
+            return ("plugin", plugin_id) if plugin_id is not None else ("invalid", None)
+
+        cookie = SimpleCookie()
+        try:
+            cookie.load(str(self.headers.get("Cookie") or ""))
+        except Exception:
+            return ("none", None)
+        plugin_morsel = cookie.get(PLUGIN_AUTH_COOKIE)
+        if plugin_morsel is not None and str(plugin_morsel.value or "").strip():
+            plugin_id = verify_plugin_token(required, str(plugin_morsel.value).strip())
+            return ("plugin", plugin_id) if plugin_id is not None else ("invalid", None)
+        morsel = cookie.get(BRIDGE_AUTH_COOKIE)
+        master_cookie = str(morsel.value if morsel is not None else "").strip()
+        if master_cookie:
+            if hmac.compare_digest(master_cookie, required):
+                return ("master", None)
+            return ("invalid", None)
+        return ("none", None)
+
+    def _has_valid_auth_token(self) -> bool:
+        return self._has_master_auth_token()
+
+    def _has_master_auth_token(self) -> bool:
+        kind, _plugin_id = self._auth_context()
+        return kind == "master"
+
+    def _authenticated_plugin_id(self) -> str | None:
+        if getattr(self, "server", None) is None:
+            return None
+        kind, plugin_id = self._auth_context()
+        return plugin_id if kind == "plugin" else None
 
     def _is_loopback_client(self) -> bool:
         client_address = getattr(self, "client_address", None)
@@ -264,10 +317,33 @@ class BridgeHttpHandler(BaseHTTPRequestHandler):
             return False
 
     def _require_authorized_read(self, path: str) -> None:
-        plugin_tools = path.startswith("/api/plugins/") and path.endswith("/tools")
-        if path.startswith("/api/agent/") or plugin_tools:
-            if not self._request_origin_allowed() or not self._has_valid_auth_token():
+        auth_kind, plugin_id = self._auth_context()
+        if auth_kind == "invalid":
+            if path.startswith("/api/agent/"):
                 raise PermissionError("invalid Agent bridge authorization")
+            raise PermissionError("invalid bridge auth token")
+        if is_sensitive_master_only_read(path):
+            if not self._request_origin_allowed() or auth_kind != "master":
+                if path.startswith("/api/agent/"):
+                    raise PermissionError("invalid Agent bridge authorization")
+                raise PermissionError("invalid bridge auth token")
+            return
+        if path.startswith("/api/plugins/") and path.endswith("/tools"):
+            allowed = self._request_origin_allowed() and (
+                auth_kind == "master"
+                or (
+                    auth_kind == "plugin"
+                    and plugin_id is not None
+                    and is_plugin_route_allowed("GET", path, plugin_id)
+                )
+            )
+            if not allowed:
+                raise PermissionError("invalid Agent bridge authorization")
+            return
+        if auth_kind == "plugin":
+            if plugin_id is None or not is_plugin_route_allowed("GET", path, plugin_id):
+                raise PermissionError("plugin token is not authorized for this route")
+            return
         # Project-backed static roots share the same LAN authorization boundary
         # as APIs. Protecting /assets/ also closes alternate spellings such as
         # /assets/../data/... before path normalization reaches file transport.
@@ -275,24 +351,43 @@ class BridgeHttpHandler(BaseHTTPRequestHandler):
         if (
             protected_path
             and not self._is_loopback_client()
-            and not self._has_valid_auth_token()
+            and auth_kind != "master"
         ):
             raise PermissionError("invalid bridge auth token")
 
     def _inject_bridge_token(self, detail: dict[str, Any]) -> dict[str, Any]:
         return inject_bridge_token(self.state, detail)
 
-    def _require_authorized_write(self, path: str) -> None:
+    def _require_authorized_write(self, path: str, method: str = "POST") -> None:
         if not self._request_origin_allowed():
             raise PermissionError("request origin is not allowed")
-        if path.startswith("/api/") and not self._has_valid_auth_token():
+        if path.startswith("/api/"):
+            auth_kind, plugin_id = self._auth_context()
+            if auth_kind == "master":
+                return
+            if (
+                auth_kind == "plugin"
+                and plugin_id is not None
+                and is_plugin_route_allowed(
+                    str(getattr(self, "command", method) or method),
+                    path,
+                    plugin_id,
+                )
+            ):
+                return
             raise PermissionError("invalid bridge auth token")
 
     def _require_authorized_media_read(self) -> None:
         if not self._request_origin_allowed():
             raise PermissionError("request origin is not allowed")
-        if not self._has_valid_auth_token():
-            raise PermissionError("invalid bridge auth token")
+        auth_kind, plugin_id = self._auth_context()
+        if auth_kind == "master":
+            return
+        if auth_kind == "plugin" and plugin_id is not None:
+            raw_path = urlparse(getattr(self, "path", "")).path
+            if is_plugin_route_allowed("GET", raw_path, plugin_id):
+                return
+        raise PermissionError("invalid bridge auth token")
 
     def _send_cors(self) -> None:
         origin = self._allowed_origin_header(str(self.headers.get("Origin") or ""))
@@ -326,6 +421,14 @@ class BridgeHttpHandler(BaseHTTPRequestHandler):
                 f"{BRIDGE_AUTH_COOKIE}={safe_header_value(required)}; "
                 "Path=/; HttpOnly; SameSite=Strict",
             )
+        elif required and query_token:
+            plugin_id = verify_plugin_token(required, query_token)
+            if plugin_id is not None:
+                cookie_header = build_plugin_cookie_header(
+                    parsed.path, query_token, plugin_id
+                )
+                if cookie_header:
+                    self.send_header("Set-Cookie", cookie_header)
 
     @staticmethod
     def _is_client_disconnect(exc: Exception) -> bool:
@@ -476,6 +579,11 @@ class BridgeHttpHandler(BaseHTTPRequestHandler):
                 body = {}
             if matched.route.body_kind is BodyKind.MULTIPART:
                 uploads = self._read_upload_files()
+            auth_plugin_id = (
+                self._authenticated_plugin_id()
+                if hasattr(self, "_authenticated_plugin_id")
+                else None
+            )
             request = ApiRequest(
                 state=self.state,
                 method=method,
@@ -484,6 +592,7 @@ class BridgeHttpHandler(BaseHTTPRequestHandler):
                 params=matched.params,
                 body=body,
                 uploads=uploads,
+                auth_plugin_id=auth_plugin_id,
             )
             response = matched.route.handler(request)
             if isinstance(response, TaskResponse):

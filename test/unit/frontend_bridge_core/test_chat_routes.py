@@ -65,6 +65,7 @@ def test_chat_route_contracts_remain_stable() -> None:
         ("GET", "/api/chat/themes/{theme_id}"),
         ("POST", "/api/chat/close"),
         ("POST", "/api/chat/command"),
+        ("POST", "/api/chat/behavior-command"),
         ("POST", "/api/chat/export-vn"),
         ("POST", "/api/chat/init"),
         ("POST", "/api/chat/launch"),

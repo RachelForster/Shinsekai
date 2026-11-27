@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from http import HTTPStatus
-from urllib.parse import quote
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
@@ -12,6 +11,7 @@ from application.plugins.catalog import (
     _uninstall_plugin,
 )
 from application.plugins.install_plugin import install_plugin
+from application.plugins.session_behaviors import list_session_behavior_contributions
 from application.plugins.update_application import (
     get_application_update_info,
     list_application_update_tags,
@@ -35,6 +35,7 @@ from frontend_bridge_core.plugin_ui import (
     _run_plugin_ui_action,
     _save_plugin_ui_config,
 )
+from frontend_bridge_core.plugin_auth import inject_scoped_plugin_tokens
 from frontend_bridge_core.routes.router import (
     ApiRequest,
     BodyKind,
@@ -69,17 +70,11 @@ def _invoke_plugin_tool(request: ApiRequest) -> JsonResponse:
 
 
 def inject_bridge_token(state, detail: dict) -> dict:
-    token = str(getattr(state, "auth_token", "") or "").strip()
-    if not token:
-        return detail
-    for page in detail.get("pages") or []:
-        url = str(page.get("frontendUrl") or "")
-        if url.startswith("/api/") and _BRIDGE_AUTH_QUERY not in url:
-            separator = "&" if "?" in url else "?"
-            page["frontendUrl"] = (
-                f"{url}{separator}{_BRIDGE_AUTH_QUERY}={quote(token, safe='')}"
-            )
-    return detail
+    return inject_scoped_plugin_tokens(state, detail)
+
+
+def _list_session_behaviors(_request: ApiRequest) -> JsonResponse:
+    return JsonResponse({"behaviors": list_session_behavior_contributions()})
 
 
 def _list_plugins(request: ApiRequest) -> JsonResponse:
@@ -265,6 +260,13 @@ PLUGIN_ROUTES = (
         handler=_list_chat_ui_contributions,
         body_kind=BodyKind.NONE,
         name="plugins.chat_ui_contributions",
+    ),
+    Route(
+        methods=frozenset({"GET"}),
+        pattern="/api/plugins/session-behaviors",
+        handler=_list_session_behaviors,
+        body_kind=BodyKind.NONE,
+        name="plugins.session_behaviors",
     ),
     Route(
         methods=frozenset({"GET"}),

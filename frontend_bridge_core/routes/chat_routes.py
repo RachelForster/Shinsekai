@@ -115,6 +115,30 @@ def _command(request: ApiRequest) -> JsonResponse:
     return JsonResponse(_handle_chat_command(request.state, request.body))
 
 
+def _behavior_command(request: ApiRequest) -> JsonResponse:
+    if request.auth_plugin_id is not None:
+        chat_session = getattr(request.state, "chat_session", None)
+        active_owner = (
+            str(chat_session.get("behaviorPluginId") or "").strip()
+            if isinstance(chat_session, dict)
+            else ""
+        )
+        if not active_owner or active_owner != request.auth_plugin_id:
+            raise PermissionError("plugin is not the owner of the active session behavior")
+    body = request.body if isinstance(request.body, dict) else {}
+    if isinstance(body.get("payload"), dict) and (
+        body.get("type") == "behavior-command" or "action" not in body
+    ):
+        command_body = {
+            **body,
+            "type": "behavior-command",
+            "payload": dict(body["payload"]),
+        }
+    else:
+        command_body = {"type": "behavior-command", "payload": dict(body)}
+    return JsonResponse(_handle_chat_command(request.state, command_body))
+
+
 def _set_active_theme(request: ApiRequest) -> JsonResponse:
     return JsonResponse(set_active_chat_theme(request.state, request.body))
 
@@ -335,6 +359,12 @@ CHAT_ROUTES = (
         pattern="/api/chat/command",
         handler=_command,
         name="chat.command",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/chat/behavior-command",
+        handler=_behavior_command,
+        name="chat.behavior_command",
     ),
     Route(
         methods=frozenset({"POST"}),

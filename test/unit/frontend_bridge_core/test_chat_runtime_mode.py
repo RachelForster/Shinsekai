@@ -410,7 +410,11 @@ class ChatRuntimeModeTests(unittest.TestCase):
         handler.path = "/data/config/api.yaml"
         handler.client_address = ("127.0.0.1", 51000)
         handler.headers = {}
-        handler._require_authorized_read("/data/config/api.yaml")
+        with self.assertRaisesRegex(PermissionError, "invalid bridge auth token"):
+            handler._require_authorized_read("/data/config/api.yaml")
+
+        handler.path = "/data/sprites/demo.png"
+        handler._require_authorized_read("/data/sprites/demo.png")
 
     def test_launch_chat_forces_legacy_native_config_to_react(self):
         handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)

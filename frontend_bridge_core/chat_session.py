@@ -39,6 +39,7 @@ from application.chat.composition import (
 )
 from application.chat.start_chat import start_chat
 from application.chat.stop_chat import stop_chat
+from application.plugins.session_behaviors import find_session_behavior_plugin_id
 from application.chat.templates import (
     _compose_for_llm,
     _latest_history_json,
@@ -361,6 +362,16 @@ def _launch_chat_locked(
     if not raw_memory_mode and (body.get("storyPath") or is_novel_launch):
         raw_memory_mode = "isolated"
     raw_initial_outfits = body.get("initialOutfits")
+    behavior_id = str(body.get("behaviorId") or "").strip()
+    raw_behavior_config = body.get("behaviorConfig")
+    behavior_config = (
+        dict(raw_behavior_config)
+        if isinstance(raw_behavior_config, dict)
+        else {}
+    )
+    behavior_plugin_id = (
+        find_session_behavior_plugin_id(behavior_id) if behavior_id else ""
+    )
     session_base = {
         "playerCharacter": player_character,
         "readPlayerSpeech": bool(body.get("readPlayerSpeech", False)),
@@ -376,6 +387,9 @@ def _launch_chat_locked(
         ),
         "workflowPath": str(body.get("workflowPath") or ""),
         "memoryMode": raw_memory_mode,
+        "behaviorId": behavior_id,
+        "behaviorConfig": behavior_config,
+        "behaviorPluginId": behavior_plugin_id,
         "autoOutfitSwitch": (
             bool(body["autoOutfitSwitch"])
             if isinstance(body.get("autoOutfitSwitch"), bool)
@@ -484,6 +498,11 @@ def _launch_chat_locked(
             "mediaSelectionMode": media_selection_mode,
             "outputFormat": output_format,
             "initSpritePath": init_sprite_path,
+            **(
+                {"behaviorId": behavior_id, "behaviorConfig": behavior_config}
+                if behavior_id
+                else {}
+            ),
         })
     except OSError:
         logger.exception("Chat launched but its conversation settings could not be saved")

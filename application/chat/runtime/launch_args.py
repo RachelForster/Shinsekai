@@ -121,6 +121,18 @@ def build_chat_arg_parser(tr_i18n: Callable[..., str]) -> argparse.ArgumentParse
         default="",
         help="Mirror desktop chat UI updates to a bridge WebSocket endpoint while keeping the native Qt chat window.",
     )
+    parser.add_argument(
+        "--behavior-id",
+        type=str,
+        default="",
+        help="Optional plugin-registered SessionBehavior ID to attach to this session.",
+    )
+    parser.add_argument(
+        "--behavior-config",
+        type=str,
+        default="",
+        help="JSON object of runtime config overrides passed to the active SessionBehavior.",
+    )
     return parser
 
 
