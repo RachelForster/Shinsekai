@@ -8,7 +8,7 @@ import { useChatStagePageController } from "./controllers/useChatStagePageContro
 
 export function ChatStagePage() {
   const controller = useChatStagePageController();
-  const { desktop, historyReplay, interaction, pluginOverlay, stage } = controller;
+  const { composer, desktop, historyReplay, pluginOverlay, stage } = controller;
 
   return (
     <>
@@ -16,7 +16,7 @@ export function ChatStagePage() {
         <PluginPageOverlay onClose={pluginOverlay.closePluginPageOverlay} target={pluginOverlay.overlayTarget} />
       ) : null}
       <main
-        ref={interaction.stageRef}
+        ref={composer.stageRef}
         className="chat-stage"
         data-mini-avatar={stage.miniAvatarActive ? "true" : "false"}
         data-viewport-vn={stage.vnDialogActive ? "true" : "false"}

@@ -16,10 +16,12 @@ export interface ChatStageDialogAreaProps {
 export function ChatStageDialogArea({ controller }: ChatStageDialogAreaProps) {
   const { t } = useI18n();
   const {
+    attachments,
     commands,
+    composer,
     desktop,
+    dialogPlayback,
     historyReplay,
-    interaction,
     modals,
     pluginOverlay,
     runtime,
@@ -62,7 +64,7 @@ export function ChatStageDialogArea({ controller }: ChatStageDialogAreaProps) {
       onToggleScreenShare={
         stage.remoteMobileAccess || stage.standalone ? undefined : screenShare.handleToggleScreenShare
       }
-      onTurnOptionsChange={interaction.updateTurnOptions}
+      onTurnOptionsChange={composer.updateTurnOptions}
       outfitCatalog={state.outfitCatalog}
       outfits={state.outfits}
       screenShareStarting={screenShare.screenShareStarting || screenShare.screenSharePreflightOpen}
@@ -85,12 +87,12 @@ export function ChatStageDialogArea({ controller }: ChatStageDialogAreaProps) {
             {viewModel.toolConfirmation ? (
               <ToolConfirmationLayer
                 confirmation={viewModel.toolConfirmation}
-                onResolve={interaction.resolveToolConfirmation}
+                onResolve={composer.resolveToolConfirmation}
               />
             ) : (
               <OptionsLayer
                 hidden={false}
-                onSelect={interaction.submitOption}
+                onSelect={composer.submitOption}
                 options={viewModel.options}
                 readOnly={historyReplay.replaying}
                 selectedIndex={state.replaySelectedIndex}
@@ -103,7 +105,9 @@ export function ChatStageDialogArea({ controller }: ChatStageDialogAreaProps) {
         ) : (
           <DialogLayer
             readOnly={historyReplay.replaying}
-            canAdvance={viewModel.layers.dialog && !interaction.typingDialog && interaction.dialogTotalCharacters > 0}
+            canAdvance={
+              viewModel.layers.dialog && !dialogPlayback.typingDialog && dialogPlayback.dialogTotalCharacters > 0
+            }
             characterName={viewModel.dialogCharacterName}
             playerPortrait={playerPortraitForDialog(
               state.playerPortrait,
@@ -111,14 +115,14 @@ export function ChatStageDialogArea({ controller }: ChatStageDialogAreaProps) {
               viewModel.dialogText,
             )}
             hidden={!viewModel.layers.dialog || stage.miniAvatarActive}
-            htmlNodes={interaction.displayedDialog.nodes}
-            onAdvance={interaction.advanceDialog}
+            htmlNodes={dialogPlayback.displayedDialog.nodes}
+            onAdvance={dialogPlayback.advanceDialog}
             onOpenPluginPage={pluginOverlay.openPluginPage}
-            onSkip={interaction.typingDialog ? interaction.advanceDialog : undefined}
-            text={interaction.typingDialog ? interaction.displayedDialog.text : viewModel.dialogText}
+            onSkip={dialogPlayback.typingDialog ? dialogPlayback.advanceDialog : undefined}
+            text={dialogPlayback.typingDialog ? dialogPlayback.displayedDialog.text : viewModel.dialogText}
             textDirection={runtime.dialogTextDirection}
             toolbar={runtime.dialogToolbarDetached || historyReplay.activeReplay ? undefined : dialogToolbar}
-            typing={interaction.typingDialog}
+            typing={dialogPlayback.typingDialog}
           />
         )}
       </div>
@@ -149,17 +153,17 @@ export function ChatStageDialogArea({ controller }: ChatStageDialogAreaProps) {
         locked={historyReplay.replaying}
         hidden={stage.miniAvatarActive || (!viewModel.layers.input && !historyReplay.replaying)}
         inputLayout={runtime.inputLayout}
-        onChange={interaction.setDraft}
+        onChange={composer.setDraft}
         onCommand={commands.sendCommand}
-        onDropFiles={interaction.handleDropFiles}
+        onDropFiles={attachments.handleDropFiles}
         onFlushBatch={() => commands.sendCommand({ type: "flush-input-batch" })}
-        onInputActivity={interaction.updateInputActivity}
-        onPickAttachments={interaction.pickAttachments}
-        onRemoveAttachment={interaction.removeAttachment}
-        onSubmit={interaction.submit}
-        previousMessages={interaction.recentInputs}
+        onInputActivity={composer.updateInputActivity}
+        onPickAttachments={attachments.pickAttachments}
+        onRemoveAttachment={attachments.removeAttachment}
+        onSubmit={composer.submit}
+        previousMessages={composer.recentInputs}
         replayProgress={state.replay}
-        submitDisabled={interaction.attachmentUploadPending}
+        submitDisabled={attachments.attachmentUploadPending}
         value={viewModel.inputDraft}
       />
       {stage.miniAvatarActive ? (
@@ -177,11 +181,11 @@ export function ChatStageDialogArea({ controller }: ChatStageDialogAreaProps) {
               Boolean(viewModel.story) ||
               viewModel.behavior?.stagePolicy?.playbackEndAction === "auto_advance") &&
             viewModel.layers.dialog &&
-            !interaction.typingDialog &&
-            interaction.dialogTotalCharacters > 0
+            !dialogPlayback.typingDialog &&
+            dialogPlayback.dialogTotalCharacters > 0
           }
           dialogCharacterName={viewModel.dialogCharacterName}
-          dialogText={interaction.typingDialog ? interaction.displayedDialog.text : viewModel.dialogText}
+          dialogText={dialogPlayback.typingDialog ? dialogPlayback.displayedDialog.text : viewModel.dialogText}
           dialogVisible={viewModel.layers.dialog}
           dockSide={desktop.miniDockSide}
           inputDisabled={viewModel.inputDisabled}
@@ -191,22 +195,22 @@ export function ChatStageDialogArea({ controller }: ChatStageDialogAreaProps) {
           miniInputShortcut={runtime.runtimeConfig.miniInputShortcut}
           notificationText={viewModel.notificationText}
           notificationVisible={viewModel.layers.notification}
-          onAdvance={interaction.advanceDialog}
+          onAdvance={dialogPlayback.advanceDialog}
           onAutoPlayChange={runtime.setAuto}
-          onChangeInput={interaction.setDraft}
+          onChangeInput={composer.setDraft}
           onCommand={commands.sendCommand}
           onDesktopDragEnd={desktop.syncDesktopMiniDockSide}
-          onDropFiles={interaction.handleDropFiles}
+          onDropFiles={attachments.handleDropFiles}
           onExitMiniMode={desktop.exitMiniAvatarMode}
           onFlushBatch={() => commands.sendCommand({ type: "flush-input-batch" })}
-          onInputActivity={interaction.updateInputActivity}
+          onInputActivity={composer.updateInputActivity}
           onInputPinnedChange={desktop.setMiniInputPinned}
           onLongPressTalkChange={runtime.updateLongPressTalk}
-          onPickAttachments={interaction.pickAttachments}
-          onRemoveAttachment={interaction.removeAttachment}
-          onResolveToolConfirmation={interaction.resolveToolConfirmation}
-          onSelectOption={interaction.submitOption}
-          onSubmit={interaction.submit}
+          onPickAttachments={attachments.pickAttachments}
+          onRemoveAttachment={attachments.removeAttachment}
+          onResolveToolConfirmation={composer.resolveToolConfirmation}
+          onSelectOption={composer.submitOption}
+          onSubmit={composer.submit}
           onToggleScreenShare={stage.remoteMobileAccess ? undefined : screenShare.handleToggleScreenShare}
           options={viewModel.options}
           optionsVisible={viewModel.layers.options}
@@ -215,7 +219,7 @@ export function ChatStageDialogArea({ controller }: ChatStageDialogAreaProps) {
             viewModel.dialogCharacterName,
             viewModel.dialogText,
           )}
-          previousMessages={interaction.recentInputs}
+          previousMessages={composer.recentInputs}
           runtimeFramingForSprite={(sprite, index) => runtimeSpriteFraming(runtime.runtimeConfig, sprite, index)}
           screenShareStarting={screenShare.screenShareStarting || screenShare.screenSharePreflightOpen}
           screenSharing={screenShare.screenSharing}
@@ -224,10 +228,10 @@ export function ChatStageDialogArea({ controller }: ChatStageDialogAreaProps) {
           sprites={stage.stageSprites}
           standaloneDesktopWindow={desktop.standaloneDesktopWindow}
           status={viewModel.status}
-          submitDisabled={interaction.attachmentUploadPending}
+          submitDisabled={attachments.attachmentUploadPending}
           thinkingCharacterName={viewModel.thinkingCharacterName}
           toolConfirmation={viewModel.toolConfirmation}
-          typing={interaction.typingDialog}
+          typing={dialogPlayback.typingDialog}
           userDisplayName={viewModel.userDisplayName}
         />
       ) : null}

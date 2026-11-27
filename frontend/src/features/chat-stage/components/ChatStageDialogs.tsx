@@ -12,9 +12,9 @@ export interface ChatStageDialogsProps {
 export function ChatStageDialogs({ controller }: ChatStageDialogsProps) {
   const {
     commands,
+    composer,
     desktop,
     historyReplay,
-    interaction,
     modals,
     pluginOverlay,
     runtime,
@@ -121,7 +121,7 @@ export function ChatStageDialogs({ controller }: ChatStageDialogsProps) {
         onSpriteFramingChange={runtime.updateSpriteFraming}
         onTextSpeedChange={runtime.updateTextSpeed}
         onTextStyleChange={runtime.updateTextStyle}
-        onTurnOptionsChange={interaction.updateTurnOptions}
+        onTurnOptionsChange={composer.updateTurnOptions}
         onWindowScaleChange={runtime.updateWindowScale}
         open={modals.toolbarConfigOpen}
         spriteOffsetX={runtime.runtimeConfig.spriteOffsetX}

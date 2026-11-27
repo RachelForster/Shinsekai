@@ -22,7 +22,8 @@ export interface ChatStageSceneProps {
 }
 
 export function ChatStageScene({ controller }: ChatStageSceneProps) {
-  const { desktop, historyReplay, interaction, modals, pluginOverlay, runtime, stage, state, viewModel } = controller;
+  const { desktop, dialogPlayback, historyReplay, modals, pluginOverlay, runtime, stage, state, viewModel } =
+    controller;
 
   return (
     <>
@@ -66,7 +67,7 @@ export function ChatStageScene({ controller }: ChatStageSceneProps) {
         bgmVolume={runtime.runtimeConfig.bgmVolume}
         effectVolume={runtime.runtimeConfig.effectVolume}
         commands={state.audioCommands}
-        onPlaybackSignal={interaction.handlePlaybackSignal}
+        onPlaybackSignal={dialogPlayback.handlePlaybackSignal}
       />
       <CgLayer
         hidden={!viewModel.layers.cg || stage.miniAvatarActive}
@@ -86,7 +87,7 @@ export function ChatStageScene({ controller }: ChatStageSceneProps) {
         runtimeScaleForSprite={(sprite, index) => runtimeSpriteScale(runtime.runtimeConfig, sprite, index)}
         runtimeFramingForSprite={(sprite, index) => runtimeSpriteFraming(runtime.runtimeConfig, sprite, index)}
         speaker={viewModel.dialogCharacterName}
-        responding={viewModel.status === "speaking" || viewModel.status === "streaming" || interaction.typingDialog}
+        responding={viewModel.status === "speaking" || viewModel.status === "streaming" || dialogPlayback.typingDialog}
         spriteMotions={viewModel.spriteMotions}
         thinkingCharacterName={viewModel.thinkingCharacterName}
         sprites={stage.stageSprites}
@@ -100,7 +101,7 @@ export function ChatStageScene({ controller }: ChatStageSceneProps) {
           historyReplay.replaying ||
           viewModel.status === "streaming" ||
           viewModel.status === "speaking" ||
-          interaction.typingDialog
+          dialogPlayback.typingDialog
         }
         reaction={viewModel.spriteReaction}
         sprites={stage.stageSprites}

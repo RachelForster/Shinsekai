@@ -17,9 +17,11 @@ import { useStageViewport } from "../hooks/useStageViewport";
 import { chatStageRuntimeStyle } from "../runtimeConfig";
 import { limitChatStageSpritesToSlots } from "../state/sprites";
 import { initialChatStageState } from "./chatStageRouteState";
+import { useChatStageAttachmentsController } from "./useChatStageAttachmentsController";
+import { useChatStageComposerController } from "./useChatStageComposerController";
 import { useChatStageDesktopWindowController } from "./useChatStageDesktopWindowController";
+import { useChatStageDialogPlaybackController } from "./useChatStageDialogPlaybackController";
 import { useChatStageHistoryReplayController } from "./useChatStageHistoryReplayController";
-import { useChatStageInteractionController } from "./useChatStageInteractionController";
 import { useChatStagePluginOverlayController } from "./useChatStagePluginOverlayController";
 import { useChatStageRuntimeConfigController } from "./useChatStageRuntimeConfigController";
 import { useChatStageScreenShareController } from "./useChatStageScreenShareController";
@@ -123,7 +125,7 @@ export function useChatStagePageController() {
   const dialogSurfaceVisible =
     Boolean(historyReplay.activeReplay) || viewModel.layers.dialog || viewModel.layers.options;
 
-  const interaction = useChatStageInteractionController({
+  const dialogPlayback = useChatStageDialogPlaybackController({
     activeReplay: historyReplay.activeReplay,
     auto: runtime.runtimeConfig.auto,
     dialogTextDirection: runtime.dialogTextDirection,
@@ -134,11 +136,31 @@ export function useChatStagePageController() {
     miniAvatarActive,
     modalOpen,
     sendCommand: commands.sendCommand,
-    showToast,
     state,
     t,
     toggleAuto: runtime.toggleAuto,
     typewriterCps: runtime.typewriterCps,
+    viewModel,
+  });
+
+  const attachments = useChatStageAttachmentsController({
+    dispatch,
+    inputAttachments: state.inputAttachments,
+    showToast,
+    t,
+  });
+
+  const composer = useChatStageComposerController({
+    activeReplay: historyReplay.activeReplay,
+    dispatch,
+    hasPendingUploads: attachments.hasPendingUploads,
+    modalOpen,
+    sendCommand: commands.sendCommand,
+    showDialogImmediately: dialogPlayback.showDialogImmediately,
+    showToast,
+    state,
+    t,
+    typingDialog: dialogPlayback.typingDialog,
     viewModel,
   });
 
@@ -170,7 +192,7 @@ export function useChatStagePageController() {
     transparentBackground,
   });
 
-  const stageViewport = useStageViewport(interaction.stageRef);
+  const stageViewport = useStageViewport(composer.stageRef);
   const activeStageViewport = miniAvatarActive ? null : stageViewport;
   const vnDialogActive = shouldApplyVnDialogAdaptation(activeStageViewport);
   const stageStyle = useMemo(
@@ -235,17 +257,19 @@ export function useChatStagePageController() {
     viewModel.asrRunning ||
     Boolean(viewModel.toolConfirmation) ||
     state.turnState.pendingCount > 0 ||
-    interaction.attachmentUploadPending;
+    attachments.attachmentUploadPending;
 
   const openWorkspace = useCallback(() => {
     navigate(getRuntimeTarget() === "toy" ? "/settings/characters" : "/settings/templates");
   }, [navigate]);
 
   return {
+    attachments,
     commands,
+    composer,
     desktop,
+    dialogPlayback,
     historyReplay,
-    interaction,
     modals: {
       confirmClearHistory,
       conversationEditorOpen,

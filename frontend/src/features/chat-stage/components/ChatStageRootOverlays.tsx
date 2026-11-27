@@ -18,7 +18,7 @@ export interface ChatStageRootOverlaysProps {
 
 export function ChatStageRootOverlays({ controller }: ChatStageRootOverlaysProps) {
   const { t } = useI18n();
-  const { commands, historyReplay, interaction, modals } = controller;
+  const { attachments, commands, dialogPlayback, historyReplay, modals } = controller;
 
   return (
     <>
@@ -27,16 +27,16 @@ export function ChatStageRootOverlays({ controller }: ChatStageRootOverlaysProps
         aria-label={t("chat.input.imagePickerTitle")}
         hidden
         multiple
-        onChange={(event) => interaction.handlePickedFiles(event.currentTarget)}
-        ref={interaction.imageAttachmentInputRef}
+        onChange={(event) => attachments.handlePickedFiles(event.currentTarget)}
+        ref={attachments.imageAttachmentInputRef}
         type="file"
       />
       <input
         aria-label={t("chat.input.filePickerTitle")}
         hidden
         multiple
-        onChange={(event) => interaction.handlePickedFiles(event.currentTarget)}
-        ref={interaction.fileAttachmentInputRef}
+        onChange={(event) => attachments.handlePickedFiles(event.currentTarget)}
+        ref={attachments.fileAttachmentInputRef}
         type="file"
       />
       {modals.conversationEditorOpen && (
@@ -44,8 +44,8 @@ export function ChatStageRootOverlays({ controller }: ChatStageRootOverlaysProps
           <CurrentConversationEditorDialog
             onClose={() => modals.setConversationEditorOpen(false)}
             onApplied={(snapshot) => {
-              interaction.replaceSession(snapshot);
-              interaction.showDialogImmediately();
+              dialogPlayback.replaceSession(snapshot);
+              dialogPlayback.showDialogImmediately();
               modals.setConversationEditorOpen(false);
             }}
           />
