@@ -31,7 +31,7 @@ export function TemplateSystemPromptSection({ ctx }: PageSectionProps<TemplateEd
           <div className="template-summary-chips">
             <span className="template-summary-pill">
               {t("template.bar.outputFormat", {
-                format: resolveDialogFormatLabel(ctx.outputFormat, ctx.dialogFormats, t),
+                format: resolveDialogFormatLabel(ctx.outputFormat, ctx.dialogFormats),
               })}
             </span>
             <span className="template-summary-pill">

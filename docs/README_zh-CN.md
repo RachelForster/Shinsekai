@@ -8,6 +8,9 @@
 
 面向 **Galgame / 乙女 / 剧情向 RPG** 的公开源码桌面伙伴与交互演出平台：由大语言模型驱动角色对白与剧情演出，结合 **多形态形象（静态 / 动态立绘、MMD、Live2D）**、**服装分组与情绪联动**、**本地语音克隆、语音合成与口型同步**、**长期记忆与资料检索**、**实时屏幕感知**、**桌面智能助手** 与 **插件 / MCP 扩展**——全面支持 **简体中文 / English / 日本語** 全栈三语，在统一的 Material 3 React / Tauri 设置中心集中管理一切，让聊天舞台专注沉浸演出。
 
+> [!TIP]
+> **寻找手机版？** 欢迎关注社区开发者 [@Asriel-cute](https://github.com/Asriel-cute) 维护的 Android 移植版 **[Shinsekai-Android](https://github.com/Asriel-cute/Shinsekai-Android)** —— 基于 **Kotlin 与 Jetpack Compose** 打造，支持 AI 角色对话与语音合成。手机版的最新进展、安装包与相关问题反馈请前往该仓库查看。
+
 ---
 
 ## 核心亮点
@@ -106,6 +109,10 @@ cd Shinsekai
 | Windows | 双击 `scripts\install.bat` | 双击 `scripts\start.bat`（或 `scripts\start-tauri.bat`） |
 | macOS | 双击 `scripts/install.command` | 双击 `scripts/start.command` |
 | Linux | `./scripts/install-linux.sh` | `./scripts/start.sh` |
+
+#### 手机版（Android 社区移植）
+
+如需在 Android 手机上直接体验，可前往社区移植项目 **[Asriel-cute/Shinsekai-Android](https://github.com/Asriel-cute/Shinsekai-Android)**（由 [@Asriel-cute](https://github.com/Asriel-cute) 维护，基于 Kotlin 与 Jetpack Compose，支持 AI 角色对话与语音合成）。若希望连接桌面端实时互动，也可使用桌面版内置的「局域网手机扫码伴聊」功能。
 
 ### 2. 安装依赖（源码用户）
 
@@ -245,6 +252,7 @@ Portable 整合包已预置 **Qwen3-TTS 0.6B GGUF** 本地语音克隆并默认�
 |------|------|
 | **项目主页（GitHub Pages）** | [rachelforster.github.io/Shinsekai](https://rachelforster.github.io/Shinsekai/) |
 | **绿色整合包仓库（Portable）** | [魔搭 ModelScope](https://www.modelscope.cn/models/twillzxy/shinsekai-portable) · [Hugging Face](https://huggingface.co/RachelForster/shinsekai-portable) |
+| **手机版（Android 社区移植）** | [Asriel-cute/Shinsekai-Android](https://github.com/Asriel-cute/Shinsekai-Android) |
 | **English README（默认主页）** | [README.md](../README.md) |
 | **更新日志与最新版本说明** | [CHANGELOG.md](../CHANGELOG.md) · [2.7.0 Release notes](releases/2.7.0.md) |
 | **图形界面使用指南（新手）** | [GUI_USER_GUIDE_zh-CN.md](GUI_USER_GUIDE_zh-CN.md) |
