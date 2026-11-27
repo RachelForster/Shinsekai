@@ -30,6 +30,7 @@ export function useCharacterPageController(): CharacterPageContext {
   const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
   const data = charactersQuery.data ?? [];
   const isLoading = charactersQuery.isLoading;
+  const voiceProfilesEnabled = configQuery.data?.api_config?.tts_provider === "gpt-sovits";
   const voiceReferenceReadOnly = configQuery.data?.api_config?.tts_provider === "kaggle-gpt-sovits";
 
   const [selectedName, setSelectedName] = useState("");
@@ -465,6 +466,7 @@ export function useCharacterPageController(): CharacterPageContext {
     updateField,
     upsertCharacterInCache,
     visionAvailable,
+    voiceProfilesEnabled,
     voiceReferenceReadOnly,
   };
 }

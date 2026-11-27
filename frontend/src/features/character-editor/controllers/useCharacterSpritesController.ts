@@ -437,6 +437,8 @@ export function useCharacterSpritesController(ctx: CharacterPageContext) {
     updatePendingVoicePath: (path: string) =>
       setPendingVoicePaths((current) => ({ ...current, [selectedSpriteIndex]: path })),
     updateSpriteTag,
+    updateSelectedSpriteVoiceProfile: (id: string | null) =>
+      voice.updateSprite(selectedSpriteIndex, { voice_profile_id: id }),
     updateSelectedSpriteVoiceText: (value: string) => voice.updateSprite(selectedSpriteIndex, { voice_text: value }),
     uploadSelectedSpriteVoice: () => voice.uploadSelectedSpriteVoice(pendingVoicePaths[selectedSpriteIndex] ?? ""),
     uploadSprites,

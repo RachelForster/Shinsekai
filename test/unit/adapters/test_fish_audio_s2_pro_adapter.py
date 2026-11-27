@@ -339,7 +339,7 @@ def test_local_fish_speech_autostart_wait_and_stop(tmp_path, monkeypatch) -> Non
 
     adapter.wait_until_ready(timeout_seconds=2.0, poll_interval_seconds=0.01)
     adapter.stop_server()
-    assert events == ["terminate", "wait:5"]
+    assert events == ["terminate", "wait:5.0"]
     assert adapter.owns_server_process is False
 
 

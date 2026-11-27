@@ -125,6 +125,35 @@ export function upsertCatalogCharacter(current: Character[], character: Characte
   return [...pinnedItems, ...regularItems];
 }
 
+export function removeCharacterVoice(draft: Character, profileId: string): Character {
+  const voiceProfiles = { ...draft.voice_profiles };
+  const [firstId] = Object.keys(voiceProfiles);
+  if (!firstId) return draft;
+
+  const removedId = profileId || firstId;
+  const removed = voiceProfiles[removedId];
+  if (!removed) return draft;
+  delete voiceProfiles[removedId];
+
+  return {
+    ...draft,
+    ...(!profileId && {
+      default_voice_name: removed.name,
+      gpt_model_path: removed.gpt_model_path ?? "",
+      sovits_model_path: removed.sovits_model_path ?? "",
+      refer_audio_path: removed.refer_audio_path ?? "",
+      prompt_text: removed.prompt_text ?? "",
+      prompt_lang: removed.prompt_lang ?? "",
+      speech_speed: removed.speech_speed,
+      speech_volume: removed.speech_volume,
+    }),
+    voice_profiles: voiceProfiles,
+    sprites: draft.sprites.map((sprite) =>
+      sprite.voice_profile_id === removedId ? { ...sprite, voice_profile_id: null } : sprite,
+    ),
+  };
+}
+
 export function buildNewCharacterPayload(
   draft: Character,
   pronunciationMap: Record<string, string>,
@@ -156,6 +185,12 @@ export function buildCommittedCharacterPayload(
   const { relation_graph: _omittedRelationGraph, ...persistedBase } = baseCharacter;
   return {
     ...persistedBase,
+    default_voice_name: draft.default_voice_name?.trim(),
+    voice_profiles: draft.voice_profiles,
+    sprites: baseCharacter.sprites.map((sprite) => {
+      const edited = draft.sprites.find((item) => item.path === sprite.path);
+      return edited ? { ...sprite, voice_profile_id: edited.voice_profile_id } : sprite;
+    }),
     ...(baseCharacter.id ? { id: baseCharacter.id } : {}),
     ...(draft.display_name !== undefined ? { display_name: draft.display_name.trim() } : {}),
     avatar_type: draft.avatar_type ?? baseCharacter.avatar_type ?? "static",
@@ -197,6 +232,11 @@ export function serializeCharacterNonIdentity(character: Character, pronunciatio
     prompt_lang: character.prompt_lang?.trim() || "",
     prompt_text: character.prompt_text?.trim() || "",
     pronunciation_map: sortedMap,
+    default_voice_name: character.default_voice_name?.trim() ?? "",
+    voice_profiles: character.voice_profiles ?? {},
+    sprite_voice_profiles: character.sprites
+      .filter((sprite) => sprite.voice_profile_id)
+      .map((sprite) => [sprite.path, sprite.voice_profile_id]),
     refer_audio_path: character.refer_audio_path?.trim() || "",
     sovits_model_path: character.sovits_model_path?.trim() || "",
     speech_speed: character.speech_speed ?? 1,

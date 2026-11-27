@@ -92,7 +92,19 @@ class PortraitCrop(BaseModel):
     zoom: float = Field(default=1.0, ge=1, le=8)
 
 
+class VoiceProfile(BaseModel):
+    name: str = ""
+    gpt_model_path: str | None = None
+    sovits_model_path: str | None = None
+    refer_audio_path: str | None = None
+    prompt_text: str = ""
+    prompt_lang: str = ""
+    speech_speed: float = Field(default=1.0, ge=0.1, le=5)
+    speech_volume: float = Field(default=1.0, ge=0, le=2)
+
+
 class Sprite(BaseModel):
+    voice_profile_id: str | None = None
     """角色的单个立绘/语音配置（纯内存模型，不做磁盘存在性校验）"""
 
     path: str = Field(..., description="立绘图片的文件路径")
@@ -238,6 +250,8 @@ class Character(BaseModel):
     )
 
     # gpt-sovits 相关的配置
+    default_voice_name: str = ""
+    voice_profiles: dict[str, VoiceProfile] = Field(default_factory=dict)
     gpt_model_path: Optional[str] = Field("", description="角色 GPT 模型的路径 (可选)")
     sovits_model_path: Optional[str] = Field("", description="角色的 SoVITS 语音模型路径 (可选)")
     refer_audio_path: Optional[str] = Field("", description="用于语音克隆的参考音频路径 (可选)")

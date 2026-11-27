@@ -85,6 +85,7 @@ class PresentationMessage(BaseModel):
 
     audio_path: str = Field(..., description="生成的语音 / 资源文件的路径")
     voice_id: str = Field("", description="历史语音的稳定标识")
+    voice_volume: float | None = Field(None, exclude=True)
     dialog_id: str = Field("", exclude=True, repr=False, description="Durable history dialog identity")
     name: str = Field(..., alias="character_name", description="实体名称")
     display_name: str = Field(

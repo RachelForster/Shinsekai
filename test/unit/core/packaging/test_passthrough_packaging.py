@@ -66,6 +66,43 @@ def test_packaging_uses_system_temp_dir_not_cwd(tmp_path: Path, monkeypatch: pyt
     assert list(cwd_dir.iterdir()) == []
 
 
+def test_voice_profile_and_its_bundled_assets_survive_export_and_import(tmp_path: Path) -> None:
+    gpt, sovits, reference = (tmp_path / name for name in ("voice.ckpt", "voice.pth", "voice.wav"))
+    for path in (gpt, sovits, reference):
+        path.write_bytes(path.suffix.encode())
+    character = Character.model_validate({
+        "name": "Haru", "color": "#cc2244", "sprite_prefix": "haru",
+        "default_voice_name": "Haru",
+        "sprites": [{"path": "haru.png", "voice_profile_id": "mujina"}],
+        "voice_profiles": {"mujina": {
+            "name": "Mujina", "gpt_model_path": str(gpt),
+            "sovits_model_path": str(sovits), "refer_audio_path": str(reference),
+            "prompt_lang": "ja", "prompt_text": "Reference",
+        }},
+    })
+    archive = tmp_path / "Haru.char"
+    export_character_package(
+        [character], archive, sprite_dir=tmp_path / "sprites",
+        speech_dir=tmp_path / "speech", model_dir=tmp_path / "models",
+    )
+    imported = stage_character_package_import(
+        archive, existing_names=(), existing_prefixes=(),
+        sprite_dir=tmp_path / "dst" / "sprites", speech_dir=tmp_path / "dst" / "speech",
+        model_dir=tmp_path / "dst" / "models",
+    ).characters[0]
+    assert imported.default_voice_name == "Haru"
+    assert imported.sprites[0].voice_profile_id == "mujina"
+    profile = imported.voice_profiles["mujina"]
+    assert profile.name == "Mujina"
+    assert profile.prompt_text == "Reference"
+    for restored, original in (
+        (profile.gpt_model_path, gpt), (profile.sovits_model_path, sovits),
+        (profile.refer_audio_path, reference),
+    ):
+        assert Path(restored) != original
+        assert Path(restored).read_bytes() == original.read_bytes()
+
+
 def test_character_import_rolls_back_media_dirs_on_db_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

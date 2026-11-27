@@ -248,6 +248,7 @@ def _build_full_character_fixture(src: Path) -> tuple[Character, dict[str, bytes
                 "voice_path": str(smile_wav),
                 "voice_text": "Hello, nice to meet you!",
                 "voice_type": "preset",
+                "voice_profile_id": "alternate",
                 "portrait_crop": {"x": 0.25, "y": 0.35, "zoom": 2.5},
                 "mouth_sync": str(mouth_manifest),
                 "group": "校服",
@@ -319,6 +320,8 @@ def _build_full_character_fixture(src: Path) -> tuple[Character, dict[str, bytes
         "prompt_lang": "ja",
         "speech_speed": 1.15,
         "speech_volume": 0.85,
+        "default_voice_name": "Alice",
+        "voice_profiles": {"alternate": {"name": "Alternate", "refer_audio_path": str(refer_wav)}},
         "pronunciation_map": {"Alice": "アリス"},
     }
 
@@ -375,6 +378,8 @@ def test_schema_field_sets_match_roundtrip_contract_expectations() -> None:
         "prompt_lang",
         "speech_speed",
         "speech_volume",
+        "default_voice_name",
+        "voice_profiles",
         "pronunciation_map",
     }
     assert set(Sprite.model_fields) == {
@@ -382,6 +387,7 @@ def test_schema_field_sets_match_roundtrip_contract_expectations() -> None:
         "voice_path",
         "voice_text",
         "voice_type",
+        "voice_profile_id",
         "portrait_crop",
         "mouth_sync",
         "group",
@@ -500,6 +506,9 @@ def test_character_use_case_export_import_preserves_every_field_and_conflict_cop
             assert imported.prompt_lang == "ja"
             assert imported.speech_speed == 1.15
             assert imported.speech_volume == 0.85
+            assert imported.default_voice_name == "Alice"
+            assert imported.voice_profiles["alternate"].name == "Alternate"
+            assert Path(imported.voice_profiles["alternate"].refer_audio_path).read_bytes() == expected_bytes["refer_wav"]
             assert imported.pronunciation_map == {"Alice": "アリス"}
             assert imported.is_builtin is False
             assert imported.pinned is False
@@ -540,6 +549,7 @@ def test_character_use_case_export_import_preserves_every_field_and_conflict_cop
                 assert resolved_wav.read_bytes() == expected_bytes[wav_key]
             assert s0.voice_text == "Hello, nice to meet you!"
             assert s0.voice_type == "preset"
+            assert s0.voice_profile_id == "alternate"
             assert s0.portrait_crop == PortraitCrop(x=0.25, y=0.35, zoom=2.5)
             assert s0.group == "校服"
             assert Path(s0.mouth_sync).resolve().is_relative_to(

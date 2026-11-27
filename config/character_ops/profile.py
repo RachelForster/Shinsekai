@@ -86,6 +86,17 @@ def _apply_sprite_patch_metadata(
         for idx, item in enumerate(patch_sprites):
             if not (0 <= idx < len(merged_sprites) and isinstance(item, Mapping)):
                 continue
+            if "voice_profile_id" in item and item.get("path") == (
+                merged_sprites[idx].get("path") if isinstance(merged_sprites[idx], dict)
+                else merged_sprites[idx].path
+            ):
+                sp = merged_sprites[idx]
+                profile_id = str(item["voice_profile_id"] or "").strip() or None
+                merged_sprites[idx] = (
+                    {**sp, "voice_profile_id": profile_id}
+                    if isinstance(sp, dict)
+                    else sp.model_copy(update={"voice_profile_id": profile_id})
+                )
             if "portrait_crop" in item:
                 raw_crop = item["portrait_crop"]
                 crop_val = PortraitCrop.model_validate(raw_crop) if raw_crop else None

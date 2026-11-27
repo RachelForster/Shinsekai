@@ -137,5 +137,6 @@ export interface CharacterPageContext {
   updateField: <K extends keyof Character>(name: K, value: Character[K]) => void;
   upsertCharacterInCache: (character: Character) => void;
   visionAvailable: boolean;
+  voiceProfilesEnabled: boolean;
   voiceReferenceReadOnly: boolean;
 }

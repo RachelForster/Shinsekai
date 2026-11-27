@@ -1,3 +1,14 @@
+import type { VoiceProfile } from "./characterVoiceTypes";
+import type { RelationGraph, CharacterRelationGraph, RelationRequest } from "./characterRelationTypes";
+import type {
+  CharacterMemory,
+  CharacterMemoryRememberOptions,
+  CharacterMemoryList,
+  CharacterMemoryImportPreview,
+  CharacterMemoryImportResult,
+  CharacterMemorySearchInput,
+  Mem0Status,
+} from "./characterMemoryTypes";
 import type {
   MouthPose,
   SpriteMouthCorrection,
@@ -13,31 +24,13 @@ export type {
 import type { SpriteTransitionMedia as SpriteTransitionAsset } from "../../assets/spriteTransition";
 import type { ImageAutoLabelResult, TaskProgressOptions, TaskSnapshot } from "./taskTypes";
 
-export interface RelationNode {
-  key: string;
-}
-
-export interface RelationEdge {
-  source: string;
-  target: string;
-  temperature: number;
-  content: string;
-}
-
-export interface RelationGraph {
-  nodes: RelationNode[];
-  edges: RelationEdge[];
-}
-
-export interface CharacterRelationGraph extends RelationGraph {
-  owner: string;
-}
-
-export type RelationRequest =
-  | { op: "add_node"; node: RelationNode }
-  | { op: "delete_node"; key: string }
-  | { op: "upsert_edge"; edge: RelationEdge }
-  | { op: "delete_edge"; source: string; target: string };
+export type {
+  RelationNode,
+  RelationEdge,
+  RelationGraph,
+  CharacterRelationGraph,
+  RelationRequest,
+} from "./characterRelationTypes";
 
 export interface PortraitCrop {
   x: number;
@@ -53,7 +46,10 @@ export interface PlayerPortrait {
 
 export type SpriteVoiceType = "fallback" | "preset" | "reference";
 
+export type { VoiceProfile } from "./characterVoiceTypes";
+
 export interface Sprite {
+  voice_profile_id?: string | null;
   group?: string | null;
   mouth_sync?: string | null;
   portrait_crop?: PortraitCrop | null;
@@ -82,6 +78,8 @@ export interface AvatarRuntimeImport {
 }
 
 export interface Character {
+  default_voice_name?: string;
+  voice_profiles?: Record<string, VoiceProfile>;
   id?: string;
   sprite_groups?: string[];
   default_sprite_group?: string | null;
@@ -140,92 +138,17 @@ export interface CharacterTranslateResult {
   name: string;
 }
 
-export type CharacterMemoryClarity = "canon" | "clear" | "faded" | "dormant";
-
-export interface CharacterMemory {
-  id: string;
-  memory: string;
-  detail?: string;
-  gist?: string;
-  clarity?: CharacterMemoryClarity;
-  retention?: number;
-  kind?: string;
-  pinned?: boolean;
-  scope?: string;
-  slotKey?: string;
-  topicTags?: string[];
-  entities?: string[];
-  importance?: number;
-  createdAt?: number;
-  eventAt?: number | null;
-  lastRecalledAt?: number;
-  recallCount?: number;
-  sourceSessionId?: string;
-}
-
-export interface CharacterMemoryRememberOptions {
-  pinned?: boolean;
-  gistText?: string;
-  slotKey?: string;
-  kind?: string;
-  sessionId?: string;
-}
-
-export interface CharacterMemoryList {
-  agentId: string;
-  count: number;
-  memories: CharacterMemory[];
-}
-
-export interface CharacterMemoryImportFilePreview {
-  chunkCount: number;
-  dialogueCharacters: number;
-  dialogueLineCount: number;
-  kind: string;
-  name: string;
-  sourceTokens: number;
-}
-
-export interface CharacterMemoryImportPreview {
-  chunkCount: number;
-  dialogueCharacters: number;
-  dialogueLineCount: number;
-  estimatedInputTokens: number;
-  estimatedOutputTokens: number;
-  estimatedTotalTokens: number;
-  fileCount: number;
-  files: CharacterMemoryImportFilePreview[];
-  sourceTokens: number;
-  warnings: string[];
-}
-
-export interface CharacterMemoryImportResult {
-  chunkCount: number;
-  duplicateCount: number;
-  estimatedTotalTokens: number;
-  extractedCount: number;
-  fileCount: number;
-  memories?: string[];
-  savedCount: number;
-}
-
-export interface CharacterMemorySearchInput {
-  limit?: number;
-  name: string;
-  query: string;
-  sessionId?: string;
-  memoryMode?: string;
-}
-
-export interface Mem0Status {
-  status: "ready" | "loading" | "not_started" | "error" | "missing_dependency";
-  engine?: string;
-  message?: string;
-  modelCached?: boolean;
-  moduleName?: string;
-  packageName?: string;
-  task?: TaskSnapshot;
-}
+export type {
+  CharacterMemoryClarity,
+  CharacterMemory,
+  CharacterMemoryRememberOptions,
+  CharacterMemoryList,
+  CharacterMemoryImportFilePreview,
+  CharacterMemoryImportPreview,
+  CharacterMemoryImportResult,
+  CharacterMemorySearchInput,
+  Mem0Status,
+} from "./characterMemoryTypes";
 
 export interface SaveSpriteGroupsInput {
   name: string;
