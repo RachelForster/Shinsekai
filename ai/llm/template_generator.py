@@ -5,6 +5,7 @@ Configuration and plugin discovery stay at this boundary; rendering lives in
 method signatures and the ``(template, warning)`` result remain supported.
 """
 
+from collections.abc import Sequence
 from typing import Any
 
 from config.config_manager import ConfigManager, character_name_key
@@ -188,10 +189,35 @@ class TemplateGenerator:
         read_player_speech: bool = False,
         allow_player_dialogue: bool = True,
         output_format: str = DEFAULT_DIALOG_FORMAT_ID,
+        include_character_profiles: bool = True,
+        character_entries: Sequence[tuple[str, str]] | None = None,
     ):
-        if not selected_characters:
-            raise NoValidCharactersError()
-        characters = self.resolve_chat_template_characters(selected_characters)
+        if character_entries is not None:
+            resolved_pairs: list[tuple[str, Any]] = []
+            seen_display: set[str] = set()
+            for entry in character_entries:
+                if not isinstance(entry, (tuple, list)) or len(entry) != 2:
+                    continue
+                display_name = str(entry[0] or "").strip()
+                local_name = str(entry[1] or "").strip()
+                if not local_name:
+                    continue
+                matched = self.resolve_chat_template_characters([local_name])
+                if not matched:
+                    continue
+                canonical_local, char_obj = matched[0]
+                prompt_name = display_name or canonical_local
+                if prompt_name in seen_display:
+                    continue
+                seen_display.add(prompt_name)
+                resolved_pairs.append((prompt_name, char_obj))
+            characters = resolved_pairs
+            if not characters:
+                raise NoValidCharactersError()
+        else:
+            if not selected_characters:
+                raise NoValidCharactersError()
+            characters = self.resolve_chat_template_characters(selected_characters)
         cleaned_player_arg = str(player_character or "").strip()
         player = next(
             (
@@ -255,7 +281,12 @@ class TemplateGenerator:
         has_self_in_cast = any(is_self_persona(character) for _name, character in characters)
         self_persona_setting = ""
         self_persona_name = ""
-        if not cleaned_player_arg and player is None and not has_self_in_cast:
+        if (
+            include_character_profiles
+            and not cleaned_player_arg
+            and player is None
+            and not has_self_in_cast
+        ):
             getter_self = getattr(config_manager, "get_self_persona", None)
             self_char = getter_self() if callable(getter_self) else None
             if self_char is None:
@@ -323,6 +354,7 @@ class TemplateGenerator:
             media_selection_mode=(
                 "semantic" if media_selection_mode == "semantic" else "indexed"
             ),
+            include_character_profiles=include_character_profiles,
             output_format_id=resolved_format,
         )
         return DialogTemplateSection().render(context), ""

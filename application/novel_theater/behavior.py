@@ -6,6 +6,7 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 from ai.llm.template.session.novel_theater import render_novel_compact_instruction
+from application.novel_theater.casting import casting_map_from_novel_state
 from application.novel_theater.prepare_launch import (
     NOVEL_THEATER_BEHAVIOR_ID,
     resolve_chapter_index_for_chunk,
@@ -346,7 +347,6 @@ class NovelTheaterBehavior(SessionBehavior):
             if not isinstance(entry, Mapping):
                 continue
             src = str(entry.get("sourceName") or "").strip()
-            target = str(entry.get("targetCharacter") or "").strip()
             aliases = [
                 str(a).strip()
                 for a in (entry.get("aliases") or ())
@@ -355,8 +355,6 @@ class NovelTheaterBehavior(SessionBehavior):
             if not src:
                 continue
             label = src if not aliases else f"{src} ({'/'.join(aliases)})"
-            if target and target != src:
-                label = f"{label}->{target}"
             parts.append(label)
         cast_summary = "; ".join(parts[:12])
         instruction = render_novel_compact_instruction(
@@ -366,7 +364,7 @@ class NovelTheaterBehavior(SessionBehavior):
         context.add_instruction(instruction)
 
     def get_casting_map(self, state: Mapping[str, Any]) -> CastingMap:
-        return CastingMap.from_dict(state.get("casting") or {})
+        return casting_map_from_novel_state(state)
 
     def on_state_restored(
         self,

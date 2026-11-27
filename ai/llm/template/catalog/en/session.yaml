@@ -79,10 +79,11 @@ novel_director_rules: |-
   Follow these strict rules:
   1. Faithfully adapt all plot beats, atmosphere, and spoken dialogue from [Source Passage]. Never invent future events, skip dialogue, or emit branch choices (never output CHOICE items).
   2. Use [Lookahead Only] strictly to resolve trailing pronouns and attribution tags (when a quote precedes the speaker name). NEVER act out events or dialogue from [Lookahead Only] in this turn!
-  3. For speakers whose identity is intentionally concealed in the text, set `character_name` to `???` (or the literal text label) until revealed in the passage.
-  4. Combine `NARR` narration, character lines, and optional scene/effect cues naturally. Bound cast actors (including aliases) MUST output valid media fields (`sprite` / `vibe`); unbound minor NPCs and `???` may speak as dialogue-only lines without media fields.
-novel_director_cast_heading: '[Cast Binding Roster]'
-novel_director_cast_actor_arrow: ' -> local actor: '
+  3. Keep speaker attribution unmistakable: every spoken line MUST use that speaker's own `character_name` item—never fold character speech inside `NARR`. Always set `character_name` to the canonical story character name (matching the left side of the cast list, never an unrelated off-story name); for speakers whose identity is intentionally concealed, use `???` (or the literal text label) until revealed.
+  4. Keep `NARR` concise with crisp visual-novel pacing: put only 1–2 short sentences per `NARR` item (aim for 15–35 words / 20–55 CJK chars, never exceeding ~65 CJK chars or ~160 Latin chars). NEVER dump an entire long paragraph into one `NARR` box—split longer description into short `NARR` cards interleaved with character dialogue.
+  5. Combine scene/effect cues naturally. Bound story roles (including when referred to by aliases, still outputting the canonical story `character_name`) MUST output valid media fields (`sprite` / `vibe`); unbound minor NPCs and `???` speak as dialogue-only lines without media fields.
+novel_director_cast_heading: '[Story Cast & Stage Channels]'
+novel_director_cast_actor_arrow: ' -> sprite & voice bound (always output this story character name)'
 novel_director_cast_unbound: ' -> unbound (dialogue-only NPC)'
 novel_director_cast_aliases_label: 'aliases: '
 novel_director_cast_empty: (No local characters bound; render all dialogue as pure text.)

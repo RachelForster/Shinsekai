@@ -296,12 +296,13 @@ def test_auto_attach_kickoff_monotonic_events_prefetch_and_chapter_jump(
     assert pres_msg.asset_id == "-1"
     assert pres_msg.text == "Unbound chapter jump beat."
 
-    # Verify on_before_compact injects cast summary instruction
+    # Verify on_before_compact injects cast summary instruction without leaking local actor targets
     compact_ctx = BeforeCompactContext(
         messages=[], older_messages=[], recent_messages=[]
     )
     capability.on_before_compact(compact_ctx)
     assert any("Alice" in instr for instr in compact_ctx.extra_instructions)
+    assert all("->" not in instr for instr in compact_ctx.extra_instructions)
 
     capability.on_shutdown()
     close_all_session_stores()

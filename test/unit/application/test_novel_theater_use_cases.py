@@ -175,22 +175,56 @@ def test_prepare_launch_bound_cast_library_and_save_casting(
     lin_char = SimpleNamespace(
         name="Lin",
         character_brief="Traveler",
+        character_setting="Secret Local RPG Lore",
         personality="Calm",
         speaking_style="Direct",
         relationship="",
         sprites=[{"path": "lin.png"}],
         sprite_groups={},
     )
-    monkeypatch.setattr(cfg.config, "characters", [lin_char])
+    ye_host = SimpleNamespace(
+        name="HostActorZero",
+        character_brief="Local Host Brief",
+        character_setting="Unrelated RPG Setting XYZ",
+        personality="Quiet",
+        speaking_style="Concise",
+        relationship="",
+        sprites=[{"path": "host.png"}],
+        sprite_groups={},
+    )
+    char_map = {"Lin": lin_char, "HostActorZero": ye_host}
+    monkeypatch.setattr(cfg.config, "characters", [lin_char, ye_host])
     monkeypatch.setattr(
         cfg,
         "get_character_by_name",
-        lambda name: lin_char if name == "Lin" else None,
+        lambda name: char_map.get(name),
     )
     monkeypatch.setattr("ai.llm.template_generator.config_manager", cfg)
     state = _make_state(tmp_path, cfg)
     detail = import_novel_document(state, _sample_novel_txt(tmp_path))
     doc_id = detail["manifest"]["docId"]
+
+    isolated_payload = prepare_novel_launch(
+        state,
+        {
+            "docId": doc_id,
+            "casting": [
+                {
+                    "sourceName": "YeWenjie",
+                    "aliases": ["Ye"],
+                    "targetCharacter": "HostActorZero",
+                    "role": "protagonist",
+                }
+            ],
+        },
+    )
+    isolated_system = build_novel_system_template(state, isolated_payload)
+    assert "YeWenjie" in isolated_system
+    assert "HostActorZero" not in isolated_system
+    assert "Unrelated RPG Setting XYZ" not in isolated_system
+    assert "YeWenjie" in isolated_payload["scenario"]
+    assert "HostActorZero" not in isolated_payload["scenario"]
+    assert isolated_payload["casting"]["bindings"][0]["displayName"] == "YeWenjie"
 
     payload = prepare_novel_launch(
         state,
@@ -207,7 +241,7 @@ def test_prepare_launch_bound_cast_library_and_save_casting(
         },
     )
     assert payload["characters"] == ["Lin"]
-    assert payload["showInitialSprite"] is True
+    assert payload["showInitialSprite"] is False
     assert "Miss Lin" in payload["scenario"]
 
     # Persist conversation record using file-backed conversation folder
@@ -374,7 +408,7 @@ def test_prepare_launch_bound_cast_library_and_save_casting(
     assert updated_live["castEntries"][0]["sourceName"] == "AckOkRole"
     persisted_launch = conversation_launch_payload(state, conv_id)
     assert "AckOkRole" in persisted_launch["scenario"]
-    assert "Lin" in persisted_launch["system"]
+    assert "AckOkRole" in persisted_launch["system"]
     assert sent_commands[-1]["command"]["payload"]["payload"]["systemPrompt"].strip()
 
     # Also verify _details directly when only document-binding.json exists

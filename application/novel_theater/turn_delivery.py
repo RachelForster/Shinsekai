@@ -13,6 +13,8 @@ from ai.llm.speculative_dialog import (
     SpeculativeDialogResult,
     run_speculative_dialog_generation,
 )
+from application.novel_theater.casting import casting_map_from_novel_state
+from application.novel_theater.narration_pacing import split_long_narration_dialogs
 from application.novel_theater.prepare_launch import resolve_chapter_index_for_chunk
 from application.session_behavior.casting import CastingMap
 from core.chat_history.identity import CHAT_TURN_ID, DialogIdentities
@@ -258,8 +260,9 @@ def deliver_dialogs_to_stage(
         turn = chat_turn_service.begin_turn()
     identities = DialogIdentities(history_turn_id)
     emitted = 0
+    paced_dialogs = split_long_narration_dialogs(dialogs)
     try:
-        for item in dialogs:
+        for item in paced_dialogs:
             if not isinstance(item, Mapping):
                 continue
             if turn is not None and turn.is_cancelled():
@@ -318,7 +321,7 @@ def resolve_casting_policy(
     opencc_provider: Callable[[], Any | None],
 ) -> tuple[Callable[[str], bool], tuple[str, ...]]:
     """Build speaker media gating predicate and bound-speaker tuple from state."""
-    casting = CastingMap.from_dict(state_snapshot.get("casting") or {})
+    casting = casting_map_from_novel_state(state_snapshot)
 
     def _requires_media(speaker: str) -> bool:
         return casting.speaker_requires_media(speaker, cc=opencc_provider())

@@ -78,8 +78,8 @@ def normalize_cast_bindings(
 ) -> tuple[CastingMap, list[str], list[dict[str, Any]]]:
     """Validate and convert UI cast rows into ``CastingMap`` and metadata entries."""
     entries: list[dict[str, Any]] = []
-    aliases_by_target: dict[str, list[str]] = {}
-    meta_by_target: dict[str, tuple[str, bool]] = {}
+    bindings: list[CastBinding] = []
+    seen_targets: set[str] = set()
     target_order: list[str] = []
 
     getter = getattr(config_manager, "get_character_by_name", None)
@@ -117,11 +117,26 @@ def normalize_cast_bindings(
                     http_status=400,
                 )
             canonical_target = str(getattr(char_obj, "name", "") or raw_target).strip()
-            if canonical_target not in aliases_by_target:
+            if canonical_target not in seen_targets:
+                seen_targets.add(canonical_target)
                 target_order.append(canonical_target)
-                aliases_by_target[canonical_target] = []
-                meta_by_target[canonical_target] = (role, silhouette)
-            aliases_by_target[canonical_target].extend([source_name, *aliases])
+            merged_aliases = tuple(
+                dict.fromkeys(
+                    item
+                    for item in (source_name, *aliases)
+                    if item and item != canonical_target
+                )
+            )
+            bindings.append(
+                CastBinding(
+                    character_name=canonical_target,
+                    display_name=source_name,
+                    aliases=merged_aliases,
+                    role=role,
+                    silhouette_until_revealed=silhouette,
+                    revealed=not silhouette,
+                )
+            )
 
         entries.append(
             {
@@ -133,24 +148,51 @@ def normalize_cast_bindings(
             }
         )
 
-    bindings: list[CastBinding] = []
-    for target in target_order:
-        role, silhouette = meta_by_target[target]
-        merged_aliases = tuple(
-            dict.fromkeys(
-                item for item in aliases_by_target[target] if item and item != target
-            )
-        )
-        bindings.append(
-            CastBinding(
-                character_name=target,
-                aliases=merged_aliases,
-                role=role,
-                silhouette_until_revealed=silhouette,
-                revealed=not silhouette,
-            )
-        )
     return CastingMap(bindings), target_order, entries
+
+
+def _novel_character_entries(
+    payload: Mapping[str, Any],
+    characters: Sequence[str],
+) -> list[tuple[str, str]]:
+    """Build ``(novel_display_name, local_actor_name)`` pairs for prompt generation."""
+    pairs: list[tuple[str, str]] = []
+    seen_display: set[str] = set()
+    raw_entries = payload.get("castEntries")
+    if isinstance(raw_entries, Sequence) and not isinstance(raw_entries, (str, bytes)):
+        for item in raw_entries:
+            if not isinstance(item, Mapping):
+                continue
+            target = str(
+                item.get("targetCharacter") or item.get("target_character") or ""
+            ).strip()
+            if not target:
+                continue
+            display = str(
+                item.get("sourceName") or item.get("source_name") or target
+            ).strip() or target
+            if display not in seen_display:
+                seen_display.add(display)
+                pairs.append((display, target))
+        if pairs:
+            return pairs
+    raw_casting = payload.get("casting")
+    if isinstance(raw_casting, Mapping):
+        raw_bindings = raw_casting.get("bindings")
+        if isinstance(raw_bindings, Sequence) and not isinstance(raw_bindings, (str, bytes)):
+            for item in raw_bindings:
+                if not isinstance(item, Mapping):
+                    continue
+                target = str(item.get("characterName") or "").strip()
+                if not target:
+                    continue
+                display = str(item.get("displayName") or target).strip() or target
+                if display not in seen_display:
+                    seen_display.add(display)
+                    pairs.append((display, target))
+            if pairs:
+                return pairs
+    return [(name, name) for name in characters if str(name or "").strip()]
 
 
 def build_novel_system_template(
@@ -174,6 +216,7 @@ def build_novel_system_template(
         if str(payload.get("mediaSelectionMode") or "").strip().lower() == "semantic"
         else "indexed"
     )
+    character_entries = _novel_character_entries(payload, characters)
     content, _ = generator.generate_chat_template(
         characters,
         str(payload.get("backgroundName") or ""),
@@ -185,6 +228,8 @@ def build_novel_system_template(
         True,
         False,
         media_selection_mode=media_mode,
+        include_character_profiles=False,
+        character_entries=character_entries,
     )
     return str(content or "")
 
@@ -256,7 +301,12 @@ def _resolve_cast_from_payload(
         if isinstance(raw_bindings, Sequence) and not isinstance(raw_bindings, (str, bytes)):
             synthesized = [
                 {
-                    "sourceName": item.get("characterName") or item.get("targetCharacter") or "",
+                    "sourceName": (
+                        item.get("displayName")
+                        or item.get("characterName")
+                        or item.get("targetCharacter")
+                        or ""
+                    ),
                     "aliases": list(item.get("aliases") or ()),
                     "targetCharacter": item.get("characterName") or item.get("targetCharacter") or "",
                     "role": item.get("role") or "supporting",
@@ -322,7 +372,7 @@ def prepare_novel_launch(
         "useEffect": bool(body.get("useEffect", True)),
         "useTranslation": bool(body.get("useTranslation", True)),
         "memoryMode": "isolated",
-        "showInitialSprite": bool(bound_characters),
+        "showInitialSprite": False,
         "historyPath": history_path.as_posix(),
         "conversationTitle": conversation_title,
         "templateId": "",

@@ -27,7 +27,7 @@ from application.novel_theater.turn_delivery import (
     toggle_busy_bar,
     update_llm_system_prompt,
 )
-from application.session_behavior.casting import CastingMap
+from application.novel_theater.casting import casting_map_from_novel_state
 from application.session_behavior.prefetch import SpeculativePrefetchCoordinator
 from core.chat_history.behavior_state_models import BehaviorCommitResult
 from core.document import ChapterEntry, DocumentChunk
@@ -250,7 +250,7 @@ class NovelTheaterTurnRunner:
             ui_updates=self._ui_updates,
             chat_turn_service=self._chat_turn_service,
             history_path=self._history_path,
-            casting_map=CastingMap.from_dict(state_snapshot.get("casting") or {}),
+            casting_map=casting_map_from_novel_state(state_snapshot),
             opencc=self._opencc_provider(),
             history_turn_id=history_turn_id,
             existing_turn=existing_turn,

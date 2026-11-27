@@ -79,9 +79,9 @@ def _setup_runtime(
     cfg = _isolated_config_manager()
     monkeypatch.setattr(cfg.config.system_config, "ui_language", "zh_CN")
     alice = _char("Alice", "First Heroine")
-    bob = _char("Bob", "Second Companion")
-    chars = {"Alice": alice, "Bob": bob}
-    monkeypatch.setattr(cfg.config, "characters", [alice, bob])
+    host_bob = _char("HostBob", "Unrelated Local Companion")
+    chars = {"Alice": alice, "HostBob": host_bob}
+    monkeypatch.setattr(cfg.config, "characters", [alice, host_bob])
     monkeypatch.setattr(cfg, "get_character_by_name", lambda name: chars.get(name))
     monkeypatch.setattr(cfg, "get_llm_api_config", lambda: ("Mock", "mock-model", "", "key"))
     monkeypatch.setattr(cfg, "merged_llm_factory_kwargs", lambda _p, base: base)
@@ -359,7 +359,7 @@ def test_live_casting_update_refreshes_prompt_and_jump_isolates_audio_and_histor
         dialog_queue.get_nowait()
         assert len(llm_messages) == 3  # [system, user, assistant]
 
-        # 2. Live update_casting -> Bob updates LLM system prompt, user_template, and SQLite
+        # 2. Live update_casting -> Bobby mapped to HostBob updates prompt under Bobby without leaking HostBob
         snap1 = capability.snapshot_payload()
         assert snap1 is not None
         cast_res = capability.handle_behavior_command(
@@ -370,14 +370,19 @@ def test_live_casting_update_refreshes_prompt_and_jump_isolates_audio_and_histor
                 "payload": {
                     "casting": {
                         "bindings": [
-                            {"characterName": "Bob", "aliases": ["Bobby"], "role": "protagonist"}
+                            {
+                                "characterName": "HostBob",
+                                "displayName": "Bobby",
+                                "aliases": ["Bobby", "BobNote"],
+                                "role": "protagonist",
+                            }
                         ]
                     },
                     "castEntries": [
                         {
                             "sourceName": "Bobby",
-                            "aliases": [],
-                            "targetCharacter": "Bob",
+                            "aliases": ["BobNote"],
+                            "targetCharacter": "HostBob",
                             "role": "protagonist",
                         }
                     ],
@@ -385,8 +390,9 @@ def test_live_casting_update_refreshes_prompt_and_jump_isolates_audio_and_histor
             }
         )
         assert cast_res.status == "accepted"
-        assert "Bob" in llm_messages[0]["content"]
         assert "Bobby" in llm_messages[0]["content"]
+        assert "HostBob" not in llm_messages[0]["content"]
+        assert "Unrelated Local Companion" not in llm_messages[0]["content"]
         assert history_obj.user_template == llm_messages[0]["content"]
         assert adapter_templates[-1] == llm_messages[0]["content"]
         assert (
@@ -450,7 +456,8 @@ def test_live_casting_update_refreshes_prompt_and_jump_isolates_audio_and_histor
         assert len(ch1_calls[0]) == 2  # Only system prompt + jumped chapter 1 prompt
         serialized_req = json.dumps(ch1_calls[0], ensure_ascii=False)
         assert "Chapter two secret plot event." not in serialized_req
-        assert "Bob" in ch1_calls[0][0]["content"]
+        assert "Bobby" in ch1_calls[0][0]["content"]
+        assert "HostBob" not in ch1_calls[0][0]["content"]
 
         _wait_until(
             lambda: (capability.snapshot_payload() or {}).get("hud", {}).get("phase")

@@ -53,6 +53,7 @@ class DialogTemplateContext(TemplateContext):
     max_speech_chars: int = 0
     max_dialog_items: int = 0
     media_selection_mode: str = "indexed"
+    include_character_profiles: bool = True
     output_format_id: str = DEFAULT_DIALOG_FORMAT_ID
 
     @property

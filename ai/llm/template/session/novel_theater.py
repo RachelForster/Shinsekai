@@ -57,7 +57,7 @@ def _render_cast_roster(context: NovelDirectorContext) -> str:
         if entry.aliases:
             line += f" ({aliases_label}{comma.join(entry.aliases)})"
         if entry.target_character:
-            line += f"{arrow}{entry.target_character}"
+            line += arrow
         else:
             line += unbound
         lines.append(line)

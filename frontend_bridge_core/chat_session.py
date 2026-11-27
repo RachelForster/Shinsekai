@@ -430,7 +430,7 @@ def _launch_chat_locked(
                 history_file=history_path.as_posix(),
                 init_sprite_path=init_sprite_path,
                 show_initial_sprite=(
-                    bool(characters)
+                    False
                     if (is_novel_launch and "showInitialSprite" not in body)
                     else body.get("showInitialSprite", True) is not False
                 ),

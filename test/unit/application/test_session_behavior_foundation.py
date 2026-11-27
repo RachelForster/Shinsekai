@@ -101,6 +101,21 @@ def test_casting_map_resolution_and_character_media_unbound_npc_passthrough(
     assert casting.speaker_requires_media("Guard") is False
     assert casting.bound_speaker_names() == ("Alice", "Miss A", "爱丽丝")
 
+    # Novel Theater shared-actor bindings preserve distinct display names & hide local names in repair lists
+    shared_casting = CastingMap(
+        (
+            CastBinding(character_name="Alice", display_name="叶文洁", aliases=("叶文洁", "小叶")),
+            CastBinding(character_name="Alice", display_name="程心", aliases=("程心",)),
+        )
+    )
+    b1 = shared_casting.resolve("叶文洁")
+    b2 = shared_casting.resolve("程心")
+    b_alias = shared_casting.resolve("小叶")
+    assert b1 is not None and b2 is not None and b_alias is b1
+    assert shared_casting.resolve_display_name("小叶", b_alias) == "叶文洁"
+    assert shared_casting.resolve_display_name("程心", b2) == "程心"
+    assert shared_casting.bound_speaker_names() == ("叶文洁", "小叶", "程心")
+
     pres_queue: Queue[PresentationMessage] = Queue()
     alice_cfg = SimpleNamespace(name="Alice", color="#ffffff", sprites=[{"path": "a.png"}], sprite_groups={})
     rt = SimpleNamespace(
