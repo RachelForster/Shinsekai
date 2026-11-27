@@ -12,7 +12,11 @@ from sdk.adapters.dialog_format import (
     DEFAULT_DIALOG_FORMAT_ID,
     XML_DIALOG_FORMAT_ID,
     DialogFormatContribution,
+    DialogFormatPromptContext,
+    DialogOutfitHint,
+    DialogOutfitHintContext,
     DialogOutputFormat,
+    DialogPlayerHintContext,
     DialogStreamParser,
 )
 from sdk.adapters.llm import LLMAdapter
@@ -71,7 +75,11 @@ __all__ = [
     "ConversationSessionPort",
     "DEFAULT_DIALOG_FORMAT_ID",
     "DialogFormatContribution",
+    "DialogFormatPromptContext",
+    "DialogOutfitHint",
+    "DialogOutfitHintContext",
     "DialogOutputFormat",
+    "DialogPlayerHintContext",
     "DialogStreamParser",
     "EmbeddingProvider",
     "EmbeddingProviderContribution",

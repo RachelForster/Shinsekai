@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any, Callable, List
 
 from config.config_manager import ConfigManager
 from plugin_system.host import manifest as _manifest
+from plugin_system.host.builtin_plugins import register_builtin_plugins
 from plugin_system.requirements.install import (
     ensure_plugin_site_packages_on_syspath,
     ensure_plugins_namespace_on_syspath,
@@ -241,6 +242,7 @@ def ensure_plugins_loaded(
     ensure_plugin_site_packages_on_syspath()
 
     mgr = PluginManager()
+    register_builtin_plugins(mgr)
     if _MANIFEST.is_file():
         try:
             mgr.load_manifest_file(_MANIFEST)

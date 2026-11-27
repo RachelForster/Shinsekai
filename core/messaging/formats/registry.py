@@ -72,9 +72,11 @@ def configure_registered_dialog_formats(
             logger.error("duplicate dialog format id: %s", format_id)
             continue
         with _lock:
-            if format_id in _builtin:
-                logger.error("dialog format conflicts with builtin: %s", format_id)
-                continue
+            existing_builtin = _builtin.get(format_id)
+        is_declared_builtin = str(contribution.plugin_id or "").startswith("shinsekai.builtin.")
+        if existing_builtin is not None and not is_declared_builtin:
+            logger.error("dialog format conflicts with builtin: %s", format_id)
+            continue
         try:
             fmt = contribution.factory()
             if not isinstance(fmt, DialogOutputFormat):
@@ -90,6 +92,8 @@ def configure_registered_dialog_formats(
                 contribution.format_id,
             )
             continue
+        if existing_builtin is not None:
+            continue
         registered[format_id] = fmt
     with _lock:
         _plugin.clear()
@@ -104,6 +108,16 @@ def get_dialog_format(format_id: str | None) -> DialogOutputFormat | None:
         return None
     with _lock:
         return _builtin.get(key) or _plugin.get(key)
+
+
+def is_builtin_dialog_format(format_id: str | None) -> bool:
+    """Return True when `format_id` identifies a built-in dialog format."""
+    _ensure_builtins()
+    key = _normalize_format_id(format_id)
+    if not key:
+        return False
+    with _lock:
+        return key in _builtin
 
 
 def resolve_dialog_format(format_id: str | None) -> DialogOutputFormat:
@@ -129,11 +143,12 @@ def registered_dialog_formats() -> tuple[DialogOutputFormat, ...]:
     _ensure_builtins()
     with _lock:
         ordered: list[DialogOutputFormat] = []
-        for builtin_id in ("xml_v1", "json_v1"):
+        preferred_builtins = ("xml_v1", "json_v1")
+        for builtin_id in preferred_builtins:
             if builtin_id in _builtin:
                 ordered.append(_builtin[builtin_id])
         for builtin_id in sorted(_builtin):
-            if builtin_id not in ("xml_v1", "json_v1"):
+            if builtin_id not in preferred_builtins:
                 ordered.append(_builtin[builtin_id])
         for plugin_id in sorted(_plugin):
             ordered.append(_plugin[plugin_id])
