@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ai.llm.formats import resolve_dialog_format
 from ai.llm.template.core import (
     I18nSection,
     PromptSpec,
@@ -11,7 +12,7 @@ from ai.llm.template.core import (
     TemplateContext,
     TextSection,
 )
-from sdk.adapters.dialog_format import DEFAULT_DIALOG_FORMAT_ID, XML_DIALOG_FORMAT_ID
+from sdk.adapters.dialog_format import DEFAULT_DIALOG_FORMAT_ID
 
 
 @dataclass(frozen=True)
@@ -28,17 +29,31 @@ class _DialogRepairInstructionSection(Section[DialogRepairPromptContext]):
         self,
         context: DialogRepairPromptContext,
     ) -> tuple[Section[DialogRepairPromptContext], ...]:
-        is_xml = (
-            str(context.output_format_id or DEFAULT_DIALOG_FORMAT_ID).strip().lower()
-            == XML_DIALOG_FORMAT_ID
-        )
-        if is_xml:
-            key = (
-                "session.dialog_repair_xml_retry"
-                if context.retry
-                else "session.dialog_repair_xml_initial"
+        fmt = resolve_dialog_format(context.output_format_id)
+        try:
+            custom = fmt.render_repair_prompt(
+                media_field=context.media_field,
+                retry=context.retry,
+                locale=context.locale,
+                allow_unbound_speakers=context.allow_unbound_speakers,
+                bound_speakers=context.bound_speakers,
             )
-        elif context.allow_unbound_speakers:
+        except TypeError:
+            custom = fmt.render_repair_prompt(
+                media_field=context.media_field,
+                retry=context.retry,
+                locale=context.locale,
+            )
+        if isinstance(custom, str) and custom.strip():
+            return (
+                TextSection(
+                    id="format_instruction",
+                    priority=10,
+                    text=custom.strip(),
+                ),
+            )
+
+        if context.allow_unbound_speakers:
             key = (
                 "session.dialog_repair_retry_selective"
                 if context.retry

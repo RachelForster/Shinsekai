@@ -31,4 +31,5 @@ def build_dialog_format_prompt_context(
         max_speech_chars=int(context.max_speech_chars or 0),
         max_dialog_items=int(context.max_dialog_items or 0),
         removed_optional_fields=removed,
+        translate=context.translate,
     )

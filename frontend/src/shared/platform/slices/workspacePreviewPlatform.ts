@@ -616,6 +616,7 @@ export function createTemplatesPreviewPlatform(ctx: BrowserPreviewContext): Temp
     listDialogFormats: () =>
       delay<DialogFormatOption[]>([
         { id: "xml_v1", label: "XML / HTML Tags", builtin: true },
+        { id: "renpy_v1", label: "Ren'Py Script DSL", builtin: true },
         { id: "json_v1", label: "JSON", builtin: true },
       ]),
     async save(template) {
