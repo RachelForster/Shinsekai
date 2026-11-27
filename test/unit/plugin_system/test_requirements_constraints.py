@@ -18,6 +18,7 @@ def _setup_host_and_capture(monkeypatch, tmp_path: Path):
 
     monkeypatch.setattr(constraints, "host_core_requirements_path", lambda _root=None: core_req)
     monkeypatch.setattr(installer, "pip_python_executable", lambda: Path("python"))
+    monkeypatch.setattr(installer, "_installed_distribution_versions", lambda: {})
     monkeypatch.setattr(installer.sys, "platform", "linux")
 
     calls: list[dict[str, object]] = []
@@ -60,6 +61,7 @@ def test_plugin_isolated_target_and_host_manifests_skip_core_constraints(
     (plugin_dir / "requirements.txt").write_text("missing-demo-pkg>=1.0\n", encoding="utf-8")
 
     assert installer.install_plugin_requirements_txt(plugin_dir) == ("pip_ok", "")
+    assert len(calls) == 1
     assert calls[0]["constraints_texts"] == []
 
     calls.clear()
@@ -70,6 +72,7 @@ def test_plugin_isolated_target_and_host_manifests_skip_core_constraints(
         "pip_ok",
         "",
     )
+    assert len(calls) == 1
     assert calls[0]["constraints_texts"] == []
     calls.clear()
     assert installer.install_plugin_requirements_txt(
@@ -78,6 +81,7 @@ def test_plugin_isolated_target_and_host_manifests_skip_core_constraints(
         "pip_ok",
         "",
     )
+    assert len(calls) == 1
     assert calls[0]["constraints_texts"] == []
 
 
