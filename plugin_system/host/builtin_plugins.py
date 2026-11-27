@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from core.messaging.formats.renpy import RenpyDslPlugin
+
 if TYPE_CHECKING:
     from sdk.plugin import PluginBase
 
-BUILTIN_PLUGIN_CLASSES: tuple[type[PluginBase], ...] = ()
+BUILTIN_PLUGIN_CLASSES: tuple[type[PluginBase], ...] = (RenpyDslPlugin,)
 
 
 def register_builtin_plugins(manager: Any) -> None:

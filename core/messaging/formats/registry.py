@@ -25,8 +25,9 @@ def _normalize_format_id(format_id: object) -> str:
 
 
 def configure_builtin_dialog_formats() -> None:
-    """Register built-in `json_v1` and `xml_v1` dialog formats (idempotent)."""
+    """Register built-in `json_v1`, `xml_v1`, and `renpy_v1` dialog formats (idempotent)."""
     from core.messaging.formats.json_format import JsonDialogFormat
+    from core.messaging.formats.renpy import RenpyDslDialogFormat
     from core.messaging.formats.xml_tags_format import XmlTagsDialogFormat
 
     with _lock:
@@ -34,6 +35,8 @@ def configure_builtin_dialog_formats() -> None:
             register_dialog_format(JsonDialogFormat(), builtin=True)
         if "xml_v1" not in _builtin:
             register_dialog_format(XmlTagsDialogFormat(), builtin=True)
+        if "renpy_v1" not in _builtin:
+            register_dialog_format(RenpyDslDialogFormat(), builtin=True)
 
 
 def _ensure_builtins() -> None:
@@ -139,11 +142,11 @@ def resolve_dialog_format(format_id: str | None) -> DialogOutputFormat:
 
 
 def registered_dialog_formats() -> tuple[DialogOutputFormat, ...]:
-    """Return registered dialog formats in deterministic UI order (`xml_v1`, `json_v1`, plugins)."""
+    """Return registered dialog formats in deterministic UI order (`xml_v1`, `renpy_v1`, `json_v1`, plugins)."""
     _ensure_builtins()
     with _lock:
         ordered: list[DialogOutputFormat] = []
-        preferred_builtins = ("xml_v1", "json_v1")
+        preferred_builtins = ("xml_v1", "renpy_v1", "json_v1")
         for builtin_id in preferred_builtins:
             if builtin_id in _builtin:
                 ordered.append(_builtin[builtin_id])

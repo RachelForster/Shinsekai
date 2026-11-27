@@ -25,6 +25,7 @@ from ...integrations.localization import (
     translate_template,
 )
 from ..context import DialogTemplateContext
+from ..renpy_prompts import ensure_renpy_prompt_provider_registered
 
 
 _SELF_PERSONA_SENTINEL = "__SELF_PERSONA_SETTING_PLACEHOLDER__"
@@ -138,6 +139,7 @@ class PlayerSection(Section[DialogTemplateContext]):
             speech_media = 'sprite="-1"' if is_xml else '"sprite":"-1"'
 
         if format_id not in (DEFAULT_DIALOG_FORMAT_ID, XML_DIALOG_FORMAT_ID):
+            ensure_renpy_prompt_provider_registered()
             fmt = resolve_dialog_format(format_id)
             custom_hint = fmt.render_player_hint(
                 DialogPlayerHintContext(

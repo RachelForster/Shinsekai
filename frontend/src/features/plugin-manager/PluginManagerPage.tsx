@@ -213,19 +213,24 @@ export function PluginManagerPage() {
   const [pluginReloadPending, setPluginReloadPending] = useState(false);
   const [publisherOpen, setPublisherOpen] = useState(false);
   const [appUpdateTask, setAppUpdateTask] = useState<TaskSnapshot<AppUpdateResult> | null>(null);
-  const installedPluginMatches = useCallback((plugin: PluginManifest, query: string) => {
-    return searchablePluginText([
-      plugin.title,
-      plugin.id,
-      plugin.entry,
-      plugin.description,
-      plugin.author,
-      plugin.version,
-      plugin.directory,
-      plugin.enabled ? "enabled" : "disabled",
-      plugin.loaded === false ? "unavailable not loaded" : "loaded",
-    ]).includes(query);
-  }, []);
+  const installedPluginMatches = useCallback(
+    (plugin: PluginManifest, query: string) => {
+      return searchablePluginText([
+        installedPluginDisplayName(plugin, undefined, t),
+        plugin.title,
+        plugin.id,
+        plugin.entry,
+        installedPluginDescription(plugin, undefined, "", t),
+        plugin.description,
+        plugin.author,
+        plugin.version,
+        plugin.directory,
+        plugin.enabled ? "enabled" : "disabled",
+        plugin.loaded === false ? "unavailable not loaded" : "loaded",
+      ]).includes(query);
+    },
+    [t],
+  );
   const installedPlugins = usePagedPluginList({
     items: data,
     matcher: installedPluginMatches,
@@ -587,9 +592,9 @@ export function PluginManagerPage() {
               {installedPlugins.pagedItems.map((plugin) => {
                 const loaded = plugin.loaded !== false;
                 const catalog = findInstalledCatalogMatch(plugin, catalogItems);
-                const displayTitle = installedPluginDisplayName(plugin, catalog);
+                const displayTitle = installedPluginDisplayName(plugin, catalog, t);
                 const secondaryTitle = installedPluginTechnicalName(plugin, catalog, displayTitle);
-                const description = installedPluginDescription(plugin, catalog, t("plugin.loadError.unavailable"));
+                const description = installedPluginDescription(plugin, catalog, t("plugin.loadError.unavailable"), t);
                 const docsUrl = catalog?.readmeUrl || (catalog?.repo ? githubUrl(catalog.repo) : "");
                 const authorUrl = catalog?.socialLink?.trim() || "";
                 const updateSource = catalog ? catalogInstallSource(catalog) : "";
@@ -737,7 +742,7 @@ export function PluginManagerPage() {
       <AlertDialog
         body={t("plugin.uninstall.confirmBody", {
           title: pendingUninstall
-            ? installedPluginDisplayName(pendingUninstall, findInstalledCatalogMatch(pendingUninstall, catalogItems))
+            ? installedPluginDisplayName(pendingUninstall, findInstalledCatalogMatch(pendingUninstall, catalogItems), t)
             : "",
         })}
         cancelLabel={t("common.cancel")}

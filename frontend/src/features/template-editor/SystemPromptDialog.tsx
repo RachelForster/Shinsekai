@@ -9,16 +9,22 @@ import { DEFAULT_NEW_OUTPUT_FORMAT, resolveSupportedOutputFormat } from "./templ
 
 const FALLBACK_DIALOG_FORMATS: DialogFormatOption[] = [
   { id: "xml_v1", label: "XML / HTML Tags", builtin: true },
+  { id: "renpy_v1", label: "Ren'Py Script DSL", builtin: true },
   { id: "json_v1", label: "JSON", builtin: true },
 ];
 
 export function resolveDialogFormatLabel(
   formatId: DialogOutputFormatId,
   dialogFormats: DialogFormatOption[] | undefined,
-  t: (key: "template.outputFormat.xml_v1" | "template.outputFormat.json_v1") => string,
+  t: (
+    key: "template.outputFormat.xml_v1" | "template.outputFormat.renpy_v1" | "template.outputFormat.json_v1",
+  ) => string,
 ): string {
   if (formatId === "xml_v1") {
     return t("template.outputFormat.xml_v1");
+  }
+  if (formatId === "renpy_v1") {
+    return t("template.outputFormat.renpy_v1");
   }
   if (formatId === "json_v1") {
     return t("template.outputFormat.json_v1");

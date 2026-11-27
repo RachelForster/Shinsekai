@@ -8,10 +8,17 @@ import type {
   PluginUIPage,
 } from "../../entities/plugin/types";
 import type { FieldKind, FormGroupSchema } from "../../shared/form-schema";
-import type { FrontendLanguage } from "../../shared/i18n/messages";
+import type { FrontendLanguage, MessageKey } from "../../shared/i18n/messages";
 
 export type PluginView = "installed" | "discover" | "mcp";
 export type PluginConfigDraft = Record<string, unknown>;
+
+const BUILTIN_PLUGIN_I18N_KEYS: Record<string, { titleKey: MessageKey; descriptionKey: MessageKey }> = {
+  "shinsekai.builtin.renpy_dsl_format": {
+    titleKey: "plugin.builtin.renpyDslFormat.title",
+    descriptionKey: "plugin.builtin.renpyDslFormat.description",
+  },
+};
 
 export function catalogInstallSource(item: PluginCatalogItem) {
   if (item.packageUrl || item.downloadUrl) {
@@ -235,7 +242,15 @@ function offlineEntryFallbackTitle(entry: string | null | undefined) {
   return value.includes(".") ? value.slice(value.lastIndexOf(".") + 1) : value;
 }
 
-export function installedPluginDisplayName(plugin: PluginManifest, catalog?: PluginCatalogItem) {
+export function installedPluginDisplayName(
+  plugin: PluginManifest,
+  catalog?: PluginCatalogItem,
+  t?: (key: MessageKey) => string,
+) {
+  const builtinKeys = t ? BUILTIN_PLUGIN_I18N_KEYS[plugin.id] : undefined;
+  if (builtinKeys && t) {
+    return t(builtinKeys.titleKey);
+  }
   const loaded = plugin.loaded !== false;
   const localTitle = (plugin.title ?? "").trim();
   const catalogName = catalogDisplayName(catalog).trim();
@@ -282,10 +297,15 @@ export function installedPluginDescription(
   plugin: PluginManifest,
   catalog: PluginCatalogItem | undefined,
   unavailableFallback: string,
+  t?: (key: MessageKey) => string,
 ) {
   const loaded = plugin.loaded !== false;
   if (!loaded && plugin.enabled) {
     return plugin.loadError || unavailableFallback;
+  }
+  const builtinKeys = t ? BUILTIN_PLUGIN_I18N_KEYS[plugin.id] : undefined;
+  if (builtinKeys && t) {
+    return t(builtinKeys.descriptionKey);
   }
   const localDescription = (plugin.description ?? "").trim();
   if (localDescription) {

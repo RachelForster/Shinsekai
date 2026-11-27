@@ -119,6 +119,7 @@ describe("TemplateEditorPage outputFormat selector", () => {
     });
     mockListDialogFormats.mockResolvedValue([
       { id: "xml_v1", label: "XML / HTML Tags", builtin: true },
+      { id: "renpy_v1", label: "Ren'Py Script DSL", builtin: true },
       { id: "json_v1", label: "JSON", builtin: true },
       { id: "custom_dsl", label: "Custom Plugin DSL", builtin: false },
     ]);
@@ -276,5 +277,53 @@ describe("TemplateEditorPage outputFormat selector", () => {
 
     fireEvent.click(formatCombo);
     expect(screen.queryByRole("option", { name: /XML/ })).not.toBeInTheDocument();
+  });
+
+  it("displays built-in renpy_v1 plugin format with localized label and updates selection", async () => {
+    mockGetTemplateSession.mockResolvedValue({
+      background: "Room",
+      outputFormat: "xml_v1",
+      selectedCharacters: ["Nanami"],
+    });
+    mockListTemplates.mockResolvedValue([
+      {
+        content: "Starter scenario\n\nStarter rules",
+        id: "starter.txt",
+        name: "Starter",
+        outputFormat: "xml_v1",
+        path: "/templates/starter.txt",
+        scenario: "Starter scenario",
+        system: "Starter rules",
+        updatedAt: "2026-11-26",
+      },
+    ]);
+    renderEditor();
+
+    const editSystemBtn = await screen.findByRole("button", { name: "Edit system prompt" });
+    await act(async () => {
+      fireEvent.click(editSystemBtn);
+    });
+    const dialog = await screen.findByRole("dialog", { name: "Edit system prompt & generation rules" });
+    const formatCombo = within(dialog).getByRole("combobox", { name: "Output format" });
+
+    fireEvent.click(formatCombo);
+    const renpyOption = await screen.findByRole("option", {
+      name: /Ren'Py Script DSL \(built-in plugin, transitions & motions\)/,
+    });
+    fireEvent.click(renpyOption);
+    expect(formatCombo).toHaveTextContent("Ren'Py Script DSL (built-in plugin, transitions & motions)");
+
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Regenerate" }));
+    });
+    await waitFor(() =>
+      expect(mockGenerateTemplate).toHaveBeenCalledWith(expect.objectContaining({ outputFormat: "renpy_v1" })),
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Format: Ren'Py Script DSL \(built-in plugin, transitions & motions\)/),
+      ).toBeInTheDocument(),
+    );
   });
 });

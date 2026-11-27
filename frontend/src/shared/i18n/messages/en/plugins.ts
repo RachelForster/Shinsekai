@@ -237,4 +237,7 @@ export const pluginsEnMessages: Record<PluginsMessageKey, string> = {
     "This plugin was reviewed before, but the current version or commit is still waiting for review. Check the update and source before installing.",
   "plugin.trust.pendingTitle": "Pending review",
   "plugin.trust.verifiedHint": "Manually reviewed by maintainers",
+  "plugin.builtin.renpyDslFormat.title": "Ren'Py DSL Dialog Format",
+  "plugin.builtin.renpyDslFormat.description":
+    "Built-in Ren'Py-like script DSL output format (renpy_v1) with transitions and character motions.",
 };

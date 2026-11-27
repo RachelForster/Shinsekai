@@ -11,7 +11,11 @@ from ai.llm.template.core import (
     TemplateContext,
     TextSection,
 )
-from sdk.adapters.dialog_format import DEFAULT_DIALOG_FORMAT_ID, XML_DIALOG_FORMAT_ID
+from sdk.adapters.dialog_format import (
+    DEFAULT_DIALOG_FORMAT_ID,
+    RENPY_DIALOG_FORMAT_ID,
+    XML_DIALOG_FORMAT_ID,
+)
 
 
 @dataclass(frozen=True)
@@ -28,16 +32,26 @@ class _DialogRepairInstructionSection(Section[DialogRepairPromptContext]):
         self,
         context: DialogRepairPromptContext,
     ) -> tuple[Section[DialogRepairPromptContext], ...]:
-        is_xml = (
-            str(context.output_format_id or DEFAULT_DIALOG_FORMAT_ID).strip().lower()
-            == XML_DIALOG_FORMAT_ID
-        )
-        if is_xml:
+        fmt_id = str(context.output_format_id or DEFAULT_DIALOG_FORMAT_ID).strip().lower()
+        if fmt_id == XML_DIALOG_FORMAT_ID:
             key = (
                 "session.dialog_repair_xml_retry"
                 if context.retry
                 else "session.dialog_repair_xml_initial"
             )
+        elif fmt_id == RENPY_DIALOG_FORMAT_ID:
+            if context.allow_unbound_speakers:
+                key = (
+                    "session.dialog_repair_renpy_retry_selective"
+                    if context.retry
+                    else "session.dialog_repair_renpy_initial_selective"
+                )
+            else:
+                key = (
+                    "session.dialog_repair_renpy_retry"
+                    if context.retry
+                    else "session.dialog_repair_renpy_initial"
+                )
         elif context.allow_unbound_speakers:
             key = (
                 "session.dialog_repair_retry_selective"

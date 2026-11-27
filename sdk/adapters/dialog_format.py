@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 
 DEFAULT_DIALOG_FORMAT_ID = "json_v1"
 XML_DIALOG_FORMAT_ID = "xml_v1"
+RENPY_DIALOG_FORMAT_ID = "renpy_v1"
 
 
 @dataclass(frozen=True, slots=True)

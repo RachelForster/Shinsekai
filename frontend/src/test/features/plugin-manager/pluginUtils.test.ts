@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { PluginCatalogItem, PluginManifest, PluginUIPage } from "../../../entities/plugin/types";
+import { frontendMessages, type FrontendLanguage, type MessageKey } from "../../../shared/i18n/messages";
 import {
   catalogInstallSource,
   fallbackPluginUiPages,
@@ -285,5 +286,37 @@ describe("plugin manager utilities", () => {
     expect(installedPluginDescription(customAuthoredPlugin, matchedCatalog, "unavailable")).toBe(
       "本地 0.3.0 自定义描述",
     );
+  });
+
+  it("localizes built-in plugin display names and descriptions across all supported UI languages", () => {
+    const builtinRenpyPlugin: PluginManifest = {
+      ...plugin,
+      description: "Built-in Ren'Py-like script DSL output format (renpy_v1).",
+      directory: "",
+      entry: "",
+      id: "shinsekai.builtin.renpy_dsl_format",
+      loaded: true,
+      title: "Ren'Py DSL Dialog Format",
+      version: "1.0.0",
+    };
+
+    const expectations: Record<FrontendLanguage, { title: string; descPart: string }> = {
+      zh_CN: { title: "Ren'Py 剧本 DSL 对话格式", descPart: "内置类 Ren'Py 剧本 DSL" },
+      en: { title: "Ren'Py DSL Dialog Format", descPart: "Built-in Ren'Py-like script DSL" },
+      ja: { title: "Ren'Py 風スクリプト DSL 対話フォーマット", descPart: "内蔵 Ren'Py 風スクリプト DSL" },
+    };
+
+    for (const locale of ["zh_CN", "en", "ja"] as const) {
+      const t = (key: MessageKey) => frontendMessages[locale][key];
+      expect(installedPluginDisplayName(builtinRenpyPlugin, undefined, t)).toBe(expectations[locale].title);
+      expect(installedPluginDescription(builtinRenpyPlugin, undefined, "unavailable", t)).toContain(
+        expectations[locale].descPart,
+      );
+    }
+
+    // Non-builtin plugin still uses authored title/description even when translator is supplied.
+    const tZh = (key: MessageKey) => frontendMessages.zh_CN[key];
+    expect(installedPluginDisplayName(plugin, undefined, tZh)).toBe("Demo");
+    expect(installedPluginDescription(plugin, undefined, "unavailable", tZh)).toBe("Demo plugin");
   });
 });

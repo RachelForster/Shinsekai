@@ -13,6 +13,9 @@ from .sections.dialog_template import DialogTemplateSection
 from .sections.json_schema import JsonSchemaSection
 from .sections.player import PlayerSection
 from .sections.requirements import RequirementsSection
+from .renpy_prompts import ensure_renpy_prompt_provider_registered
+
+ensure_renpy_prompt_provider_registered()
 
 
 def build_dialog_section() -> DialogTemplateSection:

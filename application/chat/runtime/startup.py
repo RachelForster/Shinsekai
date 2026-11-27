@@ -280,12 +280,16 @@ def _import_provider_runtime() -> SimpleNamespace:
         configure_registered_formats,
         configure_builtin_formats,
     )
+    from ai.llm.template.dialog.renpy_prompts import (
+        ensure_renpy_prompt_provider_registered,
+    )
     from core.messaging.formats.registry import (
         configure_builtin_dialog_formats,
         configure_registered_dialog_formats,
     )
     configure_builtin_formats()
     configure_builtin_dialog_formats()
+    ensure_renpy_prompt_provider_registered()
     from plugin_system.host import (
         bind_model_assets_runtime,
         ensure_plugins_loaded,
