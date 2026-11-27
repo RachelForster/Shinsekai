@@ -46,6 +46,7 @@ import { InputLayer } from "./components/InputLayer";
 import { MiniAvatarStage } from "./components/MiniAvatarStage";
 import { PluginPageOverlay } from "./components/PluginPageOverlay";
 import { ReactionBubble } from "./components/ReactionBubble";
+import { ScreenSharePreflightDialog } from "./components/ScreenSharePreflightDialog";
 import { ScreenShareSettingsDialog } from "./components/ScreenShareSettingsDialog";
 import {
   AmbientLayer,
@@ -78,6 +79,7 @@ import { useDialogTypewriter } from "./hooks/useDialogTypewriter";
 import { useMainThemeColor } from "./hooks/useMainThemeColor";
 import { useRecentUserInputs } from "./hooks/useRecentUserInputs";
 import { useScreenShareCapture } from "./hooks/useScreenShareCapture";
+import { useScreenSharePreflight } from "./hooks/useScreenSharePreflight";
 import { useStageViewport } from "./hooks/useStageViewport";
 import { useChatSubmissionFocus } from "./hooks/useChatSubmissionFocus";
 import {
@@ -191,6 +193,7 @@ export function ChatStagePage() {
   const [tokenUsageOpen, setTokenUsageOpen] = useState(false);
   const [toolbarConfigOpen, setToolbarConfigOpen] = useState(false);
   const [screenSettingsOpen, setScreenSettingsOpen] = useState(false);
+  const [screenSharePreflightOpen, setScreenSharePreflightOpen] = useState(false);
   const imageAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const fileAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const pendingAttachmentSlotsRef = useRef(0);
@@ -319,6 +322,7 @@ export function ChatStagePage() {
     themePickerOpen ||
     toolbarConfigOpen ||
     screenSettingsOpen ||
+    screenSharePreflightOpen ||
     historyDialogOpen ||
     historyExport != null ||
     confirmClearHistory ||
@@ -536,6 +540,7 @@ export function ChatStagePage() {
     setToolbarConfigOpen(false);
     setHistoryDialogOpen(false);
     setScreenSettingsOpen(false);
+    setScreenSharePreflightOpen(false);
     setConversationEditorOpen(false);
     setRuntimeConfig((current) => (current.miniAvatarMode ? current : { ...current, miniAvatarMode: true }));
   }, [activeReplay, remoteMobileAccess, state.replay]);
@@ -977,9 +982,10 @@ export function ChatStagePage() {
     ocrScope,
     playbackAudio,
     sharing: screenSharing,
+    startSharing: startScreenShare,
     stream: screenShareStream,
     starting: screenShareStarting,
-    toggleSharing: toggleScreenShare,
+    stopSharing: stopScreenShare,
   } = useScreenShareCapture({
     captureRequestSeq: state.perceptionCaptureRequestSeq,
     captureIntervalSec: state.perception?.captureIntervalSec ?? 0.5,
@@ -1015,6 +1021,22 @@ export function ChatStagePage() {
     },
     sessionClosed: Boolean(state.sessionClosedReason),
   });
+  const screenSharePreflight = useScreenSharePreflight({
+    open: screenSharePreflightOpen,
+    onOpenChange: setScreenSharePreflightOpen,
+    onStartSharing: startScreenShare,
+    screenSharing,
+    screenShareStarting,
+    sessionClosed: Boolean(state.sessionClosedReason),
+  });
+  const openScreenSharePreflight = screenSharePreflight.openAndCheck;
+  const handleToggleScreenShare = useCallback(() => {
+    if (screenSharing) {
+      stopScreenShare();
+      return;
+    }
+    void openScreenSharePreflight();
+  }, [openScreenSharePreflight, screenSharing, stopScreenShare]);
   useEffect(() => {
     if (!screenSharing) setScreenSettingsOpen(false);
   }, [screenSharing]);
@@ -1097,11 +1119,11 @@ export function ChatStagePage() {
       onOpenHistory={openHistoryDialog}
       onOpenPluginPage={openPluginPage}
       onOpenScreenSettings={() => setScreenSettingsOpen(true)}
-      onToggleScreenShare={isRemoteMobileAccessPage() || standalone ? undefined : toggleScreenShare}
+      onToggleScreenShare={isRemoteMobileAccessPage() || standalone ? undefined : handleToggleScreenShare}
       onTurnOptionsChange={updateTurnOptions}
       outfitCatalog={state.outfitCatalog}
       outfits={state.outfits}
-      screenShareStarting={screenShareStarting}
+      screenShareStarting={screenShareStarting || screenSharePreflightOpen}
       screenSharing={screenSharing}
       showAsrControl={!viewModel.layers.input && !standalone}
       turnOptions={state.turnOptions}
@@ -1356,7 +1378,7 @@ export function ChatStagePage() {
             onResolveToolConfirmation={resolveToolConfirmation}
             onSelectOption={submitOption}
             onSubmit={submit}
-            onToggleScreenShare={remoteMobileAccess ? undefined : toggleScreenShare}
+            onToggleScreenShare={remoteMobileAccess ? undefined : handleToggleScreenShare}
             options={viewModel.options}
             optionsVisible={viewModel.layers.options}
             playerPortrait={playerPortraitForDialog(
@@ -1366,7 +1388,7 @@ export function ChatStagePage() {
             )}
             previousMessages={recentInputs}
             runtimeFramingForSprite={(sprite, index) => runtimeSpriteFraming(runtimeConfig, sprite, index)}
-            screenShareStarting={screenShareStarting}
+            screenShareStarting={screenShareStarting || screenSharePreflightOpen}
             screenSharing={screenSharing}
             shortcutDisabled={modalOpen}
             spriteReaction={viewModel.spriteReaction}
@@ -1429,6 +1451,24 @@ export function ChatStagePage() {
             proactiveEnabled={state.perception?.proactiveEnabled ?? true}
             scope={ocrScope}
             stream={screenShareStream}
+          />
+        ) : null}
+        {screenSharePreflightOpen ? (
+          <ScreenSharePreflightDialog
+            errorDetail={screenSharePreflight.errorDetail}
+            errorKind={screenSharePreflight.errorKind}
+            health={screenSharePreflight.health}
+            installingPackage={screenSharePreflight.installingPackage}
+            localServer={screenSharePreflight.localServer}
+            onCancel={screenSharePreflight.close}
+            onPrepareAndStart={() => void screenSharePreflight.prepareAndStart()}
+            onProceedToShare={screenSharePreflight.proceedToShare}
+            onRetry={() => void screenSharePreflight.retry()}
+            open={screenSharePreflightOpen}
+            phase={screenSharePreflight.phase}
+            setup={screenSharePreflight.setup}
+            setupTask={screenSharePreflight.setupTask}
+            status={screenSharePreflight.status}
           />
         ) : null}
         <ChatConfigDialog

@@ -27,6 +27,24 @@ export const perceptionJaMessages: Record<PerceptionMessageKey, string> = {
   "chat.perception.frameUploadFailed": "画面の送信に失敗しました。再試行します。",
   "chat.perception.blackFrame": "共有画面が真っ黒です。選択したウィンドウを確認してください。",
   "chat.perception.shareUnsupported": "画面共有を利用できません。",
+  "chat.perception.preflight.title": "リアルタイム反応サービスの準備",
+  "chat.perception.preflight.checking": "リアルタイム反応サービスの状態を確認しています…",
+  "chat.perception.preflight.checkingDesc":
+    "画面共有の前に視覚サービスの稼働を確認し、停止中の場合は自動で起動します。",
+  "chat.perception.preflight.setupNeededDesc":
+    "実行環境とモデルの準備が必要です。完了するとローカルサーバーを自動で起動します。",
+  "chat.perception.preflight.startingDesc":
+    "ローカルのリアルタイム反応サーバーを自動起動しています。準備ができたら共有ウィンドウを選択できます。",
+  "chat.perception.preflight.readyTitle": "リアルタイム反応サービスの準備が完了しました",
+  "chat.perception.preflight.readyDesc":
+    "サービスが稼働しました。下のボタンから共有するウィンドウまたは画面を選択してください。",
+  "chat.perception.preflight.errorHint":
+    "「API 設定 → リアルタイム反応」で設定を確認するか、このまま画面共有を開始できます。",
+  "chat.perception.preflight.checkFailed": "リアルタイム反応サービスの確認に失敗しました",
+  "chat.perception.preflight.selectWindow": "共有ウィンドウを選択",
+  "chat.perception.preflight.shareWhileLoading": "先にウィンドウを選択",
+  "chat.perception.preflight.skipAndShare": "このまま画面を共有",
+  "chat.perception.preflight.retry": "再確認",
   "api.perception.title": "リアルタイム認識・ゲーム反応",
   "api.perception.shareHint": "画面共有中は自動で認識を有効にします。",
   "api.perception.enabled": "ゲーム・プラグイン連携",
