@@ -9,11 +9,13 @@ import requests
 
 from ai.tts.adapters.local_http import LocalHttpTTSAdapter, is_local_server_url
 from ai.tts.server_process import start_server_process
+from core.adapters import builtin_adapter
 from sdk.logging import get_logger
 
 logger = get_logger(__name__)
 
 
+@builtin_adapter("index-tts", label="IndexTTS", order=50)
 class IndexTTSAdapter(LocalHttpTTSAdapter):
     """Adapter for an IndexTTS HTTP synthesis server."""
 

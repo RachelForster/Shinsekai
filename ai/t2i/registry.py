@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import Any
 
-from core.adapters import AdapterRegistration, AdapterRegistry
+from core.adapters import AdapterRegistration, AdapterRegistry, discover_builtin_adapters
 from sdk.adapters.t2i import T2IAdapter
 
 
@@ -13,31 +13,12 @@ def _normalize_t2i_key(key: str) -> str:
     return str(key or "").strip().lower()
 
 
-def _load_comfyui_adapter() -> type[T2IAdapter]:
-    from ai.t2i.t2i_adapter import ComfyUIT2IAdapter
-
-    return ComfyUIT2IAdapter
-
-
-def _load_stable_diffusion_adapter() -> type[T2IAdapter]:
-    from ai.t2i.t2i_adapter import StableDiffusionAdapter
-
-    return StableDiffusionAdapter
-
-
-_BUILTIN_T2I_SPECS: tuple[tuple[str, Callable[[], type[T2IAdapter]], str, int], ...] = (
-    ("comfyui", _load_comfyui_adapter, "ComfyUI", 10),
-    ("stable diffusion", _load_stable_diffusion_adapter, "Stable Diffusion", 20),
-)
-
-
 def configure_builtin_t2i_adapters(
     registry: AdapterRegistry[T2IAdapter] | None = None,
 ) -> None:
-    """Idempotently register all built-in T2I provider adapters."""
+    """Auto-discover and register all built-in T2I adapters from ``ai.t2i.adapters``."""
     target = registry if registry is not None else _DEFAULT_REGISTRY
-    for key, loader, label, order in _BUILTIN_T2I_SPECS:
-        target.register_builtin(key, loader=loader, label=label, order=order)
+    discover_builtin_adapters("ai.t2i.adapters", target)
 
 
 def create_t2i_adapter_registry(

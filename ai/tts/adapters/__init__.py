@@ -15,7 +15,7 @@ from ai.tts.adapters.local_http import (
     is_local_server_url,
     wait_for_http_service_ready,
 )
-from ai.tts.qwen3_tts_adapter import Qwen3TTSLlamaAdapter
+from ai.tts.adapters.qwen3_tts import Qwen3TTSLlamaAdapter
 
 __all__ = [
     "CosyVoiceAdapter",

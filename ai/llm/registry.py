@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import Any
 
-from core.adapters import AdapterRegistration, AdapterRegistry
+from core.adapters import AdapterRegistration, AdapterRegistry, discover_builtin_adapters
 from sdk.adapters.llm import LLMAdapter
 
 
@@ -13,58 +13,12 @@ def _normalize_llm_key(key: str) -> str:
     return str(key or "").strip()
 
 
-def _load_deepseek_adapter() -> type[LLMAdapter]:
-    from ai.llm.adapters.deepseek import DeepSeekAdapter
-
-    return DeepSeekAdapter
-
-
-def _load_openai_adapter() -> type[LLMAdapter]:
-    from ai.llm.adapters.openai import OpenAIAdapter
-
-    return OpenAIAdapter
-
-
-def _load_claude_adapter() -> type[LLMAdapter]:
-    from ai.llm.adapters.claude import ClaudeAdapter
-
-    return ClaudeAdapter
-
-
-_BUILTIN_LLM_SPECS: tuple[tuple[str, Callable[[], type[LLMAdapter]], int, dict[str, Any]], ...] = (
-    ("Deepseek", _load_deepseek_adapter, 10, {}),
-    ("ChatGPT", _load_openai_adapter, 20, {}),
-    (
-        "Gemini",
-        _load_openai_adapter,
-        30,
-        {
-            "supports_streaming_tools": False,
-            "unsupported_chat_params": frozenset(
-                {"frequency_penalty", "presence_penalty"}
-            ),
-        },
-    ),
-    ("Claude", _load_claude_adapter, 40, {}),
-    ("豆包", _load_openai_adapter, 50, {}),
-    ("通义千问", _load_openai_adapter, 60, {}),
-    ("Ollama", _load_openai_adapter, 70, {}),
-)
-
-
 def configure_builtin_llm_adapters(
     registry: AdapterRegistry[LLMAdapter] | None = None,
 ) -> None:
-    """Idempotently register all built-in LLM provider adapters."""
+    """Auto-discover and register all built-in LLM adapters from ``ai.llm.adapters``."""
     target = registry if registry is not None else _DEFAULT_REGISTRY
-    for key, loader, order, default_kwargs in _BUILTIN_LLM_SPECS:
-        target.register_builtin(
-            key,
-            loader=loader,
-            label=key,
-            order=order,
-            default_kwargs=default_kwargs,
-        )
+    discover_builtin_adapters("ai.llm.adapters", target)
 
 
 def create_llm_adapter_registry(

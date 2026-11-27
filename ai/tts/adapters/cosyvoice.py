@@ -7,12 +7,14 @@ from typing import Any
 
 import requests
 
+from core.adapters import builtin_adapter
 from sdk.adapters import TTSAdapter
 from sdk.logging import get_logger
 
 logger = get_logger(__name__)
 
 
+@builtin_adapter("cosyvoice", label="CosyVoice", order=60)
 class CosyVoiceAdapter(TTSAdapter):
     """Adapter for the CosyVoice (Alibaba Cloud) TTS service."""
 

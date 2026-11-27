@@ -15,11 +15,13 @@ import wave
 
 from ai.tts.adapters.local_http import LocalHttpTTSAdapter
 from ai.tts.server_process import server_python, start_server_process
+from core.adapters import builtin_adapter
 from sdk.logging import get_logger
 
 logger = get_logger(__name__)
 
 
+@builtin_adapter("genie-tts", label="Genie TTS", order=10)
 class GenieTTSAdapter(LocalHttpTTSAdapter):
     """Adapter for the Genie TTS HTTP service."""
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import Any
 
-from core.adapters import AdapterRegistration, AdapterRegistry
+from core.adapters import AdapterRegistration, AdapterRegistry, discover_builtin_adapters
 from sdk.adapters.asr import ASRAdapter
 
 
@@ -13,31 +13,12 @@ def _normalize_asr_key(key: str) -> str:
     return str(key or "").strip().lower().replace("-", "_")
 
 
-def _load_sherpa_onnx_adapter() -> type[ASRAdapter]:
-    from ai.asr.sherpa_onnx_adapter import SherpaOnnxAdapter
-
-    return SherpaOnnxAdapter
-
-
-def _load_vosk_adapter() -> type[ASRAdapter]:
-    from ai.asr.asr_adapter import VoskAdapter
-
-    return VoskAdapter
-
-
-_BUILTIN_ASR_SPECS: tuple[tuple[str, Callable[[], type[ASRAdapter]], str, int], ...] = (
-    ("sherpa_onnx", _load_sherpa_onnx_adapter, "Sherpa-ONNX", 10),
-    ("vosk", _load_vosk_adapter, "Vosk", 20),
-)
-
-
 def configure_builtin_asr_adapters(
     registry: AdapterRegistry[ASRAdapter] | None = None,
 ) -> None:
-    """Idempotently register built-in Sherpa-ONNX and Vosk ASR adapters."""
+    """Auto-discover and register all built-in ASR adapters from ``ai.asr.adapters``."""
     target = registry if registry is not None else _DEFAULT_REGISTRY
-    for key, loader, label, order in _BUILTIN_ASR_SPECS:
-        target.register_builtin(key, loader=loader, label=label, order=order)
+    discover_builtin_adapters("ai.asr.adapters", target)
 
 
 def create_asr_adapter_registry(

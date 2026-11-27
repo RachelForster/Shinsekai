@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ai.tts.adapters.gpt_sovits import GPTSoVitsAdapter
+from core.adapters import builtin_adapter
 from sdk.logging import get_logger
 
 logger = get_logger(__name__)
@@ -15,6 +16,7 @@ def is_kaggle_path(path: str) -> bool:
     return str(path or "").strip().startswith("/kaggle/")
 
 
+@builtin_adapter("kaggle-gpt-sovits", label="Kaggle GPT-SoVITS", order=20)
 class KaggleGPTSoVitsAdapter(GPTSoVitsAdapter):
     """GPT-SoVITS adapter for a Kaggle-hosted API.
 

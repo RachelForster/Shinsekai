@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import Any
 
-from core.adapters import AdapterRegistration, AdapterRegistry
+from core.adapters import AdapterRegistration, AdapterRegistry, discover_builtin_adapters
 from sdk.adapters.tts import TTSAdapter
 
 
@@ -13,64 +13,12 @@ def _normalize_tts_key(key: str) -> str:
     return str(key or "").strip().lower()
 
 
-def _load_genie_tts_adapter() -> type[TTSAdapter]:
-    from ai.tts.adapters.genie_tts import GenieTTSAdapter
-
-    return GenieTTSAdapter
-
-
-def _load_kaggle_gpt_sovits_adapter() -> type[TTSAdapter]:
-    from ai.tts.adapters.kaggle_gpt_sovits import KaggleGPTSoVitsAdapter
-
-    return KaggleGPTSoVitsAdapter
-
-
-def _load_gpt_sovits_adapter() -> type[TTSAdapter]:
-    from ai.tts.adapters.gpt_sovits import GPTSoVitsAdapter
-
-    return GPTSoVitsAdapter
-
-
-def _load_qwen3_tts_adapter() -> type[TTSAdapter]:
-    from ai.tts.qwen3_tts_adapter import Qwen3TTSLlamaAdapter
-
-    return Qwen3TTSLlamaAdapter
-
-
-def _load_index_tts_adapter() -> type[TTSAdapter]:
-    from ai.tts.adapters.index_tts import IndexTTSAdapter
-
-    return IndexTTSAdapter
-
-
-def _load_cosyvoice_adapter() -> type[TTSAdapter]:
-    from ai.tts.adapters.cosyvoice import CosyVoiceAdapter
-
-    return CosyVoiceAdapter
-
-
-_BUILTIN_TTS_SPECS: tuple[tuple[str, Callable[[], type[TTSAdapter]], str, int], ...] = (
-    ("genie-tts", _load_genie_tts_adapter, "Genie TTS", 10),
-    ("kaggle-gpt-sovits", _load_kaggle_gpt_sovits_adapter, "Kaggle GPT-SoVITS", 20),
-    ("gpt-sovits", _load_gpt_sovits_adapter, "GPT SoVITS", 30),
-    ("qwen3-tts-gguf", _load_qwen3_tts_adapter, "Qwen3-TTS (llama.cpp GGUF)", 40),
-    ("index-tts", _load_index_tts_adapter, "IndexTTS", 50),
-    ("cosyvoice", _load_cosyvoice_adapter, "CosyVoice", 60),
-)
-
-
 def configure_builtin_tts_adapters(
     registry: AdapterRegistry[TTSAdapter] | None = None,
 ) -> None:
-    """Idempotently register all built-in TTS provider adapters."""
+    """Auto-discover and register all built-in TTS adapters from ``ai.tts.adapters``."""
     target = registry if registry is not None else _DEFAULT_REGISTRY
-    for key, loader, label, order in _BUILTIN_TTS_SPECS:
-        target.register_builtin(
-            key,
-            loader=loader,
-            label=label,
-            order=order,
-        )
+    discover_builtin_adapters("ai.tts.adapters", target)
 
 
 def create_tts_adapter_registry(

@@ -13,6 +13,7 @@ from ai.llm.adapters.common import (
 )
 from ai.llm.claude_url import normalize_claude_base_url_for_sdk
 from ai.vision.message_content import normalize_anthropic_user_content
+from core.adapters import builtin_adapter
 from sdk.adapters import LLMAdapter
 from sdk.llm_response import AnthropicResponseCodec
 from sdk.logging import get_logger
@@ -20,6 +21,7 @@ from sdk.logging import get_logger
 logger = get_logger(__name__)
 
 
+@builtin_adapter("Claude", label="Claude", order=40)
 class ClaudeAdapter(LLMAdapter):
     """Adapter for the Anthropic Messages API."""
 

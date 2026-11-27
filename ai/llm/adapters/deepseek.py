@@ -11,6 +11,7 @@ from ai.llm.adapters.common import (
     raise_if_http_client_error,
 )
 from ai.vision.message_content import normalize_openai_messages
+from core.adapters import builtin_adapter
 from sdk.adapters import LLMAdapter
 from sdk.logging import get_logger
 
@@ -26,6 +27,7 @@ _THINKING_BANNED_PARAMS: frozenset[str] = frozenset(
 )
 
 
+@builtin_adapter("Deepseek", label="Deepseek", order=10)
 class DeepSeekAdapter(LLMAdapter):
     """DeepSeek OpenAI 兼容接口；思考模式见 https://api-docs.deepseek.com/guides/thinking_mode"""
 

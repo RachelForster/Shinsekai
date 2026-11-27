@@ -15,6 +15,7 @@ from ai.tts.adapters.local_http import (
     is_local_server_url,
 )
 from ai.tts.server_process import server_python, start_server_process
+from core.adapters import builtin_adapter
 from sdk.logging import get_logger
 
 logger = get_logger(__name__)
@@ -67,6 +68,7 @@ def resolve_pretrained_base_models(work_path: str | Path | None) -> tuple[str, s
     return "", ""
 
 
+@builtin_adapter("gpt-sovits", label="GPT SoVITS", order=30)
 class GPTSoVitsAdapter(LocalHttpTTSAdapter):
     """Adapter for the GPT-SoVITS HTTP v2 TTS service."""
 

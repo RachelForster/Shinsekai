@@ -12,6 +12,7 @@ from ai.llm.adapters.common import (
     raise_if_http_client_error,
 )
 from ai.vision.message_content import normalize_openai_messages
+from core.adapters import builtin_adapter
 from sdk.adapters import LLMAdapter
 from sdk.logging import get_logger
 
@@ -27,6 +28,19 @@ _NATIVE_VISION_MODEL_PREFIXES: tuple[str, ...] = (
 )
 
 
+@builtin_adapter("ChatGPT", label="ChatGPT", order=20)
+@builtin_adapter(
+    "Gemini",
+    label="Gemini",
+    order=30,
+    default_kwargs={
+        "supports_streaming_tools": False,
+        "unsupported_chat_params": frozenset({"frequency_penalty", "presence_penalty"}),
+    },
+)
+@builtin_adapter("豆包", label="豆包", order=50)
+@builtin_adapter("通义千问", label="通义千问", order=60)
+@builtin_adapter("Ollama", label="Ollama", order=70)
 class OpenAIAdapter(LLMAdapter):
     """Chat Completions adapter supporting configurable provider capability overrides."""
 

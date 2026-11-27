@@ -130,6 +130,10 @@ class AdapterRegistry(Generic[T]):
         """Idempotently register all built-in entries for this domain."""
         self._ensure_builtins()
 
+    def normalize_key(self, key: str) -> str:
+        """Normalize ``key`` using this registry's canonical key normalizer."""
+        return self._normalize_key(key)
+
     def _normalize_non_empty(self, key: str) -> str:
         norm = self._normalize_key(key)
         if not norm:
