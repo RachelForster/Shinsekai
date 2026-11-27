@@ -35,8 +35,7 @@ from application.chat.dialog_media import (
     ResolvedSpriteAsset,
     TtsGenerationRequest,
 )
-from core.messaging.formats.json_format import JsonDialogFormat
-from core.messaging.formats.xml_tags_format import XmlTagsDialogFormat
+from ai.llm.formats import JsonDialogFormat, XmlTagsDialogFormat
 from sdk.adapters.tts import TTSAdapter
 from sdk.hooks import BeforeChatContext, PluginHookDispatcher
 from sdk.messages import LLMDialogMessage
