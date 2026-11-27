@@ -221,4 +221,60 @@ describe("TemplateEditorPage outputFormat selector", () => {
 
     expect(await screen.findByText(/Format: XML \/ HTML Tags/)).toBeInTheDocument();
   });
+
+  it("enforces json_v1 for fresh createOnly drafts when listDialogFormats exposes only json_v1", async () => {
+    mockListDialogFormats.mockResolvedValue([{ id: "json_v1", label: "JSON", builtin: true }]);
+
+    renderEditor({ createOnly: true });
+
+    expect(await screen.findByText(/Format: JSON \(classic compatible\)/)).toBeInTheDocument();
+
+    const editSystemBtn = await screen.findByRole("button", { name: "Edit system prompt" });
+    await act(async () => {
+      fireEvent.click(editSystemBtn);
+    });
+    const dialog = await screen.findByRole("dialog", { name: "Edit system prompt & generation rules" });
+    const formatCombo = within(dialog).getByRole("combobox", { name: "Output format" });
+    expect(formatCombo).toHaveTextContent("JSON (classic compatible)");
+
+    fireEvent.click(formatCombo);
+    expect(await screen.findByRole("option", { name: /JSON \(classic compatible\)/ })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /XML/ })).not.toBeInTheDocument();
+  });
+
+  it("normalizes restored xml_v1 template and launch session to json_v1 when xml_v1 is unavailable", async () => {
+    mockListDialogFormats.mockResolvedValue([{ id: "json_v1", label: "JSON", builtin: true }]);
+    mockGetTemplateSession.mockResolvedValue({
+      background: "Room",
+      outputFormat: "xml_v1",
+      selectedCharacters: ["Nanami"],
+    });
+    mockListTemplates.mockResolvedValue([
+      {
+        content: "Modern scenario\n\nModern system",
+        id: "modern",
+        name: "Modern",
+        outputFormat: "xml_v1",
+        path: "/templates/modern.txt",
+        scenario: "Modern scenario",
+        system: "Modern system",
+        updatedAt: "2026-11-24",
+      },
+    ]);
+
+    renderEditor();
+
+    expect(await screen.findByText(/Format: JSON \(classic compatible\)/)).toBeInTheDocument();
+
+    const editSystemBtn = await screen.findByRole("button", { name: "Edit system prompt" });
+    await act(async () => {
+      fireEvent.click(editSystemBtn);
+    });
+    const dialog = await screen.findByRole("dialog", { name: "Edit system prompt & generation rules" });
+    const formatCombo = within(dialog).getByRole("combobox", { name: "Output format" });
+    expect(formatCombo).toHaveTextContent("JSON (classic compatible)");
+
+    fireEvent.click(formatCombo);
+    expect(screen.queryByRole("option", { name: /XML/ })).not.toBeInTheDocument();
+  });
 });

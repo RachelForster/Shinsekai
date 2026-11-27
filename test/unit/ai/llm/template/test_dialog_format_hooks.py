@@ -145,6 +145,14 @@ class _LegacyMinimalFormat(DialogOutputFormat):
         return f"LEGACY_REPAIR({media_field},{retry},{locale})"
 
 
+class _PaddedPlayerFormat(_FullHooksFormat):
+    format_id = "padded_player_v1"
+
+    def render_player_hint(self, context: DialogPlayerHintContext) -> str | None:
+        del context
+        return "\n\nHOOK_PADDED\n\n"
+
+
 class _BlankOutfitFormat(_LegacyMinimalFormat):
     format_id = "blank_outfit_v1"
 
@@ -214,7 +222,7 @@ def test_full_and_legacy_custom_dialog_format_hooks(monkeypatch) -> None:
         [
             DialogFormatContribution("full_hooks_v1", _FullHooksFormat, plugin_id="p1"),
             DialogFormatContribution("legacy_min_v1", _LegacyMinimalFormat, plugin_id="p2"),
-            DialogFormatContribution("blank_outfit_v1", _BlankOutfitFormat, plugin_id="p3"),
+            DialogFormatContribution("padded_player_v1", _PaddedPlayerFormat, plugin_id="p3"),
         ]
     )
 
@@ -249,7 +257,9 @@ def test_full_and_legacy_custom_dialog_format_hooks(monkeypatch) -> None:
     assert "HOOK_REQ_FORMAT" in rendered
     assert "HOOK_REQ_SPEECH PATCHED" in rendered
     assert "HOOK_REQ_EFFECT" not in rendered
-    assert "HOOK_PLAYER(Hero,True,sprite=01)" in rendered
+    assert "\nHOOK_PLAYER(Hero,True,sprite=01)\n" in rendered
+    assert "HOOK_PLAYER(Hero,True,sprite=01)Scenes:" not in rendered
+    assert "HOOK_PLAYER(Hero,True,sprite=01)Requirements:" not in rendered
     assert "search_tools" in rendered or "r_user_display_name_tool" in rendered or "get_user_info" in rendered
 
     runtime_player = player_runtime_prompt(
@@ -260,7 +270,19 @@ def test_full_and_legacy_custom_dialog_format_hooks(monkeypatch) -> None:
         media_selection_mode="indexed",
         output_format="full_hooks_v1",
     )
-    assert "HOOK_PLAYER(Hero,False,sprite=01)" in runtime_player
+    assert runtime_player.endswith("\nHOOK_PLAYER(Hero,False,sprite=01)\n")
+    assert ".HOOK_PLAYER" not in runtime_player
+    padded_runtime = player_runtime_prompt(
+        cfg,
+        "Hero",
+        allow_dialogue=False,
+        read_speech=True,
+        media_selection_mode="indexed",
+        output_format="padded_player_v1",
+    )
+    assert padded_runtime.endswith("\nHOOK_PADDED\n")
+    assert "\n\nHOOK_PADDED" not in padded_runtime
+    assert "HOOK_PADDED\n\n" not in padded_runtime
     assert legacy.format_reminder("full_hooks_v1", locale="en").startswith("HOOK_REMINDER(en)")
 
     legacy_rendered, _ = legacy.TemplateGenerator(output_contract_patches=[]).generate_chat_template(

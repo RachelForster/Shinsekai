@@ -152,8 +152,10 @@ class PlayerSection(Section[DialogTemplateContext]):
                     portrait_value=portrait_value,
                 )
             )
-            if isinstance(custom_hint, str) and custom_hint.strip():
-                return custom_hint
+            if isinstance(custom_hint, str):
+                cleaned_hint = custom_hint.strip("\r\n")
+                if cleaned_hint.strip():
+                    return f"\n{cleaned_hint}\n"
 
         if context.allow_player_dialogue:
             return context.translate(
