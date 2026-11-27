@@ -15,6 +15,7 @@ mod bridge_restart;
 mod desktop_files;
 mod frontend_protocol;
 mod paths;
+mod process_guard;
 mod project_root;
 mod reminders;
 mod runtime;

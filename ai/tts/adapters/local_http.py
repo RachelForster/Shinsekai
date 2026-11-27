@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 
 import requests
 
+from ai.tts.server_process import stop_server_process
 from sdk.adapters import TTSAdapter
 
 _LOCAL_HOSTS = frozenset({"", "127.0.0.1", "localhost", "0.0.0.0", "::1"})
@@ -94,16 +95,8 @@ class LocalHttpTTSAdapter(TTSAdapter):
             except Exception:
                 pass
         proc = getattr(self, "_server_process", None)
-        if proc is not None:
-            try:
-                proc.terminate()
-                proc.wait(timeout=5)
-            except Exception:
-                try:
-                    proc.kill()
-                except Exception:
-                    pass
-            self._server_process = None
+        self._server_process = None
+        stop_server_process(proc)
 
     def wait_until_ready(
         self,

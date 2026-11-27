@@ -65,14 +65,14 @@ def test_isolated_tts_registry_builtins_and_cleanup_on_wait_failure() -> None:
 def test_local_http_tts_base_and_genie_tts_loopback_session_and_wav(
     monkeypatch, tmp_path
 ) -> None:
-    events: list[str] = []
+    events: list[object] = []
 
     class _FakeProc:
         def terminate(self) -> None:
             events.append("terminate")
 
         def wait(self, timeout=None) -> None:
-            events.append(f"wait:{timeout}")
+            events.append(("wait", timeout))
 
         def kill(self) -> None:
             events.append("kill")
@@ -89,7 +89,7 @@ def test_local_http_tts_base_and_genie_tts_loopback_session_and_wav(
     assert minimal._session.trust_env is False
     minimal._server_process = _FakeProc()
     minimal.stop_server()
-    assert events == ["terminate", "wait:5"]
+    assert events == ["terminate", ("wait", 5)]
 
     monkeypatch.setattr(GenieTTSAdapter, "_start_server_process", lambda self: None)
     genie = GenieTTSAdapter(tts_server_url="http://127.0.0.1:9880/")
