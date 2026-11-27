@@ -314,3 +314,6 @@ renpy_player_speech_contract_prefix: 'When voicing user input, emit before the p
 renpy_player_speech_contract_suffix: ' `[{speech_media}] "user spoken words" | tr "{target_voice_name} translation"`, reproducing only spoken words without bracketed actions or thoughts.'
 renpy_player_speech_disabled: 'Do not output a voiced speech line for the player character; the portrait-update line must keep empty quotes `""`.'
 renpy_player_control_footer: 'Name the player character explicitly in narration; `menu:` options are only suggestions, not executed user actions.'
+format_label_xml_v1: 'XML / HTML Tags (transitions & motions)'
+format_label_renpy_v1: 'Ren''Py Script DSL (transitions & motions)'
+format_label_json_v1: 'JSON (classic compatible)'

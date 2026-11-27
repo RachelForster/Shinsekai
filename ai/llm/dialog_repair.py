@@ -14,10 +14,7 @@ from ai.llm.template.session import (
 )
 from core.chat_history.identity import CHAT_OUTPUT_FORMAT
 from core.messaging.dialog_output import has_valid_dialog_output
-from core.messaging.formats.registry import (
-    parse_dialog_content,
-    resolve_dialog_format,
-)
+from ai.llm.formats import parse_dialog_content, resolve_dialog_format
 from sdk.adapters.dialog_format import DEFAULT_DIALOG_FORMAT_ID, DialogOutputFormat
 
 

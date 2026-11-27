@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from core.messaging.formats.renpy import format_renpy_speaker
-from core.messaging.formats.renpy.lexer import quote_dsl_string
 from sdk.adapters.dialog_format import (
     DialogFormatPromptContext,
     DialogOutfitHint,
@@ -14,7 +13,16 @@ from sdk.adapters.dialog_format import (
 )
 from sdk.lang import normalize_lang
 
-from ..core import I18nSection, PromptSpec, Section, TemplateContext, TextSection
+from ai.llm.template.core import (
+    I18nSection,
+    PromptSpec,
+    Section,
+    TemplateContext,
+    TextSection,
+)
+
+from ..prompt_support import translate_dialog
+from .lexer import format_renpy_speaker, quote_dsl_string
 
 
 @dataclass(frozen=True)
@@ -228,10 +236,18 @@ def render_renpy_schema_hint(
         uses_vibe=(media_field == "vibe"),
         use_llm_translation=translate_required,
     )
+    loc = normalize_lang(prompt.locale or locale)
+    tr = prompt.translate
+    translator = (
+        (lambda k, **kw: translate_dialog(k, locale=loc, translate=tr, **kw))
+        if tr is not None
+        else None
+    )
     removed = set(prompt.removed_optional_fields)
     variant = "vibe" if prompt.uses_vibe else ("full" if prompt.uses_full_sprite_ids else "indexed")
     ctx = RenpySchemaContext(
-        locale=normalize_lang(prompt.locale or locale),
+        locale=loc,
+        translator=translator,
         prompt=prompt,
         variant=variant,
         effect_enabled=bool(prompt.use_effect and "effect" not in removed),
@@ -240,7 +256,15 @@ def render_renpy_schema_hint(
     return RENPY_SCHEMA_PROMPT_SPEC.render_user(ctx)
 
 
-def render_renpy_format_reminder(*, locale: str) -> str:
+def render_renpy_format_reminder(
+    *,
+    locale: str,
+    translate: Callable[..., str] | None = None,
+) -> str:
+    if translate is not None:
+        return translate_dialog(
+            "renpy_closing_reminder", locale=locale, translate=translate
+        ).rstrip()
     return RENPY_REMINDER_PROMPT_SPEC.render_user(TemplateContext(locale=normalize_lang(locale))).rstrip()
 
 
@@ -260,8 +284,15 @@ def render_renpy_outfit_hint(context: DialogOutfitHintContext) -> DialogOutfitHi
 
 
 def render_renpy_player_hint(context: DialogPlayerHintContext) -> str:
+    loc = normalize_lang(context.locale)
+    tr = context.translate
+    translator = (
+        (lambda k, **kw: translate_dialog(k, locale=loc, translate=tr, **kw))
+        if tr is not None
+        else None
+    )
     rendered = RENPY_PLAYER_PROMPT_SPEC.render_user(
-        RenpyPlayerContext(locale=normalize_lang(context.locale), player=context)
+        RenpyPlayerContext(locale=loc, translator=translator, player=context)
     ).strip("\n")
     return f"\n{rendered}\n\n" if rendered else ""
 

@@ -6,8 +6,8 @@ from types import SimpleNamespace
 import pytest
 
 from ai.llm.dialog_repair import repair_dialog_output
-from ai.llm.template import PROMPT_CATALOG
-from ai.llm.template.dialog.renpy_prompts import (
+from ai.llm.formats import configure_builtin_dialog_formats
+from ai.llm.formats.renpy.prompts import (
     render_renpy_format_reminder,
     render_renpy_outfit_hint,
     render_renpy_player_hint,
@@ -15,13 +15,12 @@ from ai.llm.template.dialog.renpy_prompts import (
     render_renpy_requirements,
     render_renpy_schema_hint,
 )
+from ai.llm.template import PROMPT_CATALOG
 from ai.llm.template.dialog.sections.player import player_runtime_prompt
 from ai.llm.template.session import OUTFIT_CONTEXT_MARKER
 import ai.llm.template_generator as legacy
 from application.chat.capabilities.outfit import OutfitRuntimeController
-from application.plugins.register_builtin_plugins import register_builtin_dialog_formats
 from config.models import Character, Sprite
-from core.messaging.formats import configure_builtin_dialog_formats
 from core.messaging.formats.registry import _reset_for_tests
 from sdk.adapters.dialog_format import (
     DialogFormatPromptContext,
@@ -35,7 +34,7 @@ from test.mocks import MockLLMAdapter
 @pytest.fixture(autouse=True)
 def _restore_registry():
     _reset_for_tests()
-    register_builtin_dialog_formats()
+    configure_builtin_dialog_formats()
     yield
     _reset_for_tests()
     configure_builtin_dialog_formats()

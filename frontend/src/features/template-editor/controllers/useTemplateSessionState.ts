@@ -30,6 +30,7 @@ import {
   composeTemplateContent,
   createTemplateDraft,
   DEFAULT_NEW_OUTPUT_FORMAT,
+  FALLBACK_DIALOG_FORMATS,
   templateGenerationKey,
 } from "../templateFlow";
 import {
@@ -45,15 +46,12 @@ interface UseTemplateSessionStateOptions {
   createOnly: boolean;
 }
 
-const FALLBACK_DIALOG_FORMATS: DialogFormatOption[] = [
-  { id: "xml_v1", label: "XML / HTML Tags", builtin: true },
-  { id: "renpy_v1", label: "Ren'Py Script DSL", builtin: true },
-  { id: "json_v1", label: "JSON", builtin: true },
-];
-
 export function useTemplateSessionState({ conversationId, createOnly }: UseTemplateSessionStateOptions) {
-  const { t } = useI18n();
-  const dialogFormatsQuery = useQuery({ queryFn: listDialogFormats, queryKey: dialogFormatsQueryKey });
+  const { language, t } = useI18n();
+  const dialogFormatsQuery = useQuery({
+    queryFn: listDialogFormats,
+    queryKey: [...dialogFormatsQueryKey, language],
+  });
   const templatesQuery = useQuery({ queryFn: listTemplates, queryKey: templatesQueryKey });
   const presetsQuery = useQuery({ queryFn: getUserPromptPresets, queryKey: userPromptPresetsQueryKey });
   const sessionQuery = useQuery({

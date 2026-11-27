@@ -341,9 +341,6 @@ export const storyZhCNMessages = {
   "template.field.outputFormat": "输出格式",
   "template.field.outputFormatHint":
     "控制 AI 演出指令的协议格式（新对话默认 XML/HTML 标签，支持内置 Ren'Py 剧本 DSL；历史模板默认兼容 JSON）。",
-  "template.outputFormat.xml_v1": "XML / HTML 标签（支持转场与人物动作）",
-  "template.outputFormat.renpy_v1": "Ren'Py 剧本 DSL（内置插件，支持转场与人物动作）",
-  "template.outputFormat.json_v1": "JSON（经典兼容格式）",
   "template.bar.outputFormat": "格式：{format}",
 } satisfies Record<string, string>;
 

@@ -5,30 +5,12 @@ import { useI18n } from "../../shared/i18n";
 import type { DialogFormatOption, DialogOutputFormatId, MediaSelectionMode } from "../../shared/platform/types";
 import { AsyncButton, Button, Dialog, NumberInput, Select, Switch, TextArea } from "../../shared/ui";
 import { SemanticMediaSwitch } from "./SemanticMediaSwitch";
-import { DEFAULT_NEW_OUTPUT_FORMAT, resolveSupportedOutputFormat } from "./templateFlow";
-
-const FALLBACK_DIALOG_FORMATS: DialogFormatOption[] = [
-  { id: "xml_v1", label: "XML / HTML Tags", builtin: true },
-  { id: "renpy_v1", label: "Ren'Py Script DSL", builtin: true },
-  { id: "json_v1", label: "JSON", builtin: true },
-];
+import { DEFAULT_NEW_OUTPUT_FORMAT, FALLBACK_DIALOG_FORMATS, resolveSupportedOutputFormat } from "./templateFlow";
 
 export function resolveDialogFormatLabel(
   formatId: DialogOutputFormatId,
   dialogFormats: DialogFormatOption[] | undefined,
-  t: (
-    key: "template.outputFormat.xml_v1" | "template.outputFormat.renpy_v1" | "template.outputFormat.json_v1",
-  ) => string,
 ): string {
-  if (formatId === "xml_v1") {
-    return t("template.outputFormat.xml_v1");
-  }
-  if (formatId === "renpy_v1") {
-    return t("template.outputFormat.renpy_v1");
-  }
-  if (formatId === "json_v1") {
-    return t("template.outputFormat.json_v1");
-  }
   return dialogFormats?.find((item) => item.id === formatId)?.label || formatId;
 }
 
@@ -311,7 +293,7 @@ export function SystemPromptDialog({
           >
             {formatOptions.map((option) => (
               <option key={option.id} value={option.id}>
-                {resolveDialogFormatLabel(option.id, formatOptions, t)}
+                {resolveDialogFormatLabel(option.id, formatOptions)}
               </option>
             ))}
           </Select>

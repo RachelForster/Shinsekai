@@ -67,7 +67,6 @@ class PluginRuntimeBindings:
     register_mcp_tools: Callable[[Any], None] | None = None
     configure_model_assets: Callable[[list[Any]], None] | None = None
     configure_dialog_formats: Callable[[list[Any]], None] | None = None
-    builtin_plugins: tuple[type[Any], ...] = ()
 
 
 def get_plugin_manager() -> PluginManager | None:
@@ -243,14 +242,7 @@ def ensure_plugins_loaded(
     ensure_plugin_site_packages_on_syspath()
 
     mgr = PluginManager()
-    register_builtin_plugins(
-        mgr,
-        extra_plugins=(
-            runtime_bindings.builtin_plugins
-            if runtime_bindings is not None
-            else ()
-        ),
-    )
+    register_builtin_plugins(mgr)
     if _MANIFEST.is_file():
         try:
             mgr.load_manifest_file(_MANIFEST)

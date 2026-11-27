@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, ClassVar, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
@@ -37,6 +37,7 @@ class DialogFormatPromptContext:
     max_speech_chars: int = 0
     max_dialog_items: int = 0
     removed_optional_fields: tuple[str, ...] = ()
+    translate: Callable[..., str] | None = field(default=None, repr=False, compare=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,6 +74,7 @@ class DialogPlayerHintContext:
     target_voice_name: str = ""
     portrait_field: str = "sprite"
     portrait_value: str = "01"
+    translate: Callable[..., str] | None = field(default=None, repr=False, compare=False)
 
 
 @runtime_checkable
@@ -100,6 +102,7 @@ class DialogOutputFormat(ABC):
 
     format_id: ClassVar[str] = ""
     label: ClassVar[str] = ""
+    order: ClassVar[int] = 100
     api_response_format: ClassVar[dict[str, str] | None] = None
 
     @abstractmethod
@@ -113,6 +116,11 @@ class DialogOutputFormat(ABC):
     @abstractmethod
     def validate(self, raw: str) -> bool:
         """Return True when raw output satisfies this format's minimum valid contract."""
+
+    def render_label(self, *, locale: str = "zh_CN") -> str:
+        """Return a localized UI label for this dialog output format."""
+        del locale
+        return self.label or self.format_id
 
     def can_parse(self, raw: str) -> bool:
         """Heuristic probe for history auto-detection when no format tag is stored."""
@@ -156,6 +164,14 @@ class DialogOutputFormat(ABC):
 
     def render_format_reminder(self, *, locale: str) -> str | None:
         """Optional concise format reminder override for runtime injection."""
+        return None
+
+    def render_tool_protocol(self, *, locale: str) -> str | None:
+        """Optional tool-calling protocol appendix paired with format reminders."""
+        return None
+
+    def render_tools_intro(self, *, locale: str) -> str | None:
+        """Optional tool-block intro tailored to this output format."""
         return None
 
     def render_repair_prompt(

@@ -130,13 +130,9 @@ def test_major_sections_expose_their_runtime_composite_children(context):
     background_children = BackgroundSection()._resolve_children(context)
     requirement_children = RequirementsSection()._resolve_children(context)
 
-    assert [child.id for child in json_children] == [
-        "head",
-        "speech",
-        "effect",
-        "translation",
-        "foot",
-    ]
+    assert [child.id for child in json_children] == ["head"]
+    assert "<json_head_top>" in json_children[0].text
+    assert "<json_foot>" in json_children[0].text
     assert [child.id for child in character_children] == [
         "sprites",
         "profiles",

@@ -313,3 +313,6 @@ renpy_player_speech_contract_prefix: '朗读主控输入时，在表情行前为
 renpy_player_speech_contract_suffix: ' `[{speech_media}] "用户本轮实际说出的原文" | tr "该原文的{target_voice_name}译文"`。正文只复述实际台词，去掉括号/星号中的动作与心理描写。'
 renpy_player_speech_disabled: '不要为主控输出朗读行；主控表情行的引号内容必须为空 `""`。'
 renpy_player_control_footer: '涉及主控的旁白请明确写出主控角色名；`menu:` 只是建议，不代表主控已经说出或执行。'
+format_label_xml_v1: 'XML / HTML 标签（支持转场与人物动作）'
+format_label_renpy_v1: 'Ren''Py 剧本 DSL（支持转场与人物动作）'
+format_label_json_v1: 'JSON（经典兼容格式）'

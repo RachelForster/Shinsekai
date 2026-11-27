@@ -230,8 +230,6 @@ export const pluginsZhCNMessages = {
   "plugin.trust.pendingBody": "该插件曾通过人工复核，但当前版本或提交仍在等待复核。建议确认更新内容与来源后再安装。",
   "plugin.trust.pendingTitle": "待复核版本",
   "plugin.trust.verifiedHint": "维护者已人工复核",
-  "plugin.builtin.renpyDslFormat.title": "Ren'Py 剧本 DSL 对话格式",
-  "plugin.builtin.renpyDslFormat.description": "内置类 Ren'Py 剧本 DSL 演出输出格式（renpy_v1），支持转场与人物动作。",
 } satisfies Record<string, string>;
 
 export type PluginsMessageKey = keyof typeof pluginsZhCNMessages;

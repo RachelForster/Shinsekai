@@ -4,6 +4,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 import re
 
+from ai.llm.formats import resolve_dialog_format
 from config.schema import (
     SELF_PERSONA_NAME,
     find_self_persona,
@@ -11,11 +12,9 @@ from config.schema import (
     is_self_persona_id,
     is_self_persona_name,
 )
-from core.messaging.formats.registry import resolve_dialog_format
 from sdk.adapters.dialog_format import (
     DEFAULT_DIALOG_FORMAT_ID,
     DialogPlayerHintContext,
-    XML_DIALOG_FORMAT_ID,
 )
 
 from ...core import PROMPT_CATALOG, Section
@@ -127,63 +126,36 @@ class PlayerSection(Section[DialogTemplateContext]):
         format_id = (
             str(context.output_format_id or DEFAULT_DIALOG_FORMAT_ID).strip().lower()
         )
-        is_xml = format_id == XML_DIALOG_FORMAT_ID
         if context.uses_vibe:
             portrait_field = "vibe"
             portrait_value = context.translate("player_portrait_vibe_value")
-            speech_media = 'vibe=""' if is_xml else '"vibe":""'
         else:
             portrait_field = "sprite"
             portrait_value = "01"
-            speech_media = 'sprite="-1"' if is_xml else '"sprite":"-1"'
 
-        if format_id not in (DEFAULT_DIALOG_FORMAT_ID, XML_DIALOG_FORMAT_ID):
-            fmt = resolve_dialog_format(format_id)
-            custom_hint = fmt.render_player_hint(
-                DialogPlayerHintContext(
-                    locale=str(context.locale or "zh_CN"),
-                    name=name,
-                    setting=setting,
-                    uses_vibe=bool(context.uses_vibe),
-                    allow_player_dialogue=bool(context.allow_player_dialogue),
-                    read_player_speech=bool(context.read_player_speech),
-                    target_voice_name=str(context.target_voice_name or ""),
-                    portrait_field=portrait_field,
-                    portrait_value=portrait_value,
-                )
-            )
-            if isinstance(custom_hint, str):
-                cleaned_hint = custom_hint.strip("\r\n")
-                if cleaned_hint.strip():
-                    return f"\n{cleaned_hint}\n"
-
-        if context.allow_player_dialogue:
-            return context.translate(
-                "xml_player_ai_control" if is_xml else "player_ai_control",
-                name=name,
-                setting=setting,
-                portrait_field=portrait_field,
-                portrait_value=portrait_value,
-            )
-
-        speech_contract = (
-            context.translate(
-                "xml_player_speech_contract" if is_xml else "player_speech_contract",
-                name=name,
-                speech_media=speech_media,
-                target_voice_name=context.target_voice_name,
-            )
-            if context.read_player_speech
-            else context.translate("player_speech_disabled", name=name)
-        )
-        return context.translate(
-            "xml_player_control" if is_xml else "player_control",
+        hint_ctx = DialogPlayerHintContext(
+            locale=str(context.locale or "zh_CN"),
             name=name,
             setting=setting,
+            uses_vibe=bool(context.uses_vibe),
+            allow_player_dialogue=bool(context.allow_player_dialogue),
+            read_player_speech=bool(context.read_player_speech),
+            target_voice_name=str(context.target_voice_name or ""),
             portrait_field=portrait_field,
             portrait_value=portrait_value,
-            speech_contract=speech_contract,
+            translate=context.translate,
         )
+        fmt = resolve_dialog_format(format_id)
+        hint = fmt.render_player_hint(hint_ctx)
+        if (not isinstance(hint, str) or not hint.strip()) and fmt.format_id != DEFAULT_DIALOG_FORMAT_ID:
+            hint = resolve_dialog_format(DEFAULT_DIALOG_FORMAT_ID).render_player_hint(
+                hint_ctx
+            )
+        if isinstance(hint, str):
+            cleaned_hint = hint.strip("\r\n")
+            if cleaned_hint.strip():
+                return f"\n{cleaned_hint}\n"
+        return ""
 
 
 def player_runtime_prompt(

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 import re
-from typing import Protocol, runtime_checkable
 
 from core.messaging.dialog_tokens import (
     BGM_ALIASES,
@@ -16,7 +15,6 @@ from core.messaging.dialog_tokens import (
     STAT_ALIASES,
     normalize_character_name,
 )
-from core.messaging.formats.xml_tags_parser import NEXT_STAGE_OPEN_RE
 from sdk.adapters.dialog_format import (
     DialogFormatPromptContext,
     DialogOutfitHint,
@@ -29,50 +27,21 @@ from sdk.adapters.dialog_format import (
 from sdk.messages import LLMDialogMessage
 from sdk.types import RequirementSpec
 
+from ..registry import builtin_dialog_format
+from ..xml.parser import NEXT_STAGE_OPEN_RE
 from .lexer import format_renpy_speaker, quote_dsl_string
 from .parser import RENPY_DIRECTIVE_START_RE, RenpyDslStreamParser
-
-
-@runtime_checkable
-class RenpyPromptProvider(Protocol):
-    """Protocol for template-layer prompt renderers bound to `renpy_v1`."""
-
-    def render_schema_hint(
-        self,
-        *,
-        media_field: str,
-        translate_required: bool,
-        locale: str,
-        prompt_context: DialogFormatPromptContext | None = None,
-    ) -> str | None: ...
-
-    def render_requirements(
-        self,
-        context: DialogFormatPromptContext,
-    ) -> Sequence[RequirementSpec] | None: ...
-
-    def render_outfit_hint(
-        self,
-        context: DialogOutfitHintContext,
-    ) -> DialogOutfitHint | None: ...
-
-    def render_player_hint(
-        self,
-        context: DialogPlayerHintContext,
-    ) -> str | None: ...
-
-    def render_format_reminder(self, *, locale: str) -> str | None: ...
-
-    def render_repair_prompt(
-        self,
-        *,
-        media_field: str,
-        retry: bool,
-        locale: str,
-        allow_unbound_speakers: bool = False,
-        bound_speakers: Sequence[str] = (),
-    ) -> str | None: ...
-
+from .prompts import (
+    render_renpy_format_reminder,
+    render_renpy_label,
+    render_renpy_outfit_hint,
+    render_renpy_player_hint,
+    render_renpy_repair_prompt,
+    render_renpy_requirements,
+    render_renpy_schema_hint,
+    render_renpy_tool_protocol,
+    render_renpy_tools_intro,
+)
 
 _QUOTED_SPEAKER_LINE_RE = re.compile(
     r'^(?:"[^"\n]+"|\'[^\'\n]+\'|[^\s\[\]{}<>:"\'][^\n\[\]{}<>:]*)\s*(?:\[[^\]]*\]|\bat\s+[a-zA-Z0-9_-]+\s+)?\s*["\']',
@@ -81,7 +50,11 @@ _QUOTED_SPEAKER_LINE_RE = re.compile(
 
 
 def _format_bracket_attrs(pairs: list[tuple[str, str | None]]) -> str:
-    rendered = [f"{key}={quote_dsl_string(val)}" for key, val in pairs if val is not None and val != ""]
+    rendered = [
+        f"{key}={quote_dsl_string(val)}"
+        for key, val in pairs
+        if val is not None and val != ""
+    ]
     return f" [{', '.join(rendered)}]" if rendered else ""
 
 
@@ -112,22 +85,17 @@ def _serialize_scene_or_bgm(item: LLMDialogMessage, *, is_scene: bool) -> str:
     return " ".join(parts)
 
 
+@builtin_dialog_format(order=20)
 class RenpyDslDialogFormat(DialogOutputFormat):
     """Streaming Ren'Py-like script DSL output format (`renpy_v1`)."""
 
     format_id = RENPY_DIALOG_FORMAT_ID
     label = "Ren'Py Script DSL"
+    order = 20
     api_response_format = {"type": "text"}
 
-    def __init__(
-        self,
-        *,
-        prompt_provider: RenpyPromptProvider | None = None,
-    ) -> None:
-        self._prompt_provider = prompt_provider
-
-    def _resolve_prompt_provider(self) -> RenpyPromptProvider | None:
-        return self._prompt_provider
+    def render_label(self, *, locale: str = "zh_CN") -> str:
+        return render_renpy_label(locale=locale)
 
     def create_stream_parser(self) -> DialogStreamParser:
         return RenpyDslStreamParser()
@@ -170,7 +138,13 @@ class RenpyDslDialogFormat(DialogOutputFormat):
                     return False
                 continue
             if speaker_requires_media is not None and norm not in (
-                COT_ALIASES | NARR_ALIASES | CHOICE_ALIASES | STAT_ALIASES | CG_ALIASES | SCENE_ALIASES | BGM_ALIASES
+                COT_ALIASES
+                | NARR_ALIASES
+                | CHOICE_ALIASES
+                | STAT_ALIASES
+                | CG_ALIASES
+                | SCENE_ALIASES
+                | BGM_ALIASES
             ):
                 eff = str(msg.effect or "").strip().upper()
                 if eff == "LEAVE" and not (msg.text or "").strip():
@@ -179,7 +153,10 @@ class RenpyDslDialogFormat(DialogOutputFormat):
                     if semantic:
                         if not str(msg.vibe or "").strip():
                             return False
-                    elif "asset_id" not in msg.model_fields_set or not str(msg.asset_id or "").strip():
+                    elif (
+                        "asset_id" not in msg.model_fields_set
+                        or not str(msg.asset_id or "").strip()
+                    ):
                         return False
         return True
 
@@ -218,8 +195,14 @@ class RenpyDslDialogFormat(DialogOutputFormat):
                 lines.append(_serialize_scene_or_bgm(item, is_scene=False))
             elif norm in CG_ALIASES:
                 asset_str = None if item.asset_id in (None, "", "-1") else str(item.asset_id)
-                attrs = _format_bracket_attrs([("sprite", asset_str), ("vibe", item.vibe), ("effect", item.effect)])
-                lines.append(f"cg{attrs} {quote_dsl_string(speech)}" if speech else f"cg{attrs}".strip())
+                attrs = _format_bracket_attrs(
+                    [("sprite", asset_str), ("vibe", item.vibe), ("effect", item.effect)]
+                )
+                lines.append(
+                    f"cg{attrs} {quote_dsl_string(speech)}"
+                    if speech
+                    else f"cg{attrs}".strip()
+                )
             elif norm in NARR_ALIASES:
                 attrs = _format_bracket_attrs([("effect", item.effect)])
                 lines.append(f"narr{attrs} {quote_dsl_string(speech)}{tr_suffix}")
@@ -238,14 +221,18 @@ class RenpyDslDialogFormat(DialogOutputFormat):
                 if (eff_upper == "LEAVE" or asset_str.upper() == "LEAVE") and not speech:
                     lines.append(f"hide {format_renpy_speaker(item.name)}")
                 else:
-                    attrs = _format_bracket_attrs([
-                        ("sprite", asset_str or "-1"),
-                        ("vibe", item.vibe),
-                        ("outfit", item.outfit),
-                        ("motion", item.motion),
-                        ("effect", item.effect),
-                    ])
-                    lines.append(f"{format_renpy_speaker(item.name)}{attrs} {quote_dsl_string(speech)}{tr_suffix}")
+                    attrs = _format_bracket_attrs(
+                        [
+                            ("sprite", asset_str or "-1"),
+                            ("vibe", item.vibe),
+                            ("outfit", item.outfit),
+                            ("motion", item.motion),
+                            ("effect", item.effect),
+                        ]
+                    )
+                    lines.append(
+                        f"{format_renpy_speaker(item.name)}{attrs} {quote_dsl_string(speech)}{tr_suffix}"
+                    )
         return "\n".join(lines)
 
     def render_schema_hint(
@@ -256,10 +243,7 @@ class RenpyDslDialogFormat(DialogOutputFormat):
         locale: str,
         prompt_context: DialogFormatPromptContext | None = None,
     ) -> str | None:
-        provider = self._resolve_prompt_provider()
-        if provider is None:
-            return None
-        return provider.render_schema_hint(
+        return render_renpy_schema_hint(
             media_field=media_field,
             translate_required=translate_required,
             locale=locale,
@@ -270,34 +254,43 @@ class RenpyDslDialogFormat(DialogOutputFormat):
         self,
         prompt_context: DialogFormatPromptContext,
     ) -> Sequence[RequirementSpec] | None:
-        provider = self._resolve_prompt_provider()
-        if provider is None:
-            return None
-        return provider.render_requirements(prompt_context)
+        return render_renpy_requirements(prompt_context)
 
     def render_outfit_hint(
         self,
         context: DialogOutfitHintContext,
     ) -> DialogOutfitHint | None:
-        provider = self._resolve_prompt_provider()
-        if provider is None:
-            return None
-        return provider.render_outfit_hint(context)
+        return render_renpy_outfit_hint(context)
 
     def render_player_hint(
         self,
         context: DialogPlayerHintContext,
     ) -> str | None:
-        provider = self._resolve_prompt_provider()
-        if provider is None:
-            return None
-        return provider.render_player_hint(context)
+        return render_renpy_player_hint(context)
 
-    def render_format_reminder(self, *, locale: str) -> str | None:
-        provider = self._resolve_prompt_provider()
-        if provider is None:
-            return None
-        return provider.render_format_reminder(locale=locale)
+    def render_format_reminder(
+        self,
+        *,
+        locale: str,
+        translate: Callable[..., str] | None = None,
+    ) -> str | None:
+        return render_renpy_format_reminder(locale=locale, translate=translate)
+
+    def render_tool_protocol(
+        self,
+        *,
+        locale: str,
+        translate: Callable[..., str] | None = None,
+    ) -> str | None:
+        return render_renpy_tool_protocol(locale=locale, translate=translate)
+
+    def render_tools_intro(
+        self,
+        *,
+        locale: str,
+        translate: Callable[..., str] | None = None,
+    ) -> str | None:
+        return render_renpy_tools_intro(locale=locale, translate=translate)
 
     def render_repair_prompt(
         self,
@@ -308,13 +301,13 @@ class RenpyDslDialogFormat(DialogOutputFormat):
         allow_unbound_speakers: bool = False,
         bound_speakers: Sequence[str] = (),
     ) -> str | None:
-        provider = self._resolve_prompt_provider()
-        if provider is None:
-            return None
-        return provider.render_repair_prompt(
+        return render_renpy_repair_prompt(
             media_field=media_field,
             retry=retry,
             locale=locale,
             allow_unbound_speakers=allow_unbound_speakers,
             bound_speakers=bound_speakers,
         )
+
+
+__all__ = ["RenpyDslDialogFormat"]

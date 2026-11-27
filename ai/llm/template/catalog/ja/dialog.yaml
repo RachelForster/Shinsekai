@@ -317,3 +317,6 @@ renpy_player_speech_contract_prefix: 'ユーザー入力を読み上げる場合
 renpy_player_speech_contract_suffix: ' `[{speech_media}] "ユーザー発言原文" | tr "{target_voice_name}訳"` を出力し、括弧や心理描写を除いた発話のみ記述してください。'
 renpy_player_speech_disabled: '操作キャラクターの読み上げ行は出力せず、表情更新行の引用符は空 `""` にしてください。'
 renpy_player_control_footer: '操作キャラクターに関する描写はキャラクター名を明記し、`menu:` は提案にとどめてください。'
+format_label_xml_v1: 'XML / HTML タグ（場面転換・キャラ動作対応）'
+format_label_renpy_v1: 'Ren''Py 風スクリプト DSL（場面転換・キャラ動作対応）'
+format_label_json_v1: 'JSON（クラシック互換）'

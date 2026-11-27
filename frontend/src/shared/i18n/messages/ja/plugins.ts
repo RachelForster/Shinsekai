@@ -236,7 +236,4 @@ export const pluginsJaMessages: Record<PluginsMessageKey, string> = {
     "このプラグインは以前レビュー済みですが、現在のバージョンまたはコミットはまだレビュー待ちです。更新内容と出所を確認してからインストールしてください。",
   "plugin.trust.pendingTitle": "レビュー待ち",
   "plugin.trust.verifiedHint": "メンテナーが手動レビュー済み",
-  "plugin.builtin.renpyDslFormat.title": "Ren'Py 風スクリプト DSL 対話フォーマット",
-  "plugin.builtin.renpyDslFormat.description":
-    "場面転換・キャラ動作に対応した内蔵 Ren'Py 風スクリプト DSL 出力形式（renpy_v1）。",
 };

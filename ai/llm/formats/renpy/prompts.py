@@ -1,22 +1,17 @@
-"""Requirement/repair renderers and provider registration for `renpy_v1`."""
+"""Prompt, requirement, label, tool, and repair renderers for `renpy_v1`."""
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
+from ai.llm.template.core import I18nSection, Section, TemplateContext, TextSection
 from core.messaging.dialog_tokens import BGM, CG, CHOICE, COT, SCENE, STAT
-from sdk.adapters.dialog_format import (
-    DialogFormatPromptContext,
-    DialogOutfitHint,
-    DialogOutfitHintContext,
-    DialogPlayerHintContext,
-    RENPY_DIALOG_FORMAT_ID,
-)
+from sdk.adapters.dialog_format import DialogFormatPromptContext
 from sdk.lang import normalize_lang
 from sdk.types import RequirementSpec
 
-from ..core import I18nSection, Section, TemplateContext, TextSection
-from .renpy_sections import (
+from ..prompt_support import render_repair_message, translate_dialog
+from .sections import (
     RENPY_OUTFIT_PROMPT_SPEC,
     RENPY_PLAYER_PROMPT_SPEC,
     RENPY_REMINDER_PROMPT_SPEC,
@@ -29,6 +24,29 @@ from .renpy_sections import (
     render_renpy_player_hint,
     render_renpy_schema_hint,
 )
+
+
+def render_renpy_label(*, locale: str = "zh_CN") -> str:
+    """Return localized display label for `renpy_v1`."""
+    return translate_dialog("format_label_renpy_v1", locale=locale)
+
+
+def render_renpy_tool_protocol(
+    *,
+    locale: str,
+    translate: Callable[..., str] | None = None,
+) -> str:
+    return translate_dialog(
+        "closing_custom_tool_protocol", locale=locale, translate=translate
+    )
+
+
+def render_renpy_tools_intro(
+    *,
+    locale: str,
+    translate: Callable[..., str] | None = None,
+) -> str:
+    return translate_dialog("custom_tools_intro", locale=locale, translate=translate)
 
 
 def _system_directives(prompt: DialogFormatPromptContext) -> tuple[str, ...]:
@@ -49,9 +67,8 @@ def _system_directives(prompt: DialogFormatPromptContext) -> tuple[str, ...]:
 
 def _build_cname_section(context: DialogFormatPromptContext) -> Section[TemplateContext]:
     directives = _system_directives(context)
-    tail: Section[TemplateContext]
     if directives:
-        tail = I18nSection(
+        tail: Section[TemplateContext] = I18nSection(
             id="directives",
             priority=30,
             key="dialog.renpy_r_cname_directives",
@@ -74,10 +91,18 @@ def _build_cname_section(context: DialogFormatPromptContext) -> Section[Template
 
 def render_renpy_requirements(context: DialogFormatPromptContext) -> list[RequirementSpec]:
     """Build switch-aware Ren'Py DSL requirements without format-injecting names."""
-    base_ctx = TemplateContext(locale=normalize_lang(context.locale))
+    loc = normalize_lang(context.locale)
+    tr = context.translate
+    translator = (
+        (lambda k, **kw: translate_dialog(k, locale=loc, translate=tr, **kw))
+        if tr is not None
+        else None
+    )
+    base_ctx = TemplateContext(locale=loc, translator=translator)
     specs: tuple[tuple[str, int, bool, Section[TemplateContext]], ...] = (
         ("r_cot", 5, context.use_cot, I18nSection("r_cot", key="dialog.renpy_r_cot", params={"cot": COT})),
         ("r_format", 10, True, I18nSection("r_format", key="dialog.renpy_r_format")),
+        ("r_user_display_name_tool", 15, True, I18nSection("r_user_display_name_tool", key="dialog.r_user_display_name_tool")),
         ("r_cname", 20, True, _build_cname_section(context)),
         (
             "r_sprite",
@@ -160,7 +185,7 @@ def render_renpy_requirements(context: DialogFormatPromptContext) -> list[Requir
     return [
         RequirementSpec(
             id=rule_id,
-            text=section.render(base_ctx),
+            text=section.render(base_ctx) if enabled else "",
             order=order,
             enabled=enabled,
         )
@@ -176,78 +201,25 @@ def render_renpy_repair_prompt(
     allow_unbound_speakers: bool = False,
     bound_speakers: Sequence[str] = (),
 ) -> str:
-    from ..session.dialog_repair import (
-        DIALOG_REPAIR_PROMPT_SPEC,
-        DialogRepairPromptContext,
+    if allow_unbound_speakers:
+        key = (
+            "session.dialog_repair_renpy_retry_selective"
+            if retry
+            else "session.dialog_repair_renpy_initial_selective"
+        )
+    else:
+        key = (
+            "session.dialog_repair_renpy_retry"
+            if retry
+            else "session.dialog_repair_renpy_initial"
+        )
+    return render_repair_message(
+        instruction_key=key,
+        media_field=media_field,
+        locale=locale,
+        allow_unbound_speakers=allow_unbound_speakers,
+        bound_speakers=bound_speakers,
     )
-
-    return DIALOG_REPAIR_PROMPT_SPEC.render_user(
-        DialogRepairPromptContext(
-            locale=normalize_lang(locale),
-            media_field=media_field,
-            retry=retry,
-            allow_unbound_speakers=allow_unbound_speakers,
-            bound_speakers=tuple(bound_speakers),
-            output_format_id=RENPY_DIALOG_FORMAT_ID,
-        )
-    )
-
-
-class RenpyTemplatePromptProvider:
-    """Adapter binding `PromptCatalog`-backed Section renderers to `RenpyDslDialogFormat`."""
-
-    def render_schema_hint(
-        self,
-        *,
-        media_field: str,
-        translate_required: bool,
-        locale: str,
-        prompt_context: DialogFormatPromptContext | None = None,
-    ) -> str | None:
-        return render_renpy_schema_hint(
-            media_field=media_field,
-            translate_required=translate_required,
-            locale=locale,
-            prompt_context=prompt_context,
-        )
-
-    def render_requirements(
-        self,
-        context: DialogFormatPromptContext,
-    ) -> Sequence[RequirementSpec] | None:
-        return render_renpy_requirements(context)
-
-    def render_outfit_hint(
-        self,
-        context: DialogOutfitHintContext,
-    ) -> DialogOutfitHint | None:
-        return render_renpy_outfit_hint(context)
-
-    def render_player_hint(
-        self,
-        context: DialogPlayerHintContext,
-    ) -> str | None:
-        return render_renpy_player_hint(context)
-
-    def render_format_reminder(self, *, locale: str) -> str | None:
-        return render_renpy_format_reminder(locale=locale)
-
-    def render_repair_prompt(
-        self,
-        *,
-        media_field: str,
-        retry: bool,
-        locale: str,
-        allow_unbound_speakers: bool = False,
-        bound_speakers: Sequence[str] = (),
-    ) -> str | None:
-        return render_renpy_repair_prompt(
-            media_field=media_field,
-            retry=retry,
-            locale=locale,
-            allow_unbound_speakers=allow_unbound_speakers,
-            bound_speakers=bound_speakers,
-        )
 
 
 __all__ = [
@@ -258,11 +230,13 @@ __all__ = [
     "RenpyOutfitContext",
     "RenpyPlayerContext",
     "RenpySchemaContext",
-    "RenpyTemplatePromptProvider",
     "render_renpy_format_reminder",
+    "render_renpy_label",
     "render_renpy_outfit_hint",
     "render_renpy_player_hint",
     "render_renpy_repair_prompt",
     "render_renpy_requirements",
     "render_renpy_schema_hint",
+    "render_renpy_tool_protocol",
+    "render_renpy_tools_intro",
 ]

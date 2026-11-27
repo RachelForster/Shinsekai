@@ -361,11 +361,11 @@ def _start_plugin_loader(state, logger) -> None:
                 forward_plugin_perception_from_bridge,
             )
             from ai.vision.fallback_registry import configure_registered_fallbacks
-            from application.plugins.register_builtin_plugins import (
-                get_builtin_plugin_classes,
-            )
             from core.media.avatar.registry import configure_registered_formats
-            from core.messaging.formats.registry import configure_registered_dialog_formats
+            from ai.llm.formats import (
+                configure_builtin_dialog_formats,
+                configure_registered_dialog_formats,
+            )
             from ai.asr.registry import (
                 configure_builtin_asr_adapters,
                 configure_registered_asr_adapters,
@@ -388,6 +388,7 @@ def _start_plugin_loader(state, logger) -> None:
             configure_builtin_tts_adapters()
             configure_builtin_asr_adapters()
             configure_builtin_t2i_adapters()
+            configure_builtin_dialog_formats()
 
             def register_mcp_tools(tool_manager) -> None:
                 from ai.tools.mcp_tool_setup import register_mcp_tools_from_config
@@ -414,7 +415,6 @@ def _start_plugin_loader(state, logger) -> None:
                     configure_dialog_formats=configure_registered_dialog_formats,
                     register_mcp_tools=register_mcp_tools,
                     configure_model_assets=configure_registered_model_assets,
-                    builtin_plugins=get_builtin_plugin_classes(),
                 ),
             )
             bind_frontend_user_input_runtime(
@@ -514,10 +514,8 @@ def run(
 
     from core.media.avatar.registry import configure_builtin_formats
     configure_builtin_formats()
-    from core.messaging.formats.registry import configure_builtin_dialog_formats
+    from ai.llm.formats import configure_builtin_dialog_formats
     configure_builtin_dialog_formats()
-    from application.plugins.register_builtin_plugins import register_builtin_dialog_formats
-    register_builtin_dialog_formats()
     state = BridgeState(
         config_manager=config_manager,
         character_manager=CharacterManager(),

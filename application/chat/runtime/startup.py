@@ -296,11 +296,7 @@ def _import_provider_runtime() -> SimpleNamespace:
         configure_registered_formats,
         configure_builtin_formats,
     )
-    from application.plugins.register_builtin_plugins import (
-        get_builtin_plugin_classes,
-        register_builtin_dialog_formats,
-    )
-    from core.messaging.formats.registry import (
+    from ai.llm.formats import (
         configure_builtin_dialog_formats,
         configure_registered_dialog_formats,
     )
@@ -310,7 +306,6 @@ def _import_provider_runtime() -> SimpleNamespace:
     configure_builtin_t2i_adapters()
     configure_builtin_formats()
     configure_builtin_dialog_formats()
-    register_builtin_dialog_formats()
     from plugin_system.host import (
         bind_model_assets_runtime,
         ensure_plugins_loaded,
@@ -330,7 +325,6 @@ def _import_provider_runtime() -> SimpleNamespace:
         TTSManager=TTSManager,
         ToolManager=ToolManager,
         bind_model_assets_runtime=bind_model_assets_runtime,
-        builtin_plugins=get_builtin_plugin_classes(),
         configure_registered_asr_adapters=configure_registered_asr_adapters,
         configure_registered_fallbacks=configure_registered_fallbacks,
         configure_registered_formats=configure_registered_formats,

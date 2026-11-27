@@ -352,8 +352,5 @@ export const storyJaMessages: Record<StoryMessageKey, string> = {
   "template.field.outputFormat": "出力形式",
   "template.field.outputFormatHint":
     "AI演出ディレクティブの出力形式を選択します（新規テンプレートはXML/HTMLタグ、内蔵Ren'Py風スクリプトDSL・既存JSON互換に対応）。",
-  "template.outputFormat.xml_v1": "XML / HTML タグ（場面転換・キャラ動作対応）",
-  "template.outputFormat.renpy_v1": "Ren'Py 風スクリプト DSL（内蔵プラグイン、場面転換・キャラ動作対応）",
-  "template.outputFormat.json_v1": "JSON（クラシック互換）",
   "template.bar.outputFormat": "形式：{format}",
 };
