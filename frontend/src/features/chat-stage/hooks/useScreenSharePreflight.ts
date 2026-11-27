@@ -12,23 +12,19 @@ import type {
   PerceptionStatusResponse,
   TaskSnapshot,
 } from "../../../shared/platform/types";
+import {
+  dependencyPackageLabel,
+  errorMessage,
+  isLocalPerceptionBaseUrl,
+  isPerceptionServiceReady,
+  isSameLocalTarget,
+  isServerTerminalFailure,
+  isStaleManagedLocalServer,
+  type ScreenSharePreflightErrorKind,
+  type ScreenSharePreflightPhase,
+} from "./screenSharePreflightPolicy";
 
-export type ScreenSharePreflightPhase =
-  | "idle"
-  | "checking"
-  | "setup_needed"
-  | "installing"
-  | "starting"
-  | "ready"
-  | "error";
-
-export type ScreenSharePreflightErrorKind =
-  | "model_mismatch"
-  | "unreachable"
-  | "server_failed"
-  | "setup_error"
-  | "missing_gguf"
-  | "unknown";
+export { isLocalPerceptionBaseUrl, type ScreenSharePreflightErrorKind, type ScreenSharePreflightPhase };
 
 export interface UseScreenSharePreflightOptions {
   open: boolean;
@@ -40,58 +36,15 @@ export interface UseScreenSharePreflightOptions {
 }
 
 const AUTO_LAUNCH_GESTURE_WINDOW_MS = 4000;
+const CHECK_TIMEOUT_MS = 10_000;
 const POLL_INTERVAL_MS = 900;
 const MAX_CONSECUTIVE_POLL_ERRORS = 3;
 const PERCEPTION_VLM_ASSET: ModelAssetRef = { assetId: "perception.vlm" };
-const LOCAL_HOSTS = new Set(["127.0.0.1", "localhost", "0.0.0.0", "::1"]);
 
-export function isLocalPerceptionBaseUrl(baseUrl: string | undefined): boolean {
-  const clean = (baseUrl || "").trim();
-  if (!clean) return true;
-  try {
-    const parsed = new URL(clean);
-    if (parsed.protocol !== "http:") return false;
-    return LOCAL_HOSTS.has(parsed.hostname.replace(/^\[|\]$/g, "").toLowerCase());
-  } catch {
-    return false;
+class ProbeTimeoutError extends Error {
+  constructor() {
+    super("probe_timeout");
   }
-}
-
-function isPerceptionServiceReady(response: PerceptionStatusResponse, localEndpoint: boolean): boolean {
-  if (response.health !== undefined) {
-    return Boolean(response.health.ok && response.health.modelPresent !== false);
-  }
-  return Boolean(
-    localEndpoint && (response.localServer?.state === "running" || response.localServer?.state === "external_running"),
-  );
-}
-
-function isSameLocalTarget(
-  localServer: PerceptionLocalServerStatus | undefined,
-  config: PerceptionStatusResponse["config"] | undefined,
-): boolean {
-  if (!localServer || !config) return false;
-  const srvBase = localServer.baseUrl.trim().replace(/\/+$/, "");
-  const cfgBase = config.baseUrl.trim().replace(/\/+$/, "");
-  return srvBase === cfgBase && localServer.model.trim() === config.model.trim();
-}
-
-function dependencyPackageLabel(packageName: string | undefined, fallback = "torch"): string {
-  const label = String(packageName || "")
-    .replace(/(?:\[|[<>=!~]).*$/, "")
-    .trim();
-  return label || fallback;
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error ?? "");
-}
-
-function isServerTerminalFailure(server: PerceptionLocalServerStatus | undefined): boolean {
-  if (!server) return false;
-  return (
-    server.state === "failed" || server.state === "stopped" || (server.state === "starting" && Boolean(server.error))
-  );
 }
 
 export function useScreenSharePreflight({
@@ -114,6 +67,7 @@ export function useScreenSharePreflight({
 
   const runTokenRef = useRef(0);
   const pollTimerRef = useRef<number>(0);
+  const probeTimerRef = useRef<number>(0);
 
   const onOpenChangeRef = useRef(onOpenChange);
   onOpenChangeRef.current = onOpenChange;
@@ -122,10 +76,14 @@ export function useScreenSharePreflight({
   const flagsRef = useRef({ screenSharing, screenShareStarting, sessionClosed });
   flagsRef.current = { screenSharing, screenShareStarting, sessionClosed };
 
-  const clearPollTimer = useCallback(() => {
+  const clearTimers = useCallback(() => {
     if (pollTimerRef.current) {
       window.clearTimeout(pollTimerRef.current);
       pollTimerRef.current = 0;
+    }
+    if (probeTimerRef.current) {
+      window.clearTimeout(probeTimerRef.current);
+      probeTimerRef.current = 0;
     }
   }, []);
 
@@ -156,14 +114,69 @@ export function useScreenSharePreflight({
 
   const close = useCallback(() => {
     runTokenRef.current += 1;
-    clearPollTimer();
+    clearTimers();
     resetTransientState();
     onOpenChangeRef.current(false);
-  }, [clearPollTimer, resetTransientState]);
+  }, [clearTimers, resetTransientState]);
+
+  const probeStatusWithTimeout = useCallback(async (token: number) => {
+    if (probeTimerRef.current) {
+      window.clearTimeout(probeTimerRef.current);
+      probeTimerRef.current = 0;
+    }
+    const request = getPerceptionStatus({ probe: true });
+    void request.catch(() => {});
+    let timerId = 0;
+    const timeoutPromise = new Promise<never>((_resolve, reject) => {
+      timerId = window.setTimeout(() => {
+        if (probeTimerRef.current === timerId) probeTimerRef.current = 0;
+        if (runTokenRef.current === token) reject(new ProbeTimeoutError());
+      }, CHECK_TIMEOUT_MS);
+      probeTimerRef.current = timerId;
+    });
+    try {
+      return await Promise.race([request, timeoutPromise]);
+    } finally {
+      if (timerId) {
+        window.clearTimeout(timerId);
+        if (probeTimerRef.current === timerId) probeTimerRef.current = 0;
+      }
+    }
+  }, []);
+
+  const verifyProbeReady = useCallback(
+    async (token: number) => {
+      try {
+        const probed = await probeStatusWithTimeout(token);
+        if (runTokenRef.current !== token) return;
+        applyStatusResponse(probed, true);
+        if (isPerceptionServiceReady(probed)) {
+          setPhase("ready");
+          return;
+        }
+        if (probed.health?.ok && probed.health.modelPresent === false) {
+          failWith("model_mismatch");
+        } else {
+          failWith("unreachable", probed.health?.error || probed.localServer?.error || "");
+        }
+      } catch (error) {
+        if (runTokenRef.current !== token) return;
+        if (error instanceof ProbeTimeoutError) {
+          failWith("check_timeout");
+        } else {
+          failWith("unknown", errorMessage(error));
+        }
+      }
+    },
+    [applyStatusResponse, failWith, probeStatusWithTimeout],
+  );
 
   const schedulePoll = useCallback(
     (token: number, consecutiveErrors: number) => {
-      clearPollTimer();
+      if (pollTimerRef.current) {
+        window.clearTimeout(pollTimerRef.current);
+        pollTimerRef.current = 0;
+      }
       pollTimerRef.current = window.setTimeout(() => {
         pollTimerRef.current = 0;
         if (runTokenRef.current !== token) return;
@@ -174,7 +187,7 @@ export function useScreenSharePreflight({
             applyStatusResponse(response);
             const srv = response.localServer;
             if (srv?.state === "running" || srv?.state === "external_running") {
-              setPhase("ready");
+              await verifyProbeReady(token);
               return;
             }
             if (isServerTerminalFailure(srv)) {
@@ -194,7 +207,7 @@ export function useScreenSharePreflight({
         })();
       }, POLL_INTERVAL_MS);
     },
-    [applyStatusResponse, clearPollTimer, failWith],
+    [applyStatusResponse, failWith, verifyProbeReady],
   );
 
   const startLocalServerAndPoll = useCallback(
@@ -208,7 +221,7 @@ export function useScreenSharePreflight({
         const srv = result.localServer;
         setLocalServer(srv);
         if (srv.state === "running" || srv.state === "external_running") {
-          setPhase("ready");
+          await verifyProbeReady(token);
           return;
         }
         if (isServerTerminalFailure(srv)) {
@@ -221,7 +234,7 @@ export function useScreenSharePreflight({
         failWith("server_failed", errorMessage(error));
       }
     },
-    [failWith, schedulePoll],
+    [failWith, schedulePoll, verifyProbeReady],
   );
 
   const runCheck = useCallback(
@@ -238,19 +251,18 @@ export function useScreenSharePreflight({
 
       runTokenRef.current += 1;
       const token = runTokenRef.current;
-      clearPollTimer();
+      clearTimers();
       resetTransientState();
       onOpenChangeRef.current(true);
       setPhase("checking");
 
       const startedAt = Date.now();
       try {
-        const response = await getPerceptionStatus({ probe: true });
+        const response = await probeStatusWithTimeout(token);
         if (runTokenRef.current !== token) return;
         applyStatusResponse(response, true);
 
-        const local = isLocalPerceptionBaseUrl(response.config?.baseUrl);
-        if (isPerceptionServiceReady(response, local)) {
+        if (isPerceptionServiceReady(response)) {
           if (allowAutoLaunch && Date.now() - startedAt < AUTO_LAUNCH_GESTURE_WINDOW_MS) {
             close();
             void onStartSharingRef.current();
@@ -260,6 +272,7 @@ export function useScreenSharePreflight({
           return;
         }
 
+        const local = isLocalPerceptionBaseUrl(response.config?.baseUrl);
         if (!local) {
           if (response.health?.ok && response.health.modelPresent === false) {
             failWith("model_mismatch");
@@ -271,6 +284,15 @@ export function useScreenSharePreflight({
 
         if (response.health?.ok && response.health.modelPresent === false && !response.localServer?.managed) {
           failWith("model_mismatch");
+          return;
+        }
+
+        if (isStaleManagedLocalServer(response, local)) {
+          if (response.health?.ok && response.health.modelPresent === false) {
+            failWith("model_mismatch");
+          } else {
+            failWith("unreachable", response.health?.error || response.localServer?.error || "");
+          }
           return;
         }
 
@@ -304,10 +326,23 @@ export function useScreenSharePreflight({
         await startLocalServerAndPoll(token);
       } catch (error) {
         if (runTokenRef.current !== token) return;
-        failWith("unknown", errorMessage(error));
+        if (error instanceof ProbeTimeoutError) {
+          failWith("check_timeout");
+        } else {
+          failWith("unknown", errorMessage(error));
+        }
       }
     },
-    [applyStatusResponse, clearPollTimer, close, failWith, resetTransientState, schedulePoll, startLocalServerAndPoll],
+    [
+      applyStatusResponse,
+      clearTimers,
+      close,
+      failWith,
+      probeStatusWithTimeout,
+      resetTransientState,
+      schedulePoll,
+      startLocalServerAndPoll,
+    ],
   );
 
   const prepareAndStart = useCallback(async () => {
@@ -315,7 +350,7 @@ export function useScreenSharePreflight({
     if (flags.sessionClosed || flags.screenSharing || flags.screenShareStarting) return;
     runTokenRef.current += 1;
     const token = runTokenRef.current;
-    clearPollTimer();
+    clearTimers();
     setPhase("installing");
     setSetupTask(null);
     setInstallingPackage(undefined);
@@ -401,7 +436,7 @@ export function useScreenSharePreflight({
       setInstallingPackage(undefined);
       failWith("setup_error", errorMessage(error));
     }
-  }, [applyStatusResponse, clearPollTimer, failWith, startLocalServerAndPoll]);
+  }, [applyStatusResponse, clearTimers, failWith, startLocalServerAndPoll]);
 
   const openAndCheck = useCallback(() => runCheck(true), [runCheck]);
   const retry = useCallback(() => runCheck(true), [runCheck]);
@@ -414,10 +449,10 @@ export function useScreenSharePreflight({
   useEffect(() => {
     if (!open) {
       runTokenRef.current += 1;
-      clearPollTimer();
+      clearTimers();
       resetTransientState();
     }
-  }, [clearPollTimer, open, resetTransientState]);
+  }, [clearTimers, open, resetTransientState]);
 
   useEffect(() => {
     if (open && (screenSharing || sessionClosed)) {
@@ -428,9 +463,9 @@ export function useScreenSharePreflight({
   useEffect(
     () => () => {
       runTokenRef.current += 1;
-      clearPollTimer();
+      clearTimers();
     },
-    [clearPollTimer],
+    [clearTimers],
   );
 
   return {

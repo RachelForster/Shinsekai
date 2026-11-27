@@ -34,6 +34,7 @@ export const perceptionZhCNMessages = {
   "chat.perception.preflight.errorHint":
     "你也可以前往「API 设置 → 实时反应」检查模型与服务配置，或跳过检测直接共享屏幕。",
   "chat.perception.preflight.checkFailed": "检测实时反应服务失败",
+  "chat.perception.preflight.checkTimeout": "检测实时反应服务超时",
   "chat.perception.preflight.selectWindow": "选择共享窗口",
   "chat.perception.preflight.shareWhileLoading": "先选择共享窗口",
   "chat.perception.preflight.skipAndShare": "仅共享屏幕",

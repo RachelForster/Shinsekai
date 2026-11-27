@@ -41,6 +41,7 @@ export const perceptionJaMessages: Record<PerceptionMessageKey, string> = {
   "chat.perception.preflight.errorHint":
     "「API 設定 → リアルタイム反応」で設定を確認するか、このまま画面共有を開始できます。",
   "chat.perception.preflight.checkFailed": "リアルタイム反応サービスの確認に失敗しました",
+  "chat.perception.preflight.checkTimeout": "リアルタイム反応サービスの確認がタイムアウトしました",
   "chat.perception.preflight.selectWindow": "共有ウィンドウを選択",
   "chat.perception.preflight.shareWhileLoading": "先にウィンドウを選択",
   "chat.perception.preflight.skipAndShare": "このまま画面を共有",

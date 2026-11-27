@@ -65,6 +65,9 @@ function resolveErrorHeadline(
   health: PerceptionHealthProbe | null,
   t: Translate,
 ): string {
+  if (errorKind === "check_timeout") {
+    return t("chat.perception.preflight.checkTimeout");
+  }
   if (errorKind === "model_mismatch") {
     return t("api.perception.statusModelMismatch", {
       models: health?.models.length ? health.models.join(", ") : "—",
@@ -210,9 +213,14 @@ export function ScreenSharePreflightDialog({
 
         <div className="screen-share-preflight__actions">
           {phase === "checking" ? (
-            <Button onClick={onCancel} variant="ghost">
-              {t("common.cancel")}
-            </Button>
+            <>
+              <Button icon={<MonitorUp aria-hidden className="button__icon" />} onClick={onProceedToShare}>
+                {t("chat.perception.preflight.skipAndShare")}
+              </Button>
+              <Button onClick={onCancel} variant="ghost">
+                {t("common.cancel")}
+              </Button>
+            </>
           ) : null}
 
           {phase === "setup_needed" ? (

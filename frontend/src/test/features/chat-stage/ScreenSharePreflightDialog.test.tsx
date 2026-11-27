@@ -11,6 +11,7 @@ import { ScreenSharePreflightDialog } from "../../../features/chat-stage/compone
 import { useScreenSharePreflight } from "../../../features/chat-stage/hooks/useScreenSharePreflight";
 import { I18nProvider } from "../../../shared/i18n/I18nProvider";
 import type {
+  PerceptionHealthProbe,
   PerceptionLocalServerStatus,
   PerceptionStatusResponse,
   TaskSnapshot,
@@ -35,7 +36,16 @@ const makeServer = (o: Partial<PerceptionLocalServerStatus> = {}): PerceptionLoc
   ...o,
 });
 
-const makeStatus = (): PerceptionStatusResponse => ({
+const makeHealth = (o: Partial<PerceptionHealthProbe> = {}): PerceptionHealthProbe => ({
+  baseUrl: "http://127.0.0.1:8091/v1",
+  configuredModel: "Qwen/Qwen3-VL-2B-Instruct",
+  modelPresent: true,
+  models: ["Qwen/Qwen3-VL-2B-Instruct"],
+  ok: true,
+  ...o,
+});
+
+const makeStatus = (o: Partial<PerceptionStatusResponse> = {}): PerceptionStatusResponse => ({
   chatSessionActive: true,
   config: {
     baseUrl: "http://127.0.0.1:8091/v1",
@@ -54,7 +64,42 @@ const makeStatus = (): PerceptionStatusResponse => ({
   localServer: makeServer(),
   runtime: null,
   setup: { downloadable: true, modelCached: true, pythonPath: "runtime/python.exe", status: "ready" },
+  ...o,
 });
+
+function HookHarness({ onStartSharing }: { onStartSharing: () => Promise<void> | void }) {
+  const [open, setOpen] = useState(false);
+  const preflight = useScreenSharePreflight({
+    onOpenChange: setOpen,
+    onStartSharing,
+    open,
+    screenShareStarting: false,
+    screenSharing: false,
+    sessionClosed: false,
+  });
+  return (
+    <I18nProvider language="zh_CN">
+      <button onClick={() => void preflight.openAndCheck()} type="button">
+        触发共享屏幕
+      </button>
+      <ScreenSharePreflightDialog
+        errorDetail={preflight.errorDetail}
+        errorKind={preflight.errorKind}
+        health={preflight.health}
+        localServer={preflight.localServer}
+        onCancel={preflight.close}
+        onPrepareAndStart={() => void preflight.prepareAndStart()}
+        onProceedToShare={preflight.proceedToShare}
+        onRetry={() => void preflight.retry()}
+        open={open}
+        phase={preflight.phase}
+        setup={preflight.setup}
+        setupTask={preflight.setupTask}
+        status={preflight.status}
+      />
+    </I18nProvider>
+  );
+}
 
 const baseProps = {
   errorDetail: "",
@@ -81,6 +126,7 @@ describe("ScreenSharePreflightDialog", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
     if (originalMediaDevices) Object.defineProperty(navigator, "mediaDevices", originalMediaDevices);
     else Reflect.deleteProperty(navigator, "mediaDevices");
@@ -169,41 +215,7 @@ describe("ScreenSharePreflightDialog", () => {
     );
     const startSpy = vi.spyOn(perceptionRepo, "startPerceptionLocalServer");
 
-    function CancelHarness() {
-      const [open, setOpen] = useState(false);
-      const preflight = useScreenSharePreflight({
-        onOpenChange: setOpen,
-        onStartSharing: vi.fn(),
-        open,
-        screenShareStarting: false,
-        screenSharing: false,
-        sessionClosed: false,
-      });
-      return (
-        <I18nProvider language="zh_CN">
-          <button onClick={() => void preflight.openAndCheck()} type="button">
-            触发共享屏幕
-          </button>
-          <ScreenSharePreflightDialog
-            errorDetail={preflight.errorDetail}
-            errorKind={preflight.errorKind}
-            health={preflight.health}
-            localServer={preflight.localServer}
-            onCancel={preflight.close}
-            onPrepareAndStart={() => void preflight.prepareAndStart()}
-            onProceedToShare={preflight.proceedToShare}
-            onRetry={() => void preflight.retry()}
-            open={open}
-            phase={preflight.phase}
-            setup={preflight.setup}
-            setupTask={preflight.setupTask}
-            status={preflight.status}
-          />
-        </I18nProvider>
-      );
-    }
-
-    render(<CancelHarness />);
+    render(<HookHarness onStartSharing={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "触发共享屏幕" }));
     expect(screen.getByRole("dialog")).toBeVisible();
 
@@ -219,6 +231,87 @@ describe("ScreenSharePreflightDialog", () => {
     expect(statusSpy).toHaveBeenCalledTimes(1);
   });
 
+  it("allows bypassing a pending check and times out hung probes into error state", async () => {
+    vi.useFakeTimers();
+    let resolvePending!: (value: PerceptionStatusResponse) => void;
+    vi.spyOn(perceptionRepo, "getPerceptionStatus").mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePending = resolve;
+        }),
+    );
+    const onStartSharing = vi.fn();
+
+    render(<HookHarness onStartSharing={onStartSharing} />);
+    fireEvent.click(screen.getByRole("button", { name: "触发共享屏幕" }));
+    expect(screen.getByRole("button", { name: "仅共享屏幕" })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "仅共享屏幕" }));
+    expect(onStartSharing).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    resolvePending(makeStatus({ health: makeHealth() }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(onStartSharing).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "触发共享屏幕" }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(screen.getByText("检测实时反应服务超时")).toBeVisible();
+    expect(screen.getByRole("button", { name: "重新检测" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "仅共享屏幕" })).toBeVisible();
+
+    resolvePending(makeStatus({ health: makeHealth() }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByText("检测实时反应服务超时")).toBeVisible();
+  });
+
+  it("rejects stale managed local server and failed post-start health probes", async () => {
+    const startSpy = vi.spyOn(perceptionRepo, "startPerceptionLocalServer").mockResolvedValue({
+      localServer: makeServer({ managed: true, running: true, state: "running" }),
+      ok: true,
+    });
+    const statusSpy = vi
+      .spyOn(perceptionRepo, "getPerceptionStatus")
+      .mockResolvedValueOnce(
+        makeStatus({
+          health: makeHealth({ error: "connection refused", models: [], ok: false }),
+          localServer: makeServer({ managed: true, running: true, state: "running" }),
+        }),
+      )
+      .mockResolvedValueOnce(makeStatus({ health: makeHealth({ error: "down", models: [], ok: false }) }))
+      .mockResolvedValueOnce(
+        makeStatus({
+          health: makeHealth({ error: "model crashed", models: [], ok: false }),
+          localServer: makeServer({ managed: true, running: true, state: "running" }),
+        }),
+      )
+      .mockResolvedValueOnce(makeStatus({ health: makeHealth({ error: "down", models: [], ok: false }) }))
+      .mockResolvedValueOnce(
+        makeStatus({
+          health: makeHealth({ modelPresent: false, models: ["other-model"], ok: true }),
+          localServer: makeServer({ managed: true, running: true, state: "running" }),
+        }),
+      );
+
+    render(<HookHarness onStartSharing={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "触发共享屏幕" }));
+    expect(await screen.findByText("连接失败：connection refused")).toBeVisible();
+    expect(startSpy).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "重新检测" }));
+    expect(await screen.findByText("连接失败：model crashed")).toBeVisible();
+    expect(startSpy).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "重新检测" }));
+    expect(await screen.findByText("未找到配置的模型（可用：other-model）")).toBeVisible();
+    expect(statusSpy).toHaveBeenCalledTimes(5);
+  });
+
   it("integrates with ChatStagePage and keeps local server running when stopping screen share", async () => {
     const track = { onended: null, readyState: "live", muted: false, stop: vi.fn() };
     const getDisplayMedia = vi
@@ -228,7 +321,15 @@ describe("ScreenSharePreflightDialog", () => {
     vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
     vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
     vi.spyOn(perceptionRepo, "ingestPerception").mockResolvedValue({ accepted: true, ok: true });
-    vi.spyOn(perceptionRepo, "getPerceptionStatus").mockResolvedValueOnce(makeStatus());
+    const statusSpy = vi
+      .spyOn(perceptionRepo, "getPerceptionStatus")
+      .mockResolvedValueOnce(makeStatus())
+      .mockResolvedValueOnce(
+        makeStatus({
+          health: makeHealth(),
+          localServer: makeServer({ managed: true, running: true, state: "running" }),
+        }),
+      );
     const startSpy = vi.spyOn(perceptionRepo, "startPerceptionLocalServer").mockResolvedValue({
       localServer: makeServer({ managed: true, running: true, state: "running" }),
       ok: true,
@@ -247,11 +348,25 @@ describe("ScreenSharePreflightDialog", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "共享屏幕" }));
     await waitFor(() => expect(startSpy).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(statusSpy).toHaveBeenLastCalledWith({ probe: true }));
     fireEvent.click(await screen.findByRole("button", { name: "选择共享窗口" }));
     await waitFor(() => expect(getDisplayMedia).toHaveBeenCalledTimes(1));
 
     fireEvent.click(await screen.findByRole("button", { name: "停止屏幕共享" }));
     expect(track.stop).toHaveBeenCalled();
     expect(stopSpy).not.toHaveBeenCalled();
+  });
+
+  it("delegates directly when getDisplayMedia is unsupported without calling backend", () => {
+    Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: undefined });
+    const statusSpy = vi.spyOn(perceptionRepo, "getPerceptionStatus");
+    const onStartSharing = vi.fn();
+
+    render(<HookHarness onStartSharing={onStartSharing} />);
+    fireEvent.click(screen.getByRole("button", { name: "触发共享屏幕" }));
+
+    expect(onStartSharing).toHaveBeenCalledTimes(1);
+    expect(statusSpy).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });

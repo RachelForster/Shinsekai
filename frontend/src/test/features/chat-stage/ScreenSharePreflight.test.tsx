@@ -191,17 +191,18 @@ describe("ScreenSharePreflight", () => {
   it("auto-starts stopped local server, polls until ready, and supports early sharing", async () => {
     vi.useFakeTimers();
     const onStartSharing = vi.fn();
+    const readyStatus = makeStatus({
+      health: makeHealth(),
+      localServer: makeServer({ logs: ["Ready in 1.4s"], managed: true, running: true, state: "running" }),
+    });
     const statusSpy = vi
       .spyOn(perceptionRepo, "getPerceptionStatus")
       .mockResolvedValueOnce(makeStatus({ health: makeHealth({ modelPresent: false, models: [], ok: false }) }))
       .mockResolvedValueOnce(
         makeStatus({ localServer: makeServer({ logs: ["Loading weights..."], starting: true, state: "starting" }) }),
       )
-      .mockResolvedValueOnce(
-        makeStatus({
-          localServer: makeServer({ logs: ["Ready in 1.4s"], managed: true, running: true, state: "running" }),
-        }),
-      );
+      .mockResolvedValueOnce(readyStatus)
+      .mockResolvedValueOnce(readyStatus);
     const startSpy = vi.spyOn(perceptionRepo, "startPerceptionLocalServer").mockResolvedValue({
       localServer: makeServer({ logs: ["Starting server..."], starting: true, state: "starting" }),
       ok: true,
@@ -225,9 +226,10 @@ describe("ScreenSharePreflight", () => {
       await vi.advanceTimersByTimeAsync(900);
     });
     expect(screen.getByText("实时反应服务已就绪")).toBeVisible();
+    expect(statusSpy).toHaveBeenCalledTimes(4);
+    expect(statusSpy).toHaveBeenLastCalledWith({ probe: true });
     fireEvent.click(screen.getByRole("button", { name: "选择共享窗口" }));
     expect(onStartSharing).toHaveBeenCalledTimes(1);
-    expect(statusSpy).toHaveBeenCalledTimes(3);
 
     startSpy.mockClear();
     statusSpy
@@ -241,14 +243,17 @@ describe("ScreenSharePreflight", () => {
 
   it("resumes polling when local server is already starting and fails after 3 poll errors", async () => {
     vi.useFakeTimers();
+    const readyStatus = makeStatus({
+      health: makeHealth(),
+      localServer: makeServer({ managed: true, running: true, state: "running" }),
+    });
     const statusSpy = vi
       .spyOn(perceptionRepo, "getPerceptionStatus")
       .mockResolvedValueOnce(
         makeStatus({ localServer: makeServer({ logs: ["Warming up"], starting: true, state: "starting" }) }),
       )
-      .mockResolvedValueOnce(
-        makeStatus({ localServer: makeServer({ managed: true, running: true, state: "running" }) }),
-      );
+      .mockResolvedValueOnce(readyStatus)
+      .mockResolvedValueOnce(readyStatus);
     const startSpy = vi.spyOn(perceptionRepo, "startPerceptionLocalServer");
 
     render(<PreflightHarness onStartSharing={vi.fn()} />);
@@ -261,6 +266,7 @@ describe("ScreenSharePreflight", () => {
       await vi.advanceTimersByTimeAsync(900);
     });
     expect(screen.getByText("实时反应服务已就绪")).toBeVisible();
+    expect(statusSpy).toHaveBeenLastCalledWith({ probe: true });
 
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
     statusSpy
@@ -292,7 +298,10 @@ describe("ScreenSharePreflight", () => {
           }),
         }),
       )
-      .mockResolvedValueOnce(makeStatus());
+      .mockResolvedValueOnce(makeStatus())
+      .mockResolvedValueOnce(
+        makeStatus({ health: makeHealth(), localServer: makeServer({ running: true, state: "running" }) }),
+      );
     vi.spyOn(perceptionRepo, "startPerceptionLocalServer")
       .mockResolvedValueOnce({ localServer: makeServer({ starting: true, state: "starting" }), ok: true })
       .mockResolvedValueOnce({ localServer: makeServer({ running: true, state: "running" }), ok: true });
@@ -310,7 +319,8 @@ describe("ScreenSharePreflight", () => {
     fireEvent.click(screen.getByRole("button", { name: "重新检测" }));
     await flushMicrotasks();
     expect(screen.getByText("实时反应服务已就绪")).toBeVisible();
-    expect(statusSpy).toHaveBeenCalledTimes(3);
+    expect(statusSpy).toHaveBeenCalledTimes(4);
+    expect(statusSpy).toHaveBeenLastCalledWith({ probe: true });
 
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -330,7 +340,13 @@ describe("ScreenSharePreflight", () => {
       .mockResolvedValueOnce(makeStatus({ setup: missingDep }))
       .mockResolvedValueOnce(makeStatus({ setup: missingDep }))
       .mockResolvedValueOnce(makeStatus({ setup: makeSetup({ modelCached: false, status: "not_started" }) }))
-      .mockResolvedValueOnce(makeStatus({ setup: makeSetup() }));
+      .mockResolvedValueOnce(makeStatus({ setup: makeSetup() }))
+      .mockResolvedValueOnce(
+        makeStatus({
+          health: makeHealth(),
+          localServer: makeServer({ managed: true, running: true, state: "running" }),
+        }),
+      );
     const installSpy = vi
       .spyOn(chatRepo, "installMissingRuntimeDependency")
       .mockImplementation(async (_input, opts) => {
@@ -387,7 +403,14 @@ describe("ScreenSharePreflight", () => {
       .mockResolvedValueOnce(
         makeStatus({ config: customConfig, setup: makeSetup({ modelCached: false, status: "not_started" }) }),
       )
-      .mockResolvedValueOnce(makeStatus({ config: customConfig, setup: makeSetup() }));
+      .mockResolvedValueOnce(makeStatus({ config: customConfig, setup: makeSetup() }))
+      .mockResolvedValueOnce(
+        makeStatus({
+          config: customConfig,
+          health: makeHealth({ configuredModel: "org/custom-vlm", models: ["org/custom-vlm"] }),
+          localServer: makeServer({ managed: true, model: "org/custom-vlm", running: true, state: "running" }),
+        }),
+      );
 
     fireEvent.click(screen.getByRole("button", { name: "触发共享屏幕" }));
     fireEvent.click(await screen.findByRole("button", { name: "下载模型" }));
@@ -464,18 +487,5 @@ describe("ScreenSharePreflight", () => {
     fireEvent.click(screen.getByRole("button", { name: "重新检测" }));
     expect(await screen.findByText("未找到配置的模型（可用：other-local）")).toBeVisible();
     expect(startSpy).not.toHaveBeenCalled();
-  });
-
-  it("delegates directly when getDisplayMedia is unsupported without calling backend", () => {
-    Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: undefined });
-    const statusSpy = vi.spyOn(perceptionRepo, "getPerceptionStatus");
-    const onStartSharing = vi.fn();
-
-    render(<PreflightHarness onStartSharing={onStartSharing} />);
-    fireEvent.click(screen.getByRole("button", { name: "触发共享屏幕" }));
-
-    expect(onStartSharing).toHaveBeenCalledTimes(1);
-    expect(statusSpy).not.toHaveBeenCalled();
-    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });

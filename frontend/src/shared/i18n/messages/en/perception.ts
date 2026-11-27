@@ -41,6 +41,7 @@ export const perceptionEnMessages: Record<PerceptionMessageKey, string> = {
   "chat.perception.preflight.errorHint":
     "You can check model and server settings under API Settings -> Live Reactions, or share your screen anyway.",
   "chat.perception.preflight.checkFailed": "Failed to check the live reaction service",
+  "chat.perception.preflight.checkTimeout": "Timed out checking the live reaction service",
   "chat.perception.preflight.selectWindow": "Choose window to share",
   "chat.perception.preflight.shareWhileLoading": "Choose window now",
   "chat.perception.preflight.skipAndShare": "Share screen anyway",
