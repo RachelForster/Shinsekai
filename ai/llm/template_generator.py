@@ -7,6 +7,7 @@ method signatures and the ``(template, warning)`` result remain supported.
 
 from typing import Any
 
+from ai.llm.formats import resolve_dialog_format
 from config.config_manager import ConfigManager, character_name_key
 from config.schema import (
     SELF_PERSONA_NAME,
@@ -15,8 +16,7 @@ from config.schema import (
     is_self_persona_id,
     is_self_persona_name,
 )
-from core.messaging.formats.registry import resolve_dialog_format
-from sdk.adapters.dialog_format import DEFAULT_DIALOG_FORMAT_ID, XML_DIALOG_FORMAT_ID
+from sdk.adapters.dialog_format import DEFAULT_DIALOG_FORMAT_ID
 from sdk.types import OutputContractPatch
 
 from .template.dialog import DialogTemplateContext, DialogTemplateSection
@@ -74,6 +74,13 @@ def _render_template_keys(*keys: str, locale: str | None = None) -> str:
     return "\n".join(_T(key).strip() for key in keys)
 
 
+def _call_locale_hook(hook, *, locale: str, translate) -> str | None:
+    try:
+        return hook(locale=locale, translate=translate)
+    except TypeError:
+        return hook(locale=locale)
+
+
 def format_reminder(
     output_format_id: str = DEFAULT_DIALOG_FORMAT_ID,
     *,
@@ -81,58 +88,59 @@ def format_reminder(
 ) -> str:
     """Close system prompts with the active output-format and tool protocol rules."""
     resolved = resolve_dialog_format(output_format_id)
-    fmt_id = resolved.format_id
-    if fmt_id not in (DEFAULT_DIALOG_FORMAT_ID, XML_DIALOG_FORMAT_ID):
-        resolved_locale = (
-            locale if locale is not None else resolve_template_locale(config_manager)
-        )
-        custom = resolved.render_format_reminder(locale=resolved_locale)
-        protocol = _render_template_keys("closing_custom_tool_protocol", locale=locale)
-        if isinstance(custom, str) and custom.strip():
-            return f"{custom.strip()}\n{protocol}"
-        return _render_template_keys(
-            "closing_custom_reminder",
-            "closing_custom_tool_protocol",
-            locale=locale,
-        )
-    if fmt_id == XML_DIALOG_FORMAT_ID:
-        return _render_template_keys(
-            "closing_xml_reminder",
-            "closing_xml_tool_protocol",
-            locale=locale,
-        )
-    return _render_template_keys(
-        "closing_json_reminder",
-        "closing_tool_protocol",
-        locale=locale,
+    resolved_locale = (
+        locale if locale is not None else resolve_template_locale(config_manager)
     )
+    tr = _T if _T is not _DEFAULT_T else None
+    reminder = _call_locale_hook(
+        resolved.render_format_reminder,
+        locale=resolved_locale,
+        translate=tr,
+    )
+    if not isinstance(reminder, str) or not reminder.strip():
+        reminder = _render_template_keys("closing_custom_reminder", locale=locale)
+    protocol = _call_locale_hook(
+        resolved.render_tool_protocol,
+        locale=resolved_locale,
+        translate=tr,
+    )
+    if not isinstance(protocol, str) or not protocol.strip():
+        protocol = _render_template_keys("closing_custom_tool_protocol", locale=locale)
+    return f"{reminder.strip()}\n{protocol.strip()}"
 
 
 def json_format_reminder(*, locale: str | None = None) -> str:
     """Close system prompts with the output format and tool protocol rules."""
-    return _render_template_keys(
-        "closing_json_reminder",
-        "closing_tool_protocol",
-        locale=locale,
-    )
+    return format_reminder(DEFAULT_DIALOG_FORMAT_ID, locale=locale)
 
 
 def _format_llm_tools_block() -> str:
     return format_llm_tools_block(_T)
 
 
+_DEFAULT_FORMAT_LLM_TOOLS_BLOCK = _format_llm_tools_block
+
+
 def _format_llm_tools_block_for_format(output_format_id: str) -> str:
-    if output_format_id == DEFAULT_DIALOG_FORMAT_ID:
+    if _format_llm_tools_block is not _DEFAULT_FORMAT_LLM_TOOLS_BLOCK:
         return _format_llm_tools_block()
-    intro_key = (
-        "xml_tools_intro"
-        if output_format_id == XML_DIALOG_FORMAT_ID
-        else "custom_tools_intro"
+    resolved = resolve_dialog_format(output_format_id)
+    resolved_locale = resolve_template_locale(config_manager)
+    tr = _T if _T is not _DEFAULT_T else None
+    custom_intro = _call_locale_hook(
+        resolved.render_tools_intro,
+        locale=resolved_locale,
+        translate=tr,
+    )
+    intro_text = (
+        custom_intro
+        if isinstance(custom_intro, str) and custom_intro.strip()
+        else _T("custom_tools_intro")
     )
 
     def _format_translate(key: str, **kwargs: Any) -> str:
         if key == "tools_intro":
-            return _T(intro_key, **kwargs)
+            return intro_text
         return _T(key, **kwargs)
 
     return format_llm_tools_block(_format_translate)

@@ -4,11 +4,10 @@ from collections.abc import Sequence
 
 import pytest
 
-from core.chat_history.text import parse_assistant_dialog_content
-from core.messaging.dialog_output import has_valid_dialog_output
-from core.messaging.formats.json_format import JsonDialogFormat
-from core.messaging.formats.registry import (
-    _reset_for_tests,
+from ai.llm.formats import (
+    JsonDialogFormat,
+    XmlTagsDialogFormat,
+    XmlTagsStreamParser,
     configure_builtin_dialog_formats,
     configure_registered_dialog_formats,
     detect_dialog_format,
@@ -18,8 +17,9 @@ from core.messaging.formats.registry import (
     registered_dialog_formats,
     resolve_dialog_format,
 )
-from core.messaging.formats.xml_tags_format import XmlTagsDialogFormat
-from core.messaging.formats.xml_tags_parser import XmlTagsStreamParser
+from core.chat_history.text import parse_assistant_dialog_content
+from core.messaging.dialog_output import has_valid_dialog_output
+from core.messaging.formats.registry import _reset_for_tests
 from core.messaging.stage_effects import (
     character_motion_duration_ms,
     normalize_character_motion,
@@ -182,7 +182,7 @@ def test_pluggable_format_registry_and_history_autodetection() -> None:
         ]
     )
     ids = [fmt.format_id for fmt in registered_dialog_formats()]
-    assert ids[:3] == ["xml_v1", "json_v1", "script_v1"]
+    assert ids[:4] == ["xml_v1", "renpy_v1", "json_v1", "script_v1"]
 
     fmt = resolve_dialog_format("script_v1")
     assert fmt.format_id == "script_v1"
@@ -264,6 +264,7 @@ def test_xml_format_serialize_round_trip_and_negative_validation() -> None:
     assert not fmt.validate('<say char="Alice" sprite="01">hi</say><say char="Bob"')
     assert not fmt.validate("<say>missing char</say>")
     assert not fmt.can_parse("plain text without tags")
+    assert not fmt.can_parse('{"dialog":[{"character_name":"Alice","sprite":"01","speech":"<say>hi</say>"}]}')
 
 
 def test_json_format_parse_serialize_and_validation() -> None:
@@ -376,4 +377,16 @@ def test_xml_parser_edge_cases_attributes_comments_and_truncation() -> None:
     p4 = XmlTagsStreamParser()
     list(p4.feed("plain"))
     assert p4.flush() == [] and p4.buffer == "plain"
+
+
+def test_pure_core_registry_raises_lookup_error_when_empty() -> None:
+    _reset_for_tests(keep_registrar=False)
+    try:
+        assert registered_dialog_formats() == ()
+        assert detect_dialog_format("anything") is None
+        with pytest.raises(LookupError, match="No dialog output formats are registered"):
+            resolve_dialog_format(None)
+    finally:
+        configure_builtin_dialog_formats()
+
 

@@ -14,6 +14,7 @@ export const operationsZhCNMessages = {
   "ops.api.tts.fishAudio.extra.characterReferenceIds": "按角色映射的参考音色 ID（JSON 或 角色名=ID 逐行填写，可选）",
   "ops.api.tts.fishAudio.extra.chunkLength": "分块长度",
   "ops.api.tts.fishAudio.extra.decoderCheckpointPath": "本地编解码器权重文件（可选）",
+  "ops.api.tts.fishAudio.extra.enableInlineTags": "启用行内语音标签（如 [laugh]、[soft whisper]）",
   "ops.api.tts.fishAudio.extra.extraArgs": "本地 api_server.py 额外启动参数",
   "ops.api.tts.fishAudio.extra.fishSpeechDir": "本地 fish-speech 目录（可选，用于本机自动启动）",
   "ops.api.tts.fishAudio.extra.latency": "延迟模式",
@@ -53,6 +54,7 @@ export const operationsZhCNMessages = {
   "ops.api.tts.noQuotes": "TTS URL 和服务启动路径不能包含引号。",
   "ops.api.tts.noneOption": "不使用",
   "ops.api.tts.pathRequired": "本地 TTS 引擎需要填写服务启动路径。",
+  "ops.api.tts.qwen3Gguf.extra.enableVoiceInstruction": "启用自然语言语音指导（需服务端支持）",
   "ops.api.tts.qwen3Gguf.pathDesc":
     "可选。当留空时自动从 data/models/qwen3-tts-gguf 与 perception-gguf/llama.cpp 加载；也可指向包含 GGUF 模型或 llama-server 的自定义目录。",
   "ops.api.tts.qwen3Gguf.pathLabel": "Qwen3-TTS 模型与运行时目录（可选）",

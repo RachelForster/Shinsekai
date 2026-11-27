@@ -427,3 +427,48 @@ def test_replay_allows_reference_free_providers_when_character_lacks_refer_audio
     service.state.config_manager.get_gpt_sovits_config = lambda: ("https://api.fish.audio", "", "fish-audio-s2-pro")
     fish_entries = service.prepare()["entries"]
     assert [entry["canGenerate"] for entry in fish_entries[1:]] == [True, True, True]
+
+
+def test_replay_preserves_voice_instruct_and_invalidates_cache_when_changed(replay, tmp_path, monkeypatch):
+    service, source, _, history_path = replay
+    dialog = {
+        "character_name": "Mio",
+        "speech": "原始文本",
+        "translate": "[laugh] こんにちは",
+        "voice_instruct": "soft teasing whisper",
+    }
+    source[1]["text"] = "Mio: 原始文本"
+    source[1]["dialogId"] = DialogIdentities("instruct-turn").next(dialog)
+    history_path.write_text(
+        json.dumps([{"role": "assistant", CHAT_TURN_ID: "instruct-turn", "content": json.dumps({"dialog": [dialog]})}]),
+        encoding="utf-8",
+    )
+
+    snapshot = service.prepare()
+    begin(service, snapshot, 1, 1, True)
+    audio = tmp_path / "synthesized.wav"
+    audio.write_bytes(b"audio")
+    manager, adapter = Mock(), Mock()
+    manager.generate_tts.return_value = str(audio)
+    monkeypatch.setattr("ai.tts.tts_manager.TTSManager", Mock(return_value=manager))
+    monkeypatch.setattr("ai.tts.tts_manager.TTSAdapterFactory.create_adapter", Mock(return_value=adapter))
+    monkeypatch.setattr("ai.tts.model_session.tts_model_session", lambda *_: nullcontext())
+
+    service.generate(snapshot["id"], snapshot["entries"][1]["key"])
+    manager.set_language.assert_called_once_with("ja")
+    assert manager.generate_tts.call_args.args == ("[laugh] こんにちは",)
+    assert manager.generate_tts.call_args.kwargs["voice_instruct"] == "soft teasing whisper"
+
+    saved_voice = ReplayStore(history_path).read(source[1]["dialogId"], "voice.json")
+    assert saved_voice is not None and saved_voice["voiceInstruct"] == "soft teasing whisper"
+
+    # Changing voice_instruct invalidates cached replay audio so a new instruction re-synthesizes.
+    dialog["voice_instruct"] = "calm serious tone"
+    history_path.write_text(
+        json.dumps([{"role": "assistant", CHAT_TURN_ID: "instruct-turn", "content": json.dumps({"dialog": [dialog]})}]),
+        encoding="utf-8",
+    )
+    service.plans.clear()
+    updated = service.prepare()
+    assert service.plans[updated["id"]]["private"][source[1]["dialogId"]]["voice_instruct"] == "calm serious tone"
+    assert not updated["entries"][1]["voiceUrls"]

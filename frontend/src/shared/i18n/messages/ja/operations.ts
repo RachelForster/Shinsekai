@@ -17,6 +17,7 @@ export const operationsJaMessages: Record<OperationsMessageKey, string> = {
     "キャラクター別参照ボイス ID（JSON または 名前=ID の行形式、任意）",
   "ops.api.tts.fishAudio.extra.chunkLength": "チャンク長",
   "ops.api.tts.fishAudio.extra.decoderCheckpointPath": "ローカル Codec チェックポイント（任意）",
+  "ops.api.tts.fishAudio.extra.enableInlineTags": "インライン音声タグを有効化（例: [laugh]、[soft whisper]）",
   "ops.api.tts.fishAudio.extra.extraArgs": "ローカル api_server.py 追加引数",
   "ops.api.tts.fishAudio.extra.fishSpeechDir": "ローカル fish-speech ディレクトリ（任意、localhost 自動起動用）",
   "ops.api.tts.fishAudio.extra.latency": "レイテンシモード",
@@ -58,6 +59,7 @@ export const operationsJaMessages: Record<OperationsMessageKey, string> = {
   "ops.api.tts.noQuotes": "TTS URL と起動パスに引用符を含めることはできません。",
   "ops.api.tts.noneOption": "使用しない",
   "ops.api.tts.pathRequired": "ローカル TTS エンジンには起動パスが必要です。",
+  "ops.api.tts.qwen3Gguf.extra.enableVoiceInstruction": "自然言語による発話指示を有効化（サーバー対応が必要）",
   "ops.api.tts.qwen3Gguf.pathDesc":
     "任意。空欄の場合は data/models/qwen3-tts-gguf と perception-gguf/llama.cpp から自動検出し、指定時はカスタムディレクトリを使用します。",
   "ops.api.tts.qwen3Gguf.pathLabel": "Qwen3-TTS GGUF ディレクトリ（任意）",

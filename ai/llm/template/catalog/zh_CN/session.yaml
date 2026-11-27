@@ -50,6 +50,12 @@ dialog_repair_retry_selective: 该回复仍然不符合有效格式。你必须�
 dialog_repair_bound_speakers_heading: '以下已绑定演员表角色必须提供 `{media_field}` 字段：'
 dialog_repair_xml_initial: 请将你上一条回复重新整理为符合应用要求的 XML/HTML 舞台标签序列（使用 `<say char="..." {media_field}="...">`、`<narr>`、`<scene>`、`<bgm>`、`<choice>` 等有效标签）。至少输出一个完整舞台标签；不要调用工具，不要输出 JSON，也不要使用 Markdown 代码块。
 dialog_repair_xml_retry: 该回复仍然不符合有效的 XML/HTML 舞台标签格式。你必须仅以符合要求的 `<say char="..." {media_field}="...">`、`<narr>`、`<scene>`、`<bgm>` 等标签序列作答，不要调用工具，不要输出 JSON 或多余说明。
+dialog_repair_renpy_initial: '请将你上一条回复重新整理为符合应用要求的 Ren''Py 风格 DSL 指令行（使用 `角色名 [{media_field}="..."] "台词"`、旁白与场景指令等）。至少输出一条完整台词或舞台指令；不要调用工具，不要输出 JSON、XML 或 Markdown 代码块。'
+dialog_repair_renpy_retry: '该回复仍然不符合有效的 Ren''Py DSL 格式。请仅输出合法的 `角色名 [{media_field}="..."] "台词"` 与对应舞台指令行；不要调用工具或输出多余说明。'
+dialog_repair_renpy_initial_selective: '请将你上一条回复重新整理为符合应用要求的 Ren''Py 风格 DSL 指令行（使用 `角色名 [{media_field}="..."] "台词"` 等）。已绑定角色以及 `scene` / `play music` 必须填写非空 `{media_field}`，未绑定的龙套/NPC 可省略 `{media_field}`。不要调用工具、JSON、XML 或 Markdown 代码块。'
+dialog_repair_renpy_retry_selective: '该回复仍然不符合有效的 Ren''Py DSL 格式。请严格按逐行指令作答；已绑定角色及 `scene` / `play music` 必须填写 `{media_field}`，未绑定 NPC 可省略。不要调用工具或解释。'
+outfit_switch_rule_renpy: '剧情换装规则（Ren''Py DSL）：已开启自动换装。未锁定角色明确换装时，必须在当句方括号内写入 `outfit="可用分组名"`。普通表情变化省略该属性。'
+outfit_locked_rule_renpy: '当前已关闭自动换装或服装已锁定：请保持当前服装分组，不要在角色方括号内输出 `outfit` 属性。'
 memory_context_simple_guidance: 本轮相关的长期记忆。请仅将其作为背景参考，除非用户主动询问，否则不要提及检索过程。
 memory_context_tiered_guidance: 本轮相关的长期记忆。请遵循每条记忆的清晰度标记（[固有设定]、[清晰]、[较久远·印象模糊]、[唤醒的久远记忆]），自然地融入背景，除非用户询问，否则绝不要提及记忆检索系统。
 memory_tier_canon: 固有设定
@@ -73,3 +79,18 @@ outfit_lock_status_unlocked: 未锁定
 outfit_character_entry: '- {name}：当前服装分组「{active_group}」（{lock_desc}；可用分组：{groups}）'
 outfit_default_tag: 默认
 outfit_group_sprites_line: '  当前「{active_group}」分组可用 sprite 编号：{items}'
+tts_style_header: 当前语音合成引擎支持的表现力控制能力：
+tts_style_inline_tags_rule: |-
+  内联语音标签：可在需要表现情绪、语气或副语言动作的位置插入自然语言方括号标签（如 [laugh]、[sigh]、[soft whisper]、[laughing nervously]、[excited]），可置于句首或句中；请克制自然地使用，无特殊表现需要时不要强行添加。
+tts_style_inline_tags_channel_json: |-
+  输出位置要求：方括号语音标签只能写在 `translate` 字段中供语音合成使用，`speech` 字段必须保持干净可读，绝对不要把 `[...]` 标签写进 `speech`。即使台词与配音语言相同，也仅在需要使用标签的条目中把带标签的朗读文本写入 `translate`。
+tts_style_inline_tags_channel_xml: |-
+  输出位置要求：方括号语音标签只能写在 `<tr>...</tr>` 标签内供语音合成使用，`<say>` 主体台词必须保持干净可读，绝对不要把 `[...]` 标签写进主台词。即使台词与配音语言相同，也仅在需要使用标签的条目中补充带标签的 `<tr>...</tr>`。
+tts_style_inline_tags_channel_custom: |-
+  输出位置要求：方括号语音标签只能写在供语音合成使用的翻译/朗读通道（`translate`）中，保持展示给用户的台词正文干净，不要混入 `[...]` 标签。
+tts_style_voice_instruct_json: |-
+  自然语言演绎指导：可在角色对话条目中按需添加可选字段 `voice_instruct`（简短自然语言短语，描述语气、情绪或语速，例如 "低声轻笑、语速偏慢" 或 "soft teasing whisper"），不要复述台词本身；常规中性语气时省略该字段。
+tts_style_voice_instruct_xml: |-
+  自然语言演绎指导：可在 `<say>` 标签上按需添加可选属性 `voice_instruct="..."`（简短自然语言短语，描述语气、情绪或语速，例如 `voice_instruct="低声轻笑、语速偏慢"`），不要复述台词本身；常规中性语气时省略该属性。
+tts_style_voice_instruct_custom: |-
+  自然语言演绎指导：若当前输出格式支持扩展字段，可在角色台词条目提供可选的 `voice_instruct` 字段描述语气、情绪或语速；常规中性语气时省略。
