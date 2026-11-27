@@ -35,6 +35,7 @@ from application.chat.dialog_media import (
     ResolvedSpriteAsset,
     TtsGenerationRequest,
 )
+from core.messaging.formats.json_format import JsonDialogFormat
 from core.messaging.formats.xml_tags_format import XmlTagsDialogFormat
 from sdk.adapters.tts import TTSAdapter
 from sdk.hooks import BeforeChatContext, PluginHookDispatcher
@@ -398,3 +399,38 @@ def test_qwen3_tts_voice_instruction_opt_in_and_payload(
     finally:
         default_adapter.stop_server()
         enabled_adapter.stop_server()
+
+
+def test_json_format_serialization_and_xml_to_json_preserves_voice_instruct() -> None:
+    from ai.llm.dialog_repair import normalize_messages_for_output_format
+
+    json_fmt = JsonDialogFormat()
+    items = [
+        LLMDialogMessage(character_name="Alice", speech="Hi", sprite="1", voice_instruct="soft whisper"),
+        LLMDialogMessage(character_name="Bob", speech="Plain", sprite="2"),
+    ]
+    serialized = json_fmt.serialize(items)
+    assert serialized is not None and '"voice_instruct": "soft whisper"' in serialized
+    reparsed = json_fmt.parse_complete(serialized)
+    assert [m.voice_instruct for m in reparsed] == ["soft whisper", ""]
+
+    xml_history = [
+        {
+            "role": "assistant",
+            "content": '<say char="Alice" sprite="1" voice_instruct="soft whisper">Hi</say>',
+            "__output_format": "xml_v1",
+        }
+    ]
+    converted = normalize_messages_for_output_format(xml_history, json_fmt)
+    parsed_back = json_fmt.parse_complete(converted[0]["content"])
+    assert len(parsed_back) == 1
+    assert parsed_back[0].voice_instruct == "soft whisper"
+
+    assert (
+        FishAudioS2ProAdapter.get_config_schema()["enable_inline_tags"]["labelKey"]
+        == "ops.api.tts.fishAudio.extra.enableInlineTags"
+    )
+    assert (
+        Qwen3TTSLlamaAdapter.get_config_schema()["enable_voice_instruction"]["labelKey"]
+        == "ops.api.tts.qwen3Gguf.extra.enableVoiceInstruction"
+    )

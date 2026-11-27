@@ -145,6 +145,7 @@ class Qwen3TTSLlamaAdapter(TTSAdapter):
             "enable_voice_instruction": {
                 "type": "bool",
                 "label": "Enable Natural-Language Voice Instruction (requires server support)",
+                "labelKey": "ops.api.tts.qwen3Gguf.extra.enableVoiceInstruction",
                 "default": False,
             },
             "extra_args": {
