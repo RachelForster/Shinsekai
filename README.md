@@ -8,6 +8,9 @@
 
 A source-available **AI desktop companion & interactive visual-novel staging platform** for **Galgame / otome / story-driven RPG** play: let large language models drive character dialogue and full-stage performance with **multi-format avatars (static/animated sprites, MMD, Live2D)**, **outfit groups & emotion sync**, **local voice cloning, TTS & lip-sync**, **hybrid long-term memory & RAG worldbooks**, **real-time screen perception**, a **built-in desktop agent**, and **plugin / MCP extensions**—available in **English, Simplified Chinese, and Japanese**, all managed cleanly inside a Material 3 React / Tauri Settings Center.
 
+> [!TIP]
+> **Looking for the Mobile / Android Version?** Check out the community Android port **[Shinsekai-Android](https://github.com/Asriel-cute/Shinsekai-Android)** by [@Asriel-cute](https://github.com/Asriel-cute) — built with **Kotlin & Jetpack Compose**, supporting AI character dialogue and voice synthesis (TTS). Visit the repository for Android updates, builds, and mobile-specific issues.
+
 ---
 
 ## Why Shinsekai
@@ -163,6 +166,12 @@ Release updater builds require `TAURI_SIGNING_PRIVATE_KEY` (and `TAURI_SIGNING_P
 
 ---
 
+### Mobile — Android (Community Port)
+
+Want to use Shinsekai directly on Android? Check out the community port **[Asriel-cute/Shinsekai-Android](https://github.com/Asriel-cute/Shinsekai-Android)** by [@Asriel-cute](https://github.com/Asriel-cute), built with **Kotlin & Jetpack Compose** with AI character dialogue and voice synthesis support. (To connect a phone to a running desktop instance instead, you can also use the desktop app's built-in **LAN mobile QR companion**.)
+
+---
+
 ### First Conversation
 
 1. Open **API Settings**, configure your LLM provider, model ID, API key, and Base URL (e.g. DeepSeek, OpenAI, Claude, Gemini, or any OpenAI-compatible endpoint), test connectivity, and save.
@@ -215,6 +224,7 @@ Independent of the plugin system: wire external capabilities through YAML alone 
 |-------|------|
 | **Project Homepage (GitHub Pages)** | [rachelforster.github.io/Shinsekai](https://rachelforster.github.io/Shinsekai/) |
 | **Portable Bundles (Global / China)** | [Hugging Face](https://huggingface.co/RachelForster/shinsekai-portable) · [ModelScope](https://www.modelscope.cn/models/twillzxy/shinsekai-portable) |
+| **Mobile Version (Android, Community Port)** | [Asriel-cute/Shinsekai-Android](https://github.com/Asriel-cute/Shinsekai-Android) |
 | **简体中文 README** | [docs/README_zh-CN.md](docs/README_zh-CN.md) |
 | **Changelog & Latest Release Notes** | [CHANGELOG.md](CHANGELOG.md) · [2.7.0 Release notes](docs/releases/2.7.0.md) |
 | **Plugin Developer Guide** | [docs/PLUGIN_DEVELOPER_GUIDE.md](docs/PLUGIN_DEVELOPER_GUIDE.md) |
