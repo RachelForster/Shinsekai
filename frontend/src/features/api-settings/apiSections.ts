@@ -1,5 +1,4 @@
 import type { PageSectionDescriptor } from "../../shared/ui";
-import { adapterSchema, hasAdapterSchema } from "./apiSettingsUtils";
 import type { ApiSettingsPageContext } from "./apiSettingsContext";
 import { ApiAsrPanel } from "./sections/ApiAsrPanel";
 import { ApiKnowledgePanel } from "./sections/ApiKnowledgePanel";
@@ -9,7 +8,6 @@ import { ApiMemoryPanel } from "./sections/ApiMemoryPanel";
 import { ApiPerceptionPanel } from "./sections/ApiPerceptionPanel";
 import { ApiResourceLinksPanel } from "./sections/ApiResourceLinksPanel";
 import { ApiT2iPanel } from "./sections/ApiT2iPanel";
-import { ApiTtsExtraPanel } from "./sections/ApiTtsExtraPanel";
 import { ApiTtsPanel } from "./sections/ApiTtsPanel";
 import { ApiVisionPanel } from "./sections/ApiVisionPanel";
 
@@ -67,12 +65,6 @@ export const API_SETTINGS_SECTIONS: readonly PageSectionDescriptor<ApiSettingsPa
     id: "api-asr",
     navLabelKey: "api.nav.asr",
     order: 90,
-  },
-  {
-    Component: ApiTtsExtraPanel,
-    id: "api-tts-extra",
-    isVisible: (ctx) => hasAdapterSchema(adapterSchema(ctx.adapterCatalog?.tts, ctx.draft.tts_provider)),
-    order: 95,
   },
   {
     Component: ApiResourceLinksPanel,
