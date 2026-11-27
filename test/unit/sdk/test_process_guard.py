@@ -451,3 +451,22 @@ def test_posix_process_matches_hint_queries_proc_and_ps(monkeypatch, tmp_path: P
     )
     assert process_platform._process_matches_hint(77778, "python") is True
     assert process_platform._process_matches_hint(77778, "llama-server") is False
+
+
+def test_win32_error_falls_back_when_ctypes_lacks_winerror(monkeypatch) -> None:
+    import ctypes
+
+    class _FakeBasic(ctypes.Structure):
+        _fields_ = [("LimitFlags", ctypes.c_uint32)]
+
+    class FakeExtended(ctypes.Structure):
+        _fields_ = [("BasicLimitInformation", _FakeBasic)]
+
+    fake_api = SimpleNamespace(CreateJobObjectW=lambda *_a: 0)
+    monkeypatch.setattr(process_platform, "os", _fake_os("nt"))
+    monkeypatch.setattr(process_platform, "_get_kernel32", lambda: (fake_api, FakeExtended))
+    monkeypatch.delattr(ctypes, "WinError", raising=False)
+    monkeypatch.delattr(ctypes, "get_last_error", raising=False)
+
+    with pytest.raises(OSError, match="Win32 error 0"):
+        WindowsJobObject()

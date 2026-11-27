@@ -124,6 +124,23 @@ def subprocess_isolation_kwargs(
     return {"creationflags": flags}
 
 
+def _win32_last_error() -> int:
+    import ctypes
+
+    get_last_error = getattr(ctypes, "get_last_error", None)
+    return int(get_last_error()) if callable(get_last_error) else 0
+
+
+def _win32_error(err: int | None = None) -> OSError:
+    import ctypes
+
+    code = _win32_last_error() if err is None else int(err)
+    win_error = getattr(ctypes, "WinError", None)
+    if callable(win_error):
+        return win_error(code)
+    return OSError(code, f"Win32 error {code}")
+
+
 class WindowsJobObject:
     """Windows Job Object configured with ``JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE``."""
 
@@ -136,11 +153,9 @@ class WindowsJobObject:
             self._ensure_created()
             return
         if extract_process_handle(process) is not None and not self.assign(process):
-            import ctypes
-
-            err = ctypes.get_last_error()
+            err = _win32_last_error()
             self.close()
-            raise ctypes.WinError(err)
+            raise _win32_error(err)
 
     def _ensure_created(self) -> int | None:
         if os.name != "nt":
@@ -152,16 +167,16 @@ class WindowsJobObject:
         api, extended_cls = _get_kernel32()
         handle = api.CreateJobObjectW(None, None)
         if not handle:
-            raise ctypes.WinError(ctypes.get_last_error())
+            raise _win32_error()
         limits = extended_cls()
         limits.BasicLimitInformation.LimitFlags = _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
         ok = api.SetInformationJobObject(
             handle, _JOB_OBJECT_EXTENDED_LIMIT_INFO, ctypes.byref(limits), ctypes.sizeof(limits),
         )
         if not ok:
-            err = ctypes.get_last_error()
+            err = _win32_last_error()
             api.CloseHandle(handle)
-            raise ctypes.WinError(err)
+            raise _win32_error(err)
         self._handle = int(handle)
         return self._handle
 
