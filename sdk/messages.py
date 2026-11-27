@@ -64,6 +64,11 @@ class LLMDialogMessage(BaseModel):
         "",
         description="可选的角色立绘动态特效名称（仅角色台词条目使用）",
     )
+    voice_instruct: Optional[str] = Field(
+        "",
+        validation_alias=AliasChoices("voice_instruct", "voice_instruction", "instruct"),
+        description="可选的语音演绎自然语言指导（仅当当前 TTS 适配器支持时使用）",
+    )
     dialog_id: str = Field("", exclude=True, repr=False, description="Durable history dialog identity")
     turn_id: Optional[int] = Field(
         None,

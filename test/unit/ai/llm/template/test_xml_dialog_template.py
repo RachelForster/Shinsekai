@@ -7,12 +7,12 @@ import pytest
 
 from ai.llm.template import PROMPT_CATALOG
 import ai.llm.template_generator as legacy
-from core.messaging.formats.registry import (
-    _reset_for_tests,
+from ai.llm.formats import (
+    XmlTagsStreamParser,
     configure_builtin_dialog_formats,
     configure_registered_dialog_formats,
 )
-from core.messaging.formats.xml_tags_parser import XmlTagsStreamParser
+from core.messaging.formats.registry import _reset_for_tests
 from sdk.adapters.dialog_format import (
     DEFAULT_DIALOG_FORMAT_ID,
     DialogFormatContribution,

@@ -50,6 +50,12 @@ dialog_repair_retry_selective: その応答はまだ有効な形式ではあり�
 dialog_repair_bound_speakers_heading: '`{media_field}` が必須のバインド済みキャラクター：'
 dialog_repair_xml_initial: 直前の応答をアプリケーションの有効な XML/HTML 舞台タグ列（`<say char="..." {media_field}="...">`、`<narr>`、`<scene>`、`<bgm>`、`<choice>` など）に整形し直してください。完全な舞台タグを1つ以上出力し、ツール呼び出し、JSON 出力、Markdown コードブロックは行わないでください。
 dialog_repair_xml_retry: その応答はまだ有効な XML/HTML 舞台タグ形式ではありません。必ず `<say char="..." {media_field}="...">`、`<narr>`、`<scene>`、`<bgm>` などの有効な舞台タグのみで回答してください。ツール呼び出し、JSON、余計な説明は禁止です。
+dialog_repair_renpy_initial: '前回の応答をアプリ対応の Ren''Py 風 DSL 行（`キャラ名 [{media_field}="..."] "セリフ"` や舞台コマンド）に整形し直してください。最低1つ以上の有効な行を出力し、ツール呼び出し・JSON・XML・Markdown は出力しないでください。'
+dialog_repair_renpy_retry: 'まだ有効な Ren''Py DSL 形式になっていません。`キャラ名 [{media_field}="..."] "セリフ"` と舞台コマンド行のみで再出力してください。ツール呼び出しや説明は不要です。'
+dialog_repair_renpy_initial_selective: '前回の応答を有効な Ren''Py 風 DSL 行に整形してください。登録済みキャラと `scene` / `play music` には非空の `{media_field}` が必須です（未登録のモブ/NPC は `{media_field}` 省略可）。ツール・JSON・XML・Markdown は禁止です。'
+dialog_repair_renpy_retry_selective: 'まだ有効な Ren''Py DSL 形式ではありません。登録済みキャラと `scene` / `play music` には `{media_field}` を含め、未登録 NPC は省略可としてコマンド行のみで応答してください。'
+outfit_switch_rule_renpy: '衣装変更ルール（Ren''Py DSL）：自動衣装切替が有効です。未ロックキャラが衣装を着替えた際は、該当セリフの `[...]` 内に `outfit="グループ名"` を記述してください。通常の表情変化では省略します。'
+outfit_locked_rule_renpy: '自動衣装切替は無効またはロック中です：現在の衣装を維持し、`[...]` 内に `outfit=...` を出力しないでください。'
 memory_context_simple_guidance: このターンに関連する長期記憶です。背景情報としてのみ参照し、ユーザーから尋ねられない限り検索プロセスには触れないでください。
 memory_context_tiered_guidance: このターンに関連する長期記憶です。各項目の鮮明度タグ（[固有設定]、[鮮明]、[やや古い・朧気な印象]、[呼び覚まされた遠い記憶]）に従い背景として自然に活用し、尋ねられない限り記憶検索システムには決して言及しないでください。
 memory_tier_canon: 固有設定
@@ -102,3 +108,18 @@ novel_chunk_lookahead_heading: '[先読み参照（照応解決のみ）]'
 novel_chunk_lookahead_rule: 上記の先読みは末尾話者・代名詞の確認専用であり、本ターンでは絶対に演出しないでください。
 novel_compact_instruction: 小説劇場の履歴を圧縮する際は、登場済み人物の標準名・別名・呼称マッピング、一人称語り手の正体、主要な人間関係、および現在の章の進行状況を必ず保持してください。
 novel_compact_cast_heading: '現在の主要キャスト要約：'
+tts_style_header: 現在の音声合成エンジンが対応する表現制御機能：
+tts_style_inline_tags_rule: |-
+  インライン音声タグ：感情・口調・非言語音（例: [laugh]、[sigh]、[soft whisper]、[laughing nervously]、[excited]）を表す自然言語の角括弧タグを文頭や文中に挿入できます。自然な範囲で控えめに使い、通常のセリフには無理に入れないでください。
+tts_style_inline_tags_channel_json: |-
+  記述ルール：角括弧タグは音声合成専用の `translate` フィールドのみに入れ、`speech` には `[...]` を絶対に含めないでください。台詞と音声が同じ言語でも、タグを使う項目だけタグ付き読み上げ文を `translate` に記述してください。
+tts_style_inline_tags_channel_xml: |-
+  記述ルール：角括弧タグは音声合成専用の `<tr>...</tr>` のみに入れ、`<say>` 本文には `[...]` を含めないでください。台詞と音声が同じ言語でも、タグを使う項目だけタグ付き読み上げ文を `<tr>...</tr>` に書いてください。
+tts_style_inline_tags_channel_custom: |-
+  記述ルール：角括弧タグは音声合成用の `translate` チャネルのみに入れ、表示用の台詞本文には `[...]` を含めないでください。
+tts_style_voice_instruct_json: |-
+  自然言語による発話指示：必要に応じてキャラクターのセリフ項目に任意フィールド `voice_instruct`（口調・感情・話速の短い説明、例: "優しくささやくように、少しゆっくり"）を追加できます。セリフ本文は繰り返さず、通常の発話時は省略してください。
+tts_style_voice_instruct_xml: |-
+  自然言語による発話指示：必要に応じて `<say>` タグに任意属性 `voice_instruct="..."`（口調・感情・話速の短い説明）を付けられます。セリフ本文は繰り返さず、通常の発話時は省略してください。
+tts_style_voice_instruct_custom: |-
+  自然言語による発話指示：現在の出力形式が対応している場合、必要に応じて `voice_instruct` で口調・感情・話速を指定できます。通常時は省略してください。

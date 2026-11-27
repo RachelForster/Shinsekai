@@ -8,13 +8,13 @@ import pytest
 from ai.llm.dialog_repair import repair_dialog_output
 from ai.llm.llm_manager import LLMManager
 from ai.vision.message_content import normalize_openai_messages
-from core.chat_history.identity import CHAT_OUTPUT_FORMAT
-from core.messaging.formats.registry import (
-    _reset_for_tests,
+from ai.llm.formats import (
+    XmlTagsStreamParser,
     configure_builtin_dialog_formats,
     configure_registered_dialog_formats,
 )
-from core.messaging.formats.xml_tags_parser import XmlTagsStreamParser
+from core.chat_history.identity import CHAT_OUTPUT_FORMAT
+from core.messaging.formats.registry import _reset_for_tests
 from sdk.adapters.dialog_format import (
     DEFAULT_DIALOG_FORMAT_ID,
     DialogFormatContribution,

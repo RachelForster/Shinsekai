@@ -369,83 +369,52 @@ def _schema_option(
 
 def build_fish_audio_config_schema() -> dict[str, dict[str, Any]]:
     """Return configurable Fish Audio S2 Pro adapter fields for API settings."""
-    prefix = "ops.api.tts.fishAudio.extra"
+    p = "ops.api.tts.fishAudio.extra"
     return {
         "base_url": _schema_option(
-            "str",
-            "Fish Audio API / Local Server URL",
-            f"{prefix}.baseUrl",
-            DEFAULT_FISH_AUDIO_URL,
+            "str", "Fish Audio API / Local Server URL", f"{p}.baseUrl", DEFAULT_FISH_AUDIO_URL
         ),
         "api_key": _schema_option(
-            "str",
-            "Fish Audio API Key",
-            f"{prefix}.apiKey",
-            "",
-            secret=True,
+            "str", "Fish Audio API Key", f"{p}.apiKey", "", secret=True
         ),
         "model": _schema_option(
-            "str",
-            "Fish Audio Model (e.g. s2-pro)",
-            f"{prefix}.model",
-            DEFAULT_FISH_AUDIO_MODEL,
+            "str", "Fish Audio Model (e.g. s2-pro)", f"{p}.model", DEFAULT_FISH_AUDIO_MODEL
         ),
         "reference_id": _schema_option(
             "str",
             "Default Reference Voice ID (leave blank for character audio cloning)",
-            f"{prefix}.referenceId",
+            f"{p}.referenceId",
             "",
         ),
         "character_reference_ids": _schema_option(
             "str",
             "Per-character Reference IDs (JSON or Name=ID lines, optional)",
-            f"{prefix}.characterReferenceIds",
+            f"{p}.characterReferenceIds",
             "",
         ),
-        "latency": _schema_option(
-            "str",
-            "Latency Mode",
-            f"{prefix}.latency",
-            "normal",
-            choices=["normal", "balanced"],
-        ),
-        "chunk_length": _schema_option(
-            "int",
-            "Chunk Length",
-            f"{prefix}.chunkLength",
-            200,
-            min=100,
-            max=300,
-            step=10,
-        ),
-        "temperature": _schema_option(
-            "float",
-            "Temperature",
-            f"{prefix}.temperature",
-            0.7,
-            min=0.1,
-            max=1.0,
-            step=0.05,
-        ),
-        "top_p": _schema_option(
-            "float",
-            "Top-P",
-            f"{prefix}.topP",
-            0.7,
-            min=0.1,
-            max=1.0,
-            step=0.05,
-        ),
-        "normalize": _schema_option(
+        "enable_inline_tags": _schema_option(
             "bool",
-            "Normalize Text",
-            f"{prefix}.normalize",
+            "Enable Inline Voice Tags (e.g. [laugh], [soft whisper])",
+            f"{p}.enableInlineTags",
             True,
         ),
+        "latency": _schema_option(
+            "str", "Latency Mode", f"{p}.latency", "normal", choices=["normal", "balanced"]
+        ),
+        "chunk_length": _schema_option(
+            "int", "Chunk Length", f"{p}.chunkLength", 200, min=100, max=300, step=10
+        ),
+        "temperature": _schema_option(
+            "float", "Temperature", f"{p}.temperature", 0.7, min=0.1, max=1.0, step=0.05
+        ),
+        "top_p": _schema_option(
+            "float", "Top-P", f"{p}.topP", 0.7, min=0.1, max=1.0, step=0.05
+        ),
+        "normalize": _schema_option("bool", "Normalize Text", f"{p}.normalize", True),
         "request_timeout": _schema_option(
             "float",
             "Request Timeout (seconds)",
-            f"{prefix}.requestTimeout",
+            f"{p}.requestTimeout",
             120.0,
             min=5.0,
             max=600.0,
@@ -454,32 +423,20 @@ def build_fish_audio_config_schema() -> dict[str, dict[str, Any]]:
         "fish_speech_dir": _schema_option(
             "str",
             "Local fish-speech Directory (optional, for localhost auto-start)",
-            f"{prefix}.fishSpeechDir",
+            f"{p}.fishSpeechDir",
             "",
         ),
         "llama_checkpoint_path": _schema_option(
-            "str",
-            "Local S2 Pro Checkpoint Dir (optional)",
-            f"{prefix}.llamaCheckpointPath",
-            "",
+            "str", "Local S2 Pro Checkpoint Dir (optional)", f"{p}.llamaCheckpointPath", ""
         ),
         "decoder_checkpoint_path": _schema_option(
-            "str",
-            "Local Codec Checkpoint (optional)",
-            f"{prefix}.decoderCheckpointPath",
-            "",
+            "str", "Local Codec Checkpoint (optional)", f"{p}.decoderCheckpointPath", ""
         ),
         "python_path": _schema_option(
-            "str",
-            "Local Python Executable (optional)",
-            f"{prefix}.pythonPath",
-            "",
+            "str", "Local Python Executable (optional)", f"{p}.pythonPath", ""
         ),
         "extra_args": _schema_option(
-            "str",
-            "Extra Local api_server.py Arguments",
-            f"{prefix}.extraArgs",
-            "",
+            "str", "Extra Local api_server.py Arguments", f"{p}.extraArgs", ""
         ),
     }
 

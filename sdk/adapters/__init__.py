@@ -10,6 +10,7 @@ from sdk.adapters.avatar import (
 )
 from sdk.adapters.dialog_format import (
     DEFAULT_DIALOG_FORMAT_ID,
+    RENPY_DIALOG_FORMAT_ID,
     XML_DIALOG_FORMAT_ID,
     DialogFormatContribution,
     DialogFormatPromptContext,
@@ -103,6 +104,7 @@ __all__ = [
     "ModelCapabilities",
     "ModelFiles",
     "ModelRuntimeInstaller",
+    "RENPY_DIALOG_FORMAT_ID",
     "T2IAdapter",
     "TTSAdapter",
     "TranscriptionCallback",

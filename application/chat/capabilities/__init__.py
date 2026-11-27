@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from ai.llm.template.session import TTS_STYLE_CONTEXT_MARKER
 from application.chat.capabilities.background import BackgroundTurnContextProvider
 from application.chat.capabilities.contracts import (
     BaseSessionCapability,
@@ -49,6 +50,10 @@ from application.chat.capabilities.relation import (
     RelationSessionCapability,
     RelationTurnContextProvider,
 )
+from application.chat.capabilities.tts_style import (
+    TtsStyleSessionCapability,
+    TtsStyleTurnContextProvider,
+)
 
 
 def build_default_turn_context_pipeline() -> TurnContextPipeline:
@@ -68,6 +73,7 @@ def build_default_session_capabilities() -> SessionCapabilitySet:
             OutfitSessionCapability(),
             PerceptionSessionCapability(),
             SessionBehaviorCapability(),
+            TtsStyleSessionCapability(),
         ),
         default_turn_providers=(BackgroundTurnContextProvider(),),
     )
@@ -113,6 +119,9 @@ __all__ = [
     "SessionRuntimeCapabilityContext",
     "StartupCapabilityContext",
     "StreamingWiringCapabilityContext",
+    "TTS_STYLE_CONTEXT_MARKER",
+    "TtsStyleSessionCapability",
+    "TtsStyleTurnContextProvider",
     "TurnAdmissionDecision",
     "TurnAdmissionRequest",
     "TurnContextPipeline",

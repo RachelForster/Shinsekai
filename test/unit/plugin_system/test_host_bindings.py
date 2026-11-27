@@ -274,12 +274,12 @@ def test_frontend_bridge_wires_dialog_format_bindings() -> None:
         encoding="utf-8"
     )
     tree = ast.parse(source)
-    has_builtin_call = any(
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "configure_builtin_dialog_formats"
+    called_names = {
+        node.func.id
         for node in ast.walk(tree)
-    )
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+    has_builtin_call = "configure_builtin_dialog_formats" in called_names
     has_runtime_binding = any(
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)

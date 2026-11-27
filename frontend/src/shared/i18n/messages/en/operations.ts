@@ -17,6 +17,7 @@ export const operationsEnMessages: Record<OperationsMessageKey, string> = {
   "ops.api.tts.fishAudio.extra.characterReferenceIds": "Per-character Reference IDs (JSON or Name=ID lines, optional)",
   "ops.api.tts.fishAudio.extra.chunkLength": "Chunk Length",
   "ops.api.tts.fishAudio.extra.decoderCheckpointPath": "Local Codec Checkpoint (optional)",
+  "ops.api.tts.fishAudio.extra.enableInlineTags": "Enable Inline Voice Tags (e.g. [laugh], [soft whisper])",
   "ops.api.tts.fishAudio.extra.extraArgs": "Extra Local api_server.py Arguments",
   "ops.api.tts.fishAudio.extra.fishSpeechDir": "Local fish-speech Directory (optional, for localhost auto-start)",
   "ops.api.tts.fishAudio.extra.latency": "Latency Mode",
@@ -57,6 +58,8 @@ export const operationsEnMessages: Record<OperationsMessageKey, string> = {
   "ops.api.tts.noQuotes": "TTS URL and startup path must not contain quotes.",
   "ops.api.tts.noneOption": "Disabled",
   "ops.api.tts.pathRequired": "Local TTS engine requires a startup path.",
+  "ops.api.tts.qwen3Gguf.extra.enableVoiceInstruction":
+    "Enable Natural-Language Voice Instruction (requires server support)",
   "ops.api.tts.qwen3Gguf.pathDesc":
     "Optional. Auto-discovers weights in data/models/qwen3-tts-gguf and llama-server in perception-gguf/llama.cpp when blank, or set a custom directory.",
   "ops.api.tts.qwen3Gguf.pathLabel": "Qwen3-TTS GGUF directory (optional)",

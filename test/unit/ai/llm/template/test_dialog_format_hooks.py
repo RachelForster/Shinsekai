@@ -16,7 +16,7 @@ import ai.llm.template_generator as legacy
 from application.chat.capabilities.outfit import OutfitRuntimeController
 from application.chat.dialog_formats import list_dialog_formats, resolve_outfit_format_hint
 from config.models import Character, Sprite
-from core.messaging.formats import (
+from ai.llm.formats import (
     configure_builtin_dialog_formats,
     configure_registered_dialog_formats,
     is_builtin_dialog_format,
@@ -161,6 +161,20 @@ class _BlankOutfitFormat(_LegacyMinimalFormat):
         return DialogOutfitHint(rule_text="   ", example_line="ignored")
 
 
+class _MinimalBaseFormat(DialogOutputFormat):
+    format_id = "minimal_base_v1"
+    label = "Minimal Base"
+
+    def create_stream_parser(self) -> DialogStreamParser:
+        return _DummyStreamParser()
+
+    def parse_complete(self, raw: str) -> list[LLMDialogMessage]:
+        return []
+
+    def validate(self, raw: str) -> bool:
+        return bool(raw.strip())
+
+
 @pytest.fixture(autouse=True)
 def _restore_registry():
     _reset_for_tests()
@@ -226,14 +240,30 @@ def test_full_and_legacy_custom_dialog_format_hooks(monkeypatch) -> None:
         ]
     )
 
-    # Base DialogOutputFormat defaults return None on JsonDialogFormat
-    json_fmt = resolve_dialog_format(DEFAULT_DIALOG_FORMAT_ID)
-    assert json_fmt.render_schema_hint(media_field="sprite", translate_required=False, locale="en") is None
-    assert json_fmt.render_requirements(DialogFormatPromptContext()) is None
-    assert json_fmt.render_outfit_hint(DialogOutfitHintContext()) is None
-    assert json_fmt.render_player_hint(DialogPlayerHintContext()) is None
-    assert json_fmt.render_format_reminder(locale="en") is None
-    assert json_fmt.render_repair_prompt(media_field="sprite", retry=False, locale="en") is None
+    # Base DialogOutputFormat defaults return None on minimal subclasses,
+    # while unified built-ins implement the full hook contract.
+    minimal_fmt = _MinimalBaseFormat()
+    assert minimal_fmt.render_label(locale="en") == "Minimal Base"
+    assert minimal_fmt.render_schema_hint(media_field="sprite", translate_required=False, locale="en") is None
+    assert minimal_fmt.render_requirements(DialogFormatPromptContext()) is None
+    assert minimal_fmt.render_outfit_hint(DialogOutfitHintContext()) is None
+    assert minimal_fmt.render_player_hint(DialogPlayerHintContext()) is None
+    assert minimal_fmt.render_format_reminder(locale="en") is None
+    assert minimal_fmt.render_tool_protocol(locale="en") is None
+    assert minimal_fmt.render_tools_intro(locale="en") is None
+    assert minimal_fmt.render_repair_prompt(media_field="sprite", retry=False, locale="en") is None
+
+    for builtin_id in ("xml_v1", "renpy_v1", "json_v1"):
+        builtin_fmt = resolve_dialog_format(builtin_id)
+        assert builtin_fmt.render_label(locale="en")
+        assert builtin_fmt.render_schema_hint(media_field="sprite", translate_required=False, locale="en")
+        assert builtin_fmt.render_requirements(DialogFormatPromptContext(locale="en", names="Alice"))
+        assert builtin_fmt.render_outfit_hint(DialogOutfitHintContext(locale="en"))
+        assert builtin_fmt.render_player_hint(DialogPlayerHintContext(locale="en", name="Hero"))
+        assert builtin_fmt.render_format_reminder(locale="en")
+        assert builtin_fmt.render_tool_protocol(locale="en")
+        assert builtin_fmt.render_tools_intro(locale="en")
+        assert builtin_fmt.render_repair_prompt(media_field="sprite", retry=False, locale="en")
 
     patch = OutputContractPatch(
         id="tighten_speech",
@@ -377,12 +407,24 @@ def test_outfit_hook_routing_and_builtin_plugin_guards(tmp_path: Path, monkeypat
         media_selection_mode="indexed",
         auto_switch_enabled=True,
     ) == ("", "")
-    assert resolve_outfit_format_hint(
+    xml_rule, xml_example = resolve_outfit_format_hint(
         output_format=XML_DIALOG_FORMAT_ID,
         locale="en",
         media_selection_mode="indexed",
         auto_switch_enabled=True,
-    ) == ("", "")
+        example_character="Alice",
+        example_target_group="formal",
+    )
+    assert xml_rule and '<say char="Alice"' in xml_example and 'outfit="formal"' in xml_example
+    json_rule, json_example = resolve_outfit_format_hint(
+        output_format=DEFAULT_DIALOG_FORMAT_ID,
+        locale="en",
+        media_selection_mode="indexed",
+        auto_switch_enabled=True,
+        example_character="Alice",
+        example_target_group="formal",
+    )
+    assert json_rule and '"character_name": "Alice"' in json_example and '"outfit": "formal"' in json_example
 
     assert is_builtin_dialog_format(XML_DIALOG_FORMAT_ID) is True
     assert is_builtin_dialog_format("full_hooks_v1") is False

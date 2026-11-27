@@ -20,6 +20,12 @@ import type {
 export const DEFAULT_NEW_OUTPUT_FORMAT: DialogOutputFormatId = "xml_v1";
 export const LEGACY_OUTPUT_FORMAT: DialogOutputFormatId = "json_v1";
 
+export const FALLBACK_DIALOG_FORMATS: DialogFormatOption[] = [
+  { id: "xml_v1", label: "XML / HTML Tags", builtin: true },
+  { id: "renpy_v1", label: "Ren'Py Script DSL", builtin: true },
+  { id: "json_v1", label: "JSON", builtin: true },
+];
+
 export function resolveSupportedOutputFormat(
   candidate: DialogOutputFormatId | null | undefined,
   dialogFormats: readonly DialogFormatOption[] | undefined,
